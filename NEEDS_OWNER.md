@@ -1,4 +1,24 @@
-# NEEDS-OWNER — nothing immediate. All decisions taken 2026-07-09.
+# NEEDS-OWNER
+
+## IDE-13 owner-managed environment authority (2026-07-20)
+
+IDE-13 requires an owner-managed execution target. The current target binding
+proves the owner and the live Pylon. It does not prove that the owner enrolled
+the Pylon as an owner-managed environment. The current server also cannot open
+an owner-managed checkpoint without an owner key.
+
+The recommended design keeps the checkpoint key on the enrolled Pylon. The
+server stores and moves ciphertext only. A new server enrollment record binds
+the owner, target, Pylon, target class, adapter, compatibility, isolation, data
+posture, health, expiry, update receipt, and revoke state. The Pylon uses its
+local owner key to open the checkpoint after it verifies that enrollment. Raw
+key bytes do not go to Sync or the API.
+
+**Smallest owner decision:** Approve this owner-held-key and server-enrollment
+design, or require OpenAgents KMS custody for an owner-managed target. Work on
+other IDE-13 requirements continues while this decision is open.
+
+## Previous decisions
 
 ## RESOLVED — Desktop local-usage telemetry consent copy (#8911, 2026-07-16)
 
