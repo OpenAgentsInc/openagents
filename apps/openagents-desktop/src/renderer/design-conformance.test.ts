@@ -204,7 +204,10 @@ describe("design conformance (b2): app.css is a token bridge and host physics, n
   })
 
   test("chat markdown restores semantic list markers after Tailwind preflight", () => {
-    const css = readFileSync(sharedWorkbenchCssPath, "utf8")
+    // Normalize CSS whitespace so the assertion checks the rule, not its
+    // formatting: the shared stylesheet is auto-formatted and may render a rule
+    // on one line or several.
+    const css = readFileSync(sharedWorkbenchCssPath, "utf8").replace(/\s+/gu, " ")
     expect(css).toContain(".oa-react-markdown ul { list-style: disc outside; }")
     expect(css).toContain(".oa-react-markdown ol { list-style: decimal outside; }")
   })
@@ -223,7 +226,9 @@ describe("design conformance (b2): app.css is a token bridge and host physics, n
 
   test("every Codex update spinner stops under reduced motion", () => {
     const css = readFileSync(sharedWorkbenchCssPath, "utf8")
-    const reducedMotion = css.match(/@media \(prefers-reduced-motion: reduce\)\s*\{([\s\S]*?)\n\}/)?.[1] ?? ""
+    // Normalize whitespace so the assertion checks the reduced-motion rule, not
+    // whether the auto-formatter kept it on one line.
+    const reducedMotion = (css.match(/@media \(prefers-reduced-motion: reduce\)\s*\{([\s\S]*?)\n\}/)?.[1] ?? "").replace(/\s+/gu, " ")
     expect(reducedMotion).toContain(".oa-react-codex-update-spinner { animation: none; }")
     expect(reducedMotion).toContain(".oa-react-session-loading svg { animation: none; }")
   })
