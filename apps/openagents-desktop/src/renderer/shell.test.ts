@@ -1049,15 +1049,20 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(prompt.endsWith("Assistant:")).toBe(true)
   })
 
-  test("buildOpenAgentsAppleFmPrompt constrains the model against claiming actions or inventing results (owner directive 2026-07-20)", () => {
+  test("buildOpenAgentsAppleFmPrompt stays helpful while forbidding claimed actions or invented facts (owner directive 2026-07-20)", () => {
     const prompt = buildOpenAgentsAppleFmPrompt([
       { key: "u0", role: "user", text: "dispatch a subagent to set a reminder", timestamp: "18:00" },
     ])
-    // The preamble must forbid claiming capabilities/actions and inventing facts.
-    expect(prompt).toContain("CANNOT take any action")
-    expect(prompt).toContain("cannot dispatch agents or subagents")
-    expect(prompt).toContain("NEVER say you have done, will do, or are doing any such action")
-    expect(prompt).toContain("Do not invent facts, capabilities, results, or events")
+    // Honesty limit is preserved: no tools, never claim to have acted, no made-up facts.
+    expect(prompt).toContain("no tools")
+    expect(prompt).toContain("you cannot run commands")
+    expect(prompt).toContain("never claim you did, are doing, or will do any such action")
+    expect(prompt).toContain("Do not make up facts")
+    // Positive-first framing so the small model does not fall into a refusal
+    // spiral on benign questions ("what can you do").
+    expect(prompt).toContain("helpful, friendly assistant")
+    expect(prompt).toContain("always try to be helpful and give a real answer")
+    expect(prompt).not.toContain("CANNOT take any action")
   })
 
   test("OpenAgents authority (owner directive 2026-07-20): a turn submits even while Codex is still loading — provider-lane readiness never blocks the OpenAgents path", async () => {

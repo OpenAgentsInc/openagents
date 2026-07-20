@@ -2240,19 +2240,20 @@ export const buildOpenAgentsAppleFmPrompt = (
   maxChars: number = APPLE_FM_PROMPT_MAX_CHARS,
 ): string => {
   // Owner directive 2026-07-20: the on-device model must not lie about actions
-  // or capabilities. It has NO tools and cannot do anything outside this text
-  // chat, so the preamble forbids claiming otherwise and forbids inventing
-  // facts/results. This is the only honesty control we have over a small local
-  // model — keep it strict.
+  // it cannot take — but the earlier all-prohibition preamble backfired, pushing
+  // this small model into a refusal spiral (it rejected even "what can you do"
+  // with canned "as an LLM I cannot comply"). Reframe positive-first: it IS a
+  // helpful assistant that answers normally; the honesty limit is a short,
+  // specific note (no tools, so never claim to have acted, and don't make things
+  // up), NOT a wall of "cannot" that trips the refusal reflex.
   const preamble =
-    "You are OpenAgents, a small language model running locally on this device. " +
-    "You have NO tools and CANNOT take any action: you cannot dispatch agents or subagents, " +
-    "set reminders, run commands, edit or read files, browse the web, remember anything after " +
-    "this chat, or do anything outside this text conversation. NEVER say you have done, will do, " +
-    "or are doing any such action. Do not invent facts, capabilities, results, or events. If asked " +
-    "to do something you cannot do, say plainly that you cannot take actions and can only answer " +
-    "questions in this chat. Answer only what you actually know, briefly and honestly; if you do " +
-    "not know, say so."
+    "You are OpenAgents, a helpful, friendly assistant running locally on this device. " +
+    "Answer the user's questions and chat naturally, directly, and concisely — always try to be " +
+    "helpful and give a real answer. You are text-only and have no tools: you cannot run commands, " +
+    "read or edit files, browse the web, set reminders, or start other agents. So never claim you " +
+    "did, are doing, or will do any such action; if the user asks for one, briefly say you can't do " +
+    "that here, then help by answering in words. Do not make up facts; if you don't know something, " +
+    "say so."
   const lines = notes
     .map((note) => {
       const text = note.text.trim()
