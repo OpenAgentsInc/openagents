@@ -1,4 +1,4 @@
-import { Context, Data, Effect, Layer, PubSub, Schema, Stream, SubscriptionRef } from "effect";
+import { Context, Data, Effect, Layer, PubSub, Schema, Semaphore, Stream, SubscriptionRef } from "effect";
 
 import {
   IdeSourceControlCommandSchema,
@@ -130,6 +130,7 @@ export const makeIdeSourceControlServiceLayer = (
       const state = yield* SubscriptionRef.make(initial);
       const receiptState = yield* SubscriptionRef.make<ReadonlyArray<IdeSourceControlReceipt>>([]);
       const events = yield* PubSub.unbounded<IdeSourceControlEvent>();
+      const operationLock = yield* Semaphore.make(1);
       const now = options.now ?? (() => new Date().toISOString());
       const maximumReceipts = Math.max(1, options.maximumReceipts ?? 2_000);
       let receiptSequence = 0;
@@ -185,9 +186,21 @@ export const makeIdeSourceControlServiceLayer = (
             true,
           ));
         }
+        const destructiveForAgent = command.actor._tag === "Agent" && [
+          "Discard", "Switch", "Merge", "Rebase", "CherryPick", "Revert",
+          "Continue", "Abort", "Push", "WorktreeRemove",
+        ].includes(command._tag);
+        if (destructiveForAgent && command.approvalRef === null) {
+          return yield* emitFailure(failure(
+            "approval_required",
+            "This agent operation requires an explicit approval reference.",
+            current,
+            command.operationRef,
+          ));
+        }
       });
 
-      const execute = Effect.fn("IdeSourceControl.execute")(function* (
+      const executeUnlocked = Effect.fn("IdeSourceControl.executeUnlocked")(function* (
         raw: IdeSourceControlCommand,
       ) {
         const command = yield* Schema.decodeUnknownEffect(IdeSourceControlCommandSchema)(raw).pipe(
@@ -268,6 +281,9 @@ export const makeIdeSourceControlServiceLayer = (
         yield* publish(IdeSourceControlEventSchema.cases.Receipt.make({ receipt }));
         return { snapshot: postImage, receipt };
       });
+
+      const execute = Effect.fn("IdeSourceControl.execute")((raw: IdeSourceControlCommand) =>
+        operationLock.withPermit(executeUnlocked(raw)));
 
       const stop = Effect.fn("IdeSourceControl.stop")(function* (reason: string) {
         yield* adapter.stop(reason);

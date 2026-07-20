@@ -38,6 +38,7 @@ const boundedRef = <const Identifier extends string>(identifier: Identifier, pre
 export const IdeSourceControlSchemaVersion = Schema.Literal(
   "openagents.desktop.ide-source-control.v1",
 );
+export const IdeSourceControlChannel = "openagents-desktop/ide-source-control" as const;
 
 export const IdeRepositoryRefSchema = boundedRef("IdeRepositoryRef", "ide.repository.");
 export type IdeRepositoryRef = typeof IdeRepositoryRefSchema.Type;
@@ -349,6 +350,15 @@ export interface IdeSourceControlFailure extends Schema.Schema.Type<
   typeof IdeSourceControlFailureSchema
 > {}
 
+export const IdeSourceControlCommandResultSchema = Schema.TaggedUnion({
+  Success: {
+    snapshot: IdeSourceControlSnapshotSchema,
+    receipt: Schema.NullOr(IdeSourceControlReceiptSchema),
+  },
+  Failure: { failure: IdeSourceControlFailureSchema },
+}).annotate({ identifier: "IdeSourceControlCommandResult" });
+export type IdeSourceControlCommandResult = typeof IdeSourceControlCommandResultSchema.Type;
+
 export const decodeIdeSourceControlCommand = (value: unknown): IdeSourceControlCommand | null => {
   const decoded = Schema.decodeUnknownExit(IdeSourceControlCommandSchema)(value);
   return Exit.isSuccess(decoded) ? decoded.value : null;
@@ -356,5 +366,12 @@ export const decodeIdeSourceControlCommand = (value: unknown): IdeSourceControlC
 
 export const decodeIdeSourceControlSnapshot = (value: unknown): IdeSourceControlSnapshot | null => {
   const decoded = Schema.decodeUnknownExit(IdeSourceControlSnapshotSchema)(value);
+  return Exit.isSuccess(decoded) ? decoded.value : null;
+};
+
+export const decodeIdeSourceControlCommandResult = (
+  value: unknown,
+): IdeSourceControlCommandResult | null => {
+  const decoded = Schema.decodeUnknownExit(IdeSourceControlCommandResultSchema)(value);
   return Exit.isSuccess(decoded) ? decoded.value : null;
 };

@@ -140,6 +140,7 @@ export const makeIdeSourceControlGitAdapter = (
   const recoveries = new Map<string, string>();
   let generation = Number(options.seed.version.repositoryGeneration);
   let stopped = false;
+  let verifiedPush: Readonly<{ headOid: string; upstream: string }> | null = null;
 
   const snapshot = (): IdeSourceControlSnapshot => {
     if (stopped) return IdeSourceControlSnapshotSchema.make({ ...options.seed, stopped: true });
@@ -154,7 +155,14 @@ export const makeIdeSourceControlGitAdapter = (
     const indexResult = runGit(root, ["write-tree"]);
     const indexOid = indexResult.ok ? indexResult.stdout.trim() : digest(`index\0${raw}`);
     const diff = runGit(root, ["diff", "--binary", "--no-ext-diff", "--no-textconv"]);
-    const worktreeOid = digest(`${raw}\0${diff.ok ? diff.stdout : "unavailable"}`);
+    const untracked = runGit(root, ["ls-files", "--others", "--exclude-standard", "-z"]);
+    const untrackedFacts = untracked.ok
+      ? untracked.stdout.split("\0").filter(Boolean).map((relative) => {
+          const hashed = runGit(root, ["hash-object", "--no-filters", "--", relative]);
+          return `${relative}\0${hashed.ok ? hashed.stdout.trim() : "unavailable"}`;
+        }).join("\0")
+      : "unavailable";
+    const worktreeOid = digest(`${raw}\0${diff.ok ? diff.stdout : "unavailable"}\0${untrackedFacts}`);
     let branch: string | null = null;
     let upstream: string | null = null;
     let ahead = 0;
@@ -227,11 +235,11 @@ export const makeIdeSourceControlGitAdapter = (
       };
     });
     generation += 1;
-    const statusRef = opaque("ide.scm-status", `${headOid ?? "unborn"}\0${indexOid}\0${worktreeOid}\0${raw}`);
+    const statusRef = opaque("ide.scm-status", `${headOid ?? "unborn"}\0${indexOid}\0${worktreeOid}\0${raw}\0${untrackedFacts}`);
     const delivery = [
       { phase: "changed" as const, proven: paths.length > 0, evidenceRefs: [statusRef], observedAt: now(), freshness: "current" as const },
       { phase: "committed" as const, proven: headOid !== null, evidenceRefs: headOid === null ? [] : [headOid], observedAt: now(), freshness: "current" as const },
-      { phase: "pushed" as const, proven: ahead === 0 && upstream !== null && headOid !== null, evidenceRefs: upstream === null ? [] : [upstream], observedAt: now(), freshness: "current" as const },
+      { phase: "pushed" as const, proven: verifiedPush?.headOid === headOid && verifiedPush.upstream === upstream, evidenceRefs: verifiedPush === null ? [] : [verifiedPush.headOid, verifiedPush.upstream], observedAt: now(), freshness: verifiedPush === null ? "unknown" as const : "current" as const },
     ];
     return IdeSourceControlSnapshotSchema.make({
       ...options.seed,
@@ -253,18 +261,46 @@ export const makeIdeSourceControlGitAdapter = (
     current: IdeSourceControlSnapshot,
   ): IdeSourceControlAdapterResult => {
     const op = command.operationRef;
+    const readOnly = command._tag === "History" || command._tag === "Blame" || command._tag === "ProviderRefresh";
+    if (!readOnly) {
+      const live = snapshot();
+      const exact = live.version.statusRef === current.version.statusRef &&
+        live.version.headOid === current.version.headOid &&
+        live.version.indexOid === current.version.indexOid &&
+        live.version.worktreeOid === current.version.worktreeOid;
+      if (!exact) throw failure("stale_version", "Repository state changed after the operation preview.", live, op, true);
+    }
     const paths = "selection" in command && command.selection._tag === "Paths"
       ? command.selection.paths.map((value) => safeRelative(root, value))
       : [];
     if (paths.some((value) => value === null)) throw failure("policy_refused", "A path leaves the worktree.", current, op);
+    const safeArgument = (value: string, label: string): string => {
+      if (value.startsWith("-") || /[\0\r\n]/u.test(value)) {
+        throw failure("policy_refused", `${label} has an option-shaped or invalid value.`, current, op);
+      }
+      return value;
+    };
+    const validatePatch = (selection: Extract<IdeSourceControlCommand, { readonly _tag: "Stage" }> ["selection"] & { readonly _tag: "Patch" }): string => {
+      const selectedPath = safeRelative(root, selection.path);
+      if (selectedPath === null || (selection.selectedHunks.length === 0 && selection.selectedLines.length === 0)) {
+        throw failure("policy_refused", "The partial selection is empty or leaves the worktree.", current, op);
+      }
+      const headers = [...selection.patch.matchAll(/^(?:diff --git a\/(.+) b\/(.+)|--- (?:a\/)?(.+)|\+\+\+ (?:b\/)?(.+))$/gmu)]
+        .flatMap((match) => [match[1], match[2], match[3], match[4]])
+        .filter((value): value is string => value !== undefined && value !== "/dev/null");
+      if (headers.length === 0 || headers.some((value) => safeRelative(root, value) !== selectedPath)) {
+        throw failure("policy_refused", "The partial patch does not match its selected path.", current, op);
+      }
+      return selection.patch;
+    };
     let recoveryRef: IdeSourceControlAdapterResult["recoveryRef"] = null;
     const run = (args: ReadonlyArray<string>, message: string, input?: string) =>
       assertGit(runGit(root, args, input), message, current, op);
     switch (command._tag) {
-      case "Stage": command.selection._tag === "Patch" ? run(["apply", "--cached", "--unidiff-zero", "-"], "The selected patch could not be staged.", command.selection.patch) : run(["add", "--", ...(paths as string[])], "The paths could not be staged."); break;
-      case "Unstage": command.selection._tag === "Patch" ? run(["apply", "--cached", "--reverse", "--unidiff-zero", "-"], "The selected patch could not be unstaged.", command.selection.patch) : run(["restore", "--staged", "--", ...(paths as string[])], "The paths could not be unstaged."); break;
+      case "Stage": command.selection._tag === "Patch" ? run(["apply", "--cached", "--unidiff-zero", "-"], "The selected patch could not be staged.", validatePatch(command.selection)) : run(["add", "--", ...(paths as string[])], "The paths could not be staged."); break;
+      case "Unstage": command.selection._tag === "Patch" ? run(["apply", "--cached", "--reverse", "--unidiff-zero", "-"], "The selected patch could not be unstaged.", validatePatch(command.selection)) : run(["restore", "--staged", "--", ...(paths as string[])], "The paths could not be unstaged."); break;
       case "Discard": {
-        const patch = command.selection._tag === "Patch" ? command.selection.patch : run(["diff", "--binary", "--", ...(paths as string[])], "The recovery patch could not be created.");
+        const patch = command.selection._tag === "Patch" ? validatePatch(command.selection) : run(["diff", "--binary", "--", ...(paths as string[])], "The recovery patch could not be created.");
         recoveryRef = IdeSourceControlRecoveryRefSchema.make(`ide.scm-recovery.${digest(`${op}\0${patch}`)}`);
         recoveries.set(recoveryRef, patch);
         command.selection._tag === "Patch" ? run(["apply", "--reverse", "--unidiff-zero", "-"], "The selected patch could not be discarded.", patch) : run(["restore", "--worktree", "--", ...(paths as string[])], "The paths could not be discarded.");
@@ -272,18 +308,29 @@ export const makeIdeSourceControlGitAdapter = (
       }
       case "Recover": { const patch = recoveries.get(command.recoveryRef); if (patch === undefined) throw failure("recovery_unavailable", "The recovery record is unavailable.", current, op); run(["apply", "-"], "The recovery patch could not be applied.", patch); recoveries.delete(command.recoveryRef); break; }
       case "Commit": run(["commit", ...(command.amend ? ["--amend"] : []), ...(command.sign ? ["-S"] : []), ...(command.runHooks ? [] : ["--no-verify"]), "-m", command.message], "The commit could not be created."); break;
-      case "BranchCreate": run([command.checkout ? "switch" : "branch", ...(command.checkout ? ["-c"] : []), command.name], "The branch could not be created."); break;
-      case "TagCreate": run(["tag", ...(command.sign ? ["-s", "-m", command.name] : []), command.name, command.targetOid], "The tag could not be created."); break;
-      case "Switch": run(["switch", ...(command.detach ? ["--detach"] : []), command.refName], "The ref could not be switched."); break;
-      case "Merge": run(["merge", ...(command.noFastForward ? ["--no-ff"] : []), command.refName], "The merge did not complete."); break;
-      case "Rebase": run(["rebase", ...(command.onto === null ? [] : ["--onto", command.onto]), command.upstream], "The rebase did not complete."); break;
+      case "BranchCreate": run([command.checkout ? "switch" : "branch", ...(command.checkout ? ["-c"] : []), safeArgument(command.name, "Branch name")], "The branch could not be created."); break;
+      case "TagCreate": run(["tag", ...(command.sign ? ["-s", "-m", command.name] : []), safeArgument(command.name, "Tag name"), command.targetOid], "The tag could not be created."); break;
+      case "Switch": run(["switch", ...(command.detach ? ["--detach"] : []), safeArgument(command.refName, "Ref name")], "The ref could not be switched."); break;
+      case "Merge": run(["merge", ...(command.noFastForward ? ["--no-ff"] : []), safeArgument(command.refName, "Ref name")], "The merge did not complete."); break;
+      case "Rebase": run(["rebase", ...(command.onto === null ? [] : ["--onto", safeArgument(command.onto, "Onto ref")]), safeArgument(command.upstream, "Upstream ref")], "The rebase did not complete."); break;
       case "CherryPick": run(["cherry-pick", ...command.commitOids], "The cherry-pick did not complete."); break;
       case "Revert": run(["revert", "--no-edit", ...command.commitOids], "The revert did not complete."); break;
       case "Continue": run([command.operation === "cherry_pick" ? "cherry-pick" : command.operation, "--continue"], "The operation could not continue."); break;
       case "Abort": run([command.operation === "cherry_pick" ? "cherry-pick" : command.operation, "--abort"], "The operation could not abort."); break;
-      case "Fetch": run(["fetch", ...(command.prune ? ["--prune"] : []), command.remote], "Fetch did not complete."); break;
-      case "Pull": run(["pull", command.strategy === "ff_only" ? "--ff-only" : command.strategy === "rebase" ? "--rebase" : "--no-rebase", command.remote, command.branch], "Pull did not complete."); break;
-      case "Push": run(["push", ...(command.forcePolicy === "force_with_lease" ? [`--force-with-lease=${command.refspec}:${command.expectedRemoteOid ?? ""}`] : []), command.remote, command.refspec], "Push did not complete."); break;
+      case "Fetch": run(["fetch", ...(command.prune ? ["--prune"] : []), safeArgument(command.remote, "Remote")], "Fetch did not complete."); break;
+      case "Pull": run(["pull", command.strategy === "ff_only" ? "--ff-only" : command.strategy === "rebase" ? "--rebase" : "--no-rebase", safeArgument(command.remote, "Remote"), safeArgument(command.branch, "Branch")], "Pull did not complete."); break;
+      case "Push": {
+        const remote = safeArgument(command.remote, "Remote");
+        const refspec = safeArgument(command.refspec, "Refspec");
+        run(["push", ...(command.forcePolicy === "force_with_lease" ? [`--force-with-lease=${refspec}:${command.expectedRemoteOid ?? ""}`] : []), remote, refspec], "Push did not complete.");
+        const destination = refspec.includes(":") ? refspec.slice(refspec.lastIndexOf(":") + 1) : refspec;
+        const head = assertGit(runGit(root, ["rev-parse", "--verify", "HEAD"]), "The pushed commit could not be verified.", current, op).trim();
+        const remoteRefs = run(["ls-remote", remote, destination], "The pushed remote ref could not be verified.");
+        const remoteOid = remoteRefs.trim().split(/\s+/u)[0] ?? "";
+        if (remoteOid !== head) throw failure("remote_rejected", "The remote ref does not match the pushed commit.", current, op, true);
+        verifiedPush = { headOid: head, upstream: `${remote}/${destination.replace(/^refs\/heads\//u, "")}` };
+        break;
+      }
       case "WorktreeCreate": { const target = options.worktreePath?.(command.worktreeRef); if (target === undefined) throw failure("policy_refused", "No admitted worktree placement exists.", current, op); run(["worktree", "add", target, command.branch], "The worktree could not be created."); break; }
       case "WorktreeRemove": { const entry = current.worktrees.find((item) => item.worktreeRef === command.worktreeRef); const target = options.worktreePath?.(command.worktreeRef); if (entry?.removalPreviewRef !== command.previewRef || target === undefined || !command.recoverable) throw failure("policy_refused", "The worktree removal preview is stale or not recoverable.", current, op); run(["worktree", "remove", target], "The worktree could not be removed."); break; }
       case "WorktreeRepair": run(["worktree", "repair"], "Worktree metadata could not be repaired."); break;
