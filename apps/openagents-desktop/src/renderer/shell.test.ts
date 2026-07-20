@@ -121,6 +121,19 @@ test("sidebar presentation changes remain Effect-owned and search disclosure is 
   })
 })
 
+test("AFS-05: adding editor context keeps the active file visible and opens the context tray", async () => {
+  const initial: DesktopShellState = { ...initialDesktopShellState("test"), workspace: "files" }
+  const state = await Effect.runPromise(SubscriptionRef.make(initial))
+  const handlers = makeDesktopShellHandlers(state)
+  const registry = await Effect.runPromise(makeIntentRegistry(desktopShellIntents, handlers))
+  await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopEditorFileAttached"))))
+  const next = await Effect.runPromise(SubscriptionRef.get(state))
+  // The active file stays visible: "Add context" is an Editor agent-rail action,
+  // not a jump to chat. The context tray opens so the exact IDE-08 manifest shows.
+  expect(next.workspace).toBe("files")
+  expect(next.agentContextTrayOpen).toBe(true)
+})
+
 describe("EP250 chat contracts are registered and enforced (#8712)", () => {
   test("registry validates and the owner-statement contracts are enforced", () => {
     expect(validateBehaviorContractRegistry(openAgentsDesktopUxContractRegistry).ok).toBe(true)
@@ -2200,7 +2213,12 @@ describe("pure transitions", () => {
 
       yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopEditorFileAttached", StaticPayload(null))))
       const attached = yield* SubscriptionRef.get(state)
-      expect(attached.workspace).toBe("chat")
+      // AFS-05 (#9083): "Add context" is an Editor agent-rail action now. The
+      // active file stays visible (workspace remains "files") and the context
+      // tray opens, rather than jumping to chat. The bounded file context is
+      // still captured for delivery as untrusted context on the next turn.
+      expect(attached.workspace).toBe("files")
+      expect(attached.agentContextTrayOpen).toBe(true)
       expect(attached.composerFileContext).toMatchObject({
         path: "src/answer.ts",
         revisionRef: "workspace.document.answer.v1",
@@ -2208,7 +2226,9 @@ describe("pure transitions", () => {
         content: draft,
         dirty: false,
       })
-      const view = desktopShellView(attached)
+      // The user opens chat to review and deliver the captured file mention.
+      yield* registry.dispatch(resolveIntentRef(IntentRef("DesktopWorkspaceSelected", StaticPayload("chat"))))
+      const view = desktopShellView(yield* SubscriptionRef.get(state))
       expect(nodeByKey(view, "shell-composer-file-context")).toBeDefined()
       expect(nodeByKey(view, "shell-composer-file-path")?.content).toBe("@file:src/answer.ts")
 

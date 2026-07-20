@@ -3647,11 +3647,13 @@ export const makeDesktopShellHandlers = (
       }
     })
     yield* assembleAgentContextForAttachedFile
-    // Do not tear down the Files projection until its exact context manifest
-    // has reached main. Navigation can replace renderer/workspace services;
-    // assembling first prevents the user-visible attachment from racing that
-    // lifecycle handoff.
-    yield* SubscriptionRef.update(state, current => ({ ...current, workspace: "chat" as const }))
+    // AFS-05 (#9083): keep the active file visible while the user adds context.
+    // "Add context" is an Editor agent-rail action now, not a jump to chat, so
+    // the user can add context, ask, or request a change without losing the file.
+    // Open the agent-context tray so the exact IDE-08 manifest — source,
+    // omission, truncation, and stale truth — is visible in the Editor. The
+    // context still feeds the SAME shared kernel turn service that chat uses.
+    yield* SubscriptionRef.update(state, current => ({ ...current, agentContextTrayOpen: true }))
   }),
   DesktopFileContextRemoved: () =>
     SubscriptionRef.update(state, current => ({ ...current, composerFileContext: null })),

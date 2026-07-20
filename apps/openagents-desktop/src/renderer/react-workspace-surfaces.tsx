@@ -16,6 +16,7 @@ import { PierreReviewAdapter, type PierreDiffAnnotation } from "../ide/pierre-di
 import type { IdeReviewIntent, IdeReviewSelection } from "../ide/review-contract.ts"
 import { activeGitReviewSource } from "./ide/review-source.ts"
 import { AgentProposalList, AgentProposalReviewPanel } from "./react-agent-code.tsx"
+import { AgentContextTray } from "./react-agent-context.tsx"
 import { ReactIdeCursor } from "./ide/react-cursor.tsx"
 import { ReactIdeDebugPanel } from "./ide/react-debug.tsx"
 import { ReactIdeRunPanel, type IdeRunPanelMode } from "./ide/react-run.tsx"
@@ -360,6 +361,7 @@ export const ReactWorkspaceEditor = ({ state, report }: { readonly state: Deskto
             />}
           </div>}
       </div>
+      <AgentContextTray state={state} report={report} />
       <ReactIdeCursor state={state} report={report} />
       <section className="oa-react-language-panel" aria-label="Project language results">
         <header>

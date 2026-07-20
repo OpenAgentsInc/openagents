@@ -420,7 +420,10 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
               specifier === "./ide/agent-code.ts" ||
               specifier === "./ide/cursor.ts" ||
               specifier === "./ide/managed-sandbox.ts" ||
-              specifier === "../ide/run-contract.ts")) ||
+              specifier === "../ide/run-contract.ts" ||
+              // AFS-03/04 shared turn kernel host: boot wires the typed turn IPC
+              // (submit/event-frame types) into the renderer turn host adapter.
+              specifier === "../turn/desktop-turn-ipc.ts")) ||
             ((name === "git-panel.ts" || name === "shell.ts") && specifier === "../ide/review-contract.ts") ||
             (name === "shell.ts" && (
               specifier === "../ide/agent-code-contract.ts" ||
@@ -428,7 +431,12 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
               specifier === "../ide/project-contract.ts" ||
               specifier === "./ide/agent-code.ts" ||
               specifier === "./ide/cursor.ts" ||
-              specifier === "./ide/managed-sandbox.ts")) ||
+              specifier === "./ide/managed-sandbox.ts" ||
+              // AFS-03/04 shared turn kernel host: shell renders the typed turn
+              // submit/event-frame result facts through the renderer turn host,
+              // and the safe turn projection / redacted message chain types.
+              specifier === "../turn/desktop-turn-ipc.ts" ||
+              specifier === "@openagentsinc/agent-runtime-schema")) ||
             (reactHostFiles.has(name) &&
               (reactHostImport.test(specifier) ||
                 specifier === sharedReactWorkbenchImport ||

@@ -13,6 +13,8 @@ import {
   TurnPolicy,
 } from "@openagentsinc/agent-turn-runtime"
 
+import { buildEditorWorkContext, type EditorContextRegistry } from "./editor-context-binding.ts"
+
 /**
  * AFS-01 minimal Desktop host policy layers.
  *
@@ -29,27 +31,48 @@ const decodeDecision = S.decodeUnknownSync(RouteDecision)
 
 const nowIso = (): string => new Date().toISOString()
 
-/** A minimal host context source. It binds the thread and an empty manifest. */
-export const desktopContextSourceLayer: Layer.Layer<ContextSource> = Layer.succeed(
-  ContextSource,
-  ContextSource.of({
-    manifest: (input) =>
-      Effect.sync(() =>
-        decodeContext({
-          schema: CONTEXT_ENVELOPE_SCHEMA_LITERAL,
-          manifestRef: `context.${input.threadRef}`,
-          threadRef: input.threadRef,
-          generation: { state: "unknown", reason: "not_observed" },
-          createdAt: nowIso(),
-          items: [],
-          totalByteLength: 0,
-          byteLimit: 0,
-          truncated: false,
-          redacted: false,
+const emptyManifest = (threadRef: string) =>
+  decodeContext({
+    schema: CONTEXT_ENVELOPE_SCHEMA_LITERAL,
+    manifestRef: `context.${threadRef}`,
+    threadRef,
+    generation: { state: "unknown", reason: "not_observed" },
+    createdAt: nowIso(),
+    items: [],
+    totalByteLength: 0,
+    byteLimit: 0,
+    truncated: false,
+    redacted: false,
+  })
+
+/**
+ * The host context source. It binds the thread and an empty manifest by default,
+ * preserving the AFS-03/04 local chat path.
+ *
+ * AFS-05: when an editor-context registry is supplied and a bound Editor turn has
+ * registered its IDE-08 context for the thread, this source builds the effective
+ * `WorkContextEnvelope` from that binding — so the Editor agent rail and chat use
+ * ONE turn service and one manifest authority. A binding for another project,
+ * root, worktree, or generation is refused (host-owned), and the turn falls back
+ * to an empty manifest rather than carrying context from another editor.
+ */
+export const desktopContextSourceLayer = (
+  editorContext?: EditorContextRegistry,
+): Layer.Layer<ContextSource> =>
+  Layer.succeed(
+    ContextSource,
+    ContextSource.of({
+      manifest: (input) =>
+        Effect.sync(() => {
+          const binding = editorContext?.get(input.threadRef) ?? null
+          if (binding !== null) {
+            const built = buildEditorWorkContext(binding, editorContext!.expectation())
+            if (built.ok) return built.envelope
+          }
+          return emptyManifest(input.threadRef)
         }),
-      ),
-  }),
-)
+    }),
+  )
 
 /**
  * The first-candidate host policy. It selects the first provider ref in the

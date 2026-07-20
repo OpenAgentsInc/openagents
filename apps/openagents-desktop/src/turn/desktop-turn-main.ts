@@ -21,6 +21,7 @@ import {
 
 import type { CodexLaneReadiness } from "./desktop-codex-provider.ts"
 import { decideDelegation } from "./desktop-delegation.ts"
+import type { EditorContextRegistry } from "./editor-context-binding.ts"
 
 import type { makeThreadStore } from "../thread-store.ts"
 import type { LocalTurnJournal } from "../local-turn-journal.ts"
@@ -150,6 +151,14 @@ export interface InstallDesktopTurnKernelDeps {
    * through the shared kernel. Absent → the local path answers only (AFS-03).
    */
   readonly codexProvider?: ProviderRegistryInterface
+  /**
+   * The AFS-05 editor-context registry. When present, an Editor agent-rail submit
+   * that carries an `editorContext` binding registers it here before the kernel
+   * runs, so the shared `ContextSource` feeds the Editor's IDE-08 context into the
+   * SAME turn service that chat uses. Absent → editor context is never bound and
+   * the local chat path is unchanged.
+   */
+  readonly editorContextRegistry?: EditorContextRegistry
   readonly legacyJournal?: {
     readonly journal: LocalTurnJournal
     readonly laneRef: (record: { readonly effective: unknown }) => string
@@ -185,7 +194,7 @@ export const installDesktopTurnKernel = (
   const providerRegistryLayer = Layer.succeed(ProviderRegistry, ProviderRegistry.of(resolvedRegistry))
 
   const layer = TurnServiceLayer.pipe(
-    Layer.provide(desktopContextSourceLayer),
+    Layer.provide(desktopContextSourceLayer(deps.editorContextRegistry)),
     Layer.provide(desktopTurnPolicyLayer),
     Layer.provide(providerRegistryLayer),
     Layer.provide(
@@ -347,6 +356,15 @@ export const installDesktopTurnKernel = (
     const request = decodeDesktopTurnSubmitRequest(value)
     if (request._tag === "None") return encodeDesktopTurnSubmitResult(failedSubmit)
     const submit = request.value
+    // AFS-05: an Editor agent-rail turn binds its IDE-08 context for this thread
+    // before the shared kernel runs, so the ContextSource feeds it into the SAME
+    // turn service. The host trusts the renderer only to DESCRIBE context; the
+    // binding is validated against the authoritative editor identity in the
+    // context source. Absent → the chat path is unchanged.
+    if (submit.editorContext !== undefined && deps.editorContextRegistry !== undefined) {
+      deps.editorContextRegistry.set(submit.editorContext)
+      deps.editorContextRegistry.setExpectation(submit.editorContext.identity)
+    }
     return Effect.runPromise(resolvedRegistry.describe)
       .then((descriptors) => {
         // The Apple FM router lane runs the turn. The codex lane is a delegate

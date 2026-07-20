@@ -14,6 +14,8 @@ import {
   TurnUsageTruth,
 } from "@openagentsinc/agent-runtime-schema"
 
+import { EditorContextBinding } from "./editor-context-binding.ts"
+
 /**
  * AFS-01 typed turn IPC contract (main <-> renderer).
  *
@@ -39,10 +41,20 @@ export const DesktopTurnEventChannel = "openagents:turn:event" as const
  */
 export const DesktopTurnSubmitChannel = "openagents:turn:submit" as const
 
-/** The bounded renderer submit request. It carries no route/prompt authority. */
+/**
+ * The bounded renderer submit request. It carries no route/prompt authority.
+ *
+ * AFS-05 adds the optional `editorContext` binding: an Editor agent-rail turn
+ * describes its IDE-08 context (active file, selection, attachments, root,
+ * worktree, generation, local lexical/symbol facts) so the HOST can feed it into
+ * the SAME shared kernel `ContextSource` — not a parallel authority path. The
+ * renderer only describes context; the host validates and builds the effective
+ * manifest. Absent → the local chat turn behaves exactly as AFS-03/04.
+ */
 export const DesktopTurnSubmitRequest = S.Struct({
   threadRef: TurnThreadRef,
   message: S.String.check(S.isMaxLength(MAX_TURN_INPUT_CHARS)),
+  editorContext: S.optionalKey(EditorContextBinding),
 })
 export type DesktopTurnSubmitRequest = typeof DesktopTurnSubmitRequest.Type
 
