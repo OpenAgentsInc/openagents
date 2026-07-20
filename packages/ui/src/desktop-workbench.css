@@ -233,6 +233,17 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   -webkit-app-region: no-drag;
 }
 
+/* Renderer-private spacing utilities are disabled, so the toggle's lucide glyph
+   has no `size-*` class to resolve and would fall back to its intrinsic 24px --
+   filling the 24px control and dwarfing the neighboring top-nav icons. Size it
+   explicitly to match the rail collapse button (.oa-react-icon-button svg is
+   15px), its expand/collapse counterpart. */
+.oa-react-sidebar-expand svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+}
+
 .oa-react-primary-destination,
 .oa-react-load-more,
 .oa-react-sidebar-expand {

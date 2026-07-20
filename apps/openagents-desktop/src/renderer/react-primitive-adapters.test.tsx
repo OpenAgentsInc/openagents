@@ -1148,6 +1148,39 @@ describe("React workbench shell", () => {
     expect(received.at(-1)).toEqual({ name: "DesktopSidebarCollapsedChanged", payload: true })
   })
 
+  test("the collapsed top-nav toggle expands the sidebar and carves out of the drag header", async () => {
+    const { container } = installDom()
+    const received: Array<{ name: string; payload: unknown }> = []
+    const report: IntentReporter = (ref, payload) => Effect.sync(() => received.push(resolveIntentRef(ref, payload)))
+    const root = createTestRoot(container)
+    await render(root, <WorkbenchShell state={{
+      ...fixtureState(),
+      presentation: {
+        sidebarCollapsed: true,
+        sessionSearchOpen: false,
+      },
+    }} report={report} />)
+    const expand = container.querySelector<HTMLButtonElement>(".oa-react-sidebar-expand")
+    const header = container.querySelector(".oa-react-conversation-header")
+    expect(expand).not.toBeNull()
+    expect(header).not.toBeNull()
+    if (expand === null || header === null) throw new Error("expand toggle and conversation header must both render")
+    // Clicking the top-nav toggle must flip the sidebar open, not sit inert.
+    await interact(() => expand.click())
+    expect(expand.getAttribute("aria-expanded")).toBe("true")
+    expect(received.at(-1)).toEqual({ name: "DesktopSidebarCollapsedChanged", payload: false })
+    // The fixed `-webkit-app-region: no-drag` toggle only stays clickable over
+    // the bare chat header's `drag` region when its annotated region is
+    // collected later in tree order, so it must FOLLOW the header in the DOM.
+    // A sibling placed before the header loses the region and the OS drag layer
+    // swallows every real click.
+    expect(header.compareDocumentPosition(expand) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
+    // The toggle renders the shared Menu glyph, which desktop-workbench.css sizes
+    // explicitly (`.oa-react-sidebar-expand svg`) so the disabled spacing scale
+    // cannot leave it at the intrinsic 24px lucide fallback.
+    expect(expand.querySelector('[data-icon-name="Menu"]')).not.toBeNull()
+  })
+
   test("uses closed-catalog icon controls and left-aligned sidebar actions", async () => {
     const { container } = installDom()
     const root = createTestRoot(container)

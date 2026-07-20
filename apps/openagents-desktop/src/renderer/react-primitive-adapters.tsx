@@ -896,13 +896,6 @@ export const WorkbenchShell = ({ state, report }: {
   }
   return <DesktopWorkbench railCollapsed={railCollapsed}>
     <ReactCommandPalette state={state} report={report} />
-    <DesktopSidebarExpand
-      ref={toggleRef}
-      onClick={openRail}
-      aria-expanded={railOpen}
-      aria-label="Expand sidebar"
-      title="Expand sidebar"
-    />
     <SessionRail state={state} report={report} open={railOpen} onCollapse={closeRail} onDismiss={() => setRailOpen(false)} railRef={railRef} selectedSettingsSectionId={selectedSettingsSectionId} onSettingsSectionSelect={sectionId => {
       setSelectedSettingsSectionId(sectionId)
       if (sectionId === "settings-connections") dispatch(report, "DesktopConnectionsRefreshRequested")
@@ -918,6 +911,18 @@ export const WorkbenchShell = ({ state, report }: {
         notices={<StatusNotices state={state} report={report} />}
         timeline={<ConversationTimeline page={state.history.page} notes={state.notes} loadingEdge={state.history.loadingEdge} working={state.activeThreadId !== null && state.pending && !waitingForAnswer} waitingForAnswer={waitingForAnswer} workingDirectory={state.workingDirectory} agentName={capabilityForActiveLane(state)?.displayName ?? (state.selectedHarness === "codex" ? "Codex" : "Claude")} bootSequenceAgents={projectBootSequenceAgents(state)} report={report} />}
       />} />}
+    {/* Render the fixed expand toggle AFTER the workspace surface. Its
+        `-webkit-app-region: no-drag` only carves a clickable hole out of the
+        bare chat header's `drag` region when its annotated region is collected
+        later in tree order than that header; a sibling placed before the header
+        loses the region and the OS drag layer swallows every real click. */}
+    <DesktopSidebarExpand
+      ref={toggleRef}
+      onClick={openRail}
+      aria-expanded={railOpen}
+      aria-label="Expand sidebar"
+      title="Expand sidebar"
+    />
     {codexUpdateAvailable && dismissedCodexVersion !== codex.latestVersion
       ? <Alert className="oa-react-codex-update-notice" role="status">
           <CircleAlert aria-hidden="true" />
