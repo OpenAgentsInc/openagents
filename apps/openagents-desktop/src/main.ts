@@ -3142,6 +3142,7 @@ const broadcastIdeRunEvent = (event: IdeRunEvent): void => {
 }
 const ideRunHost = openIdeRunHost({
   workspace: terminalWorkspaceBinding,
+  mutationAuthority: workspacePortableMutationAuthority,
   emit: broadcastIdeRunEvent,
   exportRoot: path.join(app.getPath("userData"), "ide-run", "exports"),
 })

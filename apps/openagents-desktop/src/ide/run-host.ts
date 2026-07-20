@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from "node:child_process"
+import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process"
 import { createHash, randomUUID } from "node:crypto"
 import {
   existsSync,
@@ -14,6 +14,10 @@ import path from "node:path"
 import { Context, Effect, Exit, Layer, Result, Schema, Scope, Stream } from "effect"
 
 import type { TerminalEvent } from "../terminal-contract.ts"
+import type {
+  IdePortableMutationAuthority,
+  IdePortableMutationPermit,
+} from "./portable-mutation-authority.ts"
 import {
   IdeEnvironmentGenerationSchema,
   IdeEnvironmentManifestRefSchema,
@@ -126,9 +130,18 @@ export type IdeRunWorkspaceBinding = Readonly<{
   grantRef: string
 }>
 
+export type IdeRunSpawn = (
+  command: string,
+  args: ReadonlyArray<string>,
+  options: SpawnOptions,
+) => ChildProcess
+
 export type IdeRunHostOptions = Readonly<{
   workspace: () => IdeRunWorkspaceBinding | null
+  mutationAuthority: IdePortableMutationAuthority
   emit: (event: IdeRunEvent) => void
+  spawnProcess?: IdeRunSpawn
+  signalProcess?: (child: ChildProcess, signal: NodeJS.Signals) => void
   environment?: () => Readonly<Record<string, string | undefined>>
   shell?: Readonly<{ command: string; args: ReadonlyArray<string> }>
   exportRoot?: string
@@ -151,6 +164,7 @@ type Runtime = Readonly<{
   environment: Readonly<Record<string, string>>
   environmentManifest: IdeEnvironmentManifest
   profile: IdeTerminalProfile
+  mutationPermit: { current: IdePortableMutationPermit | null }
 }>
 
 type RunningProcess = Readonly<{
@@ -158,6 +172,7 @@ type RunningProcess = Readonly<{
   output: () => string
   cancel: () => void
   kind: "task" | "test"
+  permit: IdePortableMutationPermit
 }>
 
 const digest = (value: string | Buffer): string => createHash("sha256").update(value).digest("hex")
@@ -472,6 +487,8 @@ export const openIdeRunHost = async (options: IdeRunHostOptions): Promise<IdeRun
   const running = new Map<string, RunningProcess>()
   const shell = options.shell ?? { command: process.env.SHELL ?? "/bin/bash", args: [] }
   const environmentSource = options.environment ?? (() => process.env)
+  const spawnProcess = options.spawnProcess ?? spawn
+  const signalChild = options.signalProcess ?? signalProcessGroup
 
   const closeRuntime = async (reason: string): Promise<void> => {
     for (const process of running.values()) process.cancel()
@@ -490,7 +507,11 @@ export const openIdeRunHost = async (options: IdeRunHostOptions): Promise<IdeRun
       await closeRuntime("workspace unavailable")
       return null
     }
-    if (runtime !== null && runtime.root === workspace.root && runtime.grantRef === workspace.grantRef) return runtime
+    if (runtime !== null && runtime.root === workspace.root && runtime.grantRef === workspace.grantRef) {
+      const permit = runtime.mutationPermit.current
+      if (permit === null || options.mutationAuthority.reauthorize(permit)) return runtime
+      await closeRuntime("portable attachment changed")
+    }
     await closeRuntime("project generation changed")
     const admittedEnvironment = buildIdeRunEnvironment(environmentSource(), {
       TERM: "xterm-256color",
@@ -510,6 +531,7 @@ export const openIdeRunHost = async (options: IdeRunHostOptions): Promise<IdeRun
       environment: admittedEnvironment.values,
       environmentManifest: admittedEnvironment.manifest,
       profile,
+      mutationPermit: { current: null },
     }
     runtime = opened
     await Effect.runPromise(service.events.pipe(
@@ -519,8 +541,42 @@ export const openIdeRunHost = async (options: IdeRunHostOptions): Promise<IdeRun
     return opened
   }
 
+  const authorizeLaunch = async (current: Runtime): Promise<IdePortableMutationPermit> => {
+    const authorization = options.mutationAuthority.authorize(current.grantRef)
+    if (authorization._tag === "Refused") {
+      throw new IdeRunStale({
+        operation: "IdeRunHost.authorizeLaunch",
+        detail: "The current portable attachment does not permit this process launch.",
+      })
+    }
+    const permit = Object.freeze({ ...authorization.permit })
+    const previous = current.mutationPermit.current
+    if (previous !== null && previous.key !== permit.key) {
+      await closeRuntime("portable attachment changed")
+      throw new IdeRunStale({
+        operation: "IdeRunHost.authorizeLaunch",
+        detail: "The run host was bound to an older portable attachment generation.",
+      })
+    }
+    current.mutationPermit.current = permit
+    return permit
+  }
+
+  const permitCurrent = (current: Runtime, permit: IdePortableMutationPermit): boolean =>
+    runtime === current && current.mutationPermit.current?.key === permit.key &&
+      options.mutationAuthority.reauthorize(permit)
+
+  const revokeStaleRuntime = (
+    current: Runtime,
+    permit: IdePortableMutationPermit,
+  ): void => {
+    if (runtime !== current || current.mutationPermit.current?.key !== permit.key) return
+    void closeRuntime("portable attachment changed")
+  }
+
   const appendProcessOutput = async (
     current: Runtime,
+    permit: IdePortableMutationPermit,
     channelRef: IdeOutputChannelRef,
     producer: Parameters<IdeRunServiceShape["appendOutput"]>[0]["producer"],
     stream: "stdout" | "stderr",
@@ -529,6 +585,10 @@ export const openIdeRunHost = async (options: IdeRunHostOptions): Promise<IdeRun
     const decoded = raw.toString("utf8")
     const invalidEncoding = decoded.includes("\uFFFD")
     for (let offset = 0; offset < decoded.length; offset += MAX_OUTPUT_FRAME) {
+      if (!permitCurrent(current, permit)) {
+        revokeStaleRuntime(current, permit)
+        return
+      }
       const frame = decoded.slice(offset, offset + MAX_OUTPUT_FRAME)
       const safe = redact(frame)
       await Effect.runPromise(current.service.appendOutput({
@@ -543,11 +603,16 @@ export const openIdeRunHost = async (options: IdeRunHostOptions): Promise<IdeRun
         invalidEncoding,
         locations: parseLocations(safe.text),
       })).catch(() => undefined)
+      if (!permitCurrent(current, permit)) {
+        revokeStaleRuntime(current, permit)
+        return
+      }
     }
   }
 
   const spawnRun = (
     current: Runtime,
+    permit: IdePortableMutationPermit,
     input: Readonly<{
       key: string
       kind: "task" | "test"
@@ -557,13 +622,24 @@ export const openIdeRunHost = async (options: IdeRunHostOptions): Promise<IdeRun
       producer: Parameters<IdeRunServiceShape["appendOutput"]>[0]["producer"]
       timeoutMs: number
       readinessPattern?: string | null
-      ready?: () => Promise<void>
-      settle: (exitCode: number | null, output: string, cancelled: boolean, timedOut: boolean) => Promise<void>
+      ready?: (authorize: () => boolean) => Promise<void>
+      settle: (
+        exitCode: number | null,
+        output: string,
+        cancelled: boolean,
+        timedOut: boolean,
+        authorize: () => boolean,
+      ) => Promise<void>
     }>,
   ): Promise<void> => {
     let complete = (): void => undefined
     const completion = new Promise<void>((resolve) => { complete = resolve })
-    const child = spawn(input.executable, [...input.argv], {
+    if (!permitCurrent(current, permit)) {
+      revokeStaleRuntime(current, permit)
+      complete()
+      return completion
+    }
+    const child = spawnProcess(input.executable, [...input.argv], {
       cwd: current.root,
       env: { ...current.environment },
       detached: true,
@@ -575,14 +651,33 @@ export const openIdeRunHost = async (options: IdeRunHostOptions): Promise<IdeRun
     let timedOut = false
     let ready = false
     let settled = false
+    let killed = false
+    let timeout: NodeJS.Timeout | null = null
+    let killTimer: NodeJS.Timeout | null = null
+    const terminate = (markCancelled: boolean): void => {
+      if (killed) return
+      killed = true
+      if (markCancelled) cancelled = true
+      signalChild(child, "SIGTERM")
+      killTimer = setTimeout(() => signalChild(child, "SIGKILL"), 2_000)
+      killTimer.unref?.()
+    }
+    const cancel = (): void => { terminate(true) }
+    const authorize = (): boolean => {
+      if (permitCurrent(current, permit)) return true
+      cancel()
+      revokeStaleRuntime(current, permit)
+      return false
+    }
     const onData = (stream: "stdout" | "stderr") => (buffer: Buffer) => {
+      if (!authorize()) return
       output = (output + buffer.toString("utf8")).slice(-1_000_000)
-      void appendProcessOutput(current, input.channelRef, input.producer, stream, buffer)
+      void appendProcessOutput(current, permit, input.channelRef, input.producer, stream, buffer)
       if (!ready && input.readinessPattern !== undefined && input.readinessPattern !== null) {
         try {
           if (new RegExp(input.readinessPattern, "iu").test(output)) {
             ready = true
-            if (input.ready !== undefined) void input.ready()
+            if (input.ready !== undefined) void input.ready(authorize)
           }
         } catch {
           // Discovery validates the bounded pattern. A later defect cannot
@@ -595,29 +690,29 @@ export const openIdeRunHost = async (options: IdeRunHostOptions): Promise<IdeRun
     const finish = (exitCode: number | null): void => {
       if (settled) return
       settled = true
-      clearTimeout(timeout)
+      if (timeout !== null) clearTimeout(timeout)
+      if (killTimer !== null) clearTimeout(killTimer)
       running.delete(input.key)
-      void input.settle(exitCode, output, cancelled, timedOut)
-        .finally(complete)
+      if (!authorize()) {
+        complete()
+        return
+      }
+      void input.settle(exitCode, output, cancelled, timedOut, authorize).finally(complete)
     }
+    child.once("spawn", () => { authorize() })
     child.on("exit", (code) => finish(code))
     child.on("error", () => finish(null))
-    const cancel = (): void => {
-      if (cancelled) return
-      cancelled = true
-      signalProcessGroup(child, "SIGTERM")
-      const timer = setTimeout(() => signalProcessGroup(child, "SIGKILL"), 2_000)
-      timer.unref?.()
+    running.set(input.key, { child, output: () => output, cancel, kind: input.kind, permit })
+    if (!authorize()) {
+      complete()
+      return completion
     }
-    const timeout = setTimeout(() => {
+    timeout = setTimeout(() => {
       if (settled) return
       timedOut = true
-      signalProcessGroup(child, "SIGTERM")
-      const killTimer = setTimeout(() => signalProcessGroup(child, "SIGKILL"), 2_000)
-      killTimer.unref?.()
+      terminate(false)
     }, input.timeoutMs)
     timeout.unref?.()
-    running.set(input.key, { child, output: () => output, cancel, kind: input.kind })
     return completion
   }
 
@@ -662,10 +757,11 @@ export const openIdeRunHost = async (options: IdeRunHostOptions): Promise<IdeRun
 
   const executeTaskRun = async (
     current: Runtime,
+    permit: IdePortableMutationPermit,
     run: IdeTaskRun,
     definition: IdeTaskDefinition,
   ): Promise<void> => {
-    await spawnRun(current, {
+    await spawnRun(current, permit, {
       key: run.runRef,
       kind: "task",
       executable: definition.executable.executable,
@@ -674,14 +770,17 @@ export const openIdeRunHost = async (options: IdeRunHostOptions): Promise<IdeRun
       producer: { _tag: "Task", runRef: run.runRef },
       timeoutMs: definition.timeoutMs,
       readinessPattern: definition.background.enabled ? definition.background.readinessPattern : null,
-      ready: async () => {
+      ready: async (authorize) => {
+        if (!authorize()) return
         await Effect.runPromise(current.service.taskReady(run.runRef)).catch(() => undefined)
       },
-      settle: async (exitCode, output, cancelled, timedOut) => {
+      settle: async (exitCode, output, cancelled, timedOut, authorize) => {
+        if (!authorize()) return
         const readinessSatisfied = !definition.background.enabled || definition.background.readinessPattern === null || new RegExp(definition.background.readinessPattern, "iu").test(output)
         const problems = parseLocations(output)
         const artifacts = collectArtifacts(current, definition)
         const artifactsComplete = definition.artifactPatterns.length === 0 || artifacts.length === definition.artifactPatterns.length
+        if (!authorize()) return
         await Effect.runPromise(current.service.settleTask({
           runRef: run.runRef,
           exitCode,
@@ -697,18 +796,22 @@ export const openIdeRunHost = async (options: IdeRunHostOptions): Promise<IdeRun
 
   const executeDependencies = async (
     current: Runtime,
+    permit: IdePortableMutationPermit,
     definition: IdeTaskDefinition,
     actor: IdeRunActor,
     completed: Set<string>,
   ): Promise<boolean> => {
+    if (!permitCurrent(current, permit)) return false
     const snapshot = await Effect.runPromise(current.service.snapshot)
     for (const dependencyRef of definition.dependencies) {
       if (completed.has(dependencyRef)) continue
       const dependency = snapshot.taskDefinitions.find((candidate) => candidate.definitionRef === dependencyRef)
       if (dependency === undefined) return false
-      if (!await executeDependencies(current, dependency, actor, completed)) return false
+      if (!await executeDependencies(current, permit, dependency, actor, completed)) return false
+      if (!permitCurrent(current, permit)) return false
       const dependencyRun = await Effect.runPromise(current.service.startTask({ definitionRef: dependencyRef, actor }))
-      await executeTaskRun(current, dependencyRun, dependency)
+      if (!permitCurrent(current, permit)) return false
+      await executeTaskRun(current, permit, dependencyRun, dependency)
       const settled = (await Effect.runPromise(current.service.snapshot)).taskRuns.find((candidate) => candidate.runRef === dependencyRun.runRef)
       if (settled?.outcome._tag !== "Succeeded" && settled?.outcome._tag !== "Ready") return false
       completed.add(dependencyRef)
@@ -717,12 +820,20 @@ export const openIdeRunHost = async (options: IdeRunHostOptions): Promise<IdeRun
   }
 
   const startTask = async (current: Runtime, command: Extract<IdeRunCommand, { readonly _tag: "StartTask" }>): Promise<IdeRunSnapshot> => {
+    const permit = await authorizeLaunch(current)
+    if (!permitCurrent(current, permit)) throw new IdeRunStale({ operation: "IdeRunHost.startTask", detail: "Portable attachment changed before task admission." })
     const run = await Effect.runPromise(current.service.startTask(command))
+    if (!permitCurrent(current, permit)) {
+      revokeStaleRuntime(current, permit)
+      throw new IdeRunStale({ operation: "IdeRunHost.startTask", detail: "Portable attachment changed after task admission." })
+    }
     const snapshot = await Effect.runPromise(current.service.snapshot)
     const definition = snapshot.taskDefinitions.find((candidate) => candidate.definitionRef === run.definitionRef)
     if (definition === undefined) throw new IdeRunNotFound({ operation: "IdeRunHost.startTask", detail: "Task definition disappeared after start." })
-    void executeDependencies(current, definition, command.actor, new Set<string>()).then(async (dependenciesPassed) => {
-      if (dependenciesPassed) return executeTaskRun(current, run, definition)
+    void executeDependencies(current, permit, definition, command.actor, new Set<string>()).then(async (dependenciesPassed) => {
+      if (!permitCurrent(current, permit)) return
+      if (dependenciesPassed) return executeTaskRun(current, permit, run, definition)
+      if (!permitCurrent(current, permit)) return
       await Effect.runPromise(current.service.settleTask({
         runRef: run.runRef,
         exitCode: null,
@@ -744,14 +855,20 @@ export const openIdeRunHost = async (options: IdeRunHostOptions): Promise<IdeRun
   }
 
   const startTests = async (current: Runtime, command: Extract<IdeRunCommand, { readonly _tag: "RunTests" }>): Promise<IdeRunSnapshot> => {
+    const permit = await authorizeLaunch(current)
+    if (!permitCurrent(current, permit)) throw new IdeRunStale({ operation: "IdeRunHost.startTests", detail: "Portable attachment changed before test admission." })
     const run = await Effect.runPromise(current.service.startTests({ ...command, retryOf: command.retryOf }))
+    if (!permitCurrent(current, permit)) {
+      revokeStaleRuntime(current, permit)
+      throw new IdeRunStale({ operation: "IdeRunHost.startTests", detail: "Portable attachment changed after test admission." })
+    }
     const snapshot = await Effect.runPromise(current.service.snapshot)
     const controller = snapshot.testControllers.find((candidate) => candidate.controllerRef === command.controllerRef)
     if (controller === undefined) throw new IdeRunNotFound({ operation: "IdeRunHost.startTests", detail: "Test controller disappeared after start." })
     const paths = testPaths(controller, run.requestedItemRefs)
     const argv = [...controller.executable.argv, ...paths]
     if (command.profile === "coverage") argv.push("--coverage")
-    void spawnRun(current, {
+    void spawnRun(current, permit, {
       key: run.runRef,
       kind: "test",
       executable: controller.executable.executable,
@@ -759,7 +876,8 @@ export const openIdeRunHost = async (options: IdeRunHostOptions): Promise<IdeRun
       channelRef: run.outputChannelRef,
       producer: { _tag: "Test", runRef: run.runRef },
       timeoutMs: 900_000,
-      settle: async (exitCode, output, cancelled) => {
+      settle: async (exitCode, output, cancelled, _timedOut, authorize) => {
+        if (!authorize()) return
         const assertionsObserved = /(?:Tests?|Assertions?)\s+[^\n]*(?:passed|failed)|\bPASS\b|\bFAIL\b/iu.test(output)
         const passed = exitCode === 0 && assertionsObserved && !cancelled
         const results: IdeTestItemResult[] = run.requestedItemRefs.map((itemRef) => ({
@@ -769,6 +887,7 @@ export const openIdeRunHost = async (options: IdeRunHostOptions): Promise<IdeRun
           message: passed ? null : assertionsObserved ? "Test process reported a failure." : "No assertion summary was observed.",
           location: controller.items.find((item) => item.itemRef === itemRef)?.location ?? null,
         }))
+        if (!authorize()) return
         await Effect.runPromise(current.service.settleTests({
           runRef: run.runRef,
           exitCode,
