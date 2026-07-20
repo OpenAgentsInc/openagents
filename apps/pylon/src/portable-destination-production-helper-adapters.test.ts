@@ -250,7 +250,7 @@ describe("portable destination production helper adapters", () => {
       const handle = await adapterFor(helpers, "lsp").start(input(root));
 
       expect(handle.versionRef).toBe(
-        "version.pylon.portable.lsp.typescript-language-server-5.3.0.typescript-5.9.3.v1",
+        "version.pylon.portable.lsp.typescript-language-server-5.3.0.typescript-5.9.2.v1",
       );
       expect(handle.evidenceRefs).toHaveLength(2);
       expect(handle.evidenceRefs.every((ref) => !ref.includes(root))).toBe(true);

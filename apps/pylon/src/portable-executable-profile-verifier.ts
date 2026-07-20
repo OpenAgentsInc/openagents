@@ -14,10 +14,10 @@ const NPM_REGISTRY_PUBLIC_KEY = Buffer.from(
 );
 const EXACT_PACKAGE_VERSIONS = new Map([
   ["typescript-language-server", "5.3.0"],
-  ["typescript", "5.9.3"],
+  ["typescript", "5.9.2"],
 ]);
-// These files are the executable closure. The TypeScript core digest includes
-// the repository prepare patch. The npm signatures verify the source packages.
+// These files are the executable closure. Their digests match the official npm
+// package bytes. The npm signatures verify the source packages.
 const EXACT_EXECUTABLE_MATERIAL_PATHS = new Set([
   "node_modules/typescript-language-server/lib/cli.mjs",
   "node_modules/typescript-language-server/package.json",
@@ -34,10 +34,10 @@ export type PylonPortableVerifiedExecutableProfile = Readonly<{
   typescriptServerPath: string;
 }>;
 
-const containedPath = (relativePath: string): string | null => {
+const containedPath = (root: string, relativePath: string): string | null => {
   if (relativePath.length === 0 || isAbsolute(relativePath)) return null;
-  const candidate = resolve(applicationRoot, normalize(relativePath));
-  const relation = relative(applicationRoot, candidate);
+  const candidate = resolve(root, normalize(relativePath));
+  const relation = relative(root, candidate);
   return relation.length > 0 && !relation.startsWith("..") && !isAbsolute(relation)
     ? candidate
     : null;
@@ -82,10 +82,16 @@ const packageSignatureIsValid = (
 
 export const verifyPylonPortableExecutableProfile = (
   admission: PylonPortableExecutableProfileAdmission,
-  runtime: Readonly<{ platform?: NodeJS.Platform; architecture?: string }> = {},
+  runtime: Readonly<{
+    platform?: NodeJS.Platform;
+    architecture?: string;
+    applicationRoot?: string;
+  }> = {},
 ): PylonPortableVerifiedExecutableProfile | null => {
   const platform = runtime.platform ?? process.platform;
   const architecture = runtime.architecture ?? process.arch;
+  const verifiedApplicationRoot = runtime.applicationRoot ?? applicationRoot;
+  if (!isAbsolute(verifiedApplicationRoot)) return null;
   if (
     admission.platforms === undefined ||
     !admission.platforms.some((item) => item === platform) ||
@@ -109,7 +115,7 @@ export const verifyPylonPortableExecutableProfile = (
 
   const materials = admission.materials.map((material) => ({
     ...material,
-    path: containedPath(material.relativePath),
+    path: containedPath(verifiedApplicationRoot, material.relativePath),
   }));
   if (
     materials.some(
@@ -123,8 +129,14 @@ export const verifyPylonPortableExecutableProfile = (
     admission.typescriptServerRelativePath === undefined
   )
     return null;
-  const nodeEntrypointPath = containedPath(admission.nodeEntrypointRelativePath);
-  const typescriptServerPath = containedPath(admission.typescriptServerRelativePath);
+  const nodeEntrypointPath = containedPath(
+    verifiedApplicationRoot,
+    admission.nodeEntrypointRelativePath,
+  );
+  const typescriptServerPath = containedPath(
+    verifiedApplicationRoot,
+    admission.typescriptServerRelativePath,
+  );
   if (
     nodeEntrypointPath === null ||
     typescriptServerPath === null ||

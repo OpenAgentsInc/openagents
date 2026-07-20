@@ -20,7 +20,7 @@ describe("portable executable profile verifier", () => {
     expect(admission.architectures).toEqual(["arm64", "x64"]);
     expect(
       admission.packageAuthorities?.map(({ packageName, version }) => `${packageName}@${version}`),
-    ).toEqual(["typescript-language-server@5.3.0", "typescript@5.9.3"]);
+    ).toEqual(["typescript-language-server@5.3.0", "typescript@5.9.2"]);
     expect(
       admission.packageAuthorities?.every(
         (authority) =>

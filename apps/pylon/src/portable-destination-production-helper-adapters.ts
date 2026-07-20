@@ -238,7 +238,7 @@ const initializeSucceeded = (message: LspMessage): boolean => {
 const isExpectedTypescriptVersion = (message: LspMessage): boolean =>
   message.method === "$/typescriptVersion" &&
   isMessage(message.params) &&
-  message.params.version === "5.9.3";
+  message.params.version === "5.9.2";
 
 const makeLspAdapter = (
   options: Readonly<{

@@ -35,7 +35,7 @@ export type PylonPortableExecutableProfileCatalog = Readonly<{
 }>;
 
 export const PYLON_TYPESCRIPT_LSP_EXECUTABLE_PROFILE_REF =
-  "profile.pylon.portable.lsp.typescript-language-server-5.3.0.typescript-5.9.3.v1";
+  "profile.pylon.portable.lsp.typescript-language-server-5.3.0.typescript-5.9.2.v1";
 
 const npmSigningKeyId = "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U";
 
@@ -44,10 +44,10 @@ const admittedProfiles: ReadonlyArray<PylonPortableExecutableProfileAdmission> =
     executableProfileRef: PYLON_TYPESCRIPT_LSP_EXECUTABLE_PROFILE_REF,
     helperKind: "lsp",
     installedArtifactRef:
-      "artifact.pylon.portable.lsp.typescript-language-server-5.3.0.typescript-5.9.3.v1",
-    signatureRef: "signature.npm.typescript-language-server-5.3.0.typescript-5.9.3.2026-07-20.v1",
+      "artifact.pylon.portable.lsp.typescript-language-server-5.3.0.typescript-5.9.2.v1",
+    signatureRef: "signature.npm.typescript-language-server-5.3.0.typescript-5.9.2.2026-07-20.v1",
     attestationRef: null,
-    versionRef: "version.pylon.portable.lsp.typescript-language-server-5.3.0.typescript-5.9.3.v1",
+    versionRef: "version.pylon.portable.lsp.typescript-language-server-5.3.0.typescript-5.9.2.v1",
     platforms: ["darwin", "linux"],
     architectures: ["arm64", "x64"],
     nodeEntrypointRelativePath: "node_modules/typescript-language-server/lib/cli.mjs",
@@ -72,11 +72,11 @@ const admittedProfiles: ReadonlyArray<PylonPortableExecutableProfileAdmission> =
       },
       {
         relativePath: "node_modules/typescript/lib/typescript.js",
-        sha256: "3ae902c92cc44dace175c0e69e13a4b0899f6983c6121d76b9ab8dd5795e7675",
+        sha256: "e5f1f6b3e82228a89873cc7b941b2465185e839c0692860f83e3e63e53f94c2b",
       },
       {
         relativePath: "node_modules/typescript/package.json",
-        sha256: "822ef7ca6452205657b6288b066481ecf508bfbf43455d715cf7d3ec457561e6",
+        sha256: "5a0bb7f286c4b3f1413a42c05f902311b161f70e5f52d9da10490443bfd595a3",
       },
     ],
     packageAuthorities: [
@@ -96,13 +96,13 @@ const admittedProfiles: ReadonlyArray<PylonPortableExecutableProfileAdmission> =
       },
       {
         packageName: "typescript",
-        version: "5.9.3",
+        version: "5.9.2",
         license: "Apache-2.0",
         registryIntegrity:
-          "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==",
+          "sha512-CWBzXQrc/qOkhidw1OzBTQuYRbfyxDXJMVJ1XNwUHGROVmuaeiEm3OslpZ1RV96d7SKKjZKrSJu3+t/xlw3R9A==",
         npmSignatureKeyId: npmSigningKeyId,
         npmSignature:
-          "MEYCIQC5ifNi1il+zAZC19ov+Q5oSrhOwlpOpghAaAAXYA0RpAIhAKdcZ6pMNZGuprpke8Zi3OPB1zol9c88KVW+apJNVjTy",
+          "MEQCIBtsPj1YAoqGWRd5FeipJP5DWQeOABakzg15i/tN+6H7AiBay9mfRYuiOW/Cdab2vU8CuvLZvt4In8yl8HBP4IeOOQ==",
         attestationUrl: null,
         repositoryUrl: "https://github.com/microsoft/TypeScript.git",
       },
