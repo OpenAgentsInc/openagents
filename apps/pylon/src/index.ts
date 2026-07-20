@@ -934,6 +934,9 @@ const runHeadlessNode = Effect.gen(function* () {
   yield* Effect.addFinalizer(() => Effect.sync(() => portableDatabase.close()))
   const portableLedger = new PylonPortableSessionOperationLedger(portableDatabase)
   const headlessSessionActions = makeSessionActions(bootstrapSummary, portableLedger)
+  yield* Effect.addFinalizer(() =>
+    Effect.promise(() => headlessSessionActions.portable.shutdownHelpers?.() ?? Promise.resolve()),
+  )
   const headlessExternalTailer = startExternalSessionTailer()
   const headlessSessionsWithExternal = wrapSessionsWithExternal(headlessSessionActions, headlessExternalTailer)
   const headlessIntentQueue = createIntentQueue({

@@ -77,6 +77,11 @@ import {
   type PylonPortableControlBindingRecovery,
   PylonPortableSessionOperationLedger,
 } from "../portable-session-operation-ledger.js"
+import {
+  makeEvidenceBoundPortableDestinationAuthenticator,
+  makePylonPortableDestinationHelperSupervisor,
+  type PylonPortableDestinationHelperSupervisor,
+} from "../portable-destination-helper-supervisor.js"
 
 export const CONTROL_SESSION_EVENT_SCHEMA = "openagents.pylon.control_session_event.v0.1"
 export const CONTROL_SESSION_ARTIFACT_SCHEMA = "openagents.pylon.control_session_artifact.v0.1"
@@ -343,6 +348,7 @@ export type PylonPortableControlSessionLifecycle = Readonly<{
     agentRefs: ReadonlyArray<string>
     workingDirectory: string
   }>) => Promise<Readonly<{ evidenceRefs: ReadonlyArray<string> }>>
+  shutdownHelpers?: () => Promise<void>
 }>
 
 export type ControlSessionLaunchContext = Readonly<{
@@ -1172,6 +1178,7 @@ export function createControlSessionActions(options: {
   portableLedger?: PylonPortableSessionOperationLedger
   /** Public-safe process-epoch ref; injected only by deterministic restart tests. */
   portableRuntimeInstanceRef?: string
+  portableDestinationHelperSupervisor?: PylonPortableDestinationHelperSupervisor
   summary: BootstrapSummary
 }): ControlSessionActions {
   const encoder = new TextEncoder()
@@ -1195,6 +1202,11 @@ export function createControlSessionActions(options: {
   }>()
   const portableRuntimeInstanceRef = options.portableRuntimeInstanceRef ??
     stableRef("runtime.pylon.control_session", randomBytes(24).toString("hex"))
+  const portableDestinationHelperSupervisor =
+    options.portableDestinationHelperSupervisor ??
+    makePylonPortableDestinationHelperSupervisor({
+      authenticator: makeEvidenceBoundPortableDestinationAuthenticator(),
+    })
   if (options.portableLedger !== undefined) {
     const durableBindings = Effect.runSync(options.portableLedger.listControlBindings())
     for (const durable of durableBindings) {
@@ -1813,6 +1825,7 @@ export function createControlSessionActions(options: {
     cleanup: async (input) => {
       const binding = portableBindingFor(input)
       if (binding.state === "accepting") throw new Error("portable graph must quiesce before cleanup")
+      await portableDestinationHelperSupervisor.disposeSession(input.sessionRef)
       const bound = portableRecordsFor(binding)
       const unique = new Map(bound.map(({ record }) => [record.workspace.workspaceRef, record]))
       const checkpointReleaseRefs: string[] = []
@@ -1938,7 +1951,19 @@ export function createControlSessionActions(options: {
       if (expected.length !== received.length || expected.some((value, index) => value !== received[index])) {
         throw new Error("portable destination activation graph does not match")
       }
-      for (const { record } of portableRecordsFor(binding)) {
+      const destinationRecords = portableRecordsFor(binding)
+      const helperActivation = await portableDestinationHelperSupervisor.activate({
+        destinationRunnerSessionReservationRef: input.destinationRunnerSessionReservationRef,
+        sessionRef: input.sessionRef,
+        destinationAttachmentRef: input.destinationAttachmentRef,
+        destinationGeneration: input.destinationGeneration,
+        workspaceRef: input.workspaceRef,
+        workingDirectory: input.workingDirectory,
+        authorityEvidenceRef: input.authorityEvidenceRef,
+        authenticationPolicyRef: input.authenticationPolicyRef,
+        capabilityLeaseRefs: input.capabilityLeaseRefs,
+      })
+      for (const { record } of destinationRecords) {
         record.workspace = {
           kind: "ephemeral",
           workingDirectory: input.workingDirectory,
@@ -1954,28 +1979,15 @@ export function createControlSessionActions(options: {
         generation: input.destinationGeneration,
       }
       binding.state = "accepting"
-      const observedAt = staged.activatedAt ?? new Date().toISOString()
+      const observedAt = staged.activatedAt ?? helperActivation.helpersObservedAt
       if (staged.activatedAt === undefined) {
         binding.staged = { ...staged, activatedAt: observedAt }
       }
       return {
-        authentication: {
-          state: "reauthenticated",
-          policyRef: input.authenticationPolicyRef,
-          evidenceRef: input.authorityEvidenceRef,
-          observedAt,
-          expiresAt: null,
-        },
-        helpersObservedAt: observedAt,
-        helpers: (["pty", "lsp", "dap", "watcher", "native"] as const).map(kind => ({
-          kind,
-          readiness: "unsupported",
-          instanceRef: null,
-          versionRef: null,
-          omissionRef: `omission.pylon.portable.${kind}.unsupported`,
-          evidenceRefs: [],
-        })),
-        evidenceRefs: [input.authorityEvidenceRef, ...input.agentRefs.map(agentRef => stableRef(
+        authentication: helperActivation.authentication,
+        helpersObservedAt: helperActivation.helpersObservedAt,
+        helpers: helperActivation.helpers,
+        evidenceRefs: [...helperActivation.evidenceRefs, ...input.agentRefs.map(agentRef => stableRef(
           "receipt.pylon.portable.agent_activated",
           `${input.sessionRef}:${input.destinationGeneration}:${agentRef}:${input.checkpointRef}`,
         ))],
@@ -1984,13 +1996,18 @@ export function createControlSessionActions(options: {
     abortDestination: async (input) => {
       const binding = portableBindings.get(input.sessionRef)
       const staged = binding?.staged
-      if (binding === undefined || binding.state !== "staged" || staged === undefined ||
+      if (binding === undefined ||
+          (binding.state !== "staged" && binding.state !== "accepting") ||
+          staged === undefined ||
           staged.destinationAttachmentRef !== input.destinationAttachmentRef ||
           staged.destinationGeneration !== input.destinationGeneration ||
           staged.checkpointRef !== input.checkpointRef ||
           staged.workingDirectory !== input.workingDirectory) {
         throw new Error("portable destination abort does not match its stage")
       }
+      await portableDestinationHelperSupervisor.disposeReservation(
+        staged.destinationRunnerSessionReservationRef,
+      )
       await rm(input.workingDirectory, { recursive: true, force: true })
       binding.state = "cleaned"
       delete binding.staged
@@ -2001,6 +2018,7 @@ export function createControlSessionActions(options: {
         )],
       }
     },
+    shutdownHelpers: () => portableDestinationHelperSupervisor.disposeAll(),
   }
 
   return {

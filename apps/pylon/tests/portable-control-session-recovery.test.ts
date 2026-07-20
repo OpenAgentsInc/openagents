@@ -146,7 +146,7 @@ describe("durable portable control-session restart recovery", () => {
       readiness: "unsupported",
       instanceRef: null,
       versionRef: null,
-      omissionRef: `omission.pylon.portable.${kind}.unsupported`,
+      omissionRef: `omission.pylon.portable.${kind}.adapter_unavailable`,
       evidenceRefs: [],
     })))
     expect(await actions.portable.stageDestination(stageInput)).toEqual(staged)

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vite-plus/test"
+import { describe, expect, test, vi } from "vite-plus/test"
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -10,6 +10,7 @@ import {
   PYLON_DEV_CHECK_SCHEMA,
   type PylonDevCheckProjection,
 } from "../dev-loop.js"
+import type { PylonPortableDestinationHelperSupervisor } from "../portable-destination-helper-supervisor.js"
 import {
   createControlSessionActions,
   type ControlSessionActions,
@@ -83,6 +84,40 @@ const waitForTerminal = async (
   }
   throw new Error("session did not finish")
 }
+
+describe("portable destination helper lifecycle", () => {
+  test("exposes deterministic helper shutdown to the headless node scope", async () => {
+    const home = await mkdtemp(join(tmpdir(), "pylon-portable-helper-shutdown-"))
+    const disposeAll = vi.fn(async () => undefined)
+    const supervisor: PylonPortableDestinationHelperSupervisor = {
+      activate: vi.fn(async () => {
+        throw new Error("not used")
+      }),
+      disposeReservation: vi.fn(async () => undefined),
+      disposeSession: vi.fn(async () => undefined),
+      disposeAll,
+    }
+    try {
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), {
+        PYLON_HOME: home,
+      })
+      const actions = createControlSessionActions({
+        env: {},
+        executor: async () => {
+          throw new Error("not used")
+        },
+        portableDestinationHelperSupervisor: supervisor,
+        summary,
+      })
+
+      await actions.portable.shutdownHelpers?.()
+
+      expect(disposeAll).toHaveBeenCalledOnce()
+    } finally {
+      await rm(home, { recursive: true, force: true })
+    }
+  })
+})
 
 describe("control session Codex account failover", () => {
   test("retries on another connected Codex account when the first account is exhausted", async () => {
