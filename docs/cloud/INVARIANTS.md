@@ -251,6 +251,9 @@ design context only.
   resource, covering the bounded race between provider startup and durable
   `RuntimeStarted` application. Quiescing, terminal, non-accepting, or
   cleanup-complete resources refuse before a provider effect.
+- Resource and capability revocation is checked before provider request-body
+  validation, so an empty or malformed redemption cannot mask a deleted,
+  expired, or otherwise non-admissible sandbox.
   The Worker then injects its OpenAI key or mints a Vertex access token.
   Revoked, expired, cross-provider, stale-generation, or changed-model tokens
   fail before a provider effect.
