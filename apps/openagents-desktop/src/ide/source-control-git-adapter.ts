@@ -59,6 +59,20 @@ const runGit = (
       };
 };
 
+const runGh = (root: string): GitResult => {
+  const child = spawnSync("gh", ["pr", "view", "--json", "number,url,state,headRefName,baseRefName,headRefOid,commits,reviews,statusCheckRollup,mergeable,mergedAt,updatedAt"], {
+    cwd: root,
+    encoding: "utf8",
+    timeout: 30_000,
+    maxBuffer: 8_000_000,
+    stdio: ["ignore", "pipe", "pipe"],
+    env: { ...workspaceGitEnvironment(), GH_PROMPT_DISABLED: "1", GH_NO_UPDATE_NOTIFIER: "1" },
+  });
+  return child.status === 0 && child.error === undefined
+    ? { ok: true, stdout: String(child.stdout ?? ""), stderr: String(child.stderr ?? "") }
+    : { ok: false, code: child.status, stdout: String(child.stdout ?? ""), stderr: String(child.stderr ?? ""), timedOut: (child.error as NodeJS.ErrnoException | undefined)?.code === "ETIMEDOUT" };
+};
+
 const safeRelative = (root: string, value: string): string | null => {
   if (value === "" || path.isAbsolute(value) || /[\0\r\n]/u.test(value)) return null;
   const normalized = path.posix.normalize(value.replaceAll("\\", "/"));
@@ -461,7 +475,32 @@ export const makeIdeSourceControlGitAdapter = (
         observation = { _tag: "Blame", path: command.path, commitOid: command.commitOid, lines, truncated: false };
         break;
       }
-      case "ProviderRefresh": throw failure("provider_unavailable", "No decoded provider adapter is configured.", current, op, true);
+      case "ProviderRefresh": {
+        const result = runGh(root);
+        if (!result.ok) {
+          const text = `${result.stdout}\n${result.stderr}`.toLowerCase();
+          throw failure(text.includes("auth") || text.includes("login") ? "credential_unavailable" : "provider_unavailable", "Pull-request state is unavailable from the configured provider.", current, op, true);
+        }
+        let row: Record<string, unknown>;
+        try { row = JSON.parse(result.stdout) as Record<string, unknown>; }
+        catch { throw failure("provider_unavailable", "The pull-request provider returned an invalid response.", current, op, true); }
+        const textFact = (key: string): string => {
+          const value = row[key];
+          return typeof value === "string" || typeof value === "number" ? String(value).slice(0, 2_000) : "";
+        };
+        const listFact = (key: string): string => JSON.stringify(Array.isArray(row[key]) ? row[key] : []).slice(0, 2_000);
+        observation = {
+          _tag: "Provider", providerRef: command.providerRef, freshness: "current",
+          facts: [
+            "number", "url", "state", "headRefName", "baseRefName", "headRefOid", "mergeable", "mergedAt", "updatedAt",
+          ].map((key) => ({ key, value: textFact(key) })).concat([
+            { key: "commits", value: listFact("commits") },
+            { key: "reviews", value: listFact("reviews") },
+            { key: "checks", value: listFact("statusCheckRollup") },
+          ]),
+        };
+        break;
+      }
     }
     const next = snapshot();
     return { snapshot: next, changedPaths: next.paths.map((entry) => entry.path), conflictPaths: next.paths.filter((entry) => entry.indexState === "conflicted").map((entry) => entry.path), omittedFacts: [], recoveryRef, observation };

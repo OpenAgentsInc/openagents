@@ -392,4 +392,37 @@ describe("IDE-12 real Git adapter", () => {
       expect(optionInjection.failure.code).toBe("policy_refused");
     });
   });
+
+  test("decodes pull-request commits, reviews, checks, mergeability, and freshness", async () => {
+    const root = repo();
+    const bin = mkdtempSync(path.join(tmpdir(), "openagents-ide12-gh-"));
+    roots.push(bin);
+    const gh = path.join(bin, "gh");
+    writeFileSync(gh, `#!/bin/sh
+printf '%s' '{"number":42,"url":"https://example.test/pr/42","state":"OPEN","headRefName":"feature","baseRefName":"main","headRefOid":"1111111111111111111111111111111111111111","mergeable":"MERGEABLE","mergedAt":"","updatedAt":"2026-07-20T20:00:00Z","commits":[{"oid":"1111111111111111111111111111111111111111"}],"reviews":[{"state":"APPROVED"}],"statusCheckRollup":[{"conclusion":"SUCCESS"}]}'
+`);
+    chmodSync(gh, 0o755);
+    const priorPath = process.env.PATH;
+    process.env.PATH = `${bin}:${priorPath ?? ""}`;
+    try {
+      await withService(root, async (service) => {
+        const current = (await Effect.runPromise(service.execute({ _tag: "Refresh", binding: ideSourceControlFixtureSnapshot().binding }))).snapshot;
+        const result = await Effect.runPromise(service.execute({
+          _tag: "ProviderRefresh", ...observation(current), providerRef: "ide.scm-provider.github" as never,
+        }));
+        expect(result.receipt?.observation?._tag).toBe("Provider");
+        if (result.receipt?.observation?._tag === "Provider") {
+          expect(result.receipt.observation.freshness).toBe("current");
+          expect(result.receipt.observation.facts).toEqual(expect.arrayContaining([
+            { key: "headRefOid", value: "1111111111111111111111111111111111111111" },
+            { key: "mergeable", value: "MERGEABLE" },
+          ]));
+          expect(result.receipt.observation.facts.find((fact) => fact.key === "reviews")?.value).toContain("APPROVED");
+          expect(result.receipt.observation.facts.find((fact) => fact.key === "checks")?.value).toContain("SUCCESS");
+        }
+      });
+    } finally {
+      process.env.PATH = priorPath;
+    }
+  });
 });
