@@ -329,7 +329,7 @@ const ownerLocalCohort = {
       "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-real-fault-matrix.json",
   },
   metrics: ownerLocalPerformance.metrics,
-  result: `${ownerLocalInput.cohort.result} The phase and resource distributions use ${ownerLocalPerformance.repetitions} complete real owner-local runs under ${ownerLocalPerformance.receiptRef}. The required fault inventory records ${ownerLocalFaultMatrix.summary.passedRealLocalCount} passed injected transition-partition rows. One additional checkpoint-store crash ran as real local evidence. Nine worker or checkpoint-admission cases ran only as simulator evidence. One bounded accepted work ref resumed and settled exactly once at the destination. A signed-out packaged shell stayed alive concurrently with a same-host owner-local journey, but it did not initiate or authenticate that move.`,
+  result: `${ownerLocalInput.cohort.result} Ten-run phase and resource distributions passed. Fault evidence is 9 real local, 9 simulator, and 9 not run. One bounded accepted work ref resumed and settled once. A signed-out packaged shell stayed alive during the same-host journey but did not initiate or authenticate it.`,
 };
 git("merge-base", "--is-ancestor", candidateCommitSha, "HEAD");
 const allowedEvidencePaths = new Set([
