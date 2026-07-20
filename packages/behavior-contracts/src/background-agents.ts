@@ -104,7 +104,7 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
       },
       state: "enforced",
       statement:
-        "Claude bypass permission is a revocable process-local capability bound to one exact owner-local Pylon run/turn/session, operation, and named account; public, bridge, org-cloud, mismatched, expired, replayed, and revoked paths remain restrictive.",
+        "Claude bypass permission is a revocable process-local capability bound to one exact owner-local Pylon run/turn/session, operation, and named account. Public, bridge, org-cloud, mismatched, expired, replayed, and revoked paths remain restrictive.",
       surface: "pylon-worker",
       verification:
         "CUT-05 is enforced by the authority, assignment, runtime-intent, control-session, Fleet runner, and public-projection tests in the normal Bun sweeps.",
@@ -158,7 +158,7 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
       },
       state: "enforced",
       statement:
-        "Every Fleet supervisor loop and harness dispatch is cancelled and joined by its owning run scope before the Pylon slot is released; completed/accepted publication remains impossible until the matching verifier and terminal closeout evidence are durable.",
+        "Every Fleet supervisor loop and harness dispatch is cancelled and joined by its owning run scope before the Pylon slot is released. Completed/accepted publication remains impossible until the matching verifier and terminal closeout evidence are durable.",
       surface: "pylon-worker",
       verification:
         "CUT-06 is enforced by manager scope-race, exact closeout ordering, restart rejection, harness cancellation, and Khala leaked-scope regressions in the normal Bun sweeps.",
@@ -204,7 +204,7 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
       },
       state: "enforced",
       statement:
-        "Auto-pause after 3 consecutive failures; maxRunsPerDay / maxRunSeconds / maxCreditsPerDay enforced at dispatch with typed refusals - a buggy background watcher must never be a money pump.",
+        "Auto-pause after 3 consecutive failures. MaxRunsPerDay / maxRunSeconds / maxCreditsPerDay enforced at dispatch with typed refusals - a buggy background watcher must never be a money pump.",
       surface: "openagents.com-api",
       verification:
         "BA-B4 is enforced by the openagents.com Cloud Run API definition-run route tests and trigger-store tests in the normal pnpm exec vp test sweep.",
@@ -267,7 +267,7 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
       },
       state: "enforced",
       statement:
-        "Dispatch failures are classified as transient or permanent; per-account/lane breakers cool or quarantine failed lanes and feed delegate readiness/capacity instead of repeatedly dispatching into known failures.",
+        "Dispatch failures are classified as transient or permanent. Per-account/lane breakers cool or quarantine failed lanes and feed delegate readiness/capacity instead of repeatedly dispatching into known failures.",
       surface: "pylon-worker",
       verification:
         "BA-F1 is enforced by the Pylon orchestration store test plus Khala spawn, dispatch, and burndown planner tests in the normal Pylon pnpm exec vp test sweep.",
@@ -321,7 +321,7 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
       },
       state: "enforced",
       statement:
-        "Definition toolset compiles to the ADR-0012 tool-runtime policy object (local lane) and to Forge tenant-token scopes for git access; ask entries route to escalation instead of failing; no lane may reach tools outside compiled policy.",
+        "Definition toolset compiles to the ADR-0012 tool-runtime policy object (local lane) and to Forge tenant-token scopes for git access. Ask entries route to escalation instead of failing. No lane may reach tools outside compiled policy.",
       surface: "openagents.com-api",
       verification:
         "BA-A5 is enforced by the agent-runtime-schema compiler test, the packages/khala-tools dispatcher test, and the openagents.com Cloud Run API Forge git-token scope test in their normal pnpm exec vp test sweeps.",
@@ -356,7 +356,7 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
       },
       state: "enforced",
       statement:
-        "Autopilot Lead Gen v0 is a drafting-only standing background agent: target discovery, agent-readiness analysis, report drafts, sequence-entry drafts, receipt writing, and operator-inbox escalation are permitted; outreach send/activation tools are denied and absent from allow/ask.",
+        "Autopilot Lead Gen v0 is a drafting-only standing background agent: target discovery, agent-readiness analysis, report drafts, sequence-entry drafts, receipt writing, and operator-inbox escalation are permitted. Outreach send/activation tools are denied and absent from allow/ask.",
       surface: "openagents.com-api",
       verification:
         "LG-7 is enforced by the openagents.com Cloud Run API lead-gen agent-definition test in the normal pnpm exec vp test sweep.",
@@ -392,7 +392,7 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
       },
       state: "enforced",
       statement:
-        "Autopilot Lead Gen may produce reports and sequence drafts, but no outreach leaves the system unless a separate LG-4 approval receipt exists; the v0 dogfood receipt records sendAuthority.allowed=false.",
+        "Autopilot Lead Gen may produce reports and sequence drafts, but no outreach leaves the system unless a separate LG-4 approval receipt exists. The v0 dogfood receipt records sendAuthority.allowed=false.",
       surface: "openagents.com-api",
       verification:
         "LG-7 is enforced by the openagents.com Cloud Run API lead-gen agent-definition test in the normal pnpm exec vp test sweep.",
@@ -500,7 +500,7 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
       },
       state: "enforced",
       statement:
-        "No long-lived SCM tokens exist in worker workspaces/homes across materialize/run/closeout. Short-lived helper cache entries may exist only under Git admin state; GitHub PATs, raw Forge git tokens, credentialed Git URLs, and Git extraheader authorization material are rejected in the bounded checkout or selected isolated account home.",
+        "No long-lived SCM tokens exist in worker workspaces/homes across materialize/run/closeout. Short-lived helper cache entries may exist only under Git admin state. GitHub PATs, raw Forge git tokens, credentialed Git URLs, and Git extraheader authorization material are rejected in the bounded checkout or selected isolated account home.",
       surface: "pylon-worker",
       verification:
         "BA-D3 is enforced by the Pylon materializer, worktree, Codex executor, and Claude executor tests in the normal Pylon pnpm exec vp test sweep.",
@@ -871,7 +871,7 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
       },
       state: "pending",
       statement:
-        "One unchanged background-agent definition runs on Codex and Claude; harness is a field, never load-bearing.",
+        "One unchanged background-agent definition runs on Codex and Claude. Harness is a field, never load-bearing.",
       surface: "pylon-worker",
       verification:
         "Pending BA-A4: add the parity fixture proving one unchanged definition runs on both harnesses, then flip this contract to enforced with that fixture as the oracle.",
@@ -922,7 +922,7 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
       },
       state: "pending",
       statement:
-        "Khala Code composer emits a typed, debounced, owner-scoped pre-materialize signal while a fleet/background run is being composed; honest no-op when the target lane has no warm path.",
+        "Khala Code composer emits a typed, debounced, owner-scoped pre-materialize signal while a fleet/background run is being composed. Honest no-op when the target lane has no warm path.",
       surface: "khala-code-desktop",
       verification:
         "Pending BA-E3: add debounce and gating tests for the composer pre-materialize signal, then flip this contract to enforced with those tests as bun-test oracles.",

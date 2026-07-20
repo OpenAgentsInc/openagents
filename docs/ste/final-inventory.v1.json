@@ -26643,7 +26643,7 @@
     },
     {
       "path": "docs/ide/README.md",
-      "sha256": "1158582fdc4188ab9e4c86f98d662ba8d03894b97d80862c056ae232237e1bab",
+      "sha256": "ca405f7ee6d3ed2920b2cf8969c46bcbacbfd2acd1bd2420f2ed2ccbf5a61ea5",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -26665,7 +26665,7 @@
     },
     {
       "path": "docs/ide/ROADMAP.md",
-      "sha256": "cf0b2d8065525b97028a5455a51bf11c5b0220853bbe70a17448e3d5daf58a0d",
+      "sha256": "80bc5112c16aafcaca21bca8092b4c37aca9726dbe513d80da1d9dd4dd5eb3ce",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
