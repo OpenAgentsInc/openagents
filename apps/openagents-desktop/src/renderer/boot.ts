@@ -659,6 +659,12 @@ const legacyStatus = (value: IdeSourceControlSnapshot) => {
     repositoryRef: value.binding.repositoryRef,
     statusRef: value.version.statusRef,
     headRef: value.version.headOid,
+    delivery: value.delivery.map(fact => ({
+      phase: fact.phase,
+      proven: fact.proven,
+      freshness: fact.freshness,
+      evidenceRefs: fact.evidenceRefs,
+    })),
   }
 }
 

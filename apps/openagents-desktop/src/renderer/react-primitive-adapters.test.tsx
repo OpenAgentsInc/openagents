@@ -1021,7 +1021,11 @@ describe("React workbench shell", () => {
     await interact(() => expandedSrcRow.click())
     expect(expandedTree?.shadowRoot?.querySelector('[data-item-path="src/index.ts"]')).toBeNull()
 
-    const status = { ok: true as const, op: "status" as const, branch: "main", upstream: "origin/main", detached: false, ahead: 0, behind: 0, staged: [{ path: "src/app.ts", status: "modified" as const }], unstaged: [], untracked: [], truncated: false, repositoryRef: "repository-1", statusRef: "status-1", headRef: "head-1" }
+    const status = { ok: true as const, op: "status" as const, branch: "main", upstream: "origin/main", detached: false, ahead: 0, behind: 0, staged: [{ path: "src/app.ts", status: "modified" as const }], unstaged: [], untracked: [], truncated: false, repositoryRef: "repository-1", statusRef: "status-1", headRef: "head-1", delivery: [
+      { phase: "committed", proven: true, freshness: "current", evidenceRefs: ["head-1"] },
+      { phase: "pushed", proven: false, freshness: "unknown", evidenceRefs: [] },
+      { phase: "owner_accepted", proven: false, freshness: "unknown", evidenceRefs: [] },
+    ] }
     const reviewState: DesktopShellState = {
       ...filesState,
       workspace: "review",
@@ -1036,6 +1040,9 @@ describe("React workbench shell", () => {
     expect(received).toContainEqual({ name: "GitPanelStageToggled", payload: "src/app.ts" })
     expect(container.querySelector('[aria-label="Commit and delivery"]')).not.toBeNull()
     expect(container.querySelector('#live-git-commit-message')).not.toBeNull()
+    expect(container.querySelector('[aria-label="Delivery phase evidence"]')?.textContent).toContain("committedProven")
+    expect(container.querySelector('[aria-label="Delivery phase evidence"]')?.textContent).toContain("pushedNot proven")
+    expect(container.querySelector('[aria-label="Delivery phase evidence"]')?.textContent).toContain("owner acceptedNot proven")
     expect(container.querySelector('[aria-label="Versioned review"]')?.textContent).toContain("HEAD → Index (staged)")
     expect(container.querySelector('[data-oa-pierre-review="GitHeadIndex"]')).not.toBeNull()
     expect([...container.querySelectorAll('.oa-react-review-toolbar button')].map(button => button.textContent)).toEqual(expect.arrayContaining(["Unified", "Split", "Less context", "More context", "Open in editor"]))

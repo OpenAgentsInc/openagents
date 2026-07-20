@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, test } from "vite-plus/test";
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Context, Effect, Exit, Layer, Scope } from "effect";
@@ -121,11 +121,21 @@ describe("IDE-12 real Git adapter", () => {
     const root = repo();
     writeFileSync(path.join(root, ".gitignore"), "private.env\n");
     writeFileSync(path.join(root, "private.env"), "TOKEN=withheld\n");
+    writeFileSync(path.join(root, ".env.local"), "TOKEN=also-withheld\n");
+    writeFileSync(path.join(root, "binary.dat"), Buffer.from([0, 1, 2, 3]));
+    symlinkSync("a.txt", path.join(root, "linked.txt"));
     writeFileSync(path.join(root, "a.txt"), "one\nTWO\nthree\n");
     writeFileSync(path.join(root, "new.txt"), "first\n");
     await withService(root, async (service) => {
       let current = (await Effect.runPromise(service.execute({ _tag: "Refresh", binding: ideSourceControlFixtureSnapshot().binding }))).snapshot;
       expect(current.paths.find((entry) => entry.path === "private.env")).toMatchObject({ ignored: true, secretWithheld: true });
+      expect(current.paths.find((entry) => entry.path === ".env.local")?.secretWithheld).toBe(true);
+      expect(current.paths.find((entry) => entry.path === "binary.dat")?.binary).toBe(true);
+      const secretStage = await Effect.runPromise(service.execute({
+        _tag: "Stage", ...mutation(current), selection: { _tag: "Paths", paths: [".env.local"] },
+      }).pipe(Effect.flip));
+      expect(secretStage.failure.code).toBe("policy_refused");
+      expect(git(root, "status", "--short", "--", ".env.local")).toContain("??");
       const oldVersion = current.version;
       writeFileSync(path.join(root, "new.txt"), "second\n");
       const stale = await Effect.runPromise(service.execute({

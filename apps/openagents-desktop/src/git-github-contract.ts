@@ -188,6 +188,12 @@ export const GitStatusResultSchema = Schema.Struct({
   /** Exact HEAD + porcelain snapshot fence for review and mutation requests. */
   statusRef: GitReviewIdentitySchema,
   headRef: Schema.NullOr(GitReviewIdentitySchema),
+  delivery: Schema.Array(Schema.Struct({
+    phase: Schema.String,
+    proven: Schema.Boolean,
+    freshness: Schema.String,
+    evidenceRefs: Schema.Array(Schema.String),
+  })).pipe(Schema.optionalKey),
 })
 export type GitStatusResult = Schema.Schema.Type<typeof GitStatusResultSchema>
 

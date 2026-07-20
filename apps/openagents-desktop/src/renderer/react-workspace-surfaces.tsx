@@ -447,6 +447,12 @@ export const ReactReviewSurface = ({ state, report }: { readonly state: DesktopS
         <label htmlFor="live-git-new-branch">New branch</label>
         <Input id="live-git-new-branch" value={state.git.newBranchName} onChange={event => dispatch(report, "GitPanelNewBranchNameChanged", event.currentTarget.value)} />
         <Button size="sm" variant="outline" disabled={status === null || state.git.newBranchName.trim() === ""} onClick={() => dispatch(report, "GitPanelBranchCreateRequested")}>Create and switch</Button>
+        <dl aria-label="Delivery phase evidence">
+          {(status?.delivery ?? []).map(fact => <div key={fact.phase} data-delivery-proven={fact.proven ? "true" : "false"}>
+            <dt>{fact.phase.replaceAll("_", " ")}</dt>
+            <dd>{fact.proven ? "Proven" : "Not proven"} · {fact.freshness}{fact.evidenceRefs.length === 0 ? "" : ` · ${fact.evidenceRefs.length} evidence reference${fact.evidenceRefs.length === 1 ? "" : "s"}`}</dd>
+          </div>)}
+        </dl>
       </section>
       {state.git.actionError === null ? null : <p role="alert">{state.git.actionError}</p>}
       {state.git.receipt === null ? null : <p role="status"><strong>{state.git.receipt.headline}</strong> {state.git.receipt.detail}</p>}

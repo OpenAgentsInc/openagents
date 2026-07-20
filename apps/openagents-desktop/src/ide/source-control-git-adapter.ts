@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { Effect } from "effect";
@@ -32,6 +32,7 @@ type GitResult =
 
 const digest = (value: string): string => createHash("sha256").update(value).digest("hex");
 const opaque = (prefix: string, value: string): string => `${prefix}.${digest(value)}`;
+const secretPath = (value: string): boolean => /(^|\/)(?:\.env(?:\..*)?|id_(?:rsa|dsa|ecdsa|ed25519)|credentials?|secrets?)(?:$|[._-])/iu.test(value);
 
 const runGit = (
   root: string,
@@ -254,15 +255,29 @@ export const makeIdeSourceControlGitAdapter = (
         });
       }
     }
-    paths = paths.map((entry) => ({
+    paths = paths.map((entry) => {
+      const absolute = path.join(root, entry.path);
+      const file = existsSync(absolute) ? lstatSync(absolute) : null;
+      const inspectable = file !== null && file.isFile() && file.size <= 8_000_000;
+      const prefix = inspectable ? readFileSync(absolute).subarray(0, 8_192) : null;
+      const binary = prefix?.includes(0) ?? false;
+      const lfs = prefix?.toString("utf8").startsWith("version https://git-lfs.github.com/spec/v1\n") ?? false;
+      const submodule = entry.modeAfter === "160000" || entry.modeBefore === "160000";
+      return {
       ...entry,
+      indexState: submodule ? "submodule" as const : lfs ? "lfs_pointer" as const : entry.indexState,
+      worktreeState: submodule ? "submodule" as const : lfs ? "lfs_pointer" as const : entry.worktreeState,
+      secretWithheld: entry.secretWithheld || secretPath(entry.path),
+      binary,
+      truncated: entry.truncated || (file?.isFile() === true && file.size > 8_000_000),
       stagedDiffRef: entry.indexState !== "unmodified" && entry.indexState !== "ignored"
         ? opaque("ide.scm-diff", `${headOid ?? "unborn"}\0${indexOid}\0${entry.path}\0staged`) as never
         : null,
       unstagedDiffRef: entry.worktreeState !== "unmodified" && entry.worktreeState !== "ignored"
         ? opaque("ide.scm-diff", `${indexOid}\0${worktreeOid}\0${entry.path}\0unstaged`) as never
         : null,
-    }));
+      };
+    });
     const worktreeRaw = assertGit(runGit(root, ["worktree", "list", "--porcelain", "-z"]), "Worktrees are unavailable.", null, null);
     const blocks: string[][] = [];
     for (const field of worktreeRaw.split("\0").filter(Boolean)) {
@@ -351,6 +366,12 @@ export const makeIdeSourceControlGitAdapter = (
       ? command.selection.paths.map((value) => safeRelative(root, value))
       : [];
     if (paths.some((value) => value === null)) throw failure("policy_refused", "A path leaves the worktree.", current, op);
+    if ((command._tag === "Stage" || command._tag === "Discard") && "selection" in command) {
+      const selected = command.selection._tag === "Paths" ? command.selection.paths : [command.selection.path];
+      if (selected.some((selectedPath) => current.paths.some((entry) => entry.path === selectedPath && (entry.secretWithheld || entry.ignored)))) {
+        throw failure("policy_refused", "Ignored or secret-shaped content requires a separate admitted disclosure workflow.", current, op);
+      }
+    }
     const safeArgument = (value: string, label: string): string => {
       if (value.startsWith("-") || /[\0\r\n]/u.test(value)) {
         throw failure("policy_refused", `${label} has an option-shaped or invalid value.`, current, op);
