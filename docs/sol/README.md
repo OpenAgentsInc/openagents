@@ -145,6 +145,12 @@ or copy/paste prompt in a dated analysis. Refresh the authorities above.
 These documents explain decisions or preserve point-in-time evidence. They are
 not current queues:
 
+- [`2026-07-20-pylon-bip39-nostr-spark-identity-recovery-audit.md`](./2026-07-20-pylon-bip39-nostr-spark-identity-recovery-audit.md)
+  — audit of the shared BIP-39 root that produced Pylon Nostr and Spark keys.
+  It lists all known local recovery candidates and public comparison sources.
+  It selects a shared local identity service and platform secret stores for future custody.
+  It does not read a live secret, activate a wallet, or authorize implementation.
+
 - [`2026-07-18-atif-thread-model-audit.md`](./2026-07-18-atif-thread-model-audit.md)
   — implemented audit for the OpenAgents thread and event model.
   OpenAgents threads and events are the canonical operational truth.
