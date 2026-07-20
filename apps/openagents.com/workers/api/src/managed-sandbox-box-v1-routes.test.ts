@@ -18,6 +18,7 @@ import {
   makeBoxV1Routes,
   unavailableBoxV1Runtime,
 } from './managed-sandbox-box-v1-routes'
+import { makeManagedSandboxBroker } from './managed-sandbox-broker'
 import {
   BoxV1MemoryAuthority,
   boxV1TestPolicy,
@@ -60,6 +61,7 @@ const makeHandler = (
 ) => {
   const authority = options.authority ?? new BoxV1MemoryAuthority()
   const runtime = options.runtime ?? makeBoxV1MemoryRuntime()
+  const lifecycleCommands: Array<'Create' | 'Stop' | 'Resume' | 'Delete'> = []
   const routes = makeBoxV1Routes<TestEnv>({
     enabled: env => env.enabled,
     authenticate: request => {
@@ -73,10 +75,28 @@ const makeHandler = (
     policy: () => Effect.succeed(boxV1TestPolicy),
     store: () => Effect.succeed(authority),
     runtime: () => Effect.succeed(runtime),
+    executeLifecycleCommand: input => {
+      lifecycleCommands.push(input.command._tag)
+      return makeManagedSandboxBroker({
+        principal: input.principal,
+        policy: input.policy,
+        store: input.store,
+        runtime: input.runtime,
+      }).execute(input.command, {
+        ...(input.initialResource === undefined
+          ? {}
+          : {
+              attachmentGeneration:
+                input.initialResource.attachmentGeneration,
+              initialResource: input.initialResource,
+            }),
+      })
+    },
     now: () => new Date('2026-07-19T18:30:00.000Z'),
   })
   return {
     authority,
+    lifecycleCommands,
     handle: (request: Request, enabled = true): Promise<Response> => {
       const effect = routes.routeBoxV1Request(request, { enabled })
       if (effect === undefined)
@@ -498,6 +518,9 @@ describe('SBX-03 Box-v1 compatibility facade', () => {
       snapshotAvailable: false,
       subdomain: null,
     })
+    expect(new Set(harness.lifecycleCommands)).toEqual(
+      new Set(['Create', 'Stop', 'Resume', 'Delete']),
+    )
     await expectResponseError(
       apiFor(
         'https://local-box.test/v1',

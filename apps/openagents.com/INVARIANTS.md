@@ -4259,8 +4259,9 @@ scheduling, capture daemon, hub reset, Hyperdrive saturation) live in
 ## Managed Sandbox Box-v1 Facade (SBX-03, #9025)
 
 - `/v1` is a compatibility route over the native managed-sandbox authority,
-  not a second lifecycle, event, runtime, or cleanup owner. It remains
-  default-off through `MANAGED_SANDBOX_BOX_V1_ENABLED` until SBX-09.
+  not a second lifecycle, event, runtime, or cleanup owner. Production remains
+  default-off through `MANAGED_SANDBOX_BOX_V1_ENABLED` until SBX-09. An exact
+  staging revision may arm it only for that gate.
 - Every admitted request authenticates a programmatic OpenAgents bearer and
   resolves the linked owner, derived tenant, sandbox, and current generation.
   The Box ID and bearer alone do not grant cross-owner access.
@@ -4271,6 +4272,11 @@ scheduling, capture daemon, hub reset, Hyperdrive saturation) live in
   durable command reservation. Changed bytes, foreign scope, and stale event
   generations fail closed. Compatibility cursor state never replaces native
   event order.
+- Create, stop, resume, and delete execute through the canonical owner broker.
+  A stored intent cannot be projected as target success: the broker must bind
+  the provider outcome into native lifecycle events and a receipt first. A
+  shorter compatibility TTL atomically attenuates budget lifetime and every
+  capability expiry so no capability outlives the exact lease.
 - Box projections expose no provider URL, guest IP, desktop endpoint,
   snapshot, subdomain, topology, private path, or credential. Absent private
   control dependencies return typed unavailability.

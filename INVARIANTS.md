@@ -65,6 +65,12 @@ More specific invariant ledgers apply inside imported apps and packages.
   OCI compatibility and no generic cloud or container-administration surface.
   Enforcement references live in `docs/cloud/INVARIANTS.md`.
   Retired-provider prose cannot authorize implementation.
+- Box-v1 create, stop, resume, and delete are compatibility inputs to the same
+  native owner broker used by Desktop and Sarah. A durable intent row alone is
+  not lifecycle success and cannot replace a provider outcome, native events,
+  or cleanup receipt. When an update shortens a lease, every retained
+  capability expiry and the budget lifetime must attenuate to that lease in the
+  same command.
 - Mobile and authenticated web are managed-sandbox controllers only. They
   decode one shared bounded projection and can send only typed, generation-
   fenced interrupt, stop, resume, or delete commands through durable exact-byte

@@ -823,10 +823,31 @@ describe.skipIf(!hasLocalPostgres())("SBX-01 managed sandbox Postgres authority"
       budget: { maxCostMicros: 500_000 },
       lease: { expiresAt: observed(120) },
     });
-    expect(await store.expired({ ownerRef, tenantRef, at: observed(119) })).not.toContainEqual(
+    const attenuated = await store.reserve({
+      command: {
+        ...commandBase(suffix, "Update", 3),
+        _tag: "Update" as const,
+        lease: lease(`${suffix}.attenuated`, 30),
+        budget: {
+          ...budget,
+          maxCostMicros: 500_000,
+          maxLifetimeSeconds: 1_800,
+        },
+        capabilities: settled.resource.capabilities.map((capability) => ({
+          ...capability,
+          expiresAt: observed(30),
+        })),
+      },
+    });
+    expect(attenuated.resource).toMatchObject({
+      version: 4,
+      lease: { expiresAt: observed(30), ttlSeconds: 1_800 },
+      capabilities: [{ expiresAt: observed(30) }],
+    });
+    expect(await store.expired({ ownerRef, tenantRef, at: observed(29) })).not.toContainEqual(
       expect.objectContaining({ sandboxRef: `sandbox.sbx01.${suffix}` }),
     );
-    expect(await store.expired({ ownerRef, tenantRef, at: observed(120) })).toContainEqual(
+    expect(await store.expired({ ownerRef, tenantRef, at: observed(30) })).toContainEqual(
       expect.objectContaining({ sandboxRef: `sandbox.sbx01.${suffix}` }),
     );
     await expect(

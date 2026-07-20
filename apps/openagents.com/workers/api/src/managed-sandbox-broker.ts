@@ -38,6 +38,7 @@ export type ManagedSandboxBroker = Readonly<{
     options?: Readonly<{
       prompt?: string | undefined;
       attachmentGeneration?: number | undefined;
+      initialResource?: ManagedSandboxResource | undefined;
     }>,
   ) => Effect.Effect<ManagedSandboxBrokerResult, BoxV1FacadeError>;
   list: (limit?: number) => Effect.Effect<ReadonlyArray<ManagedSandboxResource>, BoxV1FacadeError>;
@@ -355,7 +356,10 @@ export const makeManagedSandboxBroker = (
 
   const reserve = (
     command: ManagedSandboxCommand,
-    options?: Readonly<{ attachmentGeneration?: number | undefined }>,
+    options?: Readonly<{
+      attachmentGeneration?: number | undefined;
+      initialResource?: ManagedSandboxResource | undefined;
+    }>,
   ) =>
     Effect.gen(function* () {
       yield* assertScope(command);
@@ -417,6 +421,33 @@ export const makeManagedSandboxBroker = (
         attachmentGeneration < 1
       ) {
         return yield* invalid("create requires an exact positive attachment generation");
+      }
+      if (options?.initialResource !== undefined) {
+        const resource = options.initialResource;
+        if (
+          resource.ownerRef !== command.ownerRef ||
+          resource.tenantRef !== command.tenantRef ||
+          resource.programRef !== "program.managed_agent_sandboxes" ||
+          resource.workUnitRef !== command.workUnitRef ||
+          resource.attachmentRef !== command.attachmentRef ||
+          resource.attachmentGeneration !== attachmentGeneration ||
+          resource.resourceGeneration !== 1 ||
+          resource.version !== 0 ||
+          !sameTarget(resource.target, command.target) ||
+          resource.imageDigest !== command.imageDigest ||
+          resource.profileRef !== command.profileRef ||
+          JSON.stringify(resource.lease) !== JSON.stringify(command.lease) ||
+          JSON.stringify(resource.budget) !== JSON.stringify(command.budget) ||
+          JSON.stringify(resource.capabilities) !==
+            JSON.stringify(command.requestedCapabilities) ||
+          resource.facts.lifecycle !== "provisioning" ||
+          resource.facts.cleanupComplete
+        ) {
+          return yield* conflict(
+            "caller-supplied initial resource does not match the admitted create command",
+          );
+        }
+        return yield* input.store.reserve({ command, initialResource: resource });
       }
       const suffix = yield* digest(command.commandRef);
       const resource = yield* initialResource(

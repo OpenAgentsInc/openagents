@@ -1053,7 +1053,8 @@ export class PostgresManagedSandboxStore {
         if (
           command._tag === "Update" &&
           command.lease === undefined &&
-          command.budget === undefined
+          command.budget === undefined &&
+          command.capabilities === undefined
         ) {
           throw new ManagedSandboxStoreError(
             "invalid",
@@ -1091,6 +1092,9 @@ export class PostgresManagedSandboxStore {
                   facts: { ...resource.facts, leaseState: command.lease.state },
                 }),
             ...(command.budget === undefined ? {} : { budget: command.budget }),
+            ...(command.capabilities === undefined
+              ? {}
+              : { capabilities: command.capabilities }),
             updatedAt: command.requestedAt,
           }),
         );

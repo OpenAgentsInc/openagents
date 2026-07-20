@@ -322,6 +322,21 @@ export type BoxV1Runtime = Readonly<{
   >
 }>
 
+export type BoxV1LifecycleCommandExecutor = (input: Readonly<{
+  principal: BoxV1Principal
+  policy: BoxV1Policy
+  store: BoxV1NativeStore
+  runtime: BoxV1Runtime
+  command: Extract<
+    ManagedSandboxCommand,
+    { _tag: 'Create' | 'Stop' | 'Resume' | 'Delete' }
+  >
+  initialResource?: ManagedSandboxResource | undefined
+}>) => Effect.Effect<
+  Readonly<{ resource: ManagedSandboxResource }>,
+  BoxV1FacadeError
+>
+
 export type BoxV1RuntimeFactory<Bindings> = (
   bindings: Bindings,
   principal: BoxV1Principal,
@@ -669,6 +684,7 @@ const makeBoxCompatibilityService = (input: {
   policy: BoxV1Policy
   store: BoxV1NativeStore
   runtime: BoxV1Runtime
+  executeLifecycleCommand: BoxV1LifecycleCommandExecutor
   now: () => Date
 }) => {
   const scope = {
@@ -925,7 +941,16 @@ const makeBoxCompatibilityService = (input: {
             'idempotency key is bound to another action',
           )
         }
-        return existing
+        return yield* input.executeLifecycleCommand({
+          principal: input.principal,
+          policy: input.policy,
+          store: input.store,
+          runtime: input.runtime,
+          command: existing.command as Extract<
+            ManagedSandboxCommand,
+            { _tag: 'Stop' | 'Resume' | 'Delete' }
+          >,
+        })
       }
       const resource = yield* inspect(sandboxRef)
       const requestedAt = nowIso(input.now)
@@ -943,7 +968,16 @@ const makeBoxCompatibilityService = (input: {
           ? { reasonRef: `reason.box_v1.${tag.toLowerCase()}` }
           : {}),
       })
-      return yield* input.store.reserve({ command })
+      return yield* input.executeLifecycleCommand({
+        principal: input.principal,
+        policy: input.policy,
+        store: input.store,
+        runtime: input.runtime,
+        command: command as Extract<
+          ManagedSandboxCommand,
+          { _tag: 'Stop' | 'Resume' | 'Delete' }
+        >,
+      })
     })
 
   return {
@@ -1045,12 +1079,23 @@ const makeBoxCompatibilityService = (input: {
               'create idempotency key is bound to different request bytes',
             )
           }
+          const executed = yield* input.executeLifecycleCommand({
+            principal: input.principal,
+            policy: input.policy,
+            store: input.store,
+            runtime: input.runtime,
+            command: existing.command as Extract<
+              ManagedSandboxCommand,
+              { _tag: 'Create' }
+            >,
+            initialResource: existing.resource,
+          })
           return yield* decode(BoxV1CreateResponseSchema, {
             ok: true,
             type: 'box.created',
             status: 'provisioning',
-            ttlSeconds: existing.resource.lease.ttlSeconds,
-            box: projectManagedSandboxToBoxV1(existing.resource),
+            ttlSeconds: executed.resource.lease.ttlSeconds,
+            box: projectManagedSandboxToBoxV1(executed.resource),
           })
         }
         const issuedAt = input.now()
@@ -1135,16 +1180,23 @@ const makeBoxCompatibilityService = (input: {
           createdAt: issuedAtIso,
           updatedAt: issuedAtIso,
         })
-        const reserved = yield* input.store.reserve({
-          command,
+        const executed = yield* input.executeLifecycleCommand({
+          principal: input.principal,
+          policy: input.policy,
+          store: input.store,
+          runtime: input.runtime,
+          command: command as Extract<
+            ManagedSandboxCommand,
+            { _tag: 'Create' }
+          >,
           initialResource,
         })
         return yield* decode(BoxV1CreateResponseSchema, {
           ok: true,
           type: 'box.created',
           status: 'provisioning',
-          ttlSeconds: reserved.resource.lease.ttlSeconds,
-          box: projectManagedSandboxToBoxV1(reserved.resource),
+          ttlSeconds: executed.resource.lease.ttlSeconds,
+          box: projectManagedSandboxToBoxV1(executed.resource),
         })
       }),
     get: (sandboxRef: string) =>
@@ -1208,6 +1260,13 @@ const makeBoxCompatibilityService = (input: {
           ttlSeconds: ttl,
           renewable: true,
         }
+        const capabilities = resource.capabilities.map(capability => ({
+          ...capability,
+          expiresAt:
+            Date.parse(capability.expiresAt) <= Date.parse(lease.expiresAt)
+              ? capability.expiresAt
+              : lease.expiresAt,
+        }))
         const command = yield* decode(ManagedSandboxCommandSchema, {
           _tag: 'Update',
           schema: 'openagents.managed_sandbox_command.v1',
@@ -1219,6 +1278,11 @@ const makeBoxCompatibilityService = (input: {
           sandboxRef,
           expectedVersion: resource.version,
           lease,
+          budget: {
+            ...resource.budget,
+            maxLifetimeSeconds: ttl,
+          },
+          capabilities,
         })
         const reserved = yield* input.store.reserve({ command })
         return yield* decode(BoxV1BoxInfoResponseSchema, {
@@ -1715,6 +1779,7 @@ export const boxCompatibilityServiceLayer = (input: {
   policy: BoxV1Policy
   store: BoxV1NativeStore
   runtime: BoxV1Runtime
+  executeLifecycleCommand: BoxV1LifecycleCommandExecutor
   now: () => Date
 }) => Layer.succeed(BoxCompatibilityService, makeBoxCompatibilityService(input))
 
@@ -1867,6 +1932,7 @@ export type BoxV1RouteDependencies<Bindings> = Readonly<{
   policy: (bindings: Bindings) => Effect.Effect<BoxV1Policy, BoxV1FacadeError>
   store: BoxV1StoreFactory<Bindings>
   runtime: BoxV1RuntimeFactory<Bindings>
+  executeLifecycleCommand: BoxV1LifecycleCommandExecutor
   now?: () => Date
 }>
 
@@ -1890,6 +1956,7 @@ export const makeBoxV1Routes = <Bindings>(
         policy,
         store,
         runtime,
+        executeLifecycleCommand: dependencies.executeLifecycleCommand,
         now: dependencies.now ?? currentDate,
       })
       const url = new URL(request.url)

@@ -6,9 +6,10 @@ Issue: [SBX-03 #9025](https://github.com/OpenAgentsInc/openagents/issues/9025)
 ## Operational state
 
 The OpenAgents Worker owns a bounded Box-v1 compatibility route at `/v1`.
-It is implemented and tested but default-off. Do not arm it in production
-until SBX-09 gives independent proof. That proof must cover the deployed SDK,
-runtime, isolation, cleanup, cost, rollback, Desktop, and Sarah journeys.
+It is armed only on the exact SBX-09 staging revision. Keep it default-off in
+production until SBX-09 gives independent proof. That proof must cover the
+deployed SDK, runtime, isolation, cleanup, cost, rollback, Desktop, and Sarah
+journeys.
 
 The facade is an HTTP adapter over `openagents.managed_sandbox.v1`. The native
 Postgres store remains the sole lifecycle, command, event, projection-cursor,
@@ -48,6 +49,16 @@ the durable native reservation. A key with different bytes returns
 generation data. A cursor from a prior generation returns `409` after resume.
 
 ## Current runtime boundary
+
+Create, stop, resume, and delete enter the same canonical owner broker used by
+Desktop and Sarah. The compatibility response is not emitted from a stored
+intent alone. The broker executes the private lifecycle adapter and settles the
+provider outcome into native events and a native receipt. Exact retries replay
+that settled result without a second provider effect.
+
+TTL updates replace the native lease and budget lifetime together. When a TTL
+is shortened, all retained capability expirations are clipped to the new lease
+expiry in the same durable update. A capability cannot outlive its lease.
 
 SBX-03 does not fabricate guest execution. SBX-04 connects prompt, status,
 events, and interrupt to the private turn adapter. SBX-05 connects files,

@@ -428,7 +428,7 @@
     },
     {
       "path": "INVARIANTS.md",
-      "sha256": "cea764e2fc8159343e3ae207eaa082bc4327cd64f5fe2fac9cced8236b2b6717",
+      "sha256": "f3ae491147a1d32e35de746c410422c96a41cb42c630a89ba19f6dddecacd5d0",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -1090,7 +1090,7 @@
     },
     {
       "path": "apps/openagents.com/INVARIANTS.md",
-      "sha256": "f39a6c97956cb29e1f78a3969b1f9d8069a3de02373dceb445515e0b05e49aeb",
+      "sha256": "9db0f70dd78952b35e202b56c10f22b970f0b7bd0a391e22d0adcd039b52dda4",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -4344,7 +4344,7 @@
     },
     {
       "path": "apps/openagents.com/docs/2026-07-19-managed-sandbox-box-v1-facade.md",
-      "sha256": "30d2e6a968f7c2b0cf448eb1030a73222e1b5313ec7a8fee727c6602a8610c81",
+      "sha256": "4242edfaf9078ea0d94d1eb0ed3cf84312ef706df4904fe50fdfc6a36cdbba3f",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

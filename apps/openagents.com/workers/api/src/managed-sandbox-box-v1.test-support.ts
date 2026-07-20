@@ -322,6 +322,9 @@ export class BoxV1MemoryAuthority implements BoxV1NativeStore {
               ...(command.budget === undefined
                 ? {}
                 : { budget: command.budget }),
+              ...(command.capabilities === undefined
+                ? {}
+                : { capabilities: command.capabilities }),
               updatedAt: command.requestedAt,
             })
             break

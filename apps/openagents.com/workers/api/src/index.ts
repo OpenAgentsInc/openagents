@@ -13852,6 +13852,20 @@ const boxV1Routes = makeBoxV1Routes<OpenAgentsWorkerEnv>({
   policy: managedSandboxBoxV1PolicyForEnv,
   store: env => Effect.succeed(managedSandboxBoxV1StoreForEnv(env)),
   runtime: managedSandboxBoxV1RuntimeForEnv,
+  executeLifecycleCommand: input =>
+    makeManagedSandboxBroker({
+      principal: input.principal,
+      policy: input.policy,
+      store: input.store,
+      runtime: input.runtime,
+    }).execute(input.command, {
+      ...(input.initialResource === undefined
+        ? {}
+        : {
+            attachmentGeneration: input.initialResource.attachmentGeneration,
+            initialResource: input.initialResource,
+          }),
+    }),
 })
 
 const managedSandboxProviderBrokerRoutes =

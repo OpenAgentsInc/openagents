@@ -271,6 +271,7 @@ export const ManagedSandboxCommandSchema = S.TaggedUnion({
     expectedVersion: NonNegativeInt,
     lease: S.optionalKey(SandboxLeaseSchema),
     budget: S.optionalKey(SandboxBudgetSchema),
+    capabilities: S.optionalKey(S.Array(SandboxCapabilitySchema)),
   },
   Stop: {
     ...CommandBase,
