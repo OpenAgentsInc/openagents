@@ -148,7 +148,15 @@ test("completes with refs only and zeroizes executor buffers", async () => {
 });
 
 test("reconciles an exact terminal result after a lost completion acknowledgement", async () => {
-  const requestRecord = pending();
+  const pendingRecord = pending();
+  const requestRecord: PortableOwnerLocalCapabilityOperationRecord = {
+    ...pendingRecord,
+    request: {
+      ...pendingRecord.request,
+      capability: "tool",
+      executableProfileRef: "profile.ide13.lsp.lost-ack.v1",
+    },
+  };
   const completion: PortableOwnerLocalCapabilityOperationResultRequest = {
     schema: "openagents.portable_owner_local_capability_operation.v1",
     claimRef: "claim.ide13.capability.worker",
@@ -163,6 +171,7 @@ test("reconciles an exact terminal result after a lost completion acknowledgemen
     resultRef: "result.ide13.capability.install",
     resultStatus: "completed",
     resultInstallationRef: "installation.ide13.capability.install",
+    executableProfileRef: requestRecord.request.executableProfileRef,
     receiptRef: "receipt.ide13.capability.install",
     evidenceRefs: ["evidence.ide13.capability.install"],
     errorRef: null,

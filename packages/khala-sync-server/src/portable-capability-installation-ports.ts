@@ -28,6 +28,7 @@ const MARKER_FILE = "installed.json"
 const MATERIAL_FILE = "material.bin"
 const FORBIDDEN_RESPONSE =
   /(?:Bearer|Basic)\s+[A-Za-z0-9._~+/-]+=*|"(?:token|accessToken|authContent|authorization|password|secret|credential|path|hostname|processId|pid)"\s*:/iu
+const CAPABILITY_KINDS = new Set(["provider", "scm_read", "scm_write", "tool", "api"])
 
 type Fetch = (
   input: string | URL | Request,
@@ -80,6 +81,8 @@ const sortedPermissions = (permissions: ReadonlyArray<string>): string[] => {
 const installationRefs = (
   lease: PortableCapabilityLease,
   permissions: ReadonlyArray<string>,
+  executableProfileRef?: string,
+  installReceiptRef?: string,
 ): Readonly<{ installationRef: string; evidenceRef: string }> => {
   const binding = [
     lease.ownerRef,
@@ -89,6 +92,9 @@ const installationRefs = (
     lease.targetRef,
     lease.leaseRef,
     lease.capability,
+    ...(executableProfileRef === undefined || installReceiptRef === undefined
+      ? []
+      : [executableProfileRef, installReceiptRef]),
     ...sortedPermissions(permissions),
   ]
   return {
@@ -127,8 +133,31 @@ const capabilityDirectory = (root: string, leaseRef: string): string =>
     createHash("sha256").update(assertRef(leaseRef, "leaseRef")).digest("hex"),
   )
 
-const markerBytes = (leaseRef: string, evidenceRef: string): Uint8Array =>
-  new TextEncoder().encode(JSON.stringify({ leaseRef, evidenceRef }))
+const markerBytes = (
+  lease: PortableCapabilityLease,
+  permissions: ReadonlyArray<string>,
+  installationRef: string,
+  evidenceRef: string,
+  executableProfileRef?: string,
+  installReceiptRef?: string,
+): Uint8Array => new TextEncoder().encode(JSON.stringify(
+  executableProfileRef === undefined
+    ? { leaseRef: lease.leaseRef, evidenceRef }
+    : {
+        ownerRef: lease.ownerRef,
+        targetRef: lease.targetRef,
+        sessionRef: lease.sessionRef,
+        attachmentRef: lease.attachmentRef,
+        attachmentGeneration: lease.attachmentGeneration,
+        leaseRef: lease.leaseRef,
+        capability: lease.capability,
+        permissionRefs: sortedPermissions(permissions),
+        installationRef,
+        evidenceRef,
+        executableProfileRef,
+        installReceiptRef,
+      },
+))
 
 const wipeFile = async (path: string): Promise<void> => {
   let handle: FileHandle | undefined
@@ -189,6 +218,8 @@ export class OwnerLocalPortableCapabilityInstallationPort
     permissions: ReadonlyArray<string>
     material: SecretMaterial
     managedMarkerPath?: string | undefined
+    executableProfileRef?: string | undefined
+    installReceiptRef?: string | undefined
   }>): Promise<Readonly<{
     installationRef: string
     evidenceRef: string
@@ -204,7 +235,24 @@ export class OwnerLocalPortableCapabilityInstallationPort
         "owner-local installation input is invalid",
       )
     }
-    const refs = installationRefs(input.lease, input.permissions)
+    const hasExecutableProfile = input.executableProfileRef !== undefined
+    const hasInstallReceipt = input.installReceiptRef !== undefined
+    if (
+      hasExecutableProfile !== hasInstallReceipt ||
+      (input.executableProfileRef !== undefined && input.installReceiptRef !== undefined &&
+        (!SAFE_REF.test(input.executableProfileRef) || !SAFE_REF.test(input.installReceiptRef)))
+    ) {
+      throw new PortableCapabilityInstallationError(
+        "invalid_scope",
+        "owner-local executable profile binding is invalid",
+      )
+    }
+    const refs = installationRefs(
+      input.lease,
+      input.permissions,
+      input.executableProfileRef,
+      input.installReceiptRef,
+    )
     const directory = capabilityDirectory(this.root, input.lease.leaseRef)
     const lock = `${directory}.lock`
     await mkdir(this.root, { recursive: true, mode: 0o700 })
@@ -235,7 +283,14 @@ export class OwnerLocalPortableCapabilityInstallationPort
       }
       if (existingMaterial !== undefined) {
         try {
-          const expected = markerBytes(input.lease.leaseRef, refs.evidenceRef)
+          const expected = markerBytes(
+            input.lease,
+            input.permissions,
+            refs.installationRef,
+            refs.evidenceRef,
+            input.executableProfileRef,
+            input.installReceiptRef,
+          )
           const materialMatches =
             existingMaterial.byteLength === input.material.byteLength &&
             timingSafeEqual(existingMaterial, input.material)
@@ -287,7 +342,14 @@ export class OwnerLocalPortableCapabilityInstallationPort
       await chmod(directory, 0o700)
       const materialTemp = join(directory, `.${MATERIAL_FILE}.${randomUUID()}`)
       const markerTemp = join(directory, `.${MARKER_FILE}.${randomUUID()}`)
-      const marker = markerBytes(input.lease.leaseRef, refs.evidenceRef)
+      const marker = markerBytes(
+        input.lease,
+        input.permissions,
+        refs.installationRef,
+        refs.evidenceRef,
+        input.executableProfileRef,
+        input.installReceiptRef,
+      )
       try {
         await writeFile(materialTemp, input.material, { mode: 0o600, flag: "wx" })
         await chmod(materialTemp, 0o600)
@@ -339,15 +401,87 @@ export class OwnerLocalPortableCapabilityInstallationPort
         )
       }
       const marker: unknown = JSON.parse(markerText)
-      const evidenceDigest =
-        marker !== null && typeof marker === "object" && !Array.isArray(marker)
-          ? String((marker as Record<string, unknown>).evidenceRef).split(".").at(-1)
-          : undefined
+      const record = marker !== null && typeof marker === "object" && !Array.isArray(marker)
+        ? marker as Record<string, unknown>
+        : null
+      const evidenceDigest = typeof record?.evidenceRef === "string"
+        ? record.evidenceRef.split(".").at(-1)
+        : undefined
+      const executableProfileRef = record?.executableProfileRef
+      const hasExecutableProfile = record !== null && Object.hasOwn(record, "executableProfileRef")
+      if (hasExecutableProfile && typeof executableProfileRef !== "string") {
+        throw new PortableCapabilityInstallationError(
+          "installation_conflict",
+          "owner-local executable profile marker is invalid",
+        )
+      }
+      if (record !== null && typeof executableProfileRef === "string") {
+        const permissionRefs = Array.isArray(record?.permissionRefs) &&
+          record.permissionRefs.every(ref => typeof ref === "string" && SAFE_REF.test(ref))
+          ? record.permissionRefs as string[]
+          : null
+        const expectedRefs = permissionRefs === null ||
+          typeof record?.ownerRef !== "string" ||
+          typeof record?.targetRef !== "string" ||
+          typeof record?.sessionRef !== "string" ||
+          typeof record?.attachmentRef !== "string" ||
+          !Number.isSafeInteger(record?.attachmentGeneration) ||
+          typeof record?.capability !== "string" ||
+          !CAPABILITY_KINDS.has(record.capability) ||
+          typeof record?.installReceiptRef !== "string"
+          ? null
+          : {
+              installationRef: digestRef("installation.capability", [
+                record.ownerRef,
+                record.sessionRef,
+                record.attachmentRef,
+                String(record.attachmentGeneration),
+                record.targetRef,
+                leaseRef,
+                record.capability,
+                executableProfileRef,
+                record.installReceiptRef,
+                ...sortedPermissions(permissionRefs),
+              ]),
+              evidenceRef: digestRef("evidence.capability-installed", [
+                record.ownerRef,
+                record.sessionRef,
+                record.attachmentRef,
+                String(record.attachmentGeneration),
+                record.targetRef,
+                leaseRef,
+                record.capability,
+                executableProfileRef,
+                record.installReceiptRef,
+                ...sortedPermissions(permissionRefs),
+              ]),
+            }
+        if (
+          expectedRefs === null ||
+          ![
+            record.ownerRef,
+            record.targetRef,
+            record.sessionRef,
+            record.attachmentRef,
+            executableProfileRef,
+            record.installReceiptRef,
+          ].every(value => typeof value === "string" && SAFE_REF.test(value)) ||
+          typeof record.attachmentGeneration !== "number" ||
+          record.attachmentGeneration <= 0 ||
+          record.ownerRef !== this.ownerRef ||
+          record.targetRef !== this.targetRef ||
+          record.installationRef !== expectedRefs.installationRef ||
+          record.evidenceRef !== expectedRefs.evidenceRef
+        ) {
+          throw new PortableCapabilityInstallationError(
+            "installation_conflict",
+            "owner-local executable profile marker is invalid",
+          )
+        }
+      }
       if (
-        marker === null ||
-        typeof marker !== "object" ||
-        Array.isArray(marker) ||
-        (marker as Record<string, unknown>).leaseRef !== leaseRef ||
+        record === null ||
+        record.leaseRef !== leaseRef ||
         evidenceDigest === undefined ||
         input.installationRef !== `installation.capability.${evidenceDigest}`
       ) {

@@ -48,6 +48,8 @@ export const PortableOwnerLocalCapabilityOperationRequestSchema = Schema.Struct(
   sourceGrantRef: PortableRef,
   destinationLeaseRef: PortableRef,
   destinationGrantRef: PortableRef,
+  /** Repository-owned executable profile authority. This is never a path or argv. */
+  executableProfileRef: Schema.optionalKey(PortableRef),
   installationRef: Schema.NullOr(PortableRef),
   permissionRefs: PublicSafeRefs,
   permissionFingerprint: Sha256Digest,
@@ -135,6 +137,8 @@ export const PortableOwnerLocalCapabilityOperationResultRequestSchema = Schema.S
   resultRef: PortableRef,
   resultStatus: Schema.Literals(["completed", "failed"]),
   resultInstallationRef: Schema.NullOr(PortableRef),
+  /** Echoes the exact admitted request profile on a successful install. */
+  executableProfileRef: Schema.optionalKey(PortableRef),
   receiptRef: Schema.NullOr(PortableRef),
   evidenceRefs: PublicSafeRefs,
   errorRef: Schema.NullOr(PortableRef),

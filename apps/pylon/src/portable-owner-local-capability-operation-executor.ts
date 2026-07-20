@@ -8,6 +8,10 @@ import {
   type PylonPortableOwnerLocalCapabilityMaterialClient,
 } from "./portable-owner-local-capability-material-client.js";
 import type { PylonPortableOwnerLocalCapabilityExecutor } from "./portable-owner-local-capability-operation-worker.js";
+import {
+  repositoryOwnedPylonPortableExecutableProfileCatalog,
+  type PylonPortableExecutableProfileCatalog,
+} from "./portable-executable-profile-catalog.js";
 
 const SAFE_REF = /^[A-Za-z0-9][A-Za-z0-9._:-]{2,255}$/u;
 const receiptRef = (action: "install" | "wipe", operationRef: string): string =>
@@ -16,6 +20,7 @@ const receiptRef = (action: "install" | "wipe", operationRef: string): string =>
 export type MakePylonPortableOwnerLocalCapabilityOperationExecutorOptions = Readonly<{
   materialClient: PylonPortableOwnerLocalCapabilityMaterialClient;
   installationPort: Pick<OwnerLocalPortableCapabilityInstallationPort, "install" | "wipe">;
+  executableProfileCatalog?: PylonPortableExecutableProfileCatalog;
 }>;
 
 /**
@@ -62,6 +67,26 @@ export const makePylonPortableOwnerLocalCapabilityOperationExecutor = (
       request.permissionRefs.length === 0
     )
       throw new Error("owner-local capability install scope is invalid");
+    const executableProfile = request.executableProfileRef === undefined
+      ? null
+      : (options.executableProfileCatalog ??
+        repositoryOwnedPylonPortableExecutableProfileCatalog).resolve(
+          request.executableProfileRef,
+        );
+    if (
+      request.executableProfileRef !== undefined &&
+      (request.capability !== "tool" ||
+        executableProfile === null ||
+        executableProfile.executableProfileRef !== request.executableProfileRef ||
+        ![
+          executableProfile.installedArtifactRef,
+          executableProfile.signatureRef,
+          executableProfile.versionRef,
+        ].every((ref) => SAFE_REF.test(ref)))
+    ) {
+      throw new Error("owner-local executable profile authority is unavailable");
+    }
+    const installationReceiptRef = receiptRef("install", request.operationRef);
     const material = await options.materialClient.redeem(
       capabilityMaterialRequest(request, claim),
       signal,
@@ -82,6 +107,12 @@ export const makePylonPortableOwnerLocalCapabilityOperationExecutor = (
         },
         permissions: request.permissionRefs,
         material: material as SecretMaterial,
+        ...(request.executableProfileRef === undefined
+          ? {}
+          : {
+              executableProfileRef: request.executableProfileRef,
+              installReceiptRef: installationReceiptRef,
+            }),
       });
       if (!SAFE_REF.test(installed.installationRef) || !SAFE_REF.test(installed.evidenceRef))
         throw new Error("owner-local capability installation result is invalid");
@@ -89,9 +120,12 @@ export const makePylonPortableOwnerLocalCapabilityOperationExecutor = (
         outcome: {
           status: "completed",
           resultInstallationRef: installed.installationRef,
-          receiptRef: receiptRef("install", request.operationRef),
+          receiptRef: installationReceiptRef,
           evidenceRefs: [installed.evidenceRef],
           errorRef: null,
+          ...(request.executableProfileRef === undefined
+            ? {}
+            : { executableProfileRef: request.executableProfileRef }),
         },
       };
     } finally {

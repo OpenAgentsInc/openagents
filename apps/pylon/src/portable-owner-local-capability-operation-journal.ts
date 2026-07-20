@@ -107,7 +107,8 @@ const validateEntry = (
     (entry.completion.claimRef !== entry.claimRequest.claimRef ||
       entry.completion.workerInstanceRef !== scope.workerInstanceRef ||
       entry.completion.claimGeneration !== entry.claimGeneration ||
-      entry.completion.expectedLeaseRevision !== entry.leaseRevision)
+      entry.completion.expectedLeaseRevision !== entry.leaseRevision ||
+      entry.completion.executableProfileRef !== request.executableProfileRef)
   ) {
     throw journalError("corrupt");
   }

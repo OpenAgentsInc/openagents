@@ -571,7 +571,11 @@ export class PostgresPortableOwnerLocalCapabilityOperationStore {
       this.assertActorOwner(row, ownerRef);
       this.assertMutationBinding(row, request);
       this.assertActionResultShape(row.action, request);
-      await this.assertCurrentAuthority(tx, rowToRecord(row).request, now);
+      const operationRequest = rowToRecord(row).request;
+      if (request.executableProfileRef !== operationRequest.executableProfileRef) {
+        throw fail("conflict", "executable profile result differs from its request");
+      }
+      await this.assertCurrentAuthority(tx, operationRequest, now);
       const revision = requiredPositive(row.lease_revision, "lease revision");
       if (
         (row.state === "completed" || row.state === "failed") &&
@@ -650,12 +654,15 @@ export class PostgresPortableOwnerLocalCapabilityOperationStore {
         request.permissionFingerprint ||
       request.sourceLeaseRef === request.destinationLeaseRef ||
       request.sourceGrantRef === request.destinationGrantRef ||
+      (request.executableProfileRef !== undefined &&
+        (request.action !== "install" || request.capability !== "tool")) ||
       (request.action === "install" &&
         (request.capability === null ||
           request.installationRef !== null ||
           permissionRefs.length === 0)) ||
       (request.action === "wipe" &&
         (request.capability !== null ||
+          request.executableProfileRef !== undefined ||
           request.installationRef === null ||
           permissionRefs.length !== 0))
     ) {

@@ -24,6 +24,7 @@ export type PylonPortableOwnerLocalCapabilityExecutionOutcome =
       receiptRef: string;
       evidenceRefs: ReadonlyArray<string>;
       errorRef: null;
+      executableProfileRef?: string;
     }>
   | Readonly<{
       status: "failed";
@@ -31,6 +32,7 @@ export type PylonPortableOwnerLocalCapabilityExecutionOutcome =
       receiptRef: null;
       evidenceRefs: ReadonlyArray<string>;
       errorRef: string;
+      executableProfileRef?: never;
     }>;
 
 /** Private buffers are cleanup handles only. The worker never persists or returns them. */
@@ -124,6 +126,7 @@ const exactCompletion = (
   record.resultRef === completion.resultRef &&
   record.resultStatus === completion.resultStatus &&
   record.resultInstallationRef === completion.resultInstallationRef &&
+  record.request.executableProfileRef === completion.executableProfileRef &&
   record.receiptRef === completion.receiptRef &&
   record.errorRef === completion.errorRef &&
   record.completedAt === completion.completedAt &&
@@ -153,6 +156,8 @@ const validateOutcome = (
     outcome.evidenceRefs.length > 256 ||
     new Set(outcome.evidenceRefs).size !== outcome.evidenceRefs.length ||
     outcome.evidenceRefs.some((ref) => !SAFE_REF.test(ref)) ||
+    (outcome.status === "completed" &&
+      outcome.executableProfileRef !== request.executableProfileRef) ||
     (outcome.status === "completed" && !exactInstall && !exactWipe) ||
     (outcome.status === "failed" &&
       (outcome.resultInstallationRef !== null || !SAFE_REF.test(outcome.errorRef)))
@@ -362,6 +367,9 @@ export class PylonPortableOwnerLocalCapabilityWorker {
       ),
       resultStatus: outcome.status,
       resultInstallationRef: outcome.resultInstallationRef,
+      ...(request.executableProfileRef === undefined
+        ? {}
+        : { executableProfileRef: request.executableProfileRef }),
       receiptRef: outcome.receiptRef,
       evidenceRefs: outcome.evidenceRefs,
       errorRef: outcome.errorRef,

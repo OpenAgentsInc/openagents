@@ -9,6 +9,7 @@ import {
 } from "./portable-owner-local-capability-material-client.js";
 import { makePylonPortableOwnerLocalCapabilityOperationExecutor } from "./portable-owner-local-capability-operation-executor.js";
 import type { PylonPortableOwnerLocalCapabilityExecutionClaim } from "./portable-owner-local-capability-operation-worker.js";
+import { repositoryOwnedPylonPortableExecutableProfileCatalog } from "./portable-executable-profile-catalog.js";
 
 const pylonRef = "pylon.ide13.executor";
 const targetRef = "target.ide13.executor";
@@ -146,6 +147,83 @@ test("installs an exact destination lease and clears redeemed material", async (
   expect(result.outcome.receiptRef).not.toBe("installation.ide13.executor");
   expect(observed).toBe(material);
   expect([...material]).toEqual(Array.from({ length: material.length }, () => 0));
+});
+
+test("binds an admitted stable executable profile ref to install input and result", async () => {
+  const request: PortableOwnerLocalCapabilityOperationRequest = {
+    ...installRequest(),
+    capability: "tool",
+    executableProfileRef: "profile.ide13.lsp.fixture.v1",
+  };
+  const install = vi.fn(async (input: Parameters<
+    import("@openagentsinc/khala-sync-server/portable-capability-installation-ports").OwnerLocalPortableCapabilityInstallationPort["install"]
+  >[0]) => {
+    expect(input).toMatchObject({
+      executableProfileRef: request.executableProfileRef,
+      installReceiptRef: expect.stringMatching(/^receipt\.pylon\.portable-capability-install\./u),
+    });
+    return {
+      installationRef: "installation.ide13.executor.profile",
+      evidenceRef: "evidence.ide13.executor.profile",
+    };
+  });
+  const executor = makePylonPortableOwnerLocalCapabilityOperationExecutor({
+    executableProfileCatalog: {
+      resolve: (ref) => ({
+        executableProfileRef: ref,
+        installedArtifactRef: "artifact.ide13.lsp.fixture",
+        signatureRef: "signature.ide13.lsp.fixture",
+        versionRef: "version.ide13.lsp.fixture",
+      }),
+    },
+    materialClient: { redeem: async () => new Uint8Array([1]) },
+    installationPort: { install, wipe: async () => ({ wipeReceiptRef: "receipt.ide13.wipe" }) },
+  });
+  const result = await executor.execute(request, claim, new AbortController().signal);
+  expect(result.outcome).toMatchObject({
+    status: "completed",
+    executableProfileRef: request.executableProfileRef,
+    resultInstallationRef: "installation.ide13.executor.profile",
+  });
+});
+
+test("rejects unknown and swapped executable profile refs before material redemption", async () => {
+  const executableProfileRef = "profile.ide13.lsp.requested.v1";
+  const request: PortableOwnerLocalCapabilityOperationRequest = {
+    ...installRequest(),
+    capability: "tool",
+    executableProfileRef,
+  };
+  const redeem = vi.fn(async () => new Uint8Array([1]));
+  expect(repositoryOwnedPylonPortableExecutableProfileCatalog.resolve(
+    executableProfileRef,
+  )).toBeNull();
+  for (const executableProfileCatalog of [
+    repositoryOwnedPylonPortableExecutableProfileCatalog,
+    {
+      resolve: () => ({
+        executableProfileRef: "profile.ide13.lsp.swapped.v1",
+        installedArtifactRef: "artifact.ide13.lsp.fixture",
+        signatureRef: "signature.ide13.lsp.fixture",
+        versionRef: "version.ide13.lsp.fixture",
+      }),
+    },
+  ]) {
+    const executor = makePylonPortableOwnerLocalCapabilityOperationExecutor({
+      executableProfileCatalog,
+      materialClient: { redeem },
+      installationPort: {
+        install: async () => { throw new Error("unexpected install"); },
+        wipe: async () => ({ wipeReceiptRef: "receipt.ide13.wipe" }),
+      },
+    });
+    await expect(executor.execute(
+      request,
+      claim,
+      new AbortController().signal,
+    )).rejects.toThrow("profile authority is unavailable");
+  }
+  expect(redeem).not.toHaveBeenCalled();
 });
 
 test("clears redeemed material when installation fails", async () => {
