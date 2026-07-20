@@ -4,6 +4,8 @@ import { PortableCommandExecutionClaimSchema } from "./portable-command-executio
 
 export const PORTABLE_CHECKPOINT_CUSTODY_OBJECT_MANIFEST_SCHEMA_VERSION =
   "openagents.portable_checkpoint_custody_object_manifest.v1" as const;
+export const PORTABLE_CHECKPOINT_DEK_AUTHORITY_SCHEMA_VERSION =
+  "openagents.portable_checkpoint_dek_authority.v1" as const;
 
 const PortableRef = Schema.String.check(
   Schema.isMinLength(3),
@@ -44,6 +46,30 @@ export const PortableCheckpointCustodyEncryptedV3Schema = Schema.Struct({
 
 export type PortableCheckpointCustodyEncryptedV3 =
   typeof PortableCheckpointCustodyEncryptedV3Schema.Type;
+
+/** Public-safe current lease facts for one binary DEK wrap or unwrap call. */
+export const PortableCheckpointDekAuthoritySchema = Schema.Struct({
+  schema: Schema.Literal(PORTABLE_CHECKPOINT_DEK_AUTHORITY_SCHEMA_VERSION),
+  algorithm: Schema.Literal("aes-256-gcm+google-kms-wrapped-dek"),
+  policy: Schema.Literal("openagents_managed"),
+  action: Schema.Literals(["wrap", "unwrap"]),
+  operationRef: PortableRef,
+  commandExecutionClaimRef: PortableRef,
+  phaseClaimRef: PortableRef,
+  pylonRef: PortableRef,
+  targetRef: PortableRef,
+  sessionRef: PortableRef,
+  attachmentRef: PortableRef,
+  attachmentGeneration: PositiveInt,
+  workerInstanceRef: PortableRef,
+  claimGeneration: PositiveInt,
+  expectedLeaseRevision: PositiveInt,
+  expectedLeaseExpiresAt: PortableTimestamp,
+  objectRef: PortableRef,
+  keyRef: PortableRef,
+}).annotate({ identifier: "PortableCheckpointDekAuthority" });
+export type PortableCheckpointDekAuthority =
+  typeof PortableCheckpointDekAuthoritySchema.Type;
 
 /**
  * Public-safe metadata for one opaque encrypted checkpoint custody object.

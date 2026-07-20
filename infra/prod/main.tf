@@ -163,6 +163,19 @@ module "oa_updates_codesign_key" {
   ]
 }
 
+# IDE-13 KMS authority. This grant does not create a key. It applies only when
+# the operator supplies an existing full CryptoKey resource. The Cloud Run
+# revision must also receive these non-secret values through the normal deploy:
+# PORTABLE_CHECKPOINT_KMS_KEY_RESOURCE and PORTABLE_CHECKPOINT_KMS_KEY_REF.
+# The runtime gets its OAuth token from its workload identity metadata service.
+resource "google_kms_crypto_key_iam_member" "portable_checkpoint_dek" {
+  count = var.portable_checkpoint_kms_crypto_key_resource == null ? 0 : 1
+
+  crypto_key_id = var.portable_checkpoint_kms_crypto_key_resource
+  role          = "roles/cloudkms.cryptoKeyEncrypterDecrypter"
+  member        = "serviceAccount:${var.portable_checkpoint_kms_runtime_service_account_email}"
+}
+
 # ---------------------------------------------------------------------------
 # GCS buckets
 # ---------------------------------------------------------------------------

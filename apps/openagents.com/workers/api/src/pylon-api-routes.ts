@@ -241,6 +241,10 @@ type PylonApiRouteDependencies<Bindings> = Readonly<{
     request: Request,
     env: Bindings,
   ) => Promise<HttpResponse> | undefined
+  routePortableCheckpointDekRequest?: (
+    request: Request,
+    env: Bindings,
+  ) => Promise<HttpResponse> | undefined
   routePortableOwnerLocalCapabilityOperationRequest?: (
     request: Request,
     env: Bindings,
@@ -3488,6 +3492,12 @@ export const makePylonApiRoutes = <Bindings extends PylonApiRouteEnv>(
       dependencies.routePortableCheckpointArtifactRequest?.(request, env)
     if (portableCheckpointArtifactRoute !== undefined) {
       return Effect.promise(() => portableCheckpointArtifactRoute)
+    }
+
+    const portableCheckpointDekRoute =
+      dependencies.routePortableCheckpointDekRequest?.(request, env)
+    if (portableCheckpointDekRoute !== undefined) {
+      return Effect.promise(() => portableCheckpointDekRoute)
     }
 
     const portableOwnerLocalCapabilityOperationRoute =

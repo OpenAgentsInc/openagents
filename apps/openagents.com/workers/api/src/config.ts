@@ -332,6 +332,11 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   VERTEX_SA_KEY?: string | undefined
   VERTEX_PROJECT_ID?: string | undefined
   VERTEX_LOCATION?: string | undefined
+  // Full Google Cloud KMS CryptoKey resource and its public-safe envelope ref.
+  // Both values are required. The runtime uses its workload identity. It does
+  // not load or store raw KMS key bytes.
+  PORTABLE_CHECKPOINT_KMS_KEY_RESOURCE?: string | undefined
+  PORTABLE_CHECKPOINT_KMS_KEY_REF?: string | undefined
   // Generative Language API key (Gemma 4 lane — the primary conversational Khala
   // lane on our own gcloud; owner decision 2026-07-09). The SAME key sarah's
   // google-inference service uses (#8594); the `gemma4-adapter` reads it lazily.

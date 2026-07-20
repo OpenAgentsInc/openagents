@@ -509,6 +509,10 @@ import {
   gitHubWriteRouteErrorStatus,
 } from './github-write-route-errors'
 import {
+  makeGoogleCloudKmsDekClient,
+  makeGoogleCloudWorkloadIdentityAccessTokenProvider,
+} from './google-cloud-kms'
+import {
   makeGymLadderStoreForEnv,
   makeGymRunProgressStoreForEnv,
   makeHarborFullTraceArchiveStoreForEnv,
@@ -1104,6 +1108,10 @@ import {
   portableCheckpointArtifactBucketForEnv,
   readPortableCheckpointArtifactAuthority,
 } from './portable-checkpoint-artifact-routes'
+import {
+  makePortableCheckpointDekRoutes,
+  readPortableCheckpointDekWrapBinding,
+} from './portable-checkpoint-dek-routes'
 import {
   makePortablePhaseOperationRoutes,
   resolvePortablePhaseTarget,
@@ -9725,6 +9733,89 @@ const portableCheckpointArtifactRoutes =
     },
   })
 
+const portableCheckpointKmsTokenProvider =
+  makeGoogleCloudWorkloadIdentityAccessTokenProvider()
+
+const portableCheckpointDekRoutes =
+  makePortableCheckpointDekRoutes<WorkerBindings>({
+    authenticate: async (request, env) => {
+      const token = readBearerToken(request)
+      if (token === undefined) return undefined
+      const session = await authenticateProgrammaticAgent(
+        makeAgentRegistrationStoreForEnv(env),
+        token,
+      )
+      if (session === undefined) return undefined
+      const linkedOwner = session.credential.openauthUserId?.trim()
+      return {
+        agentUserId: session.user.id,
+        ownerUserId:
+          linkedOwner !== undefined && linkedOwner !== ''
+            ? linkedOwner
+            : session.user.id,
+      }
+    },
+    readPylonOwnerAgentUserId: async (env, pylonRef) =>
+      (await makePylonApiStoreForEnv(env).readRegistration(pylonRef))
+        ?.ownerAgentUserId,
+    resolveExactTarget: async (env, input) => {
+      const connectionString = env.KHALA_SYNC_DB?.connectionString
+      if (connectionString === undefined || connectionString.trim() === '') {
+        throw new Error('portable checkpoint target storage is unavailable')
+      }
+      const client = await defaultMakeKhalaSyncSqlClient(connectionString)
+      try {
+        return await resolvePortablePhaseTarget(client.sql, input)
+      } finally {
+        await client.end().catch(() => undefined)
+      }
+    },
+    readAuthority: async (env, input) => {
+      const connectionString = env.KHALA_SYNC_DB?.connectionString
+      if (connectionString === undefined || connectionString.trim() === '') {
+        throw new Error('portable checkpoint authority storage is unavailable')
+      }
+      const client = await defaultMakeKhalaSyncSqlClient(connectionString)
+      try {
+        return await readPortableCheckpointArtifactAuthority(
+          client.sql,
+          new PostgresPortablePhaseOperationStore(client.sql),
+          input,
+        )
+      } finally {
+        await client.end().catch(() => undefined)
+      }
+    },
+    resolveWrapBinding: async (env, input) => {
+      const connectionString = env.KHALA_SYNC_DB?.connectionString
+      if (connectionString === undefined || connectionString.trim() === '') {
+        throw new Error('portable checkpoint authority storage is unavailable')
+      }
+      const client = await defaultMakeKhalaSyncSqlClient(connectionString)
+      try {
+        return await readPortableCheckpointDekWrapBinding(client.sql, {
+          action: input.authority.action,
+          actorOwnerRef: input.actorOwnerRef,
+          authority: input.authority,
+          current: input.current,
+        })
+      } finally {
+        await client.end().catch(() => undefined)
+      }
+    },
+    configuredKeyRef: env =>
+      (env as OpenAgentsWorkerEnv).PORTABLE_CHECKPOINT_KMS_KEY_REF,
+    kmsClient: env => {
+      const resource = (env as OpenAgentsWorkerEnv)
+        .PORTABLE_CHECKPOINT_KMS_KEY_RESOURCE
+      if (resource === undefined || resource.trim() === '') return undefined
+      return makeGoogleCloudKmsDekClient({
+        cryptoKeyResource: resource,
+        tokenProvider: portableCheckpointKmsTokenProvider,
+      })
+    },
+  })
+
 const portableTargetPylonBindingRoutes =
   makePortableTargetPylonBindingRoutes<WorkerBindings>({
     authenticate: async (request, env, pylonRef) => {
@@ -10056,6 +10147,8 @@ const pylonApiRoutes = makePylonApiRoutes<WorkerBindings>({
     portablePhaseOperationRoutes.routePortablePhaseOperationRequest,
   routePortableCheckpointArtifactRequest:
     portableCheckpointArtifactRoutes.routePortableCheckpointArtifactRequest,
+  routePortableCheckpointDekRequest:
+    portableCheckpointDekRoutes.routePortableCheckpointDekRequest,
   routePortableOwnerLocalCapabilityOperationRequest:
     portableOwnerLocalCapabilityOperationRoutes.routePortableOwnerLocalCapabilityOperationRequest,
   routePortableTargetPylonBindingRequest:
