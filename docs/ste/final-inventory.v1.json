@@ -26967,26 +26967,8 @@
       }
     },
     {
-      "path": "docs/ide/2026-07-20-openagents-ide-crash-prevention-implementation-plan.md",
-      "sha256": "2148a037face6df63e3b690d8fc03da89fd3f3b41472a13fca4f22f2d3a75f14",
-      "reason": "Final review of a converted document",
-      "profile": {
-        "ste_mode": "mixed",
-        "risk": "high",
-        "source": null,
-        "replacement": null,
-        "ste_audience": "human",
-        "ste_accepted_screening_rules": [
-          "STE-2.4"
-        ],
-        "ste_status": "inspected",
-        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-        "ste_reviewed_at": "2026-07-19T22:00:00Z"
-      }
-    },
-    {
       "path": "docs/ide/2026-07-20-ide-13-portable-capability-foundation.md",
-      "sha256": "37c8bab1013dbda0b547ff7805790c85b4d2314f69bf50405740add90de8984d",
+      "sha256": "2382379ad3ea515a997d8b5f9c2ff8e2be382861c79df87070cdc6a2fd4a17d4",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -27000,6 +26982,24 @@
           "STE-3.6",
           "STE-5.1",
           "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/ide/2026-07-20-openagents-ide-crash-prevention-implementation-plan.md",
+      "sha256": "2148a037face6df63e3b690d8fc03da89fd3f3b41472a13fca4f22f2d3a75f14",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "mixed",
+        "risk": "high",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "human",
+        "ste_accepted_screening_rules": [
+          "STE-2.4"
         ],
         "ste_status": "inspected",
         "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
