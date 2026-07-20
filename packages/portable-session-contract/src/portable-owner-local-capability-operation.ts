@@ -22,10 +22,21 @@ export const PortableOwnerLocalCapabilityOperationActionSchema = Schema.Literals
 export type PortableOwnerLocalCapabilityOperationAction =
   typeof PortableOwnerLocalCapabilityOperationActionSchema.Type;
 
+export const PortableOwnerLocalCapabilityKindSchema = Schema.Literals([
+  "provider",
+  "scm_read",
+  "scm_write",
+  "tool",
+  "api",
+]).annotate({ identifier: "PortableOwnerLocalCapabilityKind" });
+export type PortableOwnerLocalCapabilityKind =
+  typeof PortableOwnerLocalCapabilityKindSchema.Type;
+
 export const PortableOwnerLocalCapabilityOperationRequestSchema = Schema.Struct({
   schema: Schema.Literal(PORTABLE_OWNER_LOCAL_CAPABILITY_OPERATION_SCHEMA_VERSION),
   operationRef: PortableRef,
   action: PortableOwnerLocalCapabilityOperationActionSchema,
+  capability: PortableOwnerLocalCapabilityKindSchema,
   commandExecutionClaimRef: PortableRef,
   ownerRef: PortableRef,
   pylonRef: PortableRef,
@@ -37,6 +48,7 @@ export const PortableOwnerLocalCapabilityOperationRequestSchema = Schema.Struct(
   sourceGrantRef: PortableRef,
   destinationLeaseRef: PortableRef,
   destinationGrantRef: PortableRef,
+  installationRef: Schema.NullOr(PortableRef),
   permissionRefs: PublicSafeRefs,
   permissionFingerprint: Sha256Digest,
   expiresAt: PortableTimestamp,

@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS khala_sync_portable_owner_local_capability_operations
   request_fingerprint text NOT NULL
     CHECK (request_fingerprint ~ '^sha256:[0-9a-f]{64}$'),
   action text NOT NULL CHECK (action IN ('install', 'wipe')),
+  capability text NOT NULL CHECK (capability IN ('provider', 'scm_read', 'scm_write', 'tool', 'api')),
   command_execution_claim_ref text NOT NULL
     REFERENCES khala_sync_portable_command_executions(claim_ref) ON DELETE CASCADE,
   owner_user_id text NOT NULL,
@@ -22,6 +23,7 @@ CREATE TABLE IF NOT EXISTS khala_sync_portable_owner_local_capability_operations
   source_grant_ref text NOT NULL,
   destination_lease_ref text NOT NULL,
   destination_grant_ref text NOT NULL,
+  installation_ref text,
   permission_refs_json jsonb NOT NULL,
   permission_fingerprint text NOT NULL
     CHECK (permission_fingerprint ~ '^sha256:[0-9a-f]{64}$'),
@@ -57,6 +59,10 @@ CREATE TABLE IF NOT EXISTS khala_sync_portable_owner_local_capability_operations
   ),
   CHECK (source_lease_ref <> destination_lease_ref),
   CHECK (source_grant_ref <> destination_grant_ref),
+  CHECK (
+    (action = 'install' AND installation_ref IS NULL) OR
+    (action = 'wipe' AND installation_ref IS NOT NULL)
+  ),
   CHECK (jsonb_typeof(permission_refs_json) = 'array'),
   CHECK (
     (state = 'pending'

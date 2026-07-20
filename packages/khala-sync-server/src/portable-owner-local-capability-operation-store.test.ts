@@ -155,6 +155,7 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 owner-local capability operation ex
     const permissionRefs = ["permission.github.write", "permission.provider.use"];
     const identity = {
       action,
+      capability: "scm_write" as const,
       commandExecutionClaimRef: fixture.commandExecutionClaimRef,
       ownerRef,
       pylonRef,
@@ -169,6 +170,8 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 owner-local capability operation ex
       sourceGrantRef: `grant.ide13.capability.source.${fixture.suffix}`,
       destinationLeaseRef: `lease.ide13.capability.destination.${fixture.suffix}`,
       destinationGrantRef: `grant.ide13.capability.destination.${fixture.suffix}`,
+      installationRef:
+        action === "wipe" ? `installation.ide13.capability.${fixture.suffix}` : null,
       permissionRefs,
     };
     return {
@@ -188,6 +191,8 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 owner-local capability operation ex
     `;
     const names = columns.map((column) => column.column_name);
     expect(names).toContain("permission_fingerprint");
+    expect(names).toContain("capability");
+    expect(names).toContain("installation_ref");
     expect(names).not.toEqual(
       expect.arrayContaining(["material", "bytes", "base64", "endpoint", "bearer"]),
     );
@@ -211,6 +216,9 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 owner-local capability operation ex
     ).rejects.toMatchObject({ code: "conflict" });
     await expect(
       store.enqueue({ ...request, operationRef: "operation.owner-local-capability.invalid" }),
+    ).rejects.toMatchObject({ code: "invalid" });
+    await expect(
+      store.enqueue({ ...request, installationRef: "installation.ide13.unexpected" }),
     ).rejects.toMatchObject({ code: "invalid" });
     expect(await store.pending(ownerRef, pylonRef, destinationTargetRef)).toEqual([
       first.operation,
@@ -257,6 +265,9 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 owner-local capability operation ex
       () => now,
     );
     await firstStore.enqueue(request);
+    await expect(firstStore.enqueue({ ...request, installationRef: null })).rejects.toMatchObject({
+      code: "invalid",
+    });
     const claim = (worker: string) => ({
       schema: PORTABLE_OWNER_LOCAL_CAPABILITY_OPERATION_SCHEMA_VERSION,
       operationRef: request.operationRef,

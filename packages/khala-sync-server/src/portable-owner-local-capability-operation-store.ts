@@ -27,6 +27,7 @@ type Row = Readonly<{
   operation_ref: string;
   request_fingerprint: string;
   action: "install" | "wipe";
+  capability: "provider" | "scm_read" | "scm_write" | "tool" | "api";
   command_execution_claim_ref: string;
   owner_user_id: string;
   pylon_ref: string;
@@ -38,6 +39,7 @@ type Row = Readonly<{
   source_grant_ref: string;
   destination_lease_ref: string;
   destination_grant_ref: string;
+  installation_ref: string | null;
   permission_refs_json: unknown;
   permission_fingerprint: string;
   request_json: unknown;
@@ -186,6 +188,7 @@ const rowToRecord = (row: Row): PortableOwnerLocalCapabilityOperationRecord => {
     fingerprint(request) !== row.request_fingerprint ||
     request.operationRef !== row.operation_ref ||
     request.action !== row.action ||
+    request.capability !== row.capability ||
     request.commandExecutionClaimRef !== row.command_execution_claim_ref ||
     request.ownerRef !== row.owner_user_id ||
     request.pylonRef !== row.pylon_ref ||
@@ -198,6 +201,7 @@ const rowToRecord = (row: Row): PortableOwnerLocalCapabilityOperationRecord => {
     request.sourceGrantRef !== row.source_grant_ref ||
     request.destinationLeaseRef !== row.destination_lease_ref ||
     request.destinationGrantRef !== row.destination_grant_ref ||
+    request.installationRef !== row.installation_ref ||
     canonical(request.permissionRefs) !== canonical(parseJson(row.permission_refs_json)) ||
     request.permissionFingerprint !== row.permission_fingerprint ||
     iso(row.expires_at) !== new Date(request.expiresAt).toISOString()
@@ -301,17 +305,17 @@ export class PostgresPortableOwnerLocalCapabilityOperationStore {
       }
       const inserted: Row[] = await tx`
         INSERT INTO khala_sync_portable_owner_local_capability_operations
-          (operation_ref, request_fingerprint, action, command_execution_claim_ref,
+          (operation_ref, request_fingerprint, action, capability, command_execution_claim_ref,
            owner_user_id, pylon_ref, session_ref, attachment_ref, attachment_generation,
            target_ref, source_lease_ref, source_grant_ref, destination_lease_ref,
-           destination_grant_ref, permission_refs_json, permission_fingerprint,
+           destination_grant_ref, installation_ref, permission_refs_json, permission_fingerprint,
            request_json, expires_at, state, created_at, updated_at)
         VALUES
-          (${request.operationRef}, ${requestFingerprint}, ${request.action},
+          (${request.operationRef}, ${requestFingerprint}, ${request.action}, ${request.capability},
            ${request.commandExecutionClaimRef}, ${request.ownerRef}, ${request.pylonRef},
            ${request.sessionRef}, ${request.attachmentRef}, ${request.attachmentGeneration},
            ${request.targetRef}, ${request.sourceLeaseRef}, ${request.sourceGrantRef},
-           ${request.destinationLeaseRef}, ${request.destinationGrantRef},
+           ${request.destinationLeaseRef}, ${request.destinationGrantRef}, ${request.installationRef},
            ${JSON.stringify(request.permissionRefs)}::text::jsonb, ${request.permissionFingerprint},
            ${JSON.stringify(request)}::text::jsonb, ${request.expiresAt}, 'pending',
            ${now.toISOString()}, ${now.toISOString()})
@@ -641,7 +645,9 @@ export class PostgresPortableOwnerLocalCapabilityOperationStore {
       portableOwnerLocalCapabilityPermissionFingerprint(request.permissionRefs) !==
         request.permissionFingerprint ||
       request.sourceLeaseRef === request.destinationLeaseRef ||
-      request.sourceGrantRef === request.destinationGrantRef
+      request.sourceGrantRef === request.destinationGrantRef ||
+      (request.action === "install" && request.installationRef !== null) ||
+      (request.action === "wipe" && request.installationRef === null)
     ) {
       throw fail("invalid", "capability refs or permission fingerprint are invalid");
     }
