@@ -1,9 +1,9 @@
 {
   "schemaVersion": "openagents.desktop.ide-portable-evidence.v3",
   "issue": "IDE-13",
-  "candidateCommitSha": "6746aca33d593b9750d63abfb8c6d7c9b177e4e7",
-  "baseCommitSha": "d96b755d284020ecd46a5501aa93e4ff2f6f3ad9",
-  "generatedAt": "2026-07-20T15:19:34.994Z",
+  "candidateCommitSha": "5a43154091e45af77f9ad800f8c10e936bcff7a7",
+  "baseCommitSha": "45e61c3510451eaa1438e672bcaf829ab04f3fa5",
+  "generatedAt": "2026-07-20T17:29:19.911Z",
   "producerRef": "openagents:ide-13-implementation",
   "acceptanceRefs": {
     "candidateRef": null,
@@ -71,6 +71,54 @@
       "receiptRef": "apps/pylon/tests/portable-session-checkpoint-artifact.test.ts"
     },
     {
+      "checkRef": "production-command-adapter-composition",
+      "evidenceClass": "regression",
+      "result": "passed",
+      "receiptRef": "apps/openagents.com/workers/api/src/portable-session-command-runtime-adapters.test.ts"
+    },
+    {
+      "checkRef": "owner-local-fresh-pty-and-watcher",
+      "evidenceClass": "regression",
+      "result": "passed",
+      "receiptRef": "apps/pylon/src/portable-destination-production-helper-adapters.test.ts"
+    },
+    {
+      "checkRef": "owner-local-confirmed-pty-teardown",
+      "evidenceClass": "regression",
+      "result": "passed",
+      "receiptRef": "packages/khala-tools/src/process-session-termination.test.ts"
+    },
+    {
+      "checkRef": "managed-watcher-lifecycle",
+      "evidenceClass": "regression",
+      "result": "passed",
+      "receiptRef": "apps/pylon/tests/portable-session-control.test.ts"
+    },
+    {
+      "checkRef": "managed-helper-observation-time",
+      "evidenceClass": "regression",
+      "result": "passed",
+      "receiptRef": "apps/pylon/tests/portable-session-control.test.ts"
+    },
+    {
+      "checkRef": "executable-profile-authority-ref",
+      "evidenceClass": "regression",
+      "result": "passed",
+      "receiptRef": "apps/pylon/src/portable-owner-local-capability-operation-executor.test.ts"
+    },
+    {
+      "checkRef": "destination-editor-setting-reprojection",
+      "evidenceClass": "regression",
+      "result": "passed",
+      "receiptRef": "apps/openagents-desktop/src/ide/portable-destination-settings.test.ts"
+    },
+    {
+      "checkRef": "managed-live-proof-driver-fail-closed",
+      "evidenceClass": "regression",
+      "result": "passed",
+      "receiptRef": "apps/pylon/deploy/agent-computer/live-retained-proof.test.ts"
+    },
+    {
       "checkRef": "workspace-search-revocation",
       "evidenceClass": "regression",
       "result": "passed",
@@ -108,8 +156,8 @@
         "sha256": null,
         "bytes": null
       },
-      "candidateCommitSha": "6746aca33d593b9750d63abfb8c6d7c9b177e4e7",
-      "baseCommitSha": "d96b755d284020ecd46a5501aa93e4ff2f6f3ad9",
+      "candidateCommitSha": "5a43154091e45af77f9ad800f8c10e936bcff7a7",
+      "baseCommitSha": "45e61c3510451eaa1438e672bcaf829ab04f3fa5",
       "capabilityState": "unverified",
       "custody": "owner_device",
       "networkDestinations": [],
@@ -191,9 +239,9 @@
           "phase": null,
           "unit": "milliseconds",
           "repetitions": 100,
-          "p50": 0.05462500000004411,
-          "p95": 0.08345900000000483,
-          "p99": 0.11679099999997788,
+          "p50": 0.06891700000005585,
+          "p95": 0.10399999999992815,
+          "p99": 0.1150000000000091,
           "thresholdP95": 5,
           "thresholdP99": 10,
           "passed": true,
@@ -205,9 +253,9 @@
           "phase": null,
           "unit": "milliseconds",
           "repetitions": 1000,
-          "p50": 0.009708999999986645,
-          "p95": 0.020749999999964075,
-          "p99": 0.05029100000001563,
+          "p50": 0.015000000000100044,
+          "p95": 0.030583999999976186,
+          "p99": 0.06941700000004403,
           "thresholdP95": 1,
           "thresholdP99": 2,
           "passed": true,
@@ -240,8 +288,8 @@
         "sha256": null,
         "bytes": null
       },
-      "candidateCommitSha": "6746aca33d593b9750d63abfb8c6d7c9b177e4e7",
-      "baseCommitSha": "d96b755d284020ecd46a5501aa93e4ff2f6f3ad9",
+      "candidateCommitSha": "5a43154091e45af77f9ad800f8c10e936bcff7a7",
+      "baseCommitSha": "45e61c3510451eaa1438e672bcaf829ab04f3fa5",
       "capabilityState": "unverified",
       "custody": "owner_managed",
       "networkDestinations": [],
@@ -341,8 +389,8 @@
         "sha256": null,
         "bytes": null
       },
-      "candidateCommitSha": "6746aca33d593b9750d63abfb8c6d7c9b177e4e7",
-      "baseCommitSha": "d96b755d284020ecd46a5501aa93e4ff2f6f3ad9",
+      "candidateCommitSha": "5a43154091e45af77f9ad800f8c10e936bcff7a7",
+      "baseCommitSha": "45e61c3510451eaa1438e672bcaf829ab04f3fa5",
       "capabilityState": "unverified",
       "custody": "openagents_managed",
       "networkDestinations": [],
@@ -442,8 +490,8 @@
         "sha256": null,
         "bytes": null
       },
-      "candidateCommitSha": "6746aca33d593b9750d63abfb8c6d7c9b177e4e7",
-      "baseCommitSha": "d96b755d284020ecd46a5501aa93e4ff2f6f3ad9",
+      "candidateCommitSha": "5a43154091e45af77f9ad800f8c10e936bcff7a7",
+      "baseCommitSha": "45e61c3510451eaa1438e672bcaf829ab04f3fa5",
       "capabilityState": "unsupported",
       "custody": "unverified",
       "networkDestinations": [],
@@ -600,7 +648,10 @@
   "implementationChecksPassed": true,
   "acceptancePassed": false,
   "remainingGaps": [
-    "The real local, owner-managed, OpenAgents-managed, and admitted-provider move cohorts did not run.",
+    "The real local, owner-managed, and OpenAgents-managed move cohorts did not run. No managed provider is admitted.",
+    "LSP, DAP, and native helper profiles have no admitted signed installed artifacts.",
+    "The owner-managed enrollment and checkpoint-key custody design requires the recorded owner decision.",
+    "The managed root filesystem needs a Linux x64 rebuild before the live Firecracker proof can run.",
     "The real transition fault, restart, teardown, and older-recovery-point matrix did not run.",
     "The packaged authenticated move journeys did not run on each required target.",
     "The complete phase, size, CPU, memory, network, queue, lease, resource, and teardown metric matrices are absent.",
