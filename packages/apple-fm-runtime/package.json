@@ -1,0 +1,31 @@
+{
+  "name": "@openagentsinc/apple-fm-runtime",
+  "version": "0.1.0",
+  "private": false,
+  "files": [
+    "native",
+    "src",
+    "README.md"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./node": "./src/node.ts",
+    "./testing": "./src/testing.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "test": "vp test --run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@openagentsinc/agent-runtime-schema": "workspace:*",
+    "@openagentsinc/agent-turn-runtime": "workspace:*",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "typescript": "catalog:"
+  }
+}

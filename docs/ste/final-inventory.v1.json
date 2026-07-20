@@ -15044,6 +15044,18 @@
       }
     },
     {
+      "path": "docs/apple-fm/2026-07-20-afs-00-contract-freeze-and-baseline.md",
+      "sha256": "be3efc75ff411fa6a81e91a59fee479cf8f834fd332f206f16b60c62e06181af",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null,
+        "ste_status": "source-data"
+      }
+    },
+    {
       "path": "docs/apple-fm/2026-07-20-apple-fm-analyzer-boot-sequence-audit.md",
       "sha256": "4f3e438380996a38e3b7ee454f550951d9e77c1f547a9c822c6f8dbd3a897e25",
       "reason": "Immutable historical or evidence source data",
@@ -46128,6 +46140,72 @@
       }
     },
     {
+      "path": "packages/agent-surface/README.md",
+      "sha256": "ff6fcbbb0fce13f7cb3fffb5c67c1dfbf6f13eec3c6bdada0c158eec0aa61b9a",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "packages/agent-turn-runtime/README.md",
+      "sha256": "dba091a5e0d66267c5ead67033f2f52da3f31ecc7d5404203ef85d66b5a2ef08",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "packages/agent-turn-store/README.md",
+      "sha256": "163e0105abfb7e4614e5d40cf5fb4efa9ef6e35194857db93679b050079675db",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "packages/ai-sdk-sandbox-local/README.md",
       "sha256": "bd99d7b68b60ac77dbe701efbdf500d48c6bbf85c569b09e329bab88cc5f6491",
       "reason": "Final review of a converted document",
@@ -46152,6 +46230,28 @@
     {
       "path": "packages/ai-sdk-sandbox-openagents/README.md",
       "sha256": "9d530a87b3c520f14e38a2afb4cf014088b4f4628ebc3b4aaa20c9b319110d12",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "packages/apple-fm-runtime/README.md",
+      "sha256": "2c3af691cfc85bbf02e61ef7bcb9cf4707f8ffe11ef7eff52e30bf40a5812cc6",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -47178,6 +47278,28 @@
     {
       "path": "packages/harness-conformance/README.md",
       "sha256": "e46e13f05c76eada7cdcf6ba4b1356bb0b69a94b46fcbd63db0dbef52d92dbd8",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "packages/ide-runtime/README.md",
+      "sha256": "bb9b2dd08131af3df3f16c022489b16ca72b3436ca52f4011626c87c50188a67",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

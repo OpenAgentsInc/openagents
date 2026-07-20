@@ -1,0 +1,30 @@
+{
+  "name": "@openagentsinc/agent-turn-runtime",
+  "version": "0.1.0",
+  "private": false,
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "test": "vp test --run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@openagentsinc/agent-runtime-schema": "workspace:*",
+    "@openagentsinc/ide-runtime": "workspace:*",
+    "@openagentsinc/portable-session-contract": "workspace:*",
+    "@openagentsinc/provider-account-schema": "workspace:*",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "typescript": "catalog:"
+  }
+}

@@ -1571,6 +1571,57 @@ importers:
         specifier: 'catalog:'
         version: 0.2.4(@opentelemetry/api@1.9.0)(@types/node@24.13.1)(esbuild@0.28.1)(happy-dom@20.10.6)(jiti@2.7.0)(terser@5.49.0)(tsx@4.20.6)(typescript@6.0.3)(yaml@2.9.0)
 
+  packages/agent-surface:
+    dependencies:
+      '@openagentsinc/agent-runtime-schema':
+        specifier: workspace:*
+        version: link:../agent-runtime-schema
+      effect:
+        specifier: 4.0.0-beta.94
+        version: 4.0.0-beta.94
+    devDependencies:
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+
+  packages/agent-turn-runtime:
+    dependencies:
+      '@openagentsinc/agent-runtime-schema':
+        specifier: workspace:*
+        version: link:../agent-runtime-schema
+      '@openagentsinc/ide-runtime':
+        specifier: workspace:*
+        version: link:../ide-runtime
+      '@openagentsinc/portable-session-contract':
+        specifier: workspace:*
+        version: link:../portable-session-contract
+      '@openagentsinc/provider-account-schema':
+        specifier: workspace:*
+        version: link:../provider-account-schema
+      effect:
+        specifier: 4.0.0-beta.94
+        version: 4.0.0-beta.94
+    devDependencies:
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+
+  packages/agent-turn-store:
+    dependencies:
+      '@openagentsinc/agent-runtime-schema':
+        specifier: workspace:*
+        version: link:../agent-runtime-schema
+      '@openagentsinc/agent-turn-runtime':
+        specifier: workspace:*
+        version: link:../agent-turn-runtime
+      effect:
+        specifier: 4.0.0-beta.94
+        version: 4.0.0-beta.94
+    devDependencies:
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+
   packages/ai-sdk-sandbox-local:
     dependencies:
       '@ai-sdk/harness':
@@ -1598,6 +1649,22 @@ importers:
       zod:
         specifier: ^3.25.76
         version: 3.25.76
+    devDependencies:
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+
+  packages/apple-fm-runtime:
+    dependencies:
+      '@openagentsinc/agent-runtime-schema':
+        specifier: workspace:*
+        version: link:../agent-runtime-schema
+      '@openagentsinc/agent-turn-runtime':
+        specifier: workspace:*
+        version: link:../agent-turn-runtime
+      effect:
+        specifier: 4.0.0-beta.94
+        version: 4.0.0-beta.94
     devDependencies:
       typescript:
         specifier: 'catalog:'
@@ -1887,6 +1954,19 @@ importers:
       '@openagentsinc/pylon-core':
         specifier: workspace:*
         version: link:../pylon-core
+      effect:
+        specifier: 4.0.0-beta.94
+        version: 4.0.0-beta.94
+    devDependencies:
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+
+  packages/ide-runtime:
+    dependencies:
+      '@openagentsinc/agent-runtime-schema':
+        specifier: workspace:*
+        version: link:../agent-runtime-schema
       effect:
         specifier: 4.0.0-beta.94
         version: 4.0.0-beta.94
