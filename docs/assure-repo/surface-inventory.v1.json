@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:9d42e58454d92af8bf18210d3cc70661c39aead07aa4cf9e8f2f85a83e73e02b",
+  "sourceDigest": "sha256:ccc9c3f7b1a76bafed57f815e58631e2095204bb2d579e2263dc18e926e5e86e",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -285,7 +285,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "apps/openagents-desktop (322 tracked test files)"
+          "ref": "apps/openagents-desktop (327 tracked test files)"
         },
         {
           "type": "behavior-contract",
@@ -1475,6 +1475,23 @@
       }
     },
     {
+      "id": "package:@openagentsinc/agent-experience-memory",
+      "kind": "package",
+      "owningPath": "packages/agent-experience-memory",
+      "title": "@openagentsinc/agent-experience-memory",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/agent-experience-memory (4 tracked test files)"
+        }
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
+    },
+    {
       "id": "package:@openagentsinc/agent-readiness",
       "kind": "package",
       "owningPath": "packages/agent-readiness",
@@ -1567,7 +1584,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "packages/agent-turn-runtime (3 tracked test files)"
+          "ref": "packages/agent-turn-runtime (4 tracked test files)"
         }
       ],
       "obligation": {
@@ -1910,7 +1927,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "packages/dse (6 tracked test files)"
+          "ref": "packages/dse (8 tracked test files)"
         }
       ],
       "obligation": {
@@ -2265,6 +2282,23 @@
       }
     },
     {
+      "id": "package:@openagentsinc/local-secret-store",
+      "kind": "package",
+      "owningPath": "packages/local-secret-store",
+      "title": "@openagentsinc/local-secret-store",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/local-secret-store (3 tracked test files)"
+        }
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
+    },
+    {
       "id": "package:@openagentsinc/managed-sandbox-contract",
       "kind": "package",
       "owningPath": "packages/managed-sandbox-contract",
@@ -2548,7 +2582,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "packages/pylon-core (17 tracked test files)"
+          "ref": "packages/pylon-core (18 tracked test files)"
         },
         {
           "type": "behavior-contract",
@@ -2654,7 +2688,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "packages/sovereign-identity (2 tracked test files)"
+          "ref": "packages/sovereign-identity (11 tracked test files)"
         }
       ],
       "obligation": {
@@ -3092,17 +3126,17 @@
     }
   ],
   "summary": {
-    "totalSurfaces": 161,
+    "totalSurfaces": 163,
     "byKind": {
       "app": 16,
       "crate": 6,
       "document": 42,
-      "package": 86,
+      "package": 88,
       "public-endpoint": 2,
       "release-pipeline": 8,
       "worker": 1
     },
-    "withOracle": 147,
+    "withOracle": 149,
     "unverified": 14,
     "byUnverifiedReason": {
       "config-only": 2,
@@ -3110,7 +3144,7 @@
       "reference-only": 2
     },
     "byObligationState": {
-      "designed": 115,
+      "designed": 117,
       "inconclusive": 9,
       "mapped": 32,
       "out-of-scope": 5

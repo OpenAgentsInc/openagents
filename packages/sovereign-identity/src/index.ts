@@ -19,3 +19,4 @@
  */
 export * from "./contract/index.ts";
 export * from "./machinery/index.ts";
+export * from "./decode/index.ts";
