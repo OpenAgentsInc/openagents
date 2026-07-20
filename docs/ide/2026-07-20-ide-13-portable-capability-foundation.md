@@ -77,9 +77,9 @@ projection issues and are not used as authority.
 
 The current evidence receipt is
 `apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-portability.json`.
-Candidate commit `5abcf1351055ebfba7e033b747e23c3f64c609d4` produced the
+Candidate commit `0ee3e4491319b68615b3261d4855f93930dcdf4a` produced the
 current real owner-local receipt on macOS arm64 with Node 24.13.1. Evidence
-commit `fd39274a68` records the aggregate non-acceptance receipt.
+commit `cde6afda74` records the aggregate non-acceptance receipt.
 
 The real owner-local cohort completed one move from generation 1 to generation
 2 and one failback to generation 3. It also completed activation replay, stale
@@ -87,10 +87,10 @@ generation refusal, abort cleanup, encrypted artifact deletion, and final
 helper cleanup. The destination started a real PTY, the signed TypeScript LSP,
 and a filesystem watcher. DAP and native helpers stayed unsupported.
 
-The performance cohort completed 10 full runs. The p95 values were 0.79 ms for
-quiesce, 89.54 ms for checkpoint, 97.79 ms for upload, 202.90 ms for redeem,
-76.35 ms for attach, and 0.01 ms for helper readiness. Failback p95 was 746.92
-ms. Teardown p95 was 367.72 ms. All 16 phase and resource metric rows passed.
+The performance cohort completed 10 full runs. The p95 values were 0.55 ms for
+quiesce, 46.35 ms for checkpoint, 50.04 ms for upload, 93.81 ms for redeem,
+56.39 ms for attach, and 0.01 ms for helper readiness. Failback p95 was 541.37
+ms. Teardown p95 was 308.85 ms. All 16 phase and resource metric rows passed.
 The checked-in receipt records the raw values and p50, p95, and p99 values.
 
 The fault inventory contains all 27 required rows. A source-controlled probe
