@@ -319,6 +319,7 @@ import {
 } from "./runtime-control-outcome-contract.ts"
 import { localRuntimePersistenceOperation } from "./local-runtime-event-persistence.ts"
 import { openLocalTurnJournal } from "./local-turn-journal.ts"
+import { desktopAfsTurnKernelEnabled, installDesktopTurnKernel } from "./turn/desktop-turn-main.ts"
 import {
   filterLocallyOwnedCodexHistoryCatalog,
   filterLocallyOwnedCodexHistorySearch,
@@ -1344,6 +1345,24 @@ ipcMain.handle(DesktopRuntimeControlOutcomeLookupChannel, (event, value: unknown
 const localTurnJournal = openLocalTurnJournal(
   path.join(app.getPath("userData"), "local-turns", "journal.json"),
 )
+// AFS-01 (#9079): compose the shared UI-neutral turn kernel in Electron main,
+// behind an explicit rollback flag. Default OFF keeps the existing renderer
+// provider-lane path as the live path (removed in AFS-03). Additive and
+// isolated; real Desktop provider-lane wiring lands in AFS-02.
+if (desktopAfsTurnKernelEnabled()) {
+  installDesktopTurnKernel({
+    ipcMain: {
+      handle: (channel, handler) => ipcMain.handle(channel, (event, value) => handler(event, value)),
+      removeHandler: (channel) => ipcMain.removeHandler(channel),
+    },
+    sender: () => {
+      const window = BrowserWindow.getAllWindows().find((candidate) => !candidate.isDestroyed())
+      return window ? window.webContents : null
+    },
+    threadStore: threads(),
+    journalFilePath: path.join(app.getPath("userData"), "agent-turns", "journal.json"),
+  })
+}
 const fullAutoRegistry = openFullAutoRegistry(
   path.join(app.getPath("userData"), "full-auto", "registry.json"),
 )

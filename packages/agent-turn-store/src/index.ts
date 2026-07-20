@@ -1,25 +1,14 @@
-import type { SafeTurnProjection, TurnLifecycleState } from "@openagentsinc/agent-runtime-schema";
-import type { TurnJournalPort } from "@openagentsinc/agent-turn-runtime";
-
 /**
- * `@openagentsinc/agent-turn-store` — the driver-neutral turn journal (AFS-00
- * reservation).
+ * `@openagentsinc/agent-turn-store` — the driver-neutral turn journal.
  *
- * Packet AFS-01 adds the store port, the driver-neutral state and migrations,
- * and an in-memory test adapter. Platform drivers (Node, Expo, browser, memory)
- * live only in platform subpaths or app composition roots, never in this root
- * export.
- *
- * This package owns the driver-neutral state and migrations. It must not own
- * platform drivers in its root export. The turn state machine must not import a
- * concrete store.
+ * AFS-01 adds the driver-neutral persisted state, its single additive migration
+ * path, and an in-memory adapter of the kernel `TurnJournal` port. Platform
+ * drivers (Node, Expo, browser) live only in platform subpaths or app
+ * composition roots, never in this root export. This package owns the
+ * driver-neutral state and migrations. The turn state machine must not import a
+ * concrete store; the store depends on the kernel, not the reverse.
  */
 export const AGENT_TURN_STORE_PACKAGE = "@openagentsinc/agent-turn-store" as const;
 export const AGENT_TURN_STORE_RESERVED = true as const;
 
-/** The driver-neutral store port AFS-01 implements over the turn journal. */
-export interface TurnStorePort {
-  readonly journal: TurnJournalPort;
-  readonly lastState: TurnLifecycleState;
-  readonly projection: SafeTurnProjection | null;
-}
+export * from "./turn-journal-memory.js";

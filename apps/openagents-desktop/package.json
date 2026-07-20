@@ -85,7 +85,8 @@
     "test": "vp test --run --max-concurrency 1 --root ../.. apps/openagents-desktop",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "typecheck:managed-sandbox-live": "tsc -p tsconfig.managed-sandbox-live.json --noEmit",
-    "verify": "pnpm run typecheck && pnpm run test && pnpm run build && OPENAGENTS_DESKTOP_SMOKE=1 pnpm run smoke && pnpm run smoke:react"
+    "verify": "pnpm run typecheck && pnpm run test && pnpm run build && OPENAGENTS_DESKTOP_SMOKE=1 pnpm run smoke && pnpm run smoke:react",
+    "check:afs-boundaries": "node --import tsx ../../scripts/check-afs-boundaries.ts"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.172",
@@ -99,6 +100,8 @@
     "@openagentsinc/agent-client-protocol-conformance": "workspace:*",
     "@openagentsinc/agent-client-runtime-bridge": "workspace:*",
     "@openagentsinc/agent-runtime-schema": "workspace:*",
+    "@openagentsinc/agent-turn-runtime": "workspace:*",
+    "@openagentsinc/agent-turn-store": "workspace:*",
     "@openagentsinc/assurance-spec": "workspace:*",
     "@openagentsinc/audio-contract": "workspace:*",
     "@openagentsinc/behavior-contracts": "workspace:*",

@@ -491,6 +491,12 @@ importers:
       '@openagentsinc/agent-runtime-schema':
         specifier: workspace:*
         version: link:../../packages/agent-runtime-schema
+      '@openagentsinc/agent-turn-runtime':
+        specifier: workspace:*
+        version: link:../../packages/agent-turn-runtime
+      '@openagentsinc/agent-turn-store':
+        specifier: workspace:*
+        version: link:../../packages/agent-turn-store
       '@openagentsinc/assurance-spec':
         specifier: workspace:*
         version: link:../../packages/assurance-spec
