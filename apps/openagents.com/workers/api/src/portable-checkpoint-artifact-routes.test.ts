@@ -78,7 +78,7 @@ const manifest: PortableCheckpointCustodyObjectManifest = {
   ciphertextDigest,
   commandClaim,
   ownerRef,
-  sourcePylonRef: sourceTargetRef,
+  sourcePylonRef,
   targetRef: destinationTargetRef,
   sessionRef: commandClaim.sessionRef,
   sourceAttachmentRef: commandClaim.sourceAttachmentRef,
@@ -357,6 +357,21 @@ describe("portable checkpoint artifact routes (IDE-13)", () => {
     );
     expect(staleResponse?.status).toBe(409);
     expect(await staleResponse?.json()).toMatchObject({ error: "checkpoint_artifact_stale_claim" });
+
+    const swappedSourceBinding = setup();
+    const swappedSourceResponse = await swappedSourceBinding.route(
+      bearerRequest(`${base(sourcePylonRef, sourceTargetRef)}/prepare`, {
+        body: {
+          operationRef: sourceOperationRef,
+          manifest: { ...manifest, sourcePylonRef: sourceTargetRef },
+        },
+      }),
+      {},
+    );
+    expect(swappedSourceResponse?.status).toBe(400);
+    expect(await swappedSourceResponse?.json()).toMatchObject({
+      error: "checkpoint_artifact_invalid",
+    });
 
     const active = setup();
     const preparedResponse = await active.route(

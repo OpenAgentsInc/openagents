@@ -277,7 +277,8 @@ const assertCommonOperation = (
     manifest.sessionRef !== commandClaim.sessionRef ||
     manifest.sourceAttachmentRef !== commandClaim.sourceAttachmentRef ||
     manifest.sourceGeneration !== commandClaim.sourceGeneration ||
-    manifest.sourcePylonRef !== commandClaim.executorEnvironmentRef ||
+    (["checkpoint-create", "source-cleanup"].includes(operation.request.kind) &&
+      manifest.sourcePylonRef !== operation.request.pylonRef) ||
     manifest.targetRef !== commandClaim.destinationTargetRef ||
     Date.parse(manifest.createdAt) > now.getTime() ||
     Date.parse(manifest.expiresAt) <= now.getTime() ||
@@ -300,6 +301,7 @@ const assertSourceAuthority = (
   const request = authority.operation.request;
   if (
     request.kind !== "checkpoint-create" ||
+    request.pylonRef !== manifest.sourcePylonRef ||
     request.attachmentRef !== manifest.sourceAttachmentRef ||
     request.attachmentGeneration !== manifest.sourceGeneration ||
     request.targetRef !== manifest.commandClaim.executorEnvironmentRef ||
@@ -343,6 +345,7 @@ const assertDeleteAuthority = (
   const request = authority.operation.request;
   const sourceCleanup =
     request.kind === "source-cleanup" &&
+    request.pylonRef === manifest.sourcePylonRef &&
     request.attachmentRef === manifest.sourceAttachmentRef &&
     request.attachmentGeneration === manifest.sourceGeneration &&
     request.targetRef === manifest.commandClaim.executorEnvironmentRef;
