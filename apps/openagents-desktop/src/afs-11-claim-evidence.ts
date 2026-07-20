@@ -413,7 +413,7 @@ export const afs11ClaimLedger: ReadonlyArray<ClaimRecord> = [
         ran: true,
         result: "pass",
         detail:
-          "Run for #9089 against the built dist artifact set. Green rows: clean_origin_main, version_monotonic, attribution_intact, app_identity_stable, artifact_set_complete, no_upstream_updater_remnants, no_legacy_ui_entrypoints, no_source_checkout_paths. The only red row is signing_credentials_present, which is the owner-reserved ceremony below.",
+          "Run for #9089 against the built dist artifact set. Green rows: clean_origin_main, version_monotonic, attribution_intact, app_identity_stable, artifact_set_complete, no_upstream_updater_remnants, no_legacy_ui_entrypoints, no_source_checkout_paths. On 2026-07-20 an owner-authorized run reran the preflight with the Developer ID and ASC notary credentials loaded, and all nine oracles were green, including signing_credentials_present.",
       },
       {
         ref: "apps/openagents-desktop/src/isolated-app-proof.ts",
@@ -442,11 +442,11 @@ export const afs11ClaimLedger: ReadonlyArray<ClaimRecord> = [
     proofs: [
       {
         ref: "apps/openagents-desktop/scripts/release-preflight.ts",
-        kind: "owner-signing",
+        kind: "packaged",
         ran: true,
-        result: "refused-owner-gated",
+        result: "pass",
         detail:
-          "The signing_credentials_present oracle REFUSED because the owner-held Developer ID identity and ASC_API notary credentials are absent. There is no unsigned release fallback. This is the honest, expected fail-closed state.",
+          "On 2026-07-20 an owner-authorized run loaded the Developer ID and ASC notary credentials, and the release preflight passed all nine oracles including signing_credentials_present. make:mac then signed the OpenAgents RC 0.1.0-rc.25 arm64 app and DMG under Developer ID Application: OpenAgents, Inc. (HQWSG26L43) with a hardened runtime, and Apple notarization was Accepted for both the app and the DMG, which were stapled. Independent Gatekeeper assessment is green: codesign --verify --deep --strict is valid and satisfies the Designated Requirement, spctl --assess --type execute reports the app accepted as Notarized Developer ID, spctl accepts the DMG as Notarized Developer ID, and stapler validate works on the app and the DMG. The signed binary boots through the packaged smoke, and the 70 version-one capability tests pass. Full receipt: docs/apple-fm/2026-07-20-afs-11-release-evidence.md and issue #9089.",
       },
       {
         ref: "apps/oa-updates/docs/release-signing-runbook.md",
@@ -454,7 +454,7 @@ export const afs11ClaimLedger: ReadonlyArray<ClaimRecord> = [
         ran: false,
         result: "not-run",
         detail:
-          "The signed and notarized installed-application proof is an owner ceremony. It requires the owner-held Developer ID and notary credentials and cannot be run autonomously. See the workspace NEEDS_OWNER ledger for the exact owner steps.",
+          "The signing and notarization ceremony is complete (see the packaged proof above). What remains owner-reserved is the interactive installed-application version-one acceptance journey: install from the signed DMG on a clean machine, then drive the live Apple FM on-device answer and route recommendation and the host-selected codex-local delegation producing real running, done, failed, refused, and cancelled cards through the installed application interface. That journey needs a human at the interface, because this repository has no user-interface click automation, plus the on-device Apple Intelligence model and a logged-in Codex session, so an agent cannot run it. See the workspace NEEDS_OWNER ledger for the exact owner steps.",
       },
     ],
   },

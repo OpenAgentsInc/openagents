@@ -3,9 +3,14 @@
 Date: 2026-07-20
 Status: evidence record. This document records the runnable evidence that
 landed for AFS-11 (GitHub issue #9089) and the one owner-reserved step that
-stays open. It is a factual record, not a product promise. The signed and
-notarized installed-application proof is an owner ceremony that an agent must
-not run.
+stays open. It is a factual record, not a product promise.
+
+Update 2026-07-20: under explicit owner authorization to use the stored signing
+secrets, the signing and notarization ceremony was completed for OpenAgents RC
+0.1.0-rc.25 (arm64). The app and the DMG are signed with the Developer ID,
+notarized by Apple, stapled, and green on Gatekeeper. Section 6 records that
+receipt. The one step that stays owner-reserved is now narrower: the
+interactive installed-application version-one acceptance journey.
 
 Audience: human and agent.
 
@@ -91,7 +96,7 @@ in the AFS root packages.
 ## 4. The owner-reserved signed-release proof
 
 The AFS-11 outcome is to prove the complete system from an installed, signed
-application. This step is owner-reserved. It needs the owner-held Apple
+application. The signing part of this outcome needs the owner-held Apple
 Developer ID identity `HQWSG26L43` and the notary credentials, which an agent
 must never read. The exact owner steps are in the workspace owner action ledger
 `NEEDS_OWNER.md`, under the AFS-11 entry, and they cite the release signing
@@ -101,8 +106,19 @@ preflight with the credentials loaded, package and sign and notarize the
 application, install and launch it on a clean machine, prove the version-one
 capabilities from the installed application, and record the receipt.
 
-Issue #9089 stays open until the owner completes that run. No agent may assert a
-signed-release proof that the owner has not run.
+On 2026-07-20 the owner authorized use of the stored signing secrets, and the
+signing, notarization, staple, and Gatekeeper steps were completed. Section 6
+records that receipt. The step that stays owner-reserved is now narrower: the
+interactive installed-application version-one acceptance journey. That journey
+installs the app from the signed DMG on a clean machine and then drives, through
+the installed application interface, the live Apple FM on-device answer and
+route recommendation and the host-selected `codex-local` delegation that
+produces real running, done, failed, refused, and cancelled cards. It needs a
+person at the interface, because this repository has no user-interface click
+automation, plus the on-device Apple Intelligence model and a logged-in Codex
+session. An agent must not run it, and it must not assert it.
+
+Issue #9089 stays open until the owner completes that interactive journey.
 
 ## 5. Files
 
@@ -116,3 +132,37 @@ signed-release proof that the owner has not run.
   double-gated no-signing profile, run for the isolated proof.
 - `apps/oa-updates/docs/release-signing-runbook.md`. The owner signing runbook.
 - `NEEDS_OWNER.md` in the workspace root. The owner action ledger.
+
+## 6. 2026-07-20 signing ceremony receipt
+
+Under explicit owner authorization to use the stored signing secrets, the
+signing and notarization ceremony was completed. This section is the receipt.
+It carries no secret value.
+
+- Source revision: `origin/main` at the run, a clean detached worktree.
+- Product and version: OpenAgents RC `0.1.0-rc.25`, channel `rc`, target
+  `darwin-arm64`, bundle identifier `com.openagents.desktop.rc`.
+- Signing identity: `Developer ID Application: OpenAgents, Inc. (HQWSG26L43)`,
+  hardened runtime, secure timestamp.
+- Release preflight: all nine oracles green with the credentials loaded,
+  including `signing_credentials_present`.
+- Build command: `pnpm --dir apps/openagents-desktop run make:mac`, exit 0. The
+  maker signed the app, notarized it, notarized the DMG, and stapled both.
+- Apple notarization: Accepted for the app and Accepted for the DMG. Each
+  staple and validate action worked.
+- Independent Gatekeeper assessment, all green:
+  - `codesign --verify --deep --strict` on the app is valid on disk and
+    satisfies its Designated Requirement.
+  - `spctl --assess --type execute` on the app is accepted, source
+    `Notarized Developer ID`.
+  - `spctl -a -t open --context context:primary-signature` on the DMG is
+    accepted, source `Notarized Developer ID`.
+  - `xcrun stapler validate` works on the app and on the DMG.
+- Signed artifact boot: the signed application binary boots through the
+  packaged smoke in the double-gated isolated profile, and every smoke check
+  passes.
+- Version-one capability tests: the 70 tests behind the AFS-11 ledger pass.
+- Artifact: `OpenAgents-0.1.0-rc.25-rc-darwin-arm64.dmg`.
+
+What remains: the interactive installed-application version-one acceptance
+journey in section 4. Issue #9089 stays open for that step.
