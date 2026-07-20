@@ -93,6 +93,7 @@ export type ManagedAgentComputerPortableProvisioner = Readonly<{
     executionBinding: PortableSessionExecutionBinding
     attachmentRef: string
     generation: number
+    destinationRunnerSessionReservationRef: string
     capabilityLeaseRefs: ReadonlyArray<string>
     authorityEvidenceRef: string
   }>) => Promise<PortableTargetActivationReceipt>
@@ -300,6 +301,8 @@ export class PostgresManagedAgentComputerTarget implements PortableSessionExecut
         executionBinding: input.executionBinding,
         attachmentRef: input.destinationAttachmentRef,
         generation: input.destinationGeneration,
+        destinationRunnerSessionReservationRef:
+          stageReceipt.destinationRunnerSessionReservationRef,
         capabilityLeaseRefs: operation.capabilityLeaseRefs,
         authorityEvidenceRef,
       })), {

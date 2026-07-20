@@ -352,6 +352,11 @@ export const createOaCodexControlPortableProvisioner = (
       payload: {
         checkpointRef: input.checkpointRef,
         executionBinding: input.executionBinding,
+        destinationRunnerSessionReservationRef:
+          input.destinationRunnerSessionReservationRef,
+        authenticationPolicyRef:
+          "policy.portable.destination.openagents_managed.v1",
+        helpersObservedAt: new Date().toISOString(),
         capabilityLeaseRefs: input.capabilityLeaseRefs,
         authorityEvidenceRef: input.authorityEvidenceRef,
       },

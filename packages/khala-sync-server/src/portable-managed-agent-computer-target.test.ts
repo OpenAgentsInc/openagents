@@ -134,7 +134,7 @@ const fakeProvisioner = (counts: Counts): ManagedAgentComputerPortableProvisione
       destinationTargetRef: input.targetRef,
       destinationAttachmentRef: input.attachmentRef,
       destinationRunnerSessionReservationRef:
-        `runner-session-reservation.${input.sessionRef}`,
+        input.destinationRunnerSessionReservationRef,
       destinationGeneration: input.generation,
       authentication: {
         state: "reauthenticated",

@@ -71,6 +71,8 @@ describe("oa-codex-control retained Agent Computer provisioner", () => {
         )
         return Response.json({
           resourceRef: "resource.agent-computer.binding",
+          destinationRunnerSessionReservationRef:
+            "runner-session-reservation.port03.binding",
           checkpointDigest: bundle.checkpoint.digest,
           repositoryPostImageDigest: bundle.checkpoint.repositoryPostImageDigest,
           diffDigest: bundle.checkpoint.diffDigest,
@@ -98,12 +100,39 @@ describe("oa-codex-control retained Agent Computer provisioner", () => {
         body,
       })
       const action = body.action
+      const payload = body.payload as Record<string, unknown>
       const responses: Record<string, unknown> = {
         stage: {
           resourceRef: "resource.agent-computer.binding",
           materializationRequired: true,
         },
         activate: {
+          schema: "openagents.ide_portable_destination_activation.v1",
+          receiptRef: "receipt.port03.binding.activate",
+          operationRef: body.operationRef,
+          sessionRef: body.sessionRef,
+          checkpointRef: payload.checkpointRef,
+          destinationTargetRef: body.targetRef,
+          destinationAttachmentRef: body.attachmentRef,
+          destinationRunnerSessionReservationRef:
+            payload.destinationRunnerSessionReservationRef,
+          destinationGeneration: body.generation,
+          authentication: {
+            state: "reauthenticated",
+            policyRef: payload.authenticationPolicyRef,
+            evidenceRef: payload.authorityEvidenceRef,
+            observedAt: payload.helpersObservedAt,
+            expiresAt: null,
+          },
+          helpersObservedAt: payload.helpersObservedAt,
+          helpers: ["pty", "lsp", "dap", "watcher", "native"].map(kind => ({
+            kind,
+            readiness: "unsupported",
+            instanceRef: null,
+            versionRef: null,
+            omissionRef: `omission.port03.binding.${kind}`,
+            evidenceRefs: [],
+          })),
           activatedAgentRefs: ["agent.port03.binding.root"],
           acceptedWorkRefs: [{ agentRef: "agent.port03.binding.root", turnRef: "turn.port03.binding.1" }],
           evidenceRefs: ["evidence.port03.binding.activate"],
@@ -171,6 +200,8 @@ describe("oa-codex-control retained Agent Computer provisioner", () => {
       executionBinding: bundle.executionBinding,
       attachmentRef: "attachment.port03.binding.managed",
       generation: 2,
+      destinationRunnerSessionReservationRef:
+        staged.destinationRunnerSessionReservationRef,
       capabilityLeaseRefs: ["lease.port03.binding.provider"],
       authorityEvidenceRef: "evidence.port03.binding.authority",
     })
