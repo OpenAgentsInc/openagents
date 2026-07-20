@@ -321,6 +321,7 @@ import { localRuntimePersistenceOperation } from "./local-runtime-event-persiste
 import { openLocalTurnJournal } from "./local-turn-journal.ts"
 import { desktopAfsTurnKernelEnabled, installDesktopTurnKernel } from "./turn/desktop-turn-main.ts"
 import { makeDesktopAppleFmProviderRegistry } from "./turn/desktop-apple-fm-provider.ts"
+import type { AppleFmAvailableAgent } from "./turn/apple-fm-prompt.ts"
 import { makeCodexProviderRegistry, type CodexLaneReadiness } from "./turn/desktop-codex-provider.ts"
 import {
   filterLocallyOwnedCodexHistoryCatalog,
@@ -1374,6 +1375,34 @@ const codexDelegationReadiness = async (): Promise<CodexLaneReadiness> => {
     return { ready: false, unavailableReason: "not_ready" }
   }
 }
+// AFS-04 follow-up: the host-owned connected-agent snapshot the on-device Apple
+// FM router prompt names. It is resolved lazily at turn time from the SAME
+// main-owned lane readiness the boot sequence and the delegation router use
+// (never renderer input): codex readiness for the delegate lane, the provider
+// lane registry for the Claude/Grok peers. Only codex `canDelegate` today —
+// AFS-04 wires codex first; the prompt offers a delegation JSON only for
+// delegate-capable agents, so the others are named but never hand-off targets.
+// `providerLaneEntries` is declared later in this module but only referenced
+// when a turn runs (after module init), so the forward reference is safe.
+const resolveAppleFmAvailableAgents = async (): Promise<ReadonlyArray<AppleFmAvailableAgent>> => {
+  const codex = await codexDelegationReadiness()
+  const agents: AppleFmAvailableAgent[] = [
+    { candidate: "codex", label: "Codex", ready: codex.ready, canDelegate: true },
+  ]
+  try {
+    const entries = await providerLaneEntries()
+    const laneReady = (ref: string): boolean => {
+      const entry = entries.find((candidate) => candidate.laneRef === ref)
+      return entry !== undefined && entry.admission === "admitted" && entry.authentication === "ready"
+    }
+    agents.push({ candidate: "claude", label: "Claude Code", ready: laneReady("claude-local"), canDelegate: false })
+    agents.push({ candidate: "grok_acp", label: "Grok", ready: laneReady("acp:grok-cli"), canDelegate: false })
+  } catch {
+    // Fail-soft: if the lane registry probe throws, keep codex-only awareness
+    // rather than blocking the local turn.
+  }
+  return agents
+}
 if (desktopAfsTurnKernelEnabled()) {
   installDesktopTurnKernel({
     ipcMain: {
@@ -1386,7 +1415,11 @@ if (desktopAfsTurnKernelEnabled()) {
     },
     threadStore: threads(),
     journalFilePath: path.join(app.getPath("userData"), "agent-turns", "journal.json"),
-    providerRegistry: makeDesktopAppleFmProviderRegistry(() => appleFmHostRef, () => threads()),
+    providerRegistry: makeDesktopAppleFmProviderRegistry(
+      () => appleFmHostRef,
+      () => threads(),
+      resolveAppleFmAvailableAgents,
+    ),
     codexProvider: makeCodexProviderRegistry({
       readiness: codexDelegationReadiness,
       runTurn: async ({ requestRef, threadRef, message, emit }) => {

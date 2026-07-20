@@ -8,7 +8,17 @@ import type { ProviderRegistryInterface } from "@openagentsinc/agent-turn-runtim
 import type { AppleFmHost } from "../apple-fm-host.ts"
 import type { AppleFmTurnResult } from "../apple-fm-contract.ts"
 import type { makeThreadStore } from "../thread-store.ts"
-import { buildOpenAgentsAppleFmPrompt } from "./apple-fm-prompt.ts"
+import { buildOpenAgentsAppleFmPrompt, type AppleFmAvailableAgent } from "./apple-fm-prompt.ts"
+
+/**
+ * The host-owned connected-agent snapshot the prompt names. It is resolved
+ * lazily at turn time from the SAME main-owned lane readiness the boot sequence
+ * and the AFS-04 router use — never renderer input. Absent → the prompt keeps
+ * its plain honesty preamble (no invented agents).
+ */
+export type AppleFmAvailableAgentsSource = () =>
+  | ReadonlyArray<AppleFmAvailableAgent>
+  | Promise<ReadonlyArray<AppleFmAvailableAgent>>
 
 /**
  * AFS-02 (#9080): register Apple FM into the AFS-01 `InferenceProviderRegistry`
@@ -66,15 +76,17 @@ const honestPromptFor = (
   store: ThreadStore | null,
   threadRef: string,
   fallback: string,
+  availableAgents: ReadonlyArray<AppleFmAvailableAgent>,
 ): string => {
   const thread = store?.open(threadRef) ?? null
   const turns = thread === null ? [] : thread.notes
-  return buildOpenAgentsAppleFmPrompt(turns.length > 0 ? turns : [{ role: "user", text: fallback }])
+  return buildOpenAgentsAppleFmPrompt(turns.length > 0 ? turns : [{ role: "user", text: fallback }], availableAgents)
 }
 
 export const makeDesktopAppleFmProviderRegistry = (
   getHost: () => AppleFmHost | null,
   getThreadStore: () => ThreadStore | null = () => null,
+  getAvailableAgents: AppleFmAvailableAgentsSource = () => [],
 ): ProviderRegistryInterface =>
   makeAppleFmProviderRegistry({
     providerRef: APPLE_FM_LOCAL_PROVIDER_REF,
@@ -82,9 +94,19 @@ export const makeDesktopAppleFmProviderRegistry = (
     complete: async (prompt, meta) => {
       const host = getHost()
       if (host === null) return { outcome: "failed", usageTruth: "unknown", failureClass: "not_ready" }
+      // Resolve the host-owned connected-agent snapshot so the prompt names the
+      // agents that are actually ready and can be delegated to. Fail-soft: if the
+      // availability probe throws, fall back to no agents (plain honesty preamble)
+      // rather than blocking the local turn.
+      let availableAgents: ReadonlyArray<AppleFmAvailableAgent> = []
+      try {
+        availableAgents = await getAvailableAgents()
+      } catch {
+        availableAgents = []
+      }
       // Build the authoritative, honesty-bounded prompt from the canonical
       // thread history the host owns — never from renderer-supplied prose.
-      const honest = honestPromptFor(getThreadStore(), meta.threadRef, prompt)
+      const honest = honestPromptFor(getThreadStore(), meta.threadRef, prompt, availableAgents)
       return turnResultToCompletion(await host.runTurn(honest))
     },
   })
