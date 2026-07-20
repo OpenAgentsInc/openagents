@@ -1,8 +1,10 @@
 {
-  "schemaVersion": "openagents.desktop.ide-portable-evidence.v1",
+  "schemaVersion": "openagents.desktop.ide-portable-evidence.v2",
   "issue": "IDE-13",
-  "candidateCommitSha": "80247be7e2b884ec6fd89ba227490a0556488dac",
-  "generatedAt": "2026-07-20T07:33:29.443Z",
+  "candidateCommitSha": "73bdbf72952121f0422405eb4c1039d7df884dd0",
+  "baseCommitSha": "424db0fe7b08cd5babfb8bd06bda408dd042bf17",
+  "generatedAt": "2026-07-20T12:32:41.978Z",
+  "producerRef": "openagents:ide-13-implementation",
   "environment": {
     "platform": "darwin",
     "architecture": "arm64",
@@ -16,130 +18,532 @@
     "counterexamples": 0,
     "passed": true
   },
-  "metrics": [
+  "implementedChecks": [
     {
-      "operation": "bounded-transition-model",
-      "repetitions": 100,
-      "p50Ms": 0.05566699999999969,
-      "p95Ms": 0.08141700000001606,
-      "p99Ms": 0.09129200000000992,
-      "thresholdP95Ms": 5,
-      "thresholdP99Ms": 10,
-      "passed": true
+      "checkRef": "bounded-attachment-model",
+      "evidenceClass": "model",
+      "result": "passed",
+      "receiptRef": "packages/portable-session-contract/src/ide13-model.test.ts"
     },
     {
-      "operation": "checkpoint-schema-decode",
-      "repetitions": 1000,
-      "p50Ms": 0.008667000000002645,
-      "p95Ms": 0.022415999999992664,
-      "p99Ms": 0.049167000000011285,
-      "thresholdP95Ms": 1,
-      "thresholdP99Ms": 2,
-      "passed": true
+      "checkRef": "coordinator-transition-faults",
+      "evidenceClass": "regression",
+      "result": "passed",
+      "receiptRef": "apps/openagents-desktop/src/ide/portable-coordinator-service.test.ts"
+    },
+    {
+      "checkRef": "durable-command-replay",
+      "evidenceClass": "regression",
+      "result": "passed",
+      "receiptRef": "packages/khala-sync-server/src/portable-session-command-consumer.test.ts"
+    },
+    {
+      "checkRef": "durable-phase-exchange",
+      "evidenceClass": "regression",
+      "result": "passed",
+      "receiptRef": "packages/khala-sync-server/src/portable-phase-operation-store.test.ts"
+    },
+    {
+      "checkRef": "phase-target-binding",
+      "evidenceClass": "regression",
+      "result": "passed",
+      "receiptRef": "packages/khala-sync-server/src/portable-phase-target-adapter.test.ts"
+    },
+    {
+      "checkRef": "phase-claim-recovery",
+      "evidenceClass": "regression",
+      "result": "passed",
+      "receiptRef": "apps/pylon/src/portable-phase-operation-claim-journal.test.ts"
+    },
+    {
+      "checkRef": "encrypted-checkpoint-custody",
+      "evidenceClass": "regression",
+      "result": "passed",
+      "receiptRef": "apps/pylon/tests/portable-session-checkpoint-artifact.test.ts"
+    },
+    {
+      "checkRef": "workspace-search-revocation",
+      "evidenceClass": "regression",
+      "result": "passed",
+      "receiptRef": "apps/openagents-desktop/src/workspace-search-host.test.ts"
+    },
+    {
+      "checkRef": "packaged-fail-closed-boundary",
+      "evidenceClass": "packaged_fail_closed",
+      "result": "passed",
+      "receiptRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-portability-packaged.json"
     }
   ],
   "placementCohorts": [
     {
       "targetClass": "owner_local",
-      "evidenceClass": "real_local",
+      "evidenceClass": "simulator",
+      "journeyScope": "foundation_only",
       "operatingSystem": "darwin",
       "architecture": "arm64",
-      "adapterRef": "adapter.desktop.local",
-      "capabilityState": "ready",
+      "adapter": {
+        "kind": "deterministic_simulator",
+        "ref": "adapter.desktop.local-model",
+        "name": "IDE-13 bounded local model",
+        "version": "2"
+      },
+      "targetRef": "target:local-node-process",
+      "artifact": {
+        "ref": null,
+        "sha256": null,
+        "bytes": null
+      },
+      "candidateCommitSha": "73bdbf72952121f0422405eb4c1039d7df884dd0",
+      "baseCommitSha": "424db0fe7b08cd5babfb8bd06bda408dd042bf17",
+      "capabilityState": "unverified",
       "custody": "owner_device",
       "networkDestinations": [],
       "dataDestinations": [
         "owner_device"
       ],
       "retentionSeconds": 3600,
-      "costFact": "no incremental provider cost",
-      "result": "Real local Node process ran the bounded model and decoded checkpoint boundary. It did not prove a cross-host move."
+      "costFact": "No incremental provider cost was measured.",
+      "phaseReceipts": [
+        {
+          "phase": "quiesce",
+          "evidenceClass": "simulator",
+          "receiptRef": "apps/openagents-desktop/src/ide/portable-coordinator-service.test.ts",
+          "operationRef": "simulated-operation:quiesce",
+          "attachmentGeneration": 1,
+          "result": "passed"
+        },
+        {
+          "phase": "checkpoint",
+          "evidenceClass": "simulator",
+          "receiptRef": "apps/openagents-desktop/src/ide/portable-coordinator-service.test.ts",
+          "operationRef": "simulated-operation:checkpoint",
+          "attachmentGeneration": 1,
+          "result": "passed"
+        },
+        {
+          "phase": "upload",
+          "evidenceClass": "simulator",
+          "receiptRef": "apps/openagents-desktop/src/ide/portable-coordinator-service.test.ts",
+          "operationRef": "simulated-operation:upload",
+          "attachmentGeneration": 1,
+          "result": "passed"
+        },
+        {
+          "phase": "redeem",
+          "evidenceClass": "simulator",
+          "receiptRef": "apps/openagents-desktop/src/ide/portable-coordinator-service.test.ts",
+          "operationRef": "simulated-operation:redeem",
+          "attachmentGeneration": 1,
+          "result": "passed"
+        },
+        {
+          "phase": "attach",
+          "evidenceClass": "simulator",
+          "receiptRef": "apps/openagents-desktop/src/ide/portable-coordinator-service.test.ts",
+          "operationRef": "simulated-operation:attach",
+          "attachmentGeneration": 1,
+          "result": "passed"
+        },
+        {
+          "phase": "helper_readiness",
+          "evidenceClass": "simulator",
+          "receiptRef": "apps/openagents-desktop/src/ide/portable-coordinator-service.test.ts",
+          "operationRef": "simulated-operation:helper_readiness",
+          "attachmentGeneration": 1,
+          "result": "passed"
+        },
+        {
+          "phase": "failback",
+          "evidenceClass": "simulator",
+          "receiptRef": "apps/openagents-desktop/src/ide/portable-coordinator-service.test.ts",
+          "operationRef": "simulated-operation:failback",
+          "attachmentGeneration": 1,
+          "result": "passed"
+        },
+        {
+          "phase": "teardown",
+          "evidenceClass": "simulator",
+          "receiptRef": "apps/openagents-desktop/src/ide/portable-coordinator-service.test.ts",
+          "operationRef": "simulated-operation:teardown",
+          "attachmentGeneration": 1,
+          "result": "passed"
+        }
+      ],
+      "metrics": [
+        {
+          "metricRef": "bounded-transition-model",
+          "metric": "phase_latency",
+          "phase": null,
+          "unit": "milliseconds",
+          "repetitions": 100,
+          "p50": 0.05541700000003402,
+          "p95": 0.08279099999998607,
+          "p99": 0.12416699999999992,
+          "thresholdP95": 5,
+          "thresholdP99": 10,
+          "passed": true,
+          "receiptRef": "local-measurement:bounded-transition-model"
+        },
+        {
+          "metricRef": "checkpoint-schema-decode",
+          "metric": "phase_latency",
+          "phase": null,
+          "unit": "milliseconds",
+          "repetitions": 1000,
+          "p50": 0.008624999999994998,
+          "p95": 0.022917000000006738,
+          "p99": 0.05395800000002282,
+          "thresholdP95": 1,
+          "thresholdP99": 2,
+          "passed": true,
+          "receiptRef": "local-measurement:checkpoint-schema-decode"
+        }
+      ],
+      "result": "The local process ran the model and schema checks. It did not run a real move."
     },
     {
       "targetClass": "owner_managed",
-      "evidenceClass": "deterministic_simulator",
+      "evidenceClass": "simulator",
+      "journeyScope": "foundation_only",
       "operatingSystem": "unknown",
       "architecture": "unknown",
-      "adapterRef": "adapter.owner-managed.simulator",
+      "adapter": {
+        "kind": "deterministic_simulator",
+        "ref": "adapter.owner-managed.simulator",
+        "name": "Owner-managed contract simulator",
+        "version": "2"
+      },
+      "targetRef": null,
+      "artifact": {
+        "ref": null,
+        "sha256": null,
+        "bytes": null
+      },
+      "candidateCommitSha": "73bdbf72952121f0422405eb4c1039d7df884dd0",
+      "baseCommitSha": "424db0fe7b08cd5babfb8bd06bda408dd042bf17",
       "capabilityState": "unverified",
       "custody": "owner_managed",
       "networkDestinations": [],
       "dataDestinations": [],
       "retentionSeconds": 0,
-      "costFact": "not measured",
-      "result": "Contract and coordinator simulator only. No real owner-managed host cohort ran."
+      "costFact": "Cost was not measured.",
+      "phaseReceipts": [
+        {
+          "phase": "quiesce",
+          "evidenceClass": "simulator",
+          "receiptRef": "apps/openagents-desktop/src/ide/portable-coordinator-service.test.ts",
+          "operationRef": "simulated-operation:quiesce",
+          "attachmentGeneration": 1,
+          "result": "passed"
+        },
+        {
+          "phase": "checkpoint",
+          "evidenceClass": "simulator",
+          "receiptRef": "apps/openagents-desktop/src/ide/portable-coordinator-service.test.ts",
+          "operationRef": "simulated-operation:checkpoint",
+          "attachmentGeneration": 1,
+          "result": "passed"
+        },
+        {
+          "phase": "upload",
+          "evidenceClass": "simulator",
+          "receiptRef": "apps/openagents-desktop/src/ide/portable-coordinator-service.test.ts",
+          "operationRef": "simulated-operation:upload",
+          "attachmentGeneration": 1,
+          "result": "passed"
+        },
+        {
+          "phase": "redeem",
+          "evidenceClass": "simulator",
+          "receiptRef": "apps/openagents-desktop/src/ide/portable-coordinator-service.test.ts",
+          "operationRef": "simulated-operation:redeem",
+          "attachmentGeneration": 1,
+          "result": "passed"
+        },
+        {
+          "phase": "attach",
+          "evidenceClass": "simulator",
+          "receiptRef": "apps/openagents-desktop/src/ide/portable-coordinator-service.test.ts",
+          "operationRef": "simulated-operation:attach",
+          "attachmentGeneration": 1,
+          "result": "passed"
+        },
+        {
+          "phase": "helper_readiness",
+          "evidenceClass": "simulator",
+          "receiptRef": "apps/openagents-desktop/src/ide/portable-coordinator-service.test.ts",
+          "operationRef": "simulated-operation:helper_readiness",
+          "attachmentGeneration": 1,
+          "result": "passed"
+        },
+        {
+          "phase": "failback",
+          "evidenceClass": "simulator",
+          "receiptRef": "apps/openagents-desktop/src/ide/portable-coordinator-service.test.ts",
+          "operationRef": "simulated-operation:failback",
+          "attachmentGeneration": 1,
+          "result": "passed"
+        },
+        {
+          "phase": "teardown",
+          "evidenceClass": "simulator",
+          "receiptRef": "apps/openagents-desktop/src/ide/portable-coordinator-service.test.ts",
+          "operationRef": "simulated-operation:teardown",
+          "attachmentGeneration": 1,
+          "result": "passed"
+        }
+      ],
+      "metrics": [],
+      "result": "Only the deterministic coordinator and target contracts ran."
     },
     {
       "targetClass": "openagents_managed",
-      "evidenceClass": "deterministic_simulator",
+      "evidenceClass": "simulator",
+      "journeyScope": "foundation_only",
       "operatingSystem": "linux",
       "architecture": "unknown",
-      "adapterRef": "adapter.openagents-managed.simulator",
+      "adapter": {
+        "kind": "deterministic_simulator",
+        "ref": "adapter.openagents-managed.simulator",
+        "name": "OpenAgents managed target simulator",
+        "version": "2"
+      },
+      "targetRef": null,
+      "artifact": {
+        "ref": null,
+        "sha256": null,
+        "bytes": null
+      },
+      "candidateCommitSha": "73bdbf72952121f0422405eb4c1039d7df884dd0",
+      "baseCommitSha": "424db0fe7b08cd5babfb8bd06bda408dd042bf17",
       "capabilityState": "unverified",
       "custody": "openagents_managed",
       "networkDestinations": [],
       "dataDestinations": [],
       "retentionSeconds": 0,
-      "costFact": "not measured",
-      "result": "Existing managed-placement projection plus coordinator simulator only. SBX-09 live acceptance is absent."
+      "costFact": "Cost was not measured.",
+      "phaseReceipts": [
+        {
+          "phase": "quiesce",
+          "evidenceClass": "simulator",
+          "receiptRef": "packages/khala-sync-server/src/portable-phase-target-adapter.test.ts",
+          "operationRef": "simulated-operation:quiesce",
+          "attachmentGeneration": 1,
+          "result": "passed"
+        },
+        {
+          "phase": "checkpoint",
+          "evidenceClass": "simulator",
+          "receiptRef": "packages/khala-sync-server/src/portable-phase-target-adapter.test.ts",
+          "operationRef": "simulated-operation:checkpoint",
+          "attachmentGeneration": 1,
+          "result": "passed"
+        },
+        {
+          "phase": "upload",
+          "evidenceClass": "simulator",
+          "receiptRef": "packages/khala-sync-server/src/portable-phase-target-adapter.test.ts",
+          "operationRef": "simulated-operation:upload",
+          "attachmentGeneration": 1,
+          "result": "passed"
+        },
+        {
+          "phase": "redeem",
+          "evidenceClass": "simulator",
+          "receiptRef": "packages/khala-sync-server/src/portable-phase-target-adapter.test.ts",
+          "operationRef": "simulated-operation:redeem",
+          "attachmentGeneration": 1,
+          "result": "passed"
+        },
+        {
+          "phase": "attach",
+          "evidenceClass": "simulator",
+          "receiptRef": "packages/khala-sync-server/src/portable-phase-target-adapter.test.ts",
+          "operationRef": "simulated-operation:attach",
+          "attachmentGeneration": 1,
+          "result": "passed"
+        },
+        {
+          "phase": "helper_readiness",
+          "evidenceClass": "simulator",
+          "receiptRef": "packages/khala-sync-server/src/portable-phase-target-adapter.test.ts",
+          "operationRef": "simulated-operation:helper_readiness",
+          "attachmentGeneration": 1,
+          "result": "passed"
+        },
+        {
+          "phase": "failback",
+          "evidenceClass": "simulator",
+          "receiptRef": "packages/khala-sync-server/src/portable-phase-target-adapter.test.ts",
+          "operationRef": "simulated-operation:failback",
+          "attachmentGeneration": 1,
+          "result": "passed"
+        },
+        {
+          "phase": "teardown",
+          "evidenceClass": "simulator",
+          "receiptRef": "packages/khala-sync-server/src/portable-phase-target-adapter.test.ts",
+          "operationRef": "simulated-operation:teardown",
+          "attachmentGeneration": 1,
+          "result": "passed"
+        }
+      ],
+      "metrics": [],
+      "result": "Only the managed target adapter regressions ran. No live managed move ran."
     },
     {
       "targetClass": "managed_provider",
       "evidenceClass": "not_run",
+      "journeyScope": "not_run",
       "operatingSystem": "unknown",
       "architecture": "unknown",
-      "adapterRef": "adapter.managed-provider.unadmitted",
+      "adapter": {
+        "kind": "not_run",
+        "ref": null,
+        "name": null,
+        "version": null
+      },
+      "targetRef": null,
+      "artifact": {
+        "ref": null,
+        "sha256": null,
+        "bytes": null
+      },
+      "candidateCommitSha": "73bdbf72952121f0422405eb4c1039d7df884dd0",
+      "baseCommitSha": "424db0fe7b08cd5babfb8bd06bda408dd042bf17",
       "capabilityState": "unsupported",
       "custody": "unverified",
       "networkDestinations": [],
       "dataDestinations": [],
       "retentionSeconds": 0,
-      "costFact": "not applicable",
-      "result": "No audited provider is admitted or claimed."
+      "costFact": "No provider is admitted.",
+      "phaseReceipts": [
+        {
+          "phase": "quiesce",
+          "evidenceClass": "not_run",
+          "receiptRef": null,
+          "operationRef": null,
+          "attachmentGeneration": null,
+          "result": "not_run"
+        },
+        {
+          "phase": "checkpoint",
+          "evidenceClass": "not_run",
+          "receiptRef": null,
+          "operationRef": null,
+          "attachmentGeneration": null,
+          "result": "not_run"
+        },
+        {
+          "phase": "upload",
+          "evidenceClass": "not_run",
+          "receiptRef": null,
+          "operationRef": null,
+          "attachmentGeneration": null,
+          "result": "not_run"
+        },
+        {
+          "phase": "redeem",
+          "evidenceClass": "not_run",
+          "receiptRef": null,
+          "operationRef": null,
+          "attachmentGeneration": null,
+          "result": "not_run"
+        },
+        {
+          "phase": "attach",
+          "evidenceClass": "not_run",
+          "receiptRef": null,
+          "operationRef": null,
+          "attachmentGeneration": null,
+          "result": "not_run"
+        },
+        {
+          "phase": "helper_readiness",
+          "evidenceClass": "not_run",
+          "receiptRef": null,
+          "operationRef": null,
+          "attachmentGeneration": null,
+          "result": "not_run"
+        },
+        {
+          "phase": "failback",
+          "evidenceClass": "not_run",
+          "receiptRef": null,
+          "operationRef": null,
+          "attachmentGeneration": null,
+          "result": "not_run"
+        },
+        {
+          "phase": "teardown",
+          "evidenceClass": "not_run",
+          "receiptRef": null,
+          "operationRef": null,
+          "attachmentGeneration": null,
+          "result": "not_run"
+        }
+      ],
+      "metrics": [],
+      "result": "No managed-provider cohort ran."
     }
   ],
-  "faultCoverage": [
+  "omissions": [
     {
-      "fault": "stale generation command",
-      "evidence": "model",
-      "result": "passed",
-      "evidenceRef": "packages/portable-session-contract/src/ide13-model.test.ts"
+      "omissionRef": "omission:process-state",
+      "targetClass": "owner_local",
+      "fact": "The checkpoint excludes process and terminal state.",
+      "disposition": "accepted_limit",
+      "evidenceRef": "packages/portable-session-contract/src/ide13-contract.ts"
     },
     {
-      "fault": "destination attach before source revocation",
-      "evidence": "model",
-      "result": "passed",
-      "evidenceRef": "packages/portable-session-contract/src/ide13-model.test.ts"
-    },
-    {
-      "fault": "duplicate, lost-ack, and replay",
-      "evidence": "model",
-      "result": "passed",
-      "evidenceRef": "packages/portable-session-contract/src/ide13-model.test.ts"
-    },
-    {
-      "fault": "cancel after destination stage and before source revoke",
-      "evidence": "regression",
-      "result": "passed",
-      "evidenceRef": "apps/openagents-desktop/src/ide/portable-coordinator-service.test.ts"
-    },
-    {
-      "fault": "adapter failure at each move transition",
-      "evidence": "regression",
-      "result": "passed",
-      "evidenceRef": "apps/openagents-desktop/src/ide/portable-coordinator-service.test.ts"
-    },
-    {
-      "fault": "real network partition at each transition",
-      "evidence": "not_run",
-      "result": "gap",
+      "omissionRef": "omission:real-cohorts",
+      "targetClass": "owner_managed",
+      "fact": "The real owner-managed move cohort did not run.",
+      "disposition": "acceptance_gap",
       "evidenceRef": "github.com/OpenAgentsInc/openagents/issues/9041"
     },
     {
-      "fault": "real provider eviction and older recovery-point failback",
-      "evidence": "not_run",
-      "result": "gap",
+      "omissionRef": "omission:managed-live",
+      "targetClass": "openagents_managed",
+      "fact": "The real OpenAgents-managed move cohort did not run.",
+      "disposition": "acceptance_gap",
       "evidenceRef": "github.com/OpenAgentsInc/openagents/issues/9041"
+    },
+    {
+      "omissionRef": "omission:provider",
+      "targetClass": "managed_provider",
+      "fact": "No managed provider is admitted.",
+      "disposition": "acceptance_gap",
+      "evidenceRef": "github.com/OpenAgentsInc/openagents/issues/9041"
+    }
+  ],
+  "recoveryFacts": [
+    {
+      "recoveryRef": "recovery:lost-ack",
+      "targetClass": "owner_local",
+      "scenario": "The command result ACK was lost.",
+      "evidenceClass": "simulator",
+      "outcome": "passed",
+      "recoveryPointRef": "durable-command-row",
+      "receiptRef": "packages/khala-sync-server/src/portable-session-command-consumer.test.ts"
+    },
+    {
+      "recoveryRef": "recovery:pylon-restart",
+      "targetClass": "owner_managed",
+      "scenario": "The Pylon process restarted after it claimed a phase.",
+      "evidenceClass": "simulator",
+      "outcome": "passed",
+      "recoveryPointRef": "portable-phase-claim-journal",
+      "receiptRef": "apps/pylon/src/portable-phase-operation-claim-journal.test.ts"
+    },
+    {
+      "recoveryRef": "recovery:provider-eviction",
+      "targetClass": "managed_provider",
+      "scenario": "The provider evicted the target after source revocation.",
+      "evidenceClass": "not_run",
+      "outcome": "not_run",
+      "recoveryPointRef": null,
+      "receiptRef": null
     }
   ],
   "security": {
@@ -148,12 +552,21 @@
     "staleGenerationAccepted": false,
     "rawCredentialProjected": false
   },
+  "review": {
+    "independentReviewerRef": null,
+    "independentDisposition": "not_run",
+    "independentDispositionRef": null,
+    "ownerRef": null,
+    "ownerDisposition": "not_run",
+    "ownerDispositionRef": null
+  },
   "implementationChecksPassed": true,
   "acceptancePassed": false,
   "remainingGaps": [
-    "Real owner-managed, OpenAgents-managed, and admitted-provider move cohorts did not run.",
-    "The complete transition fault-injection, restart, teardown, and older-recovery-point matrix did not run on real placements.",
-    "Packaged macOS, Windows, and Linux move journeys and independent owner or AssuranceSpec review are absent.",
-    "End-to-end p50, p95, and p99 quiesce, upload, redeem, attach, helper readiness, failback, resource, and size curves are absent."
+    "The real local, owner-managed, OpenAgents-managed, and admitted-provider move cohorts did not run.",
+    "The real transition fault, restart, teardown, and older-recovery-point matrix did not run.",
+    "The packaged authenticated move journeys did not run on each required target.",
+    "The complete phase, size, CPU, memory, network, queue, lease, resource, and teardown metric matrices are absent.",
+    "The independent reviewer and owner dispositions are absent."
   ]
 }
