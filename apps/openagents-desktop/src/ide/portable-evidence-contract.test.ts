@@ -163,11 +163,14 @@ describe("IDE-13 portability evidence contract", () => {
     const invalid = {
       ...receipt,
       placementCohorts: receipt.placementCohorts.map((cohort, index) => index === 1
-        ? { ...ownerManaged, adapter: { ...ownerManaged.adapter, kind: "deterministic_simulator" } }
+        ? {
+            ...ownerManaged,
+            adapter: { ...ownerManaged.adapter, kind: "deterministic_simulator" as const },
+          }
         : cohort),
     } as const
     expect(() => decode(invalid)).toThrow(/simulated evidence cannot be classified as real/u)
-    expect(() => validate(invalid as unknown as IdePortableEvidenceReceipt))
+    expect(() => validate(invalid))
       .toThrow(/simulated evidence is classified as real/u)
   })
 
