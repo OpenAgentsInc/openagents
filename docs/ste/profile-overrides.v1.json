@@ -44,6 +44,12 @@
       "ste_reviewer": "codex/forensic-review-20260719",
       "ste_reviewed_at": "2026-07-19T17:54:47Z"
     },
+    "docs/afteraction/2026-07-20-codex-desktop-main-process-sigtrap-incident-afteraction.md": {
+      "ste_mode": "mixed",
+      "ste_status": "checked",
+      "ste_reviewer": "codex/forensic-review-20260720",
+      "ste_reviewed_at": "2026-07-20T10:57:35Z"
+    },
     "docs/apple-fm/2026-07-19-apple-fm-swift-bridge-full-audit-and-openagents-desktop-plan.md": {
       "ste_status": "checked",
       "ste_reviewer": "codex/asd-ste100-agent-compact-review-20260719",

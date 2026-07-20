@@ -14769,6 +14769,20 @@
       }
     },
     {
+      "path": "docs/afteraction/2026-07-20-codex-desktop-main-process-sigtrap-incident-afteraction.md",
+      "sha256": "b9d2eb69d171e6a1f28754a414fc5fdf81d228a7a23f827537f4d4abb3c0f401",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "mixed",
+        "risk": "high",
+        "source": null,
+        "replacement": null,
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/agenticsociety/2026-07-03-analysis.md",
       "sha256": "af9018020409eea9e24320bd1531a258bdf0c228144ffa4a21f249d2f5f9866d",
       "reason": "Immutable historical or evidence source data",
@@ -18678,6 +18692,20 @@
       }
     },
     {
+      "path": "docs/bootup/2026-07-20-apple-fm-analyzer-boot-sequence-audit.md",
+      "sha256": "4f3e438380996a38e3b7ee454f550951d9e77c1f547a9c822c6f8dbd3a897e25",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "ste_status": "source-data",
+        "ste_reviewer": null,
+        "ste_reviewed_at": null,
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null
+      }
+    },
+    {
       "path": "docs/business/2026-06-20-business-offering-promise-coverage.md",
       "sha256": "2d777aa167c8519966b85100dd1deac5209cee80c79da6224fee4caef25037d7",
       "reason": "Final review of a converted document",
@@ -21182,12 +21210,10 @@
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
-        "ste_status": "source-data",
-        "ste_reviewer": null,
-        "ste_reviewed_at": null,
         "risk": "source-data",
         "source": "Immutable historical or evidence source data",
-        "replacement": null
+        "replacement": null,
+        "ste_status": "source-data"
       }
     },
     {

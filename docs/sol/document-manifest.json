@@ -2338,8 +2338,10 @@
       "snapshot": "OpenAgents `41726ba7068ef89c35d9f749ea9966caab95ef65`; Zed `f032f4d433da3747f9d7bcc9e9cd52d6ca3fb3e4`",
       "reviewedAt": "2026-07-19",
       "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
-      "inboundLinks": [],
-      "inboundSourceCount": 0,
+      "inboundLinks": [
+        "docs/ide/2026-07-19-porting-zed-to-effect-status.md"
+      ],
+      "inboundSourceCount": 1,
       "issueLinks": [
         9035
       ]

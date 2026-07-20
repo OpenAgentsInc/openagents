@@ -14286,6 +14286,19 @@
       "replacement": null
     },
     {
+      "path": "docs/afteraction/2026-07-20-codex-desktop-main-process-sigtrap-incident-afteraction.md",
+      "ste_issue": 9,
+      "ste_mode": "mixed",
+      "ste_glossary_revision": "openagents-ste-glossary-v1",
+      "ste_status": "inspected",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+      "ste_reviewed_at": "2026-07-19T22:00:00Z",
+      "owner": "OpenAgents documentation",
+      "risk": "high",
+      "source": null,
+      "replacement": null
+    },
+    {
       "path": "docs/agenticsociety/2026-07-03-analysis.md",
       "ste_issue": 9,
       "ste_mode": "source-data",
@@ -18173,6 +18186,19 @@
         "STE-5.1",
         "STE-8.2"
       ]
+    },
+    {
+      "path": "docs/bootup/2026-07-20-apple-fm-analyzer-boot-sequence-audit.md",
+      "ste_issue": 9,
+      "ste_mode": "source-data",
+      "ste_glossary_revision": "openagents-ste-glossary-v1",
+      "ste_status": "source-data",
+      "ste_reviewer": null,
+      "ste_reviewed_at": null,
+      "owner": "OpenAgents documentation",
+      "risk": "source-data",
+      "source": "Immutable historical or evidence source data",
+      "replacement": null
     },
     {
       "path": "docs/business/2026-06-20-business-offering-promise-coverage.md",
