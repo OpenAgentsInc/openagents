@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "openagents.desktop.ide-debug-journey-receipt.v1",
+  "issue": "IDE-11",
+  "journeyRef": "debugpy-python-launch",
+  "configurationRef": "ide.debug-config.debugpy-python-launch",
+  "session": {
+    "sessionRef": "ide.debug-session.4b95974f-dc26-4bcb-b440-ec5b0ba678de",
+    "sessionGeneration": 1,
+    "adapterGeneration": 1,
+    "targetGeneration": 1,
+    "configurationRef": "ide.debug-config.debugpy-python-launch",
+    "lifecycle": "Stopped",
+    "breakpoints": 1,
+    "threads": 1,
+    "frames": 1,
+    "scopes": 2,
+    "variables": 2,
+    "watches": 0,
+    "modules": 2,
+    "loadedSources": 0,
+    "consoleEntries": 2
+  },
+  "receipt": {
+    "receiptRef": "ide.debug-receipt.4b8e4e9f-adbe-4df0-ab1f-2ef6cff02dd1",
+    "operationRef": "ide.debug-operation.capture-15",
+    "configurationRef": "ide.debug-config.debugpy-python-launch",
+    "sessionRef": "ide.debug-session.4b95974f-dc26-4bcb-b440-ec5b0ba678de",
+    "sessionGeneration": 1,
+    "actor": {
+      "_tag": "Human",
+      "actorRef": "owner.ide11-packaged-proof"
+    },
+    "operation": "breakpoints",
+    "disposition": "succeeded",
+    "outcome": "replaced:1",
+    "targetRef": "ide.debug-target.debugpy-python-launch",
+    "placementRef": "ide.placement.desktop-local",
+    "environmentDigest": "sha256:c81e2d6e3b77b79dfd21777a27f8ca33433fcde50615393a5dc7d91ebe48deee",
+    "configurationDigest": "55799253db00ae5eaf2427fc86b1a10f21c16516c3ee5688b8a604f9130cfb89",
+    "observedAt": "2026-07-20T05:15:47.033Z"
+  },
+  "passed": true
+}

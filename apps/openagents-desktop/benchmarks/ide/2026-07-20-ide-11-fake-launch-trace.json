@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "openagents.desktop.ide-debug-journey-trace.v1",
+  "issue": "IDE-11",
+  "journeyRef": "fake-launch",
+  "session": {
+    "sessionRef": "ide.debug-session.7aa44893-8aeb-46f3-ae17-7a427c4dc1aa",
+    "sessionGeneration": 1,
+    "adapterGeneration": 1,
+    "targetGeneration": 1,
+    "configurationRef": "ide.debug-config.fake-launch",
+    "lifecycle": "Stopped",
+    "breakpoints": 1,
+    "threads": 1,
+    "frames": 1,
+    "scopes": 1,
+    "variables": 3,
+    "watches": 1,
+    "modules": 1,
+    "loadedSources": 1,
+    "consoleEntries": 1
+  },
+  "privateMaterialIncluded": false
+}

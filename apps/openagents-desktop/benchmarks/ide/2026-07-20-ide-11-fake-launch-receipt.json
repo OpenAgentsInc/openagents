@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "openagents.desktop.ide-debug-journey-receipt.v1",
+  "issue": "IDE-11",
+  "journeyRef": "fake-launch",
+  "configurationRef": "ide.debug-config.fake-launch",
+  "session": {
+    "sessionRef": "ide.debug-session.7aa44893-8aeb-46f3-ae17-7a427c4dc1aa",
+    "sessionGeneration": 1,
+    "adapterGeneration": 1,
+    "targetGeneration": 1,
+    "configurationRef": "ide.debug-config.fake-launch",
+    "lifecycle": "Stopped",
+    "breakpoints": 1,
+    "threads": 1,
+    "frames": 1,
+    "scopes": 1,
+    "variables": 3,
+    "watches": 1,
+    "modules": 1,
+    "loadedSources": 1,
+    "consoleEntries": 1
+  },
+  "receipt": {
+    "receiptRef": "ide.debug-receipt.bceb42c6-d429-48f1-948b-cd11d4da027f",
+    "operationRef": "ide.debug-operation.capture-4",
+    "configurationRef": "ide.debug-config.fake-launch",
+    "sessionRef": "ide.debug-session.7aa44893-8aeb-46f3-ae17-7a427c4dc1aa",
+    "sessionGeneration": 1,
+    "actor": {
+      "_tag": "Human",
+      "actorRef": "owner.ide11-packaged-proof"
+    },
+    "operation": "evaluate",
+    "disposition": "succeeded",
+    "outcome": "ready",
+    "targetRef": "ide.debug-target.fake-launch",
+    "placementRef": "ide.placement.desktop-local",
+    "environmentDigest": "sha256:49622f024b326833ea1aca9291ef8c425eb56e3293a9e8059455829aa05a0f01",
+    "configurationDigest": "13f1249e463abe35c8e7cd05020f0352ae005e02c999a549086855017351afff",
+    "observedAt": "2026-07-20T05:15:44.564Z"
+  },
+  "passed": true
+}

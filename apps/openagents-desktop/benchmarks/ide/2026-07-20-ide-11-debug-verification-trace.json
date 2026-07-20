@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "openagents.desktop.ide-debug-verification-trace.v1",
+  "issue": "IDE-11",
+  "candidateCommitSha": "2bdf0d7cfd1590a50c295e78bfb0f7703ad6327c",
+  "checks": {
+    "contractAndServiceTests": true,
+    "transportAndClientTests": true,
+    "realAdapters": [
+      "lldb-dap@LLVM 21.0.0",
+      "debugpy@1.8.21"
+    ],
+    "packagedJourneys": [
+      "ide.debug-journey.fake-launch",
+      "ide.debug-journey.fake-attach",
+      "ide.debug-journey.lldb-c-core-attach",
+      "ide.debug-journey.debugpy-python-launch"
+    ],
+    "adapterResidue": 0,
+    "privateMaterialIncluded": false
+  },
+  "rendererEvents": []
+}

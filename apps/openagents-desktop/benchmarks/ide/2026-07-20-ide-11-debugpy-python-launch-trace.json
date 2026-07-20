@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "openagents.desktop.ide-debug-journey-trace.v1",
+  "issue": "IDE-11",
+  "journeyRef": "debugpy-python-launch",
+  "session": {
+    "sessionRef": "ide.debug-session.4b95974f-dc26-4bcb-b440-ec5b0ba678de",
+    "sessionGeneration": 1,
+    "adapterGeneration": 1,
+    "targetGeneration": 1,
+    "configurationRef": "ide.debug-config.debugpy-python-launch",
+    "lifecycle": "Stopped",
+    "breakpoints": 1,
+    "threads": 1,
+    "frames": 1,
+    "scopes": 2,
+    "variables": 2,
+    "watches": 0,
+    "modules": 2,
+    "loadedSources": 0,
+    "consoleEntries": 2
+  },
+  "privateMaterialIncluded": false
+}

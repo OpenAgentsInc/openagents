@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "openagents.desktop.ide-debug-journey-receipt.v1",
+  "issue": "IDE-11",
+  "journeyRef": "lldb-c-core-attach",
+  "configurationRef": "ide.debug-config.lldb-c-core-attach",
+  "session": {
+    "sessionRef": "ide.debug-session.9814a2d6-e4ea-4b80-b147-a7239f438f65",
+    "sessionGeneration": 1,
+    "adapterGeneration": 1,
+    "targetGeneration": 1,
+    "configurationRef": "ide.debug-config.lldb-c-core-attach",
+    "lifecycle": "Stopped",
+    "breakpoints": 1,
+    "threads": 1,
+    "frames": 1,
+    "scopes": 3,
+    "variables": 2,
+    "watches": 1,
+    "modules": 41,
+    "loadedSources": 0,
+    "consoleEntries": 0
+  },
+  "receipt": {
+    "receiptRef": "ide.debug-receipt.aff4d10d-0506-4450-bf48-f8186ef10b78",
+    "operationRef": "ide.debug-operation.capture-12",
+    "configurationRef": "ide.debug-config.lldb-c-core-attach",
+    "sessionRef": "ide.debug-session.9814a2d6-e4ea-4b80-b147-a7239f438f65",
+    "sessionGeneration": 1,
+    "actor": {
+      "_tag": "Human",
+      "actorRef": "owner.ide11-packaged-proof"
+    },
+    "operation": "evaluate",
+    "disposition": "succeeded",
+    "outcome": "ready",
+    "targetRef": "ide.debug-target.lldb-c-core-attach",
+    "placementRef": "ide.placement.desktop-local",
+    "environmentDigest": "sha256:49622f024b326833ea1aca9291ef8c425eb56e3293a9e8059455829aa05a0f01",
+    "configurationDigest": "ad9b733cea062651e4ef61bfc09778adff893c033d5127110e12f1f81bc99161",
+    "observedAt": "2026-07-20T05:15:45.454Z"
+  },
+  "passed": true
+}

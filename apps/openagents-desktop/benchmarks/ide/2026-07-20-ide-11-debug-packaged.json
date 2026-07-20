@@ -1,0 +1,705 @@
+{
+  "schemaVersion": "openagents.desktop.ide-debug-packaged.v1",
+  "issue": "IDE-11",
+  "recordedAt": "2026-07-20T05:15:47.531Z",
+  "candidateCommitSha": "2bdf0d7cfd1590a50c295e78bfb0f7703ad6327c",
+  "artifact": {
+    "treeSha256": "f51b47481e288a6795f780f7a06e59142f558364572feea34bc1a2c6e26e3038",
+    "files": 362,
+    "bytes": 603978544,
+    "artifactRef": "apps/openagents-desktop/out/OpenAgents-darwin-arm64/OpenAgents.app"
+  },
+  "environment": {
+    "platform": "darwin",
+    "architecture": "arm64",
+    "node": "v24.13.1",
+    "electron": "43.1.0",
+    "appVersion": "0.1.0-rc.25",
+    "runtime": "Effect v4 + supervised DAP transport",
+    "corpusRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json"
+  },
+  "journeys": [
+    {
+      "journeyRef": "ide.debug-journey.fake-launch",
+      "adapterKind": "deterministic-fake",
+      "adapterName": "OpenAgents deterministic DAP fixture",
+      "adapterVersion": "1",
+      "language": "TypeScript fixture",
+      "languageVersion": "v24.13.1",
+      "mode": "launch",
+      "desktopTarget": "macos-arm64",
+      "targetKind": "local-process",
+      "transport": "stdio",
+      "configurationRef": "ide.debug-config.fake-launch",
+      "effectiveConfigurationDigest": "13f1249e463abe35c8e7cd05020f0352ae005e02c999a549086855017351afff",
+      "dataSourceRefs": [
+        "ide.debug-environment.fake-launch",
+        "ide.debug-source-map.fake-launch"
+      ],
+      "environmentValueRefsOnly": true,
+      "generations": {
+        "project": 1,
+        "worktree": 1,
+        "attachment": 1,
+        "language": 1,
+        "target": 1,
+        "placement": 1,
+        "service": 1
+      },
+      "capabilities": {
+        "supported": [
+          "configuration_done",
+          "conditional_breakpoints",
+          "hit_conditional_breakpoints",
+          "log_points",
+          "function_breakpoints",
+          "data_breakpoints",
+          "set_variable",
+          "evaluate",
+          "pause",
+          "step_in",
+          "step_over",
+          "step_out",
+          "step_back",
+          "restart_frame",
+          "restart_session",
+          "continue",
+          "disconnect",
+          "terminate",
+          "modules",
+          "loaded_sources",
+          "source_request",
+          "cancel_request"
+        ],
+        "unsupported": [
+          "run_to_cursor"
+        ],
+        "negotiatedBeforeCommands": true
+      },
+      "projections": {
+        "breakpoints": true,
+        "threads": true,
+        "stacks": true,
+        "scopes": true,
+        "variables": true,
+        "watches": true,
+        "console": true,
+        "modules": true,
+        "loadedSources": true
+      },
+      "screenshotRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-fake-launch.png",
+      "traceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-fake-launch-trace.json",
+      "receiptRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-fake-launch-receipt.json",
+      "passed": true
+    },
+    {
+      "journeyRef": "ide.debug-journey.fake-attach",
+      "adapterKind": "deterministic-fake",
+      "adapterName": "OpenAgents deterministic DAP fixture",
+      "adapterVersion": "1",
+      "language": "TypeScript fixture",
+      "languageVersion": "v24.13.1",
+      "mode": "attach",
+      "desktopTarget": "macos-arm64",
+      "targetKind": "remote-process",
+      "transport": "stdio",
+      "configurationRef": "ide.debug-config.fake-attach",
+      "effectiveConfigurationDigest": "ceedcc9aee904b66e2025644d2e8db8e0960de8876da2af27e7eebd09f953dd0",
+      "dataSourceRefs": [
+        "ide.debug-environment.fake-attach",
+        "ide.debug-source-map.fake-attach"
+      ],
+      "environmentValueRefsOnly": true,
+      "generations": {
+        "project": 1,
+        "worktree": 1,
+        "attachment": 1,
+        "language": 1,
+        "target": 1,
+        "placement": 1,
+        "service": 1
+      },
+      "capabilities": {
+        "supported": [
+          "configuration_done",
+          "conditional_breakpoints",
+          "hit_conditional_breakpoints",
+          "log_points",
+          "function_breakpoints",
+          "data_breakpoints",
+          "set_variable",
+          "evaluate",
+          "pause",
+          "step_in",
+          "step_over",
+          "step_out",
+          "step_back",
+          "restart_frame",
+          "restart_session",
+          "continue",
+          "disconnect",
+          "terminate",
+          "modules",
+          "loaded_sources",
+          "source_request",
+          "cancel_request"
+        ],
+        "unsupported": [
+          "run_to_cursor"
+        ],
+        "negotiatedBeforeCommands": true
+      },
+      "projections": {
+        "breakpoints": true,
+        "threads": true,
+        "stacks": true,
+        "scopes": true,
+        "variables": true,
+        "watches": true,
+        "console": true,
+        "modules": true,
+        "loadedSources": true
+      },
+      "screenshotRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-fake-attach.png",
+      "traceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-fake-attach-trace.json",
+      "receiptRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-fake-attach-receipt.json",
+      "passed": true
+    },
+    {
+      "journeyRef": "ide.debug-journey.lldb-c-core-attach",
+      "adapterKind": "representative-real",
+      "adapterName": "lldb-dap",
+      "adapterVersion": "LLVM 21.0.0",
+      "language": "C",
+      "languageVersion": "Apple clang 21.0.0",
+      "mode": "attach",
+      "desktopTarget": "macos-arm64",
+      "targetKind": "local-process",
+      "transport": "stdio",
+      "configurationRef": "ide.debug-config.lldb-c-core-attach",
+      "effectiveConfigurationDigest": "ad9b733cea062651e4ef61bfc09778adff893c033d5127110e12f1f81bc99161",
+      "dataSourceRefs": [
+        "ide.debug-environment.lldb-c-core-attach",
+        "ide.debug-source-map.lldb-c-core-attach"
+      ],
+      "environmentValueRefsOnly": true,
+      "generations": {
+        "project": 1,
+        "worktree": 1,
+        "attachment": 1,
+        "language": 1,
+        "target": 1,
+        "placement": 1,
+        "service": 1
+      },
+      "capabilities": {
+        "supported": [
+          "configuration_done",
+          "conditional_breakpoints",
+          "hit_conditional_breakpoints",
+          "log_points",
+          "function_breakpoints",
+          "data_breakpoints",
+          "set_variable",
+          "evaluate",
+          "pause",
+          "step_in",
+          "step_over",
+          "step_out",
+          "continue",
+          "disconnect",
+          "modules",
+          "source_request",
+          "cancel_request"
+        ],
+        "unsupported": [
+          "step_back",
+          "restart_frame",
+          "restart_session",
+          "terminate",
+          "loaded_sources",
+          "run_to_cursor"
+        ],
+        "negotiatedBeforeCommands": true
+      },
+      "projections": {
+        "breakpoints": true,
+        "threads": true,
+        "stacks": true,
+        "scopes": true,
+        "variables": true,
+        "watches": true,
+        "console": true,
+        "modules": true,
+        "loadedSources": true
+      },
+      "screenshotRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-lldb-c-core-attach.png",
+      "traceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-lldb-c-core-attach-trace.json",
+      "receiptRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-lldb-c-core-attach-receipt.json",
+      "passed": true
+    },
+    {
+      "journeyRef": "ide.debug-journey.debugpy-python-launch",
+      "adapterKind": "representative-real",
+      "adapterName": "debugpy",
+      "adapterVersion": "1.8.21",
+      "language": "Python",
+      "languageVersion": "3.9",
+      "mode": "launch",
+      "desktopTarget": "macos-arm64",
+      "targetKind": "local-process",
+      "transport": "stdio",
+      "configurationRef": "ide.debug-config.debugpy-python-launch",
+      "effectiveConfigurationDigest": "55799253db00ae5eaf2427fc86b1a10f21c16516c3ee5688b8a604f9130cfb89",
+      "dataSourceRefs": [
+        "ide.debug-environment.debugpy-python-launch",
+        "ide.debug-source-map.debugpy-python-launch"
+      ],
+      "environmentValueRefsOnly": true,
+      "generations": {
+        "project": 1,
+        "worktree": 1,
+        "attachment": 1,
+        "language": 1,
+        "target": 1,
+        "placement": 1,
+        "service": 1
+      },
+      "capabilities": {
+        "supported": [
+          "configuration_done",
+          "conditional_breakpoints",
+          "hit_conditional_breakpoints",
+          "log_points",
+          "function_breakpoints",
+          "set_variable",
+          "evaluate",
+          "pause",
+          "step_in",
+          "step_over",
+          "step_out",
+          "continue",
+          "disconnect",
+          "terminate",
+          "modules",
+          "source_request",
+          "cancel_request"
+        ],
+        "unsupported": [
+          "data_breakpoints",
+          "step_back",
+          "restart_frame",
+          "restart_session",
+          "loaded_sources",
+          "run_to_cursor"
+        ],
+        "negotiatedBeforeCommands": true
+      },
+      "projections": {
+        "breakpoints": true,
+        "threads": true,
+        "stacks": true,
+        "scopes": true,
+        "variables": true,
+        "watches": true,
+        "console": true,
+        "modules": true,
+        "loadedSources": true
+      },
+      "screenshotRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debugpy-python-launch.png",
+      "traceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debugpy-python-launch-trace.json",
+      "receiptRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debugpy-python-launch-receipt.json",
+      "passed": true
+    }
+  ],
+  "controls": [
+    {
+      "control": "continue",
+      "supported": true,
+      "capabilityNegotiated": true,
+      "cancellable": true,
+      "receiptRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-fake-launch-receipt.json",
+      "unsupportedStateHonest": true,
+      "passed": true
+    },
+    {
+      "control": "pause",
+      "supported": true,
+      "capabilityNegotiated": true,
+      "cancellable": true,
+      "receiptRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-fake-launch-receipt.json",
+      "unsupportedStateHonest": true,
+      "passed": true
+    },
+    {
+      "control": "step-in",
+      "supported": true,
+      "capabilityNegotiated": true,
+      "cancellable": true,
+      "receiptRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-fake-launch-receipt.json",
+      "unsupportedStateHonest": true,
+      "passed": true
+    },
+    {
+      "control": "step-over",
+      "supported": true,
+      "capabilityNegotiated": true,
+      "cancellable": true,
+      "receiptRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-fake-launch-receipt.json",
+      "unsupportedStateHonest": true,
+      "passed": true
+    },
+    {
+      "control": "step-out",
+      "supported": true,
+      "capabilityNegotiated": true,
+      "cancellable": true,
+      "receiptRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-fake-launch-receipt.json",
+      "unsupportedStateHonest": true,
+      "passed": true
+    },
+    {
+      "control": "evaluate",
+      "supported": true,
+      "capabilityNegotiated": true,
+      "cancellable": true,
+      "receiptRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-fake-launch-receipt.json",
+      "unsupportedStateHonest": true,
+      "passed": true
+    },
+    {
+      "control": "restart",
+      "supported": true,
+      "capabilityNegotiated": true,
+      "cancellable": true,
+      "receiptRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-fake-launch-receipt.json",
+      "unsupportedStateHonest": true,
+      "passed": true
+    },
+    {
+      "control": "disconnect",
+      "supported": true,
+      "capabilityNegotiated": true,
+      "cancellable": true,
+      "receiptRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-fake-launch-receipt.json",
+      "unsupportedStateHonest": true,
+      "passed": true
+    },
+    {
+      "control": "terminate",
+      "supported": true,
+      "capabilityNegotiated": true,
+      "cancellable": true,
+      "receiptRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-fake-launch-receipt.json",
+      "unsupportedStateHonest": true,
+      "passed": true
+    }
+  ],
+  "sources": [
+    {
+      "kind": "source-map",
+      "canonicalIdentityUsed": true,
+      "guessedPosition": false,
+      "explicitState": true,
+      "evidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    },
+    {
+      "kind": "changed",
+      "canonicalIdentityUsed": true,
+      "guessedPosition": false,
+      "explicitState": true,
+      "evidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    },
+    {
+      "kind": "unavailable",
+      "canonicalIdentityUsed": true,
+      "guessedPosition": false,
+      "explicitState": true,
+      "evidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    },
+    {
+      "kind": "remote",
+      "canonicalIdentityUsed": true,
+      "guessedPosition": false,
+      "explicitState": true,
+      "evidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    },
+    {
+      "kind": "generated",
+      "canonicalIdentityUsed": true,
+      "guessedPosition": false,
+      "explicitState": true,
+      "evidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    }
+  ],
+  "lifecycle": [
+    {
+      "transition": "cancel",
+      "oldGeneration": 1,
+      "newGeneration": 2,
+      "lateEventSent": true,
+      "lateEventRejected": true,
+      "currentStateUnchanged": true,
+      "cleanupReceiptRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    },
+    {
+      "transition": "adapter-restart",
+      "oldGeneration": 2,
+      "newGeneration": 3,
+      "lateEventSent": true,
+      "lateEventRejected": true,
+      "currentStateUnchanged": true,
+      "cleanupReceiptRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    },
+    {
+      "transition": "target-loss",
+      "oldGeneration": 3,
+      "newGeneration": 4,
+      "lateEventSent": true,
+      "lateEventRejected": true,
+      "currentStateUnchanged": true,
+      "cleanupReceiptRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    },
+    {
+      "transition": "project-switch",
+      "oldGeneration": 4,
+      "newGeneration": 5,
+      "lateEventSent": true,
+      "lateEventRejected": true,
+      "currentStateUnchanged": true,
+      "cleanupReceiptRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    },
+    {
+      "transition": "app-restart",
+      "oldGeneration": 5,
+      "newGeneration": 6,
+      "lateEventSent": true,
+      "lateEventRejected": true,
+      "currentStateUnchanged": true,
+      "cleanupReceiptRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    }
+  ],
+  "faultMatrix": [
+    {
+      "name": "invalid-configuration",
+      "evidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    },
+    {
+      "name": "missing-configuration",
+      "evidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    },
+    {
+      "name": "malicious-variable-substitution",
+      "evidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    },
+    {
+      "name": "secret-bearing-environment",
+      "evidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    },
+    {
+      "name": "secret-bearing-arguments",
+      "evidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    },
+    {
+      "name": "missing-adapter",
+      "evidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    },
+    {
+      "name": "unsupported-capability",
+      "evidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    },
+    {
+      "name": "malformed-protocol-message",
+      "evidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    },
+    {
+      "name": "out-of-order-protocol-message",
+      "evidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    },
+    {
+      "name": "oversized-protocol-message",
+      "evidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    },
+    {
+      "name": "request-timeout",
+      "evidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    },
+    {
+      "name": "cancellation-with-late-response",
+      "evidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    },
+    {
+      "name": "adapter-crash",
+      "evidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    },
+    {
+      "name": "adapter-restart",
+      "evidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    },
+    {
+      "name": "target-crash-or-exit",
+      "evidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    },
+    {
+      "name": "attach-auth-loss",
+      "evidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    },
+    {
+      "name": "attach-network-loss",
+      "evidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    },
+    {
+      "name": "process-id-reuse",
+      "evidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    },
+    {
+      "name": "breakpoint-verification-churn",
+      "evidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    },
+    {
+      "name": "dynamic-threads",
+      "evidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    },
+    {
+      "name": "huge-deep-cyclic-variables",
+      "evidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    },
+    {
+      "name": "expensive-evaluation",
+      "evidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    },
+    {
+      "name": "source-map-failure",
+      "evidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    },
+    {
+      "name": "remote-unavailable-changed-source",
+      "evidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    },
+    {
+      "name": "prelaunch-failure",
+      "evidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    },
+    {
+      "name": "postdebug-failure",
+      "evidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    },
+    {
+      "name": "project-worktree-attachment-restart",
+      "evidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    }
+  ],
+  "accessibilityMatrix": [
+    {
+      "name": "keyboard-controls",
+      "evidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    },
+    {
+      "name": "keyboard-pane-navigation",
+      "evidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    },
+    {
+      "name": "screen-reader-state",
+      "evidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    },
+    {
+      "name": "screen-reader-progress",
+      "evidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    },
+    {
+      "name": "screen-reader-errors",
+      "evidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    },
+    {
+      "name": "focus-restoration",
+      "evidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    },
+    {
+      "name": "zoom",
+      "evidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    },
+    {
+      "name": "reduced-motion",
+      "evidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    },
+    {
+      "name": "vim-editor-key-boundary",
+      "evidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    },
+    {
+      "name": "theme-contrast-and-non-color-cues",
+      "evidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    },
+    {
+      "name": "minimum-window",
+      "evidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    },
+    {
+      "name": "huge-tree-degradation",
+      "evidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-verification-trace.json",
+      "passed": true
+    }
+  ],
+  "screenshotRefs": [
+    "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-fake-launch.png",
+    "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-fake-attach.png",
+    "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-lldb-c-core-attach.png",
+    "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debugpy-python-launch.png"
+  ],
+  "traceRefs": [
+    "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-fake-launch-trace.json",
+    "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-fake-attach-trace.json",
+    "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-lldb-c-core-attach-trace.json",
+    "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debugpy-python-launch-trace.json"
+  ],
+  "sourceEvidenceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-11-debug-captured.json",
+  "passed": true
+}
