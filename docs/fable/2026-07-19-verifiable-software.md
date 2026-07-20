@@ -134,15 +134,14 @@ workspace adds itself to the product without adding itself to the journey set
 it measures, and silently does not measure the rest." A green run reads as
 "covered everything" when it covered everything _except the new thing_. The
 structural root: **unit oracles verify components, but users experience
-compositions.** Two features, each individually correct and individually
-tested, broke in combination, and only a journey-level oracle could have
-seen it. The report adds the corollary that makes this a discipline rather
-than an excuse: "Residuals reported are not residuals acted on... An
-honestly-reported gap that changes nothing downstream is theater."
+compositions** — and the report's corollary keeps it a discipline rather
+than an excuse: an honestly-reported gap that changes nothing downstream is
+theater.
 
-Every one of these failures shares a structure: a claim exists in prose,
-detached from the system of record, and credibility transfers to it by
-adjacency. Verified neighbors launder the unverified atom. The fix cannot be
+Every one of these failures shares a structure: a claim exists in prose — or
+a bounded green is read as an unbounded one — detached from what the system
+of record actually measured, and credibility transfers by adjacency.
+Verified neighbors launder the unverified atom. The fix cannot be
 "try harder." It must be structural.
 
 ## III. What verifiable software is
@@ -225,7 +224,7 @@ its work, name its gaps, and prove what it did.**
 
 An essay's principles are cheap. The interesting question is what changes when
 you build a development environment around them. The OpenAgents IDE — the
-Editor mode of OpenAgents Desktop, now through its ninth delivered packet — is
+Editor mode of OpenAgents Desktop, now through its tenth delivered packet — is
 the concrete answer, and its architecture can be stated in one sentence from
 its own roadmap:
 
@@ -311,8 +310,8 @@ The objection writes itself: does all this ceremony slow you down? The
 evidence from this repository says the opposite, and the strongest single
 sentence in the corpus says why:
 
-> AMP built fast by deferring trust. We built trust first, so the fast part is
-> now cheap.
+> Amp built fast by deferring trust. We built trust first, and now the fast
+> part is cheap.
 
 When a teardown of a fast-moving competitor showed what a functional-parity
 sprint would require, the estimate came back at days, not months — because
@@ -333,7 +332,7 @@ architecture choice: a final summary in place of a whole child graph, where
 our thread reader treats tool calls as attempts, not outcomes, and never
 confuses a compaction summary with evidence. And the receipt path earned its
 keep during the very sprint that was testing it — the per-call routing
-receipts caught a real double-billing bug before any user did. The teardown's
+receipts caught a real double-billing bug. The teardown's
 own compression of the tradeoff is worth keeping with its honest tail
 attached: "Speed with receipts beats speed with apologies, but only if we
 actually keep the speed."
@@ -391,8 +390,8 @@ agent economy is not generated output. It is an accepted outcome with a
 receipt trail — scoped in advance, executed wherever cheapest, graded against
 a rubric, recorded in a receipt. The real product is not the wiring. It is the
 receipt that proves the wiring worked. And the reason this matters
-commercially compresses to five words: money only travels across a gap it can
-verify.
+commercially compresses to one sentence: money only travels across a gap it
+can verify.
 
 Verification priced this way stops being overhead and becomes inventory.
 Confidence tiers — draft, verified, reviewed, bonded — are different products
@@ -420,7 +419,7 @@ with the gates it produced.
 An essay about verifiable software must apply its own standard, so here is the
 honest status. The architecture and discipline described above are fully
 specified, and substantial parts are proven at the highest rung: the IDE's
-first nine packets are delivered with exact issue receipts, the basic-IDE gate
+first ten packets are delivered with exact issue receipts, the basic-IDE gate
 was accepted by a deterministic oracle against a named artifact, and the Full
 Auto core is proven in real owner development. But the two surface-wide
 AssuranceSpecs remain `proposed` — they grant no admission, execution, or
@@ -462,7 +461,7 @@ where software gets made.
 
 ---
 
-## Addendum: Gap Analysis — Full Delivery vs. Current State (2026-07-19)
+## Addendum I: Gap Analysis — Full Delivery vs. Current State (2026-07-19)
 
 Section VII stated the honest boundary in one paragraph. This addendum
 expands it into a working gap analysis: what the OpenAgents IDE would need
@@ -491,10 +490,11 @@ test command was admitted. Commit, push, PR, and delivery are `Unavailable`
 in IDE-08 by design. Full delivery needs IDE-10 (terminal, tasks, tests,
 output), IDE-11 (debug), and IDE-12 (safe SCM mutation, worktrees,
 delivery) so that "tested," "committed," and "pushed" become host-observed
-facts instead of honest absences. IDE-09 (AI editing) through IDE-19 (the
-maintained parity ledger and owner acceptance) remain open. The accepted
-claim today is exactly "OpenAgents basic IDE" plus the agent code graph, and
-no broader rung may be spoken.
+facts instead of honest absences. IDE-10 through IDE-19 (the
+maintained parity ledger and owner acceptance) remain open — IDE-09 (AI
+editing) closed on 2026-07-19 as #9037, per Addendum III Stage 0. The
+accepted claim today is exactly "OpenAgents basic IDE" plus the agent code
+graph and AI editing, and no broader rung may be spoken.
 
 ### 2. Proof machinery — designed and validated, not yet admitted
 
@@ -534,11 +534,11 @@ its absence.
 
 **Update (2026-07-20):** the owner-real acceptance matrix is now receipted —
 six of six named rows and the automatic Claude-to-Codex rotation passed at a
-pinned commit, with the receipt itself stating that "independent assurance
-#8978 and signed packaged release #8979 remain separate." The Full Auto
-AssuranceSpec stands at 76 of 76 obligations _designed_ with independent
-admission still open — the designed/observed distinction holding at
-full scale.
+pinned commit, and the receipt itself keeps the rungs separate: "#8978 still
+owns independent assurance and #8979 still owns the signed packaged
+release/owner-observation gate." The Full Auto AssuranceSpec stands at 76 of
+76 obligations _designed_ with independent admission still open — the
+designed/observed distinction holding at full scale.
 
 ### 4. Trust-complete execution — spec'd, not landed
 
@@ -1022,7 +1022,8 @@ for exactly one deliverable, and the archive named it before the IDE
 existed. Episode 237: "The atom of the economy is the accepted outcome — a
 task scoped before it ran, executed wherever execution was cheapest, graded
 against a rubric, recorded in a receipt, and settled to everyone who
-contributed." Everything this essay describes — the typed graph, the
+contributed." (Section VI already borrows that sentence — this is its
+origin.) Everything this essay describes — the typed graph, the
 host-observed evidence, the digest-bound specs, the oracles, the receipts —
 exists so that software can _deliver that object_ instead of merely
 narrating activity. That is the position: **verifiable software is the
@@ -1050,8 +1051,9 @@ essay. Episode 232 introduces "accepted outcomes per kilowatt hour" as the
 metric the whole operation optimizes for, and gives it its definitional
 question: "You have a stream of electrons, what is the cost of turning that
 into an accepted agent task?... What is the absolute most cost-efficient
-way of converting electron to accepted agent work?" The taunt that follows
-doubles as a category claim: go ask your favorite AI lab for its accepted
+way of converting electron to accepted agent work?" In the same breath
+comes the taunt that doubles as a category claim: go ask your favorite AI
+lab for its accepted
 outcomes per kilowatt hour, and it will not know what the heck you are
 talking about — nobody else is even measuring it. The metric has a
 property worth noticing: it is hard to compute honestly — which is a
@@ -1087,18 +1089,20 @@ and verifier, separated by construction and both compensated — the
 authority-separation law of Section III operating as a paid economic loop,
 at the scale of a few sats. The same episode states the epistemic posture
 in one breath: no big claims that are not sourced by evidence, because
-"We've got a pretty serious evidence pack built into all this." Episode 239 then names verification as a market of its own —
-"agent markets for compute, data, labor, liquidity, risk, and
-verification" — under the standing requirement that "all of this should be
+"We've got a pretty serious evidence pack built into all this." Episode 239
+then carries verification inside the standing market list — "agent markets
+for compute, data, labor, liquidity, risk, and verification," a list the
+speaker traces back to episode 213 — under the standing requirement that
+"all of this should be
 programmed open source verifiable backed by receipts that pay you money."
 Episode 240 renders it: a live run board whose counters read "5 DAYS, 21
 WINDOWS, 12 VERIFIED, 1,020 ACTIVE SATS" — _verified_ as a first-class,
 watchable number, not a footnote. Episode 243 prices it: public benchmark
 comparisons "are receipts, not vibes," reporting "cost per accepted
 outcome (our favorite metric)" and verification rate — alongside the
-honesty bar that the product may not claim to be verified "absent an
-executed acceptance verdict," and that direction "stays labeled as
-direction until it has a green promise." And episode 246 closes the arc
+honesty bar that the flagship coding surface may not be claimed verified
+"absent an executed acceptance verdict," and that direction "stays labeled
+as direction until it has a green promise." And episode 246 closes the arc
 where this essay begins, with the behavior-contract registry ("Every entry
 records the statement verbatim, who stated it and where, and the oracle
 tests that enforce it") and the QA swarm — "point a swarm of QA agents at
@@ -1107,8 +1111,8 @@ CONFIRMED/REFUTED verdict."
 
 The spine, compressed: 213 names the gap, 232 coins the metric, 234 turns
 the company's own claims into verifiable objects, 237 names the unit, 238
-pays a worker and a validator on replay, 239 makes verification a market,
-243 prices it, 246 wires it into the software itself. The accepted outcome
+pays a worker and a validator on replay, 239 lists verification among the
+markets, 243 prices it, 246 wires it into the software itself. The accepted outcome
 is not a slogan retrofitted onto the IDE. The IDE is the latest instrument
 built to produce it.
 
@@ -1126,7 +1130,8 @@ outcome trending down while task value trends up — owns the margin of the
 entire category.
 
 That curve is bent by a small set of compounding moves, every one of which
-is already visible in this essay's machinery. **Amortize:** verify once,
+is already named in this essay's machinery — much of it, per Addendum I,
+still at the design rung. **Amortize:** verify once,
 reuse everywhere — content-addressed proof, shared study packets, receipts
 that strangers can check instead of re-deriving (Section VI, Addendum II).
 **Decompose:** shrink the verification quantum — bounded sub-tasks with
@@ -1148,9 +1153,10 @@ loop already paid a worker and a validator on precisely this class: the
 validator did not judge the work, it _replayed_ it. For that class the
 trace is not evidence attached to the work. It is the work.
 
-The demand side arrives at the same unit from unrelated evidence. The
-enterprise buyers now assembling AI governance stacks are converging on
-one question their CFOs can act on — not "how many tokens did we use" but
+The demand side appears to be arriving at the same unit from unrelated
+evidence. The enterprise buyers assembling AI governance stacks
+increasingly ask the one question their CFOs can act on — not "how many
+tokens did we use" but
 _what did this agent cost per completed business outcome_: per resolved
 ticket, per merged PR, per reconciled invoice. When supply-side dispatch
 economics and demand-side procurement anxiety independently land on the
@@ -1168,7 +1174,7 @@ ProductSpec and the behavior contract. Acceptance requires evidence the
 producer cannot manufacture — that is host observation and the
 producer/verifier boundary. Acceptance requires a verdict that travels —
 that is the receipt, the signature, the digest. Settlement requires all
-three, because "money only travels across a gap it can verify."
+three, because money only travels across a gap it can verify.
 Verification is not a stage that follows the work. It is the market's
 admission requirement for the work existing at all.
 
@@ -1183,7 +1189,7 @@ delivers work. The first sells effort. The second sells outcomes, and can
 prove them.
 
 The honest status, per this essay's own standard: the unit is named, the
-metric is coined, the registry that scores claims against it is live, the
+metric is coined, the registry that scores the company's claims is live, the
 replay loop has paid real sats on camera, and the wallet rails are
 deliberately off pending an owner decision (Addendum II §4). No customer
 today buys a bonded outcome through the product — that remains the widest
