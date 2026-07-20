@@ -1,4 +1,5 @@
 import type { ManagedSandboxCommandReservation } from "@openagentsinc/khala-sync-server";
+import { canonicalJson } from "@openagentsinc/khala-sync";
 import {
   type ManagedSandboxCommand,
   ManagedSandboxCommandSchema,
@@ -369,7 +370,7 @@ export const makeManagedSandboxBroker = (
       });
       if (existing !== undefined) {
         const normalized = { ...command, requestedAt: existing.command.requestedAt };
-        if (JSON.stringify(normalized) !== JSON.stringify(existing.command)) {
+        if (canonicalJson(normalized) !== canonicalJson(existing.command)) {
           return yield* conflict("command ref is bound to different request bytes");
         }
         yield* assertPolicy(input.policy, {

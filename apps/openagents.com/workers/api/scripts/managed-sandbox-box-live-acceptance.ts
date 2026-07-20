@@ -125,8 +125,11 @@ const failureMessage = async (error: unknown): Promise<string> => {
   const body = (await error.response
     .clone()
     .json()
-    .catch(() => undefined)) as { code?: string; error?: string } | undefined
-  return `Box ${error.response.status}/${body?.code ?? body?.error ?? 'unknown_error'}`
+    .catch(() => undefined)) as
+    | { code?: string; error?: string; message?: string }
+    | undefined
+  const code = body?.code ?? body?.error ?? 'unknown_error'
+  return `Box ${error.response.status}/${code}${body?.message === undefined ? '' : `: ${body.message}`}`
 }
 
 const createWithReplay = async () => {

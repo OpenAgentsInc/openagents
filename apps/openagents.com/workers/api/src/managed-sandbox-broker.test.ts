@@ -294,6 +294,13 @@ describe("native managed-sandbox broker", () => {
     const first = await Effect.runPromise(
       broker.execute(createCommand(), { attachmentGeneration: 7 }),
     );
+    if (reservation === undefined) throw new Error("create did not reserve");
+    reservation = {
+      ...reservation,
+      command: Object.fromEntries(
+        Object.entries(reservation.command).sort(([left], [right]) => right.localeCompare(left)),
+      ) as ManagedSandboxCommand,
+    };
     const replay = await Effect.runPromise(
       broker.execute(createCommand({ requestedAt: "2026-07-19T16:05:00.000Z" }), {
         attachmentGeneration: 7,

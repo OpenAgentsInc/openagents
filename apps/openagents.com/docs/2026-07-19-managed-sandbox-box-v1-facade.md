@@ -47,6 +47,8 @@ Lifecycle mutations require `Idempotency-Key`. Exact retries read and return
 the durable native reservation. A key with different bytes returns
 `409 conflict`. Event pages use native order and an opaque cursor with resource
 generation data. A cursor from a prior generation returns `409` after resume.
+Semantic replay equality uses canonical JSON, so PostgreSQL `jsonb` key-order
+normalization cannot turn an exact retry into a false changed-byte conflict.
 
 ## Current runtime boundary
 
