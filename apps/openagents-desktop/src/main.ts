@@ -425,6 +425,7 @@ import { createAppleFmHost, type AppleFmHost, type AppleFmLauncher } from "./app
 import { createPackagedAppleFmLauncher, appleFmHelperSupported } from "./apple-fm-native-helper.ts"
 import { IdentityStatusChannel } from "./identity-contract.ts"
 import { createIdentityHost, type IdentityLoader } from "./identity-host.ts"
+import { projectDesktopIdentity } from "./desktop-identity.ts"
 import {
   loadOrCreateNostrIdentity,
   resolveNostrIdentityPath,
@@ -3976,17 +3977,11 @@ const desktopIdentityLoader: IdentityLoader = {
     const existed = existsSync(resolution.path)
     // IDR-06: the narrowed loader returns the PUBLIC projection plus a signer —
     // never the raw mnemonic. The boot display consumes public identifiers only.
+    // IDR-08: the loader routes derivation through the ONE shared identity
+    // service, so `identityRef`/`npub` match Pylon. `projectDesktopIdentity`
+    // maps that resolved identity to the public-safe load result.
     const identity = await loadOrCreateNostrIdentity(paths, process.env)
-    return {
-      source: existed ? "rehydrated" : "created",
-      npub: identity.npub,
-      walletFingerprint: identity.sparkFingerprint,
-      profileId: identity.profileId,
-      // IDR-07: the STATUS-ONLY Spark wallet mode from the app-side adapter's
-      // public projection. `status_only` when the recovered wallet opened; null
-      // otherwise. Public data only — no send path.
-      walletMode: identity.sparkWallet?.mode ?? null,
-    }
+    return projectDesktopIdentity(identity, existed ? "rehydrated" : "created")
   },
 }
 const identityHost = createIdentityHost(desktopIdentityLoader)

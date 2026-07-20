@@ -25,6 +25,12 @@ import { IDENTITY_STATUS_SCHEMA_ID, type IdentitySourceValue, type IdentityStatu
 export type IdentityLoadResult = Readonly<{
   /** `rehydrated` when an existing mnemonic was opened, `created` for a fresh one. */
   source: IdentitySourceValue
+  /**
+   * The ONE canonical cross-surface identity reference (IDR-08): the `npub`
+   * resolved by the shared `@openagentsinc/sovereign-identity` service. Desktop
+   * and Pylon carry the identical reference for one identity.
+   */
+  identityRef: string
   /** The Nostr NIP-06 `npub`. */
   npub: string
   /** The Spark wallet public BIP-32 fingerprint (lower-hex). */
@@ -58,6 +64,7 @@ export const createIdentityHost = (loader: IdentityLoader): IdentityHost => {
         cached = {
           schema: IDENTITY_STATUS_SCHEMA_ID,
           status: "available",
+          identityRef: loaded.identityRef,
           npub: loaded.npub,
           walletFingerprint: loaded.walletFingerprint,
           source: loaded.source,

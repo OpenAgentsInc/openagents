@@ -124,3 +124,23 @@ export function deriveSovereignIdentityPublic(
     sparkDerivationPath: SPARK_DERIVATION_PATH,
   };
 }
+
+/**
+ * Derive the ONE canonical `identityRef` (IDR-08) from a shared-root mnemonic.
+ *
+ * The `identityRef` is the stable, public, cross-surface name for one sovereign
+ * identity. It is EXACTLY the Nostr NIP-06 `npub` under the frozen profile, so
+ * every surface (Pylon, Desktop, mobile, and the web signer bridge) that derives
+ * it from the same mnemonic gets the IDENTICAL reference — there is one identity,
+ * one `npub`, and one `identityRef`. It is a PUBLIC identifier: it carries no
+ * mnemonic, `nsec`, raw private key, or seed.
+ *
+ * This is the single derivation both application surfaces call, so no surface
+ * can fork a second, divergent identity name.
+ */
+export function deriveIdentityRef(
+  mnemonic: string,
+  passphrase: string = EMPTY_BIP39_PASSPHRASE,
+): string {
+  return deriveSovereignIdentityPublic(mnemonic, passphrase).npub;
+}

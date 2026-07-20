@@ -7,8 +7,7 @@ import { sha256 } from "@noble/hashes/sha256"
 import { generateMnemonic, validateMnemonic } from "@scure/bip39"
 import { wordlist } from "@scure/bip39/wordlists/english"
 import {
-  deriveLocalNostrIdentity,
-  deriveSovereignIdentityPublic,
+  resolveLocalIdentityPublic,
   type LocalSignerPort,
 } from "@openagentsinc/sovereign-identity"
 import { openRecoveredSparkWalletStatus, type SparkWalletStatus } from "../wallet/spark-status.js"
@@ -46,6 +45,12 @@ export type PylonNostrSigner = LocalSignerPort
  */
 export type PylonNostrIdentity = {
   identityPath: string
+  /**
+   * The ONE canonical cross-surface identity reference (IDR-08). It is the `npub`
+   * under the frozen profile, resolved by the shared `@openagentsinc/sovereign-identity`
+   * service, so Pylon and Desktop carry the identical reference for one identity.
+   */
+  identityRef: string
   publicKey: string
   npub: string
   /** The PUBLIC Spark wallet BIP-32 fingerprint (hex). Safe to display/persist. */
@@ -286,8 +291,10 @@ export async function createNostrIdentity(
 export function deriveNip06Identity(mnemonic: string, identityPath: string): PylonNostrIdentity {
   const normalized = normalizeMnemonic(mnemonic)
   if (!validateMnemonic(normalized, wordlist)) throw new Error("invalid NIP-06 mnemonic")
-  const nostr = deriveLocalNostrIdentity(normalized)
-  const spark = deriveSovereignIdentityPublic(normalized)
+  // IDR-08: resolve identity/signer/identityRef through the ONE shared service
+  // (`@openagentsinc/sovereign-identity`). Pylon is a CONSUMER of that service,
+  // not a parallel derivation, so its `identityRef` and `npub` match Desktop's.
+  const resolved = resolveLocalIdentityPublic(normalized)
   // IDR-07: restore the Spark wallet from the recovered root in STATUS-ONLY mode
   // through the app-side adapter. The mnemonic stays inside this bounded scope;
   // only the PUBLIC status projection is returned. Non-blocking: a failed open
@@ -295,12 +302,13 @@ export function deriveNip06Identity(mnemonic: string, identityPath: string): Pyl
   const sparkWallet = openRecoveredSparkWalletStatus(normalized)
   return {
     identityPath,
-    publicKey: nostr.publicKey,
-    npub: nostr.npub,
-    sparkFingerprint: spark.sparkBip32FingerprintHex,
-    profileId: nostr.profileId,
+    identityRef: resolved.identityRef,
+    publicKey: resolved.publicKey,
+    npub: resolved.npub,
+    sparkFingerprint: resolved.sparkFingerprint,
+    profileId: resolved.profileId,
     sparkWallet,
-    signer: nostr.signer,
+    signer: resolved.signer,
   }
 }
 

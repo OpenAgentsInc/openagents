@@ -52,6 +52,13 @@ const BoundedRef = Schema.String.check(Schema.isMaxLength(120), Schema.isPattern
 export const IdentityStatusSchema = Schema.Struct({
   schema: Schema.Literal(IDENTITY_STATUS_SCHEMA_ID),
   status: Schema.Literals(identityStatusValues),
+  /**
+   * The ONE canonical cross-surface identity reference (IDR-08). It is the `npub`
+   * resolved by the shared `@openagentsinc/sovereign-identity` service, so Desktop
+   * and Pylon carry the identical reference; null when unavailable. An `nsec1...`
+   * or raw-secret shape can never match the `npub1` pattern.
+   */
+  identityRef: Schema.NullOr(Npub),
   /** The Nostr NIP-06 `npub`; null when unavailable. */
   npub: Schema.NullOr(Npub),
   /** The Spark wallet public fingerprint (lower-hex); null when unavailable. */
@@ -88,6 +95,7 @@ export const decodeIdentityStatus = (value: unknown): IdentityStatus | null => {
 export const unavailableIdentityStatus = (): IdentityStatus => ({
   schema: IDENTITY_STATUS_SCHEMA_ID,
   status: "unavailable",
+  identityRef: null,
   npub: null,
   walletFingerprint: null,
   source: null,

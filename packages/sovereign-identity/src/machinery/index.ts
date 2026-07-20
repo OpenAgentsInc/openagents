@@ -26,3 +26,10 @@ export * from "./service.ts";
 // restart+restore read path, and the atomic file-backed public manifest store.
 export * from "./import.ts";
 export * from "./file-manifest-store.ts";
+// IDR-08 migrate applications to ONE identity service: the single resolved public
+// identity projection both surfaces consume, the mobile custody composition over
+// the IDR-05 native bridge, and the web signer bridge / NIP-46 seam that carries
+// public identity and signer operations only — never a raw key.
+export * from "./resolved-identity.ts";
+export * from "./mobile-custody.ts";
+export * from "./web-signer-bridge.ts";

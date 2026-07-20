@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vite-plus/test"
 
 import {
+  deriveIdentityRef,
   deriveLocalNostrIdentity,
   deriveSovereignIdentityPublic,
   PUBLIC_TEST_IDENTITY_EMPTY_PASSPHRASE,
@@ -30,6 +31,7 @@ const projectionFor = (mnemonic: string, source: "rehydrated" | "created"): Iden
   const spark = deriveSovereignIdentityPublic(mnemonic)
   return {
     source,
+    identityRef: deriveIdentityRef(mnemonic),
     npub: nostr.npub,
     walletFingerprint: spark.sparkBip32FingerprintHex,
     profileId: nostr.profileId,
@@ -52,6 +54,8 @@ describe("identity host (IDR-BS #9103, IDR-06 signer boundary)", () => {
     const status = await createIdentityHost(loaderFor({ source: "rehydrated" })).status()
     expect(status.status).toBe("available")
     expect(status.npub).toBe(PUBLIC_TEST_IDENTITY_EMPTY_PASSPHRASE.npub)
+    // IDR-08: the ONE canonical identityRef equals the npub under the frozen profile.
+    expect(status.identityRef).toBe(PUBLIC_TEST_IDENTITY_EMPTY_PASSPHRASE.npub)
     expect(status.walletFingerprint).toBe(PUBLIC_TEST_IDENTITY_EMPTY_PASSPHRASE.sparkBip32FingerprintHex)
     expect(status.source).toBe("rehydrated")
     expect(status.profileId).toBe("openagents.legacy_unified_nostr_spark.v1")
@@ -86,7 +90,7 @@ describe("identity host (IDR-BS #9103, IDR-06 signer boundary)", () => {
     expect(serialized.includes("seed")).toBe(false)
     // Only the documented public keys are present.
     expect(Object.keys(status).sort()).toEqual(
-      ["npub", "profileId", "schema", "source", "status", "walletFingerprint", "walletMode"],
+      ["identityRef", "npub", "profileId", "schema", "source", "status", "walletFingerprint", "walletMode"],
     )
     // The public projection still decodes against the strict IPC schema.
     expect(decodeIdentityStatus(status)).not.toBeNull()
@@ -95,6 +99,7 @@ describe("identity host (IDR-BS #9103, IDR-06 signer boundary)", () => {
   test("is fail-soft: a loader error yields the unavailable projection, never a throw", async () => {
     const status = await createIdentityHost(loaderFor({ fail: true })).status()
     expect(status.status).toBe("unavailable")
+    expect(status.identityRef).toBeNull()
     expect(status.npub).toBeNull()
     expect(status.walletFingerprint).toBeNull()
     expect(status.source).toBeNull()
