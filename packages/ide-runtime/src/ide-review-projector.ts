@@ -202,6 +202,7 @@ export const compileIdeReviewProjection = (
       schema: IDE_REVIEW_PROJECTION_SCHEMA_LITERAL,
       projectionRef: request.projectionRef,
       audience: authorized.audience,
+      ownerScopeRef: request.access.ownerRef,
       audienceScopeRef: authorized.audienceScopeRef,
       source: request.source,
       freshness,

@@ -257,6 +257,7 @@ export const IdeReviewProjection = S.Struct({
   schema: S.Literal(IDE_REVIEW_PROJECTION_SCHEMA_LITERAL),
   projectionRef: IdeProjectionRef,
   audience: IdeReviewAudience,
+  ownerScopeRef: S.optionalKey(IdeProjectionRef),
   audienceScopeRef: S.optionalKey(IdeProjectionRef),
   source: IdeReviewSource,
   freshness: IdeReviewFreshness,
