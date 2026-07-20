@@ -1,8 +1,8 @@
 {
   "schemaVersion": "openagents.desktop.ide-source-control-benchmark.v1",
   "issue": "IDE-12",
-  "candidateCommitSha": "4203a5984217344d938f3c2c82167cc22df965a1",
-  "measuredAt": "2026-07-20T06:48:24.370Z",
+  "candidateCommitSha": "a0c359bb0eb607c7966b0e7d5c020c07b64f99d7",
+  "measuredAt": "2026-07-20T06:55:14.159Z",
   "environment": {
     "platform": "darwin",
     "architecture": "arm64",
@@ -15,9 +15,9 @@
       "name": "status-refresh",
       "corpus": "small:50-files",
       "repetitions": 10,
-      "p50": 74.16591599999992,
-      "p95": 75.837041,
-      "p99": 75.837041,
+      "p50": 79.9815000000001,
+      "p95": 82.481584,
+      "p99": 82.481584,
       "thresholdP95": 150,
       "thresholdP99": 250,
       "passed": true
@@ -26,9 +26,9 @@
       "name": "status-refresh",
       "corpus": "medium:500-files",
       "repetitions": 10,
-      "p50": 72.92608399999972,
-      "p95": 93.73179199999981,
-      "p99": 93.73179199999981,
+      "p50": 72.50854200000003,
+      "p95": 94.38212500000009,
+      "p99": 94.38212500000009,
       "thresholdP95": 350,
       "thresholdP99": 600,
       "passed": true
@@ -37,9 +37,9 @@
       "name": "status-refresh",
       "corpus": "large:2000-files",
       "repetitions": 5,
-      "p50": 78.56124999999975,
-      "p95": 81.74404200000026,
-      "p99": 81.74404200000026,
+      "p50": 74.42658299999994,
+      "p95": 74.43495799999982,
+      "p99": 74.43495799999982,
       "thresholdP95": 900,
       "thresholdP99": 1500,
       "passed": true
@@ -48,9 +48,9 @@
       "name": "stage-unstage-file",
       "corpus": "small:20-files",
       "repetitions": 10,
-      "p50": 301.40041699999983,
-      "p95": 315.1085830000002,
-      "p99": 315.1085830000002,
+      "p50": 293.454917,
+      "p95": 303.2502079999995,
+      "p99": 303.2502079999995,
       "thresholdP95": 350,
       "thresholdP99": 500,
       "passed": true
@@ -59,16 +59,16 @@
       "name": "history-100",
       "corpus": "small:20-files",
       "repetitions": 10,
-      "p50": 80.61195899999984,
-      "p95": 85.5166250000002,
-      "p99": 85.5166250000002,
+      "p50": 77.65454200000022,
+      "p95": 82.15591700000004,
+      "p99": 82.15591700000004,
       "thresholdP95": 200,
       "thresholdP99": 350,
       "passed": true
     }
   ],
   "resources": {
-    "heapDeltaBytes": 9730736,
+    "heapDeltaBytes": 6973216,
     "activeHandlesDelta": 0,
     "childProcessesAfter": 0
   },

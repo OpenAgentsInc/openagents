@@ -1,10 +1,10 @@
 {
   "schemaVersion": "openagents.desktop.ide-source-control-acceptance.v1",
   "issue": "IDE-12",
-  "candidateCommitSha": "4203a5984217344d938f3c2c82167cc22df965a1",
-  "evaluationSha": "4203a5984217344d938f3c2c82167cc22df965a1",
-  "artifactTreeSha256": "6cc311393cc45fe4d1f5b69a2456f4f7c2f3b1649c9282461f56a065c3d5cb89",
-  "generatedAt": "2026-07-20T06:49:13.934Z",
+  "candidateCommitSha": "a0c359bb0eb607c7966b0e7d5c020c07b64f99d7",
+  "evaluationSha": "a0c359bb0eb607c7966b0e7d5c020c07b64f99d7",
+  "artifactTreeSha256": "ec3b0503ec41e5ce04225ca84322634c4c62939e47e9cb8656da615e35361e39",
+  "generatedAt": "2026-07-20T06:55:59.147Z",
   "benchmarkRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-12-source-control.json",
   "packagedRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-12-source-control-packaged.json",
   "screenshotRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-12-source-control-packaged.png",
@@ -15,7 +15,7 @@
     "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-12-source-control-packaged.png",
     "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-12-source-control-packaged-trace.json"
   ],
-  "rollbackTargetSha": "8e27cdc9a4b49ee5fec1a5d5b8c02041e99171ba",
+  "rollbackTargetSha": "2be4f2911b133d8c660c1704800b8cd4945ad5c5",
   "reviewerDisposition": "unreviewed",
   "ownerDisposition": "unreviewed",
   "assuranceLifecycle": "proposed",
