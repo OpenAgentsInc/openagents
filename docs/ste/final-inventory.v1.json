@@ -19131,7 +19131,7 @@
     },
     {
       "path": "docs/cloud/README.md",
-      "sha256": "f7aee14892d1144bf90bb5284f7f3352088b95be02bc74c76adecb017be2f14f",
+      "sha256": "e252a9f5212da5b41f4e6ef95c704a57b3daad32e55165f67060cd303ae13b51",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -19693,7 +19693,7 @@
     },
     {
       "path": "docs/cloud/bootstrap/SBX-04-managed-sandbox-turn-runtime.md",
-      "sha256": "7e9629b77ec610b93ee6f8c765dfd84dc9fc55e3a0f7b5e198b7ee3219165b47",
+      "sha256": "0796c9ac0fcabf297e00a30d7d33d04f4bd25a76299e20c8abfc580c410352c8",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

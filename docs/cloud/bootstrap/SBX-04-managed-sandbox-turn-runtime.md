@@ -22,13 +22,13 @@ typed failure.
 
 ## Components
 
-| Component | Responsibility |
-| --- | --- |
-| `packages/managed-sandbox-contract` | Runtime identity, turn, usage, native event, input-event, and terminal-receipt schemas plus lifecycle model |
-| Cloud SQL migration `0081` | Canonical turn JSON, per-turn sequence, interrupt command, receipt, and native-event coordinates |
-| `PostgresManagedSandboxStore` | Dense append, identical-byte replay, changed-byte conflict, cursor replay, terminal reconciliation, and generation fence |
-| Worker Box adapter | Prompt/status/events/interrupt translation and bounded Box event projection |
-| `oa-codex-control` | Private fail-closed dispatch/sync/interrupt adapter to one configured guest SDK helper |
+| Component                           | Responsibility                                                                                                           |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `packages/managed-sandbox-contract` | Runtime identity, turn, usage, native event, input-event, and terminal-receipt schemas plus lifecycle model              |
+| Cloud SQL migration `0081`          | Canonical turn JSON, per-turn sequence, interrupt command, receipt, and native-event coordinates                         |
+| `PostgresManagedSandboxStore`       | Dense append, identical-byte replay, changed-byte conflict, cursor replay, terminal reconciliation, and generation fence |
+| Worker Box adapter                  | Prompt/status/events/interrupt translation and bounded Box event projection                                              |
+| `oa-codex-control`                  | Private fail-closed dispatch/sync/interrupt adapter to one configured guest SDK helper                                   |
 
 ## Driver contract
 
@@ -112,6 +112,26 @@ generation. The route suite runs the unmodified Box SDK through both Codex and
 Claude component event streams. The Rust suite proves the private executable
 adapter accepts both provider identities and rejects stale/invisible
 interrupts.
+
+## Owner-gated live SDK harness
+
+SBX-09 owns
+`apps/openagents.com/workers/api/scripts/managed-sandbox-box-live-acceptance.ts`.
+The script is default-off and requires both `--apply` and
+`OA_MANAGED_SANDBOX_OWNER_GATE=I_ACCEPT_LIVE_GCP_COST`. Its remaining inputs
+are the external staging `/v1` base path, two programmatic agent tokens with
+different owners, the GCP project and zone, and the exact admitted source,
+image, and profile digests. Tokens remain environment-only and are not
+written to evidence.
+
+The script runs the unmodified `@asciidev/box-sdk@0.0.24`. It requires real
+Codex and Claude structural completion, then interrupts a separate exact turn.
+It also covers lifecycle replay, cross-owner denial, ascending event reconnect,
+file/command/artifact policy, stop/resume persistence, stale-generation cursor
+denial, typed `501` behavior, delete replay, and zero exact-name GCP residue.
+If API cleanup cannot converge, the script may remove only its deterministic
+guest, disk, and five generation-owned firewall names. Any such emergency
+cleanup makes the acceptance fail even when the final residue is zero.
 
 ## Proof boundary
 

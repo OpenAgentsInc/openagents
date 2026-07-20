@@ -5,13 +5,13 @@ OpenAgents Cloud infrastructure lives **in this monorepo**. The private
 
 ## Crates
 
-| Crate | Role |
-| --- | --- |
-| `crates/openagents-cloud-contract` | Rust contract validators + fixture conformance |
-| `crates/oa-codex-control` | HTTP control plane (placement, GCE capacity, Cloud-VM) |
-| `crates/oa-node` | Managed node daemon |
-| `crates/oa-workroomd` | Workroom sidecar |
-| `crates/oa-cloud-run-bridge` | Narrow bearer-gated Cloud Run edge. SBX-09 admits only `/v1/managed-sandbox/runtime/*` on its dedicated instance. |
+| Crate                              | Role                                                                                                              |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `crates/openagents-cloud-contract` | Rust contract validators + fixture conformance                                                                    |
+| `crates/oa-codex-control`          | HTTP control plane (placement, GCE capacity, Cloud-VM)                                                            |
+| `crates/oa-node`                   | Managed node daemon                                                                                               |
+| `crates/oa-workroomd`              | Workroom sidecar                                                                                                  |
+| `crates/oa-cloud-run-bridge`       | Narrow bearer-gated Cloud Run edge. SBX-09 admits only `/v1/managed-sandbox/runtime/*` on its dedicated instance. |
 
 ## Related public surfaces
 
@@ -49,6 +49,12 @@ OpenAgents Cloud infrastructure lives **in this monorepo**. The private
   short-lived owner/tenant/sandbox/generation/turn-scoped HMAC capability. The
   image also carries the `openat2` file/artifact executor and network-isolated
   command driver required for live Box SDK I/O.
+- [SBX-09 Box SDK live acceptance](../../apps/openagents.com/workers/api/scripts/managed-sandbox-box-live-acceptance.ts)
+  is an owner-gated external staging harness over the unmodified pinned SDK.
+  It proves programmatic and cross-owner authorization, exact lifecycle
+  replay, real Codex and Claude structural completion, interrupt, ordered
+  reconnect, guest I/O, stop/resume persistence, typed unsupported behavior,
+  delete replay, and an independent exact-name GCP residue oracle.
 - [SBX-04 turn runtime](./bootstrap/SBX-04-managed-sandbox-turn-runtime.md) —
   implements the native Codex/Claude turn authority,
   ordered reconnect, exact-turn interrupt, and the private default-off guest
