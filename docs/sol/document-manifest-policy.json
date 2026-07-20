@@ -3,6 +3,12 @@
   "inventoryReviewDate": "2026-07-19",
   "defaultOwner": "Sol roadmap",
   "overrides": {
+    "docs/sol/2026-07-20-apple-fm-router-to-full-agent-system-plan.md": {
+      "class": "authority",
+      "owner": "OpenAgents Desktop local-first agent system",
+      "disposition": "retain-active-authority",
+      "dispatch": false
+    },
     "docs/sol/2026-07-19-asd-ste100-adoption-audit.md": {
       "class": "current-status",
       "owner": "OpenAgents documentation",

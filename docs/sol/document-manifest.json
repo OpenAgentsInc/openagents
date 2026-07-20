@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-19",
-  "sourceTreeSha256": "12609b33b0f7b07f193116d0c60dc9c1c68a7e3989d8b3d306eda6271b7101fe",
+  "sourceTreeSha256": "6e12f5ca27e7671ff99d7959fd02e815d8b22c5e400c019eeddcd2ebc6fc40d7",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -2290,7 +2290,7 @@
       "owner": "OpenAgents managed sandboxes / epic #9023",
       "disposition": "retain-active-authority",
       "dispatch": false,
-      "sha256": "a20455a1e73780831cd1db69cf8133e856436a8128fba9174d08100b4532709a",
+      "sha256": "456ef755355f9618a6ec7c16da38ec49dae1db31101597784a530833cdc832de",
       "status": "active",
       "snapshot": "2026-07-19",
       "reviewedAt": "2026-07-19",
@@ -2347,6 +2347,21 @@
       ]
     },
     {
+      "path": "docs/sol/2026-07-20-apple-fm-router-to-full-agent-system-plan.md",
+      "class": "authority",
+      "owner": "OpenAgents Desktop local-first agent system",
+      "disposition": "retain-active-authority",
+      "dispatch": false,
+      "sha256": "e48dc5bc72f07e8de385c3c9e97f5f01f4ee97b4bc33c12d9821c6d7882bd64b",
+      "status": "owner-directed definitive implementation plan",
+      "snapshot": "`7e5d067c88a040296977beaaf38d62be59a612b7`",
+      "reviewedAt": "2026-07-19",
+      "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
+      "inboundLinks": [],
+      "inboundSourceCount": 0,
+      "issueLinks": []
+    },
+    {
       "path": "docs/sol/CHALLENGE_LEDGER.md",
       "class": "contract",
       "owner": "Sol roadmap",
@@ -2396,6 +2411,7 @@
         "docs/sol/2026-07-10-terra-execution-lane.md",
         "docs/sol/2026-07-12-documentation-cleanup-audit-and-retirement-plan.md",
         "docs/sol/2026-07-12-july10-delegation-backroom-preparation-manifest.md",
+        "docs/sol/2026-07-20-apple-fm-router-to-full-agent-system-plan.md",
         "docs/sol/IMPLEMENTATION_ROADMAP.md",
         "docs/sol/MASTER_ROADMAP.md",
         "docs/sol/OPERATING_MODEL.md",
@@ -2406,7 +2422,7 @@
         "docs/sol/issues/app-program.md",
         "docs/sol/issues/fc-substrate.md"
       ],
-      "inboundSourceCount": 13,
+      "inboundSourceCount": 14,
       "issueLinks": []
     },
     {
@@ -2433,9 +2449,9 @@
       "owner": "Sol roadmap",
       "disposition": "retain-active-authority",
       "dispatch": true,
-      "sha256": "1d23a61f1e6f7952306182978a61db88ad72da366b62caed6cc0f9be6fa9ccc8",
+      "sha256": "09c8d4b869124290d378063cf6833674fabe5df899e700599a22ec5e480018d4",
       "status": "canonical OpenAgents implementation roadmap",
-      "snapshot": "2026-07-19",
+      "snapshot": "2026-07-20",
       "reviewedAt": "2026-07-19",
       "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
       "inboundLinks": [
@@ -2453,6 +2469,7 @@
         "docs/mvp/README.md",
         "docs/qa/README.md",
         "docs/research/2026-07-18-memoharness-blueprint-integration-analysis.md",
+        "docs/research/2026-07-20-memoharness-openagents-integration-analysis.md",
         "docs/sol/2026-07-10-episode-195-followup-analysis.md",
         "docs/sol/2026-07-10-r1-r2-identity-sync-contract.md",
         "docs/sol/2026-07-10-terra-execution-lane.md",
@@ -2463,6 +2480,7 @@
         "docs/sol/2026-07-13-non-port-open-issue-completion-audit.md",
         "docs/sol/2026-07-16-openagents-desktop-full-auto-deep-dive.md",
         "docs/sol/2026-07-18-electron-ai-sdk-codex-claude-full-auto-rewrite-roadmap.md",
+        "docs/sol/2026-07-20-apple-fm-router-to-full-agent-system-plan.md",
         "docs/sol/CHALLENGE_LEDGER.md",
         "docs/sol/CLAIM_PROTOCOL.md",
         "docs/sol/IMPLEMENTATION_ROADMAP.md",
@@ -2489,7 +2507,7 @@
         "docs/terra/NEXT.md",
         "docs/terra/README.md"
       ],
-      "inboundSourceCount": 49,
+      "inboundSourceCount": 51,
       "issueLinks": [
         8547,
         8566,
@@ -2551,8 +2569,6 @@
         9023,
         9027,
         9029,
-        9030,
-        9031,
         9032,
         9033,
         9035,

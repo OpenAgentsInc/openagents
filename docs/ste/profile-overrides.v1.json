@@ -1,6 +1,15 @@
 {
   "schema": "openagents-ste-profile-overrides-v1",
   "profiles": {
+    "docs/sol/2026-07-20-apple-fm-router-to-full-agent-system-plan.md": {
+      "ste_mode": "mixed",
+      "ste_status": "checked",
+      "ste_reviewer": "codex/apple-fm-full-system-plan-20260720",
+      "ste_reviewed_at": "2026-07-20T12:42:45Z",
+      "risk": "high",
+      "ste_audience": "human",
+      "ste_accepted_screening_rules": ["STE-2.4"]
+    },
     "docs/ide/2026-07-20-openagents-ide-crash-prevention-implementation-plan.md": {
       "ste_mode": "mixed",
       "ste_status": "checked",

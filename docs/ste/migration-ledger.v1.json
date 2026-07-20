@@ -39742,6 +39742,23 @@
       "replacement": null
     },
     {
+      "path": "docs/sol/2026-07-20-apple-fm-router-to-full-agent-system-plan.md",
+      "ste_issue": 9,
+      "ste_mode": "mixed",
+      "ste_glossary_revision": "openagents-ste-glossary-v1",
+      "ste_status": "inspected",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+      "ste_reviewed_at": "2026-07-19T22:00:00Z",
+      "owner": "OpenAgents documentation",
+      "risk": "high",
+      "source": null,
+      "replacement": null,
+      "ste_audience": "human",
+      "ste_accepted_screening_rules": [
+        "STE-2.4"
+      ]
+    },
+    {
       "path": "docs/sol/CHALLENGE_LEDGER.md",
       "ste_issue": 9,
       "ste_mode": "descriptive",
