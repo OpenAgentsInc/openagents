@@ -126,11 +126,12 @@ const bundle: PortableCheckpointBundle = {
 const artifactBytes = new TextEncoder().encode("private-checkpoint-archive-fixture");
 const ciphertext = new TextEncoder().encode("opaque-ciphertext-fixture");
 const envelope = {
-  schema: "openagents.portable_checkpoint_artifact_custody_encrypted.v2" as const,
-  algorithm: "aes-256-gcm" as const,
+  schema: "openagents.portable_checkpoint_artifact_custody_encrypted.v3" as const,
+  algorithm: "aes-256-gcm+google-kms-wrapped-dek" as const,
   objectRef,
   policy: "openagents_managed" as const,
   keyRef: "key.ide13.artifact",
+  wrappedKeyBase64: Buffer.from("wrapped-dek-fixture").toString("base64"),
   nonceBase64: Buffer.from("123456789012").toString("base64"),
   authTagBase64: Buffer.from("1234567890123456").toString("base64"),
   ciphertextBase64: Buffer.from(ciphertext).toString("base64"),
@@ -175,42 +176,45 @@ const manifest: PortableCheckpointCustodyObjectManifest = {
   secretMaterial: "excluded",
 };
 
-const sql = Object.assign(
-  async (strings: TemplateStringsArray): Promise<ReadonlyArray<Record<string, unknown>>> => {
-    const query = strings.join("?");
-    if (query.includes("khala_sync_portable_command_executions")) return [{ claim_json: claim }];
-    if (query.includes("khala_sync_portable_phase_operations")) {
-      return [
-        {
-          operation_ref: operationRef,
-          command_execution_claim_ref: claim.claimRef,
-          owner_user_id: ownerRef,
-          session_ref: sessionRef,
-          attachment_ref: sourceAttachmentRef,
-          attachment_generation: 3,
-          target_ref: sourceTargetRef,
-          pylon_ref: sourcePylonRef,
-          checkpoint_ref: checkpointRef,
-          expires_at: leaseExpiresAt,
-          state: "completed",
-          result_ref: resultRef,
-          result_status: "completed",
-          result_checkpoint_ref: checkpointRef,
-          result_checkpoint_object_ref: objectRef,
-          result_checkpoint_digest: bundle.checkpoint.digest,
-          result_checkpoint_manifest_digest: sha256(canonicalJson(manifest)),
-          completed_at: now,
-        },
-      ];
-    }
-    throw new Error("unexpected SQL");
-  },
-  {
-    begin: async () => {
-      throw new Error("transaction is not used");
+const makeSql = (checkpointManifestDigest = sha256(canonicalJson(manifest))) =>
+  Object.assign(
+    async (strings: TemplateStringsArray): Promise<ReadonlyArray<Record<string, unknown>>> => {
+      const query = strings.join("?");
+      if (query.includes("khala_sync_portable_command_executions")) return [{ claim_json: claim }];
+      if (query.includes("khala_sync_portable_phase_operations")) {
+        return [
+          {
+            operation_ref: operationRef,
+            command_execution_claim_ref: claim.claimRef,
+            owner_user_id: ownerRef,
+            session_ref: sessionRef,
+            attachment_ref: sourceAttachmentRef,
+            attachment_generation: 3,
+            target_ref: sourceTargetRef,
+            pylon_ref: sourcePylonRef,
+            checkpoint_ref: checkpointRef,
+            expires_at: leaseExpiresAt,
+            state: "completed",
+            result_ref: resultRef,
+            result_status: "completed",
+            result_checkpoint_ref: checkpointRef,
+            result_checkpoint_object_ref: objectRef,
+            result_checkpoint_digest: bundle.checkpoint.digest,
+            result_checkpoint_manifest_digest: checkpointManifestDigest,
+            completed_at: now,
+          },
+        ];
+      }
+      throw new Error("unexpected SQL");
     },
-  },
-) as SyncSql;
+    {
+      begin: async () => {
+        throw new Error("transaction is not used");
+      },
+    },
+  ) as SyncSql;
+
+const sql = makeSql();
 
 const scope = {
   commandExecutionClaimRef: claim.claimRef,
@@ -256,7 +260,6 @@ describe("Sync committed checkpoint artifact resolver", () => {
       custody: { decrypt },
       now: () => now,
     });
-
     expect(await resolver.resolve(scope)).toEqual(bundle);
     expect(await resolver.resolve(scope)).toEqual(bundle);
     expect(read).toHaveBeenCalledTimes(2);
@@ -313,6 +316,49 @@ describe("Sync committed checkpoint artifact resolver", () => {
       }),
     ).rejects.toMatchObject({ code: "phase_mismatch" });
     expect(read).not.toHaveBeenCalled();
+  });
+
+  test("rejects a legacy raw-key envelope for OpenAgents-managed custody before decrypt", async () => {
+    const legacyEnvelope = {
+      schema: "openagents.portable_checkpoint_artifact_custody_encrypted.v2" as const,
+      algorithm: "aes-256-gcm" as const,
+      objectRef,
+      policy: "openagents_managed" as const,
+      keyRef: "key.ide13.artifact",
+      nonceBase64: Buffer.from("123456789012").toString("base64"),
+      authTagBase64: Buffer.from("1234567890123456").toString("base64"),
+      ciphertextBase64: Buffer.from(ciphertext).toString("base64"),
+    };
+    const legacyEncryptedObjectBytes = new TextEncoder().encode(canonicalJson(legacyEnvelope));
+    const legacyManifest = {
+      ...manifest,
+      objectDigest: sha256(legacyEncryptedObjectBytes),
+    };
+    const legacyManifestDigest = sha256(canonicalJson(legacyManifest));
+    const decrypt = vi.fn(async () => Uint8Array.from(payloadBytes));
+    const resolver = new PortableCommittedCheckpointArtifactResolver({
+      sql: makeSql(legacyManifestDigest),
+      objects: {
+        read: async () =>
+          privateObject({
+            manifest: legacyManifest,
+            encryptedObjectBytes: Uint8Array.from(legacyEncryptedObjectBytes),
+          }),
+      },
+      custody: { decrypt },
+      now: () => now,
+    });
+
+    await expect(
+      resolver.resolve({
+        ...scope,
+        artifact: {
+          ...scope.artifact,
+          checkpointManifestDigest: legacyManifestDigest,
+        },
+      }),
+    ).rejects.toMatchObject({ code: "ciphertext_mismatch" });
+    expect(decrypt).not.toHaveBeenCalled();
   });
 
   test("returns the same public-safe failure ref when custody is unavailable", async () => {

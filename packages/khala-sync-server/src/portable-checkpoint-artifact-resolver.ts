@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 
 import { canonicalJson } from "@openagentsinc/khala-sync";
 import {
+  PortableCheckpointCustodyEncryptedV2Schema,
+  PortableCheckpointCustodyEncryptedV3Schema,
   PortableCheckpointCustodyObjectManifestSchema,
   PortableCommandExecutionClaimSchema,
   PortableRef,
@@ -39,21 +41,15 @@ const CustodyPayloadSchema = Schema.Struct({
   expiresAt: PortableTimestamp,
   bytesBase64: Schema.String.check(Schema.isPattern(BASE64)),
 });
-const EncryptedEnvelopeSchema = Schema.Struct({
-  schema: Schema.Literal("openagents.portable_checkpoint_artifact_custody_encrypted.v2"),
-  algorithm: Schema.Literal("aes-256-gcm"),
-  objectRef: PortableRef,
-  policy: Schema.Literals(["owner_managed", "openagents_managed"]),
-  keyRef: PortableRef,
-  nonceBase64: Schema.String.check(Schema.isPattern(BASE64)),
-  authTagBase64: Schema.String.check(Schema.isPattern(BASE64)),
-  ciphertextBase64: Schema.String.check(Schema.isPattern(BASE64)),
-});
-
 const decodeManifest = Schema.decodeUnknownSync(PortableCheckpointCustodyObjectManifestSchema);
 const decodeClaim = Schema.decodeUnknownSync(PortableCommandExecutionClaimSchema);
 const decodePayload = Schema.decodeUnknownSync(CustodyPayloadSchema);
-const decodeEnvelope = Schema.decodeUnknownSync(EncryptedEnvelopeSchema);
+const decodeEnvelope = Schema.decodeUnknownSync(
+  Schema.Union([
+    PortableCheckpointCustodyEncryptedV2Schema,
+    PortableCheckpointCustodyEncryptedV3Schema,
+  ]),
+);
 const decodeBundle = Schema.decodeUnknownSync(PylonPortableCheckpointBundleSchema);
 
 const digest = (value: string | Uint8Array): `sha256:${string}` =>
@@ -315,8 +311,7 @@ export class PortableCommittedCheckpointArtifactResolver {
           phase.result_checkpoint_ref !== scope.artifact.checkpointRef ||
           phase.result_checkpoint_object_ref !== scope.artifact.checkpointObjectRef ||
           phase.result_checkpoint_digest !== scope.artifact.checkpointDigest ||
-          phase.result_checkpoint_manifest_digest !==
-            scope.artifact.checkpointManifestDigest ||
+          phase.result_checkpoint_manifest_digest !== scope.artifact.checkpointManifestDigest ||
           phase.completed_at === null ||
           new Date(phase.completed_at) > now ||
           new Date(phase.expires_at) <= new Date(phase.completed_at)
@@ -393,12 +388,17 @@ export class PortableCommittedCheckpointArtifactResolver {
     try {
       const envelope = decodeEnvelope(
         JSON.parse(new TextDecoder().decode(encryptedObjectBytes)) as unknown,
+        { onExcessProperty: "error" },
       );
       ciphertext = Uint8Array.from(Buffer.from(envelope.ciphertextBase64, "base64"));
       if (
         envelope.objectRef !== manifest.objectRef ||
         envelope.policy !== manifest.custodyPolicy ||
         envelope.keyRef !== manifest.keyRef ||
+        (manifest.custodyPolicy === "owner_managed" &&
+          envelope.schema !== "openagents.portable_checkpoint_artifact_custody_encrypted.v2") ||
+        (manifest.custodyPolicy === "openagents_managed" &&
+          envelope.schema !== "openagents.portable_checkpoint_artifact_custody_encrypted.v3") ||
         ciphertext.byteLength === 0 ||
         digest(ciphertext) !== manifest.ciphertextDigest
       )
