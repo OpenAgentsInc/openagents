@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-19",
-  "sourceTreeSha256": "4d7d17e7fbc5a25035bf8197a2172ae49af06feae9db943e0706cf86feeb0ab0",
+  "sourceTreeSha256": "91daf1d7b8ba8a9f57585780e5025d77808c02067772cdf06e7dc6540da5fe90",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -2352,9 +2352,9 @@
       "owner": "OpenAgents Desktop local-first agent system",
       "disposition": "retain-active-authority",
       "dispatch": false,
-      "sha256": "fb62c8a2ea9c2f3265bdaacd3471c4c82b13aabd7b0ecdfbbf06ae0cedeacf30",
+      "sha256": "24e883e89003a976775ae5483b2ff08c1e3c947a4d6f8983fb02c922aa6dab4e",
       "status": "owner-directed definitive implementation plan",
-      "snapshot": "`7e5d067c88a040296977beaaf38d62be59a612b7`",
+      "snapshot": "`ec312f73e830c9fab9dee1c2b2a3011405dedf14`",
       "reviewedAt": "2026-07-19",
       "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
       "inboundLinks": [],

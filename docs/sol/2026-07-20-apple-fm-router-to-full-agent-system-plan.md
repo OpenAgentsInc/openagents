@@ -2,32 +2,47 @@
 
 - Date: 2026-07-20
 - Status: owner-directed definitive implementation plan
-- Owner: OpenAgents Desktop and Sol roadmap
-- Source snapshot: `7e5d067c88a040296977beaaf38d62be59a612b7`
-- Product target: OpenAgents Desktop local-first agent system
-- Runtime target: Node 24, pnpm, Vite Plus, Electron, Effect v4, and the current Swift Apple FM helper
+- Owner: OpenAgents shared agent system and Sol roadmap
+- Source snapshot: `ec312f73e830c9fab9dee1c2b2a3011405dedf14`
+- Synthesis source: `7e5d067c88a040296977beaaf38d62be59a612b7`
+- Product target: shared local-first agent system, with Desktop as the first host
+- Surface target: Desktop execution, plus safe web and mobile projections
+- Runtime target: Node 24, pnpm, Vite Plus, Effect v4, Electron, React Native,
+  web React, and the current Swift Apple FM helper
 - Release effect: none until the applicable ProductSpec and assurance gates pass
 
 ## Result
 
 OpenAgents must replace the current special Apple FM chat path with one trusted
-turn system. The new system must connect chat, Editor context, local inference,
-provider turns, proposals, tasks, debug work, source control, evidence, and
-release state. It must not give Apple FM action authority.
+turn system. The system must have shared contracts and a shared Effect kernel.
+Desktop must be its first execution host. Web and mobile must use safe
+projections of the same turn facts. The new system must connect chat, Editor
+context, local inference, provider turns, proposals, tasks, debug work, source
+control, evidence, and release state. It must not give Apple FM action
+authority.
 
-The Electron main process must own turn routing. A local model can recommend a
-route or produce an advisory result. Deterministic policy must make the route
-decision. Existing host services must perform all actions.
+The shared turn kernel must own route rules and turn state. The Electron main
+process must compose that kernel with Desktop adapters. A local model can
+recommend a route or produce an advisory result. Deterministic policy must make
+the route decision. Existing host services must perform all actions.
 
-The first conversion must keep the current Apple FM bridge. It must remove the
-renderer-side prompt builder and direct reply append. It must make each local
-reply a canonical thread turn with identity, context, disclosure, lifecycle,
-and evidence data.
+The first conversion must keep the current Apple FM bridge behavior. It must
+not keep its current package ownership by default. It must move the reusable
+wire contract and client boundary from the nested Pylon runtime to neutral root
+packages. It must keep Desktop helper supervision in the Desktop host. It must
+remove the renderer-side prompt builder and direct reply append. It must make
+each local reply a canonical thread turn with identity, context, disclosure,
+lifecycle, and evidence data.
 
 The conversion must then use the existing IDE graph. The Editor must keep the
 file visible while the user adds context or asks for help. Apple FM must use the
 same typed cursor candidate and decision contracts as other providers. All file
 changes must use the IDE-08 proposal, review, apply, and undo path.
+
+Current paths are source evidence. They are not the required final ownership.
+In particular, `apps/pylon`, `@openagentsinc/pylon-runtime`,
+`@openagentsinc/pylon-core`, and Desktop-local contract files must not become
+the shared turn-system authority only because useful code is there now.
 
 Version one must be local-first and local-only for OpenAgents control and data.
 It must store turn state, agent state, message-chain projections, DSE artifacts,
@@ -76,12 +91,15 @@ This plan reconciles these source groups:
 2. All current files in `docs/ide/`.
 3. The DSE Git history audit and its Apple FM and Blueprint analyses.
 4. The current MemoHarness analysis.
-5. The current Desktop, Cursor parity, Full Auto, portable-session, and managed
-   sandbox specifications.
-6. The current Desktop renderer, Electron main, Apple FM host, provider-lane,
-   thread, IDE cursor, context, proposal, task, debug, and source-control code.
-7. Git history for the retired native Swift, DSE, Blueprint, Apple FM, and IDE
-   implementations.
+5. The current Desktop, web, mobile, Cursor parity, Full Auto,
+   portable-session, and managed sandbox specifications.
+6. The current root package graph and the Desktop, web, mobile, Pylon, Apple
+   FM, provider, thread, IDE, context, proposal, task, debug, and source-control
+   code.
+7. Git history for the retired native Swift, DSE, Blueprint, Apple FM, Pylon,
+   and IDE implementations.
+8. The package contracts for agent runtime, provider accounts, portable
+   sessions, runtime platform, UI, ATIF, sync, and Pylon core.
 
 Historical documents are evidence. They are not current runtime authority.
 The plan uses the current code when a historical document conflicts with it.
@@ -94,7 +112,7 @@ The current supported path has these parts:
 
 ```text
 Renderer -> typed preload IPC -> Electron main -> AppleFmHost
-         -> in-process Pylon runtime -> Swift foundation-bridge -> Apple FM
+         -> nested Pylon runtime client -> Swift foundation-bridge -> Apple FM
 ```
 
 The current path has useful controls:
@@ -107,6 +125,12 @@ The current path has useful controls:
 - Unsupported hardware, absent helpers, malformed data, and failed probes have
   typed refusal states.
 - The bridge can launch, adopt, refresh, stop, and dispose the local helper.
+
+The nested Pylon runtime is a current dependency. It is not a placement
+decision for the full system. Its Apple FM folder combines a portable wire
+contract, a client, Node process control, workspace tools, Blueprint tools,
+Pylon receipts, and program-run evidence. These concerns have different owners
+in the target.
 
 The current renderer chat path is not the required full system:
 
@@ -175,6 +199,17 @@ bounded read-only tools, progressive snapshots, Desktop IPC, in-process Pylon,
 and package wiring. The conversion must not restore the old app or a second
 daemon authority.
 
+Commit `f5919c766930d5913d67484660ff670dd92776fd` imported duplicate nested
+runtime trees under Pylon and Probe. Those trees now differ. Pylon also has a
+second Node supervisor path, and Desktop has a third packaged helper path. This
+history proves that the nested app package is not a stable shared boundary.
+The new package must select behavior through conformance tests. It must not
+copy every current implementation.
+
+The current native source and Desktop staging data also differ. The Swift
+helper reports bridge version `0.1.3`. Desktop staging pins `0.1.1`. The target
+must generate or check both values from one source before release.
+
 The history also shows a repeated error. Earlier designs made a local model look
 like the router because it produced routing text. The new system must separate a
 recommendation from a decision. A model can classify or recommend. Only the
@@ -222,6 +257,12 @@ OpenAgents deprecates the older Blueprint kernel as prior art for new product
 work. This plan does not revive a company brain, a universal object graph, or
 its runtime.
 
+The current Blueprint runtime copies remain in web, Pylon, and Probe paths.
+Some web code has stale D1 assumptions. `packages/blueprint-contracts` is a
+narrow security package. None of these paths is the target home for turn
+policy, DSE, IDE context, or memory. The new system must reimplement the useful
+governance rules in provider-neutral contracts.
+
 Palantir Ontology has objects, links, actions, functions, security, SDKs, and
 branching. The current OpenAgents Blueprint does not have that complete system.
 The conversion must not call Blueprint an ontology or call this plan "our
@@ -257,6 +298,9 @@ crosswalk. It is not acceptance evidence.
 | Desktop AC50 | Use Effect Schema at all trust boundaries. |
 | Desktop AC51 | Use scoped Effect services and owned lifecycle. |
 | Desktop AC52 | Report an honest release rung. |
+| Web current ProductSpec | Keep custody local-first. Render synced typed facts. Do not make the browser the canonical transcript or IDE action owner. |
+| Mobile current ProductSpec | Use the same typed commands and durable refs. Keep agent execution, raw roots, credentials, shell, Git, DAP, and helper launch out of mobile. |
+| IDE-14 | Project the IDE-13 identity and safe state to web and mobile. Do not give either surface raw workspace authority. |
 | Cursor CP-AC04 | Give completion, next edit, inline, and multi-file candidates typed quality and provenance. |
 | Cursor CP-AC12 | Show selected and effective harness, model, provider, account, placement, data destination, and cost. |
 | Cursor CP-AC13 | Keep local lexical and symbol work available without remote embeddings. |
@@ -276,9 +320,190 @@ crosswalk. It is not acceptance evidence.
 | Full Auto FA75 | Use offline optimization, holdout evaluation, and independent release. Prohibit self-promotion. |
 | Full Auto FA76 | Keep control in Effect and TypeScript. Limit native code to local inference, PTY, or containment. |
 
+## Fresh code placement audit
+
+The package audit starts from product meaning. It does not start from the path
+that contains the oldest implementation. Desktop and Pylon must be composition
+roots. Neither app can own contracts or policy that web and mobile must use.
+
+The audit found these placement defects:
+
+- `provider-lane.ts` combines route policy, Desktop persistence, renderer
+  delivery, thread projection, and provider-specific events.
+- `local-turn-journal.ts` combines the turn state machine, schema, limits, and
+  a Node file store.
+- Desktop imports the Apple FM client from the nested Pylon runtime.
+- The nested Pylon runtime combines Apple FM wire data, Node process control,
+  workspace tools, Blueprint tools, Pylon receipts, fleet data, and assignment
+  data.
+- Desktop build work reaches into the Pylon app for the Swift helper source.
+- Desktop IDE contracts contain reusable schemas, but their app paths and
+  schema names make reuse difficult.
+- `packages/sqlite-runtime` and `packages/runtime-platform` use Node. Their
+  names do not make them portable.
+- `packages/ui` is a React DOM package. It cannot own mobile-neutral facts.
+- Some sync and world source text still names retired Cloudflare services.
+  That text is not target architecture.
+
+### Binding placement rules
+
+1. A root contract or core package must not import an app.
+2. One app must not import implementation code from another app.
+3. Shared schemas must be in root packages before a second surface consumes
+   them.
+4. Shared Effect services must not import Electron, React, React Native, Node
+   file or process APIs, provider SDKs, SQL drivers, or cloud clients.
+5. A provider adapter must implement the shared provider interface. The shared
+   turn kernel must not import that adapter.
+6. A platform store must implement a shared store port. The state machine must
+   not import that store.
+7. Share UI-neutral projections. Keep DOM and React Native renderers as
+   platform adapters.
+8. A compatibility re-export can keep a migration green. It cannot become the
+   new authority.
+9. When code has only one host-specific consumer, keep it in that host. Move
+   it only when a second consumer needs the same semantics or when it is a
+   required cross-surface contract.
+10. Version one must work with no OpenAgents network service. A later optional
+    cloud adapter can use Google Cloud. The local core must not import it.
+
+### Required package graph
+
+```mermaid
+flowchart TD
+  Schema["agent-runtime-schema<br/>shared facts"]
+  Accounts["provider-account-schema<br/>account references"]
+  Sessions["portable-session-contract<br/>placement and continuation"]
+  Ide["ide-runtime<br/>project, context, cursor, proposal"]
+  Turn["agent-turn-runtime<br/>policy and state machines"]
+  Store["agent-turn-store<br/>driver-neutral journal"]
+  Surface["agent-surface<br/>UI-neutral projections"]
+  Apple["apple-fm-runtime<br/>Apple provider adapter"]
+  Dse["dse<br/>offline compiler and released artifacts"]
+  Desktop["Desktop composition"]
+  Web["Web composition"]
+  Mobile["Mobile composition"]
+  Pylon["Pylon composition"]
+  Cloud["Optional Google Cloud adapter"]
+
+  Ide --> Schema
+  Turn --> Accounts
+  Turn --> Sessions
+  Turn --> Ide
+  Turn --> Schema
+  Store --> Turn
+  Surface --> Schema
+  Apple --> Turn
+  Dse --> Turn
+  Desktop --> Store
+  Desktop --> Surface
+  Desktop --> Apple
+  Web --> Store
+  Web --> Surface
+  Mobile --> Store
+  Mobile --> Surface
+  Pylon --> Apple
+  Cloud -. "future explicit adapter" .-> Store
+```
+
+An arrow means that its source imports or implements the target. Apple FM
+implements the provider interface in the turn kernel. `agent-turn-runtime`
+must not import `apple-fm-runtime`.
+
+### Definitive ownership
+
+| Owner | Must own | Must not own |
+| --- | --- | --- |
+| `packages/agent-runtime-schema` | Shared turn and projection schemas | Implementation and storage |
+| New `packages/ide-runtime` | Portable IDE schemas and pure services | Platform adapters |
+| New `packages/agent-turn-runtime` | Turn policy and state machines | Providers, storage, UI, and platform APIs |
+| New `packages/agent-turn-store` | Driver-neutral state and migrations | Platform drivers in its root export |
+| New `packages/apple-fm-runtime` | Apple FM contract, provider, supervisor, fixtures, and Swift source | Pylon and Blueprint concerns |
+| New `packages/agent-surface` | Pure projectors and surface-intent helpers | Schemas, renderers, and providers |
+| `packages/dse` | Offline compile, evaluation, artifacts, release, and rollback | Runtime promotion and provider execution |
+| Desktop app | Electron, local actions, platform drivers, and DOM rendering | Shared policy and schemas |
+| Web app | Browser-local state, safe supervision, and DOM rendering | Canonical transcript and IDE actions |
+| Mobile app | Projection cache, command outbox, and React Native rendering | Agent execution and provider credentials |
+| Pylon app | Contributor, custody, assignment, fleet, receipt, and wallet work | Shared turn and Apple FM authority |
+| Future cloud adapter | Optional Google Cloud work | Canonical state and version-one dependencies |
+
+`packages/provider-account-schema` remains the account-reference schema
+authority. It must not own provider policy. `packages/portable-session-contract`
+remains the placement and continuation authority. It must not own turn policy.
+
+`packages/atif` remains the redacted trace interchange format. It must not own
+active turn state. `packages/ui` remains a DOM adapter for Desktop and web. It
+must not own shared turn facts.
+
+`agent-surface` must import its schemas from `agent-runtime-schema`. It must not
+define a second wire contract. `agent-runtime-schema` owns only the
+cross-surface context envelope and references. `ide-runtime` owns the detailed
+IDE context and proposal schemas.
+
+The implementation must add focused modules to
+`packages/agent-runtime-schema`. It must not add all declarations to the root
+index. The expected modules are `turn.ts`, `provider.ts`, `route.ts`,
+`context.ts`, `artifact.ts`, and `presentation.ts`. The package can re-export
+these modules from its public index.
+
+`packages/apple-fm-runtime` must use explicit subpaths. Its root export must be
+portable. Its `./node` export can own helper discovery, signature checks,
+spawn, readiness, and shutdown. Its `./testing` export can own fixtures and a
+fake transport.
+
+The package can own `native/foundation-bridge/` source and build assets.
+Desktop must keep Electron IPC and packaged-app staging. Pylon must keep its
+CLI, Blueprint tools, assignment receipts, and fleet accounting.
+
+The package split follows the useful pattern in `khala-sync-client`: a
+runtime-neutral root with explicit platform subpaths. It does not reuse the
+stale Cloudflare transport design in that package.
+
+### Surface composition
+
+Desktop is the first complete execution host. It uses the shared turn kernel,
+the Node store adapter, Desktop IDE action adapters, provider adapters, and the
+DOM renderer. It owns the canonical local transcript for version one.
+
+Web is a local browser and remote-supervision surface. It uses the same schemas
+and safe projections. It can use an admitted browser store such as OPFS with
+SQLite-WASM or IndexedDB. It cannot require a server, own the canonical
+Desktop transcript, read a raw project root, or perform IDE actions.
+
+Mobile is a remote controller and projection surface in the current ProductSpec.
+It uses the same schemas, an Expo SQLite projection cache, and a typed local
+command outbox. It does not execute an agent or host the macOS Apple FM helper.
+A later iOS provider adapter needs separate product authority.
+
+Pylon remains a contributor and operator product. It can consume the neutral
+Apple FM package. It cannot be a dependency of the shared kernel. Current
+Desktop imports from `pylon-core` for account custody are transition adapters.
+When another product needs those exact behaviors, the team must extract the
+portable custody service behind `provider-account-schema`. The team must not
+expand `pylon-core` into the universal turn runtime.
+
+### Safe extraction sequence
+
+1. Add package-boundary and import-cycle checks.
+2. Extract shared schemas and pure services with compatibility re-exports.
+   Preserve persisted schema identifiers and compatibility decoders.
+3. Add the shared turn kernel and journal port. Wrap the current Desktop JSON
+   stores as transition adapters.
+4. Extract Apple FM contracts, client, supervisor, helper verification, and
+   native source. Make Desktop and Pylon consumers.
+5. Add the driver-neutral store semantics. Add Node, Expo, browser, and memory
+   adapters only in their platform subpaths or composition roots.
+6. Extract IDE context, cursor, project, and proposal contracts and pure
+   services.
+7. Add UI-neutral projections. Keep DOM and React Native renderers separate.
+8. Add web and mobile local-only compositions after the shared contracts pass.
+9. Delete a compatibility facade only after schema, persisted-state, IPC, and
+   call-site migration receipts are green.
+
 ## Target architecture
 
-The target has four planes. Each plane has one purpose.
+The target has four logical planes. Root packages own their portable rules.
+Each app composes platform adapters for those rules.
 
 1. The fact and authority plane owns identity, policy, context facts, grants,
    capability, admission, and route decisions.
@@ -290,12 +515,12 @@ The target has four planes. Each plane has one purpose.
 
 ```mermaid
 flowchart LR
-  UI["Renderer chat and Editor rail"]
-  IPC["Typed preload IPC"]
-  Turn["DesktopTurnService"]
-  Context["WorkContextService"]
-  Policy["TurnPolicyService"]
-  Registry["InferenceProviderRegistry"]
+  UI["Desktop, web, and mobile surfaces"]
+  Adapter["Platform command adapters"]
+  Turn["Shared TurnService"]
+  Context["Shared WorkContextService"]
+  Policy["Shared TurnPolicyService"]
+  Registry["Shared InferenceProviderRegistry"]
   Apple["AppleFmInferenceProvider"]
   Remote["Codex, Claude, and ACP providers"]
   Cursor["IDE cursor candidate service"]
@@ -304,8 +529,8 @@ flowchart LR
   DSE["Released DSE artifacts"]
   Journal["Thread, event, and evidence journal"]
 
-  UI --> IPC
-  IPC --> Turn
+  UI --> Adapter
+  Adapter --> Turn
   Turn --> Context
   Context --> Policy
   Policy --> Registry
@@ -325,10 +550,10 @@ flowchart LR
   Action --> Journal
 ```
 
-This plan proposes `DesktopTurnService`, `WorkContextService`,
-`TurnPolicyService`, and `InferenceProviderRegistry` as names. Packet AFS-00
-must freeze the final names and ownership. It must reuse an existing service
-when that service already owns the same state.
+This plan proposes `TurnService`, `WorkContextService`, `TurnPolicyService`, and
+`InferenceProviderRegistry` as names. Packet AFS-00 must freeze the final names
+and root-package ownership. A Desktop adapter can use a Desktop-specific name,
+but it must not duplicate the shared state machine.
 
 ## Required invariants
 
@@ -390,8 +615,10 @@ destination disclosure. Local failure cannot silently upload the prompt.
 
 Version one must route, journal, recover, render cards, render message chains,
 resolve artifacts, run evaluation, and store optional memory without an
-OpenAgents network service. It must reuse the current local `thread-store`,
-`local-turn-journal`, provider event projections, and private app data paths.
+OpenAgents network service. It must wrap the current local `thread-store`,
+`local-turn-journal`, and provider event projections with transition adapters.
+It must migrate canonical state to the shared state-machine contract and a
+local store. It must keep private content in private app data paths.
 
 D1, R2, Workers, Durable Objects, and all other Cloudflare services are stale
 historical implementation data. No packet can add, read, call, or depend on
@@ -455,9 +682,11 @@ These declarations are source examples. The implementation must use
 
 ## Service design
 
-### `DesktopTurnService`
+### `TurnService`
 
-This service owns the canonical turn lifecycle. It must:
+This shared service owns the canonical turn lifecycle. Desktop must compose it
+in Electron main. Web and mobile must consume its safe facts and projections.
+The service must:
 
 - Decode one turn intent.
 - Resolve current thread, project, and Editor identity.
@@ -592,10 +821,11 @@ facts that produce that projection. The renderer must not send availability
 facts back as authority.
 
 The synthesis names the legacy D1 and R2 raw-event path. Repository policy
-retires all Cloudflare runtime paths. Version one must use the current local turn
-journal, thread store, runtime transcript, and bounded event projections. It
-must not require a cloud trace reader. Optional future cloud storage can use an
-admitted Google Cloud adapter, but local must stay complete and preferred.
+retires all Cloudflare runtime paths. Version one must use local turn, thread,
+transcript, and bounded event adapters. AFS-01 must move their state rules to
+the shared contracts. It must not require a cloud trace reader. Optional future
+cloud storage can use an admitted Google Cloud adapter, but local must stay
+complete and preferred.
 
 The synthesis says the card can prove that a subagent ran. A card is only a
 projection. Provider lifecycle and evidence records supply proof. A done card
@@ -679,7 +909,7 @@ local context.
 
 ## Work packet sequence
 
-The program has twelve packets. A packet can start only after its dependencies
+The program has thirteen packets. A packet can start only after its dependencies
 pass. The current IDE-13 program keeps its roadmap position. These packets must
 coordinate any shared host, IPC, generated catalog, or release file with the
 IDE-13 owner.
@@ -688,9 +918,10 @@ IDE-13 owner.
 
 **Outcome**
 
-Create the accepted implementation ledger. Freeze the turn, recommendation,
-decision, provider, context, candidate, lifecycle, disclosure, and receipt
-schemas. Record current chat and IDE behavior as the regression baseline.
+Create the accepted implementation ledger. Freeze the package graph and import
+rules. Freeze the turn, recommendation, decision, provider, context, candidate,
+lifecycle, disclosure, receipt, and safe projection schemas. Record current
+Desktop, Pylon, web, mobile, chat, and IDE behavior as the regression baseline.
 
 **Dependencies**
 
@@ -700,17 +931,25 @@ schemas. Record current chat and IDE behavior as the regression baseline.
 
 **Primary paths**
 
-- `apps/openagents-desktop/src/turn/`
-- `apps/openagents-desktop/src/apple-fm-contract.ts`
-- `apps/openagents-desktop/src/ide/cursor-contract.ts`
-- `apps/openagents-desktop/src/provider-lane-capabilities.ts`
-- `apps/openagents-desktop/src/workbench-item-contract.ts`
+- `packages/agent-runtime-schema/`.
+- `packages/provider-account-schema/` and
+  `packages/portable-session-contract/` as existing semantic inputs.
+- New package manifests for `packages/agent-turn-runtime/`,
+  `packages/agent-turn-store/`, `packages/apple-fm-runtime/`,
+  `packages/agent-surface/`, and the later `packages/ide-runtime/` extraction.
+- Compatibility sources in `apps/openagents-desktop/src/`,
+  `apps/pylon/packages/runtime/`, and `apps/pylon/src/node/`.
 - Applicable ProductSpec or admitted packet records.
 
 **Required work**
 
 - Inventory all existing identifiers and reuse them where their meaning is
   exact.
+- Record each current file as keep, extract, transition adapter, evidence only,
+  or retire after cutover.
+- Add import-boundary checks for every new root package.
+- Prohibit root-core imports from apps, platform APIs, provider SDKs, and cloud
+  clients.
 - Define schema versions and compatibility rules.
 - Freeze maximum input, context, output, event, and retained-state bounds.
 - Define every refusal and terminal state.
@@ -721,21 +960,28 @@ schemas. Record current chat and IDE behavior as the regression baseline.
   evidence, acceptance, delivery, and release.
 - Capture baseline fixtures for local answer, standby, explicit provider turn,
   malformed Apple FM output, helper failure, and unavailable provider.
+- Capture the same safe turn and projection fixtures for Desktop, web, and
+  mobile decoders.
+- Record the current Swift helper version and Desktop staging version. Freeze
+  one generated manifest and wire-version source for AFS-02.
 
 **Exit checks**
 
 - Schema round-trip, invalid-input, size-bound, and compatibility tests pass.
+- Package-boundary, subpath-export, and import-cycle checks pass.
+- Desktop, web, and mobile decode the same safe fixtures to equivalent facts.
 - The baseline proves that current local chat does not dispatch a provider.
 - The baseline proves that the explicit provider path still works.
 - `pnpm --dir apps/openagents-desktop run typecheck` passes.
 - `pnpm --dir apps/openagents-desktop run check:ide-boundaries` passes.
 
-### AFS-01: create the main-owned turn service
+### AFS-01: create the shared turn kernel
 
 **Outcome**
 
-Move the canonical turn lifecycle into the Electron main Effect graph. Keep the
-existing chat behavior behind a compatibility adapter during this packet.
+Create the UI-neutral Effect turn kernel and driver-neutral journal state. Make
+Electron main the first production composition. Keep the existing chat and
+Desktop JSON stores behind compatibility adapters during this packet.
 
 **Dependencies**
 
@@ -743,7 +989,10 @@ existing chat behavior behind a compatibility adapter during this packet.
 
 **Primary paths**
 
-- New main-owned files under `apps/openagents-desktop/src/turn/`.
+- New `packages/agent-turn-runtime/`.
+- New `packages/agent-turn-store/`.
+- New focused modules under `packages/agent-runtime-schema/src/`.
+- Thin Desktop adapters under `apps/openagents-desktop/src/turn/`.
 - `apps/openagents-desktop/src/main.ts`.
 - `apps/openagents-desktop/src/preload.cts`.
 - `apps/openagents-desktop/src/renderer/boot.ts`.
@@ -751,9 +1000,12 @@ existing chat behavior behind a compatibility adapter during this packet.
 
 **Required work**
 
-- Add `DesktopTurnService` as a scoped Effect service.
-- Extend `provider-lane.ts`, `local-turn-journal.ts`, and `thread-store.ts`
-  where their current lifecycle and storage meanings are exact.
+- Add `TurnService` as a scoped Effect service in the shared package.
+- Add `TurnPolicy`, `ProviderRegistry`, `TurnJournal`, `ThreadRepository`,
+  `ArtifactResolver`, `ContextSource`, and `ActionBroker` ports.
+- Add deterministic state transitions and an in-memory test store.
+- Wrap `provider-lane.ts`, `local-turn-journal.ts`, and `thread-store.ts` as
+  Desktop transition adapters. Do not copy their mixed concerns into the core.
 - Add typed start, cancel, status, progress, and terminal IPC.
 - Bind thread, request, provider turn, candidate, and receipt identifiers.
 - Keep provider streams behind a bounded main-owned event gateway.
@@ -771,14 +1023,19 @@ existing chat behavior behind a compatibility adapter during this packet.
 - Late events from an old generation do not change the active turn.
 - Renderer reload reconstructs terminal turn state without replaying an action.
 - Queue and subscriber bounds hold under a burst fixture.
+- The shared packages import no app, Electron, React, Node file or process API,
+  provider SDK, SQL driver, or cloud client.
+- The in-memory adapter and Desktop adapter pass the same state-transition
+  corpus.
 - Electron boundary and design-conformance tests pass.
 
-### AFS-02: adapt Apple FM to the provider registry
+### AFS-02: extract and adapt Apple FM
 
 **Outcome**
 
-Make the current Apple FM host a local inference provider under the canonical
-turn service. Do not change the native helper yet.
+Create the neutral Apple FM package. Make Apple FM a local inference provider
+under the shared turn service. Keep the current helper behavior, but replace
+the Pylon-to-Desktop implementation dependency.
 
 **Dependencies**
 
@@ -786,14 +1043,26 @@ turn service. Do not change the native helper yet.
 
 **Primary paths**
 
-- `apps/openagents-desktop/src/apple-fm-contract.ts`.
+- New `packages/apple-fm-runtime/` with root, `./node`, and `./testing`
+  exports.
+- New `packages/apple-fm-runtime/native/foundation-bridge/`.
 - `apps/openagents-desktop/src/apple-fm-host.ts`.
 - `apps/openagents-desktop/src/apple-fm-native-helper.ts`.
-- New Apple FM provider adapter under `apps/openagents-desktop/src/turn/`.
+- Desktop Apple FM IPC and staging adapters.
+- Pylon CLI and node adapters that consume the new package.
+- Compatibility re-exports under `apps/pylon/packages/runtime/` during the
+  migration window.
 - `apps/openagents-desktop/src/main.ts`.
 
 **Required work**
 
+- Move the portable wire schemas, client, capability probe, provider adapter,
+  supervisor contract, receipt verification, fixtures, and Swift source to the
+  new package.
+- Keep Pylon Blueprint tools, assignment receipts, fleet data, wallet data,
+  and CLI presentation in Pylon.
+- Keep Electron IPC, `process.resourcesPath`, packaged-app staging, signing,
+  ASAR, and notarization in Desktop.
 - Declare supported intent and candidate kinds.
 - Declare local data destination and no external action capability.
 - Map helper readiness into provider readiness without renderer input.
@@ -804,6 +1073,12 @@ turn service. Do not change the native helper yet.
 - Record model, bridge, artifact, prompt, output, latency, and estimated usage
   provenance without exposing helper secrets.
 - Preserve launch, adoption, stop, dispose, and unsupported-platform behavior.
+- Generate the native manifest, bridge version, and accepted wire version from
+  one source. The check must detect the current `0.1.3` helper and `0.1.1`
+  Desktop staging mismatch.
+- Remove the Desktop import of `@openagentsinc/pylon-runtime` for Apple FM.
+- Make the new package subpath-only so a browser or mobile bundle cannot import
+  the Node host by accident.
 
 **Exit checks**
 
@@ -814,6 +1089,10 @@ turn service. Do not change the native helper yet.
   typed results.
 - The renderer receives no helper path, URL, token, raw tool result, or private
   file data.
+- Desktop and Pylon pass the same contract, conformance, lifecycle, and wire
+  fixtures through their thin adapters.
+- No Apple FM package source imports Pylon, Desktop, Blueprint, assignment,
+  fleet, token, wallet, or cloud code.
 - Existing Apple FM host and native-helper tests pass.
 
 ### AFS-03: remove the renderer authority fork
@@ -869,6 +1148,7 @@ rail.
 
 **Primary paths**
 
+- `packages/agent-surface/`.
 - `apps/openagents-desktop/src/main.ts`.
 - `apps/openagents-desktop/src/codex-local-runtime.ts`.
 - `apps/openagents-desktop/src/renderer/react-timeline.tsx`.
@@ -882,6 +1162,11 @@ rail.
 
 - Validate the recommendation against main-owned lane capability and account
   state.
+- Keep `codex-local-runtime.ts` as the first Desktop adapter. Do not copy the
+  complete Pylon Codex assignment executor.
+- Extract a new provider-specific SDK and session driver only if Desktop and a
+  second admitted host use the same behavior in this packet. Put that driver
+  in a neutral provider package, not in `pylon-core`.
 - Create the host route decision.
 - Start exactly one real Codex turn through the existing lane dispatcher.
 - Create an agent workbench item only after start succeeds.
@@ -923,6 +1208,8 @@ requests a change. Use one turn service for chat and Editor work.
 
 **Primary paths**
 
+- New `packages/ide-runtime/` contract and pure-service modules.
+- Compatibility re-exports from current Desktop IDE contracts.
 - `apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx`.
 - `apps/openagents-desktop/src/renderer/react-agent-context.tsx`.
 - `apps/openagents-desktop/src/renderer/react-composer.tsx`.
@@ -932,6 +1219,12 @@ requests a change. Use one turn service for chat and Editor work.
 
 **Required work**
 
+- Extract the project, root, worktree, attachment, generation, context,
+  cursor, and proposal vocabulary before the team adds a new context
+  vocabulary.
+- Preserve current schema identifiers and add compatibility decoders.
+- Keep file, Git, DAP, PTY, language-process, Electron, and Monaco adapters in
+  Desktop.
 - Mount `AgentContextTray` in the production Editor agent rail.
 - Mount a bounded agent composer in that rail.
 - Change **Add context** so it does not leave the Editor.
@@ -1050,12 +1343,13 @@ the old package without correction.
 - An admitted package and generated-catalog claim.
 - An independent evaluator role that the applicable assurance design accepts.
 
-**Proposed paths**
+**Primary paths**
 
-- `packages/dse/` or another owner-approved current name.
+- `packages/dse/` with `./contract`, `./runtime`, and `./optimizer` exports.
 - Checked-in Apple FM signature and dataset records under an approved data path.
 - Checked-in released artifacts under an approved artifact path.
-- Desktop artifact resolver adapter.
+- Shared artifact resolver adapter for `agent-turn-runtime`.
+- Thin Desktop artifact-location adapter.
 
 **Required contracts**
 
@@ -1070,6 +1364,12 @@ the old package without correction.
 - `PromotionRequest` and independent review result.
 - `ReleasedArtifactPointer` and `RollbackReceipt`.
 - `ResourceBudget` with rollout, time, concurrency, memory, and thermal limits.
+
+The DSE package must import no Apple FM, Desktop, Pylon, Blueprint, provider
+SDK, or cloud implementation. `./contract` must contain portable Effect
+schemas. `./runtime` must resolve and verify released artifacts. `./optimizer`
+must contain only the offline compiler, evaluator, and search code. A runtime
+app must not import `./optimizer`.
 
 **First signatures**
 
@@ -1173,7 +1473,11 @@ Do not make memory necessary for the router or IDE.
 
 **Required work**
 
-- Adapt useful pure TAS modules instead of importing app authority.
+- Create a neutral Schema and Effect package only after this packet is
+  admitted. Do not move the current Pylon TAS files.
+- Reuse only reviewed ranking, tie-break, and test ideas from TAS. The current
+  TAS files have no schema, persistence, consent, delete, or owner-scope
+  authority.
 - Define per-case experience and global pattern schemas.
 - Redact before storage and again before retrieval output.
 - Freeze one eligible bank at turn or run start.
@@ -1236,6 +1540,65 @@ Keep each product claim at its honest rung.
 - The release record identifies every unproved or excluded feature.
 - The owner makes any required release or public-claim decision.
 
+### AFS-12: prove web and mobile reuse
+
+**Outcome**
+
+Use the same turn facts, safe projections, route disclosure, context
+disclosure, and recovery state in Desktop, web, and mobile. Do not give web or
+mobile Desktop execution authority.
+
+**Dependencies**
+
+- AFS-06.
+- The applicable IDE-13 and IDE-14 contracts.
+- Current web and mobile ProductSpec revisions.
+- An admitted direct owner-host transport for any cross-device proof.
+
+**Primary paths**
+
+- `packages/agent-runtime-schema/`.
+- `packages/agent-surface/`.
+- `packages/agent-turn-store/` platform adapter interfaces.
+- `apps/openagents.com/` local browser and remote-supervision composition.
+- `apps/openagents-mobile/` Effect Native composition, projection cache, and
+  command outbox.
+
+**Required work**
+
+- Decode the same safe fixture bytes on all three surfaces.
+- Render the same turn and agent identity without exposing raw project paths,
+  raw prompts, credentials, helper data, or provider event frames.
+- Keep Desktop as the canonical version-one execution and transcript host.
+- Add a browser-local store adapter. Use OPFS with SQLite-WASM or IndexedDB only
+  after the team admits that adapter.
+- Add an Expo SQLite projection-cache adapter and a typed mobile command
+  outbox.
+- Keep DOM rendering in the web and Desktop adapters. Keep React Native
+  rendering in the mobile adapter.
+- Use an owner-local direct transport for the first cross-device proof. Do not
+  require an OpenAgents cloud service.
+- Keep all action admission and execution in the owner host. Web and mobile can
+  request a typed command. They cannot create its grant or evidence.
+- Keep the later cloud adapter separate. If admitted, it must use Google Cloud
+  and local must remain the preferred complete mode.
+
+**Exit checks**
+
+- Desktop, web, and mobile produce equivalent safe projections from the same
+  event corpus.
+- Web and mobile cannot import Desktop, Pylon, Apple FM Node, Node store, or
+  provider SDK modules.
+- A web or mobile command with a stale session, generation, grant, or
+  capability fails closed.
+- Mobile can show the agent graph and bounded message drilldown without agent
+  execution or provider credentials.
+- Web can show safe supervision facts without raw roots, shell, Git, model,
+  or mutation authority.
+- Loss of the owner-host connection preserves the local cache and bounded
+  outbox state. It does not claim that an action ran.
+- Local-only tests pass with OpenAgents network domains blocked.
+
 ## Version-one cut line
 
 Version one is AFS-00 through AFS-06 plus the applicable packaged proof in
@@ -1264,8 +1627,9 @@ Version one does not include these capabilities:
 - A broad completion, next-edit, or multi-file quality claim.
 - A broad parity or Full Auto claim.
 
-AFS-07 through AFS-10 are later local-first additions. They must not delay a
-small, honest version-one release.
+AFS-07 through AFS-10 are later local-first additions. AFS-12 proves
+cross-surface reuse after the shared Desktop path is green. These packets must
+not delay a small, honest version-one Desktop release.
 
 ## Exact first route algorithm
 
@@ -1294,45 +1658,43 @@ admitted. It never adds a lane because the model named it.
 
 ## File and ownership map
 
-The implementation must confirm this map in AFS-00. The table identifies likely
-ownership. It does not grant a claim.
+This map is the required migration disposition. It does not grant a claim.
 
-| Area | Current path or proposed home | Rule |
+| Current source | Target owner | Disposition |
 | --- | --- | --- |
-| Apple FM wire contract | `apps/openagents-desktop/src/apple-fm-contract.ts` | Keep helper details out of renderer data. |
-| Apple FM lifecycle | `apps/openagents-desktop/src/apple-fm-host.ts` | Keep one supervised owner. |
-| Native helper adapter | `apps/openagents-desktop/src/apple-fm-native-helper.ts` | Keep local loopback and process data in main. |
-| Provider dispatch engine | `apps/openagents-desktop/src/provider-lane.ts` | Extend this engine. Do not create a second provider runner. |
-| Local turn journal | `apps/openagents-desktop/src/local-turn-journal.ts` | Store canonical version-one lifecycle locally. |
-| Local thread store | `apps/openagents-desktop/src/thread-store.ts` | Keep canonical user and assistant messages local. |
-| Main composition | `apps/openagents-desktop/src/main.ts` | Compose services, Layers, IPC, and adapters. |
-| Preload | `apps/openagents-desktop/src/preload.cts` | Expose only decoded bounded commands and projections. |
-| Renderer composition | `apps/openagents-desktop/src/renderer/boot.ts` | Wire typed hosts. Do not make policy. |
-| Current chat fork | `apps/openagents-desktop/src/renderer/shell.ts` | Delete the standby authority fork after migration. |
-| Composer | `apps/openagents-desktop/src/renderer/react-composer.tsx` | Submit intents and show disclosure. |
-| Timeline | `apps/openagents-desktop/src/renderer/react-timeline.tsx` | Render typed local agent items. |
-| Workbench item contract | `apps/openagents-desktop/src/workbench-item-contract.ts` | Reuse an agent item if its meaning is exact. |
-| Shared agent card | `packages/ui/src/workbench/agent-group.tsx` | Show bounded state and open action. |
-| Workbench dispatch | `packages/ui/src/workbench/dispatch.tsx` | Keep one typed render branch per item kind. |
-| Right rail | `apps/openagents-desktop/src/renderer/runtime-agent-graph.ts` | Render bounded local projections. |
-| Editor surface | `apps/openagents-desktop/src/renderer/react-workspace-surfaces.tsx` | Keep Monaco visible. |
-| Context tray | `apps/openagents-desktop/src/renderer/react-agent-context.tsx` | Mount in the production Editor. |
-| Cursor contract | `apps/openagents-desktop/src/ide/cursor-contract.ts` | Keep provider-neutral intent and candidate data. |
-| Cursor service | `apps/openagents-desktop/src/ide/cursor-service.ts` | Convert provider output to candidates. |
-| Current Claude adapter | `apps/openagents-desktop/src/ide/cursor-claude-provider.ts` | Use as adapter evidence, not provider authority. |
-| Agent code | Current IDE-08 files | Own context, proposals, review, apply, undo, and backlinks. |
-| Run and tests | Current IDE-10 files | Own task execution and output. |
-| Debug | Current IDE-11 files | Own DAP state and commands. |
-| Source control | Current IDE-12 files | Own Git, commit, and delivery work. |
-| Local Codex | `apps/openagents-desktop/src/codex-local-runtime.ts` | First real delegate. |
-| Local Claude | `apps/openagents-desktop/src/claude-local-runtime.ts` | Later admitted delegate. |
-| DSE successor | Owner-approved shared package | Offline compile and release only. |
-| DSE data and artifacts | Owner-approved checked-in paths | Local immutable bytes and receipts. |
-| Optional memory | Private app data through a typed local store | Local-only in its first implementation. |
+| `packages/agent-runtime-schema/` | Same package, with focused modules | Extend as the canonical safe contract. Do not create another turn vocabulary. |
+| Desktop `provider-lane.ts` | Shared turn kernel plus Desktop adapter | Reimplement policy and state. Keep renderer and provider wiring in Desktop. |
+| Desktop `provider-lane-registry.ts` | Shared interface plus Desktop adapters | Split policy, account, persistence, and composer concerns. |
+| Desktop `local-turn-journal.ts` | Shared store plus Desktop Node adapter | Extract transitions. Wrap the JSON store for migration. |
+| Desktop `thread-store.ts` | Shared repository port plus Desktop adapter | Keep data readable. Migrate it by receipt. |
+| Desktop Apple FM contract | Shared Apple FM contract plus Desktop IPC | Extract provider facts. Keep Electron channels in Desktop. |
+| Desktop Apple FM host | Shared supervisor plus Desktop composition | Extract portable lifecycle rules. Keep Electron wiring in Desktop. |
+| Desktop native helper | Shared Apple FM Node export plus Desktop staging | Remove the Pylon import. Keep packaging in Desktop. |
+| Nested Pylon Apple FM contract, wire, and client | Shared Apple FM package | Extract with conformance fixtures. Keep temporary re-exports. |
+| Pylon Apple FM lifecycle paths | Shared Apple FM Node export plus Pylon adapter | Select one state machine. Retire duplicates after cutover. |
+| Pylon Apple FM tools and receipts | Pylon | Keep Pylon behavior out of the provider adapter. |
+| Pylon Swift helper | Shared Apple FM native source | Move canonical source. Generate one manifest and wire version. |
+| Desktop IDE portable contracts | Shared IDE runtime | Extract schemas and pure services with compatibility decoders. |
+| Desktop IDE platform code | Desktop | Keep file, language, Monaco, Git, DAP, PTY, and Electron adapters. |
+| Desktop Codex and Claude runtimes | Desktop adapters first | Extract only an exact driver that has a second consumer. |
+| Pylon Codex and Claude executors | Pylon and `pylon-core` | Keep assignment, checkout, closeout, capacity, and payment behavior. |
+| `packages/pylon-core/` | Pylon domain package | Do not add shared turn, IDE, DSE, or memory work. |
+| `packages/ui/` | Desktop and web DOM adapter | Keep safe facts in `agent-surface`. Use React Native on mobile. |
+| `packages/sqlite-runtime/` | Desktop Node store driver | Do not import it from shared, web, or mobile code. |
+| `packages/runtime-platform/` | Node platform adapter | Do not import it from portable exports. |
+| `packages/atif/` | Trace interchange | Project completed events to ATIF. Do not use it as active state. |
+| Historical DSE source | Fresh `packages/dse/` | Reimplement on Effect v4. Do not copy stale platform adapters. |
+| Pylon TAS files | Later neutral memory package | Use reviewed algorithm and test ideas only. |
+| Blueprint runtime copies | Existing owners | Reimplement governance principles in neutral contracts. |
 
-The code must not import `apps/pylon` into Desktop to obtain its Codex
-assignment executor for version one. Desktop already has the required local
-Codex lane. A later package-boundary change needs a separate design and claim.
+The nested Pylon and Probe runtime trees came from the same historical import
+and now differ. The implementation must not copy both. It must select source
+evidence by conformance behavior and move only the neutral slice.
+
+Desktop must not import `apps/pylon` or `@openagentsinc/pylon-runtime` for the
+target Apple FM or turn path. A shared root package must not import
+`pylon-core`. Pylon and Desktop can both import a neutral provider package. A
+provider package must not import either app.
 
 ## Local data model
 
@@ -1361,6 +1723,21 @@ Version one must store only the minimum local data that the product needs.
 
 Transient data must have finite byte, item, and time limits. It must not become
 durable by default.
+
+### Platform storage adapters
+
+- Desktop must use a Node local-store adapter. It can use
+  `packages/sqlite-runtime` because that adapter is Node-only.
+- Mobile must use an Expo SQLite projection-cache and outbox adapter.
+- Web must use an admitted browser-local adapter. OPFS with SQLite-WASM is the
+  preferred candidate. IndexedDB is an allowed fallback after admission.
+- Tests must use the deterministic in-memory adapter.
+- A later Google Cloud adapter can replicate approved safe data. It must remain
+  optional and downstream from the local journal.
+
+The driver-neutral transitions and migrations must be identical for each
+adapter that stores canonical turn state. Web and mobile projection caches are
+not canonical Desktop transcript stores.
 
 ### Forbidden version-one data paths
 
@@ -1547,13 +1924,20 @@ Delete or retire these parts after their replacement passes:
 - Any route policy derived from renderer BOOT SEQUENCE rows.
 - Any plan dependency on the legacy D1 or R2 trace path.
 - Any claim that Apple FM itself dispatched an agent.
+- The direct Desktop dependency on `@openagentsinc/pylon-runtime` for Apple FM.
+- Duplicate Pylon, Probe, and Desktop Apple FM lifecycle rules.
+- The structural Apple FM status mirror in `pylon-core` after all consumers use
+  the shared contract.
+- Use of a Claude-specific event envelope as the general turn envelope.
+- Current Desktop JSON state-machine ownership after local-store migration.
 
 Keep these parts:
 
-- The current Swift helper and supervised main-owned bridge.
+- The Swift helper behavior and supervised host bridge, after they move to the
+  neutral package and Desktop adapter.
 - Apple FM typed readiness and honest usage truth.
-- The current provider-lane dispatcher.
-- The local turn journal and local thread store.
+- Provider-lane behavior that passes the shared provider conformance tests.
+- Current local turn and thread data through explicit migration adapters.
 - The IDE-08 through IDE-12 action graphs.
 - The typed workbench agent item and current inspector seams.
 - The provider-neutral IDE cursor contract.
@@ -1584,7 +1968,6 @@ The implementation can proceed through the accepted version-one packet after
 normal claim and ProductSpec checks. These later choices need separate owner
 action if current authority does not already cover them:
 
-- A new shared DSE package name and long-term owner.
 - An independent evaluator identity and promotion ceremony.
 - A broader Apple FM hardware or operating-system claim.
 - A non-local optional data adapter.
@@ -1597,7 +1980,7 @@ action if current authority does not already cover them:
 The conversion is complete only when all statements below are true for the
 claimed scope:
 
-1. Chat and Editor use one main-owned turn graph.
+1. Chat and Editor use one shared turn graph that Electron main composes.
 2. Apple FM can answer locally through that graph.
 3. Apple FM can recommend, but cannot admit, a route.
 4. Host policy selects only from the owner-bound ready candidate set.
@@ -1612,9 +1995,14 @@ claimed scope:
 13. Local failure never causes silent remote upload.
 14. DSE runtime use resolves only an independently released immutable artifact.
 15. Optional memory is local, consent-bound, inspectable, and deletable.
-16. Packaged signed evidence covers the selected release scope.
-17. Applicable ProductSpec and assurance gates have admitted results.
-18. The owner has made each required release and public-claim decision.
+16. Shared core packages import no app, platform UI, provider SDK, Node process
+    or file API, SQL driver, or cloud client.
+17. Desktop and Pylon consume Apple FM through the neutral package.
+18. Desktop does not import the nested Pylon runtime for Apple FM.
+19. Desktop, web, and mobile decode equivalent safe turn projections.
+20. Packaged signed evidence covers the selected release scope.
+21. Applicable ProductSpec and assurance gates have admitted results.
+22. The owner has made each required release and public-claim decision.
 
 ## Source index
 
@@ -1658,11 +2046,27 @@ roadmap order.
 - [`cursor-capability-parity.product-spec.md`](../../specs/openagents/cursor-capability-parity.product-spec.md)
 - [`cursor-capability-parity.assurance-spec.md`](../../specs/openagents/cursor-capability-parity.assurance-spec.md)
 - [`full-auto.product-spec.md`](../../specs/desktop/full-auto.product-spec.md)
+- [`openagents-com-trust-surface.product-spec.md`](../../specs/web/openagents-com-trust-surface.product-spec.md)
+- [`mobile-any-host-fleet-controller.product-spec.md`](../../specs/mobile/mobile-any-host-fleet-controller.product-spec.md)
 - [`portable-coding-sessions.product-spec.md`](../../specs/openagents/portable-coding-sessions.product-spec.md)
 - [`managed-agent-sandboxes.product-spec.md`](../../specs/openagents/managed-agent-sandboxes.product-spec.md)
 - [`managed-agent-sandboxes.assurance-spec.md`](../../specs/openagents/managed-agent-sandboxes.assurance-spec.md)
 - [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md)
 - [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md)
+
+### Package placement evidence
+
+- [`agent-runtime-schema/README.md`](../../packages/agent-runtime-schema/README.md)
+- [`provider-account-schema/README.md`](../../packages/provider-account-schema/README.md)
+- [`portable-session-contract/README.md`](../../packages/portable-session-contract/README.md)
+- [`pylon-core/README.md`](../../packages/pylon-core/README.md)
+- [`khala-sync/README.md`](../../packages/khala-sync/README.md)
+- [`apple-fm-native-helper.ts`](../../apps/openagents-desktop/src/apple-fm-native-helper.ts)
+- [`provider-lane.ts`](../../apps/openagents-desktop/src/provider-lane.ts)
+- [`local-turn-journal.ts`](../../apps/openagents-desktop/src/local-turn-journal.ts)
+- [`apple-fm`](../../apps/pylon/packages/runtime/src/backends/apple-fm/)
+- [`apple-fm node adapters`](../../apps/pylon/src/node/)
+- [`foundation-bridge`](../../apps/pylon/swift/foundation-bridge/)
 
 ## Final disposition
 

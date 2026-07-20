@@ -21302,12 +21302,10 @@
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
-        "ste_status": "source-data",
-        "ste_reviewer": null,
-        "ste_reviewed_at": null,
         "risk": "source-data",
         "source": "Immutable historical or evidence source data",
-        "replacement": null
+        "replacement": null,
+        "ste_status": "source-data"
       }
     },
     {
@@ -40386,7 +40384,7 @@
     },
     {
       "path": "docs/sol/2026-07-20-apple-fm-router-to-full-agent-system-plan.md",
-      "sha256": "fb62c8a2ea9c2f3265bdaacd3471c4c82b13aabd7b0ecdfbbf06ae0cedeacf30",
+      "sha256": "24e883e89003a976775ae5483b2ff08c1e3c947a4d6f8983fb02c922aa6dab4e",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
