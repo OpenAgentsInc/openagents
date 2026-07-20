@@ -886,12 +886,18 @@ if (import.meta.main) {
     "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-real-cohort.json",
   );
   const receipt = await runIde13OwnerLocalRealCohort({ outputPath, repositoryRoot });
-  process.stdout.write(
-    `${JSON.stringify({
-      outputPath,
-      cohortRef: receipt.cohort.cohortRef,
-      evidenceClass: receipt.cohort.evidenceClass,
-      result: "passed",
-    })}\n`,
-  );
+  await new Promise<void>((resolveWrite) => {
+    process.stdout.write(
+      `${JSON.stringify({
+        outputPath,
+        cohortRef: receipt.cohort.cohortRef,
+        evidenceClass: receipt.cohort.evidenceClass,
+        result: "passed",
+      })}\n`,
+      resolveWrite,
+    );
+  });
+  // The tsx compiler service can retain the CLI wrapper after all cohort
+  // resources close. Exit only after the receipt and result are fully written.
+  process.exit(0);
 }
