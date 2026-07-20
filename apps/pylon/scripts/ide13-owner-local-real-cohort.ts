@@ -56,8 +56,10 @@ const Ref = Schema.String.check(
   Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/u),
 );
 const GIT_SHA = /^[a-f0-9]{40}$/u;
-const COHORT_RECEIPT_REPOSITORY_PATH =
-  "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-real-cohort.json";
+const COHORT_EVIDENCE_REPOSITORY_PATHS = new Set([
+  "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-real-cohort.json",
+  "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-performance.json",
+]);
 
 export const Ide13OwnerLocalRealCohortReceiptSchema = Schema.Struct({
   schemaVersion: Schema.Literal("openagents.desktop.ide-portable-owner-local-cohort.v1"),
@@ -257,7 +259,7 @@ export const runIde13OwnerLocalRealCohort = async (
   )
     .split("\n")
     .filter((path) => path.length > 0);
-  if (laterPaths.some((path) => path !== COHORT_RECEIPT_REPOSITORY_PATH)) {
+  if (laterPaths.some((path) => !COHORT_EVIDENCE_REPOSITORY_PATHS.has(path))) {
     throw new Error("owner-local cohort candidate omits an implementation change");
   }
   const baseCommitSha = await git(repositoryRoot, "merge-base", candidateCommitSha, "origin/main");
