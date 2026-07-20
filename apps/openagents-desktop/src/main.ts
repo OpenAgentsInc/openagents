@@ -5880,6 +5880,19 @@ const createWindow = (): BrowserWindow => {
     recordMainMark("windowReadyToShow")
     if (!hiddenAutomationMode) window.show()
   })
+  // Owner directive 2026-07-20: Cmd/Ctrl+Shift+R hard-reloads the renderer from
+  // scratch (re-runs boot, re-probes the BOOT SEQUENCE agents, resets shell
+  // state). Handled in MAIN via before-input-event so it fires reliably — the
+  // custom application menu has no reload role, and a renderer keydown listener
+  // is not guaranteed to receive the accelerator.
+  window.webContents.on("before-input-event", (event, input) => {
+    if (input.type !== "keyDown") return
+    const modifier = process.platform === "darwin" ? input.meta : input.control
+    if (modifier && input.shift && !input.alt && input.key.toLowerCase() === "r") {
+      event.preventDefault()
+      window.webContents.reloadIgnoringCache()
+    }
+  })
   void window.loadURL(desktopRendererEntry)
   return window
 }
