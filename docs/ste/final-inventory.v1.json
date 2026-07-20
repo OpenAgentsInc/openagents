@@ -428,7 +428,7 @@
     },
     {
       "path": "INVARIANTS.md",
-      "sha256": "c4d8a252e141d12363d528f57ff71d2e24a259f6d34a84426f8a104e923d8cce",
+      "sha256": "a763882a1722aeafa75421255b1dce9b71c2424dd2f37e91a24adc9cb8502111",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -19115,7 +19115,7 @@
     },
     {
       "path": "docs/cloud/INVARIANTS.md",
-      "sha256": "073a381ce841fc36933b29db09cd4f6061d6c6e94dab7afd21f17f04493718f2",
+      "sha256": "d5fc67d4f12d82a206db30df67d432d14cd348da2e8071d0a910150670956e82",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

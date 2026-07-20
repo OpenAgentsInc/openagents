@@ -107,7 +107,7 @@ const runCodex = async () => {
       emit({ _tag: "RuntimeUsageRecorded", usage });
       emit({ _tag: "RuntimeSettled", finishReason: "structural_completion", usage });
       settled = true;
-    } else if (event.type === "turn.failed" || event.type === "error") {
+    } else if (event.type === "turn.failed") {
       emit({
         _tag: "RuntimeFailed",
         errorRef: `provider.failure.sha256.${digest(JSON.stringify(event))}`,

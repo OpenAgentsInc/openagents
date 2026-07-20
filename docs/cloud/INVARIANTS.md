@@ -160,7 +160,8 @@ design context only.
   provider emits its terminal event. Service restart may restart the helper.
   No receipt claims provider-private process or session state was snapshotted.
 - Each provider stream emits at most one terminal event. Records observed after
-  that terminal event cannot append more native events.
+  that terminal event cannot append more native events. Recoverable SDK
+  reconnect notifications cannot fail or settle the native turn.
 - Guest I/O admits only file read, file write, command, and artifact read. Each
   private request binds the exact owner, tenant, work unit, sandbox generation,
   active capability, retry identity, time, and resource limits.

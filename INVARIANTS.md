@@ -88,7 +88,8 @@ More specific invariant ledgers apply inside imported apps and packages.
   event. Provider SDK ordering and late transport errors are untrusted input:
   the guest adapter persists the first terminal observation and drops all
   trailing provider events, while the durable lifecycle still rejects a second
-  terminal transition rather than reopening or rewriting the turn.
+  terminal transition rather than reopening or rewriting the turn. Recoverable
+  reconnect notifications are progress, not structural terminal evidence.
 - Provider-capability redemption remains valid across the exact dispatch race:
   a work-accepting resource may be `ready`, `idle`, or `running` while its turn
   is pending or running. Quiescing, terminal, non-accepting, expired, revoked,

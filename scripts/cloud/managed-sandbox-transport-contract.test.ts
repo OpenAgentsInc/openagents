@@ -67,6 +67,10 @@ describe('managed-sandbox guest transport contract', () => {
     expect(codex).toContain(
       'if (!settled) throw new Error("codex_stream_ended_without_result");',
     )
+    expect(codex).toContain('} else if (event.type === "turn.failed") {')
+    expect(codex).not.toContain(
+      'event.type === "turn.failed" || event.type === "error"',
+    )
     expect(codex.match(/settled = true;/g)).toHaveLength(2)
 
     const claude = source.slice(source.indexOf('const runClaude = async () => {'))
