@@ -102,14 +102,13 @@ import {
   type DesktopPreferences,
 } from "../desktop-preferences-contract.ts"
 import { preferencesRootAttributes, themeForPreferences } from "../desktop-preferences-effects.ts"
-import { makeConvergingDesktopChatHost, selectDesktopChatHostSelection } from "./runtime-conversation.ts"
+import { makeConvergingDesktopChatHost } from "./runtime-conversation.ts"
 import {
   decodeDesktopRuntimeControlOutcomeLookupResult,
   decodeDesktopRuntimeControlOutcomeRecordResult,
   type DesktopRuntimeControlOutcomeLookup,
   type DesktopRuntimeControlOutcomeRecord,
 } from "../runtime-control-outcome-contract.ts"
-import { answerDesktopRuntimeInteraction, makeDesktopRuntimeInteractionHost } from "./runtime-interactions.ts"
 import {
   makeLocalHarnessChatHost,
   type FableLocalRendererBridge,
@@ -1101,13 +1100,12 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
             : current))
       },
     })
-    const selection = documentLaunch
-      ? { host: localHarnessChat, mode: "local" as const }
-      : yield* Effect.promise(() => selectDesktopChatHostSelection({
-          request: bridge?.runtimeRequest,
-          subscribe: bridge?.runtimeSubscribe,
-          local: localHarnessChat,
-        }))
+    // Owner directive 2026-07-20: never block first paint on the runtime-gateway
+    // `conversation.catalog` query. Start LOCAL (the Finder "Open With" fast
+    // path already proved this), and let the converging chat host below re-admit
+    // each operation against the live runtime per-operation — no initial mode
+    // query, no delay to first paint.
+    const selection = { host: localHarnessChat, mode: "local" as const }
     // The initial selection gates first-paint lane chrome, but it is never a
     // lifetime routing decision: verified Sync may still be catching up. The
     // converging facade re-admits each operation with one authoritative query
@@ -1134,24 +1132,12 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         return result !== null && result.status !== "rejected"
       },
     }
-    const runtimeInteractionHost = typeof bridge?.runtimeRequest === "function"
-      ? makeDesktopRuntimeInteractionHost({
-          request: bridge.runtimeRequest,
-          subscribe: bridge.runtimeSubscribe,
-        })
-      : null
-    const questionHost = selection.mode === "runtime" && runtimeInteractionHost !== null
-      ? {
-          answer: async (input: Readonly<{
-            turnRef: string
-            threadRef?: string
-            questionRef: string
-            answers: ReadonlyArray<{ readonly question: string; readonly labels: ReadonlyArray<string> }>
-          }>): Promise<boolean> => {
-            return answerDesktopRuntimeInteraction(runtimeInteractionHost, input)
-          },
-        }
-      : localQuestionHost
+    // Owner directive 2026-07-20 (local-first startup): the shell always mounts in
+    // local mode, so owner-card answers route to the local harness question host.
+    // Runtime/cloud question routing, when that path ships, belongs in the
+    // per-operation converging router (which pins each thread to its creating
+    // host), never a static mount-time selection that would block first paint.
+    const questionHost = localQuestionHost
     const codingCatalogCall = async (
       call: (() => Promise<unknown>) | undefined,
     ): Promise<DesktopCodingCatalogProjection> => {
@@ -1209,18 +1195,14 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         decodeCommandBindings(await bridge?.commands?.saveBinding?.(input)),
       reset: async () => decodeCommandBindings(await bridge?.commands?.resetBindings?.()),
     }
-    // Evidence-gated composer lanes (#8712), resolved BEFORE first mount so
-    // the chips never flash an unproven state.
-    if (!documentLaunch && fableLocalBridge !== null && selection.mode === "local") {
-      const rawAvailability = yield* Effect.promise(() =>
-        fableLocalBridge.availability().catch(() => null))
-      fableAvailability = decodeFableLocalAvailability(rawAvailability)
-    }
-    // Composer lanes (EP250 chip-verified-evidence rule): the Codex chip
-    // lights only on a PROBE-VERIFIED account. The preflight probe is a real
-    // (bounded) codex turn per account, so first mount is never blocked on
-    // it: the chip starts as "verifying…" and the availability promise
-    // updates the lane state as soon as the session probe lands.
+    // Owner directive 2026-07-20: startup discovery is DEFERRED so first paint is
+    // never blocked on availability + catalog IPC round-trips (the Finder "Open
+    // With" path already proved this fast path). The shell mounts IMMEDIATELY
+    // with an honest "verifying…" lane state; these probes then stream real
+    // availability plus the installed model catalog into the mounted state as
+    // evidence lands. The Codex chip still only lights on a PROBE-VERIFIED
+    // account, and a failed decode settles on the reconnect reason rather than
+    // parking on "verifying…" forever.
     const localLanes = (): HarnessLanes => ({
       fable: fableAvailability?.state === "available"
         ? { available: true, reason: null }
@@ -1229,48 +1211,41 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         ? { available: false, reason: "Codex — no verified account · Reconnect in Settings" }
         : codexHarnessLaneFromAvailability(codexAvailability),
     })
-    const harnessLanes: HarnessLanes = selection.mode === "runtime"
-      ? {
-          fable: { available: true, reason: null },
-          codex: { available: true, reason: null },
-        }
-      : localLanes()
-    yield* SubscriptionRef.update(state, current => withHarnessLanes(current, harnessLanes))
-    const laneCapabilities = documentLaunch
-      ? null
-      : decodeProviderLaneComposerProjections(
-          yield* Effect.promise(() => bridge?.providerLanes?.capabilities?.().catch(() => null) ?? Promise.resolve(null)),
-        )
-    if (laneCapabilities !== null) {
-      yield* SubscriptionRef.update(state, current =>
-        withProviderLaneCapabilities(current, laneCapabilities))
+    yield* SubscriptionRef.update(state, current => withHarnessLanes(current, localLanes()))
+    const refreshLaneCapabilities = async (): Promise<void> => {
+      const refreshed = decodeProviderLaneComposerProjections(
+        await (bridge?.providerLanes?.capabilities?.().catch(() => null) ?? Promise.resolve(null)),
+      )
+      if (refreshed !== null) {
+        await Effect.runPromise(SubscriptionRef.update(state, current =>
+          withProviderLaneCapabilities(current, refreshed)))
+      }
     }
-    if (selection.mode === "local" && codexLocalBridge !== null) {
-      // Non-blocking: the probe round can take tens of seconds on broken
-      // accounts; the shell mounts immediately and the chip updates when
-      // session-scoped probe evidence lands.
-      void codexLocalBridge.availability()
-        .catch(() => null)
-        .then(async raw => {
-          // A failed decode is honest non-evidence: the chip settles on the
-          // reconnect reason rather than parking on "verifying…" forever.
-          codexAvailability = decodeCodexLocalAvailability(raw) ??
-            { state: "unavailable", reason: "no_verified_account" }
-          await Effect.runPromise(
-            SubscriptionRef.update(state, current => withHarnessLanes(current, localLanes())),
-          )
-          // Availability refreshes main's installed model catalog. Pull the
-          // newly policy-intersected projection so the mounted composer gains
-          // every visible model without a reload.
-          const refreshedCapabilities = decodeProviderLaneComposerProjections(
-            await (bridge?.providerLanes?.capabilities?.().catch(() => null) ?? Promise.resolve(null)),
-          )
-          if (refreshedCapabilities !== null) {
-            await Effect.runPromise(SubscriptionRef.update(state, current =>
-              withProviderLaneCapabilities(current, refreshedCapabilities)))
-          }
-        })
-        .catch(() => {})
+    if (!documentLaunch) {
+      if (fableLocalBridge !== null) {
+        void fableLocalBridge.availability()
+          .catch(() => null)
+          .then(async raw => {
+            fableAvailability = decodeFableLocalAvailability(raw)
+            await Effect.runPromise(SubscriptionRef.update(state, current => withHarnessLanes(current, localLanes())))
+            await refreshLaneCapabilities()
+          })
+          .catch(() => {})
+      }
+      if (codexLocalBridge !== null) {
+        // The codex probe round can take tens of seconds on broken accounts.
+        void codexLocalBridge.availability()
+          .catch(() => null)
+          .then(async raw => {
+            codexAvailability = decodeCodexLocalAvailability(raw) ??
+              { state: "unavailable", reason: "no_verified_account" }
+            await Effect.runPromise(SubscriptionRef.update(state, current => withHarnessLanes(current, localLanes())))
+            await refreshLaneCapabilities()
+          })
+          .catch(() => {})
+      } else {
+        void refreshLaneCapabilities().catch(() => {})
+      }
     }
     yield* SubscriptionRef.update(state, current => ({
       ...current,
@@ -1530,17 +1505,22 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       }, fullAutoRunHost, ideAgentCodeRendererHost, ideCursorRendererHost, ideManagedSandboxRendererHost),
     )
     if (!documentLaunch && typeof bridge?.runtimeRequest === "function") {
-      const response = yield* Effect.promise(() => bridge.runtimeRequest!({
+      // Non-blocking: the initial voice-state query never gates first paint.
+      // The live lifecycle subscription below keeps the mounted state fresh, so
+      // this is only a one-shot backfill that streams in when it lands.
+      void bridge.runtimeRequest({
         kind: "query",
         requestId: "renderer-voice-initial",
         query: { id: "voice.state" },
-      }))
-      if (response.kind === "voice_state") {
-        yield* SubscriptionRef.update(state, current => ({
-          ...current,
-          voice: withVoiceHostState(current.voice, response.state),
-        }))
-      }
+      })
+        .then(response => {
+          if (response.kind !== "voice_state") return
+          return Effect.runPromise(SubscriptionRef.update(state, current => ({
+            ...current,
+            voice: withVoiceHostState(current.voice, response.state),
+          })))
+        })
+        .catch(() => {})
     }
     if (typeof bridge?.runtimeSubscribe === "function") {
       const unsubscribeVoice = bridge.runtimeSubscribe(event => {
@@ -2237,7 +2217,11 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       commandBindings,
       presentation: {
         ...current.presentation,
-        sidebarCollapsed: preferences.presentation.sidebarCollapsed,
+        // Owner directive 2026-07-20: the sidebar is HIDDEN ON OPEN, always. The
+        // initial state already starts collapsed; do NOT restore a persisted
+        // expanded rail at launch. The expander stays reachable and the user can
+        // open it during the session.
+        sidebarCollapsed: true,
         // Disclosure is intentionally launch-ephemeral. The authoritative
         // query remains in history state and is never duplicated in prefs.
         sessionSearchOpen: false,

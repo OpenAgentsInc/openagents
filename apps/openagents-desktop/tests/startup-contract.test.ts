@@ -297,12 +297,30 @@ describe("startup contract: Finder-open is editor-first", () => {
     expect(mainSource).toContain('document.getElementById("openagents-desktop-root")?.childElementCount')
   })
 
-  test("document launch bypasses chat/provider probes on the pre-mount path", () => {
+  test("no launch path blocks first paint on chat/provider/voice probes (all deferred)", () => {
+    // Owner directive 2026-07-20 ("I want the app starting IMMEDIATELY"):
+    // startup discovery is deferred on EVERY path, not just Finder-open. The
+    // pre-mount chat selection is unconditionally local — never the blocking
+    // runtime-gateway `conversation.catalog` query — and lane availability,
+    // provider capabilities, and voice state are non-blocking background probes.
     expect(bootSource).toContain("const documentLaunch = launchContext.documentOpenPathRef !== null")
-    expect(bootSource).toContain("const selection = documentLaunch")
-    expect(bootSource).toContain("const laneCapabilities = documentLaunch")
-    expect(bootSource).toContain("if (!documentLaunch && fableLocalBridge !== null")
-    expect(bootSource).toContain('if (!documentLaunch && typeof bridge?.runtimeRequest === "function")')
+    // Selection never depends on an async catalog query; it starts local.
+    expect(bootSource).toContain('const selection = { host: localHarnessChat, mode: "local" as const }')
+    // The old blocking pre-mount lane-capabilities pull is gone; capabilities
+    // now stream in through a non-blocking refresh helper.
+    expect(bootSource).not.toContain("const laneCapabilities = documentLaunch")
+    expect(bootSource).toContain("const refreshLaneCapabilities = async ()")
+    // Ordinary launches run availability probes in the BACKGROUND (never awaited
+    // before mount): the fable probe is `void fableLocalBridge.availability()`.
+    expect(bootSource).toContain("if (!documentLaunch) {")
+    expect(bootSource).toContain("void fableLocalBridge.availability()")
+    // The initial voice-state query is fired non-blocking, not `yield*`-awaited.
+    expect(bootSource).toContain('requestId: "renderer-voice-initial"')
+    const voiceIdx = bootSource.indexOf('requestId: "renderer-voice-initial"')
+    const voiceStmtStart = bootSource.lastIndexOf("bridge.runtimeRequest", voiceIdx)
+    expect(bootSource.slice(voiceStmtStart - 5, voiceStmtStart)).toContain("void ")
+    // Document-launch metadata is deferred to the post-mount hydrate helper.
+    expect(bootSource).toContain("hydrateDocumentLaunchMetadata()")
     expect(bootSource).toContain("if (!documentLaunch && restoredWorkspace !== null")
   })
 })
