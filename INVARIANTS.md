@@ -84,6 +84,11 @@ More specific invariant ledgers apply inside imported apps and packages.
   managed-sandbox outcome. Delete is complete only when the native projection
   contains zero-residue cleanup truth. Sarah and other actors share the same
   projection and remain distinguishable by an exact actor ref.
+- A generation-fenced managed-sandbox turn admits at most one terminal runtime
+  event. Provider SDK ordering and late transport errors are untrusted input:
+  the guest adapter persists the first terminal observation and drops all
+  trailing provider events, while the durable lifecycle still rejects a second
+  terminal transition rather than reopening or rewriting the turn.
 
 ## Preserved Transcript Archive
 

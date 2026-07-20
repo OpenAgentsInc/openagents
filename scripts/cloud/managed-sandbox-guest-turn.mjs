@@ -33,7 +33,14 @@ const writeState = () => {
   writeFileSync(temporary, JSON.stringify(state), { mode: 0o600 });
   renameSync(temporary, statePath);
 };
+const terminalEventTags = new Set(["RuntimeSettled", "RuntimeFailed", "RuntimeInterrupted"]);
+let terminalEventTag = state.events.findLast((event) => terminalEventTags.has(event?._tag))?._tag;
 const emit = (event) => {
+  // Provider streams are not lifecycle authority. Some SDK transports can
+  // yield a late error after a completed turn; the first terminal event is
+  // authoritative and the guest must never persist a second terminal (or any
+  // trailing event) for the same generation-fenced turn.
+  if (terminalEventTag !== undefined) return false;
   const next = {
     ...event,
     turnRef: request.turnRef,
@@ -42,7 +49,9 @@ const emit = (event) => {
     observedAt: new Date().toISOString(),
   };
   state.events.push(next);
+  if (terminalEventTags.has(next._tag)) terminalEventTag = next._tag;
   writeState();
+  return true;
 };
 const usageRef = (usage) =>
   `provider.usage.sha256.${digest(`${request.turnRef}|${JSON.stringify(usage)}`)}`;
@@ -161,8 +170,7 @@ try {
   else if (request.runtime.provider === "claude") await runClaude();
   else throw new Error("provider_not_admitted");
 } catch (error) {
-  const last = state.events.at(-1);
-  if (!["RuntimeSettled", "RuntimeFailed", "RuntimeInterrupted"].includes(last?._tag)) {
+  if (terminalEventTag === undefined) {
     emit({
       _tag: "RuntimeFailed",
       errorRef: `provider.failure.sha256.${digest(error instanceof Error ? error.name : "unknown")}`,

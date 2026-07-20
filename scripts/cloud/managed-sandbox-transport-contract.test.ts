@@ -72,4 +72,17 @@ describe('managed-sandbox guest transport contract', () => {
     const claude = source.slice(source.indexOf('const runClaude = async () => {'))
     expect(claude).toContain('if (settled) continue;')
   })
+
+  test('guest emitter admits exactly one terminal event per turn', () => {
+    const source = readFileSync(
+      resolve(import.meta.dirname, 'managed-sandbox-guest-turn.mjs'),
+      'utf8',
+    )
+    expect(source).toContain('const terminalEventTags = new Set([')
+    expect(source).toContain('if (terminalEventTag !== undefined) return false;')
+    expect(source).toContain(
+      'if (terminalEventTags.has(next._tag)) terminalEventTag = next._tag;',
+    )
+    expect(source).toContain('if (terminalEventTag === undefined) {')
+  })
 })
