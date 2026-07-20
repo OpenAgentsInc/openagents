@@ -71,6 +71,7 @@
     "ide:source-control-packaged-journey": "node --import tsx scripts/ide-source-control-packaged-journey.ts",
     "ide:source-control-acceptance": "node --import tsx scripts/ide-source-control-acceptance.ts",
     "ide:portable-packaged-evidence": "node --import tsx scripts/ide-portable-packaged-evidence.ts",
+    "ide:portable-packaged-owner-local-journey": "node --import tsx scripts/ide-portable-packaged-owner-local-journey.ts",
     "verify:ide-01": "pnpm run ide:package-spike && pnpm run ide:package-audit && pnpm run ide:typescript-index-benchmark && pnpm run typecheck && vp test --run --root ../.. src/ide/package-admission.test.ts && pnpm run check:ide-boundaries",
     "verify:ide-02": "pnpm run ide:path-index-benchmark && pnpm run typecheck && vp test --run --root ../.. src/ide/path-index-service.test.ts src/ide/path-index-benchmark-contract.test.ts src/renderer/ide/pierre-tree-adapter.test.ts src/renderer/workspace-browser.test.ts tests/workspace-service.test.ts tests/ide-explorer-accessibility.test.tsx && pnpm run check:ide-boundaries",
     "verify:ide-03": "pnpm run build && pnpm run ide:monaco-benchmark && pnpm run typecheck && vp test --run --root ../.. src/ide/monaco-document-contract.test.ts src/renderer/workspace-editor.test.ts src/renderer/react-primitive-adapters.test.tsx tests/desktop-preferences.test.ts tests/startup-contract.test.ts tests/accessibility.test.ts packages/behavior-contracts/src/behavior-contracts.test.ts && pnpm run check:ide-boundaries",
