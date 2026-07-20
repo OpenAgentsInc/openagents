@@ -143,6 +143,66 @@ export const IdePortableMoveReceiptSchema = Schema.Struct({
   completedAt: PortableTimestamp,
 }).annotate({ identifier: "IdePortableMoveReceipt" })
 
+const coordinatorCommandFields = {
+  commandRef: PortableRef,
+  idempotencyKey: PortableRef,
+  actorRef: PortableRef,
+  policyRef: PortableRef,
+  sessionRef: PortableRef,
+  project: IdePortableProjectRefsSchema,
+  expectedAttachmentRef: PortableRef,
+  expectedGeneration: count(1_000_000_000),
+  deadlineAt: PortableTimestamp,
+  approvalRef: Schema.NullOr(PortableRef),
+}
+
+export const IdePortableCoordinatorCommandSchema = Schema.TaggedUnion({
+  Move: {
+    ...coordinatorCommandFields,
+    destinationPlacementRef: ExecutionEnvironmentRef,
+  },
+  Failback: {
+    ...coordinatorCommandFields,
+    destinationPlacementRef: ExecutionEnvironmentRef,
+    recoveryPointRef: PortableRef,
+  },
+  Cancel: {
+    ...coordinatorCommandFields,
+    targetCommandRef: PortableRef,
+  },
+  Stop: {
+    ...coordinatorCommandFields,
+    reasonRef: PortableRef,
+  },
+}).annotate({ identifier: "IdePortableCoordinatorCommand" })
+
+export const IdePortableCoordinatorSnapshotSchema = Schema.Struct({
+  sessionRef: PortableRef,
+  project: IdePortableProjectRefsSchema,
+  phase: Schema.Literals([
+    "attached", "quiescing", "checkpoint_verified", "destination_staged",
+    "source_revoked", "attaching", "degraded", "stopped",
+  ]),
+  activePlacementRef: ExecutionEnvironmentRef,
+  activeAttachmentRef: PortableRef,
+  activeGeneration: count(1_000_000_000),
+  pendingCommandRef: Schema.NullOr(PortableRef),
+  pendingDestinationPlacementRef: Schema.NullOr(ExecutionEnvironmentRef),
+  checkpointManifestRef: Schema.NullOr(PortableRef),
+  eventSequence: count(9_007_199_254_740_991),
+  stopped: Schema.Boolean,
+}).annotate({ identifier: "IdePortableCoordinatorSnapshot" })
+
+export type IdePortableCapabilityFact = typeof IdePortableCapabilityFactSchema.Type
+export type IdePortablePlacementFacts = typeof IdePortablePlacementFactsSchema.Type
+export type IdePortableProjectRefs = typeof IdePortableProjectRefsSchema.Type
+export type IdePortableCheckpointPolicy = typeof IdePortableCheckpointPolicySchema.Type
+export type IdePortableCheckpointManifest = typeof IdePortableCheckpointManifestSchema.Type
+export type IdePortablePlacementEvent = typeof IdePortablePlacementEventSchema.Type
+export type IdePortableMoveReceipt = typeof IdePortableMoveReceiptSchema.Type
+export type IdePortableCoordinatorCommand = typeof IdePortableCoordinatorCommandSchema.Type
+export type IdePortableCoordinatorSnapshot = typeof IdePortableCoordinatorSnapshotSchema.Type
+
 const failureFields = { operation: text(120), detailRef: PortableRef, retryable: Schema.Boolean }
 export class IdePortableStaleWriter extends Schema.TaggedErrorClass<IdePortableStaleWriter>()("IdePortable.StaleWriter", failureFields) {}
 export class IdePortableLeaseContention extends Schema.TaggedErrorClass<IdePortableLeaseContention>()("IdePortable.LeaseContention", failureFields) {}
@@ -161,3 +221,4 @@ export const IdePortableFailureSchema = Schema.Union([
   IdePortableCancelled,
   IdePortableTeardownFailure,
 ]).annotate({ identifier: "IdePortableFailure" })
+export type IdePortableFailure = typeof IdePortableFailureSchema.Type

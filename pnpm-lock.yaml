@@ -536,6 +536,9 @@ importers:
       '@openagentsinc/managed-sandbox-contract':
         specifier: workspace:*
         version: link:../../packages/managed-sandbox-contract
+      '@openagentsinc/portable-session-contract':
+        specifier: workspace:*
+        version: link:../../packages/portable-session-contract
       '@openagentsinc/product-spec':
         specifier: workspace:*
         version: link:../../packages/product-spec
