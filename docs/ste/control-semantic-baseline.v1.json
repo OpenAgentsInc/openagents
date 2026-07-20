@@ -1496,7 +1496,7 @@
       ]
     },
     "docs/sol/README.md": {
-      "sourceSha256": "a273086ef79f1a4833eda52df6d50bdb13c0f6397014ea96d2a319ee4e2fc5bd",
+      "sourceSha256": "10cbe50ec59b324d8520d3c0568f6010caaa8b63debb79579a5f1c41bbbaf7dd",
       "normativeKeywords": [],
       "inlineCode": [
         "../../AUTHORITY.md",
@@ -1550,6 +1550,7 @@
         "2026-07-18-sarah-terminal-history-harness-implementation.md",
         "2026-07-18-vercel-ai-sdk-source-derived-effect-conversion-audit.md",
         "2026-07-19-managed-agent-sandboxes-accepted-plan.md",
+        "2026-07-20-pylon-bip39-nostr-spark-identity-recovery-audit.md",
         "AGENTS.md",
         "CHALLENGE_LEDGER.md",
         "CLAIM_PROTOCOL.md",
@@ -1692,6 +1693,10 @@
         "2",
         "2",
         "2.0",
+        "20",
+        "20",
+        "2026-07",
+        "2026-07",
         "2026-07",
         "2026-07",
         "2026-07",
@@ -1784,6 +1789,7 @@
         "3",
         "3",
         "30",
+        "39",
         "4",
         "4",
         "4",
