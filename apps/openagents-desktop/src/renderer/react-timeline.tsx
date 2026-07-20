@@ -1312,20 +1312,7 @@ export const ConversationTimeline = ({ page, notes, loadingEdge, working, waitin
   readonly agentName: string
   readonly report: IntentReporter
 }): ReactElement => {
-  if (page === null && notes.length === 0) return <section className="oa-react-timeline-empty" aria-label="Conversation">
-    <div className="oa-react-empty-conversation">
-      <h2>Start a conversation with {agentName}</h2>
-      <div className="oa-react-empty-working-directory" aria-label={workingDirectory === null ? "Working directory unavailable" : `Working directory: ${workingDirectory}`}>
-        <Folder aria-hidden="true" data-icon-name="Folder" />
-        <code title={workingDirectory ?? undefined}>{workingDirectory ?? "Working directory unavailable"}</code>
-        <Button className="oa-react-empty-directory-change" type="button" variant="ghost" size="icon-sm"
-          aria-label="Change working directory" title="Change working directory"
-          onClick={() => dispatch(report, "DesktopWorkspacePickerRequested")}>
-          <FolderPen aria-hidden="true" data-icon-name="FolderPen" />
-        </Button>
-      </div>
-    </div>
-  </section>
+  if (page === null && notes.length === 0) return <section className="oa-react-timeline-empty" aria-label="Conversation" />
   const records = page === null ? projectLocalTimelineRecords(notes) : projectReactTimelineRecords(page.items)
   return <ReactTimeline sessionKey={page?.selectedThreadRef ?? "local"} records={records}
     loadedItemCount={page?.items.length ?? records.length} offset={page?.offset ?? 0}

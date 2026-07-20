@@ -3,7 +3,6 @@ import {
   createContext,
   createElement,
   useEffect,
-  useContext,
   useMemo,
   useRef,
   useState,
@@ -33,8 +32,8 @@ import {
   ChevronRight,
   CircleAlert,
   Download,
-  FileCode2,
   FileDiff,
+  Folder,
   FolderGit2,
   GitBranch,
   Globe2,
@@ -45,7 +44,6 @@ import {
   RefreshCw,
   RotateCcw,
   Search,
-  SearchCheck,
   TerminalSquare,
   Trash2,
   X,
@@ -177,23 +175,6 @@ const dispatch = (report: IntentReporter, name: string, payload: JsonPayload = n
       error instanceof Error ? error.message : "unknown intent error",
     )
   })
-}
-
-const selectedTitle = (state: DesktopShellState): string => {
-  const local = state.threads.find(thread => thread.id === state.activeThreadId)
-  if (local !== undefined) return local.title || "Untitled session"
-  const selected = state.history.page?.rootThreadRef
-  return state.history.catalog.roots.find(root => root.threadRef === selected)?.title ?? "New session"
-}
-
-const selectedLifecycle = (state: DesktopShellState): string => {
-  if (state.activeThreadId !== null && state.pending) return "Running"
-  if (state.history.pendingThreadRef !== null && state.history.pendingThreadRef !== undefined) return "Loading"
-  const selected = state.history.page?.selectedThreadRef
-  const status = state.history.catalog.agents.find(agent => agent.threadRef === selected)?.status
-  if (status === "interrupted" || status === "errored") return "Needs attention"
-  if (status === "running" || status === "waiting") return status === "running" ? "Running" : "Waiting"
-  return "Ready"
 }
 
 /**
@@ -383,23 +364,21 @@ export const ConversationHeader = ({ state, report }: {
   readonly state: DesktopShellState
   readonly report: IntentReporter
 }): ReactElement => {
-  const selectedCoding = state.codingCatalog.sessions.find(
-    session => session.sessionRef === state.codingCatalog.selectedSessionRef,
-  )
-  const openSurface = useContext(SurfaceOpenContext)
-  return <DesktopConversationHeader
-    lifecycle={selectedLifecycle(state)}
-    secondary={selectedCoding === undefined ? undefined : `${selectedCoding.repositoryLabel} / ${selectedCoding.worktreeLabel}`}
-    title={selectedTitle(state)}
-    actions={selectedCoding === undefined ? undefined : <div className="oa-react-conversation-actions" aria-label="Project actions">
-      <span title="Current branch"><GitBranch aria-hidden="true" />{state.git.status?.branch ?? selectedCoding.worktreeLabel}</span>
-      <Button type="button" variant="ghost" size="sm" onClick={() => dispatch(report, "DesktopFilesModeToggled")}><FileCode2 aria-hidden="true" />Files</Button>
-      <Button type="button" variant="ghost" size="sm" onClick={() => openSurface("review")}><SearchCheck aria-hidden="true" />Review</Button>
-      <Button type="button" variant="ghost" size="sm" onClick={() => openSurface("terminal")}><TerminalSquare aria-hidden="true" />Terminal</Button>
-      {state.terminal.sessions.some(session => session.previews.length > 0) ? <Button type="button" variant="ghost" size="sm" onClick={() => openSurface("browser")}><Globe2 aria-hidden="true" />Preview</Button> : null}
-      <Button type="button" variant="ghost" size="sm" onClick={() => dispatch(report, "DesktopCodingCatalogChooseRequested")}><FolderGit2 aria-hidden="true" />Change</Button>
-    </div>}
-  />
+  const workingDirectory = state.workingDirectory
+  return <header className="oa-react-conversation-header oa-react-conversation-header--bare">
+    <button
+      type="button"
+      className="oa-react-conversation-working-directory"
+      aria-label={workingDirectory === null
+        ? "Working directory unavailable"
+        : `Working directory: ${workingDirectory}. Change working directory`}
+      title={workingDirectory ?? "Working directory unavailable"}
+      onClick={() => dispatch(report, "DesktopWorkspacePickerRequested")}
+    >
+      <Folder aria-hidden="true" data-icon-name="Folder" />
+      <code>{workingDirectory ?? "Working directory unavailable"}</code>
+    </button>
+  </header>
 }
 
 const FilesModeHeader = ({ state, report }: {

@@ -316,7 +316,7 @@ describe("React workbench shell", () => {
     expect(container.querySelector(".oa-react-codex-update-notice")).toBeNull()
   })
 
-  test("centers the empty conversation, follows the selected agent, and dispatches its compact directory action only while empty", async () => {
+  test("keeps the empty conversation bare and shows the working directory in the header", async () => {
     const { container } = installDom()
     const root = createTestRoot(container)
     const received: Array<{ name: string; payload: unknown }> = []
@@ -326,25 +326,26 @@ describe("React workbench shell", () => {
       workingDirectory: "/Users/example/project",
     }
     await render(root, <WorkbenchShell state={state} report={report} />)
+    // Owner UI directive 2026-07-19: the empty conversation is a bare region;
+    // the working directory moved to the bare header as the only header item.
     const empty = container.querySelector(".oa-react-timeline-empty")
-    expect(empty?.textContent).toContain("Start a conversation with Codex")
-    expect(empty?.textContent).toContain("/Users/example/project")
-    expect(empty?.querySelector('[data-icon-name="Folder"]')).not.toBeNull()
-    const change = empty?.querySelector<HTMLButtonElement>('[aria-label="Change working directory"]')
-    expect(change?.textContent).toBe("")
-    expect(change?.querySelector('[data-icon-name="FolderPen"]')).not.toBeNull()
-    await interact(() => change?.click())
+    expect(empty).not.toBeNull()
+    expect(empty?.textContent).toBe("")
+    expect(container.querySelector(".oa-react-timeline-empty h2")).toBeNull()
+    const header = container.querySelector(".oa-react-conversation-header--bare")
+    expect(header).not.toBeNull()
+    const dir = header?.querySelector<HTMLButtonElement>(".oa-react-conversation-working-directory")
+    expect(dir?.textContent).toContain("/Users/example/project")
+    expect(dir?.querySelector('[data-icon-name="Folder"]')).not.toBeNull()
+    await interact(() => dir?.click())
     expect(received).toContainEqual({ name: "DesktopWorkspacePickerRequested", payload: null })
 
-    await render(root, <WorkbenchShell state={{ ...state, selectedHarness: "fable" }} report={report} />)
-    expect(container.querySelector(".oa-react-timeline-empty h2")?.textContent).toBe("Start a conversation with Claude")
-    expect(container.querySelector('[data-en-key="shell-provider-select"]')?.textContent).toBe("Claude")
-
+    // The header working directory persists once the conversation has content.
     await render(root, <WorkbenchShell state={{
       ...state,
       notes: [{ key: "owner-1", role: "user", text: "Hello", timestamp: "now" }],
     }} report={report} />)
-    expect(container.querySelector('[aria-label="Change working directory"]')).toBeNull()
+    expect(container.querySelector(".oa-react-conversation-working-directory")?.textContent).toContain("/Users/example/project")
   })
 
   test("projects metadata before transcript hydration in one deterministic recency order", () => {
@@ -784,7 +785,7 @@ describe("React workbench shell", () => {
     expect(received).toContainEqual({ name: "DesktopCodingCatalogMoreRequested", payload: null })
   })
 
-  test("shows exact worktree context and capability-backed project actions in the header", async () => {
+  test("keeps the chat header bare: only the working directory, no worktree meta or project actions", async () => {
     const { container } = installDom()
     const received: Array<{ name: string; payload: unknown }> = []
     const report: IntentReporter = (ref, payload) => Effect.sync(() => received.push(resolveIntentRef(ref, payload)))
@@ -797,23 +798,20 @@ describe("React workbench shell", () => {
     }
     const state: DesktopShellState = {
       ...base,
+      workingDirectory: "/Users/example/openagents",
       codingCatalog: { ...base.codingCatalog, selectedSessionRef: "session-1", sessions: [session], totalSessions: 1, activeCount: 1 },
       git: { ...base.git, status: { ok: true, op: "status", branch: "feature/t3-ui", upstream: "origin/feature/t3-ui", detached: false, ahead: 0, behind: 0, staged: [], unstaged: [], untracked: [], truncated: false, repositoryRef: "repository-1", statusRef: "status-1", headRef: "head-1" } },
     }
     const root = createTestRoot(container)
     await render(root, <WorkbenchShell state={state} report={report} />)
-    expect(container.querySelector(".oa-react-conversation-meta")?.textContent).toContain("openagents / feature/t3-ui")
-    expect(container.querySelector(".oa-react-conversation-actions")?.textContent).toContain("feature/t3-uiFilesReviewTerminalChange")
-    await interact(() => {
-      ;([...container.querySelectorAll(".oa-react-conversation-actions button")].find(button => button.textContent === "Files") as HTMLButtonElement | undefined)?.click()
-      ;([...container.querySelectorAll(".oa-react-conversation-actions button")].find(button => button.textContent === "Review") as HTMLButtonElement | undefined)?.click()
-      ;([...container.querySelectorAll(".oa-react-conversation-actions button")].find(button => button.textContent === "Change") as HTMLButtonElement | undefined)?.click()
-    })
-    expect(received).toEqual(expect.arrayContaining([
-      { name: "DesktopFilesModeToggled", payload: null },
-      { name: "DesktopWorkspaceSelected", payload: "review" },
-      { name: "DesktopCodingCatalogChooseRequested", payload: null },
-    ]))
+    // Owner UI directive 2026-07-19: the chat header carries only the working
+    // directory. The old lifecycle/worktree meta and Files/Review/Terminal/
+    // Change action row are removed.
+    const header = container.querySelector(".oa-react-conversation-header--bare")
+    expect(header).not.toBeNull()
+    expect(header?.querySelector(".oa-react-conversation-working-directory")?.textContent).toContain("/Users/example/openagents")
+    expect(container.querySelector(".oa-react-conversation-meta")).toBeNull()
+    expect(container.querySelector(".oa-react-conversation-actions")).toBeNull()
   })
 
   test("keeps the transcript mounted while right-side capability surfaces activate, maximize, close, and persist", async () => {
@@ -1047,9 +1045,16 @@ describe("React workbench shell", () => {
       terminal: { phase: "ready", activeRef: "terminal-1", input: "pnpm test", notice: null, sessions: [{ sessionRef: "terminal-1", cwdLabel: "openagents", shellLabel: "zsh", status: "running", exitCode: null, recovered: true, gap: false, output: "$ pnpm test\n42 passed\n", previews: [{ port: 3000, url: "http://localhost:3000", ready: true }] }] },
     }
     const root = createTestRoot(container)
+    // Owner UI directive 2026-07-19: the chat header no longer carries surface
+    // openers. The terminal surface's durable open state is its persisted
+    // layout, so seed that layout to render the surface (its own tab strip and
+    // "Add surface" menu remain the in-surface controls).
+    window.localStorage.setItem(
+      "openagents.desktop.surface-layout.v1:session-terminal",
+      JSON.stringify({ version: 1, surfaces: ["terminal"], active: "terminal", maximized: false, width: 440 }),
+    )
     await render(root, <WorkbenchShell state={state} report={report} />)
-    const terminalButton = [...container.querySelectorAll(".oa-react-conversation-actions button")].find(button => button.textContent === "Terminal") as HTMLButtonElement
-    await interact(() => terminalButton.click())
+    await interact(() => undefined)
     expect(container.querySelector('[aria-label="Terminal surface"]')?.textContent).toContain("42 passed")
     expect(container.querySelector('[aria-label="Terminal sessions"] [role="tab"][aria-selected="true"]')?.textContent).toContain("zshrunning")
     expect(container.querySelector('[data-xterm-projection="true"]')).not.toBeNull()
@@ -1069,8 +1074,11 @@ describe("React workbench shell", () => {
       { name: "TerminalContextAttached", payload: null },
       { name: "TerminalPreviewOpenRequested", payload: 3000 },
     ]))
-    const previewButton = [...container.querySelectorAll(".oa-react-conversation-actions button")].find(button => button.textContent === "Preview") as HTMLButtonElement
-    await interact(() => previewButton.click())
+    // Header Preview opener removed (owner UI directive 2026-07-19); the
+    // browser preview surface now opens from the in-surface "Add surface" menu.
+    await interact(() => (container.querySelector('[aria-label="Add surface"]') as HTMLButtonElement).click())
+    const previewMenuItem = [...container.querySelectorAll('[role="menuitem"]')].find(button => button.textContent?.includes("Preview")) as HTMLButtonElement
+    await interact(() => previewMenuItem.click())
     expect(container.querySelector('[aria-label="Browser preview surface"]')?.textContent).toContain("localhost:3000 is ready")
     await interact(() => (container.querySelector('[aria-label="Tablet"]') as HTMLButtonElement).click())
     expect(container.querySelector('[aria-label="Tablet"]')?.getAttribute("aria-pressed")).toBe("true")

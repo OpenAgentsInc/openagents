@@ -691,7 +691,7 @@ export const initialDesktopShellState = (
   workingDirectory: null,
   workspace: launchWorkspace,
   presentation: {
-    sidebarCollapsed: false,
+    sidebarCollapsed: true,
     sessionSearchOpen: false,
   },
   navigation: emptyDesktopNavigationProjection(),

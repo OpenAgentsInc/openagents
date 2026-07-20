@@ -1394,6 +1394,45 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   font-size: 11px;
 }
 
+.oa-react-conversation-header--bare {
+  -webkit-app-region: drag;
+  gap: var(--en-spacing-2);
+}
+
+.oa-react-conversation-working-directory {
+  -webkit-app-region: no-drag;
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: none;
+  border-radius: var(--en-radius-sm);
+  background: transparent;
+  color: var(--en-color-textMuted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.oa-react-conversation-working-directory:hover {
+  background: var(--en-color-surfaceRaised);
+  color: var(--en-color-textPrimary);
+}
+
+.oa-react-conversation-working-directory > svg {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+
+.oa-react-conversation-working-directory > code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--oa-font-mono);
+}
+
 .oa-react-conversation-actions svg {
   width: 13px;
   height: 13px;

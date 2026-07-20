@@ -139,7 +139,7 @@ describe("React Codex composer", () => {
     expect(received).toContainEqual({ name: "DesktopNoteSubmitted", payload: "Start now" });
   });
 
-  test("attaches, previews, removes, reports rejection, and sends an image-only turn", async () => {
+  test("previews and removes an attached image and admits an image-only turn", async () => {
     const { container } = installDom();
     const { ReactComposer } = await import("./react-composer.tsx");
     const { received, report } = recorder();
@@ -153,28 +153,21 @@ describe("React Codex composer", () => {
     expect(container.textContent).toContain("screen.png");
     expect(container.textContent).not.toContain("aGVsbG8=");
     expect(container.querySelector('[role="alert"]')?.textContent).toContain("too large");
-    const attach = container.querySelector('[aria-label="Attach images"]') as HTMLButtonElement;
     const remove = container.querySelector('[aria-label="Remove screen.png"]') as HTMLButtonElement;
     const send = container.querySelector('[aria-label="Send"]') as HTMLButtonElement;
     expect(send.disabled).toBe(false);
-    await interact(() => { attach.click(); remove.click(); send.click(); });
+    await interact(() => { remove.click(); send.click(); });
     expect(received).toEqual(expect.arrayContaining([
-      { name: "DesktopComposerImagePickRequested", payload: null },
       { name: "DesktopComposerImageRemoved", payload: "image-1" },
       { name: "DesktopNoteSubmitted", payload: null },
     ]));
   });
 
-  test("disables acquisition while pending and at the limit, and exposes drag-over state", async () => {
+  test("exposes drag-over state for image drop", async () => {
     const { window, container } = installDom();
     const { ReactComposer } = await import("./react-composer.tsx");
     const { report } = recorder();
     const root = createTestRoot(container);
-    await render(root, <ReactComposer state={fixtureState({ pending: true })} report={report} />);
-    expect((container.querySelector('[aria-label*="current turn"]') as HTMLButtonElement).disabled).toBe(true);
-    const images = Array.from({ length: 8 }, (_, index) => ({ id: `i${index}`, mediaType: "image/png" as const, data: "YQ==", name: `${index}.png`, sizeBytes: 1 }));
-    await render(root, <ReactComposer state={fixtureState({ composerImages: images })} report={report} />);
-    expect((container.querySelector('[aria-label="Image limit reached (8 max)"]') as HTMLButtonElement).disabled).toBe(true);
     await render(root, <ReactComposer state={fixtureState()} report={report} />);
     const composer = container.querySelector('[data-en-key="shell-composer"]') as HTMLElement;
     const drag = new window.Event("dragenter", { bubbles: true });
@@ -184,7 +177,7 @@ describe("React Codex composer", () => {
     expect(container.textContent).toContain("Drop images to attach");
   });
 
-  test("focuses the Lexical editor, preserves its bounded shell, and sends one exact intent", async () => {
+  test("focuses the Lexical editor, keeps the bar to a single submit action, and sends one exact intent", async () => {
     const { window, container } = installDom();
     const { ReactComposer } = await import("./react-composer.tsx");
     const { received, report } = recorder();
@@ -195,20 +188,16 @@ describe("React Codex composer", () => {
     );
     const editor = container.querySelector('[data-lexical-composer="true"]') as HTMLElement;
     expect(container.querySelector('[data-en-key="shell-input"] [contenteditable="true"]')).toBe(editor);
-    expect(container.querySelector('[data-icon-name="Command"]')).not.toBeNull();
-    expect(container.querySelector('[data-icon-name="ArrowUp"]')).not.toBeNull();
-    expect(container.querySelectorAll('[data-composer-button-kind="action"]')).toHaveLength(3);
-    expect(container.querySelectorAll(".oa-react-composer-select")).toHaveLength(1);
-    expect(container.querySelector('[aria-label="Add context or command"]')).not.toBeNull();
-    const more = container.querySelector('[aria-label="More composer controls"]') as HTMLButtonElement;
-    expect(more.getAttribute("aria-expanded")).toBe("false");
-    await interact(() => more.click());
-    expect(more.getAttribute("aria-expanded")).toBe("true");
-    expect(container.querySelector(".oa-react-composer-secondary-controls")?.getAttribute("data-open")).toBe("true");
-    // FA-UX-01 (#8974): Full Auto retired the composer-embedded toggle
-    // (kind="toggle") entirely -- it starts only from the dedicated left-rail
-    // launcher now (see full-auto-workspace.test.ts, react-full-auto-surface.test.tsx).
+    // Bare composer bar (owner UI directive 2026-07-19): no context/attach/
+    // provider/model/reasoning controls -- only the submit action (plus Stop
+    // while a turn is in flight).
+    expect(container.querySelector('[data-icon-name="Command"]')).toBeNull();
+    expect(container.querySelectorAll('[data-composer-button-kind="action"]')).toHaveLength(0);
+    expect(container.querySelectorAll(".oa-react-composer-select")).toHaveLength(0);
+    expect(container.querySelector('[aria-label="Add context or command"]')).toBeNull();
+    expect(container.querySelector('[aria-label="More composer controls"]')).toBeNull();
     expect(container.querySelector('[data-composer-button-kind="toggle"]')).toBeNull();
+    expect(container.querySelector('[data-icon-name="ArrowUp"]')).not.toBeNull();
     expect(container.querySelector('[data-composer-button-kind="submit"]')).not.toBeNull();
     await render(
       root,
@@ -262,10 +251,7 @@ describe("React Codex composer", () => {
   });
 
   test("discovers loaded files, folders, skills, and typed commands without a second authority", async () => {
-    const { container } = installDom();
-    const { ReactComposer, projectComposerDiscoveryItems } = await import("./react-composer.tsx");
-    const { received, report } = recorder();
-    const root = createTestRoot(container);
+    const { projectComposerDiscoveryItems } = await import("./react-composer.tsx");
     const base = fixtureState();
     const state = fixtureState({
       workspaceBrowser: {
@@ -304,26 +290,15 @@ describe("React Codex composer", () => {
         extensions: ["skills"], evidence: "conformant",
       }],
     } as Partial<DesktopShellState>);
+    // The composer bar no longer carries an in-bar discovery trigger (owner UI
+    // directive 2026-07-19). The discovery/context projection is the exported
+    // seam and still resolves files, folders, skills, and typed commands from
+    // the one workspace/editor authority without a second store.
     const projected = projectComposerDiscoveryItems(state, "");
     expect(projected.map(item => item.kind)).toEqual(expect.arrayContaining(["attach-active-file", "skill", "path", "command"]));
-    await render(root, <ReactComposer state={state} report={report} />);
-    await interact(() => (container.querySelector('[aria-label="Add context or command"]') as HTMLButtonElement).click());
-    expect(container.querySelector('[aria-label="Composer commands and context"]')).not.toBeNull();
-    expect(container.textContent).toContain("Current context");
-    expect(container.textContent).toContain("Skills");
-    expect(container.textContent).toContain("Files and folders");
-    expect(container.textContent).toContain("Commands");
-    const attach = [...container.querySelectorAll('[data-slot="command-item"]')].find(item => item.textContent?.includes("Attach app.ts"));
-    await interact(() => (attach as HTMLElement | undefined)?.click());
-    expect(received).toContainEqual({ name: "DesktopEditorFileAttached", payload: null });
-    await interact(() => (container.querySelector('[aria-label="Add context or command"]') as HTMLButtonElement).click());
-    const skill = [...container.querySelectorAll('[data-slot="command-item"]')].find(item => item.textContent?.includes("reviewquality"));
-    await interact(() => (skill as HTMLElement | undefined)?.click());
-    expect(received).toContainEqual({ name: "DesktopInputChanged", payload: "/skill quality/review " });
-    await interact(() => (container.querySelector('[aria-label="Add context or command"]') as HTMLButtonElement).click());
-    const file = [...container.querySelectorAll('[data-slot="command-item"]')].find(item => item.textContent?.includes("app.tssrc/app.ts · open in editor"));
-    await interact(() => (file as HTMLElement | undefined)?.click());
-    expect(received).toContainEqual({ name: "WorkspaceBrowserEntrySelected", payload: "src/app.ts" });
+    expect(projected.some(item => item.kind === "attach-active-file")).toBe(true);
+    expect(projected.some(item => item.kind === "skill" && item.invocation === "/skill quality/review ")).toBe(true);
+    expect(projected.some(item => item.kind === "path" && item.pathRef === "src/app.ts")).toBe(true);
   });
 
   test("focuses the composer after a new-session transition even when the trigger owns focus", async () => {
@@ -426,35 +401,14 @@ describe("React Codex composer", () => {
   });
 
   test.each([
-    ["Steer now", "Queue next", "steer", "DesktopSteerCurrentRequested"],
-    ["Queue next", "Steer now", "queue", "DesktopQueueNextRequested"],
-  ] as const)("the single %s mode toggle keeps an enabled explicit submit path", async (buttonLabel, initialLabel, pendingSubmitMode, intentName) => {
+    ["steer", "Steer", "DesktopSteerCurrentRequested"],
+    ["queue", "Queue", "DesktopQueueNextRequested"],
+  ] as const)("the bare composer submit dispatches the active %s intent while a turn runs", async (pendingSubmitMode, submitLabel, intentName) => {
     const { container } = installDom();
     const { ReactComposer } = await import("./react-composer.tsx");
     const { received, report } = recorder();
     const root = createTestRoot(container);
     const composerAdmission = { state: "active_steerable", activeTurnId: "turn-provider-7", reason: null, queuedCount: 0 } as const;
-    const initialMode = pendingSubmitMode === "steer" ? "queue" : "steer";
-    await render(
-      root,
-      <ReactComposer
-        state={fixtureState({ input: "Continue", pending: true, pendingSubmitMode: initialMode, composerAdmission })}
-        report={report}
-      />,
-    );
-    expect(container.querySelector('[data-icon-name="Stop"]')).not.toBeNull();
-    const click = (label: string, last = false) => {
-      const buttons = [...container.querySelectorAll("button")].filter(
-        (button) => button.textContent === label,
-      );
-      (last ? buttons.at(-1) : buttons[0])?.click();
-    };
-    const toggle = container.querySelector(".oa-react-submit-mode-toggle");
-    expect(toggle?.textContent).toBe(initialLabel);
-    expect(container.textContent).not.toContain(buttonLabel);
-    expect(container.querySelectorAll(".oa-react-submit-mode-toggle")).toHaveLength(1);
-    await interact(() => click(initialLabel));
-    expect(received).toContainEqual({ name: "DesktopPendingSubmitModeSelected", payload: pendingSubmitMode });
     await render(
       root,
       <ReactComposer
@@ -462,17 +416,20 @@ describe("React Codex composer", () => {
         report={report}
       />,
     );
-    expect(container.querySelector(".oa-react-submit-mode-toggle")?.textContent).toBe(buttonLabel);
-    expect(container.textContent).not.toContain(initialLabel);
-    await interact(() => click(pendingSubmitMode === "steer" ? "Steer" : "Queue", true));
+    // Bare bar (owner UI directive 2026-07-19): the retired Steer/Queue mode
+    // toggle is gone; only Stop and the submit action remain. The active
+    // pendingSubmitMode still drives which intent submit dispatches.
+    expect(container.querySelector('[data-icon-name="Stop"]')).not.toBeNull();
+    expect(container.querySelector(".oa-react-submit-mode-toggle")).toBeNull();
+    expect(container.querySelector(`button[aria-label="${submitLabel}"]`)).not.toBeNull();
+    await interact(() => {
+      [...container.querySelectorAll("button")].find((button) => button.textContent === submitLabel)?.click();
+    });
     expect(received).toEqual(
       expect.arrayContaining([
         { name: intentName, payload: "Continue" },
       ]),
     );
-    expect(container.querySelector(`button[aria-label="${pendingSubmitMode === "steer" ? "Steer" : "Queue"}"]`)).not.toBeNull();
-    expect(container.textContent).not.toContain("While this turn runs");
-    expect(container.textContent).not.toContain("Steer now sends into active turn");
   });
 
   test("projects durable queue order and disables mutation after dispatch ownership transfers", async () => {
@@ -542,77 +499,6 @@ describe("React Codex composer", () => {
     expect(received).toContainEqual({ name: "DesktopTurnInterrupted", payload: null });
   });
 
-  test("L2 derives distinct composers when the active thread switches lanes", async () => {
-    const { container } = installDom();
-    const { ReactComposer } = await import("./react-composer.tsx");
-    const { report } = recorder();
-    const root = createTestRoot(container);
-    const codex = {
-      laneRef: "codex-local", provider: "codex", displayName: "Codex", admission: "admitted" as const,
-      reason: null, models: ["gpt-5.6-sol", "gpt-5.5"], reasoningEfforts: ["low", "medium", "high", "xhigh"],
-      permissionModes: ["owner_full"] as const, approvals: "host_mediated" as const, questions: true, skills: false,
-      images: true, fullAuto: true, interrupt: true, queueFollowup: true, steerTurn: true, extensions: [], evidence: "conformant" as const,
-    };
-    const claude = {
-      laneRef: "fable-local", provider: "claude_agent", displayName: "Claude", admission: "admitted" as const,
-      reason: null, models: ["claude-fable-5", "claude-opus-4-8"], reasoningEfforts: [],
-      permissionModes: ["owner_full", "plan_only"] as const, approvals: "provider_native" as const, questions: true, skills: true,
-      images: true, fullAuto: false, interrupt: true, queueFollowup: true, steerTurn: false, extensions: ["skills"], evidence: "conformant" as const,
-    };
-    const lanes = { fable: { available: true, reason: null }, codex: { available: true, reason: null } };
-    await render(root, <ReactComposer state={fixtureState({ providerLaneCapabilities: [codex, claude], harnessLanes: lanes })} report={report} />);
-    expect(container.querySelector('[data-en-key="shell-reasoning-select"]')).not.toBeNull();
-    // FA-UX-01 (#8974): the toggle is retired regardless of lane capability.fullAuto.
-    expect(container.querySelector('[data-en-key="shell-full-auto-toggle"]')).toBeNull();
-    expect(container.querySelector('[data-en-key="shell-permission-mode"]')).toBeNull();
-    expect((container.querySelector('[data-en-key="shell-model-select"]') as HTMLSelectElement).value).toBe("gpt-5.6-sol");
-
-    await render(root, <ReactComposer state={fixtureState({
-      selectedHarness: "fable", providerLaneCapabilities: [codex, claude], harnessLanes: lanes,
-    })} report={report} />);
-    expect(container.querySelector('[data-en-key="shell-reasoning-select"]')).toBeNull();
-    expect(container.querySelector('[data-en-key="shell-full-auto-toggle"]')).toBeNull();
-    expect(container.querySelector('[data-en-key="shell-permission-mode"]')).not.toBeNull();
-    expect((container.querySelector('[data-en-key="shell-model-select"]') as HTMLSelectElement).value).toBe("claude-fable-5");
-    expect(container.textContent).not.toContain("gpt-5.6-sol");
-  });
-
-  test("offers every installed visible Codex model as a direct selector with model-specific reasoning", async () => {
-    const { window, container } = installDom();
-    const { ReactComposer } = await import("./react-composer.tsx");
-    const { received, report } = recorder();
-    const root = createTestRoot(container);
-    const ids = ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex-spark"];
-    const modelOptions = ids.map((id, index) => ({
-      id,
-      displayName: id.replace("gpt", "GPT"),
-      isDefault: index === 0,
-      defaultReasoningEffort: "medium",
-      supportedReasoningEfforts: id.startsWith("gpt-5.6")
-        ? ["low", "medium", "high", "xhigh", "max", "ultra"]
-        : ["low", "medium", "high", "xhigh"],
-    }));
-    const codex = {
-      laneRef: "codex-local", provider: "codex", displayName: "Codex", admission: "admitted" as const,
-      reason: null, models: ids, modelOptions,
-      reasoningEfforts: ["low", "medium", "high", "xhigh", "max", "ultra"],
-      permissionModes: ["owner_full"] as const, approvals: "host_mediated" as const, questions: true, skills: false,
-      images: true, fullAuto: true, interrupt: true, queueFollowup: true, steerTurn: true, extensions: [], evidence: "conformant" as const,
-    };
-    await render(root, <ReactComposer state={fixtureState({ providerLaneCapabilities: [codex] })} report={report} />);
-
-    const model = container.querySelector('[data-en-key="shell-model-select"]') as HTMLSelectElement;
-    expect(model.tagName).toBe("SELECT");
-    expect([...model.options].map(option => option.value)).toEqual(ids);
-    expect(model.value).toBe("gpt-5.6-sol");
-    const reasoning = container.querySelector('[data-en-key="shell-reasoning-select"]') as HTMLSelectElement;
-    expect([...reasoning.options].map(option => option.value)).toEqual(["low", "medium", "high", "xhigh", "max", "ultra"]);
-
-    model.value = "gpt-5.4-mini";
-    await interact(() => model.dispatchEvent(new window.Event("change", { bubbles: true }) as unknown as Event));
-    expect(received).toContainEqual({ name: "DesktopModelSelected", payload: "gpt-5.4-mini" });
-  });
-
   test("L2 refuses an over-claiming lane and exposes its quarantine reason", async () => {
     const { container } = installDom();
     const { ReactComposer } = await import("./react-composer.tsx");
@@ -630,94 +516,6 @@ describe("React Codex composer", () => {
     expect(container.querySelector('[data-en-key="shell-full-auto-toggle"]')).toBeNull();
     expect((container.querySelector('[data-composer-button-kind="submit"]') as HTMLButtonElement).disabled).toBe(true);
     expect(container.textContent).toContain("Lane capability over-claim quarantined");
-  });
-
-  test("#8977: an admitted ACP lane is a real selectable first-class provider through the SAME shell-provider-select chip", async () => {
-    const { container } = installDom();
-    const { ReactComposer } = await import("./react-composer.tsx");
-    const { received, report } = recorder();
-    const root = createTestRoot(container);
-    const codex = {
-      laneRef: "codex-local", provider: "codex", displayName: "Codex", admission: "admitted" as const,
-      reason: null, models: ["gpt-5.6-sol"], reasoningEfforts: ["low", "medium", "high", "xhigh"],
-      permissionModes: ["owner_full"] as const, approvals: "host_mediated" as const, questions: true, skills: false,
-      images: true, fullAuto: true, interrupt: true, queueFollowup: true, steerTurn: true, extensions: [], evidence: "conformant" as const,
-    };
-    const claude = {
-      laneRef: "fable-local", provider: "claude_agent", displayName: "Claude", admission: "admitted" as const,
-      reason: null, models: ["claude-fable-5"], reasoningEfforts: [],
-      permissionModes: ["owner_full", "plan_only"] as const, approvals: "provider_native" as const, questions: true, skills: true,
-      images: true, fullAuto: false, interrupt: true, queueFollowup: true, steerTurn: false, extensions: ["skills"], evidence: "conformant" as const,
-    };
-    const grok = {
-      laneRef: "acp:grok-cli", provider: "grok", displayName: "Grok CLI", admission: "admitted" as const,
-      reason: null, models: ["grok-4"], reasoningEfforts: [],
-      permissionModes: ["owner_full"] as const, approvals: "provider_native" as const, questions: true, skills: false,
-      images: false, fullAuto: true, interrupt: true, queueFollowup: false, steerTurn: false, extensions: [], evidence: "conformant" as const,
-    };
-    const lanes = { fable: { available: true, reason: null }, codex: { available: true, reason: null } };
-    await render(root, <ReactComposer state={fixtureState({
-      selectedHarness: "fable", activeLaneRef: "fable-local", providerLaneCapabilities: [codex, claude, grok], harnessLanes: lanes,
-    })} report={report} />);
-    const button = container.querySelector('[data-en-key="shell-provider-select"]') as HTMLButtonElement;
-    expect(button.disabled).toBe(false);
-    expect(button.textContent).toBe("Claude");
-    expect(button.getAttribute("aria-label")).toBe("Provider: Claude. Switch to Grok CLI");
-    await interact(() => button.click());
-    expect(received).toContainEqual({ name: "DesktopProviderLaneSelected", payload: "acp:grok-cli" });
-  });
-
-  test("#8977: a quarantined/unadmitted ACP lane is never offered by the picker -- cycle falls back to the other native lane", async () => {
-    const { container } = installDom();
-    const { ReactComposer } = await import("./react-composer.tsx");
-    const { received, report } = recorder();
-    const root = createTestRoot(container);
-    const codex = {
-      laneRef: "codex-local", provider: "codex", displayName: "Codex", admission: "admitted" as const,
-      reason: null, models: ["gpt-5.6-sol"], reasoningEfforts: ["low", "medium", "high", "xhigh"],
-      permissionModes: ["owner_full"] as const, approvals: "host_mediated" as const, questions: true, skills: false,
-      images: true, fullAuto: true, interrupt: true, queueFollowup: true, steerTurn: true, extensions: [], evidence: "conformant" as const,
-    };
-    const claude = {
-      laneRef: "fable-local", provider: "claude_agent", displayName: "Claude", admission: "admitted" as const,
-      reason: null, models: ["claude-fable-5"], reasoningEfforts: [],
-      permissionModes: ["owner_full", "plan_only"] as const, approvals: "provider_native" as const, questions: true, skills: true,
-      images: true, fullAuto: false, interrupt: true, queueFollowup: true, steerTurn: false, extensions: ["skills"], evidence: "conformant" as const,
-    };
-    const cursor = {
-      laneRef: "acp:cursor-agent", provider: "cursor", displayName: "Cursor Agent", admission: "quarantined" as const,
-      reason: "Cursor Agent is not installed or has not passed its executable probe.",
-      models: [], reasoningEfforts: [], permissionModes: [], approvals: "none" as const, questions: false, skills: false,
-      images: false, fullAuto: false, interrupt: false, queueFollowup: false, steerTurn: false, extensions: [], evidence: "conformant" as const,
-    };
-    const lanes = { fable: { available: true, reason: null }, codex: { available: true, reason: null } };
-    await render(root, <ReactComposer state={fixtureState({
-      selectedHarness: "fable", activeLaneRef: "fable-local", providerLaneCapabilities: [codex, claude, cursor], harnessLanes: lanes,
-    })} report={report} />);
-    const button = container.querySelector('[data-en-key="shell-provider-select"]') as HTMLButtonElement;
-    expect(button.getAttribute("aria-label")).toBe("Provider: Claude. Switch to Codex");
-    await interact(() => button.click());
-    // The SAME DesktopHarnessSelected intent Shift+Tab dispatches -- unchanged
-    // for the native pair -- and never the quarantined Cursor Agent lane.
-    expect(received).toContainEqual({ name: "DesktopHarnessSelected", payload: "codex" });
-    expect(received.some(event => event.name === "DesktopProviderLaneSelected")).toBe(false);
-  });
-
-  test("#8977: with no ACP lane admitted, the picker is exactly the prior codex<->fable toggle (no regression)", async () => {
-    const { container } = installDom();
-    const { ReactComposer } = await import("./react-composer.tsx");
-    const { received, report } = recorder();
-    const root = createTestRoot(container);
-    const lanes = { fable: { available: true, reason: null }, codex: { available: true, reason: null } };
-    await render(root, <ReactComposer state={fixtureState({ harnessLanes: lanes })} report={report} />);
-    const button = container.querySelector('[data-en-key="shell-provider-select"]') as HTMLButtonElement;
-    expect(button.textContent).toBe("Codex");
-    // Pre-existing quirk retained verbatim: with no providerLaneCapabilities
-    // evidence at all, the aria-label falls back to the raw selectedHarness
-    // value ("codex"), unlike the button's own capitalized text fallback.
-    expect(button.getAttribute("aria-label")).toBe("Provider: codex. Switch to Claude");
-    await interact(() => button.click());
-    expect(received).toContainEqual({ name: "DesktopHarnessSelected", payload: "fable" });
   });
 });
 

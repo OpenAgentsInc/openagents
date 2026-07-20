@@ -65,7 +65,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "kinda works but i get this fucked up warnings. and i cant choose anything other than gpt 5.5 WHAET TH EFUCK. FIX THAT. and no new rc build until i test it locally. tell me when its ready to test\\",
         authorityBoundary:
-          "Electron main reads the visible model/list catalog and per-model reasoning efforts from the user's validated installed Codex app-server through the existing control plane. That exact bounded catalog is policy-intersected into the provider-lane projection; the renderer offers a direct native model select, chooses the installed default when a stale selection is absent, and reconciles unsupported reasoning to that model's advertised default. Exact turn admission remains main-owned and fails closed against the same catalog. The installed Codex thread/resume response may carry its two newer pagination cursors; the wire boundary projects away only itemsBackwardsCursor and turnsBackwardsCursor before complete generated-schema validation, so all authority-bearing response fields and any other unknown drift still fail closed. App-server compatibility receipts, rate-limit decode drift, and token-usage decode drift remain private connection diagnostics and release-gate evidence; they never become transcript lane_notice rows. This work stops at a locally testable development app and grants no RC, tag, package, release-asset, or publication authority.",
+          "Electron main reads the visible model/list catalog and per-model reasoning efforts from the user's validated installed Codex app-server through the existing control plane. That exact bounded catalog is policy-intersected into the provider-lane projection; the shell still chooses the installed default when a stale selection is absent and reconciles unsupported reasoning to that model's advertised default through the DesktopModelSelected/DesktopCodexReasoningSelected intents. Exact turn admission remains main-owned and fails closed against the same catalog. NOTE (owner UI directive 2026-07-19): the in-composer-bar model and reasoning selects were removed to make the bar bare (just submit). The catalog authority and reconciliation are unchanged, but there is currently no non-bar model/reasoning picker UI; restoring an out-of-bar chooser (settings) is an open follow-up so the 2026-07-17 model-choice intent is not lost. The installed Codex thread/resume response may carry its two newer pagination cursors; the wire boundary projects away only itemsBackwardsCursor and turnsBackwardsCursor before complete generated-schema validation, so all authority-bearing response fields and any other unknown drift still fail closed. App-server compatibility receipts, rate-limit decode drift, and token-usage decode drift remain private connection diagnostics and release-gate evidence; they never become transcript lane_notice rows. This work stops at a locally testable development app and grants no RC, tag, package, release-asset, or publication authority.",
         evidenceRefs: [
           "apps/openagents-desktop/src/codex-control-plane.ts",
           "apps/openagents-desktop/src/codex-local-runtime.ts",
@@ -79,12 +79,12 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         ],
         oracles: [
           {
-            id: "installed_codex_model_catalog.direct_visible_model_and_reasoning_selects",
+            id: "installed_codex_model_catalog.composer_bar_has_no_model_or_reasoning_select",
             kind: "bun-test",
             mode: "dom",
             ref: "apps/openagents-desktop/src/renderer/react-composer.test.tsx",
             description:
-              "Renders all seven visible installed-catalog model ids in a native select, proves direct GPT-5.4 Mini selection dispatches the exact id, and limits the reasoning selector to the active model's advertised efforts.",
+              "Proves the bare composer bar renders no model or reasoning select (owner UI directive 2026-07-19); the installed-catalog default and reasoning reconciliation remain covered by the shell unit oracle below.",
           },
           {
             id: "installed_codex_model_catalog.default_and_effort_reconciliation",
@@ -180,17 +180,17 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           "Desktop shell/composer/provider-lane suites, behavior-contract validation, Desktop typecheck/build, and repository completion gate.",
       },
       {
-        contractId: "openagents_desktop.chat.empty_state_centers_current_directory.v1",
+        contractId: "openagents_desktop.chat.empty_state_bare_working_directory_in_header.v1",
         state: "enforced",
         surface: "openagents-desktop",
         productArea: "empty conversation",
         enforcementTier: "test-sweep",
         blockerRefs: [],
-        source: { channel: "owner-directive", statedBy: "owner", statedOn: "2026-07-15" },
+        source: { channel: "owner-directive", statedBy: "owner", statedOn: "2026-07-19" },
         statement:
-          "An empty conversation centers the Start a conversation with Codex prompt, shows the current working directory, and offers a Change action beside it.",
+          "An empty conversation is a bare region with no prompt or centered directory chrome. The current working directory is the only item in the chat header, and selecting it opens the workspace picker.",
         authorityBoundary:
-          "Electron main remains the sole WorkContext authority and exposes only a schema-decoded working-directory projection plus the existing fixed workspace-picker capability through preload. React receives the displayed value in Effect-owned DesktopShellState and may only dispatch DesktopWorkspacePickerRequested; it cannot read process.cwd(), submit an absolute path, or infer a directory from history. Main initializes the native directory dialog from the current root when available and admits a selection through the same workspace authority used by files, terminal, Git, and Codex. Cancel or failure retains the current workspace and path. The action renders only in a genuinely empty new-chat timeline.",
+          "Electron main remains the sole WorkContext authority and exposes only a schema-decoded working-directory projection plus the existing fixed workspace-picker capability through preload. React receives the displayed value in Effect-owned DesktopShellState and may only dispatch DesktopWorkspacePickerRequested; it cannot read process.cwd(), submit an absolute path, or infer a directory from history. Main initializes the native directory dialog from the current root when available and admits a selection through the same workspace authority used by files, terminal, Git, and Codex. Cancel or failure retains the current workspace and path. The working directory renders in the bare chat header for every chat view, empty or not.",
         evidenceRefs: [
           "apps/openagents-desktop/src/main.ts",
           "apps/openagents-desktop/src/preload.cts",
@@ -198,16 +198,17 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           "apps/openagents-desktop/src/renderer/shell.ts",
           "apps/openagents-desktop/src/renderer/boot.ts",
           "apps/openagents-desktop/src/renderer/react-timeline.tsx",
+          "apps/openagents-desktop/src/renderer/react-primitive-adapters.tsx",
           "packages/ui/src/desktop-workbench.css",
         ],
         oracles: [
           {
-            id: "empty_conversation.centered_current_working_directory",
+            id: "empty_conversation.bare_region_working_directory_in_header",
             kind: "bun-test",
             mode: "unit",
             ref: "apps/openagents-desktop/src/renderer/react-primitive-adapters.test.tsx",
             description:
-              "Proves the empty React conversation renders the host-projected working directory, folder icon, and keyboard-accessible Change action; the action dispatches the existing picker intent and disappears once timeline content exists.",
+              "Proves the empty React conversation renders a bare region with no prompt, while the host-projected working directory and folder icon render in the bare chat header and dispatch the workspace picker intent when selected, persisting once timeline content exists.",
           },
           {
             id: "empty_conversation.narrow_schema_decoded_host_projection",
@@ -257,11 +258,11 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         productArea: "React transcript scrolling and message composer",
         enforcementTier: "test-sweep",
         blockerRefs: [],
-        source: { channel: "owner-component-review", statedBy: "owner", statedOn: "2026-07-15" },
+        source: { channel: "owner-directive", statedBy: "owner", statedOn: "2026-07-19" },
         statement:
-          "Use the supplied Message Scroller ideas throughout the message area and make the input bar match its compact icon-led quality.",
+          "Use the supplied Message Scroller ideas throughout the message area. The input bar is bare: a single submit action (plus Stop while a turn runs) and no in-bar context, attach, provider, model, or reasoning controls.",
         authorityBoundary:
-          "The registry-installed shadcn MessageScroller owns viewport-only mechanics: last-user-turn opening, stable row IDs, user-turn anchoring with previous-context peek, live-edge following, reader-interaction release, prepend preservation, jump controls, scrollability attributes, accessibility, and offscreen paint containment. Effect-owned DesktopShellState remains the sole message/stream/history authority and typed intents retain paging and composer actions. The composer remains the admitted shadcn Textarea/Button composition with closed-catalog icon slots plus accessible names; one textual mode toggle shows only the active Steer or Queue behavior and switches to the other admitted behavior without changing submission authority. #8828 restores the already-authorized bounded image picker/paste/drop projection without adding model, transport, branching, or persistence authority.",
+          "The registry-installed shadcn MessageScroller owns viewport-only mechanics: last-user-turn opening, stable row IDs, user-turn anchoring with previous-context peek, live-edge following, reader-interaction release, prepend preservation, jump controls, scrollability attributes, accessibility, and offscreen paint containment. Effect-owned DesktopShellState remains the sole message/stream/history authority and typed intents retain paging and composer actions. The composer remains the admitted shadcn Textarea/Button composition; its bar carries only the submit action and, while a turn is in flight, Stop. The retired Steer/Queue mode toggle and the in-bar Commands/attach/provider/model/reasoning controls are removed (owner UI directive 2026-07-19); the active pendingSubmitMode still drives whether submit steers or queues without changing submission authority. The bounded image picker/paste/drop projection persists through paste and global drop only, without adding model, transport, branching, or persistence authority.",
         evidenceRefs: [
           "apps/openagents-desktop/src/components/ui/message-scroller.tsx",
           "apps/openagents-desktop/src/renderer/react-timeline.tsx",
@@ -280,12 +281,12 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
               "Exercises stable turn anchors, last-edge following, wheel-release/manual-position hold, prepend preservation, same-row streaming resize, jump-to-latest re-engagement, typed edge paging, keyboard-focusable region plus additions-only log semantics, busy state, and the 500-row bounded corpus.",
           },
           {
-            id: "message_composer.compact_icon_actions",
+            id: "message_composer.bare_submit_bar",
             kind: "bun-test",
             mode: "unit",
             ref: "apps/openagents-desktop/src/renderer/react-composer.test.tsx",
             description:
-              "Proves Commands, Stop, and Send/Steer/Queue submission use catalog-marked icon controls with accessible labels, the pending-mode control renders only its active Steer or Queue choice, and toggling preserves exact intents, focus, autosize, duplicate-send defense, IME composition, and pending-mode behavior.",
+              "Proves the bare composer bar exposes only the Send/Steer/Queue submit action (and Stop while a turn runs) as catalog-marked icon controls with accessible labels, carries no in-bar Commands/attach/provider/model/reasoning controls or mode toggle, and preserves exact steer/queue intents, focus, autosize, duplicate-send defense, and IME composition.",
           },
         ],
         verification:
@@ -302,7 +303,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "Lay out the OpenAgents sidebar like Codex: left-aligned menus, OpenAgents identity, icon-only search, sidebar expander, back/forward positions, and appropriate icons from the existing Apps SDK catalog.",
         authorityBoundary:
-          "Presentation over already-admitted authority only. One Effect-owned typed projection supplies the compatibility shell and React workbench with exactly two controls around the Recent list: New session and Settings. Project home, the dead Chat destination, and the coding Workspaces section are absent. React lowers New session beneath the OpenAgents identity row and icon-only search disclosure, while Settings is pinned alone at the bottom of the rail in the former workspace-box region. Each retained control reuses its canonical command identity and typed intent, carries a closed @effect-native/core IconName, and projects selected/current state without inventing an unread count or status when no such authority exists. The Recent section uses single-line conversation rows whose truncated title stays left while the compact relative timestamp is right-justified on that same line when idle; exact per-thread pending or Full Auto turn-running authority replaces that timestamp with the shared loading icon while the chat works. Lifecycle/status words (including Completed, Running, or Waiting), provider labels, and search match-kind strings are forbidden in conversation rows. New session remains the primary action rather than a selected destination. Sidebar collapse is Effect-owned presentation state and only its boolean preference persists through the versioned main-process preferences boundary. Session-search disclosure is deliberately launch-ephemeral and starts closed after reload or restart; its query remains exclusively in the existing history authority and closing search clears it through HistorySearchChanged. Restoring a collapsed rail reuses the preferences read already required before shell mount, adds no new startup read, leaves a reachable expander, and never steals focus from the composer. Search, destination selection, collapse, and Back/Forward dispatch only typed intents. No enabled placeholder, React-owned navigation store, parallel query store, fabricated destination, or Project home route is authorized.",
+          "Presentation over already-admitted authority only. One Effect-owned typed projection supplies the compatibility shell and React workbench with exactly two controls around the Recent list: New session and Settings. Project home, the dead Chat destination, and the coding Workspaces section are absent. React lowers New session beneath the OpenAgents identity row and icon-only search disclosure, while Settings is pinned alone at the bottom of the rail in the former workspace-box region. Each retained control reuses its canonical command identity and typed intent, carries a closed @effect-native/core IconName, and projects selected/current state without inventing an unread count or status when no such authority exists. The Recent section uses single-line conversation rows whose truncated title stays left while the compact relative timestamp is right-justified on that same line when idle; exact per-thread pending or Full Auto turn-running authority replaces that timestamp with the shared loading icon while the chat works. Lifecycle/status words (including Completed, Running, or Waiting), provider labels, and search match-kind strings are forbidden in conversation rows. New session remains the primary action rather than a selected destination. Sidebar collapse is Effect-owned presentation state and only its boolean preference persists through the versioned main-process preferences boundary; its default preference is collapsed (owner UI directive 2026-07-19). Session-search disclosure is deliberately launch-ephemeral and starts closed after reload or restart; its query remains exclusively in the existing history authority and closing search clears it through HistorySearchChanged. Restoring a collapsed rail reuses the preferences read already required before shell mount, adds no new startup read, leaves a reachable expander, and never steals focus from the composer. Search, destination selection, collapse, and Back/Forward dispatch only typed intents. No enabled placeholder, React-owned navigation store, parallel query store, fabricated destination, or Project home route is authorized.",
         evidenceRefs: [
           "apps/openagents-desktop/src/desktop-preferences-contract.ts",
           "apps/openagents-desktop/src/renderer/sidebar-destinations.ts",

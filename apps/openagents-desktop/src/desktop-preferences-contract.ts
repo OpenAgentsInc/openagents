@@ -193,7 +193,7 @@ export const defaultDesktopPreferences = (): DesktopPreferences => ({
     autoDownload: false,
   },
   presentation: {
-    sidebarCollapsed: false,
+    sidebarCollapsed: true,
   },
   editor: {
     vim: { enabled: false },

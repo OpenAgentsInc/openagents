@@ -82,7 +82,7 @@ describe("preferences migration", () => {
     })
     // Fields the legacy blob never had fall back to defaults.
     expect(result.preferences.updates).toEqual(defaultDesktopPreferences().updates)
-    expect(result.preferences.presentation).toEqual({ sidebarCollapsed: false })
+    expect(result.preferences.presentation).toEqual({ sidebarCollapsed: true })
   })
 
   test("a v1 document preserves its nested values and gains presentation defaults", () => {
@@ -101,7 +101,7 @@ describe("preferences migration", () => {
     expect(result.preferences.editor.vim.enabled).toBe(false)
     expect(result.preferences.appearance).toEqual(v1.appearance)
     expect(result.preferences.providerDefaults).toEqual(v1.providerDefaults)
-    expect(result.preferences.presentation).toEqual({ sidebarCollapsed: false })
+    expect(result.preferences.presentation).toEqual({ sidebarCollapsed: true })
     expect(result.preferences.privacy.shareLocalCodexUsage).toBe(false)
   })
 
@@ -128,7 +128,7 @@ describe("preferences migration", () => {
     expect(result.preferences.providerDefaults.defaultProvider).toBe("codex")
     expect(result.preferences.providerDefaults.defaultCodexAccountRef).toBe("codex-2")
     expect(result.preferences.updates.channel).toBe("rc")
-    expect(result.preferences.presentation.sidebarCollapsed).toBe(false)
+    expect(result.preferences.presentation.sidebarCollapsed).toBe(true)
   })
 
   test("a future version is downgraded — unknown fields dropped, known ones kept", () => {
@@ -203,8 +203,8 @@ describe("preferences host", () => {
     expect(onDisk.appearance.density).toBe("comfortable")
 
     const presentation = store.update({ presentation: { sidebarCollapsed: "yes" as never } })
-    expect(presentation.presentation.sidebarCollapsed).toBe(false)
-    expect(JSON.parse(readFileSync(file, "utf8")).presentation.sidebarCollapsed).toBe(false)
+    expect(presentation.presentation.sidebarCollapsed).toBe(true)
+    expect(JSON.parse(readFileSync(file, "utf8")).presentation.sidebarCollapsed).toBe(true)
   })
 
   test("the persisted file is owner-only (mode 0600)", () => {

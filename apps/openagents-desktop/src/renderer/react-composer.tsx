@@ -36,13 +36,10 @@ import {
   ArrowUp,
   Bot,
   CheckCircle2,
-  Command as CommandIcon,
-  Ellipsis,
   File,
   FileDiff,
   Files,
   FolderOpen,
-  ImagePlus,
   ListPlus,
   Maximize,
   MessageCircle,
@@ -73,19 +70,17 @@ import {
   type DesktopCommand,
 } from "./command-registry.ts";
 import {
-  COMPOSER_IMAGE_COUNT_LIMIT,
   canAttachMoreImages,
   composerImageDataUrl,
   formatImageSize,
 } from "./composer-images.ts";
 import { CODEX_CHIP_REASON_VERIFYING } from "../codex-local-contract.ts";
 import { composerActionPresentation } from "../composer-admission.ts";
-import { capabilityForActiveLane, formatRelativeTimestamp, nextSelectableProviderLane, questionAnswersReady, type DesktopNoteEntry, type DesktopShellState, type QuestionCardInteraction } from "./shell.ts";
+import { capabilityForActiveLane, formatRelativeTimestamp, questionAnswersReady, type DesktopNoteEntry, type DesktopShellState, type QuestionCardInteraction } from "./shell.ts";
 import {
   LexicalComposerEditor,
   type LexicalComposerEditorHandle,
 } from "./lexical-composer-editor.tsx";
-import { AgentContextTray } from "./react-agent-context.tsx";
 
 const composerIconNames = {
   stop: "Stop",
@@ -453,38 +448,20 @@ export const ReactComposer = ({
   const editorRef = useRef<LexicalComposerEditorHandle>(null);
   const [dragActive, setDragActive] = useState(false);
   const [discoveryOpen, setDiscoveryOpen] = useState(false);
-  const [secondaryControlsOpen, setSecondaryControlsOpen] = useState(false);
   const lastSubmitRef = useRef<Readonly<{ value: string; at: number }> | null>(null);
   const sessionKey = state.activeThreadId ?? state.history.page?.selectedThreadRef ?? "new";
   const lane = state.harnessLanes[state.selectedHarness];
   // #8977: reflects the REAL bound lane (which may be an admitted ACP peer),
-  // not a codex/fable stand-in -- this drives the chip label, model list,
-  // reasoning-effort control, and image-support gating below.
+  // not a codex/fable stand-in -- this drives the chip label and image-support
+  // gating below.
   const capabilities = capabilityForActiveLane(state);
   const capabilityAdmitted = capabilities === null || capabilities.admission === "admitted";
-  const selectedModel = state.selectedHarness === "codex" ? state.codexModel : state.claudeModel;
-  const visibleModels = capabilities?.models ?? [selectedModel];
-  const selectedModelOption = capabilities?.modelOptions?.find(option => option.id === selectedModel);
-  const visibleReasoningEfforts = selectedModelOption?.supportedReasoningEfforts ?? capabilities?.reasoningEfforts ?? [];
-  // First-class provider picker (#8977): cycles through the native
-  // codex/fable pair AND every admitted ACP peer lane (e.g. Grok, Cursor),
-  // reusing selectableProviderLanes' exact evidence-derived admission truth.
-  // No admitted lane is left unreachable, and no unadmitted lane is offered.
-  const nextProviderLane = nextSelectableProviderLane(state, state.activeLaneRef);
-  const canSwitchProvider = !state.pending && nextProviderLane !== null;
-  // FA-UX-01 (#8974): Full Auto no longer runs as a per-thread composer
-  // toggle -- it starts only from the dedicated left-rail launcher and runs
-  // in its own read-only run view, so the ordinary composer's submit/attach/
-  // model/reasoning/permission gating collapses back to plain `state.pending`
-  // (an ordinary in-flight turn) with no Full Auto branch.
+  // Owner UI directive 2026-07-19: the composer bar is bare (submit only), so
+  // the in-bar model/reasoning/provider selectors and the Steer/Queue mode
+  // toggle are gone. The active pendingSubmitMode still drives which intent
+  // submit dispatches; provider/model switching lives in shortcuts/settings.
   const activeSubmitMode = state.pendingSubmitMode;
   const pendingAction = composerActionPresentation(state.composerAdmission, activeSubmitMode);
-  const alternatePendingMode = state.pendingSubmitMode === "steer" ? "queue" : "steer";
-  const alternatePendingAction = composerActionPresentation(state.composerAdmission, alternatePendingMode);
-  const alternatePendingModeSupported = alternatePendingMode === "steer"
-    ? capabilities?.steerTurn ?? true
-    : capabilities?.queueFollowup ?? true;
-  const canTogglePendingMode = alternatePendingModeSupported && alternatePendingAction.enabled;
   const hasText = state.input.trim() !== "";
   const hasBoundedContext = state.composerImages.length > 0 || state.composerReviewContext !== null || state.composerFileContext !== null || state.composerTerminalContext !== null || state.composerPreviewContext !== null;
   const canSubmit = state.pending
@@ -493,19 +470,11 @@ export const ReactComposer = ({
   const atImageLimit = !canAttachMoreImages(state.composerImages);
   const imageSupported = capabilities?.images ?? true;
   const attachmentDisabled = state.pending || atImageLimit || !imageSupported;
-  const attachmentLabel = state.pending
-    ? "Attach images after the current turn finishes"
-    : !imageSupported
-      ? `${capabilities?.displayName ?? "This lane"} does not support image attachments`
-    : atImageLimit
-      ? `Image limit reached (${COMPOSER_IMAGE_COUNT_LIMIT} max)`
-      : "Attach images";
   useEffect(() => {
     if (attachmentDisabled) setDragActive(false);
   }, [attachmentDisabled]);
   useEffect(() => {
     setDiscoveryOpen(false);
-    setSecondaryControlsOpen(false);
   }, [sessionKey]);
   const submitIntentFor = (pendingMode: "steer" | "queue") => state.pending
     ? pendingMode === "steer"
@@ -702,117 +671,6 @@ export const ReactComposer = ({
           onSubmit={submit}
         />
         <DesktopComposerBar>
-        <DesktopComposerButton
-          data-en-key="shell-composer-discovery"
-          kind="action"
-          aria-expanded={discoveryOpen}
-          onClick={() => setDiscoveryOpen(open => !open)}
-          aria-label="Add context or command"
-          title="Add context or command"
-        >
-          <CommandIcon data-icon-name="Command" aria-hidden="true" />
-        </DesktopComposerButton>
-        {imageSupported ? <DesktopComposerButton
-          data-en-key="shell-attach-image"
-          kind="action"
-          disabled={attachmentDisabled}
-          onClick={() => dispatch(report, "DesktopComposerImagePickRequested")}
-          aria-label={attachmentLabel}
-          title={attachmentLabel}
-        >
-          <ImagePlus data-icon-name={composerIconNames.attach} aria-hidden="true" />
-        </DesktopComposerButton> : null}
-        <DesktopComposerButton
-          data-en-key="shell-provider-select"
-          kind="action"
-          disabled={!canSwitchProvider}
-          onClick={() => {
-            if (nextProviderLane === null) return;
-            // The native codex-local/fable-local pair keeps dispatching the
-            // SAME DesktopHarnessSelected intent Shift+Tab uses
-            // (composer-shortcuts.ts), so that owner-stated binary toggle is
-            // unchanged; an admitted ACP peer lane uses the new ref-based
-            // intent DesktopHarnessSelected's codex/fable-only payload cannot
-            // express.
-            if (nextProviderLane.laneRef === "codex-local" || nextProviderLane.laneRef === "fable-local") {
-              dispatch(report, "DesktopHarnessSelected", nextProviderLane.harness);
-            } else {
-              dispatch(report, "DesktopProviderLaneSelected", nextProviderLane.laneRef);
-            }
-          }}
-          aria-label={`Provider: ${capabilities?.displayName ?? state.selectedHarness}. ${canSwitchProvider ? `Switch to ${nextProviderLane?.displayName}` : "No other admitted provider is available"}`}
-          title={`Provider: ${capabilities?.displayName ?? state.selectedHarness}`}
-        >
-          {capabilities?.displayName ?? (state.selectedHarness === "codex" ? "Codex" : "Claude")}
-        </DesktopComposerButton>
-        <select
-          data-en-key="shell-model-select"
-          className="oa-react-composer-select"
-          disabled={state.pending || visibleModels.length < 2 || !capabilityAdmitted}
-          aria-label={`Model: ${selectedModel}`}
-          title={`Model: ${selectedModel}`}
-          value={selectedModel}
-          onChange={event => {
-            const model = visibleModels.find(candidate => candidate === event.currentTarget.value);
-            if (model !== undefined) dispatch(report, "DesktopModelSelected", model);
-          }}
-        >
-          {visibleModels.map(model => <option key={model} value={model}>
-            {capabilities?.modelOptions?.find(option => option.id === model)?.displayName ?? model}
-          </option>)}
-        </select>
-        <div className="oa-react-composer-secondary-controls" data-open={secondaryControlsOpen ? "true" : "false"}>
-          <button type="button" className="oa-react-composer-secondary-trigger"
-            aria-expanded={secondaryControlsOpen}
-            aria-label="More composer controls" title="More composer controls"
-            onClick={() => setSecondaryControlsOpen(open => !open)}>
-            <Ellipsis aria-hidden="true" />
-          </button>
-          <div className="oa-react-composer-secondary-controls-content">
-        {capabilities !== null && visibleReasoningEfforts.length > 0 ? <select
-          data-en-key="shell-reasoning-select"
-          className="oa-react-composer-select"
-          disabled={state.pending}
-          value={state.codexReasoningEffort}
-          onChange={event => {
-            const effort = visibleReasoningEfforts.find(candidate => candidate === event.currentTarget.value);
-            if (effort !== undefined) dispatch(report, "DesktopCodexReasoningSelected", effort);
-          }}
-          aria-label={`Reasoning effort: ${state.codexReasoningEffort}`}
-          title={`Reasoning: ${state.codexReasoningEffort}`}
-        >
-          {visibleReasoningEfforts.map(effort => <option key={effort} value={effort}>{effort}</option>)}
-        </select> : null}
-        {capabilities !== null && capabilities.permissionModes.includes("plan_only") && state.activeThreadId !== null ? <DesktopComposerButton
-          data-en-key="shell-permission-mode"
-          kind="action"
-          disabled={state.pending}
-          onClick={() => dispatch(report, "DesktopPermissionModeSelected", (state.permissionModeByThread[state.activeThreadId!] ?? "owner_full") === "owner_full" ? "plan_only" : "owner_full")}
-          aria-label={(state.permissionModeByThread[state.activeThreadId] ?? "owner_full") === "owner_full" ? "Full tools. Switch to plan only" : "Plan only. Switch to full tools"}
-          title="Permission mode"
-        >
-          {(state.permissionModeByThread[state.activeThreadId] ?? "owner_full") === "owner_full" ? "Full tools" : "Plan only"}
-        </DesktopComposerButton> : null}
-          </div>
-        </div>
-        {state.pending && ((capabilities?.steerTurn ?? true) || (capabilities?.queueFollowup ?? true)) ? (
-          <Button
-            className="oa-react-submit-mode-toggle"
-            type="button"
-            variant="secondary"
-            size="sm"
-            aria-label={canTogglePendingMode
-              ? `${pendingAction.label}. Switch to ${alternatePendingAction.label.toLowerCase()}`
-              : `${pendingAction.label}. ${alternatePendingAction.consequence}`}
-            title={canTogglePendingMode
-              ? `Click to switch to ${alternatePendingAction.label.toLowerCase()}`
-              : alternatePendingAction.consequence}
-            disabled={!canTogglePendingMode}
-            onClick={() => dispatch(report, "DesktopPendingSubmitModeSelected", alternatePendingMode)}
-          >
-            {pendingAction.label}
-          </Button>
-        ) : null}
         <span className="oa-react-composer-spacer" />
         {!state.pending && (!lane.available || !capabilityAdmitted) ? (
           <Badge
@@ -848,7 +706,6 @@ export const ReactComposer = ({
         </DesktopComposerButton>
       </DesktopComposerBar>
       </DesktopComposerInput>
-      <AgentContextTray state={state} report={report} />
     </DesktopComposerFrame>
   );
 };

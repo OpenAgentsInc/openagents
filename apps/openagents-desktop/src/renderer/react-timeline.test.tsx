@@ -128,7 +128,7 @@ const record = (key: string, sequence: number): ReactTimelineRecord => ({
 const report: IntentReporter = () => Effect.void
 
 describe("conversation empty state", () => {
-  test("uses the selected agent name and a compact icon-only directory action", async () => {
+  test("renders a bare empty conversation region with no prompt or directory chrome", async () => {
     const { container } = installDom()
     const root = createRoot(container)
     root.render(<ConversationTimeline
@@ -141,10 +141,11 @@ describe("conversation empty state", () => {
     />)
     await new Promise(resolve => setTimeout(resolve, 0))
 
-    expect(container.querySelector("h2")?.textContent).toBe("Start a conversation with Claude")
-    const change = container.querySelector<HTMLButtonElement>('[aria-label="Change working directory"]')
-    expect(change?.textContent).toBe("")
-    expect(change?.querySelector('[data-icon-name="FolderPen"]')).not.toBeNull()
+    const empty = container.querySelector(".oa-react-timeline-empty")
+    expect(empty).not.toBeNull()
+    expect(empty?.textContent).toBe("")
+    expect(container.querySelector("h2")).toBeNull()
+    expect(container.querySelector('[aria-label="Change working directory"]')).toBeNull()
     root.unmount()
   })
 })
