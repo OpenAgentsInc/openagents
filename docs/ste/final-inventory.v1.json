@@ -47610,6 +47610,24 @@
       }
     },
     {
+      "path": "packages/local-secret-store/README.md",
+      "sha256": "bdc3a3139aca38a1d33f9da770ac3585a0c436a5e4c2fdf6902b84266112e023",
+      "reason": "Final review of mutable first-party agent technical text",
+      "profile": {
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ]
+      }
+    },
+    {
       "path": "packages/managed-sandbox-contract/README.md",
       "sha256": "ebd9e27bec48f516d48fd1ee6c9f8416fe91680ab5a5e571c551f392a2668edd",
       "reason": "Final review of a converted document",
@@ -48940,7 +48958,7 @@
     },
     {
       "path": "packages/sovereign-identity/README.md",
-      "sha256": "484b9f3459faf953e7769afb75c5df26019be704d720a1f6c608063e64ed6cc6",
+      "sha256": "f3bcf159603f4c45856c6fd9b738f9811035f10669250f979e8242e422e62c2f",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
