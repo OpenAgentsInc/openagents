@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:b9bc2287d8a9afb5bc328a553d3a2d7db18641f947623136d808db26769be350",
+  "sourceDigest": "sha256:950b052c18b4c493426780d0faaf921812a3974156edcb6085e98aaef53d06a0",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -1263,6 +1263,23 @@
       }
     },
     {
+      "id": "document:specs/openagents/done-condition-verification.product-spec.md",
+      "kind": "document",
+      "owningPath": "specs/openagents/done-condition-verification.product-spec.md",
+      "title": "done-condition-verification.product-spec.md",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "product-spec",
+          "ref": "pnpm run test:product-spec"
+        }
+      ],
+      "obligation": {
+        "state": "mapped",
+        "note": "mapped to intent/validation only; behavior oracle not yet designed"
+      }
+    },
+    {
       "id": "document:specs/openagents/fast-follow.product-spec.md",
       "kind": "document",
       "owningPath": "specs/openagents/fast-follow.product-spec.md",
@@ -1788,7 +1805,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "packages/assure-repo (9 tracked test files)"
+          "ref": "packages/assure-repo (10 tracked test files)"
         }
       ],
       "obligation": {
@@ -3211,17 +3228,17 @@
     }
   ],
   "summary": {
-    "totalSurfaces": 168,
+    "totalSurfaces": 169,
     "byKind": {
       "app": 16,
       "crate": 6,
-      "document": 47,
+      "document": 48,
       "package": 88,
       "public-endpoint": 2,
       "release-pipeline": 8,
       "worker": 1
     },
-    "withOracle": 154,
+    "withOracle": 155,
     "unverified": 14,
     "byUnverifiedReason": {
       "config-only": 2,
@@ -3231,7 +3248,7 @@
     "byObligationState": {
       "designed": 121,
       "inconclusive": 9,
-      "mapped": 33,
+      "mapped": 34,
       "out-of-scope": 5
     },
     "coverageNotes": [

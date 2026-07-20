@@ -60,7 +60,7 @@ export const decodeSweepReceipt = S.decodeUnknownSync(SweepReceipt);
 export const serializeSweepReceipt = (receipt: SweepReceipt): string =>
   `${JSON.stringify(receipt, null, 2)}\n`;
 
-const headCommit = (root: string): string => {
+export const headCommit = (root: string): string => {
   try {
     return execFileSync("git", ["-C", root, "rev-parse", "HEAD"], { encoding: "utf8" }).trim();
   } catch {

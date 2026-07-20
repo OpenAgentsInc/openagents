@@ -64,3 +64,33 @@ describe("renderReadiness — no receipt means no light", () => {
     expect(r.state).toBe("unknown");
   });
 });
+
+describe("renderReadiness — commit-binding freshness gate", () => {
+  const fresh = () => receipt({ generatedAt: new Date(now).toISOString(), overall: "green" });
+
+  test("a fresh green receipt bound to a DIFFERENT commit renders unknown, never green", () => {
+    const r = renderReadiness(fresh(), now, 24 * 3_600_000, "def456");
+    expect(r.state).toBe("unknown");
+    expect(r.reason).toContain("different commit");
+    expect(r.reason).toContain("not carried forward");
+  });
+
+  test("a fresh green receipt bound to the SAME commit renders green", () => {
+    const r = renderReadiness(fresh(), now, 24 * 3_600_000, "abc123");
+    expect(r.state).toBe("green");
+  });
+
+  test("omitting the head commit preserves the age-only gate (backward compatible)", () => {
+    expect(renderReadiness(fresh(), now).state).toBe("green");
+  });
+
+  test("commit mismatch beats a green overall even when fresh by age", () => {
+    const r = renderReadiness(
+      receipt({ generatedAt: new Date(now).toISOString(), overall: "green", commit: "old000" }),
+      now,
+      24 * 3_600_000,
+      "new111",
+    );
+    expect(r.state).not.toBe("green");
+  });
+});

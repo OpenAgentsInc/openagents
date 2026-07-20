@@ -11,8 +11,8 @@ import { runDriftOracles } from "./drift.ts";
 import { coverageByArea } from "./grade.ts";
 import { buildInventory, loadPolicy } from "./inventory.ts";
 import { runMutation } from "./mutation-runner.ts";
-import { renderReadiness } from "./readiness.ts";
-import { decodeSweepReceipt, runSweep, serializeSweepReceipt } from "./sweep.ts";
+import { DEFAULT_RECEIPT_MAX_AGE_MS, renderReadiness } from "./readiness.ts";
+import { decodeSweepReceipt, headCommit, runSweep, serializeSweepReceipt } from "./sweep.ts";
 import {
   serializeSurfaceInventory,
   SURFACE_INVENTORY_PATH,
@@ -303,7 +303,12 @@ const main = (): void => {
         }
       }
     }
-    const readiness = renderReadiness(receipt, Date.now());
+    const readiness = renderReadiness(
+      receipt,
+      Date.now(),
+      DEFAULT_RECEIPT_MAX_AGE_MS,
+      headCommit(root),
+    );
     if (json) {
       process.stdout.write(`${JSON.stringify(readiness, null, 2)}\n`);
       return;

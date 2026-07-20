@@ -26,11 +26,16 @@ export type Readiness = {
  * @param receipt the latest decoded sweep receipt, or undefined if none.
  * @param nowMs   current time in ms.
  * @param maxAgeMs freshness window; older receipts render unknown.
+ * @param headCommit current HEAD commit. When provided, a receipt bound to a
+ *   different commit renders `unknown` even if it is fresh by age — a green
+ *   demonstrated for one commit is never carried forward to another. Omitted
+ *   (undefined) preserves the age-only gate.
  */
 export const renderReadiness = (
   receipt: SweepReceipt | undefined,
   nowMs: number,
   maxAgeMs: number = DEFAULT_RECEIPT_MAX_AGE_MS,
+  headCommit?: string,
 ): Readiness => {
   if (receipt === undefined) {
     return { state: "unknown", reason: "no sweep receipt (no receipt means no light)" };
@@ -38,6 +43,16 @@ export const renderReadiness = (
   const generatedMs = Date.parse(receipt.generatedAt);
   if (Number.isNaN(generatedMs)) {
     return { state: "unknown", reason: "receipt has an unparseable generatedAt" };
+  }
+  if (headCommit !== undefined && receipt.commit !== headCommit) {
+    // A green demonstrated for one commit must not be remembered as green for
+    // another. Commit-binding is a freshness gate independent of age.
+    return {
+      state: "unknown",
+      reason: `sweep receipt is bound to a different commit (${receipt.commit.slice(0, 10)} != HEAD ${headCommit.slice(0, 10)}); green is not carried forward`,
+      evidenceClass: receipt.evidenceClass,
+      commit: receipt.commit,
+    };
   }
   const ageMs = nowMs - generatedMs;
   if (ageMs > maxAgeMs) {

@@ -107,13 +107,21 @@ turns two receipts into typed regression findings (an oracle regressing, a drop
 in `designed` surfaces, an overall regression) so drift is visible, not silent.
 
 `readiness.ts` is the consuming surface: `renderReadiness` reports repo
-verification readiness **only from a decoded, fresh receipt**. An absent or
-stale receipt renders `unknown`, never `green` — the repo-scale form of "no
-receipt means no light" (enforced by test). Run `pnpm run sweep:assure-repo`
-(optionally `--out <receipt.json>`) and `assure-repo readiness --receipt
-<receipt.json>`. Receipts are runtime evidence, not committed source. Wiring
-the sweep into the actual Full Auto run loop with host-observed test evidence
-is the post-IDE-10/SBX fidelity step.
+verification readiness **only from a decoded, fresh receipt**. Freshness has
+two gates (VSE-01, #9105). The **age gate**: a receipt older than the window
+renders `unknown`. The **commit-binding gate**: when a HEAD commit is provided,
+a receipt bound to a different commit renders `unknown` even if it is recent —
+a green demonstrated for one commit is never carried forward to another, so a
+green cannot silently become a green that is merely remembered. An absent
+receipt renders `unknown`, never `green` — the repo-scale form of "no receipt
+means no light" (all enforced by test). The `readiness` CLI passes the current
+HEAD automatically. Run `pnpm run sweep:assure-repo` (optionally `--out
+<receipt.json>`) and `assure-repo readiness --receipt <receipt.json>`. Receipts
+are runtime evidence, not committed source. Mutation and drift evidence inherit
+commit-binding through the sweep receipt that carries them. Wiring the sweep
+into the actual Full Auto run loop with host-observed test evidence (a fourth,
+currently-`unavailable` oracle dimension) is the post-IDE-10/SBX fidelity step,
+gated on Full Auto Wave 0 (#8978).
 
 ### Determinism and the freshness guard
 
