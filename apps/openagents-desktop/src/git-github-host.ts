@@ -456,6 +456,8 @@ const runGitGithub = (rawRoot: string | null, request: GitGithubRequest): GitGit
 
     case "stage":
     case "unstage": {
+      const status = currentSnapshot(root, request.repositoryRef, request.statusRef)
+      if (status === null) return gitGithubError(request.op, "stale_status", "Repository changes moved. Refresh before changing the index.")
       const safePaths: string[] = []
       for (const candidate of request.paths.slice(0, maxStatusEntries)) {
         const relative = safeRepoRelativePath(root, candidate)
@@ -472,6 +474,9 @@ const runGitGithub = (rawRoot: string | null, request: GitGithubRequest): GitGit
     }
 
     case "commit": {
+      if (currentSnapshot(root, request.repositoryRef, request.statusRef) === null) {
+        return gitGithubError("commit", "stale_status", "Repository changes moved. Refresh before committing.")
+      }
       const message = request.message.trim()
       if (message === "") return gitGithubError("commit", "empty_message", "A commit needs a non-empty message.")
       const status = readStatus(root)
@@ -498,6 +503,9 @@ const runGitGithub = (rawRoot: string | null, request: GitGithubRequest): GitGit
     }
 
     case "push": {
+      if (currentSnapshot(root, request.repositoryRef, request.statusRef) === null) {
+        return gitGithubError("push", "stale_status", "Repository refs or changes moved. Refresh before pushing.")
+      }
       const branch = runBinary("git", ["-C", root, "symbolic-ref", "--quiet", "--short", "HEAD"], root, gitTimeoutMs)
       if (!branch.ok) return gitGithubError("push", "no_upstream", "A detached HEAD has no branch to push.")
       const branchName = branch.stdout.trim()
@@ -561,6 +569,9 @@ const runGitGithub = (rawRoot: string | null, request: GitGithubRequest): GitGit
     }
 
     case "branchCreate": {
+      if (currentSnapshot(root, request.repositoryRef, request.statusRef) === null) {
+        return gitGithubError("branchCreate", "stale_status", "Repository refs or changes moved. Refresh before creating a branch.")
+      }
       if (!validBranchName(request.name)) return gitGithubError("branchCreate", "invalid_branch_name", "That branch name is not valid.")
       const args = request.checkout
         ? ["-C", root, "switch", "-c", request.name]
@@ -575,6 +586,9 @@ const runGitGithub = (rawRoot: string | null, request: GitGithubRequest): GitGit
     }
 
     case "checkout": {
+      if (currentSnapshot(root, request.repositoryRef, request.statusRef) === null) {
+        return gitGithubError("checkout", "stale_status", "Repository refs or changes moved. Refresh before switching branches.")
+      }
       if (!validBranchName(request.name)) return gitGithubError("checkout", "invalid_branch_name", "That branch name is not valid.")
       const status = readStatus(root)
       // Match the workspace's existing safety: refuse a checkout with tracked

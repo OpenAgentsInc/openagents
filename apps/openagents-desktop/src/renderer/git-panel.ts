@@ -30,6 +30,7 @@ import {
   Stack,
   StaticPayload,
   Text,
+  TextField,
   defineIntent,
   type View,
 } from "@effect-native/core"
@@ -276,7 +277,12 @@ export const makeGitPanelHandlers = <S extends GitPanelCapableState>(
         if (status === null) return
         const isStaged = status.staged.some((entry) => entry.path === relativePath)
         const op = isStaged ? "unstage" : "stage"
-        const result = yield* Effect.promise(() => runOp(bridge, { op, paths: [relativePath] }))
+        const result = yield* Effect.promise(() => runOp(bridge, {
+          op,
+          repositoryRef: status.repositoryRef,
+          statusRef: status.statusRef,
+          paths: [relativePath],
+        }))
         if (!result.ok) {
           yield* setGit((git) => ({ ...git, actionError: result.message }))
           return
@@ -295,7 +301,14 @@ export const makeGitPanelHandlers = <S extends GitPanelCapableState>(
         const staged = current.git.status?.staged.length ?? 0
         if (message === "" || staged === 0 || current.git.committing) return
         yield* setGit((git) => ({ ...git, committing: true, actionError: null }))
-        const result = yield* Effect.promise(() => runOp(bridge, { op: "commit", message }))
+        const status = current.git.status
+        if (status === null) return
+        const result = yield* Effect.promise(() => runOp(bridge, {
+          op: "commit",
+          repositoryRef: status.repositoryRef,
+          statusRef: status.statusRef,
+          message,
+        }))
         if (result.ok && result.op === "commit") {
           yield* setGit((git) => ({
             ...git,
@@ -315,7 +328,13 @@ export const makeGitPanelHandlers = <S extends GitPanelCapableState>(
         const current = yield* SubscriptionRef.get(state)
         if (current.git.pushing) return
         yield* setGit((git) => ({ ...git, pushing: true, actionError: null }))
-        const result = yield* Effect.promise(() => runOp(bridge, { op: "push" }))
+        const status = current.git.status
+        if (status === null) return
+        const result = yield* Effect.promise(() => runOp(bridge, {
+          op: "push",
+          repositoryRef: status.repositoryRef,
+          statusRef: status.statusRef,
+        }))
         if (result.ok && result.op === "push") {
           yield* setGit((git) => ({
             ...git,
@@ -337,7 +356,15 @@ export const makeGitPanelHandlers = <S extends GitPanelCapableState>(
         const current = yield* SubscriptionRef.get(state)
         const name = current.git.newBranchName.trim()
         if (name === "") return
-        const result = yield* Effect.promise(() => runOp(bridge, { op: "branchCreate", name, checkout: true }))
+        const status = current.git.status
+        if (status === null) return
+        const result = yield* Effect.promise(() => runOp(bridge, {
+          op: "branchCreate",
+          repositoryRef: status.repositoryRef,
+          statusRef: status.statusRef,
+          name,
+          checkout: true,
+        }))
         if (result.ok && result.op === "branchCreate") {
           yield* setGit((git) => ({ ...git, newBranchName: "", actionError: null }))
           yield* refreshGitPanel(state, bridge)
@@ -348,7 +375,14 @@ export const makeGitPanelHandlers = <S extends GitPanelCapableState>(
 
     GitPanelBranchCheckoutRequested: (name: string) =>
       Effect.gen(function* () {
-        const result = yield* Effect.promise(() => runOp(bridge, { op: "checkout", name }))
+        const status = (yield* SubscriptionRef.get(state)).git.status
+        if (status === null) return
+        const result = yield* Effect.promise(() => runOp(bridge, {
+          op: "checkout",
+          repositoryRef: status.repositoryRef,
+          statusRef: status.statusRef,
+          name,
+        }))
         if (result.ok) {
           yield* setGit((git) => ({ ...git, actionError: null }))
           yield* refreshGitPanel(state, bridge)
@@ -504,9 +538,6 @@ const changeRow = (entry: GitFileEntry, staged: boolean): View =>
       }),
       Text({ key: `git-change-path-${staged ? "s" : "u"}-${entry.path}`, content: entry.path, variant: "caption", color: "textPrimary" }),
       Spacer({ key: `git-change-fill-${staged ? "s" : "u"}-${entry.path}`, flex: true }),
-      // UX-4 (#8790): read-only review boundary — Review is the only per-file
-      // affordance. Stage/Unstage, Discard, commit, push, branch, and issue/PR
-      // authoring are Git mutation authority outside the MVP cut (CW-AC-14).
       ...(entry.status === "untracked" ? [] : [Button({
         key: `git-review-${staged ? "s" : "u"}-${entry.path}`,
         label: "Review",
@@ -514,6 +545,18 @@ const changeRow = (entry: GitFileEntry, staged: boolean): View =>
         onPress: IntentRef("GitPanelDiffRequested", StaticPayload({ path: entry.path, source: staged ? "staged" : "unstaged" })),
         a11y: { label: `Review ${staged ? "staged" : "unstaged"} diff for ${entry.path}` },
       })]),
+      Button({
+        key: `git-stage-toggle-${staged ? "s" : "u"}-${entry.path}`,
+        label: staged ? "Unstage" : "Stage",
+        variant: "secondary",
+        onPress: IntentRef("GitPanelStageToggled", StaticPayload(entry.path)),
+      }),
+      ...(!staged && entry.status !== "untracked" && entry.status !== "unmerged" ? [Button({
+        key: `git-discard-${entry.path}`,
+        label: "Discard…",
+        variant: "ghost",
+        onPress: IntentRef("GitPanelDiscardRequested", StaticPayload(entry.path)),
+      })] : []),
     ],
   )
 
@@ -613,6 +656,31 @@ const reviewSection = (git: GitPanelState): ReadonlyArray<View> => {
   )]
 }
 
+const mutationSection = (git: GitPanelState): ReadonlyArray<View> => [
+  Stack({ key: "git-mutations", direction: "column", gap: "2", style: { width: "full", minWidth: 0 } }, [
+    Text({ key: "git-mutation-boundary", content: "Exact-version mutations use the visible status snapshot.", variant: "caption", color: "textMuted" }),
+    ...(git.discardConfirmPath === null ? [] : [Stack({ key: "git-discard-confirmation", direction: "column", gap: "1", style: { width: "full" } }, [
+      Text({ key: "git-discard-warning", content: `Discard the worktree change in ${git.discardConfirmPath}?`, variant: "body", color: "warning" }),
+      Stack({ key: "git-discard-actions", direction: "row", gap: "2" }, [
+        Button({ key: "git-discard-confirm", label: "Discard change", variant: "primary", onPress: IntentRef("GitPanelDiscardConfirmed") }),
+        Button({ key: "git-discard-cancel", label: "Cancel", variant: "secondary", onPress: IntentRef("GitPanelDiscardCancelled") }),
+      ]),
+    ])]),
+    TextField({ key: "git-commit-message", label: "Commit message", value: git.commitMessage, multiline: true, autoResize: true, onChange: IntentRef("GitPanelCommitMessageChanged") }),
+    Stack({ key: "git-delivery-actions", direction: "row", gap: "2" }, [
+      Button({ key: "git-commit", label: git.committing ? "Committing…" : "Commit staged", variant: "primary", disabled: git.committing || git.commitMessage.trim() === "" || (git.status?.staged.length ?? 0) === 0, onPress: IntentRef("GitPanelCommitRequested") }),
+      Button({ key: "git-push", label: git.pushing ? "Pushing…" : "Push exact HEAD", variant: "secondary", disabled: git.pushing || git.status?.upstream === null, onPress: IntentRef("GitPanelPushRequested") }),
+    ]),
+    TextField({ key: "git-new-branch", label: "New branch", value: git.newBranchName, onChange: IntentRef("GitPanelNewBranchNameChanged"), onSubmit: IntentRef("GitPanelBranchCreateRequested") }),
+    Button({ key: "git-branch-create", label: "Create and switch", variant: "secondary", disabled: git.newBranchName.trim() === "", onPress: IntentRef("GitPanelBranchCreateRequested") }),
+    ...(git.receipt === null ? [] : [Stack({ key: "git-receipt", direction: "column", gap: "1" }, [
+      Text({ key: "git-receipt-headline", content: git.receipt.headline, variant: "label", color: "success" }),
+      Text({ key: "git-receipt-detail", content: git.receipt.detail, variant: "caption", color: "textMuted" }),
+    ])]),
+    ...(git.actionError === null ? [] : [Text({ key: "git-action-error", content: git.actionError, variant: "body", color: "danger" })]),
+  ]),
+]
+
 export const gitPanelView = (git: GitPanelState): View => {
   const body: View[] = [statusHeader(git)]
   if (git.phase === "unavailable") {
@@ -623,11 +691,9 @@ export const gitPanelView = (git: GitPanelState): View => {
       color: "warning",
     }))
   } else {
-    // UX-4 (#8790): the read-only CW-AC-14 review boundary — status, exact
-    // diff review, composer attachment. No commit/push/stage/branch/issue/PR
-    // affordance renders in the MVP workroom.
     body.push(...changesSection(git))
     body.push(...reviewSection(git))
+    body.push(...mutationSection(git))
   }
   return Stack(
     { key: "git-panel", direction: "column", gap: "3", style: { width: "full", minWidth: 0, paddingTop: "2" } },

@@ -59,7 +59,21 @@ const makeRepo = (bare = false): string => {
   return dir
 }
 const write = (repo: string, rel: string, content: string): void => writeFileSync(path.join(repo, rel), content)
-const service = (repo: string) => openGitGithubService(() => repo)
+const service = (repo: string) => {
+  const host = openGitGithubService(() => repo)
+  return {
+    run: (request: Record<string, unknown>) => {
+      if (["stage", "unstage", "commit", "push", "branchCreate", "checkout"].includes(String(request["op"])) &&
+          (request["repositoryRef"] === undefined || request["statusRef"] === undefined)) {
+        const status = host.run({ op: "status" })
+        if (status.ok && status.op === "status") {
+          return host.run({ ...request, repositoryRef: status.repositoryRef, statusRef: status.statusRef })
+        }
+      }
+      return host.run(request)
+    },
+  }
+}
 
 afterAll(() => {
   for (const dir of tmpRoots) {

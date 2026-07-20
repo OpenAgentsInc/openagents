@@ -216,15 +216,20 @@ const ReviewBody = ({ state, report }: { readonly state: DesktopShellState; read
   </div>
   return <div className="oa-react-review-scroll">
     <AgentProposalList state={state} report={report} />
-    <p className="oa-react-readonly-boundary">Read-only review · no stage, discard, commit, branch, push, or terminal authority</p>
+    <p className="oa-react-readonly-boundary">Exact-version source control · every mutation is fenced to the visible repository snapshot</p>
     {git.phase === "loading" || git.diffLoading ? <p role="status">Loading exact repository snapshot…</p> : null}
     {git.phase === "unavailable" ? <Alert variant="destructive"><AlertTitle>Repository review unavailable</AlertTitle><AlertDescription>{git.reason ?? "No bounded status is available."}</AlertDescription></Alert> : null}
     {failure === null ? null : <Alert variant="destructive" data-review-failure={git.reviewFailure ?? undefined}><AlertTitle>{failure.title}</AlertTitle><AlertDescription>{failure.detail}</AlertDescription></Alert>}
     {git.diff === null ? <section className="oa-react-review-files" aria-label="Repository changes">
       {rows.length === 0 && git.phase === "ready" ? <p>No local changes.</p> : rows.map(({ entry, source }) => <div className="oa-react-review-file" key={`${source}:${entry.path}`}>
         <Badge variant="outline">{entry.status}</Badge><span>{entry.path}</span>
-        {entry.status === "untracked" ? <small>Diff unavailable until Git tracks this file.</small> : <Button type="button" variant="ghost" size="sm"
+        {entry.status === "untracked" ? <small>Review is available after staging creates an index image.</small> : <Button type="button" variant="ghost" size="sm"
           onClick={() => dispatch(report, "GitPanelDiffRequested", { path: entry.path, source })}>Review</Button>}
+        <Button type="button" variant="outline" size="sm" onClick={() => dispatch(report, "GitPanelStageToggled", entry.path)}>
+          {source === "staged" ? "Unstage" : "Stage"}
+        </Button>
+        {source === "unstaged" && entry.status !== "untracked" && entry.status !== "unmerged" ? <Button type="button" variant="destructive" size="sm"
+          onClick={() => dispatch(report, "GitPanelDiscardRequested", entry.path)}>Discard…</Button> : null}
       </div>)}
     </section> : <section className="oa-react-exact-diff" aria-label={`Read-only diff for ${git.diff.path}`}>
       <header><strong>{git.diff.path}</strong><Badge variant="secondary">{reviewSource?._tag ?? git.diff.source}</Badge>
@@ -244,6 +249,36 @@ const ReviewBody = ({ state, report }: { readonly state: DesktopShellState; read
         <PierreReviewAdapter source={reviewSource} options={{ mode: layout, contextLines, selection: null, annotations: [] }} onIntent={onReviewIntent} />
       </>}
     </section>}
+    {git.discardConfirmPath === null ? null : <Alert variant="destructive" data-git-discard-confirm>
+      <AlertTitle>Discard the visible worktree change?</AlertTitle>
+      <AlertDescription>This restores only {git.discardConfirmPath} from the exact status snapshot. Staged and conflicted changes are refused.</AlertDescription>
+      <div className="oa-react-review-actions">
+        <Button type="button" variant="destructive" onClick={() => dispatch(report, "GitPanelDiscardConfirmed")}>Discard change</Button>
+        <Button type="button" variant="outline" onClick={() => dispatch(report, "GitPanelDiscardCancelled")}>Cancel</Button>
+      </div>
+    </Alert>}
+    {git.actionError === null ? null : <Alert variant="destructive"><AlertTitle>Source-control operation refused</AlertTitle><AlertDescription>{git.actionError}</AlertDescription></Alert>}
+    {git.receipt === null ? null : <Alert><AlertTitle>{git.receipt.headline}</AlertTitle><AlertDescription>{git.receipt.detail}</AlertDescription></Alert>}
+    <section className="oa-react-review-files" aria-label="Commit and delivery">
+      <label htmlFor="git-commit-message">Commit message</label>
+      <textarea id="git-commit-message" value={git.commitMessage} maxLength={20_000}
+        onChange={(event) => dispatch(report, "GitPanelCommitMessageChanged", event.currentTarget.value)} />
+      <div className="oa-react-review-actions">
+        <Button type="button" disabled={git.committing || git.commitMessage.trim() === "" || (git.status?.staged.length ?? 0) === 0}
+          onClick={() => dispatch(report, "GitPanelCommitRequested")}>{git.committing ? "Committing…" : "Commit staged"}</Button>
+        <Button type="button" variant="outline" disabled={git.pushing || git.status?.upstream === null}
+          onClick={() => dispatch(report, "GitPanelPushRequested")}>{git.pushing ? "Pushing…" : "Push exact HEAD"}</Button>
+      </div>
+      <label htmlFor="git-new-branch">New branch</label>
+      <input id="git-new-branch" value={git.newBranchName} maxLength={200}
+        onChange={(event) => dispatch(report, "GitPanelNewBranchNameChanged", event.currentTarget.value)} />
+      <div className="oa-react-review-actions">
+        <Button type="button" variant="outline" disabled={git.newBranchName.trim() === ""}
+          onClick={() => dispatch(report, "GitPanelBranchCreateRequested")}>Create and switch</Button>
+        {git.branches.filter((branch) => !branch.current).slice(0, 20).map((branch) => <Button key={branch.name} type="button" variant="ghost"
+          onClick={() => dispatch(report, "GitPanelBranchCheckoutRequested", branch.name)}>Switch to {branch.name}</Button>)}
+      </div>
+    </section>
     <div className="oa-react-review-actions">
       <Button type="button" variant="outline" onClick={() => dispatch(report, "GitPanelRefreshRequested")}>Refresh status</Button>
       {git.diff === null ? null : <Button type="button" variant="ghost" onClick={() => dispatch(report, "GitPanelDiffClosed")}>Back to changes</Button>}

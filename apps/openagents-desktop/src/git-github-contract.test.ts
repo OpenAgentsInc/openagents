@@ -15,18 +15,19 @@ import {
 } from "./git-github-contract.ts"
 
 describe("request decoding", () => {
+  const expected = { repositoryRef: "workspace.repository.1", statusRef: "workspace.git-status.1" }
   test("accepts each op with its typed params", () => {
     const valid: ReadonlyArray<unknown> = [
       { op: "status" },
       { op: "diff", repositoryRef: "workspace.repository.1", statusRef: "workspace.git-status.1", path: "a.txt", source: "unstaged", causalItemRef: null },
       { op: "discard", repositoryRef: "workspace.repository.1", statusRef: "workspace.git-status.1", path: "a.txt" },
-      { op: "stage", paths: ["a.txt", "dir/b.ts"] },
-      { op: "unstage", paths: ["a.txt"] },
-      { op: "commit", message: "feat: x" },
-      { op: "push" },
+      { op: "stage", ...expected, paths: ["a.txt", "dir/b.ts"] },
+      { op: "unstage", ...expected, paths: ["a.txt"] },
+      { op: "commit", ...expected, message: "feat: x" },
+      { op: "push", ...expected },
       { op: "branchList" },
-      { op: "branchCreate", name: "feature/x", checkout: true },
-      { op: "checkout", name: "main" },
+      { op: "branchCreate", ...expected, name: "feature/x", checkout: true },
+      { op: "checkout", ...expected, name: "main" },
       { op: "issueList" },
       { op: "issueList", limit: 5 },
       { op: "issueView", number: 8712 },
@@ -60,7 +61,7 @@ describe("request decoding", () => {
 
   test("excess keys are stripped to the clean typed request (never passed through)", () => {
     expect(decodeGitGithubRequest({ op: "status", rm: { rf: true } })).toEqual({ op: "status" })
-    expect(decodeGitGithubRequest({ op: "commit", message: "x", extra: 1 })).toEqual({ op: "commit", message: "x" })
+    expect(decodeGitGithubRequest({ op: "commit", ...expected, message: "x", extra: 1 })).toEqual({ op: "commit", ...expected, message: "x" })
   })
 })
 

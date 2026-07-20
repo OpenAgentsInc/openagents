@@ -93,17 +93,19 @@ const DiscardRequestSchema = Schema.Struct({
   statusRef: GitReviewIdentitySchema,
   path: GitReviewPathSchema,
 })
-const StageRequestSchema = Schema.Struct({ op: Schema.Literal("stage"), paths: Schema.Array(Schema.String) })
-const UnstageRequestSchema = Schema.Struct({ op: Schema.Literal("unstage"), paths: Schema.Array(Schema.String) })
-const CommitRequestSchema = Schema.Struct({ op: Schema.Literal("commit"), message: Schema.String })
-const PushRequestSchema = Schema.Struct({ op: Schema.Literal("push") })
+const expectedStatus = { repositoryRef: GitReviewIdentitySchema, statusRef: GitReviewIdentitySchema }
+const StageRequestSchema = Schema.Struct({ op: Schema.Literal("stage"), ...expectedStatus, paths: Schema.Array(Schema.String) })
+const UnstageRequestSchema = Schema.Struct({ op: Schema.Literal("unstage"), ...expectedStatus, paths: Schema.Array(Schema.String) })
+const CommitRequestSchema = Schema.Struct({ op: Schema.Literal("commit"), ...expectedStatus, message: Schema.String })
+const PushRequestSchema = Schema.Struct({ op: Schema.Literal("push"), ...expectedStatus })
 const BranchListRequestSchema = Schema.Struct({ op: Schema.Literal("branchList") })
 const BranchCreateRequestSchema = Schema.Struct({
   op: Schema.Literal("branchCreate"),
   name: Schema.String,
   checkout: Schema.Boolean,
+  ...expectedStatus,
 })
-const CheckoutRequestSchema = Schema.Struct({ op: Schema.Literal("checkout"), name: Schema.String })
+const CheckoutRequestSchema = Schema.Struct({ op: Schema.Literal("checkout"), ...expectedStatus, name: Schema.String })
 const IssueListRequestSchema = Schema.Struct({
   op: Schema.Literal("issueList"),
   limit: Schema.Number.pipe(Schema.optionalKey),

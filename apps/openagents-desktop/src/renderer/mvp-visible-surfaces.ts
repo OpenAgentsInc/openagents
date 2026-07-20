@@ -105,14 +105,10 @@ export const forbiddenVisibleSurfaceKeys: ReadonlyArray<string> = [
   "settings-mcp-title",
   "settings-plugins-title",
   "settings-lifecycle-title",
-  // Git mutation authority (CW-AC-14 read-only review boundary)
-  "git-commit",
-  "git-commit-message",
-  "git-push",
-  "git-branches",
-  "git-branch-create",
+  // Provider issue and PR authoring stays outside the visible IDE-12 local
+  // source-control cut. Exact-version stage/discard/commit/branch/push is now
+  // an admitted source-control surface.
   "git-issues-prs",
-  "git-discard-confirmation",
   // Removed dock affordances must not come back anywhere in the rail
   ...mvpRemovedDockItemIds,
 ]

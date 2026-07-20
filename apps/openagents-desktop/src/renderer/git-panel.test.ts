@@ -94,7 +94,7 @@ describe("git panel view", () => {
     expect(nodeByKey(view, "git-refresh")).toBeDefined()
   })
 
-  test("UX-4 (#8790): no Git mutation affordance renders — the CW-AC-14 read-only review boundary", () => {
+  test("IDE-12 renders exact-version mutation controls and recovery confirmation", () => {
     const view = gitPanelView(readyState({
       commitMessage: "msg",
       branches: [{ name: "main", current: true, upstream: "origin/main" }],
@@ -103,16 +103,12 @@ describe("git panel view", () => {
       receipt: { kind: "commit", headline: "Committed 0000000", detail: "feat: x" },
       discardConfirmPath: "b.txt",
     }))
-    for (const forbidden of [
+    for (const visible of [
       "git-commit-message",
       "git-commit",
       "git-push",
-      "git-branches",
       "git-branch-create",
       "git-new-branch",
-      "git-issues-prs",
-      "git-create-issue",
-      "git-create-pr",
       "git-receipt",
       "git-discard-confirmation",
       "git-discard-b.txt",
@@ -120,7 +116,7 @@ describe("git panel view", () => {
       "git-stage-toggle-u-b.txt",
       "git-stage-toggle-u-c.txt",
     ]) {
-      expect(nodeByKey(view, forbidden)).toBeUndefined()
+      expect(nodeByKey(view, visible)).toBeDefined()
     }
   })
 
@@ -392,9 +388,9 @@ describe("git panel intent loop", () => {
       })
       const { state, registry } = yield* harness(bridge, readyState())
       yield* registry.dispatch(directIntent("GitPanelDiscardRequested", "b.txt"))
-      // The confirmation state is tracked but renders no affordance (UX-4).
+      // IDE-12 renders the recovery-gated confirmation before host mutation.
       expect((yield* SubscriptionRef.get(state)).git.discardConfirmPath).toBe("b.txt")
-      expect(nodeByKey(gitPanelView((yield* SubscriptionRef.get(state)).git), "git-discard-confirmation")).toBeUndefined()
+      expect(nodeByKey(gitPanelView((yield* SubscriptionRef.get(state)).git), "git-discard-confirmation")).toBeDefined()
       yield* registry.dispatch(directIntent("GitPanelDiscardConfirmed"))
       expect(calls[0]).toEqual({
         op: "discard",

@@ -6608,8 +6608,8 @@ const smokeOpenFleetDesk = `(async () => {
   }
 })()`
 
-// Git/GitHub review panel (EP250 E2–E5, #8712): the review workspace mounts
-// the typed Git panel, which renders REAL read-only status of the app's own
+// Git/GitHub review panel (EP250 E2–E5, #8712; IDE-12 #9040): the review workspace mounts
+// the typed Git panel, which renders real exact-version status of the app's own
 // repo (the git-github host points at the bundle's repo in smoke). Fixture-safe:
 // this step neither commits nor pushes — it asserts the status header, the
 // commit box, the Push control, the branch switcher, and the issues/PRs
@@ -6628,13 +6628,9 @@ const smokeOpenGitReview = `(async () => {
   }
   const panel = q("git-panel")
   const header = q("git-status-header")
-  // UX-4 (#8790): the CW-AC-14 read-only review boundary — NO Git mutation
-  // affordance may render (commit, push, stage/unstage, discard, branches,
-  // issue/PR authoring).
-  const mutationAffordance = ["git-commit-message", "git-commit", "git-push", "git-branches", "git-issues-prs"]
-    .find((key) => q(key) !== null)
-    ?? (document.querySelector('[data-en-key^="git-stage-toggle-"]') !== null ? "git-stage-toggle" : null)
-    ?? (document.querySelector('[data-en-key^="git-discard-"]') !== null ? "git-discard" : null)
+  const mutationControls = ["git-commit-message", "git-commit", "git-push", "git-new-branch", "git-branch-create"]
+    .every((key) => q(key) !== null)
+    && document.querySelector('[data-en-key^="git-stage-toggle-"]') !== null
   const statusResolved = resolved()
   const branch = branchText().slice(0, 80)
   const review = document.querySelector('[data-en-key^="git-review-u-"]')
@@ -6644,11 +6640,11 @@ const smokeOpenGitReview = `(async () => {
   }
   const diff = q("git-review-diff-view")
   return {
-    ok: panel !== null && header !== null && mutationAffordance === null && statusResolved &&
+    ok: panel !== null && header !== null && mutationControls && statusResolved &&
       review !== null && diff !== null,
     branch,
     statusResolved,
-    mutationAffordance,
+    mutationControls,
     diff: diff !== null,
   }
 })()`
@@ -6873,7 +6869,8 @@ const smokeMvpSurfaceAllowlist = `(() => {
     "shell-model-select",
     "shell-reasoning-select",
     "shell-voice-toggle",
-    // UX-4 (#8790): swept dock affordances and Git mutation controls.
+    // UX-4 (#8790): swept dock affordances. IDE-12 admits exact-version Git
+    // mutation controls but not provider issue/PR authoring.
     "workspace-files",
     "workspace-chat",
     "workspace-home",
@@ -6883,9 +6880,6 @@ const smokeMvpSurfaceAllowlist = `(() => {
     "assurance-spec-document",
     "assurance-spec-invalid",
     "shell-command-palette-toggle",
-    "git-commit",
-    "git-push",
-    "git-branches",
     "git-issues-prs",
   ]
   const present = forbidden.filter((key) => document.querySelector('[data-en-key="' + key + '"]') !== null)

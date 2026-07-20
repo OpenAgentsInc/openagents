@@ -210,7 +210,7 @@ describe("React status projection", () => {
 })
 
 describe("React repository review", () => {
-  test("renders a wide adjacent read-only review and dispatches the exact relative path", async () => {
+  test("renders wide exact-version review and source-control actions", async () => {
     const { container } = installDom(true)
     const { ReviewSurface } = await import("./react-review.tsx")
     const { received, report } = recorder()
@@ -218,7 +218,7 @@ describe("React repository review", () => {
     root.render(<ReviewSurface state={fixtureState()} report={report} open onOpenChange={() => {}} triggerRef={createRef()} />)
     await settle()
     expect(container.querySelector("aside[aria-label='Repository review']")).not.toBeNull()
-    expect(container.textContent).toContain("Read-only review")
+    expect(container.textContent).toContain("Exact-version source control")
     expect(container.textContent).not.toContain("workspace.repository.test")
     const review = [...container.querySelectorAll("button")].find(button => button.textContent === "Review")
     review?.click()
@@ -227,9 +227,9 @@ describe("React repository review", () => {
       name: "GitPanelDiffRequested",
       payload: { path: "src/renderer.tsx", source: "unstaged" },
     })
-    for (const forbidden of ["Stage", "Discard", "Commit", "Push", "Terminal"]) {
-      expect([...container.querySelectorAll("button")].some(button => button.textContent === forbidden)).toBe(false)
-    }
+    expect([...container.querySelectorAll("button")].some(button => button.textContent === "Stage")).toBe(true)
+    expect([...container.querySelectorAll("button")].some(button => button.textContent === "Discard…")).toBe(true)
+    expect(container.querySelector("#git-commit-message")).not.toBeNull()
     root.unmount()
   })
 
