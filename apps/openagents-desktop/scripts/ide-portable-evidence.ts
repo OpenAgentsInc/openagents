@@ -40,6 +40,24 @@ const ownerLocalFaultMatrixPath = path.join(
   "ide",
   "2026-07-20-ide-13-owner-local-real-fault-matrix.json",
 );
+const ownerLocalRecoveryFaultsPath = path.join(
+  appRoot,
+  "benchmarks",
+  "ide",
+  "2026-07-20-ide-13-owner-local-recovery-faults.json",
+);
+const ownerLocalExecutorResumePath = path.join(
+  appRoot,
+  "benchmarks",
+  "ide",
+  "2026-07-20-ide-13-owner-local-executor-resume.json",
+);
+const packagedOwnerLocalJourneyPath = path.join(
+  appRoot,
+  "benchmarks",
+  "ide",
+  "2026-07-20-ide-13-packaged-owner-local-journey.json",
+);
 const git = (...args: string[]): string =>
   execFileSync("git", args, { cwd: repositoryRoot, encoding: "utf8" }).trim();
 const valueAt = (values: ReadonlyArray<number>, percentile: number): number =>
@@ -193,6 +211,59 @@ const ownerLocalFaultMatrix = Schema.decodeUnknownSync(
     }),
   }),
 )(JSON.parse(readFileSync(ownerLocalFaultMatrixPath, "utf8")));
+const ownerLocalRecoveryFaults = Schema.decodeUnknownSync(
+  Schema.Struct({
+    candidateCommitSha: Schema.String,
+    baseCommitSha: Schema.String,
+    cohortRef: Schema.String,
+    cases: Schema.Array(
+      Schema.Struct({
+        scenario: Schema.Literals(IDE_PORTABLE_FAULT_SCENARIOS),
+        evidenceClass: IdePortableEvidenceClassSchema,
+        outcome: Schema.Literal("passed"),
+        recoveryPointRef: Schema.String,
+        receiptRef: Schema.String,
+      }),
+    ),
+  }),
+)(JSON.parse(readFileSync(ownerLocalRecoveryFaultsPath, "utf8")));
+const ownerLocalExecutorResume = Schema.decodeUnknownSync(
+  Schema.Struct({
+    candidateCommitSha: Schema.String,
+    baseCommitSha: Schema.String,
+    evidenceClass: Schema.Literal("real_local"),
+    execution: Schema.Struct({
+      acceptedWorkRefCount: Schema.Literal(1),
+      duplicateExecutionCount: Schema.Literal(0),
+      staleGenerationRefused: Schema.Literal(true),
+      receiptRef: Schema.String,
+    }),
+    authority: Schema.Struct({
+      productionDispatchEnabled: Schema.Literal(false),
+      networkCalls: Schema.Literal(0),
+      providerCalls: Schema.Literal(0),
+      secretMaterialInReceipt: Schema.Literal(false),
+    }),
+  }),
+)(JSON.parse(readFileSync(ownerLocalExecutorResumePath, "utf8")));
+const packagedOwnerLocalJourney = Schema.decodeUnknownSync(
+  Schema.Struct({
+    candidateCommitSha: Schema.String,
+    evidenceClass: Schema.Literal("real_local"),
+    proofClass: Schema.Literal("packaged_shell_concurrent_owner_local_target"),
+    packagedShell: Schema.Struct({
+      isolatedAppProof: Schema.Literal(true),
+      signedOutLocalOnly: Schema.Literal(true),
+      authenticatedSyncClaimed: Schema.Literal(false),
+      initiatedMoveClaimed: Schema.Literal(false),
+    }),
+    teardown: Schema.Struct({
+      survivingProcessCount: Schema.Literal(0),
+      temporaryRootsRemoved: Schema.Literal(true),
+    }),
+    passed: Schema.Literal(true),
+  }),
+)(JSON.parse(readFileSync(packagedOwnerLocalJourneyPath, "utf8")));
 const candidateCommitSha = ownerLocalInput.cohort.candidateCommitSha;
 const baseCommitSha = ownerLocalInput.cohort.baseCommitSha;
 if (
@@ -201,10 +272,19 @@ if (
   ownerLocalPerformance.cohortRef !== ownerLocalInput.cohort.cohortRef ||
   ownerLocalFaultMatrix.candidateCommitSha !== candidateCommitSha ||
   ownerLocalFaultMatrix.baseCommitSha !== baseCommitSha ||
-  ownerLocalFaultMatrix.cohortRef !== ownerLocalInput.cohort.cohortRef
+  ownerLocalFaultMatrix.cohortRef !== ownerLocalInput.cohort.cohortRef ||
+  ownerLocalRecoveryFaults.candidateCommitSha !== candidateCommitSha ||
+  ownerLocalRecoveryFaults.baseCommitSha !== baseCommitSha ||
+  ownerLocalRecoveryFaults.cohortRef !== ownerLocalInput.cohort.cohortRef ||
+  ownerLocalExecutorResume.candidateCommitSha !== candidateCommitSha ||
+  ownerLocalExecutorResume.baseCommitSha !== baseCommitSha ||
+  packagedOwnerLocalJourney.candidateCommitSha !== candidateCommitSha
 ) {
   throw new Error("IDE-13 owner-local cohort evidence is stale");
 }
+const strongerFaultsByScenario = new Map(
+  ownerLocalRecoveryFaults.cases.map((fault) => [fault.scenario, fault]),
+);
 const ownerLocalCohort = {
   ...ownerLocalInput.cohort,
   journeys: {
@@ -213,13 +293,18 @@ const ownerLocalCohort = {
       "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-real-fault-matrix.json",
   },
   metrics: ownerLocalPerformance.metrics,
-  result: `${ownerLocalInput.cohort.result} The phase and resource distributions use ${ownerLocalPerformance.repetitions} complete real owner-local runs under ${ownerLocalPerformance.receiptRef}. The required fault inventory records ${ownerLocalFaultMatrix.summary.passedRealLocalCount} passed injected transition-partition rows and ${ownerLocalFaultMatrix.summary.notRunCount} explicit not-run rows.`,
+  result: `${ownerLocalInput.cohort.result} The phase and resource distributions use ${ownerLocalPerformance.repetitions} complete real owner-local runs under ${ownerLocalPerformance.receiptRef}. The required fault inventory records ${ownerLocalFaultMatrix.summary.passedRealLocalCount} passed injected transition-partition rows. One additional checkpoint-store crash ran as real local evidence. Three worker recovery cases ran only as simulator evidence. One bounded accepted work ref resumed and settled exactly once at the destination. A signed-out packaged shell stayed alive concurrently with a same-host owner-local journey, but it did not initiate or authenticate that move.`,
 };
 git("merge-base", "--is-ancestor", candidateCommitSha, "HEAD");
 const allowedEvidencePaths = new Set([
   "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-real-cohort.json",
   "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-performance.json",
   "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-real-fault-matrix.json",
+  "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-recovery-faults.json",
+  "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-executor-resume.json",
+  "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-packaged-owner-local-journey.json",
+  "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-packaged-owner-local-journey-trace.json",
+  "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-packaged-owner-local-journey.png",
   "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-portability.json",
   "apps/openagents-desktop/scripts/ide-portable-evidence.ts",
 ]);
@@ -399,6 +484,27 @@ const receipt = Schema.decodeUnknownSync(IdePortableEvidenceReceiptSchema)({
         "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-real-fault-matrix.json",
     },
     {
+      checkRef: "owner-local-recovery-fault-addendum",
+      evidenceClass: "regression",
+      result: "passed",
+      receiptRef:
+        "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-recovery-faults.json",
+    },
+    {
+      checkRef: "owner-local-bounded-work-resume",
+      evidenceClass: "regression",
+      result: "passed",
+      receiptRef:
+        "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-executor-resume.json",
+    },
+    {
+      checkRef: "packaged-owner-local-concurrent-journey",
+      evidenceClass: "packaged_fail_closed",
+      result: "passed",
+      receiptRef:
+        "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-packaged-owner-local-journey.json",
+    },
+    {
       checkRef: "workspace-search-revocation",
       evidenceClass: "regression",
       result: "passed",
@@ -562,6 +668,17 @@ const receipt = Schema.decodeUnknownSync(IdePortableEvidenceReceiptSchema)({
       receiptRef: "apps/pylon/src/portable-phase-operation-claim-journal.test.ts",
     },
     {
+      recoveryRef: "recovery:owner-local-bounded-work-resume",
+      cohortRef: ownerLocalInput.cohort.cohortRef,
+      targetClass: "owner_local",
+      scenario:
+        "One refs-only accepted work item resumed at generation 2, settled once, replayed idempotently, and was fenced after generation 3 became active.",
+      evidenceClass: "real_local",
+      outcome: "passed",
+      recoveryPointRef: "owner-local-generation-2-bounded-handler-settlement",
+      receiptRef: ownerLocalExecutorResume.execution.receiptRef,
+    },
+    {
       recoveryRef: "recovery:provider-eviction",
       cohortRef: "cohort:managed-provider:unclaimed",
       targetClass: "managed_provider",
@@ -572,17 +689,21 @@ const receipt = Schema.decodeUnknownSync(IdePortableEvidenceReceiptSchema)({
       receiptRef: null,
     },
   ],
-  faultFacts: ownerLocalFaultMatrix.cases.map((fault) => ({
-    faultRef: fault.faultRef,
-    cohortRef: ownerLocalInput.cohort.cohortRef,
-    targetClass: "owner_local",
-    scenario: fault.scenario,
-    phase: fault.phase,
-    evidenceClass: fault.evidenceClass,
-    outcome: fault.outcome,
-    recoveryPointRef: fault.recoveryPointRef,
-    receiptRef: fault.receiptRef,
-  })),
+  faultFacts: ownerLocalFaultMatrix.cases.map((fault) => {
+    const stronger =
+      fault.phase === null ? strongerFaultsByScenario.get(fault.scenario) : undefined;
+    return {
+      faultRef: fault.faultRef,
+      cohortRef: ownerLocalInput.cohort.cohortRef,
+      targetClass: "owner_local" as const,
+      scenario: fault.scenario,
+      phase: fault.phase,
+      evidenceClass: stronger?.evidenceClass ?? fault.evidenceClass,
+      outcome: stronger?.outcome ?? fault.outcome,
+      recoveryPointRef: stronger?.recoveryPointRef ?? fault.recoveryPointRef,
+      receiptRef: stronger?.receiptRef ?? fault.receiptRef,
+    };
+  }),
   security: {
     forbiddenMaterialProjected: false,
     optimisticAuthorityProjected: false,
@@ -604,8 +725,8 @@ const receipt = Schema.decodeUnknownSync(IdePortableEvidenceReceiptSchema)({
     "DAP and native helper profiles have no admitted signed installed artifacts.",
     "The owner-managed enrollment and checkpoint-key custody design requires the recorded owner decision.",
     "The managed root filesystem needs a Linux x64 rebuild before the live Firecracker proof can run.",
-    "Eight real local transition-partition rows passed. The other 19 required fault, restart, teardown, and older-recovery-point rows did not run.",
-    "The packaged authenticated move journeys did not run on each required target.",
+    "Nine real local fault rows passed. Three other required rows passed only with simulator fixtures, and 15 required fault, restart, teardown, or older-recovery-point rows did not run.",
+    "A signed-out packaged shell ran concurrently with one same-host owner-local move. The packaged shell did not initiate or authenticate the move, and packaged authenticated journeys did not run on each required target.",
     "The complete phase and resource metric matrices are absent for the owner-managed, OpenAgents-managed, and admitted provider cohorts.",
     "The independent reviewer and owner dispositions are absent.",
   ],
