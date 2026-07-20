@@ -2271,6 +2271,7 @@ const currentIdeManagedSandboxHost = (): Promise<IdeManagedSandboxHost | null> =
       credential: () => desktopSessionVault?.load() ?? null,
       baseUrl: process.env.OPENAGENTS_COM_BASE_URL ?? "https://openagents.com",
       agentCodeHost: agentHost,
+      mutationAuthority: workspacePortableMutationAuthority,
       persistencePath: path.join(
         app.getPath("userData"),
         "ide-managed-sandbox",

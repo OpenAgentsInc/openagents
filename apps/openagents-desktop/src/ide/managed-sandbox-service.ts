@@ -27,6 +27,10 @@ import {
   IdeServiceGenerationSchema,
   type IdeCapabilitySnapshot,
 } from "./project-contract.ts";
+import type {
+  IdePortableMutationAuthority,
+  IdePortableMutationPermit,
+} from "./portable-mutation-authority.ts";
 
 export type IdeManagedSandboxPrincipal = Readonly<{
   ownerRef: string;
@@ -40,12 +44,14 @@ export type IdeManagedSandboxGateway = Readonly<{
       principal: IdeManagedSandboxPrincipal;
       attachment: IdeAgentAttachment;
     }>,
+    options?: Readonly<{ signal?: AbortSignal | undefined }>,
   ) => Effect.Effect<IdeManagedSandboxAdmission, Error>;
   execute: (
     command: ManagedSandboxCommand,
     options?: Readonly<{
       prompt?: string | undefined;
       attachmentGeneration?: number | undefined;
+      signal?: AbortSignal | undefined;
     }>,
   ) => Effect.Effect<IdeManagedSandboxGatewayResult, Error>;
 }>;
@@ -77,6 +83,7 @@ export type IdeManagedSandboxServiceShape = Readonly<{
   command: (
     command: IdeManagedSandboxCommand,
   ) => Effect.Effect<IdeManagedSandboxSnapshot, IdeManagedSandboxServiceError>;
+  quiesce: () => Effect.Effect<void>;
 }>;
 
 export class IdeManagedSandboxService extends Context.Service<
@@ -395,6 +402,33 @@ const currentAttachment = (
     ),
   );
 
+const portablePermit = (
+  authority: IdePortableMutationAuthority,
+  attachment: IdeAgentAttachment,
+): Effect.Effect<IdePortableMutationPermit, IdeManagedSandboxRefused> => {
+  const authorization = authority.authorize(attachment.grantRef);
+  if (
+    authorization._tag === "Refused" ||
+    authorization.permit.grantRef !== attachment.grantRef ||
+    authorization.permit.sessionRef !== attachment.sessionRef
+  ) {
+    return Effect.fail(
+      refusal("capability_denied", "The portable project attachment does not permit this command."),
+    );
+  }
+  return Effect.succeed(authorization.permit);
+};
+
+const requireCurrentPermit = (
+  authority: IdePortableMutationAuthority,
+  permit: IdePortableMutationPermit,
+): Effect.Effect<void, IdeManagedSandboxRefused> =>
+  authority.reauthorize(permit)
+    ? Effect.void
+    : Effect.fail(
+        refusal("capability_denied", "The portable project attachment changed during the command."),
+      );
+
 const canonicalCommand = (
   command: Exclude<IdeManagedSandboxCommand, { readonly _tag: "RefreshAdmission" }>,
   principal: IdeManagedSandboxPrincipal,
@@ -525,6 +559,7 @@ export const makeIdeManagedSandboxLayer = (
   input: Readonly<{
     principal: IdeManagedSandboxPrincipal;
     gateway: IdeManagedSandboxGateway;
+    mutationAuthority: IdePortableMutationAuthority;
     currentAgentSnapshot: () => Effect.Effect<IdeAgentCodeSnapshot, Error>;
     initialSnapshot?: IdeManagedSandboxSnapshot;
   }>,
@@ -533,15 +568,83 @@ export const makeIdeManagedSandboxLayer = (
     IdeManagedSandboxService,
     Effect.gen(function* () {
       const state = yield* Ref.make(input.initialSnapshot ?? emptyIdeManagedSandboxSnapshot());
+      const closed = yield* Ref.make(false);
+      const activeControllers = new Set<AbortController>();
+      const idleWaiters = new Set<() => void>();
+
+      const awaitIdle = (): Effect.Effect<void> =>
+        Effect.callback<void>((resume) => {
+          if (activeControllers.size === 0) {
+            resume(Effect.void);
+            return;
+          }
+          const complete = () => resume(Effect.void);
+          idleWaiters.add(complete);
+          return Effect.sync(() => {
+            idleWaiters.delete(complete);
+          });
+        });
+
+      const quiesce = Effect.fn("IdeManagedSandboxService.quiesce")(function* () {
+        const wasClosed = yield* Ref.getAndSet(closed, true);
+        if (!wasClosed) {
+          for (const controller of activeControllers) controller.abort();
+        }
+        yield* awaitIdle();
+      });
+
       yield* Effect.addFinalizer(() =>
-        Ref.update(state, (current) =>
-          IdeManagedSandboxSnapshotSchema.make({
-            ...current,
-            freshness: current.resource === null ? "unavailable" : "stale",
-            lastError: "The Desktop managed-sandbox service stopped.",
-          }),
-        ),
+        Effect.gen(function* () {
+          yield* quiesce();
+          yield* Ref.update(state, (current) =>
+            IdeManagedSandboxSnapshotSchema.make({
+              ...current,
+              freshness: current.resource === null ? "unavailable" : "stale",
+              lastError: "The Desktop managed-sandbox service stopped.",
+            }),
+          );
+        }),
       );
+
+      const releaseControllerNow = (value: AbortController): void => {
+        activeControllers.delete(value);
+        if (activeControllers.size === 0) {
+          for (const complete of idleWaiters) complete();
+          idleWaiters.clear();
+        }
+      };
+
+      const controller = Effect.fn("IdeManagedSandboxService.controller")(function* () {
+        if (yield* Ref.get(closed)) {
+          return yield* Effect.fail(
+            refusal("gateway_unavailable", "The managed-sandbox service is quiesced."),
+          );
+        }
+        const next = new AbortController();
+        activeControllers.add(next);
+        if (yield* Ref.get(closed)) {
+          next.abort();
+          releaseControllerNow(next);
+          return yield* Effect.fail(
+            refusal("gateway_unavailable", "The managed-sandbox service is quiesced."),
+          );
+        }
+        return next;
+      });
+
+      const releaseController = (value: AbortController): Effect.Effect<void> =>
+        Effect.sync(() => releaseControllerNow(value));
+
+      const requireOpen = (): Effect.Effect<void, IdeManagedSandboxRefused> =>
+        Ref.get(closed).pipe(
+          Effect.flatMap((value) =>
+            value
+              ? Effect.fail(
+                  refusal("gateway_unavailable", "The managed-sandbox service is quiesced."),
+                )
+              : Effect.void,
+          ),
+        );
 
       const snapshot = Effect.fn("IdeManagedSandboxService.snapshot")(function* () {
         return yield* Ref.get(state);
@@ -550,6 +653,7 @@ export const makeIdeManagedSandboxLayer = (
       const command = Effect.fn("IdeManagedSandboxService.command")(function* (
         value: IdeManagedSandboxCommand,
       ) {
+        yield* requireOpen();
         const decoded = yield* decode(
           IdeManagedSandboxCommandSchema,
           value,
@@ -558,11 +662,15 @@ export const makeIdeManagedSandboxLayer = (
         );
         if (decoded._tag === "RefreshAdmission") {
           const attachment = yield* currentAttachment(input.currentAgentSnapshot);
+          const requestController = yield* controller();
           const admission = yield* input.gateway
-            .admission({
-              principal: input.principal,
-              attachment,
-            })
+            .admission(
+              {
+                principal: input.principal,
+                attachment,
+              },
+              { signal: requestController.signal },
+            )
             .pipe(
               Effect.mapError(() =>
                 refusal(
@@ -578,7 +686,9 @@ export const makeIdeManagedSandboxLayer = (
                   "The managed-sandbox admission response is invalid.",
                 ),
               ),
+              Effect.ensuring(releaseController(requestController)),
             );
+          yield* requireOpen();
           yield* Ref.update(state, (current) =>
             IdeManagedSandboxSnapshotSchema.make({
               ...current,
@@ -605,6 +715,7 @@ export const makeIdeManagedSandboxLayer = (
           input.currentAgentSnapshot,
           decoded.expectedAttachment,
         );
+        const permit = yield* portablePermit(input.mutationAuthority, attachment);
         if (current.binding !== null) {
           if (
             decoded._tag === "Create" ||
@@ -627,18 +738,25 @@ export const makeIdeManagedSandboxLayer = (
           current.admission,
           current.resource,
         );
+        yield* requireCurrentPermit(input.mutationAuthority, permit);
+        yield* requireOpen();
+        const requestController = yield* controller();
         const rawResult = yield* input.gateway
           .execute(native, {
             ...(decoded._tag === "Dispatch" ? { prompt: decoded.prompt } : {}),
             ...(decoded._tag === "Create"
               ? { attachmentGeneration: attachment.attachmentGeneration }
               : {}),
+            signal: requestController.signal,
           })
           .pipe(
             Effect.mapError(() =>
               refusal("gateway_unavailable", "The managed-sandbox command service is unavailable."),
             ),
+            Effect.ensuring(releaseController(requestController)),
           );
+        yield* requireCurrentPermit(input.mutationAuthority, permit);
+        yield* requireOpen();
         const result = yield* decode(
           IdeManagedSandboxGatewayResultSchema,
           rawResult,
@@ -675,6 +793,6 @@ export const makeIdeManagedSandboxLayer = (
         return next;
       });
 
-      return IdeManagedSandboxService.of({ snapshot, command });
+      return IdeManagedSandboxService.of({ snapshot, command, quiesce });
     }),
   );
