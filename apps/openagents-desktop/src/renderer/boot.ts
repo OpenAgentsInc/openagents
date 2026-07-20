@@ -1988,6 +1988,23 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         registry.dispatch(resolveIntentRef(IntentRef("DesktopFullscreenToggled", StaticPayload(null)))),
       )
     }
+    // Owner directive 2026-07-20: Cmd/Ctrl+Shift+R reloads the renderer from
+    // scratch — re-runs boot, re-probes the agents/BOOT SEQUENCE, and resets
+    // shell state in place. A hard reload for a quick "start everything over".
+    const onReloadShortcut = (event: KeyboardEvent): void => {
+      const platformModifier = bridge?.platform === "darwin"
+        ? event.metaKey && !event.ctrlKey
+        : event.ctrlKey && !event.metaKey
+      if (
+        event.defaultPrevented ||
+        event.key.toLowerCase() !== "r" ||
+        !platformModifier ||
+        !event.shiftKey ||
+        event.altKey
+      ) return
+      event.preventDefault()
+      window.location.reload()
+    }
     const onFilesModeShortcut = (event: KeyboardEvent): void => {
       const current = Effect.runSync(SubscriptionRef.get(state))
       const target = event.target
@@ -2213,6 +2230,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     })
     window.addEventListener("keydown", onNewChatShortcut)
     window.addEventListener("keydown", onFullscreenShortcut)
+    window.addEventListener("keydown", onReloadShortcut)
     window.addEventListener("keydown", onFilesModeShortcut, true)
     window.addEventListener("keydown", onCommandPaletteShortcut)
     window.addEventListener("keydown", onHistoryModifierDown, true)
@@ -2226,6 +2244,7 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
       removeComposerImageAcquisition()
       window.removeEventListener("keydown", onNewChatShortcut)
       window.removeEventListener("keydown", onFullscreenShortcut)
+      window.removeEventListener("keydown", onReloadShortcut)
       window.removeEventListener("keydown", onFilesModeShortcut, true)
       window.removeEventListener("keydown", onCommandPaletteShortcut)
       window.removeEventListener("keydown", onHistoryModifierDown, true)
