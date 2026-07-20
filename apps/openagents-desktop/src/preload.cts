@@ -187,6 +187,13 @@ import {
 } from "./product-spec-workroom-contract.ts"
 import { GitGithubChannel, decodeGitGithubRequest, gitGithubError } from "./git-github-contract.ts"
 import {
+  IdeSourceControlChannel,
+  IdeSourceControlSnapshotChannel,
+  decodeIdeSourceControlCommand,
+  decodeIdeSourceControlCommandResult,
+  decodeIdeSourceControlSnapshot,
+} from "./ide/source-control-contract.ts"
+import {
   TerminalCloseChannel,
   TerminalCreateChannel,
   TerminalEventChannel,
@@ -872,6 +879,18 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
       return request === null
         ? Promise.resolve(gitGithubError("status", "invalid_request", "The Git request could not be decoded."))
         : ipcRenderer.invoke(GitGithubChannel, request)
+    },
+  },
+  sourceControl: {
+    snapshot: async () => decodeIdeSourceControlSnapshot(
+      await ipcRenderer.invoke(IdeSourceControlSnapshotChannel),
+    ),
+    command: async (value: unknown) => {
+      const command = decodeIdeSourceControlCommand(value)
+      if (command === null) return null
+      return decodeIdeSourceControlCommandResult(
+        await ipcRenderer.invoke(IdeSourceControlChannel, command),
+      )
     },
   },
   /**

@@ -56,6 +56,18 @@ import {
   type GitGithubBridge,
 } from "./git-panel.ts"
 import {
+  decodeGitGithubRequest,
+  gitGithubError,
+  type GitFileStatus,
+  type GitGithubOp,
+} from "../git-github-contract.ts"
+import {
+  IdeSourceControlOperationRefSchema,
+  decodeIdeSourceControlCommandResult,
+  decodeIdeSourceControlSnapshot,
+  type IdeSourceControlSnapshot,
+} from "../source-control-renderer-contract.ts"
+import {
   unavailableWorkspaceBrowserBridge,
   type WorkspaceBrowserBridge,
 } from "./workspace-browser.ts"
@@ -361,6 +373,10 @@ type DesktopBridge = Readonly<{
   }>
   /** Typed Git/GitHub surface (EP250 E2–E5): one namespaced invoke. */
   gitGithub?: Readonly<{ run?: (value: unknown) => Promise<unknown> }>
+  sourceControl?: Readonly<{
+    snapshot?: () => Promise<unknown>
+    command?: (value: unknown) => Promise<unknown>
+  }>
   /** Workspace-bounded PTY terminals (CUT-20, #8700). */
   terminal?: Readonly<{
     create?: (value: unknown) => Promise<unknown>
@@ -615,12 +631,116 @@ const fleetAccountsBridge: FleetAccountsBridge = {
  * handlers schema-decode every response before it touches state. An absent
  * bridge degrades to the typed no_workspace error.
  */
+let sourceControlOperationSequence = 0
+const sourceControlOperationRef = () => IdeSourceControlOperationRefSchema.make(
+  `ide.scm-operation.renderer-${Date.now()}-${++sourceControlOperationSequence}`,
+)
+const sourceControlActor = { _tag: "Human" as const, actorRef: "desktop.owner" }
+
+const legacyStatus = (value: IdeSourceControlSnapshot) => {
+  const fileStatus = (state: string): GitFileStatus => {
+    if (state === "type_changed") return "type-changed"
+    if (state === "conflicted") return "unmerged"
+    if (["added", "modified", "deleted", "renamed", "copied", "untracked"].includes(state)) return state as GitFileStatus
+    return "modified"
+  }
+  return {
+    ok: true as const,
+    op: "status" as const,
+    branch: value.branch,
+    upstream: value.upstream,
+    detached: value.detached,
+    ahead: value.ahead,
+    behind: value.behind,
+    staged: value.paths.filter(entry => entry.indexState !== "unmodified").map(entry => ({ path: entry.path, status: fileStatus(entry.indexState) })),
+    unstaged: value.paths.filter(entry => entry.worktreeState !== "unmodified" && entry.worktreeState !== "untracked").map(entry => ({ path: entry.path, status: fileStatus(entry.worktreeState) })),
+    untracked: value.paths.filter(entry => entry.worktreeState === "untracked").map(entry => ({ path: entry.path, status: "untracked" as const })),
+    truncated: value.truncated,
+    repositoryRef: value.binding.repositoryRef,
+    statusRef: value.version.statusRef,
+    headRef: value.version.headOid,
+  }
+}
+
+const sourceControlError = (op: GitGithubOp, result: unknown) => {
+  const decoded = decodeIdeSourceControlCommandResult(result)
+  if (decoded?._tag !== "Failure") return gitGithubError(op, "operation_failed", "The source-control operation did not return a receipt.")
+  const code = decoded.failure.code
+  return gitGithubError(
+    op,
+    code === "stale_version" ? "stale_status"
+      : code === "non_fast_forward" ? "non_fast_forward"
+      : code === "hook_failed" ? "blocked_by_hook"
+      : code === "credential_unavailable" ? "auth_failed"
+      : code === "dirty_state" ? "dirty_tree"
+      : "operation_failed",
+    decoded.failure.message,
+  )
+}
+
 const gitGithubBridge: GitGithubBridge = {
-  run: (value: unknown) => {
+  run: async (value: unknown) => {
+    const request = decodeGitGithubRequest(value)
+    if (request === null) return gitGithubError("status", "invalid_request", "The Git request could not be decoded.")
     const bridge = readBridge()
-    return typeof bridge?.gitGithub?.run === "function"
-      ? bridge.gitGithub.run(value)
-      : unavailableGitGithubBridge.run(value)
+    const legacyRun = bridge?.gitGithub?.run
+    const snapshotRun = bridge?.sourceControl?.snapshot
+    const commandRun = bridge?.sourceControl?.command
+    if (request.op === "issueList" || request.op === "issueView" || request.op === "issueCreate" || request.op === "prList" || request.op === "prView" || request.op === "prCreate" || request.op === "branchList") {
+      return typeof legacyRun === "function" ? legacyRun(value) : unavailableGitGithubBridge.run(value)
+    }
+    if (typeof snapshotRun !== "function") return gitGithubError(request.op, "no_workspace", "Choose a Git workspace first.")
+    const snapshot = decodeIdeSourceControlSnapshot(await snapshotRun())
+    if (snapshot === null) return gitGithubError(request.op, "not_a_repo", "The source-control snapshot is unavailable.")
+    if (request.op === "status") return legacyStatus(snapshot)
+    if (request.repositoryRef !== snapshot.binding.repositoryRef || request.statusRef !== snapshot.version.statusRef) {
+      return gitGithubError(request.op, "stale_status", "Repository state changed. Refresh and preview the operation again.")
+    }
+    if (request.op === "diff") {
+      if (typeof legacyRun !== "function") return unavailableGitGithubBridge.run(value)
+      const observed = await legacyRun({ op: "status" }) as { repositoryRef?: unknown; statusRef?: unknown }
+      if (typeof observed.repositoryRef !== "string" || typeof observed.statusRef !== "string") return gitGithubError("diff", "operation_failed", "The diff adapter is unavailable.")
+      const result = await legacyRun({ ...request, repositoryRef: observed.repositoryRef, statusRef: observed.statusRef })
+      return typeof result === "object" && result !== null && "ok" in result && result.ok === true
+        ? { ...result, repositoryRef: snapshot.binding.repositoryRef, statusRef: snapshot.version.statusRef }
+        : result
+    }
+    if (typeof commandRun !== "function") return gitGithubError(request.op, "operation_failed", "The source-control authority is unavailable.")
+    const mutation = {
+      operationRef: sourceControlOperationRef(),
+      binding: snapshot.binding,
+      expected: snapshot.version,
+      actor: sourceControlActor,
+      approvalRef: null,
+    }
+    const command = request.op === "stage" ? { _tag: "Stage" as const, ...mutation, selection: { _tag: "Paths" as const, paths: request.paths } }
+      : request.op === "unstage" ? { _tag: "Unstage" as const, ...mutation, selection: { _tag: "Paths" as const, paths: request.paths } }
+      : request.op === "discard" ? { _tag: "Discard" as const, ...mutation, selection: { _tag: "Paths" as const, paths: [request.path] }, recoveryRequired: true as const }
+      : request.op === "commit" ? { _tag: "Commit" as const, ...mutation, message: request.message, amend: false, sign: false, runHooks: true }
+      : request.op === "branchCreate" ? { _tag: "BranchCreate" as const, ...mutation, name: request.name, checkout: request.checkout }
+      : request.op === "checkout" ? { _tag: "Switch" as const, ...mutation, refName: request.name, detach: false }
+      : request.op === "push" && snapshot.branch !== null ? {
+          _tag: "Push" as const,
+          ...mutation,
+          remote: snapshot.upstream?.split("/", 1)[0] ?? "origin",
+          refspec: `HEAD:refs/heads/${snapshot.branch}`,
+          forcePolicy: "forbid" as const,
+          expectedRemoteOid: null,
+        }
+      : null
+    if (command === null) return gitGithubError(request.op, "no_upstream", "The current branch has no push destination.")
+    const rawResult = await commandRun(command)
+    const result = decodeIdeSourceControlCommandResult(rawResult)
+    if (result?._tag !== "Success") return sourceControlError(request.op, rawResult)
+    if (request.op === "stage" || request.op === "unstage") return { ok: true, op: request.op, paths: request.paths }
+    if (request.op === "discard") return { ok: true, op: "discard", repositoryRef: snapshot.binding.repositoryRef, path: request.path, statusRef: result.snapshot.version.statusRef }
+    if (request.op === "commit") {
+      const sha = result.snapshot.version.headOid ?? ""
+      return { ok: true, op: "commit", sha, shortSha: sha.slice(0, 7), summary: request.message.split("\n", 1)[0] ?? "Commit" }
+    }
+    if (request.op === "push") return { ok: true, op: "push", ref: result.snapshot.branch ?? "HEAD", remote: snapshot.upstream?.split("/", 1)[0] ?? "origin", sha: result.snapshot.version.headOid ?? "" }
+    if (request.op === "branchCreate") return { ok: true, op: "branchCreate", name: request.name, checkedOut: request.checkout }
+    return { ok: true, op: "checkout", name: request.name }
   },
 }
 

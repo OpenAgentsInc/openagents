@@ -570,6 +570,11 @@ import {
 import { makeCodexHandoffHost, openCodexHandoffBindings } from "./codex-handoff-host.ts"
 import { GitGithubChannel } from "./git-github-contract.ts"
 import { openGitGithubService } from "./git-github-host.ts"
+import {
+  IdeSourceControlChannel,
+  IdeSourceControlSnapshotChannel,
+} from "./ide/source-control-contract.ts"
+import { openIdeSourceControlHost } from "./ide/source-control-host.ts"
 import { openTurnCheckpointService } from "./turn-checkpoint-host.ts"
 import { workspaceGitEnvironment } from "./git-process-environment.ts"
 import {
@@ -2845,7 +2850,25 @@ const gitGithubService = openGitGithubService(
         try { return workspace.summary().root } catch { return null }
       },
 )
-ipcMain.handle(GitGithubChannel, (_event, value: unknown) => gitGithubService.run(value))
+const ideSourceControlHost = openIdeSourceControlHost({
+  workspace: () => {
+    const workspace = hostLifecycle.workspace()
+    if (workspace !== null) {
+      try { return { root: workspace.summary().root, grantRef: workspace.grantRef } }
+      catch { return null }
+    }
+    return smokeMode ? { root: smokeGitRoot, grantRef: "workspace.grant.smoke" } : null
+  },
+})
+const legacyGitMutationOps = new Set(["discard", "stage", "unstage", "commit", "push", "branchCreate", "checkout"])
+ipcMain.handle(GitGithubChannel, (_event, value: unknown) => {
+  const op = typeof value === "object" && value !== null && "op" in value ? String(value.op) : "status"
+  return legacyGitMutationOps.has(op)
+    ? { ok: false, op, error: "unsafe_state", message: "Use the exact-version source-control authority for this operation." }
+    : gitGithubService.run(value)
+})
+ipcMain.handle(IdeSourceControlSnapshotChannel, async () => (await ideSourceControlHost).snapshot())
+ipcMain.handle(IdeSourceControlChannel, async (_event, value: unknown) => (await ideSourceControlHost).command(value))
 
 // --- Hidden-ref turn checkpoints (GIT-1, #8781) -----------------------------
 // Workspace state is captured at coding-turn boundaries as hidden Git refs
@@ -2975,6 +2998,7 @@ const ideDebugHost = openIdeDapHost({
 const disposeIdeRunHost = (): void => {
   void ideRunHost.then((host) => host.dispose())
   void ideDebugHost.then((host) => host.dispose())
+  void ideSourceControlHost.then((host) => host.dispose())
 }
 const broadcastTerminalEvent = (event: TerminalEvent): void => {
   for (const window of BrowserWindow.getAllWindows()) {

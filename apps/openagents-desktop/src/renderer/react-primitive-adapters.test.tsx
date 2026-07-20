@@ -1030,6 +1030,12 @@ describe("React workbench shell", () => {
     await render(root, <WorkbenchShell state={reviewState} report={report} />)
     await act(settle)
     expect(container.querySelector('[aria-label="Changed files"]')?.textContent).toContain("src/app.ts")
+    const unstage = container.querySelector('[aria-label="Unstage src/app.ts"]') as HTMLButtonElement
+    expect(unstage).not.toBeNull()
+    await interact(() => unstage.click())
+    expect(received).toContainEqual({ name: "GitPanelStageToggled", payload: "src/app.ts" })
+    expect(container.querySelector('[aria-label="Commit and delivery"]')).not.toBeNull()
+    expect(container.querySelector('#live-git-commit-message')).not.toBeNull()
     expect(container.querySelector('[aria-label="Versioned review"]')?.textContent).toContain("HEAD → Index (staged)")
     expect(container.querySelector('[data-oa-pierre-review="GitHeadIndex"]')).not.toBeNull()
     expect([...container.querySelectorAll('.oa-react-review-toolbar button')].map(button => button.textContent)).toEqual(expect.arrayContaining(["Unified", "Split", "Less context", "More context", "Open in editor"]))

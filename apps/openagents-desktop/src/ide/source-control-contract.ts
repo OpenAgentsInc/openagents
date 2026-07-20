@@ -39,6 +39,7 @@ export const IdeSourceControlSchemaVersion = Schema.Literal(
   "openagents.desktop.ide-source-control.v1",
 );
 export const IdeSourceControlChannel = "openagents-desktop/ide-source-control" as const;
+export const IdeSourceControlSnapshotChannel = "openagents-desktop/ide-source-control-snapshot" as const;
 
 export const IdeRepositoryRefSchema = boundedRef("IdeRepositoryRef", "ide.repository.");
 export type IdeRepositoryRef = typeof IdeRepositoryRefSchema.Type;

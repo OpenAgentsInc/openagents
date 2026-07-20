@@ -423,9 +423,33 @@ export const ReactReviewSurface = ({ state, report }: { readonly state: DesktopS
       <header><div><GitBranchLabel branch={status?.branch ?? null} /></div><Button size="icon-sm" variant="ghost" aria-label="Refresh changes" onClick={() => dispatch(report, "GitPanelRefreshRequested")}><RefreshCw aria-hidden="true" /></Button></header>
       {state.git.phase === "loading" ? <p role="status">Refreshing changes…</p>
         : state.git.phase === "unavailable" ? <p role="alert">{state.git.reason ?? "Review is unavailable."}</p>
-        : changed.length === 0 ? <p>No local changes.</p> : changed.map(entry => <button disabled={entry.status === "untracked"} key={`${entry.source}:${entry.path}`} onClick={() => dispatch(report, "GitPanelDiffRequested", { path: entry.path, source: entry.source })} type="button">
-            <span data-file-status={entry.status}>{entry.status.slice(0, 1).toLocaleUpperCase()}</span><strong>{entry.path}</strong><small>{entry.source}</small>
-          </button>)}
+        : changed.length === 0 ? <p>No local changes.</p> : changed.map(entry => <div className="oa-react-changed-file" key={`${entry.source}:${entry.path}`}>
+            <button disabled={entry.status === "untracked"} aria-label={`Review ${entry.path}`} onClick={() => dispatch(report, "GitPanelDiffRequested", { path: entry.path, source: entry.source })} type="button">
+              <span data-file-status={entry.status}>{entry.status.slice(0, 1).toLocaleUpperCase()}</span><strong>{entry.path}</strong><small>{entry.source}</small>
+            </button>
+            <Button size="sm" variant="outline" aria-label={`${entry.source === "staged" ? "Unstage" : "Stage"} ${entry.path}`} onClick={() => dispatch(report, "GitPanelStageToggled", entry.path)}>
+              {entry.source === "staged" ? "Unstage" : "Stage"}
+            </Button>
+            {entry.source === "unstaged" && entry.status !== "untracked" && entry.status !== "unmerged" ? <Button size="sm" variant="destructive" aria-label={`Discard unstaged change in ${entry.path}`} onClick={() => dispatch(report, "GitPanelDiscardRequested", entry.path)}>Discard…</Button> : null}
+          </div>)}
+      {status?.truncated === true ? <p role="status">The changed-file list is truncated. Narrow the repository view before a mutation.</p> : null}
+      {state.git.discardConfirmPath === null ? null : <div role="alertdialog" aria-modal="true" aria-labelledby="oa-discard-title">
+        <strong id="oa-discard-title">Discard the exact worktree change?</strong>
+        <p>The host will keep a recovery receipt for {state.git.discardConfirmPath}. Staged and conflicted changes are refused.</p>
+        <Button variant="destructive" onClick={() => dispatch(report, "GitPanelDiscardConfirmed")}>Discard change</Button>
+        <Button variant="outline" onClick={() => dispatch(report, "GitPanelDiscardCancelled")}>Cancel</Button>
+      </div>}
+      <section aria-label="Commit and delivery">
+        <label htmlFor="live-git-commit-message">Commit message</label>
+        <Input id="live-git-commit-message" value={state.git.commitMessage} maxLength={20_000} onChange={event => dispatch(report, "GitPanelCommitMessageChanged", event.currentTarget.value)} />
+        <Button size="sm" disabled={state.git.committing || state.git.commitMessage.trim() === "" || (status?.staged.length ?? 0) === 0} onClick={() => dispatch(report, "GitPanelCommitRequested")}>{state.git.committing ? "Committing…" : "Commit staged"}</Button>
+        <Button size="sm" variant="outline" disabled={state.git.pushing || status === null || status.upstream === null} onClick={() => dispatch(report, "GitPanelPushRequested")}>{state.git.pushing ? "Pushing…" : "Push exact HEAD"}</Button>
+        <label htmlFor="live-git-new-branch">New branch</label>
+        <Input id="live-git-new-branch" value={state.git.newBranchName} onChange={event => dispatch(report, "GitPanelNewBranchNameChanged", event.currentTarget.value)} />
+        <Button size="sm" variant="outline" disabled={status === null || state.git.newBranchName.trim() === ""} onClick={() => dispatch(report, "GitPanelBranchCreateRequested")}>Create and switch</Button>
+      </section>
+      {state.git.actionError === null ? null : <p role="alert">{state.git.actionError}</p>}
+      {state.git.receipt === null ? null : <p role="status"><strong>{state.git.receipt.headline}</strong> {state.git.receipt.detail}</p>}
     </aside>
     <section className="oa-react-rich-diff" aria-label="Versioned review">
       {state.agentReviewProposalRef !== null ? <AgentProposalReviewPanel state={state} report={report} />
