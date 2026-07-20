@@ -19,7 +19,12 @@
  *    main.ts wires capture at both turn boundaries on both local lanes.
  */
 import { afterAll, describe, expect, test } from "vite-plus/test"
-import { execFileSync } from "node:child_process"
+import {
+  execFileSync,
+  spawn,
+  type ChildProcess,
+  type SpawnOptions,
+} from "node:child_process"
 import {
   existsSync,
   mkdtempSync,
@@ -33,6 +38,7 @@ import path from "node:path"
 import {
   checkpointRefComponent,
   checkpointRefName,
+  checkpointLatestRefName,
   checkpointThreadRefRoot,
   openTurnCheckpointService,
 } from "../src/turn-checkpoint-host.ts"
@@ -45,6 +51,10 @@ import {
 } from "../src/turn-checkpoint-contract.ts"
 import { openAgentsDesktopUxContractRegistry } from "../src/contracts/ux-contracts.ts"
 import { isolatedGitEnvironment, runGitFixture } from "./git-fixture.ts"
+import type {
+  IdePortableMutationAuthority,
+  IdePortableMutationPermit,
+} from "../src/ide/portable-mutation-authority.ts"
 
 const testsDir = path.dirname(new URL(import.meta.url).pathname)
 const appDir = path.dirname(testsDir)
@@ -89,6 +99,57 @@ const service = (root: string, signals?: TurnCheckpointSignal[]) =>
       ? {}
       : { onSignal: (signal: TurnCheckpointSignal) => signals.push(signal) }),
   })
+
+const portableAuthority = (): Readonly<{
+  authority: IdePortableMutationAuthority
+  revoke: () => void
+}> => {
+  let active = true
+  const permit: IdePortableMutationPermit = {
+    _tag: "Portable",
+    key: "portable:grant:session:context:attachment:1:target",
+    grantRef: "workspace.grant.fixture",
+    sessionRef: "portable.session.fixture",
+    workContextRef: "portable.context.fixture",
+    attachmentRef: "portable.attachment.fixture",
+    generation: 1,
+    targetRef: "portable.target.fixture",
+  }
+  return {
+    authority: {
+      authorize: grantRef => active && grantRef === permit.grantRef
+        ? { _tag: "Permitted", permit }
+        : { _tag: "Refused", reason: "admission_unavailable" },
+      reauthorize: candidate => active && candidate.key === permit.key,
+    },
+    revoke: () => { active = false },
+  }
+}
+
+const portableService = (
+  root: string,
+  authority: IdePortableMutationAuthority,
+  options: Readonly<{
+    beforeGitSpawn?: (args: ReadonlyArray<string>) => void
+    afterGitProcess?: (args: ReadonlyArray<string>) => void
+    spawnGit?: (
+      command: string,
+      args: ReadonlyArray<string>,
+      options: SpawnOptions,
+    ) => ChildProcess
+    signals?: TurnCheckpointSignal[]
+  }> = {},
+) => openTurnCheckpointService({
+  resolveRoot: () => root,
+  resolveGrantRef: () => "workspace.grant.fixture",
+  mutationAuthority: authority,
+  ...(options.beforeGitSpawn === undefined ? {} : { beforeGitSpawn: options.beforeGitSpawn }),
+  ...(options.afterGitProcess === undefined ? {} : { afterGitProcess: options.afterGitProcess }),
+  ...(options.spawnGit === undefined ? {} : { spawnGit: options.spawnGit }),
+  ...(options.signals === undefined
+    ? {}
+    : { onSignal: (signal: TurnCheckpointSignal) => options.signals?.push(signal) }),
+})
 
 describe("openagents_desktop.workbench.turn_checkpoints.v1", () => {
   test("capture creates the hidden ref without touching user branches, index, HEAD, or worktree", async () => {
@@ -402,6 +463,123 @@ describe("openagents_desktop.workbench.turn_checkpoints.v1", () => {
       const tree = runGitFixture(root, ["ls-tree", "-r", "--name-only", captured.record.refName])
       expect(tree).toContain("first.txt")
     }
+  })
+
+  test("revocation before capture starts no Git process and writes no checkpoint ref", async () => {
+    const root = fixtureRepo()
+    const portable = portableAuthority()
+    let spawnCount = 0
+    portable.revoke()
+    const checkpoints = portableService(root, portable.authority, {
+      beforeGitSpawn: () => { spawnCount += 1 },
+    })
+    const result = await checkpoints.capture({
+      threadRef: "revoked",
+      turnRef: "turn.1",
+      boundary: "turn_completed",
+    })
+    expect(result).toEqual({ ok: false, error: "operation_failed" })
+    expect(spawnCount).toBe(0)
+    expect(runGitFixture(root, ["for-each-ref", checkpointThreadRefRoot("revoked")])).toBe("")
+    await checkpoints.dispose()
+  })
+
+  test("revocation during a blocked commit kills it and withholds hidden refs", async () => {
+    const root = fixtureRepo()
+    const portable = portableAuthority()
+    let startedResolve: (() => void) | null = null
+    const started = new Promise<void>(resolve => { startedResolve = resolve })
+    const checkpoints = portableService(root, portable.authority, {
+      spawnGit: (command, args, options) => {
+        if (args[0] === "commit-tree") {
+          const child = spawn(
+            process.execPath,
+            ["-e", "setInterval(() => undefined, 1000)"],
+            options,
+          )
+          startedResolve?.()
+          return child
+        }
+        return spawn(command, [...args], options)
+      },
+    })
+    const capture = checkpoints.capture({
+      threadRef: "blocked",
+      turnRef: "turn.1",
+      boundary: "turn_completed",
+    })
+    await started
+    portable.revoke()
+    expect(await capture).toEqual({ ok: false, error: "operation_failed" })
+    expect(runGitFixture(root, ["for-each-ref", checkpointThreadRefRoot("blocked")])).toBe("")
+    await checkpoints.quiesce()
+    expect(await checkpoints.capture({
+      threadRef: "blocked",
+      turnRef: "turn.2",
+      boundary: "turn_completed",
+    })).toEqual({ ok: false, error: "operation_failed" })
+  })
+
+  test("revocation during blocked checkout leaves the worktree and staged truth unchanged", async () => {
+    const root = fixtureRepo()
+    const portable = portableAuthority()
+    let blockCheckout = false
+    let startedResolve: (() => void) | null = null
+    const started = new Promise<void>(resolve => { startedResolve = resolve })
+    const checkpoints = portableService(root, portable.authority, {
+      spawnGit: (command, args, options) => {
+        if (blockCheckout && args[0] === "checkout-index") {
+          const child = spawn(
+            process.execPath,
+            ["-e", "setInterval(() => undefined, 1000)"],
+            options,
+          )
+          startedResolve?.()
+          return child
+        }
+        return spawn(command, [...args], options)
+      },
+    })
+    await checkpoints.capture({ threadRef: "t", turnRef: "turn.1", boundary: "turn_completed" })
+    writeFileSync(path.join(root, "app.ts"), "export const value = 2\n")
+    await checkpoints.capture({ threadRef: "t", turnRef: "turn.2", boundary: "turn_completed" })
+    expect((await checkpoints.stageRevert("t", "turn.1")).ok).toBe(true)
+    const latestBefore = runGitFixture(root, ["rev-parse", checkpointLatestRefName("t")]).trim()
+    blockCheckout = true
+    const commit = checkpoints.commitStagedRevert("t")
+    await started
+    portable.revoke()
+    expect(await commit).toEqual({ ok: false, error: "operation_failed" })
+    expect(readFileSync(path.join(root, "app.ts"), "utf8")).toBe("export const value = 2\n")
+    expect(runGitFixture(root, ["rev-parse", checkpointLatestRefName("t")]).trim()).toBe(latestBefore)
+    expect((await checkpoints.inspectStagedRevert("t")).ok).toBe(true)
+    await checkpoints.dispose()
+  })
+
+  test("late revocation reports a partial revert and retains its staged recovery truth", async () => {
+    const root = fixtureRepo()
+    const portable = portableAuthority()
+    const signals: TurnCheckpointSignal[] = []
+    const checkpoints = portableService(root, portable.authority, {
+      signals,
+      afterGitProcess: args => {
+        if (args[0] === "checkout-index") portable.revoke()
+      },
+    })
+    await checkpoints.capture({ threadRef: "t", turnRef: "turn.1", boundary: "turn_completed" })
+    writeFileSync(path.join(root, "app.ts"), "export const value = 2\n")
+    await checkpoints.capture({ threadRef: "t", turnRef: "turn.2", boundary: "turn_completed" })
+    expect((await checkpoints.stageRevert("t", "turn.1")).ok).toBe(true)
+    const latestBefore = runGitFixture(root, ["rev-parse", checkpointLatestRefName("t")]).trim()
+    expect(await checkpoints.commitStagedRevert("t")).toEqual({
+      ok: false,
+      error: "operation_failed",
+    })
+    expect(readFileSync(path.join(root, "app.ts"), "utf8")).toBe("export const value = 1\n")
+    expect(runGitFixture(root, ["rev-parse", checkpointLatestRefName("t")]).trim()).toBe(latestBefore)
+    expect((await checkpoints.inspectStagedRevert("t")).ok).toBe(true)
+    expect(signals.some(signal => signal.kind === "revert_committed")).toBe(false)
+    await checkpoints.dispose()
   })
 
   test("ref components are always valid git ref pieces, even for hostile inputs", () => {

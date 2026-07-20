@@ -3100,6 +3100,10 @@ ipcMain.handle(IdeSourceControlChannel, async (_event, value: unknown) => (await
 // workspace refuses typed and the turn proceeds. Snapshots can contain
 // secrets, so records stay host-local and never enter Sync projections.
 const turnCheckpoints = openTurnCheckpointService({
+  ...(smokeMode ? {} : {
+    mutationAuthority: workspacePortableMutationAuthority,
+    resolveGrantRef: () => hostLifecycle.workspace()?.grantRef ?? null,
+  }),
   resolveRoot: smokeMode
     ? () => smokeGitRoot
     : () => {
