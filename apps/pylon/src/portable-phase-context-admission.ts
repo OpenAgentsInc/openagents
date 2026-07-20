@@ -216,6 +216,11 @@ const assertBindings = (
         (claim.sourceAttachmentRef !== request.attachmentRef ||
           claim.executorEnvironmentRef !== request.targetRef)) ||
       (payload.kind === "checkpoint-stage" && claim.destinationTargetRef !== request.targetRef) ||
+      (payload.kind === "checkpoint-stage" &&
+        (claim.sourceAttachmentRef !== payload.input.bundle.checkpoint.sourceAttachmentRef ||
+          claim.sourceGeneration !== payload.input.bundle.checkpoint.sourceGeneration ||
+          claim.sessionRef !== payload.input.bundle.checkpoint.sessionRef ||
+          claim.ownerRef !== payload.input.bundle.executionBinding.ownerRef)) ||
       claim.state !== "claimed" ||
       claim.terminalStatus !== null ||
       claim.outcomeRef !== null ||

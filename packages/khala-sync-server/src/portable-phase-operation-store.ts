@@ -56,6 +56,7 @@ type Row = {
   result_checkpoint_ref: string | null;
   result_checkpoint_object_ref: string | null;
   result_checkpoint_digest: string | null;
+  result_checkpoint_manifest_digest: string | null;
   result_destination_activation_receipt_json: unknown;
   result_evidence_refs_json: unknown;
   error_ref: string | null;
@@ -208,6 +209,7 @@ const rowToRecord = (row: Row): PortablePhaseOperationRecord => {
     resultCheckpointRef: row.result_checkpoint_ref,
     resultCheckpointObjectRef: row.result_checkpoint_object_ref,
     resultCheckpointDigest: row.result_checkpoint_digest,
+    resultCheckpointManifestDigest: row.result_checkpoint_manifest_digest,
     resultDestinationActivationReceipt: parseJson(row.result_destination_activation_receipt_json),
     resultEvidenceRefs: parseJson(row.result_evidence_refs_json),
     errorRef: row.error_ref,
@@ -607,6 +609,7 @@ export class PostgresPortablePhaseOperationStore {
             result_checkpoint_ref = ${request.checkpointRef},
             result_checkpoint_object_ref = ${request.checkpointObjectRef},
             result_checkpoint_digest = ${request.checkpointDigest},
+            result_checkpoint_manifest_digest = ${request.checkpointManifestDigest},
             result_destination_activation_receipt_json = ${
               request.destinationActivationReceipt === null
                 ? null
@@ -792,10 +795,12 @@ export class PostgresPortablePhaseOperationStore {
       request.checkpointRef !== null ||
       request.checkpointObjectRef !== null ||
       request.checkpointDigest !== null;
+    const hasCheckpointManifest = request.checkpointManifestDigest !== null;
     if (
       request.resultStatus === "completed" &&
       ((row.kind === "checkpoint-create" && !hasCompleteCheckpoint) ||
         (row.kind !== "checkpoint-create" && hasAnyCheckpoint) ||
+        (row.kind !== "checkpoint-create" && hasCheckpointManifest) ||
         request.errorRef !== null)
     ) {
       throw new PortablePhaseOperationStoreError(
@@ -803,7 +808,10 @@ export class PostgresPortablePhaseOperationStore {
         "portable phase completed result shape is invalid",
       );
     }
-    if (request.resultStatus === "failed" && (request.errorRef === null || hasAnyCheckpoint)) {
+    if (
+      request.resultStatus === "failed" &&
+      (request.errorRef === null || hasAnyCheckpoint || hasCheckpointManifest)
+    ) {
       throw new PortablePhaseOperationStoreError(
         "invalid",
         "portable phase failed result shape is invalid",

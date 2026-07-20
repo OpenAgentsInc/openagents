@@ -229,6 +229,82 @@ describe("Pylon private portable phase context admission", () => {
     }
   })
 
+  test("durably retains the exact checkpoint-stage manifest digest", () => {
+    const database = openLegacySqliteDatabase(":memory:")
+    try {
+      const store = new PylonPortablePhaseContextAdmissionStore(database)
+      const stagePayload = payloads().find(payload => payload.kind === "checkpoint-stage")
+      if (stagePayload?.kind !== "checkpoint-stage") throw new Error("stage payload is absent")
+      const commandClaim = {
+        schema: "openagents.portable_command_execution.v1" as const,
+        claimRef: refs.commandExecutionClaimRef,
+        commandRef: refs.commandRef,
+        ownerRef: refs.ownerRef,
+        sessionRef: refs.sessionRef,
+        commandKind: "move" as const,
+        commandFingerprint: `sha256:${"1".repeat(64)}` as const,
+        claimFingerprint: `sha256:${"2".repeat(64)}` as const,
+        sourceAttachmentRef: refs.attachmentRef,
+        sourceGeneration: 1,
+        destinationTargetRef: refs.targetRef,
+        executorEnvironmentRef: "target.ide13.admission.source",
+        workerInstanceRef: "worker.ide13.admission",
+        claimGeneration: 1,
+        leaseRevision: 1,
+        state: "claimed" as const,
+        claimedAt: "2096-07-20T12:00:00.000Z",
+        leaseExpiresAt: "2096-07-20T12:20:00.000Z",
+        updatedAt: "2096-07-20T12:00:00.000Z",
+        terminalStatus: null,
+        pendingReconcileRef: null,
+        outcomeRef: null,
+        evidenceRefs: [],
+      }
+      const manifestDigest = `sha256:${"a".repeat(64)}` as const
+      const admission: PylonPortablePhaseContextAdmissionInput = {
+        schema: PYLON_PORTABLE_PHASE_CONTEXT_ADMISSION_SCHEMA,
+        request: {
+          schema: "openagents.portable_phase_operation.v1",
+          ...refs,
+          attachmentGeneration: 2,
+          kind: "checkpoint-stage",
+          checkpointRef: stagePayload.input.bundle.checkpoint.checkpointRef,
+          checkpointObjectRef: "object.ide13.admission",
+          checkpointDigest: stagePayload.input.bundle.checkpoint.digest,
+          evidenceRefs: [],
+          expiresAt: "2096-07-20T12:10:00.000Z",
+        },
+        payload: {
+          ...stagePayload,
+          artifactTransport: { commandClaim, manifestDigest },
+          input: {
+            ...stagePayload.input,
+            destinationGeneration: 2,
+          },
+        },
+        recoverySemantics: "operation_ref_idempotent",
+      }
+      store.admit(admission)
+      const resolved = store.resolve(refs.operationRef)
+      expect(resolved?.payload).toMatchObject({
+        kind: "checkpoint-stage",
+        artifactTransport: { commandClaim, manifestDigest },
+      })
+      expect(() => store.admit({
+        ...admission,
+        payload: {
+          ...admission.payload,
+          artifactTransport: {
+            commandClaim,
+            manifestDigest: `sha256:${"b".repeat(64)}`,
+          },
+        },
+      })).toThrow(new PylonPortablePhaseContextAdmissionError("conflicting_replay"))
+    } finally {
+      database.close()
+    }
+  })
+
   test("rejects a conflicting replay and corrupt durable bytes", () => {
     const database = openLegacySqliteDatabase(":memory:")
     try {

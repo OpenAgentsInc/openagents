@@ -219,6 +219,7 @@ const custodyTransport = async (
   await store.registerArtifact({ bundle: source.bundle, artifact: source.artifact })
   return store.exportCustodyObject({
     checkpointRef: source.bundle.checkpoint.checkpointRef,
+    sourcePylonRef: "pylon.portable.artifact.phase.source",
     commandClaim: transportClaim(source.bundle),
     byteLimit: 100 * 1024 * 1024,
   })
@@ -709,7 +710,7 @@ test("exports and imports an opaque custody object with byte-idempotent replay",
     objectDigest: sha(exported.bytes),
     artifactDigest: source.artifact.digest,
     checkpointDigest: source.bundle.checkpoint.digest,
-    sourcePylonRef: "pylon.portable.artifact.source",
+    sourcePylonRef: "pylon.portable.artifact.phase.source",
     targetRef: "target.portable.artifact.managed",
     secretMaterial: "excluded",
   })
@@ -793,6 +794,7 @@ test("rejects expired custody transport without writing the object", async () =>
   }
   const exported = await sourceStore.exportCustodyObject({
     checkpointRef: source.bundle.checkpoint.checkpointRef,
+    sourcePylonRef: "pylon.portable.artifact.phase.source",
     commandClaim: claim,
     byteLimit: 100 * 1024 * 1024,
   })

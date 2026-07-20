@@ -28,6 +28,7 @@ export type PylonPortablePhaseExecutionResult = Readonly<{
   checkpointRef: string | null;
   checkpointObjectRef: string | null;
   checkpointDigest: string | null;
+  checkpointManifestDigest: string | null;
   destinationActivationReceipt: IdePortableDestinationActivationReceipt | null;
   evidenceRefs: ReadonlyArray<string>;
 }>;
@@ -150,6 +151,7 @@ const result = (evidenceRefs: ReadonlyArray<string>): PylonPortablePhaseExecutio
   checkpointRef: null,
   checkpointObjectRef: null,
   checkpointDigest: null,
+  checkpointManifestDigest: null,
   destinationActivationReceipt: null,
   evidenceRefs,
 });
@@ -194,6 +196,7 @@ export const makePylonPortablePhaseExecutor = (
         case "checkpoint-create": {
           const bundle = await resolved.target.createCheckpoint(resolved.call.input);
           let transportEvidenceRefs: ReadonlyArray<string> = [];
+          let checkpointManifestDigest: string | null = null;
           if (artifactTransport !== undefined) {
             const context = resolved.call.artifactTransport;
             const artifacts = resolved.target.checkpointArtifacts;
@@ -204,6 +207,7 @@ export const makePylonPortablePhaseExecutor = (
             }
             const exported = await artifacts.exportCustodyObject({
               checkpointRef: bundle.checkpoint.checkpointRef,
+              sourcePylonRef: request.pylonRef,
               commandClaim: context.commandClaim,
               byteLimit: context.byteLimit,
             });
@@ -227,6 +231,7 @@ export const makePylonPortablePhaseExecutor = (
               transportEvidenceRefs = [
                 `manifest.portable-checkpoint.${published.manifestDigest.slice("sha256:".length)}`,
               ];
+              checkpointManifestDigest = published.manifestDigest;
             } finally {
               exported.bytes.fill(0);
             }
@@ -235,6 +240,7 @@ export const makePylonPortablePhaseExecutor = (
             checkpointRef: bundle.checkpoint.checkpointRef,
             checkpointObjectRef: resolved.call.checkpointObjectRef,
             checkpointDigest: bundle.checkpoint.digest,
+            checkpointManifestDigest,
             destinationActivationReceipt: null,
             evidenceRefs: [...bundle.checkpoint.receiptRefs, ...transportEvidenceRefs],
           };
@@ -290,6 +296,7 @@ export const makePylonPortablePhaseExecutor = (
             checkpointRef: null,
             checkpointObjectRef: null,
             checkpointDigest: null,
+            checkpointManifestDigest: null,
             destinationActivationReceipt: receipt,
             evidenceRefs: receipt.evidenceRefs,
           };
@@ -372,6 +379,12 @@ const validateResult = (
     execution.checkpointObjectRef !== null &&
     execution.checkpointDigest !== null;
   if ((request.kind === "checkpoint-create") !== hasCheckpoint) {
+    throw new PylonPortablePhaseExecutionError("error.pylon.portable-phase.invalid-result");
+  }
+  if (
+    execution.checkpointManifestDigest !== null &&
+    (request.kind !== "checkpoint-create" || !SHA256.test(execution.checkpointManifestDigest))
+  ) {
     throw new PylonPortablePhaseExecutionError("error.pylon.portable-phase.invalid-result");
   }
   if (request.kind === "destination-activate") {
@@ -614,6 +627,7 @@ export class PylonPortablePhaseWorker {
       response.operation.resultCheckpointRef !== completion.checkpointRef ||
       response.operation.resultCheckpointObjectRef !== completion.checkpointObjectRef ||
       response.operation.resultCheckpointDigest !== completion.checkpointDigest ||
+      response.operation.resultCheckpointManifestDigest !== completion.checkpointManifestDigest ||
       canonicalJson(response.operation.resultDestinationActivationReceipt) !==
         canonicalJson(completion.destinationActivationReceipt) ||
       response.operation.errorRef !== completion.errorRef ||
@@ -710,6 +724,7 @@ export class PylonPortablePhaseWorker {
       checkpointRef: output.checkpointRef,
       checkpointObjectRef: output.checkpointObjectRef,
       checkpointDigest: output.checkpointDigest,
+      checkpointManifestDigest: output.checkpointManifestDigest,
       destinationActivationReceipt: output.destinationActivationReceipt,
       evidenceRefs: output.evidenceRefs,
       errorRef,

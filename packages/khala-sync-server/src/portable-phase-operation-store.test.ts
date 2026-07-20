@@ -335,6 +335,7 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 durable portable phase exchange", (
       checkpointRef: `checkpoint.ide13.phase.result.${fixture.suffix}`,
       checkpointObjectRef: `object.ide13.phase.result.${fixture.suffix}`,
       checkpointDigest: otherDigest,
+      checkpointManifestDigest: digest,
       destinationActivationReceipt: null,
       evidenceRefs: [`evidence.ide13.phase.result.${fixture.suffix}`],
       errorRef: null,
@@ -348,6 +349,7 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 durable portable phase exchange", (
         leaseRevision: 3,
         resultCheckpointObjectRef: result.checkpointObjectRef,
         resultCheckpointDigest: otherDigest,
+        resultCheckpointManifestDigest: digest,
       },
     });
     expect(await store.complete(result)).toEqual({
@@ -390,6 +392,7 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 durable portable phase exchange", (
       checkpointRef: null,
       checkpointObjectRef: null,
       checkpointDigest: null,
+      checkpointManifestDigest: null,
       destinationActivationReceipt: null,
       evidenceRefs: [`evidence.ide13.phase.failed.${fixture.suffix}`],
       errorRef: "error.ide13.phase.target_rejected",
@@ -464,6 +467,7 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 durable portable phase exchange", (
       checkpointRef: null,
       checkpointObjectRef: null,
       checkpointDigest: null,
+      checkpointManifestDigest: null,
       destinationActivationReceipt: activationReceipt,
       evidenceRefs: activationReceipt.evidenceRefs,
       errorRef: null,

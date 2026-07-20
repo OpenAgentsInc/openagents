@@ -67,6 +67,7 @@ const record = (
   resultCheckpointRef: null,
   resultCheckpointObjectRef: null,
   resultCheckpointDigest: null,
+  resultCheckpointManifestDigest: null,
   resultDestinationActivationReceipt: null,
   resultEvidenceRefs: [],
   errorRef: null,
@@ -161,6 +162,7 @@ const fakeClient = (source: PortablePhaseOperationRecord) => {
         resultCheckpointRef: request.checkpointRef,
         resultCheckpointObjectRef: request.checkpointObjectRef,
         resultCheckpointDigest: request.checkpointDigest,
+        resultCheckpointManifestDigest: request.checkpointManifestDigest,
         resultDestinationActivationReceipt: request.destinationActivationReceipt,
         resultEvidenceRefs: request.evidenceRefs,
         errorRef: request.errorRef,
@@ -312,7 +314,7 @@ describe("Pylon portable phase worker", () => {
       ciphertextDigest: `sha256:${"a".repeat(64)}`,
       commandClaim,
       ownerRef: commandClaim.ownerRef,
-      sourcePylonRef: targetRef,
+      sourcePylonRef: pylonRef,
       targetRef,
       sessionRef: commandClaim.sessionRef,
       sourceAttachmentRef: commandClaim.sourceAttachmentRef,
@@ -334,7 +336,9 @@ describe("Pylon portable phase worker", () => {
       targetRef,
       targetClass: "owner_local",
       checkpointArtifacts: {
-        exportCustodyObject: async () => {
+        exportCustodyObject: async input => {
+          expect(input.sourcePylonRef).toBe(pylonRef);
+          expect(input.commandClaim.executorEnvironmentRef).toBe(targetRef);
           events.push("export");
           return { manifest, bytes: Uint8Array.from(objectBytes) };
         },
@@ -405,6 +409,7 @@ describe("Pylon portable phase worker", () => {
     );
     const created = await createExecutor.execute(createRequest, new AbortController().signal);
     expect(created.checkpointObjectRef).toBe(manifest.objectRef);
+    expect(created.checkpointManifestDigest).toBe(`sha256:${"b".repeat(64)}`);
     expect(created.evidenceRefs).toContain(`manifest.portable-checkpoint.${"b".repeat(64)}`);
     expect(events).toEqual(["create", "export", "publish"]);
 
@@ -524,6 +529,7 @@ describe("Pylon portable phase worker", () => {
       checkpointRef: null,
       checkpointObjectRef: null,
       checkpointDigest: null,
+      checkpointManifestDigest: null,
       destinationActivationReceipt: receipt,
       evidenceRefs: receipt.evidenceRefs,
     });
@@ -560,6 +566,7 @@ describe("Pylon portable phase worker", () => {
           checkpointRef: null,
           checkpointObjectRef: null,
           checkpointDigest: null,
+          checkpointManifestDigest: null,
           destinationActivationReceipt: null,
           evidenceRefs: ["evidence.ide13.quiesce"],
         };
@@ -669,6 +676,7 @@ describe("Pylon portable phase worker", () => {
           checkpointRef: null,
           checkpointObjectRef: null,
           checkpointDigest: null,
+          checkpointManifestDigest: null,
           destinationActivationReceipt: null,
           evidenceRefs: [],
         };
@@ -744,6 +752,7 @@ describe("Pylon portable phase worker", () => {
             checkpointRef: null,
             checkpointObjectRef: null,
             checkpointDigest: null,
+            checkpointManifestDigest: null,
             destinationActivationReceipt: null,
             evidenceRefs: [],
           };
@@ -820,6 +829,7 @@ describe("Pylon portable phase worker", () => {
             checkpointRef: null,
             checkpointObjectRef: null,
             checkpointDigest: null,
+            checkpointManifestDigest: null,
             destinationActivationReceipt: null,
             evidenceRefs: [],
           };
@@ -865,6 +875,7 @@ describe("Pylon portable phase worker", () => {
             checkpointRef: null,
             checkpointObjectRef: null,
             checkpointDigest: null,
+            checkpointManifestDigest: null,
             destinationActivationReceipt: null,
             evidenceRefs: [],
           };
@@ -887,6 +898,7 @@ describe("Pylon portable phase worker", () => {
             checkpointRef: null,
             checkpointObjectRef: null,
             checkpointDigest: null,
+            checkpointManifestDigest: null,
             destinationActivationReceipt: null,
             evidenceRefs: [],
           };

@@ -198,6 +198,7 @@ const sql = Object.assign(
           result_checkpoint_ref: checkpointRef,
           result_checkpoint_object_ref: objectRef,
           result_checkpoint_digest: bundle.checkpoint.digest,
+          result_checkpoint_manifest_digest: sha256(canonicalJson(manifest)),
           completed_at: now,
         },
       ];
@@ -219,6 +220,7 @@ const scope = {
     checkpointRef,
     checkpointObjectRef: objectRef,
     checkpointDigest: bundle.checkpoint.digest,
+    checkpointManifestDigest: sha256(canonicalJson(manifest)),
   },
 };
 
@@ -291,6 +293,26 @@ describe("Sync committed checkpoint artifact resolver", () => {
       now: () => now,
     });
     await expect(resolver.resolve(scope)).rejects.toMatchObject({ code });
+  });
+
+  test("rejects a stale manifest digest before it reads custody bytes", async () => {
+    const read = vi.fn(async () => privateObject());
+    const resolver = new PortableCommittedCheckpointArtifactResolver({
+      sql,
+      objects: { read },
+      custody: { decrypt: async () => Uint8Array.from(payloadBytes) },
+      now: () => now,
+    });
+    await expect(
+      resolver.resolve({
+        ...scope,
+        artifact: {
+          ...scope.artifact,
+          checkpointManifestDigest: `sha256:${"f".repeat(64)}`,
+        },
+      }),
+    ).rejects.toMatchObject({ code: "phase_mismatch" });
+    expect(read).not.toHaveBeenCalled();
   });
 
   test("returns the same public-safe failure ref when custody is unavailable", async () => {

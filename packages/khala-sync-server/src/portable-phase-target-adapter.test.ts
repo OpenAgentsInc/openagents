@@ -246,9 +246,14 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 portable phase target adapter", () 
       fixture: Fixture,
       observed: PortablePhaseOperationKind[],
       resultStatus: "completed" | "failed" = "completed",
+      artifactTransports?: Array<Readonly<{
+        commandClaim: PortableCommandExecutionClaim;
+        manifestDigest: string;
+      }> | null>,
     ): NonNullable<PostgresPortablePhaseTargetConfig["onEnqueued"]> =>
     async (enqueued) => {
       observed.push(enqueued.operation.request.kind);
+      artifactTransports?.push(enqueued.artifactTransport);
       if (enqueued.status === "replayed") return;
       const store = new PostgresPortablePhaseOperationStore(sql as unknown as SyncSql, () => now);
       const request = enqueued.operation.request;
@@ -333,6 +338,10 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 portable phase target adapter", () 
           request.kind === "checkpoint-create" && resultStatus === "completed"
             ? fixture.bundle.checkpoint.digest
             : null,
+        checkpointManifestDigest:
+          request.kind === "checkpoint-create" && resultStatus === "completed"
+            ? digestC
+            : null,
         destinationActivationReceipt,
         evidenceRefs: destinationActivationReceipt?.evidenceRefs ?? [
           `evidence.ide13.adapter.phase.${request.kind}.${fixture.suffix}`,
@@ -384,7 +393,11 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 portable phase target adapter", () 
   test("binds and completes the canonical phases in exact order, then replays bytes", async () => {
     const fixture = await seed();
     const observed: PortablePhaseOperationKind[] = [];
-    const hook = completingHook(fixture, observed);
+    const artifactTransports: Array<Readonly<{
+      commandClaim: PortableCommandExecutionClaim;
+      manifestDigest: string;
+    }> | null> = [];
+    const hook = completingHook(fixture, observed, "completed", artifactTransports);
     const source = target(fixture, sourceTargetRef, hook);
     const destination = target(fixture, destinationTargetRef, hook);
 
@@ -439,6 +452,14 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 portable phase target adapter", () 
       "source-cleanup",
       "destination-activate",
     ]);
+    expect(artifactTransports).toEqual([
+      null,
+      null,
+      null,
+      { commandClaim: fixture.claim, manifestDigest: digestC },
+      null,
+      null,
+    ]);
     const rows: Array<{ kind: string; request_json: unknown }> = await sql`
       SELECT kind, request_json
       FROM khala_sync_portable_phase_operations
@@ -456,6 +477,7 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 portable phase target adapter", () 
         pylonRef,
       });
       expect(JSON.stringify(request)).not.toMatch(/checkpointBytes|\/Users\/|credential|token/i);
+      expect(JSON.stringify(request)).not.toContain("manifestDigest");
     }
   });
 

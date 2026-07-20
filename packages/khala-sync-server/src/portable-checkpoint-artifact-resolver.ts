@@ -134,6 +134,7 @@ type PhaseRow = Readonly<{
   result_checkpoint_ref: string | null;
   result_checkpoint_object_ref: string | null;
   result_checkpoint_digest: string | null;
+  result_checkpoint_manifest_digest: string | null;
   completed_at: Date | string | null;
 }>;
 
@@ -293,7 +294,8 @@ export class PortableCommittedCheckpointArtifactResolver {
           SELECT operation_ref, command_execution_claim_ref, owner_user_id, session_ref,
                  attachment_ref, attachment_generation, target_ref, pylon_ref, checkpoint_ref,
                  expires_at, state, result_ref, result_status, result_checkpoint_ref,
-                 result_checkpoint_object_ref, result_checkpoint_digest, completed_at
+                 result_checkpoint_object_ref, result_checkpoint_digest,
+                 result_checkpoint_manifest_digest, completed_at
           FROM khala_sync_portable_phase_operations
           WHERE command_execution_claim_ref = ${claim.claimRef} AND kind = 'checkpoint-create'
         `;
@@ -313,6 +315,8 @@ export class PortableCommittedCheckpointArtifactResolver {
           phase.result_checkpoint_ref !== scope.artifact.checkpointRef ||
           phase.result_checkpoint_object_ref !== scope.artifact.checkpointObjectRef ||
           phase.result_checkpoint_digest !== scope.artifact.checkpointDigest ||
+          phase.result_checkpoint_manifest_digest !==
+            scope.artifact.checkpointManifestDigest ||
           phase.completed_at === null ||
           new Date(phase.completed_at) > now ||
           new Date(phase.expires_at) <= new Date(phase.completed_at)
@@ -355,6 +359,8 @@ export class PortableCommittedCheckpointArtifactResolver {
       manifest.objectRef !== scope.artifact.checkpointObjectRef ||
       manifest.checkpointRef !== scope.artifact.checkpointRef ||
       manifest.checkpointDigest !== scope.artifact.checkpointDigest ||
+      scope.artifact.checkpointManifestDigest === null ||
+      digest(canonicalJson(manifest)) !== scope.artifact.checkpointManifestDigest ||
       !exact(manifest.commandClaim, claim) ||
       manifest.ownerRef !== claim.ownerRef ||
       manifest.sourcePylonRef !== phase.pylon_ref ||

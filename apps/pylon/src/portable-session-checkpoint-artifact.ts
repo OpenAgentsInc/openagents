@@ -554,6 +554,7 @@ export type PylonPortableCheckpointCustodyObject = Readonly<{
 
 export type PylonPortableCheckpointCustodyExportInput = Readonly<{
   checkpointRef: string
+  sourcePylonRef: string
   commandClaim: PortableCommandExecutionClaim
   byteLimit: number
 }>
@@ -1268,6 +1269,12 @@ export class PylonPortableCheckpointArtifactStore implements PortableCheckpointA
     validateArtifact(retained)
     const now = this.now().getTime()
     this.assertTransportClaim(input.commandClaim, bundle, now)
+    if (!SAFE_REF.test(input.sourcePylonRef)) {
+      throw new PylonPortableCheckpointArtifactError(
+        "invalid_binding",
+        "checkpoint custody transport source Pylon is invalid",
+      )
+    }
     const bytes = await this.readBounded(paths.encrypted, this.maximumEncryptedObjectBytes())
     try {
       if (bytes.byteLength > input.byteLimit) {
@@ -1303,7 +1310,7 @@ export class PylonPortableCheckpointArtifactStore implements PortableCheckpointA
         ciphertextDigest: this.ciphertextDigest(bytes),
         commandClaim: input.commandClaim,
         ownerRef: bundle.executionBinding.ownerRef,
-        sourcePylonRef: input.commandClaim.executorEnvironmentRef,
+        sourcePylonRef: input.sourcePylonRef,
         targetRef: input.commandClaim.destinationTargetRef,
         sessionRef: bundle.checkpoint.sessionRef,
         sourceAttachmentRef: bundle.checkpoint.sourceAttachmentRef,
@@ -1409,7 +1416,7 @@ export class PylonPortableCheckpointArtifactStore implements PortableCheckpointA
         manifest.checkpointDigest !== bundle.checkpoint.digest ||
         manifest.bundleDigest !== sha256(canonicalJson(bundle)) ||
         manifest.ownerRef !== bundle.executionBinding.ownerRef ||
-        manifest.sourcePylonRef !== manifest.commandClaim.executorEnvironmentRef ||
+        !SAFE_REF.test(manifest.sourcePylonRef) ||
         manifest.targetRef !== manifest.commandClaim.destinationTargetRef ||
         manifest.sessionRef !== bundle.checkpoint.sessionRef ||
         manifest.sourceAttachmentRef !== bundle.checkpoint.sourceAttachmentRef ||

@@ -72,6 +72,7 @@ type OperationRow = Readonly<{
   result_checkpoint_ref: string | null;
   result_checkpoint_object_ref: string | null;
   result_checkpoint_digest: string | null;
+  result_checkpoint_manifest_digest: string | null;
   result_destination_activation_receipt_json: unknown;
   result_evidence_refs_json: unknown;
   error_ref: string | null;
@@ -103,6 +104,7 @@ export type PortablePhaseTargetCheckpointArtifact = Readonly<{
   checkpointRef: string;
   checkpointObjectRef: string;
   checkpointDigest: string;
+  checkpointManifestDigest: string | null;
 }>;
 
 export type PostgresPortablePhaseTargetConfig = Readonly<{
@@ -129,6 +131,11 @@ export type PostgresPortablePhaseTargetConfig = Readonly<{
     result: Readonly<{
       status: "enqueued" | "replayed";
       operation: PortablePhaseOperationRecord;
+      /** Exact private-context transport binding for checkpoint-stage admission. */
+      artifactTransport: Readonly<{
+        commandClaim: PortableCommandExecutionClaim;
+        manifestDigest: string;
+      }> | null;
     }>,
   ) => Promise<void>;
 }>;
@@ -176,6 +183,7 @@ const recordFromRow = (row: OperationRow): PortablePhaseOperationRecord =>
     resultCheckpointRef: row.result_checkpoint_ref,
     resultCheckpointObjectRef: row.result_checkpoint_object_ref,
     resultCheckpointDigest: row.result_checkpoint_digest,
+    resultCheckpointManifestDigest: row.result_checkpoint_manifest_digest,
     resultDestinationActivationReceipt: parseJson(row.result_destination_activation_receipt_json),
     resultEvidenceRefs: parseJson(row.result_evidence_refs_json),
     errorRef: row.error_ref,
@@ -382,6 +390,7 @@ export class PostgresPortablePhaseTarget implements PortableSessionExecutionTarg
       checkpointRef?: string;
       checkpointObjectRef?: string;
       checkpointDigest?: string;
+      checkpointManifestDigest?: string | null;
     }>,
   ): Promise<PortablePhaseOperationRecord> {
     this.assertCommandScope(
@@ -412,7 +421,17 @@ export class PostgresPortablePhaseTarget implements PortableSessionExecutionTarg
     });
     try {
       const enqueued = await this.store.enqueue(request);
-      await this.config.onEnqueued?.(enqueued);
+      await this.config.onEnqueued?.({
+        ...enqueued,
+        artifactTransport:
+          kind === "checkpoint-stage" && input.checkpointManifestDigest !== null &&
+            input.checkpointManifestDigest !== undefined
+            ? {
+                commandClaim: this.claim,
+                manifestDigest: input.checkpointManifestDigest,
+              }
+            : null,
+      });
       return await this.awaitTerminal(request);
     } catch (error) {
       if (error instanceof PortablePhaseTargetError) throw error;
@@ -502,7 +521,8 @@ export class PostgresPortablePhaseTarget implements PortableSessionExecutionTarg
              worker_instance_ref, claim_generation, lease_revision, claimed_at,
              lease_expires_at, result_ref, result_fingerprint, result_status,
              result_checkpoint_ref, result_checkpoint_object_ref,
-             result_checkpoint_digest, result_destination_activation_receipt_json,
+             result_checkpoint_digest, result_checkpoint_manifest_digest,
+             result_destination_activation_receipt_json,
              result_evidence_refs_json, error_ref,
              completed_at, updated_at
       FROM khala_sync_portable_phase_operations
@@ -520,7 +540,8 @@ export class PostgresPortablePhaseTarget implements PortableSessionExecutionTarg
              worker_instance_ref, claim_generation, lease_revision, claimed_at,
              lease_expires_at, result_ref, result_fingerprint, result_status,
              result_checkpoint_ref, result_checkpoint_object_ref,
-             result_checkpoint_digest, result_destination_activation_receipt_json,
+             result_checkpoint_digest, result_checkpoint_manifest_digest,
+             result_destination_activation_receipt_json,
              result_evidence_refs_json, error_ref,
              completed_at, updated_at
       FROM khala_sync_portable_phase_operations
@@ -644,6 +665,7 @@ export class PostgresPortablePhaseTarget implements PortableSessionExecutionTarg
       checkpointRef: record.resultCheckpointRef,
       checkpointObjectRef: record.resultCheckpointObjectRef,
       checkpointDigest: record.resultCheckpointDigest,
+      checkpointManifestDigest: record.resultCheckpointManifestDigest,
     });
   }
 
