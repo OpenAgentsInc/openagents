@@ -193,6 +193,7 @@ def command_preexec(cpu_millis: int, max_processes: int) -> None:
 def execute_command(request: dict[str, Any], scratch: Path) -> dict[str, Any]:
     limits = request["limits"]
     relative = relative_path(request["cwd"])
+    canonical_cwd = WORKSPACE / relative if relative else WORKSPACE
     root_fd = os.open(WORKSPACE, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
     try:
         cwd_fd = open_beneath(root_fd, relative, os.O_RDONLY | os.O_DIRECTORY)
@@ -217,6 +218,9 @@ def execute_command(request: dict[str, Any], scratch: Path) -> dict[str, Any]:
                 "--bind",
                 str(WORKSPACE),
                 str(WORKSPACE),
+                "--bind",
+                f"/proc/self/fd/{cwd_fd}",
+                str(canonical_cwd),
                 "--tmpfs",
                 "/run",
                 "--proc",
@@ -227,7 +231,7 @@ def execute_command(request: dict[str, Any], scratch: Path) -> dict[str, Any]:
                 str(scratch),
                 "/tmp",
                 "--chdir",
-                f"/proc/self/fd/{cwd_fd}",
+                str(canonical_cwd),
                 "/bin/sh",
                 "-lc",
                 request["command"],

@@ -153,6 +153,10 @@ test "$(stat -c '%U:%G:%a' /var/lib/openagents/managed-sandbox-io)" = 'openagent
 test "$(stat -c '%U:%G:%a' /run/openagents-managed-sandbox/io)" = 'openagents:openagents:700'
 test -d /opt/openagents-managed-sandbox/node_modules/@openai/codex-sdk
 test -d /opt/openagents-managed-sandbox/node_modules/@anthropic-ai/claude-agent-sdk
+test "$(runuser -u openagents -- /usr/bin/bwrap \
+  --die-with-parent --unshare-net --unshare-pid --unshare-uts --unshare-ipc \
+  --ro-bind / / --bind /workspace /workspace --tmpfs /run --proc /proc \
+  --dev /dev --chdir /workspace /bin/pwd)" = '/workspace'
 systemctl is-active --quiet openagents-managed-sandbox-hostkeys.service
 systemctl is-active --quiet openagents-managed-sandbox-metadata-guard.service
 systemctl is-active --quiet ssh.service

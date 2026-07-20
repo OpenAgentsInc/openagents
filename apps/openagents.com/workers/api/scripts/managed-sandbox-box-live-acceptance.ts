@@ -456,7 +456,8 @@ try {
   if (
     !command.success ||
     command.exitCode !== 0 ||
-    command.stdout.trim() !== 'workspace'
+    command.cwd !== 'workspace' ||
+    command.stdout.trim() !== '/workspace'
   ) {
     throw new Error('bounded guest command failed')
   }
@@ -650,7 +651,11 @@ try {
         boxId,
         commandRequest: { command: 'pwd' },
       })
-      if (recovered.success && recovered.stdout.trim() === 'workspace') {
+      if (
+        recovered.success &&
+        recovered.cwd === 'workspace' &&
+        recovered.stdout.trim() === '/workspace'
+      ) {
         proof.guestCrashRecovery = true
         break
       }

@@ -11365,7 +11365,7 @@
       ]
     },
     "docs/cloud/INVARIANTS.md": {
-      "sourceSha256": "5eacf1c6ade8e69ea34d7b23918f7140d2787643fe2fe28d0eb999525c60a253",
+      "sourceSha256": "de9605dc6f217158a46822e3fa4ed9acd97a1a21d813e2381c6ffae50d75eeb3",
       "normativeKeywords": [
         "ONLY"
       ],
@@ -11375,7 +11375,9 @@
         "/dev/kvm",
         "/etc/machine-id",
         "/opt/agent/portable-session-control",
+        "/proc/self/fd/*",
         "/v1",
+        "/workspace",
         "0067",
         "169.254.169.254/32",
         "200",

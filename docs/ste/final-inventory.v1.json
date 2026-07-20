@@ -19115,7 +19115,7 @@
     },
     {
       "path": "docs/cloud/INVARIANTS.md",
-      "sha256": "5eacf1c6ade8e69ea34d7b23918f7140d2787643fe2fe28d0eb999525c60a253",
+      "sha256": "de9605dc6f217158a46822e3fa4ed9acd97a1a21d813e2381c6ffae50d75eeb3",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -19760,7 +19760,7 @@
     },
     {
       "path": "docs/cloud/bootstrap/SBX-05-managed-sandbox-guest-io.md",
-      "sha256": "dce2e8022e41eb35220adedc2ca42229b824db5cfd6708452ae334936883cada",
+      "sha256": "6f65df8129938e2b6dd83167c818c6d562b69a75d50576883deade236f378f14",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

@@ -52,6 +52,12 @@ The compatibility command has zero network bytes and the deny-all network
 policy. A success receipt requires a closed process tree, zero descendants,
 clean scratch, closed ingress, and denied egress.
 
+The wrapper opens the requested directory beneath the workspace root without
+following links, then rebinds that exact directory at the canonical guest path
+before execution. `pwd` therefore reports `/workspace` for the logical
+`workspace` cwd instead of exposing a private `/proc/self/fd/*` transport path.
+The sealed-image boot smoke runs this unprivileged Bubblewrap probe.
+
 The control guard places its driver in a process group. It kills that group if
 the driver exceeds the declared command deadline plus a short control margin.
 
@@ -150,7 +156,8 @@ suite checks the unmodified SDK, raw receipts, artifact headers, path faults,
 size faults, capability revoke, and private adapter digest check.
 
 The Rust suite checks every action. It also checks path, secret, quota,
-symlink, egress, process, digest, and deadline faults.
+symlink, egress, process, digest, and deadline faults. The transport suite and
+sealed-image smoke pin the canonical command cwd.
 
 ## Proof boundary
 

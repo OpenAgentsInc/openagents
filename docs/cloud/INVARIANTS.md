@@ -164,6 +164,9 @@ design context only.
   active capability, retry identity, time, and resource limits.
 - Guest paths stay beneath `workspace` through no-follow resolution. Absolute,
   dot, empty, backslash, NUL, parent, or unproven symlink paths refuse.
+- The guest command wrapper rebinds the already validated directory at its
+  canonical `/workspace` path before execution. A private `/proc/self/fd/*`
+  transport path must not become the command's observable working directory.
 - A command success requires a closed process tree and zero descendants. It
   also requires clean scratch, closed ingress, and denied egress. CPU,
   duration, output, process count, and network use must remain within bounds.

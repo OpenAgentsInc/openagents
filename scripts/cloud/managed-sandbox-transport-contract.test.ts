@@ -40,5 +40,17 @@ describe('managed-sandbox guest transport contract', () => {
     expect(source).toContain(
       "stat -c '%U:%G:%a' /run/openagents-managed-sandbox/io",
     )
+    expect(source).toContain("--chdir /workspace /bin/pwd)\" = '/workspace'")
+  })
+
+  test('guest commands rebind the validated cwd at the canonical workspace path', () => {
+    const source = readFileSync(
+      resolve(import.meta.dirname, 'managed-sandbox-guest-io.py'),
+      'utf8',
+    )
+    expect(source).toContain('canonical_cwd = WORKSPACE / relative if relative else WORKSPACE')
+    expect(source).toContain('f"/proc/self/fd/{cwd_fd}",')
+    expect(source).toContain('str(canonical_cwd),')
+    expect(source).not.toContain('"--chdir",\n                f"/proc/self/fd/{cwd_fd}",')
   })
 })
