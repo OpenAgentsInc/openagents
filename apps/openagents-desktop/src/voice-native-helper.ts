@@ -9,6 +9,15 @@ export const VoiceHelperRelativePath = path.join("native", process.arch, "oa-des
 export type VoiceHelperManifest = Readonly<{ protocolVersion: 1; helperVersion: string; architecture: string; sha256: string }>
 
 export const resolveVoiceHelperPath = (resourcesPath: string): string => path.join(resourcesPath, VoiceHelperRelativePath)
+// Integrity model (fix for #9155): electron-forge codesigns the in-bundle
+// Mach-O AFTER `build.ts` records its sha256 into the manifest, so a signed
+// binary's runtime bytes never match the pinned pre-sign digest. In a signed,
+// notarized bundle the `codesign --verify --strict` check (plus Gatekeeper over
+// the whole bundle) is the authoritative tamper protection, so a valid
+// signature ACCEPTS the helper without comparing the (expected-to-differ)
+// sha256. Only an unsigned or broken-signature binary (dev builds) falls back
+// to the sha256 pin, which still detects tampering against the exact unsigned
+// build output.
 export const verifyVoiceHelper = (input: Readonly<{
   resourcesPath: string
   manifest: VoiceHelperManifest
@@ -18,9 +27,14 @@ export const verifyVoiceHelper = (input: Readonly<{
   if (input.manifest.protocolVersion !== 1 || input.manifest.architecture !== process.arch) throw new Error("voice_helper_manifest_mismatch")
   const stats = statSync(absolutePath)
   if (!stats.isFile() || (stats.mode & 0o111) === 0) throw new Error("voice_helper_not_executable")
+  // A valid, intact OS code signature is authoritative (the production, signed
+  // case). Do NOT compare sha256 here: the pinned pre-sign digest is expected
+  // to differ from the codesigned binary.
+  if (input.verifySignature(absolutePath)) return absolutePath
+  // Unsigned/dev build (or a genuinely broken signature): fall back to the
+  // sha256 pin against the exact unsigned build output.
   const digest = createHash("sha256").update(readFileSync(absolutePath)).digest("hex")
   if (digest !== input.manifest.sha256) throw new Error("voice_helper_digest_mismatch")
-  if (!input.verifySignature(absolutePath)) throw new Error("voice_helper_signature_invalid")
   return absolutePath
 }
 

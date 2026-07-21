@@ -39,11 +39,19 @@ const fakeChild = (): { child: AppleFmChildProcess; killed: () => number } => {
 }
 
 describe("Apple FM packaged helper oracle", () => {
-  test("verifies architecture path, executable mode, digest, and signature", () => {
+  test("makes the code signature authoritative and demotes sha256 to an unsigned-only fallback", () => {
     const { resourcesPath, helper, manifest } = stageHelper()
+    // Baseline: valid signature + matching digest is accepted.
     expect(verifyAppleFmHelper({ resourcesPath, manifest, verifySignature: (candidate) => candidate === helper })).toBe(helper)
-    expect(() => verifyAppleFmHelper({ resourcesPath, manifest: { ...manifest, sha256: "0".repeat(64) }, verifySignature: () => true })).toThrow("apple_fm_helper_digest_mismatch")
-    expect(() => verifyAppleFmHelper({ resourcesPath, manifest, verifySignature: () => false })).toThrow("apple_fm_helper_signature_invalid")
+    // #9155 regression pin: a validly-signed binary whose runtime bytes no
+    // longer match the pinned PRE-SIGN digest (codesign rewrote the Mach-O)
+    // is ACCEPTED. The signature is authoritative; sha256 is NOT compared.
+    expect(verifyAppleFmHelper({ resourcesPath, manifest: { ...manifest, sha256: "0".repeat(64) }, verifySignature: () => true })).toBe(helper)
+    // Unsigned/dev build: fall back to the sha256 pin. A matching digest is
+    // accepted; a mismatch is rejected with the typed digest error.
+    expect(verifyAppleFmHelper({ resourcesPath, manifest, verifySignature: () => false })).toBe(helper)
+    expect(() => verifyAppleFmHelper({ resourcesPath, manifest: { ...manifest, sha256: "0".repeat(64) }, verifySignature: () => false })).toThrow("apple_fm_helper_digest_mismatch")
+    // Manifest/architecture mismatch is still rejected before any body read.
     expect(() => verifyAppleFmHelper({ resourcesPath, manifest: { ...manifest, architecture: "sparc" }, verifySignature: () => true })).toThrow("apple_fm_helper_manifest_mismatch")
   })
 
@@ -97,7 +105,7 @@ describe("Apple FM packaged launcher", () => {
     expect(outcome).toMatchObject({ kind: "helper_missing", blockerRef: "blocker.apple_fm.helper_missing" })
   })
 
-  test("a tampered helper (bad signature) is failed, not adopted or launched", async () => {
+  test("a tampered unsigned helper (bad signature and mismatched digest) is failed, not adopted or launched", async () => {
     const { resourcesPath, manifest } = stageHelper()
     const launcher = createPackagedAppleFmLauncher({
       resourcesPath,
@@ -105,10 +113,34 @@ describe("Apple FM packaged launcher", () => {
       supported,
       probe: notReadyProbe,
       spawnHelper: () => fakeChild().child,
-      loadManifest: () => manifest,
+      // Unsigned AND the pinned digest no longer matches the bytes on disk:
+      // the sha256 fallback catches the tamper and fails closed.
+      loadManifest: () => ({ ...manifest, sha256: "0".repeat(64) }),
     })
     const outcome = await launcher.launch({ onCrash: () => {} })
-    expect(outcome).toMatchObject({ kind: "failed", failureClass: "apple_fm_helper_signature_invalid" })
+    expect(outcome).toMatchObject({ kind: "failed", failureClass: "apple_fm_helper_digest_mismatch" })
+  })
+
+  test("a validly-signed helper whose digest differs from the manifest is launched (the #9155 signed-build case)", async () => {
+    const { resourcesPath, manifest } = stageHelper()
+    const spawn = fakeChild()
+    let probes = 0
+    const launcher = createPackagedAppleFmLauncher({
+      resourcesPath,
+      verifySignature: () => true,
+      supported,
+      // adopt probe (not ready), then poll probe (ready).
+      probe: async () => { probes += 1; return probes <= 1 ? { status: "unreachable" as const, ready: false } : { status: "ready" as const, ready: true, model: "apple-foundation-model", profileId: "apple-fm-local", usageTruth: "estimated" as const } },
+      spawnHelper: () => spawn.child,
+      // Codesigning rewrote the Mach-O after the pre-sign digest was pinned.
+      loadManifest: () => ({ ...manifest, sha256: "0".repeat(64) }),
+      sleep: async () => {},
+      pollIntervalMs: 1,
+      readinessTimeoutMs: 1_000,
+    })
+    const outcome = await launcher.launch({ onCrash: () => {} })
+    expect(outcome.kind).toBe("session")
+    if (outcome.kind === "session") expect(outcome.session.mode).toBe("launched")
   })
 
   test("verifies, spawns, and polls to readiness, returning a launched session", async () => {
