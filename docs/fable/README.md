@@ -34,6 +34,10 @@ each source doc.
 - [`2026-07-20-ai-sdk-harness-abstraction-harvest-analysis.md`](./2026-07-20-ai-sdk-harness-abstraction-harvest-analysis.md)
   — the Vercel AI SDK harness-layer harvest that produced
   `packages/agent-harness-contract` (HARN epic #9115, shipped).
+- [`2026-07-21-effect-native-openagents-ai-sdk-analysis.md`](./2026-07-21-effect-native-openagents-ai-sdk-analysis.md)
+  — the Effect-native OpenAgents AI SDK analysis: the publishable layer
+  diagram, the staged-incubation placement decision (in-monorepo now,
+  `@openagentsinc/ai` identity, criteria-gated extraction), and AISDK-01..07.
 - [`2026-07-21-ai-sdk-and-effect-ai-streaming-harvest-audit.md`](./2026-07-21-ai-sdk-and-effect-ai-streaming-harvest-audit.md)
   — the deeper AI SDK + Effect AI streaming pass: the ranked STREAM-01..07
   live-to-UI harvest plan, with the runtime map in

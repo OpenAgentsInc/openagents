@@ -24034,6 +24034,20 @@
       }
     },
     {
+      "path": "docs/fable/2026-07-21-effect-native-openagents-ai-sdk-analysis.md",
+      "sha256": "9c573bf0b4d987b9d2eb02d33f85170358aaee5a018ac4e1ff34214beb3b6643",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "ste_status": "source-data",
+        "ste_reviewer": null,
+        "ste_reviewed_at": null,
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null
+      }
+    },
+    {
       "path": "docs/fable/EXECUTION.md",
       "sha256": "fcbc4954cb55d3d2185a95ae814d1656e542406feb748167031a2abfcab2a69c",
       "reason": "Final review of a converted document",
@@ -24079,7 +24093,7 @@
     },
     {
       "path": "docs/fable/README.md",
-      "sha256": "db57ff07ff41abcf29f5ae956511b2a34ee9816434a08008b6707d0327e18610",
+      "sha256": "cdd527ee6020bebf65d7df547a96874c99be33a8eadfc1bb53b73f0cb501bfa7",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
