@@ -14779,6 +14779,19 @@
       ]
     },
     {
+      "path": "docs/apple-fm/2026-07-21-afs-11-packaged-disposition.md",
+      "ste_issue": 9,
+      "ste_mode": "source-data",
+      "ste_glossary_revision": "openagents-ste-glossary-v1",
+      "ste_status": "source-data",
+      "ste_reviewer": null,
+      "ste_reviewed_at": null,
+      "owner": "OpenAgents documentation",
+      "risk": "source-data",
+      "source": "Immutable historical or evidence source data",
+      "replacement": null
+    },
+    {
       "path": "docs/apple-fm/apple-fm-cli.md",
       "ste_issue": 9,
       "ste_mode": "descriptive",

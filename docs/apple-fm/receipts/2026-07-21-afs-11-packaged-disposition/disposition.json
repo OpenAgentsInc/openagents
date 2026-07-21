@@ -1,0 +1,115 @@
+{
+  "schema": "openagents.afs11.packaged_disposition.v1",
+  "recordedAt": "2026-07-21T23:03:42Z",
+  "sourceRevision": "fe89a057cb6a9a8621fcc50c3b6c46f5d6d4a95d",
+  "includesFix9155": [
+    "0919324b30",
+    "957e646f70"
+  ],
+  "packagedApp": {
+    "path": "apps/openagents-desktop/out/OpenAgents-darwin-arm64/OpenAgents.app",
+    "signature": "adhoc",
+    "bundleIdHint": "com.github.Electron (package mode)",
+    "helperManifestSha256": "eeec8f8149f515212035fe397aeb08fba865ef911ee742f77a5029cd6d926e92",
+    "helperActualSha256": "eeec8f8149f515212035fe397aeb08fba865ef911ee742f77a5029cd6d926e92",
+    "helperDigestMatchesManifest": true,
+    "codesignDv": [
+      "Executable=/Users/christopherdavid/work/openagents-wt-afs11-9089/apps/openagents-desktop/out/OpenAgents-darwin-arm64/OpenAgents.app/Contents/MacOS/OpenAgents",
+      "Identifier=com.github.Electron",
+      "Format=app bundle with Mach-O thin (arm64)",
+      "CodeDirectory v=20400 size=300 flags=0x2(adhoc) hashes=3+3 location=embedded",
+      "Signature=adhoc",
+      "Info.plist=not bound",
+      "TeamIdentifier=not set",
+      "Sealed Resources version=2 rules=13 files=90",
+      "Internal requirements count=0 size=12"
+    ]
+  },
+  "stockSigned010": {
+    "path": "/Applications/OpenAgents.app",
+    "version": "0.1.0",
+    "teamId": "HQWSG26L43",
+    "helperDigestMatchesManifest": false,
+    "helperSignatureValid": true,
+    "asarIncludes9155Fix": false,
+    "residual": "Stock stable 0.1.0 still ships pre-#9155 verify order; Apple FM stays APPLE_FM_HELPER_DIGEST_MISMATCH until a rebuilt signed release ships the fix."
+  },
+  "bootSequence": {
+    "summary": "4 agents ready",
+    "agents": [
+      {
+        "id": "codex",
+        "status": "available",
+        "detail": "gpt-5.6-sol"
+      },
+      {
+        "id": "claude-code",
+        "status": "available",
+        "detail": "claude-fable-5"
+      },
+      {
+        "id": "grok",
+        "status": "available",
+        "detail": "grok-default"
+      },
+      {
+        "id": "apple-fm",
+        "status": "available",
+        "detail": "apple-foundation-model"
+      }
+    ]
+  },
+  "delegation": {
+    "observedUi": [
+      "DELEGATED AGENTS 0 done \u00b7 1 running",
+      "Codex subagent card data-status=running",
+      "promoted answer with via Codex subagent"
+    ],
+    "journal": {
+      "schema": "openagents.desktop.agent_turn_journal.v1",
+      "records": [
+        {
+          "schema": "openagents.agent_turn_store_record.v1",
+          "requestRef": "request.319f78ef-75bb-4cb5-9cef-298282690d1e",
+          "threadRef": "db3f55d4-6a63-4b25-95b8-2436a87fc974",
+          "state": "completed",
+          "generation": 0,
+          "providerTurnRef": "providerturn.apple_fm.1",
+          "selected": "provider.apple_fm.local",
+          "effective": "provider.apple_fm.local",
+          "candidateRef": "candidate.apple_fm.1",
+          "refusalReason": null,
+          "failureReason": null,
+          "progressCount": 1
+        },
+        {
+          "schema": "openagents.agent_turn_store_record.v1",
+          "requestRef": "request.codex.96b63b89-aaab-4ad4-b3ff-1147e465be90",
+          "threadRef": "db3f55d4-6a63-4b25-95b8-2436a87fc974",
+          "state": "completed",
+          "generation": 0,
+          "providerTurnRef": "providerturn.codex.1",
+          "selected": "provider.codex.local",
+          "effective": "provider.codex.local",
+          "candidateRef": "candidate.codex.request.codex.96b63b89-aaab-4ad4-b3ff-1147e465be90",
+          "refusalReason": null,
+          "failureReason": null,
+          "progressCount": 104
+        }
+      ]
+    },
+    "threadTitle": "Use codex-local to list the top-level files in this workspace and reply with onl",
+    "assistantProvider": "codex"
+  },
+  "fixedVerifyAgainstStockHelper": {
+    "ok": true,
+    "path": "/Applications/OpenAgents.app/Contents/Resources/native/arm64/foundation-bridge",
+    "note": "verifyAppleFmHelper from main accepts the stock signed helper when codesign --verify --strict passes, even though sha256 mismatches the pre-sign manifest pin."
+  },
+  "smoke": {
+    "packagedSmokeCommand": "OPENAGENTS_DESKTOP_SMOKE=1 OPENAGENTS_DESKTOP_ISOLATED_APP_PROOF=1 OPENAGENTS_DESKTOP_USER_DATA=<tmp> OpenAgents.app/Contents/MacOS/OpenAgents",
+    "packagedSmokeResult": "OK (all steps green; smoke mode intentionally disables live Apple FM)",
+    "liveLaunchCommand": "OPENAGENTS_DESKTOP_ISOLATED_APP_PROOF=1 OPENAGENTS_DESKTOP_USER_DATA=<tmp> OpenAgents.app/Contents/MacOS/OpenAgents --remote-debugging-port=9333",
+    "liveResult": "4 agents ready; codex-local card running\u2192done (journal completed for apple_fm + codex.local)"
+  }
+}

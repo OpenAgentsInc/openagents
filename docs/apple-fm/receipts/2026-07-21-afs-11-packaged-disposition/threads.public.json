@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "threadCount": 1,
+  "threads": [
+    {
+      "id": "db3f55d4-6a63-4b25-95b8-2436a87fc974",
+      "title": "Use codex-local to list the top-level files in this workspace and reply with onl",
+      "createdAt": "2026-07-21T22:57:22.156Z",
+      "updatedAt": "2026-07-21T22:57:45.706Z",
+      "notes": [
+        {
+          "key": "c53f860c-5a3a-43cf-8a23-91bfbd5185b5-user",
+          "role": "user",
+          "text": "Use codex-local to list the top-level files in this workspace and reply with only the file names. Do not invent paths.",
+          "timestamp": "05:57 PM",
+          "meta": null
+        },
+        {
+          "key": "7290e5d4-6ebb-4eba-ba5d-380229d52dc3-assistant",
+          "role": "assistant",
+          "text": ".gcloudignore\n.git\n.gitignore\n.node-version\n.npmrc\nAGENTS.md\nAUTHORITY.md\nCargo.lock\nCargo.toml\nDESIGN.md\nFASTFOLLOW.md\nINSTALL.md\nINVARIANTS.md\nLICENSE\nNEEDS_OWNER.md\nPRODUCT.md\nREADME.md\npackage.json\npnpm-lock.yaml\npnpm-workspace.yaml\nskills-lock.json\ntsconfig.json\nvite.config.ts",
+          "timestamp": "05:57 PM",
+          "meta": {
+            "provider": "codex",
+            "model": "openai/codex",
+            "dataDestination": "remote_provider",
+            "usageTruth": "exact"
+          }
+        }
+      ]
+    }
+  ]
+}

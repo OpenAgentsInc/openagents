@@ -15179,7 +15179,7 @@
     },
     {
       "path": "docs/apple-fm/2026-07-20-afs-11-release-evidence.md",
-      "sha256": "9a4d8cda4c7f89559c547f50fcffc0064c70239182d5d0c143a131734a439422",
+      "sha256": "10da0c048077a2e2860d0e691b4bf7c086568b7d050bac90733345a9b229177e",
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
@@ -15262,6 +15262,18 @@
         "ste_status": "inspected",
         "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
         "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/apple-fm/2026-07-21-afs-11-packaged-disposition.md",
+      "sha256": "13f3d477f455e2a4cf67692599d6e57900761e737b2613f5569d005000ff3364",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null,
+        "ste_status": "source-data"
       }
     },
     {

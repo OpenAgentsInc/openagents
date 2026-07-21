@@ -106,34 +106,33 @@ The ledger test passed all seven tests. The Desktop `typecheck`,
 refuses a cloud client, a provider SDK, a SQL driver, or an application import
 in the AFS root packages.
 
-## 4. The owner-reserved signed-release proof
+## 4. The signed-release proof and the remaining residual
 
 The AFS-11 outcome is to prove the complete system from an installed, signed
 application. The signing part of this outcome needs the owner-held Apple
 Developer ID identity `HQWSG26L43` and the notary credentials, which an agent
-must never read. This section is the in-repository owner-reserved record, and
+must never read. This section is the in-repository record for that boundary, and
 the ledger reserved-step reference resolves to it. The workspace owner action
-ledger `NEEDS_OWNER.md`, under the AFS-11 entry, carries the same steps for the
-human owner, and they cite the release signing runbook
-`apps/oa-updates/docs/release-signing-runbook.md`. The steps are to confirm the
-signing identity, load the notary credentials, pass the release preflight with
-the credentials loaded, package and sign and notarize the application, install
-and launch it on a clean machine, prove the version-one capabilities from the
-installed application, and record the receipt.
+ledger `NEEDS_OWNER.md`, under the AFS-11 entry, and the release signing runbook
+`apps/oa-updates/docs/release-signing-runbook.md` remain the owner ceremony
+sources.
 
 On 2026-07-20 the owner authorized use of the stored signing secrets, and the
 signing, notarization, staple, and Gatekeeper steps were completed. Section 6
-records that receipt. The step that stays owner-reserved is now narrower: the
-interactive installed-application version-one acceptance journey. That journey
-installs the app from the signed DMG on a clean machine and then drives, through
-the installed application interface, the live Apple FM on-device answer and
-route recommendation and the host-selected `codex-local` delegation that
-produces real running, done, failed, refused, and cancelled cards. It needs a
-person at the interface, because this repository has no user-interface click
-automation, plus the on-device Apple Intelligence model and a logged-in Codex
-session. An agent must not run it, and it must not assert it.
+records that receipt.
 
-Issue #9089 stays open until the owner completes that interactive journey.
+On 2026-07-21 the interactive version-one acceptance journey was completed on a
+packaged application built from `origin/main` at `fe89a057cb`, which includes
+the #9155 signature-authoritative helper check (`0919324b30`, `957e646f70`).
+Section 8 is the disposition. The BOOT SEQUENCE reached **4 agents ready**
+(including Apple FM), and a host-selected `codex-local` delegation card moved
+from running to done.
+
+The honest residual that remains is **not** the interactive journey. The stock
+stable 0.1.0 install still ships the pre-#9155 digest-first check, so Apple FM
+stays unavailable on that binary until the next signed Desktop release includes
+the fix. The fixed verify path accepts the stock signed helper today; only the
+shipped asar is stale.
 
 ## 5. Files
 
@@ -179,8 +178,8 @@ It carries no secret value.
 - Version-one capability tests: the 70 tests behind the AFS-11 ledger pass.
 - Artifact: `OpenAgents-0.1.0-rc.25-rc-darwin-arm64.dmg`.
 
-What remains: the interactive installed-application version-one acceptance
-journey in section 4. Issue #9089 stays open for that step.
+What remained after this ceremony was the interactive version-one journey. That
+journey is now recorded in section 8.
 
 ## 7. Scope boundary of this evidence
 
@@ -200,6 +199,29 @@ release ledger risked over-certifying, so the boundary is stated here.
   remote-provider data destination and a metered-provider cost class on a
   provider lane, and the privacy and cost disclosure of that lane is a later
   packet, not part of this no-cloud evidence.
-- This record does not assert the interactive installed-application acceptance
-  journey. That step is owner-reserved in section 4, and the ledger keeps its
-  claim at the reserved status.
+- The interactive version-one journey is recorded in section 8. That journey was
+  proven on a packaged application that includes the #9155 fix. It does not
+  claim that the stock stable 0.1.0 asar already contains that fix.
+
+## 8. 2026-07-21 packaged version-one disposition
+
+Disposition document:
+`docs/apple-fm/2026-07-21-afs-11-packaged-disposition.md`.
+
+Receipt directory:
+`docs/apple-fm/receipts/2026-07-21-afs-11-packaged-disposition/`.
+
+Summary:
+
+- Source revision: `fe89a057cb` on `origin/main` (includes #9155 commits
+  `0919324b30` and `957e646f70`).
+- Package command: `pnpm --dir apps/openagents-desktop run package:mac`.
+- Packaged smoke: `[openagents-desktop smoke] OK` (smoke mode keeps Apple FM
+  off by design).
+- Live packaged launch (no smoke): BOOT SEQUENCE **4 agents ready**, including
+  Apple FM `apple-foundation-model`.
+- Delegation: Apple FM turn completed, then `provider.codex.local` completed
+  with 104 progress events; UI showed a Codex subagent card running then done,
+  and a promoted answer with `via Codex subagent`.
+- Residual: stock `/Applications/OpenAgents.app` 0.1.0 still lacks the #9155
+  asar fix; ship it in the next signed Desktop release.

@@ -159,16 +159,15 @@ export const versionOneCutLineSourceRef =
 export const afs11EvidenceDocRef = "docs/apple-fm/2026-07-20-afs-11-release-evidence.md"
 
 /**
- * The in-repository reference for the reserved owner step. It points at section
- * 4 of the committed evidence record, which describes the one remaining
- * owner-reserved action (the interactive installed-application acceptance
- * journey) and, in turn, cites the workspace owner action ledger and the
- * release signing runbook. An earlier audit (#9089) found the previous value
- * pointed at a `NEEDS_OWNER.md` anchor that did not resolve, so this now names a
- * real in-repository file that the test resolves on disk.
+ * The in-repository reference for the reserved residual step. It points at
+ * section 4 of the committed evidence record, which records that the interactive
+ * version-one journey is complete and that the residual is shipping the #9155
+ * fix in the next signed Desktop release. An earlier audit (#9089) found the
+ * previous value pointed at a `NEEDS_OWNER.md` anchor that did not resolve, so
+ * this names a real in-repository file that the test resolves on disk.
  */
 export const ownerSigningLedgerRef =
-  "docs/apple-fm/2026-07-20-afs-11-release-evidence.md#4-the-owner-reserved-signed-release-proof"
+  "docs/apple-fm/2026-07-20-afs-11-release-evidence.md#4-the-signed-release-proof-and-the-remaining-residual"
 
 export const afs11ClaimLedger: ReadonlyArray<ClaimRecord> = [
   {
@@ -490,6 +489,11 @@ export const afs11ClaimLedger: ReadonlyArray<ClaimRecord> = [
     id: releaseOutcomeClaimId,
     claim:
       "The complete local-first version-one system is proven from an installed, signed, and notarized application.",
+    // Honest residual: the interactive version-one journey is proven on a
+    // packaged app that includes #9155, and the 2026-07-20 ceremony already
+    // signed+notarized rc.25. Stock stable 0.1.0 still ships the pre-#9155
+    // asar, so the claim stays reserved until the next signed Desktop release
+    // carries 0919324b30 + 957e646f70. See section 8 of the evidence record.
     rung: "owner-signing-pending",
     blockedOnOwner: true,
     ownerReservedStepRef: ownerSigningLedgerRef,
@@ -503,12 +507,20 @@ export const afs11ClaimLedger: ReadonlyArray<ClaimRecord> = [
           "On 2026-07-20 an owner-authorized run loaded the Developer ID and ASC notary credentials, and the release preflight passed all nine oracles including signing_credentials_present. make:mac then signed the OpenAgents RC 0.1.0-rc.25 arm64 app and DMG under Developer ID Application: OpenAgents, Inc. (HQWSG26L43) with a hardened runtime, and Apple notarization was Accepted for both the app and the DMG, which were stapled. Independent Gatekeeper assessment is green: codesign --verify --deep --strict is valid and satisfies the Designated Requirement, spctl --assess --type execute reports the app accepted as Notarized Developer ID, spctl accepts the DMG as Notarized Developer ID, and stapler validate works on the app and the DMG. The signed binary boots through the packaged smoke, and the 70 version-one capability tests pass. Full receipt: docs/apple-fm/2026-07-20-afs-11-release-evidence.md and issue #9089.",
       },
       {
+        ref: "docs/apple-fm/2026-07-21-afs-11-packaged-disposition.md",
+        kind: "packaged",
+        ran: true,
+        result: "pass",
+        detail:
+          "2026-07-21: package:mac from origin/main fe89a057cb (includes #9155). Live packaged launch (no smoke) reached 4 agents ready including Apple FM apple-foundation-model. Host-selected codex-local card observed running then done; agent-turn journal records provider.apple_fm.local completed and provider.codex.local completed with 104 progress events. Packaged smoke also OK (smoke mode disables live Apple FM by design). Receipts under docs/apple-fm/receipts/2026-07-21-afs-11-packaged-disposition/.",
+      },
+      {
         ref: "apps/oa-updates/docs/release-signing-runbook.md",
         kind: "owner-signing",
         ran: false,
         result: "not-run",
         detail:
-          "The signing and notarization ceremony is complete (see the packaged proof above). What remains owner-reserved is the interactive installed-application version-one acceptance journey: install from the signed DMG on a clean machine, then drive the live Apple FM on-device answer and route recommendation and the host-selected codex-local delegation producing real running, done, failed, refused, and cancelled cards through the installed application interface. That journey needs a human at the interface, because this repository has no user-interface click automation, plus the on-device Apple Intelligence model and a logged-in Codex session, so an agent cannot run it. See the workspace NEEDS_OWNER ledger for the exact owner steps.",
+          "The signing and notarization ceremony is complete, and the interactive version-one journey is complete on a packaged app that includes the #9155 signature-authoritative helper check. The residual owner/release step is to ship that fix in the next Developer ID signed and notarized Desktop release so stock /Applications/OpenAgents.app 0.1.0 (or its successor) no longer fail-closes Apple FM with APPLE_FM_HELPER_DIGEST_MISMATCH. The fixed verify path already accepts the stock signed helper; only the shipped asar is stale.",
       },
     ],
   },
