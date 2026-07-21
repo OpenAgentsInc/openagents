@@ -46618,7 +46618,7 @@
     },
     {
       "path": "packages/agent-harness-contract/README.md",
-      "sha256": "afe458c18b360100ffb7b8de288223a72a3d83eee0746c2dd4553a6d8582aa55",
+      "sha256": "4dbd75312c129bd226f7d97d998b655396b20dd6bdefbb62b8ffd6a52af95fc2",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -47916,6 +47916,24 @@
         "ste_status": "inspected",
         "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
         "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "packages/history-corpus/README.md",
+      "sha256": "a608295195ee3ef9cc9197a320ea5f2984c69b11ce4044aadd0d7363ab7e25c4",
+      "reason": "Final review of mutable first-party agent technical text",
+      "profile": {
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ]
       }
     },
     {

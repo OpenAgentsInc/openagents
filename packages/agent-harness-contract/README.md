@@ -92,6 +92,13 @@ package is HARN-01 of the HARN epic (#9115).
   resolves paths beneath the session workspace, and omits `getPortUrl` (no port
   infrastructure). This is the owner-local cheap-isolation rung.
 
+- **`ui-message-chunk.ts`** and **`ui-message-reducer.ts`** (STREAM-02 #9130)
+  — the core live-to-UI layer. `khalaEventToUiChunks` projects the neutral
+  stream onto a 16-type Schema-encodable chunk vocabulary with send-flag and
+  visibility gating. Chunks carry only refs and safe text, never raw payloads.
+  `applyUiChunk` is the pure progressive fold with the tool-call state machine.
+  `reduceUiMessageStream` holds snapshots in a `SubscriptionRef` so a renderer
+  reads the current value and the change stream from one source.
 - **`smooth-stream.ts`** (STREAM-04 #9132) — a generic pacing operator for
   delta streams. Text deltas re-chunk at word, line, or regex boundaries and
   emit paced. Non-text elements flush the buffer and pass through unpaced.

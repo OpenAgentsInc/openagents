@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:37ad5826e11a8d6a119c3a4e247f90928c72c52e8961e6d973732a08cd0e5d94",
+  "sourceDigest": "sha256:0bf97a9718dcd17e6f91f873fc5a4feb54f460296e7933e9ac2e3329a0523d28",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -1618,7 +1618,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "packages/agent-harness-contract (11 tracked test files)"
+          "ref": "packages/agent-harness-contract (13 tracked test files)"
         }
       ],
       "obligation": {
@@ -2216,6 +2216,23 @@
         {
           "type": "test",
           "ref": "packages/harness-conformance (1 tracked test file)"
+        }
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
+    },
+    {
+      "id": "package:@openagentsinc/history-corpus",
+      "kind": "package",
+      "owningPath": "packages/history-corpus",
+      "title": "@openagentsinc/history-corpus",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/history-corpus (2 tracked test files)"
         }
       ],
       "obligation": {
@@ -3294,17 +3311,17 @@
     }
   ],
   "summary": {
-    "totalSurfaces": 172,
+    "totalSurfaces": 173,
     "byKind": {
       "app": 16,
       "crate": 6,
       "document": 48,
-      "package": 90,
+      "package": 91,
       "public-endpoint": 2,
       "release-pipeline": 9,
       "worker": 1
     },
-    "withOracle": 157,
+    "withOracle": 158,
     "unverified": 15,
     "byUnverifiedReason": {
       "config-only": 2,
@@ -3312,7 +3329,7 @@
       "reference-only": 2
     },
     "byObligationState": {
-      "designed": 123,
+      "designed": 124,
       "inconclusive": 10,
       "mapped": 34,
       "out-of-scope": 5

@@ -30,7 +30,9 @@
     "./local-sandbox-provider": "./src/local-sandbox-provider.ts",
     "./local-process-sandbox-provider": "./src/local-process-sandbox-provider.ts",
     "./partial-object-stream": "./src/partial-object-stream.ts",
-    "./smooth-stream": "./src/smooth-stream.ts"
+    "./smooth-stream": "./src/smooth-stream.ts",
+    "./ui-message-chunk": "./src/ui-message-chunk.ts",
+    "./ui-message-reducer": "./src/ui-message-reducer.ts"
   },
   "publishConfig": {
     "access": "public"

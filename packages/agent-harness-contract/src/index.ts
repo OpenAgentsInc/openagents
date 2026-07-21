@@ -21,3 +21,5 @@ export * from "./local-sandbox-provider.ts";
 export * from "./local-process-sandbox-provider.ts";
 export * from "./partial-object-stream.ts";
 export * from "./smooth-stream.ts";
+export * from "./ui-message-chunk.ts";
+export * from "./ui-message-reducer.ts";
