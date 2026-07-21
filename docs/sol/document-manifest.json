@@ -2080,12 +2080,13 @@
       "reviewedAt": "2026-07-19",
       "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
       "inboundLinks": [
+        "docs/fable/2026-07-21-ai-sdk-and-effect-ai-streaming-harvest-audit.md",
         "docs/sol/2026-07-18-full-auto-asap-effect-harness-sprint-recommendation.md",
         "docs/sol/2026-07-18-openagents-desktop-vercel-ai-sdk-in-place-reset-audit.md",
         "docs/sol/2026-07-18-vercel-ai-sdk-source-derived-effect-conversion-audit.md",
         "docs/sol/README.md"
       ],
-      "inboundSourceCount": 4,
+      "inboundSourceCount": 5,
       "issueLinks": [
         9002
       ]
@@ -2254,12 +2255,13 @@
       "reviewedAt": "2026-07-19",
       "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
       "inboundLinks": [
+        "docs/fable/2026-07-21-ai-sdk-and-effect-ai-streaming-harvest-audit.md",
         "docs/sol/2026-07-18-electron-ai-sdk-codex-claude-full-auto-rewrite-roadmap.md",
         "docs/sol/2026-07-18-full-auto-asap-effect-harness-sprint-recommendation.md",
         "docs/sol/2026-07-18-openagents-desktop-vercel-ai-sdk-in-place-reset-audit.md",
         "docs/sol/README.md"
       ],
-      "inboundSourceCount": 4,
+      "inboundSourceCount": 5,
       "issueLinks": [
         8976,
         9000,
