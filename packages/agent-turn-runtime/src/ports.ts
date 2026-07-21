@@ -11,11 +11,14 @@ import type {
   RouteRecommendation,
   SafeMessageChainEntry,
   TurnCandidate,
+  TurnDataDestination,
   TurnIntent,
+  TurnProviderCandidate,
   TurnProviderRef,
   TurnRefusalReason,
   TurnRequestRef,
   TurnThreadRef,
+  TurnUsageTruth,
   WorkContextEnvelope,
 } from "@openagentsinc/agent-runtime-schema";
 
@@ -151,10 +154,26 @@ export class TurnJournal extends Context.Service<TurnJournal, TurnJournalInterfa
   "agent-turn-runtime.TurnJournal",
 ) {}
 
+/**
+ * Bounded provenance facts for a persisted assistant answer (#9127): the
+ * effective candidate/model plus its disclosure facts, copied from the
+ * completed candidate's provenance. The host adapter may project these into
+ * its own note metadata so a delegated answer stays attributed after reload.
+ * Never a helper path, account secret, URL, or token.
+ */
+export interface ThreadTurnMessageProvenance {
+  readonly candidate: TurnProviderCandidate;
+  readonly model: string;
+  readonly dataDestination: TurnDataDestination;
+  readonly usageTruth: TurnUsageTruth;
+}
+
 /** A bounded thread message the host persists as canonical turn state. */
 export interface ThreadTurnMessage {
   readonly role: "user" | "assistant";
   readonly text: string;
+  /** Present on an assistant answer produced by a completed provider turn. */
+  readonly provenance?: ThreadTurnMessageProvenance;
 }
 
 /**

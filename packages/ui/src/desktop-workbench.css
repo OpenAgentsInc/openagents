@@ -3020,6 +3020,14 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   min-width: 0;
 }
 
+/* #9127: honest routing disclosure on a promoted delegated answer — a small,
+   always-visible "via Claude subagent"-style label under the bubble. */
+.oa-react-assistant-attribution {
+  margin-top: var(--en-spacing-1);
+  color: var(--en-color-textFaint);
+  font-size: 11px;
+}
+
 .oa-react-assistant-message-actions {
   display: flex;
   align-items: center;

@@ -2156,3 +2156,233 @@ describe("streaming reasoning disclosure surfacing on timeline records (#8863 T6
     root.unmount();
   });
 });
+
+// ---------------------------------------------------------------------------
+// #9127: promote a SINGLE delegated agent's streaming reply to the primary
+// assistant bubble. The AFS delegation card (shell.ts `seedDelegationCard`,
+// note key `delegation-<requestRef>`) keeps the activity detail; the answer
+// (the last assistant entry of the redacted chain) renders as a normal
+// streaming assistant message with an honest "via <subagent>" attribution.
+// Multi-delegate turns keep today's card layout unchanged.
+// ---------------------------------------------------------------------------
+describe("single-delegate answer promotion (#9127)", () => {
+  const userNote = (key = "user-1", text = "Summarize the last reply") => ({
+    key,
+    role: "user" as const,
+    text,
+    timestamp: "05:40",
+  });
+
+  const delegationNote = (
+    overrides: Partial<{
+      key: string;
+      status: "running" | "completed" | "failed";
+      title: string;
+      transcript: ReadonlyArray<{ role: "user" | "assistant" | "system"; text: string }>;
+    }> = {},
+  ) => {
+    const { key, ...runtimeOverrides } = overrides;
+    return {
+      key: key ?? "delegation-request.claude.1",
+      role: "system" as const,
+      text: "",
+      timestamp: "05:41",
+      runtime: {
+        kind: "child" as const,
+        turnRef: "request.claude.1",
+        childRef: "codex",
+        status: "running" as const,
+        title: "Claude subagent",
+        detail: "Summarize the last reply",
+        steered: null,
+        transcript: [
+          { role: "user" as const, text: "Summarize the last reply" },
+          { role: "system" as const, text: "planning the summary" },
+          { role: "assistant" as const, text: "The reply says the tests are green." },
+        ],
+        ...runtimeOverrides,
+      },
+    };
+  };
+
+  test("a single delegate turn projects the streamed answer as a primary assistant record with attribution", () => {
+    const records = projectLocalTimelineRecords([userNote(), delegationNote()]);
+    expect(records).toHaveLength(3);
+    const card = records[1]!;
+    const bubble = records[2]!;
+    expect(card.kind).toBe("collaboration");
+    // The card keeps the activity detail but NOT a duplicate of the answer.
+    expect(card.runtimeChild?.transcript?.map((line) => line.text)).toEqual([
+      "Summarize the last reply",
+      "planning the summary",
+    ]);
+    expect(bubble.kind).toBe("local_message");
+    expect(bubble.label).toBe("Assistant");
+    expect(bubble.body).toBe("The reply says the tests are green.");
+    expect(bubble.status).toBe("running");
+    expect(bubble.attribution).toBe("via Claude subagent");
+  });
+
+  test("the promoted bubble tracks the GROWING streamed text (streaming lives on the bubble)", () => {
+    const grow = (text: string) =>
+      projectLocalTimelineRecords([
+        userNote(),
+        delegationNote({
+          transcript: [
+            { role: "user" as const, text: "Summarize the last reply" },
+            { role: "assistant" as const, text },
+          ],
+        }),
+      ]);
+    expect(grow("The reply")[2]!.body).toBe("The reply");
+    expect(grow("The reply says the tests")[2]!.body).toBe("The reply says the tests");
+  });
+
+  test("on completion the bubble settles with the final answer text", () => {
+    const records = projectLocalTimelineRecords([
+      userNote(),
+      delegationNote({ status: "completed" }),
+    ]);
+    const bubble = records[2]!;
+    expect(bubble.status).toBe("completed");
+    expect(bubble.body).toBe("The reply says the tests are green.");
+    expect(bubble.attribution).toBe("via Claude subagent");
+  });
+
+  test("a failed delegate turn promotes nothing: the card keeps its full transcript", () => {
+    const records = projectLocalTimelineRecords([userNote(), delegationNote({ status: "failed" })]);
+    expect(records).toHaveLength(2);
+    expect(records[1]!.runtimeChild?.transcript?.map((line) => line.text)).toContain(
+      "The reply says the tests are green.",
+    );
+  });
+
+  test("with no streamed assistant text yet, only the running card renders (no empty bubble)", () => {
+    const records = projectLocalTimelineRecords([
+      userNote(),
+      delegationNote({
+        transcript: [{ role: "user" as const, text: "Summarize the last reply" }],
+      }),
+    ]);
+    expect(records).toHaveLength(2);
+    expect(records[1]!.kind).toBe("collaboration");
+  });
+
+  test("multi-delegate turns keep today's card layout (no promotion)", () => {
+    const second = delegationNote({ key: "turn-1-child-child-9" });
+    const records = projectLocalTimelineRecords([userNote(), delegationNote(), second]);
+    expect(records).toHaveLength(3);
+    expect(records.every((entry) => entry.kind === "collaboration" || entry.label === "You")).toBe(
+      true,
+    );
+    // Both cards keep their full transcripts, answer included.
+    expect(records[1]!.runtimeChild?.transcript?.map((line) => line.text)).toContain(
+      "The reply says the tests are green.",
+    );
+  });
+
+  test("a Stack A collab child (non-AFS key) is never promoted", () => {
+    const records = projectLocalTimelineRecords([
+      userNote(),
+      delegationNote({ key: "turn-1-child-child-9" }),
+    ]);
+    expect(records).toHaveLength(2);
+    expect(records[1]!.kind).toBe("collaboration");
+  });
+
+  test("renders the streaming bubble as a normal assistant message and keeps the answer OUT of the card", async () => {
+    const { container } = installDom();
+    const root = createRoot(container);
+    const records = projectLocalTimelineRecords([userNote(), delegationNote()]);
+    root.render(
+      <ReactTimeline
+        sessionKey="thread-1"
+        records={records}
+        loadedItemCount={records.length}
+        offset={0}
+        totalItems={records.length}
+        loadingEdge={null}
+        report={report}
+      />,
+    );
+    await settle();
+    const bubble = container.querySelector<HTMLElement>(
+      '[data-timeline-key="delegation-request.claude.1:promoted-answer"]',
+    );
+    expect(bubble).not.toBeNull();
+    expect(bubble?.dataset.tone).toBe("assistant");
+    expect(bubble?.textContent).toContain("The reply says the tests are green.");
+    // Small, honest routing attribution on the bubble.
+    expect(bubble?.querySelector('[data-slot="assistant-attribution"]')?.textContent).toBe(
+      "via Claude subagent",
+    );
+    // The Worked/agent card keeps the activity but never a duplicate answer.
+    const card = container.querySelector<HTMLElement>('[data-kind="collabAgentToolCall"]');
+    expect(card).not.toBeNull();
+    expect(card?.textContent).toContain("planning the summary");
+    expect(card?.textContent).not.toContain("The reply says the tests are green.");
+    root.unmount();
+  });
+
+  test("a hydrated persisted delegated answer (meta.provider) keeps its attribution after reload", () => {
+    const records = projectLocalTimelineRecords([
+      userNote(),
+      {
+        key: "note-2",
+        role: "assistant" as const,
+        text: "The reply says the tests are green.",
+        timestamp: "05:42",
+        meta: {
+          provider: "claude",
+          model: "anthropic/claude",
+          dataDestination: "remote_provider",
+          usageTruth: "exact",
+        },
+      },
+    ]);
+    expect(records).toHaveLength(2);
+    expect(records[1]!.attribution).toBe("via Claude subagent");
+    // Non-delegate providers get no attribution label.
+    const plain = projectLocalTimelineRecords([
+      userNote(),
+      {
+        key: "note-3",
+        role: "assistant" as const,
+        text: "Local answer.",
+        timestamp: "05:42",
+        meta: { provider: "apple_fm" },
+      },
+    ]);
+    expect(plain[1]!.attribution).toBeUndefined();
+  });
+
+  test("a RUNNING delegate segment never folds even though composer pending is cleared", () => {
+    const records = projectLocalTimelineRecords([userNote(), delegationNote()]);
+    const rows = deriveReactTimelineDisplayRows(records, new Set(), false);
+    // No turn-fold row: the live card and its streaming bubble stay visible.
+    expect(rows.every((row) => row.kind !== "turn-fold")).toBe(true);
+  });
+
+  test("a SETTLED delegate turn folds the activity card and keeps the promoted answer visible", () => {
+    const records = projectLocalTimelineRecords([
+      userNote(),
+      delegationNote({ status: "completed" }),
+    ]);
+    const rows = deriveReactTimelineDisplayRows(records, new Set(), false);
+    const fold = rows.find((row) => row.kind === "turn-fold");
+    expect(fold).not.toBeUndefined();
+    // The promoted answer bubble stays outside the fold.
+    expect(
+      rows.some(
+        (row) =>
+          row.kind === "record" && row.record.key === "delegation-request.claude.1:promoted-answer",
+      ),
+    ).toBe(true);
+    // The card is folded away until the owner expands the turn.
+    expect(
+      rows.some(
+        (row) => row.kind === "record" && row.record.key === "delegation-request.claude.1",
+      ),
+    ).toBe(false);
+  });
+});

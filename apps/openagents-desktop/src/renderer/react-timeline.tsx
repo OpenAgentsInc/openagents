@@ -132,6 +132,13 @@ export type ReactTimelineRecord = Readonly<{
   /** Terminal assistant response in its user-turn segment; commentary stays visually quiet. */
   showAssistantMeta?: boolean;
   /**
+   * Honest routing disclosure on a promoted delegated answer (#9127): a small
+   * "via Claude subagent"-style label on the primary assistant bubble. Derived
+   * from the delegate card title (live) or the persisted note's `meta.provider`
+   * (after reload). Absent on ordinary messages.
+   */
+  attribution?: string;
+  /**
    * Typed item payload (#8859) when the source note/history row carried one.
    * Wave-2 card lanes render this; the string label/body stay authoritative
    * until then.
@@ -217,10 +224,61 @@ export const projectReactTimelineRecords = (
   return records;
 };
 
+/**
+ * The shell's AFS delegation-card note key prefix (`shell.ts`'s
+ * `seedDelegationCard` seeds `delegation-<requestRef>`). Only these cards are
+ * kernel-delegated subagent turns eligible for answer promotion; Stack A
+ * collab child cards (`child_*` events) keep their card layout.
+ */
+const AFS_DELEGATION_NOTE_KEY_PREFIX = "delegation-";
+
+const isDelegateChildNote = (note: DesktopNoteEntry): boolean => note.runtime?.kind === "child";
+
+/**
+ * #9127 single-delegate answer promotion: the note keys whose delegated answer
+ * is promoted to the PRIMARY assistant bubble. A turn segment (one user note up
+ * to the next user note) qualifies only when it contains EXACTLY ONE
+ * delegate-child card and that card is an AFS delegation card. Multi-delegate
+ * turns keep today's card layout unchanged.
+ */
+export const promotedDelegateNoteKeys = (
+  notes: ReadonlyArray<DesktopNoteEntry>,
+): ReadonlySet<string> => {
+  const promoted = new Set<string>();
+  let segment: Array<DesktopNoteEntry> = [];
+  const closeSegment = (): void => {
+    const children = segment.filter(isDelegateChildNote);
+    const solo = children.length === 1 ? children[0]! : null;
+    if (solo !== null && solo.key.startsWith(AFS_DELEGATION_NOTE_KEY_PREFIX)) promoted.add(solo.key);
+    segment = [];
+  };
+  for (const note of notes) {
+    if (note.role === "user" && note.runtime === undefined) closeSegment();
+    segment.push(note);
+  }
+  closeSegment();
+  return promoted;
+};
+
+/** The honest "via <subagent>" attribution for a persisted delegated answer's meta. */
+const delegateAttributionForMeta = (provider: string | undefined): string | undefined => {
+  switch (provider) {
+    case "claude":
+      return "via Claude subagent";
+    case "codex":
+      return "via Codex subagent";
+    case "grok_acp":
+      return "via Grok subagent";
+    default:
+      return undefined;
+  }
+};
+
 export const projectLocalTimelineRecords = (
   notes: ReadonlyArray<DesktopNoteEntry>,
-): ReadonlyArray<ReactTimelineRecord> =>
-  projectToolCardEntries(notes).flatMap((entry, index): ReadonlyArray<ReactTimelineRecord> => {
+): ReadonlyArray<ReactTimelineRecord> => {
+  const promotedKeys = promotedDelegateNoteKeys(notes);
+  return projectToolCardEntries(notes).flatMap((entry, index): ReadonlyArray<ReactTimelineRecord> => {
     if (entry.kind === "tool") {
       const humanized = humanizeToolInvocation(entry.card.toolName, entry.card.argsSummary);
       return [
@@ -256,6 +314,28 @@ export const projectLocalTimelineRecords = (
     // down (T8 #8865).
     if (entry.kind === "runtime" && entry.note.runtime?.kind === "child") {
       const runtime = entry.note.runtime;
+      // #9127 single-delegate promotion: the delegate's streamed/final answer
+      // (the LAST assistant entry of the redacted chain) is promoted out of the
+      // card to a primary assistant bubble. The card keeps the activity detail
+      // (tools, reasoning, interim commentary) but never a duplicate copy of
+      // the promoted answer. A failed card keeps its full transcript — the
+      // turn did not resolve to an answer.
+      const transcript = runtime.transcript ?? [];
+      let promotedIndex = -1;
+      if (promotedKeys.has(entry.note.key) && runtime.status !== "failed") {
+        for (let cursor = transcript.length - 1; cursor >= 0; cursor -= 1) {
+          const line = transcript[cursor]!;
+          if (line.role === "assistant" && line.text.trim() !== "") {
+            promotedIndex = cursor;
+            break;
+          }
+        }
+      }
+      const promotedText = promotedIndex === -1 ? null : transcript[promotedIndex]!.text;
+      const cardTranscript =
+        promotedIndex === -1
+          ? runtime.transcript
+          : transcript.filter((_, cursor) => cursor !== promotedIndex);
       const coarseStatus =
         runtime.status === "running"
           ? ("in_progress" as const)
@@ -306,9 +386,31 @@ export const projectLocalTimelineRecords = (
             turnRef: runtime.turnRef,
             childRef: runtime.childRef,
             interruptable: childInterruptable(runtime),
-            ...(runtime.transcript === undefined ? {} : { transcript: runtime.transcript }),
+            ...(cardTranscript === undefined ? {} : { transcript: cardTranscript }),
           },
         },
+        // The promoted primary assistant bubble: it streams live as the chain
+        // snapshots grow and carries the honest "via <subagent>" attribution.
+        ...(promotedText === null
+          ? []
+          : [
+              {
+                key: `${entry.note.key}:promoted-answer`,
+                itemRef: `${entry.note.key}:promoted-answer`,
+                sequence: index,
+                kind: "local_message" as const,
+                label: "Assistant",
+                body: promotedText,
+                timestamp: entry.note.timestamp,
+                status: runtime.status,
+                redacted: false,
+                fields: [],
+                resultRef: null,
+                resultBody: null,
+                resultStatus: null,
+                ...(runtime.title === "" ? {} : { attribution: `via ${runtime.title}` }),
+              },
+            ]),
       ];
     }
     const note = entry.note;
@@ -382,6 +484,10 @@ export const projectLocalTimelineRecords = (
     const body =
       note.question?.questions[0]?.question ??
       note.text.replace(/^(Reasoning|Approval)\s*·\s*/i, "");
+    // A persisted delegated answer (hydrated from the thread store) keeps its
+    // honest attribution: the note meta carries the effective provider (#9127).
+    const attribution =
+      note.role === "assistant" ? delegateAttributionForMeta(note.meta?.provider) : undefined;
     return [
       {
         key: note.key,
@@ -390,6 +496,7 @@ export const projectLocalTimelineRecords = (
         kind,
         label,
         body,
+        ...(attribution === undefined ? {} : { attribution }),
         timestamp: note.timestamp,
         status: note.question?.status ?? note.runtime?.kind ?? null,
         redacted: false,
@@ -414,6 +521,7 @@ export const projectLocalTimelineRecords = (
       },
     ];
   });
+};
 
 const Inline = ({ nodes }: { readonly nodes: ReadonlyArray<MarkdownInline> }): ReactNode =>
   nodes.map((node, index) => {
@@ -1058,6 +1166,11 @@ export const TimelineItem = ({
       <div className="oa-react-assistant-message-body">
         <SafeReactMarkdown value={record.body} />
       </div>
+      {record.attribution === undefined ? null : (
+        <p className="oa-react-assistant-attribution" data-slot="assistant-attribution">
+          {record.attribution}
+        </p>
+      )}
       {record.showAssistantMeta === true ? (
         <div className="oa-react-assistant-message-actions" data-slot="assistant-message-actions">
           {!streaming && record.body.trim() !== "" ? (
@@ -1155,6 +1268,7 @@ const sameTimelineRecord = (left: ReactTimelineRecord, right: ReactTimelineRecor
   left.resultBody === right.resultBody &&
   left.resultStatus === right.resultStatus &&
   left.showAssistantMeta === right.showAssistantMeta &&
+  left.attribution === right.attribution &&
   // Scalar signature comparison — content changes flip it without
   // stringifying multi-kilobyte diffs on every memo check (#8859).
   workbenchItemSignature(left.item) === workbenchItemSignature(right.item) &&
@@ -1304,6 +1418,13 @@ export const deriveReactTimelineDisplayRows = (
     rows.push({ kind: "record", id: user.key, record: user });
 
     const latestLiveTurn = working && turnIndex === userIndexes.length - 1;
+    // #9127: a delegated subagent turn clears the composer-pending flag once the
+    // start receipt seeds its card, so `working` alone would fold the RUNNING
+    // card and its streaming promoted answer. A segment with a live delegate
+    // card stays unfolded until the delegate settles.
+    const liveDelegate = segment.some(
+      (record) => record.kind === "collaboration" && record.status === "running",
+    );
     let terminalIndex = -1;
     for (let index = 1; index < segment.length; index += 1) {
       const record = segment[index]!;
@@ -1316,7 +1437,7 @@ export const deriveReactTimelineDisplayRows = (
       ),
     );
     const hidden = segment.filter((_, index) => hiddenIndexes.has(index));
-    if (latestLiveTurn || hidden.length === 0) {
+    if (latestLiveTurn || liveDelegate || hidden.length === 0) {
       for (const record of segment.slice(1)) rows.push({ kind: "record", id: record.key, record });
       return;
     }

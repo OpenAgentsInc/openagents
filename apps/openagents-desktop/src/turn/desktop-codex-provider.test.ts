@@ -55,9 +55,9 @@ const readyReadiness: CodexLaneReadiness = { ready: true, accountRef: "acct.code
 const ev = (event: unknown): ClaudeLocalEvent => event as ClaudeLocalEvent
 
 describe("redactCodexEvent — the redaction boundary", () => {
-  test("reasoning becomes an assistant summary", () => {
+  test("reasoning becomes a SYSTEM activity summary (never an assistant message, #9127)", () => {
     expect(redactCodexEvent(ev({ kind: "reasoning", text: "planning the push" }))).toEqual({
-      role: "assistant",
+      role: "system",
       text: "planning the push",
     })
   })
@@ -143,7 +143,7 @@ describe("codex kernel provider — exit checks", () => {
     // The chain carries the redacted entries: reasoning, tool, tool, final answer.
     const chain = result.projection.messageChain
     expect(chain.length).toBe(4)
-    expect(chain[0]!.role).toBe("assistant")
+    expect(chain[0]!.role).toBe("system")
     expect(chain[1]!.role).toBe("tool")
     expect(chain[1]!.toolLabel).toBe("shell")
     expect(chain[3]!.role).toBe("assistant")

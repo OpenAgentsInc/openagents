@@ -1,10 +1,21 @@
-import { Effect, Schema as S } from "effect";
+import { Effect, Layer, Ref, Schema as S } from "effect";
 import { describe, expect, test } from "vite-plus/test";
 
-import { TurnIntent } from "@openagentsinc/agent-runtime-schema";
+import { ROUTE_RECOMMENDATION_SCHEMA_LITERAL, RouteRecommendation, TurnIntent } from "@openagentsinc/agent-runtime-schema";
 
-import { fixtureCandidateSet, testTurnServiceLayer, type ProviderFixtureOutcome } from "./testing.js";
-import { TurnService, type TurnStartInput } from "./turn-service.js";
+import { ThreadRepository, type ThreadTurnMessage } from "./ports.js";
+import {
+  actionBrokerRecordingLayer,
+  artifactResolverFixtureLayer,
+  contextSourceFixtureLayer,
+  fixtureCandidateSet,
+  providerRegistryFixtureLayer,
+  testTurnServiceLayer,
+  turnJournalMemoryLayer,
+  turnPolicyFixtureLayer,
+  type ProviderFixtureOutcome,
+} from "./testing.js";
+import { layer as turnServiceLayer, TurnService, type TurnStartInput } from "./turn-service.js";
 import { turnRequestRef, turnThreadRef } from "./turn-state.js";
 
 const askIntent = S.decodeUnknownSync(TurnIntent)({ _tag: "Ask", text: "hi" });
@@ -103,6 +114,60 @@ describe("TurnService", () => {
     );
     expect(result.projection.cardState).toBe("cancelled");
     expect(result.receipt.decision).toBe("cancelled");
+  });
+
+  test("thread persistence (#9127): a plain turn appends user + attributed assistant; a delegated continuation (recommendation) does not re-append the user message", async () => {
+    const fixtureRecommendation = S.decodeUnknownSync(RouteRecommendation)({
+      schema: ROUTE_RECOMMENDATION_SCHEMA_LITERAL,
+      candidate: "codex",
+      taskClass: "delegate",
+      reasonCode: "needs_delegation",
+      confidence: 0.9,
+    });
+    const messages = await Effect.runPromise(
+      Effect.gen(function* () {
+        const recorded = yield* Ref.make<ReadonlyArray<ThreadTurnMessage>>([]);
+        const recordingRepository = Layer.succeed(
+          ThreadRepository,
+          ThreadRepository.of({
+            exists: () => Effect.succeed(true),
+            appendUser: (_thread, message) => Ref.update(recorded, (all) => [...all, message]),
+            appendAssistant: (_thread, message) => Ref.update(recorded, (all) => [...all, message]),
+          }),
+        );
+        const layer = turnServiceLayer.pipe(
+          Layer.provide(contextSourceFixtureLayer()),
+          Layer.provide(turnPolicyFixtureLayer()),
+          Layer.provide(providerRegistryFixtureLayer("completes")),
+          Layer.provide(turnJournalMemoryLayer),
+          Layer.provide(recordingRepository),
+          Layer.provide(artifactResolverFixtureLayer),
+          Layer.provide(actionBrokerRecordingLayer),
+        );
+        yield* Effect.gen(function* () {
+          const service = yield* TurnService;
+          // The router-style turn: no recommendation → user message persists.
+          yield* service.start(startInput());
+          // The delegated continuation: SAME user message, started with the
+          // router's recommendation → the kernel must not re-append it.
+          yield* service.start({
+            ...startInput(),
+            requestRef: turnRequestRef("request.fixture.2"),
+            recommendation: fixtureRecommendation,
+          });
+        }).pipe(Effect.provide(layer));
+        return yield* Ref.get(recorded);
+      }),
+    );
+    // One user note, two assistant answers — never a duplicated user note.
+    expect(messages.map((message) => message.role)).toEqual(["user", "assistant", "assistant"]);
+    // The assistant answers carry bounded provenance for attribution.
+    expect(messages[1]!.provenance).toEqual({
+      candidate: "codex",
+      model: "codex",
+      dataDestination: "remote_provider",
+      usageTruth: "exact",
+    });
   });
 
   test("status reconstructs a terminal card from persisted state without replaying an action", async () => {

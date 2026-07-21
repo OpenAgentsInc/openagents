@@ -248,9 +248,21 @@ export const layer = Layer.effect(
               if (outcome.ok) {
                 yield* Ref.set(lastCandidate, candidate);
                 // Persist canonical assistant turn state through the thread authority.
+                // The bounded provenance facts ride along so the host adapter can
+                // keep the answer attributed (#9127) — e.g. a delegated subagent
+                // answer stays labeled after reload.
                 if (candidate.kind === "answer") {
                   yield* threads
-                    .appendAssistant(input.threadRef, { role: "assistant", text: candidate.text })
+                    .appendAssistant(input.threadRef, {
+                      role: "assistant",
+                      text: candidate.text,
+                      provenance: {
+                        candidate: candidate.provenance.candidate,
+                        model: candidate.provenance.model,
+                        dataDestination: candidate.provenance.dataDestination,
+                        usageTruth: candidate.provenance.usageTruth,
+                      },
+                    })
                     .pipe(Effect.catch(() => Effect.void));
                 }
                 // Advisory delivery only. The broker converts the delivery into a
@@ -279,7 +291,11 @@ export const layer = Layer.effect(
         yield* applyNow(TurnTransition.RouteStarted());
 
         // Persist the canonical user turn state through the thread authority.
-        if (input.intent._tag === "Ask") {
+        // A turn started WITH an advisory recommendation is a delegated
+        // continuation of a router turn on the same thread (#9127): the router
+        // turn already appended this user message, so re-appending it here would
+        // duplicate the user note in the canonical thread store.
+        if (input.intent._tag === "Ask" && (input.recommendation ?? null) === null) {
           yield* threads
             .appendUser(input.threadRef, { role: "user", text: input.intent.text })
             .pipe(Effect.catch(() => Effect.void));

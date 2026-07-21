@@ -224,7 +224,11 @@ const byteCountOf = (value: string): number => {
 export const redactCodexEvent = (event: ClaudeLocalEvent): ObservedAgentActivity | null => {
   switch (event.kind) {
     case "reasoning":
-      return { role: "assistant", text: event.text }
+      // Reasoning is ACTIVITY detail, not an agent message. Keeping it off the
+      // `assistant` role means the chain's assistant entries are exactly the
+      // agent's message text, so the single-delegate promotion (#9127) can pick
+      // the streamed/final answer without mistaking a reasoning summary for it.
+      return { role: "system", text: event.text }
     case "tool_use":
     case "tool_progress": {
       const fileChangeCount = fileChangeCountOf((event as { readonly item?: unknown }).item)
