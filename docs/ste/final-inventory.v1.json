@@ -48008,7 +48008,7 @@
     },
     {
       "path": "packages/khala-ai-sdk-core/README.md",
-      "sha256": "8378850263b0ffd8aa99e815d537bb909b001f39f05f03884c4f5d8fb9fd8dc9",
+      "sha256": "fc57b92f2ac742996742e3bbbaf4078552dd5fe13597ace307f8abdb55f587f3",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

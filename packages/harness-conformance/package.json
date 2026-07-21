@@ -9,6 +9,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./ai-error-failure-class": "./src/ai-error-failure-class.ts",
     "./contract": "./src/contract.ts",
     "./runner": "./src/runner.ts",
     "./chat-turn-projection": "./src/chat-turn-projection.ts"

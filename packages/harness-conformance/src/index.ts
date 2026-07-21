@@ -1,4 +1,5 @@
 export * from "./contract.ts"
+export * from "./ai-error-failure-class.ts"
 export * from "./chat-turn-projection.ts"
 export * from "./runner.ts"
 export * from "./registry.ts"

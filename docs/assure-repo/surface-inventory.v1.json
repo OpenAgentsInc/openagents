@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:0bf97a9718dcd17e6f91f873fc5a4feb54f460296e7933e9ac2e3329a0523d28",
+  "sourceDigest": "sha256:388f8eacf548df73ac118a7de6e0224b95c8c1cce69f4b6480109ffbe1ba9e27",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -2215,7 +2215,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "packages/harness-conformance (1 tracked test file)"
+          "ref": "packages/harness-conformance (2 tracked test files)"
         }
       ],
       "obligation": {
@@ -2282,7 +2282,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "packages/khala-ai-sdk-core (1 tracked test file)"
+          "ref": "packages/khala-ai-sdk-core (2 tracked test files)"
         }
       ],
       "obligation": {

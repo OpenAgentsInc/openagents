@@ -27,6 +27,8 @@ import {
 } from "@openagentsinc/khala-tools"
 import { Effect } from "effect"
 
+export * from "./effect-ai.js"
+
 export type KhalaAiSdkCoreStreamTextResult = Readonly<{
   stream: AsyncIterable<unknown>
 }>
@@ -369,7 +371,7 @@ export function reduceAgentRuntimeEventsAsKhalaTranscript(input: Readonly<{
   )
 }
 
-function normalizeAiSdkTextStreamPart(
+export function normalizeAiSdkTextStreamPart(
   part: unknown,
 ): KhalaRuntimeAiSdkTextStreamPart {
   if (!isRecord(part) || typeof part.type !== "string") {
@@ -429,6 +431,12 @@ function toolNameFromPart(
     case "tool-approval-response":
     case "tool-input-start":
       return part.toolName
+    case "tool-input-delta":
+    case "tool-input-end":
+      // Streamed tool-input parts carry only the tool-call chunk id. The
+      // mapped runtime event still requires a tool authority, so classify
+      // them under the unresolved tool name instead of dropping authority.
+      return "unknown"
     default:
       return undefined
   }
