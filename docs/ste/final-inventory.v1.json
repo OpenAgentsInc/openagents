@@ -46674,7 +46674,7 @@
     },
     {
       "path": "packages/agent-harness-contract/README.md",
-      "sha256": "b0f59a4f770b60151af47f6b5c6e45c23de7f2b75f1a0f403b89917b7fd224ff",
+      "sha256": "92f46769b865aa53249eb3a2d58ea201d5503544c1bc740168d896a5c0ee00e5",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -48016,7 +48016,7 @@
     },
     {
       "path": "packages/history-corpus/README.md",
-      "sha256": "5bc59bfe344411c9063e360dd1b3615fc716566b5ad989280d4862e3f21580a8",
+      "sha256": "6cf1c15e3bdf786e93ff7bf9b23aeb3f12f49614e839d4749532f79197045807",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
