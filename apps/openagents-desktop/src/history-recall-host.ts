@@ -12,7 +12,10 @@
  * first-class `@openagentsinc/rlm` engine can resolve an authorized corpus
  * handle without a second product-local engine. Tier D `history_recall` keeps
  * the full HistoryRecall question vocabulary; Rlm deterministic Grep is the
- * shared engine path for paper-faithful traversal and Tier S follow-on.
+ * shared engine path for paper-faithful traversal. Tier S (RLM-05, #9141)
+ * lives in `./history-recall-semantic.ts`: host-owned semantic admission,
+ * downward budget clamps, exact idempotent usage rows, and the tiered
+ * dispatcher `dispatchDesktopHistoryRecallTiered` behind this same seam.
  *
  * Boundaries:
  * - Recall output is an untrusted cited candidate — never authority.

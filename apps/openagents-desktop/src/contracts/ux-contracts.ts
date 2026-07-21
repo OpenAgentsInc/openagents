@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-21.1",
+    version: "2026-07-21.2",
     contracts: [
       {
         contractId: "openagents_desktop.chat.history_recall_cited_tool_row.v1",
@@ -51,6 +51,49 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         ],
         verification:
           "history-corpus host-tool suite, desktop history-recall-host suite, agent-harness-contract registration tests, and Desktop typecheck. No release command is part of the oracle.",
+      },
+      {
+        contractId: "openagents_desktop.chat.history_recall_semantic_tier_admission.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "history recall Tier S semantic escalation and honesty",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: {
+          channel: "issue",
+          statedBy: "owner",
+          statedOn: "2026-07-21",
+        },
+        statement:
+          "Tier D by default; Tier S only after explicit user/application admission or an approved product interaction. Render completed, partial, refused, and typed failure states distinctly; navigate only validated citations. Label recall output cited/candidate, never verified.",
+        authorityBoundary:
+          "Tier S runs the first-class @openagentsinc/rlm engine over the same authorized owner-local corpus as Tier D, under host-owned admission — tool-call arguments are never consulted for tier selection, so a model cannot self-authorize semantic recall. Budgets clamp downward to finite desktop ceilings (depth at most one, no artifact sink), requireExactUsage is forced on, and a model call without exact provider usage fails typed as usage_required_but_unavailable — usage is unavailable, never zero. Every completed model call is recorded idempotently as rlm:<runRef>:<callRef> and projects into the session usage ledger. Citations are engine-validated against the exact corpus digest; anything invalid, dangling, or foreign is not navigable. The answer remains an untrusted cited candidate — never verification, release, routing, payment, or public-claim authority.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/history-recall-semantic.ts",
+          "apps/openagents-desktop/src/renderer/history-recall-semantic-card.ts",
+          "apps/openagents-desktop/src/desktop-history-corpus-source.ts",
+          "github:OpenAgentsInc/openagents#9141",
+        ],
+        oracles: [
+          {
+            id: "history_recall.semantic_tier_policy_and_admission",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/history-recall-semantic.test.ts",
+            description:
+              "Proves Tier D is the default, semantic needs host admission plus explicit escalation, model tool arguments cannot self-authorize Tier S, and budgets clamp downward with depth at most one.",
+          },
+          {
+            id: "history_recall.semantic_citations_usage_and_honesty",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/history-recall-semantic.test.ts",
+            description:
+              "Proves planted decisions at 100/400/1000 turns resolve with citations against the exact corpus digest, exact idempotent usage rows feed the session ledger, uncited answers cannot render completed, and the redaction policy holds through the semantic path.",
+          },
+        ],
+        verification:
+          "Desktop history-recall-semantic suite plus Desktop typecheck. Hermetic scripted model plans only — no live spend is part of the oracle.",
       },
       {
         contractId: "openagents_desktop.chat.no_noop_spec_revalidation_error_rows.v1",
