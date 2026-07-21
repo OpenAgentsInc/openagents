@@ -45,6 +45,7 @@ import {
   LocalTurnPhaseSchema,
   type LocalTurnRecord,
 } from "./local-turn-journal.ts"
+import { FullAutoReadinessSnapshotSchema } from "./full-auto-readiness.ts"
 
 /**
  * FA-RUN-04 (#8972): the bounded, durable, PRIVATE `FullAutoRunReport` per
@@ -490,6 +491,11 @@ export const FullAutoRunReportSchema = Schema.Struct({
   /** Always `"unknown"` in this v1 aggregator -- no done-condition evaluator
    * exists yet. A typed, honest placeholder rather than an omitted field. */
   progressDisposition: Schema.Literal("unknown"),
+  /** FAV-01 (#9111): the bind-time provider readiness snapshot -- which lanes
+   * were ready to rotate across, which were not, and why, projected from the
+   * same lane truth the BOOT SEQUENCE renders. Absent on pre-#9111 rows and
+   * whenever a run was bound without a recorded snapshot. */
+  readinessSnapshot: Schema.optional(FullAutoReadinessSnapshotSchema),
   usage: FullAutoRunReportUsageSchema,
   /** Never embedded raw content -- a pointer into Desktop's own existing
    * thread/provider-session stores for deeper (still-private) inspection.

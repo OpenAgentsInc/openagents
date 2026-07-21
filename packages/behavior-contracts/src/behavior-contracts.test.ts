@@ -142,7 +142,9 @@ describe("behavior contract registry", () => {
     const validation = validateBehaviorContractRegistry(decoded)
 
     expect(validation).toEqual({ issues: [], ok: true })
-    expect(decoded.contracts).toHaveLength(43)
+    // FAV-01 (#9111) added openagents_desktop.full_auto_readiness_gated_routing.v1
+    // (enforced), taking the total from 43 to 44.
+    expect(decoded.contracts).toHaveLength(44)
     const pending = decoded.contracts.filter(contract => contract.state === "pending")
     // FA-UX-01 (#8974) flipped 3 Full Auto contracts from pending to
     // enforced: openagents_desktop.full_auto_dedicated_launcher.v1,

@@ -1631,7 +1631,43 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
       verification:
         "FA-RUN-01 (#8969) landed the durable FullAutoRun lifecycle state machine (FA-AC-43/FA-AC-44/FA-AC-45 in the ProductSpec), its control-API Pause/Resume/Stop routes, and the legacy-registry migration, unit- and route-tested (apps/openagents-desktop/tests/full-auto-run-registry.test.ts, apps/openagents-desktop/src/full-auto-run-control-server.test.ts). FA-UX-01 (#8974) landed wiring those exact typed transitions into the read-only run view's Pause/Resume/Stop/Retry-now controls through a dedicated renderer IPC bridge sharing the same action functions as the control API (apps/openagents-desktop/src/full-auto-run-actions.ts) -- an illegal transition is refused by the shared registry.transition function, never silently coerced by the UI.",
     },
+    {
+      authorityBoundary:
+        "This binds the bind-time readiness projection only. It records which routing candidates were ready and shows every Full-Auto-eligible lane plus an advisory-only Apple FM marker. It grants no action authority, does not itself bind a routing policy (validateFullAutoRoutingPolicy remains the fail-closed bind gate), and gives Apple FM no action lane.",
+      blockerRefs: [],
+      contractId: "openagents_desktop.full_auto_readiness_gated_routing.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "apps/openagents-desktop/src/full-auto-readiness.ts",
+        "apps/openagents-desktop/src/renderer/boot-sequence.ts",
+        "apps/openagents-desktop/src/full-auto-routing.ts",
+        "docs/fable/2026-07-20-full-auto-first-verifiable-mode.md",
+        "github:OpenAgentsInc/openagents#9111",
+      ],
+      oracles: [
+        {
+          description:
+            "Unit coverage proves the bind-time readiness snapshot is projected from the SAME lane gate validateFullAutoRoutingPolicy uses (allReady agrees with the fail-closed bind decision), evaluates every candidate without a first-refusal short-circuit, maps unknown/unadmitted/ineligible lanes to typed reasons, reads a still-probing lane as checking rather than unavailable, and reconciles the scan set: every Full-Auto-eligible action lane (including Cursor, which the boot scan omits) plus Apple FM as an advisory-only entry with no action lane. The snapshot decodes against its schema and is an optional additive field on the run report.",
+          id: "openagents_desktop.full_auto_readiness_gated_routing.projection",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents-desktop/src/full-auto-readiness.test.ts",
+        },
+      ],
+      productArea: "Desktop Full Auto readiness-gated routing",
+      source: {
+        channel: "github-issue",
+        statedBy: "owner",
+        statedOn: "2026-07-20",
+      },
+      state: "enforced",
+      statement:
+        "Full Auto run start reads provider readiness from the same lane truth the BOOT SEQUENCE renders: the routing policy's per-candidate readiness is projected and recorded on the run report, a candidate whose lane failed its probe is a visible typed refusal rather than a silent drop, and the lane scan shows every Full-Auto-eligible lane plus an advisory-only Apple FM marker.",
+      surface: "openagents-desktop",
+      verification:
+        "FAV-01 (#9111) landed full-auto-readiness.ts: projectFullAutoReadinessSnapshot and projectFullAutoLaneScan project readiness from the shared FullAutoRoutingLaneGate, the run report carries an optional readinessSnapshot field, and the projections are unit-tested (apps/openagents-desktop/src/full-auto-readiness.test.ts) including agreement with validateFullAutoRoutingPolicy and the scan/lane reconciliation.",
+    },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-19.3",
+  version: "2026-07-20.1",
 };
