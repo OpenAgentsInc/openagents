@@ -14941,6 +14941,24 @@
       }
     },
     {
+      "path": "docs/ai-sdk/README.md",
+      "sha256": "3a7cfa0da2558034096d7cacc3c6deba6cd1e610fcd42ee5680bc6c41202c858",
+      "reason": "Final review of mutable first-party agent technical text",
+      "profile": {
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ]
+      }
+    },
+    {
       "path": "docs/apple-fm/2026-06-15-apple-fm-integration-audit.md",
       "sha256": "958378d325dcf8f6f639a83020ea3638f356d5589f1973c0cab5e3aa6f786e20",
       "reason": "Immutable historical or evidence source data",
