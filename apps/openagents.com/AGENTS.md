@@ -45,6 +45,19 @@ a narrow renderer-host exception because the current Effect Native
 `media-video` host accepts live stream attachment only. Do not generalize that
 exception into route-local component architecture.
 
+## 2026-07-21 public AI SDK surface
+
+Owner direction on 2026-07-21 added `/aisdk` and `/aisdk/docs` as retained
+public routes for the extracted OpenAgents AI SDK
+(`OpenAgentsInc/ai`, npm `@openagentsinc/ai@rc`). The page lives in
+`apps/start/src/routes/-aisdk-page.tsx` and reuses the `.oa-public-site`
+design vocabulary. The docs render from the repository `docs/ai-sdk/` tree
+through the bounded compiler `apps/start/scripts/generate-aisdk-docs.ts`,
+which reads only the explicit source allowlist in
+`apps/start/src/aisdk/aisdk-content.ts`. See the matching entry in
+`INVARIANTS.md`. This addition does not widen the `/docs` compiler, which
+stays pointed at `apps/start/content/docs`.
+
 ## 2026-07-15 unified TanStack Start public and authenticated surfaces
 
 `apps/start` owns the public homepage at `/`, the Desktop MVP landing at

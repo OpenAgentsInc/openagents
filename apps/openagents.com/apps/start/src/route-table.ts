@@ -4,6 +4,11 @@ export const knownDocumentPathPatterns: ReadonlyArray<RegExp> = [
   /^\/X\/$/,
   /^\/activity$/,
   /^\/(?:adjutant|artanis)\/?$/,
+  // /aisdk + /aisdk/docs: public OpenAgents AI SDK page and docs, added at
+  // owner direction 2026-07-21 (SDK extracted to OpenAgentsInc/ai and
+  // published as the @openagentsinc rc train on npm).
+  /^\/aisdk\/?$/,
+  /^\/aisdk\/docs(?:\/[^/]+)?\/?$/,
   /^\/agents\/[^/]+$/,
   /^\/artanis\/(?:accounts|traces)$/,
   /^\/autopilot\/?$/,

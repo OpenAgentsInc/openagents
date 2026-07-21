@@ -1046,7 +1046,7 @@
     },
     {
       "path": "apps/openagents.com/AGENTS.md",
-      "sha256": "c020d7d74771bc3afca988a3cdac8ab7b5916dc44b2a4d1e037b7a84827e3a49",
+      "sha256": "d4a909c3511b5f17817fc55345234f8f001cbb62adfe7c64a1c9f9611458b6e6",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -1090,7 +1090,7 @@
     },
     {
       "path": "apps/openagents.com/INVARIANTS.md",
-      "sha256": "9b3953cf6b48ffef8c0e4dc883523139639e2916a7b1070633e62c4428795418",
+      "sha256": "124f3d164e9a465f34c8057bc599444f0534babd7d50a8ee0a628e56f0273391",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -14963,6 +14963,50 @@
       }
     },
     {
+      "path": "docs/ai-sdk/getting-started.md",
+      "sha256": "4681c4dede819f75d9b1460d1d176d2f94464f9e677617e3841772f6dcf1c4b6",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/ai-sdk/packages.md",
+      "sha256": "259642919d6193d43432bb1e007b9ef13679c5c572b72f2cde3fc201d374b818",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/apple-fm/2026-06-15-apple-fm-integration-audit.md",
       "sha256": "958378d325dcf8f6f639a83020ea3638f356d5589f1973c0cab5e3aa6f786e20",
       "reason": "Immutable historical or evidence source data",
@@ -24061,12 +24105,10 @@
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
-        "ste_status": "source-data",
-        "ste_reviewer": null,
-        "ste_reviewed_at": null,
         "risk": "source-data",
         "source": "Immutable historical or evidence source data",
-        "replacement": null
+        "replacement": null,
+        "ste_status": "source-data"
       }
     },
     {

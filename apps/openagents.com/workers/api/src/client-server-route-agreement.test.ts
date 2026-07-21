@@ -23,6 +23,12 @@ describe('Start ⇄ Worker document route agreement (#8813)', () => {
   })
 
   test.each([
+    // /aisdk surfaces added at owner direction 2026-07-21 (public AI SDK
+    // page + docs compiled from the repository docs/ai-sdk tree).
+    '/aisdk',
+    '/aisdk/docs',
+    '/aisdk/docs/getting-started',
+    '/aisdk/docs/packages',
     '/app',
     '/astro',
     '/download',

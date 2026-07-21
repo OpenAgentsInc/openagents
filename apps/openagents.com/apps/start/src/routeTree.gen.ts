@@ -47,6 +47,7 @@ import { Route as BusinessIndexRouteImport } from './routes/business/index'
 import { Route as BlogIndexRouteImport } from './routes/blog/index'
 import { Route as AutopilotIndexRouteImport } from './routes/autopilot/index'
 import { Route as ArtanisIndexRouteImport } from './routes/artanis/index'
+import { Route as AisdkIndexRouteImport } from './routes/aisdk/index'
 import { Route as WorkspacesWorkspaceIdRouteImport } from './routes/workspaces/$workspaceId'
 import { Route as TraceTraceUuidRouteImport } from './routes/trace/$traceUuid'
 import { Route as ShareShareIdRouteImport } from './routes/share/$shareId'
@@ -62,11 +63,13 @@ import { Route as ArtanisTracesRouteImport } from './routes/artanis/traces'
 import { Route as ArtanisAccountsRouteImport } from './routes/artanis/accounts'
 import { Route as AgentsAgentRefRouteImport } from './routes/agents/$agentRef'
 import { Route as TrainingRunsIndexRouteImport } from './routes/training/runs/index'
+import { Route as AisdkDocsIndexRouteImport } from './routes/aisdk/docs/index'
 import { Route as TrainingRunsRunIdRouteImport } from './routes/training/runs/$runId'
 import { Route as ForumTTopicIdRouteImport } from './routes/forum/t.$topicId'
 import { Route as ForumReceiptsReceiptRefRouteImport } from './routes/forum/receipts.$receiptRef'
 import { Route as ForumFForumRefRouteImport } from './routes/forum/f.$forumRef'
 import { Route as BusinessKpiEngagementRefRouteImport } from './routes/business/kpi/$engagementRef'
+import { Route as AisdkDocsSlugRouteImport } from './routes/aisdk/docs/$slug'
 import { Route as PylonCodexAssignmentsAssignmentRefRouteImport } from './routes/pylon/codex/assignments/$assignmentRef'
 
 const TermsRoute = TermsRouteImport.update({
@@ -259,6 +262,11 @@ const ArtanisIndexRoute = ArtanisIndexRouteImport.update({
   path: '/artanis/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AisdkIndexRoute = AisdkIndexRouteImport.update({
+  id: '/aisdk/',
+  path: '/aisdk/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const WorkspacesWorkspaceIdRoute = WorkspacesWorkspaceIdRouteImport.update({
   id: '/workspaces/$workspaceId',
   path: '/workspaces/$workspaceId',
@@ -334,6 +342,11 @@ const TrainingRunsIndexRoute = TrainingRunsIndexRouteImport.update({
   path: '/training/runs/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AisdkDocsIndexRoute = AisdkDocsIndexRouteImport.update({
+  id: '/aisdk/docs/',
+  path: '/aisdk/docs/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TrainingRunsRunIdRoute = TrainingRunsRunIdRouteImport.update({
   id: '/training/runs/$runId',
   path: '/training/runs/$runId',
@@ -360,6 +373,11 @@ const BusinessKpiEngagementRefRoute =
     path: '/business/kpi/$engagementRef',
     getParentRoute: () => rootRouteImport,
   } as any)
+const AisdkDocsSlugRoute = AisdkDocsSlugRouteImport.update({
+  id: '/aisdk/docs/$slug',
+  path: '/aisdk/docs/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PylonCodexAssignmentsAssignmentRefRoute =
   PylonCodexAssignmentsAssignmentRefRouteImport.update({
     id: '/pylon/codex/assignments/$assignmentRef',
@@ -411,6 +429,7 @@ export interface FileRoutesByFullPath {
   '/share/$shareId': typeof ShareShareIdRoute
   '/trace/$traceUuid': typeof TraceTraceUuidRoute
   '/workspaces/$workspaceId': typeof WorkspacesWorkspaceIdRoute
+  '/aisdk/': typeof AisdkIndexRoute
   '/artanis/': typeof ArtanisIndexRoute
   '/autopilot/': typeof AutopilotIndexRoute
   '/blog/': typeof BlogIndexRoute
@@ -420,11 +439,13 @@ export interface FileRoutesByFullPath {
   '/docs/': typeof DocsIndexRoute
   '/forum/': typeof ForumIndexRoute
   '/khala/': typeof KhalaIndexRoute
+  '/aisdk/docs/$slug': typeof AisdkDocsSlugRoute
   '/business/kpi/$engagementRef': typeof BusinessKpiEngagementRefRoute
   '/forum/f/$forumRef': typeof ForumFForumRefRoute
   '/forum/receipts/$receiptRef': typeof ForumReceiptsReceiptRefRoute
   '/forum/t/$topicId': typeof ForumTTopicIdRoute
   '/training/runs/$runId': typeof TrainingRunsRunIdRoute
+  '/aisdk/docs/': typeof AisdkDocsIndexRoute
   '/training/runs/': typeof TrainingRunsIndexRoute
   '/pylon/codex/assignments/$assignmentRef': typeof PylonCodexAssignmentsAssignmentRefRoute
 }
@@ -471,6 +492,7 @@ export interface FileRoutesByTo {
   '/share/$shareId': typeof ShareShareIdRoute
   '/trace/$traceUuid': typeof TraceTraceUuidRoute
   '/workspaces/$workspaceId': typeof WorkspacesWorkspaceIdRoute
+  '/aisdk': typeof AisdkIndexRoute
   '/artanis': typeof ArtanisIndexRoute
   '/autopilot': typeof AutopilotIndexRoute
   '/blog': typeof BlogIndexRoute
@@ -480,11 +502,13 @@ export interface FileRoutesByTo {
   '/docs': typeof DocsIndexRoute
   '/forum': typeof ForumIndexRoute
   '/khala': typeof KhalaIndexRoute
+  '/aisdk/docs/$slug': typeof AisdkDocsSlugRoute
   '/business/kpi/$engagementRef': typeof BusinessKpiEngagementRefRoute
   '/forum/f/$forumRef': typeof ForumFForumRefRoute
   '/forum/receipts/$receiptRef': typeof ForumReceiptsReceiptRefRoute
   '/forum/t/$topicId': typeof ForumTTopicIdRoute
   '/training/runs/$runId': typeof TrainingRunsRunIdRoute
+  '/aisdk/docs': typeof AisdkDocsIndexRoute
   '/training/runs': typeof TrainingRunsIndexRoute
   '/pylon/codex/assignments/$assignmentRef': typeof PylonCodexAssignmentsAssignmentRefRoute
 }
@@ -533,6 +557,7 @@ export interface FileRoutesById {
   '/share/$shareId': typeof ShareShareIdRoute
   '/trace/$traceUuid': typeof TraceTraceUuidRoute
   '/workspaces/$workspaceId': typeof WorkspacesWorkspaceIdRoute
+  '/aisdk/': typeof AisdkIndexRoute
   '/artanis/': typeof ArtanisIndexRoute
   '/autopilot/': typeof AutopilotIndexRoute
   '/blog/': typeof BlogIndexRoute
@@ -542,11 +567,13 @@ export interface FileRoutesById {
   '/docs/': typeof DocsIndexRoute
   '/forum/': typeof ForumIndexRoute
   '/khala/': typeof KhalaIndexRoute
+  '/aisdk/docs/$slug': typeof AisdkDocsSlugRoute
   '/business/kpi/$engagementRef': typeof BusinessKpiEngagementRefRoute
   '/forum/f/$forumRef': typeof ForumFForumRefRoute
   '/forum/receipts/$receiptRef': typeof ForumReceiptsReceiptRefRoute
   '/forum/t/$topicId': typeof ForumTTopicIdRoute
   '/training/runs/$runId': typeof TrainingRunsRunIdRoute
+  '/aisdk/docs/': typeof AisdkDocsIndexRoute
   '/training/runs/': typeof TrainingRunsIndexRoute
   '/pylon/codex/assignments/$assignmentRef': typeof PylonCodexAssignmentsAssignmentRefRoute
 }
@@ -596,6 +623,7 @@ export interface FileRouteTypes {
     | '/share/$shareId'
     | '/trace/$traceUuid'
     | '/workspaces/$workspaceId'
+    | '/aisdk/'
     | '/artanis/'
     | '/autopilot/'
     | '/blog/'
@@ -605,11 +633,13 @@ export interface FileRouteTypes {
     | '/docs/'
     | '/forum/'
     | '/khala/'
+    | '/aisdk/docs/$slug'
     | '/business/kpi/$engagementRef'
     | '/forum/f/$forumRef'
     | '/forum/receipts/$receiptRef'
     | '/forum/t/$topicId'
     | '/training/runs/$runId'
+    | '/aisdk/docs/'
     | '/training/runs/'
     | '/pylon/codex/assignments/$assignmentRef'
   fileRoutesByTo: FileRoutesByTo
@@ -656,6 +686,7 @@ export interface FileRouteTypes {
     | '/share/$shareId'
     | '/trace/$traceUuid'
     | '/workspaces/$workspaceId'
+    | '/aisdk'
     | '/artanis'
     | '/autopilot'
     | '/blog'
@@ -665,11 +696,13 @@ export interface FileRouteTypes {
     | '/docs'
     | '/forum'
     | '/khala'
+    | '/aisdk/docs/$slug'
     | '/business/kpi/$engagementRef'
     | '/forum/f/$forumRef'
     | '/forum/receipts/$receiptRef'
     | '/forum/t/$topicId'
     | '/training/runs/$runId'
+    | '/aisdk/docs'
     | '/training/runs'
     | '/pylon/codex/assignments/$assignmentRef'
   id:
@@ -717,6 +750,7 @@ export interface FileRouteTypes {
     | '/share/$shareId'
     | '/trace/$traceUuid'
     | '/workspaces/$workspaceId'
+    | '/aisdk/'
     | '/artanis/'
     | '/autopilot/'
     | '/blog/'
@@ -726,11 +760,13 @@ export interface FileRouteTypes {
     | '/docs/'
     | '/forum/'
     | '/khala/'
+    | '/aisdk/docs/$slug'
     | '/business/kpi/$engagementRef'
     | '/forum/f/$forumRef'
     | '/forum/receipts/$receiptRef'
     | '/forum/t/$topicId'
     | '/training/runs/$runId'
+    | '/aisdk/docs/'
     | '/training/runs/'
     | '/pylon/codex/assignments/$assignmentRef'
   fileRoutesById: FileRoutesById
@@ -778,6 +814,7 @@ export interface RootRouteChildren {
   ShareShareIdRoute: typeof ShareShareIdRoute
   TraceTraceUuidRoute: typeof TraceTraceUuidRoute
   WorkspacesWorkspaceIdRoute: typeof WorkspacesWorkspaceIdRoute
+  AisdkIndexRoute: typeof AisdkIndexRoute
   ArtanisIndexRoute: typeof ArtanisIndexRoute
   AutopilotIndexRoute: typeof AutopilotIndexRoute
   BlogIndexRoute: typeof BlogIndexRoute
@@ -786,11 +823,13 @@ export interface RootRouteChildren {
   ComponentsIndexRoute: typeof ComponentsIndexRoute
   ForumIndexRoute: typeof ForumIndexRoute
   KhalaIndexRoute: typeof KhalaIndexRoute
+  AisdkDocsSlugRoute: typeof AisdkDocsSlugRoute
   BusinessKpiEngagementRefRoute: typeof BusinessKpiEngagementRefRoute
   ForumFForumRefRoute: typeof ForumFForumRefRoute
   ForumReceiptsReceiptRefRoute: typeof ForumReceiptsReceiptRefRoute
   ForumTTopicIdRoute: typeof ForumTTopicIdRoute
   TrainingRunsRunIdRoute: typeof TrainingRunsRunIdRoute
+  AisdkDocsIndexRoute: typeof AisdkDocsIndexRoute
   TrainingRunsIndexRoute: typeof TrainingRunsIndexRoute
   PylonCodexAssignmentsAssignmentRefRoute: typeof PylonCodexAssignmentsAssignmentRefRoute
 }
@@ -1063,6 +1102,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ArtanisIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/aisdk/': {
+      id: '/aisdk/'
+      path: '/aisdk'
+      fullPath: '/aisdk/'
+      preLoaderRoute: typeof AisdkIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/workspaces/$workspaceId': {
       id: '/workspaces/$workspaceId'
       path: '/workspaces/$workspaceId'
@@ -1168,6 +1214,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TrainingRunsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/aisdk/docs/': {
+      id: '/aisdk/docs/'
+      path: '/aisdk/docs'
+      fullPath: '/aisdk/docs/'
+      preLoaderRoute: typeof AisdkDocsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/training/runs/$runId': {
       id: '/training/runs/$runId'
       path: '/training/runs/$runId'
@@ -1201,6 +1254,13 @@ declare module '@tanstack/react-router' {
       path: '/business/kpi/$engagementRef'
       fullPath: '/business/kpi/$engagementRef'
       preLoaderRoute: typeof BusinessKpiEngagementRefRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/aisdk/docs/$slug': {
+      id: '/aisdk/docs/$slug'
+      path: '/aisdk/docs/$slug'
+      fullPath: '/aisdk/docs/$slug'
+      preLoaderRoute: typeof AisdkDocsSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/pylon/codex/assignments/$assignmentRef': {
@@ -1268,6 +1328,7 @@ const rootRouteChildren: RootRouteChildren = {
   ShareShareIdRoute: ShareShareIdRoute,
   TraceTraceUuidRoute: TraceTraceUuidRoute,
   WorkspacesWorkspaceIdRoute: WorkspacesWorkspaceIdRoute,
+  AisdkIndexRoute: AisdkIndexRoute,
   ArtanisIndexRoute: ArtanisIndexRoute,
   AutopilotIndexRoute: AutopilotIndexRoute,
   BlogIndexRoute: BlogIndexRoute,
@@ -1276,11 +1337,13 @@ const rootRouteChildren: RootRouteChildren = {
   ComponentsIndexRoute: ComponentsIndexRoute,
   ForumIndexRoute: ForumIndexRoute,
   KhalaIndexRoute: KhalaIndexRoute,
+  AisdkDocsSlugRoute: AisdkDocsSlugRoute,
   BusinessKpiEngagementRefRoute: BusinessKpiEngagementRefRoute,
   ForumFForumRefRoute: ForumFForumRefRoute,
   ForumReceiptsReceiptRefRoute: ForumReceiptsReceiptRefRoute,
   ForumTTopicIdRoute: ForumTTopicIdRoute,
   TrainingRunsRunIdRoute: TrainingRunsRunIdRoute,
+  AisdkDocsIndexRoute: AisdkDocsIndexRoute,
   TrainingRunsIndexRoute: TrainingRunsIndexRoute,
   PylonCodexAssignmentsAssignmentRefRoute:
     PylonCodexAssignmentsAssignmentRefRoute,

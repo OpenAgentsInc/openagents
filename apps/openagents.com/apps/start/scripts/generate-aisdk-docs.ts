@@ -1,0 +1,232 @@
+#!/usr/bin/env node
+
+/**
+ * AI SDK docs compiler (owner-directed addition, 2026-07-21).
+ *
+ * Compiles the exact allowlisted Markdown sources in the repository
+ * `docs/ai-sdk/` tree (see `src/aisdk/aisdk-content.ts`) into the generated
+ * reader modules under `src/aisdk/generated/`. This is a separate, bounded
+ * compiler beside `scripts/generate-docs.ts`: the `/docs` compiler stays
+ * pointed at its owned `content/docs` tree, and THIS compiler reads only the
+ * named `docs/ai-sdk` files — never the repository-wide `docs/` directory.
+ *
+ * Rendering rules match the public docs compiler: GFM Markdown, Shiki
+ * highlighting, escaped output, and raw HTML rejected at compile time.
+ */
+
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+import GithubSlugger from 'github-slugger'
+import { Marked, Renderer, type Token, type Tokens } from 'marked'
+import { createHighlighter } from 'shiki'
+
+import {
+  aisdkDocsRoutePath,
+  aisdkDocsSourceDefinitions,
+  type AisdkDocsPage,
+  type AisdkDocsPageManifestEntry,
+  type AisdkHeading,
+} from '../src/aisdk/aisdk-content'
+
+const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const repoRoot = path.resolve(appRoot, '..', '..', '..', '..')
+const sourceRoot = path.join(repoRoot, 'docs', 'ai-sdk')
+const generatedRoot = path.join(appRoot, 'src', 'aisdk', 'generated')
+const generatedPagesRoot = path.join(generatedRoot, 'pages')
+
+const generatedPageName = (slug: string): string =>
+  `${slug === '' ? 'index' : slug}.generated.ts`
+
+const escapeHtml = (value: string): string => value
+  .replaceAll('&', '&amp;')
+  .replaceAll('<', '&lt;')
+  .replaceAll('>', '&gt;')
+  .replaceAll('"', '&quot;')
+  .replaceAll("'", '&#39;')
+
+const firstHeadingTitle = (body: string, filePath: string): string => {
+  const match = body.match(/^#\s+(.+)$/m)
+  if (match?.[1] === undefined) {
+    throw new Error(`AI SDK docs source has no top-level heading: ${filePath}`)
+  }
+  return match[1].trim()
+}
+
+/** Body without its top-level `# heading` — the reader renders the title itself. */
+const bodyWithoutTitle = (body: string): string =>
+  body.replace(/^#\s+.+\n+/, '')
+
+const assertInternalLinks = (
+  documents: ReadonlyArray<{ body: string; filePath: string }>,
+): void => {
+  const validPaths = new Set([
+    '/aisdk',
+    ...aisdkDocsSourceDefinitions.map(definition => aisdkDocsRoutePath(definition.slug)),
+  ])
+  const broken = documents.flatMap(document =>
+    Array.from(document.body.matchAll(/\[[^\]]*\]\(([^)]+)\)/g), match => match[1] ?? '')
+      .filter(href => href.startsWith('/aisdk'))
+      .map(href => href.split('#')[0] ?? href)
+      .filter(href => href !== '' && !validPaths.has(href))
+      .map(href => `${document.filePath}: ${href}`),
+  )
+  if (broken.length > 0) {
+    throw new Error(`Broken internal AI SDK docs links:\n${broken.join('\n')}`)
+  }
+}
+
+const renderDocument = async (
+  body: string,
+  filePath: string,
+  highlighter: Awaited<ReturnType<typeof createHighlighter>>,
+): Promise<Readonly<{ headings: ReadonlyArray<AisdkHeading>; html: string }>> => {
+  const slugger = new GithubSlugger()
+  const headings: Array<AisdkHeading> = []
+  const renderer = new Renderer()
+
+  renderer.heading = function ({ tokens, depth, text }: Tokens.Heading): string {
+    const id = slugger.slug(text)
+    if (depth === 2 || depth === 3) {
+      headings.push({ depth, id, text })
+    }
+    const content = this.parser.parseInline(tokens)
+    return `<h${depth} id="${escapeHtml(id)}">${content}</h${depth}>\n`
+  }
+
+  renderer.code = ({ text, lang }: Tokens.Code): string => {
+    const requestedLanguage = (lang ?? 'text').split(/\s+/)[0] ?? 'text'
+    const language = highlighter.getLoadedLanguages().includes(requestedLanguage)
+      ? requestedLanguage
+      : 'text'
+    const highlighted = highlighter.codeToHtml(text, {
+      lang: language,
+      theme: 'vesper',
+    })
+    return `<div class="oa-aisdk-doc-code" data-language="${escapeHtml(language)}">${highlighted}</div>\n`
+  }
+
+  renderer.link = function ({ href, title, tokens }: Tokens.Link): string {
+    const label = this.parser.parseInline(tokens)
+    const titleAttribute = title === null || title === undefined
+      ? ''
+      : ` title="${escapeHtml(title)}"`
+    const external = /^https?:\/\//.test(href)
+    const externalAttributes = external ? ' rel="noreferrer" target="_blank"' : ''
+    return `<a href="${escapeHtml(href)}"${titleAttribute}${externalAttributes}>${label}</a>`
+  }
+
+  const marked = new Marked({
+    gfm: true,
+    renderer,
+    walkTokens: (token: Token) => {
+      if (token.type === 'html') {
+        throw new Error(`Raw HTML is not allowed in AI SDK docs: ${filePath}`)
+      }
+    },
+  })
+  const html = await marked.parse(body)
+  return { headings, html }
+}
+
+const serializeModule = (page: AisdkDocsPage): string =>
+  `// Generated by scripts/generate-aisdk-docs.ts. Do not edit.\n\nimport type { AisdkDocsPage } from '../../aisdk-content'\n\nconst page: AisdkDocsPage = ${JSON.stringify(page, null, 2)}\n\nexport default page\n`
+
+const serializeManifestModule = (
+  manifest: ReadonlyArray<AisdkDocsPageManifestEntry>,
+): string => {
+  const pageImports = manifest.map((entry, index) =>
+    `import aisdkPage${index} from './pages/${generatedPageName(entry.slug).replace(/\.ts$/, '')}'`,
+  ).join('\n')
+  const pages = manifest.map((entry, index) =>
+    `  ${JSON.stringify(entry.slug)}: aisdkPage${index},`,
+  ).join('\n')
+  return `// Generated by scripts/generate-aisdk-docs.ts. Do not edit.\n\nimport type { AisdkDocsPage, AisdkDocsPageManifestEntry } from '../aisdk-content'\n${pageImports}\n\nexport const aisdkDocsManifest: ReadonlyArray<AisdkDocsPageManifestEntry> = ${JSON.stringify(manifest, null, 2)}\n\nconst aisdkDocsPages: Readonly<Record<string, AisdkDocsPage>> = {\n${pages}\n}\n\nexport const loadAisdkDocsPage = (slug: string): AisdkDocsPage | undefined => aisdkDocsPages[slug]\n`
+}
+
+const writeGeneratedFile = async (
+  filePath: string,
+  content: string,
+  check: boolean,
+): Promise<void> => {
+  if (check) {
+    const existing = await readFile(filePath, 'utf8').catch(() => '')
+    if (existing !== content) {
+      throw new Error(`Generated AI SDK docs artifact is stale: ${filePath}`)
+    }
+    return
+  }
+  await mkdir(path.dirname(filePath), { recursive: true })
+  await writeFile(filePath, content)
+}
+
+const main = async (): Promise<void> => {
+  const check = process.argv.includes('--check')
+
+  const documents = await Promise.all(
+    aisdkDocsSourceDefinitions.map(async definition => {
+      const filePath = path.join(sourceRoot, definition.file)
+      const rawSource = await readFile(filePath, 'utf8')
+      const body = rawSource.trim()
+      return {
+        body,
+        definition,
+        filePath,
+        title: firstHeadingTitle(body, filePath),
+      }
+    }),
+  )
+
+  assertInternalLinks(documents)
+
+  const highlighter = await createHighlighter({
+    langs: ['bash', 'javascript', 'json', 'markdown', 'sh', 'text', 'tsx', 'typescript'],
+    themes: ['vesper'],
+  })
+  const rendered = await Promise.all(documents.map(async document => {
+    const output = await renderDocument(
+      bodyWithoutTitle(document.body),
+      document.filePath,
+      highlighter,
+    )
+    const page: AisdkDocsPage = {
+      description: document.definition.description,
+      editUrl: `https://github.com/OpenAgentsInc/openagents/edit/main/docs/ai-sdk/${document.definition.file}`,
+      headings: output.headings,
+      html: output.html,
+      path: aisdkDocsRoutePath(document.definition.slug),
+      sidebarLabel: document.definition.sidebarLabel,
+      slug: document.definition.slug,
+      title: document.title,
+    }
+    return page
+  }))
+  highlighter.dispose()
+
+  const manifest = rendered.map(({ html: _html, ...entry }) => entry)
+
+  if (!check) {
+    await rm(generatedPagesRoot, { force: true, recursive: true })
+  }
+
+  await Promise.all([
+    ...rendered.map(page =>
+      writeGeneratedFile(
+        path.join(generatedPagesRoot, generatedPageName(page.slug)),
+        serializeModule(page),
+        check,
+      )),
+    writeGeneratedFile(
+      path.join(generatedRoot, 'aisdk-manifest.generated.ts'),
+      serializeManifestModule(manifest),
+      check,
+    ),
+  ])
+
+  console.log(
+    `[aisdk-docs] ${check ? 'verified' : 'generated'} ${rendered.length} pages`,
+  )
+}
+
+await main()

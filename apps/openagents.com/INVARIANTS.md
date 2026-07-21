@@ -2,6 +2,29 @@
 
 This is the invariant ledger for `openagents`.
 
+## 2026-07-21 public AI SDK surface (/aisdk)
+
+- `/aisdk`, `/aisdk/docs`, and `/aisdk/docs/{slug}` are retained public routes
+  added at owner direction on 2026-07-21. They present the extracted
+  OpenAgents AI SDK (repository `OpenAgentsInc/ai`, npm `@openagentsinc/ai`
+  on the `rc` dist-tag) and are owned by the TanStack Start app and served by
+  the `openagents-monolith` Cloud Run service through the shared
+  `route-table.ts` document allowlist.
+- The `/aisdk/docs` content graph is exactly the explicit source allowlist in
+  `apps/start/src/aisdk/aisdk-content.ts` over the repository `docs/ai-sdk/`
+  tree. The AI SDK docs compiler
+  (`apps/start/scripts/generate-aisdk-docs.ts`) reads only those named files.
+  It must not glob the repository-wide `docs/` directory, and the separate
+  `/docs` compiler stays pointed at its own `apps/start/content/docs` tree.
+- The implementation is build-time Markdown compilation plus Start route
+  rendering, with raw HTML rejected at compile time and an unknown slug
+  returning a 404. There is no documentation-specific server runtime,
+  database, secret, or separate deployment authority. The pages grant no
+  auth, tool, API, payment, release, or public-claim authority.
+- Regression coverage lives in the Start `/aisdk` route tests, the strict
+  `generate-aisdk-docs.ts --check` gate inside `check:docs`, and the shared
+  Start/Worker document-route agreement test.
+
 ## 2026-07-14 Google Cloud production authority
 
 - Google Cloud is the sole production infrastructure authority. The API runs
