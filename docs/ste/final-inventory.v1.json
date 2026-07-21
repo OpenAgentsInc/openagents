@@ -21242,6 +21242,28 @@
       }
     },
     {
+      "path": "docs/deploy/2026-07-21-atomic-coordinator-rc-promotion-and-tailnet-linux-acceptance-runbook.md",
+      "sha256": "cc93e4bf816808bd9e75921099aab2293e71292c9bc78bf6c8d0f1e3f4e8c2ef",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "mixed",
+        "risk": "high",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/deploy/README.md",
       "sha256": "349d718559d66cdaf5a0de915435557ecf8af254da213ae821964eba8101a4fd",
       "reason": "Final review of a converted document",
@@ -21442,6 +21464,18 @@
     {
       "path": "docs/deploy/receipts/2026-07-21-dist-13-real-ports-and-release-set-bucket.md",
       "sha256": "f5af8135f4f546c5cda08b83997cd7f4da25b90e9ac0871d5b61abecd79606ac",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null,
+        "ste_status": "source-data"
+      }
+    },
+    {
+      "path": "docs/deploy/receipts/2026-07-21-linux-x64-clean-machine-acceptance.md",
+      "sha256": "0f76cafbbe93988796b81b426468e65fa8d3b715802b14eb7898718709fee9e5",
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
