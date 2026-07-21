@@ -64,8 +64,20 @@ export const resolveAppleFmHelperPath = (resourcesPath: string): string =>
 
 /**
  * Resolve + verify the packaged helper. Throws a typed reason on any failure so
- * the launcher can classify it (missing vs tampered): manifest shape,
- * architecture, executable bit, sha256, and a caller-supplied signature check.
+ * the launcher can classify it (missing vs tampered). Verification checks the
+ * manifest shape, architecture, and executable bit, then makes the OS code
+ * signature the authoritative integrity check.
+ *
+ * Integrity model (fix for #9155): electron-forge codesigns the in-bundle
+ * Mach-O AFTER staging records its sha256 into the manifest, so a signed
+ * binary's runtime bytes never match the pinned pre-sign digest. In a signed,
+ * notarized bundle the `codesign --verify --strict` check (plus Gatekeeper over
+ * the whole bundle) is the authoritative tamper protection, so a valid
+ * signature ACCEPTS the helper without comparing the (expected-to-differ)
+ * sha256. Only when the binary is unsigned or its signature is broken (dev
+ * builds) do we fall back to the sha256 pin, which still detects tampering
+ * against the exact unsigned build output. This mirrors the desktop host fix in
+ * `apps/openagents-desktop/src/apple-fm-native-helper.ts`.
  */
 export const verifyAppleFmHelper = (input: {
   readonly resourcesPath: string;
@@ -78,9 +90,15 @@ export const verifyAppleFmHelper = (input: {
   }
   const stats = statSync(absolutePath);
   if (!stats.isFile() || (stats.mode & 0o111) === 0) throw new Error("apple_fm_helper_not_executable");
+  // A valid, intact OS code signature is authoritative (the production, signed
+  // case). Do NOT compare sha256 here: the pinned pre-sign digest is expected
+  // to differ from the codesigned binary.
+  if (input.verifySignature(absolutePath)) return absolutePath;
+  // Unsigned/dev build (or a genuinely broken signature): fall back to the
+  // sha256 pin against the exact unsigned build output. This preserves
+  // dev-time tamper detection; the typed error name is unchanged.
   const digest = createHash("sha256").update(readFileSync(absolutePath)).digest("hex");
   if (digest !== input.manifest.sha256) throw new Error("apple_fm_helper_digest_mismatch");
-  if (!input.verifySignature(absolutePath)) throw new Error("apple_fm_helper_signature_invalid");
   return absolutePath;
 };
 
