@@ -321,6 +321,12 @@ export const makeDelegateProviderRegistry = (config: DelegateProviderConfig): Pr
         Effect.gen(function* () {
           // Accumulate the redacted chain; every growth emits the LATEST snapshot.
           const activities: Array<ObservedAgentActivity> = []
+          // The live streaming assistant answer: text_delta events are coalesced
+          // into ONE growing assistant entry so the reply streams token-by-token
+          // instead of appearing only at completion. A tool/reasoning activity
+          // closes the run so the next text starts a fresh entry.
+          let liveAssistantIndex = -1
+          let liveAssistantText = ""
           const publishChain = (): void => {
             const entries: ReadonlyArray<SafeMessageChainEntry> = projectSafeMessageChain(
               input.requestRef,
@@ -329,11 +335,26 @@ export const makeDelegateProviderRegistry = (config: DelegateProviderConfig): Pr
             Queue.offerUnsafe(queue, ProviderStreamEvent.Chain({ entries }))
           }
           const emit = (event: ClaudeLocalEvent): void => {
+            if (event.kind === "text_delta") {
+              liveAssistantText += event.text
+              const entry: ObservedAgentActivity = { role: "assistant", text: liveAssistantText }
+              if (liveAssistantIndex === -1) {
+                liveAssistantIndex = activities.length
+                activities.push(entry)
+              } else {
+                activities[liveAssistantIndex] = entry
+              }
+              Queue.offerUnsafe(queue, ProviderStreamEvent.Progress())
+              publishChain()
+              return
+            }
             const activity = redactCodexEvent(event)
             if (activity === null) {
               Queue.offerUnsafe(queue, ProviderStreamEvent.Progress())
               return
             }
+            liveAssistantIndex = -1
+            liveAssistantText = ""
             activities.push(activity)
             Queue.offerUnsafe(queue, ProviderStreamEvent.Progress())
             publishChain()
@@ -353,8 +374,15 @@ export const makeDelegateProviderRegistry = (config: DelegateProviderConfig): Pr
           )
 
           if (result.ok) {
-            // Append the final assistant answer as the last chain entry.
-            activities.push({ role: "assistant", text: result.text })
+            // Finalize the assistant answer. If it streamed, replace the live
+            // entry with the authoritative final text (no duplicate). Otherwise
+            // append it as the last chain entry.
+            const finalEntry: ObservedAgentActivity = { role: "assistant", text: result.text }
+            if (liveAssistantIndex === -1) {
+              activities.push(finalEntry)
+            } else {
+              activities[liveAssistantIndex] = finalEntry
+            }
             publishChain()
             Queue.offerUnsafe(queue, ProviderStreamEvent.Completed({ candidate: answerCandidate(input.requestRef, result.text) }))
           } else {

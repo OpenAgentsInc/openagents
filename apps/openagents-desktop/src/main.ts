@@ -1447,11 +1447,22 @@ const runDelegateLaneTurn = async <Context>(
   if (request === null) return { ok: false, reason: "session_failed", detail: "invalid delegation request" }
   const admission = lane.admit(request)
   if (!admission.ok) return { ok: false, reason: "session_failed", detail: admission.error }
+  // History authority is main's own thread store. A delegated turn must carry the
+  // prior conversation so it has context ("summarize that" refers to the last
+  // reply), excluding the current user message (that is the prompt, not history).
+  // The lane bounds/windows this and the store already caps note count.
+  const priorNotes = threads().open(input.threadRef)?.notes ?? []
+  const lastNote = priorNotes[priorNotes.length - 1]
+  const historyNotes =
+    lastNote !== undefined && lastNote.role === "user" && lastNote.text === input.message
+      ? priorNotes.slice(0, -1)
+      : priorNotes
+  const history = historyNotes.map(note => ({ role: note.role, text: note.text }))
   const result = await lane.runTurn({
     request,
     model: admission.model,
     context: admission.context,
-    history: [],
+    history,
     message: input.message,
     background: true,
     emit: input.emit,
