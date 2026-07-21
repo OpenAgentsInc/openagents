@@ -55,7 +55,12 @@ const fixtureEntry = (
       configurationRef: configuration.configurationRef,
       configurationDigest: configurationDigest(configuration),
       executable: process.execPath,
-      argv: [path.resolve("scripts/fixtures/ide-dap-fixture.cjs"), ...adapterArguments],
+      argv: [
+        // Resolve relative to this test file, not process.cwd(), so the fixture
+        // is found whether the runner starts from the app dir or the repo root.
+        path.resolve(import.meta.dirname, "../../scripts/fixtures/ide-dap-fixture.cjs"),
+        ...adapterArguments,
+      ],
       cwd: root,
       environment: { PATH: process.env.PATH ?? "" },
       adapterId: "fixture",

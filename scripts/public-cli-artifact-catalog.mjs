@@ -10,6 +10,7 @@ export const publicCliArtifacts = [
     bin: { "pylon-runtime": "dist/cli.mjs" },
     externalInternalDts: true,
     typeDependencies: [
+      { name: "@openagentsinc/apple-fm-runtime", root: "packages/apple-fm-runtime" },
       { name: "@openagentsinc/blueprint-contracts", root: "packages/blueprint-contracts" },
       { name: "@openagentsinc/provider-account-schema", root: "packages/provider-account-schema" },
     ],

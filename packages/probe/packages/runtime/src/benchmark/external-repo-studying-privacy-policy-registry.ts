@@ -68,7 +68,7 @@ export const EXTERNAL_REPO_STUDY_PRIVACY_POLICY_V0_DOCUMENT_PATH =
  * value, so CI catches any doc<->registry drift.
  */
 export const EXTERNAL_REPO_STUDY_PRIVACY_POLICY_V0_DOCUMENT_DIGEST =
-  "sha256:84235952c90ebd4cab57f98a241fffe6654d3a50d1ebf49bbe67e3b1f3b5d510" as const;
+  "sha256:5c62867b1565c1518b9f5e55a3d641cf1db61a6af29ada0e0f60e2c8c828b610" as const;
 
 /**
  * Deterministic content digest of a privacy-policy document's raw text. The
