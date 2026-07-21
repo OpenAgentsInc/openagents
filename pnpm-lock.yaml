@@ -488,6 +488,9 @@ importers:
       '@openagentsinc/agent-client-runtime-bridge':
         specifier: workspace:*
         version: link:../../packages/agent-client-runtime-bridge
+      '@openagentsinc/agent-harness-contract':
+        specifier: workspace:*
+        version: link:../../packages/agent-harness-contract
       '@openagentsinc/agent-runtime-schema':
         specifier: workspace:*
         version: link:../../packages/agent-runtime-schema
