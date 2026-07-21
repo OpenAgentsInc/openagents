@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:bbf15ff06fddc7e16e4363e4962ed6fe2b32d538022a96f98e79f6eed919c27f",
+  "sourceDigest": "sha256:0898c532c3270d9ae43ff81fe5af019bce537486c2efab63679bc2fd3f630ed9",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -285,7 +285,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "apps/openagents-desktop (331 tracked test files)"
+          "ref": "apps/openagents-desktop (332 tracked test files)"
         },
         {
           "type": "behavior-contract",
@@ -294,6 +294,10 @@
         {
           "type": "behavior-contract",
           "ref": "openagents_desktop.full_auto_apple_fm_advisory.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_desktop.full_auto_capacity_ledger.v1"
         },
         {
           "type": "behavior-contract",

@@ -1738,7 +1738,42 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
       verification:
         "FAV-03 (#9113) landed apps/openagents-desktop/src/full-auto-advisory.ts (FullAutoRouteRecommendation and FullAutoAdvisoryAnalysis with a required advisory: true literal, decideFullAutoRoute as a recommendation-free deterministic decision, adviseFullAutoRoute recording both as distinct facts) proven by apps/openagents-desktop/src/full-auto-advisory.test.ts. Wiring the on-device Apple FM producer and its AFS-09 gated compiled artifacts into a live run is the activation rung.",
     },
+    {
+      authorityBoundary:
+        "This binds the per-lane capacity ledger and the own-capacity-only admission of a new concurrent run onto an available lane. It never raises the existing FULL_AUTO_RUN_ACTIVE_LIMIT total cap (rev 13 / FA-AC-39 owns the concurrency admission), never admits onto a busy/cooling/exhausted lane, and grants no fleet scheduling, cross-machine authority, autonomous provider selection, or concurrent turns within one thread.",
+      blockerRefs: [],
+      contractId: "openagents_desktop.full_auto_capacity_ledger.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "apps/openagents-desktop/src/full-auto-capacity.ts",
+        "specs/desktop/full-auto.product-spec.md",
+        "docs/fable/2026-07-20-full-auto-first-verifiable-mode.md",
+        "github:OpenAgentsInc/openagents#9114",
+      ],
+      oracles: [
+        {
+          description:
+            "Unit coverage proves the per-lane capacity ledger derives state from the same lane truth with most-constrained precedence (unavailable > exhausted > cooling > busy > available), and that admitConcurrentRun is own-capacity-only: it refuses at the existing total cap, admits only onto an available (ready, idle, un-cooling) lane so concurrency spreads across distinct ready lanes, refuses with no_available_lane when every lane is busy even under the cap, and never raises FULL_AUTO_MAX_CONCURRENT_RUNS above the existing FULL_AUTO_RUN_ACTIVE_LIMIT of 8.",
+          id: "openagents_desktop.full_auto_capacity_ledger.own_capacity_bounded_concurrency",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents-desktop/src/full-auto-capacity.test.ts",
+        },
+      ],
+      productArea: "Desktop Full Auto capacity ledger and bounded concurrency",
+      source: {
+        channel: "github-issue",
+        statedBy: "owner",
+        statedOn: "2026-07-20",
+      },
+      state: "enforced",
+      statement:
+        "Full Auto tracks per-lane capacity (available / busy / cooling / exhausted / unavailable) derived from the same lane truth, and admits a new concurrent run only onto an available lane under the existing total active-run cap -- own-capacity only, spreading concurrency across distinct ready lanes rather than oversubscribing an exhausted or rate-limited account.",
+      surface: "openagents-desktop",
+      verification:
+        "FAV-04 (#9114) landed apps/openagents-desktop/src/full-auto-capacity.ts (projectFullAutoCapacityLedger and the own-capacity-only admitConcurrentRun that reuses FULL_AUTO_RUN_ACTIVE_LIMIT and never raises it) proven by apps/openagents-desktop/src/full-auto-capacity.test.ts. The concurrency admission itself is already owner-admitted at ProductSpec rev 13 (FA-AC-39); a live owner-real session running two concurrent runs on distinct ready lanes is the activation rung.",
+    },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-20.3",
+  version: "2026-07-20.4",
 };
