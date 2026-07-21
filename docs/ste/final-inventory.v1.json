@@ -19363,11 +19363,12 @@
     {
       "path": "docs/cloud/2026-07-21-sbx09-independent-verifier-packet.md",
       "sha256": "fedeb83676eb81113cc64f1c95b54ca798b3a6e8e16554045cc655b004db7dfa",
-      "reason": "Final review of mutable first-party agent technical text",
+      "reason": "Final review of a converted document",
       "profile": {
-        "ste_status": "inspected",
-        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
         "ste_audience": "agent",
         "ste_agent_compact_revision": "openagents-agent-compact-v1",
         "ste_accepted_screening_rules": [
@@ -19375,7 +19376,10 @@
           "STE-3.6",
           "STE-5.1",
           "STE-8.2"
-        ]
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {
@@ -42970,7 +42974,7 @@
     },
     {
       "path": "docs/teardowns/2026-07-21-buzz-teardown.md",
-      "sha256": "48a1aaa07a2991fdc9c77701c5fa1cb7bb1e92ff7f054755eb4c04cab68c001c",
+      "sha256": "e2c4a396b2d964d33b66fe02060b965a06e230abb9b2998162aaeb06e2672ea9",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
