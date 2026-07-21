@@ -47,7 +47,7 @@ import type { SupplyLaneArming } from './model-serving-policy'
 // The bare `gemini` alias (see model-router.ts's `isGeminiModel`/`ModelClass`
 // and inference-free-allowance.ts's `FREE_ELIGIBLE_MODEL_IDS`) is the
 // canonical, already-understood routing id for the first-party Vertex Gemini
-// lane — distinct from the specific dated catalog row (`gemini-3.5-flash`).
+// lane — distinct from the specific dated catalog row (`gemini-3.6-flash`).
 // It is the default preference per the issue ("Gemini is the default for the
 // coding lane").
 export const DEFAULT_MODEL_PREFERENCE_ID = 'gemini' as const
@@ -84,7 +84,7 @@ const isLaneArmedForModel = (
 // The model ids this deployment can actually serve right now, derived from
 // the pricing table filtered to armed lanes, plus the `gemini` alias when the
 // Vertex Gemini lane is armed (its own catalog row is the dated
-// `gemini-3.5-flash` id; exposing the stable alias avoids the picker/store
+// `gemini-3.6-flash` id; exposing the stable alias avoids the picker/store
 // needing to track dated ids as the underlying Gemini version changes).
 export const resolveAvailableModelIds = (
   arming: SupplyLaneArming,

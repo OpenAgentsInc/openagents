@@ -271,7 +271,7 @@ export const AgentClVertexRunnerPlanV0 = S.Struct({
   issueRef: S.Literal(AGENTCL_VERTEX_STRESS_ISSUE_REF),
   lane: S.Struct({
     laneRef: S.Literal('vertex-gemini'),
-    model: S.Literal('gemini-3.5-flash'),
+    model: S.Literal('gemini-3.6-flash'),
     projectRef: S.Literal('project.openagentsgemini'),
     forbiddenFallbackLaneRefs: S.Array(S.Literals(['glm-free', 'khala-free'])),
     requiresPreScaleVertexProof: S.Literal(true),
@@ -321,7 +321,7 @@ export const AgentClVertexStressReportV0 = S.Struct({
   runMode: AgentClVertexStressRunMode,
   routing: S.Struct({
     laneRef: S.Literal('vertex-gemini'),
-    model: S.Literal('gemini-3.5-flash'),
+    model: S.Literal('gemini-3.6-flash'),
     projectRef: S.Literal('project.openagentsgemini'),
     verifiedVertexBeforeScale: S.Boolean,
     proofRefs: S.Array(S.String),
@@ -980,7 +980,7 @@ export const buildAgentClVertexGeminiRunnerPlan = (
     issueRef: AGENTCL_VERTEX_STRESS_ISSUE_REF,
     lane: {
       laneRef: 'vertex-gemini',
-      model: 'gemini-3.5-flash',
+      model: 'gemini-3.6-flash',
       projectRef: 'project.openagentsgemini',
       forbiddenFallbackLaneRefs: ['glm-free', 'khala-free'],
       requiresPreScaleVertexProof: true,
@@ -1284,7 +1284,7 @@ export const buildAgentClVertexStressBaselineReport = (
     runMode: input.runMode ?? 'fixture_baseline',
     routing: {
       laneRef: 'vertex-gemini',
-      model: 'gemini-3.5-flash',
+      model: 'gemini-3.6-flash',
       projectRef: 'project.openagentsgemini',
       verifiedVertexBeforeScale,
       proofRefs: verifiedVertexBeforeScale

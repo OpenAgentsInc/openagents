@@ -313,7 +313,7 @@ describe('AgentCL repo-reuse gym environment', () => {
     expect(plan.issueRef).toBe('public.issue.6762')
     expect(plan.lane).toEqual({
       laneRef: 'vertex-gemini',
-      model: 'gemini-3.5-flash',
+      model: 'gemini-3.6-flash',
       projectRef: 'project.openagentsgemini',
       forbiddenFallbackLaneRefs: ['glm-free', 'khala-free'],
       requiresPreScaleVertexProof: true,
@@ -426,7 +426,7 @@ describe('AgentCL repo-reuse gym environment', () => {
       runAgentClVertexRunnerLoop({
         adapter: fakeVertexAdapter(request => {
           calls += 1
-          expect(request.model).toBe('gemini-3.5-flash')
+          expect(request.model).toBe('gemini-3.6-flash')
           expect(request.priority).toBe('internal_stress')
           return Effect.succeed(
             vertexResult({
@@ -489,7 +489,7 @@ describe('AgentCL repo-reuse gym environment', () => {
     expect(report.issueRef).toBe('public.issue.6762')
     expect(report.routing).toEqual({
       laneRef: 'vertex-gemini',
-      model: 'gemini-3.5-flash',
+      model: 'gemini-3.6-flash',
       projectRef: 'project.openagentsgemini',
       verifiedVertexBeforeScale: false,
       proofRefs: [],

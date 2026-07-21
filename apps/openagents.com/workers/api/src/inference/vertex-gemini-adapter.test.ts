@@ -107,7 +107,7 @@ describe('vertex gemini adapter request mapping', () => {
     )
   })
 
-  test('maps thinking budget passthrough into Gemini generation config', async () => {
+  test('gemini 3.x maps a numeric thinking budget onto the thinkingLevel enum', async () => {
     const { calls, fetchImpl } = recordingFetch(okJson(geminiResponse))
     const adapter = makeVertexGeminiAdapter({
       fetchImpl,
@@ -115,6 +115,9 @@ describe('vertex gemini adapter request mapping', () => {
       tokenProvider: fixedToken,
     })
 
+    // The default model resolves to gemini-3.6-flash (a 3.x model): a budget of
+    // 0 maps to the `minimal` thinkingLevel string enum, never a numeric
+    // thinkingBudget.
     await run(
       adapter.complete(
         baseRequest({
@@ -129,7 +132,75 @@ describe('vertex gemini adapter request mapping', () => {
     >
     expect(body['generationConfig']).toMatchObject({
       maxOutputTokens: 4096,
-      thinkingConfig: { thinkingBudget: 0 },
+      thinkingConfig: { thinkingLevel: 'minimal' },
+    })
+  })
+
+  test('gemini 3.x drops the deprecated temperature/topP/topK sampling params', async () => {
+    const { calls, fetchImpl } = recordingFetch(okJson(geminiResponse))
+    const adapter = makeVertexGeminiAdapter({
+      fetchImpl,
+      project: 'openagentsgemini',
+      tokenProvider: fixedToken,
+    })
+
+    await run(
+      adapter.complete(
+        baseRequest({
+          passthroughParams: {
+            max_tokens: 512,
+            temperature: 0.7,
+            thinking_level: 'high',
+            top_k: 40,
+            top_p: 0.9,
+          },
+        }),
+      ),
+    )
+
+    const generationConfig = (
+      JSON.parse(calls[0]!.init.body as string) as Record<string, unknown>
+    )['generationConfig'] as Record<string, unknown>
+    expect(generationConfig).toEqual({
+      maxOutputTokens: 512,
+      thinkingConfig: { thinkingLevel: 'high' },
+    })
+    expect(generationConfig['temperature']).toBeUndefined()
+    expect(generationConfig['topP']).toBeUndefined()
+    expect(generationConfig['topK']).toBeUndefined()
+  })
+
+  test('pre-3.x Gemini keeps the legacy numeric thinkingBudget and sampling knobs', async () => {
+    const { calls, fetchImpl } = recordingFetch(okJson(geminiResponse))
+    const adapter = makeVertexGeminiAdapter({
+      fetchImpl,
+      project: 'openagentsgemini',
+      tokenProvider: fixedToken,
+    })
+
+    await run(
+      adapter.complete(
+        baseRequest({
+          model: 'gemini-2.5-pro',
+          passthroughParams: {
+            max_tokens: 4096,
+            temperature: 0.2,
+            thinking_budget: 256,
+            top_p: 0.8,
+          },
+        }),
+      ),
+    )
+
+    expect(
+      (JSON.parse(calls[0]!.init.body as string) as Record<string, unknown>)[
+        'generationConfig'
+      ],
+    ).toMatchObject({
+      maxOutputTokens: 4096,
+      temperature: 0.2,
+      thinkingConfig: { thinkingBudget: 256 },
+      topP: 0.8,
     })
   })
 })

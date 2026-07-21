@@ -1,7 +1,7 @@
 // Vertex Gemini provider adapter for the inference gateway
 // (EPIC #5474, free-tier enablement). This is the Gemini lane: it serves
 // Google's own Gemini models (default: Gemini 3.5 Flash, model id
-// `gemini-3.5-flash`) from our first-party Google Cloud Vertex AI quota
+// `gemini-3.6-flash`) from our first-party Google Cloud Vertex AI quota
 // (project `openagentsgemini`). Unlike the Claude lane, Gemini is Google's OWN
 // model on Vertex, so there is NO Anthropic partner quota involved — it is a
 // plain Vertex `publishers/google` model.
@@ -70,7 +70,7 @@ export const VERTEX_GEMINI_ADAPTER_ID = 'vertex-gemini'
 
 // The default Gemini model id the free tier serves. The gateway's default model
 // when a caller specifies none (gateway free-tier enablement §3).
-export const DEFAULT_GEMINI_MODEL_ID = 'gemini-3.5-flash'
+export const DEFAULT_GEMINI_MODEL_ID = 'gemini-3.6-flash'
 
 // Default Vertex location — `global` uses the bare `aiplatform.googleapis.com`
 // host (no region subdomain prefix). Same default as the Anthropic lane.
@@ -103,7 +103,7 @@ export type VertexGeminiAdapterConfig = Readonly<{
 // last-mile reference of the served lane; the router decides WHICH alias maps
 // here.
 export const KNOWN_VERTEX_GEMINI_MODEL_IDS: ReadonlyArray<string> = [
-  'gemini-3.5-flash',
+  'gemini-3.6-flash',
   'gemini-3.5-pro',
   'gemini-3.5-flash',
   'gemini-2.5-pro',
@@ -151,11 +151,32 @@ const vertexUrl = (
 const toGeminiRole = (role: string): 'user' | 'model' =>
   role === 'assistant' || role === 'model' ? 'model' : 'user'
 
+// The Gemini `thinkingLevel` string enum values Gemini 3.x accepts.
+const GEMINI_THINKING_LEVELS: ReadonlySet<string> = new Set([
+  'minimal',
+  'medium',
+  'high',
+])
+
+// A Gemini 3.x model id (gemini-3, gemini-3.1, gemini-3.5, gemini-3.6, ...).
+// Gemini 3.x deprecates the sampling knobs (temperature/topP/topK) and the
+// numeric candidateCount, and replaces the numeric thinkingBudget with the
+// thinkingLevel string enum, so the request builder gates on this.
+const isGemini3xModel = (modelId: string): boolean =>
+  /^gemini-3(?:\.\d+)?(?:-|$)/u.test(modelId.trim().toLowerCase())
+
 // Generation-config sampling params Gemini accepts that the route may forward
 // verbatim via passthroughParams. We copy only recognized, type-checked fields
 // (Gemini names them differently from OpenAI/Anthropic, so we translate).
+//
+// For a Gemini 3.x model we OMIT temperature/topP/topK and candidateCount (they
+// are deprecated + ignored today and will 400 in a future generation) and
+// translate any caller thinking budget into the thinkingLevel string enum
+// (default medium). Pre-3.x models keep the legacy numeric thinkingBudget plus
+// sampling knobs unchanged.
 const buildGenerationConfig = (
   request: InferenceRequest,
+  modelId: string,
 ): Record<string, unknown> => {
   const passthrough = request.passthroughParams
   const config: Record<string, unknown> = {}
@@ -168,6 +189,31 @@ const buildGenerationConfig = (
 
   const rawThinkingBudget =
     passthrough['thinking_budget'] ?? passthrough['thinkingBudget']
+  const rawThinkingLevel =
+    passthrough['thinking_level'] ?? passthrough['thinkingLevel']
+
+  if (isGemini3xModel(modelId)) {
+    // Gemini 3.x: thinkingLevel string enum only; no numeric budget, no
+    // sampling params. Honor an explicit level, else map a legacy numeric
+    // budget (<= 0 -> minimal, otherwise medium). With neither present we
+    // send nothing and let the model apply its own default (medium for
+    // gemini-3.6-flash).
+    const level =
+      typeof rawThinkingLevel === 'string' &&
+      GEMINI_THINKING_LEVELS.has(rawThinkingLevel.trim().toLowerCase())
+        ? rawThinkingLevel.trim().toLowerCase()
+        : typeof rawThinkingBudget === 'number' &&
+            Number.isFinite(rawThinkingBudget)
+          ? rawThinkingBudget <= 0
+            ? 'minimal'
+            : 'medium'
+          : undefined
+    if (level !== undefined) {
+      config['thinkingConfig'] = { thinkingLevel: level }
+    }
+    return config
+  }
+
   if (
     typeof rawThinkingBudget === 'number' &&
     Number.isInteger(rawThinkingBudget) &&
@@ -333,6 +379,7 @@ const geminiContentForMessage = (
 
 const buildGeminiBody = (
   request: InferenceRequest,
+  modelId: string,
 ): Record<string, unknown> => {
   // System messages (from a `system` role or the `system` passthrough param)
   // are hoisted into Gemini's top-level systemInstruction; everything else maps
@@ -359,7 +406,7 @@ const buildGeminiBody = (
 
   const body: Record<string, unknown> = {
     contents,
-    generationConfig: buildGenerationConfig(request),
+    generationConfig: buildGenerationConfig(request, modelId),
   }
   if (systemTexts.length > 0) {
     body['systemInstruction'] = {
@@ -563,7 +610,7 @@ export const makeVertexGeminiAdapter = (
         modelId,
         method,
       )
-      const body = buildGeminiBody(request)
+      const body = buildGeminiBody(request, modelId)
 
       return yield* Effect.tryPromise({
         catch: error =>

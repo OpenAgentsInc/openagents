@@ -58,7 +58,7 @@ describe("mobile execution-target catalog", () => {
     ])
     expect(catalog.options.find(option => option.targetId === "khala")).toMatchObject({
       providerRef: "provider.openagents.hosted",
-      modelRef: "model.gemini-3.5-flash",
+      modelRef: "model.gemini-3.6-flash",
       runtimeTarget: { lane: "hosted_khala", executionTargetId: "khala" },
     })
     expect(catalog.options.find(option => option.targetId === "agent-computer")).toMatchObject({

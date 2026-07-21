@@ -246,6 +246,7 @@ const identityLabel = (run: ConfirmedAgentRun): string => {
 const modelLabels: Readonly<Record<string, string>> = {
   "gemma-4-31b-it": "Gemma 4 31B",
   "gemma-4-26b-a4b-it": "Gemma 4 26B",
+  "gemini-3.6-flash": "Gemini 3.6 Flash",
   "gemini-3.5-flash": "Gemini 3.5 Flash",
 }
 

@@ -56,7 +56,7 @@ import {
 } from './inference/provider-adapter'
 
 /** Default Gemini model alias the hosted lane requests when none is configured. */
-export const DEFAULT_HOSTED_GEMINI_MODEL = 'gemini-3.5-flash'
+export const DEFAULT_HOSTED_GEMINI_MODEL = 'gemini-3.6-flash'
 
 /** Default output-token ceiling for a hosted Gemini closeout generation. */
 export const DEFAULT_HOSTED_GEMINI_MAX_OUTPUT_TOKENS = 1024

@@ -134,7 +134,7 @@ describe('decidePremiumModelAccess (pure)', () => {
     expect(d.allowed).toBe(false)
     expect(d.reasonRef).toBe(PREMIUM_REASON_DENIED_NOT_ALLOWLISTED)
     expect(d.message).toContain('premium')
-    expect(d.message).toContain('gemini-3.5-flash') // points at the free default
+    expect(d.message).toContain('gemini-3.6-flash') // points at the free default
   })
 })
 

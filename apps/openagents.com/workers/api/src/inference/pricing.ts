@@ -234,7 +234,7 @@ const FIREWORKS_OPEN_COST: Readonly<Record<string, ModelCostPerMtok>> = {
   },
 }
 
-// Vertex Gemini (Google's own model) cost basis — the Gemini 3.5 Flash lane is
+// Vertex Gemini (Google's own model) cost basis — the Gemini 3.6 Flash lane is
 // the default/free-tier model (gateway free-tier enablement §1/§3). Gemini is
 // Google's first-party Vertex model (no Anthropic partner quota). These are the
 // published Vertex Gemini Flash LIST rates per 1M tokens; the committed-use /
@@ -244,6 +244,15 @@ const FIREWORKS_OPEN_COST: Readonly<Record<string, ModelCostPerMtok>> = {
 export const GEMINI_FLASH_COST_IS_LIST_TODO_CONFIRM = true as const
 
 const VERTEX_GEMINI_COST: Readonly<Record<string, ModelCostPerMtok>> = {
+  // Gemini 3.6 Flash — the default/free-tier Flash lane. Google's official
+  // published list price is $1.50 in / $7.50 out per 1M tokens. Cached input is
+  // billed at ~25% of input per Vertex Gemini context-cache pricing; it falls
+  // back to CACHED_INPUT_FRACTION if unset.
+  'gemini-3.6-flash': {
+    inputUsdPerMtok: 1.5,
+    cachedInputUsdPerMtok: 0.375,
+    outputUsdPerMtok: 7.5,
+  },
   // Gemini 3.5 Flash list rates (~$0.075 in / $0.30 out per Mtok range,
   // TODO-confirm). Cached input billed at ~25% of input per Vertex Gemini
   // context-cache pricing; falls back to CACHED_INPUT_FRACTION if unset.
@@ -366,9 +375,18 @@ export const MODEL_PRICING_TABLE: ReadonlyArray<ModelPricingEntry> = [
   entry('opus', 'vertex-anthropic', VERTEX_CLAUDE_COST.opus!, true),
   entry('sonnet', 'vertex-anthropic', VERTEX_CLAUDE_COST.sonnet!, true),
   entry('haiku', 'vertex-anthropic', VERTEX_CLAUDE_COST.haiku!, true),
-  // Vertex Gemini lane — Gemini 3.5 Flash, the default/free-tier model. Cost is
-  // the LIST placeholder (TODO-confirm); the multiplier re-solves when the real
-  // committed-use rate lands.
+  // Vertex Gemini lane — Gemini 3.6 Flash, the default/free-tier model. Cost is
+  // Google's official published list price ($1.50 in / $7.50 out per Mtok); the
+  // multiplier re-solves if a lower committed-use rate lands.
+  entry(
+    'gemini-3.6-flash',
+    'vertex-gemini',
+    VERTEX_GEMINI_COST['gemini-3.6-flash']!,
+    true,
+  ),
+  // Gemini 3.5 Flash — the prior Flash generation. Still a valid Vertex model,
+  // priced from its own LIST placeholder row so an explicit request for it does
+  // not fall to the unknown-model bucket.
   entry(
     'gemini-3.5-flash',
     'vertex-gemini',
@@ -386,13 +404,14 @@ export const MODEL_PRICING_TABLE: ReadonlyArray<ModelPricingEntry> = [
     false,
   ),
   // Productized Autopilot Concierge virtual model (#6148). It uses the same
-  // Gemini Flash cost basis as khala-mini today; the gateway-owned Concierge
-  // prompt/config and component-channel metadata differentiate the product
-  // surface, while catalog/quote/metering stay in this single pricing table.
+  // Gemini Flash cost basis as khala-mini today (now gemini-3.6-flash); the
+  // gateway-owned Concierge prompt/config and component-channel metadata
+  // differentiate the product surface, while catalog/quote/metering stay in
+  // this single pricing table.
   entry(
     AUTOPILOT_CONCIERGE_MODEL_ID,
     'vertex-gemini',
-    VERTEX_GEMINI_COST['gemini-3.5-flash']!,
+    VERTEX_GEMINI_COST['gemini-3.6-flash']!,
     true,
   ),
   // Khala coding verifier tier (#6010). Backed by the open/code lane today so

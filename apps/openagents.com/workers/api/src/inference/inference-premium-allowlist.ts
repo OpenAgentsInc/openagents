@@ -97,7 +97,7 @@ export const PREMIUM_REASON_DENIED_NOT_ALLOWLISTED =
 export const premiumDeniedMessage = (model: string): string =>
   `Model "${model}" is a premium model and requires an owner grant. ` +
   `Ask the account owner to add this owner identity to the premium allowlist, ` +
-  `or use the default free model "gemini-3.5-flash".`
+  `or use the default free model "gemini-3.6-flash".`
 
 // Decide whether a request for `model` is allowed given whether the resolved
 // owner is allowlisted. Pure. Non-premium models are always allowed; premium

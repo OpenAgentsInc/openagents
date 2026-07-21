@@ -200,7 +200,7 @@ const hostedOption = (targetId: "gemini" | "khala"): MobileExecutionTargetOption
     accessibilityLabel: `${modelLabel}, OpenAgents, ready`,
     providerLabel: "OpenAgents",
     providerRef: "provider.openagents.hosted",
-    modelRef: "model.gemini-3.5-flash",
+    modelRef: "model.gemini-3.6-flash",
     runtimeTarget: { lane: "hosted_khala", executionTargetId: targetId },
     readiness: "ready",
   }
