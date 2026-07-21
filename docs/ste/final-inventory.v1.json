@@ -26704,8 +26704,32 @@
       }
     },
     {
+      "path": "docs/grok/2026-07-21-open-issues-audit-and-asap-sequence.md",
+      "sha256": "45b1aa475d3e494959f941468cd9e3494a1610166b6d1da3055a6a082ccc5461",
+      "profile": {
+        "ste_issue": 9,
+        "ste_mode": "descriptive",
+        "ste_glossary_revision": "openagents-ste-glossary-v1",
+        "ste_status": "inspected",
+        "ste_reviewer": "grok/open-issues-audit-2026-07-21",
+        "ste_reviewed_at": "2026-07-21T21:00:00Z",
+        "owner": "OpenAgents documentation",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ]
+      }
+    },
+    {
       "path": "docs/grok/README.md",
-      "sha256": "7734ef6f152fb1f3ca208b0e44f96c6ac50dbbdc0d976479022288255e7380c9",
+      "sha256": "31ca296d0b749cf5414accf4e15f54204bd7b8df186f5cabca2b0a30515328c8",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
