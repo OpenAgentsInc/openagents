@@ -17,13 +17,15 @@
  * (`effect/dist/internal/executionPlan.js`) surfaces the LAST failure
  * unchanged when the plan is exhausted, and this module never wraps or
  * rewrites the error. The surfaced value stays the true typed `AiError`, so
- * composing the caller with
- * `@openagentsinc/harness-conformance` `harnessFailureClassForAiError`
- * (a total map over `reason._tag`) reports `account_exhausted`,
+ * the caller classifies it with the PUBLIC
+ * `modelFailureClassForAiErrorReasonTag` from
+ * `@openagentsinc/agent-runtime-schema` (a total map over `reason._tag`,
+ * made public under AISDK-05 #9151), which reports `account_exhausted`,
  * `account_rate_limited`, or `auth_required` exactly as the last provider
- * failure said. That composition happens at the caller because this package
- * publishes to npm and must not depend on the private harness-conformance
- * workspace package (see `effect-ai.ts`).
+ * failure said. That mapping is a public workspace dependency this package
+ * already carries; the private `@openagentsinc/harness-conformance` package
+ * now wraps the same public function for typed `AiError` objects, so no
+ * private symbol is ever needed here (see `effect-ai.ts`).
  *
  * Verified v4 runtime semantics this module relies on:
  * - Steps run in order; the terminal error is the last step failure, unwrapped.
@@ -185,8 +187,9 @@ export type KhalaModelFallbackOutcome<A> = Readonly<{
  * cumulative attempt count, and every prior failure, so a served answer
  * never hides that a provider was exhausted on the way. On total failure
  * the effect fails with the program's own typed `AiError` — the true last
- * failure, unwrapped — ready for the caller to classify with
- * `harnessFailureClassForAiError`.
+ * failure, unwrapped — ready for the caller to classify with the public
+ * `modelFailureClassForAiErrorReasonTag` from
+ * `@openagentsinc/agent-runtime-schema`.
  */
 export function runWithModelFallback<A, E extends AiError.AiError, R>(
   program: Effect.Effect<A, E, R>,

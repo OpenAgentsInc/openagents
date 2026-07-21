@@ -1,4 +1,10 @@
 import { describe, expect, test } from "vite-plus/test"
+import {
+  aiErrorReasonTagModelFailureClasses,
+  modelFailureClassForAiErrorReasonTag,
+  modelFailureClasses,
+  type ModelFailureClass,
+} from "@openagentsinc/agent-runtime-schema"
 import { AiError } from "effect/unstable/ai"
 import {
   aiErrorReasonFailureClasses,
@@ -7,7 +13,7 @@ import {
   harnessFailureClassForUnknown,
   type AiErrorReasonTag,
 } from "./ai-error-failure-class.ts"
-import { requiredFailureClasses } from "./contract.ts"
+import { requiredFailureClasses, type HarnessFailureClass } from "./contract.ts"
 
 const allReasonTags: ReadonlyArray<AiErrorReasonTag> = [
   "AuthenticationError",
@@ -84,6 +90,54 @@ describe("harnessFailureClassForAiError", () => {
       reason: new AiError.AuthenticationError({ kind: "InvalidKey" }),
     })
     expect(harnessFailureClassForAiError(auth)).toBe("auth_required")
+  })
+})
+
+describe("public/private failure-class alignment (AISDK-05 #9151)", () => {
+  // Compile-time guard: every public ModelFailureClass literal must be one of
+  // the private HarnessFailureClass literals. If the public vocabulary gains
+  // a class the harness contract does not carry, this line stops compiling.
+  const _publicClassesAreHarnessClasses =
+    modelFailureClasses satisfies ReadonlyArray<HarnessFailureClass>
+  void _publicClassesAreHarnessClasses
+
+  // Compile-time guard in the other direction for the SHARED model-call
+  // classes: each one must still exist in the public vocabulary.
+  const sharedClasses = [
+    "account_rate_limited",
+    "account_exhausted",
+    "auth_required",
+    "unknown",
+  ] as const satisfies ReadonlyArray<ModelFailureClass & HarnessFailureClass>
+
+  test("every public ModelFailureClass literal is a HarnessFailureClass literal", () => {
+    const harnessClasses: ReadonlySet<HarnessFailureClass> = new Set([
+      "account_exhausted",
+      "account_rate_limited",
+      "account_quota_exhausted",
+      "auth_required",
+      "verification_failed",
+      "workspace_materialization",
+      "cancelled",
+      "timeout",
+      "unknown",
+    ])
+    for (const publicClass of modelFailureClasses) {
+      expect(harnessClasses.has(publicClass)).toBe(true)
+    }
+    for (const shared of sharedClasses) {
+      expect(modelFailureClasses).toContain(shared)
+      expect(harnessClasses.has(shared)).toBe(true)
+    }
+  })
+
+  test("the private mapping is the public mapping, tag for tag", () => {
+    expect(aiErrorReasonFailureClasses).toBe(aiErrorReasonTagModelFailureClasses)
+    for (const tag of allReasonTags) {
+      expect(harnessFailureClassForAiErrorReason(tag)).toBe(
+        modelFailureClassForAiErrorReasonTag(tag),
+      )
+    }
   })
 })
 

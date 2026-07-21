@@ -1,6 +1,7 @@
 /**
- * STREAM-01 (#9129): map Effect AI `AiError` reasons onto the shared
- * `HarnessFailureClass` vocabulary from `contract.ts`.
+ * STREAM-01 (#9129), refactored under AISDK-05 (#9151): map Effect AI
+ * `AiError` reasons onto the shared `HarnessFailureClass` vocabulary from
+ * `contract.ts`.
  *
  * Effect v4 (`effect/unstable/ai`) reports every model-call failure as one
  * `AiError` with a typed `reason`. The harness contract reports failures with
@@ -8,11 +9,23 @@
  * model-call lanes on the Effect AI substrate speak the same fleet failure
  * vocabulary as the coding harnesses.
  *
- * The mapping lives in this package because `HarnessFailureClass` is defined
- * here and its consumers (fleet status surfaces, harness classifiers) already
- * import this package. `@openagentsinc/khala-ai-sdk-core` is npm-publishable
- * and must not depend on this private workspace package.
+ * AISDK-05 resolved the public/private seam: the neutral model-call classes
+ * (`account_rate_limited`, `account_exhausted`, `auth_required`, `unknown`)
+ * and the string-tag-keyed total mapping now live in the PUBLIC
+ * `@openagentsinc/agent-runtime-schema` package (`model-failure.ts`), so
+ * npm-published packages such as `@openagentsinc/khala-ai-sdk-core` can use
+ * them directly. This private module keeps the typed `AiError`-object
+ * helpers as thin wrappers over that public function, plus the compile-time
+ * totality check against the real `AiError` reason union — that check stays
+ * here because the schema package deliberately imports no AI types. The
+ * wider harness-run-stage classes (`verification_failed`,
+ * `workspace_materialization`, `cancelled`, `timeout`) describe harness
+ * stages, not model-call faults, and remain private to this package.
  */
+import {
+  aiErrorReasonTagModelFailureClasses,
+  modelFailureClassForAiErrorReasonTag,
+} from "@openagentsinc/agent-runtime-schema"
 import { AiError } from "effect/unstable/ai"
 import type { HarnessFailureClass } from "./contract.ts"
 
@@ -21,48 +34,31 @@ export type AiErrorReasonTag = AiError.AiErrorReason["_tag"]
 
 /**
  * Total mapping from every `AiError` reason tag to a harness failure class.
+ * The values are the public neutral mapping from
+ * `@openagentsinc/agent-runtime-schema` (semantics recorded there):
  *
- * The `Record` type makes totality a compile-time property: when Effect adds
- * or renames a reason, this table fails to typecheck until it is updated.
- *
- * Semantic matches:
  * - `RateLimitError` -> `account_rate_limited` (mandatory class)
  * - `QuotaExhaustedError` -> `account_exhausted` (mandatory class, per #9129)
  * - `AuthenticationError` -> `auth_required` (the auth-health class)
+ * - every other reason -> `unknown` (no honest semantic match; the
+ *   harness-run-stage classes describe harness stages, not model faults)
  *
- * Every other reason has no honest semantic match in the harness vocabulary
- * (`verification_failed`, `workspace_materialization`, `cancelled`, and
- * `timeout` describe harness-run stages, not model-call faults), so those
- * reasons map to `unknown` instead of inventing a false equivalence.
+ * The `Record<AiErrorReasonTag, ...>` annotation keeps totality a
+ * compile-time property against the REAL typed reason union: when Effect
+ * adds or renames a reason, this assignment fails to typecheck until the
+ * public schema-package mapping is updated. Every `ModelFailureClass` value
+ * is one of the `HarnessFailureClass` literals, which makes the assignment
+ * well-typed; the alignment guard test asserts that inclusion at runtime.
  */
 export const aiErrorReasonFailureClasses: Readonly<
   Record<AiErrorReasonTag, HarnessFailureClass>
-> = {
-  AuthenticationError: "auth_required",
-  ContentPolicyError: "unknown",
-  InternalProviderError: "unknown",
-  InvalidOutputError: "unknown",
-  InvalidRequestError: "unknown",
-  InvalidToolResultError: "unknown",
-  InvalidUserInputError: "unknown",
-  NetworkError: "unknown",
-  QuotaExhaustedError: "account_exhausted",
-  RateLimitError: "account_rate_limited",
-  StructuredOutputError: "unknown",
-  ToolConfigurationError: "unknown",
-  ToolNotFoundError: "unknown",
-  ToolParameterValidationError: "unknown",
-  ToolResultEncodingError: "unknown",
-  ToolkitRequiredError: "unknown",
-  UnknownError: "unknown",
-  UnsupportedSchemaError: "unknown",
-}
+> = aiErrorReasonTagModelFailureClasses
 
 /** Classify one typed `AiError` reason tag. */
 export function harnessFailureClassForAiErrorReason(
   tag: AiErrorReasonTag,
 ): HarnessFailureClass {
-  return aiErrorReasonFailureClasses[tag]
+  return modelFailureClassForAiErrorReasonTag(tag)
 }
 
 /** Classify a full `AiError` by its `reason`. */

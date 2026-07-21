@@ -8,6 +8,9 @@ export * from "./thread-event-authority.js";
 export * from "./thread-event-search.js";
 export * from "./thread-export-artifact.js";
 
+// AISDK-05 (#9151) public neutral model-call failure vocabulary.
+export * from "./model-failure.js";
+
 // AFS-00 frozen agent turn/route/provider/context/artifact/presentation contracts.
 export * from "./turn.js";
 export * from "./provider.js";

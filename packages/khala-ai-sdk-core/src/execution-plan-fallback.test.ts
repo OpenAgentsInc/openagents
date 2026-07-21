@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
+import { modelFailureClassForAiErrorReasonTag } from "@openagentsinc/agent-runtime-schema";
 import { Duration, Effect, ExecutionPlan, Fiber, Schedule } from "effect";
 import { TestClock } from "effect/testing";
 import { AiError } from "effect/unstable/ai";
@@ -254,13 +255,16 @@ describe("runKhalaEffectAiCoreRuntimeWithFallback", () => {
     // once to the secondary account, which also fails.
     expect(primaryCalls.count).toBe(1);
     expect(secondaryCalls.count).toBe(1);
-    // The surfaced error is the true typed AiError from the last step.
-    // `harnessFailureClassForAiError` in
-    // `@openagentsinc/harness-conformance` maps this exact tag to
-    // `account_exhausted` (total map over `reason._tag`), so the caller
-    // sees the honest failure class — the fallback masked nothing.
+    // The surfaced error is the true typed AiError from the last step. The
+    // PUBLIC `modelFailureClassForAiErrorReasonTag` from
+    // `@openagentsinc/agent-runtime-schema` (AISDK-05 #9151) maps this exact
+    // tag to `account_exhausted` (total map over `reason._tag`), so the
+    // caller sees the honest failure class — the fallback masked nothing.
     expect(AiError.isAiError(error)).toBe(true);
     expect(error.reason._tag).toBe("QuotaExhaustedError");
+    expect(modelFailureClassForAiErrorReasonTag(error.reason._tag)).toBe(
+      "account_exhausted",
+    );
   });
 
   test("request-shaped errors fail fast without touching the fallback Layer", async () => {
