@@ -102,8 +102,8 @@ importers:
         specifier: 1.0.38
         version: 1.0.38(zod@4.4.3)
       '@openagentsinc/ai-sdk-sandbox-local':
-        specifier: workspace:*
-        version: link:../../packages/ai-sdk-sandbox-local
+        specifier: 0.1.3-rc.1
+        version: 0.1.3-rc.1(ws@8.21.0)
       ai:
         specifier: 7.0.31
         version: 7.0.31(zod@4.4.3)
@@ -248,8 +248,8 @@ importers:
         specifier: ^5.2.9
         version: 5.2.9
       '@openagentsinc/ai-sdk-sandbox-local':
-        specifier: workspace:*
-        version: link:../../packages/ai-sdk-sandbox-local
+        specifier: 0.1.3-rc.1
+        version: 0.1.3-rc.1(ws@8.21.0)
       '@standard-schema/spec':
         specifier: ^1.1.0
         version: 1.1.0
@@ -489,11 +489,11 @@ importers:
         specifier: workspace:*
         version: link:../../packages/agent-client-runtime-bridge
       '@openagentsinc/agent-harness-contract':
-        specifier: workspace:*
-        version: link:../../packages/agent-harness-contract
+        specifier: 0.1.3-rc.1
+        version: 0.1.3-rc.1
       '@openagentsinc/agent-runtime-schema':
-        specifier: workspace:*
-        version: link:../../packages/agent-runtime-schema
+        specifier: 0.1.3-rc.1
+        version: 0.1.3-rc.1
       '@openagentsinc/agent-surface':
         specifier: workspace:*
         version: link:../../packages/agent-surface
@@ -531,8 +531,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/grok-harness
       '@openagentsinc/history-corpus':
-        specifier: workspace:*
-        version: link:../../packages/history-corpus
+        specifier: 0.1.3-rc.1
+        version: 0.1.3-rc.1
       '@openagentsinc/khala-sync':
         specifier: workspace:*
         version: link:../../packages/khala-sync
@@ -763,8 +763,8 @@ importers:
         specifier: 57.0.4
         version: 57.0.4(@babel/core@7.29.7)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(expo@57.0.2)(react-dom@19.2.7(react@19.2.7))(react-native-worklets@0.10.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7)
       '@openagentsinc/agent-runtime-schema':
-        specifier: workspace:*
-        version: link:../../packages/agent-runtime-schema
+        specifier: 0.1.3-rc.1
+        version: 0.1.3-rc.1
       '@openagentsinc/agent-surface':
         specifier: workspace:*
         version: link:../../packages/agent-surface
@@ -918,8 +918,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/effect-native-tokens
       '@openagentsinc/agent-runtime-schema':
-        specifier: workspace:*
-        version: link:../../../../packages/agent-runtime-schema
+        specifier: 0.1.3-rc.1
+        version: 0.1.3-rc.1
       '@openagentsinc/agent-surface':
         specifier: workspace:*
         version: link:../../../../packages/agent-surface
@@ -1216,8 +1216,8 @@ importers:
         specifier: workspace:*
         version: link:../../../../packages/agent-readiness
       '@openagentsinc/agent-runtime-schema':
-        specifier: workspace:*
-        version: link:../../../../packages/agent-runtime-schema
+        specifier: 0.1.3-rc.1
+        version: 0.1.3-rc.1
       '@openagentsinc/atif':
         specifier: workspace:*
         version: link:../../../../packages/atif
@@ -1343,8 +1343,8 @@ importers:
   apps/pylon:
     dependencies:
       '@openagentsinc/agent-runtime-schema':
-        specifier: workspace:*
-        version: link:../../packages/agent-runtime-schema
+        specifier: 0.1.3-rc.1
+        version: 0.1.3-rc.1
       '@openagentsinc/autopilot-control-protocol':
         specifier: workspace:*
         version: link:../../packages/autopilot-control-protocol
@@ -1549,8 +1549,8 @@ importers:
         specifier: workspace:*
         version: link:../agent-client-protocol
       '@openagentsinc/agent-runtime-schema':
-        specifier: workspace:*
-        version: link:../agent-runtime-schema
+        specifier: 0.1.3-rc.1
+        version: 0.1.3-rc.1
       '@openagentsinc/agent-stdio-transport':
         specifier: workspace:*
         version: link:../agent-stdio-transport
@@ -1581,34 +1581,11 @@ importers:
         specifier: 'catalog:'
         version: 6.0.3
 
-  packages/agent-harness-contract:
-    dependencies:
-      '@openagentsinc/agent-runtime-schema':
-        specifier: workspace:*
-        version: link:../agent-runtime-schema
-      effect:
-        specifier: 4.0.0-beta.94
-        version: 4.0.0-beta.94
-    devDependencies:
-      typescript:
-        specifier: 'catalog:'
-        version: 6.0.3
-
   packages/agent-readiness:
     dependencies:
       '@openagentsinc/runtime-platform':
         specifier: workspace:*
         version: link:../runtime-platform
-      effect:
-        specifier: 4.0.0-beta.94
-        version: 4.0.0-beta.94
-    devDependencies:
-      typescript:
-        specifier: 'catalog:'
-        version: 6.0.3
-
-  packages/agent-runtime-schema:
-    dependencies:
       effect:
         specifier: 4.0.0-beta.94
         version: 4.0.0-beta.94
@@ -1636,8 +1613,8 @@ importers:
   packages/agent-surface:
     dependencies:
       '@openagentsinc/agent-runtime-schema':
-        specifier: workspace:*
-        version: link:../agent-runtime-schema
+        specifier: 0.1.3-rc.1
+        version: 0.1.3-rc.1
       effect:
         specifier: 4.0.0-beta.94
         version: 4.0.0-beta.94
@@ -1649,8 +1626,8 @@ importers:
   packages/agent-turn-runtime:
     dependencies:
       '@openagentsinc/agent-runtime-schema':
-        specifier: workspace:*
-        version: link:../agent-runtime-schema
+        specifier: 0.1.3-rc.1
+        version: 0.1.3-rc.1
       '@openagentsinc/ide-runtime':
         specifier: workspace:*
         version: link:../ide-runtime
@@ -1671,8 +1648,8 @@ importers:
   packages/agent-turn-store:
     dependencies:
       '@openagentsinc/agent-runtime-schema':
-        specifier: workspace:*
-        version: link:../agent-runtime-schema
+        specifier: 0.1.3-rc.1
+        version: 0.1.3-rc.1
       '@openagentsinc/agent-turn-runtime':
         specifier: workspace:*
         version: link:../agent-turn-runtime
@@ -1684,84 +1661,11 @@ importers:
         specifier: 'catalog:'
         version: 6.0.3
 
-  packages/ai:
-    dependencies:
-      '@openagentsinc/agent-harness-contract':
-        specifier: workspace:*
-        version: link:../agent-harness-contract
-      '@openagentsinc/agent-runtime-schema':
-        specifier: workspace:*
-        version: link:../agent-runtime-schema
-      '@openagentsinc/ai-model':
-        specifier: workspace:*
-        version: link:../ai-model
-      '@openagentsinc/history-corpus':
-        specifier: workspace:*
-        version: link:../history-corpus
-      effect:
-        specifier: 4.0.0-beta.94
-        version: 4.0.0-beta.94
-    devDependencies:
-      typescript:
-        specifier: 'catalog:'
-        version: 6.0.3
-
-  packages/ai-model:
-    dependencies:
-      '@openagentsinc/agent-runtime-schema':
-        specifier: workspace:*
-        version: link:../agent-runtime-schema
-      '@openagentsinc/khala-tools':
-        specifier: workspace:*
-        version: link:../khala-tools
-      ai:
-        specifier: 7.0.15
-        version: 7.0.15(zod@4.4.3)
-      effect:
-        specifier: 4.0.0-beta.94
-        version: 4.0.0-beta.94
-    devDependencies:
-      typescript:
-        specifier: 'catalog:'
-        version: 6.0.3
-
-  packages/ai-sdk-sandbox-local:
-    dependencies:
-      '@ai-sdk/harness':
-        specifier: 1.0.36
-        version: 1.0.36(ws@8.21.0)(zod@4.4.3)
-      '@ai-sdk/provider-utils':
-        specifier: 5.0.11
-        version: 5.0.11(zod@4.4.3)
-      zod:
-        specifier: ^4.1.8
-        version: 4.4.3
-    devDependencies:
-      typescript:
-        specifier: 'catalog:'
-        version: 6.0.3
-
-  packages/ai-sdk-sandbox-openagents:
-    dependencies:
-      '@ai-sdk/harness':
-        specifier: 1.0.18
-        version: 1.0.18(ws@8.21.0)(zod@3.25.76)
-      '@ai-sdk/provider-utils':
-        specifier: 5.0.5
-        version: 5.0.5(zod@3.25.76)
-      zod:
-        specifier: ^3.25.76
-        version: 3.25.76
-    devDependencies:
-      typescript:
-        specifier: 'catalog:'
-        version: 6.0.3
-
   packages/apple-fm-runtime:
     dependencies:
       '@openagentsinc/agent-runtime-schema':
-        specifier: workspace:*
-        version: link:../agent-runtime-schema
+        specifier: 0.1.3-rc.1
+        version: 0.1.3-rc.1
       '@openagentsinc/agent-turn-runtime':
         specifier: workspace:*
         version: link:../agent-turn-runtime
@@ -1952,8 +1856,8 @@ importers:
   packages/dse:
     dependencies:
       '@openagentsinc/agent-runtime-schema':
-        specifier: workspace:*
-        version: link:../agent-runtime-schema
+        specifier: 0.1.3-rc.1
+        version: 0.1.3-rc.1
       effect:
         specifier: 4.0.0-beta.94
         version: 4.0.0-beta.94
@@ -2059,8 +1963,8 @@ importers:
   packages/harness-conformance:
     dependencies:
       '@openagentsinc/agent-runtime-schema':
-        specifier: workspace:*
-        version: link:../agent-runtime-schema
+        specifier: 0.1.3-rc.1
+        version: 0.1.3-rc.1
       '@openagentsinc/khala-fleet-intents':
         specifier: workspace:*
         version: link:../khala-fleet-intents
@@ -2078,27 +1982,11 @@ importers:
         specifier: 'catalog:'
         version: 6.0.3
 
-  packages/history-corpus:
-    dependencies:
-      '@openagentsinc/agent-harness-contract':
-        specifier: workspace:*
-        version: link:../agent-harness-contract
-      '@openagentsinc/agent-runtime-schema':
-        specifier: workspace:*
-        version: link:../agent-runtime-schema
-      effect:
-        specifier: 4.0.0-beta.94
-        version: 4.0.0-beta.94
-    devDependencies:
-      typescript:
-        specifier: 'catalog:'
-        version: 6.0.3
-
   packages/ide-runtime:
     dependencies:
       '@openagentsinc/agent-runtime-schema':
-        specifier: workspace:*
-        version: link:../agent-runtime-schema
+        specifier: 0.1.3-rc.1
+        version: 0.1.3-rc.1
       effect:
         specifier: 4.0.0-beta.94
         version: 4.0.0-beta.94
@@ -2130,8 +2018,8 @@ importers:
   packages/khala-qa-harness:
     dependencies:
       '@openagentsinc/agent-runtime-schema':
-        specifier: workspace:*
-        version: link:../agent-runtime-schema
+        specifier: 0.1.3-rc.1
+        version: 0.1.3-rc.1
       '@openagentsinc/behavior-contracts':
         specifier: workspace:*
         version: link:../behavior-contracts
@@ -2161,8 +2049,8 @@ importers:
   packages/khala-sync:
     dependencies:
       '@openagentsinc/agent-runtime-schema':
-        specifier: workspace:*
-        version: link:../agent-runtime-schema
+        specifier: 0.1.3-rc.1
+        version: 0.1.3-rc.1
       effect:
         specifier: 4.0.0-beta.94
         version: 4.0.0-beta.94
@@ -2261,8 +2149,8 @@ importers:
         specifier: 0.1.2
         version: 0.1.2(@huggingface/transformers@3.7.5)
       '@openagentsinc/agent-runtime-schema':
-        specifier: workspace:*
-        version: link:../agent-runtime-schema
+        specifier: 0.1.3-rc.1
+        version: 0.1.3-rc.1
       '@openagentsinc/mcp-contract':
         specifier: workspace:*
         version: link:../mcp-contract
@@ -2272,6 +2160,9 @@ importers:
       '@openagentsinc/runtime-platform':
         specifier: workspace:*
         version: link:../runtime-platform
+      ai:
+        specifier: 7.0.15
+        version: 7.0.15(zod@4.4.3)
       effect:
         specifier: 4.0.0-beta.94
         version: 4.0.0-beta.94
@@ -2484,8 +2375,8 @@ importers:
         specifier: 1.7.1
         version: 1.7.1
       '@openagentsinc/agent-runtime-schema':
-        specifier: workspace:*
-        version: link:../agent-runtime-schema
+        specifier: 0.1.3-rc.1
+        version: 0.1.3-rc.1
       '@openagentsinc/effect-boundary':
         specifier: workspace:*
         version: link:../effect-boundary
@@ -2723,16 +2614,6 @@ packages:
     engines: {node: '>=22'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
-
-  '@ai-sdk/harness@1.0.18':
-    resolution: {integrity: sha512-zJCufxLWZAg8Nmucive5CT6wb4OAELycrwbF1FviRM7M+NSHSqU56HgAhMMcSVPvles0ZzkIsYomqiZ6e0PQYQ==}
-    engines: {node: '>=22'}
-    peerDependencies:
-      ws: ^8.21.0
-      zod: ^3.25.76 || ^4.1.8
-    peerDependenciesMeta:
-      ws:
-        optional: true
 
   '@ai-sdk/harness@1.0.36':
     resolution: {integrity: sha512-R8wD8IuQH6LmSEK85FVFkyGJ0SIUHuEYMaQJwTEzKr3u/5ZoabhVRza55eXVKo9XbSDfFxwt6RNxP0cRzLqjVg==}
@@ -4615,6 +4496,18 @@ packages:
   '@oozcitak/util@10.0.0':
     resolution: {integrity: sha512-hAX0pT/73190NLqBPPWSdBVGtbY6VOhWYK3qqHqtXQ1gK7kS2yz4+ivsN07hpJ6I3aeMtKP6J6npsEKOAzuTLA==}
     engines: {node: '>=20.0'}
+
+  '@openagentsinc/agent-harness-contract@0.1.3-rc.1':
+    resolution: {integrity: sha512-RbS+mqz8oyaIeqsfvfTEg+1Vb99ze28GeE9vMwEUJs6eBZRJ6yFUD4PvqPs6FTABE+58GFegYttN+b3wBumjjg==}
+
+  '@openagentsinc/agent-runtime-schema@0.1.3-rc.1':
+    resolution: {integrity: sha512-kah9CJ8c6kqstPKCeJhcIj6EfVT6JZhsLtqu8Tu7iQBjlkMbfyiiTcV6YNBNwX7v86TTkgRAuxx74gXrSQsn6A==}
+
+  '@openagentsinc/ai-sdk-sandbox-local@0.1.3-rc.1':
+    resolution: {integrity: sha512-zq6GDdqct7LttbGwoIPsk4fr1kbUhE8/i8BQiU7vdBzEWS/uzhKZEIQvCcm2dzjtZHOwx+D5aGwKsvB8xiqs5w==}
+
+  '@openagentsinc/history-corpus@0.1.3-rc.1':
+    resolution: {integrity: sha512-3khwSHjtXopgeXHWMfN60bh3efIHTcJroqQ4gx5t02fJRAQNg5wtMAiw9wvf0qBTM9Mf9rsCpfK4qoiq2hMM6g==}
 
   '@openai/codex-sdk@0.144.3':
     resolution: {integrity: sha512-WPtEx38iVyksWujOwmsxnJznRR8T/YF+lAJghMhHL1xIWdJrrvZ1iafhIsw4egY5CRoRmFm2ta8NQsK4f4XDZA==}
@@ -12164,13 +12057,6 @@ snapshots:
     dependencies:
       zod: 3.25.76
 
-  '@ai-sdk/gateway@4.0.12(zod@3.25.76)':
-    dependencies:
-      '@ai-sdk/provider': 4.0.2
-      '@ai-sdk/provider-utils': 5.0.5(zod@3.25.76)
-      '@vercel/oidc': 3.2.0
-      zod: 3.25.76
-
   '@ai-sdk/gateway@4.0.12(zod@4.4.3)':
     dependencies:
       '@ai-sdk/provider': 4.0.2
@@ -12205,15 +12091,6 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@ai-sdk/harness@1.0.18(ws@8.21.0)(zod@3.25.76)':
-    dependencies:
-      '@ai-sdk/provider': 4.0.2
-      '@ai-sdk/provider-utils': 5.0.5(zod@3.25.76)
-      ai: 7.0.15(zod@3.25.76)
-      zod: 3.25.76
-    optionalDependencies:
-      ws: 8.21.0
-
   '@ai-sdk/harness@1.0.36(ws@8.21.0)(zod@4.4.3)':
     dependencies:
       '@ai-sdk/provider': 4.0.3
@@ -12237,14 +12114,6 @@ snapshots:
       '@workflow/serde': 4.1.0
       eventsource-parser: 3.1.0
       zod: 4.4.3
-
-  '@ai-sdk/provider-utils@5.0.5(zod@3.25.76)':
-    dependencies:
-      '@ai-sdk/provider': 4.0.2
-      '@standard-schema/spec': 1.1.0
-      '@workflow/serde': 4.1.0
-      eventsource-parser: 3.1.0
-      zod: 3.25.76
 
   '@ai-sdk/provider-utils@5.0.5(zod@4.4.3)':
     dependencies:
@@ -14676,6 +14545,29 @@ snapshots:
 
   '@oozcitak/util@10.0.0': {}
 
+  '@openagentsinc/agent-harness-contract@0.1.3-rc.1':
+    dependencies:
+      '@openagentsinc/agent-runtime-schema': 0.1.3-rc.1
+      effect: 4.0.0-beta.94
+
+  '@openagentsinc/agent-runtime-schema@0.1.3-rc.1':
+    dependencies:
+      effect: 4.0.0-beta.94
+
+  '@openagentsinc/ai-sdk-sandbox-local@0.1.3-rc.1(ws@8.21.0)':
+    dependencies:
+      '@ai-sdk/harness': 1.0.36(ws@8.21.0)(zod@4.4.3)
+      '@ai-sdk/provider-utils': 5.0.11(zod@4.4.3)
+      zod: 4.4.3
+    transitivePeerDependencies:
+      - ws
+
+  '@openagentsinc/history-corpus@0.1.3-rc.1':
+    dependencies:
+      '@openagentsinc/agent-harness-contract': 0.1.3-rc.1
+      '@openagentsinc/agent-runtime-schema': 0.1.3-rc.1
+      effect: 4.0.0-beta.94
+
   '@openai/codex-sdk@0.144.3':
     dependencies:
       '@openai/codex': 0.144.3
@@ -16658,13 +16550,6 @@ snapshots:
     dependencies:
       clean-stack: 2.2.0
       indent-string: 4.0.0
-
-  ai@7.0.15(zod@3.25.76):
-    dependencies:
-      '@ai-sdk/gateway': 4.0.12(zod@3.25.76)
-      '@ai-sdk/provider': 4.0.2
-      '@ai-sdk/provider-utils': 5.0.5(zod@3.25.76)
-      zod: 3.25.76
 
   ai@7.0.15(zod@4.4.3):
     dependencies:

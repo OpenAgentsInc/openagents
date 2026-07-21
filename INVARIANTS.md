@@ -992,7 +992,7 @@ come from the Freerange teardown
 
 - Harness-agnostic background agents are defined by
   `openagents.agent_definition.v1` in
-  `packages/agent-runtime-schema`. The durable definition owns the standing
+  `@openagentsinc/agent-runtime-schema` (published from OpenAgentsInc/ai). The durable definition owns the standing
   workflow contract: name, goal, harness hint, lane, triggers, budget,
   escalation, source refs, and the explicit toolset.
 - The harness field is never authority. Codex, Claude Code, Khala, hosted,
@@ -1162,15 +1162,15 @@ come from the Freerange teardown
   Regression coverage lives in
   `apps/openagents.com/workers/api/src/event-ledger.test.ts`,
   `apps/openagents.com/workers/api/src/agent-definition-webhook-routes.test.ts`,
-  and `packages/agent-runtime-schema/src/webhooks.test.ts` plus
+  and `apps/openagents.com/workers/api/src/agent-definition-webhook-routes.test.ts` plus
   `apps/openagents.com/workers/api/src/agent-definition-event-ledger-routes.test.ts`.
 - Any Cloud Run API, Pylon, desktop, or cloud-workroom executor that claims
   definition-backed tool enforcement must use this contract or a formally
   equivalent compiled policy at the execution boundary, with regression tests
   for deny precedence, ask escalation, allow, and default-deny behavior.
 - Regression coverage starts in
-  `packages/agent-runtime-schema/src/index.test.ts`,
-  `packages/agent-runtime-schema/src/webhooks.test.ts`,
+  `packages/harness-conformance/src/harness-conformance.test.ts`,
+  `apps/openagents.com/workers/api/src/agent-definition-webhook-routes.test.ts`,
   `packages/khala-tools/src/dispatcher.test.ts`,
   `apps/openagents.com/workers/api/src/forge-tenant-git-auth-store.test.ts`, and
   `apps/openagents.com/workers/api/src/agent-definition-trigger-store.test.ts`,
@@ -1196,7 +1196,7 @@ come from the Freerange teardown
   `apps/pylon/tests/claude-agent-executor.test.ts` for pre-execution non-owner
   workspace/home credential-policy refusals, post-run containment, and exact
   owner-local own-capacity disclosure closeouts, plus
-  `packages/agent-runtime-schema/src/index.test.ts` for reusable fixtures that
+  `packages/harness-conformance/src/harness-conformance.test.ts` for reusable fixtures that
   cover every supported trigger type.
 
 ## Connector Authority And Redaction
@@ -2005,7 +2005,7 @@ come from the Freerange teardown
   idempotently and rejects cursor gaps, stale/future attachment generations,
   identity/version/cursor/timestamp regression, terminal reopening, missing or
   conflicting parents, orphan edges, and cycles. The schema/reducer is
-  enforced by `packages/agent-runtime-schema/src/live-agent-graph.test.ts`.
+  enforced by `packages/harness-conformance/src/harness-conformance.test.ts`.
   Provider-specific Codex app-server and Claude Agent SDK observation adapters
   now exhaustively map their distinct status/tool vocabulary into equivalent
   graph facts and loss-account omitted facts explicitly. Their canonical

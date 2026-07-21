@@ -46327,27 +46327,6 @@
       ]
     },
     {
-      "path": "packages/agent-harness-contract/README.md",
-      "ste_issue": 9,
-      "ste_mode": "descriptive",
-      "ste_glossary_revision": "openagents-ste-glossary-v1",
-      "ste_status": "inspected",
-      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-      "ste_reviewed_at": "2026-07-19T22:00:00Z",
-      "owner": "OpenAgents documentation",
-      "risk": "legacy",
-      "source": null,
-      "replacement": null,
-      "ste_audience": "agent",
-      "ste_agent_compact_revision": "openagents-agent-compact-v1",
-      "ste_accepted_screening_rules": [
-        "STE-2.4",
-        "STE-3.6",
-        "STE-5.1",
-        "STE-8.2"
-      ]
-    },
-    {
       "path": "packages/agent-readiness/README.md",
       "ste_issue": 9,
       "ste_mode": "descriptive",
@@ -46380,27 +46359,6 @@
       "risk": "source-data",
       "source": "Generated artifact source data",
       "replacement": null
-    },
-    {
-      "path": "packages/agent-runtime-schema/README.md",
-      "ste_issue": 9,
-      "ste_mode": "descriptive",
-      "ste_glossary_revision": "openagents-ste-glossary-v1",
-      "ste_status": "inspected",
-      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-      "ste_reviewed_at": "2026-07-19T22:00:00Z",
-      "owner": "OpenAgents documentation",
-      "risk": "legacy",
-      "source": null,
-      "replacement": null,
-      "ste_audience": "agent",
-      "ste_agent_compact_revision": "openagents-agent-compact-v1",
-      "ste_accepted_screening_rules": [
-        "STE-2.4",
-        "STE-3.6",
-        "STE-5.1",
-        "STE-8.2"
-      ]
     },
     {
       "path": "packages/agent-stdio-transport/README.md",
@@ -46467,90 +46425,6 @@
     },
     {
       "path": "packages/agent-turn-store/README.md",
-      "ste_issue": 9,
-      "ste_mode": "descriptive",
-      "ste_glossary_revision": "openagents-ste-glossary-v1",
-      "ste_status": "inspected",
-      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-      "ste_reviewed_at": "2026-07-19T22:00:00Z",
-      "owner": "OpenAgents documentation",
-      "risk": "legacy",
-      "source": null,
-      "replacement": null,
-      "ste_audience": "agent",
-      "ste_agent_compact_revision": "openagents-agent-compact-v1",
-      "ste_accepted_screening_rules": [
-        "STE-2.4",
-        "STE-3.6",
-        "STE-5.1",
-        "STE-8.2"
-      ]
-    },
-    {
-      "path": "packages/ai-model/README.md",
-      "ste_issue": 9,
-      "ste_mode": "descriptive",
-      "ste_glossary_revision": "openagents-ste-glossary-v1",
-      "ste_status": "inspected",
-      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-      "ste_reviewed_at": "2026-07-19T22:00:00Z",
-      "owner": "OpenAgents documentation",
-      "risk": "legacy",
-      "source": null,
-      "replacement": null,
-      "ste_audience": "agent",
-      "ste_agent_compact_revision": "openagents-agent-compact-v1",
-      "ste_accepted_screening_rules": [
-        "STE-2.4",
-        "STE-3.6",
-        "STE-5.1",
-        "STE-8.2"
-      ]
-    },
-    {
-      "path": "packages/ai-sdk-sandbox-local/README.md",
-      "ste_issue": 9,
-      "ste_mode": "descriptive",
-      "ste_glossary_revision": "openagents-ste-glossary-v1",
-      "ste_status": "inspected",
-      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-      "ste_reviewed_at": "2026-07-19T22:00:00Z",
-      "owner": "OpenAgents documentation",
-      "risk": "legacy",
-      "source": null,
-      "replacement": null,
-      "ste_audience": "agent",
-      "ste_agent_compact_revision": "openagents-agent-compact-v1",
-      "ste_accepted_screening_rules": [
-        "STE-2.4",
-        "STE-3.6",
-        "STE-5.1",
-        "STE-8.2"
-      ]
-    },
-    {
-      "path": "packages/ai-sdk-sandbox-openagents/README.md",
-      "ste_issue": 9,
-      "ste_mode": "descriptive",
-      "ste_glossary_revision": "openagents-ste-glossary-v1",
-      "ste_status": "inspected",
-      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-      "ste_reviewed_at": "2026-07-19T22:00:00Z",
-      "owner": "OpenAgents documentation",
-      "risk": "legacy",
-      "source": null,
-      "replacement": null,
-      "ste_audience": "agent",
-      "ste_agent_compact_revision": "openagents-agent-compact-v1",
-      "ste_accepted_screening_rules": [
-        "STE-2.4",
-        "STE-3.6",
-        "STE-5.1",
-        "STE-8.2"
-      ]
-    },
-    {
-      "path": "packages/ai/README.md",
       "ste_issue": 9,
       "ste_mode": "descriptive",
       "ste_glossary_revision": "openagents-ste-glossary-v1",
@@ -47642,27 +47516,6 @@
     },
     {
       "path": "packages/harness-conformance/README.md",
-      "ste_issue": 9,
-      "ste_mode": "descriptive",
-      "ste_glossary_revision": "openagents-ste-glossary-v1",
-      "ste_status": "inspected",
-      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-      "ste_reviewed_at": "2026-07-19T22:00:00Z",
-      "owner": "OpenAgents documentation",
-      "risk": "legacy",
-      "source": null,
-      "replacement": null,
-      "ste_audience": "agent",
-      "ste_agent_compact_revision": "openagents-agent-compact-v1",
-      "ste_accepted_screening_rules": [
-        "STE-2.4",
-        "STE-3.6",
-        "STE-5.1",
-        "STE-8.2"
-      ]
-    },
-    {
-      "path": "packages/history-corpus/README.md",
       "ste_issue": 9,
       "ste_mode": "descriptive",
       "ste_glossary_revision": "openagents-ste-glossary-v1",

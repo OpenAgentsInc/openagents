@@ -52,6 +52,7 @@ const isDesktopRuntime = (path: string): boolean =>
   isUnder(path, "apps/openagents-desktop") ||
   isUnder(path, "crates/oa-desktop-audio") ||
   isUnder(path, "packages/agent-runtime-schema") ||
+  path.includes("@openagentsinc/agent-runtime-schema") ||
   isUnder(path, "packages/codex-app-server-protocol") ||
   isUnder(path, "packages/runtime-platform") ||
   isUnder(path, "packages/ui") ||

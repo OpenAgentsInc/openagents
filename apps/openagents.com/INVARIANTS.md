@@ -1128,7 +1128,7 @@ heartbeat.sh` (source `heartbeat`), `scripts/khala-canary.sh` (source
   `secretPolicy` before a definition receives ledger entries. Regression
   coverage lives in `workers/api/src/event-ledger.test.ts`,
   `workers/api/src/agent-definition-webhook-routes.test.ts`,
-  `packages/agent-runtime-schema/src/webhooks.test.ts`, and
+  `apps/openagents.com/workers/api/src/agent-definition-webhook-routes.test.ts`, and
   `workers/api/src/agent-definition-event-ledger-routes.test.ts`.
 
 ## Harbor Full Trace Archive (operator-only)

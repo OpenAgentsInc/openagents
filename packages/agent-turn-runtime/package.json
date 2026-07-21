@@ -18,7 +18,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@openagentsinc/agent-runtime-schema": "workspace:*",
+    "@openagentsinc/agent-runtime-schema": "0.1.3-rc.1",
     "@openagentsinc/ide-runtime": "workspace:*",
     "@openagentsinc/portable-session-contract": "workspace:*",
     "@openagentsinc/provider-account-schema": "workspace:*",

@@ -47,7 +47,7 @@ per-thread keys.
 
 - issues: #5678, #5679
 - commits: 123abc456d
-- contracts-specs: packages/agent-runtime-schema/src/schema.ts
+- contracts-specs: packages/harness-conformance/src/harness-conformance.ts
 - invariants: none changed
 - evidence: docs/qa/fixture-receipt.json
 - lane: fixture-lane-b
@@ -65,7 +65,7 @@ describe("changelog parsing", () => {
     expect(entries[0]?.lane).toBe("fixture-lane-a");
     expect(entries[0]?.summaryParagraphs).toHaveLength(2);
     expect(entries[0]?.summaryParagraphs[0]).toContain("survives an app restart");
-    expect(entries[1]?.contractsSpecs).toBe("packages/agent-runtime-schema/src/schema.ts");
+    expect(entries[1]?.contractsSpecs).toBe("packages/harness-conformance/src/harness-conformance.ts");
   });
 
   test("an entry missing required metadata is a typed failure, never silence", () => {

@@ -41,7 +41,7 @@
   "dependencies": {
     "@liquid-js/qrcode-generator": "1.1.6",
     "@openagentsinc/agent-readiness": "workspace:*",
-    "@openagentsinc/agent-runtime-schema": "workspace:*",
+    "@openagentsinc/agent-runtime-schema": "0.1.3-rc.1",
     "@openagentsinc/atif": "workspace:*",
     "@openagentsinc/authority": "workspace:*",
     "@openagentsinc/behavior-contracts": "workspace:*",

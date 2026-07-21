@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:4834c86970a12bee2b5173ec71bef1ffd440a0036f8219f55cace372775a0621",
+  "sourceDigest": "sha256:8501e2ace6eb26e11b9fa460fc26958e35e5f16e8c4fead9414546a370b13f0a",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -1610,23 +1610,6 @@
       }
     },
     {
-      "id": "package:@openagentsinc/agent-harness-contract",
-      "kind": "package",
-      "owningPath": "packages/agent-harness-contract",
-      "title": "@openagentsinc/agent-harness-contract",
-      "derivation": "derived",
-      "oracles": [
-        {
-          "type": "test",
-          "ref": "packages/agent-harness-contract (15 tracked test files)"
-        }
-      ],
-      "obligation": {
-        "state": "designed",
-        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
-      }
-    },
-    {
       "id": "package:@openagentsinc/agent-readiness",
       "kind": "package",
       "owningPath": "packages/agent-readiness",
@@ -1641,39 +1624,6 @@
       "obligation": {
         "state": "designed",
         "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
-      }
-    },
-    {
-      "id": "package:@openagentsinc/agent-runtime-schema",
-      "kind": "package",
-      "owningPath": "packages/agent-runtime-schema",
-      "title": "@openagentsinc/agent-runtime-schema",
-      "derivation": "derived",
-      "oracles": [
-        {
-          "type": "test",
-          "ref": "packages/agent-runtime-schema (13 tracked test files)"
-        },
-        {
-          "type": "behavior-contract",
-          "ref": "background_agents.inbox.slack_event_ledger_ingest.v1"
-        },
-        {
-          "type": "behavior-contract",
-          "ref": "background_agents.integrations.forum_trigger_callback.v1"
-        },
-        {
-          "type": "behavior-contract",
-          "ref": "background_agents.integrations.github_mention_callback.v1"
-        },
-        {
-          "type": "behavior-contract",
-          "ref": "background_agents.toolset.compiled_policy_enforced.v1"
-        }
-      ],
-      "obligation": {
-        "state": "designed",
-        "note": "executable oracle(s) authored: behavior-contract, test; observation pending AR-3 sweep"
       }
     },
     {
@@ -1737,74 +1687,6 @@
         {
           "type": "test",
           "ref": "packages/agent-turn-store (1 tracked test file)"
-        }
-      ],
-      "obligation": {
-        "state": "designed",
-        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
-      }
-    },
-    {
-      "id": "package:@openagentsinc/ai",
-      "kind": "package",
-      "owningPath": "packages/ai",
-      "title": "@openagentsinc/ai",
-      "derivation": "derived",
-      "oracles": [
-        {
-          "type": "test",
-          "ref": "packages/ai (1 tracked test file)"
-        }
-      ],
-      "obligation": {
-        "state": "designed",
-        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
-      }
-    },
-    {
-      "id": "package:@openagentsinc/ai-model",
-      "kind": "package",
-      "owningPath": "packages/ai-model",
-      "title": "@openagentsinc/ai-model",
-      "derivation": "derived",
-      "oracles": [
-        {
-          "type": "test",
-          "ref": "packages/ai-model (3 tracked test files)"
-        }
-      ],
-      "obligation": {
-        "state": "designed",
-        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
-      }
-    },
-    {
-      "id": "package:@openagentsinc/ai-sdk-sandbox-local",
-      "kind": "package",
-      "owningPath": "packages/ai-sdk-sandbox-local",
-      "title": "@openagentsinc/ai-sdk-sandbox-local",
-      "derivation": "derived",
-      "oracles": [
-        {
-          "type": "test",
-          "ref": "packages/ai-sdk-sandbox-local (1 tracked test file)"
-        }
-      ],
-      "obligation": {
-        "state": "designed",
-        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
-      }
-    },
-    {
-      "id": "package:@openagentsinc/ai-sdk-sandbox-openagents",
-      "kind": "package",
-      "owningPath": "packages/ai-sdk-sandbox-openagents",
-      "title": "@openagentsinc/ai-sdk-sandbox-openagents",
-      "derivation": "derived",
-      "oracles": [
-        {
-          "type": "test",
-          "ref": "packages/ai-sdk-sandbox-openagents (1 tracked test file)"
         }
       ],
       "obligation": {
@@ -2250,28 +2132,15 @@
         {
           "type": "test",
           "ref": "packages/harness-conformance (2 tracked test files)"
-        }
-      ],
-      "obligation": {
-        "state": "designed",
-        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
-      }
-    },
-    {
-      "id": "package:@openagentsinc/history-corpus",
-      "kind": "package",
-      "owningPath": "packages/history-corpus",
-      "title": "@openagentsinc/history-corpus",
-      "derivation": "derived",
-      "oracles": [
+        },
         {
-          "type": "test",
-          "ref": "packages/history-corpus (5 tracked test files)"
+          "type": "behavior-contract",
+          "ref": "background_agents.toolset.compiled_policy_enforced.v1"
         }
       ],
       "obligation": {
         "state": "designed",
-        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+        "note": "executable oracle(s) authored: behavior-contract, test; observation pending AR-3 sweep"
       }
     },
     {
@@ -3328,17 +3197,17 @@
     }
   ],
   "summary": {
-    "totalSurfaces": 174,
+    "totalSurfaces": 167,
     "byKind": {
       "app": 16,
       "crate": 6,
       "document": 48,
-      "package": 92,
+      "package": 85,
       "public-endpoint": 2,
       "release-pipeline": 9,
       "worker": 1
     },
-    "withOracle": 159,
+    "withOracle": 152,
     "unverified": 15,
     "byUnverifiedReason": {
       "config-only": 2,
@@ -3346,7 +3215,7 @@
       "reference-only": 2
     },
     "byObligationState": {
-      "designed": 125,
+      "designed": 118,
       "inconclusive": 10,
       "mapped": 34,
       "out-of-scope": 5

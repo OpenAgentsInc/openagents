@@ -283,7 +283,7 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
         "https://github.com/OpenAgentsInc/openagents/issues/8218",
         "INVARIANTS.md",
         "docs/fable/ROADMAP_BACKGROUND_AGENTS.md",
-        "packages/agent-runtime-schema/src/index.test.ts",
+        "packages/harness-conformance/src/harness-conformance.test.ts",
         "packages/khala-tools/src/dispatcher.test.ts",
         "apps/openagents.com/workers/api/src/forge-tenant-git-auth-store.test.ts",
       ],
@@ -294,7 +294,7 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
           id: "background_agents.toolset.schema_policy",
           kind: "bun-test",
           mode: "unit",
-          ref: "packages/agent-runtime-schema/src/index.test.ts",
+          ref: "packages/harness-conformance/src/harness-conformance.test.ts",
         },
         {
           description:
@@ -622,7 +622,7 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
         "https://github.com/OpenAgentsInc/openagents/issues/8218",
         "INVARIANTS.md",
         "docs/fable/ROADMAP_BACKGROUND_AGENTS.md",
-        "packages/agent-runtime-schema/src/webhooks.test.ts",
+        "apps/openagents.com/workers/api/src/agent-definition-webhook-routes.test.ts",
         "apps/openagents.com/workers/api/src/agent-definition-webhook-routes.test.ts",
       ],
       oracles: [
@@ -632,7 +632,7 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
           id: "background_agents.integrations.forum_event_normalization",
           kind: "bun-test",
           mode: "unit",
-          ref: "packages/agent-runtime-schema/src/webhooks.test.ts",
+          ref: "apps/openagents.com/workers/api/src/agent-definition-webhook-routes.test.ts",
         },
         {
           description:
@@ -667,7 +667,7 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
         "https://github.com/OpenAgentsInc/openagents/issues/8218",
         "INVARIANTS.md",
         "docs/fable/ROADMAP_BACKGROUND_AGENTS.md",
-        "packages/agent-runtime-schema/src/webhooks.test.ts",
+        "apps/openagents.com/workers/api/src/agent-definition-webhook-routes.test.ts",
         "apps/openagents.com/workers/api/src/agent-definition-webhook-routes.test.ts",
       ],
       oracles: [
@@ -677,7 +677,7 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
           id: "background_agents.integrations.github_mention_normalization",
           kind: "bun-test",
           mode: "unit",
-          ref: "packages/agent-runtime-schema/src/webhooks.test.ts",
+          ref: "apps/openagents.com/workers/api/src/agent-definition-webhook-routes.test.ts",
         },
         {
           description:
@@ -807,7 +807,7 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
         "INVARIANTS.md",
         "apps/openagents.com/INVARIANTS.md",
         "docs/fable/ROADMAP_BACKGROUND_AGENTS.md",
-        "packages/agent-runtime-schema/src/webhooks.test.ts",
+        "apps/openagents.com/workers/api/src/agent-definition-webhook-routes.test.ts",
         "apps/openagents.com/workers/api/src/event-ledger.test.ts",
         "apps/openagents.com/workers/api/src/agent-definition-webhook-routes.test.ts",
         "apps/openagents.com/workers/api/migrations/0287_event_ledger_slack_source.sql",
@@ -819,7 +819,7 @@ export const backgroundAgentsContractRegistry: BehaviorContractRegistryDocument 
           id: "background_agents.inbox.slack_event_normalization",
           kind: "bun-test",
           mode: "unit",
-          ref: "packages/agent-runtime-schema/src/webhooks.test.ts",
+          ref: "apps/openagents.com/workers/api/src/agent-definition-webhook-routes.test.ts",
         },
         {
           description:
