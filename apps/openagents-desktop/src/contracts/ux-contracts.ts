@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-21.2",
+    version: "2026-07-21.3",
     contracts: [
       {
         contractId: "openagents_desktop.chat.history_recall_cited_tool_row.v1",
@@ -94,6 +94,50 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         ],
         verification:
           "Desktop history-recall-semantic suite plus Desktop typecheck. Hermetic scripted model plans only — no live spend is part of the oracle.",
+      },
+      {
+        contractId: "openagents_desktop.full_auto.rlm_recall_run_scope_and_authority.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "Full Auto long-run RLM recall consumer and run-scope isolation",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: {
+          channel: "issue",
+          statedBy: "owner",
+          statedOn: "2026-07-21",
+        },
+        statement:
+          "A long Full Auto run may consult its own authorized full event history while framing the next continuation. The recall is a bounded cited candidate, never verified. Deterministic recall runs first for structural questions; admitted semantic recall runs only through the same host-owned policy as the Tier S seam and within a finite per-run recall budget. Refused, partial, unavailable, interrupted, and failed recall all continue per existing run policy.",
+        authorityBoundary:
+          "Current-run scope resolves through DesktopHistoryCorpusSource using authoritative run-registry thread membership only, so a run can never read an unrelated thread or owner; model-supplied thread ids cannot widen scope, and a foreign thread is refused fail-closed. Only bounded validated citations enter continuation context — never raw corpus slices and never the recursive transcript. Recall result refs and exact per-call usage record in the per-run recall ledger and replay idempotently without double-count or double budget spend. Full Auto leases, generation fencing, run and concurrency caps, provider and account custody, journal, receipts, stop and reconcile behavior, teardown, acceptance, and verification authority stay outside RLM. RLM failure cannot stall teardown, leak a lease, or make a run falsely successful. The recall answer is never a run verdict, release, routing, payment, or public-claim authority.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/full-auto-recall.ts",
+          "apps/openagents-desktop/src/history-recall-semantic.ts",
+          "apps/openagents-desktop/src/desktop-history-corpus-source.ts",
+          "apps/openagents-desktop/src/full-auto-run-registry.ts",
+          "github:OpenAgentsInc/openagents#9142",
+        ],
+        oracles: [
+          {
+            id: "full_auto.rlm_recall_run_scope_isolation",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/full-auto-recall.test.ts",
+            description:
+              "Proves recall scope resolves only the registry-bound thread, a foreign owner thread is refused fail-closed, and a run cannot recall or cite an unrelated thread's secret even through an admitted semantic run.",
+          },
+          {
+            id: "full_auto.rlm_recall_cited_candidate_budget_and_failure",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/full-auto-recall.test.ts",
+            description:
+              "Proves the framed continuation references only bounded validated citations, the finite per-run budget refuses further recall, deterministic-only, admitted-semantic, refusal, partial, missing-usage, provider-failure, and interruption cases preserve run progress, and recall usage and result refs replay idempotently.",
+          },
+        ],
+        verification:
+          "Desktop full-auto-recall suite plus Desktop typecheck. Hermetic scripted model plans only — no live spend is part of the oracle.",
       },
       {
         contractId: "openagents_desktop.chat.no_noop_spec_revalidation_error_rows.v1",
