@@ -27,7 +27,8 @@
     "./acp-adapter": "./src/acp-adapter.ts",
     "./opencode-adapter": "./src/opencode-adapter.ts",
     "./sandbox": "./src/sandbox.ts",
-    "./local-sandbox-provider": "./src/local-sandbox-provider.ts"
+    "./local-sandbox-provider": "./src/local-sandbox-provider.ts",
+    "./local-process-sandbox-provider": "./src/local-process-sandbox-provider.ts"
   },
   "publishConfig": {
     "access": "public"

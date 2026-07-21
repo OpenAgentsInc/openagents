@@ -85,6 +85,13 @@ package is HARN-01 of the HARN epic (#9115).
   synthesizes `turn.started` and derives `turn.finished` plus usage from the
   step boundary.
 
+- **`local-process-sandbox-provider.ts`** (HARN-07) — a REAL local sandbox
+  provider backed by the host filesystem and `child_process` (distinct from the
+  in-memory reference double). It composes `<base>/<sessionId>`, materializes
+  bootstrap files, runs bootstrap and `run` commands as real host processes,
+  resolves paths beneath the session workspace, and omits `getPortUrl` (no port
+  infrastructure). This is the owner-local cheap-isolation rung.
+
 ## Conformance
 
 `reference-adapter.test.ts` proves the contract semantics. It covers full-turn

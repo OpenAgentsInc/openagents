@@ -18,3 +18,4 @@ export * from "./acp-adapter.ts";
 export * from "./opencode-adapter.ts";
 export * from "./sandbox.ts";
 export * from "./local-sandbox-provider.ts";
+export * from "./local-process-sandbox-provider.ts";
