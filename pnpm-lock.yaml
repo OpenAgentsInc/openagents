@@ -1689,12 +1689,31 @@ importers:
       '@openagentsinc/agent-runtime-schema':
         specifier: workspace:*
         version: link:../agent-runtime-schema
+      '@openagentsinc/ai-model':
+        specifier: workspace:*
+        version: link:../ai-model
       '@openagentsinc/history-corpus':
         specifier: workspace:*
         version: link:../history-corpus
-      '@openagentsinc/khala-ai-sdk-core':
+      effect:
+        specifier: 4.0.0-beta.94
+        version: 4.0.0-beta.94
+    devDependencies:
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+
+  packages/ai-model:
+    dependencies:
+      '@openagentsinc/agent-runtime-schema':
         specifier: workspace:*
-        version: link:../khala-ai-sdk-core
+        version: link:../agent-runtime-schema
+      '@openagentsinc/khala-tools':
+        specifier: workspace:*
+        version: link:../khala-tools
+      ai:
+        specifier: 7.0.15
+        version: 7.0.15(zod@4.4.3)
       effect:
         specifier: 4.0.0-beta.94
         version: 4.0.0-beta.94
@@ -2087,25 +2106,6 @@ importers:
 
   packages/input-bindings:
     dependencies:
-      effect:
-        specifier: 4.0.0-beta.94
-        version: 4.0.0-beta.94
-    devDependencies:
-      typescript:
-        specifier: 'catalog:'
-        version: 6.0.3
-
-  packages/khala-ai-sdk-core:
-    dependencies:
-      '@openagentsinc/agent-runtime-schema':
-        specifier: workspace:*
-        version: link:../agent-runtime-schema
-      '@openagentsinc/khala-tools':
-        specifier: workspace:*
-        version: link:../khala-tools
-      ai:
-        specifier: 7.0.15
-        version: 7.0.15(zod@4.4.3)
       effect:
         specifier: 4.0.0-beta.94
         version: 4.0.0-beta.94

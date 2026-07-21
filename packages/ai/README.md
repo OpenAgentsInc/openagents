@@ -37,7 +37,7 @@ L1  VOCABULARY    @openagentsinc/agent-runtime-schema — KhalaRuntimeEvent
                   cursor, visibility + redactionClass + causalityRefs)
 ------------------------------------------------------------------
 L0  MODEL CALL    effect/unstable/ai (upstream, consumed, never forked)
-                  + @openagentsinc/khala-ai-sdk-core — the LanguageModel
+                  + @openagentsinc/ai-model — the LanguageModel
                   Layer over the existing transport, bidirectional
                   StreamPart maps
 ```
@@ -46,7 +46,7 @@ L0  MODEL CALL    effect/unstable/ai (upstream, consumed, never forked)
 
 | Package                                 | Layer          | What it gives you                                                                                  |
 | --------------------------------------- | -------------- | -------------------------------------------------------------------------------------------------- |
-| `@openagentsinc/khala-ai-sdk-core`      | L0 model call  | The Effect AI `LanguageModel` Layer, `Response.StreamPart` maps, `ExecutionPlan` provider fallback |
+| `@openagentsinc/ai-model`      | L0 model call  | The Effect AI `LanguageModel` Layer, `Response.StreamPart` maps, `ExecutionPlan` provider fallback |
 | `@openagentsinc/agent-runtime-schema`   | L1 vocabulary  | `KhalaRuntimeEvent`, `RuntimeInteraction`, route schemas, AI SDK ingestion parts                   |
 | `@openagentsinc/agent-harness-contract` | L2 durable log | Seq-cursor event log with append, replay, live attach, rerun boundaries                            |
 | `@openagentsinc/agent-harness-contract` | L3 sandbox     | Sandbox-provider contract, local and local-process providers                                       |

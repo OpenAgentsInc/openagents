@@ -13,7 +13,7 @@
  * (`account_rate_limited`, `account_exhausted`, `auth_required`, `unknown`)
  * and the string-tag-keyed total mapping now live in the PUBLIC
  * `@openagentsinc/agent-runtime-schema` package (`model-failure.ts`), so
- * npm-published packages such as `@openagentsinc/khala-ai-sdk-core` can use
+ * npm-published packages such as `@openagentsinc/ai-model` can use
  * them directly. This private module keeps the typed `AiError`-object
  * helpers as thin wrappers over that public function, plus the compile-time
  * totality check against the real `AiError` reason union — that check stays

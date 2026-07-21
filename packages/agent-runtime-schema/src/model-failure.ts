@@ -9,7 +9,7 @@ import { Schema as S } from "effect";
  * (`src/ai-error-failure-class.ts`), because that package owns
  * `HarnessFailureClass`. STREAM-05 (#9133) then had to compose that mapping
  * at the caller, because npm-published packages such as
- * `@openagentsinc/khala-ai-sdk-core` must not depend on the private
+ * `@openagentsinc/ai-model` must not depend on the private
  * workspace package. This module resolves that seam: the neutral classes a
  * MODEL CALL can honestly produce, and the total reason-tag mapping, live
  * here in the public schema package. `harness-conformance` now consumes

@@ -5,7 +5,7 @@
  * agent applications. This package holds no logic. It re-exports the entry
  * points of the SDK layer packages so one install gives the full surface:
  *
- * - L0 MODEL CALL   — `@openagentsinc/khala-ai-sdk-core` (over
+ * - L0 MODEL CALL   — `@openagentsinc/ai-model` (over
  *   `effect/unstable/ai`, consumed and never forked)
  * - L1 VOCABULARY   — `@openagentsinc/agent-runtime-schema`
  * - L2 DURABLE LOG  — `@openagentsinc/agent-harness-contract` (event log)
@@ -30,4 +30,4 @@
 export * from "@openagentsinc/agent-runtime-schema";
 export * from "@openagentsinc/agent-harness-contract";
 export * from "@openagentsinc/history-corpus";
-export * from "@openagentsinc/khala-ai-sdk-core";
+export * from "@openagentsinc/ai-model";

@@ -14942,7 +14942,7 @@
     },
     {
       "path": "docs/ai-sdk/README.md",
-      "sha256": "3a7cfa0da2558034096d7cacc3c6deba6cd1e610fcd42ee5680bc6c41202c858",
+      "sha256": "d49b3ed405d2827ca4753c5e7269a86f269f9da9e21c3dc384e3368ba7b93937",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -40825,7 +40825,7 @@
     },
     {
       "path": "docs/sol/2026-07-18-vercel-ai-sdk-source-derived-effect-conversion-audit.md",
-      "sha256": "93041742e2b99166acb4f849c5adb6bc7584cb857a77f3bf622e5ac9426c785c",
+      "sha256": "6b35c6e64725e3887d488c80fa82c0b44c77a66f13b0833ff7509b67a42b0c1f",
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
@@ -46839,6 +46839,24 @@
       }
     },
     {
+      "path": "packages/ai-model/README.md",
+      "sha256": "3083bec22d5b4a29e02cfff56ebeec7f1691718f0f03c6f164f7659eaad8391d",
+      "reason": "Final review of mutable first-party agent technical text",
+      "profile": {
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ]
+      }
+    },
+    {
       "path": "packages/ai-sdk-sandbox-local/README.md",
       "sha256": "bd99d7b68b60ac77dbe701efbdf500d48c6bbf85c569b09e329bab88cc5f6491",
       "reason": "Final review of a converted document",
@@ -46884,7 +46902,7 @@
     },
     {
       "path": "packages/ai/README.md",
-      "sha256": "89fbf6eb77eaef81423f54896e712afa13827d0b9e17935c6633e611f3e961b5",
+      "sha256": "c6854349384eaef59352fd35c39df2d28d15403ec717f718468042400f44b6df",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -48043,28 +48061,6 @@
     {
       "path": "packages/input-bindings/README.md",
       "sha256": "be6f5c9eeb6377c330f7be2aa477ea87141ef60ac92d5c8c87f88fb150bbbff6",
-      "reason": "Final review of a converted document",
-      "profile": {
-        "ste_mode": "descriptive",
-        "risk": "legacy",
-        "source": null,
-        "replacement": null,
-        "ste_audience": "agent",
-        "ste_agent_compact_revision": "openagents-agent-compact-v1",
-        "ste_accepted_screening_rules": [
-          "STE-2.4",
-          "STE-3.6",
-          "STE-5.1",
-          "STE-8.2"
-        ],
-        "ste_status": "inspected",
-        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-        "ste_reviewed_at": "2026-07-19T22:00:00Z"
-      }
-    },
-    {
-      "path": "packages/khala-ai-sdk-core/README.md",
-      "sha256": "fc57b92f2ac742996742e3bbbaf4078552dd5fe13597ace307f8abdb55f587f3",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-19",
-  "sourceTreeSha256": "ca246d08b14b1c6ac523ebd88d9d0ca2b33bb0f3428922c1fd32368ee2c36763",
+  "sourceTreeSha256": "ab17ac670a0c1725c3d6f539dcb253ac1d588ddb30aad7ceb79a38d44de6a7ab",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -2249,24 +2249,26 @@
       "owner": "OpenAgents Effect AI SDK conversion analysis",
       "disposition": "retain-decision-analysis",
       "dispatch": false,
-      "sha256": "93041742e2b99166acb4f849c5adb6bc7584cb857a77f3bf622e5ac9426c785c",
+      "sha256": "6b35c6e64725e3887d488c80fa82c0b44c77a66f13b0833ff7509b67a42b0c1f",
       "status": "re-baselined point-in-time source-conversion analysis",
       "snapshot": "2026-07-18",
       "reviewedAt": "2026-07-19",
       "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
       "inboundLinks": [
         "docs/fable/2026-07-21-ai-sdk-and-effect-ai-streaming-harvest-audit.md",
+        "docs/fable/2026-07-21-effect-native-openagents-ai-sdk-analysis.md",
         "docs/sol/2026-07-18-electron-ai-sdk-codex-claude-full-auto-rewrite-roadmap.md",
         "docs/sol/2026-07-18-full-auto-asap-effect-harness-sprint-recommendation.md",
         "docs/sol/2026-07-18-openagents-desktop-vercel-ai-sdk-in-place-reset-audit.md",
         "docs/sol/README.md"
       ],
-      "inboundSourceCount": 5,
+      "inboundSourceCount": 6,
       "issueLinks": [
         8976,
         9000,
         9001,
-        9002
+        9002,
+        9149
       ]
     },
     {

@@ -43,7 +43,7 @@ L1  VOCABULARY    @openagentsinc/agent-runtime-schema — KhalaRuntimeEvent
                   RuntimeInteraction, route schemas
 ------------------------------------------------------------------
 L0  MODEL CALL    effect/unstable/ai (upstream, consumed, never forked) +
-                  @openagentsinc/khala-ai-sdk-core — the LanguageModel Layer,
+                  @openagentsinc/ai-model — the LanguageModel Layer,
                   bidirectional StreamPart maps, ExecutionPlan fallback
 ```
 
@@ -58,7 +58,7 @@ cursor.
 | --- | --- | --- |
 | `@openagentsinc/agent-runtime-schema` | L1 vocabulary | Yes — the foundation |
 | `@openagentsinc/agent-harness-contract` | L2–L5 | Yes — the core |
-| `@openagentsinc/khala-ai-sdk-core` | L0 bridge | Yes — neutral rename pending (AISDK-03 #9149) |
+| `@openagentsinc/ai-model` | L0 bridge | Yes — neutral rename done (AISDK-03 #9149) |
 | `@openagentsinc/history-corpus` | L6 recall | Yes |
 | `@openagentsinc/ai-sdk-sandbox-local` | L3 interop | Yes |
 | `@openagentsinc/ai-sdk-sandbox-openagents` | L3 interop | Yes |

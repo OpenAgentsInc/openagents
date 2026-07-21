@@ -542,8 +542,9 @@ SDK and not a new Full Auto product.
    Full Auto, and tests.
 4. [`../effect-native/README.md`](../effect-native/README.md)
    — whole-application Effect and renderer-authority destination.
-5. [`../../packages/khala-ai-sdk-core/README.md`](../../packages/khala-ai-sdk-core/README.md)
-   — current thin AI SDK boundary precedent.
+5. [`../../packages/ai-model/README.md`](../../packages/ai-model/README.md)
+   — current thin AI SDK boundary precedent (the package moved from
+   `packages/khala-ai-sdk-core` under AISDK-03 #9149).
 6. [`../../packages/agent-client-protocol/README.md`](../../packages/agent-client-protocol/README.md)
    and
    [`../../packages/agent-client-protocol/THIRD_PARTY_NOTICES.md`](../../packages/agent-client-protocol/THIRD_PARTY_NOTICES.md)

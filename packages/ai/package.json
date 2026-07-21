@@ -30,8 +30,8 @@
   "dependencies": {
     "@openagentsinc/agent-harness-contract": "workspace:*",
     "@openagentsinc/agent-runtime-schema": "workspace:*",
+    "@openagentsinc/ai-model": "workspace:*",
     "@openagentsinc/history-corpus": "workspace:*",
-    "@openagentsinc/khala-ai-sdk-core": "workspace:*",
     "effect": "catalog:"
   },
   "devDependencies": {

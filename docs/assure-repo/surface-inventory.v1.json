@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:71b836dfa635e67bf8df872915778fa504548fdb8c775a3714a3c020bdaadda7",
+  "sourceDigest": "sha256:8fde21733c29c04d2f10186e132d878ec9d5600784c07d952ea43a16da47d504",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -1762,6 +1762,23 @@
       }
     },
     {
+      "id": "package:@openagentsinc/ai-model",
+      "kind": "package",
+      "owningPath": "packages/ai-model",
+      "title": "@openagentsinc/ai-model",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/ai-model (3 tracked test files)"
+        }
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
+    },
+    {
       "id": "package:@openagentsinc/ai-sdk-sandbox-local",
       "kind": "package",
       "owningPath": "packages/ai-sdk-sandbox-local",
@@ -2283,23 +2300,6 @@
         {
           "type": "test",
           "ref": "packages/input-bindings (1 tracked test file)"
-        }
-      ],
-      "obligation": {
-        "state": "designed",
-        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
-      }
-    },
-    {
-      "id": "package:@openagentsinc/khala-ai-sdk-core",
-      "kind": "package",
-      "owningPath": "packages/khala-ai-sdk-core",
-      "title": "@openagentsinc/khala-ai-sdk-core",
-      "derivation": "derived",
-      "oracles": [
-        {
-          "type": "test",
-          "ref": "packages/khala-ai-sdk-core (3 tracked test files)"
         }
       ],
       "obligation": {
