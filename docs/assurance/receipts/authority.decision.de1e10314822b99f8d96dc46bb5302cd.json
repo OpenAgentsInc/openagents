@@ -1,0 +1,83 @@
+{
+  "action": "admit_assurance_revision_when_source_spec_allows_owner_designated_independent_reviewer",
+  "actor_role": "independent_reviewer",
+  "condition_results": [
+    {
+      "condition_ref": "condition.independence",
+      "result": "satisfied",
+      "statement": "Reviewer identity authority_delegated_independent_reviewer_grok_2026_07_21 is a fresh clean session distinct from the obligation producer assurance_packet_producer_acc2ed77; evidence was reproduced independently."
+    },
+    {
+      "condition_ref": "condition.verification",
+      "result": "satisfied",
+      "statement": "Reproduced 61 executable oracle criteria GREEN; every armed local-unit oracle passed and no criterion claims a tier above what reproduces. Smoke-gated, receipt-backed, and designed-only criteria stay unobserved and are not claimed observed."
+    },
+    {
+      "condition_ref": "condition.redaction",
+      "result": "satisfied",
+      "statement": "Receipt carries only public-safe counts, refs, and digests; no raw oracle output, secrets, or private prompts."
+    }
+  ],
+  "evidence_refs": [
+    "specs/desktop/full-auto.assurance-spec.md",
+    "docs/assurance/2026-07-21-full-auto-assurance-review-packet.md"
+  ],
+  "grant_ref": "grant.independent_assurance",
+  "independence": {
+    "distinct": true,
+    "producer_ref": "assurance_packet_producer_acc2ed77",
+    "reviewer_ref": "authority_delegated_independent_reviewer_grok_2026_07_21",
+    "statement": "Independent reviewer session distinct from the packet producer; the executable evidence was reproduced, not trusted."
+  },
+  "outcome": "succeeded",
+  "profile_id": "openagents.owner-delegated-autonomy",
+  "profile_revision": 6,
+  "program_ref": "program.full_auto_release",
+  "public_safety": {
+    "classification": "reviewed_public_safe",
+    "contains_raw_output": false
+  },
+  "receipt_ref": "authority.decision.de1e10314822b99f8d96dc46bb5302cd",
+  "reproduction_summary": {
+    "batches": [
+      {
+        "batch_id": "desktop-oracles",
+        "command": "./node_modules/.bin/vp test --run --root ../.. src/codex-local-runtime.test.ts src/full-auto-control-server.test.ts src/full-auto-lane.test.ts src/full-auto-provider-handoff.test.ts src/full-auto-retry-rotation-model.test.ts src/full-auto-run-analyzer.test.ts src/full-auto-run-control-server.test.ts src/full-auto-run-handoff-control-server.test.ts src/full-auto-run-liveness-control-server.test.ts src/full-auto-run-report.test.ts src/provider-lane.test.ts src/renderer/react-composer.test.tsx src/renderer/react-full-auto-surface.test.tsx src/renderer/shell.test.ts src/spec-lane-workflow.test.ts tests/full-auto-guardrails.test.ts tests/full-auto-liveness.test.ts tests/full-auto-registry.test.ts tests/full-auto-restart.e2e.test.ts tests/full-auto-run-registry.test.ts tests/full-auto-thread-pressure.e2e.test.ts",
+        "cwd": "apps/openagents-desktop",
+        "exit_code": 0,
+        "files": 21,
+        "ok": true,
+        "tests_passed": 516
+      },
+      {
+        "batch_id": "repo-oracles",
+        "command": "./apps/openagents-desktop/node_modules/.bin/vp test --run --root . packages/assurance-spec/test/assurance-spec.test.ts",
+        "cwd": ".",
+        "exit_code": 0,
+        "files": 1,
+        "ok": true,
+        "tests_passed": 11
+      }
+    ],
+    "designed_only": 8,
+    "executable_criteria": 61,
+    "executable_failed": 0,
+    "executable_green": 61,
+    "receipt_backed": 5,
+    "smoke_gated": 2,
+    "total_criteria": 76
+  },
+  "schema_id": "openagents.authority_decision_receipt.v1",
+  "scope_notes": [
+    "Admission means this revision overclaims no evidence tier; it is not a claim that all criteria pass.",
+    "MemoHarness criteria FA-AC-69..76 remain designed-only and INCONCLUSIVE per the document objective; they are not claimed observed.",
+    "Restart/resume criteria FA-AC-07/29 remain smoke-gated unsigned dev-tier; no signed-package resume proof is claimed.",
+    "Owner-real receipt criteria FA-AC-33/62..65 remain development-tier and are not evidence for a signed package or a release.",
+    "This admission grants no release, public-claim, or promise-transition authority (AuthorityDelegationSpec Law 6)."
+  ],
+  "settled_at": "2026-07-21T22:40:42Z",
+  "started_at": "2026-07-21T22:40:38Z",
+  "target_digest": "sha256:989a64c5e608394f749e5756ba42bdec7675bcf72fb26ed209e5fc73726a58a9",
+  "target_ref": "specs/desktop/full-auto.assurance-spec.md",
+  "trigger_ref": "issue.8978.independent_admission"
+}

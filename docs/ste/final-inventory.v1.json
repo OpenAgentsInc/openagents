@@ -49992,7 +49992,7 @@
     },
     {
       "path": "specs/desktop/full-auto.assurance-spec.md",
-      "sha256": "989a64c5e608394f749e5756ba42bdec7675bcf72fb26ed209e5fc73726a58a9",
+      "sha256": "be5b106c6bbe3bcdde503d1bcab6abaa559adb561528a1b68f28399f4caa9718",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { spawnSync } from "node:child_process"
+import { existsSync, mkdirSync, realpathSync } from "node:fs"
 import { access, readFile, writeFile } from "node:fs/promises"
 /**
  * assurance-spec CLI (AT-1, docs/assurance/AGENT_TOOLING.md §2).
@@ -9,6 +11,16 @@ import { access, readFile, writeFile } from "node:fs/promises"
  * server uses (src/handlers.ts): one implementation, two transports.
  */
 import { resolve, relative } from "node:path"
+
+/** Resolve and realpath so macOS /tmp vs /private/tmp never invents `..` refs. */
+const realResolve = (path: string): string => {
+  const absolute = resolve(path)
+  try {
+    return realpathSync(absolute)
+  } catch {
+    return absolute
+  }
+}
 
 import { Effect } from "effect"
 
@@ -36,9 +48,17 @@ import {
   runTool,
   validateAssuranceSpec,
   fixtureSemanticPlanner,
+  decideReviewAdmission,
+  buildAuthorityDecisionReceipt,
+  admitAssuranceFrontmatter,
+  authorityDecisionReceiptArtifact,
+  batchCommandString,
+  sha256Digest,
   type AssuranceToolError,
   type ProductSpecSubject,
   type ToolFailure,
+  type OracleBatch,
+  type BatchReproduction,
 } from "./index.ts"
 
 const file = (path: string) => ({
@@ -63,6 +83,7 @@ const usage = (): never => {
   console.error("  assurance-spec claim <file.assurance-spec.md> [--claim <text>] [--root <dir>] [--json]")
   console.error("  assurance-spec agent-run ingest <file.agent-run.json> [--root <dir>] [--json]")
   console.error("  assurance-spec owned-runner <assurance/owned-runner.json> [--root <dir>] [--json]")
+  console.error("  assurance-spec review-admit <file.assurance-spec.md> --reviewer <ref> --producer <ref> [--root <dir>] [--program <ref>] [--trigger <ref>] [--receipts-dir <dir>] [--evidence <path>]... [--scope-note <text>]... [--dry-run] [--json]")
   console.error("  assurance-spec mcp [--root <dir>]")
   console.error("")
   console.error("exit codes: 0 success · 1 operation failure · 2 usage error · 3 stale session")
@@ -100,6 +121,8 @@ const positional = (args: ReadonlyArray<string>, count: number): ReadonlyArray<s
     "--accepted-subject", "--planner",
     "--root", "--against", "--spec-digest", "--subject-digest",
     "--criterion", "--status", "--technique", "--claim",
+    "--reviewer", "--producer", "--trigger", "--receipts-dir", "--program",
+    "--evidence", "--scope-note",
   ])
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index]!
@@ -529,6 +552,195 @@ const ownedRunner = (args: ReadonlyArray<string>): void => {
 }
 
 // ---------------------------------------------------------------------------
+// Independent-admission verifier (grant.independent_assurance)
+// ---------------------------------------------------------------------------
+
+const flagValues = (args: ReadonlyArray<string>, flag: string): ReadonlyArray<string> => {
+  const found: string[] = []
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index] === flag && args[index + 1] !== undefined) {
+      found.push(args[index + 1]!)
+      index += 1
+    }
+  }
+  return found
+}
+
+const parseVpCounts = (output: string): { passed?: number; failed?: number; files?: number } => {
+  const result: { passed?: number; failed?: number; files?: number } = {}
+  const tests = /Tests\s+(?:(\d+)\s+failed\s*\|\s*)?(\d+)\s+passed/.exec(output)
+  if (tests !== null) {
+    if (tests[1] !== undefined) result.failed = Number(tests[1])
+    result.passed = Number(tests[2])
+  }
+  const files = /Test Files\s+(?:\d+\s+failed\s*\|\s*)?(\d+)\s+passed/.exec(output)
+  if (files !== null) result.files = Number(files[1])
+  return result
+}
+
+const spawnReproducer = (repoRoot: string) => (batch: OracleBatch): BatchReproduction => {
+  const cwd = resolve(repoRoot, batch.cwd)
+  const binary = resolve(cwd, batch.binary)
+  if (!existsSync(binary)) {
+    return { batch_id: batch.batch_id, ok: false, exit_code: -1, detail: `vp binary not found: ${binary}` }
+  }
+  const outcome = spawnSync(binary, ["test", "--run", "--root", batch.root, ...batch.file_args], {
+    cwd,
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+    env: { ...process.env, CI: "1", FORCE_COLOR: "0" },
+  })
+  const output = `${outcome.stdout ?? ""}\n${outcome.stderr ?? ""}`
+  const counts = parseVpCounts(output)
+  const exitCode = outcome.status ?? -1
+  return {
+    batch_id: batch.batch_id,
+    ok: exitCode === 0 && (counts.failed ?? 0) === 0,
+    exit_code: exitCode,
+    ...(counts.passed === undefined ? {} : { tests_passed: counts.passed }),
+    ...(counts.failed === undefined ? {} : { tests_failed: counts.failed }),
+    ...(counts.files === undefined ? {} : { files: counts.files }),
+  }
+}
+
+const defaultScopeNotes = (specRel: string): ReadonlyArray<string> => [
+  "Admission means this revision overclaims no evidence tier. It is not a claim that all criteria pass.",
+  "Smoke-gated, receipt-backed, and designed-only criteria stay unobserved and are not claimed observed.",
+  "This admission grants no release, public-claim, or promise-transition authority (AuthorityDelegationSpec Law 6).",
+  `Target: ${specRel}.`,
+]
+
+const reviewAdmit = async (args: ReadonlyArray<string>): Promise<void> => {
+  const [specPathArg] = positional(args, 1)
+  if (specPathArg === undefined) usage()
+  const json = jsonFlag(args)
+  const repoRoot = realResolve(flagValue(args, "--root") ?? process.cwd())
+  const reviewer = flagValue(args, "--reviewer")
+  const producer = flagValue(args, "--producer")
+  if (reviewer === undefined || producer === undefined) {
+    return failWith({
+      ok: false,
+      code: "invalid_argument",
+      message: "review-admit requires --reviewer <ref> and --producer <ref> so independence is explicit.",
+    }, json)
+  }
+  if (reviewer === producer) {
+    return failWith({
+      ok: false,
+      code: "independence_violation",
+      message: "reviewer and producer refs must be distinct (condition.independence).",
+    }, json)
+  }
+  const trigger = flagValue(args, "--trigger") ?? "owner_directive.independent_admission"
+  const program = flagValue(args, "--program") ?? "program.full_auto_release"
+  const receiptsDir = flagValue(args, "--receipts-dir") ?? "docs/assurance/receipts"
+  const dryRun = args.includes("--dry-run")
+  const extraEvidence = flagValues(args, "--evidence")
+  const scopeNotes = flagValues(args, "--scope-note")
+
+  const specAbsolute = realResolve(specPathArg!)
+  let specRel = relative(repoRoot, specAbsolute).replaceAll("\\", "/")
+  if (specRel.startsWith("..") || specRel.startsWith("/")) {
+    // Fail closed rather than emit an off-root relative path into a receipt.
+    return failWith({
+      ok: false,
+      code: "invalid_argument",
+      message: `AssuranceSpec path must resolve inside --root (${repoRoot}); got ${specAbsolute}`,
+    }, json)
+  }
+  if (!(await file(specAbsolute).exists())) {
+    return failWith({ ok: false, code: "file_not_found", message: `AssuranceSpec does not exist: ${specPathArg}` }, json)
+  }
+  const markdown = await file(specAbsolute).text()
+  const validation = validateAssuranceSpec(markdown)
+  if (!validation.valid) {
+    return failWith({
+      ok: false,
+      code: "invalid_assurance_spec",
+      message: "AssuranceSpec failed structural validation.",
+      errors: validation.errors,
+    }, json)
+  }
+  const document = parseAssuranceSpec(markdown)
+  const targetDigest = sha256Digest(markdown)
+  const startedAt = new Date().toISOString().replace(/\.\d+Z$/, "Z")
+
+  const decision = decideReviewAdmission({
+    document,
+    fileExists: (path) => existsSync(resolve(repoRoot, path)),
+    reproduce: spawnReproducer(repoRoot),
+  })
+  const settledAt = new Date().toISOString().replace(/\.\d+Z$/, "Z")
+
+  const evidenceRefs = [specRel, ...extraEvidence]
+  const notes = scopeNotes.length > 0 ? scopeNotes : defaultScopeNotes(specRel)
+  const receipt = buildAuthorityDecisionReceipt({
+    decision,
+    targetRef: specRel,
+    targetDigest,
+    reviewerRef: reviewer,
+    producerRef: producer,
+    triggerRef: trigger,
+    startedAt,
+    settledAt,
+    evidenceRefs,
+    scopeNotes: notes,
+    programRef: program,
+  })
+  const receiptArtifact = authorityDecisionReceiptArtifact(receipt)
+  const receiptRel = `${receiptsDir}/${receipt.receipt_ref}.json`.replaceAll("\\", "/")
+  const receiptAbsolute = resolve(repoRoot, receiptRel)
+
+  let lifecycleFlipped = false
+  if (decision.admit && !dryRun) {
+    mkdirSync(resolve(repoRoot, receiptsDir), { recursive: true })
+    await writeFile(receiptAbsolute, receiptArtifact.bytes.endsWith("\n") ? receiptArtifact.bytes : `${receiptArtifact.bytes}\n`)
+    const flipped = admitAssuranceFrontmatter({
+      markdown,
+      reviewerRef: reviewer,
+      receiptRef: receipt.receipt_ref,
+      receiptPath: receiptRel,
+      admittedAt: settledAt,
+    })
+    await writeFile(specAbsolute, flipped)
+    lifecycleFlipped = true
+  }
+
+  if (json) {
+    printJson({
+      ok: true,
+      admit: decision.admit,
+      outcome: decision.outcome,
+      lifecycle_flipped: lifecycleFlipped,
+      dry_run: dryRun,
+      receipt_ref: receipt.receipt_ref,
+      receipt_path: decision.admit && !dryRun ? receiptRel : null,
+      counts: decision.counts,
+      executable_green: decision.executable_green,
+      executable_failed: decision.executable_failed,
+      reproductions: decision.reproductions,
+      blockers: decision.blockers,
+      receipt,
+    })
+  } else {
+    console.log(`${decision.outcome.toUpperCase()} ${specRel}`)
+    console.log(`  executable ${decision.executable_green}/${decision.counts.executable} green · smoke-gated ${decision.counts.smoke_gated} · receipt-backed ${decision.counts.receipt_backed} · designed-only ${decision.counts.designed_only}`)
+    for (const batch of decision.batches) {
+      const repro = decision.reproductions.find((entry) => entry.batch_id === batch.batch_id)
+      console.log(`  batch ${batch.batch_id}: exit ${repro?.exit_code ?? "-"} ok=${repro?.ok ?? false} passed=${repro?.tests_passed ?? "-"} failed=${repro?.tests_failed ?? "-"} files=${repro?.files ?? "-"}`)
+      console.log(`    ${batchCommandString(batch)}`)
+    }
+    if (decision.admit) {
+      console.log(`  receipt ${receipt.receipt_ref}${lifecycleFlipped ? ` -> ${receiptRel}` : " (dry-run, not written)"}`)
+      if (lifecycleFlipped) console.log(`  lifecycle_state flipped proposed -> admitted (admitted_by ${reviewer})`)
+    } else {
+      for (const blocker of decision.blockers) console.log(`  BLOCKED ${blocker.code}: ${blocker.message}`)
+    }
+  }
+  if (!decision.admit) process.exit(1)
+}
+
+// ---------------------------------------------------------------------------
 // Dispatch
 // ---------------------------------------------------------------------------
 
@@ -560,5 +772,6 @@ else if (command === "agent-run") {
   else usage()
 }
 else if (command === "owned-runner") ownedRunner(args)
+else if (command === "review-admit") await reviewAdmit(args)
 else if (command === "mcp") runAssuranceSpecMcpServer(flagValue(args, "--root"))
 else usage()
