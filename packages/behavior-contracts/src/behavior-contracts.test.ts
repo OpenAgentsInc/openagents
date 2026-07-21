@@ -142,10 +142,10 @@ describe("behavior contract registry", () => {
     const validation = validateBehaviorContractRegistry(decoded)
 
     expect(validation).toEqual({ issues: [], ok: true })
-    // FAV-01 (#9111) added openagents_desktop.full_auto_readiness_gated_routing.v1
-    // and FAV-02 (#9112) added openagents_desktop.full_auto_four_lane_rotation_parity.v1
-    // (both enforced), taking the total from 43 to 45.
-    expect(decoded.contracts).toHaveLength(45)
+    // FAV-01 (#9111), FAV-02 (#9112), and FAV-03 (#9113) each added one
+    // enforced Full Auto contract (readiness-gated routing, four-lane rotation
+    // parity, Apple FM advisory), taking the total from 43 to 46.
+    expect(decoded.contracts).toHaveLength(46)
     const pending = decoded.contracts.filter(contract => contract.state === "pending")
     // FA-UX-01 (#8974) flipped 3 Full Auto contracts from pending to
     // enforced: openagents_desktop.full_auto_dedicated_launcher.v1,

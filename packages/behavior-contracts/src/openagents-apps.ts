@@ -1703,7 +1703,42 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
       verification:
         "FAV-02 (#9112) landed apps/openagents-desktop/src/full-auto-four-lane-parity.test.ts proving eligibility, ordered-policy admission, per-pair handoff-envelope invariants (host-owned projection, provider-private omission, truncation disclosure, no credential material), and lane-agnostic rotation-reason classification across every ordered pair of the four lanes. The live owner-real Grok/Cursor receipt rows are the activation rung and require admitted ACP peers.",
     },
+    {
+      authorityBoundary:
+        "This binds Apple FM's advisory role inside Full Auto. Apple FM may produce a typed route recommendation and a typed advisory analysis, both structurally advisory (advisory: true, no decision/action field). It has no Full Auto action lane, makes no route decision, performs no action, and flips no typed state. The deterministic decision (decideFullAutoRoute) takes no recommendation input.",
+      blockerRefs: [],
+      contractId: "openagents_desktop.full_auto_apple_fm_advisory.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "apps/openagents-desktop/src/full-auto-advisory.ts",
+        "docs/sol/2026-07-20-apple-fm-router-to-full-agent-system-plan.md",
+        "docs/fable/2026-07-20-full-auto-first-verifiable-mode.md",
+        "github:OpenAgentsInc/openagents#9113",
+      ],
+      oracles: [
+        {
+          description:
+            "Unit coverage proves the recommend/decide separation the router plan requires: decideFullAutoRoute chooses the first candidate of the owner-ordered policy and takes NO recommendation argument, so the deterministic decision is identical regardless of what Apple FM recommends (proven across all four lanes); a recommendation for a non-policy or non-first lane is recorded but never chosen; recommendationMatchedDecision is a report, not a cause; and the route recommendation and advisory analysis are structurally advisory -- advisory: true is a required literal (advisory: false fails decode) and neither type carries a decision, verdict, or action field.",
+          id: "openagents_desktop.full_auto_apple_fm_advisory.recommend_not_decide",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents-desktop/src/full-auto-advisory.test.ts",
+        },
+      ],
+      productArea: "Desktop Full Auto Apple FM advisory capacity",
+      source: {
+        channel: "github-issue",
+        statedBy: "owner",
+        statedOn: "2026-07-20",
+      },
+      state: "enforced",
+      statement:
+        "Apple FM participates in Full Auto as advisory only: it may recommend a route and produce a bounded read-only run analysis, but the deterministic policy makes the route decision and host services perform all actions. Its recommendation and the decision are distinct recorded facts, its outputs are structurally advisory, and it has no action authority and no Full Auto lane.",
+      surface: "openagents-desktop",
+      verification:
+        "FAV-03 (#9113) landed apps/openagents-desktop/src/full-auto-advisory.ts (FullAutoRouteRecommendation and FullAutoAdvisoryAnalysis with a required advisory: true literal, decideFullAutoRoute as a recommendation-free deterministic decision, adviseFullAutoRoute recording both as distinct facts) proven by apps/openagents-desktop/src/full-auto-advisory.test.ts. Wiring the on-device Apple FM producer and its AFS-09 gated compiled artifacts into a live run is the activation rung.",
+    },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-20.2",
+  version: "2026-07-20.3",
 };
