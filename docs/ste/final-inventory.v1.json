@@ -16587,6 +16587,28 @@
       }
     },
     {
+      "path": "docs/audits/2026-07-21-freerange-numeric-oracle-pilot.md",
+      "sha256": "cfbda09625c324ea6bda7f2196422455ff9678baa411dd9fb2c9f48f1914f886",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/auth/2026-06-16-cloudflare-email-automation-audit.md",
       "sha256": "439f17ce06f87264dbe37bfd7d4c6170297adcee6b3c27ac75fa73c4f7ecf20f",
       "reason": "Immutable historical or evidence source data",
@@ -47921,11 +47943,12 @@
     {
       "path": "packages/history-corpus/README.md",
       "sha256": "a608295195ee3ef9cc9197a320ea5f2984c69b11ce4044aadd0d7363ab7e25c4",
-      "reason": "Final review of mutable first-party agent technical text",
+      "reason": "Final review of a converted document",
       "profile": {
-        "ste_status": "inspected",
-        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
         "ste_audience": "agent",
         "ste_agent_compact_revision": "openagents-agent-compact-v1",
         "ste_accepted_screening_rules": [
@@ -47933,7 +47956,10 @@
           "STE-3.6",
           "STE-5.1",
           "STE-8.2"
-        ]
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {
