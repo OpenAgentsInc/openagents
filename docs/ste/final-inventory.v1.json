@@ -21440,6 +21440,18 @@
       }
     },
     {
+      "path": "docs/deploy/receipts/2026-07-21-dist-13-real-ports-and-release-set-bucket.md",
+      "sha256": "f5af8135f4f546c5cda08b83997cd7f4da25b90e9ac0871d5b61abecd79606ac",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null,
+        "ste_status": "source-data"
+      }
+    },
+    {
       "path": "docs/design/2026-06-16-foldkit-ui-component-library-roadmap.md",
       "sha256": "4b2ac62a158a954ea8b08847d11d35938cd9d1cdf3501e87901fe8e53c72bf39",
       "reason": "Final review of a converted document",
