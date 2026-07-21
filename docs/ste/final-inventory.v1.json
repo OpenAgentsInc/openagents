@@ -42505,8 +42505,30 @@
       }
     },
     {
+      "path": "docs/teardowns/2026-07-21-freerange-teardown.md",
+      "sha256": "ae30f8013b15a33fb443e460d9ce7c4f38abc349370901fb671d7fc0579980a6",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/teardowns/README.md",
-      "sha256": "41713f8464855bc131d8ab573d4c77d90d9fb86528a8ce026a6b5d6dc0dbd821",
+      "sha256": "b280f5dd1ca152bac8230f5bbc2e2cad91f370bbd3f27113f003afb70c16727b",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
