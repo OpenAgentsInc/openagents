@@ -428,7 +428,7 @@ export const createGcsObjectStore = (
         "objects",
         "describe",
         uri(objectKey),
-        "--format=value[separator=','](size,generation,metadata.sha256)",
+        "--format=value[separator=','](size,generation,custom_fields.sha256)",
       ]);
       if (result.code !== 0) return { exists: false };
       const [size, generation, sha256] = result.stdout.trim().split(",");
