@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:8fde21733c29c04d2f10186e132d878ec9d5600784c07d952ea43a16da47d504",
+  "sourceDigest": "sha256:8a1259c2c32bd9af83f3b755eed4bfc635c94352302c1740718e1e3f1e48caa8",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -1618,7 +1618,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "packages/agent-harness-contract (14 tracked test files)"
+          "ref": "packages/agent-harness-contract (15 tracked test files)"
         }
       ],
       "obligation": {

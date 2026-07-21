@@ -33,7 +33,11 @@
     "./partial-object-stream": "./src/partial-object-stream.ts",
     "./smooth-stream": "./src/smooth-stream.ts",
     "./ui-message-chunk": "./src/ui-message-chunk.ts",
-    "./ui-message-reducer": "./src/ui-message-reducer.ts"
+    "./ui-message-reducer": "./src/ui-message-reducer.ts",
+    "./chat-transport": "./src/chat-transport.ts",
+    "./chat-transport-event-log": "./src/chat-transport-event-log.ts",
+    "./chat-transport-sse": "./src/chat-transport-sse.ts",
+    "./chat-transport-ipc": "./src/chat-transport-ipc.ts"
   },
   "publishConfig": {
     "access": "public"

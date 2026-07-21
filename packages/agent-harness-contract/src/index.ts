@@ -24,3 +24,7 @@ export * from "./partial-object-stream.ts";
 export * from "./smooth-stream.ts";
 export * from "./ui-message-chunk.ts";
 export * from "./ui-message-reducer.ts";
+export * from "./chat-transport.ts";
+export * from "./chat-transport-event-log.ts";
+export * from "./chat-transport-sse.ts";
+export * from "./chat-transport-ipc.ts";
