@@ -5,22 +5,41 @@ from [OpenAgentsInc/ai](https://github.com/OpenAgentsInc/ai) under Apache-2.0.
 Install from npm under dist-tag `rc` (pre-stable never takes `latest`):
 
 ```sh
-npm install @openagentsinc/ai@rc
-# or pin: @openagentsinc/agent-harness-contract@0.1.3-rc.1
+npm install @openagentsinc/ai@0.2.0-rc.1
+# pin the full train — never `latest`, a floating `rc` tag, or a range
 ```
 
-| Package | Role |
-| --- | --- |
-| `@openagentsinc/ai` | umbrella re-exports |
-| `@openagentsinc/agent-runtime-schema` | L1 vocabulary |
-| `@openagentsinc/agent-harness-contract` | L2–L5 (event log, harness, UI stream, ChatTransport, history_recall host-tool wire) |
-| `@openagentsinc/ai-model` | L0 model-call bridge |
-| `@openagentsinc/history-corpus` | L6 recall + host-tool resolve |
-| `@openagentsinc/ai-sdk-sandbox-local` | L3 interop |
-| `@openagentsinc/ai-sdk-sandbox-openagents` | L3 interop |
+## Pinned train (OpenAgents monorepo)
 
-This monorepo consumes those packages from npm (OpenAgentsInc/ai#2). The
-`khalaToolsToAiSdkTools` bridge stays monorepo-side in
-`@openagentsinc/khala-tools` (`src/ai-sdk-tool-bridge.ts`).
+Current consumer pin for OpenAgents Desktop RLM (OPENRLM-SDK #9154):
+
+| Package | Version | Role |
+| --- | --- | --- |
+| `@openagentsinc/ai` | `0.2.0-rc.1` | umbrella (`./rlm` re-exports) |
+| `@openagentsinc/rlm` | `0.2.0-rc.1` | first-class RLM engine (Tier D + Tier S) |
+| `@openagentsinc/history-corpus` | `0.2.0-rc.1` | history adapter + `history_recall` host tool |
+| `@openagentsinc/agent-harness-contract` | `0.2.0-rc.1` | L2–L5 harness / host-tool wire |
+| `@openagentsinc/agent-runtime-schema` | `0.2.0-rc.1` | L1 vocabulary |
+| `@openagentsinc/ai-sdk-sandbox-local` | `0.1.3-rc.1` | L3 interop (unchanged pin until next train) |
+
+## OpenAgents-owned adapters (desktop)
+
+These stay in the monorepo; they are not copied engines:
+
+- `apps/openagents-desktop/src/desktop-history-corpus-source.ts` —
+  `DesktopHistoryCorpusSource` / `RlmCorpusSource` Layer over the durable
+  event log + thread snapshots. Owns authorization and visibility policy.
+- `apps/openagents-desktop/src/history-recall-host.ts` — `history_recall`
+  host dispatch (HistoryRecall Tier D vocabulary) plus Rlm deterministic
+  Grep path and `makeDesktopRlmToolHandler` (no artifact sink; strategy
+  `openagents.desktop.rlm.history.v1`).
+- `apps/openagents-desktop/src/renderer/history-recall-card.ts` — cited-span
+  renderer.
+
+Engine or public-contract fixes go to `OpenAgentsInc/ai` and return through an
+exact version pin bump.
 
 Docs index: https://github.com/OpenAgentsInc/ai/blob/main/docs/README.md
+
+RLM consumption contract:
+https://github.com/OpenAgentsInc/ai/blob/main/docs/rlm/OPENAGENTS-CONSUMPTION.md
