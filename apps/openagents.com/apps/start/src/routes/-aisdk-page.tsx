@@ -112,7 +112,7 @@ export function AisdkPage() {
           <div className="oa-container oa-hero-inner oa-aisdk-hero-inner">
             <div className="oa-hero-copy">
               <p className="oa-kicker">The OpenAgents AI SDK</p>
-              <h1>One event union.<br />One durable cursor.</h1>
+              <h1>Your last AI SDK.</h1>
               <p className="oa-hero-summary">
                 The OpenAgents AI SDK is an Effect-native toolkit for building agent
                 applications with durable, cursor-exact streams — one neutral event union

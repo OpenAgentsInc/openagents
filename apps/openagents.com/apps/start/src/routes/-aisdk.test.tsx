@@ -9,6 +9,7 @@ describe('Start /aisdk route', () => {
     const html = renderToStaticMarkup(<AisdkPage />)
 
     expect(html).toContain('data-route="aisdk"')
+    expect(html).toContain('Your last AI SDK.')
     expect(html).toContain('The OpenAgents AI SDK')
     expect(html).toContain('Effect-native toolkit')
     expect(html).toContain('durable, cursor-exact streams')
