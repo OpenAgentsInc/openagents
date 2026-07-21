@@ -74,7 +74,7 @@ History without compaction. Full detail in the
 | #9137 | RLM-01 — `HistoryCorpus` deterministic export | corpus |
 | #9138 | RLM-02 — Tier D deterministic recall, cited spans | zero model calls |
 | #9139 | RLM-03 — `history_recall` host tool on lanes + kernel | wiring |
-| #9140 | RLM-04 — sandboxed Python `rlms` leaf executor pilot | Tier S core |
+| #9140 | RLM-04 — Effect-native recursive recall engine (owner override — no Python) | Tier S core |
 | #9141 | RLM-05 — Tier S semantic recall behind `HistoryRecall` | semantic |
 | #9142 | RLM-06 — Full Auto long-run recall consumer | consumer |
 | #9143 | RLM-07 — dense-recall evaluation harness + honesty gate | evidence |

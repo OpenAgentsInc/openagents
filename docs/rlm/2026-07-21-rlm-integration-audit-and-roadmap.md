@@ -11,6 +11,17 @@ Sol admission and owner acceptance before any work starts.
 traversal of long context and conversation history WITHOUT the lossy
 compaction that most harnesses use.
 
+
+> **OWNER DECISION AMENDMENT (2026-07-21, after initial publication).** The
+> owner rejected the Python leaf executor. The RLM engine is implemented
+> **Effect-native**: a bounded typed-operation agent loop over the corpus with
+> an injected `effect/unstable/ai` `LanguageModel` root (see #9140). The
+> paper's Python REPL becomes a fail-closed typed operation vocabulary — the
+> Tier D operations plus `Subcall` and `Answer` — decoded per iteration with
+> Effect Schema. §5.1's Python placement and the §8 line that excluded an
+> Effect port are SUPERSEDED by this decision. Caps, honesty, privacy, and
+> authority boundaries are unchanged.
+
 ## Sources
 
 Read in this order. Paths are exact.

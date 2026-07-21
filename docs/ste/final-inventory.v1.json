@@ -21647,7 +21647,7 @@
     },
     {
       "path": "docs/desktop/2026-07-21-chat-runtime-unified-roadmap.md",
-      "sha256": "bd7d96844e59d32861c6faf2355783233ca77dc1e642a84b42b65eb13b80e0b3",
+      "sha256": "c3569850ab76b9063b769990586c31353ea5c8ba618259968eed6264fa231b99",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -38769,7 +38769,7 @@
     },
     {
       "path": "docs/rlm/2026-07-21-rlm-integration-audit-and-roadmap.md",
-      "sha256": "e4f94c7245562e441821a9cb32db0172fff3bac13e27b61511f8cca059485890",
+      "sha256": "eb0daffeb718a221117f9dedb7984e073c0c05a60b91ac0d7d3a5f0bdf4bde54",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
