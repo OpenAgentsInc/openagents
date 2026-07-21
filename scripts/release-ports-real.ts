@@ -712,7 +712,16 @@ export const createGcsCandidatePublisher = (
     if (!self.ok) {
       throw new Error(`candidate self-verification failed: ${self.reason}`);
     }
-    const body = `${JSON.stringify({ releaseSet: self.releaseSet, signature: envelope }, null, 2)}\n`;
+    // Exact `release_candidate.v2` document the oa-updates feed store decodes:
+    // base64 of the canonical payload bytes + base64 of the signature JSON.
+    const signatureJson = JSON.stringify(envelope);
+    const body = JSON.stringify({
+      schema: "openagents.desktop.release_candidate.v2",
+      channel: authority.channel,
+      generation,
+      payloadBase64: Buffer.from(payloadBytes).toString("base64"),
+      signatureBase64: Buffer.from(signatureJson).toString("base64"),
+    });
     const disposition = await store.createIfAbsent(
       candidateObjectKey(authority.channel, generation),
       body,
@@ -742,18 +751,11 @@ export const createGcsAcceptanceGate = (
   channel: ReleaseChannel,
 ): CandidateAcceptanceGate => ({
   verifyCandidate: async ({ releaseSetPayloadSha256 }) => {
-    const body = await store.read(candidateObjectKey(channel, releaseSetPayloadSha256));
-    if (body === null) {
+    const decoded = readCandidateDocument(await store.read(candidateObjectKey(channel, releaseSetPayloadSha256)));
+    if (decoded === null) {
       return { accepted: false, blockerRef: "openagents.desktop.acceptance.candidate_missing" };
     }
-    let parsed: { releaseSet?: unknown; signature?: unknown };
-    try {
-      parsed = JSON.parse(body) as { releaseSet?: unknown; signature?: unknown };
-    } catch {
-      return { accepted: false, blockerRef: "openagents.desktop.acceptance.candidate_unparseable" };
-    }
-    const payloadBytes = canonicalizeReleaseSet(parsed.releaseSet);
-    const verification = verifySignedReleaseSet(payloadBytes, parsed.signature, pin, channel);
+    const verification = verifySignedReleaseSet(decoded.payloadBytes, decoded.signature, pin, channel);
     if (!verification.ok) {
       return { accepted: false, blockerRef: `openagents.desktop.acceptance.${verification.reason}` };
     }
@@ -764,57 +766,74 @@ export const createGcsAcceptanceGate = (
   },
 });
 
+/** Decode a stored `release_candidate.v2` document. */
+const readCandidateDocument = (
+  body: string | null,
+): { payloadBytes: Uint8Array; signature: unknown; signatureSha256: string } | null => {
+  if (body === null) return null;
+  let document: { payloadBase64?: unknown; signatureBase64?: unknown };
+  try {
+    document = JSON.parse(body) as { payloadBase64?: unknown; signatureBase64?: unknown };
+  } catch {
+    return null;
+  }
+  if (typeof document.payloadBase64 !== "string" || typeof document.signatureBase64 !== "string") {
+    return null;
+  }
+  const payloadBytes = Uint8Array.from(Buffer.from(document.payloadBase64, "base64"));
+  const signatureBytes = Buffer.from(document.signatureBase64, "base64");
+  return {
+    payloadBytes,
+    signature: JSON.parse(signatureBytes.toString("utf8")),
+    signatureSha256: createHash("sha256").update(signatureBytes).digest("hex"),
+  };
+};
+
 /** Atomic single-object channel-pointer compare-and-swap on the release bucket. */
 export const createGcsChannelPromoter = (
   store: GcsObjectStore,
-  signingKey: ReleaseSigningKey,
   io: ReleaseIo,
 ): AtomicChannelPromoter => ({
-  compareAndSwap: async ({ channel, candidateRef, releaseSetPayloadSha256, acceptanceReceiptRef }) => {
+  compareAndSwap: async ({ channel, candidateRef, releaseSetPayloadSha256 }) => {
     const key = pointerObjectKey(channel);
+    // The candidate carries the signature bytes; the pointer binds the
+    // release-set by payloadSha256 (= generation) + signatureSha256.
+    const candidate = readCandidateDocument(
+      await store.read(candidateObjectKey(channel, releaseSetPayloadSha256)),
+    );
+    if (candidate === null) {
+      return { promoted: false, currentPointerRef: "openagents.desktop.pointer.candidate_missing" };
+    }
     const currentBody = await store.read(key);
+    // The feed requires a strictly-positive, monotonic revision; the first
+    // pointer is revision 1.
+    let revision = 1;
+    let previousGeneration: string | null = null;
     let expectedGeneration: string | null = null;
-    let previousReleaseSetSha: string | null = null;
     if (currentBody !== null) {
       try {
-        const parsed = JSON.parse(currentBody) as {
-          generation?: unknown;
-          gcsGeneration?: unknown;
-        };
-        previousReleaseSetSha = typeof parsed.generation === "string" ? parsed.generation : null;
-        expectedGeneration =
-          typeof parsed.gcsGeneration === "string" ? parsed.gcsGeneration : null;
+        const parsed = JSON.parse(currentBody) as { revision?: unknown; generation?: unknown };
+        revision = typeof parsed.revision === "number" ? parsed.revision + 1 : 1;
+        previousGeneration = typeof parsed.generation === "string" ? parsed.generation : null;
       } catch {
         return { promoted: false, currentPointerRef: "openagents.desktop.pointer.unparseable" };
       }
-    }
-    if (expectedGeneration === null) {
       const head = await store.head(key);
       expectedGeneration = head.exists ? head.generation : null;
     }
+    // Exact `release_pointer.v2` the oa-updates feed store reads (plain
+    // JSON.stringify, revision-monotonic, digests bind the candidate).
     const pointer = {
       schema: "openagents.desktop.release_pointer.v2",
       channel,
+      revision,
       generation: releaseSetPayloadSha256,
-      previousGeneration: previousReleaseSetSha,
-      acceptanceReceiptRef,
+      previousGeneration,
+      payloadSha256: releaseSetPayloadSha256,
+      signatureSha256: candidate.signatureSha256,
       publishedAt: io.now().toISOString(),
     };
-    const pointerBytes = new TextEncoder().encode(canonicalJson(pointer));
-    const signed = `${JSON.stringify(
-      {
-        ...pointer,
-        signature: {
-          alg: "ed25519",
-          kid: signingKey.kid,
-          sha256: createHash("sha256").update(pointerBytes).digest("hex"),
-          signature: signEd25519(signingKey, pointerBytes),
-        },
-      },
-      null,
-      2,
-    )}\n`;
-    const swap = await store.compareAndSwap(key, expectedGeneration, signed);
+    const swap = await store.compareAndSwap(key, expectedGeneration, JSON.stringify(pointer));
     if (!swap.swapped) {
       return {
         promoted: false,
@@ -823,7 +842,7 @@ export const createGcsChannelPromoter = (
     }
     io.log(
       redact(
-        `feed: promoted ${channel} pointer to release-set sha256:${releaseSetPayloadSha256.slice(0, 16)} (candidate ${candidateRef.split(".").at(-1)?.slice(0, 12)})`,
+        `feed: promoted ${channel} pointer rev${revision} to release-set sha256:${releaseSetPayloadSha256.slice(0, 16)} (candidate ${candidateRef.split(".").at(-1)?.slice(0, 12)})`,
       ),
     );
     return {
@@ -1011,9 +1030,7 @@ export const createRealCoordinatorPort = (
         ? createGcsCandidatePublisher(store, signingKey, pin, authority, manifest, io)
         : createOwnerGatedCandidatePublisher(),
       acceptanceGate: createGcsAcceptanceGate(store, pin, authority.channel),
-      promoter: useReal
-        ? createGcsChannelPromoter(store, signingKey, io)
-        : createOwnerGatedChannelPromoter(),
+      promoter: useReal ? createGcsChannelPromoter(store, io) : createOwnerGatedChannelPromoter(),
       stateStore: new FileCoordinatorStateStore(join(io.scratchDir, "coordinator")),
       now: io.now,
     });

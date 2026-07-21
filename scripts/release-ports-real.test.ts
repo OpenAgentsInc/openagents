@@ -297,16 +297,15 @@ describe("createRealCoordinatorPort — real convergence + promotion", () => {
       `desktop/release-set-v2/rc/candidates/${pointer.generation}.json`,
     );
     expect(candidateBody).toBeDefined();
-    const candidate = JSON.parse(candidateBody!.body) as { releaseSet: unknown; signature: unknown };
-    const { canonicalizeReleaseSet } = await import(
-      "../apps/openagents-desktop/src/release-set-contract.js"
-    );
-    const verification = verifySignedReleaseSet(
-      canonicalizeReleaseSet(candidate.releaseSet),
-      candidate.signature,
-      pin,
-      "rc",
-    );
+    const candidate = JSON.parse(candidateBody!.body) as {
+      schema: string;
+      payloadBase64: string;
+      signatureBase64: string;
+    };
+    expect(candidate.schema).toBe("openagents.desktop.release_candidate.v2");
+    const payloadBytes = Uint8Array.from(Buffer.from(candidate.payloadBase64, "base64"));
+    const signature = JSON.parse(Buffer.from(candidate.signatureBase64, "base64").toString("utf8"));
+    const verification = verifySignedReleaseSet(payloadBytes, signature, pin, "rc");
     expect(verification.ok).toBe(true);
     if (verification.ok) {
       expect(verification.releaseSet.version).toBe(version);
