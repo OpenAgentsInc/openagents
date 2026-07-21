@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:c1f85db6d2e4aa71ed6a2dbab4e6c9ae5b8ea5564d22c4a0c4ecdea56b7aac08",
+  "sourceDigest": "sha256:1870c0ac7470a6515c0b2f1644dad0de0132ea1211954190035d5c8ee187718e",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -2232,7 +2232,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "packages/history-corpus (2 tracked test files)"
+          "ref": "packages/history-corpus (3 tracked test files)"
         }
       ],
       "obligation": {

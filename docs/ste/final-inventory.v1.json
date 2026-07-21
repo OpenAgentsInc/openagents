@@ -47942,7 +47942,7 @@
     },
     {
       "path": "packages/history-corpus/README.md",
-      "sha256": "a608295195ee3ef9cc9197a320ea5f2984c69b11ce4044aadd0d7363ab7e25c4",
+      "sha256": "1d0dcc04501ebe2855c31600b3330736130f2391a435e356da5de7ecb1c42b6a",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

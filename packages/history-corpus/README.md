@@ -19,6 +19,11 @@ design source is `docs/rlm/2026-07-21-rlm-integration-audit-and-roadmap.md`.
   scope, an optional durable event-log reader with the turn ids to read, the
   optional neutral thread snapshots, the policy, and the build timestamp.
   Output is the manifest plus the ordered entries.
+- **`recall.ts`** — the `HistoryRecall` contract schemas. The request names
+  a corpus, one question, and the budget caps. The response holds the cited
+  answer spans, the required honesty record, and the cost record.
+- **`recall-tier-d.ts`** — the Tier D recall engine. It answers each
+  question with a pure traversal of the corpus. It makes zero model calls.
 
 ## Sources
 
@@ -51,6 +56,33 @@ The builder reads two sources. It does not write to them.
   child, and notice facts do not reach the neutral log. The manifest
   coverage statement names the kinds that are in the corpus, the kinds that
   are not, and this bound.
+
+## Tier D recall
+
+Tier D is the deterministic recall engine of RLM-02 (issue #9138). It is one
+of the two tiers in the `HistoryRecall` service design. It ships first.
+
+- **Questions.** The request carries one question. The question kinds are
+  `Grep`, `CursorSlice`, `TimeSlice`, `KeyTurns`, and `TurnSummary`. Each
+  kind is a pure operation over the ordered corpus.
+- **Cited spans.** Each answer is a cursor span. A span names the scope ref,
+  the turn id, the inclusive sequence range, a bounded excerpt, and the
+  entry kind. The cursor is the citation. The engine does not paraphrase.
+- **Caps truncate. They do not fail.** The caps are `maxSpans`,
+  `maxEntriesScanned`, and `maxCharsPerSpan`. The scan stops at the entry
+  cap. The answer list stops at the span cap. The excerpt stops at the
+  character cap. Each hit cap goes into the honesty record. Only invalid
+  input fails, with a typed `HistoryRecallError`. An example is a grep
+  pattern that does not compile.
+- **Honesty is required.** Each response states the scanned entry count,
+  the total entry count, the truncation state, the hit caps, and the corpus
+  coverage note. The response must state what the scan could not see.
+- **Zero model calls.** The cost record reports `modelCalls: 0` for each
+  Tier D answer. The tests assert this for each question kind.
+- **Service shape.** `HistoryRecall` is the Effect service tag with one
+  verb, `recall`. `historyRecallTierDLayer` builds the Tier D layer from a
+  corpus provider. A request can also carry a prebuilt corpus inline.
+- **Recall output is a cited candidate. It is not authority.**
 
 ## Boundaries
 
