@@ -134,6 +134,8 @@ import {
 } from "./visual-baseline-contract.ts"
 import { desktopRuntimeWorkspaceRoot } from "./desktop-runtime-workspace.ts"
 import { desktopLaunchWorkspaceRoot } from "./desktop-launch-workspace.ts"
+import { desktopWorkspaceConsentPlan } from "./desktop-workspace-consent.ts"
+import { openDesktopWorkspaceConsentStore } from "./desktop-workspace-consent-host.ts"
 import {
   ClaudeLocalAnswerQuestionChannel,
   ClaudeLocalAvailabilityChannel,
@@ -877,6 +879,17 @@ const isolatedAppProofMode = isIsolatedAppProof({
 if (desktopPreviewMode && !isolatedAppProofMode) {
   throw new Error("OpenAgents Desktop preview requires an isolated OS-temporary userData profile")
 }
+// #9157: only a genuine, interactive, non-isolated launch may show the one-time
+// "Choose your workspace folder" consent panel. Every smoke, proof, trace,
+// preview, and isolated-profile launch stays headless and never prompts. The
+// escape hatch keeps ad-hoc dev launches free of the modal when requested.
+const desktopWorkspaceOnboardingInteractive =
+  !smokeMode && !liveProofDriverMode && !mvpProofDriverMode && !startupTraceMode &&
+  !acpReleaseProofMode && !isolatedAppProofMode && !desktopPreviewMode &&
+  process.env.OPENAGENTS_DESKTOP_SKIP_WORKSPACE_ONBOARDING !== "1"
+const desktopWorkspaceConsentStore = openDesktopWorkspaceConsentStore(
+  path.join(desktopUserDataPath, "workspace-consent.json"),
+)
 // The installed application uses React by default. Existing broad smoke keeps
 // the explicit compatibility oracle until its specialist surfaces are ported;
 // `smoke:react` exercises the installed default backend itself.
@@ -2572,6 +2585,51 @@ const chooseCodingWorkspace = async (registerCatalog = true) => {
     publishCodingCatalog()
   }
   return root
+}
+// #9157: the one-time first-run workspace-consent step. On an ordinary
+// interactive launch with no prior decision, ask ONCE through the native open
+// panel — the folder the user picks is itself the macOS scoped-access consent,
+// so browsing inside it does not fire a per-folder TCC prompt storm. The
+// outcome (granted + folder, or declined) is persisted so relaunches never
+// re-prompt. A decline keeps the safe launch fallback already selected at
+// startup. Never runs in automation, smoke, proof, preview, or isolated modes.
+const runWorkspaceConsentOnboarding = async (): Promise<void> => {
+  try {
+    const plan = desktopWorkspaceConsentPlan({
+      interactiveLaunch: desktopWorkspaceOnboardingInteractive,
+      consent: desktopWorkspaceConsentStore.snapshot(),
+      launchFallbackRoot: desktopLaunchWorkingDirectory,
+      isDirectory: candidate => {
+        try { return statSync(candidate).isDirectory() } catch { return false }
+      },
+    })
+    if (plan._tag !== "RequestConsent") return
+    const currentRoot = workspaceSnapshot()?.root
+    const result = await dialog.showOpenDialog({
+      title: "Choose your OpenAgents workspace folder",
+      message: "OpenAgents works inside one folder you choose. Selecting it grants access without further prompts.",
+      buttonLabel: "Use this workspace",
+      properties: ["openDirectory", "createDirectory"],
+      defaultPath: currentRoot ?? plan.defaultPath,
+    })
+    const decidedAt = new Date().toISOString()
+    const chosen = result.canceled ? undefined : result.filePaths[0]
+    if (chosen === undefined) {
+      desktopWorkspaceConsentStore.record({ status: "declined", workspaceRoot: null, decidedAt })
+      return
+    }
+    desktopWorkspaceConsentStore.record({ status: "granted", workspaceRoot: chosen, decidedAt })
+    revokeOutgoingWorkspaceTerminals()
+    hostLifecycle.sync()?.codingCatalog()?.selectWorkspace(chosen)
+    if (!installAdmittedCodingWorkspace(chosen)) {
+      hostLifecycle.replaceWorkspace(openSelectedWorkspace(chosen))
+    }
+    rebindWorkspaceChangeSubscriptions()
+    publishCodingCatalog()
+  } catch {
+    // A dialog or persistence failure never blocks launch: the safe fallback
+    // workspace selected during startup remains authoritative.
+  }
 }
 ipcMain.handle(DesktopWindowFullscreenChannel, (event) => {
   const window = BrowserWindow.fromWebContents(event.sender)
@@ -8939,11 +8997,25 @@ void app.whenReady().then(async () => {
         syncHost.codingCatalog()?.selectWorkspace(path.join(smokeFixtureRoot, "codex-smoke"))
       }
       if (isolatedWorkspaceRoot === null && !smokeMode) {
-        // Every ordinary launch starts in the directory that launched it.
-        // This deliberately supersedes stale persisted navigation; opening a
-        // different catalog session or choosing another folder can replace it
-        // after startup.
-        syncHost.codingCatalog()?.selectWorkspace(desktopLaunchWorkingDirectory)
+        // Every ordinary launch starts in a safe, bounded workspace — never the
+        // filesystem root (#9156). A prior one-time consent (#9157) pins the
+        // exact folder the user granted; otherwise the launch directory (home
+        // as the ultimate fallback) is selected without prompting here. The
+        // async first-run panel below establishes consent when it is missing.
+        // This still supersedes stale persisted navigation; opening a different
+        // catalog session or choosing another folder can replace it afterward.
+        const startupPlan = desktopWorkspaceConsentPlan({
+          interactiveLaunch: desktopWorkspaceOnboardingInteractive,
+          consent: desktopWorkspaceConsentStore.snapshot(),
+          launchFallbackRoot: desktopLaunchWorkingDirectory,
+          isDirectory: candidate => {
+            try { return statSync(candidate).isDirectory() } catch { return false }
+          },
+        })
+        const startupRoot = startupPlan._tag === "UseConsentedWorkspace"
+          ? startupPlan.workspaceRoot
+          : desktopLaunchWorkingDirectory
+        syncHost.codingCatalog()?.selectWorkspace(startupRoot)
       }
       const restoredRoot = syncHost.codingCatalog()?.selectedRoot() ?? null
       if (restoredRoot !== null && !installAdmittedCodingWorkspace(restoredRoot)) {
@@ -9313,6 +9385,10 @@ void app.whenReady().then(async () => {
   openLocalSyncPersistence()
   runtimeGateway.start()
   const rendererReadyAt = await rendererReady
+  // #9157: establish the one-time workspace consent only after the window has
+  // painted, so the native folder panel appears over a real window rather than
+  // an empty screen. No-op unless this is a fresh interactive launch.
+  await runWorkspaceConsentOnboarding()
   await ensureAcpProviders()
   const providerReadyAt = new Date().toISOString()
   // Reaching this point proves the replacement build initialized its native

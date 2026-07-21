@@ -160,12 +160,19 @@ describe("startup contract: ordinary launch is Keychain-free (main.ts)", () => {
     expect(mainSource.slice(createBrowserWindow, createBrowserWindow + 800)).not.toContain("window.maximize()")
   })
 
-  test("ordinary startup admits the validated launcher directory before restoring the WorkContext", () => {
+  test("ordinary startup admits a consent-bounded launch directory before restoring the WorkContext", () => {
     const resolve = mainSource.indexOf("const desktopLaunchWorkingDirectory = desktopLaunchWorkspaceRoot({")
-    const select = mainSource.indexOf("selectWorkspace(desktopLaunchWorkingDirectory)")
+    // #9157: the ordinary launch selects a consent-aware startupRoot, which
+    // falls back to the validated launch directory (never the filesystem root)
+    // when no prior grant pins a folder.
+    const plan = mainSource.indexOf("const startupPlan = desktopWorkspaceConsentPlan({")
+    const fallback = mainSource.indexOf("launchFallbackRoot: desktopLaunchWorkingDirectory", plan)
+    const select = mainSource.indexOf("selectWorkspace(startupRoot)")
     const restore = mainSource.indexOf("const restoredRoot = syncHost.codingCatalog()?.selectedRoot()")
     expect(resolve).toBeGreaterThan(-1)
-    expect(select).toBeGreaterThan(resolve)
+    expect(plan).toBeGreaterThan(resolve)
+    expect(fallback).toBeGreaterThan(plan)
+    expect(select).toBeGreaterThan(plan)
     expect(restore).toBeGreaterThan(select)
   })
 })

@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-21.3",
+    version: "2026-07-21.4",
     contracts: [
       {
         contractId: "openagents_desktop.chat.history_recall_cited_tool_row.v1",
@@ -945,6 +945,55 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         ],
         verification:
           "Desktop typecheck/build plus the Claude and Codex local-runtime suites enforce exact host-root propagation while retaining isolated fallback coverage.",
+      },
+      {
+        contractId: "openagents_desktop.workspace.one_time_consent_no_root_no_dialog_storm.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "local coding workspace consent and macOS file access",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "issue", statedBy: "owner", statedOn: "2026-07-21" },
+        statement:
+          "The app never opens at the filesystem root, and it never fires a burst of macOS permission dialogs while browsing. It asks once, on first run, for a workspace folder, then works inside that chosen scope.",
+        authorityBoundary:
+          "The launch workspace resolver rejects the filesystem root and falls back to the user home directory, so a double-clicked packaged app never operates from `/`. On a genuine interactive first run — never in smoke, live-proof, MVP-proof, startup-trace, ACP-release-proof, preview, or isolated-profile launches — Electron main shows one native open-directory panel; the folder the user selects is the macOS scoped-access consent. The decision (granted folder, or declined) persists at `<userData>/workspace-consent.json`, mode 0600, holding only a bounded status, one path, and a timestamp. A relaunch reuses the granted folder and never re-prompts; a decline keeps the safe fallback workspace and is never nagged; a vanished granted folder re-asks once. The consent record grants the renderer no absolute path-selection authority and stores no secrets.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/desktop-launch-workspace.ts",
+          "apps/openagents-desktop/src/desktop-workspace-consent.ts",
+          "apps/openagents-desktop/src/desktop-workspace-consent-host.ts",
+          "apps/openagents-desktop/src/main.ts",
+          "github:OpenAgentsInc/openagents#9156",
+          "github:OpenAgentsInc/openagents#9157",
+        ],
+        oracles: [
+          {
+            id: "workspace_consent.launch_root_is_never_filesystem_root",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/desktop-launch-workspace.test.ts",
+            description:
+              "Proves a launch cwd of `/` resolves to the home directory instead of the filesystem root.",
+          },
+          {
+            id: "workspace_consent.plan_asks_once_and_reuses_grant",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/desktop-workspace-consent.test.ts",
+            description:
+              "Proves the plan requests consent only on a fresh interactive run and reuses a valid grant without re-prompting.",
+          },
+          {
+            id: "workspace_consent.decision_persists_across_relaunch",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/desktop-workspace-consent-host.test.ts",
+            description:
+              "Proves the durable 0600 store reads a prior grant or decline back on the next launch and never throws on corrupt bytes.",
+          },
+        ],
+        verification:
+          "Desktop launch-workspace, workspace-consent, and workspace-consent-host suites plus Desktop typecheck enforce the non-root default and the one-time persisted consent. No release command is part of the oracle.",
       },
       {
         contractId: "openagents_desktop.chat.codex_turns_do_not_time_out.v1",
