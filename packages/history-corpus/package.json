@@ -13,7 +13,8 @@
     "./corpus": "./src/corpus.ts",
     "./builder": "./src/builder.ts",
     "./recall": "./src/recall.ts",
-    "./recall-tier-d": "./src/recall-tier-d.ts"
+    "./recall-tier-d": "./src/recall-tier-d.ts",
+    "./recursive-recall": "./src/recursive-recall.ts"
   },
   "publishConfig": {
     "access": "public"

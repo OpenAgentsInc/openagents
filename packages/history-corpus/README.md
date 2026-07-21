@@ -91,3 +91,15 @@ of the two tiers in the `HistoryRecall` service design. It ships first.
   receive nothing from this package.
 - The builder does not dereference refs. Prompt refs, result refs, and raw
   sidecar refs stay refs.
+
+## Recursive recall (RLM-04, Effect-native)
+
+`recursive-recall.ts` is the Effect-native recursive recall engine. It replaces
+the paper's Python REPL with a bounded typed-operation agent loop. The root
+model is an injected `LanguageModel` from `effect/unstable/ai`. Each iteration
+the model emits one typed operation over the corpus — `Grep`, `CursorSlice`,
+`TimeSlice`, `TurnSummary`, `Subcall`, or `Answer` — decoded fail-closed with
+Effect Schema. Caps bound depth, iterations, subcalls, tokens, and time. The
+result is `Completed`, `Partial` with an honest reason, or `Failed` with a
+typed failure class. Partial-answer honesty is mandatory. There is no Python
+runtime and no code execution anywhere.
