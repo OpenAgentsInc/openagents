@@ -17,6 +17,8 @@
     "./permission": "./src/permission.ts",
     "./lifecycle-state": "./src/lifecycle-state.ts",
     "./stream": "./src/stream.ts",
+    "./event-log-store": "./src/event-log-store.ts",
+    "./event-log": "./src/event-log.ts",
     "./session": "./src/session.ts",
     "./adapter": "./src/adapter.ts",
     "./reference-adapter": "./src/reference-adapter.ts"

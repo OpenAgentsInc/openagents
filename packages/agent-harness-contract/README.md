@@ -39,6 +39,15 @@ package is HARN-01 of the HARN epic (#9115).
   and **`bootstrap.ts`**.
 - **`reference-adapter.ts`** and **`event-builder.ts`** — an in-memory
   reference `AgentHarness` and event builders for the conformance suite.
+- **`event-log-store.ts`** and **`event-log.ts`** (HARN-02) — the durable
+  seq-cursor event log. `HarnessEventLogStore` is the persistence port (the
+  in-memory reference ships here, the desktop local-turn journal and the
+  managed-sandbox event store implement it later). `HarnessEventLog` is the
+  runtime: `appendEvent`, finite `replay` from a cursor (crash recovery), live
+  `attach` (replay the persisted tail then follow new events, single-flight per
+  `(turn, consumer class)`), `lastCursor`, and `markRerunBoundary` /
+  `rerunBoundaries` so a recomputed tail is distinguishable from a lossless
+  attach.
 
 ## Conformance
 
@@ -46,7 +55,9 @@ package is HARN-01 of the HARN epic (#9115).
 streaming, **suspend then continue cursor exactness (attach at `cursor + 1`,
 no gap, no duplicate)**, lossy-continuation honesty, fail-closed capability
 refusal, and re-importable lifecycle export. `schemas.test.ts` covers the data
-schemas.
+schemas. `event-log.test.ts` (HARN-02) proves durable replay after simulated
+process death, dup-free rejection of non-increasing sequences, rerun-boundary
+visibility, live-attach replay-then-follow, and single-flight supersession.
 
 ```sh
 pnpm --dir packages/agent-harness-contract test
