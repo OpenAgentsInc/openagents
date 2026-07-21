@@ -384,7 +384,7 @@
     },
     {
       "path": "FASTFOLLOW.md",
-      "sha256": "f7eac0a137eec6bd90009012f1f9c8a5940e8956e9aaca8f190c9e53d5bc44aa",
+      "sha256": "ae429d70588bff2c7605c06de05fed13f97571a5c12fcf522bcc0c500183e207",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -42870,6 +42870,28 @@
         "source": "Immutable historical or evidence source data",
         "replacement": null,
         "ste_status": "source-data"
+      }
+    },
+    {
+      "path": "docs/teardowns/2026-07-21-cognee-teardown.md",
+      "sha256": "0e02d8cf4d0ab43916fba553992520fd1824490080e389d9a4acad811cf1a84f",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {

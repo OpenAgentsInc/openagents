@@ -1052,6 +1052,86 @@ policy, or turn Fable prose into target authority.
     ]
   },
   {
+    "id": "chenglou.freerange",
+    "title": "Freerange",
+    "role": "upstream",
+    "access": "public_source",
+    "canonical_ref": "https://github.com/chenglou/freerange",
+    "tracking_policy": "release_or_commit",
+    "teardown_refs": [
+      "docs/teardowns/2026-07-21-freerange-teardown.md"
+    ],
+    "lessons": [
+      {
+        "id": "verifier_shaped_code_inversion",
+        "kind": "architecture",
+        "summary": "Adopt the agent-era inversion: keep a small analyzable subset with fail-closed boundaries and let agents refactor important calculations into it, guided by tagged audit codes.",
+        "stance": "adapt"
+      },
+      {
+        "id": "printed_trust_and_fail_closed_limits",
+        "kind": "evaluation",
+        "summary": "Print every assumption a claim rests on, give partial evidence a shape with no contract fields, and make every internal limit fail closed while naming which failure it buys.",
+        "stance": "adapt"
+      },
+      {
+        "id": "anti_laundering_review_rounds",
+        "kind": "process",
+        "summary": "Run N-lens adversarial review rounds where dead reviewers surface as failures, findings require reproduced contradictions, and every lens reports the probes it ran.",
+        "stance": "adapt"
+      },
+      {
+        "id": "bun_toolchain_and_contract_authority",
+        "kind": "architecture",
+        "summary": "Reject adopting the Bun toolchain into the monorepo contract or treating conditional analyzer greens as acceptance or release authority for an unpinned day-old release.",
+        "stance": "reject"
+      }
+    ]
+  },
+  {
+    "id": "topoteretes.cognee",
+    "title": "Cognee",
+    "role": "upstream",
+    "access": "public_source",
+    "canonical_ref": "https://github.com/topoteretes/cognee",
+    "tracking_policy": "release_or_commit",
+    "teardown_refs": [
+      "docs/teardowns/2026-07-21-cognee-teardown.md"
+    ],
+    "lessons": [
+      {
+        "id": "deterministic_datapoint_identity",
+        "kind": "architecture",
+        "summary": "Derive stable entity identity from schema-declared identity fields so derived graph indexes rebuild idempotently, and declare embeddable fields on the same schema so the vector plane is a projection of the graph model.",
+        "stance": "adapt"
+      },
+      {
+        "id": "graph_memory_layer_and_typed_extraction",
+        "kind": "architecture",
+        "summary": "Re-derive the permanent-plane idea as a rebuildable entity/relation index over KhalaRuntimeEvent corpora, with entity extraction as a typed Program whose signature is an Effect Schema and whose pipeline is bounded typed operations.",
+        "stance": "adapt"
+      },
+      {
+        "id": "source_labeled_recall_and_feedback_ranking",
+        "kind": "product_ux",
+        "summary": "Label every recalled item with its memory plane, track the exact elements an answer used, and confine streaming feedback-weight updates to ranking while promotion stays evidence-gated and consent-gated.",
+        "stance": "adapt_with_stronger_boundaries"
+      },
+      {
+        "id": "provenance_delete_and_typed_export",
+        "kind": "reliability",
+        "summary": "Plan owner deletion across every derived artifact reachable from a source and support versioned typed export archives for owner export and portability.",
+        "stance": "adapt"
+      },
+      {
+        "id": "python_memory_engine_and_background_improve",
+        "kind": "security",
+        "summary": "Reject cognee as a runtime or engine-path dependency, background improvement that promotes session content into durable memory without an evidence gate, dataset ACLs as the tenancy model, and any dependency on a third-party memory cloud.",
+        "stance": "reject"
+      }
+    ]
+  },
+  {
     "id": "openagents.synthesis",
     "title": "OpenAgents Teardown Synthesis",
     "role": "local_synthesis",
