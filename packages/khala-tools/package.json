@@ -27,9 +27,9 @@
     "@openagentsinc/mcp-contract": "workspace:*",
     "@openagentsinc/pipeline-signals": "workspace:*",
     "@openagentsinc/runtime-platform": "workspace:*",
+    "ai": "7.0.15",
     "effect": "catalog:",
-    "onnxruntime-node": "1.21.0",
-    "ai": "7.0.15"
+    "onnxruntime-node": "1.21.0"
   },
   "devDependencies": {
     "@effect/tsgo": "0.13.2",

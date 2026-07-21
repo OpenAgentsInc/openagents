@@ -2,7 +2,7 @@
   "name": "@openagentsinc/openagents-desktop",
   "version": "0.1.0",
   "private": true,
-  "description": "OpenAgents \u2014 Effect Native application on an Electron host (#8574).",
+  "description": "OpenAgents — Effect Native application on an Electron host (#8574).",
   "license": "MIT",
   "type": "module",
   "main": "dist/main.js",

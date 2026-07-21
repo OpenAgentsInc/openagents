@@ -2,7 +2,7 @@
   "name": "@openagentsinc/pylon-core",
   "version": "0.1.0",
   "private": false,
-  "description": "Typed Effect engine services for Pylon \u2014 custody, executor, presence, and the Spark wallet rail \u2014 shared by the pylon/khala CLIs, the engine daemon, and Khala Code desktop",
+  "description": "Typed Effect engine services for Pylon — custody, executor, presence, and the Spark wallet rail — shared by the pylon/khala CLIs, the engine daemon, and Khala Code desktop",
   "files": [
     "src",
     "README.md"
