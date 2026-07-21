@@ -21370,6 +21370,18 @@
       }
     },
     {
+      "path": "docs/deploy/receipts/2026-07-20-macos-arm64-signed-candidate-rc26.md",
+      "sha256": "08b125ebc6529b921fa1b7ad5a4bc5db33be7d428078b9c191790a8791c762a8",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null,
+        "ste_status": "source-data"
+      }
+    },
+    {
       "path": "docs/deploy/receipts/2026-07-20-macos-arm64-signed-candidate.md",
       "sha256": "256439fa0338bdb7018cef63aaa3609fdabd871458213f8b673ebce95186456a",
       "reason": "Immutable historical or evidence source data",
