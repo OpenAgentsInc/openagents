@@ -16580,12 +16580,10 @@
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
-        "ste_status": "source-data",
-        "ste_reviewer": null,
-        "ste_reviewed_at": null,
         "risk": "source-data",
         "source": "Immutable historical or evidence source data",
-        "replacement": null
+        "replacement": null,
+        "ste_status": "source-data"
       }
     },
     {
@@ -21628,11 +21626,12 @@
     {
       "path": "docs/desktop/2026-07-21-chat-runtime-unified-roadmap.md",
       "sha256": "bd7d96844e59d32861c6faf2355783233ca77dc1e642a84b42b65eb13b80e0b3",
-      "reason": "Final review of mutable first-party agent technical text",
+      "reason": "Final review of a converted document",
       "profile": {
-        "ste_status": "inspected",
-        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
         "ste_audience": "agent",
         "ste_agent_compact_revision": "openagents-agent-compact-v1",
         "ste_accepted_screening_rules": [
@@ -21640,7 +21639,10 @@
           "STE-3.6",
           "STE-5.1",
           "STE-8.2"
-        ]
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {
@@ -38746,11 +38748,12 @@
     {
       "path": "docs/rlm/2026-07-21-rlm-integration-audit-and-roadmap.md",
       "sha256": "e4f94c7245562e441821a9cb32db0172fff3bac13e27b61511f8cca059485890",
-      "reason": "Final review of mutable first-party agent technical text",
+      "reason": "Final review of a converted document",
       "profile": {
-        "ste_status": "inspected",
-        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
         "ste_audience": "agent",
         "ste_agent_compact_revision": "openagents-agent-compact-v1",
         "ste_accepted_screening_rules": [
@@ -38758,7 +38761,10 @@
           "STE-3.6",
           "STE-5.1",
           "STE-8.2"
-        ]
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {
@@ -46612,7 +46618,7 @@
     },
     {
       "path": "packages/agent-harness-contract/README.md",
-      "sha256": "a7ab750b9dcf876f1ae75e92d5d72755e7a03e280a1a0dd68c0d04b96ae83ca6",
+      "sha256": "afe458c18b360100ffb7b8de288223a72a3d83eee0746c2dd4553a6d8582aa55",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

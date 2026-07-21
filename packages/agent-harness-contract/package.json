@@ -28,7 +28,9 @@
     "./opencode-adapter": "./src/opencode-adapter.ts",
     "./sandbox": "./src/sandbox.ts",
     "./local-sandbox-provider": "./src/local-sandbox-provider.ts",
-    "./local-process-sandbox-provider": "./src/local-process-sandbox-provider.ts"
+    "./local-process-sandbox-provider": "./src/local-process-sandbox-provider.ts",
+    "./partial-object-stream": "./src/partial-object-stream.ts",
+    "./smooth-stream": "./src/smooth-stream.ts"
   },
   "publishConfig": {
     "access": "public"

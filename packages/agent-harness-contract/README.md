@@ -92,6 +92,15 @@ package is HARN-01 of the HARN epic (#9115).
   resolves paths beneath the session workspace, and omits `getPortUrl` (no port
   infrastructure). This is the owner-local cheap-isolation rung.
 
+- **`smooth-stream.ts`** (STREAM-04 #9132) — a generic pacing operator for
+  delta streams. Text deltas re-chunk at word, line, or regex boundaries and
+  emit paced. Non-text elements flush the buffer and pass through unpaced.
+  Concatenated text stays byte-identical.
+- **`partial-object-stream.ts`** (STREAM-06 #9134) — partial-JSON repair and
+  progressive `PartialView<T>` streaming for structured output. A partial can
+  never be used where a validated value is required. The only validated path
+  is the full Schema decode in `finalizePartialObject`.
+
 ## Conformance
 
 `reference-adapter.test.ts` proves the contract semantics. It covers full-turn

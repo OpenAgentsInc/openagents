@@ -19,3 +19,5 @@ export * from "./opencode-adapter.ts";
 export * from "./sandbox.ts";
 export * from "./local-sandbox-provider.ts";
 export * from "./local-process-sandbox-provider.ts";
+export * from "./partial-object-stream.ts";
+export * from "./smooth-stream.ts";
