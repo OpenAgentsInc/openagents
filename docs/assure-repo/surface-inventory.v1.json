@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:b4189188b331240a009e7c1d9af9805d664aaf31b978a53a750547d978dc842f",
+  "sourceDigest": "sha256:345a793da23effb2b20cec387b61da6f23e3faac078837a9bb306d9c3e5ddc64",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -2781,6 +2781,23 @@
       }
     },
     {
+      "id": "package:@openagentsinc/review-round",
+      "kind": "package",
+      "owningPath": "packages/review-round",
+      "title": "@openagentsinc/review-round",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/review-round (1 tracked test file)"
+        }
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
+    },
+    {
       "id": "package:@openagentsinc/runtime-platform",
       "kind": "package",
       "owningPath": "packages/runtime-platform",
@@ -3261,17 +3278,17 @@
     }
   ],
   "summary": {
-    "totalSurfaces": 170,
+    "totalSurfaces": 171,
     "byKind": {
       "app": 16,
       "crate": 6,
       "document": 48,
-      "package": 89,
+      "package": 90,
       "public-endpoint": 2,
       "release-pipeline": 8,
       "worker": 1
     },
-    "withOracle": 156,
+    "withOracle": 157,
     "unverified": 14,
     "byUnverifiedReason": {
       "config-only": 2,
@@ -3279,7 +3296,7 @@
       "reference-only": 2
     },
     "byObligationState": {
-      "designed": 122,
+      "designed": 123,
       "inconclusive": 9,
       "mapped": 34,
       "out-of-scope": 5

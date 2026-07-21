@@ -400,6 +400,12 @@ write. The goal-prompt's "pair every required `unknown` or rejection with a
 positive control through the same path" is a test-design rule worth adopting
 wholesale. [source]
 
+> **Landed (2026-07-21, FREERANGE-01 #9124):** the four rules are now
+> repository-owned. The tested authority for the fold is
+> `@openagentsinc/review-round` (`packages/review-round`), the workflow is
+> `.agents/workflows/review-round.js`, and the discipline doc is
+> [`docs/verification/REVIEW_ROUNDS.md`](../verification/REVIEW_ROUNDS.md).
+
 **7.5 Consider per-package decision ledgers.** `current-decisions.md` shows
 that the challenge-ledger discipline scales down: owner-locked semantics,
 rejected alternatives with measured evidence, and reopen conditions kept

@@ -42650,7 +42650,7 @@
     },
     {
       "path": "docs/teardowns/2026-07-21-freerange-teardown.md",
-      "sha256": "91401dc3d67dd568894d7aa5dda5bee58d760bed18f4e2326afc09f646c3a9e8",
+      "sha256": "0d9eddcb693658a74bb5149cdf8ef7ac43875ada1cfadb0e5c045c552bb218b5",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -46223,6 +46223,40 @@
       }
     },
     {
+      "path": "docs/verification/REVIEW_ROUNDS.md",
+      "sha256": "28c366ec57357d0cc98611a189f1ab3b2469fa543cb55c260e3fcaf30b8df5b7",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/verification/evidence/2026-07-21-review-round-demo.md",
+      "sha256": "2bbf902f9575d9f8291df7f63998a6f80b6b4977bf09b1fe69d4bae9f7fe28cf",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null,
+        "ste_status": "source-data"
+      }
+    },
+    {
       "path": "docs/voice/2026-07-12-effect-vs-rust-audio-architecture-decision.md",
       "sha256": "47926c2f88b544b35ea5f5530b0439f37c9b3a02a7263b0b919b5e75a32f3703",
       "reason": "Final review of a converted document",
@@ -49280,6 +49314,28 @@
     {
       "path": "packages/reactor-contracts/README.md",
       "sha256": "de10cd052e19319ad0cc4cd200e6c69334bf2f9d3d8e049361f15141421ad8cf",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "packages/review-round/README.md",
+      "sha256": "8d859f5bfaf3e6da9608540e2b7975b415eb3d2cf6743feb260d940c893f0a86",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
