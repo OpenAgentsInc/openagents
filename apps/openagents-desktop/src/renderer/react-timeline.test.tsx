@@ -856,7 +856,9 @@ describe("React timeline scroll contract", () => {
     expect(container.querySelector(".oa-react-work-group-summary")?.textContent).toBe(
       "Worked2 activities",
     );
-    expect(container.querySelector('[data-timeline-key="done-a"]')).toBeNull();
+    // Owner directive: the work group is EXPANDED initially, so folded work is
+    // visible without a click.
+    expect(container.querySelector('[data-timeline-key="done-a"]')).not.toBeNull();
     root.unmount();
   });
 
@@ -909,8 +911,17 @@ describe("React timeline scroll contract", () => {
         return { top: 0, bottom: expanded ? 180 : 100, height: expanded ? 180 : 100 } as DOMRect;
       };
     }
+    // Owner directive: the work group is EXPANDED initially — folded work is
+    // visible without a click.
+    expect(settledToggle?.getAttribute("aria-expanded")).toBe("true");
+    expect(container.querySelector('[data-timeline-key="done-a"]')).not.toBeNull();
+    // Clicking collapses it.
+    settledToggle?.click();
+    await settle();
     expect(settledToggle?.getAttribute("aria-expanded")).toBe("false");
     expect(container.querySelector('[data-timeline-key="done-a"]')).toBeNull();
+    // Clicking again re-expands, preserving the reader's scroll position.
+    if (viewport !== null) viewport.scrollTop = 50;
     settledToggle?.click();
     await settle();
     expect(settledToggle?.getAttribute("aria-expanded")).toBe("true");
@@ -919,10 +930,6 @@ describe("React timeline scroll contract", () => {
     expect(
       container.querySelector('[data-icon-name="ChevronRight"]')?.getAttribute("data-expanded"),
     ).toBe("true");
-    settledToggle?.click();
-    await settle();
-    expect(settledToggle?.getAttribute("aria-expanded")).toBe("false");
-    expect(container.querySelector('[data-timeline-key="done-a"]')).toBeNull();
     expect(container.querySelector('[data-timeline-key="active"]')?.textContent).toContain(
       "Running",
     );
@@ -1633,6 +1640,7 @@ describe("delegated-agent collab states on the primary React timeline (#8867)", 
       };
       title: string;
       detail: string;
+      transcript: ReadonlyArray<{ role: "user" | "assistant" | "system"; text: string }>;
     }> = {},
   ) => ({
     key: "turn-1-child-child-9",
@@ -1804,13 +1812,17 @@ describe("delegated-agent collab states on the primary React timeline (#8867)", 
     root.unmount();
   });
 
-  test("clicking the delegate card opens its message chain: summary dispatches inspect_agent with the exact delegate ref", async () => {
+  test("the delegate card shows the subagent's message chain INLINE (owner directive), not behind a right-pane inspect", async () => {
     const { container } = installDom();
     const root = createRoot(container);
-    const received: Array<unknown> = [];
-    const capturingReport: IntentReporter = (ref, payload) =>
-      Effect.sync(() => received.push(resolveIntentRef(ref, payload)));
-    const records = projectLocalTimelineRecords([childNote()]);
+    const records = projectLocalTimelineRecords([
+      childNote({
+        transcript: [
+          { role: "user", text: "Does this work" },
+          { role: "assistant", text: "Yes — reading the files now." },
+        ],
+      }),
+    ]);
     root.render(
       <ReactTimeline
         sessionKey="thread-1"
@@ -1819,20 +1831,16 @@ describe("delegated-agent collab states on the primary React timeline (#8867)", 
         offset={0}
         totalItems={1}
         loadingEdge={null}
-        report={capturingReport}
+        report={report}
       />,
     );
     await settle();
-    const summary = container.querySelector<HTMLElement>(
-      '.oa-react-agent-card[data-inspectable="true"] > summary',
-    );
-    expect(summary).not.toBeNull();
-    summary?.click();
-    await settle();
-    expect(received).toContainEqual({
-      name: "DesktopAgentAction",
-      payload: { kind: "inspect_agent", agentRef: localDelegateAgentRef("turn-1", "child-9") },
-    });
+    const card = container.querySelector<HTMLElement>('[data-kind="collabAgentToolCall"]');
+    // Messages are visible inline in the default-expanded card, without a click.
+    expect(card?.textContent).toContain("Yes — reading the files now.");
+    // The card is no longer a right-pane inspect trigger (that opened nothing the
+    // owner could see); clicking it just toggles the inline chain.
+    expect(container.querySelector('.oa-react-agent-card[data-inspectable="true"]')).toBeNull();
     root.unmount();
   });
 

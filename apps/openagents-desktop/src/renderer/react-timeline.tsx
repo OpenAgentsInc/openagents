@@ -44,7 +44,6 @@ import {
 } from "react";
 import { CheckIcon, ChevronRight, CopyIcon, Folder, FolderPen } from "lucide-react";
 
-import { localDelegateAgentRef } from "../live-agent-graph-local.ts";
 import type { CodexHistoryItem, CodexHistoryPage } from "../codex-history-contract.ts";
 import {
   workbenchItemSignature,
@@ -145,7 +144,13 @@ export type ReactTimelineRecord = Readonly<{
    * `childInterruptable`, the same predicate the compatibility renderer
    * uses), never assumed by the web host that also consumes `dispatchWorkbenchItem`.
    */
-  runtimeChild?: Readonly<{ turnRef: string; childRef: string; interruptable: boolean }>;
+  runtimeChild?: Readonly<{
+    turnRef: string;
+    childRef: string;
+    interruptable: boolean;
+    /** The subagent's bounded, redacted message chain, shown inline on the card. */
+    transcript?: ReadonlyArray<Readonly<{ role: "user" | "assistant" | "system"; text: string }>>;
+  }>;
 }>;
 
 const recordFromItem = (
@@ -301,6 +306,7 @@ export const projectLocalTimelineRecords = (
             turnRef: runtime.turnRef,
             childRef: runtime.childRef,
             interruptable: childInterruptable(runtime),
+            ...(runtime.transcript === undefined ? {} : { transcript: runtime.transcript }),
           },
         },
       ];
@@ -821,6 +827,10 @@ const UserTimelineRow = ({
   );
 };
 
+/** Short prefix label for one delegated-agent transcript line, by role. */
+const delegateTranscriptLabel = (role: "user" | "assistant" | "system"): string =>
+  role === "user" ? "You" : role === "assistant" ? "Reply" : "Activity";
+
 export const TimelineItem = ({
   record,
   report,
@@ -866,22 +876,19 @@ export const TimelineItem = ({
             ...(record.runtimeChild === undefined
               ? {}
               : {
+                  // Owner directive: show the subagent's live message chain INLINE
+                  // in the (default-expanded) card so its messages are visible
+                  // without a click, and clicking the card toggles it. The prior
+                  // right-pane inspect opened nothing the owner could see.
+                  transcript: record.runtimeChild.transcript?.map((line) => ({
+                    label: delegateTranscriptLabel(line.role),
+                    text: line.text,
+                  })),
                   interruptable: record.runtimeChild.interruptable,
                   onInterrupt: () =>
                     dispatch(report, "DesktopChildInterruptRequested", {
                       turnRef: record.runtimeChild!.turnRef,
                       childRef: record.runtimeChild!.childRef,
-                    }),
-                  // Clicking the card opens the subagent's message chain in the
-                  // right pane (AFS-04 follow-up): the same inspect_agent intent the
-                  // Foldkit child card dispatches, keyed by the canonical delegate ref.
-                  onInspect: () =>
-                    dispatch(report, "DesktopAgentAction", {
-                      kind: "inspect_agent",
-                      agentRef: localDelegateAgentRef(
-                        record.runtimeChild!.turnRef,
-                        record.runtimeChild!.childRef,
-                      ),
                     }),
                 }),
           }))
@@ -1119,6 +1126,21 @@ class TimelineItemBoundary extends Component<
   }
 }
 
+/**
+ * Cheap signature of a runtime child's inline transcript: entry count plus the
+ * last entry's role and text length. It flips when a message is added OR the
+ * last message grows (streaming), so the memo re-renders and the live subagent
+ * chain stays current — without stringifying multi-kilobyte transcripts.
+ */
+const runtimeChildTranscriptSignature = (
+  child: ReactTimelineRecord["runtimeChild"],
+): string => {
+  const transcript = child?.transcript;
+  if (transcript === undefined || transcript.length === 0) return "";
+  const last = transcript[transcript.length - 1]!;
+  return `${transcript.length}:${last.role}:${last.text.length}`;
+};
+
 const sameTimelineRecord = (left: ReactTimelineRecord, right: ReactTimelineRecord): boolean =>
   left.key === right.key &&
   left.itemRef === right.itemRef &&
@@ -1142,6 +1164,10 @@ const sameTimelineRecord = (left: ReactTimelineRecord, right: ReactTimelineRecor
   left.runtimeChild?.interruptable === right.runtimeChild?.interruptable &&
   left.runtimeChild?.turnRef === right.runtimeChild?.turnRef &&
   left.runtimeChild?.childRef === right.runtimeChild?.childRef &&
+  // The inline subagent transcript streams: re-render when a message is added or
+  // the last message grows, so the live chain is visible without a click.
+  runtimeChildTranscriptSignature(left.runtimeChild) ===
+    runtimeChildTranscriptSignature(right.runtimeChild) &&
   left.fields.length === right.fields.length &&
   left.fields.every((field, index) => {
     const candidate = right.fields[index];
@@ -1460,7 +1486,10 @@ const WorkGroupDisclosure = ({
   readonly running: boolean;
   readonly report: IntentReporter;
 }): ReactElement => {
-  const [expanded, setExpanded] = useState(false);
+  // Owner directive: the work group is EXPANDED initially — tools/activity must
+  // never be hidden behind a collapsed "Worked" fold by default. The owner can
+  // still collapse it.
+  const [expanded, setExpanded] = useState(true);
   const groupRef = useRef<HTMLDivElement>(null);
   const activityLabel = `${folded.length} ${folded.length === 1 ? "activity" : "activities"}`;
   return (
