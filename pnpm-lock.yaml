@@ -530,6 +530,9 @@ importers:
       '@openagentsinc/grok-harness':
         specifier: workspace:*
         version: link:../../packages/grok-harness
+      '@openagentsinc/history-corpus':
+        specifier: workspace:*
+        version: link:../../packages/history-corpus
       '@openagentsinc/khala-sync':
         specifier: workspace:*
         version: link:../../packages/khala-sync

@@ -3,7 +3,13 @@ import { describe, expect, test } from "vite-plus/test";
 
 import { HarnessBootstrap } from "./bootstrap.ts";
 import { HarnessCapabilityUnsupported } from "./capability.ts";
-import { HarnessHostToolSpec } from "./host-tool.ts";
+import {
+  HISTORY_RECALL_TOOL_NAME,
+  HISTORY_RECALL_TURN_POLICY_CAPABILITY,
+  HarnessHostToolSpec,
+  REGISTERED_HARNESS_HOST_TOOLS,
+  historyRecallHostToolSpec,
+} from "./host-tool.ts";
 import { HarnessContinuationState } from "./lifecycle-state.ts";
 import { HarnessPermissionModeSchema } from "./permission.ts";
 import { decodeHarnessSkill, HarnessSkill } from "./skill.ts";
@@ -54,6 +60,23 @@ describe("host-tool spec", () => {
       inputJsonSchema: { type: "object", properties: { id: { type: "string" } } },
     });
     expect(spec.name).toBe("get_user");
+  });
+
+  test("registers history_recall in the harness host-tool vocabulary (RLM-03)", () => {
+    expect(historyRecallHostToolSpec.name).toBe(HISTORY_RECALL_TOOL_NAME);
+    expect(historyRecallHostToolSpec.name).toBe("history_recall");
+    expect(historyRecallHostToolSpec.description.length).toBeGreaterThan(40);
+    expect(historyRecallHostToolSpec.inputJsonSchema).toMatchObject({
+      type: "object",
+      required: ["scope", "question"],
+    });
+    expect(REGISTERED_HARNESS_HOST_TOOLS.map((t) => t.name)).toEqual([
+      "history_recall",
+    ]);
+    expect(HISTORY_RECALL_TURN_POLICY_CAPABILITY).toBe("host_tool.history_recall");
+    expect(S.decodeUnknownSync(HarnessHostToolSpec)(historyRecallHostToolSpec).name).toBe(
+      "history_recall",
+    );
   });
 });
 

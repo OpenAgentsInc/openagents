@@ -12,7 +12,12 @@ import {
 } from "@openagentsinc/agent-runtime-schema";
 import { TurnPolicy } from "@openagentsinc/agent-turn-runtime";
 
-import { desktopTurnPolicyLayer } from "./desktop-turn-policy.ts";
+import {
+  desktopTurnPolicyHostToolCapabilities,
+  desktopTurnPolicyHostTools,
+  desktopTurnPolicyLayer,
+  hostToolsForDesktopTurn,
+} from "./desktop-turn-policy.ts";
 
 const decodeDescriptor = S.decodeUnknownSync(InferenceProviderDescriptor);
 const decodeCandidateSet = S.decodeUnknownSync(OwnerBoundCandidateSet);
@@ -97,6 +102,12 @@ const decide = (descriptors: ReadonlyArray<InferenceProviderDescriptor> | undefi
   );
 
 describe("Desktop readiness-aware turn policy (#9145)", () => {
+  test("exposes history_recall on the Stack B turn-policy host-tool surface (RLM-03)", () => {
+    expect(desktopTurnPolicyHostTools.map((tool) => tool.name)).toEqual(["history_recall"]);
+    expect(hostToolsForDesktopTurn().map((tool) => tool.name)).toEqual(["history_recall"]);
+    expect(desktopTurnPolicyHostToolCapabilities).toContain("host_tool.history_recall");
+  });
+
   test("a READY Apple FM stays preferred over the hosted tail", async () => {
     const decision = await decide([appleDescriptor(true), hostedKhalaDescriptor]);
     if (decision.outcome !== "admitted") throw new Error("expected admitted");

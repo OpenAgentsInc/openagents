@@ -113,6 +113,7 @@
     "@openagentsinc/dse": "workspace:*",
     "@openagentsinc/environment-auth": "workspace:*",
     "@openagentsinc/grok-harness": "workspace:*",
+    "@openagentsinc/history-corpus": "workspace:*",
     "@openagentsinc/khala-sync": "workspace:*",
     "@openagentsinc/khala-sync-client": "workspace:*",
     "@openagentsinc/managed-sandbox-contract": "workspace:*",

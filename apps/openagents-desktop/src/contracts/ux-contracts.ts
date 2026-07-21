@@ -6,8 +6,52 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-19.1",
+    version: "2026-07-21.1",
     contracts: [
+      {
+        contractId: "openagents_desktop.chat.history_recall_cited_tool_row.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "history recall host tool transcript projection",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: {
+          channel: "issue",
+          statedBy: "owner",
+          statedOn: "2026-07-21",
+        },
+        statement:
+          "Every lane turn can ask the past a question instead of relying on the bounded window. history_recall is a visible host-tool row with cited cursor spans and an honest partial/complete label — never silent compaction and never authority.",
+        authorityBoundary:
+          "The history_recall host tool resolves against owner-local HistoryCorpus and HistoryRecall Tier D only. Its answer is an untrusted cited candidate with required honesty (scanned counts, caps hit) and exact modelCalls: 0 for Tier D. Neutral stream re-entry is tool.call/tool.result with resultRef only — raw history and full excerpts never leave owner-local execution, and the answer never becomes a RouteDecision, workroom verification, promise transition, payment action, or public claim. Renderer cited-span rows re-present the already-redacted main-process projection.",
+        evidenceRefs: [
+          "packages/agent-harness-contract/src/host-tool.ts",
+          "packages/history-corpus/src/host-tool.ts",
+          "apps/openagents-desktop/src/history-recall-host.ts",
+          "apps/openagents-desktop/src/renderer/history-recall-card.ts",
+          "github:OpenAgentsInc/openagents#9139",
+        ],
+        oracles: [
+          {
+            id: "history_recall.host_tool_round_trip_and_neutral_stream",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "packages/history-corpus/src/host-tool.test.ts",
+            description:
+              "Proves history_recall resolves through the Toolkit dispatcher, returns cited spans with honesty, and re-enters the neutral stream as tool.call/tool.result without embedding the payload.",
+          },
+          {
+            id: "history_recall.desktop_dispatch_and_cited_span_row",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/history-recall-host.test.ts",
+            description:
+              "Proves the desktop main-process dispatcher round-trips against local stores, appends neutral events, and projects a renderer card with cited spans.",
+          },
+        ],
+        verification:
+          "history-corpus host-tool suite, desktop history-recall-host suite, agent-harness-contract registration tests, and Desktop typecheck. No release command is part of the oracle.",
+      },
       {
         contractId: "openagents_desktop.chat.no_noop_spec_revalidation_error_rows.v1",
         state: "enforced",

@@ -36,7 +36,10 @@ package is HARN-01 of the HARN epic (#9115).
 - **`capability.ts`**, **`permission.ts`**, **`skill.ts`**, **`host-tool.ts`**,
   **`common-tool.ts`** (the `read`/`write`/`edit`/`bash`/`glob`/`grep`/`webSearch`
   vocabulary with `nativeName`/`commonName`/`providerExecuted` normalization),
-  and **`bootstrap.ts`**.
+  and **`bootstrap.ts`**. RLM-03 registers the `history_recall` host-tool wire
+  form (`historyRecallHostToolSpec`, `REGISTERED_HARNESS_HOST_TOOLS`) here;
+  the Effect AI Tool authoring form and HistoryRecall handlers live in
+  `@openagentsinc/history-corpus`.
 - **`reference-adapter.ts`** and **`event-builder.ts`** — an in-memory
   reference `AgentHarness` and event builders for the conformance suite.
 - **`sandbox.ts`** and **`local-sandbox-provider.ts`** (HARN-07 core) — the

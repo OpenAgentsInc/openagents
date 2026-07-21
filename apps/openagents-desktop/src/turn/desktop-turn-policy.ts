@@ -11,8 +11,29 @@ import {
   ContextSource,
   TurnPolicy,
 } from "@openagentsinc/agent-turn-runtime"
+import type { HarnessHostToolSpec } from "@openagentsinc/agent-harness-contract"
 
+import {
+  desktopAdmittedHostToolCapabilities,
+  desktopAdmittedHostTools,
+  historyRecallToolsForTurn,
+} from "../history-recall-host.ts"
 import { buildEditorWorkContext, type EditorContextRegistry } from "./editor-context-binding.ts"
+
+/**
+ * Stack B turn-policy exposure for host tools (RLM-03). Route decisions are
+ * unchanged — these exports surface the admitted `history_recall` capability
+ * so a turn composer can hand {@link historyRecallToolsForTurn} to
+ * `promptTurn({ tools })` without a second catalog.
+ */
+export const desktopTurnPolicyHostTools: ReadonlyArray<HarnessHostToolSpec> =
+  desktopAdmittedHostTools
+
+export const desktopTurnPolicyHostToolCapabilities: ReadonlyArray<string> =
+  desktopAdmittedHostToolCapabilities
+
+/** Host tools for one owner-local turn (currently just `history_recall`). */
+export const hostToolsForDesktopTurn = historyRecallToolsForTurn
 
 /**
  * AFS-01 minimal Desktop host policy layers.

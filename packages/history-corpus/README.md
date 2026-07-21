@@ -92,6 +92,16 @@ of the two tiers in the `HistoryRecall` service design. It ships first.
 - The builder does not dereference refs. Prompt refs, result refs, and raw
   sidecar refs stay refs.
 
+## Host tool (RLM-03)
+
+`host-tool.ts` exposes `history_recall` as an Effect AI `Tool` / `Toolkit`
+over `HistoryRecall`. The wire form is registered in
+`@openagentsinc/agent-harness-contract` (`historyRecallHostToolSpec`). STREAM-07
+projects the Tool onto that wire form. Dispatch resolves through the Toolkit
+handler Layer and re-enters the neutral stream as `tool.call` / `tool.result`
+(payload stays on the host-tool result path as a `resultRef`). Desktop main
+wires the tool against owner-local stores.
+
 ## Recursive recall (RLM-04, Effect-native)
 
 `recursive-recall.ts` is the Effect-native recursive recall engine. It replaces

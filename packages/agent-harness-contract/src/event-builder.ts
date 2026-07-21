@@ -80,3 +80,80 @@ export const buildCompactionRecorded = (
     beforeContextRef: fields.beforeContextRef,
     afterContextRef: fields.afterContextRef,
   });
+
+/**
+ * Owner-local host-tool authority. Host tools run under the owner-local
+ * profile on desktop; the authority is allowed with refs derived from the
+ * tool call id. This is honest for owner-local lanes — it is not a claim that
+ * an untrusted or metered lane is unconditionally allowed.
+ */
+const hostToolAuthority = (toolCallId: string, toolName: string) => ({
+  authorityRef: `authority.host_tool.${toolCallId}`,
+  policyRef: "policy.host_tool.owner_local",
+  decisionRef: `decision.host_tool.${toolCallId}`,
+  toolRef: `toolref.host_tool.${toolName}`,
+  status: "allowed" as const,
+  allowed: true,
+  blockerRefs: [] as ReadonlyArray<string>,
+});
+
+/** Build a `tool.call` event for a host-executed tool (RLM-03 re-entry). */
+export const buildToolCall = (
+  fields: BaseFields & {
+    readonly toolCallId: string;
+    readonly toolName: string;
+    readonly inputRef?: string;
+  },
+): HarnessStreamEvent =>
+  decodeKhalaRuntimeEvent({
+    ...base(fields, "toolcall"),
+    kind: "tool.call",
+    toolCallId: fields.toolCallId,
+    toolName: fields.toolName,
+    ...(fields.inputRef === undefined ? {} : { inputRef: fields.inputRef }),
+    authority: hostToolAuthority(fields.toolCallId, fields.toolName),
+  });
+
+/**
+ * Build a `tool.result` event for a host-executed tool. `providerExecuted` is
+ * false for host tools (the host ran them, not the model provider runtime).
+ * The result payload itself never rides the neutral stream — only `resultRef`.
+ */
+export const buildToolResult = (
+  fields: BaseFields & {
+    readonly toolCallId: string;
+    readonly toolName: string;
+    readonly resultRef: string;
+    readonly providerExecuted?: boolean;
+  },
+): HarnessStreamEvent =>
+  decodeKhalaRuntimeEvent({
+    ...base(fields, "toolresult"),
+    kind: "tool.result",
+    toolCallId: fields.toolCallId,
+    toolName: fields.toolName,
+    resultRef: fields.resultRef,
+    authority: hostToolAuthority(fields.toolCallId, fields.toolName),
+    providerExecuted: fields.providerExecuted ?? false,
+  });
+
+/** Build a `tool.error` event for a host-tool failure with a safe message. */
+export const buildToolError = (
+  fields: BaseFields & {
+    readonly toolCallId: string;
+    readonly toolName: string;
+    readonly errorRef: string;
+    readonly messageSafe: string;
+    readonly providerExecuted?: boolean;
+  },
+): HarnessStreamEvent =>
+  decodeKhalaRuntimeEvent({
+    ...base(fields, "toolerror"),
+    kind: "tool.error",
+    toolCallId: fields.toolCallId,
+    toolName: fields.toolName,
+    errorRef: fields.errorRef,
+    messageSafe: fields.messageSafe,
+    authority: hostToolAuthority(fields.toolCallId, fields.toolName),
+    providerExecuted: fields.providerExecuted ?? false,
+  });
