@@ -16,6 +16,7 @@ export * from "./adapter.ts";
 export * from "./reference-adapter.ts";
 export * from "./acp-adapter.ts";
 export * from "./opencode-adapter.ts";
+export * from "./toolkit-bridge.ts";
 export * from "./sandbox.ts";
 export * from "./local-sandbox-provider.ts";
 export * from "./local-process-sandbox-provider.ts";

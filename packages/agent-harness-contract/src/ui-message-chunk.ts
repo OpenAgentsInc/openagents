@@ -172,6 +172,30 @@ export interface UiToolInputAvailableChunk extends S.Schema.Type<
 > {}
 
 /**
+ * Streamed PRELIMINARY (partial) tool output (STREAM-07 #9135). The Effect v4
+ * Toolkit handler context exposes `HandlerContext.preliminary`
+ * (`effect/dist/unstable/ai/Toolkit.d.ts`), and every streamed
+ * `Tool.HandlerResult` carries a `preliminary` flag
+ * (`effect/dist/unstable/ai/Tool.d.ts`): "Preliminary results represent
+ * progress updates; only the final result should be used as the authoritative
+ * output." This chunk is that progress update on the wire — the raw partial
+ * output is replaced by the safe `resultRef`, exactly like
+ * {@link UiToolOutputAvailableChunk}. The reducer never folds it into the
+ * persisted `UiMessage` tool state machine (progress is never authoritative
+ * output); renderers that want live progress observe the chunk stream.
+ */
+export const UiToolOutputPreliminaryChunk = S.Struct({
+  ...UiMessageChunkBase,
+  type: S.Literal("tool-output-preliminary"),
+  toolCallId: S.NonEmptyString,
+  tool: HarnessToolIdentity,
+  resultRef: KhalaRuntimeSafeRef,
+});
+export interface UiToolOutputPreliminaryChunk extends S.Schema.Type<
+  typeof UiToolOutputPreliminaryChunk
+> {}
+
+/**
  * Tool result available (from `tool.result`). Mirrors the AI SDK
  * `tool-output-available`, with the raw `output` replaced by the safe
  * `resultRef`.
@@ -224,6 +248,7 @@ export const UI_MESSAGE_CHUNK_TYPES = [
   "reasoning-end",
   "tool-input-streaming",
   "tool-input-available",
+  "tool-output-preliminary",
   "tool-output-available",
   "tool-output-error",
   "error",
@@ -245,6 +270,7 @@ export const UiMessageChunk = S.Union([
   UiReasoningEndChunk,
   UiToolInputStreamingChunk,
   UiToolInputAvailableChunk,
+  UiToolOutputPreliminaryChunk,
   UiToolOutputAvailableChunk,
   UiToolOutputErrorChunk,
   UiErrorChunk,

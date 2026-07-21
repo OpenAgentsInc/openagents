@@ -43,3 +43,12 @@ export interface HarnessHostToolResult extends S.Schema.Type<typeof HarnessHostT
 export const HARNESS_TOOL_APPROVAL_DECISIONS = ["allow-once", "allow-session", "deny"] as const;
 export type HarnessToolApprovalDecision = (typeof HARNESS_TOOL_APPROVAL_DECISIONS)[number];
 export const HarnessToolApprovalDecisionSchema = S.Literals(HARNESS_TOOL_APPROVAL_DECISIONS);
+
+// STREAM-07 (#9135): `HarnessHostToolSpec` is the JSON Schema WIRE form only.
+// The typed AUTHORING form is an Effect AI `Tool`/`Toolkit`
+// (`effect/unstable/ai`); `toolkit-bridge.ts` projects a `Tool` onto this spec
+// (`harnessHostToolSpecFromTool`), resolves a host-tool call through the
+// Toolkit handler Layer (`resolveHostToolCall`), and composes `needsApproval`
+// with the decisions above through the one canonical `RuntimeInteraction`
+// approval path (`hostToolApprovalInteractionPayload`,
+// `applyHostToolApprovalDecision`).

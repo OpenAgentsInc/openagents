@@ -25,6 +25,7 @@
     "./adapter": "./src/adapter.ts",
     "./reference-adapter": "./src/reference-adapter.ts",
     "./acp-adapter": "./src/acp-adapter.ts",
+    "./toolkit-bridge": "./src/toolkit-bridge.ts",
     "./opencode-adapter": "./src/opencode-adapter.ts",
     "./sandbox": "./src/sandbox.ts",
     "./local-sandbox-provider": "./src/local-sandbox-provider.ts",

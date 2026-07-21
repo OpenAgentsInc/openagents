@@ -94,7 +94,7 @@ package is HARN-01 of the HARN epic (#9115).
 
 - **`ui-message-chunk.ts`** and **`ui-message-reducer.ts`** (STREAM-02 #9130)
   — the core live-to-UI layer. `khalaEventToUiChunks` projects the neutral
-  stream onto a 16-type Schema-encodable chunk vocabulary with send-flag and
+  stream onto a 17-type Schema-encodable chunk vocabulary with send-flag and
   visibility gating. Chunks carry only refs and safe text, never raw payloads.
   `applyUiChunk` is the pure progressive fold with the tool-call state machine.
   `reduceUiMessageStream` holds snapshots in a `SubscriptionRef` so a renderer
@@ -107,6 +107,18 @@ package is HARN-01 of the HARN epic (#9115).
   progressive `PartialView<T>` streaming for structured output. A partial can
   never be used where a validated value is required. The only validated path
   is the full Schema decode in `finalizePartialObject`.
+- **`toolkit-bridge.ts`** (STREAM-07 #9135) — one tool substrate across the
+  model-call lanes and the harness. An Effect AI `Tool` (`effect/unstable/ai`,
+  schema-typed, handlers as a Layer) is the authoring form.
+  `harnessHostToolSpecFromTool` projects it onto the `HarnessHostToolSpec`
+  JSON Schema wire form (`Tool.getJsonSchema`), and `resolveHostToolCall`
+  resolves a harness host-tool call through the Toolkit handler Layer with
+  fail-closed `isError` results. `needsApproval` composes with the ONE
+  canonical `RuntimeInteraction` approval model
+  (`hostToolApprovalInteractionPayload`, `applyHostToolApprovalDecision` for
+  `allow-once`/`allow-session`/`deny`). Preliminary handler results
+  (`HandlerContext.preliminary`) stream as `tool-output-preliminary` chunks.
+  The final result is `tool-output-available`.
 
 ## Conformance
 

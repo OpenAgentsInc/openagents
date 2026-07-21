@@ -328,6 +328,14 @@ export const applyUiChunk = (message: UiMessage, chunk: UiMessageChunk): UiMessa
       }
       return { ...message, parts: replacePart(message.parts, index, next) };
     }
+    case "tool-output-preliminary":
+      // STREAM-07 (#9135): a preliminary tool output is live progress, never
+      // authoritative output (Effect v4 `Tool.HandlerResult.preliminary`,
+      // `effect/dist/unstable/ai/Tool.d.ts`: "only the final result should be
+      // used as the authoritative output"). The persisted tool state machine
+      // is unchanged; a renderer that wants live progress observes the chunk
+      // stream directly.
+      return message;
     case "tool-output-available": {
       const { index, part } = findToolPart(message, chunk.toolCallId);
       if (part === undefined) {
