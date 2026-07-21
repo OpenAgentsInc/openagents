@@ -1353,10 +1353,12 @@ const main = async (): Promise<void> => {
     channel,
   });
 
-  const ports: ReleasePorts = {
-    coordinator: createFixtureCoordinatorPort(),
-    feed: createFixtureFeedPort(),
-  };
+  // Dry-run keeps the fixture ports (no infra touched); a real run drives the
+  // owned coordinator core (#8917) and the public ReleaseSet v2 feed (#8922).
+  // Dynamic import avoids a module cycle: release-ports-real imports the port
+  // types and fixture factories from this module.
+  const { createReleasePorts } = await import("./release-ports-real.js");
+  const ports: ReleasePorts = createReleasePorts(plan, io);
 
   const result = await runRelease({
     plan,
