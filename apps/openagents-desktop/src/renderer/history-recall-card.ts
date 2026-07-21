@@ -4,11 +4,25 @@
  * Cited spans are already corpus-filtered (visibility / redactionClass).
  * This module only formats them for the transcript tool card — it does not
  * dereference result refs or re-read raw history.
+ *
+ * Renderer boundary: this file must not import main-process packages
+ * (`@openagentsinc/agent-harness-contract`, `@openagentsinc/history-corpus`).
+ * The wire tool name is duplicated as a string constant so the projection
+ * stays renderer-safe; main owns the registry authority.
  */
 
-import { HISTORY_RECALL_TOOL_NAME } from "@openagentsinc/agent-harness-contract"
+/** Wire name — must match `HISTORY_RECALL_TOOL_NAME` in the harness contract. */
+export const HISTORY_RECALL_TOOL_NAME = "history_recall" as const
 
-import type { HistoryRecallCitedSpanRow } from "../history-recall-host.ts"
+/** Cited span row shape (mirrors main-process projection, no package import). */
+export interface HistoryRecallCitedSpanRow {
+  readonly turnId: string
+  readonly sequenceStart: number
+  readonly sequenceEnd: number
+  readonly excerpt: string
+  readonly kind: string
+  readonly scopeRef: string
+}
 
 export type HistoryRecallCardStatus = "running" | "ok" | "failed"
 

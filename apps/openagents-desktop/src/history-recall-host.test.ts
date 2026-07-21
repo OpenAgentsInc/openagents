@@ -27,6 +27,10 @@ import {
   projectHistoryRecallToolCard,
 } from "./renderer/history-recall-card.ts"
 
+// Keep the renderer constant aligned with the harness registration without
+// importing the harness package from a pure-renderer test path beyond this
+// main-side suite.
+
 const SOURCE: KhalaRuntimeSource = { lane: "test_fixture" }
 const THREAD_ID = "thread.desktop-hr"
 const PLANTED = "DECISION: ship RLM-03 host tool"
