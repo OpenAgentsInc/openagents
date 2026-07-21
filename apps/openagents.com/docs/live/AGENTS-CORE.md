@@ -1,8 +1,12 @@
 # OpenAgents Core Agent Instructions
 
-version: 0.2.0
-lastUpdated: 2026-07-14
+version: 0.2.1
+lastUpdated: 2026-07-19
 canonicalUrl: https://openagents.com/AGENTS-CORE.md
+
+Use base ASD-STE100 for human text.
+Agent-only records can use the controlled agent compact profile when it improves speed and precision.
+The compact profile does not weaken safety, authority, evidence, or clarity rules.
 
 ## Five-Step Start
 

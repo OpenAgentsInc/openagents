@@ -6308,7 +6308,7 @@
     },
     {
       "path": "apps/openagents.com/docs/live/AGENTS-CORE.md",
-      "sha256": "2661a56cd643b384f1723ad7539bd8480e9b2bb8f4fabac4df20ec4e9f07de8f",
+      "sha256": "78b2c273ead6c83962f54e9811cf63d9289d3215b4038e97427dbc883a252940",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -6330,7 +6330,7 @@
     },
     {
       "path": "apps/openagents.com/docs/live/AGENTS.md",
-      "sha256": "a654849046108e48cfb6abe50f4d313c4edc21fba76b4a431bea3e2a92051db7",
+      "sha256": "a3deb2e356f2cd979d0f24f98ab27e41b51e9f782ced088deb75d0652387aa29",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
