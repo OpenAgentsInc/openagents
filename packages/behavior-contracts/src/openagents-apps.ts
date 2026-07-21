@@ -1667,7 +1667,43 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
       verification:
         "FAV-01 (#9111) landed full-auto-readiness.ts: projectFullAutoReadinessSnapshot and projectFullAutoLaneScan project readiness from the shared FullAutoRoutingLaneGate, the run report carries an optional readinessSnapshot field, and the projections are unit-tested (apps/openagents-desktop/src/full-auto-readiness.test.ts) including agreement with validateFullAutoRoutingPolicy and the scan/lane reconciliation.",
     },
+    {
+      authorityBoundary:
+        "This binds envelope, routing, and rotation PARITY across the four lanes at the unit level. It does not itself prove a live owner-real run where a real Grok or Cursor account writes a fact another provider continues -- that acceptance needs admitted ACP peers and the owner. It grants no autonomous provider selection outside an owner-ordered policy.",
+      blockerRefs: [],
+      contractId: "openagents_desktop.full_auto_four_lane_rotation_parity.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "apps/openagents-desktop/src/full-auto-four-lane-parity.test.ts",
+        "apps/openagents-desktop/src/full-auto-provider-handoff.ts",
+        "apps/openagents-desktop/src/full-auto-routing.ts",
+        "docs/fable/2026-07-20-full-auto-first-verifiable-mode.md",
+        "github:OpenAgentsInc/openagents#9112",
+      ],
+      oracles: [
+        {
+          description:
+            "Unit coverage proves the same handoff and routing invariants hold for Grok and Cursor as for the proven Codex/Claude path: all four lanes are Full-Auto-eligible; an ordered routing policy admits any order of the four; for every ordered lane pair the handoff envelope preserves lane refs, always carries the provider_private_never_transferred omission, transfers only bounded host-owned context, discloses bounded truncation identically to Codex/Claude, and carries no credential/session material; and rotation uses the same typed reason vocabulary (account_exhausted / rate_limited / provider_error) regardless of lane.",
+          id: "openagents_desktop.full_auto_four_lane_rotation_parity.envelope_routing_rotation",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents-desktop/src/full-auto-four-lane-parity.test.ts",
+        },
+      ],
+      productArea: "Desktop Full Auto four-lane rotation parity",
+      source: {
+        channel: "github-issue",
+        statedBy: "owner",
+        statedOn: "2026-07-20",
+      },
+      state: "enforced",
+      statement:
+        "Full Auto rotation and provider handoff behave identically across all four lanes (codex-local, claude-local, acp:grok-cli, acp:cursor-agent): an ordered routing policy admits any order of the four, a handoff envelope for any lane pair carries only bounded host-owned context with the provider-private omission and truncation disclosure, and rotation uses the same typed reason vocabulary regardless of lane.",
+      surface: "openagents-desktop",
+      verification:
+        "FAV-02 (#9112) landed apps/openagents-desktop/src/full-auto-four-lane-parity.test.ts proving eligibility, ordered-policy admission, per-pair handoff-envelope invariants (host-owned projection, provider-private omission, truncation disclosure, no credential material), and lane-agnostic rotation-reason classification across every ordered pair of the four lanes. The live owner-real Grok/Cursor receipt rows are the activation rung and require admitted ACP peers.",
+    },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-20.1",
+  version: "2026-07-20.2",
 };
