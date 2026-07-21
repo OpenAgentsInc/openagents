@@ -42506,7 +42506,7 @@
     },
     {
       "path": "docs/teardowns/2026-07-21-freerange-teardown.md",
-      "sha256": "ae30f8013b15a33fb443e460d9ce7c4f38abc349370901fb671d7fc0579980a6",
+      "sha256": "91401dc3d67dd568894d7aa5dda5bee58d760bed18f4e2326afc09f646c3a9e8",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

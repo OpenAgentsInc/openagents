@@ -3,14 +3,14 @@
 Read-only architecture, product, and process audit of the public
 `chenglou/freerange` source tree at an exact commit, plus a bounded local
 runtime spot-check (dependency install, one findings run, one audit run, and
-the full test suite in the reference clone; nothing tracked was modified).
+the full test suite in the reference clone. Nothing tracked was modified).
 Freerange is unlike every other subject in this catalog: it is not an agent
 harness, a desktop shell, or a control plane. It is a **verification
 instrument** — a static numeric range analyzer for TypeScript, explicitly
 designed for the agent era — and it lands squarely on the thesis of
 [`docs/fable/2026-07-19-verifiable-software.md`](../fable/2026-07-19-verifiable-software.md).
 
-## TL;DR
+## Summary
 
 Freerange shows the possible range of every `number` in a TypeScript codebase
 and statically catches `NaN`, `Infinity`, division by zero, and out-of-bounds
@@ -44,7 +44,7 @@ things matter more:
 1. **The inversion.** Freerange deliberately supports a small TypeScript
    subset and asks *agents to refactor important calculations into that
    subset*, guided by tagged audit codes. The tool no longer meets code where
-   it is; the code moves to the tool, because agents make refactoring cheap.
+   it is. The code moves to the tool, because agents make refactoring cheap.
    The README's one-line pitch is the agent-era claim in full: "AI agents can
    now guarantee UI layouts without ever touching the browser." [source]
 2. **Honest loss accounting at finding granularity.** Every function is
@@ -60,7 +60,7 @@ things matter more:
    measured evidence, and reopen conditions. A tested goal-loop prompt
    template and a checked-in Claude Workflow script run N-lens adversarial
    review rounds whose anti-laundering rules (a dead reviewer agent surfaces
-   as `AGENT-DIED`, never as a clean round; every lens must report probes
+   as `AGENT-DIED`, never as a clean round. Every lens must report probes
    run) are a working small-scale instance of the independent-verification
    capacity OpenAgents' VSE program is trying to build. [source]
 
@@ -87,13 +87,13 @@ deliberately absent API.**
 | License           | MIT (copyright Cheng Lou)                                               | Permissive reuse boundary               |
 | Author            | Cheng Lou, sole author of all 703 commits since `2026-04-18`            | Single-maintainer provenance            |
 | Source scale      | ~11,230 lines across 31 `src/` TypeScript files                        | Deliberately small implementation       |
-| Test surface      | ~7,430 lines across 11 test files; 193 tests, 1,506 `expect()` calls    | Dense executable evidence               |
-| Toolchain         | Bun runtime; TypeScript 6 compiler API pinned, TypeScript 7 native for checks; oxlint type-aware; knip | Fast solo verification loop |
+| Test surface      | ~7,430 lines across 11 test files — 193 tests, 1,506 `expect()` calls    | Dense executable evidence               |
+| Toolchain         | Bun runtime — TypeScript 6 compiler API pinned, TypeScript 7 native for checks — oxlint type-aware — knip | Fast solo verification loop |
 
 The runtime spot-check: `bun install` then `bun test` in the reference clone
 passed 193/193 tests in ~27 s, `bun fr.ts demo/index.ts` reported 0 findings
 with the coverage line `10/14 named top-level function declarations fully
-analyzed; 0 partially supported; 4 unsupported`, and `fr --audit` printed
+analyzed. 0 partially supported. 4 unsupported`, and `fr --audit` printed
 per-function `requires`/`ensures` contracts exactly as the README documents,
 including proven ranges like `return.cols is a finite integer number from 1
 through 7` for a real spring-animation photo-gallery demo. [runtime]
@@ -130,8 +130,8 @@ records, tuples, dense arrays, tagged unions, and same-file function calls,
 then reports four kinds of statements per function [source]:
 
 - `requires:` — a condition every caller must satisfy (parameter finiteness
-  is automatic for every plain `number` parameter; division mints nonzero
-  divisor requirements; asserted array reads mint valid-index requirements).
+  is automatic for every plain `number` parameter. Division mints nonzero
+  divisor requirements. Asserted array reads mint valid-index requirements).
 - `ensures:` — a guarantee about the return value, conditional on the
   requires and assumes.
 - `assumes:` — trust the analyzer takes without proof, stated per value
@@ -141,14 +141,14 @@ then reports four kinds of statements per function [source]:
 
 The `console.assert` mechanism is the standout product idea: assertions at
 the very start of a function are caller requirements (checked at every
-supported same-file call site); assertions later in the body are obligations
+supported same-file call site). Assertions later in the body are obligations
 Freerange must prove or report. The contract language is ordinary runtime
 JavaScript that already works in production and can be stripped by bundlers —
 no decorators, no comments, no sidecar files. Calling `itemColumn(0, 2.2)`
 against `console.assert(Number.isInteger(columnCount))` is a compile-time
 error. [source] [test]
 
-Findings mode is the CI gate; audit mode is informational and adds tagged
+Findings mode is the CI gate. Audit mode is informational and adds tagged
 refactor suggestions (`[guard-derived-value]`, `[encode-input-rule]`,
 `[use-direct-operands]`, `[handle-missing-element]`, `[guard-array-index]`,
 `[write-explicit-condition]`, `[use-loop-for-aggregation]`) that tell an
@@ -236,14 +236,14 @@ project with no connection to OpenAgents:
   treats as impossible. [source]
 - **Limits fail closed and name their price.** "Limits must fail closed, and
   each one states which failure it buys." A loop gets 16 fixed-point updates
-  and hitting the limit records a stop, never a wrong stabilized state; type
+  and hitting the limit records a stop, never a wrong stabilized state. Type
   walks stop at depth 8 (removing that boundary made five corpus functions
-  produce tens of thousands of assumption lines); requirement expansion gets
-  one instruction visit per instruction; an abstract number keeps at most one
+  produce tens of thousands of assumption lines). Requirement expansion gets
+  one instruction visit per instruction. An abstract number keeps at most one
   excluded point, and a second exclusion can drop precision but cannot
   strengthen a claim. "No limit may silently strengthen a result." [source]
 - **Conditional greens are conditional.** An `ensures` line assumes its
-  `requires` and `assumes`; violating an assumption makes downstream claims
+  `requires` and `assumes`. Violating an assumption makes downstream claims
   vacuous, not false. The README warns that a requirement is not
   automatically a bug and an assumption is not automatically a limitation —
   "Decide what the program should do before changing code to remove either
@@ -268,8 +268,8 @@ Reconsider" section whose every entry names the evidence that would reopen it
 "Punted" section. Features are deleted with receipts: the recursive
 structural-union comparison was removed because it "had no successful gallery
 use, slowed lowering by about 9% in a five-run median, and required about 100
-lines"; a call-result cache prototype was rejected because its deep cache key
-made a 500-field-record workload grow from ~1 ms to 162 ms; four memo tables
+lines". A call-result cache prototype was rejected because its deep cache key
+made a 500-field-record workload grow from ~1 ms to 162 ms. Four memo tables
 survive because independent measurements showed 45–80% lowering slowdowns
 without them. This is the Sol challenge-ledger discipline ("a rejected or
 deferred challenge must be as easy to revisit as an accepted one") applied at
@@ -277,11 +277,11 @@ per-feature granularity by a solo developer. [source]
 
 **`goal-prompt.md`.** A tested prompt template for verification-heavy tasks:
 turn every requirement into a concrete example with its exact observable
-result before editing; pair every required `unknown` or rejection with a
-positive control through the same path; treat performance requirements as
-behavior with named workloads; give one fresh reviewer only the original task
+result before editing. Pair every required `unknown` or rejection with a
+positive control through the same path. Treat performance requirements as
+behavior with named workloads. Give one fresh reviewer only the original task
 and the frozen diff and have it reconstruct requirements and run
-counterexamples; reread the engineering guide against the finished diff and
+counterexamples. Reread the engineering guide against the finished diff and
 revert if the result is not worthwhile. [source]
 
 **`.claude/workflows/review-round.js`.** A checked-in Claude Workflow script
@@ -291,7 +291,7 @@ header comment records "the standing disciplines, learned the hard way": a
 died agent returns null and `?? []` "would launder that into a clean round —
 a review process whose failure mode is indistinguishable from success," so
 every lens returns `probesRun` and null agents surface as `AGENT-DIED`
-instead of green; findings require reproduced runtime contradictions or
+instead of green. Findings require reproduced runtime contradictions or
 crashes, because "honest stops and imprecision are not findings." The
 decision ledger adds review-lens calibration: soundness reviews aim at code
 people actually write, "or the reviewers drift into hunting exotic spellings
@@ -327,7 +327,7 @@ the essay names [inferred]:
   operationalizes "shrink the verification quantum" as an authoring style
   with tool support (`fr --audit` names the rewrite).
 - **Amortize.** A discharged `requires` line is checked once at the callee
-  and reused by every caller; a proven `console.assert` is proof that never
+  and reused by every caller. A proven `console.assert` is proof that never
   re-runs in a browser.
 
 It also independently converges on the essay's honesty laws: evidence-gated
@@ -349,7 +349,7 @@ proof. [public] [inferred]
 ## 7. What OpenAgents should adapt
 
 These are Fast Follow candidate lessons in the `docs/teardowns/` evidence
-lane. Nothing here is dispatch authority; implementation requires the normal
+lane. Nothing here is dispatch authority. Implementation requires the normal
 admission path.
 
 **7.1 Pilot Freerange as a bounded numeric oracle.** The natural first
@@ -363,29 +363,29 @@ contracts on a surface are oracle refs — index entries, not verdicts — and a
 green `fr` run is conditional on its printed `assumes` lines. Frictions to
 resolve honestly in the pilot: the CLI is Bun-only (`#!/usr/bin/env bun`)
 while the monorepo contract is Node 24 + pnpm, so it must run as an isolated
-pinned dev tool (or wait on upstream Node support); it pins the TypeScript 6
-compiler API, which must be checked against the repo's TypeScript version;
-analysis is same-file only, so helpers must be co-located with their
-callers to get call-site checking; output is human text with no JSON mode
+pinned dev tool (or wait on upstream Node support). It pins the TypeScript 6
+compiler API, which must be checked against the repo's TypeScript version.
+Analysis is same-file only, so helpers must be co-located with their
+callers to get call-site checking. Output is human text with no JSON mode
 yet, so machine consumption (inventory integration, receipts) needs either
 parsing or an upstream feature request. [source] [limitation]
 
 **7.2 Adopt verifier-shaped authoring for important calculations.** Whether
 or not the tool is adopted, its authoring guidance is worth folding into
 agent contracts for numeric code: put important calculations in small named
-synchronous functions; name a calculation before checking it; decide how
-invalid inputs are handled (assert or normalize) before using them; choose
-arithmetic order deliberately for floats; prefer explicit conditions and
-loops; keep records immutable and unions tagged. Most of this is already the
-house style; the delta is treating *analyzability by a mechanical oracle* as
+synchronous functions. Name a calculation before checking it. Decide how
+invalid inputs are handled (assert or normalize) before using them. Choose
+arithmetic order deliberately for floats. Prefer explicit conditions and
+loops. Keep records immutable and unions tagged. Most of this is already the
+house style. The delta is treating *analyzability by a mechanical oracle* as
 an explicit goal of code shape, so future oracles (Freerange or owned ones)
 get cheap. [source] [inferred]
 
 **7.3 Import the discipline formulations.** Three sentences deserve to enter
 the assurance vocabulary nearly verbatim: "Limits must fail closed, and each
-one states which failure it buys"; "No limit may silently strengthen a
-result"; and printed trust — every assumption a claim rests on renders where
-the consumer can see it. OpenAgents holds these laws at product scale;
+one states which failure it buys". "No limit may silently strengthen a
+result". And printed trust — every assumption a claim rests on renders where
+the consumer can see it. OpenAgents holds these laws at product scale.
 Freerange demonstrates them at per-finding granularity, including the
 structural trick of giving partial evidence a type with no contract fields.
 [source]
@@ -393,9 +393,9 @@ structural trick of giving partial evidence a type with no contract fields.
 **7.4 Adapt the anti-laundering review harness.** The `review-round.js`
 disciplines are immediately applicable to this repository's own Workflow
 review patterns: require every finder lens to return a positive control
-(`probesRun`) so an empty findings list proves a sweep happened; surface died
-agents as explicit failures, never as clean rounds; require reproduced
-contradictions for findings; calibrate lenses toward code people actually
+(`probesRun`) so an empty findings list proves a sweep happened. Surface died
+agents as explicit failures, never as clean rounds. Require reproduced
+contradictions for findings. Calibrate lenses toward code people actually
 write. The goal-prompt's "pair every required `unknown` or rejection with a
 positive control through the same path" is a test-design rule worth adopting
 wholesale. [source]
@@ -422,17 +422,17 @@ cross-module contract system worth tracking. [source] [inferred]
 
 - **Toolchain adoption.** Bun, oxlint, and knip serve Freerange's solo fast
   loop well, but the monorepo's Node 24 + pnpm + Vite Plus contract is
-  settled. Consume the CLI as an isolated pinned tool; do not let a
+  settled. Consume the CLI as an isolated pinned tool. Do not let a
   dependency's runtime leak into the toolchain contract. [source]
 - **Contract greens as acceptance authority.** An `fr` pass is a designed,
   conditional oracle result — conditional on printed assumptions, scoped to
   the analyzed subset, silent about unsupported functions beyond the coverage
   line. It never substitutes for behavior contracts, AssuranceSpec
-  obligations, or owner acceptance. The tool's own docs say this; keep it
+  obligations, or owner acceptance. The tool's own docs say this. Keep it
   true in any integration. [source]
 - **Unpinned or load-bearing adoption now.** Version 0.0.1, published the
-  day before this audit, one maintainer, an explicitly absent API ("There's
-  no API =)"), and a subset that may widen or narrow. Pin the exact version,
+  day before this audit, one maintainer, an explicitly absent API (the README
+  states "no API =)"), and a subset that may widen or narrow. Pin the exact version,
   keep it dev-only and advisory until it has weeks of stable history, and
   file upstream issues rather than forking or vendoring. [source]
   [limitation]
@@ -440,7 +440,7 @@ cross-module contract system worth tracking. [source] [inferred]
   tested float-exact decisions (subnormal underflow, NaN propagation,
   bit-stepped refinement). Reimplementing that surface for ownership's sake
   would repeat exactly the mistake the decision ledger warns against —
-  speculative support without corpus evidence. Adapt the disciplines; consume
+  speculative support without corpus evidence. Adapt the disciplines. Consume
   the tool. [inferred]
 
 ## 9. Watch items
