@@ -73,12 +73,14 @@ if [[ -n "${OA_OPENAGENTS_DESKTOP_RELEASE_DIST:-}" ]]; then
   env_vars+=("OA_OPENAGENTS_DESKTOP_RELEASE_DIST=${OA_OPENAGENTS_DESKTOP_RELEASE_DIST}")
 fi
 
-if [[ -n "${OA_RELEASE_SET_BUCKET:-}" || -n "${OA_RELEASE_SET_PINS_PATH:-}" ]]; then
-  env_vars+=(
-    "OA_RELEASE_SET_BUCKET=${OA_RELEASE_SET_BUCKET:?set OA_RELEASE_SET_BUCKET}"
-    "OA_RELEASE_SET_PINS_PATH=${OA_RELEASE_SET_PINS_PATH:?set OA_RELEASE_SET_PINS_PATH}"
-  )
-fi
+# The signed ReleaseSet v2 desktop feed is wired by default so every deploy
+# keeps the stable and rc channels served (REL-FEED-01 #8993). The pins file is
+# committed under openagents-desktop-dist and baked into the image at the
+# container path below. Override only when deploying a different environment.
+env_vars+=(
+  "OA_RELEASE_SET_BUCKET=${OA_RELEASE_SET_BUCKET:-openagentsgemini-oa-updates-release-set}"
+  "OA_RELEASE_SET_PINS_PATH=${OA_RELEASE_SET_PINS_PATH:-/app/openagents-desktop-dist/release-set-pins.json}"
+)
 
 env_csv="$(IFS=,; echo "${env_vars[*]}")"
 
