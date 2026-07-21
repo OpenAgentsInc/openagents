@@ -89,6 +89,26 @@ describe("discoverReadyClaudeLocalHomes", () => {
       [CLAUDE_LOCAL_DEFAULT_SESSION_ARM_ENV]: "1",
     })).toEqual([{ ref: "claude", home: join(root, ".claude"), source: "current_session" }])
   })
+
+  test("admits the owner's logged-in account first when ~/.claude is a real install (macOS Keychain login, no credential file)", async () => {
+    const root = makeAccountRoot()
+    // A real Claude Code home has settings.json; on macOS the login lives in the
+    // Keychain, so there is NO .credentials.json — yet the logged-in account
+    // must still be admitted and preferred over the Pylon fallback.
+    writeFileSync(join(root, ".claude", "settings.json"), "{}\n")
+    const ready = await discoverReadyClaudeLocalHomes({ PYLON_ACCOUNT_HOME_ROOT: root })
+    expect(ready[0]).toEqual({ ref: "claude", home: join(root, ".claude"), source: "current_session" })
+  })
+
+  test("an explicit '0' opt-out withholds the default session even for a real install", async () => {
+    const root = makeAccountRoot()
+    writeFileSync(join(root, ".claude", "settings.json"), "{}\n")
+    const ready = await discoverReadyClaudeLocalHomes({
+      PYLON_ACCOUNT_HOME_ROOT: root,
+      [CLAUDE_LOCAL_DEFAULT_SESSION_ARM_ENV]: "0",
+    })
+    expect(ready.some((home) => home.source === "current_session")).toBe(false)
+  })
 })
 
 describe("redactClaudeLocalText", () => {

@@ -413,6 +413,26 @@ const currentClaudeSessionPresent = async (home: string): Promise<boolean> => {
 }
 
 /**
+ * True when the default `~/.claude` home is a real Claude Code install. On macOS
+ * the ordinary Claude Code login lives in the Keychain, NOT in a
+ * `.credentials.json` file — so the file check above never admits the logged-in
+ * account there. `settings.json` is written by Claude Code and is a Keychain-free
+ * signal that this is the user's real Claude Code home. The current-session SDK
+ * path deletes `CLAUDE_CONFIG_DIR` and resolves that same login (Keychain),
+ * exactly like the `claude` CLI, so admitting it makes the delegate lane use the
+ * OWNER'S LOGGED-IN account. If that login turns out signed out, the runtime
+ * rotates to a fallback home (it fails before content). Never probes the Keychain.
+ */
+const defaultClaudeHomeIsRealInstall = async (home: string): Promise<boolean> => {
+  try {
+    await access(join(home, "settings.json"))
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
  * Public-safe path redaction for everything crossing the event boundary:
  * the scratch workspace becomes `<workspace>` and any path under the user's
  * home directory loses its absolute prefix.
@@ -443,7 +463,18 @@ export const discoverReadyClaudeLocalHomes = async (
     .filter(entry => entry.provider === "claude_agent" && entry.home !== defaultHome)
     .sort((left, right) => left.ref.localeCompare(right.ref))
   const ready: ClaudeLocalAccountHome[] = []
-  if (env[CLAUDE_LOCAL_DEFAULT_SESSION_ARM_ENV] === "1" || await currentClaudeSessionPresent(defaultHome)) {
+  // The owner's ordinary logged-in Claude Code account is admitted FIRST and
+  // preferred over any isolated Pylon home. It is admitted when explicitly armed
+  // ("1"), when a file-backed session exists, OR when `~/.claude` is a real
+  // Claude Code install (macOS keeps the login in the Keychain, so there is no
+  // credentials file to find) — unless explicitly disabled with "0".
+  const armDisabled = env[CLAUDE_LOCAL_DEFAULT_SESSION_ARM_ENV] === "0"
+  if (
+    !armDisabled &&
+    (env[CLAUDE_LOCAL_DEFAULT_SESSION_ARM_ENV] === "1" ||
+      (await currentClaudeSessionPresent(defaultHome)) ||
+      (await defaultClaudeHomeIsRealInstall(defaultHome)))
+  ) {
     ready.push({ ref: "claude", home: defaultHome, source: "current_session" })
   }
   for (const entry of candidates) {
