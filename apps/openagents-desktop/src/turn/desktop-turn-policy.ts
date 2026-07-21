@@ -74,10 +74,14 @@ export const desktopContextSourceLayer = (
   )
 
 /**
- * The first-candidate host policy. It selects the first provider ref in the
- * owner-bound ordered set. It fails closed on an empty set. A recommendation
- * cannot add a candidate to the set. Readiness and privacy filtering are added
- * in a later packet.
+ * The first-READY-candidate host policy (#9145). It selects the first provider
+ * ref in the owner-bound ordered set whose MAIN-OWNED descriptor readiness is
+ * `ready`, recording an honest skipped disposition for every unready lane it
+ * passed over. A ref with no descriptor keeps the previous first-candidate
+ * behavior (compositions that thread no descriptors are unchanged). It fails
+ * closed when no candidate is ready. A recommendation cannot add a candidate to
+ * the set. `admitted_first_candidate` stays honest because the choice is the
+ * first candidate of the readiness-filtered ordered set.
  */
 export const desktopTurnPolicyLayer: Layer.Layer<TurnPolicy> = Layer.succeed(
   TurnPolicy,
@@ -85,7 +89,33 @@ export const desktopTurnPolicyLayer: Layer.Layer<TurnPolicy> = Layer.succeed(
     decide: (input) =>
       Effect.sync(() => {
         const ordered = input.candidateSet.ordered
-        if (ordered.length === 0) {
+        const descriptors = input.descriptors ?? []
+        const descriptorOf = (ref: string) =>
+          descriptors.find((descriptor) => descriptor.providerRef === ref)
+        const isReady = (ref: string): boolean => {
+          const descriptor = descriptorOf(ref)
+          return descriptor === undefined || descriptor.readiness.state === "ready"
+        }
+        // Honest skipped dispositions for every unready owner-bound lane.
+        const dispositions = ordered.flatMap((ref) => {
+          const descriptor = descriptorOf(ref)
+          if (descriptor === undefined || descriptor.readiness.state === "ready") return []
+          const reason =
+            descriptor.readiness.reason === "account_missing" ||
+            descriptor.readiness.reason === "account_unhealthy"
+              ? "account_not_ready"
+              : "resource_not_ready"
+          return [
+            {
+              providerRef: ref,
+              candidate: descriptor.candidate,
+              disposition: "skipped",
+              reason,
+            },
+          ]
+        })
+        const ready = ordered.filter(isReady)
+        if (ready.length === 0) {
           return decodeDecision({
             schema: ROUTE_DECISION_SCHEMA_LITERAL,
             outcome: "closed",
@@ -94,11 +124,29 @@ export const desktopTurnPolicyLayer: Layer.Layer<TurnPolicy> = Layer.succeed(
             policyArtifactRef: input.candidateSet.policyArtifactRef,
             contextManifestRef: input.context.manifestRef,
             decisionReason: "no_candidate_fail_closed",
-            dispositions: [],
+            dispositions,
             decidedAt: nowIso(),
           })
         }
-        const selected = ordered[0]
+        const selected = ready[0]
+        const selectedDescriptor = descriptorOf(selected)
+        // Honest disclosure from the selected lane's descriptor when available;
+        // the previous fixed remote disclosure only remains for a descriptorless
+        // composition.
+        const disclosure =
+          selectedDescriptor === undefined
+            ? {
+                dataDestination: "remote_provider",
+                costClass: "metered_provider_tokens",
+                localOnly: false,
+                providerRef: selected,
+              }
+            : {
+                dataDestination: selectedDescriptor.dataDestination,
+                costClass: selectedDescriptor.costClass,
+                localOnly: selectedDescriptor.dataDestination === "on_device_local",
+                providerRef: selected,
+              }
         return decodeDecision({
           schema: ROUTE_DECISION_SCHEMA_LITERAL,
           outcome: "admitted",
@@ -106,17 +154,12 @@ export const desktopTurnPolicyLayer: Layer.Layer<TurnPolicy> = Layer.succeed(
           requestRef: input.requestRef,
           selected,
           effective: selected,
-          admittedCandidateSet: ordered,
+          admittedCandidateSet: ready,
           policyArtifactRef: input.candidateSet.policyArtifactRef,
           contextManifestRef: input.context.manifestRef,
-          disclosure: {
-            dataDestination: "remote_provider",
-            costClass: "metered_provider_tokens",
-            localOnly: false,
-            providerRef: selected,
-          },
+          disclosure,
           decisionReason: "admitted_first_candidate",
-          dispositions: [],
+          dispositions,
           decidedAt: nowIso(),
         })
       }),

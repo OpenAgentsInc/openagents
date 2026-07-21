@@ -110,6 +110,11 @@ export class ContextSource extends Context.Service<ContextSource, ContextSourceI
  * `TurnPolicy` derives the only route decision. A model recommendation can never
  * add a candidate to the owner-bound set. The service fails closed by returning a
  * `closed` decision, never by throwing an untyped error.
+ *
+ * `descriptors` (#9145, additive) carries the registry's current MAIN-OWNED
+ * provider descriptors so a host policy can apply readiness filtering (skip an
+ * unready lane, decide the first READY candidate). It is optional: an older
+ * host composition that passes no descriptors keeps its previous behavior.
  */
 export interface TurnPolicyInterface {
   readonly decide: (
@@ -119,6 +124,7 @@ export interface TurnPolicyInterface {
       readonly context: WorkContextEnvelope;
       readonly candidateSet: OwnerBoundCandidateSet;
       readonly recommendation: RouteRecommendation | null;
+      readonly descriptors?: ReadonlyArray<InferenceProviderDescriptor>;
     },
   ) => Effect.Effect<RouteDecision>;
 }

@@ -22,6 +22,7 @@ import {
 } from "@openagentsinc/agent-turn-runtime"
 
 import { makeThreadStore } from "../thread-store.ts"
+import { makeHostedKhalaProviderRegistry } from "./desktop-hosted-khala-provider.ts"
 import {
   DesktopTurnCancelChannel,
   DesktopTurnEventChannel,
@@ -481,6 +482,111 @@ describe("AFS-04 codex delegation router", () => {
       expect(result.outcome).toBe("answered")
       expect(result.text).toBe("Sure, here is a plain answer.")
       expect(result.delegationRequestRef).toBeNull()
+    } finally {
+      await kernel.dispose()
+    }
+  })
+})
+
+/** An Apple FM router registry whose MAIN-OWNED readiness is UNAVAILABLE (#9145 Linux/helper-down shape). */
+const appleUnreadyRegistry: ProviderRegistryInterface = {
+  describe: Effect.succeed([
+    decodeDescriptor({
+      schema: PROVIDER_SCHEMA_LITERAL,
+      providerRef: "provider.apple_fm.local",
+      candidate: "apple_fm",
+      model: "apple-fm",
+      placement: "owner_local",
+      supportedIntents: ["Ask"],
+      supportedCandidateKinds: ["answer"],
+      dataDestination: "on_device_local",
+      usageTruth: "estimated",
+      costClass: "local_resource_only",
+      maxContextChars: 4000,
+      maxOutputChars: 8192,
+      supportsStreaming: false,
+      supportsCancellation: true,
+      supportsExternalTools: false,
+      supportsExternalActions: false,
+      readiness: { state: "unavailable", reason: "unsupported_hardware" },
+    }),
+  ]),
+  start: () => Effect.fail(new ProviderStartError({ reason: "not_ready" })),
+}
+
+/** Scripted hosted Khala SSE fetch (no network) with a meta-served model. */
+const hostedKhalaScriptedFetch: typeof fetch = async () =>
+  new Response(
+    [
+      `event: delta\ndata: ${JSON.stringify({ text: "Hosted Khala answer." })}\n\n`,
+      `event: meta\ndata: ${JSON.stringify({ finishReason: "stop", servedModel: "khala-served-model", usage: { totalTokens: 6 } })}\n\n`,
+      `event: done\ndata: ${JSON.stringify({ done: true })}\n\n`,
+    ].join(""),
+    { status: 200, headers: { "content-type": "text/event-stream" } },
+  )
+
+const installHosted = (appleRegistry: ProviderRegistryInterface) => {
+  const handlers = new Map<string, (event: unknown, value: unknown) => unknown>()
+  const sent: RecordedSend[] = []
+  const store = makeThreadStore(path.join(dir, "threads.json"))
+  const thread = store.newThread("Hosted fallback turn")
+  const kernel = installDesktopTurnKernel({
+    ipcMain: {
+      handle: (channel, handler) => handlers.set(channel, handler),
+      removeHandler: (channel) => handlers.delete(channel),
+    },
+    sender: () => ({ isDestroyed: () => false, send: (channel, payload) => sent.push({ channel, payload }) }),
+    threadStore: store,
+    journalFilePath: path.join(dir, "agent-turns", "journal.json"),
+    providerRegistry: appleRegistry,
+    hostedKhalaProvider: makeHostedKhalaProviderRegistry({
+      fetchImpl: hostedKhalaScriptedFetch,
+      getThreadStore: () => store,
+    }),
+  })
+  return { handlers, sent, store, thread, kernel }
+}
+
+describe("#9145 hosted Khala router fallback", () => {
+  test("an unready Apple FM falls through to the hosted Khala lane and the answer is attributed + persisted", async () => {
+    const { handlers, store, thread, kernel } = installHosted(appleUnreadyRegistry)
+    try {
+      const submit = handlers.get(DesktopTurnSubmitChannel)!
+      const raw = await submit(null, { threadRef: thread.id, message: "Are you there?" })
+      const result = submitResultOf(raw)
+      expect(result.outcome).toBe("answered")
+      expect(result.text).toBe("Hosted Khala answer.")
+      expect(result.provider).toBe("hosted_khala")
+      expect(result.placement).toBe("openagents_managed")
+      expect(result.dataDestination).toBe("openagents_managed_remote")
+      expect(result.usageTruth).toBe("exact")
+
+      // #9127 attribution: the persisted assistant note carries the hosted
+      // provider + SERVED model metadata, so the answer stays attributed after
+      // reload through the same inspector metadata surface.
+      const persisted = store.open(thread.id)
+      expect(persisted).not.toBeNull()
+      const assistant = persisted!.notes.filter((note) => note.role === "assistant")
+      expect(assistant).toHaveLength(1)
+      expect(assistant[0]!.text).toBe("Hosted Khala answer.")
+      expect(assistant[0]!.meta?.provider).toBe("hosted_khala")
+      expect(assistant[0]!.meta?.model).toBe("khala-served-model")
+      expect(assistant[0]!.meta?.dataDestination).toBe("openagents_managed_remote")
+      expect(assistant[0]!.meta?.usageTruth).toBe("exact")
+    } finally {
+      await kernel.dispose()
+    }
+  })
+
+  test("a READY Apple FM stays preferred even with the hosted lane registered", async () => {
+    const { handlers, thread, kernel } = installHosted(appleRouterRegistry("Local on-device answer."))
+    try {
+      const submit = handlers.get(DesktopTurnSubmitChannel)!
+      const raw = await submit(null, { threadRef: thread.id, message: "hello" })
+      const result = submitResultOf(raw)
+      expect(result.outcome).toBe("answered")
+      expect(result.text).toBe("Local on-device answer.")
+      expect(result.provider).toBe("apple_fm")
     } finally {
       await kernel.dispose()
     }

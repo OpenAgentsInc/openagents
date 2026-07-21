@@ -327,7 +327,8 @@ const availableHarnessLanes = {
 } as const;
 // `openAgentsStandby: false` keeps these fixtures on the preserved Codex/Claude
 // provider-send path so the provider-behavior assertions below stay meaningful.
-// The default (undefined === on) OpenAgents "Stand by." reply has its own test.
+// The default (undefined === on) OpenAgents kernel path has its own tests
+// (#9145: a non-answered outcome renders an honest typed failure line).
 const baseState: DesktopShellState = {
   ...initialDesktopShellState("electron/darwin", "18:04"),
   harnessLanes: availableHarnessLanes,
@@ -1320,7 +1321,7 @@ describe("desktopShellView (state -> component tree)", () => {
     });
   });
 
-  test("OpenAgents authority (owner directive 2026-07-19): a submitted message commits and replies 'Stand by.' with no provider turn", async () => {
+  test("OpenAgents authority (#9145): with no turn host, a submitted message commits and renders the honest unavailable line — never a fixed acknowledgement", async () => {
     const calls: Array<unknown> = [];
     const state = await Effect.runPromise(
       SubscriptionRef.make<DesktopShellState>({
@@ -1350,12 +1351,12 @@ describe("desktopShellView (state -> component tree)", () => {
       ),
     );
     const final = await Effect.runPromise(SubscriptionRef.get(state));
-    // OpenAgents does not start a provider turn yet: no sendMessage, no pending.
+    // OpenAgents does not start a provider turn here: no sendMessage, no pending.
     expect(calls).toHaveLength(0);
     expect(final.pending).toBe(false);
     expect(final.notes.map((note) => ({ role: note.role, text: note.text }))).toEqual([
       { role: "user", text: "Are you there?" },
-      { role: "assistant", text: "Stand by." },
+      { role: "assistant", text: "No inference lane is available for this turn." },
     ]);
   });
 
@@ -1465,7 +1466,7 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(answer.meta?.usageTruth).toBe("estimated");
   });
 
-  test("OpenAgents authority (AFS-03 #9081): a kernel refusal, failure, or unavailable host preserves the user entry and falls back to the fixed 'Stand by.' acknowledgement", async () => {
+  test("OpenAgents authority (AFS-03 #9081, #9145): a kernel refusal preserves the user entry and renders the honest typed refusal line", async () => {
     const turnHost = {
       submit: async (): Promise<DesktopTurnSubmitResult> => ({
         outcome: "refused",
@@ -1496,7 +1497,7 @@ describe("desktopShellView (state -> component tree)", () => {
     expect(final.pending).toBe(false);
     expect(final.notes.map((note) => ({ role: note.role, text: note.text }))).toEqual([
       { role: "user", text: "Are you there?" },
-      { role: "assistant", text: "Stand by." },
+      { role: "assistant", text: "The host route policy refused this turn." },
     ]);
   });
 
@@ -1536,13 +1537,21 @@ describe("desktopShellView (state -> component tree)", () => {
     );
     const final = await Effect.runPromise(SubscriptionRef.get(state));
     // No provider turn was started, and the submission was NOT swallowed by the
-    // codex-lane gate: the user message committed and the OpenAgents reply landed.
+    // codex-lane gate: the user message committed and the OpenAgents reply landed
+    // (#9145: with no turn host the reply is the honest unavailable line).
     expect(calls).toHaveLength(0);
     expect(final.pending).toBe(false);
     expect(final.notes.map((note) => ({ role: note.role, text: note.text }))).toEqual([
       { role: "user", text: "Are you there?" },
-      { role: "assistant", text: "Stand by." },
+      { role: "assistant", text: "No inference lane is available for this turn." },
     ]);
+  });
+
+  test("#9145: the renderer source carries no fixed standby-acknowledgement literal", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const source = await readFile(new URL("./shell.ts", import.meta.url), "utf8");
+    // Composed so this test file itself never contains the banned literal.
+    expect(source.includes(["Stand", "by."].join(" "))).toBe(false);
   });
 
   test("Full Auto (#8853): a flagged turn sends fullAuto:true exactly once -- main, not the renderer, decides whether to continue", async () => {

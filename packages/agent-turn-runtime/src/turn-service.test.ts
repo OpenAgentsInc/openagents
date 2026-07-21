@@ -3,7 +3,7 @@ import { describe, expect, test } from "vite-plus/test";
 
 import { ROUTE_RECOMMENDATION_SCHEMA_LITERAL, RouteRecommendation, TurnIntent } from "@openagentsinc/agent-runtime-schema";
 
-import { ThreadRepository, type ThreadTurnMessage } from "./ports.js";
+import { ThreadRepository, TurnPolicy, type ThreadTurnMessage } from "./ports.js";
 import {
   actionBrokerRecordingLayer,
   artifactResolverFixtureLayer,
@@ -11,6 +11,7 @@ import {
   fixtureCandidateSet,
   providerRegistryFixtureLayer,
   testTurnServiceLayer,
+  threadRepositoryMemoryLayer,
   turnJournalMemoryLayer,
   turnPolicyFixtureLayer,
   type ProviderFixtureOutcome,
@@ -183,5 +184,41 @@ describe("TurnService", () => {
     );
     expect(reloaded).not.toBeNull();
     expect(reloaded?.cardState).toBe("done");
+  });
+
+  test("the policy receives the registry's MAIN-OWNED descriptors (#9145 readiness-aware routing input)", async () => {
+    const seen: { value: ReadonlyArray<{ readonly candidate: string }> | undefined } = { value: undefined };
+    // Wrap the fixture policy so the decide input's additive `descriptors` field
+    // is observable while the decision itself stays the fixture's.
+    const capturingPolicy = Layer.effect(
+      TurnPolicy,
+      Effect.gen(function* () {
+        const fixture = yield* TurnPolicy;
+        return TurnPolicy.of({
+          decide: (input) =>
+            Effect.sync(() => {
+              seen.value = input.descriptors;
+            }).pipe(Effect.andThen(fixture.decide(input))),
+        });
+      }),
+    ).pipe(Layer.provide(turnPolicyFixtureLayer()));
+    const layer = turnServiceLayer.pipe(
+      Layer.provide(contextSourceFixtureLayer()),
+      Layer.provide(capturingPolicy),
+      Layer.provide(providerRegistryFixtureLayer("completes")),
+      Layer.provide(turnJournalMemoryLayer),
+      Layer.provide(threadRepositoryMemoryLayer),
+      Layer.provide(artifactResolverFixtureLayer),
+      Layer.provide(actionBrokerRecordingLayer),
+    );
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const service = yield* TurnService;
+        yield* service.start(startInput());
+      }).pipe(Effect.provide(layer)),
+    );
+    expect(seen.value).toBeDefined();
+    expect(seen.value).toHaveLength(1);
+    expect(seen.value![0]!.candidate).toBe("codex");
   });
 });

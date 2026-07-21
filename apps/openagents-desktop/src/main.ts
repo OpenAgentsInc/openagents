@@ -336,6 +336,7 @@ import {
   type CodexLaneReadiness,
   type CodexLaneTurnResult,
 } from "./turn/desktop-codex-provider.ts"
+import { makeHostedKhalaProviderRegistry } from "./turn/desktop-hosted-khala-provider.ts"
 import {
   filterLocallyOwnedCodexHistoryCatalog,
   filterLocallyOwnedCodexHistorySearch,
@@ -1521,6 +1522,22 @@ const resolveAppleFmEnvironmentContext = async (): Promise<AppleFmEnvironmentCon
     isOwnerDevice: true,
   })
 }
+/** The deterministic hosted-Khala smoke reply (#9145) the scripted SSE fetch serves. */
+const smokeHostedKhalaReply = "OpenAgents hosted Khala smoke reply."
+/**
+ * Scripted hosted-Khala SSE fetch for smoke mode (#9145): the smoke proof of
+ * the always-answering chat path must stay hermetic — no live network call —
+ * so the smoke serves the exact wire frames the real endpoint emits.
+ */
+const smokeHostedKhalaFetch: typeof fetch = async () =>
+  new Response(
+    [
+      `event: delta\ndata: ${JSON.stringify({ text: smokeHostedKhalaReply })}\n\n`,
+      `event: meta\ndata: ${JSON.stringify({ finishReason: "stop", servedModel: "khala-smoke", usage: { totalTokens: 8 } })}\n\n`,
+      `event: done\ndata: ${JSON.stringify({ done: true })}\n\n`,
+    ].join(""),
+    { status: 200, headers: { "content-type": "text/event-stream; charset=utf-8" } },
+  )
 if (desktopAfsTurnKernelEnabled()) {
   installDesktopTurnKernel({
     ipcMain: {
@@ -1560,6 +1577,14 @@ if (desktopAfsTurnKernelEnabled()) {
         runTurn: (input) => runDelegateLaneTurn(grokDelegateLaneRef, input),
       }),
     ],
+    // #9145: the hosted openagents.com Khala chat lane is the ALWAYS-READY
+    // router tail after Apple FM, so chat works on every host (the fixed
+    // "Stand by." fallback is removed). Public endpoint — no token. The smoke
+    // injects a scripted SSE fetch so the proof stays hermetic offline.
+    hostedKhalaProvider: makeHostedKhalaProviderRegistry({
+      getThreadStore: () => threads(),
+      ...(smokeMode ? { fetchImpl: smokeHostedKhalaFetch } : {}),
+    }),
   })
 }
 const fullAutoRegistry = openFullAutoRegistry(
@@ -7843,7 +7868,7 @@ const smokeCodexLocalStreaming = `(async () => {
   const input = document.querySelector('[data-en-key="shell-input"] [data-lexical-composer="true"], [data-en-key="shell-input"] textarea, [data-en-key="shell-input"] input')
   if (input === null) return { ok: false, reason: "composer input never mounted" }
   input.focus()
-  input.value = "Prove the OpenAgents standby acknowledgement"
+  input.value = "Prove the OpenAgents hosted Khala turn"
   input.dispatchEvent(new Event("input", { bubbles: true }))
   const readyDeadline = Date.now() + 10000
   while (Date.now() < readyDeadline) {
@@ -7858,11 +7883,13 @@ const smokeCodexLocalStreaming = `(async () => {
   )
   const bodiesBefore = assistantBodies().length
   input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }))
-  // Owner directive 2026-07-20: the OpenAgents turn is answered by Apple FM when
-  // the on-device model is available, otherwise by the fixed "Stand by."
-  // acknowledgement. The proof is a non-empty assistant reply with no provider
-  // sender label and a re-enabled composer — either answer is honest.
-  const standbyText = "Stand by."
+  // #9145: the OpenAgents turn is answered by Apple FM when the on-device model
+  // is available, otherwise by the ALWAYS-READY hosted Khala lane (scripted SSE
+  // fixture in smoke — the launcher stub keeps Apple FM unready here, so the
+  // reply is the deterministic hosted fixture text). The fixed "Stand by."
+  // fallback is removed. The proof is that exact non-empty assistant reply with
+  // no provider sender label and a re-enabled composer.
+  const hostedFixtureReply = "OpenAgents hosted Khala smoke reply."
   const lastAssistantText = () => {
     const bodies = assistantBodies()
     const last = bodies[bodies.length - 1]
@@ -7887,9 +7914,9 @@ const smokeCodexLocalStreaming = `(async () => {
   const noAssistantLabel = lastRow !== undefined &&
     lastRow.querySelector('[data-en-role="sender"]') === null
   return {
-    ok: noAssistantLabel && input.disabled === false,
-    standby: replyText === standbyText,
-    onDeviceAnswer: replyText !== standbyText,
+    ok: noAssistantLabel && input.disabled === false && replyText === hostedFixtureReply,
+    hostedAnswer: replyText === hostedFixtureReply,
+    text: replyText,
     noAssistantLabel,
     composerEnabled: input.disabled === false,
   }
@@ -8631,9 +8658,9 @@ const runSmoke = (window: BrowserWindow): void => {
         // The broad compatibility smoke retains the bounded codex-exec JSONL
         // fixture; the React smoke uses the protocol-speaking app-server peer
         // installed above. Production builds never set this env var.
-        await step("openagents-standby-turn-FIXTURE", smokeCodexLocalStreaming)
-        await captureShot(window, "11-openagents-standby")
-        // The standby acknowledgement has no provider execution metadata.
+        await step("openagents-hosted-khala-turn-FIXTURE", smokeCodexLocalStreaming)
+        await captureShot(window, "11-openagents-hosted-khala")
+        // #9145: the smoke reply comes from the scripted hosted Khala fixture.
         // Owner details-flash fix: typing in the composer must not change its
         // per-message details affordance's visibility.
         // A synthetic pointerleave does not update Chromium's CSS :hover

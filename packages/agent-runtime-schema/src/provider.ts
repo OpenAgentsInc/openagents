@@ -24,10 +24,14 @@ export const CANDIDATE_SCHEMA_LITERAL = "openagents.agent_turn_candidate.v1" as 
 /**
  * The owner-bound provider candidate vocabulary. Apple FM is a local advisory
  * inference lane, never an unrestricted provider. The remote lanes reuse the
- * current Desktop provider identities.
+ * current Desktop provider identities. `hosted_khala` (#9145) is the hosted
+ * openagents.com Khala chat lane — the always-available routed tail that keeps
+ * chat working when no local lane is ready (additive literal; it mirrors the
+ * existing `KhalaRuntimeLane` member of the same name).
  */
 export const TurnProviderCandidate = S.Literals([
   "apple_fm",
+  "hosted_khala",
   "codex",
   "claude",
   "grok_acp",
@@ -36,6 +40,7 @@ export const TurnProviderCandidate = S.Literals([
 export type TurnProviderCandidate = typeof TurnProviderCandidate.Type;
 export const turnProviderCandidates: ReadonlyArray<TurnProviderCandidate> = [
   "apple_fm",
+  "hosted_khala",
   "codex",
   "claude",
   "grok_acp",

@@ -536,10 +536,12 @@ export type DesktopShellState = Readonly<{
   composerPreviewContext: ComposerPreviewContext | null;
   notes: ReadonlyArray<DesktopNoteEntry>;
   /**
-   * Owner directive 2026-07-19: new turns route to the "OpenAgents" authority,
-   * which for now acknowledges with a fixed "Stand by." reply and starts no
-   * provider turn. Defaults on (undefined === on). Set explicitly to `false`
-   * to exercise the preserved Codex/Claude provider send path.
+   * Owner directive 2026-07-19 (amended by #9145): new turns route to the
+   * "OpenAgents" authority through the shared turn kernel, whose router set now
+   * always carries the hosted Khala tail — a non-answered outcome renders an
+   * honest typed failure line, never a fixed acknowledgement. Defaults on
+   * (undefined === on). Set explicitly to `false` to exercise the preserved
+   * Codex/Claude provider send path.
    */
   openAgentsStandby?: boolean;
   /** Which coding harness new turns target; "codex" preserves prior behavior. */
@@ -2699,13 +2701,28 @@ export type DesktopFullAutoRendererHost = Readonly<{
  * user's message and renders the compact terminal facts. `submit` resolves the
  * effective provider, placement, data destination, usage truth, and (when
  * answered) the assistant text; every non-answered outcome preserves the user
- * entry and the renderer falls back to the fixed "Stand by." acknowledgement.
+ * entry and renders an honest typed failure line (#9145 — the fixed standby
+ * acknowledgement is removed; the hosted Khala tail keeps this path rare).
  */
 export type DesktopTurnRendererHost = Readonly<{
   submit: (
     input: Readonly<{ threadRef: string; message: string }>,
   ) => Promise<DesktopTurnSubmitResult>;
 }>;
+
+/**
+ * The honest, bounded failure line for a non-answered kernel turn (#9145).
+ * With the always-ready hosted Khala router tail this path should be rare; it
+ * names the real outcome instead of a fixed acknowledgement.
+ */
+const turnFailureText = (result: DesktopTurnSubmitResult | null): string => {
+  if (result === null || result.outcome === "unavailable")
+    return "No inference lane is available for this turn.";
+  if (result.outcome === "cancelled") return "The turn was cancelled.";
+  if (result.outcome === "refused") return "The host route policy refused this turn.";
+  if (result.outcome === "answered") return "The turn produced no answer text.";
+  return "The turn failed before an answer was produced.";
+};
 const unavailableTurnHost: DesktopTurnRendererHost = {
   submit: async () => ({
     outcome: "unavailable",
@@ -3756,7 +3773,8 @@ export const makeDesktopShellHandlers = (
       // answers, the canonical assistant turn shows the effective provider,
       // placement, data destination, and usage truth. When the host refuses,
       // fails, is unavailable, or is cancelled, the user entry is preserved and
-      // the reply falls back to the fixed "Stand by." acknowledgement — the
+      // the reply is an honest typed failure line (#9145 — the router set now
+      // always carries the hosted Khala tail, so this path is rare) — the
       // renderer never builds a prompt or makes a route decision. The preserved
       // provider-send path below runs only when a caller explicitly opts out via
       // `openAgentsStandby: false` (its kernel migration is AFS-04).
@@ -3826,7 +3844,7 @@ export const makeDesktopShellHandlers = (
           result.outcome === "answered" &&
           result.text !== null &&
           result.text.trim() !== "";
-        const finalText = answered ? result!.text!.trim() : "Stand by.";
+        const finalText = answered ? result!.text!.trim() : turnFailureText(result);
         // Surface the effective route disclosure on the canonical assistant turn.
         const turnMeta: DesktopMessageMeta | undefined = answered
           ? {

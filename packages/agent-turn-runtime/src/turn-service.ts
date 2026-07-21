@@ -311,12 +311,18 @@ export const layer = Layer.effect(
         }
         const envelope = contextResult.envelope;
 
+        // Describe BEFORE the route decision (#9145): the host policy may apply
+        // readiness filtering over the same MAIN-OWNED descriptors the effective
+        // facts below are derived from. `descriptors` is additive policy input.
+        const descriptors = yield* registry.describe;
+
         const decision = yield* policy.decide({
           requestRef: input.requestRef,
           intent: input.intent,
           context: envelope,
           candidateSet: input.candidateSet,
           recommendation: input.recommendation ?? null,
+          descriptors,
         });
 
         if (decision.outcome === "closed") {
@@ -327,8 +333,6 @@ export const layer = Layer.effect(
         yield* applyNow(
           TurnTransition.RouteAdmitted({ selected: decision.selected, effective: decision.effective }),
         );
-
-        const descriptors = yield* registry.describe;
         const effective = descriptors.find((d) => d.providerRef === decision.effective);
         const facts: EffectiveFacts = effective
           ? {

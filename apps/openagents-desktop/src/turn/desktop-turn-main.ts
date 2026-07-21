@@ -160,6 +160,14 @@ export interface InstallDesktopTurnKernelDeps {
    */
   readonly delegateProviders?: ReadonlyArray<ProviderRegistryInterface>
   /**
+   * The hosted openagents.com Khala chat lane (#9145). When present it is an
+   * ALWAYS-READY router candidate ordered after Apple FM, so a host without a
+   * ready on-device lane (Linux, helper down) still answers through the hosted
+   * chat API instead of dead-ending. The readiness-aware policy skips an
+   * unready Apple FM and decides this lane.
+   */
+  readonly hostedKhalaProvider?: ProviderRegistryInterface
+  /**
    * The AFS-05 editor-context registry. When present, an Editor agent-rail submit
    * that carries an `editorContext` binding registers it here before the kernel
    * runs, so the shared `ContextSource` feeds the Editor's IDE-08 context into the
@@ -195,15 +203,16 @@ export const installDesktopTurnKernel = (
   deps: InstallDesktopTurnKernelDeps,
 ): InstalledDesktopTurnKernel => {
   const baseRegistry = deps.providerRegistry ?? placeholderProviderRegistry
-  // AFS-04 + #9091: fold every delegate lane (codex, claude, grok) into the
-  // kernel registry so a router recommendation can start one real delegation
-  // turn on the same runtime.
-  const delegateRegistries: ReadonlyArray<ProviderRegistryInterface> = [
+  // AFS-04 + #9091 + #9145: fold the hosted Khala router tail and every
+  // delegate lane (codex, claude, grok) into the kernel registry so one
+  // runtime serves the router turn, the hosted fallback, and delegation.
+  const extraRegistries: ReadonlyArray<ProviderRegistryInterface> = [
+    ...(deps.hostedKhalaProvider === undefined ? [] : [deps.hostedKhalaProvider]),
     ...(deps.codexProvider === undefined ? [] : [deps.codexProvider]),
     ...(deps.delegateProviders ?? []),
   ]
   const resolvedRegistry =
-    delegateRegistries.length === 0 ? baseRegistry : composeRegistries([baseRegistry, ...delegateRegistries])
+    extraRegistries.length === 0 ? baseRegistry : composeRegistries([baseRegistry, ...extraRegistries])
   const providerRegistryLayer = Layer.succeed(ProviderRegistry, ProviderRegistry.of(resolvedRegistry))
 
   const layer = TurnServiceLayer.pipe(
@@ -381,10 +390,16 @@ export const installDesktopTurnKernel = (
     }
     return Effect.runPromise(resolvedRegistry.describe)
       .then((descriptors) => {
-        // The Apple FM router lane runs the turn. The delegate lanes (codex,
-        // claude, grok) are hand-off targets, never the router; restrict the
-        // router set to the local lanes.
-        const routerDescriptors = descriptors.filter((descriptor) => descriptor.candidate === "apple_fm")
+        // The Apple FM router lane runs the turn when ready; the hosted Khala
+        // lane (#9145) is the always-ready ordered tail, so chat has a routable
+        // candidate on every host. The delegate lanes (codex, claude, grok) are
+        // hand-off targets, never the router. Order is owner-bound: apple_fm
+        // first, hosted_khala after — the readiness-aware policy decides the
+        // first READY lane.
+        const routerDescriptors = [
+          ...descriptors.filter((descriptor) => descriptor.candidate === "apple_fm"),
+          ...descriptors.filter((descriptor) => descriptor.candidate === "hosted_khala"),
+        ]
         const delegateDescriptors = descriptors.filter((descriptor) => isDelegateProvider(descriptor.candidate))
         if (routerDescriptors.length === 0) return unavailableSubmit
         const candidateSet = decodeCandidateSet({
@@ -412,8 +427,15 @@ export const installDesktopTurnKernel = (
             // claude, or grok) starts one real delegation turn. The host builds
             // the readiness map from MAIN-OWNED descriptors; an unavailable,
             // unauthenticated, or unadmitted lane produces no start and an honest
-            // refusal.
-            if (delegateDescriptors.length > 0 && projection.cardState === "done" && answerText !== null) {
+            // refusal. Route decode is an apple_fm ROUTER feature: a hosted
+            // Khala answer (#9145) is prose from the hosted mix and must never
+            // be interpreted as a delegation control frame.
+            if (
+              provider === "apple_fm" &&
+              delegateDescriptors.length > 0 &&
+              projection.cardState === "done" &&
+              answerText !== null
+            ) {
               const readiness: Partial<Record<DelegateProvider, CodexLaneReadiness>> = {}
               for (const descriptor of delegateDescriptors) {
                 if (isDelegateProvider(descriptor.candidate)) {
