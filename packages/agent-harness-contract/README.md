@@ -113,3 +113,10 @@ HARN-02 backs the cursor with a durable event log. HARN-03 and HARN-04 re-home
 the desktop provider lanes as adapters. HARN-05 merges readiness under the
 router. HARN-06 implements suspend and continue on every adapter. HARN-07 adds
 the managed sandbox as a harness sandbox provider.
+
+## Further reading
+
+- The runtime this package serves is mapped in
+  [`docs/desktop/2026-07-21-openagents-desktop-chat-runtime-reference.md`](../../docs/desktop/2026-07-21-openagents-desktop-chat-runtime-reference.md).
+- The next harvest layer (UI-message streaming, transport, SSE) is planned in
+  [`docs/fable/2026-07-21-ai-sdk-and-effect-ai-streaming-harvest-audit.md`](../../docs/fable/2026-07-21-ai-sdk-and-effect-ai-streaming-harvest-audit.md).

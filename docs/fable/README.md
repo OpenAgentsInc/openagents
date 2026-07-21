@@ -31,6 +31,13 @@ each source doc.
   — the execution prescription for this docs-direction cleanup: Tassadar/
   Psionic retired for now, non-Khala/non-business lanes postponed, and stale
   point-in-time records bannered.
+- [`2026-07-20-ai-sdk-harness-abstraction-harvest-analysis.md`](./2026-07-20-ai-sdk-harness-abstraction-harvest-analysis.md)
+  — the Vercel AI SDK harness-layer harvest that produced
+  `packages/agent-harness-contract` (HARN epic #9115, shipped).
+- [`2026-07-21-ai-sdk-and-effect-ai-streaming-harvest-audit.md`](./2026-07-21-ai-sdk-and-effect-ai-streaming-harvest-audit.md)
+  — the deeper AI SDK + Effect AI streaming pass: the ranked STREAM-01..07
+  live-to-UI harvest plan, with the runtime map in
+  [`../desktop/2026-07-21-openagents-desktop-chat-runtime-reference.md`](../desktop/2026-07-21-openagents-desktop-chat-runtime-reference.md).
 - [`2026-07-11-daily-coding-capability-audit.md`](./2026-07-11-daily-coding-capability-audit.md)
   — EP250 (#8712) capability audit: 30 days of local `~/.claude` and
   `~/.codex` session archives mined into a 33-capability taxonomy of

@@ -22,11 +22,21 @@ root `/Users/christopherdavid/work/openagents`.
 
 ## Version note
 
-This reference describes the on-disk code at HEAD `d4aa807106`. One recent
-delegate-streaming change (issue #9118, commit `23491d8d15`) is AHEAD of this
-HEAD and lives only in a sibling worktree. Where that change matters, the text
-says so and marks it as "not in HEAD". Confirm with `git log` before you rely on
-delegate live-streaming or delegate history.
+This reference describes the on-disk code at HEAD `d4aa807106`. The
+delegate-streaming and delegate-history change described below as "not in HEAD"
+has since LANDED on `main` as commit `91de284512` (stream the delegate answer
+live plus pass conversation history). Where the text marks that change as "not
+in HEAD", read it as merged. The renderer promotion of a single delegate answer
+to the primary assistant bubble is tracked by issue #9127.
+
+## Companions
+
+- [`../fable/2026-07-21-ai-sdk-and-effect-ai-streaming-harvest-audit.md`](../fable/2026-07-21-ai-sdk-and-effect-ai-streaming-harvest-audit.md)
+  — the ranked STREAM-01..07 harvest plan for the live-to-UI streaming path
+  this runtime lacks.
+- [`../fable/2026-07-20-ai-sdk-harness-abstraction-harvest-analysis.md`](../fable/2026-07-20-ai-sdk-harness-abstraction-harvest-analysis.md)
+  — the harness-layer harvest that produced `packages/agent-harness-contract`
+  (HARN epic #9115).
 
 ---
 

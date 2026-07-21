@@ -20,6 +20,12 @@ sources, `packages/agent-runtime-schema`, `packages/agent-turn-runtime`,
 `docs/fable/2026-07-17-full-auto-implementation-audit.md`,
 `specs/desktop/full-auto.product-spec.md` (rev 14).
 **Companion:** [`2026-07-20-full-auto-first-verifiable-mode.md`](./2026-07-20-full-auto-first-verifiable-mode.md).
+**Follow-ups:** the HARN epic #9115 shipped this harvest as
+`packages/agent-harness-contract` (HARN-01..HARN-08, all closed 2026-07-21).
+The deeper streaming pass is
+[`2026-07-21-ai-sdk-and-effect-ai-streaming-harvest-audit.md`](./2026-07-21-ai-sdk-and-effect-ai-streaming-harvest-audit.md),
+and the runtime these land in is mapped in
+[`../desktop/2026-07-21-openagents-desktop-chat-runtime-reference.md`](../desktop/2026-07-21-openagents-desktop-chat-runtime-reference.md).
 
 ---
 

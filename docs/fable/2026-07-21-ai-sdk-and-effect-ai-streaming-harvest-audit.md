@@ -11,6 +11,11 @@ named below require Sol admission and owner acceptance before any dispatch.
 harness-harvest analysis, because it is ranked strategy and recommendation
 work, not a fresh point-in-time teardown. The upstream teardown of record
 stays `docs/teardowns/2026-07-17-ai-sdk-v7-harnesses-teardown.md`.
+**Companions:**
+[`2026-07-20-ai-sdk-harness-abstraction-harvest-analysis.md`](./2026-07-20-ai-sdk-harness-abstraction-harvest-analysis.md)
+(the harness-layer harvest that produced `packages/agent-harness-contract`) and
+[`../desktop/2026-07-21-openagents-desktop-chat-runtime-reference.md`](../desktop/2026-07-21-openagents-desktop-chat-runtime-reference.md)
+(the full map of the runtime these recommendations land in).
 
 **Sources (read as real code, ideas re-derived, no code vendored):**
 - Vercel AI SDK `main` at commit `6b6a8bbe92`, read-only reference clone

@@ -856,7 +856,7 @@
     },
     {
       "path": "apps/openagents-desktop/README.md",
-      "sha256": "537a1e383cef80019653d9b2edb32949def353f6ac567ac68f06420d57ad019c",
+      "sha256": "e5d0047c722c22e6134915e93943a700249641d234faf53bfe7d4449d5eca4cd",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -21613,7 +21613,7 @@
     },
     {
       "path": "docs/desktop/2026-07-21-openagents-desktop-chat-runtime-reference.md",
-      "sha256": "6216bc12f2d23a522c1290756e251304febac5e6d8d73d68dbffed4d23b54211",
+      "sha256": "5c6db620173511de709cd87edfb8750bbe6ee0d55e2075b8fd26f45c68b7eb76",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -23911,7 +23911,7 @@
     },
     {
       "path": "docs/fable/2026-07-20-ai-sdk-harness-abstraction-harvest-analysis.md",
-      "sha256": "f05305ab5af88c5f558d422f472a410a96b763a05948ad03fb5fd89c7859cca5",
+      "sha256": "f5799589bac363683cfad51fd0e97d43e5c49cb5a933c9867d5b73262fa4f4e2",
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
@@ -23967,7 +23967,7 @@
     },
     {
       "path": "docs/fable/2026-07-21-ai-sdk-and-effect-ai-streaming-harvest-audit.md",
-      "sha256": "9a764fba0af749851ad9bd6db4e1336cda3cc93f953dbde90fcc0ab5f234520c",
+      "sha256": "5ff9ee7df526b3561acb07dd9ab9d19828da3a6622d40cb36b90f24ae6f9b2a8",
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
@@ -24023,7 +24023,7 @@
     },
     {
       "path": "docs/fable/README.md",
-      "sha256": "40970f4f6f6560c03f6e1de62551f7a7c1f57583a7c2b5ae9ff5d6250c5df40b",
+      "sha256": "db57ff07ff41abcf29f5ae956511b2a34ee9816434a08008b6707d0327e18610",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -46562,7 +46562,7 @@
     },
     {
       "path": "packages/agent-harness-contract/README.md",
-      "sha256": "bb2656c86aa37ddd0654387f6c59a55d1f1369634cccf595c76a7fdffe15b37e",
+      "sha256": "a7ab750b9dcf876f1ae75e92d5d72755e7a03e280a1a0dd68c0d04b96ae83ca6",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

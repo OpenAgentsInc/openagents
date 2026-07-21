@@ -10,6 +10,12 @@ Current public, test-backed promises are summarized in
 [`GUARANTEES.md`](./GUARANTEES.md). Agents should use that document rather than
 infer guarantees from roadmap material or screenshots.
 
+The full map of the custom chat and agent runtime (the two execution stacks,
+event vocabularies, lanes, Apple FM router and delegation, streaming path,
+state and durability, renderer transcript, sharp edges) is
+[`docs/desktop/2026-07-21-openagents-desktop-chat-runtime-reference.md`](../../docs/desktop/2026-07-21-openagents-desktop-chat-runtime-reference.md).
+Read it before you change chat, streaming, history, or provider-lane behavior.
+
 The binding target process/data/authority design is
 [`docs/sol/2026-07-10-openagents-desktop-product-architecture.md`](../../docs/sol/2026-07-10-openagents-desktop-product-architecture.md).
 It keeps the signed Effect Native renderer tokenless, places OpenAgents
