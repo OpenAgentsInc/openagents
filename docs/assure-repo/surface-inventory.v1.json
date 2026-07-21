@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:83229b1d7baa0d9da1ad3e2e596afb81b4668d141a55340dcc00fac7f7946287",
+  "sourceDigest": "sha256:387e52789a7659b7754d7156960be2938a0cf5a681df8b20391219e4e7b92900",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -2282,7 +2282,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "packages/khala-ai-sdk-core (2 tracked test files)"
+          "ref": "packages/khala-ai-sdk-core (3 tracked test files)"
         }
       ],
       "obligation": {

@@ -28,6 +28,7 @@ import {
 import { Effect } from "effect"
 
 export * from "./effect-ai.js"
+export * from "./execution-plan-fallback.js"
 
 export type KhalaAiSdkCoreStreamTextResult = Readonly<{
   stream: AsyncIterable<unknown>
