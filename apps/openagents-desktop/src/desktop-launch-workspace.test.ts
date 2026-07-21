@@ -35,4 +35,24 @@ describe("desktopLaunchWorkspaceRoot", () => {
       isDirectory: () => false,
     })).toBe("/Users/owner")
   })
+
+  test("never returns the filesystem root — a Finder/Dock launch (cwd '/') falls back to home", () => {
+    // `/` is a directory, but returning it opens the app against the whole
+    // filesystem and triggers the macOS permission-prompt storm (#9156/#9157).
+    expect(desktopLaunchWorkspaceRoot({
+      explicitRoot: undefined,
+      processWorkingDirectory: "/",
+      homeRoot: "/Users/owner",
+      isDirectory: () => true,
+    })).toBe("/Users/owner")
+  })
+
+  test("an explicit root of '/' is also rejected in favor of home", () => {
+    expect(desktopLaunchWorkspaceRoot({
+      explicitRoot: "/",
+      processWorkingDirectory: "/",
+      homeRoot: "/Users/owner",
+      isDirectory: () => true,
+    })).toBe("/Users/owner")
+  })
 })
