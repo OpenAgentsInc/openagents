@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "vite-plus/test"
+import { createHash } from "node:crypto"
 import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
@@ -64,6 +65,26 @@ afterEach(() => {
 })
 
 describe("Desktop bounded workspace service", () => {
+  test("classifies directories stat-free so listing a folder never stats its children (#9157)", () => {
+    // Statting a child that is a macOS-protected folder (Desktop / Documents /
+    // Downloads) fires a TCC permission prompt, so listing the home directory
+    // used to fire one prompt per protected subfolder. Directory entries must
+    // be classified from the readdir Dirent alone (no stat), carrying a
+    // path-derived, stat-free revision; only files are statted.
+    const root = makeRoot()
+    mkdirSync(path.join(root, "sub"))
+    writeFileSync(path.join(root, "file.txt"), "x")
+    const page = workspaceTreePage({ root, grantRef: "workspace.grant.9157", directoryRef: "" })
+    if (page.state !== "available") throw new Error("expected an available tree page")
+    const directory = page.entries.find(entry => entry.pathRef === "sub")
+    const file = page.entries.find(entry => entry.pathRef === "file.txt")
+    expect(directory).toMatchObject({ kind: "directory", sizeBytes: null })
+    expect(directory?.revisionRef).toBe(
+      `workspace.entry.${createHash("sha256").update("sub\0directory").digest("hex")}`,
+    )
+    expect(file).toMatchObject({ kind: "file", sizeBytes: 1 })
+  })
+
   test("strips inherited Git hook context from fixture repositories", () => {
     const environment = isolatedGitEnvironment({
       PATH: process.env.PATH,

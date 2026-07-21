@@ -148,25 +148,50 @@ const safeDirectoryEntries = (
   sizeBytes: number | null
   revisionRef: string
 }>> => {
-  const candidates = readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
+  // Classify every entry from its Dirent (the type comes from readdir itself,
+  // no per-child syscall) and stat ONLY files. Directories are listed lazily
+  // and re-read when the user expands them, so they are never statted here.
+  // This is what stops the macOS permission-prompt storm (#9157): statting a
+  // child that is a protected folder (Desktop / Documents / Downloads) fires a
+  // TCC prompt, so listing the home directory previously fired one per
+  // protected subfolder. A file still gets a stat for its size and content
+  // revision; a directory carries a stat-free, path-derived revision.
+  const canonicalRoot = realpathSync(root)
+  const candidates = readdirSync(directory, { withFileTypes: true }).flatMap((entry): ReadonlyArray<Readonly<{
+    absolutePath: string
+    name: string
+    pathRef: string
+    kind: "file" | "directory"
+    sizeBytes: number | null
+    revisionRef: string
+  }>> => {
     if (defaultIgnoredName(entry.name) || secretShapedName(entry.name)) return []
+    if (entry.isSymbolicLink() || (!entry.isFile() && !entry.isDirectory())) return []
     const absolutePath = path.join(directory, entry.name)
-    try {
-      const stats = lstatSync(absolutePath)
-      if (stats.isSymbolicLink() || (!stats.isFile() && !stats.isDirectory())) return []
-      const pathRef = path.relative(realpathSync(root), absolutePath).split(path.sep).join("/")
-      if (workspacePathRef(pathRef) === null) return []
-      const kind = stats.isDirectory() ? "directory" as const : "file" as const
-      const revisionRef = `workspace.entry.${createHash("sha256")
-        .update(`${pathRef}\0${stats.size}\0${stats.mtimeMs}\0${stats.mode}`)
-        .digest("hex")}`
+    const pathRef = path.relative(canonicalRoot, absolutePath).split(path.sep).join("/")
+    if (workspacePathRef(pathRef) === null) return []
+    if (entry.isDirectory()) {
       return [{
         absolutePath,
-        kind,
+        kind: "directory" as const,
         name: entry.name,
         pathRef,
-        revisionRef,
-        sizeBytes: kind === "file" ? stats.size : null,
+        revisionRef: `workspace.entry.${createHash("sha256").update(`${pathRef}\0directory`).digest("hex")}`,
+        sizeBytes: null,
+      }]
+    }
+    try {
+      const stats = lstatSync(absolutePath)
+      if (!stats.isFile()) return []
+      return [{
+        absolutePath,
+        kind: "file" as const,
+        name: entry.name,
+        pathRef,
+        revisionRef: `workspace.entry.${createHash("sha256")
+          .update(`${pathRef}\0${stats.size}\0${stats.mtimeMs}\0${stats.mode}`)
+          .digest("hex")}`,
+        sizeBytes: stats.size,
       }]
     } catch {
       return []
