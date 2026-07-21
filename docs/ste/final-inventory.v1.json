@@ -21612,8 +21612,26 @@
       }
     },
     {
+      "path": "docs/desktop/2026-07-21-chat-runtime-unified-roadmap.md",
+      "sha256": "bd7d96844e59d32861c6faf2355783233ca77dc1e642a84b42b65eb13b80e0b3",
+      "reason": "Final review of mutable first-party agent technical text",
+      "profile": {
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ]
+      }
+    },
+    {
       "path": "docs/desktop/2026-07-21-openagents-desktop-chat-runtime-reference.md",
-      "sha256": "5c6db620173511de709cd87edfb8750bbe6ee0d55e2075b8fd26f45c68b7eb76",
+      "sha256": "b90a8106f5fe07c9e7c03026e9f505b8236bfa95f121d0d419167115c1887153",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -38317,7 +38335,7 @@
     },
     {
       "path": "docs/research/rlm/README.md",
-      "sha256": "77f418ca5981ffae068cc9da925d1156e22eb74c7ae55086be640a09c507b711",
+      "sha256": "2468a1bb333a0b804a4dbf039cea63913b4659bda955d3e41c8d32f42d15cada",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -38709,6 +38727,24 @@
         "ste_status": "inspected",
         "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
         "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/rlm/2026-07-21-rlm-integration-audit-and-roadmap.md",
+      "sha256": "e4f94c7245562e441821a9cb32db0172fff3bac13e27b61511f8cca059485890",
+      "reason": "Final review of mutable first-party agent technical text",
+      "profile": {
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ]
       }
     },
     {

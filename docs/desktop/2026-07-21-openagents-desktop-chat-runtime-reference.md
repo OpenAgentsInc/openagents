@@ -31,6 +31,12 @@ to the primary assistant bubble is tracked by issue #9127.
 
 ## Companions
 
+- [`2026-07-21-chat-runtime-unified-roadmap.md`](./2026-07-21-chat-runtime-unified-roadmap.md)
+  — the unified sequencing of the STREAM (#9128) and RLM (#9136) programs plus
+  #9127 over this runtime.
+- [`../rlm/2026-07-21-rlm-integration-audit-and-roadmap.md`](../rlm/2026-07-21-rlm-integration-audit-and-roadmap.md)
+  — the RLM history-recall integration audit.
+
 - [`../fable/2026-07-21-ai-sdk-and-effect-ai-streaming-harvest-audit.md`](../fable/2026-07-21-ai-sdk-and-effect-ai-streaming-harvest-audit.md)
   — the ranked STREAM-01..07 harvest plan for the live-to-UI streaming path
   this runtime lacks.

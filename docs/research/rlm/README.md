@@ -60,3 +60,11 @@ execution as first-class product work. RLM is a concrete pattern for:
 It does **not** replace OpenAgents authority, receipt, or product-promise gates.
 Use it as a candidate executor pattern on sandboxed capacity, not as online
 governance authority.
+
+## Integration program
+
+The full integration audit, architecture, and the RLM epic/issue program live
+in [`../../rlm/2026-07-21-rlm-integration-audit-and-roadmap.md`](../../rlm/2026-07-21-rlm-integration-audit-and-roadmap.md)
+(epic #9136, RLM-01..RLM-08 = #9137-#9144). The unified chat-runtime
+sequencing is
+[`../../desktop/2026-07-21-chat-runtime-unified-roadmap.md`](../../desktop/2026-07-21-chat-runtime-unified-roadmap.md).
