@@ -39,6 +39,15 @@ package is HARN-01 of the HARN epic (#9115).
   and **`bootstrap.ts`**.
 - **`reference-adapter.ts`** and **`event-builder.ts`** — an in-memory
   reference `AgentHarness` and event builders for the conformance suite.
+- **`sandbox.ts`** and **`local-sandbox-provider.ts`** (HARN-07 core) — the
+  harness sandbox-provider contract. `HarnessSandboxProvider` is the stable
+  factory for a `HarnessSandboxSession` workspace with file I/O and command
+  execution. Optional methods signal capability. A provider that cannot expose
+  ports omits `getPortUrl`. A provider that cannot rehydrate a session omits
+  `resumeSession`. The provider owns the sandbox lifecycle and the adapter never
+  calls `stop`. `makeLocalSandboxProvider` is an in-memory test double for
+  hermetic conformance. The managed-sandbox substrate implements this port in the
+  desktop cutover. Phase-1 managed sandbox omits `getPortUrl`.
 - **`event-log-store.ts`** and **`event-log.ts`** (HARN-02) — the durable
   seq-cursor event log. `HarnessEventLogStore` is the persistence port (the
   in-memory reference ships here, the desktop local-turn journal and the

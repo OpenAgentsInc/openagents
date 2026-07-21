@@ -21,7 +21,9 @@
     "./event-log": "./src/event-log.ts",
     "./session": "./src/session.ts",
     "./adapter": "./src/adapter.ts",
-    "./reference-adapter": "./src/reference-adapter.ts"
+    "./reference-adapter": "./src/reference-adapter.ts",
+    "./sandbox": "./src/sandbox.ts",
+    "./local-sandbox-provider": "./src/local-sandbox-provider.ts"
   },
   "publishConfig": {
     "access": "public"

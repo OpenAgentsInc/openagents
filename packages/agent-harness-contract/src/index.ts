@@ -12,3 +12,5 @@ export * from "./event-log.ts";
 export * from "./session.ts";
 export * from "./adapter.ts";
 export * from "./reference-adapter.ts";
+export * from "./sandbox.ts";
+export * from "./local-sandbox-provider.ts";

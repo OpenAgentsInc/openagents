@@ -46294,7 +46294,7 @@
     },
     {
       "path": "packages/agent-harness-contract/README.md",
-      "sha256": "55423276c9bd7353d931e48ae0acc9e4f0c45c2ff7085d4ba5aed510c753de0a",
+      "sha256": "12cd44ec1f8d34687d1635b994451c76a7517ce0183a0b64685b82bc78e24fc3",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
