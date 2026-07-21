@@ -24056,6 +24056,20 @@
       }
     },
     {
+      "path": "docs/fable/2026-07-21-ai-sdk-division-of-labor-status-audit.md",
+      "sha256": "a209334406675c11435779ad715984fef7b98adde5172a7158dd05ad46a9ccf5",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "ste_status": "source-data",
+        "ste_reviewer": null,
+        "ste_reviewed_at": null,
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null
+      }
+    },
+    {
       "path": "docs/fable/2026-07-21-effect-native-openagents-ai-sdk-analysis.md",
       "sha256": "9c573bf0b4d987b9d2eb02d33f85170358aaee5a018ac4e1ff34214beb3b6643",
       "reason": "Immutable historical or evidence source data",
@@ -24113,7 +24127,7 @@
     },
     {
       "path": "docs/fable/README.md",
-      "sha256": "cdd527ee6020bebf65d7df547a96874c99be33a8eadfc1bb53b73f0cb501bfa7",
+      "sha256": "407ac9a151e8d97e9aa8d64449c78e9cebdd90b92d8c5dfbbf7fa50f9a0d4d4d",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

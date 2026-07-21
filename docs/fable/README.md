@@ -34,6 +34,11 @@ each source doc.
 - [`2026-07-20-ai-sdk-harness-abstraction-harvest-analysis.md`](./2026-07-20-ai-sdk-harness-abstraction-harvest-analysis.md)
   — the Vercel AI SDK harness-layer harvest that produced
   `packages/agent-harness-contract` (HARN epic #9115, shipped).
+- [`2026-07-21-ai-sdk-division-of-labor-status-audit.md`](./2026-07-21-ai-sdk-division-of-labor-status-audit.md)
+  — the end-of-day status record: the extraction to `OpenAgentsInc/ai`, the
+  npm consumption swap, the division-of-labor rules between the SDK repo and
+  this monorepo, the ambitious next additions (Programs/DSPy-Effect, RLM
+  deepening, generative UI), and the Full Auto next-actions queue.
 - [`2026-07-21-effect-native-openagents-ai-sdk-analysis.md`](./2026-07-21-effect-native-openagents-ai-sdk-analysis.md)
   — the Effect-native OpenAgents AI SDK analysis: the publishable layer
   diagram, the staged-incubation placement decision (in-monorepo now,
