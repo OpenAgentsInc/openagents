@@ -55,7 +55,7 @@ reasoning (OOLONG-Pairs, LongCoT) under one scaffold.
   can exceed base because of failed search paths.
 - **Runtime numbers** are implementation-bound (blocking calls). The paper says
   this explicitly. Do not treat wall-clock as a scientific limit.
-- **Root / worker model split** (GPT-5 + GPT-5-mini) is a practical system
+- **Root / sub-model split** (GPT-5 + GPT-5-mini) is a practical system
   choice, not pure “same model recursively.” Gains mix scaffold skill with
   heterogeneous model routing.
 - **Training story is early**: 1k distilled turns, one teacher family, heavy

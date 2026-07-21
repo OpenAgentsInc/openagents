@@ -61,7 +61,7 @@ be driven from programs over the full prompt object.
 - Python REPL.
 - Tools (including sub-LM / sub-RLM) as modules / functions.
 - Root model and recursive models may differ (for GPT-5 experiments: GPT-5 root,
-  GPT-5-mini recursive workers).
+  GPT-5-mini recursive sub-models).
 - Recursion **depth** is a first-class knob:
   - depth 0: REPL only, no sub-calls
   - depth 1: sub-LM calls

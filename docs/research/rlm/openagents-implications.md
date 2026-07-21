@@ -7,16 +7,21 @@ issues.
 
 ## Prior OpenAgents position
 
-The 2026-06-28 audit already recommended a **hybrid**:
+The 2026-06-28 audit already recommended a **hybrid** (read that file as a
+historical decision record only: its old online runtime substrate is retired.
+Current production infrastructure authority is Google Cloud):
 
-- Python RLM as a **leaf executor** on sandbox-capable tiers.
-- Effect/TypeScript as **online authority** (selection, gates, receipts).
-- Do not reimplement the full RLM REPL stack inside Workers.
+- Python RLM as a **leaf executor** on sandbox-capable tiers (Pylon, containers,
+  or admitted Google Cloud capacity).
+- Effect/TypeScript as **online authority** (selection, gates, receipts) on the
+  supported Node / Cloud Run product path.
+- Do **not** reimplement the full RLM REPL stack inside the online API process
+  (the Cloud Run monolith or any other latency-sensitive product server).
 
 This folder’s paper + repo reading **supports that hybrid**. It does not reverse
-it. The paper’s strongest results depend on exactly the properties that make a
-Worker port unattractive: long-running loops, code execution, multi-hop subcalls,
-and variable cost tails.
+it. The paper’s strongest results depend on exactly the properties that make an
+in-process online port unattractive: long-running loops, code execution,
+multi-hop subcalls, and variable cost tails.
 
 ## Where RLM maps onto OpenAgents surfaces
 
@@ -87,7 +92,8 @@ From paper limits + repo knobs, any pilot should require:
 
 ## What not to do
 
-- **Do not** rewrite `rlm` in Effect for Workers as an early goal.
+- **Do not** rewrite the full `rlm` REPL stack in Effect on the online product
+  path as an early goal.
 - **Do not** treat RLM accuracy on BrowseComp/OOLONG as an OpenAgents product
   promise without a registered promise + verification gate.
 - **Do not** let RLM subcalls bypass spend, network, or repository policy.

@@ -178,7 +178,8 @@ Prime Intellect’s stack:
 
 - `RLMTrainEnv` — `verifiers.MultiTurnEnv` mirroring depth=1 completion.
 - Subprocess-isolated REPL backend (safer than in-process during RL).
-- Sub-LM proxy so training inference servers answer `llm_query` from workers.
+- Sub-LM proxy so training inference servers answer `llm_query` from rollout
+  processes.
 - Example environment: **OOLONG** long-context QA.
 - Example config: `configs/rlm-qwen3-30b-example.toml`.
 - Documented HF artifact:
@@ -247,7 +248,7 @@ Python research/production hybrid library.
 
 **Weaknesses / costs**
 
-- Python-only. Not embeddable in OpenAgents Effect workers.
+- Python-only. Not a fit for the OpenAgents Effect online product path.
 - Local default is unsafe for hostile prompts.
 - Operational complexity: TCP handler lifecycle, sandbox credentials, cost
   variance.

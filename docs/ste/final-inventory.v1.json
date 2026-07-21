@@ -38273,7 +38273,7 @@
     },
     {
       "path": "docs/research/rlm/openagents-implications.md",
-      "sha256": "8dfd7d3eb908c4d5e58640b5d29b93e7d590c7549a6bbc393f39ed63c09a1f7d",
+      "sha256": "3f9456fb84db11d468b97a4d68b1a0c48f5e61d76ed816a0f9315d92ac882916",
       "profile": {
         "ste_issue": 9,
         "ste_mode": "descriptive",
@@ -38297,7 +38297,7 @@
     },
     {
       "path": "docs/research/rlm/paper-analysis.md",
-      "sha256": "856335ec5f8cbaa3c21bc8724bddb3f6faca9ae24e9bca912a3a1c535172f076",
+      "sha256": "02a05f1e6adecbc9d033f6e31f19e91b8f83da8655219a49d3adcebf393b312a",
       "profile": {
         "ste_issue": 9,
         "ste_mode": "descriptive",
@@ -38321,7 +38321,7 @@
     },
     {
       "path": "docs/research/rlm/paper-summary.md",
-      "sha256": "27b399e4f0cae30a6405c5d34e7fab331d75eacf45674918718d2edf8238557d",
+      "sha256": "c4425c1d75f6fde7cc1b53491f02611e0d6bbbedb0f0a2e4db9b69da14805b74",
       "profile": {
         "ste_issue": 9,
         "ste_mode": "descriptive",
@@ -38345,7 +38345,7 @@
     },
     {
       "path": "docs/research/rlm/repo-analysis.md",
-      "sha256": "3c848ae5f9d407f527d617e8124fcb2a880abfc4782ac7e6e0d065fa3d0b9ff6",
+      "sha256": "ee8a2cdd711a4d93bde5711469bf090f9739fce8760f9150a1d86d3b6722d644",
       "profile": {
         "ste_issue": 9,
         "ste_mode": "descriptive",
