@@ -10,42 +10,76 @@
  * proof that supports it and to the honest evidence rung the claim actually
  * stands on.
  *
- * The invariant, enforced by `afs-11-claim-evidence.test.ts`, is that no claim
- * sits above its actual evidence:
+ * What this guard does and does not verify. This is the boundary an earlier
+ * audit (orrery, #9089) found overstated, so it is written plainly here. The
+ * guard is a structural, mechanical check. It does NOT re-run the cited proofs.
+ * Working with `afs-11-claim-evidence.test.ts`, it proves:
  *
- *   - Every claim cites at least one proof.
- *   - Every cited proof file exists in the repository.
- *   - A claim on an achieved rung (unit-tested, integration-proven, or
- *     packaged-proven) cites at least one proof of that kind that actually ran
- *     and passed. Its rung is never higher than the strongest passing proof.
- *   - The `owner-signing-pending` rung is reserved for the release outcome that
- *     an autonomous agent must not assert. Its cited signing proof is a
- *     refused-or-not-run owner ceremony, never a passing result, and it must
- *     point at the owner action ledger.
+ *   - Coverage: every version-one capability from the cut line is present, and
+ *     each claim cites at least one proof.
+ *   - Source binding: each version-one capability claim text is present verbatim
+ *     in the plan cut line, so the transcription cannot silently drift from its
+ *     source (the test reads the plan file).
+ *   - File existence: every cited proof file exists in the repository.
+ *   - Proof shape and rung consistency: a runnable (unit or integration) proof
+ *     must be a sweep-collected test file or a wired `check-` script, a ceremony
+ *     (packaged or owner-signing) proof must be a script or runbook and never a
+ *     sweep test, and a claim's rung is never above the strongest proof KIND
+ *     that its ledger record marks as passing.
+ *   - Reserved reservation: the `owner-signing-pending` outcome is marked
+ *     blocked-on-owner, its cited signing proof is refused-or-not-run and never
+ *     a passing result, and its reserved-step reference resolves to a real
+ *     in-repository file.
+ *   - Receipt pinning: the ceremony evidence record exists on disk, so any proof
+ *     that records a manual ceremony run is anchored to a committed receipt.
  *
- * The runnable proofs already exist and pass; the signed and notarized
- * installed-application proof stays owner-reserved. This ledger records that
- * split honestly. It never claims a signed-release proof that did not run.
+ * The pass or refuse VERDICTS of the cited proofs are produced elsewhere, not by
+ * this guard. Runnable (unit and integration) proofs are `.test.ts`/`.test.tsx`
+ * files or `check-` scripts that the normal `pnpm run check` gate executes, so a
+ * red proof turns the completion gate red. Ceremony (packaged and owner-signing)
+ * proofs are hand-run release steps that an automated guard cannot and must not
+ * re-run, their recorded outcome lives in the committed, dated evidence record
+ * `docs/apple-fm/2026-07-20-afs-11-release-evidence.md`. The `ran` and `result`
+ * fields on each proof are that recorded state, not a verdict this module
+ * computes.
+ *
+ * The signed and notarized installed-application acceptance journey stays
+ * owner-reserved. This ledger records that split honestly. It never claims a
+ * signed-release proof that did not run.
  *
  * This module is a pure typed record plus pure validators, in the same style as
  * the sibling `release-preflight.ts` and `mvp-proof.ts` proof modules. It has no
  * platform, provider, or store dependency and never touches secrets.
  */
 
-/** The four honest rungs a version-one claim can stand on. */
+/** The rungs a version-one claim can stand on. The first three are achieved
+ *  evidence strengths. `owner-signing-pending` is not an evidence strength, it
+ *  is a reserved status that means no achieved evidence yet. */
 export type EvidenceRung =
   | "unit-tested"
   | "integration-proven"
   | "packaged-proven"
   | "owner-signing-pending"
 
-/** Increasing evidence strength. `owner-signing-pending` is the reserved top:
- *  it is the installed, signed application proof that an agent cannot run. */
+/** The reserved status that stands for the owner ceremony an agent must not
+ *  run. It is NOT the strongest rung, it means nothing is proven yet. */
+export const reservedRung: EvidenceRung = "owner-signing-pending"
+
+export const isReservedRung = (rung: EvidenceRung): boolean => rung === reservedRung
+
+/**
+ * Achieved evidence strength, increasing. An earlier audit (#9089) flagged that
+ * ranking `owner-signing-pending` above `packaged-proven` made the least-proven
+ * claim read as the most-proven to any numeric consumer. It is corrected here:
+ * the reserved status carries strength 0 (no achieved evidence), never a value
+ * above `packaged-proven`. A consumer that ranks claims by evidence strength
+ * must read the reserved status as the weakest, awaiting the owner ceremony.
+ */
 export const rungOrder: Readonly<Record<EvidenceRung, number>> = {
+  "owner-signing-pending": 0,
   "unit-tested": 1,
   "integration-proven": 2,
   "packaged-proven": 3,
-  "owner-signing-pending": 4,
 }
 
 /** What kind of evidence a proof provides. */
@@ -109,12 +143,32 @@ export const versionOneCapabilityIds = [
 export const releaseOutcomeClaimId = "C-SIGNED-RELEASE"
 
 /**
- * The path, relative to the workspace root, of the owner action ledger step for
- * the signed and notarized installed-application proof. The workspace
- * `NEEDS_OWNER.md` file records the exact owner steps; this ledger only points
- * at it so the reserved rung always names a real owner action.
+ * The plan file whose "Version-one cut line" section is the source of the
+ * version-one capability claims. The test reads it and asserts every capability
+ * claim text is present, so the ledger cannot drift from its source.
  */
-export const ownerSigningLedgerRef = "NEEDS_OWNER.md#afs-11-signed-notarized-installed-app-proof"
+export const versionOneCutLineSourceRef =
+  "docs/sol/2026-07-20-apple-fm-router-to-full-agent-system-plan.md"
+
+/**
+ * The committed, dated evidence record. It carries the recorded outcome of the
+ * ceremony proofs (release preflight, isolated-app proof, and the 2026-07-20
+ * signing and notarization receipt). Any proof whose `ran`/`result` records a
+ * manual ceremony is anchored to this file, which the test asserts exists.
+ */
+export const afs11EvidenceDocRef = "docs/apple-fm/2026-07-20-afs-11-release-evidence.md"
+
+/**
+ * The in-repository reference for the reserved owner step. It points at section
+ * 4 of the committed evidence record, which describes the one remaining
+ * owner-reserved action (the interactive installed-application acceptance
+ * journey) and, in turn, cites the workspace owner action ledger and the
+ * release signing runbook. An earlier audit (#9089) found the previous value
+ * pointed at a `NEEDS_OWNER.md` anchor that did not resolve, so this now names a
+ * real in-repository file that the test resolves on disk.
+ */
+export const ownerSigningLedgerRef =
+  "docs/apple-fm/2026-07-20-afs-11-release-evidence.md#4-the-owner-reserved-signed-release-proof"
 
 export const afs11ClaimLedger: ReadonlyArray<ClaimRecord> = [
   {
@@ -476,6 +530,24 @@ export const strongestPassingRung = (record: ClaimRecord): number => {
   return passing.reduce((max, proof) => Math.max(max, proofKindOrder[proof.kind]), 0)
 }
 
+/** True when the ref is a sweep-collected test file. */
+const isSweepTestRef = (ref: string): boolean => /\.test\.tsx?$/.test(ref)
+
+/** True when the ref is a wired boundary check script, for example
+ *  `scripts/check-afs-boundaries.ts`. Its basename starts with `check-`. */
+const isCheckScriptRef = (ref: string): boolean => /(^|\/)check-[^/]*\.ts$/.test(ref)
+
+/** A runnable (unit or integration) proof must be executed by the normal
+ *  `pnpm run check` gate: either a sweep test file or a wired check script. */
+const isRunnableProofRef = (ref: string): boolean => isSweepTestRef(ref) || isCheckScriptRef(ref)
+
+/** The reserved-step reference must name a real in-repository file, not free
+ *  prose. It must carry a path (a `/`) and a file extension (a `.`). */
+const looksLikeRepositoryPath = (ref: string): boolean => {
+  const filePart = ref.split("#")[0] ?? ""
+  return filePart.includes("/") && /\.[a-z0-9]+$/i.test(filePart) && !/\s/.test(filePart)
+}
+
 /**
  * Returns every way the ledger fails the "no claim above its evidence" rule.
  * An empty array means the ledger is honest. File existence is checked
@@ -487,6 +559,26 @@ export const ledgerViolations = (ledger: ReadonlyArray<ClaimRecord>): ReadonlyAr
     if (record.proofs.length === 0) {
       violations.push({ claimId: record.id, rule: "has-proof", detail: "claim cites no proof" })
       continue
+    }
+    // Proof-shape rules apply to every claim. A runnable proof must be a
+    // sweep-executed file, and a ceremony proof must never masquerade as one.
+    for (const proof of record.proofs) {
+      const runnableKind = proof.kind === "unit" || proof.kind === "integration"
+      if (runnableKind && !isRunnableProofRef(proof.ref)) {
+        violations.push({
+          claimId: record.id,
+          rule: "runnable-proof-shape",
+          detail: `a ${proof.kind} proof must be a sweep test or check script, not ${proof.ref}`,
+        })
+      }
+      const ceremonyKind = proof.kind === "packaged" || proof.kind === "owner-signing"
+      if (ceremonyKind && isSweepTestRef(proof.ref)) {
+        violations.push({
+          claimId: record.id,
+          rule: "ceremony-proof-shape",
+          detail: `a ${proof.kind} proof is a hand-run ceremony, it must not be a sweep test (${proof.ref})`,
+        })
+      }
     }
     if (record.rung === "owner-signing-pending") {
       if (record.blockedOnOwner !== true) {
@@ -501,6 +593,12 @@ export const ledgerViolations = (ledger: ReadonlyArray<ClaimRecord>): ReadonlyAr
           claimId: record.id,
           rule: "owner-pending-ledger-ref",
           detail: "an owner-signing-pending claim must point at the owner action ledger",
+        })
+      } else if (!looksLikeRepositoryPath(record.ownerReservedStepRef)) {
+        violations.push({
+          claimId: record.id,
+          rule: "owner-pending-ledger-ref-shape",
+          detail: "the reserved-step reference must name a real in-repository file, not free prose",
         })
       }
       const asserted = record.proofs.some(

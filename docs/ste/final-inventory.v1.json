@@ -15179,7 +15179,7 @@
     },
     {
       "path": "docs/apple-fm/2026-07-20-afs-11-release-evidence.md",
-      "sha256": "ace0a24c6d5aa749b5543fc538eb2d6997d7eca55323b8b418258db50ea7c672",
+      "sha256": "9a4d8cda4c7f89559c547f50fcffc0064c70239182d5d0c143a131734a439422",
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
@@ -16387,11 +16387,12 @@
     {
       "path": "docs/assurance/2026-07-21-full-auto-assurance-review-packet.md",
       "sha256": "b7f1059fec47bdf07f82e11392851494cf6188019bda9f4cbc712ce6a6fc4ff3",
-      "reason": "Final review of mutable first-party agent technical text",
+      "reason": "Final review of a converted document",
       "profile": {
-        "ste_status": "inspected",
-        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
         "ste_audience": "agent",
         "ste_agent_compact_revision": "openagents-agent-compact-v1",
         "ste_accepted_screening_rules": [
@@ -16399,7 +16400,10 @@
           "STE-3.6",
           "STE-5.1",
           "STE-8.2"
-        ]
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {
