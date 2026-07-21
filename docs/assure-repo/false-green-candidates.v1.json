@@ -4,7 +4,7 @@
   "note": "Heuristic false-green LEADS, not findings. A finding requires a demonstrated reproduction (surviving mutation via mutation-runner). Do not treat a candidate as a confirmed false green. Coverage-theater leads may include tests that delegate their assertion to a custom helper the classifier does not recognise; verify before acting.",
   "sourceDigest": "sha256:30bf8c49879e1fcb54e5fa417b0136885d6285617b6410fe80f902d722dce6c0",
   "summary": {
-    "filesScanned": 2459,
+    "filesScanned": 2461,
     "candidateCount": 20,
     "byMode": {
       "false_green_coverage_theater": 18,

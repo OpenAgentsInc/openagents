@@ -1,0 +1,38 @@
+{
+  "name": "@openagentsinc/agent-harness-contract",
+  "version": "0.1.0",
+  "private": false,
+  "license": "MIT",
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./capability": "./src/capability.ts",
+    "./skill": "./src/skill.ts",
+    "./host-tool": "./src/host-tool.ts",
+    "./common-tool": "./src/common-tool.ts",
+    "./permission": "./src/permission.ts",
+    "./lifecycle-state": "./src/lifecycle-state.ts",
+    "./stream": "./src/stream.ts",
+    "./session": "./src/session.ts",
+    "./adapter": "./src/adapter.ts",
+    "./reference-adapter": "./src/reference-adapter.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "test": "vp test --run packages/agent-harness-contract/src",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@openagentsinc/agent-runtime-schema": "workspace:*",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "typescript": "catalog:"
+  }
+}

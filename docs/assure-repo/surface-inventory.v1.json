@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:daf341b252fac00e97db98cf32674ef31447938a268f4ac066bf398e0817c08d",
+  "sourceDigest": "sha256:0dbc76b6abe64081350296d0a78e0baee87db818c9b88da97d3ff807789475ae",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -1602,6 +1602,23 @@
         {
           "type": "test",
           "ref": "packages/agent-experience-memory (5 tracked test files)"
+        }
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
+    },
+    {
+      "id": "package:@openagentsinc/agent-harness-contract",
+      "kind": "package",
+      "owningPath": "packages/agent-harness-contract",
+      "title": "@openagentsinc/agent-harness-contract",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/agent-harness-contract (2 tracked test files)"
         }
       ],
       "obligation": {
@@ -3244,17 +3261,17 @@
     }
   ],
   "summary": {
-    "totalSurfaces": 169,
+    "totalSurfaces": 170,
     "byKind": {
       "app": 16,
       "crate": 6,
       "document": 48,
-      "package": 88,
+      "package": 89,
       "public-endpoint": 2,
       "release-pipeline": 8,
       "worker": 1
     },
-    "withOracle": 155,
+    "withOracle": 156,
     "unverified": 14,
     "byUnverifiedReason": {
       "config-only": 2,
@@ -3262,7 +3279,7 @@
       "reference-only": 2
     },
     "byObligationState": {
-      "designed": 121,
+      "designed": 122,
       "inconclusive": 9,
       "mapped": 34,
       "out-of-scope": 5
