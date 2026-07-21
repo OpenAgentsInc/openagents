@@ -71,6 +71,20 @@ package is HARN-01 of the HARN epic (#9115).
   refs. One source feeds the kernel descriptor, FAV routing, the Apple FM
   candidate set, and the heartbeat.
 
+- **`acp-adapter.ts`** (HARN-04) — a generic ACP harness adapter factory.
+  `makeAcpHarnessAdapter` turns any admitted Agent Client Protocol peer (Grok,
+  Cursor) into an `AgentHarness`. `acpEventToKhalaEvents` projects the ACP
+  bridge vocabulary onto the neutral stream, and
+  `acpPermissionToRuntimeInteractionPayload` routes an approval through the
+  canonical `RuntimeInteraction` model instead of a bespoke path.
+- **`opencode-adapter.ts`** (HARN-08) — the opencode harness adapter.
+  `makeOpencodeAdapter` presents an opencode session as an `AgentHarness`, and
+  `opencodeEventToKhalaEvents` projects opencode's real session stream (text and
+  reasoning deltas, tool call and result, the step-ended usage boundary) onto
+  the neutral stream. opencode has no explicit turn boundary, so the adapter
+  synthesizes `turn.started` and derives `turn.finished` plus usage from the
+  step boundary.
+
 ## Conformance
 
 `reference-adapter.test.ts` proves the contract semantics. It covers full-turn

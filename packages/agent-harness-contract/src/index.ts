@@ -14,5 +14,7 @@ export * from "./readiness.ts";
 export * from "./session.ts";
 export * from "./adapter.ts";
 export * from "./reference-adapter.ts";
+export * from "./acp-adapter.ts";
+export * from "./opencode-adapter.ts";
 export * from "./sandbox.ts";
 export * from "./local-sandbox-provider.ts";
