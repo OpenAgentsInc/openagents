@@ -19361,6 +19361,24 @@
       }
     },
     {
+      "path": "docs/cloud/2026-07-21-sbx09-independent-verifier-packet.md",
+      "sha256": "fedeb83676eb81113cc64f1c95b54ca798b3a6e8e16554045cc655b004db7dfa",
+      "reason": "Final review of mutable first-party agent technical text",
+      "profile": {
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ]
+      }
+    },
+    {
       "path": "docs/cloud/ARCHITECTURE.md",
       "sha256": "ae6cccb0f49ddb5144bed792979392fd26e22c639c30fbb384b8c646779132c2",
       "reason": "Final review of a converted document",
