@@ -320,16 +320,22 @@ describe("FA-GD-01 guardrail enforcement halts a synthetic run with its typed re
         workspaceRef: GRANTED_WORKSPACE,
         guardrails: { maxTurns: 2 },
       })
-      // Two successful continuations consume the whole configured budget.
-      expect(await reconcile(registry, { dispatch: async () => ({ ok: true }) })).toEqual(["thread-turns"])
-      expect(await reconcile(registry, { dispatch: async () => ({ ok: true }) })).toEqual(["thread-turns"])
+      // Two successful continuations consume the whole configured budget. The
+      // second success settles the guardrail cap in the same pass (no third
+      // reconcile is required for terminal state).
       const violations: Array<FullAutoGuardrailViolation> = []
       let capCallback = 0
       expect(await reconcile(registry, {
         dispatch: async () => ({ ok: true }),
         onCapReached: () => { capCallback += 1 },
         onGuardrailStopped: (_threadRef, violation) => { violations.push(violation) },
-      })).toEqual([])
+      })).toEqual(["thread-turns"])
+      expect(violations).toEqual([])
+      expect(await reconcile(registry, {
+        dispatch: async () => ({ ok: true }),
+        onCapReached: () => { capCallback += 1 },
+        onGuardrailStopped: (_threadRef, violation) => { violations.push(violation) },
+      })).toEqual(["thread-turns"])
       const record = registry.record("thread-turns")
       expect(record?.enabled).toBe(false)
       expect(record?.blockedReason).toBe("guardrail_max_turns")
@@ -347,21 +353,22 @@ describe("FA-GD-01 guardrail enforcement halts a synthetic run with its typed re
         reason: "guardrail_max_turns",
       }])
 
-      // Absent guardrail: existing cap semantics byte-for-byte (reason,
-      // attribution, onCapReached), plus the additive stop_guardrail
+      // Absent guardrail: pre-dispatch cap when already at FULL_AUTO_MAX
+      // (reason, attribution, onCapReached), plus the additive stop_guardrail
       // decision fact.
       registry.set("thread-legacy-cap", true, { workspaceRef: GRANTED_WORKSPACE })
       for (let index = 0; index < FULL_AUTO_MAX_CONTINUATIONS; index += 1) {
         registry.incrementContinuation("thread-legacy-cap")
       }
       let legacyCapFor: string | null = null
+      const preDispatchViolations: Array<FullAutoGuardrailViolation> = []
       await reconcile(registry, {
         dispatch: async () => ({ ok: true }),
         onCapReached: threadRef => { legacyCapFor = threadRef },
-        onGuardrailStopped: (_threadRef, violation) => { violations.push(violation) },
+        onGuardrailStopped: (_threadRef, violation) => { preDispatchViolations.push(violation) },
       })
       expect(legacyCapFor).toBe("thread-legacy-cap")
-      expect(violations).toHaveLength(1)
+      expect(preDispatchViolations).toEqual([])
       expect(registry.record("thread-legacy-cap")?.blockedReason).toBe("continuation_cap_reached")
       expect(registry.record("thread-legacy-cap")?.disabledBy).toBe("continuation_cap")
       expect(registry.record("thread-legacy-cap")?.decisionHistory?.at(-1)).toMatchObject({

@@ -205,6 +205,32 @@ describe("Full Auto process restart", () => {
       rmSync(root, { recursive: true, force: true })
     }
   })
+
+  test("a single successful continuation at MAX-1 settles the cap in the same pass (packaged restart residual)", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "oa-full-auto-restart-same-pass-cap-"))
+    try {
+      const registry = openFullAutoRegistry(path.join(root, "full-auto", "registry.json"))
+      registry.set("thread-near-cap", true, { workspaceRef: GRANTED_WORKSPACE })
+      for (let index = 0; index < FULL_AUTO_MAX_CONTINUATIONS - 1; index += 1) {
+        registry.incrementContinuation("thread-near-cap")
+      }
+      let capReachedFor: string | null = null
+      const dispatchedThreads = await reconcile(registry, {
+        dispatch: async () => ({ ok: true }),
+        onCapReached: threadRef => { capReachedFor = threadRef },
+      })
+      expect(dispatchedThreads).toEqual(["thread-near-cap"])
+      expect(capReachedFor).toBe("thread-near-cap")
+      const record = registry.record("thread-near-cap")
+      expect(record?.enabled).toBe(false)
+      expect(record?.blockedReason).toBe("continuation_cap_reached")
+      expect(record?.disabledBy).toBe("continuation_cap")
+      // FA-H7: disabling zeroes the continuation count on the durable row.
+      expect(record?.continuationCount).toBe(0)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
 })
 
 describe("Full Auto workspace binding (FA-H2 #8875)", () => {

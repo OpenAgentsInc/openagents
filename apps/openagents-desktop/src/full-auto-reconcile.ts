@@ -599,6 +599,35 @@ export const reconcileFullAutoThreads = async (input: Readonly<{
             turnRef,
             ...(profile === undefined ? {} : { profile }),
           })
+          // Cap-terminal after the LAST successful continuation in the same
+          // pass. Waiting for a later reconcile leaves a one-turn window where
+          // the row is still enabled at the cap (breaks packaged two-process
+          // restart probes that seed at MAX-1 and expect a single fixture
+          // continuation to settle). Pre-dispatch cap handling above still
+          // covers rows already at the cap with no new dispatch.
+          if (continuationCount >= effectiveTurnCap) {
+            const guardrailCap = record.guardrails?.maxTurns !== undefined
+            const reason = guardrailCap ? "guardrail_max_turns" : "continuation_cap_reached"
+            input.registry.recordDecision(threadRef, {
+              decision: "stop_guardrail",
+              reason,
+              budgetRemaining: 0,
+            })
+            input.registry.set(threadRef, false, {
+              blockedReason: reason,
+              disabledBy: guardrailCap ? "guardrail" : "continuation_cap",
+            })
+            if (guardrailCap) {
+              input.onGuardrailStopped?.(threadRef, {
+                guardrail: "max_turns",
+                limit: effectiveTurnCap,
+                observed: continuationCount,
+                reason,
+              })
+            } else {
+              input.onCapReached?.(threadRef)
+            }
+          }
           return threadRef
         }
         failure = {

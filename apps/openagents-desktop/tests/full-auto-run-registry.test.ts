@@ -418,6 +418,20 @@ describe("Legacy registry migration (FA-AC-41)", () => {
     })
   })
 
+  test("legacy migration preserves continuationCount as successfulAttempts so near-cap rows do not restart the budget", () => {
+    withTempDir("oa-full-auto-migration-budget-", root => {
+      const runRegistry = openFullAutoRunRegistry(path.join(root, "runs.json"))
+      const outcome = migrateLegacyFullAutoRegistry({
+        legacyRecords: [legacyRecord({ continuationCount: 19 })],
+        runRegistry,
+      })
+      expect(outcome.migrated).toHaveLength(1)
+      expect(outcome.migrated[0]!.successfulAttempts).toBe(19)
+      expect(outcome.migrated[0]!.turnCap).toBe(20)
+      expect(outcome.migrated[0]!.state).toBe("running")
+    })
+  })
+
   test("a disabled legacy row does NOT migrate to an active run and cannot start merely because Desktop relaunches", () => {
     withTempDir("oa-full-auto-migration-disabled-", root => {
       const runRegistry = openFullAutoRunRegistry(path.join(root, "runs.json"))

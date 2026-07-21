@@ -782,6 +782,13 @@ export const migrateLegacyFullAutoRegistry = (input: Readonly<{
       skippedAlreadyMigrated.push(legacy.threadRef)
       continue
     }
+    // Preserve the legacy continuation budget so a near-cap row cannot
+    // restart at successfulAttempts=0 and run a full new turnCap after
+    // migration (FA-REL-01 packaged restart residual).
+    const preservedAttempts = Math.min(
+      Math.max(0, legacy.continuationCount),
+      FULL_AUTO_RUN_TURN_CAP_DEFAULT,
+    )
     const createInput: FullAutoRunCreateInput = {
       title: FULL_AUTO_LEGACY_MIGRATION_TITLE,
       objective: FULL_AUTO_LEGACY_MIGRATION_OBJECTIVE,
@@ -799,7 +806,16 @@ export const migrateLegacyFullAutoRegistry = (input: Readonly<{
       reason: `migrated from the legacy enabled registry row for threadRef ${legacy.threadRef}`,
     })
     if (result.ok) {
-      migrated.push(result.run)
+      let run = result.run
+      for (let index = 0; index < preservedAttempts; index += 1) {
+        const advanced = input.runRegistry.recordAttempt(
+          run.runRef,
+          "success",
+          { turnRef: `turn.legacy-migration.preserved.${index + 1}` },
+        )
+        if (advanced !== null) run = advanced
+      }
+      migrated.push(run)
       alreadyMigratedThreadRefs.add(legacy.threadRef)
       continue
     }
