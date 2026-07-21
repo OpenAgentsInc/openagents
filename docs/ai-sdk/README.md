@@ -24,15 +24,15 @@ Current consumer pin for OpenAgents Desktop RLM (OPENRLM-SDK #9154):
 
 ## OpenAgents-owned adapters (desktop)
 
-These stay in the monorepo; they are not copied engines:
+These adapters stay in the monorepo. They are not copied engines.
 
 - `apps/openagents-desktop/src/desktop-history-corpus-source.ts` —
   `DesktopHistoryCorpusSource` / `RlmCorpusSource` Layer over the durable
   event log + thread snapshots. Owns authorization and visibility policy.
 - `apps/openagents-desktop/src/history-recall-host.ts` — `history_recall`
   host dispatch (HistoryRecall Tier D vocabulary) plus Rlm deterministic
-  Grep path and `makeDesktopRlmToolHandler` (no artifact sink; strategy
-  `openagents.desktop.rlm.history.v1`).
+  Grep path and `makeDesktopRlmToolHandler`. No artifact sink. Strategy pin
+  is `openagents.desktop.rlm.history.v1`.
 - `apps/openagents-desktop/src/renderer/history-recall-card.ts` — cited-span
   renderer.
 
