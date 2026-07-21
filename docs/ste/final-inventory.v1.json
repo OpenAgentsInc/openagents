@@ -21243,7 +21243,7 @@
     },
     {
       "path": "docs/deploy/2026-07-21-atomic-coordinator-rc-promotion-and-tailnet-linux-acceptance-runbook.md",
-      "sha256": "cc93e4bf816808bd9e75921099aab2293e71292c9bc78bf6c8d0f1e3f4e8c2ef",
+      "sha256": "aed47629acf555bc45c31115403d6800752d929971c142638df2503fc3c93ddb",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",

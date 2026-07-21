@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:345a793da23effb2b20cec387b61da6f23e3faac078837a9bb306d9c3e5ddc64",
+  "sourceDigest": "sha256:4f341487ab6eddf3d86a0669d95baffb651dd3fae5c2f1492a317edc5833b4a4",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -3196,6 +3196,22 @@
       }
     },
     {
+      "id": "release-pipeline:release:promote-tag",
+      "kind": "release-pipeline",
+      "owningPath": "package.json",
+      "title": "pnpm run release:promote-tag",
+      "derivation": "derived",
+      "oracles": [],
+      "unverified": {
+        "reason": "no-oracle-authored",
+        "note": "release pipeline has no standing acceptance oracle yet (DIST chain / AR-3 sweep)"
+      },
+      "obligation": {
+        "state": "inconclusive",
+        "note": "no oracle authored (no-oracle-authored); real coverage gap"
+      }
+    },
+    {
       "id": "worker:@openagentsinc/api-worker",
       "kind": "worker",
       "owningPath": "apps/openagents.com/workers/api",
@@ -3278,26 +3294,26 @@
     }
   ],
   "summary": {
-    "totalSurfaces": 171,
+    "totalSurfaces": 172,
     "byKind": {
       "app": 16,
       "crate": 6,
       "document": 48,
       "package": 90,
       "public-endpoint": 2,
-      "release-pipeline": 8,
+      "release-pipeline": 9,
       "worker": 1
     },
     "withOracle": 157,
-    "unverified": 14,
+    "unverified": 15,
     "byUnverifiedReason": {
       "config-only": 2,
-      "no-oracle-authored": 10,
+      "no-oracle-authored": 11,
       "reference-only": 2
     },
     "byObligationState": {
       "designed": 123,
-      "inconclusive": 9,
+      "inconclusive": 10,
       "mapped": 34,
       "out-of-scope": 5
     },

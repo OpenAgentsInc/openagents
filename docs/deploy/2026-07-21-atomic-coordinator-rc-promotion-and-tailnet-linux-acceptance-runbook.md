@@ -89,11 +89,12 @@ immutable public download URL the ReleaseSet artifacts point clients to.
 
 ### A2. Run the coordinator transaction
 
-Construct the real coordinator with the staging manifest, native-acceptance
-proof references, and per-target host attestations, then run the six steps in
-order. The driver below constructs the same committed coordinator
-(`createRealCoordinatorPort`) with the rc inputs. It is not an alternate
-publication path.
+Run the committed first-class command `pnpm run release:promote-tag`
+(`scripts/promote-tag.ts`). It validates the manifest, builds the plan, and runs
+the six coordinator steps in order against the same committed coordinator
+(`createRealCoordinatorPort`). It is not an alternate publication path, and it
+deliberately skips the current-main preflight because it promotes an
+already-published tag. The inline form below shows the equivalent construction.
 
 ```ts
 // scripts/promote-existing-tag-rc.ts (operational; run with node --import tsx)
@@ -129,13 +130,14 @@ for (const step of ["checkWorkerInventory","bringUpWorkers","fanOutTargets","run
 console.log("PROMOTION COMPLETE");
 ```
 
-Run it from the clean worktree:
+Run it from the clean worktree (append `--stable --approve first_stable_promotion`
+for a stable cut):
 
 ```sh
 CLOUDSDK_CONFIG=/Users/christopherdavid/work/.secrets/gcloud-sa-config \
 OPENAGENTS_RELEASE_SECRETS_PATH=/Users/christopherdavid/work/.secrets/openagents-release-signing.env \
 OA_RELEASE_SET_BUCKET=openagentsgemini-oa-updates-release-set \
-  node --import tsx scripts/promote-existing-tag-rc.ts <manifest.json>
+  pnpm run release:promote-tag <manifest.json>
 ```
 
 **Object formats the feed store reads (match exactly, or the feed returns
