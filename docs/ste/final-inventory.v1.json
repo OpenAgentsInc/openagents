@@ -16385,6 +16385,24 @@
       }
     },
     {
+      "path": "docs/assurance/2026-07-21-full-auto-assurance-review-packet.md",
+      "sha256": "b7f1059fec47bdf07f82e11392851494cf6188019bda9f4cbc712ce6a6fc4ff3",
+      "reason": "Final review of mutable first-party agent technical text",
+      "profile": {
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ]
+      }
+    },
+    {
       "path": "docs/assurance/AGENT_TOOLING.md",
       "sha256": "ad55eaa002435085fb000b0ffa8be37c43f202ac0b2d0ac883db719dede76493",
       "reason": "Final review of a converted document",
@@ -26706,14 +26724,9 @@
     {
       "path": "docs/grok/2026-07-21-open-issues-audit-and-asap-sequence.md",
       "sha256": "45b1aa475d3e494959f941468cd9e3494a1610166b6d1da3055a6a082ccc5461",
+      "reason": "Final review of a converted document",
       "profile": {
-        "ste_issue": 9,
         "ste_mode": "descriptive",
-        "ste_glossary_revision": "openagents-ste-glossary-v1",
-        "ste_status": "inspected",
-        "ste_reviewer": "grok/open-issues-audit-2026-07-21",
-        "ste_reviewed_at": "2026-07-21T21:00:00Z",
-        "owner": "OpenAgents documentation",
         "risk": "legacy",
         "source": null,
         "replacement": null,
@@ -26724,7 +26737,10 @@
           "STE-3.6",
           "STE-5.1",
           "STE-8.2"
-        ]
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {
