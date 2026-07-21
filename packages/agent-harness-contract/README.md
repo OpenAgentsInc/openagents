@@ -58,6 +58,19 @@ package is HARN-01 of the HARN epic (#9115).
   `rerunBoundaries` so a recomputed tail is distinguishable from a lossless
   attach.
 
+- **`slice-runner.ts`** (HARN-06) — the intra-turn slice runner. `runHarnessSlice`
+  time-boxes one slice of a turn by event budget and suspends at the exact cursor
+  when the budget is spent. `runTurnInSlices` drives a whole turn as a chain of
+  slices, re-entering the session from `continueFrom` after each suspension, so a
+  long turn survives short-lived process invocations. Every event can be
+  persisted to the durable log in order.
+- **`readiness.ts`** (HARN-05) — the unified readiness projection.
+  `projectHarnessReadiness` turns one set of adapter readiness inputs into the
+  router candidate set, the admitted (ready) subset, normalized snapshots aligned
+  with `@openagentsinc/harness-conformance`, and Pylon-style counted capacity
+  refs. One source feeds the kernel descriptor, FAV routing, the Apple FM
+  candidate set, and the heartbeat.
+
 ## Conformance
 
 `reference-adapter.test.ts` proves the contract semantics. It covers full-turn

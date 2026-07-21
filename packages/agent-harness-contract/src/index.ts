@@ -9,6 +9,8 @@ export * from "./stream.ts";
 export * from "./event-builder.ts";
 export * from "./event-log-store.ts";
 export * from "./event-log.ts";
+export * from "./slice-runner.ts";
+export * from "./readiness.ts";
 export * from "./session.ts";
 export * from "./adapter.ts";
 export * from "./reference-adapter.ts";
