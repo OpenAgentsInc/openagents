@@ -160,6 +160,11 @@ import {
 } from "./claude-local-contract.ts"
 import { makeProviderLaneDispatcher, type ProviderLane } from "./provider-lane.ts"
 import { makeHarnessEventRecorder } from "./harness-event-recorder.ts"
+import {
+  appleFmAgentsFromReadiness,
+  buildDesktopHarnessReadiness,
+  type HarnessCandidateId,
+} from "./harness-readiness-source.ts"
 import { makeAcpProviderLane } from "./provider-lane-acp.ts"
 import {
   projectSpecLaneTurn,
@@ -1462,18 +1467,22 @@ const runDelegateLaneTurn = async <Context>(
 // builder; an unavailable agent is named-but-not-offered, never faked.
 const resolveAppleFmAvailableAgents = async (): Promise<ReadonlyArray<AppleFmAvailableAgent>> => {
   const codex = await codexDelegationReadiness()
-  const agents: AppleFmAvailableAgent[] = [
-    { candidate: "codex", label: "Codex", ready: codex.ready, canDelegate: true },
+  const lanes: Array<{ candidate: HarnessCandidateId; ready: boolean }> = [
+    { candidate: "codex", ready: codex.ready },
   ]
   try {
     const [claude, grok] = await Promise.all([claudeDelegationReadiness(), grokDelegationReadiness()])
-    agents.push({ candidate: "claude", label: "Claude Code", ready: claude.ready, canDelegate: true })
-    agents.push({ candidate: "grok_acp", label: "Grok", ready: grok.ready, canDelegate: true })
+    lanes.push({ candidate: "claude", ready: claude.ready })
+    lanes.push({ candidate: "grok_acp", ready: grok.ready })
   } catch {
     // Fail-soft: if the lane registry probe throws, keep codex-only awareness
     // rather than blocking the local turn.
   }
-  return agents
+  // HARN-05: the candidate set is derived through the ONE unified harness
+  // readiness projection, the same source that yields the Pylon-style capacity
+  // refs and the admitted (ready) subset. Behavior-preserving for the router.
+  const projection = buildDesktopHarnessReadiness(lanes)
+  return appleFmAgentsFromReadiness(projection) as ReadonlyArray<AppleFmAvailableAgent>
 }
 // AFS ambient-context: the host-owned environment facts the on-device Apple FM
 // prompt may state as truth (so "what do you know about me" is answered with the
