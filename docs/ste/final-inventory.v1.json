@@ -384,7 +384,7 @@
     },
     {
       "path": "FASTFOLLOW.md",
-      "sha256": "ae429d70588bff2c7605c06de05fed13f97571a5c12fcf522bcc0c500183e207",
+      "sha256": "1e5e96259761180542357da5cc5b4d2e65ca9e0e70403d6842f8c131538462c2",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -42917,8 +42917,30 @@
       }
     },
     {
+      "path": "docs/teardowns/2026-07-21-pi-agent-teardown.md",
+      "sha256": "accd5b82852355b08425b891994bf2beb84b1049b55c94e83fc38e37dda888bb",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/teardowns/README.md",
-      "sha256": "b280f5dd1ca152bac8230f5bbc2e2cad91f370bbd3f27113f003afb70c16727b",
+      "sha256": "ab38419b1344ef31ceced77e8ae30c3637319db8312cb9065dbd6689b169efcb",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

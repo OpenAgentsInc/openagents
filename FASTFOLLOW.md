@@ -1089,6 +1089,43 @@ policy, or turn Fable prose into target authority.
     ]
   },
   {
+    "id": "earendil.pi",
+    "title": "Pi Coding Agent",
+    "role": "upstream",
+    "access": "public_source",
+    "canonical_ref": "https://github.com/earendil-works/pi",
+    "tracking_policy": "release_or_commit",
+    "teardown_refs": [
+      "docs/teardowns/2026-07-21-pi-agent-teardown.md"
+    ],
+    "lessons": [
+      {
+        "id": "injectable_in_process_sdk",
+        "kind": "architecture",
+        "summary": "Study a coding-agent SDK whose session factory accepts injected session, settings, resource, auth, and model managers, so a host-process harness adapter embeds it without a bridge or a subprocess.",
+        "stance": "adapt_with_stronger_boundaries"
+      },
+      {
+        "id": "steer_followup_queue_semantics",
+        "kind": "product_ux",
+        "summary": "Adapt mid-turn steer and follow-up injection with typed drain points, one-at-a-time queue modes, and queue-projection events as the submit-user-message capability for harness sessions.",
+        "stance": "adapt"
+      },
+      {
+        "id": "jsonl_session_tree_resume",
+        "kind": "reliability",
+        "summary": "Adapt parent-linked JSONL session trees with typed compaction, branch-summary, and model-change entries as the complete cross-process resume artifact, with honest degraded rerun for in-flight turns.",
+        "stance": "adapt"
+      },
+      {
+        "id": "host_process_authority_posture",
+        "kind": "security",
+        "summary": "Reject Pi as a sandboxed or marketplace labor runtime, reject un-isolated reuse of the owner's live agent directory, and reject porting the AI SDK's global filesystem monkey-patch VFS.",
+        "stance": "reject"
+      }
+    ]
+  },
+  {
     "id": "topoteretes.cognee",
     "title": "Cognee",
     "role": "upstream",
