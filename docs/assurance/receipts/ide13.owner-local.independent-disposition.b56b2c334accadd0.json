@@ -1,0 +1,328 @@
+{
+  "action": "dispose_owner_local_ide13_evidence_aggregate",
+  "actor_role": "independent_reviewer",
+  "blocking_gaps_still_open": [
+    "Real owner-managed and OpenAgents-managed move cohorts did not run.",
+    "No managed provider is admitted.",
+    "DAP and native helper profiles have no admitted signed installed artifacts.",
+    "Owner disposition is absent.",
+    "Aggregate and candidate are not on origin/main; acceptanceRefs remain null.",
+    "Five owner-local required fault rows remain not_run; eight additional rows are simulator-only.",
+    "Packaged authenticated Sync journeys did not run on each required target."
+  ],
+  "condition_results": [
+    {
+      "condition_ref": "condition.independence",
+      "result": "satisfied",
+      "statement": "Reviewer identity independent-reviewer.ide-13-disposition.grok-2026-07-21 is distinct from producer openagents:ide-13-implementation."
+    },
+    {
+      "condition_ref": "condition.verification",
+      "result": "satisfied",
+      "statement": "Aggregate structure, digests, schema decode, non-acceptance validation, and owner-local cross-checks were reproduced. Full acceptance was not claimed."
+    },
+    {
+      "condition_ref": "condition.redaction",
+      "result": "satisfied",
+      "statement": "Receipt carries only public-safe digests, counts, refs, and disposition text."
+    },
+    {
+      "condition_ref": "condition.non_acceptance",
+      "result": "satisfied",
+      "statement": "acceptancePassed remains false; forced acceptance is rejected by the portable evidence contract."
+    }
+  ],
+  "content_sha256": "b56b2c334accadd0da19972d724822b52849c49dc66d6be15a8edc770568065a",
+  "disposition": {
+    "acceptancePassed_claim": "confirmed_false",
+    "aggregate_honesty": "accepted_with_notes",
+    "full_issue_acceptance": "rejected",
+    "independentDisposition": "owner_local_non_acceptance_evidence_reproduced",
+    "issue_closure": "not_granted",
+    "not_run_rows": "confirmed_not_run",
+    "owner_local_real_rows": "reproduced",
+    "release_or_public_claim": "not_granted",
+    "simulator_rows": "reproduced_as_simulator_only",
+    "statement": "As an independent reviewer, I reproduce the owner-local aggregate rows and confirm the producer non-acceptance claim. The aggregate is structurally valid under openagents.desktop.ide-portable-evidence.v3, implementationChecksPassed=true is consistent with 27 passed implemented checks, and acceptancePassed=false is required by remaining acceptance-gap omissions and incomplete cohorts. Full IDE-13 acceptance is rejected. #9041 must stay open."
+  },
+  "evidence_refs": [
+    "git:dfd9b9b1bfd7d453275cb1b1027fd65a3236cd11:apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-portability.json",
+    "sha256:53a27d306b61364b11dc31e5a46631183cae701c1ed1017c0111b1254d103a06",
+    "candidate:b7d342183d9cfb5ab805fa6ad5b862829160ad37",
+    "base:7da626270496737d9e94c32263a2c3de152a0b90",
+    "github.com/OpenAgentsInc/openagents/issues/9041"
+  ],
+  "grant_ref": "grant.independent_assurance",
+  "independence": {
+    "distinct": true,
+    "producer_ref": "openagents:ide-13-implementation",
+    "reviewer_ref": "independent-reviewer.ide-13-disposition.grok-2026-07-21",
+    "statement": "Reviewer session is distinct from the IDE-13 implementation producer. The aggregate and component receipts were read and checked. Portable-capability implementation sources were not edited."
+  },
+  "issue": {
+    "close_issued": false,
+    "github_url": "https://github.com/OpenAgentsInc/openagents/issues/9041",
+    "number": 9041,
+    "state_at_disposition": "OPEN",
+    "title": "IDE-13 \u2014 Make project capabilities portable with exclusive attachment and verified checkpoints"
+  },
+  "producer_ref": "openagents:ide-13-implementation",
+  "public_safety": {
+    "classification": "reviewed_public_safe",
+    "contains_private_paths": false,
+    "contains_raw_output": false,
+    "contains_secrets": false
+  },
+  "receipt_ref": "assurance.disposition.ide13.owner-local.independent.grok.2026-07-21",
+  "reproduced_rows_summary": {
+    "acceptance_gap_omissions": [
+      "omission:real-cohorts",
+      "omission:managed-live",
+      "omission:provider"
+    ],
+    "implemented_checks_passed": 27,
+    "placement_cohorts": [
+      {
+        "capabilityState": "degraded",
+        "cohortRef": "cohort.ide13.owner-local.real.1",
+        "evidenceClass": "real_local",
+        "journeyScope": "full_move",
+        "result": "reproduced",
+        "targetClass": "owner_local"
+      },
+      {
+        "cohortRef": "cohort:owner-managed:simulator",
+        "evidenceClass": "simulator",
+        "journeyScope": "foundation_only",
+        "result": "reproduced_as_simulator_only",
+        "targetClass": "owner_managed"
+      },
+      {
+        "cohortRef": "cohort:openagents-managed:simulator",
+        "evidenceClass": "simulator",
+        "journeyScope": "foundation_only",
+        "result": "reproduced_as_simulator_only",
+        "targetClass": "openagents_managed"
+      },
+      {
+        "cohortRef": "cohort:managed-provider:unclaimed",
+        "evidenceClass": "not_run",
+        "journeyScope": "not_run",
+        "result": "confirmed_not_run",
+        "targetClass": "managed_provider"
+      }
+    ],
+    "recovery_facts": [
+      {
+        "evidenceClass": "real_local",
+        "outcome": "passed",
+        "recoveryRef": "recovery:owner-local-replay"
+      },
+      {
+        "evidenceClass": "simulator",
+        "outcome": "passed",
+        "recoveryRef": "recovery:pylon-restart"
+      },
+      {
+        "evidenceClass": "real_local",
+        "outcome": "passed",
+        "recoveryRef": "recovery:owner-local-bounded-work-resume"
+      },
+      {
+        "evidenceClass": "real_local",
+        "outcome": "passed",
+        "recoveryRef": "recovery:owner-local-bounded-work-crash"
+      },
+      {
+        "evidenceClass": "not_run",
+        "outcome": "not_run",
+        "recoveryRef": "recovery:provider-eviction"
+      }
+    ]
+  },
+  "reproduction": {
+    "aggregate_header": {
+      "acceptancePassed": false,
+      "environment": {
+        "architecture": "arm64",
+        "node": "v24.13.1",
+        "platform": "darwin"
+      },
+      "faultFactsCount": 27,
+      "generatedAt": "2026-07-20T19:48:32.647Z",
+      "implementationChecksPassed": true,
+      "implementedChecksCount": 27,
+      "issue": "IDE-13",
+      "model": {
+        "counterexamples": 0,
+        "exploredStates": 14,
+        "exploredTransitions": 252,
+        "maximumDepth": 12,
+        "passed": true,
+        "staleWriteAttempts": 80
+      },
+      "omissionsCount": 4,
+      "placementCohortsCount": 4,
+      "recoveryFactsCount": 5,
+      "remainingGapsCount": 8,
+      "review": {
+        "independentDisposition": "not_run",
+        "independentDispositionRef": null,
+        "independentReviewerRef": null,
+        "ownerDisposition": "not_run",
+        "ownerDispositionRef": null,
+        "ownerRef": null
+      },
+      "schemaVersion": "openagents.desktop.ide-portable-evidence.v3",
+      "security": {
+        "forbiddenMaterialProjected": false,
+        "optimisticAuthorityProjected": false,
+        "rawCredentialProjected": false,
+        "staleGenerationAccepted": false
+      }
+    },
+    "component_receipt_digests": [
+      {
+        "bytes": 15181,
+        "path": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-real-cohort.json",
+        "sha256": "0164710af139b89f4227492354967b81042987b69acf037b71828fc0eb75ba41"
+      },
+      {
+        "bytes": 86825,
+        "path": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-performance.json",
+        "sha256": "6465e817459b861a7e9f27f41b0dfc651e50e145f212e1f2663fedc7deb77b77"
+      },
+      {
+        "bytes": 27753,
+        "path": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-real-fault-matrix.json",
+        "sha256": "15b7ba155b9a14358691506ef6659557001542e8237f3bba9220f7c5ecde0ae9"
+      },
+      {
+        "bytes": 4291,
+        "path": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-recovery-faults.json",
+        "sha256": "20458c12eb9e47840ffb2c86ce64b72bb14ebc8d4f714b64b216f876835bd9df"
+      },
+      {
+        "bytes": 7150,
+        "path": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-checkpoint-admission-faults.json",
+        "sha256": "42cccff9b39eed4c5085cd6845b423cf784cfdd913b2ff752820cd8d889e9129"
+      },
+      {
+        "bytes": 2407,
+        "path": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-executor-resume.json",
+        "sha256": "eda3efbc8eb46dc48e846addc34b0e1aae7afdb2ef135d96c72e2dd056eb88db"
+      },
+      {
+        "bytes": 1841,
+        "path": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-executor-crash-recovery.json",
+        "sha256": "678b42dc1b5faa0281c59d91c3339fbda05247a2332b8e867053a6acb501a3d8"
+      },
+      {
+        "bytes": 4527,
+        "path": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-packaged-owner-local-journey.json",
+        "sha256": "6a99ebef3a46ff5605c6e5705695fb98b3ff5d3e12ecc7326ff791353cc63769"
+      },
+      {
+        "bytes": 2555,
+        "path": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-portability-packaged.json",
+        "sha256": "da3a10ee141963d3abeff8466cfb83ad60c5a363ed8719b13132b8d60995f254"
+      }
+    ],
+    "cross_checks": [
+      {
+        "check": "owner_local_cohort_identity_fields",
+        "detail": "cohortRef, targetClass, evidenceClass, journeyScope, OS/arch, targetRef, candidate/base SHAs, capabilityState, custody, retentionSeconds, artifact {ref,sha256,bytes}, and phaseReceipts match the aggregate owner-local cohort.",
+        "result": "passed"
+      },
+      {
+        "check": "owner_local_performance_metrics",
+        "detail": "All 16 aggregate owner-local metrics match the performance receipt for metric, phase, unit, repetitions, p50/p95/p99, and passed. All metrics passed=true.",
+        "result": "passed"
+      },
+      {
+        "check": "owner_local_real_fault_matrix_real_rows",
+        "detail": "All 14 real_local:passed fault identities and receipt refs match between the aggregate and the owner-local real fault matrix.",
+        "result": "passed"
+      },
+      {
+        "check": "simulator_promotion_from_addenda",
+        "detail": "The aggregate lists 8 simulator:passed rows that the pure real-local matrix still marks not_run. Those rows come from recovery-fault and checkpoint-admission addenda. The producer comment states that the consolidated aggregate keeps stronger real rows and adds simulator addenda without demoting real evidence. This is weaker than real_local and must not be treated as acceptance-grade real fault coverage.",
+        "result": "observed_as_documented"
+      },
+      {
+        "check": "packaged_owner_local_journey",
+        "detail": "packaged-owner-local-journey passed=true at candidate b7d342183d9cfb5ab805fa6ad5b862829160ad37. Limitations explicitly deny authenticated Sync, cross-device targets, Codex resume, and admitted DAP/native profiles.",
+        "result": "passed_with_limits"
+      },
+      {
+        "check": "packaged_fail_closed_boundary",
+        "detail": "portability-packaged.json passed=true but candidateCommitSha=efc7a9dab90e8241381a77197682ffe40606ffdd differs from aggregate candidate b7d342183d9cfb5ab805fa6ad5b862829160ad37. It only claims the signed-out fail-closed projection/IPC boundary, not a move.",
+        "result": "passed_with_stale_candidate_note"
+      },
+      {
+        "check": "cohort_fault_matrix_ref_binding",
+        "detail": "The standalone owner-local cohort receipt has journeys.faultMatrixReceiptRef=null. The aggregate binds the matrix path for the same cohort. Main and failback activation receipt refs match.",
+        "result": "note"
+      },
+      {
+        "check": "remaining_gaps_fault_count_text",
+        "detail": "remainingGaps still says 'Nine real local fault rows passed. Nine other required rows passed only with simulator fixtures, and nine required ... did not run.' Actual faultFacts counts are 14 real_local:passed, 8 simulator:passed, and 5 not_run. The owner-local cohort result text correctly states 14/8/5. The stale gap sentence is a documentation defect; it does not claim acceptance.",
+        "result": "stale_prose"
+      },
+      {
+        "check": "main_integration",
+        "detail": "At disposition time, origin/main=fe89a057cb6a9a8621fcc50c3b6c46f5d6d4a95d does not contain candidate b7d342183d9cfb5ab805fa6ad5b862829160ad37 or aggregate commit dfd9b9b1bfd7d453275cb1b1027fd65a3236cd11. acceptanceRefs are all null.",
+        "result": "not_integrated"
+      }
+    ],
+    "fault_fact_counts": {
+      "not_run": 5,
+      "real_local_passed": 14,
+      "simulator_passed": 8,
+      "total": 27
+    },
+    "forced_acceptance_error": "IDE-13 acceptance cannot contain an acceptance-gap omission",
+    "forced_acceptance_validate": "rejected_as_required",
+    "method": [
+      "Loaded the aggregate from evidence commit dfd9b9b1 as a distinct reviewer.",
+      "Computed SHA-256 of the aggregate and of each bound component receipt.",
+      "Decoded the aggregate with IdePortableEvidenceReceiptSchema (Effect Schema decodeUnknownSync).",
+      "Ran validateIdePortableEvidenceReceipt with the declared candidate and base SHAs.",
+      "Forced acceptancePassed=true and confirmed the contract rejects acceptance while acceptance-gap omissions remain.",
+      "Compared owner-local cohort, performance, and fault-matrix rows to the aggregate.",
+      "Counted fault evidence classes and checked remainingGaps text for accuracy.",
+      "Confirmed origin/main does not contain the aggregate or the candidate."
+    ],
+    "non_acceptance_validate": "passed",
+    "owner_local_matrix_counts": {
+      "acceptanceReady": false,
+      "not_run": 13,
+      "real_local_passed": 14,
+      "total_cases": 27
+    },
+    "schema_decode": "passed"
+  },
+  "reviewer_ref": "independent-reviewer.ide-13-disposition.grok-2026-07-21",
+  "schema_id": "openagents.independent_reviewer_disposition_receipt.v1",
+  "scope": {
+    "base_commit_sha": "7da626270496737d9e94c32263a2c3de152a0b90",
+    "candidate_commit_sha": "b7d342183d9cfb5ab805fa6ad5b862829160ad37",
+    "candidate_on_origin_main": false,
+    "evidence_tree_commit": "dfd9b9b1bfd7d453275cb1b1027fd65a3236cd11",
+    "origin_main_at_disposition": "fe89a057cb6a9a8621fcc50c3b6c46f5d6d4a95d",
+    "portable_capability_internals_edited": false,
+    "read_only_of_ide_sources": true,
+    "subject": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-portability.json",
+    "subject_bytes": 48292,
+    "subject_on_origin_main": false,
+    "subject_sha256": "53a27d306b61364b11dc31e5a46631183cae701c1ed1017c0111b1254d103a06"
+  },
+  "scope_notes": [
+    "This disposition covers already-produced owner-local aggregate evidence only.",
+    "It does not edit portable-capability internals or any IDE implementation file.",
+    "It does not close #9041.",
+    "It grants no release, public-claim, promise-transition, or owner-acceptance authority."
+  ],
+  "settled_at": "2026-07-21T22:52:43Z",
+  "started_at": "2026-07-21T22:39:03Z"
+}
