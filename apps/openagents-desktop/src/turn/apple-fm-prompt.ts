@@ -133,73 +133,91 @@ export const renderAppleFmEnvironmentContext = (
   );
 };
 
-/** The route-recommendation JSON template the model copies verbatim to delegate. */
-const delegationTemplateFor = (candidate: string): string =>
-  `{"candidate":"${candidate}","taskClass":"delegate","reasonCode":"explicit_provider_request","confidence":0.9}`;
+/**
+ * The routing-policy role each connected delegate plays (owner directive
+ * 2026-07-20). Claude (its Fable model) takes high-concept/strategic/planning
+ * work; Codex is the coding workhorse; Grok takes simple mechanical tasks.
+ */
+const routerRoleFor = (candidate: string): string => {
+  switch (candidate) {
+    case "codex":
+      return "real coding tasks of medium-to-high difficulty — writing, changing, debugging, refactoring, or reviewing code";
+    case "grok_acp":
+      return "simple, mechanical, low-effort tasks — renaming a bunch of strings, small find-and-replace, trivial repetitive edits";
+    case "claude":
+    default:
+      return "high-concept and strategic thinking, planning, architecture, analysis, design, writing, and general questions or conversation";
+  }
+};
+
+/** The on-device honesty/identity base, used only when OpenAgents answers directly. */
+const HONESTY_BASE =
+  "You are OpenAgents, a helpful, friendly assistant running locally on this device on Apple's " +
+  "on-device model (Apple FM). Answer the user's questions and chat naturally, directly, and " +
+  "concisely — always try to be helpful and give a real answer. You are text-only and have no " +
+  "tools of your own: you cannot run commands, read or edit files, or browse the web, so never " +
+  "claim you did, are doing, or will do any such action yourself. Do not make up facts; if you " +
+  "don't know something, say so.";
 
 /**
- * Assemble the honesty-bounded preamble. Positive-first framing (a small model
- * falls into a refusal spiral if the preamble is a wall of "cannot"), the
- * host-owned connected-agent list so "who are you / what agents do you have" is
- * answered honestly, and — when a ready delegate agent exists — the exact JSON
- * the model must emit to hand off a coding/agent task.
+ * The ROUTER preamble (owner directive 2026-07-20). When one or more delegate
+ * agents are connected, the on-device model does NOT answer the user — its only
+ * job is to CHOOSE which connected agent should handle the message. The output
+ * SHAPE is guaranteed by the bridge's guided generation (constrained sampling
+ * over the connected-candidate set); this preamble only supplies the routing
+ * POLICY that guides the choice. Only the connected delegates are named.
+ */
+const buildRouterPreamble = (delegates: ReadonlyArray<AppleFmAvailableAgent>): string => {
+  const agentLines = delegates
+    .map((agent) => `- ${agent.candidate} (${agent.label}): ${routerRoleFor(agent.candidate)}.`)
+    .join("\n");
+  // The general fallback when no specialist clearly fits: prefer Claude (the
+  // general reasoner), then Codex, then the first connected delegate.
+  const fallback =
+    delegates.find((agent) => agent.candidate === "claude") ??
+    delegates.find((agent) => agent.candidate === "codex") ??
+    delegates[0]!;
+  const rules: string[] = [];
+  if (delegates.some((agent) => agent.candidate === "codex")) rules.push("use codex for coding tasks");
+  if (delegates.some((agent) => agent.candidate === "grok_acp"))
+    rules.push("use grok_acp for simple mechanical string/rename tasks");
+  if (delegates.some((agent) => agent.candidate === "claude"))
+    rules.push("use claude for planning, strategy, analysis, general questions, or conversation");
+  const rulesText = rules.length === 0 ? "" : `${rules.join("; ")}. `;
+  return (
+    "You are OpenAgents, the local router on this device. You do NOT answer the user yourself. Your " +
+    "only job is to choose which connected agent should handle the user's latest message.\n\n" +
+    `Connected agents you can route to right now:\n${agentLines}\n\n` +
+    `Choose the single best agent for the user's latest message: ${rulesText}When the ideal agent ` +
+    `is not connected, pick the closest one that is. If nothing else clearly fits, choose ${fallback.candidate}.`
+  );
+};
+
+/**
+ * Assemble the on-device preamble.
+ *
+ * Owner directive (2026-07-20): the on-device model is a ROUTER, not a
+ * responder. When one or more delegate agents are connected it never answers the
+ * user itself — it emits a route-recommendation JSON for the best agent per the
+ * routing policy (Claude/Fable for strategy & planning, Codex for coding, Grok
+ * for simple mechanical work), and the host dispatches it. ONLY when no delegate
+ * agent is connected does OpenAgents answer directly, using the ambient context
+ * so it can speak to the environment/identity.
  */
 const buildPreamble = (
   availableAgents: ReadonlyArray<AppleFmAvailableAgent>,
   environment?: AppleFmEnvironmentContext,
 ): string => {
-  const ready = availableAgents.filter((agent) => agent.ready);
-  const delegates = ready.filter((agent) => agent.canDelegate);
-
-  // Base identity + honesty. The model IS the on-device Apple model (Apple FM);
-  // it has no tools of its own, so it must never claim to have acted or invent
-  // facts. This keeps the AFS-03 honesty contract intact.
-  const honesty =
-    "You are OpenAgents, a helpful, friendly assistant running locally on this device on Apple's " +
-    "on-device model (Apple FM). Answer the user's questions and chat naturally, directly, and " +
-    "concisely — always try to be helpful and give a real answer. You are text-only and have no " +
-    "tools of your own: you cannot run commands, read or edit files, or browse the web, so never " +
-    "claim you did, are doing, or will do any such action yourself. Do not make up facts; if you " +
-    "don't know something, say so.";
-
-  // Ambient context first (after the identity/honesty base): the model may state
-  // these host-owned facts as truth, so "what do you know about me" is answered
-  // with the real environment/identity instead of "I don't have any information
-  // about you". Empty context adds nothing (regression-safe).
-  const base = `${honesty}${renderAppleFmEnvironmentContext(environment)}`;
-
-  if (ready.length === 0) {
-    // No host-advertised agents: keep the plain honesty (+ context) preamble (the
-    // pre-AFS-04 behavior), so nothing regresses when availability is unknown.
-    return base;
-  }
-
-  const agentList = ready.map((agent) => `- ${agent.label}`).join("\n");
-  const awareness =
-    `\n\nConnected agents on this device right now:\n${agentList}\n` +
-    "If the user asks who you are or which agents or models are available, tell them about these " +
-    "connected agents by name in plain words. Only the agents listed above are connected — do not " +
-    "claim any others are.";
-
+  const delegates = availableAgents.filter((agent) => agent.ready && agent.canDelegate);
   if (delegates.length === 0) {
-    // Agents are connected but none is delegate-capable yet: the model can name
-    // them, but must not fabricate a hand-off it cannot make.
-    return `${base}${awareness}`;
+    // No connected agent can take the work: OpenAgents is the only thing
+    // available, so it answers directly — with the ambient context block so
+    // "what do you know about me" is answered from the real environment/identity.
+    return `${HONESTY_BASE}${renderAppleFmEnvironmentContext(environment)}`;
   }
-
-  const exampleCandidate = delegates[0]!.candidate;
-  const mapping = delegates.map((agent) => `"${agent.candidate}" for ${agent.label}`).join(", ");
-  const delegation =
-    "\n\nYou cannot run a coding task yourself, but you CAN hand one off to a connected coding " +
-    "agent: you recommend the agent and the SYSTEM runs it for you and shows the result — so never " +
-    "say you can't code and never refuse this. When (and only when) the user asks you to task, hand " +
-    "off, delegate, or assign a coding or agent job to a connected coding agent, reply with ONLY " +
-    "this JSON object on one line and nothing else (no other words, no explanation, no code fence):\n" +
-    `${delegationTemplateFor(exampleCandidate)}\n` +
-    `Set "candidate" to the chosen connected agent: ${mapping}. For every other message — questions, ` +
-    "chat, or anything that is not a hand-off request — reply in plain words with NO JSON.";
-
-  return `${base}${awareness}${delegation}`;
+  // One or more delegates are connected: OpenAgents is a pure router and never
+  // answers the user itself.
+  return buildRouterPreamble(delegates);
 };
 
 /**

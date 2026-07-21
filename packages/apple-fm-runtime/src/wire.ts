@@ -67,11 +67,23 @@ export const AppleFmChatMessage = S.Struct({
 });
 export type AppleFmChatMessage = typeof AppleFmChatMessage.Type;
 
+/**
+ * Guided-route request: the owner-bound connected candidate vocabulary the model
+ * must choose exactly one of via constrained sampling. When present and
+ * non-empty, the bridge returns a well-formed route-recommendation instead of
+ * free text (owner directive 2026-07-20: on-device router).
+ */
+export const AppleFmRouteRequest = S.Struct({
+  candidates: S.Array(S.String),
+});
+export type AppleFmRouteRequest = typeof AppleFmRouteRequest.Type;
+
 export const AppleFmChatCompletionRequest = S.Struct({
   model: S.optional(S.String),
   messages: S.Array(AppleFmChatMessage),
   temperature: S.optional(S.Number),
   maxTokens: S.optional(S.Number),
+  route: S.optional(AppleFmRouteRequest),
 });
 export type AppleFmChatCompletionRequest = typeof AppleFmChatCompletionRequest.Type;
 

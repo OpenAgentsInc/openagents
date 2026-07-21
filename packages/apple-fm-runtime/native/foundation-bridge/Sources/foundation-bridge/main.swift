@@ -127,6 +127,32 @@ actor AppleFmHandler {
         }
 
         let prompt = buildPrompt(from: request.messages)
+
+        // GUIDED ROUTE PATH: when the caller supplies a candidate set, use
+        // constrained sampling so the model returns exactly one admitted
+        // candidate. The bridge assembles the full route JSON, which can never
+        // be malformed. This is the on-device router (owner directive 2026-07-20).
+        if let route = request.route, !route.candidates.isEmpty {
+            do {
+                let content = try await routeComplete(prompt: prompt, candidates: route.candidates)
+                let usage = estimateUsage(prompt: prompt, completion: content)
+                return ChatCompletionResponse(
+                    id: "apple-fm-\(UUID().uuidString.lowercased())",
+                    model: request.model ?? modelId,
+                    choices: [
+                        ChatCompletionChoice(
+                            index: 0,
+                            message: ChatMessage(role: "assistant", content: content, name: nil, toolCallId: nil),
+                            finishReason: "stop"
+                        )
+                    ],
+                    usage: usage
+                )
+            } catch {
+                throw BridgeError.generationFailed("Apple Foundation Models guided route failed: \(error.localizedDescription)")
+            }
+        }
+
         let session = LanguageModelSession()
 
         do {
@@ -149,6 +175,30 @@ actor AppleFmHandler {
         } catch {
             throw BridgeError.generationFailed("Apple Foundation Models request failed: \(error.localizedDescription)")
         }
+    }
+
+    /// Run GUIDED generation to pick exactly one route candidate. A runtime
+    /// `DynamicGenerationSchema` constrains `candidate` to the connected agents,
+    /// so constrained sampling can only emit an admitted value. The bridge then
+    /// assembles the full route JSON the AFS-02 decoder accepts — guaranteed
+    /// well-formed, no free-text parsing.
+    private func routeComplete(prompt: String, candidates: [String]) async throws -> String {
+        let session = LanguageModelSession()
+        let candidateSchema = DynamicGenerationSchema(name: "candidate", anyOf: candidates)
+        let rootSchema = DynamicGenerationSchema(
+            name: "RouteRecommendation",
+            properties: [
+                DynamicGenerationSchema.Property(name: "candidate", schema: candidateSchema)
+            ]
+        )
+        let schema = try GenerationSchema(root: rootSchema, dependencies: [])
+        let response = try await session.respond(to: prompt, schema: schema)
+        let candidate = try response.content.value(String.self, forProperty: "candidate")
+        // Assemble the exact route-recommendation JSON shape (AFS-02). taskClass
+        // and reasonCode are fixed for a delegation; confidence is full because
+        // the candidate is a constrained, admitted choice.
+        let escaped = candidate.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+        return "{\"candidate\":\"\(escaped)\",\"taskClass\":\"delegate\",\"reasonCode\":\"needs_delegation\",\"confidence\":1}"
     }
 
     private func buildPrompt(from messages: [ChatMessage]) -> String {
@@ -625,13 +675,31 @@ struct ChatCompletionRequest: Codable {
     let messages: [ChatMessage]
     let temperature: Double?
     let maxTokens: Int?
+    /// When present with a non-empty candidate set, the bridge runs GUIDED
+    /// generation (constrained sampling) instead of free text: the model must
+    /// pick exactly one `candidate` from this set, so the returned route can
+    /// never be malformed. The bridge assembles the full route JSON.
+    let route: RouteRequest?
 
-    init(model: String?, messages: [ChatMessage], temperature: Double? = nil, maxTokens: Int? = nil) {
+    init(
+        model: String?,
+        messages: [ChatMessage],
+        temperature: Double? = nil,
+        maxTokens: Int? = nil,
+        route: RouteRequest? = nil
+    ) {
         self.model = model
         self.messages = messages
         self.temperature = temperature
         self.maxTokens = maxTokens
+        self.route = route
     }
+}
+
+/// Guided-route request: the owner-bound connected candidate vocabulary the
+/// model must choose exactly one of via constrained sampling.
+struct RouteRequest: Codable {
+    let candidates: [String]
 }
 
 struct ChatMessage: Codable {

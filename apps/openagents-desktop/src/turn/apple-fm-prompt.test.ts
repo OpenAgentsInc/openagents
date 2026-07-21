@@ -202,144 +202,66 @@ describe("buildOpenAgentsAppleFmPrompt — ambient environment context", () => {
  * router already accept (so "task X to codex" actually delegates instead of the
  * model refusing "I'm just an AI, I can't code").
  */
-describe("buildOpenAgentsAppleFmPrompt — agent-awareness + delegation", () => {
-  const codexReady: AppleFmAvailableAgent = {
-    candidate: "codex",
-    label: "Codex",
-    ready: true,
-    canDelegate: true,
-  }
-  const claudeReady: AppleFmAvailableAgent = {
-    candidate: "claude",
-    label: "Claude Code",
-    ready: true,
-    canDelegate: false,
-  }
-  const grokReady: AppleFmAvailableAgent = {
-    candidate: "grok_acp",
-    label: "Grok",
-    ready: true,
-    canDelegate: false,
-  }
-  const grokNotReady: AppleFmAvailableAgent = { ...grokReady, ready: false }
+describe("buildOpenAgentsAppleFmPrompt — router mode + guided-route decoding", () => {
+  const codex: AppleFmAvailableAgent = { candidate: "codex", label: "Codex", ready: true, canDelegate: true }
+  const claude: AppleFmAvailableAgent = { candidate: "claude", label: "Claude Code", ready: true, canDelegate: true }
+  const grok: AppleFmAvailableAgent = { candidate: "grok_acp", label: "Grok", ready: true, canDelegate: true }
+  const grokNotReady: AppleFmAvailableAgent = { ...grok, ready: false }
 
-  /** Pull the delegation JSON template literally out of the assembled prompt. */
+  /** The exact well-formed route shape the bridge's guided generation returns. */
+  const routeJson = (candidate: string): string =>
+    JSON.stringify({ candidate, taskClass: "delegate", reasonCode: "needs_delegation", confidence: 1 })
+
+  /** Any literal route JSON in the prompt (there must be none — guided gen owns the shape). */
   const templateInPrompt = (prompt: string): string | null => {
     const match = prompt.match(/\{"candidate":.*?\}/u)
     return match === null ? null : match[0]
   }
 
-  test("names the ready connected agents so 'what agents do you have' can be answered", () => {
+  test("router preamble names each connected delegate by candidate + role, with the policy", () => {
     const prompt = buildOpenAgentsAppleFmPrompt(
-      [{ role: "user", text: "who are you, what agents do you have available" }],
-      [codexReady, claudeReady, grokReady],
+      [{ role: "user", text: "fix the login bug" }],
+      [codex, claude, grok],
     )
-    expect(prompt).toContain("Connected agents on this device")
-    expect(prompt).toContain("Codex")
-    expect(prompt).toContain("Claude Code")
-    expect(prompt).toContain("Grok")
-    // The model still knows it itself runs on Apple FM (nameable when asked).
-    expect(prompt).toContain("Apple FM")
-    // Honest scoping: do not claim agents that were not advertised.
-    expect(prompt).toContain("Only the agents listed above are connected")
+    expect(prompt).toContain("local router")
+    expect(prompt).toContain("You do NOT answer the user yourself")
+    expect(prompt).toContain("codex (Codex)")
+    expect(prompt).toContain("claude (Claude Code)")
+    expect(prompt).toContain("grok_acp (Grok)")
+    // The routing policy that guides the choice (owner directive 2026-07-20).
+    expect(prompt).toContain("use codex for coding tasks")
+    expect(prompt).toContain("use grok_acp for simple mechanical string/rename tasks")
+    expect(prompt).toContain("use claude for planning, strategy, analysis")
+    // It routes — it is not the chat assistant, so the direct-answer base is gone.
+    expect(prompt).not.toContain("helpful, friendly assistant")
   })
 
-  test("does not name an agent the host reports NOT ready", () => {
-    const prompt = buildOpenAgentsAppleFmPrompt(
-      [{ role: "user", text: "what can you do" }],
-      [codexReady, grokNotReady],
-    )
-    expect(prompt).toContain("Codex")
-    // Grok is not ready → it must not be listed as connected.
-    const listSection = prompt.slice(prompt.indexOf("Connected agents"), prompt.indexOf("If the user asks"))
-    expect(listSection).not.toContain("Grok")
+  test("router preamble names no not-ready delegate", () => {
+    const prompt = buildOpenAgentsAppleFmPrompt([{ role: "user", text: "x" }], [codex, grokNotReady])
+    expect(prompt).toContain("codex (Codex)")
+    expect(prompt).not.toContain("grok_acp")
   })
 
-  test("carries the delegation instruction + JSON example for a ready delegate agent", () => {
-    const prompt = buildOpenAgentsAppleFmPrompt(
-      [{ role: "user", text: "task some example thing to codex now" }],
-      [codexReady, claudeReady],
-    )
-    // The refusal-triggering wording is gone; routing is framed as possible.
-    expect(prompt).toContain("hand one off to a connected coding agent")
-    expect(prompt).toContain("never say you can't code and never refuse this")
-    expect(prompt).toContain('reply with ONLY')
-    // The exact JSON template the decoder accepts is present, naming codex.
-    const template = templateInPrompt(prompt)
-    expect(template).not.toBeNull()
-    expect(template).toContain('"candidate":"codex"')
-    // Only the delegate-capable agent (codex) is offered as a hand-off target;
-    // claude is named as connected but not templated (its lane is not wired).
-    expect(prompt).toContain('"codex" for Codex')
-    expect(prompt).not.toContain('"claude" for Claude Code')
+  test("guided generation owns the shape: the router prompt carries NO JSON template", () => {
+    const prompt = buildOpenAgentsAppleFmPrompt([{ role: "user", text: "x" }], [codex, claude, grok])
+    expect(templateInPrompt(prompt)).toBeNull()
   })
 
-  test("offers Claude Code and Grok as hand-off targets when delegate-capable (#9091)", () => {
-    const claudeDelegate: AppleFmAvailableAgent = { ...claudeReady, canDelegate: true }
-    const grokDelegate: AppleFmAvailableAgent = { ...grokReady, canDelegate: true }
-    const prompt = buildOpenAgentsAppleFmPrompt(
-      [{ role: "user", text: "task the fixture to claude" }],
-      [codexReady, claudeDelegate, grokDelegate],
-    )
-    // The delegation instruction is present and each ready delegate is mapped to
-    // its exact route-recommendation candidate string.
-    expect(prompt).toContain('reply with ONLY')
-    expect(prompt).toContain('"codex" for Codex')
-    expect(prompt).toContain('"claude" for Claude Code')
-    expect(prompt).toContain('"grok_acp" for Grok')
-  })
-
-  test("ROUND TRIP: a claude template in the prompt decodes to a claude delegation (#9091)", () => {
-    const claudeDelegate: AppleFmAvailableAgent = { ...claudeReady, canDelegate: true }
-    // The exact per-agent template the prompt tells the model to emit for claude.
-    const claudeTemplate = JSON.stringify({
-      candidate: "claude",
-      taskClass: "delegate",
-      reasonCode: "explicit_provider_request",
-      confidence: 0.9,
-    })
-    const prompt = buildOpenAgentsAppleFmPrompt(
-      [{ role: "user", text: "task this to claude" }],
-      [codexReady, claudeDelegate],
-    )
-    expect(prompt).toContain('"claude" for Claude Code')
-    const decoded = decodeAppleFmRouteOutput({ raw: claudeTemplate, admittedCandidates: ["codex", "claude", "grok_acp"] })
-    expect(decoded._tag).toBe("Recommendation")
-    const decision = decideDelegation({
-      answerText: claudeTemplate,
-      objective: "task this to claude",
-      readiness: { claude: { ready: true, accountRef: "acct.a" } },
-    })
-    expect(decision.kind).toBe("delegate")
-    if (decision.kind === "delegate") expect(decision.provider).toBe("claude")
-  })
-
-  test("offers NO delegation JSON when no ready agent is delegate-capable", () => {
+  test("no connected delegate → OpenAgents answers directly (not a router)", () => {
     const prompt = buildOpenAgentsAppleFmPrompt(
       [{ role: "user", text: "hi" }],
-      [claudeReady, grokReady],
+      [{ ...claude, canDelegate: false }, { ...grok, ready: false }],
     )
-    // Agents are named for awareness, but no hand-off JSON is fabricated.
-    expect(prompt).toContain("Claude Code")
-    expect(prompt).toContain("Grok")
-    expect(templateInPrompt(prompt)).toBeNull()
-    expect(prompt).not.toContain("reply with ONLY")
+    expect(prompt).toContain("helpful, friendly assistant")
+    expect(prompt).not.toContain("local router")
   })
 
-  test("ROUND TRIP: the codex template in the prompt decodes to a codex delegation", () => {
-    const prompt = buildOpenAgentsAppleFmPrompt(
-      [{ role: "user", text: "hand this off to codex" }],
-      [codexReady],
-    )
-    const template = templateInPrompt(prompt)
-    expect(template).not.toBeNull()
-    // The decoder (AFS-02) accepts the exact template as a codex recommendation.
-    const decoded = decodeAppleFmRouteOutput({ raw: template!, admittedCandidates: ["codex"] })
-    expect(decoded._tag).toBe("Recommendation")
-    // The router (AFS-04) turns it into exactly one codex delegation.
+  test("decode + decide: a codex route JSON dispatches codex", () => {
+    const raw = routeJson("codex")
+    expect(decodeAppleFmRouteOutput({ raw, admittedCandidates: ["codex"] })._tag).toBe("Recommendation")
     const decision = decideDelegation({
-      answerText: template!,
-      objective: "hand this off to codex",
+      answerText: raw,
+      objective: "fix the login bug",
       readiness: { codex: { ready: true, accountRef: "acct.a" } },
     })
     expect(decision.kind).toBe("delegate")
@@ -349,17 +271,26 @@ describe("buildOpenAgentsAppleFmPrompt — agent-awareness + delegation", () => 
     }
   })
 
-  test("a plain-words answer (what agents are available) never dispatches", () => {
-    // The model answering "who are you" in words carries no JSON → answer, no dispatch.
+  test("decode + decide: a claude route JSON dispatches claude (#9091)", () => {
     const decision = decideDelegation({
-      answerText: "I'm OpenAgents, running on Apple's on-device model. I can hand coding tasks to Codex.",
-      objective: "who are you, what agents do you have",
+      answerText: routeJson("claude"),
+      objective: "plan the architecture",
+      readiness: { claude: { ready: true, accountRef: "acct.a" } },
+    })
+    expect(decision.kind).toBe("delegate")
+    if (decision.kind === "delegate") expect(decision.provider).toBe("claude")
+  })
+
+  test("a plain-words answer never dispatches (fail-closed to a local answer)", () => {
+    const decision = decideDelegation({
+      answerText: "I'm OpenAgents, running on Apple's on-device model.",
+      objective: "who are you",
       readiness: { codex: { ready: true, accountRef: "acct.a" } },
     })
     expect(decision.kind).toBe("answer")
   })
 
-  test("malformed / action-claim / unavailable-agent output never dispatches (fail-closed)", () => {
+  test("malformed / action-claim / unavailable route never dispatches (fail-closed)", () => {
     const malformed = decideDelegation({
       answerText: '{"candidate":"codex","confidence":"high"}',
       objective: "x",
@@ -374,12 +305,9 @@ describe("buildOpenAgentsAppleFmPrompt — agent-awareness + delegation", () => 
     })
     expect(actionClaim.kind).not.toBe("delegate")
 
-    // A recommended-but-unavailable codex lane refuses without a start.
-    const template = templateInPrompt(
-      buildOpenAgentsAppleFmPrompt([{ role: "user", text: "task codex" }], [codexReady]),
-    )
+    // A well-formed route for a lane the host reports unavailable refuses, no start.
     const unavailable = decideDelegation({
-      answerText: template!,
+      answerText: routeJson("codex"),
       objective: "x",
       readiness: { codex: { ready: false, unavailableReason: "no_codex_account" } },
     })

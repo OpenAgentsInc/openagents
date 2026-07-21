@@ -52,7 +52,8 @@ export type AppleFmLauncherTurn = Readonly<{
 export type AppleFmLauncherSession = Readonly<{
   mode: "launched" | "adopted"
   probe: () => Promise<AppleFmProbe>
-  complete: (prompt: string) => Promise<AppleFmLauncherTurn>
+  /** `routeCandidates` (non-empty) switches the bridge to guided route generation. */
+  complete: (prompt: string, routeCandidates?: ReadonlyArray<string>) => Promise<AppleFmLauncherTurn>
   stop: () => void
 }>
 
@@ -74,8 +75,12 @@ export type AppleFmHost = Readonly<{
   ensureStarted: () => Promise<AppleFmStatus>
   /** Re-probe live readiness of the current session. */
   refresh: () => Promise<AppleFmStatus>
-  /** Run one bounded read-only turn; refuses unless live-ready. */
-  runTurn: (prompt: string) => Promise<AppleFmTurnResult>
+  /**
+   * Run one bounded read-only turn; refuses unless live-ready. When
+   * `routeCandidates` is a non-empty set, the bridge runs GUIDED generation and
+   * returns a well-formed route-recommendation JSON (owner directive 2026-07-20).
+   */
+  runTurn: (prompt: string, routeCandidates?: ReadonlyArray<string>) => Promise<AppleFmTurnResult>
   /** Stop an owned session (never an adopted bridge) and return the projection. */
   stop: () => AppleFmStatus
   dispose: () => void
@@ -214,7 +219,7 @@ export const createAppleFmHost = (launcher: AppleFmLauncher): AppleFmHost => {
       await refreshSession(session, generation)
       return status()
     },
-    runTurn: async (prompt): Promise<AppleFmTurnResult> => {
+    runTurn: async (prompt, routeCandidates): Promise<AppleFmTurnResult> => {
       if (disposed || !supported) {
         return {
           schema: APPLE_FM_TURN_SCHEMA_ID,
@@ -241,7 +246,7 @@ export const createAppleFmHost = (launcher: AppleFmLauncher): AppleFmHost => {
           failureClass: "not_ready",
         }
       }
-      const turn = await session.complete(prompt)
+      const turn = await session.complete(prompt, routeCandidates)
       return {
         schema: APPLE_FM_TURN_SCHEMA_ID,
         ok: turn.outcome === "completed",

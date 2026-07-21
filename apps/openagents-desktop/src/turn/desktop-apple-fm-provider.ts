@@ -151,6 +151,18 @@ export const makeDesktopAppleFmProviderRegistry = (
       // AFS-09 release channel decides baseline vs compiled preamble (shadow by
       // default, so this is the hand-written prompt unless explicitly promoted).
       const honest = honestPromptFor(getThreadStore(), meta.threadRef, prompt, availableAgents, environment, release)
-      return turnResultToCompletion(await host.runTurn(honest))
+      // Owner directive 2026-07-20: when one or more delegate agents are
+      // connected, the on-device model is a ROUTER. Pass the ready delegate
+      // candidates so the bridge runs GUIDED generation (constrained sampling) —
+      // the returned route can only name an admitted candidate and can never be
+      // malformed. With no ready delegate, `routeCandidates` is undefined and the
+      // model answers directly (the honesty + ambient-context path). This uses
+      // the SAME ready+canDelegate condition the router preamble branches on.
+      const routeCandidates = availableAgents
+        .filter((agent) => agent.ready && agent.canDelegate)
+        .map((agent) => agent.candidate)
+      return turnResultToCompletion(
+        await host.runTurn(honest, routeCandidates.length > 0 ? routeCandidates : undefined),
+      )
     },
   })

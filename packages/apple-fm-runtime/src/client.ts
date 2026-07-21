@@ -272,16 +272,27 @@ export const appleFmComplete = (
   prompt: string,
   fetchImpl: typeof fetch = fetch,
   model: string = APPLE_FM_DEFAULT_MODEL_ID,
+  /**
+   * When set to a non-empty candidate set, the bridge runs GUIDED generation
+   * (constrained sampling): the model must pick exactly one candidate from this
+   * set and the bridge returns a well-formed route-recommendation JSON. Omit for
+   * a normal free-text completion. (Owner directive 2026-07-20: on-device router.)
+   */
+  routeCandidates?: ReadonlyArray<string>,
 ): Promise<AppleFmCompletionTurn> => {
   const effect = Effect.gen(function* () {
     const endpoint = new URL("/v1/chat/completions", withTrailingSlash(baseUrl));
     const messages: ReadonlyArray<AppleFmChatMessage> = [{ role: "user", content: prompt }];
+    const route =
+      routeCandidates !== undefined && routeCandidates.length > 0
+        ? { route: { candidates: routeCandidates } }
+        : {};
     const response = yield* Effect.tryPromise({
       try: () =>
         fetchImpl(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ model, messages }),
+          body: JSON.stringify({ model, messages, ...route }),
         }),
       catch: () => "bridge_unreachable" as const,
     });

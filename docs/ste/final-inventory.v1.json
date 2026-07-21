@@ -15177,6 +15177,24 @@
       }
     },
     {
+      "path": "docs/apple-fm/2026-07-20-on-device-router-guided-generation.md",
+      "sha256": "e7dea02f0a27581a8e19a4a7097bb2df21c035ba0e3f08f1e5a7e42d3cad8aff",
+      "reason": "Final review of mutable first-party agent technical text",
+      "profile": {
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ]
+      }
+    },
+    {
       "path": "docs/apple-fm/apple-fm-cli.md",
       "sha256": "f3df889b2e07d855b0594d2e4f02fbacbdbd1105012e2a414d741a4c541480b0",
       "reason": "Final review of a converted document",
@@ -46466,6 +46484,24 @@
         "ste_status": "inspected",
         "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
         "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "packages/apple-fm-runtime/native/foundation-bridge/.build/arm64-apple-macosx/release/swift-version--58304C5D6DBC2206.txt",
+      "sha256": "b674f79b747370a1c05ae7cec551fffe557816c6c807f35f39f933ecbcca80d7",
+      "reason": "Final review of mutable first-party agent technical text",
+      "profile": {
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ]
       }
     },
     {

@@ -109,12 +109,17 @@ export const appleFmClientProbe = (
   fetchImpl: typeof fetch = fetch,
 ): Promise<AppleFmProbe> => appleFmProbe(baseUrl, fetchImpl)
 
-/** Run one bounded read-only completion through the neutral loopback client. */
+/**
+ * Run one bounded read-only completion through the neutral loopback client. When
+ * `routeCandidates` is a non-empty set, the bridge runs GUIDED generation and
+ * returns a well-formed route-recommendation JSON (owner directive 2026-07-20).
+ */
 export const appleFmClientComplete = (
   baseUrl: string,
   prompt: string,
   fetchImpl: typeof fetch = fetch,
-): Promise<AppleFmLauncherTurn> => appleFmComplete(baseUrl, prompt, fetchImpl)
+  routeCandidates?: ReadonlyArray<string>,
+): Promise<AppleFmLauncherTurn> => appleFmComplete(baseUrl, prompt, fetchImpl, undefined, routeCandidates)
 
 // ---------------------------------------------------------------------------
 // Packaged launcher — adopt an existing healthy bridge, else verify + spawn.
@@ -137,7 +142,12 @@ export type PackagedAppleFmLauncherOptions = Readonly<{
   supported?: () => boolean
   spawnHelper?: (absolutePath: string, port: number) => AppleFmChildProcess
   probe?: (baseUrl: string, fetchImpl: typeof fetch) => Promise<AppleFmProbe>
-  complete?: (baseUrl: string, prompt: string, fetchImpl: typeof fetch) => Promise<AppleFmLauncherTurn>
+  complete?: (
+    baseUrl: string,
+    prompt: string,
+    fetchImpl: typeof fetch,
+    routeCandidates?: ReadonlyArray<string>,
+  ) => Promise<AppleFmLauncherTurn>
   readinessTimeoutMs?: number
   pollIntervalMs?: number
   sleep?: (ms: number) => Promise<void>
@@ -166,7 +176,7 @@ export const createPackagedAppleFmLauncher = (options: PackagedAppleFmLauncherOp
   const sessionFor = (mode: "launched" | "adopted", child: AppleFmChildProcess | null): AppleFmLauncherSession => ({
     mode,
     probe: () => probe(baseUrl, fetchImpl),
-    complete: (prompt) => complete(baseUrl, prompt, fetchImpl),
+    complete: (prompt, routeCandidates) => complete(baseUrl, prompt, fetchImpl, routeCandidates),
     // Never stop an adopted operator bridge; only kill a child we launched.
     stop: () => {
       if (mode === "launched" && child !== null) {
