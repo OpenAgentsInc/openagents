@@ -1,0 +1,2769 @@
+{
+  "meta": {
+    "kind": "hermetic",
+    "sdkVersion": "0.2.0-rc.1",
+    "strategyRef": "openagents.rlm-recall-eval.scripted.v1",
+    "priceCatalogVersion": "openagents.price-catalog.2026-07-21",
+    "priceCatalogSourceRef": "apps/openagents.com/workers/api/src/inference/pricing.ts#MODEL_PRICING_TABLE",
+    "config": {
+      "historySizes": [
+        8,
+        64,
+        256,
+        1024,
+        4096
+      ],
+      "families": [
+        "constant",
+        "linear",
+        "pair"
+      ],
+      "modelId": "gemini-3.5-flash"
+    },
+    "totalRuns": 200
+  },
+  "tierAggregates": [
+    {
+      "tierId": "direct",
+      "outcomes": {
+        "total": 25,
+        "success": 20,
+        "incorrect": 0,
+        "partial": 0,
+        "refused": 5,
+        "successRate": 0.8,
+        "answeredCorrectlyOrAbstained": 25
+      },
+      "citationCoverage": {
+        "count": 25,
+        "min": 0,
+        "mean": 0,
+        "p50": 0,
+        "p75": 0,
+        "p90": 0,
+        "p95": 0,
+        "p99": 0,
+        "max": 0
+      },
+      "citationExactness": {
+        "count": 25,
+        "min": 0,
+        "mean": 0,
+        "p50": 0,
+        "p75": 0,
+        "p90": 0,
+        "p95": 0,
+        "p99": 0,
+        "max": 0
+      },
+      "overall": {
+        "modelCalls": {
+          "count": 25,
+          "min": 0,
+          "mean": 0.8,
+          "p50": 1,
+          "p75": 1,
+          "p90": 1,
+          "p95": 1,
+          "p99": 1,
+          "max": 1
+        },
+        "latency": {
+          "count": 25,
+          "min": 0,
+          "mean": 800,
+          "p50": 1000,
+          "p75": 1000,
+          "p90": 1000,
+          "p95": 1000,
+          "p99": 1000,
+          "max": 1000
+        },
+        "totalTokens": {
+          "count": 25,
+          "min": 0,
+          "mean": 4293.64,
+          "p50": 1009,
+          "p75": 4050,
+          "p90": 16287,
+          "p95": 16288,
+          "p99": 16288,
+          "max": 16288
+        },
+        "cost": {
+          "known": {
+            "count": 25,
+            "min": 0,
+            "mean": 0.00032268,
+            "p50": 0.00007634999999999999,
+            "p75": 0.00030464999999999995,
+            "p90": 0.001222425,
+            "p95": 0.0012225,
+            "p99": 0.0012225,
+            "max": 0.0012225
+          },
+          "totalKnownUsd": 0.008067,
+          "knownCount": 25,
+          "unknownUsageCount": 0,
+          "unknownModelCount": 0,
+          "listPlaceholderCount": 25,
+          "verifiedCount": 0
+        }
+      },
+      "byOutcome": {
+        "success": {
+          "modelCalls": {
+            "count": 20,
+            "min": 1,
+            "mean": 1,
+            "p50": 1,
+            "p75": 1,
+            "p90": 1,
+            "p95": 1,
+            "p99": 1,
+            "max": 1
+          },
+          "latency": {
+            "count": 20,
+            "min": 1000,
+            "mean": 1000,
+            "p50": 1000,
+            "p75": 1000,
+            "p90": 1000,
+            "p95": 1000,
+            "p99": 1000,
+            "max": 1000
+          },
+          "totalTokens": {
+            "count": 20,
+            "min": 127,
+            "mean": 5367.05,
+            "p50": 1009,
+            "p75": 4051,
+            "p90": 16287,
+            "p95": 16288,
+            "p99": 16288,
+            "max": 16288
+          },
+          "cost": {
+            "known": {
+              "count": 20,
+              "min": 0.0000102,
+              "mean": 0.00040334999999999997,
+              "p50": 0.00007634999999999999,
+              "p75": 0.000304725,
+              "p90": 0.001222425,
+              "p95": 0.0012225,
+              "p99": 0.0012225,
+              "max": 0.0012225
+            },
+            "totalKnownUsd": 0.008067,
+            "knownCount": 20,
+            "unknownUsageCount": 0,
+            "unknownModelCount": 0,
+            "listPlaceholderCount": 20,
+            "verifiedCount": 0
+          }
+        },
+        "incorrect": {
+          "modelCalls": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "latency": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "totalTokens": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "cost": {
+            "known": {
+              "count": 0,
+              "min": 0,
+              "mean": 0,
+              "p50": 0,
+              "p75": 0,
+              "p90": 0,
+              "p95": 0,
+              "p99": 0,
+              "max": 0
+            },
+            "totalKnownUsd": 0,
+            "knownCount": 0,
+            "unknownUsageCount": 0,
+            "unknownModelCount": 0,
+            "listPlaceholderCount": 0,
+            "verifiedCount": 0
+          }
+        },
+        "partial": {
+          "modelCalls": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "latency": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "totalTokens": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "cost": {
+            "known": {
+              "count": 0,
+              "min": 0,
+              "mean": 0,
+              "p50": 0,
+              "p75": 0,
+              "p90": 0,
+              "p95": 0,
+              "p99": 0,
+              "max": 0
+            },
+            "totalKnownUsd": 0,
+            "knownCount": 0,
+            "unknownUsageCount": 0,
+            "unknownModelCount": 0,
+            "listPlaceholderCount": 0,
+            "verifiedCount": 0
+          }
+        },
+        "refused": {
+          "modelCalls": {
+            "count": 5,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "latency": {
+            "count": 5,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "totalTokens": {
+            "count": 5,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "cost": {
+            "known": {
+              "count": 5,
+              "min": 0,
+              "mean": 0,
+              "p50": 0,
+              "p75": 0,
+              "p90": 0,
+              "p95": 0,
+              "p99": 0,
+              "max": 0
+            },
+            "totalKnownUsd": 0,
+            "knownCount": 5,
+            "unknownUsageCount": 0,
+            "unknownModelCount": 0,
+            "listPlaceholderCount": 5,
+            "verifiedCount": 0
+          }
+        }
+      },
+      "byFamily": {
+        "constant": {
+          "total": 5,
+          "success": 4,
+          "incorrect": 0,
+          "partial": 0,
+          "refused": 1,
+          "successRate": 0.8,
+          "answeredCorrectlyOrAbstained": 5
+        },
+        "linear": {
+          "total": 15,
+          "success": 12,
+          "incorrect": 0,
+          "partial": 0,
+          "refused": 3,
+          "successRate": 0.8,
+          "answeredCorrectlyOrAbstained": 15
+        },
+        "pair": {
+          "total": 5,
+          "success": 4,
+          "incorrect": 0,
+          "partial": 0,
+          "refused": 1,
+          "successRate": 0.8,
+          "answeredCorrectlyOrAbstained": 5
+        }
+      }
+    },
+    {
+      "tierId": "tier_d",
+      "outcomes": {
+        "total": 25,
+        "success": 20,
+        "incorrect": 0,
+        "partial": 5,
+        "refused": 0,
+        "successRate": 0.8,
+        "answeredCorrectlyOrAbstained": 20
+      },
+      "citationCoverage": {
+        "count": 25,
+        "min": 1,
+        "mean": 1,
+        "p50": 1,
+        "p75": 1,
+        "p90": 1,
+        "p95": 1,
+        "p99": 1,
+        "max": 1
+      },
+      "citationExactness": {
+        "count": 25,
+        "min": 1,
+        "mean": 1,
+        "p50": 1,
+        "p75": 1,
+        "p90": 1,
+        "p95": 1,
+        "p99": 1,
+        "max": 1
+      },
+      "overall": {
+        "modelCalls": {
+          "count": 25,
+          "min": 0,
+          "mean": 0,
+          "p50": 0,
+          "p75": 0,
+          "p90": 0,
+          "p95": 0,
+          "p99": 0,
+          "max": 0
+        },
+        "latency": {
+          "count": 25,
+          "min": 0,
+          "mean": 0,
+          "p50": 0,
+          "p75": 0,
+          "p90": 0,
+          "p95": 0,
+          "p99": 0,
+          "max": 0
+        },
+        "totalTokens": {
+          "count": 25,
+          "min": 0,
+          "mean": 0,
+          "p50": 0,
+          "p75": 0,
+          "p90": 0,
+          "p95": 0,
+          "p99": 0,
+          "max": 0
+        },
+        "cost": {
+          "known": {
+            "count": 25,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "totalKnownUsd": 0,
+          "knownCount": 25,
+          "unknownUsageCount": 0,
+          "unknownModelCount": 0,
+          "listPlaceholderCount": 25,
+          "verifiedCount": 0
+        }
+      },
+      "byOutcome": {
+        "success": {
+          "modelCalls": {
+            "count": 20,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "latency": {
+            "count": 20,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "totalTokens": {
+            "count": 20,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "cost": {
+            "known": {
+              "count": 20,
+              "min": 0,
+              "mean": 0,
+              "p50": 0,
+              "p75": 0,
+              "p90": 0,
+              "p95": 0,
+              "p99": 0,
+              "max": 0
+            },
+            "totalKnownUsd": 0,
+            "knownCount": 20,
+            "unknownUsageCount": 0,
+            "unknownModelCount": 0,
+            "listPlaceholderCount": 20,
+            "verifiedCount": 0
+          }
+        },
+        "incorrect": {
+          "modelCalls": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "latency": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "totalTokens": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "cost": {
+            "known": {
+              "count": 0,
+              "min": 0,
+              "mean": 0,
+              "p50": 0,
+              "p75": 0,
+              "p90": 0,
+              "p95": 0,
+              "p99": 0,
+              "max": 0
+            },
+            "totalKnownUsd": 0,
+            "knownCount": 0,
+            "unknownUsageCount": 0,
+            "unknownModelCount": 0,
+            "listPlaceholderCount": 0,
+            "verifiedCount": 0
+          }
+        },
+        "partial": {
+          "modelCalls": {
+            "count": 5,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "latency": {
+            "count": 5,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "totalTokens": {
+            "count": 5,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "cost": {
+            "known": {
+              "count": 5,
+              "min": 0,
+              "mean": 0,
+              "p50": 0,
+              "p75": 0,
+              "p90": 0,
+              "p95": 0,
+              "p99": 0,
+              "max": 0
+            },
+            "totalKnownUsd": 0,
+            "knownCount": 5,
+            "unknownUsageCount": 0,
+            "unknownModelCount": 0,
+            "listPlaceholderCount": 5,
+            "verifiedCount": 0
+          }
+        },
+        "refused": {
+          "modelCalls": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "latency": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "totalTokens": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "cost": {
+            "known": {
+              "count": 0,
+              "min": 0,
+              "mean": 0,
+              "p50": 0,
+              "p75": 0,
+              "p90": 0,
+              "p95": 0,
+              "p99": 0,
+              "max": 0
+            },
+            "totalKnownUsd": 0,
+            "knownCount": 0,
+            "unknownUsageCount": 0,
+            "unknownModelCount": 0,
+            "listPlaceholderCount": 0,
+            "verifiedCount": 0
+          }
+        }
+      },
+      "byFamily": {
+        "constant": {
+          "total": 5,
+          "success": 5,
+          "incorrect": 0,
+          "partial": 0,
+          "refused": 0,
+          "successRate": 1,
+          "answeredCorrectlyOrAbstained": 5
+        },
+        "linear": {
+          "total": 15,
+          "success": 15,
+          "incorrect": 0,
+          "partial": 0,
+          "refused": 0,
+          "successRate": 1,
+          "answeredCorrectlyOrAbstained": 15
+        },
+        "pair": {
+          "total": 5,
+          "success": 0,
+          "incorrect": 0,
+          "partial": 5,
+          "refused": 0,
+          "successRate": 0,
+          "answeredCorrectlyOrAbstained": 0
+        }
+      }
+    },
+    {
+      "tierId": "semantic_depth0",
+      "outcomes": {
+        "total": 25,
+        "success": 20,
+        "incorrect": 0,
+        "partial": 5,
+        "refused": 0,
+        "successRate": 0.8,
+        "answeredCorrectlyOrAbstained": 20
+      },
+      "citationCoverage": {
+        "count": 25,
+        "min": 1,
+        "mean": 1,
+        "p50": 1,
+        "p75": 1,
+        "p90": 1,
+        "p95": 1,
+        "p99": 1,
+        "max": 1
+      },
+      "citationExactness": {
+        "count": 25,
+        "min": 1,
+        "mean": 1,
+        "p50": 1,
+        "p75": 1,
+        "p90": 1,
+        "p95": 1,
+        "p99": 1,
+        "max": 1
+      },
+      "overall": {
+        "modelCalls": {
+          "count": 25,
+          "min": 1,
+          "mean": 1,
+          "p50": 1,
+          "p75": 1,
+          "p90": 1,
+          "p95": 1,
+          "p99": 1,
+          "max": 1
+        },
+        "latency": {
+          "count": 25,
+          "min": 1000,
+          "mean": 1000,
+          "p50": 1000,
+          "p75": 1000,
+          "p90": 1000,
+          "p95": 1000,
+          "p99": 1000,
+          "max": 1000
+        },
+        "totalTokens": {
+          "count": 25,
+          "min": 102,
+          "mean": 107.56,
+          "p50": 108,
+          "p75": 108,
+          "p90": 113,
+          "p95": 115,
+          "p99": 115,
+          "max": 115
+        },
+        "cost": {
+          "known": {
+            "count": 25,
+            "min": 0.000024750000000000002,
+            "mean": 0.000025473,
+            "p50": 0.00002565,
+            "p75": 0.00002565,
+            "p90": 0.0000258,
+            "p95": 0.000026175,
+            "p99": 0.000026175,
+            "max": 0.000026175
+          },
+          "totalKnownUsd": 0.000636825,
+          "knownCount": 25,
+          "unknownUsageCount": 0,
+          "unknownModelCount": 0,
+          "listPlaceholderCount": 25,
+          "verifiedCount": 0
+        }
+      },
+      "byOutcome": {
+        "success": {
+          "modelCalls": {
+            "count": 20,
+            "min": 1,
+            "mean": 1,
+            "p50": 1,
+            "p75": 1,
+            "p90": 1,
+            "p95": 1,
+            "p99": 1,
+            "max": 1
+          },
+          "latency": {
+            "count": 20,
+            "min": 1000,
+            "mean": 1000,
+            "p50": 1000,
+            "p75": 1000,
+            "p90": 1000,
+            "p95": 1000,
+            "p99": 1000,
+            "max": 1000
+          },
+          "totalTokens": {
+            "count": 20,
+            "min": 102,
+            "mean": 106.05,
+            "p50": 107,
+            "p75": 108,
+            "p90": 108,
+            "p95": 108,
+            "p99": 108,
+            "max": 108
+          },
+          "cost": {
+            "known": {
+              "count": 20,
+              "min": 0.000024750000000000002,
+              "mean": 0.000025357500000000002,
+              "p50": 0.000025574999999999998,
+              "p75": 0.00002565,
+              "p90": 0.00002565,
+              "p95": 0.00002565,
+              "p99": 0.00002565,
+              "max": 0.00002565
+            },
+            "totalKnownUsd": 0.00050715,
+            "knownCount": 20,
+            "unknownUsageCount": 0,
+            "unknownModelCount": 0,
+            "listPlaceholderCount": 20,
+            "verifiedCount": 0
+          }
+        },
+        "incorrect": {
+          "modelCalls": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "latency": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "totalTokens": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "cost": {
+            "known": {
+              "count": 0,
+              "min": 0,
+              "mean": 0,
+              "p50": 0,
+              "p75": 0,
+              "p90": 0,
+              "p95": 0,
+              "p99": 0,
+              "max": 0
+            },
+            "totalKnownUsd": 0,
+            "knownCount": 0,
+            "unknownUsageCount": 0,
+            "unknownModelCount": 0,
+            "listPlaceholderCount": 0,
+            "verifiedCount": 0
+          }
+        },
+        "partial": {
+          "modelCalls": {
+            "count": 5,
+            "min": 1,
+            "mean": 1,
+            "p50": 1,
+            "p75": 1,
+            "p90": 1,
+            "p95": 1,
+            "p99": 1,
+            "max": 1
+          },
+          "latency": {
+            "count": 5,
+            "min": 1000,
+            "mean": 1000,
+            "p50": 1000,
+            "p75": 1000,
+            "p90": 1000,
+            "p95": 1000,
+            "p99": 1000,
+            "max": 1000
+          },
+          "totalTokens": {
+            "count": 5,
+            "min": 112,
+            "mean": 113.6,
+            "p50": 113,
+            "p75": 115,
+            "p90": 115,
+            "p95": 115,
+            "p99": 115,
+            "max": 115
+          },
+          "cost": {
+            "known": {
+              "count": 5,
+              "min": 0.000025725,
+              "mean": 0.000025934999999999998,
+              "p50": 0.0000258,
+              "p75": 0.000026175,
+              "p90": 0.000026175,
+              "p95": 0.000026175,
+              "p99": 0.000026175,
+              "max": 0.000026175
+            },
+            "totalKnownUsd": 0.000129675,
+            "knownCount": 5,
+            "unknownUsageCount": 0,
+            "unknownModelCount": 0,
+            "listPlaceholderCount": 5,
+            "verifiedCount": 0
+          }
+        },
+        "refused": {
+          "modelCalls": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "latency": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "totalTokens": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "cost": {
+            "known": {
+              "count": 0,
+              "min": 0,
+              "mean": 0,
+              "p50": 0,
+              "p75": 0,
+              "p90": 0,
+              "p95": 0,
+              "p99": 0,
+              "max": 0
+            },
+            "totalKnownUsd": 0,
+            "knownCount": 0,
+            "unknownUsageCount": 0,
+            "unknownModelCount": 0,
+            "listPlaceholderCount": 0,
+            "verifiedCount": 0
+          }
+        }
+      },
+      "byFamily": {
+        "constant": {
+          "total": 5,
+          "success": 5,
+          "incorrect": 0,
+          "partial": 0,
+          "refused": 0,
+          "successRate": 1,
+          "answeredCorrectlyOrAbstained": 5
+        },
+        "linear": {
+          "total": 15,
+          "success": 15,
+          "incorrect": 0,
+          "partial": 0,
+          "refused": 0,
+          "successRate": 1,
+          "answeredCorrectlyOrAbstained": 15
+        },
+        "pair": {
+          "total": 5,
+          "success": 0,
+          "incorrect": 0,
+          "partial": 5,
+          "refused": 0,
+          "successRate": 0,
+          "answeredCorrectlyOrAbstained": 0
+        }
+      }
+    },
+    {
+      "tierId": "semantic_modelmap",
+      "outcomes": {
+        "total": 25,
+        "success": 25,
+        "incorrect": 0,
+        "partial": 0,
+        "refused": 0,
+        "successRate": 1,
+        "answeredCorrectlyOrAbstained": 25
+      },
+      "citationCoverage": {
+        "count": 25,
+        "min": 1,
+        "mean": 1,
+        "p50": 1,
+        "p75": 1,
+        "p90": 1,
+        "p95": 1,
+        "p99": 1,
+        "max": 1
+      },
+      "citationExactness": {
+        "count": 25,
+        "min": 1,
+        "mean": 1,
+        "p50": 1,
+        "p75": 1,
+        "p90": 1,
+        "p95": 1,
+        "p99": 1,
+        "max": 1
+      },
+      "overall": {
+        "modelCalls": {
+          "count": 25,
+          "min": 3,
+          "mean": 3,
+          "p50": 3,
+          "p75": 3,
+          "p90": 3,
+          "p95": 3,
+          "p99": 3,
+          "max": 3
+        },
+        "latency": {
+          "count": 25,
+          "min": 3000,
+          "mean": 3000,
+          "p50": 3000,
+          "p75": 3000,
+          "p90": 3000,
+          "p95": 3000,
+          "p99": 3000,
+          "max": 3000
+        },
+        "totalTokens": {
+          "count": 25,
+          "min": 272,
+          "mean": 287.08,
+          "p50": 283,
+          "p75": 284,
+          "p90": 317,
+          "p95": 320,
+          "p99": 321,
+          "max": 321
+        },
+        "cost": {
+          "known": {
+            "count": 25,
+            "min": 0.00006405,
+            "mean": 0.00006553199999999998,
+            "p50": 0.00006532499999999999,
+            "p75": 0.000065625,
+            "p90": 0.000067875,
+            "p95": 0.00006809999999999999,
+            "p99": 0.00006817499999999999,
+            "max": 0.00006817499999999999
+          },
+          "totalKnownUsd": 0.0016382999999999999,
+          "knownCount": 25,
+          "unknownUsageCount": 0,
+          "unknownModelCount": 0,
+          "listPlaceholderCount": 25,
+          "verifiedCount": 0
+        }
+      },
+      "byOutcome": {
+        "success": {
+          "modelCalls": {
+            "count": 25,
+            "min": 3,
+            "mean": 3,
+            "p50": 3,
+            "p75": 3,
+            "p90": 3,
+            "p95": 3,
+            "p99": 3,
+            "max": 3
+          },
+          "latency": {
+            "count": 25,
+            "min": 3000,
+            "mean": 3000,
+            "p50": 3000,
+            "p75": 3000,
+            "p90": 3000,
+            "p95": 3000,
+            "p99": 3000,
+            "max": 3000
+          },
+          "totalTokens": {
+            "count": 25,
+            "min": 272,
+            "mean": 287.08,
+            "p50": 283,
+            "p75": 284,
+            "p90": 317,
+            "p95": 320,
+            "p99": 321,
+            "max": 321
+          },
+          "cost": {
+            "known": {
+              "count": 25,
+              "min": 0.00006405,
+              "mean": 0.00006553199999999998,
+              "p50": 0.00006532499999999999,
+              "p75": 0.000065625,
+              "p90": 0.000067875,
+              "p95": 0.00006809999999999999,
+              "p99": 0.00006817499999999999,
+              "max": 0.00006817499999999999
+            },
+            "totalKnownUsd": 0.0016382999999999999,
+            "knownCount": 25,
+            "unknownUsageCount": 0,
+            "unknownModelCount": 0,
+            "listPlaceholderCount": 25,
+            "verifiedCount": 0
+          }
+        },
+        "incorrect": {
+          "modelCalls": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "latency": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "totalTokens": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "cost": {
+            "known": {
+              "count": 0,
+              "min": 0,
+              "mean": 0,
+              "p50": 0,
+              "p75": 0,
+              "p90": 0,
+              "p95": 0,
+              "p99": 0,
+              "max": 0
+            },
+            "totalKnownUsd": 0,
+            "knownCount": 0,
+            "unknownUsageCount": 0,
+            "unknownModelCount": 0,
+            "listPlaceholderCount": 0,
+            "verifiedCount": 0
+          }
+        },
+        "partial": {
+          "modelCalls": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "latency": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "totalTokens": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "cost": {
+            "known": {
+              "count": 0,
+              "min": 0,
+              "mean": 0,
+              "p50": 0,
+              "p75": 0,
+              "p90": 0,
+              "p95": 0,
+              "p99": 0,
+              "max": 0
+            },
+            "totalKnownUsd": 0,
+            "knownCount": 0,
+            "unknownUsageCount": 0,
+            "unknownModelCount": 0,
+            "listPlaceholderCount": 0,
+            "verifiedCount": 0
+          }
+        },
+        "refused": {
+          "modelCalls": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "latency": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "totalTokens": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "cost": {
+            "known": {
+              "count": 0,
+              "min": 0,
+              "mean": 0,
+              "p50": 0,
+              "p75": 0,
+              "p90": 0,
+              "p95": 0,
+              "p99": 0,
+              "max": 0
+            },
+            "totalKnownUsd": 0,
+            "knownCount": 0,
+            "unknownUsageCount": 0,
+            "unknownModelCount": 0,
+            "listPlaceholderCount": 0,
+            "verifiedCount": 0
+          }
+        }
+      },
+      "byFamily": {
+        "constant": {
+          "total": 5,
+          "success": 5,
+          "incorrect": 0,
+          "partial": 0,
+          "refused": 0,
+          "successRate": 1,
+          "answeredCorrectlyOrAbstained": 5
+        },
+        "linear": {
+          "total": 15,
+          "success": 15,
+          "incorrect": 0,
+          "partial": 0,
+          "refused": 0,
+          "successRate": 1,
+          "answeredCorrectlyOrAbstained": 15
+        },
+        "pair": {
+          "total": 5,
+          "success": 5,
+          "incorrect": 0,
+          "partial": 0,
+          "refused": 0,
+          "successRate": 1,
+          "answeredCorrectlyOrAbstained": 5
+        }
+      }
+    },
+    {
+      "tierId": "semantic_depth1",
+      "outcomes": {
+        "total": 25,
+        "success": 25,
+        "incorrect": 0,
+        "partial": 0,
+        "refused": 0,
+        "successRate": 1,
+        "answeredCorrectlyOrAbstained": 25
+      },
+      "citationCoverage": {
+        "count": 25,
+        "min": 1,
+        "mean": 1,
+        "p50": 1,
+        "p75": 1,
+        "p90": 1,
+        "p95": 1,
+        "p99": 1,
+        "max": 1
+      },
+      "citationExactness": {
+        "count": 25,
+        "min": 1,
+        "mean": 1,
+        "p50": 1,
+        "p75": 1,
+        "p90": 1,
+        "p95": 1,
+        "p99": 1,
+        "max": 1
+      },
+      "overall": {
+        "modelCalls": {
+          "count": 25,
+          "min": 2,
+          "mean": 2.2,
+          "p50": 2,
+          "p75": 2,
+          "p90": 3,
+          "p95": 3,
+          "p99": 3,
+          "max": 3
+        },
+        "latency": {
+          "count": 25,
+          "min": 2000,
+          "mean": 2200,
+          "p50": 2000,
+          "p75": 2000,
+          "p90": 3000,
+          "p95": 3000,
+          "p99": 3000,
+          "max": 3000
+        },
+        "totalTokens": {
+          "count": 25,
+          "min": 221,
+          "mean": 236.72,
+          "p50": 231,
+          "p75": 232,
+          "p90": 271,
+          "p95": 275,
+          "p99": 275,
+          "max": 275
+        },
+        "cost": {
+          "known": {
+            "count": 25,
+            "min": 0.000053475,
+            "mean": 0.00005514,
+            "p50": 0.000054674999999999994,
+            "p75": 0.000054974999999999995,
+            "p90": 0.000058124999999999997,
+            "p95": 0.00005864999999999999,
+            "p99": 0.00005864999999999999,
+            "max": 0.00005864999999999999
+          },
+          "totalKnownUsd": 0.0013784999999999997,
+          "knownCount": 25,
+          "unknownUsageCount": 0,
+          "unknownModelCount": 0,
+          "listPlaceholderCount": 25,
+          "verifiedCount": 0
+        }
+      },
+      "byOutcome": {
+        "success": {
+          "modelCalls": {
+            "count": 25,
+            "min": 2,
+            "mean": 2.2,
+            "p50": 2,
+            "p75": 2,
+            "p90": 3,
+            "p95": 3,
+            "p99": 3,
+            "max": 3
+          },
+          "latency": {
+            "count": 25,
+            "min": 2000,
+            "mean": 2200,
+            "p50": 2000,
+            "p75": 2000,
+            "p90": 3000,
+            "p95": 3000,
+            "p99": 3000,
+            "max": 3000
+          },
+          "totalTokens": {
+            "count": 25,
+            "min": 221,
+            "mean": 236.72,
+            "p50": 231,
+            "p75": 232,
+            "p90": 271,
+            "p95": 275,
+            "p99": 275,
+            "max": 275
+          },
+          "cost": {
+            "known": {
+              "count": 25,
+              "min": 0.000053475,
+              "mean": 0.00005514,
+              "p50": 0.000054674999999999994,
+              "p75": 0.000054974999999999995,
+              "p90": 0.000058124999999999997,
+              "p95": 0.00005864999999999999,
+              "p99": 0.00005864999999999999,
+              "max": 0.00005864999999999999
+            },
+            "totalKnownUsd": 0.0013784999999999997,
+            "knownCount": 25,
+            "unknownUsageCount": 0,
+            "unknownModelCount": 0,
+            "listPlaceholderCount": 25,
+            "verifiedCount": 0
+          }
+        },
+        "incorrect": {
+          "modelCalls": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "latency": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "totalTokens": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "cost": {
+            "known": {
+              "count": 0,
+              "min": 0,
+              "mean": 0,
+              "p50": 0,
+              "p75": 0,
+              "p90": 0,
+              "p95": 0,
+              "p99": 0,
+              "max": 0
+            },
+            "totalKnownUsd": 0,
+            "knownCount": 0,
+            "unknownUsageCount": 0,
+            "unknownModelCount": 0,
+            "listPlaceholderCount": 0,
+            "verifiedCount": 0
+          }
+        },
+        "partial": {
+          "modelCalls": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "latency": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "totalTokens": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "cost": {
+            "known": {
+              "count": 0,
+              "min": 0,
+              "mean": 0,
+              "p50": 0,
+              "p75": 0,
+              "p90": 0,
+              "p95": 0,
+              "p99": 0,
+              "max": 0
+            },
+            "totalKnownUsd": 0,
+            "knownCount": 0,
+            "unknownUsageCount": 0,
+            "unknownModelCount": 0,
+            "listPlaceholderCount": 0,
+            "verifiedCount": 0
+          }
+        },
+        "refused": {
+          "modelCalls": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "latency": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "totalTokens": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "cost": {
+            "known": {
+              "count": 0,
+              "min": 0,
+              "mean": 0,
+              "p50": 0,
+              "p75": 0,
+              "p90": 0,
+              "p95": 0,
+              "p99": 0,
+              "max": 0
+            },
+            "totalKnownUsd": 0,
+            "knownCount": 0,
+            "unknownUsageCount": 0,
+            "unknownModelCount": 0,
+            "listPlaceholderCount": 0,
+            "verifiedCount": 0
+          }
+        }
+      },
+      "byFamily": {
+        "constant": {
+          "total": 5,
+          "success": 5,
+          "incorrect": 0,
+          "partial": 0,
+          "refused": 0,
+          "successRate": 1,
+          "answeredCorrectlyOrAbstained": 5
+        },
+        "linear": {
+          "total": 15,
+          "success": 15,
+          "incorrect": 0,
+          "partial": 0,
+          "refused": 0,
+          "successRate": 1,
+          "answeredCorrectlyOrAbstained": 15
+        },
+        "pair": {
+          "total": 5,
+          "success": 5,
+          "incorrect": 0,
+          "partial": 0,
+          "refused": 0,
+          "successRate": 1,
+          "answeredCorrectlyOrAbstained": 5
+        }
+      }
+    },
+    {
+      "tierId": "semantic_depth2",
+      "outcomes": {
+        "total": 25,
+        "success": 25,
+        "incorrect": 0,
+        "partial": 0,
+        "refused": 0,
+        "successRate": 1,
+        "answeredCorrectlyOrAbstained": 25
+      },
+      "citationCoverage": {
+        "count": 25,
+        "min": 1,
+        "mean": 1,
+        "p50": 1,
+        "p75": 1,
+        "p90": 1,
+        "p95": 1,
+        "p99": 1,
+        "max": 1
+      },
+      "citationExactness": {
+        "count": 25,
+        "min": 1,
+        "mean": 1,
+        "p50": 1,
+        "p75": 1,
+        "p90": 1,
+        "p95": 1,
+        "p99": 1,
+        "max": 1
+      },
+      "overall": {
+        "modelCalls": {
+          "count": 25,
+          "min": 2,
+          "mean": 2.2,
+          "p50": 2,
+          "p75": 2,
+          "p90": 3,
+          "p95": 3,
+          "p99": 3,
+          "max": 3
+        },
+        "latency": {
+          "count": 25,
+          "min": 2000,
+          "mean": 2200,
+          "p50": 2000,
+          "p75": 2000,
+          "p90": 3000,
+          "p95": 3000,
+          "p99": 3000,
+          "max": 3000
+        },
+        "totalTokens": {
+          "count": 25,
+          "min": 221,
+          "mean": 236.72,
+          "p50": 231,
+          "p75": 232,
+          "p90": 271,
+          "p95": 275,
+          "p99": 275,
+          "max": 275
+        },
+        "cost": {
+          "known": {
+            "count": 25,
+            "min": 0.000053475,
+            "mean": 0.00005514,
+            "p50": 0.000054674999999999994,
+            "p75": 0.000054974999999999995,
+            "p90": 0.000058124999999999997,
+            "p95": 0.00005864999999999999,
+            "p99": 0.00005864999999999999,
+            "max": 0.00005864999999999999
+          },
+          "totalKnownUsd": 0.0013784999999999997,
+          "knownCount": 25,
+          "unknownUsageCount": 0,
+          "unknownModelCount": 0,
+          "listPlaceholderCount": 25,
+          "verifiedCount": 0
+        }
+      },
+      "byOutcome": {
+        "success": {
+          "modelCalls": {
+            "count": 25,
+            "min": 2,
+            "mean": 2.2,
+            "p50": 2,
+            "p75": 2,
+            "p90": 3,
+            "p95": 3,
+            "p99": 3,
+            "max": 3
+          },
+          "latency": {
+            "count": 25,
+            "min": 2000,
+            "mean": 2200,
+            "p50": 2000,
+            "p75": 2000,
+            "p90": 3000,
+            "p95": 3000,
+            "p99": 3000,
+            "max": 3000
+          },
+          "totalTokens": {
+            "count": 25,
+            "min": 221,
+            "mean": 236.72,
+            "p50": 231,
+            "p75": 232,
+            "p90": 271,
+            "p95": 275,
+            "p99": 275,
+            "max": 275
+          },
+          "cost": {
+            "known": {
+              "count": 25,
+              "min": 0.000053475,
+              "mean": 0.00005514,
+              "p50": 0.000054674999999999994,
+              "p75": 0.000054974999999999995,
+              "p90": 0.000058124999999999997,
+              "p95": 0.00005864999999999999,
+              "p99": 0.00005864999999999999,
+              "max": 0.00005864999999999999
+            },
+            "totalKnownUsd": 0.0013784999999999997,
+            "knownCount": 25,
+            "unknownUsageCount": 0,
+            "unknownModelCount": 0,
+            "listPlaceholderCount": 25,
+            "verifiedCount": 0
+          }
+        },
+        "incorrect": {
+          "modelCalls": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "latency": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "totalTokens": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "cost": {
+            "known": {
+              "count": 0,
+              "min": 0,
+              "mean": 0,
+              "p50": 0,
+              "p75": 0,
+              "p90": 0,
+              "p95": 0,
+              "p99": 0,
+              "max": 0
+            },
+            "totalKnownUsd": 0,
+            "knownCount": 0,
+            "unknownUsageCount": 0,
+            "unknownModelCount": 0,
+            "listPlaceholderCount": 0,
+            "verifiedCount": 0
+          }
+        },
+        "partial": {
+          "modelCalls": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "latency": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "totalTokens": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "cost": {
+            "known": {
+              "count": 0,
+              "min": 0,
+              "mean": 0,
+              "p50": 0,
+              "p75": 0,
+              "p90": 0,
+              "p95": 0,
+              "p99": 0,
+              "max": 0
+            },
+            "totalKnownUsd": 0,
+            "knownCount": 0,
+            "unknownUsageCount": 0,
+            "unknownModelCount": 0,
+            "listPlaceholderCount": 0,
+            "verifiedCount": 0
+          }
+        },
+        "refused": {
+          "modelCalls": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "latency": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "totalTokens": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "cost": {
+            "known": {
+              "count": 0,
+              "min": 0,
+              "mean": 0,
+              "p50": 0,
+              "p75": 0,
+              "p90": 0,
+              "p95": 0,
+              "p99": 0,
+              "max": 0
+            },
+            "totalKnownUsd": 0,
+            "knownCount": 0,
+            "unknownUsageCount": 0,
+            "unknownModelCount": 0,
+            "listPlaceholderCount": 0,
+            "verifiedCount": 0
+          }
+        }
+      },
+      "byFamily": {
+        "constant": {
+          "total": 5,
+          "success": 5,
+          "incorrect": 0,
+          "partial": 0,
+          "refused": 0,
+          "successRate": 1,
+          "answeredCorrectlyOrAbstained": 5
+        },
+        "linear": {
+          "total": 15,
+          "success": 15,
+          "incorrect": 0,
+          "partial": 0,
+          "refused": 0,
+          "successRate": 1,
+          "answeredCorrectlyOrAbstained": 15
+        },
+        "pair": {
+          "total": 5,
+          "success": 5,
+          "incorrect": 0,
+          "partial": 0,
+          "refused": 0,
+          "successRate": 1,
+          "answeredCorrectlyOrAbstained": 5
+        }
+      }
+    },
+    {
+      "tierId": "bounded_window",
+      "outcomes": {
+        "total": 25,
+        "success": 12,
+        "incorrect": 1,
+        "partial": 0,
+        "refused": 12,
+        "successRate": 0.48,
+        "answeredCorrectlyOrAbstained": 24
+      },
+      "citationCoverage": {
+        "count": 25,
+        "min": 0,
+        "mean": 0,
+        "p50": 0,
+        "p75": 0,
+        "p90": 0,
+        "p95": 0,
+        "p99": 0,
+        "max": 0
+      },
+      "citationExactness": {
+        "count": 25,
+        "min": 0,
+        "mean": 0,
+        "p50": 0,
+        "p75": 0,
+        "p90": 0,
+        "p95": 0,
+        "p99": 0,
+        "max": 0
+      },
+      "overall": {
+        "modelCalls": {
+          "count": 25,
+          "min": 1,
+          "mean": 1,
+          "p50": 1,
+          "p75": 1,
+          "p90": 1,
+          "p95": 1,
+          "p99": 1,
+          "max": 1
+        },
+        "latency": {
+          "count": 25,
+          "min": 1000,
+          "mean": 1000,
+          "p50": 1000,
+          "p75": 1000,
+          "p90": 1000,
+          "p95": 1000,
+          "p99": 1000,
+          "max": 1000
+        },
+        "totalTokens": {
+          "count": 25,
+          "min": 127,
+          "mean": 438.12,
+          "p50": 514,
+          "p75": 518,
+          "p90": 521,
+          "p95": 521,
+          "p99": 524,
+          "max": 524
+        },
+        "cost": {
+          "known": {
+            "count": 25,
+            "min": 0.0000102,
+            "mean": 0.000033462,
+            "p50": 0.000039,
+            "p75": 0.000039375,
+            "p90": 0.000039525000000000005,
+            "p95": 0.000039975,
+            "p99": 0.000040199999999999995,
+            "max": 0.000040199999999999995
+          },
+          "totalKnownUsd": 0.00083655,
+          "knownCount": 25,
+          "unknownUsageCount": 0,
+          "unknownModelCount": 0,
+          "listPlaceholderCount": 25,
+          "verifiedCount": 0
+        }
+      },
+      "byOutcome": {
+        "success": {
+          "modelCalls": {
+            "count": 12,
+            "min": 1,
+            "mean": 1,
+            "p50": 1,
+            "p75": 1,
+            "p90": 1,
+            "p95": 1,
+            "p99": 1,
+            "max": 1
+          },
+          "latency": {
+            "count": 12,
+            "min": 1000,
+            "mean": 1000,
+            "p50": 1000,
+            "p75": 1000,
+            "p90": 1000,
+            "p95": 1000,
+            "p99": 1000,
+            "max": 1000
+          },
+          "totalTokens": {
+            "count": 12,
+            "min": 127,
+            "mean": 353.9166666666667,
+            "p50": 501,
+            "p75": 513,
+            "p90": 521,
+            "p95": 524,
+            "p99": 524,
+            "max": 524
+          },
+          "cost": {
+            "known": {
+              "count": 12,
+              "min": 0.0000102,
+              "mean": 0.00002729375,
+              "p50": 0.000038249999999999995,
+              "p75": 0.0000393,
+              "p90": 0.000039975,
+              "p95": 0.000040199999999999995,
+              "p99": 0.000040199999999999995,
+              "max": 0.000040199999999999995
+            },
+            "totalKnownUsd": 0.00032752499999999995,
+            "knownCount": 12,
+            "unknownUsageCount": 0,
+            "unknownModelCount": 0,
+            "listPlaceholderCount": 12,
+            "verifiedCount": 0
+          }
+        },
+        "incorrect": {
+          "modelCalls": {
+            "count": 1,
+            "min": 1,
+            "mean": 1,
+            "p50": 1,
+            "p75": 1,
+            "p90": 1,
+            "p95": 1,
+            "p99": 1,
+            "max": 1
+          },
+          "latency": {
+            "count": 1,
+            "min": 1000,
+            "mean": 1000,
+            "p50": 1000,
+            "p75": 1000,
+            "p90": 1000,
+            "p95": 1000,
+            "p99": 1000,
+            "max": 1000
+          },
+          "totalTokens": {
+            "count": 1,
+            "min": 505,
+            "mean": 505,
+            "p50": 505,
+            "p75": 505,
+            "p90": 505,
+            "p95": 505,
+            "p99": 505,
+            "max": 505
+          },
+          "cost": {
+            "known": {
+              "count": 1,
+              "min": 0.000038549999999999995,
+              "mean": 0.000038549999999999995,
+              "p50": 0.000038549999999999995,
+              "p75": 0.000038549999999999995,
+              "p90": 0.000038549999999999995,
+              "p95": 0.000038549999999999995,
+              "p99": 0.000038549999999999995,
+              "max": 0.000038549999999999995
+            },
+            "totalKnownUsd": 0.000038549999999999995,
+            "knownCount": 1,
+            "unknownUsageCount": 0,
+            "unknownModelCount": 0,
+            "listPlaceholderCount": 1,
+            "verifiedCount": 0
+          }
+        },
+        "partial": {
+          "modelCalls": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "latency": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "totalTokens": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "cost": {
+            "known": {
+              "count": 0,
+              "min": 0,
+              "mean": 0,
+              "p50": 0,
+              "p75": 0,
+              "p90": 0,
+              "p95": 0,
+              "p99": 0,
+              "max": 0
+            },
+            "totalKnownUsd": 0,
+            "knownCount": 0,
+            "unknownUsageCount": 0,
+            "unknownModelCount": 0,
+            "listPlaceholderCount": 0,
+            "verifiedCount": 0
+          }
+        },
+        "refused": {
+          "modelCalls": {
+            "count": 12,
+            "min": 1,
+            "mean": 1,
+            "p50": 1,
+            "p75": 1,
+            "p90": 1,
+            "p95": 1,
+            "p99": 1,
+            "max": 1
+          },
+          "latency": {
+            "count": 12,
+            "min": 1000,
+            "mean": 1000,
+            "p50": 1000,
+            "p75": 1000,
+            "p90": 1000,
+            "p95": 1000,
+            "p99": 1000,
+            "max": 1000
+          },
+          "totalTokens": {
+            "count": 12,
+            "min": 507,
+            "mean": 516.75,
+            "p50": 518,
+            "p75": 521,
+            "p90": 521,
+            "p95": 521,
+            "p99": 521,
+            "max": 521
+          },
+          "cost": {
+            "known": {
+              "count": 12,
+              "min": 0.000038475,
+              "mean": 0.00003920625,
+              "p50": 0.0000393,
+              "p75": 0.000039525000000000005,
+              "p90": 0.000039525000000000005,
+              "p95": 0.000039525000000000005,
+              "p99": 0.000039525000000000005,
+              "max": 0.000039525000000000005
+            },
+            "totalKnownUsd": 0.00047047500000000004,
+            "knownCount": 12,
+            "unknownUsageCount": 0,
+            "unknownModelCount": 0,
+            "listPlaceholderCount": 12,
+            "verifiedCount": 0
+          }
+        }
+      },
+      "byFamily": {
+        "constant": {
+          "total": 5,
+          "success": 5,
+          "incorrect": 0,
+          "partial": 0,
+          "refused": 0,
+          "successRate": 1,
+          "answeredCorrectlyOrAbstained": 5
+        },
+        "linear": {
+          "total": 15,
+          "success": 6,
+          "incorrect": 0,
+          "partial": 0,
+          "refused": 9,
+          "successRate": 0.4,
+          "answeredCorrectlyOrAbstained": 15
+        },
+        "pair": {
+          "total": 5,
+          "success": 1,
+          "incorrect": 1,
+          "partial": 0,
+          "refused": 3,
+          "successRate": 0.2,
+          "answeredCorrectlyOrAbstained": 4
+        }
+      }
+    },
+    {
+      "tierId": "provider_compaction",
+      "outcomes": {
+        "total": 25,
+        "success": 10,
+        "incorrect": 0,
+        "partial": 0,
+        "refused": 15,
+        "successRate": 0.4,
+        "answeredCorrectlyOrAbstained": 25
+      },
+      "citationCoverage": {
+        "count": 25,
+        "min": 0,
+        "mean": 0,
+        "p50": 0,
+        "p75": 0,
+        "p90": 0,
+        "p95": 0,
+        "p99": 0,
+        "max": 0
+      },
+      "citationExactness": {
+        "count": 25,
+        "min": 0,
+        "mean": 0,
+        "p50": 0,
+        "p75": 0,
+        "p90": 0,
+        "p95": 0,
+        "p99": 0,
+        "max": 0
+      },
+      "overall": {
+        "modelCalls": {
+          "count": 25,
+          "min": 1,
+          "mean": 1,
+          "p50": 1,
+          "p75": 1,
+          "p90": 1,
+          "p95": 1,
+          "p99": 1,
+          "max": 1
+        },
+        "latency": {
+          "count": 25,
+          "min": 1000,
+          "mean": 1000,
+          "p50": 1000,
+          "p75": 1000,
+          "p90": 1000,
+          "p95": 1000,
+          "p99": 1000,
+          "max": 1000
+        },
+        "totalTokens": {
+          "count": 25,
+          "min": 127,
+          "mean": 15151.6,
+          "p50": 3528,
+          "p75": 14095,
+          "p90": 57103,
+          "p95": 57103,
+          "p99": 57106,
+          "max": 57106
+        },
+        "cost": {
+          "known": {
+            "count": 25,
+            "min": 0.0000102,
+            "mean": 0.001136946,
+            "p50": 0.00026505,
+            "p75": 0.0010575749999999998,
+            "p90": 0.004283174999999999,
+            "p95": 0.004283174999999999,
+            "p99": 0.00428385,
+            "max": 0.00428385
+          },
+          "totalKnownUsd": 0.028423649999999995,
+          "knownCount": 25,
+          "unknownUsageCount": 0,
+          "unknownModelCount": 0,
+          "listPlaceholderCount": 25,
+          "verifiedCount": 0
+        }
+      },
+      "byOutcome": {
+        "success": {
+          "modelCalls": {
+            "count": 10,
+            "min": 1,
+            "mean": 1,
+            "p50": 1,
+            "p75": 1,
+            "p90": 1,
+            "p95": 1,
+            "p99": 1,
+            "max": 1
+          },
+          "latency": {
+            "count": 10,
+            "min": 1000,
+            "mean": 1000,
+            "p50": 1000,
+            "p75": 1000,
+            "p90": 1000,
+            "p95": 1000,
+            "p99": 1000,
+            "max": 1000
+          },
+          "totalTokens": {
+            "count": 10,
+            "min": 127,
+            "mean": 7719,
+            "p50": 133,
+            "p75": 3531,
+            "p90": 14098,
+            "p95": 57106,
+            "p99": 57106,
+            "max": 57106
+          },
+          "cost": {
+            "known": {
+              "count": 10,
+              "min": 0.0000102,
+              "mean": 0.00057969,
+              "p50": 0.000010725,
+              "p75": 0.00026572499999999997,
+              "p90": 0.00105825,
+              "p95": 0.00428385,
+              "p99": 0.00428385,
+              "max": 0.00428385
+            },
+            "totalKnownUsd": 0.005796899999999999,
+            "knownCount": 10,
+            "unknownUsageCount": 0,
+            "unknownModelCount": 0,
+            "listPlaceholderCount": 10,
+            "verifiedCount": 0
+          }
+        },
+        "incorrect": {
+          "modelCalls": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "latency": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "totalTokens": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "cost": {
+            "known": {
+              "count": 0,
+              "min": 0,
+              "mean": 0,
+              "p50": 0,
+              "p75": 0,
+              "p90": 0,
+              "p95": 0,
+              "p99": 0,
+              "max": 0
+            },
+            "totalKnownUsd": 0,
+            "knownCount": 0,
+            "unknownUsageCount": 0,
+            "unknownModelCount": 0,
+            "listPlaceholderCount": 0,
+            "verifiedCount": 0
+          }
+        },
+        "partial": {
+          "modelCalls": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "latency": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "totalTokens": {
+            "count": 0,
+            "min": 0,
+            "mean": 0,
+            "p50": 0,
+            "p75": 0,
+            "p90": 0,
+            "p95": 0,
+            "p99": 0,
+            "max": 0
+          },
+          "cost": {
+            "known": {
+              "count": 0,
+              "min": 0,
+              "mean": 0,
+              "p50": 0,
+              "p75": 0,
+              "p90": 0,
+              "p95": 0,
+              "p99": 0,
+              "max": 0
+            },
+            "totalKnownUsd": 0,
+            "knownCount": 0,
+            "unknownUsageCount": 0,
+            "unknownModelCount": 0,
+            "listPlaceholderCount": 0,
+            "verifiedCount": 0
+          }
+        },
+        "refused": {
+          "modelCalls": {
+            "count": 15,
+            "min": 1,
+            "mean": 1,
+            "p50": 1,
+            "p75": 1,
+            "p90": 1,
+            "p95": 1,
+            "p99": 1,
+            "max": 1
+          },
+          "latency": {
+            "count": 15,
+            "min": 1000,
+            "mean": 1000,
+            "p50": 1000,
+            "p75": 1000,
+            "p90": 1000,
+            "p95": 1000,
+            "p99": 1000,
+            "max": 1000
+          },
+          "totalTokens": {
+            "count": 15,
+            "min": 896,
+            "mean": 20106.666666666668,
+            "p50": 14095,
+            "p75": 57103,
+            "p90": 57103,
+            "p95": 57103,
+            "p99": 57103,
+            "max": 57103
+          },
+          "cost": {
+            "known": {
+              "count": 15,
+              "min": 0.00006765,
+              "mean": 0.00150845,
+              "p50": 0.0010575749999999998,
+              "p75": 0.004283174999999999,
+              "p90": 0.004283174999999999,
+              "p95": 0.004283174999999999,
+              "p99": 0.004283174999999999,
+              "max": 0.004283174999999999
+            },
+            "totalKnownUsd": 0.022626749999999994,
+            "knownCount": 15,
+            "unknownUsageCount": 0,
+            "unknownModelCount": 0,
+            "listPlaceholderCount": 15,
+            "verifiedCount": 0
+          }
+        }
+      },
+      "byFamily": {
+        "constant": {
+          "total": 5,
+          "success": 5,
+          "incorrect": 0,
+          "partial": 0,
+          "refused": 0,
+          "successRate": 1,
+          "answeredCorrectlyOrAbstained": 5
+        },
+        "linear": {
+          "total": 15,
+          "success": 4,
+          "incorrect": 0,
+          "partial": 0,
+          "refused": 11,
+          "successRate": 0.26666666666666666,
+          "answeredCorrectlyOrAbstained": 15
+        },
+        "pair": {
+          "total": 5,
+          "success": 1,
+          "incorrect": 0,
+          "partial": 0,
+          "refused": 4,
+          "successRate": 0.2,
+          "answeredCorrectlyOrAbstained": 5
+        }
+      }
+    }
+  ],
+  "gates": {
+    "escalation": {
+      "gate": "automatic_tier_s_escalation",
+      "admitted": false,
+      "wouldPass": true,
+      "criteria": [
+        {
+          "name": "tier_d_insufficient_on_pair",
+          "passed": true,
+          "detail": "Tier D pair success=0 partial=5"
+        },
+        {
+          "name": "semantic_pair_success_rate>=1",
+          "passed": true,
+          "detail": "semantic_modelmap pair successRate=1.000"
+        },
+        {
+          "name": "semantic_exact_citations",
+          "passed": true,
+          "detail": "coverage.p50=1.000 exactness.p50=1.000"
+        },
+        {
+          "name": "semantic_adds_no_wrong_answers",
+          "passed": true,
+          "detail": "semantic_modelmap incorrect=0"
+        },
+        {
+          "name": "semantic_cost_is_known",
+          "passed": true,
+          "detail": "semantic_modelmap unknownUsage=0"
+        }
+      ]
+    },
+    "depth": {
+      "gate": "depth_above_one",
+      "admitted": false,
+      "wouldPass": false,
+      "criteria": [
+        {
+          "name": "depth2_strictly_more_successful",
+          "passed": false,
+          "detail": "depth1 successRate=1.000 depth2 successRate=1.000"
+        },
+        {
+          "name": "depth2_adds_no_wrong_answers",
+          "passed": true,
+          "detail": "depth1 incorrect=0 depth2 incorrect=0"
+        },
+        {
+          "name": "depth2_tail_cost_not_worse",
+          "passed": true,
+          "detail": "depth1 cost.p95=0.00005865 depth2 cost.p95=0.00005865"
+        }
+      ]
+    }
+  },
+  "honesty": {
+    "note": "A synthesising semantic tier was run with model usage reporting OFF. Every run keeps usage unknown and is excluded from cost, never priced as zero.",
+    "runs": 9,
+    "unknownUsageCount": 9,
+    "costExcludedCorrectly": true
+  }
+}

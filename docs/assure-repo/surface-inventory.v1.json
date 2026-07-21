@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:6a05b87882ccfe80d5b7eb9d23c080aa82ef77e4a95fdebd12165f6e3aac737c",
+  "sourceDigest": "sha256:4800221ab3df10864e8ef8ec24a5f210c85692c9caf53f36fb9de683ea52a225",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -2702,6 +2702,23 @@
       }
     },
     {
+      "id": "package:@openagentsinc/rlm-recall-eval",
+      "kind": "package",
+      "owningPath": "packages/rlm-recall-eval",
+      "title": "@openagentsinc/rlm-recall-eval",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/rlm-recall-eval (1 tracked test file)"
+        }
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
+    },
+    {
       "id": "package:@openagentsinc/runtime-platform",
       "kind": "package",
       "owningPath": "packages/runtime-platform",
@@ -3198,17 +3215,17 @@
     }
   ],
   "summary": {
-    "totalSurfaces": 167,
+    "totalSurfaces": 168,
     "byKind": {
       "app": 16,
       "crate": 6,
       "document": 48,
-      "package": 85,
+      "package": 86,
       "public-endpoint": 2,
       "release-pipeline": 9,
       "worker": 1
     },
-    "withOracle": 153,
+    "withOracle": 154,
     "unverified": 14,
     "byUnverifiedReason": {
       "config-only": 2,
@@ -3216,7 +3233,7 @@
       "reference-only": 2
     },
     "byObligationState": {
-      "designed": 119,
+      "designed": 120,
       "inconclusive": 9,
       "mapped": 34,
       "out-of-scope": 5

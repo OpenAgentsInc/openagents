@@ -1,0 +1,30 @@
+{
+  "name": "@openagentsinc/rlm-recall-eval",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Hermetic dense-recall evaluation and honesty gate over OpenAgents transcript shapes. Consumes the published @openagentsinc/rlm engine and scoring contracts; forks no eval module.",
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vp test --run",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "eval:hermetic": "node --import tsx src/generate-report.ts",
+    "eval:live": "node --import tsx src/live-cli.ts"
+  },
+  "dependencies": {
+    "@openagentsinc/rlm": "0.2.0-rc.1",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@types/vite-plus-matchers": "workspace:*",
+    "typescript": "catalog:"
+  }
+}

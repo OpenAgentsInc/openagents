@@ -38914,6 +38914,28 @@
       }
     },
     {
+      "path": "docs/rlm/2026-07-21-rlm-07-dense-recall-eval.md",
+      "sha256": "1136faa4feaa594e5548925bc37e5fc1564326593a0de9b74b3d7a56ee37cbea",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/rlm/2026-07-21-rlm-integration-audit-and-roadmap.md",
       "sha256": "eb0daffeb718a221117f9dedb7984e073c0c05a60b91ac0d7d3a5f0bdf4bde54",
       "reason": "Final review of a converted document",
@@ -49572,6 +49594,28 @@
     {
       "path": "packages/review-round/README.md",
       "sha256": "8d859f5bfaf3e6da9608540e2b7975b415eb3d2cf6743feb260d940c893f0a86",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "packages/rlm-recall-eval/README.md",
+      "sha256": "5281a850f6fec123c1bc3ac8fa0547336682c968bdba5adcf75c3a16889f014a",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
