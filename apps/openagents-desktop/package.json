@@ -1,6 +1,6 @@
 {
   "name": "@openagentsinc/openagents-desktop",
-  "version": "0.1.0-rc.25",
+  "version": "0.1.0-rc.26",
   "private": true,
   "description": "OpenAgents — Effect Native application on an Electron host (#8574).",
   "license": "MIT",
