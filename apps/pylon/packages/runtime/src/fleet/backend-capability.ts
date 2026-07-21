@@ -498,6 +498,8 @@ function supportedInputSchemaRef(toolRef: string): string | undefined {
   switch (toolRef) {
     case "tool.probe.code_search":
       return "schema.probe.tool.code_search.input.v1";
+    case "tool.probe.list_files":
+      return "schema.probe.tool.list_files.input.v1";
     case "tool.probe.propose_action_submission":
       return "schema.probe.tool.propose_action_submission.input.v1";
     case "tool.probe.read_file":
