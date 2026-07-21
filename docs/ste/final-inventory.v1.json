@@ -32371,12 +32371,12 @@
     },
     {
       "path": "docs/mvp/openagents-codex-workroom-mvp.rev7-proposed.product-spec.md",
-      "sha256": "0288b801766d4b5d79cf2bca86c12b4c7b1022c234f2ec0eef8cac1f9e8102e3",
-      "reason": "Final review of a converted document",
+      "sha256": "9d05ce3ed4efe4a77565726d44c893e5dfd16c585e4596631261d5acace23f40",
+      "reason": "Receipt-bound migration-proposal source data (verbatim rev6 + PSEL-2 AC renaming); must byte-match the frozen rev6 baseline and its pinned id-map digest",
       "profile": {
-        "ste_mode": "descriptive",
-        "risk": "legacy",
-        "source": null,
+        "ste_mode": "source-data",
+        "risk": "source-data",
+        "source": "Receipt-bound migration-proposal source data (verbatim rev6 + PSEL-2 AC renaming); must byte-match the frozen rev6 baseline and its pinned id-map digest",
         "replacement": null,
         "ste_audience": "agent",
         "ste_agent_compact_revision": "openagents-agent-compact-v1",
@@ -32386,9 +32386,7 @@
           "STE-5.1",
           "STE-8.2"
         ],
-        "ste_status": "inspected",
-        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+        "ste_status": "source-data"
       }
     },
     {

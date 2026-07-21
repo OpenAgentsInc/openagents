@@ -39,14 +39,14 @@ itself provide the OpenAgents product: one signed, durable place to find work,
 understand typed turns and child agents, resolve blockers, inspect repository
 effects, and return after restart without guessing what is authoritative. It
 also lacks an easy native path from product intent to systematic agent work:
-users should be able to define a ProductSpec, approve a plan derived from its
+users should be able to define a Product Spec, approve a plan derived from its
 acceptance criteria, and see agents work those criteria through evidence.
 
 The broader OpenAgents program combines Desktop, mobile, Sync, Fleet, managed
 workrooms, portability, voice, and multiple runtimes. Requiring that entire
 program before naming the first useful product makes the initial customer
 promise difficult to explain and easy to overclaim. A chat-only shell is too
-small. The whole platform is too large.
+small; the whole platform is too large.
 
 Internal execution has also been split across the Codex app and CLI, Claude
 Code, Codex VR Fleet, VR Pylons, and increasingly OpenAgents Desktop. The
@@ -118,15 +118,15 @@ cut:
 
 A developer installs OpenAgents Desktop and reaches a useful local workroom
 without creating an OpenAgents account. The app uses the Codex session already
-logged in on the machine or shows one precise sign-in prerequisite. There is no
+logged in on the machine or shows one precise sign-in prerequisite; there is no
 second Pylon account-linking flow. The developer grants a repository, then
-creates a ProductSpec conversationally or opens an existing one. The workroom
+creates a Product Spec conversationally or opens an existing one. The workroom
 shows validation at the relevant section, an exact revision/digest, and a
 reviewable plan derived from the acceptance criteria. After the developer
 accepts that plan, its work packets become the units Codex agents execute.
 
 Questions and approvals remain visible until durably resolved. Child agents
-appear at their causal parent event and in a complete navigable graph. Selecting
+appear at their causal parent event and in a complete navigable graph; selecting
 one opens its own transcript. File changes and the exact Git diff stay beside
 the conversation and criterion evidence. The ProductSpec board always shows
 what is planned, active, blocked, evidenced, verified, or still open. After
@@ -166,7 +166,7 @@ The host also owns a ProductSpec service backed by
 `@openagentsinc/product-spec`. It parses and validates specs, assigns an
 immutable digest, and persists a `ProductSpecRun` bound to work context,
 granted spec path, revision, digest, and plan ref. Workroom-executable specs
-require unique author-visible criterion IDs. Work packets cite
+require unique author-visible criterion IDs; work packets cite
 `path@revision+digest#criterion-id`. The accepted plan projects into existing
 typed work-unit, dependency, intent, agent, and evidence contracts rather than
 creating a second scheduler or claim universe.
@@ -176,7 +176,7 @@ reusable Codex method for elicitation, spec-edit proposals, decomposition,
 agent allocation, and evidence reporting. Runtime Gateway registers the
 app-managed skill root into the current logged-in Codex app-server through the
 native skill surface and selects its exact typed catalog identity, never prose
-or keyword routing. The skill remains under the signed application resources.
+or keyword routing. The skill remains under the signed application resources;
 it is not copied into the default Codex home and never uses the current
 user-plugin `/skill` path.
 The skill can propose but cannot approve a spec edit, grant work, change a
@@ -315,7 +315,7 @@ author-visible here and in the ID map artifact.
   falsifiable post-launch result, not permission to add editor/PTY/Git breadth
   before the first complete workroom is accepted.
 - Opt-in metrics can bias toward expert dogfood users. Segment and consent
-  provenance must remain visible. No prompt, path, account, or machine identity
+  provenance must remain visible; no prompt, path, account, or machine identity
   is collected to improve the number.
 - A raw Codex escape can hide an OpenAgents defect if external completion is
   reported as workroom success. Every fallback must remain visible, and only an
@@ -324,7 +324,7 @@ author-visible here and in the ID map artifact.
   distinct admitted packets, non-overlapping paths and hot contracts, and
   review capacity—not connected accounts or idle workers.
 - Closed broader issues can tempt a premature claim. Only the exact current
-  artifact and MVP journey prove this spec. CUT-27 and portable/mobile/Fleet
+  artifact and MVP journey prove this spec; CUT-27 and portable/mobile/Fleet
   claims retain their own gates.
 
 ## Open Questions
@@ -372,22 +372,22 @@ pull request—as completion authority.
 
 - [MVP-01 #8756](https://github.com/OpenAgentsInc/openagents/issues/8756)
   remains the parent, claim ledger, and evidence index. The accepted
-  ProductSpec plan holds future work. GitHub does not need one speculative
+  ProductSpec plan holds future work; GitHub does not need one speculative
   issue per criterion or subagent.
 - A child issue is opened just in time only when its dependency receipts are
   green, an executor can claim it promptly, no active path or hot-contract
   claim overlaps, and its close rule is independently satisfiable. Keep the
-  current child plus at most one next-ready child visible. Smaller same-owner
+  current child plus at most one next-ready child visible; smaller same-owner
   steps stay work packets or claim updates.
 - One root coordinator owns the ProductSpec, schemas, migrations, lockfile,
   generated catalogs, roadmap, release, issue closure, and final integration.
   Pull requests are proposals and require current-main reconciliation, exact
   issue/spec/criterion links, checks, and review before merge.
-- Owner-absent or AFK work defaults to one mutating packet. Read-only audit or
+- Owner-absent or AFK work defaults to one mutating packet; read-only audit or
   verification may run in parallel. With an active owner/coordinator, at most
   two file- and contract-disjoint packets may mutate concurrently, with one
   additional read-only reviewer. One authorized Fleet run may use those two
-  named workers under one claim registry and one Pylon publisher. Connected
+  named workers under one claim registry and one Pylon publisher; connected
   account capacity never creates work by itself.
 - Owner presence is required for spec or plan admission, intent revision,
   credentials or physical-device acceptance, production promotion,
@@ -403,7 +403,7 @@ pull request—as completion authority.
 
 Every eligible MVP implementation packet starts in the exact installed
 OpenAgents candidate. Eligible means that candidate truthfully advertises the
-capabilities the packet needs. A missing pre-MVP capability is recorded as a
+capabilities the packet needs; a missing pre-MVP capability is recorded as a
 bootstrap gap, not disguised as an OpenAgents attempt. The ledger records the
 artifact, spec revision/digest, criterion and packet refs, OpenAgents session,
 claim, base, and planned verification.
@@ -419,7 +419,7 @@ silently.
 
 The preferred circuit breaker is narrow: raw Codex repairs the OpenAgents
 blocker, then the original packet reruns in OpenAgents. If consequential work
-cannot wait, Codex may complete it as a recorded `raw_codex_only_exception`.
+cannot wait, Codex may complete it as a recorded `raw_codex_only_exception`;
 that preserves continuity but does not satisfy OpenAgents dogfood or acceptance,
 and the OpenAgents defect becomes a just-in-time repair packet. Claude Code,
 Fleet, and Pylons are not implicit fallback executors for the same packet. They
@@ -448,13 +448,13 @@ cannot be reported as a capability exercised inside OpenAgents.
 - Accept the exact installed-app Codex workroom journey, its ProductSpec-native
   execution loop, and its explicit read-only-review boundary.
 - Approve any public language describing OpenAgents as a Codex workroom or
-  companion. This spec and code/fixture proof alone authorize no claim.
+  companion; this spec and code/fixture proof alone authorize no claim.
 - Approve the MVP telemetry/consent copy before any post-launch success metric
   collection. Metrics remain absent rather than inferred when consent is off.
 - Any decision to release this Codex-only shape before the broader CUT-27
   Codex/Claude/mobile declaration must be explicit and must not mark CUT-27 or
   its parents complete.
-- Accept the initial one-AFK/two-owner-present mutating-lane dogfood ceiling.
+- Accept the initial one-AFK/two-owner-present mutating-lane dogfood ceiling;
   any increase requires reviewed collision, review-capacity, and recovery
   evidence rather than additional connected accounts alone.
 
@@ -508,11 +508,11 @@ Fleet, cloud, portable-session, and voice promises remain unchanged.
   `docs/assurance/PRODUCTSPEC_EVIDENCE_LOOP.md` §"PSEL-2 — reconcile the MVP
   ProductSpec". Criterion text is normalized to single lines by whitespace
   collapse only, because the upstream handwritten parser does not accept
-  YAML block scalars. No criterion or metric wording changed. Each metric's
+  YAML block scalars; no criterion or metric wording changed. Each metric's
   OpenAgents-only `segment`/`source` provenance fields move to the keyed
   Success Metric Context section because they are not part of the upstream
   Success Metric schema. The machine-readable old-to-new ID map artifact is
-  [`openagents-codex-workroom-mvp.id-map.json`](./openagents-codex-workroom-mvp.id-map.json).
+  [`openagents-codex-workroom-mvp.id-map.json`](./openagents-codex-workroom-mvp.id-map.json);
   the `packages/product-spec` test suite enforces that this revision's
   items, the ID map, and the exact revision-6 text agree.
 - **Adoption state: proposed, owner-gated.** The live executable subject
@@ -521,7 +521,7 @@ Fleet, cloud, portable-session, and voice promises remain unchanged.
   `sha256:fba7963334eb736582003e7d903d0e57164e7fecb2c158c302af7fb23e3f6ef1`),
   which the checked-in AssuranceSpec proposal and the MVP-01 (#8756) dogfood
   deliberately bind. Owner presence is required for intent-revision
-  admission (Rollout §"Issue and concurrency cadence"). PSEL-3 freezes the
+  admission (Rollout §"Issue and concurrency cadence"); PSEL-3 freezes the
   migrated document/intent identities, rebinds the AssuranceSpec, and
   creates the new accepted plan/run for the `AC-*` identity. No existing
   run, packet, or evidence is relabeled by this proposal, and no old

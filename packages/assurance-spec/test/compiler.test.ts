@@ -42,7 +42,14 @@ const profilePayload = {
   permitted_actions: ["read_repository", "run_vite_plus_tests", "write_isolated_artifacts"],
   forbidden_actions: ["network", "credentials", "production_mutation", "customer_data"],
   required_commands: ["vp"],
-  dependency_lock: { path: "package.json", digest: sha256Digest(readFileSync(resolve(root, "package.json"), "utf8")) },
+  // Hermetic fixture digest. This is a compiler-DETERMINISM test; hashing the
+  // live root package.json made the golden snapshot go stale on every
+  // dependency/script/version bump, which is a non-hermetic flake rather than a
+  // real regression. A fixed fixture digest keeps the manifest deterministic.
+  dependency_lock: {
+    path: "package.json",
+    digest: sha256Digest("openagents.assurance.compiler_test.dependency_lock_fixture.v1"),
+  },
 }
 
 const environment: AssuranceEnvironmentProfileDocument = {
