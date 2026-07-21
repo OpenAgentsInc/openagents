@@ -159,6 +159,7 @@ import {
   isCodexModel,
 } from "./claude-local-contract.ts"
 import { makeProviderLaneDispatcher, type ProviderLane } from "./provider-lane.ts"
+import { makeHarnessEventRecorder } from "./harness-event-recorder.ts"
 import { makeAcpProviderLane } from "./provider-lane-acp.ts"
 import {
   projectSpecLaneTurn,
@@ -4241,6 +4242,10 @@ ipcMain.handle(ClaudeLocalQueueFollowupChannel, (_event, value: unknown) => {
 // contribute only what is genuinely lane-specific.
 // ---------------------------------------------------------------------------
 const fullAutoFollowupHandoff = makeFullAutoFollowupHandoff()
+// HARN-03/06: record every dispatched turn's ClaudeLocalEvent stream into a
+// durable, cursor-exact neutral harness event log. Additive observer only.
+const harnessEventRecorder = makeHarnessEventRecorder()
+
 const laneDispatcher = makeProviderLaneDispatcher({
   threads,
   journal: localTurnJournal,
@@ -4268,6 +4273,13 @@ const laneDispatcher = makeProviderLaneDispatcher({
   localTurnFlushers,
   isQuitting: () => desktopIsQuitting,
   onTurnEventProjected: (request, event, background) => {
+    // HARN-03/06: record the neutral harness event log for every turn (all lanes,
+    // foreground and background). Pure observer — never disturbs dispatch.
+    harnessEventRecorder.observe({
+      threadRef: request.threadRef,
+      turnRef: request.turnRef,
+      event,
+    })
     if (!background || request.fullAuto !== true) return
     scheduleFullAutoThreadUpdate(request.threadRef)
     fullAutoFollowupHandoff.observe({
