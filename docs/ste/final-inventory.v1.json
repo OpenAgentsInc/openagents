@@ -46883,6 +46883,28 @@
       }
     },
     {
+      "path": "packages/ai/README.md",
+      "sha256": "89fbf6eb77eaef81423f54896e712afa13827d0b9e17935c6633e611f3e961b5",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "packages/apple-fm-runtime/README.md",
       "sha256": "2c3af691cfc85bbf02e61ef7bcb9cf4707f8ffe11ef7eff52e30bf40a5812cc6",
       "reason": "Final review of a converted document",

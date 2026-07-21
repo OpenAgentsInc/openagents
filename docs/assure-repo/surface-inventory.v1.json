@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:47843c4f1ad80cdbd25f79409097be39f4a0ffa822a4ec17d5cc508f8a18b93e",
+  "sourceDigest": "sha256:abc38ab13e57ec8db09cc766b3278c480a4d1d8cd5d3da0e1edc1703645b4798",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -1745,6 +1745,23 @@
       }
     },
     {
+      "id": "package:@openagentsinc/ai",
+      "kind": "package",
+      "owningPath": "packages/ai",
+      "title": "@openagentsinc/ai",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/ai (1 tracked test file)"
+        }
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
+    },
+    {
       "id": "package:@openagentsinc/ai-sdk-sandbox-local",
       "kind": "package",
       "owningPath": "packages/ai-sdk-sandbox-local",
@@ -3311,17 +3328,17 @@
     }
   ],
   "summary": {
-    "totalSurfaces": 173,
+    "totalSurfaces": 174,
     "byKind": {
       "app": 16,
       "crate": 6,
       "document": 48,
-      "package": 91,
+      "package": 92,
       "public-endpoint": 2,
       "release-pipeline": 9,
       "worker": 1
     },
-    "withOracle": 158,
+    "withOracle": 159,
     "unverified": 15,
     "byUnverifiedReason": {
       "config-only": 2,
@@ -3329,7 +3346,7 @@
       "reference-only": 2
     },
     "byObligationState": {
-      "designed": 124,
+      "designed": 125,
       "inconclusive": 10,
       "mapped": 34,
       "out-of-scope": 5

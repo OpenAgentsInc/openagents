@@ -1681,6 +1681,28 @@ importers:
         specifier: 'catalog:'
         version: 6.0.3
 
+  packages/ai:
+    dependencies:
+      '@openagentsinc/agent-harness-contract':
+        specifier: workspace:*
+        version: link:../agent-harness-contract
+      '@openagentsinc/agent-runtime-schema':
+        specifier: workspace:*
+        version: link:../agent-runtime-schema
+      '@openagentsinc/history-corpus':
+        specifier: workspace:*
+        version: link:../history-corpus
+      '@openagentsinc/khala-ai-sdk-core':
+        specifier: workspace:*
+        version: link:../khala-ai-sdk-core
+      effect:
+        specifier: 4.0.0-beta.94
+        version: 4.0.0-beta.94
+    devDependencies:
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+
   packages/ai-sdk-sandbox-local:
     dependencies:
       '@ai-sdk/harness':
