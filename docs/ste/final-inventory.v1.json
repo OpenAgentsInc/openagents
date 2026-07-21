@@ -38248,6 +38248,150 @@
       }
     },
     {
+      "path": "docs/research/rlm/README.md",
+      "sha256": "77f418ca5981ffae068cc9da925d1156e22eb74c7ae55086be640a09c507b711",
+      "profile": {
+        "ste_issue": 9,
+        "ste_mode": "descriptive",
+        "ste_glossary_revision": "openagents-ste-glossary-v1",
+        "ste_status": "inspected",
+        "ste_reviewer": "grok/rlm-research-2026-07-21",
+        "ste_reviewed_at": "2026-07-21T12:00:00Z",
+        "owner": "OpenAgents documentation",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ]
+      }
+    },
+    {
+      "path": "docs/research/rlm/openagents-implications.md",
+      "sha256": "8dfd7d3eb908c4d5e58640b5d29b93e7d590c7549a6bbc393f39ed63c09a1f7d",
+      "profile": {
+        "ste_issue": 9,
+        "ste_mode": "descriptive",
+        "ste_glossary_revision": "openagents-ste-glossary-v1",
+        "ste_status": "inspected",
+        "ste_reviewer": "grok/rlm-research-2026-07-21",
+        "ste_reviewed_at": "2026-07-21T12:00:00Z",
+        "owner": "OpenAgents documentation",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ]
+      }
+    },
+    {
+      "path": "docs/research/rlm/paper-analysis.md",
+      "sha256": "856335ec5f8cbaa3c21bc8724bddb3f6faca9ae24e9bca912a3a1c535172f076",
+      "profile": {
+        "ste_issue": 9,
+        "ste_mode": "descriptive",
+        "ste_glossary_revision": "openagents-ste-glossary-v1",
+        "ste_status": "inspected",
+        "ste_reviewer": "grok/rlm-research-2026-07-21",
+        "ste_reviewed_at": "2026-07-21T12:00:00Z",
+        "owner": "OpenAgents documentation",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ]
+      }
+    },
+    {
+      "path": "docs/research/rlm/paper-summary.md",
+      "sha256": "27b399e4f0cae30a6405c5d34e7fab331d75eacf45674918718d2edf8238557d",
+      "profile": {
+        "ste_issue": 9,
+        "ste_mode": "descriptive",
+        "ste_glossary_revision": "openagents-ste-glossary-v1",
+        "ste_status": "inspected",
+        "ste_reviewer": "grok/rlm-research-2026-07-21",
+        "ste_reviewed_at": "2026-07-21T12:00:00Z",
+        "owner": "OpenAgents documentation",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ]
+      }
+    },
+    {
+      "path": "docs/research/rlm/repo-analysis.md",
+      "sha256": "3c848ae5f9d407f527d617e8124fcb2a880abfc4782ac7e6e0d065fa3d0b9ff6",
+      "profile": {
+        "ste_issue": 9,
+        "ste_mode": "descriptive",
+        "ste_glossary_revision": "openagents-ste-glossary-v1",
+        "ste_status": "inspected",
+        "ste_reviewer": "grok/rlm-research-2026-07-21",
+        "ste_reviewed_at": "2026-07-21T12:00:00Z",
+        "owner": "OpenAgents documentation",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ]
+      }
+    },
+    {
+      "path": "docs/research/rlm/source.md",
+      "sha256": "36577cfcc94186c6ae3a0ba8d6bd0adbb856a31e96d2c26b04f33bb8711e3b94",
+      "profile": {
+        "ste_issue": 9,
+        "ste_mode": "descriptive",
+        "ste_glossary_revision": "openagents-ste-glossary-v1",
+        "ste_status": "inspected",
+        "ste_reviewer": "grok/rlm-research-2026-07-21",
+        "ste_reviewed_at": "2026-07-21T12:00:00Z",
+        "owner": "OpenAgents documentation",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ]
+      }
+    },
+    {
       "path": "docs/research/saylor-orange-checkmark.md",
       "sha256": "befe944eb846449d80c63f0edcec1c635ae6f265ea6f34a2a777c4330f096c7f",
       "reason": "Final review of a converted document",
