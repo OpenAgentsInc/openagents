@@ -34,8 +34,15 @@ export type MutationOutcome = {
   readonly subjectPath: string;
   readonly target: string;
   readonly replacement: string;
-  /** killed = oracle caught it; survived = weak oracle; error = could not run. */
-  readonly result: "killed" | "survived" | "error";
+  /**
+   * killed = the oracle caught it (the test command FAILED with a non-zero exit
+   * code); survived = a weak oracle (the test still passed); inconclusive = the
+   * test command was TERMINATED by a signal (a timeout, an out-of-memory kill,
+   * or a crash) and so returned no verdict — this is NOT a demonstrated kill and
+   * must never inflate a kill rate; error = the run could not be set up (e.g. the
+   * baseline oracle did not pass).
+   */
+  readonly result: "killed" | "survived" | "inconclusive" | "error";
   readonly detail: string;
 };
 
@@ -48,22 +55,47 @@ export class MutationRunnerError extends Error {
   }
 }
 
-const runTest = (
-  root: string,
-  command: ReadonlyArray<string>,
-): { passed: boolean; detail: string } => {
+/**
+ * `passed` = exit 0. `failed` = a numeric non-zero exit code (the oracle
+ * returned a real failing verdict). `terminated` = the process was killed by a
+ * signal or otherwise returned no exit code (a timeout SIGTERM, an OOM SIGKILL,
+ * a crash SIGSEGV, or a spawn error). A terminated run is NOT a failing verdict:
+ * the oracle never got to decide, so it can never be credited with a kill.
+ */
+type RunResult = { status: "passed" | "failed" | "terminated"; detail: string };
+
+const runTest = (root: string, command: ReadonlyArray<string>): RunResult => {
   try {
     execFileSync(command[0]!, command.slice(1), {
       cwd: root,
       stdio: "pipe",
       timeout: 10 * 60 * 1000,
     });
-    return { passed: true, detail: "test command exited 0" };
+    return { status: "passed", detail: "test command exited 0" };
   } catch (error) {
-    const err = error as { status?: number; signal?: string };
+    const err = error as {
+      status?: number | null;
+      signal?: string | null;
+      killed?: boolean;
+      code?: string;
+    };
+    // A signal (including the timeout kill) or a missing exit code means the
+    // command was terminated rather than judged. Only a numeric non-zero status
+    // is a real failing verdict.
+    if ((err.signal !== null && err.signal !== undefined) || err.killed === true) {
+      return {
+        status: "terminated",
+        detail: `test command terminated without a verdict (${
+          err.signal ? `signal ${err.signal}` : "killed"
+        }${err.killed ? ", timed out or killed" : ""})`,
+      };
+    }
+    if (typeof err.status === "number") {
+      return { status: "failed", detail: `test command failed (status ${err.status})` };
+    }
     return {
-      passed: false,
-      detail: `test command failed (status ${err.status ?? "?"}${err.signal ? `, signal ${err.signal}` : ""})`,
+      status: "terminated",
+      detail: `test command produced no exit code${err.code ? ` (${err.code})` : ""}`,
     };
   }
 };
@@ -93,7 +125,7 @@ export const runMutation = (root: string, spec: MutationSpec): MutationOutcome =
   }
 
   const baseline = runTest(root, spec.testCommand);
-  if (!baseline.passed) {
+  if (baseline.status !== "passed") {
     return {
       subjectPath: spec.subjectPath,
       target: spec.target,
@@ -106,15 +138,35 @@ export const runMutation = (root: string, spec: MutationSpec): MutationOutcome =
   try {
     writeFileSync(absolute, original.replace(spec.target, spec.replacement));
     const mutated = runTest(root, spec.testCommand);
-    return {
-      subjectPath: spec.subjectPath,
-      target: spec.target,
-      replacement: spec.replacement,
-      result: mutated.passed ? "survived" : "killed",
-      detail: mutated.passed
-        ? `WEAK ORACLE: mutant survived — ${mutated.detail}`
-        : `mutant killed — ${mutated.detail}`,
-    };
+    switch (mutated.status) {
+      case "passed":
+        return {
+          subjectPath: spec.subjectPath,
+          target: spec.target,
+          replacement: spec.replacement,
+          result: "survived",
+          detail: `WEAK ORACLE: mutant survived — ${mutated.detail}`,
+        };
+      case "failed":
+        return {
+          subjectPath: spec.subjectPath,
+          target: spec.target,
+          replacement: spec.replacement,
+          result: "killed",
+          detail: `mutant killed — ${mutated.detail}`,
+        };
+      case "terminated":
+        // The oracle never returned a verdict (timeout/crash). Do NOT credit a
+        // kill — that would launder an infrastructure failure into a sound-oracle
+        // signal and inflate the kill rate.
+        return {
+          subjectPath: spec.subjectPath,
+          target: spec.target,
+          replacement: spec.replacement,
+          result: "inconclusive",
+          detail: `INCONCLUSIVE: mutant test returned no verdict — ${mutated.detail}`,
+        };
+    }
   } finally {
     writeFileSync(absolute, original);
   }

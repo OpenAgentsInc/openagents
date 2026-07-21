@@ -428,7 +428,7 @@
     },
     {
       "path": "INVARIANTS.md",
-      "sha256": "bbc49e69f2d2c0416ea7ee40918c863c8dab524bb30848d4f7c7a8948cfd4005",
+      "sha256": "f60f1c1f75c5087ca06c858f2504a830e28929423c9bd9a2034447ff26f84bb6",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -16508,7 +16508,7 @@
     },
     {
       "path": "docs/assure-repo/README.md",
-      "sha256": "a851aac0063ad99ca2831990af2a1dfed43b5149f4facfd7d0d5276112c11f40",
+      "sha256": "f3a09bf883e2f16c69a610a3c254573284c342ffcec07a86886fb29eb2a7949c",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -16572,6 +16572,20 @@
         "source": "Immutable historical or evidence source data",
         "replacement": null,
         "ste_status": "source-data"
+      }
+    },
+    {
+      "path": "docs/audits/2026-07-21-bounded-limit-audit.md",
+      "sha256": "1a13c77ea204593aa226b3b7fcf25012ad11d3f18ec928ea6b3a527493ed7881",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "ste_status": "source-data",
+        "ste_reviewer": null,
+        "ste_reviewed_at": null,
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null
       }
     },
     {

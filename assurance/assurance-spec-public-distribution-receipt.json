@@ -13,10 +13,13 @@
       "name": "@openagentsinc/assurance-spec",
       "version": "0.1.1",
       "filename": "openagentsinc-assurance-spec-0.1.1.tgz",
-      "sha256": "sha256:29c9ef072de1021f378c2bc4daa3c65e25624f963ed9e283fb839a9854f39b86"
+      "sha256": "sha256:ef3ffbd8bcb1e2b0f4dcaab41a6633cfa4da5099aad9ccbbb59b9765a7c28ed3"
     }
   ],
-  "publish_order": ["@openagentsinc/product-spec", "@openagentsinc/assurance-spec"],
+  "publish_order": [
+    "@openagentsinc/product-spec",
+    "@openagentsinc/assurance-spec"
+  ],
   "starter_kit": "one_commit_copy",
   "github_hosted_ci": false,
   "npm_publication": "owner_authentication_required"

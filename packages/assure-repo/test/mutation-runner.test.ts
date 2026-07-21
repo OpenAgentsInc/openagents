@@ -28,6 +28,16 @@ const strongOracle = (root: string): ReadonlyArray<string> => [
 ];
 const weakOracle = (): ReadonlyArray<string> => ["node", "-e", "process.exit(0)"];
 
+// Passes on the original subject (exit 0) but, when the subject is mutated,
+// terminates itself with a signal instead of returning an exit code — the way a
+// timeout SIGTERM, an out-of-memory SIGKILL, or a crash would end the process.
+const signalOnMutantOracle = (root: string): ReadonlyArray<string> => [
+  "node",
+  "-e",
+  "const fs=require('fs');const p=require('path');const s=fs.readFileSync(p.join(process.argv[1],'subject.txt'),'utf8');if(s.includes('return 2')){process.exit(0)}else{process.kill(process.pid,'SIGKILL')}",
+  root,
+];
+
 describe("runMutation", () => {
   test("kills a mutant when the oracle is strong", () => {
     const root = fixture();
@@ -99,5 +109,24 @@ describe("runMutation", () => {
       testCommand: failingOracle,
     });
     expect(outcome.result).toBe("error");
+  });
+
+  // Regression for FREERANGE-02: a mutant whose test is terminated by a signal
+  // (a timeout SIGTERM, an OOM SIGKILL, or a crash) returns no verdict and must
+  // NOT be counted as killed, which would inflate the kill rate and make a weak
+  // oracle read as sound. The "kills a mutant when the oracle is strong" test
+  // above is the positive control through the same path: a real non-zero exit
+  // code IS still a kill.
+  test("reports inconclusive (not killed) when the mutant test is terminated by a signal", () => {
+    const root = fixture();
+    const outcome = runMutation(root, {
+      subjectPath: "subject.txt",
+      target: "return 2",
+      replacement: "return 3",
+      testCommand: signalOnMutantOracle(root),
+    });
+    expect(outcome.result).toBe("inconclusive");
+    expect(outcome.result).not.toBe("killed");
+    expect(outcome.detail).toContain("INCONCLUSIVE");
   });
 });

@@ -213,6 +213,35 @@ More specific invariant ledgers apply inside imported apps and packages.
   observed input and output usage within its declared cap. The orchestrator is
   evidence-only: it cannot admit, accept, merge, deploy, or promote a promise.
 
+## Fail-Closed Limits And Printed Trust
+
+These three disciplines hold across every verification-bearing surface. They
+come from the Freerange teardown
+([`docs/teardowns/2026-07-21-freerange-teardown.md`](docs/teardowns/2026-07-21-freerange-teardown.md),
+§4 and §7.3) and the bounded-limit audit
+([`docs/audits/2026-07-21-bounded-limit-audit.md`](docs/audits/2026-07-21-bounded-limit-audit.md)).
+
+- **A bounded mechanism must fail closed and state which failure it buys.**
+  Every cap, truncation, depth limit, timeout, retry ceiling, and queue bound
+  records what is lost when the limit is hit. Hitting the limit produces an
+  honest stop, degradation, or `unknown`. No limit may make an incomplete
+  result read as complete or a terminated run read as a decided one. A timeout
+  or a signal termination is never a passing or a failing verdict. It is an
+  inconclusive result.
+- **No limit may silently strengthen a result.** A cap may drop precision or
+  coverage, but it must never turn an unproven claim into a proven one, an
+  incomplete inventory into a complete one, or an unrun check into a passed
+  one. When a mechanism drops evidence, it records the drop (a `truncated`
+  flag, a diagnostic, or a typed inconclusive outcome) so the consumer sees the
+  gap.
+- **Trust is printed where the consumer can see it.** When a component takes
+  something on faith — an unvalidated boundary, an assumed-dense input, an
+  unverified external fact — the trust renders as an explicit assumption,
+  `unknown`, or degradation marker, not held silently inside the
+  implementation. Partial or advisory results use shapes that structurally lack
+  guarantee fields, so evidence from an incomplete analysis cannot be passed or
+  printed as a guarantee.
+
 ## Fast Follow Learning And Work Generation
 
 - `FASTFOLLOW.md` declares learning intent only. It does not replace or widen
