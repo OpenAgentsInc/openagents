@@ -41915,8 +41915,20 @@
       }
     },
     {
+      "path": "docs/sol/receipts/2026-07-21-fa-rel-01-release-admission-residual.md",
+      "sha256": "91980b8ab610f5e95d6dadc8e6ae80716fd075dbad0565f2e56ff5fb8af81ce0",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null,
+        "ste_status": "source-data"
+      }
+    },
+    {
       "path": "docs/sol/receipts/README.md",
-      "sha256": "651f73b4e71cbd87ca5eb153c66229c45686bbc9e05be5131db67da7617c1b9f",
+      "sha256": "c48fef8948c15d91f4e33a600216fb2ed871ffcc29e9cd1e788b0d1def082230",
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
