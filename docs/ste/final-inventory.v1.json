@@ -21578,6 +21578,28 @@
       }
     },
     {
+      "path": "docs/desktop/2026-07-21-openagents-desktop-chat-runtime-reference.md",
+      "sha256": "6216bc12f2d23a522c1290756e251304febac5e6d8d73d68dbffed4d23b54211",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/dspy/2026-07-20-apple-fm-dse-analysis.md",
       "sha256": "a2cba78e59cc2db96eaad0d36c0b0cb6a7ecb2a1891ab6318aab1b4e0efeab75",
       "reason": "Immutable historical or evidence source data",
@@ -23907,6 +23929,18 @@
         "ste_status": "inspected",
         "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
         "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/fable/2026-07-21-ai-sdk-and-effect-ai-streaming-harvest-audit.md",
+      "sha256": "9a764fba0af749851ad9bd6db4e1336cda3cc93f953dbde90fcc0ab5f234520c",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null,
+        "ste_status": "source-data"
       }
     },
     {
@@ -38250,14 +38284,9 @@
     {
       "path": "docs/research/rlm/README.md",
       "sha256": "77f418ca5981ffae068cc9da925d1156e22eb74c7ae55086be640a09c507b711",
+      "reason": "Final review of a converted document",
       "profile": {
-        "ste_issue": 9,
         "ste_mode": "descriptive",
-        "ste_glossary_revision": "openagents-ste-glossary-v1",
-        "ste_status": "inspected",
-        "ste_reviewer": "grok/rlm-research-2026-07-21",
-        "ste_reviewed_at": "2026-07-21T12:00:00Z",
-        "owner": "OpenAgents documentation",
         "risk": "legacy",
         "source": null,
         "replacement": null,
@@ -38268,20 +38297,18 @@
           "STE-3.6",
           "STE-5.1",
           "STE-8.2"
-        ]
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {
       "path": "docs/research/rlm/openagents-implications.md",
       "sha256": "3f9456fb84db11d468b97a4d68b1a0c48f5e61d76ed816a0f9315d92ac882916",
+      "reason": "Final review of a converted document",
       "profile": {
-        "ste_issue": 9,
         "ste_mode": "descriptive",
-        "ste_glossary_revision": "openagents-ste-glossary-v1",
-        "ste_status": "inspected",
-        "ste_reviewer": "grok/rlm-research-2026-07-21",
-        "ste_reviewed_at": "2026-07-21T12:00:00Z",
-        "owner": "OpenAgents documentation",
         "risk": "legacy",
         "source": null,
         "replacement": null,
@@ -38292,20 +38319,18 @@
           "STE-3.6",
           "STE-5.1",
           "STE-8.2"
-        ]
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {
       "path": "docs/research/rlm/paper-analysis.md",
       "sha256": "02a05f1e6adecbc9d033f6e31f19e91b8f83da8655219a49d3adcebf393b312a",
+      "reason": "Final review of a converted document",
       "profile": {
-        "ste_issue": 9,
         "ste_mode": "descriptive",
-        "ste_glossary_revision": "openagents-ste-glossary-v1",
-        "ste_status": "inspected",
-        "ste_reviewer": "grok/rlm-research-2026-07-21",
-        "ste_reviewed_at": "2026-07-21T12:00:00Z",
-        "owner": "OpenAgents documentation",
         "risk": "legacy",
         "source": null,
         "replacement": null,
@@ -38316,20 +38341,18 @@
           "STE-3.6",
           "STE-5.1",
           "STE-8.2"
-        ]
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {
       "path": "docs/research/rlm/paper-summary.md",
       "sha256": "c4425c1d75f6fde7cc1b53491f02611e0d6bbbedb0f0a2e4db9b69da14805b74",
+      "reason": "Final review of a converted document",
       "profile": {
-        "ste_issue": 9,
         "ste_mode": "descriptive",
-        "ste_glossary_revision": "openagents-ste-glossary-v1",
-        "ste_status": "inspected",
-        "ste_reviewer": "grok/rlm-research-2026-07-21",
-        "ste_reviewed_at": "2026-07-21T12:00:00Z",
-        "owner": "OpenAgents documentation",
         "risk": "legacy",
         "source": null,
         "replacement": null,
@@ -38340,20 +38363,18 @@
           "STE-3.6",
           "STE-5.1",
           "STE-8.2"
-        ]
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {
       "path": "docs/research/rlm/repo-analysis.md",
       "sha256": "ee8a2cdd711a4d93bde5711469bf090f9739fce8760f9150a1d86d3b6722d644",
+      "reason": "Final review of a converted document",
       "profile": {
-        "ste_issue": 9,
         "ste_mode": "descriptive",
-        "ste_glossary_revision": "openagents-ste-glossary-v1",
-        "ste_status": "inspected",
-        "ste_reviewer": "grok/rlm-research-2026-07-21",
-        "ste_reviewed_at": "2026-07-21T12:00:00Z",
-        "owner": "OpenAgents documentation",
         "risk": "legacy",
         "source": null,
         "replacement": null,
@@ -38364,20 +38385,18 @@
           "STE-3.6",
           "STE-5.1",
           "STE-8.2"
-        ]
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {
       "path": "docs/research/rlm/source.md",
       "sha256": "36577cfcc94186c6ae3a0ba8d6bd0adbb856a31e96d2c26b04f33bb8711e3b94",
+      "reason": "Final review of a converted document",
       "profile": {
-        "ste_issue": 9,
         "ste_mode": "descriptive",
-        "ste_glossary_revision": "openagents-ste-glossary-v1",
-        "ste_status": "inspected",
-        "ste_reviewer": "grok/rlm-research-2026-07-21",
-        "ste_reviewed_at": "2026-07-21T12:00:00Z",
-        "owner": "OpenAgents documentation",
         "risk": "legacy",
         "source": null,
         "replacement": null,
@@ -38388,7 +38407,10 @@
           "STE-3.6",
           "STE-5.1",
           "STE-8.2"
-        ]
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {
