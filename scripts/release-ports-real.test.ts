@@ -2,19 +2,27 @@
 // feed port against injected effects, and the coordinator's honest owner-gate
 // refusal at inventory bind versus the happy inventory path once the owner
 // attests the native acceptance hosts.
+import { generateKeyPairSync } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 
+import { verifySignedReleaseSet } from "../apps/openagents-desktop/src/release-set-contract.js";
+import type { PinnedReleaseKey } from "../apps/openagents-desktop/src/update-contract.js";
 import type { ReleaseIo, ReleasePlan, ReleaseTargetKey } from "./release.js";
 import { releaseTargetKeys } from "./release.js";
 import {
   type CommandResult,
-  type HttpResponse,
   createRealCoordinatorPort,
   createRealFeedPort,
   createReleasePorts,
+  type GcsObjectStore,
+  type HttpResponse,
+  type ReleaseSigningKey,
+  type StagedArtifact,
+  type StagingManifest,
+  type TargetNativeProofs,
 } from "./release-ports-real.js";
 
 const scratches: string[] = [];
@@ -146,5 +154,163 @@ describe("createRealCoordinatorPort", () => {
     const result = await port.checkWorkerInventory(plan);
     expect(result.receiptLines.length).toBeGreaterThan(0);
     expect(result.receiptLines[0]).toContain("4-target inventory");
+  });
+});
+
+// A test ed25519 signing key whose public component IS the pin.
+const makeSigningKeyAndPin = (): { key: ReleaseSigningKey; pin: PinnedReleaseKey } => {
+  const { privateKey } = generateKeyPairSync("ed25519");
+  const jwk = privateKey.export({ format: "jwk" }) as { d: string; x: string };
+  const kid = "test-release-key";
+  return { key: { kid, d: jwk.d, x: jwk.x }, pin: { alg: "ed25519", kid, x: jwk.x } };
+};
+
+const FORMATS: Record<ReleaseTargetKey, readonly string[]> = {
+  "darwin-arm64": ["dmg", "zip"],
+  "darwin-x64": ["dmg", "zip"],
+  "linux-arm64": ["appimage", "deb", "rpm"],
+  "linux-x64": ["appimage", "deb", "rpm"],
+};
+
+const artifactName = (version: string, target: ReleaseTargetKey, format: string): string => {
+  const [platform, arch] = target.split("-");
+  if (platform === "darwin") return `OpenAgents-${version}-rc-darwin-${arch}.${format}`;
+  const ext = format === "appimage" ? "AppImage" : format;
+  return `OpenAgents-${version}-rc-linux-${arch}.${ext}`;
+};
+
+const buildStagingManifest = (version: string): StagingManifest => {
+  const artifacts: StagedArtifact[] = [];
+  let seed = 1;
+  for (const target of releaseTargetKeys) {
+    for (const format of FORMATS[target]) {
+      const name = artifactName(version, target, format);
+      artifacts.push({
+        target,
+        format,
+        name,
+        objectKey: `desktop/candidate/${version}/${target}/${name}`,
+        sha256: seed.toString(16).padStart(64, "0"),
+        byteLength: 1000 + seed,
+        githubUrl: `https://github.com/OpenAgentsInc/openagents/releases/download/openagents-desktop-v${version}/${name}`,
+      });
+      seed += 1;
+    }
+  }
+  return { sourceRevision: "0".repeat(40), version, channel: "rc", artifacts };
+};
+
+const buildProofs = (): Record<ReleaseTargetKey, TargetNativeProofs> => {
+  const keys = [
+    "cleanInstall",
+    "launch",
+    "agentRuntime",
+    "shutdown",
+    "update",
+    "interruptionResume",
+    "rollbackOrNoRollback",
+    "reinstall",
+    "uninstall",
+  ] as const;
+  return Object.fromEntries(
+    releaseTargetKeys.map((target) => [
+      target,
+      Object.fromEntries(keys.map((k) => [k, `oa.proof.${target}.${k}`])) as TargetNativeProofs,
+    ]),
+  ) as Record<ReleaseTargetKey, TargetNativeProofs>;
+};
+
+// In-memory GcsObjectStore: pre-seeded artifact identity (sha256 + size) for
+// headImmutable, plus a blob map for candidate/pointer read/write/CAS.
+const makeFakeStore = (
+  artifacts: ReadonlyMap<string, { sha256: string; byteLength: number }>,
+): GcsObjectStore => {
+  const blobs = new Map<string, { body: string; gen: string }>();
+  let counter = 1;
+  return {
+    head: async (key) => {
+      const blob = blobs.get(key);
+      if (blob !== undefined)
+        return { exists: true, byteLength: blob.body.length, generation: blob.gen, sha256: "" };
+      const artifact = artifacts.get(key);
+      if (artifact !== undefined)
+        return {
+          exists: true,
+          byteLength: artifact.byteLength,
+          generation: "artifact",
+          sha256: artifact.sha256,
+        };
+      return { exists: false };
+    },
+    read: async (key) => blobs.get(key)?.body ?? null,
+    createIfAbsent: async (key, body) => {
+      if (blobs.has(key)) return "exists";
+      blobs.set(key, { body, gen: String(counter++) });
+      return "created";
+    },
+    compareAndSwap: async (key, expected, body) => {
+      const current = blobs.get(key)?.gen ?? null;
+      if ((expected ?? null) !== (current ?? null)) return { swapped: false, generation: current };
+      blobs.set(key, { body, gen: String(counter++) });
+      return { swapped: true, generation: blobs.get(key)!.gen };
+    },
+    _blobs: blobs,
+  } as GcsObjectStore & { _blobs: Map<string, { body: string; gen: string }> };
+};
+
+describe("createRealCoordinatorPort — real convergence + promotion", () => {
+  test("converges all four targets, publishes a signed candidate, and promotes the pointer", async () => {
+    const version = "0.1.0-rc.99";
+    const { key, pin } = makeSigningKeyAndPin();
+    const manifest = buildStagingManifest(version);
+    const sizes = new Map(
+      manifest.artifacts.map((a) => [a.objectKey, { sha256: a.sha256, byteLength: a.byteLength }]),
+    );
+    const store = makeFakeStore(sizes) as GcsObjectStore & {
+      _blobs: Map<string, { body: string; gen: string }>;
+    };
+    const plan = makePlan("real");
+    const port = createRealCoordinatorPort(plan, makeIo(), {
+      signingKey: key,
+      pin,
+      store,
+      attestations: fullAttestations,
+      stagingManifest: manifest,
+      nativeProofs: buildProofs(),
+    });
+
+    await port.checkWorkerInventory(plan);
+    await port.bringUpWorkers(plan);
+    await port.fanOutTargets(plan);
+    await port.runReleaseGates(plan);
+    const published = await port.publishCandidate(plan);
+    expect(published.receiptLines.length).toBeGreaterThan(0);
+    const promoted = await port.promoteChannelPointer(plan);
+    expect(promoted.receiptLines.length).toBeGreaterThan(0);
+
+    // The promoted pointer object exists and names a real candidate; the
+    // candidate release-set verifies against the pinned key.
+    const pointerBody = store._blobs.get("desktop/release-set-v2/rc/pointer.json");
+    expect(pointerBody).toBeDefined();
+    const pointer = JSON.parse(pointerBody!.body) as { generation: string };
+    const candidateBody = store._blobs.get(
+      `desktop/release-set-v2/rc/candidates/${pointer.generation}.json`,
+    );
+    expect(candidateBody).toBeDefined();
+    const candidate = JSON.parse(candidateBody!.body) as { releaseSet: unknown; signature: unknown };
+    const { canonicalizeReleaseSet } = await import(
+      "../apps/openagents-desktop/src/release-set-contract.js"
+    );
+    const verification = verifySignedReleaseSet(
+      canonicalizeReleaseSet(candidate.releaseSet),
+      candidate.signature,
+      pin,
+      "rc",
+    );
+    expect(verification.ok).toBe(true);
+    if (verification.ok) {
+      expect(verification.releaseSet.version).toBe(version);
+      expect(verification.releaseSet.targets.length).toBe(4);
+    }
   });
 });
