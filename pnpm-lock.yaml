@@ -489,11 +489,11 @@ importers:
         specifier: workspace:*
         version: link:../../packages/agent-client-runtime-bridge
       '@openagentsinc/agent-harness-contract':
-        specifier: 0.2.0-rc.1
-        version: 0.2.0-rc.1
+        specifier: 0.2.0-rc.2
+        version: 0.2.0-rc.2
       '@openagentsinc/agent-runtime-schema':
-        specifier: 0.2.0-rc.1
-        version: 0.2.0-rc.1
+        specifier: 0.2.0-rc.2
+        version: 0.2.0-rc.2
       '@openagentsinc/agent-surface':
         specifier: workspace:*
         version: link:../../packages/agent-surface
@@ -504,8 +504,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/agent-turn-store
       '@openagentsinc/ai':
-        specifier: 0.2.0-rc.1
-        version: 0.2.0-rc.1(zod@4.4.3)
+        specifier: 0.2.0-rc.2
+        version: 0.2.0-rc.2(zod@4.4.3)
       '@openagentsinc/apple-fm-runtime':
         specifier: workspace:*
         version: link:../../packages/apple-fm-runtime
@@ -534,8 +534,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/grok-harness
       '@openagentsinc/history-corpus':
-        specifier: 0.2.0-rc.1
-        version: 0.2.0-rc.1
+        specifier: 0.2.0-rc.2
+        version: 0.2.0-rc.2
       '@openagentsinc/khala-sync':
         specifier: workspace:*
         version: link:../../packages/khala-sync
@@ -555,8 +555,8 @@ importers:
         specifier: workspace:*
         version: link:../pylon/packages/runtime
       '@openagentsinc/rlm':
-        specifier: 0.2.0-rc.1
-        version: 0.2.0-rc.1
+        specifier: 0.2.0-rc.2
+        version: 0.2.0-rc.2
       '@openagentsinc/runtime-platform':
         specifier: workspace:*
         version: link:../../packages/runtime-platform
@@ -2454,8 +2454,8 @@ importers:
   packages/rlm-recall-eval:
     dependencies:
       '@openagentsinc/rlm':
-        specifier: 0.2.0-rc.1
-        version: 0.2.0-rc.1
+        specifier: 0.2.0-rc.2
+        version: 0.2.0-rc.2
       effect:
         specifier: 4.0.0-beta.94
         version: 4.0.0-beta.94
@@ -4522,29 +4522,29 @@ packages:
     resolution: {integrity: sha512-hAX0pT/73190NLqBPPWSdBVGtbY6VOhWYK3qqHqtXQ1gK7kS2yz4+ivsN07hpJ6I3aeMtKP6J6npsEKOAzuTLA==}
     engines: {node: '>=20.0'}
 
-  '@openagentsinc/agent-harness-contract@0.2.0-rc.1':
-    resolution: {integrity: sha512-P4jTJrc9ddCvg68V1bRk95yd1PE1DODPV2zdb6VB9q4Ugsq+yUrYMrUz0OXd79ltVWilfwRFWgwAp/N06aTswA==}
+  '@openagentsinc/agent-harness-contract@0.2.0-rc.2':
+    resolution: {integrity: sha512-PvcY96BWHRrQi5IXthaP/OD+XkV4O2qdOAkvJrGKwuPOJa47deVSAiQQhaBNC8sMaluNvkwP6ZZ1MIO6k1v9oA==}
 
   '@openagentsinc/agent-runtime-schema@0.1.3-rc.1':
     resolution: {integrity: sha512-kah9CJ8c6kqstPKCeJhcIj6EfVT6JZhsLtqu8Tu7iQBjlkMbfyiiTcV6YNBNwX7v86TTkgRAuxx74gXrSQsn6A==}
 
-  '@openagentsinc/agent-runtime-schema@0.2.0-rc.1':
-    resolution: {integrity: sha512-634sJIli9Zuo3PdPGsHnLTYqd7v1jgVye/hhtDrQSb0zIgfdZtO73SYqSXjymhPlWR54upSIBwWOwjRmlBa9CA==}
+  '@openagentsinc/agent-runtime-schema@0.2.0-rc.2':
+    resolution: {integrity: sha512-RnNI36Kg0sk3YuT6thL+Rsi4WNTSU10RDcuL6LzBITUVFYzyXNyls5sieUIoY2hMHs39FnmZ5d9KyXkUoGUuXQ==}
 
-  '@openagentsinc/ai-model@0.2.0-rc.1':
-    resolution: {integrity: sha512-80ckTPxtlcC7QDrFejGGN+1zHXyMnFf1i878gi49SXAQ+a49kEC3t0AvMwIb15FcCIrMCfOI/sJSjb/+9Vza0Q==}
+  '@openagentsinc/ai-model@0.2.0-rc.2':
+    resolution: {integrity: sha512-e4Pbp9rnUkEWF3xErXptFVxEPPuiaBSRE3BSAwrJQRkCi47+Y87G08b2+WpAOFsNsl+6U8Z3EL9hJVP6Pleusg==}
 
   '@openagentsinc/ai-sdk-sandbox-local@0.1.3-rc.1':
     resolution: {integrity: sha512-zq6GDdqct7LttbGwoIPsk4fr1kbUhE8/i8BQiU7vdBzEWS/uzhKZEIQvCcm2dzjtZHOwx+D5aGwKsvB8xiqs5w==}
 
-  '@openagentsinc/ai@0.2.0-rc.1':
-    resolution: {integrity: sha512-YzG4G/NIcF0W6mqF0yvxjcHscuoQxkwikcFosou1atrQAgQBXwZXY9MjkiD+KjNtdCIlORKU1R+KdQOsL7CofA==}
+  '@openagentsinc/ai@0.2.0-rc.2':
+    resolution: {integrity: sha512-oewW4t7jKk6BNV9RyRs6oNW+30Qp/W3ibcskoPbChvPcOfPMfNJQB2FDx/SuCUlvSbfJWyB5P4ubBjW+vyUlcw==}
 
-  '@openagentsinc/history-corpus@0.2.0-rc.1':
-    resolution: {integrity: sha512-hUHUuhBPDmZksaGFnZsjwlOplXg5X45TYhRCGtl2vMtEjlUo1lcAO/uoDfzyW9Z2+LcPFfS18pWG3FBR8zYhkA==}
+  '@openagentsinc/history-corpus@0.2.0-rc.2':
+    resolution: {integrity: sha512-4a1m5QtCSZ6nsaaVhQBLZFhj/ChMyyK3iivXbMmTAZdxdq/rVQHT42NY4tvuVxAKR77eKHu6pu15X2NkWY5zJg==}
 
-  '@openagentsinc/rlm@0.2.0-rc.1':
-    resolution: {integrity: sha512-22yAAGj28VteSMyk1ioSPgvTUm/YrQmwe0BC87109/fF4XT64cCMqtTeyaKNsv0G4M8Z1lAoj1JaJ++7dlNVUA==}
+  '@openagentsinc/rlm@0.2.0-rc.2':
+    resolution: {integrity: sha512-zTSKovrDIbkGC2qoTwRwlZwhhvPdILwYEpN5bm1rcHpgyw7BCHkj8u6NaOBBVjuVInrMYaL2e3EPpR70BZdWxA==}
 
   '@openai/codex-sdk@0.144.3':
     resolution: {integrity: sha512-WPtEx38iVyksWujOwmsxnJznRR8T/YF+lAJghMhHL1xIWdJrrvZ1iafhIsw4egY5CRoRmFm2ta8NQsK4f4XDZA==}
@@ -14582,22 +14582,22 @@ snapshots:
 
   '@oozcitak/util@10.0.0': {}
 
-  '@openagentsinc/agent-harness-contract@0.2.0-rc.1':
+  '@openagentsinc/agent-harness-contract@0.2.0-rc.2':
     dependencies:
-      '@openagentsinc/agent-runtime-schema': 0.2.0-rc.1
+      '@openagentsinc/agent-runtime-schema': 0.2.0-rc.2
       effect: 4.0.0-beta.94
 
   '@openagentsinc/agent-runtime-schema@0.1.3-rc.1':
     dependencies:
       effect: 4.0.0-beta.94
 
-  '@openagentsinc/agent-runtime-schema@0.2.0-rc.1':
+  '@openagentsinc/agent-runtime-schema@0.2.0-rc.2':
     dependencies:
       effect: 4.0.0-beta.94
 
-  '@openagentsinc/ai-model@0.2.0-rc.1(zod@4.4.3)':
+  '@openagentsinc/ai-model@0.2.0-rc.2(zod@4.4.3)':
     dependencies:
-      '@openagentsinc/agent-runtime-schema': 0.2.0-rc.1
+      '@openagentsinc/agent-runtime-schema': 0.2.0-rc.2
       ai: 7.0.15(zod@4.4.3)
       effect: 4.0.0-beta.94
     transitivePeerDependencies:
@@ -14611,25 +14611,25 @@ snapshots:
     transitivePeerDependencies:
       - ws
 
-  '@openagentsinc/ai@0.2.0-rc.1(zod@4.4.3)':
+  '@openagentsinc/ai@0.2.0-rc.2(zod@4.4.3)':
     dependencies:
-      '@openagentsinc/agent-harness-contract': 0.2.0-rc.1
-      '@openagentsinc/agent-runtime-schema': 0.2.0-rc.1
-      '@openagentsinc/ai-model': 0.2.0-rc.1(zod@4.4.3)
-      '@openagentsinc/history-corpus': 0.2.0-rc.1
-      '@openagentsinc/rlm': 0.2.0-rc.1
+      '@openagentsinc/agent-harness-contract': 0.2.0-rc.2
+      '@openagentsinc/agent-runtime-schema': 0.2.0-rc.2
+      '@openagentsinc/ai-model': 0.2.0-rc.2(zod@4.4.3)
+      '@openagentsinc/history-corpus': 0.2.0-rc.2
+      '@openagentsinc/rlm': 0.2.0-rc.2
       effect: 4.0.0-beta.94
     transitivePeerDependencies:
       - zod
 
-  '@openagentsinc/history-corpus@0.2.0-rc.1':
+  '@openagentsinc/history-corpus@0.2.0-rc.2':
     dependencies:
-      '@openagentsinc/agent-harness-contract': 0.2.0-rc.1
-      '@openagentsinc/agent-runtime-schema': 0.2.0-rc.1
-      '@openagentsinc/rlm': 0.2.0-rc.1
+      '@openagentsinc/agent-harness-contract': 0.2.0-rc.2
+      '@openagentsinc/agent-runtime-schema': 0.2.0-rc.2
+      '@openagentsinc/rlm': 0.2.0-rc.2
       effect: 4.0.0-beta.94
 
-  '@openagentsinc/rlm@0.2.0-rc.1':
+  '@openagentsinc/rlm@0.2.0-rc.2':
     dependencies:
       effect: 4.0.0-beta.94
 
