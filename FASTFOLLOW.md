@@ -1076,7 +1076,7 @@ policy, or turn Fable prose into target authority.
       },
       {
         "id": "anti_laundering_review_rounds",
-        "kind": "process",
+        "kind": "evaluation",
         "summary": "Run N-lens adversarial review rounds where dead reviewers surface as failures, findings require reproduced contradictions, and every lens reports the probes it ran.",
         "stance": "adapt"
       },
@@ -1164,6 +1164,55 @@ policy, or turn Fable prose into target authority.
         "id": "python_memory_engine_and_background_improve",
         "kind": "security",
         "summary": "Reject cognee as a runtime or engine-path dependency, background improvement that promotes session content into durable memory without an evidence gate, dataset ACLs as the tenancy model, and any dependency on a third-party memory cloud.",
+        "stance": "reject"
+      }
+    ]
+  },
+  {
+    "id": "block.buzz",
+    "title": "Buzz",
+    "role": "upstream",
+    "access": "public_source",
+    "canonical_ref": "https://github.com/block/buzz",
+    "tracking_policy": "release_or_commit",
+    "teardown_refs": [
+      "docs/teardowns/2026-07-21-buzz-teardown.md"
+    ],
+    "lessons": [
+      {
+        "id": "runtime_formal_conformance_replay",
+        "kind": "evaluation",
+        "summary": "Emit abstract traces at production accept/reject authority seams and replay them against an independently reimplemented formal spec in the normal test sweep, treating a missing trace at a critical seam as its own failure class.",
+        "stance": "adapt"
+      },
+      {
+        "id": "owner_decryptable_agent_memory",
+        "kind": "architecture",
+        "summary": "Make every durable memory an agent holds readable by its owner by construction, with an audit path that never depends on agent cooperation, stated and tested in the memory package contract.",
+        "stance": "adapt"
+      },
+      {
+        "id": "acp_pool_supervision_and_typed_stall_fates",
+        "kind": "reliability",
+        "summary": "Adapt claim/return subprocess pools, per-conversation queues with at-most-one in-flight prompt plus batching, crash respawn, and stall duration and fate as first-class typed outcomes for the ACP provider lanes and harness contract.",
+        "stance": "adapt"
+      },
+      {
+        "id": "agent_first_cli_and_shared_skill_source",
+        "kind": "extension",
+        "summary": "Teach agents one JSON-in JSON-out product CLI instead of an SDK, and keep one tested skill source that serves every harness directory and the managed agents in the shipped product.",
+        "stance": "adapt"
+      },
+      {
+        "id": "approval_gates_and_structural_loop_prevention",
+        "kind": "product_ux",
+        "summary": "Adapt human approval as a typed step inside automation and prevent trigger loops by construction through excluded event classes, with moderation as a private workflow whose enforcement bites at the identity seam.",
+        "stance": "adapt_with_stronger_boundaries"
+      },
+      {
+        "id": "relay_substrate_shells_and_custom_kind_registry",
+        "kind": "architecture",
+        "summary": "Reject the Nostr relay event log as chat or receipt authority, the Tauri and Flutter shells, the non-streaming turn model, and adoption of the single-vendor custom kind and NIP registry.",
         "stance": "reject"
       }
     ]

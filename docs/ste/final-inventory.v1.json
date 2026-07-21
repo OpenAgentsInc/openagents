@@ -384,7 +384,7 @@
     },
     {
       "path": "FASTFOLLOW.md",
-      "sha256": "1e5e96259761180542357da5cc5b4d2e65ca9e0e70403d6842f8c131538462c2",
+      "sha256": "6ebed1e30c5fa28be4773243ad7a95e81d23a74a4a23c8a6694d5dd6ed671805",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -42882,6 +42882,28 @@
         "source": "Immutable historical or evidence source data",
         "replacement": null,
         "ste_status": "source-data"
+      }
+    },
+    {
+      "path": "docs/teardowns/2026-07-21-buzz-teardown.md",
+      "sha256": "48a1aaa07a2991fdc9c77701c5fa1cb7bb1e92ff7f054755eb4c04cab68c001c",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {
