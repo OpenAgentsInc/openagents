@@ -35,3 +35,6 @@ export type IdeRuntimeWorktreeRef = WorktreeRef;
 export * from "./ide-review-projection.js";
 export * from "./ide-review-projector.js";
 export * from "./ide-review-client-cache.js";
+export * from "./ide-code-share-bundle.js";
+export * from "./ide-code-share-builder.js";
+export * from "./ide-code-share-viewer.js";
