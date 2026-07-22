@@ -43020,7 +43020,7 @@
     },
     {
       "path": "docs/teardowns/2026-07-21-buzz-teardown.md",
-      "sha256": "e2c4a396b2d964d33b66fe02060b965a06e230abb9b2998162aaeb06e2672ea9",
+      "sha256": "f4e1b22f02870e974a8340b2a72b97fd2d3cdfaa17ac4969a6272219e52ae7c0",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

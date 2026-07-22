@@ -2,8 +2,9 @@
 
 Read-only architecture and product audit of the public `block/buzz` source
 tree at an exact commit in the local reference clone
-`~/work/projects/repos/buzz`. Nothing tracked was modified and nothing was
-executed. Buzz is Block's open-source, self-hostable workspace where humans
+`~/work/projects/repos/buzz`. Nothing tracked was modified. The Git follow-up
+ran bounded protocol tests, but it did not run a live relay. Buzz is Block's
+open-source, self-hostable workspace where humans
 and AI agents are co-equal members of a Nostr-relay community. It is the
 closest whole-system analog to OpenAgents in the teardown catalog so far: one
 company shipping chat, forum, git forge, workflows, voice, agent harnesses,
@@ -48,16 +49,14 @@ jitter buffer on the client, so there is no separate media server. Agent
 memory is encrypted with a symmetric NIP-44 conversation key, so the owner
 can always decrypt what the agent remembers. [source]
 
-The central OpenAgents decision: **do not adopt Buzz as a substrate, a
-dependency, or a client shell. Treat it as the strongest competitor
-reference in the catalog and port five bounded lessons: runtime formal
-conformance replay at authority seams, the owner-decryptable agent-memory
-invariant, ACP harness-pool supervision with typed stall fates, the
-agent-first CLI with one skill source shared across harness directories and
-the shipped product, and workflow approval gates with structural loop
-prevention. Reject the Nostr-relay event log as a chat/thread authority, the
-Tauri shell, the Flutter mobile lane, the non-streaming agent turn model,
-and the unilateral custom-kind registry.**
+The central OpenAgents decision: **adopt a selected Buzz-compatible protocol
+profile, but do not adopt Buzz as a product substrate, dependency, or client
+shell. Keep Cloud SQL, Khala Sync, and the current session contracts as
+authority. Use Nostr for signed identity, encrypted records, discovery,
+portable projections, and admitted collaboration input. Reuse standard NIPs
+first. Reuse the implemented Buzz NIPs in `nostr-effect` only behind explicit
+OpenAgents policy. Reject the relay event log as product authority, the Tauri
+shell, the Flutter mobile lane, and the non-streaming agent turn model.**
 
 ## 1. Snapshot, provenance, and limitations
 
@@ -68,6 +67,9 @@ and the unilateral custom-kind registry.**
 | Public repository | `https://github.com/block/buzz` | Public source and history |
 | Local clone | `~/work/projects/repos/buzz` | The audited tree |
 | Audited commit | `e9188c03f6c2460983a3dac0fa7702b468838e62` | Exact snapshot used here |
+| Git follow-up commit | `5a3b8176aac5f4bced452ac8920477c5e059b828` | Source snapshot for the Git deep dive |
+| `nostr-effect` commit | `c1603780f754d445b3cb8203ea5602b54c145996` | Local implementation snapshot for standard and Buzz NIPs |
+| Secondary Git source | Soapbox, "What is Ngit?" (`2026-07-21`) | Ecosystem claims checked against Buzz source |
 | Commit time | `2026-07-21` | Freshness of the audited tip |
 | Commit subject | `chore(release): release Buzz Desktop version 0.4.22 (#2220)` | Latest audited change |
 | Internal codename | Sprout / sprig (`Cargo.toml` repository field points at `block/sprout`) | Naming lineage |
@@ -89,12 +91,16 @@ and the unilateral custom-kind registry.**
 - **`[inferred]`** — reasoned from several observations.
 - **`[limitation]`** — a boundary on what this audit can prove.
 
-This audit did not build or execute the relay, the desktop app, the agent
-crates, or the test suites. All behavior claims come from reading tracked
-source and docs. The TLA+ and Tamarin proof claims are read from the spec
-files and vision docs, and this audit did not re-run the checkers. Only the
-`block/buzz` repo is public. Block-internal builds, deploy pipelines, and the
-hosted relay live in private `squareup/*` repos and are out of scope.
+The initial audit did not build or execute Buzz. The Git follow-up ran three
+bounded checks. `nostr-effect` passed 69 NIP-34 and NIP-GS tests. Buzz passed
+209 `buzz-core` tests and all 8 credential-helper integration tests. The Buzz
+NIP-GS library passed 55 of 56 tests. Its parser accepted an all-zero OA public
+key that the test and draft require it to reject. [source] [limitation]
+
+This audit did not run the relay, desktop app, live MinIO tests, TLA+ checker,
+or Tamarin checker. The live Git tests are ignored by default. All other
+behavior claims come from tracked source and docs. Only `block/buzz` is public.
+Block-internal builds, deploy pipelines, and the hosted relay are out of scope.
 [limitation]
 
 ## 2. What Buzz is
@@ -295,12 +301,12 @@ truncation rules. [source]
   source of truth. Re-platforming chat, threads, or receipts onto a relay
   event log would reopen decided architecture. [inferred]
 - **The Nostr claim is partial.** Buzz deviates from vanilla Nostr where the
-  workspace needs it: required `#h` tags on kind 9, relay-signed membership
-  kinds that clients may not submit, channel-scoped NIP-29 discovery events
-  that never reach global fan-out, no NIP-04/NIP-44 direct DMs, and about
-  fifteen self-authored NIPs. In practice it is a conventional server that
-  speaks Nostr framing inside one trust boundary. Adopting its kinds would
-  pin OpenAgents to Block's unilateral registry. [source] [inferred]
+  workspace needs it. It requires `#h` tags on kind 9. It has relay-signed
+  membership kinds and local NIP-29 routing rules. It does not use NIP-04 or
+  open NIP-44 DMs. It also authors 15 NIPs. These choices make Buzz a strong
+  Nostr profile inside one server policy boundary, not a generic Nostr client.
+  OpenAgents can reuse the wire formats, but it must define its own authority
+  and compatibility profile. [source] [inferred]
 - **Shell and mobile stacks are the ones OpenAgents rejected.** Tauri 2 for
   desktop and Flutter for mobile conflict directly with the Electron plus
   Effect Native desktop mandate and the Expo/Effect Native mobile mandate.
@@ -397,7 +403,435 @@ lane and `packages/audio-contract` — evidence that agent-audible voice
 rooms do not require a media server, at the cost of relay bandwidth.
 [source] [inferred]
 
-## 7. What OpenAgents should reject
+### 6.8 Counterfactual: a much more Nostr-centric OpenAgents
+
+The implementation state changes the original premise of this audit.
+`nostr-effect` now implements all 15 Buzz custom NIPs at commit `c160378`.
+It also has broad support for standard NIPs, including NIP-34 and the GRASP
+server-list kind. OpenAgents can now test a Buzz-compatible protocol profile
+without importing Buzz code or running the Buzz relay. [source]
+
+Protocol support is not product support. Some `nostr-effect` modules are
+complete client services. Other modules are wire formats, readers, or relay
+stubs. OpenAgents must add product policy, custody, persistence, and evidence
+rules around each module. [source] [inferred]
+
+#### 6.8.1 Standard NIPs to use first
+
+| Priority | NIPs | OpenAgents use |
+| --- | --- | --- |
+| 1 | NIP-01, NIP-16, NIP-33 | Signed events, replacement rules, and stable addressable records |
+| 2 | NIP-42, NIP-43, NIP-70, NIP-98 | Relay authentication, membership, protected events, and HTTP authentication |
+| 3 | NIP-44, NIP-59, NIP-17 | Owner-private content, gift wrap, and direct messages |
+| 4 | NIP-29, NIP-10, NIP-25, NIP-50 | Groups, threads, reactions, and search |
+| 5 | NIP-34 and Blossom | Repository events, code collaboration, and content-addressed blobs |
+| 6 | NIP-40, NIP-65, NIP-78 | Expiration, relay preferences, and application state |
+
+The first three groups form the base profile. They define identity,
+lifecycle, access, and privacy. NIP-34 is the first large product profile
+to add because OpenAgents already has coding sessions, review, and Git
+workflows. Large checkpoints and repository packs must stay outside Nostr.
+Events should carry references and digests for those bytes. [inferred]
+
+#### 6.8.2 Buzz NIPs to use by product value
+
+| Order | NIPs | Value | Current `nostr-effect` depth |
+| --- | --- | --- | --- |
+| 1 | NIP-OA, NIP-AA, NIP-AP, NIP-AE | Owner to agent proof, agent auth, persona, and owner-readable memory | OA and AE have full services. AA has client, verifier, and optional relay modules. AP covers personas and managed instances, but not the full Buzz team surface. |
+| 2 | NIP-AM, NIP-AO | Per-turn usage and live agent telemetry | Client and crypto services exist. Product admission and relay owner gates do not. |
+| 3 | NIP-RS, NIP-ER, NIP-AB | Read state, reminders, and device pairing | Client services and pairing state exist. Product scheduling, push, and pairing UI still need work. |
+| 4 | NIP-GS | Nostr signatures in Git commits and tags | Signing and verification exist. A Git program, custody adapter, and product trust display do not. |
+| 5 | NIP-CW, NIP-DV, NIP-WP, NIP-IA | Window projections, DM visibility, workspace profile, and identity archive | Readers and builders exist. Relay derivation and the NIP-IA state machine are incomplete. |
+| 6 | NIP-PL | Encrypted push leases | The wire format exists. A push gateway and delivery system do not. |
+
+The first profile should be OA, AA, AP, and AE. These NIPs make the agent
+identity legible across products. They also match the current sovereign
+identity direction. A signer can expose a public key, sign an admitted event,
+and use NIP-44 without exporting an `nsec` or mnemonic. NIP-AB can add a
+device without copying the raw key. [source] [inferred]
+
+AM and AO should follow as projections. An AM event can report usage, but it
+must not become billing authority. An AO frame can show live state, but it
+must not prove that a command ran or that an outcome was accepted. OpenAgents
+must keep command, outcome, assurance, settlement, and public-claim gates
+separate. [inferred]
+
+#### 6.8.3 Four possible product postures
+
+| Posture | Nostr role | Canonical authority | Assessment |
+| --- | --- | --- | --- |
+| Signed protocol edge | Identity, encryption, export, and discovery | Current OpenAgents stores | Low-risk first step |
+| Signed projection bus | Public-safe or owner-encrypted projections from an outbox | Cloud SQL and Khala Sync | Best fit with current specs |
+| Admitted collaboration input | Signed events enter as proposals | OpenAgents policy and command handlers | Useful after replay and scope gates exist |
+| Relay as workspace | Relay events own messages, sessions, Git state, and workflow state | A new workspace relay | A new product and authority model |
+
+The signed projection bus is the useful middle path. A Cloud SQL outbox can
+produce deterministic events after a canonical write. Consumers can verify
+the author, schema version, and content digest. A relay failure can delay the
+projection, but it cannot reverse the canonical write. This model gives
+OpenAgents portable signed records without a dual-authority system. [inferred]
+
+Admitted input needs a separate result event. A valid signature proves who
+signed the proposal. It does not prove permission, admission, execution,
+acceptance, release, payment, or a public claim. The handler must check the
+Effect Schema, scope, generation, idempotency key, and current policy before
+it changes canonical state. [inferred]
+
+#### 6.8.4 What the product could feel like
+
+- A person, agent, device, and workspace has an explicit public key role.
+  The product never displays or exports a raw secret key.
+- An agent card combines an AP persona, OA owner proof, AE memory status,
+  AM usage, and AO live state.
+- A channel combines NIP-29 membership, NIP-10 threads, NIP-25 reactions,
+  CW windows, and NIP-34 work items.
+- A portable coding session publishes signed activity and checkpoint
+  references. The checkpoint bytes remain in the admitted object store.
+- A third-party client can read public records or owner-encrypted records.
+  It does not need access to the OpenAgents database.
+- Forum and NIP-90 work requests become the best public pilot. Those surfaces
+  already treat Nostr as a protocol and transport rail.
+
+The Git profile is unusually valuable. It gives each coding agent a stable
+signing identity across a session, patch, review, and commit. It also lets a
+portable session name a repository with a NIP-34 address instead of a host
+account ID. Section 7 examines the limits of the Buzz implementation.
+[inferred]
+
+#### 6.8.5 Reconciliation with current OpenAgents specs
+
+The current specs support the first three postures. They do not support the
+fourth posture without revision. The portable coding-session spec requires an
+owner-minted, host-independent session identity. It also requires a durable
+event log, exclusive attachment generations, and secret-free checkpoints.
+Signed Nostr projections can carry that identity and those checkpoint
+references. They cannot replace the canonical session graph by assumption.
+[source] [inferred]
+
+The desktop workbench and Cursor-parity specs keep the workbench, harness,
+model, placement, sync, and persistence layers separate. A Nostr adapter fits
+that separation. A relay-owned workspace would merge the sync and persistence
+layers and would require a new ProductSpec. The mobile spec also requires an
+owned encrypted reachability path and separates authorization from reachability.
+A required third-party relay would violate that rule. [source] [inferred]
+
+The web trust spec already permits Bitcoin, Lightning, and Nostr as product
+rails. The authority and assurance specs require explicit roles and separate
+proof gates. A Nostr signature can be one proof input under those specs. It is
+not an independent reviewer, an accepted outcome, or release authority.
+[source] [inferred]
+
+#### 6.8.6 Hard considerations
+
+- **Key custody and recovery.** OpenAuth users, people, agents, devices, and
+  workspaces need a clear key map. Rotation and revocation need durable policy.
+- **Ordering.** Nostr `created_at` values and event IDs are not dense versions.
+  Multi-relay heads can disagree. OpenAgents needs scope versions and replay
+  rules above the wire.
+- **Deletion.** NIP-09 is a signed deletion request. It cannot remove every
+  relay copy. Verified deletion and retention claims need a different proof.
+- **Privacy.** NIP-44 and NIP-59 protect content. They still expose timing,
+  authors, recipients, sizes, and relay access patterns.
+- **Search and moderation.** Encrypted content limits server search and review.
+  Public projections need spam, abuse, and Sybil controls.
+- **Tenancy.** Buzz derives community tenancy from the host. That rule is a
+  Buzz server convention, not a property of Nostr.
+- **Compatibility.** The Buzz NIPs are drafts. OpenAgents needs versioned
+  profiles, collision checks, extension discovery, and migration tests.
+- **Dual writes.** The system must define one direction of authority. It must
+  not accept both a database row and a relay event as independent truth.
+- **Infrastructure.** A future owned relay must run on Google Cloud. It cannot
+  restore the deleted relay app or use retired Cloudflare runtime products.
+- **Schemas.** Effect Schema remains mandatory at OpenAgents boundaries.
+  Direct NIP reuse supplies protocol mechanics, not product policy.
+
+#### 6.8.7 A staged path
+
+1. Pin a reviewed `nostr-effect` revision and expose stable profile exports.
+   Add cross-language vectors for each selected NIP.
+2. Add OA, AA, AP, AE, and AB through the sovereign signer boundary.
+   Do not export raw keys.
+3. Add a transactional projection outbox for a small public-safe record set.
+   Make relay publication retryable and non-authoritative.
+4. Admit one low-risk collaboration input. Return a separate accepted or
+   refused outcome.
+5. Pilot one private workspace on a new Google Cloud relay. Keep Cloud SQL
+   and Sync authoritative during the pilot.
+6. Consider relay authority only after new ProductSpec, AssuranceSpec,
+   migration, rollback, retention, and owner-gate work.
+
+These stages are research candidates. They are not implementation dispatch.
+The normal claim and admission rules still apply.
+
+## 7. Git-on-Nostr implementation deep dive
+
+The Soapbox article describes the larger `ngit` model. In that model, a
+`nostr://` remote helper finds repository announcements and GRASP servers.
+Several servers can host the Git data. NIP-34 events carry repository,
+patch, issue, and pull-request state. That description is useful ecosystem
+context, but it is not an exact description of Buzz. [source]
+
+Buzz uses a hybrid forge. Nostr carries identity and collaboration events.
+Git Smart HTTP carries pack data. Postgres reserves repository names. S3 or
+MinIO stores immutable packs and manifests. One conditional object-store
+pointer owns the current refs. [source]
+
+### 7.1 The three Git planes
+
+| Plane | Buzz implementation | Authority |
+| --- | --- | --- |
+| Discovery and collaboration | NIP-34 kinds 1617-1633, 30617, and 30618 | Signed event authors, subject to client trust rules |
+| Git transport | `/git/{owner}/{repo}` Smart HTTP with NIP-98 | Authenticated Git request and push policy |
+| Repository state | Content-addressed packs and manifests plus one CAS pointer | Object-store pointer |
+
+This split is the most important finding. The kind 30618 ref event is not the
+commit point. The relay creates it after the object-store CAS succeeds. A
+subscriber must use it as a signal and then read the repository. Event delay,
+duplication, or loss cannot roll back the refs. [source]
+
+Buzz does not implement the `nostr://` Git remote flow described by Soapbox.
+Its desktop accepts HTTP or HTTPS clone URLs with a Buzz path. It also requires
+the URL to use the active workspace relay. The Buzz kind registry does not
+include the NIP-34 GRASP list kind 10317. By contrast, `nostr-effect` implements
+kind 10317 and the standard NIP-34 event builders and parsers. [source]
+
+### 7.2 Repository creation and discovery
+
+A signed kind 30617 event announces a repository. Its `d` tag is the repository
+ID, and the event author is the owner. Optional tags give the name,
+description, clone URLs, web URLs, and relay URLs. The SDK limits their sizes
+and counts. [source]
+
+The event has an immediate server side effect. Postgres reserves the name in
+the host-derived community. The primary key makes the name unique in that
+community. The relay also checks a per-owner repository quota. A same-owner
+announcement is an update. A different owner gets a collision. [source]
+
+The relay then writes an empty manifest and creates the repository pointer.
+If that step fails after a fresh reservation, it releases that reservation.
+The server emits the first kind 30618 event only after the pointer exists.
+This order keeps an announced repository cloneable. [source]
+
+The server convention is not global Nostr ownership. A second relay can have
+a different name registry and policy. The repository coordinate
+`30617:<owner-pubkey>:<repo-id>` is portable. The Buzz name reservation and
+host-derived community are not. [inferred]
+
+### 7.3 Authentication and Git transport
+
+The relay implements the three Git Smart HTTP routes. It uses `info/refs`,
+`git-upload-pack`, and `git-receive-pack`. Read paths stream a hardened Git
+subprocess. The push path buffers the status response so it can enforce the
+publish fence. A global semaphore, time limits, body limits, and output limits
+bound the subprocess work. [source]
+
+All Git routes require NIP-98. There are no public repositories in this path.
+Any admitted relay member can clone. A pre-receive policy decides who can push.
+NIP-43 membership is checked before Git runs. An agent can put its NIP-OA owner
+attestation inside the signed NIP-98 event. [source]
+
+The credential helper participates in Git's `authtype` protocol. It acts only
+after a server sends a Nostr challenge. It signs kind 27235 and returns the
+base64 event as the HTTP credential. It silently declines other hosts so Git
+can use another helper. [source]
+
+There are deliberate NIP-98 reductions. Git reuses one credential across the
+initial GET and later POST. The relay therefore does not bind the token to the
+HTTP method or request body. It also does not reject a repeated event ID. The
+remaining controls are HTTPS, a repository-root URL, a 60-second time window,
+membership, and the push hook. This is compatible with Git, but it is weaker
+than a fresh body-bound NIP-98 event for each request. [source] [inferred]
+
+### 7.4 Object storage and the push fence
+
+Buzz has no authoritative repository filesystem. Each request hydrates an
+ephemeral bare repository from the current manifest. Git performs the read or
+write operation there. The process drops the directory after the request.
+A local digest cache can retain verified pack and index pairs. Cache loss
+changes performance, not repository state. [source]
+
+The storage model has three objects:
+
+- A pack is content-addressed and create-only.
+- A manifest contains `head`, `refs`, `packs`, and a parent digest.
+- A small repository pointer contains the current manifest digest.
+
+A push captures new packs, writes a new manifest, and conditionally replaces
+the pointer. The CAS uses the ETag observed during hydration. A concurrent
+winner makes the stale write fail with HTTP 409. The losing server does not
+reuse its Git output. The client must pull and push again. [source]
+
+Only the CAS makes a ref update visible. `finalize_push` is the only path that
+builds a successful push response. It first checks that `receive-pack` did not
+report an in-band hook rejection. It then commits the pointer. It creates the
+derived kind 30618 event after the CAS and builds the HTTP success response
+last. A failed event insert is non-fatal because the Git state is already
+durable. [source]
+
+The design has real formal work. `GitOnObjectStore.tla` checks the fence,
+manifest closure, parent history, applied ref value, and no-fork properties.
+The proof is bounded and depends on three object-store axioms. The startup
+conformance probe tests create-only writes, read-after-write, and concurrent
+conditional writes. It is an admission test, not a universal proof of a
+backend. [source]
+
+The accepted costs are clear. Concurrent writers duplicate hydrate and Git
+work. CAS losers discard that work. Normal operation does not delete old pack
+or manifest objects. Safe physical garbage collection is outside the proof.
+Large repositories pay hydrate and object-store costs on each request. The
+live MinIO tests cover clone, push, fetch, force-push, tags, and an eight-writer
+race, but those tests are ignored by default. [source] [limitation]
+
+### 7.5 Push authorization and protected refs
+
+`git-receive-pack` installs a pre-receive hook in the ephemeral repository.
+The hook classifies each ref as create, fast-forward, non-fast-forward, or
+delete. It calls a localhost-only policy route with a 30-second HMAC-bound
+request. A network error or policy error denies the push. [source]
+
+The policy loads `buzz-protect` tags from kind 30617. A rule can require a
+role, forbid force-push, forbid deletion, or require the NIP-34 patch path.
+Rules use bounded segment patterns. The strictest matching role wins, and an
+explicit rule cannot weaken the default. A multi-ref push is allowed only when
+all ref updates pass. [source]
+
+The repository owner has the owner role. A verified managed-agent owner gets
+the same repository authority as the agent key. Channel roles govern other
+pushers. A bot that was admitted to the channel acts as a member for Git.
+An archived channel makes the repository read-only for all pushers. [source]
+
+This is a server policy above NIP-34. A signed patch event does not itself
+change a ref. It must still enter an admitted apply and push path. OpenAgents
+should keep that separation. A patch signature is evidence about a proposal,
+not evidence that the target branch accepted it. [inferred]
+
+### 7.6 Pull requests, reviews, and merge state
+
+Buzz implements the NIP-34 repository, state, patch, pull-request, update,
+issue, and status kinds. A pull request names its repository, tip commit,
+clone URLs, branch, and merge base. Buzz adds a `target-branch` tag. An update
+uses NIP-22 uppercase `E` and `P` root tags. [source]
+
+NIP-34 has no review kind. Buzz represents review requests, approvals, change
+requests, and inline comments as kind 1 notes with labels. Client projection
+code trusts review requests only from the pull-request author or repository
+owner. It trusts a review decision only from a requested reviewer, owner, or
+other admitted actor. The decision also names the reviewed commit, so a new tip
+makes the old decision historical. [source]
+
+These review rules are client projection rules. The relay does not enforce an
+approval count before a merge. The desktop shows the merge action to the
+repository owner or managed-agent owner when the pull request is open. A
+change request does not remove that action. OpenAgents must not treat this UI
+rule as a protected-branch approval gate. [source] [inferred]
+
+The desktop merge path creates a temporary partial clone. It fetches the source
+branch and checks its head against the expected commit. It runs a normal Git
+merge and pushes the target branch. It then signs and publishes kind 1631 with
+the merge commit. Event publication is fail-soft. The UI retains the signed
+event for a retry when the Git push succeeds but publication fails. [source]
+
+This order makes Git authoritative, which is correct. It also creates a visible
+split state until the event retry succeeds. A production OpenAgents profile
+should derive the merge projection from a durable outbox or a ref receipt. It
+should not depend on a desktop retry for final reconciliation. [inferred]
+
+### 7.7 Commit signing with NIP-GS
+
+NIP-GS does not define a transport or event kind. It plugs a custom program
+into Git's x509 signing interface. Git passes the commit or tag payload to
+`git-sign-nostr`. The program writes an armored detached signature into the Git
+object and emits the status lines that Git expects. [source]
+
+The envelope contains a version, signer public key, BIP-340 signature, and
+claimed time. It can also contain an OA owner attestation. The signature binds
+the Git payload, timestamp, and complete OA tuple under the
+`nostr:git:v1:` domain. Removing or changing the owner proof invalidates the
+commit signature. [source]
+
+Verification proves that one Nostr key signed one Git object. It does not prove
+the person's identity, repository permission, review, or code quality. The
+`TRUST_FULLY` status means only that the signer matches the locally configured
+`user.signingkey`. NIP-GS has no revocation, rotation, allowed-signer policy,
+or trusted timestamp. [source]
+
+Buzz integrates automatic NIP-GS signing most clearly in the managed-agent
+developer MCP. A session shim creates a private temporary directory and a
+0600 key file. It removes `NOSTR_PRIVATE_KEY` from its environment and injects
+process-scoped Git settings for the credential helper and signing program.
+Commits and tags from that agent path are signed by default. [source]
+
+The claim that every Buzz commit is signed is too broad. The desktop pull
+request merge path configures an author name and email, but it does not enable
+`git-sign-nostr`. The object-storage end-to-end test explicitly disables commit
+and tag signing. NIP-GS is an implemented capability and a managed-agent
+default. It is not a relay invariant for every Git object. [source]
+
+The current Buzz NIP-GS unit suite also has one failure. The parser uses the
+upstream Nostr public-key parser for `oa[0]`. At the audited follow-up commit,
+that parser accepts the all-zero value that the NIP-GS test expects to reject.
+This does not make a false OA signature verify, but it breaks the draft's
+structural rejection rule and leaves the library test suite red. [source]
+
+`nostr-effect` already implements the NIP-GS hash, canonical envelope, armor,
+test vectors, OA binding, signing, and verification. It does not provide the
+Git executable interface, credential helper, process configuration, or key
+custody. OpenAgents should place those adapters around its sovereign signer.
+It should not expose a raw key through an environment variable or repository
+configuration. [source] [inferred]
+
+### 7.8 Interoperability limits
+
+- The NIP-34 event core is portable. Buzz-specific `buzz-channel`,
+  `buzz-protect`, `target-branch`, review labels, and kind 30618 `p` tags are
+  extensions or conventions.
+- Buzz clone URLs point to one active workspace relay. The desktop rejects an
+  alternate origin. This is not GRASP failover.
+- Kind 30618 is relay-signed because the host owns its ref pointer. It proves
+  what that relay published, not what every Git host publishes.
+- All Git reads require workspace membership. A public NIP-34 announcement
+  does not make the repository publicly cloneable.
+- Multiple clone URLs can appear in an announcement. The product still needs
+  health checks, selection rules, and ref agreement rules before it can claim
+  host failover.
+- A NIP-34 issue or pull request can replicate across relays. Client trust
+  filters must still reject unauthorized updates and status events.
+
+The result is more sovereign than a host account ID, but less federated than
+the Soapbox article suggests. Git remains rehostable because contributors have
+the objects and repository announcements list clone locations. Buzz itself
+still depends on one workspace relay for access, policy, and the current ref
+pointer. [source] [inferred]
+
+### 7.9 OpenAgents Git profile
+
+OpenAgents should adopt the protocol layers in this order:
+
+1. Use the existing `nostr-effect` NIP-34 types for repository addresses,
+   patches, issues, pull requests, updates, status, and GRASP lists.
+2. Harden those types with Effect Schema and explicit Buzz-extension schemas.
+   Do not accept unvalidated tag arrays at a product boundary.
+3. Put NIP-GS behind the sovereign signer. Give each agent and session an
+   explicit signing role. Keep owner authorization separate from commit
+   authorship.
+4. Add NIP-98 Git credentials without exporting the signer key. Prefer a local
+   signer bridge or narrow helper RPC.
+5. Treat Git refs or an admitted object-store pointer as repository authority.
+   Publish kind 30618 only as a signed projection after the ref commit.
+6. Admit NIP-34 patches, issues, and pull requests as proposals. Apply scope,
+   reviewer, generation, and branch policy before a merge.
+7. Publish a separate signed merge outcome with the exact target ref, old OID,
+   new OID, policy version, and source proposal IDs.
+8. Add multi-relay and multi-host support only after ref-agreement and recovery
+   behavior have tests. Do not claim GRASP failover from a list of URLs alone.
+
+This profile can make portable coding sessions materially stronger. A session
+can carry a stable repository address, signed commits, signed review records,
+and a verifiable merge receipt across hosts. The large Git objects remain in
+Git and object storage. Nostr carries the identities, proposals, projections,
+and proofs that are good at replication. [inferred]
+
+## 8. What OpenAgents should reject
 
 - **The relay-as-workspace substrate.** OpenAgents' conversation, receipt,
   and projection authority is Khala Sync plus Cloud SQL on Google Cloud, and
@@ -414,15 +848,16 @@ rooms do not require a media server, at the cost of relay bandwidth.
 - **The non-streaming turn model.** Tool-calls-as-output is defensible for
   headless coding lanes, but OpenAgents' product thesis needs live streams
   to the UI. Do not import the simplification. [inferred]
-- **Custom-kind and custom-NIP adoption.** Do not implement Buzz kinds or
-  its NIP-A* family in `nostr-effect` or `packages/nip90` while they remain
-  a single-vendor registry with relay-required semantics. Watch for upstream
-  standardization instead. [source] [inferred]
+- **Custom NIPs as implicit product policy.** The Buzz NIPs now exist in
+  `nostr-effect`, so a blanket implementation ban is obsolete. Do not let a
+  protocol helper import Buzz relay authority, role rules, or retention policy
+  by implication. Each adopted NIP needs an OpenAgents profile, schema,
+  version, and authority statement. [source] [inferred]
 - **Running Buzz infrastructure as a dependency.** Postgres, Redis, MinIO,
   Keycloak, and a 218,000-line relay for any single wanted feature is the
   wrong trade at every point in the OpenAgents stack. [source]
 
-## 8. Recommendation
+## 9. Recommendation
 
 Buzz is the most complete external instantiation of the "humans and agents
 in one auditable workspace" thesis that OpenAgents also holds, built by a
@@ -433,24 +868,31 @@ agent-first CLI. It is also a direct competitor to the OpenAgents desktop,
 Pylon, and forum surfaces, and its substrate, shells, and turn model
 conflict with settled OpenAgents architecture at every layer.
 
-The decision: **track, do not adopt.** No Buzz code, crates, kinds, or
-services enter the OpenAgents stack. Port the five bounded lessons in §6
-through the normal Fast Follow admission path, starting with the two
-highest-value ones: a runtime conformance replay pilot on one authority
-seam (6.1) and the owner-decryptable memory invariant stated and tested in
-the memory package (6.2). Re-read this repo in roughly one quarter — at its
-velocity the mesh, moderation, and approval-gate lanes will have moved.
+The decision: **adopt selected protocols, but do not adopt the Buzz product or
+substrate.** No Buzz crates, services, relay, desktop shell, or mobile shell
+enter the OpenAgents stack. Use the standard NIP profile first. Then evaluate
+OA, AA, AP, AE, AB, AM, AO, and GS from the current `nostr-effect`
+implementation. Keep every module behind OpenAgents schemas and authority.
 
-## 9. Watch items
+Start with three bounded candidates. First, define the signed projection-bus
+profile from §6.8. Second, connect OA, AP, AE, and AB to the sovereign signer.
+Third, design the NIP-34 and NIP-GS Git profile from §7.9. These candidates need
+the normal Fast Follow admission path. The earlier conformance-replay and
+owner-decryptable-memory lessons remain high-value supporting work.
+
+## 10. Watch items
 
 - **Buzz Mesh.** Community-pooled GPU compute gated by relay membership
   (`VISION_MESH.md`, `desktop/src-tauri/src/mesh_llm/`) overlaps directly
   with the Pylon provider and NIP-90 compute-market thesis. If Block ships
   it well, it is the closest competing story to "your community is your
   compute provider."
-- **Custom NIP standardization.** Whether NIP-AA/AE/AM/AO/AP/GS move toward
-  `nostr-protocol/nips` or stay a Block registry decides whether any
-  interop lane ever becomes worth building.
+- **Custom NIP standardization.** Track changes to AA, AE, AM, AO, AP, and GS.
+  The OpenAgents profile must remain versioned even if the drafts do not move
+  into `nostr-protocol/nips`.
+- **NIP-34 and GRASP interoperability.** Test `nostr-effect` events against
+  `ngit`, Git Workshop, NostrHub, and more than one GRASP server before an
+  OpenAgents product makes a portability or failover claim.
 - **Workflow approval gates.** Self-described as infrastructure without
   glue today. Their landed shape is the comparable for Full Auto human
   gates.
@@ -1110,6 +1552,17 @@ Git commit and tag signatures themselves are not relay kinds. They are the
 NIP-GS armored envelopes embedded in the git objects, so the forge surface is
 larger than the ten NIP-34 kinds above.
 
+Buzz creates its authoritative kind 30618 projection with the relay key after
+the object-store pointer commit. The general relay still accepts client-signed
+kind 30618 events under each client's own parameterized-replaceable address.
+Clients must select the expected relay signer when they use the event as a
+hosted-repository signal. [source]
+
+The standard NIP-34 surface is larger than this Buzz registry. In particular,
+kind 10317 publishes a user's GRASP server list. `nostr-effect` implements that
+kind and all ten kinds in the table. Buzz does not register kind 10317 and does
+not provide a `nostr://` Git remote helper. [source]
+
 ### A.4 Synthesis
 
 The registry makes the body conclusion concrete and quantified. Buzz is "a
@@ -1128,12 +1581,16 @@ relay and rejected from clients: the six kinds in `is_relay_only_kind` (13534,
 group-state, workflow-execution, and channel-notification kinds (8000, 8001,
 8002, 8003, 13535, 39000-39003, 44100, 44101, 46001-46012). The two open
 direct-message primitives of vanilla Nostr, NIP-04 and open NIP-44 DMs, are
-absent by design, and DMs ride NIP-17 gift wrap only. The practical meaning for
-OpenAgents is that the kind registry is the lock-in. Adopting any Buzz kind
-means adopting Block's unilateral integer assignments, the relay-signed
-semantics attached to them, and the mandatory-auth plus required-tenant-tag
-posture that makes them work, which is precisely why the body recommendation to
-reject the relay-as-substrate holds. The genuinely portable ideas live above
-the wire, chiefly the owner-decryptable NIP-AE memory invariant and the NIP-PL
-write-time non-amplification discipline, and those port as design lessons
-without importing a single kind number.
+absent by design, and DMs ride NIP-17 gift wrap only.
+
+The practical meaning for OpenAgents is more specific than a kind-number ban.
+Standard NIPs and the 15 Buzz drafts can be useful protocol modules. The current
+`nostr-effect` checkout already implements them. The lock-in appears when a
+product also imports Buzz relay authority, relay-only authorship, mandatory
+authentication, host-derived tenancy, or client trust rules without an
+OpenAgents decision. Each reused kind therefore needs an explicit profile that
+states its signer, audience, authority, retention, version, and failure mode.
+The portable core includes owner-readable AE memory, OA owner proof, AP agent
+identity, AB pairing, AM and AO projections, GS commit signatures, and PL
+non-amplification. Their product meaning must stay separate from their wire
+format.
