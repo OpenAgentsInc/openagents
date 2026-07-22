@@ -14942,7 +14942,7 @@
     },
     {
       "path": "docs/ai-sdk/README.md",
-      "sha256": "9039160ec2aab06c0aa096b9b93bf9b513a9e598d771555f6c6ba043128bdeb0",
+      "sha256": "b8166f2f2b0c065799791638cdb091196687d73ba06411f32c8396e7ad81776d",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

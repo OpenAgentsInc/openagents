@@ -6,18 +6,9 @@ settings:
 
 catalogs:
   default:
-    '@effect/openapi-generator':
-      specifier: 4.0.0-beta.94
-      version: 4.0.0-beta.94
-    '@effect/platform-node':
-      specifier: 4.0.0-beta.94
-      version: 4.0.0-beta.94
     typescript:
       specifier: ^6.0.3
       version: 6.0.3
-    vite-plus:
-      specifier: 0.2.4
-      version: 0.2.4
 
 overrides:
   '@effect/platform-browser': 4.0.0-beta.94
@@ -489,11 +480,11 @@ importers:
         specifier: workspace:*
         version: link:../../packages/agent-client-runtime-bridge
       '@openagentsinc/agent-harness-contract':
-        specifier: 0.2.0-rc.7
-        version: 0.2.0-rc.7
+        specifier: 0.2.1-rc.2
+        version: 0.2.1-rc.2
       '@openagentsinc/agent-runtime-schema':
-        specifier: 0.2.0-rc.7
-        version: 0.2.0-rc.7
+        specifier: 0.2.1-rc.2
+        version: 0.2.1-rc.2
       '@openagentsinc/agent-surface':
         specifier: workspace:*
         version: link:../../packages/agent-surface
@@ -504,8 +495,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/agent-turn-store
       '@openagentsinc/ai':
-        specifier: 0.2.0-rc.7
-        version: 0.2.0-rc.7(zod@4.4.3)
+        specifier: 0.2.1-rc.2
+        version: 0.2.1-rc.2(@openagentsinc/conformance-kit@0.2.1-rc.2(vite-plus@0.2.4(@opentelemetry/api@1.9.0)(@types/node@24.13.1)(esbuild@0.28.1)(happy-dom@20.10.6)(jiti@2.7.0)(terser@5.49.0)(tsx@4.20.6)(typescript@6.0.3)(yaml@2.9.0)))(zod@4.4.3)
       '@openagentsinc/apple-fm-runtime':
         specifier: workspace:*
         version: link:../../packages/apple-fm-runtime
@@ -525,20 +516,20 @@ importers:
         specifier: workspace:*
         version: link:../../packages/cursor-agent-runtime
       '@openagentsinc/dse':
-        specifier: 0.2.0-rc.7
-        version: 0.2.0-rc.7
+        specifier: 0.2.1-rc.2
+        version: 0.2.1-rc.2
       '@openagentsinc/environment-auth':
         specifier: workspace:*
         version: link:../../packages/environment-auth
       '@openagentsinc/graph-corpus':
-        specifier: 0.2.0-rc.7
-        version: 0.2.0-rc.7
+        specifier: 0.2.1-rc.2
+        version: 0.2.1-rc.2
       '@openagentsinc/grok-harness':
         specifier: workspace:*
         version: link:../../packages/grok-harness
       '@openagentsinc/history-corpus':
-        specifier: 0.2.0-rc.7
-        version: 0.2.0-rc.7
+        specifier: 0.2.1-rc.2
+        version: 0.2.1-rc.2
       '@openagentsinc/khala-sync':
         specifier: workspace:*
         version: link:../../packages/khala-sync
@@ -561,8 +552,8 @@ importers:
         specifier: workspace:*
         version: link:../pylon/packages/runtime
       '@openagentsinc/rlm':
-        specifier: 0.2.0-rc.7
-        version: 0.2.0-rc.7
+        specifier: 0.2.1-rc.2
+        version: 0.2.1-rc.2
       '@openagentsinc/runtime-platform':
         specifier: workspace:*
         version: link:../../packages/runtime-platform
@@ -717,6 +708,9 @@ importers:
       '@electron/osx-sign':
         specifier: 1.3.3
         version: 1.3.3
+      '@openagentsinc/conformance-kit':
+        specifier: 0.2.1-rc.2
+        version: 0.2.1-rc.2(vite-plus@0.2.4(@opentelemetry/api@1.9.0)(@types/node@24.13.1)(esbuild@0.28.1)(happy-dom@20.10.6)(jiti@2.7.0)(terser@5.49.0)(tsx@4.20.6)(typescript@6.0.3)(yaml@2.9.0))
       '@openagentsinc/sqlite-runtime':
         specifier: workspace:*
         version: link:../../packages/sqlite-runtime
@@ -4515,38 +4509,48 @@ packages:
     resolution: {integrity: sha512-hAX0pT/73190NLqBPPWSdBVGtbY6VOhWYK3qqHqtXQ1gK7kS2yz4+ivsN07hpJ6I3aeMtKP6J6npsEKOAzuTLA==}
     engines: {node: '>=20.0'}
 
-  '@openagentsinc/agent-harness-contract@0.2.0-rc.7':
-    resolution: {integrity: sha512-PED2vaLdtNHnrnQF4VfpnQwrBmeiFAHLQf8j0BmD1dEyxCsZbKrG/v69vEEJIeBjee7ueB7bmfZbjDyg7DjMMg==}
+  '@openagentsinc/agent-harness-contract@0.2.1-rc.2':
+    resolution: {integrity: sha512-3vIhogeE/Bbg5LfWKjQ8msCs7T7BB/ivE0Zd1VUVAA5Pz6WCsier6VLFapAhW6NBRnS0brvDhaerPiDBfkRqNQ==}
 
   '@openagentsinc/agent-runtime-schema@0.1.3-rc.1':
     resolution: {integrity: sha512-kah9CJ8c6kqstPKCeJhcIj6EfVT6JZhsLtqu8Tu7iQBjlkMbfyiiTcV6YNBNwX7v86TTkgRAuxx74gXrSQsn6A==}
 
-  '@openagentsinc/agent-runtime-schema@0.2.0-rc.7':
-    resolution: {integrity: sha512-eu//+9rFDFbNdspKiG/0jOHOvjaR+1M8MsB62bWdkwNa+KW03mc5GZrHEqhkKtfVQke6Xx+buMmPrYOdp7c7pA==}
+  '@openagentsinc/agent-runtime-schema@0.2.1-rc.2':
+    resolution: {integrity: sha512-xSC/laUZcFaF8AUOEshQy01Q1QuOdrYAEx48PPUjRjPO/dP4IUuTQLkeio0EfyYKqu+VMxax9ttwleeEPnQKJA==}
 
-  '@openagentsinc/ai-model@0.2.0-rc.7':
-    resolution: {integrity: sha512-T6SA0Wy/8WI3/s3oKlMTb954eLffKPuWdtaaFXYGaHMqT5nMid+4Ada+CDI5tOq0z8gMsQIB9HAFn7zHYQsdBg==}
+  '@openagentsinc/ai-model@0.2.1-rc.2':
+    resolution: {integrity: sha512-Hww7fkC4As4j1DdW5Ab+BVSAmSK05jibMaYkL5C2MR5dcNs/tjLG6DB70F69qjNZhI9v5Q0nBGcgwfUja7ZuHQ==}
 
   '@openagentsinc/ai-sdk-sandbox-local@0.1.3-rc.1':
     resolution: {integrity: sha512-zq6GDdqct7LttbGwoIPsk4fr1kbUhE8/i8BQiU7vdBzEWS/uzhKZEIQvCcm2dzjtZHOwx+D5aGwKsvB8xiqs5w==}
 
-  '@openagentsinc/ai@0.2.0-rc.7':
-    resolution: {integrity: sha512-DwM8zA34xYhkziq9wF3cLubAHbhZTZhb8y5xLLvUjnS5P/gPYyaWoEU8FKs5ytGdY9gPMK4oFDGjwbxSKsGVPA==}
+  '@openagentsinc/ai@0.2.1-rc.2':
+    resolution: {integrity: sha512-mQN7iOA0EbXL8zwFxJr2hHy23dMivLAhGeJRd8TepjzcBRECKAVQ1fTFOsvr8Ik2g+Bvg2Wxw3mtoX+N7SCC7Q==}
+    peerDependencies:
+      '@openagentsinc/conformance-kit': 0.2.1-rc.2
+    peerDependenciesMeta:
+      '@openagentsinc/conformance-kit':
+        optional: true
 
-  '@openagentsinc/dse@0.2.0-rc.7':
-    resolution: {integrity: sha512-x6/2ca6BmK6OzOvAzyAK9+mj32YEv4f/UoImLw4AsEbgFzTjK/Y2f74Q+L8WalAyayKilxA9lQGqJCaBm0Azhw==}
+  '@openagentsinc/conformance-kit@0.2.1-rc.2':
+    resolution: {integrity: sha512-Hm2JMz1FKTuUNIxr9rEXKZ5RQuVLPZF8/UI2WdTTutt/dkbECjb8g1lpGK6tMJitw/NV0MbEbHK3z8PIqWXHKQ==}
+    peerDependencies:
+      vite-plus: '>=0.2.4 <1'
 
-  '@openagentsinc/graph-corpus@0.2.0-rc.7':
-    resolution: {integrity: sha512-oJJ52Kub3i6MJA2tsXOFjwU6K4rke5zPEaj1WB1+a7jLI4BGOEYkyGeIwVqExe1RJIYObC+iQ5tSb0k/rgV7Gw==}
+  '@openagentsinc/dse@0.2.1-rc.2':
+    resolution: {integrity: sha512-CFsEPBkJbQi/ZL/OQKOGqxahI4GNy9Es2b8p/uXD4xQaIFKm48DS7EtiEbJbLm3l5qXHNpR7D7HEFf6R4ljdHg==}
 
-  '@openagentsinc/history-corpus@0.2.0-rc.7':
-    resolution: {integrity: sha512-68JyXXpMQDssxECZH8/2YLWzmOq5rVFBPdOmSN6kJFgq8/hHyax5gC967IuEciyf0BEtcsNwMPvmVKXADRuPog==}
+  '@openagentsinc/graph-corpus@0.2.1-rc.2':
+    resolution: {integrity: sha512-8LFMS/WGvRKYmcst0GpqpLrjRMpWRoQ9aSshJqKPHBTxWdbQI3360y/VBa5YroBz7fEndPnmgJStdyEhDM2C3Q==}
+
+  '@openagentsinc/history-corpus@0.2.1-rc.2':
+    resolution: {integrity: sha512-2V9CW86+DMlxmcu9GjUUJj4bnTvj8OP99j64tOM4BJzj76Ci1Z+jT4b291UJyp8l9sYcQpNVcC/ID1pUVCiYcw==}
 
   '@openagentsinc/rlm@0.2.0-rc.2':
     resolution: {integrity: sha512-zTSKovrDIbkGC2qoTwRwlZwhhvPdILwYEpN5bm1rcHpgyw7BCHkj8u6NaOBBVjuVInrMYaL2e3EPpR70BZdWxA==}
 
-  '@openagentsinc/rlm@0.2.0-rc.7':
-    resolution: {integrity: sha512-jMIvxZSGAldhkmFE48N74axO+M3oxu9BM3qOt65y2V8fRCdJXp1pyJ55MCLN/BCCg5oCnqBW8zZ+/alnx8qjtQ==}
+  '@openagentsinc/rlm@0.2.1-rc.2':
+    resolution: {integrity: sha512-M3JX7BJDvTBbjSltmLD7u5PRl7K1Ytzjvy5HdD/e25Ywixa1fJk0tX3i2DFUBLyJjnNPv4YO4QwosPnu7ILMMQ==}
 
   '@openai/codex-sdk@0.144.3':
     resolution: {integrity: sha512-WPtEx38iVyksWujOwmsxnJznRR8T/YF+lAJghMhHL1xIWdJrrvZ1iafhIsw4egY5CRoRmFm2ta8NQsK4f4XDZA==}
@@ -14584,22 +14588,22 @@ snapshots:
 
   '@oozcitak/util@10.0.0': {}
 
-  '@openagentsinc/agent-harness-contract@0.2.0-rc.7':
+  '@openagentsinc/agent-harness-contract@0.2.1-rc.2':
     dependencies:
-      '@openagentsinc/agent-runtime-schema': 0.2.0-rc.7
+      '@openagentsinc/agent-runtime-schema': 0.2.1-rc.2
       effect: 4.0.0-beta.94
 
   '@openagentsinc/agent-runtime-schema@0.1.3-rc.1':
     dependencies:
       effect: 4.0.0-beta.94
 
-  '@openagentsinc/agent-runtime-schema@0.2.0-rc.7':
+  '@openagentsinc/agent-runtime-schema@0.2.1-rc.2':
     dependencies:
       effect: 4.0.0-beta.94
 
-  '@openagentsinc/ai-model@0.2.0-rc.7(zod@4.4.3)':
+  '@openagentsinc/ai-model@0.2.1-rc.2(zod@4.4.3)':
     dependencies:
-      '@openagentsinc/agent-runtime-schema': 0.2.0-rc.7
+      '@openagentsinc/agent-runtime-schema': 0.2.1-rc.2
       ai: 7.0.15(zod@4.4.3)
       effect: 4.0.0-beta.94
     transitivePeerDependencies:
@@ -14613,43 +14617,56 @@ snapshots:
     transitivePeerDependencies:
       - ws
 
-  '@openagentsinc/ai@0.2.0-rc.7(zod@4.4.3)':
+  '@openagentsinc/ai@0.2.1-rc.2(@openagentsinc/conformance-kit@0.2.1-rc.2(vite-plus@0.2.4(@opentelemetry/api@1.9.0)(@types/node@24.13.1)(esbuild@0.28.1)(happy-dom@20.10.6)(jiti@2.7.0)(terser@5.49.0)(tsx@4.20.6)(typescript@6.0.3)(yaml@2.9.0)))(zod@4.4.3)':
     dependencies:
-      '@openagentsinc/agent-harness-contract': 0.2.0-rc.7
-      '@openagentsinc/agent-runtime-schema': 0.2.0-rc.7
-      '@openagentsinc/ai-model': 0.2.0-rc.7(zod@4.4.3)
-      '@openagentsinc/dse': 0.2.0-rc.7
-      '@openagentsinc/graph-corpus': 0.2.0-rc.7
-      '@openagentsinc/history-corpus': 0.2.0-rc.7
-      '@openagentsinc/rlm': 0.2.0-rc.7
+      '@openagentsinc/agent-harness-contract': 0.2.1-rc.2
+      '@openagentsinc/agent-runtime-schema': 0.2.1-rc.2
+      '@openagentsinc/ai-model': 0.2.1-rc.2(zod@4.4.3)
+      '@openagentsinc/dse': 0.2.1-rc.2
+      '@openagentsinc/graph-corpus': 0.2.1-rc.2
+      '@openagentsinc/history-corpus': 0.2.1-rc.2
+      '@openagentsinc/rlm': 0.2.1-rc.2
       effect: 4.0.0-beta.94
+    optionalDependencies:
+      '@openagentsinc/conformance-kit': 0.2.1-rc.2(vite-plus@0.2.4(@opentelemetry/api@1.9.0)(@types/node@24.13.1)(esbuild@0.28.1)(happy-dom@20.10.6)(jiti@2.7.0)(terser@5.49.0)(tsx@4.20.6)(typescript@6.0.3)(yaml@2.9.0))
     transitivePeerDependencies:
       - zod
 
-  '@openagentsinc/dse@0.2.0-rc.7':
+  '@openagentsinc/conformance-kit@0.2.1-rc.2(vite-plus@0.2.4(@opentelemetry/api@1.9.0)(@types/node@24.13.1)(esbuild@0.28.1)(happy-dom@20.10.6)(jiti@2.7.0)(terser@5.49.0)(tsx@4.20.6)(typescript@6.0.3)(yaml@2.9.0))':
     dependencies:
-      '@openagentsinc/agent-runtime-schema': 0.2.0-rc.7
-      '@openagentsinc/graph-corpus': 0.2.0-rc.7
-      '@openagentsinc/rlm': 0.2.0-rc.7
+      '@openagentsinc/agent-harness-contract': 0.2.1-rc.2
+      '@openagentsinc/agent-runtime-schema': 0.2.1-rc.2
+      '@openagentsinc/dse': 0.2.1-rc.2
+      '@openagentsinc/graph-corpus': 0.2.1-rc.2
+      '@openagentsinc/history-corpus': 0.2.1-rc.2
+      '@openagentsinc/rlm': 0.2.1-rc.2
+      effect: 4.0.0-beta.94
+      vite-plus: 0.2.4(@opentelemetry/api@1.9.0)(@types/node@24.13.1)(esbuild@0.28.1)(happy-dom@20.10.6)(jiti@2.7.0)(terser@5.49.0)(tsx@4.20.6)(typescript@6.0.3)(yaml@2.9.0)
+
+  '@openagentsinc/dse@0.2.1-rc.2':
+    dependencies:
+      '@openagentsinc/agent-runtime-schema': 0.2.1-rc.2
+      '@openagentsinc/graph-corpus': 0.2.1-rc.2
+      '@openagentsinc/rlm': 0.2.1-rc.2
       effect: 4.0.0-beta.94
 
-  '@openagentsinc/graph-corpus@0.2.0-rc.7':
+  '@openagentsinc/graph-corpus@0.2.1-rc.2':
     dependencies:
-      '@openagentsinc/rlm': 0.2.0-rc.7
+      '@openagentsinc/rlm': 0.2.1-rc.2
       effect: 4.0.0-beta.94
 
-  '@openagentsinc/history-corpus@0.2.0-rc.7':
+  '@openagentsinc/history-corpus@0.2.1-rc.2':
     dependencies:
-      '@openagentsinc/agent-harness-contract': 0.2.0-rc.7
-      '@openagentsinc/agent-runtime-schema': 0.2.0-rc.7
-      '@openagentsinc/rlm': 0.2.0-rc.7
+      '@openagentsinc/agent-harness-contract': 0.2.1-rc.2
+      '@openagentsinc/agent-runtime-schema': 0.2.1-rc.2
+      '@openagentsinc/rlm': 0.2.1-rc.2
       effect: 4.0.0-beta.94
 
   '@openagentsinc/rlm@0.2.0-rc.2':
     dependencies:
       effect: 4.0.0-beta.94
 
-  '@openagentsinc/rlm@0.2.0-rc.7':
+  '@openagentsinc/rlm@0.2.1-rc.2':
     dependencies:
       effect: 4.0.0-beta.94
 

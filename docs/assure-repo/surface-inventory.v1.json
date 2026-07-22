@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:267aa879e438c2f3f7f98a18ae75f731679ce08c415457f4b05d69d89aa5ce5c",
+  "sourceDigest": "sha256:25101bb812a385d7b9d4eab351130ecb4bb4ba51e486b812b696bfb66feb97df",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -285,7 +285,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "apps/openagents-desktop (351 tracked test files)"
+          "ref": "apps/openagents-desktop (354 tracked test files)"
         },
         {
           "type": "behavior-contract",
@@ -1970,23 +1970,6 @@
       }
     },
     {
-      "id": "package:@openagentsinc/dse",
-      "kind": "package",
-      "owningPath": "packages/dse",
-      "title": "@openagentsinc/dse",
-      "derivation": "derived",
-      "oracles": [
-        {
-          "type": "test",
-          "ref": "packages/dse (8 tracked test files)"
-        }
-      ],
-      "obligation": {
-        "state": "designed",
-        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
-      }
-    },
-    {
       "id": "package:@openagentsinc/durable-stream",
       "kind": "package",
       "owningPath": "packages/durable-stream",
@@ -3215,17 +3198,17 @@
     }
   ],
   "summary": {
-    "totalSurfaces": 168,
+    "totalSurfaces": 167,
     "byKind": {
       "app": 16,
       "crate": 6,
       "document": 48,
-      "package": 86,
+      "package": 85,
       "public-endpoint": 2,
       "release-pipeline": 9,
       "worker": 1
     },
-    "withOracle": 154,
+    "withOracle": 153,
     "unverified": 14,
     "byUnverifiedReason": {
       "config-only": 2,
@@ -3233,7 +3216,7 @@
       "reference-only": 2
     },
     "byObligationState": {
-      "designed": 120,
+      "designed": 119,
       "inconclusive": 9,
       "mapped": 34,
       "out-of-scope": 5
