@@ -71,6 +71,7 @@ const programRef = "program.managed-agent-sandboxes.sbx10";
 const workUnitRef = `work.sbx10.${suffix}`;
 const sourceSandboxRef = `sandbox.sbx10.source.${suffix}`;
 const checkpointRef = `checkpoint.sbx10.${suffix}`;
+const failbackCheckpointRef = `checkpoint.sbx10.failback.${suffix}`;
 const sourceCapabilityRef = `capability-ref://run/${sha256(`${stamp}|source`).slice(0, 32)}`;
 const previewHtml =
   "<!doctype html><title>SBX-10 private preview</title><main>checkpoint fork verified</main>";
@@ -234,18 +235,19 @@ const firewallNames = (sandboxRef: string) => {
   const id = sha256(sandboxRef).slice(0, 20);
   return ["egress", "broker", "metadata", "ssh", "ingress"].map((kind) => `oa-msb-${kind}-${id}`);
 };
-const checkpointUri =
+const checkpointUri = (ref: string) =>
   `gs://${bucket}/managed-sandbox-checkpoints/v1/` +
-  `${sha256(`${ownerRef}|${tenantRef}`).slice(0, 32)}/${sha256(checkpointRef)}.tar`;
-const checkpointObjectCount = (): number => {
-  try {
-    return gcloudLines(["storage", "ls", checkpointUri]).length;
-  } catch {
-    return 0;
-  }
-};
+  `${sha256(`${ownerRef}|${tenantRef}`).slice(0, 32)}/${sha256(ref)}.tar`;
+const checkpointObjectCount = (): number =>
+  [checkpointRef, failbackCheckpointRef].reduce((count, ref) => {
+    try {
+      return count + gcloudLines(["storage", "ls", checkpointUri(ref)]).length;
+    } catch {
+      return count;
+    }
+  }, 0);
 const inventory = () => {
-  const sandboxes = [sourceSandboxRef, forkSandboxRef].filter(Boolean);
+  const sandboxes = [sourceSandboxRef, forkSandboxRef, failbackSandboxRef].filter(Boolean);
   const instances = sandboxes.reduce(
     (total, sandboxRef) =>
       total +
@@ -307,7 +309,10 @@ const inventory = () => {
 let sourceGeneration = 0;
 let forkSandboxRef = "";
 let forkGeneration = 0;
+let failbackSandboxRef = "";
+let failbackGeneration = 0;
 let checkpoint: Record<string, Json> | undefined;
+let failbackCheckpoint: Record<string, Json> | undefined;
 let capability: Record<string, Json> | undefined;
 const proof = {
   sourceReady: false,
@@ -317,6 +322,10 @@ const proof = {
   forkFreshIdentity: false,
   forkFreshCapabilities: false,
   forkContentRestored: false,
+  failbackCheckpointVerified: false,
+  failbackFreshIdentity: false,
+  failbackFreshCapabilities: false,
+  failbackContentRestored: false,
   wrongAudienceDenied: false,
   privatePreviewRead: false,
   privatePreviewNoTopology: false,
@@ -462,7 +471,7 @@ try {
     audienceRef: audience,
     path: previewPath,
     encoding: "utf8",
-    capability,
+    capability: capability!,
   });
   await post(
     "/v1/managed-sandbox/runtime/private-preview",
@@ -511,6 +520,118 @@ try {
   );
   proof.revokeEnforced = true;
 
+  const failbackArchiveCommandRef = ref("command");
+  const failbackArchive = await phase2<Record<string, Json>>(
+    "archive_with_checkpoint",
+    failbackArchiveCommandRef,
+    {
+      command: {
+        ...commandBase("ArchiveWithCheckpoint", failbackArchiveCommandRef),
+        checkpointRef: failbackCheckpointRef,
+        sourceSandboxRef: forkSandboxRef,
+        sourceResourceGeneration: forkGeneration,
+        sourceImageDigest: imageDigest,
+        sourceToolchainDigest: toolchainDigest,
+        repositoryRef: "repository.openagents",
+        repositoryRevisionRef: `commit.${sourceRevision}`,
+        repositoryPostImageDigest,
+        formatRef: "format.sbx.content-tar.v1",
+        retainedUntil,
+        stopRef: ref("stop"),
+      },
+    },
+  );
+  if (failbackArchive["_tag"] !== "Archived" || failbackArchive.archiveClaim !== "allowed") {
+    throw new Error("failback archive did not return exact stopped checkpoint truth");
+  }
+  failbackCheckpoint = failbackArchive.checkpoint as Record<string, Json>;
+  const failbackVerified = await phase2<Record<string, Json>>(
+    "verify_checkpoint",
+    failbackCheckpointRef,
+    { checkpoint: failbackCheckpoint },
+  );
+  proof.failbackCheckpointVerified =
+    failbackVerified.verified === true &&
+    failbackVerified.contentDigest === failbackCheckpoint.contentDigest;
+  if (!proof.failbackCheckpointVerified) throw new Error("failback checkpoint verification failed");
+
+  const failbackCommandRef = ref("command");
+  const failback = await phase2<Record<string, Json>>("fork_from_checkpoint", failbackCommandRef, {
+    command: {
+      ...commandBase("ForkFromCheckpoint", failbackCommandRef),
+      checkpointRef: failbackCheckpointRef,
+      expectedSourceSandboxRef: forkSandboxRef,
+      expectedSourceResourceGeneration: forkGeneration,
+      sourceCapabilityRefs: forkCapabilities,
+    },
+    checkpoint: failbackCheckpoint,
+  });
+  failbackSandboxRef = String(failback.forkSandboxRef);
+  failbackGeneration = Number(failback.forkResourceGeneration);
+  const failbackCapabilities = failback.forkCapabilityRefs as Json[];
+  proof.failbackFreshIdentity =
+    failbackSandboxRef.length > 0 &&
+    failbackSandboxRef !== sourceSandboxRef &&
+    failbackSandboxRef !== forkSandboxRef;
+  proof.failbackFreshCapabilities =
+    Array.isArray(failbackCapabilities) &&
+    failbackCapabilities.length > 0 &&
+    !failbackCapabilities.some((candidate) => forkCapabilities.includes(candidate));
+  if (
+    !proof.failbackFreshIdentity ||
+    !proof.failbackFreshCapabilities ||
+    failbackGeneration !== 1
+  ) {
+    throw new Error("failback did not produce a fresh generation-1 identity and grants");
+  }
+
+  const failbackIngressCommandRef = ref("command");
+  let failbackCapability = await phase2<Record<string, Json>>(
+    "create_private_ingress",
+    failbackIngressCommandRef,
+    {
+      command: {
+        ...commandBase("CreatePrivateIngress", failbackIngressCommandRef),
+        sandboxRef: failbackSandboxRef,
+        resourceGeneration: failbackGeneration,
+        audienceRef,
+        kind: "preview",
+        ttlSeconds: 300,
+      },
+    },
+  );
+  const failbackPreview = await post<Record<string, Json>>(
+    "/v1/managed-sandbox/runtime/private-preview",
+    {
+      schemaVersion: "openagents.managed_sandbox_private_preview.v1",
+      requestRef: ref("preview"),
+      capabilityRef: String(failbackCapability.capabilityRef),
+      audienceRef,
+      path: previewPath,
+      encoding: "utf8",
+      capability: failbackCapability,
+    },
+  );
+  proof.failbackContentRestored =
+    failbackPreview.sandboxRef === failbackSandboxRef &&
+    JSON.stringify(failbackPreview).includes("checkpoint fork verified");
+  if (!proof.failbackContentRestored) throw new Error("failback content restore failed");
+  const failbackRevokeCommandRef = ref("command");
+  failbackCapability = await phase2<Record<string, Json>>(
+    "revoke_private_ingress",
+    failbackRevokeCommandRef,
+    {
+      command: {
+        ...commandBase("RevokePrivateIngress", failbackRevokeCommandRef),
+        capabilityRef: String(failbackCapability.capabilityRef),
+        sandboxRef: failbackSandboxRef,
+        resourceGeneration: failbackGeneration,
+      },
+      capability: failbackCapability,
+    },
+  );
+
+  await safeRuntimeCleanup(failbackSandboxRef, failbackGeneration);
   await safeRuntimeCleanup(forkSandboxRef, forkGeneration);
   await safeRuntimeCleanup(sourceSandboxRef, sourceGeneration);
   const deleteCommandRef = ref("command");
@@ -523,6 +644,21 @@ try {
     checkpoint,
   });
   proof.checkpointContentDeleted = deleted.contentDeleted === true;
+  const deleteFailbackCommandRef = ref("command");
+  const deletedFailback = await phase2<Record<string, Json>>(
+    "delete_checkpoint",
+    deleteFailbackCommandRef,
+    {
+      command: {
+        ...commandBase("DeleteCheckpoint", deleteFailbackCommandRef),
+        checkpointRef: failbackCheckpointRef,
+        reason: "owner_requested",
+      },
+      checkpoint: failbackCheckpoint!,
+    },
+  );
+  proof.checkpointContentDeleted =
+    proof.checkpointContentDeleted && deletedFailback.contentDeleted === true;
   after = inventory();
   proof.zeroResidue = Object.values(after).every((value) => value === 0);
   if (!proof.zeroResidue || !proof.checkpointContentDeleted) {
@@ -549,6 +685,7 @@ try {
     }
   }
   await safeRuntimeCleanup(forkSandboxRef, forkGeneration);
+  await safeRuntimeCleanup(failbackSandboxRef, failbackGeneration);
   await safeRuntimeCleanup(sourceSandboxRef, sourceGeneration);
   try {
     after = inventory();
@@ -557,7 +694,7 @@ try {
   }
   if (after && Object.values(after).some((value) => value !== 0)) {
     emergencyCleanupAttempted = true;
-    const exactSandboxes = [sourceSandboxRef, forkSandboxRef].filter(Boolean);
+    const exactSandboxes = [sourceSandboxRef, forkSandboxRef, failbackSandboxRef].filter(Boolean);
     for (const sandboxRef of exactSandboxes) {
       ignoreFailure(gcloud, [
         "compute",
@@ -591,7 +728,8 @@ try {
         "--quiet",
       ]);
     }
-    ignoreFailure(gcloud, ["storage", "rm", checkpointUri]);
+    ignoreFailure(gcloud, ["storage", "rm", checkpointUri(checkpointRef)]);
+    ignoreFailure(gcloud, ["storage", "rm", checkpointUri(failbackCheckpointRef)]);
     try {
       after = inventory();
     } catch {
@@ -629,7 +767,9 @@ const publicEvidence = {
   identityDigests: {
     sourceSandboxRef: digest(sourceSandboxRef),
     forkSandboxRef: forkSandboxRef ? digest(forkSandboxRef) : undefined,
+    failbackSandboxRef: failbackSandboxRef ? digest(failbackSandboxRef) : undefined,
     checkpointRef: digest(checkpointRef),
+    failbackCheckpointRef: digest(failbackCheckpointRef),
     audienceRef: digest(audienceRef),
   },
   receiptRefs: runtimeReceipts.map((receipt) => receipt.receiptRef),
