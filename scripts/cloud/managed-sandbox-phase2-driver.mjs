@@ -17,6 +17,7 @@ import { join } from "node:path";
 const TARGET_SCHEMA_VERSION = "openagents.managed_sandbox_phase2_target.v1";
 const CHECKPOINT_SCHEMA_VERSION = "openagents.managed_sandbox_content_checkpoint.v1";
 const DELETE_SCHEMA_VERSION = "openagents.managed_sandbox_checkpoint_delete_receipt.v1";
+const RESTORE_SCHEMA_VERSION = "openagents.managed_sandbox_restore_receipt.v1";
 const FORMAT_REF = "format.sbx.content-tar.v1";
 const MAX_ARCHIVE_BYTES = 512 * 1024 * 1024;
 const MAX_COMMAND_BYTES = 2 * 1024 * 1024;
@@ -174,6 +175,48 @@ const copyFromGuest = (sandboxRef, remoteArchive, localArchive) => {
     ],
     { timeout: 5 * 60_000 },
   );
+};
+
+const copyToGuest = (sandboxRef, localArchive, remoteArchive) => {
+  gcloudRun(
+    [
+      "compute",
+      "scp",
+      localArchive,
+      `openagents@${instanceName(sandboxRef)}:${remoteArchive}`,
+      "--project",
+      project,
+      "--zone",
+      zone,
+      "--internal-ip",
+      "--quiet",
+      "--ssh-key-expire-after=10m",
+      "--scp-flag=-oStrictHostKeyChecking=no",
+      "--scp-flag=-oUserKnownHostsFile=/dev/null",
+    ],
+    { timeout: 5 * 60_000 },
+  );
+};
+
+const remotePrepare = (sandboxRef, remote) => {
+  gcloudRun(remoteArgs(sandboxRef, `install -d -m 0700 ${remote.directory}`));
+};
+
+const remoteRestore = (sandboxRef, requestRef, contentDigest) => {
+  const remote = remoteCheckpoint(requestRef);
+  const command =
+    `set -eu; install -d -m 0700 ${remote.directory}; ` +
+    `/usr/bin/python3 /opt/openagents-managed-sandbox/managed-sandbox-guest-checkpoint.py ` +
+    `restore ${remote.archive} ${contentDigest}`;
+  const output = gcloudRun(remoteArgs(sandboxRef, command), {
+    maxBuffer: 1024 * 1024,
+    timeout: 10 * 60_000,
+  });
+  try {
+    return { remote, result: JSON.parse(output) };
+  } catch {
+    throw new DriverError("guest_restore_invalid");
+  }
 };
 
 const hashFile = (path) => {
@@ -438,6 +481,137 @@ const verifyCheckpoint = (request) => {
   }
 };
 
+const validateRestore = (request) => {
+  const command = request.command;
+  const checkpoint = request.checkpoint;
+  const runtime = request.runtimeContext;
+  if (
+    command?.["_tag"] !== "RestoreCheckpoint" ||
+    command.commandRef !== request.requestRef ||
+    checkpoint?.schema !== CHECKPOINT_SCHEMA_VERSION ||
+    command.ownerRef !== checkpoint.ownerRef ||
+    command.tenantRef !== checkpoint.tenantRef ||
+    command.checkpointRef !== checkpoint.checkpointRef ||
+    command.expectedSourceResourceGeneration !== checkpoint.sourceResourceGeneration ||
+    typeof command.destinationSandboxRef !== "string" ||
+    !Array.isArray(command.admittedServiceRefs) ||
+    !Array.isArray(command.sourceCapabilityRefs) ||
+    runtime?.schema !== "openagents.managed_sandbox_phase2_restore_context.v1" ||
+    runtime.ownerRef !== command.ownerRef ||
+    runtime.tenantRef !== command.tenantRef ||
+    runtime.sandboxRef !== command.destinationSandboxRef ||
+    !Number.isSafeInteger(runtime.resourceGeneration) ||
+    runtime.resourceGeneration <= checkpoint.sourceResourceGeneration ||
+    !Array.isArray(runtime.restoredCapabilityRefs) ||
+    runtime.restoredCapabilityRefs.length === 0 ||
+    runtime.restoredCapabilityRefs.some(
+      (capabilityRef) =>
+        typeof capabilityRef !== "string" || command.sourceCapabilityRefs.includes(capabilityRef),
+    ) ||
+    typeof checkpoint.contentDigest !== "string" ||
+    !Number.isSafeInteger(checkpoint.contentBytes) ||
+    checkpoint.contentBytes < 0 ||
+    checkpoint.contentBytes > MAX_ARCHIVE_BYTES
+  ) {
+    throw new DriverError("restore_request_invalid");
+  }
+  return { checkpoint, command, runtime };
+};
+
+const observeGeneration = (sandboxRef) => {
+  const serial = gcloudRun(
+    [
+      "compute",
+      "instances",
+      "get-serial-port-output",
+      instanceName(sandboxRef),
+      "--project",
+      project,
+      "--zone",
+      zone,
+      "--port",
+      "1",
+    ],
+    { maxBuffer: 4 * 1024 * 1024 },
+  );
+  const generations = Array.from(
+    serial.matchAll(/OA_MSB_(?:READY|PROBE):([a-f0-9]{20}):([0-9]+)/gu),
+    (match) => ({ generation: Number(match[2]), marker: match[1] }),
+  )
+    .filter(
+      ({ generation, marker }) =>
+        Number.isSafeInteger(generation) &&
+        generation >= 0 &&
+        marker === generationMarker(sandboxRef, generation),
+    )
+    .map(({ generation }) => generation);
+  if (generations.length === 0) throw new DriverError("generation_unavailable");
+  return Math.max(...generations);
+};
+
+const restoreCheckpoint = (request) => {
+  const { checkpoint, command, runtime } = validateRestore(request);
+  const uri = objectUri(checkpoint.ownerRef, checkpoint.tenantRef, checkpoint.checkpointRef);
+  const local = mkdtempSync(join(tmpdir(), "oa-msb-phase2-restore-"));
+  const localArchive = join(local, "content.tar");
+  let remote;
+  try {
+    const content = downloadObject(uri, localArchive);
+    if (
+      content.contentDigest !== checkpoint.contentDigest ||
+      content.contentBytes !== checkpoint.contentBytes
+    ) {
+      throw new DriverError("checkpoint_object_corrupt");
+    }
+    remote = remoteCheckpoint(request.requestRef);
+    remotePrepare(command.destinationSandboxRef, remote);
+    copyToGuest(command.destinationSandboxRef, localArchive, remote.archive);
+    const restored = remoteRestore(
+      command.destinationSandboxRef,
+      request.requestRef,
+      checkpoint.contentDigest,
+    );
+    remote = restored.remote;
+    if (
+      restored.result?.formatRef !== FORMAT_REF ||
+      restored.result.contentDigest !== checkpoint.contentDigest ||
+      restored.result.contentBytes !== checkpoint.contentBytes ||
+      restored.result.repositoryPostImageDigest !== checkpoint.repositoryPostImageDigest
+    ) {
+      throw new DriverError("guest_restore_scope_conflict");
+    }
+    const restoredResourceGeneration = observeGeneration(command.destinationSandboxRef);
+    if (restoredResourceGeneration !== runtime.resourceGeneration) {
+      throw new DriverError("restore_generation_conflict");
+    }
+    return {
+      schema: RESTORE_SCHEMA_VERSION,
+      receiptRef: evidenceRef("restore", command.commandRef),
+      ownerRef: command.ownerRef,
+      tenantRef: command.tenantRef,
+      checkpointRef: command.checkpointRef,
+      sandboxRef: command.destinationSandboxRef,
+      checkpointSourceGeneration: checkpoint.sourceResourceGeneration,
+      restoredResourceGeneration,
+      admittedServiceRefs: command.admittedServiceRefs,
+      restartedServiceRefs: [],
+      sourceCapabilityRefs: command.sourceCapabilityRefs,
+      restoredCapabilityRefs: runtime.restoredCapabilityRefs,
+      grantPolicy: "mint_fresh",
+      processSessionContinuity: "discontinuous",
+      processMemoryRestored: false,
+      ptyRestored: false,
+      socketsRestored: false,
+      outcome: "restored",
+      observedAt: new Date().toISOString(),
+      evidenceRefs: [evidenceRef("restore.readback", command.commandRef)],
+    };
+  } finally {
+    if (remote !== undefined) remoteCleanup(command.destinationSandboxRef, remote);
+    rmSync(local, { recursive: true, force: true });
+  }
+};
+
 const deleteCheckpoint = (request) => {
   const command = request.command;
   const checkpoint = request.checkpoint;
@@ -498,38 +672,11 @@ const observeResourceGeneration = (request) => {
   ) {
     throw new DriverError("generation_request_invalid");
   }
-  const serial = gcloudRun(
-    [
-      "compute",
-      "instances",
-      "get-serial-port-output",
-      instanceName(request.sandboxRef),
-      "--project",
-      project,
-      "--zone",
-      zone,
-      "--port",
-      "1",
-    ],
-    { maxBuffer: 4 * 1024 * 1024 },
-  );
-  const generations = Array.from(
-    serial.matchAll(/OA_MSB_(?:READY|PROBE):([a-f0-9]{20}):([0-9]+)/gu),
-    (match) => ({ generation: Number(match[2]), marker: match[1] }),
-  )
-    .filter(
-      ({ generation, marker }) =>
-        Number.isSafeInteger(generation) &&
-        generation >= 0 &&
-        marker === generationMarker(request.sandboxRef, generation),
-    )
-    .map(({ generation }) => generation);
-  if (generations.length === 0) throw new DriverError("generation_unavailable");
   return {
     ownerRef: request.ownerRef,
     tenantRef: request.tenantRef,
     sandboxRef: request.sandboxRef,
-    resourceGeneration: Math.max(...generations),
+    resourceGeneration: observeGeneration(request.sandboxRef),
     evidenceRefs: [evidenceRef("sandbox.generation", request.sandboxRef)],
   };
 };
@@ -542,6 +689,8 @@ const execute = (request) => {
       return verifyCheckpoint(request);
     case "observe_resource_generation":
       return observeResourceGeneration(request);
+    case "restore_checkpoint":
+      return restoreCheckpoint(request);
     case "delete_checkpoint":
       return deleteCheckpoint(request);
     default:

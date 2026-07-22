@@ -27,7 +27,17 @@ appendFileSync(join(root, "calls.jsonl"), JSON.stringify(args) + "\n");
 
 if (args[0] === "compute" && args[1] === "ssh") {
   const command = args[args.indexOf("--command") + 1] ?? "";
-  if (command.includes("managed-sandbox-guest-checkpoint.py")) {
+  if (command.includes("managed-sandbox-guest-checkpoint.py restore")) {
+    const content = readFileSync(join(root, "guest.tar"));
+    const contentDigest = "sha256:" + (await import("node:crypto"))
+      .createHash("sha256").update(content).digest("hex");
+    process.stdout.write(JSON.stringify({
+      contentBytes: content.byteLength,
+      contentDigest,
+      formatRef: "format.sbx.content-tar.v1",
+      repositoryPostImageDigest: process.env.FAKE_RESTORE_REPOSITORY_POST_IMAGE_DIGEST,
+    }));
+  } else if (command.includes("managed-sandbox-guest-checkpoint.py create")) {
     const content = Buffer.from(process.env.FAKE_CONTENT_BASE64, "base64");
     const contentDigest = "sha256:" + (await import("node:crypto"))
       .createHash("sha256").update(content).digest("hex");
@@ -42,7 +52,11 @@ if (args[0] === "compute" && args[1] === "ssh") {
 }
 
 if (args[0] === "compute" && args[1] === "scp") {
-  writeFileSync(args[3], Buffer.from(process.env.FAKE_CONTENT_BASE64, "base64"));
+  if (args[2].startsWith("openagents@")) {
+    writeFileSync(args[3], Buffer.from(process.env.FAKE_CONTENT_BASE64, "base64"));
+  } else {
+    copyFileSync(args[2], join(root, "guest.tar"));
+  }
   process.exit(0);
 }
 
@@ -92,6 +106,7 @@ process.exit(1);
 
 const checkpointContent = "deterministic content-only checkpoint\n";
 const repositoryPostImageDigest = digest("repository-post-image");
+const restoreSandboxRef = "sandbox.sbx10.driver.restore";
 
 const createCommand = {
   _tag: "CreateCheckpoint",
@@ -126,9 +141,11 @@ const makeFixture = () => {
       FAKE_CONTENT_BASE64: Buffer.from(checkpointContent).toString("base64"),
       FAKE_GCLOUD_ROOT: root,
       FAKE_REPOSITORY_POST_IMAGE_DIGEST: repositoryPostImageDigest,
+      FAKE_RESTORE_REPOSITORY_POST_IMAGE_DIGEST: repositoryPostImageDigest,
       FAKE_SERIAL_OUTPUT: [
         `OA_MSB_READY:${marker(createCommand.sourceSandboxRef, 3)}:3`,
         `OA_MSB_PROBE:${marker(createCommand.sourceSandboxRef, 4)}:4`,
+        `OA_MSB_READY:${marker(restoreSandboxRef, 8)}:8`,
         "OA_MSB_READY:0123456789abcdef0123:99",
         "",
       ].join("\n"),
@@ -157,6 +174,35 @@ const createRequest = (command = createCommand) => ({
   action: "create_checkpoint",
   requestRef: command.commandRef,
   command,
+});
+
+const restoreRequest = (checkpoint: unknown) => ({
+  schemaVersion: "openagents.managed_sandbox_phase2_target.v1",
+  action: "restore_checkpoint",
+  requestRef: "command.sbx10.driver.restore",
+  command: {
+    _tag: "RestoreCheckpoint",
+    schema: "openagents.managed_sandbox_phase2_command.v1",
+    commandRef: "command.sbx10.driver.restore",
+    idempotencyRef: "idempotency.sbx10.driver.restore",
+    ownerRef: createCommand.ownerRef,
+    tenantRef: createCommand.tenantRef,
+    requestedAt: "2099-07-22T03:08:00.000Z",
+    checkpointRef: createCommand.checkpointRef,
+    destinationSandboxRef: restoreSandboxRef,
+    expectedSourceResourceGeneration: createCommand.sourceResourceGeneration,
+    admittedServiceRefs: ["service.agent-runtime"],
+    sourceCapabilityRefs: ["capability.sbx10.source"],
+  },
+  checkpoint,
+  runtimeContext: {
+    schema: "openagents.managed_sandbox_phase2_restore_context.v1",
+    ownerRef: createCommand.ownerRef,
+    tenantRef: createCommand.tenantRef,
+    sandboxRef: restoreSandboxRef,
+    resourceGeneration: 8,
+    restoredCapabilityRefs: ["capability.sbx10.restore.fresh"],
+  },
 });
 
 afterEach(() => {
@@ -289,7 +335,60 @@ describe("managed-sandbox phase-two Google Cloud driver", () => {
     expect(result.output.resourceGeneration).toBe(4);
   });
 
-  test("keeps fork and restore actions closed", () => {
+  test("restores exact bytes with fresh capabilities and no process continuity", () => {
+    const fixture = makeFixture();
+    const created = invoke(createRequest(), fixture.env);
+    const restored = invoke(restoreRequest(created.output), fixture.env);
+
+    expect(restored.status).toBe(0);
+    expect(restored.output).toMatchObject({
+      checkpointRef: createCommand.checkpointRef,
+      sandboxRef: restoreSandboxRef,
+      checkpointSourceGeneration: 7,
+      restoredResourceGeneration: 8,
+      admittedServiceRefs: ["service.agent-runtime"],
+      restartedServiceRefs: [],
+      sourceCapabilityRefs: ["capability.sbx10.source"],
+      grantPolicy: "mint_fresh",
+      processSessionContinuity: "discontinuous",
+      processMemoryRestored: false,
+      ptyRestored: false,
+      socketsRestored: false,
+      outcome: "restored",
+    });
+    expect(restored.output.restoredCapabilityRefs).toHaveLength(1);
+    expect(restored.output.restoredCapabilityRefs).not.toContain("capability.sbx10.source");
+    const calls = readFileSync(join(fixture.root, "calls.jsonl"), "utf8");
+    expect(calls).toContain("managed-sandbox-guest-checkpoint.py restore");
+    expect(calls).toContain("rm -f");
+    expect(calls).not.toContain(restoreSandboxRef);
+  });
+
+  test("refuses corrupt bytes before copying them to the destination", () => {
+    const fixture = makeFixture();
+    const created = invoke(createRequest(), fixture.env);
+    writeFileSync(join(fixture.root, "object.tar"), "tampered\n");
+    const restored = invoke(restoreRequest(created.output), fixture.env);
+
+    expect(restored.status).not.toBe(0);
+    expect(() => readFileSync(join(fixture.root, "guest.tar"))).toThrow();
+  });
+
+  test("refuses a restored post-image mismatch and removes guest scratch bytes", () => {
+    const fixture = makeFixture();
+    const created = invoke(createRequest(), fixture.env);
+    const restored = invoke(restoreRequest(created.output), {
+      ...fixture.env,
+      FAKE_RESTORE_REPOSITORY_POST_IMAGE_DIGEST: digest("wrong-post-image"),
+    });
+
+    expect(restored.status).not.toBe(0);
+    expect(restored.stdout).toBe("");
+    const calls = readFileSync(join(fixture.root, "calls.jsonl"), "utf8");
+    expect(calls).toContain("rm -f");
+  });
+
+  test("keeps fork and an unprepared restore closed", () => {
     const fixture = makeFixture();
     const result = invoke(
       {
@@ -303,5 +402,12 @@ describe("managed-sandbox phase-two Google Cloud driver", () => {
     expect(result.status).not.toBe(0);
     expect(result.stdout).toBe("");
     expect(result.stderr).toBe("");
+
+    const created = invoke(createRequest(), fixture.env);
+    const restore = restoreRequest(created.output);
+    delete (restore as { runtimeContext?: unknown }).runtimeContext;
+    const unpreparedRestore = invoke(restore, fixture.env);
+    expect(unpreparedRestore.status).not.toBe(0);
+    expect(unpreparedRestore.stdout).toBe("");
   });
 });
