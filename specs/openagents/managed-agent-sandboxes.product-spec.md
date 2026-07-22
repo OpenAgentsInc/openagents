@@ -2,10 +2,10 @@
 spec_format_version: "0.1"
 title: "OpenAgents Managed Agent Sandboxes"
 artifact_type: "prd"
-spec_revision: 2
+spec_revision: 3
 author: "OpenAgents"
 created_at: "2026-07-19T00:00:00Z"
-updated_at: "2026-07-19T00:00:00Z"
+updated_at: "2026-07-22T03:00:00Z"
 linked_github_repo: "OpenAgentsInc/openagents"
 custom_sections:
   - id: "custom-owner-gates"
@@ -24,6 +24,7 @@ tool_metadata:
   openagents_ide_roadmap: "docs/ide/ROADMAP.md (managed capability dependency of IDE-13 and IDE-17)"
   openagents_assurance_level: "managed execution, tenant isolation, lifecycle, and cross-surface authority"
   openagents_revision_2_note: "Rev 2 records the SBX-08 controller implementation. Mobile and authenticated web decode one shared bounded supervision schema, preserve exact actor attribution, and persist exact generation-fenced command bytes before send. The implementation remains default-off. SBX-09 still owns live GCP acceptance and rollout, and physical-device evidence remains a separate release gate. No acceptance criterion changed."
+  openagents_revision_3_note: "Rev 3 records the SBX-10 native Phase 2 contract, Effect coordinator, durable Cloud SQL metadata store, Postgres adapter, and deterministic local fault evidence. The semantic comparison found no weaker owner, safety, privacy, payment, release, or acceptance control. This revision adds no Google Cloud target execution, private ingress, admission, release, or public-claim authority. MSB-AC-15 now states the selected checkpoint, fork, restore, and deletion semantics. The other criterion IDs and their authority remain stable."
 ---
 
 ## Problem
@@ -190,11 +191,16 @@ capability_not_implemented`. No empty result or fake success implies parity.
   teardown failure remain distinct typed outcomes. Cleanup is complete only
   when receipts prove zero residual compute, firewall/ingress, scratch,
   process, and capability grants. Otherwise the sandbox is recovery-required.
-- **MSB-AC-15:** Snapshot and fork remain unavailable until an exact completed
-  checkpoint binds source sandbox/generation, image/toolchain, repository
-  post-image, content digest, and retention. Fork creates a fresh sandbox and
-  fresh capabilities and never clones credentials, memory, processes, sockets,
-  ports, network identity, or provider hidden state.
+- **MSB-AC-15:** Checkpoint use requires an exact completed record that binds
+  the source sandbox and generation, image, toolchain, repository post-image,
+  content digest, format, and retention. The service verifies integrity again
+  before fork or restore and refuses an expired or stale source. Fork creates
+  a new sandbox and new capabilities. Restore starts admitted services only
+  and does not continue a process session. Checkpoint deletion removes metadata
+  only after exact content-deletion proof. Credentials, memory, processes,
+  sockets, ports, network identity, and provider hidden state never move.
+  Provider operations remain unavailable until the Google Cloud target and
+  live fault evidence pass their gates.
 - **MSB-AC-16:** Private desktop or preview ingress remains unavailable until
   its short-lived owner/audience-scoped capability, revocation, redaction,
   audit, and cleanup tests pass. Public or ungated VNC is not admitted.

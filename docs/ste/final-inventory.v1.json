@@ -46756,8 +46756,8 @@
       }
     },
     {
-      "path": "docs/transcripts/260.md",
-      "sha256": "fb014f15581f64c890f3f26ff8bbdf89fdbe6a9e2996e57cd30740d2ad6c2c05",
+      "path": "docs/transcripts/25X-fullauto.md",
+      "sha256": "d6f1af287a4ee23ee729395a6152f9a138fd134685a8459fa2a14ab816674f57",
       "reason": "Preserved transcript archive",
       "profile": {
         "ste_mode": "source-data",
@@ -46768,8 +46768,8 @@
       }
     },
     {
-      "path": "docs/transcripts/25X-fullauto.md",
-      "sha256": "d6f1af287a4ee23ee729395a6152f9a138fd134685a8459fa2a14ab816674f57",
+      "path": "docs/transcripts/260.md",
+      "sha256": "fb014f15581f64c890f3f26ff8bbdf89fdbe6a9e2996e57cd30740d2ad6c2c05",
       "reason": "Preserved transcript archive",
       "profile": {
         "ste_mode": "source-data",
@@ -50622,7 +50622,7 @@
     },
     {
       "path": "specs/openagents/managed-agent-sandboxes.assurance-spec.md",
-      "sha256": "e94b23c0ed5516f4926e17e7bac01129550515f1fc542a0bbded0e9ed54488df",
+      "sha256": "50b6af04eb07a11d4060cd35bec0ad7979d4995547596162b9620177f7fb1a17",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -50643,7 +50643,7 @@
     },
     {
       "path": "specs/openagents/managed-agent-sandboxes.product-spec.md",
-      "sha256": "67a55f11874981f73c3db99d3dbd0330661fc26cbfaa0a94a29fd36026f92846",
+      "sha256": "b39699106e44cf66bce6d09a09b933e3cd817956f718f15e47f7a2c49f6d64d2",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
