@@ -9,7 +9,17 @@ import {
 import { type FullAutoRotationReason } from "./full-auto-registry.ts"
 import { type FullAutoRoutingLaneGate } from "./full-auto-routing.ts"
 
-const LANES = ["codex-local", "claude-local", "acp:grok-cli", "acp:cursor-agent"]
+// The seven fleet lanes: the four native/ACP lanes plus the three host-run
+// SDK-harness lanes made Full-Auto action lanes in #9187.
+const LANES = [
+  "codex-local",
+  "claude-local",
+  "acp:grok-cli",
+  "acp:cursor-agent",
+  "harness:opencode",
+  "harness:pi",
+  "harness:goose",
+]
 
 const allReadyGate: FullAutoRoutingLaneGate = (lane) =>
   LANES.includes(lane) ? { admitted: true, fullAuto: true } : null
@@ -88,11 +98,17 @@ describe("admitConcurrentRun — own-capacity-only bounded concurrency", () => {
   })
 
   test("never admits onto a busy, cooling, or exhausted lane — spreads across distinct ready lanes", () => {
-    // codex busy, claude cooling, grok exhausted -> only cursor is available.
+    // codex busy, claude cooling, grok exhausted, all three harness lanes
+    // occupied -> only cursor is available.
     const ledger = projectFullAutoCapacityLedger(
       inputs({
-        active: { "codex-local": 1 },
-        cooling: { "claude-local": "rate_limited", "acp:grok-cli": "account_exhausted" },
+        active: { "codex-local": 1, "harness:opencode": 1 },
+        cooling: {
+          "claude-local": "rate_limited",
+          "acp:grok-cli": "account_exhausted",
+          "harness:pi": "provider_error",
+          "harness:goose": "rate_limited",
+        },
       }),
     )
     const admission = admitConcurrentRun(ledger, 1)
@@ -102,11 +118,16 @@ describe("admitConcurrentRun — own-capacity-only bounded concurrency", () => {
   test("refuses when no lane is available even under the cap (own-capacity-only)", () => {
     const ledger = projectFullAutoCapacityLedger(
       inputs({
-        active: { "codex-local": 1, "claude-local": 1, "acp:grok-cli": 1, "acp:cursor-agent": 1 },
+        active: {
+          "codex-local": 1, "claude-local": 1, "acp:grok-cli": 1, "acp:cursor-agent": 1,
+          // #9187: the harness fleet lanes are action lanes too, so they must
+          // also be occupied for "no lane available" to hold.
+          "harness:opencode": 1, "harness:pi": 1, "harness:goose": 1,
+        },
       }),
     )
-    // Under the cap (4 < 8) but every lane is busy — no oversubscription.
-    const admission = admitConcurrentRun(ledger, 4)
+    // Under the cap (7 < 8) but every lane is busy — no oversubscription.
+    const admission = admitConcurrentRun(ledger, 7)
     expect(admission).toEqual({ ok: false, reason: "no_available_lane" })
   })
 

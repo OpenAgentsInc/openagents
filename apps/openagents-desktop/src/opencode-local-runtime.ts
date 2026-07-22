@@ -38,7 +38,7 @@ import type { ProviderLaneCapabilityReport } from "./provider-lane-capabilities.
 export const OPENCODE_LANE_REF = "harness:opencode" as const
 const OPENCODE_MODEL = "opencode-configured" as const
 
-const opencodeCapabilities: ProviderLaneCapabilityReport = {
+export const opencodeCapabilities: ProviderLaneCapabilityReport = {
   laneRef: OPENCODE_LANE_REF,
   provider: "opencode",
   models: [OPENCODE_MODEL],
@@ -47,7 +47,11 @@ const opencodeCapabilities: ProviderLaneCapabilityReport = {
     planOnly: false,
     reasoningEffort: false,
     images: false,
-    fullAuto: false,
+    // #9187: a Full-Auto action lane. The response-driven `POST .../message`
+    // settles the whole turn under a bounded per-prompt timeout, so a background
+    // turn fails closed with a typed timeout rather than parking forever (the
+    // `autoResolveQuestions` invariant in full-auto-lane.ts).
+    fullAuto: true,
     interrupt: true,
     queueFollowup: false,
     steerTurn: false,
@@ -67,7 +71,7 @@ const opencodeCapabilities: ProviderLaneCapabilityReport = {
     profileRef: OPENCODE_LANE_REF,
     evidence: "experimental",
     allowedModels: [OPENCODE_MODEL],
-    allowedFeatures: ["interrupt"],
+    allowedFeatures: ["interrupt", "fullAuto"],
     allowedExtensions: [],
   },
 }

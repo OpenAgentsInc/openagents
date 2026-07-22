@@ -44,7 +44,7 @@ export type HarnessLaneAvailability =
   | Readonly<{ state: "available"; models: ReadonlyArray<string> }>
   | Readonly<{ state: "unavailable"; reason: string }>
 
-const gooseCapabilities: ProviderLaneCapabilityReport = {
+export const gooseCapabilities: ProviderLaneCapabilityReport = {
   laneRef: GOOSE_LANE_REF,
   provider: "goose",
   models: [GOOSE_MODEL],
@@ -53,7 +53,10 @@ const gooseCapabilities: ProviderLaneCapabilityReport = {
     planOnly: false,
     reasoningEffort: false,
     images: false,
-    fullAuto: false,
+    // #9187: a Full-Auto action lane. The live `goose acp` transport auto-allows
+    // every background permission request at the wire, so a background turn
+    // never parks (the `autoResolveQuestions` invariant in full-auto-lane.ts).
+    fullAuto: true,
     interrupt: true,
     queueFollowup: false,
     steerTurn: false,
@@ -73,7 +76,7 @@ const gooseCapabilities: ProviderLaneCapabilityReport = {
     profileRef: GOOSE_LANE_REF,
     evidence: "experimental",
     allowedModels: [GOOSE_MODEL],
-    allowedFeatures: ["interrupt"],
+    allowedFeatures: ["interrupt", "fullAuto"],
     allowedExtensions: [],
   },
 }

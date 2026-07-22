@@ -21,6 +21,10 @@ const allReadyGate = gateFrom({
   "claude-local": { admitted: true, fullAuto: true },
   "acp:grok-cli": { admitted: true, fullAuto: true },
   "acp:cursor-agent": { admitted: true, fullAuto: true },
+  // #9187: the host-run SDK-harness fleet lanes are Full-Auto action lanes.
+  "harness:opencode": { admitted: true, fullAuto: true },
+  "harness:pi": { admitted: true, fullAuto: true },
+  "harness:goose": { admitted: true, fullAuto: true },
 })
 
 describe("projectFullAutoReadinessSnapshot", () => {
@@ -111,9 +115,11 @@ describe("projectFullAutoLaneScan — scan/lane reconciliation", () => {
   test("shows every Full-Auto-eligible action lane plus advisory Apple FM", () => {
     const scan = projectFullAutoLaneScan(allReadyGate, { appleFmState: "available" })
     const action = scan.filter((e) => e.role === "action").map((e) => e.lane)
-    // All four action lanes appear, including Cursor (which the boot scan omits).
+    // Every action lane appears, including Cursor (which the boot scan omits)
+    // and the three host-run SDK-harness fleet lanes (#9187).
     expect(action).toEqual(Object.keys(FULL_AUTO_LANE_POLICIES).sort())
     expect(action).toContain("acp:cursor-agent")
+    expect(action).toEqual(expect.arrayContaining(["harness:opencode", "harness:pi", "harness:goose"]))
 
     const advisory = scan.filter((e) => e.role === "advisory")
     expect(advisory).toHaveLength(1)

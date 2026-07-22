@@ -40,6 +40,11 @@ describe("opencode host-run harness lane", () => {
     expect(opencode.capabilities.provider).toBe("opencode")
     expect(opencode.capabilities.composer.displayName).toBe("OpenCode")
     expect(opencode.capabilities.features.interrupt).toBe(true)
+    // #9187: a Full-Auto action lane, admitted in allowedFeatures (not an
+    // over-claim). The response-driven turn settles under a bounded timeout, so
+    // a background turn fails closed rather than parking forever.
+    expect(opencode.capabilities.features.fullAuto).toBe(true)
+    expect(opencode.capabilities.policy.allowedFeatures).toContain("fullAuto")
   })
 
   test("a detected lane runs one real turn through the SDK adapter and lowers it onto the envelope", async () => {

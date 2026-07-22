@@ -44,7 +44,11 @@ describe("goose host-run harness lane", () => {
     expect(report.provider).toBe("goose")
     expect(report.composer.displayName).toBe("Goose")
     expect(report.features.interrupt).toBe(true)
-    expect(report.features.fullAuto).toBe(false)
+    // #9187: a Full-Auto action lane, admitted in allowedFeatures (not an
+    // over-claim). The live `goose acp` transport auto-allows every background
+    // permission request, so a background turn never parks.
+    expect(report.features.fullAuto).toBe(true)
+    expect(report.policy.allowedFeatures).toContain("fullAuto")
     expect(report.policy.source).toBe("native-static-declaration")
   })
 

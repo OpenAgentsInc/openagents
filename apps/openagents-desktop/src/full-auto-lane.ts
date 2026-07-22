@@ -2,10 +2,22 @@
  * Provider-keyed Full Auto policy (L6 #8901).
  *
  * The durable loop stores the SPI lane ref, not a provider-specific enum. The
- * two built-in policies live here so prompt framing and background-question
+ * built-in policies live here so prompt framing and background-question
  * behavior cannot drift between main's reconciliation path and lane adapters.
  * Future admitted ACP lanes add one policy entry after their peer profile has
  * proven the same background-question invariant.
+ *
+ * Seven-agents (#9187): the three host-run SDK-harness lanes (Goose, OpenCode,
+ * Pi) are first-class Full-Auto action lanes. Each settles a background
+ * approval/question WITHOUT a renderer, so a background turn can never park
+ * forever waiting for input — the `autoResolveQuestions` invariant:
+ *   - Goose: the live `goose acp` transport answers every
+ *     `session/request_permission` at the wire by selecting an `allow` option.
+ *   - Pi: the in-process host runs with `permissionMode: "allow-all"` (no turn
+ *     driver ever submits an approval), so a built-in tool call is auto-allowed.
+ *   - OpenCode: the response-driven `POST /session/{id}/message` settles the
+ *     whole turn under a bounded per-prompt timeout, so it fails closed with a
+ *     typed `timeout` rather than parking.
  */
 export const FULL_AUTO_DEFAULT_LANE = "codex-local" as const
 
@@ -40,6 +52,22 @@ export const FULL_AUTO_LANE_POLICIES: Readonly<Record<string, FullAutoLanePolicy
   },
   "acp:cursor-agent": {
     instruction: `${SHARED_INSTRUCTION} Use only the capabilities admitted by the pinned Cursor Agent CLI peer profile.`,
+    autoResolveQuestions: true,
+  },
+  // Seven-agents (#9187): host-run SDK-harness lanes. `autoResolveQuestions` is
+  // true because each harness settles a background approval without a renderer
+  // (see the module doc): Goose auto-allows at the ACP wire, Pi runs allow-all,
+  // OpenCode is response-driven under a bounded timeout.
+  "harness:goose": {
+    instruction: `${SHARED_INSTRUCTION} Use only the capabilities of the host-run Goose harness (its configured provider and built-in tools).`,
+    autoResolveQuestions: true,
+  },
+  "harness:opencode": {
+    instruction: `${SHARED_INSTRUCTION} Use only the capabilities of the host-run OpenCode harness (its configured default model and tools).`,
+    autoResolveQuestions: true,
+  },
+  "harness:pi": {
+    instruction: `${SHARED_INSTRUCTION} Use only the capabilities of the host-run Pi harness (its in-process session and built-in tools).`,
     autoResolveQuestions: true,
   },
 }

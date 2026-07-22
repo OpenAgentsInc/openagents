@@ -161,7 +161,10 @@ const startHarness = async (): Promise<Harness> => {
           extensions: [], evidence: "experimental",
         },
       }],
-      isLaneEligible: laneRef => laneRef === "codex-local" || laneRef === "claude-local",
+      isLaneEligible: laneRef =>
+        laneRef === "codex-local" || laneRef === "claude-local" ||
+        // #9187: the host-run SDK-harness fleet lanes are Full-Auto action lanes.
+        laneRef === "harness:opencode" || laneRef === "harness:pi" || laneRef === "harness:goose",
     },
     controlFilePath: path.join(root, "full-auto", "control.json"),
   })
@@ -636,6 +639,40 @@ describe("FA-WIRE-01 (#8996): routing policy, guardrails, and resume through the
         { lane: "claude-local" },
       ])
       expect(record?.guardrails).toEqual({ maxTurns: 5, maxWallClockMs: 60_000 })
+    } finally { await harness.dispose() }
+  })
+
+  test("run-start ACCEPTS an ordered harness:* fleet policy and binds it as the rotation priority (#9187)", async () => {
+    const harness = await startHarness()
+    try {
+      // The exact reproducer from #9187: a Full Auto run started across the
+      // host-run SDK-harness fleet lanes. Before #9187 this refused with
+      // `routing_policy_refused: lane_not_full_auto_eligible: harness:opencode`.
+      const result = await harness.request("POST", "/v1/full-auto/start", {
+        body: {
+          workspaceRef: GRANTED_WORKSPACE,
+          title: "Harness fleet run",
+          lane: "harness:opencode",
+          routingPolicy: [{ lane: "harness:opencode" }, { lane: "harness:pi" }, { lane: "harness:goose" }],
+        },
+      })
+      expect(result.status).toBe(200)
+      const decoded = Schema.decodeUnknownSync(FullAutoControlMutationResponseSchema)(result.body)
+      expect(decoded.record.enabled).toBe(true)
+      // The primary lane is the policy's first candidate, and the ordered
+      // rotation priority is preserved across all three harness lanes.
+      expect(decoded.record.lane).toBe("harness:opencode")
+      expect(decoded.record.routingPolicy).toEqual([
+        { lane: "harness:opencode" },
+        { lane: "harness:pi" },
+        { lane: "harness:goose" },
+      ])
+      const record = harness.registry.record(decoded.record.threadRef)
+      expect(record?.routingPolicy).toEqual([
+        { lane: "harness:opencode" },
+        { lane: "harness:pi" },
+        { lane: "harness:goose" },
+      ])
     } finally { await harness.dispose() }
   })
 

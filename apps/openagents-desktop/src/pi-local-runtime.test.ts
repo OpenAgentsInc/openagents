@@ -115,7 +115,11 @@ describe("pi host-run in-process harness lane", () => {
     expect(report.composer.displayName).toBe("Pi")
     expect(report.models).toEqual(["gemini-3.6-flash"])
     expect(report.features.interrupt).toBe(true)
-    expect(report.features.fullAuto).toBe(false)
+    // #9187: a Full-Auto action lane, admitted in allowedFeatures (not an
+    // over-claim). The in-process host runs `permissionMode: "allow-all"`, so a
+    // background built-in tool call is auto-allowed and the turn never parks.
+    expect(report.features.fullAuto).toBe(true)
+    expect(report.policy.allowedFeatures).toContain("fullAuto")
     expect(report.policy.source).toBe("native-static-declaration")
   })
 

@@ -5936,7 +5936,16 @@ const runFullAutoReconciliation = (options?: Readonly<{ startup?: boolean }>): P
             }, null)
           })()
         : await laneDispatcher.dispatchTurn(
-          laneRef === "acp:grok-cli" ? grokAcpLane : cursorAcpLane,
+          // Seven-agents (#9187): the ACP peer lanes AND the three host-run
+          // SDK-harness lanes share this identical background-turn dispatch —
+          // the same per-lane path main.ts:4923-4925 uses for ordinary turns.
+          // Route each `harness:*` lane to its exact lane object; a fallthrough
+          // to the Cursor ACP lane would mis-dispatch a harness lane.
+          laneRef === "acp:grok-cli" ? grokAcpLane
+            : laneRef === "acp:cursor-agent" ? cursorAcpLane
+            : laneRef === GOOSE_LANE_REF ? gooseHarness.lane
+            : laneRef === OPENCODE_LANE_REF ? opencodeHarness.lane
+            : piHarness.lane,
           {
             turnRef,
             threadRef,

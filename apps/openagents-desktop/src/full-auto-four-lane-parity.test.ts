@@ -71,8 +71,22 @@ describe("four-lane eligibility parity", () => {
       expect(policy).not.toBeNull()
       expect(policy?.autoResolveQuestions).toBe(true)
     }
-    // The policy set is exactly the four lanes — no silent extra or missing lane.
-    expect(Object.keys(FULL_AUTO_LANE_POLICIES).sort()).toEqual([...LANES].sort())
+    // The policy set is exactly the seven fleet lanes — the four proven above
+    // plus the three host-run SDK-harness lanes (#9187) — no silent extra or
+    // missing lane. The harness-lane eligibility is asserted directly below.
+    expect(Object.keys(FULL_AUTO_LANE_POLICIES).sort()).toEqual(
+      ["acp:cursor-agent", "acp:grok-cli", "claude-local", "codex-local", "harness:goose", "harness:opencode", "harness:pi"],
+    )
+  })
+
+  test("the three host-run SDK-harness lanes are Full-Auto-eligible with safe background-question settlement (#9187)", () => {
+    for (const lane of ["harness:opencode", "harness:pi", "harness:goose"]) {
+      const policy = fullAutoLanePolicy(lane)
+      expect(policy).not.toBeNull()
+      // The background-question invariant: each harness settles without a
+      // renderer, so a background turn never parks forever waiting for input.
+      expect(policy?.autoResolveQuestions).toBe(true)
+    }
   })
 
   test("an ordered routing policy over all four lanes is admitted, order preserved", () => {

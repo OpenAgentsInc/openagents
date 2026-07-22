@@ -42,7 +42,7 @@ import type { ProviderLaneCapabilityReport } from "./provider-lane-capabilities.
 
 export const PI_LANE_REF = "harness:pi" as const
 
-const piCapabilities: ProviderLaneCapabilityReport = {
+export const piCapabilities: ProviderLaneCapabilityReport = {
   laneRef: PI_LANE_REF,
   provider: "pi",
   models: [PI_DEFAULT_MODEL],
@@ -51,7 +51,11 @@ const piCapabilities: ProviderLaneCapabilityReport = {
     planOnly: false,
     reasoningEffort: false,
     images: false,
-    fullAuto: false,
+    // #9187: a Full-Auto action lane. The in-process host runs with
+    // `permissionMode: "allow-all"` and the turn driver never submits an
+    // approval, so a background built-in tool call is auto-allowed and the turn
+    // never parks (the `autoResolveQuestions` invariant in full-auto-lane.ts).
+    fullAuto: true,
     interrupt: true,
     queueFollowup: false,
     steerTurn: false,
@@ -71,7 +75,7 @@ const piCapabilities: ProviderLaneCapabilityReport = {
     profileRef: PI_LANE_REF,
     evidence: "experimental",
     allowedModels: [PI_DEFAULT_MODEL],
-    allowedFeatures: ["interrupt"],
+    allowedFeatures: ["interrupt", "fullAuto"],
     allowedExtensions: [],
   },
 }

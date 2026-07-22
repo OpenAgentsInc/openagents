@@ -13,6 +13,9 @@ import {
   type FullAutoRoutingLaneGate,
 } from "./full-auto-routing.ts"
 import type { ProviderLaneCapabilityReport } from "./provider-lane-capabilities.ts"
+import { gooseCapabilities } from "./goose-lane.ts"
+import { opencodeCapabilities } from "./opencode-local-runtime.ts"
+import { piCapabilities } from "./pi-local-runtime.ts"
 
 /**
  * FA-RT-01 (#8987): the routing policy is admitted or refused as a WHOLE at
@@ -153,6 +156,31 @@ describe("Full Auto routing lane gate over live capability reports (FA-RT-01 #89
     const gate = makeFullAutoRoutingLaneGate(laneRef => laneRef === "codex-local" ? report() : null)
     expect(gate("codex-local")).toEqual({ admitted: true, fullAuto: true })
     expect(gate("acp:ghost-cli")).toBeNull()
+  })
+
+  test("the real host-run SDK-harness capability reports project admitted+fullAuto, so a harness fleet policy is admitted (#9187)", () => {
+    // The exact production capability reports the three harness lanes ship,
+    // routed through the SAME L2 projection main's dispatch gate uses. This is
+    // the capability side of #9187: run-start's gate can no longer refuse a
+    // harness lane as `lane_not_full_auto_eligible`/`lane_not_admitted`.
+    const reports: ReadonlyArray<ProviderLaneCapabilityReport> = [
+      opencodeCapabilities,
+      piCapabilities,
+      gooseCapabilities,
+    ]
+    const byRef = (laneRef: string): ProviderLaneCapabilityReport | null =>
+      reports.find(report => report.laneRef === laneRef) ?? null
+    const gate = makeFullAutoRoutingLaneGate(byRef)
+    for (const report of reports) {
+      // The report advertises fullAuto AND admits it in allowedFeatures, so the
+      // projection is admitted (not an over-claim quarantine) and fullAuto=true.
+      expect(gate(report.laneRef)).toEqual({ admitted: true, fullAuto: true })
+    }
+    // An ordered fleet policy across all three harness lanes is admitted whole,
+    // order preserved — the run-start rotation priority the CLI `--lane` repeats
+    // build (see full-auto-control-server.test.ts).
+    const policy = candidates("harness:opencode", "harness:pi", "harness:goose")
+    expect(validateFullAutoRoutingPolicy(policy, gate)).toEqual({ ok: true, policy })
   })
 
   test("an over-claiming (quarantined) report validates as not admitted, so the policy referencing it is refused", () => {
