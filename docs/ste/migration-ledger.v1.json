@@ -46519,19 +46519,6 @@
       "replacement": null
     },
     {
-      "path": "docs/transcripts/24Xsarah.md",
-      "ste_issue": 9,
-      "ste_mode": "source-data",
-      "ste_glossary_revision": "openagents-ste-glossary-v1",
-      "ste_status": "source-data",
-      "ste_reviewer": null,
-      "ste_reviewed_at": null,
-      "owner": "OpenAgents documentation",
-      "risk": "source-data",
-      "source": "Preserved transcript archive",
-      "replacement": null
-    },
-    {
       "path": "docs/transcripts/250.md",
       "ste_issue": 9,
       "ste_mode": "source-data",
@@ -46715,6 +46702,19 @@
     },
     {
       "path": "docs/transcripts/260.md",
+      "ste_issue": 9,
+      "ste_mode": "source-data",
+      "ste_glossary_revision": "openagents-ste-glossary-v1",
+      "ste_status": "source-data",
+      "ste_reviewer": null,
+      "ste_reviewed_at": null,
+      "owner": "OpenAgents documentation",
+      "risk": "source-data",
+      "source": "Preserved transcript archive",
+      "replacement": null
+    },
+    {
+      "path": "docs/transcripts/26x-vercel.md",
       "ste_issue": 9,
       "ste_mode": "source-data",
       "ste_glossary_revision": "openagents-ste-glossary-v1",

@@ -46899,18 +46899,6 @@
       }
     },
     {
-      "path": "docs/transcripts/24Xsarah.md",
-      "sha256": "d9c19eff68eba53853ab5fa78099e06b695d226e8876df9200d1a1c37b78f2b8",
-      "reason": "Preserved transcript archive",
-      "profile": {
-        "ste_mode": "source-data",
-        "risk": "source-data",
-        "source": "Preserved transcript archive",
-        "replacement": null,
-        "ste_status": "source-data"
-      }
-    },
-    {
       "path": "docs/transcripts/250.md",
       "sha256": "1228a97c651172625f7d3dc812769fc03f80658c2a0eb6b2233e1e81d9b80f9e",
       "reason": "Preserved transcript archive",
@@ -47080,7 +47068,19 @@
     },
     {
       "path": "docs/transcripts/260.md",
-      "sha256": "fb014f15581f64c890f3f26ff8bbdf89fdbe6a9e2996e57cd30740d2ad6c2c05",
+      "sha256": "6c413845a8fc9da64153cfcbf96d4042d1360b924050221095b478cc41ae3aed",
+      "reason": "Preserved transcript archive",
+      "profile": {
+        "ste_mode": "source-data",
+        "risk": "source-data",
+        "source": "Preserved transcript archive",
+        "replacement": null,
+        "ste_status": "source-data"
+      }
+    },
+    {
+      "path": "docs/transcripts/26x-vercel.md",
+      "sha256": "40f504efd148f0660365713ddf854132ad237032518e553488ee1937b1c1089c",
       "reason": "Preserved transcript archive",
       "profile": {
         "ste_mode": "source-data",
