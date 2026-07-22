@@ -258,6 +258,53 @@ describe("managed sandbox Phase 2 service", () => {
       expect(state.operationsByCommand.size).toBe(0);
     }).pipe(Effect.runPromise));
 
+  it("retries one provider-success and store-crash seam without a second provider write", () =>
+    Effect.gen(function* () {
+      const state = makeStore();
+      let providerWrites = 0;
+      let providerResult: ManagedSandboxContentCheckpoint | undefined;
+      const target = makeTarget({
+        createCheckpoint: () =>
+          Effect.sync(() => {
+            if (providerResult === undefined) {
+              providerWrites += 1;
+              providerResult = checkpoint();
+            }
+            return providerResult;
+          }),
+      });
+      let settleAttempts = 0;
+      const store: ManagedSandboxPhase2Store = {
+        ...state.store,
+        settle: (input) =>
+          Effect.suspend(() => {
+            settleAttempts += 1;
+            return settleAttempts === 1
+              ? Effect.fail({
+                  _tag: "InvalidRequest" as const,
+                  requestRef: input.operation.command.commandRef,
+                  message: "simulated durable settlement interruption",
+                  retryable: true,
+                  evidenceRefs: [],
+                })
+              : state.store.settle(input);
+          }),
+      };
+      const service = makeManagedSandboxPhase2Service({ store, target: target.target });
+
+      const interrupted = yield* Effect.flip(service.execute(createCommand()));
+      expect(interrupted).toMatchObject({ _tag: "InvalidRequest", retryable: true });
+      expect(state.checkpoints.size).toBe(0);
+      expect(state.operationsByCommand.size).toBe(0);
+
+      const retried = yield* service.execute(createCommand());
+      expect(retried).toEqual(checkpoint());
+      expect(providerWrites).toBe(1);
+      expect(settleAttempts).toBe(2);
+      expect(state.checkpoints.size).toBe(1);
+      expect(state.operationsByCommand.size).toBe(1);
+    }).pipe(Effect.runPromise));
+
   it("refuses an expired or stale checkpoint before a fork effect", () =>
     Effect.gen(function* () {
       const expiredState = makeStore([checkpoint()]);
@@ -353,36 +400,45 @@ describe("managed sandbox Phase 2 service", () => {
   it("records recovery-required truth when the required archive checkpoint fails", () =>
     Effect.gen(function* () {
       const state = makeStore();
+      let archiveCalls = 0;
       const target = makeTarget({
         archiveWithCheckpoint: (command) =>
-          Effect.succeed({
-            _tag: "CheckpointFailed",
-            schema: MANAGED_SANDBOX_CHECKPOINT_STOP_SCHEMA_VERSION,
-            stopRef: command.stopRef,
-            sandboxRef: command.sourceSandboxRef,
-            resourceGeneration: command.sourceResourceGeneration,
-            attemptedCheckpointRef: command.checkpointRef,
-            errorRef: "error.checkpoint.partial-upload",
-            lifecycle: "recovery_required",
-            archiveClaim: "forbidden",
-            observedAt: "2026-07-22T00:05:00.000Z",
-            evidenceRefs: ["receipt.checkpoint.failed.1"],
+          Effect.sync(() => {
+            archiveCalls += 1;
+            return {
+              _tag: "CheckpointFailed" as const,
+              schema: MANAGED_SANDBOX_CHECKPOINT_STOP_SCHEMA_VERSION,
+              stopRef: command.stopRef,
+              sandboxRef: command.sourceSandboxRef,
+              resourceGeneration: command.sourceResourceGeneration,
+              attemptedCheckpointRef: command.checkpointRef,
+              errorRef: "error.checkpoint.partial-upload",
+              lifecycle: "recovery_required" as const,
+              archiveClaim: "forbidden" as const,
+              observedAt: "2026-07-22T00:05:00.000Z",
+              evidenceRefs: ["receipt.checkpoint.failed.1"],
+            };
           }),
       });
       const service = makeManagedSandboxPhase2Service({
         store: state.store,
         target: target.target,
       });
-      const result = yield* service.execute({
+      const command = {
         ...createCommand(),
-        _tag: "ArchiveWithCheckpoint",
+        _tag: "ArchiveWithCheckpoint" as const,
         commandRef: "command.archive.1",
         idempotencyRef: "idempotency.archive.1",
         stopRef: "stop.sbx10.1",
-      });
+      };
+      const result = yield* service.execute(command);
+      const replay = yield* service.execute(command);
 
       expect("archiveClaim" in result && result.archiveClaim).toBe("forbidden");
+      expect(replay).toEqual(result);
+      expect(archiveCalls).toBe(1);
       expect(state.checkpoints.size).toBe(0);
+      expect(state.operationsByCommand.size).toBe(1);
     }).pipe(Effect.runPromise));
 
   it("deletes checkpoint metadata only after exact content-deletion proof", () =>
@@ -404,6 +460,48 @@ describe("managed sandbox Phase 2 service", () => {
 
       expect("contentDeleted" in result && result.contentDeleted).toBe(true);
       expect(state.checkpoints.size).toBe(0);
+    }).pipe(Effect.runPromise));
+
+  it("retains checkpoint metadata when deletion proof does not bind exact content", () =>
+    Effect.gen(function* () {
+      const state = makeStore([checkpoint()]);
+      const target = makeTarget({
+        deleteCheckpoint: (command, source) =>
+          Effect.succeed({
+            schema: MANAGED_SANDBOX_CHECKPOINT_DELETE_RECEIPT_SCHEMA_VERSION,
+            receiptRef: "receipt.checkpoint.delete.wrong-content",
+            ownerRef: command.ownerRef,
+            tenantRef: command.tenantRef,
+            checkpointRef: source.checkpointRef,
+            sourceSandboxRef: source.sourceSandboxRef,
+            sourceResourceGeneration: source.sourceResourceGeneration,
+            contentDigest: digest("e"),
+            contentDeleted: true,
+            outcome: "deleted",
+            reason: command.reason,
+            deletedAt: "2026-07-22T00:08:00.000Z",
+            evidenceRefs: ["receipt.checkpoint.object-delete.wrong-content"],
+          }),
+      });
+      const service = makeManagedSandboxPhase2Service({
+        store: state.store,
+        target: target.target,
+      });
+
+      const failure = yield* Effect.flip(
+        service.execute({
+          ...baseCommand,
+          _tag: "DeleteCheckpoint",
+          commandRef: "command.checkpoint.delete.wrong-content",
+          idempotencyRef: "idempotency.checkpoint.delete.wrong-content",
+          checkpointRef: "checkpoint.sbx10.1",
+          reason: "owner_requested",
+        }),
+      );
+
+      expect(failure).toMatchObject({ _tag: "InvalidRequest", retryable: false });
+      expect(state.checkpoints.size).toBe(1);
+      expect(state.operationsByCommand.size).toBe(0);
     }).pipe(Effect.runPromise));
 
   it("keeps private ingress disabled before the separate security proof", () =>
