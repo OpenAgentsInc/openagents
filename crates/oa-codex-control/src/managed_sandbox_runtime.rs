@@ -1102,8 +1102,6 @@ fn prepare_checkpoint_fork_with_provider(
 
     let mut profile = source.profile.clone();
     profile.capability_refs = vec![runtime_capability_ref.clone()];
-    profile.profile_digest = format!("sha256:{}", "0".repeat(64));
-    profile.profile_digest = digest_json(&profile)?;
     let create = execute_with_provider(
         state_root,
         provider,
@@ -3908,6 +3906,13 @@ mod tests {
         let fork_path = journal_path(&root, &context.fork_sandbox_ref);
         let mut fork_journal = load_journal(&fork_path).unwrap().unwrap();
         assert_eq!(fork_journal.phase, RuntimePhase::Ready);
+        assert_eq!(
+            fork_journal.profile.profile_digest,
+            request(RuntimeAction::Create, "create", 0)
+                .profile
+                .unwrap()
+                .profile_digest
+        );
         assert!(fork_journal.profile.capability_refs[0].starts_with("capability-ref://run/fork-"));
         assert!(fork_journal.pending_checkpoint_fork.is_some());
 
