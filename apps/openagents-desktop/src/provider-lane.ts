@@ -257,6 +257,15 @@ export type ProviderLaneDispatcherDeps = Readonly<{
       before: SpecLaneTurnProjection,
     ) => void
   }>
+  /** Optional owner-local graph projection for an ordinary foreground turn. */
+  graphMemoryWorkflow?: Readonly<{
+    beforeTurn: (input: Readonly<{
+      laneRef: string
+      request: ClaudeLocalStartRequest
+      history: ReadonlyArray<ProviderLaneHistoryMessage>
+      message: string
+    }>) => Promise<Readonly<{ message: string }>>
+  }>
   now?: () => Date
   /** Main-owned observation after durable projection. Background Full Auto
    * uses this to publish bounded progress and own queued-message promotion
@@ -463,6 +472,24 @@ export const makeProviderLaneDispatcher = (
         const forwarded = turnEvent.kind === "turn_started" ? { ...turnEvent, thread: saved } : turnEvent
         sender.send(lane.eventChannel, { turnRef: request.turnRef, event: forwarded })
     }
+    const baseMessage = specProjection === undefined
+      ? turnPromptText(request.message, request.images)
+      : appendSpecLaneContext(turnPromptText(request.message, request.images), specProjection)
+    let providerMessage = baseMessage
+    if (sender !== null && request.fullAuto !== true) {
+      try {
+        providerMessage = (await deps.graphMemoryWorkflow?.beforeTurn({
+          laneRef: lane.laneRef,
+          request,
+          history,
+          message: baseMessage,
+        }))?.message ?? baseMessage
+      } catch {
+        // Graph memory is advisory. A failed projection cannot strand a turn
+        // or change the prompt bytes that the existing lane would receive.
+        providerMessage = baseMessage
+      }
+    }
     let result: ProviderLaneTurnResult
     try {
       result = await lane.runTurn({
@@ -470,9 +497,7 @@ export const makeProviderLaneDispatcher = (
         model: requestedModel,
         context: admission.context,
         history,
-        message: specProjection === undefined
-          ? turnPromptText(request.message, request.images)
-          : appendSpecLaneContext(turnPromptText(request.message, request.images), specProjection),
+        message: providerMessage,
         background: sender === null,
         emit: emitTurnEvent,
       })

@@ -1769,7 +1769,7 @@ export const settingsView = (settings: SettingsState): View => {
         }),
         Text({
           key: "settings-graph-memory-copy",
-          content: "Extraction can use a semantic model and cause spend. Recall is a separate control that reads only the authorized graph. Both controls are off by default.",
+          content: "Extraction can use a semantic model and cause spend. Recall is a separate control. Both run only for your foreground turns over a local redacted corpus. Recalled context is cited advice, never profile truth or authority. Both controls are off by default.",
           variant: "body",
           color: "textMuted",
         }),

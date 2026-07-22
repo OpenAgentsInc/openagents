@@ -320,6 +320,67 @@ describe("provider lane SPI with a never-hand-wired fixture lane", () => {
     }
   })
 
+  test("adds graph memory only to ordinary foreground prompts and preserves failure bytes", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "oa-provider-graph-memory-"))
+    try {
+      const harness = makeFixtureHarness(root)
+      const calls: Array<{ laneRef: string; message: string; historyLength: number }> = []
+      let failProjection = false
+      const dispatcher = makeProviderLaneDispatcher({
+        ...harness.deps,
+        graphMemoryWorkflow: {
+          beforeTurn: async ({ laneRef, message, history }) => {
+            calls.push({ laneRef, message, historyLength: history.length })
+            if (failProjection) throw new Error("fixture graph failure")
+            return { message: `${message}\n\nGRAPH MEMORY (ADVISORY)\n- cited fact` }
+          },
+        },
+      })
+
+      const foreground = harness.store.newThread()
+      expect((await dispatcher.dispatchTurn(
+        harness.lane,
+        startRequest(foreground.id, "turn-graph-foreground"),
+        fakeSender(harness.forwarded),
+      )).ok).toBe(true)
+
+      const background = harness.store.newThread()
+      expect((await dispatcher.dispatchTurn(
+        harness.lane,
+        startRequest(background.id, "turn-graph-background"),
+        null,
+      )).ok).toBe(true)
+
+      const fullAuto = harness.store.newThread()
+      expect((await dispatcher.dispatchTurn(
+        harness.lane,
+        { ...startRequest(fullAuto.id, "turn-graph-full-auto"), fullAuto: true },
+        fakeSender(harness.forwarded),
+      )).ok).toBe(true)
+
+      failProjection = true
+      const failedProjection = harness.store.newThread()
+      expect((await dispatcher.dispatchTurn(
+        harness.lane,
+        startRequest(failedProjection.id, "turn-graph-failure"),
+        fakeSender(harness.forwarded),
+      )).ok).toBe(true)
+
+      expect(calls).toEqual([
+        { laneRef: FIXTURE_LANE_REF, message: "run the fixture", historyLength: 0 },
+        { laneRef: FIXTURE_LANE_REF, message: "run the fixture", historyLength: 0 },
+      ])
+      expect(harness.runMessages).toEqual([
+        "run the fixture\n\nGRAPH MEMORY (ADVISORY)\n- cited fact",
+        "run the fixture",
+        "run the fixture",
+        "run the fixture",
+      ])
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   test("dispatches through the shared engine: journal lifecycle, frozen envelope, exact usage, capability report", async () => {
     const root = mkdtempSync(path.join(tmpdir(), "oa-provider-lane-"))
     try {
