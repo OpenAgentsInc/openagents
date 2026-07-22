@@ -5381,17 +5381,24 @@ const cursorAcpClaudeEventLane: ProviderLane<null> = {
   eventChannel: ClaudeLocalEventChannel,
 }
 
-// Seven-agents Part 2 (#9183): the HOST-RUN SDK-harness lanes (the #9167
+// Seven-agents (#9183): the HOST-RUN SDK-harness lanes (the #9167
 // built-in-harness family). Goose (`goose acp` stdio) and OpenCode
-// (`opencode serve` HTTP/SSE) run REAL turns through their SDK adapters; Pi is
-// detection-only until its in-process host session-factory seam exists. All
-// three project into providerLaneEntries() and, via Part 1, the boot roster.
+// (`opencode serve` HTTP/SSE) run REAL turns through spawned transports; Pi
+// runs a REAL turn through its IN-PROCESS host session-factory seam
+// (`makePiSessionHost` → `makePiHarnessAdapter`), no subprocess. All three
+// project into providerLaneEntries() and, via Part 1, the boot roster.
 // They emit the frozen claude-local envelope over ClaudeLocalEventChannel (the
 // same channel the ACP peer lanes use), so a selected thread streams identically
 // regardless of which built-in harness was selected before the registry switch.
 const gooseHarness = makeGooseLane({ resolveWorkspace: resolveDesktopLocalWorkspaceRoot })
 const opencodeHarness = makeOpencodeLane({ resolveWorkspace: resolveDesktopLocalWorkspaceRoot })
-const piHarness = makePiLane({})
+// Pi runs IN-PROCESS: the desktop owns the session factory (no spawned
+// transport). Its isolated per-account agent dir lives under the user-data root
+// — never the owner's live `~/.pi` tree (the adapter refuses a `.pi` segment).
+const piHarness = makePiLane({
+  resolveWorkspace: resolveDesktopLocalWorkspaceRoot,
+  agentDir: path.join(app.getPath("userData"), "pi", "accounts", "default", "agent"),
+})
 
 const providerLaneCapabilityByRef = (laneRef: string) =>
   laneRef === "codex-local" ? codexLocalLane.capabilities()
@@ -5471,10 +5478,10 @@ const providerLaneEntries = async (): Promise<ReadonlyArray<ProviderLaneRegistry
       capabilities: { ...capabilities, admission, reason },
     }
   }
-  // Seven-agents Part 2 (#9183): host-run SDK-harness lane entries. Admission is
-  // detection-gated live evidence: a lane is `admitted`/`ready` only when its
-  // binary probe (Goose/OpenCode) succeeds — never a dead card. Pi is always
-  // `quarantined` with an honest reason until its in-process host seam exists.
+  // Seven-agents (#9183): host-run SDK-harness lane entries. Admission is
+  // readiness-gated live evidence: a lane is `admitted`/`ready` only when it can
+  // actually run a turn — the binary probe (Goose/OpenCode) succeeds, or Pi's
+  // in-process host constructs (library + owner-local key) — never a dead card.
   const harnessLaneEntry = async (harness: Readonly<{
     lane: ProviderLane<null>
     availability: () => Promise<

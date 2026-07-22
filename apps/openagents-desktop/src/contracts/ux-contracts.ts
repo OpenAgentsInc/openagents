@@ -404,9 +404,9 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         blockerRefs: [],
         source: { channel: "issue", statedBy: "owner", statedOn: "2026-07-22" },
         statement:
-          "OpenCode, Goose, and Pi are wired into the desktop as host-run SDK-harness lanes so they appear in the agent roster and, where runnable, take turns. A lane reports 'available' only when it can actually run a turn: Goose is available when the goose binary is detected (it runs 'goose acp' over stdio through the SDK adapter), OpenCode is available when the opencode binary is detected (it runs 'opencode serve' HTTP/SSE through the SDK adapter), and Pi stays unavailable with an honest reason because it is an in-process library with no desktop host session-factory seam yet. The desktop NEVER installs these CLIs and NEVER changes PATH — it only DETECTS the binary (a read-only PATH probe plus a version check) and, when absent, the roster shows an honest 'unavailable' reason that points the owner to the official distribution.",
+          "OpenCode, Goose, and Pi are wired into the desktop as host-run SDK-harness lanes so they appear in the agent roster and, where runnable, take turns. A lane reports 'available' only when it can actually run a turn: Goose is available when the goose binary is detected (it runs 'goose acp' over stdio through the SDK adapter), OpenCode is available when the opencode binary is detected (it runs 'opencode serve' HTTP/SSE through the SDK adapter), and Pi is available when its IN-PROCESS host session-factory seam can construct a session (the optional @earendil-works/pi-coding-agent library resolves AND an owner-local Gemini key is present) — Pi has no CLI to detect because it is an in-process Node library the desktop drives through makePiHarnessAdapter, pinned to the owner's gemini-3.6-flash default through Pi's own settings. When a lane cannot run, the roster shows an honest 'unavailable' reason (binary not on PATH for Goose/OpenCode; library-not-installed or no-key for Pi). The desktop NEVER installs these CLIs or the Pi library, NEVER changes PATH, and NEVER runs a login flow.",
         authorityBoundary:
-          "These lanes are the built-in-harness-lane family (#9167), host-run through the SDK AgentHarness adapters, distinct from the acp: trusted-peer-profile family (Grok, Cursor) and the native codex-local/claude-local transports. Each is a plain ProviderLane<null> the shared dispatcher folds exactly like the ACP lanes — no private dispatch, journal, or renderer projection. Admission is detection-gated LIVE evidence surfaced in providerLaneEntries(): a lane is admitted/ready only when its binary probe succeeds, never a dead card, and Pi is always quarantined until its host seam exists. Turns run owner-local against the developer's live provider config; the lanes never run a login flow, extract credentials, mutate PATH, or run a copied install command. They grant no run, spend, or public-claim authority of their own.",
+          "These lanes are the built-in-harness-lane family (#9167), host-run through the SDK AgentHarness adapters, distinct from the acp: trusted-peer-profile family (Grok, Cursor) and the native codex-local/claude-local transports. Each is a plain ProviderLane<null> the shared dispatcher folds exactly like the ACP lanes — no private dispatch, journal, or renderer projection. Admission is detection-gated LIVE evidence surfaced in providerLaneEntries(): a lane is admitted/ready only when its readiness gate passes — a successful binary probe for Goose/OpenCode, and for Pi a successful in-process host construction (library present AND owner-local key present) — never a dead card. Pi runs in-process under the owner-local executor invariant against an ISOLATED per-account agent directory the desktop owns (never the owner's live ~/.pi tree); its Gemini key is resolved in-process only and never printed or persisted. Turns run owner-local against the developer's live provider config; the lanes never extract credentials, mutate PATH, or run a copied install command. They grant no run, spend, or public-claim authority of their own.",
         evidenceRefs: [
           "apps/openagents-desktop/src/harness-binary-probe.ts",
           "apps/openagents-desktop/src/harness-provider-lane.ts",
@@ -414,6 +414,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
           "apps/openagents-desktop/src/goose-lane.ts",
           "apps/openagents-desktop/src/opencode-local-runtime.ts",
           "apps/openagents-desktop/src/pi-local-runtime.ts",
+          "apps/openagents-desktop/src/pi-session-host.ts",
           "apps/openagents-desktop/src/goose-lane.test.ts",
           "apps/openagents-desktop/src/opencode-local-runtime.test.ts",
           "apps/openagents-desktop/src/pi-local-runtime.test.ts",
@@ -426,11 +427,19 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/src/goose-lane.test.ts",
             description:
-              "Proves Goose/OpenCode report 'available' only when their binary probe detects the CLI and 'unavailable' with an honest reason when it is absent, that the probe never mutates PATH or runs an install, and that a detected lane runs one real turn through the SDK adapter lowering onto the frozen renderer envelope, while Pi is detection-only and always unavailable with its precise remaining-seam reason.",
+              "Proves Goose/OpenCode report 'available' only when their binary probe detects the CLI and 'unavailable' with an honest reason when it is absent, that the probe never mutates PATH or runs an install, and that a detected lane runs one real turn through the SDK adapter lowering onto the frozen renderer envelope.",
+          },
+          {
+            id: "host_run_harness_lanes.pi_in_process_seam_runs_and_gates",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/pi-local-runtime.test.ts",
+            description:
+              "Proves the Pi lane reports 'available' only when the in-process host session-factory constructs (the @earendil-works/pi-coding-agent library resolves AND an owner-local Gemini key is present) and 'unavailable' with the precise reason otherwise (library-not-installed / no-key), and that a ready lane runs one real turn through makePiHarnessAdapter — via the injected in-process createSession factory — lowering onto the frozen renderer envelope, with the model pinned to gemini-3.6-flash.",
           },
         ],
         verification:
-          "Desktop harness-lane unit suites (goose/opencode/pi/binary-probe/sdk-turn-runner) plus boot-sequence roster and Desktop typecheck.",
+          "Desktop harness-lane unit suites (goose/opencode/pi/pi-session-host/binary-probe/sdk-turn-runner) plus boot-sequence roster and Desktop typecheck.",
       },
       {
         contractId: "openagents_desktop.window.launch_fills_work_area.v1",

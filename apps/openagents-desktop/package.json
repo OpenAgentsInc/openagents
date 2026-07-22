@@ -200,5 +200,8 @@
     "vite": "catalog:",
     "vite-plus": "0.2.4"
   },
-  "productName": "OpenAgents"
+  "productName": "OpenAgents",
+  "optionalDependencies": {
+    "@earendil-works/pi-coding-agent": "0.81.1"
+  }
 }
