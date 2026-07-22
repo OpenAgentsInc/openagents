@@ -38,6 +38,7 @@ import { describe, expect, test } from "vite-plus/test";
 import { ownerScopeId, projectScopeId } from "./contract/index.js";
 import {
   GraphMemoryBinding,
+  GraphMemoryArchiveExportRecord,
   GraphMemoryOperationRef,
   GraphMemoryPersistedEnvelope,
   GraphMemoryPersistenceError,
@@ -325,6 +326,15 @@ const withGeneration = (builtFixture: GraphFixture, generation: number): GraphFi
   ...builtFixture,
   binding: S.decodeUnknownSync(GraphMemoryBinding)({ ...builtFixture.binding, generation }),
 });
+
+const nearLimitReplayRecords = (
+  template: S.Schema.Type<typeof GraphMemoryArchiveExportRecord>,
+  prefix: string,
+) => Array.from({ length: GRAPH_MEMORY_RECEIPT_LIMIT }, (_, index) => ({
+  ...template,
+  operationRef: operationRef(`operation.${prefix}.${index}`),
+  archiveRef: `archive.${prefix}.${index}`,
+}));
 
 describe("portable graph memory conformance", () => {
   test("the disabled driver performs zero I/O", async () => {
@@ -649,6 +659,22 @@ describe("portable graph memory conformance", () => {
     await Effect.runPromise(store.put(putFixture(graph)));
     const exportOperationRef = operationRef("operation.export-before-delete");
     const exported = await Effect.runPromise(store.exportArchive(scope, exportOperationRef));
+    const beforeDelete = S.decodeUnknownSync(GraphMemoryPersistedEnvelope)(
+      await Effect.runPromise(driver.load(scope)),
+    );
+    const exportTemplate = beforeDelete.archiveExports?.[0];
+    expect(exportTemplate).toBeDefined();
+    const replayRecords = exportTemplate === undefined
+      ? []
+      : nearLimitReplayRecords(exportTemplate, "delete-replay");
+    const replaySaturated = S.decodeUnknownSync(GraphMemoryPersistedEnvelope)({
+      ...beforeDelete,
+      revision: beforeDelete.revision + 1,
+      archiveExports: replayRecords,
+    });
+    expect(await Effect.runPromise(
+      driver.compareAndSet(scope, beforeDelete.revision, replaySaturated),
+    )).toBe(true);
     const plan = await Effect.runPromise(planGraphSourceDeletion(graph.built, sourceA, graph.inventory));
     const receipt = await Effect.runPromise(store.applyDeletePlan({
       operationRef: operationRef("operation.delete-artifacts"),
@@ -696,8 +722,8 @@ describe("portable graph memory conformance", () => {
     expect(envelope.archiveExports).toEqual([]);
     expect(receipt.applied).toContainEqual(expect.objectContaining({
       plane: "archive",
-      targetRef: exportOperationRef,
-      actionRef: exported.receipt.receiptRef,
+      targetRef: operationRef("operation.delete-replay.0"),
+      actionRef: exportTemplate?.receipt.receiptRef,
       reason: "delete_internal_archive_replay",
     }));
     expect(receipt.retainedShared).toContainEqual(expect.objectContaining({
@@ -705,6 +731,10 @@ describe("portable graph memory conformance", () => {
       targetRef: exported.archiveRef,
       reason: "owner_export_payload_not_stored",
     }));
+    expect(receipt.applied.filter((item) => item.reason === "delete_internal_archive_replay"))
+      .toHaveLength(GRAPH_MEMORY_RECEIPT_LIMIT);
+    expect(receipt.retainedShared.filter((item) => item.plane === "archive"))
+      .toHaveLength(GRAPH_MEMORY_RECEIPT_LIMIT + 1);
     const oldExportRetry = await Effect.runPromise(Effect.result(
       store.exportArchive(scope, exportOperationRef),
     ));
@@ -789,7 +819,13 @@ describe("portable graph memory conformance", () => {
     expect(Result.isFailure(conflicting)).toBe(true);
     if (Result.isFailure(conflicting)) expect(conflicting.failure.reason).toBe("state_conflict");
 
+    await Effect.runPromise(store.exportArchive(scope, operationRef("operation.export-before-limit")));
     const inspected = await Effect.runPromise(store.inspect(scope));
+    const beforeSaturation = S.decodeUnknownSync(GraphMemoryPersistedEnvelope)(
+      await Effect.runPromise(driver.load(scope)),
+    );
+    const replayTemplate = beforeSaturation.archiveExports?.[0];
+    expect(replayTemplate).toBeDefined();
     const template = inspected.receipts[0];
     expect(template).toBeDefined();
     const receipts = Array.from({ length: GRAPH_MEMORY_RECEIPT_LIMIT }, (_, index) => ({
@@ -802,7 +838,9 @@ describe("portable graph memory conformance", () => {
       revision: inspected.revision + 1,
       current: inspected.current,
       receipts,
-      archiveExports: [],
+      archiveExports: replayTemplate === undefined
+        ? []
+        : nearLimitReplayRecords(replayTemplate, "forget-replay"),
     });
     expect(await Effect.runPromise(driver.compareAndSet(scope, inspected.revision, saturated))).toBe(true);
     const restarted = await Effect.runPromise(makeGraphMemoryStore(driver));
@@ -822,5 +860,10 @@ describe("portable graph memory conformance", () => {
     expect(compacted.archiveExports).toEqual([]);
     expect(compacted.receiptHistoryCount).toBe(GRAPH_MEMORY_RECEIPT_LIMIT);
     expect(compacted.receiptHistoryDigest).toBeDefined();
+    expect(forgetReceipt.intended.length).toBeGreaterThan(GRAPH_MEMORY_RECEIPT_LIMIT);
+    expect(forgetReceipt.applied.filter((item) => item.reason === "delete_internal_archive_replay"))
+      .toHaveLength(GRAPH_MEMORY_RECEIPT_LIMIT);
+    expect(forgetReceipt.retainedShared.filter((item) => item.plane === "archive"))
+      .toHaveLength(GRAPH_MEMORY_RECEIPT_LIMIT + 1);
   });
 });

@@ -39,6 +39,13 @@ export const GRAPH_MEMORY_STORE_SCHEMA_ID = "openagents.graph_memory_store.v1" a
 export const GRAPH_MEMORY_RECEIPT_SCHEMA_ID = "openagents.graph_memory_receipt.v1" as const;
 export const GRAPH_MEMORY_STATE_SCHEMA_ID = "openagents.graph_memory_state.v1" as const;
 export const GRAPH_MEMORY_RECEIPT_LIMIT = 10_000;
+export const GRAPH_MEMORY_SECTION_ITEM_LIMIT = 10_000;
+/**
+ * Worst-case accepted delete facts: source removals (graph + merges), five graph
+ * action groups, three artifact planes, ranking snapshots, and replay records.
+ */
+export const GRAPH_MEMORY_LIFECYCLE_FACT_LIMIT =
+  (2 + 5 + 3 + 1 + 1) * GRAPH_MEMORY_SECTION_ITEM_LIMIT;
 export const GRAPH_MEMORY_CAS_ATTEMPT_LIMIT = 8;
 
 const boundedRef = S.String.check(
@@ -150,11 +157,11 @@ export const GraphMemoryOperationReceipt = S.Struct({
   manifestDigestBefore: S.optionalKey(GraphDigest),
   manifestDigestAfter: S.optionalKey(GraphDigest),
   sdkReceiptRef: S.optionalKey(boundedRef),
-  intended: S.Array(GraphMemoryLifecycleFact).check(S.isMaxLength(10_000)),
-  applied: S.Array(GraphMemoryLifecycleFact).check(S.isMaxLength(10_000)),
-  retainedShared: S.Array(GraphMemoryLifecycleFact).check(S.isMaxLength(10_000)),
-  unresolved: S.Array(GraphMemoryLifecycleFact).check(S.isMaxLength(10_000)),
-  failed: S.Array(GraphMemoryLifecycleFact).check(S.isMaxLength(10_000)),
+  intended: S.Array(GraphMemoryLifecycleFact).check(S.isMaxLength(GRAPH_MEMORY_LIFECYCLE_FACT_LIMIT)),
+  applied: S.Array(GraphMemoryLifecycleFact).check(S.isMaxLength(GRAPH_MEMORY_LIFECYCLE_FACT_LIMIT)),
+  retainedShared: S.Array(GraphMemoryLifecycleFact).check(S.isMaxLength(GRAPH_MEMORY_LIFECYCLE_FACT_LIMIT)),
+  unresolved: S.Array(GraphMemoryLifecycleFact).check(S.isMaxLength(GRAPH_MEMORY_LIFECYCLE_FACT_LIMIT)),
+  failed: S.Array(GraphMemoryLifecycleFact).check(S.isMaxLength(GRAPH_MEMORY_LIFECYCLE_FACT_LIMIT)),
   before: GraphMemoryArtifactAccounting,
   after: GraphMemoryArtifactAccounting,
 });

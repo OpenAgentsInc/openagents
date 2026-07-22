@@ -81,6 +81,11 @@ fails before it writes pending state. A full-scope `forget` is not blocked. It
 compacts the prior receipt set into a count and a digest, and it keeps the exact
 forget receipt for restart inspection.
 
+Lifecycle fact arrays use a separate derived limit. This limit covers the
+maximum admitted graph actions, artifact actions, ranking snapshots, and replay
+records in one operation. Thus, a valid near-limit delete or forget operation
+does not create an invalid receipt.
+
 ## Boundaries
 
 The package is governed by `scripts/check-afs-boundaries.ts`: no app, platform
