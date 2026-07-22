@@ -34,7 +34,7 @@ class Proxy(http.server.BaseHTTPRequestHandler):
                 "accept": "application/json",
                 "cache-control": "no-store",
                 "content-type": self.headers.get("content-type", "application/json"),
-                "x-openagents-managed-sandbox-token": self.token,
+                "authorization": f"Bearer {self.token}",
             },
         )
         try:
