@@ -26344,7 +26344,7 @@
     },
     {
       "path": "docs/forge/2026-07-22-dev-velocity-github-vs-openagents-benchmark.md",
-      "sha256": "d1e6426740fb56af698891ee2ca25ac06997e41f9c035f9cd6ac2f0a1d66deef",
+      "sha256": "cc61f612a51896a47cd86c2387bd3014dac39feaa650b0c6d361b1424f48ec77",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

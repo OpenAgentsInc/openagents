@@ -296,10 +296,13 @@ during migration, so the move is reversible at every stage.
 
 ## 6. Live Full Auto dogfood — two measured runs on the owned path
 
-The operator drove two live Full Auto runs against real repositories. Both runs
-went through the OpenAgents Full Auto local control API. No human hand touched
-the code. Both runs used the `codex-local` lane on model `gpt-5.6-sol`. The
-values below come from the live run receipts only. They are a different
+The operator drove three live Full Auto runs against real repositories, all
+through the OpenAgents Full Auto local control API, no human hand on the code.
+TWO of them were aimed explicitly at the Nostr git-forge plan (the GitHub
+replacement) and are the focus of this section: run A landed the Stage 0a
+NIP-34 reply-kind fix, and run B (autonomy-enabled) landed a NIP-34 relay
+module. A third off-plan run (Sarah mobile, 6.3) is retained only as an extra
+velocity data point. The values below come from the live run receipts only. They are a different
 measurement from the historical estimates in Section 3. Do not infer any live
 cell from the historical estimates above.
 
@@ -331,7 +334,35 @@ Nip34 test suite ran 29 tests with 0 failures.
 
 **Landed.** `nostr-effect` main commit `ec573c7`, through one `git push`.
 
-### 6.2 Run B — Sarah mobile slice 1 (`openagents` repository)
+### 6.2 Run B — Nostr forge relay NIP-34 module (`nostr-effect` repository)
+
+**Run identity**
+
+| Field | Value |
+| --- | --- |
+| `runRef` | `run.full-auto.mrwl3g8d.u643hzz4` |
+| Target repository | `nostr-effect` |
+| Lane and model | `codex-local`, `gpt-5.6-sol` |
+| Turn cap | 16 |
+| Autonomy | enabled (the first control-driven run with the autonomy core active) |
+| Start timestamp | 2026-07-22T21:18:03Z |
+| Verified-and-landed | 2026-07-22T21:21Z |
+| Wall-clock to verified module | about 3 minutes `[MEASURED]` |
+
+**Deliverable.** The run self-selected and implemented a NIP-34 relay module so
+the owned relay recognizes and routes the git-forge event set: repository
+announcement 30617, refs state 30618, patches 1617-1619, issues 1621, status
+1630-1633, and NIP-22 replies 1111. It registered the module in the
+`NipRegistry` and updated `SUPPORTED_NIPS.md`. This is the relay side of the
+GitHub replacement: it lets git repositories, patches, issues, and statuses
+live on an owned Nostr relay instead of GitHub.
+
+**Verification.** `bunx tsc --noEmit -p tsconfig.check.json` ran clean. The
+module and registry tests ran 29 tests with 0 failures.
+
+**Landed.** `nostr-effect` main commit `d765492`, through one `git push`.
+
+### 6.3 Run C — Sarah mobile slice 1 (`openagents` repository, off-plan)
 
 **Run identity**
 
@@ -361,7 +392,7 @@ failures. `pnpm --dir apps/openagents-mobile run typecheck` and
 **Landed.** `openagents` main commit `7764bf47df`, through the normal pre-push
 gate green. The operator did not use `--no-verify`.
 
-### 6.3 Grading (the `full-auto-decision-v1` rubric, from #9182)
+### 6.4 Grading (the `full-auto-decision-v1` rubric, from #9182)
 
 The grader ran the `full-auto-decision-v1` rubric over both live run stores.
 
@@ -381,7 +412,7 @@ the grader itself reports. The run reports carry no tool-call, file-change, or
 sub-agent counts, and there is no usage ingestion on this path. This is a real
 observability gap on the control-API run path, not a strength.
 
-### 6.4 Round-trip comparison to the historical baseline
+### 6.5 Nostr-plan dogfood velocity versus the historical GitHub way
 
 Section 3 measured the historical GitHub-centric tempo at about 19.7 `gh` calls
 and about 6.3 `git push` operations per session, for about 59,000 GitHub network
@@ -389,15 +420,24 @@ interactions over four months. More than half of the roughly 29,000 `gh issue`
 calls were reads and polls, and the issue tracker was the coordination
 substrate.
 
-For these two live dogfood units, the OpenAgents-system round-trips were:
+The two Nostr-plan dogfood units (runs A and B, both advancing the git-over-Nostr
+forge itself) are the direct comparison. Their OpenAgents-system round-trips:
 
-| Live unit | `gh` calls | `git push` | Extra owned round-trips |
-| --- | ---: | ---: | --- |
-| Run A (`nostr-effect`) | 0 | 1 | The repository's own NIP-34 relay pre-push hook fired. The forge model was already running. |
-| Run B (`openagents`) | 0 | 1 | None. |
+| Nostr-plan live unit | Wall-clock | `gh` calls | `git push` | Owned round-trips |
+| --- | --- | ---: | ---: | --- |
+| Run A — Stage 0a NIP-34 reply-kind fix (`nostr-effect`) | ~88 s | 0 | 1 | the repo's own NIP-34 relay pre-push hook fired — the forge model already running |
+| Run B — NIP-34 relay module (`nostr-effect`, autonomy) | ~3 min | 0 | 1 | same relay pre-push hook |
+| (off-plan) Run C — Sarah mobile (`openagents`) | ~6.5 min | 0 | 1 | none |
 
-Each live unit reached a verified, merged change through one `git push` and zero
-`gh` calls. The historical GitHub-centric cycle for a comparable small fix opens
+Both Nostr-plan units advanced the GitHub replacement itself — the reply-kind
+fix and then the relay module that lets git repositories, patches, issues, and
+statuses live on an owned Nostr relay — and each reached a verified, merged
+change in one to three minutes through one `git push` and zero `gh` calls. Set
+that against the historical baseline mined from `~/.codex` and `~/.claude` in
+Sections 1-5: about 19.7 `gh` calls and 6.3 pushes per session, about 59,000
+GitHub round-trips over four months, with more than half of `gh issue` being
+reads and polls. The Nostr-plan dogfood removed the `gh` coordination round-trips
+entirely and removed the human review gate on the code. The historical GitHub-centric cycle for a comparable small fix opens
 an issue, branches, commits, opens a pull request, waits on a review round-trip,
 and merges. That path costs multiple `gh` round-trips plus human gates. The two
 live units removed the round-trips and removed the human gate on the code. The
@@ -409,7 +449,7 @@ The two runs also confirm the honest correction that Section 3 already makes.
 Neither run hit any GitHub rate ceiling. The win here is round-trip elimination
 and autonomy, not throttle avoidance.
 
-### 6.5 Honest caveats — gaps to close before this is a clean pipeline
+### 6.6 Honest caveats — gaps to close before this is a clean pipeline
 
 The dogfood surfaced real gaps to close before this is a clean measurement
 pipeline. State them plainly.
