@@ -1,0 +1,94 @@
+{
+  "schemaVersion": "openagents.managed_sandbox_sbx10_live_acceptance.v1",
+  "capturedAt": "2026-07-22T10:35:37.237Z",
+  "issue": 9032,
+  "environment": "staging",
+  "passed": true,
+  "revisions": {
+    "source": "ca2e6b4175",
+    "deployed": "ca2e6b4175"
+  },
+  "target": {
+    "targetRef": "target://openagents/google-cloud/managed-sandbox",
+    "profileRef": "profile.sbx.gce.e2-small.v1",
+    "profileDigest": "sha256:8b0b4d6bd5fefaf26687bc6bf128f2cc79eb6d234ef383e42ff0e368a4f0f23c",
+    "imageDigest": "sha256:413ffdf4ee5c557167b70d9858ba04ea23e103c68b7e2a50753ddec73b90ef5e",
+    "toolchainDigest": "sha256:3172b41edaff8c94db71326b021cfb1aad268e60768500154b9de2c07c64df84",
+    "region": "us-central1",
+    "machineClass": "e2-small",
+    "isolationClass": "gce_vm"
+  },
+  "identityDigests": {
+    "sourceSandboxRef": "sha256:841b94ecef66027b7301a93cb9742c02b0a3595a62bf8b28b8cd0f78e6c0b491",
+    "forkSandboxRef": "sha256:5540723df89ba476f48723e2c49eab0bdedb9219fe017835f7fb4f40202f03ac",
+    "checkpointRef": "sha256:b6f9db8f387bf417c1c838a86ca7ba51cc9509a78ae893e16a6492f5311901bc",
+    "audienceRef": "sha256:94101199ee36b5249f5d58cb6bdd2206d930628d0b659d661a0ec5aefc1f9f41"
+  },
+  "receiptRefs": [
+    "receipt-ref://sha256/a17fbaec42d3fcdb9592330115766a742f10bc81c97a1227d58ec7f358bfd64a",
+    "receipt-ref://sha256/13d2f7fda5b749b782001e55c7b1eb7357acef05938b1c74a6318918733cc248",
+    "receipt-ref://sha256/2b5bca1f2fe8a6d3b8e3f4dd76f7ae517bf665302064d1ff0e936b9763bc554c",
+    "receipt-ref://sha256/d8a4de94f85d492d1a43447f7e878aab21438120adccc73146fa2aca568bfc60",
+    "receipt-ref://sha256/8ab66564aa0f2ce8a3858d3f1b12d132f1062efa6be0b32f716eb567be067809",
+    "receipt-ref://sha256/4ce522a428ce00b237db0566b58afc136cf31c018af971a347484ab499c0f0af",
+    "receipt-ref://sha256/dde26e2a2c8dcdba63e447a936a0e64f407897e56ee54dff511f60a3d13b5d64",
+    "receipt-ref://sha256/ac9fe29da6633ca0b12ff63e499b5a1e81e98f304e4ffc3ee668037d79f1f1fe"
+  ],
+  "proof": {
+    "sourceReady": true,
+    "fixtureWritten": true,
+    "checkpointVerified": true,
+    "sourceStoppedAfterCheckpoint": true,
+    "forkFreshIdentity": true,
+    "forkFreshCapabilities": true,
+    "forkContentRestored": true,
+    "wrongAudienceDenied": true,
+    "privatePreviewRead": true,
+    "privatePreviewNoTopology": true,
+    "revokeEnforced": true,
+    "checkpointContentDeleted": true,
+    "zeroResidue": true
+  },
+  "cost": {
+    "totalMeasuredCostMicrousd": 6946,
+    "sandboxBudgetMicrousd": 20000,
+    "programBudgetMicrousd": 50000
+  },
+  "before": {
+    "instances": 0,
+    "firewalls": 0,
+    "disks": 0,
+    "checkpointObjects": 0
+  },
+  "after": {
+    "instances": 0,
+    "firewalls": 0,
+    "disks": 0,
+    "checkpointObjects": 0
+  },
+  "emergencyCleanupAttempted": false,
+  "rollback": {
+    "productionChanged": false,
+    "publicAvailabilityClaimed": false,
+    "stagingDefaultOffGateRequired": true,
+    "exactResourceCleanupAttempted": true
+  },
+  "ownerDisposition": {
+    "actorRole": "owner",
+    "disposition": "accepted",
+    "recordedAt": "2026-07-22T10:37:00.000Z",
+    "sourceRef": "owner-thread://issue-9032/2026-07-22",
+    "statement": "The owner accepted the green staging evidence."
+  },
+  "independentReview": {
+    "disposition": "pending",
+    "producerMayVerify": false,
+    "statement": "A distinct identity must reproduce and review the exact candidate."
+  },
+  "limitations": [
+    "The checkpoint contains filesystem content only. It excludes credentials, memory, processes, sockets, ports, network identity, and provider hidden state.",
+    "The preview route reads one bounded workspace file. It does not proxy a network service.",
+    "Public or ungated VNC remains unsupported.",
+    "This producer-run receipt and owner disposition do not satisfy the independent-review gate."
+  ]
+}
