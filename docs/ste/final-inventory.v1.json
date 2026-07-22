@@ -40069,7 +40069,7 @@
     },
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
-      "sha256": "0e6a80971b048a37678cb82a9addabe4bfcbadfe1946de3a6562a48ab80bb4b4",
+      "sha256": "8540b4edda399fe066d0ec9cb8a25c721c6526c37e534f7983a6b13633d5a01f",
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
@@ -41103,7 +41103,7 @@
     },
     {
       "path": "docs/sol/2026-07-18-atif-thread-model-audit.md",
-      "sha256": "8301ac800ceeccbb59dbf847090776637e0c189bb97c4d6a968d47a06d78246f",
+      "sha256": "b688c91b86e28b9200c69670d8db141106868c3483f8c5e4e61516dcb3255708",
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
@@ -41293,7 +41293,7 @@
     },
     {
       "path": "docs/sol/2026-07-18-vercel-ai-sdk-source-derived-effect-conversion-audit.md",
-      "sha256": "6b35c6e64725e3887d488c80fa82c0b44c77a66f13b0833ff7509b67a42b0c1f",
+      "sha256": "41c55b576396489e3d216f33a87b48f0571cb9fd5ca7a5ad704923083dbac16f",
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
@@ -41361,7 +41361,7 @@
     },
     {
       "path": "docs/sol/2026-07-20-apple-fm-router-to-full-agent-system-plan.md",
-      "sha256": "24e883e89003a976775ae5483b2ff08c1e3c947a4d6f8983fb02c922aa6dab4e",
+      "sha256": "b03560a088a1770c7ab669ab934fc16bd836750b2dbbb36802634d2f8b95bdab",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
@@ -41454,7 +41454,7 @@
     },
     {
       "path": "docs/sol/MASTER_ROADMAP.md",
-      "sha256": "a23c6bbdb5fc2cec3f8c83066b7b00dc603d878d6cfbdfa105884d98d6d06d5b",
+      "sha256": "6cf2200f70f32c9668b2d5342a7089d26b8801014b72709eac37e428d07523d6",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -41494,7 +41494,7 @@
     },
     {
       "path": "docs/sol/README.md",
-      "sha256": "10cbe50ec59b324d8520d3c0568f6010caaa8b63debb79579a5f1c41bbbaf7dd",
+      "sha256": "e85fc91a2f3cd1fd26905796b696b36dc8bf8c459ab59966e4a906078d05158c",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

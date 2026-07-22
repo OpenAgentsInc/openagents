@@ -2056,7 +2056,7 @@ roadmap order.
 
 ### Package placement evidence
 
-- [`agent-runtime-schema/README.md`](../../packages/agent-runtime-schema/README.md)
+- [`@openagentsinc/agent-runtime-schema`](https://www.npmjs.com/package/@openagentsinc/agent-runtime-schema)
 - [`provider-account-schema/README.md`](../../packages/provider-account-schema/README.md)
 - [`portable-session-contract/README.md`](../../packages/portable-session-contract/README.md)
 - [`pylon-core/README.md`](../../packages/pylon-core/README.md)

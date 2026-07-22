@@ -128,7 +128,7 @@ have no lossless ATIF home.
 
 ### Runtime event log and authority
 
-[`packages/agent-runtime-schema/src/index.ts`](../../packages/agent-runtime-schema/src/index.ts)
+[`@openagentsinc/agent-runtime-schema` `src/index.ts`](https://github.com/OpenAgentsInc/ai/blob/main/packages/agent-runtime-schema/src/index.ts)
 models an append-only lifecycle with run/step boundaries, streaming text and
 reasoning deltas, tool proposal/input/approval/start/completion/failure,
 external-agent lifecycle, artifacts, usage, and terminal outcomes. ATIF records
@@ -137,15 +137,15 @@ intermediate runtime event.
 
 Additional Effect schemas make the distinction explicit:
 
-- [`live-agent-graph.ts`](../../packages/agent-runtime-schema/src/live-agent-graph.ts)
+- [`live-agent-graph.ts`](https://github.com/OpenAgentsInc/ai/blob/main/packages/agent-runtime-schema/src/live-agent-graph.ts)
   owns agents, parent/child edges, current tools, and attention/blocker state.
-- [`thread-event-authority.ts`](../../packages/agent-runtime-schema/src/thread-event-authority.ts)
+- [`thread-event-authority.ts`](https://github.com/OpenAgentsInc/ai/blob/main/packages/agent-runtime-schema/src/thread-event-authority.ts)
   owns accepted, superseded, and reverted event relations and rejects ambiguous
   histories.
-- [`thread-disclosure.ts`](../../packages/agent-runtime-schema/src/thread-disclosure.ts)
+- [`thread-disclosure.ts`](https://github.com/OpenAgentsInc/ai/blob/main/packages/agent-runtime-schema/src/thread-disclosure.ts)
   owns visibility/export intents, workspace/named-group/internet audiences,
   administrator access, idempotency, expected versions, and receipts.
-- [`thread-export-artifact.ts`](../../packages/agent-runtime-schema/src/thread-export-artifact.ts)
+- [`thread-export-artifact.ts`](https://github.com/OpenAgentsInc/ai/blob/main/packages/agent-runtime-schema/src/thread-export-artifact.ts)
   compiles an exact, deterministic, owner-only canonical event bundle with
   event sequence and authority state.
 
