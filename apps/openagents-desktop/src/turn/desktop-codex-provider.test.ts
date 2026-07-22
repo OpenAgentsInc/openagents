@@ -118,6 +118,7 @@ describe("codex kernel provider — exit checks", () => {
           ev({
             kind: "tool_use",
             toolName: "shell",
+            itemRef: "tool-1",
             summary: JSON.stringify({ command: "git status" }),
             item: { kind: "command", command: "git status", cwd: "/Users/owner/work" },
           }),
@@ -126,6 +127,7 @@ describe("codex kernel provider — exit checks", () => {
           ev({
             kind: "tool_result",
             toolName: "shell",
+            itemRef: "tool-1",
             ok: true,
             summary: "on branch main; secret sk-live-DEADBEEF at /Users/owner/.env",
             item: { kind: "fileChange", changes: [{ path: "/Users/owner/x" }] },
@@ -140,14 +142,16 @@ describe("codex kernel provider — exit checks", () => {
     // Terminal maps to done.
     expect(result.projection.cardState).toBe("done")
     expect(result.candidate?.kind).toBe("answer")
-    // The chain carries the redacted entries: reasoning, tool, tool, final answer.
+    // The chain carries one reconciled tool row, not separate use/result rows.
     const chain = result.projection.messageChain
-    expect(chain.length).toBe(4)
+    expect(chain.length).toBe(3)
     expect(chain[0]!.role).toBe("system")
     expect(chain[1]!.role).toBe("tool")
     expect(chain[1]!.toolLabel).toBe("shell")
-    expect(chain[3]!.role).toBe("assistant")
-    expect(chain[3]!.text).toBe("Delegated work complete. Pushed to main.")
+    expect(chain[1]!.fileChangeCount).toBe(1)
+    expect(chain[1]!.commandOutputByteCount).toBeGreaterThan(0)
+    expect(chain[2]!.role).toBe("assistant")
+    expect(chain[2]!.text).toBe("Delegated work complete. Pushed to main.")
 
     // The WHOLE projection carries no raw command, output, path, or token.
     const serialized = JSON.stringify(result.projection)

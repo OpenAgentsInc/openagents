@@ -179,6 +179,69 @@ describe("DesktopAgentGroup rendering states", () => {
     expect(html).toContain("Nested child spawned for review.");
   });
 
+  test("typed child work renders compact type-specific rows without generic ACTIVITY labels", () => {
+    const html = renderToStaticMarkup(
+      <DesktopAgentGroup
+        agents={[
+          agent({
+            transcript: [
+              {
+                entryKey: "chain-1",
+                label: "Tool",
+                text: "bash · 402 bytes",
+                activity: {
+                  kind: "command",
+                  label: "Bash",
+                  status: "completed",
+                  outputByteCount: 402,
+                },
+              },
+              {
+                entryKey: "chain-2",
+                label: "Tool",
+                text: "apply_patch · 2 files",
+                activity: {
+                  kind: "file_change",
+                  label: "Apply patch",
+                  status: "completed",
+                  fileChangeCount: 2,
+                },
+              },
+              {
+                entryKey: "chain-3",
+                label: "Update",
+                text: "Checking the focused tests",
+                activity: { kind: "reasoning", label: "Reasoning", status: "completed" },
+              },
+            ],
+          }),
+        ]}
+        itemKey="typed-work"
+      />,
+    );
+    expect(html).toContain('data-work-kind="command"');
+    expect(html).toContain('data-work-kind="file_change"');
+    expect(html).toContain('data-work-kind="reasoning"');
+    expect(html).toContain("402 B output");
+    expect(html).toContain("2 files");
+    expect(html).not.toContain(">ACTIVITY<");
+  });
+
+  test("long child work histories group older rows behind a keyboard-native disclosure", () => {
+    const transcript = Array.from({ length: 11 }, (_, index) => ({
+      entryKey: `chain-${index}`,
+      label: "Tool",
+      text: `read ${index}`,
+      activity: { kind: "tool" as const, label: "Read", status: "completed" as const },
+    }));
+    const html = renderToStaticMarkup(
+      <DesktopAgentGroup agents={[agent({ transcript })]} itemKey="grouped-work" />,
+    );
+    expect(html).toContain("Show 3 earlier updates");
+    expect(html).toContain('class="oa-react-agent-work-history"');
+    expect(html.match(/data-work-kind="tool"/g)).toHaveLength(11);
+  });
+
   test("onInspect marks the card inspectable; selected renders data-selected", () => {
     const inspectable = renderToStaticMarkup(
       <DesktopAgentGroup agents={[agent({ onInspect: () => {} })]} itemKey="i" />,

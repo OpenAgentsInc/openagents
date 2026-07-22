@@ -2,6 +2,7 @@ import { Bot, GitBranch, Network } from "lucide-react";
 import { useState, type ReactElement } from "react";
 
 import { activityStatusIcon, activityStatusLabel } from "./activity-status.tsx";
+import { DesktopAgentTranscript, type DesktopAgentTranscriptLine } from "./agent-transcript.tsx";
 
 export type DesktopAgentStatus = "completed" | "failed" | "running" | "waiting";
 
@@ -22,7 +23,7 @@ export type DesktopAgentActivity = Readonly<{
   statusLabel?: string;
   /** subAgentActivity.kind, when this row represents an activity ping rather than a lifecycle transition. */
   activityKind?: DesktopAgentActivityKind;
-  transcript?: ReadonlyArray<Readonly<{ label: string; text: string }>>;
+  transcript?: ReadonlyArray<DesktopAgentTranscriptLine>;
   /** True only when a running agent can currently be interrupted (caller decides eligibility). */
   interruptable?: boolean;
   /** Present together with `interruptable` to offer the Interrupt control (desktop-only; never assumed by web hosts). */
@@ -110,12 +111,7 @@ const DesktopAgentRow = ({ agent }: Readonly<{ agent: DesktopAgentActivity }>): 
               spawned by {agent.parent}
             </p>
           )}
-          {agent.transcript.map((line, index) => (
-            <p key={`${agent.agentKey}:line:${index}`}>
-              <strong>{line.label}</strong>
-              <span>{line.text}</span>
-            </p>
-          ))}
+          <DesktopAgentTranscript lines={agent.transcript} />
         </div>
       )}
     </details>

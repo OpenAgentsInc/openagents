@@ -29,6 +29,7 @@ import {
   dispatchWorkbenchItem,
   type DesktopAgentActivity,
   type DesktopAgentStatus,
+  type DesktopAgentTranscriptLine,
   type WorkbenchDispatchItem,
 } from "@openagentsinc/ui/desktop-workbench";
 import type { ReactElement, ReactNode, RefObject } from "react";
@@ -156,7 +157,12 @@ export type ReactTimelineRecord = Readonly<{
     childRef: string;
     interruptable: boolean;
     /** The subagent's bounded, redacted message chain, shown inline on the card. */
-    transcript?: ReadonlyArray<Readonly<{ role: "user" | "assistant" | "system"; text: string }>>;
+    transcript?: ReadonlyArray<Readonly<{
+      entryRef?: string;
+      role: "user" | "assistant" | "system" | "tool";
+      text: string;
+      activity?: DesktopAgentTranscriptLine["activity"];
+    }>>;
   }>;
 }>;
 
@@ -936,8 +942,8 @@ const UserTimelineRow = ({
 };
 
 /** Short prefix label for one delegated-agent transcript line, by role. */
-const delegateTranscriptLabel = (role: "user" | "assistant" | "system"): string =>
-  role === "user" ? "You" : role === "assistant" ? "Reply" : "Activity";
+const delegateTranscriptLabel = (role: "user" | "assistant" | "system" | "tool"): string =>
+  role === "user" ? "You" : role === "assistant" ? "Reply" : role === "tool" ? "Tool" : "Update";
 
 export const TimelineItem = ({
   record,
@@ -989,8 +995,10 @@ export const TimelineItem = ({
                   // without a click, and clicking the card toggles it. The prior
                   // right-pane inspect opened nothing the owner could see.
                   transcript: record.runtimeChild.transcript?.map((line) => ({
+                    ...(line.entryRef === undefined ? {} : { entryKey: line.entryRef }),
                     label: delegateTranscriptLabel(line.role),
                     text: line.text,
+                    ...(line.activity === undefined ? {} : { activity: line.activity }),
                   })),
                   interruptable: record.runtimeChild.interruptable,
                   onInterrupt: () =>
@@ -1240,18 +1248,34 @@ class TimelineItemBoundary extends Component<
 }
 
 /**
- * Cheap signature of a runtime child's inline transcript: entry count plus the
- * last entry's role and text length. It flips when a message is added OR the
- * last message grows (streaming), so the memo re-renders and the live subagent
- * chain stays current — without stringifying multi-kilobyte transcripts.
+ * Cheap signature of a runtime child's inline transcript. It includes every
+ * bounded entry's stable identity and typed lifecycle metadata, plus text
+ * lengths. An in-place tool completion must re-render even when the entry count
+ * and visible text length do not change.
  */
 const runtimeChildTranscriptSignature = (
   child: ReactTimelineRecord["runtimeChild"],
 ): string => {
   const transcript = child?.transcript;
   if (transcript === undefined || transcript.length === 0) return "";
-  const last = transcript[transcript.length - 1]!;
-  return `${transcript.length}:${last.role}:${last.text.length}`;
+  return transcript.map((entry, index) => {
+    const activity = entry.activity;
+    if (activity === undefined) {
+      return `${entry.entryRef ?? index}:${entry.role}:${entry.text.length}`;
+    }
+    const fileCount = activity.kind === "file_change" ? activity.fileChangeCount : "";
+    const outputCount = "outputByteCount" in activity ? activity.outputByteCount ?? "" : "";
+    return [
+      entry.entryRef ?? index,
+      entry.role,
+      entry.text.length,
+      activity.kind,
+      activity.label,
+      activity.status,
+      fileCount,
+      outputCount,
+    ].join(":");
+  }).join("|");
 };
 
 const sameTimelineRecord = (left: ReactTimelineRecord, right: ReactTimelineRecord): boolean =>

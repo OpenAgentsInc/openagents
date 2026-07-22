@@ -119,7 +119,16 @@ const codexRegistry = (ready: boolean): ProviderRegistryInterface => ({
           events: Stream.fromIterable([
             ProviderStreamEvent.Progress(),
             ProviderStreamEvent.Chain({
-              entries: [decodeChainEntry({ entryRef: "e.0", role: "assistant", text: "delegated work summary" })],
+              entries: [
+                decodeChainEntry({
+                  entryRef: "e.tool.0",
+                  role: "tool",
+                  text: "",
+                  toolLabel: "shell",
+                  commandOutputByteCount: 402,
+                }),
+                decodeChainEntry({ entryRef: "e.0", role: "assistant", text: "delegated work summary" }),
+              ],
             }),
             ProviderStreamEvent.Completed({ candidate: answerCandidateWith("candidate.codex.1", "codex done") }),
           ]),
@@ -319,7 +328,7 @@ const installRouter = (routerAnswer: string, codexReady: boolean) => {
     providerRegistry: appleRouterRegistry(routerAnswer),
     codexProvider: codexRegistry(codexReady),
   })
-  return { handlers, sent, thread, kernel }
+  return { handlers, sent, store, thread, kernel }
 }
 
 /** Install the router with a claude delegate lane wired via `delegateProviders` (#9091). */
@@ -357,7 +366,7 @@ const waitFor = async (predicate: () => boolean, attempts = 50): Promise<void> =
 
 describe("AFS-04 codex delegation router", () => {
   test("an admitted codex recommendation starts ONE real codex turn and returns delegated", async () => {
-    const { handlers, sent, thread, kernel } = installRouter(CODEX_ROUTE_JSON, true)
+    const { handlers, sent, store, thread, kernel } = installRouter(CODEX_ROUTE_JSON, true)
     try {
       const submit = handlers.get(DesktopTurnSubmitChannel)!
       const raw = await submit(null, { threadRef: thread.id, message: "please implement issue #9082" })
@@ -388,6 +397,23 @@ describe("AFS-04 codex delegation router", () => {
       expect(projection.cardState).toBe("done")
       // The delegation card carries a redacted message chain.
       expect(projection.messageChain.length).toBeGreaterThanOrEqual(1)
+      const persisted = store.open(thread.id)?.notes.find(
+        (note) => note.key === `delegation-${delegationRef}`,
+      )?.runtime
+      expect(persisted?.kind).toBe("child")
+      if (persisted?.kind !== "child") throw new Error("persisted delegation card missing")
+      expect(persisted.status).toBe("completed")
+      expect(persisted.transcript).toContainEqual({
+        entryRef: "e.tool.0",
+        role: "tool",
+        text: "shell · 402 bytes",
+        activity: {
+          kind: "command",
+          label: "shell",
+          status: "completed",
+          outputByteCount: 402,
+        },
+      })
     } finally {
       await kernel.dispose()
     }

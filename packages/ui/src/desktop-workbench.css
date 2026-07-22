@@ -3981,6 +3981,78 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   gap: var(--en-spacing-2);
   padding: 0 var(--en-spacing-3) var(--en-spacing-3) calc(24px + var(--en-spacing-5));
 }
+.oa-react-agent-work-list {
+  display: grid;
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--en-color-borderSubtle);
+  background: var(--en-color-borderSubtle);
+}
+.oa-react-agent-work-row {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) max-content max-content;
+  align-items: center;
+  gap: var(--en-spacing-2);
+  min-height: 30px;
+  padding: 4px var(--en-spacing-2);
+  background: var(--en-color-surfaceRaised);
+  color: var(--en-color-textMuted);
+}
+.oa-react-agent-work-row > svg {
+  width: 13px;
+  height: 13px;
+  color: var(--en-color-textFaint);
+}
+.oa-react-agent-work-row[data-work-kind="command"] > svg,
+.oa-react-agent-work-row[data-work-kind="tool"] > svg {
+  color: var(--en-color-accent);
+}
+.oa-react-agent-work-row[data-work-kind="file_change"] > svg {
+  color: var(--en-color-success);
+}
+.oa-react-agent-work-row[data-work-kind="notice"] > svg {
+  color: var(--en-color-danger);
+}
+.oa-react-agent-work-copy {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: var(--en-spacing-2);
+}
+.oa-react-agent-work-copy > strong {
+  flex: none;
+  color: var(--en-color-textPrimary);
+  font-size: 11px;
+  font-weight: 600;
+}
+.oa-react-agent-work-copy > span {
+  overflow: hidden;
+  color: var(--en-color-textMuted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.oa-react-agent-work-row > small {
+  color: var(--en-color-textFaint);
+  font-size: 10px;
+  white-space: nowrap;
+}
+.oa-react-agent-work-history {
+  background: var(--en-color-surfaceRaised);
+}
+.oa-react-agent-work-history > summary {
+  padding: 5px var(--en-spacing-2);
+  color: var(--en-color-textFaint);
+  font-size: 10px;
+  cursor: pointer;
+  list-style-position: inside;
+}
+.oa-react-agent-work-history > div {
+  display: grid;
+  gap: 1px;
+  border-top: 1px solid var(--en-color-borderSubtle);
+  background: var(--en-color-borderSubtle);
+}
 .oa-react-agent-transcript p {
   display: grid;
   grid-template-columns: 70px minmax(0, 1fr);

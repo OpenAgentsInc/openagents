@@ -15,6 +15,58 @@ const apply = (notes: DesktopMessage[], event: Parameters<typeof localRuntimePer
 }
 
 describe("durable local runtime event projection", () => {
+  test("reconciles one typed child item lifecycle by stable identity", () => {
+    let notes: DesktopMessage[] = []
+    notes = apply(notes, {
+      kind: "child_started",
+      childRef: "child-1",
+      summary: "Run the focused verification",
+      prompt: "Run the focused verification",
+    })
+    notes = apply(notes, {
+      kind: "child_activity",
+      childRef: "child-1",
+      activity: "item",
+      summary: "Running tests",
+      itemRef: "command-1",
+      itemStatus: "running",
+      item: {
+        kind: "command",
+        source: "codex",
+        command: "pnpm test",
+        status: "in_progress",
+      },
+    })
+    notes = apply(notes, {
+      kind: "child_activity",
+      childRef: "child-1",
+      activity: "item",
+      summary: "79 tests passed",
+      itemRef: "command-1",
+      itemStatus: "completed",
+      item: {
+        kind: "command",
+        source: "codex",
+        command: "pnpm test",
+        status: "completed",
+        exitCode: 0,
+      },
+    })
+
+    const runtime = notes[0]?.runtime
+    expect(runtime?.kind).toBe("child")
+    if (runtime?.kind !== "child") throw new Error("child runtime card missing")
+    expect(runtime.transcript).toEqual([
+      { role: "user", text: "Run the focused verification" },
+      {
+        entryRef: "command-1",
+        role: "tool",
+        text: "79 tests passed",
+        activity: { kind: "command", label: "Command", status: "completed" },
+      },
+    ])
+  })
+
   test("retains nested child identity and independent transcript through completion", () => {
     let notes: DesktopMessage[] = []
     notes = apply(notes, {

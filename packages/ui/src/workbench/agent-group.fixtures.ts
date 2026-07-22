@@ -29,6 +29,31 @@ export const desktopAgentGroupFixtures: ReadonlyArray<DesktopAgentGroupFixture> 
         role: "Delegated agent",
         status: "running",
         detail: "Auditing the reasoning delta pipeline for dropped chunks.",
+        transcript: [
+          {
+            entryKey: "fixture-agent-command",
+            label: "Tool",
+            text: "bash",
+            activity: { kind: "command", label: "Bash", status: "completed", outputByteCount: 402 },
+          },
+          {
+            entryKey: "fixture-agent-files",
+            label: "Tool",
+            text: "apply_patch",
+            activity: {
+              kind: "file_change",
+              label: "Apply patch",
+              status: "completed",
+              fileChangeCount: 2,
+            },
+          },
+          {
+            entryKey: "fixture-agent-reasoning",
+            label: "Update",
+            text: "Checking the focused regression suite.",
+            activity: { kind: "reasoning", label: "Reasoning", status: "running" },
+          },
+        ],
       },
     ],
   },

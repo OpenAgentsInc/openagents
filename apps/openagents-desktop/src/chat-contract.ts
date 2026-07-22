@@ -143,10 +143,48 @@ export const DesktopRuntimePlanEntrySchema = Schema.Struct({
   status: Schema.Literals(["pending", "in_progress", "completed"]),
 })
 const DESKTOP_RUNTIME_TRANSCRIPT_TEXT_LIMIT = 32_000
+const DesktopRuntimeTranscriptActivityStatusSchema = Schema.Literals(["running", "completed", "failed"])
+export const DesktopRuntimeTranscriptActivitySchema = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("command"),
+    label: Schema.String.check(Schema.isMaxLength(120)),
+    status: DesktopRuntimeTranscriptActivityStatusSchema,
+    outputByteCount: Schema.optional(Schema.Number),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("file_change"),
+    label: Schema.String.check(Schema.isMaxLength(120)),
+    status: DesktopRuntimeTranscriptActivityStatusSchema,
+    fileChangeCount: Schema.Number,
+    outputByteCount: Schema.optional(Schema.Number),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("tool"),
+    label: Schema.String.check(Schema.isMaxLength(120)),
+    status: DesktopRuntimeTranscriptActivityStatusSchema,
+    outputByteCount: Schema.optional(Schema.Number),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("reasoning"),
+    label: Schema.String.check(Schema.isMaxLength(120)),
+    status: DesktopRuntimeTranscriptActivityStatusSchema,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("notice"),
+    label: Schema.String.check(Schema.isMaxLength(120)),
+    status: DesktopRuntimeTranscriptActivityStatusSchema,
+  }),
+])
+export type DesktopRuntimeTranscriptActivity = typeof DesktopRuntimeTranscriptActivitySchema.Type
 export const DesktopRuntimeTranscriptEntrySchema = Schema.Struct({
-  role: Schema.Literals(["user", "assistant", "system"]),
+  /** Stable safe-chain identity. It is absent on cards from older builds. */
+  entryRef: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
+  role: Schema.Literals(["user", "assistant", "system", "tool"]),
   text: Schema.String.check(Schema.isMaxLength(DESKTOP_RUNTIME_TRANSCRIPT_TEXT_LIMIT)),
+  /** Typed compact work metadata. It never contains commands, paths, or raw output. */
+  activity: Schema.optional(DesktopRuntimeTranscriptActivitySchema),
 })
+export type DesktopRuntimeTranscriptEntry = typeof DesktopRuntimeTranscriptEntrySchema.Type
 export const DesktopRuntimeCardSchema = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("plan"),

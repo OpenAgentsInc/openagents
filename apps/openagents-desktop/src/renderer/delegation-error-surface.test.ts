@@ -88,7 +88,12 @@ describe("delegation error surfacing (AFS-04)", () => {
     // "Codex subagent — ERRORED — <reason>" without a click.
     expect(card.detail).toBe(FAILURE_REASON)
     const last = card.transcript?.at(-1)
-    expect(last).toEqual({ role: "system", text: FAILURE_REASON })
+    expect(last).toEqual({
+      entryRef: "request.delegation.1.failure",
+      role: "system",
+      text: FAILURE_REASON,
+      activity: { kind: "notice", label: "Failure", status: "failed" },
+    })
   })
 
   test("a non-terminal projection keeps the prior detail and appends no error line", () => {
@@ -122,7 +127,12 @@ describe("delegation error surfacing (AFS-04)", () => {
     if (runtime?.kind !== "child") throw new Error("expected child runtime")
     expect(runtime.status).toBe("failed")
     expect(runtime.detail).toBe(FAILURE_REASON)
-    expect(runtime.transcript).toContainEqual({ role: "system", text: FAILURE_REASON })
+    expect(runtime.transcript).toContainEqual({
+      entryRef: "request.delegation.1.failure",
+      role: "system",
+      text: FAILURE_REASON,
+      activity: { kind: "notice", label: "Failure", status: "failed" },
+    })
   })
 
   test("the right-pane inspector renders the failure reason instead of the running placeholder", () => {

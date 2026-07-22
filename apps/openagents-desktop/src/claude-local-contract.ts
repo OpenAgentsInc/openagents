@@ -350,6 +350,11 @@ export const ClaudeLocalEventSchema = Schema.Union([
     ]),
     accountRef: Schema.optional(Schema.String),
     summary: Schema.String.check(Schema.isMaxLength(CLAUDE_LOCAL_SUMMARY_LIMIT)),
+    /** Stable provider item identity. Started/completed updates use the same ref. */
+    itemRef: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
+    itemStatus: Schema.optional(Schema.Literals(["running", "completed", "failed"])),
+    /** Additive typed item for compact child work rendering. */
+    item: Schema.optional(WorkbenchItemSchema),
   }),
   Schema.Struct({
     kind: Schema.Literal("child_completed"),

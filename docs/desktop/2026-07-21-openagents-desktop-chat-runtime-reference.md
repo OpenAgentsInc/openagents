@@ -740,28 +740,30 @@ directive that tools and activity must not hide behind a collapsed fold.
 ### The Delegated Agents card
 
 `DesktopAgentGroup` renders the card (`packages/ui/src/workbench/agent-group.tsx`,
-title default "Delegated agents", `:130`, `:152`). Each `DesktopAgentRow` is a
-native details element that is default-expanded (`useState(true)`, `:44`). When a
-record carries `runtimeChild`, `TimelineItem` passes the subagent bounded and
-redacted message chain inline as the transcript, plus interrupt controls
-(`react-timeline.tsx:876-893`). Each line renders as a bold label plus the text
-(`agent-group.tsx:105-120`).
+title default "Delegated agents"). Each `DesktopAgentRow` is a native details
+element. It is open by default. When a record has `runtimeChild`, `TimelineItem`
+passes the bounded and redacted child message chain to the card. It also passes
+the interrupt control.
+
+The child chain keeps a stable entry reference and typed safe activity data.
+The activity data can identify a command, a file change, a tool, reasoning, or a
+notice. It can also contain a lifecycle status, a file count, and an output byte
+count. It cannot contain a raw command, a path, tool arguments, or raw output.
+`DesktopAgentTranscript` renders this data as compact rows with type-specific
+icons and text status. It puts older rows in a native disclosure when more than
+eight rows exist. The card keeps the latest rows visible.
+
+The host stores the same delegation runtime note under the stable
+`delegation-<requestRef>` key. Progress and terminal frames update this note in
+place. Therefore, reload uses the same typed rows that the live view uses.
 
 ### The live re-render mechanism
 
-The task calls this the transcript signature. The literal string does not appear
-in the code. The mechanism is `runtimeChildTranscriptSignature` plus
-`sameTimelineRecord`, which gate `MemoTimelineItemBoundary`.
-
-- `runtimeChildTranscriptSignature(child)` is a cheap scalar signature
-  `` `${length}:${lastRole}:${lastTextLength}` `` (`react-timeline.tsx:1129-1142`).
-  It flips when a message is added or the last message grows during streaming,
-  without stringifying kilobytes.
-- `sameTimelineRecord(left, right)` is the memo equality. It compares the scalar
-  fields and the two transcript signatures (`:1144-1177`, signatures at
-  `:1169-1170`).
-- `MemoTimelineItemBoundary = memo(..., (l, r) => l.report === r.report && sameTimelineRecord(l.record, r.record))`
-  (`:1179-1182`).
+`runtimeChildTranscriptSignature` and `sameTimelineRecord` control the memoized
+timeline row. The signature contains the stable reference, role, text length,
+activity type, activity status, and safe counts for each bounded child entry.
+Thus, an in-place tool status change updates the row even when the entry count
+does not change. The signature does not copy raw command output.
 
 So an IPC event grows a note, the reprojection produces a record with a changed
 signature, `sameTimelineRecord` returns false for that one row, and only that row

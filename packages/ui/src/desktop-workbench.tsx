@@ -89,6 +89,10 @@ export {
   type DesktopAgentActivity,
   type DesktopAgentActivityKind,
 } from "./workbench/agent-group.tsx";
+export type {
+  DesktopAgentTranscriptActivity,
+  DesktopAgentTranscriptLine,
+} from "./workbench/agent-transcript.tsx";
 export {
   desktopAgentGroupFixtures,
   type DesktopAgentGroupFixture,

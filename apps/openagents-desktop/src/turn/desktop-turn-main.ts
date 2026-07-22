@@ -23,6 +23,12 @@ import type { CodexLaneReadiness } from "./desktop-codex-provider.ts"
 import { decideDelegation, isDelegateProvider, type DelegateProvider } from "./desktop-delegation.ts"
 import type { EditorContextRegistry } from "./editor-context-binding.ts"
 
+import type { DesktopMessage } from "../chat-contract.ts"
+import {
+  delegationCardFromProjection,
+  seedDelegationCard,
+  type DelegationRuntimeCard,
+} from "../delegation-runtime-card.ts"
 import type { makeThreadStore } from "../thread-store.ts"
 import type { LocalTurnJournal } from "../local-turn-journal.ts"
 import {
@@ -202,6 +208,31 @@ export const placeholderProviderRegistry: ProviderRegistryInterface = {
 export const installDesktopTurnKernel = (
   deps: InstallDesktopTurnKernelDeps,
 ): InstalledDesktopTurnKernel => {
+  const delegationTargets = new Map<
+    string,
+    Readonly<{ threadRef: string; title: string; detail: string }>
+  >()
+  const delegationNote = (
+    requestRef: string,
+    runtime: DelegationRuntimeCard,
+  ): DesktopMessage => ({
+    key: `delegation-${requestRef}`,
+    role: "system",
+    text: "",
+    timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    runtime,
+  })
+  const persistDelegationProjection = (frame: TurnProgressFrame): void => {
+    const target = delegationTargets.get(frame.requestRef)
+    if (target === undefined) return
+    deps.threadStore.upsert(
+      target.threadRef,
+      delegationNote(
+        frame.requestRef,
+        delegationCardFromProjection(frame.projection, target.title, target.detail),
+      ),
+    )
+  }
   const baseRegistry = deps.providerRegistry ?? placeholderProviderRegistry
   // AFS-04 + #9091 + #9145: fold the hosted Khala router tail and every
   // delegate lane (codex, claude, grok) into the kernel registry so one
@@ -233,6 +264,7 @@ export const installDesktopTurnKernel = (
   const runtime = ManagedRuntime.make(layer)
 
   const forwardFrame = (frame: TurnProgressFrame): void => {
+    persistDelegationProjection(frame)
     const sender = deps.sender()
     if (sender === null || sender.isDestroyed()) return
     const terminal =
@@ -340,6 +372,7 @@ export const installDesktopTurnKernel = (
     readonly delegationRequestRef: TurnRequestRef
     readonly threadRef: TurnThreadRef
     readonly objective: string
+    readonly title: string
     readonly delegateProviderRef: string
     readonly recommendation: RouteRecommendation
   }): void => {
@@ -348,6 +381,18 @@ export const installDesktopTurnKernel = (
       ordered: [input.delegateProviderRef],
       policyArtifactRef: DESKTOP_LOCAL_POLICY_ARTIFACT_REF,
     })
+    delegationTargets.set(input.delegationRequestRef, {
+      threadRef: input.threadRef,
+      title: input.title,
+      detail: input.objective,
+    })
+    deps.threadStore.upsert(
+      input.threadRef,
+      delegationNote(input.delegationRequestRef, {
+        ...seedDelegationCard(input.delegationRequestRef, input.objective),
+        title: input.title,
+      }),
+    )
     runtime.runFork(
       Effect.gen(function* () {
         const service = yield* TurnService
@@ -358,6 +403,12 @@ export const installDesktopTurnKernel = (
           candidateSet: delegateCandidateSet,
           recommendation: input.recommendation,
         })
+        persistDelegationProjection({
+          requestRef: input.delegationRequestRef,
+          generation: result.generation,
+          projection: result.projection,
+        })
+        delegationTargets.delete(input.delegationRequestRef)
         const sender = deps.sender()
         if (sender !== null && !sender.isDestroyed()) {
           sender.send(
@@ -459,6 +510,12 @@ export const installDesktopTurnKernel = (
                     delegationRequestRef,
                     threadRef: submit.threadRef,
                     objective: decision.objective,
+                    title:
+                      decision.provider === "claude"
+                        ? "Claude subagent"
+                        : decision.provider === "grok_acp"
+                          ? "Grok subagent"
+                          : "Codex subagent",
                     delegateProviderRef: delegateDescriptor.providerRef,
                     recommendation: decision.recommendation,
                   })

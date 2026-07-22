@@ -57,10 +57,6 @@ import {
   type DesktopThread,
 } from "../chat-contract.ts";
 import type { DesktopTurnEventFrame, DesktopTurnSubmitResult } from "../turn/desktop-turn-ipc.ts";
-import type {
-  SafeMessageChainEntry,
-  SafeTurnProjection,
-} from "@openagentsinc/agent-runtime-schema";
 import {
   CodexReasoningEffortSchema,
   LocalModelSchema,
@@ -106,6 +102,16 @@ import {
   type RuntimePlanCardPayload,
   type RuntimeQueueChipPayload,
 } from "./runtime-cards.ts";
+import {
+  AFS_DELEGATION_CHILD_REF,
+  delegationCardFromProjection,
+  seedDelegationCard,
+} from "../delegation-runtime-card.ts";
+export {
+  AFS_DELEGATION_CHILD_REF,
+  delegationCardFromProjection,
+  seedDelegationCard,
+} from "../delegation-runtime-card.ts";
 import {
   resolveLiveAgentGraphSelection,
   type LiveAgentGraphPresentation,
@@ -6792,79 +6798,6 @@ export const delegateTranscriptForAgent = (
 // child card + inspector surfaces render it with ZERO new card subsystem.
 // ---------------------------------------------------------------------------
 
-/** The stable child ref for a codex delegation card (one subagent per delegation turn). */
-export const AFS_DELEGATION_CHILD_REF = "codex" as const;
-
-const DELEGATION_TRANSCRIPT_TEXT_LIMIT = 4000;
-
-/** Render one safe message-chain entry as a transcript line (labels and counts only). */
-const delegationTranscriptText = (entry: SafeMessageChainEntry): string => {
-  if (entry.text.trim() !== "") return entry.text.slice(0, DELEGATION_TRANSCRIPT_TEXT_LIMIT);
-  const parts: Array<string> = [];
-  if (entry.toolLabel !== undefined) parts.push(entry.toolLabel);
-  if (entry.fileChangeCount !== undefined)
-    parts.push(`${entry.fileChangeCount} file${entry.fileChangeCount === 1 ? "" : "s"}`);
-  if (entry.commandOutputByteCount !== undefined)
-    parts.push(`${entry.commandOutputByteCount} bytes`);
-  return parts.join(" · ").slice(0, DELEGATION_TRANSCRIPT_TEXT_LIMIT);
-};
-
-/** Map the safe card state to the child card lifecycle status. */
-const delegationChildStatus = (
-  cardState: SafeTurnProjection["cardState"],
-): RuntimeChildCardPayload["status"] =>
-  cardState === "done"
-    ? "completed"
-    : cardState === "queued" || cardState === "running"
-      ? "running"
-      : "failed";
-
-/** Project a safe turn projection into a codex delegation child card. */
-export const delegationCardFromProjection = (
-  projection: SafeTurnProjection,
-  title: string,
-  detail: string,
-): RuntimeChildCardPayload => {
-  // A terminal `failed`/`refused`/`cancelled` projection carries a bounded,
-  // public-safe `failureReason`. Show it as the card detail (so the card reads
-  // "Codex subagent — ERRORED — <reason>" without a click) AND append it as a
-  // transcript system line (so the right-pane inspector shows the reason instead
-  // of the "Running. No output yet." placeholder).
-  const failureReason = projection.failureReason;
-  const transcript = projection.messageChain.map((entry) => ({
-    role: entry.role === "tool" ? ("system" as const) : entry.role,
-    text: delegationTranscriptText(entry),
-  }))
-  return {
-    kind: "child",
-    turnRef: projection.requestRef.slice(0, 120),
-    childRef: AFS_DELEGATION_CHILD_REF,
-    status: delegationChildStatus(projection.cardState),
-    title: title.slice(0, 400),
-    detail: (failureReason ?? detail).slice(0, 400),
-    transcript:
-      failureReason === undefined
-        ? transcript
-        : [...transcript, { role: "system" as const, text: failureReason.slice(0, DELEGATION_TRANSCRIPT_TEXT_LIMIT) }],
-    steered: null,
-  }
-}
-
-/** Build the initial (seeded) delegation card, shown after the host start receipt. */
-export const seedDelegationCard = (
-  delegationRef: string,
-  objective: string,
-): RuntimeChildCardPayload => ({
-  kind: "child",
-  turnRef: delegationRef.slice(0, 120),
-  childRef: AFS_DELEGATION_CHILD_REF,
-  status: "running",
-  title: "Codex subagent",
-  detail: objective.slice(0, 400),
-  transcript: [{ role: "user", text: objective.slice(0, DELEGATION_TRANSCRIPT_TEXT_LIMIT) }],
-  steered: null,
-});
-
 /**
  * Apply one delegation `turn:event` frame to the shell state. It updates the
  * matching delegation card's status and redacted message chain. A frame with no
@@ -6893,8 +6826,8 @@ export const withDelegationFrame = (
   return { ...state, notes };
 };
 
-const delegationRoleLabel = (role: "user" | "assistant" | "system"): string =>
-  role === "user" ? "You" : role === "assistant" ? "Codex" : "Activity";
+const delegationRoleLabel = (role: "user" | "assistant" | "system" | "tool"): string =>
+  role === "user" ? "You" : role === "assistant" ? "Codex" : role === "tool" ? "Tool" : "Update";
 
 /**
  * The right-pane message chain for a selected codex delegation. It renders the

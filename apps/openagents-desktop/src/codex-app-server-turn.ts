@@ -505,7 +505,9 @@ export const runCodexAppServerTurn = async (
           reconcileAgentStates(item, notifiedThread!)
         }
         const facts = item === null ? null : toolFacts(item)
+        const typedItem = item === null ? null : workbenchItemFromThreadItem(item, "codex")
         const summary = facts?.summary || facts?.name || string(item?.type) || "child activity"
+        const itemRef = string(item?.id) ?? string(params.itemId)
         input.emit({
           kind: "child_activity",
           childRef: notifiedThread!.slice(0, 120),
@@ -513,6 +515,9 @@ export const runCodexAppServerTurn = async (
           activity: "item",
           accountRef: input.accountRef,
           summary: summary.slice(0, 400),
+          ...(itemRef === null ? {} : { itemRef: itemRef.slice(0, 120) }),
+          itemStatus: message.method === "item/completed" ? "completed" : "running",
+          ...(typedItem === null ? {} : { item: typedItem }),
         })
         return
       }

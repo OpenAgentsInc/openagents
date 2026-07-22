@@ -32,6 +32,7 @@ import {
   type LocalProviderTarget,
 } from "../claude-local-contract.ts"
 import type { LocalSkillInvocation } from "../plugin-config-contract.ts"
+import { reconcileChildActivityTranscript } from "../child-runtime-transcript.ts"
 import {
   makeComposerInterruptIntent,
   makeComposerInterruptOutcome,
@@ -461,10 +462,7 @@ export const makeLocalHarnessChatHost = (input: MakeLocalHarnessChatHostInput): 
             status: existing?.status ?? "running",
             title: existing?.title ?? "",
             detail: event.summary,
-            transcript: [
-              ...(existing?.transcript ?? []),
-              { role: "system" as const, text: event.summary },
-            ].slice(-128),
+            transcript: reconcileChildActivityTranscript(existing?.transcript ?? [], event),
             steered: existing?.steered ?? null,
           },
           `Delegate child · ${event.summary}`,

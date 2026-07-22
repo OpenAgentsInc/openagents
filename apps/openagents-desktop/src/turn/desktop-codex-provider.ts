@@ -325,6 +325,7 @@ export const makeDelegateProviderRegistry = (config: DelegateProviderConfig): Pr
         Effect.gen(function* () {
           // Accumulate the redacted chain; every growth emits the LATEST snapshot.
           const activities: Array<ObservedAgentActivity> = []
+          const toolActivityIndexByItemRef = new Map<string, number>()
           // The live streaming assistant answer: text_delta events are coalesced
           // into ONE growing assistant entry so the reply streams token-by-token
           // instead of appearing only at completion. A tool/reasoning activity
@@ -337,6 +338,31 @@ export const makeDelegateProviderRegistry = (config: DelegateProviderConfig): Pr
               activities,
             )
             Queue.offerUnsafe(queue, ProviderStreamEvent.Chain({ entries }))
+          }
+          const recordActivity = (event: ClaudeLocalEvent, activity: ObservedAgentActivity): void => {
+            if (event.kind !== "tool_use" && event.kind !== "tool_progress" && event.kind !== "tool_result") {
+              activities.push(activity)
+              return
+            }
+            const itemRef = event.itemRef
+            let activityIndex = itemRef === undefined ? undefined : toolActivityIndexByItemRef.get(itemRef)
+            if (activityIndex === undefined && event.kind !== "tool_use") {
+              for (let cursor = activities.length - 1; cursor >= 0; cursor -= 1) {
+                const candidate = activities[cursor]
+                if (candidate?.role === "tool" && candidate.toolLabel === activity.toolLabel &&
+                    candidate.commandOutputByteCount === undefined) {
+                  activityIndex = cursor
+                  break
+                }
+              }
+            }
+            if (activityIndex === undefined) {
+              activityIndex = activities.length
+              activities.push(activity)
+            } else {
+              activities[activityIndex] = { ...activities[activityIndex], ...activity }
+            }
+            if (itemRef !== undefined) toolActivityIndexByItemRef.set(itemRef, activityIndex)
           }
           const emit = (event: ClaudeLocalEvent): void => {
             if (event.kind === "text_delta") {
@@ -359,7 +385,7 @@ export const makeDelegateProviderRegistry = (config: DelegateProviderConfig): Pr
             }
             liveAssistantIndex = -1
             liveAssistantText = ""
-            activities.push(activity)
+            recordActivity(event, activity)
             Queue.offerUnsafe(queue, ProviderStreamEvent.Progress())
             publishChain()
           }

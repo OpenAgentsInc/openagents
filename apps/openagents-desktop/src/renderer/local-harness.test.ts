@@ -482,6 +482,44 @@ describe("makeLocalHarnessChatHost", () => {
     harness.emit({
       turnRef: "turn.claude.fixed",
       event: {
+        kind: "child_activity",
+        childRef: "child.codex.turn.claude.fixed.1",
+        activity: "item",
+        summary: "reading",
+        itemRef: "read-1",
+        itemStatus: "running",
+        item: {
+          kind: "toolCall",
+          source: "codex",
+          callKind: "dynamic",
+          tool: "read",
+          args: [],
+          status: "in_progress",
+        },
+      },
+    })
+    harness.emit({
+      turnRef: "turn.claude.fixed",
+      event: {
+        kind: "child_activity",
+        childRef: "child.codex.turn.claude.fixed.1",
+        activity: "item",
+        summary: "read complete",
+        itemRef: "read-1",
+        itemStatus: "completed",
+        item: {
+          kind: "toolCall",
+          source: "codex",
+          callKind: "dynamic",
+          tool: "read",
+          args: [],
+          status: "completed",
+        },
+      },
+    })
+    harness.emit({
+      turnRef: "turn.claude.fixed",
+      event: {
         kind: "child_completed",
         childRef: "child.codex.turn.claude.fixed.1",
         accountRef: "codex-current",
@@ -498,6 +536,12 @@ describe("makeLocalHarnessChatHost", () => {
     if (child?.kind !== "child") throw new Error("child runtime card missing")
     expect(child.transcript).toEqual([
       { role: "user", text: "Review the patch\n\nContext:\nFocus on the failing test." },
+      {
+        entryRef: "read-1",
+        role: "tool",
+        text: "read complete",
+        activity: { kind: "tool", label: "read", status: "completed" },
+      },
       { role: "assistant", text: "The stale fixture is the cause. Update it and rerun the focused suite." },
     ])
 

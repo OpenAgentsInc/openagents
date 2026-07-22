@@ -1,5 +1,6 @@
 import type { DesktopMessage } from "./chat-contract.ts"
 import type { ClaudeLocalEvent } from "./claude-local-contract.ts"
+import { reconcileChildActivityTranscript } from "./child-runtime-transcript.ts"
 
 export type LocalRuntimePersistenceOperation =
   | Readonly<{ kind: "upsert"; note: DesktopMessage }>
@@ -103,12 +104,14 @@ export const localRuntimePersistenceOperation = (input: Readonly<{
     const detail = event.kind === "child_failed"
       ? (event.detail.trim() === "" ? event.reason : `${event.reason} · ${event.detail}`)
       : event.summary
-    const transcript = [
-      ...(existing?.transcript ?? []),
-      event.kind === "child_completed"
-        ? { role: "assistant" as const, text: event.response ?? event.summary }
-        : { role: "system" as const, text: detail },
-    ].slice(-128)
+    const transcript = event.kind === "child_activity"
+      ? reconcileChildActivityTranscript(existing?.transcript ?? [], event)
+      : [
+          ...(existing?.transcript ?? []),
+          event.kind === "child_completed"
+            ? { role: "assistant" as const, text: event.response ?? event.summary }
+            : { role: "system" as const, text: detail },
+        ].slice(-128)
     const status = event.kind === "child_completed" ? "completed" as const
       : event.kind === "child_failed" ? "failed" as const
         : existing?.status ?? "running" as const
