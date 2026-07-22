@@ -15007,6 +15007,42 @@
       }
     },
     {
+      "path": "docs/analysis/README.md",
+      "sha256": "a449f2381a107a11a5146565e18a0fe490d2217e06b3ce55cff797785cd2dc9d",
+      "reason": "Final review of mutable first-party agent technical text",
+      "profile": {
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ]
+      }
+    },
+    {
+      "path": "docs/analysis/conversation-thread-coherence-rubric.md",
+      "sha256": "ed9e950d4ca47effe88bfdb1522863df752c25ed32cf4980745b6384b806aa73",
+      "reason": "Final review of mutable first-party agent technical text",
+      "profile": {
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ]
+      }
+    },
+    {
       "path": "docs/apple-fm/2026-06-15-apple-fm-integration-audit.md",
       "sha256": "958378d325dcf8f6f639a83020ea3638f356d5589f1973c0cab5e3aa6f786e20",
       "reason": "Immutable historical or evidence source data",
