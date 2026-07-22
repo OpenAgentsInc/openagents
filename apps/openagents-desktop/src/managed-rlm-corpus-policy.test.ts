@@ -110,8 +110,17 @@ const fixtureStore = (
         observation: input?.observation?.() ?? activeObservation,
         validated: {
           address,
+          sourcePlane: "evidence_pack" as const,
           entryRef: entry.entryRef,
           ordinal: entry.ordinal,
+          origin: {
+            sourcePlane: "evidence_pack" as const,
+            sourceKind: entry.sourceKind,
+            sourceAddress: address,
+            corpusRef: inline.manifest.corpusRef,
+            contentDigest: inline.manifest.contentDigest,
+            entryRef: entry.entryRef,
+          },
         },
       };
     }),

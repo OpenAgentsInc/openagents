@@ -160,6 +160,7 @@ const entriesOf = (run: ProductSpecRun, scopeRef: string): ReadonlyArray<RlmCorp
     entryRef: `${run.runRef}:${packet.packetRef}`,
     scopeRef,
     sourceKind: "managed_workroom_evidence",
+    sourcePlane: "evidence_pack" as const,
     sourceAddress: encodeAddress(run.runRef, packet.packetRef),
     text: packetText(packet),
     visibility: "private",
@@ -168,10 +169,7 @@ const entriesOf = (run: ProductSpecRun, scopeRef: string): ReadonlyArray<RlmCorp
   }));
 
 const encodedBytesOf = (entries: ReadonlyArray<RlmCorpusEntry>): number =>
-  entries.reduce(
-    (total, entry) => total + entry.entryRef.length + (entry.text?.length ?? 0) + 64,
-    0,
-  );
+  new TextEncoder().encode(entries.map((entry) => JSON.stringify(entry)).join("\n")).length;
 
 const manifestOf = (
   binding: ManagedRlmCorpusBinding,
@@ -202,19 +200,25 @@ const manifestOf = (
     ordering,
     entries,
   });
+  const manifestPolicy = {
+    includeVisibilities: ["private" as const],
+    includeRedactionClasses: ["private_ref" as const],
+  };
   const manifestDigest = computeManifestDigest({
     contentDigest,
     coverage,
+    policy: manifestPolicy,
     scopeRef: binding.scopeRef,
     ordering,
   });
   return {
-    schemaId: "openagents.ai.rlm_corpus.v1",
+    schemaId: "openagents.ai.rlm_corpus.v2",
     corpusRef: binding.corpusRef,
     contentDigest,
     manifestDigest,
     ordering,
     coverage,
+    policy: manifestPolicy,
     scopeRef: binding.scopeRef,
     builtAt: run.updatedAt,
   };
@@ -371,8 +375,17 @@ export const makeManagedRlmWorkroomStore = (
         observation: corpus.observation,
         validated: {
           address: entry.sourceAddress,
+          sourcePlane: "evidence_pack" as const,
           entryRef: entry.entryRef,
           ordinal: entry.ordinal,
+          origin: {
+            sourcePlane: "evidence_pack" as const,
+            sourceKind: entry.sourceKind,
+            sourceAddress: entry.sourceAddress,
+            corpusRef: corpus.manifest.corpusRef,
+            contentDigest: corpus.manifest.contentDigest,
+            entryRef: entry.entryRef,
+          },
         },
       };
     },

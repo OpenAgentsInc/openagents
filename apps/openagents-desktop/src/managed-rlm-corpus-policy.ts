@@ -272,7 +272,7 @@ export const makeManagedRlmCorpusSource = (
 
     const handle: RlmCorpusHandle = {
       identity: {
-        schemaId: "openagents.ai.rlm_corpus.v1",
+        schemaId: "openagents.ai.rlm_corpus.v2",
         corpusRef: manifest.corpusRef,
         contentDigest: manifest.contentDigest,
         manifestDigest: manifest.manifestDigest,
@@ -309,6 +309,22 @@ export const makeManagedRlmCorpusSource = (
           },
         );
       },
+      assertUnchanged: () =>
+        store.resolve(binding).pipe(
+          Effect.mapError(mapStoreError),
+          Effect.flatMap((latest) =>
+            latest.manifest.contentDigest === manifest.contentDigest &&
+            latest.manifest.manifestDigest === manifest.manifestDigest
+              ? Effect.void
+              : Effect.fail(
+                  corpusError("unavailable", "managed corpus changed under an active run"),
+                ),
+          ),
+        ),
+      validateSourceLocator: (locator) =>
+        locator.corpusRef === manifest.corpusRef && locator.contentDigest === manifest.contentDigest
+          ? handle.validateSourceAddress(locator.sourceAddress, locator.sourcePlane)
+          : Effect.fail(corpusError("invalid_address", "locator does not reference this corpus")),
       validateSourceAddress: (address) =>
         store.validateSourceAddress({ binding, address }).pipe(
           Effect.mapError(mapStoreError),
