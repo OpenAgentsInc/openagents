@@ -296,7 +296,10 @@ describe("managed-sandbox phase-two Google Cloud driver", () => {
     );
 
     expect(conflict.status).not.toBe(0);
-    expect(conflict.stdout).toBe("");
+    expect(JSON.parse(conflict.stdout)).toEqual({
+      schemaVersion: "openagents.managed_sandbox_phase2_driver_error.v1",
+      reasonRef: "checkpoint_idempotency_conflict",
+    });
     expect(conflict.stderr).toBe("");
     expect(readFileSync(join(fixture.root, "object.tar"), "utf8")).toBe(checkpointContent);
   });
@@ -416,7 +419,10 @@ describe("managed-sandbox phase-two Google Cloud driver", () => {
     });
 
     expect(restored.status).not.toBe(0);
-    expect(restored.stdout).toBe("");
+    expect(JSON.parse(restored.stdout)).toEqual({
+      schemaVersion: "openagents.managed_sandbox_phase2_driver_error.v1",
+      reasonRef: "guest_restore_scope_conflict",
+    });
     const calls = readFileSync(join(fixture.root, "calls.jsonl"), "utf8");
     expect(calls).toContain("rm -f");
   });
@@ -448,12 +454,18 @@ describe("managed-sandbox phase-two Google Cloud driver", () => {
     delete (fork as { runtimeContext?: unknown }).runtimeContext;
     const unpreparedFork = invoke(fork, fixture.env);
     expect(unpreparedFork.status).not.toBe(0);
-    expect(unpreparedFork.stdout).toBe("");
+    expect(JSON.parse(unpreparedFork.stdout)).toEqual({
+      schemaVersion: "openagents.managed_sandbox_phase2_driver_error.v1",
+      reasonRef: "fork_request_invalid",
+    });
 
     const restore = restoreRequest(created.output);
     delete (restore as { runtimeContext?: unknown }).runtimeContext;
     const unpreparedRestore = invoke(restore, fixture.env);
     expect(unpreparedRestore.status).not.toBe(0);
-    expect(unpreparedRestore.stdout).toBe("");
+    expect(JSON.parse(unpreparedRestore.stdout)).toEqual({
+      schemaVersion: "openagents.managed_sandbox_phase2_driver_error.v1",
+      reasonRef: "restore_request_invalid",
+    });
   });
 });

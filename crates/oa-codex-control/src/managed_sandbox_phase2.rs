@@ -23,6 +23,7 @@ use sha2::{Digest, Sha256};
 use crate::managed_sandbox_runtime::{self, RuntimePhase};
 
 const TARGET_SCHEMA_VERSION: &str = "openagents.managed_sandbox_phase2_target.v1";
+const DRIVER_ERROR_SCHEMA_VERSION: &str = "openagents.managed_sandbox_phase2_driver_error.v1";
 const COMMAND_SCHEMA_VERSION: &str = "openagents.managed_sandbox_phase2_command.v1";
 const CHECKPOINT_SCHEMA_VERSION: &str = "openagents.managed_sandbox_content_checkpoint.v1";
 const CHECKPOINT_STOP_SCHEMA_VERSION: &str = "openagents.managed_sandbox_checkpoint_stop.v1";
@@ -851,7 +852,7 @@ fn execute_with_driver_wire(
     };
     let _ = reader.join();
     if !status.success() {
-        return Err(Phase2Error::unavailable("phase2_driver_refused"));
+        return Err(Phase2Error::unavailable(driver_refusal_reason(&bytes)));
     }
     if bytes.len() as u64 > MAX_DRIVER_RESPONSE_BYTES {
         return Err(Phase2Error::unavailable("phase2_driver_response_too_large"));
@@ -865,6 +866,28 @@ fn execute_with_driver_wire(
         .map_err(|_| Phase2Error::unavailable("phase2_driver_response_invalid"))?;
     validate_response(request, &response)?;
     Ok(response)
+}
+
+fn driver_refusal_reason(bytes: &[u8]) -> &'static str {
+    let Ok(value) = serde_json::from_slice::<Value>(bytes) else {
+        return "phase2_driver_refused";
+    };
+    if value.get("schemaVersion").and_then(Value::as_str) != Some(DRIVER_ERROR_SCHEMA_VERSION) {
+        return "phase2_driver_refused";
+    }
+    match value.get("reasonRef").and_then(Value::as_str) {
+        Some("gcloud_operation_failed") => "phase2_driver_gcloud_operation_failed",
+        Some("guest_checkpoint_cleanup_failed") => "phase2_driver_guest_checkpoint_cleanup_failed",
+        Some("checkpoint_object_metadata_invalid") => {
+            "phase2_driver_checkpoint_object_metadata_invalid"
+        }
+        Some("checkpoint_object_corrupt") => "phase2_driver_checkpoint_object_corrupt",
+        Some("checkpoint_readback_failed") => "phase2_driver_checkpoint_readback_failed",
+        Some("checkpoint_idempotency_conflict") => "phase2_driver_checkpoint_idempotency_conflict",
+        Some("checkpoint_content_mismatch") => "phase2_driver_checkpoint_content_mismatch",
+        Some("guest_checkpoint_scope_conflict") => "phase2_driver_guest_checkpoint_scope_conflict",
+        _ => "phase2_driver_refused",
+    }
 }
 
 fn kill_process_tree(child: &mut std::process::Child) {
@@ -2756,6 +2779,26 @@ mod tests {
             .unwrap()
             .contains("Users"));
         fs::remove_dir_all(refused_root).unwrap();
+
+        let classified_root = temp_dir("classified-refusal");
+        let classified_driver = classified_root.join("driver.sh");
+        fs::write(
+            &classified_driver,
+            "#!/bin/sh\ncat >/dev/null\nprintf '%s' '{\"schemaVersion\":\"openagents.managed_sandbox_phase2_driver_error.v1\",\"reasonRef\":\"guest_checkpoint_cleanup_failed\"}'\nexit 2\n",
+        )
+        .unwrap();
+        fs::set_permissions(&classified_driver, fs::Permissions::from_mode(0o700)).unwrap();
+        let classified = execute_with_driver(
+            &classified_driver,
+            request(ManagedSandboxPhase2Action::VerifyCheckpoint),
+            Duration::from_secs(2),
+        )
+        .unwrap_err();
+        assert_eq!(
+            classified.reason_ref,
+            "phase2_driver_guest_checkpoint_cleanup_failed"
+        );
+        fs::remove_dir_all(classified_root).unwrap();
     }
 
     fn temp_dir(label: &str) -> std::path::PathBuf {

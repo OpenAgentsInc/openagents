@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const TARGET_SCHEMA_VERSION = "openagents.managed_sandbox_phase2_target.v1";
+const ERROR_SCHEMA_VERSION = "openagents.managed_sandbox_phase2_driver_error.v1";
 const CHECKPOINT_SCHEMA_VERSION = "openagents.managed_sandbox_content_checkpoint.v1";
 const DELETE_SCHEMA_VERSION = "openagents.managed_sandbox_checkpoint_delete_receipt.v1";
 const FORK_SCHEMA_VERSION = "openagents.managed_sandbox_fork_receipt.v1";
@@ -834,6 +835,11 @@ try {
     }),
   );
   process.stdout.write("\n");
-} catch {
+} catch (error) {
+  if (error instanceof DriverError && /^[a-z0-9_]{1,80}$/u.test(error.message)) {
+    process.stdout.write(
+      `${JSON.stringify({ schemaVersion: ERROR_SCHEMA_VERSION, reasonRef: error.message })}\n`,
+    );
+  }
   fail();
 }
