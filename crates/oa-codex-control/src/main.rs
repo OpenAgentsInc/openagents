@@ -33,6 +33,7 @@ use gce_capacity::{provisioner_for, CapacityRequest, GceLease, ProvisionerKind, 
 mod cloud_vm;
 mod managed_sandbox_guest_io;
 mod managed_sandbox_phase2;
+mod managed_sandbox_private_preview;
 mod managed_sandbox_runtime;
 mod managed_sandbox_turn_runtime;
 mod portable_agent_computer;
@@ -784,6 +785,36 @@ fn handle_stream(mut stream: TcpStream, config: &Config) -> Result<(), String> {
                 .lock()
                 .map_err(|_| "managed-sandbox Phase 2 operation lock was poisoned".to_string())?;
             match managed_sandbox_phase2::execute(&config.state_root, operation) {
+                Ok(response) => write_response(
+                    &mut stream,
+                    200,
+                    &serde_json::to_value(response).map_err(|error| error.to_string())?,
+                ),
+                Err(error) => write_response(&mut stream, error.status(), &error.response()),
+            }
+        }
+        "/v1/managed-sandbox/runtime/private-preview" => {
+            if request.body.len() > 2 * 1024 * 1024 {
+                return write_invalid_request(
+                    &mut stream,
+                    "invalid_request: managed-sandbox private preview body exceeds 2 MiB"
+                        .to_string(),
+                );
+            }
+            let operation = match serde_json::from_slice::<
+                managed_sandbox_private_preview::ManagedSandboxPrivatePreviewRequest,
+            >(&request.body)
+            {
+                Ok(value) => value,
+                Err(error) => {
+                    return write_invalid_request(&mut stream, format!("invalid_request: {error}"))
+                }
+            };
+            let _operation_guard = config
+                .managed_sandbox_runtime_lock
+                .lock()
+                .map_err(|_| "managed-sandbox private preview lock was poisoned".to_string())?;
+            match managed_sandbox_private_preview::execute(&config.state_root, operation) {
                 Ok(response) => write_response(
                     &mut stream,
                     200,

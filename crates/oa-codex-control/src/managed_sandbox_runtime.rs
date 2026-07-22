@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
+use crate::managed_sandbox_guest_io::{GuestIoAction, GuestIoLimits, ManagedSandboxGuestIoRequest};
 use crate::managed_sandbox_phase2::{ManagedSandboxPhase2Action, ManagedSandboxPhase2Request};
 
 const SCHEMA_VERSION: &str = "openagents.managed_sandbox_runtime.v1";
@@ -584,6 +585,147 @@ pub fn execute_private_ingress(
     request: &ManagedSandboxPhase2Request,
 ) -> Result<Value, RuntimeError> {
     execute_private_ingress_at(state_root, request, now_ms()?)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn authorize_private_preview(
+    state_root: &Path,
+    capability: &Value,
+    audience_ref: &str,
+    preview_path: &str,
+    encoding: &str,
+    operation_ref: &str,
+) -> Result<ManagedSandboxGuestIoRequest, RuntimeError> {
+    authorize_private_preview_at(
+        state_root,
+        capability,
+        audience_ref,
+        preview_path,
+        encoding,
+        operation_ref,
+        now_ms()?,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn authorize_private_preview_at(
+    state_root: &Path,
+    capability: &Value,
+    audience_ref: &str,
+    preview_path: &str,
+    encoding: &str,
+    operation_ref: &str,
+    now: u64,
+) -> Result<ManagedSandboxGuestIoRequest, RuntimeError> {
+    let capability = capability
+        .as_object()
+        .ok_or_else(|| RuntimeError::validation("private_preview_capability_invalid"))?;
+    let capability_ref = runtime_string(capability, "capabilityRef")?;
+    let sandbox_ref = runtime_string(capability, "sandboxRef")?;
+    let owner_ref = runtime_string(capability, "ownerRef")?;
+    let generation = runtime_number(capability, "resourceGeneration")?;
+    if runtime_string(capability, "audienceRef")? != audience_ref
+        || runtime_string(capability, "kind")? != "preview"
+        || runtime_string(capability, "_tag")? != "Active"
+    {
+        return Err(RuntimeError::new(
+            403,
+            "private_preview_scope_mismatch",
+            "private preview audience or capability kind was refused",
+        ));
+    }
+    let journal = load_journal(&journal_path(state_root, sandbox_ref))?.ok_or_else(|| {
+        RuntimeError::new(
+            404,
+            "private_preview_not_found",
+            "private preview sandbox was not found",
+        )
+    })?;
+    if journal.owner_ref != owner_ref
+        || journal.sandbox_ref != sandbox_ref
+        || journal.generation != generation
+        || journal.phase != RuntimePhase::Ready
+    {
+        return Err(RuntimeError::new(
+            409,
+            "private_preview_generation_conflict",
+            "private preview requires the current ready generation",
+        ));
+    }
+    let record = journal
+        .private_ingress
+        .iter()
+        .find(|record| record.capability_ref == capability_ref)
+        .ok_or_else(|| {
+            RuntimeError::new(
+                404,
+                "private_preview_not_found",
+                "private preview capability was not found",
+            )
+        })?;
+    if record.terminal_response.is_some() {
+        return Err(RuntimeError::new(
+            410,
+            "private_preview_revoked",
+            "private preview capability is no longer active",
+        ));
+    }
+    if now >= record.expires_at_ms {
+        return Err(RuntimeError::new(
+            410,
+            "private_preview_expired",
+            "private preview capability expired",
+        ));
+    }
+    if digest_json(&Value::Object(capability.clone()))? != digest_json(&record.active_response)? {
+        return Err(RuntimeError::new(
+            409,
+            "private_preview_capability_conflict",
+            "private preview capability bytes do not match durable state",
+        ));
+    }
+    let requested_at = unix_ms_to_iso(now)?;
+    let expires_at = unix_ms_to_iso(record.expires_at_ms)?;
+    let idempotency_digest = full_digest(format!(
+        "private-preview|{capability_ref}|{audience_ref}|{preview_path}|{encoding}|{operation_ref}"
+    ));
+    Ok(ManagedSandboxGuestIoRequest {
+        schema_version: "openagents.managed_sandbox_guest_io.v1".to_string(),
+        action: GuestIoAction::ReadFile,
+        operation_ref: operation_ref.to_string(),
+        idempotency_ref: format!("idempotency.sbx10.preview.{}", &idempotency_digest[..32]),
+        actor_ref: audience_ref.to_string(),
+        owner_ref: journal.owner_ref,
+        tenant_ref: journal.tenant_ref,
+        program_ref: journal.program_ref,
+        work_unit_ref: journal.work_unit_ref,
+        sandbox_ref: journal.sandbox_ref,
+        resource_generation: journal.generation,
+        capability_ref: capability_ref.to_string(),
+        capability_state: "active".to_string(),
+        capability_expires_at: expires_at,
+        requested_at,
+        limits: GuestIoLimits {
+            workspace_root_ref: "workspace.managed-sandbox".to_string(),
+            max_file_bytes: 1_048_576,
+            max_artifact_bytes: 1_048_576,
+            max_output_bytes: 1_048_576,
+            max_duration_millis: 30_000,
+            max_cpu_millis: 30_000,
+            max_processes: 1,
+            max_network_bytes: 0,
+            network_policy_ref: "network-policy.managed-sandbox.deny-all".to_string(),
+        },
+        path: Some(preview_path.to_string()),
+        encoding: Some(encoding.to_string()),
+        content: None,
+        content_digest: None,
+        command: None,
+        command_digest: None,
+        cwd: None,
+        timeout_millis: None,
+        retention_until: None,
+    })
 }
 
 fn execute_private_ingress_at(
@@ -3932,6 +4074,98 @@ mod tests {
     }
 
     #[test]
+    fn private_preview_authorization_binds_audience_bytes_generation_and_revocation() {
+        let root = temporary_root("private-preview-authorization");
+        let provider = TestProvider::new();
+        execute_with_provider(
+            &root,
+            &provider,
+            request(RuntimeAction::Create, "create", 0),
+            1_000,
+        )
+        .unwrap();
+        let create = ingress_request(
+            ManagedSandboxPhase2Action::CreatePrivateIngress,
+            "preview-create",
+            None,
+        );
+        let start = 1_753_146_000_000;
+        let active = execute_private_ingress_at(&root, &create, start).unwrap();
+        let authorized = authorize_private_preview_at(
+            &root,
+            &active,
+            "audience-ref://owner/device-1",
+            "/workspace/preview.html",
+            "utf8",
+            "operation.sbx10.preview.test",
+            start + 1_000,
+        )
+        .unwrap();
+        assert_eq!(authorized.action, GuestIoAction::ReadFile);
+        assert_eq!(authorized.resource_generation, 1);
+        assert_eq!(authorized.capability_ref, active["capabilityRef"]);
+        assert_eq!(authorized.actor_ref, "audience-ref://owner/device-1");
+        assert_eq!(authorized.limits.max_network_bytes, 0);
+        assert_eq!(
+            authorized.limits.network_policy_ref,
+            "network-policy.managed-sandbox.deny-all"
+        );
+
+        assert_eq!(
+            authorize_private_preview_at(
+                &root,
+                &active,
+                "audience-ref://other/device",
+                "/workspace/preview.html",
+                "utf8",
+                "operation.sbx10.preview.other",
+                start + 2_000,
+            )
+            .unwrap_err()
+            .code,
+            "private_preview_scope_mismatch"
+        );
+        let mut altered = active.clone();
+        altered["accessUrlDigest"] = json!(format!("sha256:{}", "0".repeat(64)));
+        assert_eq!(
+            authorize_private_preview_at(
+                &root,
+                &altered,
+                "audience-ref://owner/device-1",
+                "/workspace/preview.html",
+                "utf8",
+                "operation.sbx10.preview.altered",
+                start + 3_000,
+            )
+            .unwrap_err()
+            .code,
+            "private_preview_capability_conflict"
+        );
+
+        let revoke = ingress_request(
+            ManagedSandboxPhase2Action::RevokePrivateIngress,
+            "preview-revoke",
+            Some(active.clone()),
+        );
+        execute_private_ingress_at(&root, &revoke, start + 4_000).unwrap();
+        assert_eq!(
+            authorize_private_preview_at(
+                &root,
+                &active,
+                "audience-ref://owner/device-1",
+                "/workspace/preview.html",
+                "utf8",
+                "operation.sbx10.preview.revoked",
+                start + 5_000,
+            )
+            .unwrap_err()
+            .code,
+            "private_preview_revoked"
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn private_ingress_expiry_and_delete_fail_closed() {
         let root = temporary_root("private-ingress-expiry");
         let provider = TestProvider::new();
@@ -3949,6 +4183,20 @@ mod tests {
         );
         let start = 1_753_146_000_000;
         let active = execute_private_ingress_at(&root, &create, start).unwrap();
+        assert_eq!(
+            authorize_private_preview_at(
+                &root,
+                &active,
+                "audience-ref://owner/device-1",
+                "/workspace/preview.html",
+                "utf8",
+                "operation.sbx10.preview.expired",
+                start + 300_000,
+            )
+            .unwrap_err()
+            .code,
+            "private_preview_expired"
+        );
         let delete = execute_with_provider(
             &root,
             &provider,

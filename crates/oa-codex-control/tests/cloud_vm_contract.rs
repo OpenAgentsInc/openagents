@@ -288,6 +288,59 @@ fn managed_sandbox_guest_io_route_requires_authentication_and_a_private_driver()
 }
 
 #[test]
+fn managed_sandbox_private_preview_route_requires_control_authentication() {
+    let daemon = start_daemon("managed-sandbox-private-preview-auth");
+    let request = serde_json::json!({
+        "schemaVersion": "openagents.managed_sandbox_private_preview.v1",
+        "requestRef": "operation.sbx10.preview.contract",
+        "capabilityRef": "capability.sbx10.ingress.contract",
+        "audienceRef": "audience.sbx10.contract",
+        "path": "/workspace/.openagents/preview.html",
+        "encoding": "utf8",
+        "capability": {
+            "_tag": "Active",
+            "schema": "openagents.managed_sandbox_private_ingress.v1",
+            "capabilityRef": "capability.sbx10.ingress.contract",
+            "sandboxRef": "sandbox.sbx10.contract",
+            "resourceGeneration": 1,
+            "ownerRef": "owner.sbx10.contract",
+            "audienceRef": "audience.sbx10.contract",
+            "kind": "preview",
+            "issuedAt": "2026-07-22T01:00:00.000Z",
+            "expiresAt": "2026-07-22T01:05:00.000Z",
+            "ttlSeconds": 300,
+            "accessUrlDigest": format!("sha256:{}", "a".repeat(64)),
+            "accessUrlAtRest": "redacted",
+            "audiencePolicy": "owner_scoped_explicit_audience",
+            "publicAccess": false,
+            "permanentRoute": false,
+            "vnc": "unsupported",
+            "auditRefs": ["audit.sbx10.ingress.contract"]
+        }
+    });
+    let body = serde_json::to_vec(&request).expect("encode request");
+    let (unauthorized, raw) = http_request(
+        &daemon.addr,
+        "POST",
+        "/v1/managed-sandbox/runtime/private-preview",
+        Some(&body),
+        None,
+    )
+    .expect("unauthorized request");
+    assert_eq!(unauthorized, 401);
+    assert!(!String::from_utf8_lossy(&raw).contains("sandbox.sbx10.contract"));
+
+    let (status, response) = post_json(
+        &daemon,
+        "/v1/managed-sandbox/runtime/private-preview",
+        &request,
+    );
+    assert_eq!(status, 404);
+    assert!(!response.to_string().contains("10.128."));
+    assert!(!response.to_string().contains("https://"));
+}
+
+#[test]
 fn managed_sandbox_phase2_route_requires_authentication_and_a_private_driver() {
     let daemon = start_daemon("managed-sandbox-phase2-default-off");
     let request = serde_json::json!({

@@ -1,7 +1,7 @@
 ---
 assurance_spec_format_version: "0.1"
 assurance_spec_id: "assurance.openagents.managed.agent.sandboxes"
-assurance_revision: 5
+assurance_revision: 6
 title: "OpenAgents Managed Agent Sandboxes AssuranceSpec"
 artifact_type: "product_assurance"
 lifecycle_state: "proposed"
@@ -10,10 +10,11 @@ author: "OpenAgents"
 
 ## Assurance Objective
 
-This revision binds ProductSpec revision 3 and the SBX-10 local contract,
-durable store, adapter, and fault candidates. It does not admit a Google Cloud
-checkpoint target or private ingress. It also does not make live evidence,
-verification, release, or a public claim green.
+This revision binds ProductSpec revision 4 and the implemented SBX-10
+checkpoint, fork, restore, and private-preview paths. Deterministic contract,
+store, native authorization, revoke, expiry, redaction, and fault candidates
+are present. Live Google Cloud evidence, independent verification, release,
+and public claims stay unadmitted.
 
 ## Subject
 
@@ -42,11 +43,11 @@ The proposal is bound to the exact ProductSpec bytes, revision, path, and stable
       "MSB-AC-17",
       "MSB-AC-18"
     ],
-    "document_digest": "sha256:b39699106e44cf66bce6d09a09b933e3cd817956f718f15e47f7a2c49f6d64d2",
+    "document_digest": "sha256:ff5d0f6256b491ec6acff05b16d8bdfd7b2be5c7d012769771f5fdff8c028451",
     "path": "specs/openagents/managed-agent-sandboxes.product-spec.md",
     "profile": "openagents_executable_v0.1_exact_document",
     "spec_format_version": "0.1",
-    "spec_revision": 3
+    "spec_revision": 4
   }
 }
 ```
@@ -92,9 +93,10 @@ No risk objects are inferred from ProductSpec prose. Reviewers must design the a
 
 All 18 executable ProductSpec criteria are in scope. SBX-00 supplies contract,
 authority, provenance, and bounded-model candidates. The SBX-10 native
-checkpoint and fork contract, durable store, adapter, and local fault corpus
-are now candidates. Google Cloud checkpoint effects and private ingress stay
-unavailable until their separate admission gates are satisfied.
+checkpoint, fork, restore, and private-preview contract, durable store,
+Google Cloud target adapter, use route, and local fault corpus are now
+candidates. Deployment and live acceptance stay unavailable until their
+separate gates are satisfied.
 
 ## Environments
 
@@ -131,14 +133,24 @@ does not change the independent status of a live row.
       "apps/openagents.com/workers/api/src/managed-sandbox-phase2-postgres-store.ts",
       "apps/openagents.com/workers/api/src/managed-sandbox-phase2-service.test.ts",
       "apps/openagents.com/workers/api/src/managed-sandbox-phase2-service.ts",
+      "apps/openagents.com/workers/api/src/managed-sandbox-private-preview-routes.test.ts",
+      "apps/openagents.com/workers/api/src/managed-sandbox-private-preview-routes.ts",
+      "apps/openagents.com/workers/api/src/managed-sandbox-private-preview-target.test.ts",
+      "apps/openagents.com/workers/api/src/managed-sandbox-private-preview-target.ts",
       "apps/openagents.com/workers/api/src/sarah-managed-sandbox.test.ts",
       "docs/sol/evidence/2026-07-19-sbx07-sarah-managed-sandbox-broker.json",
       "docs/sol/evidence/2026-07-20-sbx09-live-acceptance.json",
       "packages/khala-sync-server/migrations/0083_managed_sandbox_phase2_checkpoints.sql",
+      "packages/khala-sync-server/migrations/0084_managed_sandbox_private_ingress.sql",
       "packages/khala-sync-server/src/managed-sandbox-phase2-store.test.ts",
       "packages/khala-sync-server/src/managed-sandbox-phase2-store.ts",
       "packages/managed-sandbox-contract/src/phase2.test.ts",
       "packages/managed-sandbox-contract/src/phase2.ts",
+      "crates/oa-codex-control/src/managed_sandbox_phase2.rs",
+      "crates/oa-codex-control/src/managed_sandbox_private_preview.rs",
+      "crates/oa-codex-control/src/managed_sandbox_runtime.rs",
+      "scripts/cloud/managed-sandbox-phase2-driver.mjs",
+      "scripts/cloud/managed-sandbox-phase2-driver.test.ts",
       "scripts/cloud/managed-sandbox-live-acceptance.ts",
       "apps/openagents-desktop/scripts/managed-sandbox-live-acceptance.ts",
       "apps/openagents.com/workers/api/scripts/managed-sandbox-sarah-live-acceptance.ts"
@@ -147,7 +159,7 @@ does not change the independent status of a live row.
     "diagnostics": [
       "repository_not_supplied"
     ],
-    "inventory_digest": "sha256:13cef510a746daf9c1d6b2766fef971b7f66c7392a70709fd61ccd271f1b02e4",
+    "inventory_digest": "sha256:fdbef42cddbf0b9825eb0f718a7abc3ba24fe0713a999d7e07dbf04452d90f13",
     "repository_label": "not-supplied",
     "state": "absent",
     "tracked_file_count": 0,
@@ -642,15 +654,15 @@ producer observations and an explicit inconclusive independent disposition.
     ],
     "disposition": "required",
     "id": "AO-MSB-AC-15-01",
-    "source_claim_digest": "sha256:41107663ef3a55243e1ae74ea47d4b01841c66bd88fd1d0ff7d10053e5b1b66e",
-    "source_claim_snapshot": "Checkpoint use requires an exact completed record that binds\nthe source sandbox and generation, image, toolchain, repository post-image,\ncontent digest, format, and retention. The service verifies integrity again\nbefore fork or restore and refuses an expired or stale source. Fork creates\na new sandbox and new capabilities. Restore starts admitted services only\nand does not continue a process session. Checkpoint deletion removes metadata\nonly after exact content-deletion proof. Credentials, memory, processes,\nsockets, ports, network identity, and provider hidden state never move.\nProvider operations remain unavailable until the Google Cloud target and\nlive fault evidence pass their gates.",
+    "source_claim_digest": "sha256:1e15d589b2185ecfecfd6c02af1dbe9753f013eb2b1706a01ca4af984adb9581",
+    "source_claim_snapshot": "Checkpoint use requires an exact completed record that binds\nthe source sandbox and generation, image, toolchain, repository post-image,\ncontent digest, format, and retention. The service verifies integrity again\nbefore fork or restore and refuses an expired or stale source. Fork creates\na new sandbox and new capabilities. Restore starts admitted services only\nand does not continue a process session. Checkpoint deletion removes metadata\nonly after exact content-deletion proof. Credentials, memory, processes,\nsockets, ports, network identity, and provider hidden state never move.\nProvider operations stay default-off until the live fault and residue gates\npass.",
     "title": "Assure MSB-AC-15",
     "activation_gate": "GATE-SBX-RUNTIME",
     "domains": ["negative_capability", "checkpoint", "security"],
     "environment_refs": ["ENV-SBX-LOCAL-CONTRACT", "ENV-SBX-STAGED-RUNTIME", "ENV-SBX-GCP-LIVE"],
     "evidence": {
       "proof_rung": "contract_and_durable_store_then_live_target",
-      "required_kinds": ["schema_conformance", "durable_replay_trace", "checkpoint_fault_trace", "future_gcp_target_receipt"]
+      "required_kinds": ["schema_conformance", "durable_replay_trace", "checkpoint_fault_trace", "gcp_target_candidate", "live_gcp_target_receipt"]
     },
     "falsifier": {
       "expected_verdict": "REFUTED",
@@ -660,7 +672,7 @@ producer observations and an explicit inconclusive independent disposition.
     "independence": { "producer_may_verify": false },
     "oracle": {
       "evaluator_ref": "apps/openagents.com/workers/api/src/managed-sandbox-phase2-service.test.ts",
-      "statement": "Verify exact checkpoint identity, integrity, retention, stale-source refusal, fresh fork grants, admitted-service restore, exact deletion proof, and byte-idempotent durable replay. Keep provider operations unavailable until the Google Cloud target and live fault evidence pass."
+      "statement": "Verify exact checkpoint identity, integrity, retention, stale-source refusal, fresh fork grants, admitted-service restore, exact deletion proof, byte-idempotent durable replay, and the default-off Google Cloud target. Keep deployment unavailable until live fault and residue evidence pass."
     },
     "technique": "checkpoint_identity_fault_matrix"
   },
@@ -671,27 +683,27 @@ producer observations and an explicit inconclusive independent disposition.
     ],
     "disposition": "required",
     "id": "AO-MSB-AC-16-01",
-    "source_claim_digest": "sha256:9ca1d703581010526f449b583c5adf1753b41b2318ccf2275a4c30614f62ec15",
-    "source_claim_snapshot": "Private desktop or preview ingress remains unavailable until\nits short-lived owner/audience-scoped capability, revocation, redaction,\naudit, and cleanup tests pass. Public or ungated VNC is not admitted.",
+    "source_claim_digest": "sha256:89ba60db5f70275c83788231d869ac0c3efc4441b13d24a5ef47b606f80c3ad0",
+    "source_claim_snapshot": "The owner can create a private-preview capability for one\nexplicit authenticated audience. The capability binds the sandbox and its\ncurrent ready generation, expires after at most 15 minutes, stores only the\ncanonical URL digest, and has explicit revoke, expiry, audit, and cleanup\nrecords. Each use checks the audience, exact capability bytes, generation,\nactive state, expiry, and canonical URL under the same native lock as revoke.\nA use can read one bounded workspace file through the deny-all-network guest\nI/O path. Secret or topology output fails closed. Public or ungated VNC,\ndirect provider routes, and permanent ingress are not admitted.",
     "title": "Assure MSB-AC-16",
     "activation_gate": "GATE-SBX-RUNTIME",
     "domains": ["negative_capability", "ingress", "security"],
-    "environment_refs": ["ENV-SBX-STAGED-RUNTIME"],
+    "environment_refs": ["ENV-SBX-LOCAL-CONTRACT", "ENV-SBX-STAGED-RUNTIME", "ENV-SBX-GCP-LIVE"],
     "evidence": {
-      "proof_rung": "unsupported_until_admitted",
-      "required_kinds": ["typed_refusal_trace", "future_private_ingress_receipt"]
+      "proof_rung": "deterministic_native_authorization_then_live_target",
+      "required_kinds": ["audience_scope_trace", "revoke_expiry_trace", "redaction_trace", "private_preview_receipt", "live_private_preview_receipt"]
     },
     "falsifier": {
       "expected_verdict": "REFUTED",
       "kind": "public_or_ungated_vnc_available",
-      "ref": "packages/managed-sandbox-contract/src/box-v1.test.ts"
+      "ref": "apps/openagents.com/workers/api/src/managed-sandbox-private-preview-routes.test.ts"
     },
     "independence": { "producer_may_verify": false },
     "oracle": {
-      "evaluator_ref": "packages/managed-sandbox-contract/src/box-v1.test.ts",
-      "statement": "Desktop/preview remains typed 501 until a later gate proves short-lived owner/audience scope, revoke, redaction, audit, and cleanup; public VNC always refutes."
+      "evaluator_ref": "apps/openagents.com/workers/api/src/managed-sandbox-private-preview-routes.test.ts",
+      "statement": "Verify authenticated exact-audience use, current-generation native authorization, bounded read-only guest I/O, canonical URL digest, immediate revoke and expiry refusal, topology redaction, audit, and cleanup. Public or ungated VNC always refutes."
     },
-    "technique": "negative_capability_gate"
+    "technique": "private_preview_capability_fault_matrix"
   },
   {
     "candidate_artifact_refs": [

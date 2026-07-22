@@ -45,6 +45,7 @@ export const makeManagedSandboxPhase2Executor = <Bindings, Client>(deps: {
   close: (client: Client) => Promise<void>;
   store: (client: Client) => ManagedSandboxPhase2Store;
   target: (env: Bindings) => ManagedSandboxPhase2Target;
+  ingressAdmitted?: boolean;
 }) =>
   Effect.fn("ManagedSandboxPhase2Adapter.execute")(
     (
@@ -61,6 +62,9 @@ export const makeManagedSandboxPhase2Executor = <Bindings, Client>(deps: {
             makeManagedSandboxPhase2Service({
               store: deps.store(client),
               target: deps.target(env),
+              ...(deps.ingressAdmitted === undefined
+                ? {}
+                : { ingressAdmitted: deps.ingressAdmitted }),
             }),
           catch: () => unavailable(command.commandRef),
         }).pipe(Effect.flatMap((service) => service.execute(command)));
@@ -98,6 +102,7 @@ const executeWithProductionAdapters = makeManagedSandboxPhase2Executor<
       baseUrl: env.OA_MANAGED_SANDBOX_CONTROL_URL?.trim() ?? "",
       bearerToken: env.OA_MANAGED_SANDBOX_CONTROL_TOKEN?.trim() ?? "",
     }),
+  ingressAdmitted: true,
 });
 
 export const executeManagedSandboxPhase2ForEnv = (

@@ -1,5 +1,6 @@
 import { Schema as S } from "effect";
 
+import { ManagedSandboxGuestIoResponseSchema } from "./guest-io.ts";
 import {
   NonNegativeInt,
   PositiveInt,
@@ -373,11 +374,46 @@ export const ManagedSandboxPrivateIngressCapabilitySchema = S.TaggedUnion({
 export type ManagedSandboxPrivateIngressCapability =
   typeof ManagedSandboxPrivateIngressCapabilitySchema.Type;
 
-/** Phase 2 does not admit private ingress until the later security proof passes. */
+export const MANAGED_SANDBOX_PRIVATE_PREVIEW_SCHEMA_VERSION =
+  "openagents.managed_sandbox_private_preview.v1" as const;
+
+/** A private preview reads one bounded workspace file. It never exposes a provider route. */
+export const ManagedSandboxPrivatePreviewRequestSchema = S.Struct({
+  schemaVersion: S.Literal(MANAGED_SANDBOX_PRIVATE_PREVIEW_SCHEMA_VERSION),
+  capabilityRef: SandboxRef,
+  audienceRef: SandboxRef,
+  path: S.String.check(S.isMinLength(1), S.isMaxLength(1_024)),
+  encoding: S.Literals(["utf8", "base64"]),
+});
+export type ManagedSandboxPrivatePreviewRequest =
+  typeof ManagedSandboxPrivatePreviewRequestSchema.Type;
+
+export const ManagedSandboxPrivatePreviewResponseSchema = S.Struct({
+  schemaVersion: S.Literal(MANAGED_SANDBOX_PRIVATE_PREVIEW_SCHEMA_VERSION),
+  capabilityRef: SandboxRef,
+  audienceRef: SandboxRef,
+  sandboxRef: SandboxRef,
+  resourceGeneration: PositiveInt,
+  preview: ManagedSandboxGuestIoResponseSchema,
+}).pipe(
+  S.check(
+    S.makeFilter(
+      (response) =>
+        response.preview.action === "read_file" &&
+        response.preview.sandboxRef === response.sandboxRef &&
+        response.preview.resourceGeneration === response.resourceGeneration,
+      { message: "private preview response must bind one read to the exact sandbox generation" },
+    ),
+  ),
+);
+export type ManagedSandboxPrivatePreviewResponse =
+  typeof ManagedSandboxPrivatePreviewResponseSchema.Type;
+
+/** Private preview is admitted only through the short-lived, audience-scoped use route. */
 export const ManagedSandboxPrivateIngressAdmissionSchema = S.Struct({
   schema: S.Literal(MANAGED_SANDBOX_PRIVATE_INGRESS_SCHEMA_VERSION),
-  available: S.Literal(false),
-  reason: S.Literal("security_proof_pending"),
+  available: S.Literal(true),
+  proofRef: S.Literal("assurance.sbx10.private-preview.deterministic"),
   publicVnc: S.Literal("unsupported"),
   ungatedPreview: S.Literal("unsupported"),
   permanentRoute: S.Literal("unsupported"),
@@ -388,8 +424,8 @@ export type ManagedSandboxPrivateIngressAdmission =
 export const MANAGED_SANDBOX_PRIVATE_INGRESS_ADMISSION =
   ManagedSandboxPrivateIngressAdmissionSchema.make({
     schema: MANAGED_SANDBOX_PRIVATE_INGRESS_SCHEMA_VERSION,
-    available: false,
-    reason: "security_proof_pending",
+    available: true,
+    proofRef: "assurance.sbx10.private-preview.deterministic",
     publicVnc: "unsupported",
     ungatedPreview: "unsupported",
     permanentRoute: "unsupported",
@@ -449,6 +485,14 @@ export const decodeManagedSandboxRestoreReceipt = S.decodeUnknownSync(
 );
 export const decodeManagedSandboxPrivateIngressCapability = S.decodeUnknownSync(
   ManagedSandboxPrivateIngressCapabilitySchema,
+  { onExcessProperty: "error" },
+);
+export const decodeManagedSandboxPrivatePreviewRequest = S.decodeUnknownSync(
+  ManagedSandboxPrivatePreviewRequestSchema,
+  { onExcessProperty: "error" },
+);
+export const decodeManagedSandboxPrivatePreviewResponse = S.decodeUnknownSync(
+  ManagedSandboxPrivatePreviewResponseSchema,
   { onExcessProperty: "error" },
 );
 export const decodeManagedSandboxPrivateIngressAdmission = S.decodeUnknownSync(

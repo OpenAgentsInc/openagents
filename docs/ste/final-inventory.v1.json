@@ -50666,7 +50666,7 @@
     },
     {
       "path": "specs/openagents/managed-agent-sandboxes.assurance-spec.md",
-      "sha256": "50b6af04eb07a11d4060cd35bec0ad7979d4995547596162b9620177f7fb1a17",
+      "sha256": "3ac740020b71de92f0322d643bbdcb5dc45817ff32ac2d5e9d2469dbe7301031",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -50687,7 +50687,7 @@
     },
     {
       "path": "specs/openagents/managed-agent-sandboxes.product-spec.md",
-      "sha256": "b39699106e44cf66bce6d09a09b933e3cd817956f718f15e47f7a2c49f6d64d2",
+      "sha256": "ff5d0f6256b491ec6acff05b16d8bdfd7b2be5c7d012769771f5fdff8c028451",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

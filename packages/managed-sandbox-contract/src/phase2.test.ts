@@ -7,6 +7,7 @@ import {
   MANAGED_SANDBOX_FORK_RECEIPT_SCHEMA_VERSION,
   MANAGED_SANDBOX_PRIVATE_INGRESS_ADMISSION,
   MANAGED_SANDBOX_PRIVATE_INGRESS_SCHEMA_VERSION,
+  MANAGED_SANDBOX_PRIVATE_PREVIEW_SCHEMA_VERSION,
   MANAGED_SANDBOX_PHASE2_COMMAND_SCHEMA_VERSION,
   MANAGED_SANDBOX_RESTORE_RECEIPT_SCHEMA_VERSION,
   decodeManagedSandboxCheckpointDeleteReceipt,
@@ -14,6 +15,7 @@ import {
   decodeManagedSandboxContentCheckpoint,
   decodeManagedSandboxForkReceipt,
   decodeManagedSandboxPrivateIngressCapability,
+  decodeManagedSandboxPrivatePreviewRequest,
   decodeManagedSandboxPhase2Command,
   decodeManagedSandboxRestoreReceipt,
 } from "./phase2.ts";
@@ -234,11 +236,11 @@ describe("managed sandbox Phase 2 contract", () => {
     expect(receipt.reason).toBe("owner_requested");
   });
 
-  it("keeps private ingress unavailable and rejects raw or long-lived access URLs", () => {
+  it("admits bounded private preview and rejects raw or long-lived access URLs", () => {
     expect(MANAGED_SANDBOX_PRIVATE_INGRESS_ADMISSION).toEqual({
       schema: MANAGED_SANDBOX_PRIVATE_INGRESS_SCHEMA_VERSION,
-      available: false,
-      reason: "security_proof_pending",
+      available: true,
+      proofRef: "assurance.sbx10.private-preview.deterministic",
       publicVnc: "unsupported",
       ungatedPreview: "unsupported",
       permanentRoute: "unsupported",
@@ -312,6 +314,26 @@ describe("managed sandbox Phase 2 contract", () => {
         cleanedAt: "2026-07-22T00:08:59.000Z",
         cleanupReceiptRef: "receipt.ingress.cleanup.early",
       }),
+    ).toThrow();
+  });
+
+  it("accepts only bounded audience-scoped private preview reads", () => {
+    const request = {
+      schemaVersion: MANAGED_SANDBOX_PRIVATE_PREVIEW_SCHEMA_VERSION,
+      capabilityRef: "capability.sbx10.ingress.1",
+      audienceRef: "owner.device.1",
+      path: "/workspace/.openagents/preview.html",
+      encoding: "utf8" as const,
+    };
+    expect(decodeManagedSandboxPrivatePreviewRequest(request)).toEqual(request);
+    expect(() =>
+      decodeManagedSandboxPrivatePreviewRequest({ ...request, rawUrl: "https://vm.invalid" }),
+    ).toThrow();
+    expect(() =>
+      decodeManagedSandboxPrivatePreviewRequest({ ...request, path: "x".repeat(1_025) }),
+    ).toThrow();
+    expect(() =>
+      decodeManagedSandboxPrivatePreviewRequest({ ...request, encoding: "binary" }),
     ).toThrow();
   });
 });

@@ -892,6 +892,11 @@ import {
   makeManagedSandboxPhase2Routes,
 } from './managed-sandbox-phase2-routes'
 import {
+  readManagedSandboxPrivateIngressForAudience,
+  useManagedSandboxPrivatePreview,
+} from './managed-sandbox-private-preview-adapter'
+import { makeManagedSandboxPrivatePreviewRoutes } from './managed-sandbox-private-preview-routes'
+import {
   MANAGED_SANDBOX_MOBILE_SUPERVISION_PATH,
   MANAGED_SANDBOX_WEB_SUPERVISION_PATH,
   makeManagedSandboxSupervisionRoutes,
@@ -10680,6 +10685,29 @@ const managedSandboxPhase2Routes = makeManagedSandboxPhase2Routes<Env>({
   execute: executeManagedSandboxPhase2ForEnv,
 })
 
+const managedSandboxPrivatePreviewRoutes =
+  makeManagedSandboxPrivatePreviewRoutes<Env>({
+    authenticateAudience: async (request, env, ctx) => {
+      const actor = await authenticateRequestActor(request, env, ctx)
+      if (actor === undefined || actor.kind !== 'human') return undefined
+      return {
+        userId: actor.user.userId,
+        ...(actor.tokens === undefined
+          ? {}
+          : {
+              decorateResponseHeaders: (headers: Headers) => {
+                appendSessionCookies(headers, actor.tokens!)
+              },
+            }),
+      }
+    },
+    enabled: env =>
+      isManagedSandboxPhase2Enabled(env.MANAGED_SANDBOX_PHASE2_ENABLED) &&
+      isManagedSandboxPhase2Configured(env),
+    readCapability: readManagedSandboxPrivateIngressForAudience,
+    usePreview: useManagedSandboxPrivatePreview,
+  })
+
 const managedSandboxSupervisionRoutes = makeManagedSandboxSupervisionRoutes<Env>({
   authenticateOwner: async (request, env, ctx) => {
     const actor = await authenticateRequestActor(request, env, ctx)
@@ -14164,7 +14192,8 @@ const routeRequest = makeWorkerRouteRequest({
       ),
       enabled: isFineTuningServiceEnabled(env.CLOUD_FINE_TUNING_ENABLED),
     }),
-  routeBoxV1Request: (request, env) =>
+  routeBoxV1Request: (request, env, ctx) =>
+    managedSandboxPrivatePreviewRoutes.route(request, env, ctx) ??
     managedSandboxProviderBrokerRoutes.route(request, env) ??
     boxV1Routes.routeBoxV1Request(request, env),
   routeSandboxRequest: (request, env) =>

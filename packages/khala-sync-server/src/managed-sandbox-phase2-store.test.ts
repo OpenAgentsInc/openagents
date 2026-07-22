@@ -334,6 +334,18 @@ describe.skipIf(!hasLocalPostgres())("SBX-10 managed sandbox Phase 2 Postgres st
     expect(
       await store.readPrivateIngress({ ownerRef, tenantRef, capabilityRef: active.capabilityRef }),
     ).toEqual(active);
+    expect(
+      await store.readPrivateIngressForAudience({
+        audienceRef: active.audienceRef,
+        capabilityRef: active.capabilityRef,
+      }),
+    ).toEqual(active);
+    expect(
+      await store.readPrivateIngressForAudience({
+        audienceRef: "audience.sbx10.other-device",
+        capabilityRef: active.capabilityRef,
+      }),
+    ).toBeUndefined();
 
     const cleaned: ManagedSandboxPrivateIngressCapability = {
       ...active,
@@ -364,6 +376,12 @@ describe.skipIf(!hasLocalPostgres())("SBX-10 managed sandbox Phase 2 Postgres st
     });
     expect(
       await store.readPrivateIngress({ ownerRef, tenantRef, capabilityRef: active.capabilityRef }),
+    ).toEqual(cleaned);
+    expect(
+      await store.readPrivateIngressForAudience({
+        audienceRef: active.audienceRef,
+        capabilityRef: active.capabilityRef,
+      }),
     ).toEqual(cleaned);
     const rows = (await sql`
       SELECT capability_json, access_url_digest

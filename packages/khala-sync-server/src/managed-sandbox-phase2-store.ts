@@ -280,11 +280,9 @@ const applyIngressMutation = async (
   capability: ManagedSandboxPrivateIngressCapability,
 ): Promise<void> => {
   if (
-    ![
-      "CreatePrivateIngress",
-      "RevokePrivateIngress",
-      "ExpirePrivateIngress",
-    ].includes(operation.command["_tag"]) ||
+    !["CreatePrivateIngress", "RevokePrivateIngress", "ExpirePrivateIngress"].includes(
+      operation.command["_tag"],
+    ) ||
     canonicalJson(operation.result) !== canonicalJson(capability)
   ) {
     throw new ManagedSandboxStoreError(
@@ -531,6 +529,34 @@ export class PostgresManagedSandboxPhase2Store {
     const row = rows[0];
     if (row === undefined) return undefined;
     assertScope(row, ownerRef, tenantRef);
+    let capability: ManagedSandboxPrivateIngressCapability;
+    try {
+      capability = decodeManagedSandboxPrivateIngressCapability(row.capability_json);
+    } catch {
+      throw new ManagedSandboxStoreError(
+        "corrupt_store",
+        "stored private ingress metadata is invalid",
+      );
+    }
+    assertIngressRow(row, capability);
+    return publicSafe(capability);
+  }
+
+  async readPrivateIngressForAudience(input: {
+    audienceRef: string;
+    capabilityRef: string;
+  }): Promise<ManagedSandboxPrivateIngressCapability | undefined> {
+    const audienceRef = decodeRef(input.audienceRef);
+    const capabilityRef = decodeRef(input.capabilityRef);
+    const rows: ReadonlyArray<Phase2IngressRow> = await this.sql`
+      SELECT capability_ref, owner_user_id, tenant_ref, sandbox_ref, resource_generation,
+             audience_ref, access_url_digest, capability_fingerprint, capability_json
+      FROM khala_sync_managed_sandbox_private_ingress
+      WHERE capability_ref = ${capabilityRef}
+        AND audience_ref = ${audienceRef}
+    `;
+    const row = rows[0];
+    if (row === undefined) return undefined;
     let capability: ManagedSandboxPrivateIngressCapability;
     try {
       capability = decodeManagedSandboxPrivateIngressCapability(row.capability_json);

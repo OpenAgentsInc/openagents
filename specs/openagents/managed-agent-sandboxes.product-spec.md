@@ -2,10 +2,10 @@
 spec_format_version: "0.1"
 title: "OpenAgents Managed Agent Sandboxes"
 artifact_type: "prd"
-spec_revision: 3
+spec_revision: 4
 author: "OpenAgents"
 created_at: "2026-07-19T00:00:00Z"
-updated_at: "2026-07-22T03:00:00Z"
+updated_at: "2026-07-22T05:00:00Z"
 linked_github_repo: "OpenAgentsInc/openagents"
 custom_sections:
   - id: "custom-owner-gates"
@@ -25,6 +25,7 @@ tool_metadata:
   openagents_assurance_level: "managed execution, tenant isolation, lifecycle, and cross-surface authority"
   openagents_revision_2_note: "Rev 2 records the SBX-08 controller implementation. Mobile and authenticated web decode one shared bounded supervision schema, preserve exact actor attribution, and persist exact generation-fenced command bytes before send. The implementation remains default-off. SBX-09 still owns live GCP acceptance and rollout, and physical-device evidence remains a separate release gate. No acceptance criterion changed."
   openagents_revision_3_note: "Rev 3 records the SBX-10 native Phase 2 contract, Effect coordinator, durable Cloud SQL metadata store, Postgres adapter, and deterministic local fault evidence. The semantic comparison found no weaker owner, safety, privacy, payment, release, or acceptance control. This revision adds no Google Cloud target execution, private ingress, admission, release, or public-claim authority. MSB-AC-15 now states the selected checkpoint, fork, restore, and deletion semantics. The other criterion IDs and their authority remain stable."
+  openagents_revision_4_note: "Rev 4 records the implemented Google Cloud checkpoint, restore, and fork target paths and the authenticated private-preview use path. Private preview is read-only, short-lived, audience-bound, generation-bound, revocable, and redacted at rest. Public VNC and permanent routes stay unsupported. The semantic comparison found no weaker owner, safety, privacy, payment, release, or acceptance control. This revision grants no deployment, stable release, public availability claim, or promise transition. MSB-AC-15 and MSB-AC-16 now state the implemented Phase 2 semantics. The other criterion IDs and their authority remain stable."
 ---
 
 ## Problem
@@ -76,7 +77,7 @@ in:
   - principal.sarah create, list, inspect, dispatch, interrupt, stop, resume, and delete through one exact owner-scoped capability broker after authority admission
   - bounded mobile and authenticated-web supervision through existing any-host, outbox, attention, portable-session, and IDE-14 projections
   - exact lease, runtime, usage, incremental-cost, artifact, stop, resume, delete, and zero-residue receipts
-  - Phase 2 checkpoint, fork, and private desktop or preview ingress only after their exact semantics and security proofs pass
+  - Phase 2 checkpoint, fork, restore, and read-only private preview through exact default-off Google Cloud and authenticated control paths
   - Effect Schema as the canonical contract source and Effect services/layers/scopes as the application and control-plane authority; Rust remains inside the existing process-opaque Cloud daemon and containment boundary
 out:
   - replacing the OpenAgents Google Cloud substrate or making Ascii a production dependency or authority
@@ -199,11 +200,17 @@ capability_not_implemented`. No empty result or fake success implies parity.
   and does not continue a process session. Checkpoint deletion removes metadata
   only after exact content-deletion proof. Credentials, memory, processes,
   sockets, ports, network identity, and provider hidden state never move.
-  Provider operations remain unavailable until the Google Cloud target and
-  live fault evidence pass their gates.
-- **MSB-AC-16:** Private desktop or preview ingress remains unavailable until
-  its short-lived owner/audience-scoped capability, revocation, redaction,
-  audit, and cleanup tests pass. Public or ungated VNC is not admitted.
+  Provider operations stay default-off until the live fault and residue gates
+  pass.
+- **MSB-AC-16:** The owner can create a private-preview capability for one
+  explicit authenticated audience. The capability binds the sandbox and its
+  current ready generation, expires after at most 15 minutes, stores only the
+  canonical URL digest, and has explicit revoke, expiry, audit, and cleanup
+  records. Each use checks the audience, exact capability bytes, generation,
+  active state, expiry, and canonical URL under the same native lock as revoke.
+  A use can read one bounded workspace file through the deny-all-network guest
+  I/O path. Secret or topology output fails closed. Public or ungated VNC,
+  direct provider routes, and permanent ingress are not admitted.
 - **MSB-AC-17:** The deterministic fault and isolation corpus covers
   cross-owner access, concurrent lifecycle calls, stale generations,
   replay/conflict, partial provision, guest crash, event gaps, capability
