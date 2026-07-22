@@ -2,8 +2,10 @@ import { SQL } from "@openagentsinc/postgres-runtime";
 import {
   MANAGED_SANDBOX_CHECKPOINT_DELETE_RECEIPT_SCHEMA_VERSION,
   MANAGED_SANDBOX_CONTENT_CHECKPOINT_SCHEMA_VERSION,
+  MANAGED_SANDBOX_PRIVATE_INGRESS_SCHEMA_VERSION,
   MANAGED_SANDBOX_PHASE2_COMMAND_SCHEMA_VERSION,
   type ManagedSandboxContentCheckpoint,
+  type ManagedSandboxPrivateIngressCapability,
 } from "@openagentsinc/managed-sandbox-contract";
 import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test";
 
@@ -115,6 +117,27 @@ const deleteOperation = (suffix: string) => {
     },
   } satisfies ManagedSandboxPhase2StoredOperation;
 };
+
+const ingressCapability = (): ManagedSandboxPrivateIngressCapability => ({
+  _tag: "Active",
+  schema: MANAGED_SANDBOX_PRIVATE_INGRESS_SCHEMA_VERSION,
+  capabilityRef: "capability.sbx10.ingress.store",
+  sandboxRef: "sandbox.sbx10.ingress.store",
+  resourceGeneration: 4,
+  ownerRef,
+  audienceRef: "audience.sbx10.owner-device",
+  kind: "preview",
+  issuedAt: observedAt(5),
+  expiresAt: observedAt(10),
+  ttlSeconds: 300,
+  accessUrlDigest: digest("e"),
+  accessUrlAtRest: "redacted",
+  audiencePolicy: "owner_scoped_explicit_audience",
+  publicAccess: false,
+  permanentRoute: false,
+  vnc: "unsupported",
+  auditRefs: ["audit.sbx10.ingress.create"],
+});
 
 describe.skipIf(!hasLocalPostgres())("SBX-10 managed sandbox Phase 2 Postgres store", () => {
   let pg: LocalPostgres;
@@ -283,5 +306,71 @@ describe.skipIf(!hasLocalPostgres())("SBX-10 managed sandbox Phase 2 Postgres st
         checkpointMutation: { _tag: "Put", checkpoint: checkpoint("unsafe") },
       }),
     ).rejects.toBeInstanceOf(ManagedSandboxStoreError);
+  });
+
+  test("stores only the ingress URL digest and atomically settles revoke cleanup", async () => {
+    const active = ingressCapability();
+    const create = {
+      command: {
+        _tag: "CreatePrivateIngress" as const,
+        schema: MANAGED_SANDBOX_PHASE2_COMMAND_SCHEMA_VERSION,
+        commandRef: "command.sbx10.ingress.store.create",
+        idempotencyRef: "idempotency.sbx10.ingress.store.create",
+        ownerRef,
+        tenantRef,
+        requestedAt: observedAt(5),
+        sandboxRef: active.sandboxRef,
+        resourceGeneration: active.resourceGeneration,
+        audienceRef: active.audienceRef,
+        kind: active.kind,
+        ttlSeconds: active.ttlSeconds,
+      },
+      result: active,
+    } satisfies ManagedSandboxPhase2StoredOperation;
+    await store.settle({
+      operation: create,
+      checkpointMutation: { _tag: "PutIngress", capability: active },
+    });
+    expect(
+      await store.readPrivateIngress({ ownerRef, tenantRef, capabilityRef: active.capabilityRef }),
+    ).toEqual(active);
+
+    const cleaned: ManagedSandboxPrivateIngressCapability = {
+      ...active,
+      _tag: "Cleaned",
+      terminalState: "revoked",
+      cleanedAt: observedAt(6),
+      cleanupReceiptRef: "receipt.sbx10.ingress.store.cleanup",
+      auditRefs: [...active.auditRefs, "audit.sbx10.ingress.revoke"],
+    };
+    const revoke = {
+      command: {
+        _tag: "RevokePrivateIngress" as const,
+        schema: MANAGED_SANDBOX_PHASE2_COMMAND_SCHEMA_VERSION,
+        commandRef: "command.sbx10.ingress.store.revoke",
+        idempotencyRef: "idempotency.sbx10.ingress.store.revoke",
+        ownerRef,
+        tenantRef,
+        requestedAt: observedAt(6),
+        capabilityRef: active.capabilityRef,
+        sandboxRef: active.sandboxRef,
+        resourceGeneration: active.resourceGeneration,
+      },
+      result: cleaned,
+    } satisfies ManagedSandboxPhase2StoredOperation;
+    await store.settle({
+      operation: revoke,
+      checkpointMutation: { _tag: "PutIngress", capability: cleaned },
+    });
+    expect(
+      await store.readPrivateIngress({ ownerRef, tenantRef, capabilityRef: active.capabilityRef }),
+    ).toEqual(cleaned);
+    const rows = (await sql`
+      SELECT capability_json, access_url_digest
+      FROM khala_sync_managed_sandbox_private_ingress
+      WHERE capability_ref = ${active.capabilityRef}
+    `) as ReadonlyArray<{ capability_json: unknown; access_url_digest: string }>;
+    expect(rows[0]?.access_url_digest).toBe(active.accessUrlDigest);
+    expect(JSON.stringify(rows[0]?.capability_json)).not.toContain("https://");
   });
 });

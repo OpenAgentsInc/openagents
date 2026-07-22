@@ -3,9 +3,11 @@ import {
   MANAGED_SANDBOX_CHECKPOINT_STOP_SCHEMA_VERSION,
   MANAGED_SANDBOX_CONTENT_CHECKPOINT_SCHEMA_VERSION,
   MANAGED_SANDBOX_FORK_RECEIPT_SCHEMA_VERSION,
+  MANAGED_SANDBOX_PRIVATE_INGRESS_SCHEMA_VERSION,
   MANAGED_SANDBOX_PHASE2_COMMAND_SCHEMA_VERSION,
   MANAGED_SANDBOX_RESTORE_RECEIPT_SCHEMA_VERSION,
   type ManagedSandboxContentCheckpoint,
+  type ManagedSandboxPrivateIngressCapability,
 } from "@openagentsinc/managed-sandbox-contract";
 import { Effect } from "effect";
 import { describe, expect, it } from "vite-plus/test";
@@ -79,6 +81,27 @@ const createCommand = () => ({
   retainedUntil: "2026-07-23T00:00:01.000Z",
 });
 
+const activeIngress = (): ManagedSandboxPrivateIngressCapability => ({
+  _tag: "Active",
+  schema: MANAGED_SANDBOX_PRIVATE_INGRESS_SCHEMA_VERSION,
+  capabilityRef: "capability.ingress.1",
+  sandboxRef: "sandbox.source.1",
+  resourceGeneration: 4,
+  ownerRef: "owner.test",
+  audienceRef: "audience.owner-device.1",
+  kind: "preview",
+  issuedAt: "2026-07-22T00:00:00.000Z",
+  expiresAt: "2026-07-22T00:05:00.000Z",
+  ttlSeconds: 300,
+  accessUrlDigest: digest("e"),
+  accessUrlAtRest: "redacted",
+  audiencePolicy: "owner_scoped_explicit_audience",
+  publicAccess: false,
+  permanentRoute: false,
+  vnc: "unsupported",
+  auditRefs: ["audit.ingress.create.1"],
+});
+
 const checkpointKey = (ownerRef: string, tenantRef: string, checkpointRef: string) =>
   `${ownerRef}:${tenantRef}:${checkpointRef}`;
 
@@ -88,6 +111,7 @@ const makeStore = (seed: ReadonlyArray<ManagedSandboxContentCheckpoint> = []) =>
   const checkpoints = new Map(
     seed.map((value) => [`${value.ownerRef}:${value.tenantRef}:${value.checkpointRef}`, value]),
   );
+  const ingress = new Map<string, ManagedSandboxPrivateIngressCapability>();
   const store: ManagedSandboxPhase2Store = {
     lookupOperation: ({ commandRef, idempotencyRef }) =>
       Effect.succeed(
@@ -95,6 +119,7 @@ const makeStore = (seed: ReadonlyArray<ManagedSandboxContentCheckpoint> = []) =>
       ),
     readCheckpoint: ({ ownerRef, tenantRef, checkpointRef }) =>
       Effect.succeed(checkpoints.get(checkpointKey(ownerRef, tenantRef, checkpointRef))),
+    readPrivateIngress: ({ capabilityRef }) => Effect.succeed(ingress.get(capabilityRef)),
     settle: ({ operation, checkpointMutation }) =>
       Effect.sync(() => {
         operationsByCommand.set(operation.command.commandRef, operation);
@@ -113,10 +138,15 @@ const makeStore = (seed: ReadonlyArray<ManagedSandboxContentCheckpoint> = []) =>
               checkpointMutation.checkpointRef,
             ),
           );
+        } else if (checkpointMutation["_tag"] === "PutIngress") {
+          ingress.set(
+            checkpointMutation.capability.capabilityRef,
+            checkpointMutation.capability,
+          );
         }
       }),
   };
-  return { store, checkpoints, operationsByCommand };
+  return { store, checkpoints, ingress, operationsByCommand };
 };
 
 const makeTarget = (overrides: Partial<ManagedSandboxPhase2Target> = {}) => {
@@ -206,6 +236,9 @@ const makeTarget = (overrides: Partial<ManagedSandboxPhase2Target> = {}) => {
         deletedAt: "2026-07-22T00:08:00.000Z",
         evidenceRefs: ["receipt.checkpoint.object-delete.1"],
       }),
+    createPrivateIngress: () => Effect.die("unused private ingress create"),
+    revokePrivateIngress: () => Effect.die("unused private ingress revoke"),
+    expirePrivateIngress: () => Effect.die("unused private ingress expiry"),
     ...overrides,
   };
   return {
@@ -528,5 +561,114 @@ describe("managed sandbox Phase 2 service", () => {
 
       expect(failure["_tag"]).toBe("PrivateIngressUnavailable");
       expect(failure).toMatchObject({ reasonRef: "security_proof_pending", retryable: false });
+    }).pipe(Effect.runPromise));
+
+  it("settles a digest-only ingress capability and revokes it with cleanup proof", () =>
+    Effect.gen(function* () {
+      const state = makeStore();
+      const active = activeIngress();
+      const cleaned: ManagedSandboxPrivateIngressCapability = {
+        ...active,
+        _tag: "Cleaned",
+        terminalState: "revoked",
+        cleanedAt: "2026-07-22T00:01:00.000Z",
+        cleanupReceiptRef: "receipt.ingress.cleanup.1",
+        auditRefs: [...active.auditRefs, "audit.ingress.revoke.1"],
+      };
+      const target = makeTarget({
+        createPrivateIngress: () => Effect.succeed(active),
+        revokePrivateIngress: () => Effect.succeed(cleaned),
+      });
+      const service = makeManagedSandboxPhase2Service({
+        store: state.store,
+        target: target.target,
+        ingressAdmitted: true,
+        now: () => new Date("2026-07-22T00:01:00.000Z"),
+      });
+      const created = yield* service.execute({
+        ...baseCommand,
+        _tag: "CreatePrivateIngress",
+        commandRef: "command.ingress.create.1",
+        idempotencyRef: "idempotency.ingress.create.1",
+        sandboxRef: active.sandboxRef,
+        resourceGeneration: active.resourceGeneration,
+        audienceRef: active.audienceRef,
+        kind: active.kind,
+        ttlSeconds: active.ttlSeconds,
+      });
+      const revoked = yield* service.execute({
+        ...baseCommand,
+        _tag: "RevokePrivateIngress",
+        commandRef: "command.ingress.revoke.1",
+        idempotencyRef: "idempotency.ingress.revoke.1",
+        capabilityRef: active.capabilityRef,
+        sandboxRef: active.sandboxRef,
+        resourceGeneration: active.resourceGeneration,
+      });
+
+      expect(created).toEqual(active);
+      expect(revoked).toEqual(cleaned);
+      expect(state.ingress.get(active.capabilityRef)).toEqual(cleaned);
+      expect(JSON.stringify([...state.ingress.values()])).not.toContain("https://");
+    }).pipe(Effect.runPromise));
+
+  it("refuses early expiry and settles expiry only after the exact deadline", () =>
+    Effect.gen(function* () {
+      const state = makeStore();
+      const active = activeIngress();
+      const cleaned: ManagedSandboxPrivateIngressCapability = {
+        ...active,
+        _tag: "Cleaned",
+        terminalState: "expired",
+        cleanedAt: "2026-07-22T00:05:01.000Z",
+        cleanupReceiptRef: "receipt.ingress.expiry.1",
+        auditRefs: [...active.auditRefs, "audit.ingress.expire.1"],
+      };
+      const target = makeTarget({
+        createPrivateIngress: () => Effect.succeed(active),
+        expirePrivateIngress: () => Effect.succeed(cleaned),
+      });
+      yield* makeManagedSandboxPhase2Service({
+        store: state.store,
+        target: target.target,
+        ingressAdmitted: true,
+        now: () => new Date("2026-07-22T00:01:00.000Z"),
+      }).execute({
+        ...baseCommand,
+        _tag: "CreatePrivateIngress",
+        commandRef: "command.ingress.create.expiry",
+        idempotencyRef: "idempotency.ingress.create.expiry",
+        sandboxRef: active.sandboxRef,
+        resourceGeneration: active.resourceGeneration,
+        audienceRef: active.audienceRef,
+        kind: active.kind,
+        ttlSeconds: active.ttlSeconds,
+      });
+      const expireCommand = {
+        ...baseCommand,
+        _tag: "ExpirePrivateIngress" as const,
+        commandRef: "command.ingress.expire.1",
+        idempotencyRef: "idempotency.ingress.expire.1",
+        capabilityRef: active.capabilityRef,
+        sandboxRef: active.sandboxRef,
+        resourceGeneration: active.resourceGeneration,
+      };
+      const early = yield* Effect.flip(
+        makeManagedSandboxPhase2Service({
+          store: state.store,
+          target: target.target,
+          ingressAdmitted: true,
+          now: () => new Date("2026-07-22T00:04:59.000Z"),
+        }).execute(expireCommand),
+      );
+      const expired = yield* makeManagedSandboxPhase2Service({
+        store: state.store,
+        target: target.target,
+        ingressAdmitted: true,
+        now: () => new Date("2026-07-22T00:05:01.000Z"),
+      }).execute(expireCommand);
+
+      expect(early).toMatchObject({ _tag: "InvalidRequest", retryable: false });
+      expect(expired).toEqual(cleaned);
     }).pipe(Effect.runPromise));
 });

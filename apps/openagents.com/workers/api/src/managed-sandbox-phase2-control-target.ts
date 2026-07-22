@@ -6,6 +6,7 @@ import {
   decodeManagedSandboxContentCheckpoint,
   decodeManagedSandboxForkReceipt,
   decodeManagedSandboxRestoreReceipt,
+  decodeManagedSandboxPrivateIngressCapability,
 } from "@openagentsinc/managed-sandbox-contract";
 import { Effect, Schema as S } from "effect";
 
@@ -28,6 +29,9 @@ const ControlActionSchema = S.Literals([
   "fork_from_checkpoint",
   "restore_checkpoint",
   "delete_checkpoint",
+  "create_private_ingress",
+  "revoke_private_ingress",
+  "expire_private_ingress",
 ]);
 type ControlAction = typeof ControlActionSchema.Type;
 
@@ -318,6 +322,47 @@ export const makeManagedSandboxPhase2ControlTarget = (
       }),
   );
 
+  const createPrivateIngress = Effect.fn(
+    "ManagedSandboxPhase2ControlTarget.createPrivateIngress",
+  )((command: Parameters<ManagedSandboxPhase2Target["createPrivateIngress"]>[0]) =>
+    request({
+      action: "create_private_ingress",
+      context: { requestRef: command.commandRef, idempotencyRef: command.idempotencyRef },
+      payload: { command },
+      decode: decodeManagedSandboxPrivateIngressCapability,
+    }),
+  );
+
+  const revokePrivateIngress = Effect.fn(
+    "ManagedSandboxPhase2ControlTarget.revokePrivateIngress",
+  )(
+    (
+      command: Parameters<ManagedSandboxPhase2Target["revokePrivateIngress"]>[0],
+      capability: Parameters<ManagedSandboxPhase2Target["revokePrivateIngress"]>[1],
+    ) =>
+      request({
+        action: "revoke_private_ingress",
+        context: { requestRef: command.commandRef, idempotencyRef: command.idempotencyRef },
+        payload: { command, capability },
+        decode: decodeManagedSandboxPrivateIngressCapability,
+      }),
+  );
+
+  const expirePrivateIngress = Effect.fn(
+    "ManagedSandboxPhase2ControlTarget.expirePrivateIngress",
+  )(
+    (
+      command: Parameters<ManagedSandboxPhase2Target["expirePrivateIngress"]>[0],
+      capability: Parameters<ManagedSandboxPhase2Target["expirePrivateIngress"]>[1],
+    ) =>
+      request({
+        action: "expire_private_ingress",
+        context: { requestRef: command.commandRef, idempotencyRef: command.idempotencyRef },
+        payload: { command, capability },
+        decode: decodeManagedSandboxPrivateIngressCapability,
+      }),
+  );
+
   return {
     createCheckpoint,
     archiveWithCheckpoint,
@@ -326,5 +371,8 @@ export const makeManagedSandboxPhase2ControlTarget = (
     forkFromCheckpoint,
     restoreCheckpoint,
     deleteCheckpoint,
+    createPrivateIngress,
+    revokePrivateIngress,
+    expirePrivateIngress,
   };
 };

@@ -85,6 +85,9 @@ const target: ManagedSandboxPhase2Target = {
   forkFromCheckpoint: unused,
   restoreCheckpoint: unused,
   deleteCheckpoint: unused,
+  createPrivateIngress: unused,
+  revokePrivateIngress: unused,
+  expirePrivateIngress: unused,
 };
 
 const makeStore = () => {
@@ -92,6 +95,7 @@ const makeStore = () => {
   const store: ManagedSandboxPhase2Store = {
     lookupOperation: () => Effect.sync((): ManagedSandboxPhase2Operation | undefined => undefined),
     readCheckpoint: () => Effect.sync((): ManagedSandboxContentCheckpoint | undefined => undefined),
+    readPrivateIngress: () => Effect.succeed(undefined),
     settle: () =>
       Effect.sync(() => {
         settled += 1;

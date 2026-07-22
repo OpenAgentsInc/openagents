@@ -7,6 +7,7 @@ import {
   type ManagedSandboxContentCheckpoint,
   type ManagedSandboxForkReceipt,
   type ManagedSandboxPhase2Command,
+  type ManagedSandboxPrivateIngressCapability,
   type ManagedSandboxRestoreReceipt,
   SandboxRef,
   decodeManagedSandboxCheckpointDeleteReceipt,
@@ -15,6 +16,7 @@ import {
   decodeManagedSandboxForkReceipt,
   decodeManagedSandboxPhase2Command,
   decodeManagedSandboxRestoreReceipt,
+  decodeManagedSandboxPrivateIngressCapability,
 } from "@openagentsinc/managed-sandbox-contract";
 import { Schema as S } from "effect";
 
@@ -26,7 +28,8 @@ export type ManagedSandboxPhase2StoredResult =
   | ManagedSandboxCheckpointStopOutcome
   | ManagedSandboxCheckpointDeleteReceipt
   | ManagedSandboxForkReceipt
-  | ManagedSandboxRestoreReceipt;
+  | ManagedSandboxRestoreReceipt
+  | ManagedSandboxPrivateIngressCapability;
 
 export type ManagedSandboxPhase2StoredOperation = Readonly<{
   command: ManagedSandboxPhase2Command;
@@ -36,6 +39,7 @@ export type ManagedSandboxPhase2StoredOperation = Readonly<{
 export type ManagedSandboxPhase2StoredCheckpointMutation =
   | Readonly<{ _tag: "Put"; checkpoint: ManagedSandboxContentCheckpoint }>
   | Readonly<{ _tag: "Delete"; checkpointRef: string }>
+  | Readonly<{ _tag: "PutIngress"; capability: ManagedSandboxPrivateIngressCapability }>
   | Readonly<{ _tag: "None" }>;
 
 type Phase2OperationRow = Readonly<{
@@ -60,6 +64,18 @@ type Phase2CheckpointRow = Readonly<{
   checkpoint_fingerprint: string;
   checkpoint_json: unknown;
   created_by_command_ref: string;
+}>;
+
+type Phase2IngressRow = Readonly<{
+  capability_ref: string;
+  owner_user_id: string;
+  tenant_ref: string;
+  sandbox_ref: string;
+  resource_generation: string | number;
+  audience_ref: string;
+  access_url_digest: string;
+  capability_fingerprint: string;
+  capability_json: unknown;
 }>;
 
 const decodeRef = S.decodeUnknownSync(SandboxRef);
@@ -97,10 +113,9 @@ const decodeResult = (
       case "DeleteCheckpoint":
         return decodeManagedSandboxCheckpointDeleteReceipt(value);
       case "CreatePrivateIngress":
-        throw new ManagedSandboxStoreError(
-          "invalid",
-          "private ingress cannot settle before security admission",
-        );
+      case "RevokePrivateIngress":
+      case "ExpirePrivateIngress":
+        return decodeManagedSandboxPrivateIngressCapability(value);
     }
   } catch (error) {
     if (error instanceof ManagedSandboxStoreError) throw error;
@@ -207,6 +222,8 @@ const assertCheckpointRow = (
 
 const observedAt = (result: ManagedSandboxPhase2StoredResult): string => {
   if ("deletedAt" in result) return result.deletedAt;
+  if ("cleanedAt" in result) return result.cleanedAt;
+  if ("issuedAt" in result) return result.issuedAt;
   if ("observedAt" in result) return result.observedAt;
   return result.verifiedAt;
 };
@@ -237,18 +254,132 @@ const checkpointFromMutation = (
   return checkpoint;
 };
 
+const assertIngressRow = (
+  row: Phase2IngressRow,
+  capability: ManagedSandboxPrivateIngressCapability,
+): void => {
+  if (
+    row.capability_ref !== capability.capabilityRef ||
+    row.owner_user_id !== capability.ownerRef ||
+    row.sandbox_ref !== capability.sandboxRef ||
+    Number(row.resource_generation) !== capability.resourceGeneration ||
+    row.audience_ref !== capability.audienceRef ||
+    row.access_url_digest !== capability.accessUrlDigest ||
+    row.capability_fingerprint !== fingerprint(capability)
+  ) {
+    throw new ManagedSandboxStoreError(
+      "corrupt_store",
+      "stored private ingress metadata does not match its indexed identity",
+    );
+  }
+};
+
+const applyIngressMutation = async (
+  tx: SyncTransactionSql,
+  operation: ManagedSandboxPhase2StoredOperation,
+  capability: ManagedSandboxPrivateIngressCapability,
+): Promise<void> => {
+  if (
+    ![
+      "CreatePrivateIngress",
+      "RevokePrivateIngress",
+      "ExpirePrivateIngress",
+    ].includes(operation.command["_tag"]) ||
+    canonicalJson(operation.result) !== canonicalJson(capability)
+  ) {
+    throw new ManagedSandboxStoreError(
+      "command_conflict",
+      "private ingress mutation does not match its operation result",
+    );
+  }
+  const rows: ReadonlyArray<Phase2IngressRow> = await tx`
+    SELECT capability_ref, owner_user_id, tenant_ref, sandbox_ref, resource_generation,
+           audience_ref, access_url_digest, capability_fingerprint, capability_json
+    FROM khala_sync_managed_sandbox_private_ingress
+    WHERE capability_ref = ${capability.capabilityRef}
+    FOR UPDATE
+  `;
+  const existing = rows[0];
+  if (operation.command["_tag"] === "CreatePrivateIngress") {
+    if (capability["_tag"] !== "Active" || existing !== undefined) {
+      throw new ManagedSandboxStoreError(
+        "command_conflict",
+        "private ingress capability identity is already in use",
+      );
+    }
+    await tx`
+      INSERT INTO khala_sync_managed_sandbox_private_ingress
+        (capability_ref, owner_user_id, tenant_ref, sandbox_ref, resource_generation,
+         audience_ref, access_url_digest, capability_state, capability_fingerprint,
+         capability_json, created_by_command_ref, updated_by_command_ref, expires_at,
+         created_at, updated_at)
+      VALUES
+        (${capability.capabilityRef}, ${operation.command.ownerRef},
+         ${operation.command.tenantRef}, ${capability.sandboxRef},
+         ${capability.resourceGeneration}, ${capability.audienceRef},
+         ${capability.accessUrlDigest}, ${capability["_tag"]}, ${fingerprint(capability)},
+         ${capability}::jsonb, ${operation.command.commandRef},
+         ${operation.command.commandRef}, ${capability.expiresAt}, ${capability.issuedAt},
+         ${capability.issuedAt})
+    `;
+    return;
+  }
+  if (existing === undefined) {
+    throw new ManagedSandboxStoreError("not_found", "private ingress capability does not exist");
+  }
+  assertScope(existing, operation.command.ownerRef, operation.command.tenantRef);
+  let current: ManagedSandboxPrivateIngressCapability;
+  try {
+    current = decodeManagedSandboxPrivateIngressCapability(existing.capability_json);
+  } catch {
+    throw new ManagedSandboxStoreError(
+      "corrupt_store",
+      "stored private ingress metadata is invalid",
+    );
+  }
+  assertIngressRow(existing, current);
+  if (
+    current["_tag"] !== "Active" ||
+    capability["_tag"] !== "Cleaned" ||
+    capability.capabilityRef !== current.capabilityRef ||
+    capability.accessUrlDigest !== current.accessUrlDigest
+  ) {
+    throw new ManagedSandboxStoreError(
+      "command_conflict",
+      "private ingress terminal mutation does not bind the active capability",
+    );
+  }
+  await tx`
+    UPDATE khala_sync_managed_sandbox_private_ingress
+    SET capability_state = ${capability["_tag"]},
+        capability_fingerprint = ${fingerprint(capability)},
+        capability_json = ${capability}::jsonb,
+        updated_by_command_ref = ${operation.command.commandRef},
+        updated_at = ${capability.cleanedAt}
+    WHERE capability_ref = ${capability.capabilityRef}
+      AND owner_user_id = ${operation.command.ownerRef}
+      AND tenant_ref = ${operation.command.tenantRef}
+  `;
+};
+
 const applyCheckpointMutation = async (
   tx: SyncTransactionSql,
   operation: ManagedSandboxPhase2StoredOperation,
   mutation: ManagedSandboxPhase2StoredCheckpointMutation,
 ): Promise<void> => {
+  if (mutation["_tag"] === "PutIngress") {
+    return applyIngressMutation(tx, operation, mutation.capability);
+  }
   if (mutation["_tag"] === "None") {
     if (
       operation.command["_tag"] === "CreateCheckpoint" ||
       (operation.command["_tag"] === "ArchiveWithCheckpoint" &&
         "archiveClaim" in operation.result &&
         operation.result["_tag"] === "Archived") ||
-      operation.command["_tag"] === "DeleteCheckpoint"
+      operation.command["_tag"] === "DeleteCheckpoint" ||
+      operation.command["_tag"] === "CreatePrivateIngress" ||
+      operation.command["_tag"] === "RevokePrivateIngress" ||
+      operation.command["_tag"] === "ExpirePrivateIngress"
     ) {
       throw new ManagedSandboxStoreError(
         "command_conflict",
@@ -381,6 +512,36 @@ export class PostgresManagedSandboxPhase2Store {
     }
     assertCheckpointRow(row, checkpoint);
     return publicSafe(checkpoint);
+  }
+
+  async readPrivateIngress(input: {
+    ownerRef: string;
+    tenantRef: string;
+    capabilityRef: string;
+  }): Promise<ManagedSandboxPrivateIngressCapability | undefined> {
+    const ownerRef = decodeRef(input.ownerRef);
+    const tenantRef = decodeRef(input.tenantRef);
+    const capabilityRef = decodeRef(input.capabilityRef);
+    const rows: ReadonlyArray<Phase2IngressRow> = await this.sql`
+      SELECT capability_ref, owner_user_id, tenant_ref, sandbox_ref, resource_generation,
+             audience_ref, access_url_digest, capability_fingerprint, capability_json
+      FROM khala_sync_managed_sandbox_private_ingress
+      WHERE capability_ref = ${capabilityRef}
+    `;
+    const row = rows[0];
+    if (row === undefined) return undefined;
+    assertScope(row, ownerRef, tenantRef);
+    let capability: ManagedSandboxPrivateIngressCapability;
+    try {
+      capability = decodeManagedSandboxPrivateIngressCapability(row.capability_json);
+    } catch {
+      throw new ManagedSandboxStoreError(
+        "corrupt_store",
+        "stored private ingress metadata is invalid",
+      );
+    }
+    assertIngressRow(row, capability);
+    return publicSafe(capability);
   }
 
   async settle(input: {

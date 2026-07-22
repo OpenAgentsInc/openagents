@@ -6,6 +6,7 @@ import {
   type ManagedSandboxForkReceipt,
   type ManagedSandboxPhase2Command,
   type ManagedSandboxPhase2Error,
+  type ManagedSandboxPrivateIngressCapability,
   type ManagedSandboxRestoreReceipt,
   decodeManagedSandboxCheckpointDeleteReceipt,
   decodeManagedSandboxCheckpointStopOutcome,
@@ -13,6 +14,7 @@ import {
   decodeManagedSandboxForkReceipt,
   decodeManagedSandboxPhase2Command,
   decodeManagedSandboxRestoreReceipt,
+  decodeManagedSandboxPrivateIngressCapability,
 } from "@openagentsinc/managed-sandbox-contract";
 import { Effect } from "effect";
 
@@ -21,7 +23,8 @@ export type ManagedSandboxPhase2ExecutionResult =
   | ManagedSandboxCheckpointStopOutcome
   | ManagedSandboxCheckpointDeleteReceipt
   | ManagedSandboxForkReceipt
-  | ManagedSandboxRestoreReceipt;
+  | ManagedSandboxRestoreReceipt
+  | ManagedSandboxPrivateIngressCapability;
 
 export type ManagedSandboxPhase2Operation = Readonly<{
   command: ManagedSandboxPhase2Command;
@@ -31,6 +34,7 @@ export type ManagedSandboxPhase2Operation = Readonly<{
 export type ManagedSandboxPhase2CheckpointMutation =
   | Readonly<{ _tag: "Put"; checkpoint: ManagedSandboxContentCheckpoint }>
   | Readonly<{ _tag: "Delete"; checkpointRef: string }>
+  | Readonly<{ _tag: "PutIngress"; capability: ManagedSandboxPrivateIngressCapability }>
   | Readonly<{ _tag: "None" }>;
 
 /** Durable Phase 2 state. `settle` commits the replay row and metadata mutation atomically. */
@@ -46,6 +50,11 @@ export type ManagedSandboxPhase2Store = Readonly<{
     tenantRef: string;
     checkpointRef: string;
   }) => Effect.Effect<ManagedSandboxContentCheckpoint | undefined, ManagedSandboxPhase2Error>;
+  readPrivateIngress: (input: {
+    ownerRef: string;
+    tenantRef: string;
+    capabilityRef: string;
+  }) => Effect.Effect<ManagedSandboxPrivateIngressCapability | undefined, ManagedSandboxPhase2Error>;
   settle: (input: {
     operation: ManagedSandboxPhase2Operation;
     checkpointMutation: ManagedSandboxPhase2CheckpointMutation;
@@ -79,6 +88,17 @@ export type ManagedSandboxPhase2Target = Readonly<{
   deleteCheckpoint: (
     command: Extract<ManagedSandboxPhase2Command, { _tag: "DeleteCheckpoint" }>,
     checkpoint: ManagedSandboxContentCheckpoint,
+  ) => Effect.Effect<unknown, ManagedSandboxPhase2Error>;
+  createPrivateIngress: (
+    command: Extract<ManagedSandboxPhase2Command, { _tag: "CreatePrivateIngress" }>,
+  ) => Effect.Effect<unknown, ManagedSandboxPhase2Error>;
+  revokePrivateIngress: (
+    command: Extract<ManagedSandboxPhase2Command, { _tag: "RevokePrivateIngress" }>,
+    capability: ManagedSandboxPrivateIngressCapability,
+  ) => Effect.Effect<unknown, ManagedSandboxPhase2Error>;
+  expirePrivateIngress: (
+    command: Extract<ManagedSandboxPhase2Command, { _tag: "ExpirePrivateIngress" }>,
+    capability: ManagedSandboxPrivateIngressCapability,
   ) => Effect.Effect<unknown, ManagedSandboxPhase2Error>;
 }>;
 
@@ -128,6 +148,22 @@ const unavailableIngress = (): ManagedSandboxPhase2Error => ({
   _tag: "PrivateIngressUnavailable",
   reasonRef: "security_proof_pending",
   message: "private ingress is unavailable until its security proof passes",
+  retryable: false,
+  evidenceRefs: noEvidence,
+});
+
+const revokedIngress = (capabilityRef: string): ManagedSandboxPhase2Error => ({
+  _tag: "PrivateIngressRevoked",
+  capabilityRef,
+  message: "the private ingress capability was revoked",
+  retryable: false,
+  evidenceRefs: noEvidence,
+});
+
+const expiredIngress = (capabilityRef: string): ManagedSandboxPhase2Error => ({
+  _tag: "PrivateIngressExpired",
+  capabilityRef,
+  message: "the private ingress capability expired",
   retryable: false,
   evidenceRefs: noEvidence,
 });
@@ -231,10 +267,52 @@ const loadCurrentCheckpoint = (
     return checkpoint;
   });
 
+const loadPrivateIngress = (
+  store: ManagedSandboxPhase2Store,
+  command: Extract<
+    ManagedSandboxPhase2Command,
+    { _tag: "RevokePrivateIngress" | "ExpirePrivateIngress" }
+  >,
+): Effect.Effect<ManagedSandboxPrivateIngressCapability, ManagedSandboxPhase2Error> =>
+  Effect.gen(function* () {
+    const capability = yield* store.readPrivateIngress({
+      ownerRef: command.ownerRef,
+      tenantRef: command.tenantRef,
+      capabilityRef: command.capabilityRef,
+    });
+    if (capability === undefined) return yield* Effect.fail(unavailableIngress());
+    if (
+      capability.ownerRef !== command.ownerRef ||
+      capability.capabilityRef !== command.capabilityRef ||
+      capability.sandboxRef !== command.sandboxRef ||
+      capability.resourceGeneration !== command.resourceGeneration
+    ) {
+      return yield* Effect.fail(
+        invalidRequest(command.commandRef, "private ingress scope does not bind the command"),
+      );
+    }
+    if (capability["_tag"] === "Cleaned") {
+      return yield* Effect.fail(
+        capability.terminalState === "revoked"
+          ? revokedIngress(capability.capabilityRef)
+          : expiredIngress(capability.capabilityRef),
+      );
+    }
+    if (capability["_tag"] !== "Active") {
+      return yield* Effect.fail(
+        capability["_tag"] === "Revoked"
+          ? revokedIngress(capability.capabilityRef)
+          : expiredIngress(capability.capabilityRef),
+      );
+    }
+    return capability;
+  });
+
 export const makeManagedSandboxPhase2Service = (input: {
   store: ManagedSandboxPhase2Store;
   target: ManagedSandboxPhase2Target;
   now?: () => Date;
+  ingressAdmitted?: boolean;
 }) => {
   const now = input.now ?? (() => new Date());
 
@@ -457,8 +535,121 @@ export const makeManagedSandboxPhase2Service = (input: {
           checkpointRef: checkpoint.checkpointRef,
         });
       }
-      case "CreatePrivateIngress":
-        return yield* Effect.fail(unavailableIngress());
+      case "CreatePrivateIngress": {
+        if (input.ingressAdmitted !== true) return yield* Effect.fail(unavailableIngress());
+        const observedGeneration = yield* input.target.observeResourceGeneration({
+          ownerRef: command.ownerRef,
+          tenantRef: command.tenantRef,
+          sandboxRef: command.sandboxRef,
+        });
+        if (observedGeneration !== command.resourceGeneration) {
+          return yield* Effect.fail({
+            _tag: "StaleSource" as const,
+            sourceSandboxRef: command.sandboxRef,
+            expectedGeneration: command.resourceGeneration,
+            receivedGeneration: observedGeneration,
+            message: "the private ingress sandbox generation changed",
+            retryable: false,
+            evidenceRefs: noEvidence,
+          });
+        }
+        const raw = yield* input.target.createPrivateIngress(command);
+        const capability = yield* decodeTarget(
+          decodeManagedSandboxPrivateIngressCapability,
+          raw,
+          command.commandRef,
+          "private ingress target response failed validation",
+        );
+        if (
+          capability["_tag"] !== "Active" ||
+          capability.ownerRef !== command.ownerRef ||
+          capability.sandboxRef !== command.sandboxRef ||
+          capability.resourceGeneration !== command.resourceGeneration ||
+          capability.audienceRef !== command.audienceRef ||
+          capability.kind !== command.kind ||
+          capability.ttlSeconds !== command.ttlSeconds ||
+          Date.parse(capability.issuedAt) < Date.parse(command.requestedAt) ||
+          Date.parse(capability.issuedAt) > now().getTime() ||
+          Date.parse(capability.expiresAt) <= now().getTime() ||
+          capability.auditRefs.length === 0
+        ) {
+          return yield* Effect.fail(
+            invalidRequest(command.commandRef, "private ingress capability does not bind command"),
+          );
+        }
+        return yield* settle(input.store, command, capability, {
+          _tag: "PutIngress",
+          capability,
+        });
+      }
+      case "RevokePrivateIngress": {
+        const current = yield* loadPrivateIngress(input.store, command);
+        if (now().getTime() >= Date.parse(current.expiresAt)) {
+          return yield* Effect.fail(expiredIngress(current.capabilityRef));
+        }
+        const raw = yield* input.target.revokePrivateIngress(command, current);
+        const capability = yield* decodeTarget(
+          decodeManagedSandboxPrivateIngressCapability,
+          raw,
+          command.commandRef,
+          "private ingress revoke response failed validation",
+        );
+        if (
+          capability["_tag"] !== "Cleaned" ||
+          capability.terminalState !== "revoked" ||
+          capability.capabilityRef !== current.capabilityRef ||
+          capability.sandboxRef !== current.sandboxRef ||
+          capability.resourceGeneration !== current.resourceGeneration ||
+          capability.ownerRef !== current.ownerRef ||
+          capability.audienceRef !== current.audienceRef ||
+          capability.accessUrlDigest !== current.accessUrlDigest ||
+          capability.auditRefs.length <= current.auditRefs.length ||
+          current.auditRefs.some((auditRef) => !capability.auditRefs.includes(auditRef))
+        ) {
+          return yield* Effect.fail(
+            invalidRequest(command.commandRef, "private ingress revoke did not prove cleanup"),
+          );
+        }
+        return yield* settle(input.store, command, capability, {
+          _tag: "PutIngress",
+          capability,
+        });
+      }
+      case "ExpirePrivateIngress": {
+        const current = yield* loadPrivateIngress(input.store, command);
+        if (now().getTime() < Date.parse(current.expiresAt)) {
+          return yield* Effect.fail(
+            invalidRequest(command.commandRef, "private ingress capability has not expired"),
+          );
+        }
+        const raw = yield* input.target.expirePrivateIngress(command, current);
+        const capability = yield* decodeTarget(
+          decodeManagedSandboxPrivateIngressCapability,
+          raw,
+          command.commandRef,
+          "private ingress expiry response failed validation",
+        );
+        if (
+          capability["_tag"] !== "Cleaned" ||
+          capability.terminalState !== "expired" ||
+          capability.capabilityRef !== current.capabilityRef ||
+          capability.sandboxRef !== current.sandboxRef ||
+          capability.resourceGeneration !== current.resourceGeneration ||
+          capability.ownerRef !== current.ownerRef ||
+          capability.audienceRef !== current.audienceRef ||
+          capability.accessUrlDigest !== current.accessUrlDigest ||
+          capability.auditRefs.length <= current.auditRefs.length ||
+          current.auditRefs.some((auditRef) => !capability.auditRefs.includes(auditRef))
+        ) {
+          return yield* Effect.fail(
+            invalidRequest(command.commandRef, "private ingress expiry did not prove cleanup"),
+          );
+        }
+        return yield* settle(input.store, command, capability, {
+          _tag: "PutIngress",
+          capability,
+        });
+      }
     }
   });
 

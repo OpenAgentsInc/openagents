@@ -13,7 +13,7 @@ import type {
 
 type StoreClient = Pick<
   PostgresManagedSandboxPhase2Store,
-  "lookupOperation" | "readCheckpoint" | "settle"
+  "lookupOperation" | "readCheckpoint" | "readPrivateIngress" | "settle"
 >;
 
 type ErrorContext = Readonly<{
@@ -132,6 +132,8 @@ export const makeManagedSandboxPhase2PostgresStore = (
           const checkpointRef =
             input.checkpointMutation["_tag"] === "None"
               ? undefined
+              : input.checkpointMutation["_tag"] === "PutIngress"
+                ? undefined
               : input.checkpointMutation["_tag"] === "Put"
                 ? input.checkpointMutation.checkpoint.checkpointRef
                 : input.checkpointMutation.checkpointRef;
@@ -144,5 +146,13 @@ export const makeManagedSandboxPhase2PostgresStore = (
       }).pipe(Effect.asVoid),
   );
 
-  return { lookupOperation, readCheckpoint, settle };
+  const readPrivateIngress = Effect.fn("ManagedSandboxPhase2PostgresStore.readPrivateIngress")(
+    (input: { ownerRef: string; tenantRef: string; capabilityRef: string }) =>
+      Effect.tryPromise({
+        try: () => client.readPrivateIngress(input),
+        catch: (error) => storeFailure(error, { requestRef: input.capabilityRef }),
+      }),
+  );
+
+  return { lookupOperation, readCheckpoint, readPrivateIngress, settle };
 };

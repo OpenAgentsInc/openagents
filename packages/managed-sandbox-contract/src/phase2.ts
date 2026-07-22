@@ -29,6 +29,7 @@ const BoundedRefs = S.Array(SandboxRef).check(S.isMaxLength(64));
 const ShortIngressTtlSeconds = PositiveInt.check(
   S.isLessThanOrEqualTo(MANAGED_SANDBOX_PRIVATE_INGRESS_MAX_TTL_SECONDS),
 );
+const IngressAuditRefs = BoundedRefs.check(S.isMinLength(1));
 
 /** State classes that a content checkpoint can never capture or restore. */
 export const ManagedSandboxCheckpointOmissionsSchema = S.Struct({
@@ -104,6 +105,18 @@ export const ManagedSandboxPhase2CommandSchema = S.TaggedUnion({
     audienceRef: SandboxRef,
     kind: S.Literals(["desktop", "preview"]),
     ttlSeconds: ShortIngressTtlSeconds,
+  },
+  RevokePrivateIngress: {
+    ...Phase2CommandBase,
+    capabilityRef: SandboxRef,
+    sandboxRef: SandboxRef,
+    resourceGeneration: NonNegativeInt,
+  },
+  ExpirePrivateIngress: {
+    ...Phase2CommandBase,
+    capabilityRef: SandboxRef,
+    sandboxRef: SandboxRef,
+    resourceGeneration: NonNegativeInt,
   },
 });
 export type ManagedSandboxPhase2Command = typeof ManagedSandboxPhase2CommandSchema.Type;
@@ -314,7 +327,7 @@ const PrivateIngressBase = {
   publicAccess: S.Literal(false),
   permanentRoute: S.Literal(false),
   vnc: S.Literal("unsupported"),
-  auditRefs: BoundedRefs,
+  auditRefs: IngressAuditRefs,
 };
 
 /** Durable ingress state contains a digest, never a bearer URL. */
@@ -341,7 +354,18 @@ export const ManagedSandboxPrivateIngressCapabilitySchema = S.TaggedUnion({
     S.makeFilter(
       (capability) =>
         Date.parse(capability.expiresAt) - Date.parse(capability.issuedAt) ===
-        capability.ttlSeconds * 1_000,
+          capability.ttlSeconds * 1_000 &&
+        (capability["_tag"] === "Active" ||
+          (capability["_tag"] === "Revoked" &&
+            Date.parse(capability.revokedAt) >= Date.parse(capability.issuedAt) &&
+            Date.parse(capability.revokedAt) <= Date.parse(capability.expiresAt)) ||
+          (capability["_tag"] === "Expired" &&
+            Date.parse(capability.expiredAt) >= Date.parse(capability.expiresAt)) ||
+          (capability["_tag"] === "Cleaned" &&
+            (capability.terminalState === "revoked"
+              ? Date.parse(capability.cleanedAt) >= Date.parse(capability.issuedAt) &&
+                Date.parse(capability.cleanedAt) <= Date.parse(capability.expiresAt)
+              : Date.parse(capability.cleanedAt) >= Date.parse(capability.expiresAt)))),
       { message: "private ingress timestamps must encode the exact bounded TTL" },
     ),
   ),

@@ -114,6 +114,9 @@ describe.skipIf(!hasLocalPostgres())("SBX-10 Phase 2 Effect Postgres adapter", (
         forkFromCheckpoint: unused,
         restoreCheckpoint: unused,
         deleteCheckpoint: unused,
+        createPrivateIngress: unused,
+        revokePrivateIngress: unused,
+        expirePrivateIngress: unused,
       };
       const postgresStore = new PostgresManagedSandboxPhase2Store(sql as unknown as SyncSql);
       const store = makeManagedSandboxPhase2PostgresStore(postgresStore);
@@ -151,6 +154,9 @@ test("redacts Postgres and integrity failures into closed Phase 2 errors", () =>
       },
       readCheckpoint: async () => {
         throw new ManagedSandboxStoreError("corrupt_store", "private row bytes");
+      },
+      readPrivateIngress: async () => {
+        throw new ManagedSandboxStoreError("corrupt_store", "private ingress row bytes");
       },
       settle: async () => {
         throw new Error("/Users/private/database.sock");

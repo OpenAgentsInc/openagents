@@ -281,5 +281,37 @@ describe("managed sandbox Phase 2 contract", () => {
         ttlSeconds: 1_200,
       }),
     ).toThrow();
+    expect(
+      decodeManagedSandboxPhase2Command({
+        _tag: "RevokePrivateIngress",
+        schema: MANAGED_SANDBOX_PHASE2_COMMAND_SCHEMA_VERSION,
+        commandRef: "command.ingress.revoke.1",
+        idempotencyRef: "idempotency.ingress.revoke.1",
+        ownerRef: "owner.test",
+        tenantRef: "tenant.test",
+        requestedAt: "2026-07-22T00:05:00.000Z",
+        capabilityRef: capability.capabilityRef,
+        sandboxRef: capability.sandboxRef,
+        resourceGeneration: capability.resourceGeneration,
+      })["_tag"],
+    ).toBe("RevokePrivateIngress");
+    expect(
+      decodeManagedSandboxPrivateIngressCapability({
+        ...capability,
+        _tag: "Cleaned",
+        terminalState: "expired",
+        cleanedAt: capability.expiresAt,
+        cleanupReceiptRef: "receipt.ingress.cleanup.1",
+      })["_tag"],
+    ).toBe("Cleaned");
+    expect(() =>
+      decodeManagedSandboxPrivateIngressCapability({
+        ...capability,
+        _tag: "Cleaned",
+        terminalState: "expired",
+        cleanedAt: "2026-07-22T00:08:59.000Z",
+        cleanupReceiptRef: "receipt.ingress.cleanup.early",
+      }),
+    ).toThrow();
   });
 });
