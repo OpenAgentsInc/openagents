@@ -1037,11 +1037,18 @@ fn prepare_checkpoint_fork_with_provider(
             "fork source scope does not match durable ownership",
         ));
     }
-    if source.generation != source_resource_generation || source.phase != RuntimePhase::Ready {
+    if source.generation != source_resource_generation || source.phase != RuntimePhase::Stopped {
         return Err(RuntimeError::new(
             409,
             "fork_source_stale",
-            "fork source generation is not ready and current",
+            "fork source generation is not stopped and current",
+        ));
+    }
+    if source.profile.capability_refs != source_capability_refs {
+        return Err(RuntimeError::new(
+            409,
+            "fork_capability_conflict",
+            "fork source capabilities do not match durable ownership",
         ));
     }
 
@@ -3865,7 +3872,18 @@ mod tests {
             1_000,
         )
         .unwrap();
-        let source_capabilities = vec!["capability.sbx10.source".to_string()];
+        stop_after_checkpoint_with_provider(
+            &root,
+            &provider,
+            "owner-ref://test",
+            "tenant-ref://test",
+            "sandbox-ref://test",
+            1,
+            "stop-ref://checkpoint",
+            1_500,
+        )
+        .unwrap();
+        let source_capabilities = vec!["capability-ref://run/probe".to_string()];
         let context = prepare_checkpoint_fork_with_provider(
             &root,
             &provider,
@@ -3942,6 +3960,18 @@ mod tests {
             1_000,
         )
         .unwrap();
+        stop_after_checkpoint_with_provider(
+            &root,
+            &provider,
+            "owner-ref://test",
+            "tenant-ref://test",
+            "sandbox-ref://test",
+            1,
+            "stop-ref://checkpoint-failure",
+            1_500,
+        )
+        .unwrap();
+        let source_capabilities = vec!["capability-ref://run/probe".to_string()];
         let context = prepare_checkpoint_fork_with_provider(
             &root,
             &provider,
@@ -3951,7 +3981,7 @@ mod tests {
             1,
             "command.sbx10.fork-failure",
             "checkpoint.sbx10.fork-failure",
-            &[],
+            &source_capabilities,
             2_000,
         )
         .unwrap();
