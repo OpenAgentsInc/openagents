@@ -7,6 +7,7 @@ import { openSqliteDatabase, type SqliteDatabase } from "@openagentsinc/sqlite-r
 import type { SafeStorageLike } from "./desktop-session-vault.js";
 
 const GRAPH_MEMORY_DATA_KEY_REF = "graph-memory-data-key.v1";
+const GRAPH_MEMORY_SCRUB_REQUIRED_REF = "graph-memory-scrub-required.v1";
 const GRAPH_MEMORY_SCHEMA_REF = "graph-memory-schema-version";
 const GRAPH_MEMORY_SCHEMA_VERSION = 1;
 const GRAPH_MEMORY_AAD_SCHEMA = "openagents.desktop.graph_memory.aad.v1";
@@ -165,6 +166,15 @@ const open = (
 
 const initialize = (database: SqliteDatabase): void => {
   database.exec("PRAGMA journal_mode = WAL;");
+  database.exec("PRAGMA secure_delete = ON;");
+  const secureDelete = database.all<{ secure_delete: number }>("PRAGMA secure_delete")[0]
+    ?.secure_delete;
+  if (secureDelete !== 1) {
+    throw new DesktopGraphMemoryPersistenceError(
+      "storage_unavailable",
+      "Secure deletion is unavailable for graph memory storage.",
+    );
+  }
   database.exec("PRAGMA foreign_keys = ON;");
   database.exec(`
     CREATE TABLE IF NOT EXISTS graph_memory_metadata (
@@ -201,6 +211,35 @@ const initialize = (database: SqliteDatabase): void => {
       ]);
     }
   });
+};
+
+const truncateWriteAheadLog = (database: SqliteDatabase): void => {
+  database.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+};
+
+const scrubRequired = (database: SqliteDatabase): boolean =>
+  database.all<StoredKeyRow>("SELECT wrapped_key FROM graph_memory_metadata WHERE key_ref = ?", [
+    GRAPH_MEMORY_SCRUB_REQUIRED_REF,
+  ])[0]?.wrapped_key === "1";
+
+const markScrubRequired = (database: SqliteDatabase): void => {
+  database.run(
+    `INSERT INTO graph_memory_metadata (key_ref, wrapped_key) VALUES (?, ?)
+     ON CONFLICT(key_ref) DO UPDATE SET wrapped_key = excluded.wrapped_key`,
+    [GRAPH_MEMORY_SCRUB_REQUIRED_REF, "1"],
+  );
+};
+
+const finishPendingScrub = (
+  database: SqliteDatabase,
+  checkpoint: (database: SqliteDatabase) => void,
+): void => {
+  checkpoint(database);
+  if (!scrubRequired(database)) return;
+  database.run("DELETE FROM graph_memory_metadata WHERE key_ref = ?", [
+    GRAPH_MEMORY_SCRUB_REQUIRED_REF,
+  ]);
+  checkpoint(database);
 };
 
 const dataKeyFor = (database: SqliteDatabase, safeStorage: SafeStorageLike): Buffer => {
@@ -256,6 +295,7 @@ export const openDesktopGraphMemoryPersistence = (
     databasePath: string;
     safeStorage: SafeStorageLike;
     openDatabase?: (databasePath: string) => SqliteDatabase;
+    checkpoint?: (database: SqliteDatabase) => void;
   }>,
 ): DesktopGraphMemoryPersistence => {
   if (!input.enabled) return disabledPersistence();
@@ -269,10 +309,14 @@ export const openDesktopGraphMemoryPersistence = (
     if (process.platform !== "win32") chmodSync(parent, 0o700);
     database = (input.openDatabase ?? openSqliteDatabase)(databasePath);
     initialize(database);
+    const checkpoint = input.checkpoint ?? truncateWriteAheadLog;
+    finishPendingScrub(database, checkpoint);
     const dataKey = dataKeyFor(database, input.safeStorage);
     if (process.platform !== "win32") chmodSync(databasePath, 0o600);
     let reads = 0;
     let writes = 0;
+
+    const completeMutation = (): void => finishPendingScrub(database!, checkpoint);
 
     const save = (
       scope: DesktopGraphMemoryScope,
@@ -307,6 +351,7 @@ export const openDesktopGraphMemoryPersistence = (
         requireScope(scope);
         reads += 1;
         try {
+          if (scrubRequired(database!)) completeMutation();
           const row = database!.all<StoredRow>(
             `SELECT revision, nonce, ciphertext, auth_tag
                FROM graph_memory_scopes
@@ -322,7 +367,9 @@ export const openDesktopGraphMemoryPersistence = (
         try {
           database!.transaction(() => {
             save(scope, state);
+            markScrubRequired(database!);
           });
+          completeMutation();
           writes += 1;
         } catch (error) {
           throw publicFailure(error);
@@ -354,9 +401,13 @@ export const openDesktopGraphMemoryPersistence = (
               return false;
             }
             save(scope, state);
+            markScrubRequired(database!);
             return true;
           });
-          if (changed) writes += 1;
+          if (changed) {
+            completeMutation();
+            writes += 1;
+          }
           return changed;
         } catch (error) {
           throw publicFailure(error);
@@ -377,7 +428,9 @@ export const openDesktopGraphMemoryPersistence = (
                 WHERE owner_scope = ? AND project_scope = ?`,
               [scope.ownerScope, scope.projectScope],
             );
+            markScrubRequired(database!);
           });
+          completeMutation();
           writes += 1;
           return before > 0;
         } catch (error) {

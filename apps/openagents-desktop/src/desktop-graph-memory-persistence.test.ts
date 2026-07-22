@@ -142,6 +142,95 @@ describe("desktop graph-memory persistence", () => {
     reopened.close();
   });
 
+  test("removes superseded ciphertext from SQLite and its write-ahead log", () => {
+    const databasePath = path.join(temporaryRoot(), "graph-memory.sqlite");
+    const persistence = openDesktopGraphMemoryPersistence({
+      enabled: true,
+      databasePath,
+      safeStorage: safeStorage(),
+    });
+    persistence.save(scopeA, {
+      revision: 1,
+      payload: JSON.stringify({ privateValue: "owner-private-value".repeat(4_096) }),
+    });
+
+    const database = openSqliteDatabase(databasePath);
+    const oldCiphertext = database.all<{ ciphertext: Uint8Array }>(
+      `SELECT ciphertext FROM graph_memory_scopes
+        WHERE owner_scope = ? AND project_scope = ?`,
+      [scopeA.ownerScope, scopeA.projectScope],
+    )[0]?.ciphertext;
+    database.close();
+    expect(oldCiphertext).toBeDefined();
+
+    persistence.save(scopeA, { revision: 2, payload: JSON.stringify({ receipts: [] }) });
+    persistence.close();
+
+    for (const candidate of [databasePath, `${databasePath}-wal`, `${databasePath}-shm`]) {
+      if (existsSync(candidate)) {
+        expect(readFileSync(candidate).includes(Buffer.from(oldCiphertext!))).toBe(false);
+      }
+    }
+  });
+
+  test("recovers a committed mutation whose history scrub was interrupted", () => {
+    const databasePath = path.join(temporaryRoot(), "graph-memory.sqlite");
+    let failNextCheckpoint = false;
+    const persistence = openDesktopGraphMemoryPersistence({
+      enabled: true,
+      databasePath,
+      safeStorage: safeStorage(),
+      checkpoint: (database) => {
+        if (failNextCheckpoint) {
+          failNextCheckpoint = false;
+          throw new Error("injected checkpoint failure");
+        }
+        database.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+      },
+    });
+    persistence.save(scopeA, {
+      revision: 1,
+      payload: JSON.stringify({ privateValue: "interrupted-private-value".repeat(4_096) }),
+    });
+    persistence.save(scopeB, { revision: 1, payload: JSON.stringify({ retained: true }) });
+
+    const database = openSqliteDatabase(databasePath);
+    const oldCiphertext = database.all<{ ciphertext: Uint8Array }>(
+      `SELECT ciphertext FROM graph_memory_scopes
+        WHERE owner_scope = ? AND project_scope = ?`,
+      [scopeA.ownerScope, scopeA.projectScope],
+    )[0]?.ciphertext;
+    database.close();
+    expect(oldCiphertext).toBeDefined();
+
+    failNextCheckpoint = true;
+    expect(() =>
+      persistence.save(scopeA, { revision: 2, payload: JSON.stringify({ receipts: ["done"] }) }),
+    ).toThrowError(DesktopGraphMemoryPersistenceError);
+    persistence.close();
+
+    const reopened = openDesktopGraphMemoryPersistence({
+      enabled: true,
+      databasePath,
+      safeStorage: safeStorage(),
+    });
+    expect(reopened.load(scopeA)).toEqual({
+      revision: 2,
+      payload: JSON.stringify({ receipts: ["done"] }),
+    });
+    expect(reopened.load(scopeB)).toEqual({
+      revision: 1,
+      payload: JSON.stringify({ retained: true }),
+    });
+    reopened.close();
+
+    for (const candidate of [databasePath, `${databasePath}-wal`, `${databasePath}-shm`]) {
+      if (existsSync(candidate)) {
+        expect(readFileSync(candidate).includes(Buffer.from(oldCiphertext!))).toBe(false);
+      }
+    }
+  });
+
   test("fails closed when ciphertext is changed", () => {
     const databasePath = path.join(temporaryRoot(), "graph-memory.sqlite");
     const persistence = openDesktopGraphMemoryPersistence({
