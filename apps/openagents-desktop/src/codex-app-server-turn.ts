@@ -1013,7 +1013,10 @@ export const runCodexAppServerTurn = async (
       ...(input.spawnImpl === undefined ? {} : { spawnImpl: input.spawnImpl }),
       ...(input.requestTimeoutMs === undefined ? {} : { requestTimeoutMs: input.requestTimeoutMs }),
     }
-    lease = await supervisor.acquire(target)
+    // A turn takes an isolated app-server process from the bounded per-account
+    // turn pool so concurrent Full Auto turns on the same ~/.codex account run
+    // in parallel instead of serializing on one shared process.
+    lease = await supervisor.acquire(target, { isolation: "turn" })
     const activeLease = lease
     // Compatibility receipts are private connection diagnostics and release
     // gates. They are never conversation content and must not become chat
@@ -1030,8 +1033,12 @@ export const runCodexAppServerTurn = async (
       if (input.admitExtensions === undefined) throw new Error("Codex extension authority is unavailable")
       await input.admitExtensions(input.extensionSelection)
     }
-    releaseState = supervisor.subscribeState((identity, state) => {
-      if (identity.binary !== activeLease.identity.binary ||
+    releaseState = supervisor.subscribeState((identity, state, connectionId) => {
+      // One account can back several connections (shared + bounded turn pool);
+      // react only to THIS turn's own connection so a sibling turn's reconnect
+      // never falsely aborts this turn.
+      if (connectionId !== activeLease.connectionId ||
+        identity.binary !== activeLease.identity.binary ||
         identity.binarySha256 !== activeLease.identity.binarySha256 ||
         identity.codexHome !== activeLease.identity.codexHome ||
         identity.accountRef !== activeLease.identity.accountRef ||

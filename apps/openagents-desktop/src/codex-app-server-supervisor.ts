@@ -27,6 +27,34 @@ import {
   type CodexReverseRpcReceipt,
 } from "./codex-reverse-rpc-arbiter.ts"
 
+/**
+ * Default number of app-server processes one owner-local Codex account may run
+ * concurrently for Full Auto turns. Codex itself supports many concurrent
+ * sessions against one on-disk `~/.codex` store, so this bounds OUR fan-out
+ * rather than a codex limit. Mirrors the Pylon per-account Codex concurrency
+ * default so the two surfaces stay consistent.
+ */
+export const DEFAULT_CODEX_APP_SERVER_TURN_CONCURRENCY = 5
+
+/** Read a positive-integer concurrency override, else `null`. */
+export const codexAppServerTurnConcurrencyFromEnv = (
+  env: NodeJS.ProcessEnv,
+): number | null => {
+  const parsed = Number.parseInt(env.OPENAGENTS_CODEX_APP_SERVER_CONCURRENCY?.trim() ?? "", 10)
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null
+}
+
+/**
+ * Isolation requested by an `acquire` caller. `"turn"` leases get an isolated
+ * app-server process from the bounded per-account turn pool so concurrent Full
+ * Auto turns on one account run in parallel instead of serializing on one
+ * shared process. `"shared"` (the default) keeps the single pooled connection
+ * that control-plane, lifecycle, ecosystem, and host services rely on.
+ */
+export type CodexAppServerAcquireOptions = Readonly<{
+  isolation?: "shared" | "turn"
+}>
+
 export type CodexAppServerPoolTarget = Readonly<{
   binary: string
   binarySha256?: string
@@ -147,6 +175,13 @@ export type CodexAppServerClientFactory = (
 
 export type CodexAppServerLease = Readonly<{
   key: string
+  /**
+   * Stable id of the app-server process/connection backing this lease. One
+   * account can back several connections (one shared, plus bounded turn
+   * connections), so consumers that react to supervisor state must scope by
+   * this id, not by account identity alone.
+   */
+  connectionId: number
   identity: CodexAppServerPoolIdentity
   state: () => CodexAppServerSupervisorState
   request: (method: string, params: unknown, options?: Readonly<{ signal?: AbortSignal }>) => Promise<unknown>
@@ -166,11 +201,15 @@ export type CodexAppServerLease = Readonly<{
 }>
 
 export type CodexAppServerSupervisor = Readonly<{
-  acquire: (target: CodexAppServerPoolTarget) => Promise<CodexAppServerLease>
+  acquire: (
+    target: CodexAppServerPoolTarget,
+    options?: CodexAppServerAcquireOptions,
+  ) => Promise<CodexAppServerLease>
   state: (target: CodexAppServerPoolTarget) => CodexAppServerSupervisorState | null
   subscribeState: (listener: (
     identity: CodexAppServerPoolIdentity,
     state: CodexAppServerSupervisorState,
+    connectionId: number,
   ) => void) => () => void
   subscribeReverseRpcAttention: (listener: (attention: CodexReverseRpcAttention) => void) => () => void
   reverseRpcReceipts: () => ReadonlyArray<CodexReverseRpcReceipt>
@@ -179,6 +218,8 @@ export type CodexAppServerSupervisor = Readonly<{
 
 type LeaseRecord = {
   closed: boolean
+  /** True for isolated Full Auto turn leases assigned to the bounded turn pool. */
+  isTurnLease: boolean
   notifications: Set<(notification: CodexAppServerNotification) => void>
   compatibility: Set<(receipt: CodexCompatibilityReceipt) => void>
   visibleThreads: Map<string, Set<(reconciliation: CodexAppServerReconciliation) => void>>
@@ -189,6 +230,10 @@ type LeaseRecord = {
 
 type Connection = {
   readonly key: string
+  /** Stable id distinguishing sibling connections that share one pool key. */
+  readonly connectionId: number
+  /** "shared" for the single pooled connection, "turn" for isolated turn connections. */
+  readonly role: "shared" | "turn"
   readonly target: CodexAppServerPoolTarget
   readonly identity: CodexAppServerPoolIdentity
   readonly leases: Set<LeaseRecord>
@@ -237,6 +282,13 @@ export const createCodexAppServerSupervisor = (options: Readonly<{
   strictGeneratedDecoding?: boolean
   reverseRpcJournalPath?: string
   reverseRpcTimeoutMs?: number
+  /**
+   * Max app-server processes one account may run for isolated turn leases.
+   * Defaults to the `OPENAGENTS_CODEX_APP_SERVER_CONCURRENCY` env value, else
+   * {@link DEFAULT_CODEX_APP_SERVER_TURN_CONCURRENCY}. Clamped to at least 1.
+   */
+  turnConcurrency?: number
+  env?: NodeJS.ProcessEnv
 }> = {}): CodexAppServerSupervisor => {
   const factory = options.clientFactory ?? defaultFactory
   const maxReconnectAttempts = Math.max(0, Math.floor(options.maxReconnectAttempts ?? 3))
@@ -247,16 +299,28 @@ export const createCodexAppServerSupervisor = (options: Readonly<{
     ...(options.reverseRpcJournalPath === undefined ? {} : { journalPath: options.reverseRpcJournalPath }),
     ...(options.reverseRpcTimeoutMs === undefined ? {} : { timeoutMs: options.reverseRpcTimeoutMs }),
   })
+  const turnConcurrency = Math.max(
+    1,
+    Math.floor(
+      options.turnConcurrency ??
+        codexAppServerTurnConcurrencyFromEnv(options.env ?? process.env) ??
+        DEFAULT_CODEX_APP_SERVER_TURN_CONCURRENCY,
+    ),
+  )
+  let connectionSequence = 0
+  // Bounded per-account pool of isolated turn connections (excludes the shared one).
+  const turnPools = new Map<string, Connection[]>()
   const stateListeners = new Set<(
     identity: CodexAppServerPoolIdentity,
     state: CodexAppServerSupervisorState,
+    connectionId: number,
   ) => void>()
   let closed = false
 
   const setState = (connection: Connection, state: CodexAppServerSupervisorState): void => {
     connection.state = state
     for (const listener of stateListeners) {
-      try { listener(connection.identity, state) } catch { /* isolate observers */ }
+      try { listener(connection.identity, state, connection.connectionId) } catch { /* isolate observers */ }
     }
   }
 
@@ -268,12 +332,21 @@ export const createCodexAppServerSupervisor = (options: Readonly<{
     client?.close()
   }
 
+  const removeFromTurnPool = (connection: Connection): void => {
+    const pool = turnPools.get(connection.key)
+    if (pool === undefined) return
+    const remaining = pool.filter(entry => entry !== connection)
+    if (remaining.length === 0) turnPools.delete(connection.key)
+    else turnPools.set(connection.key, remaining)
+  }
+
   const closeConnection = (connection: Connection): void => {
     if (connection.closed) return
     connection.closed = true
     closeClient(connection)
     setState(connection, { status: "closed", generation: connection.generation })
-    connections.delete(connection.key)
+    if (connections.get(connection.key) === connection) connections.delete(connection.key)
+    removeFromTurnPool(connection)
   }
 
   const reverseRegistry: CodexAppServerReverseMethodRegistry = Object.freeze(Object.fromEntries(
@@ -364,8 +437,26 @@ export const createCodexAppServerSupervisor = (options: Readonly<{
     connection.removeNotificationListener = client.onNotification(message => {
       if (closed || connection.closed || generation !== connection.generation || connection.client !== client) return
       const notification = { generation, message }
-      for (const lease of connection.leases) {
-        if (!lease.closed) for (const listener of lease.notifications) {
+      // Route each notification to the lease that owns its thread/turn so that
+      // concurrent turns sharing one connection never observe each other's
+      // `turn/completed` etc. Notifications with no owned thread/turn id (global
+      // or pre-start) fall back to every open lease.
+      const params = message.params !== null && typeof message.params === "object"
+        ? message.params as Record<string, unknown>
+        : {}
+      const threadId = typeof params.threadId === "string" ? params.threadId : null
+      const turnId = typeof params.turnId === "string" ? params.turnId : null
+      const owners = (threadId !== null || turnId !== null)
+        ? [...connection.leases].filter(lease => !lease.closed && (
+          (threadId !== null && lease.threadIds.has(threadId)) ||
+          (turnId !== null && lease.turnIds.has(turnId))
+        ))
+        : []
+      const targets = owners.length > 0
+        ? owners
+        : [...connection.leases].filter(lease => !lease.closed)
+      for (const lease of targets) {
+        for (const listener of lease.notifications) {
           try { listener(notification) } catch { /* isolate observers */ }
         }
       }
@@ -457,64 +548,132 @@ export const createCodexAppServerSupervisor = (options: Readonly<{
     }
   }
 
-  const acquire = async (target: CodexAppServerPoolTarget): Promise<CodexAppServerLease> => {
-    if (closed) throw new CodexAppServerSupervisorError("closed", "Codex app-server supervisor is closed")
-    const key = codexAppServerPoolKey(target)
-    let connection = connections.get(key)
-    if (connection === undefined) {
-      const journalPath = options.nativeJournalRoot === undefined
-        ? undefined
-        : join(options.nativeJournalRoot, `${createHash("sha256").update(key).digest("hex")}.json`)
-      let createdConnection: Connection | null = null
-      const nativePlane = makeCodexNativeEventPlane({
-        ...(journalPath === undefined ? {} : { journalPath }),
-        onCompatibilityReceipt: receipt => {
-          if (createdConnection === null) return
-          for (const lease of createdConnection.leases) {
-            if (!lease.closed) for (const listener of lease.compatibility) {
-              try { listener(receipt) } catch { /* isolate observers */ }
-            }
+  const createConnectionObject = (
+    target: CodexAppServerPoolTarget,
+    key: string,
+    role: "shared" | "turn",
+  ): Connection => {
+    const connectionId = ++connectionSequence
+    const journalPath = options.nativeJournalRoot === undefined
+      ? undefined
+      // Per-connection journal path so sibling connections on one pool key never
+      // clobber each other's native journal file.
+      : join(options.nativeJournalRoot, `${createHash("sha256").update(`${key} ${connectionId}`).digest("hex")}.json`)
+    let createdConnection: Connection | null = null
+    const nativePlane = makeCodexNativeEventPlane({
+      ...(journalPath === undefined ? {} : { journalPath }),
+      onCompatibilityReceipt: receipt => {
+        if (createdConnection === null) return
+        for (const lease of createdConnection.leases) {
+          if (!lease.closed) for (const listener of lease.compatibility) {
+            try { listener(receipt) } catch { /* isolate observers */ }
           }
-        },
-      })
-      connection = {
-        key,
-        target,
-        identity: codexAppServerPoolIdentity(target),
-        leases: new Set(),
-        visibleThreads: new Map(),
-        nativePlane,
-        generation: 0,
-        state: { status: "repairing", generation: 0, attempt: 0, maxAttempts: maxReconnectAttempts },
-        client: null,
-        removeNotificationListener: null,
-        repair: null,
-        closed: false,
-      }
-      createdConnection = connection
-      connections.set(key, connection)
-      const initial = connect(connection, 0)
-      connection.repair = initial
-      try {
-        await initial
-      } catch (error) {
-        connection.repair = null
-        try {
-          await beginRepair(connection, error)
-        } catch {
-          closeConnection(connection)
-          throw error
         }
-      } finally {
-        if (connection.repair === initial) connection.repair = null
+      },
+    })
+    const connection: Connection = {
+      key,
+      connectionId,
+      role,
+      target,
+      identity: codexAppServerPoolIdentity(target),
+      leases: new Set(),
+      visibleThreads: new Map(),
+      nativePlane,
+      generation: 0,
+      state: { status: "repairing", generation: 0, attempt: 0, maxAttempts: maxReconnectAttempts },
+      client: null,
+      removeNotificationListener: null,
+      repair: null,
+      closed: false,
+    }
+    createdConnection = connection
+    return connection
+  }
+
+  // Initial connect for a freshly created connection. On failure it retries via
+  // the reconnect ladder, and closes the connection if that is exhausted.
+  const firstConnect = async (connection: Connection): Promise<void> => {
+    const initial = connect(connection, 0)
+    connection.repair = initial
+    try {
+      await initial
+    } catch (error) {
+      connection.repair = null
+      try {
+        await beginRepair(connection, error)
+      } catch {
+        closeConnection(connection)
+        throw error
       }
+    } finally {
+      if (connection.repair === initial) connection.repair = null
+    }
+  }
+
+  // Count of open turn leases currently assigned to a connection.
+  const activeTurnLeases = (connection: Connection): number =>
+    [...connection.leases].filter(lease => lease.isTurnLease && !lease.closed).length
+
+  // Synchronously select or create an isolated turn connection and attach the
+  // record so a concurrent turn acquire sees this connection as busy and does
+  // not land on the same process. Returns the readiness promise to await.
+  const reserveTurnConnection = (
+    target: CodexAppServerPoolTarget,
+    key: string,
+    record: LeaseRecord,
+  ): Readonly<{ connection: Connection; ready: Promise<void> }> => {
+    const pool = (turnPools.get(key) ?? []).filter(entry => !entry.closed)
+    turnPools.set(key, pool)
+    let connection = pool.find(entry => activeTurnLeases(entry) === 0)
+    let ready: Promise<void> = Promise.resolve()
+    if (connection === undefined && pool.length < turnConcurrency) {
+      connection = createConnectionObject(target, key, "turn")
+      pool.push(connection)
+      turnPools.set(key, pool)
+      ready = firstConnect(connection)
+    } else if (connection === undefined) {
+      // At the concurrency cap with every process busy: assign to the
+      // least-loaded connection. Concurrent turns beyond the cap serialize
+      // here, but the cap is honored and no deadlock occurs.
+      connection = pool.reduce((least, entry) =>
+        activeTurnLeases(entry) <= activeTurnLeases(least) ? entry : least)
+      ready = connection.repair ?? Promise.resolve()
+    } else {
+      ready = connection.repair ?? Promise.resolve()
+    }
+    connection.leases.add(record)
+    return { connection, ready }
+  }
+
+  // Get or create the single shared connection for a pool key. Registers the
+  // connection synchronously before connecting so concurrent shared acquires
+  // dedupe onto one process (control-plane / lifecycle / ecosystem contract).
+  const obtainSharedConnection = async (
+    target: CodexAppServerPoolTarget,
+    key: string,
+  ): Promise<Connection> => {
+    let connection = connections.get(key)
+    if (connection === undefined || connection.closed) {
+      connection = createConnectionObject(target, key, "shared")
+      connections.set(key, connection)
+      await firstConnect(connection)
     } else if (connection.repair !== null) {
       await connection.repair
     }
+    return connection
+  }
 
-    const ownedConnection = connection
+  const acquire = async (
+    target: CodexAppServerPoolTarget,
+    acquireOptions?: CodexAppServerAcquireOptions,
+  ): Promise<CodexAppServerLease> => {
+    if (closed) throw new CodexAppServerSupervisorError("closed", "Codex app-server supervisor is closed")
+    const key = codexAppServerPoolKey(target)
+    const isTurnLease = acquireOptions?.isolation === "turn"
     const record: LeaseRecord = {
       closed: false,
+      isTurnLease,
       notifications: new Set(),
       compatibility: new Set(),
       visibleThreads: new Map(),
@@ -522,7 +681,24 @@ export const createCodexAppServerSupervisor = (options: Readonly<{
       threadIds: new Set(),
       turnIds: new Set(),
     }
-    ownedConnection.leases.add(record)
+    let ownedConnection: Connection
+    if (isTurnLease) {
+      const reserved = reserveTurnConnection(target, key, record)
+      ownedConnection = reserved.connection
+      try {
+        await reserved.ready
+      } catch (error) {
+        ownedConnection.leases.delete(record)
+        throw error
+      }
+      if (ownedConnection.closed) {
+        ownedConnection.leases.delete(record)
+        throw new CodexAppServerSupervisorError("closed", "Codex app-server connection was superseded")
+      }
+    } else {
+      ownedConnection = await obtainSharedConnection(target, key)
+      ownedConnection.leases.add(record)
+    }
     let released = false
     const assertOpen = (): void => {
       if (released || record.closed || ownedConnection.closed || closed) {
@@ -531,6 +707,7 @@ export const createCodexAppServerSupervisor = (options: Readonly<{
     }
     return {
       key,
+      connectionId: ownedConnection.connectionId,
       identity: ownedConnection.identity,
       state: () => ownedConnection.state,
       request: async (method, params, requestOptions) => {
@@ -644,7 +821,11 @@ export const createCodexAppServerSupervisor = (options: Readonly<{
     close: () => {
       if (closed) return
       closed = true
-      for (const connection of [...connections.values()]) {
+      const allConnections = [
+        ...connections.values(),
+        ...[...turnPools.values()].flat(),
+      ]
+      for (const connection of allConnections) {
         for (const lease of connection.leases) {
           lease.closed = true
           lease.notifications.clear()
@@ -658,6 +839,7 @@ export const createCodexAppServerSupervisor = (options: Readonly<{
         connection.visibleThreads.clear()
         closeConnection(connection)
       }
+      turnPools.clear()
       stateListeners.clear()
       reverseRpcArbiter.close()
     },

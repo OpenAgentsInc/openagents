@@ -160,6 +160,104 @@ describe("CAP-01 Codex app-server supervisor", () => {
     supervisor.close()
   })
 
+  test("isolates concurrent turn leases onto separate app-server processes up to the cap", async () => {
+    const fake = fakeFactory()
+    const supervisor = createCodexAppServerSupervisor({ clientFactory: fake.factory, turnConcurrency: 2 })
+
+    // Two concurrent turns on the SAME account must land on two processes.
+    const [first, second] = await Promise.all([
+      supervisor.acquire(target(), { isolation: "turn" }),
+      supervisor.acquire(target(), { isolation: "turn" }),
+    ])
+    expect(fake.clients).toHaveLength(2)
+    expect(fake.clients[0]?.initializeCount).toBe(1)
+    expect(fake.clients[1]?.initializeCount).toBe(1)
+    expect(first.key).toBe(second.key)
+    expect(first.connectionId).not.toBe(second.connectionId)
+    expect(first.state()).toEqual({ status: "ready", generation: 1 })
+    expect(second.state()).toEqual({ status: "ready", generation: 1 })
+
+    // Both turns hold an in-flight request AT THE SAME TIME — no serialization.
+    fake.clients[0]!.deferUntilCloseMethod = "turn/start"
+    fake.clients[1]!.deferUntilCloseMethod = "turn/start"
+    const firstTurn = first.request("turn/start", { threadId: "thread-a" }).then(() => null, error => error)
+    const secondTurn = second.request("turn/start", { threadId: "thread-b" }).then(() => null, error => error)
+    await waitFor(() => fake.clients[0]!.deferredRequestReady() && fake.clients[1]!.deferredRequestReady())
+    // Each turn/start went to its OWN process, not one shared serializing process.
+    expect(fake.clients[0]?.requests.filter(r => r.method === "turn/start")).toHaveLength(1)
+    expect(fake.clients[1]?.requests.filter(r => r.method === "turn/start")).toHaveLength(1)
+
+    // A default (shared) acquire never consumes a turn process.
+    const shared = await supervisor.acquire(target())
+    expect(fake.clients).toHaveLength(3)
+    expect(shared.connectionId).not.toBe(first.connectionId)
+    expect(shared.connectionId).not.toBe(second.connectionId)
+
+    // Releasing a turn frees its process for reuse without spawning a new one.
+    first.release()
+    const reused = await supervisor.acquire(target(), { isolation: "turn" })
+    expect(fake.clients).toHaveLength(3)
+    expect(reused.connectionId).toBe(first.connectionId)
+
+    supervisor.close()
+    await expect(firstTurn).resolves.toMatchObject({ reason: "closed" })
+    await expect(secondTurn).resolves.toMatchObject({ reason: "closed" })
+    expect(fake.clients[0]?.closeCount).toBe(1)
+    expect(fake.clients[1]?.closeCount).toBe(1)
+    expect(fake.clients[2]?.closeCount).toBe(1)
+  })
+
+  test("at the turn concurrency cap, shared turns route notifications by thread and never cross-talk", async () => {
+    const fake = fakeFactory()
+    const supervisor = createCodexAppServerSupervisor({ clientFactory: fake.factory, turnConcurrency: 1 })
+    const [first, second] = await Promise.all([
+      supervisor.acquire(target(), { isolation: "turn" }),
+      supervisor.acquire(target(), { isolation: "turn" }),
+    ])
+    // Cap of 1: the second turn shares the single turn process (bounded, no deadlock).
+    expect(fake.clients).toHaveLength(1)
+    expect(first.connectionId).toBe(second.connectionId)
+
+    first.registerVisibleThread("thread-a")
+    second.registerVisibleThread("thread-b")
+    const firstSeen: unknown[] = []
+    const secondSeen: unknown[] = []
+    first.subscribe(notification => firstSeen.push(notification.message))
+    second.subscribe(notification => secondSeen.push(notification.message))
+
+    // A notification for an owned thread reaches only its owner.
+    fake.clients[0]?.emit({ method: "turn/completed", params: { threadId: "thread-a" } })
+    fake.clients[0]?.emit({ method: "turn/completed", params: { threadId: "thread-b" } })
+    expect(firstSeen).toEqual([{ method: "turn/completed", params: { threadId: "thread-a" } }])
+    expect(secondSeen).toEqual([{ method: "turn/completed", params: { threadId: "thread-b" } }])
+
+    // A global notification (no owned thread/turn id) falls back to every lease.
+    fake.clients[0]?.emit({ method: "loginChatGpt/complete", params: {} })
+    expect(firstSeen).toHaveLength(2)
+    expect(secondSeen).toHaveLength(2)
+    supervisor.close()
+  })
+
+  test("honors an OPENAGENTS_CODEX_APP_SERVER_CONCURRENCY env override for the turn pool", async () => {
+    const fake = fakeFactory()
+    const supervisor = createCodexAppServerSupervisor({
+      clientFactory: fake.factory,
+      env: { OPENAGENTS_CODEX_APP_SERVER_CONCURRENCY: "3" },
+    })
+    const leases = await Promise.all([
+      supervisor.acquire(target(), { isolation: "turn" }),
+      supervisor.acquire(target(), { isolation: "turn" }),
+      supervisor.acquire(target(), { isolation: "turn" }),
+    ])
+    expect(fake.clients).toHaveLength(3)
+    expect(new Set(leases.map(lease => lease.connectionId)).size).toBe(3)
+    // A fourth concurrent turn is capped: it shares the least-loaded process.
+    const fourth = await supervisor.acquire(target(), { isolation: "turn" })
+    expect(fake.clients).toHaveLength(3)
+    expect(leases.map(lease => lease.connectionId)).toContain(fourth.connectionId)
+    supervisor.close()
+  })
+
   test("installs the complete deny registry before initialize", async () => {
     const fake = fakeFactory()
     const supervisor = createCodexAppServerSupervisor({ clientFactory: fake.factory })
