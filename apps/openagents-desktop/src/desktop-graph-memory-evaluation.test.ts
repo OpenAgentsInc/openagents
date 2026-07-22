@@ -19,6 +19,7 @@ import {
   summarizeGraphMemoryEvaluationArm,
   validateGraphMemoryEvaluationDataset,
 } from "./desktop-graph-memory-evaluation.js";
+import { desktopGraphMemoryRecallQueryFor } from "./desktop-graph-memory-workflow.js";
 
 const fixtureRoot = path.resolve(
   import.meta.dirname,
@@ -43,14 +44,54 @@ const requiredAt = <T>(values: ReadonlyArray<T>, index: number): T => {
 };
 
 const sdkPackages = (): GraphMemoryEvaluationPins["sdkPackages"] => [
-  { package: "@openagentsinc/ai", version: "0.2.1-rc.2", integrity: "sha512-mQN7iOA0EbXL8zwFxJr2hHy23dMivLAhGeJRd8TepjzcBRECKAVQ1fTFOsvr8Ik2g+Bvg2Wxw3mtoX+N7SCC7Q==" },
-  { package: "@openagentsinc/rlm", version: "0.2.1-rc.2", integrity: "sha512-M3JX7BJDvTBbjSltmLD7u5PRl7K1Ytzjvy5HdD/e25Ywixa1fJk0tX3i2DFUBLyJjnNPv4YO4QwosPnu7ILMMQ==" },
-  { package: "@openagentsinc/history-corpus", version: "0.2.1-rc.2", integrity: "sha512-2V9CW86+DMlxmcu9GjUUJj4bnTvj8OP99j64tOM4BJzj76Ci1Z+jT4b291UJyp8l9sYcQpNVcC/ID1pUVCiYcw==" },
-  { package: "@openagentsinc/agent-harness-contract", version: "0.2.1-rc.2", integrity: "sha512-3vIhogeE/Bbg5LfWKjQ8msCs7T7BB/ivE0Zd1VUVAA5Pz6WCsier6VLFapAhW6NBRnS0brvDhaerPiDBfkRqNQ==" },
-  { package: "@openagentsinc/agent-runtime-schema", version: "0.2.1-rc.2", integrity: "sha512-xSC/laUZcFaF8AUOEshQy01Q1QuOdrYAEx48PPUjRjPO/dP4IUuTQLkeio0EfyYKqu+VMxax9ttwleeEPnQKJA==" },
-  { package: "@openagentsinc/dse", version: "0.2.1-rc.2", integrity: "sha512-CFsEPBkJbQi/ZL/OQKOGqxahI4GNy9Es2b8p/uXD4xQaIFKm48DS7EtiEbJbLm3l5qXHNpR7D7HEFf6R4ljdHg==" },
-  { package: "@openagentsinc/graph-corpus", version: "0.2.1-rc.2", integrity: "sha512-8LFMS/WGvRKYmcst0GpqpLrjRMpWRoQ9aSshJqKPHBTxWdbQI3360y/VBa5YroBz7fEndPnmgJStdyEhDM2C3Q==" },
-  { package: "@openagentsinc/conformance-kit", version: "0.2.1-rc.2", integrity: "sha512-Hm2JMz1FKTuUNIxr9rEXKZ5RQuVLPZF8/UI2WdTTutt/dkbECjb8g1lpGK6tMJitw/NV0MbEbHK3z8PIqWXHKQ==" },
+  {
+    package: "@openagentsinc/ai",
+    version: "0.2.1-rc.2",
+    integrity:
+      "sha512-mQN7iOA0EbXL8zwFxJr2hHy23dMivLAhGeJRd8TepjzcBRECKAVQ1fTFOsvr8Ik2g+Bvg2Wxw3mtoX+N7SCC7Q==",
+  },
+  {
+    package: "@openagentsinc/rlm",
+    version: "0.2.1-rc.2",
+    integrity:
+      "sha512-M3JX7BJDvTBbjSltmLD7u5PRl7K1Ytzjvy5HdD/e25Ywixa1fJk0tX3i2DFUBLyJjnNPv4YO4QwosPnu7ILMMQ==",
+  },
+  {
+    package: "@openagentsinc/history-corpus",
+    version: "0.2.1-rc.2",
+    integrity:
+      "sha512-2V9CW86+DMlxmcu9GjUUJj4bnTvj8OP99j64tOM4BJzj76Ci1Z+jT4b291UJyp8l9sYcQpNVcC/ID1pUVCiYcw==",
+  },
+  {
+    package: "@openagentsinc/agent-harness-contract",
+    version: "0.2.1-rc.2",
+    integrity:
+      "sha512-3vIhogeE/Bbg5LfWKjQ8msCs7T7BB/ivE0Zd1VUVAA5Pz6WCsier6VLFapAhW6NBRnS0brvDhaerPiDBfkRqNQ==",
+  },
+  {
+    package: "@openagentsinc/agent-runtime-schema",
+    version: "0.2.1-rc.2",
+    integrity:
+      "sha512-xSC/laUZcFaF8AUOEshQy01Q1QuOdrYAEx48PPUjRjPO/dP4IUuTQLkeio0EfyYKqu+VMxax9ttwleeEPnQKJA==",
+  },
+  {
+    package: "@openagentsinc/dse",
+    version: "0.2.1-rc.2",
+    integrity:
+      "sha512-CFsEPBkJbQi/ZL/OQKOGqxahI4GNy9Es2b8p/uXD4xQaIFKm48DS7EtiEbJbLm3l5qXHNpR7D7HEFf6R4ljdHg==",
+  },
+  {
+    package: "@openagentsinc/graph-corpus",
+    version: "0.2.1-rc.2",
+    integrity:
+      "sha512-8LFMS/WGvRKYmcst0GpqpLrjRMpWRoQ9aSshJqKPHBTxWdbQI3360y/VBa5YroBz7fEndPnmgJStdyEhDM2C3Q==",
+  },
+  {
+    package: "@openagentsinc/conformance-kit",
+    version: "0.2.1-rc.2",
+    integrity:
+      "sha512-Hm2JMz1FKTuUNIxr9rEXKZ5RQuVLPZF8/UI2WdTTutt/dkbECjb8g1lpGK6tMJitw/NV0MbEbHK3z8PIqWXHKQ==",
+  },
 ];
 
 const pins = (): GraphMemoryEvaluationPins => ({
@@ -58,15 +99,24 @@ const pins = (): GraphMemoryEvaluationPins => ({
   sdkPackages: sdkPackages(),
   lockDigest: "9".repeat(64),
   openAgentsCommit: "99c84710b5c13833c91c62a8941ebe7aa9359d4f",
+  sourceState: "clean",
   desktopBuildRef: "apps/openagents-desktop/dist",
   desktopBuildDigest: "a".repeat(64),
+  desktopBuildArtifacts: [{ ref: "dist/main.js", digest: "1".repeat(64) }],
+  productWiringSmokeDigest: "2".repeat(64),
   runnerRef: "apps/openagents-desktop/scripts/graph-memory-evaluation.ts",
   runnerDigest: "7".repeat(64),
   oracleRef: "apps/openagents-desktop/src/desktop-graph-memory-evaluation.ts",
   oracleDigest: "8".repeat(64),
   runtime: { node: "v24.13.1", platform: "darwin", architecture: "arm64" },
   timingRef: "node:perf_hooks.performance.now",
-  model: { _tag: "NotUsed", reason: "deterministic_evaluation", requiredModelCalls: 0, requiredInputTokens: 0, requiredOutputTokens: 0 },
+  model: {
+    _tag: "NotUsed",
+    reason: "deterministic_evaluation",
+    requiredModelCalls: 0,
+    requiredInputTokens: 0,
+    requiredOutputTokens: 0,
+  },
   parserRef: "parser.graph-memory.fixture",
   parserVersion: "1",
   parserArtifactDigest: "c".repeat(64),
@@ -89,23 +139,34 @@ const resultRow = (
   outcome: "complete",
   inputDigest: graphMemoryEvaluationDigest({
     rowId: fixture.rowId,
-    query: fixture.query,
-    sources: fixture.sources,
+    query: desktopGraphMemoryRecallQueryFor(fixture.query),
+    sources: fixture.sources.filter((source) => !source.revoked),
     scenario: fixture.scenario,
   }),
-  corpusDigest: graphMemoryEvaluationDigest(fixture.sources),
-  queryDigest: graphMemoryEvaluationDigest(fixture.query),
+  corpusDigest: graphMemoryEvaluationDigest(fixture.sources.filter((source) => !source.revoked)),
+  queryDigest: graphMemoryEvaluationDigest(desktopGraphMemoryRecallQueryFor(fixture.query)),
   policyDigest: pins().policyDigest,
   budgetDigest: pins().budgetDigest,
   modelCalls: 0,
-  extractionEvidence: arm === "graph_assisted"
-    ? { status: "complete", receiptDigest: graphMemoryEvaluationDigest({ rowId: fixture.rowId, extraction: "complete" }), usageTruth: "exact" }
-    : { status: "not_run", receiptDigest: null, usageTruth: "not_run" },
+  extractionEvidence:
+    arm === "graph_assisted"
+      ? {
+          status: "complete",
+          receiptDigest: graphMemoryEvaluationDigest({
+            rowId: fixture.rowId,
+            extraction: "complete",
+          }),
+          usageTruth: "exact",
+        }
+      : { status: "not_run", receiptDigest: null, usageTruth: "not_run" },
   emittedAnswerFactRefs: fixture.expectedAnswerFactRefs,
   emittedCitationRefs: [`citation.${fixture.rowId}`],
   validCitationRefs: [`citation.${fixture.rowId}`],
   citationEvidence: {
-    validationDigest: graphMemoryEvaluationDigest({ emitted: [`citation.${fixture.rowId}`], valid: [`citation.${fixture.rowId}`] }),
+    validationDigest: graphMemoryEvaluationDigest({
+      emitted: [`citation.${fixture.rowId}`],
+      valid: [`citation.${fixture.rowId}`],
+    }),
     invalidCount: 0,
   },
   mergedEntityPairs: [],
@@ -113,13 +174,21 @@ const resultRow = (
   retrievedElementAliases: fixture.relevantElementAliases,
   retrievalEvidence: {
     mappings: fixture.relevantElementAliases.map((oracleElementAlias) => ({
-      observedElementDigest: graphMemoryEvaluationDigest({ rowId: fixture.rowId, oracleElementAlias }),
+      observedElementDigest: graphMemoryEvaluationDigest({
+        rowId: fixture.rowId,
+        oracleElementAlias,
+      }),
       oracleElementAlias,
     })),
-    mappingDigest: graphMemoryEvaluationDigest(fixture.relevantElementAliases.map((oracleElementAlias) => ({
-      observedElementDigest: graphMemoryEvaluationDigest({ rowId: fixture.rowId, oracleElementAlias }),
-      oracleElementAlias,
-    }))),
+    mappingDigest: graphMemoryEvaluationDigest(
+      fixture.relevantElementAliases.map((oracleElementAlias) => ({
+        observedElementDigest: graphMemoryEvaluationDigest({
+          rowId: fixture.rowId,
+          oracleElementAlias,
+        }),
+        oracleElementAlias,
+      })),
+    ),
   },
   recallLatencySamplesMs: [9, 10, 11],
   setupLatencyMs: arm === "graph_assisted" ? 5 : null,
@@ -178,7 +247,10 @@ describe("graph memory evaluation fixtures", () => {
   test("refuses split identity overlap and changed bytes", () => {
     const overlap: GraphMemoryEvaluationFixtureFile = {
       ...holdout,
-      rows: [{ ...requiredAt(holdout.rows, 0), rowId: requiredAt(development.rows, 0).rowId }, ...holdout.rows.slice(1)],
+      rows: [
+        { ...requiredAt(holdout.rows, 0), rowId: requiredAt(development.rows, 0).rowId },
+        ...holdout.rows.slice(1),
+      ],
     };
     expect(validateGraphMemoryEvaluationDataset(development, overlap, manifest)).toMatchObject({
       ok: false,
@@ -186,7 +258,10 @@ describe("graph memory evaluation fixtures", () => {
     });
     const changed: GraphMemoryEvaluationFixtureFile = {
       ...holdout,
-      rows: [{ ...requiredAt(holdout.rows, 0), query: "Changed after review." }, ...holdout.rows.slice(1)],
+      rows: [
+        { ...requiredAt(holdout.rows, 0), query: "Changed after review." },
+        ...holdout.rows.slice(1),
+      ],
     };
     expect(validateGraphMemoryEvaluationDataset(development, changed, manifest)).toMatchObject({
       ok: false,
@@ -204,11 +279,23 @@ describe("graph memory evaluation scoring", () => {
       retrievalEvidence: {
         mappings: [
           ...row.retrievalEvidence.mappings,
-          { observedElementDigest: graphMemoryEvaluationDigest({ rowId: fixture.rowId, irrelevant: true }), oracleElementAlias: `irrelevant.${fixture.rowId}` },
+          {
+            observedElementDigest: graphMemoryEvaluationDigest({
+              rowId: fixture.rowId,
+              irrelevant: true,
+            }),
+            oracleElementAlias: `irrelevant.${fixture.rowId}`,
+          },
         ],
         mappingDigest: graphMemoryEvaluationDigest([
           ...row.retrievalEvidence.mappings,
-          { observedElementDigest: graphMemoryEvaluationDigest({ rowId: fixture.rowId, irrelevant: true }), oracleElementAlias: `irrelevant.${fixture.rowId}` },
+          {
+            observedElementDigest: graphMemoryEvaluationDigest({
+              rowId: fixture.rowId,
+              irrelevant: true,
+            }),
+            oracleElementAlias: `irrelevant.${fixture.rowId}`,
+          },
         ]),
       },
       recallLatencySamplesMs: [5, 6, 7],
@@ -280,14 +367,21 @@ describe("graph memory evaluation scoring", () => {
   });
 
   test("keeps unavailable tokens distinct from exact zero and refuses a quality verdict", () => {
-    const history = rows("history_only", (row, _fixture, index) => index === 0
-      ? { ...row, tokens: { _tag: "Unavailable", reason: "not_reported" } }
-      : row);
+    const history = rows("history_only", (row, _fixture, index) =>
+      index === 0 ? { ...row, tokens: { _tag: "Unavailable", reason: "not_reported" } } : row,
+    );
     const availablePins: GraphMemoryEvaluationPins = {
       ...pins(),
-      model: { _tag: "Available", provider: "fixture-provider", model: "fixture-model-v1", modelArtifactDigest: "b".repeat(64) },
+      model: {
+        _tag: "Available",
+        provider: "fixture-provider",
+        model: "fixture-model-v1",
+        modelArtifactDigest: "b".repeat(64),
+      },
     };
-    const evaluated = evaluateDesktopGraphMemoryComparison(input(history, rows("graph_assisted"), availablePins));
+    const evaluated = evaluateDesktopGraphMemoryComparison(
+      input(history, rows("graph_assisted"), availablePins),
+    );
     expect(evaluated.ok).toBe(true);
     if (!evaluated.ok) return;
     expect(evaluated.receipt.historyOnly.usage).toMatchObject({
@@ -309,14 +403,24 @@ describe("graph memory evaluation scoring", () => {
       ...row,
       mergedEntityPairs: index === 0 ? fixture.goldDistinctEntityPairs : [],
       observedEntityRefs: fixture.goldEntityRefs.slice(0, -1),
-      retrievedElementAliases: index === 5 ? fixture.relevantElementAliases.slice(0, 1) : fixture.relevantElementAliases,
+      retrievedElementAliases:
+        index === 5 ? fixture.relevantElementAliases.slice(0, 1) : fixture.relevantElementAliases,
       recallLatencySamplesMs: [index + 1, index + 2, index + 3],
       truncated: index === 5,
       hitCaps: index === 5 ? ["max_returned_elements"] : [],
     }));
     const summary = summarizeGraphMemoryEvaluationArm("graph_assisted", holdout.rows, graph);
-    expect(summary.falseMergeRate).toMatchObject({ status: "supported", numerator: 1, denominator: 3 });
-    expect(summary.missedEntityRate).toMatchObject({ status: "supported", numerator: 7, denominator: 14, value: 0.5 });
+    expect(summary.falseMergeRate).toMatchObject({
+      status: "supported",
+      numerator: 1,
+      denominator: 3,
+    });
+    expect(summary.missedEntityRate).toMatchObject({
+      status: "supported",
+      numerator: 7,
+      denominator: 14,
+      value: 0.5,
+    });
     expect(summary.retrievalRecall.value).toBe(7 / 8);
     expect(summary.latency).toEqual({ samples: 21, p50Ms: 5, p95Ms: 8 });
     expect(summary.truncation).toEqual({ rows: 1, hitCaps: ["max_returned_elements"] });

@@ -54,16 +54,31 @@ export const DESKTOP_GRAPH_MEMORY_RECALL_LIMITS = {
   maxObservationCharacters: 2_048,
 } as const;
 
-const sha256 = (value: string): string =>
-  createHash("sha256").update(value, "utf8").digest("hex");
+const sha256 = (value: string): string => createHash("sha256").update(value, "utf8").digest("hex");
 
 export const desktopGraphMemoryRecallQueryFor = (message: string): string => {
-  const stopWords = new Set(["about", "active", "does", "from", "have", "that", "the", "this", "what", "when", "where", "which", "with"]);
-  return message
-    .normalize("NFC")
-    .toLocaleLowerCase("en-US")
-    .match(/[\p{L}\p{N}._-]+/gu)
-    ?.find((word) => word.length >= 4 && !stopWords.has(word)) ?? message;
+  const stopWords = new Set([
+    "about",
+    "active",
+    "does",
+    "from",
+    "have",
+    "that",
+    "the",
+    "this",
+    "what",
+    "when",
+    "where",
+    "which",
+    "with",
+  ]);
+  return (
+    message
+      .normalize("NFC")
+      .toLocaleLowerCase("en-US")
+      .match(/[\p{L}\p{N}._-]+/gu)
+      ?.find((word) => word.length >= 4 && !stopWords.has(word)) ?? message
+  );
 };
 
 export const desktopGraphMemoryDeterministicExtractor: DeterministicGraphExtractor = {
@@ -132,11 +147,10 @@ export const openDesktopGraphMemoryEvidenceStore = (
     mkdirSync(parent, { recursive: true, mode: 0o700 });
     if (process.platform !== "win32") chmodSync(parent, 0o700);
     const temporary = `${filePath}.pending`;
-    writeFileSync(
-      temporary,
-      `${JSON.stringify({ schema: EVIDENCE_STORE_SCHEMA, records })}\n`,
-      { encoding: "utf8", mode: 0o600 },
-    );
+    writeFileSync(temporary, `${JSON.stringify({ schema: EVIDENCE_STORE_SCHEMA, records })}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+    });
     if (process.platform !== "win32") chmodSync(temporary, 0o600);
     renameSync(temporary, filePath);
     if (process.platform !== "win32") chmodSync(filePath, 0o600);
@@ -171,21 +185,23 @@ const authorizedHistory = (
       if (characters + guarded.redacted.length > MAX_HISTORY_CHARACTERS) return [];
       characters += guarded.redacted.length;
       const entryDigest = sha256(`${threadDigest}:${index}:${guarded.redacted}`);
-      return [{
-        corpusRef: `corpus.desktop-history.${entryDigest}`,
-        scopeRef: graphMemoryScopeRefFor(scope),
-        entryRef: `entry.${entryDigest}`,
-        sourceKind: "desktop-foreground-history",
-        sourceAddress: {
-          addressSchemaId: "openagents.desktop.history_address.v1",
-          encodedAddress: `memory://thread/${threadDigest}/entry/${index}`,
+      return [
+        {
+          corpusRef: `corpus.desktop-history.${entryDigest}`,
+          scopeRef: graphMemoryScopeRefFor(scope),
+          entryRef: `entry.${entryDigest}`,
+          sourceKind: "desktop-foreground-history",
+          sourceAddress: {
+            addressSchemaId: "openagents.desktop.history_address.v1",
+            encodedAddress: `memory://thread/${threadDigest}/entry/${index}`,
+          },
+          text: guarded.redacted,
+          visibility: "private" as const,
+          // The entry bytes are the output of the redaction boundary. They are
+          // clean corpus text, even when the source needed a soft redaction.
+          redactionClass: "none" as const,
         },
-        text: guarded.redacted,
-        visibility: "private" as const,
-        // The entry bytes are the output of the redaction boundary. They are
-        // clean corpus text, even when the source needed a soft redaction.
-        redactionClass: "none" as const,
-      }];
+      ];
     });
 };
 
@@ -212,16 +228,18 @@ export const makeDesktopGraphMemoryWorkflow = (
                 includeVisibilities: ["private"],
                 includeRedactionClasses: ["none"],
               },
-              entries: [{
-                entryRef: entry.entryRef,
-                scopeRef: entry.scopeRef,
-                sourcePlane: "evidence_pack",
-                sourceKind: entry.sourceKind,
-                sourceAddress: entry.sourceAddress,
-                text: entry.text,
-                visibility: entry.visibility,
-                redactionClass: entry.redactionClass,
-              }],
+              entries: [
+                {
+                  entryRef: entry.entryRef,
+                  scopeRef: entry.scopeRef,
+                  sourcePlane: "evidence_pack",
+                  sourceKind: entry.sourceKind,
+                  sourceAddress: entry.sourceAddress,
+                  text: entry.text,
+                  visibility: entry.visibility,
+                  redactionClass: entry.redactionClass,
+                },
+              ],
             }),
           ),
         ),
@@ -251,8 +269,13 @@ export const makeDesktopGraphMemoryWorkflow = (
         },
         {
           resolveSources: () =>
-            Effect.succeed(leaves.map((handle) => ({ handle, redactionState: "already_redacted" }))),
-          extraction: { _tag: "Deterministic", extractor: desktopGraphMemoryDeterministicExtractor },
+            Effect.succeed(
+              leaves.map((handle) => ({ handle, redactionState: "already_redacted" })),
+            ),
+          extraction: {
+            _tag: "Deterministic",
+            extractor: desktopGraphMemoryDeterministicExtractor,
+          },
           extractionLimits: DESKTOP_GRAPH_MEMORY_EXTRACTION_LIMITS,
           recallLimits: DESKTOP_GRAPH_MEMORY_RECALL_LIMITS,
           countTokens: (text) => text.length,

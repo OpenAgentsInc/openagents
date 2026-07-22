@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -25,6 +25,24 @@ const safeStorage: SafeStorageLike = {
   },
 };
 
+const writeAggregate = (value: unknown): void => {
+  const encoded = `${JSON.stringify(value, null, 2)}\n`;
+  const outputArg = process.argv.find((argument) => argument.startsWith("--output="));
+  if (outputArg === undefined) {
+    process.stdout.write(encoded);
+    return;
+  }
+  const outputRef = outputArg.slice("--output=".length);
+  const allowedPrefix = "apps/openagents-desktop/benchmarks/graph-memory/";
+  if (!outputRef.startsWith(allowedPrefix) || !outputRef.endsWith(".json")) {
+    throw new Error("The lifecycle output must be a graph-memory benchmark JSON file.");
+  }
+  const repoRoot = path.resolve(import.meta.dirname, "../../..");
+  const outputPath = path.join(repoRoot, outputRef);
+  mkdirSync(path.dirname(outputPath), { recursive: true });
+  writeFileSync(outputPath, encoded, { mode: 0o644 });
+};
+
 try {
   const result = await Effect.runPromise(
     runGraphMemoryOwnerLifecycleProof({
@@ -34,7 +52,7 @@ try {
       custodyRung: "standalone_proof_process_wrapping_key",
     }),
   );
-  process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+  writeAggregate(result);
 } finally {
   wrappingKey.fill(0);
   rmSync(root, { force: true, recursive: true });

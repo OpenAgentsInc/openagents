@@ -23,6 +23,8 @@
     "accept:managed-sandbox-live": "pnpm run typecheck:managed-sandbox-live && node --import tsx scripts/managed-sandbox-live-acceptance.ts",
     "mvp-proof": "node --import tsx scripts/build.ts && node --import tsx scripts/run-mvp-proof.ts",
     "release-acceptance": "node --import tsx scripts/run-release-acceptance.ts",
+    "graph-memory:evaluate": "pnpm run build && node --import tsx scripts/graph-memory-evaluation.ts",
+    "graph-memory:owner-lifecycle": "node --import tsx scripts/graph-memory-owner-lifecycle-proof.ts",
     "smoke:codex-supervisor": "node --import tsx scripts/codex-app-server-supervisor-smoke.ts",
     "smoke:codex-ecosystem": "node --import tsx scripts/codex-ecosystem-smoke.ts",
     "smoke:codex-host-services": "node --import tsx scripts/codex-host-services-smoke.ts",

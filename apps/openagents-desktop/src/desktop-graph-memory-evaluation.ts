@@ -18,6 +18,7 @@ import {
   type GraphMemoryEvaluationRefusal,
   type GraphMemoryEvaluationResult,
 } from "./desktop-graph-memory-evaluation-contract.js";
+import { desktopGraphMemoryRecallQueryFor } from "./desktop-graph-memory-workflow.js";
 
 export const graphMemoryEvaluationDigest = (value: unknown): string =>
   sha256Hex(canonicalJson(value));
@@ -27,9 +28,7 @@ export const graphMemoryEvaluationPrivateDetailDigest = (
   graphAssistedRows: ReadonlyArray<GraphMemoryEvaluationArmRow>,
 ): string => graphMemoryEvaluationDigest({ historyOnlyRows, graphAssistedRows });
 
-const decodeGraphMemoryEvaluationInput = Schema.decodeUnknownExit(
-  GraphMemoryEvaluationInputSchema,
-);
+const decodeGraphMemoryEvaluationInput = Schema.decodeUnknownExit(GraphMemoryEvaluationInputSchema);
 const decodeDesktopGraphMemoryEvaluationReceipt = Schema.decodeUnknownSync(
   DesktopGraphMemoryEvaluationReceiptSchema,
 );
@@ -92,16 +91,19 @@ const fixtureSemanticsAreValid = (row: GraphMemoryEvaluationFixtureRow): boolean
     ) ||
     row.entityAliases.length !== entities.size ||
     row.entityAliases.some((entity) => !entities.has(entity.entityRef)) ||
-    row.scenario.steps.some(
-      (step) => step.sourceRef !== null && !sources.has(step.sourceRef),
-    )
-  ) return false;
+    row.scenario.steps.some((step) => step.sourceRef !== null && !sources.has(step.sourceRef))
+  )
+    return false;
   const challenges = setOf(row.challengeClasses);
   if (
-    (challenges.has("revoked_source") && !row.scenario.steps.some((step) => step.operation === "revoke")) ||
-    (challenges.has("partial_extraction") && !row.scenario.steps.some((step) => step.operation === "extract_partial")) ||
-    (challenges.has("stale_graph") && !row.scenario.steps.some((step) => step.operation === "advance_graph"))
-  ) return false;
+    (challenges.has("revoked_source") &&
+      !row.scenario.steps.some((step) => step.operation === "revoke")) ||
+    (challenges.has("partial_extraction") &&
+      !row.scenario.steps.some((step) => step.operation === "extract_partial")) ||
+    (challenges.has("stale_graph") &&
+      !row.scenario.steps.some((step) => step.operation === "advance_graph"))
+  )
+    return false;
   return true;
 };
 
@@ -133,9 +135,7 @@ export const validateGraphMemoryEvaluationDataset = (
       "Development and holdout fixture identities must be disjoint.",
     );
   }
-  if (
-    [...development.rows, ...holdout.rows].some((row) => !fixtureSemanticsAreValid(row))
-  ) {
+  if ([...development.rows, ...holdout.rows].some((row) => !fixtureSemanticsAreValid(row))) {
     return refusal(
       "fixture_semantics_invalid",
       "A fixture fact, entity alias, or scenario step is not source-addressed.",
@@ -283,8 +283,14 @@ export const summarizeGraphMemoryEvaluationArm = (
     retrievalRecall: fraction(relevantRetrieved, relevantExpected, "no_relevant_elements_defined"),
     latency: {
       samples: rows.flatMap((row) => row.recallLatencySamplesMs).length,
-      p50Ms: percentile(rows.flatMap((row) => row.recallLatencySamplesMs), 0.5),
-      p95Ms: percentile(rows.flatMap((row) => row.recallLatencySamplesMs), 0.95),
+      p50Ms: percentile(
+        rows.flatMap((row) => row.recallLatencySamplesMs),
+        0.5,
+      ),
+      p95Ms: percentile(
+        rows.flatMap((row) => row.recallLatencySamplesMs),
+        0.95,
+      ),
     },
     usage: summarizeUsage(rows),
     truncation: {
@@ -318,8 +324,12 @@ const qualityComparison = (
     reasons.push("token_usage_unavailable");
   }
   if (
-    [...comparableMetrics(history), ...comparableMetrics(graph), graph.falseMergeRate, graph.missedEntityRate]
-      .some((metric) => metric.status === "unsupported")
+    [
+      ...comparableMetrics(history),
+      ...comparableMetrics(graph),
+      graph.falseMergeRate,
+      graph.missedEntityRate,
+    ].some((metric) => metric.status === "unsupported")
   ) {
     reasons.push("required_metric_unsupported");
   }
@@ -374,19 +384,24 @@ const requiredSdkPackages = [
 
 const pinsAreComplete = (pins: GraphMemoryEvaluationPins): boolean => {
   const packages = setOf(pins.sdkPackages.map((item) => item.package));
-  return packages.size === requiredSdkPackages.length &&
-    requiredSdkPackages.every((name) => packages.has(name));
+  return (
+    packages.size === requiredSdkPackages.length &&
+    requiredSdkPackages.every((name) => packages.has(name))
+  );
 };
 
 const rowIdentity = (fixture: GraphMemoryEvaluationFixtureRow) => ({
+  // Both recall arms consume the same post-policy corpus. Revoked rows remain
+  // in the reviewed fixture and scenario ledger, but they cannot enter either
+  // arm's recall input.
   inputDigest: graphMemoryEvaluationDigest({
     rowId: fixture.rowId,
-    query: fixture.query,
-    sources: fixture.sources,
+    query: desktopGraphMemoryRecallQueryFor(fixture.query),
+    sources: fixture.sources.filter((source) => !source.revoked),
     scenario: fixture.scenario,
   }),
-  corpusDigest: graphMemoryEvaluationDigest(fixture.sources),
-  queryDigest: graphMemoryEvaluationDigest(fixture.query),
+  corpusDigest: graphMemoryEvaluationDigest(fixture.sources.filter((source) => !source.revoked)),
+  queryDigest: graphMemoryEvaluationDigest(desktopGraphMemoryRecallQueryFor(fixture.query)),
 });
 
 const rowEvidenceIsValid = (
@@ -396,7 +411,13 @@ const rowEvidenceIsValid = (
   pins: GraphMemoryEvaluationPins,
 ): boolean => {
   const expected = rowIdentity(fixture);
-  const sharedFields = ["inputDigest", "corpusDigest", "queryDigest", "policyDigest", "budgetDigest"] as const;
+  const sharedFields = [
+    "inputDigest",
+    "corpusDigest",
+    "queryDigest",
+    "policyDigest",
+    "budgetDigest",
+  ] as const;
   if (sharedFields.some((field) => history[field] !== graph[field])) return false;
   if (
     history.inputDigest !== expected.inputDigest ||
@@ -404,7 +425,8 @@ const rowEvidenceIsValid = (
     history.queryDigest !== expected.queryDigest ||
     history.policyDigest !== pins.policyDigest ||
     history.budgetDigest !== pins.budgetDigest
-  ) return false;
+  )
+    return false;
   const modelPin = pins.model;
   if (
     modelPin._tag === "NotUsed" &&
@@ -416,33 +438,36 @@ const rowEvidenceIsValid = (
         row.tokens.outputTokens !== modelPin.requiredOutputTokens ||
         row.tokens.totalTokens !== 0,
     )
-  ) return false;
+  )
+    return false;
   for (const row of [history, graph]) {
     const mappedAliases = setOf(
       row.retrievalEvidence.mappings.map((mapping) => mapping.oracleElementAlias),
     );
     if (
       row.retrievedElementAliases.some((alias) => !mappedAliases.has(alias)) ||
-      row.retrievalEvidence.mappingDigest !== graphMemoryEvaluationDigest(
-        row.retrievalEvidence.mappings,
-      )
-    ) return false;
+      row.retrievalEvidence.mappingDigest !==
+        graphMemoryEvaluationDigest(row.retrievalEvidence.mappings)
+    )
+      return false;
     const emitted = setOf(row.emittedCitationRefs);
     const valid = setOf(row.validCitationRefs);
     if (row.citationEvidence.invalidCount !== emitted.size - intersectionCount(emitted, valid)) {
       return false;
     }
-    const validationDigest = emitted.size === 0
-      ? null
-      : graphMemoryEvaluationDigest({
-          emitted: [...emitted].toSorted(),
-          valid: [...valid].toSorted(),
-        });
+    const validationDigest =
+      emitted.size === 0
+        ? null
+        : graphMemoryEvaluationDigest({
+            emitted: [...emitted].toSorted(),
+            valid: [...valid].toSorted(),
+          });
     if (row.citationEvidence.validationDigest !== validationDigest) return false;
     if (
       row.extractionEvidence.status === "complete" &&
       row.extractionEvidence.receiptDigest === null
-    ) return false;
+    )
+      return false;
   }
   return true;
 };
@@ -453,8 +478,13 @@ const rowsMatchFixtures = (
   rows: ReadonlyArray<GraphMemoryEvaluationArmRow>,
 ): boolean => {
   const expected = fixtures.map((row) => row.rowId).toSorted();
-  const observed = rows.filter((row) => row.arm === arm).map((row) => row.rowId).toSorted();
-  return canonicalJson(expected) === canonicalJson(observed) && rows.every((row) => row.arm === arm);
+  const observed = rows
+    .filter((row) => row.arm === arm)
+    .map((row) => row.rowId)
+    .toSorted();
+  return (
+    canonicalJson(expected) === canonicalJson(observed) && rows.every((row) => row.arm === arm)
+  );
 };
 
 const decodeInput = (input: unknown): GraphMemoryEvaluationInput | null => {
@@ -510,8 +540,11 @@ export const evaluateDesktopGraphMemoryComparison = (
     input.holdout.rows.some((fixture) => {
       const history = historyById.get(fixture.rowId);
       const graph = graphById.get(fixture.rowId);
-      return history === undefined || graph === undefined ||
-        !rowEvidenceIsValid(fixture, history, graph, input.observedPins);
+      return (
+        history === undefined ||
+        graph === undefined ||
+        !rowEvidenceIsValid(fixture, history, graph, input.observedPins)
+      );
     })
   ) {
     return refusal(
@@ -537,13 +570,16 @@ export const evaluateDesktopGraphMemoryComparison = (
     graphAssisted,
   );
   const nonCompleteRows =
-    historyOnly.rows - historyOnly.outcomes.complete +
-    graphAssisted.rows - graphAssisted.outcomes.complete;
-  const evidence = nonCompleteRows === 0 && comparison.quality !== "inconclusive"
-    ? "present"
-    : nonCompleteRows < historyOnly.rows + graphAssisted.rows
-      ? "partial"
-      : "absent";
+    historyOnly.rows -
+    historyOnly.outcomes.complete +
+    graphAssisted.rows -
+    graphAssisted.outcomes.complete;
+  const evidence =
+    nonCompleteRows === 0 && comparison.quality !== "inconclusive"
+      ? "present"
+      : nonCompleteRows < historyOnly.rows + graphAssisted.rows
+        ? "partial"
+        : "absent";
 
   const receipt = decodeDesktopGraphMemoryEvaluationReceipt({
     schemaVersion: DESKTOP_GRAPH_MEMORY_EVALUATION_SCHEMA_VERSION,

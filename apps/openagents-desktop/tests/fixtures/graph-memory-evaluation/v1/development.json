@@ -102,6 +102,7 @@
       "challengeClasses": ["stale_graph"],
       "query": "What is the current schema revision?",
       "sources": [
+        { "sourceRef": "source.dev.schema.revoked", "text": "The prior schema revision is 4.", "revoked": true },
         { "sourceRef": "source.dev.schema", "text": "The current schema revision is 5.", "revoked": false }
       ],
       "expectedAnswerFactRefs": ["fact.dev.schema-5"],
@@ -110,7 +111,7 @@
       "entityAliases": [{ "entityRef": "entity.dev.schema-5", "aliases": ["schema revision 5", "revision 5"] }],
       "goldDistinctEntityPairs": [],
       "relevantElementAliases": ["element.dev.schema-current"],
-      "scenario": { "steps": [{ "operation": "ingest", "sourceRef": "source.dev.schema" }, { "operation": "advance_graph", "sourceRef": null }], "expectedCaps": ["stale_graph_refused"] }
+      "scenario": { "steps": [{ "operation": "ingest", "sourceRef": "source.dev.schema.revoked" }, { "operation": "revoke", "sourceRef": "source.dev.schema.revoked" }, { "operation": "ingest", "sourceRef": "source.dev.schema" }, { "operation": "advance_graph", "sourceRef": null }], "expectedCaps": ["stale_graph_refused"] }
     }
   ]
 }

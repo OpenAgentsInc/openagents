@@ -121,6 +121,7 @@
       "challengeClasses": ["stale_graph"],
       "query": "What is the current fixture generation?",
       "sources": [
+        { "sourceRef": "source.holdout.generation.revoked", "text": "The prior fixture generation is 7.", "revoked": true },
         { "sourceRef": "source.holdout.generation", "text": "The current fixture generation is 8.", "revoked": false }
       ],
       "expectedAnswerFactRefs": ["fact.holdout.generation-8"],
@@ -129,7 +130,7 @@
       "entityAliases": [{ "entityRef": "entity.holdout.generation-8", "aliases": ["fixture generation 8", "generation 8"] }],
       "goldDistinctEntityPairs": [],
       "relevantElementAliases": ["element.holdout.generation-current"],
-      "scenario": { "steps": [{ "operation": "ingest", "sourceRef": "source.holdout.generation" }, { "operation": "advance_graph", "sourceRef": null }], "expectedCaps": ["stale_graph_refused"] }
+      "scenario": { "steps": [{ "operation": "ingest", "sourceRef": "source.holdout.generation.revoked" }, { "operation": "revoke", "sourceRef": "source.holdout.generation.revoked" }, { "operation": "ingest", "sourceRef": "source.holdout.generation" }, { "operation": "advance_graph", "sourceRef": null }], "expectedCaps": ["stale_graph_refused"] }
     }
   ]
 }

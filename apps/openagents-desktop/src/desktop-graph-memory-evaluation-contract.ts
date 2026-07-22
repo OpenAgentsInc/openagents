@@ -12,10 +12,7 @@ const boundedRef = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength
 const boundedText = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(2_000));
 const digest = Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/u));
 const commitSha = Schema.String.check(Schema.isPattern(/^[0-9a-f]{40}$/u));
-const nonNegativeInteger = Schema.Number.check(
-  Schema.isInt(),
-  Schema.isGreaterThanOrEqualTo(0),
-);
+const nonNegativeInteger = Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0));
 const positiveInteger = Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(1));
 const finiteNonNegative = Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0));
 
@@ -36,8 +33,9 @@ export const GraphMemoryEvaluationSourceFixtureSchema = Schema.Struct({
   text: boundedText,
   revoked: Schema.Boolean,
 });
-export interface GraphMemoryEvaluationSourceFixture
-  extends Schema.Schema.Type<typeof GraphMemoryEvaluationSourceFixtureSchema> {}
+export interface GraphMemoryEvaluationSourceFixture extends Schema.Schema.Type<
+  typeof GraphMemoryEvaluationSourceFixtureSchema
+> {}
 
 export const GraphMemoryEvaluationFixtureRowSchema = Schema.Struct({
   rowId: boundedRef,
@@ -47,35 +45,49 @@ export const GraphMemoryEvaluationFixtureRowSchema = Schema.Struct({
   query: boundedText,
   sources: Schema.Array(GraphMemoryEvaluationSourceFixtureSchema).check(Schema.isMinLength(1)),
   expectedAnswerFactRefs: Schema.Array(boundedRef).check(Schema.isMinLength(1)),
-  expectedFactSupport: Schema.Array(Schema.Struct({
-    factRef: boundedRef,
-    supportingSourceRefs: Schema.Array(boundedRef).check(Schema.isMinLength(1)),
-  })).check(Schema.isMinLength(1)),
+  expectedFactSupport: Schema.Array(
+    Schema.Struct({
+      factRef: boundedRef,
+      supportingSourceRefs: Schema.Array(boundedRef).check(Schema.isMinLength(1)),
+    }),
+  ).check(Schema.isMinLength(1)),
   goldEntityRefs: Schema.Array(boundedRef).check(Schema.isMinLength(1)),
-  entityAliases: Schema.Array(Schema.Struct({
-    entityRef: boundedRef,
-    aliases: Schema.Array(boundedText).check(Schema.isMinLength(1)),
-  })).check(Schema.isMinLength(1)),
+  entityAliases: Schema.Array(
+    Schema.Struct({
+      entityRef: boundedRef,
+      aliases: Schema.Array(boundedText).check(Schema.isMinLength(1)),
+    }),
+  ).check(Schema.isMinLength(1)),
   goldDistinctEntityPairs: Schema.Array(Schema.Tuple([boundedRef, boundedRef])),
   relevantElementAliases: Schema.Array(boundedRef).check(Schema.isMinLength(1)),
   scenario: Schema.Struct({
-    steps: Schema.Array(Schema.Struct({
-      operation: Schema.Literals(["ingest", "revoke", "replace", "extract_partial", "advance_graph"]),
-      sourceRef: Schema.NullOr(boundedRef),
-    })).check(Schema.isMinLength(1)),
+    steps: Schema.Array(
+      Schema.Struct({
+        operation: Schema.Literals([
+          "ingest",
+          "revoke",
+          "replace",
+          "extract_partial",
+          "advance_graph",
+        ]),
+        sourceRef: Schema.NullOr(boundedRef),
+      }),
+    ).check(Schema.isMinLength(1)),
     expectedCaps: Schema.Array(boundedRef),
   }),
 });
-export interface GraphMemoryEvaluationFixtureRow
-  extends Schema.Schema.Type<typeof GraphMemoryEvaluationFixtureRowSchema> {}
+export interface GraphMemoryEvaluationFixtureRow extends Schema.Schema.Type<
+  typeof GraphMemoryEvaluationFixtureRowSchema
+> {}
 
 export const GraphMemoryEvaluationFixtureFileSchema = Schema.Struct({
   schemaVersion: Schema.Literal(DESKTOP_GRAPH_MEMORY_FIXTURE_SCHEMA_VERSION),
   split: Schema.Literals(["development", "holdout"]),
   rows: Schema.Array(GraphMemoryEvaluationFixtureRowSchema).check(Schema.isMinLength(1)),
 });
-export interface GraphMemoryEvaluationFixtureFile
-  extends Schema.Schema.Type<typeof GraphMemoryEvaluationFixtureFileSchema> {}
+export interface GraphMemoryEvaluationFixtureFile extends Schema.Schema.Type<
+  typeof GraphMemoryEvaluationFixtureFileSchema
+> {}
 
 export const GraphMemoryEvaluationManifestSchema = Schema.Struct({
   schemaVersion: Schema.Literal(DESKTOP_GRAPH_MEMORY_MANIFEST_SCHEMA_VERSION),
@@ -90,19 +102,44 @@ export const GraphMemoryEvaluationManifestSchema = Schema.Struct({
     Schema.isMinLength(7),
   ),
   qualityPolicy: Schema.Struct({
-    minimumAnswerSupportImprovement: Schema.Number.check(Schema.isGreaterThanOrEqualTo(0), Schema.isLessThanOrEqualTo(1)),
-    minimumRetrievalRecallImprovement: Schema.Number.check(Schema.isGreaterThanOrEqualTo(0), Schema.isLessThanOrEqualTo(1)),
-    maximumCitationValidityRegression: Schema.Number.check(Schema.isGreaterThanOrEqualTo(0), Schema.isLessThanOrEqualTo(1)),
-    maximumAnswerSupportRegression: Schema.Number.check(Schema.isGreaterThanOrEqualTo(0), Schema.isLessThanOrEqualTo(1)),
-    maximumRetrievalPrecisionRegression: Schema.Number.check(Schema.isGreaterThanOrEqualTo(0), Schema.isLessThanOrEqualTo(1)),
-    maximumRetrievalRecallRegression: Schema.Number.check(Schema.isGreaterThanOrEqualTo(0), Schema.isLessThanOrEqualTo(1)),
-    maximumFalseMergeRate: Schema.Number.check(Schema.isGreaterThanOrEqualTo(0), Schema.isLessThanOrEqualTo(1)),
-    tieTolerance: Schema.Number.check(Schema.isGreaterThanOrEqualTo(0), Schema.isLessThanOrEqualTo(0.1)),
+    minimumAnswerSupportImprovement: Schema.Number.check(
+      Schema.isGreaterThanOrEqualTo(0),
+      Schema.isLessThanOrEqualTo(1),
+    ),
+    minimumRetrievalRecallImprovement: Schema.Number.check(
+      Schema.isGreaterThanOrEqualTo(0),
+      Schema.isLessThanOrEqualTo(1),
+    ),
+    maximumCitationValidityRegression: Schema.Number.check(
+      Schema.isGreaterThanOrEqualTo(0),
+      Schema.isLessThanOrEqualTo(1),
+    ),
+    maximumAnswerSupportRegression: Schema.Number.check(
+      Schema.isGreaterThanOrEqualTo(0),
+      Schema.isLessThanOrEqualTo(1),
+    ),
+    maximumRetrievalPrecisionRegression: Schema.Number.check(
+      Schema.isGreaterThanOrEqualTo(0),
+      Schema.isLessThanOrEqualTo(1),
+    ),
+    maximumRetrievalRecallRegression: Schema.Number.check(
+      Schema.isGreaterThanOrEqualTo(0),
+      Schema.isLessThanOrEqualTo(1),
+    ),
+    maximumFalseMergeRate: Schema.Number.check(
+      Schema.isGreaterThanOrEqualTo(0),
+      Schema.isLessThanOrEqualTo(1),
+    ),
+    tieTolerance: Schema.Number.check(
+      Schema.isGreaterThanOrEqualTo(0),
+      Schema.isLessThanOrEqualTo(0.1),
+    ),
   }),
   qualityPolicyDigest: digest,
 });
-export interface GraphMemoryEvaluationManifest
-  extends Schema.Schema.Type<typeof GraphMemoryEvaluationManifestSchema> {}
+export interface GraphMemoryEvaluationManifest extends Schema.Schema.Type<
+  typeof GraphMemoryEvaluationManifestSchema
+> {}
 
 export const GraphMemoryEvaluationModelPinSchema = Schema.TaggedUnion({
   Available: {
@@ -142,8 +179,16 @@ export const GraphMemoryEvaluationPinsSchema = Schema.Struct({
   sdkPackages: Schema.Array(GraphMemoryEvaluationSdkPackagePinSchema).check(Schema.isMinLength(8)),
   lockDigest: digest,
   openAgentsCommit: commitSha,
+  sourceState: Schema.Literal("clean"),
   desktopBuildRef: boundedRef,
   desktopBuildDigest: digest,
+  desktopBuildArtifacts: Schema.Array(
+    Schema.Struct({
+      ref: boundedRef,
+      digest,
+    }),
+  ).check(Schema.isMinLength(1)),
+  productWiringSmokeDigest: digest,
   runnerRef: boundedRef,
   runnerDigest: digest,
   oracleRef: boundedRef,
@@ -166,8 +211,9 @@ export const GraphMemoryEvaluationPinsSchema = Schema.Struct({
   budgetDigest: digest,
   qualityPolicyDigest: digest,
 });
-export interface GraphMemoryEvaluationPins
-  extends Schema.Schema.Type<typeof GraphMemoryEvaluationPinsSchema> {}
+export interface GraphMemoryEvaluationPins extends Schema.Schema.Type<
+  typeof GraphMemoryEvaluationPinsSchema
+> {}
 
 export const GraphMemoryEvaluationOutcomeSchema = Schema.Literals([
   "complete",
@@ -188,8 +234,7 @@ export const GraphMemoryEvaluationTokenUsageSchema = Schema.TaggedUnion({
     reason: Schema.Literals(["not_reported", "mixed_truth", "not_run"]),
   },
 });
-export type GraphMemoryEvaluationTokenUsage =
-  typeof GraphMemoryEvaluationTokenUsageSchema.Type;
+export type GraphMemoryEvaluationTokenUsage = typeof GraphMemoryEvaluationTokenUsageSchema.Type;
 
 export const GraphMemoryEvaluationArmRowSchema = Schema.Struct({
   rowId: boundedRef,
@@ -218,10 +263,12 @@ export const GraphMemoryEvaluationArmRowSchema = Schema.Struct({
   retrievedElementAliases: Schema.Array(boundedRef),
   retrievalEvidence: Schema.Struct({
     mappingDigest: digest,
-    mappings: Schema.Array(Schema.Struct({
-      observedElementDigest: digest,
-      oracleElementAlias: boundedRef,
-    })),
+    mappings: Schema.Array(
+      Schema.Struct({
+        observedElementDigest: digest,
+        oracleElementAlias: boundedRef,
+      }),
+    ),
   }),
   recallLatencySamplesMs: Schema.Array(finiteNonNegative).check(Schema.isMinLength(3)),
   setupLatencyMs: Schema.NullOr(finiteNonNegative),
@@ -229,26 +276,35 @@ export const GraphMemoryEvaluationArmRowSchema = Schema.Struct({
   truncated: Schema.Boolean,
   hitCaps: Schema.Array(boundedRef),
 });
-export interface GraphMemoryEvaluationArmRow
-  extends Schema.Schema.Type<typeof GraphMemoryEvaluationArmRowSchema> {}
+export interface GraphMemoryEvaluationArmRow extends Schema.Schema.Type<
+  typeof GraphMemoryEvaluationArmRowSchema
+> {}
 
 export const GraphMemoryEvaluationFractionMetricSchema = Schema.Struct({
   status: Schema.Literals(["supported", "unsupported"]),
   numerator: nonNegativeInteger,
   denominator: nonNegativeInteger,
-  value: Schema.NullOr(Schema.Number.check(Schema.isFinite(), Schema.isGreaterThanOrEqualTo(0), Schema.isLessThanOrEqualTo(1))),
+  value: Schema.NullOr(
+    Schema.Number.check(
+      Schema.isFinite(),
+      Schema.isGreaterThanOrEqualTo(0),
+      Schema.isLessThanOrEqualTo(1),
+    ),
+  ),
   reason: Schema.NullOr(boundedRef),
 });
-export interface GraphMemoryEvaluationFractionMetric
-  extends Schema.Schema.Type<typeof GraphMemoryEvaluationFractionMetricSchema> {}
+export interface GraphMemoryEvaluationFractionMetric extends Schema.Schema.Type<
+  typeof GraphMemoryEvaluationFractionMetricSchema
+> {}
 
 export const GraphMemoryEvaluationLatencyMetricSchema = Schema.Struct({
   samples: nonNegativeInteger,
   p50Ms: Schema.NullOr(finiteNonNegative),
   p95Ms: Schema.NullOr(finiteNonNegative),
 });
-export interface GraphMemoryEvaluationLatencyMetric
-  extends Schema.Schema.Type<typeof GraphMemoryEvaluationLatencyMetricSchema> {}
+export interface GraphMemoryEvaluationLatencyMetric extends Schema.Schema.Type<
+  typeof GraphMemoryEvaluationLatencyMetricSchema
+> {}
 
 export const GraphMemoryEvaluationUsageSummarySchema = Schema.Struct({
   truth: Schema.Literals(["exact", "unavailable"]),
@@ -258,8 +314,9 @@ export const GraphMemoryEvaluationUsageSummarySchema = Schema.Struct({
   outputTokens: Schema.NullOr(nonNegativeInteger),
   totalTokens: Schema.NullOr(nonNegativeInteger),
 });
-export interface GraphMemoryEvaluationUsageSummary
-  extends Schema.Schema.Type<typeof GraphMemoryEvaluationUsageSummarySchema> {}
+export interface GraphMemoryEvaluationUsageSummary extends Schema.Schema.Type<
+  typeof GraphMemoryEvaluationUsageSummarySchema
+> {}
 
 export const GraphMemoryEvaluationArmSummarySchema = Schema.Struct({
   arm: Schema.Literals(["history_only", "graph_assisted"]),
@@ -284,8 +341,9 @@ export const GraphMemoryEvaluationArmSummarySchema = Schema.Struct({
     hitCaps: Schema.Array(boundedRef),
   }),
 });
-export interface GraphMemoryEvaluationArmSummary
-  extends Schema.Schema.Type<typeof GraphMemoryEvaluationArmSummarySchema> {}
+export interface GraphMemoryEvaluationArmSummary extends Schema.Schema.Type<
+  typeof GraphMemoryEvaluationArmSummarySchema
+> {}
 
 export const GraphMemoryEvaluationQualityResultSchema = Schema.Literals([
   "improved",
@@ -304,8 +362,9 @@ export const GraphMemoryEvaluationDispositionSchema = Schema.Struct({
   release: Schema.Literals(["not_released", "release_candidate", "released"]),
   publicClaim: Schema.Literals(["not_authorized", "authorized"]),
 });
-export interface GraphMemoryEvaluationDisposition
-  extends Schema.Schema.Type<typeof GraphMemoryEvaluationDispositionSchema> {}
+export interface GraphMemoryEvaluationDisposition extends Schema.Schema.Type<
+  typeof GraphMemoryEvaluationDispositionSchema
+> {}
 
 export const DesktopGraphMemoryEvaluationReceiptSchema = Schema.Struct({
   schemaVersion: Schema.Literal(DESKTOP_GRAPH_MEMORY_EVALUATION_SCHEMA_VERSION),
@@ -323,26 +382,28 @@ export const DesktopGraphMemoryEvaluationReceiptSchema = Schema.Struct({
       Schema.isMinLength(7),
     ),
   }),
-  rowEvidence: Schema.Array(Schema.Struct({
-    rowId: boundedRef,
-    inputDigest: digest,
-    corpusDigest: digest,
-    queryDigest: digest,
-    policyDigest: digest,
-    budgetDigest: digest,
-    historyOnly: Schema.Struct({
-      outcome: GraphMemoryEvaluationOutcomeSchema,
-      modelCalls: nonNegativeInteger,
-      extractionEvidence: GraphMemoryEvaluationArmRowSchema.fields.extractionEvidence,
-      citationEvidence: GraphMemoryEvaluationArmRowSchema.fields.citationEvidence,
+  rowEvidence: Schema.Array(
+    Schema.Struct({
+      rowId: boundedRef,
+      inputDigest: digest,
+      corpusDigest: digest,
+      queryDigest: digest,
+      policyDigest: digest,
+      budgetDigest: digest,
+      historyOnly: Schema.Struct({
+        outcome: GraphMemoryEvaluationOutcomeSchema,
+        modelCalls: nonNegativeInteger,
+        extractionEvidence: GraphMemoryEvaluationArmRowSchema.fields.extractionEvidence,
+        citationEvidence: GraphMemoryEvaluationArmRowSchema.fields.citationEvidence,
+      }),
+      graphAssisted: Schema.Struct({
+        outcome: GraphMemoryEvaluationOutcomeSchema,
+        modelCalls: nonNegativeInteger,
+        extractionEvidence: GraphMemoryEvaluationArmRowSchema.fields.extractionEvidence,
+        citationEvidence: GraphMemoryEvaluationArmRowSchema.fields.citationEvidence,
+      }),
     }),
-    graphAssisted: Schema.Struct({
-      outcome: GraphMemoryEvaluationOutcomeSchema,
-      modelCalls: nonNegativeInteger,
-      extractionEvidence: GraphMemoryEvaluationArmRowSchema.fields.extractionEvidence,
-      citationEvidence: GraphMemoryEvaluationArmRowSchema.fields.citationEvidence,
-    }),
-  })).check(Schema.isMinLength(1)),
+  ).check(Schema.isMinLength(1)),
   privateDetailReceiptDigest: digest,
   historyOnly: GraphMemoryEvaluationArmSummarySchema,
   graphAssisted: GraphMemoryEvaluationArmSummarySchema,
@@ -352,8 +413,9 @@ export const DesktopGraphMemoryEvaluationReceiptSchema = Schema.Struct({
   }),
   disposition: GraphMemoryEvaluationDispositionSchema,
 });
-export interface DesktopGraphMemoryEvaluationReceipt
-  extends Schema.Schema.Type<typeof DesktopGraphMemoryEvaluationReceiptSchema> {}
+export interface DesktopGraphMemoryEvaluationReceipt extends Schema.Schema.Type<
+  typeof DesktopGraphMemoryEvaluationReceiptSchema
+> {}
 
 export const GraphMemoryEvaluationInputSchema = Schema.Struct({
   evaluatedAt: boundedRef,
@@ -365,8 +427,9 @@ export const GraphMemoryEvaluationInputSchema = Schema.Struct({
   historyOnlyRows: Schema.Array(GraphMemoryEvaluationArmRowSchema).check(Schema.isMinLength(1)),
   graphAssistedRows: Schema.Array(GraphMemoryEvaluationArmRowSchema).check(Schema.isMinLength(1)),
 });
-export interface GraphMemoryEvaluationInput
-  extends Schema.Schema.Type<typeof GraphMemoryEvaluationInputSchema> {}
+export interface GraphMemoryEvaluationInput extends Schema.Schema.Type<
+  typeof GraphMemoryEvaluationInputSchema
+> {}
 
 export const GraphMemoryEvaluationRefusalSchema = Schema.Struct({
   ok: Schema.Literal(false),
@@ -382,8 +445,9 @@ export const GraphMemoryEvaluationRefusalSchema = Schema.Struct({
   ]),
   detailSafe: boundedText,
 });
-export interface GraphMemoryEvaluationRefusal
-  extends Schema.Schema.Type<typeof GraphMemoryEvaluationRefusalSchema> {}
+export interface GraphMemoryEvaluationRefusal extends Schema.Schema.Type<
+  typeof GraphMemoryEvaluationRefusalSchema
+> {}
 
 export type GraphMemoryEvaluationResult =
   | Readonly<{ ok: true; receipt: DesktopGraphMemoryEvaluationReceipt }>
