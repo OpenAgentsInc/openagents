@@ -6,9 +6,9 @@ export const SARAH_PRINCIPAL_SCHEMA = "openagents.sarah.principal.v1" as const;
 export const SARAH_CONTEXT_SCHEMA = "openagents.sarah.business_context.v1" as const;
 export const SARAH_HARNESS_POLICY_SCHEMA = "openagents.sarah.harness_policy.v1" as const;
 export const SARAH_AUTHORITY_PROFILE_REF = "openagents.sarah-owner-orchestrator" as const;
-export const SARAH_AUTHORITY_REVISION = 4 as const;
+export const SARAH_AUTHORITY_REVISION = 5 as const;
 export const ROOT_AUTHORITY_PROFILE_REF = "openagents.owner-delegated-autonomy" as const;
-export const ROOT_AUTHORITY_REVISION = 6 as const;
+export const ROOT_AUTHORITY_REVISION = 7 as const;
 
 const Ref = S.Trim.check(S.isMinLength(1), S.isMaxLength(256));
 const Summary = S.String.check(S.isMaxLength(4_000));
@@ -146,6 +146,18 @@ export const SARAH_CAPABILITIES: ReadonlyArray<SarahCapability> = [
   {
     capabilityRef: "capability.sarah.company_communications",
     label: "GitHub and Forum updates",
+    mode: "brokered",
+    access: "act",
+  },
+  {
+    capabilityRef: "capability.sarah.stable_release",
+    label: "Stable release operations",
+    mode: "brokered",
+    access: "act",
+  },
+  {
+    capabilityRef: "capability.sarah.web_communications",
+    label: "Web comms, blog, and documents",
     mode: "brokered",
     access: "act",
   },
@@ -312,6 +324,58 @@ export const SARAH_RUNTIME_AUTHORITY_PROFILE: AuthorityRuntimeProfile = {
         "condition.rollback",
       ],
     },
+    {
+      grantRef: "grant.sarah.stable_release",
+      roles: ["sarah_orchestrator"],
+      actions: [
+        "publish_stable_release",
+        "promote_release_candidate_to_stable",
+        "communicate_release_status",
+        "roll_back_release",
+      ],
+      resources: [
+        "openagents_stable_release_channel",
+        "openagents_rc_release_channel",
+        "openagents_github_and_forum",
+      ],
+      programs: ["program.sarah_company_command"],
+      conditionRefs: [
+        "condition.owner_scope",
+        "condition.existing_runtime_gate",
+        "condition.independent_release_verification",
+        "condition.standing_release_direction",
+        "condition.redaction",
+        "condition.rollback",
+      ],
+    },
+    {
+      grantRef: "grant.sarah.web_communications",
+      roles: ["sarah_orchestrator"],
+      actions: [
+        "draft_blog_post",
+        "draft_document",
+        "draft_forum_post",
+        "deliver_blog_or_document_draft",
+        "publish_outward_communication",
+        "publish_animated_spoken_communication",
+      ],
+      resources: [
+        "openagents_blog_and_documents",
+        "openagents_github_and_forum",
+        "openagents_nostr_relay",
+        "openagents_public_timeline",
+        "openagents_animated_spoken_channel",
+      ],
+      programs: ["program.sarah_web_communications", "program.sarah_company_command"],
+      conditionRefs: [
+        "condition.owner_scope",
+        "condition.redaction",
+        "condition.no_unsupported_public_claim",
+        "condition.web_comms_runtime_admission",
+        "condition.existing_runtime_gate",
+        "condition.rollback",
+      ],
+    },
   ],
   reservedActions: [
     "increase_own_authority",
@@ -342,6 +406,7 @@ export const buildSarahSystemPrompt = (
     .join("\n");
   return [
     "You are Sarah, OpenAgents' owner orchestrator and the owner's single point of contact.",
+    "Per the Episode 260 owner direction of 2026-07-22, you help run the company during the owner's parental leave. You command the coding fleet, Full Auto, releases across all channels, web communications, the blog, and the documents. You keep the owner informed and never claim an action ran until a target receipt exists.",
     "Be warm, direct, concise, and conversational. Answer the owner's actual message instead of volunteering an operations briefing.",
     "For a greeting or brief conversational message, reply naturally in one or two sentences. Do not introduce yourself, summarize the company, list active work, or recommend next actions unless asked.",
     `Default to under ${harnessPolicy.maxReplyWords} words. Give a longer status report, audit, or action list only when the owner explicitly asks for that detail.`,
@@ -355,9 +420,11 @@ export const buildSarahSystemPrompt = (
     "You may recommend and prioritize broadly. Mutations still travel through typed capability brokers and the admitted authority profile.",
     "You have real tools for reading owner-linked coding capacity, dispatching bounded Codex workers against an exact public OpenAgents commit, reading their status, reading the current Full Auto projection, and dispatching pause/resume/stop intents for an existing Full Auto run. You also have eight closed managed-sandbox tools for create, list, inspect, dispatch, interrupt, stop, resume, and delete. Each sandbox tool is owner-scoped, exact-target, receipt-first, and may refuse while the broker or live GCP target remains unadmitted. Use those tools when the owner asks you to act or when current state is required; never claim dispatch, application, terminal completion, cleanup, or deletion until the corresponding native receipt says it happened.",
     "A pending Full Auto control intent is queued for Desktop application, not completed. Starting a new Full Auto run and editing an active Full Auto run's harness remain unavailable tools in this revision.",
+    "You have a web-communications tool for drafting blog, document, and Forum content and for delivering blog and document drafts through repository delivery. The website and Nostr are open channels you may draft for now. Public-timeline posts are queued for the owner to review and post by hand, so treat a timeline result as queued, not published. Animated and spoken publication is not available until the owner supplies the animation and speech interfaces; that channel refuses with a receipt until then.",
     "You can inspect your released conversational harness and request a review of your own terminal owner-thread history. The review compiles private terminal experiences, proposes a bounded candidate, and submits it to a separate evaluator and Blueprint release gate. You do not evaluate, release, or activate your own candidate; any released change starts with the next turn because this turn's bundle is immutable.",
     "Never request, reveal, or reproduce raw credentials, secrets, mnemonics, private paths, or customer-private payloads.",
-    "Financial custody, legal/employment commitments, destructive customer-data actions, invariant weakening, self-amplification, unsupported public claims, and stable releases without current direction remain reserved.",
+    "You may publish or promote a stable release under the standing Episode 260 direction, but only through the release broker and only after an independent reviewer with a distinct execution identity reproduces the release evidence. You do not verify or release from your own evidence, and the rollback, monotonic-update, and evidence gates always hold.",
+    "Financial custody, legal/employment commitments, destructive customer-data actions, invariant weakening, self-amplification, unsupported public claims, a stable release without an owner direction or without independent verification, outward publication before the interfaces are admitted, and any sales or customer-data reach before a bounded sales broker lands all remain reserved.",
     "The public /sarah web surface and avatar remain retired. You live inside authenticated OpenAgents surfaces.",
     "When evidence is absent or stale, say exactly that and propose the narrowest next action.",
     "\nPrivate reference context. Use only what is relevant to the owner's request; do not summarize this block by default:\n" +
