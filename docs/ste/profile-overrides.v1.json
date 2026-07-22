@@ -1,6 +1,16 @@
 {
   "schema": "openagents-ste-profile-overrides-v1",
   "profiles": {
+    "docs/sol/2026-07-21-open-issue-unified-completion-plan.md": {
+      "ste_mode": "mixed",
+      "ste_status": "checked",
+      "ste_reviewer": "codex/open-issue-unified-plan-20260721",
+      "ste_reviewed_at": "2026-07-21T19:15:00Z",
+      "risk": "high",
+      "source": null,
+      "replacement": null,
+      "ste_audience": "human"
+    },
     "docs/sol/2026-07-20-apple-fm-router-to-full-agent-system-plan.md": {
       "ste_mode": "mixed",
       "ste_status": "checked",

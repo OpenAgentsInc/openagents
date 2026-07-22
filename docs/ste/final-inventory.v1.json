@@ -41112,6 +41112,21 @@
       }
     },
     {
+      "path": "docs/sol/2026-07-21-open-issue-unified-completion-plan.md",
+      "sha256": "560aec7e3e877512a099b5fe34ae194d2f3930a47400130d83c587ac4fa94a93",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "mixed",
+        "risk": "high",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "human",
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/sol/CHALLENGE_LEDGER.md",
       "sha256": "bea729136337736225ab0659ed6a32624af5708f13da3315e1980a246066e66f",
       "reason": "Final review of a converted document",
@@ -41161,7 +41176,7 @@
     },
     {
       "path": "docs/sol/MASTER_ROADMAP.md",
-      "sha256": "3e9837cb0e447a11ed56a43ca722c2fccd2e53107e6770771da5abd704ad7d0b",
+      "sha256": "6ef78e1c5870ae98bac2047ab3ee62b46df76ab1493c4c4868432dc15d057d34",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

@@ -2,17 +2,16 @@
 
 - Class: authority
 - Date: 2026-07-10
-- Updated: 2026-07-20
-- Revision: 126
+- Updated: 2026-07-21
+- Revision: 127
 - Status: canonical OpenAgents implementation roadmap
-- Current queue: Full Auto epic #8967 is the active P0 product program,
-  owner-directed 2026-07-20 to ship as the first verifiable mode (decision
-  30), #8978/#8979 are its remaining assurance/release chain. FAV-00 #9110
-  (#9111-#9114) connects the four-provider readiness flow, VSE-00 #9104
-  (#9105/#9106/#9108/#9109) owns engine groundwork. Managed-sandbox epic
-  #9023 stays P1 parallel, distribution #8913, Amp/T3 ledgers, and live
-  defects retain their independent gates. Closed ASSURE-REPO truth lives in
-  execution-order item 9
+- Current queue: the
+  [`open issue unified completion plan`](./2026-07-21-open-issue-unified-completion-plan.md)
+  owns the terminal sequence for #8967, #8979, #9032, #9035, #9041, and
+  #9144. #8978, #9023, and SBX-09 are complete. #9032 and #9041 share one
+  managed checkpoint and movement proof. #9035 does not reopen IDE-14 through IDE-19. Managed RLM stays inside its separate cloud boundary. Distribution,
+  Amp/T3 ledgers, and live defects retain their independent gates. Closed
+  ASSURE-REPO truth lives in execution-order item 9
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Dispatch: live bug issues or exact owner-accepted plans/work packets through
   [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md)
@@ -55,15 +54,15 @@ gets an inspectable report with typed termination and evidence. Full Auto is a
 run, not a per-message option. The dedicated rail launcher/read-only run view,
 durable mission propagation, active-thread residency, typed provider failures,
 restart recovery, and the owner-real six-test Codex/Claude batch are landed.
-Independent assurance and the signed packaged release gate remain the active
-closure chain, the private dogfood analyzer is already part of the landed
-run-evidence core.
+Independent assurance is complete. The signed packaged release and owner
+observation in #8979 remain the active closure gate. The private dogfood
+analyzer is already part of the landed run-evidence core.
 
 ### Reconciled implementation truth at this revision
 
 | Surface                   | Narrowest current truth                                                                                                                                                                                                                                                                      | Remaining authority                                                                                                                                                                                                                   |
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Full Auto run core        | #8968–#8977, #8987, #8991, #9000–#9002, and #8976 are closed: the durable run/lifecycle, mission, liveness, report/analyzer, handoff, picker, routing, guardrails, dedicated UX, thread-pressure survival, restart continuity, and real Codex/Claude owner-development matrix are on `main`. | #8978 must independently admit the AssuranceSpec, #8979 must bind the result to a signed packaged release and owner observation. Parent #8967 stays open until those distinct gates close.                                            |
+| Full Auto run core        | #8968–#8978, #8987, #8991, #9000–#9002 are closed. The durable run core, owner-development matrix, and admitted AssuranceSpec are on `main`. | #8979 must bind the source repair and admitted evidence to a later signed package, packaged owner observation, and exact promise gate. Parent #8967 stays open until #8979 closes. |
 | Mobile Full Auto          | #8980–#8982 are closed: Desktop publishes the bounded live projection, mobile selects the live run first, and the fixture plus iOS Simulator receipt records the observable parent journey.                                                                                                  | Remote Pause/Resume/Stop and report review remain later admitted work, simulator proof is not physical-device or general host-movement proof.                                                                                         |
 | Distribution/web download | ReleaseSet v2, update-host selection/rollback, candidate feed, verified web resolver, and `/download` integration are landed, #8922–#8924 are closed.                                                                                                                                        | #8913/#8917/#8919–#8921/#8925/#8926 retain platform runners, signing, packages, full acceptance, and the one-command ceremony. No unsigned or unpromoted artifact becomes a release claim.                                            |
 | Desktop/T3 workbench      | T3UI-01 through T3UI-12 are implemented through the exact 151-row census, mounted visual catalog, and unsigned-development packaged journey.                                                                                                                                                 | Signed/cross-platform distribution remains REL authority, the former MVP allowlist cannot veto an owner-admitted T3 or Full Auto surface, but each new surface still needs its typed intent and behavior contract.                    |
@@ -77,8 +76,8 @@ run-evidence core.
    #9002/#8976 passed all six real-provider rows plus same-pass rotation at
    `3123d926a3`, per the
    [`acceptance receipt`](./receipts/2026-07-18-full-auto-real-owner-acceptance.md).
-   #8978 owns independent proof admission, #8979 consumes that evidence plus
-   #8913/#8925 signed release identity. A 24–48 hour owner-AFK run with a
+   #8978 completed independent proof admission. #8979 consumes that evidence
+   plus #8913/#8925 signed release identity. A 24–48 hour owner-AFK run with a
    reviewable report remains a release confidence target, not a reason to
    reopen the completed implementation sprint.
 2. **Wave 1 — release and operator depth.** Finish the owned platform matrix,
@@ -111,14 +110,14 @@ and Full Auto projection slices have been reauthorized and landed.
 Owner direction admits [#9023](https://github.com/OpenAgentsInc/openagents/issues/9023), the [`accepted plan`](./2026-07-19-managed-agent-sandboxes-accepted-plan.md), and [`ProductSpec`](../../specs/openagents/managed-agent-sandboxes.product-spec.md).
 The generation-fenced resource reports GCE VM or Firecracker isolation
 honestly, native GCP/workroom truth remains authority and Box is compatibility
-only. SBX-10 is deferred, portable movement and cross-machine Full Auto stay
-separately gated. SBX-00 through SBX-08 are code-landed: the native broker
+only. The unified completion plan activates SBX-10 and the exact IDE-13
+movement proof. Cross-machine Full Auto stays separately gated. The native broker
 serves closed Sarah tools, Desktop endpoints, and bounded mobile and
 authenticated-web routes over one safe schema with exact-byte outboxes, and
 only durable native outcomes complete actions. SBX-09's producer-run staging
 matrix proves live GCP, cleanup, cost, rollback, Desktop, and Sarah journeys.
-Production and public claims stay off until an independent verifier and the
-owner record the remaining AssuranceSpec dispositions.
+SBX-09 and epic #9023 are complete. SBX-10 remains a separate Phase 2 leaf.
+Production and public claims stay separate from its implementation.
 
 ## Active expansion — FULL HARVEST of the Amp Fast Follow program
 
@@ -223,7 +222,7 @@ there is no remaining AssuranceSpec program queue.
 ## Owner decisions
 
 1. **The ProductSpec-native Codex Workroom MVP is the accepted baseline.** Its signed local-first Desktop journey stays proven, closed R0–R7 successors do not silently reopen.
-2. **Sarah is an authenticated owner orchestrator, not a standalone app or public front door.** `/sarah/*` stays tombstoned, `principal.sarah` lives in the stable owner-private mobile thread and receives only exact brokered actions. The SBX-07 managed-sandbox broker is code-landed and staging-proven. Production mutation remains unavailable until SBX-09 receives independent assurance, owner observation, and the exact rollout flag disposition.
+2. **Sarah is an authenticated owner orchestrator, not a standalone app or public front door.** `/sarah/*` stays tombstoned, `principal.sarah` lives in the stable owner-private mobile thread and receives only exact brokered actions. The SBX-07 broker and SBX-09 acceptance are complete. SBX-10 does not create a public cloud claim or a generic administration surface.
 3. **Desktop is the deep workbench, mobile has the T3 ledger plus closed #8980 first-screen proof, and web is the public trust/API surface.** Unpacketized expansion cannot preempt Full Auto.
 4. **Retained UI uses Effect Native.** Electron, React Native/Expo, DOM, native, and canvas are hosts/renderers over shared typed components and intents.
 5. **Khala Sync is cross-device authority, not chat transport.** It carries owner-scoped projections and durable outcomes, local stores remain bounded caches/offline queues.
@@ -527,8 +526,8 @@ GitHub before dispatch and age-checked by the offline documentation guard.
 - Full Auto's durable core (#8969-#8975), dedicated run UX, routing and
   guardrails (#8987/#8991), and the owner-real six-test Codex/Claude matrix
   with same-pass rotation (#8976/#9000-#9002) are code-landed and
-  receipt-proven at `3123d926a3`. Independent assurance #8978 and signed
-  packaged admission #8979 remain open, no public AFK-reliability claim
+  receipt-proven at `3123d926a3`. Independent assurance #8978 is complete.
+  Signed packaged admission #8979 remains open, no public AFK-reliability claim
   follows from the landed core.
 - The mobile projection/first-screen slice (#8981/#8982) is code-landed and
   fixture-proven, #8980 is closed with fixture and iOS Simulator observation
@@ -586,13 +585,13 @@ following issues and accepted ledgers remain exact successor authority:
 1. Preserve the accepted ProductSpec-native MVP and completed AssuranceSpec /
    Observatory proof baseline, neither needs to be re-proved to start a bounded
    successor packet.
-2. Continue Full Auto from the completed owner-real development receipt:
-   #8978 performs independent admission, #8979 consumes the dogfood and
+2. Continue Full Auto from the completed owner-real development receipt.
+   #8978 completed independent admission. #8979 consumes the dogfood and
    assurance evidence plus exact signed release identity. Do not reroute
    these remaining gates into another runtime rewrite.
-3. Keep #9023 ordered through SBX-09 before activating SBX-10. The producer-run
-   live matrix is green, while production/public claims and Phase 2 wait for
-   the independent assurance and owner-observation dispositions.
+3. Complete active SBX-10 through the unified plan. Reuse its checkpoint,
+   fork, ingress, live GCP, cleanup, and owner journey for #9041 without
+   merging the two independent acceptance boundaries.
 4. Retain closed #8980's simulator receipt as bounded first-screen evidence.
    Remote run control, report review, and physical-device acceptance require
    their next exact packet, do not infer them from that projection.
@@ -614,12 +613,12 @@ following issues and accepted ledgers remain exact successor authority:
 9. ASSURE-REPO #9055 (#9056-#9060) closed 2026-07-19/20 with inventory,
    grading, false-green audit, degraded sweep, and drift oracles delivered,
    no second completion gate, nothing self-admitted. Standing operations
-   continue under VSE-00 #9104: #9105 sweep fidelity (follows #8978), #9106
+   continue under VSE-00 #9104: #9105 sweep fidelity (uses #8978), #9106
    drift, #9108 independent review, #9109 done-condition oracles.
 10. Execute the first-verifiable-mode connection under FAV-00 #9110 in
     packet order: #9111 readiness-gated routing, #9112 four-lane rotation
     parity, #9113 Apple FM advisory capacity, #9114 capacity ledger plus
-    concurrency spec revision. No packet forks or outranks #8978/#8979.
+    concurrency spec revision. No packet forks or outranks #8979.
 
 Completed Node/pnpm/Vite Plus cutover, MVP, and public ProductSpec/
 AssuranceSpec distribution remain accepted infrastructure. They are not the

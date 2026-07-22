@@ -1,8 +1,14 @@
 {
   "schemaVersion": 1,
-  "inventoryReviewDate": "2026-07-19",
+  "inventoryReviewDate": "2026-07-21",
   "defaultOwner": "Sol roadmap",
   "overrides": {
+    "docs/sol/2026-07-21-open-issue-unified-completion-plan.md": {
+      "class": "authority",
+      "owner": "OpenAgents open issue completion",
+      "disposition": "retain-active-authority",
+      "dispatch": false
+    },
     "docs/sol/2026-07-20-pylon-bip39-nostr-spark-identity-recovery-audit.md": {
       "class": "historical-analysis",
       "owner": "OpenAgents local sovereign identity",
