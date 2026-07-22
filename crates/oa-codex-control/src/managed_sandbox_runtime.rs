@@ -1061,7 +1061,7 @@ fn prepare_checkpoint_fork_with_provider(
     ));
     let fork_sandbox_ref = format!("sandbox.sbx10.fork.{}", &fork_digest[..32]);
     let runtime_capability_ref = format!("capability-ref://run/fork-{fork_digest}");
-    let fork_capability_ref = format!("capability.sbx10.fork.{}", &fork_digest[..32]);
+    let fork_capability_ref = runtime_capability_ref.clone();
     if source_capability_refs
         .iter()
         .any(|source_ref| source_ref == &fork_capability_ref)
@@ -3914,6 +3914,7 @@ mod tests {
                 .profile_digest
         );
         assert!(fork_journal.profile.capability_refs[0].starts_with("capability-ref://run/fork-"));
+        assert_eq!(fork_journal.profile.capability_refs, context.fork_capability_refs);
         assert!(fork_journal.pending_checkpoint_fork.is_some());
 
         // Simulate a process stop after provider create and before lifecycle settlement.
