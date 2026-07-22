@@ -214,7 +214,15 @@ const initialize = (database: SqliteDatabase): void => {
 };
 
 const truncateWriteAheadLog = (database: SqliteDatabase): void => {
-  database.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+  const result = database.all<{ busy: number; log: number; checkpointed: number }>(
+    "PRAGMA wal_checkpoint(TRUNCATE)",
+  )[0];
+  if (result?.busy !== 0 || result.log !== 0 || result.checkpointed !== 0) {
+    throw new DesktopGraphMemoryPersistenceError(
+      "storage_unavailable",
+      "Graph memory history cleanup did not complete.",
+    );
+  }
 };
 
 const scrubRequired = (database: SqliteDatabase): boolean =>

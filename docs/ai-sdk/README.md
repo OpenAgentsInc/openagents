@@ -61,7 +61,10 @@ Graph memory is off by default. The disabled adapter does not open SQLite. It
 does not use Electron `safeStorage`, the file system, or cryptography. The
 enabled adapter uses an OS-wrapped random data key and AES-256-GCM for each
 state. SQLite contains only bounded scope references, revision data, and
-ciphertext.
+ciphertext. The adapter enables SQLite secure deletion. After each state
+change, it truncates the write-ahead log before it reports success. A durable
+scrub marker makes the adapter finish an interrupted cleanup before it returns
+stored state.
 
 Each accepted graph binds these values:
 

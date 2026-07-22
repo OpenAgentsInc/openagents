@@ -185,7 +185,12 @@ describe("desktop graph-memory persistence", () => {
           failNextCheckpoint = false;
           throw new Error("injected checkpoint failure");
         }
-        database.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+        const result = database.all<{ busy: number; log: number; checkpointed: number }>(
+          "PRAGMA wal_checkpoint(TRUNCATE)",
+        )[0];
+        if (result?.busy !== 0 || result.log !== 0 || result.checkpointed !== 0) {
+          throw new Error("checkpoint did not truncate the WAL");
+        }
       },
     });
     persistence.save(scopeA, {
@@ -224,6 +229,45 @@ describe("desktop graph-memory persistence", () => {
     });
     reopened.close();
 
+    for (const candidate of [databasePath, `${databasePath}-wal`, `${databasePath}-shm`]) {
+      if (existsSync(candidate)) {
+        expect(readFileSync(candidate).includes(Buffer.from(oldCiphertext!))).toBe(false);
+      }
+    }
+  });
+
+  test("does not report success while a WAL history scrub is busy", () => {
+    const databasePath = path.join(temporaryRoot(), "graph-memory.sqlite");
+    const persistence = openDesktopGraphMemoryPersistence({
+      enabled: true,
+      databasePath,
+      safeStorage: safeStorage(),
+    });
+    persistence.save(scopeA, {
+      revision: 1,
+      payload: JSON.stringify({ privateValue: "busy-private-value".repeat(4_096) }),
+    });
+
+    const reader = openSqliteDatabase(databasePath);
+    reader.exec("BEGIN");
+    const oldCiphertext = reader.all<{ ciphertext: Uint8Array }>(
+      `SELECT ciphertext FROM graph_memory_scopes
+        WHERE owner_scope = ? AND project_scope = ?`,
+      [scopeA.ownerScope, scopeA.projectScope],
+    )[0]?.ciphertext;
+    expect(oldCiphertext).toBeDefined();
+
+    expect(() =>
+      persistence.save(scopeA, { revision: 2, payload: JSON.stringify({ receipts: ["done"] }) }),
+    ).toThrowError(DesktopGraphMemoryPersistenceError);
+    reader.exec("COMMIT");
+    reader.close();
+
+    expect(persistence.load(scopeA)).toEqual({
+      revision: 2,
+      payload: JSON.stringify({ receipts: ["done"] }),
+    });
+    persistence.close();
     for (const candidate of [databasePath, `${databasePath}-wal`, `${databasePath}-shm`]) {
       if (existsSync(candidate)) {
         expect(readFileSync(candidate).includes(Buffer.from(oldCiphertext!))).toBe(false);
