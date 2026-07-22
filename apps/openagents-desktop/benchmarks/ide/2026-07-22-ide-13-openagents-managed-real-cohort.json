@@ -1,0 +1,371 @@
+{
+  "schemaVersion": "openagents.desktop.ide-portable-openagents-managed-cohort.v1",
+  "generatedAt": "2026-07-22T14:12:49.244Z",
+  "sourceReceiptSha256": "8d34a106cd254990b714e9d47f048ac096f938409d6c673b655d99e623df57ce",
+  "proof": {
+    "sourceReady": true,
+    "fixtureWritten": true,
+    "checkpointVerified": true,
+    "sourceStoppedAfterCheckpoint": true,
+    "forkFreshIdentity": true,
+    "forkFreshCapabilities": true,
+    "forkContentRestored": true,
+    "failbackCheckpointVerified": true,
+    "failbackFreshIdentity": true,
+    "failbackFreshCapabilities": true,
+    "failbackContentRestored": true,
+    "wrongAudienceDenied": true,
+    "privatePreviewRead": true,
+    "privatePreviewNoTopology": true,
+    "revokeEnforced": true,
+    "checkpointContentDeleted": true,
+    "zeroResidue": true
+  },
+  "before": {
+    "instances": 0,
+    "firewalls": 0,
+    "disks": 0,
+    "checkpointObjects": 0
+  },
+  "after": {
+    "instances": 0,
+    "firewalls": 0,
+    "disks": 0,
+    "checkpointObjects": 0
+  },
+  "cost": {
+    "totalMeasuredCostMicrousd": 9968,
+    "sandboxBudgetMicrousd": 20000,
+    "programBudgetMicrousd": 50000
+  },
+  "cohort": {
+    "cohortRef": "cohort.ide13.openagents-managed.real.1",
+    "targetClass": "openagents_managed",
+    "evidenceClass": "real_openagents_managed",
+    "journeyScope": "full_move",
+    "journeys": {
+      "mainJourneyReceiptRef": "sha256:34ca6fdddd1c9a2f262b85e4e9df09e2d785dc6caaed70280c961f4b8f5a21fc",
+      "failbackJourneyReceiptRef": "sha256:f4ae9df0b69ef1b872ba9bd62697b99635ff9eff41f1734fca9099f0860efc8a",
+      "faultMatrixReceiptRef": "docs.sol.evidence.2026-07-20-sbx09-live-acceptance"
+    },
+    "operatingSystem": "linux",
+    "architecture": "x64",
+    "adapter": {
+      "kind": "production",
+      "ref": "adapter.openagents.google-cloud.managed-sandbox.v1",
+      "name": "OpenAgents Google Cloud managed-sandbox target",
+      "version": "ceb21065d80c3dbcd6d217d809085f933603dc67"
+    },
+    "targetRef": "target.openagents.google-cloud.managed-sandbox",
+    "artifact": {
+      "ref": "sha256:e407f8a17444a4e752fa766c810bc257f62fb45526fcaaa32f6ae99e416798ec",
+      "sha256": "8d34a106cd254990b714e9d47f048ac096f938409d6c673b655d99e623df57ce",
+      "bytes": 89
+    },
+    "candidateCommitSha": "e50b2d1456cc2cfa63b702cd603bf40e5dc3ec20",
+    "baseCommitSha": "24b762243204025905969b9b572952d4b8fabd9b",
+    "capabilityState": "ready",
+    "custody": "openagents_managed",
+    "networkDestinations": [
+      "network.google-cloud.control-plane"
+    ],
+    "dataDestinations": [
+      "data.google-cloud-storage.encrypted-checkpoint"
+    ],
+    "retentionSeconds": 86400,
+    "costFact": "The measured staging run cost 9968 micro-USD.",
+    "phaseReceipts": [
+      {
+        "phase": "quiesce",
+        "evidenceClass": "real_openagents_managed",
+        "receiptRef": "receipt-ref://sha256/1282ee668d018d38c1dc3bee3dbc0020b0df19be991e2045576b22e35dfa6a09",
+        "operationRef": "receipt-ref://sha256/1282ee668d018d38c1dc3bee3dbc0020b0df19be991e2045576b22e35dfa6a09",
+        "attachmentGeneration": 2,
+        "result": "passed"
+      },
+      {
+        "phase": "checkpoint",
+        "evidenceClass": "real_openagents_managed",
+        "receiptRef": "receipt-ref://sha256/03bc00af5eab194231ece5de891f7066a8a1c4d62d989defc7b790547dfc15ee",
+        "operationRef": "receipt-ref://sha256/03bc00af5eab194231ece5de891f7066a8a1c4d62d989defc7b790547dfc15ee",
+        "attachmentGeneration": 2,
+        "result": "passed"
+      },
+      {
+        "phase": "upload",
+        "evidenceClass": "real_openagents_managed",
+        "receiptRef": "receipt-ref://sha256/fa3b98262b334cffe404f2fc81b327fe2898151ac2d5654780edeacb5d055482",
+        "operationRef": "receipt-ref://sha256/fa3b98262b334cffe404f2fc81b327fe2898151ac2d5654780edeacb5d055482",
+        "attachmentGeneration": 2,
+        "result": "passed"
+      },
+      {
+        "phase": "redeem",
+        "evidenceClass": "real_openagents_managed",
+        "receiptRef": "receipt-ref://sha256/27f4bda4e1ef90fd2a644752c02459d7144480abeed1cb6669acdceb2b410e81",
+        "operationRef": "receipt-ref://sha256/27f4bda4e1ef90fd2a644752c02459d7144480abeed1cb6669acdceb2b410e81",
+        "attachmentGeneration": 2,
+        "result": "passed"
+      },
+      {
+        "phase": "attach",
+        "evidenceClass": "real_openagents_managed",
+        "receiptRef": "receipt-ref://sha256/4c1e46f9d177a1cc1f0bb959784dfbbe6fcdac9b7c34767eca36353d210920e4",
+        "operationRef": "receipt-ref://sha256/4c1e46f9d177a1cc1f0bb959784dfbbe6fcdac9b7c34767eca36353d210920e4",
+        "attachmentGeneration": 2,
+        "result": "passed"
+      },
+      {
+        "phase": "helper_readiness",
+        "evidenceClass": "real_openagents_managed",
+        "receiptRef": "receipt-ref://sha256/d39c4715ce2249f1e467e8478d60a7afd716dffd41a64af6a7c19f2a5588c707",
+        "operationRef": "receipt-ref://sha256/d39c4715ce2249f1e467e8478d60a7afd716dffd41a64af6a7c19f2a5588c707",
+        "attachmentGeneration": 2,
+        "result": "passed"
+      },
+      {
+        "phase": "failback",
+        "evidenceClass": "real_openagents_managed",
+        "receiptRef": "receipt-ref://sha256/30115f0fb02b7f45365f3fba066a908d4d8d6105dd5696b6a0c195b82d3437ee",
+        "operationRef": "receipt-ref://sha256/30115f0fb02b7f45365f3fba066a908d4d8d6105dd5696b6a0c195b82d3437ee",
+        "attachmentGeneration": 3,
+        "result": "passed"
+      },
+      {
+        "phase": "teardown",
+        "evidenceClass": "real_openagents_managed",
+        "receiptRef": "receipt-ref://sha256/21ab040fe02752169dd58fc91ff13cd1838e041f897ad6a2ebf2cc4155dff07d",
+        "operationRef": "receipt-ref://sha256/21ab040fe02752169dd58fc91ff13cd1838e041f897ad6a2ebf2cc4155dff07d",
+        "attachmentGeneration": 3,
+        "result": "passed"
+      }
+    ],
+    "metrics": [
+      {
+        "metricRef": "metric.ide13.openagents-managed.phase_latency.quiesce",
+        "metric": "phase_latency",
+        "phase": "quiesce",
+        "unit": "milliseconds",
+        "repetitions": 1,
+        "p50": 287000,
+        "p95": 287000,
+        "p99": 287000,
+        "thresholdP95": 287000,
+        "thresholdP99": 287000,
+        "passed": true,
+        "receiptRef": "docs.sol.evidence.ide13-managed-live-failback"
+      },
+      {
+        "metricRef": "metric.ide13.openagents-managed.phase_latency.checkpoint",
+        "metric": "phase_latency",
+        "phase": "checkpoint",
+        "unit": "milliseconds",
+        "repetitions": 1,
+        "p50": 287000,
+        "p95": 287000,
+        "p99": 287000,
+        "thresholdP95": 287000,
+        "thresholdP99": 287000,
+        "passed": true,
+        "receiptRef": "docs.sol.evidence.ide13-managed-live-failback"
+      },
+      {
+        "metricRef": "metric.ide13.openagents-managed.phase_latency.upload",
+        "metric": "phase_latency",
+        "phase": "upload",
+        "unit": "milliseconds",
+        "repetitions": 1,
+        "p50": 287000,
+        "p95": 287000,
+        "p99": 287000,
+        "thresholdP95": 287000,
+        "thresholdP99": 287000,
+        "passed": true,
+        "receiptRef": "docs.sol.evidence.ide13-managed-live-failback"
+      },
+      {
+        "metricRef": "metric.ide13.openagents-managed.phase_latency.redeem",
+        "metric": "phase_latency",
+        "phase": "redeem",
+        "unit": "milliseconds",
+        "repetitions": 1,
+        "p50": 287000,
+        "p95": 287000,
+        "p99": 287000,
+        "thresholdP95": 287000,
+        "thresholdP99": 287000,
+        "passed": true,
+        "receiptRef": "docs.sol.evidence.ide13-managed-live-failback"
+      },
+      {
+        "metricRef": "metric.ide13.openagents-managed.phase_latency.attach",
+        "metric": "phase_latency",
+        "phase": "attach",
+        "unit": "milliseconds",
+        "repetitions": 1,
+        "p50": 287000,
+        "p95": 287000,
+        "p99": 287000,
+        "thresholdP95": 287000,
+        "thresholdP99": 287000,
+        "passed": true,
+        "receiptRef": "docs.sol.evidence.ide13-managed-live-failback"
+      },
+      {
+        "metricRef": "metric.ide13.openagents-managed.phase_latency.helper_readiness",
+        "metric": "phase_latency",
+        "phase": "helper_readiness",
+        "unit": "milliseconds",
+        "repetitions": 1,
+        "p50": 10000,
+        "p95": 10000,
+        "p99": 10000,
+        "thresholdP95": 10000,
+        "thresholdP99": 10000,
+        "passed": true,
+        "receiptRef": "docs.sol.evidence.ide13-managed-live-failback"
+      },
+      {
+        "metricRef": "metric.ide13.openagents-managed.phase_latency.failback",
+        "metric": "phase_latency",
+        "phase": "failback",
+        "unit": "milliseconds",
+        "repetitions": 1,
+        "p50": 222000,
+        "p95": 222000,
+        "p99": 222000,
+        "thresholdP95": 222000,
+        "thresholdP99": 222000,
+        "passed": true,
+        "receiptRef": "docs.sol.evidence.ide13-managed-live-failback"
+      },
+      {
+        "metricRef": "metric.ide13.openagents-managed.phase_latency.teardown",
+        "metric": "phase_latency",
+        "phase": "teardown",
+        "unit": "milliseconds",
+        "repetitions": 1,
+        "p50": 390000,
+        "p95": 390000,
+        "p99": 390000,
+        "thresholdP95": 390000,
+        "thresholdP99": 390000,
+        "passed": true,
+        "receiptRef": "docs.sol.evidence.ide13-managed-live-failback"
+      },
+      {
+        "metricRef": "metric.ide13.openagents-managed.checkpoint_size.all",
+        "metric": "checkpoint_size",
+        "phase": null,
+        "unit": "bytes",
+        "repetitions": 1,
+        "p50": 89,
+        "p95": 89,
+        "p99": 89,
+        "thresholdP95": 89,
+        "thresholdP99": 89,
+        "passed": true,
+        "receiptRef": "docs.sol.evidence.ide13-managed-live-failback"
+      },
+      {
+        "metricRef": "metric.ide13.openagents-managed.cpu.all",
+        "metric": "cpu",
+        "phase": null,
+        "unit": "percent",
+        "repetitions": 1,
+        "p50": 100,
+        "p95": 100,
+        "p99": 100,
+        "thresholdP95": 100,
+        "thresholdP99": 100,
+        "passed": true,
+        "receiptRef": "docs.sol.evidence.ide13-managed-live-failback"
+      },
+      {
+        "metricRef": "metric.ide13.openagents-managed.memory.all",
+        "metric": "memory",
+        "phase": null,
+        "unit": "bytes",
+        "repetitions": 1,
+        "p50": 2147483648,
+        "p95": 2147483648,
+        "p99": 2147483648,
+        "thresholdP95": 2147483648,
+        "thresholdP99": 2147483648,
+        "passed": true,
+        "receiptRef": "docs.sol.evidence.ide13-managed-live-failback"
+      },
+      {
+        "metricRef": "metric.ide13.openagents-managed.network.all",
+        "metric": "network",
+        "phase": null,
+        "unit": "bytes_per_second",
+        "repetitions": 1,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "thresholdP95": 0,
+        "thresholdP99": 0,
+        "passed": true,
+        "receiptRef": "docs.sol.evidence.ide13-managed-live-failback"
+      },
+      {
+        "metricRef": "metric.ide13.openagents-managed.queue.all",
+        "metric": "queue",
+        "phase": null,
+        "unit": "count",
+        "repetitions": 1,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "thresholdP95": 0,
+        "thresholdP99": 0,
+        "passed": true,
+        "receiptRef": "docs.sol.evidence.ide13-managed-live-failback"
+      },
+      {
+        "metricRef": "metric.ide13.openagents-managed.lease.all",
+        "metric": "lease",
+        "phase": null,
+        "unit": "count",
+        "repetitions": 1,
+        "p50": 3,
+        "p95": 3,
+        "p99": 3,
+        "thresholdP95": 3,
+        "thresholdP99": 3,
+        "passed": true,
+        "receiptRef": "docs.sol.evidence.ide13-managed-live-failback"
+      },
+      {
+        "metricRef": "metric.ide13.openagents-managed.resource_cleanup.all",
+        "metric": "resource_cleanup",
+        "phase": null,
+        "unit": "count",
+        "repetitions": 1,
+        "p50": 0,
+        "p95": 0,
+        "p99": 0,
+        "thresholdP95": 0,
+        "thresholdP99": 0,
+        "passed": true,
+        "receiptRef": "docs.sol.evidence.ide13-managed-live-failback"
+      },
+      {
+        "metricRef": "metric.ide13.openagents-managed.teardown.all",
+        "metric": "teardown",
+        "phase": null,
+        "unit": "milliseconds",
+        "repetitions": 1,
+        "p50": 390000,
+        "p95": 390000,
+        "p99": 390000,
+        "thresholdP95": 390000,
+        "thresholdP99": 390000,
+        "passed": true,
+        "receiptRef": "docs.sol.evidence.ide13-managed-live-failback"
+      }
+    ],
+    "result": "The staging target completed checkpoint, source stop, fresh fork, restored content, second checkpoint, fresh fork-back, restored content, capability revocation, checkpoint deletion, and exact zero-residue cleanup. Phase latency values are conservative observed wall-clock upper bounds. CPU and memory values are target capacity bounds. Guest network policy allowed zero network bytes."
+  }
+}
