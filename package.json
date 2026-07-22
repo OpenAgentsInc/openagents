@@ -87,6 +87,8 @@
     "test:ste": "vp test --run scripts/check-ste.test.ts",
     "test:coherence": "vp test --run scripts/grade-conversation-coherence.test.ts",
     "grade:coherence": "node --import tsx scripts/grade-conversation-coherence.ts",
+    "headless:harness": "node --import tsx scripts/run-headless-harness.ts",
+    "test:headless-harness": "vp test --run scripts/headless-harness.test.ts",
     "test:authority-delegation": "vp test --run scripts/check-authority-delegation.test.ts",
     "test:fast-follow": "vp test --run scripts/check-fast-follow.test.ts && pnpm --dir packages/fast-follow-spec run test",
     "check:fast-follow-spec": "pnpm --dir packages/fast-follow-spec run typecheck && pnpm --dir packages/fast-follow-spec run test && pnpm --dir packages/fast-follow-spec run verify:distribution",
