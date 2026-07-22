@@ -16,6 +16,7 @@ import {
   CODEX_CHIP_REASON_VERIFYING,
 } from "../codex-local-contract.ts"
 import type { GitFileEntry, GitGithubErrorCode } from "../git-github-contract.ts"
+import { projectAgentConversationRunLinks } from "./agent-identity.ts"
 import type { GitPanelState } from "./git-panel.ts"
 import type { DesktopShellState } from "./shell.ts"
 import { PierreReviewAdapter } from "../ide/pierre-diffs-adapter.tsx"
@@ -41,6 +42,9 @@ export type ReactStatusKind =
   | "interrupted"
   | "failed"
   | "invalid_config"
+  /** META-1 (#9180): a Full Auto run bound to this conversation, linked to
+   * the existing read-only run view. Observability, never an alert. */
+  | "full_auto_run"
 
 export type ReactStatusNotice = Readonly<{
   key: string
@@ -130,6 +134,20 @@ export const projectReactStatusNotices = (state: DesktopShellState): ReadonlyArr
     notices.push({ key: `interrupted:${selected.threadRef}`, kind: "interrupted", title: "Turn interrupted", detail: "The runtime recorded an interrupted outcome. It was not silently resumed.", action: null })
   } else if (selected?.status === "errored") {
     notices.push({ key: `failed:${selected.threadRef}`, kind: "failed", title: "Turn failed", detail: "The runtime recorded a failed outcome. Retry only when the command is safe to repeat.", action: null })
+  }
+  // META-1 (#9180): delegated Full Auto work bound to this conversation stays
+  // attributed inside it — a linked run card naming the run, its state, and
+  // its lane, opening the EXISTING read-only run view. Presentation over the
+  // same run-list projection the dedicated Full Auto surface reads; no new
+  // authority and no new intent.
+  for (const link of projectAgentConversationRunLinks(state.fullAuto.runs, state.activeThreadId)) {
+    notices.push({
+      key: `full-auto-run:${link.runRef}`,
+      kind: "full_auto_run",
+      title: `Full Auto run · ${link.statusLabel}`,
+      detail: link.lane === null ? link.title : `${link.title} · via ${link.lane}`,
+      action: { label: "Open run", intent: "DesktopFullAutoRunOpened", payload: link.runRef },
+    })
   }
   return notices
 }

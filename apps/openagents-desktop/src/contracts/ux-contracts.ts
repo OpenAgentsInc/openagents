@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-21.4",
+    version: "2026-07-22.1",
     contracts: [
       {
         contractId: "openagents_desktop.chat.history_recall_cited_tool_row.v1",
@@ -5323,6 +5323,54 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         ],
         verification:
           "Issue #9011 owns the exact-revision macOS package, cold Finder-open startup trace, no-chat-flash oracle, Desktop verification gate, and local RC replacement for owner testing.",
+      },
+      {
+        contractId: "openagents_desktop.identity.one_agent_front_door.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "one-agent identity front door (META-1)",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "github-issue", statedBy: "owner", statedOn: "2026-07-22" },
+        statement:
+          "The main thing the user talks with in the desktop UI is ONE persistent, named agent (OpenAgents). A fresh session opens into that agent's conversation. Delegated work — any harness lane, Full Auto — appears attributed inside that conversation (which lane and effective model handled it, with refs), and a Full Auto run bound to the conversation surfaces as a linked run card. Existing session and run views remain reachable as observability.",
+        authorityBoundary:
+          "Presentation and continuity only. The identity name is the existing in-product OpenAgents identity (the #9127 routing-disclosure card already speaks as 'OpenAgents routed to <subagent>'); no persona is invented. Per-response attribution is derived exclusively from the host-stamped message metadata (lane/model, #8712/#9081) — no lane recorded means no attribution is invented, and the #9127 delegated-answer attribution is never overwritten. The linked run card is a read-only projection of the same renderer run-list state the dedicated Full Auto surface consumes (hydrated by the existing start and run-view paths — this layer adds no polling or refresh dispatch of its own), and its only affordance dispatches the EXISTING FA-UX-01 DesktopFullAutoRunOpened intent. The deterministic fail-closed route gates, lane dispatch, run lifecycle, and every other authority surface are unchanged; this layer can neither select a lane nor start, mutate, or conceal a run.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/agent-identity.ts",
+          "apps/openagents-desktop/src/renderer/react-timeline.tsx",
+          "apps/openagents-desktop/src/renderer/react-review.tsx",
+          "docs/fable/2026-07-22-openagents-as-meta-agent-analysis.md",
+          "github:OpenAgentsInc/openagents#9180",
+        ],
+        oracles: [
+          {
+            id: "one_agent_front_door.identity_and_default_entry",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/agent-identity.test.ts",
+            description:
+              "Proves the agent identity is the existing OpenAgents identity, a fresh session opens into the chat conversation, and the New session / Full Auto / Settings observability entries remain reachable.",
+          },
+          {
+            id: "one_agent_front_door.turn_attribution_inline",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/agent-identity.test.ts",
+            description:
+              "Proves the final assistant response of a turn carries its honest lane/model attribution from host-stamped metadata, that no attribution is invented without a recorded lane, and that delegated answers keep their #9127 subagent attribution.",
+          },
+          {
+            id: "one_agent_front_door.full_auto_linked_run_card",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/agent-identity.test.ts",
+            description:
+              "Proves a Full Auto run bound to the active conversation projects as a linked run card whose only action routes through the existing DesktopFullAutoRunOpened run-view intent, and that unrelated conversations show no run card.",
+          },
+        ],
+        verification:
+          "Desktop agent-identity suite plus the react-timeline, react-review, and react-primitive-adapters renderer suites and Desktop typecheck in the normal sweep.",
       },
     ],
   };

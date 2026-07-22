@@ -52,6 +52,7 @@ import {
   type WorkbenchCollabAgentStatus,
   type WorkbenchItem,
 } from "../workbench-item-contract.ts";
+import { agentLaneAttribution } from "./agent-identity.ts";
 import type { DesktopNoteEntry } from "./shell.ts";
 import { parseChatMarkdown } from "./markdown.ts";
 import { childInterruptable } from "./runtime-cards.ts";
@@ -280,11 +281,32 @@ const delegateAttributionForMeta = (provider: string | undefined): string | unde
   }
 };
 
+/**
+ * META-1 (#9180): stamp the final assistant record of each user-turn segment
+ * with its honest lane/model attribution from the host-stamped note meta
+ * ("via codex-local · gpt-5.6-sol"). Delegated answers keep their existing
+ * "via <subagent>" attribution (#9127) — it is never overwritten. Pure
+ * decoration over already-projected records; no note is added or removed.
+ */
+const withAgentLaneAttribution = (
+  records: ReadonlyArray<ReactTimelineRecord>,
+  notes: ReadonlyArray<DesktopNoteEntry>,
+): ReadonlyArray<ReactTimelineRecord> => {
+  const finalKeys = deriveAssistantMetaKeys(records);
+  const metaByKey = new Map(notes.map((note) => [note.key, note.meta]));
+  return records.map((record) => {
+    if (record.attribution !== undefined) return record;
+    if (!finalKeys.has(record.key) || isUserRecord(record) || !isMessageRecord(record)) return record;
+    const attribution = agentLaneAttribution(metaByKey.get(record.key));
+    return attribution === undefined ? record : { ...record, attribution };
+  });
+};
+
 export const projectLocalTimelineRecords = (
   notes: ReadonlyArray<DesktopNoteEntry>,
 ): ReadonlyArray<ReactTimelineRecord> => {
   const promotedKeys = promotedDelegateNoteKeys(notes);
-  return projectToolCardEntries(notes).flatMap((entry, index): ReadonlyArray<ReactTimelineRecord> => {
+  return withAgentLaneAttribution(projectToolCardEntries(notes).flatMap((entry, index): ReadonlyArray<ReactTimelineRecord> => {
     if (entry.kind === "tool") {
       const humanized = humanizeToolInvocation(entry.card.toolName, entry.card.argsSummary);
       return [
@@ -528,7 +550,7 @@ export const projectLocalTimelineRecords = (
           : {}),
       },
     ];
-  });
+  }), notes);
 };
 
 const Inline = ({ nodes }: { readonly nodes: ReadonlyArray<MarkdownInline> }): ReactNode =>

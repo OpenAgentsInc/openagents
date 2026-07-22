@@ -77,7 +77,8 @@ import {
 } from "#components/ui/dialog"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "#components/ui/tooltip"
 import type { DesktopShellState } from "./shell.ts"
-import { capabilityForActiveLane, desktopConversationShortcutLabel, formatRelativeTimestamp } from "./shell.ts"
+import { desktopConversationShortcutLabel, formatRelativeTimestamp } from "./shell.ts"
+import { DESKTOP_AGENT_NAME } from "./agent-identity.ts"
 import { DecisionSurface, ReactCommandPalette, ReactComposer } from "./react-composer.tsx"
 import { StatusNotices } from "./react-review.tsx"
 import { ConversationTimeline, SafeReactMarkdown } from "./react-timeline.tsx"
@@ -909,7 +910,7 @@ export const WorkbenchShell = ({ state, report }: {
         </div> : null}
         header={<ConversationHeader state={state} report={report} />}
         notices={<StatusNotices state={state} report={report} />}
-        timeline={<ConversationTimeline page={state.history.page} notes={state.notes} loadingEdge={state.history.loadingEdge} working={state.activeThreadId !== null && state.pending && !waitingForAnswer} waitingForAnswer={waitingForAnswer} workingDirectory={state.workingDirectory} agentName={capabilityForActiveLane(state)?.displayName ?? (state.selectedHarness === "codex" ? "Codex" : "Claude")} bootSequenceAgents={projectBootSequenceAgents(state)} bootSequenceIdentity={projectBootSequenceIdentity(state)} report={report} />}
+        timeline={<ConversationTimeline page={state.history.page} notes={state.notes} loadingEdge={state.history.loadingEdge} working={state.activeThreadId !== null && state.pending && !waitingForAnswer} waitingForAnswer={waitingForAnswer} workingDirectory={state.workingDirectory} agentName={DESKTOP_AGENT_NAME} bootSequenceAgents={projectBootSequenceAgents(state)} bootSequenceIdentity={projectBootSequenceIdentity(state)} report={report} />}
       />} />}
     {/* Render the fixed expand toggle AFTER the workspace surface. Its
         `-webkit-app-region: no-drag` only carves a clickable hole out of the
