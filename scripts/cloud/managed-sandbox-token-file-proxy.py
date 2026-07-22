@@ -4,10 +4,10 @@
 from __future__ import annotations
 
 import argparse
+import http.client
 import http.server
 import pathlib
-import urllib.error
-import urllib.request
+import urllib.parse
 
 
 class Proxy(http.server.BaseHTTPRequestHandler):
@@ -26,10 +26,12 @@ class Proxy(http.server.BaseHTTPRequestHandler):
     def _forward(self) -> None:
         size = int(self.headers.get("content-length", "0"))
         body = self.rfile.read(size) if size else None
-        request = urllib.request.Request(
-            f"{self.upstream}{self.path}",
-            data=body,
-            method=self.command,
+        upstream = urllib.parse.urlsplit(self.upstream)
+        connection = http.client.HTTPConnection(upstream.hostname, upstream.port, timeout=180)
+        connection.request(
+            self.command,
+            self.path,
+            body=body,
             headers={
                 "accept": "application/json",
                 "cache-control": "no-store",
@@ -37,15 +39,11 @@ class Proxy(http.server.BaseHTTPRequestHandler):
                 "authorization": f"Bearer {self.token}",
             },
         )
-        try:
-            with urllib.request.urlopen(request, timeout=180) as response:
-                payload = response.read()
-                status = response.status
-                content_type = response.headers.get("content-type", "application/json")
-        except urllib.error.HTTPError as error:
-            payload = error.read()
-            status = error.code
-            content_type = error.headers.get("content-type", "application/json")
+        response = connection.getresponse()
+        payload = response.read()
+        status = response.status
+        content_type = response.getheader("content-type", "application/json")
+        connection.close()
         self.send_response(status)
         self.send_header("content-type", content_type)
         self.send_header("content-length", str(len(payload)))
