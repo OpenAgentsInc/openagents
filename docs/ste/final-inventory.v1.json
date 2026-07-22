@@ -14941,6 +14941,20 @@
       }
     },
     {
+      "path": "docs/ai-sdk/2026-07-22-rlm-full-auto-transcript-roadmap-audit.md",
+      "sha256": "8490c7b83c4e174a96ee234527b2e092fde7ab0c5b4e4db3bfc776e3b0ac67e8",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "ste_status": "source-data",
+        "ste_reviewer": null,
+        "ste_reviewed_at": null,
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null
+      }
+    },
+    {
       "path": "docs/ai-sdk/README.md",
       "sha256": "a6766db14d604a215cac06a4788b4411abd2e4e42a42cfa892f5b8a9d367ddb6",
       "reason": "Final review of a converted document",

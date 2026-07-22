@@ -14456,6 +14456,19 @@
       ]
     },
     {
+      "path": "docs/ai-sdk/2026-07-22-rlm-full-auto-transcript-roadmap-audit.md",
+      "ste_issue": 9,
+      "ste_mode": "source-data",
+      "ste_glossary_revision": "openagents-ste-glossary-v1",
+      "ste_status": "source-data",
+      "ste_reviewer": null,
+      "ste_reviewed_at": null,
+      "owner": "OpenAgents documentation",
+      "risk": "source-data",
+      "source": "Immutable historical or evidence source data",
+      "replacement": null
+    },
+    {
       "path": "docs/ai-sdk/README.md",
       "ste_issue": 9,
       "ste_mode": "descriptive",
