@@ -3,6 +3,10 @@ export const knownDocumentPathPatterns: ReadonlyArray<RegExp> = [
   /^\/app\/?$/,
   /^\/X\/$/,
   /^\/activity$/,
+  // #9188: admin-only operator dashboard. Auth is enforced server-side by the
+  // `/api/admin/operator/overview` endpoint; a non-admin gets the refusal
+  // view.
+  /^\/admin\/operator$/,
   /^\/(?:adjutant|artanis)\/?$/,
   // /aisdk + /aisdk/docs: public OpenAgents AI SDK page and docs, added at
   // owner direction 2026-07-21 (SDK extracted to OpenAgentsInc/ai and

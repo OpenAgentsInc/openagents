@@ -44,6 +44,10 @@ import {
 } from './admin-ops-routes'
 import { makeAdminOverviewHandlers } from './admin-overview-routes'
 import {
+  ADMIN_OPERATOR_OVERVIEW_PATH,
+  makeAdminOperatorOverviewHandler,
+} from './admin-operator-routes'
+import {
   handleAgentBalanceApi,
   handleAgentBalancePreferencesApi,
 } from './agent-balance-routes'
@@ -7596,6 +7600,16 @@ const adminOverviewHandlers = makeAdminOverviewHandlers({
   requireBrowserSession,
 })
 
+// #9188: the admin operator overview — one redacted at-a-glance snapshot of
+// the live agent chains, token rollup, traces, and fleet (composes existing
+// exact D1 readers).
+const adminOperatorOverviewHandler = makeAdminOperatorOverviewHandler({
+  appendRefreshedSessionCookies,
+  db: openAgentsDatabase,
+  isOpenAgentsAdminEmail,
+  requireBrowserSession,
+})
+
 const tokenUsageLedgerRoutes = makeTokenUsageLedgerRoutes({
   appendRefreshedSessionCookies,
   isOpenAgentsAdminEmail,
@@ -12674,6 +12688,19 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     path: '/api/admin/overview',
     handler: (request, env, ctx) =>
       adminOverviewHandlers.handleAdminOverviewApi(request, env, ctx),
+  },
+  {
+    // #9188: admin operator at-a-glance snapshot (agent chains + tokens +
+    // traces + fleet + cloud health), redacted and admin-gated.
+    path: ADMIN_OPERATOR_OVERVIEW_PATH,
+    handler: (request, env, ctx) =>
+      Effect.promise(() =>
+        adminOperatorOverviewHandler.handleAdminOperatorOverview(
+          request,
+          env,
+          ctx,
+        ),
+      ),
   },
   {
     // AIUR-3 (#8501): recent org-cloud coding turns with exact usage
