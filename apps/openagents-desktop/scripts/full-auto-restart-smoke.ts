@@ -15,16 +15,23 @@
  * local-turn-restart-smoke.ts and the other Electron-launching smokes.
  */
 import { spawn } from "node:child_process"
-import { existsSync, mkdtempSync, rmSync } from "node:fs"
+import { createHash } from "node:crypto"
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
 
 const appRoot = path.resolve(import.meta.dirname, "..")
 const packagedBinary = path.join(appRoot, "out", "OpenAgents-darwin-arm64", "OpenAgents.app", "Contents", "MacOS", "OpenAgents")
+const packagedAppAsar = path.join(appRoot, "out", "OpenAgents-darwin-arm64", "OpenAgents.app", "Contents", "Resources", "app.asar")
 const electronBinary = path.join(appRoot, "node_modules", ".bin", "electron")
-const command = process.platform === "darwin" && existsSync(packagedBinary)
+const usesPackagedApp = process.platform === "darwin" && existsSync(packagedBinary) && existsSync(packagedAppAsar)
+const command = usesPackagedApp
   ? [packagedBinary]
   : [electronBinary, "."]
+const executionTarget = usesPackagedApp ? "packaged-darwin-arm64" : "electron-development"
+const appAsarSha256 = usesPackagedApp
+  ? createHash("sha256").update(readFileSync(packagedAppAsar)).digest("hex")
+  : null
 const PHASE_TIMEOUT_MS = 180_000
 
 type ProbePhase = "seed" | "resume" | "seed-mismatch" | "resume-mismatch" | "seed-claude" | "resume-claude"
@@ -36,6 +43,10 @@ const runPhase = (userData: string, phase: ProbePhase): Promise<string> =>
       cwd: appRoot,
       env: {
         ...process.env,
+        // Every probe uses a new userData directory below the OS temporary
+        // directory. Enable the second gate so the packaged app uses the mock
+        // Keychain and cannot initialize native session custody.
+        OPENAGENTS_DESKTOP_ISOLATED_APP_PROOF: "1",
         OPENAGENTS_DESKTOP_SMOKE: "0",
         OPENAGENTS_DESKTOP_USER_DATA: userData,
         OPENAGENTS_DESKTOP_FULL_AUTO_RESTART_PROBE: phase,
@@ -103,6 +114,8 @@ const main = async (): Promise<void> => {
       continuationCount: happy.continuationCount,
       mismatchFailedClosed: mismatch.ok,
       nonCodexLane: claude.dispatchedLane,
+      executionTarget,
+      appAsarSha256,
     })}`)
   } finally {
     rmSync(happyUserData, { recursive: true, force: true })
