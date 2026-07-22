@@ -46756,6 +46756,18 @@
       }
     },
     {
+      "path": "docs/transcripts/260.md",
+      "sha256": "fb014f15581f64c890f3f26ff8bbdf89fdbe6a9e2996e57cd30740d2ad6c2c05",
+      "reason": "Preserved transcript archive",
+      "profile": {
+        "ste_mode": "source-data",
+        "risk": "source-data",
+        "source": "Preserved transcript archive",
+        "replacement": null,
+        "ste_status": "source-data"
+      }
+    },
+    {
       "path": "docs/transcripts/25X-fullauto.md",
       "sha256": "d6f1af287a4ee23ee729395a6152f9a138fd134685a8459fa2a14ab816674f57",
       "reason": "Preserved transcript archive",
