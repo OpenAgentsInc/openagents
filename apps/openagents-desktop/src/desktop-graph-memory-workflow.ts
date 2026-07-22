@@ -31,7 +31,7 @@ const MAX_HISTORY_CHARACTERS = 32_768;
 const MAX_EVIDENCE_RECORDS = 2_048;
 const EVIDENCE_STORE_SCHEMA = "openagents.desktop.graph_memory_evidence_store.v1";
 
-const extractionLimits: GraphExtractionLimits = {
+export const DESKTOP_GRAPH_MEMORY_EXTRACTION_LIMITS: GraphExtractionLimits = {
   maxEntries: MAX_HISTORY_ENTRIES,
   maxCharacters: MAX_HISTORY_CHARACTERS,
   maxInputTokens: MAX_HISTORY_CHARACTERS,
@@ -45,7 +45,7 @@ const extractionLimits: GraphExtractionLimits = {
   maxInputTokensPerBatch: MAX_HISTORY_CHARACTERS,
 };
 
-const recallLimits = {
+export const DESKTOP_GRAPH_MEMORY_RECALL_LIMITS = {
   maxDepth: 1,
   maxVisitedElements: 64,
   maxReturnedElements: 8,
@@ -57,7 +57,7 @@ const recallLimits = {
 const sha256 = (value: string): string =>
   createHash("sha256").update(value, "utf8").digest("hex");
 
-const recallQueryFor = (message: string): string => {
+export const desktopGraphMemoryRecallQueryFor = (message: string): string => {
   const stopWords = new Set(["about", "active", "does", "from", "have", "that", "the", "this", "what", "when", "where", "which", "with"]);
   return message
     .normalize("NFC")
@@ -66,7 +66,7 @@ const recallQueryFor = (message: string): string => {
     ?.find((word) => word.length >= 4 && !stopWords.has(word)) ?? message;
 };
 
-const deterministicExtractor: DeterministicGraphExtractor = {
+export const desktopGraphMemoryDeterministicExtractor: DeterministicGraphExtractor = {
   parserRef: "parser.desktop.foreground-history",
   parserVersion: "version.1",
   extract: ({ entries }) => {
@@ -234,7 +234,7 @@ export const makeDesktopGraphMemoryWorkflow = (
           turnRef: input.turnRef,
           mode: "foreground",
           prompt: input.message,
-          recallQuery: recallQueryFor(input.message),
+          recallQuery: desktopGraphMemoryRecallQueryFor(input.message),
           scope,
           extractionEnabled: preferences.graphExtractionEnabled,
           recallEnabled: preferences.graphRecallEnabled,
@@ -252,9 +252,9 @@ export const makeDesktopGraphMemoryWorkflow = (
         {
           resolveSources: () =>
             Effect.succeed(leaves.map((handle) => ({ handle, redactionState: "already_redacted" }))),
-          extraction: { _tag: "Deterministic", extractor: deterministicExtractor },
-          extractionLimits,
-          recallLimits,
+          extraction: { _tag: "Deterministic", extractor: desktopGraphMemoryDeterministicExtractor },
+          extractionLimits: DESKTOP_GRAPH_MEMORY_EXTRACTION_LIMITS,
+          recallLimits: DESKTOP_GRAPH_MEMORY_RECALL_LIMITS,
           countTokens: (text) => text.length,
           monotonicMs: () => Math.floor(performance.now()),
           now: () => (dependencies.now ?? (() => new Date()))().toISOString(),
