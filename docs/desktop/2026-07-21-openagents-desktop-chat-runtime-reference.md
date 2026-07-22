@@ -29,6 +29,13 @@ live plus pass conversation history). Where the text marks that change as "not
 in HEAD", read it as merged. The renderer promotion of a single delegate answer
 to the primary assistant bubble is tracked by issue #9127.
 
+The issue #9159 correction separates ordinary chat from Full Auto authority.
+Ordinary chat uses the direct OpenAgents answer path unless the user requests
+an action or an explicit handoff. Ordinary background delegation has
+`fullAuto: false`. Only an explicit Full Auto control can add the Full Auto
+instruction. A delegate result must also pass the relevance gate before the
+timeline can promote it.
+
 ## Companions
 
 - [`2026-07-21-chat-runtime-unified-roadmap.md`](./2026-07-21-chat-runtime-unified-roadmap.md)
@@ -134,6 +141,9 @@ to the primary assistant bubble is tracked by issue #9127.
 | `apps/openagents-desktop/src/turn/desktop-apple-fm-provider.ts` | The Apple FM router provider. Guided generation over the on-device model. |
 | `apps/openagents-desktop/src/turn/desktop-codex-provider.ts` | `makeDelegateProviderRegistry`. The redaction boundary. `ProviderStreamEvent.Chain`. |
 | `apps/openagents-desktop/src/turn/desktop-delegation.ts` | `decideDelegation`. The host answer, delegate, or refuse decision. |
+| `apps/openagents-desktop/src/turn/desktop-delegate-execution.ts` | Runs an ordinary delegate in the background without Full Auto authority. |
+| `apps/openagents-desktop/src/turn/delegated-answer-relevance.ts` | Rejects an absent, receipt-only, or unrelated delegate answer before promotion. |
+| `apps/openagents-desktop/src/turn/conversation-coherence-grade.ts` | Calculates the score and hard-fail gates for the conversation coherence rubric. |
 | `apps/openagents-desktop/src/turn/desktop-turn-policy.ts` | Context source, first-candidate policy, and artifact resolver layers. |
 | `apps/openagents-desktop/src/turn/apple-fm-prompt.ts` | The host-owned router prompt with available agents and ambient context. |
 | `packages/agent-runtime-schema/src/route.ts` | The frozen `RouteRecommendation` versus `RouteDecision` split. |
@@ -298,9 +308,11 @@ It is live by default and disabled by `OPENAGENTS_DESKTOP_AFS_TURN_KERNEL=0`
 They meet at `runDelegateLaneTurn` (`main.ts:1431-1460`). The delegate providers
 in the kernel are built with `runTurn: (input) => runDelegateLaneTurn(<lane>, input)`
 (`main.ts:1533`, `:1544`, `:1549`). Inside `runDelegateLaneTurn`, the code calls
-`lane.admit(request)` and then `lane.runTurn({ ... emit })` on a STACK A
-`ProviderLane` (`main.ts:1448-1458`). So the delegate provider of the kernel
-invokes the Provider Lane directly.
+`executeOrdinaryDelegateTurn`. This helper admits the request and then calls
+`lane.runTurn({ ... emit })` on a STACK A `ProviderLane`.
+The request has `fullAuto: false`.
+The `background: true` fact controls lifecycle ownership.
+It does not increase authority.
 
 The lane emits raw `ClaudeLocalEvent`s. The delegate provider redacts each one
 and lifts it into the kernel vocabulary as `ProviderStreamEvent.Chain` and
@@ -316,9 +328,9 @@ and lifts it into the kernel vocabulary as `ProviderStreamEvent.Chain` and
   Only the redacted `SafeMessageChainEntry` chain crosses into the kernel and to
   the renderer.
 
-One important caveat at HEAD. `runDelegateLaneTurn` passes `history: []`
-(`main.ts:1454`). A delegated subagent turn starts with no thread history at
-HEAD. The #9118 change (not in HEAD) feeds real thread history. See "Sharp edges".
+`runDelegateLaneTurn` reads prior notes from the main-owned thread store.
+It excludes the current user note because that note is the prompt.
+The renderer cannot supply or change this history.
 
 ---
 
@@ -520,10 +532,12 @@ methods, and identity-pin strength.
 
 ---
 
-## 5. The Apple FM router and delegation
+## 5. The Apple FM answer and delegation path
 
-The on-device Apple FM model is the router. The host is the decision authority.
-The model proposes. The host acts and reports.
+The on-device Apple FM model can answer or recommend a route.
+The host is the decision authority.
+The model proposes.
+The host acts and reports.
 
 ### The advisory recommendation versus the authoritative decision
 
@@ -540,17 +554,17 @@ set becomes a `Reject` (`:164`). The model can never emit a `RouteDecision`.
 
 ### The router provider
 
-`makeDesktopAppleFmProviderRegistry` is the router provider for the kernel
-(`turn/desktop-apple-fm-provider.ts:117-168`). Readiness comes from
-`host.status()` with no renderer input. The host builds the router prompt from
-the canonical thread store and the available agents
-(`resolveAppleFmAvailableAgents`, `main.ts:1468-1486`). The available agents
-derive from the one unified harness readiness projection
-(`harness-readiness-source.ts` and `main.ts:1484-1485`). When at least one agent
-is ready and can delegate, the host runs guided generation with the admitted
-candidates, so the route output can only name an admitted candidate and can
-never be malformed. With no ready delegate, the model answers directly
-(`desktop-apple-fm-provider.ts:158-166`).
+`makeDesktopAppleFmProviderRegistry` is the Apple FM provider for the kernel.
+Readiness comes from `host.status()` with no renderer input.
+The host builds the prompt from the canonical thread store.
+An identity question, greeting, explanation, or basic conversation uses direct
+generation even when delegates are ready.
+
+An action request or explicit handoff can use guided generation.
+The admitted set contains the local `apple_fm` answer route and each ready
+delegate route. A local choice starts a second direct answer turn.
+The host does not expose the route JSON as assistant text.
+A delegate choice continues through the host decision and readiness gates.
 
 ### The host decision
 
@@ -577,6 +591,9 @@ The flow lives in the `turn:submit` handler (`turn/desktop-turn-main.ts:369-501`
    builds a single-candidate owner-bound set and forks a SECOND kernel turn with
    `runtime.runFork` (`:330-367`). It returns a `delegated` result carrying the
    `delegationRequestRef`.
+5. Apply the deterministic relevance gate before the delegate projection
+   becomes terminal truth. An absent, receipt-only, or unrelated answer changes
+   the projection to `failed`.
 
 ### How the delegate chain streams to the Delegated Agents card
 

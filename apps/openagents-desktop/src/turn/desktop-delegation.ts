@@ -9,6 +9,10 @@ import type {
 } from "@openagentsinc/agent-runtime-schema"
 
 import type { CodexLaneReadiness } from "./desktop-codex-provider.ts"
+import {
+  decodeClaudeLocalStartRequest,
+  type ClaudeLocalStartRequest,
+} from "../claude-local-contract.ts"
 
 /**
  * AFS-04 host delegation decision.
@@ -42,6 +46,32 @@ const DELEGATE_PROVIDER_SET: ReadonlySet<TurnProviderCandidate> = new Set(DELEGA
 /** True when a decoded candidate is one the host can actually dispatch. */
 export const isDelegateProvider = (candidate: TurnProviderCandidate): candidate is DelegateProvider =>
   DELEGATE_PROVIDER_SET.has(candidate)
+
+export type OrdinaryDelegationExecution = Readonly<{
+  request: ClaudeLocalStartRequest
+  mode: Readonly<{ background: true; fullAuto: false }>
+}>
+
+/**
+ * Build one ordinary delegated start without granting Full Auto authority.
+ * Background means that main owns the lifecycle and question boundary. It does
+ * not authorize autonomous repository work.
+ */
+export const makeOrdinaryDelegationExecution = (input: Readonly<{
+  requestRef: string
+  threadRef: string
+  message: string
+}>): OrdinaryDelegationExecution | null => {
+  const request = decodeClaudeLocalStartRequest({
+    turnRef: input.requestRef.slice(0, 120),
+    threadRef: input.threadRef,
+    message: input.message,
+    fullAuto: false,
+  })
+  return request === null
+    ? null
+    : { request, mode: { background: true, fullAuto: false } }
+}
 
 export type DelegationDecision =
   | { readonly kind: "answer"; readonly text: string }

@@ -330,6 +330,7 @@ import { localRuntimePersistenceOperation } from "./local-runtime-event-persiste
 import { openLocalTurnJournal } from "./local-turn-journal.ts"
 import { desktopAfsTurnKernelEnabled, installDesktopTurnKernel } from "./turn/desktop-turn-main.ts"
 import { makeDesktopAppleFmProviderRegistry } from "./turn/desktop-apple-fm-provider.ts"
+import { executeOrdinaryDelegateTurn } from "./turn/desktop-delegate-execution.ts"
 import type { AppleFmAvailableAgent, AppleFmEnvironmentContext } from "./turn/apple-fm-prompt.ts"
 import { buildAppleFmEnvironmentContext } from "./turn/apple-fm-environment.ts"
 import {
@@ -1436,8 +1437,8 @@ const delegateLaneReadiness = async (laneRef: string): Promise<CodexLaneReadines
 }
 const claudeDelegationReadiness = (): Promise<CodexLaneReadiness> => delegateLaneReadiness("claude-local")
 const grokDelegationReadiness = (): Promise<CodexLaneReadiness> => delegateLaneReadiness("acp:grok-cli")
-// #9091: run ONE real delegation turn on the given owner-local lane, in the
-// background full-auto (no renderer to answer questions), streaming the frozen
+// #9091: run ONE real ordinary delegation turn on the given owner-local lane in
+// the background (no renderer to answer questions), streaming the frozen
 // ClaudeLocalEvent envelope through `emit`. Shared by the codex, claude, and
 // grok delegate providers so every lane folds into the SAME kernel projection
 // and redaction boundary. The host lane owns account/model/history; the kernel
@@ -1451,16 +1452,6 @@ const runDelegateLaneTurn = async <Context>(
     readonly emit: (event: ClaudeLocalEvent) => void
   },
 ): Promise<CodexLaneTurnResult> => {
-  if (lane === null) return { ok: false, reason: "session_failed", detail: "delegate lane not ready" }
-  const request = decodeClaudeLocalStartRequest({
-    turnRef: input.requestRef.slice(0, 120),
-    threadRef: input.threadRef,
-    message: input.message,
-    fullAuto: true,
-  })
-  if (request === null) return { ok: false, reason: "session_failed", detail: "invalid delegation request" }
-  const admission = lane.admit(request)
-  if (!admission.ok) return { ok: false, reason: "session_failed", detail: admission.error }
   // History authority is main's own thread store. A delegated turn must carry the
   // prior conversation so it has context ("summarize that" refers to the last
   // reply), excluding the current user message (that is the prompt, not history).
@@ -1472,16 +1463,14 @@ const runDelegateLaneTurn = async <Context>(
       ? priorNotes.slice(0, -1)
       : priorNotes
   const history = historyNotes.map(note => ({ role: note.role, text: note.text }))
-  const result = await lane.runTurn({
-    request,
-    model: admission.model,
-    context: admission.context,
-    history,
+  return executeOrdinaryDelegateTurn({
+    lane,
+    requestRef: input.requestRef,
+    threadRef: input.threadRef,
     message: input.message,
-    background: true,
+    history,
     emit: input.emit,
   })
-  return result.ok ? { ok: true, text: result.text } : { ok: false, reason: result.reason, detail: result.detail }
 }
 // AFS-04 follow-up + #9091: the host-owned connected-agent snapshot the
 // on-device Apple FM router prompt names. It is resolved lazily at turn time

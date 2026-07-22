@@ -29,6 +29,7 @@ import {
   seedDelegationCard,
   type DelegationRuntimeCard,
 } from "../delegation-runtime-card.ts"
+import { admitDelegatedAnswerProjection } from "./delegated-answer-relevance.ts"
 import type { makeThreadStore } from "../thread-store.ts"
 import type { LocalTurnJournal } from "../local-turn-journal.ts"
 import {
@@ -403,10 +404,14 @@ export const installDesktopTurnKernel = (
           candidateSet: delegateCandidateSet,
           recommendation: input.recommendation,
         })
+        const projection = admitDelegatedAnswerProjection({
+          objective: input.objective,
+          projection: result.projection,
+        })
         persistDelegationProjection({
           requestRef: input.delegationRequestRef,
           generation: result.generation,
-          projection: result.projection,
+          projection,
         })
         delegationTargets.delete(input.delegationRequestRef)
         const sender = deps.sender()
@@ -417,7 +422,7 @@ export const installDesktopTurnKernel = (
               kind: "terminal",
               requestRef: input.delegationRequestRef,
               generation: result.generation,
-              projection: result.projection,
+              projection,
               receipt: result.receipt,
             }),
           )

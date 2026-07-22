@@ -1,7 +1,13 @@
 import { describe, expect, test } from "vite-plus/test"
 
-import { decideDelegation, isDelegateProvider, type DelegateProvider } from "./desktop-delegation.ts"
+import {
+  decideDelegation,
+  isDelegateProvider,
+  makeOrdinaryDelegationExecution,
+  type DelegateProvider,
+} from "./desktop-delegation.ts"
 import type { CodexLaneReadiness } from "./desktop-codex-provider.ts"
+import { fullAutoPrompt } from "../full-auto-lane.ts"
 
 const routeFor = (candidate: string) =>
   JSON.stringify({
@@ -21,6 +27,22 @@ const readyMap = (provider: DelegateProvider): Readonly<Partial<Record<DelegateP
 })
 
 describe("decideDelegation — the host router decision", () => {
+  test("ordinary delegation is background execution without Full Auto authority", () => {
+    const execution = makeOrdinaryDelegationExecution({
+      requestRef: "request.codex.1",
+      threadRef: "thread.1",
+      message: "Implement issue #9159",
+    })
+    expect(execution).not.toBeNull()
+    expect(execution?.mode).toEqual({ background: true, fullAuto: false })
+    expect(execution?.request.fullAuto).toBe(false)
+    expect(execution?.request.message).toBe("Implement issue #9159")
+    expect(execution?.request.message).not.toContain("Full Auto is on for this turn")
+    expect(fullAutoPrompt("claude-local", "Implement issue #9159")).toContain(
+      "Full Auto is on for this turn",
+    )
+  })
+
   test("an admitted codex recommendation with a ready lane delegates", () => {
     const decision = decideDelegation({ answerText: CODEX_ROUTE, objective: "do the task", readiness: readyMap("codex") })
     expect(decision.kind).toBe("delegate")

@@ -17,3 +17,5 @@ These methods do not give product or release authority.
 - [Public coherence benchmark spec](./public-coherence-benchmark-spec.md):
   proposal for the public graph, toolchain comparison, version trend
   lines, and user-contributed traces.
+- [Issue #9159 programmatic validation](./2026-07-22-conversation-coherence-programmatic-validation.md):
+  the baseline score and the corrected programmatic scores.

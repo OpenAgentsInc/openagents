@@ -1,8 +1,10 @@
 import {
+  decodeAppleFmRouteOutput,
   makeAppleFmProviderRegistry,
   type AppleFmCompletionTurn,
   type AppleFmReadinessSnapshot,
 } from "@openagentsinc/apple-fm-runtime"
+import type { TurnProviderCandidate } from "@openagentsinc/agent-runtime-schema"
 import type { ProviderRegistryInterface } from "@openagentsinc/agent-turn-runtime"
 
 import type { AppleFmHost } from "../apple-fm-host.ts"
@@ -10,6 +12,7 @@ import type { AppleFmTurnResult } from "../apple-fm-contract.ts"
 import type { makeThreadStore } from "../thread-store.ts"
 import {
   buildOpenAgentsAppleFmPrompt,
+  shouldOfferAppleFmDelegation,
   type AppleFmAvailableAgent,
   type AppleFmEnvironmentContext,
 } from "./apple-fm-prompt.ts"
@@ -85,6 +88,21 @@ const readinessOf = (host: AppleFmHost | null): AppleFmReadinessSnapshot => {
 }
 
 type ThreadStore = ReturnType<typeof makeThreadStore>
+const LOCAL_ANSWER_CANDIDATE = "apple_fm" as const
+
+const addCounts = (left: number | null, right: number | null): number | null =>
+  left === null && right === null ? null : (left ?? 0) + (right ?? 0)
+
+/** Include the private first-stage route cost in a two-stage local answer. */
+const combineRoutedAnswerUsage = (
+  route: AppleFmTurnResult,
+  answer: AppleFmTurnResult,
+): AppleFmTurnResult => ({
+  ...answer,
+  promptTokens: addCounts(route.promptTokens, answer.promptTokens),
+  completionTokens: addCounts(route.completionTokens, answer.completionTokens),
+  totalTokens: addCounts(route.totalTokens, answer.totalTokens),
+})
 
 /**
  * Assemble the honesty-bounded, history-aware prompt on the HOST side. By the
@@ -146,23 +164,64 @@ export const makeDesktopAppleFmProviderRegistry = (
       } catch {
         environment = undefined
       }
-      // Build the authoritative, honesty-bounded prompt from the canonical
-      // thread history the host owns — never from renderer-supplied prose. The
-      // AFS-09 release channel decides baseline vs compiled preamble (shadow by
-      // default, so this is the hand-written prompt unless explicitly promoted).
-      const honest = honestPromptFor(getThreadStore(), meta.threadRef, prompt, availableAgents, environment, release)
-      // Owner directive 2026-07-20: when one or more delegate agents are
-      // connected, the on-device model is a ROUTER. Pass the ready delegate
-      // candidates so the bridge runs GUIDED generation (constrained sampling) —
-      // the returned route can only name an admitted candidate and can never be
-      // malformed. With no ready delegate, `routeCandidates` is undefined and the
-      // model answers directly (the honesty + ambient-context path). This uses
-      // the SAME ready+canDelegate condition the router preamble branches on.
-      const routeCandidates = availableAgents
+      const delegateCandidates = availableAgents
         .filter((agent) => agent.ready && agent.canDelegate)
         .map((agent) => agent.candidate)
-      return turnResultToCompletion(
-        await host.runTurn(honest, routeCandidates.length > 0 ? routeCandidates : undefined),
+      const shouldRoute =
+        delegateCandidates.length > 0 && shouldOfferAppleFmDelegation(prompt)
+      // Ordinary chat stays on the direct, honesty-bounded OpenAgents path even
+      // when delegate lanes are ready. This is an authority decision in main,
+      // not a best-effort instruction to the model.
+      if (!shouldRoute) {
+        const directPrompt = honestPromptFor(
+          getThreadStore(),
+          meta.threadRef,
+          prompt,
+          [],
+          environment,
+          release,
+        )
+        return turnResultToCompletion(await host.runTurn(directPrompt))
+      }
+
+      // An explicit action request uses constrained routing. `apple_fm` is a
+      // first-class local route. If selected, the host runs a separate direct
+      // answer turn and never exposes the route-control JSON as assistant prose.
+      const routeCandidates: ReadonlyArray<TurnProviderCandidate> = [
+        LOCAL_ANSWER_CANDIDATE,
+        ...delegateCandidates,
+      ]
+      const routePrompt = honestPromptFor(
+        getThreadStore(),
+        meta.threadRef,
+        prompt,
+        availableAgents,
+        environment,
+        release,
       )
+      const routed = await host.runTurn(routePrompt, routeCandidates)
+      if (routed.outcome !== "completed" || routed.text === null) {
+        return turnResultToCompletion(routed)
+      }
+      const decision = decodeAppleFmRouteOutput({
+        raw: routed.text,
+        admittedCandidates: routeCandidates,
+      })
+      if (
+        decision._tag === "Recommendation" &&
+        decision.recommendation.candidate !== LOCAL_ANSWER_CANDIDATE
+      ) {
+        return turnResultToCompletion(routed)
+      }
+      const directPrompt = honestPromptFor(
+        getThreadStore(),
+        meta.threadRef,
+        prompt,
+        [],
+        environment,
+        release,
+      )
+      const answer = await host.runTurn(directPrompt)
+      return turnResultToCompletion(combineRoutedAnswerUsage(routed, answer))
     },
   })

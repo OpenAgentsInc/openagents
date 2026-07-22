@@ -32,6 +32,8 @@ import {
   decodeDesktopTurnSubmitResult,
 } from "./desktop-turn-ipc.ts"
 import { installDesktopTurnKernel } from "./desktop-turn-main.ts"
+import { gradeConversationCoherence } from "./conversation-coherence-grade.ts"
+import { DELEGATED_RESULT_MISMATCH_REASON } from "./delegated-answer-relevance.ts"
 
 const decodeDescriptor = S.decodeUnknownSync(InferenceProviderDescriptor)
 const decodeCandidate = S.decodeUnknownSync(TurnCandidate)
@@ -110,7 +112,10 @@ const appleRouterRegistry = (answerText: string): ProviderRegistryInterface => (
 })
 
 /** A fake codex delegate registry. */
-const codexRegistry = (ready: boolean): ProviderRegistryInterface => ({
+const codexRegistry = (
+  ready: boolean,
+  answerText = "Implemented issue #9082 and ran the focused tests.",
+): ProviderRegistryInterface => ({
   describe: Effect.succeed([codexDescriptor(ready)]),
   start: () =>
     ready
@@ -127,10 +132,10 @@ const codexRegistry = (ready: boolean): ProviderRegistryInterface => ({
                   toolLabel: "shell",
                   commandOutputByteCount: 402,
                 }),
-                decodeChainEntry({ entryRef: "e.0", role: "assistant", text: "delegated work summary" }),
+                decodeChainEntry({ entryRef: "e.0", role: "assistant", text: answerText }),
               ],
             }),
-            ProviderStreamEvent.Completed({ candidate: answerCandidateWith("candidate.codex.1", "codex done") }),
+            ProviderStreamEvent.Completed({ candidate: answerCandidateWith("candidate.codex.1", answerText) }),
           ]),
         })
       : Effect.fail(new ProviderStartError({ reason: "unauthorized" })),
@@ -181,13 +186,70 @@ const claudeRegistry = (ready: boolean): ProviderRegistryInterface => ({
           events: Stream.fromIterable([
             ProviderStreamEvent.Progress(),
             ProviderStreamEvent.Chain({
-              entries: [decodeChainEntry({ entryRef: "e.0", role: "assistant", text: "claude delegated work summary" })],
+              entries: [
+                decodeChainEntry({
+                  entryRef: "e.0",
+                  role: "assistant",
+                  text: "Reviewed issue #9091 and reported the Claude result.",
+                }),
+              ],
             }),
-            ProviderStreamEvent.Completed({ candidate: answerCandidateWith("candidate.claude.1", "claude done") }),
+            ProviderStreamEvent.Completed({
+              candidate: answerCandidateWith(
+                "candidate.claude.1",
+                "Reviewed issue #9091 and reported the Claude result.",
+              ),
+            }),
           ]),
         })
       : Effect.fail(new ProviderStartError({ reason: "unauthorized" })),
 })
+
+const grokDescriptor = decodeDescriptor({
+  schema: PROVIDER_SCHEMA_LITERAL,
+  providerRef: "provider.grok.local",
+  candidate: "grok_acp",
+  model: "xai/grok",
+  placement: "owner_local",
+  supportedIntents: ["Ask"],
+  supportedCandidateKinds: ["answer"],
+  dataDestination: "remote_provider",
+  usageTruth: "exact",
+  costClass: "metered_provider_tokens",
+  maxContextChars: 4000,
+  maxOutputChars: 8192,
+  supportsStreaming: true,
+  supportsCancellation: true,
+  supportsExternalTools: true,
+  supportsExternalActions: true,
+  readiness: { state: "ready" },
+})
+
+const grokRegistry: ProviderRegistryInterface = {
+  describe: Effect.succeed([grokDescriptor]),
+  start: () =>
+    Effect.succeed({
+      providerTurnRef: S.decodeUnknownSync(ProviderTurnRef)("providerturn.grok.1"),
+      events: Stream.fromIterable([
+        ProviderStreamEvent.Progress(),
+        ProviderStreamEvent.Chain({
+          entries: [
+            decodeChainEntry({
+              entryRef: "e.0",
+              role: "assistant",
+              text: "Completed the requested mechanical rename.",
+            }),
+          ],
+        }),
+        ProviderStreamEvent.Completed({
+          candidate: answerCandidateWith(
+            "candidate.grok.1",
+            "Completed the requested mechanical rename.",
+          ),
+        }),
+      ]),
+    }),
+}
 
 const descriptor = decodeDescriptor({
   schema: PROVIDER_SCHEMA_LITERAL,
@@ -312,7 +374,11 @@ describe("Desktop turn main composition", () => {
   })
 })
 
-const installRouter = (routerAnswer: string, codexReady: boolean) => {
+const installRouter = (
+  routerAnswer: string,
+  codexReady: boolean,
+  delegateAnswer?: string,
+) => {
   const handlers = new Map<string, (event: unknown, value: unknown) => unknown>()
   const sent: RecordedSend[] = []
   const store = makeThreadStore(path.join(dir, "threads.json"))
@@ -326,7 +392,7 @@ const installRouter = (routerAnswer: string, codexReady: boolean) => {
     threadStore: store,
     journalFilePath: path.join(dir, "agent-turns", "journal.json"),
     providerRegistry: appleRouterRegistry(routerAnswer),
-    codexProvider: codexRegistry(codexReady),
+    codexProvider: codexRegistry(codexReady, delegateAnswer),
   })
   return { handlers, sent, store, thread, kernel }
 }
@@ -349,6 +415,29 @@ const installClaudeRouter = (routerAnswer: string, claudeReady: boolean) => {
     delegateProviders: [claudeRegistry(claudeReady)],
   })
   return { handlers, sent, thread, kernel }
+}
+
+const installAllReadyRouter = (routerAnswer: string) => {
+  const handlers = new Map<string, (event: unknown, value: unknown) => unknown>()
+  const sent: RecordedSend[] = []
+  const store = makeThreadStore(path.join(dir, "threads.json"))
+  const thread = store.newThread("All delegates ready")
+  const kernel = installDesktopTurnKernel({
+    ipcMain: {
+      handle: (channel, handler) => handlers.set(channel, handler),
+      removeHandler: (channel) => handlers.delete(channel),
+    },
+    sender: () => ({
+      isDestroyed: () => false,
+      send: (channel, payload) => sent.push({ channel, payload }),
+    }),
+    threadStore: store,
+    journalFilePath: path.join(dir, "agent-turns", "journal.json"),
+    providerRegistry: appleRouterRegistry(routerAnswer),
+    codexProvider: codexRegistry(true),
+    delegateProviders: [claudeRegistry(true), grokRegistry],
+  })
+  return { handlers, sent, store, thread, kernel }
 }
 
 const submitResultOf = (payload: unknown) => {
@@ -441,6 +530,45 @@ describe("AFS-04 codex delegation router", () => {
     }
   })
 
+  test("a completed but unrelated delegate result fails before answer promotion", async () => {
+    const { handlers, sent, store, thread, kernel } = installRouter(
+      CODEX_ROUTE_JSON,
+      true,
+      "Done — Packet A release verification completed.",
+    )
+    try {
+      const submit = handlers.get(DesktopTurnSubmitChannel)!
+      const result = submitResultOf(
+        await submit(null, { threadRef: thread.id, message: "fix the login bug" }),
+      )
+      expect(result.outcome).toBe("delegated")
+      const delegationRef = result.delegationRequestRef
+      await waitFor(() =>
+        sent.some(
+          (record) =>
+            (record.payload as { kind?: string; requestRef?: string }).kind === "terminal" &&
+            (record.payload as { requestRef?: string }).requestRef === delegationRef,
+        ),
+      )
+      const terminal = sent.find(
+        (record) =>
+          (record.payload as { kind?: string; requestRef?: string }).kind === "terminal" &&
+          (record.payload as { requestRef?: string }).requestRef === delegationRef,
+      )?.payload as { projection: { cardState: string; failureReason?: string } }
+      expect(terminal.projection.cardState).toBe("failed")
+      expect(terminal.projection.failureReason).toBe(DELEGATED_RESULT_MISMATCH_REASON)
+      const runtime = store.open(thread.id)?.notes.find(
+        (note) => note.key === `delegation-${delegationRef}`,
+      )?.runtime
+      expect(runtime?.kind).toBe("child")
+      if (runtime?.kind !== "child") throw new Error("delegation runtime missing")
+      expect(runtime.status).toBe("failed")
+      expect(runtime.detail).toBe(DELEGATED_RESULT_MISMATCH_REASON)
+    } finally {
+      await kernel.dispose()
+    }
+  })
+
   test("an admitted claude recommendation starts ONE real claude turn and returns delegated (#9091)", async () => {
     const { handlers, sent, thread, kernel } = installClaudeRouter(CLAUDE_ROUTE_JSON, true)
     try {
@@ -508,6 +636,62 @@ describe("AFS-04 codex delegation router", () => {
       expect(result.outcome).toBe("answered")
       expect(result.text).toBe("Sure, here is a plain answer.")
       expect(result.delegationRequestRef).toBeNull()
+    } finally {
+      await kernel.dispose()
+    }
+  })
+
+  test("programmatic acceptance: exact identity chat with every delegate ready grades 100", async () => {
+    const { handlers, sent, store, thread, kernel } = installAllReadyRouter(
+      "I am OpenAgents, your local assistant on this device.",
+    )
+    try {
+      const submit = handlers.get(DesktopTurnSubmitChannel)!
+      const result = submitResultOf(
+        await submit(null, { threadRef: thread.id, message: "hey who are you" }),
+      )
+      expect(result).toMatchObject({
+        outcome: "answered",
+        provider: "apple_fm",
+        text: "I am OpenAgents, your local assistant on this device.",
+        delegationRequestRef: null,
+      })
+      if (result.outcome !== "answered" || result.text === null) {
+        throw new Error("identity acceptance did not return a direct answer")
+      }
+      const answer = result.text
+      await waitFor(() => false, 6)
+      expect(sent.some((record) => {
+        const requestRef = (record.payload as { requestRef?: string }).requestRef ?? ""
+        return ["request.codex.", "request.claude.", "request.grok."].some((prefix) =>
+          requestRef.startsWith(prefix),
+        )
+      })).toBe(false)
+      expect(store.open(thread.id)?.notes.some((note) => note.runtime?.kind === "child")).toBe(false)
+      const reloaded = makeThreadStore(path.join(dir, "threads.json")).open(thread.id)
+      const assistant = reloaded?.notes.find((note) => note.role === "assistant")
+      expect(gradeConversationCoherence({
+        evidenceComplete: reloaded !== null && assistant !== undefined,
+        intentPreserved: answer.includes("OpenAgents"),
+        modeStarted: false,
+        modeTriggerPresent: false,
+        materialActionCount: reloaded?.notes.filter((note) => note.runtime?.kind === "child").length ?? 0,
+        allMaterialActionsAuthorized: true,
+        answerPresent: answer.trim() !== "",
+        answerRelevant: answer.includes("OpenAgents"),
+        routeChanged: false,
+        routeVisibleBeforeAnswer: true,
+        presentedProviderMatches: result.provider === "apple_fm" && assistant?.meta?.provider === "apple_fm",
+        eventOrderValid: true,
+        reloadStateMatches: assistant?.text === answer,
+        outcomeClosed: result.outcome === "answered",
+        nonActionRequest: true,
+      })).toMatchObject({
+        score: 100,
+        grade: "A",
+        disposition: "pass",
+        failedGates: [],
+      })
     } finally {
       await kernel.dispose()
     }

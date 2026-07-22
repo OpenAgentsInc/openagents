@@ -26,3 +26,28 @@ Aggregates only. No transcripts, quotes, or private paths.
 - Ratchet target for the next entry: needs-review rate below this
   baseline on the same window, and one #9159-class fixture in the
   fixture set.
+
+## Entry 2 — 2026-07-22 (issue #9159 correction)
+
+- Commit context: issue #9159 correction, metric `coherence-rubric-v1`.
+- Command: the focused programmatic command in the
+  [validation record](./2026-07-22-conversation-coherence-programmatic-validation.md).
+- Scope: two corrected Desktop fixtures and one source-defect fixture.
+
+| Fixture | Score | Grade | Disposition |
+| --- | ---: | ---: | --- |
+| Source identity thread | 9 | F | fail |
+| Corrected identity thread | 100 | A | pass |
+| Corrected delegated route | 100 | A | pass |
+
+- The corrected fixture mean is 100.
+- No corrected fixture needs review.
+- The values are complete rubric scores. Do not compare them with the
+  `coherence-screen-v1` corpus mean.
+- Defects fixed this sweep: #9159 hidden Full Auto, forced routing,
+  unrelated answer promotion, and late route presentation.
+- Fixtures added this sweep: exact identity with all delegates ready,
+  ordinary delegation authority, explicit Full Auto authority,
+  unrelated delegate result, and delegated route order.
+- Ratchet target for the next entry: run these fixtures through the
+  programmatic real-provider control surface in #9161.

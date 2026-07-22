@@ -15007,8 +15007,30 @@
       }
     },
     {
+      "path": "docs/analysis/2026-07-22-conversation-coherence-programmatic-validation.md",
+      "sha256": "d68a79c68a980d9c01701600a2e6a28f958ff037596ed5863c483b635ccea55b",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/analysis/README.md",
-      "sha256": "d0b1487a6bbbc08e6d4eac1afb82138e67fba59019707bfeefd60f1397bc5b7b",
+      "sha256": "1a4bc619c723320465c144edd11949b57ae097d57d6648cac633ce3651a2b333",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -15052,7 +15074,7 @@
     },
     {
       "path": "docs/analysis/coherence-ledger.md",
-      "sha256": "ffac2180d33e472a2bcacc6fa97ec6e80b45ce0134bc9c061325fe9955c7b45c",
+      "sha256": "ac61cc8acb69566335774082ff49ec18a87db0ddf69f405c2c82f27055e1b0ea",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -21957,7 +21979,7 @@
     },
     {
       "path": "docs/desktop/2026-07-21-openagents-desktop-chat-runtime-reference.md",
-      "sha256": "0094cb1faca24a3fe273f12de022a6e61f97f7ce6638d2dd4d1adfe4fa19a401",
+      "sha256": "0a544af88c1880214493a69fd005d8941b7d855f968f1eadcff31c425b5bbade",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

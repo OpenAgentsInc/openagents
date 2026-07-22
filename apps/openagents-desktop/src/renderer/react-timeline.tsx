@@ -360,7 +360,9 @@ export const projectLocalTimelineRecords = (
           itemRef: entry.note.key,
           sequence: index,
           kind: "collaboration" as const,
-          label: "Delegated agent",
+          label: entry.note.key.startsWith(AFS_DELEGATION_NOTE_KEY_PREFIX)
+            ? `OpenAgents routed to ${runtime.title || "a delegated agent"}`
+            : "Delegated agent",
           body: runtime.detail || runtime.title,
           timestamp: entry.note.timestamp,
           status: runtime.status,
@@ -1028,6 +1030,7 @@ export const TimelineItem = ({
         itemKey={record.key}
         operation={operation}
         prompt={agentItem.prompt}
+        title={record.label}
       />
     );
   }

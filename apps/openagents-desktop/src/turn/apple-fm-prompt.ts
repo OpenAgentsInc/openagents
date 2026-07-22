@@ -11,18 +11,13 @@
  * Keeping this in `src/turn/` (not the renderer) is the "remove the renderer
  * authority fork" invariant: no renderer code builds an authoritative prompt.
  *
- * Follow-up to AFS-04 (router agent-awareness): the host now also tells the
- * on-device model which coding agents are actually connected, and — for the
- * delegate-capable ones — HOW to hand a coding/agent task to them by emitting a
- * single route-recommendation JSON object that the AFS-02 decoder accepts and
- * the AFS-04 router dispatches. The model itself still has no tools; it can only
- * RECOMMEND a connected agent, and the SYSTEM runs it. The old wording ("cannot
- * start other agents") is gone: it made the small model refuse ("I'm just an AI,
- * I can't code") instead of routing. Availability is host-owned (never renderer
- * input): only agents the host reports READY are named, and a delegation JSON is
- * offered only for agents the host can actually dispatch. A malformed or
- * unavailable-agent output still NEVER dispatches (fail-closed in the decoder).
+ * Follow-up to AFS-04 (router agent-awareness): the host tells the on-device
+ * model which coding agents are connected when the user asks for an action or
+ * an explicit handoff. Ordinary conversation keeps the direct OpenAgents answer
+ * path. The model has no tools. It can only recommend a route, and the host runs
+ * an admitted delegate. Availability is host-owned (never renderer input).
  */
+import type { TurnProviderCandidate } from "@openagentsinc/agent-runtime-schema"
 
 /**
  * The Apple FM prompt hard cap mirrors `AppleFmStartTurnRequestSchema` (4000
@@ -46,10 +41,29 @@ export interface AppleFmPromptTurn {
  * delegation JSON is offered only for ready, delegate-capable agents.
  */
 export interface AppleFmAvailableAgent {
-  readonly candidate: string;
+  readonly candidate: TurnProviderCandidate;
   readonly label: string;
   readonly ready: boolean;
   readonly canDelegate: boolean;
+}
+
+const explicitHandoff = /\b(?:delegate|hand[ -]?off|assign|route|task)\b/iu
+const namedAgentRequest = /\b(?:use|ask|have|send)\s+(?:codex|claude|grok)\b/iu
+const actionRequest =
+  /^(?:(?:please|kindly)\s+|(?:can|could|would|will)\s+you\s+|i\s+need\s+you\s+to\s+|help\s+me\s+)?(?:analy[sz]e|build|change|commit|create|debug|delete|deploy|design|draft|edit|execute|fix|implement|inspect|open|plan|prepare|produce|push|refactor|remove|rename|review|run|test|update|write)\b/iu
+
+/**
+ * Decide whether ordinary chat may offer a delegate route.
+ *
+ * The default is a direct local answer. Delegation becomes eligible only when
+ * the current user text contains an explicit handoff or starts as an action
+ * request. Thus, a connected coding lane cannot turn a greeting, identity
+ * question, explanation, or ordinary conversation into repository work.
+ */
+export const shouldOfferAppleFmDelegation = (message: string): boolean => {
+  const text = message.replaceAll(/\s+/gu, " ").trim()
+  if (text === "") return false
+  return explicitHandoff.test(text) || namedAgentRequest.test(text) || actionRequest.test(text)
 }
 
 /**
@@ -160,12 +174,10 @@ const HONESTY_BASE =
   "don't know something, say so.";
 
 /**
- * The ROUTER preamble (owner directive 2026-07-20). When one or more delegate
- * agents are connected, the on-device model does NOT answer the user — its only
- * job is to CHOOSE which connected agent should handle the message. The output
- * SHAPE is guaranteed by the bridge's guided generation (constrained sampling
- * over the connected-candidate set); this preamble only supplies the routing
- * POLICY that guides the choice. Only the connected delegates are named.
+ * The router preamble for an action request. Guided generation can select the
+ * local `apple_fm` route or one connected delegate. A local selection causes a
+ * second, unguided OpenAgents answer turn. It never exposes the route JSON as a
+ * user-facing answer.
  */
 const buildRouterPreamble = (delegates: ReadonlyArray<AppleFmAvailableAgent>): string => {
   const agentLines = delegates
@@ -185,38 +197,37 @@ const buildRouterPreamble = (delegates: ReadonlyArray<AppleFmAvailableAgent>): s
     rules.push("use claude for planning, strategy, analysis, general questions, or conversation");
   const rulesText = rules.length === 0 ? "" : `${rules.join("; ")}. `;
   return (
-    "You are OpenAgents, the local router on this device. You do NOT answer the user yourself. Your " +
-    "only job is to choose which connected agent should handle the user's latest message.\n\n" +
-    `Connected agents you can route to right now:\n${agentLines}\n\n` +
+    "You are OpenAgents, the local router on this device. Choose who should handle the user's latest " +
+    "action request. The apple_fm route means OpenAgents should answer directly without tools.\n\n" +
+    "Available routes:\n- apple_fm (OpenAgents): direct answers, clarification, explanations, identity, " +
+    `and conversation that need no tools.\n${agentLines}\n\n` +
     `Choose the single best agent for the user's latest message: ${rulesText}When the ideal agent ` +
-    `is not connected, pick the closest one that is. If nothing else clearly fits, choose ${fallback.candidate}.`
+    `is not connected, pick the closest one that is. Choose apple_fm when no delegate is necessary. ` +
+    `For an explicit coding or agent handoff, prefer ${fallback.candidate} only when it fits the request.`
   );
 };
 
 /**
  * Assemble the on-device preamble.
  *
- * Owner directive (2026-07-20): the on-device model is a ROUTER, not a
- * responder. When one or more delegate agents are connected it never answers the
- * user itself — it emits a route-recommendation JSON for the best agent per the
- * routing policy (Claude/Fable for strategy & planning, Codex for coding, Grok
- * for simple mechanical work), and the host dispatches it. ONLY when no delegate
- * agent is connected does OpenAgents answer directly, using the ambient context
- * so it can speak to the environment/identity.
+ * Ordinary chat is answer-first. Connected delegates enter the prompt only for
+ * an explicit action or handoff request. The router can still select the local
+ * OpenAgents answer path.
  */
 const buildPreamble = (
   availableAgents: ReadonlyArray<AppleFmAvailableAgent>,
+  latestUserMessage: string,
   environment?: AppleFmEnvironmentContext,
 ): string => {
   const delegates = availableAgents.filter((agent) => agent.ready && agent.canDelegate);
-  if (delegates.length === 0) {
+  if (delegates.length === 0 || !shouldOfferAppleFmDelegation(latestUserMessage)) {
     // No connected agent can take the work: OpenAgents is the only thing
     // available, so it answers directly — with the ambient context block so
     // "what do you know about me" is answered from the real environment/identity.
     return `${HONESTY_BASE}${renderAppleFmEnvironmentContext(environment)}`;
   }
-  // One or more delegates are connected: OpenAgents is a pure router and never
-  // answers the user itself.
+  // One or more delegates are connected and the user asked for an action. The
+  // router can select a delegate or the local answer route.
   return buildRouterPreamble(delegates);
 };
 
@@ -241,13 +252,16 @@ export const buildOpenAgentsAppleFmPrompt = (
   environment?: AppleFmEnvironmentContext,
   maxChars: number = APPLE_FM_PROMPT_MAX_CHARS,
 ): string => {
-  const preamble = buildPreamble(availableAgents, environment);
   const lines = turns
     .map((turn) => {
       const text = turn.text.trim();
       return text === "" ? null : `${turn.role === "assistant" ? "Assistant" : "User"}: ${text}`;
     })
     .filter((line): line is string => line !== null);
+  const latestUserMessage = [...turns]
+    .reverse()
+    .find((turn) => turn.role === "user")?.text ?? ""
+  const preamble = buildPreamble(availableAgents, latestUserMessage, environment);
   const assemble = (rows: ReadonlyArray<string>): string => `${preamble}\n\n${rows.join("\n")}\nAssistant:`;
   // Keep the newest turns that fit, dropping the oldest first, but never drop
   // the final line (the message being answered).

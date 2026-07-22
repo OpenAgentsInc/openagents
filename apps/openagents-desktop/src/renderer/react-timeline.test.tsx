@@ -6,6 +6,7 @@ import { createRoot } from "react-dom/client";
 
 import { localDelegateAgentRef } from "../live-agent-graph-local.ts";
 import type { CodexHistoryItem } from "../codex-history-contract.ts";
+import { gradeConversationCoherence } from "../turn/conversation-coherence-grade.ts";
 import {
   ConversationTimeline,
   ReactTimeline,
@@ -2211,6 +2212,7 @@ describe("single-delegate answer promotion (#9127)", () => {
     const card = records[1]!;
     const bubble = records[2]!;
     expect(card.kind).toBe("collaboration");
+    expect(card.label).toBe("OpenAgents routed to Claude subagent");
     // The card keeps the activity detail but NOT a duplicate of the answer.
     expect(card.runtimeChild?.transcript?.map((line) => line.text)).toEqual([
       "Summarize the last reply",
@@ -2221,6 +2223,31 @@ describe("single-delegate answer promotion (#9127)", () => {
     expect(bubble.body).toBe("The reply says the tests are green.");
     expect(bubble.status).toBe("running");
     expect(bubble.attribution).toBe("via Claude subagent");
+    const reloaded = projectLocalTimelineRecords([userNote(), delegationNote()]);
+    expect(gradeConversationCoherence({
+      evidenceComplete: records.length === 3,
+      intentPreserved: bubble.body.includes("reply"),
+      modeStarted: false,
+      modeTriggerPresent: false,
+      materialActionCount: 0,
+      allMaterialActionsAuthorized: true,
+      answerPresent: bubble.body.trim() !== "",
+      answerRelevant: bubble.body.includes("reply"),
+      routeChanged: true,
+      routeVisibleBeforeAnswer:
+        records.indexOf(card) < records.indexOf(bubble) && card.label.startsWith("OpenAgents routed to"),
+      presentedProviderMatches:
+        card.label.includes("Claude") && bubble.attribution === "via Claude subagent",
+      eventOrderValid: records.indexOf(card) < records.indexOf(bubble),
+      reloadStateMatches: JSON.stringify(reloaded) === JSON.stringify(records),
+      outcomeClosed: bubble.body.includes("tests are green"),
+      nonActionRequest: false,
+    })).toMatchObject({
+      score: 100,
+      grade: "A",
+      disposition: "pass",
+      failedGates: [],
+    });
   });
 
   test("the promoted bubble tracks the GROWING streamed text (streaming lives on the bubble)", () => {

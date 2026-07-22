@@ -6,6 +6,7 @@ import {
   APPLE_FM_PROMPT_MAX_CHARS,
   buildOpenAgentsAppleFmPrompt,
   renderAppleFmEnvironmentContext,
+  shouldOfferAppleFmDelegation,
   type AppleFmAvailableAgent,
   type AppleFmEnvironmentContext,
 } from "./apple-fm-prompt.ts"
@@ -202,7 +203,7 @@ describe("buildOpenAgentsAppleFmPrompt — ambient environment context", () => {
  * router already accept (so "task X to codex" actually delegates instead of the
  * model refusing "I'm just an AI, I can't code").
  */
-describe("buildOpenAgentsAppleFmPrompt — router mode + guided-route decoding", () => {
+describe("buildOpenAgentsAppleFmPrompt — direct answers and guided-route decoding", () => {
   const codex: AppleFmAvailableAgent = { candidate: "codex", label: "Codex", ready: true, canDelegate: true }
   const claude: AppleFmAvailableAgent = { candidate: "claude", label: "Claude Code", ready: true, canDelegate: true }
   const grok: AppleFmAvailableAgent = { candidate: "grok_acp", label: "Grok", ready: true, canDelegate: true }
@@ -218,13 +219,13 @@ describe("buildOpenAgentsAppleFmPrompt — router mode + guided-route decoding",
     return match === null ? null : match[0]
   }
 
-  test("router preamble names each connected delegate by candidate + role, with the policy", () => {
+  test("an explicit action request names each connected route and keeps a local option", () => {
     const prompt = buildOpenAgentsAppleFmPrompt(
       [{ role: "user", text: "fix the login bug" }],
       [codex, claude, grok],
     )
     expect(prompt).toContain("local router")
-    expect(prompt).toContain("You do NOT answer the user yourself")
+    expect(prompt).toContain("apple_fm (OpenAgents)")
     expect(prompt).toContain("codex (Codex)")
     expect(prompt).toContain("claude (Claude Code)")
     expect(prompt).toContain("grok_acp (Grok)")
@@ -232,18 +233,24 @@ describe("buildOpenAgentsAppleFmPrompt — router mode + guided-route decoding",
     expect(prompt).toContain("use codex for coding tasks")
     expect(prompt).toContain("use grok_acp for simple mechanical string/rename tasks")
     expect(prompt).toContain("use claude for planning, strategy, analysis")
-    // It routes — it is not the chat assistant, so the direct-answer base is gone.
+    // The first stage routes. A local decision causes a separate direct answer.
     expect(prompt).not.toContain("helpful, friendly assistant")
   })
 
   test("router preamble names no not-ready delegate", () => {
-    const prompt = buildOpenAgentsAppleFmPrompt([{ role: "user", text: "x" }], [codex, grokNotReady])
+    const prompt = buildOpenAgentsAppleFmPrompt(
+      [{ role: "user", text: "fix the parser" }],
+      [codex, grokNotReady],
+    )
     expect(prompt).toContain("codex (Codex)")
     expect(prompt).not.toContain("grok_acp")
   })
 
   test("guided generation owns the shape: the router prompt carries NO JSON template", () => {
-    const prompt = buildOpenAgentsAppleFmPrompt([{ role: "user", text: "x" }], [codex, claude, grok])
+    const prompt = buildOpenAgentsAppleFmPrompt(
+      [{ role: "user", text: "implement the parser" }],
+      [codex, claude, grok],
+    )
     expect(templateInPrompt(prompt)).toBeNull()
   })
 
@@ -254,6 +261,36 @@ describe("buildOpenAgentsAppleFmPrompt — router mode + guided-route decoding",
     )
     expect(prompt).toContain("helpful, friendly assistant")
     expect(prompt).not.toContain("local router")
+  })
+
+  test("REGRESSION: identity chat stays a direct OpenAgents answer with every delegate ready", () => {
+    const prompt = buildOpenAgentsAppleFmPrompt(
+      [{ role: "user", text: "hey who are you" }],
+      [codex, claude, grok],
+    )
+    expect(prompt).toContain("helpful, friendly assistant")
+    expect(prompt).toContain("You are OpenAgents")
+    expect(prompt).not.toContain("local router")
+    expect(prompt).not.toContain("Connected agents")
+  })
+
+  test("delegation eligibility defaults to local and requires an action or handoff", () => {
+    const local = [
+      "hey who are you",
+      "hello",
+      "what is a pure function?",
+      "can you explain this error?",
+      "how does git status work?",
+    ]
+    const routed = [
+      "fix the login bug",
+      "please implement issue #9159",
+      "delegate this refactor to codex",
+      "have claude review this design",
+      "plan the migration",
+    ]
+    for (const message of local) expect(shouldOfferAppleFmDelegation(message)).toBe(false)
+    for (const message of routed) expect(shouldOfferAppleFmDelegation(message)).toBe(true)
   })
 
   test("decode + decide: a codex route JSON dispatches codex", () => {
