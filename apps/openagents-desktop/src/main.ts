@@ -32,6 +32,7 @@ import {
 } from "@openagentsinc/khala-sync-client"
 import { FleetRunProjectionListChannel } from "./fleet-run-projection-contract.ts"
 import { openDesktopUpdateStagingHost, updateRecoveryRequiresStartupExit } from "./update-staging-host.ts"
+import { openDesktopUpdateScheduler } from "./desktop-update-scheduler.ts"
 import { resolveDesktopUpdateFeedConfig } from "./update-feed-config.ts"
 import { openMacOSUpdateApplier } from "./macos-update-applier.ts"
 import { openLinuxAppImageUpdateApplier } from "./linux-update-applier.ts"
@@ -3609,6 +3610,21 @@ const desktopUsageConsentControlAvailable = true
 const preferencesStore = openDesktopPreferencesStore(
   path.join(app.getPath("userData"), "preferences.json"),
 )
+// HANDS-6 (#9177): the automatic self-update scheduler. It reads the durable
+// `updates.autoCheck` / `updates.autoDownload` preferences on every pass and
+// drives the EXISTING verified check -> download path in `desktopUpdateHost`.
+// It never bypasses a signature/digest gate and is fail-soft. `start()` runs
+// the launch pass (after `reconcile()`), arms a periodic re-check, and `stop()`
+// tears it down on quit. Apply policy is deliberately apply-on-next-launch: an
+// auto-downloaded update stages and the atomic swap + first-launch watchdog
+// take effect on the next start, never a forced mid-session relaunch.
+const desktopUpdateScheduler = openDesktopUpdateScheduler({
+  host: desktopUpdateHost,
+  readPreferences: () => {
+    const updates = preferencesStore.snapshot().updates
+    return { autoCheck: updates.autoCheck, autoDownload: updates.autoDownload }
+  },
+})
 let desktopGraphMemoryStore: DesktopGraphMemoryStore | null = null
 let desktopGraphMemoryStoreOpen: Promise<DesktopGraphMemoryStore> | null = null
 let desktopGraphMemoryEvidence: DesktopGraphMemoryEvidenceStore | null = null
@@ -4257,6 +4273,12 @@ ipcMain.handle(IdentityStatusChannel, () => identityHost.status())
 app.on("before-quit", () => {
   try {
     appleFmHost.dispose()
+  } catch {
+    /* best-effort teardown */
+  }
+  // Cancel the periodic automatic update re-check on shutdown.
+  try {
+    desktopUpdateScheduler.stop()
   } catch {
     /* best-effort teardown */
   }
@@ -9128,6 +9150,11 @@ void app.whenReady().then(async () => {
   if (!primaryDesktopInstance) return
   const updateRecovery = await desktopUpdateHost.reconcile()
   if (updateRecoveryRequiresStartupExit(updateRecovery)) return
+  // Reconcile only recovers rollback/receipt state; it does not contact the
+  // feed. Now that the app is staying up, arm the preference-gated automatic
+  // update scheduler (launch check + periodic re-check). Fail-soft and gated on
+  // `updates.autoCheck`, so a disabled preference means no automatic feed call.
+  desktopUpdateScheduler.start()
   recordMainMark("appWhenReady")
   const providerAccountsBootstrapReceipt = isolatedAppProofMode
     ? isolatedProofReceiptPath({ env: process.env, temporaryDirectory: app.getPath("temp") })
