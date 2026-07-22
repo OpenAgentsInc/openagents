@@ -1228,6 +1228,7 @@ import {
 import { runSarahAgentTurn } from './sarah-agent-runtime'
 import { collectSarahBusinessContext } from './sarah-business-context'
 import { sarahGraphMemoryRecallEnabled } from './sarah-graph-memory'
+import { sarahGraphMemoryStoreLayer } from './sarah-graph-memory-store'
 import {
   FLEET_RUNS_PATH,
   SARAH_FLEET_RUNS_PATH,
@@ -7141,11 +7142,17 @@ const runHostedRuntimeTurnDispatchForEnv = async (
           threadRef: turn.threadId,
           // #9189: owner-scoped, redacted, fail-soft graph-memory recall. The
           // flag is default OFF, so with it unset no store is opened and the
-          // context is unchanged. The baseline backing store is the SDK disabled
-          // adapter (empty recall) until a hosted state store is composed in.
+          // context is unchanged. When the flag is on, recall runs against the
+          // durable Cloud SQL backing store (sarah-graph-memory-store.ts) over
+          // the same Khala Sync Postgres handle, so hosted Sarah memory
+          // survives across turns and Cloud Run instances instead of resolving
+          // to the SDK disabled adapter's empty recall.
           graphMemoryRecall: {
             enabled: sarahGraphMemoryRecallEnabled(env),
             query: prompt,
+            ...(sarahGraphMemoryRecallEnabled(env)
+              ? { storeLayer: sarahGraphMemoryStoreLayer(client.sql) }
+              : {}),
           },
         })
         const harness = await bindSarahHarnessForTurnPromise({
