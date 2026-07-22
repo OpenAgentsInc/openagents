@@ -88,3 +88,22 @@ entry.
 - Ratchet versus entry 1: complexity coverage rose from none to C4 with
   coherence held at 90-100. The needs-review sweep over the local
   corpora was not re-run this entry.
+
+## Entry 3 — 2026-07-22 (first full-corpora sweep under coherence-screen-v2)
+
+- Command: `pnpm run grade:coherence`
+- Scope: full local corpora, 1,439 conversations graded, 267 skipped.
+
+| Source | Graded | Mean | Complexity mean | Tiers C2+ | Complexity-weighted coherence |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Codex CLI | 1,279 | 90.8 | 56.1 | 1,167 | 87.2 |
+| Claude Code | 160 | 91.2 | 43.6 | 102 | 81.1 |
+
+- First trend point for the v2 complexity fields. The headline signal:
+  complexity-weighted coherence sits BELOW the raw mean on both
+  toolchains (87.2 versus 90.8, 81.1 versus 91.2). Frustration
+  concentrates in complex conversations, which is exactly the failure
+  band the metric exists to expose and the flywheel must attack.
+- Ratchet targets for the next sweep: raise complexity-weighted
+  coherence on both sources, and close the Claude Code gap (81.1) —
+  its C4 conversations carry most of the deductions.
