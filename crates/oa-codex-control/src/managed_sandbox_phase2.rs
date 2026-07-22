@@ -400,9 +400,9 @@ fn execute_fork_from_checkpoint(
             )
             .map_err(|error| {
                 if error.status() < 500 {
-                    Phase2Error::conflict("phase2_fork_prepare_conflict")
+                    Phase2Error::conflict(format!("phase2_fork_prepare_{}", error.code()))
                 } else {
-                    Phase2Error::unavailable("phase2_fork_prepare_failed")
+                    Phase2Error::unavailable(format!("phase2_fork_prepare_{}", error.code()))
                 }
             })
         },

@@ -466,6 +466,10 @@ impl RuntimeError {
         self.status
     }
 
+    pub fn code(&self) -> &'static str {
+        self.code
+    }
+
     pub fn response(&self) -> Value {
         json!({
             "schemaVersion": "openagents.managed_sandbox_runtime_error.v1",
