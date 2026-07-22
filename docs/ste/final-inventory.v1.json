@@ -47225,7 +47225,7 @@
     },
     {
       "path": "packages/agent-experience-memory/README.md",
-      "sha256": "574953b068c4d6fe4696e98d6599f98cea56e71b8550b2e1f950b58261501660",
+      "sha256": "f2813281df10f3b40afd59fb03ed1d4761beefc2ec4ff84ba8232d69323febd8",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
