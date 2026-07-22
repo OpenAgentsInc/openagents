@@ -85,6 +85,8 @@
     "test:sqlite-runtime": "pnpm --dir packages/sqlite-runtime run test",
     "test:sol-docs": "vp test --run scripts/check-sol-docs.test.ts",
     "test:ste": "vp test --run scripts/check-ste.test.ts",
+    "test:coherence": "vp test --run scripts/grade-conversation-coherence.test.ts",
+    "grade:coherence": "node --import tsx scripts/grade-conversation-coherence.ts",
     "test:authority-delegation": "vp test --run scripts/check-authority-delegation.test.ts",
     "test:fast-follow": "vp test --run scripts/check-fast-follow.test.ts && pnpm --dir packages/fast-follow-spec run test",
     "check:fast-follow-spec": "pnpm --dir packages/fast-follow-spec run typecheck && pnpm --dir packages/fast-follow-spec run test && pnpm --dir packages/fast-follow-spec run verify:distribution",

@@ -15008,7 +15008,51 @@
     },
     {
       "path": "docs/analysis/README.md",
-      "sha256": "a449f2381a107a11a5146565e18a0fe490d2217e06b3ce55cff797785cd2dc9d",
+      "sha256": "d0b1487a6bbbc08e6d4eac1afb82138e67fba59019707bfeefd60f1397bc5b7b",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/analysis/coherence-flywheel.md",
+      "sha256": "e494d6fbe9826a4b397c5d5068748d4a23a18a46bb464bb1d9d94b8aefba9de7",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/analysis/coherence-ledger.md",
+      "sha256": "ffac2180d33e472a2bcacc6fa97ec6e80b45ce0134bc9c061325fe9955c7b45c",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -15031,6 +15075,50 @@
     {
       "path": "docs/analysis/conversation-thread-coherence-rubric.md",
       "sha256": "ed9e950d4ca47effe88bfdb1522863df752c25ed32cf4980745b6384b806aa73",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/analysis/deterministic-coherence-screening.md",
+      "sha256": "ec712632121b196e873b18484d34f97eec52ef73b6783b6e00ff82fed0a51d01",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/analysis/public-coherence-benchmark-spec.md",
+      "sha256": "8b1ce3912737cdfc1ef89635a83c335509fe2ecc98df56e36907d3f6b13c8d40",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -24259,7 +24347,7 @@
     },
     {
       "path": "docs/fable/2026-07-21-full-auto-status-audit.md",
-      "sha256": "baa074a52412c304f8747a2225f5077caa7a76ccd745a685d7157cf4fb3f40f1",
+      "sha256": "31cc5d16d0449a80e3789c011853ca7b266224a8a3a87688aadcd8588212ee38",
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
