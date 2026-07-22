@@ -19,7 +19,7 @@
     "eval:live": "node --import tsx src/live-cli.ts"
   },
   "dependencies": {
-    "@openagentsinc/rlm": "0.2.1-rc.3",
+    "@openagentsinc/rlm": "0.2.1-rc.4",
     "effect": "catalog:"
   },
   "devDependencies": {

@@ -20,7 +20,7 @@
   },
   "dependencies": {
     "@openagentsinc/atif": "workspace:*",
-    "@openagentsinc/graph-corpus": "0.2.1-rc.3",
+    "@openagentsinc/graph-corpus": "0.2.1-rc.4",
     "effect": "catalog:"
   },
   "devDependencies": {

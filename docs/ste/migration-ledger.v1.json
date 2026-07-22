@@ -906,6 +906,22 @@
       ]
     },
     {
+      "path": "apps/openagents-desktop/docs/meta-agent-acp-server-zed-demo.md",
+      "ste_issue": 9,
+      "ste_mode": "descriptive",
+      "ste_glossary_revision": "openagents-ste-glossary-v1",
+      "ste_status": "inspected",
+      "ste_reviewer": "opus/meta-2-acp-server-20260722",
+      "ste_reviewed_at": "2026-07-22T18:00:00Z",
+      "owner": "OpenAgents documentation",
+      "risk": "medium",
+      "source": null,
+      "replacement": null,
+      "ste_accepted_screening_rules": [
+        "STE-2.4"
+      ]
+    },
+    {
       "path": "apps/openagents-desktop/receipts/2026-07-10-codex-settings/README.md",
       "ste_issue": 9,
       "ste_mode": "source-data",

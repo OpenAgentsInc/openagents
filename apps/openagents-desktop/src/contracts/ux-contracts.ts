@@ -6,7 +6,7 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-22.1",
+    version: "2026-07-22.2",
     contracts: [
       {
         contractId: "openagents_desktop.chat.history_recall_cited_tool_row.v1",
@@ -5408,6 +5408,66 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         ],
         verification:
           "Desktop agent-identity suite plus the react-timeline, react-review, and react-primitive-adapters renderer suites and Desktop typecheck in the normal sweep.",
+      },
+      {
+        contractId: "openagents_desktop.meta_agent.loopback_acp_server_default_off.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "meta-agent loopback ACP server exposure",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: {
+          channel: "issue",
+          statedBy: "owner",
+          statedOn: "2026-07-22",
+        },
+        statement:
+          "OpenAgents Desktop can expose the meta-agent as an ACP agent over a loopback-only (127.0.0.1) server so any ACP host (Zed, or our own ACP client) can drive it. The server is OFF by default and starts only behind an explicit owner opt-in; the ACP surface stays deny-by-default — no gated tool runs without an explicit owner permission flow, never a bypass.",
+        authorityBoundary:
+          "The server is the SDK's proven makeAcpAgentServerConnection (ai#39) over the real metaAgentHarness; v0 backs it with a fixture/echo member and documents the makeHarness seam where the live Codex/Claude/Grok member fleet plugs in without touching the default-on dispatch-collapse runtime files. It binds 127.0.0.1 only, by construction refusing any non-loopback host, and advertises no auth methods; loopback plus a deny-by-default permission decider are the containment boundary. The surface is operator_read-shaped: a conversation/prompt surface, never a mutation, credential, settlement, release, or public-claim path. An external ACP host can never make the meta-agent execute a gated (operator_escalation_required) tool without an injected owner permission broker; the v0 default decider denies every such call and never even delegates the question to the connected client.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/meta-agent-acp-server.ts",
+          "apps/openagents-desktop/src/meta-agent-acp-server.test.ts",
+          "apps/openagents-desktop/docs/meta-agent-acp-server-zed-demo.md",
+          "github:OpenAgentsInc/openagents#9181",
+          "github:OpenAgentsInc/ai#39",
+        ],
+        oracles: [
+          {
+            id: "meta_agent_acp_server.default_off_gate",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/meta-agent-acp-server.test.ts",
+            description:
+              "Proves the server is OFF unless OPENAGENTS_DESKTOP_ACP_SERVER=1 and that startMetaAgentAcpServerIfEnabled resolves null with the gate off.",
+          },
+          {
+            id: "meta_agent_acp_server.loopback_only",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/meta-agent-acp-server.test.ts",
+            description:
+              "Proves the listener binds 127.0.0.1 only and refuses any non-loopback host as a construction invariant.",
+          },
+          {
+            id: "meta_agent_acp_server.conformance_via_sdk_acp_client",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/meta-agent-acp-server.test.ts",
+            description:
+              "Proves the SDK's own ACP client adapter driving the desktop loopback server over a real TCP socket yields a contiguous khala stream (turn.started + deltas + turn.finished) backed by the real metaAgentHarness — the free conformance oracle.",
+          },
+          {
+            id: "meta_agent_acp_server.deny_by_default_permissioning",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/meta-agent-acp-server.test.ts",
+            description:
+              "Proves a gated tool call over the loopback server is denied and never executed, the desktop decider never delegates the approval to the ACP client, and the wire still honestly carries the tool_call update.",
+          },
+        ],
+        verification:
+          "Desktop meta-agent-acp-server suite (gate, loopback guard, SDK-ACP-client conformance, deny-by-default) plus Desktop typecheck in the normal sweep. No release command is part of the oracle.",
       },
     ],
   };

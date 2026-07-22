@@ -7,7 +7,7 @@ import { join, resolve } from "node:path";
 
 const root = process.argv[2] ?? ".";
 const desktopRequire = createRequire(resolve(root, "apps/openagents-desktop/package.json"));
-const train = "0.2.1-rc.3";
+const train = "0.2.1-rc.4";
 const failures = [];
 const trainPackages = [
   "@openagentsinc/agent-harness-contract",

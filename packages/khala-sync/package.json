@@ -20,7 +20,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@openagentsinc/agent-runtime-schema": "0.2.1-rc.3",
+    "@openagentsinc/agent-runtime-schema": "0.2.1-rc.4",
     "effect": "catalog:"
   },
   "devDependencies": {

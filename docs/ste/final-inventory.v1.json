@@ -945,6 +945,23 @@
       }
     },
     {
+      "path": "apps/openagents-desktop/docs/meta-agent-acp-server-zed-demo.md",
+      "sha256": "10184307bff145efefb70b70843993b3907e8168a55b997d0b9ccfe160492204",
+      "reason": "Final review of a newly authored document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "medium",
+        "source": null,
+        "replacement": null,
+        "ste_accepted_screening_rules": [
+          "STE-2.4"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "opus/meta-2-acp-server-20260722",
+        "ste_reviewed_at": "2026-07-22T18:00:00Z"
+      }
+    },
+    {
       "path": "apps/openagents-desktop/receipts/2026-07-10-codex-settings/README.md",
       "sha256": "4273ee39730dfcedd986e9f95388ec118d84d894cd02dec08e138773fa57e57f",
       "reason": "Immutable historical or evidence source data",

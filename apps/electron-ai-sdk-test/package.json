@@ -19,7 +19,7 @@
     "@ai-sdk/provider-utils": "5.0.11",
     "@ai-sdk/react": "4.0.34",
     "@fontsource-variable/geist": "^5.2.9",
-    "@openagentsinc/ai-sdk-sandbox-local": "0.2.1-rc.3",
+    "@openagentsinc/ai-sdk-sandbox-local": "0.2.1-rc.4",
     "@standard-schema/spec": "^1.1.0",
     "@vercel/oidc": "3.2.0",
     "@workflow/serde": "4.1.0",

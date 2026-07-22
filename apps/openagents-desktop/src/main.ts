@@ -368,6 +368,7 @@ import {
   type FullAutoControlCapabilities,
 } from "./full-auto-control-server.ts"
 import { makeFullAutoRoutingLaneGate } from "./full-auto-routing.ts"
+import { isMetaAgentAcpServerEnabled, startMetaAgentAcpServer } from "./meta-agent-acp-server.ts"
 import {
   FULL_AUTO_RUN_TERMINAL_STATES,
   isFullAutoRunAutonomyEnabled,
@@ -6421,6 +6422,33 @@ if (isFullAutoControlEnabled(process.env)) {
   }).catch(error => {
     console.error(
       "[openagents-desktop full-auto-control] failed to start",
+      error instanceof Error ? error.message : "unknown",
+    )
+  })
+}
+
+/**
+ * META-2 (#9181): the loopback ACP SERVER that exposes the meta-agent as an ACP
+ * agent for external ACP hosts (Zed, or our own ACP client for conformance).
+ * Default OFF: started only when OPENAGENTS_DESKTOP_ACP_SERVER=1. Loopback-only
+ * (127.0.0.1), deny-by-default permissioning. v0 is backed by the SDK
+ * metaAgentHarness over a fixture/echo member; the real member fleet plugs in at
+ * the module's makeHarness seam (tracked under the meta-agent epic #9179)
+ * without touching the default-on dispatch-collapse runtime files.
+ */
+if (isMetaAgentAcpServerEnabled(process.env)) {
+  const pinnedAcpPort = Number.parseInt(process.env.OPENAGENTS_DESKTOP_ACP_SERVER_PORT ?? "", 10)
+  void startMetaAgentAcpServer({
+    ...(Number.isInteger(pinnedAcpPort) && pinnedAcpPort > 0 && pinnedAcpPort <= 65535
+      ? { port: pinnedAcpPort }
+      : {}),
+  }).then(server => {
+    // Public-safe: the loopback endpoint only. ACP carries no credential.
+    console.log(`[openagents-desktop meta-agent-acp] listening ${server.url}`)
+    app.on("will-quit", () => { void server.stop() })
+  }).catch(error => {
+    console.error(
+      "[openagents-desktop meta-agent-acp] failed to start",
       error instanceof Error ? error.message : "unknown",
     )
   })
