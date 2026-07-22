@@ -22022,6 +22022,18 @@
       }
     },
     {
+      "path": "docs/desktop/2026-07-22-electron-auto-update-status-audit.md",
+      "sha256": "042aeb7bc373da211394ba459c1ba379a22933148ba3c6c1c85419cc45da9fdf",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null,
+        "ste_status": "source-data"
+      }
+    },
+    {
       "path": "docs/desktop/2026-07-22-programmatic-harness-control-boundary.md",
       "sha256": "3865dc93e75de5792d0848b24d9c109a716b5ca21b063f2d883b378f99d512f3",
       "reason": "Final review of a converted document",
