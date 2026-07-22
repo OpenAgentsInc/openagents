@@ -137,6 +137,7 @@ export interface DesktopGraphMemoryTurnDependencies {
   readonly extraction: DesktopGraphMemoryExtraction;
   readonly extractionLimits: GraphExtractionLimits;
   readonly recallLimits: GraphRlmOperationLimits;
+  readonly maxAdvisoryCharacters?: number;
   readonly countTokens: (text: string) => number;
   readonly monotonicMs: () => number;
   readonly now: () => string;
@@ -568,7 +569,7 @@ const originalCitations = Effect.fn("DesktopGraphMemory.originalCitations")(func
 });
 
 interface SafeAdvisory {
-  readonly block: string;
+  readonly block: string | null;
   readonly elementRefs: ReadonlyArray<string>;
   readonly citations: ReadonlyArray<DesktopGraphMemoryEvidenceCitation>;
   readonly locallyTruncated: boolean;
@@ -577,6 +578,7 @@ interface SafeAdvisory {
 const safeAdvisory = (
   result: GraphRlmOperationResult,
   citations: ReadonlyArray<RlmCitation>,
+  maxCharacters: number,
 ): SafeAdvisory | null => {
   const citationByLocator = new Map(
     citations.map((citation) => [locatorKey(citation.sourceOrigin), citation]),
@@ -605,10 +607,12 @@ const safeAdvisory = (
       .replaceAll("&", "\\u0026");
   const selected: typeof facts = [];
   for (const fact of facts) {
-    if (encode([...selected, fact]).length > MAX_ADVISORY_CHARACTERS) break;
+    if (encode([...selected, fact]).length > maxCharacters) break;
     selected.push(fact);
   }
-  if (selected.length === 0) return null;
+  if (selected.length === 0) {
+    return { block: null, elementRefs: [], citations: [], locallyTruncated: true };
+  }
   const encoded = encode(selected);
   return {
     block: [
@@ -803,7 +807,11 @@ export const runDesktopGraphMemoryTurn = Effect.fn("DesktopGraphMemory.runTurn")
     .searchText(query.slice(0, 2_048), dependencies.recallLimits)
     .pipe(mapFailure("recall", "sdk_failure", "Graph recall failed."));
   const citations = yield* originalCitations(result, acquired);
-  const advisory = safeAdvisory(result, citations);
+  const advisory = safeAdvisory(
+    result,
+    citations,
+    dependencies.maxAdvisoryCharacters ?? MAX_ADVISORY_CHARACTERS,
+  );
   const extractionReceipt =
     extraction._tag === "Stored" || extraction._tag === "Incomplete" ? extraction.receipt : null;
   const evidence: DesktopGraphMemoryTurnEvidence = {

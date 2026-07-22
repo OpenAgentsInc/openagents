@@ -259,6 +259,26 @@ describe("desktop graph-memory turn adapter", () => {
     expect(evidence).toHaveLength(2);
   });
 
+  test("records the local advisory cap when the first cited fact does not fit", async () => {
+    const deps = {
+      ...dependencies({ count: 0 }, []),
+      maxAdvisoryCharacters: 1,
+    };
+    const result = await Effect.runPromise(
+      runDesktopGraphMemoryTurn(input(), deps).pipe(Effect.provide(stateLayer())),
+    );
+    expect(result._tag).toBe("Completed");
+    if (result._tag !== "Completed") return;
+    expect(result.advisoryBlock).toBeNull();
+    expect(result.prompt).toBe(input().prompt);
+    expect(result.evidence).toMatchObject({
+      usedElementRefs: [],
+      citations: [],
+      truncated: true,
+    });
+    expect(result.evidence?.hitCaps).toContain("desktop_advisory_character_cap");
+  });
+
   test("uses the durable operation receipt to avoid a duplicate extraction and apply", async () => {
     const extractionCalls = { count: 0 };
     const evidence: Array<unknown> = [];
