@@ -82,27 +82,27 @@ pub struct ManagedSandboxPhase2Response {
 pub struct Phase2Error {
     status: u16,
     code: &'static str,
-    reason_ref: &'static str,
+    reason_ref: String,
 }
 
 impl Phase2Error {
-    fn new(status: u16, code: &'static str, reason_ref: &'static str) -> Self {
+    fn new(status: u16, code: &'static str, reason_ref: impl Into<String>) -> Self {
         Self {
             status,
             code,
-            reason_ref,
+            reason_ref: reason_ref.into(),
         }
     }
 
-    fn invalid(reason_ref: &'static str) -> Self {
+    fn invalid(reason_ref: impl Into<String>) -> Self {
         Self::new(400, "invalid_request", reason_ref)
     }
 
-    fn conflict(reason_ref: &'static str) -> Self {
+    fn conflict(reason_ref: impl Into<String>) -> Self {
         Self::new(409, "phase2_scope_conflict", reason_ref)
     }
 
-    fn unavailable(reason_ref: &'static str) -> Self {
+    fn unavailable(reason_ref: impl Into<String>) -> Self {
         Self::new(503, "phase2_unavailable", reason_ref)
     }
 
@@ -868,26 +868,25 @@ fn execute_with_driver_wire(
     Ok(response)
 }
 
-fn driver_refusal_reason(bytes: &[u8]) -> &'static str {
+fn driver_refusal_reason(bytes: &[u8]) -> String {
     let Ok(value) = serde_json::from_slice::<Value>(bytes) else {
-        return "phase2_driver_refused";
+        return "phase2_driver_refused".to_string();
     };
     if value.get("schemaVersion").and_then(Value::as_str) != Some(DRIVER_ERROR_SCHEMA_VERSION) {
-        return "phase2_driver_refused";
+        return "phase2_driver_refused".to_string();
     }
-    match value.get("reasonRef").and_then(Value::as_str) {
-        Some("gcloud_operation_failed") => "phase2_driver_gcloud_operation_failed",
-        Some("guest_checkpoint_cleanup_failed") => "phase2_driver_guest_checkpoint_cleanup_failed",
-        Some("checkpoint_object_metadata_invalid") => {
-            "phase2_driver_checkpoint_object_metadata_invalid"
-        }
-        Some("checkpoint_object_corrupt") => "phase2_driver_checkpoint_object_corrupt",
-        Some("checkpoint_readback_failed") => "phase2_driver_checkpoint_readback_failed",
-        Some("checkpoint_idempotency_conflict") => "phase2_driver_checkpoint_idempotency_conflict",
-        Some("checkpoint_content_mismatch") => "phase2_driver_checkpoint_content_mismatch",
-        Some("guest_checkpoint_scope_conflict") => "phase2_driver_guest_checkpoint_scope_conflict",
-        _ => "phase2_driver_refused",
+    let Some(reason) = value.get("reasonRef").and_then(Value::as_str) else {
+        return "phase2_driver_refused".to_string();
+    };
+    if reason.is_empty()
+        || reason.len() > 80
+        || !reason
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
+    {
+        return "phase2_driver_refused".to_string();
     }
+    format!("phase2_driver_{reason}")
 }
 
 fn kill_process_tree(child: &mut std::process::Child) {
@@ -2799,6 +2798,13 @@ mod tests {
             "phase2_driver_guest_checkpoint_cleanup_failed"
         );
         fs::remove_dir_all(classified_root).unwrap();
+
+        assert_eq!(
+            driver_refusal_reason(
+                br#"{"schemaVersion":"openagents.managed_sandbox_phase2_driver_error.v1","reasonRef":"private /Users/owner"}"#,
+            ),
+            "phase2_driver_refused"
+        );
     }
 
     fn temp_dir(label: &str) -> std::path::PathBuf {
