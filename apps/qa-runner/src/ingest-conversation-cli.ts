@@ -242,18 +242,29 @@ export async function runIngestConversationCli(
         id: args.id ?? basename(filePath, ".jsonl"),
       });
       built = {
-        resolved: { kind: "openagents", id: conversation.id ?? "multi", path: filePath, conversation },
+        resolved: {
+          kind: "openagents",
+          id: conversation.id ?? "multi",
+          path: filePath,
+          conversation,
+        },
         trajectory: convertOpenAgentsConversationToAtif(conversation, {
           agentName: args.agentName ?? "OpenAgents multi-harness",
           defaultModelName: args.model ?? "openagents/multi-harness",
         }),
       };
-    } else built = buildTrajectoryFromConversationId(args.id, {
-      kind: args.source,
-      ...(args.agentName === undefined ? {} : { agentName: args.agentName }),
-      ...(args.model === undefined ? {} : { defaultModelName: args.model }),
-      ...(args.home === undefined ? {} : { home: args.home }),
-    });
+    } else if (args.id !== undefined) {
+      built = buildTrajectoryFromConversationId(args.id, {
+        kind: args.source,
+        ...(args.agentName === undefined ? {} : { agentName: args.agentName }),
+        ...(args.model === undefined ? {} : { defaultModelName: args.model }),
+        ...(args.home === undefined ? {} : { home: args.home }),
+      });
+    } else {
+      // The initial guard proves id-or-file; file was handled above.
+      log("error: a conversation id (or --file) is required.\n");
+      return 1;
+    }
   } catch (error) {
     if (error instanceof ConversationNotFoundError) {
       log(error.message);
@@ -277,7 +288,9 @@ export async function runIngestConversationCli(
   try {
     strict = decodeAtifTrajectorySync(redacted);
   } catch (error) {
-    log(`error: redacted trajectory failed strict ATIF decode: ${error instanceof Error ? error.message : String(error)}`);
+    log(
+      `error: redacted trajectory failed strict ATIF decode: ${error instanceof Error ? error.message : String(error)}`,
+    );
     return 1;
   }
   const structuralIssues = validateAtifTrajectory(strict);
