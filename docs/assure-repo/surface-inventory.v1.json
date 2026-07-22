@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:d649a218737f8b8f2d556857a5142887a6a142bf96c13e861192617c844a25f8",
+  "sourceDigest": "sha256:675f04bd564f171c0e0949a3c521d373165e9439714fc6f319987ccfe579dc6a",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -200,7 +200,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "apps/openagents.com (1075 tracked test files)"
+          "ref": "apps/openagents.com (1086 tracked test files)"
         },
         {
           "type": "behavior-contract",
@@ -285,7 +285,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "apps/openagents-desktop (365 tracked test files)"
+          "ref": "apps/openagents-desktop (375 tracked test files)"
         },
         {
           "type": "behavior-contract",
@@ -427,7 +427,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "apps/pylon (302 tracked test files)"
+          "ref": "apps/pylon (330 tracked test files)"
         },
         {
           "type": "behavior-contract",
@@ -2270,7 +2270,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "packages/khala-sync-server (62 tracked test files)"
+          "ref": "packages/khala-sync-server (79 tracked test files)"
         },
         {
           "type": "behavior-contract",
@@ -2291,7 +2291,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "packages/khala-tools (22 tracked test files)"
+          "ref": "packages/khala-tools (23 tracked test files)"
         },
         {
           "type": "behavior-contract",
@@ -2494,7 +2494,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "packages/portable-session-contract (4 tracked test files)"
+          "ref": "packages/portable-session-contract (8 tracked test files)"
         },
         {
           "type": "behavior-contract",
@@ -3124,7 +3124,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "apps/openagents.com/workers/api (971 tracked test files)"
+          "ref": "apps/openagents.com/workers/api (982 tracked test files)"
         },
         {
           "type": "behavior-contract",
