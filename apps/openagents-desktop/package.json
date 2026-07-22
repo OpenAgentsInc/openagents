@@ -121,6 +121,7 @@
     "@openagentsinc/product-spec": "workspace:*",
     "@openagentsinc/pylon-core": "workspace:*",
     "@openagentsinc/pylon-runtime": "workspace:*",
+    "@openagentsinc/portable-session-contract": "workspace:*",
     "@openagentsinc/rlm": "0.2.0-rc.2",
     "@openagentsinc/runtime-platform": "workspace:*",
     "@openagentsinc/sovereign-identity": "workspace:*",
