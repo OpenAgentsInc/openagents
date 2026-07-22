@@ -1,0 +1,30 @@
+{
+  "schemaVersion": "openagents.desktop.graph-memory-evaluation-manifest.v1",
+  "datasetRef": "openagents.desktop.graph-memory.synthetic-owner-safe.v1",
+  "reviewState": "public_safe_synthetic",
+  "developmentRef": "development.json",
+  "holdoutRef": "holdout.json",
+  "developmentDigest": "0600a3f6a01ebdfdff0328c605a2053f8651ad7a9bedea0a2dc5f36acd8e67c9",
+  "holdoutDigest": "897444b1aa3aaded6bce7f8019d715bd657e25ef420e7b950d88cd1e1c13100e",
+  "datasetRevisionDigest": "120697e6626bfe5c510e72584dd63f9de2fc764772e80aa97e24060e001b0a0e",
+  "requiredChallengeClasses": [
+    "same_name_entities",
+    "contradictory_mentions",
+    "changed_fact",
+    "revoked_source",
+    "prompt_injection",
+    "partial_extraction",
+    "stale_graph"
+  ],
+  "qualityPolicy": {
+    "minimumAnswerSupportImprovement": 0.05,
+    "minimumRetrievalRecallImprovement": 0.05,
+    "maximumCitationValidityRegression": 0,
+    "maximumAnswerSupportRegression": 0,
+    "maximumRetrievalPrecisionRegression": 0,
+    "maximumRetrievalRecallRegression": 0,
+    "maximumFalseMergeRate": 0,
+    "tieTolerance": 0.000001
+  },
+  "qualityPolicyDigest": "e124b17a75bc535df2cca5b4a00bf234c6907bf9c82189cfaa9cec3a4216f57d"
+}
