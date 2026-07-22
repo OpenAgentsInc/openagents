@@ -26302,6 +26302,18 @@
       }
     },
     {
+      "path": "docs/forge/2026-07-22-nostr-git-forge-github-replacement-audit.md",
+      "sha256": "b6aa76a87cac2cfb58a8d2643a288d7a7f2486d0391c43139e0b33df5f76374d",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null,
+        "ste_status": "source-data"
+      }
+    },
+    {
       "path": "docs/forge/linear.md",
       "sha256": "edd590ea05ffd25eb2340060e71072ced2d8178ae50a27007fe6c21f575f5353",
       "reason": "Final review of a converted document",
@@ -33410,11 +33422,12 @@
     {
       "path": "docs/nostr/2026-07-22-full-auto-cross-app-agent-delegation-over-nostr.md",
       "sha256": "fd9c500f74909bfbf09c55b83c8db08c80c5e940f8d80e66d1b8770b5bcd1c80",
-      "reason": "Final review of mutable first-party agent technical text",
+      "reason": "Final review of a converted document",
       "profile": {
-        "ste_status": "inspected",
-        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
         "ste_audience": "agent",
         "ste_agent_compact_revision": "openagents-agent-compact-v1",
         "ste_accepted_screening_rules": [
@@ -33422,7 +33435,10 @@
           "STE-3.6",
           "STE-5.1",
           "STE-8.2"
-        ]
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {
