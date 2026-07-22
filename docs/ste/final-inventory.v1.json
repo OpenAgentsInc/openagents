@@ -34589,7 +34589,7 @@
     },
     {
       "path": "docs/promises/registry.md",
-      "sha256": "25485566214d8da3b8651cb59441afd01a533e30c02e848c4767bf932c87c9fd",
+      "sha256": "00fc2c40fa9a3f5576ae628f694999f0ab83c3961060df8916e8d9fcb6898dbc",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -42254,6 +42254,18 @@
       }
     },
     {
+      "path": "docs/sol/receipts/2026-07-22-fa-rel-01-admission.md",
+      "sha256": "96ac785385e7b5e03a9cdfbe6bb1aed3efd47fafec23ccb408a09a6e95f2b3e0",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null,
+        "ste_status": "source-data"
+      }
+    },
+    {
       "path": "docs/sol/receipts/2026-07-22-graph-memory-evaluation.md",
       "sha256": "0690001f0342c429d626f92f53c74e0011ff6b42fa0d2b2dcea42664edee213c",
       "reason": "Immutable historical or evidence source data",
@@ -42267,7 +42279,7 @@
     },
     {
       "path": "docs/sol/receipts/README.md",
-      "sha256": "9fb159a921d85f97e5817dbc25d4ea36a9174f0de25247d21cb8922291b4874d",
+      "sha256": "8b360770c1fb76349c1d8183c9b1c326e6bcd0de6b925797fa8b1f7ba5b6fa3e",
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
