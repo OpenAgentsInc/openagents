@@ -2,6 +2,11 @@ import { describe, expect, test } from "vite-plus/test";
 import { EventEmitter } from "node:events";
 import type { ClaudeLocalEvent } from "./claude-local-contract";
 import type { ChildLike } from "./codex-child-runtime";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { makeCodexAccountHealth } from "./codex-child-runtime";
+import { makeCodexLocalRuntime } from "./codex-local-runtime";
 import { codexHarnessExecArgs, runCodexHarnessExecAttempt } from "./codex-harness-attempt";
 
 /** Fixture child that streams the given stdout lines then closes. */
@@ -132,5 +137,33 @@ describe("codex harness attempt (HARN-09 slice 1)", () => {
     expect(args).toContain("-i");
     expect(args[args.length - 1]).toBe("p");
     expect(args[args.indexOf("-C") + 1]).toBe("/tmp/w");
+  });
+
+  test("runtime-level: the strangler flag routes a full runTurn through the adapter", async () => {
+    const runtime = makeCodexLocalRuntime({
+      scratchRoot: () => mkdtempSync(join(tmpdir(), "codex-harness-")),
+      env: { OPENAGENTS_DESKTOP_CODEX_HARNESS_ADAPTER: "1" },
+      discoverImpl: async () => [
+        { ref: "codex-current", home: "/owner/.codex", source: "current_session" },
+      ],
+      health: makeCodexAccountHealth(),
+      preflight: {
+        probeAll: async () => [],
+        ensureProbed: async () => [],
+        results: () => [],
+        verifiedRefs: () => ["codex-current"],
+      },
+      spawnImpl: () => fixtureChild(SUCCESS_LINES),
+    });
+    const emitted: ClaudeLocalEvent[] = [];
+    const result = await runtime.runTurn({
+      turnRef: "turn-flagged",
+      threadRef: "thread-flagged",
+      history: [],
+      message: "compute the answer",
+      emit: (event) => emitted.push(event),
+    });
+    expect(result).toMatchObject({ ok: true, threadId: "th-123" });
+    expect(emitted.map((event) => event.kind)).toContain("text_delta");
   });
 });
