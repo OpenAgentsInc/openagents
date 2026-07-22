@@ -272,6 +272,9 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // SBX-07 (#9030): native owner/Sarah/Desktop broker. Default OFF until
   // SBX-09 independently proves the live GCP target and arms rollout.
   MANAGED_SANDBOX_BROKER_ENABLED?: string | undefined
+  // SBX-10 (#9032): checkpoint, fork, and restore command route. Default OFF
+  // until the Phase 2 target, storage, and security assurance are admitted.
+  MANAGED_SANDBOX_PHASE2_ENABLED?: string | undefined
   OA_MANAGED_SANDBOX_IMAGE_DIGEST?: string | undefined
   OA_MANAGED_SANDBOX_PROFILE_DIGEST?: string | undefined
   OA_MANAGED_SANDBOX_CONTROL_URL?: string | undefined

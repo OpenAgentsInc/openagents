@@ -883,6 +883,15 @@ import {
 } from './managed-sandbox-desktop-routes'
 import { makeManagedSandboxProviderBrokerRoutes } from './managed-sandbox-provider-broker'
 import {
+  executeManagedSandboxPhase2ForEnv,
+  isManagedSandboxPhase2Configured,
+  isManagedSandboxPhase2Enabled,
+} from './managed-sandbox-phase2-adapter'
+import {
+  MANAGED_SANDBOX_PHASE2_COMMANDS_PATH,
+  makeManagedSandboxPhase2Routes,
+} from './managed-sandbox-phase2-routes'
+import {
   MANAGED_SANDBOX_MOBILE_SUPERVISION_PATH,
   MANAGED_SANDBOX_WEB_SUPERVISION_PATH,
   makeManagedSandboxSupervisionRoutes,
@@ -10650,6 +10659,27 @@ const managedSandboxDesktopRoutes = makeManagedSandboxDesktopRoutes<Env>({
   runtime: managedSandboxBoxV1RuntimeForEnv,
 })
 
+const managedSandboxPhase2Routes = makeManagedSandboxPhase2Routes<Env>({
+  authenticateOwner: async (request, env, ctx) => {
+    const actor = await authenticateRequestActor(request, env, ctx)
+    if (actor === undefined || actor.kind !== 'human') return undefined
+    return {
+      userId: actor.user.userId,
+      ...(actor.tokens === undefined
+        ? {}
+        : {
+            decorateResponseHeaders: (headers: Headers) => {
+              appendSessionCookies(headers, actor.tokens!)
+            },
+          }),
+    }
+  },
+  enabled: env =>
+    isManagedSandboxPhase2Enabled(env.MANAGED_SANDBOX_PHASE2_ENABLED) &&
+    isManagedSandboxPhase2Configured(env),
+  execute: executeManagedSandboxPhase2ForEnv,
+})
+
 const managedSandboxSupervisionRoutes = makeManagedSandboxSupervisionRoutes<Env>({
   authenticateOwner: async (request, env, ctx) => {
     const actor = await authenticateRequestActor(request, env, ctx)
@@ -11865,6 +11895,11 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     path: MANAGED_SANDBOX_DESKTOP_COMMANDS_PATH,
     handler: (request, env, ctx) =>
       managedSandboxDesktopRoutes.commands(request, env, ctx),
+  },
+  {
+    path: MANAGED_SANDBOX_PHASE2_COMMANDS_PATH,
+    handler: (request, env, ctx) =>
+      managedSandboxPhase2Routes.commands(request, env, ctx),
   },
   {
     path: MANAGED_SANDBOX_MOBILE_SUPERVISION_PATH,
