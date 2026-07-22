@@ -1,0 +1,399 @@
+{
+  "schema": "openagents.desktop.full_auto_run_report.v1",
+  "reports": [
+    {
+      "schema": "openagents.desktop.full_auto_run_report.v1",
+      "runRef": "run.full-auto.fx-clean",
+      "title": "Fixture: clean completed run without autonomy",
+      "objectiveDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "doneConditionDigest": "abababababababababababababababababababababababababababababababab",
+      "objectiveRevisionCount": 1,
+      "turnCap": 20,
+      "successfulAttempts": 3,
+      "failedAttempts": 0,
+      "state": "completed",
+      "createdAt": "2026-07-22T00:00:00.000Z",
+      "startedAt": "2026-07-22T00:01:00.000Z",
+      "endedAt": "2026-07-22T00:31:00.000Z",
+      "lifecycleTransitions": [
+        {
+          "from": "draft",
+          "to": "running",
+          "actor": "control_api",
+          "at": "2026-07-22T00:01:00.000Z",
+          "reason": "fixture start"
+        }
+      ],
+      "ownerActions": [],
+      "providerTransitions": [],
+      "livenessObservations": [],
+      "livenessGaps": [],
+      "uninterruptedIntervals": [],
+      "turns": [
+        {
+          "turnRef": "turn.fx-clean.1",
+          "lane": "codex-local",
+          "phase": "completed",
+          "disposition": "completed",
+          "createdAt": "2026-07-22T00:02:00.000Z",
+          "updatedAt": "2026-07-22T00:10:00.000Z",
+          "outcomeSummary": "turn completed"
+        },
+        {
+          "turnRef": "turn.fx-clean.2",
+          "lane": "codex-local",
+          "phase": "completed",
+          "disposition": "completed",
+          "createdAt": "2026-07-22T00:11:00.000Z",
+          "updatedAt": "2026-07-22T00:20:00.000Z",
+          "outcomeSummary": "turn completed"
+        },
+        {
+          "turnRef": "turn.fx-clean.3",
+          "lane": "codex-local",
+          "phase": "completed",
+          "disposition": "completed",
+          "createdAt": "2026-07-22T00:21:00.000Z",
+          "updatedAt": "2026-07-22T00:30:00.000Z",
+          "outcomeSummary": "turn completed"
+        }
+      ],
+      "verifiedRefs": [
+        {
+          "ref": "0123456789abcdef0123456789abcdef01234567",
+          "kind": "commit",
+          "verification": "claimed",
+          "turnRef": "turn.fx-clean.3"
+        }
+      ],
+      "progressDisposition": "unknown",
+      "usage": {
+        "totalTokensKnown": false,
+        "totalTokens": null,
+        "costUsdKnown": false,
+        "costUsd": null
+      },
+      "rawEvidenceRef": null,
+      "reportRevision": 1,
+      "updatedAt": "2026-07-22T00:31:00.000Z"
+    },
+    {
+      "schema": "openagents.desktop.full_auto_run_report.v1",
+      "runRef": "run.full-auto.fx-autonomy",
+      "title": "Fixture: autonomy run with plan, verification, and known usage",
+      "objectiveDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "doneConditionDigest": "bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc",
+      "objectiveRevisionCount": 1,
+      "turnCap": 20,
+      "successfulAttempts": 2,
+      "failedAttempts": 1,
+      "state": "completed",
+      "createdAt": "2026-07-22T01:00:00.000Z",
+      "startedAt": "2026-07-22T01:01:00.000Z",
+      "endedAt": "2026-07-22T02:01:00.000Z",
+      "lifecycleTransitions": [
+        {
+          "from": "draft",
+          "to": "running",
+          "actor": "control_api",
+          "at": "2026-07-22T01:01:00.000Z",
+          "reason": "fixture start"
+        }
+      ],
+      "ownerActions": [],
+      "providerTransitions": [],
+      "livenessObservations": [],
+      "livenessGaps": [],
+      "uninterruptedIntervals": [],
+      "turns": [
+        {
+          "turnRef": "turn.fx-autonomy.1",
+          "lane": "codex-local",
+          "model": "gpt-5.2-codex",
+          "phase": "failed",
+          "disposition": "failed",
+          "createdAt": "2026-07-22T01:02:00.000Z",
+          "updatedAt": "2026-07-22T01:10:00.000Z",
+          "outcomeSummary": "turn failed"
+        },
+        {
+          "turnRef": "turn.fx-autonomy.2",
+          "lane": "claude-local",
+          "model": "claude-opus-4-8",
+          "phase": "completed",
+          "disposition": "completed",
+          "createdAt": "2026-07-22T01:11:00.000Z",
+          "updatedAt": "2026-07-22T01:30:00.000Z",
+          "outcomeSummary": "turn completed"
+        },
+        {
+          "turnRef": "turn.fx-autonomy.3",
+          "lane": "claude-local",
+          "model": "claude-opus-4-8",
+          "phase": "completed",
+          "disposition": "completed",
+          "createdAt": "2026-07-22T01:31:00.000Z",
+          "updatedAt": "2026-07-22T02:00:00.000Z",
+          "outcomeSummary": "turn completed"
+        }
+      ],
+      "verifiedRefs": [
+        {
+          "ref": "receipt.fx-autonomy.verified-check",
+          "kind": "receipt",
+          "verification": "verified",
+          "turnRef": "turn.fx-autonomy.3"
+        },
+        {
+          "ref": "89abcdef0123456789abcdef0123456789abcdef",
+          "kind": "commit",
+          "verification": "claimed",
+          "turnRef": "turn.fx-autonomy.2"
+        }
+      ],
+      "rotationHistory": [
+        {
+          "fromLane": "codex-local",
+          "toLane": "claude-local",
+          "reason": "account_exhausted",
+          "at": "2026-07-22T01:10:30.000Z"
+        }
+      ],
+      "progressDisposition": "unknown",
+      "usage": {
+        "totalTokensKnown": true,
+        "totalTokens": 120000,
+        "costUsdKnown": true,
+        "costUsd": 3.6
+      },
+      "rawEvidenceRef": "thread:thread.fx-autonomy",
+      "reportRevision": 2,
+      "updatedAt": "2026-07-22T02:01:00.000Z"
+    },
+    {
+      "schema": "openagents.desktop.full_auto_run_report.v1",
+      "runRef": "run.full-auto.fx-drift",
+      "title": "Fixture: drifted legacy run completing without evidence",
+      "objectiveDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "doneConditionDigest": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+      "objectiveRevisionCount": 3,
+      "turnCap": 20,
+      "successfulAttempts": 2,
+      "failedAttempts": 0,
+      "state": "completed",
+      "createdAt": "2026-07-22T03:00:00.000Z",
+      "startedAt": "2026-07-22T03:01:00.000Z",
+      "endedAt": "2026-07-22T03:31:00.000Z",
+      "lifecycleTransitions": [
+        {
+          "from": "draft",
+          "to": "running",
+          "actor": "control_api",
+          "at": "2026-07-22T03:01:00.000Z",
+          "reason": "fixture start"
+        }
+      ],
+      "ownerActions": [],
+      "providerTransitions": [],
+      "livenessObservations": [],
+      "livenessGaps": [],
+      "uninterruptedIntervals": [],
+      "turns": [
+        {
+          "turnRef": "turn.fx-drift.1",
+          "lane": "codex-local",
+          "phase": "completed",
+          "disposition": "completed",
+          "createdAt": "2026-07-22T03:02:00.000Z",
+          "updatedAt": "2026-07-22T03:15:00.000Z",
+          "outcomeSummary": "turn completed"
+        },
+        {
+          "turnRef": "turn.fx-drift.2",
+          "lane": "codex-local",
+          "phase": "completed",
+          "disposition": "completed",
+          "createdAt": "2026-07-22T03:16:00.000Z",
+          "updatedAt": "2026-07-22T03:30:00.000Z",
+          "outcomeSummary": "turn completed"
+        }
+      ],
+      "verifiedRefs": [],
+      "progressDisposition": "unknown",
+      "usage": {
+        "totalTokensKnown": false,
+        "totalTokens": null,
+        "costUsdKnown": false,
+        "costUsd": null
+      },
+      "rawEvidenceRef": null,
+      "reportRevision": 1,
+      "updatedAt": "2026-07-22T03:31:00.000Z"
+    },
+    {
+      "schema": "openagents.desktop.full_auto_run_report.v1",
+      "runRef": "run.full-auto.fx-stalled",
+      "title": "Fixture: repeated failures ended by the dispatch failure limit",
+      "objectiveDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "doneConditionDigest": "dededededededededededededededededededededededededededededededede",
+      "objectiveRevisionCount": 1,
+      "turnCap": 20,
+      "successfulAttempts": 0,
+      "failedAttempts": 3,
+      "state": "stopped",
+      "terminalReason": "dispatch failure limit reached",
+      "createdAt": "2026-07-22T04:00:00.000Z",
+      "startedAt": "2026-07-22T04:01:00.000Z",
+      "endedAt": "2026-07-22T04:31:00.000Z",
+      "lifecycleTransitions": [
+        {
+          "from": "draft",
+          "to": "running",
+          "actor": "control_api",
+          "at": "2026-07-22T04:01:00.000Z",
+          "reason": "fixture start"
+        },
+        {
+          "from": "running",
+          "to": "stopped",
+          "actor": "dispatch_failure_limit",
+          "at": "2026-07-22T04:31:00.000Z",
+          "reason": "5 consecutive dispatch failures"
+        }
+      ],
+      "ownerActions": [],
+      "providerTransitions": [],
+      "livenessObservations": [],
+      "livenessGaps": [],
+      "uninterruptedIntervals": [],
+      "turns": [
+        {
+          "turnRef": "turn.fx-stalled.1",
+          "lane": "codex-local",
+          "phase": "failed",
+          "disposition": "failed",
+          "createdAt": "2026-07-22T04:02:00.000Z",
+          "updatedAt": "2026-07-22T04:10:00.000Z",
+          "outcomeSummary": "turn failed"
+        },
+        {
+          "turnRef": "turn.fx-stalled.2",
+          "lane": "codex-local",
+          "phase": "failed",
+          "disposition": "failed",
+          "createdAt": "2026-07-22T04:11:00.000Z",
+          "updatedAt": "2026-07-22T04:20:00.000Z",
+          "outcomeSummary": "turn failed"
+        },
+        {
+          "turnRef": "turn.fx-stalled.3",
+          "lane": "codex-local",
+          "phase": "failed",
+          "disposition": "failed",
+          "createdAt": "2026-07-22T04:21:00.000Z",
+          "updatedAt": "2026-07-22T04:30:00.000Z",
+          "outcomeSummary": "turn failed"
+        }
+      ],
+      "verifiedRefs": [],
+      "progressDisposition": "unknown",
+      "usage": {
+        "totalTokensKnown": false,
+        "totalTokens": null,
+        "costUsdKnown": false,
+        "costUsd": null
+      },
+      "rawEvidenceRef": null,
+      "reportRevision": 1,
+      "updatedAt": "2026-07-22T04:31:00.000Z"
+    },
+    {
+      "schema": "openagents.desktop.full_auto_run_report.v1",
+      "runRef": "run.full-auto.fx-verify-blocked",
+      "title": "Fixture: host verification failed and blocked completion",
+      "objectiveDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "doneConditionDigest": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
+      "objectiveRevisionCount": 1,
+      "turnCap": 20,
+      "successfulAttempts": 1,
+      "failedAttempts": 0,
+      "state": "running",
+      "createdAt": "2026-07-22T05:00:00.000Z",
+      "startedAt": "2026-07-22T05:01:00.000Z",
+      "lifecycleTransitions": [
+        {
+          "from": "draft",
+          "to": "running",
+          "actor": "control_api",
+          "at": "2026-07-22T05:01:00.000Z",
+          "reason": "fixture start"
+        }
+      ],
+      "ownerActions": [],
+      "providerTransitions": [],
+      "livenessObservations": [],
+      "livenessGaps": [],
+      "uninterruptedIntervals": [],
+      "turns": [
+        {
+          "turnRef": "turn.fx-verify-blocked.1",
+          "lane": "codex-local",
+          "phase": "completed",
+          "disposition": "completed",
+          "createdAt": "2026-07-22T05:02:00.000Z",
+          "updatedAt": "2026-07-22T05:20:00.000Z",
+          "outcomeSummary": "turn completed"
+        }
+      ],
+      "verifiedRefs": [
+        {
+          "ref": "456789abcdef0123456789abcdef0123456789ab",
+          "kind": "commit",
+          "verification": "claimed",
+          "turnRef": "turn.fx-verify-blocked.1"
+        }
+      ],
+      "progressDisposition": "unknown",
+      "usage": {
+        "totalTokensKnown": true,
+        "totalTokens": 50000,
+        "costUsdKnown": false,
+        "costUsd": null
+      },
+      "rawEvidenceRef": "thread:thread.fx-verify-blocked",
+      "reportRevision": 1,
+      "updatedAt": "2026-07-22T05:20:00.000Z"
+    },
+    {
+      "schema": "openagents.desktop.full_auto_run_report.v1",
+      "runRef": "run.full-auto.fx-empty",
+      "title": "Fixture: draft run with no turns",
+      "objectiveDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "doneConditionDigest": "fafafafafafafafafafafafafafafafafafafafafafafafafafafafafafafafa",
+      "objectiveRevisionCount": 1,
+      "turnCap": 20,
+      "successfulAttempts": 0,
+      "failedAttempts": 0,
+      "state": "draft",
+      "createdAt": "2026-07-22T06:00:00.000Z",
+      "lifecycleTransitions": [],
+      "ownerActions": [],
+      "providerTransitions": [],
+      "livenessObservations": [],
+      "livenessGaps": [],
+      "uninterruptedIntervals": [],
+      "turns": [],
+      "verifiedRefs": [],
+      "progressDisposition": "unknown",
+      "usage": {
+        "totalTokensKnown": false,
+        "totalTokens": null,
+        "costUsdKnown": false,
+        "costUsd": null
+      },
+      "rawEvidenceRef": null,
+      "reportRevision": 1,
+      "updatedAt": "2026-07-22T06:00:00.000Z"
+    }
+  ]
+}

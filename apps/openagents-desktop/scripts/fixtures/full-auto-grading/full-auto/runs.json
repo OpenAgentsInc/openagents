@@ -1,0 +1,149 @@
+{
+  "schema": "openagents.desktop.full_auto_run_registry.v1",
+  "runs": [
+    {
+      "runRef": "run.full-auto.fx-clean",
+      "title": "Fixture: clean completed run without autonomy",
+      "objective": "Fixture objective: complete the bounded public-safe task.",
+      "objectiveSource": "user",
+      "doneCondition": "Fixture done condition: the bounded task is complete.",
+      "objectiveHistory": [],
+      "turnCap": 20,
+      "successfulAttempts": 3,
+      "failedAttempts": 0,
+      "state": "completed",
+      "stateRevision": 4,
+      "createdAt": "2026-07-22T00:00:00.000Z",
+      "startedAt": "2026-07-22T00:01:00.000Z",
+      "completedAt": "2026-07-22T00:31:00.000Z",
+      "transitions": []
+    },
+    {
+      "runRef": "run.full-auto.fx-autonomy",
+      "title": "Fixture: autonomy run with plan, verification, and known usage",
+      "objective": "Fixture objective: work the decomposed plan to completion.",
+      "objectiveSource": "user",
+      "doneCondition": "Fixture done condition.\nverify: pnpm --dir apps/openagents-desktop test",
+      "objectiveHistory": [],
+      "turnCap": 20,
+      "successfulAttempts": 2,
+      "failedAttempts": 1,
+      "state": "completed",
+      "stateRevision": 5,
+      "createdAt": "2026-07-22T01:00:00.000Z",
+      "startedAt": "2026-07-22T01:01:00.000Z",
+      "completedAt": "2026-07-22T02:01:00.000Z",
+      "autonomy": {
+        "enabled": true,
+        "plan": {
+          "schema": "openagents.desktop.full_auto_plan.v1",
+          "steps": [
+            {
+              "stepRef": "s1",
+              "title": "Read the target module and its tests",
+              "status": "done",
+              "dependsOn": []
+            },
+            {
+              "stepRef": "s2",
+              "title": "Implement the bounded change",
+              "status": "done",
+              "dependsOn": ["s1"]
+            },
+            {
+              "stepRef": "s3",
+              "title": "Run the named verification",
+              "status": "pending",
+              "dependsOn": ["s2"]
+            }
+          ],
+          "revision": 3,
+          "createdAt": "2026-07-22T01:01:30.000Z",
+          "updatedAt": "2026-07-22T01:55:00.000Z"
+        },
+        "verification": {
+          "kind": "command",
+          "command": "pnpm --dir apps/openagents-desktop test"
+        },
+        "lastVerification": {
+          "schema": "openagents.desktop.full_auto_verification_result.v1",
+          "spec": {
+            "kind": "command",
+            "command": "pnpm --dir apps/openagents-desktop test"
+          },
+          "status": "passed",
+          "exitCode": 0,
+          "detail": "exit code 0",
+          "at": "2026-07-22T02:00:30.000Z"
+        }
+      },
+      "transitions": []
+    },
+    {
+      "runRef": "run.full-auto.fx-drift",
+      "title": "Fixture: drifted legacy run completing without evidence",
+      "objective": "Continue Full Auto: do the next concrete useful thing.",
+      "objectiveSource": "legacy_migration",
+      "doneCondition": "Fixture done condition: useful work happened.",
+      "objectiveHistory": [],
+      "turnCap": 20,
+      "successfulAttempts": 2,
+      "failedAttempts": 0,
+      "state": "completed",
+      "stateRevision": 3,
+      "createdAt": "2026-07-22T03:00:00.000Z",
+      "startedAt": "2026-07-22T03:01:00.000Z",
+      "completedAt": "2026-07-22T03:31:00.000Z",
+      "transitions": []
+    },
+    {
+      "runRef": "run.full-auto.fx-verify-blocked",
+      "title": "Fixture: host verification failed and blocked completion",
+      "objective": "Fixture objective: land the change and pass the named check.",
+      "objectiveSource": "user",
+      "doneCondition": "Fixture done condition.\nverify: pnpm --dir apps/openagents-desktop typecheck",
+      "objectiveHistory": [],
+      "turnCap": 20,
+      "successfulAttempts": 1,
+      "failedAttempts": 0,
+      "state": "running",
+      "stateRevision": 2,
+      "createdAt": "2026-07-22T05:00:00.000Z",
+      "startedAt": "2026-07-22T05:01:00.000Z",
+      "autonomy": {
+        "enabled": true,
+        "verification": {
+          "kind": "command",
+          "command": "pnpm --dir apps/openagents-desktop typecheck"
+        },
+        "lastVerification": {
+          "schema": "openagents.desktop.full_auto_verification_result.v1",
+          "spec": {
+            "kind": "command",
+            "command": "pnpm --dir apps/openagents-desktop typecheck"
+          },
+          "status": "failed",
+          "exitCode": 2,
+          "detail": "exit code 2",
+          "at": "2026-07-22T05:20:30.000Z"
+        }
+      },
+      "transitions": []
+    },
+    {
+      "runRef": "run.full-auto.fx-empty",
+      "title": "Fixture: draft run with no turns",
+      "objective": "Fixture objective: not yet started.",
+      "objectiveSource": "user",
+      "doneCondition": "Fixture done condition: not yet started.",
+      "objectiveHistory": [],
+      "turnCap": 20,
+      "successfulAttempts": 0,
+      "failedAttempts": 0,
+      "state": "draft",
+      "stateRevision": 1,
+      "createdAt": "2026-07-22T06:00:00.000Z",
+      "transitions": []
+    }
+  ]
+}

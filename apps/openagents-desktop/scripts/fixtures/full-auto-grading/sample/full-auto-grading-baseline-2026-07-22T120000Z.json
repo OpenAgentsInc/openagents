@@ -1,0 +1,599 @@
+{
+  "schema": "openagents.desktop.full_auto_grading_baseline.v1",
+  "metric": "full-auto-decision-v1",
+  "generatedAt": "2026-07-22T12:00:00.000Z",
+  "runCount": 6,
+  "runRecordJoinedCount": 5,
+  "dimensions": [
+    {
+      "dimension": "D1_complexity",
+      "measuredCount": 5,
+      "notMeasuredCount": 1,
+      "meanScore": 2,
+      "minScore": 1,
+      "maxScore": 3,
+      "scoreCounts": {
+        "1": 1,
+        "2": 3,
+        "3": 1
+      },
+      "notMeasuredReasons": {
+        "no_turns_recorded": 1
+      }
+    },
+    {
+      "dimension": "D2_coherence",
+      "measuredCount": 5,
+      "notMeasuredCount": 1,
+      "meanScore": 2,
+      "minScore": 1,
+      "maxScore": 3,
+      "scoreCounts": {
+        "1": 1,
+        "2": 3,
+        "3": 1
+      },
+      "notMeasuredReasons": {
+        "no_turns_recorded": 1
+      }
+    },
+    {
+      "dimension": "D3_foresight",
+      "measuredCount": 5,
+      "notMeasuredCount": 1,
+      "meanScore": 1.4,
+      "minScore": 1,
+      "maxScore": 3,
+      "scoreCounts": {
+        "1": 4,
+        "3": 1
+      },
+      "notMeasuredReasons": {
+        "run_record_unavailable": 1
+      }
+    },
+    {
+      "dimension": "D4_groundedness",
+      "measuredCount": 4,
+      "notMeasuredCount": 2,
+      "meanScore": 2,
+      "minScore": 1,
+      "maxScore": 3,
+      "scoreCounts": {
+        "1": 1,
+        "2": 2,
+        "3": 1
+      },
+      "notMeasuredReasons": {
+        "no_completed_turns_and_no_refs": 2
+      }
+    },
+    {
+      "dimension": "D5_selectivity",
+      "measuredCount": 5,
+      "notMeasuredCount": 1,
+      "meanScore": 0.2,
+      "minScore": 0,
+      "maxScore": 1,
+      "scoreCounts": {
+        "0": 4,
+        "1": 1
+      },
+      "notMeasuredReasons": {
+        "run_record_unavailable": 1
+      }
+    },
+    {
+      "dimension": "D6_self_verification",
+      "measuredCount": 4,
+      "notMeasuredCount": 2,
+      "meanScore": 2.5,
+      "minScore": 1,
+      "maxScore": 4,
+      "scoreCounts": {
+        "1": 1,
+        "2": 1,
+        "3": 1,
+        "4": 1
+      },
+      "notMeasuredReasons": {
+        "no_completion_observed_and_no_host_verification": 2
+      }
+    },
+    {
+      "dimension": "D7_recoverability",
+      "measuredCount": 2,
+      "notMeasuredCount": 4,
+      "meanScore": 2.5,
+      "minScore": 2,
+      "maxScore": 3,
+      "scoreCounts": {
+        "2": 1,
+        "3": 1
+      },
+      "notMeasuredReasons": {
+        "no_blocker_observed": 4
+      }
+    }
+  ],
+  "coherenceAtComplexity": {
+    "tierCounts": {
+      "C0": 6
+    },
+    "complexityWeightedMeanD2": 2.35,
+    "coherenceScreenMeasured": false,
+    "coherenceScreenReason": "transcript_signals_not_in_run_records"
+  },
+  "cost": {
+    "runsWithKnownUsage": 2,
+    "runsWithVerifiedOutcomes": 1,
+    "totalVerifiedOutcomes": 2,
+    "tokensPerVerifiedOutcome": 60000,
+    "costUsdPerVerifiedOutcome": 1.8,
+    "wallClockMsPerVerifiedOutcome": 1800000
+  },
+  "recordShapeGaps": [
+    "objectiveSource has no system_selected literal, so a HANDS-1 selected objective cannot be attributed (D5 ceiling 1)",
+    "run reports carry no tool-call/file-change/sub-agent counts, so the coherence-screen-v2 complexity tier is a lower bound and the coherence screen itself cannot run (D1/D2)",
+    "run reports carry no per-turn action-taxonomy rows, so churn detection only runs when a caller supplies actions (D2/D7)",
+    "no current writer populates report usage totals, so cost per verified outcome stays not_measured on real runs until usage ingestion lands"
+  ],
+  "grades": [
+    {
+      "schema": "openagents.desktop.full_auto_run_grade.v1",
+      "metric": "full-auto-decision-v1",
+      "runRef": "run.full-auto.fx-empty",
+      "objectiveDigest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "doneConditionDigest": "fafafafafafafafafafafafafafafafafafafafafafafafafafafafafafafafa",
+      "state": "draft",
+      "runRecordJoined": true,
+      "dimensions": {
+        "D1_complexity": {
+          "measured": false,
+          "reason": "no_turns_recorded",
+          "basis": "the report carries zero turn entries, so no complexity is observable"
+        },
+        "D2_coherence": {
+          "measured": false,
+          "reason": "no_turns_recorded",
+          "basis": "the report carries zero turn entries, so no line of work is observable"
+        },
+        "D3_foresight": {
+          "measured": true,
+          "score": 1,
+          "mechanicalCeiling": 3,
+          "basis": "no persisted plan: the host prompt is explicitly myopic (one next step now)",
+          "evidenceRefs": []
+        },
+        "D4_groundedness": {
+          "measured": false,
+          "reason": "no_completed_turns_and_no_refs",
+          "basis": "no completed turn and no refs: grounding was never exercised"
+        },
+        "D5_selectivity": {
+          "measured": true,
+          "score": 0,
+          "mechanicalCeiling": 1,
+          "basis": "owner-supplied objective (source: user): the system did not pick the work",
+          "evidenceRefs": []
+        },
+        "D6_self_verification": {
+          "measured": false,
+          "reason": "no_completion_observed_and_no_host_verification",
+          "basis": "the run never reached completed and no host verification ran, so self-verification was never exercised"
+        },
+        "D7_recoverability": {
+          "measured": false,
+          "reason": "no_blocker_observed",
+          "basis": "no failure or liveness gap occurred, so recovery was never exercised"
+        }
+      },
+      "complexity": {
+        "metric": "coherence-screen-v2",
+        "lowerBound": true,
+        "score": 0,
+        "tier": "C0",
+        "coherenceScreenMeasured": false,
+        "coherenceScreenReason": "transcript_signals_not_in_run_records"
+      },
+      "costPerVerifiedOutcome": {
+        "measured": false,
+        "reason": "usage_unknown",
+        "verifiedOutcomes": 0
+      },
+      "findingCounts": {
+        "missing_evidence": 1
+      },
+      "gradedAt": "2026-07-22T12:00:00.000Z"
+    },
+    {
+      "schema": "openagents.desktop.full_auto_run_grade.v1",
+      "metric": "full-auto-decision-v1",
+      "runRef": "run.full-auto.fx-verify-blocked",
+      "objectiveDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "doneConditionDigest": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
+      "state": "running",
+      "runRecordJoined": true,
+      "dimensions": {
+        "D1_complexity": {
+          "measured": true,
+          "score": 1,
+          "mechanicalCeiling": 3,
+          "basis": "at most one resolved turn; no cross-turn structure is evidenced",
+          "evidenceRefs": []
+        },
+        "D2_coherence": {
+          "measured": true,
+          "score": 2,
+          "mechanicalCeiling": 3,
+          "basis": "the objective anchor held (no drift/churn findings) but no carried cross-turn work memory is evidenced",
+          "evidenceRefs": []
+        },
+        "D3_foresight": {
+          "measured": true,
+          "score": 1,
+          "mechanicalCeiling": 3,
+          "basis": "no persisted plan: the host prompt is explicitly myopic (one next step now)",
+          "evidenceRefs": []
+        },
+        "D4_groundedness": {
+          "measured": true,
+          "score": 2,
+          "mechanicalCeiling": 3,
+          "basis": "claimed (unverified) commit/evidence refs exist; the host did not verify the grounding",
+          "evidenceRefs": [
+            "turn.fx-verify-blocked.1"
+          ]
+        },
+        "D5_selectivity": {
+          "measured": true,
+          "score": 0,
+          "mechanicalCeiling": 1,
+          "basis": "owner-supplied objective (source: user): the system did not pick the work",
+          "evidenceRefs": []
+        },
+        "D6_self_verification": {
+          "measured": true,
+          "score": 4,
+          "mechanicalCeiling": 4,
+          "basis": "host verification failed and the run was NOT admitted to completed: the gate blocked a false completion",
+          "evidenceRefs": []
+        },
+        "D7_recoverability": {
+          "measured": false,
+          "reason": "no_blocker_observed",
+          "basis": "no failure or liveness gap occurred, so recovery was never exercised"
+        }
+      },
+      "complexity": {
+        "metric": "coherence-screen-v2",
+        "lowerBound": true,
+        "score": 0,
+        "tier": "C0",
+        "coherenceScreenMeasured": false,
+        "coherenceScreenReason": "transcript_signals_not_in_run_records"
+      },
+      "costPerVerifiedOutcome": {
+        "measured": false,
+        "reason": "zero_verified_outcomes",
+        "verifiedOutcomes": 0
+      },
+      "findingCounts": {
+        "successful_packet": 1
+      },
+      "gradedAt": "2026-07-22T12:00:00.000Z"
+    },
+    {
+      "schema": "openagents.desktop.full_auto_run_grade.v1",
+      "metric": "full-auto-decision-v1",
+      "runRef": "run.full-auto.fx-stalled",
+      "objectiveDigest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "doneConditionDigest": "dededededededededededededededededededededededededededededededede",
+      "state": "stopped",
+      "runRecordJoined": false,
+      "dimensions": {
+        "D1_complexity": {
+          "measured": true,
+          "score": 2,
+          "mechanicalCeiling": 3,
+          "basis": "sustained multi-turn work on one objective; the host carried no sub-task decomposition",
+          "evidenceRefs": []
+        },
+        "D2_coherence": {
+          "measured": true,
+          "score": 2,
+          "mechanicalCeiling": 3,
+          "basis": "the objective anchor held (no drift/churn findings) but no carried cross-turn work memory is evidenced",
+          "evidenceRefs": []
+        },
+        "D3_foresight": {
+          "measured": false,
+          "reason": "run_record_unavailable",
+          "basis": "no run-registry record was joined, so the autonomy plan state is unknown"
+        },
+        "D4_groundedness": {
+          "measured": false,
+          "reason": "no_completed_turns_and_no_refs",
+          "basis": "no completed turn and no refs: grounding was never exercised"
+        },
+        "D5_selectivity": {
+          "measured": false,
+          "reason": "run_record_unavailable",
+          "basis": "no run-registry record was joined, so the objective source is unknown"
+        },
+        "D6_self_verification": {
+          "measured": false,
+          "reason": "no_completion_observed_and_no_host_verification",
+          "basis": "the run never reached completed and no host verification ran, so self-verification was never exercised"
+        },
+        "D7_recoverability": {
+          "measured": true,
+          "score": 2,
+          "mechanicalCeiling": 3,
+          "basis": "failures ended in a typed system-forced stop rather than an observed recovery",
+          "evidenceRefs": []
+        }
+      },
+      "complexity": {
+        "metric": "coherence-screen-v2",
+        "lowerBound": true,
+        "score": 4,
+        "tier": "C0",
+        "coherenceScreenMeasured": false,
+        "coherenceScreenReason": "transcript_signals_not_in_run_records"
+      },
+      "costPerVerifiedOutcome": {
+        "measured": false,
+        "reason": "usage_unknown",
+        "verifiedOutcomes": 0
+      },
+      "findingCounts": {
+        "failed_continuation": 3,
+        "repeated_disposition_pattern": 1,
+        "missing_evidence": 1,
+        "system_forced_stop": 1
+      },
+      "gradedAt": "2026-07-22T12:00:00.000Z"
+    },
+    {
+      "schema": "openagents.desktop.full_auto_run_grade.v1",
+      "metric": "full-auto-decision-v1",
+      "runRef": "run.full-auto.fx-drift",
+      "objectiveDigest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "doneConditionDigest": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+      "state": "completed",
+      "runRecordJoined": true,
+      "dimensions": {
+        "D1_complexity": {
+          "measured": true,
+          "score": 2,
+          "mechanicalCeiling": 3,
+          "basis": "sustained multi-turn work on one objective; the host carried no sub-task decomposition",
+          "evidenceRefs": []
+        },
+        "D2_coherence": {
+          "measured": true,
+          "score": 1,
+          "mechanicalCeiling": 3,
+          "basis": "drift/churn/repeated-disposition findings mark frequent drift in the line of work",
+          "evidenceRefs": []
+        },
+        "D3_foresight": {
+          "measured": true,
+          "score": 1,
+          "mechanicalCeiling": 3,
+          "basis": "no persisted plan: the host prompt is explicitly myopic (one next step now)",
+          "evidenceRefs": []
+        },
+        "D4_groundedness": {
+          "measured": true,
+          "score": 1,
+          "mechanicalCeiling": 3,
+          "basis": "turns completed but produced zero grounded refs (missing_evidence)",
+          "evidenceRefs": []
+        },
+        "D5_selectivity": {
+          "measured": true,
+          "score": 1,
+          "mechanicalCeiling": 1,
+          "basis": "legacy generic objective: the system worked an unranked useful-thing objective",
+          "evidenceRefs": []
+        },
+        "D6_self_verification": {
+          "measured": true,
+          "score": 1,
+          "mechanicalCeiling": 4,
+          "basis": "self-reported completion with zero refs; only the post-hoc unverified_completion_risk flag fired",
+          "evidenceRefs": []
+        },
+        "D7_recoverability": {
+          "measured": false,
+          "reason": "no_blocker_observed",
+          "basis": "no failure or liveness gap occurred, so recovery was never exercised"
+        }
+      },
+      "complexity": {
+        "metric": "coherence-screen-v2",
+        "lowerBound": true,
+        "score": 2,
+        "tier": "C0",
+        "coherenceScreenMeasured": false,
+        "coherenceScreenReason": "transcript_signals_not_in_run_records"
+      },
+      "costPerVerifiedOutcome": {
+        "measured": false,
+        "reason": "usage_unknown",
+        "verifiedOutcomes": 0
+      },
+      "findingCounts": {
+        "successful_packet": 2,
+        "unverified_completion_risk": 1,
+        "missing_evidence": 2,
+        "objective_drift_revision": 1
+      },
+      "gradedAt": "2026-07-22T12:00:00.000Z"
+    },
+    {
+      "schema": "openagents.desktop.full_auto_run_grade.v1",
+      "metric": "full-auto-decision-v1",
+      "runRef": "run.full-auto.fx-autonomy",
+      "objectiveDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "doneConditionDigest": "bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc",
+      "state": "completed",
+      "runRecordJoined": true,
+      "dimensions": {
+        "D1_complexity": {
+          "measured": true,
+          "score": 3,
+          "mechanicalCeiling": 3,
+          "basis": "host-tracked plan with advanced sub-task state carried across turns (HANDS-3)",
+          "evidenceRefs": []
+        },
+        "D2_coherence": {
+          "measured": true,
+          "score": 3,
+          "mechanicalCeiling": 3,
+          "basis": "turns advance a carried plan (completed steps) with no drift or churn findings",
+          "evidenceRefs": []
+        },
+        "D3_foresight": {
+          "measured": true,
+          "score": 3,
+          "mechanicalCeiling": 3,
+          "basis": "the host tracks a dependency-ordered plan and steps advanced through it (HANDS-3)",
+          "evidenceRefs": []
+        },
+        "D4_groundedness": {
+          "measured": true,
+          "score": 3,
+          "mechanicalCeiling": 3,
+          "basis": "host-verified repository/evidence refs are on file for this run",
+          "evidenceRefs": [
+            "turn.fx-autonomy.3"
+          ]
+        },
+        "D5_selectivity": {
+          "measured": true,
+          "score": 0,
+          "mechanicalCeiling": 1,
+          "basis": "owner-supplied objective (source: user): the system did not pick the work",
+          "evidenceRefs": []
+        },
+        "D6_self_verification": {
+          "measured": true,
+          "score": 3,
+          "mechanicalCeiling": 4,
+          "basis": "the host executed the done-condition check and recorded a typed passed verdict (HANDS-2)",
+          "evidenceRefs": []
+        },
+        "D7_recoverability": {
+          "measured": true,
+          "score": 3,
+          "mechanicalCeiling": 3,
+          "basis": "the run recovered from failure without owner rescue (rotation, typed recovery action, or completed work after a failed turn)",
+          "evidenceRefs": []
+        }
+      },
+      "complexity": {
+        "metric": "coherence-screen-v2",
+        "lowerBound": true,
+        "score": 9,
+        "tier": "C0",
+        "coherenceScreenMeasured": false,
+        "coherenceScreenReason": "transcript_signals_not_in_run_records"
+      },
+      "costPerVerifiedOutcome": {
+        "measured": true,
+        "verifiedOutcomes": 2,
+        "totalTokens": 120000,
+        "tokensPerVerifiedOutcome": 60000,
+        "costUsdPerVerifiedOutcome": 1.8,
+        "wallClockMsPerVerifiedOutcome": 1800000
+      },
+      "findingCounts": {
+        "failed_continuation": 1,
+        "successful_packet": 2
+      },
+      "gradedAt": "2026-07-22T12:00:00.000Z"
+    },
+    {
+      "schema": "openagents.desktop.full_auto_run_grade.v1",
+      "metric": "full-auto-decision-v1",
+      "runRef": "run.full-auto.fx-clean",
+      "objectiveDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "doneConditionDigest": "abababababababababababababababababababababababababababababababab",
+      "state": "completed",
+      "runRecordJoined": true,
+      "dimensions": {
+        "D1_complexity": {
+          "measured": true,
+          "score": 2,
+          "mechanicalCeiling": 3,
+          "basis": "sustained multi-turn work on one objective; the host carried no sub-task decomposition",
+          "evidenceRefs": []
+        },
+        "D2_coherence": {
+          "measured": true,
+          "score": 2,
+          "mechanicalCeiling": 3,
+          "basis": "the objective anchor held (no drift/churn findings) but no carried cross-turn work memory is evidenced",
+          "evidenceRefs": []
+        },
+        "D3_foresight": {
+          "measured": true,
+          "score": 1,
+          "mechanicalCeiling": 3,
+          "basis": "no persisted plan: the host prompt is explicitly myopic (one next step now)",
+          "evidenceRefs": []
+        },
+        "D4_groundedness": {
+          "measured": true,
+          "score": 2,
+          "mechanicalCeiling": 3,
+          "basis": "claimed (unverified) commit/evidence refs exist; the host did not verify the grounding",
+          "evidenceRefs": [
+            "turn.fx-clean.3"
+          ]
+        },
+        "D5_selectivity": {
+          "measured": true,
+          "score": 0,
+          "mechanicalCeiling": 1,
+          "basis": "owner-supplied objective (source: user): the system did not pick the work",
+          "evidenceRefs": []
+        },
+        "D6_self_verification": {
+          "measured": true,
+          "score": 2,
+          "mechanicalCeiling": 4,
+          "basis": "self-reported completion with attached refs but no executed done-condition check",
+          "evidenceRefs": []
+        },
+        "D7_recoverability": {
+          "measured": false,
+          "reason": "no_blocker_observed",
+          "basis": "no failure or liveness gap occurred, so recovery was never exercised"
+        }
+      },
+      "complexity": {
+        "metric": "coherence-screen-v2",
+        "lowerBound": true,
+        "score": 4,
+        "tier": "C0",
+        "coherenceScreenMeasured": false,
+        "coherenceScreenReason": "transcript_signals_not_in_run_records"
+      },
+      "costPerVerifiedOutcome": {
+        "measured": false,
+        "reason": "usage_unknown",
+        "verifiedOutcomes": 0
+      },
+      "findingCounts": {
+        "successful_packet": 3,
+        "repeated_disposition_pattern": 1,
+        "missing_evidence": 1
+      },
+      "gradedAt": "2026-07-22T12:00:00.000Z"
+    }
+  ]
+}

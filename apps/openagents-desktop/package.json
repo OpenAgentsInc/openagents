@@ -19,6 +19,7 @@
     "dev": "node --import tsx scripts/dev.ts",
     "dev:preview": "node --import tsx scripts/dev.ts",
     "full-auto": "node --import tsx scripts/full-auto-cli.ts",
+    "grade-runs": "node --import tsx scripts/grade-runs.ts",
     "live-proof": "node --import tsx scripts/build.ts && node --import tsx scripts/run-live-proof.ts",
     "accept:managed-sandbox-live": "pnpm run typecheck:managed-sandbox-live && node --import tsx scripts/managed-sandbox-live-acceptance.ts",
     "mvp-proof": "node --import tsx scripts/build.ts && node --import tsx scripts/run-mvp-proof.ts",
