@@ -83,6 +83,8 @@ import {
 } from "./codex-child-contract.ts"
 import { workbenchToolCallFromSdkUse } from "./workbench-item-contract.ts"
 import { resolveBundledClaudeExecutable } from "./provider-runtime-host.ts"
+import { runClaudeHarnessAttempt } from "./claude-harness-attempt.ts"
+import type { ClaudeCodeQuery } from "@openagentsinc/agent-harness-contract"
 
 const CLAUDE_AGENT_SDK_PACKAGE = "@anthropic-ai/claude-agent-sdk"
 /**
@@ -1305,6 +1307,162 @@ export const makeClaudeLocalRuntime = (options: ClaudeLocalRuntimeOptions): Clau
           accountRef: account.ref,
         })
         const claudeExecutable = resolveBundledClaudeExecutable()
+        // HARN-09 (#9167) Slice 2 strangler gate: route the claude turn through
+        // the SDK harness adapter (`makeClaudeCodeHarnessAdapter` via
+        // `runClaudeHarnessAttempt`) when explicitly enabled AND the turn has
+        // no image attachments — the adapter promptTurn is string-only, so
+        // image turns keep the legacy AsyncIterable drive below. Default off:
+        // zero change, and the pinning suite exercises the flag-off path.
+        //
+        // The host still owns everything the neutral stream has NO origin for:
+        // the same `canUseTool` (AskUserQuestion + pausable turn clock),
+        // `abortController` (timeout + interrupt), `mcpServers` (delegate-child
+        // tracking for steer/interrupt), plus the init-time guards below —
+        // the "must be Claude" model-substitution abort, `mcp_server_unavailable`,
+        // and `onProviderSession` continuity — handed in through `queryOverrides`
+        // and the `onInit` hook. The adapter only owns neutral projection, and
+        // `harness-lowering` maps it back onto the frozen renderer envelope.
+        if (env.OPENAGENTS_DESKTOP_CLAUDE_HARNESS_ADAPTER === "1" && images.length === 0) {
+          // Array holder (not a nullable `let`): the assignment happens inside
+          // the `onInit` callback, and TS control-flow would otherwise narrow a
+          // callback-assigned `let` back to its `null` initializer at the read.
+          const substituted: Array<{ readonly requestedModel: string; readonly effectiveModel: string }> =
+            []
+          const overrides: Record<string, unknown> = {
+            cwd: workspace,
+            env: {
+              ...(account.source === "current_session"
+                ? (() => {
+                    const current = { ...env }
+                    delete current.CLAUDE_CONFIG_DIR
+                    delete current.CLAUDE_CODE_OAUTH_TOKEN
+                    return current
+                  })()
+                : pylonAccountEnvironment(env, selection)),
+              ...(mcpServers === null
+                ? {}
+                : { CLAUDE_CODE_STREAM_CLOSE_TIMEOUT: String(CLAUDE_STREAM_CLOSE_TIMEOUT_MS) }),
+            },
+            abortController: abort,
+            includePartialMessages: true,
+            maxTurns: CLAUDE_LOCAL_MAX_TURNS,
+            model: requestedModel,
+            ...(claudeExecutable === null ? {} : { pathToClaudeCodeExecutable: claudeExecutable }),
+            permissionMode: planMode ? "plan" : "default",
+            ...(delegateOffered ? { allowedTools: [CLAUDE_DELEGATE_TOOL_NAME] } : {}),
+            disallowedTools: CLAUDE_LOCAL_DISALLOWED_TOOLS.filter(tool =>
+              (planMode && tool === "ExitPlanMode") ||
+              (input.skillName !== undefined && tool === "Skill")
+                ? false
+                : true),
+            canUseTool,
+            skills: input.skillName === undefined ? [] : [input.skillName],
+            settingSources: [],
+            ...(options.userPlugins === undefined
+              ? {}
+              : {
+                  plugins: options
+                    .userPlugins()
+                    .map(pluginPath => ({ type: "local" as const, path: pluginPath })),
+                }),
+            ...(mcpServers === null ? {} : { mcpServers }),
+            ...(resumeSessionId === undefined ? {} : { resume: resumeSessionId }),
+          }
+          const attempt = await runClaudeHarnessAttempt({
+            threadRef: input.threadRef,
+            turnRef: input.turnRef,
+            workspace,
+            prompt: promptText,
+            model: requestedModel,
+            resumeSessionId: resumeSessionId ?? null,
+            query: query as unknown as ClaudeCodeQuery,
+            queryOverrides: overrides,
+            emit: ev => {
+              // The host emits the rich turn_completed (accountRef + usage
+              // split) below; drop the lowering's bare turn_completed so the
+              // renderer never sees a duplicate terminal event.
+              if (ev.kind === "turn_completed") return
+              input.emit(ev)
+            },
+            onInit: ({ sessionId: initSession, effectiveModel, mcpServers: servers }) => {
+              if (initSession !== null && initSession.length > 0) {
+                options.onProviderSession?.({
+                  threadRef: input.threadRef,
+                  turnRef: input.turnRef,
+                  accountRef: account.ref,
+                  sessionId: initSession,
+                })
+              }
+              for (const server of servers) {
+                if (!userServerNames.has(server.name)) continue
+                if (server.status === "connected" || server.status === "pending") continue
+                if (announcedMcpUnavailable.has(server.name)) continue
+                announcedMcpUnavailable.add(server.name)
+                input.emit({
+                  kind: "mcp_server_unavailable",
+                  name: bounded(server.name, 120),
+                  reason: bounded(
+                    server.status === "" ? "server failed to connect" : server.status,
+                    CLAUDE_LOCAL_SUMMARY_LIMIT,
+                  ),
+                })
+              }
+              // MODEL-LEVEL NO-SUBSTITUTION ("IT HAS TO BE CLAUDE"): abort typed
+              // before content can stream if the effective model is outside the
+              // requested family. Same predicate as the legacy init handler.
+              if (
+                effectiveModel !== null &&
+                effectiveModel.length > 0 &&
+                effectiveModel !== requestedModel &&
+                !effectiveModel.startsWith(`${requestedModel}-`)
+              ) {
+                substituted.push({ requestedModel, effectiveModel })
+                abort.abort()
+              }
+            },
+          })
+          sawContent = attempt.text.trim() !== ""
+          const sub = substituted[0]
+          if (sub !== undefined) {
+            return finish(
+              failure(
+                "model_substituted",
+                `requested ${sub.requestedModel}, effective ${sub.effectiveModel}`,
+              ),
+            )
+          }
+          if (timedOut) return finish(failure("timeout", "wall clock budget reached"))
+          if (abort.signal.aborted) return finish(failure("interrupted", "turn interrupted"))
+          if (attempt.outcome === "reconnect_required") {
+            return finish(failure("account_reconnect_required", attempt.detail))
+          }
+          if (attempt.outcome === "failed") {
+            const classified = classifyClaudeSdkResultFailure(null, attempt.detail)
+            return finish(failure(classified.reason, classified.detail))
+          }
+          if (!sawContent) {
+            return finish(failure("session_failed", "the session produced no assistant text"))
+          }
+          if (attempt.sessionId !== null && attempt.sessionId.length > 0) {
+            sessionByThread.set(input.threadRef, {
+              sessionId: attempt.sessionId,
+              accountRef: account.ref,
+            })
+          }
+          input.emit({
+            kind: "turn_completed",
+            totalTokens: attempt.totalTokens,
+            accountRef: account.ref,
+            ...(attempt.usage === null ? {} : { usage: attempt.usage }),
+          })
+          return finish({
+            ok: true,
+            text: attempt.text,
+            totalTokens: attempt.totalTokens,
+            accountRef: account.ref,
+            ...(attempt.usage === null ? {} : { usage: attempt.usage }),
+          })
+        }
         const session = query({
           prompt,
           options: {

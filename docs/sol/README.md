@@ -293,6 +293,11 @@ Every new or changed Sol artifact should:
 7. preserve owner decisions, failures, contracts, and non-revival tombstones.
 8. use Backroom for fully obsolete narrative only after conclusion extraction,
    link migration, and a pushed provenance manifest.
+9. run the Sol documentation gate before you land a roadmap or proof document.
+   The offline test `scripts/check-sol-docs.test.ts` and `pnpm run check:sol-docs`
+   must be green. The pre-push `check:fast` profile does not run this gate, so
+   run it by hand before a docs-only or proof-document push. The gate checks the
+   `MASTER_ROADMAP.md` line budget, internal links, and the document manifest.
 
 The target is one small dispatch surface surrounded by indexed evidence, not a
 freshened copy of every old plan.

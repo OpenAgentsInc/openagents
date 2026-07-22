@@ -3,7 +3,7 @@
 - Class: authority
 - Date: 2026-07-10
 - Updated: 2026-07-22
-- Revision: 130
+- Revision: 131
 - Status: canonical OpenAgents implementation roadmap
 - Current queue: the
   [`open issue unified completion plan`](./2026-07-21-open-issue-unified-completion-plan.md)
@@ -17,7 +17,6 @@
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Dispatch: live bug issues or exact owner-accepted plans/work packets through
   [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md)
-- Pre-compaction source: Revision 86 at `4239689e24`
 - Issue-source index: [`issues/README.md`](./issues/README.md)
 - Documentation cleanup: SOL-DOC-01 through SOL-DOC-11 are closed, complete,
   and guard-maintained. Receipts: #8726 `6bfe97fddb`, #8727 `991f908b6b`,
@@ -35,30 +34,27 @@ proof, dated plans and analyses are evidence only.
 
 The owner-directed 2026-07-17
 [`surface-vision gap analysis`](../fable/2026-07-17-surface-vision-gap-analysis-and-roadmap.md)
-is reconciled here as a cross-surface outcome map, not copied in as a second
-queue. The three revision-3 surface ProductSpecs are now roadmap-reconciled
-vision and intent inputs:
+is reconciled here as a cross-surface outcome map, not a second queue. The three
+revision-3 surface ProductSpecs are roadmap-reconciled vision and intent inputs:
 
 - [`Desktop trust-complete workbench`](../../specs/desktop/desktop-trust-complete-workbench.product-spec.md),
 - [`Mobile any-host fleet controller`](../../specs/mobile/mobile-any-host-fleet-controller.product-spec.md), and
 - [`openagents.com trust surface`](../../specs/web/openagents-com-trust-surface.product-spec.md).
 
-This reconciliation does not turn every proposal packet in the analysis into
-dispatch authority. Product code still requires a live issue or exact accepted
-plan/work packet, current contract reconciliation, a collision-safe claim, and
-target-local proof. The analysis's `FA-*`, `REL-*`, `TR-*`, `WB-*`, `MOB-*`,
-`WEB-*`, and `XC-*` identifiers are stable roadmap crosswalks, the live issues
-and accepted ledgers below own executable work.
+This reconciliation grants no dispatch authority. Product code still requires a
+live issue or exact accepted plan/work packet, current contract reconciliation,
+a collision-safe claim, and target-local proof. The analysis's `FA-*`, `REL-*`,
+`TR-*`, `WB-*`, `MOB-*`, `WEB-*`, and `XC-*` identifiers are stable roadmap
+crosswalks, the live issues and accepted ledgers below own executable work.
 
 The flagship is the named, durable `FullAutoRun`: a user supplies an objective,
-done condition, workspace, provider profile, and cap, walks away, and later
-gets an inspectable report with typed termination and evidence. Full Auto is a
-run, not a per-message option. The dedicated rail launcher/read-only run view,
-durable mission propagation, active-thread residency, typed provider failures,
-restart recovery, and the owner-real six-test Codex/Claude batch are landed.
-Independent assurance is complete. The signed packaged release and owner
-observation in #8979 remain the active closure gate. The private dogfood
-analyzer is already part of the landed run-evidence core.
+done condition, workspace, provider profile, and cap, walks away, and later gets
+an inspectable report with typed termination and evidence. Full Auto is a run,
+not a per-message option. The dedicated rail launcher/read-only run view, durable
+mission propagation, active-thread residency, typed provider failures, restart
+recovery, the private dogfood analyzer, and the owner-real six-test Codex/Claude
+batch are landed, and independent assurance is complete. The signed packaged
+release and owner observation in #8979 remain the active closure gate.
 
 ### Reconciled implementation truth at this revision
 
@@ -73,35 +69,32 @@ analyzer is already part of the landed run-evidence core.
 
 ### Reconciled owner-controlled graph memory program
 
-The Cognee Fast Follow study supplied bounded design evidence. It did not
-supply product or runtime authority. OpenAgents adapts the useful graph-memory
-ideas through the Effect-native AI SDK and OpenAgents-owned storage and policy.
-Cognee, Python, and a third-party memory cloud are not dependencies.
+The Cognee Fast Follow study supplied bounded design evidence, not product or
+runtime authority. OpenAgents adapts the useful graph-memory ideas through the
+Effect-native AI SDK and OpenAgents-owned storage and policy. Cognee, Python,
+and a third-party memory cloud are not dependencies.
 
-The ordered program is:
+The ordered program is complete:
 
-1. #9163 consumes one exact SDK train. It is complete at `b9f01417c7`.
+1. #9163 consumes one exact SDK train, complete at `b9f01417c7`.
 2. #9164 added default-off encrypted graph storage and a receipted owner
-   lifecycle. It is complete at `94b77021ff`.
-3. #9165 added separate default-off extraction and recall controls. It is
-   complete. The host can use this memory only for a foreground turn. The host
-   cannot use it for a background turn, a delegated turn, or a Full Auto turn.
-4. #9166 compared history-only recall with graph-assisted recall. It also
-   proved inspect, export, forget, and repeated forget on the real adapter.
-   It is complete at source commit `3f19dedca1`. The quality result is
-   inconclusive because the graph holdout has partial and failed
-   rows. Owner review, release, and a public quality claim are not complete.
-   See the
+   lifecycle, complete at `94b77021ff`.
+3. #9165 added separate default-off extraction and recall controls, complete.
+   The host may use this memory only for a foreground turn, never a background,
+   delegated, or Full Auto turn.
+4. #9166 compared history-only with graph-assisted recall and proved inspect,
+   export, forget, and repeated forget on the real adapter, complete at
+   `3f19dedca1`. The quality result is inconclusive because the graph holdout
+   has partial and failed rows. Owner review, release, and a public quality
+   claim are not complete. See the
    [`evaluation receipt`](./receipts/2026-07-22-graph-memory-evaluation.md).
 
 The storage contract binds owner, project, source, graph, policy, and
 generation. It accepts only already-redacted data with consent and policy
-evidence. It validates exact SDK archive and delete contracts. A stale or
-incomplete plan cannot mutate state. An owner export stays owner-controlled and
-does not become hidden application storage.
-
-No code or fixture result enables graph memory by default. Quality evidence,
-owner review, release, and a public claim remain separate states.
+evidence, validates exact SDK archive and delete contracts, and rejects a stale
+or incomplete plan. An owner export stays owner-controlled and does not become
+hidden application storage. No code or fixture result enables graph memory by
+default.
 
 ### Canonical waves
 
@@ -142,16 +135,16 @@ and Full Auto projection slices have been reauthorized and landed.
 ## Active P1 — managed agent sandboxes, IDE placement, and Sarah broker
 
 Owner direction admits [#9023](https://github.com/OpenAgentsInc/openagents/issues/9023), the [`accepted plan`](./2026-07-19-managed-agent-sandboxes-accepted-plan.md), and [`ProductSpec`](../../specs/openagents/managed-agent-sandboxes.product-spec.md).
-The generation-fenced resource reports GCE VM or Firecracker isolation
-honestly, native GCP/workroom truth remains authority and Box is compatibility
-only. The unified completion plan activates SBX-10 and the exact IDE-13
-movement proof. Cross-machine Full Auto stays separately gated. The native broker
-serves closed Sarah tools, Desktop endpoints, and bounded mobile and
-authenticated-web routes over one safe schema with exact-byte outboxes, and
-only durable native outcomes complete actions. SBX-09's producer-run staging
-matrix proves live GCP, cleanup, cost, rollback, Desktop, and Sarah journeys.
-SBX-09 and epic #9023 are complete. SBX-10 remains a separate Phase 2 leaf.
-Production and public claims stay separate from its implementation.
+The generation-fenced resource reports GCE VM or Firecracker isolation honestly,
+native GCP/workroom truth remains authority and Box is compatibility only. The
+unified completion plan activates SBX-10 and the exact IDE-13 movement proof,
+and cross-machine Full Auto stays separately gated. The native broker serves
+closed Sarah tools, Desktop endpoints, and bounded mobile and authenticated-web
+routes over one safe schema with exact-byte outboxes, and only durable native
+outcomes complete actions. SBX-09's producer-run staging matrix proved live GCP,
+cleanup, cost, rollback, Desktop, and Sarah journeys, so SBX-09 and epic #9023
+are complete. SBX-10 remains a separate Phase 2 leaf, and production and public
+claims stay separate from its implementation.
 
 ## Active expansion — FULL HARVEST of the Amp Fast Follow program
 
@@ -166,92 +159,83 @@ Harvest is composed under the Full Auto priority above: shared thread,
 routing, review, placement, and remote-control work should satisfy one bounded
 contract once rather than fork into an Amp-branded product path.
 
-The complete pinned T3 Desktop UI inventory is separately admitted through
-its [`accepted plan`](./2026-07-17-t3-code-ui-full-harvest-accepted-plan.md).
-T3UI-01 through T3UI-12 are now code-landed/fixture-proven through the exact
-component census, mounted visual catalog, responsive/accessibility budgets,
-and unsigned-development package, this is not signed-release evidence. The
-latest aggregate receipt is
-[`2026-07-17-t3ui-12-census-packaged-evidence-receipt.md`](../fastfollow/receipts/2026-07-17-t3ui-12-census-packaged-evidence-receipt.md).
+The complete pinned T3 Desktop UI inventory is separately admitted through its
+[`accepted plan`](./2026-07-17-t3-code-ui-full-harvest-accepted-plan.md). T3UI-01
+through T3UI-12 are code-landed/fixture-proven through the exact component
+census, mounted visual catalog, responsive/accessibility budgets, and
+unsigned-development package, which is not signed-release evidence, per the
+[`aggregate receipt`](../fastfollow/receipts/2026-07-17-t3ui-12-census-packaged-evidence-receipt.md).
 The complete T3 mobile workbench is admitted through the
 [`mobile parity ledger`](./2026-07-17-t3-code-mobile-full-parity-accepted-plan.md),
-its exact current packet, not a cached packet name here, owns the next mobile
-mutation through T3M-F2.
+whose exact current packet, not a cached name here, owns the next mobile mutation
+through T3M-F2.
 
 ## Completed priority — ProductSpec-native Codex Workroom MVP
 
 The first deployable OpenAgents product is the signed, local-first OpenAgents
 Desktop Codex Workroom defined by the exact
-[`ProductSpec`](../mvp/openagents-codex-workroom-mvp.product-spec.md). Its
-evidence and product-shape analysis live in the adjacent
-[`audit`](../mvp/2026-07-13-openagents-codex-workroom-mvp-audit.md), the
-[`MVP README`](../mvp/README.md) is the entry point. [MVP-01
+[`ProductSpec`](../mvp/openagents-codex-workroom-mvp.product-spec.md), with its
+evidence in the adjacent
+[`audit`](../mvp/2026-07-13-openagents-codex-workroom-mvp-audit.md) and the
+[`MVP README`](../mvp/README.md) entry point. [MVP-01
 #8756](https://github.com/OpenAgentsInc/openagents/issues/8756) closed completed
-after the exact RC9 evidence and installed-journey owner acceptance recorded in
-the [`closure receipt`](../mvp/2026-07-13-openagents-codex-workroom-mvp-closure-receipt.md).
-That MVP lane remains completed, the separately admitted Fast Follow program
-above is now the active Sol product-expansion lane.
+after exact RC9 evidence and installed-journey owner acceptance in the
+[`closure receipt`](../mvp/2026-07-13-openagents-codex-workroom-mvp-closure-receipt.md).
+The separately admitted Fast Follow program above is now the active Sol
+product-expansion lane.
 
 Codex remains the agent engine. OpenAgents owns the durable workroom around it:
-guided ProductSpec authoring and validation, accepted criterion-addressed
-plans, systematic agent work packets, typed causal activity and blockers,
-complete child-agent topology, bounded repository/Git review, and honest
-recovery in a signed app.
+guided ProductSpec authoring and validation, accepted criterion-addressed plans,
+systematic agent work packets, typed causal activity and blockers, complete
+child-agent topology, bounded repository/Git review, and honest recovery in a
+signed app.
 
 This MVP was the only product-expansion lane and is now the accepted completed
-baseline. The broader Codex/Claude cutover,
-mobile and Khala Sync expansion, Fleet, managed targets, portable sessions,
-host movement, voice, and full OpenCode-parity issues are closed `not planned`,
-not deferred follow-on queues. Any future revival requires a new bounded owner
-decision and issue, MVP completion does not reopen them.
-
-The owner subsequently activated the bounded #8770 AssuranceSpec/Observer/
-Observatory proof program and accepted all independently verified MVP packets.
-That proof program does not reopen mobile, Fleet, provider, portability, voice,
-or parity backlog and does not create a successor Desktop product-expansion
-lane.
+baseline. The broader Codex/Claude cutover, mobile and Khala Sync expansion,
+Fleet, managed targets, portable sessions, host movement, voice, and full
+OpenCode-parity issues are closed `not planned`, not deferred queues. Any
+revival requires a new bounded owner decision and issue. The owner then
+activated the bounded #8770 AssuranceSpec/Observer/Observatory proof program and
+accepted all independently verified MVP packets. That program reopens no mobile,
+Fleet, provider, portability, voice, or parity backlog and creates no successor
+Desktop product-expansion lane.
 
 The triage changed issue state, not proof: no issue body or acceptance history
-was rewritten, and no unproved outcome became accepted. It does not publish a
-product promise or update a promise/behavior/Eval registry. Security, privacy,
+was rewritten, no unproved outcome became accepted, and no product promise or
+promise/behavior/Eval registry update was published. Security, privacy,
 data-loss, accessibility, production-outage, and supported compatibility repairs
-remain admissible as separately bounded defects. Work claimed only under a
-closed lane stops, code already landed on `main` remains dormant substrate.
+remain admissible as separately bounded defects, and code already landed on
+`main` remains dormant substrate.
 
 ## Completed successor proof program — AssuranceSpec and Observatory
 
-The owner explicitly directed the repository to finish the AssuranceSpec
-program and put the accepted MVP through every assurance gate. The live
-[`MVP AssuranceSpec`](../mvp/openagents-codex-workroom-mvp.assurance-spec.md)
-is now a reviewed and admitted revision bound to the exact revision-6 MVP
-ProductSpec. Its committed
+The owner directed the repository to finish the AssuranceSpec program and put
+the accepted MVP through every assurance gate. The live
+[`MVP AssuranceSpec`](../mvp/openagents-codex-workroom-mvp.assurance-spec.md) is
+an admitted revision bound to the exact revision-6 MVP ProductSpec. Its committed
 [`Evidence Index`](../../assurance/openagents-desktop-mvp.evidence-index.json)
-keeps 18 candidate receipts, 18 falsifier receipts, and 18 sensitivity receipts
-separate. All 18 obligations are mapped, executable, `CONFIRMED`, independently
-reviewed, current, stable, and accepted, no blended score exists.
-
-The exact `AO-CW-AC-04-01` receipt traverses the immutable Desktop bridge before
-owner disposition. The owner accepted the installed ProductSpec-native journey,
-its read-only review boundary, and every independently verified MVP packet.
-`openagents.mutation.v1` proves strong-oracle kills and weak-oracle survivors
-without mutation-score theater or added authority. The owned-runner starter kit
-installs both exact package tarballs in a clean offline checkout and keeps
-ledger output informational. Repository policy still forbids GitHub Actions.
+keeps 18 candidate, 18 falsifier, and 18 sensitivity receipts separate, and all
+18 obligations are mapped, executable, `CONFIRMED`, independently reviewed,
+current, stable, and accepted, with no blended score. The exact
+`AO-CW-AC-04-01` receipt traverses the immutable Desktop bridge before owner
+disposition, the owner accepted the installed ProductSpec-native journey and its
+read-only review boundary, and `openagents.mutation.v1` proves strong-oracle
+kills and weak-oracle survivors without mutation-score theater. Repository policy
+still forbids GitHub Actions.
 
 The public [Observatory trace](https://openagents.com/observer/traces/openagents-desktop-codex-workroom-mvp)
 is deployed from `main` and presents mapped, executable, observed, and accepted
-as four independent criterion facts. It reads only reviewed public-safe refs
-and grants no merge, deploy, spend, settlement, or promise authority.
+as four independent criterion facts. It reads only reviewed public-safe refs and
+grants no merge, deploy, spend, settlement, or promise authority.
 
-The distribution gate is complete. `@openagentsinc/product-spec@0.1.0` was
-published first and `@openagentsinc/assurance-spec@0.1.1` second, both public
-with `latest` bound to those versions. A no-auth, fresh-home, fresh-cache consumer ran
-the registry `bunx` structural validator and owned runner successfully. The
-immutable
+The distribution gate is complete. `@openagentsinc/product-spec@0.1.0` and
+`@openagentsinc/assurance-spec@0.1.1` are public with `latest` bound to those
+versions, and a no-auth, fresh-home, fresh-cache consumer ran the registry
+`bunx` structural validator and owned runner successfully. The immutable
 [`registry receipt`](../../assurance/assurance-spec-public-registry-receipt.json)
 binds exact tarball hashes, npm integrity fields, publish-time parity tests, and
-the admitted 18-obligation MVP evidence index. #8767 and #8770 are closed,
-there is no remaining AssuranceSpec program queue.
+the admitted 18-obligation MVP evidence index. #8767 and #8770 are closed, and no
+AssuranceSpec program queue remains.
 
 ## Owner decisions
 
@@ -334,15 +318,13 @@ ProductSpec revision/digest -> user-accepted plan -> criterion work packets
 | Evidence   | Criterion-linked verification, exact or explicitly unmeasured usage, review, and receipts |
 | Continuity | Host-owned durable admission, cursors, gap repair, restart recovery, and diagnostics      |
 
-Desktop is the deep local workroom and Full Auto host. Mobile has the exact T3
-parity and Full Auto first-screen lanes named above, it remains a client of
-typed host/Sync authority, never a phone-local execution clone. Web hosts the
-required public, API, auth, promise, receipt, health, legal, operations, and
-trust surfaces, new routes still need bounded admission. Retained product
-routes are `/`, `/forum`, and `/promises`, admitted infrastructure/trust
-exceptions include privacy/terms, auth callbacks, APIs, assets, health,
-manifests, download, observer/trace, and receipt/promise-integrity routes.
-`/sarah/*` remains a tombstone.
+Mobile has the exact T3 parity and Full Auto first-screen lanes named above and
+remains a client of typed host/Sync authority, never a phone-local execution
+clone. New web routes still need bounded admission. Retained product routes are
+`/`, `/forum`, and `/promises`, admitted infrastructure/trust exceptions include
+privacy/terms, auth callbacks, APIs, assets, health, manifests, download,
+observer/trace, and receipt/promise-integrity routes. `/sarah/*` remains a
+tombstone.
 
 ## Non-goals and non-revival boundary
 
@@ -558,36 +540,28 @@ Snapshot: the schema-versioned
 GitHub before dispatch and age-checked by the offline documentation guard.
 
 - Full Auto's durable core (#8969-#8975), dedicated run UX, routing and
-  guardrails (#8987/#8991), and the owner-real six-test Codex/Claude matrix
-  with same-pass rotation (#8976/#9000-#9002) are code-landed and
-  receipt-proven at `3123d926a3`. Independent assurance #8978 is complete.
-  Signed packaged admission #8979 remains open, no public AFK-reliability claim
-  follows from the landed core.
+  guardrails (#8987/#8991), and the owner-real six-test Codex/Claude matrix with
+  same-pass rotation (#8976/#9000-#9002) are code-landed and receipt-proven at
+  `3123d926a3`, independent assurance #8978 is complete, and signed packaged
+  admission #8979 remains open with no public AFK-reliability claim.
 - The mobile projection/first-screen slice (#8981/#8982) is code-landed and
-  fixture-proven, #8980 is closed with fixture and iOS Simulator observation
-  of the parent journey. This proves neither remote run control, physical-
-  device acceptance, nor general host movement.
-- The current Desktop distribution chain has closed its signed selection,
-  host selection/rollback, feed, resolver, and `/download` integration rungs.
-  The native platform builds/signatures, complete matrix, final promotion, and
-  one-command release remain open under #8913.
-- The T3 Desktop ledger has reached its exact component census and local
-  package. The T3 mobile ledger has completed the bounded Files workbench,
-  authenticated paired-environment client, and exact-scope Changes/diff/review
-  writeback in application code, then advances to E1. Neither a local package
-  nor mobile fixture is signed-distribution or physical-device proof, live
-  endpoint provisioning, registration/pairing/health, and installed writeback
-  evidence remain F1/F2.
-- The Amp Fast Follow stream remains active under its accepted packet ledger.
-  Its current claim is the operational source of truth, this master records
-  the composition law and avoids racing a packet number that can change many
-  times per day.
-
+  fixture-proven, and #8980 is closed with fixture plus iOS Simulator parent-
+  journey observation, which proves neither remote run control, physical-device
+  acceptance, nor general host movement.
+- The Desktop distribution chain closed its signed selection, host selection/
+  rollback, feed, resolver, and `/download` rungs, native platform
+  builds/signatures, complete matrix, promotion, and one-command release remain
+  open under #8913.
+- The T3 Desktop and T3 mobile ledgers stand at the status recorded in the Full
+  Harvest section above, neither a local package nor mobile fixture is
+  signed-distribution or physical-device proof, and live endpoint provisioning,
+  registration/pairing/health, and installed writeback evidence remain F1/F2.
+- The Amp Fast Follow stream remains active under its accepted packet ledger,
+  whose current claim is the operational source of truth.
 - Earlier CUT, Fleet, Sync, restart, audio, and PORT receipts retain only their
-  indexed proof rungs. Closed `not planned` successors remain tombstones, they
-  neither reopen through this surface reconciliation nor manufacture Full Auto,
-  mobile, provider, voice, or portable-host claims. Retained Pylon orchestration
-  remains protected load-bearing substrate and needs new authority to change.
+  indexed proof rungs, closed `not planned` successors remain tombstones, and
+  retained Pylon orchestration stays protected load-bearing substrate that needs
+  new authority to change.
 
 ### Canonical open product issue projection
 
@@ -782,39 +756,29 @@ that cites it.
 
 ## Completion and reconciliation
 
-Every closeout reports:
-
-- landed commit and deployed/distributed version where applicable,
-- exact tests, models, smokes, live and owner receipts,
-- acceptance items and their narrowest proof rung,
-- authority/security boundaries exercised,
-- legacy/duplicate path deleted or explicitly retained with a gate,
-- residual could-not-prove list and owner,
-- next dependency-ready issue.
+Every closeout reports the landed commit and deployed/distributed version where
+applicable, exact tests, models, smokes, live and owner receipts, acceptance
+items and their narrowest proof rung, authority/security boundaries exercised,
+each legacy/duplicate path deleted or explicitly retained with a gate, the
+residual could-not-prove list and owner, and the next dependency-ready issue.
 
 Reconcile this master and live issue state/comments after material landings,
-owner priority changes, issue disposition, or challenge decisions. Update execution,
-cutover, and operating docs on critical-path change and at least weekly during
-the P0 burn. Update subsystem/authority/Effect Native contracts on boundary
-change and at least monthly while cited. Dated analyses and receipts remain
-pinned evidence, do not silently freshen them into current queues. Remove
-superseded current-state prose instead of stacking amendments.
+owner priority changes, issue disposition, or challenge decisions. Update
+execution, cutover, and operating docs on critical-path change and at least
+weekly during the P0 burn, and update subsystem/authority/Effect Native
+contracts on boundary change and at least monthly while cited. Dated analyses and
+receipts remain pinned evidence, do not silently freshen them into current
+queues. Remove superseded current-state prose instead of stacking amendments.
 
 ## Historical detail index
 
-The Revision 86 pre-compaction body remains in Git at `4239689e24`. Dedicated
-evidence remains discoverable here:
+The Revision 86 pre-compaction body remains in Git at `4239689e24`. Evidence
+already linked above stays discoverable there. Further evidence:
 
-- [`first Codex Workroom MVP package`](../mvp/README.md)
-- [`2026-07-17 surface-vision gap analysis and track crosswalk`](../fable/2026-07-17-surface-vision-gap-analysis-and-roadmap.md)
 - [`corrected Full Auto implementation audit`](../fable/2026-07-17-full-auto-implementation-audit.md)
 - [`Full Auto ProductSpec rev 10`](../../specs/desktop/full-auto.product-spec.md)
-- [`T3 Desktop full-harvest packet ledger`](./2026-07-17-t3-code-ui-full-harvest-accepted-plan.md)
-- [`T3 mobile full-parity packet ledger`](./2026-07-17-t3-code-mobile-full-parity-accepted-plan.md)
-- [`documentation cleanup plan`](./2026-07-12-documentation-cleanup-audit-and-retirement-plan.md)
 - [`greenfield clients and Sarah-removal decision`](./decisions/2026-07-10-greenfield-clients-and-sarah-removal.md)
 - [`July 9 Backroom archive manifest`](./2026-07-12-july9-doctrine-extraction-and-backroom-manifest.md)
-- [`checked-in issue sources`](./issues/README.md)
 - [`receipt and evidence index`](./receipts/README.md)
 - [`binding CUT dependencies and historical status`](./2026-07-11-openagents-coding-cutover-issue-plan.md)
 - [`historical CUT-27 readiness audit`](./2026-07-12-cut27-cutover-readiness-audit.md)

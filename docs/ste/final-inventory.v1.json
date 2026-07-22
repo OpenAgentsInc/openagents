@@ -14941,6 +14941,20 @@
       }
     },
     {
+      "path": "docs/ai-sdk/2026-07-22-rlm-full-auto-transcript-roadmap-audit.md",
+      "sha256": "8490c7b83c4e174a96ee234527b2e092fde7ab0c5b4e4db3bfc776e3b0ac67e8",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "ste_status": "source-data",
+        "ste_reviewer": null,
+        "ste_reviewed_at": null,
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null
+      }
+    },
+    {
       "path": "docs/ai-sdk/README.md",
       "sha256": "a6766db14d604a215cac06a4788b4411abd2e4e42a42cfa892f5b8a9d367ddb6",
       "reason": "Final review of a converted document",
@@ -15009,6 +15023,28 @@
     {
       "path": "docs/analysis/2026-07-22-conversation-coherence-programmatic-validation.md",
       "sha256": "d68a79c68a980d9c01701600a2e6a28f958ff037596ed5863c483b635ccea55b",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/analysis/2026-07-22-full-auto-autonomy-decision-quality-rubric.md",
+      "sha256": "36750ab12d621156c47737c04b20a79445567c7ca75601d73a44b13df767fbdc",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -22019,6 +22055,18 @@
         "ste_status": "inspected",
         "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
         "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/desktop/2026-07-22-electron-auto-update-status-audit.md",
+      "sha256": "042aeb7bc373da211394ba459c1ba379a22933148ba3c6c1c85419cc45da9fdf",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null,
+        "ste_status": "source-data"
       }
     },
     {
@@ -34611,7 +34659,7 @@
     },
     {
       "path": "docs/promises/registry.md",
-      "sha256": "25485566214d8da3b8651cb59441afd01a533e30c02e848c4767bf932c87c9fd",
+      "sha256": "00fc2c40fa9a3f5576ae628f694999f0ab83c3961060df8916e8d9fcb6898dbc",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -40091,7 +40139,7 @@
     },
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
-      "sha256": "0e6a80971b048a37678cb82a9addabe4bfcbadfe1946de3a6562a48ab80bb4b4",
+      "sha256": "8540b4edda399fe066d0ec9cb8a25c721c6526c37e534f7983a6b13633d5a01f",
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
@@ -41125,7 +41173,7 @@
     },
     {
       "path": "docs/sol/2026-07-18-atif-thread-model-audit.md",
-      "sha256": "8301ac800ceeccbb59dbf847090776637e0c189bb97c4d6a968d47a06d78246f",
+      "sha256": "b688c91b86e28b9200c69670d8db141106868c3483f8c5e4e61516dcb3255708",
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
@@ -41315,7 +41363,7 @@
     },
     {
       "path": "docs/sol/2026-07-18-vercel-ai-sdk-source-derived-effect-conversion-audit.md",
-      "sha256": "6b35c6e64725e3887d488c80fa82c0b44c77a66f13b0833ff7509b67a42b0c1f",
+      "sha256": "41c55b576396489e3d216f33a87b48f0571cb9fd5ca7a5ad704923083dbac16f",
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
@@ -41383,7 +41431,7 @@
     },
     {
       "path": "docs/sol/2026-07-20-apple-fm-router-to-full-agent-system-plan.md",
-      "sha256": "24e883e89003a976775ae5483b2ff08c1e3c947a4d6f8983fb02c922aa6dab4e",
+      "sha256": "b03560a088a1770c7ab669ab934fc16bd836750b2dbbb36802634d2f8b95bdab",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
@@ -41476,7 +41524,7 @@
     },
     {
       "path": "docs/sol/MASTER_ROADMAP.md",
-      "sha256": "a23c6bbdb5fc2cec3f8c83066b7b00dc603d878d6cfbdfa105884d98d6d06d5b",
+      "sha256": "6cf2200f70f32c9668b2d5342a7089d26b8801014b72709eac37e428d07523d6",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -41516,7 +41564,7 @@
     },
     {
       "path": "docs/sol/README.md",
-      "sha256": "10cbe50ec59b324d8520d3c0568f6010caaa8b63debb79579a5f1c41bbbaf7dd",
+      "sha256": "e85fc91a2f3cd1fd26905796b696b36dc8bf8c459ab59966e4a906078d05158c",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -42276,6 +42324,18 @@
       }
     },
     {
+      "path": "docs/sol/receipts/2026-07-22-fa-rel-01-admission.md",
+      "sha256": "96ac785385e7b5e03a9cdfbe6bb1aed3efd47fafec23ccb408a09a6e95f2b3e0",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null,
+        "ste_status": "source-data"
+      }
+    },
+    {
       "path": "docs/sol/receipts/2026-07-22-graph-memory-evaluation.md",
       "sha256": "0690001f0342c429d626f92f53c74e0011ff6b42fa0d2b2dcea42664edee213c",
       "reason": "Immutable historical or evidence source data",
@@ -42289,7 +42349,7 @@
     },
     {
       "path": "docs/sol/receipts/README.md",
-      "sha256": "9fb159a921d85f97e5817dbc25d4ea36a9174f0de25247d21cb8922291b4874d",
+      "sha256": "8b360770c1fb76349c1d8183c9b1c326e6bcd0de6b925797fa8b1f7ba5b6fa3e",
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",

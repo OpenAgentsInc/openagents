@@ -131,7 +131,7 @@ The earlier
 [`Background-Agents Roadmap`](../fable/ROADMAP_BACKGROUND_AGENTS.md) records
 the code-landed substrate, and current source confirms it:
 
-- [`packages/agent-runtime-schema/src/index.ts`](../../packages/agent-runtime-schema/src/index.ts)
+- [`@openagentsinc/agent-runtime-schema`](https://www.npmjs.com/package/@openagentsinc/agent-runtime-schema)
   defines `openagents.agent_definition.v1`, cron/webhook/inbox/manual triggers,
   lane, budget, escalation, owner scope, and deny-by-default tool policy;
 - [`agent-definition-trigger-store.ts`](../../apps/openagents.com/workers/api/src/agent-definition-trigger-store.ts)
