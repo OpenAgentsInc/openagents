@@ -724,7 +724,7 @@ fn authorize_private_preview_at(
             workspace_root_ref: "workspace.managed-sandbox".to_string(),
             max_file_bytes: 1_048_576,
             max_artifact_bytes: 1_048_576,
-            max_output_bytes: 1_048_576,
+            max_output_bytes: 256 * 1024,
             max_duration_millis: 30_000,
             max_cpu_millis: 30_000,
             max_processes: 1,
@@ -4156,6 +4156,7 @@ mod tests {
         assert_eq!(authorized.capability_ref, active["capabilityRef"]);
         assert_eq!(authorized.actor_ref, "audience-ref://owner/device-1");
         assert_eq!(authorized.path.as_deref(), Some("workspace/preview.html"));
+        assert_eq!(authorized.limits.max_output_bytes, 256 * 1024);
         assert_eq!(authorized.limits.max_network_bytes, 0);
         assert_eq!(
             authorized.limits.network_policy_ref,
