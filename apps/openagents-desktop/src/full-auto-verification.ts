@@ -129,6 +129,24 @@ export const deriveFullAutoVerificationSpec = (
   return FULL_AUTO_VERIFICATION_SPEC_NONE
 }
 
+/**
+ * The structured marker a provider turn emits to REQUEST host verification of
+ * the done condition. It is a self-report of belief, never a completion: the
+ * host still runs {@link runFullAutoVerification} and only a PASSED verdict
+ * admits completion. Recognized shapes (case-insensitive keyword only):
+ *  - a line:  FULL-AUTO-COMPLETE   (optionally list/quote prefixed)
+ *  - a fence: ```full-auto-complete```
+ * Deterministic bounded detection -- never an NLP guess that a turn "sounds
+ * done". Absent the marker, the host does not run verification for the turn
+ * (so a normal continuation never pays for a verification command).
+ */
+export const detectFullAutoSelfReportedCompletion = (assistantText: string): boolean => {
+  if (/```full-auto-complete[ \t]*\r?\n?[\s\S]*?```/i.test(assistantText)) return true
+  return assistantText
+    .split(/\r?\n/)
+    .some((line) => /^[ \t>*-]*full-auto-complete\b/i.test(line.trim()))
+}
+
 // -----------------------------------------------------------------------
 // Execution seam.
 // -----------------------------------------------------------------------

@@ -376,13 +376,17 @@ const gradeGroundedness = (
   return notMeasured("no_completed_turns_and_no_refs", "no completed turn and no refs: grounding was never exercised")
 }
 
-/** D5: mechanical ceiling 1 -- the run registry's objective-source literals
- * are owner/caller/legacy only. No typed "system_selected" source exists, so
- * a HANDS-1 selection outcome cannot be attributed on the run record yet
- * (record-shape gap; see `FULL_AUTO_GRADING_RECORD_SHAPE_GAPS`). */
+/** D5: a HANDS-1 `system_selected` objective (the host PROPOSED the work and
+ * it was endorsed to start) scores 3 with mechanical ceiling 3 -- score 4 would
+ * need durable evidence the owner endorsed a ranked MAJORITY, which the single
+ * run record does not carry. An owner-supplied objective stays at ceiling 1
+ * (the system did not pick the work, so it cannot score higher). */
 const gradeSelectivity = (run: FullAutoRun | null): DimensionScore => {
   if (run === null) {
     return notMeasured("run_record_unavailable", "no run-registry record was joined, so the objective source is unknown")
+  }
+  if (run.objectiveSource === "system_selected") {
+    return measured(3, 3, "system_selected objective: the host proposed this work from owner-priority selection and it was endorsed to start (HANDS-1)")
   }
   if (run.objectiveSource === "legacy_migration") {
     return measured(1, 1, "legacy generic objective: the system worked an unranked useful-thing objective")
@@ -504,7 +508,11 @@ export const gradeFullAutoRun = (input: GradeFullAutoRunInput): FullAutoRunGrade
   const now = input.now ?? (() => new Date())
   const run = input.run ?? null
   const report = input.report
-  const analysis = input.analysis ?? analyzeFullAutoRunReport(report, now)
+  // HANDS-4 (#9175): feed the run record's durable per-turn action taxonomy into
+  // the analyzer so the value-aware `low_value_churn` finding (which D2/D7 read)
+  // is derived from real action signatures, not only a caller-supplied signal.
+  const analysis =
+    input.analysis ?? analyzeFullAutoRunReport(report, now, run?.autonomy?.turnActions)
 
   const complexityAssessment = runReportComplexity(report)
   const findingCounts: Record<string, number> = {}
@@ -599,9 +607,8 @@ const decodeFullAutoGradingBaseline = Schema.decodeUnknownSync(FullAutoGradingBa
 /** The record-shape gaps found while building this grader. Kept as data on
  * the artifact so every baseline names what it could not measure and why. */
 export const FULL_AUTO_GRADING_RECORD_SHAPE_GAPS: ReadonlyArray<string> = [
-  "objectiveSource has no system_selected literal, so a HANDS-1 selected objective cannot be attributed (D5 ceiling 1)",
   "run reports carry no tool-call/file-change/sub-agent counts, so the coherence-screen-v2 complexity tier is a lower bound and the coherence screen itself cannot run (D1/D2)",
-  "run reports carry no per-turn action-taxonomy rows, so churn detection only runs when a caller supplies actions (D2/D7)",
+  "churn (D2/D7) now derives from the joined run record's per-turn action taxonomy; a report graded WITHOUT a joined run record still has no action rows",
   "no current writer populates report usage totals, so cost per verified outcome stays not_measured on real runs until usage ingestion lands",
 ]
 

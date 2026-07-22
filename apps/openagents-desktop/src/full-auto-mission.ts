@@ -65,7 +65,7 @@ export const FullAutoMissionPacketSchema = Schema.Struct({
   threadRef: Ref,
   objective: Schema.String,
   doneCondition: Schema.String,
-  objectiveSource: Schema.Literals(["user", "control_caller", "legacy_migration"]),
+  objectiveSource: Schema.Literals(["user", "control_caller", "legacy_migration", "system_selected"]),
   workspaceRef: Schema.NullOr(Schema.String),
   currentLane: LaneRef,
   accountRef: Schema.NullOr(Ref),
@@ -178,8 +178,22 @@ export const renderFullAutoMissionPrompt = (packet: FullAutoMissionPacket): stri
     packet.doneCondition,
     // HANDS-3 (#9174): the plan brief section appears ONLY for an
     // autonomy-enabled run carrying a plan; a non-autonomy prompt is
-    // byte-for-byte unchanged.
-    ...(packet.planBrief === undefined ? [] : ["", "PERSISTENT PLAN (host-tracked)", packet.planBrief.text]),
+    // byte-for-byte unchanged. HANDS-2/3/4 (#9173/#9174/#9175): the same
+    // autonomy-only section tells the provider how to report structured plan
+    // progress and a done-condition self-report the host will VERIFY (never
+    // trust) -- so host-side plan advancement, churn reset, and verified
+    // completion have a bounded, machine-readable signal.
+    ...(packet.planBrief === undefined
+      ? []
+      : [
+          "",
+          "PERSISTENT PLAN (host-tracked)",
+          packet.planBrief.text,
+          "",
+          "STRUCTURED PROGRESS REPORTING (host-parsed)",
+          "When you finish a plan step, emit a line: STEP-DONE: <stepRef>. When you start one, emit: STEP-START: <stepRef>.",
+          "When (and only when) you believe the DONE CONDITION is fully met, emit a line: FULL-AUTO-COMPLETE. This is a request for the host to run the named verification; it is self-reported evidence only and never completes the run by itself.",
+        ]),
   ].join("\n");
 
 export const appendFullAutoQueuedInstruction = (mission: string, instruction: string): string =>

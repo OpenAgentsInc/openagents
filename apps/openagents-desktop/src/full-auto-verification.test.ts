@@ -3,6 +3,7 @@ import { describe, expect, test } from "vite-plus/test"
 import {
   admitFullAutoCompletion,
   deriveFullAutoVerificationSpec,
+  detectFullAutoSelfReportedCompletion,
   fullAutoCompletionBlockReason,
   runFullAutoVerification,
   type FullAutoVerificationExec,
@@ -102,5 +103,18 @@ describe("HANDS-2 host verification", () => {
       now: at,
     })
     expect(seenCwd).toBe("/granted/workspace")
+  })
+})
+
+describe("HANDS-2 self-reported completion detection (#9173)", () => {
+  test("detects a FULL-AUTO-COMPLETE line and a fenced marker, case-insensitively", () => {
+    expect(detectFullAutoSelfReportedCompletion("work done.\nFULL-AUTO-COMPLETE")).toBe(true)
+    expect(detectFullAutoSelfReportedCompletion("- full-auto-complete: the done condition is met")).toBe(true)
+    expect(detectFullAutoSelfReportedCompletion("```full-auto-complete\ndone\n```")).toBe(true)
+  })
+
+  test("does not fire on ordinary prose that merely sounds done (no NLP guess)", () => {
+    expect(detectFullAutoSelfReportedCompletion("I completed the full auto task and it is all done now.")).toBe(false)
+    expect(detectFullAutoSelfReportedCompletion("Still working; not complete yet.")).toBe(false)
   })
 })

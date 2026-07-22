@@ -74,6 +74,38 @@ export type FullAutoTurnActionSignals = Readonly<{
   at: string
 }>
 
+export const FULL_AUTO_CHANGED_PATHS_MAX = 50
+export const FULL_AUTO_CHANGED_PATH_LIMIT = 256
+
+/**
+ * HANDS-4 (#9175): extract the bounded set of workspace-relative paths a turn
+ * reports it changed, from STRUCTURED markers only (bounded-field parsing, not
+ * NLP). Recognized shapes:
+ *  - a line:  CHANGED: <path>  or  CHANGED-PATH: <path>
+ *  - a fence: ```changed-paths\n<path>\n<path>\n```
+ * Whitespace-only or over-long entries are ignored; the result is de-duplicated
+ * and bounded. Feeding these into the action signature makes churn detection
+ * changed-paths aware: two `completed` turns that touch DIFFERENT files get
+ * distinct signatures and never look like churn, while repeated no-op turns
+ * (no changed paths, same output) still collapse to one churning signature.
+ */
+export const parseFullAutoChangedPaths = (text: string): ReadonlyArray<string> => {
+  const paths: Array<string> = []
+  const push = (raw: string): void => {
+    const value = raw.trim()
+    if (value.length > 0 && value.length <= FULL_AUTO_CHANGED_PATH_LIMIT && !/\s/.test(value)) paths.push(value)
+  }
+  const fenced = /```changed-paths[ \t]*\r?\n([\s\S]*?)```/gi
+  for (let match = fenced.exec(text); match !== null; match = fenced.exec(text)) {
+    for (const line of (match[1] ?? "").split(/\r?\n/)) push(line)
+  }
+  for (const rawLine of text.split(/\r?\n/)) {
+    const match = /^[ \t>*-]*changed(?:-path)?:[ \t]*(.+?)[ \t]*$/i.exec(rawLine)
+    if (match?.[1] !== undefined) push(match[1])
+  }
+  return [...new Set(paths)].slice(0, FULL_AUTO_CHANGED_PATHS_MAX)
+}
+
 /** Deterministic classification from structured signals -- never NLP over
  * provider prose. Precedence: verify > edit > recon > setup/other. */
 export const classifyFullAutoTurnActionKind = (signals: FullAutoTurnActionSignals): FullAutoTurnActionKind => {

@@ -11,6 +11,7 @@ import path from "node:path"
 
 import { Schema } from "effect"
 
+import { FullAutoTurnActionSchema, type FullAutoTurnAction } from "./full-auto-churn.ts"
 import { FullAutoPlanSchema, type FullAutoPlan } from "./full-auto-plan.ts"
 import { FULL_AUTO_MAX_CONTINUATIONS } from "./full-auto-reconcile.ts"
 import { FullAutoProfileSchema, type FullAutoProfile, type FullAutoRecord } from "./full-auto-registry.ts"
@@ -191,8 +192,20 @@ export const FullAutoRunActorSchema = Schema.Literals([
 ])
 export type FullAutoRunActor = typeof FullAutoRunActorSchema.Type
 
-/** FA-AC-38: objective provenance -- never invented, always attributed. */
-export const FullAutoRunObjectiveSourceSchema = Schema.Literals(["user", "control_caller", "legacy_migration"])
+/**
+ * FA-AC-38: objective provenance -- never invented, always attributed.
+ * HANDS-1 (#9172): `system_selected` marks an objective the host PROPOSED from
+ * owner-priority objective selection and the owner then endorsed to start. It
+ * is the durable provenance the grading lane (#9182) reads to credit
+ * self-selected work (D5), and it never implies auto-execution -- an owner
+ * endorsement + explicit Start still gates every system-proposed run.
+ */
+export const FullAutoRunObjectiveSourceSchema = Schema.Literals([
+  "user",
+  "control_caller",
+  "legacy_migration",
+  "system_selected",
+])
 export type FullAutoRunObjectiveSource = typeof FullAutoRunObjectiveSourceSchema.Type
 
 const Ref = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(180))
@@ -247,12 +260,20 @@ export type FullAutoRunTransitionRecord = typeof FullAutoRunTransitionRecordSche
  *  - `verification` (HANDS-2): the typed host-runnable done-condition check.
  *  - `lastVerification` (HANDS-2): the most recent host verdict, kept SEPARATE
  *    from the provider self-report so "provider done" never becomes "verified".
+ *  - `turnActions` (HANDS-4 #9175): the durable per-turn action taxonomy the
+ *    churn detector and the grading lane (#9182 D2/D7) read, so churn works
+ *    without a caller-supplied signal and grading no longer needs external
+ *    action rows. Bounded, most-recent-last.
  */
+export const FULL_AUTO_RUN_TURN_ACTION_LIMIT = 200
 export const FullAutoRunAutonomySchema = Schema.Struct({
   enabled: Schema.Boolean,
   plan: Schema.optional(FullAutoPlanSchema),
   verification: Schema.optional(FullAutoVerificationSpecSchema),
   lastVerification: Schema.optional(FullAutoVerificationResultSchema),
+  turnActions: Schema.optional(
+    Schema.Array(FullAutoTurnActionSchema).check(Schema.isMaxLength(FULL_AUTO_RUN_TURN_ACTION_LIMIT)),
+  ),
 })
 export type FullAutoRunAutonomy = typeof FullAutoRunAutonomySchema.Type
 
@@ -547,6 +568,11 @@ export type FullAutoRunRegistry = Readonly<{
    * SEPARATE from the provider self-report. Null no-op when missing/no
    * autonomy. */
   recordVerification: (runRef: string, result: FullAutoVerificationResult) => FullAutoRun | null
+  /** HANDS-4 (#9175): append one durable per-turn action taxonomy row (bounded,
+   * most-recent-last). Null no-op when the record is missing or autonomy is not
+   * present. A row whose turnRef already exists is replaced in place so a replay
+   * never double-counts. */
+  recordTurnAction: (runRef: string, action: FullAutoTurnAction) => FullAutoRun | null
 }>
 
 export const openFullAutoRunRegistry = (
@@ -796,6 +822,25 @@ export const openFullAutoRunRegistry = (
     return next
   }
 
+  const recordTurnAction: FullAutoRunRegistry["recordTurnAction"] = (runRef, action) => {
+    const index = findIndex(runRef)
+    if (index === -1) return null
+    const current = runs[index]!
+    if (current.autonomy === undefined) return null
+    const existing = current.autonomy.turnActions ?? []
+    // Replace-in-place on turnRef so a replayed turn never double-counts;
+    // otherwise append and keep only the most recent bounded window.
+    const withoutDuplicate = existing.filter((row) => row.turnRef !== action.turnRef)
+    const turnActions = [...withoutDuplicate, action].slice(-FULL_AUTO_RUN_TURN_ACTION_LIMIT)
+    const next = Schema.decodeUnknownSync(FullAutoRunSchema)(compactRunInput({
+      ...current,
+      autonomy: { ...current.autonomy, turnActions },
+    }))
+    runs[index] = next
+    persist()
+    return next
+  }
+
   return {
     list,
     get,
@@ -815,6 +860,7 @@ export const openFullAutoRunRegistry = (
     setAutonomy,
     updatePlan,
     recordVerification,
+    recordTurnAction,
   }
 }
 

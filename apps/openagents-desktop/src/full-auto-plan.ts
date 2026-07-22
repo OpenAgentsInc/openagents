@@ -354,6 +354,113 @@ export const applyFullAutoStepStatus = (
   return withRevision(plan, steps, now)
 }
 
+// -----------------------------------------------------------------------
+// HANDS-3 auto-advancement (#9174): host-side plan-step status advancement
+// from a turn's structured output + disposition + host verification result.
+// Marker parsing is bounded-field extraction on already-selected text, never
+// NLP over provider prose (mirrors deriveFullAutoVerificationSpec's discipline).
+// -----------------------------------------------------------------------
+
+export type FullAutoStepMarkers = Readonly<{
+  completed: ReadonlyArray<string>
+  started: ReadonlyArray<string>
+}>
+
+const STEP_REF_BODY = /^[A-Za-z0-9._:-]{1,80}$/
+const dedupeStepRefs = (refs: ReadonlyArray<string>): ReadonlyArray<string> => [...new Set(refs)]
+
+/**
+ * Extract structured plan-step markers a turn may emit to report which step it
+ * finished or started. Recognizes exactly these bounded shapes (case-insensitive
+ * keyword, the stepRef captured verbatim):
+ *  - `STEP-DONE: <stepRef>` or `STEP-DONE(<stepRef>)`
+ *  - `STEP-START: <stepRef>` or `STEP-START(<stepRef>)`
+ *  - fenced ```step-done\n<stepRef>\n<stepRef>\n``` (one ref per line)
+ * A stepRef must match the plan's StepRef shape (bounded, no whitespace) or it
+ * is ignored -- this never guesses a step from free text.
+ */
+export const parseFullAutoStepMarkers = (text: string): FullAutoStepMarkers => {
+  const completed: Array<string> = []
+  const started: Array<string> = []
+  const fenced = /```step-done[ \t]*\r?\n([\s\S]*?)```/gi
+  for (let match = fenced.exec(text); match !== null; match = fenced.exec(text)) {
+    for (const rawLine of (match[1] ?? "").split(/\r?\n/)) {
+      const ref = rawLine.trim()
+      if (STEP_REF_BODY.test(ref)) completed.push(ref)
+    }
+  }
+  for (const rawLine of text.split(/\r?\n/)) {
+    const done = /^[ \t>*-]*step-done[ \t]*[:(][ \t]*([^)\n]+?)[ \t]*\)?[ \t]*$/i.exec(rawLine)
+    if (done?.[1] !== undefined && STEP_REF_BODY.test(done[1].trim())) completed.push(done[1].trim())
+    const start = /^[ \t>*-]*step-start[ \t]*[:(][ \t]*([^)\n]+?)[ \t]*\)?[ \t]*$/i.exec(rawLine)
+    if (start?.[1] !== undefined && STEP_REF_BODY.test(start[1].trim())) started.push(start[1].trim())
+  }
+  return { completed: dedupeStepRefs(completed), started: dedupeStepRefs(started) }
+}
+
+export type FullAutoPlanAdvancement = Readonly<{
+  plan: FullAutoPlan
+  /** True when at least one step reached a terminal (done) status this turn --
+   * the exact "advancedPlanStep" notion the churn detector (#9175) reads. */
+  advanced: boolean
+  advancedStepRefs: ReadonlyArray<string>
+  startedStepRefs: ReadonlyArray<string>
+}>
+
+/**
+ * Advance a plan's step statuses from one turn's structured output, disposition,
+ * and (optional) host verification verdict. Deterministic and conservative:
+ *  - A step reaches `done` ONLY on a `completed` turn AND only when the turn
+ *    named it in a structured `STEP-DONE` marker (or the host verified a named
+ *    `verifiedStepRef`). A failed/absent/error turn never marks a step done, so
+ *    a provider that merely self-reports success cannot fabricate plan progress.
+ *  - A `pending` step named by a `STEP-START` marker moves to `in_progress`
+ *    (progress, but NOT terminal -- it does not reset churn on its own).
+ *  - An unknown or already-terminal stepRef is ignored (a no-op, per
+ *    applyFullAutoStepStatus).
+ * Returns the mutated plan plus which steps advanced, so the caller can persist
+ * the plan and feed `advanced` into the churn signal.
+ */
+export const advanceFullAutoPlanFromTurn = (
+  plan: FullAutoPlan,
+  input: Readonly<{
+    disposition: string | null
+    completedStepRefs?: ReadonlyArray<string>
+    startedStepRefs?: ReadonlyArray<string>
+    verificationPassed?: boolean
+    verifiedStepRef?: string
+    now?: () => Date
+  }>,
+): FullAutoPlanAdvancement => {
+  const now = input.now ?? (() => new Date())
+  const known = new Map(plan.steps.map((step) => [step.stepRef, step]))
+  const isAdvanceable = (ref: string): boolean => {
+    const step = known.get(ref)
+    return step !== undefined && !isFullAutoPlanStepTerminal(step.status)
+  }
+  let next = plan
+  const advancedStepRefs: Array<string> = []
+  const startedStepRefs: Array<string> = []
+  if (input.disposition === "completed") {
+    const doneRefs = dedupeStepRefs([
+      ...(input.completedStepRefs ?? []),
+      ...(input.verificationPassed === true && input.verifiedStepRef !== undefined ? [input.verifiedStepRef] : []),
+    ])
+    for (const ref of doneRefs) {
+      if (!isAdvanceable(ref)) continue
+      next = applyFullAutoStepStatus(next, { stepRef: ref, status: "done", now })
+      advancedStepRefs.push(ref)
+    }
+  }
+  for (const ref of dedupeStepRefs(input.startedStepRefs ?? [])) {
+    const step = next.steps.find((candidate) => candidate.stepRef === ref)
+    if (step === undefined || step.status !== "pending" || advancedStepRefs.includes(ref)) continue
+    next = applyFullAutoStepStatus(next, { stepRef: ref, status: "in_progress", now })
+    startedStepRefs.push(ref)
+  }
+  return { plan: next, advanced: advancedStepRefs.length > 0, advancedStepRefs, startedStepRefs }
+}
+
 export type FullAutoPlanReorderResult =
   | Readonly<{ ok: true; plan: FullAutoPlan }>
   | Readonly<{ ok: false; reason: "not_a_permutation" }>

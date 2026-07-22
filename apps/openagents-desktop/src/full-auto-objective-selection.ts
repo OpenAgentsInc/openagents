@@ -1,5 +1,11 @@
-import { Schema } from "effect"
+import { Effect, Schema } from "effect"
 
+import type { FolderRlmCorpusConfig } from "./folder-corpus-source.ts"
+import {
+  runFullAutoRoadmapRecall,
+  type FullAutoRoadmapCandidate,
+  type FullAutoRoadmapRecallResult,
+} from "./full-auto-recall.ts"
 import { makeFullAutoPlan, type FullAutoPlan } from "./full-auto-plan.ts"
 
 /**
@@ -305,6 +311,133 @@ export const selectFullAutoObjective = async (
 }
 
 // -----------------------------------------------------------------------
+// HANDS-5 (#9176) -> HANDS-1 binding: the REAL folder-corpus roadmap recall.
+// `full-auto-recall.ts` (owned by another lane, CALLED not edited here) landed
+// `runFullAutoRoadmapRecall`, which mines a bounded read-only Markdown folder
+// (the transcript archive, docs, the roadmap) into CITED CANDIDATE feature
+// signals. This section adapts that Effect-returning, fail-soft entry point
+// into the injected `FullAutoObjectiveRecall` seam above, so an objective-less
+// run can PROPOSE owner-shape work grounded in real corpus citations.
+// -----------------------------------------------------------------------
+
+/**
+ * The repository's own single completion gate is the honest default named
+ * verification for a doc-mined candidate: every "merged and green on main" item
+ * must pass it. It is a real, named check -- not a fabricated one -- that the
+ * owner refines to a narrower command when endorsing the candidate.
+ */
+export const FULL_AUTO_DEFAULT_NAMED_VERIFICATION = "pnpm run check" as const
+
+const boundExcerpt = (excerpt: string, limit: number): string => {
+  const trimmed = excerpt.trim()
+  return trimmed.length <= limit ? trimmed : `${trimmed.slice(0, limit)}…`
+}
+
+/**
+ * Map one cited roadmap candidate (a bounded validated corpus excerpt) into an
+ * owner-shape recall signal. What the corpus KNOWS is preserved exactly: the
+ * source file as the read target and the entry/source refs as citations
+ * (selection never invents a citation). What a raw doc excerpt does NOT contain
+ * -- a bounded deliverable and a named verification -- is framed as an explicit
+ * PROPOSAL the owner refines: the deliverable restates the cited need and the
+ * verification defaults to the repository green gate. The rationale is honest
+ * that this is a doc-mined candidate needing owner refinement before start.
+ */
+export const roadmapCandidateToRecallSignal = (
+  candidate: FullAutoRoadmapCandidate,
+): FullAutoObjectiveRecallSignal => {
+  const where = candidate.sourceFile ?? candidate.entryRef
+  const excerpt = boundExcerpt(candidate.excerpt, FULL_AUTO_OBJECTIVE_FIELD_LIMIT)
+  return {
+    title: boundExcerpt(candidate.excerpt, FULL_AUTO_OBJECTIVE_TITLE_LIMIT) || `Roadmap candidate from ${where}`,
+    readTarget: where,
+    deliverable: `Investigate and implement the cited need, then narrow it to a bounded deliverable: "${excerpt}"`,
+    verification: FULL_AUTO_DEFAULT_NAMED_VERIFICATION,
+    rationale: `Cited candidate mined from ${where}; refine the deliverable and named verification before starting.`,
+    surface: "roadmap",
+    citedRefs: [candidate.entryRef, ...(candidate.sourceFile === null ? [] : [candidate.sourceFile])],
+  }
+}
+
+/** Map a whole roadmap recall result into recall signals -- empty when the
+ * recall refused/failed or produced no frameable candidate (fail-soft). */
+export const roadmapRecallToSignals = (
+  result: FullAutoRoadmapRecallResult,
+): ReadonlyArray<FullAutoObjectiveRecallSignal> =>
+  result.status === "completed" || result.status === "partial"
+    ? result.candidates.map(roadmapCandidateToRecallSignal)
+    : []
+
+/**
+ * Bind the REAL `runFullAutoRoadmapRecall` into the `FullAutoObjectiveRecall`
+ * promise seam. Deterministic Tier D grep runs by default (zero spend, always
+ * available); the returned function runs the Effect to a Promise and is
+ * FAIL-SOFT end to end -- the recall entry point never fails typed, and any
+ * unexpected rejection degrades to `[]` so selection continues on direct
+ * signals only. `recallRef` seeds engine idempotency; when the caller does not
+ * pin one, the run ref plus limit is used.
+ */
+export const makeFullAutoRoadmapObjectiveRecall = (
+  config: Readonly<{
+    corpus: FolderRlmCorpusConfig
+    recallRef?: string
+    deterministicPattern?: string
+    maxCandidates?: number
+  }>,
+): FullAutoObjectiveRecall => async (input) => {
+  try {
+    const result = await Effect.runPromise(
+      runFullAutoRoadmapRecall({
+        runRef: input.runRef,
+        recallRef: config.recallRef ?? `objective-selection:${input.runRef}:${input.limit}`,
+        corpus: config.corpus,
+        ...(config.deterministicPattern === undefined ? {} : { deterministicPattern: config.deterministicPattern }),
+        maxCandidates: config.maxCandidates ?? input.limit,
+      }),
+    )
+    return roadmapRecallToSignals(result)
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Propose ranked owner-shape objective candidates for an objective-less run,
+ * grounded in the real folder-corpus roadmap recall plus any directly-supplied
+ * repository/issue signals. This is a PROPOSAL only: it holds no dispatch,
+ * spend, release, or start authority. Owner endorsement plus an explicit Start
+ * (and the per-run autonomy flag) remain the admission gate -- nothing here
+ * creates or runs a `FullAutoRun`.
+ */
+export const proposeFullAutoObjectiveCandidates = (
+  input: Readonly<{
+    runRef: string
+    workspaceRef: string
+    corpus: FolderRlmCorpusConfig
+    directSignals?: ReadonlyArray<FullAutoCandidateSignal>
+    weights?: Readonly<Record<FullAutoOwnerPrioritySurface, number>>
+    limit?: number
+    recallRef?: string
+    deterministicPattern?: string
+    now?: () => Date
+  }>,
+): Promise<FullAutoObjectiveSelection> =>
+  selectFullAutoObjective({
+    runRef: input.runRef,
+    workspaceRef: input.workspaceRef,
+    directSignals: input.directSignals ?? [],
+    recall: makeFullAutoRoadmapObjectiveRecall({
+      corpus: input.corpus,
+      ...(input.recallRef === undefined ? {} : { recallRef: input.recallRef }),
+      ...(input.deterministicPattern === undefined ? {} : { deterministicPattern: input.deterministicPattern }),
+      ...(input.limit === undefined ? {} : { maxCandidates: input.limit }),
+    }),
+    ...(input.weights === undefined ? {} : { weights: input.weights }),
+    ...(input.limit === undefined ? {} : { limit: input.limit }),
+    ...(input.now === undefined ? {} : { now: input.now }),
+  })
+
+// -----------------------------------------------------------------------
 // Candidate -> run objective/done-condition/plan (bridges HANDS-1 to 2/3).
 // -----------------------------------------------------------------------
 
@@ -319,7 +452,16 @@ export const selectFullAutoObjective = async (
 export const fullAutoObjectiveFromCandidate = (
   candidate: FullAutoCandidateWorkItem,
   now: () => Date = () => new Date(),
-): Readonly<{ title: string; objective: string; doneCondition: string; plan: FullAutoPlan }> => {
+): Readonly<{
+  title: string
+  objective: string
+  doneCondition: string
+  plan: FullAutoPlan
+  /** HANDS-1 (#9172): the durable provenance a caller stamps when it starts a
+   * run from a system-proposed candidate -- attributes self-selected work
+   * (grading D5) and never implies auto-execution. */
+  objectiveSource: "system_selected"
+}> => {
   const objective = `${candidate.deliverable} (read first: ${candidate.readTarget}).`
   const doneCondition = [
     `${candidate.completionGate}.`,
@@ -338,5 +480,6 @@ export const fullAutoObjectiveFromCandidate = (
     objective,
     doneCondition,
     plan,
+    objectiveSource: "system_selected",
   }
 }

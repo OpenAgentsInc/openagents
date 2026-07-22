@@ -1070,7 +1070,7 @@ export const fullAutoControlOpenApiDocument = {
           threadRef: { type: ["string", "null"], minLength: 1, maxLength: 120 },
           title: { type: "string", minLength: 1, maxLength: FULL_AUTO_RUN_TITLE_LIMIT },
           objective: { type: "string", minLength: 1, maxLength: FULL_AUTO_RUN_OBJECTIVE_LIMIT },
-          objectiveSource: { type: "string", enum: ["user", "control_caller", "legacy_migration"] },
+          objectiveSource: { type: "string", enum: ["user", "control_caller", "legacy_migration", "system_selected"] },
           doneCondition: { type: "string", minLength: 1, maxLength: FULL_AUTO_RUN_DONE_CONDITION_LIMIT },
           workspaceRef: { type: ["string", "null"], minLength: 1, maxLength: 1024 },
           lane: { type: ["string", "null"], minLength: 1, maxLength: 80 },

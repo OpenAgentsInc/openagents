@@ -210,14 +210,44 @@ describe("run grading dimensions (META-3 #9182)", () => {
     })
   })
 
-  test("D5: owner-supplied objective is 0, legacy generic objective is 1, ceiling is 1 (no system_selected literal exists)", () => {
+  test("D5: owner-supplied is 0, legacy is 1, system_selected exceeds 1 (HANDS-1 #9172)", () => {
     const report = makeReport()
     const owner = gradeFullAutoRun({ report, run: makeRun({ objectiveSource: "user" }), now: NOW })
     expect(owner.dimensions.D5_selectivity).toMatchObject({ measured: true, score: 0, mechanicalCeiling: 1 })
     const legacy = gradeFullAutoRun({ report, run: makeRun({ objectiveSource: "legacy_migration" }), now: NOW })
     expect(legacy.dimensions.D5_selectivity).toMatchObject({ measured: true, score: 1, mechanicalCeiling: 1 })
+    // A system-selected (host-proposed, owner-endorsed) objective scores above 1.
+    const systemSelected = gradeFullAutoRun({ report, run: makeRun({ objectiveSource: "system_selected" }), now: NOW })
+    expect(systemSelected.dimensions.D5_selectivity).toMatchObject({ measured: true, score: 3, mechanicalCeiling: 3 })
     const unjoined = gradeFullAutoRun({ report, run: null, now: NOW })
     expect(unjoined.dimensions.D5_selectivity).toMatchObject({ measured: false, reason: "run_record_unavailable" })
+  })
+
+  test("D2/D7: churn is derived from the run record's persisted turn actions (HANDS-4 #9175)", () => {
+    const at = (n: number) => new Date(Date.parse("2026-07-22T00:01:00.000Z") + n * 1000).toISOString()
+    const report = makeReport({
+      turns: makeTurns([0, 1, 2].map((n) => ({ disposition: "completed", at: at(n) }))),
+    })
+    const turnActions = [0, 1, 2].map((n) => ({
+      schema: "openagents.desktop.full_auto_turn_action.v1" as const,
+      turnRef: `turn.fx.${n + 1}`,
+      kind: "setup" as const,
+      signature: "setup|paths=∅|verify=0|hint=same",
+      advancedPlanStep: false,
+      at: at(n),
+    }))
+    // With persisted non-advancing identical actions on the run, the grader's
+    // analyzer emits a low_value_churn finding the coherence dimension reads.
+    const grade = gradeFullAutoRun({
+      report,
+      run: makeRun({ objectiveSource: "system_selected", autonomy: { enabled: true, turnActions } }),
+      now: NOW,
+    })
+    expect(grade.findingCounts.low_value_churn).toBe(1)
+    expect(grade.dimensions.D2_coherence).toMatchObject({ measured: true })
+    if (grade.dimensions.D2_coherence.measured) {
+      expect(grade.dimensions.D2_coherence.score).toBeLessThanOrEqual(1)
+    }
   })
 
   test("D6: failed host verdict holding a run out of completed scores 4; passed scores 3; self-report ranks 1-2", () => {

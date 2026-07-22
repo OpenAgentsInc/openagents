@@ -127,7 +127,11 @@ const FullAutoRunActorSchema = Schema.Literals([
   // OpenAgents mobile and applied by Desktop's control-intent consumer.
   "mobile",
 ])
-const FullAutoRunObjectiveSourceSchema = Schema.Literals(["user", "control_caller", "legacy_migration"])
+const FullAutoRunObjectiveSourceSchema = Schema.Literals([
+  "user", "control_caller", "legacy_migration",
+  // HANDS-1 (#9172): a host-proposed, owner-endorsed objective.
+  "system_selected",
+])
 const FullAutoRunTransitionRecordSchema = Schema.Struct({
   from: FullAutoRunStateSchema,
   to: FullAutoRunStateSchema,

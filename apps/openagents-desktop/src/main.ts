@@ -370,7 +370,10 @@ import {
   migrateLegacyFullAutoRegistry,
   openFullAutoRunRegistry,
 } from "./full-auto-run-registry.ts"
-import { buildFullAutoTurnAction, detectFullAutoChurn } from "./full-auto-churn.ts"
+import { buildFullAutoTurnAction, detectFullAutoChurn, parseFullAutoChangedPaths } from "./full-auto-churn.ts"
+import { advanceFullAutoPlanFromTurn, parseFullAutoStepMarkers } from "./full-auto-plan.ts"
+import { detectFullAutoSelfReportedCompletion, makeNodeVerificationExec } from "./full-auto-verification.ts"
+import { admitFullAutoRunCompletion } from "./full-auto-completion.ts"
 import { buildProviderHandoffEnvelope, openProviderHandoffRegistry, providerHandoffDispositionForEnvelope } from "./full-auto-provider-handoff.ts"
 import { deriveFullAutoRunReceipt, openFullAutoRunReportStore } from "./full-auto-run-report.ts"
 import { decideFullAutoLivenessNotification, settleFullAutoRunLiveness } from "./full-auto-liveness.ts"
@@ -4893,7 +4896,11 @@ const claudeLocalLane: ProviderLane<Readonly<{ skillName: string | null }>> = {
   },
   failureMessage: claudeLocalFailureMessage,
   completed: request => {
-    if (request.fullAuto === true) void runFullAutoReconciliation()
+    if (request.fullAuto === true) {
+      void processFullAutoAutonomyTurnCompletion(request.threadRef).finally(() => {
+        void runFullAutoReconciliation()
+      })
+    }
   },
 }
 // #9091: expose the claude-local lane to the shared turn kernel's Claude
@@ -5277,7 +5284,11 @@ const codexLocalLane: ProviderLane<null> = {
   // NEXT turn. runFullAutoReconciliation re-checks the durable registry
   // fresh, so a toggle-off that lands right after this line still stops it.
   completed: request => {
-    if (request.fullAuto === true) void runFullAutoReconciliation()
+    if (request.fullAuto === true) {
+      void processFullAutoAutonomyTurnCompletion(request.threadRef).finally(() => {
+        void runFullAutoReconciliation()
+      })
+    }
   },
 }
 // AFS-04 (#9082): expose the codex lane to the shared turn kernel's codex
@@ -5598,6 +5609,86 @@ const hashFullAutoTurnOutput = (text: string): string => {
   return `t${(hash >>> 0).toString(36)}:${text.length.toString(36)}`
 }
 /**
+ * HANDS-2/3/4 (#9173/#9174/#9175): post-turn autonomy processing for an
+ * autonomy-enabled Full Auto run, run once per completed turn. OPT-IN -- a
+ * non-autonomy run returns immediately, so default Full Auto behavior is
+ * unchanged. It (1) advances host-tracked plan steps from the turn's structured
+ * STEP-DONE/STEP-START markers, (2) persists a durable per-turn action taxonomy
+ * row (real advancedPlanStep + changed-paths-aware signature) the churn gate and
+ * grading lane read, and (3) when the turn self-reports FULL-AUTO-COMPLETE,
+ * EXECUTES the run's done-condition verification in the bound workspace and
+ * admits completion ONLY on a passed verdict -- a failed/absent/error verdict
+ * keeps the run active with a typed reason. Idempotent per turnRef.
+ */
+const processedAutonomyTurnRefs = new Set<string>()
+const processFullAutoAutonomyTurnCompletion = async (threadRef: string): Promise<void> => {
+  const run = fullAutoRunRegistry.findByThreadRef(threadRef)
+  if (run === null || !isFullAutoRunAutonomyEnabled(run)) return
+  const latest = localTurnJournal.list()
+    .filter(entry =>
+      entry.threadRef === threadRef &&
+      entry.turnRef.startsWith("turn.full-auto.") &&
+      entry.disposition === "completed")
+    .toSorted((left, right) => left.updatedAt.localeCompare(right.updatedAt))
+    .at(-1)
+  if (latest === undefined || processedAutonomyTurnRefs.has(latest.turnRef)) return
+  processedAutonomyTurnRefs.add(latest.turnRef)
+
+  // (1) HANDS-3 (#9174): advance plan steps from structured turn output.
+  const markers = parseFullAutoStepMarkers(latest.assistantText)
+  const changedPaths = parseFullAutoChangedPaths(latest.assistantText)
+  let advancedPlanStep = false
+  const plan = run.autonomy?.plan
+  if (plan !== undefined) {
+    const advancement = advanceFullAutoPlanFromTurn(plan, {
+      disposition: "completed",
+      completedStepRefs: markers.completed,
+      startedStepRefs: markers.started,
+    })
+    advancedPlanStep = advancement.advanced
+    if (advancement.plan.revision !== plan.revision) {
+      fullAutoRunRegistry.updatePlan(run.runRef, advancement.plan)
+    }
+  }
+
+  // (2) HANDS-4 (#9175) + record-shape: persist the per-turn action taxonomy.
+  // A changed-paths-aware signature (falling back to the output hash when the
+  // turn reported no paths) plus the REAL advancedPlanStep from (1).
+  fullAutoRunRegistry.recordTurnAction(run.runRef, buildFullAutoTurnAction({
+    turnRef: latest.turnRef,
+    ...(changedPaths.length > 0 ? { changedPaths } : { resultHint: hashFullAutoTurnOutput(latest.assistantText) }),
+    advancedPlanStep,
+    at: latest.updatedAt,
+  }))
+
+  // (3) HANDS-2 (#9173): a self-reported completion triggers host verification.
+  if (!detectFullAutoSelfReportedCompletion(latest.assistantText)) return
+  const admission = await admitFullAutoRunCompletion({
+    registry: fullAutoRunRegistry,
+    run: fullAutoRunRegistry.get(run.runRef) ?? run,
+    workspaceRef: resolveDesktopLocalWorkspaceRoot(),
+    exec: makeNodeVerificationExec(),
+  })
+  if (admission.outcome === "admitted") {
+    // Stop dispatch: the thread-level registry is the dispatch gate, so a
+    // completed run must also disable its thread. The run is already terminal
+    // (completed), so settleFullAutoRunFromThreadState leaves it untouched.
+    fullAutoRegistry.set(threadRef, false, {
+      disabledBy: "control_api",
+      blockedReason: "host_verified_completion",
+    })
+    appendFullAutoSystemNote(
+      threadRef,
+      `Full Auto complete: the host executed the done-condition verification and it PASSED. The run is marked completed.`,
+    )
+  } else if (admission.outcome === "blocked") {
+    appendFullAutoSystemNote(
+      threadRef,
+      `Full Auto completion NOT admitted (${admission.blockReason}): the host verification did not pass, so the run stays active. Provider self-report is evidence only.`,
+    )
+  }
+}
+/**
  * Full Auto (#8853): the one place "should the next turn start" is decided,
  * called from two trigger points -- right after a Full-Auto turn completes
  * (above) and once at startup after existing turn-recovery settles (below).
@@ -5633,22 +5724,26 @@ const runFullAutoReconciliation = (options?: Readonly<{ startup?: boolean }>): P
     // per-turn action taxonomy from completed Full Auto turns (a bounded hash
     // of the host-owned assistant text as the action signature -- never the
     // raw text) and pauses on repeated near-identical, non-advancing turns.
-    // NOTE (remaining scope, #9174/#9175): plan-step attribution
-    // (`advancedPlanStep`) is not yet inferred host-side, so a turn only
-    // resets churn by producing DISTINCT output; wiring provider-reported step
-    // advancement would make the signal stronger.
+    // #9174/#9175: the churn signal now reads the durable per-turn action
+    // taxonomy persisted by processFullAutoAutonomyTurnCompletion, so a turn's
+    // REAL advancedPlanStep (from host-side plan advancement) and a
+    // changed-paths-aware signature reset churn on genuine progress or varied
+    // work. Falls back to the journal-hash projection only for a turn not yet
+    // processed (e.g. a completion that raced this reconcile pass), so churn is
+    // never blind between the turn completing and its action row landing.
     churnSignal: threadRef => {
       const run = fullAutoRunRegistry.findByThreadRef(threadRef)
       if (run === null || !isFullAutoRunAutonomyEnabled(run)) return null
       const record = fullAutoRegistry.record(threadRef)
       const anchorAt = record?.lastResumedAt ?? record?.enabledAt ?? null
+      const persisted = new Map((run.autonomy?.turnActions ?? []).map(action => [action.turnRef, action]))
       const actions = localTurnJournal.list()
         .filter(entry =>
           entry.threadRef === threadRef &&
           entry.turnRef.startsWith("turn.full-auto.") &&
           entry.disposition === "completed")
         .toSorted((left, right) => left.updatedAt.localeCompare(right.updatedAt))
-        .map(entry => buildFullAutoTurnAction({
+        .map(entry => persisted.get(entry.turnRef) ?? buildFullAutoTurnAction({
           turnRef: entry.turnRef,
           resultHint: hashFullAutoTurnOutput(entry.assistantText),
           advancedPlanStep: false,

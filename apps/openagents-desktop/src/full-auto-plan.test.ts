@@ -5,10 +5,12 @@ import path from "node:path"
 import { describe, expect, test } from "vite-plus/test"
 
 import {
+  advanceFullAutoPlanFromTurn,
   applyFullAutoStepStatus,
   detectFullAutoPlanDrift,
   makeFullAutoPlan,
   nextActionableFullAutoStep,
+  parseFullAutoStepMarkers,
   renderFullAutoPlanBrief,
   reorderFullAutoPlanSteps,
   validateFullAutoPlan,
@@ -203,5 +205,69 @@ describe("HANDS-3 plan carry across turns via the mission packet", () => {
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
+  })
+})
+
+describe("HANDS-3 auto-advancement: parseFullAutoStepMarkers (#9174)", () => {
+  test("parses STEP-DONE / STEP-START in line and paren forms, and a fenced block", () => {
+    const markers = parseFullAutoStepMarkers(
+      "did the reading.\nSTEP-DONE: read\n- STEP-START(deliver)\n```step-done\nverify\n```",
+    )
+    expect([...markers.completed].sort()).toEqual(["read", "verify"])
+    expect(markers.started).toEqual(["deliver"])
+  })
+
+  test("ignores non-conforming step refs and free text (no NLP guess)", () => {
+    const markers = parseFullAutoStepMarkers("I think I finished the read step, probably.\nSTEP-DONE: has spaces")
+    expect(markers.completed).toEqual([])
+    expect(markers.started).toEqual([])
+  })
+})
+
+describe("HANDS-3 auto-advancement: advanceFullAutoPlanFromTurn (#9174)", () => {
+  test("a completed turn with a STEP-DONE marker advances that step to done", () => {
+    const plan = threeStepPlan()
+    const result = advanceFullAutoPlanFromTurn(plan, { disposition: "completed", completedStepRefs: ["read"] })
+    expect(result.advanced).toBe(true)
+    expect(result.advancedStepRefs).toEqual(["read"])
+    expect(result.plan.steps.find((s) => s.stepRef === "read")?.status).toBe("done")
+    // The next actionable step is now the unblocked deliver step.
+    expect(nextActionableFullAutoStep(result.plan)?.stepRef).toBe("deliver")
+  })
+
+  test("a FAILED turn never marks a step done (no fabricated progress)", () => {
+    const plan = threeStepPlan()
+    const result = advanceFullAutoPlanFromTurn(plan, { disposition: "failed", completedStepRefs: ["read"] })
+    expect(result.advanced).toBe(false)
+    expect(result.plan.steps.find((s) => s.stepRef === "read")?.status).toBe("pending")
+  })
+
+  test("a STEP-START marker moves a pending step to in_progress but does not count as advancing", () => {
+    const plan = threeStepPlan()
+    const result = advanceFullAutoPlanFromTurn(plan, { disposition: "completed", startedStepRefs: ["read"] })
+    expect(result.advanced).toBe(false)
+    expect(result.startedStepRefs).toEqual(["read"])
+    expect(result.plan.steps.find((s) => s.stepRef === "read")?.status).toBe("in_progress")
+  })
+
+  test("verificationPassed advances a named verify step to done", () => {
+    const started = advanceFullAutoPlanFromTurn(threeStepPlan(), {
+      disposition: "completed",
+      completedStepRefs: ["read", "deliver"],
+    })
+    const result = advanceFullAutoPlanFromTurn(started.plan, {
+      disposition: "completed",
+      verificationPassed: true,
+      verifiedStepRef: "verify",
+    })
+    expect(result.advancedStepRefs).toEqual(["verify"])
+    expect(result.plan.steps.every((s) => s.status === "done")).toBe(true)
+  })
+
+  test("an unknown or already-terminal step ref is a no-op (idempotent replay)", () => {
+    const plan = advanceFullAutoPlanFromTurn(threeStepPlan(), { disposition: "completed", completedStepRefs: ["read"] }).plan
+    const again = advanceFullAutoPlanFromTurn(plan, { disposition: "completed", completedStepRefs: ["read", "nope"] })
+    expect(again.advanced).toBe(false)
+    expect(again.plan.revision).toBe(plan.revision)
   })
 })

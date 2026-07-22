@@ -144,8 +144,17 @@ describe("behavior contract registry", () => {
     expect(validation).toEqual({ issues: [], ok: true })
     // FAV-01..04 (#9111-#9114) each added one enforced Full Auto contract
     // (readiness-gated routing, four-lane rotation parity, Apple FM advisory,
-    // capacity ledger), taking the total from 43 to 47.
-    expect(decoded.contracts).toHaveLength(47)
+    // capacity ledger), taking the total from 43 to 47. HANDS-2 (#9173) added
+    // one enforced Full Auto autonomy contract (host-verified completion),
+    // taking the total to 48.
+    expect(decoded.contracts).toHaveLength(48)
+    const hostVerifiedCompletion = decoded.contracts.find(
+      contract => contract.contractId === "openagents_desktop.full_auto_host_verified_completion.v1",
+    )
+    expect(hostVerifiedCompletion?.state).toBe("enforced")
+    expect(hostVerifiedCompletion?.enforcementTier).toBe("test-sweep")
+    expect(hostVerifiedCompletion?.oracles).toHaveLength(1)
+    expect(hostVerifiedCompletion?.statement).toContain("self-reported completion is treated as evidence only")
     const pending = decoded.contracts.filter(contract => contract.state === "pending")
     // FA-UX-01 (#8974) flipped 3 Full Auto contracts from pending to
     // enforced: openagents_desktop.full_auto_dedicated_launcher.v1,

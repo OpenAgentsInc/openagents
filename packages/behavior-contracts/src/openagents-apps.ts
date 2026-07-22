@@ -1503,6 +1503,42 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
     },
     {
       authorityBoundary:
+        "This binds only the opt-in autonomy run's host-verified completion gate: for a run with autonomy enabled, a provider self-report of done never completes the run on its own; the host executes the run's done-condition verification and admits completion only on a PASSED verdict, keeping the host verdict separate from the self-report. It grants no release, public-claim, spend, or settlement authority, and it does not change any default (non-autonomy) Full Auto run, whose behavior stays byte-identical.",
+      blockerRefs: [],
+      contractId: "openagents_desktop.full_auto_host_verified_completion.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "apps/openagents-desktop/src/full-auto-verification.ts",
+        "apps/openagents-desktop/src/full-auto-completion.ts",
+        "apps/openagents-desktop/src/full-auto-completion.test.ts",
+        "docs/analysis/2026-07-22-full-auto-autonomy-decision-quality-rubric.md",
+        "github:OpenAgentsInc/openagents#9173",
+      ],
+      oracles: [
+        {
+          description:
+            "Unit oracles over admitFullAutoRunCompletion prove a PASSED host verification transitions the autonomy run to completed and records the verdict; a FAILED/ABSENT/ERROR verdict keeps the run active with a typed block reason and still records the verdict separate from the provider self-report; a non-autonomy run is skipped so default Full Auto is unchanged; and FULL-AUTO-COMPLETE self-report detection is a bounded structured marker, never an NLP guess.",
+          id: "openagents_desktop.full_auto_host_verified_completion.admission",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents-desktop/src/full-auto-completion.test.ts",
+        },
+      ],
+      productArea: "Desktop Full Auto autonomy",
+      source: {
+        channel: "owner-codex-session",
+        statedBy: "owner",
+        statedOn: "2026-07-22",
+      },
+      state: "enforced",
+      statement:
+        "When Full Auto autonomy is enabled for a run, a provider turn's self-reported completion is treated as evidence only; the host executes the run's named done-condition verification in the bound workspace and marks the run completed only when that verification passes, otherwise the run stays active with a typed reason.",
+      surface: "openagents-desktop",
+      verification:
+        "The normal Desktop sweep runs full-auto-completion.test.ts and full-auto-verification.test.ts, proving pass-only admission, typed block reasons on non-pass, verdict separation from the self-report, the autonomy opt-in guard, and structured self-report/verify-marker parsing.",
+    },
+    {
+      authorityBoundary:
         "This binds the lightning-bolt Full Auto entry point, its compact one-mission default, collapsed Advanced configuration, and persistent run monitor. It does not itself define the run's lifecycle state machine (see full_auto_play_pause_stop_lifecycle.v1), and it grants no fleet scheduling, release, or public-claim authority.",
       blockerRefs: [],
       contractId: "openagents_desktop.full_auto_dedicated_launcher.v1",
