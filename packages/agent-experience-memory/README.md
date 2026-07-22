@@ -53,6 +53,29 @@ recall path on top of an existing substrate. It reuses:
 `inspect`, `exportScope`, and `forget` give the owner inspect, export, and
 delete over their own memory in a scope.
 
+## Portable graph memory
+
+`GraphMemoryStore` is a separate optional contract for a graph corpus. It does
+not change `MemoryStore`. The contract uses the
+`@openagentsinc/graph-corpus` schemas and validators. It binds each graph to one
+owner, one project, one source set, one manifest, one policy, and one
+generation. `graphMemoryScopeRefFor` calculates the required graph scope from
+the owner and project. The store accepts only input that has consent and the
+`already_redacted` state.
+
+`GraphMemoryStateStore` is the portable persistence port. A host supplies an
+atomic `load` and `compareAndSet` implementation. The graph contract owns
+schema decoding, two-phase mutation recovery, idempotency, archive validation,
+delete-plan validation, and lifecycle receipts. A Desktop adapter can encrypt
+and store the opaque state in SQLite. This package does not import SQLite or a
+cryptography API.
+
+Archive export returns bytes to the caller. The graph store keeps only the
+archive reference for accounting. It does not keep the exported payload.
+Therefore, `forget` removes the internal graph and artifact state, but it
+reports each caller-held export as retained. The caller controls deletion of
+those external bytes.
+
 ## Boundaries
 
 The package is governed by `scripts/check-afs-boundaries.ts`: no app, platform
