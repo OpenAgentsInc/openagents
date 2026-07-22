@@ -70,11 +70,11 @@ delete-plan validation, and lifecycle receipts. A Desktop adapter can encrypt
 and store the opaque state in SQLite. This package does not import SQLite or a
 cryptography API.
 
-Archive export returns bytes to the caller. The graph store keeps only the
-archive reference for accounting. It does not keep the exported payload.
-Therefore, `forget` removes the internal graph and artifact state, but it
-reports each caller-held export as retained. The caller controls deletion of
-those external bytes.
+Archive export returns bytes to the caller. The graph store keeps a bounded
+replay record so that an operation retry returns the exact prior result.
+`forget` removes that replay record with the internal graph and artifact state.
+It reports each caller-held export as retained because the caller controls
+deletion of those external bytes.
 
 ## Boundaries
 

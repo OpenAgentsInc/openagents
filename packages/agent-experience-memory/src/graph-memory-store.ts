@@ -17,7 +17,6 @@ import {
 } from "@openagentsinc/graph-corpus/archive";
 import {
   GraphArtifactInventory,
-  graphDeleteActionRefs,
   makeCompleteGraphDeleteExecutionResult,
   makeGraphArtifactInventory,
   makeGraphDeleteReceipt,
@@ -140,6 +139,7 @@ export const GraphMemoryOperationReceipt = S.Struct({
   schemaId: S.Literal(GRAPH_MEMORY_RECEIPT_SCHEMA_ID),
   receiptRef: boundedRef,
   receiptDigest: GraphDigest,
+  requestDigest: GraphDigest,
   operationRef: GraphMemoryOperationRef,
   operation: S.Literals(["put", "archive_export", "archive_import", "delete_source", "forget"]),
   status: S.Literals(["complete", "refused", "disabled"]),
@@ -161,9 +161,24 @@ export const GraphMemoryOperationReceipt = S.Struct({
 export interface GraphMemoryOperationReceipt
   extends S.Schema.Type<typeof GraphMemoryOperationReceipt> {}
 
+export const GraphMemoryArchiveExportRecord = S.Struct({
+  operationRef: GraphMemoryOperationRef,
+  archivalStateDigest: GraphDigest,
+  generation: PositiveInteger,
+  bytesBase64: S.String.check(S.isBase64()),
+  archiveRef: GraphArchiveRef,
+  contentDigest: GraphDigest,
+  manifestDigest: GraphDigest,
+  receipt: GraphMemoryOperationReceipt,
+});
+export interface GraphMemoryArchiveExportRecord
+  extends S.Schema.Type<typeof GraphMemoryArchiveExportRecord> {}
+
 const GraphMemoryPendingMutation = S.Struct({
   operationRef: GraphMemoryOperationRef,
   nextCurrent: S.optionalKey(GraphMemoryStoredGraph),
+  archiveExport: S.optionalKey(GraphMemoryArchiveExportRecord),
+  clearArchiveExports: S.optionalKey(S.Boolean),
   receipt: GraphMemoryOperationReceipt,
 });
 
@@ -174,6 +189,9 @@ export const GraphMemoryPersistedEnvelope = S.Struct({
   current: S.optionalKey(GraphMemoryStoredGraph),
   pending: S.optionalKey(GraphMemoryPendingMutation),
   receipts: S.Array(GraphMemoryOperationReceipt).check(S.isMaxLength(GRAPH_MEMORY_RECEIPT_LIMIT)),
+  archiveExports: S.optionalKey(
+    S.Array(GraphMemoryArchiveExportRecord).check(S.isMaxLength(GRAPH_MEMORY_RECEIPT_LIMIT)),
+  ),
 });
 export interface GraphMemoryPersistedEnvelope
   extends S.Schema.Type<typeof GraphMemoryPersistedEnvelope> {}
@@ -306,6 +324,15 @@ const scopeKey = (scope: GraphMemoryScope): string => `${scope.owner}\u0000${sco
 const sameScope = (left: GraphMemoryScope, right: GraphMemoryScope): boolean =>
   left.owner === right.owner && left.project === right.project;
 const digest = (value: unknown): GraphDigest => graphDigest(sha256Hex(canonicalJson(value)));
+const requestFingerprint = (operation: GraphMemoryOperationReceipt["operation"], value: unknown) =>
+  digest({ operation, value });
+const bytesToBase64 = (bytes: Uint8Array): string => {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+};
+const bytesFromBase64 = (value: string): Uint8Array =>
+  Uint8Array.from(atob(value), (character) => character.charCodeAt(0));
 
 /** Deterministically binds the SDK graph scope to one owner/project envelope. */
 export const graphMemoryScopeRefFor = (scope: GraphMemoryScope): GraphScopeRef =>
@@ -344,6 +371,19 @@ const accounting = (current: GraphMemoryStoredGraph | undefined): GraphMemoryArt
         archives: current.archiveRefs.length,
       };
 
+const archivalStateDigestFor = (current: GraphMemoryStoredGraph): GraphDigest =>
+  digest({
+    generation: current.binding.generation,
+    graphDigest: current.binding.graphDigest,
+    manifestDigest: current.binding.manifestDigest,
+    policyDigest: current.binding.policyDigest,
+    sourceBindings: current.binding.sourceBindings,
+    artifactInventory: current.artifactInventory,
+    rankingSnapshots: current.rankingSnapshots,
+    vectorRecords: current.vectorRecords,
+    summaryRecords: current.summaryRecords,
+  });
+
 const fact = (
   plane: GraphMemoryLifecycleFact["plane"],
   targetRef: string,
@@ -355,6 +395,36 @@ const fact = (
   reason,
   ...(actionRef === undefined ? {} : { actionRef }),
 });
+
+const deleteActionFacts = (plan: GraphDeletePlan): ReadonlyArray<GraphMemoryLifecycleFact> => [
+  ...plan.actions.sourceMembershipRemovals.map((item) =>
+    fact("source_membership", item.elementRef, "remove_source_membership", item.actionRef),
+  ),
+  ...plan.actions.removableElements.map((item) =>
+    fact("graph", item.elementRef, "remove_graph_element", item.actionRef),
+  ),
+  ...plan.actions.entityRekeys.map((item) =>
+    fact("graph", item.oldElementRef, "rekey_shared_entity", item.actionRef),
+  ),
+  ...plan.actions.relationRekeys.map((item) =>
+    fact("graph", item.oldElementRef, "rekey_shared_relation", item.actionRef),
+  ),
+  ...plan.actions.removableMerges.map((item) =>
+    fact("graph", item.mergeRef, "remove_merge", item.actionRef),
+  ),
+  ...plan.actions.mergeRekeys.map((item) =>
+    fact("graph", item.oldMergeRef, "rekey_shared_merge", item.actionRef),
+  ),
+  ...plan.actions.vectorActions.map((item) =>
+    fact("vector", item.artifactRef, item._tag === "Remove" ? "remove_artifact" : "rebuild_artifact", item.actionRef),
+  ),
+  ...plan.actions.summaryActions.map((item) =>
+    fact("summary", item.artifactRef, item._tag === "Remove" ? "remove_artifact" : "rebuild_artifact", item.actionRef),
+  ),
+  ...plan.actions.rankingRefActions.map((item) =>
+    fact("ranking", item.artifactRef, item._tag === "Remove" ? "remove_artifact" : "rebuild_artifact", item.actionRef),
+  ),
+];
 
 const makeReceipt = (
   input: Omit<GraphMemoryOperationReceipt, "schemaId" | "receiptRef" | "receiptDigest">,
@@ -466,6 +536,15 @@ const validateStoredGraph = Effect.fn("GraphMemory.validateStoredGraph")(functio
       return yield* storeError("put", "invalid_ranking", "A ranking snapshot has another graph identity.");
     }
   }
+  for (const record of input.summaryRecords ?? []) {
+    const text = yield* Effect.try({
+      try: () => new TextDecoder("utf-8", { fatal: true }).decode(bytesFromBase64(record.payloadBase64)),
+      catch: () => storeError("put", "unredacted_input", "A summary payload is not valid UTF-8."),
+    });
+    if (!guardMemoryText(text).clean) {
+      return yield* storeError("put", "unredacted_input", "A summary payload contains redactable content.");
+    }
+  }
   const archiveCheck = yield* Effect.result(
     encodeGraphCorpusArchive({
       built: input.built,
@@ -498,6 +577,7 @@ const receiptForDisabled = (
   operationRef: GraphMemoryOperationRef,
 ): GraphMemoryOperationReceipt =>
   makeReceipt({
+    requestDigest: requestFingerprint(operation, scope),
     operationRef,
     operation,
     status: "disabled",
@@ -545,6 +625,10 @@ export const makeGraphMemoryStore = Effect.fn("GraphMemory.makeStore")(function*
       revision: envelope.revision + 1,
       ...(envelope.pending.nextCurrent === undefined ? {} : { current: envelope.pending.nextCurrent }),
       receipts: [...envelope.receipts, envelope.pending.receipt],
+      archiveExports: [
+        ...(envelope.pending.clearArchiveExports === true ? [] : (envelope.archiveExports ?? [])),
+        ...(envelope.pending.archiveExport === undefined ? [] : [envelope.pending.archiveExport]),
+      ],
     });
     const committed = yield* stateStore
       .compareAndSet(envelope.scope, envelope.revision, next)
@@ -566,18 +650,32 @@ export const makeGraphMemoryStore = Effect.fn("GraphMemory.makeStore")(function*
   const mutate = Effect.fn("GraphMemory.mutate")(function* (
     scope: GraphMemoryScope,
     operationRef: GraphMemoryOperationRef,
+    requestDigest: GraphDigest,
     compute: (
       current: GraphMemoryStoredGraph | undefined,
-    ) => Effect.Effect<Readonly<{ nextCurrent?: GraphMemoryStoredGraph; receipt: GraphMemoryOperationReceipt }>, GraphMemoryStoreError>,
+    ) => Effect.Effect<Readonly<{
+      nextCurrent?: GraphMemoryStoredGraph;
+      archiveExport?: GraphMemoryArchiveExportRecord;
+      clearArchiveExports?: boolean;
+      receipt: GraphMemoryOperationReceipt;
+    }>, GraphMemoryStoreError>,
   ) {
     yield* recover(scope);
     for (let attempt = 0; attempt < GRAPH_MEMORY_CAS_ATTEMPT_LIMIT; attempt += 1) {
       const envelope = yield* load(scope);
       const prior = envelope?.receipts.find((receipt) => receipt.operationRef === operationRef);
-      if (prior !== undefined) return prior;
+      if (prior !== undefined) {
+        if (prior.requestDigest !== requestDigest) {
+          return yield* storeError("mutate", "state_conflict", "The operation reference is bound to another request.");
+        }
+        return prior;
+      }
       if (envelope?.pending !== undefined) {
         yield* recover(scope);
         continue;
+      }
+      if ((envelope?.receipts.length ?? 0) >= GRAPH_MEMORY_RECEIPT_LIMIT) {
+        return yield* storeError("mutate", "state_conflict", "The graph memory receipt limit is reached.");
       }
       const computed = yield* compute(envelope?.current);
       const prepared = S.decodeUnknownSync(GraphMemoryPersistedEnvelope)({
@@ -588,9 +686,14 @@ export const makeGraphMemoryStore = Effect.fn("GraphMemory.makeStore")(function*
         pending: {
           operationRef,
           ...(computed.nextCurrent === undefined ? {} : { nextCurrent: computed.nextCurrent }),
+          ...(computed.archiveExport === undefined ? {} : { archiveExport: computed.archiveExport }),
+          ...(computed.clearArchiveExports === undefined
+            ? {}
+            : { clearArchiveExports: computed.clearArchiveExports }),
           receipt: computed.receipt,
         },
         receipts: envelope?.receipts ?? [],
+        archiveExports: envelope?.archiveExports ?? [],
       });
       const staged = yield* stateStore
         .compareAndSet(scope, envelope?.revision ?? null, prepared)
@@ -605,8 +708,9 @@ export const makeGraphMemoryStore = Effect.fn("GraphMemory.makeStore")(function*
 
   const put = Effect.fn("GraphMemory.put")(function* (input: PutGraphMemoryInput) {
     const scope: GraphMemoryScope = { owner: input.binding.owner, project: input.binding.project };
+    const putRequestDigest = requestFingerprint("put", input);
     const stored = yield* validateStoredGraph(input);
-    return yield* mutate(scope, input.operationRef, (current) => {
+    return yield* mutate(scope, input.operationRef, putRequestDigest, (current) => {
       if (current !== undefined && input.binding.generation <= current.binding.generation) {
         return Effect.fail(storeError("put", "stale_generation", "Graph generation must increase."));
       }
@@ -615,6 +719,7 @@ export const makeGraphMemoryStore = Effect.fn("GraphMemory.makeStore")(function*
       return Effect.succeed({
         nextCurrent: stored,
         receipt: makeReceipt({
+          requestDigest: putRequestDigest,
           operationRef: input.operationRef,
           operation: "put",
           status: "complete",
@@ -657,6 +762,16 @@ export const makeGraphMemoryStore = Effect.fn("GraphMemory.makeStore")(function*
   ) {
     yield* recover(scope);
     const envelope = yield* load(scope);
+    const priorExport = envelope?.archiveExports?.find((item) => item.operationRef === operationRef);
+    if (priorExport !== undefined) {
+      return {
+        bytes: bytesFromBase64(priorExport.bytesBase64),
+        archiveRef: priorExport.archiveRef,
+        contentDigest: priorExport.contentDigest,
+        manifestDigest: priorExport.manifestDigest,
+        receipt: priorExport.receipt,
+      } satisfies GraphMemoryArchiveExport;
+    }
     const current = envelope?.current;
     if (current === undefined) {
       return yield* storeError("exportArchive", "invalid_archive", "No graph exists in this scope.");
@@ -675,17 +790,18 @@ export const makeGraphMemoryStore = Effect.fn("GraphMemory.makeStore")(function*
       Effect.mapError(() => storeError("exportArchive", "invalid_archive", "The exported archive did not round-trip.")),
     );
     const archiveRef = verified.archive.manifest.archiveRef;
-    const receipt = yield* mutate(scope, operationRef, (latest) => {
-      if (latest === undefined || latest.binding.graphDigest !== current.binding.graphDigest) {
-        return Effect.fail(storeError("exportArchive", "stale_generation", "The graph changed during archive export."));
+    const archivalStateDigest = archivalStateDigestFor(current);
+    const exportRequestDigest = requestFingerprint("archive_export", scope);
+    yield* mutate(scope, operationRef, exportRequestDigest, (latest) => {
+      if (latest === undefined || archivalStateDigestFor(latest) !== archivalStateDigest) {
+        return Effect.fail(storeError("exportArchive", "stale_generation", "The archival state changed during export."));
       }
       const next = S.decodeUnknownSync(GraphMemoryStoredGraph)({
         ...latest,
         archiveRefs: [...new Set([...latest.archiveRefs, archiveRef])].sort(compareText),
       }) as GraphMemoryStoredGraph;
-      return Effect.succeed({
-        nextCurrent: next,
-        receipt: makeReceipt({
+      const receipt = makeReceipt({
+          requestDigest: exportRequestDigest,
           operationRef,
           operation: "archive_export",
           status: "complete",
@@ -702,21 +818,44 @@ export const makeGraphMemoryStore = Effect.fn("GraphMemory.makeStore")(function*
           failed: [],
           before: accounting(latest),
           after: accounting(next),
-        }),
+        });
+      const archiveExport = S.decodeUnknownSync(GraphMemoryArchiveExportRecord)({
+        operationRef,
+        archivalStateDigest,
+        generation: latest.binding.generation,
+        bytesBase64: bytesToBase64(imported),
+        archiveRef,
+        contentDigest: verified.archive.manifest.contentDigest,
+        manifestDigest: verified.archive.manifest.manifestDigest,
+        receipt,
+      });
+      return Effect.succeed({
+        nextCurrent: next,
+        archiveExport,
+        receipt,
       });
     });
+    const committed = yield* load(scope);
+    const exact = committed?.archiveExports?.find((item) => item.operationRef === operationRef);
+    if (exact === undefined) {
+      return yield* storeError("exportArchive", "state_conflict", "The export result is not committed.");
+    }
     return {
-      bytes: imported,
-      archiveRef,
-      contentDigest: verified.archive.manifest.contentDigest,
-      manifestDigest: verified.archive.manifest.manifestDigest,
-      receipt,
+      bytes: bytesFromBase64(exact.bytesBase64),
+      archiveRef: exact.archiveRef,
+      contentDigest: exact.contentDigest,
+      manifestDigest: exact.manifestDigest,
+      receipt: exact.receipt,
     } satisfies GraphMemoryArchiveExport;
   });
 
   const importArchive = Effect.fn("GraphMemory.importArchive")(function* (
     input: ImportGraphMemoryArchiveInput,
   ) {
+    const importRequestDigest = requestFingerprint("archive_import", {
+      ...input,
+      bytes: bytesToBase64(input.bytes),
+    });
     if (input.admission.consent !== "granted" || input.admission.redactionState !== "already_redacted") {
       return yield* storeError("importArchive", "consent_required", "Archive import requires consent and an already-redacted declaration.");
     }
@@ -761,13 +900,14 @@ export const makeGraphMemoryStore = Effect.fn("GraphMemory.makeStore")(function*
       ...stored,
       archiveRefs: [imported.archive.manifest.archiveRef],
     }) as GraphMemoryStoredGraph;
-    return yield* mutate(input.scope, input.operationRef, (current) => {
+    return yield* mutate(input.scope, input.operationRef, importRequestDigest, (current) => {
       if (current !== undefined && input.generation <= current.binding.generation) {
         return Effect.fail(storeError("importArchive", "stale_generation", "Imported graph generation must increase."));
       }
       return Effect.succeed({
         nextCurrent: withArchive,
         receipt: makeReceipt({
+          requestDigest: importRequestDigest,
           operationRef: input.operationRef,
           operation: "archive_import",
           status: "complete",
@@ -904,11 +1044,13 @@ export const makeGraphMemoryStore = Effect.fn("GraphMemory.makeStore")(function*
   const applyDeletePlan = Effect.fn("GraphMemory.applyDeletePlan")(function* (
     input: ApplyGraphMemoryDeletePlanInput,
   ) {
-    return yield* mutate(input.scope, input.operationRef, (current) =>
+    const deleteRequestDigest = requestFingerprint("delete_source", input);
+    return yield* mutate(input.scope, input.operationRef, deleteRequestDigest, (current) =>
       Effect.gen(function* () {
         if (current === undefined) {
           return {
             receipt: makeReceipt({
+              requestDigest: deleteRequestDigest,
               operationRef: input.operationRef,
               operation: "delete_source",
               status: "refused",
@@ -928,6 +1070,7 @@ export const makeGraphMemoryStore = Effect.fn("GraphMemory.makeStore")(function*
           return {
             nextCurrent: current,
             receipt: makeReceipt({
+              requestDigest: deleteRequestDigest,
               operationRef: input.operationRef,
               operation: "delete_source",
               status: "refused",
@@ -937,7 +1080,7 @@ export const makeGraphMemoryStore = Effect.fn("GraphMemory.makeStore")(function*
               graphDigestAfter: current.binding.graphDigest,
               manifestDigestBefore: current.binding.manifestDigest,
               manifestDigestAfter: current.binding.manifestDigest,
-              intended: graphDeleteActionRefs(input.plan).map((ref) => fact("graph", ref, "sdk_delete_action", ref)),
+              intended: deleteActionFacts(input.plan),
               applied: [],
               retainedShared: [],
               unresolved: [],
@@ -970,6 +1113,7 @@ export const makeGraphMemoryStore = Effect.fn("GraphMemory.makeStore")(function*
           return {
             nextCurrent: current,
             receipt: makeReceipt({
+              requestDigest: deleteRequestDigest,
               operationRef: input.operationRef,
               operation: "delete_source",
               status: "refused",
@@ -979,7 +1123,7 @@ export const makeGraphMemoryStore = Effect.fn("GraphMemory.makeStore")(function*
               graphDigestAfter: current.binding.graphDigest,
               manifestDigestBefore: current.binding.manifestDigest,
               manifestDigestAfter: current.binding.manifestDigest,
-              intended: graphDeleteActionRefs(input.plan).map((ref) => fact("graph", ref, "sdk_delete_action", ref)),
+              intended: deleteActionFacts(input.plan),
               applied: [],
               retainedShared: [],
               unresolved,
@@ -990,16 +1134,33 @@ export const makeGraphMemoryStore = Effect.fn("GraphMemory.makeStore")(function*
           };
         }
         const { next, sdkReceipt } = yield* projectAfterDelete(executable.success, current);
-        const removed = new Set(executable.success.actions.removableElements.map((item) => item.elementRef));
+        const removed = new Set<string>([
+          ...executable.success.actions.removableElements.map((item) => item.elementRef),
+          ...executable.success.actions.removableMerges.map((item) => item.mergeRef),
+        ]);
         const retainedShared = executable.success.actions.sourceMembershipRemovals
-          .filter((item) => !removed.has(item.elementRef as never))
+          .filter((item) => !removed.has(item.elementRef))
           .map((item) => fact("source_membership", item.elementRef, "retained_shared_element", item.actionRef));
-        const actionFacts = graphDeleteActionRefs(executable.success).map((ref) =>
-          fact("graph", ref, "sdk_delete_action", ref),
-        );
+        const retainedSnapshotRefs = new Set(next.rankingSnapshots.map((item) => item.snapshotRef));
+        const droppedSnapshotFacts = current.rankingSnapshots
+          .filter((snapshot) => !retainedSnapshotRefs.has(snapshot.snapshotRef))
+          .map((snapshot) => {
+            const featureRefs = new Set(snapshot.features.map((item) => item.featureRef));
+            const action = executable.success.actions.rankingRefActions.find((item) =>
+              featureRefs.has(item.artifactRef),
+            );
+            return fact(
+              "ranking",
+              snapshot.snapshotRef,
+              "remove_stale_ranking_snapshot",
+              action?.actionRef ?? executable.success.idempotencyKey,
+            );
+          });
+        const actionFacts = [...deleteActionFacts(executable.success), ...droppedSnapshotFacts];
         return {
           nextCurrent: next,
           receipt: makeReceipt({
+            requestDigest: deleteRequestDigest,
             operationRef: input.operationRef,
             operation: "delete_source",
             status: "complete",
@@ -1027,7 +1188,8 @@ export const makeGraphMemoryStore = Effect.fn("GraphMemory.makeStore")(function*
     scope: GraphMemoryScope,
     operationRef: GraphMemoryOperationRef,
   ) {
-    return yield* mutate(scope, operationRef, (current) => {
+    const forgetRequestDigest = requestFingerprint("forget", scope);
+    return yield* mutate(scope, operationRef, forgetRequestDigest, (current) => {
       const before = accounting(current);
       const intended = current === undefined
         ? []
@@ -1044,7 +1206,9 @@ export const makeGraphMemoryStore = Effect.fn("GraphMemory.makeStore")(function*
       ) ?? [];
       const applied = intended.filter((item) => item.plane !== "archive");
       return Effect.succeed({
+        clearArchiveExports: true,
         receipt: makeReceipt({
+          requestDigest: forgetRequestDigest,
           operationRef,
           operation: "forget",
           status: "complete",
