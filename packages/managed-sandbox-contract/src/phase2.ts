@@ -10,8 +10,12 @@ import {
 
 export const MANAGED_SANDBOX_CONTENT_CHECKPOINT_SCHEMA_VERSION =
   "openagents.managed_sandbox_content_checkpoint.v1" as const;
+export const MANAGED_SANDBOX_PHASE2_COMMAND_SCHEMA_VERSION =
+  "openagents.managed_sandbox_phase2_command.v1" as const;
 export const MANAGED_SANDBOX_CHECKPOINT_STOP_SCHEMA_VERSION =
   "openagents.managed_sandbox_checkpoint_stop.v1" as const;
+export const MANAGED_SANDBOX_CHECKPOINT_DELETE_RECEIPT_SCHEMA_VERSION =
+  "openagents.managed_sandbox_checkpoint_delete_receipt.v1" as const;
 export const MANAGED_SANDBOX_FORK_RECEIPT_SCHEMA_VERSION =
   "openagents.managed_sandbox_fork_receipt.v1" as const;
 export const MANAGED_SANDBOX_RESTORE_RECEIPT_SCHEMA_VERSION =
@@ -39,6 +43,70 @@ export const ManagedSandboxCheckpointOmissionsSchema = S.Struct({
   networkIdentity: S.Literal("excluded"),
 });
 export type ManagedSandboxCheckpointOmissions = typeof ManagedSandboxCheckpointOmissionsSchema.Type;
+
+const Phase2CommandBase = {
+  schema: S.Literal(MANAGED_SANDBOX_PHASE2_COMMAND_SCHEMA_VERSION),
+  commandRef: SandboxRef,
+  idempotencyRef: SandboxRef,
+  ownerRef: SandboxRef,
+  tenantRef: SandboxRef,
+  requestedAt: SandboxTimestamp,
+};
+
+const CheckpointSourceCommandFields = {
+  checkpointRef: SandboxRef,
+  sourceSandboxRef: SandboxRef,
+  sourceResourceGeneration: NonNegativeInt,
+  sourceImageDigest: Sha256Digest,
+  sourceToolchainDigest: Sha256Digest,
+  repositoryRef: SandboxRef,
+  repositoryRevisionRef: SandboxRef,
+  repositoryPostImageDigest: Sha256Digest,
+  formatRef: SandboxRef,
+  retainedUntil: SandboxTimestamp,
+};
+
+/** Host-authorized Phase 2 commands. They contain references and digests only. */
+export const ManagedSandboxPhase2CommandSchema = S.TaggedUnion({
+  CreateCheckpoint: {
+    ...Phase2CommandBase,
+    ...CheckpointSourceCommandFields,
+  },
+  ArchiveWithCheckpoint: {
+    ...Phase2CommandBase,
+    ...CheckpointSourceCommandFields,
+    stopRef: SandboxRef,
+  },
+  ForkFromCheckpoint: {
+    ...Phase2CommandBase,
+    checkpointRef: SandboxRef,
+    expectedSourceSandboxRef: SandboxRef,
+    expectedSourceResourceGeneration: NonNegativeInt,
+    sourceCapabilityRefs: BoundedRefs,
+  },
+  RestoreCheckpoint: {
+    ...Phase2CommandBase,
+    checkpointRef: SandboxRef,
+    destinationSandboxRef: SandboxRef,
+    expectedSourceResourceGeneration: NonNegativeInt,
+    admittedServiceRefs: BoundedRefs,
+    sourceCapabilityRefs: BoundedRefs,
+  },
+  DeleteCheckpoint: {
+    ...Phase2CommandBase,
+    checkpointRef: SandboxRef,
+    reason: S.Literals(["owner_requested", "retention_expired", "sandbox_teardown"]),
+  },
+  CreatePrivateIngress: {
+    ...Phase2CommandBase,
+    sandboxRef: SandboxRef,
+    resourceGeneration: NonNegativeInt,
+    audienceRef: SandboxRef,
+    kind: S.Literals(["desktop", "preview"]),
+    ttlSeconds: ShortIngressTtlSeconds,
+  },
+});
+export type ManagedSandboxPhase2Command = typeof ManagedSandboxPhase2CommandSchema.Type;
 
 /** A completed and verified filesystem content checkpoint, not a VM image. */
 export const ManagedSandboxContentCheckpointSchema = S.Struct({
@@ -78,6 +146,25 @@ export const ManagedSandboxContentCheckpointSchema = S.Struct({
 );
 export type ManagedSandboxContentCheckpoint = typeof ManagedSandboxContentCheckpointSchema.Type;
 
+/** Proof that checkpoint bytes were deleted from the authoritative store. */
+export const ManagedSandboxCheckpointDeleteReceiptSchema = S.Struct({
+  schema: S.Literal(MANAGED_SANDBOX_CHECKPOINT_DELETE_RECEIPT_SCHEMA_VERSION),
+  receiptRef: SandboxRef,
+  ownerRef: SandboxRef,
+  tenantRef: SandboxRef,
+  checkpointRef: SandboxRef,
+  sourceSandboxRef: SandboxRef,
+  sourceResourceGeneration: NonNegativeInt,
+  contentDigest: Sha256Digest,
+  contentDeleted: S.Literal(true),
+  outcome: S.Literal("deleted"),
+  reason: S.Literals(["owner_requested", "retention_expired", "sandbox_teardown"]),
+  deletedAt: SandboxTimestamp,
+  evidenceRefs: BoundedRefs,
+});
+export type ManagedSandboxCheckpointDeleteReceipt =
+  typeof ManagedSandboxCheckpointDeleteReceiptSchema.Type;
+
 const CheckpointStopBase = {
   schema: S.Literal(MANAGED_SANDBOX_CHECKPOINT_STOP_SCHEMA_VERSION),
   stopRef: SandboxRef,
@@ -106,7 +193,7 @@ export const ManagedSandboxCheckpointStopOutcomeSchema = S.TaggedUnion({
   S.check(
     S.makeFilter(
       (outcome) =>
-        outcome._tag === "CheckpointFailed" ||
+        outcome["_tag"] === "CheckpointFailed" ||
         (outcome.sandboxRef === outcome.checkpoint.sourceSandboxRef &&
           outcome.resourceGeneration === outcome.checkpoint.sourceResourceGeneration),
       {
@@ -292,6 +379,8 @@ const Phase2ErrorBase = {
 
 /** Closed public-safe fault vocabulary for deterministic Phase 2 refusal. */
 export const ManagedSandboxPhase2ErrorSchema = S.TaggedUnion({
+  InvalidRequest: { ...Phase2ErrorBase, requestRef: SandboxRef },
+  IdempotencyConflict: { ...Phase2ErrorBase, idempotencyRef: SandboxRef },
   CheckpointIncomplete: { ...Phase2ErrorBase, checkpointRef: SandboxRef },
   CheckpointCorrupt: { ...Phase2ErrorBase, checkpointRef: SandboxRef },
   CheckpointExpired: { ...Phase2ErrorBase, checkpointRef: SandboxRef },
@@ -309,8 +398,17 @@ export const ManagedSandboxPhase2ErrorSchema = S.TaggedUnion({
 });
 export type ManagedSandboxPhase2Error = typeof ManagedSandboxPhase2ErrorSchema.Type;
 
+export const decodeManagedSandboxPhase2Command = S.decodeUnknownSync(
+  ManagedSandboxPhase2CommandSchema,
+  { onExcessProperty: "error" },
+);
+
 export const decodeManagedSandboxContentCheckpoint = S.decodeUnknownSync(
   ManagedSandboxContentCheckpointSchema,
+  { onExcessProperty: "error" },
+);
+export const decodeManagedSandboxCheckpointDeleteReceipt = S.decodeUnknownSync(
+  ManagedSandboxCheckpointDeleteReceiptSchema,
   { onExcessProperty: "error" },
 );
 export const decodeManagedSandboxCheckpointStopOutcome = S.decodeUnknownSync(

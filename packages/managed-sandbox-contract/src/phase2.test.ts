@@ -1,16 +1,20 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  MANAGED_SANDBOX_CHECKPOINT_DELETE_RECEIPT_SCHEMA_VERSION,
   MANAGED_SANDBOX_CHECKPOINT_STOP_SCHEMA_VERSION,
   MANAGED_SANDBOX_CONTENT_CHECKPOINT_SCHEMA_VERSION,
   MANAGED_SANDBOX_FORK_RECEIPT_SCHEMA_VERSION,
   MANAGED_SANDBOX_PRIVATE_INGRESS_ADMISSION,
   MANAGED_SANDBOX_PRIVATE_INGRESS_SCHEMA_VERSION,
+  MANAGED_SANDBOX_PHASE2_COMMAND_SCHEMA_VERSION,
   MANAGED_SANDBOX_RESTORE_RECEIPT_SCHEMA_VERSION,
+  decodeManagedSandboxCheckpointDeleteReceipt,
   decodeManagedSandboxCheckpointStopOutcome,
   decodeManagedSandboxContentCheckpoint,
   decodeManagedSandboxForkReceipt,
   decodeManagedSandboxPrivateIngressCapability,
+  decodeManagedSandboxPhase2Command,
   decodeManagedSandboxRestoreReceipt,
 } from "./phase2.ts";
 
@@ -53,6 +57,27 @@ const checkpoint = () => ({
 });
 
 describe("managed sandbox Phase 2 contract", () => {
+  it("decodes reference-only lifecycle commands and rejects unknown payload fields", () => {
+    const command = {
+      _tag: "ForkFromCheckpoint" as const,
+      schema: MANAGED_SANDBOX_PHASE2_COMMAND_SCHEMA_VERSION,
+      commandRef: "command.fork.1",
+      idempotencyRef: "idempotency.fork.1",
+      ownerRef: "owner.test",
+      tenantRef: "tenant.test",
+      checkpointRef: "checkpoint.sbx10.1",
+      expectedSourceSandboxRef: "sandbox.source.1",
+      expectedSourceResourceGeneration: 4,
+      sourceCapabilityRefs: ["capability.source.command"],
+      requestedAt: "2026-07-22T00:02:00.000Z",
+    };
+
+    expect(decodeManagedSandboxPhase2Command(command)["_tag"]).toBe("ForkFromCheckpoint");
+    expect(() =>
+      decodeManagedSandboxPhase2Command({ ...command, rawCredential: "not-admitted" }),
+    ).toThrow();
+  });
+
   it("accepts a verified content checkpoint with exact source and omission facts", () => {
     const decoded = decodeManagedSandboxContentCheckpoint(checkpoint());
 
@@ -183,6 +208,27 @@ describe("managed sandbox Phase 2 contract", () => {
     expect(() =>
       decodeManagedSandboxRestoreReceipt({ ...receipt, restoredResourceGeneration: 4 }),
     ).toThrow();
+  });
+
+  it("binds checkpoint deletion proof to the deleted content identity", () => {
+    const receipt = decodeManagedSandboxCheckpointDeleteReceipt({
+      schema: MANAGED_SANDBOX_CHECKPOINT_DELETE_RECEIPT_SCHEMA_VERSION,
+      receiptRef: "receipt.checkpoint.delete.1",
+      ownerRef: "owner.test",
+      tenantRef: "tenant.test",
+      checkpointRef: "checkpoint.sbx10.1",
+      sourceSandboxRef: "sandbox.source.1",
+      sourceResourceGeneration: 4,
+      contentDigest: digest("d"),
+      contentDeleted: true,
+      outcome: "deleted",
+      reason: "owner_requested",
+      deletedAt: "2026-07-22T00:04:00.000Z",
+      evidenceRefs: ["receipt.checkpoint.object-delete.1"],
+    });
+
+    expect(receipt.contentDeleted).toBe(true);
+    expect(receipt.reason).toBe("owner_requested");
   });
 
   it("keeps private ingress unavailable and rejects raw or long-lived access URLs", () => {
