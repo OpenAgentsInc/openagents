@@ -117,20 +117,25 @@ describe("confirmed portable-session client", () => {
         entry(5, PORTABLE_ATTACHMENT_ENTITY_TYPE, "attachment.malformed", { token: "not-authority" }),
         entry(6, PORTABLE_SESSION_ENTITY_TYPE, "session.foreign", { ...sessionValue, sessionRef: "session.foreign", ownerRef: "other.owner" }),
         entry(7, PORTABLE_ATTACHMENT_ENTITY_TYPE, "attachment.orphan", { ...attachment, attachmentRef: "attachment.orphan", sessionRef: "session.missing" }),
-      ], SyncVersion.make(7)))
+        entry(8, PORTABLE_COMMAND_ENTITY_TYPE, "command.foreign", {
+          command: { ...command, commandRef: "command.foreign", ownerRef: "other.owner" },
+          status: "accepted",
+        }),
+      ], SyncVersion.make(8)))
       const snapshot = Effect.runSync(createKhalaSyncPortableSessions({
         ownerRef: "owner.1",
         ownerScope: scope,
         store,
-        session: session({ phase: "live", cursor: SyncVersionWatermark.make(7) }),
+        session: session({ phase: "live", cursor: SyncVersionWatermark.make(8) }),
       }).snapshot())
-      expect(snapshot.status).toEqual({ phase: "live", cursor: 7, pendingCommandCount: 0 })
+      expect(snapshot.status).toEqual({ phase: "live", cursor: 8, pendingCommandCount: 0 })
       expect(snapshot.sessions.map(value => value.sessionRef)).toEqual([sessionValue.sessionRef])
       expect(snapshot.attachments.map(value => value.attachmentRef)).toEqual([attachment.attachmentRef])
       expect(snapshot.commands).toEqual([{ command, status: "accepted" }])
       expect(snapshot.issues.map(issue => issue.code).sort()).toEqual([
         "malformed",
         "orphaned",
+        "owner_scope_mismatch",
         "owner_scope_mismatch",
       ])
       expect(JSON.stringify(snapshot)).not.toContain("not-authority")

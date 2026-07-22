@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "vite-plus/test"
 import { createHash } from "node:crypto"
-import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
 
@@ -51,6 +51,7 @@ import type {
   WorkspaceSearchHost,
   WorkspaceSearchRequest,
 } from "../src/workspace-search-host.ts"
+import type { IdePortableMutationAuthority } from "../src/ide/portable-mutation-authority.ts"
 import { isolatedGitEnvironment, runGitFixture } from "./git-fixture.ts"
 
 const roots: string[] = []
@@ -376,6 +377,141 @@ describe("Desktop bounded workspace service", () => {
     expect(() => workspace.summary()).toThrow("workspace_disposed")
     expect(workspace.read(file)).toBeNull()
     expect(workspace.gitStatus()).toEqual({ state: "unavailable" })
+  })
+
+  test("keeps reads available and performs no mutation IO when portable authority refuses", () => {
+    const root = makeRoot()
+    const file = path.join(root, "README.md")
+    writeFileSync(file, "before")
+    mkdirSync(path.join(root, "archive"))
+    const mutationCalls: string[] = []
+    const documentCalls: string[] = []
+    const authority: IdePortableMutationAuthority = {
+      authorize: () => ({ _tag: "Refused", reason: "sync_unavailable" }),
+      reauthorize: () => false,
+    }
+    const workspace = openWorkspaceService(root, {
+      grantRef: "workspace.grant.portable",
+      mutationAuthority: authority,
+      mutationIo: {
+        createFile: () => mutationCalls.push("createFile"),
+        createDirectory: () => mutationCalls.push("createDirectory"),
+        rename: () => mutationCalls.push("rename"),
+        copyFile: () => mutationCalls.push("copyFile"),
+        deleteFile: () => mutationCalls.push("deleteFile"),
+        deleteDirectory: () => mutationCalls.push("deleteDirectory"),
+      },
+      documentIo: {
+        read: absolutePath => {
+          documentCalls.push("read")
+          return readFileSync(absolutePath)
+        },
+        replace: () => documentCalls.push("replace"),
+        create: () => documentCalls.push("create"),
+      },
+    })
+
+    const opened = workspace.openDocument({ grantRef: workspace.grantRef, pathRef: "README.md" })
+    expect(opened.state).toBe("available")
+    expect(workspace.read(file)?.content).toBe("before")
+    expect(workspace.createEntry({ parentRef: "", name: "new.txt", kind: "file" }).state).toBe("unavailable")
+    expect(workspace.renameEntry({ pathRef: "README.md", name: "renamed.md", expectedRevisionRef: "unused" }).state).toBe("unavailable")
+    expect(workspace.moveEntry({ pathRef: "README.md", destinationParentRef: "", expectedRevisionRef: "unused" }).state).toBe("unavailable")
+    expect(workspace.copyEntry({ pathRef: "README.md", destinationParentRef: "", expectedRevisionRef: "unused" }).state).toBe("unavailable")
+    expect(workspace.duplicateEntry({ pathRef: "README.md", expectedRevisionRef: "unused" }).state).toBe("unavailable")
+    expect(workspace.deleteEntry({ pathRef: "README.md", expectedRevisionRef: "unused" }).state).toBe("unavailable")
+    expect(workspace.saveDocument({
+      grantRef: workspace.grantRef,
+      pathRef: "README.md",
+      content: "after",
+      expectedRevisionRef: "unused",
+    })).toMatchObject({ state: "unavailable", reason: "grant_revoked" })
+    expect(workspace.saveDocumentAs({
+      grantRef: workspace.grantRef,
+      pathRef: "new.md",
+      content: "after",
+    })).toMatchObject({ state: "unavailable", reason: "grant_revoked" })
+    expect(workspace.save({ path: file, content: "after", expectedRevision: "unused" }).state).toBe("unavailable")
+    expect(mutationCalls).toEqual([])
+    expect(documentCalls).toEqual(["read"])
+    expect(readFileSync(file, "utf8")).toBe("before")
+    workspace.dispose()
+  })
+
+  test("re-reads the portable permit immediately before each write boundary", () => {
+    const root = makeRoot()
+    const file = path.join(root, "README.md")
+    writeFileSync(file, "before")
+    mkdirSync(path.join(root, "archive"))
+    const writes: string[] = []
+    let reauthorizationCount = 0
+    const permit = {
+      _tag: "Portable" as const,
+      key: "portable:attachment.1:1",
+      grantRef: "workspace.grant.portable",
+      sessionRef: "session.1",
+      workContextRef: "work-context.1",
+      attachmentRef: "attachment.1",
+      generation: 1,
+      targetRef: "target.local.1",
+    }
+    const authority: IdePortableMutationAuthority = {
+      authorize: () => ({ _tag: "Permitted", permit }),
+      reauthorize: () => {
+        reauthorizationCount += 1
+        return false
+      },
+    }
+    const workspace = openWorkspaceService(root, {
+      grantRef: permit.grantRef,
+      mutationAuthority: authority,
+      mutationIo: {
+        createFile: () => writes.push("createFile"),
+        createDirectory: () => writes.push("createDirectory"),
+        rename: () => writes.push("rename"),
+        copyFile: () => writes.push("copyFile"),
+        deleteFile: () => writes.push("deleteFile"),
+        deleteDirectory: () => writes.push("deleteDirectory"),
+      },
+      documentIo: {
+        read: absolutePath => readFileSync(absolutePath),
+        replace: () => writes.push("replace"),
+        create: () => writes.push("create"),
+      },
+    })
+
+    expect(workspace.createEntry({ parentRef: "", name: "new.txt", kind: "file" }).state).toBe("unavailable")
+    const tree = workspace.tree({ directoryRef: "" })
+    if (tree.state !== "available") throw new Error("expected tree")
+    const readme = tree.entries.find(entry => entry.pathRef === "README.md")
+    if (readme === undefined) throw new Error("expected README entry")
+    const revisionInput = { pathRef: readme.pathRef, expectedRevisionRef: readme.revisionRef }
+    expect(workspace.renameEntry({ ...revisionInput, name: "renamed.md" }).state).toBe("unavailable")
+    expect(workspace.moveEntry({ ...revisionInput, destinationParentRef: "archive" }).state).toBe("unavailable")
+    expect(workspace.copyEntry({ ...revisionInput, destinationParentRef: "archive" }).state).toBe("unavailable")
+    expect(workspace.duplicateEntry(revisionInput).state).toBe("unavailable")
+    expect(workspace.deleteEntry(revisionInput).state).toBe("unavailable")
+    const opened = workspace.openDocument({ grantRef: permit.grantRef, pathRef: "README.md" })
+    if (opened.state !== "available") throw new Error("expected document")
+    expect(workspace.saveDocument({
+      grantRef: permit.grantRef,
+      pathRef: "README.md",
+      content: "after",
+      expectedRevisionRef: opened.document.revisionRef,
+    })).toMatchObject({ state: "unavailable", reason: "grant_revoked" })
+    expect(workspace.saveDocumentAs({
+      grantRef: permit.grantRef,
+      pathRef: "new.md",
+      content: "after",
+    })).toMatchObject({ state: "unavailable", reason: "grant_revoked" })
+    const current = workspace.read(file)
+    if (current === null) throw new Error("expected file")
+    expect(workspace.save({ path: file, content: "after", expectedRevision: current.revision }).state).toBe("unavailable")
+    expect(writes).toEqual([])
+    expect(reauthorizationCount).toBe(9)
+    expect(readFileSync(file, "utf8")).toBe("before")
+    expect(existsSync(path.join(root, "new.txt"))).toBe(false)
+    workspace.dispose()
   })
 
   test("reads and atomically saves an existing bounded text file with a new revision", () => {
@@ -958,11 +1094,20 @@ describe("Desktop bounded workspace service", () => {
         for (const resolve of [...active]) resolve({ state: "unavailable", message: "Workspace search was cancelled." })
       },
       activeCount: () => active.size,
-      dispose: () => {
-        if (disposed) return
+      quiesce: async () => {
+        if (!disposed) {
+          disposed = true
+          disposals += 1
+          for (const resolve of [...active]) resolve({ state: "unavailable", message: "The selected workspace has been disposed." })
+        }
+        return { state: "quiesced" }
+      },
+      dispose: async () => {
+        if (disposed) return { state: "quiesced" as const }
         disposed = true
         disposals += 1
         for (const resolve of [...active]) resolve({ state: "unavailable", message: "The selected workspace has been disposed." })
+        return { state: "quiesced" as const }
       },
     }
     const workspace = openWorkspaceService(root, {
@@ -1002,6 +1147,125 @@ describe("Desktop bounded workspace service", () => {
     expect(await closing.result).toEqual({ state: "unavailable", message: "The selected workspace has been disposed." })
     expect(disposals).toBe(1)
     expect(searchHost.activeCount()).toBe(0)
+  })
+
+  test("rotates search and watcher generations and never admits a stale portable page", async () => {
+    const root = makeRoot()
+    let generation: number | null = 1
+    const currentPermit = () => generation === null ? null : ({
+      _tag: "Portable" as const,
+      key: `portable:workspace.grant.search:session.search:work.search:attachment.${generation}:${generation}:target.search`,
+      grantRef: "workspace.grant.search",
+      sessionRef: "session.search",
+      workContextRef: "work.search",
+      attachmentRef: `attachment.${generation}`,
+      generation,
+      targetRef: "target.search",
+    })
+    const authority: IdePortableMutationAuthority = {
+      authorize: grantRef => {
+        const permit = currentPermit()
+        return permit !== null && permit.grantRef === grantRef
+          ? { _tag: "Permitted", permit }
+          : { _tag: "Refused", reason: "admission_unavailable" }
+      },
+      reauthorize: permit => currentPermit()?.key === permit.key,
+    }
+    const pending: Array<(page: ReturnType<typeof searchWorkspace>) => void> = []
+    let hostQuiesced = false
+    const searchHost: WorkspaceSearchHost = {
+      start: request => {
+        if (hostQuiesced) {
+          return {
+            taskRef: "workspace.search.task.quiesced",
+            result: Promise.resolve({ state: "unavailable", message: "Workspace search is quiesced on this host." }),
+            cancel: () => undefined,
+          }
+        }
+        let resolveResult!: (page: ReturnType<typeof searchWorkspace>) => void
+        const result = new Promise<ReturnType<typeof searchWorkspace>>(resolve => { resolveResult = resolve })
+        pending.push(resolveResult)
+        return {
+          taskRef: `workspace.search.task.${pending.length}`,
+          result,
+          cancel: () => resolveResult({ state: "unavailable", message: `cancelled:${request.query}` }),
+        }
+      },
+      cancelAll: () => undefined,
+      activeCount: () => 0,
+      quiesce: async () => {
+        hostQuiesced = true
+        return { state: "quiesced" }
+      },
+      dispose: async () => {
+        hostQuiesced = true
+        return { state: "quiesced" }
+      },
+    }
+    const watcherCallbacks: Array<(pathRef: string | null) => void> = []
+    const watcherClosed: Array<() => boolean> = []
+    const authorityChecks: Array<() => void> = []
+    const scheduled: Array<() => void> = []
+    const workspace = openWorkspaceService(root, {
+      grantRef: "workspace.grant.search",
+      mutationAuthority: authority,
+      searchHostFactory: () => searchHost,
+      watchFactory: (_watchedRoot, onChange) => {
+        let closed = false
+        watcherCallbacks.push(onChange)
+        watcherClosed.push(() => closed)
+        return { close: () => { closed = true } }
+      },
+      monitorSearchAuthority: check => {
+        authorityChecks.push(check)
+        return { close: () => undefined }
+      },
+      watchScheduler: flush => {
+        scheduled.push(flush)
+        return { cancel: () => undefined }
+      },
+    })
+    const changes: DesktopWorkspaceChange[] = []
+    const subscription = workspace.subscribe(change => changes.push(change))
+    expect(watcherCallbacks).toHaveLength(1)
+    watcherCallbacks[0]!("queued-before-move.ts")
+    expect(scheduled).toHaveLength(1)
+
+    const stale = workspace.search({ query: "stale", mode: "content" })
+    generation = 2
+    pending[0]!(searchWorkspace({ root, grantRef: workspace.grantRef, query: "stale", mode: "content", epoch: 0 }))
+    expect(await stale.result).toEqual({
+      state: "unavailable",
+      message: "The workspace search authority changed before its result was admitted.",
+    })
+    scheduled.shift()?.()
+    expect(changes).toEqual([])
+    expect(watcherClosed[0]!()).toBe(true)
+    expect(watcherCallbacks).toHaveLength(2)
+    watcherCallbacks[0]!("stale.ts")
+    expect(scheduled).toHaveLength(0)
+    authorityChecks[0]!()
+    expect(watcherCallbacks).toHaveLength(2)
+
+    const current = workspace.search({ query: "current", mode: "content" })
+    const currentPage = searchWorkspace({ root, grantRef: workspace.grantRef, query: "current", mode: "content", epoch: 0 })
+    pending[1]!(currentPage)
+    expect(await current.result).toEqual(currentPage)
+    expect((await workspace.search({ query: "current", mode: "content" }).result)).toEqual(currentPage)
+    expect(pending).toHaveLength(2)
+
+    watcherCallbacks[1]!("current.ts")
+    scheduled.shift()?.()
+    expect(changes).toEqual([{ kind: "changed", pathRef: "current.ts", pathRefs: ["current.ts"], epoch: 1 }])
+    const quiescing = workspace.quiesceSearch()
+    await expect(quiescing).resolves.toEqual({ state: "quiesced" })
+    await expect(workspace.quiesceSearch()).resolves.toEqual({ state: "quiesced" })
+    expect((await workspace.search({ query: "after", mode: "path" }).result)).toEqual({
+      state: "unavailable",
+      message: "Workspace search is quiesced on this host.",
+    })
+    subscription.close()
+    await workspace.dispose()
   })
 
   test("paginates a large root behind the fixed tree bound", () => {

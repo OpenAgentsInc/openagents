@@ -15,6 +15,7 @@ import {
 } from "@openagentsinc/khala-sync"
 import {
   KhalaSyncTransportError,
+  PORTABLE_REQUEST_COMMAND_MUTATOR_NAME,
   type KhalaSyncTransport,
 } from "@openagentsinc/khala-sync-client"
 
@@ -251,6 +252,32 @@ describe("openagents_desktop.sync.host_owned_sqlite.v1", () => {
       expect(host.conversation()).not.toBeNull()
       expect(host.timeline()).not.toBeNull()
       expect(host.interactions()).not.toBeNull()
+      expect(host.portableSessions()).not.toBeNull()
+      expect(host.portableSnapshot()).toMatchObject({
+        status: { phase: "live", pendingCommandCount: 0 },
+        sessions: [],
+        attachments: [],
+        commands: [],
+      })
+      const portableCommand = {
+        schema: "openagents.portable_session_command.v1",
+        commandRef: "command.desktop.move.1",
+        idempotencyKey: "idempotency.desktop.move.1",
+        ownerRef: "user.desktop",
+        sessionRef: "session.portable.desktop.1",
+        kind: "move",
+        expectedAttachmentRef: "attachment.desktop.1",
+        expectedGeneration: 1,
+        destinationTargetRef: "target.managed.desktop.1",
+        expiresAt: "2026-07-20T08:00:00.000Z",
+      } as const
+      expect(host.requestPortableCommand(portableCommand)).not.toBeNull()
+      await waitFor(() => pushes.flatMap(request => request.mutations)
+        .some(mutation => String(mutation.name) === PORTABLE_REQUEST_COMMAND_MUTATOR_NAME))
+      const portableMutation = pushes.flatMap(request => request.mutations)
+        .find(mutation => String(mutation.name) === PORTABLE_REQUEST_COMMAND_MUTATOR_NAME)
+      expect(JSON.parse(portableMutation?.argsJson ?? "null")).toEqual(portableCommand)
+      expect(portableMutation?.argsJson).not.toContain(root)
       expect(bootstraps.map(request => String(request.scope))).toEqual(["scope.user.user.desktop"])
       const catalogMutation = pushes.flatMap(request => request.mutations)
         .find(mutation => String(mutation.name) === "coding.publishCatalog")
@@ -274,6 +301,7 @@ describe("openagents_desktop.sync.host_owned_sqlite.v1", () => {
       expect(host.status().identityTier).toBe("local_only")
       expect(host.conversation()).toBeNull()
       expect(host.interactions()).toBeNull()
+      expect(host.portableSessions()).toBeNull()
       expect(host.drafts()).not.toBeNull()
       host.close()
       host.close()
@@ -315,6 +343,7 @@ describe("openagents_desktop.sync.host_owned_sqlite.v1", () => {
       expect(host.conversation()).toBeNull()
       expect(host.timeline()).toBeNull()
       expect(host.interactions()).toBeNull()
+      expect(host.portableSessions()).toBeNull()
       host.close()
     } finally {
       rmSync(root, { recursive: true, force: true })

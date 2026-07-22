@@ -85,6 +85,22 @@ const main = async (): Promise<void> => {
   const beforeHandles = activeHandles()
   const host = await openIdeRunHost({
     workspace: () => ({ root, grantRef: "workspace.grant.ide10-benchmark" }),
+    mutationAuthority: {
+      authorize: grantRef => ({
+        _tag: "Permitted",
+        permit: Object.freeze({
+          _tag: "LocalOnly",
+          key: `local:${grantRef}`,
+          grantRef,
+          sessionRef: "session.ide10-benchmark",
+          workContextRef: "work-context.ide10-benchmark",
+          attachmentRef: null,
+          generation: null,
+          targetRef: null,
+        }),
+      }),
+      reauthorize: permit => permit.grantRef === "workspace.grant.ide10-benchmark",
+    },
     environment: () => ({ PATH: process.env.PATH, HOME: process.env.HOME, SECRET_TOKEN: "sk-never-admit-12345678" }),
     emit: (event: IdeRunEvent) => {
       if (event._tag !== "Snapshot") return

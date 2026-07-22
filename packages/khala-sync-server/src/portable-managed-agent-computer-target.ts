@@ -5,6 +5,7 @@ import type {
   PortableAgentGraph,
   PortableSessionExecutionBinding,
 } from "@openagentsinc/portable-session-contract"
+import { validateIdePortableDestinationActivationReceipt } from "@openagentsinc/portable-session-contract"
 
 import type {
   PortableCheckpointBundle,
@@ -92,6 +93,7 @@ export type ManagedAgentComputerPortableProvisioner = Readonly<{
     executionBinding: PortableSessionExecutionBinding
     attachmentRef: string
     generation: number
+    destinationRunnerSessionReservationRef: string
     capabilityLeaseRefs: ReadonlyArray<string>
     authorityEvidenceRef: string
   }>) => Promise<PortableTargetActivationReceipt>
@@ -149,6 +151,7 @@ export type PostgresManagedAgentComputerTargetConfig = Readonly<{
   ownerRef: string
   targetRef: string
   provisioner: ManagedAgentComputerPortableProvisioner
+  now?: () => Date
 }>
 
 const digest = (value: unknown): string =>
@@ -287,7 +290,8 @@ export class PostgresManagedAgentComputerTarget implements PortableSessionExecut
         input.destinationAttachmentRef,
         input.destinationGeneration,
       )
-      const receipt = publicSafe(await this.config.provisioner.activate({
+      const stageReceipt = parseJson<ManagedAgentComputerStageReceipt>(row.stage_receipt_json)
+      const receipt = validateIdePortableDestinationActivationReceipt(publicSafe(await this.config.provisioner.activate({
         operationRef: input.operationRef,
         ownerRef: this.config.ownerRef,
         targetRef: this.targetRef,
@@ -297,9 +301,22 @@ export class PostgresManagedAgentComputerTarget implements PortableSessionExecut
         executionBinding: input.executionBinding,
         attachmentRef: input.destinationAttachmentRef,
         generation: input.destinationGeneration,
+        destinationRunnerSessionReservationRef:
+          stageReceipt.destinationRunnerSessionReservationRef,
         capabilityLeaseRefs: operation.capabilityLeaseRefs,
         authorityEvidenceRef,
-      }))
+      })), {
+        operationRef: input.operationRef,
+        sessionRef: input.sessionRef,
+        checkpointRef: input.checkpointRef,
+        destinationTargetRef: this.targetRef,
+        destinationAttachmentRef: input.destinationAttachmentRef,
+        destinationRunnerSessionReservationRef:
+          stageReceipt.destinationRunnerSessionReservationRef,
+        destinationGeneration: input.destinationGeneration,
+        authenticationPolicyRef: `policy.portable.destination.${this.targetClass}.v1`,
+        ...(this.config.now === undefined ? {} : { now: this.config.now() }),
+      })
       const bundle = parseJson<PortableCheckpointBundle>(row.bundle_json)
       const expectedAgents = bundle.graph.nodes.map(node => node.agentRef).sort()
       if (!same([...receipt.activatedAgentRefs].sort(), expectedAgents)) {

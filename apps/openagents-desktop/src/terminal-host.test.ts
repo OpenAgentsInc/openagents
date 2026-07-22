@@ -16,16 +16,50 @@ import {
   childProcessTerminalBackend,
   detectAnnouncedPorts,
   makeRing,
-  makeTerminalHost,
+  makeTerminalHost as makeGuardedTerminalHost,
   redactChunk,
   type TerminalBackend,
   type TerminalBackendProcess,
+  type TerminalHostOptions,
 } from "./terminal-host.ts"
 import {
   decodeTerminalCreateRequest,
   decodeTerminalInputRequest,
   type TerminalEvent,
 } from "./terminal-contract.ts"
+import type { IdePortableMutationAuthority } from "./ide/portable-mutation-authority.ts"
+
+const testMutationAuthority: IdePortableMutationAuthority = {
+  authorize: grantRef => ({
+    _tag: "Permitted",
+    permit: Object.freeze({
+      _tag: "LocalOnly",
+      key: `local:${grantRef}`,
+      grantRef,
+      sessionRef: `session.${grantRef}`,
+      workContextRef: `work-context.${grantRef}`,
+      attachmentRef: null,
+      generation: null,
+      targetRef: null,
+    }),
+  }),
+  reauthorize: () => true,
+}
+
+const makeTerminalHost = (
+  options: Omit<TerminalHostOptions, "mutationAuthority">,
+) => makeGuardedTerminalHost({ ...options, mutationAuthority: testMutationAuthority })
+
+const portablePermit = (generation: number) => Object.freeze({
+  _tag: "Portable" as const,
+  key: `portable:attachment.${generation}:${generation}`,
+  grantRef: "g-portable",
+  sessionRef: "session.portable",
+  workContextRef: "work-context.portable",
+  attachmentRef: `attachment.${generation}`,
+  generation,
+  targetRef: "target.local",
+})
 
 // ---------------------------------------------------------------------------
 // Spy backend for deterministic adversarial cases.
@@ -46,8 +80,10 @@ const makeSpyBackend = () => {
     spawn: (spawnInput) => {
       let dataListener: ((chunk: string) => void) | null = null
       let exitListener: ((code: number | null, signal: string | null) => void) | null = null
+      let settle!: () => void; const settled = new Promise<void>(resolve => { settle = resolve })
       const proc: SpyProcess = {
         pid: 4242,
+        settled,
         writes: [],
         interrupts: 0,
         kills: 0,
@@ -59,7 +95,7 @@ const makeSpyBackend = () => {
         onData: (listener) => { dataListener = listener },
         onExit: (listener) => { exitListener = listener },
         emitData: (chunk) => dataListener?.(chunk),
-        emitExit: (code, signal) => exitListener?.(code, signal),
+        emitExit: (code, signal) => { exitListener?.(code, signal); settle() },
       }
       spawned.push(proc)
       return proc
@@ -255,6 +291,28 @@ describe("adversarial: duplicate start", () => {
   })
 })
 
+describe("source safe-point quiescence", () => {
+  test("waits for every owned process tree and permanently refuses new work", async () => {
+    const { backend, spawned } = makeSpyBackend(); const sink = collector()
+    const host = makeTerminalHost({ backend, workspace: grant("g1", "/tmp/ws"), emit: sink.emit, env: () => ({ PATH: "/usr/bin" }), quiesceTimeoutMs: 1_000 })
+    expect(host.create({ sessionRef: "terminal.quiesce01" }).ok).toBe(true)
+    const lateEventsAtStart = sink.events.length; let completed = false
+    const first = host.quiesce().then(result => { completed = true; return result })
+    expect(spawned[0]?.kills).toBe(1); await Promise.resolve(); expect(completed).toBe(false)
+    spawned[0]?.emitData("late output"); expect(sink.events).toHaveLength(lateEventsAtStart + 1)
+    spawned[0]?.emitExit(null, "SIGTERM")
+    await expect(first).resolves.toEqual({ state: "quiesced" }); await expect(host.quiesce()).resolves.toEqual({ state: "quiesced" })
+    expect(host.create({ sessionRef: "terminal.quiesce02" })).toMatchObject({ ok: false })
+  })
+
+  test("reports a blocked process tree as timed out", async () => {
+    const { backend } = makeSpyBackend()
+    const host = makeTerminalHost({ backend, workspace: grant("g1", "/tmp/ws"), emit: () => undefined, env: () => ({ PATH: "/usr/bin" }), quiesceTimeoutMs: 10 })
+    host.create({ sessionRef: "terminal.quiesce03" })
+    await expect(host.quiesce()).resolves.toEqual({ state: "timed_out", detailRef: "desktop.terminal.process-tree-settlement-timeout" })
+  })
+})
+
 // ---------------------------------------------------------------------------
 // 6. Port collision.
 // ---------------------------------------------------------------------------
@@ -310,13 +368,188 @@ describe("adversarial: revoked grants", () => {
     // The workspace is replaced (a different grant is now authoritative).
     currentGrant = "g2"
     expect(host.input("terminal.rev01", "ls\n")).toEqual({ ok: false, reason: "grant_revoked" })
-    expect(host.interrupt("terminal.rev01")).toEqual({ ok: false, reason: "grant_revoked" })
-    expect(host.resize("terminal.rev01", 100, 40)).toEqual({ ok: false, reason: "grant_revoked" })
-    // Revoking the OLD grant kills the owned tree exactly once.
+    expect(host.interrupt("terminal.rev01")).toEqual({ ok: false, reason: "not_found" })
+    expect(host.resize("terminal.rev01", 100, 40)).toEqual({ ok: false, reason: "not_found" })
+    // The first stale command already revoked the old grant and killed its tree.
     host.revokeWorkspace("g1")
     expect(spawned[0]!.kills).toBe(1)
     expect(host.liveSessionCount()).toBe(0)
     host.dispose()
+  })
+
+  test("refuses before spawn when portable authority is absent or changes after admission", () => {
+    const refusedBackend = makeSpyBackend()
+    const refused = makeGuardedTerminalHost({
+      backend: refusedBackend.backend,
+      workspace: grant("g-portable", "/tmp/ws"),
+      mutationAuthority: {
+        authorize: () => ({ _tag: "Refused", reason: "sync_unavailable" }),
+        reauthorize: () => false,
+      },
+      emit: () => undefined,
+    })
+    expect(refused.create({ sessionRef: "terminal.authority01" })).toMatchObject({
+      ok: false,
+      reason: "no_workspace",
+    })
+    expect(refusedBackend.spawned).toHaveLength(0)
+
+    const staleBackend = makeSpyBackend()
+    const permit = portablePermit(7)
+    const stale = makeGuardedTerminalHost({
+      backend: staleBackend.backend,
+      workspace: grant(permit.grantRef, "/tmp/ws"),
+      mutationAuthority: {
+        authorize: () => ({ _tag: "Permitted", permit }),
+        reauthorize: () => false,
+      },
+      emit: () => undefined,
+    })
+    expect(stale.create({ sessionRef: "terminal.authority02" })).toMatchObject({
+      ok: false,
+      reason: "no_workspace",
+    })
+    expect(staleBackend.spawned).toHaveLength(0)
+
+    const changedDuringSpawnBackend = makeSpyBackend()
+    const currentPermit = portablePermit(8)
+    let currentKey = currentPermit.key
+    const changedDuringSpawn = makeGuardedTerminalHost({
+      backend: {
+        spawn: input => {
+          const process = changedDuringSpawnBackend.backend.spawn(input)
+          currentKey = portablePermit(9).key
+          return process
+        },
+      },
+      workspace: grant(currentPermit.grantRef, "/tmp/ws"),
+      mutationAuthority: {
+        authorize: () => ({ _tag: "Permitted", permit: currentPermit }),
+        reauthorize: candidate => candidate.key === currentKey,
+      },
+      emit: () => undefined,
+    })
+    expect(changedDuringSpawn.create({ sessionRef: "terminal.authority03" })).toMatchObject({
+      ok: false,
+      reason: "no_workspace",
+    })
+    expect(changedDuringSpawnBackend.spawned).toHaveLength(1)
+    expect(changedDuringSpawnBackend.spawned[0]!.kills).toBe(1)
+    refused.dispose()
+    stale.dispose()
+    changedDuringSpawn.dispose()
+  })
+
+  test("tears down a stale generation before accepting commands or late output", () => {
+    const { backend, spawned } = makeSpyBackend()
+    const sink = collector()
+    const permit = portablePermit(7)
+    let activeKey = permit.key
+    const host = makeGuardedTerminalHost({
+      backend,
+      workspace: grant(permit.grantRef, "/tmp/ws"),
+      mutationAuthority: {
+        authorize: () => ({ _tag: "Permitted", permit }),
+        reauthorize: candidate => candidate.key === activeKey,
+      },
+      emit: sink.emit,
+      env: () => ({ PATH: "/usr/bin" }),
+    })
+    expect(host.create({ sessionRef: "terminal.generation01" }).ok).toBe(true)
+    activeKey = portablePermit(8).key
+    expect(host.input("terminal.generation01", "echo stale\n")).toEqual({
+      ok: false,
+      reason: "grant_revoked",
+    })
+    expect(spawned[0]!.writes).toEqual([])
+    expect(spawned[0]!.kills).toBe(1)
+    spawned[0]!.emitData("late stale output\n")
+    expect(sink.events.some(event => event.kind === "output")).toBe(false)
+    expect(sink.events.filter(event => event.kind === "closed")).toHaveLength(1)
+    expect(host.liveSessionCount()).toBe(0)
+    host.dispose()
+  })
+
+  test("checks the captured generation on output and each process command", async () => {
+    const commands = ["resize", "interrupt", "restart"] as const
+    for (const command of commands) {
+      const { backend, spawned } = makeSpyBackend()
+      const permit = portablePermit(9)
+      let activeKey = permit.key
+      const host = makeGuardedTerminalHost({
+        backend,
+        workspace: grant(permit.grantRef, "/tmp/ws"),
+        mutationAuthority: {
+          authorize: () => ({ _tag: "Permitted", permit }),
+          reauthorize: candidate => candidate.key === activeKey,
+        },
+        emit: () => undefined,
+      })
+      const sessionRef = `terminal.stale-${command}`
+      expect(host.create({ sessionRef }).ok).toBe(true)
+      activeKey = portablePermit(10).key
+      const result = command === "resize"
+        ? host.resize(sessionRef, 100, 40)
+        : command === "interrupt"
+          ? host.interrupt(sessionRef)
+          : host.restart(sessionRef)
+      expect(result).toEqual({ ok: false, reason: "grant_revoked" })
+      expect(spawned[0]!.kills).toBe(1)
+      expect(spawned).toHaveLength(1)
+      host.dispose()
+    }
+
+    const outputBackend = makeSpyBackend()
+    const outputSink = collector()
+    const outputPermit = portablePermit(11)
+    let outputKey = outputPermit.key
+    const outputHost = makeGuardedTerminalHost({
+      backend: outputBackend.backend,
+      workspace: grant(outputPermit.grantRef, "/tmp/ws"),
+      mutationAuthority: {
+        authorize: () => ({ _tag: "Permitted", permit: outputPermit }),
+        reauthorize: candidate => candidate.key === outputKey,
+      },
+      emit: outputSink.emit,
+    })
+    outputHost.create({ sessionRef: "terminal.stale-output" })
+    outputKey = portablePermit(12).key
+    outputBackend.spawned[0]!.emitData("must be dropped\n")
+    expect(outputSink.events.some(event => event.kind === "output")).toBe(false)
+    expect(outputBackend.spawned[0]!.kills).toBe(1)
+    expect(await outputHost.openPreview("terminal.stale-output", 3000)).toEqual({
+      ok: false,
+      reason: "not_found",
+    })
+    outputHost.dispose()
+
+    const previewBackend = makeSpyBackend()
+    const previewPermit = portablePermit(13)
+    let previewKey = previewPermit.key
+    let previewOpenCount = 0
+    const previewHost = makeGuardedTerminalHost({
+      backend: previewBackend.backend,
+      workspace: grant(previewPermit.grantRef, "/tmp/ws"),
+      mutationAuthority: {
+        authorize: () => ({ _tag: "Permitted", permit: previewPermit }),
+        reauthorize: candidate => candidate.key === previewKey,
+      },
+      emit: () => undefined,
+      openPreview: (_url, authorize) => {
+        previewOpenCount += 1
+        previewKey = portablePermit(14).key
+        return authorize()
+      },
+    })
+    previewHost.create({ sessionRef: "terminal.stale-preview" })
+    previewBackend.spawned[0]!.emitData("Local: http://localhost:3000/\n")
+    expect(await previewHost.openPreview("terminal.stale-preview", 3000)).toEqual({
+      ok: false,
+      reason: "grant_revoked",
+    })
+    expect(previewOpenCount).toBe(1)
+    expect(previewBackend.spawned[0]!.kills).toBe(1)
+    previewHost.dispose()
   })
 })
 

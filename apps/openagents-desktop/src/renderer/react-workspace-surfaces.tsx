@@ -185,6 +185,35 @@ export const ManagedSandboxPlacement = ({ state, report }: {
   </section>
 }
 
+export const PortableSessionPlacement = ({ state }: {
+  readonly state: DesktopShellState
+}): ReactElement => {
+  const portable = state.portableSessions
+  const session = portable.sessions[0] ?? null
+  const attachments = session === null
+    ? []
+    : portable.attachments.filter(value => value.sessionRef === session.sessionRef)
+  const active = attachments.find(value => value.state === "active") ?? null
+  const targets = session === null
+    ? []
+    : portable.targetDirectories.find(value => value.sessionRef === session.sessionRef)?.targets ?? []
+  const target = active === null ? null : targets.find(value => value.targetRef === active.targetRef) ?? null
+  return <section className="oa-managed-sandbox-placement" aria-label="Portable coding placement" data-phase={portable.status.phase}>
+    <div className="oa-managed-sandbox-primary">
+      <span className="oa-managed-sandbox-mark" aria-hidden="true"><Monitor /></span>
+      <div><strong>Portable session</strong><span>{portable.status.phase === "live" ? "Confirmed Sync authority" : "Unavailable until confirmed Sync is live"}</span></div>
+      <span className="oa-managed-sandbox-lifecycle">{portable.status.pendingCommandCount} queued</span>
+    </div>
+    {session === null ? <p>No confirmed portable session is attached.</p> : <dl className="oa-managed-sandbox-facts">
+      <div><dt>Session</dt><dd>{session.sessionRef}</dd></div>
+      <div><dt>Placement</dt><dd>{target?.targetClass ?? "not attached"}{target === null ? "" : ` · ${target.health}`}</dd></div>
+      <div><dt>Attachment</dt><dd>{active === null ? "No active writer" : `${active.attachmentRef} · generation ${active.generation}`}</dd></div>
+      <div><dt>Custody</dt><dd>{target?.dataPosture ?? "not reported"}</dd></div>
+    </dl>}
+    {portable.issues.length === 0 ? null : <p role="alert">{portable.issues.length} confirmed projection issue{portable.issues.length === 1 ? "" : "s"}; affected rows are not treated as authority.</p>}
+  </section>
+}
+
 export const ReactWorkspaceEditor = ({ state, report }: { readonly state: DesktopShellState; readonly report: IntentReporter }): ReactElement => {
   const editor = state.workspaceEditor
   const tab = editor.tabs.find(candidate => candidate.pathRef === editor.activePathRef) ?? null
@@ -280,6 +309,7 @@ export const ReactWorkspaceEditor = ({ state, report }: { readonly state: Deskto
       </div>)}
     </div>
     <ManagedSandboxPlacement state={state} report={report} />
+    <PortableSessionPlacement state={state} />
     {editor.workbench.quickOpen.phase === "closed" ? null : <div className="oa-react-quick-open" role="dialog" aria-label="Quick Open">
       <div><Search aria-hidden="true" /><Input autoFocus aria-label="Search files by path" placeholder="Type a file name" value={quickQuery} onChange={event => { const query = event.currentTarget.value; setQuickQuery(query); dispatch(report, "WorkspaceEditorQuickOpenChanged", { query, paths }) }} /><Button size="icon-sm" variant="ghost" aria-label="Close Quick Open" onClick={() => dispatch(report, "WorkspaceEditorQuickOpenClosed")}><X aria-hidden="true" /></Button></div>
       <ol>{editor.workbench.quickOpen.results.slice(0, 12).map((result, index) => <li key={result.pathRef}><button aria-current={index === editor.workbench.quickOpen.activeIndex} onClick={() => { if (state.workspaceBrowser.grantRef !== null) dispatch(report, "WorkspaceEditorOpenRequested", { grantRef: state.workspaceBrowser.grantRef, pathRef: result.pathRef, preview: true, ...(state.workspaceBrowser.pathIndexSnapshot === null ? {} : { source: "quick_open", identity: state.workspaceBrowser.pathIndexSnapshot.identity }) }); dispatch(report, "WorkspaceEditorQuickOpenClosed") }} type="button"><File aria-hidden="true" /><span>{result.pathRef}</span><small>{result.score}</small></button></li>)}</ol>

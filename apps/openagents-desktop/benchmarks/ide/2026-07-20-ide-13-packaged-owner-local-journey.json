@@ -1,0 +1,99 @@
+{
+  "schemaVersion": "openagents.desktop.ide-portable-packaged-owner-local-package-initiated.v2",
+  "issue": "IDE-13",
+  "evidenceClass": "real_local",
+  "proofClass": "packaged_shell_initiated_owner_local_target",
+  "candidateCommitSha": "b7d342183d9cfb5ab805fa6ad5b862829160ad37",
+  "capturedAt": "2026-07-20T19:45:37.380Z",
+  "physicalHost": {
+    "operatingSystem": "darwin",
+    "architecture": "arm64",
+    "targetTopology": "one_physical_host_two_logical_owner_local_targets"
+  },
+  "packagedArtifact": {
+    "ref": "apps/openagents-desktop/out/OpenAgents RC-darwin-arm64/OpenAgents RC.app",
+    "treeSha256": "0f7149e87390591517b9c4c9f28645cc44a113a5d9f93eea0dd0568310f388cc",
+    "files": 362,
+    "bytes": 604060019,
+    "portabilityBoundaryPresent": true
+  },
+  "packagedShell": {
+    "isolatedAppProof": true,
+    "signedOutLocalOnly": true,
+    "phaseBefore": "unavailable",
+    "phaseAfter": "unavailable",
+    "invalidCommandRefused": true,
+    "liveBeforeOwnerLocalJourney": true,
+    "liveAfterOwnerLocalJourney": true,
+    "authenticatedSyncClaimed": false,
+    "initiatedMoveClaimed": true,
+    "trustedRendererPreloadIpcMainBoundaryUsed": true,
+    "isolatedProofAdmissionBoundaryUsed": true,
+    "requestedMutationRef": "mutation.ide13.isolated.move.1"
+  },
+  "ownerLocalJourney": {
+    "cohortRef": "cohort.ide13.owner-local.real.1",
+    "targetClass": "owner_local",
+    "evidenceClass": "real_local",
+    "journeyScope": "full_move",
+    "candidateCommitSha": "b7d342183d9cfb5ab805fa6ad5b862829160ad37",
+    "targetRef": "target.ide13.owner-local.cohort.a",
+    "adapterKind": "production",
+    "adapterRef": "adapter.pylon.owner-local.control-session.v1",
+    "move": {
+      "sourceGeneration": 1,
+      "destinationGeneration": 2,
+      "attachReceiptRef": "receipt.pylon.portable.destination_activation.99cd592aa00abd8fca9cea1a9f709baf",
+      "helperReadinessReceiptRef": "receipt.ide13.owner-local.helpers.1cbc836f75cac0a97936a027bdcbcf27"
+    },
+    "failback": {
+      "sourceGeneration": 2,
+      "destinationGeneration": 3,
+      "receiptRef": "receipt.pylon.portable.destination_activation.f2a6ffbcadb2d1f8fbcefdb57e03fcc8"
+    },
+    "teardownReceiptRef": "receipt.pylon.portable.source_cleanup.fadb8dcbee3ab1ce8ee60e2b",
+    "readyHelpers": [
+      "pty",
+      "lsp",
+      "watcher"
+    ],
+    "unsupportedHelpers": [
+      "dap",
+      "native"
+    ],
+    "replayReceiptRef": "receipt.ide13.owner-local.replay.b34a33b377720ce2eeeee960f5e9e5cd",
+    "staleGenerationReceiptRef": "receipt.ide13.owner-local.stale-generation-refused.c2b7ec5970f3ec1c28050dbc5f63df07",
+    "sourceCustodyDeletionReceiptRef": "receipt.portable-checkpoint-deletion.9b0cf9b58942396afa774cb146da9f44",
+    "failbackCustodyDeletionReceiptRef": "receipt.portable-checkpoint-deletion.2af84106aa33c6026af86a37e98edbbb",
+    "acceptedWorkRefCount": 0,
+    "executorResumed": false,
+    "executorResumptionOmissionRef": "omission.ide13.owner-local.codex-executor-resumption-not-implemented"
+  },
+  "concurrency": {
+    "packagedApplicationAliveAtOwnerLocalStart": true,
+    "packagedApplicationAliveAtOwnerLocalCompletion": true,
+    "rendererExternalDestinationCount": 0
+  },
+  "teardown": {
+    "applicationPidCaptured": true,
+    "survivingProcessCount": 0,
+    "temporaryRootsRemoved": true,
+    "termination": "sigterm"
+  },
+  "security": {
+    "privateMaterialIncluded": false,
+    "credentialShapeIncluded": false,
+    "absoluteOwnerPathIncluded": false
+  },
+  "screenshotRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-packaged-owner-local-journey.png",
+  "traceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-packaged-owner-local-journey-trace.json",
+  "passed": true,
+  "limitations": [
+    "The packaged application ran with isolated app proof and had no authenticated Sync authority.",
+    "The packaged shell admitted the bounded owner-local move through preload, trusted renderer IPC, and main before the proof harness ran the production owner-local target. It did not authenticate Sync.",
+    "The production Pylon target ran on the same physical Mac with two logical owner-local targets. No cross-device target ran.",
+    "The destination activated helpers after the move, but no Codex executor resumed and no work ref was accepted.",
+    "DAP and native helpers stayed unsupported because no signed executable profile was admitted.",
+    "Renderer network observation started after CDP attachment. This receipt does not claim global main-process packet capture."
+  ]
+}

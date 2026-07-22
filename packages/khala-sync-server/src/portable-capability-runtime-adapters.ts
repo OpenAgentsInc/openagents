@@ -313,6 +313,13 @@ export type PortableCapabilityTargetInstallationPort = Readonly<{
     evidenceRef: string
     marker?: Readonly<{ leaseRef: string; evidenceRef: string }> | undefined
   }>>
+  installByReference?: ((input: Readonly<{
+    lease: PortableCapabilityLease
+    permissions: ReadonlyArray<string>
+  }>) => Promise<Readonly<{
+    installationRef: string
+    evidenceRef: string
+  }>>) | undefined
   wipe: (input: Readonly<{
     leaseRef: string
     targetRef: string
@@ -339,9 +346,27 @@ export const makePortableCapabilityTargetAdapter = (input: Readonly<{
   port: PortableCapabilityTargetInstallationPort
 }>): CapabilityTargetAdapter => {
   assertRef(input.adapterRef, "adapterRef")
+  const installByReference = input.port.installByReference?.bind(input.port)
   return {
     adapterRef: input.adapterRef,
     targetClass: input.targetClass,
+    ...(installByReference === undefined ? {} : {
+      redeemByReference: async request => {
+        publicSafe({ lease: request.lease, permissions: request.permissions })
+        let installed
+        try {
+          installed = await installByReference(request)
+        } catch {
+          throw new PortableCapabilityRuntimeAdapterError(
+            "target_refused",
+            "capability target reference installation failed closed",
+          )
+        }
+        assertRef(installed.installationRef, "installationRef")
+        assertRef(installed.evidenceRef, "evidenceRef")
+        return publicSafe({ installationRef: installed.installationRef })
+      },
+    }),
     redeem: async request => {
       publicSafe({ lease: request.lease, permissions: request.permissions })
       const managedMarkerPathValue =

@@ -619,7 +619,11 @@ Each criterion receives one incomplete proposed obligation. Missing proof-design
     "title": "Assure AC-44"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "packages/portable-session-contract/src/ide13-contract.ts",
+      "apps/openagents-desktop/src/ide/portable-coordinator-service.test.ts",
+      "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-portability.json"
+    ],
     "criterion_refs": [
       "AC-45"
     ],
@@ -677,7 +681,11 @@ Each criterion receives one incomplete proposed obligation. Missing proof-design
     "title": "Assure AC-49"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "packages/portable-session-contract/src/ide13-contract.test.ts",
+      "apps/openagents-desktop/src/ide/portable-client-contract.test.ts",
+      "apps/openagents-desktop/tests/electron-boundary.test.ts"
+    ],
     "criterion_refs": [
       "AC-50"
     ],
@@ -688,7 +696,11 @@ Each criterion receives one incomplete proposed obligation. Missing proof-design
     "title": "Assure AC-50"
   },
   {
-    "candidate_artifact_refs": [],
+    "candidate_artifact_refs": [
+      "apps/openagents-desktop/src/ide/portable-coordinator-service.ts",
+      "apps/openagents-desktop/src/ide/portable-coordinator-service.test.ts",
+      "packages/portable-session-contract/src/ide13-model.test.ts"
+    ],
     "criterion_refs": [
       "AC-51"
     ],

@@ -82,6 +82,19 @@ const fixture = () => {
 }
 
 describe("portable capability runtime adapters", () => {
+  test("accepts only exact verified command-scoped grant bindings", async () => {
+    const { vault } = fixture()
+    expect(() => vault.register({
+      grantRef: "codex-auth-grant_source",
+      ownerUserId: "owner.other",
+      kind: "provider",
+    })).toThrow(/conflicts with existing scope/)
+    await expect(vault.revokeSourceGrant({
+      sourceGrantRef: "grant.unverified",
+      leaseRef: "lease.port03.provider.1",
+    })).rejects.toMatchObject({ code: "invalid_scope" })
+  })
+
   test("revokes and reissues exact provider and GitHub refs through refs-only authority routes", async () => {
     const { seen, vault } = fixture()
     await vault.revokeSourceGrant({

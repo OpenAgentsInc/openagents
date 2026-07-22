@@ -13,6 +13,7 @@ import type {
   KhalaProcessService,
   KhalaProcessSessionResult,
   KhalaProcessSessionStartInput,
+  KhalaProcessSessionTerminationResult,
 } from "./index.js"
 
 export type MacosSeatbeltProcessServiceOptions = Readonly<{
@@ -56,6 +57,44 @@ export function createMacosSeatbeltKhalaProcessService(
         }
         return yield* startSandboxedSession(input, sandboxExecPath, options.deniedReadPaths ?? [], sessions, runtime)
       }),
+    terminateSession: input =>
+      Effect.gen(function* () {
+        const session = sessions.get(input.sessionId)
+        if (session === undefined) {
+          if (fallback !== undefined) return yield* fallback.terminateSession(input)
+          return yield* processRuntimeError("process_session_unknown", `unknown process session: ${input.sessionId}`)
+        }
+        if (session.khalaSessionId !== input.khalaSessionId) {
+          return yield* processRuntimeError(
+            "process_session_mismatch",
+            "process session does not belong to the active Khala session",
+          )
+        }
+        let termination: KhalaProcessSessionTerminationResult["termination"] = "already_exited"
+        if (!session.exited) {
+          session.cancelled = true
+          termination = "graceful_interrupt"
+          killSandboxedProcessGroup(session.proc, "SIGINT")
+          if (!(yield* processExitObservedWithin(session.exit, PROCESS_SESSION_INTERRUPT_GRACE_MS, runtime))) {
+            termination = "hard_kill"
+            killSandboxedProcessGroup(session.proc, "SIGKILL")
+            if (!(yield* processExitObservedWithin(session.exit, PROCESS_SESSION_HARD_KILL_WAIT_MS, runtime))) {
+              return yield* processRuntimeError(
+                "process_session_termination_unconfirmed",
+                `process session exit was not observed: ${input.sessionId}`,
+              )
+            }
+          }
+        }
+        yield* Effect.promise(() => session.exit)
+        const result: KhalaProcessSessionTerminationResult = {
+          ...sessionSnapshot(session, (yield* runtime.currentTimeMillis) - session.createdAtMs),
+          exitObserved: true,
+          khalaSessionId: session.khalaSessionId,
+          termination,
+        }
+        return result
+      }),
     writeStdin: input =>
       Effect.gen(function* () {
         const session = sessions.get(input.sessionId)
@@ -67,12 +106,12 @@ export function createMacosSeatbeltKhalaProcessService(
           return yield* processRuntimeError("process_session_mismatch", "process session does not belong to the active Khala session")
         }
         if (input.chars !== undefined && input.chars.length > 0) {
-          if (session.exitCode !== null) {
+          if (session.exited) {
             return yield* processRuntimeError("process_session_closed", `process session is closed: ${input.sessionId}`)
           }
           if (input.chars === "\u0003") {
             session.cancelled = true
-            killSandboxedProcessGroup(session.proc)
+            killSandboxedProcessGroup(session.proc, "SIGINT")
           } else {
             const stdin = session.proc.stdin as unknown as BunFileSink | undefined
             if (stdin === undefined) {
@@ -175,13 +214,16 @@ function startSandboxedSession(
     stdout: "pipe",
   })
   const sessionId = yield* runtime.eventId("khala.proc")
+  const exit = proc.exited.catch(() => null)
   const session: MacosSeatbeltProcessSession = {
     cancelled: false,
     cleanup: sandbox.cleanup,
     command: input.command,
     createdAtMs: started,
     events: [],
+    exit,
     exitCode: null,
+    exited: false,
     khalaSessionId: input.khalaSessionId,
     maxCaptureBytes: input.maxCaptureBytes,
     proc,
@@ -195,15 +237,14 @@ function startSandboxedSession(
   sessions.set(sessionId, session)
   void pumpSessionStream(session, proc.stdout, "stdout", runtime)
   void pumpSessionStream(session, proc.stderr, "stderr", runtime)
-  void proc.exited.then(exitCode => {
+  session.exit = exit.then(exitCode => {
     session.exitCode = exitCode
+    session.exited = true
     void session.cleanup()
-  }).catch(() => {
-    session.exitCode = null
-    void session.cleanup()
+    return exitCode
   })
   yield* Effect.forkDetach(runtime.sleep(input.timeoutMs).pipe(Effect.tap(() => Effect.sync(() => {
-    if (session.exitCode === null) {
+    if (!session.exited) {
       session.timedOut = true
       killSandboxedProcessGroup(proc)
     }
@@ -273,7 +314,9 @@ type MacosSeatbeltProcessSession = {
   command: string
   createdAtMs: number
   events: KhalaProcessEvent[]
+  exit: Promise<number | null>
   exitCode: number | null
+  exited: boolean
   khalaSessionId: string
   maxCaptureBytes: number
   proc: ReturnType<typeof Runtime.spawn>
@@ -289,6 +332,20 @@ type BunFileSink = Readonly<{
   flush: () => void
   write: (value: string | Uint8Array) => unknown
 }>
+
+const PROCESS_SESSION_INTERRUPT_GRACE_MS = 250
+const PROCESS_SESSION_HARD_KILL_WAIT_MS = 2_000
+
+function processExitObservedWithin(
+  exit: Promise<number | null>,
+  waitMs: number,
+  runtime: KhalaToolRuntimeServiceShape,
+): Effect.Effect<boolean, never> {
+  return Effect.promise(() => Promise.race([
+    exit.then(() => true),
+    Effect.runPromise(runtime.sleep(waitMs)).then(() => false),
+  ]))
+}
 
 function sessionSnapshot(session: MacosSeatbeltProcessSession, durationMs: number): KhalaProcessSessionResult {
   return {

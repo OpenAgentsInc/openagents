@@ -58,6 +58,7 @@
     "@openagentsinc/mullet-sim": "workspace:*",
     "@openagentsinc/nip90": "workspace:*",
     "@openagentsinc/oa-infra": "workspace:*",
+    "@openagentsinc/portable-session-contract": "workspace:*",
     "@openagentsinc/provider-account-schema": "workspace:*",
     "@openagentsinc/public-activity-timeline": "workspace:*",
     "@openagentsinc/qa-swarm-contract": "workspace:*",

@@ -99,6 +99,22 @@ describe("GcsHmacClient (offline)", () => {
     }
   })
 
+  test("putObject makes a signed create-only request and reports a present object", async () => {
+    const { fetch: fetchImpl, requests } = makeRecordingFetch(() =>
+      new Response(null, { status: 412 }),
+    )
+    const result = await makeClient(fetchImpl).putObject(
+      "immutable/object",
+      new Uint8Array([1, 2, 3]),
+      { ifAbsent: true },
+    )
+    expect(result).toMatchObject({ created: false, size: 3 })
+    expect(requests[0]!.headers.get("if-none-match")).toBe("*")
+    expect(requests[0]!.headers.get("authorization")).toStartWith(
+      "AWS4-HMAC-SHA256",
+    )
+  })
+
   test("getObject returns null on 404 and the Response on 200", async () => {
     const { fetch: fetchImpl } = makeRecordingFetch((request) =>
       request.url.pathname.endsWith("missing")

@@ -208,6 +208,10 @@ import {
   type IdeManagedSandboxSnapshot,
 } from "../ide/managed-sandbox-contract.ts";
 import {
+  emptyIdePortableClientSnapshot,
+  type IdePortableClientSnapshot,
+} from "./ide/portable.ts"
+import {
   executeIdeManagedSandboxRendererCommand,
   unavailableIdeManagedSandboxRendererHost,
   type IdeManagedSandboxRendererHost,
@@ -696,6 +700,8 @@ export type DesktopShellState = Readonly<{
   ideCursor: IdeCursorRendererState;
   /** Main-owned OpenAgents-managed placement projection for this exact agent attachment. */
   managedSandbox: IdeManagedSandboxSnapshot;
+  /** Confirmed-only portable session, target, attachment, and command facts. */
+  portableSessions: IdePortableClientSnapshot;
   /** Public-safe disposition from the latest managed-placement command. */
   managedSandboxNotice: string | null;
   commandPaletteOpen: boolean;
@@ -827,6 +833,7 @@ export const initialDesktopShellState = (
   agentCodeNotice: null,
   ideCursor: emptyIdeCursorRendererState(),
   managedSandbox: emptyIdeManagedSandboxSnapshot(),
+  portableSessions: emptyIdePortableClientSnapshot(),
   managedSandboxNotice: null,
   commandPaletteOpen: false,
   commandNotice: null,

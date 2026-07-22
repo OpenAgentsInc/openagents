@@ -30,6 +30,10 @@ import path from "node:path"
 
 import type { TerminalEvent, TerminalSessionView, TerminalSnapshot } from "./terminal-contract.ts"
 import { terminalSessionRefPattern } from "./terminal-contract.ts"
+import type {
+  IdePortableMutationAuthority,
+  IdePortableMutationPermit,
+} from "./ide/portable-mutation-authority.ts"
 
 // ---------------------------------------------------------------------------
 // Backend seam.
@@ -43,6 +47,8 @@ export type TerminalBackendProcess = Readonly<{
   interrupt: () => void
   /** Terminate the owned process TREE. Idempotent at the backend layer. */
   kill: () => void
+  /** Settle only after the owned process tree and its resources are gone. */
+  settled?: Promise<void>
   onData: (listener: (chunk: string) => void) => void
   onExit: (listener: (exitCode: number | null, signal: string | null) => void) => void
 }>
@@ -76,6 +82,7 @@ export const childProcessTerminalBackend = (
       stdio: ["pipe", "pipe", "pipe"],
     })
     const pgid = typeof child.pid === "number" ? child.pid : null
+    let childClosed = false
     let killTimer: ReturnType<typeof setTimeout> | null = null
     const signalGroup = (signal: NodeJS.Signals): void => {
       if (pgid === null) return
@@ -91,8 +98,22 @@ export const childProcessTerminalBackend = (
     }
     child.stdout?.on("data", (buffer: Buffer) => emitData(buffer.toString("utf8")))
     child.stderr?.on("data", (buffer: Buffer) => emitData(buffer.toString("utf8")))
+    const groupAlive = (): boolean => {
+      if (pgid === null) return !childClosed
+      try { process.kill(-pgid, 0); return true } catch { return false }
+    }
+    const settled = new Promise<void>((resolve) => {
+      const check = (): void => {
+        if (childClosed && !groupAlive()) { resolve(); return }
+        const timer = setTimeout(check, 10); timer.unref?.()
+      }
+      child.once("close", () => { childClosed = true; check() })
+      child.once("error", () => { childClosed = true; check() })
+    })
+    void settled.then(() => { if (killTimer !== null) { clearTimeout(killTimer); killTimer = null } })
     return {
       pid: pgid,
+      settled,
       write: (data) => {
         try {
           // xterm emits Enter as CR because a real PTY's line discipline
@@ -126,10 +147,6 @@ export const childProcessTerminalBackend = (
       onData: (listener) => { dataListeners.add(listener) },
       onExit: (listener) => {
         child.on("exit", (code, signal) => {
-          if (killTimer !== null) {
-            clearTimeout(killTimer)
-            killTimer = null
-          }
           listener(code, signal)
         })
         child.on("error", () => listener(null, null))
@@ -243,6 +260,8 @@ export type TerminalHostOptions = Readonly<{
   backend?: TerminalBackend
   /** The authorized workspace at create time (root + grant). null => no seam. */
   workspace: () => TerminalWorkspaceBinding | null
+  /** Confirmed portable placement authority for process and command mutation. */
+  mutationAuthority: IdePortableMutationAuthority
   /** Bounded environment bound into every session. Defaults to a safe subset. */
   env?: () => Readonly<Record<string, string>>
   /** Fixed shell + argv. NEVER renderer-provided. */
@@ -255,8 +274,13 @@ export type TerminalHostOptions = Readonly<{
   ringCapBytes?: number
   tailBytes?: number
   /** Preview open: confirm + external-open. Returns true iff opened. */
-  openPreview?: (url: string) => Promise<boolean> | boolean
+  openPreview?: (url: string, authorize: () => boolean) => Promise<boolean> | boolean
+  quiesceTimeoutMs?: number
 }>
+
+export type TerminalHostQuiescence =
+  | Readonly<{ state: "quiesced" }>
+  | Readonly<{ state: "timed_out" | "failed"; detailRef: string }>
 
 type Session = {
   sessionRef: string
@@ -273,6 +297,7 @@ type Session = {
   previews: Map<number, { url: string; ready: boolean }>
   disposing: boolean
   killed: boolean
+  permit: IdePortableMutationPermit
 }
 
 export type TerminalHost = Readonly<{
@@ -286,12 +311,14 @@ export type TerminalHost = Readonly<{
   close: (sessionRef: string) => { ok: true }
   openPreview: (sessionRef: string, port: number) => Promise<
     | { ok: true; url: string }
-    | { ok: false; reason: "not_found" | "unknown_port" | "declined" | "unavailable" }
+    | { ok: false; reason: "not_found" | "unknown_port" | "declined" | "grant_revoked" | "unavailable" }
   >
   /** Kill + forget every session bound to a now-revoked workspace grant. */
   revokeWorkspace: (grantRef: string) => void
   snapshot: () => TerminalSnapshot
   liveSessionCount: () => number
+  /** Permanently refuse new work, terminate all trees, and await settlement. */
+  quiesce: () => Promise<TerminalHostQuiescence>
   dispose: () => void
 }>
 
@@ -347,6 +374,7 @@ export const makeTerminalHost = (options: TerminalHostOptions): TerminalHost => 
   // from the live map before persist runs).
   const retained: TerminalSessionView[] = []
   let disposed = false
+  let quiescePromise: Promise<TerminalHostQuiescence> | null = null
 
   const persist = (): void => {
     if (options.persistencePath === undefined) return
@@ -447,21 +475,29 @@ export const makeTerminalHost = (options: TerminalHostOptions): TerminalHost => 
   const startProcess = (session: Session): void => {
     const process = session.process
     process.onData((raw) => {
+      if (sessions.get(session.sessionRef) !== session) return
+      if (!authorizeSession(session)) return
       const chunk = redactChunk(raw, session.redactions)
       session.ring.append(chunk)
       options.emit({ kind: "output", sessionRef: session.sessionRef, chunk })
       detectPreviews(session, chunk)
     })
-    process.onExit((exitCode, signal) => finishExit(session, exitCode, signal))
+    process.onExit((exitCode, signal) => {
+      if (sessions.get(session.sessionRef) !== session) return
+      if (!authorizeSession(session)) return
+      finishExit(session, exitCode, signal)
+    })
   }
 
   const spawnSession = (
     sessionRef: string,
     binding: TerminalWorkspaceBinding,
+    permit: IdePortableMutationPermit,
     cols: number,
     rows: number,
-  ): Session => {
+  ): Session | null => {
     const env = envFactory()
+    if (!options.mutationAuthority.reauthorize(permit)) return null
     const backendProcess = backend.spawn({
       shell: shell.command,
       args: shell.args,
@@ -470,6 +506,10 @@ export const makeTerminalHost = (options: TerminalHostOptions): TerminalHost => 
       cols,
       rows,
     })
+    if (!options.mutationAuthority.reauthorize(permit)) {
+      backendProcess.kill()
+      return null
+    }
     const session: Session = {
       sessionRef,
       grantRef: binding.grantRef,
@@ -485,6 +525,7 @@ export const makeTerminalHost = (options: TerminalHostOptions): TerminalHost => 
       previews: new Map(),
       disposing: false,
       killed: false,
+      permit,
     }
     return session
   }
@@ -512,7 +553,33 @@ export const makeTerminalHost = (options: TerminalHostOptions): TerminalHost => 
 
   const liveGrant = (session: Session): boolean => {
     const current = options.workspace()
-    return current !== null && current.grantRef === session.grantRef
+    return current !== null && current.grantRef === session.grantRef &&
+      options.mutationAuthority.reauthorize(session.permit)
+  }
+
+  const authorizeSession = (session: Session): boolean => {
+    if (liveGrant(session)) return true
+    disposeSession(session, "workspace_revoked")
+    return false
+  }
+
+  const revokeStaleSessions = (): void => {
+    for (const session of [...sessions.values()]) authorizeSession(session)
+  }
+
+  const quiesce = (): Promise<TerminalHostQuiescence> => {
+    if (quiescePromise !== null) return quiescePromise
+    disposed = true
+    const owned = [...sessions.values()]
+    for (const session of owned) disposeSession(session, "app_quit")
+    const settlement = Promise.allSettled(owned.map(session => session.process.settled ?? Promise.reject(new Error("The terminal backend does not provide process-tree settlement.")))).then(results =>
+      results.some(result => result.status === "rejected")
+        ? { state: "failed" as const, detailRef: "desktop.terminal.process-tree-settlement-failed" }
+        : { state: "quiesced" as const })
+    const timeoutMs = Math.max(1, options.quiesceTimeoutMs ?? 5_000); let timer: ReturnType<typeof setTimeout> | undefined
+    const deadline = new Promise<TerminalHostQuiescence>(resolve => { timer = setTimeout(() => resolve({ state: "timed_out", detailRef: "desktop.terminal.process-tree-settlement-timeout" }), timeoutMs); timer.unref?.() })
+    quiescePromise = Promise.race([settlement, deadline]).finally(() => { if (timer !== undefined) clearTimeout(timer) })
+    return quiescePromise
   }
 
   return {
@@ -521,6 +588,10 @@ export const makeTerminalHost = (options: TerminalHostOptions): TerminalHost => 
       const binding = options.workspace()
       if (binding === null) {
         return { ok: false, reason: "no_workspace", message: "Choose a workspace to open a terminal." }
+      }
+      const authorization = options.mutationAuthority.authorize(binding.grantRef)
+      if (authorization._tag === "Refused") {
+        return { ok: false, reason: "no_workspace", message: "The current workspace placement cannot open a terminal." }
       }
       if (sessions.size >= maxSessions) {
         return { ok: false, reason: "at_capacity", message: `At most ${maxSessions} terminals at once.` }
@@ -533,7 +604,11 @@ export const makeTerminalHost = (options: TerminalHostOptions): TerminalHost => 
       const rows = input.rows ?? 24
       let session: Session
       try {
-        session = spawnSession(sessionRef, binding, cols, rows)
+        const spawned = spawnSession(sessionRef, binding, authorization.permit, cols, rows)
+        if (spawned === null) {
+          return { ok: false, reason: "no_workspace", message: "The workspace placement changed before the terminal started." }
+        }
+        session = spawned
       } catch {
         return { ok: false, reason: "spawn_failed", message: "The terminal could not be started." }
       }
@@ -553,7 +628,7 @@ export const makeTerminalHost = (options: TerminalHostOptions): TerminalHost => 
     input: (sessionRef, data) => {
       const session = sessions.get(sessionRef)
       if (session === undefined) return { ok: false, reason: "not_found" }
-      if (!liveGrant(session)) return { ok: false, reason: "grant_revoked" }
+      if (!authorizeSession(session)) return { ok: false, reason: "grant_revoked" }
       if (session.status === "exited") return { ok: false, reason: "exited" }
       // The data is written to the backend's STDIN. It is never interpolated
       // into any argv — the spawn command/args are fixed and workspace-bound.
@@ -563,7 +638,7 @@ export const makeTerminalHost = (options: TerminalHostOptions): TerminalHost => 
     resize: (sessionRef, cols, rows) => {
       const session = sessions.get(sessionRef)
       if (session === undefined) return { ok: false, reason: "not_found" }
-      if (!liveGrant(session)) return { ok: false, reason: "grant_revoked" }
+      if (!authorizeSession(session)) return { ok: false, reason: "grant_revoked" }
       if (session.status === "exited") return { ok: false, reason: "exited" }
       session.cols = cols
       session.rows = rows
@@ -573,7 +648,7 @@ export const makeTerminalHost = (options: TerminalHostOptions): TerminalHost => 
     interrupt: (sessionRef) => {
       const session = sessions.get(sessionRef)
       if (session === undefined) return { ok: false, reason: "not_found" }
-      if (!liveGrant(session)) return { ok: false, reason: "grant_revoked" }
+      if (!authorizeSession(session)) return { ok: false, reason: "grant_revoked" }
       if (session.status === "exited") return { ok: false, reason: "exited" }
       session.process.interrupt()
       return { ok: true }
@@ -581,6 +656,7 @@ export const makeTerminalHost = (options: TerminalHostOptions): TerminalHost => 
     restart: (sessionRef) => {
       const session = sessions.get(sessionRef)
       if (session === undefined) return { ok: false, reason: "not_found" }
+      if (!authorizeSession(session)) return { ok: false, reason: "grant_revoked" }
       const binding = options.workspace()
       if (binding === null || binding.grantRef !== session.grantRef) {
         return { ok: false, reason: "grant_revoked" }
@@ -594,7 +670,11 @@ export const makeTerminalHost = (options: TerminalHostOptions): TerminalHost => 
       for (const [port, owner] of [...portOwners.entries()]) {
         if (owner === sessionRef) portOwners.delete(port)
       }
-      const next = spawnSession(sessionRef, binding, session.cols, session.rows)
+      const next = spawnSession(sessionRef, binding, session.permit, session.cols, session.rows)
+      if (next === null) {
+        disposeSession(session, "workspace_revoked")
+        return { ok: false, reason: "grant_revoked" }
+      }
       sessions.set(sessionRef, next)
       startProcess(next)
       options.emit({
@@ -617,10 +697,12 @@ export const makeTerminalHost = (options: TerminalHostOptions): TerminalHost => 
     openPreview: async (sessionRef, port) => {
       const session = sessions.get(sessionRef)
       if (session === undefined) return { ok: false, reason: "not_found" }
+      if (!authorizeSession(session)) return { ok: false, reason: "grant_revoked" }
       const preview = session.previews.get(port)
       if (preview === undefined) return { ok: false, reason: "unknown_port" }
       if (options.openPreview === undefined) return { ok: false, reason: "unavailable" }
-      const opened = await options.openPreview(preview.url)
+      const opened = await options.openPreview(preview.url, () => authorizeSession(session))
+      if (!authorizeSession(session)) return { ok: false, reason: "grant_revoked" }
       return opened ? { ok: true, url: preview.url } : { ok: false, reason: "declined" }
     },
     revokeWorkspace: (grantRef) => {
@@ -628,15 +710,17 @@ export const makeTerminalHost = (options: TerminalHostOptions): TerminalHost => 
         if (session.grantRef === grantRef) disposeSession(session, "workspace_revoked")
       }
     },
-    snapshot: () => ({
-      sessions: [...recovered, ...[...sessions.values()].map((session) => projectSession(session))],
-    }),
-    liveSessionCount: () =>
-      [...sessions.values()].filter((session) => session.status === "running").length,
+    snapshot: () => {
+      revokeStaleSessions()
+      return { sessions: [...recovered, ...[...sessions.values()].map((session) => projectSession(session))] }
+    },
+    liveSessionCount: () => {
+      revokeStaleSessions()
+      return [...sessions.values()].filter((session) => session.status === "running").length
+    },
+    quiesce,
     dispose: () => {
-      if (disposed) return
-      disposed = true
-      for (const session of [...sessions.values()]) disposeSession(session, "app_quit")
+      void quiesce()
     },
   }
 }

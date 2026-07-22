@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { Effect } from "effect";
 
 import { workspaceGitEnvironment } from "../git-process-environment.ts";
@@ -24,6 +24,10 @@ import {
   type IdeSourceControlAdapter,
   type IdeSourceControlAdapterResult,
 } from "./source-control-service.ts";
+import type {
+  IdePortableMutationAuthority,
+  IdePortableMutationPermit,
+} from "./portable-mutation-authority.ts";
 
 type WorktreeRef = typeof IdeWorktreeRefSchema.Type;
 type GitResult =
@@ -59,6 +63,77 @@ const runGit = (
         timedOut: (child.error as NodeJS.ErrnoException | undefined)?.code === "ETIMEDOUT",
       };
 };
+
+const runSupervisedGit = (
+  root: string,
+  args: ReadonlyArray<string>,
+  authorized: () => boolean,
+  input?: string,
+  timeoutMs = 30_000,
+): Promise<GitResult> => new Promise((resolve) => {
+  const detached = process.platform !== "win32";
+  const child = spawn("git", ["-C", root, ...args], {
+    cwd: root,
+    detached,
+    stdio: ["pipe", "pipe", "pipe"],
+    env: { ...workspaceGitEnvironment(), GIT_TERMINAL_PROMPT: "0" },
+  });
+  let stdout = "";
+  let stderr = "";
+  let spawnError: NodeJS.ErrnoException | null = null;
+  let timedOut = false;
+  let terminationStarted = false;
+  let forceKillTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const signalTree = (signal: NodeJS.Signals): void => {
+    if (child.pid === undefined) return;
+    if (process.platform === "win32") {
+      const killer = spawn("taskkill", ["/pid", String(child.pid), "/t", "/f"], {
+        stdio: "ignore",
+        windowsHide: true,
+      });
+      killer.unref();
+      return;
+    }
+    try {
+      if (detached) process.kill(-child.pid, signal);
+      else child.kill(signal);
+    } catch {
+      child.kill(signal);
+    }
+  };
+  const terminate = (): void => {
+    if (terminationStarted) return;
+    terminationStarted = true;
+    signalTree("SIGTERM");
+    forceKillTimer = setTimeout(() => signalTree("SIGKILL"), 250);
+    forceKillTimer.unref();
+  };
+  const authorityTimer = setInterval(() => {
+    if (!authorized()) terminate();
+  }, 10);
+  authorityTimer.unref();
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    terminate();
+  }, timeoutMs);
+  timeout.unref();
+  const append = (current: string, chunk: Buffer): string =>
+    `${current}${chunk.toString("utf8")}`.slice(0, 16_000_000);
+  child.stdout.on("data", (chunk: Buffer) => { stdout = append(stdout, chunk); });
+  child.stderr.on("data", (chunk: Buffer) => { stderr = append(stderr, chunk); });
+  child.on("error", (error: NodeJS.ErrnoException) => { spawnError = error; });
+  child.on("close", (code) => {
+    clearInterval(authorityTimer);
+    clearTimeout(timeout);
+    if (forceKillTimer !== null) clearTimeout(forceKillTimer);
+    resolve(code === 0 && spawnError === null
+      ? { ok: true, stdout, stderr }
+      : { ok: false, code, stdout, stderr, timedOut });
+  });
+  if (input === undefined) child.stdin.end();
+  else child.stdin.end(input, "utf8");
+});
 
 const runGh = (root: string): GitResult => {
   const child = spawnSync("gh", ["pr", "view", "--json", "number,url,state,headRefName,baseRefName,headRefOid,commits,reviews,statusCheckRollup,mergeable,mergedAt,updatedAt"], {
@@ -146,6 +221,10 @@ export interface IdeSourceControlGitAdapterOptions {
   readonly now?: () => string;
   readonly worktreePath?: (worktreeRef: WorktreeRef) => string;
   readonly recoveryRoot?: string;
+  readonly mutationAuthority?: IdePortableMutationAuthority;
+  readonly mutationPermit?: () => IdePortableMutationPermit | undefined;
+  readonly beforeMutationSpawn?: () => void;
+  readonly afterMutationProcess?: () => void;
 }
 
 export const makeIdeSourceControlGitAdapter = (
@@ -348,10 +427,10 @@ export const makeIdeSourceControlGitAdapter = (
     });
   };
 
-  const execute = (
+  const execute = async (
     command: Exclude<IdeSourceControlCommand, { readonly _tag: "Refresh" }>,
     current: IdeSourceControlSnapshot,
-  ): IdeSourceControlAdapterResult => {
+  ): Promise<IdeSourceControlAdapterResult> => {
     const op = command.operationRef;
     const readOnly = command._tag === "History" || command._tag === "Blame" || command._tag === "ProviderRefresh";
     if (!readOnly) {
@@ -410,31 +489,69 @@ export const makeIdeSourceControlGitAdapter = (
     };
     let recoveryRef: IdeSourceControlAdapterResult["recoveryRef"] = null;
     let observation: IdeSourceControlAdapterResult["observation"] = null;
-    const run = (args: ReadonlyArray<string>, message: string, input?: string) =>
-      assertGit(runGit(root, args, input), message, current, op);
+    const requireCurrentPermit = (phase: "before" | "after"): void => {
+      const currentPermit = options.mutationPermit?.();
+      if (options.mutationAuthority !== undefined &&
+        (currentPermit === undefined || !options.mutationAuthority.reauthorize(currentPermit))) {
+        throw failure(
+          "policy_refused",
+          phase === "before"
+            ? "Portable source-control authority changed before the Git side effect."
+            : "Portable source-control authority changed during the Git side effect.",
+          current,
+          op,
+          true,
+        );
+      }
+    };
+    const guardedGit = async (args: ReadonlyArray<string>, input?: string): Promise<GitResult> => {
+      if (!readOnly) {
+        requireCurrentPermit("before");
+        options.beforeMutationSpawn?.();
+        requireCurrentPermit("before");
+      }
+      const result = await runSupervisedGit(
+        root,
+        args,
+        () => {
+          const currentPermit = options.mutationPermit?.();
+          return readOnly || options.mutationAuthority === undefined ||
+            (currentPermit !== undefined && options.mutationAuthority.reauthorize(currentPermit));
+        },
+        input,
+      );
+      if (!readOnly) {
+        options.afterMutationProcess?.();
+        requireCurrentPermit("after");
+      }
+      return result;
+    };
+    const run = async (args: ReadonlyArray<string>, message: string, input?: string): Promise<string> =>
+      assertGit(await guardedGit(args, input), message, current, op);
+    if (!readOnly) requireCurrentPermit("before");
     switch (command._tag) {
-      case "Stage": command.selection._tag === "Patch" ? run(["apply", "--cached", "--unidiff-zero", "-"], "The selected patch could not be staged.", validatePatch(command.selection, "unstaged")) : run(["add", "--", ...(paths as string[])], "The paths could not be staged."); break;
-      case "Unstage": command.selection._tag === "Patch" ? run(["apply", "--cached", "--reverse", "--unidiff-zero", "-"], "The selected patch could not be unstaged.", validatePatch(command.selection, "staged")) : run(["restore", "--staged", "--", ...(paths as string[])], "The paths could not be unstaged."); break;
+      case "Stage": command.selection._tag === "Patch" ? await run(["apply", "--cached", "--unidiff-zero", "-"], "The selected patch could not be staged.", validatePatch(command.selection, "unstaged")) : await run(["add", "--", ...(paths as string[])], "The paths could not be staged."); break;
+      case "Unstage": command.selection._tag === "Patch" ? await run(["apply", "--cached", "--reverse", "--unidiff-zero", "-"], "The selected patch could not be unstaged.", validatePatch(command.selection, "staged")) : await run(["restore", "--staged", "--", ...(paths as string[])], "The paths could not be unstaged."); break;
       case "Discard": {
-        const patch = command.selection._tag === "Patch" ? validatePatch(command.selection, "unstaged") : run(["diff", "--binary", "--", ...(paths as string[])], "The recovery patch could not be created.");
+        const patch = command.selection._tag === "Patch" ? validatePatch(command.selection, "unstaged") : await run(["diff", "--binary", "--", ...(paths as string[])], "The recovery patch could not be created.");
         recoveryRef = IdeSourceControlRecoveryRefSchema.make(`ide.scm-recovery.${digest(`${op}\0${patch}`)}`);
         recoveries.set(recoveryRef, patch);
         const persistedRecovery = recoveryFile(recoveryRef);
         if (persistedRecovery !== null) writeFileSync(persistedRecovery, patch, { encoding: "utf8", mode: 0o600, flag: "wx" });
-        command.selection._tag === "Patch" ? run(["apply", "--reverse", "--unidiff-zero", "-"], "The selected patch could not be discarded.", patch) : run(["restore", "--worktree", "--", ...(paths as string[])], "The paths could not be discarded.");
+        command.selection._tag === "Patch" ? await run(["apply", "--reverse", "--unidiff-zero", "-"], "The selected patch could not be discarded.", patch) : await run(["restore", "--worktree", "--", ...(paths as string[])], "The paths could not be discarded.");
         break;
       }
       case "Recover": {
         const persistedRecovery = recoveryFile(command.recoveryRef);
         const patch = recoveries.get(command.recoveryRef) ?? (persistedRecovery !== null && existsSync(persistedRecovery) ? readFileSync(persistedRecovery, "utf8") : undefined);
         if (patch === undefined) throw failure("recovery_unavailable", "The recovery record is unavailable.", current, op);
-        run(["apply", "-"], "The recovery patch could not be applied.", patch);
+        await run(["apply", "-"], "The recovery patch could not be applied.", patch);
         recoveries.delete(command.recoveryRef);
         if (persistedRecovery !== null) rmSync(persistedRecovery, { force: true });
         break;
       }
       case "Commit": {
-        const result = runGit(root, ["commit", ...(command.amend ? ["--amend"] : []), ...(command.sign ? ["-S"] : []), ...(command.runHooks ? [] : ["--no-verify"]), "-m", command.message]);
+        const result = await guardedGit(["commit", ...(command.amend ? ["--amend"] : []), ...(command.sign ? ["-S"] : []), ...(command.runHooks ? [] : ["--no-verify"]), "-m", command.message]);
         if (!result.ok && command.sign) throw failure("signing_failed", "The signed commit could not be created.", current, op);
         const hooksRoot = assertGit(runGit(root, ["rev-parse", "--git-path", "hooks"]), "Git hook state is unavailable.", current, op).trim();
         const preCommit = path.resolve(root, hooksRoot, "pre-commit");
@@ -444,24 +561,24 @@ export const makeIdeSourceControlGitAdapter = (
         verifiedCommit = { headOid: committedHead, receiptRef: op };
         break;
       }
-      case "BranchCreate": run([command.checkout ? "switch" : "branch", ...(command.checkout ? ["-c"] : []), safeArgument(command.name, "Branch name")], "The branch could not be created."); break;
-      case "TagCreate": run(["tag", ...(command.sign ? ["-s", "-m", command.name] : []), safeArgument(command.name, "Tag name"), command.targetOid], "The tag could not be created."); break;
-      case "Switch": run(["switch", ...(command.detach ? ["--detach"] : []), safeArgument(command.refName, "Ref name")], "The ref could not be switched."); break;
-      case "Merge": run(["merge", ...(command.noFastForward ? ["--no-ff"] : []), safeArgument(command.refName, "Ref name")], "The merge did not complete."); break;
-      case "Rebase": run(["rebase", ...(command.onto === null ? [] : ["--onto", safeArgument(command.onto, "Onto ref")]), safeArgument(command.upstream, "Upstream ref")], "The rebase did not complete."); break;
-      case "CherryPick": run(["cherry-pick", ...command.commitOids], "The cherry-pick did not complete."); break;
-      case "Revert": run(["revert", "--no-edit", ...command.commitOids], "The revert did not complete."); break;
-      case "Continue": run([command.operation === "cherry_pick" ? "cherry-pick" : command.operation, "--continue"], "The operation could not continue."); break;
-      case "Abort": run([command.operation === "cherry_pick" ? "cherry-pick" : command.operation, "--abort"], "The operation could not abort."); break;
-      case "Fetch": run(["fetch", ...(command.prune ? ["--prune"] : []), safeArgument(command.remote, "Remote")], "Fetch did not complete."); break;
-      case "Pull": run(["pull", command.strategy === "ff_only" ? "--ff-only" : command.strategy === "rebase" ? "--rebase" : "--no-rebase", safeArgument(command.remote, "Remote"), safeArgument(command.branch, "Branch")], "Pull did not complete."); break;
+      case "BranchCreate": await run([command.checkout ? "switch" : "branch", ...(command.checkout ? ["-c"] : []), safeArgument(command.name, "Branch name")], "The branch could not be created."); break;
+      case "TagCreate": await run(["tag", ...(command.sign ? ["-s", "-m", command.name] : []), safeArgument(command.name, "Tag name"), command.targetOid], "The tag could not be created."); break;
+      case "Switch": await run(["switch", ...(command.detach ? ["--detach"] : []), safeArgument(command.refName, "Ref name")], "The ref could not be switched."); break;
+      case "Merge": await run(["merge", ...(command.noFastForward ? ["--no-ff"] : []), safeArgument(command.refName, "Ref name")], "The merge did not complete."); break;
+      case "Rebase": await run(["rebase", ...(command.onto === null ? [] : ["--onto", safeArgument(command.onto, "Onto ref")]), safeArgument(command.upstream, "Upstream ref")], "The rebase did not complete."); break;
+      case "CherryPick": await run(["cherry-pick", ...command.commitOids], "The cherry-pick did not complete."); break;
+      case "Revert": await run(["revert", "--no-edit", ...command.commitOids], "The revert did not complete."); break;
+      case "Continue": await run([command.operation === "cherry_pick" ? "cherry-pick" : command.operation, "--continue"], "The operation could not continue."); break;
+      case "Abort": await run([command.operation === "cherry_pick" ? "cherry-pick" : command.operation, "--abort"], "The operation could not abort."); break;
+      case "Fetch": await run(["fetch", ...(command.prune ? ["--prune"] : []), safeArgument(command.remote, "Remote")], "Fetch did not complete."); break;
+      case "Pull": await run(["pull", command.strategy === "ff_only" ? "--ff-only" : command.strategy === "rebase" ? "--rebase" : "--no-rebase", safeArgument(command.remote, "Remote"), safeArgument(command.branch, "Branch")], "Pull did not complete."); break;
       case "Push": {
         const remote = safeArgument(command.remote, "Remote");
         const refspec = safeArgument(command.refspec, "Refspec");
-        run(["push", ...(command.forcePolicy === "force_with_lease" ? [`--force-with-lease=${refspec}:${command.expectedRemoteOid ?? ""}`] : []), remote, refspec], "Push did not complete.");
+        await run(["push", ...(command.forcePolicy === "force_with_lease" ? [`--force-with-lease=${refspec}:${command.expectedRemoteOid ?? ""}`] : []), remote, refspec], "Push did not complete.");
         const destination = refspec.includes(":") ? refspec.slice(refspec.lastIndexOf(":") + 1) : refspec;
         const head = assertGit(runGit(root, ["rev-parse", "--verify", "HEAD"]), "The pushed commit could not be verified.", current, op).trim();
-        const remoteRefs = run(["ls-remote", remote, destination], "The pushed remote ref could not be verified.");
+        const remoteRefs = await run(["ls-remote", remote, destination], "The pushed remote ref could not be verified.");
         const remoteOid = remoteRefs.trim().split(/\s+/u)[0] ?? "";
         if (remoteOid !== head) throw failure("remote_rejected", "The remote ref does not match the pushed commit.", current, op, true);
         verifiedPush = { headOid: head, upstream: `${remote}/${destination.replace(/^refs\/heads\//u, "")}` };
@@ -470,8 +587,8 @@ export const makeIdeSourceControlGitAdapter = (
       case "WorktreeCreate": {
         const target = options.worktreePath?.(command.worktreeRef);
         if (target === undefined || command.ownerRef === null || existsSync(target)) throw failure("policy_refused", "No unoccupied admitted worktree placement exists.", current, op);
-        const creationHead = run(["rev-parse", "--verify", command.branch], "The worktree branch is unavailable.").trim();
-        run(["worktree", "add", target, command.branch], "The worktree could not be created.");
+        const creationHead = (await run(["rev-parse", "--verify", command.branch], "The worktree branch is unavailable.")).trim();
+        await run(["worktree", "add", target, command.branch], "The worktree could not be created.");
         managedWorktrees.set(realpathSync(target), { worktreeRef: command.worktreeRef, ownerRef: command.ownerRef, creationHead });
         break;
       }
@@ -482,13 +599,13 @@ export const makeIdeSourceControlGitAdapter = (
           throw failure("policy_refused", "The worktree is occupied, changed without a pushed ref, dirty, unmanaged, or has a stale preview.", current, op);
         }
         const canonicalTarget = realpathSync(target);
-        run(["worktree", "remove", target], "The worktree could not be removed.");
+        await run(["worktree", "remove", target], "The worktree could not be removed.");
         managedWorktrees.delete(canonicalTarget);
         break;
       }
-      case "WorktreeRepair": run(["worktree", "repair"], "Worktree metadata could not be repaired."); break;
+      case "WorktreeRepair": await run(["worktree", "repair"], "Worktree metadata could not be repaired."); break;
       case "History": {
-        const output = run(["log", `--max-count=${command.limit}`, "--format=%H%x1f%P%x1f%an%x1f%aI%x1f%s%x1e", command.commitish], "History is unavailable.");
+        const output = await run(["log", `--max-count=${command.limit}`, "--format=%H%x1f%P%x1f%an%x1f%aI%x1f%s%x1e", command.commitish], "History is unavailable.");
         observation = {
           _tag: "History", commitish: command.commitish, truncated: false,
           entries: output.split("\x1e").map((record) => record.trim()).filter(Boolean).map((record) => {
@@ -499,7 +616,7 @@ export const makeIdeSourceControlGitAdapter = (
         break;
       }
       case "Blame": {
-        const output = run(["blame", "--line-porcelain", command.commitOid, "--", command.path], "Blame is unavailable.");
+        const output = await run(["blame", "--line-porcelain", command.commitOid, "--", command.path], "Blame is unavailable.");
         const lines: Array<{ sourceOid: never; originalLine: number; finalLine: number; author: string; summary: string }> = [];
         let pending: { sourceOid: never; originalLine: number; finalLine: number; author: string; summary: string } | null = null;
         for (const line of output.split("\n")) {
@@ -545,13 +662,14 @@ export const makeIdeSourceControlGitAdapter = (
         break;
       }
     }
+    if (!readOnly) requireCurrentPermit("after");
     const next = snapshot();
     return { snapshot: next, changedPaths: next.paths.map((entry) => entry.path), conflictPaths: next.paths.filter((entry) => entry.indexState === "conflicted").map((entry) => entry.path), omittedFacts: [], recoveryRef, observation };
   };
 
   return {
     refresh: () => Effect.try({ try: snapshot, catch: (cause) => cause instanceof IdeSourceControlServiceError ? cause : failure("repository_unavailable", "The repository could not be refreshed.", null) }),
-    execute: (command, current) => Effect.try({ try: () => execute(command, current), catch: (cause) => cause instanceof IdeSourceControlServiceError ? cause : failure("operation_failed", "The Git operation failed.", current, command.operationRef) }),
+    execute: (command, current) => Effect.tryPromise({ try: () => execute(command, current), catch: (cause) => cause instanceof IdeSourceControlServiceError ? cause : failure("operation_failed", "The Git operation failed.", current, command.operationRef) }),
     stop: () => Effect.sync(() => { stopped = true; recoveries.clear(); }),
   };
 };

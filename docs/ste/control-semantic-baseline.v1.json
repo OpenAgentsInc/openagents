@@ -2588,7 +2588,7 @@
       ]
     },
     "specs/desktop/desktop-trust-complete-workbench.assurance-spec.md": {
-      "sourceSha256": "37a1b738110f40788dc7488565ed8cc3a50679c66100ba612f744ec81d7fe42b",
+      "sourceSha256": "19515d80859942d5c8a53901b871ef05ed91aa6269169405a4d4b512d978ee22",
       "normativeKeywords": [],
       "inlineCode": [
         "needs_design",
@@ -2622,6 +2622,7 @@
         "12",
         "12",
         "12-01",
+        "13",
         "13",
         "13",
         "13",
@@ -2663,7 +2664,9 @@
         "20",
         "20",
         "20",
+        "20",
         "20-01",
+        "2026-07",
         "2026-07",
         "2026-07",
         "2026-07",

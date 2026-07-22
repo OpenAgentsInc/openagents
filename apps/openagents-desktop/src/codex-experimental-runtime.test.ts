@@ -1,22 +1,32 @@
-import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, describe, expect, test } from "vite-plus/test"
 
-import type { CodexAppServerLease, CodexAppServerNotification } from "./codex-app-server-supervisor.ts"
-import { CODEX_EXPERIMENTAL_METHODS, codexExperimentalManifestGate, makeCodexExperimentalRuntime } from "./codex-experimental-runtime.ts"
+import type { CodexAppServerLease, CodexAppServerNotification, CodexAppServerPoolTarget, CodexAppServerSupervisor } from "./codex-app-server-supervisor.ts"
+import { CODEX_EXPERIMENTAL_METHODS, codexExperimentalManifestGate, makeCodexExperimentalRuntime, makeCodexExperimentalRuntimeRegistry } from "./codex-experimental-runtime.ts"
+import type { IdePortableMutationAuthority, IdePortableMutationPermit } from "./ide/portable-mutation-authority.ts"
 
 const roots: string[] = []
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }) })
 
-const fixture = (earlyProcessExit = false) => {
+type RequestOverride = (
+  method: string,
+  params: unknown,
+  options?: Readonly<{ signal?: AbortSignal }>,
+) => Promise<unknown> | undefined
+
+const fixture = (earlyProcessExit = false, requestOverride?: RequestOverride) => {
   const root = mkdtempSync(join(tmpdir(), "oa-experimental-")); roots.push(root)
   const requests: Array<{ method: string; params: unknown }> = []; const listeners = new Set<(value: CodexAppServerNotification) => void>(); let generation = 1
+  let releases = 0
   const lease = {
-    state: () => ({ status: "ready" as const, generation }), release: () => undefined,
+    state: () => ({ status: "ready" as const, generation }), release: () => { releases += 1 },
     subscribe: (listener: (value: CodexAppServerNotification) => void) => { listeners.add(listener); return () => listeners.delete(listener) },
-    request: async (method: string, params: unknown) => {
+    request: async (method: string, params: unknown, options?: Readonly<{ signal?: AbortSignal }>) => {
       requests.push({ method, params })
+      const overridden = requestOverride?.(method, params, options)
+      if (overridden !== undefined) return overridden
       if (method === "environment/info") return { cwd: "file:///remote/work", shell: { name: "zsh", path: "/bin/zsh" } }
       if (method === "thread/backgroundTerminals/list") return { data: [{ command: "private --token", cwd: "/private/work", itemId: "i", processId: "p", osPid: 5 }], nextCursor: null }
       if (method === "thread/backgroundTerminals/terminate") return { terminated: true }
@@ -29,7 +39,30 @@ const fixture = (earlyProcessExit = false) => {
       return {}
     },
   } as unknown as CodexAppServerLease
-  return { root, requests, lease, notify: (method: string, params: unknown, next = generation) => { generation = next; for (const listener of listeners) listener({ generation, message: { method, params } }) } }
+  return { root, requests, lease, releases: () => releases, notify: (method: string, params: unknown, next = generation) => { generation = next; for (const listener of listeners) listener({ generation, message: { method, params } }) } }
+}
+
+const target: CodexAppServerPoolTarget = { binary: "/test/codex", binarySha256: "test", env: {}, cwd: "/tmp", accountRef: null, hostTarget: "local" }
+
+const portableAuthority = () => {
+  let current = true
+  const permit: IdePortableMutationPermit = {
+    _tag: "Portable",
+    key: "portable:grant.1:session.1:work.1:attachment.1:1:target.1",
+    grantRef: "grant.1",
+    sessionRef: "session.1",
+    workContextRef: "work.1",
+    attachmentRef: "attachment.1",
+    generation: 1,
+    targetRef: "target.1",
+  }
+  const authority: IdePortableMutationAuthority = {
+    authorize: grantRef => current && grantRef === permit.grantRef
+      ? { _tag: "Permitted", permit }
+      : { _tag: "Refused", reason: "attachment_ambiguous" },
+    reauthorize: candidate => current && candidate.key === permit.key,
+  }
+  return { authority, permit, revoke: () => { current = false } }
 }
 
 describe("Codex experimental runtime", () => {
@@ -77,6 +110,20 @@ describe("Codex experimental runtime", () => {
     runtime.close()
   })
 
+  test("suppresses output and exit from a replaced app-server generation", async () => {
+    const h = fixture(); const receiptPath = join(h.root, "receipts", "experimental.json"); const runtime = makeCodexExperimentalRuntime({ lease: h.lease, spoolRoot: join(h.root, "spool"), receiptPath })
+    const input = { command: ["quiet"], cwd: h.root }
+    await runtime.spawnProcess(input, runtime.authorize("process_spawn", input, runtime.snapshot().revision))
+    const handle = (h.requests.find(value => value.method === "process/spawn")?.params as { processHandle: string }).processHandle
+    const receiptBefore = readFileSync(receiptPath, "utf8")
+    h.notify("process/outputDelta", { processHandle: handle, stream: "stdout", deltaBase64: Buffer.from("stale-secret").toString("base64") }, 2)
+    h.notify("process/exited", { processHandle: handle, exitCode: 0, stdout: "stale-secret", stderr: "" })
+    expect(readdirSync(join(h.root, "spool"))).toEqual([])
+    expect(readFileSync(receiptPath, "utf8")).toBe(receiptBefore)
+    expect(runtime.snapshot().processes[0]?.state).toBe("disconnected")
+    await runtime.dispose()
+  })
+
   test("reconciles and terminates background terminals without exposing command or cwd", async () => {
     const h = fixture(); const runtime = makeCodexExperimentalRuntime({ lease: h.lease, spoolRoot: join(h.root, "spool") })
     await runtime.listBackgroundTerminals("thread-secret")
@@ -86,7 +133,7 @@ describe("Codex experimental runtime", () => {
     await expect(runtime.terminateBackgroundTerminal("thread-secret", terminal.processRef, runtime.authorize("terminal_mutation", payload, runtime.snapshot().revision))).resolves.toBe(true)
     expect(runtime.snapshot().terminals[0]?.state).toBe("terminated")
     await runtime.listBackgroundTerminals("thread-secret"); h.notify("process/outputDelta", {}, 2)
-    expect(runtime.snapshot().terminals[0]?.state).toBe("terminated")
+    expect(runtime.snapshot().terminals[0]?.state).toBe("disconnected")
     runtime.close()
   })
 
@@ -119,5 +166,111 @@ describe("Codex experimental runtime", () => {
     const projection = JSON.stringify(runtime.snapshot()); expect(projection).not.toContain("pair-secret"); expect(projection).not.toContain("client-secret"); expect(projection).not.toContain("install-secret")
     expect(statSync(receiptPath).mode & 0o777).toBe(0o600); expect(readFileSync(receiptPath, "utf8")).not.toContain("pair-secret")
     runtime.close()
+  })
+
+  test("aborts a blocked request when its immutable portable permit is revoked", async () => {
+    let started!: () => void
+    const requestStarted = new Promise<void>(resolve => { started = resolve })
+    const h = fixture(false, (method, _params, options) => {
+      if (method !== "process/spawn") return undefined
+      started()
+      return new Promise((_resolve, reject) => {
+        options?.signal?.addEventListener("abort", () => reject(options.signal?.reason), { once: true })
+      })
+    })
+    const portable = portableAuthority()
+    const receiptPath = join(h.root, "receipts", "experimental.json")
+    const runtime = makeCodexExperimentalRuntime({
+      lease: h.lease,
+      spoolRoot: join(h.root, "spool"),
+      receiptPath,
+      mutationAuthority: portable.authority,
+      grantRef: portable.permit.grantRef,
+    })
+    const input = { command: ["blocked"], cwd: h.root }
+    const pending = runtime.spawnProcess(input, runtime.authorize("process_spawn", input, runtime.snapshot().revision))
+    await requestStarted
+    portable.revoke()
+    await expect(pending).rejects.toMatchObject({ reason: "revoked" })
+    await runtime.quiesce()
+    expect(h.requests.map(value => value.method)).toContain("process/kill")
+    expect(existsSync(receiptPath)).toBe(false)
+    expect(readdirSync(join(h.root, "spool"))).toEqual([])
+    await runtime.dispose()
+  })
+
+  test("quiesces quiet owned resources on revocation and suppresses late output and receipts", async () => {
+    let cleanupStarted!: () => void
+    const cleanup = new Promise<void>(resolve => { cleanupStarted = resolve })
+    const h = fixture(false, method => {
+      if (method === "process/kill") cleanupStarted()
+      return undefined
+    })
+    const portable = portableAuthority()
+    const receiptPath = join(h.root, "receipts", "experimental.json")
+    const runtime = makeCodexExperimentalRuntime({ lease: h.lease, spoolRoot: join(h.root, "spool"), receiptPath, mutationAuthority: portable.authority, grantRef: portable.permit.grantRef })
+    const processInput = { command: ["quiet"], cwd: h.root }
+    await runtime.spawnProcess(processInput, runtime.authorize("process_spawn", processInput, runtime.snapshot().revision))
+    await runtime.listBackgroundTerminals("thread.1")
+    const realtimeInput = { threadId: "thread.1", outputModality: "audio" as const, transport: { type: "websocket" as const } }
+    await runtime.startRealtime(realtimeInput, runtime.authorize("realtime_start", realtimeInput, runtime.snapshot().revision))
+    const enable = { operation: "enable" }
+    await runtime.enableRemoteControl(runtime.authorize("remote_control", enable, runtime.snapshot().revision))
+    const handle = (h.requests.find(value => value.method === "process/spawn")?.params as { processHandle: string }).processHandle
+    const receiptBefore = readFileSync(receiptPath, "utf8")
+    portable.revoke()
+    await cleanup
+    await runtime.quiesce()
+    expect(h.requests.map(value => value.method)).toEqual(expect.arrayContaining([
+      "process/kill",
+      "thread/realtime/stop",
+      "thread/backgroundTerminals/terminate",
+      "remoteControl/disable",
+    ]))
+    const spoolBefore = readdirSync(join(h.root, "spool"))
+    h.notify("process/outputDelta", { processHandle: handle, stream: "stdout", deltaBase64: Buffer.from("late-secret").toString("base64") })
+    h.notify("process/exited", { processHandle: handle, exitCode: 0, stdout: "late-secret", stderr: "" })
+    expect(readdirSync(join(h.root, "spool"))).toEqual(spoolBefore)
+    expect(readFileSync(receiptPath, "utf8")).toBe(receiptBefore)
+    await expect(runtime.listVoices()).rejects.toMatchObject({ reason: "quiesced" })
+    expect(() => runtime.authorize("memory_reset", { confirmation: "RESET" }, runtime.snapshot().revision)).toThrow(expect.objectContaining({ reason: "quiesced" }))
+    await runtime.dispose()
+  })
+
+  test("reports cleanup timeout and keeps unconfirmed resources disconnected", async () => {
+    const h = fixture(false, method => method === "process/kill" ? new Promise(() => undefined) : undefined)
+    const runtime = makeCodexExperimentalRuntime({ lease: h.lease, spoolRoot: join(h.root, "spool"), quiesceTimeoutMs: 20 })
+    const input = { command: ["quiet"], cwd: h.root }
+    await runtime.spawnProcess(input, runtime.authorize("process_spawn", input, runtime.snapshot().revision))
+    await expect(runtime.quiesce()).rejects.toMatchObject({ reason: "cleanup_failed" })
+    expect(runtime.snapshot().processes[0]?.state).toBe("disconnected")
+    await expect(runtime.dispose()).rejects.toMatchObject({ reason: "cleanup_failed" })
+  })
+})
+
+describe("Codex experimental runtime registry quiescence", () => {
+  test("awaits blocked cleanup, suppresses late events, and stays closed", async () => {
+    let releaseKill!: () => void; const kill = new Promise<void>(resolve => { releaseKill = resolve })
+    const h = fixture(false, method => method === "process/kill" ? kill : undefined); const supervisor = { acquire: async () => h.lease } as unknown as CodexAppServerSupervisor
+    const registry = makeCodexExperimentalRuntimeRegistry({ supervisor, spoolRoot: join(h.root, "registry-spool"), receiptRoot: join(h.root, "registry-receipts"), quiesceTimeoutMs: 1_000 })
+    const runtime = await registry.forTarget(target); const input = { command: ["quiet"], cwd: h.root }
+    await runtime.spawnProcess(input, runtime.authorize("process_spawn", input, runtime.snapshot().revision))
+    const handle = (h.requests.find(value => value.method === "process/spawn")?.params as { processHandle: string }).processHandle
+    let completed = false; const first = registry.quiesce().then(result => { completed = true; return result })
+    for (let index = 0; index < 20 && !h.requests.some(value => value.method === "process/kill"); index += 1) await Promise.resolve()
+    expect(completed).toBe(false); const directory = join(h.root, "registry-spool", readdirSync(join(h.root, "registry-spool"))[0]!); const spoolBefore = readdirSync(directory)
+    h.notify("process/outputDelta", { processHandle: handle, stream: "stdout", deltaBase64: Buffer.from("late").toString("base64") }); expect(readdirSync(directory)).toEqual(spoolBefore)
+    releaseKill(); await expect(first).resolves.toEqual({ state: "quiesced" }); await expect(registry.quiesce()).resolves.toEqual({ state: "quiesced" })
+    await expect(registry.forTarget(target)).rejects.toMatchObject({ reason: "closed" }); expect(h.releases()).toBe(1)
+  })
+
+  test("reports a blocked acquisition as timed out and disposes the late runtime", async () => {
+    const h = fixture(); let resolveAcquire!: (lease: CodexAppServerLease) => void
+    const pending = new Promise<CodexAppServerLease>(resolve => { resolveAcquire = resolve }); const supervisor = { acquire: () => pending } as unknown as CodexAppServerSupervisor
+    const registry = makeCodexExperimentalRuntimeRegistry({ supervisor, spoolRoot: join(h.root, "registry-spool"), receiptRoot: join(h.root, "registry-receipts"), quiesceTimeoutMs: 10 })
+    const late = registry.forTarget(target); await expect(registry.quiesce()).resolves.toEqual({ state: "timed_out", detailRef: "desktop.codex-experimental.registry-cleanup-timeout" })
+    resolveAcquire(h.lease); const runtime = await late
+    for (let index = 0; index < 20 && h.releases() === 0; index += 1) await Promise.resolve()
+    expect(h.releases()).toBe(1); await expect(runtime.listVoices()).rejects.toMatchObject({ reason: "quiesced" })
   })
 })

@@ -4,10 +4,13 @@ import {
   IdeLanguageProviderStartSchema,
   type IdeLanguageCancelRequest,
   type IdeLanguageProviderStart,
-  type IdeLanguageRequest,
   type IdeLanguageStopRequest,
 } from "./language-contract.ts";
 import type { IdeLanguageProvider } from "./language-service.ts";
+import type {
+  IdePortableMutationAuthority,
+  IdePortableMutationPermit,
+} from "./portable-mutation-authority.ts";
 
 type WorkerOutput =
   | Readonly<{ kind: "ready"; providerVersion: string }>
@@ -18,6 +21,37 @@ type PendingRequest = Readonly<{
   resolve: (value: unknown) => void;
   reject: (cause: Error) => void;
 }>;
+
+type LanguageUtilityWorker = Readonly<{
+  postMessage: (value: unknown) => void;
+  onMessage: (listener: (value: unknown) => void) => void;
+  onceError: (listener: (error: Error) => void) => void;
+  onceExit: (listener: (code: number) => void) => void;
+  terminate: () => Promise<number>;
+}>;
+
+type LanguageUtilityWorkerFactory = (url: URL) => LanguageUtilityWorker | Worker;
+
+const adaptNodeLanguageUtilityWorker = (worker: Worker): LanguageUtilityWorker => ({
+  postMessage: (value) => worker.postMessage(value),
+  onMessage: (listener) => {
+    worker.on("message", listener);
+  },
+  onceError: (listener) => {
+    worker.once("error", listener);
+  },
+  onceExit: (listener) => {
+    worker.once("exit", listener);
+  },
+  terminate: () => worker.terminate(),
+});
+
+const makeNodeLanguageUtilityWorker: LanguageUtilityWorkerFactory = (url) => new Worker(url);
+
+const adaptLanguageUtilityWorker = (
+  worker: LanguageUtilityWorker | Worker,
+): LanguageUtilityWorker =>
+  worker instanceof Worker ? adaptNodeLanguageUtilityWorker(worker) : worker;
 
 const capabilities = [
   "diagnostics",
@@ -48,11 +82,21 @@ const isWorkerOutput = (value: unknown): value is WorkerOutput => {
 export const makeIdeLanguageWorkerProvider = (
   root: string,
   workerUrl: URL,
-  makeWorker: (url: URL) => Worker = url => new Worker(url),
+  grantRefOrMakeWorker: string | LanguageUtilityWorkerFactory,
+  mutationAuthority?: IdePortableMutationAuthority,
+  makeWorkerOverride?: LanguageUtilityWorkerFactory,
 ): IdeLanguageProvider => {
-  let worker: Worker | null = null;
+  const grantRef =
+    typeof grantRefOrMakeWorker === "string" ? grantRefOrMakeWorker : "workspace.language";
+  const makeWorker =
+    typeof grantRefOrMakeWorker === "function"
+      ? grantRefOrMakeWorker
+      : (makeWorkerOverride ?? makeNodeLanguageUtilityWorker);
+  let worker: LanguageUtilityWorker | null = null;
+  let workerPermit: IdePortableMutationPermit | null = null;
   let startProjection: IdeLanguageProviderStart | null = null;
   let startPromise: Promise<IdeLanguageProviderStart> | null = null;
+  let rejectStart: ((cause: Error) => void) | null = null;
   let startOrdinal = 0;
   const pending = new Map<string, PendingRequest>();
 
@@ -61,11 +105,27 @@ export const makeIdeLanguageWorkerProvider = (
     pending.clear();
   };
 
+  const capturePermit = (): IdePortableMutationPermit | null => {
+    if (mutationAuthority === undefined) return null;
+    const authorization = mutationAuthority.authorize(grantRef);
+    if (authorization._tag === "Refused") {
+      throw new Error(`IDE language utility authority was refused: ${authorization.reason}.`);
+    }
+    return authorization.permit;
+  };
+
+  const permitIsCurrent = (permit: IdePortableMutationPermit | null): boolean =>
+    mutationAuthority === undefined || (permit !== null && mutationAuthority.reauthorize(permit));
+
   const stopWorker = async (): Promise<void> => {
     const current = worker;
     worker = null;
+    workerPermit = null;
     startProjection = null;
     startPromise = null;
+    const rejectStarting = rejectStart;
+    rejectStart = null;
+    rejectStarting?.(new Error("IDE language utility stopped before startup completed."));
     if (current === null) return;
     try {
       current.postMessage({ kind: "stop" });
@@ -75,13 +135,35 @@ export const makeIdeLanguageWorkerProvider = (
     await current.terminate().catch(() => undefined);
   };
 
+  const revokeWorker = (message: string): void => {
+    rejectPending(new Error(message));
+    void stopWorker();
+  };
+
   const start = async (): Promise<IdeLanguageProviderStart> => {
     if (startProjection !== null) return startProjection;
     if (startPromise !== null) return startPromise;
+    const permit = capturePermit();
+    if (!permitIsCurrent(permit)) {
+      throw new Error("IDE language utility authority changed before worker spawn.");
+    }
     startPromise = new Promise<IdeLanguageProviderStart>((resolve, reject) => {
-      const utility = makeWorker(workerUrl);
+      rejectStart = reject;
+      const utility = adaptLanguageUtilityWorker(makeWorker(workerUrl));
       worker = utility;
+      workerPermit = permit;
+      if (!permitIsCurrent(permit)) {
+        reject(new Error("IDE language utility authority changed during worker spawn."));
+        void stopWorker();
+        return;
+      }
       const onMessage = (value: unknown): void => {
+        if (worker !== utility || workerPermit !== permit || !permitIsCurrent(permit)) {
+          revokeWorker(
+            "IDE language utility authority changed before a worker event could be accepted.",
+          );
+          return;
+        }
         if (!isWorkerOutput(value)) {
           rejectPending(new Error("IDE language utility emitted a malformed message."));
           return;
@@ -90,13 +172,14 @@ export const makeIdeLanguageWorkerProvider = (
           const projection = IdeLanguageProviderStartSchema.make({
             executable: "typescript/lib/tsserverlibrary",
             providerVersion: value.providerVersion,
-            capabilities: capabilities.map(capability => ({
+            capabilities: capabilities.map((capability) => ({
               capability,
               available: true,
               reason: null,
             })),
           });
           startProjection = projection;
+          rejectStart = null;
           resolve(projection);
           return;
         }
@@ -107,46 +190,67 @@ export const makeIdeLanguageWorkerProvider = (
           request.reject(new Error(value.message));
           return;
         }
-        const requestRef = typeof value.result === "object" && value.result !== null
-          ? String((value.result as { requestRef?: unknown }).requestRef ?? "")
-          : "";
+        const requestRef =
+          typeof value.result === "object" && value.result !== null
+            ? String((value.result as { requestRef?: unknown }).requestRef ?? "")
+            : "";
         const request = pending.get(requestRef);
         if (request === undefined) return;
         pending.delete(requestRef);
         request.resolve(value.result);
       };
-      utility.on("message", onMessage);
-      utility.once("error", error => {
+      utility.onMessage(onMessage);
+      utility.onceError((error) => {
+        if (worker !== utility) return;
+        rejectStart = null;
         startProjection = null;
         startPromise = null;
         rejectPending(error);
         reject(error);
       });
-      utility.once("exit", code => {
+      utility.onceExit((code) => {
         if (worker === utility) worker = null;
+        if (workerPermit === permit) workerPermit = null;
+        const startupWasPending = startProjection === null && rejectStart !== null;
+        const rejectPendingStart = rejectStart;
+        rejectStart = null;
         startProjection = null;
         startPromise = null;
-        if (code !== 0) {
-          const error = new Error(`IDE language utility exited with code ${code}.`);
+        if (code !== 0 || startupWasPending) {
+          const error = new Error(
+            `IDE language utility exited with code ${code} before startup completed.`,
+          );
           rejectPending(error);
+          rejectPendingStart?.(error);
           reject(error);
         }
       });
     });
-    const projection = await startPromise;
-    startOrdinal += 1;
-    return projection;
+    const starting = startPromise;
+    try {
+      const projection = await starting;
+      startOrdinal += 1;
+      return projection;
+    } catch (cause) {
+      if (startPromise === starting) startPromise = null;
+      throw cause;
+    }
   };
 
   return {
     start,
-    request: async request => {
+    request: async (request) => {
       if (startProjection === null && startOrdinal > 0) {
         throw new Error("IDE language utility exited and requires a supervised service restart.");
       }
       const projection = await start();
       const utility = worker;
       if (utility === null) throw new Error("IDE language utility is unavailable.");
+      const permit = workerPermit;
+      if (!permitIsCurrent(permit)) {
+        revokeWorker("IDE language utility authority changed before the request was sent.");
+        throw new Error("IDE language utility authority changed before the request was sent.");
+      }
       const serviceGeneration = startOrdinal;
       const restartCount = Math.max(0, startOrdinal - 1);
       const requestRef = String(request.requestRef);
@@ -165,10 +269,17 @@ export const makeIdeLanguageWorkerProvider = (
             providerVersion: projection.providerVersion,
           },
         });
+        if (!permitIsCurrent(permit)) {
+          revokeWorker("IDE language utility authority changed while the request was sent.");
+        }
       });
     },
     cancel: async (request: IdeLanguageCancelRequest) => {
       const requestRef = String(request.requestRef);
+      if (!permitIsCurrent(workerPermit)) {
+        revokeWorker("IDE language utility authority changed before cancellation.");
+        return;
+      }
       worker?.postMessage({
         kind: "cancel",
         requestRef,

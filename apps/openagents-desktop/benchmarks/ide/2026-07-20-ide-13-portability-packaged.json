@@ -1,0 +1,74 @@
+{
+  "schemaVersion": "openagents.desktop.ide-portability-packaged-fail-closed.v1",
+  "issue": "IDE-13",
+  "proofClass": "packaged_fail_closed_unavailable",
+  "candidateCommitSha": "efc7a9dab90e8241381a77197682ffe40606ffdd",
+  "capturedAt": "2026-07-20T10:37:41.793Z",
+  "target": "darwin-arm64",
+  "artifact": {
+    "ref": "apps/openagents-desktop/out/OpenAgents RC-darwin-arm64/OpenAgents RC.app",
+    "treeSha256": "10891ba97280aad6cfed14282171f13d0e32f807264ff7107df412bf4aa2c449",
+    "files": 362,
+    "bytes": 604071927
+  },
+  "environment": {
+    "platform": "darwin",
+    "architecture": "arm64",
+    "node": "v24.13.1",
+    "electron": "43.1.0"
+  },
+  "projection": {
+    "phase": "unavailable",
+    "cursor": null,
+    "pendingCommandCount": 0,
+    "sessionCount": 0,
+    "targetDirectoryCount": 0,
+    "attachmentCount": 0,
+    "commandCount": 0,
+    "issueCount": 0
+  },
+  "invalidCommand": {
+    "tag": "Refused",
+    "reason": "invalid_input"
+  },
+  "visibleChecks": {
+    "portableSurfaceVisible": true,
+    "confirmedSyncUnavailableVisible": true,
+    "noConfirmedSessionVisible": true,
+    "zeroQueuedVisible": true
+  },
+  "network": {
+    "declaredDestinations": [],
+    "observedRendererExternalDestinations": [],
+    "observationScope": "renderer_cdp_after_attach_plus_resource_timing",
+    "mainProcessGlobalNetworkClaimed": false
+  },
+  "security": {
+    "forbiddenMaterialFound": false,
+    "workspacePathProjected": false,
+    "profilePathProjected": false,
+    "homePathProjected": false,
+    "credentialShapeProjected": false
+  },
+  "diagnostics": {
+    "consoleErrorCount": 0,
+    "pageErrorCount": 0
+  },
+  "teardown": {
+    "applicationPidCaptured": true,
+    "descendantCountBeforeStop": 2,
+    "survivingProcessCount": 0,
+    "termination": "sigterm"
+  },
+  "screenshotRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-portability-packaged.png",
+  "traceRef": "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-portability-packaged-trace.json",
+  "authenticatedSyncClaimed": false,
+  "moveClaimed": false,
+  "passed": true,
+  "limitations": [
+    "The isolated packaged app has no authenticated Sync authority.",
+    "This journey proves the packaged fail-closed projection and IPC boundary only. It does not prove a move or failback.",
+    "Network observation covers renderer CDP requests after attachment and renderer resource timing. It does not claim global main-process packet capture.",
+    "Only macOS arm64 ran. Windows, Linux, iOS, Android, and real remote placements remain unclaimed."
+  ]
+}

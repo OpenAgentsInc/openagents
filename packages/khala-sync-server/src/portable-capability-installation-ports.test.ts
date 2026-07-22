@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto"
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises"
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -149,6 +149,57 @@ describe("owner-local portable capability installation", () => {
       }),
     ).rejects.toMatchObject({ code: "installation_conflict" })
     expect(installed.installationRef).not.toContain("fixture")
+  })
+
+  test("binds a stable executable profile ref to the complete owner-local marker", async () => {
+    const pylonHome = await mkdtemp(join(tmpdir(), "port03-local-profile-"))
+    temporaryRoots.push(pylonHome)
+    const port = new OwnerLocalPortableCapabilityInstallationPort({
+      pylonHome,
+      ownerRef: "owner.port03",
+      targetRef: "target.port03.local",
+    })
+    const executableProfileRef = "profile.ide13.lsp.fixture.v1"
+    const installReceiptRef = "receipt.ide13.lsp.fixture.install"
+    const installed = await port.install({
+      lease: { ...lease(), capability: "tool" },
+      permissions: ["tool.lsp.execute"],
+      material: fixtureMaterial(),
+      executableProfileRef,
+      installReceiptRef,
+    })
+    const markerPath = join(port.custodyDirectory(lease().leaseRef), "installed.json")
+    expect(JSON.parse(await readFile(markerPath, "utf8"))).toEqual({
+      ownerRef: lease().ownerRef,
+      targetRef: lease().targetRef,
+      sessionRef: lease().sessionRef,
+      attachmentRef: lease().attachmentRef,
+      attachmentGeneration: lease().attachmentGeneration,
+      leaseRef: lease().leaseRef,
+      capability: "tool",
+      permissionRefs: ["tool.lsp.execute"],
+      installationRef: installed.installationRef,
+      evidenceRef: installed.evidenceRef,
+      executableProfileRef,
+      installReceiptRef,
+    })
+    await expect(port.install({
+      lease: { ...lease(), capability: "tool" },
+      permissions: ["tool.lsp.execute"],
+      material: fixtureMaterial(),
+      executableProfileRef: "profile.ide13.lsp.swapped.v1",
+      installReceiptRef,
+    })).rejects.toMatchObject({ code: "installation_conflict" })
+    const marker = JSON.parse(await readFile(markerPath, "utf8")) as Record<string, unknown>
+    await writeFile(markerPath, JSON.stringify({
+      ...marker,
+      executableProfileRef: "profile.ide13.lsp.swapped.v1",
+    }), { mode: 0o600 })
+    await expect(port.withInstalledMaterial({
+      leaseRef: lease().leaseRef,
+      installationRef: installed.installationRef,
+      use: async () => undefined,
+    })).rejects.toMatchObject({ code: "installation_conflict" })
   })
 })
 

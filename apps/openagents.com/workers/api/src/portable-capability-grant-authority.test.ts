@@ -10,6 +10,7 @@ import {
   reissueProviderAccountGrant,
   revokeProviderAccountGrant,
 } from './provider-account-service'
+import { resolvePortableCapabilityGrantFacts } from './portable-capability-grant-facts'
 
 const at = '2026-07-13T12:00:00.000Z'
 
@@ -59,6 +60,106 @@ const sourceGrant: ProviderAccountAuthGrantRecord = {
 }
 
 describe('portable capability grant authority', () => {
+  test('returns active owner facts without consuming grants or exposing material', async () => {
+    let used = 0
+    const provider = {
+      findGrantByRef: async (ref: string) => ref === sourceGrant.grantRef ? sourceGrant : undefined,
+      findAccountByRef: async () => account,
+      markGrantUsed: async () => { used += 1; return sourceGrant },
+    }
+    const github = {
+      findGrantByRef: async () => undefined,
+      findUsableConnectionForUser: async () => undefined,
+    }
+    const facts = await resolvePortableCapabilityGrantFacts({
+      ownerUserId: account.userId,
+      grantRefs: [sourceGrant.grantRef],
+      provider,
+      github,
+      now: () => new Date(at),
+    })
+    expect(facts).toEqual([{
+      grantRef: sourceGrant.grantRef,
+      kind: 'provider',
+      ownerUserId: account.userId,
+      status: 'issued',
+      expiresAt: sourceGrant.expiresAt,
+      providerAccountRef: account.providerAccountRef,
+      runnerSessionId: sourceGrant.runnerSessionId,
+    }])
+    expect(used).toBe(0)
+    expect(JSON.stringify(facts)).not.toMatch(/secret|material|token/i)
+  })
+
+  test('rejects duplicate, foreign, expired, and unusable facts', async () => {
+    const provider = {
+      findGrantByRef: async () => sourceGrant,
+      findAccountByRef: async () => account,
+    }
+    const github = {
+      findGrantByRef: async () => undefined,
+      findUsableConnectionForUser: async () => undefined,
+    }
+    const base = { ownerUserId: account.userId, provider, github, now: () => new Date(at) }
+    await expect(resolvePortableCapabilityGrantFacts({
+      ...base, grantRefs: [sourceGrant.grantRef, sourceGrant.grantRef],
+    })).rejects.toThrow(/scope is invalid/)
+    await expect(resolvePortableCapabilityGrantFacts({
+      ...base, ownerUserId: 'owner_other', grantRefs: [sourceGrant.grantRef],
+    })).rejects.toThrow(/not active/)
+    await expect(resolvePortableCapabilityGrantFacts({
+      ...base, grantRefs: [sourceGrant.grantRef], now: () => new Date(sourceGrant.expiresAt),
+    })).rejects.toThrow(/not active/)
+    await expect(resolvePortableCapabilityGrantFacts({
+      ...base, grantRefs: [sourceGrant.grantRef],
+      provider: { ...provider, findAccountByRef: async () => undefined },
+    })).rejects.toThrow(/not usable/)
+  })
+
+  test('reads GitHub facts from its repository without marking the grant used', async () => {
+    let used = 0
+    const githubGrant = {
+      id: 'github-grant-row_1', connectionId: 'github-connection-row_1',
+      userId: account.userId, runnerSessionId: 'session.github',
+      connectionRef: 'github-connection_1', secretRef: 'github-secret_1',
+      grantRef: 'github-write-grant_1', status: 'issued' as const,
+      requestedAction: 'portable_session_source', metadataJson: null,
+      createdAt: at, updatedAt: at, expiresAt: sourceGrant.expiresAt,
+      usedAt: null, revokedAt: null, failedAt: null,
+    }
+    const github = {
+      findGrantByRef: async () => githubGrant,
+      findUsableConnectionForUser: async () => ({
+        id: githubGrant.connectionId, userId: account.userId, githubId: '1',
+        githubLogin: 'owner', connectionRef: githubGrant.connectionRef,
+        secretRef: githubGrant.secretRef, scopes: ['repo'], status: 'connected' as const,
+        health: 'healthy' as const, connectedAt: at, disconnectedAt: null,
+        lastStatusAt: at, metadataJson: null, createdAt: at, updatedAt: at, deletedAt: null,
+      }),
+      markGrantUsed: async () => { used += 1; return githubGrant },
+    }
+    const provider = {
+      findGrantByRef: async () => undefined,
+      findAccountByRef: async () => undefined,
+    }
+    const facts = await resolvePortableCapabilityGrantFacts({
+      ownerUserId: account.userId,
+      grantRefs: [githubGrant.grantRef],
+      provider,
+      github,
+      now: () => new Date(at),
+    })
+    expect(facts).toEqual([{
+      grantRef: githubGrant.grantRef,
+      kind: 'github',
+      ownerUserId: account.userId,
+      status: 'issued',
+      expiresAt: githubGrant.expiresAt,
+      runnerSessionId: githubGrant.runnerSessionId,
+    }])
+    expect(used).toBe(0)
+  })
+
   test('revokes exactly one owner grant and reissues one replay-stable destination ref', async () => {
     const grants = [sourceGrant]
     const events: ProviderAccountEventRecord[] = []

@@ -165,6 +165,52 @@ describe("portable target-scoped capability broker", () => {
     expect(snapshot.leases.every(item => item.permissions.length === 1 && item.lease.state === "redeemed")).toBe(true)
   })
 
+  test("redeems a refs-only target without resolving vault material", async () => {
+    let materialResolutionCount = 0
+    let referenceRedemptionCount = 0
+    const baseAdapter = makeOwnerLocalCapabilityAdapter("adapter.owner-local.v1", {
+      install: async () => {
+        throw new Error("material installation must not run")
+      },
+      wipe: async ({ leaseRef }) => ({ wipeReceiptRef: `receipt.wipe.${leaseRef}` }),
+    })
+    const broker = new PortableCapabilityBroker({
+      clock: new FixtureClock(),
+      vault: {
+        withSourceGrantMaterial: async () => {
+          materialResolutionCount += 1
+          throw new Error("vault material resolution must not run")
+        },
+        revokeSourceGrant: async () => undefined,
+      },
+      targets: [{
+        targetRef: "target.owner-local",
+        targetClass: "owner_local",
+        adapterRef: baseAdapter.adapterRef,
+        ready: true,
+      }],
+      adapters: [{
+        ...baseAdapter,
+        redeemByReference: async ({ lease, permissions }) => {
+          referenceRedemptionCount += 1
+          expect(lease.leaseRef).toBe("lease.local.provider")
+          expect(permissions).toEqual(["provider.turn.execute"])
+          return { installationRef: "installation.lease.local.provider" }
+        },
+      }],
+      evidenceSink: { append: async () => undefined },
+    })
+
+    await run(broker.issue(issueInput()))
+    await run(broker.redeem({
+      operationRef: "operation.redeem.local.reference",
+      leaseRef: "lease.local.provider",
+    }))
+
+    expect(materialResolutionCount).toBe(0)
+    expect(referenceRedemptionCount).toBe(1)
+  })
+
   test("reissues from owner-local to accepted managed only after source revoke and wipe", async () => {
     const { broker, installed, revoked, wiped } = fixture()
     await run(broker.issue(issueInput()))

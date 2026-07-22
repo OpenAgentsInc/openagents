@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto"
+import { createHash, randomUUID } from "node:crypto"
 import type { LegacySqliteDatabase as Database } from "@openagentsinc/sqlite-runtime"
 import { Effect, Schema } from "effect"
 import { PylonPortableCheckpointBundleSchema } from "@openagentsinc/portable-session-contract"
@@ -33,6 +33,7 @@ export type PylonPortableOperationOutcome = Readonly<{
   diffDigest?: string
   graphDigest?: string
   cleanupReceiptRef?: string
+  destinationRunnerSessionReservationRef?: string
 }>
 
 const PylonPortableOperationOutcomeSchema = Schema.Struct({
@@ -42,6 +43,7 @@ const PylonPortableOperationOutcomeSchema = Schema.Struct({
   diffDigest: Schema.optionalKey(Schema.String),
   graphDigest: Schema.optionalKey(Schema.String),
   cleanupReceiptRef: Schema.optionalKey(Schema.String),
+  destinationRunnerSessionReservationRef: Schema.optionalKey(Schema.String),
 })
 
 export type PylonPortableSessionFence = Readonly<{
@@ -200,6 +202,7 @@ const decodeOutcome = (value: string): PylonPortableOperationOutcome => {
     outcome.diffDigest,
     outcome.graphDigest,
     outcome.cleanupReceiptRef,
+    outcome.destinationRunnerSessionReservationRef,
   ].filter((item): item is string => item !== undefined)
   if (FORBIDDEN_PRIVATE_MATERIAL.test(serialized) ||
       refs.some(ref => !SAFE_REF.test(ref)) ||
@@ -403,6 +406,119 @@ export class PylonPortableSessionOperationLedger {
     return this.transitionControlBinding(input, "cleaned")
   }
 
+  activateControlBindingDestination(input: Readonly<{
+    sessionRef: string
+    sourceAttachmentRef: string
+    sourceGeneration: number
+    destinationAttachmentRef: string
+    destinationGeneration: number
+    runtimeInstanceRef: string
+    agents: ReadonlyArray<Readonly<{
+      agentRef: string
+      controlSessionRef: string
+      workspaceRef: string
+    }>>
+  }>): Effect.Effect<Readonly<{
+    status: "completed" | "replayed"
+    binding: PylonPortableControlBinding
+  }>, PylonPortableOperationLedgerError> {
+    return this.effect(() => this.database.transaction(() => {
+      this.assertScope({
+        sessionRef: input.sessionRef,
+        attachmentRef: input.destinationAttachmentRef,
+        generation: input.destinationGeneration,
+      })
+      assertRef(input.sourceAttachmentRef, "sourceAttachmentRef")
+      assertRef(input.runtimeInstanceRef, "runtimeInstanceRef")
+      assertGeneration(input.sourceGeneration)
+      if (input.destinationGeneration !== input.sourceGeneration + 1 || input.agents.length === 0) {
+        throw new PylonPortableOperationLedgerError(
+          "stale_generation",
+          "portable control destination generation must advance exactly once",
+        )
+      }
+      const agentRefs = new Set<string>()
+      const controlSessionRefs = new Set<string>()
+      for (const agent of input.agents) {
+        assertRef(agent.agentRef, "agentRef")
+        assertRef(agent.controlSessionRef, "controlSessionRef")
+        assertRef(agent.workspaceRef, "workspaceRef")
+        if (agentRefs.has(agent.agentRef) || controlSessionRefs.has(agent.controlSessionRef)) {
+          throw new PylonPortableOperationLedgerError("invalid_scope", "portable destination agents are not unique")
+        }
+        agentRefs.add(agent.agentRef)
+        controlSessionRefs.add(agent.controlSessionRef)
+      }
+      const row = this.requireControlBindingRow(input.sessionRef)
+      const current = this.controlBinding(row)
+      const expectedAgents = [...input.agents].sort((left, right) => left.agentRef.localeCompare(right.agentRef))
+      const exactDestination = current.attachmentRef === input.destinationAttachmentRef &&
+        current.generation === input.destinationGeneration && current.runtimeInstanceRef === input.runtimeInstanceRef &&
+        current.state === "accepting" && current.agents.length === expectedAgents.length &&
+        current.agents.every((agent, index) => {
+          const expected = expectedAgents[index]
+          return expected !== undefined && agent.agentRef === expected.agentRef &&
+            agent.controlSessionRef === expected.controlSessionRef && agent.workspaceRef === expected.workspaceRef &&
+            agent.processLifecycle === "settled" && agent.workspaceLifecycle === "retained"
+        })
+      if (exactDestination) return { status: "replayed" as const, binding: current }
+      if (current.attachmentRef !== input.sourceAttachmentRef || current.generation !== input.sourceGeneration ||
+          current.runtimeInstanceRef !== input.runtimeInstanceRef || current.state !== "cleaned") {
+        throw new PylonPortableOperationLedgerError(
+          current.generation >= input.destinationGeneration ? "conflicting_replay" : "stale_generation",
+          "portable control destination binding is stale or conflicting",
+        )
+      }
+      const currentAgents = [...current.agents].sort((left, right) => left.agentRef.localeCompare(right.agentRef))
+      if (currentAgents.length !== expectedAgents.length || currentAgents.some((agent, index) => {
+        const expected = expectedAgents[index]
+        return expected === undefined || agent.agentRef !== expected.agentRef ||
+          agent.controlSessionRef !== expected.controlSessionRef
+      })) {
+        throw new PylonPortableOperationLedgerError("conflicting_replay", "portable control destination graph conflicts")
+      }
+      const fence = this.requireExactFence({
+        sessionRef: input.sessionRef,
+        attachmentRef: input.sourceAttachmentRef,
+        generation: input.sourceGeneration,
+      })
+      if (Number(fence.accepting_work) !== 0) {
+        throw new PylonPortableOperationLedgerError("stale_generation", "portable source generation is not fenced")
+      }
+      const advanced = this.database.query(`
+        UPDATE pylon_portable_control_bindings
+        SET attachment_ref = ?, generation = ?, state = 'accepting', revision = revision + 1
+        WHERE session_ref = ? AND attachment_ref = ? AND generation = ?
+          AND runtime_instance_ref = ? AND state = 'cleaned'
+      `).run(
+        input.destinationAttachmentRef,
+        input.destinationGeneration,
+        input.sessionRef,
+        input.sourceAttachmentRef,
+        input.sourceGeneration,
+        input.runtimeInstanceRef,
+      )
+      if (advanced.changes !== 1) {
+        throw new PylonPortableOperationLedgerError("stale_generation", "portable control destination advance lost its race")
+      }
+      const updateAgent = this.database.query(`
+        UPDATE pylon_portable_control_binding_agents
+        SET workspace_ref = ?, process_lifecycle = 'settled', workspace_lifecycle = 'retained'
+        WHERE session_ref = ? AND agent_ref = ? AND control_session_ref = ?
+      `)
+      for (const agent of expectedAgents) {
+        const updated = updateAgent.run(agent.workspaceRef, input.sessionRef, agent.agentRef, agent.controlSessionRef)
+        if (updated.changes !== 1) {
+          throw new PylonPortableOperationLedgerError("conflicting_replay", "portable destination agent graph changed")
+        }
+      }
+      return {
+        status: "completed" as const,
+        binding: this.controlBinding(this.requireControlBindingRow(input.sessionRef)),
+      }
+    }).immediate())
+  }
+
   recoverControlBinding(input: Readonly<{
     recoveryRef: string
     sessionRef: string
@@ -506,6 +622,48 @@ export class PylonPortableSessionOperationLedger {
       assertRef(sessionRef, "sessionRef")
       return sessionFence(this.requireSession(sessionRef))
     })
+  }
+
+  readOperation(operationRef: string): Effect.Effect<PylonPortableOperationRecord | null, PylonPortableOperationLedgerError> {
+    return this.effect(() => {
+      assertRef(operationRef, "operationRef")
+      const row = this.readOperationRow(operationRef)
+      return row === null ? null : operationRecord(row)
+    })
+  }
+
+  reserveDestinationRunnerSession(operationRef: string): Effect.Effect<string, PylonPortableOperationLedgerError> {
+    return this.effect(() => this.database.transaction(() => {
+      assertRef(operationRef, "operationRef")
+      const row = this.requireOperation(operationRef)
+      if (row.kind !== "stage") {
+        throw new PylonPortableOperationLedgerError(
+          "invalid_scope",
+          "runner-session reservation requires a destination stage",
+        )
+      }
+      const existing = row.outcome_json === null
+        ? undefined
+        : decodeOutcome(row.outcome_json).destinationRunnerSessionReservationRef
+      if (existing !== undefined) return existing
+      if (row.state !== "admitted") {
+        throw new PylonPortableOperationLedgerError(
+          "conflicting_replay",
+          "completed destination stage has no runner-session reservation",
+        )
+      }
+      const reservationRef = `runner-session-reservation.${randomUUID()}`
+      const outcome = decodeOutcome(JSON.stringify({
+        evidenceRefs: [],
+        destinationRunnerSessionReservationRef: reservationRef,
+      }))
+      this.database.query(`
+        UPDATE pylon_portable_session_operations
+        SET outcome_json = ?
+        WHERE operation_ref = ? AND state = 'admitted'
+      `).run(JSON.stringify(outcome), operationRef)
+      return reservationRef
+    }).immediate())
   }
 
   /**
@@ -618,7 +776,7 @@ export class PylonPortableSessionOperationLedger {
         exactInput: input.exactInput,
       })
       const outcome = decodeOutcome(JSON.stringify({
-        evidenceRefs: [input.authorityEvidenceRef, ...input.evidenceRefs],
+        evidenceRefs: [...new Set([input.authorityEvidenceRef, ...input.evidenceRefs])],
       }))
       if (admitted.record.state === "completed") {
         if (canonical(admitted.record.outcome) !== canonical(outcome)) {

@@ -488,6 +488,7 @@ import {
 import { DesktopWindowFullscreenChannel } from "./window-contract.ts"
 import { openWorkspaceService } from "./workspace-service.ts"
 import { openAdmittedDesktopWorkspace } from "./desktop-workspace-admission.ts"
+import { workspaceAdmissionFromSnapshot } from "./desktop-coding-catalog.ts"
 import {
   DesktopIdeAgentCodeCommandChannel,
   DesktopIdeAgentCodeSnapshotChannel,
@@ -520,6 +521,23 @@ import {
   DesktopIdeManagedSandboxSnapshotChannel,
   emptyIdeManagedSandboxSnapshot,
 } from "./ide/managed-sandbox-contract.ts"
+import {
+  DesktopIdePortableCommandChannel,
+  DesktopIdePortableSnapshotChannel,
+  decodeIdePortableClientCommand,
+  emptyIdePortableClientSnapshot,
+} from "./ide/portable-client-contract.ts"
+import { makeIde13IsolatedOwnerLocalProofDispatcher } from "./ide/portable-isolated-owner-local-proof.ts"
+import { makeIdePortableMutationAuthority } from "./ide/portable-mutation-authority.ts"
+import {
+  makeDesktopSourceSafePoint,
+  type DesktopSourceSafePoint,
+  type DesktopSourceSubsystemResult,
+} from "./ide/desktop-source-safe-point.ts"
+import {
+  startDesktopSourceSafePointControlServer,
+  type DesktopSourceSafePointControlServer,
+} from "./ide/desktop-source-safe-point-control-server.ts"
 import {
   openIdeManagedSandboxHost,
   type IdeManagedSandboxHost,
@@ -885,6 +903,11 @@ const isolatedAppProofMode = isIsolatedAppProof({
   env: process.env,
   userDataPath: desktopUserDataPath,
   temporaryDirectory: app.getPath("temp"),
+})
+const ide13IsolatedOwnerLocalProof = makeIde13IsolatedOwnerLocalProofDispatcher({
+  env: process.env,
+  isolatedAppProof: isolatedAppProofMode,
+  packaged: app.isPackaged,
 })
 if (desktopPreviewMode && !isolatedAppProofMode) {
   throw new Error("OpenAgents Desktop preview requires an isolated OS-temporary userData profile")
@@ -1820,8 +1843,18 @@ const relaunchDesktopUpdateApp = (): void => {
   }
 }
 let desktopUpdateDrainActive = false
+let desktopSourceSafePoint: DesktopSourceSafePoint | null = null
+let desktopSourceSafePointControlServer: DesktopSourceSafePointControlServer | null = null
 const drainDesktopUpdateRuntimes = async () => {
   desktopUpdateDrainActive = true
+  const sourceBinding = desktopSourceSafePoint?.currentBinding() ?? null
+  if (sourceBinding !== null) {
+    const safePoint = await desktopSourceSafePoint?.quiesce(sourceBinding)
+    if (safePoint?.state !== "quiescent") {
+      const states = safePoint?.outcomes.map(outcome => `${outcome.subsystem}:${outcome.state}`).join(",") ?? "unavailable"
+      console.warn(`[desktop-update] IDE source safe point was incomplete (${states})`)
+    }
+  }
   return await drainChildRuntimes({
     timeoutMs: 15_000,
     drainers: [
@@ -2052,6 +2085,7 @@ const currentIdeAgentCodeHost = (): Promise<IdeAgentCodeHost | null> => {
     const rootDigest = createHash("sha256").update(workspace.summary().root).digest("hex")
     const host = openIdeAgentCodeHost(workspace, {
       persistencePath: path.join(app.getPath("userData"), "ide-agent-code", `${rootDigest}.json`),
+      mutationAuthority: workspacePortableMutationAuthority,
     })
     ideAgentCodeHostEntry = { workspace, host }
     return host
@@ -2348,6 +2382,7 @@ const currentIdeManagedSandboxHost = (): Promise<IdeManagedSandboxHost | null> =
       credential: () => desktopSessionVault?.load() ?? null,
       baseUrl: process.env.OPENAGENTS_COM_BASE_URL ?? "https://openagents.com",
       agentCodeHost: agentHost,
+      mutationAuthority: workspacePortableMutationAuthority,
       persistencePath: path.join(
         app.getPath("userData"),
         "ide-managed-sandbox",
@@ -2446,7 +2481,31 @@ const withProductSpecWorkroom = <A>(
     ? productSpecUnavailable("Choose an admitted coding workspace before using ProductSpec work.")
     : work(authority)
 }
+const knownPortableWorkspaceSessions = new Set<string>()
+const workspacePortableMutationAuthority = makeIdePortableMutationAuthority({
+  admission: () => {
+    const catalog = hostLifecycle.sync()?.codingCatalog()
+    return catalog === null || catalog === undefined
+      ? null
+      : workspaceAdmissionFromSnapshot(catalog.snapshot())
+  },
+  portableSnapshot: () => {
+    const snapshot = hostLifecycle.sync()?.portableSnapshot() ?? null
+    if (snapshot !== null) {
+      for (const session of snapshot.sessions) knownPortableWorkspaceSessions.add(session.sessionRef)
+    }
+    return snapshot
+  },
+  identityTier: () => hostLifecycle.sync()?.status().identityTier ?? "unavailable",
+  knownPortableSession: sessionRef => {
+    if (knownPortableWorkspaceSessions.has(sessionRef)) return true
+    const catalog = hostLifecycle.sync()?.codingCatalog()?.snapshot()
+    return catalog?.catalog.sessions.some(session =>
+      session.sessionRef === sessionRef && session.currentAttachmentRef !== null) ?? false
+  },
+})
 const openSelectedWorkspace = (root: string) => openWorkspaceService(root, {
+  mutationAuthority: workspacePortableMutationAuthority,
   reveal: absolutePath => {
     shell.showItemInFolder(absolutePath)
     return true
@@ -2460,6 +2519,7 @@ const installAdmittedCodingWorkspace = (root: string): boolean => {
     root,
     (selectedRoot, grantRef) => openWorkspaceService(selectedRoot, {
       grantRef,
+      mutationAuthority: workspacePortableMutationAuthority,
       reveal: absolutePath => {
         shell.showItemInFolder(absolutePath)
         return true
@@ -2848,6 +2908,25 @@ ipcMain.handle(DesktopIdeManagedSandboxCommandChannel, async (event, value: unkn
       }
     : host.command(value)
 })
+ipcMain.handle(DesktopIdePortableSnapshotChannel, async (event) => {
+  if (!isTrustedRuntimeGatewaySender(event)) return emptyIdePortableClientSnapshot()
+  return hostLifecycle.sync()?.portableSnapshot() ?? emptyIdePortableClientSnapshot()
+})
+ipcMain.handle(DesktopIdePortableCommandChannel, async (event, value: unknown) => {
+  const command = decodeIdePortableClientCommand(value)
+  if (!isTrustedRuntimeGatewaySender(event) || command === null) {
+    return { _tag: "Refused", reason: "invalid_input" } as const
+  }
+  if (ide13IsolatedOwnerLocalProof !== null) {
+    return await ide13IsolatedOwnerLocalProof.request(command)
+  }
+  const sync = hostLifecycle.sync()
+  if (sync === null) return { _tag: "Refused", reason: "unavailable" } as const
+  const mutationRef = sync.requestPortableCommand(command)
+  return mutationRef === null
+    ? { _tag: "Refused", reason: "request_failed" } as const
+    : { _tag: "Requested", mutationRef } as const
+})
 ipcMain.handle(DesktopWorkspaceLanguageRequestChannel, async (event, value: unknown) => {
   const request = decodeIdeLanguageRequest(value)
   if (!isTrustedRuntimeGatewaySender(event) || request === null) return null
@@ -3150,6 +3229,7 @@ const gitGithubService = openGitGithubService(
       },
 )
 const ideSourceControlHost = openIdeSourceControlHost({
+  ...(smokeMode ? {} : { mutationAuthority: workspacePortableMutationAuthority }),
   workspace: () => {
     if (smokeMode) return { root: smokeGitRoot, grantRef: "workspace.grant.smoke" }
     const workspace = hostLifecycle.workspace()
@@ -3179,6 +3259,10 @@ ipcMain.handle(IdeSourceControlChannel, async (_event, value: unknown) => (await
 // workspace refuses typed and the turn proceeds. Snapshots can contain
 // secrets, so records stay host-local and never enter Sync projections.
 const turnCheckpoints = openTurnCheckpointService({
+  ...(smokeMode ? {} : {
+    mutationAuthority: workspacePortableMutationAuthority,
+    resolveGrantRef: () => hostLifecycle.workspace()?.grantRef ?? null,
+  }),
   resolveRoot: smokeMode
     ? () => smokeGitRoot
     : () => {
@@ -3224,6 +3308,7 @@ const broadcastIdeRunEvent = (event: IdeRunEvent): void => {
 }
 const ideRunHost = openIdeRunHost({
   workspace: terminalWorkspaceBinding,
+  mutationAuthority: workspacePortableMutationAuthority,
   emit: broadcastIdeRunEvent,
   exportRoot: path.join(app.getPath("userData"), "ide-run", "exports"),
 })
@@ -3290,6 +3375,7 @@ const runIdeDebugTask = async (
 }
 const ideDebugHost = openIdeDapHost({
   workspace: terminalWorkspaceBinding,
+  mutationAuthority: workspacePortableMutationAuthority,
   discoverConfigurations: ({ root, binding }) => discoverIdeDebugManifest({ root, binding }),
   resolveSource: resolveIdeDebugSource,
   runTask: runIdeDebugTask,
@@ -3307,7 +3393,10 @@ const broadcastTerminalEvent = (event: TerminalEvent): void => {
   }
   void ideRunHost.then((host) => host.observeTerminalEvent(event))
 }
-const confirmTerminalPreview = async (url: string): Promise<boolean> => {
+const confirmTerminalPreview = async (
+  url: string,
+  authorize: () => boolean,
+): Promise<boolean> => {
   const window = BrowserWindow.getAllWindows().find((candidate) => !candidate.isDestroyed()) ?? null
   const options = {
     type: "question" as const,
@@ -3321,11 +3410,13 @@ const confirmTerminalPreview = async (url: string): Promise<boolean> => {
     ? await dialog.showMessageBox(options)
     : await dialog.showMessageBox(window, options)
   if (result.response !== 1) return false
+  if (!authorize()) return false
   await shell.openExternal(url)
   return true
 }
 const terminalHost = makeTerminalHost({
   workspace: terminalWorkspaceBinding,
+  mutationAuthority: workspacePortableMutationAuthority,
   emit: broadcastTerminalEvent,
   persistencePath: path.join(app.getPath("userData"), "terminals.json"),
   openPreview: confirmTerminalPreview,
@@ -3656,17 +3747,26 @@ const currentCodexEcosystem = async () => {
 const currentCodexHostServices = async () => {
   const binary = codexRuntimeAuthority.executable()
   const workroom = currentProductSpecWorkroom()
-  if (binary === null || workroom === null) throw new Error("Codex runtime and WorkContext are required")
+  const workspaceGrantRef = hostLifecycle.workspace()?.grantRef ?? null
+  if (binary === null || workroom === null || workspaceGrantRef === null) throw new Error("Codex runtime and WorkContext are required")
   const runtimeCwd = path.join(app.getPath("userData"), "claude-local", "codex-app-server-runtime")
   mkdirSync(runtimeCwd, { recursive: true })
-  return codexHostServices.forTarget({ binary, env: codexProviderEnvironment(process.env, { clearCodexHome: true }), cwd: runtimeCwd, accountRef: "codex-current", hostTarget: "local-desktop" }, workroom.workspaceRoot)
+  return codexHostServices.forTarget(
+    { binary, env: codexProviderEnvironment(process.env, { clearCodexHome: true }), cwd: runtimeCwd, accountRef: "codex-current", hostTarget: "local-desktop" },
+    workroom.workspaceRoot,
+    { workspaceGrantRef, mutationAuthority: workspacePortableMutationAuthority },
+  )
 }
 const currentCodexExperimentalRuntime = async () => {
   const binary = codexRuntimeAuthority.executable()
-  if (binary === null) throw new Error("Codex runtime is unavailable")
+  const grantRef = hostLifecycle.workspace()?.grantRef ?? null
+  if (binary === null || grantRef === null) throw new Error("Codex runtime and WorkContext are required")
   const runtimeCwd = path.join(app.getPath("userData"), "claude-local", "codex-app-server-runtime")
   mkdirSync(runtimeCwd, { recursive: true })
-  return codexExperimentalRuntimes.forTarget({ binary, env: codexProviderEnvironment(process.env, { clearCodexHome: true }), cwd: runtimeCwd, accountRef: "codex-current", hostTarget: "local-desktop" })
+  return codexExperimentalRuntimes.forTarget(
+    { binary, env: codexProviderEnvironment(process.env, { clearCodexHome: true }), cwd: runtimeCwd, accountRef: "codex-current", hostTarget: "local-desktop" },
+    { grantRef, mutationAuthority: workspacePortableMutationAuthority },
+  )
 }
 const codexAppServerConfig = {
   binary: codexRuntimeAuthority.executable,
@@ -4406,6 +4506,14 @@ const laneDispatcher = makeProviderLaneDispatcher({
     },
   },
   captureTurnCheckpoint,
+  portableMutation: {
+    resolve: () => {
+      const grantRef = hostLifecycle.workspace()?.grantRef ?? null
+      return grantRef === null
+        ? null
+        : { grantRef, authority: workspacePortableMutationAuthority }
+    },
+  },
   localTurnFlushers,
   isQuitting: () => desktopIsQuitting,
   onTurnEventProjected: (request, event, background) => {
@@ -4448,6 +4556,161 @@ const laneDispatcher = makeProviderLaneDispatcher({
     }),
   },
 })
+
+const currentDesktopSourceBinding = () => {
+  const grantRef = hostLifecycle.workspace()?.grantRef ?? null
+  if (grantRef === null) return null
+  const authorization = workspacePortableMutationAuthority.authorize(grantRef)
+  if (authorization._tag !== "Permitted" || authorization.permit._tag !== "Portable" ||
+      authorization.permit.attachmentRef === null || authorization.permit.generation === null) return null
+  return {
+    sessionRef: authorization.permit.sessionRef,
+    attachmentRef: authorization.permit.attachmentRef,
+    grantRef,
+    generation: authorization.permit.generation,
+  }
+}
+const sourceQuiesced = (): DesktopSourceSubsystemResult => ({ state: "quiesced" })
+const sourceUnsupported = (detailRef: string): DesktopSourceSubsystemResult => ({
+  state: "unsupported",
+  detailRef,
+})
+const sourceSettlement = (result: Readonly<{ state: "quiesced" }> | Readonly<{ state: "timed_out" | "failed"; detailRef: string }>): DesktopSourceSubsystemResult =>
+  result.state === "quiesced" ? sourceQuiesced() : { state: result.state, detailRef: result.detailRef }
+desktopSourceSafePoint = makeDesktopSourceSafePoint({
+  currentBinding: currentDesktopSourceBinding,
+  timeoutMs: 5_000,
+  subsystems: [
+    {
+      subsystem: "workspace-search-registry",
+      quiesce: async () => (await workspaceSearchRegistry.quiesce()).state === "quiesced"
+        ? sourceQuiesced()
+        : sourceUnsupported("desktop.workspace-search.safe-point-timeout"),
+    },
+    {
+      subsystem: "workspace-watch-search-language",
+      quiesce: async () => {
+        const workspace = hostLifecycle.workspace()
+        if (workspace === null) return sourceUnsupported("desktop.workspace.binding-unavailable")
+        return (await workspace.dispose()).state === "quiesced"
+          ? sourceQuiesced()
+          : sourceUnsupported("desktop.workspace.safe-point-timeout")
+      },
+    },
+    {
+      subsystem: "terminal",
+      quiesce: async () => sourceSettlement(await terminalHost.quiesce()),
+    },
+    {
+      subsystem: "task-test",
+      quiesce: async () => { await (await ideRunHost).dispose(); return sourceQuiesced() },
+    },
+    {
+      subsystem: "debug-adapter",
+      quiesce: async () => { await (await ideDebugHost).dispose(); return sourceQuiesced() },
+    },
+    {
+      subsystem: "source-control",
+      quiesce: async () => { await (await ideSourceControlHost).dispose(); return sourceQuiesced() },
+    },
+    {
+      subsystem: "turn-checkpoint",
+      quiesce: async () => { await turnCheckpoints.quiesce(); return sourceQuiesced() },
+    },
+    {
+      subsystem: "provider-lanes",
+      quiesce: async () => (await laneDispatcher.quiesce()).state === "safe"
+        ? sourceQuiesced()
+        : sourceUnsupported("desktop.provider-lane.remote-execution-unconfirmed"),
+    },
+    {
+      subsystem: "agent-code",
+      quiesce: async () => {
+        const entry = ideAgentCodeHostEntry
+        if (entry !== null) await (await entry.host).dispose()
+        return sourceQuiesced()
+      },
+    },
+    {
+      subsystem: "cursor-agent",
+      quiesce: async () => {
+        const entry = ideCursorHostEntry
+        if (entry !== null) await (await entry.host).dispose()
+        return sourceQuiesced()
+      },
+    },
+    {
+      subsystem: "managed-sandbox",
+      quiesce: async () => {
+        const entry = ideManagedSandboxHostEntry
+        if (entry !== null) await (await entry.host).quiesce()
+        return sourceQuiesced()
+      },
+    },
+    {
+      subsystem: "codex-host-services",
+      quiesce: async () => sourceSettlement(await codexHostServices.quiesce()),
+    },
+    {
+      subsystem: "codex-experimental-runtime",
+      quiesce: async () => sourceSettlement(await codexExperimentalRuntimes.quiesce()),
+    },
+  ],
+})
+
+const pylonHome = resolvePylonHome(process.env).home
+const readPublicPylonRef = (): string | null => {
+  for (const file of [path.join(pylonHome, "identity.json"), path.join(pylonHome, "config.json")]) {
+    try {
+      const value: unknown = JSON.parse(readFileSync(file, "utf8"))
+      if (value !== null && typeof value === "object" && !Array.isArray(value) &&
+        "pylonRef" in value && typeof value.pylonRef === "string" &&
+        /^[a-zA-Z0-9][a-zA-Z0-9._:-]{2,255}$/u.test(value.pylonRef)) return value.pylonRef
+    } catch {
+      // Continue to the next public Pylon identity projection.
+    }
+  }
+  return null
+}
+const sourceControlPylonRef = readPublicPylonRef()
+const currentDesktopSourceControlAuthority = () => {
+  if (sourceControlPylonRef === null) return null
+  const grantRef = hostLifecycle.workspace()?.grantRef ?? null
+  if (grantRef === null) return null
+  const authorization = workspacePortableMutationAuthority.authorize(grantRef)
+  if (authorization._tag !== "Permitted" || authorization.permit._tag !== "Portable" ||
+    authorization.permit.targetRef === null) return null
+  const snapshot = hostLifecycle.sync()?.portableSnapshot() ?? null
+  const sessions = snapshot?.sessions.filter(session => session.sessionRef === authorization.permit.sessionRef) ?? []
+  const targets = snapshot?.targetDirectories
+    .filter(directory => directory.sessionRef === authorization.permit.sessionRef)
+    .flatMap(directory => directory.targets)
+    .filter(target => target.targetRef === authorization.permit.targetRef) ?? []
+  const session = sessions.length === 1 ? sessions[0] : undefined
+  const target = targets.length === 1 ? targets[0] : undefined
+  if (session === undefined || target === undefined || target.ownerRef !== session.ownerRef) return null
+  return {
+    ownerRef: session.ownerRef,
+    pylonRef: sourceControlPylonRef,
+    targetRef: target.targetRef,
+  }
+}
+if (sourceControlPylonRef !== null && desktopSourceSafePoint !== null) {
+  void startDesktopSourceSafePointControlServer({
+    pylonHome,
+    pylonRef: sourceControlPylonRef,
+    safePoint: desktopSourceSafePoint,
+    currentAuthority: currentDesktopSourceControlAuthority,
+  }).then(server => {
+    if (desktopIsQuitting) return server.stop()
+    desktopSourceSafePointControlServer = server
+  }).catch(error => {
+    console.warn(
+      "[desktop-source-safe-point] control unavailable",
+      error instanceof Error ? error.message : "unknown",
+    )
+  })
+}
 
 /**
  * The Claude lane (`claude_agent`) as a provider-lane value. Message metadata
@@ -9530,6 +9793,8 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", () => {
   desktopIsQuitting = true
+  void desktopSourceSafePointControlServer?.stop()
+  desktopSourceSafePointControlServer = null
   clearInterval(fullAutoRunProjectionHeartbeatTimer)
   for (const flush of localTurnFlushers) flush()
   localTurnFlushers.clear()

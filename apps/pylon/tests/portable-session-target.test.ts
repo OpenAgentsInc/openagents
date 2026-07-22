@@ -15,6 +15,7 @@ import {
 } from "../src/node/control-sessions.js"
 import { PylonPortableSessionOperationLedger } from "../src/portable-session-operation-ledger.js"
 import { createPylonOwnerLocalExecutionTarget } from "../src/portable-session-target.js"
+import type { PylonDesktopSourceSafePointClient } from "../src/desktop-source-safe-point-client.js"
 
 const roots: string[] = []
 
@@ -129,11 +130,36 @@ describe("owner-local Pylon portable execution target", () => {
         { agentRef: agentRefs[1]!, controlSessionRef: childRun.sessionRef },
       ],
     }
+    let desktopRequest: Parameters<PylonDesktopSourceSafePointClient["quiesce"]>[0] | null = null
+    const desktopSourceSafePoint: PylonDesktopSourceSafePointClient = {
+      quiesce: async request => {
+        desktopRequest = request
+        return {
+          schema: "openagents.desktop_source_safe_point_control.v1",
+          desktopInstanceRef: "desktop.instance.portable.1",
+          operationRef: request.operationRef,
+          state: "quiescent",
+          reasonRef: null,
+          evidenceRefs: ["receipt.desktop.safe-point.portable.1"],
+          remoteExecution: "not_claimed",
+        }
+      },
+    }
     const target = await createPylonOwnerLocalExecutionTarget({
       targetRef: "target.pylon.owner.local",
       ledger,
       lifecycle: actions.portable,
       binding,
+      desktopSourceSafePoint: {
+        client: desktopSourceSafePoint,
+        authority: {
+          commandRef: "command.portable.owner.move.1",
+          commandExecutionClaimRef: "claim.command.portable.owner.move.1",
+          ownerRef: "owner.portable.1",
+          pylonRef: "pylon.portable.owner.1",
+          expiresAt: "2026-07-20T12:05:00.000Z",
+        },
+      },
     })
     const quiesced = await target.quiesceGraph({
       operationRef: "operation.portable.owner.quiesce",
@@ -144,6 +170,18 @@ describe("owner-local Pylon portable execution target", () => {
       threadCursors: [],
     })
     expect(quiesced.quiescedAgentRefs.sort()).toEqual([...agentRefs].sort())
+    expect(desktopRequest).toMatchObject({
+      operationRef: "operation.portable.owner.quiesce",
+      commandRef: "command.portable.owner.move.1",
+      commandExecutionClaimRef: "claim.command.portable.owner.move.1",
+      ownerRef: "owner.portable.1",
+      pylonRef: "pylon.portable.owner.1",
+      targetRef: "target.pylon.owner.local",
+      sessionRef,
+      attachmentRef,
+      attachmentGeneration: 1,
+    })
+    expect(quiesced.evidenceRefs).toContain("receipt.desktop.safe-point.portable.1")
     expect((await actions.list()).filter(row =>
       row.sessionRef === rootRun.sessionRef || row.sessionRef === childRun.sessionRef
     ).every(row => row.state === "cancelled")).toBe(true)

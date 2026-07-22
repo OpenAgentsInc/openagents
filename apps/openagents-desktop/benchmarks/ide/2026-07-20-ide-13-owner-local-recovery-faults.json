@@ -1,0 +1,77 @@
+{
+  "schemaVersion": "openagents.desktop.ide-portable-owner-local-recovery-faults.v1",
+  "generatedAt": "2026-07-20T19:43:27.618Z",
+  "candidateCommitSha": "b7d342183d9cfb5ab805fa6ad5b862829160ad37",
+  "baseCommitSha": "7da626270496737d9e94c32263a2c3de152a0b90",
+  "cohortRef": "cohort.ide13.owner-local.real.1",
+  "cases": [
+    {
+      "scenario": "coordinator_crash",
+      "evidenceClass": "simulator",
+      "outcome": "passed",
+      "productionBoundaryRef": "boundary.pylon.owner-local.worker.claim-durable",
+      "injectedFaultRef": "injected-fault.ide13.owner-local.coordinator-crash",
+      "recoveryPointRef": "recovery.pylon.owner-local.file-journal.claimed",
+      "receiptRef": "receipt.ide13.owner-local.coordinator-crash.494a9d3b9b1e3a90e211741b633050a5",
+      "elapsedMilliseconds": 100.662916,
+      "deadlineMilliseconds": 120000,
+      "disclosure": "A source-controlled fault hook raised an exception after the production worker made its claimed lease durable. A new worker object recovered the file journal and completed the operation exactly once against an in-memory control-plane fixture. This was not an external process death or a real owner-local cohort."
+    },
+    {
+      "scenario": "checkpoint_store_crash",
+      "evidenceClass": "real_local",
+      "outcome": "passed",
+      "productionBoundaryRef": "boundary.pylon.owner-local.checkpoint-custody.delete-object-removed",
+      "injectedFaultRef": "injected-fault.ide13.owner-local.checkpoint-store-crash",
+      "recoveryPointRef": "receipt.portable-checkpoint-deletion.9b0cf9b58942396afa774cb146da9f44",
+      "receiptRef": "receipt.ide13.owner-local.checkpoint-store-crash.0babf7f362f69f1cc78cfaa3cd493605",
+      "elapsedMilliseconds": 1343.4833330000001,
+      "deadlineMilliseconds": 120000,
+      "disclosure": "A source-controlled fault hook raised an exception after the production custody store removed ciphertext and before closeout. A new store object resumed the durable delete intent and verified absence. This was not an external process death."
+    },
+    {
+      "scenario": "duplicate_event",
+      "evidenceClass": "simulator",
+      "outcome": "passed",
+      "productionBoundaryRef": "boundary.pylon.owner-local.worker.pending-batch",
+      "injectedFaultRef": "injected-fault.ide13.owner-local.duplicate-pending-operation",
+      "recoveryPointRef": "recovery.pylon.owner-local.operation-ref-deduplication",
+      "receiptRef": "receipt.ide13.owner-local.duplicate-event.494a9d3b9b1e3a90e211741b633050a5",
+      "elapsedMilliseconds": 100.662916,
+      "deadlineMilliseconds": 120000,
+      "disclosure": "The production worker received the same operation twice from an in-memory control-plane fixture. Operation-ref admission executed and completed it once. This was not a real owner-local cohort."
+    },
+    {
+      "scenario": "lease_expiry_clock_skew",
+      "evidenceClass": "simulator",
+      "outcome": "passed",
+      "productionBoundaryRef": "boundary.pylon.owner-local.worker.lease-expiry",
+      "injectedFaultRef": "injected-fault.ide13.owner-local.clock-after-request-expiry",
+      "recoveryPointRef": "recovery.pylon.owner-local.claim-expired-refusal",
+      "receiptRef": "receipt.ide13.owner-local.lease-expiry.494a9d3b9b1e3a90e211741b633050a5",
+      "elapsedMilliseconds": 100.662916,
+      "deadlineMilliseconds": 120000,
+      "disclosure": "The production worker clock was later than the fixture request expiry. The worker refused the claim before a control-plane mutation or executor call. This was not a real owner-local cohort."
+    }
+  ],
+  "safety": {
+    "completionCount": 2,
+    "duplicateExecutionObserved": false,
+    "expiredClaimAccepted": false,
+    "checkpointCiphertextResidueCount": 0,
+    "journalEntryResidueCount": 0,
+    "forbiddenMaterialProjected": false
+  },
+  "unsupported": [
+    {
+      "scenario": "reordered_event",
+      "evidenceClass": "not_run",
+      "reason": "No production event-sequence contract identifies a safe reordered owner-local operation stream. This case did not run."
+    },
+    {
+      "scenario": "cancellation_and_app_restart",
+      "evidenceClass": "not_run",
+      "reason": "The coordinator restart probe does not prove cancellation plus packaged app restart. This combined case did not run."
+    }
+  ]
+}

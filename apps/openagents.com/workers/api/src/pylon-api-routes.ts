@@ -233,6 +233,26 @@ type PylonApiRouteDependencies<Bindings> = Readonly<{
     env: Bindings,
     ctx: ExecutionContext,
   ) => Promise<PylonApiBrowserSession | undefined>
+  routePortablePhaseOperationRequest?: (
+    request: Request,
+    env: Bindings,
+  ) => Promise<HttpResponse> | undefined
+  routePortableCheckpointArtifactRequest?: (
+    request: Request,
+    env: Bindings,
+  ) => Promise<HttpResponse> | undefined
+  routePortableCheckpointDekRequest?: (
+    request: Request,
+    env: Bindings,
+  ) => Promise<HttpResponse> | undefined
+  routePortableOwnerLocalCapabilityOperationRequest?: (
+    request: Request,
+    env: Bindings,
+  ) => Promise<HttpResponse> | undefined
+  routePortableTargetPylonBindingRequest?: (
+    request: Request,
+    env: Bindings,
+  ) => Promise<HttpResponse> | undefined
 }>
 
 type PylonApiRouteEnv = Readonly<Record<string, unknown>>
@@ -3461,6 +3481,39 @@ export const makePylonApiRoutes = <Bindings extends PylonApiRouteEnv>(
     ctx: ExecutionContext,
   ): Effect.Effect<HttpResponse> | undefined => {
     const url = new URL(request.url)
+
+    const portablePhaseRoute =
+      dependencies.routePortablePhaseOperationRequest?.(request, env)
+    if (portablePhaseRoute !== undefined) {
+      return Effect.promise(() => portablePhaseRoute)
+    }
+
+    const portableCheckpointArtifactRoute =
+      dependencies.routePortableCheckpointArtifactRequest?.(request, env)
+    if (portableCheckpointArtifactRoute !== undefined) {
+      return Effect.promise(() => portableCheckpointArtifactRoute)
+    }
+
+    const portableCheckpointDekRoute =
+      dependencies.routePortableCheckpointDekRequest?.(request, env)
+    if (portableCheckpointDekRoute !== undefined) {
+      return Effect.promise(() => portableCheckpointDekRoute)
+    }
+
+    const portableOwnerLocalCapabilityOperationRoute =
+      dependencies.routePortableOwnerLocalCapabilityOperationRequest?.(
+        request,
+        env,
+      )
+    if (portableOwnerLocalCapabilityOperationRoute !== undefined) {
+      return Effect.promise(() => portableOwnerLocalCapabilityOperationRoute)
+    }
+
+    const portableTargetPylonBindingRoute =
+      dependencies.routePortableTargetPylonBindingRequest?.(request, env)
+    if (portableTargetPylonBindingRoute !== undefined) {
+      return Effect.promise(() => portableTargetPylonBindingRoute)
+    }
 
     if (url.pathname === '/api/account/pylons') {
       if (request.method !== 'GET') {

@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "openagents.desktop.ide-portability-packaged-fail-closed-trace.v1",
+  "issue": "IDE-13",
+  "candidateCommitSha": "efc7a9dab90e8241381a77197682ffe40606ffdd",
+  "artifactTreeSha256": "10891ba97280aad6cfed14282171f13d0e32f807264ff7107df412bf4aa2c449",
+  "events": [],
+  "observedRendererExternalDestinations": [],
+  "privateMaterialIncluded": false,
+  "authenticatedSyncClaimed": false,
+  "moveClaimed": false
+}

@@ -4,6 +4,7 @@ import { chmod, lstat, mkdir, readFile, readlink, rename, rm, symlink, writeFile
 import { dirname, isAbsolute, join, relative, resolve } from "node:path"
 
 import { canonicalJson } from "@openagentsinc/khala-sync"
+import { validateIdePortableDestinationActivationReceipt } from "@openagentsinc/portable-session-contract"
 
 import type { PylonPortableControlSessionLifecycle } from "./node/control-sessions.js"
 import type {
@@ -189,8 +190,16 @@ export const createPylonPortableLocalRehydrator = (input: Readonly<{
 
   return {
     stage: async operation => {
+      if (!SAFE_REF.test(operation.destinationRunnerSessionReservationRef)) {
+        throw new Error("portable destination runner reservation is invalid")
+      }
       const existing = await readPersistedStage(operation.operationRef).catch(() => undefined)
-      if (existing !== undefined) return existing
+      if (existing !== undefined) {
+        if (existing.destinationRunnerSessionReservationRef !== operation.destinationRunnerSessionReservationRef) {
+          throw new Error("portable destination runner reservation conflicts with persisted stage")
+        }
+        return existing
+      }
       const checkpoint = operation.bundle.checkpoint
       const artifact = await input.artifacts.resolve({
         ownerRef: operation.bundle.executionBinding.ownerRef,
@@ -277,6 +286,7 @@ export const createPylonPortableLocalRehydrator = (input: Readonly<{
         )
         const staged = await input.lifecycle.stageDestination({
           sessionRef: checkpoint.sessionRef,
+          destinationRunnerSessionReservationRef: operation.destinationRunnerSessionReservationRef,
           sourceAttachmentRef: checkpoint.sourceAttachmentRef,
           sourceGeneration: checkpoint.sourceGeneration,
           destinationAttachmentRef: operation.destinationAttachmentRef,
@@ -289,6 +299,7 @@ export const createPylonPortableLocalRehydrator = (input: Readonly<{
         lifecycleStaged = true
         const stage: PylonPortableLocalStage = {
           operationRef: operation.operationRef,
+          destinationRunnerSessionReservationRef: operation.destinationRunnerSessionReservationRef,
           sessionRef: checkpoint.sessionRef,
           checkpointRef: checkpoint.checkpointRef,
           checkpointDigest: checkpoint.digest,
@@ -334,24 +345,84 @@ export const createPylonPortableLocalRehydrator = (input: Readonly<{
     },
     readStage: readPersistedStage,
     activate: async operation => {
+      if (!SAFE_REF.test(operation.destinationRunnerSessionReservationRef) ||
+          operation.destinationRunnerSessionReservationRef !== operation.stage.destinationRunnerSessionReservationRef) {
+        throw new Error("portable destination activation runner reservation does not match its stage")
+      }
       const directory = operationDirectory(operation.stage.operationRef)
       const workspaceRef = stableRef(
         "workspace.pylon.portable.rehydrated",
         `${operation.stage.checkpointRef}:${operation.stage.repositoryPostImageDigest}`,
       )
-      const activation = await input.lifecycle.activateDestination({
-        sessionRef: operation.stage.sessionRef,
-        destinationAttachmentRef: operation.stage.destinationAttachmentRef,
-        destinationGeneration: operation.stage.destinationGeneration,
-        checkpointRef: operation.stage.checkpointRef,
-        agentRefs: operation.stage.stagedAgentRefs,
-        workingDirectory: directory,
-        workspaceRef,
-      })
-      return {
-        activatedAgentRefs: activation.activatedAgentRefs,
-        acceptedWorkRefs: activation.acceptedWorkRefs,
-        evidenceRefs: [operation.authorityEvidenceRef, ...activation.evidenceRefs],
+      const authenticationPolicyRef = "policy.portable.destination.owner_local.v1"
+      try {
+        await input.lifecycle.stageDestination({
+          sessionRef: operation.stage.sessionRef,
+          destinationRunnerSessionReservationRef: operation.destinationRunnerSessionReservationRef,
+          sourceAttachmentRef: operation.stage.sourceAttachmentRef,
+          sourceGeneration: operation.stage.sourceGeneration,
+          destinationAttachmentRef: operation.stage.destinationAttachmentRef,
+          destinationGeneration: operation.stage.destinationGeneration,
+          checkpointRef: operation.stage.checkpointRef,
+          agentRefs: operation.stage.stagedAgentRefs,
+          workingDirectory: directory,
+          workspaceRef,
+        })
+        const activation = await input.lifecycle.activateDestination({
+          sessionRef: operation.stage.sessionRef,
+          destinationRunnerSessionReservationRef: operation.destinationRunnerSessionReservationRef,
+          destinationAttachmentRef: operation.stage.destinationAttachmentRef,
+          destinationGeneration: operation.stage.destinationGeneration,
+          checkpointRef: operation.stage.checkpointRef,
+          agentRefs: operation.stage.stagedAgentRefs,
+          workingDirectory: directory,
+          workspaceRef,
+          authorityEvidenceRef: operation.authorityEvidenceRef,
+          authenticationPolicyRef,
+          capabilityLeaseRefs: operation.stage.capabilityLeaseRefs,
+        })
+        return validateIdePortableDestinationActivationReceipt({
+          schema: "openagents.ide_portable_destination_activation.v1",
+          receiptRef: stableRef(
+            "receipt.pylon.portable.destination_activation",
+            `${operation.operationRef}:${operation.stage.destinationAttachmentRef}:${operation.stage.destinationGeneration}`,
+          ),
+          operationRef: operation.operationRef,
+          sessionRef: operation.stage.sessionRef,
+          checkpointRef: operation.stage.checkpointRef,
+          destinationTargetRef: input.targetRef,
+          destinationAttachmentRef: operation.stage.destinationAttachmentRef,
+          destinationRunnerSessionReservationRef:
+            operation.destinationRunnerSessionReservationRef,
+          destinationGeneration: operation.stage.destinationGeneration,
+          authentication: activation.authentication,
+          helpersObservedAt: activation.helpersObservedAt,
+          helpers: activation.helpers,
+          activatedAgentRefs: operation.stage.stagedAgentRefs,
+          acceptedWorkRefs: [],
+          evidenceRefs: [...new Set([operation.authorityEvidenceRef, ...activation.evidenceRefs])],
+        }, {
+          operationRef: operation.operationRef,
+          sessionRef: operation.stage.sessionRef,
+          checkpointRef: operation.stage.checkpointRef,
+          destinationTargetRef: input.targetRef,
+          destinationAttachmentRef: operation.stage.destinationAttachmentRef,
+          destinationRunnerSessionReservationRef:
+            operation.destinationRunnerSessionReservationRef,
+          destinationGeneration: operation.stage.destinationGeneration,
+          authenticationPolicyRef,
+        })
+      } catch (error) {
+        await input.lifecycle.abortDestination({
+          sessionRef: operation.stage.sessionRef,
+          destinationAttachmentRef: operation.stage.destinationAttachmentRef,
+          destinationGeneration: operation.stage.destinationGeneration,
+          checkpointRef: operation.stage.checkpointRef,
+          agentRefs: operation.stage.stagedAgentRefs,
+          workingDirectory: directory,
+        }).catch(() => undefined)
+        await rm(directory, { recursive: true, force: true })
+        throw error
       }
     },
     abort: async operation => {

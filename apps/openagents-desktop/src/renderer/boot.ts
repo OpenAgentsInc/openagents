@@ -181,6 +181,10 @@ import {
   unavailableIdeManagedSandboxRendererHost,
   type IdeManagedSandboxRendererHost,
 } from "./ide/managed-sandbox.ts"
+import {
+  decodeIdePortableClientSnapshot,
+  emptyIdePortableClientSnapshot,
+} from "./ide/portable.ts"
 
 /** Effect Schema at the preload boundary (issue #8574: Schema, not Zod). */
 const DesktopBridgeSchema = Schema.Struct({
@@ -242,6 +246,10 @@ type DesktopBridge = Readonly<{
     command?: (value: unknown) => Promise<unknown>
   }>
   ideManagedSandbox?: Readonly<{
+    snapshot?: () => Promise<unknown>
+    command?: (value: unknown) => Promise<unknown>
+  }>
+  idePortability?: Readonly<{
     snapshot?: () => Promise<unknown>
     command?: (value: unknown) => Promise<unknown>
   }>
@@ -922,11 +930,20 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
     const initialManagedSandbox = yield* Effect.promise(() =>
       loadIdeManagedSandboxRendererSnapshot(ideManagedSandboxRendererHost).catch(() =>
         loadIdeManagedSandboxRendererSnapshot(unavailableIdeManagedSandboxRendererHost)))
+    const initialPortableSessions = yield* Effect.promise(async () => {
+      try {
+        return decodeIdePortableClientSnapshot(await bridge?.idePortability?.snapshot?.()) ??
+          emptyIdePortableClientSnapshot()
+      } catch {
+        return emptyIdePortableClientSnapshot()
+      }
+    })
     yield* SubscriptionRef.update(state, current => ({
       ...current,
       agentCode: initialAgentCode,
       ideCursor: { ...current.ideCursor, snapshot: initialIdeCursor },
       managedSandbox: initialManagedSandbox,
+      portableSessions: initialPortableSessions,
     }))
     let cursorInvalidationOrdinal = 0
     yield* Effect.forkScoped(Stream.runForEach(SubscriptionRef.changes(state), latest => {

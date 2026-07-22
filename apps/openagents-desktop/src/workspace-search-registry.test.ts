@@ -63,7 +63,8 @@ const fixtureWorkspace = (pending: Pending[]): DesktopWorkspaceService => ({
   languageCancel: async () => { throw new Error("unused") },
   languageStop: async () => { throw new Error("unused") },
   languageSnapshot: async () => { throw new Error("unused") },
-  dispose: () => undefined,
+  quiesceSearch: async () => ({ state: "quiesced" }),
+  dispose: async () => ({ state: "quiesced" }),
 })
 
 const request = (requestRef: string, query: string) => ({
@@ -174,8 +175,8 @@ describe("Workspace search webContents registry", () => {
     registry.closeOwner("webContents.1")
     expect((await closingA).page).toEqual({ state: "unavailable", message: "cancelled:a" })
     expect(pending[1]!.cancelCount()).toBe(1)
-    registry.dispose()
-    registry.dispose()
+    await registry.dispose()
+    await registry.dispose()
     expect((await closingB).page).toEqual({ state: "unavailable", message: "cancelled:b" })
     expect(pending[2]!.cancelCount()).toBe(1)
     expect(registry.activeCount()).toBe(0)
@@ -189,5 +190,44 @@ describe("Workspace search webContents registry", () => {
       page: { state: "unavailable", message: "Choose a workspace folder before searching." },
     })
     expect(registry.activeCount()).toBe(0)
+  })
+
+  test("suppresses a late page after workspace replacement and remains quiesced", async () => {
+    const firstPending: Pending[] = []
+    const secondPending: Pending[] = []
+    const firstWorkspace = fixtureWorkspace(firstPending)
+    const secondWorkspace = fixtureWorkspace(secondPending)
+    let current: DesktopWorkspaceService | null = firstWorkspace
+    const registry = makeWorkspaceSearchRegistry(() => current)
+    const late = registry.start("webContents.1", request("workspace.search.request.late", "late"))
+    current = secondWorkspace
+    firstPending[0]!.resolve({
+      state: "available",
+      grantRef: firstWorkspace.grantRef,
+      query: "late",
+      mode: "path",
+      matches: [],
+      nextOffset: null,
+      truncated: false,
+      cache: { key: "workspace.search.cache.late", epoch: 0, freshness: "current" },
+    })
+    expect(await late).toEqual({
+      requestRef: "workspace.search.request.late",
+      page: { state: "unavailable", message: "The workspace changed before the search result was admitted." },
+    })
+
+    const blocked = registry.start("webContents.2", request("workspace.search.request.blocked", "blocked"))
+    const quiescing = registry.quiesce()
+    expect(registry.dispose()).toBe(quiescing)
+    expect(await blocked).toEqual({
+      requestRef: "workspace.search.request.blocked",
+      page: { state: "unavailable", message: "cancelled:blocked" },
+    })
+    await expect(quiescing).resolves.toEqual({ state: "quiesced" })
+    expect(await registry.start("webContents.3", request("workspace.search.request.after", "after"))).toEqual({
+      requestRef: "workspace.search.request.after",
+      page: { state: "unavailable", message: "Workspace search is quiesced on this host." },
+    })
+    expect(secondPending).toHaveLength(1)
   })
 })

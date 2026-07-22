@@ -162,14 +162,15 @@ presets, and typed workspace mutations in the Pierre explorer.
 
 ## What we are working on / next
 
-The roadmap's own "immediate next work" section is now slightly behind reality:
-it names IDE-09 as next, but IDE-09 and IDE-10 have since closed. The true
-frontier is:
+IDE-11 and IDE-12 are closed. IDE-13 is now the active frontier. Its schema,
+bounded attachment model, main-owned coordinator, and confirmed Desktop
+projection are implemented. Real placement acceptance is not complete.
 
 | Packet | Outcome | Issue | State |
 | --- | --- | --- | --- |
-| IDE-11 | Debug via a supervised Effect DAP capability graph | #9039 | **open — next** |
-| IDE-12 | Complete Git, worktrees, review, delivery with exact-version receipts | #9040 | open |
+| IDE-11 | Debug via a supervised Effect DAP capability graph | #9039 | closed |
+| IDE-12 | Complete Git, worktrees, review, delivery with exact-version receipts | #9040 | closed |
+| IDE-13 | Portable project capability contract and real placement proof | #9041 | **open — foundation implemented. Acceptance gaps remain.** |
 
 IDE-11 and IDE-12 together close the "integrated OpenAgents agent IDE" rung
 (IDE-08–12). After they land, a release may honestly say "integrated agent IDE"
@@ -183,10 +184,11 @@ live acceptance gate before any managed-execution release claim.
 
 ## What is planned but not started
 
-IDE-13 through IDE-19 are all open (#9041–#9047):
+IDE-14 through IDE-19 are open (#9042–#9047). IDE-13 is in progress:
 
-- **IDE-13** — portable project capabilities (local, owner-remote, OpenAgents-
-  managed) behind one contract, consuming the SBX `SandboxResource`.
+- **IDE-13** — the contract, model, coordinator, and Desktop projection are
+  implemented. Real owner-remote, OpenAgents-managed, provider, fault,
+  packaged, and performance acceptance evidence remains open.
 - **IDE-14** — safe mobile review, web supervision, and the immutable public
   `CodeShareBundle`.
 - **IDE-15** — isolated extension and component ABI, deny-by-default, no trusted

@@ -684,6 +684,190 @@ describe("provider lane SPI with a never-hand-wired fixture lane", () => {
     }
   })
 
+  test("revokes a blocked provider turn and suppresses its late events, journal completion, and receipt", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "oa-provider-lane-portable-revoke-"))
+    try {
+      const harness = makeFixtureHarness(root)
+      const thread = harness.store.newThread()
+      let current = true
+      let interrupts = 0
+      let completed = 0
+      let interruptObserved = (): void => {}
+      const interrupted = new Promise<void>(resolve => { interruptObserved = resolve })
+      let releaseProvider = (): void => {}
+      let providerStarted = (): void => {}
+      const started = new Promise<void>(resolve => { providerStarted = resolve })
+      const blocked = new Promise<void>(resolve => { releaseProvider = resolve })
+      const lane: ProviderLane<null> = {
+        ...harness.lane,
+        runTurn: async ({ emit }) => {
+          emit({ kind: "turn_started" })
+          emit({ kind: "text_delta", text: "Authorized prefix." })
+          emit({ kind: "tool_use", toolName: "Read", summary: "authority boundary" })
+          providerStarted()
+          await blocked
+          emit({ kind: "text_delta", text: "STALE COMPLETION" })
+          emit({ kind: "turn_completed", totalTokens: 99, accountRef: "stale-account" })
+          return {
+            ok: true,
+            text: "Authorized prefix.STALE COMPLETION",
+            totalTokens: 99,
+            accountRef: "stale-account",
+          }
+        },
+        interrupt: () => {
+          interrupts += 1
+          interruptObserved()
+          return true
+        },
+        completed: () => { completed += 1 },
+      }
+      const authority = {
+        authorize: () => ({
+          _tag: "Permitted" as const,
+          permit: {
+            _tag: "Portable" as const,
+            key: "portable:fixture:attachment.1:1",
+            grantRef: "grant.1",
+            sessionRef: "session.1",
+            workContextRef: "work.1",
+            attachmentRef: "attachment.1",
+            generation: 1,
+            targetRef: "target.local.1",
+          },
+        }),
+        reauthorize: () => current,
+      }
+      const dispatcher = makeProviderLaneDispatcher({
+        ...harness.deps,
+        portableMutation: {
+          resolve: () => ({ grantRef: "grant.1", authority }),
+          permitMonitorMs: 5,
+        },
+      })
+      const pending = dispatcher.dispatchTurn(
+        lane,
+        startRequest(thread.id, "turn-portable-revoked"),
+        fakeSender(harness.forwarded),
+      )
+      await started
+      current = false
+      // The provider is still blocked and emits no event. The portable permit
+      // monitor must detect revocation and ask the lane to interrupt now.
+      await interrupted
+      expect(interrupts).toBe(1)
+      releaseProvider()
+      const result = await pending
+
+      expect(result).toMatchObject({ ok: false, reason: "interrupted" })
+      expect(completed).toBe(0)
+      expect(harness.checkpoints).toEqual(["turn_start"])
+      expect(harness.ledgerRecords).toEqual([])
+      expect(JSON.stringify(harness.forwarded)).not.toContain("STALE COMPLETION")
+      const record = harness.journal.get({
+        threadRef: thread.id,
+        turnRef: "turn-portable-revoked",
+        lane: FIXTURE_LANE_REF,
+      })
+      expect(record).toMatchObject({
+        assistantText: "Authorized prefix.",
+        phase: "interrupted",
+        disposition: "owner_interrupted",
+      })
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test("quiesce waits for a blocked provider safe point and permanently rejects new turns", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "oa-provider-lane-quiesce-"))
+    try {
+      const harness = makeFixtureHarness(root)
+      const thread = harness.store.newThread()
+      let releaseProvider = (): void => {}
+      let providerStarted = (): void => {}
+      let interrupts = 0
+      const started = new Promise<void>(resolve => { providerStarted = resolve })
+      const blocked = new Promise<void>(resolve => { releaseProvider = resolve })
+      const lane: ProviderLane<null> = {
+        ...harness.lane,
+        runTurn: async ({ emit }) => {
+          emit({ kind: "turn_started" })
+          providerStarted()
+          await blocked
+          emit({ kind: "turn_completed", totalTokens: 1 })
+          return { ok: true, text: "late", totalTokens: 1 }
+        },
+        interrupt: () => {
+          interrupts += 1
+          return true
+        },
+      }
+      const dispatcher = makeProviderLaneDispatcher({
+        ...harness.deps,
+        portableMutation: { resolve: () => null, quiesceTimeoutMs: 1_000 },
+      })
+      const turn = dispatcher.dispatchTurn(lane, startRequest(thread.id, "turn-quiesce"), null)
+      await started
+      let settled = false
+      const quiescing = dispatcher.quiesce().then(result => {
+        settled = true
+        return result
+      })
+      await settle()
+      expect(settled).toBe(false)
+      expect(interrupts).toBe(1)
+      releaseProvider()
+      expect(await quiescing).toEqual({ state: "safe", pendingTurnRefs: [] })
+      expect(await turn).toMatchObject({ ok: false, reason: "interrupted" })
+      expect(await dispatcher.dispose()).toEqual({ state: "safe", pendingTurnRefs: [] })
+      expect(await dispatcher.dispatchTurn(
+        lane,
+        startRequest(thread.id, "turn-after-quiesce"),
+        null,
+      )).toEqual({ ok: false, error: "Provider turns are quiesced on this host." })
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test("quiesce reports a bounded timeout without claiming remote provider cancellation", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "oa-provider-lane-quiesce-timeout-"))
+    try {
+      const harness = makeFixtureHarness(root)
+      const thread = harness.store.newThread()
+      let releaseProvider = (): void => {}
+      let providerStarted = (): void => {}
+      const started = new Promise<void>(resolve => { providerStarted = resolve })
+      const blocked = new Promise<void>(resolve => { releaseProvider = resolve })
+      const lane: ProviderLane<null> = {
+        ...harness.lane,
+        runTurn: async () => {
+          providerStarted()
+          await blocked
+          return { ok: true, text: "late", totalTokens: null }
+        },
+        // Simulate a provider process that accepted cancellation but has not
+        // yet returned control to the host.
+        interrupt: () => true,
+      }
+      const dispatcher = makeProviderLaneDispatcher({
+        ...harness.deps,
+        portableMutation: { resolve: () => null, quiesceTimeoutMs: 10 },
+      })
+      const turn = dispatcher.dispatchTurn(lane, startRequest(thread.id, "turn-quiesce-timeout"), null)
+      await started
+      expect(await dispatcher.quiesce()).toEqual({
+        state: "timed_out",
+        pendingTurnRefs: ["turn-quiesce-timeout"],
+      })
+      releaseProvider()
+      expect(await turn).toMatchObject({ ok: false, reason: "interrupted" })
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   test("a duplicate turn ref is refused typed before any provider dispatch", async () => {
     const root = mkdtempSync(path.join(tmpdir(), "oa-provider-lane-duplicate-"))
     try {

@@ -40,6 +40,8 @@ import {
   type VirtualMergeQueuePrFastForwardRequest,
   type VirtualMergeQueueProjection,
 } from "../blueprint-gates/virtual-merge-queue.js"
+import type { PylonPortablePhaseContextAdmissionInput } from "../portable-phase-context-admission.js"
+import { PYLON_OWNER_LOCAL_CAPABILITY_PATH } from "../portable-owner-local-capability-transport.js"
 
 export const defaultControlPort = 4716
 export const controlTokenFileName = "control-token"
@@ -131,6 +133,8 @@ export type ControlCommand =
       projection: VirtualMergeQueueProjection
       request: VirtualMergeQueuePrFastForwardRequest
     }
+  | { type: "portable_phase.context.admit"; admission: PylonPortablePhaseContextAdmissionInput }
+  | { type: "portable_capability.worker.status" }
 
 export interface ControlCommandActions {
   walletSend: (destinationRef: string, amountSats?: number) => Promise<unknown>
@@ -184,6 +188,10 @@ export interface ControlCommandActions {
     disarm: (runRef: string) => Promise<unknown>
   }
   fleetRunIntakeStatus?: () => Promise<unknown>
+  portablePhaseContextAdmit?: (
+    input: PylonPortablePhaseContextAdmissionInput,
+  ) => Promise<unknown>
+  portableCapabilityWorkerStatus?: () => Promise<unknown>
 }
 
 export async function ensureControlToken(homeDir: string): Promise<string> {
@@ -224,6 +232,7 @@ export interface ControlServerOptions {
   actions: ControlCommandActions
   hostname?: string
   port?: number
+  ownerLocalCapabilityHandler?: (request: Request) => Promise<Response>
 }
 
 export interface ControlServerHandle {
@@ -430,6 +439,16 @@ export const startControlServer = (
             projection: command.projection,
             request: command.request,
           })
+        case "portable_phase.context.admit":
+          if (!options.actions.portablePhaseContextAdmit) {
+            throw new Error("portable phase context admission unavailable on this node")
+          }
+          return options.actions.portablePhaseContextAdmit(command.admission)
+        case "portable_capability.worker.status":
+          if (!options.actions.portableCapabilityWorkerStatus) {
+            throw new Error("portable capability worker unavailable on this node")
+          }
+          return options.actions.portableCapabilityWorkerStatus()
         default:
           throw new Error(`unknown command: ${(command as { type?: string }).type}`)
       }
@@ -438,12 +457,24 @@ export const startControlServer = (
     const server = yield* Effect.try({
       try: () => {
         assertControlBindSafe(options)
+        if (
+          options.ownerLocalCapabilityHandler !== undefined &&
+          !isLoopbackHostname(options.hostname ?? "127.0.0.1")
+        ) {
+          throw new Error("refusing owner-local capability ingress on a non-loopback control server")
+        }
         return Runtime.serve({
           hostname: options.hostname ?? "127.0.0.1",
           port: options.port ?? defaultControlPort,
           idleTimeout: 0,
           fetch: async (request) => {
             const url = new URL(request.url)
+            if (url.pathname.startsWith(`${PYLON_OWNER_LOCAL_CAPABILITY_PATH}/`)) {
+              if (options.ownerLocalCapabilityHandler === undefined) {
+                return Response.json({ error: "not found" }, { status: 404 })
+              }
+              return options.ownerLocalCapabilityHandler(request)
+            }
             if (url.pathname === "/health") {
               return Response.json({
                 ok: true,
@@ -878,6 +909,15 @@ export const startControlServer = (
               ) {
                 return Response.json(
                   { ok: false, error: "fleet run activation requires a loopback control server" },
+                  { status: 403 },
+                )
+              }
+              if (
+                command.type === "portable_phase.context.admit" &&
+                !isLoopbackHostname(options.hostname ?? "127.0.0.1")
+              ) {
+                return Response.json(
+                  { ok: false, error: "portable phase context admission requires loopback" },
                   { status: 403 },
                 )
               }

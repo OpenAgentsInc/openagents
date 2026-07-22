@@ -450,7 +450,7 @@
     },
     {
       "path": "NEEDS_OWNER.md",
-      "sha256": "1e75d4e0beeadbd045b0449de5af200051a50a192fc7b6baa3d4e9aad212876f",
+      "sha256": "133bee6f6722b7d225fde180a5f768a26993f033fb50e9f664da85ebac1f8165",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -27569,7 +27569,7 @@
     },
     {
       "path": "docs/ide/2026-07-19-porting-zed-to-effect-status.md",
-      "sha256": "cc6fb4fcc07cc83a2fd54f072aaee98a664433ee5bd3f26f8aed9bb6b9a1b954",
+      "sha256": "4d4c64a5a5271b05e25c7d2a62ba332d3189cfcffb56c671b06be445814d7ed5",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -27656,6 +27656,28 @@
       }
     },
     {
+      "path": "docs/ide/2026-07-20-ide-13-portable-capability-foundation.md",
+      "sha256": "4cae24f5bd1c0be095fb3ebf7754c44e746a5a4d9de59122f95267578ef1c3ea",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/ide/2026-07-20-openagents-ide-crash-prevention-implementation-plan.md",
       "sha256": "2148a037face6df63e3b690d8fc03da89fd3f3b41472a13fca4f22f2d3a75f14",
       "reason": "Final review of a converted document",
@@ -27675,7 +27697,7 @@
     },
     {
       "path": "docs/ide/README.md",
-      "sha256": "5693a1a2d0c549dae470db748db89f7dfe0bf636f49cb1565f285bc7f88590dc",
+      "sha256": "af2627871563fae6cad24dd9d0b1f7c3c3a0a278f84124014fbec2ae78375e3d",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -50291,7 +50313,7 @@
     },
     {
       "path": "specs/desktop/desktop-trust-complete-workbench.assurance-spec.md",
-      "sha256": "37a1b738110f40788dc7488565ed8cc3a50679c66100ba612f744ec81d7fe42b",
+      "sha256": "19515d80859942d5c8a53901b871ef05ed91aa6269169405a4d4b512d978ee22",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

@@ -17,6 +17,8 @@ import {
   createKhalaSyncConversation,
   createKhalaSyncAgentTimeline,
   createKhalaSyncLiveAgentGraph,
+  createKhalaSyncPortableSessions,
+  createPortableRequestCommandMutator,
   createKhalaSyncCodingComposerDrafts,
   createCodingCatalogPublishMutator,
   createKhalaSyncRuntimeInteractions,
@@ -29,6 +31,8 @@ import {
   type KhalaSyncConversation,
   type KhalaSyncAgentTimeline,
   type KhalaSyncLiveAgentGraph,
+  type KhalaSyncPortableSessions,
+  type ConfirmedPortableSessionSnapshot,
   type KhalaSyncCodingComposerDrafts,
   type KhalaSyncRuntimeInteractions,
   type KhalaSyncRuntimeCommands,
@@ -36,6 +40,7 @@ import {
   type KhalaSyncTransport,
   type ScopeSyncState,
 } from "@openagentsinc/khala-sync-client"
+import type { PortableSessionCommand } from "@openagentsinc/portable-session-contract"
 import { Effect } from "effect"
 import { openDesktopSyncStore, type DesktopSyncStore } from "./desktop-sync-store.ts"
 import {
@@ -60,6 +65,9 @@ export type DesktopSyncHost = Readonly<{
   conversation: () => KhalaSyncConversation | null
   timeline: () => KhalaSyncAgentTimeline | null
   agentGraph: () => KhalaSyncLiveAgentGraph | null
+  portableSessions: () => KhalaSyncPortableSessions | null
+  portableSnapshot: () => ConfirmedPortableSessionSnapshot | null
+  requestPortableCommand: (command: PortableSessionCommand) => string | null
   runtime: () => KhalaSyncRuntimeCommands | null
   interactions: () => KhalaSyncRuntimeInteractions | null
   drafts: () => KhalaSyncCodingComposerDrafts | null
@@ -107,6 +115,7 @@ export const openDesktopSyncHost = (input: Readonly<{
   let conversation: KhalaSyncConversation | null = null
   let timeline: KhalaSyncAgentTimeline | null = null
   let agentGraph: KhalaSyncLiveAgentGraph | null = null
+  let portableSessions: KhalaSyncPortableSessions | null = null
   let runtime: KhalaSyncRuntimeCommands | null = null
   let authenticatedOwnerUserId: string | null = null
   let interactions: KhalaSyncRuntimeInteractions | null = null
@@ -114,6 +123,7 @@ export const openDesktopSyncHost = (input: Readonly<{
   let codingCatalog: DesktopCodingCatalog | null = null
   let scope: SyncScope | null = null
   const codingCatalogPublishMutator = createCodingCatalogPublishMutator()
+  const portableRequestCommandMutator = createPortableRequestCommandMutator()
   try {
     const persisted = Effect.runSync(store.identity())
     if (persisted === null) {
@@ -150,6 +160,7 @@ export const openDesktopSyncHost = (input: Readonly<{
     conversation = null
     timeline = null
     agentGraph = null
+    portableSessions = null
     runtime = null
     interactions = null
     authenticatedOwnerUserId = null
@@ -197,6 +208,32 @@ export const openDesktopSyncHost = (input: Readonly<{
       session !== null && scope !== null && session.state(scope).phase === "live"
         ? agentGraph
         : null,
+    portableSessions: () =>
+      session !== null && scope !== null && session.state(scope).phase === "live"
+        ? portableSessions
+        : null,
+    portableSnapshot: () => {
+      const portable = session !== null && scope !== null && session.state(scope).phase === "live"
+        ? portableSessions
+        : null
+      if (portable === null) return null
+      try {
+        return Effect.runSync(portable.snapshot())
+      } catch {
+        return null
+      }
+    },
+    requestPortableCommand: command => {
+      const portable = session !== null && scope !== null && session.state(scope).phase === "live"
+        ? portableSessions
+        : null
+      if (portable === null) return null
+      try {
+        return String(Effect.runSync(portable.request(command)))
+      } catch {
+        return null
+      }
+    },
     runtime: () =>
       session !== null && scope !== null && session.state(scope).phase === "live"
         ? runtime
@@ -231,6 +268,7 @@ export const openDesktopSyncHost = (input: Readonly<{
         ...Object.values(runtimeMutators),
         interactionMutator,
         codingCatalogPublishMutator,
+        portableRequestCommandMutator,
       ]))
       const transportConfig = {
         baseUrl: connection.baseUrl,
@@ -255,6 +293,13 @@ export const openDesktopSyncHost = (input: Readonly<{
       })
       timeline = createKhalaSyncAgentTimeline({ store, session })
       agentGraph = createKhalaSyncLiveAgentGraph({ store, session })
+      portableSessions = createKhalaSyncPortableSessions({
+        ownerRef: ownerUserId,
+        ownerScope: scope,
+        store,
+        session,
+        mutator: portableRequestCommandMutator,
+      })
       runtime = createKhalaSyncRuntimeCommands({ mutators: runtimeMutators, session, store })
       interactions = createKhalaSyncRuntimeInteractions({
         store,

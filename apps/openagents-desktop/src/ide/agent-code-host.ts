@@ -45,6 +45,10 @@ import {
   type IdeAgentCodeServiceError,
 } from "./agent-code-service.ts"
 import { makeIdeAgentWorkspaceAuthorityLayer } from "./agent-code-workspace-authority.ts"
+import type {
+  IdePortableMutationAuthority,
+  IdePortableMutationPermit,
+} from "./portable-mutation-authority.ts"
 
 export type IdeAgentCodeHost = Readonly<{
   workspaceGrantRef: string
@@ -134,7 +138,9 @@ const observedEvidence = async (
   workspace: DesktopWorkspaceService,
   snapshot: IdeAgentCodeSnapshot,
   proposalRef: string,
-): Promise<IdeAgentCodeSnapshot> => {
+  reauthorize: () => boolean,
+): Promise<IdeAgentCodeSnapshot | null> => {
+  if (!reauthorize()) return null
   const proposal = snapshot.proposals.find(candidate => candidate.proposalRef === proposalRef)
   if (proposal === undefined || proposal.lifecycle._tag !== "Applied") return snapshot
   const observedAt = IdeTimestampSchema.make(new Date().toISOString())
@@ -166,6 +172,7 @@ const observedEvidence = async (
     response: Awaited<ReturnType<DesktopWorkspaceService["languageRequest"]>> | null
   }>> = []
   for (const [pathIndex, pathRef] of paths.entries()) {
+    if (!reauthorize()) return null
     const language = /\.tsx?$/iu.test(pathRef) ? "typescript" : /\.jsx?$/iu.test(pathRef) ? "javascript" : null
     const opened = workspace.openDocument({ grantRef: workspace.grantRef, pathRef })
     if (language === null || opened.state !== "available") continue
@@ -200,6 +207,7 @@ const observedEvidence = async (
           limit: 1_000,
           timeoutMs: 5_000,
         })).catch(() => null)
+      if (!reauthorize()) return null
       languageResults.push({ capability, response })
     }
   }
@@ -256,6 +264,7 @@ const observedEvidence = async (
   ] as const
   let current = snapshot
   for (const [kind, observedBy, state, artifactRef] of facts) {
+    if (!reauthorize()) return null
     current = await Effect.runPromise(service.recordEvidence(IdeAgentEvidenceFactSchema.make({
       evidenceRef: IdeEvidenceRefSchema.make(`ide.evidence.agent.${evidenceSuffix}.${kind}`),
       proposalRef: proposal.proposalRef,
@@ -268,13 +277,24 @@ const observedEvidence = async (
       commitRef: null,
       lineage: proposal.lineage,
     }), proposal.attachment.attachmentGeneration))
+    if (!reauthorize()) return null
   }
   return current
 }
 
+const permitMatchesAttachment = (
+  permit: IdePortableMutationPermit,
+  attachment: NonNullable<IdeAgentCodeSnapshot["attachment"]>,
+): boolean => permit.grantRef === attachment.grantRef &&
+  permit.sessionRef === attachment.sessionRef &&
+  (permit._tag === "LocalOnly" || permit.generation === attachment.attachmentGeneration)
+
 export const openIdeAgentCodeHost = async (
   workspace: DesktopWorkspaceService,
-  options: Readonly<{ persistencePath?: string | null }> = {},
+  options: Readonly<{
+    persistencePath?: string | null
+    mutationAuthority?: IdePortableMutationAuthority
+  }> = {},
 ): Promise<IdeAgentCodeHost> => {
   const persistencePath = options.persistencePath ?? null
   const recovered = loadPersistedSnapshot(persistencePath)
@@ -286,6 +306,13 @@ export const openIdeAgentCodeHost = async (
   const service = Context.get(context, IdeAgentCodeService)
   let disposed = false
   let corruptRecovery = recovered.corrupt
+  const mutationAuthority = options.mutationAuthority
+
+  const revoke = async (): Promise<void> => {
+    if (disposed) return
+    disposed = true
+    await Effect.runPromise(Scope.close(scope, Exit.void))
+  }
 
   const snapshot = async (): Promise<IdeAgentCodeSnapshot> => {
     if (disposed) return IdeAgentCodeSnapshotSchema.make({
@@ -317,15 +344,43 @@ export const openIdeAgentCodeHost = async (
     if (corruptRecovery && decoded._tag !== "Attach") {
       return refused("corrupt_persistence", "Persisted agent-code state was corrupt. Reattach explicitly to start a clean generation.")
     }
-    if (corruptRecovery && decoded._tag === "Attach") corruptRecovery = false
+    const mutationBearing = decoded._tag === "Attach" || decoded._tag === "Apply" || decoded._tag === "Undo"
+    const authorization = mutationBearing && mutationAuthority !== undefined
+      ? mutationAuthority.authorize(workspace.grantRef)
+      : null
+    if (authorization?._tag === "Refused") {
+      return refused("grant_revoked", "The current portable attachment does not permit this agent-code operation.")
+    }
+    const permit = authorization?._tag === "Permitted" ? authorization.permit : null
+    const attached = decoded._tag === "Attach"
+      ? decoded.attachment
+      : mutationBearing
+        ? (await Effect.runPromise(service.snapshot())).attachment
+        : null
+    if (permit !== null && (attached === null || !permitMatchesAttachment(permit, attached) ||
+        mutationAuthority === undefined || !mutationAuthority.reauthorize(permit))) {
+      return refused("grant_revoked", "The agent-code attachment does not match the current portable attachment generation.")
+    }
+    const reauthorize = (): boolean => permit === null ||
+      (mutationAuthority !== undefined && mutationAuthority.reauthorize(permit))
+
     const settled = await Effect.runPromise(executeCommand(service, decoded).pipe(Effect.match({
       onFailure: error => ({ ok: false as const, error }),
       onSuccess: next => ({ ok: true as const, next }),
     })))
     if (!settled.ok) return refused(resultReason(settled.error), resultMessage(settled.error))
+    if (corruptRecovery && decoded._tag === "Attach") corruptRecovery = false
+    if (!reauthorize()) {
+      await revoke()
+      return refused("grant_revoked", "Portable attachment authority changed while the agent-code operation was running.")
+    }
     const next = decoded._tag === "Apply"
-      ? await observedEvidence(service, workspace, settled.next, decoded.input.proposalRef)
+      ? await observedEvidence(service, workspace, settled.next, decoded.input.proposalRef, reauthorize)
       : settled.next
+    if (next === null || !reauthorize()) {
+      await revoke()
+      return refused("grant_revoked", "Portable attachment authority changed before the agent-code result could be recorded.")
+    }
     persistSnapshot(persistencePath, next)
     return IdeAgentCodeCommandResultSchema.cases.Succeeded.make({ snapshot: next })
   }

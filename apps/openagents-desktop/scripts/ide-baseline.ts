@@ -365,6 +365,22 @@ const main = (): void => {
         const host = makeTerminalHost({
           backend: terminalProbeBackend(),
           workspace: () => ({ root: fixtureRoot, grantRef }),
+          mutationAuthority: {
+            authorize: currentGrantRef => ({
+              _tag: "Permitted",
+              permit: Object.freeze({
+                _tag: "LocalOnly",
+                key: `local:${currentGrantRef}`,
+                grantRef: currentGrantRef,
+                sessionRef: "session.ide-baseline",
+                workContextRef: "work-context.ide-baseline",
+                attachmentRef: null,
+                generation: null,
+                targetRef: null,
+              }),
+            }),
+            reauthorize: permit => permit.grantRef === grantRef,
+          },
           emit: () => undefined,
         });
         host.create({ sessionRef: "terminal.idebaseline" });

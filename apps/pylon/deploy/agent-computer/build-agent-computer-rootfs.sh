@@ -17,6 +17,8 @@
 #     of apps/pylon/deploy/agent-computer/turn-runner.ts)
 #   - the fixed PORT-03 retained-session controller at
 #     /opt/agent/portable-session-control (no arbitrary command surface)
+#   - the signed TypeScript language server artifact at a fixed /opt/agent path
+#     for the managed LSP profile; DAP stays unadmitted
 #   - oa-workroomd at /usr/local/bin/oa-workroomd (staged by
 #     build-workroomd-for-image.sh)
 #   - the proven egress fix: systemd-networkd + systemd-resolved disabled and
@@ -42,6 +44,10 @@ CODEX_VERSION="0.144.0"
 CODEX_TARBALL_SHA256="391a3793d21feff08da2d9132f01107dd56fa5a48a158e23d15c6d56e34f7cb2"
 # package/vendor/x86_64-unknown-linux-musl/bin/codex inside that tarball
 CODEX_BINARY_SHA256="901923c1808a151f6926d41d703c17ad48815662cefb1c8d832a052c44271429"
+TYPESCRIPT_LANGUAGE_SERVER_VERSION="5.3.0"
+TYPESCRIPT_LANGUAGE_SERVER_TARBALL_SHA256="398cacc17fff2108652e7b4050e3182008d17063246b3fea7dcf5fae2ce1560e"
+TYPESCRIPT_VERSION="5.9.3"
+TYPESCRIPT_TARBALL_SHA256="10e108c9cf7d5f2879053dff18515fb405abf2ccef63eaaf017d9c571687a1d3"
 SUITE="jammy"
 MIRROR="http://archive.ubuntu.com/ubuntu"
 
@@ -94,7 +100,7 @@ fail() { echo "FAIL: $*" >&2; exit 1; }
 [ "$(uname -s)" = "Linux" ] || fail "bake host must be Linux (this is a guest rootfs bake)"
 [ "$(uname -m)" = "x86_64" ] || fail "bake host must be x86_64"
 [ "$(id -u)" = "0" ] || fail "must run as root (debootstrap + loop mount)"
-for tool in debootstrap mkfs.ext4 curl tar sha256sum e2fsck unzip chroot; do
+for tool in debootstrap mkfs.ext4 curl tar sha256sum e2fsck unzip chroot jq; do
   command -v "$tool" >/dev/null 2>&1 || fail "missing tool: $tool"
 done
 
@@ -177,7 +183,31 @@ install -m 0755 "$WORK/package/vendor/x86_64-unknown-linux-musl/codex-path/rg" \
 chroot "$MNT" /usr/local/bin/codex --version >/dev/null \
   || fail "baked codex binary does not execute in the guest chroot"
 
-# --- 5. vsock guest agent (source-controlled, proven artifact) ---------------
+# --- 5. managed IDE protocol helpers ---------------------------------------
+echo "==> installing signed TypeScript LSP $TYPESCRIPT_LANGUAGE_SERVER_VERSION with TypeScript $TYPESCRIPT_VERSION"
+install -d "$MNT/opt/agent/typescript-lsp"
+cat > "$MNT/opt/agent/typescript-lsp/package.json" <<'EOF'
+{"name":"openagents-agent-computer-typescript-lsp","private":true,"dependencies":{"typescript":"5.9.3","typescript-language-server":"5.3.0"}}
+EOF
+cat > "$MNT/opt/agent/typescript-lsp/package-lock.json" <<'EOF'
+{"name":"openagents-agent-computer-typescript-lsp","lockfileVersion":3,"requires":true,"packages":{"":{"name":"openagents-agent-computer-typescript-lsp","dependencies":{"typescript":"5.9.3","typescript-language-server":"5.3.0"}},"node_modules/typescript":{"version":"5.9.3","resolved":"https://registry.npmjs.org/typescript/-/typescript-5.9.3.tgz","integrity":"sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==","license":"Apache-2.0","bin":{"tsc":"bin/tsc","tsserver":"bin/tsserver"},"engines":{"node":">=14.17"}},"node_modules/typescript-language-server":{"version":"5.3.0","resolved":"https://registry.npmjs.org/typescript-language-server/-/typescript-language-server-5.3.0.tgz","integrity":"sha512-5puofxZHgFdAYtfNpmwCAvgtaYgg8wrUnH30m7Ze3QuguId5RNRadKASpOpyDxTyUdAF51FjhTdjntLw/EuWcQ==","license":"Apache-2.0","bin":{"typescript-language-server":"lib/cli.mjs"},"engines":{"node":">=20"}}}}
+EOF
+chroot "$MNT" /usr/local/bin/npm ci --prefix /opt/agent/typescript-lsp \
+  --ignore-scripts --no-audit --no-fund >/dev/null \
+  || fail "pinned TypeScript LSP npm install failed"
+if ! chroot "$MNT" /bin/sh -c \
+  'cd /opt/agent/typescript-lsp && /usr/local/bin/npm audit signatures --json' \
+  > "$WORK/typescript-lsp-signatures.json"; then
+  fail "TypeScript LSP npm signature verification failed"
+fi
+jq -e '.invalid == [] and .missing == []' "$WORK/typescript-lsp-signatures.json" >/dev/null \
+  || fail "TypeScript LSP npm signature verification reported invalid or missing signatures"
+chroot "$MNT" /usr/local/bin/node \
+  /opt/agent/typescript-lsp/node_modules/typescript-language-server/lib/cli.mjs --version \
+  | grep -qx "$TYPESCRIPT_LANGUAGE_SERVER_VERSION" \
+  || fail "baked TypeScript language server does not report the pinned version"
+
+# --- 6. vsock guest agent (source-controlled, proven artifact) ---------------
 echo "==> installing vsock guest agent"
 install -d "$MNT/opt/agent"
 install -m 0755 "$SCRIPT_DIR/guest-agent.py" "$MNT/opt/agent/guest-agent.py"
@@ -187,26 +217,26 @@ install -d "$MNT/etc/systemd/system/multi-user.target.wants"
 ln -sf /etc/systemd/system/agent-guest.service \
   "$MNT/etc/systemd/system/multi-user.target.wants/agent-guest.service"
 
-# --- 6. turn-runner -----------------------------------------------------------
+# --- 7. turn-runner -----------------------------------------------------------
 if [ -z "$TURN_RUNNER" ]; then
   echo "==> compiling turn-runner from $REPO_ROOT"
   TURN_RUNNER="$WORK/turn-runner"
   (cd "$REPO_ROOT" && vp pack \
     apps/pylon/deploy/agent-computer/turn-runner.ts \
-    --out-dir "$WORK/turn-runner-build" --platform node --target node24 --exe)
+    --out-dir "$WORK/turn-runner-build" --platform node --target node24)
   TURN_RUNNER="$WORK/turn-runner-build/turn-runner.mjs"
 fi
 [ -f "$TURN_RUNNER" ] || fail "turn-runner binary not found: $TURN_RUNNER"
 install -m 0755 "$TURN_RUNNER" "$MNT/opt/agent/turn-runner"
 
-# --- 7. retained portable-session controller ---------------------------------
+# --- 8. retained portable-session controller ---------------------------------
 if [ -z "$PORTABLE_SESSION_CONTROL" ]; then
   echo "==> compiling portable-session-control from $REPO_ROOT"
   PORTABLE_SESSION_CONTROL="$WORK/portable-session-control"
   (cd "$REPO_ROOT" && vp pack \
     apps/pylon/deploy/agent-computer/portable-session-control.ts \
     --out-dir "$WORK/portable-session-control-build" \
-    --platform node --target node24 --exe)
+    --platform node --target node24)
   PORTABLE_SESSION_CONTROL="$WORK/portable-session-control-build/portable-session-control.mjs"
 fi
 [ -f "$PORTABLE_SESSION_CONTROL" ] \
@@ -214,7 +244,7 @@ fi
 install -m 0755 "$PORTABLE_SESSION_CONTROL" \
   "$MNT/opt/agent/portable-session-control"
 
-# --- 8. oa-workroomd -----------------------------------------------------------
+# --- 9. oa-workroomd -----------------------------------------------------------
 WORKROOMD_SHA256="skipped"
 if [ "$SKIP_WORKROOMD" = "0" ]; then
   echo "==> installing oa-workroomd"
@@ -222,7 +252,7 @@ if [ "$SKIP_WORKROOMD" = "0" ]; then
   WORKROOMD_SHA256="$(sha256sum "$WORKROOMD" | cut -d' ' -f1)"
 fi
 
-# --- 9. seal ------------------------------------------------------------------
+# --- 10. seal -----------------------------------------------------------------
 TURN_RUNNER_SHA256="$(sha256sum "$TURN_RUNNER" | cut -d' ' -f1)"
 PORTABLE_SESSION_CONTROL_SHA256="$(sha256sum "$PORTABLE_SESSION_CONTROL" | cut -d' ' -f1)"
 umount "$MNT"
@@ -237,8 +267,31 @@ cat > "$RECEIPT" <<EOF
   "suite": "$SUITE",
   "sizeMib": $SIZE_MIB,
   "nodeVersion": "$NODE_VERSION",
+  "nodeAbi": "node-v${NODE_VERSION}-linux-x64",
   "codexVersion": "$CODEX_VERSION",
   "codexBinarySha256": "$CODEX_BINARY_SHA256",
+  "typescriptLanguageServer": {
+    "artifactRef": "artifact.npm.typescript-language-server.${TYPESCRIPT_LANGUAGE_SERVER_VERSION}.sha256-${TYPESCRIPT_LANGUAGE_SERVER_TARBALL_SHA256}",
+    "profileRef": "profile.agent-computer.typescript-lsp.v1",
+    "version": "$TYPESCRIPT_LANGUAGE_SERVER_VERSION",
+    "registryIntegrity": "sha512-5puofxZHgFdAYtfNpmwCAvgtaYgg8wrUnH30m7Ze3QuguId5RNRadKASpOpyDxTyUdAF51FjhTdjntLw/EuWcQ==",
+    "tarballSha256": "$TYPESCRIPT_LANGUAGE_SERVER_TARBALL_SHA256",
+    "tarballSha256Role": "registry provenance only; installed bytes use package-lock sha512 integrity and npm signature verification",
+    "typescriptVersion": "$TYPESCRIPT_VERSION",
+    "typescriptRegistryIntegrity": "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==",
+    "typescriptTarballSha256": "$TYPESCRIPT_TARBALL_SHA256",
+    "typescriptTarballSha256Role": "registry provenance only; installed bytes use package-lock sha512 integrity and npm signature verification",
+    "nodeAbi": "node-v${NODE_VERSION}-linux-x64",
+    "command": "/usr/local/bin/node",
+    "argv": ["/opt/agent/typescript-lsp/node_modules/typescript-language-server/lib/cli.mjs", "--stdio"],
+    "license": "Apache-2.0",
+    "licenseNoticePaths": ["/opt/agent/typescript-lsp/node_modules/typescript-language-server/LICENSE", "/opt/agent/typescript-lsp/node_modules/typescript/LICENSE.txt"],
+    "signatureVerification": "npm audit signatures; invalid=[] and missing=[] required",
+    "protocolHandshake": "LSP initialize response plus $/typescriptVersion version=${TYPESCRIPT_VERSION}",
+    "liveness": "generation-bound wrapper PID, child-exit coupling, and ready-file handshake",
+    "cleanup": "LSP shutdown, enforced termination, and ready/state file removal",
+    "target": "linux-x64"
+  },
   "turnRunnerSha256": "$TURN_RUNNER_SHA256",
   "portableSessionControlSha256": "$PORTABLE_SESSION_CONTROL_SHA256",
   "workroomdSha256": "$WORKROOMD_SHA256",

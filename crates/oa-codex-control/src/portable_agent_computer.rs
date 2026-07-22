@@ -856,6 +856,7 @@ struct RetainedResource {
     generation: u64,
     resource_ref: String,
     stage_operation_ref: String,
+    destination_runner_session_reservation_ref: String,
     vm: ProvisionedVm,
     state: String,
     checkpoint: Value,
@@ -977,6 +978,9 @@ fn execute_effect(
     } else {
         live_guest_response(provisioner, &resource.vm, request)?
     };
+    if request.action == "activate" {
+        validate_activation_response(&resource, request, &response)?;
+    }
 
     match request.action.as_str() {
         "activate" => resource.state = "active".to_string(),
@@ -1135,6 +1139,10 @@ fn stage(
         generation: request.generation,
         resource_ref: resource_ref.clone(),
         stage_operation_ref: request.operation_ref.clone(),
+        destination_runner_session_reservation_ref: format!(
+            "runner-session-reservation.{}",
+            short_digest(&format!("{}|{}", resource_ref, request.operation_ref))
+        ),
         vm,
         state: "prepared".to_string(),
         checkpoint: checkpoint.clone(),
@@ -1154,6 +1162,7 @@ fn stage(
 fn prepared_stage_response(resource: &RetainedResource) -> Value {
     json!({
         "resourceRef": resource.resource_ref,
+        "destinationRunnerSessionReservationRef": resource.destination_runner_session_reservation_ref,
         "acceptingWork": false,
         "materializationRequired": true,
         "evidenceRefs": [evidence_ref("prepare-stage", &resource.resource_ref)],
@@ -1164,6 +1173,7 @@ fn fake_stage_response(resource: &RetainedResource) -> Result<Value, CloudVmErro
     let checkpoint = &resource.checkpoint;
     Ok(json!({
         "resourceRef": resource.resource_ref,
+        "destinationRunnerSessionReservationRef": resource.destination_runner_session_reservation_ref,
         "checkpointDigest": required_string(checkpoint, "digest")?,
         "repositoryPostImageDigest": required_string(checkpoint, "repositoryPostImageDigest")?,
         "diffDigest": required_string(checkpoint, "diffDigest")?,
@@ -1180,13 +1190,61 @@ fn fake_response(
 ) -> Result<Value, CloudVmError> {
     let agents = agent_refs(request.payload.get("graph").unwrap_or(&resource.graph))?;
     match request.action.as_str() {
-        "activate" => Ok(json!({
-            "activatedAgentRefs": agents,
-            // Activation makes the retained runtime eligible to accept work;
-            // it never fabricates a continued turn in the no-KVM contract lane.
-            "acceptedWorkRefs": [],
-            "evidenceRefs": [evidence_ref("activate", &request.operation_ref)],
-        })),
+        "activate" => {
+            let checkpoint_ref = required_payload_string(request, "checkpointRef")?;
+            let authority_evidence_ref = required_payload_string(request, "authorityEvidenceRef")?;
+            let authentication_policy_ref =
+                required_payload_string(request, "authenticationPolicyRef")?;
+            let helpers_observed_at = required_payload_string(request, "helpersObservedAt")?;
+            let reservation_ref =
+                required_payload_string(request, "destinationRunnerSessionReservationRef")?;
+            if reservation_ref != resource.destination_runner_session_reservation_ref {
+                return Err(CloudVmError::InvalidRequest(
+                    "activation runner reservation differs from retained stage".to_string(),
+                ));
+            }
+            let helpers = ["pty", "lsp", "dap", "watcher", "native"]
+                .into_iter()
+                .map(|kind| {
+                    json!({
+                        "kind": kind,
+                        "readiness": "unsupported",
+                        "instanceRef": null,
+                        "versionRef": null,
+                        "omissionRef": format!("omission.agent-computer.portable.{kind}.unsupported"),
+                        "evidenceRefs": [],
+                    })
+                })
+                .collect::<Vec<_>>();
+            Ok(json!({
+                "schema": "openagents.ide_portable_destination_activation.v1",
+                "receiptRef": evidence_ref("destination-activation", &request.operation_ref),
+                "operationRef": request.operation_ref,
+                "sessionRef": request.session_ref,
+                "checkpointRef": checkpoint_ref,
+                "destinationTargetRef": request.target_ref,
+                "destinationAttachmentRef": request.attachment_ref,
+                "destinationRunnerSessionReservationRef": reservation_ref,
+                "destinationGeneration": request.generation,
+                "authentication": {
+                    "state": "reauthenticated",
+                    "policyRef": authentication_policy_ref,
+                    "evidenceRef": authority_evidence_ref,
+                    "observedAt": helpers_observed_at,
+                    "expiresAt": null,
+                },
+                "helpersObservedAt": helpers_observed_at,
+                "helpers": helpers,
+                "activatedAgentRefs": agents,
+                // Activation makes the retained runtime eligible to accept work;
+                // it never fabricates a continued turn in the no-KVM contract lane.
+                "acceptedWorkRefs": [],
+                "evidenceRefs": [
+                    authority_evidence_ref,
+                    evidence_ref("activate", &request.operation_ref)
+                ],
+            }))
+        }
         "abort" => Ok(json!({
             "evidenceRefs": [evidence_ref("abort", &request.operation_ref)]
         })),
@@ -1269,6 +1327,250 @@ fn live_guest_response(
     })
 }
 
+fn validate_activation_response(
+    resource: &RetainedResource,
+    request: &PortableAgentComputerRequest,
+    response: &Value,
+) -> Result<(), CloudVmError> {
+    if !has_exact_keys(
+        response,
+        &[
+            "schema",
+            "receiptRef",
+            "operationRef",
+            "sessionRef",
+            "checkpointRef",
+            "destinationTargetRef",
+            "destinationAttachmentRef",
+            "destinationRunnerSessionReservationRef",
+            "destinationGeneration",
+            "authentication",
+            "helpersObservedAt",
+            "helpers",
+            "activatedAgentRefs",
+            "acceptedWorkRefs",
+            "evidenceRefs",
+        ],
+    ) {
+        return Err(CloudVmError::Runtime(
+            "portable guest activation receipt has unexpected fields".to_string(),
+        ));
+    }
+    let expected_checkpoint_ref = required_payload_string(request, "checkpointRef")?;
+    let expected_policy_ref = required_payload_string(request, "authenticationPolicyRef")?;
+    let expected_authority_ref = required_payload_string(request, "authorityEvidenceRef")?;
+    let expected_observed_at = required_payload_string(request, "helpersObservedAt")?;
+    let exact = [
+        (
+            required_string(response, "schema")?,
+            "openagents.ide_portable_destination_activation.v1".to_string(),
+        ),
+        (
+            required_string(response, "operationRef")?,
+            request.operation_ref.clone(),
+        ),
+        (
+            required_string(response, "sessionRef")?,
+            request.session_ref.clone(),
+        ),
+        (
+            required_string(response, "checkpointRef")?,
+            expected_checkpoint_ref,
+        ),
+        (
+            required_string(response, "destinationTargetRef")?,
+            request.target_ref.clone(),
+        ),
+        (
+            required_string(response, "destinationAttachmentRef")?,
+            request.attachment_ref.clone(),
+        ),
+        (
+            required_string(response, "destinationRunnerSessionReservationRef")?,
+            resource.destination_runner_session_reservation_ref.clone(),
+        ),
+    ];
+    let helpers_observed_at = required_string(response, "helpersObservedAt")?;
+    if helpers_observed_at.len() > 64
+        || !helpers_observed_at.ends_with('Z')
+        || exact.iter().any(|(actual, expected)| actual != expected)
+        || response
+            .get("destinationGeneration")
+            .and_then(Value::as_u64)
+            != Some(request.generation)
+        || !required_string(response, "receiptRef").is_ok_and(|value| safe_ref(&value))
+    {
+        return Err(CloudVmError::Runtime(
+            "portable guest activation receipt has a mismatched binding".to_string(),
+        ));
+    }
+    let authentication = response
+        .get("authentication")
+        .and_then(Value::as_object)
+        .ok_or_else(|| {
+            CloudVmError::Runtime(
+                "portable guest activation receipt has no authentication fact".to_string(),
+            )
+        })?;
+    if !has_exact_keys(
+        response.get("authentication").unwrap_or(&Value::Null),
+        &[
+            "state",
+            "policyRef",
+            "evidenceRef",
+            "observedAt",
+            "expiresAt",
+        ],
+    ) || authentication.get("state").and_then(Value::as_str) != Some("reauthenticated")
+        || authentication.get("policyRef").and_then(Value::as_str)
+            != Some(expected_policy_ref.as_str())
+        || authentication.get("evidenceRef").and_then(Value::as_str)
+            != Some(expected_authority_ref.as_str())
+        || authentication.get("observedAt").and_then(Value::as_str)
+            != Some(expected_observed_at.as_str())
+        || !authentication.get("expiresAt").is_some_and(Value::is_null)
+    {
+        return Err(CloudVmError::Runtime(
+            "portable guest activation authentication fact is invalid".to_string(),
+        ));
+    }
+    let helpers = response
+        .get("helpers")
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            CloudVmError::Runtime(
+                "portable guest activation receipt has no helper inventory".to_string(),
+            )
+        })?;
+    let expected_kinds = ["pty", "lsp", "dap", "watcher", "native"];
+    if helpers.len() != expected_kinds.len()
+        || expected_kinds.iter().any(|kind| {
+            helpers
+                .iter()
+                .filter(|helper| helper.get("kind").and_then(Value::as_str) == Some(*kind))
+                .count()
+                != 1
+        })
+        || helpers.iter().any(|helper| {
+            if !has_exact_keys(
+                helper,
+                &[
+                    "kind",
+                    "readiness",
+                    "instanceRef",
+                    "versionRef",
+                    "omissionRef",
+                    "evidenceRefs",
+                ],
+            ) {
+                return true;
+            }
+            let readiness = helper.get("readiness").and_then(Value::as_str);
+            let instance = helper.get("instanceRef").and_then(Value::as_str);
+            let version = helper.get("versionRef").and_then(Value::as_str);
+            let omission = helper.get("omissionRef").and_then(Value::as_str);
+            let evidence_refs = helper.get("evidenceRefs").and_then(Value::as_array);
+            let evidence_valid = evidence_refs.is_some_and(|values| {
+                let refs = values.iter().filter_map(Value::as_str).collect::<Vec<_>>();
+                refs.len() == values.len()
+                    && refs.iter().all(|value| safe_ref(value))
+                    && refs.iter().collect::<std::collections::HashSet<_>>().len() == refs.len()
+            });
+            !evidence_valid
+                || match readiness {
+                    Some("ready") => {
+                        !instance.is_some_and(safe_ref)
+                            || !version.is_some_and(safe_ref)
+                            || !helper.get("omissionRef").is_some_and(Value::is_null)
+                    }
+                    Some("unsupported") => {
+                        !helper.get("instanceRef").is_some_and(Value::is_null)
+                            || !helper.get("versionRef").is_some_and(Value::is_null)
+                            || !omission.is_some_and(safe_ref)
+                    }
+                    _ => true,
+                }
+        })
+    {
+        return Err(CloudVmError::Runtime(
+            "portable guest activation helper inventory is invalid".to_string(),
+        ));
+    }
+    let activated_agents = agent_refs(&json!({ "nodes": response
+            .get("activatedAgentRefs")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|agent_ref| json!({ "agentRef": agent_ref }))
+            .collect::<Vec<_>>() }))?;
+    let mut expected_agents = agent_refs(&resource.graph)?;
+    let mut received_agents = activated_agents;
+    expected_agents.sort();
+    received_agents.sort();
+    if received_agents != expected_agents {
+        return Err(CloudVmError::Runtime(
+            "portable guest activation omitted retained agents".to_string(),
+        ));
+    }
+    let accepted_work = response
+        .get("acceptedWorkRefs")
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            CloudVmError::Runtime(
+                "portable guest activation accepted-work list is invalid".to_string(),
+            )
+        })?;
+    if accepted_work.iter().any(|work| {
+        !has_exact_keys(work, &["agentRef", "turnRef"])
+            || !work
+                .get("agentRef")
+                .and_then(Value::as_str)
+                .is_some_and(|value| {
+                    safe_ref(value) && expected_agents.contains(&value.to_string())
+                })
+            || !work
+                .get("turnRef")
+                .and_then(Value::as_str)
+                .is_some_and(safe_ref)
+    }) {
+        return Err(CloudVmError::Runtime(
+            "portable guest activation accepted work is invalid".to_string(),
+        ));
+    }
+    let evidence_refs = response
+        .get("evidenceRefs")
+        .and_then(Value::as_array)
+        .ok_or_else(|| {
+            CloudVmError::Runtime("portable guest activation evidence list is invalid".to_string())
+        })?;
+    let evidence = evidence_refs
+        .iter()
+        .filter_map(Value::as_str)
+        .collect::<Vec<_>>();
+    if evidence.len() != evidence_refs.len()
+        || evidence.is_empty()
+        || evidence.iter().any(|value| !safe_ref(value))
+        || !evidence.contains(&expected_authority_ref.as_str())
+        || evidence
+            .iter()
+            .collect::<std::collections::HashSet<_>>()
+            .len()
+            != evidence.len()
+    {
+        return Err(CloudVmError::Runtime(
+            "portable guest activation evidence list is invalid".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn has_exact_keys(value: &Value, expected: &[&str]) -> bool {
+    value.as_object().is_some_and(|object| {
+        object.len() == expected.len() && expected.iter().all(|key| object.contains_key(*key))
+    })
+}
+
 fn validate_request(request: &PortableAgentComputerRequest) -> Result<(), CloudVmError> {
     for (field, value) in [
         ("operationRef", request.operation_ref.as_str()),
@@ -1304,6 +1606,14 @@ fn assert_resource(
     {
         return Err(CloudVmError::InvalidRequest(
             "retained resource scope or attachment generation differs".to_string(),
+        ));
+    }
+    if request.action == "activate"
+        && required_payload_string(request, "destinationRunnerSessionReservationRef")?
+            != resource.destination_runner_session_reservation_ref
+    {
+        return Err(CloudVmError::InvalidRequest(
+            "activation runner reservation differs from retained stage".to_string(),
         ));
     }
     match request.action.as_str() {
@@ -1615,6 +1925,21 @@ mod tests {
         let resource_ref = staged.get("resourceRef").and_then(Value::as_str).unwrap();
         let _staged = materialize_fake(&state_root, "operation.port03.binding.materialize");
 
+        let mut swapped_reservation = request(
+            "activate",
+            "operation.port03.binding.activate.swapped",
+            Some(resource_ref),
+        );
+        swapped_reservation.payload = json!({
+            "checkpointRef": "checkpoint.port03.binding.source",
+            "authorityEvidenceRef": "evidence.port03.binding.authority",
+            "destinationRunnerSessionReservationRef": "runner-session-reservation.port03.swapped",
+            "authenticationPolicyRef": "policy.portable.destination.openagents_managed.v1",
+            "helpersObservedAt": "2026-07-20T16:40:00.000Z",
+            "capabilityLeaseRefs": ["lease.port03.binding.provider"]
+        });
+        assert!(execute(&state_root, ProvisionerKind::Fake, swapped_reservation).is_err());
+
         let mut activate = request(
             "activate",
             "operation.port03.binding.activate",
@@ -1623,6 +1948,9 @@ mod tests {
         activate.payload = json!({
             "checkpointRef": "checkpoint.port03.binding.source",
             "authorityEvidenceRef": "evidence.port03.binding.authority",
+            "destinationRunnerSessionReservationRef": staged["destinationRunnerSessionReservationRef"],
+            "authenticationPolicyRef": "policy.portable.destination.openagents_managed.v1",
+            "helpersObservedAt": "2026-07-20T16:40:00.000Z",
             "capabilityLeaseRefs": ["lease.port03.binding.provider"]
         });
         let activated = execute(&state_root, ProvisionerKind::Fake, activate.clone()).unwrap();
@@ -1630,6 +1958,11 @@ mod tests {
             activated["activatedAgentRefs"][0],
             "agent.port03.binding.root"
         );
+        assert_eq!(
+            activated["destinationRunnerSessionReservationRef"],
+            staged["destinationRunnerSessionReservationRef"]
+        );
+        assert_eq!(activated["helpers"].as_array().map(Vec::len), Some(5));
         assert_eq!(
             execute(&state_root, ProvisionerKind::Fake, activate).unwrap(),
             activated
@@ -1709,7 +2042,11 @@ mod tests {
             Some(resource_ref),
         );
         activate.payload = json!({
+            "checkpointRef": "checkpoint.port03.binding.source",
             "authorityEvidenceRef": "evidence.port03.binding.authority",
+            "destinationRunnerSessionReservationRef": staged["destinationRunnerSessionReservationRef"],
+            "authenticationPolicyRef": "policy.portable.destination.openagents_managed.v1",
+            "helpersObservedAt": "2026-07-20T16:40:00.000Z",
             "capabilityLeaseRefs": ["lease.port03.binding.provider"]
         });
         execute(&state_root, ProvisionerKind::Fake, activate).unwrap();

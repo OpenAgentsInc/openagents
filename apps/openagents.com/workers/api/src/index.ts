@@ -1,5 +1,8 @@
 import {
   FleetRunAuthorityError,
+  PostgresPortableOwnerLocalCapabilityOperationStore,
+  PostgresPortablePhaseOperationStore,
+  PostgresPortableTargetPylonBindingStore,
   RUNTIME_START_TURN_MUTATOR_NAME,
   type FleetRunAuthorityRepositoryShape,
   type FleetSteeringExchangeRepositoryShape,
@@ -505,6 +508,10 @@ import {
   gitHubWriteRouteErrorName,
   gitHubWriteRouteErrorStatus,
 } from './github-write-route-errors'
+import {
+  makeGoogleCloudKmsDekClient,
+  makeGoogleCloudWorkloadIdentityAccessTokenProvider,
+} from './google-cloud-kms'
 import {
   makeGymLadderStoreForEnv,
   makeGymRunProgressStoreForEnv,
@@ -1039,6 +1046,12 @@ import {
 } from './provider-account-mobile-routes'
 import { makeProviderAccountPoolRoutes } from './provider-account-pool-routes'
 import { makeAuthoritativePostgresProviderGrantRepository } from './provider-account-postgres-grant-repository'
+import { resolvePortableCapabilityGrantFacts } from './portable-capability-grant-facts'
+import {
+  PORTABLE_SESSION_COMMAND_DISPATCH_FLAG,
+  makePortableSessionCommandDispatchScheduled,
+} from './portable-session-command-dispatch-scheduled'
+import { makePortableSessionCommandRuntimeAdapters } from './portable-session-command-runtime-adapters'
 import { makeProviderAccountPylonHandlers } from './provider-account-pylon-routes'
 import { makeProviderAccountRoutes } from './provider-account-routes'
 import { makeProviderAccountServiceHandlers } from './provider-account-service-routes'
@@ -1061,6 +1074,7 @@ import {
   listProviderAccountsForUser,
   makeD1ProviderAccountRepository,
   reissueProviderAccountGrant,
+  resolveProviderAccountGrant,
   revokeProviderAccountGrant,
 } from './provider-accounts'
 import {
@@ -1104,6 +1118,26 @@ import {
 } from './pylon-agent-runner-status-store'
 import { type PylonApiStore } from './pylon-api'
 import { makePylonApiRoutes } from './pylon-api-routes'
+import {
+  makePortableCheckpointArtifactRoutes,
+  portableCheckpointArtifactBucketForEnv,
+  readPortableCheckpointArtifactAuthority,
+} from './portable-checkpoint-artifact-routes'
+import {
+  makePortableCheckpointDekRoutes,
+  readPortableCheckpointDekWrapBinding,
+} from './portable-checkpoint-dek-routes'
+import {
+  makePortablePhaseOperationRoutes,
+  resolvePortablePhaseTarget,
+} from './portable-phase-operation-routes'
+import {
+  makePortableOwnerLocalCapabilityOperationRoutes,
+  portableOwnerLocalCapabilityMaterialAuthorityMatchesRecord,
+  type PortableOwnerLocalCapabilityMaterialAuthority,
+} from './portable-owner-local-capability-operation-routes'
+import { makePortableOwnerLocalCapabilityMaterialAuthority } from './portable-owner-local-capability-material-authority'
+import { makePortableTargetPylonBindingRoutes } from './portable-target-pylon-binding-routes'
 import {
   type PylonCapacityFunnelSnapshotStore,
   handlePylonCapacityFunnelApi,
@@ -4241,7 +4275,34 @@ const handlePortableCapabilityGrantAuthorityApi = async (
     )
   }
   const path = new URL(request.url).pathname
+  const isFacts = path.endsWith('/facts')
   const isReissue = path.endsWith('/reissue')
+  if (isFacts) {
+    const grantRefs = Array.isArray(body.grantRefs)
+      ? body.grantRefs.filter((value): value is string => typeof value === 'string')
+      : []
+    if (grantRefs.length !== (Array.isArray(body.grantRefs) ? body.grantRefs.length : -1)) {
+      return noStoreJsonResponse({ error: 'bad_request', reason: 'grantRefs are invalid' }, { status: 400 })
+    }
+    const postgres = postgresIdentityAuthStoreForEnv(env)
+    if (postgres === undefined) {
+      return noStoreJsonResponse({ error: 'provider_grant_authority_unavailable' }, { status: 503 })
+    }
+    try {
+      const facts = await resolvePortableCapabilityGrantFacts({
+        ownerUserId,
+        grantRefs,
+        provider: makeAuthoritativePostgresProviderGrantRepository(
+          makeD1ProviderAccountRepository(openAgentsDatabase(env)),
+          postgres.queryRows,
+        ),
+        github: makeGitHubWriteRepositoryForEnv(env),
+      })
+      return noStoreJsonResponse({ facts, material: 'excluded' })
+    } catch {
+      return noStoreJsonResponse({ error: 'portable_capability_grant_facts_refused' }, { status: 409 })
+    }
+  }
   if (
     (!isReissue && grantRef === undefined) ||
     (isReissue &&
@@ -9586,6 +9647,416 @@ const dispatchManagedFleetUnitForEnv = async (
   }
 }
 
+const portablePhaseOperationRoutes =
+  makePortablePhaseOperationRoutes<WorkerBindings>({
+    authenticate: async (request, env) => {
+      const token = readBearerToken(request)
+      if (token === undefined) return undefined
+      const session = await authenticateProgrammaticAgent(
+        makeAgentRegistrationStoreForEnv(env),
+        token,
+      )
+      if (session === undefined) return undefined
+      const linkedOwner = session.credential.openauthUserId?.trim()
+      return {
+        agentUserId: session.user.id,
+        ownerUserId:
+          linkedOwner !== undefined && linkedOwner !== ''
+            ? linkedOwner
+            : session.user.id,
+      }
+    },
+    readPylonOwnerAgentUserId: async (env, pylonRef) =>
+      (await makePylonApiStoreForEnv(env).readRegistration(pylonRef))
+        ?.ownerAgentUserId,
+    withExchange: async (env, use) => {
+      const connectionString = env.KHALA_SYNC_DB?.connectionString
+      if (connectionString === undefined || connectionString.trim() === '') {
+        throw new Error('portable phase exchange storage is unavailable')
+      }
+      const client = await defaultMakeKhalaSyncSqlClient(connectionString)
+      try {
+        return await use(new PostgresPortablePhaseOperationStore(client.sql))
+      } finally {
+        await client.end().catch(() => undefined)
+      }
+    },
+    resolveExactTarget: async (env, input) => {
+      const connectionString = env.KHALA_SYNC_DB?.connectionString
+      if (connectionString === undefined || connectionString.trim() === '') {
+        throw new Error('portable phase target storage is unavailable')
+      }
+      const client = await defaultMakeKhalaSyncSqlClient(connectionString)
+      try {
+        return await resolvePortablePhaseTarget(client.sql, input)
+      } finally {
+        await client.end().catch(() => undefined)
+      }
+    },
+  })
+
+const portableCheckpointArtifactRoutes =
+  makePortableCheckpointArtifactRoutes<WorkerBindings>({
+    authenticate: async (request, env) => {
+      const token = readBearerToken(request)
+      if (token === undefined) return undefined
+      const session = await authenticateProgrammaticAgent(
+        makeAgentRegistrationStoreForEnv(env),
+        token,
+      )
+      if (session === undefined) return undefined
+      const linkedOwner = session.credential.openauthUserId?.trim()
+      return {
+        agentUserId: session.user.id,
+        ownerUserId:
+          linkedOwner !== undefined && linkedOwner !== ''
+            ? linkedOwner
+            : session.user.id,
+      }
+    },
+    readPylonOwnerAgentUserId: async (env, pylonRef) =>
+      (await makePylonApiStoreForEnv(env).readRegistration(pylonRef))
+        ?.ownerAgentUserId,
+    resolveExactTarget: async (env, input) => {
+      const connectionString = env.KHALA_SYNC_DB?.connectionString
+      if (connectionString === undefined || connectionString.trim() === '') {
+        throw new Error('portable checkpoint target storage is unavailable')
+      }
+      const client = await defaultMakeKhalaSyncSqlClient(connectionString)
+      try {
+        return await resolvePortablePhaseTarget(client.sql, input)
+      } finally {
+        await client.end().catch(() => undefined)
+      }
+    },
+    bucket: env => portableCheckpointArtifactBucketForEnv(env),
+    readAuthority: async (env, input) => {
+      const connectionString = env.KHALA_SYNC_DB?.connectionString
+      if (connectionString === undefined || connectionString.trim() === '') {
+        throw new Error('portable checkpoint authority storage is unavailable')
+      }
+      const client = await defaultMakeKhalaSyncSqlClient(connectionString)
+      try {
+        return await readPortableCheckpointArtifactAuthority(
+          client.sql,
+          new PostgresPortablePhaseOperationStore(client.sql),
+          input,
+        )
+      } finally {
+        await client.end().catch(() => undefined)
+      }
+    },
+  })
+
+const portableCheckpointKmsTokenProvider =
+  makeGoogleCloudWorkloadIdentityAccessTokenProvider()
+
+const portableCheckpointDekRoutes =
+  makePortableCheckpointDekRoutes<WorkerBindings>({
+    authenticate: async (request, env) => {
+      const token = readBearerToken(request)
+      if (token === undefined) return undefined
+      const session = await authenticateProgrammaticAgent(
+        makeAgentRegistrationStoreForEnv(env),
+        token,
+      )
+      if (session === undefined) return undefined
+      const linkedOwner = session.credential.openauthUserId?.trim()
+      return {
+        agentUserId: session.user.id,
+        ownerUserId:
+          linkedOwner !== undefined && linkedOwner !== ''
+            ? linkedOwner
+            : session.user.id,
+      }
+    },
+    readPylonOwnerAgentUserId: async (env, pylonRef) =>
+      (await makePylonApiStoreForEnv(env).readRegistration(pylonRef))
+        ?.ownerAgentUserId,
+    resolveExactTarget: async (env, input) => {
+      const connectionString = env.KHALA_SYNC_DB?.connectionString
+      if (connectionString === undefined || connectionString.trim() === '') {
+        throw new Error('portable checkpoint target storage is unavailable')
+      }
+      const client = await defaultMakeKhalaSyncSqlClient(connectionString)
+      try {
+        return await resolvePortablePhaseTarget(client.sql, input)
+      } finally {
+        await client.end().catch(() => undefined)
+      }
+    },
+    readAuthority: async (env, input) => {
+      const connectionString = env.KHALA_SYNC_DB?.connectionString
+      if (connectionString === undefined || connectionString.trim() === '') {
+        throw new Error('portable checkpoint authority storage is unavailable')
+      }
+      const client = await defaultMakeKhalaSyncSqlClient(connectionString)
+      try {
+        return await readPortableCheckpointArtifactAuthority(
+          client.sql,
+          new PostgresPortablePhaseOperationStore(client.sql),
+          input,
+        )
+      } finally {
+        await client.end().catch(() => undefined)
+      }
+    },
+    resolveWrapBinding: async (env, input) => {
+      const connectionString = env.KHALA_SYNC_DB?.connectionString
+      if (connectionString === undefined || connectionString.trim() === '') {
+        throw new Error('portable checkpoint authority storage is unavailable')
+      }
+      const client = await defaultMakeKhalaSyncSqlClient(connectionString)
+      try {
+        return await readPortableCheckpointDekWrapBinding(client.sql, {
+          action: input.authority.action,
+          actorOwnerRef: input.actorOwnerRef,
+          authority: input.authority,
+          current: input.current,
+        })
+      } finally {
+        await client.end().catch(() => undefined)
+      }
+    },
+    configuredKeyRef: env =>
+      (env as OpenAgentsWorkerEnv).PORTABLE_CHECKPOINT_KMS_KEY_REF,
+    kmsClient: env => {
+      const resource = (env as OpenAgentsWorkerEnv)
+        .PORTABLE_CHECKPOINT_KMS_KEY_RESOURCE
+      if (resource === undefined || resource.trim() === '') return undefined
+      return makeGoogleCloudKmsDekClient({
+        cryptoKeyResource: resource,
+        tokenProvider: portableCheckpointKmsTokenProvider,
+      })
+    },
+  })
+
+const portableTargetPylonBindingRoutes =
+  makePortableTargetPylonBindingRoutes<WorkerBindings>({
+    authenticate: async (request, env, pylonRef) => {
+      const token = readBearerToken(request)
+      if (token === undefined) return undefined
+      const session = await authenticateProgrammaticAgent(
+        makeAgentRegistrationStoreForEnv(env),
+        token,
+      )
+      if (session === undefined) return undefined
+      const registration = await makePylonApiStoreForEnv(env).readRegistration(pylonRef)
+      if (registration?.ownerAgentUserId !== session.user.id) return undefined
+      const linkedOwner = session.credential.openauthUserId?.trim()
+      return {
+        ownerAgentUserId: session.user.id,
+        ownerUserId:
+          linkedOwner !== undefined && linkedOwner !== ''
+            ? linkedOwner
+            : session.user.id,
+      }
+    },
+    withStore: async (env, use) => {
+      const connectionString = env.KHALA_SYNC_DB?.connectionString
+      if (connectionString === undefined || connectionString.trim() === '') {
+        throw new Error('portable target Pylon binding storage is unavailable')
+      }
+      const client = await defaultMakeKhalaSyncSqlClient(connectionString)
+      try {
+        return await use(new PostgresPortableTargetPylonBindingStore(client.sql))
+      } finally {
+        await client.end().catch(() => undefined)
+      }
+    },
+  })
+
+const recheckPortableOwnerLocalCapabilityMaterialAuthority = async (
+  env: WorkerBindings,
+  authority: PortableOwnerLocalCapabilityMaterialAuthority,
+): Promise<Readonly<{ destinationRunnerSessionRef: string }>> => {
+  const workerEnv = env as OpenAgentsWorkerEnv
+  const connectionString = workerEnv.KHALA_SYNC_DB?.connectionString
+  if (connectionString === undefined || connectionString.trim() === '') {
+    throw new Error('portable capability authority storage is unavailable')
+  }
+
+  const client = await defaultMakeKhalaSyncSqlClient(connectionString)
+  let destinationRunnerSessionRef: string
+  try {
+    const store = new PostgresPortableOwnerLocalCapabilityOperationStore(
+      client.sql,
+    )
+    const current = await store.read(
+      authority.ownerRef,
+      authority.pylonRef,
+      authority.targetRef,
+      authority.operationRef,
+    )
+    if (
+      !portableOwnerLocalCapabilityMaterialAuthorityMatchesRecord(
+        current,
+        authority,
+        new Date(),
+      )
+    ) {
+      throw new Error('portable capability operation authority changed')
+    }
+    const runnerRows: ReadonlyArray<{
+      result_destination_runner_session_reservation_ref: string | null
+    }> = await client.sql`
+      SELECT result_destination_runner_session_reservation_ref
+      FROM khala_sync_portable_phase_operations
+      WHERE command_execution_claim_ref = ${authority.commandExecutionClaimRef}
+        AND owner_user_id = ${authority.ownerRef}
+        AND session_ref = ${authority.sessionRef}
+        AND attachment_ref = ${authority.attachmentRef}
+        AND attachment_generation = ${authority.attachmentGeneration}
+        AND target_ref = ${authority.targetRef}
+        AND pylon_ref = ${authority.pylonRef}
+        AND kind = 'checkpoint-stage'
+        AND state = 'completed'
+        AND expires_at > NOW()
+      LIMIT 1
+    `
+    const runnerRef = runnerRows[0]?.result_destination_runner_session_reservation_ref
+    if (
+      runnerRef === null ||
+      runnerRef === undefined ||
+      !/^[A-Za-z0-9][A-Za-z0-9._:-]{2,255}$/.test(runnerRef)
+    ) {
+      throw new Error('destination runner session authority is unavailable')
+    }
+    destinationRunnerSessionRef = runnerRef
+  } finally {
+    await client.end().catch(() => undefined)
+  }
+
+  return { destinationRunnerSessionRef }
+}
+
+const resolvePortableOwnerLocalCapabilityMaterial = async (
+  env: WorkerBindings,
+  authority: PortableOwnerLocalCapabilityMaterialAuthority,
+): Promise<Uint8Array> => {
+  const workerEnv = env as OpenAgentsWorkerEnv
+  const providerRepository = () => {
+    const postgres = postgresIdentityAuthStoreForEnv(workerEnv)
+    if (postgres === undefined) {
+      throw new Error('provider grant authority is unavailable')
+    }
+    return makeAuthoritativePostgresProviderGrantRepository(
+      makeD1ProviderAccountRepository(openAgentsDatabase(workerEnv)),
+      postgres.queryRows,
+    )
+  }
+  const github = makeGitHubWriteRepositoryForEnv(workerEnv)
+
+  return makePortableOwnerLocalCapabilityMaterialAuthority(authority, {
+    recheckAuthority: () =>
+      recheckPortableOwnerLocalCapabilityMaterialAuthority(env, authority),
+    readProviderGrant: grantRef =>
+      providerRepository().findGrantByRef(grantRef),
+    resolveProviderGrant: input =>
+      resolveProviderAccountGrant(providerRepository(), {
+        actorId: input.actorAgentUserId,
+        grantRef: input.grantRef,
+        providerAccountRef: input.providerAccountRef,
+        runnerSessionId: input.runnerSessionRef,
+      }),
+    readProviderMaterial: async (ownerRef, providerAccountRef) => {
+      const material = await readConnectedCodexAuthMaterial(
+        workerEnv,
+        ownerRef,
+        providerAccountRef,
+      )
+      return material === undefined
+        ? undefined
+        : new TextEncoder().encode(material.authContentJson)
+    },
+    readGitHubGrant: grantRef => github.findGrantByRef(grantRef),
+    resolveGitHubGrant: input =>
+      resolveGitHubWriteGrant(github, {
+        grantRef: input.grantRef,
+        runnerSessionId: input.runnerSessionRef,
+      }),
+    readGitHubConnection: ownerRef =>
+      github.findUsableConnectionForUser(ownerRef),
+    readGitHubMaterial: async connectionRef => {
+      const material = await authKvStoreForEnv(workerEnv).get(
+        githubWriteSecretKey(connectionRef),
+      )
+      return material === null
+        ? undefined
+        : new TextEncoder().encode(material)
+    },
+    githubScopesSatisfy: hasRequiredGitHubWriteScopes,
+    providerKind: CHATGPT_CODEX_PROVIDER,
+  })()
+}
+
+const portableOwnerLocalCapabilityOperationRoutes =
+  makePortableOwnerLocalCapabilityOperationRoutes<WorkerBindings>({
+    authenticate: async (request, env) => {
+      const token = readBearerToken(request)
+      if (token === undefined) return undefined
+      const session = await authenticateProgrammaticAgent(
+        makeAgentRegistrationStoreForEnv(env),
+        token,
+      )
+      if (session === undefined) return undefined
+      const linkedOwner = session.credential.openauthUserId?.trim()
+      return {
+        agentUserId: session.user.id,
+        ownerUserId:
+          linkedOwner !== undefined && linkedOwner !== ''
+            ? linkedOwner
+            : session.user.id,
+      }
+    },
+    readPylonOwnerAgentUserId: async (env, pylonRef) =>
+      (await makePylonApiStoreForEnv(env).readRegistration(pylonRef))
+        ?.ownerAgentUserId,
+    withExchange: async (env, use) => {
+      const connectionString = (env as OpenAgentsWorkerEnv).KHALA_SYNC_DB
+        ?.connectionString
+      if (connectionString === undefined || connectionString.trim() === '') {
+        throw new Error('portable capability operation storage is unavailable')
+      }
+      const client = await defaultMakeKhalaSyncSqlClient(connectionString)
+      try {
+        return await use(
+          new PostgresPortableOwnerLocalCapabilityOperationStore(client.sql),
+        )
+      } finally {
+        await client.end().catch(() => undefined)
+      }
+    },
+    redeemDestinationGrantMaterial:
+      resolvePortableOwnerLocalCapabilityMaterial,
+  })
+
+const portableSessionCommandDispatchScheduled =
+  makePortableSessionCommandDispatchScheduled<OpenAgentsWorkerEnv>({
+    connectionString: env => env.KHALA_SYNC_DB?.connectionString,
+    openSqlClient: defaultMakeKhalaSyncSqlClient,
+    capabilityAuthority: env => {
+      const postgres = postgresIdentityAuthStoreForEnv(env)
+      if (postgres === undefined) return undefined
+      const provider = makeAuthoritativePostgresProviderGrantRepository(
+        makeD1ProviderAccountRepository(openAgentsDatabase(env)),
+        postgres.queryRows,
+      )
+      const github = makeGitHubWriteRepositoryForEnv(env)
+      return {
+        resolve: ({ ownerUserId, grantRefs }) =>
+          resolvePortableCapabilityGrantFacts({
+            ownerUserId,
+            grantRefs,
+            provider,
+            github,
+          }),
+      }
+    },
+    runtimeAdapters: async (env, sql) =>
+      makePortableSessionCommandRuntimeAdapters(env, sql),
+  })
+
 const pylonApiRoutes = makePylonApiRoutes<WorkerBindings>({
   agentStore: env => makeAgentRegistrationStoreForEnv(env),
   makeStore: env => makePylonApiStoreForEnv(env),
@@ -9685,6 +10156,16 @@ const pylonApiRoutes = makePylonApiRoutes<WorkerBindings>({
     ),
   requireAdminApiToken,
   requireBrowserSession,
+  routePortablePhaseOperationRequest:
+    portablePhaseOperationRoutes.routePortablePhaseOperationRequest,
+  routePortableCheckpointArtifactRequest:
+    portableCheckpointArtifactRoutes.routePortableCheckpointArtifactRequest,
+  routePortableCheckpointDekRequest:
+    portableCheckpointDekRoutes.routePortableCheckpointDekRequest,
+  routePortableOwnerLocalCapabilityOperationRequest:
+    portableOwnerLocalCapabilityOperationRoutes.routePortableOwnerLocalCapabilityOperationRequest,
+  routePortableTargetPylonBindingRequest:
+    portableTargetPylonBindingRoutes.route,
 })
 
 const trainingRunWindowRoutes = makeTrainingRunWindowRoutes<WorkerBindings>({
@@ -13032,6 +13513,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
       '/api/portable-capability-grants/provider/reissue',
       '/api/portable-capability-grants/github/revoke',
       '/api/portable-capability-grants/github/reissue',
+      '/api/portable-capability-grants/facts',
     ] as const
   ).map(path => ({
     path,
@@ -14900,6 +15382,17 @@ export default {
       observedEffect(
         'ManagedCloudRuntimeTurnDispatch.tick',
         Effect.promise(() => runManagedCloudRuntimeTurnDispatchForEnv(env)),
+      ),
+      observedEffect(
+        'PortableSessionCommandDispatch.tick',
+        portableSessionCommandDispatchScheduled({
+          env,
+          enabled: (
+            env as OpenAgentsWorkerEnv &
+              Readonly<Record<typeof PORTABLE_SESSION_COMMAND_DISPATCH_FLAG, string | undefined>>
+          )[PORTABLE_SESSION_COMMAND_DISPATCH_FLAG],
+          scheduledTimeMs: event.scheduledTime,
+        }).pipe(Effect.asVoid),
       ),
       observedEffect(
         'PylonCapacityFunnel.recordSnapshots',

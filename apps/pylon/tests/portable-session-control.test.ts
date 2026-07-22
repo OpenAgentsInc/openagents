@@ -1,7 +1,8 @@
 import { Runtime } from "@openagentsinc/runtime-platform"
 import { existsSync } from "node:fs"
 import { createHash } from "node:crypto"
-import { cp, mkdir, mkdtemp, readFile, readlink, rm, symlink, writeFile } from "node:fs/promises"
+import { spawn } from "node:child_process"
+import { cp, mkdir, mkdtemp, readFile, readdir, readlink, rm, symlink, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -16,6 +17,9 @@ import {
   portableSessionRoot,
   productionRuntime,
   repositorySnapshot,
+  startPortableGuestHelpers,
+  stopPortableGuestHelpers,
+  verifyPortableGuestHelpers,
   PortableSessionControlError,
   type PortableSessionGuestRuntime,
 } from "../deploy/agent-computer/portable-session-control.js"
@@ -63,6 +67,27 @@ const bundle = {
   }],
 }
 
+const helperReadiness = () => (["pty", "lsp", "dap", "watcher", "native"] as const).map(kind => ({
+  kind,
+  readiness: "unsupported" as const,
+  instanceRef: null,
+  versionRef: null,
+  omissionRef: `omission.agent-computer.portable.${kind}.test_unavailable`,
+  evidenceRefs: [],
+}))
+
+const activationPayload = (
+  authorityEvidenceRef = "evidence.port03.guest.authority",
+  capabilityLeaseRefs: ReadonlyArray<string> = ["lease.port03.guest"],
+) => ({
+  checkpointRef: "checkpoint.port03.guest.source",
+  authorityEvidenceRef,
+  destinationRunnerSessionReservationRef: "runner-session-reservation.port03.guest.2",
+  authenticationPolicyRef: "policy.portable.destination.openagents_managed.v1",
+  helpersObservedAt: "2026-07-20T16:40:00.000Z",
+  capabilityLeaseRefs,
+})
+
 const fixture = async () => {
   const stateRoot = await mkdtemp(join(tmpdir(), "portable-session-control-"))
   roots.push(stateRoot)
@@ -71,7 +96,8 @@ const fixture = async () => {
     prepare: async () => { calls.push("prepare") },
     verifyStage: async () => { calls.push("stage") },
     verifyCapabilities: async () => { calls.push("capabilities") },
-    activate: async () => { calls.push("activate") },
+    activate: async () => { calls.push("activate"); return helperReadiness() },
+    verifyActivation: async () => { calls.push("verify-activation") },
     continueWork: async ({ turns }) => {
       calls.push("continue")
       return turns.map((turn, index) => ({
@@ -107,7 +133,192 @@ const canonical = (value: unknown): string => {
 const sha = (bytes: string | Uint8Array): `sha256:${string}` =>
   `sha256:${createHash("sha256").update(bytes).digest("hex")}`
 
+const lspServerFixture = async (root: string): Promise<string> => {
+  const path = join(root, "lsp-server.cjs")
+  await writeFile(path, String.raw`
+let buffer = Buffer.alloc(0);
+const send = message => {
+  const body = Buffer.from(JSON.stringify(message));
+  process.stdout.write(Buffer.concat([Buffer.from("Content-Length: " + body.length + "\r\n\r\n"), body]));
+};
+process.stdin.on("data", chunk => {
+  buffer = Buffer.concat([buffer, chunk]);
+  while (true) {
+    const headerEnd = buffer.indexOf("\r\n\r\n");
+    if (headerEnd < 0) return;
+    const match = /Content-Length:\s*(\d+)/i.exec(buffer.subarray(0, headerEnd).toString("ascii"));
+    if (!match) process.exit(70);
+    const length = Number(match[1]);
+    if (buffer.length < headerEnd + 4 + length) return;
+    const message = JSON.parse(buffer.subarray(headerEnd + 4, headerEnd + 4 + length).toString("utf8"));
+    buffer = buffer.subarray(headerEnd + 4 + length);
+    if (message.id === 1) {
+      send({ jsonrpc: "2.0", id: 1, result: { capabilities: {} } });
+      send({ jsonrpc: "2.0", method: "$/typescriptVersion", params: { version: "5.9.3", source: "user-setting" } });
+    } else if (message.method === "shutdown") {
+      send({ jsonrpc: "2.0", id: message.id, result: null }); process.exit(0);
+    }
+  }
+});
+`)
+  return path
+}
+
 describe("retained Agent Computer portable-session-control", () => {
+  test("starts one real generation-bound recursive watcher and disposes it", async () => {
+    const stateRoot = await mkdtemp(join(tmpdir(), "portable-session-helper-"))
+    roots.push(stateRoot)
+    const sessionRoot = portableSessionRoot(stateRoot, "session.port03.guest.watcher")
+    await mkdir(join(sessionRoot, "workspace"), { recursive: true })
+    const lspServer = await lspServerFixture(stateRoot)
+    const scope = {
+      sessionRoot,
+      destinationRunnerSessionReservationRef: "runner-session-reservation.port03.guest.watcher.2",
+      generation: 2,
+      nodeBin: process.execPath,
+      lspCommand: [process.execPath, lspServer],
+    }
+    try {
+      const started = await startPortableGuestHelpers(scope)
+      expect(started).toHaveLength(5)
+      expect(started.find(helper => helper.kind === "watcher")).toMatchObject({
+        readiness: "ready",
+        instanceRef: expect.stringMatching(/^instance\.agent-computer\.portable\.watcher\./u),
+        versionRef: expect.stringMatching(/^version\.node\.fs-watch-recursive\./u),
+      })
+      expect(started.find(helper => helper.kind === "lsp")).toMatchObject({
+        readiness: "ready",
+        versionRef: expect.stringContaining("typescript-language-server.5_3_0.typescript.5_9_3"),
+      })
+      expect(started.filter(helper => helper.kind === "pty" || helper.kind === "dap" || helper.kind === "native").every(helper =>
+        helper.readiness === "unsupported" && helper.instanceRef === null)).toBe(true)
+      expect(await verifyPortableGuestHelpers(scope)).toEqual(started)
+      expect(await startPortableGuestHelpers(scope)).toEqual(started)
+      await expect(startPortableGuestHelpers({ ...scope, generation: 3 })).rejects.toThrow("generation")
+    } finally {
+      await stopPortableGuestHelpers(sessionRoot)
+    }
+    await expect(verifyPortableGuestHelpers(scope)).rejects.toThrow("missing")
+  })
+
+  test("refuses replay after the concrete watcher process exits", async () => {
+    const stateRoot = await mkdtemp(join(tmpdir(), "portable-session-helper-exit-"))
+    roots.push(stateRoot)
+    const sessionRoot = portableSessionRoot(stateRoot, "session.port03.guest.watcher-exit")
+    await mkdir(join(sessionRoot, "workspace"), { recursive: true })
+    const lspServer = await lspServerFixture(stateRoot)
+    const scope = {
+      sessionRoot,
+      destinationRunnerSessionReservationRef: "runner-session-reservation.port03.guest.watcher-exit.2",
+      generation: 2,
+      nodeBin: process.execPath,
+      lspCommand: [process.execPath, lspServer],
+    }
+    await startPortableGuestHelpers(scope)
+    try {
+      const state = JSON.parse(await readFile(join(sessionRoot, "portable-helpers.json"), "utf8")) as {
+        watcher: { pid: number }
+      }
+      process.kill(state.watcher.pid, "SIGKILL")
+      await new Promise(resolve => setTimeout(resolve, 50))
+      await expect(verifyPortableGuestHelpers(scope)).rejects.toThrow("not live")
+      await expect(startPortableGuestHelpers(scope)).rejects.toThrow("not live")
+    } finally {
+      await stopPortableGuestHelpers(sessionRoot)
+    }
+  })
+
+  test("fails closed when the pinned watcher runtime is unavailable", async () => {
+    const stateRoot = await mkdtemp(join(tmpdir(), "portable-session-helper-missing-"))
+    roots.push(stateRoot)
+    const sessionRoot = portableSessionRoot(stateRoot, "session.port03.guest.watcher-missing")
+    await mkdir(join(sessionRoot, "workspace"), { recursive: true })
+    await expect(startPortableGuestHelpers({
+      sessionRoot,
+      destinationRunnerSessionReservationRef: "runner-session-reservation.port03.guest.watcher-missing.2",
+      generation: 2,
+      nodeBin: join(stateRoot, "missing-node"),
+    })).rejects.toThrow("did not start")
+    await expect(readFile(join(sessionRoot, "portable-helpers.json"), "utf8")).rejects.toMatchObject({
+      code: "ENOENT",
+    })
+  })
+
+  test("cleans up the managed LSP child after malformed protocol or spawn failure", async () => {
+    const stateRoot = await mkdtemp(join(tmpdir(), "portable-session-helper-invalid-lsp-"))
+    roots.push(stateRoot)
+    const sessionRoot = portableSessionRoot(stateRoot, "session.port03.guest.invalid-lsp")
+    await mkdir(join(sessionRoot, "workspace"), { recursive: true })
+    const childPidPath = join(stateRoot, "invalid-lsp.pid")
+    const invalidServerPath = join(stateRoot, "invalid-lsp.cjs")
+    await writeFile(invalidServerPath, String.raw`
+const { writeFileSync } = require("node:fs");
+writeFileSync(process.argv[2], String(process.pid));
+process.stdout.write("Invalid-Header\r\n\r\n{}");
+setInterval(() => undefined, 1000);
+`)
+    const scope = {
+      sessionRoot,
+      destinationRunnerSessionReservationRef: "runner-session-reservation.port03.guest.invalid-lsp.2",
+      generation: 2,
+      nodeBin: process.execPath,
+      lspCommand: [process.execPath, invalidServerPath, childPidPath],
+    }
+    await expect(startPortableGuestHelpers(scope)).rejects.toThrow("protocol ready")
+    const childPid = Number(await readFile(childPidPath, "utf8"))
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      try { process.kill(childPid, 0) } catch { break }
+      await new Promise(resolve => setTimeout(resolve, 10))
+    }
+    expect(() => process.kill(childPid, 0)).toThrow()
+    expect((await readdir(sessionRoot)).filter(name => name.endsWith(".ready"))).toEqual([])
+    await expect(startPortableGuestHelpers({
+      ...scope,
+      lspCommand: [join(stateRoot, "missing-lsp")],
+    })).rejects.toThrow("protocol ready")
+    await expect(readFile(join(sessionRoot, "portable-helpers.json"), "utf8")).rejects.toMatchObject({ code: "ENOENT" })
+  })
+
+  test("refuses cleanup when the same helper instance remains live after SIGKILL", async () => {
+    const stateRoot = await mkdtemp(join(tmpdir(), "portable-session-helper-stuck-"))
+    roots.push(stateRoot)
+    const sessionRoot = portableSessionRoot(stateRoot, "session.port03.guest.stuck-helper")
+    await mkdir(sessionRoot, { recursive: true })
+    const instanceRef = "instance.agent-computer.portable.lsp.stuck"
+    const child = spawn(process.execPath, ["-e", "setInterval(() => undefined, 1000)", instanceRef], {
+      stdio: "ignore",
+    })
+    if (child.pid === undefined) throw new Error("stuck helper fixture did not start")
+    await new Promise(resolve => setTimeout(resolve, 20))
+    const helper = {
+      pid: child.pid,
+      instanceRef,
+      versionRef: "version.test.stuck-helper",
+      evidenceRefs: ["evidence.test.stuck-helper"],
+    }
+    await writeFile(join(sessionRoot, "portable-helpers.json"), JSON.stringify({
+      schema: "openagents.portable_guest_helper_state.v2",
+      destinationRunnerSessionReservationRef: "runner-session-reservation.port03.guest.stuck-helper.2",
+      generation: 2,
+      lsp: helper,
+      watcher: helper,
+    }))
+    const originalKill = process.kill
+    process.kill = ((pid, signal) => pid === child.pid && signal !== 0
+      ? true
+      : originalKill(pid, signal)) as typeof process.kill
+    try {
+      await expect(stopPortableGuestHelpers(sessionRoot)).rejects.toThrow(
+        "portable helper remained live after forced termination",
+      )
+      expect(await readFile(join(sessionRoot, "portable-helpers.json"), "utf8")).toContain(instanceRef)
+    } finally {
+      process.kill = originalKill
+      child.kill("SIGKILL")
+      await new Promise(resolve => child.once("exit", resolve))
+    }
+  })
+
   test("keeps stage non-accepting, activates the graph, checkpoints, and reclaims exactly once", async () => {
     const { stateRoot, calls, runtime } = await fixture()
     const stage = operation("stage", "operation.port03.guest.stage", { bundle, capabilityLeaseRefs: ["lease.port03.guest"] })
@@ -118,25 +329,61 @@ describe("retained Agent Computer portable-session-control", () => {
 
     await expect(executePortableSessionControl({
       operation: operation("activate", "operation.port03.guest.activate.invalid", {
-        authorityEvidenceRef: "evidence.port03.guest.authority",
-        capabilityLeaseRefs: [],
+        ...activationPayload("evidence.port03.guest.authority", []),
       }),
       stateRoot,
       runtime,
     })).rejects.toThrow("capability")
 
+    const activationStartedAt = Date.now()
     const activated = await executePortableSessionControl({
       operation: operation("activate", "operation.port03.guest.activate", {
-        authorityEvidenceRef: "evidence.port03.guest.authority",
-        capabilityLeaseRefs: ["lease.port03.guest"],
+        ...activationPayload(),
       }),
       stateRoot,
       runtime,
     })
     expect(activated).toMatchObject({
+      schema: "openagents.ide_portable_destination_activation.v1",
+      destinationRunnerSessionReservationRef: "runner-session-reservation.port03.guest.2",
+      authentication: {
+        state: "reauthenticated",
+        policyRef: "policy.portable.destination.openagents_managed.v1",
+        evidenceRef: "evidence.port03.guest.authority",
+      },
+      helpers: expect.arrayContaining([
+        expect.objectContaining({ kind: "watcher", readiness: "unsupported" }),
+      ]),
       activatedAgentRefs: ["agent.port03.guest.root", "agent.port03.guest.child"],
       acceptedWorkRefs: [],
     })
+    const activatedRecord = activated as Record<string, unknown>
+    expect(Date.parse(String(activatedRecord.helpersObservedAt))).toBeGreaterThanOrEqual(activationStartedAt)
+    expect((activatedRecord.authentication as Record<string, unknown>).observedAt).toBe(
+      activationPayload().helpersObservedAt,
+    )
+    expect(Object.keys(activatedRecord).sort()).toEqual([
+      "acceptedWorkRefs",
+      "activatedAgentRefs",
+      "authentication",
+      "checkpointRef",
+      "destinationAttachmentRef",
+      "destinationGeneration",
+      "destinationRunnerSessionReservationRef",
+      "destinationTargetRef",
+      "evidenceRefs",
+      "helpers",
+      "helpersObservedAt",
+      "operationRef",
+      "receiptRef",
+      "schema",
+      "sessionRef",
+    ])
+    expect(await executePortableSessionControl({
+      operation: operation("activate", "operation.port03.guest.activate", activationPayload()),
+      stateRoot,
+      runtime,
+    })).toEqual(activated)
     await executePortableSessionControl({
       operation: operation("quiesce", "operation.port03.guest.quiesce", { graph, threadCursors: bundle.threadCursors }),
       stateRoot,
@@ -167,7 +414,7 @@ describe("retained Agent Computer portable-session-control", () => {
       runtime,
     })
     expect(reclaimed).toMatchObject({ processes: "released", scratch: "released", ports: "released" })
-    expect(calls).toEqual(["stage", "capabilities", "activate", "quiesce", "reclaim"])
+    expect(calls).toEqual(["stage", "capabilities", "activate", "verify-activation", "quiesce", "reclaim"])
   })
 
   test("rejects conflicting replay and private-shaped payloads", async () => {
@@ -227,8 +474,7 @@ describe("retained Agent Computer portable-session-control", () => {
     })
     await executePortableSessionControl({
       operation: operation("activate", "operation.port03.guest.continue.activate", {
-        authorityEvidenceRef: "evidence.port03.guest.authority",
-        capabilityLeaseRefs: ["lease.port03.guest"],
+        ...activationPayload(),
       }),
       stateRoot,
       runtime,
@@ -372,7 +618,8 @@ describe("retained Agent Computer portable-session-control", () => {
     })
     const preparedRuntime: PortableSessionGuestRuntime = {
       ...productionRuntime,
-      activate: async () => undefined,
+      activate: async () => helperReadiness(),
+      verifyActivation: async () => undefined,
       quiesce: async () => undefined,
       verifyCapabilities: async () => undefined,
       prepare: async ({ sessionRoot, agentRefs }) => {
@@ -402,8 +649,10 @@ describe("retained Agent Computer portable-session-control", () => {
 
     await executePortableSessionControl({
       operation: operation("activate", "operation.port03.guest.materialized-activate", {
-        authorityEvidenceRef: "evidence.port03.guest.materialized-authority",
-        capabilityLeaseRefs: ["lease.port03.guest.provider"],
+        ...activationPayload(
+          "evidence.port03.guest.materialized-authority",
+          ["lease.port03.guest.provider"],
+        ),
       }),
       stateRoot,
       runtime: preparedRuntime,

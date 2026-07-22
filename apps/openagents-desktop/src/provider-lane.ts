@@ -59,6 +59,10 @@ import {
 } from "./claude-local-contract.ts"
 import type { LocalTurnJournal } from "./local-turn-journal.ts"
 import { makeLocalTurnTextPersistence } from "./local-turn-text-persistence.ts"
+import type {
+  IdePortableMutationAuthority,
+  IdePortableMutationPermit,
+} from "./ide/portable-mutation-authority.ts"
 import {
   appendSpecLaneContext,
   type SpecLaneTurnProjection,
@@ -275,6 +279,27 @@ export type ProviderLaneDispatcherDeps = Readonly<{
     event: ClaudeLocalEvent,
     background: boolean,
   ) => void
+  /**
+   * Optional bridge to the canonical IDE portable mutation authority. The
+   * resolver runs once after lane admission and captures one immutable permit
+   * for that exact turn. A null result keeps the existing local-only behavior.
+   * Movement remains owned by the durable portable-session authority; this
+   * bridge only fences process-local provider effects.
+   */
+  portableMutation?: Readonly<{
+    resolve: (input: Readonly<{
+      laneRef: string
+      request: ClaudeLocalStartRequest
+      requestedModel: string
+    }>) => Readonly<{
+      grantRef: string
+      authority: IdePortableMutationAuthority
+    }> | null
+    /** Maximum time quiesce waits for provider calls to return to the host. */
+    quiesceTimeoutMs?: number
+    /** Testable bounded cadence for detecting attachment revocation. */
+    permitMonitorMs?: number
+  }>
 }>
 
 /**
@@ -309,6 +334,23 @@ export type ProviderLaneDispatcher = Readonly<{
     request: ClaudeLocalStartRequest,
     sender: ProviderLaneEventSender | null,
   ) => Promise<ProviderLaneDispatchResult>
+  /** Stop new turns, interrupt active turns, and wait for a bounded safe point. */
+  quiesce: () => Promise<ProviderLaneQuiesceResult>
+  /** Idempotent alias that permanently keeps this dispatcher quiesced. */
+  dispose: () => Promise<ProviderLaneQuiesceResult>
+}>
+
+export type ProviderLaneQuiesceResult = Readonly<{
+  state: "safe" | "timed_out"
+  /** A timeout is not proof that provider-side execution stopped. */
+  pendingTurnRefs: ReadonlyArray<string>
+}>
+
+type ActiveProviderTurn = Readonly<{
+  key: string
+  turnRef: string
+  revoke: (reason?: "host_quiesced" | "portable_authority_revoked") => void
+  safePoint: Promise<void>
 }>
 
 export const makeProviderLaneDispatcher = (
@@ -317,12 +359,51 @@ export const makeProviderLaneDispatcher = (
   const now = deps.now ?? (() => new Date())
   const timestamp = (): string =>
     now().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+  const activeTurns = new Map<string, ActiveProviderTurn>()
+  const quiesceTimeoutMs = Math.max(10, Math.min(deps.portableMutation?.quiesceTimeoutMs ?? 5_000, 30_000))
+  const permitMonitorMs = Math.max(5, Math.min(deps.portableMutation?.permitMonitorMs ?? 25, 250))
+  let accepting = true
+  let quiescePromise: Promise<ProviderLaneQuiesceResult> | null = null
+
+  const activeKey = (laneRef: string, request: ClaudeLocalStartRequest): string =>
+    `${laneRef}\u0000${request.threadRef}\u0000${request.turnRef}`
+
+  const quiesce = (): Promise<ProviderLaneQuiesceResult> => {
+    accepting = false
+    if (quiescePromise !== null) return quiescePromise
+    const snapshot = [...activeTurns.values()]
+    for (const active of snapshot) active.revoke()
+    quiescePromise = (async () => {
+      if (snapshot.length === 0) return { state: "safe", pendingTurnRefs: [] }
+      let timer: ReturnType<typeof setTimeout> | null = null
+      const timeout = new Promise<"timed_out">(resolve => {
+        timer = setTimeout(() => resolve("timed_out"), quiesceTimeoutMs)
+      })
+      const result = await Promise.race([
+        Promise.all(snapshot.map(active => active.safePoint)).then(() => "safe" as const),
+        timeout,
+      ])
+      if (timer !== null) clearTimeout(timer)
+      return result === "safe"
+        ? { state: "safe", pendingTurnRefs: [] }
+        : {
+            state: "timed_out",
+            pendingTurnRefs: snapshot
+              .filter(active => activeTurns.has(active.key))
+              .map(active => active.turnRef),
+          }
+    })()
+    return quiescePromise
+  }
 
   const dispatchTurn = async <Context>(
     lane: ProviderLane<Context>,
     request: ClaudeLocalStartRequest,
     sender: ProviderLaneEventSender | null,
   ): Promise<ProviderLaneDispatchResult> => {
+    if (!accepting) {
+      return { ok: false, error: "Provider turns are quiesced on this host." }
+    }
     if (!startRequestHasContent(request)) {
       return { ok: false, error: "That message could not be sent." }
     }
@@ -337,6 +418,36 @@ export const makeProviderLaneDispatcher = (
     if (store.open(request.threadRef) === null) {
       return { ok: false, error: "That conversation no longer exists.", failureCause: "host_thread_missing" }
     }
+    let portablePermit: Readonly<{
+      authority: IdePortableMutationAuthority
+      permit: IdePortableMutationPermit
+    }> | null = null
+    try {
+      const binding = deps.portableMutation?.resolve({ laneRef: lane.laneRef, request, requestedModel }) ?? null
+      if (binding !== null) {
+        const authorization = binding.authority.authorize(binding.grantRef)
+        if (authorization._tag === "Refused") {
+          return { ok: false, error: "That workspace is no longer authorized on this device." }
+        }
+        portablePermit = Object.freeze({
+          authority: binding.authority,
+          permit: Object.freeze({ ...authorization.permit }),
+        })
+      }
+    } catch {
+      return { ok: false, error: "That workspace is no longer authorized on this device." }
+    }
+    const permitIsCurrent = (): boolean => {
+      if (portablePermit === null) return true
+      try {
+        return portablePermit.authority.reauthorize(portablePermit.permit)
+      } catch {
+        return false
+      }
+    }
+    if (!permitIsCurrent()) {
+      return { ok: false, error: "That workspace is no longer authorized on this device." }
+    }
     lane.prepare?.(request, sender, requestedModel)
     const turnKey = { threadRef: request.threadRef, turnRef: request.turnRef, lane: lane.laneRef }
     const user: DesktopMessage = {
@@ -344,6 +455,9 @@ export const makeProviderLaneDispatcher = (
       role: "user",
       text: userNoteText(request.message, request.images),
       timestamp: timestamp(),
+    }
+    if (!permitIsCurrent()) {
+      return { ok: false, error: "That workspace is no longer authorized on this device." }
     }
     const accepted = deps.journal.accept({
       ...turnKey,
@@ -353,7 +467,21 @@ export const makeProviderLaneDispatcher = (
       model: requestedModel,
     })
     if (!accepted.accepted) return { ok: false, error: "That turn is already accepted." }
+    const closePrelaunchRevocation = (): ProviderLaneDispatchResult => {
+      deps.journal.terminal(turnKey, "interrupted", "owner_interrupted")
+      return {
+        ok: false,
+        reason: "interrupted",
+        error: lane.failureMessage("interrupted", "Portable workspace authority changed before provider launch."),
+      }
+    }
+    if (!permitIsCurrent()) {
+      return closePrelaunchRevocation()
+    }
     lane.bound?.(request)
+    if (!permitIsCurrent()) {
+      return closePrelaunchRevocation()
+    }
     const saved = store.upsert(request.threadRef, user)
     if (saved === null) {
       return { ok: false, error: "That conversation no longer exists.", failureCause: "host_thread_missing" }
@@ -374,14 +502,83 @@ export const makeProviderLaneDispatcher = (
       store,
       timestamp,
     }
+    let revoked = false
+    let revocationReason: "host_quiesced" | "portable_authority_revoked" | null = null
+    let interruptRequested = false
+    let lifecycleClosed = false
+    let reachSafePoint = (): void => {}
+    const safePoint = new Promise<void>(resolve => {
+      reachSafePoint = resolve
+    })
+    let revoke: ActiveProviderTurn["revoke"] = () => {}
+    const isAuthorized = (): boolean => {
+      if (revoked) return false
+      if (permitIsCurrent()) return true
+      revoke("portable_authority_revoked")
+      return false
+    }
+    revoke = (reason: "host_quiesced" | "portable_authority_revoked" = "host_quiesced"): void => {
+      if (revoked) return
+      revoked = true
+      revocationReason = reason
+      if (!interruptRequested) {
+        interruptRequested = true
+        // This asks the local lane to cancel. It is not proof that a remote
+        // provider stopped execution; the safe-point wait below is bounded.
+        try {
+          lane.interrupt(request.turnRef)
+        } catch {
+          // A broken cancel hook cannot restore authority or strand quiesce.
+        }
+      }
+    }
+    const guardedJournal: LocalTurnJournal = {
+      ...deps.journal,
+      appendAssistantText: (key, text, segmentKey) =>
+        isAuthorized() ? deps.journal.appendAssistantText(key, text, segmentKey) : null,
+      setAssistantText: (key, text) =>
+        isAuthorized() ? deps.journal.setAssistantText(key, text) : null,
+      terminal: (key, phase, disposition) =>
+        isAuthorized() ? deps.journal.terminal(key, phase, disposition) : null,
+    }
     const textPersistence = makeLocalTurnTextPersistence({
-      journal: deps.journal,
+      journal: guardedJournal,
       store,
       key: turnKey,
       meta: () => lane.streamMeta(turnContext),
     })
     const opensTranscriptPosition = makeTranscriptOrderingBoundaryTracker()
     deps.localTurnFlushers.add(textPersistence.flush)
+    const key = activeKey(lane.laneRef, request)
+    const active: ActiveProviderTurn = {
+      key,
+      turnRef: request.turnRef,
+      revoke,
+      safePoint,
+    }
+    activeTurns.set(key, active)
+    let permitMonitor: ReturnType<typeof setInterval> | null = null
+    if (portablePermit !== null) {
+      permitMonitor = setInterval(() => { void isAuthorized() }, permitMonitorMs)
+      permitMonitor.unref?.()
+    }
+    try {
+    const interruptedResult = (): ProviderLaneDispatchResult => {
+      // This terminal row is host lifecycle metadata only. It does not admit
+      // late provider output, workspace state, or a completion receipt.
+      if (!lifecycleClosed) {
+        lifecycleClosed = true
+        deps.journal.terminal(turnKey, "interrupted", "owner_interrupted")
+      }
+      return {
+        ok: false,
+        reason: "interrupted",
+        error: lane.failureMessage("interrupted", revocationReason === "portable_authority_revoked"
+          ? "Portable workspace authority changed before the turn reached a safe point."
+          : "The provider turn was quiesced before it reached a safe point."),
+      }
+    }
+    if (!isAuthorized()) return interruptedResult()
     let specProjection: SpecLaneTurnProjection | undefined
     try {
       specProjection = deps.specWorkflow?.beforeTurn(lane.laneRef, request)
@@ -392,6 +589,7 @@ export const makeProviderLaneDispatcher = (
     const projectLaneEvent = lane.makeTurnProjector?.(turnContext)
     // CUT-11 (#8691): register the root turn on the canonical live agent
     // graph before its stream events arrive.
+    if (!isAuthorized()) return interruptedResult()
     deps.liveAgentGraph.beginTurn({
       turnRef: request.turnRef,
       threadRef: request.threadRef,
@@ -400,8 +598,11 @@ export const makeProviderLaneDispatcher = (
     // GIT-1 (#8781): checkpoint the pre-turn workspace state as a hidden ref
     // before the model can write files. Awaited so the snapshot cannot race
     // the turn's first edit.
+    if (!isAuthorized()) return interruptedResult()
     await deps.captureTurnCheckpoint(request.threadRef, request.turnRef, "turn_start")
+    if (!isAuthorized()) return interruptedResult()
     const emitTurnEvent = (turnEvent: ClaudeLocalEvent): void => {
+        if (!isAuthorized()) return
         // CUT-11 (#8691): fold the SAME typed envelope the renderer receives
         // into the canonical live agent graph.
         deps.liveAgentGraph.applyEvent(request.threadRef, {
@@ -492,6 +693,7 @@ export const makeProviderLaneDispatcher = (
     }
     let result: ProviderLaneTurnResult
     try {
+      if (!isAuthorized()) return interruptedResult()
       result = await lane.runTurn({
         request,
         model: requestedModel,
@@ -506,7 +708,8 @@ export const makeProviderLaneDispatcher = (
       emitTurnEvent({ kind: "turn_failed", reason: "session_failed", detail })
       result = { ok: false, reason: "session_failed", detail }
     }
-    if (specProjection !== undefined) {
+    if (!isAuthorized()) return interruptedResult()
+    if (specProjection !== undefined && isAuthorized()) {
       try {
         deps.specWorkflow?.afterTurn(lane.laneRef, request, specProjection)
       } catch {
@@ -514,10 +717,11 @@ export const makeProviderLaneDispatcher = (
       }
     }
     if (!result.ok) {
+      if (!isAuthorized()) return interruptedResult()
       textPersistence.flush()
       deps.localTurnFlushers.delete(textPersistence.flush)
       if (!(deps.isQuitting() && result.reason === "interrupted")) {
-        deps.journal.terminal(
+        guardedJournal.terminal(
           turnKey,
           result.reason === "interrupted" ? "interrupted" : "failed",
           result.reason === "interrupted" ? "owner_interrupted" : "failed",
@@ -529,6 +733,12 @@ export const makeProviderLaneDispatcher = (
         error: lane.failureMessage(result.reason, result.detail),
       }
     }
+    // Admit the completed checkpoint while the captured permit is current,
+    // then reauthorize again after the asynchronous host call. Final journal
+    // and receipt writes are synchronous and happen only after that check.
+    if (!isAuthorized()) return interruptedResult()
+    await deps.captureTurnCheckpoint(request.threadRef, request.turnRef, "turn_completed")
+    if (!isAuthorized()) return interruptedResult()
     textPersistence.complete(result.text.slice(0, CLAUDE_LOCAL_FINAL_TEXT_LIMIT))
     deps.localTurnFlushers.delete(textPersistence.flush)
     const finalMeta = lane.finalMeta({
@@ -537,20 +747,25 @@ export const makeProviderLaneDispatcher = (
       durationMs: Date.now() - startedAt,
     })
     const assistantKeys = new Set(
-      deps.journal.get(turnKey)?.assistantSegments.map(segment => segment.key) ?? [],
+      guardedJournal.get(turnKey)?.assistantSegments.map(segment => segment.key) ?? [],
     )
     for (const assistant of store.open(request.threadRef)?.notes.filter(note => assistantKeys.has(note.key)) ?? []) {
       store.upsert(request.threadRef, { ...assistant, meta: finalMeta })
     }
     const thread = assistantKeys.size === 0 ? null : store.open(request.threadRef)
-    deps.journal.terminal(turnKey, "completed", "completed")
-    // GIT-1 (#8781): completed-turn hidden-ref checkpoint.
-    await deps.captureTurnCheckpoint(request.threadRef, request.turnRef, "turn_completed")
+    guardedJournal.terminal(turnKey, "completed", "completed")
+    if (!isAuthorized()) return interruptedResult()
     lane.completed?.(request)
     return thread === null
       ? { ok: false, error: "That conversation no longer exists.", failureCause: "host_thread_missing" }
       : { ok: true, thread }
+    } finally {
+      if (permitMonitor !== null) clearInterval(permitMonitor)
+      deps.localTurnFlushers.delete(textPersistence.flush)
+      activeTurns.delete(key)
+      reachSafePoint()
+    }
   }
 
-  return { dispatchTurn }
+  return { dispatchTurn, quiesce, dispose: quiesce }
 }

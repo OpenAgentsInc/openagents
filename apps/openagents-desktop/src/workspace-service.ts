@@ -20,6 +20,7 @@ import type {
 import {
   makeWorkspaceSearchHost,
   type WorkspaceSearchHost,
+  type WorkspaceSearchQuiesceResult,
   type WorkspaceSearchTask,
 } from "./workspace-search-host.ts"
 import { desktopWorkerUrl } from "./desktop-worker-location.ts"
@@ -37,6 +38,10 @@ import type {
   IdeLanguageStopRequest,
   IdeLanguageStopResponse,
 } from "./ide/language-contract.ts"
+import type {
+  IdePortableMutationAuthority,
+  IdePortableMutationPermit,
+} from "./ide/portable-mutation-authority.ts"
 
 const maxEntries = 120
 const maxBytes = 240_000
@@ -278,10 +283,18 @@ const defaultWorkspaceMutationIo: WorkspaceMutationIo = {
   deleteDirectory: absolutePath => rmdirSync(absolutePath),
 }
 
+type WorkspaceMutationAuthorization = () => boolean
+const mutationAuthorized: WorkspaceMutationAuthorization = () => true
+const mutationAuthorityUnavailable = (): DesktopWorkspaceOperationResult => ({
+  state: "unavailable",
+  message: "The current workspace placement does not permit this change.",
+})
+
 export const createWorkspaceEntry = (
   root: string,
   input: Readonly<{ parentRef: string; name: string; kind: "file" | "directory" }>,
   io: WorkspaceMutationIo = defaultWorkspaceMutationIo,
+  authorize: WorkspaceMutationAuthorization = mutationAuthorized,
 ): DesktopWorkspaceOperationResult => {
   const parentRef = workspacePathRef(input.parentRef)
   const name = workspaceEntryName(input.name)
@@ -301,6 +314,7 @@ export const createWorkspaceEntry = (
   const absolutePath = path.join(parent, name)
   try {
     if (!missingPath(absolutePath)) return { state: "conflict", message: "An entry with that name already exists." }
+    if (!authorize()) return mutationAuthorityUnavailable()
     if (input.kind === "directory") io.createDirectory(absolutePath)
     else io.createFile(absolutePath)
     const entry = safeWorkspaceEntry(root, pathRef)
@@ -316,6 +330,7 @@ export const renameWorkspaceEntry = (
   root: string,
   input: Readonly<{ pathRef: string; name: string; expectedRevisionRef: string }>,
   io: WorkspaceMutationIo = defaultWorkspaceMutationIo,
+  authorize: WorkspaceMutationAuthorization = mutationAuthorized,
 ): DesktopWorkspaceOperationResult => {
   let source: SafeWorkspaceEntry | null
   try {
@@ -337,6 +352,7 @@ export const renameWorkspaceEntry = (
   const target = path.join(path.dirname(source.absolutePath), name)
   try {
     if (!missingPath(target)) return { state: "conflict", message: "An entry with that name already exists." }
+    if (!authorize()) return mutationAuthorityUnavailable()
     io.rename(source.absolutePath, target)
     const entry = safeWorkspaceEntry(root, targetRef)
     return entry === null
@@ -351,6 +367,7 @@ export const deleteWorkspaceEntry = (
   root: string,
   input: Readonly<{ pathRef: string; expectedRevisionRef: string }>,
   io: WorkspaceMutationIo = defaultWorkspaceMutationIo,
+  authorize: WorkspaceMutationAuthorization = mutationAuthorized,
 ): DesktopWorkspaceOperationResult => {
   let entry: SafeWorkspaceEntry | null
   try {
@@ -363,6 +380,7 @@ export const deleteWorkspaceEntry = (
     return { state: "conflict", message: "That workspace entry changed before it could be deleted." }
   }
   try {
+    if (!authorize()) return mutationAuthorityUnavailable()
     if (entry.kind === "directory") io.deleteDirectory(entry.absolutePath)
     else io.deleteFile(entry.absolutePath)
     return { state: "deleted", pathRef: entry.pathRef }
@@ -375,6 +393,7 @@ export const moveWorkspaceEntry = (
   root: string,
   input: Readonly<{ pathRef: string; destinationParentRef: string; expectedRevisionRef: string }>,
   io: WorkspaceMutationIo = defaultWorkspaceMutationIo,
+  authorize: WorkspaceMutationAuthorization = mutationAuthorized,
 ): DesktopWorkspaceOperationResult => {
   let source: SafeWorkspaceEntry | null
   let destinationParent: string | null
@@ -401,6 +420,7 @@ export const moveWorkspaceEntry = (
   const target = path.join(destinationParent, source.name)
   try {
     if (!missingPath(target)) return { state: "conflict", message: "An entry with that name already exists." }
+    if (!authorize()) return mutationAuthorityUnavailable()
     io.rename(source.absolutePath, target)
     const entry = safeWorkspaceEntry(root, targetRef)
     return entry === null
@@ -415,6 +435,7 @@ export const copyWorkspaceEntry = (
   root: string,
   input: Readonly<{ pathRef: string; destinationParentRef: string; expectedRevisionRef: string }>,
   io: WorkspaceMutationIo = defaultWorkspaceMutationIo,
+  authorize: WorkspaceMutationAuthorization = mutationAuthorized,
 ): DesktopWorkspaceOperationResult => {
   let source: SafeWorkspaceEntry | null
   let destinationParent: string | null
@@ -438,6 +459,7 @@ export const copyWorkspaceEntry = (
   const target = path.join(destinationParent, source.name)
   try {
     if (!missingPath(target)) return { state: "conflict", message: "An entry with that name already exists." }
+    if (!authorize()) return mutationAuthorityUnavailable()
     io.copyFile(source.absolutePath, target)
     const entry = safeWorkspaceEntry(root, targetRef)
     return entry === null
@@ -452,6 +474,7 @@ export const duplicateWorkspaceEntry = (
   root: string,
   input: Readonly<{ pathRef: string; expectedRevisionRef: string }>,
   io: WorkspaceMutationIo = defaultWorkspaceMutationIo,
+  authorize: WorkspaceMutationAuthorization = mutationAuthorized,
 ): DesktopWorkspaceOperationResult => {
   let source: SafeWorkspaceEntry | null
   try {
@@ -476,6 +499,7 @@ export const duplicateWorkspaceEntry = (
   const target = path.join(path.dirname(source.absolutePath), name)
   try {
     if (!missingPath(target)) return { state: "conflict", message: "The duplicate name already exists." }
+    if (!authorize()) return mutationAuthorityUnavailable()
     io.copyFile(source.absolutePath, target)
     const entry = safeWorkspaceEntry(root, targetRef)
     return entry === null
@@ -876,6 +900,7 @@ export const saveWorkspaceDocument = (
     expectedRevisionRef: string
   }>,
   io: WorkspaceDocumentIo = defaultWorkspaceDocumentIo,
+  authorize: WorkspaceMutationAuthorization = mutationAuthorized,
 ): DesktopWorkspaceDocumentResult => {
   if (input.grantRef !== currentGrantRef) {
     return documentUnavailable("grant_revoked", "The workspace grant changed before that document could be saved.")
@@ -898,6 +923,9 @@ export const saveWorkspaceDocument = (
   const entry = documentEntry(root, input.pathRef)
   if ("state" in entry) return entry
   try {
+    if (!authorize()) {
+      return documentUnavailable("grant_revoked", "The current workspace placement does not permit this save.")
+    }
     io.replace(entry.absolutePath, bytes)
   } catch (error) {
     return permissionError(error)
@@ -919,6 +947,7 @@ export const saveWorkspaceDocumentAs = (
     content: string
   }>,
   io: WorkspaceDocumentIo = defaultWorkspaceDocumentIo,
+  authorize: WorkspaceMutationAuthorization = mutationAuthorized,
 ): DesktopWorkspaceDocumentResult => {
   if (input.grantRef !== currentGrantRef) {
     return documentUnavailable("grant_revoked", "The workspace grant changed before that document could be saved.")
@@ -958,6 +987,9 @@ export const saveWorkspaceDocumentAs = (
       : documentUnavailable("unavailable", "Save As never overwrites an existing workspace entry.")
   }
   try {
+    if (!authorize()) {
+      return documentUnavailable("grant_revoked", "The current workspace placement does not permit this save.")
+    }
     io.create(absolutePath, bytes)
   } catch (error) {
     if ((error as NodeJS.ErrnoException | null)?.code === "EEXIST") {
@@ -1126,6 +1158,7 @@ export const readWorkspaceFile = (root: string, requestedPath: string): DesktopW
 export const saveWorkspaceFile = (
   root: string,
   input: Readonly<{ path: string; content: string; expectedRevision: string }>,
+  authorize: WorkspaceMutationAuthorization = mutationAuthorized,
 ): DesktopWorkspaceSaveResult => {
   const resolved = workspaceFilePath(root, input.path)
   if (resolved === null) {
@@ -1144,6 +1177,9 @@ export const saveWorkspaceFile = (
 
   const temporary = path.join(path.dirname(resolved), `.${path.basename(resolved)}.${randomUUID()}.tmp`)
   try {
+    if (!authorize()) {
+      return { state: "unavailable", message: "The current workspace placement does not permit this save." }
+    }
     // `wx` avoids clobbering a pre-existing temporary name; rename is atomic
     // within the selected file's directory.
     writeFileSync(temporary, next, { encoding: "utf8", flag: "wx", mode: statSync(resolved).mode })
@@ -1183,7 +1219,8 @@ export type DesktopWorkspaceService = Readonly<{
   languageCancel: (input: IdeLanguageCancelRequest) => Promise<IdeLanguageCancelResponse>
   languageStop: (input: IdeLanguageStopRequest) => Promise<IdeLanguageStopResponse>
   languageSnapshot: () => Promise<IdeLanguageServiceSnapshot>
-  dispose: () => void
+  quiesceSearch: () => Promise<WorkspaceSearchQuiesceResult>
+  dispose: () => Promise<WorkspaceSearchQuiesceResult>
 }>
 
 export const WORKSPACE_WATCH_COALESCE_MS = 75
@@ -1209,6 +1246,8 @@ export const openWorkspaceService = (
     ) => Readonly<{ close: () => void }>
     searchHostFactory?: (root: string, grantRef: string) => WorkspaceSearchHost
     languageHostFactory?: (root: string, grantRef: string) => WorkspaceLanguageHost
+    mutationAuthority?: IdePortableMutationAuthority
+    monitorSearchAuthority?: (check: () => void) => Readonly<{ close: () => void }>
     mutationIo?: WorkspaceMutationIo
     documentIo?: WorkspaceDocumentIo
     reveal?: (absolutePath: string) => Promise<boolean> | boolean
@@ -1221,20 +1260,55 @@ export const openWorkspaceService = (
     root,
     grantRef,
     desktopWorkerUrl(import.meta.url, "workspace-search-worker.js"),
+    undefined,
+    {
+      ...(options.mutationAuthority === undefined ? {} : { mutationAuthority: options.mutationAuthority }),
+      ...(options.monitorSearchAuthority === undefined ? {} : { monitorAuthority: options.monitorSearchAuthority }),
+    },
   )
   const languageHost = options.languageHostFactory?.(root, grantRef) ?? makeWorkspaceLanguageHost(
     root,
     desktopWorkerUrl(import.meta.url, "language-utility-worker.js"),
+    grantRef,
+    options.mutationAuthority,
   )
+  const authorizeMutation = (): WorkspaceMutationAuthorization | null => {
+    const authority = options.mutationAuthority
+    if (authority === undefined) return mutationAuthorized
+    const result = authority.authorize(grantRef)
+    return result._tag === "Permitted"
+      ? () => authority.reauthorize(result.permit)
+      : null
+  }
   let disposed = false
+  let searchQuiesced = false
+  let searchQuiescePromise: Promise<WorkspaceSearchQuiesceResult> | null = null
   let epoch = 0
   let watcher: Readonly<{ close: () => void }> | null = null
+  let watcherPermit: IdePortableMutationPermit | null = null
+  let watcherAuthorityMonitor: Readonly<{ close: () => void }> | null = null
+  let watcherGeneration = 0
   let watchFlushTimer: Readonly<{ cancel: () => void }> | null = null
   let watchOverflow = false
   const pendingWatchPaths = new Set<string>()
   const listeners = new Set<(change: DesktopWorkspaceChange) => void>()
   const treeCache = new Map<string, DesktopWorkspaceTreePage>()
   const searchCache = new Map<string, DesktopWorkspaceSearchPage>()
+  const unavailableSearchTask = (message: string): WorkspaceSearchTask => ({
+    taskRef: `workspace.search.unavailable.${randomUUID()}`,
+    result: Promise.resolve({ state: "unavailable", message }),
+    cancel: () => undefined,
+  })
+  const captureSearchPermit = (): IdePortableMutationPermit | null | false => {
+    const authority = options.mutationAuthority
+    if (authority === undefined) return null
+    const authorization = authority.authorize(grantRef)
+    return authorization._tag === "Permitted" ? authorization.permit : false
+  }
+  const searchPermitIsCurrent = (permit: IdePortableMutationPermit | null | false): boolean =>
+    options.mutationAuthority === undefined || (
+      permit !== false && permit !== null && options.mutationAuthority.reauthorize(permit)
+    )
   const notify = (kind: DesktopWorkspaceChange["kind"], changedPathRef: string | null, pathRefs?: ReadonlyArray<string>) => {
     epoch += 1
     searchHost.cancelAll()
@@ -1249,7 +1323,14 @@ export const openWorkspaceService = (
   }
   const flushWatchChanges = () => {
     cancelWatchFlush()
-    if (disposed) return
+    if (disposed || searchQuiesced) return
+    if (watcher !== null && !searchPermitIsCurrent(watcherPermit)) {
+      closeWatcher()
+      searchHost.cancelAll()
+      searchCache.clear()
+      ensureWatcher()
+      return
+    }
     if (watchOverflow) {
       watchOverflow = false
       pendingWatchPaths.clear()
@@ -1286,19 +1367,51 @@ export const openWorkspaceService = (
     return { close: () => native.close() }
   }
   const ensureWatcher = () => {
-    if (watcher !== null || disposed || listeners.size === 0) return
+    if (watcher !== null || disposed || searchQuiesced || listeners.size === 0) return
+    const permit = captureSearchPermit()
+    if (!searchPermitIsCurrent(permit)) return
+    const generation = ++watcherGeneration
     try {
       watcher = (options.watchFactory ?? defaultWatchFactory)(root, pathRef => {
-        if (disposed) return
+        if (
+          disposed ||
+          searchQuiesced ||
+          generation !== watcherGeneration ||
+          !searchPermitIsCurrent(permit)
+        ) return
         enqueueWatchChange(pathRef)
       })
+      watcherPermit = permit === false ? null : permit
+      if (!searchPermitIsCurrent(permit)) {
+        closeWatcher()
+        return
+      }
+      if (permit !== null && permit !== false) {
+        const monitor = options.monitorSearchAuthority ?? (check => {
+          const timer = setInterval(check, 25)
+          timer.unref()
+          return { close: () => clearInterval(timer) }
+        })
+        watcherAuthorityMonitor = monitor(() => {
+          if (generation !== watcherGeneration || searchPermitIsCurrent(permit)) return
+          closeWatcher()
+          searchHost.cancelAll()
+          searchCache.clear()
+          ensureWatcher()
+        })
+      }
     } catch {
+      closeWatcher()
       notify("overflow", null)
     }
   }
   const closeWatcher = () => {
     const active = watcher
     watcher = null
+    watcherPermit = null
+    watcherGeneration += 1
+    watcherAuthorityMonitor?.close()
+    watcherAuthorityMonitor = null
     active?.close()
     cancelWatchFlush()
     watchOverflow = false
@@ -1324,11 +1437,17 @@ export const openWorkspaceService = (
       return page
     },
     search: request => {
-      if (disposed) return searchHost.start({ query: "", mode: request.mode, epoch })
+      if (disposed) return unavailableSearchTask("The selected workspace has been disposed.")
+      if (searchQuiesced) return unavailableSearchTask("Workspace search is quiesced on this host.")
+      const permit = captureSearchPermit()
+      if (!searchPermitIsCurrent(permit)) {
+        return unavailableSearchTask("The current workspace placement does not permit this search.")
+      }
       const query = request.query.trim().slice(0, 200)
       const offset = boundedInteger(request.offset, 0, maxSearchResults)
       const limit = Math.max(1, boundedInteger(request.limit, 40, maxSearchResults))
-      const key = `${request.mode}\0${revisionFor(Buffer.from(query))}\0${offset}\0${limit}\0${epoch}`
+      const permitKey = permit === null || permit === false ? "local" : permit.key
+      const key = `${request.mode}\0${revisionFor(Buffer.from(query))}\0${offset}\0${limit}\0${epoch}\0${permitKey}`
       const cached = searchCache.get(key)
       if (cached !== undefined) {
         return {
@@ -1342,44 +1461,59 @@ export const openWorkspaceService = (
       return {
         ...task,
         result: task.result.then(page => {
-          if (!disposed && epoch === startedEpoch && page.state === "available") searchCache.set(key, page)
+          if (!searchPermitIsCurrent(permit)) {
+            return { state: "unavailable" as const, message: "The workspace search authority changed before its result was admitted." }
+          }
+          if (!disposed && !searchQuiesced && epoch === startedEpoch && page.state === "available") searchCache.set(key, page)
           return page
         }),
       }
     },
     createEntry: request => {
       if (disposed) return { state: "unavailable", message: "The selected workspace has been disposed." }
-      const result = createWorkspaceEntry(root, request, options.mutationIo)
+      const authorize = authorizeMutation()
+      if (authorize === null) return mutationAuthorityUnavailable()
+      const result = createWorkspaceEntry(root, request, options.mutationIo, authorize)
       if (result.state === "created") notify("changed", result.entry.pathRef)
       return result
     },
     renameEntry: request => {
       if (disposed) return { state: "unavailable", message: "The selected workspace has been disposed." }
-      const result = renameWorkspaceEntry(root, request, options.mutationIo)
+      const authorize = authorizeMutation()
+      if (authorize === null) return mutationAuthorityUnavailable()
+      const result = renameWorkspaceEntry(root, request, options.mutationIo, authorize)
       if (result.state === "renamed") notify("changed", result.entry.pathRef)
       return result
     },
     moveEntry: request => {
       if (disposed) return { state: "unavailable", message: "The selected workspace has been disposed." }
-      const result = moveWorkspaceEntry(root, request, options.mutationIo)
+      const authorize = authorizeMutation()
+      if (authorize === null) return mutationAuthorityUnavailable()
+      const result = moveWorkspaceEntry(root, request, options.mutationIo, authorize)
       if (result.state === "renamed") notify("changed", result.entry.pathRef)
       return result
     },
     copyEntry: request => {
       if (disposed) return { state: "unavailable", message: "The selected workspace has been disposed." }
-      const result = copyWorkspaceEntry(root, request, options.mutationIo)
+      const authorize = authorizeMutation()
+      if (authorize === null) return mutationAuthorityUnavailable()
+      const result = copyWorkspaceEntry(root, request, options.mutationIo, authorize)
       if (result.state === "created") notify("changed", result.entry.pathRef)
       return result
     },
     duplicateEntry: request => {
       if (disposed) return { state: "unavailable", message: "The selected workspace has been disposed." }
-      const result = duplicateWorkspaceEntry(root, request, options.mutationIo)
+      const authorize = authorizeMutation()
+      if (authorize === null) return mutationAuthorityUnavailable()
+      const result = duplicateWorkspaceEntry(root, request, options.mutationIo, authorize)
       if (result.state === "created") notify("changed", result.entry.pathRef)
       return result
     },
     deleteEntry: request => {
       if (disposed) return { state: "unavailable", message: "The selected workspace has been disposed." }
-      const result = deleteWorkspaceEntry(root, request, options.mutationIo)
+      const authorize = authorizeMutation()
+      if (authorize === null) return mutationAuthorityUnavailable()
+      const result = deleteWorkspaceEntry(root, request, options.mutationIo, authorize)
       if (result.state === "deleted") notify("changed", result.pathRef)
       return result
     },
@@ -1391,13 +1525,17 @@ export const openWorkspaceService = (
       : openWorkspaceDocument(root, grantRef, request, options.documentIo),
     saveDocument: request => {
       if (disposed) return documentUnavailable("grant_revoked", "The selected workspace has been disposed.")
-      const result = saveWorkspaceDocument(root, grantRef, request, options.documentIo)
+      const authorize = authorizeMutation()
+      if (authorize === null) return documentUnavailable("grant_revoked", "The current workspace placement does not permit this save.")
+      const result = saveWorkspaceDocument(root, grantRef, request, options.documentIo, authorize)
       if (result.state === "saved") notify("changed", result.document.pathRef)
       return result
     },
     saveDocumentAs: request => {
       if (disposed) return documentUnavailable("grant_revoked", "The selected workspace has been disposed.")
-      const result = saveWorkspaceDocumentAs(root, grantRef, request, options.documentIo)
+      const authorize = authorizeMutation()
+      if (authorize === null) return documentUnavailable("grant_revoked", "The current workspace placement does not permit this save.")
+      const result = saveWorkspaceDocumentAs(root, grantRef, request, options.documentIo, authorize)
       if (result.state === "saved") notify("changed", result.document.pathRef)
       return result
     },
@@ -1427,7 +1565,9 @@ export const openWorkspaceService = (
     save: input => disposed
       ? { state: "unavailable", message: "The selected workspace has been disposed." }
       : (() => {
-          const result = saveWorkspaceFile(root, input)
+          const authorize = authorizeMutation()
+          if (authorize === null) return { state: "unavailable" as const, message: "The current workspace placement does not permit this save." }
+          const result = saveWorkspaceFile(root, input, authorize)
           if (result.state === "saved") {
             const relative = path.relative(root, result.file.path).split(path.sep).join("/")
             notify("changed", workspacePathRef(relative))
@@ -1442,15 +1582,24 @@ export const openWorkspaceService = (
     languageCancel: input => languageHost.cancel(input),
     languageStop: input => languageHost.stop(input),
     languageSnapshot: () => languageHost.snapshot(),
+    quiesceSearch: () => {
+      searchQuiesced = true
+      closeWatcher()
+      searchCache.clear()
+      if (searchQuiescePromise === null) searchQuiescePromise = searchHost.quiesce()
+      return searchQuiescePromise
+    },
     dispose: () => {
-      if (disposed) return
+      if (disposed) return searchQuiescePromise ?? searchHost.quiesce()
       disposed = true
+      searchQuiesced = true
       closeWatcher()
       listeners.clear()
       treeCache.clear()
       searchCache.clear()
-      searchHost.dispose()
+      searchQuiescePromise = searchHost.dispose()
       languageHost.dispose()
+      return searchQuiescePromise
     },
   }
 }

@@ -27,9 +27,13 @@ import { createHash } from "node:crypto"
 import { mkdtempSync, rmSync, lstatSync } from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { execFile } from "node:child_process"
+import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process"
 
 import { workspaceGitEnvironment } from "./git-process-environment.ts"
+import type {
+  IdePortableMutationAuthority,
+  IdePortableMutationPermit,
+} from "./ide/portable-mutation-authority.ts"
 import {
   TURN_CHECKPOINT_IRREVERSIBLE_EFFECTS,
   TURN_CHECKPOINT_MAX_DIFF_BYTES,
@@ -111,49 +115,32 @@ type ExecOptions = Readonly<{
 
 type ExecResult =
   | Readonly<{ ok: true; stdout: string; stdoutBytes: Buffer }>
-  | Readonly<{ ok: false; kind: "enoent" | "timeout" | "nonzero"; code: number | null }>
+  | Readonly<{
+      ok: false
+      kind: "enoent" | "timeout" | "nonzero" | "revoked" | "quiesced"
+      code: number | null
+    }>
+
+type GitSpawn = (
+  command: string,
+  args: ReadonlyArray<string>,
+  options: SpawnOptions,
+) => ChildProcess
+
+type Permit = IdePortableMutationPermit | null
+
+type GitRunner = (
+  args: ReadonlyArray<string>,
+  options: ExecOptions,
+  permit?: Permit,
+  mutates?: boolean,
+) => Promise<ExecResult>
 
 /**
  * Async, bounded git exec: turn-boundary captures run on the Electron main
  * process, so this seam must never block the event loop the way a spawnSync
  * host does. Credential prompts are disabled; the exit status is authority.
  */
-const runGit = (args: ReadonlyArray<string>, options: ExecOptions): Promise<ExecResult> =>
-  new Promise(resolve => {
-    const child = execFile(
-      "git",
-      [...args],
-      {
-        cwd: options.cwd,
-        timeout: gitTimeoutMs,
-        maxBuffer,
-        encoding: "buffer",
-        env: {
-          ...(options.env ?? workspaceGitEnvironment()),
-          GIT_TERMINAL_PROMPT: "0",
-        },
-      },
-      (error, stdout) => {
-        if (error !== null) {
-          const err = error as NodeJS.ErrnoException & { killed?: boolean; code?: unknown }
-          if (err.code === "ENOENT") return resolve({ ok: false, kind: "enoent", code: null })
-          if (err.killed === true) return resolve({ ok: false, kind: "timeout", code: null })
-          return resolve({
-            ok: false,
-            kind: "nonzero",
-            code: typeof err.code === "number" ? err.code : null,
-          })
-        }
-        const stdoutBytes = Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout ?? "")
-        resolve({ ok: true, stdout: stdoutBytes.toString("utf8"), stdoutBytes })
-      },
-    )
-    if (child.stdin !== null) {
-      if (options.input !== undefined) child.stdin.write(options.input)
-      child.stdin.end()
-    }
-  })
-
 const execRefusal = (result: Extract<ExecResult, { ok: false }>): TurnCheckpointError =>
   turnCheckpointError(result.kind === "enoent" ? "git_unavailable" : "operation_failed")
 
@@ -175,7 +162,11 @@ type SnapshotTree = Readonly<{
  * `write-tree`. Only object-database writes happen; the user's worktree,
  * index, and refs are read-only inputs.
  */
-const writeSnapshotTree = async (root: string): Promise<SnapshotTree | TurnCheckpointError> => {
+const writeSnapshotTree = async (
+  root: string,
+  runGit: GitRunner,
+  permit: Permit,
+): Promise<SnapshotTree | TurnCheckpointError> => {
   const listed = await runGit(
     ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
     { cwd: root },
@@ -208,10 +199,12 @@ const writeSnapshotTree = async (root: string): Promise<SnapshotTree | TurnCheck
       const staged = await runGit(
         ["update-index", "--add", "-z", "--stdin"],
         { cwd: root, env, input: `${admitted.join("\0")}\0` },
+        permit,
+        true,
       )
       if (!staged.ok) return execRefusal(staged)
     }
-    const written = await runGit(["write-tree"], { cwd: root, env })
+    const written = await runGit(["write-tree"], { cwd: root, env }, permit, true)
     if (!written.ok) return execRefusal(written)
     return {
       ok: true,
@@ -228,6 +221,8 @@ const commitTree = async (
   root: string,
   tree: string,
   message: string,
+  runGit: GitRunner,
+  permit: Permit,
 ): Promise<string | TurnCheckpointError> => {
   const head = await runGit(["rev-parse", "--verify", "--quiet", "HEAD"], { cwd: root })
   const committed = await runGit(
@@ -242,6 +237,8 @@ const commitTree = async (
         GIT_COMMITTER_EMAIL: "checkpoints@openagents.local",
       },
     },
+    permit,
+    true,
   )
   if (!committed.ok) return execRefusal(committed)
   return committed.stdout.trim()
@@ -260,13 +257,153 @@ export type DesktopTurnCheckpointService = Readonly<{
   commitStagedRevert: (threadRef: string) => Promise<TurnCheckpointCommitRevertResult>
   clearStagedRevert: (threadRef: string) => Promise<TurnCheckpointClearRevertResult>
   deleteThreadCheckpoints: (threadRef: string) => Promise<TurnCheckpointDeleteThreadResult>
+  quiesce: () => Promise<void>
+  dispose: () => Promise<void>
 }>
 
 export const openTurnCheckpointService = (options: Readonly<{
   resolveRoot: () => string | null
+  resolveGrantRef?: () => string | null
+  mutationAuthority?: IdePortableMutationAuthority
   onSignal?: (signal: TurnCheckpointSignal) => void
+  gitExecutable?: string
+  spawnGit?: GitSpawn
+  gitTimeoutMs?: number
+  beforeGitSpawn?: (args: ReadonlyArray<string>) => void
+  afterGitProcess?: (args: ReadonlyArray<string>) => void
 }>): DesktopTurnCheckpointService => {
   const stagedByThread = new Map<string, StagedTurnCheckpointRevert>()
+  const activeGit = new Set<ChildProcess>()
+  const activeGitSettled = new Map<ChildProcess, Promise<void>>()
+  const spawnGit = options.spawnGit ?? spawn
+  const mutationAuthority = options.mutationAuthority
+  let quiesced = false
+  let disposed = false
+
+  const terminateProcessTree = (child: ChildProcess): void => {
+    const pid = child.pid
+    if (pid !== undefined && process.platform !== "win32") {
+      try {
+        process.kill(-pid, "SIGKILL")
+        return
+      } catch {
+        // The process can exit between the authority check and cancellation.
+      }
+    }
+    try { child.kill("SIGKILL") } catch { /* already closed */ }
+  }
+
+  const permitIsCurrent = (permit: Permit): boolean =>
+    !quiesced && !disposed && (
+      mutationAuthority === undefined
+      || (permit !== null && mutationAuthority.reauthorize(permit))
+    )
+
+  const authorizeMutation = (): Permit | TurnCheckpointError => {
+    if (quiesced || disposed) return turnCheckpointError("operation_failed")
+    if (mutationAuthority === undefined) return null
+    const grantRef = options.resolveGrantRef?.() ?? null
+    if (grantRef === null) return turnCheckpointError("operation_failed")
+    const authorized = mutationAuthority.authorize(grantRef)
+    if (authorized._tag === "Refused") return turnCheckpointError("operation_failed")
+    return mutationAuthority.reauthorize(authorized.permit)
+      ? authorized.permit
+      : turnCheckpointError("operation_failed")
+  }
+
+  const runGit: GitRunner = (args, execOptions, permit = null, mutates = false) =>
+    new Promise(resolve => {
+      if (quiesced || disposed) {
+        resolve({ ok: false, kind: "quiesced", code: null })
+        return
+      }
+      if (mutates && !permitIsCurrent(permit)) {
+        resolve({ ok: false, kind: "revoked", code: null })
+        return
+      }
+      let child: ChildProcess
+      try {
+        options.beforeGitSpawn?.(args)
+        child = spawnGit(options.gitExecutable ?? "git", [...args], {
+          cwd: execOptions.cwd,
+          detached: process.platform !== "win32",
+          env: {
+            ...(execOptions.env ?? workspaceGitEnvironment()),
+            GIT_TERMINAL_PROMPT: "0",
+          },
+          stdio: ["pipe", "pipe", "ignore"],
+        })
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code
+        resolve({ ok: false, kind: code === "ENOENT" ? "enoent" : "nonzero", code: null })
+        return
+      }
+
+      activeGit.add(child)
+      let markSettled: () => void = () => undefined
+      activeGitSettled.set(child, new Promise<void>(resolve => { markSettled = resolve }))
+      const stdout: Buffer[] = []
+      let stdoutBytes = 0
+      let settled = false
+      let cancellation: "timeout" | "revoked" | "quiesced" | null = null
+      const timeout = setTimeout(() => {
+        cancellation = "timeout"
+        terminateProcessTree(child)
+      }, options.gitTimeoutMs ?? gitTimeoutMs)
+      const authorityPoll = mutates && mutationAuthority !== undefined
+        ? setInterval(() => {
+            if (permitIsCurrent(permit)) return
+            cancellation = quiesced || disposed ? "quiesced" : "revoked"
+            terminateProcessTree(child)
+          }, 10)
+        : null
+      const finish = (result: ExecResult): void => {
+        if (settled) return
+        settled = true
+        clearTimeout(timeout)
+        if (authorityPoll !== null) clearInterval(authorityPoll)
+        activeGit.delete(child)
+        activeGitSettled.delete(child)
+        markSettled()
+        try { options.afterGitProcess?.(args) } catch { /* observer defects are isolated */ }
+        resolve(result)
+      }
+
+      child.stdout?.on("data", (chunk: Buffer | string) => {
+        const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+        stdoutBytes += bytes.byteLength
+        if (stdoutBytes > maxBuffer) {
+          cancellation = "timeout"
+          terminateProcessTree(child)
+          return
+        }
+        stdout.push(bytes)
+      })
+      child.once("error", (error: NodeJS.ErrnoException) => {
+        finish({ ok: false, kind: error.code === "ENOENT" ? "enoent" : "nonzero", code: null })
+      })
+      child.once("close", code => {
+        if (cancellation !== null) {
+          finish({ ok: false, kind: cancellation, code: null })
+          return
+        }
+        if (mutates && !permitIsCurrent(permit)) {
+          finish({ ok: false, kind: quiesced || disposed ? "quiesced" : "revoked", code })
+          return
+        }
+        if (code !== 0) {
+          finish({ ok: false, kind: "nonzero", code })
+          return
+        }
+        const bytes = Buffer.concat(stdout)
+        finish({ ok: true, stdout: bytes.toString("utf8"), stdoutBytes: bytes })
+      })
+      if (child.stdin !== null) {
+        child.stdin.on("error", () => undefined)
+        if (execOptions.input !== undefined) child.stdin.write(execOptions.input)
+        child.stdin.end()
+      }
+    })
 
   // One mutation at a time: capture/stage/commit/delete interleavings would
   // otherwise race on refs and staged state. A simple promise chain is enough
@@ -369,26 +506,41 @@ export const openTurnCheckpointService = (options: Readonly<{
 
   const capture: DesktopTurnCheckpointService["capture"] = (input) =>
     serialized(async () => {
+      const permit = authorizeMutation()
+      if (permit !== null && "error" in permit) return permit
       const root = await repoRoot()
       if (typeof root !== "string") return root
-      const snapshot = await writeSnapshotTree(root)
+      const snapshot = await writeSnapshotTree(root, runGit, permit)
       if (!snapshot.ok) return snapshot
       const commit = await commitTree(
         root,
         snapshot.tree,
         `openagents checkpoint ${input.threadRef} ${input.turnRef} ${input.boundary}`,
+        runGit,
+        permit,
       )
       if (typeof commit !== "string") return commit
       const refName = checkpointRefName(input.threadRef, input.turnRef)
       // One ref per (thread, turn): the completion capture supersedes the
       // start capture for the same turn, matching turn-over-turn diffs.
-      const stored = await runGit(["update-ref", refName, commit], { cwd: root })
-      if (!stored.ok) return execRefusal(stored)
-      const latestStored = await runGit(
-        ["update-ref", checkpointLatestRefName(input.threadRef), commit],
-        { cwd: root },
+      const stored = await runGit(
+        ["update-ref", "--stdin"],
+        {
+          cwd: root,
+          input: [
+            "start",
+            `update ${refName} ${commit}`,
+            `update ${checkpointLatestRefName(input.threadRef)} ${commit}`,
+            "prepare",
+            "commit",
+            "",
+          ].join("\n"),
+        },
+        permit,
+        true,
       )
-      if (!latestStored.ok) return execRefusal(latestStored)
+      if (!stored.ok) return execRefusal(stored)
+      if (!permitIsCurrent(permit)) return turnCheckpointError("operation_failed")
       const record: TurnCheckpointRecord = {
         schema: "openagents.desktop.turn_checkpoint.v1",
         threadRef: input.threadRef,
@@ -455,6 +607,8 @@ export const openTurnCheckpointService = (options: Readonly<{
   const stageRevert: DesktopTurnCheckpointService["stageRevert"] = (threadRef, turnRef) =>
     serialized(async () => {
       if (stagedByThread.has(threadRef)) return turnCheckpointError("revert_already_staged")
+      const permit = authorizeMutation()
+      if (permit !== null && "error" in permit) return permit
       const root = await repoRoot()
       if (typeof root !== "string") return root
       const targetCommit = await resolveCheckpointCommit(root, threadRef, turnRef)
@@ -469,7 +623,7 @@ export const openTurnCheckpointService = (options: Readonly<{
       if (!latest.ok) return turnCheckpointError("checkpoint_missing")
       const latestCommit = latest.stdout.trim()
 
-      const snapshot = await writeSnapshotTree(root)
+      const snapshot = await writeSnapshotTree(root, runGit, permit)
       if (!snapshot.ok) return snapshot
 
       const plan = await revertPlan(root, targetCommit, snapshot.tree)
@@ -493,13 +647,18 @@ export const openTurnCheckpointService = (options: Readonly<{
         root,
         snapshot.tree,
         `openagents checkpoint ${threadRef} revert-baseline`,
+        runGit,
+        permit,
       )
       if (typeof baselineCommit !== "string") return baselineCommit
       const baselineStored = await runGit(
         ["update-ref", checkpointBaselineRefName(threadRef), baselineCommit],
         { cwd: root },
+        permit,
+        true,
       )
       if (!baselineStored.ok) return execRefusal(baselineStored)
+      if (!permitIsCurrent(permit)) return turnCheckpointError("operation_failed")
 
       const staged: StagedTurnCheckpointRevert = {
         threadRef,
@@ -530,13 +689,15 @@ export const openTurnCheckpointService = (options: Readonly<{
     serialized(async () => {
       const staged = stagedByThread.get(threadRef)
       if (staged === undefined) return turnCheckpointError("no_staged_revert")
+      const permit = authorizeMutation()
+      if (permit !== null && "error" in permit) return permit
       const root = await repoRoot()
       if (typeof root !== "string") return root
 
       // The worktree must still match the staged baseline in every planned
       // path: anything written since stage-time is uncheckpointed and would
       // be silently destroyed.
-      const snapshot = await writeSnapshotTree(root)
+      const snapshot = await writeSnapshotTree(root, runGit, permit)
       if (!snapshot.ok) return snapshot
       const drift = await changedPaths(root, staged.baselineCommit, snapshot.tree)
       if ("error" in drift) return drift
@@ -559,11 +720,18 @@ export const openTurnCheckpointService = (options: Readonly<{
         const temp = mkdtempSync(path.join(os.tmpdir(), "oa-turn-checkpoint-"))
         const env = { ...workspaceGitEnvironment(), GIT_INDEX_FILE: path.join(temp, "index") }
         try {
-          const loaded = await runGit(["read-tree", staged.targetCommit], { cwd: root, env })
+          const loaded = await runGit(
+            ["read-tree", staged.targetCommit],
+            { cwd: root, env },
+            permit,
+            true,
+          )
           if (!loaded.ok) return execRefusal(loaded)
           const restored = await runGit(
             ["checkout-index", "--force", "-z", "--stdin"],
             { cwd: root, env, input: `${restorePaths.join("\0")}\0` },
+            permit,
+            true,
           )
           if (!restored.ok) return execRefusal(restored)
         } finally {
@@ -573,8 +741,10 @@ export const openTurnCheckpointService = (options: Readonly<{
       let deletedCount = 0
       for (const entry of staged.plan) {
         if (entry.action !== "delete") continue
+        if (!permitIsCurrent(permit)) return turnCheckpointError("operation_failed")
         try {
           rmSync(path.join(root, entry.path), { force: true })
+          if (!permitIsCurrent(permit)) return turnCheckpointError("operation_failed")
           deletedCount += 1
         } catch {
           return turnCheckpointError("operation_failed")
@@ -585,8 +755,11 @@ export const openTurnCheckpointService = (options: Readonly<{
       const latestStored = await runGit(
         ["update-ref", checkpointLatestRefName(threadRef), staged.targetCommit],
         { cwd: root },
+        permit,
+        true,
       )
       if (!latestStored.ok) return execRefusal(latestStored)
+      if (!permitIsCurrent(permit)) return turnCheckpointError("operation_failed")
       stagedByThread.delete(threadRef)
       emit({
         kind: "revert_committed",
@@ -603,13 +776,20 @@ export const openTurnCheckpointService = (options: Readonly<{
     serialized(async () => {
       const staged = stagedByThread.get(threadRef)
       if (staged === undefined) return turnCheckpointError("no_staged_revert")
-      stagedByThread.delete(threadRef)
+      const permit = authorizeMutation()
+      if (permit !== null && "error" in permit) return permit
       const root = await repoRoot()
       if (typeof root === "string") {
-        // Best-effort baseline-ref cleanup; the abandoned stage changed
-        // nothing in the worktree.
-        await runGit(["update-ref", "-d", checkpointBaselineRefName(threadRef)], { cwd: root })
-      }
+        const cleared = await runGit(
+          ["update-ref", "-d", checkpointBaselineRefName(threadRef)],
+          { cwd: root },
+          permit,
+          true,
+        )
+        if (!cleared.ok) return execRefusal(cleared)
+      } else return root
+      if (!permitIsCurrent(permit)) return turnCheckpointError("operation_failed")
+      stagedByThread.delete(threadRef)
       return { ok: true }
     })
 
@@ -617,6 +797,8 @@ export const openTurnCheckpointService = (options: Readonly<{
     threadRef,
   ) =>
     serialized(async () => {
+      const permit = authorizeMutation()
+      if (permit !== null && "error" in permit) return permit
       const root = await repoRoot()
       if (typeof root !== "string") return root
       const listed = await runGit(
@@ -624,16 +806,54 @@ export const openTurnCheckpointService = (options: Readonly<{
         { cwd: root },
       )
       if (!listed.ok) return execRefusal(listed)
-      let deletedRefCount = 0
-      for (const refName of listed.stdout.split("\n")) {
-        const trimmed = refName.trim()
-        if (trimmed === "") continue
-        const removed = await runGit(["update-ref", "-d", trimmed], { cwd: root })
-        if (removed.ok) deletedRefCount += 1
+      const refNames = listed.stdout.split("\n").map(ref => ref.trim()).filter(ref => ref !== "")
+      if (refNames.length > 0) {
+        const removed = await runGit(
+          ["update-ref", "--stdin"],
+          {
+            cwd: root,
+            input: [
+              "start",
+              ...refNames.map(refName => `delete ${refName}`),
+              "prepare",
+              "commit",
+              "",
+            ].join("\n"),
+          },
+          permit,
+          true,
+        )
+        if (!removed.ok) return execRefusal(removed)
       }
+      if (!permitIsCurrent(permit)) return turnCheckpointError("operation_failed")
       stagedByThread.delete(threadRef)
-      return { ok: true, deletedRefCount }
+      return { ok: true, deletedRefCount: refNames.length }
     })
+
+  const quiesce = async (): Promise<void> => {
+    if (quiesced) {
+      await Promise.all([...activeGitSettled.values()])
+      return chain.then(() => undefined, () => undefined)
+    }
+    quiesced = true
+    const settling = [...activeGitSettled.values()]
+    for (const child of activeGit) terminateProcessTree(child)
+    await Promise.all(settling)
+    await chain.then(() => undefined, () => undefined)
+  }
+
+  const dispose = async (): Promise<void> => {
+    if (disposed) {
+      await Promise.all([...activeGitSettled.values()])
+      return chain.then(() => undefined, () => undefined)
+    }
+    disposed = true
+    quiesced = true
+    const settling = [...activeGitSettled.values()]
+    for (const child of activeGit) terminateProcessTree(child)
+    await Promise.all(settling)
+    await chain.then(() => undefined, () => undefined)
+  }
 
   return {
     capture,
@@ -644,5 +864,7 @@ export const openTurnCheckpointService = (options: Readonly<{
     commitStagedRevert,
     clearStagedRevert,
     deleteThreadCheckpoints,
+    quiesce,
+    dispose,
   }
 }

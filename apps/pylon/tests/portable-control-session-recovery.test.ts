@@ -1,5 +1,6 @@
 import { NodeTestDatabase } from "@openagentsinc/sqlite-runtime/test"
 import { afterEach, describe, expect, test } from "vite-plus/test"
+import { existsSync } from "node:fs"
 import { mkdir, mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -39,6 +40,133 @@ const passed = () => ({
 })
 
 describe("durable portable control-session restart recovery", () => {
+  test("binds destination activation to the staged runner reservation across lost acknowledgements", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pylon-portable-runner-reservation-"))
+    roots.push(root)
+    const workspace = join(root, "workspace")
+    await mkdir(workspace, { recursive: true })
+    const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), {
+      PYLON_HOME: join(root, "pylon"),
+    })
+    const executor: ControlSessionExecutor = async input => {
+      await new Promise<never>((_resolve, reject) => {
+        if (input.abortSignal.aborted) return reject(new Error("settled"))
+        input.abortSignal.addEventListener("abort", () => reject(new Error("settled")), { once: true })
+      })
+      return {
+        commandCount: 0,
+        devCheck: passed(),
+        editedFileCount: 0,
+        eventCount: 0,
+        externalSessionRef: null,
+        responseDigestRef: null,
+        totalTokens: 0,
+      }
+    }
+    const actions = createControlSessionActions({ env: {}, executor, summary })
+    const run = await actions.spawn({
+      type: "session.spawn",
+      adapter: "codex",
+      worktreePath: workspace,
+      objective: "runner reservation work",
+      verify: ["true"],
+    })
+    const sessionRef = "session.port03.runner_reservation"
+    const sourceAttachmentRef = "attachment.port03.runner_reservation.1"
+    const agentRef = "agent.port03.runner_reservation.root"
+    actions.portable.bind({
+      sessionRef,
+      attachmentRef: sourceAttachmentRef,
+      generation: 1,
+      agents: [{ agentRef, controlSessionRef: run.sessionRef }],
+    })
+    await actions.portable.quiesce({
+      sessionRef,
+      attachmentRef: sourceAttachmentRef,
+      generation: 1,
+      agentRefs: [agentRef],
+    })
+    const checkpoint = await actions.portable.checkpointSource({
+      sessionRef,
+      attachmentRef: sourceAttachmentRef,
+      generation: 1,
+      agentRefs: [agentRef],
+    })
+    await actions.portable.cleanup({
+      sessionRef,
+      attachmentRef: sourceAttachmentRef,
+      generation: 1,
+      agentRefs: [agentRef],
+      checkpointRef: "checkpoint.port03.runner_reservation.1",
+      checkpointDigest: `sha256:${"a".repeat(64)}`,
+    })
+    const stageInput = {
+      sessionRef,
+      destinationRunnerSessionReservationRef: "runner-session-reservation.port03.bound",
+      sourceAttachmentRef,
+      sourceGeneration: 1,
+      destinationAttachmentRef: "attachment.port03.runner_reservation.2",
+      destinationGeneration: 2,
+      checkpointRef: "checkpoint.port03.runner_reservation.1",
+      agentRefs: [agentRef],
+      workingDirectory: checkpoint.workingDirectory,
+      workspaceRef: checkpoint.workspaceRef,
+    }
+    const staged = await actions.portable.stageDestination(stageInput)
+    expect(await actions.portable.stageDestination(stageInput)).toEqual(staged)
+    await expect(actions.portable.stageDestination({
+      ...stageInput,
+      destinationRunnerSessionReservationRef: "runner-session-reservation.port03.mismatch",
+    })).rejects.toThrow("conflicts with its runner reservation")
+    const activationInput = {
+      sessionRef,
+      destinationRunnerSessionReservationRef: stageInput.destinationRunnerSessionReservationRef,
+      destinationAttachmentRef: stageInput.destinationAttachmentRef,
+      destinationGeneration: stageInput.destinationGeneration,
+      checkpointRef: stageInput.checkpointRef,
+      agentRefs: stageInput.agentRefs,
+      workingDirectory: stageInput.workingDirectory,
+      workspaceRef: stageInput.workspaceRef,
+      authorityEvidenceRef: "authority.port03.runner_reservation.2",
+      authenticationPolicyRef: "policy.portable.destination.owner_local.v1",
+      capabilityLeaseRefs: ["lease.port03.runner_reservation.2"],
+    }
+    await expect(actions.portable.activateDestination({
+      ...activationInput,
+      destinationRunnerSessionReservationRef: "runner-session-reservation.port03.mismatch",
+    })).rejects.toThrow("does not match its stage")
+    const activated = await actions.portable.activateDestination(activationInput)
+    expect(activated.helpers.find(helper => helper.kind === "pty")).toMatchObject(
+      existsSync("/usr/bin/python3") && existsSync("/bin/sh")
+        ? { readiness: "ready" }
+        : {
+            readiness: "unsupported",
+            omissionRef: "omission.pylon.portable.pty.exact-runtime-unavailable",
+          },
+    )
+    expect(activated.helpers.find(helper => helper.kind === "watcher")).toMatchObject({ readiness: "ready" })
+    expect(activated.helpers.find(helper => helper.kind === "lsp")).toMatchObject({
+      kind: "lsp",
+      readiness: "ready",
+      omissionRef: null,
+      versionRef:
+        "version.pylon.portable.lsp.typescript-language-server-5.3.0.typescript-5.9.2.v1",
+    })
+    for (const kind of ["dap", "native"] as const) {
+      expect(activated.helpers.find(helper => helper.kind === kind)).toEqual({
+        kind,
+        readiness: "unsupported",
+        instanceRef: null,
+        versionRef: null,
+        omissionRef: "omission.pylon.portable.installed-executable-profile-authority.missing",
+        evidenceRefs: [],
+      })
+    }
+    expect(await actions.portable.stageDestination(stageInput)).toEqual(staged)
+    expect(await actions.portable.activateDestination(activationInput)).toEqual(activated)
+    await actions.portable.shutdownHelpers?.()
+  })
+
   test("reconstructs the exact root/child binding as non-accepting and fences the stale process epoch", async () => {
     const root = await mkdtemp(join(tmpdir(), "pylon-portable-control-restart-"))
     roots.push(root)
@@ -124,6 +252,15 @@ describe("durable portable control-session restart recovery", () => {
       portableRuntimeInstanceRef: "runtime.pylon.port03.after_restart",
       summary,
     })
+    expect(() => restarted.portable.bind({
+      sessionRef,
+      attachmentRef,
+      generation: 1,
+      agents: before.agents.map(agent => ({
+        agentRef: agent.agentRef,
+        controlSessionRef: agent.controlSessionRef,
+      })),
+    })).not.toThrow()
     const recoveryInput = {
       recoveryRef: "recovery.port03.restart.binding.1",
       sessionRef,

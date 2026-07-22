@@ -81,7 +81,34 @@ import {
   type ControlSessionSpawnCommand,
   type ControlSessionProjection,
 } from './node/control-sessions.js'
-import { PylonPortableSessionOperationLedger } from './portable-session-operation-ledger.js'
+import {
+  PylonPortableSessionOperationLedger,
+  type PylonPortableControlBinding,
+} from './portable-session-operation-ledger.js'
+import { registerPylonOwnerLocalExecutionTarget } from './portable-owner-local-target-startup.js'
+import {
+  openPylonOwnerLocalCapabilityWorkerStartup,
+  type PylonOwnerLocalCapabilityWorkerStartup,
+} from './portable-owner-local-capability-worker-startup.js'
+import {
+  isPylonOwnerLocalCapabilityIngressEnabled,
+  makePylonOwnerLocalCapabilityIngress,
+} from './portable-owner-local-capability-ingress.js'
+import { makePylonPortableCheckpointArtifactClient } from './portable-checkpoint-artifact-client.js'
+import {
+  makePylonPortableTargetBindingClient,
+  type PylonPortableTargetBindingClient,
+} from './portable-target-pylon-binding-client.js'
+import {
+  openPylonPortablePhaseProductionWorker,
+  portablePhaseWorkerInstanceRef,
+  pylonPrivatePortablePhaseContexts,
+} from './portable-phase-production.js'
+import {
+  makeDurablePylonPortablePhaseTargetResolver,
+  openPylonPortablePhaseContextAdmissionStore,
+  type PylonPortablePhaseContextAdmissionStore,
+} from './portable-phase-context-admission.js'
 import { resolveCloudControlConfig } from './cloud-control-client.js'
 import { makeCloudControlSessionExecutor } from './openagents-cloud-provider.js'
 import { collectPylonContextProjection } from './context-projection.js'
@@ -685,11 +712,13 @@ function makeAssignmentActions() {
   }
 }
 
-function makeSessionActions(summary: ReturnType<typeof createBootstrapSummary>) {
-  const portableDatabase = openLegacySqliteDatabase(`${summary.paths.home}/portable-session-operations.sqlite`)
+function makeSessionActions(
+  summary: ReturnType<typeof createBootstrapSummary>,
+  portableLedger: PylonPortableSessionOperationLedger,
+) {
   return createControlSessionActions({
     summary,
-    portableLedger: new PylonPortableSessionOperationLedger(portableDatabase),
+    portableLedger,
     // #4997: build the OpenAgents Cloud executor from env when a cloud control
     // plane is configured (OA_CLOUD_CONTROL_URL + OA_CLOUD_CONTROL_TOKEN). When
     // it is not, this returns null and cloud lanes degrade to the local
@@ -898,7 +927,16 @@ const runHeadlessNode = Effect.gen(function* () {
   const controlToken = yield* Effect.promise(() => ensureControlToken(bootstrapSummary.paths.home))
   const controlPort = Number(Runtime.env.PYLON_CONTROL_PORT ?? defaultControlPort)
   const headlessAssignmentActions = makeAssignmentActions()
-  const headlessSessionActions = makeSessionActions(bootstrapSummary)
+  const portableDatabase = yield* Effect.try({
+    try: () => openLegacySqliteDatabase(`${bootstrapSummary.paths.home}/portable-session-operations.sqlite`),
+    catch: () => new Error('failed to open owner-local portable session operation ledger'),
+  })
+  yield* Effect.addFinalizer(() => Effect.sync(() => portableDatabase.close()))
+  const portableLedger = new PylonPortableSessionOperationLedger(portableDatabase)
+  const headlessSessionActions = makeSessionActions(bootstrapSummary, portableLedger)
+  yield* Effect.addFinalizer(() =>
+    Effect.promise(() => headlessSessionActions.portable.shutdownHelpers?.() ?? Promise.resolve()),
+  )
   const headlessExternalTailer = startExternalSessionTailer()
   const headlessSessionsWithExternal = wrapSessionsWithExternal(headlessSessionActions, headlessExternalTailer)
   const headlessIntentQueue = createIntentQueue({
@@ -916,6 +954,125 @@ const runHeadlessNode = Effect.gen(function* () {
       env: Runtime.env,
     })
   const presenceClientOptions = currentPresenceClientOptions()
+  let portablePhaseContextStore: PylonPortablePhaseContextAdmissionStore | null = null
+  let portableTargetBindingClient: PylonPortableTargetBindingClient | null = null
+  let portableCapabilityWorkerStartup: PylonOwnerLocalCapabilityWorkerStartup | null = null
+  let portableWorkerScope: Readonly<{ targetRef: string; sessionRef: string }> | null = null
+  if (Runtime.env.PYLON_PORTABLE_PHASE_WORKER === '1') {
+    const targetRef = Runtime.env.PYLON_PORTABLE_PHASE_TARGET_REF
+    const sessionRef = Runtime.env.PYLON_PORTABLE_PHASE_SESSION_REF
+    const agentToken = presenceClientOptions.agentToken
+    if (
+      presenceBaseUrl === undefined ||
+      agentToken === undefined ||
+      targetRef === undefined ||
+      sessionRef === undefined
+    ) {
+      return yield* Effect.fail(
+        new Error('portable phase worker requires authenticated base URL and exact target and session refs'),
+      )
+    }
+    const portablePhaseAdmission = yield* Effect.tryPromise({
+      try: () => openPylonPortablePhaseContextAdmissionStore({
+        databasePath: `${bootstrapSummary.paths.home}/portable-phase/context-admissions.sqlite`,
+        pylonRef: localState.identity.pylonRef,
+        targetRef,
+      }),
+      catch: () => new Error('failed to open private portable phase context admission store'),
+    })
+    portablePhaseContextStore = portablePhaseAdmission.store
+    portableWorkerScope = { targetRef, sessionRef }
+    portablePhaseAdmission.store.purge()
+    yield* Effect.addFinalizer(() => Effect.sync(() => portablePhaseAdmission.close()))
+    let portableControlBinding: PylonPortableControlBinding | undefined
+    yield* Effect.tryPromise({
+      try: () => registerPylonOwnerLocalExecutionTarget({
+        pylonRef: localState.identity.pylonRef,
+        targetRef,
+        sessionRef,
+        ledger: portableLedger,
+        lifecycle: headlessSessionActions.portable,
+        registry: pylonPrivatePortablePhaseContexts,
+        onBinding: binding => {
+          portableControlBinding = binding
+        },
+      }),
+      catch: () => new Error('failed to register exact owner-local portable phase target'),
+    })
+    if (portableControlBinding === undefined) {
+      return yield* Effect.fail(new Error('portable phase worker has no exact local target binding'))
+    }
+    const exactPortableControlBinding = portableControlBinding
+    const workerInstanceRef = portablePhaseWorkerInstanceRef(localState.identity.pylonRef, targetRef)
+    portableTargetBindingClient = makePylonPortableTargetBindingClient({
+      agentToken,
+      baseUrl: presenceBaseUrl,
+      pylonRef: localState.identity.pylonRef,
+      sessionRef,
+      targetRef,
+      workerInstanceRef,
+      binding: exactPortableControlBinding,
+    })
+    const targetBindingClient = portableTargetBindingClient
+    yield* Effect.addFinalizer(() => Effect.promise(() => targetBindingClient.revoke().catch(() => undefined)))
+    const durablePhaseResolver = makeDurablePylonPortablePhaseTargetResolver({
+      store: portablePhaseAdmission.store,
+      target: targetRef => pylonPrivatePortablePhaseContexts.target(targetRef),
+    })
+    const portablePhaseWorker = yield* Effect.tryPromise({
+      try: () => {
+        const artifactTransport = Runtime.env.PYLON_PORTABLE_CHECKPOINT_ARTIFACT_TRANSPORT === '1'
+          ? makePylonPortableCheckpointArtifactClient({
+              agentToken,
+              baseUrl: presenceBaseUrl,
+              pylonRef: localState.identity.pylonRef,
+              targetRef,
+            })
+          : undefined
+        return openPylonPortablePhaseProductionWorker({
+          agentToken,
+          baseUrl: presenceBaseUrl,
+          pylonRef: localState.identity.pylonRef,
+          targetRef,
+          workerInstanceRef,
+          stateDirectory: bootstrapSummary.paths.home,
+          resolver: durablePhaseResolver,
+          ...(artifactTransport === undefined ? {} : { artifactTransport }),
+          onTerminalAcknowledged: operationRef => {
+            portablePhaseAdmission.store.acknowledgeTerminal(operationRef)
+            portablePhaseAdmission.store.purge()
+          },
+          onFault: (errorRef) => logToUi(`[PortablePhase] Worker stopped: ${errorRef}`, 'info'),
+        })
+      },
+      catch: () => new Error('failed to configure portable phase worker'),
+    })
+    yield* Effect.addFinalizer(() => Effect.promise(() => portablePhaseWorker.close()))
+    portableCapabilityWorkerStartup = yield* Effect.try({
+      try: () => openPylonOwnerLocalCapabilityWorkerStartup({
+        agentToken,
+        baseUrl: presenceBaseUrl,
+        pylonHome: bootstrapSummary.paths.home,
+        pylonRef: localState.identity.pylonRef,
+        targetRef,
+        sessionRef,
+        workerInstanceRef,
+        binding: exactPortableControlBinding,
+        ledger: portableLedger,
+        authorityStore: portablePhaseAdmission.store,
+        targetBindingIsCurrent: () => portableTargetBindingClient?.isCurrent() === true,
+      }),
+      catch: () => new Error('failed to configure portable capability worker'),
+    })
+    const capabilityWorkerStartup = portableCapabilityWorkerStartup
+    yield* Effect.addFinalizer(() => Effect.promise(() => capabilityWorkerStartup.close()))
+    yield* logMessage(
+      runtime,
+      'info',
+      `[PortablePhase] Worker active for ${localState.identity.pylonRef} and ${targetRef}.`,
+      { transient: true },
+    )
+  }
   const fleetRunExecutionRemote = yield* Effect.try({
     try: () =>
       presenceClientOptions.agentToken === undefined || presenceBaseUrl === undefined
@@ -999,8 +1156,36 @@ const runHeadlessNode = Effect.gen(function* () {
   // action returns the unsupervised projection byte-for-byte unchanged.
   appleFmSupervisedLaunch =
     Runtime.env.PYLON_APPLE_FM_SUPERVISE === '1' ? createAppleFmSupervisedLaunch({ discover: { env: Runtime.env } }) : null
+  const activePortablePhaseContextStore = portablePhaseContextStore
+  const activePortableCapabilityWorkerStartup = portableCapabilityWorkerStartup
+  const ownerLocalCapabilityHandler = yield* Effect.try({
+    try: () => {
+      if (!isPylonOwnerLocalCapabilityIngressEnabled(Runtime.env)) return undefined
+      if (
+        activePortablePhaseContextStore === null ||
+        portableTargetBindingClient === null ||
+        portableWorkerScope === null
+      ) {
+        throw new Error('owner-local capability ingress requires the exact portable phase worker')
+      }
+      return makePylonOwnerLocalCapabilityIngress({
+        bearerToken: controlToken,
+        pylonHome: bootstrapSummary.paths.home,
+        pylonRef: localState.identity.pylonRef,
+        targetRef: portableWorkerScope.targetRef,
+        sessionRef: portableWorkerScope.sessionRef,
+        ledger: portableLedger,
+        authorityStore: activePortablePhaseContextStore,
+        targetBindingIsCurrent: () => portableTargetBindingClient?.isCurrent() === true,
+      })
+    },
+    catch: () => new Error('failed to configure owner-local capability ingress'),
+  })
   const controlServer = yield* startControlServer(runtime, {
     token: controlToken,
+    ...(ownerLocalCapabilityHandler === undefined
+      ? {}
+      : { ownerLocalCapabilityHandler }),
     actions: {
       ...retiredMoneyControlActions,
       ...(headlessAssignmentActions
@@ -1052,6 +1237,18 @@ const runHeadlessNode = Effect.gen(function* () {
       coordinator: makeCoordinatorActions(headlessCoordinatorHolder),
       fleetRuns: fleetRunActivation,
       fleetRunIntakeStatus: async () => fleetRunIntakePoller?.status() ?? disabledPylonFleetRunIntakePollerStatus(),
+      ...(activePortablePhaseContextStore === null
+        ? {}
+        : {
+            portablePhaseContextAdmit: async (input: Parameters<PylonPortablePhaseContextAdmissionStore['admit']>[0]) =>
+              activePortablePhaseContextStore.admit(input),
+          }),
+      ...(activePortableCapabilityWorkerStartup === null
+        ? {}
+        : {
+            portableCapabilityWorkerStatus: async () =>
+              activePortableCapabilityWorkerStartup.status(),
+          }),
     },
     port: controlPort,
     hostname: Runtime.env.PYLON_CONTROL_HOST ?? '127.0.0.1',
@@ -1081,8 +1278,18 @@ const runHeadlessNode = Effect.gen(function* () {
     },
     heartbeat: {
       baseUrl: presenceBaseUrl,
-      register: () => registerPylon(bootstrapSummary, currentPresenceClientOptions()),
-      heartbeat: () => sendHeartbeat(bootstrapSummary, currentPresenceClientOptions()),
+      register: async () => {
+        const registration = await registerPylon(bootstrapSummary, currentPresenceClientOptions())
+        await portableTargetBindingClient?.admitOrRenew()
+        await portableCapabilityWorkerStartup?.reconcile()
+        return registration
+      },
+      heartbeat: async () => {
+        const heartbeat = await sendHeartbeat(bootstrapSummary, currentPresenceClientOptions())
+        await portableTargetBindingClient?.admitOrRenew()
+        await portableCapabilityWorkerStartup?.reconcile()
+        return heartbeat
+      },
     },
   })
   if (presenceBaseUrl && Runtime.env.PYLON_ASSIGNMENT_WORKER === '1') {

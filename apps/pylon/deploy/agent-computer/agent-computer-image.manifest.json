@@ -96,10 +96,71 @@
       "note": "The CX-3 in-VM codex_app_server lane (turn-runner `codexTurn` block: codex exec --json under the broker-redeemed scratch CODEX_HOME, exact usage receipt with tokenChargeMetered:false) is wired and fixture-proven in-repo; its live rung needs this binary baked + one real in-VM turn."
     },
     "portableSessionControl": {
-      "status": "checkpoint_materializer_and_continuation_source_wired_rebake_pending",
+      "status": "destination_activation_and_signed_lsp_source_wired_rebake_pending",
       "source": "apps/pylon/deploy/agent-computer/portable-session-control.ts",
       "guestInstallPath": "/opt/agent/portable-session-control",
       "contract": "fixed PORT-03 stage/materialize/activate/continue/quiesce/checkpoint/export/abort/reclaim/wipeCapability protocol; checkpoint and capability bytes plus private continuation tasks cross only authenticated bounded seams; no arbitrary command surface",
+      "helperProfile": {
+        "schema": "openagents.portable_guest_helper_profile.v1",
+        "watcher": "ready only after the pinned Node 24 recursive fs.watch process writes its generation-bound ready handshake; activation replay checks process liveness; quiesce and reclaim terminate it",
+        "pty": "unsupported: no admitted PTY helper is present in this image",
+        "lsp": "ready only after the npm-signature-verified TypeScript language server returns an LSP initialize response and reports the pinned TypeScript version; activation replay checks process liveness; quiesce and reclaim terminate it",
+        "dap": "unsupported: debugpy 1.8.21 has an exact PyPI hash but no registry signature or PEP 740 provenance for the selected Linux x64 wheel, so no debug-adapter profile or binary is admitted into this image",
+        "native": "unsupported: the TypeScript controller is not a native helper"
+      },
+      "managedHelperArtifacts": {
+        "typescriptLsp": {
+          "admissionState": "source_wired_rebake_pending",
+          "artifactRef": "artifact.npm.typescript-language-server.5_3_0.sha256-398cacc17fff2108652e7b4050e3182008d17063246b3fea7dcf5fae2ce1560e",
+          "profileRef": "profile.agent-computer.typescript-lsp.v1",
+          "version": "5.3.0",
+          "sourceReleaseRef": "github.typescript-language-server.v5_3_0.commit.589044479e4bc2bffb796b593242136f5323b582",
+          "registryIntegrity": "sha512-5puofxZHgFdAYtfNpmwCAvgtaYgg8wrUnH30m7Ze3QuguId5RNRadKASpOpyDxTyUdAF51FjhTdjntLw/EuWcQ==",
+          "tarballSha256": "398cacc17fff2108652e7b4050e3182008d17063246b3fea7dcf5fae2ce1560e",
+          "tarballSha256Role": "Registry provenance only. The installed bytes use package-lock sha512 integrity and npm signature verification.",
+          "signatureVerification": "The bake runs npm audit signatures and requires invalid=[] and missing=[] before it admits the installed package tree.",
+          "license": "Apache-2.0",
+          "licenseNoticePath": "/opt/agent/typescript-lsp/node_modules/typescript-language-server/LICENSE",
+          "nodeAbi": "node-v24.13.1-linux-x64",
+          "typescript": {
+            "version": "5.9.3",
+            "registryIntegrity": "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==",
+            "tarballSha256": "10e108c9cf7d5f2879053dff18515fb405abf2ccef63eaaf017d9c571687a1d3",
+            "tarballSha256Role": "Registry provenance only. The installed bytes use package-lock sha512 integrity and npm signature verification.",
+            "license": "Apache-2.0",
+            "licenseNoticePath": "/opt/agent/typescript-lsp/node_modules/typescript/LICENSE.txt"
+          },
+          "command": "/usr/local/bin/node",
+          "argv": [
+            "/opt/agent/typescript-lsp/node_modules/typescript-language-server/lib/cli.mjs",
+            "--stdio"
+          ],
+          "protocolHandshake": "LSP initialize response plus $/typescriptVersion version=5.9.3",
+          "liveness": "generation-bound wrapper PID, child-exit coupling, and ready-file handshake",
+          "cleanup": "LSP shutdown, wrapper-enforced child termination, and ready/state file removal",
+          "target": {
+            "platform": "linux",
+            "arch": "x64"
+          }
+        },
+        "debugpyDapCandidate": {
+          "admissionState": "unadmitted_unsigned_registry_artifact",
+          "artifactRef": "artifact.pypi.debugpy.1_8_21.sha256-0fddfdc130ac6d8bfc0415b0409822fa901c8f310e5c945ac5653a0352532344",
+          "version": "1.8.21",
+          "wheel": "debugpy-1.8.21-cp310-cp310-manylinux_2_34_x86_64.whl",
+          "registryIntegrity": "sha256:0fddfdc130ac6d8bfc0415b0409822fa901c8f310e5c945ac5653a0352532344",
+          "license": "MIT",
+          "requiresPython": ">=3.8",
+          "target": {
+            "platform": "linux",
+            "arch": "x64",
+            "pythonAbi": "cp310-cp310-manylinux_2_34_x86_64"
+          },
+          "blocker": "PyPI returns no PEP 740 provenance for the selected wheel and publishes no registry signature. A hash does not satisfy the signed-artifact admission rule.",
+          "installed": false,
+          "profileRef": null
+        }
+      },
       "bakeReceiptField": "portableSessionControlSha256",
       "portableSessionControlSha256": "820f18c5ea9b24f072f9e41755881b8235ab5e3835e00c7793780d4ddb659437",
       "liveBootProof": {
@@ -111,7 +172,7 @@
         "provisionReceiptDigest": "sha256:371df018106efd86d8e39796956ddac881b8ea3cd5d1b68ee480ca21819e08b1",
         "cleanupReceiptDigest": "sha256:1dfa54ec2d6fd22171182d3ebbc36094a593b5b37cfbfae685560d07826ae399"
       },
-      "note": "The recorded digest proves the prior capability controller image only. Source now also verifies and reverse-exports a bounded Git-bundle/post-image tar.zst (including safe relative symlinks), compensates failed prepares, reconciles missing-VM teardown replay, and runs one cursor-fenced oa-workroomd/Codex turn for the canonical root and each child with refs-only receipts. Re-bake and a full live chain are required before updating portableSessionControlSha256 or claiming PORT-03 completion."
+      "note": "The recorded digest proves the prior capability controller image only. Source now supervises a generation-bound recursive Node watcher and npm-signature-verified TypeScript LSP. PTY, DAP, and native helpers remain explicit unsupported omissions. The LSP is typescript-language-server, not tsserver. debugpy remains an uninstalled candidate because its exact PyPI wheel has no signature or PEP 740 provenance. Re-bake and a full live chain are required before updating portableSessionControlSha256 or claiming managed LSP availability."
     },
     "scratchPolicy": "per-work-context-disposable",
     "scratchWipeReceiptRequired": true,
