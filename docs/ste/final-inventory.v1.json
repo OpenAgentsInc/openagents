@@ -15030,7 +15030,7 @@
     },
     {
       "path": "docs/analysis/README.md",
-      "sha256": "1a4bc619c723320465c144edd11949b57ae097d57d6648cac633ce3651a2b333",
+      "sha256": "808f2f3e7adb23698c0fbc2195def036e0a612215b7cd90672ccfbe446aeb610",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -15074,7 +15074,29 @@
     },
     {
       "path": "docs/analysis/coherence-ledger.md",
-      "sha256": "ac61cc8acb69566335774082ff49ec18a87db0ddf69f405c2c82f27055e1b0ea",
+      "sha256": "3f8fe8a540d23e75b05495c1d35eb13dbae24f33af60a78a1070614dc47c0d3d",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/analysis/complexity-rubric.md",
+      "sha256": "cd073051d36f5528addec0246312ab2b0c47b5f621007ec29f401c6aab3729d7",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -15118,7 +15140,7 @@
     },
     {
       "path": "docs/analysis/deterministic-coherence-screening.md",
-      "sha256": "ec712632121b196e873b18484d34f97eec52ef73b6783b6e00ff82fed0a51d01",
+      "sha256": "db4b56f84aa20c59dee4811e2b9461220da73bf3a0e67017df66ea18bdfa8d44",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

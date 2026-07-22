@@ -64,6 +64,13 @@ Grade bands mirror the rubric: A at 90 or more, B at 80, C at 70, D at
 `needs_review`. A `needs_review` thread gets the complete rubric
 assessment, including the hard-fail gates.
 
+Since metric `coherence-screen-v2`, every graded conversation also carries
+a deterministic complexity score and tier (C0-C4) per the
+[complexity rubric](./complexity-rubric.md). Read results as
+`coherence @ complexity`: a 100/A at C0 is a smoke result, not evidence.
+Aggregates report complexity-weighted coherence so trivial clean chats
+cannot mask incoherent complex ones.
+
 Known limits, accepted deliberately:
 
 - Quoted or pasted text can false-positive the lexicons.

@@ -44,6 +44,12 @@ const prompt = flagValue("--prompt") ?? "hey who are you";
 const workdir = flagValue("--workdir") ?? mkdtempSync(join(tmpdir(), "oa-headless-"));
 const jsonOut = flagValue("--json");
 const grade = args.includes("--grade");
+const sandboxFlag = flagValue("--sandbox") ?? "read-only";
+if (sandboxFlag !== "read-only" && sandboxFlag !== "workspace-write") {
+  console.error(`invalid --sandbox "${sandboxFlag}" (read-only | workspace-write)`);
+  process.exit(2);
+}
+const sandbox = sandboxFlag as "read-only" | "workspace-write";
 const timeoutMs = Number(flagValue("--timeout-ms") ?? 180_000);
 
 if (harness !== "codex") {
@@ -60,12 +66,12 @@ if (binary === undefined || binary === null) {
   process.exit(2);
 }
 
-console.log(`headless harness smoke: ${harness} model=${model} effort=${effort}`);
+console.log(`headless harness smoke: ${harness} model=${model} effort=${effort} sandbox=${sandboxFlag}`);
 console.log(`binary: ${binary}`);
 console.log(`workdir: ${workdir}`);
 
 const startedAt = new Date().toISOString();
-const result = spawnSync(binary, [...codexExecArgs({ model, effort, workdir, prompt })], {
+const result = spawnSync(binary, [...codexExecArgs({ model, effort, workdir, prompt, sandbox })], {
   stdio: ["ignore", "pipe", "pipe"],
   encoding: "utf8",
   timeout: timeoutMs,

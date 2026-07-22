@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vite-plus/test";
 import {
   aggregateBySource,
+  computeComplexity,
   detectUserSignals,
   parseClaudeConversation,
   parseCodexConversation,
@@ -167,5 +168,97 @@ describe("aggregateBySource", () => {
     expect(claude?.signalCounts.correction).toBe(1);
     expect(claude?.needsReview).toBe(0);
     expect(claude?.meanScore).toBe(90);
+  });
+});
+
+describe("computeComplexity", () => {
+  test("a single question with a direct answer is C0", () => {
+    const parsed = parseCodexConversation(
+      "/tmp/trivial.jsonl",
+      [
+        codexLine({ type: "user_message", message: "hey who are you" }),
+        codexLine({ type: "agent_message", message: "I am an assistant." }),
+      ].join("\n"),
+    );
+    const complexity = computeComplexity(parsed);
+    expect(complexity.score).toBe(0);
+    expect(complexity.tier).toBe("C0");
+  });
+
+  test("sub-agents, multiple models, and tool activity raise the tier", () => {
+    const lines: string[] = [
+      codexLine({ type: "user_message", message: "do the big multi-agent task" }),
+    ];
+    lines.push(codexLine({ model: "gpt-5.6-terra" }, "turn_context"));
+    lines.push(codexLine({ model: "gpt-5.6-mini" }, "turn_context"));
+    for (let index = 0; index < 3; index += 1) {
+      lines.push(codexLine({ type: "sub_agent_activity", agent_thread_id: `agent-${index}`, kind: "started" }));
+      lines.push(codexLine({ type: "sub_agent_activity", agent_thread_id: `agent-${index}`, kind: "interacted" }));
+    }
+    for (let index = 0; index < 12; index += 1) {
+      lines.push(codexLine({ type: "patch_apply_end", ok: true }));
+    }
+    lines.push(codexLine({ type: "web_search_end" }));
+    lines.push(codexLine({ type: "agent_message", message: "phase one done" }));
+    lines.push(codexLine({ type: "agent_message", message: "all done" }));
+    const parsed = parseCodexConversation("/tmp/complex.jsonl", lines.join("\n"));
+    expect(parsed.distinctSubAgents).toBe(3);
+    expect(parsed.models).toEqual(["gpt-5.6-mini", "gpt-5.6-terra"]);
+    const complexity = computeComplexity(parsed);
+    expect(complexity.score).toBeGreaterThanOrEqual(50);
+    expect(["C3", "C4"]).toContain(complexity.tier);
+    expect(complexity.components.subAgentBreadth).toBe(12);
+    expect(complexity.components.multiModel).toBe(5);
+  });
+
+  test("claude Agent and SendMessage tool calls count as sub-agent activity", () => {
+    const parsed = parseClaudeConversation(
+      "/tmp/claude-subagents.jsonl",
+      [
+        claudeUser("orchestrate three agents"),
+        claudeAssistant([
+          { type: "text", text: "spawning" },
+          { type: "tool_use", name: "Agent", input: {} },
+          { type: "tool_use", name: "Agent", input: {} },
+          { type: "tool_use", name: "SendMessage", input: {} },
+          { type: "tool_use", name: "Bash", input: {} },
+        ]),
+      ].join("\n"),
+    );
+    expect(parsed.subAgentStarts).toBe(2);
+    expect(parsed.subAgentInteractions).toBe(1);
+    const complexity = computeComplexity(parsed);
+    expect(complexity.score).toBeGreaterThan(0);
+  });
+
+  test("aggregates report complexity-weighted coherence", () => {
+    const trivialClean = scoreConversation(
+      parseCodexConversation(
+        "/tmp/a.jsonl",
+        [
+          codexLine({ type: "user_message", message: "hi there friend" }),
+          codexLine({ type: "agent_message", message: "hello" }),
+        ].join("\n"),
+      ),
+    );
+    const complexAngry = scoreConversation(
+      parseCodexConversation(
+        "/tmp/b.jsonl",
+        [
+          codexLine({ type: "user_message", message: "big task" }),
+          codexLine({ type: "sub_agent_activity", agent_thread_id: "x", kind: "started" }),
+          codexLine({ type: "patch_apply_end", ok: true }),
+          codexLine({ type: "patch_apply_end", ok: true }),
+          codexLine({ type: "agent_message", message: "done" }),
+          codexLine({ type: "user_message", message: "no, you did this wrong" }),
+          codexLine({ type: "agent_message", message: "fixed" }),
+        ].join("\n"),
+      ),
+    );
+    const aggregate = aggregateBySource([trivialClean, complexAngry]).find(
+      (item) => item.source === "codex",
+    );
+    expect(aggregate?.meanScore).toBe(95);
+    expect(aggregate?.complexityWeightedCoherence).toBeLessThan(95);
   });
 });

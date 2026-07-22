@@ -220,12 +220,13 @@ export const codexBinaryCandidates = (home: string): readonly string[] => [
   "/usr/bin/codex",
 ];
 
-/** Build the `codex exec` argv for one bounded read-only smoke turn. */
+/** Build the `codex exec` argv for one bounded smoke turn. */
 export const codexExecArgs = (params: {
   readonly model: string;
   readonly effort: string;
   readonly workdir: string;
   readonly prompt: string;
+  readonly sandbox?: "read-only" | "workspace-write";
 }): readonly string[] => [
   "exec",
   "--json",
@@ -235,7 +236,7 @@ export const codexExecArgs = (params: {
   "-c",
   `model_reasoning_effort="${params.effort}"`,
   "-s",
-  "read-only",
+  params.sandbox ?? "read-only",
   "--cd",
   params.workdir,
   params.prompt,

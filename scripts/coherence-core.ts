@@ -31,6 +31,25 @@ export interface ParsedConversation {
   readonly interruptCount: number;
   readonly firstTimestamp: string | null;
   readonly signals: readonly CoherenceSignal[];
+  /** Distinct tool/item kinds observed (complexity feature). */
+  readonly toolKinds: readonly string[];
+  /** Distinct model identifiers observed (complexity feature). */
+  readonly models: readonly string[];
+  /** Sub-agent spawn events (complexity feature). */
+  readonly subAgentStarts: number;
+  /** Sub-agent communication events after spawn (complexity feature). */
+  readonly subAgentInteractions: number;
+  /** Distinct sub-agent identities (complexity feature). */
+  readonly distinctSubAgents: number;
+}
+
+export type ComplexityTier = "C0" | "C1" | "C2" | "C3" | "C4";
+
+export interface ComplexityAssessment {
+  /** 0-100 deterministic orchestration-breadth score. */
+  readonly score: number;
+  readonly tier: ComplexityTier;
+  readonly components: Readonly<Record<string, number>>;
 }
 
 export interface ScoredConversation extends ParsedConversation {
@@ -38,7 +57,39 @@ export interface ScoredConversation extends ParsedConversation {
   readonly grade: "A" | "B" | "C" | "D" | "F";
   readonly disposition: "screening_pass" | "needs_review" | "skipped";
   readonly deductions: Readonly<Record<CoherenceSignalKind, number>>;
+  readonly complexity: ComplexityAssessment;
 }
+
+const complexityTier = (score: number): ComplexityTier =>
+  score >= 75 ? "C4" : score >= 50 ? "C3" : score >= 25 ? "C2" : score >= 10 ? "C1" : "C0";
+
+/**
+ * Deterministic complexity score per
+ * docs/analysis/complexity-rubric.md (metric coherence-screen-v2).
+ * A coherence score carries evidence weight proportional to this tier:
+ * 100/A at C0 proves almost nothing; 90/A at C3 is real evidence.
+ */
+export const computeComplexity = (parsed: ParsedConversation): ComplexityAssessment => {
+  const log2 = (value: number): number => Math.log2(1 + Math.max(0, value));
+  const components: Record<string, number> = {
+    continuations: Math.min(Math.max(parsed.assistantTurnCount - 1, 0) * 2, 10),
+    dialogue: Math.min(Math.max(parsed.userTurnCount - 1, 0), 5),
+    tools: Math.min(Math.round(8 * log2(parsed.toolCallCount)), 24),
+    toolDiversity: Math.min(parsed.toolKinds.length * 3, 12),
+    mutations: Math.min(parsed.fileChangeCount * 2, 10),
+    subAgents: Math.min(
+      Math.round(7 * log2(parsed.subAgentStarts + parsed.subAgentInteractions)),
+      21,
+    ),
+    subAgentBreadth: Math.min(parsed.distinctSubAgents * 4, 12),
+    multiModel: Math.min(Math.max(parsed.models.length - 1, 0) * 5, 10),
+  };
+  const score = Math.min(
+    Object.values(components).reduce((sum, value) => sum + value, 0),
+    100,
+  );
+  return { score, tier: complexityTier(score), components };
+};
 
 /**
  * User frustration lexicon. The owner directive for this screen: deduct
@@ -168,6 +219,11 @@ export const parseCodexConversation = (
   let interruptCount = 0;
   let firstTimestamp: string | null = null;
   const signals: CoherenceSignal[] = [];
+  const toolKinds = new Set<string>();
+  const models = new Set<string>();
+  const subAgentIds = new Set<string>();
+  let subAgentStarts = 0;
+  let subAgentInteractions = 0;
   for (const line of parseJsonLines(content)) {
     const timestamp = typeof line.timestamp === "string" ? line.timestamp : null;
     if (firstTimestamp === null && timestamp !== null) firstTimestamp = timestamp;
@@ -175,7 +231,9 @@ export const parseCodexConversation = (
       typeof line.payload === "object" && line.payload !== null
         ? (line.payload as JsonLine)
         : null;
-    if (line.type === "event_msg" && payload !== null) {
+    if (line.type === "turn_context" && payload !== null) {
+      if (typeof payload.model === "string" && payload.model !== "") models.add(payload.model);
+    } else if (line.type === "event_msg" && payload !== null) {
       const payloadType = payload.type;
       if (payloadType === "user_message" && typeof payload.message === "string") {
         if (isInjectedUserText(payload.message)) continue;
@@ -188,12 +246,19 @@ export const parseCodexConversation = (
       } else if (payloadType === "patch_apply_end" || payloadType === "mcp_tool_call_end") {
         fileChangeCount += payloadType === "patch_apply_end" ? 1 : 0;
         toolCallCount += 1;
+        toolKinds.add(payloadType === "patch_apply_end" ? "file_change" : "mcp_tool_call");
       } else if (payloadType === "web_search_end") {
         toolCallCount += 1;
+        toolKinds.add("web_search");
+      } else if (payloadType === "sub_agent_activity") {
+        if (typeof payload.agent_thread_id === "string") subAgentIds.add(payload.agent_thread_id);
+        if (payload.kind === "started") subAgentStarts += 1;
+        else subAgentInteractions += 1;
       }
     } else if (line.type === "response_item" && payload !== null) {
       if (payload.type === "function_call" || payload.type === "custom_tool_call") {
         toolCallCount += 1;
+        toolKinds.add(typeof payload.name === "string" ? payload.name : "function_call");
       }
     }
   }
@@ -207,6 +272,11 @@ export const parseCodexConversation = (
     interruptCount,
     firstTimestamp,
     signals,
+    toolKinds: [...toolKinds].sort(),
+    models: [...models].sort(),
+    subAgentStarts,
+    subAgentInteractions,
+    distinctSubAgents: subAgentIds.size,
   };
 };
 
@@ -239,6 +309,10 @@ export const parseClaudeConversation = (
   let interruptCount = 0;
   let firstTimestamp: string | null = null;
   const signals: CoherenceSignal[] = [];
+  const toolKinds = new Set<string>();
+  const models = new Set<string>();
+  let subAgentStarts = 0;
+  let subAgentInteractions = 0;
   for (const line of parseJsonLines(content)) {
     if (line.isSidechain === true) continue;
     if (line.isMeta === true) continue;
@@ -264,6 +338,7 @@ export const parseClaudeConversation = (
         }
       }
     } else if (line.type === "assistant" && message.role === "assistant") {
+      if (typeof message.model === "string" && message.model !== "") models.add(message.model);
       const content = message.content;
       if (Array.isArray(content)) {
         let hasText = false;
@@ -273,6 +348,11 @@ export const parseClaudeConversation = (
           if (blockType === "tool_use") {
             toolCallCount += 1;
             const name = (block as JsonLine).name;
+            if (typeof name === "string") {
+              toolKinds.add(name);
+              if (name === "Agent" || name === "Task" || name === "Workflow") subAgentStarts += 1;
+              if (name === "SendMessage") subAgentInteractions += 1;
+            }
             if (name === "Write" || name === "Edit" || name === "NotebookEdit") {
               fileChangeCount += 1;
             }
@@ -294,6 +374,11 @@ export const parseClaudeConversation = (
     interruptCount,
     firstTimestamp,
     signals,
+    toolKinds: [...toolKinds].sort(),
+    models: [...models].sort(),
+    subAgentStarts,
+    subAgentInteractions,
+    distinctSubAgents: subAgentStarts,
   };
 };
 
@@ -310,6 +395,7 @@ export const scoreConversation = (parsed: ParsedConversation): ScoredConversatio
       grade: "F",
       disposition: "skipped",
       deductions: { profanity: 0, correction: 0, interrupt: 0 },
+      complexity: computeComplexity(parsed),
     };
   }
   const counts: Record<CoherenceSignalKind, number> = {
@@ -346,6 +432,7 @@ export const scoreConversation = (parsed: ParsedConversation): ScoredConversatio
     grade,
     disposition: score >= 80 ? "screening_pass" : "needs_review",
     deductions,
+    complexity: computeComplexity(parsed),
   };
 };
 
@@ -358,6 +445,10 @@ export interface SourceAggregate {
   readonly gradeCounts: Readonly<Record<"A" | "B" | "C" | "D" | "F", number>>;
   readonly signalCounts: Readonly<Record<CoherenceSignalKind, number>>;
   readonly needsReview: number;
+  readonly meanComplexity: number;
+  readonly tierCounts: Readonly<Record<ComplexityTier, number>>;
+  /** Coherence mean weighted by complexity: high-complexity threads dominate. */
+  readonly complexityWeightedCoherence: number;
 }
 
 export const aggregateBySource = (
@@ -388,6 +479,17 @@ export const aggregateBySource = (
         : scores.reduce((sum, value) => sum + value, 0) / scores.length;
     const medianScore =
       scores.length === 0 ? 0 : scores[Math.floor((scores.length - 1) / 2)];
+    const tierCounts: Record<ComplexityTier, number> = { C0: 0, C1: 0, C2: 0, C3: 0, C4: 0 };
+    let complexitySum = 0;
+    let weightSum = 0;
+    let weightedCoherenceSum = 0;
+    for (const item of graded) {
+      tierCounts[item.complexity.tier] += 1;
+      complexitySum += item.complexity.score;
+      const weight = Math.max(item.complexity.score, 1);
+      weightSum += weight;
+      weightedCoherenceSum += item.score * weight;
+    }
     aggregates.push({
       source,
       graded: graded.length,
@@ -397,6 +499,9 @@ export const aggregateBySource = (
       gradeCounts,
       signalCounts,
       needsReview: graded.filter((item) => item.disposition === "needs_review").length,
+      meanComplexity: graded.length === 0 ? 0 : Math.round((complexitySum / graded.length) * 10) / 10,
+      tierCounts,
+      complexityWeightedCoherence: weightSum === 0 ? 0 : Math.round((weightedCoherenceSum / weightSum) * 10) / 10,
     });
   }
   return aggregates;

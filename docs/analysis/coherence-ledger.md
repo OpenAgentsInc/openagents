@@ -51,3 +51,12 @@ Aggregates only. No transcripts, quotes, or private paths.
   unrelated delegate result, and delegated route order.
 - Ratchet target for the next entry: run these fixtures through the
   programmatic real-provider control surface in #9161.
+
+## Metric note — 2026-07-22 (`coherence-screen-v2`)
+
+The screen now also computes a deterministic complexity score and tier per
+conversation ([complexity rubric](./complexity-rubric.md)) and reports
+complexity-weighted coherence in aggregates. Coherence deductions are
+unchanged, so per-conversation coherence scores stay comparable with
+entry 1. Trend comparison for the new complexity fields starts at the next
+entry.

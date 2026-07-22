@@ -135,13 +135,20 @@ for (const aggregate of aggregates) {
       `signals[profanity=${aggregate.signalCounts.profanity} correction=${aggregate.signalCounts.correction} ` +
       `interrupt=${aggregate.signalCounts.interrupt}]`,
   );
+  console.log(
+    `    complexity: mean=${aggregate.meanComplexity} ` +
+      `tiers[C0=${aggregate.tierCounts.C0} C1=${aggregate.tierCounts.C1} C2=${aggregate.tierCounts.C2} ` +
+      `C3=${aggregate.tierCounts.C3} C4=${aggregate.tierCounts.C4}] ` +
+      `complexity-weighted coherence=${aggregate.complexityWeightedCoherence}`,
+  );
 }
 if (worst.length > 0) {
   console.log(`lowest-scoring conversations (${worst.length}):`);
   for (const item of worst) {
     console.log(
-      `  ${item.score} ${item.grade} ${item.source} turns=${item.userTurnCount} ` +
-        `prof=${item.deductions.profanity} corr=${item.deductions.correction} int=${item.deductions.interrupt} ${item.path}`,
+      `  ${item.score} ${item.grade} cx=${item.complexity.score} ${item.complexity.tier} ${item.source} ` +
+        `turns=${item.userTurnCount} prof=${item.deductions.profanity} corr=${item.deductions.correction} ` +
+        `int=${item.deductions.interrupt} ${item.path}`,
     );
   }
 }

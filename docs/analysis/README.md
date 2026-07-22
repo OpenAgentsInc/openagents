@@ -6,6 +6,9 @@ These methods do not give product or release authority.
 - [Conversation thread coherence rubric](./conversation-thread-coherence-rubric.md):
   the semantic assessment method. Eight weighted dimensions, hard-fail
   gates, tripwires, and a report format.
+- [Conversation complexity rubric](./complexity-rubric.md): the evidence
+  weight — sub-agents, models, tools, turns. Coherence is read as
+  `coherence @ complexity`. The target is high coherence at high tiers.
 - [Deterministic coherence screening](./deterministic-coherence-screening.md):
   the fast machine-checkable layer. Run it with
   `pnpm run grade:coherence`. Tests: `pnpm run test:coherence`.
