@@ -158,6 +158,15 @@ export const FullAutoControlRunStartRequestSchema = Schema.Struct({
    * (validated fail-closed BEFORE anything is minted). */
   routingPolicy: Schema.optional(FullAutoControlRoutingPolicySchema),
   guardrails: Schema.optional(FullAutoGuardrailsSchema),
+  /** HANDS control-API wiring: opt-in autonomy core. Absent or `false` keeps the
+   * run on the passive base loop, byte-identical to today. When `true`, the
+   * created run has `autonomy.enabled === true`, which activates objective
+   * selection (HANDS-1 #9172), the persistent plan brief in the mission packet
+   * (HANDS-3 #9174), host-executed done-condition verification (HANDS-2 #9173),
+   * churn detection (HANDS-4 #9175), and the initiative policy (HANDS-6 #9184).
+   * The gate is flipped BEFORE the first reconciliation pass, so the very first
+   * turn already runs under autonomy. */
+  autonomy: Schema.optional(Schema.Boolean),
 })
 export type FullAutoControlRunStartRequest = typeof FullAutoControlRunStartRequestSchema.Type
 export const decodeFullAutoControlRunStartRequest = (
@@ -208,6 +217,13 @@ export const FullAutoControlRunSchema = Schema.Struct({
   stallCause: Schema.NullOr(FullAutoStallCauseSchema),
   nextRetryAt: Schema.NullOr(Schema.String),
   recoveryAction: FullAutoRecoveryActionSchema,
+  /** HANDS control-API wiring: whether the opt-in autonomy core is active for this
+   * run. The server projection ALWAYS emits it (default `false`) so
+   * `runs`/`run-status` surface the gate as a first-class field -- projected
+   * from the durable `isFullAutoRunAutonomyEnabled(run)`, never a cached copy.
+   * Kept `optional` here only so a pre-existing run-projection literal that
+   * omits it still decodes; a produced projection is never missing it. */
+  autonomyEnabled: Schema.optional(Schema.Boolean),
 })
 export type FullAutoControlRun = typeof FullAutoControlRunSchema.Type
 

@@ -209,6 +209,9 @@ export const controlOperations = (connection: ControlConnection) => ({
     turnCap?: number
     routingPolicy?: ReadonlyArray<ControlRoutingCandidate>
     guardrails?: ControlGuardrails
+    /** HANDS control-API wiring: opt-in autonomy core. Absent/false = passive base
+     * loop (unchanged); true = the created run has autonomy.enabled === true. */
+    autonomy?: boolean
   }>) => call(connection, "POST", "/v1/full-auto/runs/start", input),
   runStatus: (runRef: string) =>
     call(connection, "GET", `/v1/full-auto/runs/${encodeURIComponent(runRef)}`),

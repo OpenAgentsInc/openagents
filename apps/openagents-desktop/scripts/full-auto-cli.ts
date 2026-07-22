@@ -23,7 +23,12 @@
  * FA-RUN-01 (#8969) durable run lifecycle commands:
  *   node --import tsx scripts/full-auto-cli.ts runs
  *   node --import tsx scripts/full-auto-cli.ts run-status <runRef>
- *   node --import tsx scripts/full-auto-cli.ts run-start --workspace <path> --title <t> --objective <o> --done <d> [--lane <l>] [--turn-cap <n>]
+ *   node --import tsx scripts/full-auto-cli.ts run-start --workspace <path> --title <t> --objective <o> --done <d> [--lane <l>] [--turn-cap <n>] [--autonomy]
+ *
+ * HANDS control-API wiring: run-start accepts `--autonomy` to enable the autonomy
+ * core on the created run (objective selection #9172, host verification #9173,
+ * plan brief #9174, churn detection #9175, initiative #9184). Default OFF (the
+ * passive base loop); `--no-autonomy` is the explicit default.
  *   node --import tsx scripts/full-auto-cli.ts run-pause <runRef>
  *   node --import tsx scripts/full-auto-cli.ts run-resume <runRef>
  *   node --import tsx scripts/full-auto-cli.ts run-stop <runRef>
@@ -57,7 +62,7 @@ commands:
   openapi
   runs
   run-status <runRef>
-  run-start --workspace <path> --title <t> --objective <o> --done <d> [--lane <laneRef[:accountRef]>]... [--turn-cap <n>] [--max-turns <n>] [--max-wall-clock-ms <n>]
+  run-start --workspace <path> --title <t> --objective <o> --done <d> [--lane <laneRef[:accountRef]>]... [--turn-cap <n>] [--max-turns <n>] [--max-wall-clock-ms <n>] [--autonomy]
   run-pause <runRef>
   run-resume <runRef>
   run-stop <runRef>
@@ -71,7 +76,11 @@ colon -- "acp:<agent>" (grok-cli, cursor-agent) or "harness:<agent>"
 (opencode, pi, goose) -- is kept whole, so pin its account with a SECOND colon,
 e.g. "harness:opencode:<accountRef>".
 --max-turns / --max-wall-clock-ms bind owner guardrails; resume clears a
-low-confidence pause.`
+low-confidence pause.
+
+HANDS control-API wiring: run-start --autonomy enables the autonomy core on the
+created run (objective selection, host verification, plan brief, churn
+detection, initiative). Default OFF; --no-autonomy is the explicit default.`
 
 const main = async (): Promise<void> => {
   const argv = [...process.argv.slice(2)]
@@ -81,6 +90,13 @@ const main = async (): Promise<void> => {
     const value = argv[index + 1]
     argv.splice(index, 2)
     return value
+  }
+  /** HANDS control-API wiring: a valueless boolean flag (e.g. --autonomy). */
+  const takeFlag = (name: string): boolean => {
+    const index = argv.indexOf(name)
+    if (index === -1) return false
+    argv.splice(index, 1)
+    return true
   }
   /** FA-WIRE-01 (#8996): --lane is repeatable; the order given is priority. */
   const takeRepeatedOption = (name: string): Array<string> => {
@@ -99,6 +115,12 @@ const main = async (): Promise<void> => {
   const turnCapRaw = takeOption("--turn-cap")
   const maxTurnsRaw = takeOption("--max-turns")
   const maxWallClockMsRaw = takeOption("--max-wall-clock-ms")
+  // HANDS control-API wiring: the opt-in autonomy core for run-start. Default OFF
+  // (the passive base loop). --no-autonomy is the explicit default and wins
+  // over --autonomy if both are given.
+  const autonomyFlag = takeFlag("--autonomy")
+  const noAutonomyFlag = takeFlag("--no-autonomy")
+  const autonomy = autonomyFlag && !noAutonomyFlag
   const [command, threadRef] = argv
   const parsePositiveInt = (name: string, raw: string | undefined): number | undefined => {
     if (raw === undefined) return undefined
@@ -187,6 +209,7 @@ const main = async (): Promise<void> => {
         ...(turnCapRaw === undefined ? {} : { turnCap: Number.parseInt(turnCapRaw, 10) }),
         ...(policy.options.routingPolicy === undefined ? {} : { routingPolicy: policy.options.routingPolicy }),
         ...(policy.options.guardrails === undefined ? {} : { guardrails: policy.options.guardrails }),
+        ...(autonomy ? { autonomy: true } : {}),
       })
     : command === "run-pause"
     ? await operations.runPause(requireRunRef())

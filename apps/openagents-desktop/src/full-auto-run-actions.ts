@@ -25,6 +25,7 @@ import {
 } from "./full-auto-run-report.ts"
 import {
   FULL_AUTO_RUN_ACTIVE_LIMIT,
+  isFullAutoRunAutonomyEnabled,
   type FullAutoRun,
   type FullAutoRunActor,
   type FullAutoRunThreadSnapshot,
@@ -98,6 +99,10 @@ const projectRun = (run: FullAutoRun, projection: FullAutoLivenessProjection): F
   stallCause: projection.cause,
   nextRetryAt: projection.nextRetryAt,
   recoveryAction: projection.recoveryAction,
+  // HANDS control-API wiring: surface the opt-in autonomy gate straight from the
+  // durable predicate so `runs`/`run-status` never disagree with the run's
+  // actual behavior.
+  autonomyEnabled: isFullAutoRunAutonomyEnabled(run),
 })
 
 const threadSnapshot = (
@@ -278,9 +283,26 @@ export const startFullAutoRunAction = (
       },
     }
   }
-  capabilities.appendSystemNote(startedThreadRef, `Full Auto run started via ${callerLabel}.`)
+  // HANDS control-API wiring: flip the opt-in autonomy gate BEFORE the first
+  // reconciliation pass, so the very first turn already runs the autonomy core
+  // (objective selection #9172, plan brief #9174, host verification #9173,
+  // churn detection #9175, initiative #9184). Absent/false leaves the run on
+  // the passive base loop, byte-identical to today. `setAutonomy` returns the
+  // updated run (or null only when the record vanished mid-write -- fall back
+  // to the freshly started run so the response still reflects the request).
+  const startedRun = body.autonomy === true
+    ? capabilities.runRegistry.setAutonomy(result.run.runRef, { enabled: true }) ?? result.run
+    : result.run
+  capabilities.appendSystemNote(
+    startedThreadRef,
+    `Full Auto run started via ${callerLabel}${
+      body.autonomy === true
+        ? " with the autonomy core enabled (objective selection, host verification, plan, churn, initiative)"
+        : ""
+    }.`,
+  )
   void capabilities.triggerReconciliation().catch(() => {})
-  return { ok: true, value: settleSyncAndProject(capabilities, result.run, now) }
+  return { ok: true, value: settleSyncAndProject(capabilities, startedRun, now) }
 }
 
 export const getFullAutoRunAction = (

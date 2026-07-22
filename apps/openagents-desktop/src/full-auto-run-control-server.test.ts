@@ -4,7 +4,12 @@ import { tmpdir } from "node:os"
 import path from "node:path"
 
 import { openFullAutoRegistry } from "./full-auto-registry.ts"
-import { FULL_AUTO_RUN_ACTIVE_LIMIT, openFullAutoRunRegistry, type FullAutoRunRegistry } from "./full-auto-run-registry.ts"
+import {
+  FULL_AUTO_RUN_ACTIVE_LIMIT,
+  isFullAutoRunAutonomyEnabled,
+  openFullAutoRunRegistry,
+  type FullAutoRunRegistry,
+} from "./full-auto-run-registry.ts"
 import { openFullAutoRunReportStore } from "./full-auto-run-report.ts"
 import { startFullAutoControlServer, type FullAutoControlServer } from "./full-auto-control-server.ts"
 
@@ -138,6 +143,52 @@ describe("FullAutoRun control routes (FA-RUN-01 #8969)", () => {
       expect(started.body.error).toBe("workspace_mismatch")
       expect(harness.runRegistry.list()).toEqual([])
       expect(harness.registry.list()).toEqual([])
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  test("runs/start without --autonomy leaves the run on the passive base loop (autonomy off, unchanged)", async () => {
+    const harness = await startHarness()
+    try {
+      const started = await harness.request("POST", "/v1/full-auto/runs/start", { body: START_BODY })
+      expect(started.status).toBe(200)
+      // The projection surfaces the gate as a first-class field, defaulting off.
+      expect(started.body.run.autonomyEnabled).toBe(false)
+      // The durable run carries no enabled autonomy block.
+      const run = harness.runRegistry.get(started.body.run.runRef)
+      expect(run).not.toBeNull()
+      expect(isFullAutoRunAutonomyEnabled(run!)).toBe(false)
+      expect(run!.autonomy).toBeUndefined()
+    } finally {
+      await harness.dispose()
+    }
+  })
+
+  test("runs/start --autonomy creates a run with the autonomy core enabled before the first reconcile", async () => {
+    const harness = await startHarness()
+    try {
+      const started = await harness.request("POST", "/v1/full-auto/runs/start", {
+        body: { ...START_BODY, autonomy: true },
+      })
+      expect(started.status).toBe(200)
+      expect(started.body.ok).toBe(true)
+      // The gate is visible in the run projection...
+      expect(started.body.run.autonomyEnabled).toBe(true)
+      // ...and flipped durably on the created run (which activates objective
+      // selection #9172, plan brief #9174, host verification #9173, churn #9175,
+      // and initiative #9184 -- all gated on isFullAutoRunAutonomyEnabled).
+      const run = harness.runRegistry.get(started.body.run.runRef)
+      expect(run).not.toBeNull()
+      expect(isFullAutoRunAutonomyEnabled(run!)).toBe(true)
+      expect(run!.autonomy?.enabled).toBe(true)
+      // The gate was flipped BEFORE reconciliation ran, and the shared pass
+      // still fired exactly once.
+      expect(harness.reconcileCalls()).toBe(1)
+      // A subsequent status read also reflects the enabled gate.
+      const status = await harness.request("GET", `/v1/full-auto/runs/${started.body.run.runRef}`)
+      expect(status.status).toBe(200)
+      expect(status.body.run.autonomyEnabled).toBe(true)
     } finally {
       await harness.dispose()
     }

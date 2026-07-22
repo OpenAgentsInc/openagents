@@ -568,7 +568,7 @@ export const startFullAutoControlServer = (
         sendError(response, 400, {
           error: "invalid_request",
           message:
-            "runs/start requires a JSON body: { workspaceRef, title, objective, doneCondition, lane?, turnCap? }.",
+            "runs/start requires a JSON body: { workspaceRef, title, objective, doneCondition, lane?, turnCap?, autonomy? }.",
         })
         return
       }

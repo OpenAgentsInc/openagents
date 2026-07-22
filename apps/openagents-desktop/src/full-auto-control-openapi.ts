@@ -1095,6 +1095,13 @@ export const fullAutoControlOpenApiDocument = {
           },
           nextRetryAt: { type: ["string", "null"] },
           recoveryAction: { $ref: "#/components/schemas/FullAutoRecoveryAction" },
+          autonomyEnabled: {
+            type: "boolean",
+            description:
+              "HANDS control-API wiring: whether the opt-in autonomy core is active for this run. " +
+              "The server projection always emits it (default false); projected from " +
+              "isFullAutoRunAutonomyEnabled(run).",
+          },
         },
       },
       FullAutoControlRunListResponse: {
@@ -1161,6 +1168,16 @@ export const fullAutoControlOpenApiDocument = {
           guardrails: {
             $ref: "#/components/schemas/FullAutoGuardrails",
             description: "FA-WIRE-01 (#8996): optional owner-configured guardrails.",
+          },
+          autonomy: {
+            type: "boolean",
+            default: false,
+            description:
+              "HANDS control-API wiring: opt-in autonomy core. Absent/false keeps the run on the passive " +
+              "base loop (unchanged). When true, the created run has autonomy.enabled === true, " +
+              "activating objective selection (#9172), the persistent plan brief (#9174), " +
+              "host-executed done-condition verification (#9173), churn detection (#9175), and the " +
+              "initiative policy (#9184). The gate is flipped before the first reconciliation pass.",
           },
         },
       },
