@@ -43,6 +43,22 @@ describe('managed-sandbox guest transport contract', () => {
     expect(source).toContain("--chdir /workspace /bin/pwd)\" = '/workspace'")
   })
 
+  test('guest image installs the content-only checkpoint primitive and scratch root', () => {
+    const source = readFileSync(
+      resolve(import.meta.dirname, 'build-managed-sandbox-guest-image.sh'),
+      'utf8',
+    )
+    expect(source).toContain(
+      '/opt/openagents-managed-sandbox/managed-sandbox-guest-checkpoint.py',
+    )
+    expect(source).toContain(
+      '/var/lib/openagents/managed-sandbox-checkpoints',
+    )
+    expect(source).toContain(
+      'scripts/cloud/managed-sandbox-guest-checkpoint.py',
+    )
+  })
+
   test('guest commands rebind the validated cwd at the canonical workspace path', () => {
     const source = readFileSync(
       resolve(import.meta.dirname, 'managed-sandbox-guest-io.py'),

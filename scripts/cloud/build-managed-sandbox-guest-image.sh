@@ -70,6 +70,7 @@ apt-get install -y --no-install-recommends nodejs
 id openagents >/dev/null 2>&1 || useradd --create-home --shell /bin/bash openagents
 install -d -o openagents -g openagents -m 0700 \
   /workspace \
+  /var/lib/openagents/managed-sandbox-checkpoints \
   /var/lib/openagents/managed-sandbox-turns \
   /var/lib/openagents/managed-sandbox-io
 install -d -o root -g root -m 0755 /opt/openagents-managed-sandbox
@@ -87,7 +88,12 @@ install -o root -g root -m 0755 /tmp/managed-sandbox-guest-turn.mjs \
   /opt/openagents-managed-sandbox/managed-sandbox-guest-turn.mjs
 install -o root -g root -m 0755 /tmp/managed-sandbox-guest-io.py \
   /opt/openagents-managed-sandbox/managed-sandbox-guest-io.py
-rm -f /tmp/managed-sandbox-guest-turn.mjs /tmp/managed-sandbox-guest-io.py
+install -o root -g root -m 0755 /tmp/managed-sandbox-guest-checkpoint.py \
+  /opt/openagents-managed-sandbox/managed-sandbox-guest-checkpoint.py
+rm -f \
+  /tmp/managed-sandbox-guest-turn.mjs \
+  /tmp/managed-sandbox-guest-io.py \
+  /tmp/managed-sandbox-guest-checkpoint.py
 cat >/etc/systemd/system/openagents-managed-sandbox-hostkeys.service <<'UNIT'
 [Unit]
 Description=Generate per-guest OpenSSH host keys
@@ -146,6 +152,8 @@ ip -4 -o address show scope global | grep -q 'inet '
 test -x /usr/bin/node
 test -x /opt/openagents-managed-sandbox/managed-sandbox-guest-turn.mjs
 test -x /opt/openagents-managed-sandbox/managed-sandbox-guest-io.py
+test -x /opt/openagents-managed-sandbox/managed-sandbox-guest-checkpoint.py
+test -d /var/lib/openagents/managed-sandbox-checkpoints
 test -d /var/lib/openagents/managed-sandbox-turns
 test -d /var/lib/openagents/managed-sandbox-io
 test -d /run/openagents-managed-sandbox/io
@@ -233,6 +241,10 @@ gcloud compute scp \
 gcloud compute scp \
   scripts/cloud/managed-sandbox-guest-io.py \
   "openagents@${builder}:/tmp/managed-sandbox-guest-io.py" \
+  --project "$project" --zone "$zone" --quiet
+gcloud compute scp \
+  scripts/cloud/managed-sandbox-guest-checkpoint.py \
+  "openagents@${builder}:/tmp/managed-sandbox-guest-checkpoint.py" \
   --project "$project" --zone "$zone" --quiet
 gcloud compute scp "$setup_file" "openagents@${builder}:/tmp/setup.sh" \
   --project "$project" --zone "$zone" --quiet
