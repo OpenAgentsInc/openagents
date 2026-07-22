@@ -46,6 +46,16 @@ describe("managed-sandbox guest transport contract", () => {
     expect(source).toContain(
       "managed-sandbox Phase 2 driver and bucket must be configured together",
     );
+    const provision = readFileSync(
+      resolve(import.meta.dirname, "provision-managed-sandbox-runtime.sh"),
+      "utf8",
+    );
+    expect(provision).toContain(
+      "--managed-sandbox-phase2-driver /usr/local/bin/managed-sandbox-phase2-driver.mjs",
+    );
+    expect(provision).toContain('--managed-sandbox-phase2-bucket "$checkpoint_bucket"');
+    expect(provision).toContain("roles/storage.objectAdmin");
+    expect(provision).toContain("--soft-delete-duration 0");
   });
 
   test("guest image admits unprivileged I/O transport and scratch roots", () => {

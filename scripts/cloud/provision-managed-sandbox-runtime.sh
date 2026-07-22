@@ -67,6 +67,7 @@ bridge_firewall="oa-managed-sandbox-bridge-to-control${suffix}"
 bridge_tag="oa-managed-sandbox-bridge${suffix}"
 control_token_secret="oa-managed-sandbox-control-token${suffix}"
 broker_signing_secret="oa-managed-sandbox-broker-signing-key${suffix}"
+checkpoint_bucket="${project}-managed-sandbox-checkpoints${suffix}"
 control_sa="oa-codex-control@${project}.iam.gserviceaccount.com"
 project_number="$(gcloud projects describe "$project" --format='value(projectNumber)')"
 runtime_sa="${project_number}-compute@developer.gserviceaccount.com"
@@ -114,6 +115,18 @@ run gcloud secrets add-iam-policy-binding "$broker_signing_secret" \
   --role roles/secretmanager.secretAccessor \
   --condition=None \
   --format='value(name)'
+
+if ! gcloud storage buckets describe "gs://${checkpoint_bucket}" \
+  --project "$project" >/dev/null 2>&1; then
+  run gcloud storage buckets create "gs://${checkpoint_bucket}" \
+    --project "$project" \
+    --location "$region" \
+    --uniform-bucket-level-access \
+    --soft-delete-duration 0
+fi
+run gcloud storage buckets add-iam-policy-binding "gs://${checkpoint_bucket}" \
+  --member "serviceAccount:${control_sa}" \
+  --role roles/storage.objectAdmin
 
 if ! gcloud compute addresses describe "$control_address" \
   --project "$project" --region "$region" >/dev/null 2>&1; then
@@ -195,6 +208,8 @@ control_args=(
   --managed-sandbox-provider-broker-port 8790
   --managed-sandbox-turn-driver /usr/local/bin/managed-sandbox-turn-driver.mjs
   --managed-sandbox-io-driver /usr/local/bin/managed-sandbox-io-driver.mjs
+  --managed-sandbox-phase2-driver /usr/local/bin/managed-sandbox-phase2-driver.mjs
+  --managed-sandbox-phase2-bucket "$checkpoint_bucket"
 )
 if [[ "$apply" == "true" ]]; then control_args+=(--apply); fi
 bash scripts/cloud/gcp-codex-control-deploy.sh "${control_args[@]}"
@@ -253,6 +268,7 @@ Managed-sandbox runtime binding
   guestImageId: $image_id
   guestImageDigest: $image_digest
   profileDigest: $profile_digest
+  checkpointBucket: $checkpoint_bucket
   networkPolicyRef: network-policy-ref://openagents/managed-sandbox/broker-only-v1
   Worker enablement remains separate and default-off.
 SUMMARY
