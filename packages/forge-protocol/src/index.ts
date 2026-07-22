@@ -1,5 +1,7 @@
 import { Schema as S } from "effect";
 
+export * from "./sol-claim-ledger.js";
+
 export const ForgeProtocolSchemaVersion = S.Literal(
   "openagents.forge.protocol.v0.1",
 );
