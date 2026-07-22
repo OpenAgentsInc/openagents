@@ -1,0 +1,159 @@
+{
+  "schemaId": "openagents.desktop.graph_memory_owner_lifecycle_proof.v1",
+  "custodyRung": "standalone_proof_process_wrapping_key",
+  "scope": {
+    "owner": "owner.lifecycle-proof",
+    "project": "project.lifecycle-proof"
+  },
+  "put": {
+    "receiptRef": "graph-memory-receipt.31e7a320a0fb1794a309ee701eb64370cec9566b376ee58cac4093f7c9829ccf",
+    "graphDigest": "45ca5df299be851da69a8b8e0051ad8372039693658981f90eae8d037377d247",
+    "graphManifestDigest": "84636be5ff95ca658cc7f394f93d1400d4342578035de1a21c6d3f5e55e0988a",
+    "counts": {
+      "mentions": 2,
+      "entities": 2,
+      "relations": 1,
+      "merges": 0,
+      "vectors": 1,
+      "summaries": 1,
+      "rankingRefs": 1,
+      "rankingSnapshots": 1,
+      "archives": 0
+    }
+  },
+  "before": {
+    "revision": 1,
+    "graphDigest": "45ca5df299be851da69a8b8e0051ad8372039693658981f90eae8d037377d247",
+    "graphManifestDigest": "84636be5ff95ca658cc7f394f93d1400d4342578035de1a21c6d3f5e55e0988a",
+    "rankingSnapshotDigests": [
+      "159b8234a7050309cc0965014640bf9e5235ceebb701cfe692b019cfcb99ea32"
+    ],
+    "provenanceRefs": [
+      "parser.owner-lifecycle-proof",
+      "source.bd732345f0ffb92214d167889d604cda917a8e1e5dc438efef3a18ca9f6a1b86",
+      "source.cc657a24278717cfefb965e9daf4f1c8fd32bee048f40abce9f9aeb09e4c32cf",
+      "version.1"
+    ],
+    "provenanceDigest": "1d343db6c137546190b5335ce81ff75201c430b2f8b8a3e67dd982a4b03003a3",
+    "sourceMembershipRefs": [
+      "graph.entity.bbd90251c53abceb970de79b147870c0bf53e82c5c1697759cc15fbe2e94a88f",
+      "graph.entity.d74e232e62583e7e91ab3367dd0b89d2bf5ce1da0355176d7773f23cb4ae62c9",
+      "graph.mention.ad7f51b67eee47da07348f5ed2067886d0b6b5edf878d781fb54df58792c955d",
+      "graph.mention.f2ad657be9562de53195844d524e2563af12aa6a10368db04923420b14396c42",
+      "graph.relation.d4ef3228fae14b66272f6c80a9ca3be811f1791c06608cc7832909745d317d2b"
+    ],
+    "sourceMembershipDigest": "6d840776b4f9822509bce17f980b9862f4518f1c364aaf532c5db8ca42bce86a",
+    "pendingOperationRef": null,
+    "counts": {
+      "mentions": 2,
+      "entities": 2,
+      "relations": 1,
+      "merges": 0,
+      "vectors": 1,
+      "summaries": 1,
+      "rankingRefs": 1,
+      "rankingSnapshots": 1,
+      "archives": 0
+    }
+  },
+  "incompletePlanRefusal": {
+    "receiptRef": "graph-memory-receipt.19cd263efdb6f883d16c5c749bd04231ded22a628211bf761fa3dddcda7a86f0",
+    "status": "refused",
+    "unresolvedCount": 1,
+    "graphDigestUnchanged": true
+  },
+  "exported": {
+    "receiptRef": "graph-memory-receipt.f13fece0a34791a3252728f0b0c7673735780aa9860e1fb676ab113835802bbd",
+    "archiveRef": "archive.2c69e0dfa0154ea6dd1da3ed23c78bdd88c3313a6c65a4e59c65567a705bf060",
+    "contentDigest": "3e7fcd2f5c31c14cb70e265599ec6e0082538fda4b441123fa030baef445ae1e",
+    "manifestDigest": "de63b0b4c0eae1e202e113ff9d62affb51247a8d1e13c3cee8a91016baf4dc55",
+    "graphDigest": "45ca5df299be851da69a8b8e0051ad8372039693658981f90eae8d037377d247",
+    "graphManifestDigest": "84636be5ff95ca658cc7f394f93d1400d4342578035de1a21c6d3f5e55e0988a",
+    "encodedBytes": 20023,
+    "counts": {
+      "mentions": 2,
+      "entities": 2,
+      "relations": 1,
+      "merges": 0,
+      "vectors": 1,
+      "summaries": 1,
+      "rankingRefs": 1,
+      "rankingSnapshots": 1,
+      "archives": 1
+    },
+    "exactSdkValidation": true
+  },
+  "forgotten": {
+    "receiptRef": "graph-memory-receipt.a956ddea76b1f3410b0f8fe35b7394530c31afea7a512501450ab506dcde87af",
+    "receiptDigest": "a956ddea76b1f3410b0f8fe35b7394530c31afea7a512501450ab506dcde87af",
+    "before": {
+      "mentions": 2,
+      "entities": 2,
+      "relations": 1,
+      "merges": 0,
+      "vectors": 1,
+      "summaries": 1,
+      "rankingRefs": 1,
+      "rankingSnapshots": 1,
+      "archives": 1
+    },
+    "after": {
+      "mentions": 0,
+      "entities": 0,
+      "relations": 0,
+      "merges": 0,
+      "vectors": 0,
+      "summaries": 0,
+      "rankingRefs": 0,
+      "rankingSnapshots": 0,
+      "archives": 0
+    }
+  },
+  "after": {
+    "revision": 7,
+    "currentAbsent": true,
+    "counts": {
+      "mentions": 0,
+      "entities": 0,
+      "relations": 0,
+      "merges": 0,
+      "vectors": 0,
+      "summaries": 0,
+      "rankingRefs": 0,
+      "rankingSnapshots": 0,
+      "archives": 0
+    }
+  },
+  "repeated": {
+    "receiptRef": "graph-memory-receipt.a956ddea76b1f3410b0f8fe35b7394530c31afea7a512501450ab506dcde87af",
+    "receiptDigest": "a956ddea76b1f3410b0f8fe35b7394530c31afea7a512501450ab506dcde87af",
+    "sameReceipt": true,
+    "before": {
+      "mentions": 2,
+      "entities": 2,
+      "relations": 1,
+      "merges": 0,
+      "vectors": 1,
+      "summaries": 1,
+      "rankingRefs": 1,
+      "rankingSnapshots": 1,
+      "archives": 1
+    },
+    "after": {
+      "mentions": 0,
+      "entities": 0,
+      "relations": 0,
+      "merges": 0,
+      "vectors": 0,
+      "summaries": 0,
+      "rankingRefs": 0,
+      "rankingSnapshots": 0,
+      "archives": 0
+    }
+  },
+  "archiveCleanup": {
+    "retainedThroughForget": true,
+    "removed": true
+  },
+  "reopenCount": 3
+}

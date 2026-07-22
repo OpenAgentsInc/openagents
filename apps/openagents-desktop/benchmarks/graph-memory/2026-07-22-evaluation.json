@@ -1,0 +1,829 @@
+{
+  "schemaVersion": "openagents.desktop.graph-memory-evaluation.v1",
+  "issue": "OA-GMEM-04",
+  "evaluatedAt": "2026-07-22T10:04:00.000Z",
+  "pins": {
+    "sdkTrain": "0.2.1-rc.2",
+    "sdkPackages": [
+      {
+        "package": "@openagentsinc/ai",
+        "version": "0.2.1-rc.2",
+        "integrity": "sha512-mQN7iOA0EbXL8zwFxJr2hHy23dMivLAhGeJRd8TepjzcBRECKAVQ1fTFOsvr8Ik2g+Bvg2Wxw3mtoX+N7SCC7Q=="
+      },
+      {
+        "package": "@openagentsinc/rlm",
+        "version": "0.2.1-rc.2",
+        "integrity": "sha512-M3JX7BJDvTBbjSltmLD7u5PRl7K1Ytzjvy5HdD/e25Ywixa1fJk0tX3i2DFUBLyJjnNPv4YO4QwosPnu7ILMMQ=="
+      },
+      {
+        "package": "@openagentsinc/history-corpus",
+        "version": "0.2.1-rc.2",
+        "integrity": "sha512-2V9CW86+DMlxmcu9GjUUJj4bnTvj8OP99j64tOM4BJzj76Ci1Z+jT4b291UJyp8l9sYcQpNVcC/ID1pUVCiYcw=="
+      },
+      {
+        "package": "@openagentsinc/agent-harness-contract",
+        "version": "0.2.1-rc.2",
+        "integrity": "sha512-3vIhogeE/Bbg5LfWKjQ8msCs7T7BB/ivE0Zd1VUVAA5Pz6WCsier6VLFapAhW6NBRnS0brvDhaerPiDBfkRqNQ=="
+      },
+      {
+        "package": "@openagentsinc/agent-runtime-schema",
+        "version": "0.2.1-rc.2",
+        "integrity": "sha512-xSC/laUZcFaF8AUOEshQy01Q1QuOdrYAEx48PPUjRjPO/dP4IUuTQLkeio0EfyYKqu+VMxax9ttwleeEPnQKJA=="
+      },
+      {
+        "package": "@openagentsinc/dse",
+        "version": "0.2.1-rc.2",
+        "integrity": "sha512-CFsEPBkJbQi/ZL/OQKOGqxahI4GNy9Es2b8p/uXD4xQaIFKm48DS7EtiEbJbLm3l5qXHNpR7D7HEFf6R4ljdHg=="
+      },
+      {
+        "package": "@openagentsinc/graph-corpus",
+        "version": "0.2.1-rc.2",
+        "integrity": "sha512-8LFMS/WGvRKYmcst0GpqpLrjRMpWRoQ9aSshJqKPHBTxWdbQI3360y/VBa5YroBz7fEndPnmgJStdyEhDM2C3Q=="
+      },
+      {
+        "package": "@openagentsinc/conformance-kit",
+        "version": "0.2.1-rc.2",
+        "integrity": "sha512-Hm2JMz1FKTuUNIxr9rEXKZ5RQuVLPZF8/UI2WdTTutt/dkbECjb8g1lpGK6tMJitw/NV0MbEbHK3z8PIqWXHKQ=="
+      }
+    ],
+    "lockDigest": "366f4fd2638f79e85baab8431069dc7149dedf26258a7dfec81b91efff01f14d",
+    "openAgentsCommit": "105985670bb05acae043ae3d492b1099f1378a84",
+    "sourceState": "clean",
+    "desktopBuildRef": "apps/openagents-desktop/dist",
+    "desktopBuildDigest": "49d31332ac93720f96f1e7aceb542371168db8ffe98bb76a0dcf08cfb1037e3c",
+    "desktopBuildArtifacts": [
+      {
+        "ref": "apps/openagents-desktop/dist/assets/openagents-icon.png",
+        "digest": "525975d8bc6b62978ae9e537cf5aafbb8cf23407a223d7f392c5957432dda9e8"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/builtin-skills/assurancespec-work/SKILL.md",
+        "digest": "4c54e524cc1394442ed05f6e9988bbd66a11f870d9eacb68e4156cf29b234da8"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/builtin-skills/manifest.json",
+        "digest": "da8afdd634de0e38c253656a733db1fbcc6ee51823c624315ea6ca536cf8c9b6"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/builtin-skills/productspec-work/SKILL.md",
+        "digest": "668d32b8ff4a37bf39e8bee5af3264ce5688ec8c6d34957d4aba4d52b89daccb"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/main.js",
+        "digest": "516df82c29d7eebe15b97efcfb2adbc692e4c495c52f3db89373f32b743586bf"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/native/arm64/foundation-bridge",
+        "digest": "50364adea5958db2b203067c177816ca8b02e1e86011bbd8f70443d9a3434a96"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/native/arm64/foundation-bridge.manifest.json",
+        "digest": "da48617f350306b1341dc341ed45f7e346d1345bc9fbbeef7b9edb442d981975"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/native/arm64/manifest.json",
+        "digest": "9c369914b95ae3a07d40fea2fb4d5eecbc6e7c65f50143c3924b097de05dfc58"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/native/arm64/oa-desktop-audio",
+        "digest": "f4f995b9aa010fba3c4ca332d3acc219acb1d3433ec0c4f962120f298d95c614"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/preload.cjs",
+        "digest": "359ee88a3961d73fccdeace09adae7994044139ce0b5881ad16e1909863eb0ef"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/app.css",
+        "digest": "5660b2679618e7c040331099f4366925aa58f5b195d82232e5bdf07639c01761"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/boot.js",
+        "digest": "e5b1df176e3540208caa9af8c092c4455fc6faa845bf67dca221264988bb3082"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/ide-editor/assets/css.worker-Cbq3wdcs.js",
+        "digest": "959b68a226d41cb561e567dd228b8a6fd1fd8dbc4a6ad180276e04e7814e8e4a"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/ide-editor/assets/css.worker-Cbq3wdcs.js.map",
+        "digest": "e15bec8801a231865db554b6b63eaf497b30c649031929d7876e76e7488706b4"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/ide-editor/assets/cssMode-Dt3RHPmc.js",
+        "digest": "1652e07ec6dc2f8fb566972e0ce2869e98655e7c387889cf92bae4c6a76eefa4"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/ide-editor/assets/cssMode-Dt3RHPmc.js.map",
+        "digest": "9eafe4e04e294c3a4aa267440421be02fa8f11f4a238356ceab2047bd0d9d650"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/ide-editor/assets/editor.worker-Czvkus_W.js",
+        "digest": "2cb0a07d78dccded7f5b32d26452c708882b3f7472f7b74e74cdbb7d29f88546"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/ide-editor/assets/editor.worker-Czvkus_W.js.map",
+        "digest": "70eb8c2248566db87f24eb186233b478c47998158455cc0aabb59fda8aa2e27f"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/ide-editor/assets/html.worker-BlY20I4a.js",
+        "digest": "a43a6b7e306c63bec59167db056d378e12c8012f1060d7482642d937bef44afb"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/ide-editor/assets/html.worker-BlY20I4a.js.map",
+        "digest": "6345d065b850e2241c1ccff9c4c0b532c9c246d5da59c0720c4ba4817c30022a"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/ide-editor/assets/htmlMode-KC6NKImV.js",
+        "digest": "538bb2ce5ad1c4f2e66d0df3316c30e7a2d64c916c0482630786751406fd2f6f"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/ide-editor/assets/htmlMode-KC6NKImV.js.map",
+        "digest": "238cd070de0c4f1b34d6132f015de15ce4cc9552ce8bed61ab56034c8616b68d"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/ide-editor/assets/javascript-BREPUHHX.js",
+        "digest": "6fa111694d3fb90afae712b354576f61ca416f4476d21bcdc1d07104c0f61299"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/ide-editor/assets/javascript-BREPUHHX.js.map",
+        "digest": "6456fb7eae20910018c9a69d6ffe329cb36ac09b2966e54128e39480249a7d9c"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/ide-editor/assets/json.worker-7tYf1h85.js",
+        "digest": "98a106de6091cfc8db0d21902a01b2e3eceda70a23e06bd6421352fdeea557ba"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/ide-editor/assets/json.worker-7tYf1h85.js.map",
+        "digest": "d004dc860671b05f3b7caa86ae4bd7173fa92943ba224fc1e13a948924ea76af"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/ide-editor/assets/jsonMode-D99lvfQr.js",
+        "digest": "e575732b6eb00929055aa76f93906bc01bf3e6f47a741919aa02c3180bc84c67"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/ide-editor/assets/jsonMode-D99lvfQr.js.map",
+        "digest": "1cb9102da84059a29776c9e30a4b6e98fc9419b9385dda2bb615aaac30c7546d"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/ide-editor/assets/lspLanguageFeatures-C24x6x4X.js",
+        "digest": "b0acd667689dc5ae2d629a1845d13d04a1a3e3ed8c7925af3d104fc90b332e1c"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/ide-editor/assets/lspLanguageFeatures-C24x6x4X.js.map",
+        "digest": "085b4e24c5b08b713f321116e2aecf51fb85e89d2412de0d0dc1d281ea3bd400"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/ide-editor/assets/markdown-C_jeeMr1.js",
+        "digest": "47446a5916cd6d16389468b1c5cfec4b842e27d841cdd55231560fc2ae20eec2"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/ide-editor/assets/markdown-C_jeeMr1.js.map",
+        "digest": "ddd81298fda04cfc1c1ccb4ca873beb8a6a3ff03ccb2e9d958889eeaa1c8db4b"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/ide-editor/assets/monaco.contribution-CR4cLLRx.js",
+        "digest": "ee0ceb8f2bcaaa65720aa9ca4339e85a5633e7841bfaf377671275eb23770dc4"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/ide-editor/assets/monaco.contribution-CR4cLLRx.js.map",
+        "digest": "64a937567b896d27a2c1253e604135b749c4909aef4df492f8dec16d9547044d"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/ide-editor/assets/python-DtYkrNeY.js",
+        "digest": "e086f2f35cb0dd1d1c2c3464a8e3a6d77cea2d6761643356a1397f0f78af0a30"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/ide-editor/assets/python-DtYkrNeY.js.map",
+        "digest": "ad36c2e0eac7de1dc5f2beb5b8d76ceaf0f21759211f9df96a7e359cc5c18ee4"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/ide-editor/assets/rust-BPJY58JV.js",
+        "digest": "355d0bc4cc79ad9ce1d177879b34d739453d34e6a9bb8c451e016cc1e4c21048"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/ide-editor/assets/rust-BPJY58JV.js.map",
+        "digest": "aba3546ab29f356c49071d946f0381d95d156fa2f0a9cbfff6489570d8568796"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/ide-editor/assets/shell-DZxOw2Ds.js",
+        "digest": "c978567792651ba5b6fdbb1f4dbe364299a238010494295502b65c5e535c8608"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/ide-editor/assets/shell-DZxOw2Ds.js.map",
+        "digest": "54ef44da64251d432e67803dfa10cb3b8b7a59fd15c56707f6edf9726a61139f"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/ide-editor/assets/toggleHighContrast-85aZdQJ9.js",
+        "digest": "a93dd8db045260992b13bf944892906bb698d4eeaed73bf452897db795ed97ec"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/ide-editor/assets/toggleHighContrast-85aZdQJ9.js.map",
+        "digest": "a2195e5c7d6c8922e0ecce8056f0454ff48fdd69044ae6964a61203a9ec71e68"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/ide-editor/assets/ts.worker-ClUuU0JT.js",
+        "digest": "fb836681ba6428c974be47dbb8309d6dfc6f6c9ec4b4c897f09205b54c30dfd8"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/ide-editor/assets/ts.worker-ClUuU0JT.js.map",
+        "digest": "bd677df699551253ae061e82855c977aa020aec6aeb57ff599b31b5080029772"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/ide-editor/assets/tsMode-5ZgvIhnl.js",
+        "digest": "5b2aca048c3d9f17fc418f295c35b2f07879fa08da37a0ba203b2e0b171ee8e7"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/ide-editor/assets/tsMode-5ZgvIhnl.js.map",
+        "digest": "21904a238793a7f0ae770c989373fbee6b9198de97cc0cfa2e7568363890941e"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/ide-editor/assets/typescript-T0fkhWI_.js",
+        "digest": "f07dac8f2aac159a866dcac97ce756c8163d03c9883f51d444376d54a8e99e33"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/ide-editor/assets/typescript-T0fkhWI_.js.map",
+        "digest": "fb3730659160c0f2018f3f46b2718e21130e5fab70dc878a02432d3126a0c66c"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/ide-editor/assets/workers-DfLxyN6P.js",
+        "digest": "4ebd95f2eb3b2354cc953afa72ce52d116f1bafbcac94c30183bad1ba7df9526"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/ide-editor/assets/workers-DfLxyN6P.js.map",
+        "digest": "c884d67968363d4e4f45a2baad44b3e51a32500871a49c0a7ec970409b30f09c"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/ide-editor/assets/yaml-C2fU_A9a.js",
+        "digest": "c40f559064b619b66f2dcf772375378b884f7356c14bc4c24976b4ec6cb6c77a"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/ide-editor/assets/yaml-C2fU_A9a.js.map",
+        "digest": "b050e4707ac50dbe1003074c62bf4b438f44c72e1e7829ed3c805a866725a2cf"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/ide-editor/editor.css",
+        "digest": "fc0419592f589de4f9b980e2a7fc21d03dd8cb595e7ff620a9a25b8470dce4c4"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/ide-editor/editor.js",
+        "digest": "d9a7915d3d1ab7dbc520ebbb66e4177d5b840b8ab9c4de400020125d8649647e"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/ide-editor/editor.js.map",
+        "digest": "22d582deb3cb09e7ef36ea8ca8f951d171b5c4a519b3010ba5d323be1e9438c2"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/index.html",
+        "digest": "212b19fc09c1b4a4f195f1cd37c7527b5a46f0dd68b499c7c25b61072e3155ec"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/smoke-fixtures/claude-smoke/projects/openagents-desktop/11111111-2222-3333-4444-555555555555.jsonl",
+        "digest": "1ce55805619bf84480407962c0ee367cd6dd96ad4d3adb227ccfb5454137b2e9"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/smoke-fixtures/codex-smoke/session_index.jsonl",
+        "digest": "1226257d8c96693a849cd13bf16f41e20060769c12187f39d7250a82136eb7c8"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/smoke-fixtures/codex-smoke/sessions/2026/07/11/smoke-child.jsonl",
+        "digest": "d69a3beabf6f4d0af43c0943d4d19256487199271641f8e9aea2ffacda7ec758"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/renderer/smoke-fixtures/codex-smoke/sessions/2026/07/11/smoke-root.jsonl",
+        "digest": "699c6afbf05d4553894efe162eaea5cdd2cc121c7515ba74eaa732d19e02894d"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/workers/codex-history-worker.js",
+        "digest": "e3d68f7b97b12abed93851b837b37be23f8740dc7921d9ea0ae9872ef03bca18"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/workers/language-utility-worker.js",
+        "digest": "2b430709a60d06635f149058bcaa49b9f08ef5cb8d4e5360dde786b4da6c1b71"
+      },
+      {
+        "ref": "apps/openagents-desktop/dist/workers/workspace-search-worker.js",
+        "digest": "38d1eec8824a262bc941bab593059f4f59433b9df3513c2df77cb7611e35ac2c"
+      }
+    ],
+    "productWiringSmokeDigest": "acb6419175a8b292849122a16b8075693abe4ee432ebb53bd5f323b44206c810",
+    "runnerRef": "apps/openagents-desktop/scripts/graph-memory-evaluation.ts",
+    "runnerDigest": "fa0b60f4f0b67309590468cfa2ff3b09c10b120a61d3249c3524266461d71ba2",
+    "oracleRef": "apps/openagents-desktop/src/desktop-graph-memory-evaluation.ts",
+    "oracleDigest": "064302c3d757846b86a42d94ff70352e18e6c6e6feb15d3aab37f5fa329a1497",
+    "runtime": {
+      "node": "v24.13.1",
+      "platform": "darwin",
+      "architecture": "arm64"
+    },
+    "timingRef": "node.performance.now.recall_only.warm.3_repetitions",
+    "model": {
+      "_tag": "NotUsed",
+      "reason": "deterministic_evaluation",
+      "requiredModelCalls": 0,
+      "requiredInputTokens": 0,
+      "requiredOutputTokens": 0
+    },
+    "parserRef": "parser.desktop.foreground-history",
+    "parserVersion": "version.1",
+    "parserArtifactDigest": "15262b39d0f2090515e4bc4f8773e517f3ee8c7b9815230b6a8f455e2e6fa136",
+    "datasetRevisionDigest": "693568fd4be50874ca5226786188e9f21c0a2879225aa0f5b52a19bd793fbe0c",
+    "developmentSplitDigest": "2cc7b26d9924bd6e25c666ce48739aaaab37e849bc2e5e8df5be94f4d801a1cf",
+    "holdoutSplitDigest": "6bebcdd8ecf6396c55b8492a50c758fb517e0044709464a53129f842d872ded2",
+    "corpusDigest": "82b3ed1e94d740d9a4f97c488b37501f9169ae2f564bc5d0d7f7eeb9dc5cc682",
+    "policyDigest": "2d653974be65fd6bdb87173bea324e159e6fdb0a1291257039c43906eac0b2a9",
+    "budgetDigest": "a9e60eb7ef7dd7c8817c742386c8107a1bb54c4fe5327e5fee241ceed0d1355c",
+    "qualityPolicyDigest": "e124b17a75bc535df2cca5b4a00bf234c6907bf9c82189cfaa9cec3a4216f57d"
+  },
+  "dataset": {
+    "datasetRef": "openagents.desktop.graph-memory.synthetic-owner-safe.v1",
+    "reviewState": "public_safe_synthetic",
+    "developmentRows": 6,
+    "holdoutRows": 7,
+    "physicalHoldoutIsolation": true,
+    "splitIdentityOverlap": 0,
+    "challengeClasses": [
+      "changed_fact",
+      "contradictory_mentions",
+      "partial_extraction",
+      "prompt_injection",
+      "revoked_source",
+      "same_name_entities",
+      "stale_graph"
+    ]
+  },
+  "rowEvidence": [
+    {
+      "rowId": "holdout.same-name",
+      "inputDigest": "d58271ba00303a916406fa38d36ec1d3431c541070c159e7dbfeacdb1a460050",
+      "corpusDigest": "e64ca02ff240bafa76e4bcb6fa5bf4ae412dbb3177b1c7b6f71435b0f37e51db",
+      "queryDigest": "9f5cda893000922523f2d158b3c330c7fe1971ab5d045008137f18e1cc5a4eff",
+      "policyDigest": "2d653974be65fd6bdb87173bea324e159e6fdb0a1291257039c43906eac0b2a9",
+      "budgetDigest": "a9e60eb7ef7dd7c8817c742386c8107a1bb54c4fe5327e5fee241ceed0d1355c",
+      "historyOnly": {
+        "outcome": "complete",
+        "modelCalls": 0,
+        "extractionEvidence": {
+          "status": "not_run",
+          "receiptDigest": null,
+          "usageTruth": "not_run",
+          "inputCorpusDigest": null,
+          "budgetDigest": null,
+          "graphStateDigest": null,
+          "entityCount": 0,
+          "mergeCount": 0
+        },
+        "citationEvidence": {
+          "validationDigest": null,
+          "invalidCount": 0
+        }
+      },
+      "graphAssisted": {
+        "outcome": "failed",
+        "modelCalls": 0,
+        "extractionEvidence": {
+          "status": "failed",
+          "receiptDigest": "38bf5b3bf893502db9915a43804e27fd2fabca95a7cd21de399eddd59a1a2f06",
+          "usageTruth": "exact",
+          "inputCorpusDigest": "e64ca02ff240bafa76e4bcb6fa5bf4ae412dbb3177b1c7b6f71435b0f37e51db",
+          "budgetDigest": "a05c03343daf7984fa2698ed18d899a6b4d7008ad554fbd87be8a5c5d9c0fa6d",
+          "graphStateDigest": null,
+          "entityCount": 0,
+          "mergeCount": 0
+        },
+        "citationEvidence": {
+          "validationDigest": null,
+          "invalidCount": 0
+        }
+      }
+    },
+    {
+      "rowId": "holdout.contradiction",
+      "inputDigest": "7e07a040b48258f75c088cba4d6a55d0a21b9ed9ad134e4a32c50f45858f3b75",
+      "corpusDigest": "513f59d2a5f7faba6a5ddb8e76c0fa2a26fa9601875765555fd54e35f85959b2",
+      "queryDigest": "a34db33d836159e700dbdba519c39af8391658249343145b4e6d4666efd04430",
+      "policyDigest": "2d653974be65fd6bdb87173bea324e159e6fdb0a1291257039c43906eac0b2a9",
+      "budgetDigest": "a9e60eb7ef7dd7c8817c742386c8107a1bb54c4fe5327e5fee241ceed0d1355c",
+      "historyOnly": {
+        "outcome": "complete",
+        "modelCalls": 0,
+        "extractionEvidence": {
+          "status": "not_run",
+          "receiptDigest": null,
+          "usageTruth": "not_run",
+          "inputCorpusDigest": null,
+          "budgetDigest": null,
+          "graphStateDigest": null,
+          "entityCount": 0,
+          "mergeCount": 0
+        },
+        "citationEvidence": {
+          "validationDigest": "f4ee9463875cee0032b8a6d7fd61fbe343dd3dc87de9d6fee8c5025f2634663e",
+          "invalidCount": 0
+        }
+      },
+      "graphAssisted": {
+        "outcome": "partial",
+        "modelCalls": 0,
+        "extractionEvidence": {
+          "status": "complete",
+          "receiptDigest": "5d13fc59e63f4fb9a6f723c82fd3246e6fbdcf0a2b72633af640ef3c5eade2f7",
+          "usageTruth": "exact",
+          "inputCorpusDigest": "513f59d2a5f7faba6a5ddb8e76c0fa2a26fa9601875765555fd54e35f85959b2",
+          "budgetDigest": "a05c03343daf7984fa2698ed18d899a6b4d7008ad554fbd87be8a5c5d9c0fa6d",
+          "graphStateDigest": "dc6bb99d4bbbc7b372272bad22ada1afa814c3b152a146fa56c62b88c5f77e1c",
+          "entityCount": 0,
+          "mergeCount": 0
+        },
+        "citationEvidence": {
+          "validationDigest": "ccd1e8bec57a92b0f58b3275d286ea110a4349a2ef784ef1bcb1b7be6fed5840",
+          "invalidCount": 0
+        }
+      }
+    },
+    {
+      "rowId": "holdout.changed-fact",
+      "inputDigest": "af589d3133683d0959ffc5fe9a064891f3e611e802640e36c09b5c460594b812",
+      "corpusDigest": "19a280bfdf28588498ccec408e81ef78a514d5d3325c73fae100cae2e6410e9d",
+      "queryDigest": "72d16fcddf6e36d65702b19fe6ed73f8e66161197867f651c0b17c03465f9c19",
+      "policyDigest": "2d653974be65fd6bdb87173bea324e159e6fdb0a1291257039c43906eac0b2a9",
+      "budgetDigest": "a9e60eb7ef7dd7c8817c742386c8107a1bb54c4fe5327e5fee241ceed0d1355c",
+      "historyOnly": {
+        "outcome": "complete",
+        "modelCalls": 0,
+        "extractionEvidence": {
+          "status": "not_run",
+          "receiptDigest": null,
+          "usageTruth": "not_run",
+          "inputCorpusDigest": null,
+          "budgetDigest": null,
+          "graphStateDigest": null,
+          "entityCount": 0,
+          "mergeCount": 0
+        },
+        "citationEvidence": {
+          "validationDigest": "17da7fe0a59ad892d4cd79796c57a1ef20555a95e3979db6d3b8a258730ff5ae",
+          "invalidCount": 0
+        }
+      },
+      "graphAssisted": {
+        "outcome": "partial",
+        "modelCalls": 0,
+        "extractionEvidence": {
+          "status": "complete",
+          "receiptDigest": "b42584e86a8a2095830e9fbd0aa5e1bf37c17558248ecf22f4803ba4f473ade4",
+          "usageTruth": "exact",
+          "inputCorpusDigest": "19a280bfdf28588498ccec408e81ef78a514d5d3325c73fae100cae2e6410e9d",
+          "budgetDigest": "a05c03343daf7984fa2698ed18d899a6b4d7008ad554fbd87be8a5c5d9c0fa6d",
+          "graphStateDigest": "709ab4d466bc4d04c575fcef29c84e5f07630a6336303f9a6ed466c5d06b43f3",
+          "entityCount": 0,
+          "mergeCount": 0
+        },
+        "citationEvidence": {
+          "validationDigest": "06c60326bdc532911e787e19edbf770ecdaf504bec69a686ca8977240cca4f13",
+          "invalidCount": 0
+        }
+      }
+    },
+    {
+      "rowId": "holdout.revoked-source",
+      "inputDigest": "b935e2db4324b8c4e37ea537c37fd5b6b39fc239c343f8f8da14d8cdcdc9931c",
+      "corpusDigest": "d19d4bc6c53b1ab2ced37776a383b59594732868de8684e11f4e4d4515b7b8ea",
+      "queryDigest": "01d0ed9f658b30f6712feb946a3f79ce9cae99792b4350d278c14e8c7f781d95",
+      "policyDigest": "2d653974be65fd6bdb87173bea324e159e6fdb0a1291257039c43906eac0b2a9",
+      "budgetDigest": "a9e60eb7ef7dd7c8817c742386c8107a1bb54c4fe5327e5fee241ceed0d1355c",
+      "historyOnly": {
+        "outcome": "complete",
+        "modelCalls": 0,
+        "extractionEvidence": {
+          "status": "not_run",
+          "receiptDigest": null,
+          "usageTruth": "not_run",
+          "inputCorpusDigest": null,
+          "budgetDigest": null,
+          "graphStateDigest": null,
+          "entityCount": 0,
+          "mergeCount": 0
+        },
+        "citationEvidence": {
+          "validationDigest": null,
+          "invalidCount": 0
+        }
+      },
+      "graphAssisted": {
+        "outcome": "complete",
+        "modelCalls": 0,
+        "extractionEvidence": {
+          "status": "complete",
+          "receiptDigest": "0d45c6183d1cb5ff046bb87b5a43d2877369760ac4bc86980fc5cd9553ef882f",
+          "usageTruth": "exact",
+          "inputCorpusDigest": "d19d4bc6c53b1ab2ced37776a383b59594732868de8684e11f4e4d4515b7b8ea",
+          "budgetDigest": "a05c03343daf7984fa2698ed18d899a6b4d7008ad554fbd87be8a5c5d9c0fa6d",
+          "graphStateDigest": "d4dca9ee3fad8efbc31b6724e9afbe805f2f0834599b10fdd84248a0f6fcf269",
+          "entityCount": 0,
+          "mergeCount": 0
+        },
+        "citationEvidence": {
+          "validationDigest": null,
+          "invalidCount": 0
+        }
+      }
+    },
+    {
+      "rowId": "holdout.prompt-injection",
+      "inputDigest": "9fae8f562a5312f5a2d2acc8253f2771cb1cc68a9ba5b5b05108fc04a47f37ec",
+      "corpusDigest": "c1c29e58916f9fe251e88b52a0ceae050e7c62368d203fcb507e2643d7dd2eab",
+      "queryDigest": "b086de7b32510701e873f3d4ae742917ca1cc1141ffe4a8387d604ef474ef9e4",
+      "policyDigest": "2d653974be65fd6bdb87173bea324e159e6fdb0a1291257039c43906eac0b2a9",
+      "budgetDigest": "a9e60eb7ef7dd7c8817c742386c8107a1bb54c4fe5327e5fee241ceed0d1355c",
+      "historyOnly": {
+        "outcome": "complete",
+        "modelCalls": 0,
+        "extractionEvidence": {
+          "status": "not_run",
+          "receiptDigest": null,
+          "usageTruth": "not_run",
+          "inputCorpusDigest": null,
+          "budgetDigest": null,
+          "graphStateDigest": null,
+          "entityCount": 0,
+          "mergeCount": 0
+        },
+        "citationEvidence": {
+          "validationDigest": "24694937952a3f7f547334894f4f6b0964fe424c6a402cb84e00aa33ebcc7a66",
+          "invalidCount": 0
+        }
+      },
+      "graphAssisted": {
+        "outcome": "complete",
+        "modelCalls": 0,
+        "extractionEvidence": {
+          "status": "complete",
+          "receiptDigest": "326c1599dff510ad876bf41ad586e0dff6359c56f86694adf944dfc06f58ae5e",
+          "usageTruth": "exact",
+          "inputCorpusDigest": "c1c29e58916f9fe251e88b52a0ceae050e7c62368d203fcb507e2643d7dd2eab",
+          "budgetDigest": "a05c03343daf7984fa2698ed18d899a6b4d7008ad554fbd87be8a5c5d9c0fa6d",
+          "graphStateDigest": "7f203246004692dd0704ef9702659b54defb1285b10a511a9dafc32cf3fefc29",
+          "entityCount": 0,
+          "mergeCount": 0
+        },
+        "citationEvidence": {
+          "validationDigest": "24694937952a3f7f547334894f4f6b0964fe424c6a402cb84e00aa33ebcc7a66",
+          "invalidCount": 0
+        }
+      }
+    },
+    {
+      "rowId": "holdout.partial-extraction",
+      "inputDigest": "2cee07d41baf0d87ce610bbf9a52c1dd639bb3b42c874a944a9f8ccc4b0376f7",
+      "corpusDigest": "1966c08b33be3297b3b8e1bb2abc82e0103367e47e1893f360ae19769decbab3",
+      "queryDigest": "3943db33ad48124805f8b058338557caac6528853806fe0d7eb6b15476a860f0",
+      "policyDigest": "2d653974be65fd6bdb87173bea324e159e6fdb0a1291257039c43906eac0b2a9",
+      "budgetDigest": "a9e60eb7ef7dd7c8817c742386c8107a1bb54c4fe5327e5fee241ceed0d1355c",
+      "historyOnly": {
+        "outcome": "complete",
+        "modelCalls": 0,
+        "extractionEvidence": {
+          "status": "not_run",
+          "receiptDigest": null,
+          "usageTruth": "not_run",
+          "inputCorpusDigest": null,
+          "budgetDigest": null,
+          "graphStateDigest": null,
+          "entityCount": 0,
+          "mergeCount": 0
+        },
+        "citationEvidence": {
+          "validationDigest": null,
+          "invalidCount": 0
+        }
+      },
+      "graphAssisted": {
+        "outcome": "partial",
+        "modelCalls": 0,
+        "extractionEvidence": {
+          "status": "partial",
+          "receiptDigest": "52212d9a8884866b5fdfa4287b297bf3034eb93aa624a3d2f7a76628e17775de",
+          "usageTruth": "exact",
+          "inputCorpusDigest": "1966c08b33be3297b3b8e1bb2abc82e0103367e47e1893f360ae19769decbab3",
+          "budgetDigest": "8c6055861cc6c057cf25038381052f22cf5e58381c6163c4406103ae681d96de",
+          "graphStateDigest": null,
+          "entityCount": 0,
+          "mergeCount": 0
+        },
+        "citationEvidence": {
+          "validationDigest": null,
+          "invalidCount": 0
+        }
+      }
+    },
+    {
+      "rowId": "holdout.stale-graph",
+      "inputDigest": "afea38006ef288e5f5bd39d58cd95b0af1fbccfede2d40ddf31d630e913a6af5",
+      "corpusDigest": "17074c32794462d62ef38ce4f2aff3615683dfb6c57982631a36ad3f3f166d9c",
+      "queryDigest": "694df57a7909d9f9edbd3acb4ccfce5fbee156fab749383121f17fef16bbab57",
+      "policyDigest": "2d653974be65fd6bdb87173bea324e159e6fdb0a1291257039c43906eac0b2a9",
+      "budgetDigest": "a9e60eb7ef7dd7c8817c742386c8107a1bb54c4fe5327e5fee241ceed0d1355c",
+      "historyOnly": {
+        "outcome": "complete",
+        "modelCalls": 0,
+        "extractionEvidence": {
+          "status": "not_run",
+          "receiptDigest": null,
+          "usageTruth": "not_run",
+          "inputCorpusDigest": null,
+          "budgetDigest": null,
+          "graphStateDigest": null,
+          "entityCount": 0,
+          "mergeCount": 0
+        },
+        "citationEvidence": {
+          "validationDigest": "ca71f001a29505e54a1fb8fbb114ca91ce8c64dc29430e6e568850e86d8fd0f1",
+          "invalidCount": 0
+        }
+      },
+      "graphAssisted": {
+        "outcome": "failed",
+        "modelCalls": 0,
+        "extractionEvidence": {
+          "status": "complete",
+          "receiptDigest": "24e8b5fb2a83dea48eb9a8964f1e20a393cd0386fe84707ab59c5dc05cf7214f",
+          "usageTruth": "exact",
+          "inputCorpusDigest": "7ae5c87108822670ca2461c6d495429a9d4dcd50e4c782e8b63a7994cfd3b2bf",
+          "budgetDigest": "a05c03343daf7984fa2698ed18d899a6b4d7008ad554fbd87be8a5c5d9c0fa6d",
+          "graphStateDigest": "1c46e553685cb7afe2e08f7f5830950fc003efcad0f5f415e123086b98a5a47d",
+          "entityCount": 0,
+          "mergeCount": 0
+        },
+        "citationEvidence": {
+          "validationDigest": null,
+          "invalidCount": 0
+        }
+      }
+    }
+  ],
+  "privateDetailReceiptDigest": "3e0c598e1d40490ec321f21893c0900ad2d00c0d69958f05aa909d15e5bb0cc2",
+  "historyOnly": {
+    "arm": "history_only",
+    "rows": 7,
+    "outcomes": {
+      "complete": 7,
+      "partial": 0,
+      "refused": 0,
+      "failed": 0,
+      "inconclusive": 0
+    },
+    "citationValidity": {
+      "status": "supported",
+      "numerator": 6,
+      "denominator": 6,
+      "value": 1,
+      "reason": null
+    },
+    "answerSupport": {
+      "status": "supported",
+      "numerator": 0,
+      "denominator": 8,
+      "value": 0,
+      "reason": null
+    },
+    "falseMergeRate": {
+      "status": "supported",
+      "numerator": 0,
+      "denominator": 3,
+      "value": 0,
+      "reason": null
+    },
+    "missedEntityRate": {
+      "status": "supported",
+      "numerator": 14,
+      "denominator": 14,
+      "value": 1,
+      "reason": null
+    },
+    "retrievalPrecision": {
+      "status": "supported",
+      "numerator": 4,
+      "denominator": 6,
+      "value": 0.6666666666666666,
+      "reason": null
+    },
+    "retrievalRecall": {
+      "status": "supported",
+      "numerator": 4,
+      "denominator": 7,
+      "value": 0.5714285714285714,
+      "reason": null
+    },
+    "latency": {
+      "samples": 21,
+      "p50Ms": 0.2269579999999678,
+      "p95Ms": 0.4030840000000353
+    },
+    "usage": {
+      "truth": "exact",
+      "exactRows": 7,
+      "unavailableRows": 0,
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "totalTokens": 0
+    },
+    "truncation": {
+      "rows": 0,
+      "hitCaps": [
+        "revoked_source_excluded"
+      ]
+    }
+  },
+  "graphAssisted": {
+    "arm": "graph_assisted",
+    "rows": 7,
+    "outcomes": {
+      "complete": 2,
+      "partial": 3,
+      "refused": 0,
+      "failed": 2,
+      "inconclusive": 0
+    },
+    "citationValidity": {
+      "status": "supported",
+      "numerator": 3,
+      "denominator": 3,
+      "value": 1,
+      "reason": null
+    },
+    "answerSupport": {
+      "status": "supported",
+      "numerator": 0,
+      "denominator": 8,
+      "value": 0,
+      "reason": null
+    },
+    "falseMergeRate": {
+      "status": "supported",
+      "numerator": 0,
+      "denominator": 3,
+      "value": 0,
+      "reason": null
+    },
+    "missedEntityRate": {
+      "status": "supported",
+      "numerator": 14,
+      "denominator": 14,
+      "value": 1,
+      "reason": null
+    },
+    "retrievalPrecision": {
+      "status": "supported",
+      "numerator": 2,
+      "denominator": 3,
+      "value": 0.6666666666666666,
+      "reason": null
+    },
+    "retrievalRecall": {
+      "status": "supported",
+      "numerator": 2,
+      "denominator": 7,
+      "value": 0.2857142857142857,
+      "reason": null
+    },
+    "latency": {
+      "samples": 21,
+      "p50Ms": 1.1139579999999114,
+      "p95Ms": 2.369957999999997
+    },
+    "usage": {
+      "truth": "exact",
+      "exactRows": 7,
+      "unavailableRows": 0,
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "totalTokens": 0
+    },
+    "truncation": {
+      "rows": 3,
+      "hitCaps": [
+        "graph_recall_failure.DesktopGraphMemory.TurnError.invalid_source",
+        "graph_setup_failure.DesktopGraphMemory.TurnError.store_failure",
+        "max_observation_characters",
+        "partial_extraction_reported",
+        "prompt_injection_treated_as_data",
+        "revoked_source_excluded",
+        "stale_graph_failed_closed"
+      ]
+    }
+  },
+  "comparison": {
+    "quality": "inconclusive",
+    "reasons": [
+      "non_complete_rows_present"
+    ]
+  },
+  "disposition": {
+    "implementation": "implemented",
+    "evidence": "partial",
+    "quality": "inconclusive",
+    "ownerReview": "unreviewed",
+    "release": "not_released",
+    "publicClaim": "not_authorized"
+  }
+}
