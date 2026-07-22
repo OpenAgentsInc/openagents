@@ -467,6 +467,28 @@ come from the Freerange teardown
   assurance-admission, candidate self-promotion, or authority-expansion
   capability.
 
+- Under `AUTHORITY.md` revision 7 and Sarah authority revision 5, the Episode
+  260 owner direction of 2026-07-22 admits Sarah's company-command scope for
+  the owner's parental leave. Sarah may publish or promote a **stable** release
+  and communicate its status, but only through the existing release broker,
+  only after an independent reviewer with a distinct execution identity
+  reproduces the release evidence, and only under the standing Episode 260
+  direction. The producer cannot verify or release from its own evidence, and
+  the rollback, monotonic-update, and evidence gates are never waived. Sarah may
+  draft blog, document, and Forum content and deliver blog and document drafts
+  through repository delivery now. Outward publication to the public timeline
+  and animated-spoken publication refuse with a receipt until the owner supplies
+  the animation and speech interfaces and the web-communications broker and
+  channel guardrails are deployed, healthy, and receipt-capable. Any sales
+  action, customer-data access, or financial reach refuses with a receipt until
+  a bounded sales broker and its guardrails are separately admitted. This
+  direction expands scope by an explicit current owner direction, the only
+  lawful amplifier. It never waives the reserved set: raw secret or token
+  extraction, financial custody, legal or employment or regulatory commitments,
+  irreversible customer-data destruction, natural-person identity ceremonies,
+  over-budget spend, invariant weakening, unsupported public claims, and
+  authority self-amplification remain reserved.
+
 - Desktop local Codex usage collection is triple-gated: the review-only
   Desktop control gate, an explicit default-off user preference, and the
   server ingest rollout gate. An authenticated bearer alone is insufficient:

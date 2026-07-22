@@ -19,3 +19,30 @@
 
 Legend: ⬜ not started · 🟡 in progress / partially landed · 🟢 done in code ·
 ✅ fully live and owner-verified.
+
+## Episode 260 company-command layer (owner direction 2026-07-22)
+
+Analysis: `2026-07-22-sarah-company-command-analysis.md`. Authority:
+`AUTHORITY.md` revision 7 + Sarah authority revision 5. ProductSpec revision 5.
+
+| Owner requirement | Status |
+| --- | --- |
+| Command coding fleet (Artanis) | 🟢 Live: `codex_workers_*` tools dispatch real workers on owner-linked Pylon capacity |
+| Command Full Auto | 🟢 Live: `full_auto_status`/`full_auto_control` read plus pause/resume/stop. Desktop applies intents |
+| Control all product releases (stable) | 🟢 Admitted in authority (revision 7 / Sarah revision 5) under independent verification + the standing Episode 260 direction. Runtime broker binding tracked as the next code lane |
+| Web communications / blog / docs | 🟡 Blog and document drafting delivers through repository delivery now. The `sarah_web_comms` broker tool is the next code lane. Outward timeline and animated-spoken publication refuse-until-admission |
+| Introduce herself | 🟢 Repository-hosted introduction landed (`2026-07-22-sarah-introduction.md`). Outward animated-spoken introduction waits on the interfaces |
+| Forthcoming sales operations | 🟡 Admitted as intent only. Refuses with a receipt until a bounded sales broker plus guardrails are separately deployed |
+| Tweet as Sarah (animated + spoken) | 🔴 Owner-gated: waits on the owner-supplied animation and speech interfaces (recorded in `NEEDS_OWNER.md`) |
+
+## Resume the full-auto protocol — irreducible owner actions
+
+The autonomous-agent setup is code-complete (issues #9062-#9065 and #9033 are
+closed). What remains is deploy-time and owner-gated, recorded in workspace
+`NEEDS_OWNER.md`:
+
+1. Confirm the live owner sign-in identity and set `OPENAGENTS_ADMIN_EMAILS`.
+2. Link an EAS project id for `apps/openagents-mobile`.
+3. Apply migration `0082` at deploy time against production Cloud SQL.
+4. Accept the live Google Cloud managed-sandbox target.
+5. Hand over the animation and speech interfaces for Sarah's outward voice.

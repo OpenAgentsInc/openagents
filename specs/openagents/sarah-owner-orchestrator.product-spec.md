@@ -2,10 +2,10 @@
 spec_format_version: "0.1"
 title: "Sarah Owner Orchestrator"
 artifact_type: "prd"
-spec_revision: 4
+spec_revision: 5
 author: "OpenAgents"
 created_at: "2026-07-18T00:00:00Z"
-updated_at: "2026-07-19T00:00:00Z"
+updated_at: "2026-07-22T00:00:00Z"
 linked_github_repo: "OpenAgentsInc/openagents"
 custom_sections:
   - id: "custom-owner-gates"
@@ -24,6 +24,7 @@ tool_metadata:
   openagents_managed_sandbox_epic: "9023"
   openagents_assurance_spec_status: "revision 3 exactly rebinds this rev-4 intent after SBX-00 authority admission; SARAH-AC-21 through SARAH-AC-23 have complete proposed proof design while SARAH-AC-01 through SARAH-AC-20 remain needs_design"
   openagents_revision_4_note: "Rev 4 adds the owner-directed managed-sandbox outcome without granting a generic cloud shell or pretending the broker is already live. Sarah may create, list, inspect, dispatch into, interrupt, stop, resume, and delete exact owner-scoped OpenAgents-managed GCP sandboxes only after the managed-sandbox ProductSpec, SBX-00 authority revision, target broker, and live GCP proof land. Every action binds program/work-unit/target/profile/TTL/budget/capability refs and returns authority plus target receipts. It remains distinct from remote Full Auto start, raw topology, broad cloud credentials, and generic container administration. Adds SARAH-AC-21 through SARAH-AC-23."
+  openagents_revision_5_note: "Rev 5 records the Episode 260 company-command direction of 2026-07-22 (AUTHORITY.md revision 7 + Sarah authority revision 5). Sarah runs the company during the owner's parental leave and commands the coding fleet, Full Auto, releases across all channels, communications, the blog, and the documents. Stable release is admitted through the same release broker under an independent reviewer and the standing Episode 260 direction, never waiving verification, rollback, monotonic-update, or evidence gates. Web communications are admitted: blog and document drafts deliver through repository delivery now; outward timeline and animated-spoken publication refuse with a receipt until the owner supplies the animation and speech interfaces and the web-communications broker and guardrails are deployed and healthy. Sales operations are admitted as intent only and refuse with a receipt until a bounded sales broker and its guardrails are separately deployed. No customer-data, financial-custody, legal, secret, or authority-expansion reach is admitted. Adds SARAH-AC-24 through SARAH-AC-27."
 ---
 
 ## Problem
@@ -59,15 +60,20 @@ in:
   - after exact authority and broker admission, managed-sandbox create/list/inspect/dispatch/interrupt/stop/resume/delete for the authenticated owner's Google Cloud capacity through `specs/openagents/managed-agent-sandboxes.product-spec.md`
   - one released content-addressed six-dimension Sarah conversational harness bound immutably before each provider turn
   - owner-private terminal-thread experience compilation, bounded candidate production, held-out evaluation, and an independent Blueprint release gate for next-turn activation
+  - stable release publication and promotion through the existing release broker under independent verification and the standing Episode 260 owner direction
+  - blog, document, and Forum drafting now, with blog and document drafts delivered through repository delivery
+  - a self-introduction as a repository-hosted communication
 out:
   - a separate Sarah app, public web landing, prospect CRM, transcript database, provider dispatcher, or issue queue
   - avatar, video, ambient voice, GPU rendering, or public sales-persona infrastructure
   - raw database dumps, raw credentials, private paths, customer-private payloads, or unbounded context in model prompts
+  - outward publication to the public timeline or animated-spoken publication before the owner supplies the animation and speech interfaces and the web-communications broker and guardrails are deployed and healthy
+  - any sales action, customer-data access, or financial reach before a bounded sales broker and its guardrails are separately admitted and deployed
 cut:
   - financial custody or value movement
   - legal, employment, tax, regulatory, or natural-person commitments
   - destructive production customer-data operations
-  - stable publication without current owner direction
+  - stable publication without a current or standing owner direction, or without independent verification
   - invariant weakening, unsupported public claims, or self-amplification
   - remote Full Auto start, raw local workspace selection, raw gcloud or shell access, generic container administration, broad project/topology/credential access, Full Auto MemoHarness private-bank access or mutation, current-turn learning, during-turn adaptation, Sarah/optimizer candidate self-promotion, or assurance self-admission
 ```
@@ -176,6 +182,30 @@ ran until a target receipt exists.
   revoke, and cleanup failures remain explicit. A failed or recovery-required
   teardown is never described as successful. This capability does not grant
   remote Full Auto start or cross-machine `FullAutoRun` admission.
+- **SARAH-AC-24:** Sarah can publish or promote a stable release only through
+  the existing release broker, only after an independent reviewer with a
+  distinct execution identity reproduces the release evidence, and only under
+  the standing Episode 260 owner direction. The producer cannot verify or
+  release from its own evidence. Every publication records the exact trigger,
+  release actor, authority revision and grant, source revision, distribution
+  boundary, and a receipt. Rollback, monotonic-update, and evidence gates are
+  never waived. Absent a current or standing owner direction, stable
+  publication refuses.
+- **SARAH-AC-25:** Sarah can draft blog, document, and Forum content and
+  deliver blog and document drafts through repository delivery under normal
+  review. Drafted content carries no raw secrets, private paths, or
+  customer-private payloads, states only what current bounded evidence
+  supports, and marks stale or unavailable state honestly.
+- **SARAH-AC-26:** Outward publication to the public timeline and
+  animated-spoken publication refuse with a receipt until the owner supplies
+  the animation and speech interfaces and the web-communications broker and
+  channel guardrails are deployed, healthy, and receipt-capable. Broker text or
+  a provider object never substitutes for runtime availability.
+- **SARAH-AC-27:** Any sales action, customer-data access, or financial reach
+  refuses with a receipt until a bounded sales broker, its customer-data
+  boundary, and its financial reserve rules are separately admitted and
+  deployed. The company-command scope grants no customer-data or financial
+  reach on its own.
 
 ## Success Metrics
 

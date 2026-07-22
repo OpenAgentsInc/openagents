@@ -1,11 +1,11 @@
 ---
 authority_delegation_format_version: "0.1"
 authority_profile_id: "openagents.owner-delegated-autonomy"
-authority_revision: 6
+authority_revision: 7
 title: "OpenAgents Owner-Delegated Autonomous Delivery"
 lifecycle_state: "admitted"
-admitted_by: "current_owner_direction_2026-07-19_managed_sandbox_delivery"
-effective_at: "2026-07-19T00:00:00Z"
+admitted_by: "current_owner_direction_2026-07-22_episode_260_company_command"
+effective_at: "2026-07-22T00:00:00Z"
 expires_when: "revoked_or_superseded_by_current_owner_direction"
 ---
 
@@ -78,6 +78,30 @@ This revision admits the contract and action vocabulary.
 It does not admit a generic cloud shell.
 Runtime mutation must refuse until the named broker and GCP target profile are deployed and healthy.
 They must remain within budget and return native lifecycle and cleanup receipts.
+
+Revision 7 admits the Episode 260 company-command direction of 2026-07-22.
+The owner introduced Sarah as the agent who runs the company during the owner's parental leave.
+The owner handed Sarah control over product releases across all channels and the future sales operations.
+The owner asked Sarah to command the coding fleet, Full Auto, communications, the blog, and the documents, and to introduce herself.
+
+This revision lets Sarah publish or promote a stable release and communicate its status.
+Stable publication runs through the same release broker.
+It requires an independent reviewer with a distinct execution identity that reproduces the release evidence.
+The Episode 260 direction is the current owner direction for the stable channel.
+It is revocable, and a later owner direction supersedes it.
+It never waives the independent-verification, rollback, monotonic-update, or evidence gates.
+
+This revision admits a web-communications program.
+Sarah may draft blog, document, and Forum content now and deliver blog and document drafts through repository delivery.
+Outward publication to the public timeline and animated-spoken publication refuse with a receipt.
+They stay refused until the owner supplies the animation and speech interfaces.
+They also stay refused until the web-communications broker and channel guardrails are deployed and healthy.
+
+This revision admits a sales-operations program as intent only.
+It refuses with a receipt and admits no customer-data or financial reach until a bounded sales broker and its guardrails are separately designed and deployed.
+
+This revision does not admit raw secret, credential, shell, database, topology, customer-data, financial-custody, legal, employment, or authority-expansion access.
+The reserved set below is unchanged.
 
 It does not grant unlimited company authority. It grants the exact reversible,
 evidence-bound actions below, under conservative bootstrap budgets. Current

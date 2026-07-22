@@ -326,7 +326,7 @@
     },
     {
       "path": "AUTHORITY.md",
-      "sha256": "2c747d7a3d36fcdac475b231e04ea476bfba2ac1d58d0552688bc948310e0bf0",
+      "sha256": "9228436cd8b2e186db5cc07468000d8e75e2ec98fc6d4f2a03fd493c7a6da7d4",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -428,7 +428,7 @@
     },
     {
       "path": "INVARIANTS.md",
-      "sha256": "e4e7449d1611fcd0f0d7d4d081e9f265bd532da58ee12d5b24c2acf6c4ce5769",
+      "sha256": "4abc4f78d002f90ef27294fa82a793433dc7f4b55a12bd2b1fc97a6edc8914d1",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -16983,7 +16983,7 @@
     },
     {
       "path": "docs/authority/SARAH_AUTHORITY.md",
-      "sha256": "e6628823f2ae5de90b49b47f588e36c4a390a7429cdd3a6fbd11219b8f39cd0b",
+      "sha256": "5d37e763618a6b39815e25671827639be236c8eb8a9da05412ff336a9bb46885",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -39718,7 +39718,7 @@
     },
     {
       "path": "docs/sarah/2026-07-19-sarah-activation-status.md",
-      "sha256": "00864656ae89a2a38ab140f46852f8d4e79e831052a2fc0e30d3859a4f048f56",
+      "sha256": "0bb24905b44c4ea197305bdcbe45cf6999171e4a6fd30b8687f510da42f92830",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -39741,6 +39741,50 @@
     {
       "path": "docs/sarah/2026-07-19-sarah-program-assessment.md",
       "sha256": "956ac683c8e082f89443a9c0cfad059ffdd26f62a3566f8614ffdd142e74bccb",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/sarah/2026-07-22-sarah-company-command-analysis.md",
+      "sha256": "1c27ef015d06c361954e1466632f299bf3ec6141154d903a4baef0a09c94d724",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/sarah/2026-07-22-sarah-introduction.md",
+      "sha256": "6a37801e34da32418e9aca002b7a61da75af01594998dcf81b5436eb3bf0838b",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -50995,7 +51039,7 @@
     },
     {
       "path": "specs/openagents/sarah-owner-orchestrator.product-spec.md",
-      "sha256": "9de58d7e23e5488783f42fe4312b029d6d507b76818283c9ce4cab9d09c93bea",
+      "sha256": "b9bdd352276785b1744479fcda8249fe1920076c4180626ddcb071df2f633db2",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
