@@ -18,57 +18,50 @@
  * (FAIL CLOSED) rather than trusting an caller-supplied header/cookie.
  */
 
-import { resolveAiurAccess, type ResolveAiurAccessDeps } from './auth/access'
-import { AIUR_ACCESS_COOKIE, parseCookies } from './auth/cookies'
-import type { AiurEnv } from './auth/config'
+import { resolveAiurAccess, type ResolveAiurAccessDeps } from "./auth/access";
+import { AIUR_ACCESS_COOKIE, parseCookies } from "./auth/cookies";
+import type { AiurEnv } from "./auth/config";
 
-export const AIUR_SYNC_BOOTSTRAP_PATH = '/api/sync/bootstrap'
-export const AIUR_SYNC_PUSH_PATH = '/api/sync/push'
-export const AIUR_SYNC_LOG_PATH = '/api/sync/log'
-export const AIUR_SYNC_CONNECT_PATH = '/api/sync/connect'
+export const AIUR_SYNC_BOOTSTRAP_PATH = "/api/sync/bootstrap";
+export const AIUR_SYNC_PUSH_PATH = "/api/sync/push";
+export const AIUR_SYNC_LOG_PATH = "/api/sync/log";
+export const AIUR_SYNC_CONNECT_PATH = "/api/sync/connect";
 
 const noStoreJson = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), {
     status,
     headers: {
-      'content-type': 'application/json; charset=utf-8',
-      'cache-control': 'no-store',
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
     },
-  })
+  });
 
 const unauthenticated = (): Response =>
   noStoreJson(
     {
-      code: 'unauthenticated',
-      messageSafe: 'Sign in as the Aiur owner before using Khala Sync.',
+      code: "unauthenticated",
+      messageSafe: "Sign in as the Aiur owner before using Khala Sync.",
     },
     401,
-  )
+  );
 
-export type KhalaSyncProxyFetch = (
-  input: string,
-  init?: RequestInit,
-) => Promise<Response>
+export type KhalaSyncProxyFetch = (input: string, init?: RequestInit) => Promise<Response>;
 
 export type AiurKhalaSyncProxyDeps = ResolveAiurAccessDeps &
   Readonly<{
-    fetch?: KhalaSyncProxyFetch
-    upstreamBaseUrl?: string
-  }>
+    fetch?: KhalaSyncProxyFetch;
+    upstreamBaseUrl?: string;
+  }>;
 
-const upstreamUrl = (
-  env: AiurEnv,
-  deps: AiurKhalaSyncProxyDeps,
-  path: string,
-): string => {
+const upstreamUrl = (env: AiurEnv, deps: AiurKhalaSyncProxyDeps, path: string): string => {
   const base = (
     deps.upstreamBaseUrl ??
     env.KHALA_SYNC_UPSTREAM_BASE_URL ??
-    'https://openagents.com'
-  ).replace(/\/$/, '')
+    "https://openagents.com"
+  ).replace(/\/$/, "");
 
-  return `${base}${path}`
-}
+  return `${base}${path}`;
+};
 
 /** Resolves owner access AND the raw bearer to forward, or `undefined`. */
 const requireOwnerBearer = async (
@@ -76,14 +69,14 @@ const requireOwnerBearer = async (
   env: AiurEnv,
   deps: AiurKhalaSyncProxyDeps,
 ): Promise<string | undefined> => {
-  const access = await resolveAiurAccess(request, env, deps)
+  const access = await resolveAiurAccess(request, env, deps);
 
-  if (access.kind !== 'owner') {
-    return undefined
+  if (access.kind !== "owner") {
+    return undefined;
   }
 
-  return parseCookies(request).get(AIUR_ACCESS_COOKIE)
-}
+  return parseCookies(request).get(AIUR_ACCESS_COOKIE);
+};
 
 const proxyJsonPost = async (
   request: Request,
@@ -91,81 +84,75 @@ const proxyJsonPost = async (
   deps: AiurKhalaSyncProxyDeps,
   upstreamPath: string,
 ): Promise<Response> => {
-  if (request.method !== 'POST') {
-    return noStoreJson(
-      { code: 'invalid_request', messageSafe: 'POST required' },
-      405,
-    )
+  if (request.method !== "POST") {
+    return noStoreJson({ code: "invalid_request", messageSafe: "POST required" }, 405);
   }
 
-  const bearer = await requireOwnerBearer(request, env, deps)
-  if (bearer === undefined) return unauthenticated()
+  const bearer = await requireOwnerBearer(request, env, deps);
+  if (bearer === undefined) return unauthenticated();
 
-  const fetchImpl = deps.fetch ?? globalThis.fetch.bind(globalThis)
-  const bodyText = await request.text()
+  const fetchImpl = deps.fetch ?? globalThis.fetch.bind(globalThis);
+  const bodyText = await request.text();
   const upstream = await fetchImpl(upstreamUrl(env, deps, upstreamPath), {
-    method: 'POST',
+    method: "POST",
     headers: {
       authorization: `Bearer ${bearer}`,
-      'content-type': 'application/json',
+      "content-type": "application/json",
     },
     body: bodyText,
-  })
-  const responseText = await upstream.text()
+  });
+  const responseText = await upstream.text();
 
   return new Response(responseText, {
     status: upstream.status,
     headers: {
-      'content-type': 'application/json; charset=utf-8',
-      'cache-control': 'no-store',
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
     },
-  })
-}
+  });
+};
 
 const proxyLogGet = async (
   request: Request,
   env: AiurEnv,
   deps: AiurKhalaSyncProxyDeps,
 ): Promise<Response> => {
-  if (request.method !== 'GET') {
-    return noStoreJson(
-      { code: 'invalid_request', messageSafe: 'GET required' },
-      405,
-    )
+  if (request.method !== "GET") {
+    return noStoreJson({ code: "invalid_request", messageSafe: "GET required" }, 405);
   }
 
-  const bearer = await requireOwnerBearer(request, env, deps)
-  if (bearer === undefined) return unauthenticated()
+  const bearer = await requireOwnerBearer(request, env, deps);
+  if (bearer === undefined) return unauthenticated();
 
-  const fetchImpl = deps.fetch ?? globalThis.fetch.bind(globalThis)
-  const requestUrl = new URL(request.url)
-  const target = new URL(upstreamUrl(env, deps, AIUR_SYNC_LOG_PATH))
-  target.search = requestUrl.search
+  const fetchImpl = deps.fetch ?? globalThis.fetch.bind(globalThis);
+  const requestUrl = new URL(request.url);
+  const target = new URL(upstreamUrl(env, deps, AIUR_SYNC_LOG_PATH));
+  target.search = requestUrl.search;
   const upstream = await fetchImpl(target.toString(), {
-    method: 'GET',
+    method: "GET",
     headers: { authorization: `Bearer ${bearer}` },
-  })
-  const responseText = await upstream.text()
+  });
+  const responseText = await upstream.text();
 
   return new Response(responseText, {
     status: upstream.status,
     headers: {
-      'content-type': 'application/json; charset=utf-8',
-      'cache-control': 'no-store',
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
     },
-  })
-}
+  });
+};
 
 /** Cloudflare Workers extends `fetch`'s `Response`/`ResponseInit` with an
  * optional `webSocket` field on a successful upgrade — not in
  * `lib.dom.d.ts`, so both ends are narrowly typed here (same convention as
  * `apps/openagents.com/apps/start/src/khala-sync-proxy.ts`). */
-type WorkersUpgradeResponse = Response & { webSocket?: WebSocket | null }
-type WorkersUpgradeResponseInit = ResponseInit & { webSocket?: WebSocket }
+type WorkersUpgradeResponse = Response & { webSocket?: WebSocket | null };
+type WorkersUpgradeResponseInit = ResponseInit & { webSocket?: WebSocket };
 
 export type AiurSyncConnectTarget =
-  | Readonly<{ kind: 'response'; response: Response }>
-  | Readonly<{ kind: 'connect'; bearer: string; targetUrl: string }>
+  | Readonly<{ kind: "response"; response: Response }>
+  | Readonly<{ kind: "connect"; bearer: string; targetUrl: string }>;
 
 /**
  * The runtime-agnostic gate + target resolution for `/api/sync/connect`,
@@ -179,156 +166,156 @@ export const resolveAiurSyncConnectTarget = async (
   env: AiurEnv,
   deps: AiurKhalaSyncProxyDeps = {},
 ): Promise<AiurSyncConnectTarget> => {
-  if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') {
+  if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
     return {
-      kind: 'response',
+      kind: "response",
       response: noStoreJson(
         {
-          code: 'invalid_request',
+          code: "invalid_request",
           messageSafe: `GET ${AIUR_SYNC_CONNECT_PATH} requires a WebSocket upgrade.`,
         },
         426,
       ),
-    }
+    };
   }
 
-  const bearer = await requireOwnerBearer(request, env, deps)
+  const bearer = await requireOwnerBearer(request, env, deps);
   if (bearer === undefined) {
-    return { kind: 'response', response: unauthenticated() }
+    return { kind: "response", response: unauthenticated() };
   }
 
-  const requestUrl = new URL(request.url)
-  const scope = requestUrl.searchParams.get('scope')
-  if (scope === null || scope === '') {
+  const requestUrl = new URL(request.url);
+  const scope = requestUrl.searchParams.get("scope");
+  if (scope === null || scope === "") {
     return {
-      kind: 'response',
+      kind: "response",
       response: noStoreJson(
-        { code: 'invalid_request', messageSafe: 'scope query parameter is required.' },
+        { code: "invalid_request", messageSafe: "scope query parameter is required." },
         400,
       ),
-    }
+    };
   }
-  const cursor = requestUrl.searchParams.get('cursor') ?? '0'
+  const cursor = requestUrl.searchParams.get("cursor") ?? "0";
 
-  const target = new URL(upstreamUrl(env, deps, AIUR_SYNC_CONNECT_PATH))
-  target.searchParams.set('scope', scope)
-  target.searchParams.set('cursor', cursor)
+  const target = new URL(upstreamUrl(env, deps, AIUR_SYNC_CONNECT_PATH));
+  target.searchParams.set("scope", scope);
+  target.searchParams.set("cursor", cursor);
 
-  return { kind: 'connect', bearer, targetUrl: target.toString() }
-}
+  return { kind: "connect", bearer, targetUrl: target.toString() };
+};
 
 const proxyConnectUpgrade = async (
   request: Request,
   env: AiurEnv,
   deps: AiurKhalaSyncProxyDeps,
 ): Promise<Response> => {
-  const connectTarget = await resolveAiurSyncConnectTarget(request, env, deps)
-  if (connectTarget.kind === 'response') {
-    return connectTarget.response
+  const connectTarget = await resolveAiurSyncConnectTarget(request, env, deps);
+  if (connectTarget.kind === "response") {
+    return connectTarget.response;
   }
 
-  const { bearer, targetUrl } = connectTarget
+  const { bearer, targetUrl } = connectTarget;
 
-  const fetchImpl = deps.fetch ?? globalThis.fetch.bind(globalThis)
-  let upstreamResponse: WorkersUpgradeResponse
+  const fetchImpl = deps.fetch ?? globalThis.fetch.bind(globalThis);
+  let upstreamResponse: WorkersUpgradeResponse;
   try {
     upstreamResponse = (await fetchImpl(targetUrl, {
       headers: {
         authorization: `Bearer ${bearer}`,
-        upgrade: 'websocket',
-        connection: 'Upgrade',
+        upgrade: "websocket",
+        connection: "Upgrade",
       },
-    })) as WorkersUpgradeResponse
+    })) as WorkersUpgradeResponse;
   } catch {
     return noStoreJson(
       {
-        code: 'internal',
-        messageSafe: 'Khala Sync live-tail upgrade failed unexpectedly; reconnect.',
+        code: "internal",
+        messageSafe: "Khala Sync live-tail upgrade failed unexpectedly; reconnect.",
       },
       500,
-    )
+    );
   }
 
-  const upstreamSocket = upstreamResponse.webSocket
+  const upstreamSocket = upstreamResponse.webSocket;
   if (upstreamSocket === undefined || upstreamSocket === null) {
-    const text = await upstreamResponse.text().catch(() => '')
+    const text = await upstreamResponse.text().catch(() => "");
     return new Response(
       text ||
         JSON.stringify({
-          code: 'internal',
-          messageSafe: 'Khala Sync connect upstream refused the upgrade.',
+          code: "internal",
+          messageSafe: "Khala Sync connect upstream refused the upgrade.",
         }),
       {
         status: upstreamResponse.status === 101 ? 502 : upstreamResponse.status,
         headers: {
-          'content-type': 'application/json; charset=utf-8',
-          'cache-control': 'no-store',
+          "content-type": "application/json; charset=utf-8",
+          "cache-control": "no-store",
         },
       },
-    )
+    );
   }
 
-  ;(upstreamSocket as unknown as { accept: () => void }).accept()
+  (upstreamSocket as unknown as { accept: () => void }).accept();
 
-  const PairCtor = (
-    globalThis as { WebSocketPair?: new () => [WebSocket, WebSocket] }
-  ).WebSocketPair
+  const PairCtor = (globalThis as { WebSocketPair?: new () => [WebSocket, WebSocket] })
+    .WebSocketPair;
   if (PairCtor === undefined) {
     try {
-      upstreamSocket.close()
+      upstreamSocket.close();
     } catch {
       // already closed
     }
     return noStoreJson(
-      { code: 'internal', messageSafe: 'WebSocketPair is unavailable in this runtime.' },
+      { code: "internal", messageSafe: "WebSocketPair is unavailable in this runtime." },
       500,
-    )
+    );
   }
 
-  const [client, server] = new PairCtor()
-  server.accept()
+  const [client, server] = new PairCtor();
+  // CF WebSocketPair server socket extension (see start/khala-sync-proxy.ts).
+  (server as unknown as { accept: () => void }).accept();
 
-  server.addEventListener('message', event => {
+  server.addEventListener("message", (event) => {
     try {
-      upstreamSocket.send(event.data as never)
+      upstreamSocket.send(event.data as never);
     } catch {
       // upstream already closed
     }
-  })
-  server.addEventListener('close', event => {
+  });
+  server.addEventListener("close", (event) => {
     try {
-      upstreamSocket.close(event.code, event.reason)
+      upstreamSocket.close(event.code, event.reason);
     } catch {
       // already closed
     }
-  })
-  upstreamSocket.addEventListener('message', event => {
+  });
+  upstreamSocket.addEventListener("message", (event) => {
     try {
-      server.send((event as MessageEvent).data)
+      server.send((event as MessageEvent).data);
     } catch {
       // client already closed
     }
-  })
-  upstreamSocket.addEventListener('close', () => {
+  });
+  upstreamSocket.addEventListener("close", () => {
     try {
-      server.close()
+      server.close();
     } catch {
       // already closed
     }
-  })
-  upstreamSocket.addEventListener('error', () => {
+  });
+  upstreamSocket.addEventListener("error", () => {
     try {
-      server.close(1011, 'upstream error')
+      server.close(1011, "upstream error");
     } catch {
       // already closed
     }
-  })
+  });
 
   return new Response(null, {
     status: 101,
     webSocket: client,
-  } as WorkersUpgradeResponseInit) as Response
-}
+  } as WorkersUpgradeResponseInit) as Response;
+};
 
 /**
  * Routes one `/api/sync/*` request, or returns `undefined` for anything
@@ -341,23 +328,23 @@ export const routeAiurKhalaSyncProxyRequest = (
   env: AiurEnv,
   deps: AiurKhalaSyncProxyDeps = {},
 ): Promise<Response> | undefined => {
-  const path = new URL(request.url).pathname
+  const path = new URL(request.url).pathname;
 
   if (path === AIUR_SYNC_BOOTSTRAP_PATH) {
-    return proxyJsonPost(request, env, deps, AIUR_SYNC_BOOTSTRAP_PATH)
+    return proxyJsonPost(request, env, deps, AIUR_SYNC_BOOTSTRAP_PATH);
   }
 
   if (path === AIUR_SYNC_PUSH_PATH) {
-    return proxyJsonPost(request, env, deps, AIUR_SYNC_PUSH_PATH)
+    return proxyJsonPost(request, env, deps, AIUR_SYNC_PUSH_PATH);
   }
 
   if (path === AIUR_SYNC_LOG_PATH) {
-    return proxyLogGet(request, env, deps)
+    return proxyLogGet(request, env, deps);
   }
 
   if (path === AIUR_SYNC_CONNECT_PATH) {
-    return proxyConnectUpgrade(request, env, deps)
+    return proxyConnectUpgrade(request, env, deps);
   }
 
-  return undefined
-}
+  return undefined;
+};
