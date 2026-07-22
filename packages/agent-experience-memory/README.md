@@ -86,6 +86,11 @@ maximum admitted graph actions, artifact actions, ranking snapshots, and replay
 records in one operation. Thus, a valid near-limit delete or forget operation
 does not create an invalid receipt.
 
+Graph admission has explicit aggregate limits. The graph can contain no more
+than 10,000 total elements and no more than 10,000 total source memberships.
+The artifact inventory and its unresolved gap set each have an aggregate limit
+of 10,000. An oversized delete plan fails before a state read or write.
+
 ## Boundaries
 
 The package is governed by `scripts/check-afs-boundaries.ts`: no app, platform

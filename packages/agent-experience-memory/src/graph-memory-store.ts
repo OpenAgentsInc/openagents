@@ -40,12 +40,17 @@ export const GRAPH_MEMORY_RECEIPT_SCHEMA_ID = "openagents.graph_memory_receipt.v
 export const GRAPH_MEMORY_STATE_SCHEMA_ID = "openagents.graph_memory_state.v1" as const;
 export const GRAPH_MEMORY_RECEIPT_LIMIT = 10_000;
 export const GRAPH_MEMORY_SECTION_ITEM_LIMIT = 10_000;
+export const GRAPH_MEMORY_GRAPH_ELEMENT_LIMIT = 10_000;
+export const GRAPH_MEMORY_SOURCE_MEMBERSHIP_LIMIT = 10_000;
+export const GRAPH_MEMORY_ARTIFACT_LIMIT = 10_000;
+export const GRAPH_MEMORY_UNRESOLVED_LIMIT = 10_000;
 /**
- * Worst-case accepted delete facts: source removals (graph + merges), five graph
- * action groups, three artifact planes, ranking snapshots, and replay records.
+ * Accepted delete intended facts are at most 2G+A+R+E (50,000). Retained facts
+ * are at most G+X+E (30,000). Forget intended facts are at most
+ * 1+A+R+X+E (40,001). The 12-unit ceiling also bounds refused external plans.
  */
 export const GRAPH_MEMORY_LIFECYCLE_FACT_LIMIT =
-  (2 + 5 + 3 + 1 + 1) * GRAPH_MEMORY_SECTION_ITEM_LIMIT;
+  12 * GRAPH_MEMORY_SECTION_ITEM_LIMIT;
 export const GRAPH_MEMORY_CAS_ATTEMPT_LIMIT = 8;
 
 const boundedRef = S.String.check(
@@ -104,10 +109,10 @@ export const GraphMemoryStoredGraph = S.Struct({
   admission: GraphMemoryAdmission,
   built: GraphMemoryBuiltGraph,
   artifactInventory: GraphArtifactInventory,
-  rankingSnapshots: S.Array(GraphRankingSnapshot).check(S.isMaxLength(10_000)),
-  vectorRecords: S.Array(GraphArchiveVectorRecord).check(S.isMaxLength(10_000)),
-  summaryRecords: S.Array(GraphArchiveSummaryRecord).check(S.isMaxLength(10_000)),
-  archiveRefs: S.Array(GraphArchiveRef).check(S.isMaxLength(10_000)),
+  rankingSnapshots: S.Array(GraphRankingSnapshot).check(S.isMaxLength(GRAPH_MEMORY_SECTION_ITEM_LIMIT)),
+  vectorRecords: S.Array(GraphArchiveVectorRecord).check(S.isMaxLength(GRAPH_MEMORY_SECTION_ITEM_LIMIT)),
+  summaryRecords: S.Array(GraphArchiveSummaryRecord).check(S.isMaxLength(GRAPH_MEMORY_SECTION_ITEM_LIMIT)),
+  archiveRefs: S.Array(GraphArchiveRef).check(S.isMaxLength(GRAPH_MEMORY_SECTION_ITEM_LIMIT)),
 });
 export interface GraphMemoryStoredGraph extends S.Schema.Type<typeof GraphMemoryStoredGraph> {}
 
@@ -502,6 +507,40 @@ const validateStoredGraph = Effect.fn("GraphMemory.validateStoredGraph")(functio
   }
   if (input.built.snapshot.policy.includeRedactionClasses.includes("secret")) {
     return yield* storeError("put", "policy_mismatch", "Graph memory policy cannot admit secret source content.");
+  }
+  const graphElementCount =
+    input.built.snapshot.mentions.length +
+    input.built.snapshot.entities.length +
+    input.built.snapshot.relations.length +
+    input.built.snapshot.merges.length;
+  if (graphElementCount > GRAPH_MEMORY_GRAPH_ELEMENT_LIMIT) {
+    return yield* storeError("put", "invalid_graph", "The graph exceeds the aggregate element limit.");
+  }
+  const sourceMembershipCount = [
+    ...input.built.snapshot.mentions,
+    ...input.built.snapshot.entities,
+    ...input.built.snapshot.relations,
+    ...input.built.snapshot.merges,
+  ].reduce((count, item) => count + item.memberships.length, 0);
+  if (sourceMembershipCount > GRAPH_MEMORY_SOURCE_MEMBERSHIP_LIMIT) {
+    return yield* storeError("put", "invalid_graph", "The graph exceeds the aggregate source membership limit.");
+  }
+  const artifactCount =
+    input.artifactInventory.vectors.length +
+    input.artifactInventory.summaries.length +
+    input.artifactInventory.rankingRefs.length;
+  if (artifactCount > GRAPH_MEMORY_ARTIFACT_LIMIT) {
+    return yield* storeError("put", "invalid_inventory", "The artifact inventory exceeds the aggregate limit.");
+  }
+  const unresolvedCount = Object.values(input.artifactInventory.coverage).reduce(
+    (count, coverage) => count + (coverage._tag === "Incomplete" ? coverage.gaps.length : 0),
+    0,
+  );
+  if (unresolvedCount > GRAPH_MEMORY_UNRESOLVED_LIMIT) {
+    return yield* storeError("put", "invalid_inventory", "The inventory gaps exceed the aggregate limit.");
+  }
+  if ((input.rankingSnapshots?.length ?? 0) > GRAPH_MEMORY_SECTION_ITEM_LIMIT) {
+    return yield* storeError("put", "invalid_ranking", "The ranking snapshots exceed the admitted limit.");
   }
   const dataBearingStrings = [
     ...input.built.snapshot.mentions.map((item) => item.identity.canonicalKey),
@@ -1082,6 +1121,24 @@ export const makeGraphMemoryStore = Effect.fn("GraphMemory.makeStore")(function*
   const applyDeletePlan = Effect.fn("GraphMemory.applyDeletePlan")(function* (
     input: ApplyGraphMemoryDeletePlanInput,
   ) {
+    const actionCount =
+      input.plan.actions.sourceMembershipRemovals.length +
+      input.plan.actions.removableElements.length +
+      input.plan.actions.entityRekeys.length +
+      input.plan.actions.relationRekeys.length +
+      input.plan.actions.removableMerges.length +
+      input.plan.actions.mergeRekeys.length +
+      input.plan.actions.vectorActions.length +
+      input.plan.actions.summaryActions.length +
+      input.plan.actions.rankingRefActions.length;
+    const unresolvedCount = input.plan._tag === "Incomplete" ? input.plan.unresolved.length : 0;
+    if (actionCount + unresolvedCount > GRAPH_MEMORY_LIFECYCLE_FACT_LIMIT) {
+      return yield* storeError(
+        "applyDeletePlan",
+        "invalid_inventory",
+        "The delete plan exceeds the lifecycle fact limit.",
+      );
+    }
     const deleteRequestDigest = requestFingerprint("delete_source", input);
     return yield* mutate(input.scope, input.operationRef, deleteRequestDigest, (current, archiveExports) =>
       Effect.gen(function* () {

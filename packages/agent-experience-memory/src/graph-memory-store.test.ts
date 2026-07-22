@@ -17,10 +17,10 @@ import {
   GraphRankingArtifact,
   GraphSummaryArtifact,
   GraphVectorArtifact,
+  GraphArtifactInventory,
   makeGraphArtifactInventory,
   planGraphSourceDeletion,
   GraphDeleteRef,
-  type GraphArtifactInventory,
 } from "@openagentsinc/graph-corpus/deletion";
 import {
   GraphRankingConfidence,
@@ -43,6 +43,10 @@ import {
   GraphMemoryPersistedEnvelope,
   GraphMemoryPersistenceError,
   GRAPH_MEMORY_RECEIPT_LIMIT,
+  GRAPH_MEMORY_GRAPH_ELEMENT_LIMIT,
+  GRAPH_MEMORY_LIFECYCLE_FACT_LIMIT,
+  GRAPH_MEMORY_SECTION_ITEM_LIMIT,
+  GRAPH_MEMORY_SOURCE_MEMBERSHIP_LIMIT,
   graphMemoryScopeRefFor,
   makeGraphMemoryStore,
   makeInMemoryGraphMemoryStateStore,
@@ -97,6 +101,7 @@ const fixture = (
   includeSecret = false,
   includeArtifacts = false,
   artifactVariant: 1 | 2 | 3 = 1,
+  additionalSharedMergeCount = 0,
 ) =>
   Effect.gen(function* () {
     const mentionA = makeGraphMention({
@@ -151,6 +156,14 @@ const fixture = (
       mentions: [mentionA2, mentionA3],
       evidenceRef: "evidence.merge.removable",
     });
+    const additionalSharedMerges = Array.from(
+      { length: additionalSharedMergeCount },
+      (_, index) => makeMergeEvidence({
+        entity,
+        mentions: [mentionA, mentionB, mentionB2],
+        evidenceRef: `evidence.merge.near-bound.${index}`,
+      }),
+    );
     const policy = S.decodeUnknownSync(GraphCorpusPolicy)({
       includeVisibilities: ["private"],
       includeRedactionClasses: includeSecret ? ["redacted", "secret"] : ["redacted"],
@@ -168,7 +181,7 @@ const fixture = (
       mentions: [mentionA, mentionB, mentionB2, mentionA2, mentionA3],
       entities: [entity, sourceAEntity],
       relations: [],
-      merges: [sharedMerge, removableMerge],
+      merges: [sharedMerge, removableMerge, ...additionalSharedMerges],
       embeddingProjections: includeArtifacts ? [descriptor] : [],
     });
     const vectorDigest = graphDigest("df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119");
@@ -337,6 +350,181 @@ const nearLimitReplayRecords = (
 }));
 
 describe("portable graph memory conformance", () => {
+  test("aggregate graph admission rejects the first excess element and completes a near-bound delete", async () => {
+    const baseMembershipCount = 11;
+    const nearGraph = await Effect.runPromise(fixture(
+      scope,
+      false,
+      false,
+      1,
+      Math.floor((GRAPH_MEMORY_SOURCE_MEMBERSHIP_LIMIT - baseMembershipCount) / 3),
+    ));
+    const duplicateMerge = nearGraph.built.snapshot.merges[0];
+    expect(duplicateMerge).toBeDefined();
+    const nearElementCount =
+      nearGraph.built.snapshot.mentions.length +
+      nearGraph.built.snapshot.entities.length +
+      nearGraph.built.snapshot.relations.length +
+      nearGraph.built.snapshot.merges.length;
+    const aboveBound: GraphFixture = {
+      ...nearGraph,
+      built: {
+        ...nearGraph.built,
+        snapshot: {
+          ...nearGraph.built.snapshot,
+          merges: [
+            ...nearGraph.built.snapshot.merges,
+            ...Array.from(
+              { length: GRAPH_MEMORY_GRAPH_ELEMENT_LIMIT - nearElementCount + 1 },
+              () => duplicateMerge,
+            ),
+          ],
+        },
+      },
+    };
+    const rejectedDriver = await Effect.runPromise(makeInMemoryGraphMemoryStateStore());
+    const rejectedStore = await Effect.runPromise(makeGraphMemoryStore(rejectedDriver));
+    const rejected = await Effect.runPromise(Effect.result(rejectedStore.put(putFixture(aboveBound))));
+
+    expect(Result.isFailure(rejected)).toBe(true);
+    if (Result.isFailure(rejected)) expect(rejected.failure.reason).toBe("invalid_graph");
+    expect(await Effect.runPromise(rejectedDriver.writes)).toBe(0);
+
+    const boundaryGraph = await Effect.runPromise(fixture());
+    const sourceMembership = boundaryGraph.built.snapshot.mentions[0]?.memberships[0];
+    expect(sourceMembership).toBeDefined();
+    const membershipDriver = await Effect.runPromise(makeInMemoryGraphMemoryStateStore());
+    const membershipStore = await Effect.runPromise(makeGraphMemoryStore(membershipDriver));
+    const membershipBuilt: BuiltGraphCorpus = {
+      ...boundaryGraph.built,
+      snapshot: {
+        ...boundaryGraph.built.snapshot,
+        mentions: boundaryGraph.built.snapshot.mentions.map((item, index) =>
+          index === 0
+            ? { ...item, memberships: Array.from({ length: 10_001 }, () => sourceMembership) }
+            : item,
+        ),
+      },
+    };
+    const membershipRejected = await Effect.runPromise(Effect.result(membershipStore.put({
+      ...putFixture(boundaryGraph),
+      built: membershipBuilt,
+      operationRef: operationRef("operation.membership-over-limit"),
+    })));
+    expect(Result.isFailure(membershipRejected)).toBe(true);
+    if (Result.isFailure(membershipRejected)) expect(membershipRejected.failure.reason).toBe("invalid_graph");
+    expect(await Effect.runPromise(membershipDriver.writes)).toBe(0);
+
+    const ownerElementRef = boundaryGraph.built.snapshot.mentions[0]?.elementRef;
+    expect(ownerElementRef).toBeDefined();
+    const vectorArtifact = S.decodeUnknownSync(GraphVectorArtifact)({
+      artifactRef: "artifact.boundary.vector",
+      artifactDigest: digest({ artifact: "boundary-vector" }),
+      artifactKind: "vector",
+      ownerElementRef,
+    });
+    const artifactInventory = makeGraphArtifactInventory({
+      built: boundaryGraph.built,
+      vectors: Array.from({ length: 10_001 }, () => vectorArtifact),
+      summaries: [],
+      rankingRefs: [],
+      coverage: {
+        vectors: { _tag: "Complete" },
+        summaries: { _tag: "Complete" },
+        rankingRefs: { _tag: "Complete" },
+      },
+    });
+    const artifactDriver = await Effect.runPromise(makeInMemoryGraphMemoryStateStore());
+    const artifactStore = await Effect.runPromise(makeGraphMemoryStore(artifactDriver));
+    const artifactRejected = await Effect.runPromise(Effect.result(artifactStore.put({
+      ...putFixture(boundaryGraph),
+      artifactInventory,
+      operationRef: operationRef("operation.artifact-over-limit"),
+    })));
+    expect(Result.isFailure(artifactRejected)).toBe(true);
+    if (Result.isFailure(artifactRejected)) expect(artifactRejected.failure.reason).toBe("invalid_inventory");
+    expect(await Effect.runPromise(artifactDriver.writes)).toBe(0);
+
+    const gap = {
+      artifactKind: "vector" as const,
+      reason: "owner_unknown" as const,
+      evidenceRef: deleteRef("evidence.boundary-gap"),
+    };
+    const unresolvedInventory = S.decodeUnknownSync(GraphArtifactInventory)({
+      ...boundaryGraph.inventory,
+      _tag: "Incomplete",
+      coverage: {
+        vectors: { _tag: "Incomplete", gaps: Array.from({ length: 10_001 }, () => gap) },
+        summaries: { _tag: "Complete" },
+        rankingRefs: { _tag: "Complete" },
+      },
+    });
+    const unresolvedDriver = await Effect.runPromise(makeInMemoryGraphMemoryStateStore());
+    const unresolvedStore = await Effect.runPromise(makeGraphMemoryStore(unresolvedDriver));
+    const unresolvedRejected = await Effect.runPromise(Effect.result(unresolvedStore.put({
+      ...putFixture(boundaryGraph),
+      artifactInventory: unresolvedInventory,
+      operationRef: operationRef("operation.unresolved-over-limit"),
+    })));
+    expect(Result.isFailure(unresolvedRejected)).toBe(true);
+    if (Result.isFailure(unresolvedRejected)) expect(unresolvedRejected.failure.reason).toBe("invalid_inventory");
+    expect(await Effect.runPromise(unresolvedDriver.writes)).toBe(0);
+
+    const admittedDriver = await Effect.runPromise(makeInMemoryGraphMemoryStateStore());
+    const admittedStore = await Effect.runPromise(makeGraphMemoryStore(admittedDriver));
+    await Effect.runPromise(admittedStore.put(putFixture(nearGraph)));
+    const plan = await Effect.runPromise(
+      planGraphSourceDeletion(nearGraph.built, sourceA, nearGraph.inventory),
+    );
+    const sourceAction = plan.actions.sourceMembershipRemovals[0];
+    expect(sourceAction).toBeDefined();
+    const oversizedPlan = {
+      ...plan,
+      actions: {
+        ...plan.actions,
+        sourceMembershipRemovals: Array.from(
+          { length: GRAPH_MEMORY_LIFECYCLE_FACT_LIMIT + 1 },
+          () => sourceAction,
+        ),
+      },
+    };
+    const writesBeforeOversizedPlan = await Effect.runPromise(admittedDriver.writes);
+    const readsBeforeOversizedPlan = await Effect.runPromise(admittedDriver.reads);
+    const oversizedPlanRejected = await Effect.runPromise(Effect.result(admittedStore.applyDeletePlan({
+      operationRef: operationRef("operation.oversized-stale-plan"),
+      scope,
+      expectedGeneration: 2,
+      plan: oversizedPlan,
+    })));
+    expect(Result.isFailure(oversizedPlanRejected)).toBe(true);
+    if (Result.isFailure(oversizedPlanRejected)) {
+      expect(oversizedPlanRejected.failure.reason).toBe("invalid_inventory");
+    }
+    expect(await Effect.runPromise(admittedDriver.writes)).toBe(writesBeforeOversizedPlan);
+    expect(await Effect.runPromise(admittedDriver.reads)).toBe(readsBeforeOversizedPlan);
+    expect((await Effect.runPromise(admittedStore.inspect(scope))).pendingOperationRef).toBeNull();
+    const receipt = await Effect.runPromise(admittedStore.applyDeletePlan({
+      operationRef: operationRef("operation.delete-near-graph-limit"),
+      scope,
+      expectedGeneration: 1,
+      plan,
+    }));
+    const after = await Effect.runPromise(admittedStore.inspect(scope));
+    const admittedMembershipCount = [
+      ...nearGraph.built.snapshot.mentions,
+      ...nearGraph.built.snapshot.entities,
+      ...nearGraph.built.snapshot.relations,
+      ...nearGraph.built.snapshot.merges,
+    ].reduce((count, item) => count + item.memberships.length, 0);
+
+    expect(receipt.status).toBe("complete");
+    expect(admittedMembershipCount).toBeGreaterThan(GRAPH_MEMORY_SOURCE_MEMBERSHIP_LIMIT * 0.6);
+    expect(receipt.applied.length).toBeGreaterThan(GRAPH_MEMORY_SECTION_ITEM_LIMIT * 0.6);
+    expect(receipt.applied.length).toBeLessThanOrEqual(GRAPH_MEMORY_LIFECYCLE_FACT_LIMIT);
+    expect(after.current?.binding.generation).toBe(2);
+    expect(after.pendingOperationRef).toBeNull();
+  }, 30_000);
+
   test("the disabled driver performs zero I/O", async () => {
     const driver = await Effect.runPromise(makeInMemoryGraphMemoryStateStore());
     const disabled: GraphMemoryStateStore = { ...driver, enabled: false };
