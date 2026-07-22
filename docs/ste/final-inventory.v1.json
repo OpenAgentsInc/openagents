@@ -24482,6 +24482,18 @@
       }
     },
     {
+      "path": "docs/fable/2026-07-22-openagents-as-meta-agent-analysis.md",
+      "sha256": "eb5eb240ec18d4b83c4788d8e23fb4e83cb33aadbd370e207233f51a363c90ac",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null,
+        "ste_status": "source-data"
+      }
+    },
+    {
       "path": "docs/fable/EXECUTION.md",
       "sha256": "fcbc4954cb55d3d2185a95ae814d1656e542406feb748167031a2abfcab2a69c",
       "reason": "Final review of a converted document",
