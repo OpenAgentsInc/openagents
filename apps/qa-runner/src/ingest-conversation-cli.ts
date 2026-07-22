@@ -23,7 +23,8 @@
 // PUBLIC by default so /trace/{uuid} needs no auth. Evidence only: an ingested
 // trace grants no accepted-work, payout, or public-claim authority.
 
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
+import { basename, resolve as resolvePath } from "node:path";
 
 import { Effect } from "effect";
 
@@ -34,6 +35,8 @@ import {
 } from "@openagentsinc/atif/trace";
 
 import { serializeTrajectory } from "./atif";
+import { multiTranscriptToConversation } from "./multi-transcript-to-conversation";
+import { convertOpenAgentsConversationToAtif } from "./openagents-conversation-to-atif";
 import type { ConversationSourceKind } from "./conversation-source";
 import { ConversationNotFoundError } from "./conversation-source";
 import {
@@ -60,6 +63,7 @@ interface Args {
   readonly agentName: string | undefined;
   readonly model: string | undefined;
   readonly home: string | undefined;
+  readonly file: string | undefined;
   readonly maxSteps: number;
   readonly json: boolean;
   readonly help: boolean;
@@ -79,6 +83,8 @@ const USAGE = `oa-trace-ingest — publish a local conversation as a public /tra
       --model <id>              fallback model id
       --max-steps <n>           cap steps (default/hard-max 2000; keeps a prefix)
       --home <dir>              override HOME for source lookup (testing)
+      --file <path>             ingest a combined multi-harness transcript JSONL
+                                (seven-lane/multi-harness live-smoke output)
       --json                    machine-readable JSON result
   -h, --help
 `;
@@ -94,6 +100,7 @@ const parseArgs = (argv: ReadonlyArray<string>): Args => {
   let agentName: string | undefined;
   let model: string | undefined;
   let home: string | undefined;
+  let file: string | undefined;
   let maxSteps = INGEST_MAX_STEPS;
   let json = false;
   let help = false;
@@ -153,6 +160,10 @@ const parseArgs = (argv: ReadonlyArray<string>): Args => {
         home = next(i);
         i += 1;
         break;
+      case "--file":
+        file = next(i);
+        i += 1;
+        break;
       case "--json":
         json = true;
         break;
@@ -177,6 +188,7 @@ const parseArgs = (argv: ReadonlyArray<string>): Args => {
     agentName,
     model,
     home,
+    file,
     maxSteps,
     json,
     help,
@@ -215,8 +227,8 @@ export async function runIngestConversationCli(
     log(USAGE);
     return 0;
   }
-  if (args.id === undefined) {
-    log("error: a conversation id is required.\n");
+  if (args.id === undefined && args.file === undefined) {
+    log("error: a conversation id (or --file) is required.\n");
     log(USAGE);
     return 2;
   }
@@ -224,7 +236,19 @@ export async function runIngestConversationCli(
   // 1. Resolve + convert.
   let built: ReturnType<typeof buildTrajectoryFromConversationId>;
   try {
-    built = buildTrajectoryFromConversationId(args.id, {
+    if (args.file !== undefined) {
+      const filePath = resolvePath(args.file);
+      const conversation = multiTranscriptToConversation(readFileSync(filePath, "utf8"), {
+        id: args.id ?? basename(filePath, ".jsonl"),
+      });
+      built = {
+        resolved: { kind: "openagents", id: conversation.id ?? "multi", path: filePath, conversation },
+        trajectory: convertOpenAgentsConversationToAtif(conversation, {
+          agentName: args.agentName ?? "OpenAgents multi-harness",
+          defaultModelName: args.model ?? "openagents/multi-harness",
+        }),
+      };
+    } else built = buildTrajectoryFromConversationId(args.id, {
       kind: args.source,
       ...(args.agentName === undefined ? {} : { agentName: args.agentName }),
       ...(args.model === undefined ? {} : { defaultModelName: args.model }),
