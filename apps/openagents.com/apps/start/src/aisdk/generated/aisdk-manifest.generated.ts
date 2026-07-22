@@ -19,6 +19,11 @@ export const aisdkDocsManifest: ReadonlyArray<AisdkDocsPageManifestEntry> = [
         "depth": 2,
         "id": "openagents-owned-adapters-desktop",
         "text": "OpenAgents-owned adapters (desktop)"
+      },
+      {
+        "depth": 2,
+        "id": "durable-graph-memory-boundary",
+        "text": "Durable graph memory boundary"
       }
     ],
     "path": "/aisdk/docs",
