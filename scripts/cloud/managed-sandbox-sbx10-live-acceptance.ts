@@ -75,6 +75,7 @@ const sourceCapabilityRef = `capability-ref://run/${sha256(`${stamp}|source`).sl
 const previewHtml =
   "<!doctype html><title>SBX-10 private preview</title><main>checkpoint fork verified</main>";
 const previewPath = "/workspace/.openagents/preview.html";
+const guestPreviewPath = "workspace/.openagents/preview.html";
 const requestedAt = now();
 const retainedUntil = new Date(Date.now() + 24 * 60 * 60 * 1_000).toISOString();
 const capabilityExpiresAt = new Date(Date.now() + 15 * 60 * 1_000).toISOString();
@@ -368,7 +369,7 @@ try {
       maxNetworkBytes: 0,
       networkPolicyRef: "network-policy.managed-sandbox.deny-all",
     },
-    path: previewPath,
+    path: guestPreviewPath,
     encoding: "utf8",
     content: previewHtml,
     contentDigest: digest(previewHtml),

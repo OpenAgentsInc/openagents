@@ -617,6 +617,17 @@ fn authorize_private_preview_at(
     operation_ref: &str,
     now: u64,
 ) -> Result<ManagedSandboxGuestIoRequest, RuntimeError> {
+    let guest_preview_path = preview_path
+        .strip_prefix("/workspace/")
+        .filter(|path| {
+            !path.is_empty()
+                && !path.contains('\\')
+                && !path
+                    .split('/')
+                    .any(|segment| segment.is_empty() || segment == "." || segment == "..")
+        })
+        .map(|path| format!("workspace/{path}"))
+        .ok_or_else(|| RuntimeError::validation("private_preview_path_invalid"))?;
     let capability = capability
         .as_object()
         .ok_or_else(|| RuntimeError::validation("private_preview_capability_invalid"))?;
@@ -716,7 +727,7 @@ fn authorize_private_preview_at(
             max_network_bytes: 0,
             network_policy_ref: "network-policy.managed-sandbox.deny-all".to_string(),
         },
-        path: Some(preview_path.to_string()),
+        path: Some(guest_preview_path),
         encoding: Some(encoding.to_string()),
         content: None,
         content_digest: None,
@@ -4105,12 +4116,27 @@ mod tests {
         assert_eq!(authorized.resource_generation, 1);
         assert_eq!(authorized.capability_ref, active["capabilityRef"]);
         assert_eq!(authorized.actor_ref, "audience-ref://owner/device-1");
+        assert_eq!(authorized.path.as_deref(), Some("workspace/preview.html"));
         assert_eq!(authorized.limits.max_network_bytes, 0);
         assert_eq!(
             authorized.limits.network_policy_ref,
             "network-policy.managed-sandbox.deny-all"
         );
 
+        assert_eq!(
+            authorize_private_preview_at(
+                &root,
+                &active,
+                "audience-ref://owner/device-1",
+                "/workspace/../private",
+                "utf8",
+                "operation.sbx10.preview.traversal",
+                start + 2_000,
+            )
+            .unwrap_err()
+            .code,
+            "private_preview_path_invalid"
+        );
         assert_eq!(
             authorize_private_preview_at(
                 &root,
