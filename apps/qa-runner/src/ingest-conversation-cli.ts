@@ -14,6 +14,8 @@
 //       --agent-name <name>  trajectory agent display name
 //       --model <id>         fallback model id for sources that omit one
 //       --home <dir>         override HOME for source lookup (testing)
+//       --user-data <dir>    also probe this app userData dir for the openagents
+//                            source (Full Auto host `threads.json` run threads)
 //       --json               print the machine-readable result as JSON
 //   -h, --help
 //
@@ -63,6 +65,7 @@ interface Args {
   readonly agentName: string | undefined;
   readonly model: string | undefined;
   readonly home: string | undefined;
+  readonly userData: string | undefined;
   readonly file: string | undefined;
   readonly maxSteps: number;
   readonly json: boolean;
@@ -83,6 +86,10 @@ const USAGE = `oa-trace-ingest — publish a local conversation as a public /tra
       --model <id>              fallback model id
       --max-steps <n>           cap steps (default/hard-max 2000; keeps a prefix)
       --home <dir>              override HOME for source lookup (testing)
+      --user-data <dir>         also probe this app userData dir for the
+                                openagents source: a Full Auto isolated-host
+                                'threads.json' run thread (or that dir's
+                                KhalaDesktop/conversations.json)
       --file <path>             ingest a combined multi-harness transcript JSONL
                                 (seven-lane/multi-harness live-smoke output)
       --json                    machine-readable JSON result
@@ -100,6 +107,7 @@ const parseArgs = (argv: ReadonlyArray<string>): Args => {
   let agentName: string | undefined;
   let model: string | undefined;
   let home: string | undefined;
+  let userData: string | undefined;
   let file: string | undefined;
   let maxSteps = INGEST_MAX_STEPS;
   let json = false;
@@ -160,6 +168,10 @@ const parseArgs = (argv: ReadonlyArray<string>): Args => {
         home = next(i);
         i += 1;
         break;
+      case "--user-data":
+        userData = next(i);
+        i += 1;
+        break;
       case "--file":
         file = next(i);
         i += 1;
@@ -188,6 +200,7 @@ const parseArgs = (argv: ReadonlyArray<string>): Args => {
     agentName,
     model,
     home,
+    userData,
     file,
     maxSteps,
     json,
@@ -259,6 +272,7 @@ export async function runIngestConversationCli(
         ...(args.agentName === undefined ? {} : { agentName: args.agentName }),
         ...(args.model === undefined ? {} : { defaultModelName: args.model }),
         ...(args.home === undefined ? {} : { home: args.home }),
+        ...(args.userData === undefined ? {} : { userData: args.userData }),
       });
     } else {
       // The initial guard proves id-or-file; file was handled above.

@@ -72,6 +72,7 @@ export function buildTrajectoryFromConversationId(
 ): BuildTrajectoryResult {
   const resolved = resolveConversation(id, options.kind ?? "auto", {
     ...(options.home === undefined ? {} : { home: options.home }),
+    ...(options.userData === undefined ? {} : { userData: options.userData }),
   });
 
   const convertOptions = {

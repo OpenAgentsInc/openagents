@@ -16,6 +16,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import type { OpenAgentsConversation } from "./openagents-conversation-to-atif";
+import { findThreadConversationInThreadsFile } from "./threads-to-conversation";
 
 export type ConversationSourceKind = "claude" | "codex" | "openagents";
 
@@ -28,6 +29,16 @@ export const CONVERSATION_SOURCE_KINDS: ReadonlyArray<ConversationSourceKind> = 
 export interface ResolveOptions {
   /** Home directory (defaults to os.homedir()). Injectable for tests. */
   readonly home?: string;
+  /**
+   * An explicit app `userData` directory to ALSO probe for the openagents
+   * source. Full Auto isolated hosts store run threads at
+   * `<userData>/threads.json` (and may keep a
+   * `<userData>/KhalaDesktop/conversations.json`), neither of which lives under
+   * the default `~/Library/Application Support` scan. When set, these files are
+   * checked BEFORE the profile scan. Leave unset for byte-identical default
+   * behavior.
+   */
+  readonly userData?: string;
 }
 
 export type ResolvedConversation =
@@ -121,44 +132,92 @@ export function findCodexSession(
 
 // --- OpenAgents Desktop ----------------------------------------------------
 
+/** Parse `file` as JSON, returning undefined when missing/unreadable/invalid. */
+const parseJsonFile = (file: string): unknown => {
+  if (!existsSync(file)) return undefined;
+  try {
+    return JSON.parse(readFileSync(file, "utf8"));
+  } catch {
+    return undefined;
+  }
+};
+
+/** Match `id` against a parsed `conversations.json` (array or `{conversations}`). */
+const findConversationInConversationsFile = (
+  parsed: unknown,
+  id: string,
+): OpenAgentsConversation | undefined => {
+  const lowerId = id.toLowerCase();
+  const list = Array.isArray(parsed)
+    ? parsed
+    : parsed !== null &&
+        typeof parsed === "object" &&
+        Array.isArray((parsed as { conversations?: unknown }).conversations)
+      ? (parsed as { conversations: unknown[] }).conversations
+      : [];
+  for (const item of list) {
+    if (
+      item !== null &&
+      typeof item === "object" &&
+      typeof (item as { id?: unknown }).id === "string" &&
+      (item as { id: string }).id.toLowerCase() === lowerId
+    ) {
+      return item as OpenAgentsConversation;
+    }
+  }
+  return undefined;
+};
+
+/**
+ * Probe an explicit `userData` directory for a conversation/thread id. Full
+ * Auto isolated hosts keep run threads at `<userData>/threads.json` (adapted
+ * through {@link findThreadConversationInThreadsFile}) and may also keep a
+ * `<userData>/KhalaDesktop/conversations.json`. threads.json is checked first.
+ */
+const findOpenAgentsInUserData = (
+  userData: string,
+  id: string,
+): { path: string; conversation: OpenAgentsConversation } | undefined => {
+  const threadsFile = join(userData, "threads.json");
+  const threadHit = findThreadConversationInThreadsFile(parseJsonFile(threadsFile), id);
+  if (threadHit !== undefined) return { path: threadsFile, conversation: threadHit };
+
+  const conversationsFile = join(userData, "KhalaDesktop", "conversations.json");
+  const conversationHit = findConversationInConversationsFile(
+    parseJsonFile(conversationsFile),
+    id,
+  );
+  if (conversationHit !== undefined) {
+    return { path: conversationsFile, conversation: conversationHit };
+  }
+  return undefined;
+};
+
 /**
  * Find a desktop conversation by id across every app profile's
  * `KhalaDesktop/conversations.json`. Ids are compared case-insensitively (the
- * desktop store uses upper-case UUIDs).
+ * desktop store uses upper-case UUIDs). When `options.userData` is set, that
+ * directory's `threads.json` / `conversations.json` is probed FIRST so Full
+ * Auto isolated-host run threads resolve directly.
  */
 export function findOpenAgentsConversation(
   id: string,
   options: ResolveOptions = {},
 ): { path: string; conversation: OpenAgentsConversation } | undefined {
+  if (options.userData !== undefined) {
+    const hit = findOpenAgentsInUserData(options.userData, id);
+    if (hit !== undefined) return hit;
+  }
+
   const home = resolveHome(options);
   const supportRoot = join(home, "Library", "Application Support");
-  const lowerId = id.toLowerCase();
 
   for (const profile of readEntries(supportRoot)) {
     if (!profile.isDirectory()) continue;
     const file = join(supportRoot, profile.name, "KhalaDesktop", "conversations.json");
     if (!existsSync(file)) continue;
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(readFileSync(file, "utf8"));
-    } catch {
-      continue;
-    }
-    const list = Array.isArray(parsed)
-      ? parsed
-      : parsed !== null && typeof parsed === "object" && Array.isArray((parsed as { conversations?: unknown }).conversations)
-        ? (parsed as { conversations: unknown[] }).conversations
-        : [];
-    for (const item of list) {
-      if (
-        item !== null &&
-        typeof item === "object" &&
-        typeof (item as { id?: unknown }).id === "string" &&
-        ((item as { id: string }).id).toLowerCase() === lowerId
-      ) {
-        return { path: file, conversation: item as OpenAgentsConversation };
-      }
-    }
+    const conversation = findConversationInConversationsFile(parseJsonFile(file), id);
+    if (conversation !== undefined) return { path: file, conversation };
   }
   return undefined;
 }

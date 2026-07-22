@@ -102,6 +102,7 @@ same way for delegated coding work.
 | Claude Code        | v4 UUID         | `~/.claude/projects/<slug>/<id>.jsonl` (one file per session)                              |
 | Codex              | UUIDv7          | `~/.codex/sessions/YYYY/MM/DD/rollout-*-<id>.jsonl` (one file per session)                 |
 | OpenAgents Desktop | upper-case UUID | array element in `~/Library/Application Support/<Profile>/KhalaDesktop/conversations.json` |
+| Full Auto host thread | UUID (`threadRef`) | a thread in `<userData>/threads.json` — pass `--source openagents --user-data <userData>`. That store is probed first. The `threads.json` `{version, threads:[{id, title, notes}]}` shape is adapted notes→messages before the same converter runs |
 
 Claude and Codex store one transcript file per id, so their converters are
 high-fidelity. OpenAgents Desktop conversations are elements inside a shared

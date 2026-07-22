@@ -12,6 +12,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   ATIF_PINNED_SCHEMA_VERSION,
+  atifTraceTripwire,
   decodeAtifTrajectorySync,
   validateAtifTrajectory,
 } from "@openagentsinc/atif/trace";
@@ -27,6 +28,31 @@ import { convertOpenAgentsConversationToAtif } from "./openagents-conversation-t
 const CLAUDE_ID = "9c3062b0-60eb-49ba-b64f-e421b374310f";
 const CODEX_ID = "019f0295-36b9-7e91-aae0-e1c5c4b05406";
 const OA_ID = "C292D324-2BD7-4355-8B53-8D483151F04A";
+// A Full Auto isolated-host run-thread id, stored in `<userData>/threads.json`.
+const FA_THREAD_ID = "72d6ef5c-cc29-4472-bf5b-534632728184";
+
+/** A throwaway `userData` dir holding a Full Auto `threads.json`. */
+const makeUserData = (): string => {
+  const dir = mkdtempSync(join(tmpdir(), "oa-fa-userdata-"));
+  writeFileSync(
+    join(dir, "threads.json"),
+    JSON.stringify({
+      version: 1,
+      threads: [
+        {
+          id: FA_THREAD_ID,
+          title: "NIP-34 GitReply (Full Auto Stage 0a dogfood)",
+          notes: [
+            { role: "system", text: "Full Auto run started.", timestamp: "02:26 PM" },
+            { role: "user", text: "Execute the mission packet.", timestamp: "02:26 PM" },
+            { role: "assistant", text: "Read the repo and opened a PR.", timestamp: "02:30 PM" },
+          ],
+        },
+      ],
+    }),
+  );
+  return dir;
+};
 
 const CLAUDE_JSONL = [
   JSON.stringify({
@@ -118,6 +144,25 @@ describe("resolveConversation", () => {
       ConversationNotFoundError,
     );
   });
+
+  it("resolves a Full Auto host thread from --user-data threads.json", () => {
+    const home = makeHome([]);
+    const userData = makeUserData();
+    const r = resolveConversation(FA_THREAD_ID, "openagents", { home, userData });
+    expect(r.kind).toBe("openagents");
+    if (r.kind === "openagents") {
+      expect(r.path.endsWith("threads.json")).toBe(true);
+      expect(r.conversation.title).toContain("NIP-34 GitReply");
+      expect(Array.isArray(r.conversation.messages)).toBe(true);
+    }
+  });
+
+  it("does not see the threads.json id without --user-data (default unchanged)", () => {
+    const home = makeHome([]);
+    expect(() => resolveConversation(FA_THREAD_ID, "openagents", { home })).toThrow(
+      ConversationNotFoundError,
+    );
+  });
 });
 
 describe("buildTrajectoryFromConversationId", () => {
@@ -132,6 +177,22 @@ describe("buildTrajectoryFromConversationId", () => {
       expect(validateAtifTrajectory(decodeAtifTrajectorySync(trajectory))).toEqual([]);
     });
   }
+
+  it("builds a valid, tripwire-clean ATIF from a Full Auto thread via --user-data", () => {
+    const home = makeHome([]);
+    const userData = makeUserData();
+    const { resolved, trajectory } = buildTrajectoryFromConversationId(FA_THREAD_ID, {
+      kind: "openagents",
+      home,
+      userData,
+    });
+    expect(resolved.kind).toBe("openagents");
+    const strict = decodeAtifTrajectorySync(trajectory);
+    expect(trajectory.schema_version).toBe(ATIF_PINNED_SCHEMA_VERSION);
+    expect(trajectory.steps.length).toBe(3);
+    expect(validateAtifTrajectory(strict)).toEqual([]);
+    expect(atifTraceTripwire(strict)).toEqual([]);
+  });
 });
 
 describe("capTrajectorySteps", () => {
@@ -181,5 +242,33 @@ describe("runIngestConversationCli --dry-run", () => {
     const home = makeHome([]);
     const code = await runIngestConversationCli(["missing", "--home", home, "--dry-run"], () => {});
     expect(code).toBe(1);
+  });
+
+  it("ingests a Full Auto host thread via --source openagents --user-data", async () => {
+    const home = makeHome([]);
+    const userData = makeUserData();
+    const out = join(mkdtempSync(join(tmpdir(), "oa-fa-out-")), "trajectory.json");
+    const lines: string[] = [];
+    const code = await runIngestConversationCli(
+      [
+        FA_THREAD_ID,
+        "--source",
+        "openagents",
+        "--home",
+        home,
+        "--user-data",
+        userData,
+        "--dry-run",
+        "--out",
+        out,
+      ],
+      (m) => lines.push(m),
+    );
+    expect(code).toBe(0);
+    expect(existsSync(out)).toBe(true);
+    const parsed = JSON.parse(readFileSync(out, "utf8"));
+    expect(parsed.schema_version).toBe(ATIF_PINNED_SCHEMA_VERSION);
+    expect(() => decodeAtifTrajectorySync(parsed)).not.toThrow();
+    expect(lines.join("\n")).not.toContain("/trace/");
   });
 });

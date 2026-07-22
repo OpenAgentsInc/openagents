@@ -282,7 +282,7 @@
     },
     {
       "path": ".agents/skills/trace-ingest/SKILL.md",
-      "sha256": "efbbaa89a33cd62b106175358627653c4684873530391953b3044063c67fa761",
+      "sha256": "ec8345df53d1e5d336738ba19674758192994f88edef266d5db59223c6a83e08",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -43866,7 +43866,7 @@
     },
     {
       "path": "docs/traces/2026-07-19-local-conversation-public-trace-ingest.md",
-      "sha256": "6223754da1e91cbe1a1d428b44caf2f8ee3cdabb31153b584ed1643a3cd62e9b",
+      "sha256": "c18877ab732060950a8cfd8473d7e6fe61f1fd5f7d97199a3033f6301d0edac6",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

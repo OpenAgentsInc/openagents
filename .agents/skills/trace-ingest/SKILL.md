@@ -46,9 +46,15 @@ published public trace from claude (303 steps):
 | Claude Code        | v4 UUID (the session id)                  | `~/.claude/projects/<slug>/<id>.jsonl`                                                     |
 | Codex              | UUIDv7 (trailing in the rollout filename) | `~/.codex/sessions/YYYY/MM/DD/rollout-*-<id>.jsonl`                                        |
 | OpenAgents Desktop | upper-case UUID                           | array element in `~/Library/Application Support/<Profile>/KhalaDesktop/conversations.json` |
+| Full Auto host thread | UUID (the run's `threadRef`)           | a thread in `<userData>/threads.json` — pass `--source openagents --user-data <userData>` |
 
 The source is **auto-detected** (claude → codex → openagents). Force it with
 `--source claude|codex|openagents` when an id could be ambiguous.
+
+Full Auto isolated hosts do **not** use `conversations.json`. They store run
+threads at `<userData>/threads.json` (`{version, threads:[{id, title, notes}]}`).
+Point the openagents source at that store with `--user-data <userData>` and the
+thread id. It produces the same redacted ATIF a normal conversation would.
 
 ## Flags
 
@@ -61,6 +67,9 @@ The source is **auto-detected** (claude → codex → openagents). Force it with
   a valid prefix and notes the truncation. Big coding sessions exceed the server cap.
   this keeps them ingestible instead of failing.
 - `--agent-name <name>`, `--model <id>` — trajectory header overrides.
+- `--user-data <dir>` — also probe this app userData dir for the `openagents`
+  source: a Full Auto isolated-host `threads.json` run thread (or that dir's
+  `KhalaDesktop/conversations.json`). Unset = byte-identical default lookup.
 - `--base-url <url>` — ingest base (default `$OPENAGENTS_BASE_URL` or
   `https://openagents.com`).
 - `--token <oa_agent_…>` — agent bearer (default `$OPENAGENTS_AGENT_TOKEN`).
