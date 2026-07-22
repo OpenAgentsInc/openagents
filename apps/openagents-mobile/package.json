@@ -18,7 +18,7 @@
     "@effect-native/render-rn": "workspace:*",
     "@effect-native/tokens": "workspace:*",
     "@expo/ui": "57.0.4",
-    "@openagentsinc/agent-runtime-schema": "0.2.1-rc.2",
+    "@openagentsinc/agent-runtime-schema": "0.2.1-rc.3",
     "@openagentsinc/agent-surface": "workspace:*",
     "@openagentsinc/behavior-contracts": "workspace:*",
     "@openagentsinc/khala-sync": "workspace:*",
