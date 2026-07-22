@@ -70,7 +70,7 @@
     "build:rc-binaries": "bash scripts/build-rc-binaries.sh"
   },
   "dependencies": {
-    "@openagentsinc/agent-runtime-schema": "0.1.3-rc.1",
+    "@openagentsinc/agent-runtime-schema": "0.2.1-rc.2",
     "@openagentsinc/autopilot-control-protocol": "workspace:*",
     "@openagentsinc/blueprint-contracts": "workspace:*",
     "@openagentsinc/effect-boundary": "workspace:*",

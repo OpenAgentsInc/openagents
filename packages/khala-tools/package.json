@@ -23,7 +23,7 @@
   "dependencies": {
     "@huggingface/transformers": "3.7.5",
     "@nationaldesignstudio/rampart": "0.1.2",
-    "@openagentsinc/agent-runtime-schema": "0.1.3-rc.1",
+    "@openagentsinc/agent-runtime-schema": "0.2.1-rc.2",
     "@openagentsinc/mcp-contract": "workspace:*",
     "@openagentsinc/pipeline-signals": "workspace:*",
     "@openagentsinc/runtime-platform": "workspace:*",

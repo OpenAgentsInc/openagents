@@ -1,6 +1,6 @@
-// #9163: the released @openagentsinc/dse train is the single DSE authority.
-// Fail when an in-tree duplicate implementation or a workspace fallback
-// reappears for dse or graph-corpus.
+// #9163: one exact released SDK train owns DSE and graph-corpus contracts.
+// Fail on a duplicate implementation, workspace fallback, mixed SDK version,
+// or unresolved required entry point.
 import { existsSync, globSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
@@ -9,7 +9,18 @@ const root = process.argv[2] ?? ".";
 const desktopRequire = createRequire(resolve(root, "apps/openagents-desktop/package.json"));
 const train = "0.2.1-rc.2";
 const failures = [];
-const authorityPackages = ["@openagentsinc/dse", "@openagentsinc/graph-corpus"];
+const trainPackages = [
+  "@openagentsinc/agent-harness-contract",
+  "@openagentsinc/agent-runtime-schema",
+  "@openagentsinc/ai-model",
+  "@openagentsinc/ai-sdk-sandbox-local",
+  "@openagentsinc/ai",
+  "@openagentsinc/dse",
+  "@openagentsinc/graph-corpus",
+  "@openagentsinc/history-corpus",
+  "@openagentsinc/rlm",
+  "@openagentsinc/conformance-kit",
+];
 const desktopRuntimePackages = [
   "@openagentsinc/agent-harness-contract",
   "@openagentsinc/agent-runtime-schema",
@@ -42,7 +53,7 @@ for (const manifest of manifests) {
   const parsed = JSON.parse(readFileSync(join(root, manifest), "utf8"));
   for (const sectionName of ["dependencies", "devDependencies", "optionalDependencies"]) {
     const section = parsed[sectionName] ?? {};
-    for (const name of authorityPackages) {
+    for (const name of trainPackages) {
       const spec = section[name];
       if (typeof spec === "string" && spec !== train) {
         failures.push(`${manifest}: ${name} must use exact train ${train}, found ${spec}`);
@@ -65,7 +76,7 @@ if (desktopManifest.devDependencies?.["@openagentsinc/conformance-kit"] !== trai
 }
 
 const lockfile = readFileSync(join(root, "pnpm-lock.yaml"), "utf8");
-for (const name of authorityPackages) {
+for (const name of trainPackages) {
   const escapedName = name.replace("/", "\\/");
   const versions = new Set(
     [...lockfile.matchAll(new RegExp(`${escapedName}@([^':(\\s]+)`, "g"))].map((match) => match[1]),
@@ -89,4 +100,4 @@ if (failures.length > 0) {
   );
   process.exit(1);
 }
-console.log(`dse-single-authority-guard OK (${train} is the single DSE/graph-corpus authority)`);
+console.log(`dse-single-authority-guard OK (${train} is the single released SDK train)`);

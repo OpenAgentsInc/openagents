@@ -302,7 +302,7 @@ const semanticVariants = (question: PlantedQuestion): ReadonlyArray<SemanticVari
     programJson: programRlmMap(question.grepPattern),
     synthesized: true,
     maxDepth: 2,
-    note: "separately admitted higher depth; SDK 0.2.0-rc.1 recursion is single-level, so depth>1 is MODELED, not truly nested",
+    note: "separately admitted higher depth; SDK 0.2.1-rc.2 recursion is single-level, so depth>1 is MODELED, not truly nested",
   },
 ];
 

@@ -24,7 +24,7 @@ import { aggregateTier, type TierAggregate, type TierId, type TierRunResult } fr
 import { generateTranscript, type DensityFamily } from "./transcripts.ts";
 
 /** Pinned SDK version the eval consumes (matches package.json dependency). */
-export const RLM_SDK_VERSION = "0.2.0-rc.1" as const;
+export const RLM_SDK_VERSION = "0.2.1-rc.2" as const;
 
 export interface HarnessConfig {
   readonly historySizes: ReadonlyArray<number>;
