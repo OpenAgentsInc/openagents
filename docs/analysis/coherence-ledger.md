@@ -60,3 +60,31 @@ complexity-weighted coherence in aggregates. Coherence deductions are
 unchanged, so per-conversation coherence scores stay comparable with
 entry 1. Trend comparison for the new complexity fields starts at the next
 entry.
+
+## Entry 2 — 2026-07-22 (created conversations, seven live lanes)
+
+- Commit context: metric `coherence-screen-v2`, graded through the live
+  harness program (openagents#9161, ai repo through `0ab4eba`).
+- Scope: 12 created conversations across the program, graded at creation.
+
+| Conversation | Lanes | Coherence | Complexity |
+| --- | --- | ---: | --- |
+| Codex basic identity | 1 | 100/A | C0(0) |
+| Codex sub-agent mini-project | 1 (+2 sub-agents) | 100/A | C3(63) |
+| Multi-harness parallel | 2 | 100/A | C1(24) |
+| Multi-harness sequential handoff | 2 | 100/A | C2(27) |
+| Multi-turn continuity (7 lanes, one each) | 1 each | 90/A each | C0-C1 |
+| Seven-lane orchestrated mini-project | 7 | 100/A | C4(89) |
+
+- The correction signal fired at exactly the designed deduction on all
+  seven multi-turn conversations. The seven-lane conversation is the
+  first C4 datapoint: full coherence at heavy orchestration.
+- Defects found by the live runs and fixed upstream: Claude projection
+  totality, Codex resume flag order, ACP tool-id charset violations,
+  unanswered permission requests, and advertised-but-unimplemented
+  client capabilities.
+- Fixtures added: env-gated live smokes per lane plus the seven-lane
+  scenario (`ai` repo `src/*.live.test.ts`).
+- Ratchet versus entry 1: complexity coverage rose from none to C4 with
+  coherence held at 90-100. The needs-review sweep over the local
+  corpora was not re-run this entry.
