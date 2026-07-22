@@ -71,7 +71,7 @@ const programRef = "program.managed-agent-sandboxes.sbx10";
 const workUnitRef = `work.sbx10.${suffix}`;
 const sourceSandboxRef = `sandbox.sbx10.source.${suffix}`;
 const checkpointRef = `checkpoint.sbx10.${suffix}`;
-const sourceCapabilityRef = `capability.sbx10.source.${sha256(`${stamp}|source`).slice(0, 32)}`;
+const sourceCapabilityRef = `capability-ref://run/${sha256(`${stamp}|source`).slice(0, 32)}`;
 const previewHtml =
   "<!doctype html><title>SBX-10 private preview</title><main>checkpoint fork verified</main>";
 const previewPath = "/workspace/.openagents/preview.html";

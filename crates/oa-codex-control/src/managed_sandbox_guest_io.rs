@@ -243,12 +243,12 @@ impl ManagedSandboxGuestIoRequest {
             &self.program_ref,
             &self.work_unit_ref,
             &self.sandbox_ref,
-            &self.capability_ref,
             &self.limits.workspace_root_ref,
             &self.limits.network_policy_ref,
         ] {
             validate_ref(value)?;
         }
+        validate_capability_ref(&self.capability_ref)?;
         validate_timestamp(&self.requested_at)?;
         validate_timestamp(&self.capability_expires_at)?;
         if self.capability_state != "active" || self.capability_expires_at <= self.requested_at {
@@ -656,6 +656,21 @@ fn validate_ref(value: &str) -> Result<(), GuestIoError> {
     Ok(())
 }
 
+fn validate_capability_ref(value: &str) -> Result<(), GuestIoError> {
+    if let Some(run_ref) = value.strip_prefix("capability-ref://run/") {
+        if value.len() <= 256
+            && run_ref.len() >= 3
+            && run_ref.chars().all(|character| {
+                character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | '-')
+            })
+        {
+            return Ok(());
+        }
+        return Err(GuestIoError::invalid("capability_ref_invalid"));
+    }
+    validate_ref(value)
+}
+
 fn validate_timestamp(value: &str) -> Result<(), GuestIoError> {
     if value.len() < 20 || value.len() > 32 || !value.ends_with('Z') {
         return Err(GuestIoError::invalid("timestamp_invalid"));
@@ -953,6 +968,18 @@ mod tests {
             }
             validate_response(&request, &response).unwrap();
         }
+    }
+
+    #[test]
+    fn accepts_only_the_canonical_runtime_capability_uri() {
+        let mut canonical = request(GuestIoAction::WriteFile);
+        canonical.capability_ref = "capability-ref://run/fork-0123456789abcdef".to_string();
+        canonical.validate().unwrap();
+
+        canonical.capability_ref = "capability-ref://other/fork-0123456789abcdef".to_string();
+        assert!(canonical.validate().is_err());
+        canonical.capability_ref = "capability-ref://run/../private".to_string();
+        assert!(canonical.validate().is_err());
     }
 
     #[test]
