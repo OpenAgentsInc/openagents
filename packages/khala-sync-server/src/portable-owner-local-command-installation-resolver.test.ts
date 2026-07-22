@@ -56,7 +56,7 @@ describe.skipIf(!hasLocalPostgres())("queued owner-local installation-port bridg
     const migrated = await runMigrations({
       databaseUrl: pg.urlFor("khala_sync_ide13_queued_installation"),
     });
-    expect(migrated.applied).toContain("0090_portable_owner_local_capability_results.sql");
+    expect(migrated.applied).toContain("0092_portable_owner_local_capability_results.sql");
     sql = SQL({ url: pg.urlFor("khala_sync_ide13_queued_installation"), max: 10 });
     await sql`
       INSERT INTO pylon_registrations

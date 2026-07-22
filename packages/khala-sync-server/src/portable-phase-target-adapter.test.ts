@@ -55,7 +55,7 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 portable phase target adapter", () 
     const migrated = await runMigrations({
       databaseUrl: pg.urlFor("khala_sync_ide13_phase_target"),
     });
-    expect(migrated.applied).toContain("0084_portable_phase_operations.sql");
+    expect(migrated.applied).toContain("0086_portable_phase_operations.sql");
     sql = SQL({ url: pg.urlFor("khala_sync_ide13_phase_target"), max: 10 });
     await sql`
       INSERT INTO khala_sync_portable_targets

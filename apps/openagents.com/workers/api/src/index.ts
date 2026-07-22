@@ -1,5 +1,6 @@
 import {
   FleetRunAuthorityError,
+  PostgresOwnerManagedEnvironmentEnrollmentStore,
   PostgresPortableOwnerLocalCapabilityOperationStore,
   PostgresPortablePhaseOperationStore,
   PostgresPortableTargetPylonBindingStore,
@@ -1138,6 +1139,7 @@ import {
 } from './portable-owner-local-capability-operation-routes'
 import { makePortableOwnerLocalCapabilityMaterialAuthority } from './portable-owner-local-capability-material-authority'
 import { makePortableTargetPylonBindingRoutes } from './portable-target-pylon-binding-routes'
+import { makeOwnerManagedEnvironmentEnrollmentRoutes } from './owner-managed-environment-enrollment-routes'
 import {
   type PylonCapacityFunnelSnapshotStore,
   handlePylonCapacityFunnelApi,
@@ -9866,6 +9868,41 @@ const portableTargetPylonBindingRoutes =
     },
   })
 
+const ownerManagedEnvironmentEnrollmentRoutes =
+  makeOwnerManagedEnvironmentEnrollmentRoutes<WorkerBindings>({
+    authenticate: async (request, env, pylonRef) => {
+      const token = readBearerToken(request)
+      if (token === undefined) return undefined
+      const session = await authenticateProgrammaticAgent(
+        makeAgentRegistrationStoreForEnv(env),
+        token,
+      )
+      if (session === undefined) return undefined
+      const registration = await makePylonApiStoreForEnv(env).readRegistration(pylonRef)
+      if (registration?.ownerAgentUserId !== session.user.id) return undefined
+      const linkedOwner = session.credential.openauthUserId?.trim()
+      return {
+        ownerAgentUserId: session.user.id,
+        ownerUserId:
+          linkedOwner !== undefined && linkedOwner !== ''
+            ? linkedOwner
+            : session.user.id,
+      }
+    },
+    withStore: async (env, use) => {
+      const connectionString = env.KHALA_SYNC_DB?.connectionString
+      if (connectionString === undefined || connectionString.trim() === '') {
+        throw new Error('owner-managed environment enrollment storage is unavailable')
+      }
+      const client = await defaultMakeKhalaSyncSqlClient(connectionString)
+      try {
+        return await use(new PostgresOwnerManagedEnvironmentEnrollmentStore(client.sql))
+      } finally {
+        await client.end().catch(() => undefined)
+      }
+    },
+  })
+
 const recheckPortableOwnerLocalCapabilityMaterialAuthority = async (
   env: WorkerBindings,
   authority: PortableOwnerLocalCapabilityMaterialAuthority,
@@ -10166,6 +10203,8 @@ const pylonApiRoutes = makePylonApiRoutes<WorkerBindings>({
     portableOwnerLocalCapabilityOperationRoutes.routePortableOwnerLocalCapabilityOperationRequest,
   routePortableTargetPylonBindingRequest:
     portableTargetPylonBindingRoutes.route,
+  routeOwnerManagedEnvironmentEnrollmentRequest:
+    ownerManagedEnvironmentEnrollmentRoutes.route,
 })
 
 const trainingRunWindowRoutes = makeTrainingRunWindowRoutes<WorkerBindings>({

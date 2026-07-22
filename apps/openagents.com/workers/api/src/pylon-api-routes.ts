@@ -253,6 +253,10 @@ type PylonApiRouteDependencies<Bindings> = Readonly<{
     request: Request,
     env: Bindings,
   ) => Promise<HttpResponse> | undefined
+  routeOwnerManagedEnvironmentEnrollmentRequest?: (
+    request: Request,
+    env: Bindings,
+  ) => Promise<HttpResponse> | undefined
 }>
 
 type PylonApiRouteEnv = Readonly<Record<string, unknown>>
@@ -3513,6 +3517,12 @@ export const makePylonApiRoutes = <Bindings extends PylonApiRouteEnv>(
       dependencies.routePortableTargetPylonBindingRequest?.(request, env)
     if (portableTargetPylonBindingRoute !== undefined) {
       return Effect.promise(() => portableTargetPylonBindingRoute)
+    }
+
+    const ownerManagedEnvironmentEnrollmentRoute =
+      dependencies.routeOwnerManagedEnvironmentEnrollmentRequest?.(request, env)
+    if (ownerManagedEnvironmentEnrollmentRoute !== undefined) {
+      return Effect.promise(() => ownerManagedEnvironmentEnrollmentRoute)
     }
 
     if (url.pathname === '/api/account/pylons') {

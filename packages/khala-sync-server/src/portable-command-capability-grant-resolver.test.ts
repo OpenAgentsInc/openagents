@@ -224,7 +224,7 @@ describe.skipIf(!hasLocalPostgres())(
       const result = await runMigrations({
         databaseUrl: pg.urlFor("khala_sync_ide13_capability_facts"),
       });
-      expect(result.applied).toContain("0083_portable_command_execution.sql");
+      expect(result.applied).toContain("0085_portable_command_execution.sql");
       sql = SQL({ url: pg.urlFor("khala_sync_ide13_capability_facts"), max: 2 });
 
       await sql.begin(async (tx) => {

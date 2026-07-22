@@ -36,8 +36,8 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 durable portable phase exchange", (
     const result = await runMigrations({
       databaseUrl: pg.urlFor("khala_sync_ide13_phase_exchange"),
     });
-    expect(result.applied).toContain("0084_portable_phase_operations.sql");
-    expect(result.applied).toContain("0085_portable_phase_destination_activation_receipt.sql");
+    expect(result.applied).toContain("0086_portable_phase_operations.sql");
+    expect(result.applied).toContain("0087_portable_phase_destination_activation_receipt.sql");
     sql = SQL({ url: pg.urlFor("khala_sync_ide13_phase_exchange"), max: 10 });
     await sql`
       INSERT INTO khala_sync_portable_targets

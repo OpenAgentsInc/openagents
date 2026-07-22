@@ -32,7 +32,7 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 portable command execution queue", 
     const result = await runMigrations({
       databaseUrl: pg.urlFor("khala_sync_ide13_command_queue"),
     });
-    expect(result.applied).toContain("0083_portable_command_execution.sql");
+    expect(result.applied).toContain("0085_portable_command_execution.sql");
     sql = SQL({ url: pg.urlFor("khala_sync_ide13_command_queue"), max: 10 });
     await sql`
       INSERT INTO khala_sync_portable_targets

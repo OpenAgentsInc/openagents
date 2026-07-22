@@ -1,4 +1,4 @@
-import { Schema as S } from "effect"
+import { Schema as S } from "effect";
 
 import {
   ExecutionEnvironmentRef,
@@ -6,44 +6,38 @@ import {
   PortableTargetClass,
   PortableTimestamp,
   Sha256Digest,
-} from "./primitives.js"
+} from "./primitives.js";
 
-export * from "./primitives.js"
+export * from "./primitives.js";
 
-export const PORTABLE_SESSION_SCHEMA_VERSION =
-  "openagents.portable_session.v1" as const
-export const PORTABLE_CHECKPOINT_SCHEMA_VERSION =
-  "openagents.portable_checkpoint.v1" as const
-export const PORTABLE_COMMAND_SCHEMA_VERSION =
-  "openagents.portable_session_command.v1" as const
+export const PORTABLE_SESSION_SCHEMA_VERSION = "openagents.portable_session.v1" as const;
+export const PORTABLE_CHECKPOINT_SCHEMA_VERSION = "openagents.portable_checkpoint.v1" as const;
+export const PORTABLE_COMMAND_SCHEMA_VERSION = "openagents.portable_session_command.v1" as const;
 
 /** Canonical Khala Sync projection entity names for portable authority. */
-export const PORTABLE_SESSION_ENTITY_TYPE = "portable_session" as const
-export const PORTABLE_AGENT_GRAPH_ENTITY_TYPE = "portable_agent_graph" as const
-export const PORTABLE_ATTACHMENT_ENTITY_TYPE = "portable_attachment" as const
-export const PORTABLE_TARGET_DIRECTORY_ENTITY_TYPE = "portable_target_directory" as const
-export const PORTABLE_THREAD_CURRENT_ENTITY_TYPE = "portable_thread_current" as const
-export const PORTABLE_COMMAND_ENTITY_TYPE = "portable_command" as const
-export const PORTABLE_EXECUTION_BINDING_ENTITY_TYPE = "portable_execution_binding" as const
+export const PORTABLE_SESSION_ENTITY_TYPE = "portable_session" as const;
+export const PORTABLE_AGENT_GRAPH_ENTITY_TYPE = "portable_agent_graph" as const;
+export const PORTABLE_ATTACHMENT_ENTITY_TYPE = "portable_attachment" as const;
+export const PORTABLE_TARGET_DIRECTORY_ENTITY_TYPE = "portable_target_directory" as const;
+export const PORTABLE_THREAD_CURRENT_ENTITY_TYPE = "portable_thread_current" as const;
+export const PORTABLE_COMMAND_ENTITY_TYPE = "portable_command" as const;
+export const PORTABLE_EXECUTION_BINDING_ENTITY_TYPE = "portable_execution_binding" as const;
 
-const NonNegativeInt = S.Number.check(
-  S.isInt(),
-  S.isGreaterThanOrEqualTo(0),
-)
+const NonNegativeInt = S.Number.check(S.isInt(), S.isGreaterThanOrEqualTo(0));
 
 export const PortableIsolationClass = S.Literals([
   "owner_host_process",
   "owner_host_container",
   "dedicated_microvm",
-])
-export type PortableIsolationClass = typeof PortableIsolationClass.Type
+]);
+export type PortableIsolationClass = typeof PortableIsolationClass.Type;
 
 export const PortableDataPosture = S.Literals([
   "owner_device_only",
   "owner_managed_region",
   "openagents_managed_region",
-])
-export type PortableDataPosture = typeof PortableDataPosture.Type
+]);
+export type PortableDataPosture = typeof PortableDataPosture.Type;
 
 /**
  * Describes one ExecutionEnvironment (ENV-1): what the environment is and
@@ -71,9 +65,8 @@ export const PortableTargetDescriptorSchema = S.Struct({
     "draining",
     "unavailable",
   ]),
-})
-export type PortableTargetDescriptor =
-  typeof PortableTargetDescriptorSchema.Type
+});
+export type PortableTargetDescriptor = typeof PortableTargetDescriptorSchema.Type;
 
 export const PortableAgentLifecycle = S.Literals([
   "created",
@@ -85,8 +78,8 @@ export const PortableAgentLifecycle = S.Literals([
   "failed",
   "canceled",
   "interrupted",
-])
-export type PortableAgentLifecycle = typeof PortableAgentLifecycle.Type
+]);
+export type PortableAgentLifecycle = typeof PortableAgentLifecycle.Type;
 
 export const PortableAgentNodeSchema = S.Struct({
   agentRef: PortableRef,
@@ -96,14 +89,14 @@ export const PortableAgentNodeSchema = S.Struct({
   activityCursor: NonNegativeInt,
   lifecycle: PortableAgentLifecycle,
   attachmentGeneration: NonNegativeInt,
-})
-export type PortableAgentNode = typeof PortableAgentNodeSchema.Type
+});
+export type PortableAgentNode = typeof PortableAgentNodeSchema.Type;
 
 export const PortableAgentGraphSchema = S.Struct({
   rootAgentRef: PortableRef,
   nodes: S.Array(PortableAgentNodeSchema),
-})
-export type PortableAgentGraph = typeof PortableAgentGraphSchema.Type
+});
+export type PortableAgentGraph = typeof PortableAgentGraphSchema.Type;
 
 export const PortableCodingSessionSchema = S.Struct({
   schema: S.Literal(PORTABLE_SESSION_SCHEMA_VERSION),
@@ -121,8 +114,8 @@ export const PortableCodingSessionSchema = S.Struct({
   graph: PortableAgentGraphSchema,
   adoptedFromLocalHistory: S.Boolean,
   adoptionReceiptRef: S.optionalKey(PortableRef),
-})
-export type PortableCodingSession = typeof PortableCodingSessionSchema.Type
+});
+export type PortableCodingSession = typeof PortableCodingSessionSchema.Type;
 
 /**
  * Additive PORT-03 binding for the execution identity that is applicable to a
@@ -131,7 +124,7 @@ export type PortableCodingSession = typeof PortableCodingSessionSchema.Type
  * may move until this owner/session binding exists.
  */
 export const PORTABLE_SESSION_EXECUTION_BINDING_SCHEMA_VERSION =
-  "openagents.portable_session_execution_binding.v1" as const
+  "openagents.portable_session_execution_binding.v1" as const;
 
 export const PortableSessionExecutionBindingSchema = S.Struct({
   schema: S.Literal(PORTABLE_SESSION_EXECUTION_BINDING_SCHEMA_VERSION),
@@ -140,9 +133,8 @@ export const PortableSessionExecutionBindingSchema = S.Struct({
   runRef: PortableRef,
   repositoryRef: PortableRef,
   pinnedBaseRef: PortableRef,
-})
-export type PortableSessionExecutionBinding =
-  typeof PortableSessionExecutionBindingSchema.Type
+});
+export type PortableSessionExecutionBinding = typeof PortableSessionExecutionBindingSchema.Type;
 
 export const PortableAttachmentState = S.Literals([
   "preparing",
@@ -152,8 +144,8 @@ export const PortableAttachmentState = S.Literals([
   "detached",
   "failed",
   "reclaimed",
-])
-export type PortableAttachmentState = typeof PortableAttachmentState.Type
+]);
+export type PortableAttachmentState = typeof PortableAttachmentState.Type;
 
 export const PortableAttachmentSchema = S.Struct({
   attachmentRef: PortableRef,
@@ -165,8 +157,8 @@ export const PortableAttachmentSchema = S.Struct({
   capabilityLeaseRefs: S.Array(PortableRef),
   checkpointRef: S.optionalKey(PortableRef),
   evidenceRefs: S.Array(PortableRef),
-})
-export type PortableAttachment = typeof PortableAttachmentSchema.Type
+});
+export type PortableAttachment = typeof PortableAttachmentSchema.Type;
 
 export const PortableCheckpointSchema = S.Struct({
   schema: S.Literal(PORTABLE_CHECKPOINT_SCHEMA_VERSION),
@@ -188,8 +180,8 @@ export const PortableCheckpointSchema = S.Struct({
   receiptRefs: S.Array(PortableRef),
   secretMaterial: S.Literal("excluded"),
   processState: S.Literal("excluded"),
-})
-export type PortableCheckpoint = typeof PortableCheckpointSchema.Type
+});
+export type PortableCheckpoint = typeof PortableCheckpointSchema.Type;
 
 /**
  * One per-thread transcript/activity cursor inside a portable checkpoint
@@ -203,9 +195,8 @@ export const PylonPortableThreadCursorSchema = S.Struct({
   transcriptRef: S.String,
   activityCursor: S.Number,
   eventCursor: S.Number,
-})
-export type PylonPortableThreadCursor =
-  typeof PylonPortableThreadCursorSchema.Type
+});
+export type PylonPortableThreadCursor = typeof PylonPortableThreadCursorSchema.Type;
 
 /**
  * The complete portable checkpoint bundle: the checkpoint record, its
@@ -218,41 +209,39 @@ export const PylonPortableCheckpointBundleSchema = S.Struct({
   executionBinding: PortableSessionExecutionBindingSchema,
   graph: PortableAgentGraphSchema,
   threadCursors: S.Array(PylonPortableThreadCursorSchema),
-})
-export type PylonPortableCheckpointBundle =
-  typeof PylonPortableCheckpointBundleSchema.Type
+});
+export type PylonPortableCheckpointBundle = typeof PylonPortableCheckpointBundleSchema.Type;
 
 /** Input to a checkpoint artifact resolver: the exact source binding whose post-image is exported. */
 export type PortableCheckpointArtifactResolverInput = Readonly<{
-  ownerRef: string
-  targetRef: string
-  sessionRef: string
-  attachmentRef: string
-  generation: number
-  checkpointRef: string
-  bundle: PylonPortableCheckpointBundle
-}>
+  ownerRef: string;
+  targetRef: string;
+  sessionRef: string;
+  attachmentRef: string;
+  generation: number;
+  checkpointRef: string;
+  bundle: PylonPortableCheckpointBundle;
+}>;
 
 export type PortableCheckpointArtifact = Readonly<{
-  artifactRef: string
-  digest: `sha256:${string}`
-  bytes: Uint8Array
-}>
+  artifactRef: string;
+  digest: `sha256:${string}`;
+  bytes: Uint8Array;
+}>;
 
 export type PortableCheckpointArtifactResolver = Readonly<{
-  resolve: (
-    input: PortableCheckpointArtifactResolverInput,
-  ) => Promise<PortableCheckpointArtifact>
-}>
+  resolve: (input: PortableCheckpointArtifactResolverInput) => Promise<PortableCheckpointArtifact>;
+}>;
 
-export type PortableCheckpointArtifactStore =
-  & PortableCheckpointArtifactResolver
-  & Readonly<{
-    registerArtifact: (input: Readonly<{
-      bundle: PylonPortableCheckpointBundle
-      artifact: PortableCheckpointArtifact
-    }>) => Promise<void>
-  }>
+export type PortableCheckpointArtifactStore = PortableCheckpointArtifactResolver &
+  Readonly<{
+    registerArtifact: (
+      input: Readonly<{
+        bundle: PylonPortableCheckpointBundle;
+        artifact: PortableCheckpointArtifact;
+      }>,
+    ) => Promise<void>;
+  }>;
 
 export const PortableCapabilityKind = S.Literals([
   "provider",
@@ -260,8 +249,8 @@ export const PortableCapabilityKind = S.Literals([
   "scm_write",
   "tool",
   "api",
-])
-export type PortableCapabilityKind = typeof PortableCapabilityKind.Type
+]);
+export type PortableCapabilityKind = typeof PortableCapabilityKind.Type;
 
 export const PortableCapabilityLeaseSchema = S.Struct({
   leaseRef: PortableRef,
@@ -275,9 +264,8 @@ export const PortableCapabilityLeaseSchema = S.Struct({
   toolRef: S.optionalKey(PortableRef),
   expiresAt: PortableTimestamp,
   state: S.Literals(["issued", "redeemed", "revoked", "expired", "released"]),
-})
-export type PortableCapabilityLease =
-  typeof PortableCapabilityLeaseSchema.Type
+});
+export type PortableCapabilityLease = typeof PortableCapabilityLeaseSchema.Type;
 
 export const PortableSessionCommandKind = S.Literals([
   "stop",
@@ -288,9 +276,8 @@ export const PortableSessionCommandKind = S.Literals([
   "abort_move",
   "resume",
   "failback",
-])
-export type PortableSessionCommandKind =
-  typeof PortableSessionCommandKind.Type
+]);
+export type PortableSessionCommandKind = typeof PortableSessionCommandKind.Type;
 
 export const PORTABLE_ACTION_INVOCATION_PATHS = [
   "click",
@@ -298,21 +285,18 @@ export const PORTABLE_ACTION_INVOCATION_PATHS = [
   "menu",
   "palette",
   "conflict_safe_key",
-] as const
+] as const;
 
-export const PortableActionInvocationPath = S.Literals(
-  PORTABLE_ACTION_INVOCATION_PATHS,
-)
-export type PortableActionInvocationPath =
-  typeof PortableActionInvocationPath.Type
+export const PortableActionInvocationPath = S.Literals(PORTABLE_ACTION_INVOCATION_PATHS);
+export type PortableActionInvocationPath = typeof PortableActionInvocationPath.Type;
 
 export const PortableActionBindingSchema = S.Struct({
   actionRef: PortableRef,
   commandKind: PortableSessionCommandKind,
   invocationPaths: S.Array(PortableActionInvocationPath),
   commandSchema: S.Literal(PORTABLE_COMMAND_SCHEMA_VERSION),
-})
-export type PortableActionBinding = typeof PortableActionBindingSchema.Type
+});
+export type PortableActionBinding = typeof PortableActionBindingSchema.Type;
 
 export const PortableSessionCommandSchema = S.Struct({
   schema: S.Literal(PORTABLE_COMMAND_SCHEMA_VERSION),
@@ -327,8 +311,8 @@ export const PortableSessionCommandSchema = S.Struct({
   destinationTargetRef: S.optionalKey(ExecutionEnvironmentRef),
   checkpointRef: S.optionalKey(PortableRef),
   expiresAt: PortableTimestamp,
-})
-export type PortableSessionCommand = typeof PortableSessionCommandSchema.Type
+});
+export type PortableSessionCommand = typeof PortableSessionCommandSchema.Type;
 
 export const PortableSessionCommandOutcomeSchema = S.Struct({
   commandRef: PortableRef,
@@ -348,17 +332,15 @@ export const PortableSessionCommandOutcomeSchema = S.Struct({
   checkpointRef: S.optionalKey(PortableRef),
   reasonRef: S.optionalKey(PortableRef),
   evidenceRefs: S.Array(PortableRef),
-})
-export type PortableSessionCommandOutcome =
-  typeof PortableSessionCommandOutcomeSchema.Type
+});
+export type PortableSessionCommandOutcome = typeof PortableSessionCommandOutcomeSchema.Type;
 
 /** Confirmed target membership projected for one portable session. */
 export const PortableTargetDirectoryProjectionSchema = S.Struct({
   sessionRef: PortableRef,
   targets: S.Array(PortableTargetDescriptorSchema),
-})
-export type PortableTargetDirectoryProjection =
-  typeof PortableTargetDirectoryProjectionSchema.Type
+});
+export type PortableTargetDirectoryProjection = typeof PortableTargetDirectoryProjectionSchema.Type;
 
 /**
  * A command is first projected as accepted and later replaced by its durable
@@ -373,17 +355,18 @@ export const PortableCommandProjectionSchema = S.Union([
     command: PortableSessionCommandSchema,
     outcome: PortableSessionCommandOutcomeSchema,
   }),
-])
-export type PortableCommandProjection = typeof PortableCommandProjectionSchema.Type
+]);
+export type PortableCommandProjection = typeof PortableCommandProjectionSchema.Type;
 
-export * from "./journeys.js"
-export * from "./model.js"
-export * from "./capability-broker.js"
-export * from "./portable-command-execution.js"
-export * from "./ide13-contract.js"
-export * from "./ide13-model.js"
-export * from "./portable-phase-operation.js"
-export * from "./portable-owner-local-capability-operation.js"
-export * from "./destination-readiness.js"
-export * from "./desktop-source-safe-point-control.js"
-export * from "./checkpoint-custody-transport.js"
+export * from "./journeys.js";
+export * from "./model.js";
+export * from "./capability-broker.js";
+export * from "./portable-command-execution.js";
+export * from "./ide13-contract.js";
+export * from "./ide13-model.js";
+export * from "./portable-phase-operation.js";
+export * from "./portable-owner-local-capability-operation.js";
+export * from "./destination-readiness.js";
+export * from "./desktop-source-safe-point-control.js";
+export * from "./checkpoint-custody-transport.js";
+export * from "./owner-managed-enrollment.js";

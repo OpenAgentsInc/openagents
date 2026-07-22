@@ -36,8 +36,8 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 owner-local capability operation ex
     const result = await runMigrations({
       databaseUrl: pg.urlFor("khala_sync_ide13_capability_operations"),
     });
-    expect(result.applied).toContain("0089_portable_owner_local_capability_operations.sql");
-    expect(result.applied).toContain("0090_portable_owner_local_capability_results.sql");
+    expect(result.applied).toContain("0091_portable_owner_local_capability_operations.sql");
+    expect(result.applied).toContain("0092_portable_owner_local_capability_results.sql");
     sql = SQL({ url: pg.urlFor("khala_sync_ide13_capability_operations"), max: 10 });
     await sql`
       INSERT INTO pylon_registrations

@@ -27,7 +27,7 @@ describe.skipIf(!hasLocalPostgres())("IDE-13 target to Pylon binding authority",
     await admin.unsafe("CREATE DATABASE khala_sync_ide13_target_pylon");
     await admin.end();
     const result = await runMigrations({ databaseUrl: pg.urlFor("khala_sync_ide13_target_pylon") });
-    expect(result.applied).toContain("0087_portable_target_pylon_bindings.sql");
+    expect(result.applied).toContain("0089_portable_target_pylon_bindings.sql");
     sql = SQL({ url: pg.urlFor("khala_sync_ide13_target_pylon"), max: 4 });
     await sql`
       INSERT INTO pylon_registrations

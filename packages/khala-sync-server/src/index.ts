@@ -9,60 +9,60 @@ import type {
   SyncScope,
   SyncVersion,
   SyncVersionWatermark,
-} from "@openagentsinc/khala-sync"
-import type { Effect } from "effect"
+} from "@openagentsinc/khala-sync";
+import type { Effect } from "effect";
 import type {
   KhalaSyncCursorBehindRetainedWindowError,
   KhalaSyncInvalidPageTokenError,
   KhalaSyncStorageError,
-} from "./errors.js"
+} from "./errors.js";
 
-export * from "./activity-timeline-projection.js"
-export * from "./agent-run-projection.js"
-export * from "./business-domain-tables.js"
-export * from "./chat-mutators.js"
-export * from "./compaction.js"
-export * from "./compare-soak-metrics.js"
-export * from "./coding-session-projection.js"
-export * from "./cvr-service.js"
-export * from "./errors.js"
-export * from "./fleet-intents.js"
-export * from "./fleet-mutators.js"
-export * from "./fleet-projection.js"
-export * from "./fleet-run-authority.js"
-export * from "./full-auto-run-projection-authority.js"
+export * from "./activity-timeline-projection.js";
+export * from "./agent-run-projection.js";
+export * from "./business-domain-tables.js";
+export * from "./chat-mutators.js";
+export * from "./compaction.js";
+export * from "./compare-soak-metrics.js";
+export * from "./coding-session-projection.js";
+export * from "./cvr-service.js";
+export * from "./errors.js";
+export * from "./fleet-intents.js";
+export * from "./fleet-mutators.js";
+export * from "./fleet-projection.js";
+export * from "./fleet-run-authority.js";
+export * from "./full-auto-run-projection-authority.js";
 // MOB-FA-02 (#8994): durable Pause/Resume/Stop control-intent authority --
 // the sibling to the projection authority above.
-export * from "./full-auto-run-control-authority.js"
-export * from "./fleet-steering.js"
-export * from "./fleet-steering-intents.js"
-export * from "./fleet-steering-exchange.js"
-export * from "./forge-domain-tables.js"
-export * from "./gym-run-progress-projection.js"
-export * from "./identity-auth-domain-tables.js"
-export * from "./forum-content-tables.js"
-export * from "./forum-remainder-tables.js"
-export * from "./khala-code-product-state-projection.js"
-export * from "./khala-code-product-state-tables.js"
-export * from "./live-agent-graph-projection.js"
-export * from "./mutation-ledger.js"
-export * from "./managed-sandbox-store.js"
-export * from "./managed-sandbox-phase2-store.js"
-export * from "./outbox-writer.js"
-export * from "./public-counter-projection.js"
-export * from "./push-engine.js"
-export * from "./runtime-intents.js"
-export * from "./runtime-mutators.js"
-export * from "./gym-evals-domain-tables.js"
-export * from "./read-service.js"
-export * from "./scope-auth.js"
-export * from "./settled-feed-projection.js"
-export * from "./sites-content-tables.js"
-export * from "./sql.js"
-export * from "./supervision-longtail-domain-tables.js"
-export * from "./tokens-served-mix-projection.js"
-export * from "./training-domain-tables.js"
-export * from "./user-credit-balance-projection.js"
+export * from "./full-auto-run-control-authority.js";
+export * from "./fleet-steering.js";
+export * from "./fleet-steering-intents.js";
+export * from "./fleet-steering-exchange.js";
+export * from "./forge-domain-tables.js";
+export * from "./gym-run-progress-projection.js";
+export * from "./identity-auth-domain-tables.js";
+export * from "./forum-content-tables.js";
+export * from "./forum-remainder-tables.js";
+export * from "./khala-code-product-state-projection.js";
+export * from "./khala-code-product-state-tables.js";
+export * from "./live-agent-graph-projection.js";
+export * from "./mutation-ledger.js";
+export * from "./managed-sandbox-store.js";
+export * from "./managed-sandbox-phase2-store.js";
+export * from "./outbox-writer.js";
+export * from "./public-counter-projection.js";
+export * from "./push-engine.js";
+export * from "./runtime-intents.js";
+export * from "./runtime-mutators.js";
+export * from "./gym-evals-domain-tables.js";
+export * from "./read-service.js";
+export * from "./scope-auth.js";
+export * from "./settled-feed-projection.js";
+export * from "./sites-content-tables.js";
+export * from "./sql.js";
+export * from "./supervision-longtail-domain-tables.js";
+export * from "./tokens-served-mix-projection.js";
+export * from "./training-domain-tables.js";
+export * from "./user-credit-balance-projection.js";
 
 /**
  * @openagentsinc/khala-sync-server — server substrate for Khala Sync:
@@ -83,15 +83,12 @@ export * from "./user-credit-balance-projection.js"
 /** Transactional push: executes a batch of mutations for one client. */
 export interface KhalaSyncPushService {
   readonly push: (input: {
-    readonly userId: string
-    readonly clientGroupId: ClientGroupId
-    readonly clientId: ClientId
-    readonly schemaVersion: SyncSchemaVersion
-    readonly mutations: ReadonlyArray<MutationEnvelope>
-  }) => Effect.Effect<
-    { readonly results: ReadonlyArray<MutationResult> },
-    KhalaSyncStorageError
-  >
+    readonly userId: string;
+    readonly clientGroupId: ClientGroupId;
+    readonly clientId: ClientId;
+    readonly schemaVersion: SyncSchemaVersion;
+    readonly mutations: ReadonlyArray<MutationEnvelope>;
+  }) => Effect.Effect<{ readonly results: ReadonlyArray<MutationResult> }, KhalaSyncStorageError>;
 }
 
 /**
@@ -103,7 +100,7 @@ export interface KhalaSyncPushService {
 export type KhalaSyncReadError =
   | KhalaSyncStorageError
   | KhalaSyncCursorBehindRetainedWindowError
-  | KhalaSyncInvalidPageTokenError
+  | KhalaSyncInvalidPageTokenError;
 
 /**
  * Snapshot + catch-up reads (direct Cloud SQL path). The substrate functions are
@@ -113,18 +110,18 @@ export type KhalaSyncReadError =
  */
 export interface KhalaSyncReadService {
   readonly bootstrap: (input: {
-    readonly userId: string
-    readonly scope: SyncScope
-    readonly pageSize?: number | undefined
-    readonly pageToken?: string | undefined
-  }) => Effect.Effect<BootstrapResponse, KhalaSyncReadError>
+    readonly userId: string;
+    readonly scope: SyncScope;
+    readonly pageSize?: number | undefined;
+    readonly pageToken?: string | undefined;
+  }) => Effect.Effect<BootstrapResponse, KhalaSyncReadError>;
   readonly logPage: (input: {
-    readonly userId: string
-    readonly scope: SyncScope
+    readonly userId: string;
+    readonly scope: SyncScope;
     /** Resume-after watermark; `null` = scope start (version 0). */
-    readonly afterVersion: SyncVersion | SyncVersionWatermark | null
-    readonly limit: number
-  }) => Effect.Effect<LogPage, KhalaSyncReadError>
+    readonly afterVersion: SyncVersion | SyncVersionWatermark | null;
+    readonly limit: number;
+  }) => Effect.Effect<LogPage, KhalaSyncReadError>;
 }
 
 /**
@@ -137,7 +134,7 @@ export interface KhalaSyncScopeAuth {
   readonly canRead: (
     userId: string,
     scope: SyncScope,
-  ) => Effect.Effect<boolean, KhalaSyncStorageError>
+  ) => Effect.Effect<boolean, KhalaSyncStorageError>;
 }
 
 // ---------------------------------------------------------------------------
@@ -156,29 +153,30 @@ export interface KhalaSyncScopeAuth {
 // plus offset-resumable catch-up. See issue KS-4.2.
 // ---------------------------------------------------------------------------
 
-export * from "./hub.js"
-export * from "./portable-session-authority.js"
-export * from "./portable-session-command-queue.js"
-export * from "./portable-phase-operation-store.js"
-export * from "./portable-owner-local-capability-operation-store.js"
-export * from "./portable-phase-target-adapter.js"
-export * from "./portable-capability-broker-store.js"
-export * from "./portable-session-move.js"
-export * from "./portable-session-move-runtime.js"
-export * from "./portable-session-command-consumer.js"
-export * from "./portable-session-command-runner.js"
-export * from "./portable-command-capability-grant-resolver.js"
-export * from "./portable-session-command-dispatch.js"
-export * from "./portable-command-broker-factory.js"
-export * from "./portable-command-installation-resolver.js"
-export * from "./portable-managed-command-installation-resolver.js"
-export * from "./portable-owner-local-command-installation-resolver.js"
-export * from "./portable-checkpoint-artifact-resolver.js"
-export * from "./portable-checkpoint-google-kms-custody.js"
-export * from "./portable-target-pylon-binding-store.js"
-export * from "./portable-managed-agent-computer-target.js"
-export * from "./portable-managed-agent-computer-provisioner.js"
-export * from "./portable-managed-continuation.js"
-export * from "./portable-capability-runtime-adapters.js"
-export * from "./portable-capability-installation-ports.js"
-export * from "./portable-owner-local-capability-transport.js"
+export * from "./hub.js";
+export * from "./portable-session-authority.js";
+export * from "./portable-session-command-queue.js";
+export * from "./portable-phase-operation-store.js";
+export * from "./portable-owner-local-capability-operation-store.js";
+export * from "./portable-phase-target-adapter.js";
+export * from "./portable-capability-broker-store.js";
+export * from "./portable-session-move.js";
+export * from "./portable-session-move-runtime.js";
+export * from "./portable-session-command-consumer.js";
+export * from "./portable-session-command-runner.js";
+export * from "./portable-command-capability-grant-resolver.js";
+export * from "./portable-session-command-dispatch.js";
+export * from "./portable-command-broker-factory.js";
+export * from "./portable-command-installation-resolver.js";
+export * from "./portable-managed-command-installation-resolver.js";
+export * from "./portable-owner-local-command-installation-resolver.js";
+export * from "./portable-checkpoint-artifact-resolver.js";
+export * from "./portable-checkpoint-google-kms-custody.js";
+export * from "./portable-target-pylon-binding-store.js";
+export * from "./owner-managed-environment-enrollment-store.js";
+export * from "./portable-managed-agent-computer-target.js";
+export * from "./portable-managed-agent-computer-provisioner.js";
+export * from "./portable-managed-continuation.js";
+export * from "./portable-capability-runtime-adapters.js";
+export * from "./portable-capability-installation-ports.js";
+export * from "./portable-owner-local-capability-transport.js";
