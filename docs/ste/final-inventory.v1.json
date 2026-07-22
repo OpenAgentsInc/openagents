@@ -14942,7 +14942,7 @@
     },
     {
       "path": "docs/ai-sdk/README.md",
-      "sha256": "816204d5773a3664cafd7ad23955c7d85e6a85ab3689feb471dcdc9079245092",
+      "sha256": "8188185d3d4961f6e8553beb68889328c417644eb333ea365f14529a38c01db7",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -47225,7 +47225,7 @@
     },
     {
       "path": "packages/agent-experience-memory/README.md",
-      "sha256": "7c377471b29aa99f4224cfb6469e70fc28c84f0c52e96143ffefcc27676df60e",
+      "sha256": "574953b068c4d6fe4696e98d6599f98cea56e71b8550b2e1f950b58261501660",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

@@ -80,8 +80,10 @@ It refuses stale or incomplete plans before mutation. A two-phase journal
 makes restart recovery and repeated operations idempotent. Receipts keep
 intended, applied, retained, unresolved, and failed facts separate. Full
 forget accounts for the graph, vectors, summaries, rankings, and owner export
-references. OpenAgents does not store an exported archive payload after it
-returns the payload to the owner.
+references. The encrypted state keeps a bounded replay copy so that an export
+retry returns the same bytes. An accepted source delete or full forget removes
+that internal copy. Its receipt records the caller-held export as retained
+because only the caller can delete those external bytes.
 
 Issue #9164 does not add graph data to a prompt. Issue #9165 owns the separate
 default-off extraction and recall path. Issue #9166 owns the quality and owner
