@@ -93,6 +93,32 @@ export const screenHeadlessTurn = (result: HeadlessTurnResult): HeadlessCoherenc
   };
 };
 
+/**
+ * The delegated-turn coherence layer (#9161 criterion 5, the #9159
+ * invariant): a delegated turn's ROUTE and ATTRIBUTION — the `child_started`
+ * frame naming the delegate — must appear BEFORE the delegate's answer is
+ * promoted as primary assistant text. A turn that streams primary text
+ * before disclosing the route is the #9159 defect and trips.
+ */
+export const screenDelegatedTurn = (result: HeadlessTurnResult): HeadlessCoherenceScreen => {
+  const base = screenHeadlessTurn(result);
+  const tripwires = [...base.tripwires];
+  const kinds = result.frames.map((frame) => frame.event.kind);
+  const routeIndex = kinds.indexOf("child_started");
+  const firstTextIndex = kinds.indexOf("text_delta");
+  if (routeIndex === -1) {
+    tripwires.push("delegated_turn_missing_route_frame");
+  } else if (firstTextIndex !== -1 && firstTextIndex < routeIndex) {
+    // Primary text was promoted before the route was disclosed (#9159).
+    tripwires.push("answer_promoted_before_route_disclosed");
+  }
+  const failed = base.disposition === "fail";
+  return {
+    disposition: failed ? "fail" : tripwires.length === 0 ? "pass" : "needs_review",
+    tripwires,
+  };
+};
+
 /** Derive the public-safe receipt (no raw text, no paths). */
 export const derivePublicReceipt = (
   turnRef: string,

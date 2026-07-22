@@ -1,7 +1,11 @@
 import { describe, expect, test } from "vite-plus/test";
 import type { ClaudeLocalEvent } from "./claude-local-contract";
 import type { HeadlessTurnResult } from "./desktop-headless-host";
-import { deriveHeadlessReceipts, screenHeadlessTurn } from "./desktop-headless-receipt";
+import {
+  deriveHeadlessReceipts,
+  screenDelegatedTurn,
+  screenHeadlessTurn,
+} from "./desktop-headless-receipt";
 
 const frame = (event: ClaudeLocalEvent) => ({ turnRef: "turn-1", event });
 
@@ -75,5 +79,43 @@ describe("headless receipts (#9161 evidence)", () => {
       ),
     );
     expect(screen.disposition).toBe("fail");
+  });
+
+  test("a delegated turn with route disclosed before the answer screens pass", () => {
+    const screen = screenDelegatedTurn(
+      result([
+        { kind: "turn_started" },
+        { kind: "child_started", childRef: "child-1", summary: "delegating to Codex" },
+        {
+          kind: "child_completed",
+          childRef: "child-1",
+          accountRef: "codex",
+          summary: "done",
+          usage: null,
+          durationMs: 10,
+        },
+        { kind: "text_delta", text: "via Codex: done." },
+        { kind: "turn_completed", totalTokens: 5 },
+      ]),
+    );
+    expect(screen.disposition).toBe("pass");
+  });
+
+  test("a delegated turn that promotes the answer BEFORE the route trips (#9159)", () => {
+    const screen = screenDelegatedTurn(
+      result([
+        { kind: "turn_started" },
+        { kind: "text_delta", text: "Done — unrelated work." },
+        { kind: "child_started", childRef: "child-1", summary: "hidden delegation" },
+        { kind: "turn_completed", totalTokens: 5 },
+      ]),
+    );
+    expect(screen.disposition).toBe("needs_review");
+    expect(screen.tripwires).toContain("answer_promoted_before_route_disclosed");
+  });
+
+  test("a delegated turn missing the route frame trips", () => {
+    const screen = screenDelegatedTurn(result(COMPLETED));
+    expect(screen.tripwires).toContain("delegated_turn_missing_route_frame");
   });
 });

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ClaudeLocalEvent } from "./claude-local-contract";
 import { createHeadlessHost } from "./desktop-headless-host";
+import { screenDelegatedTurn } from "./desktop-headless-receipt";
 import type { ProviderLane } from "./provider-lane";
 
 const root = () => mkdtempSync(join(tmpdir(), "oa-headless-host-"));
@@ -174,6 +175,42 @@ describe("desktop headless host (#9161 host-context bootstrap)", () => {
     });
     // The ordinary turn created no NEW run record — still exactly one.
     expect(host.fullAutoRuns()).toHaveLength(1);
+    expect(result.fullAutoRecordCount).toBe(0);
+  });
+
+  test("a delegated turn surfaces route + attribution before the answer (through the production dispatcher)", async () => {
+    const host = createHeadlessHost({ root: root() });
+    const thread = host.createThread("delegate");
+    const delegateLane: ProviderLane<null> = {
+      ...identityLane("via Codex: the delegate answer."),
+      runTurn: async ({ emit }) => {
+        emit({ kind: "turn_started" });
+        // Route + attribution disclosed BEFORE any primary text.
+        emit({ kind: "child_started", childRef: "child-1", summary: "delegating to Codex" });
+        emit({
+          kind: "child_completed",
+          childRef: "child-1",
+          accountRef: "codex",
+          summary: "done",
+          usage: null,
+          durationMs: 12,
+        });
+        emit({ kind: "text_delta", text: "via Codex: the delegate answer." });
+        emit({ kind: "turn_completed", totalTokens: 9 });
+        return { ok: true, text: "via Codex: the delegate answer.", totalTokens: 9 };
+      },
+    };
+    const result = await host.submitOrdinaryTurn({
+      lane: delegateLane,
+      threadRef: thread.id,
+      turnRef: "turn-1",
+      message: "delegate this",
+    });
+    const kinds = result.frames.map((frame) => frame.event.kind);
+    // The route frame precedes the first primary text frame.
+    expect(kinds.indexOf("child_started")).toBeLessThan(kinds.indexOf("text_delta"));
+    expect(screenDelegatedTurn(result).disposition).toBe("pass");
+    // A delegated turn still creates no Full Auto record.
     expect(result.fullAutoRecordCount).toBe(0);
   });
 });
