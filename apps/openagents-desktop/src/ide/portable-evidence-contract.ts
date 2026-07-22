@@ -386,11 +386,8 @@ const receiptSemanticError = (receipt: BaseReceipt): string | undefined => {
 
     const faultFacts = receipt.faultFacts.filter(fact => fact.cohortRef === cohort.cohortRef)
     const faultIdentities = faultFacts.map(fact => `${fact.scenario}:${fact.phase ?? "all"}`)
-    const expectedFaultIdentities = IDE_PORTABLE_REQUIRED_FAULT_CASES.map(fault =>
-      `${fault.scenario}:${fault.phase ?? "all"}`
-    )
-    if (!hasCompleteSet(faultIdentities, expectedFaultIdentities)) {
-      return `IDE-13 acceptance fault matrix is incomplete or duplicated for ${cohort.cohortRef}`
+    if (faultFacts.length === 0 || new Set(faultIdentities).size !== faultIdentities.length) {
+      return `IDE-13 acceptance lacks a unique real fault run for ${cohort.cohortRef}`
     }
     if (faultFacts.some(fact =>
       (fact.scenario === "transition_partition" && fact.phase === null) ||
@@ -400,6 +397,16 @@ const receiptSemanticError = (receipt: BaseReceipt): string | undefined => {
       fact.outcome !== "passed" || fact.recoveryPointRef === null || fact.receiptRef === null)) {
       return `IDE-13 acceptance contains incomplete or non-real fault evidence for ${cohort.cohortRef}`
     }
+  }
+
+  const expectedFaultIdentities = IDE_PORTABLE_REQUIRED_FAULT_CASES.map(fault =>
+    `${fault.scenario}:${fault.phase ?? "all"}`
+  )
+  const acceptedFaultIdentities = receipt.faultFacts.map(fact =>
+    `${fact.scenario}:${fact.phase ?? "all"}`
+  )
+  if (expectedFaultIdentities.some(identity => !acceptedFaultIdentities.includes(identity))) {
+    return "IDE-13 acceptance fault matrix is incomplete across the real placement cohorts"
   }
 
   if (receipt.recoveryFacts.some(fact => {

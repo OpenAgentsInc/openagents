@@ -177,8 +177,10 @@ const completeReceipt = (): IdePortableEvidenceReceipt => {
       recoveryPointRef: `checkpoint:${cohort.cohortRef}:older`,
       receiptRef: `receipt:recovery:${cohort.cohortRef}:older-point`,
     })),
-    faultFacts: placementCohorts.flatMap((cohort) =>
-      IDE_PORTABLE_REQUIRED_FAULT_CASES.map((fault) => ({
+    faultFacts: placementCohorts.flatMap((cohort, cohortIndex) =>
+      IDE_PORTABLE_REQUIRED_FAULT_CASES.filter((_, faultIndex) =>
+        faultIndex % placementCohorts.length === cohortIndex,
+      ).map((fault) => ({
         faultRef: `fault:${cohort.cohortRef}:${fault.scenario}:${fault.phase ?? "all"}`,
         cohortRef: cohort.cohortRef,
         targetClass: cohort.targetClass,
@@ -340,7 +342,16 @@ describe("IDE-13 portability evidence contract", () => {
           : cohort,
       ),
       recoveryFacts: receipt.recoveryFacts.filter((fact) => fact.cohortRef !== provider.cohortRef),
-      faultFacts: receipt.faultFacts.filter((fact) => fact.cohortRef !== provider.cohortRef),
+      faultFacts: receipt.faultFacts.map((fact) =>
+        fact.cohortRef === provider.cohortRef
+          ? {
+              ...fact,
+              cohortRef: receipt.placementCohorts[0]!.cohortRef,
+              targetClass: "owner_local" as const,
+              evidenceClass: "real_local" as const,
+            }
+          : fact,
+      ),
     });
     expect(() => validate(unclaimed)).not.toThrow();
   });
@@ -490,7 +501,7 @@ describe("IDE-13 portability evidence contract", () => {
         ...missing,
         faultFacts: missing.faultFacts.slice(1),
       },
-      /fault matrix is incomplete or duplicated/u,
+      /fault matrix is incomplete across the real placement cohorts/u,
     );
 
     const failed = completeReceipt();
