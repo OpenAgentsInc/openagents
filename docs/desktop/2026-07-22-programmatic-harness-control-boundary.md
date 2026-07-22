@@ -21,11 +21,12 @@ There are two layers, and they are different control boundaries:
 1. **The SDK harness layer** (built, seven lanes live): drive one or more
    coding-agent harnesses directly through the AI SDK adapters, owner-local,
    and grade the result. This is the layer these tools exercise today.
-2. **The Desktop host layer** (partly built): drive a turn through the
-   Desktop's own main-process services (thread records, Full Auto run
-   records, delegation route/attribution). #9161's acceptance criteria
-   target this layer. The dispatch-collapse program (#9167) routes the
-   Desktop lanes onto the same SDK adapters, so the two layers converge.
+2. **The Desktop host layer** (built): drive a turn through the Desktop's
+   own main-process services (thread records, Full Auto run records,
+   delegation route/attribution) with no Electron and no renderer, via
+   `createHeadlessHost`. #9161's acceptance criteria target this layer.
+   The dispatch-collapse program (#9167) routes the Desktop lanes onto
+   the same SDK adapters, so the two layers share one execution spine.
 
 ## The SDK harness control surface
 
@@ -96,16 +97,36 @@ The `--file` path converts a combined multi-harness transcript through the
 redact → validate → `POST /api/traces` pipeline to a public
 `openagents.com/trace/{uuid}`. Needs `OPENAGENTS_AGENT_TOKEN`.
 
-## Honest scope
+## The Desktop host control surface
 
-What these tools prove: every harness adapter executes a real owner-local
-turn, multi-turn continuity holds, multi-agent orchestration stays coherent,
-and the result grades on a repeatable metric.
+`createHeadlessHost({ root })` (`apps/openagents-desktop/src/desktop-headless-host.ts`)
+assembles the PRODUCTION host services — the real
+`makeProviderLaneDispatcher`, `ThreadStore`, `LocalTurnJournal`, and Full
+Auto run registry — over a disposable root, with no Electron and no
+renderer. It drives turns through the same dispatch path the Desktop uses:
 
-What they do NOT prove (the #9161 host-layer residual): running a turn
-through the Desktop's own thread and Full Auto run records, exposing
-delegation route and attribution before an answer is promoted, and the
-isolated-Desktop-host bootstrap. Those are the host control surface #9161's
-acceptance criteria describe, and the dispatch-collapse program (#9167) is
-the path that makes the Desktop lanes run on these same adapters so a
-grader can drive the real host without renderer automation.
+- `submitOrdinaryTurn({ lane, threadRef, turnRef, message })` — one ordinary
+  turn. It returns ordered typed frames, the durable thread, and the Full
+  Auto record count. Ordinary turns create ZERO Full Auto records.
+- `startFullAutoRun({ title, objective, doneCondition })` — the only path
+  that creates a run record. It returns the run with its stable `runRef`,
+  durable across a reopen from a fresh host over the same root.
+- A delegated turn's `child_started` route/attribution frame precedes the
+  promoted answer (`screenDelegatedTurn` enforces the #9159 invariant).
+
+`makeCodexHeadlessLane` plugs a real owner-local Codex turn into this host.
+The gated e2e `HEADLESS_HOST_LIVE=1 vitest run tests/headless-host-codex.e2e.test.ts`
+runs it through the full production path with no renderer.
+
+`deriveHeadlessReceipts` (`src/desktop-headless-receipt.ts`) turns a host
+turn into a public-safe receipt (bounded facts, no raw text or paths) and a
+private receipt (full frames + answer), with `screenHeadlessTurn` /
+`screenDelegatedTurn` applying the coherence rubric's deterministic
+tripwires.
+
+## Convergence with the SDK layer
+
+The dispatch-collapse program (#9167) routes the Desktop's live lanes onto
+these same SDK adapters, so a graded headless run and a UI turn share one
+execution spine. Codex is flag-flippable onto the adapter path today
+(`OPENAGENTS_DESKTOP_CODEX_HARNESS_ADAPTER=1`).
