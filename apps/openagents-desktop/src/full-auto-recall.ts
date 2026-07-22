@@ -40,7 +40,7 @@
  * calls, and total usage are all charged to the finite per-run recall budget.
  */
 
-import { Effect } from "effect"
+import { Effect, Stream } from "effect"
 import {
   HISTORY_RECALL_TOOL_NAME,
   type HarnessHostToolCall,
@@ -50,24 +50,42 @@ import type {
   HistoryRecallQuestion,
   HistoryRecallResponse,
 } from "@openagentsinc/history-corpus"
-import type {
-  RlmBudget,
-  RlmTerminalResult,
+import {
+  defaultRlmDeterministicLimits,
+  defaultRlmEvidencePolicy,
+  makeRlm,
+  type RlmBudget,
+  type RlmCitation,
+  type RlmDeterministicLimits,
+  type RlmDeterministicRequest,
+  type RlmSemanticRequest,
+  type RlmTerminalResult,
 } from "@openagentsinc/rlm"
 
 import { DESKTOP_RLM_STRATEGY_REF } from "./desktop-history-corpus-source.ts"
+import {
+  FOLDER_CORPUS_STRATEGY_REF,
+  folderCorpusSourceInput,
+  folderRlmCorpusSourceLayer,
+  splitFolderCorpusAddress,
+  type FolderRlmCorpusConfig,
+} from "./folder-corpus-source.ts"
 import type {
   HistoryRecallCitedSpanRow,
   HistoryRecallHostSources,
 } from "./history-recall-host.ts"
 import {
+  clampDesktopSemanticBudget,
   dispatchDesktopHistoryRecallTiered,
+  makeCountedDesktopRlmModelPlan,
   makeDesktopRlmUsageRecorder,
+  semanticRecallProgressFromRlmEvent,
   semanticTerminalSummaryFromResult,
   usageLedgerInputsFromRlmUsage,
   type DesktopRecallTierRequest,
   type DesktopRlmCompleteFn,
   type DesktopRlmModelCallUsageRow,
+  type DesktopRlmUsageRecorder,
   type DesktopRlmUsageTotals,
   type DesktopSemanticRecallAdmission,
   type DesktopSemanticRecallOutcome,
@@ -776,3 +794,406 @@ export const applyFullAutoRecallToContinuation = (
   fragment: FullAutoRecallContinuationFragment | null,
 ): string =>
   fragment === null ? baseContinuation : `${fragment.text}\n\n${baseContinuation}`
+
+// ===========================================================================
+// HANDS-5 (#9176) — FOLDER-corpus roadmap recall for Full Auto.
+//
+// The recall consumer above reads a run's OWN authorized event-history corpus.
+// This second entry point lets a Full Auto run mine a bounded read-only FOLDER
+// of Markdown (the transcript archive under `docs/transcripts/`, and by
+// extension repository docs) into a CITED CANDIDATE feature / roadmap list.
+//
+// It is host-owned and paper-faithful in the same way as the history path:
+//   - Tier D deterministic grep runs first and is ALWAYS available, zero spend.
+//   - Tier S semantic synthesis runs ONLY when the host passes an admission
+//     record plus an injected model plan; the budget is clamped and exact usage
+//     is required.
+//   - Every result is labeled `cited-candidate` and `verified: false`. It is
+//     NEVER a roadmap authority. Citations are validated by the SDK against the
+//     exact corpus digest; a Commit without a citation value yields
+//     `invalid_citations` and no candidates.
+//   - The returned Effect never fails typed: a corpus/engine error becomes a
+//     `failed` result the Full Auto loop continues past, exactly like the
+//     history recall consumer.
+//
+// The Full Auto reconcile loop (owned by another lane) integrates the call
+// site. It should call {@link runFullAutoRoadmapRecall} and, if it wants to
+// frame the result, {@link fullAutoRoadmapRecallText}. This module deliberately
+// does NOT touch `full-auto-reconcile.ts` / `full-auto-mission.ts` /
+// `full-auto-run-registry.ts` / `full-auto-run-analyzer.ts`.
+// ===========================================================================
+
+/**
+ * Default feature-signal grep pattern (a real regular expression, case
+ * insensitive) for mining a transcript / docs corpus. It is a bounded starting
+ * heuristic, not a promise catalogue.
+ */
+export const FULL_AUTO_ROADMAP_SIGNAL_PATTERN =
+  "(we need|we should|we want|missing|instead of|the product (should|must|needs)|must (support|have|be)|would be great|roadmap|feature)"
+
+export const FULL_AUTO_ROADMAP_MAX_CANDIDATES_DEFAULT = 24
+export const FULL_AUTO_ROADMAP_MAX_EXCERPT = 200
+
+const RLM_REQUEST_SCHEMA_ID = "openagents.ai.rlm_request.v1" as const
+
+export type FullAutoRoadmapRecallTier = "deterministic" | "semantic"
+
+export type FullAutoRoadmapRecallStatus = "completed" | "partial" | "refused" | "failed"
+
+/** One bounded cited candidate mined from the folder corpus. */
+export interface FullAutoRoadmapCandidate {
+  /** Stable corpus entry ref (`<relPath>#p<index>`). */
+  readonly entryRef: string
+  /** Source file relative path, decoded from the citation address. */
+  readonly sourceFile: string | null
+  /** Bounded validated excerpt — the ONLY corpus-derived text surfaced. */
+  readonly excerpt: string
+}
+
+/**
+ * A folder-corpus recall outcome. It is ALWAYS a cited candidate, never a
+ * verified roadmap and never product authority.
+ */
+export interface FullAutoRoadmapRecallResult {
+  readonly runRef: string
+  readonly recallRef: string
+  readonly tier: FullAutoRoadmapRecallTier
+  readonly status: FullAutoRoadmapRecallStatus
+  readonly reason: string | null
+  /** ALWAYS "cited-candidate". */
+  readonly label: "cited-candidate"
+  /** ALWAYS false — recall output is never verified. */
+  readonly verified: false
+  readonly corpusRef: string | null
+  readonly contentDigest: string | null
+  readonly candidates: ReadonlyArray<FullAutoRoadmapCandidate>
+  /** Committed synthesis text for a semantic run; null for Tier D. */
+  readonly synthesis: string | null
+  readonly citationCount: number
+  readonly capsHit: ReadonlyArray<string>
+  readonly usage: DesktopRlmUsageTotals
+  readonly usageRows: ReadonlyArray<DesktopRlmModelCallUsageRow>
+}
+
+/** Host-supplied semantic escalation for the folder path (already admitted). */
+export interface FullAutoRoadmapSemanticConfig {
+  readonly question: string
+  /** Host-owned admission — never from model output. */
+  readonly admission: DesktopSemanticRecallAdmission | null
+  readonly completeRoot: DesktopRlmCompleteFn
+  readonly completeLeaf?: DesktopRlmCompleteFn
+  readonly budget?: Partial<RlmBudget>
+  readonly recorder?: DesktopRlmUsageRecorder
+  readonly onProgress?: (progress: DesktopSemanticRecallProgress) => void
+}
+
+export interface FullAutoRoadmapRecallInput {
+  readonly runRef: string
+  /** Idempotency-friendly ref; also the engine run-ref seed. */
+  readonly recallRef: string
+  /** Host-owned bounded read-only folder config (root + caps). */
+  readonly corpus: FolderRlmCorpusConfig
+  /** Tier D grep pattern (full regex). Defaults to the feature-signal pattern. */
+  readonly deterministicPattern?: string
+  readonly deterministicLimits?: Partial<RlmDeterministicLimits>
+  readonly maxCandidates?: number
+  /** Optional host-admitted semantic synthesis over the same folder corpus. */
+  readonly semantic?: FullAutoRoadmapSemanticConfig
+}
+
+const EMPTY_USAGE: DesktopRlmUsageTotals = {
+  modelCalls: 0,
+  inputTokens: 0,
+  outputTokens: 0,
+  totalTokens: 0,
+}
+
+const boundRoadmapExcerpt = (excerpt: string): string =>
+  excerpt.length <= FULL_AUTO_ROADMAP_MAX_EXCERPT
+    ? excerpt
+    : `${excerpt.slice(0, FULL_AUTO_ROADMAP_MAX_EXCERPT)}…`
+
+/** Decode the source file from a folder citation address (best effort). */
+const roadmapSourceFile = (citation: RlmCitation): string | null =>
+  splitFolderCorpusAddress(citation.sourceAddress.encodedAddress)?.relPath ?? null
+
+const candidatesFromResult = (
+  result: RlmTerminalResult,
+  max: number,
+): ReadonlyArray<FullAutoRoadmapCandidate> => {
+  if (result._tag === "Refused") return []
+  const seen = new Set<string>()
+  const candidates: Array<FullAutoRoadmapCandidate> = []
+  for (const citation of result.citations) {
+    if (candidates.length >= max) break
+    if (seen.has(citation.entryRefStart)) continue
+    seen.add(citation.entryRefStart)
+    candidates.push({
+      entryRef: citation.entryRefStart,
+      sourceFile: roadmapSourceFile(citation),
+      excerpt: boundRoadmapExcerpt(citation.excerpt ?? ""),
+    })
+  }
+  return candidates
+}
+
+const synthesisFromResult = (result: RlmTerminalResult): string | null => {
+  if (result._tag === "Refused") return null
+  const output = result._tag === "Completed" ? result.output : result.bestOutput
+  if (output === undefined) return null
+  return output._tag === "InlineValue" ? output.value : null
+}
+
+const roadmapStatusFromResult = (
+  result: RlmTerminalResult,
+): { readonly status: FullAutoRoadmapRecallStatus; readonly reason: string | null } => {
+  switch (result._tag) {
+    case "Completed":
+      return { status: "completed", reason: null }
+    case "Partial":
+      return { status: "partial", reason: result.reason }
+    case "Refused":
+      return { status: "refused", reason: result.reason }
+  }
+}
+
+const roadmapResultFromTerminal = (
+  input: {
+    readonly runRef: string
+    readonly recallRef: string
+    readonly tier: FullAutoRoadmapRecallTier
+    readonly maxCandidates: number
+    readonly usage: DesktopRlmUsageTotals
+    readonly usageRows: ReadonlyArray<DesktopRlmModelCallUsageRow>
+  },
+  result: RlmTerminalResult,
+): FullAutoRoadmapRecallResult => {
+  const { status, reason } = roadmapStatusFromResult(result)
+  return {
+    runRef: input.runRef,
+    recallRef: input.recallRef,
+    tier: input.tier,
+    status,
+    reason,
+    label: "cited-candidate",
+    verified: false,
+    corpusRef: result.run.corpusRef,
+    contentDigest: result.run.contentDigest,
+    candidates: candidatesFromResult(result, input.maxCandidates),
+    synthesis: synthesisFromResult(result),
+    citationCount: result._tag === "Refused" ? 0 : result.citations.length,
+    capsHit: result._tag === "Refused" ? [] : [...result.honesty.capsHit],
+    usage: input.usage,
+    usageRows: input.usageRows,
+  }
+}
+
+const failedRoadmapResult = (input: {
+  readonly runRef: string
+  readonly recallRef: string
+  readonly tier: FullAutoRoadmapRecallTier
+  readonly reason: string
+  readonly usage: DesktopRlmUsageTotals
+  readonly usageRows: ReadonlyArray<DesktopRlmModelCallUsageRow>
+}): FullAutoRoadmapRecallResult => ({
+  runRef: input.runRef,
+  recallRef: input.recallRef,
+  tier: input.tier,
+  status: "failed",
+  reason: input.reason,
+  label: "cited-candidate",
+  verified: false,
+  corpusRef: null,
+  contentDigest: null,
+  candidates: [],
+  synthesis: null,
+  citationCount: 0,
+  capsHit: [],
+  usage: input.usage,
+  usageRows: input.usageRows,
+})
+
+/**
+ * Run one folder-corpus roadmap recall for a Full Auto run.
+ *
+ * Deterministic (Tier D) grep over the bounded folder always runs when no
+ * admitted semantic config is supplied — it is free and produces cited
+ * candidates directly. When `semantic.admission` is a real admission record and
+ * a model plan is supplied, an admitted Tier S synthesis runs over the same
+ * folder corpus instead (clamped budget, exact usage required, no artifact
+ * sink). A missing admission with a semantic config falls back to Tier D.
+ *
+ * The returned Effect NEVER fails typed: a corpus or engine error becomes a
+ * `failed` result the Full Auto loop continues past. The output is a cited
+ * candidate list, never authority.
+ *
+ * This is the clean entry point the Full Auto reconcile loop should call.
+ */
+export const runFullAutoRoadmapRecall = (
+  input: FullAutoRoadmapRecallInput,
+): Effect.Effect<FullAutoRoadmapRecallResult> =>
+  Effect.gen(function* () {
+    const maxCandidates = Math.max(
+      1,
+      Math.floor(input.maxCandidates ?? FULL_AUTO_ROADMAP_MAX_CANDIDATES_DEFAULT),
+    )
+    const recallRunRef = `${input.runRef}::roadmap::${input.recallRef}`
+    const admitted = input.semantic !== undefined && input.semantic.admission !== null
+
+    if (admitted && input.semantic !== undefined) {
+      const semantic = input.semantic
+      const recorder = semantic.recorder ?? makeDesktopRlmUsageRecorder()
+      const plan = makeCountedDesktopRlmModelPlan({
+        runRef: recallRunRef,
+        completeRoot: semantic.completeRoot,
+        ...(semantic.completeLeaf === undefined ? {} : { completeLeaf: semantic.completeLeaf }),
+        recorder,
+      })
+      const request: RlmSemanticRequest = {
+        _tag: "Semantic",
+        schemaId: RLM_REQUEST_SCHEMA_ID,
+        runRef: recallRunRef,
+        corpus: folderCorpusSourceInput(input.corpus),
+        question: semantic.question,
+        budget: clampDesktopSemanticBudget(semantic.budget),
+        evidence: defaultRlmEvidencePolicy,
+        strategyRef: FOLDER_CORPUS_STRATEGY_REF,
+      }
+      return yield* makeRlm({ admitSemantic: true, model: plan })
+        .pipe(Effect.provide(folderRlmCorpusSourceLayer(input.corpus)))
+        .pipe(
+          Effect.flatMap((rlm) =>
+            Stream.runCollect(rlm.stream(request)).pipe(
+              Effect.map((events) => {
+                let terminal: RlmTerminalResult | null = null
+                for (const event of events) {
+                  if (semantic.onProgress !== undefined) {
+                    const progress = semanticRecallProgressFromRlmEvent(event)
+                    if (progress !== null) semantic.onProgress(progress)
+                  }
+                  if (event._tag === "Terminal") terminal = event.result
+                }
+                return terminal
+              }),
+            ),
+          ),
+          Effect.map((terminal) =>
+            terminal === null
+              ? failedRoadmapResult({
+                  runRef: input.runRef,
+                  recallRef: input.recallRef,
+                  tier: "semantic",
+                  reason: "semantic stream ended without terminal event",
+                  usage: recorder.totals(),
+                  usageRows: recorder.rows(),
+                })
+              : roadmapResultFromTerminal(
+                  {
+                    runRef: input.runRef,
+                    recallRef: input.recallRef,
+                    tier: "semantic",
+                    maxCandidates,
+                    usage: recorder.totals(),
+                    usageRows: recorder.rows(),
+                  },
+                  terminal,
+                ),
+          ),
+          Effect.catch((error) =>
+            Effect.succeed(
+              failedRoadmapResult({
+                runRef: input.runRef,
+                recallRef: input.recallRef,
+                tier: "semantic",
+                reason: error.detailSafe ?? error.reason,
+                usage: recorder.totals(),
+                usageRows: recorder.rows(),
+              }),
+            ),
+          ),
+        )
+    }
+
+    // Tier D deterministic — free, always available, zero spend.
+    const limits: RlmDeterministicLimits = {
+      ...defaultRlmDeterministicLimits,
+      ...input.deterministicLimits,
+    }
+    const request: RlmDeterministicRequest = {
+      _tag: "Deterministic",
+      schemaId: RLM_REQUEST_SCHEMA_ID,
+      runRef: recallRunRef,
+      corpus: folderCorpusSourceInput(input.corpus),
+      operation: {
+        _tag: "Grep",
+        pattern: input.deterministicPattern ?? FULL_AUTO_ROADMAP_SIGNAL_PATTERN,
+        caseSensitive: false,
+      },
+      limits,
+    }
+    return yield* makeRlm({})
+      .pipe(Effect.provide(folderRlmCorpusSourceLayer(input.corpus)))
+      .pipe(
+        Effect.flatMap((rlm) => rlm.run(request)),
+        Effect.map((terminal) =>
+          roadmapResultFromTerminal(
+            {
+              runRef: input.runRef,
+              recallRef: input.recallRef,
+              tier: "deterministic",
+              maxCandidates,
+              usage: EMPTY_USAGE,
+              usageRows: [],
+            },
+            terminal,
+          ),
+        ),
+        Effect.catch((error) =>
+          Effect.succeed(
+            failedRoadmapResult({
+              runRef: input.runRef,
+              recallRef: input.recallRef,
+              tier: "deterministic",
+              reason: error.detailSafe ?? error.reason,
+              usage: EMPTY_USAGE,
+              usageRows: [],
+            }),
+          ),
+        ),
+      )
+  })
+
+/** Whether a roadmap recall produced anything frameable (never blocks a run). */
+export const fullAutoRoadmapRecallIsFrameable = (
+  result: FullAutoRoadmapRecallResult,
+): boolean =>
+  (result.status === "completed" || result.status === "partial") &&
+  result.candidates.length > 0
+
+/**
+ * Render a bounded, agent-readable cited-candidate roadmap fragment, or null
+ * when there is nothing validated to frame. The text is always headed as a
+ * cited candidate and NEVER asserts verification, so it is safe to prepend to a
+ * continuation prompt. Raw corpus slices and the recursive transcript are never
+ * included — only the bounded validated citations.
+ */
+export const fullAutoRoadmapRecallText = (
+  result: FullAutoRoadmapRecallResult,
+): string | null => {
+  if (!fullAutoRoadmapRecallIsFrameable(result)) return null
+  const header = `ROADMAP RECALL (cited candidate — NOT verified · tier=${result.tier} · status=${result.status}):`
+  const lines = result.candidates.map((candidate) => {
+    const where = candidate.sourceFile ?? candidate.entryRef
+    return `- [${where}] ${candidate.excerpt}`
+  })
+  const caveats = [
+    "cited candidate — not verified",
+    ...(result.status === "partial" ? [`partial (${result.reason ?? "capped"})`] : []),
+    ...(result.capsHit.length > 0 ? [`coverage truncated (${result.capsHit.join(", ")})`] : []),
+  ]
+  const usageLine =
+    result.usage.modelCalls > 0
+      ? `usage: ${result.usage.modelCalls} model calls · ${result.usage.totalTokens} tokens`
+      : "usage: 0 model calls (deterministic)"
+  return [header, ...lines, `caveats: ${caveats.join("; ")}`, usageLine].join("\n")
+}
