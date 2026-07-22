@@ -836,10 +836,10 @@ try {
   );
   process.stdout.write("\n");
 } catch (error) {
-  if (error instanceof DriverError && /^[a-z0-9_]{1,80}$/u.test(error.message)) {
-    process.stdout.write(
-      `${JSON.stringify({ schemaVersion: ERROR_SCHEMA_VERSION, reasonRef: error.message })}\n`,
-    );
-  }
-  fail();
+  const reasonRef =
+    error instanceof DriverError && /^[a-z0-9_]{1,80}$/u.test(error.message)
+      ? error.message
+      : "internal_driver_failure";
+  process.stdout.write(`${JSON.stringify({ schemaVersion: ERROR_SCHEMA_VERSION, reasonRef })}\n`);
+  process.exitCode = 2;
 }
