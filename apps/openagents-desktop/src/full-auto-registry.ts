@@ -90,13 +90,39 @@ export type FullAutoRoutingCandidate = typeof FullAutoRoutingCandidateSchema.Typ
  * to the next admitted candidate in the SAME reconciliation pass instead of
  * consuming FA-H5 failure budget. Every other failure keeps the existing
  * budget/backoff/disable semantics unchanged.
+ *
+ * FA-RT-02 (fleet contention rotation): two additive classes that let the
+ * loop use the whole admitted fleet instead of waiting on one lane.
+ *  - `lane_busy`: the candidate lane is admitted but already saturated (it
+ *    holds an in-flight Full Auto turn for another thread). A pre-dispatch
+ *    readiness gate skips it WITHOUT minting a turn or consuming FA-H5 budget
+ *    and rotates to the next ready candidate; when no admitted candidate is
+ *    ready, the pass waits (returns without dispatching) rather than piling a
+ *    second turn onto a busy lane or burning the failure budget. This is the
+ *    fleet-spreading class, not a failure.
+ *  - `lane_unavailable`: a candidate lane lost live admission (its capability
+ *    report vanished, went quarantined, or dropped `fullAuto`), surfacing as
+ *    a `full_auto_lane_not_eligible:<lane>` dispatch reason. With an untried
+ *    admitted candidate the loop rotates to it instead of consuming budget;
+ *    on the last/only candidate the existing FA-H5 budget/disable semantics
+ *    still apply so a genuinely dead pinned lane surfaces to the owner.
  */
 export const FullAutoRotationReasonSchema = Schema.Literals([
   "account_exhausted",
   "rate_limited",
   "provider_error",
+  "lane_busy",
+  "lane_unavailable",
 ])
 export type FullAutoRotationReason = typeof FullAutoRotationReasonSchema.Type
+
+/** FA-RT-02: rotation classes that reflect transient/liveness lane contention
+ * rather than a provider failure. A cycle that ends on one of these does NOT
+ * consume FA-H5 failure budget or disable the record -- it waits for the next
+ * reconciliation pass. `lane_unavailable` deliberately stays OUT of this set:
+ * a pinned lane with no admitted alternative must still fail closed. */
+export const FULL_AUTO_CONTENTION_ROTATION_REASONS: ReadonlySet<FullAutoRotationReason> =
+  new Set<FullAutoRotationReason>(["lane_busy"])
 
 /**
  * FA-RT-01 (#8987): one durable rotation fact. Public-safe by construction —

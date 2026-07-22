@@ -66,8 +66,10 @@ commands:
 
 FA-WIRE-01 (#8996): --lane is repeatable; the order given is the rotation
 priority. A trailing :accountRef pins the candidate to one account (the last
-colon splits lane from account; a bare "acp:<agent>" lane ref with exactly one
-colon is kept whole, so pin an acp lane as "acp:<agent>:<accountRef>").
+colon splits lane from account). A namespaced fleet lane ref with exactly one
+colon -- "acp:<agent>" (grok-cli, cursor-agent) or "harness:<agent>"
+(opencode, pi, goose) -- is kept whole, so pin its account with a SECOND colon,
+e.g. "harness:opencode:<accountRef>".
 --max-turns / --max-wall-clock-ms bind owner guardrails; resume clears a
 low-confidence pause.`
 

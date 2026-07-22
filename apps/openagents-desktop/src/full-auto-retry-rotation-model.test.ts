@@ -91,7 +91,9 @@ describe("Full Auto retry/rotation exhaustive model (FA-AS-01 formal-adjacent ob
 
   test("every FullAutoRotationReasonSchema literal classifies to itself as a rotation-eligible dispatch-failure reason (exhaustive over the real exported literal set, not a hand-guessed subset)", () => {
     const rotationReasons = [...FullAutoRotationReasonSchema.literals]
-    expect(rotationReasons.sort()).toEqual(["account_exhausted", "provider_error", "rate_limited"].sort())
+    expect(rotationReasons.sort()).toEqual(
+      ["account_exhausted", "lane_busy", "lane_unavailable", "provider_error", "rate_limited"].sort(),
+    )
     for (const reason of rotationReasons) {
       expect(classifyFullAutoDispatchFailure(reason)).toBe(reason)
     }
@@ -100,6 +102,10 @@ describe("Full Auto retry/rotation exhaustive model (FA-AS-01 formal-adjacent ob
     expect(classifyFullAutoDispatchFailure("no_claude_account")).toBe("account_exhausted")
     expect(classifyFullAutoDispatchFailure("no_codex_account")).toBe("account_exhausted")
     expect(classifyFullAutoDispatchFailure("account_reconnect_required")).toBe("account_exhausted")
+    // FA-RT-02: a lane that lost live Full Auto admission surfaces as
+    // `full_auto_lane_not_eligible:<lane>` and rotates as `lane_unavailable`.
+    expect(classifyFullAutoDispatchFailure("full_auto_lane_not_eligible:codex-local")).toBe("lane_unavailable")
+    expect(classifyFullAutoDispatchFailure("full_auto_lane_not_eligible:acp:grok-cli")).toBe("lane_unavailable")
   })
 
   test("detail-sniffed reasons (timeout/sdk_unavailable/session_failed) classify by real substring rule, exhaustively over the documented marker set", () => {

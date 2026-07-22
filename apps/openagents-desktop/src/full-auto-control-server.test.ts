@@ -730,11 +730,27 @@ describe("FA-WIRE-01 (#8996): routing policy, guardrails, and resume through the
     } finally { await harness.dispose() }
   })
 
-  test("CLI lane parsing: laneRef[:accountRef] respects acp:* lane refs and repeat order becomes priority", () => {
+  test("CLI lane parsing: laneRef[:accountRef] respects acp:* and harness:* fleet lane refs and repeat order becomes priority", () => {
     expect(parseFullAutoLaneOption("codex-local")).toEqual({ lane: "codex-local" })
     expect(parseFullAutoLaneOption("codex-local:acct.work")).toEqual({ lane: "codex-local", accountRef: "acct.work" })
     expect(parseFullAutoLaneOption("acp:grok-cli")).toEqual({ lane: "acp:grok-cli" })
     expect(parseFullAutoLaneOption("acp:grok-cli:acct.work")).toEqual({ lane: "acp:grok-cli", accountRef: "acct.work" })
+    expect(parseFullAutoLaneOption("acp:cursor-agent")).toEqual({ lane: "acp:cursor-agent" })
+    // FA-RT-03: the SDK harness fleet lanes keep their `harness:` namespace
+    // whole (regression: `harness:opencode` used to mis-parse to lane
+    // `harness` + accountRef `opencode`, making opencode/pi/goose unreachable
+    // from the CLI/control path with `lane_unknown: harness`).
+    expect(parseFullAutoLaneOption("harness:opencode")).toEqual({ lane: "harness:opencode" })
+    expect(parseFullAutoLaneOption("harness:pi")).toEqual({ lane: "harness:pi" })
+    expect(parseFullAutoLaneOption("harness:goose")).toEqual({ lane: "harness:goose" })
+    // A SECOND colon still pins an account inside a namespaced lane ref.
+    expect(parseFullAutoLaneOption("harness:opencode:acct.work")).toEqual({ lane: "harness:opencode", accountRef: "acct.work" })
+    // A repeatable multi-lane fleet policy across harness lanes becomes the
+    // ordered rotation priority the run-start path binds.
+    expect(buildFullAutoPolicyOptions({ lanes: ["harness:opencode", "harness:pi"] })).toEqual({
+      lane: "harness:opencode",
+      options: { routingPolicy: [{ lane: "harness:opencode" }, { lane: "harness:pi" }] },
+    })
     // One bare lane keeps the legacy single-lane shape (no routingPolicy).
     expect(buildFullAutoPolicyOptions({ lanes: ["codex-local"] })).toEqual({ lane: "codex-local", options: {} })
     // Two lanes (or one pinned account) become the ordered policy.

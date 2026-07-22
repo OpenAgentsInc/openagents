@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto"
 
 import type { FullAutoChurnDecision } from "./full-auto-churn.ts"
+import { FULL_AUTO_CONTENTION_ROTATION_REASONS } from "./full-auto-registry.ts"
 import type {
   FullAutoProfile,
   FullAutoRecord,
@@ -270,6 +271,17 @@ export const classifyFullAutoDispatchFailure = (
   reason: string | undefined,
   detail?: string,
 ): FullAutoRotationReason | null => {
+  // FA-RT-02: a lane that lost live Full Auto admission surfaces as
+  // `full_auto_lane_not_eligible:<lane>` from main's per-dispatch lane gate.
+  // This is deterministic prefix classification on an already-selected
+  // dispatch reason (never intent routing) -- treat it as a rotatable
+  // `lane_unavailable` class so a multi-candidate run fails over to the next
+  // admitted lane in the same pass instead of consuming FA-H5 budget while a
+  // ready sibling lane sits idle. A single-candidate run still fails closed on
+  // its last attempt (see FULL_AUTO_CONTENTION_ROTATION_REASONS).
+  if (reason !== undefined && reason.startsWith("full_auto_lane_not_eligible")) {
+    return "lane_unavailable"
+  }
   switch (reason) {
     // Provider adapters may already return the canonical rotation taxonomy.
     // Preserve those typed facts directly instead of requiring an older
@@ -277,6 +289,8 @@ export const classifyFullAutoDispatchFailure = (
     case "account_exhausted":
     case "rate_limited":
     case "provider_error":
+    case "lane_busy":
+    case "lane_unavailable":
       return reason
     case "budget_exceeded":
     case "no_claude_account":
@@ -343,6 +357,30 @@ export const reconcileFullAutoThreads = async (input: Readonly<{
   /** FA-RT-01 (#8987): a typed failure rotated the thread to its next
    * admitted candidate within the same pass (never consuming budget). */
   onRotated?: (threadRef: string, rotation: FullAutoRotationRecord) => void
+  /**
+   * FA-RT-02 (fleet contention rotation): OPT-IN pre-dispatch lane-readiness
+   * gate. Given a candidate's resolved lane (and pinned account, when any) plus
+   * the dispatching thread, return `false` when that lane cannot accept a fresh
+   * Full Auto turn right now -- it is unadmitted, Full-Auto-ineligible, or
+   * already saturated (holding an in-flight Full Auto turn for a DIFFERENT
+   * thread). Absent -> the loop never pre-empts a candidate and behaves exactly
+   * as before (byte-for-byte). When present:
+   *  - a busy/unready candidate with an untried admitted candidate remaining
+   *    rotates to it (typed `lane_busy` rotation) WITHOUT minting a turn or
+   *    consuming FA-H5 budget -- this is what spreads runs across the fleet
+   *    under contention instead of piling onto one lane;
+   *  - a busy/unready candidate with no untried candidate left makes the pass
+   *    WAIT (no dispatch, no failure budget, no disable) for the next
+   *    reconciliation trigger, instead of dispatching a doomed second turn.
+   * The gate is deterministic lane bookkeeping over already-selected lanes,
+   * never intent routing. It excludes the dispatching thread's own turn so a
+   * thread is never considered to be contending with itself.
+   */
+  laneReady?: (input: Readonly<{
+    threadRef: string
+    lane: string | undefined
+    accountRef: string | undefined
+  }>) => boolean
   /**
    * FA-GD-01 (#8991): settled-turn evidence for the no-progress confidence
    * gate, projected by the caller from the local turn journal for one
@@ -570,6 +608,11 @@ export const reconcileFullAutoThreads = async (input: Readonly<{
     const boundLaneIndex = policy.findIndex(candidate => candidate.lane === record.profile?.lane)
     const startIndex = boundLaneIndex === -1 ? 0 : boundLaneIndex
     const attempts = useRouting ? policy.length : 1
+    // FA-RT-02: the lane this pass would have started on, captured the first
+    // time the pre-dispatch readiness gate skips a busy candidate, so a
+    // successful landing on a different lane can be receipted as ONE rotation
+    // fact instead of one durable write per skipped candidate.
+    let skippedBusyFromLane: string | null = null
     for (let attempt = 0; attempt < attempts; attempt += 1) {
       const candidate = useRouting ? policy[(startIndex + attempt) % policy.length]! : null
       // The candidate's lane/account override the bound profile; model and
@@ -583,6 +626,30 @@ export const reconcileFullAutoThreads = async (input: Readonly<{
             lane: candidate.lane,
             ...(candidate.accountRef === undefined ? {} : { accountRef: candidate.accountRef }),
           }
+      // FA-RT-02: pre-dispatch fleet-contention gate. When the caller supplies
+      // a lane-readiness signal and this candidate's lane cannot accept a
+      // fresh Full Auto turn right now (unadmitted, Full-Auto-ineligible, or
+      // already saturated by another thread's in-flight turn), do NOT mint a
+      // turn or consume FA-H5 budget: rotate to the next untried candidate, or
+      // -- when none remain ready -- wait for the next reconciliation trigger.
+      // This is the mechanism that spreads runs across the whole admitted fleet
+      // under contention instead of piling a second turn onto one busy lane.
+      if (
+        input.laneReady !== undefined &&
+        !input.laneReady({ threadRef, lane: profile?.lane, accountRef: profile?.accountRef })
+      ) {
+        if (useRouting && attempt < attempts - 1) {
+          if (skippedBusyFromLane === null) {
+            skippedBusyFromLane = candidate?.lane ?? record.profile?.lane ?? profile?.lane ?? null
+          }
+          continue
+        }
+        // No admitted candidate is ready this pass. Wait rather than dispatch a
+        // doomed second turn onto a busy lane: no turn minted, no failure
+        // budget consumed, no disable. A prolonged wait surfaces to the owner
+        // as the liveness `dispatch_overdue` classification, not a silent hang.
+        return null
+      }
       // FA-H3: the lease and the dispatched turn share ONE identity. Claim
       // it durably before dispatch; a concurrent pass that lost the claim
       // skips. Each rotation attempt is its own leased turn identity.
@@ -627,6 +694,27 @@ export const reconcileFullAutoThreads = async (input: Readonly<{
           ) {
             input.registry.bindProfile(threadRef, profile)
           }
+          // FA-RT-02: if this pass landed here by skipping a busy bound lane,
+          // record exactly ONE typed rotation fact so the fleet spread is
+          // receipted. The per-candidate busy gate above deliberately records
+          // nothing, so an all-busy transient pass never floods the bounded
+          // rotation history.
+          if (
+            candidate !== null && skippedBusyFromLane !== null &&
+            skippedBusyFromLane !== candidate.lane
+          ) {
+            const rotated = input.registry.recordRotation(threadRef, {
+              fromLane: skippedBusyFromLane,
+              toLane: candidate.lane,
+              reason: "lane_busy",
+            })
+            const rotationRecord = rotated?.rotationHistory?.at(-1)
+            input.registry.recordDecision(threadRef, {
+              decision: "rotate",
+              reason: `${skippedBusyFromLane}>${candidate.lane}:lane_busy`,
+            })
+            if (rotationRecord !== undefined) input.onRotated?.(threadRef, rotationRecord)
+          }
           input.onDispatched?.(threadRef, {
             turnRef,
             ...(profile === undefined ? {} : { profile }),
@@ -665,7 +753,16 @@ export const reconcileFullAutoThreads = async (input: Readonly<{
         failure = {
           reason: result.reason ?? "dispatch_failed",
           failureCause: result.failureCause ?? null,
-          failureClass: result.failureClass ?? null,
+          // FA-RT-02: the per-dispatch lane gate's `full_auto_lane_not_eligible`
+          // early return carries no failureClass. Classify it here as
+          // `lane_unavailable` so a multi-candidate run rotates to its next
+          // admitted lane instead of consuming FA-H5 budget while a ready
+          // sibling lane sits idle. Every other absent class stays null,
+          // byte-for-byte the pre-#8987 semantics.
+          failureClass: result.failureClass ??
+            (typeof result.reason === "string" && result.reason.startsWith("full_auto_lane_not_eligible")
+              ? "lane_unavailable"
+              : null),
         }
       } catch (error) {
         failure = {
@@ -694,6 +791,19 @@ export const reconcileFullAutoThreads = async (input: Readonly<{
         })
         if (rotationRecord !== undefined) input.onRotated?.(threadRef, rotationRecord)
         continue
+      }
+      // FA-RT-02: a cycle that ends on a transient contention class (lane_busy)
+      // must not consume FA-H5 budget or disable -- release the lease and wait
+      // for the next reconciliation pass. `lane_unavailable` is deliberately
+      // NOT transient: a pinned lane with no admitted alternative still fails
+      // closed through the normal budget path below so a genuinely dead lane
+      // surfaces to the owner.
+      if (
+        failure.failureClass !== null &&
+        FULL_AUTO_CONTENTION_ROTATION_REASONS.has(failure.failureClass)
+      ) {
+        input.registry.clearPending(threadRef)
+        return null
       }
       // A full unsuccessful cycle (or a non-rotatable failure) consumes
       // exactly ONE failure-budget step -- existing FA-H5 semantics.

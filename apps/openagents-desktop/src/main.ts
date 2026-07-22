@@ -5777,6 +5777,28 @@ const runFullAutoReconciliation = (options?: Readonly<{ startup?: boolean }>): P
     resolveWorkspaceRef: resolveDesktopLocalWorkspaceRoot,
     journalHasNonterminalTurn: turnRef =>
       localTurnJournal.nonterminal().some(record => record.turnRef === turnRef),
+    // FA-RT-02 (fleet contention rotation): the pre-dispatch lane-readiness
+    // gate. A candidate lane is READY only when it is Full-Auto-admitted (the
+    // exact same admission the dispatch path checks below) AND not already
+    // saturated -- a lane holding a nonterminal turn for a DIFFERENT thread is
+    // busy, because each owner-local provider session runs one turn at a time.
+    // This spreads Full Auto runs across the whole admitted fleet under
+    // contention instead of piling a second turn onto one busy lane (e.g. two
+    // runs pinned to codex-local no longer deadlock -- the second rotates to a
+    // ready sibling lane or waits). Admission-only, deterministic lane
+    // bookkeeping; never intent routing.
+    laneReady: ({ threadRef, lane }) => {
+      const laneRef = lane ?? FULL_AUTO_DEFAULT_LANE
+      const report = providerLaneCapabilityByRef(laneRef)
+      const lanePolicy = fullAutoLanePolicy(laneRef)
+      const projection = report === null ? null : projectProviderLaneCapabilities(report)
+      const admitted = report !== null && lanePolicy !== null && lanePolicy.autoResolveQuestions &&
+        projection?.admission === "admitted" && projection.fullAuto === true
+      if (!admitted) return false
+      const busy = localTurnJournal.nonterminal().some(record =>
+        record.lane === laneRef && record.threadRef !== threadRef)
+      return !busy
+    },
     // FA-GD-01 (#8991) via FA-WIRE-01 (#8996): settled-turn evidence for the
     // no-progress confidence gate, projected from the local turn journal's
     // Full Auto rows -- disposition + updatedAt ONLY, never transcript text.

@@ -86,17 +86,40 @@ export type ControlPolicyOptions = Readonly<{
 }>
 
 /**
+ * FA-WIRE-01 (#8996) / FA-RT-03 (fleet lane refs): the namespaced lane-ref
+ * prefixes whose FIRST colon is part of the lane ref itself, not an account
+ * separator. These are the real admitted fleet lane namespaces -- the ACP
+ * peers (`acp:grok-cli`, `acp:cursor-agent`) and the SDK harness lanes
+ * (`harness:opencode`, `harness:pi`, `harness:goose`). A bare `<namespace>:<ref>`
+ * with exactly one colon is the whole lane ref; pin an account with a SECOND
+ * colon (`harness:opencode:<accountRef>`).
+ */
+export const FULL_AUTO_NAMESPACED_LANE_PREFIXES: ReadonlyArray<string> = ["acp:", "harness:"]
+
+/**
  * FA-WIRE-01 (#8996): parse one repeatable CLI `--lane <laneRef[:accountRef]>`
  * value into an ordered routing candidate. Lane refs may themselves contain a
- * colon (acp:grok-cli), so the account separator is the LAST colon, and a
- * single-colon value with the "acp:" prefix is treated as a bare lane ref
- * (pin an acp lane's account as "acp:<agent>:<accountRef>").
+ * colon (`acp:grok-cli`, `harness:opencode`), so the account separator is the
+ * LAST colon, and a single-colon value in a known lane namespace (see
+ * FULL_AUTO_NAMESPACED_LANE_PREFIXES) is treated as a bare lane ref.
+ *
+ * FA-RT-03: before this generalization the account split fired for every
+ * prefix except `acp:`, so `--lane harness:opencode` was mis-parsed to
+ * laneRef `harness` + accountRef `opencode` and rejected by the control API as
+ * `lane_unknown: harness` -- making the opencode/pi/goose fleet lanes
+ * unreachable from the CLI/control path. Splitting only inside a known
+ * namespace keeps them whole.
  */
 export const parseFullAutoLaneOption = (value: string): ControlRoutingCandidate => {
   const lastColon = value.lastIndexOf(":")
   if (lastColon === -1) return { lane: value }
   const colonCount = value.split(":").length - 1
-  if (colonCount === 1 && value.startsWith("acp:")) return { lane: value }
+  if (
+    colonCount === 1 &&
+    FULL_AUTO_NAMESPACED_LANE_PREFIXES.some(prefix => value.startsWith(prefix))
+  ) {
+    return { lane: value }
+  }
   const lane = value.slice(0, lastColon)
   const accountRef = value.slice(lastColon + 1)
   return accountRef.length === 0 ? { lane } : { lane, accountRef }
