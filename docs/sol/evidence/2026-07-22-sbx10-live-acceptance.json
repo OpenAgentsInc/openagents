@@ -81,14 +81,16 @@
     "statement": "The owner accepted the green staging evidence."
   },
   "independentReview": {
-    "disposition": "pending",
+    "disposition": "admitted",
     "producerMayVerify": false,
-    "statement": "A distinct identity must reproduce and review the exact candidate."
+    "receiptRef": "authority.decision.8f13d3795afaa0e7ed9b4c312778ba92",
+    "reviewerRef": "named_deterministic_verifier_cloudbuild_157437760789_9032",
+    "statement": "A distinct named deterministic verifier reproduced and admitted the exact candidate evidence."
   },
   "limitations": [
     "The checkpoint contains filesystem content only. It excludes credentials, memory, processes, sockets, ports, network identity, and provider hidden state.",
     "The preview route reads one bounded workspace file. It does not proxy a network service.",
     "Public or ungated VNC remains unsupported.",
-    "This producer-run receipt and owner disposition do not satisfy the independent-review gate."
+    "Independent admission does not enable production or make a public availability claim."
   ]
 }

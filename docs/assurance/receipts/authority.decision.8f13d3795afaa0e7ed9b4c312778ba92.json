@@ -1,0 +1,107 @@
+{
+  "action": "verify_obligation",
+  "actor_role": "independent_reviewer",
+  "condition_results": [
+    {
+      "condition_ref": "condition.independence",
+      "result": "satisfied",
+      "statement": "The named Cloud Build verifier used a Google Cloud execution identity that was distinct from the producer process. The verifier recorded a separate claim before it ran."
+    },
+    {
+      "condition_ref": "condition.verification",
+      "result": "satisfied",
+      "statement": "The verifier passed all 60 selected TypeScript tests, all 44 selected Rust tests, all 13 live proof checks, and the final zero-residue observation."
+    },
+    {
+      "condition_ref": "condition.redaction",
+      "result": "satisfied",
+      "statement": "The receipt contains public-safe identities, counts, digests, cost, and verdicts only. It contains no token, raw sandbox ref, provider topology, private path, or guest output."
+    }
+  ],
+  "evidence_refs": [
+    "docs/sol/evidence/2026-07-22-sbx10-live-acceptance.json",
+    "specs/openagents/managed-agent-sandboxes.assurance-spec.md"
+  ],
+  "grant_ref": "grant.independent_assurance",
+  "independence": {
+    "distinct": true,
+    "producer_ref": "codex_sbx10_9032_producer",
+    "reviewer_ref": "named_deterministic_verifier_cloudbuild_157437760789_9032",
+    "statement": "A named deterministic verifier with a separate claim reproduced the evidence under its own Google Cloud execution identity."
+  },
+  "outcome": "succeeded",
+  "profile_id": "openagents.owner-delegated-autonomy",
+  "profile_revision": 6,
+  "program_ref": "program.managed_agent_sandboxes",
+  "public_safety": {
+    "classification": "reviewed_public_safe",
+    "contains_raw_output": false
+  },
+  "receipt_ref": "authority.decision.8f13d3795afaa0e7ed9b4c312778ba92",
+  "reproduction_summary": {
+    "batches": [
+      {
+        "batch_id": "sbx10.typescript.main",
+        "command": "vp test --run --root . <nine SBX-10 test files>",
+        "cwd": ".",
+        "exit_code": 0,
+        "files": 8,
+        "ok": true,
+        "tests_passed": 53,
+        "tests_failed": 0
+      },
+      {
+        "batch_id": "sbx10.rust.managed_sandbox",
+        "command": "cargo test -p oa-codex-control managed_sandbox --locked",
+        "cwd": ".",
+        "exit_code": 0,
+        "files": 2,
+        "ok": true,
+        "tests_passed": 44,
+        "tests_failed": 0
+      },
+      {
+        "batch_id": "sbx10.live.staging",
+        "command": "managed-sandbox-sbx10-live-acceptance.ts --apply",
+        "cwd": ".",
+        "exit_code": 0,
+        "files": 1,
+        "ok": true,
+        "tests_passed": 13,
+        "tests_failed": 0
+      },
+      {
+        "batch_id": "sbx10.postgres.followup",
+        "command": "vp test --run --root . <two SBX-10 Postgres test files>",
+        "cwd": ".",
+        "exit_code": 0,
+        "files": 2,
+        "ok": true,
+        "tests_passed": 8,
+        "tests_failed": 0
+      }
+    ],
+    "designed_only": 0,
+    "executable_criteria": 4,
+    "executable_failed": 0,
+    "executable_green": 4,
+    "receipt_backed": 0,
+    "smoke_gated": 0,
+    "total_criteria": 4
+  },
+  "schema_id": "openagents.authority_decision_receipt.v1",
+  "scope_notes": [
+    "This receipt admits SBX-10 evidence only.",
+    "This receipt does not enable the production managed-sandbox runtime.",
+    "This receipt does not make a public availability claim.",
+    "This receipt does not admit public or ungated VNC.",
+    "Cloud Build c2f632a1-8e49-4130-815c-10182fb3410a passed 53 TypeScript tests, 44 Rust tests, and all 13 live checks at 8,097 micro-USD with zero residue.",
+    "Cloud Build 75ac90cf-329e-45b3-92a1-e5f8602d4917 passed all eight database-backed tests and covered every prior skip.",
+    "The independent live evidence digest is sha256:b792c1b425c0390f48c524f26d0a6f2535f86bf58233fcc16f57ce13ea10cbcc. The candidate branch head was b19df8e2dd and the deployed revision was ca2e6b4175."
+  ],
+  "settled_at": "2026-07-22T11:28:39.755107Z",
+  "started_at": "2026-07-22T10:59:32.086931098Z",
+  "target_digest": "sha256:3ac740020b71de92f0322d643bbdcb5dc45817ff32ac2d5e9d2469dbe7301031",
+  "target_ref": "specs/openagents/managed-agent-sandboxes.assurance-spec.md",
+  "trigger_ref": "issue.9032.independent_admission"
+}
