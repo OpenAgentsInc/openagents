@@ -294,48 +294,138 @@ during migration, so the move is reversible at every stage.
 
 ---
 
-## 6. Live Full Auto dogfood — structured slot for operator numbers
+## 6. Live Full Auto dogfood — two measured runs on the owned path
 
-A live Full Auto run is being driven concurrently against the `nostr-effect`
-repository. When the operator supplies the run reference and the run report, the
-values drop into the table below. Until then every cell is an explicit blank.
-Do not infer any of these from the historical estimates above. They are a
-different measurement, on the owned path, and must be filled from the live run
-receipt only.
+The operator drove two live Full Auto runs against real repositories. Both runs
+went through the OpenAgents Full Auto local control API. No human hand touched
+the code. Both runs used the `codex-local` lane on model `gpt-5.6-sol`. The
+values below come from the live run receipts only. They are a different
+measurement from the historical estimates in Section 3. Do not infer any live
+cell from the historical estimates above.
+
+These are two data points on small units of work with one provider. The
+wall-clock figures are `[MEASURED]` from the run receipts. Any claim that these
+figures hold for the general case is `[PROJECTED]`.
+
+### 6.1 Run A — Nostr forge Stage 0a (`nostr-effect` repository)
 
 **Run identity**
 
 | Field | Value |
 | --- | --- |
-| `runRef` | _[operator to fill]_ |
-| Target repository | _[operator to fill, expected `nostr-effect`]_ |
-| Start timestamp | _[operator to fill]_ |
-| End or checkpoint timestamp | _[operator to fill]_ |
-| Continuation turns used (cap 20) | _[operator to fill]_ |
+| `runRef` | `run.full-auto.mrwh3scs.6uaum1ss` |
+| Target repository | `nostr-effect` |
+| Lane and model | `codex-local`, `gpt-5.6-sol` |
+| Turn cap | 12 |
+| Start timestamp | 2026-07-22T19:26:21Z |
+| Verified-fix timestamp | 2026-07-22T19:27:49Z |
+| Wall-clock to verified fix | about 88 seconds `[MEASURED]` |
 
-**Throughput per verified outcome (from `run-grading.ts`)**
+**Deliverable.** The run aligned the NIP-34 git reply event kind from 1622 to
+the NIP-22 kind 1111. It added a `REPLY_KIND` constant and taught `isGitEvent`
+to recognize the new kind. The change spans 3 files (+8/-1). This is the exact
+"1622 to 1111 interop bug" that the forge audits flagged as Stage 0a.
 
-| Metric | Value |
+**Verification.** `bunx tsc --noEmit -p tsconfig.check.json` ran clean. The
+Nip34 test suite ran 29 tests with 0 failures.
+
+**Landed.** `nostr-effect` main commit `ec573c7`, through one `git push`.
+
+### 6.2 Run B — Sarah mobile slice 1 (`openagents` repository)
+
+**Run identity**
+
+| Field | Value |
 | --- | --- |
-| Host-verified outcomes | _[operator to fill]_ |
-| Total tokens (exact usage) | _[operator to fill]_ |
-| Tokens per verified outcome | _[operator to fill]_ |
-| Wall-clock per verified outcome | _[operator to fill]_ |
-| D1 to D7 rubric grade | _[operator to fill]_ |
+| `runRef` | `run.full-auto.mrwhgl2a.jicdezve` |
+| Target repository | `openagents` |
+| Lane and model | `codex-local`, `gpt-5.6-sol` |
+| Turn cap | 16 |
+| Start timestamp | 2026-07-22T19:36:18Z |
+| Stop timestamp | 2026-07-22T19:42:50Z |
+| Wall-clock | about 6.5 minutes `[MEASURED]` |
 
-**GitHub interaction on the live run (for direct comparison to Section 3)**
+**Orchestration.** The run delegated its own read-only audit subagent
+(`mobile_sarah_audit`) before it implemented the change. That was a
+sub-agent-spawning orchestrator turn on the owned path.
 
-| Metric | Value |
-| --- | --- |
-| `gh` REST round-trips during the run | _[operator to fill]_ |
-| Relay publishes and subscriptions during the run | _[operator to fill]_ |
-| GitHub throttle errors observed | _[operator to fill]_ |
-| Relay round-trip median (ms) | _[operator to fill]_ |
+**Deliverable.** The authenticated `principal.sarah` mobile thread now opens
+reliably on the existing owner-private Khala Sync subscription. The change spans
+3 files (`app.tsx`, `mobile-conversation.ts`, and its test). It reuses the
+existing runtime and brokers and adds no Sarah-specific storage.
 
-When these cells are filled, compare the live tokens-per-verified-outcome and
-the live relay round-trip against the historical Section 3 round-trip volume and
-the near-zero historical throttle rate. That comparison, not this document's
-estimates, is the direct measured proof of the speed thesis.
+**Verification.** The mobile suite ran 325 tests across 62 files with 0
+failures. `pnpm --dir apps/openagents-mobile run typecheck` and
+`git diff --check` also passed.
+
+**Landed.** `openagents` main commit `7764bf47df`, through the normal pre-push
+gate green. The operator did not use `--no-verify`.
+
+### 6.3 Grading (the `full-auto-decision-v1` rubric, from #9182)
+
+The grader ran the `full-auto-decision-v1` rubric over both live run stores.
+
+| Rubric dimension | Grade | Note |
+| --- | --- | --- |
+| D1 complexity | C0 (lower bound) | The run reports carry no tool-call, file-change, or sub-agent counts, so the grader can only assign the lower bound. |
+| D2 coherence | 2.0 | — |
+| D3 foresight | 1.0 | — |
+| D5 selectivity | 0/4 | HONEST: the operator supplied the objective (source `control_caller`). The system did not self-select the work. |
+| D7 recoverability | 1.0 | — |
+| D4 groundedness | `not_measured` | The control-API run path does not enable the autonomy HANDS-2 host-verification. |
+| D6 self-verification | `not_measured` | Same cause as D4. There is no host-verification signal to grade. |
+| Tokens per verified outcome | `not_measured` | There is no usage writer on the control-API run path yet. |
+
+The `not_measured` cells are honest. They record the same record-shape gaps that
+the grader itself reports. The run reports carry no tool-call, file-change, or
+sub-agent counts, and there is no usage ingestion on this path. This is a real
+observability gap on the control-API run path, not a strength.
+
+### 6.4 Round-trip comparison to the historical baseline
+
+Section 3 measured the historical GitHub-centric tempo at about 19.7 `gh` calls
+and about 6.3 `git push` operations per session, for about 59,000 GitHub network
+interactions over four months. More than half of the roughly 29,000 `gh issue`
+calls were reads and polls, and the issue tracker was the coordination
+substrate.
+
+For these two live dogfood units, the OpenAgents-system round-trips were:
+
+| Live unit | `gh` calls | `git push` | Extra owned round-trips |
+| --- | ---: | ---: | --- |
+| Run A (`nostr-effect`) | 0 | 1 | The repository's own NIP-34 relay pre-push hook fired. The forge model was already running. |
+| Run B (`openagents`) | 0 | 1 | None. |
+
+Each live unit reached a verified, merged change through one `git push` and zero
+`gh` calls. The historical GitHub-centric cycle for a comparable small fix opens
+an issue, branches, commits, opens a pull request, waits on a review round-trip,
+and merges. That path costs multiple `gh` round-trips plus human gates. The two
+live units removed the round-trips and removed the human gate on the code. The
+wall-clock to a verified merged change was about 88 seconds for Run A and about
+6.5 minutes for Run B `[MEASURED]`. The claim that this margin holds for the
+general case is `[PROJECTED]` from two small single-provider data points.
+
+The two runs also confirm the honest correction that Section 3 already makes.
+Neither run hit any GitHub rate ceiling. The win here is round-trip elimination
+and autonomy, not throttle avoidance.
+
+### 6.5 Honest caveats — gaps to close before this is a clean pipeline
+
+The dogfood surfaced real gaps to close before this is a clean measurement
+pipeline. State them plainly.
+
+- Local Full Auto runs persist run reports, not ATIF traces. ATIF is the
+  server-side Khala and Codex delegation path.
+- The coherence and complexity rubric is manual. It does not run automatically
+  per turn.
+- D6 and tokens per verified outcome stay `not_measured` until HANDS-2
+  host-verification and usage ingestion are wired into the control-API run path.
+- Both runs stalled on liveness (`dispatch_overdue` and stop) after they
+  delivered, under concurrent-lane codex contention. The operator landed the
+  verified deliverables as a correction of last resort.
+
+These are buildable follow-ups. They are not reasons to distrust the two
+measured outcomes above.
 
 ---
 
@@ -374,9 +464,11 @@ one.
 
 ## 8. Watch items
 
-- **Fill Section 6 from the live run receipt.** The historical side of this
-  benchmark is complete. The owned-path side is a single structured slot waiting
-  on the operator's `runRef` and run report.
+- **Extend Section 6 with more runs and a usage writer.** The historical side of
+  this benchmark is complete. Section 6 now carries two measured owned-path runs
+  (`run.full-auto.mrwh3scs.6uaum1ss` and `run.full-auto.mrwhgl2a.jicdezve`). The
+  next step widens the sample and wires usage ingestion so the
+  tokens-per-verified-outcome cells stop reading `not_measured`.
 - **Multi-account attribution.** This document infers that historical writes
   spread across more than one GitHub account. A follow-up could confirm the
   account split directly from the transcripts, which would sharpen the
