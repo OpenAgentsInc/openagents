@@ -431,6 +431,89 @@ pub fn execute(
     execute_with_provider(state_root, &provider, request, now_ms()?)
 }
 
+/// Stop one ready sandbox only after a verified Phase 2 checkpoint exists.
+///
+/// The durable runtime journal supplies the program and work-unit scope. The
+/// caller cannot replace those values or stop a stale provider generation.
+pub fn stop_after_checkpoint(
+    state_root: &Path,
+    owner_ref: &str,
+    tenant_ref: &str,
+    sandbox_ref: &str,
+    expected_generation: u64,
+    stop_ref: &str,
+) -> Result<ManagedSandboxRuntimeReceipt, RuntimeError> {
+    let provider = LiveGceManagedSandboxProvider::from_env()?;
+    stop_after_checkpoint_with_provider(
+        state_root,
+        &provider,
+        owner_ref,
+        tenant_ref,
+        sandbox_ref,
+        expected_generation,
+        stop_ref,
+        now_ms()?,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn stop_after_checkpoint_with_provider(
+    state_root: &Path,
+    provider: &dyn ManagedSandboxProvider,
+    owner_ref: &str,
+    tenant_ref: &str,
+    sandbox_ref: &str,
+    expected_generation: u64,
+    stop_ref: &str,
+    now: u64,
+) -> Result<ManagedSandboxRuntimeReceipt, RuntimeError> {
+    let journal = load_journal(&journal_path(state_root, sandbox_ref))?.ok_or_else(|| {
+        RuntimeError::new(
+            404,
+            "resource_not_found",
+            "sandbox runtime journal was not found",
+        )
+    })?;
+    if journal.owner_ref != owner_ref
+        || journal.tenant_ref != tenant_ref
+        || journal.sandbox_ref != sandbox_ref
+    {
+        return Err(RuntimeError::new(
+            403,
+            "scope_mismatch",
+            "checkpoint stop scope does not match durable ownership",
+        ));
+    }
+    if journal.generation != expected_generation {
+        return Err(RuntimeError::new(
+            409,
+            "generation_conflict",
+            "checkpoint stop generation does not match durable ownership",
+        ));
+    }
+    execute_with_provider(
+        state_root,
+        provider,
+        ManagedSandboxRuntimeRequest {
+            operation_ref: stop_ref.to_string(),
+            idempotency_ref: format!(
+                "idempotency-ref://sha256/{}",
+                full_digest(format!("checkpoint-stop|{stop_ref}"))
+            ),
+            actor_ref: owner_ref.to_string(),
+            owner_ref: journal.owner_ref,
+            tenant_ref: journal.tenant_ref,
+            program_ref: journal.program_ref,
+            work_unit_ref: journal.work_unit_ref,
+            sandbox_ref: journal.sandbox_ref,
+            expected_generation,
+            action: RuntimeAction::Stop,
+            profile: None,
+        },
+        now,
+    )
+}
+
 fn execute_with_provider(
     state_root: &Path,
     provider: &dyn ManagedSandboxProvider,
@@ -2333,6 +2416,102 @@ mod tests {
         let json = serde_json::to_string(&delete).unwrap().to_ascii_lowercase();
         assert!(!json.contains("private-"));
         assert!(!json.contains("serviceaccount.com"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn checkpoint_stop_uses_durable_scope_and_replays_after_stop() {
+        let root = temporary_root("checkpoint-stop");
+        let provider = TestProvider::new();
+        execute_with_provider(
+            &root,
+            &provider,
+            request(RuntimeAction::Create, "create", 0),
+            1_000,
+        )
+        .unwrap();
+
+        let stale = stop_after_checkpoint_with_provider(
+            &root,
+            &provider,
+            "owner-ref://test",
+            "tenant-ref://test",
+            "sandbox-ref://test",
+            2,
+            "stop-ref://checkpoint",
+            2_000,
+        )
+        .unwrap_err();
+        assert_eq!(stale.code, "generation_conflict");
+        let wrong_owner = stop_after_checkpoint_with_provider(
+            &root,
+            &provider,
+            "owner-ref://other",
+            "tenant-ref://test",
+            "sandbox-ref://test",
+            1,
+            "stop-ref://checkpoint",
+            2_000,
+        )
+        .unwrap_err();
+        assert_eq!(wrong_owner.code, "scope_mismatch");
+
+        let stopped = stop_after_checkpoint_with_provider(
+            &root,
+            &provider,
+            "owner-ref://test",
+            "tenant-ref://test",
+            "sandbox-ref://test",
+            1,
+            "stop-ref://checkpoint",
+            3_000,
+        )
+        .unwrap();
+        assert_eq!(stopped.phase, RuntimePhase::Stopped);
+        let replay = stop_after_checkpoint_with_provider(
+            &root,
+            &provider,
+            "owner-ref://test",
+            "tenant-ref://test",
+            "sandbox-ref://test",
+            1,
+            "stop-ref://checkpoint",
+            9_000,
+        )
+        .unwrap();
+        assert_eq!(replay, stopped);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn checkpoint_stop_failure_persists_recovery_required() {
+        let root = temporary_root("checkpoint-stop-failure");
+        let provider = TestProvider::new();
+        execute_with_provider(
+            &root,
+            &provider,
+            request(RuntimeAction::Create, "create", 0),
+            1_000,
+        )
+        .unwrap();
+        provider.state.lock().unwrap().fail_stop = true;
+
+        let receipt = stop_after_checkpoint_with_provider(
+            &root,
+            &provider,
+            "owner-ref://test",
+            "tenant-ref://test",
+            "sandbox-ref://test",
+            1,
+            "stop-ref://checkpoint-failure",
+            3_000,
+        )
+        .unwrap();
+        assert_eq!(receipt.phase, RuntimePhase::RecoveryRequired);
+        assert_eq!(
+            receipt.error_code.as_deref(),
+            Some("stop_recovery_required")
+        );
         let _ = fs::remove_dir_all(root);
     }
 

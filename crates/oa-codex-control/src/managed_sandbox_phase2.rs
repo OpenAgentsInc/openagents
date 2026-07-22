@@ -19,6 +19,8 @@ use std::os::unix::process::CommandExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
+use crate::managed_sandbox_runtime::{self, RuntimePhase};
+
 const TARGET_SCHEMA_VERSION: &str = "openagents.managed_sandbox_phase2_target.v1";
 const COMMAND_SCHEMA_VERSION: &str = "openagents.managed_sandbox_phase2_command.v1";
 const CHECKPOINT_SCHEMA_VERSION: &str = "openagents.managed_sandbox_content_checkpoint.v1";
@@ -264,13 +266,123 @@ impl ManagedSandboxPhase2Request {
 }
 
 pub fn execute(
+    state_root: &Path,
     request: ManagedSandboxPhase2Request,
 ) -> Result<ManagedSandboxPhase2Response, Phase2Error> {
     request.validate()?;
     let driver = env::var("OA_MANAGED_SANDBOX_PHASE2_DRIVER")
         .map_err(|_| Phase2Error::unavailable("phase2_driver_not_configured"))?;
     validate_driver_path(Path::new(&driver))?;
+    if request.action == ManagedSandboxPhase2Action::ArchiveWithCheckpoint {
+        return execute_archive_with_checkpoint(
+            state_root,
+            Path::new(&driver),
+            request,
+            MAX_DRIVER_DURATION,
+        );
+    }
     execute_with_driver(Path::new(&driver), request, MAX_DRIVER_DURATION)
+}
+
+fn execute_archive_with_checkpoint(
+    state_root: &Path,
+    driver: &Path,
+    request: ManagedSandboxPhase2Request,
+    timeout: Duration,
+) -> Result<ManagedSandboxPhase2Response, Phase2Error> {
+    execute_archive_with_checkpoint_and_stop(
+        driver,
+        request,
+        timeout,
+        |owner_ref, tenant_ref, sandbox_ref, generation, stop_ref| {
+            managed_sandbox_runtime::stop_after_checkpoint(
+                state_root,
+                owner_ref,
+                tenant_ref,
+                sandbox_ref,
+                generation,
+                stop_ref,
+            )
+            .map(|receipt| (receipt.phase, receipt.generation))
+            .map_err(|_| ())
+        },
+    )
+}
+
+fn execute_archive_with_checkpoint_and_stop<F>(
+    driver: &Path,
+    request: ManagedSandboxPhase2Request,
+    timeout: Duration,
+    stop: F,
+) -> Result<ManagedSandboxPhase2Response, Phase2Error>
+where
+    F: FnOnce(&str, &str, &str, u64, &str) -> Result<(RuntimePhase, u64), ()>,
+{
+    let archive = request.command_object("ArchiveWithCheckpoint")?;
+    let owner_ref = string(archive, "ownerRef")?.to_string();
+    let tenant_ref = string(archive, "tenantRef")?.to_string();
+    let sandbox_ref = string(archive, "sourceSandboxRef")?.to_string();
+    let stop_ref = string(archive, "stopRef")?.to_string();
+    let generation = number(archive, "sourceResourceGeneration")?;
+    let mut create_command = archive.clone();
+    create_command.remove("stopRef");
+    create_command.insert(
+        "_tag".to_string(),
+        Value::String("CreateCheckpoint".to_string()),
+    );
+    let create_request = ManagedSandboxPhase2Request {
+        schema_version: request.schema_version.clone(),
+        action: ManagedSandboxPhase2Action::CreateCheckpoint,
+        request_ref: request.request_ref.clone(),
+        command: Some(Value::Object(create_command)),
+        checkpoint: None,
+        owner_ref: None,
+        tenant_ref: None,
+        sandbox_ref: None,
+    };
+    create_request.validate()?;
+    let checkpoint_response = execute_with_driver(driver, create_request, timeout)?;
+    let checkpoint = checkpoint_response.result;
+    let checkpoint_object = object(&checkpoint, "phase2_archive_checkpoint_invalid")?;
+    let observed_at = string(checkpoint_object, "verifiedAt")?.to_string();
+    let stop = stop(&owner_ref, &tenant_ref, &sandbox_ref, generation, &stop_ref);
+    let result = match stop {
+        Ok((RuntimePhase::Stopped, stopped_generation)) if stopped_generation == generation => {
+            json!({
+                "_tag": "Archived",
+                "schema": CHECKPOINT_STOP_SCHEMA_VERSION,
+                "stopRef": stop_ref,
+                "sandboxRef": sandbox_ref,
+                "resourceGeneration": generation,
+                "observedAt": observed_at,
+                "evidenceRefs": [stop_ref],
+                "checkpoint": checkpoint,
+                "lifecycle": "stopped",
+                "archiveClaim": "allowed",
+            })
+        }
+        _ => json!({
+            "_tag": "CheckpointFailed",
+            "schema": CHECKPOINT_STOP_SCHEMA_VERSION,
+            "stopRef": stop_ref,
+            "sandboxRef": sandbox_ref,
+            "resourceGeneration": generation,
+            "observedAt": observed_at,
+            "evidenceRefs": [stop_ref],
+            "attemptedCheckpointRef": string(archive, "checkpointRef")?,
+            "errorRef": "error.sbx10.archive.stop_failed",
+            "lifecycle": "recovery_required",
+            "archiveClaim": "forbidden",
+        }),
+    };
+    let response = ManagedSandboxPhase2Response {
+        schema_version: TARGET_SCHEMA_VERSION.to_string(),
+        action: request.action,
+        request_ref: request.request_ref.clone(),
+        result,
+    };
+    validate_response(&request, &response)?;
+    Ok(response)
 }
 
 fn validate_driver_path(driver: &Path) -> Result<(), Phase2Error> {
@@ -1729,6 +1841,58 @@ mod tests {
         let captured: ManagedSandboxPhase2Request =
             serde_json::from_slice(&fs::read(&capture).unwrap()).unwrap();
         assert_eq!(captured, request);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn archive_captures_before_the_generation_fenced_runtime_stop() {
+        let root = temp_dir("archive");
+        let driver = root.join("driver.sh");
+        let response = ManagedSandboxPhase2Response {
+            schema_version: TARGET_SCHEMA_VERSION.to_string(),
+            action: ManagedSandboxPhase2Action::CreateCheckpoint,
+            request_ref: "command.sbx10.control.archive".to_string(),
+            result: checkpoint(),
+        };
+        fs::write(
+            &driver,
+            format!(
+                "#!/bin/sh\ncat >/dev/null\nprintf '%s' '{}'\n",
+                serde_json::to_string(&response).unwrap()
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(&driver, fs::Permissions::from_mode(0o700)).unwrap();
+
+        let archived = execute_archive_with_checkpoint_and_stop(
+            &driver,
+            request(ManagedSandboxPhase2Action::ArchiveWithCheckpoint),
+            Duration::from_secs(2),
+            |owner, tenant, sandbox, generation, stop_ref| {
+                assert_eq!(owner, "owner.sbx10.control");
+                assert_eq!(tenant, "tenant.sbx10.control");
+                assert_eq!(sandbox, "sandbox.sbx10.control");
+                assert_eq!(generation, 7);
+                assert_eq!(stop_ref, "stop.sbx10.control.archive");
+                Ok((RuntimePhase::Stopped, 7))
+            },
+        )
+        .unwrap();
+        assert_eq!(archived.result["_tag"], "Archived");
+        assert_eq!(archived.result["archiveClaim"], "allowed");
+        assert_eq!(archived.result["checkpoint"], checkpoint());
+
+        let failed = execute_archive_with_checkpoint_and_stop(
+            &driver,
+            request(ManagedSandboxPhase2Action::ArchiveWithCheckpoint),
+            Duration::from_secs(2),
+            |_, _, _, _, _| Err(()),
+        )
+        .unwrap();
+        assert_eq!(failed.result["_tag"], "CheckpointFailed");
+        assert_eq!(failed.result["archiveClaim"], "forbidden");
+        assert_eq!(failed.result["lifecycle"], "recovery_required");
         fs::remove_dir_all(root).unwrap();
     }
 

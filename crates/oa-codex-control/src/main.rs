@@ -783,7 +783,7 @@ fn handle_stream(mut stream: TcpStream, config: &Config) -> Result<(), String> {
                 .managed_sandbox_runtime_lock
                 .lock()
                 .map_err(|_| "managed-sandbox Phase 2 operation lock was poisoned".to_string())?;
-            match managed_sandbox_phase2::execute(operation) {
+            match managed_sandbox_phase2::execute(&config.state_root, operation) {
                 Ok(response) => write_response(
                     &mut stream,
                     200,
