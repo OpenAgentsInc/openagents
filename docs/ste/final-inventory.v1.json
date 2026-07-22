@@ -24263,12 +24263,10 @@
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
-        "ste_status": "source-data",
-        "ste_reviewer": null,
-        "ste_reviewed_at": null,
         "risk": "source-data",
         "source": "Immutable historical or evidence source data",
-        "replacement": null
+        "replacement": null,
+        "ste_status": "source-data"
       }
     },
     {
@@ -32912,6 +32910,62 @@
     {
       "path": "docs/mvp/openagents-desktop-mvp-phase-2-react-codex-workbench.rev4-proposed.assurance-spec.md",
       "sha256": "cf36cd2e36e38a11422e153638558061223e77bad4fe763f479a368d7f5a817e",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/ngit/2026-07-21-ngit-analysis.md",
+      "sha256": "4dd3bb64dfe2f0b7ccfb18c96057ccfd8467e45f0966c161dea6cc227fd9d86d",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null,
+        "ste_status": "source-data"
+      }
+    },
+    {
+      "path": "docs/ngit/2026-07-21-soapbox-what-is-ngit-source.md",
+      "sha256": "a67b27af8dd92898745b9faa08d780cf9d9281ee1de9c47b5b4818bf27e55a62",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/ngit/README.md",
+      "sha256": "5dfa52320deb82d4a5f841a884bf75c5942bfb1375b5a3d9156897b3525e9d00",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
