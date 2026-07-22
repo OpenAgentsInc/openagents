@@ -197,6 +197,10 @@ const selectAuthenticatedMobileExperience = async (
     runtime: () => syncHost.runtime(),
     interactions: () => syncHost.interactions(),
     ...(preferredThreadRef === undefined ? {} : { preferredThreadRef }),
+    // `/api/mobile/sarah` can bootstrap the stable owner thread just before
+    // the personal Sync projection receives it. Wait on confirmed Sync bytes
+    // instead of opening an unrelated fallback conversation for this launch.
+    ...(sarah === null ? {} : { waitForPreferredThread: true }),
     ...(activeFullAutoThreadRef === undefined ? {} : { activeFullAutoThreadRef }),
     adapter: { randomId: randomUUID },
   })

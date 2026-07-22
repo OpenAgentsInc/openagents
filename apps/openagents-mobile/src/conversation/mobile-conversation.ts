@@ -1038,6 +1038,10 @@ export const selectMobileConversation = async (input: Readonly<{
   runtime?: () => KhalaSyncRuntimeCommands | null
   interactions?: () => KhalaSyncRuntimeInteractions | null
   preferredThreadRef?: string
+  /** Wait briefly for an authoritative preferred thread that was bootstrapped
+   * by another endpoint immediately before Sync selection. The wait reads only
+   * the existing confirmed personal catalog; it does not create local state. */
+  waitForPreferredThread?: boolean
   /** The active Full Auto run's `threadRef`, only when the caller has
    * already confirmed the run is active and fresh (openagents #8982). Omit
    * when there is no active run so existing selection behavior is unchanged. */
@@ -1071,10 +1075,49 @@ export const selectMobileConversation = async (input: Readonly<{
     ...input.adapter,
   })
   try {
-    const [threads, archivedThreads] = await Promise.all([
+    const [initialThreads, archivedThreads] = await Promise.all([
       host.listThreads(),
       host.listArchivedThreads?.() ?? Promise.resolve([]),
     ])
+    let threads = initialThreads
+    if (
+      input.waitForPreferredThread === true &&
+      input.preferredThreadRef !== undefined &&
+      !threads.some(thread => thread.threadRef === input.preferredThreadRef)
+    ) {
+      const sleep = input.adapter?.sleep ?? (ms => new Promise(resolve => setTimeout(resolve, ms)))
+      const pollAttempts = Math.max(1, input.adapter?.pollAttempts ?? 30)
+      const preferredThreadRef = input.preferredThreadRef
+      let settle!: (threads: ReadonlyArray<MobileConversationThreadSummary> | null) => void
+      let settled = false
+      const confirmed = new Promise<ReadonlyArray<MobileConversationThreadSummary> | null>(resolve => {
+        settle = value => {
+          if (settled) return
+          settled = true
+          resolve(value)
+        }
+      })
+      const readPreferred = async (): Promise<void> => {
+        try {
+          const refreshed = await host.listThreads()
+          if (refreshed.some(thread => thread.threadRef === preferredThreadRef)) settle(refreshed)
+        } catch {
+          // Keep the current confirmed catalog. The bounded timeout preserves
+          // the existing fail-soft local selection behavior.
+        }
+      }
+      const unsubscribe = conversation.subscribeThread(preferredThreadRef, change => {
+        if (change.kind === "content" && change.threadRef === preferredThreadRef) void readPreferred()
+      })
+      await readPreferred()
+      const refreshed = await Promise.race([
+        confirmed,
+        sleep(pollAttempts * 100).then(() => null),
+      ])
+      settled = true
+      unsubscribe()
+      if (refreshed !== null) threads = refreshed
+    }
     const activeThreadRef = selectActiveConversationThreadRef({
       threads,
       ...(input.preferredThreadRef === undefined ? {} : { preferredThreadRef: input.preferredThreadRef }),

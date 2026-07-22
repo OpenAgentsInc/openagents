@@ -289,6 +289,36 @@ describe("contract openagents_mobile.chat.authoritative_sync_mode.v1", () => {
     })
   })
 
+  test("waits for a freshly bootstrapped owner thread to reach confirmed Sync", async () => {
+    const fixture = makeConversation()
+    let sleeps = 0
+    const selection = await selectMobileConversation({
+      conversation: () => fixture.conversation,
+      preferredThreadRef: "thread.sarah.bootstrap",
+      waitForPreferredThread: true,
+      adapter: {
+        pollAttempts: 3,
+        sleep: async () => {
+          sleeps += 1
+          await Effect.runPromise(fixture.conversation.createThread({
+            threadId: "thread.sarah.bootstrap",
+            title: "Sarah",
+          }))
+          await new Promise<void>(() => undefined)
+        },
+      },
+    })
+
+    expect(sleeps).toBe(1)
+    expect(selection).toMatchObject({
+      mode: "sync",
+      activeThread: {
+        threadRef: "thread.sarah.bootstrap",
+        title: "Sarah",
+      },
+    })
+  })
+
   describe("contract openagents_mobile.full_auto_run_thread_priority.v1 (openagents #8982)", () => {
     const threads = [{ threadRef: "thread.a" }, { threadRef: "thread.b" }, { threadRef: "thread.c" }]
 
