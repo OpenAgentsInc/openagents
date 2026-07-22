@@ -1,5 +1,15 @@
 import { Schema as S } from "effect"
 
+import {
+  ExecutionEnvironmentRef,
+  PortableRef,
+  PortableTargetClass,
+  PortableTimestamp,
+  Sha256Digest,
+} from "./primitives.js"
+
+export * from "./primitives.js"
+
 export const PORTABLE_SESSION_SCHEMA_VERSION =
   "openagents.portable_session.v1" as const
 export const PORTABLE_CHECKPOINT_SCHEMA_VERSION =
@@ -16,52 +26,10 @@ export const PORTABLE_THREAD_CURRENT_ENTITY_TYPE = "portable_thread_current" as 
 export const PORTABLE_COMMAND_ENTITY_TYPE = "portable_command" as const
 export const PORTABLE_EXECUTION_BINDING_ENTITY_TYPE = "portable_execution_binding" as const
 
-export const PortableRef = S.String.check(
-  S.isMinLength(3),
-  S.isMaxLength(256),
-  S.isPattern(/^[a-zA-Z0-9][a-zA-Z0-9._:-]*$/),
-)
-export type PortableRef = typeof PortableRef.Type
-
-export const Sha256Digest = S.String.check(
-  S.isPattern(/^sha256:[a-f0-9]{64}$/),
-)
-export type Sha256Digest = typeof Sha256Digest.Type
-
-/**
- * ENV-1 vocabulary (docs/sol/2026-07-11-remote-first-portable-coding-sessions-pathway.md,
- * "Environment and endpoint vocabulary (ENV-1)"): the owner-scoped identity of
- * one ExecutionEnvironment — a local Pylon, an owner-managed remote
- * Pylon/oa-node, an OpenAgents Agent Computer, or an audited managed-provider
- * workspace. The identity binds to the owner scope that enrolled the
- * environment and to its enrollment/health receipts, never to a bare
- * hostname, address, or process. How a client currently reaches the
- * environment (an AccessEndpoint, possibly hinted by an AdvertisedEndpoint)
- * is a connection-layer fact that never enters this identity, and switching
- * AccessEndpoint or KnownEnvironment entry must never create, transfer, or
- * fence execution authority — only the attachment-generation contract does.
- * Wire shape is exactly `PortableRef`; this alias adds vocabulary, not a
- * serialization change.
- */
-export const ExecutionEnvironmentRef = PortableRef
-export type ExecutionEnvironmentRef = typeof ExecutionEnvironmentRef.Type
-
-export const PortableTimestamp = S.String.check(
-  S.isPattern(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/),
-)
-
 const NonNegativeInt = S.Number.check(
   S.isInt(),
   S.isGreaterThanOrEqualTo(0),
 )
-
-export const PortableTargetClass = S.Literals([
-  "owner_local",
-  "owner_managed",
-  "openagents_managed",
-  "managed_provider",
-])
-export type PortableTargetClass = typeof PortableTargetClass.Type
 
 export const PortableIsolationClass = S.Literals([
   "owner_host_process",

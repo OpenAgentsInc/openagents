@@ -1,27 +1,37 @@
-import { Schema } from "effect"
+import { Schema } from "effect";
 
-const PortableRef = Schema.String.check(
-  Schema.isMinLength(3),
-  Schema.isMaxLength(256),
-  Schema.isPattern(/^[a-zA-Z0-9][a-zA-Z0-9._:-]*$/),
-)
-const ExecutionEnvironmentRef = PortableRef
-const PortableTargetClass = Schema.Literals(["owner_local", "owner_managed", "openagents_managed", "managed_provider"])
-const PortableTimestamp = Schema.String.check(Schema.isPattern(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/))
-const Sha256Digest = Schema.String.check(Schema.isPattern(/^sha256:[a-f0-9]{64}$/))
+import {
+  ExecutionEnvironmentRef,
+  PortableRef,
+  PortableTargetClass,
+  PortableTimestamp,
+  Sha256Digest,
+} from "./primitives.js";
 
-const count = (maximum: number) => Schema.Number.check(
-  Schema.isInt(),
-  Schema.isGreaterThanOrEqualTo(0),
-  Schema.isLessThanOrEqualTo(maximum),
-)
-const text = (maximum: number) => Schema.String.check(Schema.isMaxLength(maximum))
-const refs = (maximum: number) => Schema.Array(PortableRef).check(Schema.isMaxLength(maximum))
+const count = (maximum: number) =>
+  Schema.Number.check(
+    Schema.isInt(),
+    Schema.isGreaterThanOrEqualTo(0),
+    Schema.isLessThanOrEqualTo(maximum),
+  );
+const text = (maximum: number) => Schema.String.check(Schema.isMaxLength(maximum));
+const refs = (maximum: number) => Schema.Array(PortableRef).check(Schema.isMaxLength(maximum));
 
 export const IdePortableCapabilityKindSchema = Schema.Literals([
-  "files", "search", "language", "source_control", "terminal", "task", "test",
-  "debug", "agent", "review", "artifact", "preview",
-]).annotate({ identifier: "IdePortableCapabilityKind" })
+  "files",
+  "search",
+  "language",
+  "source_control",
+  "terminal",
+  "task",
+  "test",
+  "debug",
+  "agent",
+  "review",
+  "artifact",
+  "preview",
+]).annotate({ identifier: "IdePortableCapabilityKind" });
+export type IdePortableCapabilityKind = typeof IdePortableCapabilityKindSchema.Type;
 
 export const IdePortableCapabilityFactSchema = Schema.Struct({
   capabilityRef: PortableRef,
@@ -33,7 +43,10 @@ export const IdePortableCapabilityFactSchema = Schema.Struct({
   startupLatencyMs: Schema.NullOr(count(86_400_000)),
   operationLatencyMs: Schema.NullOr(count(86_400_000)),
   omissionRefs: refs(128),
-}).annotate({ identifier: "IdePortableCapabilityFact" })
+}).annotate({ identifier: "IdePortableCapabilityFact" });
+export interface IdePortableCapabilityFact extends Schema.Schema.Type<
+  typeof IdePortableCapabilityFactSchema
+> {}
 
 export const IdePortablePlacementFactsSchema = Schema.Struct({
   placementRef: ExecutionEnvironmentRef,
@@ -53,7 +66,10 @@ export const IdePortablePlacementFactsSchema = Schema.Struct({
   observedAt: PortableTimestamp,
   capabilities: Schema.Array(IdePortableCapabilityFactSchema).check(Schema.isMaxLength(64)),
   degradedReasonRefs: refs(64),
-}).annotate({ identifier: "IdePortablePlacementFacts" })
+}).annotate({ identifier: "IdePortablePlacementFacts" });
+export interface IdePortablePlacementFacts extends Schema.Schema.Type<
+  typeof IdePortablePlacementFactsSchema
+> {}
 
 export const IdePortableProjectRefsSchema = Schema.Struct({
   projectRef: PortableRef,
@@ -66,7 +82,10 @@ export const IdePortableProjectRefsSchema = Schema.Struct({
   testResultRef: Schema.NullOr(PortableRef),
   artifactRef: Schema.NullOr(PortableRef),
   evidenceRef: Schema.NullOr(PortableRef),
-}).annotate({ identifier: "IdePortableProjectRefs" })
+}).annotate({ identifier: "IdePortableProjectRefs" });
+export interface IdePortableProjectRefs extends Schema.Schema.Type<
+  typeof IdePortableProjectRefsSchema
+> {}
 
 export const IdePortableCheckpointPolicySchema = Schema.Struct({
   maximumBytes: count(1_073_741_824),
@@ -76,7 +95,10 @@ export const IdePortableCheckpointPolicySchema = Schema.Struct({
   custody: Schema.Literals(["owner_device", "owner_managed", "openagents_managed"]),
   retentionSeconds: count(31_536_000),
   expiresAt: PortableTimestamp,
-}).annotate({ identifier: "IdePortableCheckpointPolicy" })
+}).annotate({ identifier: "IdePortableCheckpointPolicy" });
+export interface IdePortableCheckpointPolicy extends Schema.Schema.Type<
+  typeof IdePortableCheckpointPolicySchema
+> {}
 
 export const IdePortableCheckpointManifestSchema = Schema.Struct({
   manifestRef: PortableRef,
@@ -104,7 +126,10 @@ export const IdePortableCheckpointManifestSchema = Schema.Struct({
   themeState: Schema.Literal("destination_setting"),
   policy: IdePortableCheckpointPolicySchema,
   integrityReceiptRef: PortableRef,
-}).annotate({ identifier: "IdePortableCheckpointManifest" })
+}).annotate({ identifier: "IdePortableCheckpointManifest" });
+export interface IdePortableCheckpointManifest extends Schema.Schema.Type<
+  typeof IdePortableCheckpointManifestSchema
+> {}
 
 export const IdePortablePlacementEventSchema = Schema.Struct({
   eventRef: PortableRef,
@@ -114,11 +139,24 @@ export const IdePortablePlacementEventSchema = Schema.Struct({
   generation: count(1_000_000_000),
   sequence: count(9_007_199_254_740_991),
   previousSequence: Schema.NullOr(count(9_007_199_254_740_991)),
-  kind: Schema.Literals(["quiescing", "checkpoint_verified", "source_revoked", "destination_staged", "capabilities_ready", "attached", "failed_back", "revoked", "stopped"]),
+  kind: Schema.Literals([
+    "quiescing",
+    "checkpoint_verified",
+    "source_revoked",
+    "destination_staged",
+    "capabilities_ready",
+    "attached",
+    "failed_back",
+    "revoked",
+    "stopped",
+  ]),
   occurredAt: PortableTimestamp,
   evidenceRefs: refs(128),
   publicSafe: Schema.Literal(true),
-}).annotate({ identifier: "IdePortablePlacementEvent" })
+}).annotate({ identifier: "IdePortablePlacementEvent" });
+export interface IdePortablePlacementEvent extends Schema.Schema.Type<
+  typeof IdePortablePlacementEventSchema
+> {}
 
 export const IdePortableMoveReceiptSchema = Schema.Struct({
   receiptRef: PortableRef,
@@ -141,16 +179,162 @@ export const IdePortableMoveReceiptSchema = Schema.Struct({
   omissionRefs: refs(128),
   evidenceRefs: refs(512),
   completedAt: PortableTimestamp,
-}).annotate({ identifier: "IdePortableMoveReceipt" })
+}).annotate({ identifier: "IdePortableMoveReceipt" });
+export interface IdePortableMoveReceipt extends Schema.Schema.Type<
+  typeof IdePortableMoveReceiptSchema
+> {}
 
-const failureFields = { operation: text(120), detailRef: PortableRef, retryable: Schema.Boolean }
-export class IdePortableStaleWriter extends Schema.TaggedErrorClass<IdePortableStaleWriter>()("IdePortable.StaleWriter", failureFields) {}
-export class IdePortableLeaseContention extends Schema.TaggedErrorClass<IdePortableLeaseContention>()("IdePortable.LeaseContention", failureFields) {}
-export class IdePortableCheckpointFailure extends Schema.TaggedErrorClass<IdePortableCheckpointFailure>()("IdePortable.CheckpointFailure", failureFields) {}
-export class IdePortableAuthorizationFailure extends Schema.TaggedErrorClass<IdePortableAuthorizationFailure>()("IdePortable.AuthorizationFailure", failureFields) {}
-export class IdePortablePlacementFailure extends Schema.TaggedErrorClass<IdePortablePlacementFailure>()("IdePortable.PlacementFailure", failureFields) {}
-export class IdePortableCancelled extends Schema.TaggedErrorClass<IdePortableCancelled>()("IdePortable.Cancelled", failureFields) {}
-export class IdePortableTeardownFailure extends Schema.TaggedErrorClass<IdePortableTeardownFailure>()("IdePortable.TeardownFailure", failureFields) {}
+export const IdePortableDestinationHelperKindSchema = Schema.Literals([
+  "pty",
+  "lsp",
+  "dap",
+  "watcher",
+  "native",
+]).annotate({ identifier: "IdePortableDestinationHelperKind" });
+export type IdePortableDestinationHelperKind = typeof IdePortableDestinationHelperKindSchema.Type;
+
+export const IdePortableDestinationHelperReadinessSchema = Schema.Struct({
+  kind: IdePortableDestinationHelperKindSchema,
+  readiness: Schema.Literals(["ready", "unsupported"]),
+  instanceRef: Schema.NullOr(PortableRef),
+  versionRef: Schema.NullOr(PortableRef),
+  omissionRef: Schema.NullOr(PortableRef),
+  evidenceRefs: refs(32),
+}).annotate({ identifier: "IdePortableDestinationHelperReadiness" });
+export interface IdePortableDestinationHelperReadiness extends Schema.Schema.Type<
+  typeof IdePortableDestinationHelperReadinessSchema
+> {}
+
+export const IdePortableDestinationAuthenticationSchema = Schema.Struct({
+  state: Schema.Literals(["reauthenticated", "expired", "revoked"]),
+  policyRef: PortableRef,
+  evidenceRef: PortableRef,
+  observedAt: PortableTimestamp,
+  expiresAt: Schema.NullOr(PortableTimestamp),
+}).annotate({ identifier: "IdePortableDestinationAuthentication" });
+export interface IdePortableDestinationAuthentication extends Schema.Schema.Type<
+  typeof IdePortableDestinationAuthenticationSchema
+> {}
+
+/**
+ * Public-safe destination admission evidence. It contains stable refs only.
+ * It does not contain credential bytes, host paths, process IDs, or handles.
+ */
+export const IdePortableDestinationActivationReceiptSchema = Schema.Struct({
+  schema: Schema.Literal("openagents.ide_portable_destination_activation.v1"),
+  receiptRef: PortableRef,
+  operationRef: PortableRef,
+  sessionRef: PortableRef,
+  checkpointRef: PortableRef,
+  destinationTargetRef: ExecutionEnvironmentRef,
+  destinationAttachmentRef: PortableRef,
+  destinationRunnerSessionReservationRef: PortableRef,
+  destinationGeneration: count(1_000_000_000),
+  authentication: IdePortableDestinationAuthenticationSchema,
+  helpersObservedAt: PortableTimestamp,
+  helpers: Schema.Array(IdePortableDestinationHelperReadinessSchema).check(Schema.isMaxLength(5)),
+  activatedAgentRefs: refs(10_000),
+  acceptedWorkRefs: Schema.Array(
+    Schema.Struct({
+      agentRef: PortableRef,
+      turnRef: PortableRef,
+    }),
+  ).check(Schema.isMaxLength(10_000)),
+  evidenceRefs: refs(512),
+}).annotate({ identifier: "IdePortableDestinationActivationReceipt" });
+export interface IdePortableDestinationActivationReceipt extends Schema.Schema.Type<
+  typeof IdePortableDestinationActivationReceiptSchema
+> {}
+
+const coordinatorCommandFields = {
+  commandRef: PortableRef,
+  idempotencyKey: PortableRef,
+  actorRef: PortableRef,
+  policyRef: PortableRef,
+  sessionRef: PortableRef,
+  project: IdePortableProjectRefsSchema,
+  expectedAttachmentRef: PortableRef,
+  expectedGeneration: count(1_000_000_000),
+  deadlineAt: PortableTimestamp,
+  approvalRef: Schema.NullOr(PortableRef),
+};
+
+export const IdePortableCoordinatorCommandSchema = Schema.TaggedUnion({
+  Move: {
+    ...coordinatorCommandFields,
+    destinationPlacementRef: ExecutionEnvironmentRef,
+  },
+  Failback: {
+    ...coordinatorCommandFields,
+    destinationPlacementRef: ExecutionEnvironmentRef,
+    recoveryPointRef: PortableRef,
+  },
+  Cancel: {
+    ...coordinatorCommandFields,
+    targetCommandRef: PortableRef,
+  },
+  Stop: {
+    ...coordinatorCommandFields,
+    reasonRef: PortableRef,
+  },
+}).annotate({ identifier: "IdePortableCoordinatorCommand" });
+export type IdePortableCoordinatorCommand = typeof IdePortableCoordinatorCommandSchema.Type;
+
+export const IdePortableCoordinatorSnapshotSchema = Schema.Struct({
+  sessionRef: PortableRef,
+  project: IdePortableProjectRefsSchema,
+  phase: Schema.Literals([
+    "attached",
+    "quiescing",
+    "checkpoint_verified",
+    "destination_staged",
+    "source_revoked",
+    "attaching",
+    "degraded",
+    "stopped",
+  ]),
+  activePlacementRef: ExecutionEnvironmentRef,
+  activeAttachmentRef: PortableRef,
+  activeGeneration: count(1_000_000_000),
+  pendingCommandRef: Schema.NullOr(PortableRef),
+  pendingDestinationPlacementRef: Schema.NullOr(ExecutionEnvironmentRef),
+  checkpointManifestRef: Schema.NullOr(PortableRef),
+  eventSequence: count(9_007_199_254_740_991),
+  stopped: Schema.Boolean,
+}).annotate({ identifier: "IdePortableCoordinatorSnapshot" });
+export interface IdePortableCoordinatorSnapshot extends Schema.Schema.Type<
+  typeof IdePortableCoordinatorSnapshotSchema
+> {}
+
+const failureFields = { operation: text(120), detailRef: PortableRef, retryable: Schema.Boolean };
+export class IdePortableStaleWriter extends Schema.TaggedErrorClass<IdePortableStaleWriter>()(
+  "IdePortable.StaleWriter",
+  failureFields,
+) {}
+export class IdePortableLeaseContention extends Schema.TaggedErrorClass<IdePortableLeaseContention>()(
+  "IdePortable.LeaseContention",
+  failureFields,
+) {}
+export class IdePortableCheckpointFailure extends Schema.TaggedErrorClass<IdePortableCheckpointFailure>()(
+  "IdePortable.CheckpointFailure",
+  failureFields,
+) {}
+export class IdePortableAuthorizationFailure extends Schema.TaggedErrorClass<IdePortableAuthorizationFailure>()(
+  "IdePortable.AuthorizationFailure",
+  failureFields,
+) {}
+export class IdePortablePlacementFailure extends Schema.TaggedErrorClass<IdePortablePlacementFailure>()(
+  "IdePortable.PlacementFailure",
+  failureFields,
+) {}
+export class IdePortableCancelled extends Schema.TaggedErrorClass<IdePortableCancelled>()(
+  "IdePortable.Cancelled",
+  failureFields,
+) {}
+export class IdePortableTeardownFailure extends Schema.TaggedErrorClass<IdePortableTeardownFailure>()(
+  "IdePortable.TeardownFailure",
+  failureFields,
+) {}
 
 export const IdePortableFailureSchema = Schema.Union([
   IdePortableStaleWriter,
@@ -160,4 +344,5 @@ export const IdePortableFailureSchema = Schema.Union([
   IdePortablePlacementFailure,
   IdePortableCancelled,
   IdePortableTeardownFailure,
-]).annotate({ identifier: "IdePortableFailure" })
+]).annotate({ identifier: "IdePortableFailure" });
+export type IdePortableFailure = typeof IdePortableFailureSchema.Type;
