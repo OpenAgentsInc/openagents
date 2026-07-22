@@ -39894,7 +39894,7 @@
     },
     {
       "path": "docs/sarah/README.md",
-      "sha256": "7f7e8a8e2740775196f9d0c536f02d71a2ce8a82e7454d26efbc58171f31b576",
+      "sha256": "c95f732b0733590c99cd654d2bf50260fa6435a984c77b1e6fdd644287d7cbcf",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -39939,6 +39939,28 @@
     {
       "path": "docs/sarah/SARAH_KNOWLEDGE_BASE.md",
       "sha256": "4e41e760b2a0c30b923e68336a98c2d25f162b9cd940d6349f8eaf08cde350ed",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/sarah/SARAH_TWEET_QUEUE.md",
+      "sha256": "95c283a66f480333f22c968fb8db8ad292ba10763b11bcfb5f1ac30ce248b38d",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

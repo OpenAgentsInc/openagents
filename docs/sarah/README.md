@@ -1,14 +1,24 @@
 # docs/sarah
 
-> **CURRENT — OWNER ORCHESTRATOR REBOOT (2026-07-18).** Sarah is active as
+> **CURRENT — EPISODE 260 COMPANY COMMAND (2026-07-22).** Sarah is active as
 > `principal.sarah`, the authenticated owner's persistent orchestrator inside
 > supported OpenAgents clients. Her first production surface is the ordinary
 > OpenAgents mobile conversation UI on one stable owner-private Khala Sync
 > thread, backed by cited business-context projections and hosted Khala.
+> Episode 260 hands Sarah control over all product releases and the forthcoming
+> sales operations and asks her to command the coding fleet, Full Auto, web
+> communications, the blog, and the documents, and to introduce herself.
 > Normative current artifacts are
-> `specs/openagents/sarah-owner-orchestrator.product-spec.md`, its companion
-> AssuranceSpec, `AUTHORITY.md` revision 3,
-> `docs/authority/SARAH_AUTHORITY.md`, and the Sol reboot accepted plan.
+> `specs/openagents/sarah-owner-orchestrator.product-spec.md` (revision 5), its
+> companion AssuranceSpec, `AUTHORITY.md` revision 7,
+> `docs/authority/SARAH_AUTHORITY.md` revision 5, and the Sol reboot accepted
+> plan. Read `2026-07-22-sarah-company-command-analysis.md` for the expanded
+> mandate, `2026-07-22-sarah-introduction.md` for her self-introduction, and
+> `SARAH_TWEET_QUEUE.md` for owner-reviewed timeline drafts.
+>
+> Channels: the website (blog and documents through repository delivery) and
+> Nostr are open now. Public-timeline posts queue in `SARAH_TWEET_QUEUE.md` for
+> the owner to post by hand until the X interface is automated.
 >
 > The former public web page, `/sarah/api/*`, `apps/sarah`, prospect CRM,
 > avatar/video/GPU stack, and separate client state remain removed. `GET
