@@ -11,8 +11,10 @@ from this document require normal Sol admission and owner acceptance.
 commit `e9188c0`), the `block/buzz` vision corpus (`VISION.md`,
 `VISION_SOVEREIGN.md`, `VISION_MESH.md`, `VISION_AGENT.md`), `nostr-effect` at
 commit `c160378`, the canonical `nostr-protocol/nips` reference clone,
-`specs/*.product-spec.md`, `docs/nips/`, `packages/nip90`, and
-`docs/sol/MASTER_ROADMAP.md`.
+`specs/*.product-spec.md`, `docs/nips/`, `packages/nip90`,
+`docs/sol/MASTER_ROADMAP.md`, and the recent transcript run
+`docs/transcripts/250.md` and `254.md`–`259.md` (especially episode 259,
+"Verifiable Software and the Energy Layer").
 **Companion:** `docs/fable/2026-07-17-surface-vision-gap-analysis-and-roadmap.md`,
 `docs/fable/2026-07-19-verifiable-software.md`.
 
@@ -28,20 +30,24 @@ architecture," such that OpenAgents syncs up with Block's Buzz, with the ngit
 and DVM ecosystems, and with Bitcoin land generally — and such that OpenAgents
 can lead on agentic Nostr NIPs rather than follow them.
 
-This document answers in six moves:
+This document answers in seven moves:
 
 1. What Block just proved, and the strategic hole they left open (§II).
-2. Where OpenAgents actually stands — much closer to protocol-complete than
-   the roadmap's parked-lane status suggests (§III).
-3. The usable building blocks in the standard NIP catalog, with the specific
-   deprecations and collisions that shape what we should build on (§IV).
-4. The architectural principle that resolves the "relay as authority" question
-   without protocol romance: **authority follows party count** (§V), and the
-   five-plane target architecture that follows from it (§VI).
-5. The standards play: how OpenAgents plus Block equals the NIP acceptance
-   bar, and the concrete agentic NIP suite we should drive (§VII).
-6. What "overnight" really buys and what it cannot, a staged candidate
-   program, and honest counterarguments (§VIII–§XI).
+2. The OpenAgents vision in its own words — the verifiable-software engine
+   and the energy layer from the recent episode run — and the full overlap
+   map: what is uniquely ours, what is uniquely Buzz, and where the two
+   systems genuinely meet (§III).
+3. Where OpenAgents actually stands — much closer to protocol-complete than
+   the roadmap's parked-lane status suggests (§IV).
+4. The usable building blocks in the standard NIP catalog, with the specific
+   deprecations and collisions that shape what we should build on (§V).
+5. The architectural principle that resolves the "relay as authority" question
+   without protocol romance: **authority follows party count** (§VI), and the
+   five-plane target architecture that follows from it (§VII).
+6. The standards play: how OpenAgents plus Block equals the NIP acceptance
+   bar, and the concrete agentic NIP suite we should drive (§VIII).
+7. What "overnight" really buys and what it cannot, a staged candidate
+   program, and honest counterarguments (§IX–§XII).
 
 The one-paragraph conclusion, stated up front: **go Nostr-native at the market
 and identity boundary, stay owned at the private product core, and put the
@@ -126,11 +132,102 @@ move is to adopt their identity/memory/telemetry vocabulary where it is good,
 interoperate at the protocol seam, and become the reference implementation of
 the layer they skipped.
 
-## III. Our actual position: closer to protocol-complete than the roadmap admits
+## III. The vision in our own words — and the overlap map
+
+Before mapping protocols, state what OpenAgents is actually building, in the
+owner's own recent words, because the pivot only makes sense as an
+acceleration of that vision — never a detour from it. The recent episode run
+(250, 254–259) is unusually explicit.
+
+### III.1 The engine: electrons to accepted outcomes
+
+Episode 259 ("Verifiable Software and the Energy Layer") states the company
+question in one line: *"You have a stream of electrons. What is the cost of
+turning that into an accepted agent task?"* The metric is the one episode 232
+coined — **accepted outcomes per kilowatt-hour** — and the lineage is Bitcoin
+mining: mining proved electrons could become money because a hash verifies
+itself; verifiable software is how electrons become outcomes, by making every
+claim between the intent and the deliverable carry its own proof. The
+economic argument underneath is the measurability gap from "Some Simple
+Economics of AGI": generation is collapsing toward free while verification
+stays linear, so the price of an accepted outcome is dominated by review,
+retries, and grading — not model tokens. Whoever industrializes verification
+owns the conversion.
+
+The product stack that follows, all from the same episodes:
+
+- **The engine is the IDE.** OpenAgents Desktop as "your last agent IDE" —
+  100% open source, improving faster than anyone, with an incident-to-gate
+  loop (episode 258's sixteen controls from one crash report) that turns
+  every failure into a permanent structural barrier. Not "vibe code and
+  hope": create, test, verify, attest, then sell.
+- **The truth layer is contracts, not prose.** Episode 250 named the failure
+  class — the *unverified operational directive*, a plausible sentence whose
+  one load-bearing token is fiction — and the fix: typed intents, decoded
+  capabilities, model-identity receipts, behavior contracts with executable
+  oracles. "Cursor ships features but not the contracts." In 2026 the
+  competitive list is a trust-and-openness list, because the features are
+  table stakes.
+- **The network is verification.** Agents on the Forum already vet OpenAgents
+  software against published programmatic manifests. The stated intent is to
+  package that as product — automated QA, certifications, "gold stars,"
+  explicitly **NIP-32 reputation events** attesting that software does what
+  it claims — with creative economics: the vetting agent might earn a slice
+  of the vetted software's revenue. Third-party contributors participate
+  economically, not just socially.
+- **The rails are back, in the editor.** Episode 259, verbatim intent: "we're
+  specifically bringing back our Nostr and Bitcoin integration built into the
+  editor itself — the economic layer of all this is going to start taking
+  shape rapidly." This document is the architecture for exactly that
+  sentence.
+
+### III.2 Uniquely ours, uniquely theirs, genuinely shared
+
+With that vision stated, the Buzz comparison becomes precise rather than
+vibes-based:
+
+| | OpenAgents (uniquely ours) | Buzz (uniquely theirs) | Shared ground |
+| --- | --- | --- | --- |
+| Core unit | The **accepted outcome** — work scoped as falsifiable intent, verified, receipted, and paid | The **community** — one relay, one URL, one membership boundary | A signed, auditable record of everything that happened |
+| Economic model | A **market**: strangers transact because receipts, bonds, and reputation make acceptance checkable and payable | A **commons**: members pool compute and trust because they already chose each other; no payments layer at all | Agents as economic-ish actors with persistent identity |
+| Trust mechanism | **Verification** — producer/verifier separation, behavior contracts, promise registry, assurance specs, closeout receipts | **Membership** — the relay gate is the only gate; "channel membership is the only gate" | Cryptographic identity as the root of both |
+| Physical thesis | The **energy layer**: accepted outcomes per kilowatt-hour, mining lineage, the electron-to-outcome refinery | The **workspace layer**: replace Slack + Discord + GitHub with one sovereign domain | Self-hosting sympathy; "your keys, your identity" |
+| Agent surface | The **coding workbench and fleet**: Full Auto runs, portable sessions, provider fleets, an IDE with the best practices built in | The **chat room**: agents as channel members with memory, personas, and jobs, supervised from a workspace app | ACP harness pools; agent-first CLIs; one skill source |
+| Compute story | **Pylon**: sell your compute/labor/verification into an open market with settlement | **Mesh**: share your GPUs inside the membership, no API keys, no bill | Idle hardware as agent capacity |
+| Verification culture | Runtime receipts, evidence-gated projections, executable oracles, STE-disciplined docs | TLA+ conformance replay, Tamarin proofs, mutation-tested guarantees | Rare shared conviction that agent systems must be *proven*, not narrated |
+| Shell | Electron + Effect Native, one typed component set | Tauri + React desktop, Flutter mobile | Open-source, multi-release-per-day velocity |
+
+The deepest contrast compresses to one sentence: **Buzz trusts members;
+OpenAgents verifies strangers.** Buzz's whole design — tenancy fences,
+membership-gated git reads, mesh compute, owner-decryptable memory — makes a
+chosen group safe to work inside. It has no answer, and does not attempt one,
+for the question OpenAgents is built around: how two parties who share no
+membership, no employer, and no trust get to a paid, accepted outcome. That
+question is answered by verification plus settlement, which is why the
+market plane in §VII is ours to build and why episode 259's "receipts that
+let acceptance be checked and paid by strangers" is the single line that
+separates the two products.
+
+The overlap is real and usable precisely because it sits below that line:
+agent keypairs, owner attestation, encrypted agent memory, turn metrics,
+persona definitions, git identity. Those are trust-*neutral* primitives —
+a commons and a market can share them — which is exactly why the §VIII
+standards play works: we standardize the shared identity vocabulary with
+Block, and build the verification-and-settlement layer they structurally do
+not need.
+
+One more consequence worth naming: a Buzz community is not a competitor to
+the OpenAgents market — it is a natural *cluster of counterparties* on it.
+A community that trusts internally still needs verification the moment it
+buys from or sells to the outside. If OpenAgents' rails are the standard
+ones, every Buzz workspace is a prospective market participant the day it
+wants work done by someone it doesn't already know.
+
+## IV. Our actual position: closer to protocol-complete than the roadmap admits
 
 The roadmap treats Nostr as a parked lane. The code says something different.
 
-### III.1 `nostr-effect` is a near-complete dual implementation
+### IV.1 `nostr-effect` is a near-complete dual implementation
 
 At commit `c160378`, `nostr-effect` (373 source files, 146 test files, ~90
 subpath exports) implements:
@@ -142,7 +239,7 @@ subpath exports) implements:
   28-module NIP registry, policy pipeline, negentropy sync, NIP-86 admin)
   with Bun and Cloudflare Durable Object backends — plus a multi-relay client
   pool. Almost nobody in the ecosystem holds a maintained client *and* relay
-  in one typed codebase. This matters enormously for §VII: the NIP acceptance
+  in one typed codebase. This matters enormously for §VIII: the NIP acceptance
   bar is "two clients and one relay."
 - **The complete payments stack.** NIP-57 zaps with the validation appendices
   and zap splits, NIP-47 Nostr Wallet Connect including hold invoices, NIP-60
@@ -161,7 +258,7 @@ subpath exports) implements:
   Agents), AC (Agent Credit), SKL (Skills), TRN (Training Network), LBR
   (Agentic Labor), DS (Datasets), SB (Remote Sandbox).
 
-### III.2 The product-side assets are drafted, tested, and parked
+### IV.2 The product-side assets are drafted, tested, and parked
 
 - `packages/nip90` is a thin, disciplined layer over `nostr-effect/nip90`:
   labor kinds 5934/5935/5936 (code/review/document) with results 6934–6936,
@@ -176,7 +273,7 @@ subpath exports) implements:
   "seed-derived Nostr/Lightning identity" to a later Pylon contract; the
   mobile spec requires an owned E2EE relay for reachability.
 
-### III.3 The gaps that actually matter
+### IV.3 The gaps that actually matter
 
 Honest inventory of what does not exist:
 
@@ -202,11 +299,11 @@ The net position: the protocol layer is ~90% built and 0% deployed. Under the
 zero-software-cost assumption, gap 4 and gap 5 are cheap; gaps 1–3 are design
 decisions, which is exactly what this document is for.
 
-## IV. The building blocks: reading the standard catalog with intent
+## V. The building blocks: reading the standard catalog with intent
 
 The full survey is long; what follows is the part that changes decisions.
 
-### IV.1 The deprecations that redirect us
+### V.1 The deprecations that redirect us
 
 - **NIP-90 (Data Vending Machines) is officially unrecommended upstream** —
   the README's words are that it "got totally out of control," with guidance
@@ -225,7 +322,7 @@ The full survey is long; what follows is the part that changes decisions.
   (NIP-17/44/59 for privacy, NIP-29 for groups) are all in `nostr-effect`
   and all in Buzz. No friction.
 
-### IV.2 The economic primitives nobody has assembled
+### V.2 The economic primitives nobody has assembled
 
 The catalog contains, scattered and unassembled, every piece of an agent
 labor market:
@@ -253,7 +350,7 @@ thing no one else (including Block) is positioned to ship, because no one
 else holds the payments stack, the relay, the client, and a live agent fleet
 in one place.
 
-### IV.3 The kind-space facts that constrain leadership
+### V.3 The kind-space facts that constrain leadership
 
 - NIP-01 defines semantics only up to 39999. **Everything at kind ≥ 40000 is
   semantically unclassified** — no defined storage/replaceability behavior.
@@ -270,9 +367,9 @@ in one place.
 
 These constraints are opportunities in disguise: whoever shows up with clean
 kind allocations, collision fixes, and dual implementations gets to define
-the agentic register (§VII).
+the agentic register (§VIII).
 
-## V. The architecture: authority follows party count
+## VI. The architecture: authority follows party count
 
 The Buzz teardown ended at "signed projection bus" as the safe middle
 posture: Cloud SQL stays authoritative for everything; Nostr carries signed
@@ -325,7 +422,7 @@ It did not, and this document does not, put those on a relay. The market
 plane was never evaluated there as an authority candidate; under the party-
 count principle it is the one place relay-native authority is correct.
 
-## VI. The five-plane target architecture
+## VII. The five-plane target architecture
 
 The Nostr-native OpenAgents, drawn as planes with explicit authority labels.
 
@@ -370,7 +467,7 @@ sovereign signer boundary. Concretely:
   (registry attestations, badge issuance) signed by a platform key with
   published rotation policy.
 
-This plane is the missing ProductSpec named in §III.3 and is prerequisite to
+This plane is the missing ProductSpec named in §IV.3 and is prerequisite to
 everything else. It also finally gives the desktop spec's deferred
 "seed-derived Nostr/Lightning identity" a home, and it is the natural spine
 for the Claim-Your-Agent tweet-first flow (the tweet binds a pubkey, not a
@@ -417,7 +514,7 @@ The full lifecycle, every artifact a signed event on the owned relay
    earnings history.
 2. **Request**: buyer publishes an LBR job request (public-safe objective,
    budget, required confidence tier, PoW-stamped). A `request_admitted`
-   platform event answers it — signature ≠ admission (§V).
+   platform event answers it — signature ≠ admission (§VI).
 3. **Bids**: providers respond with quotes (the NIP-15 auction state machine,
    reborn as LBR feedback semantics); buyer accepts one, producing a signed
    acceptance that names the quote by id.
@@ -456,11 +553,11 @@ Where OpenAgents surfaces meet other people's clients:
   after the ref commit, patches/PRs/issues as admitted proposals, a separate
   signed merge outcome. Test against ngit and gitworkshop, not just Buzz.
 - **Forum**: keep the live Forum authoritative in Cloud SQL (single-party
-  moderation authority, per §V), but publish posts as signed projections and
+  moderation authority, per §VI), but publish posts as signed projections and
   accept signed posts as admitted input — which makes the Forum readable and
   writable from any Nostr client and gives the money-moderated ranking a
   zap-native implementation. NIP-7D (kind 11) and Buzz's 45001–45003 forum
-  kinds diverge here; this is a §VII harmonization target.
+  kinds diverge here; this is a §VIII harmonization target.
 - **Rooms and presence**: NIP-53 for live sessions (its proof-of-agreement
   participant signature solves "don't list my agent without consent"),
   NIP-38 expiring statuses for agent liveness.
@@ -485,12 +582,12 @@ Where OpenAgents surfaces meet other people's clients:
   explicit non-goal: requiring any third-party relay for correctness (the
   mobile spec's rule, kept).
 
-## VII. The standards play: leading on agentic NIPs
+## VIII. The standards play: leading on agentic NIPs
 
 This is the highest-leverage part of the pivot and the part with a genuine
 time window.
 
-### VII.1 The arithmetic of the acceptance bar
+### VIII.1 The arithmetic of the acceptance bar
 
 The NIPs repo's acceptance criterion is running code: **two clients and one
 relay**, optionality, and non-duplication. Today, agentic-workspace NIPs have
@@ -504,7 +601,7 @@ still marked draft and their kind registry carrying fixable collisions, the
 window is open. It will not stay open: 801 commits a month is a team that
 will standardize with or without us.
 
-### VII.2 The concrete program
+### VIII.2 The concrete program
 
 1. **Publish our drafts.** Move SA/AC/SKL/TRN/LBR/DS/SB from `docs/nips/`
    into a public `OpenAgentsInc/anips` (or similar) spec repo with test
@@ -522,7 +619,7 @@ will standardize with or without us.
    spec with two implementations — ours brings the price, escrow, bond, and
    receipt semantics theirs lack.
 4. **Champion the money layer.** Propose the agentic-labor microstandard
-   (LBR reborn per §IV.1) with hold-invoice escrow choreography, zap-split
+   (LBR reborn per §V.1) with hold-invoice escrow choreography, zap-split
    fee semantics, nutzap earning receipts, and the closeout receipt format
    — the layer where we are the natural editor because we ship the only
    dual-side implementation.
@@ -535,7 +632,7 @@ will standardize with or without us.
    our relay, agents' commits NIP-GS-signed, releases zapped — the
    `VISION_SOVEREIGN` story, performed by us, with money in it.
 
-### VII.3 Why lead at all
+### VIII.3 Why lead at all
 
 Because the alternative is inheriting someone else's register. The Buzz NIPs
 already encode Buzz server policy as implicit protocol (host-derived tenancy,
@@ -546,7 +643,7 @@ the decentralization premise dies at the payment boundary. Our whole thesis
 (machine-work economy, verifiable outcomes, Bitcoin rails) needs the market
 layer to be *protocol*, and nobody else is incented to write it.
 
-## VIII. What "overnight" buys — and what it cannot
+## IX. What "overnight" buys — and what it cannot
 
 Under the zero-software-cost assumption, the following are genuinely fast:
 wiring the signer service into surfaces, the outbox, deploying the relay,
@@ -561,7 +658,7 @@ and do not go to zero:**
    and operational decisions with irreversible failure modes. NIP-46/49/AB
    shrink the problem; nothing deletes it.
 2. **Authority discipline is a governance problem.** Every plane boundary in
-   §VI is a rule someone can violate in a hurry ("just read it off the
+   §VII is a rule someone can violate in a hurry ("just read it off the
    relay"). Dual-authority drift is the classic failure of exactly this
    pivot; the invariant ledgers and admission gates have to move in the
    same change as the wiring, and that is review capacity, not typing speed.
@@ -583,7 +680,7 @@ closeout is a signed, verifiable receipt is precisely an "accepted outcome"
 the market can price. The verifiable-software thesis and the market thesis
 are one thesis at the receipt boundary.
 
-## IX. A staged candidate program
+## X. A staged candidate program
 
 Candidates for Sol admission, not dispatch. Ordered so every stage is
 independently valuable and no stage creates dual authority.
@@ -612,7 +709,7 @@ independently valuable and no stage creates dual authority.
   Forum projections/admitted input; NIP-53 rooms. The demo that makes the
   partnership conversation concrete.
 
-## X. Honest counterarguments
+## XI. Honest counterarguments
 
 - **"The teardown said don't re-platform on the relay."** It did, for our
   single-party product surfaces, and this document keeps that verdict. The
@@ -636,12 +733,12 @@ independently valuable and no stage creates dual authority.
   mitigation is that platform-vault custody with NIP-46 scoping gives
   normal-user UX while keeping exit rights — sovereignty as an option, not
   an entry toll.
-- **"This distracts from Full Auto."** §VIII's answer: additive planes, and
+- **"This distracts from Full Auto."** §IX's answer: additive planes, and
   Full Auto receipts are the market's first product. If the owner weighs
   focus above the window, N0+N6 alone (signer + standards) preserve the
   leadership position at minimal surface area.
 
-## XI. Recommendation
+## XII. Recommendation
 
 Adopt the five-plane architecture as the target picture, with the party-count
 principle as the invariant that keeps it honest. Sequence N0 (sovereign
@@ -659,3 +756,10 @@ design, and a verification thesis that turns "work happened" into "outcome
 proven" — which is the only thing a machine-labor market can actually price.
 Sync with Block on identity, memory, and workspace vocabulary; lead on the
 market; and let the building blocks compound.
+
+Stated in the vision's own terms: Buzz built the room where agents work.
+OpenAgents is building the refinery that turns electrons into accepted,
+paid-for outcomes — and the receipts that let strangers trust them. The
+rooms and the refinery share a protocol, and that is the entire opportunity:
+adopt the room vocabulary, standardize it together, and make sure the
+economy that runs through every room settles on rails we lead.
