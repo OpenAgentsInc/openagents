@@ -2,8 +2,8 @@
 
 - Class: authority
 - Date: 2026-07-10
-- Updated: 2026-07-21
-- Revision: 127
+- Updated: 2026-07-22
+- Revision: 128
 - Status: canonical OpenAgents implementation roadmap
 - Current queue: the
   [`open issue unified completion plan`](./2026-07-21-open-issue-unified-completion-plan.md)
@@ -11,7 +11,8 @@
   #9144. #8978, #9023, and SBX-09 are complete. #9032 and #9041 share one
   managed checkpoint and movement proof. #9035 does not reopen IDE-14 through IDE-19. Managed RLM stays inside its separate cloud boundary. Distribution,
   Amp/T3 ledgers, and live defects retain their independent gates. Closed
-  ASSURE-REPO truth lives in execution-order item 9
+  ASSURE-REPO truth lives in execution-order item 9. The owner-approved graph
+  memory program uses #9162 and its ordered #9163-#9166 packets
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Dispatch: live bug issues or exact owner-accepted plans/work packets through
   [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md)
@@ -68,6 +69,32 @@ analyzer is already part of the landed run-evidence core.
 | Desktop/T3 workbench      | T3UI-01 through T3UI-12 are implemented through the exact 151-row census, mounted visual catalog, and unsigned-development packaged journey.                                                                                                                                                 | Signed/cross-platform distribution remains REL authority, the former MVP allowlist cannot veto an owner-admitted T3 or Full Auto surface, but each new surface still needs its typed intent and behavior contract.                    |
 | Mobile/T3 workbench       | The admitted T3 mobile ledger has completed transcript, composer, navigation, native action, Files D1.1/D1.2, and the D2 exact-scope Changes/diff/review writeback surface.                                                                                                                  | The ledger advances from E1 through Git, Terminal, Connections, accessibility, physical-device, and signed-distribution proof, live endpoint provisioning, environment pairing/health, and installed writeback evidence remain F1/F2. |
 | Fast Follow               | The Amp Day-1 thread-fabric ledger has durable control outcomes, canonical event authority/export, visibility/publication transports, confirmed-timeline evidence, and Electron host composition receipts.                                                                                   | The exact current FF-D1 packet in the accepted ledger owns the next mutation, Fast Follow remains learning/work-source authority only and cannot outrank #8967 or create autonomous multi-provider policy.                            |
+
+### Reconciled owner-controlled graph memory program
+
+The Cognee Fast Follow study supplied bounded design evidence. It did not
+supply product or runtime authority. OpenAgents adapts the useful graph-memory
+ideas through the Effect-native AI SDK and OpenAgents-owned storage and policy.
+Cognee, Python, and a third-party memory cloud are not dependencies.
+
+The ordered program is:
+
+1. #9163 consumes one exact SDK train. It is complete at `b9f01417c7`.
+2. #9164 adds default-off encrypted graph storage and a receipted owner
+   lifecycle.
+3. #9165 adds separate default-off extraction and recall controls. It cannot
+   run in the background or in Full Auto.
+4. #9166 compares history-only recall with graph-assisted recall. It also
+   proves inspect, export, forget, and repeated forget on the real adapter.
+
+The storage contract binds owner, project, source, graph, policy, and
+generation. It accepts only already-redacted data with consent and policy
+evidence. It validates exact SDK archive and delete contracts. A stale or
+incomplete plan cannot mutate state. An owner export stays owner-controlled and
+does not become hidden application storage.
+
+No code or fixture result enables graph memory by default. Quality evidence,
+owner review, release, and a public claim remain separate states.
 
 ### Canonical waves
 

@@ -50,6 +50,40 @@ These adapters stay in the monorepo. They are not copied engines.
 Engine or public-contract fixes go to `OpenAgentsInc/ai` and return through an
 exact version pin bump.
 
+## Durable graph memory boundary
+
+OpenAgents issue #9164 adds one portable `GraphMemoryStore` contract and one
+Desktop SQLite adapter. The portable service validates the exact SDK graph,
+artifact inventory, ranking, archive, and delete-plan contracts. The Desktop
+adapter stores one encrypted state for each owner and project.
+
+Graph memory is off by default. The disabled adapter does not open SQLite. It
+does not use Electron `safeStorage`, the file system, or cryptography. The
+enabled adapter uses an OS-wrapped random data key and AES-256-GCM for each
+state. SQLite contains only bounded scope references, revision data, and
+ciphertext.
+
+Each accepted graph binds these values:
+
+- owner and project scope,
+- source corpus and content digest,
+- graph and manifest digest,
+- graph policy,
+- generation,
+- consent, redaction, and policy evidence.
+
+The service applies a source delete plan only when all current digests match.
+It refuses stale or incomplete plans before mutation. A two-phase journal
+makes restart recovery and repeated operations idempotent. Receipts keep
+intended, applied, retained, unresolved, and failed facts separate. Full
+forget accounts for the graph, vectors, summaries, rankings, and owner export
+references. OpenAgents does not store an exported archive payload after it
+returns the payload to the owner.
+
+Issue #9164 does not add graph data to a prompt. Issue #9165 owns the separate
+default-off extraction and recall path. Issue #9166 owns the quality and owner
+lifecycle evaluation.
+
 Docs index: https://github.com/OpenAgentsInc/ai/blob/main/docs/README.md
 
 RLM consumption contract:

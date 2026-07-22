@@ -14942,7 +14942,7 @@
     },
     {
       "path": "docs/ai-sdk/README.md",
-      "sha256": "b8166f2f2b0c065799791638cdb091196687d73ba06411f32c8396e7ad81776d",
+      "sha256": "1d9ae08f491aa0c3edaf97a89529741868aaf70c78b113dd58857e25f4a107c0",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -41454,7 +41454,7 @@
     },
     {
       "path": "docs/sol/MASTER_ROADMAP.md",
-      "sha256": "6ef78e1c5870ae98bac2047ab3ee62b46df76ab1493c4c4868432dc15d057d34",
+      "sha256": "4f4209d38480cd3180bdaeef04af122c8bfa9acea14c1b12ade1a502cbf4d457",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -47225,7 +47225,7 @@
     },
     {
       "path": "packages/agent-experience-memory/README.md",
-      "sha256": "cc156b689eaef11ec3cf4162c1c6b2eecf92c16d84657937973895de5b90776e",
+      "sha256": "f9da878c78f1c6205238f4e843bfd3a445a6c7fb2604d6aaa196526b3d34c898",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
