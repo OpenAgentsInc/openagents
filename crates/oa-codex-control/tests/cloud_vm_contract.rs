@@ -287,6 +287,38 @@ fn managed_sandbox_guest_io_route_requires_authentication_and_a_private_driver()
     assert!(!response.to_string().contains("workspace/README.md"));
 }
 
+#[test]
+fn managed_sandbox_phase2_route_requires_authentication_and_a_private_driver() {
+    let daemon = start_daemon("managed-sandbox-phase2-default-off");
+    let request = serde_json::json!({
+        "schemaVersion": "openagents.managed_sandbox_phase2_target.v1",
+        "action": "observe_resource_generation",
+        "requestRef": "sandbox.sbx10.contract",
+        "ownerRef": "owner.sbx10.contract",
+        "tenantRef": "tenant.sbx10.contract",
+        "sandboxRef": "sandbox.sbx10.contract"
+    });
+    let body = serde_json::to_vec(&request).expect("encode request");
+    let (unauthorized, _) = http_request(
+        &daemon.addr,
+        "POST",
+        "/v1/managed-sandbox/runtime/checkpoints",
+        Some(&body),
+        None,
+    )
+    .expect("unauthorized request");
+    assert_eq!(unauthorized, 401);
+
+    let (status, response) =
+        post_json(&daemon, "/v1/managed-sandbox/runtime/checkpoints", &request);
+    assert_eq!(status, 503, "default-off Phase 2 response: {response}");
+    assert_eq!(
+        response.pointer("/reasonRef").and_then(Value::as_str),
+        Some("phase2_driver_not_configured")
+    );
+    assert!(!response.to_string().contains("sandbox.sbx10.contract"));
+}
+
 /// The headline contract test: the route fulfils the full
 /// provision -> exec -> copyOut -> teardown lifecycle in one call, in the exact
 /// wire shape the qa-runner `CloudVmProvisionerV2` sends.
