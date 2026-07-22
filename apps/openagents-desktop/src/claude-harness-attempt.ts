@@ -37,6 +37,19 @@ export interface ClaudeHarnessAttemptInput {
    */
   readonly queryOverrides: Readonly<Record<string, unknown>>;
   readonly emit: (event: ClaudeLocalEvent) => void;
+  /**
+   * Host hook fired once when the SDK `system/init` message is observed, with
+   * the raw session id, effective model, and per-server MCP status. The host
+   * uses it to run the behaviors the neutral stream has NO origin for — the
+   * "must be Claude" model-substitution guard, `mcp_server_unavailable`, and
+   * `onProviderSession` continuity — and may abort through the
+   * `queryOverrides.abortController` it owns. Called before any content lowers.
+   */
+  readonly onInit?: (info: {
+    readonly sessionId: string | null;
+    readonly effectiveModel: string | null;
+    readonly mcpServers: ReadonlyArray<{ readonly name: string; readonly status: string }>;
+  }) => void;
 }
 
 export interface ClaudeHarnessAttemptResult {
@@ -57,12 +70,17 @@ const usageFromResult = (message: ClaudeCodeMessage): ClaudeChildUsage | null =>
   const output = usage.output_tokens ?? 0;
   const cacheRead = usage.cache_read_input_tokens ?? 0;
   const cacheWrite = usage.cache_creation_input_tokens ?? 0;
+  const cachedInputTokens = cacheRead + cacheWrite;
   return {
     inputTokens: input,
-    cachedInputTokens: cacheRead + cacheWrite,
+    cachedInputTokens,
     outputTokens: output,
     reasoningTokens: 0,
-    totalTokens: input + output,
+    // Usage-ledger exactness: match the legacy claude-local usage math
+    // (`usageSplitFromResult`) exactly — total counts cached input tokens,
+    // not just input + output — so the flag-on adapter path and the legacy
+    // path report identical totals.
+    totalTokens: input + cachedInputTokens + output,
   };
 };
 
@@ -100,6 +118,30 @@ export const runClaudeHarnessAttempt = async (
           if (typeof (message as { model?: string }).model === "string") {
             wire.effectiveModel = (message as { model?: string }).model ?? null;
           }
+          const rawServers = (message as { mcp_servers?: unknown }).mcp_servers;
+          const mcpServers = Array.isArray(rawServers)
+            ? rawServers.flatMap((entry) =>
+                entry !== null && typeof entry === "object"
+                  ? [
+                      {
+                        name:
+                          typeof (entry as { name?: unknown }).name === "string"
+                            ? (entry as { name: string }).name
+                            : "",
+                        status:
+                          typeof (entry as { status?: unknown }).status === "string"
+                            ? (entry as { status: string }).status
+                            : "",
+                      },
+                    ]
+                  : [],
+              )
+            : [];
+          input.onInit?.({
+            sessionId: wire.sessionId,
+            effectiveModel: wire.effectiveModel,
+            mcpServers,
+          });
         }
         if (message.type === "result") {
           wire.usage = usageFromResult(message);

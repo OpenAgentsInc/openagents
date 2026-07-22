@@ -68,7 +68,9 @@ describe("claude harness attempt (HARN-09 slice 2)", () => {
       cachedInputTokens: 180,
       outputTokens: 5,
       reasoningTokens: 0,
-      totalTokens: 205,
+      // input + cachedInput + output (200 + 180 + 5), matching the legacy
+      // claude-local usage math for ledger exactness (#9167 slice 2).
+      totalTokens: 385,
     });
     expect(emitted.map((event) => event.kind)).toContain("text_delta");
     expect(emitted.map((event) => event.kind)).toContain("turn_completed");

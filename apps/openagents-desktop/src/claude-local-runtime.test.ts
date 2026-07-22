@@ -125,6 +125,7 @@ const makeRuntimeHarness = (input: {
   script: (captured: CapturedQuery) => AsyncIterable<unknown>
   root?: string
   workspaceRoot?: string
+  extraEnv?: Record<string, string>
   questionTimeoutMs?: number
   initialSessions?: ReadonlyArray<Readonly<{ threadRef: string; sessionId: string; accountRef: string }>>
   onDispatch?: (input: Readonly<{ threadRef: string; turnRef: string; accountRef: string }>) => void
@@ -145,7 +146,7 @@ const makeRuntimeHarness = (input: {
   const runtime = makeClaudeLocalRuntime({
     scratchRoot: () => scratch,
     ...(input.workspaceRoot === undefined ? {} : { workspaceRoot: () => input.workspaceRoot! }),
-    env: { PYLON_ACCOUNT_HOME_ROOT: root },
+    env: { PYLON_ACCOUNT_HOME_ROOT: root, ...(input.extraEnv ?? {}) },
     queryImpl: async () => query,
     ...(input.questionTimeoutMs === undefined ? {} : { questionTimeoutMs: input.questionTimeoutMs }),
     ...(input.initialSessions === undefined ? {} : { initialSessions: input.initialSessions }),
@@ -1648,5 +1649,124 @@ describe("makeFixtureClaudeLocalQuery (smoke fixture)", () => {
     expect(kinds).toContain("child_started")
     expect(kinds).toContain("child_completed")
     expect(kinds.filter(kind => kind === "child_activity").length).toBeGreaterThanOrEqual(2)
+  })
+})
+
+describe("makeClaudeLocalRuntime.runTurn — HARN-09 slice 2 SDK harness adapter (flag on)", () => {
+  test("routes a real turn through the adapter: mapped events, exact usage, continuity", async () => {
+    const sessions: Array<{ sessionId: string; accountRef: string }> = []
+    const harness = makeRuntimeHarness({
+      extraEnv: { OPENAGENTS_DESKTOP_CLAUDE_HARNESS_ADAPTER: "1" },
+      onProviderSession: s => sessions.push({ sessionId: s.sessionId, accountRef: s.accountRef }),
+      script: async function* () {
+        yield {
+          type: "system",
+          subtype: "init",
+          session_id: "session-adapter",
+          model: "claude-haiku-4-5-20251001",
+        }
+        yield {
+          type: "stream_event",
+          event: { type: "content_block_delta", delta: { type: "text_delta", text: "Hello adapter" } },
+        }
+        yield {
+          type: "result",
+          subtype: "success",
+          is_error: false,
+          result: "Hello adapter",
+          usage: { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 2 },
+        }
+      },
+    })
+    const sink = collect()
+    const result = await harness.runtime.runTurn({
+      turnRef: "turn-adapter",
+      threadRef: "thread-adapter",
+      history: [],
+      message: "hi",
+      model: "claude-haiku-4-5-20251001",
+      emit: sink.emit,
+    })
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      // Usage-ledger exactness: total counts cached input (10 + 2 + 5), the
+      // same math as the flag-off legacy drive.
+      expect(result.totalTokens).toBe(17)
+      expect(result.usage).toEqual({
+        inputTokens: 10,
+        cachedInputTokens: 2,
+        outputTokens: 5,
+        reasoningTokens: 0,
+        totalTokens: 17,
+      })
+    }
+    const kinds = sink.events.map(event => event.kind)
+    expect(kinds).toContain("model_effective")
+    // Exactly one terminal turn_completed: the host emits the rich event
+    // (accountRef + usage split); the bare lowered one is dropped.
+    expect(kinds.filter(kind => kind === "turn_completed")).toEqual(["turn_completed"])
+    const completed = sink.events.find(event => event.kind === "turn_completed") as Extract<
+      ClaudeLocalEvent,
+      { kind: "turn_completed" }
+    >
+    expect(completed.totalTokens).toBe(17)
+    // onProviderSession continuity fired with the adapter's session id.
+    expect(sessions.map(entry => entry.sessionId)).toContain("session-adapter")
+  })
+
+  test("model-substitution guard fails typed on a non-Claude effective model (IT HAS TO BE CLAUDE)", async () => {
+    const harness = makeRuntimeHarness({
+      extraEnv: { OPENAGENTS_DESKTOP_CLAUDE_HARNESS_ADAPTER: "1" },
+      script: async function* () {
+        yield { type: "system", subtype: "init", session_id: "session-sub", model: "gpt-5.6-sol" }
+        yield {
+          type: "result",
+          subtype: "success",
+          is_error: false,
+          result: "must not count",
+          usage: null,
+        }
+      },
+    })
+    const sink = collect()
+    const result = await harness.runtime.runTurn({
+      turnRef: "turn-sub",
+      threadRef: "thread-sub",
+      history: [],
+      message: "hi",
+      model: "claude-haiku-4-5-20251001",
+      emit: sink.emit,
+    })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.reason).toBe("model_substituted")
+  })
+
+  test("with the flag OFF the same turn keeps the legacy drive (no adapter)", async () => {
+    const harness = makeRuntimeHarness({
+      script: async function* () {
+        yield { type: "system", subtype: "init", session_id: "session-legacy", model: "claude-haiku-4-5-20251001" }
+        yield {
+          type: "stream_event",
+          event: { type: "content_block_delta", delta: { type: "text_delta", text: "legacy path" } },
+        }
+        yield {
+          type: "result",
+          subtype: "success",
+          is_error: false,
+          result: "legacy path",
+          usage: { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 2 },
+        }
+      },
+    })
+    const result = await harness.runtime.runTurn({
+      turnRef: "turn-legacy",
+      threadRef: "thread-legacy",
+      history: [],
+      message: "hi",
+      model: "claude-haiku-4-5-20251001",
+      emit: () => {},
+    })
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(result.totalTokens).toBe(17)
   })
 })
