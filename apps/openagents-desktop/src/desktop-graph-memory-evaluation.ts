@@ -236,8 +236,10 @@ export const summarizeGraphMemoryEvaluationArm = (
   let supportedAnswerFacts = 0;
   let falseMerges = 0;
   let distinctPairOpportunities = 0;
+  let falseMergeEvidenceUnavailable = false;
   let missedEntities = 0;
   let goldEntities = 0;
+  let entityEvidenceUnavailable = false;
   let retrieved = 0;
   let relevantRetrieved = 0;
   let relevantExpected = 0;
@@ -256,13 +258,17 @@ export const summarizeGraphMemoryEvaluationArm = (
     supportedAnswerFacts += intersectionCount(emittedFacts, expectedFacts);
 
     const falseMergePairs = setOf(fixture.goldDistinctEntityPairs.map(pairKey));
-    distinctPairOpportunities += falseMergePairs.size;
-    falseMerges += Math.min(row.extractionEvidence.mergeCount, falseMergePairs.size);
-
     const observedEntities = setOf(row.observedEntityRefs);
     const expectedEntities = setOf(fixture.goldEntityRefs);
-    goldEntities += expectedEntities.size;
-    missedEntities += expectedEntities.size - intersectionCount(expectedEntities, observedEntities);
+    if (row.extractionEvidence.graphStateDigest === null) {
+      falseMergeEvidenceUnavailable ||= falseMergePairs.size > 0;
+      entityEvidenceUnavailable ||= expectedEntities.size > 0;
+    } else {
+      distinctPairOpportunities += falseMergePairs.size;
+      falseMerges += Math.min(row.extractionEvidence.mergeCount, falseMergePairs.size);
+      goldEntities += expectedEntities.size;
+      missedEntities += expectedEntities.size - intersectionCount(expectedEntities, observedEntities);
+    }
 
     const retrievedRefs = setOf(row.retrievedSourceRefs);
     const relevantRefs = setOf(
@@ -279,8 +285,12 @@ export const summarizeGraphMemoryEvaluationArm = (
     outcomes: outcomeCounts(rows),
     citationValidity: fraction(validCitations, emittedCitations, "no_citations_emitted"),
     answerSupport: fraction(supportedAnswerFacts, emittedAnswerFacts, "no_expected_answer_facts"),
-    falseMergeRate: fraction(falseMerges, distinctPairOpportunities, "no_distinct_entity_pairs"),
-    missedEntityRate: fraction(missedEntities, goldEntities, "no_gold_entities"),
+    falseMergeRate: falseMergeEvidenceUnavailable
+      ? fraction(falseMerges, 0, "graph_state_unavailable")
+      : fraction(falseMerges, distinctPairOpportunities, "no_distinct_entity_pairs"),
+    missedEntityRate: entityEvidenceUnavailable
+      ? fraction(missedEntities, 0, "graph_state_unavailable")
+      : fraction(missedEntities, goldEntities, "no_gold_entities"),
     retrievalPrecision: fraction(relevantRetrieved, retrieved, "no_elements_retrieved"),
     retrievalRecall: fraction(relevantRetrieved, relevantExpected, "no_relevant_elements_defined"),
     latency: {

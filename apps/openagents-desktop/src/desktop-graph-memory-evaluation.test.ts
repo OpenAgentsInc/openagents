@@ -341,6 +341,47 @@ describe("graph memory evaluation scoring", () => {
     }
   });
 
+  test("does not score an unavailable graph state as an empty graph", () => {
+    const graph = rows("graph_assisted", (row, fixture) =>
+      fixture.challengeClasses.includes("same_name_entities")
+        ? {
+            ...row,
+            outcome: "failed",
+            extractionEvidence: {
+              ...row.extractionEvidence,
+              status: "failed",
+              graphStateDigest: null,
+              entityCount: 0,
+              mergeCount: 0,
+            },
+            observedEntityRefs: [],
+          }
+        : row,
+    );
+    const summary = summarizeGraphMemoryEvaluationArm("graph_assisted", holdout.rows, graph);
+    expect(summary.falseMergeRate).toEqual({
+      status: "unsupported",
+      numerator: 0,
+      denominator: 0,
+      value: null,
+      reason: "graph_state_unavailable",
+    });
+    expect(summary.missedEntityRate).toMatchObject({
+      status: "unsupported",
+      denominator: 0,
+      value: null,
+      reason: "graph_state_unavailable",
+    });
+    const evaluated = evaluateDesktopGraphMemoryComparison(input(rows("history_only"), graph));
+    expect(evaluated.ok).toBe(true);
+    if (evaluated.ok) {
+      expect(evaluated.receipt.comparison).toEqual({
+        quality: "inconclusive",
+        reasons: ["required_metric_unsupported", "non_complete_rows_present"],
+      });
+    }
+  });
+
   test("keeps every terminal row outcome separate and makes partial evidence inconclusive", () => {
     const outcomes = ["complete", "partial", "refused", "failed", "inconclusive"] as const;
     const history = rows("history_only", (row, _fixture, index) => ({
