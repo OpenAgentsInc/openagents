@@ -113,7 +113,24 @@ instead of a ranking digest. The adapter stores extraction evidence before it
 stores the graph. This order prevents a restart evidence gap. The ledger does
 not record recalled text.
 
-Issue #9166 owns the quality and owner lifecycle evaluation.
+Issue #9166 completed the quality and owner lifecycle evaluation. The
+[evaluation receipt](../sol/receipts/2026-07-22-graph-memory-evaluation.md)
+binds a clean source commit, the exact SDK package integrities, the Desktop
+build, the public-safe development and holdout splits, and the production
+history and graph recall paths.
+
+The comparison result is inconclusive. The history arm completed all seven
+holdout rows. The graph arm had two complete rows, three partial rows, one
+same-name setup failure, and one stale-graph failure. Neither arm emitted an
+answer assertion. The false-merge and missed-entity metrics are unsupported
+because two rows have no inspected graph state. This result does not enable
+graph memory and does not authorize a quality or parity claim.
+
+The same receipt records the real encrypted SQLite owner lifecycle. Inspect,
+export, incomplete-delete refusal, forget, post-forget inspect, repeated
+forget, and caller-held archive cleanup passed. The proof includes non-empty
+graph, vector, summary, ranking, and archive planes before forget and zero
+counts after forget.
 
 Docs index: https://github.com/OpenAgentsInc/ai/blob/main/docs/README.md
 

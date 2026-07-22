@@ -14942,7 +14942,7 @@
     },
     {
       "path": "docs/ai-sdk/README.md",
-      "sha256": "e51d2dfdb5643e0db4c8126c940b26cd02e6d7887c3d0212f8e4091b5ea7a4cf",
+      "sha256": "a6766db14d604a215cac06a4788b4411abd2e4e42a42cfa892f5b8a9d367ddb6",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -41454,7 +41454,7 @@
     },
     {
       "path": "docs/sol/MASTER_ROADMAP.md",
-      "sha256": "3f9addd063480c58276d0328345c4600d9e29af71b32acc0c18ce303a0af47a1",
+      "sha256": "a23c6bbdb5fc2cec3f8c83066b7b00dc603d878d6cfbdfa105884d98d6d06d5b",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -42254,8 +42254,20 @@
       }
     },
     {
+      "path": "docs/sol/receipts/2026-07-22-graph-memory-evaluation.md",
+      "sha256": "0690001f0342c429d626f92f53c74e0011ff6b42fa0d2b2dcea42664edee213c",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null,
+        "ste_status": "source-data"
+      }
+    },
+    {
       "path": "docs/sol/receipts/README.md",
-      "sha256": "c48fef8948c15d91f4e33a600216fb2ed871ffcc29e9cd1e788b0d1def082230",
+      "sha256": "9fb159a921d85f97e5817dbc25d4ea36a9174f0de25247d21cb8922291b4874d",
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",

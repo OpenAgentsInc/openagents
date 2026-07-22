@@ -1835,7 +1835,7 @@
       ]
     },
     "docs/sol/MASTER_ROADMAP.md": {
-      "sourceSha256": "3f9addd063480c58276d0328345c4600d9e29af71b32acc0c18ce303a0af47a1",
+      "sourceSha256": "a23c6bbdb5fc2cec3f8c83066b7b00dc603d878d6cfbdfa105884d98d6d06d5b",
       "normativeKeywords": [],
       "inlineCode": [
         "/",
@@ -1855,6 +1855,7 @@
         "2026-07-19-managed-agent-sandboxes-accepted-plan.md",
         "3123d926a3",
         "3123d926a3",
+        "3f19dedca1",
         "4239689e24",
         "4239689e24",
         "6bfe97fddb",
@@ -1927,6 +1928,7 @@
         "docs/fable/MASTER_ROADMAP.md",
         "docs/ide/ROADMAP.md",
         "documentation cleanup plan",
+        "evaluation receipt",
         "first Codex Workroom MVP package",
         "greenfield clients and Sarah-removal decision",
         "historical CUT-27 readiness audit",
@@ -2139,6 +2141,7 @@
         "#9164",
         "#9165",
         "#9166",
+        "#9166",
         "#9166"
       ],
       "numericValues": [
@@ -2220,13 +2223,13 @@
         "12",
         "12",
         "12",
-        "129",
         "13",
         "13",
         "13",
         "13",
         "13",
         "13",
+        "130",
         "14",
         "14",
         "14",
@@ -2340,9 +2343,11 @@
         "2026-07",
         "2026-07",
         "2026-07",
+        "2026-07",
         "21",
         "21",
         "21",
+        "22",
         "22",
         "22",
         "22",
@@ -2577,6 +2582,7 @@
         "9163",
         "9164",
         "9165",
+        "9166",
         "9166",
         "9166"
       ]

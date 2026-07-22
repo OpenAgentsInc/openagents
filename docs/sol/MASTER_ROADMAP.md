@@ -3,7 +3,7 @@
 - Class: authority
 - Date: 2026-07-10
 - Updated: 2026-07-22
-- Revision: 129
+- Revision: 130
 - Status: canonical OpenAgents implementation roadmap
 - Current queue: the
   [`open issue unified completion plan`](./2026-07-21-open-issue-unified-completion-plan.md)
@@ -12,7 +12,8 @@
   managed checkpoint and movement proof. #9035 does not reopen IDE-14 through IDE-19. Managed RLM stays inside its separate cloud boundary. Distribution,
   Amp/T3 ledgers, and live defects retain their independent gates. Closed
   ASSURE-REPO truth lives in execution-order item 9. The owner-approved graph
-  memory program uses #9162 and its ordered #9163-#9166 packets
+  memory program uses #9162 and its ordered #9163-#9166 packets. That program
+  is complete through the inconclusive #9166 evaluation
 - Supersedes: [`docs/fable/MASTER_ROADMAP.md`](../fable/MASTER_ROADMAP.md)
 - Dispatch: live bug issues or exact owner-accepted plans/work packets through
   [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md)
@@ -61,14 +62,14 @@ analyzer is already part of the landed run-evidence core.
 
 ### Reconciled implementation truth at this revision
 
-| Surface                   | Narrowest current truth                                                                                                                                                                                                                                                                      | Remaining authority                                                                                                                                                                                                                   |
-| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Full Auto run core        | #8968–#8978, #8987, #8991, #9000–#9002 are closed. The durable run core, owner-development matrix, and admitted AssuranceSpec are on `main`. | #8979 must bind the source repair and admitted evidence to a later signed package, packaged owner observation, and exact promise gate. Parent #8967 stays open until #8979 closes. |
-| Mobile Full Auto          | #8980–#8982 are closed: Desktop publishes the bounded live projection, mobile selects the live run first, and the fixture plus iOS Simulator receipt records the observable parent journey.                                                                                                  | Remote Pause/Resume/Stop and report review remain later admitted work, simulator proof is not physical-device or general host-movement proof.                                                                                         |
-| Distribution/web download | ReleaseSet v2, update-host selection/rollback, candidate feed, verified web resolver, and `/download` integration are landed, #8922–#8924 are closed.                                                                                                                                        | #8913/#8917/#8919–#8921/#8925/#8926 retain platform runners, signing, packages, full acceptance, and the one-command ceremony. No unsigned or unpromoted artifact becomes a release claim.                                            |
-| Desktop/T3 workbench      | T3UI-01 through T3UI-12 are implemented through the exact 151-row census, mounted visual catalog, and unsigned-development packaged journey.                                                                                                                                                 | Signed/cross-platform distribution remains REL authority, the former MVP allowlist cannot veto an owner-admitted T3 or Full Auto surface, but each new surface still needs its typed intent and behavior contract.                    |
-| Mobile/T3 workbench       | The admitted T3 mobile ledger has completed transcript, composer, navigation, native action, Files D1.1/D1.2, and the D2 exact-scope Changes/diff/review writeback surface.                                                                                                                  | The ledger advances from E1 through Git, Terminal, Connections, accessibility, physical-device, and signed-distribution proof, live endpoint provisioning, environment pairing/health, and installed writeback evidence remain F1/F2. |
-| Fast Follow               | The Amp Day-1 thread-fabric ledger has durable control outcomes, canonical event authority/export, visibility/publication transports, confirmed-timeline evidence, and Electron host composition receipts.                                                                                   | The exact current FF-D1 packet in the accepted ledger owns the next mutation, Fast Follow remains learning/work-source authority only and cannot outrank #8967 or create autonomous multi-provider policy.                            |
+| Surface                   | Narrowest current truth                                                                                                                                                                                    | Remaining authority                                                                                                                                                                                                                   |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Full Auto run core        | #8968–#8978, #8987, #8991, #9000–#9002 are closed. The durable run core, owner-development matrix, and admitted AssuranceSpec are on `main`.                                                               | #8979 must bind the source repair and admitted evidence to a later signed package, packaged owner observation, and exact promise gate. Parent #8967 stays open until #8979 closes.                                                    |
+| Mobile Full Auto          | #8980–#8982 are closed: Desktop publishes the bounded live projection, mobile selects the live run first, and the fixture plus iOS Simulator receipt records the observable parent journey.                | Remote Pause/Resume/Stop and report review remain later admitted work, simulator proof is not physical-device or general host-movement proof.                                                                                         |
+| Distribution/web download | ReleaseSet v2, update-host selection/rollback, candidate feed, verified web resolver, and `/download` integration are landed, #8922–#8924 are closed.                                                      | #8913/#8917/#8919–#8921/#8925/#8926 retain platform runners, signing, packages, full acceptance, and the one-command ceremony. No unsigned or unpromoted artifact becomes a release claim.                                            |
+| Desktop/T3 workbench      | T3UI-01 through T3UI-12 are implemented through the exact 151-row census, mounted visual catalog, and unsigned-development packaged journey.                                                               | Signed/cross-platform distribution remains REL authority, the former MVP allowlist cannot veto an owner-admitted T3 or Full Auto surface, but each new surface still needs its typed intent and behavior contract.                    |
+| Mobile/T3 workbench       | The admitted T3 mobile ledger has completed transcript, composer, navigation, native action, Files D1.1/D1.2, and the D2 exact-scope Changes/diff/review writeback surface.                                | The ledger advances from E1 through Git, Terminal, Connections, accessibility, physical-device, and signed-distribution proof, live endpoint provisioning, environment pairing/health, and installed writeback evidence remain F1/F2. |
+| Fast Follow               | The Amp Day-1 thread-fabric ledger has durable control outcomes, canonical event authority/export, visibility/publication transports, confirmed-timeline evidence, and Electron host composition receipts. | The exact current FF-D1 packet in the accepted ledger owns the next mutation, Fast Follow remains learning/work-source authority only and cannot outrank #8967 or create autonomous multi-provider policy.                            |
 
 ### Reconciled owner-controlled graph memory program
 
@@ -85,8 +86,13 @@ The ordered program is:
 3. #9165 added separate default-off extraction and recall controls. It is
    complete. The host can use this memory only for a foreground turn. The host
    cannot use it for a background turn, a delegated turn, or a Full Auto turn.
-4. #9166 compares history-only recall with graph-assisted recall. It also
-   proves inspect, export, forget, and repeated forget on the real adapter.
+4. #9166 compared history-only recall with graph-assisted recall. It also
+   proved inspect, export, forget, and repeated forget on the real adapter.
+   It is complete at source commit `3f19dedca1`. The quality result is
+   inconclusive because the graph holdout has partial and failed
+   rows. Owner review, release, and a public quality claim are not complete.
+   See the
+   [`evaluation receipt`](./receipts/2026-07-22-graph-memory-evaluation.md).
 
 The storage contract binds owner, project, source, graph, policy, and
 generation. It accepts only already-redacted data with consent and policy
@@ -588,12 +594,12 @@ GitHub before dispatch and age-checked by the offline documentation guard.
 This guarded projection excludes `area:docs`, live issue claims still own
 dispatch and exact plans own dependency order.
 
-| Program              | Open issues                                                    | Owning plan                                                       |
-| -------------------- | -------------------------------------------------------------- | ----------------------------------------------------------------- |
-| Managed sandboxes    | #9023, #9032, #9033                                            | `2026-07-19-managed-agent-sandboxes-accepted-plan.md`             |
-| Agent IDE and parity | #9035, #9041, #9042, #9043, #9044, #9045, #9046, #9047         | `docs/ide/ROADMAP.md`                                             |
-| VSE engine groundwork | #9104, #9105, #9106, #9108, #9109                             | `docs/fable/2026-07-20-verifiable-software-engine-gap-analysis-and-roadmap.md` |
-| Full Auto first verifiable mode | #9110, #9111, #9112, #9113, #9114                   | `docs/fable/2026-07-20-full-auto-first-verifiable-mode.md`        |
+| Program                         | Open issues                                            | Owning plan                                                                    |
+| ------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------ |
+| Managed sandboxes               | #9023, #9032, #9033                                    | `2026-07-19-managed-agent-sandboxes-accepted-plan.md`                          |
+| Agent IDE and parity            | #9035, #9041, #9042, #9043, #9044, #9045, #9046, #9047 | `docs/ide/ROADMAP.md`                                                          |
+| VSE engine groundwork           | #9104, #9105, #9106, #9108, #9109                      | `docs/fable/2026-07-20-verifiable-software-engine-gap-analysis-and-roadmap.md` |
+| Full Auto first verifiable mode | #9110, #9111, #9112, #9113, #9114                      | `docs/fable/2026-07-20-full-auto-first-verifiable-mode.md`                     |
 
 The superseded broad program/client, CUT-27, AUDIO-8, and non-reauthorized PORT
 outcomes remain closed `not planned`, their bodies were not rewritten and
