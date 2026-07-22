@@ -1108,6 +1108,172 @@ export const makeClaudeLocalRuntime = (options: ClaudeLocalRuntimeOptions): Clau
      */
     let announcedModel: string | null = null
 
+    /**
+     * HARN-09 (#9167): the SINGLE display projector for raw Claude SDK
+     * messages — used by BOTH the legacy `query()` drive and the default-on
+     * adapter route (fed through the adapter's `onRawMessage` observer via
+     * `runClaudeHarnessAttempt.observeMessage`), so renderer parity between
+     * the two dispatch paths is by construction: the same code emits every
+     * display event (turn_started, model_effective, mcp_server_unavailable,
+     * text_delta, rich tool_use/tool_result with typed items, plan_updated)
+     * and accumulates the text/content state the finish logic reads.
+     * Attempt-scoped (rotation resets accumulation) with turn-scoped
+     * announce/start dedupe via the closures above.
+     */
+    const makeClaudeDisplayProjector = (requestedModel: string) => {
+      let sawContent = false
+      let deltaText = ""
+      let assistantText = ""
+      const pendingToolCalls = new Map<string, string>()
+      // Raw tool_use inputs by call id so the completion event can carry the
+      // same typed args the started event did (#8859 typed item payloads).
+      const pendingToolInputs = new Map<string, unknown>()
+      const handleMessage = (
+        record: SdkRecord,
+      ): Readonly<{
+        substituted?: Readonly<{ requestedModel: string; effectiveModel: string }>
+      }> => {
+        const type = typeof record.type === "string" ? record.type : undefined
+        if (type === "system" && record.subtype === "init") {
+          emitStarted()
+          // MODEL-LEVEL NO-SUBSTITUTION ("IT HAS TO BE CLAUDE"): the init
+          // message reports the effective model. Emit it for renderer
+          // visibility, then report the substitution verdict — the caller
+          // aborts typed before any content can stream. This is a
+          // provider-side substitution, not an account failure, so it never
+          // rotates. MCP statuses are deliberately not surfaced for a turn
+          // that is about to fail (legacy order).
+          const effectiveModel = typeof (record as { model?: unknown }).model === "string"
+            ? (record as { model: string }).model
+            : null
+          if (effectiveModel !== null && effectiveModel.length > 0) {
+            if (effectiveModel !== announcedModel) {
+              announcedModel = effectiveModel
+              input.emit({ kind: "model_effective", model: bounded(effectiveModel, 120) })
+            }
+            if (effectiveModel !== requestedModel && !effectiveModel.startsWith(`${requestedModel}-`)) {
+              return { substituted: { requestedModel, effectiveModel } }
+            }
+          }
+          // I2: the SDK init reports each MCP server's connection status.
+          // Surface a typed mcp_server_unavailable for any USER server that
+          // did not connect (never the internal `codex` delegate). The turn
+          // keeps running — a failed server never aborts it.
+          const initServers = (record as { mcp_servers?: unknown }).mcp_servers
+          if (Array.isArray(initServers)) {
+            for (const entry of initServers) {
+              if (entry === null || typeof entry !== "object") continue
+              const name = typeof (entry as { name?: unknown }).name === "string"
+                ? (entry as { name: string }).name
+                : ""
+              const status = typeof (entry as { status?: unknown }).status === "string"
+                ? (entry as { status: string }).status
+                : ""
+              if (!userServerNames.has(name)) continue
+              if (status === "connected" || status === "pending") continue
+              if (announcedMcpUnavailable.has(name)) continue
+              announcedMcpUnavailable.add(name)
+              input.emit({
+                kind: "mcp_server_unavailable",
+                name: bounded(name, 120),
+                reason: bounded(status === "" ? "server failed to connect" : status, CLAUDE_LOCAL_SUMMARY_LIMIT),
+              })
+            }
+          }
+          return {}
+        }
+        if (type === "stream_event") {
+          const event = record.event as Record<string, unknown> | undefined
+          const delta = event?.delta as Record<string, unknown> | undefined
+          if (event?.type === "content_block_delta" && delta?.type === "text_delta" &&
+            typeof delta.text === "string" && delta.text.length > 0) {
+            emitStarted()
+            sawContent = true
+            const text = bounded(redact(delta.text), CLAUDE_LOCAL_DELTA_LIMIT)
+            deltaText = bounded(deltaText + text, CLAUDE_LOCAL_FINAL_TEXT_LIMIT)
+            input.emit({ kind: "text_delta", text })
+          }
+          return {}
+        }
+        if (type === "assistant") {
+          emitStarted()
+          for (const block of contentBlocks(record.message)) {
+            if (block.type === "text" && typeof block.text === "string") {
+              assistantText = bounded(assistantText + block.text, CLAUDE_LOCAL_FINAL_TEXT_LIMIT)
+              continue
+            }
+            if (block.type === "tool_use") {
+              sawContent = true
+              const toolCallId = typeof block.id === "string" ? block.id : `${pendingToolCalls.size}`
+              const toolName = bounded(typeof block.name === "string" ? block.name : "tool", 120)
+              pendingToolCalls.set(toolCallId, toolName)
+              pendingToolInputs.set(toolCallId, block.input ?? {})
+              const summary = bounded(
+                redact(JSON.stringify(block.input ?? {}) ?? ""),
+                CLAUDE_LOCAL_SUMMARY_LIMIT,
+              )
+              input.emit({
+                kind: "tool_use",
+                toolName,
+                summary,
+                // Typed item (#8859): the same SDK tool call, source-tagged
+                // "claude", args projected k/v instead of JSON-in-a-string.
+                item: workbenchToolCallFromSdkUse(
+                  { toolName, input: block.input ?? {}, status: "in_progress" },
+                  redact,
+                ),
+              })
+              // J2/J4: the TodoWrite tool carries the current plan/todo list.
+              // Emit the structured plan_updated ADDITIONALLY (the tool_use
+              // trace above is unchanged) so a renderer can draw progress.
+              if (toolName === "TodoWrite") {
+                const entries = planEntriesFromTodoWrite(block.input)
+                if (entries !== null) input.emit({ kind: "plan_updated", entries })
+              }
+            }
+          }
+          return {}
+        }
+        if (type === "user") {
+          for (const block of contentBlocks(record.message)) {
+            if (block.type !== "tool_result") continue
+            const toolCallId = typeof block.tool_use_id === "string" ? block.tool_use_id : ""
+            const toolName = pendingToolCalls.get(toolCallId) ?? "tool"
+            const ok = block.is_error !== true
+            const content = typeof block.content === "string"
+              ? block.content
+              : contentBlocks(block).map(part =>
+                  typeof part.text === "string" ? part.text : "").join(" ")
+            sawContent = true
+            input.emit({
+              kind: "tool_result",
+              toolName,
+              ok,
+              summary: bounded(redact(content), CLAUDE_LOCAL_SUMMARY_LIMIT),
+              // Typed item (#8859): completion-side payload keeps the
+              // started args (from the pending map) plus the result/error.
+              item: workbenchToolCallFromSdkUse(
+                {
+                  toolName,
+                  input: pendingToolInputs.get(toolCallId) ?? {},
+                  status: ok ? "completed" : "failed",
+                  ...(ok ? { resultSnippet: content } : { errorMessage: content }),
+                },
+                redact,
+              ),
+            })
+            pendingToolInputs.delete(toolCallId)
+          }
+          return {}
+        }
+        return {}
+      }
+      return {
+        handleMessage,
+        state: () => ({ sawContent, deltaText, assistantText }),
+      }
+    }
+
     /** One SDK session against one isolated account home. Emits stream events
      * but never turn_failed — the rotation loop below owns finalization. */
     const runAttempt = async (
@@ -1278,54 +1444,55 @@ export const makeClaudeLocalRuntime = (options: ClaudeLocalRuntimeOptions): Clau
       const prompt: string | AsyncIterable<ClaudeLocalSdkUserMessage> =
         images.length === 0 ? promptText : claudeImagePromptStream(promptText, images)
 
-      let sawContent = false
       let sessionId: string | null = null
-      let deltaText = ""
-      let assistantText = ""
       let resultText: string | null = null
       let resultIsError = false
       let resultSubtype: string | null = null
       let totalTokens: number | null = null
       let usageSplit: ClaudeChildUsage | null = null
-      const pendingToolCalls = new Map<string, string>()
-      // Raw tool_use inputs by call id so the completion event can carry the
-      // same typed args the started event did (#8859 typed item payloads).
-      const pendingToolInputs = new Map<string, unknown>()
+      const requestedModel = input.model ?? CLAUDE_LOCAL_MODEL
+      // HARN-09: one shared display projector per attempt — the single
+      // emitter of message-derived display events for BOTH dispatch paths
+      // (legacy loop below; adapter route via observeMessage). Its state
+      // carries sawContent/deltaText/assistantText for the finish logic.
+      const projector = makeClaudeDisplayProjector(requestedModel)
 
       const finish = (
         result: ClaudeLocalTurnResult,
       ): Readonly<{ result: ClaudeLocalTurnResult; sawContent: boolean }> => {
         if (clock.timer !== null) clearTimeout(clock.timer)
-        return { result, sawContent }
+        return { result, sawContent: projector.state().sawContent }
       }
 
       try {
-        const requestedModel = input.model ?? CLAUDE_LOCAL_MODEL
         options.onDispatch?.({
           threadRef: input.threadRef,
           turnRef: input.turnRef,
           accountRef: account.ref,
         })
         const claudeExecutable = resolveBundledClaudeExecutable()
-        // HARN-09 (#9167) Slice 2 strangler gate: route the claude turn through
-        // the SDK harness adapter (`makeClaudeCodeHarnessAdapter` via
-        // `runClaudeHarnessAttempt`) when explicitly enabled AND the turn has
-        // no image attachments — the adapter promptTurn is string-only, so
-        // image turns keep the legacy AsyncIterable drive below. Default off:
-        // zero change, and the pinning suite exercises the flag-off path.
+        // HARN-09 (#9167): route the claude turn through the SDK harness
+        // adapter (`makeClaudeCodeHarnessAdapter` via `runClaudeHarnessAttempt`)
+        // DEFAULT-ON. Setting OPENAGENTS_DESKTOP_CLAUDE_HARNESS_ADAPTER=0 is
+        // the rollback to the legacy `query()` drive below. Image turns keep
+        // the legacy AsyncIterable drive in both defaults — the adapter
+        // promptTurn is string-only (documented fall-through; the renderer
+        // stream is identical either way because the same projector emits it).
         //
-        // The host still owns everything the neutral stream has NO origin for:
-        // the same `canUseTool` (AskUserQuestion + pausable turn clock),
+        // The host owns everything the neutral stream has NO origin for: the
+        // same `canUseTool` (AskUserQuestion + pausable turn clock),
         // `abortController` (timeout + interrupt), `mcpServers` (delegate-child
-        // tracking for steer/interrupt), plus the init-time guards below —
-        // the "must be Claude" model-substitution abort, `mcp_server_unavailable`,
-        // and `onProviderSession` continuity — handed in through `queryOverrides`
-        // and the `onInit` hook. The adapter only owns neutral projection, and
-        // `harness-lowering` maps it back onto the frozen renderer envelope.
-        if (env.OPENAGENTS_DESKTOP_CLAUDE_HARNESS_ADAPTER === "1" && images.length === 0) {
+        // tracking for steer/interrupt) through `queryOverrides`;
+        // `onProviderSession` continuity through `onInit`; and EVERY
+        // message-derived display event through the shared display projector
+        // fed by `observeMessage` — the same code that emits them on the
+        // legacy drive, so renderer parity is by construction. The adapter
+        // owns neutral projection + turn lifecycle; its lowered core stream
+        // is suppressed as duplicate display (`emit` below).
+        if (env.OPENAGENTS_DESKTOP_CLAUDE_HARNESS_ADAPTER !== "0" && images.length === 0) {
           // Array holder (not a nullable `let`): the assignment happens inside
-          // the `onInit` callback, and TS control-flow would otherwise narrow a
-          // callback-assigned `let` back to its `null` initializer at the read.
+          // the `observeMessage` callback, and TS control-flow would otherwise
+          // narrow a callback-assigned `let` back to its `null` initializer.
           const substituted: Array<{ readonly requestedModel: string; readonly effectiveModel: string }> =
             []
           const overrides: Record<string, unknown> = {
@@ -1377,14 +1544,29 @@ export const makeClaudeLocalRuntime = (options: ClaudeLocalRuntimeOptions): Clau
             resumeSessionId: resumeSessionId ?? null,
             query: query as unknown as ClaudeCodeQuery,
             queryOverrides: overrides,
-            emit: ev => {
-              // The host emits the rich turn_completed (accountRef + usage
-              // split) below; drop the lowering's bare turn_completed so the
-              // renderer never sees a duplicate terminal event.
-              if (ev.kind === "turn_completed") return
-              input.emit(ev)
+            // DEDUPE: the shared display projector (observeMessage below) is
+            // the single display authority for this turn and already emits
+            // the richer legacy form of every core event, so the adapter's
+            // lowered stream is fully suppressed — the renderer never sees
+            // doubled text/tool/terminal events.
+            emit: () => {},
+            observeMessage: message => {
+              // Parity with the legacy drive's abort race: once the turn is
+              // aborted (substitution, timeout, interrupt) no further message
+              // is processed or displayed, even if the underlying iterable
+              // keeps yielding.
+              if (abort.signal.aborted) return
+              const verdict = projector.handleMessage(message as SdkRecord)
+              // MODEL-LEVEL NO-SUBSTITUTION ("IT HAS TO BE CLAUDE"): abort
+              // typed before content can stream if the effective model is
+              // outside the requested family. Same predicate, same code as
+              // the legacy init handler (inside the projector).
+              if (verdict.substituted !== undefined) {
+                substituted.push(verdict.substituted)
+                abort.abort()
+              }
             },
-            onInit: ({ sessionId: initSession, effectiveModel, mcpServers: servers }) => {
+            onInit: ({ sessionId: initSession }) => {
               if (initSession !== null && initSession.length > 0) {
                 options.onProviderSession?.({
                   threadRef: input.threadRef,
@@ -1393,35 +1575,9 @@ export const makeClaudeLocalRuntime = (options: ClaudeLocalRuntimeOptions): Clau
                   sessionId: initSession,
                 })
               }
-              for (const server of servers) {
-                if (!userServerNames.has(server.name)) continue
-                if (server.status === "connected" || server.status === "pending") continue
-                if (announcedMcpUnavailable.has(server.name)) continue
-                announcedMcpUnavailable.add(server.name)
-                input.emit({
-                  kind: "mcp_server_unavailable",
-                  name: bounded(server.name, 120),
-                  reason: bounded(
-                    server.status === "" ? "server failed to connect" : server.status,
-                    CLAUDE_LOCAL_SUMMARY_LIMIT,
-                  ),
-                })
-              }
-              // MODEL-LEVEL NO-SUBSTITUTION ("IT HAS TO BE CLAUDE"): abort typed
-              // before content can stream if the effective model is outside the
-              // requested family. Same predicate as the legacy init handler.
-              if (
-                effectiveModel !== null &&
-                effectiveModel.length > 0 &&
-                effectiveModel !== requestedModel &&
-                !effectiveModel.startsWith(`${requestedModel}-`)
-              ) {
-                substituted.push({ requestedModel, effectiveModel })
-                abort.abort()
-              }
             },
           })
-          sawContent = attempt.text.trim() !== ""
+          const state = projector.state()
           const sub = substituted[0]
           if (sub !== undefined) {
             return finish(
@@ -1436,11 +1592,34 @@ export const makeClaudeLocalRuntime = (options: ClaudeLocalRuntimeOptions): Clau
           if (attempt.outcome === "reconnect_required") {
             return finish(failure("account_reconnect_required", attempt.detail))
           }
+          // Subtype-exact result classification — the same branches, in the
+          // same order, as the legacy drive below (max_turns, then error
+          // subtypes) using the raw result fields teed from the wire.
+          if (attempt.resultSubtype !== null && attempt.resultSubtype.includes("max_turns")) {
+            return finish(failure("budget_exceeded", "turn budget reached"))
+          }
+          if (
+            attempt.resultIsError ||
+            (attempt.resultSubtype !== null && attempt.resultSubtype.startsWith("error"))
+          ) {
+            const boundedResult = attempt.resultText === null
+              ? null
+              : bounded(redact(attempt.resultText), CLAUDE_LOCAL_FINAL_TEXT_LIMIT)
+            const classified = classifyClaudeSdkResultFailure(attempt.resultSubtype, boundedResult)
+            return finish(failure(classified.reason, classified.detail))
+          }
           if (attempt.outcome === "failed") {
             const classified = classifyClaudeSdkResultFailure(null, attempt.detail)
             return finish(failure(classified.reason, classified.detail))
           }
-          if (!sawContent) {
+          // The final text authority order matches the legacy drive: the SDK
+          // result text, then complete assistant blocks, then stream deltas.
+          const adapterText = attempt.resultText !== null
+            ? bounded(redact(attempt.resultText), CLAUDE_LOCAL_FINAL_TEXT_LIMIT)
+            : state.assistantText.length > 0
+              ? state.assistantText
+              : state.deltaText
+          if (adapterText.trim() === "") {
             return finish(failure("session_failed", "the session produced no assistant text"))
           }
           if (attempt.sessionId !== null && attempt.sessionId.length > 0) {
@@ -1457,7 +1636,7 @@ export const makeClaudeLocalRuntime = (options: ClaudeLocalRuntimeOptions): Clau
           })
           return finish({
             ok: true,
-            text: attempt.text,
+            text: adapterText,
             totalTokens: attempt.totalTokens,
             accountRef: account.ref,
             ...(attempt.usage === null ? {} : { usage: attempt.usage }),
@@ -1584,137 +1763,21 @@ export const makeClaudeLocalRuntime = (options: ClaudeLocalRuntimeOptions): Clau
                 sessionId,
               })
             }
-            emitStarted()
-            // MODEL-LEVEL NO-SUBSTITUTION ("IT HAS TO BE CLAUDE"): the init
-            // message reports the effective model. Emit it for renderer
-            // visibility, then fail typed — before any content can stream —
-            // if it is outside the Claude family. This is a provider-side
-            // substitution, not an account failure, so it never rotates.
-            const effectiveModel = typeof (record as { model?: unknown }).model === "string"
-              ? (record as { model: string }).model
-              : null
-            if (effectiveModel !== null && effectiveModel.length > 0) {
-              if (effectiveModel !== announcedModel) {
-                announcedModel = effectiveModel
-                input.emit({ kind: "model_effective", model: bounded(effectiveModel, 120) })
-              }
-              if (effectiveModel !== requestedModel && !effectiveModel.startsWith(`${requestedModel}-`)) {
-                abort.abort()
-                return finish(failure(
-                  "model_substituted",
-                  `requested ${requestedModel}, effective ${effectiveModel}`,
-                ))
-              }
-            }
-            // I2: the SDK init reports each MCP server's connection status.
-            // Surface a typed mcp_server_unavailable for any USER server that
-            // did not connect (never the internal `codex` delegate). The turn
-            // keeps running — a failed server never aborts it.
-            const initServers = (record as { mcp_servers?: unknown }).mcp_servers
-            if (Array.isArray(initServers)) {
-              for (const entry of initServers) {
-                if (entry === null || typeof entry !== "object") continue
-                const name = typeof (entry as { name?: unknown }).name === "string"
-                  ? (entry as { name: string }).name
-                  : ""
-                const status = typeof (entry as { status?: unknown }).status === "string"
-                  ? (entry as { status: string }).status
-                  : ""
-                if (!userServerNames.has(name)) continue
-                if (status === "connected" || status === "pending") continue
-                if (announcedMcpUnavailable.has(name)) continue
-                announcedMcpUnavailable.add(name)
-                input.emit({
-                  kind: "mcp_server_unavailable",
-                  name: bounded(name, 120),
-                  reason: bounded(status === "" ? "server failed to connect" : status, CLAUDE_LOCAL_SUMMARY_LIMIT),
-                })
-              }
+            // Display emission + the "IT HAS TO BE CLAUDE" substitution
+            // verdict live in the shared projector (HARN-09) — the same code
+            // the adapter route observes, so the two paths cannot diverge.
+            const verdict = projector.handleMessage(record)
+            if (verdict.substituted !== undefined) {
+              abort.abort()
+              return finish(failure(
+                "model_substituted",
+                `requested ${verdict.substituted.requestedModel}, effective ${verdict.substituted.effectiveModel}`,
+              ))
             }
             continue
           }
-          if (type === "stream_event") {
-            const event = record.event as Record<string, unknown> | undefined
-            const delta = event?.delta as Record<string, unknown> | undefined
-            if (event?.type === "content_block_delta" && delta?.type === "text_delta" &&
-              typeof delta.text === "string" && delta.text.length > 0) {
-              emitStarted()
-              sawContent = true
-              const text = bounded(redact(delta.text), CLAUDE_LOCAL_DELTA_LIMIT)
-              deltaText = bounded(deltaText + text, CLAUDE_LOCAL_FINAL_TEXT_LIMIT)
-              input.emit({ kind: "text_delta", text })
-            }
-            continue
-          }
-          if (type === "assistant") {
-            emitStarted()
-            for (const block of contentBlocks(record.message)) {
-              if (block.type === "text" && typeof block.text === "string") {
-                assistantText = bounded(assistantText + block.text, CLAUDE_LOCAL_FINAL_TEXT_LIMIT)
-                continue
-              }
-              if (block.type === "tool_use") {
-                sawContent = true
-                const toolCallId = typeof block.id === "string" ? block.id : `${pendingToolCalls.size}`
-                const toolName = bounded(typeof block.name === "string" ? block.name : "tool", 120)
-                pendingToolCalls.set(toolCallId, toolName)
-                pendingToolInputs.set(toolCallId, block.input ?? {})
-                const summary = bounded(
-                  redact(JSON.stringify(block.input ?? {}) ?? ""),
-                  CLAUDE_LOCAL_SUMMARY_LIMIT,
-                )
-                input.emit({
-                  kind: "tool_use",
-                  toolName,
-                  summary,
-                  // Typed item (#8859): the same SDK tool call, source-tagged
-                  // "claude", args projected k/v instead of JSON-in-a-string.
-                  item: workbenchToolCallFromSdkUse(
-                    { toolName, input: block.input ?? {}, status: "in_progress" },
-                    redact,
-                  ),
-                })
-                // J2/J4: the TodoWrite tool carries the current plan/todo list.
-                // Emit the structured plan_updated ADDITIONALLY (the tool_use
-                // trace above is unchanged) so a renderer can draw progress.
-                if (toolName === "TodoWrite") {
-                  const entries = planEntriesFromTodoWrite(block.input)
-                  if (entries !== null) input.emit({ kind: "plan_updated", entries })
-                }
-              }
-            }
-            continue
-          }
-          if (type === "user") {
-            for (const block of contentBlocks(record.message)) {
-              if (block.type !== "tool_result") continue
-              const toolCallId = typeof block.tool_use_id === "string" ? block.tool_use_id : ""
-              const toolName = pendingToolCalls.get(toolCallId) ?? "tool"
-              const ok = block.is_error !== true
-              const content = typeof block.content === "string"
-                ? block.content
-                : contentBlocks(block).map(part =>
-                    typeof part.text === "string" ? part.text : "").join(" ")
-              sawContent = true
-              input.emit({
-                kind: "tool_result",
-                toolName,
-                ok,
-                summary: bounded(redact(content), CLAUDE_LOCAL_SUMMARY_LIMIT),
-                // Typed item (#8859): completion-side payload keeps the
-                // started args (from the pending map) plus the result/error.
-                item: workbenchToolCallFromSdkUse(
-                  {
-                    toolName,
-                    input: pendingToolInputs.get(toolCallId) ?? {},
-                    status: ok ? "completed" : "failed",
-                    ...(ok ? { resultSnippet: content } : { errorMessage: content }),
-                  },
-                  redact,
-                ),
-              })
-              pendingToolInputs.delete(toolCallId)
-            }
+          if (type === "stream_event" || type === "assistant" || type === "user") {
+            projector.handleMessage(record)
             continue
           }
           if (type === "result") {
@@ -1749,7 +1812,9 @@ export const makeClaudeLocalRuntime = (options: ClaudeLocalRuntimeOptions): Clau
       // The final text authority order: the SDK result text, then complete
       // assistant blocks, then accumulated stream deltas — so a build that
       // skips partial events still yields the full reply.
-      const text = resultText ?? (assistantText.length > 0 ? assistantText : deltaText)
+      const finalState = projector.state()
+      const text = resultText ??
+        (finalState.assistantText.length > 0 ? finalState.assistantText : finalState.deltaText)
       if (text.trim() === "") return finish(failure("session_failed", "the session produced no assistant text"))
       if (sessionId !== null) {
         sessionByThread.set(input.threadRef, { sessionId, accountRef: account.ref })

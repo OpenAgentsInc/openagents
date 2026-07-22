@@ -12,6 +12,7 @@ import {
   type CodexAppServerSupervisor,
 } from "./codex-app-server-supervisor.ts"
 import { CLAUDE_LOCAL_SUMMARY_LIMIT, type ClaudeLocalEvent, type ClaudeLocalRateLimitWindow } from "./claude-local-contract.ts"
+import { codexHarnessThreadItem, type CodexEvent } from "./codex-app-server-codex-events.ts"
 import { makeCodexTurnState } from "./codex-turn-state.ts"
 import {
   WORKBENCH_OUTPUT_TAIL_LIMIT,
@@ -87,6 +88,18 @@ export type RunCodexAppServerTurnInput = Readonly<{
   onProviderSession?: (threadId: string) => void
   onProviderTurn?: (turnId: string) => void
   turnReceiptPath?: string
+  /**
+   * HARN-09 (#9167): additive tee of this turn's own-thread wire activity
+   * projected onto the SDK harness adapter's neutral {@link CodexEvent}
+   * vocabulary, in wire order. Feeds the live
+   * `CodexAppServerTransport.runTurnStreaming` bridge
+   * (`codex-app-server-harness-turn.ts`) so the adapter can own the neutral
+   * stream + turn lifecycle while THIS module remains the display authority
+   * (every `ClaudeLocalEvent` emission is unchanged whether or not the tee is
+   * installed). Child-thread activity, display-only notifications, and
+   * identity-fenced stale messages are never teed.
+   */
+  onCodexEvent?: (event: CodexEvent) => void
 }>
 
 const record = (value: unknown): Record<string, unknown> | null =>
@@ -626,6 +639,7 @@ export const runCodexAppServerTurn = async (
       const itemRef = string(params.itemId)
       const delta = string(params.delta)
       if (itemRef === null || delta === null || delta === "") return
+      input.onCodexEvent?.({ type: "reasoning.delta", itemId: itemRef, delta })
       const wasStreaming = reasoningStreams.has(itemRef)
       const previous = reasoningStreams.get(itemRef) ?? { summary: "" }
       const summary = `${previous.summary}${delta}`.slice(-WORKBENCH_REASONING_SUMMARY_LIMIT)
@@ -660,12 +674,29 @@ export const runCodexAppServerTurn = async (
       const delta = string(params.delta)
       if (delta !== null && delta !== "") {
         text += delta
+        input.onCodexEvent?.({
+          type: "agent_message.delta",
+          itemId: string(params.itemId) ?? "agent-message",
+          delta,
+        })
         input.emit({ kind: "text_delta", text: delta.slice(0, 2_000) })
       }
       return
     }
     if (message.method === "thread/tokenUsage/updated") {
       usage = usageFromNotification(params) ?? usage
+      const teeUsage = usageFromNotification(params)
+      if (teeUsage !== null) {
+        input.onCodexEvent?.({
+          type: "token_usage.updated",
+          usage: {
+            inputTokens: teeUsage.inputTokens,
+            cachedInputTokens: teeUsage.cachedInputTokens,
+            outputTokens: teeUsage.outputTokens,
+            reasoningOutputTokens: teeUsage.reasoningOutputTokens,
+          },
+        })
+      }
       // T11 #8868: additive live-meter event alongside the accounting use
       // above — never replaces it, never invents a value it lacks.
       const meter = meterFromTokenUsageNotification(params)
@@ -703,6 +734,14 @@ export const runCodexAppServerTurn = async (
     if (message.method === "item/started" || message.method === "item/completed") {
       const item = record(params.item)
       if (item === null) return
+      const harnessItem = codexHarnessThreadItem(item)
+      if (harnessItem !== null) {
+        input.onCodexEvent?.(
+          message.method === "item/started"
+            ? { type: "item.started", item: harnessItem }
+            : { type: "item.completed", item: harnessItem },
+        )
+      }
       if (item.type === "collabAgentToolCall") {
         const receivers = Array.isArray(item.receiverThreadIds)
           ? item.receiverThreadIds.filter(value => typeof value === "string") as string[]
@@ -900,18 +939,41 @@ export const runCodexAppServerTurn = async (
     }
     if (message.method === "error") {
       const error = record(params.error)
-      if (params.willRetry !== true) finish(classifyFailure(
-        string(error?.message) ?? "Codex app-server error",
-        text,
-        usage,
-        threadId,
-      ))
+      if (params.willRetry !== true) {
+        input.onCodexEvent?.({
+          type: "error",
+          messageSafe: (string(error?.message) ?? "Codex app-server error").slice(0, 400),
+        })
+        finish(classifyFailure(
+          string(error?.message) ?? "Codex app-server error",
+          text,
+          usage,
+          threadId,
+        ))
+      }
       return
     }
     if (message.method === "turn/completed") {
       const turn = record(params.turn)
       if (turn === null) return
       const status = string(turn.status)
+      const currentUsage = usage
+      input.onCodexEvent?.({
+        type: "turn.completed",
+        status: status === "completed"
+          ? "completed"
+          : status === "interrupted" || input.control.interrupted
+            ? "interrupted"
+            : "failed",
+        ...(currentUsage === null ? {} : {
+          usage: {
+            inputTokens: currentUsage.inputTokens,
+            cachedInputTokens: currentUsage.cachedInputTokens,
+            outputTokens: currentUsage.outputTokens,
+            reasoningOutputTokens: currentUsage.reasoningOutputTokens,
+          },
+        }),
+      })
       if (turnDiff !== null && turnDiffRef !== null) {
         const completedDiff: WorkbenchFileChangeItem = {
           ...turnDiff,
@@ -1032,6 +1094,7 @@ export const runCodexAppServerTurn = async (
     const thread = record(threadResponse?.thread)
     threadId = string(thread?.id)
     if (threadId === null) throw new Error("Codex app-server omitted thread identity")
+    input.onCodexEvent?.({ type: "thread.started", threadId })
     input.onProviderSession?.(threadId)
     if (input.ephemeral !== true) lease.registerVisibleThread(threadId)
 
@@ -1057,6 +1120,7 @@ export const runCodexAppServerTurn = async (
     turnId = string(record(turnResponse?.turn)?.id)
     if (turnId === null) throw new Error("Codex app-server omitted turn identity")
     turnState.bindStartedTurn(threadId, turnId)
+    input.onCodexEvent?.({ type: "turn.started" })
     input.onProviderTurn?.(turnId)
     const quarantined = preBindNotifications.splice(0)
     for (const notification of quarantined) handleNotification(notification, "quarantined")

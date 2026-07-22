@@ -103,7 +103,12 @@ import {
 } from "./claude-local-runtime.ts";
 import type { CodexPreflight } from "./codex-preflight.ts";
 import { workbenchItemFromThreadItem } from "./workbench-item-contract.ts";
-import { runCodexAppServerTurn, type CodexAppServerTurnControl } from "./codex-app-server-turn.ts";
+import {
+  runCodexAppServerTurn,
+  type CodexAppServerTurnControl,
+  type RunCodexAppServerTurnInput,
+} from "./codex-app-server-turn.ts";
+import { runCodexAppServerHarnessTurn } from "./codex-app-server-harness-turn.ts";
 import type { CodexAppServerRequest, CodexAppServerSpawn } from "./codex-app-server-client.ts";
 import type { CodexAppServerSupervisor } from "./codex-app-server-supervisor.ts";
 import type { CodexControlPlaneRegistry } from "./codex-control-plane.ts";
@@ -905,7 +910,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
           hostTarget: "local-desktop",
         });
       }
-      return runCodexAppServerTurn({
+      const appServerTurnInput: RunCodexAppServerTurnInput = {
         binary,
         env: appServerEnv,
         workspace: input.workspace,
@@ -960,10 +965,28 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
             threadId,
           }),
         ...(input.onProviderTurn === undefined ? {} : { onProviderTurn: input.onProviderTurn }),
-      });
+      };
+      // HARN-09 (#9167): the app-server lane routes through the SDK harness
+      // adapter DEFAULT-ON (renderer parity is by construction — the legacy
+      // turn keeps display authority while the adapter owns the neutral
+      // stream + lifecycle; see codex-app-server-harness-turn.ts). Setting
+      // OPENAGENTS_DESKTOP_CODEX_HARNESS_ADAPTER=0 is the rollback to the
+      // direct legacy call.
+      if (env.OPENAGENTS_DESKTOP_CODEX_HARNESS_ADAPTER !== "0") {
+        return runCodexAppServerHarnessTurn(appServerTurnInput);
+      }
+      return runCodexAppServerTurn(appServerTurnInput);
     }
-    // HARN-09 (#9167) strangler gate: route the exec attempt through the SDK
-    // harness adapter when explicitly enabled. Default off — zero change.
+    // HARN-09 (#9167) strangler gate — EXEC sub-lane, deliberately OPT-IN
+    // ("1") while the app-server sub-lane above is default-on: the exec lane
+    // is reachable only when `options.appServer` is absent (deterministic
+    // fixtures and compatibility tests; production always configures the
+    // app-server), and its adapter route emits the seven-core LOWERED stream
+    // (toolName-only summaries, no typed workbench items), which does not
+    // reach payload parity with the legacy exec parser below. Flipping it
+    // default-on would regress typed rows for those fixture turns, so it
+    // stays opt-in until the display-consumer extraction applied to the
+    // app-server lane is extended here.
     if (env.OPENAGENTS_DESKTOP_CODEX_HARNESS_ADAPTER === "1") {
       const harnessSelection: ResolvedPylonAccountSelection = {
         provider: "codex",

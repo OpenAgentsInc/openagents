@@ -18,20 +18,17 @@
  * the codex thread id tee from the raw wire (never reconstructed from optional
  * neutral fields).
  *
- * IMPORTANT — display-only parity (the remaining HARN-09 residual): the neutral
- * seven-core stream carries text/reasoning/tool/turn only. The live
- * hand-written path (`codex-app-server-turn.ts`) ALSO emits display-only kinds
- * with no neutral origin — `child_started/activity/completed/failed`,
- * `tool_progress`, `plan_updated`, `meter_updated`, `lane_notice`,
- * `question_pending/resolved`, and the typed workbench `item` payloads (command
- * output tails, per-file diffs, MCP args). Those cannot be reproduced from this
- * core stream. So this module is the PROVEN live-streaming core spine for the
- * app-server lane; wiring it into the live dispatch branch additionally
- * requires the host to reconstruct those display-only kinds from the raw
- * notifications (the codex analog of the claude `onRawMessage` observer,
- * slice 3). Until that reconstruction lands, the live app-server branch keeps
- * the hand-written path; this module is exercised behind the strangler flag and
- * by tests.
+ * Display-only parity (RESOLVED — see `codex-app-server-harness-turn.ts`):
+ * the neutral seven-core stream carries text/reasoning/tool/turn only, while
+ * the live hand-written path (`codex-app-server-turn.ts`) also emits
+ * display-only kinds with no neutral origin (`child_*`, `tool_progress`,
+ * `plan_updated`, `meter_updated`, `lane_notice`, `question_*`, typed
+ * workbench `item` payloads). The live dispatch route therefore wraps the
+ * hand-written turn as the streaming transport: the legacy turn keeps DISPLAY
+ * authority (every renderer event, by-construction parity) and this module's
+ * lowered emissions are suppressed there, while the adapter owns the neutral
+ * stream + lifecycle. Direct callers of this module (tests, headless-style
+ * drives) still get the lowered seven-core renderer stream via `emit`.
  */
 
 import type {

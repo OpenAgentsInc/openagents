@@ -1,9 +1,9 @@
 /**
  * HARN-09 (#9167) Slice 2: run one claude-local turn THROUGH the SDK harness
  * adapter (`makeClaudeCodeHarnessAdapter`) instead of the hand-written
- * `query()` drive — behind the strangler flag
- * `OPENAGENTS_DESKTOP_CLAUDE_HARNESS_ADAPTER=1` (default off, zero behavior
- * change when unset).
+ * `query()` drive — the DEFAULT-ON dispatch route
+ * (`OPENAGENTS_DESKTOP_CLAUDE_HARNESS_ADAPTER=0` is the rollback to the
+ * legacy drive).
  *
  * Division of labor mirrors slice 1: the DESKTOP keeps custody — the exact
  * `query()` options it owns (bundled executable, MCP servers, plugins,
@@ -50,6 +50,17 @@ export interface ClaudeHarnessAttemptInput {
     readonly effectiveModel: string | null;
     readonly mcpServers: ReadonlyArray<{ readonly name: string; readonly status: string }>;
   }) => void;
+  /**
+   * HARN-09 display reconstruction: when provided, EVERY raw SDK message is
+   * handed to this observer (via the adapter's `onRawMessage`) and the
+   * attempt's own internal `model_effective` reconstruction is disabled —
+   * the host's shared display projector becomes the single display
+   * authority, so renderer parity with the legacy `query()` drive is by
+   * construction. Callers that use this typically also pass a no-op `emit`
+   * to suppress the lowered core stream (the projector emits the richer
+   * legacy form of every core event).
+   */
+  readonly observeMessage?: (message: ClaudeCodeMessage) => void;
 }
 
 export interface ClaudeHarnessAttemptResult {
@@ -60,12 +71,20 @@ export interface ClaudeHarnessAttemptResult {
   readonly sessionId: string | null;
   readonly effectiveModel: string | null;
   readonly detail: string;
+  /** Raw `result` message fields teed from the wire (HARN-09 parity): the
+   * host replicates the legacy subtype-exact failure classification and the
+   * legacy final-text authority order (result text, then assistant blocks,
+   * then stream deltas) from these. */
+  readonly resultText: string | null;
+  readonly resultSubtype: string | null;
+  readonly resultIsError: boolean;
 }
 
 const usageFromResult = (message: ClaudeCodeMessage): ClaudeChildUsage | null => {
   if (message.type !== "result") return null;
-  const usage = message.usage;
-  if (usage === undefined) return null;
+  const usage = message.usage as typeof message.usage | null;
+  // `usage: null` is a real wire shape (fixture-pinned); treat like absent.
+  if (usage === undefined || usage === null) return null;
   const input = usage.input_tokens ?? 0;
   const output = usage.output_tokens ?? 0;
   const cacheRead = usage.cache_read_input_tokens ?? 0;
@@ -105,14 +124,33 @@ export const runClaudeHarnessAttempt = async (
     sessionId: string | null;
     effectiveModel: string | null;
     failure: string | null;
-  } = { usage: null, sessionId: null, effectiveModel: null, failure: null };
+    resultText: string | null;
+    resultSubtype: string | null;
+    resultIsError: boolean;
+  } = {
+    usage: null,
+    sessionId: null,
+    effectiveModel: null,
+    failure: null,
+    resultText: null,
+    resultSubtype: null,
+    resultIsError: false,
+  };
 
   // Tee the raw SDK messages the adapter consumes (usage, session id,
   // effective model, error) without disturbing the adapter's projection.
   const teedQuery: ClaudeCodeQuery = (params) => {
     const iterable = input.query(params);
     return (async function* () {
-      for await (const message of iterable) {
+      // Manual iterator drive (not for-await): the terminal-result settle
+      // below must NOT await the source's return() — a stuck iterator close
+      // must never block the settled turn (parity with the legacy drive's
+      // fire-and-forget closeIterator).
+      const iterator = iterable[Symbol.asyncIterator]();
+      while (true) {
+        const step = await iterator.next();
+        if (step.done === true) return;
+        let message = step.value;
         if (message.type === "system" && message.subtype === "init") {
           if (message.session_id.length > 0) wire.sessionId = message.session_id;
           if (typeof (message as { model?: string }).model === "string") {
@@ -145,32 +183,72 @@ export const runClaudeHarnessAttempt = async (
         }
         if (message.type === "result") {
           wire.usage = usageFromResult(message);
+          const resultValue = (message as { result?: unknown }).result;
+          if (typeof resultValue === "string" && resultValue.length > 0) {
+            wire.resultText = resultValue;
+          }
+          const subtypeValue = (message as { subtype?: unknown }).subtype;
+          wire.resultSubtype = typeof subtypeValue === "string" ? subtypeValue : null;
+          wire.resultIsError = message.is_error === true;
           if (message.is_error === true) {
             wire.failure = (message as { result?: string }).result ?? "claude turn failed";
           }
+          // `usage: null` is a real wire shape (fixture-pinned); the adapter's
+          // projection expects the field absent instead. Normalize the copy
+          // handed to the adapter — the tee above already read the original.
+          if ((message as { usage?: unknown }).usage === null) {
+            const { usage: _nullUsage, ...rest } = message as unknown as Record<string, unknown>;
+            message = rest as unknown as typeof message;
+          }
         }
         yield message;
+        // Terminal-result settle (parity with the legacy drive's
+        // break-on-result + fire-and-forget closeIterator): the SDK `result`
+        // message is the turn's terminal frame, so the drive settles even
+        // when the underlying iterator never resolves its close.
+        // Query.close() is the SDK's documented subprocess/resource authority
+        // — invoke it first, then best-effort iterator return, never awaited.
+        if (message.type === "result") {
+          try {
+            (iterable as { close?: () => void }).close?.();
+          } catch {
+            // Terminal provider truth still wins cleanup exceptions.
+          }
+          try {
+            const closing = iterator.return?.();
+            if (closing !== undefined) void Promise.resolve(closing).catch(() => undefined);
+          } catch {
+            // An iterator cleanup exception cannot un-settle the turn.
+          }
+          return;
+        }
       }
     })();
   };
 
-  // Reconstruct the display-only `model_effective` renderer event from the
-  // raw init message (openagents#9167 slice 3): the neutral stream has no
-  // effective-model event, so the host lowers it from the observed message.
+  // Display reconstruction from the raw wire (openagents#9167 slice 3): when
+  // the host supplies `observeMessage`, its shared display projector is the
+  // single display authority and observes EVERY raw message; otherwise this
+  // module reconstructs the display-only `model_effective` renderer event
+  // itself (the neutral stream has no effective-model event).
   let announcedModel: string | null = null;
+  const observeMessage = input.observeMessage;
   const adapter = makeClaudeCodeHarnessAdapter({
     query: teedQuery,
     cwd: input.workspace,
     model: input.model,
     queryOverrides: input.queryOverrides,
-    onRawMessage: (message) => {
-      if (message.type !== "system" || message.subtype !== "init") return;
-      const model = (message as { model?: string }).model;
-      if (typeof model === "string" && model.length > 0 && model !== announcedModel) {
-        announcedModel = model;
-        input.emit({ kind: "model_effective", model: model.slice(0, 120) });
-      }
-    },
+    onRawMessage:
+      observeMessage !== undefined
+        ? observeMessage
+        : (message) => {
+            if (message.type !== "system" || message.subtype !== "init") return;
+            const model = (message as { model?: string }).model;
+            if (typeof model === "string" && model.length > 0 && model !== announcedModel) {
+              announcedModel = model;
+              input.emit({ kind: "model_effective", model: model.slice(0, 120) });
+            }
+          },
   });
 
   const program = Effect.gen(function* () {
@@ -209,6 +287,9 @@ export const runClaudeHarnessAttempt = async (
     usage: wire.usage,
     sessionId: wire.sessionId,
     effectiveModel: wire.effectiveModel,
+    resultText: wire.resultText,
+    resultSubtype: wire.resultSubtype,
+    resultIsError: wire.resultIsError,
   });
 
   try {

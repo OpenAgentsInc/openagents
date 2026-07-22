@@ -230,6 +230,48 @@ describe("makeCodexLocalRuntime.runTurn", () => {
     supervisor.close()
   })
 
+  test("HARN-09 rollback: OPENAGENTS_DESKTOP_CODEX_HARNESS_ADAPTER=0 keeps the direct legacy app-server call", async () => {
+    // The default (flag unset) routes this same shape through the SDK harness
+    // adapter bridge — every other app-server test in this file soaks that
+    // path. This test pins the documented rollback: "0" restores the direct
+    // legacy call and the turn still completes identically.
+    const fake = appServerFixture()
+    const root = scratch()
+    const events: Array<ClaudeLocalEvent> = []
+    const runtime = makeCodexLocalRuntime({
+      scratchRoot: () => root,
+      workspaceRoot: () => root,
+      env: { OPENAGENTS_DESKTOP_CODEX_HARNESS_ADAPTER: "0" },
+      discoverImpl: async () => [{ ref: "ambient", home: "/owner/.codex", source: "current_session" }],
+      health: makeCodexAccountHealth(),
+      preflight: verifiedPreflight(["ambient"]),
+      appServer: {
+        binary: () => "/packaged/codex",
+        installProductSpecSkill: account => ({
+          skillRoot: `${account.home}/skills`,
+          skillPath: `${account.home}/skills/productspec-work/SKILL.md`,
+        }),
+        spawnImpl: fake.spawn,
+      },
+    })
+    const running = runtime.runTurn({
+      turnRef: "turn-rollback",
+      threadRef: "thread-rollback",
+      history: [],
+      message: "Reply with the rollback proof",
+      emit: event => events.push(event),
+    })
+    await waitFor(fake.messages, 1); fake.respond(1, {})
+    await waitFor(fake.messages, 3)
+    fake.respond(2, { thread: { id: "rollback-thread" } })
+    await waitFor(fake.messages, 4)
+    fake.respond(3, { turn: { id: "rollback-turn" } })
+    fake.notify("item/agentMessage/delta", { threadId: "rollback-thread", turnId: "rollback-turn", delta: "Rolled back." })
+    fake.notify("turn/completed", { threadId: "rollback-thread", turn: { id: "rollback-turn", status: "completed", error: null } })
+    await expect(running).resolves.toMatchObject({ ok: true, text: "Rolled back." })
+    expect(events.map(event => event.kind)).toContain("text_delta")
+  })
+
   test("Full Auto (#8852) forces approvalPolicy never and prefixes the turn prompt with the Full Auto instruction", async () => {
     const fake = appServerFixture()
     const root = scratch()

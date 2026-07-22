@@ -1741,8 +1741,9 @@ describe("makeClaudeLocalRuntime.runTurn — HARN-09 slice 2 SDK harness adapter
     if (!result.ok) expect(result.reason).toBe("model_substituted")
   })
 
-  test("with the flag OFF the same turn keeps the legacy drive (no adapter)", async () => {
+  test("rollback: OPENAGENTS_DESKTOP_CLAUDE_HARNESS_ADAPTER=0 keeps the legacy drive (no adapter)", async () => {
     const harness = makeRuntimeHarness({
+      extraEnv: { OPENAGENTS_DESKTOP_CLAUDE_HARNESS_ADAPTER: "0" },
       script: async function* () {
         yield { type: "system", subtype: "init", session_id: "session-legacy", model: "claude-sonnet-5" }
         yield {
@@ -1768,5 +1769,150 @@ describe("makeClaudeLocalRuntime.runTurn — HARN-09 slice 2 SDK harness adapter
     })
     expect(result.ok).toBe(true)
     if (result.ok) expect(result.totalTokens).toBe(17)
+  })
+})
+
+describe("makeClaudeLocalRuntime.runTurn — HARN-09 renderer parity (legacy drive vs default-on adapter route)", () => {
+  /**
+   * The SAME scripted SDK wire is driven through the legacy `query()` path
+   * (flag "0") and the default-on adapter route, and the full ClaudeLocalEvent
+   * sequences must be EQUAL — order, kinds, and payload fields. Parity is by
+   * construction (both paths emit through the shared display projector); these
+   * tests pin that construction. No wall-clock fields exist on this lane, so
+   * the comparison is exact with zero normalization.
+   */
+  const runParity = async (
+    script: () => AsyncIterable<unknown>,
+    turn?: Partial<{ model: "claude-sonnet-5" | "claude-opus-4-8" }>,
+  ) => {
+    const runPath = async (extraEnv?: Record<string, string>) => {
+      const harness = makeRuntimeHarness({ script, ...(extraEnv === undefined ? {} : { extraEnv }) })
+      const sink = collect()
+      const result = await harness.runtime.runTurn({
+        turnRef: "turn-parity",
+        threadRef: "thread-parity",
+        history: [],
+        message: "run the parity scenario",
+        model: turn?.model ?? "claude-sonnet-5",
+        emit: sink.emit,
+      })
+      return { events: sink.events, result }
+    }
+    const legacy = await runPath({ OPENAGENTS_DESKTOP_CLAUDE_HARNESS_ADAPTER: "0" })
+    const adapter = await runPath()
+    return { legacy, adapter }
+  }
+
+  test("rich turn (init + mcp failure + tool_use/TodoWrite + tool_result + deltas + result): identical stream and result", async () => {
+    const script = async function* (): AsyncIterable<unknown> {
+      yield {
+        type: "system",
+        subtype: "init",
+        session_id: "session-parity",
+        model: "claude-sonnet-5",
+        mcp_servers: [{ name: "not-configured-server", status: "failed" }],
+      }
+      yield {
+        type: "stream_event",
+        event: { type: "content_block_delta", delta: { type: "text_delta", text: "working… " } },
+      }
+      yield {
+        type: "assistant",
+        message: {
+          content: [
+            { type: "text", text: "Let me update the plan." },
+            {
+              type: "tool_use",
+              id: "tool-todo",
+              name: "TodoWrite",
+              input: { todos: [
+                { content: "Read the fixture", status: "completed" },
+                { content: "Reply", status: "in_progress" },
+              ] },
+            },
+            { type: "tool_use", id: "tool-bash", name: "Bash", input: { command: "echo parity" } },
+          ],
+        },
+      }
+      yield {
+        type: "user",
+        message: {
+          content: [
+            { type: "tool_result", tool_use_id: "tool-bash", is_error: false, content: "parity" },
+          ],
+        },
+      }
+      yield {
+        type: "stream_event",
+        event: { type: "content_block_delta", delta: { type: "text_delta", text: "done" } },
+      }
+      yield {
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        result: "working… done",
+        usage: { input_tokens: 20, output_tokens: 9, cache_read_input_tokens: 4 },
+      }
+    }
+    const { legacy, adapter } = await runParity(script)
+    expect(adapter.events).toEqual(legacy.events)
+    expect(adapter.result).toEqual(legacy.result)
+    const kinds = new Set(legacy.events.map(event => event.kind))
+    for (const kind of [
+      "turn_started",
+      "model_effective",
+      "text_delta",
+      "tool_use",
+      "tool_result",
+      "plan_updated",
+      "turn_completed",
+    ]) {
+      expect(kinds).toContain(kind)
+    }
+    expect(legacy.result).toMatchObject({ ok: true, text: "working… done", totalTokens: 33 })
+  })
+
+  test("error-subtype failure classifies identically", async () => {
+    const script = async function* (): AsyncIterable<unknown> {
+      yield { type: "system", subtype: "init", session_id: "session-err", model: "claude-sonnet-5" }
+      yield {
+        type: "result",
+        subtype: "error_during_execution",
+        is_error: true,
+        result: "execution blew up mid-turn",
+        usage: null,
+      }
+    }
+    const { legacy, adapter } = await runParity(script)
+    expect(adapter.events).toEqual(legacy.events)
+    expect(adapter.result).toEqual(legacy.result)
+    expect(legacy.result.ok).toBe(false)
+  })
+
+  test("max_turns budget failure classifies identically", async () => {
+    const script = async function* (): AsyncIterable<unknown> {
+      yield { type: "system", subtype: "init", session_id: "session-max", model: "claude-sonnet-5" }
+      yield { type: "result", subtype: "error_max_turns", is_error: false, result: "", usage: null }
+    }
+    const { legacy, adapter } = await runParity(script)
+    expect(adapter.events).toEqual(legacy.events)
+    expect(adapter.result).toEqual(legacy.result)
+    if (!legacy.result.ok) expect(legacy.result.reason).toBe("budget_exceeded")
+  })
+
+  test("model substitution streams the identical prefix then fails typed in both paths", async () => {
+    const script = async function* (): AsyncIterable<unknown> {
+      yield { type: "system", subtype: "init", session_id: "session-sub", model: "gpt-5.6-sol" }
+      yield {
+        type: "stream_event",
+        event: { type: "content_block_delta", delta: { type: "text_delta", text: "must not render" } },
+      }
+      yield { type: "result", subtype: "success", is_error: false, result: "must not count", usage: null }
+    }
+    const { legacy, adapter } = await runParity(script)
+    expect(adapter.events).toEqual(legacy.events)
+    expect(adapter.result).toEqual(legacy.result)
+    if (!legacy.result.ok) expect(legacy.result.reason).toBe("model_substituted")
+    expect(legacy.events.some(event => event.kind === "text_delta")).toBe(false)
   })
 })

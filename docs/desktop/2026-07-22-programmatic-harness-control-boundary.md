@@ -144,5 +144,10 @@ tripwires.
 
 The dispatch-collapse program (#9167) routes the Desktop's live lanes onto
 these same SDK adapters, so a graded headless run and a UI turn share one
-execution spine. Codex is flag-flippable onto the adapter path today
-(`OPENAGENTS_DESKTOP_CODEX_HARNESS_ADAPTER=1`).
+execution spine. The codex app-server lane and the claude lane use the
+adapter route by default, with renderer parity by construction. Set
+`OPENAGENTS_DESKTOP_CODEX_HARNESS_ADAPTER=0` or
+`OPENAGENTS_DESKTOP_CLAUDE_HARNESS_ADAPTER=0` to go back to the legacy
+drive. The codex exec sub-lane serves fixtures only and stays opt-in
+through `OPENAGENTS_DESKTOP_CODEX_HARNESS_ADAPTER=1` when no app-server is
+configured.
