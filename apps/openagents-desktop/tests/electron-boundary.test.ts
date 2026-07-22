@@ -344,6 +344,7 @@ describe("Effect Native renderer boundary (no parallel UI architecture)", () => 
     "react-full-auto-surface.tsx",
     "react-settings-surface.tsx",
     "react-sensitive-text.tsx",
+    "react-structured-payload.tsx",
     "react-timeline.tsx",
     "react-workspace-surfaces.tsx",
     "visual-baseline-workbench.tsx",

@@ -6,8 +6,51 @@ import {
 export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocument =
   {
     schemaVersion: BehaviorContractSchemaVersion,
-    version: "2026-07-22.2",
+    version: "2026-07-22.3",
     contracts: [
+      {
+        contractId: "openagents_desktop.chat.structured_payload_card.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "conversation timeline structured-payload rendering",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: {
+          channel: "issue",
+          statedBy: "owner",
+          statedOn: "2026-07-22",
+        },
+        statement:
+          "A conversation message whose content is (or contains) a JSON payload must not render as a raw inline JSON blob. If the content is JSON, render it as a clean, collapsible structured card, and render the Full Auto mission packet as a mission card — objective and done condition readable at a glance — not raw JSON.",
+        authorityBoundary:
+          "Renderer-only presentation. Detection reads the already-produced message body; it never changes how the Full Auto mission packet is produced or dispatched (full-auto-mission.ts remains the producer authority). The card shows the same content faithfully — the objective and done condition stay fully readable when expanded and the raw JSON stays available via copy-raw — so nothing is hidden or altered. The renderer keeps its own copy of the mission schema discriminator and never imports the main-process producer into the renderer bundle; an oracle asserts the two literals stay in sync.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/renderer/structured-payload.ts",
+          "apps/openagents-desktop/src/renderer/react-structured-payload.tsx",
+          "apps/openagents-desktop/src/renderer/react-timeline.tsx",
+          "packages/ui/src/desktop-workbench.css",
+        ],
+        oracles: [
+          {
+            id: "structured_payload_card.detection_and_mission_schema_sync",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/structured-payload.test.ts",
+            description:
+              "Proves whole-body JSON and the embedded Full Auto mission packet (from the real produced prompt) are detected, ordinary prose with braces is not, and the renderer discriminator stays in sync with the producer's FULL_AUTO_MISSION_SCHEMA.",
+          },
+          {
+            id: "structured_payload_card.mission_and_json_card_rendering",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/renderer/react-structured-payload.test.tsx",
+            description:
+              "Proves the mission packet renders as a mission card with the verbatim objective/done condition, lane, and turn budget (no 'Show full message' raw dump), generic JSON renders as a key/value tree card, copy-raw is preserved, TimelineItem routes a mission-packet user message to the card instead of a raw bubble, and ordinary messages are unaffected.",
+          },
+        ],
+        verification:
+          "Desktop structured-payload detection and react-structured-payload render suites plus the react-timeline suite and Desktop typecheck in the normal sweep. No release command is part of the oracle.",
+      },
       {
         contractId: "openagents_desktop.chat.history_recall_cited_tool_row.v1",
         state: "enforced",

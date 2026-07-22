@@ -56,6 +56,8 @@ import { agentLaneAttribution } from "./agent-identity.ts";
 import type { DesktopNoteEntry } from "./shell.ts";
 import { parseChatMarkdown } from "./markdown.ts";
 import { childInterruptable } from "./runtime-cards.ts";
+import { StructuredPayloadCard } from "./react-structured-payload.tsx";
+import { detectStructuredPayload } from "./structured-payload.ts";
 import { humanizeToolInvocation, projectToolCardEntries } from "./tool-cards.ts";
 
 const terminalStatuses = new Set([
@@ -603,6 +605,33 @@ const Blocks = ({ blocks }: { readonly blocks: ReadonlyArray<MarkdownBlock> }): 
     return null;
   });
 
+/**
+ * A fenced code block. A ```json (json/jsonc/json5) fence whose content parses
+ * as a JSON object/array upgrades to the structured-payload card instead of a
+ * raw `<pre>` dump — the "message that CONTAINS a fenced JSON object" case,
+ * with the mission packet still special-cased when it appears inside a fence.
+ * Every other language stays a plain code block.
+ */
+const MarkdownCodeSegment = ({
+  index,
+  language,
+  code,
+}: {
+  readonly index: number;
+  readonly language: string | undefined;
+  readonly code: string;
+}): ReactElement => {
+  const detection =
+    language !== undefined && /^json[c5]?$/i.test(language) ? detectStructuredPayload(code) : null;
+  if (detection !== null)
+    return <StructuredPayloadCard detection={detection} itemKey={`payload-fenced-${index}`} />;
+  return (
+    <pre>
+      <code data-language={language}>{code}</code>
+    </pre>
+  );
+};
+
 export const SafeReactMarkdown = memo(({ value }: { readonly value: string }): ReactElement => {
   const segments = useMemo(() => parseChatMarkdown(value), [value]);
   return (
@@ -611,9 +640,7 @@ export const SafeReactMarkdown = memo(({ value }: { readonly value: string }): R
         segment.kind === "markdown" ? (
           <Blocks key={index} blocks={segment.blocks} />
         ) : segment.kind === "code" ? (
-          <pre key={index}>
-            <code data-language={segment.language}>{segment.code}</code>
-          </pre>
+          <MarkdownCodeSegment key={index} index={index} language={segment.language} code={segment.code} />
         ) : (
           <hr key={index} />
         ),
@@ -1168,6 +1195,19 @@ export const TimelineItem = ({
         itemKey={record.key}
       />
     );
+
+  // Structured-payload messages (#META-1 owner report): a conversation message
+  // whose body IS (or embeds) a JSON payload renders as a collapsible card, not
+  // a raw inline JSON blob. The Full Auto host mission packet — the first
+  // message of a run — becomes a purpose-built mission card. This runs before
+  // the user/assistant bubble branches so both roles benefit, and stays after
+  // the danger/notice classification is computed below only for readability; a
+  // detected payload short-circuits to the card here.
+  if (isMessageRecord(record) && !record.redacted) {
+    const detection = detectStructuredPayload(record.body);
+    if (detection !== null)
+      return <StructuredPayloadCard detection={detection} itemKey={record.key} />;
+  }
 
   const danger =
     record.kind === "error" ||

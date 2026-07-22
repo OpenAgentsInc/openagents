@@ -3349,6 +3349,299 @@ html[data-desktop-platform="darwin"] .oa-react-rail-windowbar {
   color: var(--en-color-accent);
 }
 
+/* ---------------------------------------------------------------------------
+   Structured-payload cards (META-1 owner report): a conversation message whose
+   body IS (or embeds) a JSON payload renders as a collapsible card instead of
+   a raw inline JSON blob. The Full Auto host mission packet becomes a
+   purpose-built mission card. Same timeline-card family as plan/work/notice:
+   full-width column, hairline border, surface fill, mono machine voice, the
+   quiet grey luminance ladder, and the accent reserved for structure. No new
+   palette — every value rides the shared --en-* tokens.
+   --------------------------------------------------------------------------- */
+.oa-react-payload {
+  width: min(720px, 100%);
+  margin: 0 auto var(--en-spacing-3);
+  border: 1px solid var(--en-color-borderSubtle);
+  border-radius: var(--en-radius-md);
+  background: var(--en-color-surface);
+}
+.oa-react-payload[data-kind="full_auto_mission"] {
+  /* The mission packet is host authority, not chat: a slightly stronger edge
+     marks it as the run's governing card without a colored side-stripe. */
+  border-color: var(--en-color-borderStrong);
+}
+.oa-react-payload > summary {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) max-content;
+  align-items: center;
+  gap: var(--en-spacing-2);
+  min-height: 32px;
+  padding: var(--en-spacing-1) var(--en-spacing-3);
+  cursor: pointer;
+  list-style: none;
+}
+.oa-react-payload > summary::-webkit-details-marker {
+  display: none;
+}
+.oa-react-payload > summary:hover {
+  background: var(--en-color-stateHover);
+  border-radius: var(--en-radius-md) var(--en-radius-md) 0 0;
+}
+/* Chip: mono, uppercase, letterspaced, square, ~20% accent fill / ~80% text —
+   the badge formula (design spec §2.4), with a leading structure glyph. */
+.oa-react-payload-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--en-spacing-1);
+  max-width: 20ch;
+  padding: 1px 5px;
+  border-radius: var(--en-radius-none);
+  overflow: hidden;
+  color: var(--en-color-accent);
+  background: color-mix(in srgb, var(--en-color-accent) 18%, transparent);
+  font-family: var(--oa-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.oa-react-payload-chip > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.oa-react-payload-chip > svg {
+  width: 11px;
+  height: 11px;
+  flex: none;
+}
+.oa-react-payload-preview {
+  overflow: hidden;
+  color: var(--en-color-textMuted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.oa-react-payload-caret {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  color: var(--en-color-textFaint);
+  transition: transform var(--en-motion-fast) var(--en-ease-basic);
+}
+.oa-react-payload[open] > summary .oa-react-payload-caret {
+  transform: rotate(90deg);
+}
+.oa-react-payload-body {
+  display: grid;
+  gap: var(--en-spacing-3);
+  padding: var(--en-spacing-3);
+  border-top: 1px solid var(--en-color-borderSubtle);
+}
+
+/* Mission card interior. */
+.oa-react-mission-field {
+  display: grid;
+  gap: var(--en-spacing-1);
+}
+.oa-react-payload-label {
+  color: var(--en-color-textFaint);
+  font-family: var(--oa-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+/* Objective is the one thing the owner must read at a glance: full brightness,
+   comfortable measure, wrapped — never a single overflowing line. */
+.oa-react-mission-objective {
+  margin: 0;
+  max-width: 68ch;
+  color: var(--en-color-textPrimary);
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.oa-react-mission-text {
+  margin: 0;
+  max-width: 68ch;
+  color: var(--en-color-textMuted);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.oa-react-mission-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--en-spacing-2) var(--en-spacing-4);
+  margin: 0;
+}
+.oa-react-mission-meta-row {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--en-spacing-1);
+}
+.oa-react-mission-meta-row dt {
+  color: var(--en-color-textFaint);
+  font-family: var(--oa-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.oa-react-mission-meta-row dd {
+  margin: 0;
+  color: var(--en-color-textPrimary);
+  font-size: 12px;
+}
+.oa-react-payload-mono {
+  font-family: var(--oa-font-mono);
+}
+.oa-react-mission-refs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--en-spacing-1) var(--en-spacing-2);
+}
+.oa-react-payload-ref {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--en-spacing-1);
+  max-width: 100%;
+  padding: 1px var(--en-spacing-1);
+  border: 1px solid var(--en-color-borderSubtle);
+  border-radius: var(--en-radius-sm);
+  font-family: var(--oa-font-mono);
+  font-size: 10px;
+}
+.oa-react-payload-ref-term {
+  color: var(--en-color-textFaint);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.oa-react-payload-ref-value {
+  overflow: hidden;
+  color: var(--en-color-textMuted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Actions row + raw-JSON escape hatch (copy-raw is preserved everywhere). */
+.oa-react-payload-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--en-spacing-2);
+}
+.oa-react-payload-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--en-spacing-1);
+  padding: 2px var(--en-spacing-2);
+  border: 1px solid var(--en-color-borderSubtle);
+  border-radius: var(--en-radius-sm);
+  background: transparent;
+  color: var(--en-color-textMuted);
+  cursor: pointer;
+  font-family: var(--oa-font-mono);
+  font-size: 11px;
+  transition: color var(--en-motion-fast) var(--en-ease-basic),
+    border-color var(--en-motion-fast) var(--en-ease-basic);
+}
+.oa-react-payload-copy:hover {
+  border-color: var(--en-color-borderStrong);
+  color: var(--en-color-textPrimary);
+}
+.oa-react-payload-copy:disabled {
+  color: var(--en-color-accent);
+  cursor: default;
+}
+.oa-react-payload-copy > svg {
+  width: 12px;
+  height: 12px;
+}
+.oa-react-payload-raw > summary {
+  color: var(--en-color-textFaint);
+  cursor: pointer;
+  font-family: var(--oa-font-mono);
+  font-size: 11px;
+  list-style: none;
+}
+.oa-react-payload-raw > summary::-webkit-details-marker {
+  display: none;
+}
+.oa-react-payload-raw > summary:hover {
+  color: var(--en-color-textMuted);
+}
+.oa-react-payload-raw pre {
+  max-height: 280px;
+  margin: var(--en-spacing-2) 0 0;
+  padding: var(--en-spacing-2);
+  overflow: auto;
+  border: 1px solid var(--en-color-borderSubtle);
+  border-radius: var(--en-radius-sm);
+  background: var(--en-color-background);
+  color: var(--en-color-textMuted);
+  font-family: var(--oa-font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre;
+}
+
+/* Generic JSON key/value tree: indented, monospace, restrained syntax colour —
+   keys on the accent, scalars on the grey ladder, structure guides as hairlines. */
+.oa-react-payload-tree {
+  overflow-x: auto;
+  font-family: var(--oa-font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.oa-react-payload-nest {
+  display: grid;
+  gap: 1px;
+}
+.oa-react-payload-entry > .oa-react-payload-nest {
+  padding-left: var(--en-spacing-3);
+  border-left: 1px solid var(--en-color-borderSubtle);
+}
+.oa-react-payload-entry {
+  display: flex;
+  align-items: baseline;
+  gap: var(--en-spacing-1);
+  min-width: 0;
+}
+.oa-react-payload-entry[data-branch="true"] {
+  display: block;
+}
+.oa-react-payload-key {
+  flex: none;
+  color: var(--en-color-accent);
+}
+.oa-react-payload-punct {
+  flex: none;
+  color: var(--en-color-textFaint);
+}
+.oa-react-payload-string {
+  color: var(--en-color-textPrimary);
+  overflow-wrap: anywhere;
+}
+.oa-react-payload-number,
+.oa-react-payload-boolean {
+  color: var(--en-color-success);
+}
+.oa-react-payload-null {
+  color: var(--en-color-textFaint);
+}
+.oa-react-payload-collapsed,
+.oa-react-payload-overflow {
+  color: var(--en-color-textFaint);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oa-react-payload-caret,
+  .oa-react-payload-copy {
+    transition: none;
+  }
+}
+
 /* Long-tail honest rows (issue 8869, T12 epic 8857 wave 2): quiet, single-line
    mono ledger rows for ThreadItem variants with no tool-call/status shape of
    their own (compaction, sleep, review-mode, hook prompt). These are
