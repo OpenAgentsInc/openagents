@@ -4,9 +4,9 @@
   "reviewState": "public_safe_synthetic",
   "developmentRef": "development.json",
   "holdoutRef": "holdout.json",
-  "developmentDigest": "59061dfcb05a2fa6036f5e44b021a2ac21315bfbda56eb8a9c9a55dbdcc3af0b",
-  "holdoutDigest": "f1d7dcd02ea8e65cf6098c6dd10d9a5aeaaeb8057463653a78aae68ec71dba2c",
-  "datasetRevisionDigest": "5a336fd100ca6ce9c39a4da0a71069a0fa37096952bb3048f524900934b0e89c",
+  "developmentDigest": "2cc7b26d9924bd6e25c666ce48739aaaab37e849bc2e5e8df5be94f4d801a1cf",
+  "holdoutDigest": "6bebcdd8ecf6396c55b8492a50c758fb517e0044709464a53129f842d872ded2",
+  "datasetRevisionDigest": "693568fd4be50874ca5226786188e9f21c0a2879225aa0f5b52a19bd793fbe0c",
   "requiredChallengeClasses": [
     "same_name_entities",
     "contradictory_mentions",

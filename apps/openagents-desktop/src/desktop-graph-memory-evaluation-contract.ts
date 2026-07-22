@@ -68,6 +68,7 @@ export const GraphMemoryEvaluationFixtureRowSchema = Schema.Struct({
           "revoke",
           "replace",
           "extract_partial",
+          "snapshot_graph",
           "advance_graph",
         ]),
         sourceRef: Schema.NullOr(boundedRef),
@@ -250,6 +251,11 @@ export const GraphMemoryEvaluationArmRowSchema = Schema.Struct({
     status: Schema.Literals(["complete", "partial", "refused", "failed", "not_run"]),
     receiptDigest: Schema.NullOr(digest),
     usageTruth: Schema.Literals(["exact", "unavailable", "not_run"]),
+    inputCorpusDigest: Schema.NullOr(digest),
+    budgetDigest: Schema.NullOr(digest),
+    graphStateDigest: Schema.NullOr(digest),
+    entityCount: nonNegativeInteger,
+    mergeCount: nonNegativeInteger,
   }),
   citationEvidence: Schema.Struct({
     validationDigest: Schema.NullOr(digest),
@@ -260,6 +266,7 @@ export const GraphMemoryEvaluationArmRowSchema = Schema.Struct({
   validCitationRefs: Schema.Array(boundedRef),
   mergedEntityPairs: Schema.Array(Schema.Tuple([boundedRef, boundedRef])),
   observedEntityRefs: Schema.Array(boundedRef),
+  retrievedSourceRefs: Schema.Array(boundedRef),
   retrievedElementAliases: Schema.Array(boundedRef),
   retrievalEvidence: Schema.Struct({
     mappingDigest: digest,

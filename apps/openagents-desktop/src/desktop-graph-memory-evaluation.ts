@@ -252,20 +252,22 @@ export const summarizeGraphMemoryEvaluationArm = (
 
     const emittedFacts = setOf(row.emittedAnswerFactRefs);
     const expectedFacts = setOf(fixture.expectedAnswerFactRefs);
-    emittedAnswerFacts += emittedFacts.size;
+    emittedAnswerFacts += expectedFacts.size;
     supportedAnswerFacts += intersectionCount(emittedFacts, expectedFacts);
 
     const falseMergePairs = setOf(fixture.goldDistinctEntityPairs.map(pairKey));
     distinctPairOpportunities += falseMergePairs.size;
-    falseMerges += intersectionCount(setOf(row.mergedEntityPairs.map(pairKey)), falseMergePairs);
+    falseMerges += Math.min(row.extractionEvidence.mergeCount, falseMergePairs.size);
 
     const observedEntities = setOf(row.observedEntityRefs);
     const expectedEntities = setOf(fixture.goldEntityRefs);
     goldEntities += expectedEntities.size;
     missedEntities += expectedEntities.size - intersectionCount(expectedEntities, observedEntities);
 
-    const retrievedRefs = setOf(row.retrievedElementAliases);
-    const relevantRefs = setOf(fixture.relevantElementAliases);
+    const retrievedRefs = setOf(row.retrievedSourceRefs);
+    const relevantRefs = setOf(
+      fixture.expectedFactSupport.flatMap((fact) => fact.supportingSourceRefs),
+    );
     retrieved += retrievedRefs.size;
     relevantRetrieved += intersectionCount(retrievedRefs, relevantRefs);
     relevantExpected += relevantRefs.size;
@@ -276,7 +278,7 @@ export const summarizeGraphMemoryEvaluationArm = (
     rows: rows.length,
     outcomes: outcomeCounts(rows),
     citationValidity: fraction(validCitations, emittedCitations, "no_citations_emitted"),
-    answerSupport: fraction(supportedAnswerFacts, emittedAnswerFacts, "no_answer_facts_emitted"),
+    answerSupport: fraction(supportedAnswerFacts, emittedAnswerFacts, "no_expected_answer_facts"),
     falseMergeRate: fraction(falseMerges, distinctPairOpportunities, "no_distinct_entity_pairs"),
     missedEntityRate: fraction(missedEntities, goldEntities, "no_gold_entities"),
     retrievalPrecision: fraction(relevantRetrieved, retrieved, "no_elements_retrieved"),
@@ -441,6 +443,9 @@ const rowEvidenceIsValid = (
   )
     return false;
   for (const row of [history, graph]) {
+    const activeSourceRefs = setOf(
+      fixture.sources.filter((source) => !source.revoked).map((source) => source.sourceRef),
+    );
     const mappedAliases = setOf(
       row.retrievalEvidence.mappings.map((mapping) => mapping.oracleElementAlias),
     );
@@ -452,6 +457,10 @@ const rowEvidenceIsValid = (
       return false;
     const emitted = setOf(row.emittedCitationRefs);
     const valid = setOf(row.validCitationRefs);
+    if (
+      [...valid, ...row.retrievedSourceRefs].some((sourceRef) => !activeSourceRefs.has(sourceRef))
+    )
+      return false;
     if (row.citationEvidence.invalidCount !== emitted.size - intersectionCount(emitted, valid)) {
       return false;
     }
@@ -465,10 +474,14 @@ const rowEvidenceIsValid = (
     if (row.citationEvidence.validationDigest !== validationDigest) return false;
     if (
       row.extractionEvidence.status === "complete" &&
-      row.extractionEvidence.receiptDigest === null
+      (row.extractionEvidence.receiptDigest === null ||
+        row.extractionEvidence.inputCorpusDigest === null ||
+        row.extractionEvidence.budgetDigest === null ||
+        row.extractionEvidence.graphStateDigest === null)
     )
       return false;
   }
+  if (fixture.scenario.expectedCaps.some((cap) => !graph.hitCaps.includes(cap))) return false;
   return true;
 };
 

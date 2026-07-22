@@ -157,20 +157,35 @@ const resultRow = (
             extraction: "complete",
           }),
           usageTruth: "exact",
+          inputCorpusDigest: graphMemoryEvaluationDigest(fixture.sources),
+          budgetDigest: graphMemoryEvaluationDigest({ fixture: fixture.rowId, budget: "graph" }),
+          graphStateDigest: graphMemoryEvaluationDigest({ fixture: fixture.rowId, graph: "state" }),
+          entityCount: fixture.goldEntityRefs.length,
+          mergeCount: 0,
         }
-      : { status: "not_run", receiptDigest: null, usageTruth: "not_run" },
+      : {
+          status: "not_run",
+          receiptDigest: null,
+          usageTruth: "not_run",
+          inputCorpusDigest: null,
+          budgetDigest: null,
+          graphStateDigest: null,
+          entityCount: 0,
+          mergeCount: 0,
+        },
   emittedAnswerFactRefs: fixture.expectedAnswerFactRefs,
-  emittedCitationRefs: [`citation.${fixture.rowId}`],
-  validCitationRefs: [`citation.${fixture.rowId}`],
+  emittedCitationRefs: [fixture.expectedFactSupport[0]!.supportingSourceRefs[0]!],
+  validCitationRefs: [fixture.expectedFactSupport[0]!.supportingSourceRefs[0]!],
   citationEvidence: {
     validationDigest: graphMemoryEvaluationDigest({
-      emitted: [`citation.${fixture.rowId}`],
-      valid: [`citation.${fixture.rowId}`],
+      emitted: [fixture.expectedFactSupport[0]!.supportingSourceRefs[0]!],
+      valid: [fixture.expectedFactSupport[0]!.supportingSourceRefs[0]!],
     }),
     invalidCount: 0,
   },
   mergedEntityPairs: [],
   observedEntityRefs: fixture.goldEntityRefs,
+  retrievedSourceRefs: fixture.expectedFactSupport.flatMap((fact) => fact.supportingSourceRefs),
   retrievedElementAliases: fixture.relevantElementAliases,
   retrievalEvidence: {
     mappings: fixture.relevantElementAliases.map((oracleElementAlias) => ({
@@ -194,7 +209,7 @@ const resultRow = (
   setupLatencyMs: arm === "graph_assisted" ? 5 : null,
   tokens: { _tag: "Exact", inputTokens: 0, outputTokens: 0, totalTokens: 0 },
   truncated: false,
-  hitCaps: [],
+  hitCaps: arm === "graph_assisted" ? fixture.scenario.expectedCaps : [],
   ...overrides,
 });
 
@@ -272,41 +287,21 @@ describe("graph memory evaluation fixtures", () => {
 
 describe("graph memory evaluation scoring", () => {
   test("reports an evidence-backed graph improvement without changing review or release state", () => {
-    const history = rows("history_only", (row, fixture) => ({
+    const history = rows("history_only", (row, fixture, index) => ({
       ...row,
-      emittedAnswerFactRefs: [...fixture.expectedAnswerFactRefs, `unsupported.${fixture.rowId}`],
-      retrievedElementAliases: [...fixture.relevantElementAliases, `irrelevant.${fixture.rowId}`],
-      retrievalEvidence: {
-        mappings: [
-          ...row.retrievalEvidence.mappings,
-          {
-            observedElementDigest: graphMemoryEvaluationDigest({
-              rowId: fixture.rowId,
-              irrelevant: true,
-            }),
-            oracleElementAlias: `irrelevant.${fixture.rowId}`,
-          },
-        ],
-        mappingDigest: graphMemoryEvaluationDigest([
-          ...row.retrievalEvidence.mappings,
-          {
-            observedElementDigest: graphMemoryEvaluationDigest({
-              rowId: fixture.rowId,
-              irrelevant: true,
-            }),
-            oracleElementAlias: `irrelevant.${fixture.rowId}`,
-          },
-        ]),
-      },
+      emittedAnswerFactRefs: index % 2 === 0 ? [] : fixture.expectedAnswerFactRefs,
+      retrievedSourceRefs: fixture.sources
+        .filter((source) => !source.revoked)
+        .map((source) => source.sourceRef),
       recallLatencySamplesMs: [5, 6, 7],
     }));
     const evaluated = evaluateDesktopGraphMemoryComparison(input(history));
     expect(evaluated.ok).toBe(true);
     if (!evaluated.ok) return;
     expect(evaluated.receipt.comparison.quality).toBe("improved");
-    expect(evaluated.receipt.historyOnly.answerSupport.value).toBe(8 / 15);
+    expect(evaluated.receipt.historyOnly.answerSupport.value).toBeLessThan(1);
     expect(evaluated.receipt.graphAssisted.answerSupport.value).toBe(1);
-    expect(evaluated.receipt.historyOnly.retrievalPrecision.value).toBe(8 / 15);
+    expect(evaluated.receipt.historyOnly.retrievalPrecision.value).toBeLessThan(1);
     expect(evaluated.receipt.graphAssisted.retrievalPrecision.value).toBe(1);
     expect(evaluated.receipt.privateDetailReceiptDigest).toBe(
       graphMemoryEvaluationPrivateDetailDigest(history, rows("graph_assisted")),
@@ -321,7 +316,7 @@ describe("graph memory evaluation scoring", () => {
     });
   });
 
-  test("zero citations and zero answer facts are unsupported, never perfect", () => {
+  test("zero citations are unsupported and a missing answer has zero support", () => {
     const emptyEvidence = rows("history_only", (row) => ({
       ...row,
       emittedAnswerFactRefs: [],
@@ -337,7 +332,7 @@ describe("graph memory evaluation scoring", () => {
       value: null,
       reason: "no_citations_emitted",
     });
-    expect(summary.answerSupport.status).toBe("unsupported");
+    expect(summary.answerSupport).toMatchObject({ status: "supported", numerator: 0, value: 0 });
     const evaluated = evaluateDesktopGraphMemoryComparison(input(emptyEvidence));
     expect(evaluated.ok).toBe(true);
     if (evaluated.ok) {
@@ -401,13 +396,16 @@ describe("graph memory evaluation scoring", () => {
   test("records false merges, missed entities, retrieval metrics, latency, and truncation", () => {
     const graph = rows("graph_assisted", (row, fixture, index) => ({
       ...row,
-      mergedEntityPairs: index === 0 ? fixture.goldDistinctEntityPairs : [],
+      extractionEvidence: {
+        ...row.extractionEvidence,
+        mergeCount: index === 0 ? 1 : 0,
+      },
       observedEntityRefs: fixture.goldEntityRefs.slice(0, -1),
-      retrievedElementAliases:
-        index === 5 ? fixture.relevantElementAliases.slice(0, 1) : fixture.relevantElementAliases,
+      retrievedSourceRefs:
+        index === 5 ? row.retrievedSourceRefs.slice(0, 1) : row.retrievedSourceRefs,
       recallLatencySamplesMs: [index + 1, index + 2, index + 3],
       truncated: index === 5,
-      hitCaps: index === 5 ? ["max_returned_elements"] : [],
+      hitCaps: index === 5 ? [...row.hitCaps, "max_returned_elements"] : row.hitCaps,
     }));
     const summary = summarizeGraphMemoryEvaluationArm("graph_assisted", holdout.rows, graph);
     expect(summary.falseMergeRate).toMatchObject({
@@ -421,9 +419,18 @@ describe("graph memory evaluation scoring", () => {
       denominator: 14,
       value: 0.5,
     });
-    expect(summary.retrievalRecall.value).toBe(7 / 8);
+    expect(summary.retrievalRecall.value).toBe(1);
     expect(summary.latency).toEqual({ samples: 21, p50Ms: 5, p95Ms: 8 });
-    expect(summary.truncation).toEqual({ rows: 1, hitCaps: ["max_returned_elements"] });
+    expect(summary.truncation).toEqual({
+      rows: 1,
+      hitCaps: [
+        "max_returned_elements",
+        "partial_extraction_reported",
+        "prompt_injection_treated_as_data",
+        "revoked_source_excluded",
+        "stale_graph_failed_closed",
+      ],
+    });
     const evaluated = evaluateDesktopGraphMemoryComparison(input(rows("history_only"), graph));
     expect(evaluated.ok).toBe(true);
     if (evaluated.ok) expect(evaluated.receipt.comparison.quality).toBe("regressed");

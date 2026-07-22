@@ -130,7 +130,7 @@
       "entityAliases": [{ "entityRef": "entity.holdout.generation-8", "aliases": ["fixture generation 8", "generation 8"] }],
       "goldDistinctEntityPairs": [],
       "relevantElementAliases": ["element.holdout.generation-current"],
-      "scenario": { "steps": [{ "operation": "ingest", "sourceRef": "source.holdout.generation.revoked" }, { "operation": "revoke", "sourceRef": "source.holdout.generation.revoked" }, { "operation": "ingest", "sourceRef": "source.holdout.generation" }, { "operation": "advance_graph", "sourceRef": null }], "expectedCaps": ["stale_graph_refused"] }
+      "scenario": { "steps": [{ "operation": "ingest", "sourceRef": "source.holdout.generation.revoked" }, { "operation": "snapshot_graph", "sourceRef": null }, { "operation": "revoke", "sourceRef": "source.holdout.generation.revoked" }, { "operation": "ingest", "sourceRef": "source.holdout.generation" }, { "operation": "advance_graph", "sourceRef": null }], "expectedCaps": ["stale_graph_failed_closed"] }
     }
   ]
 }

@@ -111,7 +111,7 @@
       "entityAliases": [{ "entityRef": "entity.dev.schema-5", "aliases": ["schema revision 5", "revision 5"] }],
       "goldDistinctEntityPairs": [],
       "relevantElementAliases": ["element.dev.schema-current"],
-      "scenario": { "steps": [{ "operation": "ingest", "sourceRef": "source.dev.schema.revoked" }, { "operation": "revoke", "sourceRef": "source.dev.schema.revoked" }, { "operation": "ingest", "sourceRef": "source.dev.schema" }, { "operation": "advance_graph", "sourceRef": null }], "expectedCaps": ["stale_graph_refused"] }
+      "scenario": { "steps": [{ "operation": "ingest", "sourceRef": "source.dev.schema.revoked" }, { "operation": "snapshot_graph", "sourceRef": null }, { "operation": "revoke", "sourceRef": "source.dev.schema.revoked" }, { "operation": "ingest", "sourceRef": "source.dev.schema" }, { "operation": "advance_graph", "sourceRef": null }], "expectedCaps": ["stale_graph_failed_closed"] }
     }
   ]
 }

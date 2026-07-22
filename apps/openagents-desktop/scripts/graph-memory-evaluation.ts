@@ -14,6 +14,7 @@ import path from "node:path";
 import { performance } from "node:perf_hooks";
 
 import {
+  GraphMemoryStore,
   graphMemoryScopeRefFor,
   ownerScopeId,
   projectScopeId,
@@ -175,6 +176,59 @@ const makeProcessSafeStorage = (): Readonly<{
 const activeSources = (row: GraphMemoryEvaluationFixtureRow) =>
   row.sources.filter((source) => !source.revoked);
 
+const scenarioPlan = (row: GraphMemoryEvaluationFixtureRow) => {
+  const byRef = new Map(row.sources.map((source) => [source.sourceRef, source]));
+  const current = new Map<string, (typeof row.sources)[number]>();
+  let graphSnapshot: ReadonlyArray<(typeof row.sources)[number]> | null = null;
+  let partialExtraction = false;
+  let graphAdvanced = false;
+  let revokedCount = 0;
+  for (const step of row.scenario.steps) {
+    const source = step.sourceRef === null ? undefined : byRef.get(step.sourceRef);
+    switch (step.operation) {
+      case "ingest":
+        if (source === undefined) throw new Error("An ingest scenario source is absent.");
+        current.set(source.sourceRef, source);
+        break;
+      case "revoke":
+        if (source === undefined || !current.delete(source.sourceRef)) {
+          throw new Error("A revoke scenario source is not active.");
+        }
+        revokedCount += 1;
+        break;
+      case "replace":
+        if (source === undefined) throw new Error("A replacement scenario source is absent.");
+        for (const candidate of row.sources) {
+          if (candidate.revoked) current.delete(candidate.sourceRef);
+        }
+        current.set(source.sourceRef, source);
+        break;
+      case "extract_partial":
+        partialExtraction = true;
+        break;
+      case "snapshot_graph":
+        graphSnapshot = [...current.values()];
+        break;
+      case "advance_graph":
+        graphAdvanced = true;
+        break;
+    }
+  }
+  const currentSources = [...current.values()];
+  if (
+    graphMemoryEvaluationDigest(currentSources) !== graphMemoryEvaluationDigest(activeSources(row))
+  ) {
+    throw new Error("The scenario result does not match the reviewed active sources.");
+  }
+  return {
+    currentSources,
+    setupSources: graphSnapshot ?? currentSources,
+    partialExtraction,
+    graphAdvanced,
+    revokedCount,
+  };
+};
+
 /*
  * This identity is the exact recall input. The reviewed natural-language
  * question remains in the fixture, while both arms receive the same shipped
@@ -193,51 +247,18 @@ const rowIdentity = (row: GraphMemoryEvaluationFixtureRow, pins: GraphMemoryEval
   budgetDigest: pins.budgetDigest,
 });
 
-const sourceRefsForFacts = (
-  row: GraphMemoryEvaluationFixtureRow,
-  citedSourceRefs: ReadonlyArray<string>,
-): ReadonlyArray<string> => {
-  const cited = new Set(citedSourceRefs);
-  return row.expectedFactSupport
-    .filter((fact) => fact.supportingSourceRefs.some((sourceRef) => cited.has(sourceRef)))
-    .map((fact) => fact.factRef);
-};
-
-const entityRefsForSources = (
-  row: GraphMemoryEvaluationFixtureRow,
-  citedSourceRefs: ReadonlyArray<string>,
-): ReadonlyArray<string> => {
-  const cited = new Set(citedSourceRefs);
-  const text = activeSources(row)
-    .filter((source) => cited.has(source.sourceRef))
-    .map((source) => source.text.normalize("NFC").toLocaleLowerCase("en-US"))
-    .join("\n");
-  return row.entityAliases
-    .filter((entity) =>
-      entity.aliases.some((alias) => text.includes(alias.toLocaleLowerCase("en-US"))),
-    )
-    .map((entity) => entity.entityRef);
-};
-
 const retrievalProjection = (
   arm: GraphMemoryEvaluationArmRow["arm"],
-  row: GraphMemoryEvaluationFixtureRow,
   citedSourceRefs: ReadonlyArray<string>,
   observedElementRefs: ReadonlyArray<string>,
 ) => {
-  const cited = new Set(citedSourceRefs);
-  const mappings = row.relevantElementAliases.flatMap((oracleElementAlias, index) => {
-    const support = row.expectedFactSupport[index] ?? row.expectedFactSupport[0];
-    if (support === undefined || !support.supportingSourceRefs.some((ref) => cited.has(ref))) {
-      return [];
-    }
-    const observedRef =
-      observedElementRefs[index] ?? observedElementRefs[0] ?? unique(citedSourceRefs).join("|");
+  const mappings = citedSourceRefs.flatMap((sourceRef, index) => {
+    const observedRef = observedElementRefs[index] ?? observedElementRefs[0] ?? sourceRef;
     if (observedRef === "") return [];
     return [
       {
         observedElementDigest: graphMemoryEvaluationDigest({ arm, observedRef }),
-        oracleElementAlias,
+        oracleElementAlias: sourceRef,
       },
     ];
   });
@@ -327,6 +348,7 @@ const runHistoryRow = async (
   row: GraphMemoryEvaluationFixtureRow,
   pins: GraphMemoryEvaluationPins,
 ): Promise<GraphMemoryEvaluationArmRow> => {
+  const scenario = scenarioPlan(row);
   const history = await historySourcesFor(row);
   const samples: number[] = [];
   let result: RlmTerminalResult | null = null;
@@ -337,6 +359,7 @@ const runHistoryRow = async (
         scope: { _tag: "Thread", threadId: history.threadId },
         pattern: desktopGraphMemoryRecallQueryFor(row.query),
         runRef: `run.evaluation.history.${row.rowId}.${index}`,
+        maxSpans: DESKTOP_GRAPH_MEMORY_RECALL_LIMITS.maxReturnedElements,
       }),
     );
     samples.push(performance.now() - started);
@@ -347,20 +370,35 @@ const runHistoryRow = async (
       .map((span) => history.sourceRefByTurn.get(span.turnId))
       .filter((ref): ref is string => ref !== undefined),
   );
-  const retrieval = retrievalProjection("history_only", row, citedSourceRefs, citedSourceRefs);
+  const active = new Set(scenario.currentSources.map((source) => source.sourceRef));
+  const validatedCount = Math.min(result.honesty.citationValidated, citedSourceRefs.length);
+  const validSourceRefs = citedSourceRefs
+    .filter((sourceRef) => active.has(sourceRef))
+    .slice(0, validatedCount);
+  const retrieval = retrievalProjection("history_only", citedSourceRefs, citedSourceRefs);
   return {
     rowId: row.rowId,
     arm: "history_only",
     outcome: outcomeForRlm(result),
     ...rowIdentity(row, pins),
     modelCalls: result.usage.modelCalls,
-    extractionEvidence: { status: "not_run", receiptDigest: null, usageTruth: "not_run" },
-    citationEvidence: citationEvidence(citedSourceRefs, citedSourceRefs),
-    emittedAnswerFactRefs: sourceRefsForFacts(row, citedSourceRefs),
+    extractionEvidence: {
+      status: "not_run",
+      receiptDigest: null,
+      usageTruth: "not_run",
+      inputCorpusDigest: null,
+      budgetDigest: null,
+      graphStateDigest: null,
+      entityCount: 0,
+      mergeCount: 0,
+    },
+    citationEvidence: citationEvidence(citedSourceRefs, validSourceRefs),
+    emittedAnswerFactRefs: [],
     emittedCitationRefs: citedSourceRefs,
-    validCitationRefs: citedSourceRefs,
+    validCitationRefs: validSourceRefs,
     mergedEntityPairs: [],
-    observedEntityRefs: entityRefsForSources(row, citedSourceRefs),
+    observedEntityRefs: [],
+    retrievedSourceRefs: citedSourceRefs,
     ...retrieval,
     recallLatencySamplesMs: samples,
     setupLatencyMs: null,
@@ -368,7 +406,7 @@ const runHistoryRow = async (
     truncated: result._tag === "Partial",
     hitCaps: unique([
       ...result.honesty.capsHit,
-      ...(row.sources.some((source) => source.revoked) ? ["revoked_source_excluded"] : []),
+      ...(scenario.revokedCount > 0 ? ["revoked_source_excluded"] : []),
     ]),
   };
 };
@@ -376,7 +414,7 @@ const runHistoryRow = async (
 const corpusHandles = async (
   row: GraphMemoryEvaluationFixtureRow,
   scope: GraphMemoryScope,
-  sources = activeSources(row),
+  sources: ReadonlyArray<GraphMemoryEvaluationFixtureRow["sources"][number]> = activeSources(row),
 ): Promise<ReadonlyArray<RlmCorpusHandle>> =>
   Promise.all(
     sources.map((source) =>
@@ -439,23 +477,34 @@ const runGraphRow = async (
   temporaryRoot: string,
   safeStorage: SafeStorageLike,
 ): Promise<GraphMemoryEvaluationArmRow> => {
+  const scenario = scenarioPlan(row);
   const scope: GraphMemoryScope = {
     owner: ownerScopeId(`owner.evaluation.${graphMemoryEvaluationDigest(row.rowId).slice(0, 24)}`),
     project: projectScopeId(
       `project.evaluation.${graphMemoryEvaluationDigest(row.rowId).slice(0, 24)}`,
     ),
   };
-  const currentHandles = await corpusHandles(row, scope);
-  const stale = row.challengeClasses.includes("stale_graph");
-  const partial = row.challengeClasses.includes("partial_extraction");
-  const setupSources = stale ? row.sources.filter((source) => source.revoked) : activeSources(row);
-  const setupHandles = await corpusHandles(row, scope, setupSources);
+  const currentHandles = await corpusHandles(row, scope, scenario.currentSources);
+  const setupHandles = await corpusHandles(row, scope, scenario.setupSources);
+  const extractionLimits = scenario.partialExtraction
+    ? {
+        ...DESKTOP_GRAPH_MEMORY_EXTRACTION_LIMITS,
+        maxCharacters: 1,
+        maxInputTokens: 1,
+        maxCharactersPerBatch: 1,
+        maxInputTokensPerBatch: 1,
+      }
+    : DESKTOP_GRAPH_MEMORY_EXTRACTION_LIMITS;
   const databasePath = path.join(temporaryRoot, `${graphMemoryEvaluationDigest(row.rowId)}.sqlite`);
   const evidence: DesktopGraphMemoryTurnEvidence[] = [];
   let store = openDesktopGraphMemoryStore({ enabled: true, databasePath, safeStorage });
   let setupResult: DesktopGraphMemoryTurnResult | null = null;
   let setupError = false;
   let setupFailureRef: string | null = null;
+  let graphStateDigest: string | null = null;
+  let graphEntityCount = 0;
+  let graphMergeCount = 0;
+  let observedEntityRefs: ReadonlyArray<string> = [];
   const setupStarted = performance.now();
   try {
     setupResult = await Effect.runPromise(
@@ -488,15 +537,7 @@ const runGraphRow = async (
             _tag: "Deterministic",
             extractor: desktopGraphMemoryDeterministicExtractor,
           },
-          extractionLimits: partial
-            ? {
-                ...DESKTOP_GRAPH_MEMORY_EXTRACTION_LIMITS,
-                maxCharacters: 1,
-                maxInputTokens: 1,
-                maxCharactersPerBatch: 1,
-                maxInputTokensPerBatch: 1,
-              }
-            : DESKTOP_GRAPH_MEMORY_EXTRACTION_LIMITS,
+          extractionLimits,
           recallLimits: DESKTOP_GRAPH_MEMORY_RECALL_LIMITS,
           countTokens: (text) => text.length,
           monotonicMs: () => Math.floor(performance.now()),
@@ -508,6 +549,33 @@ const runGraphRow = async (
         },
       ).pipe(Effect.provide(store.layer)),
     );
+    const inspection = await Effect.runPromise(
+      Effect.gen(function* () {
+        const graphStore = yield* GraphMemoryStore;
+        return yield* graphStore.inspect(scope);
+      }).pipe(Effect.provide(store.layer)),
+    );
+    if (inspection.current !== null) {
+      const graph = inspection.current.built.snapshot;
+      graphEntityCount = graph.entities.length;
+      graphMergeCount = graph.merges.length;
+      graphStateDigest = graphMemoryEvaluationDigest({
+        graphDigest: graph.graphDigest,
+        entityRefs: graph.entities.map((entity) => entity.elementRef),
+        mergeRefs: graph.merges.map((merge) => merge.mergeRef),
+      });
+      observedEntityRefs = row.entityAliases
+        .filter((gold) =>
+          graph.entities.some((entity) =>
+            gold.aliases.some((alias) =>
+              entity.identity.canonicalKey
+                .toLocaleLowerCase("en-US")
+                .includes(alias.toLocaleLowerCase("en-US")),
+            ),
+          ),
+        )
+        .map((gold) => gold.entityRef);
+    }
   } catch (error) {
     setupError = true;
     setupFailureRef = safeFailureRef("setup", error);
@@ -580,8 +648,10 @@ const runGraphRow = async (
   const citedSourceRefs = unique(
     finalEvidence?.citations.map((citation) => citation.entryRef) ?? [],
   );
+  const activeSourceRefs = new Set(scenario.currentSources.map((source) => source.sourceRef));
+  const validSourceRefs = citedSourceRefs.filter((sourceRef) => activeSourceRefs.has(sourceRef));
   const observedElements = finalEvidence?.usedElementRefs ?? [];
-  const retrieval = retrievalProjection("graph_assisted", row, citedSourceRefs, observedElements);
+  const retrieval = retrievalProjection("graph_assisted", citedSourceRefs, observedElements);
   const setupStatus = extractionStatus(setupResult);
   const outcome: GraphMemoryEvaluationOutcome = setupError
     ? "failed"
@@ -590,14 +660,19 @@ const runGraphRow = async (
       : setupStatus === "refused"
         ? "refused"
         : recallError
-          ? "refused"
+          ? "failed"
           : finalEvidence?.truncated === true
             ? "partial"
             : "complete";
   const scenarioCaps = [
-    ...(row.sources.some((source) => source.revoked) ? ["revoked_source_excluded"] : []),
-    ...(partial && setupStatus === "partial" ? ["partial_extraction_reported"] : []),
-    ...(stale && recallError ? ["stale_graph_refused"] : []),
+    ...(scenario.revokedCount > 0 ? ["revoked_source_excluded"] : []),
+    ...(scenario.partialExtraction && setupStatus === "partial"
+      ? ["partial_extraction_reported"]
+      : []),
+    ...(row.challengeClasses.includes("prompt_injection") && !setupError
+      ? ["prompt_injection_treated_as_data"]
+      : []),
+    ...(scenario.graphAdvanced && recallError ? ["stale_graph_failed_closed"] : []),
   ];
   return {
     rowId: row.rowId,
@@ -614,13 +689,19 @@ const runGraphRow = async (
           : setupEvidence?.extractionUsageTruth === "unavailable"
             ? "unavailable"
             : "not_run",
+      inputCorpusDigest: graphMemoryEvaluationDigest(scenario.setupSources),
+      budgetDigest: graphMemoryEvaluationDigest(extractionLimits),
+      graphStateDigest,
+      entityCount: graphEntityCount,
+      mergeCount: graphMergeCount,
     },
-    citationEvidence: citationEvidence(citedSourceRefs, citedSourceRefs),
-    emittedAnswerFactRefs: sourceRefsForFacts(row, citedSourceRefs),
+    citationEvidence: citationEvidence(citedSourceRefs, validSourceRefs),
+    emittedAnswerFactRefs: [],
     emittedCitationRefs: citedSourceRefs,
-    validCitationRefs: citedSourceRefs,
+    validCitationRefs: validSourceRefs,
     mergedEntityPairs: [],
-    observedEntityRefs: entityRefsForSources(row, citedSourceRefs),
+    observedEntityRefs,
+    retrievedSourceRefs: citedSourceRefs,
     ...retrieval,
     recallLatencySamplesMs: samples,
     setupLatencyMs,
@@ -791,9 +872,8 @@ const main = async (): Promise<void> => {
       corpusDigest: graphMemoryEvaluationDigest(development.rows.flatMap(activeSources)),
       policyDigest: graphMemoryEvaluationDigest(POLICY),
       budgetDigest: graphMemoryEvaluationDigest({
-        history: { maxSpans: "sdk_default" },
-        graphExtraction: DESKTOP_GRAPH_MEMORY_EXTRACTION_LIMITS,
-        graphRecall: DESKTOP_GRAPH_MEMORY_RECALL_LIMITS,
+        normalizedRecallResultCap: DESKTOP_GRAPH_MEMORY_RECALL_LIMITS.maxReturnedElements,
+        queryProjection: "desktopGraphMemoryRecallQueryFor",
         repetitions: RECALL_REPETITIONS,
       }),
       qualityPolicyDigest: manifest.qualityPolicyDigest,
