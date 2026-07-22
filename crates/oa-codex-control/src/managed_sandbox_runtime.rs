@@ -333,6 +333,19 @@ struct OperationRecord {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct PendingCheckpointRestore {
+    command_ref: String,
+    checkpoint_ref: String,
+    checkpoint_source_generation: u64,
+    restored_resource_generation: u64,
+    runtime_capability_refs: Vec<String>,
+    restored_capability_refs: Vec<String>,
+    #[serde(default)]
+    completed: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct RuntimeJournal {
     schema_version: String,
     owner_ref: String,
@@ -351,6 +364,8 @@ struct RuntimeJournal {
     accrued_running_ms: u64,
     readiness: ReadinessObservation,
     cleanup: CleanupObservation,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pending_checkpoint_restore: Option<PendingCheckpointRestore>,
     operations: Vec<OperationRecord>,
 }
 
@@ -514,6 +529,240 @@ fn stop_after_checkpoint_with_provider(
     )
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CheckpointRestoreContext {
+    pub schema: &'static str,
+    pub owner_ref: String,
+    pub tenant_ref: String,
+    pub sandbox_ref: String,
+    pub resource_generation: u64,
+    pub restored_capability_refs: Vec<String>,
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn prepare_checkpoint_restore(
+    state_root: &Path,
+    owner_ref: &str,
+    tenant_ref: &str,
+    sandbox_ref: &str,
+    command_ref: &str,
+    checkpoint_ref: &str,
+    checkpoint_source_generation: u64,
+    source_capability_refs: &[String],
+) -> Result<CheckpointRestoreContext, RuntimeError> {
+    let provider = LiveGceManagedSandboxProvider::from_env()?;
+    prepare_checkpoint_restore_with_provider(
+        state_root,
+        &provider,
+        owner_ref,
+        tenant_ref,
+        sandbox_ref,
+        command_ref,
+        checkpoint_ref,
+        checkpoint_source_generation,
+        source_capability_refs,
+        now_ms()?,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn prepare_checkpoint_restore_with_provider(
+    state_root: &Path,
+    provider: &dyn ManagedSandboxProvider,
+    owner_ref: &str,
+    tenant_ref: &str,
+    sandbox_ref: &str,
+    command_ref: &str,
+    checkpoint_ref: &str,
+    checkpoint_source_generation: u64,
+    source_capability_refs: &[String],
+    now: u64,
+) -> Result<CheckpointRestoreContext, RuntimeError> {
+    let path = journal_path(state_root, sandbox_ref);
+    let mut journal = load_journal(&path)?.ok_or_else(|| {
+        RuntimeError::new(
+            404,
+            "resource_not_found",
+            "restore destination runtime journal was not found",
+        )
+    })?;
+    if journal.owner_ref != owner_ref
+        || journal.tenant_ref != tenant_ref
+        || journal.sandbox_ref != sandbox_ref
+    {
+        return Err(RuntimeError::new(
+            403,
+            "scope_mismatch",
+            "restore destination scope does not match durable ownership",
+        ));
+    }
+    if journal
+        .pending_checkpoint_restore
+        .as_ref()
+        .is_some_and(|pending| pending.completed && journal.phase == RuntimePhase::Stopped)
+    {
+        journal.pending_checkpoint_restore = None;
+        save_journal(&path, &journal)?;
+    }
+    if let Some(pending) = &journal.pending_checkpoint_restore {
+        if pending.command_ref != command_ref
+            || pending.checkpoint_ref != checkpoint_ref
+            || pending.checkpoint_source_generation != checkpoint_source_generation
+        {
+            return Err(RuntimeError::new(
+                409,
+                "restore_conflict",
+                "a different checkpoint restore already owns the destination",
+            ));
+        }
+        if journal.phase != RuntimePhase::Ready
+            || journal.generation != pending.restored_resource_generation
+        {
+            return Err(RuntimeError::new(
+                409,
+                "restore_recovery_required",
+                "the prepared checkpoint restore is not ready",
+            ));
+        }
+        return Ok(restore_context(&journal, pending));
+    }
+    if journal.phase != RuntimePhase::Stopped {
+        return Err(invalid_phase("checkpoint restore", journal.phase));
+    }
+    let restored_resource_generation = journal.generation.saturating_add(1);
+    if restored_resource_generation <= checkpoint_source_generation {
+        return Err(RuntimeError::new(
+            409,
+            "restore_generation_not_advanced",
+            "destination generation does not advance the checkpoint source",
+        ));
+    }
+    let capability_digest = full_digest(format!(
+        "restore|{command_ref}|{checkpoint_ref}|{sandbox_ref}|{restored_resource_generation}"
+    ));
+    let runtime_capability_ref = format!("capability-ref://run/restore-{capability_digest}");
+    let restored_capability_ref = format!("capability.sbx10.restore.{}", &capability_digest[..32]);
+    if source_capability_refs
+        .iter()
+        .any(|source| source == &restored_capability_ref)
+    {
+        return Err(RuntimeError::new(
+            409,
+            "restore_capability_conflict",
+            "restored capability identity overlaps the source",
+        ));
+    }
+    journal.profile.capability_refs = vec![runtime_capability_ref.clone()];
+    journal.profile.profile_digest = format!("sha256:{}", "0".repeat(64));
+    journal.profile.profile_digest = digest_json(&journal.profile)?;
+    journal.pending_checkpoint_restore = Some(PendingCheckpointRestore {
+        command_ref: command_ref.to_string(),
+        checkpoint_ref: checkpoint_ref.to_string(),
+        checkpoint_source_generation,
+        restored_resource_generation,
+        runtime_capability_refs: vec![runtime_capability_ref],
+        restored_capability_refs: vec![restored_capability_ref],
+        completed: false,
+    });
+    save_journal(&path, &journal)?;
+    let receipt = execute_with_provider(
+        state_root,
+        provider,
+        ManagedSandboxRuntimeRequest {
+            operation_ref: restore_resume_operation_ref(command_ref),
+            idempotency_ref: format!(
+                "idempotency.sbx10.restore.{}",
+                &full_digest(format!("restore|{command_ref}"))[..32]
+            ),
+            actor_ref: owner_ref.to_string(),
+            owner_ref: journal.owner_ref,
+            tenant_ref: journal.tenant_ref,
+            program_ref: journal.program_ref,
+            work_unit_ref: journal.work_unit_ref,
+            sandbox_ref: journal.sandbox_ref,
+            expected_generation: journal.generation,
+            action: RuntimeAction::Resume,
+            profile: None,
+        },
+        now,
+    )?;
+    let journal = load_journal(&path)?.ok_or_else(|| {
+        RuntimeError::new(500, "journal_read_failed", "restore journal disappeared")
+    })?;
+    let pending = journal.pending_checkpoint_restore.as_ref().ok_or_else(|| {
+        RuntimeError::new(500, "restore_intent_lost", "restore intent disappeared")
+    })?;
+    if receipt.phase != RuntimePhase::Ready
+        || receipt.generation != restored_resource_generation
+        || journal.phase != RuntimePhase::Ready
+    {
+        return Err(RuntimeError::new(
+            409,
+            "restore_recovery_required",
+            "destination resume did not become ready",
+        ));
+    }
+    Ok(restore_context(&journal, pending))
+}
+
+fn restore_resume_operation_ref(command_ref: &str) -> String {
+    format!(
+        "operation.sbx10.restore.{}",
+        &full_digest(command_ref)[..32]
+    )
+}
+
+fn restore_context(
+    journal: &RuntimeJournal,
+    pending: &PendingCheckpointRestore,
+) -> CheckpointRestoreContext {
+    CheckpointRestoreContext {
+        schema: "openagents.managed_sandbox_phase2_restore_context.v1",
+        owner_ref: journal.owner_ref.clone(),
+        tenant_ref: journal.tenant_ref.clone(),
+        sandbox_ref: journal.sandbox_ref.clone(),
+        resource_generation: pending.restored_resource_generation,
+        restored_capability_refs: pending.restored_capability_refs.clone(),
+    }
+}
+
+pub fn finish_checkpoint_restore(
+    state_root: &Path,
+    owner_ref: &str,
+    tenant_ref: &str,
+    sandbox_ref: &str,
+    command_ref: &str,
+    succeeded: bool,
+) -> Result<(), RuntimeError> {
+    let path = journal_path(state_root, sandbox_ref);
+    let mut journal = load_journal(&path)?.ok_or_else(|| {
+        RuntimeError::new(404, "resource_not_found", "restore journal was not found")
+    })?;
+    if journal.owner_ref != owner_ref
+        || journal.tenant_ref != tenant_ref
+        || journal.sandbox_ref != sandbox_ref
+        || journal
+            .pending_checkpoint_restore
+            .as_ref()
+            .is_none_or(|pending| pending.command_ref != command_ref)
+    {
+        return Err(RuntimeError::new(
+            409,
+            "restore_scope_conflict",
+            "restore completion does not match durable intent",
+        ));
+    }
+    if succeeded && journal.phase == RuntimePhase::Ready {
+        if let Some(pending) = &mut journal.pending_checkpoint_restore {
+            pending.completed = true;
+        }
+    } else {
+        journal.phase = RuntimePhase::RecoveryRequired;
+    }
+    save_journal(&path, &journal)
+}
+
 fn execute_with_provider(
     state_root: &Path,
     provider: &dyn ManagedSandboxProvider,
@@ -613,6 +862,7 @@ fn execute_create(
         accrued_running_ms: 0,
         readiness: ReadinessObservation::default(),
         cleanup: CleanupObservation::default(),
+        pending_checkpoint_restore: None,
         operations: Vec::new(),
     };
     // Cleanup ownership is durable before either the firewall or VM is created.
@@ -676,6 +926,21 @@ fn execute_existing(
             409,
             "generation_conflict",
             "expected generation does not match provider ownership",
+        ));
+    }
+    if journal
+        .pending_checkpoint_restore
+        .as_ref()
+        .is_some_and(|pending| {
+            !pending.completed
+                && (request.action != RuntimeAction::Resume
+                    || request.operation_ref != restore_resume_operation_ref(&pending.command_ref))
+        })
+    {
+        return Err(RuntimeError::new(
+            409,
+            "restore_in_progress",
+            "the destination is reserved for checkpoint restore completion",
         ));
     }
     provider.admit(&journal.profile)?;
@@ -2512,6 +2777,130 @@ mod tests {
             receipt.error_code.as_deref(),
             Some("stop_recovery_required")
         );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn checkpoint_restore_prepares_fresh_runtime_grants_and_replays() {
+        let root = temporary_root("checkpoint-restore");
+        let provider = TestProvider::new();
+        execute_with_provider(
+            &root,
+            &provider,
+            request(RuntimeAction::Create, "create", 0),
+            1_000,
+        )
+        .unwrap();
+        execute_with_provider(
+            &root,
+            &provider,
+            request(RuntimeAction::Stop, "stop", 1),
+            2_000,
+        )
+        .unwrap();
+        let source_capabilities = vec!["capability.sbx10.source".to_string()];
+        let context = prepare_checkpoint_restore_with_provider(
+            &root,
+            &provider,
+            "owner-ref://test",
+            "tenant-ref://test",
+            "sandbox-ref://test",
+            "command.sbx10.restore",
+            "checkpoint.sbx10.restore",
+            1,
+            &source_capabilities,
+            3_000,
+        )
+        .unwrap();
+        assert_eq!(context.resource_generation, 2);
+        assert_eq!(context.restored_capability_refs.len(), 1);
+        assert!(!source_capabilities.contains(&context.restored_capability_refs[0]));
+        let journal = load_journal(&journal_path(&root, "sandbox-ref://test"))
+            .unwrap()
+            .unwrap();
+        assert_eq!(journal.phase, RuntimePhase::Ready);
+        assert_eq!(journal.profile.capability_refs.len(), 1);
+        assert!(journal.profile.capability_refs[0].starts_with("capability-ref://run/restore-"));
+        assert!(journal.pending_checkpoint_restore.is_some());
+        let blocked = execute_with_provider(
+            &root,
+            &provider,
+            request(RuntimeAction::Probe, "probe-during-restore", 2),
+            4_000,
+        )
+        .unwrap_err();
+        assert_eq!(blocked.code, "restore_in_progress");
+
+        let replay = prepare_checkpoint_restore_with_provider(
+            &root,
+            &provider,
+            "owner-ref://test",
+            "tenant-ref://test",
+            "sandbox-ref://test",
+            "command.sbx10.restore",
+            "checkpoint.sbx10.restore",
+            1,
+            &source_capabilities,
+            9_000,
+        )
+        .unwrap();
+        assert_eq!(replay, context);
+        finish_checkpoint_restore(
+            &root,
+            "owner-ref://test",
+            "tenant-ref://test",
+            "sandbox-ref://test",
+            "command.sbx10.restore",
+            true,
+        )
+        .unwrap();
+        assert!(load_journal(&journal_path(&root, "sandbox-ref://test"))
+            .unwrap()
+            .unwrap()
+            .pending_checkpoint_restore
+            .is_some_and(|pending| pending.completed));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn checkpoint_restore_resume_failure_requires_recovery() {
+        let root = temporary_root("checkpoint-restore-failure");
+        let provider = TestProvider::new();
+        execute_with_provider(
+            &root,
+            &provider,
+            request(RuntimeAction::Create, "create", 0),
+            1_000,
+        )
+        .unwrap();
+        execute_with_provider(
+            &root,
+            &provider,
+            request(RuntimeAction::Stop, "stop", 1),
+            2_000,
+        )
+        .unwrap();
+        provider.state.lock().unwrap().fail_resume = true;
+
+        let error = prepare_checkpoint_restore_with_provider(
+            &root,
+            &provider,
+            "owner-ref://test",
+            "tenant-ref://test",
+            "sandbox-ref://test",
+            "command.sbx10.restore-failure",
+            "checkpoint.sbx10.restore-failure",
+            1,
+            &[],
+            3_000,
+        )
+        .unwrap_err();
+        assert_eq!(error.code, "restore_recovery_required");
+        let journal = load_journal(&journal_path(&root, "sandbox-ref://test"))
+            .unwrap()
+            .unwrap();
+        assert_eq!(journal.phase, RuntimePhase::RecoveryRequired);
+        assert!(journal.pending_checkpoint_restore.is_some());
         let _ = fs::remove_dir_all(root);
     }
 

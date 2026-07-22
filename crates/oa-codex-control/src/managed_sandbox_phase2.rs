@@ -281,7 +281,117 @@ pub fn execute(
             MAX_DRIVER_DURATION,
         );
     }
+    if request.action == ManagedSandboxPhase2Action::RestoreCheckpoint {
+        return execute_restore_checkpoint(
+            state_root,
+            Path::new(&driver),
+            request,
+            MAX_DRIVER_DURATION,
+        );
+    }
     execute_with_driver(Path::new(&driver), request, MAX_DRIVER_DURATION)
+}
+
+fn execute_restore_checkpoint(
+    state_root: &Path,
+    driver: &Path,
+    request: ManagedSandboxPhase2Request,
+    timeout: Duration,
+) -> Result<ManagedSandboxPhase2Response, Phase2Error> {
+    execute_restore_checkpoint_with(
+        driver,
+        request,
+        timeout,
+        |owner_ref,
+         tenant_ref,
+         sandbox_ref,
+         command_ref,
+         checkpoint_ref,
+         checkpoint_source_generation,
+         source_capability_refs| {
+            managed_sandbox_runtime::prepare_checkpoint_restore(
+                state_root,
+                owner_ref,
+                tenant_ref,
+                sandbox_ref,
+                command_ref,
+                checkpoint_ref,
+                checkpoint_source_generation,
+                source_capability_refs,
+            )
+            .map_err(|error| {
+                if error.status() < 500 {
+                    Phase2Error::conflict("phase2_restore_prepare_conflict")
+                } else {
+                    Phase2Error::unavailable("phase2_restore_prepare_failed")
+                }
+            })
+        },
+        |owner_ref, tenant_ref, sandbox_ref, command_ref, succeeded| {
+            managed_sandbox_runtime::finish_checkpoint_restore(
+                state_root,
+                owner_ref,
+                tenant_ref,
+                sandbox_ref,
+                command_ref,
+                succeeded,
+            )
+            .map_err(|_| Phase2Error::unavailable("phase2_restore_finalize_failed"))
+        },
+    )
+}
+
+fn execute_restore_checkpoint_with<P, F>(
+    driver: &Path,
+    request: ManagedSandboxPhase2Request,
+    timeout: Duration,
+    prepare: P,
+    finish: F,
+) -> Result<ManagedSandboxPhase2Response, Phase2Error>
+where
+    P: FnOnce(
+        &str,
+        &str,
+        &str,
+        &str,
+        &str,
+        u64,
+        &[String],
+    ) -> Result<managed_sandbox_runtime::CheckpointRestoreContext, Phase2Error>,
+    F: FnOnce(&str, &str, &str, &str, bool) -> Result<(), Phase2Error>,
+{
+    let command = request.command_object("RestoreCheckpoint")?;
+    let checkpoint = request.checkpoint_object()?;
+    let owner_ref = string(command, "ownerRef")?.to_string();
+    let tenant_ref = string(command, "tenantRef")?.to_string();
+    let sandbox_ref = string(command, "destinationSandboxRef")?.to_string();
+    let command_ref = string(command, "commandRef")?.to_string();
+    let checkpoint_ref = string(command, "checkpointRef")?.to_string();
+    let checkpoint_source_generation = number(checkpoint, "sourceResourceGeneration")?;
+    let source_capability_refs = ref_array(value(command, "sourceCapabilityRefs")?, false)?;
+    let runtime_context = prepare(
+        &owner_ref,
+        &tenant_ref,
+        &sandbox_ref,
+        &command_ref,
+        &checkpoint_ref,
+        checkpoint_source_generation,
+        &source_capability_refs,
+    )?;
+    let mut wire = serde_json::to_value(&request)
+        .map_err(|_| Phase2Error::unavailable("phase2_driver_request_encode_failed"))?;
+    wire["runtimeContext"] = serde_json::to_value(runtime_context)
+        .map_err(|_| Phase2Error::unavailable("phase2_restore_context_encode_failed"))?;
+    let response = execute_with_driver_wire(driver, &wire, &request, timeout);
+    let succeeded = response.is_ok();
+    finish(
+        &owner_ref,
+        &tenant_ref,
+        &sandbox_ref,
+        &command_ref,
+        succeeded,
+    )?;
+    response
 }
 
 fn execute_archive_with_checkpoint(
@@ -397,8 +507,19 @@ fn execute_with_driver(
     request: ManagedSandboxPhase2Request,
     timeout: Duration,
 ) -> Result<ManagedSandboxPhase2Response, Phase2Error> {
+    let wire = serde_json::to_value(&request)
+        .map_err(|_| Phase2Error::unavailable("phase2_driver_request_encode_failed"))?;
+    execute_with_driver_wire(driver, &wire, &request, timeout)
+}
+
+fn execute_with_driver_wire(
+    driver: &Path,
+    wire: &Value,
+    request: &ManagedSandboxPhase2Request,
+    timeout: Duration,
+) -> Result<ManagedSandboxPhase2Response, Phase2Error> {
     validate_driver_path(driver)?;
-    let request_bytes = serde_json::to_vec(&request)
+    let request_bytes = serde_json::to_vec(wire)
         .map_err(|_| Phase2Error::unavailable("phase2_driver_request_encode_failed"))?;
     let mut command = Command::new(driver);
     command
@@ -508,7 +629,7 @@ fn execute_with_driver(
     }
     let response: ManagedSandboxPhase2Response = serde_json::from_slice(&bytes)
         .map_err(|_| Phase2Error::unavailable("phase2_driver_response_invalid"))?;
-    validate_response(&request, &response)?;
+    validate_response(request, &response)?;
     Ok(response)
 }
 
@@ -1893,6 +2014,101 @@ mod tests {
         assert_eq!(failed.result["_tag"], "CheckpointFailed");
         assert_eq!(failed.result["archiveClaim"], "forbidden");
         assert_eq!(failed.result["lifecycle"], "recovery_required");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn restore_sends_only_the_prepared_runtime_context_and_finalizes() {
+        let root = temp_dir("restore");
+        let driver = root.join("driver.sh");
+        let capture = root.join("request.json");
+        let response = ManagedSandboxPhase2Response {
+            schema_version: TARGET_SCHEMA_VERSION.to_string(),
+            action: ManagedSandboxPhase2Action::RestoreCheckpoint,
+            request_ref: "command.sbx10.control.restore".to_string(),
+            result: result(ManagedSandboxPhase2Action::RestoreCheckpoint),
+        };
+        fs::write(
+            &driver,
+            format!(
+                "#!/bin/sh\ncat >'{}'\nprintf '%s' '{}'\n",
+                capture.display(),
+                serde_json::to_string(&response).unwrap()
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(&driver, fs::Permissions::from_mode(0o700)).unwrap();
+        let restored = execute_restore_checkpoint_with(
+            &driver,
+            request(ManagedSandboxPhase2Action::RestoreCheckpoint),
+            Duration::from_secs(2),
+            |owner, tenant, sandbox, command_ref, checkpoint_ref, generation, source| {
+                assert_eq!(owner, "owner.sbx10.control");
+                assert_eq!(tenant, "tenant.sbx10.control");
+                assert_eq!(sandbox, "sandbox.sbx10.control.restore");
+                assert_eq!(command_ref, "command.sbx10.control.restore");
+                assert_eq!(checkpoint_ref, "checkpoint.sbx10.control");
+                assert_eq!(generation, 7);
+                assert_eq!(source, ["capability.sbx10.source"]);
+                Ok(managed_sandbox_runtime::CheckpointRestoreContext {
+                    schema: "openagents.managed_sandbox_phase2_restore_context.v1",
+                    owner_ref: owner.to_string(),
+                    tenant_ref: tenant.to_string(),
+                    sandbox_ref: sandbox.to_string(),
+                    resource_generation: 8,
+                    restored_capability_refs: vec!["capability.sbx10.restore".to_string()],
+                })
+            },
+            |owner, tenant, sandbox, command_ref, succeeded| {
+                assert_eq!(owner, "owner.sbx10.control");
+                assert_eq!(tenant, "tenant.sbx10.control");
+                assert_eq!(sandbox, "sandbox.sbx10.control.restore");
+                assert_eq!(command_ref, "command.sbx10.control.restore");
+                assert!(succeeded);
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert_eq!(restored, response);
+        let wire: Value = serde_json::from_slice(&fs::read(capture).unwrap()).unwrap();
+        assert_eq!(
+            wire["runtimeContext"],
+            json!({
+                "schema": "openagents.managed_sandbox_phase2_restore_context.v1",
+                "ownerRef": "owner.sbx10.control",
+                "tenantRef": "tenant.sbx10.control",
+                "sandboxRef": "sandbox.sbx10.control.restore",
+                "resourceGeneration": 8,
+                "restoredCapabilityRefs": ["capability.sbx10.restore"]
+            })
+        );
+        assert!(wire.get("localPath").is_none());
+
+        fs::write(&driver, "#!/bin/sh\ncat >/dev/null\nexit 1\n").unwrap();
+        let finalized = std::cell::Cell::new(None);
+        let failure = execute_restore_checkpoint_with(
+            &driver,
+            request(ManagedSandboxPhase2Action::RestoreCheckpoint),
+            Duration::from_secs(2),
+            |owner, tenant, sandbox, _, _, _, _| {
+                Ok(managed_sandbox_runtime::CheckpointRestoreContext {
+                    schema: "openagents.managed_sandbox_phase2_restore_context.v1",
+                    owner_ref: owner.to_string(),
+                    tenant_ref: tenant.to_string(),
+                    sandbox_ref: sandbox.to_string(),
+                    resource_generation: 8,
+                    restored_capability_refs: vec!["capability.sbx10.restore".to_string()],
+                })
+            },
+            |_, _, _, _, succeeded| {
+                finalized.set(Some(succeeded));
+                Ok(())
+            },
+        )
+        .unwrap_err();
+        assert_eq!(failure.reason_ref, "phase2_driver_refused");
+        assert_eq!(finalized.get(), Some(false));
         fs::remove_dir_all(root).unwrap();
     }
 
