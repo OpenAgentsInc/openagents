@@ -1,121 +1,113 @@
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test } from "vitest";
 
-describe('managed-sandbox guest transport contract', () => {
+describe("managed-sandbox guest transport contract", () => {
   for (const driver of [
-    'managed-sandbox-io-driver.mjs',
-    'managed-sandbox-turn-driver.mjs',
-    'managed-sandbox-phase2-driver.mjs',
+    "managed-sandbox-io-driver.mjs",
+    "managed-sandbox-turn-driver.mjs",
+    "managed-sandbox-phase2-driver.mjs",
   ]) {
     test(`${driver} uses bounded relative SSH key expiry`, () => {
-      const source = readFileSync(resolve(import.meta.dirname, driver), 'utf8')
-      expect(source).toContain('--ssh-key-expire-after=10m')
-      expect(source).not.toContain('--ssh-key-expiration=10m')
-      expect(source).toContain('--internal-ip')
-      expect(source).not.toContain('--tunnel-through-iap')
-      if (driver === 'managed-sandbox-io-driver.mjs') {
-        expect(source).toContain(
-          '/var/lib/openagents/managed-sandbox-turns/io-',
-        )
-        expect(source).not.toContain(
-          '/var/lib/openagents/managed-sandbox-io/',
-        )
+      const source = readFileSync(resolve(import.meta.dirname, driver), "utf8");
+      expect(source).toContain("--ssh-key-expire-after=10m");
+      expect(source).not.toContain("--ssh-key-expiration=10m");
+      expect(source).toContain("--internal-ip");
+      expect(source).not.toContain("--tunnel-through-iap");
+      if (driver === "managed-sandbox-io-driver.mjs") {
+        expect(source).toContain("/var/lib/openagents/managed-sandbox-turns/io-");
+        expect(source).not.toContain("/var/lib/openagents/managed-sandbox-io/");
       }
-    })
+    });
   }
 
-  test('control image installs the default-off phase-two driver', () => {
+  test("control image installs the default-off phase-two driver", () => {
     const source = readFileSync(
-      resolve(import.meta.dirname, '../../docker/cloud/oa-codex-control.Dockerfile'),
-      'utf8',
-    )
+      resolve(import.meta.dirname, "../../docker/cloud/oa-codex-control.Dockerfile"),
+      "utf8",
+    );
     expect(source).toContain(
-      'COPY scripts/cloud/managed-sandbox-phase2-driver.mjs /usr/local/bin/managed-sandbox-phase2-driver.mjs',
-    )
-    expect(source).toContain('/usr/local/bin/managed-sandbox-phase2-driver.mjs')
-    expect(source).not.toContain('OA_MANAGED_SANDBOX_PHASE2_TARGET_COMMAND=')
-  })
+      "COPY scripts/cloud/managed-sandbox-phase2-driver.mjs /usr/local/bin/managed-sandbox-phase2-driver.mjs",
+    );
+    expect(source).toContain("/usr/local/bin/managed-sandbox-phase2-driver.mjs");
+    expect(source).not.toContain("OA_MANAGED_SANDBOX_PHASE2_TARGET_COMMAND=");
+  });
 
-  test('guest image admits unprivileged I/O transport and scratch roots', () => {
+  test("control deploy binds the phase-two driver and bucket together", () => {
     const source = readFileSync(
-      resolve(import.meta.dirname, 'build-managed-sandbox-guest-image.sh'),
-      'utf8',
-    )
-    expect(source).toContain('/var/lib/openagents/managed-sandbox-io')
+      resolve(import.meta.dirname, "gcp-codex-control-deploy.sh"),
+      "utf8",
+    );
+    expect(source).toContain("--managed-sandbox-phase2-driver");
+    expect(source).toContain("--managed-sandbox-phase2-bucket");
+    expect(source).toContain("OA_MANAGED_SANDBOX_PHASE2_DRIVER");
+    expect(source).toContain("OA_MANAGED_SANDBOX_PHASE2_BUCKET");
     expect(source).toContain(
-      'd /run/openagents-managed-sandbox/io 0700 openagents openagents -',
-    )
-    expect(source).toContain(
-      "stat -c '%U:%G:%a' /var/lib/openagents/managed-sandbox-io",
-    )
-    expect(source).toContain(
-      "stat -c '%U:%G:%a' /run/openagents-managed-sandbox/io",
-    )
-    expect(source).toContain("--chdir /workspace /bin/pwd)\" = '/workspace'")
-  })
+      "managed-sandbox Phase 2 driver and bucket must be configured together",
+    );
+  });
 
-  test('guest image installs the content-only checkpoint primitive and scratch root', () => {
+  test("guest image admits unprivileged I/O transport and scratch roots", () => {
     const source = readFileSync(
-      resolve(import.meta.dirname, 'build-managed-sandbox-guest-image.sh'),
-      'utf8',
-    )
-    expect(source).toContain(
-      '/opt/openagents-managed-sandbox/managed-sandbox-guest-checkpoint.py',
-    )
-    expect(source).toContain(
-      '/var/lib/openagents/managed-sandbox-checkpoints',
-    )
-    expect(source).toContain(
-      'scripts/cloud/managed-sandbox-guest-checkpoint.py',
-    )
-  })
+      resolve(import.meta.dirname, "build-managed-sandbox-guest-image.sh"),
+      "utf8",
+    );
+    expect(source).toContain("/var/lib/openagents/managed-sandbox-io");
+    expect(source).toContain("d /run/openagents-managed-sandbox/io 0700 openagents openagents -");
+    expect(source).toContain("stat -c '%U:%G:%a' /var/lib/openagents/managed-sandbox-io");
+    expect(source).toContain("stat -c '%U:%G:%a' /run/openagents-managed-sandbox/io");
+    expect(source).toContain("--chdir /workspace /bin/pwd)\" = '/workspace'");
+  });
 
-  test('guest commands rebind the validated cwd at the canonical workspace path', () => {
+  test("guest image installs the content-only checkpoint primitive and scratch root", () => {
     const source = readFileSync(
-      resolve(import.meta.dirname, 'managed-sandbox-guest-io.py'),
-      'utf8',
-    )
-    expect(source).toContain('canonical_cwd = WORKSPACE / relative if relative else WORKSPACE')
-    expect(source).toContain('f"/proc/self/fd/{cwd_fd}",')
-    expect(source).toContain('str(canonical_cwd),')
-    expect(source).not.toContain('"--chdir",\n                f"/proc/self/fd/{cwd_fd}",')
-  })
+      resolve(import.meta.dirname, "build-managed-sandbox-guest-image.sh"),
+      "utf8",
+    );
+    expect(source).toContain("/opt/openagents-managed-sandbox/managed-sandbox-guest-checkpoint.py");
+    expect(source).toContain("/var/lib/openagents/managed-sandbox-checkpoints");
+    expect(source).toContain("scripts/cloud/managed-sandbox-guest-checkpoint.py");
+  });
 
-  test('provider streams emit at most one structural terminal event', () => {
+  test("guest commands rebind the validated cwd at the canonical workspace path", () => {
     const source = readFileSync(
-      resolve(import.meta.dirname, 'managed-sandbox-guest-turn.mjs'),
-      'utf8',
-    )
+      resolve(import.meta.dirname, "managed-sandbox-guest-io.py"),
+      "utf8",
+    );
+    expect(source).toContain("canonical_cwd = WORKSPACE / relative if relative else WORKSPACE");
+    expect(source).toContain('f"/proc/self/fd/{cwd_fd}",');
+    expect(source).toContain("str(canonical_cwd),");
+    expect(source).not.toContain('"--chdir",\n                f"/proc/self/fd/{cwd_fd}",');
+  });
+
+  test("provider streams emit at most one structural terminal event", () => {
+    const source = readFileSync(
+      resolve(import.meta.dirname, "managed-sandbox-guest-turn.mjs"),
+      "utf8",
+    );
     const codex = source.slice(
-      source.indexOf('const runCodex = async () => {'),
-      source.indexOf('const runClaude = async () => {'),
-    )
-    expect(codex).toContain('if (settled) continue;')
-    expect(codex).toContain(
-      'if (!settled) throw new Error("codex_stream_ended_without_result");',
-    )
-    expect(codex).toContain('} else if (event.type === "turn.failed") {')
-    expect(codex).not.toContain(
-      'event.type === "turn.failed" || event.type === "error"',
-    )
-    expect(codex.match(/settled = true;/g)).toHaveLength(2)
+      source.indexOf("const runCodex = async () => {"),
+      source.indexOf("const runClaude = async () => {"),
+    );
+    expect(codex).toContain("if (settled) continue;");
+    expect(codex).toContain('if (!settled) throw new Error("codex_stream_ended_without_result");');
+    expect(codex).toContain('} else if (event.type === "turn.failed") {');
+    expect(codex).not.toContain('event.type === "turn.failed" || event.type === "error"');
+    expect(codex.match(/settled = true;/g)).toHaveLength(2);
 
-    const claude = source.slice(source.indexOf('const runClaude = async () => {'))
-    expect(claude).toContain('if (settled) continue;')
-  })
+    const claude = source.slice(source.indexOf("const runClaude = async () => {"));
+    expect(claude).toContain("if (settled) continue;");
+  });
 
-  test('guest emitter admits exactly one terminal event per turn', () => {
+  test("guest emitter admits exactly one terminal event per turn", () => {
     const source = readFileSync(
-      resolve(import.meta.dirname, 'managed-sandbox-guest-turn.mjs'),
-      'utf8',
-    )
-    expect(source).toContain('const terminalEventTags = new Set([')
-    expect(source).toContain('if (terminalEventTag !== undefined) return false;')
-    expect(source).toContain(
-      'if (terminalEventTags.has(next._tag)) terminalEventTag = next._tag;',
-    )
-    expect(source).toContain('if (terminalEventTag === undefined) {')
-  })
-})
+      resolve(import.meta.dirname, "managed-sandbox-guest-turn.mjs"),
+      "utf8",
+    );
+    expect(source).toContain("const terminalEventTags = new Set([");
+    expect(source).toContain("if (terminalEventTag !== undefined) return false;");
+    expect(source).toContain("if (terminalEventTags.has(next._tag)) terminalEventTag = next._tag;");
+    expect(source).toContain("if (terminalEventTag === undefined) {");
+  });
+});

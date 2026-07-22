@@ -36,7 +36,9 @@ Usage:
       --managed-sandbox-provider-broker-url https://openagents.com \
       [--managed-sandbox-provider-broker-port 8790] \
       [--managed-sandbox-turn-driver /absolute/path] \
-      [--managed-sandbox-io-driver /absolute/path]] \
+      [--managed-sandbox-io-driver /absolute/path] \
+      [--managed-sandbox-phase2-driver /absolute/path \
+       --managed-sandbox-phase2-bucket BUCKET_NAME]] \
     [--apply]
 
 Required:
@@ -74,6 +76,8 @@ managed_sandbox_provider_broker_url=""
 managed_sandbox_provider_broker_port="8790"
 managed_sandbox_turn_driver=""
 managed_sandbox_io_driver=""
+managed_sandbox_phase2_driver=""
+managed_sandbox_phase2_bucket=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -98,6 +102,8 @@ while [[ $# -gt 0 ]]; do
     --managed-sandbox-provider-broker-port) managed_sandbox_provider_broker_port="${2:-}"; shift 2 ;;
     --managed-sandbox-turn-driver) managed_sandbox_turn_driver="${2:-}"; shift 2 ;;
     --managed-sandbox-io-driver) managed_sandbox_io_driver="${2:-}"; shift 2 ;;
+    --managed-sandbox-phase2-driver) managed_sandbox_phase2_driver="${2:-}"; shift 2 ;;
+    --managed-sandbox-phase2-bucket) managed_sandbox_phase2_bucket="${2:-}"; shift 2 ;;
     --apply) apply="true"; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown argument: $1" >&2; usage >&2; exit 2 ;;
@@ -127,6 +133,28 @@ fi
 if [[ -n "$managed_sandbox_io_driver" && "$enable_managed_sandbox" != "true" ]]; then
   echo "managed-sandbox I/O driver requires --enable-managed-sandbox" >&2
   exit 2
+fi
+if [[ -n "$managed_sandbox_phase2_driver" && "$managed_sandbox_phase2_driver" != /* ]]; then
+  echo "managed-sandbox Phase 2 driver must be an absolute container path" >&2
+  exit 2
+fi
+if [[ -n "$managed_sandbox_phase2_driver" && "$enable_managed_sandbox" != "true" ]]; then
+  echo "managed-sandbox Phase 2 driver requires --enable-managed-sandbox" >&2
+  exit 2
+fi
+if [[ -n "$managed_sandbox_phase2_bucket" && "$enable_managed_sandbox" != "true" ]]; then
+  echo "managed-sandbox Phase 2 bucket requires --enable-managed-sandbox" >&2
+  exit 2
+fi
+if [[ -n "$managed_sandbox_phase2_driver" || -n "$managed_sandbox_phase2_bucket" ]]; then
+  if [[ -z "$managed_sandbox_phase2_driver" || -z "$managed_sandbox_phase2_bucket" ]]; then
+    echo "managed-sandbox Phase 2 driver and bucket must be configured together" >&2
+    exit 2
+  fi
+  if [[ ! "$managed_sandbox_phase2_bucket" =~ ^[a-z0-9][a-z0-9._-]{1,220}[a-z0-9]$ ]]; then
+    echo "managed-sandbox Phase 2 bucket name is invalid" >&2
+    exit 2
+  fi
 fi
 
 if [[ "$enable_managed_sandbox" == "true" ]]; then
@@ -183,6 +211,7 @@ STARTUP
 managed_sandbox_env_yaml=""
 managed_sandbox_turn_driver_env_yaml=""
 managed_sandbox_io_driver_env_yaml=""
+managed_sandbox_phase2_env_yaml=""
 control_token_env_yaml=""
 if [[ -n "$control_token_secret" ]]; then
   control_token_env_yaml="$(cat <<ENVYAML
@@ -208,6 +237,15 @@ if [[ -n "$managed_sandbox_io_driver" ]]; then
   managed_sandbox_io_driver_env_yaml="$(cat <<ENVYAML
         - name: OA_MANAGED_SANDBOX_IO_DRIVER
           value: "${managed_sandbox_io_driver}"
+ENVYAML
+)"
+fi
+if [[ -n "$managed_sandbox_phase2_driver" ]]; then
+  managed_sandbox_phase2_env_yaml="$(cat <<ENVYAML
+        - name: OA_MANAGED_SANDBOX_PHASE2_DRIVER
+          value: "${managed_sandbox_phase2_driver}"
+        - name: OA_MANAGED_SANDBOX_PHASE2_BUCKET
+          value: "${managed_sandbox_phase2_bucket}"
 ENVYAML
 )"
 fi
@@ -251,6 +289,7 @@ if [[ "$enable_managed_sandbox" == "true" ]]; then
           value: "${managed_sandbox_provider_broker_port}"
 ${managed_sandbox_turn_driver_env_yaml}
 ${managed_sandbox_io_driver_env_yaml}
+${managed_sandbox_phase2_env_yaml}
 ENVYAML
 )"
 fi
