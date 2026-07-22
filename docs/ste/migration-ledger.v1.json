@@ -21293,6 +21293,19 @@
       "replacement": null
     },
     {
+      "path": "docs/deploy/receipts/2026-07-22-desktop-0.1.1-rc.2-rc-publish.md",
+      "ste_issue": 9,
+      "ste_mode": "source-data",
+      "ste_glossary_revision": "openagents-ste-glossary-v1",
+      "ste_status": "source-data",
+      "ste_reviewer": null,
+      "ste_reviewed_at": null,
+      "owner": "OpenAgents documentation",
+      "risk": "source-data",
+      "source": "Immutable historical or evidence source data",
+      "replacement": null
+    },
+    {
       "path": "docs/design/2026-06-16-foldkit-ui-component-library-roadmap.md",
       "ste_issue": 9,
       "ste_mode": "descriptive",

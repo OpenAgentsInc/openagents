@@ -21886,6 +21886,20 @@
       }
     },
     {
+      "path": "docs/deploy/receipts/2026-07-22-desktop-0.1.1-rc.2-rc-publish.md",
+      "sha256": "a8a10b10bec41fc58b617fd391faefc2335816ec32d68977de04de1a8e79c142",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "ste_status": "source-data",
+        "ste_reviewer": null,
+        "ste_reviewed_at": null,
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null
+      }
+    },
+    {
       "path": "docs/design/2026-06-16-foldkit-ui-component-library-roadmap.md",
       "sha256": "4b2ac62a158a954ea8b08847d11d35938cd9d1cdf3501e87901fe8e53c72bf39",
       "reason": "Final review of a converted document",
