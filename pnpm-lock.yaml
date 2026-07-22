@@ -489,11 +489,11 @@ importers:
         specifier: workspace:*
         version: link:../../packages/agent-client-runtime-bridge
       '@openagentsinc/agent-harness-contract':
-        specifier: 0.2.0-rc.5
-        version: 0.2.0-rc.5
+        specifier: 0.2.0-rc.6
+        version: 0.2.0-rc.6
       '@openagentsinc/agent-runtime-schema':
-        specifier: 0.2.0-rc.5
-        version: 0.2.0-rc.5
+        specifier: 0.2.0-rc.6
+        version: 0.2.0-rc.6
       '@openagentsinc/agent-surface':
         specifier: workspace:*
         version: link:../../packages/agent-surface
@@ -504,8 +504,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/agent-turn-store
       '@openagentsinc/ai':
-        specifier: 0.2.0-rc.5
-        version: 0.2.0-rc.5(zod@4.4.3)
+        specifier: 0.2.0-rc.6
+        version: 0.2.0-rc.6(zod@4.4.3)
       '@openagentsinc/apple-fm-runtime':
         specifier: workspace:*
         version: link:../../packages/apple-fm-runtime
@@ -525,20 +525,20 @@ importers:
         specifier: workspace:*
         version: link:../../packages/cursor-agent-runtime
       '@openagentsinc/dse':
-        specifier: 0.2.0-rc.5
-        version: 0.2.0-rc.5
+        specifier: 0.2.0-rc.6
+        version: 0.2.0-rc.6
       '@openagentsinc/environment-auth':
         specifier: workspace:*
         version: link:../../packages/environment-auth
       '@openagentsinc/graph-corpus':
-        specifier: 0.2.0-rc.5
-        version: 0.2.0-rc.5
+        specifier: 0.2.0-rc.6
+        version: 0.2.0-rc.6
       '@openagentsinc/grok-harness':
         specifier: workspace:*
         version: link:../../packages/grok-harness
       '@openagentsinc/history-corpus':
-        specifier: 0.2.0-rc.5
-        version: 0.2.0-rc.5
+        specifier: 0.2.0-rc.6
+        version: 0.2.0-rc.6
       '@openagentsinc/khala-sync':
         specifier: workspace:*
         version: link:../../packages/khala-sync
@@ -561,8 +561,8 @@ importers:
         specifier: workspace:*
         version: link:../pylon/packages/runtime
       '@openagentsinc/rlm':
-        specifier: 0.2.0-rc.5
-        version: 0.2.0-rc.5
+        specifier: 0.2.0-rc.6
+        version: 0.2.0-rc.6
       '@openagentsinc/runtime-platform':
         specifier: workspace:*
         version: link:../../packages/runtime-platform
@@ -4515,38 +4515,38 @@ packages:
     resolution: {integrity: sha512-hAX0pT/73190NLqBPPWSdBVGtbY6VOhWYK3qqHqtXQ1gK7kS2yz4+ivsN07hpJ6I3aeMtKP6J6npsEKOAzuTLA==}
     engines: {node: '>=20.0'}
 
-  '@openagentsinc/agent-harness-contract@0.2.0-rc.5':
-    resolution: {integrity: sha512-32Z0NrYYICVURPXtUtbW1QpdqPSUW7vqjjO2fYYyFEUPQVkv0diuN+68gTi88OA9O4jI9YmoiOBj7cAiOCT0LQ==}
+  '@openagentsinc/agent-harness-contract@0.2.0-rc.6':
+    resolution: {integrity: sha512-DCEaDBvvz5jfN8ND3o4VgLx4hwjpXnXM081K3CnuJd7+JIUyvkSInCNqT2c16gWK0tnPuZbG26UQoAObRDdwDw==}
 
   '@openagentsinc/agent-runtime-schema@0.1.3-rc.1':
     resolution: {integrity: sha512-kah9CJ8c6kqstPKCeJhcIj6EfVT6JZhsLtqu8Tu7iQBjlkMbfyiiTcV6YNBNwX7v86TTkgRAuxx74gXrSQsn6A==}
 
-  '@openagentsinc/agent-runtime-schema@0.2.0-rc.5':
-    resolution: {integrity: sha512-k9uGnLv1m4vGK6pg6DhPrQZvGHKb9qaLib2oWPe11FFVru9NzEbszPb7AzAlB+WcBKySejgAhxRoCJPMaRK0fg==}
+  '@openagentsinc/agent-runtime-schema@0.2.0-rc.6':
+    resolution: {integrity: sha512-3/N6L8wyYcnwn4wuALfUxP76h/Tx5a71HPgYUQI5WbAOQ5WGAlsHsmVMCfByxjyJrxHCE7xyheDQS0nNiS5hSg==}
 
-  '@openagentsinc/ai-model@0.2.0-rc.5':
-    resolution: {integrity: sha512-G7ybspXC0N0ZAqloO53LJ0mgC3dHKQScLy63YD/e0ZnrurB+QOR+dMRqH4z1CtwiXhOIZTJKrr1lBzDCgx3k/w==}
+  '@openagentsinc/ai-model@0.2.0-rc.6':
+    resolution: {integrity: sha512-v+Jq9L80TMhFB/tOYAdUxXe9HSCor7zOT2BfP2QaXI6K3evEIJXS5BHy1UeYuCfGQnGLxYDPNLqNe2RHh3GrpA==}
 
   '@openagentsinc/ai-sdk-sandbox-local@0.1.3-rc.1':
     resolution: {integrity: sha512-zq6GDdqct7LttbGwoIPsk4fr1kbUhE8/i8BQiU7vdBzEWS/uzhKZEIQvCcm2dzjtZHOwx+D5aGwKsvB8xiqs5w==}
 
-  '@openagentsinc/ai@0.2.0-rc.5':
-    resolution: {integrity: sha512-1x+220jgymQQ/6bxK8Tk85hPHuPcvjpelOyfclYRUXi05zfpzII9cuAtCLh54vWzmkm59zmcsmL4zDJAxe4McA==}
+  '@openagentsinc/ai@0.2.0-rc.6':
+    resolution: {integrity: sha512-BNNho7pSokWxsIIcMaqA/piC5K7wdc+wpsZACJ1ca1ghbRUxjGIQuzxr5fJRJCuuy+wv2dD65kUkJ9lyeFPe6w==}
 
-  '@openagentsinc/dse@0.2.0-rc.5':
-    resolution: {integrity: sha512-iX7npSRXcwQ3jXFphHH0FZeZH//Evg448S+Kxa1BT9776NI7SUORjxrpb9M5ZvCrH9XI6imbvqfiBk0dAOrp9A==}
+  '@openagentsinc/dse@0.2.0-rc.6':
+    resolution: {integrity: sha512-XNHVsW2eUtgpXT5MGmxC/GxgA6p/1V8MD1hchpOXUfxWtG9K0Rmj/z7dCIMxdujKbcOdSdPa7nkfkK7AX6/8kQ==}
 
-  '@openagentsinc/graph-corpus@0.2.0-rc.5':
-    resolution: {integrity: sha512-M4tNClcmJ0TAgnz1O4aM063FUDC0GjAnZqtm+ejjdOZClaPWyehhWzSReHbCzlVMVrgqeVesTj8iYLZDomTsaw==}
+  '@openagentsinc/graph-corpus@0.2.0-rc.6':
+    resolution: {integrity: sha512-GRlRDCTosxDCfsFT3fsLmyRPU6cqfjZ99CRe5dRMYTZRCRm5Gw5HN6oPRyi53HdnCP8IDqLs/wR7HCPf2s98OQ==}
 
-  '@openagentsinc/history-corpus@0.2.0-rc.5':
-    resolution: {integrity: sha512-X/uu6APf4+iqJQXw6rQujc8Z3N7vvDk21+lnssbK5SwweuL7TV3uoMzdXCJuZRqd2RRRO69w9VYUnqQFgku3XA==}
+  '@openagentsinc/history-corpus@0.2.0-rc.6':
+    resolution: {integrity: sha512-auabSD+thGwef54C0gfF6L/Sp+J5LJ9ZZ8WQBJm6lETYcuhnTEqoZFtFx1JG0til8/jhZgu3rK6lrBIT5sPJNg==}
 
   '@openagentsinc/rlm@0.2.0-rc.2':
     resolution: {integrity: sha512-zTSKovrDIbkGC2qoTwRwlZwhhvPdILwYEpN5bm1rcHpgyw7BCHkj8u6NaOBBVjuVInrMYaL2e3EPpR70BZdWxA==}
 
-  '@openagentsinc/rlm@0.2.0-rc.5':
-    resolution: {integrity: sha512-/6NkcpEXfn3DZV/0WsLekayOom0BhSLmpHlhVb6wcIZH3fib5t8r+7yfsX5BxCmpDvyLHXd6KwPNDj7kJ1mThw==}
+  '@openagentsinc/rlm@0.2.0-rc.6':
+    resolution: {integrity: sha512-FBvn5z6sZnSddiCUYLF1MGWpkubbWEHi2QkM3VUZ9V71KD21ZrmcAFpDxJ3oJMlUNbqdQSFiVJw1mFA+uFR8GA==}
 
   '@openai/codex-sdk@0.144.3':
     resolution: {integrity: sha512-WPtEx38iVyksWujOwmsxnJznRR8T/YF+lAJghMhHL1xIWdJrrvZ1iafhIsw4egY5CRoRmFm2ta8NQsK4f4XDZA==}
@@ -14584,22 +14584,22 @@ snapshots:
 
   '@oozcitak/util@10.0.0': {}
 
-  '@openagentsinc/agent-harness-contract@0.2.0-rc.5':
+  '@openagentsinc/agent-harness-contract@0.2.0-rc.6':
     dependencies:
-      '@openagentsinc/agent-runtime-schema': 0.2.0-rc.5
+      '@openagentsinc/agent-runtime-schema': 0.2.0-rc.6
       effect: 4.0.0-beta.94
 
   '@openagentsinc/agent-runtime-schema@0.1.3-rc.1':
     dependencies:
       effect: 4.0.0-beta.94
 
-  '@openagentsinc/agent-runtime-schema@0.2.0-rc.5':
+  '@openagentsinc/agent-runtime-schema@0.2.0-rc.6':
     dependencies:
       effect: 4.0.0-beta.94
 
-  '@openagentsinc/ai-model@0.2.0-rc.5(zod@4.4.3)':
+  '@openagentsinc/ai-model@0.2.0-rc.6(zod@4.4.3)':
     dependencies:
-      '@openagentsinc/agent-runtime-schema': 0.2.0-rc.5
+      '@openagentsinc/agent-runtime-schema': 0.2.0-rc.6
       ai: 7.0.15(zod@4.4.3)
       effect: 4.0.0-beta.94
     transitivePeerDependencies:
@@ -14613,43 +14613,43 @@ snapshots:
     transitivePeerDependencies:
       - ws
 
-  '@openagentsinc/ai@0.2.0-rc.5(zod@4.4.3)':
+  '@openagentsinc/ai@0.2.0-rc.6(zod@4.4.3)':
     dependencies:
-      '@openagentsinc/agent-harness-contract': 0.2.0-rc.5
-      '@openagentsinc/agent-runtime-schema': 0.2.0-rc.5
-      '@openagentsinc/ai-model': 0.2.0-rc.5(zod@4.4.3)
-      '@openagentsinc/dse': 0.2.0-rc.5
-      '@openagentsinc/graph-corpus': 0.2.0-rc.5
-      '@openagentsinc/history-corpus': 0.2.0-rc.5
-      '@openagentsinc/rlm': 0.2.0-rc.5
+      '@openagentsinc/agent-harness-contract': 0.2.0-rc.6
+      '@openagentsinc/agent-runtime-schema': 0.2.0-rc.6
+      '@openagentsinc/ai-model': 0.2.0-rc.6(zod@4.4.3)
+      '@openagentsinc/dse': 0.2.0-rc.6
+      '@openagentsinc/graph-corpus': 0.2.0-rc.6
+      '@openagentsinc/history-corpus': 0.2.0-rc.6
+      '@openagentsinc/rlm': 0.2.0-rc.6
       effect: 4.0.0-beta.94
     transitivePeerDependencies:
       - zod
 
-  '@openagentsinc/dse@0.2.0-rc.5':
+  '@openagentsinc/dse@0.2.0-rc.6':
     dependencies:
-      '@openagentsinc/agent-runtime-schema': 0.2.0-rc.5
-      '@openagentsinc/graph-corpus': 0.2.0-rc.5
-      '@openagentsinc/rlm': 0.2.0-rc.5
+      '@openagentsinc/agent-runtime-schema': 0.2.0-rc.6
+      '@openagentsinc/graph-corpus': 0.2.0-rc.6
+      '@openagentsinc/rlm': 0.2.0-rc.6
       effect: 4.0.0-beta.94
 
-  '@openagentsinc/graph-corpus@0.2.0-rc.5':
+  '@openagentsinc/graph-corpus@0.2.0-rc.6':
     dependencies:
-      '@openagentsinc/rlm': 0.2.0-rc.5
+      '@openagentsinc/rlm': 0.2.0-rc.6
       effect: 4.0.0-beta.94
 
-  '@openagentsinc/history-corpus@0.2.0-rc.5':
+  '@openagentsinc/history-corpus@0.2.0-rc.6':
     dependencies:
-      '@openagentsinc/agent-harness-contract': 0.2.0-rc.5
-      '@openagentsinc/agent-runtime-schema': 0.2.0-rc.5
-      '@openagentsinc/rlm': 0.2.0-rc.5
+      '@openagentsinc/agent-harness-contract': 0.2.0-rc.6
+      '@openagentsinc/agent-runtime-schema': 0.2.0-rc.6
+      '@openagentsinc/rlm': 0.2.0-rc.6
       effect: 4.0.0-beta.94
 
   '@openagentsinc/rlm@0.2.0-rc.2':
     dependencies:
       effect: 4.0.0-beta.94
 
-  '@openagentsinc/rlm@0.2.0-rc.5':
+  '@openagentsinc/rlm@0.2.0-rc.6':
     dependencies:
       effect: 4.0.0-beta.94
 
