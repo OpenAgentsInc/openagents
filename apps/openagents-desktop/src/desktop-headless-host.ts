@@ -23,6 +23,8 @@ import { join } from "node:path";
 import type { ClaudeLocalEvent, ClaudeLocalStartRequest } from "./claude-local-contract";
 import type { DesktopThread } from "./chat-contract";
 import { openFullAutoRegistry } from "./full-auto-registry";
+import type { FullAutoRun } from "./full-auto-run-registry";
+import { openFullAutoRunRegistry } from "./full-auto-run-registry";
 import { openLocalTurnJournal } from "./local-turn-journal";
 import type { ProviderLane, ProviderLaneDispatchResult } from "./provider-lane";
 import { makeProviderLaneDispatcher } from "./provider-lane";
@@ -64,6 +66,20 @@ export interface HeadlessHost {
     readonly model?: string;
   }) => Promise<HeadlessTurnResult>;
   fullAutoRecordCount: () => number;
+  /**
+   * Explicitly start a Full Auto run through the production run registry.
+   * Unlike an ordinary turn, this is the ONLY path that creates a run
+   * record. Returns the started run (with its stable `runRef`).
+   */
+  startFullAutoRun: (params: {
+    readonly title: string;
+    readonly objective: string;
+    readonly doneCondition: string;
+    readonly threadRef?: string;
+    readonly turnCap?: number;
+  }) => FullAutoRun;
+  /** The Full Auto run records present in the durable registry. */
+  fullAutoRuns: () => ReadonlyArray<FullAutoRun>;
 }
 
 /** Construct an isolated headless Desktop host over a disposable root. */
@@ -73,6 +89,7 @@ export const createHeadlessHost = (options: HeadlessHostOptions): HeadlessHost =
   const threads = makeThreadStore(join(root, "threads.json"));
   const journal = openLocalTurnJournal(join(root, "turns.json"));
   const registry = openFullAutoRegistry(join(root, "full-auto", "registry.json"));
+  const runRegistry = openFullAutoRunRegistry(join(root, "full-auto", "runs.json"));
 
   const dispatcher = makeProviderLaneDispatcher({
     threads: () => threads,
@@ -88,6 +105,23 @@ export const createHeadlessHost = (options: HeadlessHostOptions): HeadlessHost =
     createThread: (title) => threads.newThread(title),
     listThreads: () => threads.list(),
     fullAutoRecordCount: () => registry.list().length,
+    fullAutoRuns: () => runRegistry.list(),
+    startFullAutoRun: ({ title, objective, doneCondition, threadRef, turnCap }) => {
+      const result = runRegistry.startNew({
+        title,
+        objective,
+        doneCondition,
+        objectiveSource: "control_caller",
+        actor: "control_api",
+        reason: "headless host explicit Full Auto start",
+        ...(threadRef === undefined ? {} : { threadRef }),
+        ...(turnCap === undefined ? {} : { turnCap }),
+      });
+      if (!result.ok) {
+        throw new Error(`Full Auto start refused: ${result.reason}`);
+      }
+      return result.run;
+    },
     submitOrdinaryTurn: async ({ lane, threadRef, turnRef, message, model }) => {
       const frames: HeadlessTurnFrame[] = [];
       // The real dispatcher forwards each projected event to a sender; the

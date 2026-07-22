@@ -132,4 +132,48 @@ describe("desktop headless host (#9161 host-context bootstrap)", () => {
     const kinds = result.frames.map((frame: { event: ClaudeLocalEvent }) => frame.event.kind);
     expect(kinds).toContain("turn_failed");
   });
+
+  test("explicit Full Auto start creates exactly one run record with a stable ref", () => {
+    const host = createHeadlessHost({ root: root() });
+    expect(host.fullAutoRuns()).toHaveLength(0);
+    const run = host.startFullAutoRun({
+      title: "burn the backlog",
+      objective: "Implement issue #1 and run the named verification.",
+      doneCondition: "The verification passes or a concrete blocker is reported.",
+    });
+    expect(run.runRef).toBeTruthy();
+    expect(run.state).toBe("running");
+    const runs = host.fullAutoRuns();
+    expect(runs).toHaveLength(1);
+    expect(runs[0].runRef).toBe(run.runRef);
+  });
+
+  test("the Full Auto run ref survives reopen from a fresh host over the same root", () => {
+    const dir = root();
+    const host = createHeadlessHost({ root: dir });
+    const run = host.startFullAutoRun({
+      title: "durable run",
+      objective: "Do the durable thing.",
+      doneCondition: "It is done.",
+    });
+    const reopened = createHeadlessHost({ root: dir });
+    const seen = reopened.fullAutoRuns().find((candidate) => candidate.runRef === run.runRef);
+    expect(seen).toBeDefined();
+    expect(seen?.objective).toBe("Do the durable thing.");
+  });
+
+  test("an ordinary turn beside a Full Auto run does not create a second run record", async () => {
+    const host = createHeadlessHost({ root: root() });
+    host.startFullAutoRun({ title: "t", objective: "o", doneCondition: "d" });
+    const thread = host.createThread();
+    const result = await host.submitOrdinaryTurn({
+      lane: identityLane("beside"),
+      threadRef: thread.id,
+      turnRef: "turn-1",
+      message: "hi",
+    });
+    // The ordinary turn created no NEW run record — still exactly one.
+    expect(host.fullAutoRuns()).toHaveLength(1);
+    expect(result.fullAutoRecordCount).toBe(0);
+  });
 });
