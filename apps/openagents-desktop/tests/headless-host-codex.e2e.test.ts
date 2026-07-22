@@ -18,6 +18,7 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { makeCodexHeadlessLane } from "../src/codex-headless-lane.ts";
 import { createHeadlessHost } from "../src/desktop-headless-host.ts";
+import { deriveHeadlessReceipts } from "../src/desktop-headless-receipt.ts";
 
 const live = process.env.HEADLESS_HOST_LIVE === "1";
 const model = process.env.HEADLESS_HOST_MODEL ?? "gpt-5.6-terra";

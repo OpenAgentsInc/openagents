@@ -19,8 +19,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@openagentsinc/graph-corpus": "0.2.1-rc.2",
     "@openagentsinc/atif": "workspace:*",
+    "@openagentsinc/graph-corpus": "0.2.1-rc.2",
     "effect": "catalog:"
   },
   "devDependencies": {
