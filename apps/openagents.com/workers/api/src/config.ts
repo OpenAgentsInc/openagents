@@ -11,6 +11,14 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // Default-off rollout gate for authenticated, pre-admitted Desktop Codex
   // exact-token usage. Consent remains independently default-off in Desktop.
   DESKTOP_CODEX_USAGE_INGEST_ENABLED?: string | undefined
+  // Default-OFF gate for owner-scoped graph-memory recall in the hosted Sarah
+  // turn (issue #9189; cognee-based @openagentsinc/agent-experience-memory,
+  // GraphMemoryStore #9164). Unset/false: no store is constructed, no recall
+  // runs, and Sarah's turn is byte-identical to a build without it. Set
+  // "true"/"1"/"on" to inject a bounded, redacted, fail-soft recall slice. A
+  // real hosted backing store is a separate composition-root change; the
+  // baseline resolves to the SDK disabled adapter (empty recall).
+  SARAH_GRAPH_MEMORY_RECALL_ENABLED?: string | undefined
   // Shared HMAC secret for host-only AUDIO-2 grants. This is a Worker secret,
   // never a public var or response field, and must match the private audio
   // gateway's OPENAGENTS_AUDIO_TOKEN_SECRET. Missing/weak values fail closed.

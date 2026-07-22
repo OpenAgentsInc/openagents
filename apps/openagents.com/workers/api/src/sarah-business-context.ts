@@ -8,7 +8,19 @@ import {
 import type { SyncSql } from "@openagentsinc/khala-sync-server";
 import { Schema as S } from "effect";
 
+import { recallSarahGraphMemory, type RecallSarahGraphMemoryInput } from "./sarah-graph-memory";
+
 type Fetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+
+/**
+ * Optional graph-memory recall for one hosted Sarah turn (issue #9189).
+ * Default OFF: when omitted or `enabled: false`, no store is constructed and no
+ * graph-memory source enters the context — zero behavior change.
+ */
+export type SarahGraphMemoryRecall = Pick<
+  RecallSarahGraphMemoryInput,
+  "enabled" | "query" | "storeLayer" | "maxItems" | "maxSummaryChars"
+>;
 
 type ConversationRow = Readonly<{
   source_ref: string;
@@ -248,9 +260,11 @@ export const collectSarahBusinessContext = async (
     threadRef: string;
     fetch?: Fetch;
     now?: () => Date;
+    graphMemoryRecall?: SarahGraphMemoryRecall;
   }>,
 ): Promise<SarahBusinessContext> => {
   const now = input.now?.() ?? new Date();
+  const recall = input.graphMemoryRecall;
   const sources = [
     ...(await settleSources([
       readConversation(input.sql, input.ownerUserId, input.threadRef),
@@ -259,6 +273,20 @@ export const collectSarahBusinessContext = async (
       readForum(input.sql),
       readGitHub(input.fetch ?? fetch),
       readCloudHealth(input.fetch ?? fetch),
+      // Owner-scoped, redacted, fail-soft graph-memory recall. Default OFF: with
+      // no recall config or `enabled: false`, this resolves to an empty slice
+      // and never opens a store (issue #9189).
+      recallSarahGraphMemory({
+        ownerUserId: input.ownerUserId,
+        enabled: recall?.enabled ?? false,
+        query: recall?.query ?? "",
+        now: () => now,
+        ...(recall?.storeLayer === undefined ? {} : { storeLayer: recall.storeLayer }),
+        ...(recall?.maxItems === undefined ? {} : { maxItems: recall.maxItems }),
+        ...(recall?.maxSummaryChars === undefined
+          ? {}
+          : { maxSummaryChars: recall.maxSummaryChars }),
+      }),
     ])),
   ];
   sources.push(

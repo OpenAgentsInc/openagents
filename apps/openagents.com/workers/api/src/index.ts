@@ -1227,6 +1227,7 @@ import {
 } from './runtime-primitives'
 import { runSarahAgentTurn } from './sarah-agent-runtime'
 import { collectSarahBusinessContext } from './sarah-business-context'
+import { sarahGraphMemoryRecallEnabled } from './sarah-graph-memory'
 import {
   FLEET_RUNS_PATH,
   SARAH_FLEET_RUNS_PATH,
@@ -7138,6 +7139,14 @@ const runHostedRuntimeTurnDispatchForEnv = async (
           ownerUserId: turn.ownerUserId,
           sql: client.sql,
           threadRef: turn.threadId,
+          // #9189: owner-scoped, redacted, fail-soft graph-memory recall. The
+          // flag is default OFF, so with it unset no store is opened and the
+          // context is unchanged. The baseline backing store is the SDK disabled
+          // adapter (empty recall) until a hosted state store is composed in.
+          graphMemoryRecall: {
+            enabled: sarahGraphMemoryRecallEnabled(env),
+            query: prompt,
+          },
         })
         const harness = await bindSarahHarnessForTurnPromise({
           ownerUserId: turn.ownerUserId,

@@ -1234,6 +1234,9 @@ importers:
       '@liquid-js/qrcode-generator':
         specifier: 1.1.6
         version: 1.1.6
+      '@openagentsinc/agent-experience-memory':
+        specifier: workspace:*
+        version: link:../../../../packages/agent-experience-memory
       '@openagentsinc/agent-readiness':
         specifier: workspace:*
         version: link:../../../../packages/agent-readiness
@@ -1349,6 +1352,9 @@ importers:
       '@asciidev/box-sdk':
         specifier: 0.0.24
         version: 0.0.24
+      '@openagentsinc/graph-corpus':
+        specifier: 0.2.1-rc.4
+        version: 0.2.1-rc.4
       '@openagentsinc/khala-sync-client':
         specifier: workspace:*
         version: link:../../../../packages/khala-sync-client
