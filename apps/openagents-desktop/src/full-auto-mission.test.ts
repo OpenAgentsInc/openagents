@@ -76,6 +76,80 @@ describe("Full Auto mission packet", () => {
     }
   });
 
+  test("HANDS-6: an autonomy run carries the INITIATIVE directive; a non-autonomy packet is byte-identical", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "full-auto-mission-initiative-"));
+    try {
+      const registry = openFullAutoRunRegistry(path.join(root, "runs.json"));
+      const started = registry.startNew({
+        title: "Take the next valuable action",
+        objective: "Close the cited gap.",
+        doneCondition: "verify: echo ok",
+        objectiveSource: "system_selected",
+        workspaceRef: "/workspace",
+        profile: { lane: "codex-local", accountRef: "codex-account" },
+        turnCap: 7,
+        threadRef: "thread.mission",
+        actor: "control_api",
+        reason: "test start",
+      });
+      expect(started.ok).toBe(true);
+      if (!started.ok) return;
+
+      // Non-autonomy first: no initiative key, and the prompt has no directive.
+      const plainPacket = compileFullAutoMissionPacket({
+        run: started.run,
+        record: lowLevelRecord(),
+        threadRef: "thread.mission",
+        profile: { lane: "codex-local", accountRef: "codex-account" },
+        turnCap: 7,
+        priorAcceptedOutcome: null,
+        previousHandoff: null,
+      });
+      expect(plainPacket.autonomyInitiative).toBeUndefined();
+      const plainPrompt = renderFullAutoMissionPrompt(plainPacket);
+      expect(plainPrompt).not.toContain("AUTONOMY INITIATIVE");
+      expect(plainPrompt).not.toContain("is NOT a reason to stop");
+
+      // Enable autonomy + record a self-claim, then recompile.
+      registry.setAutonomy(started.run.runRef, { enabled: true });
+      const claimed = registry.recordSelfClaim(started.run.runRef, {
+        schema: "openagents.desktop.full_auto_self_claim.v1",
+        claimRef: "claim.self.mission",
+        runRef: started.run.runRef,
+        scope: "Close the cited gap",
+        basis: "self_selected",
+        verification: "echo ok",
+        citedRefs: ["github:OpenAgentsInc/openagents#9184"],
+        ledger: "local",
+        claimedAt: "2026-07-22T00:00:00.000Z",
+      });
+      expect(claimed).not.toBeNull();
+      const autoPacket = compileFullAutoMissionPacket({
+        run: registry.get(started.run.runRef),
+        record: lowLevelRecord(),
+        threadRef: "thread.mission",
+        profile: { lane: "codex-local", accountRef: "codex-account" },
+        turnCap: 7,
+        priorAcceptedOutcome: null,
+        previousHandoff: null,
+      });
+      expect(autoPacket.autonomyInitiative).toEqual({
+        selfClaimRef: "claim.self.mission",
+        claimBasis: "self_selected",
+        claimLedger: "local",
+      });
+      const autoPrompt = renderFullAutoMissionPrompt(autoPacket);
+      expect(autoPrompt).toContain("AUTONOMY INITIATIVE");
+      expect(autoPrompt).toContain("is NOT a reason to stop");
+      expect(autoPrompt).toContain("claim.self.mission");
+      // The initiative section is additive: the non-autonomy prompt is a prefix
+      // subset (every non-initiative line is preserved unchanged).
+      expect(autoPrompt).toContain(plainPacket.objective);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test("uses an explicitly attributed legacy mission instead of inventing an objective", () => {
     const packet = compileFullAutoMissionPacket({
       run: null,

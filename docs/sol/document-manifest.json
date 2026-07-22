@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-21",
-  "sourceTreeSha256": "cec6acdb7639a58c434c2535618430ae16310321c487ddfef5b0f3d6c07dd2e4",
+  "sourceTreeSha256": "b49bceb32a91e330e712612dfadeda3ac3077a6f9609b79f8df303989f298154",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -2449,7 +2449,7 @@
       "owner": "Sol roadmap",
       "disposition": "retain-contract",
       "dispatch": false,
-      "sha256": "153a608c4566fe25a3a599c883db31e52b77e95045d5eae9a8d94cb2bcbc35e3",
+      "sha256": "1b38cbfe185218ac8a23e761ae9153563e2c3d24f2ccf6cb6843e021c5cd346e",
       "status": "active coordination contract",
       "snapshot": "2026-07-09",
       "reviewedAt": "2026-07-21",
@@ -2472,7 +2472,9 @@
         "docs/sol/issues/fc-substrate.md"
       ],
       "inboundSourceCount": 15,
-      "issueLinks": []
+      "issueLinks": [
+        9185
+      ]
     },
     {
       "path": "docs/sol/IMPLEMENTATION_ROADMAP.md",

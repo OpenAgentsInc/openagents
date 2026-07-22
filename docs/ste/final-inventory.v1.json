@@ -41649,7 +41649,7 @@
     },
     {
       "path": "docs/sol/CLAIM_PROTOCOL.md",
-      "sha256": "153a608c4566fe25a3a599c883db31e52b77e95045d5eae9a8d94cb2bcbc35e3",
+      "sha256": "1b38cbfe185218ac8a23e761ae9153563e2c3d24f2ccf6cb6843e021c5cd346e",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

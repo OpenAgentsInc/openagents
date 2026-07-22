@@ -56,6 +56,34 @@ claimed_at: <UTC timestamp>
 A material scope, path, or contract change updates the claim before mutation.
 Do not claim an entire epic when the actual unit is one leaf.
 
+## Autonomy self-claims
+
+A Full Auto run with autonomy enabled does not wait for a GitHub issue before it
+acts. The live GitHub issue set is the normal cross-session ledger. It is not
+the only valid ledger. This contract already permits an exact accepted plan or
+work packet as the ledger when repository policy prohibits a feature issue.
+
+A self-claim is that work packet. The run emits it. It is not a new GitHub
+issue. A self-selected action is a valid basis to act when all of these are
+true:
+
+- Autonomy is enabled for the run.
+- The action is in the owner-priority objective scope.
+- The host can verify the done condition (a named, runnable check).
+- No other active claim owns the same scope.
+
+The run records the self-claim before it changes files. The self-claim is
+honest and visible. It states the legitimacy basis (`self_selected`), the
+bounded scope, at least one real citation, and the named verification. The
+self-claim uses the same stale, blocked, and release rules as a cross-session
+claim.
+
+The host verifies the done condition before it admits completion. An owner Stop
+or override always stops the run. The self-claim record is relay-ready for the
+off-GitHub claim ledger (issue #9185).
+
+The absence of an open GitHub issue is never a reason to stop in autonomy mode.
+
 ## Status and release
 
 Post `CLAIM-STATUS` with a commit, test, or concrete blocker at meaningful

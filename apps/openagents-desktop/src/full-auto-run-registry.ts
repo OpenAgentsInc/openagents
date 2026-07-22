@@ -266,6 +266,55 @@ export type FullAutoRunTransitionRecord = typeof FullAutoRunTransitionRecordSche
  *    action rows. Bounded, most-recent-last.
  */
 export const FULL_AUTO_RUN_TURN_ACTION_LIMIT = 200
+
+/**
+ * HANDS-6 (#9184): the durable SELF-CLAIM an autonomy run records when it takes
+ * initiative on self-selected owner-priority work. `CLAIM_PROTOCOL.md` already
+ * says a live GitHub issue is only the NORMAL cross-session claim ledger, and
+ * "when no valid feature issue can exist under repository policy, the exact
+ * accepted plan or work packet and its recorded claim state are the ledger."
+ * A self-claim is exactly that packet, emitted by the run itself -- it is NOT a
+ * new GitHub issue. It makes the initiative honest and visible: the run does not
+ * silently mutate work; it records WHY it acted (self-selected, owner-priority),
+ * WHAT it claimed (a bounded scope with at least one real citation), and the
+ * host-runnable verification the completion gate (HANDS-2) still enforces.
+ *
+ *  - `basis`: the legitimacy basis -- always `self_selected` (never a GitHub
+ *    issue; that would defeat the point). It is the honest attribution the
+ *    grading lane and any reviewer can read.
+ *  - `verification`: the named host-runnable check. A self-claim without a
+ *    host-verifiable check is refused upstream (see `full-auto-initiative.ts`);
+ *    persisting it here keeps the completion gate and the claim on one truth.
+ *  - `citedRefs`: at least one real owner-priority citation (a doc, issue, or
+ *    code path). Selection never invents a citation, and neither does a claim.
+ *  - `ledger`: where the claim lives. `local` today; `relay` once the
+ *    off-GitHub claim ledger (#9185) is wired. The record is relay-ready by
+ *    construction so the move needs no schema change.
+ */
+export const FULL_AUTO_SELF_CLAIM_SCHEMA = "openagents.desktop.full_auto_self_claim.v1" as const
+export const FULL_AUTO_SELF_CLAIM_SCOPE_LIMIT = 160
+export const FULL_AUTO_SELF_CLAIM_VERIFICATION_LIMIT = 600
+const SelfClaimScope = Schema.String.check(
+  Schema.isMinLength(1),
+  Schema.isMaxLength(FULL_AUTO_SELF_CLAIM_SCOPE_LIMIT),
+)
+const SelfClaimVerification = Schema.String.check(
+  Schema.isMinLength(1),
+  Schema.isMaxLength(FULL_AUTO_SELF_CLAIM_VERIFICATION_LIMIT),
+)
+export const FullAutoSelfClaimSchema = Schema.Struct({
+  schema: Schema.Literal(FULL_AUTO_SELF_CLAIM_SCHEMA),
+  claimRef: Ref,
+  runRef: Ref,
+  scope: SelfClaimScope,
+  basis: Schema.Literal("self_selected"),
+  verification: SelfClaimVerification,
+  citedRefs: Schema.Array(Ref).check(Schema.isMinLength(1), Schema.isMaxLength(20)),
+  ledger: Schema.Literals(["local", "relay"]),
+  claimedAt: Schema.String,
+})
+export type FullAutoSelfClaim = typeof FullAutoSelfClaimSchema.Type
+
 export const FullAutoRunAutonomySchema = Schema.Struct({
   enabled: Schema.Boolean,
   plan: Schema.optional(FullAutoPlanSchema),
@@ -274,6 +323,9 @@ export const FullAutoRunAutonomySchema = Schema.Struct({
   turnActions: Schema.optional(
     Schema.Array(FullAutoTurnActionSchema).check(Schema.isMaxLength(FULL_AUTO_RUN_TURN_ACTION_LIMIT)),
   ),
+  /** HANDS-6 (#9184): the durable self-claim recorded when this run took
+   * initiative on self-selected work. Absent = no initiative claim yet. */
+  selfClaim: Schema.optional(FullAutoSelfClaimSchema),
 })
 export type FullAutoRunAutonomy = typeof FullAutoRunAutonomySchema.Type
 
@@ -573,6 +625,11 @@ export type FullAutoRunRegistry = Readonly<{
    * present. A row whose turnRef already exists is replaced in place so a replay
    * never double-counts. */
   recordTurnAction: (runRef: string, action: FullAutoTurnAction) => FullAutoRun | null
+  /** HANDS-6 (#9184): record (or replace) the durable self-claim an autonomy
+   * run emits when it takes initiative on self-selected work. Additive durable
+   * write; a null no-op when the record is missing or autonomy is not present
+   * (a self-claim is meaningless without the autonomy gate). */
+  recordSelfClaim: (runRef: string, claim: FullAutoSelfClaim) => FullAutoRun | null
 }>
 
 export const openFullAutoRunRegistry = (
@@ -841,6 +898,20 @@ export const openFullAutoRunRegistry = (
     return next
   }
 
+  const recordSelfClaim: FullAutoRunRegistry["recordSelfClaim"] = (runRef, claim) => {
+    const index = findIndex(runRef)
+    if (index === -1) return null
+    const current = runs[index]!
+    if (current.autonomy === undefined) return null
+    const next = Schema.decodeUnknownSync(FullAutoRunSchema)(compactRunInput({
+      ...current,
+      autonomy: { ...current.autonomy, selfClaim: claim },
+    }))
+    runs[index] = next
+    persist()
+    return next
+  }
+
   return {
     list,
     get,
@@ -861,6 +932,7 @@ export const openFullAutoRunRegistry = (
     updatePlan,
     recordVerification,
     recordTurnAction,
+    recordSelfClaim,
   }
 }
 

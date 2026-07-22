@@ -1539,6 +1539,42 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
     },
     {
       authorityBoundary:
+        "This binds only the opt-in autonomy run's INITIATIVE default: with autonomy enabled, the absence of an open GitHub issue or claim is not a reason to stop; a self-selected, owner-priority-aligned, host-verifiable next action lets the run record a self-claim (a local or relay work-packet claim, never a new GitHub issue) and proceed. It grants no dispatch, spend, release, public-claim, or settlement authority and self-amplifies nothing: owner Stop/override still halts, the host verification gate still admits completion, owner-priority selection still bounds what is selectable, and a conflicting active claim still yields. It does not change any default (non-autonomy) Full Auto run, whose behavior stays byte-identical.",
+      blockerRefs: [],
+      contractId: "openagents_desktop.full_auto_autonomy_initiative.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "apps/openagents-desktop/src/full-auto-initiative.ts",
+        "apps/openagents-desktop/src/full-auto-initiative.test.ts",
+        "apps/openagents-desktop/src/full-auto-mission.ts",
+        "docs/sol/CLAIM_PROTOCOL.md",
+        "github:OpenAgentsInc/openagents#9184",
+      ],
+      oracles: [
+        {
+          description:
+            "Unit oracles over decideFullAutoInitiative prove that, with autonomy enabled, a self-selected host-verifiable candidate and no conflicting active claim PROCEED and record an honest self-claim (basis self_selected, ledger local, relay-movable) even though no open GitHub issue exists; a non-host-verifiable candidate, an owner halt, a conflicting active claim, and an absent candidate each HOLD with a typed reason; and a non-autonomy run always holds so default Full Auto is unchanged. Mission oracles prove the autonomy INITIATIVE directive appears only for an autonomy run and a non-autonomy packet/prompt is byte-identical.",
+          id: "openagents_desktop.full_auto_autonomy_initiative.decision",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents-desktop/src/full-auto-initiative.test.ts",
+        },
+      ],
+      productArea: "Desktop Full Auto autonomy",
+      source: {
+        channel: "owner-codex-session",
+        statedBy: "owner",
+        statedOn: "2026-07-22",
+      },
+      state: "enforced",
+      statement:
+        "When Full Auto autonomy is enabled for a run, the run does not sit idle waiting for a pre-existing GitHub issue or claim: a self-selected, owner-priority-aligned, host-verifiable action is a valid basis to act, so the run records a self-claim and proceeds to a bounded verified unit, gated by owner Stop/override, a conflicting-claim yield, and the host verification of the done condition.",
+      surface: "openagents-desktop",
+      verification:
+        "The normal Desktop sweep runs full-auto-initiative.test.ts and full-auto-mission.test.ts, proving the proceed/hold decision ladder (the open-GitHub-claim precondition is absent from it), the self-claim record, the host-verification gate, the owner-halt and conflicting-claim holds, the non-autonomy skip, and the autonomy-only mission directive with a byte-identical non-autonomy packet.",
+    },
+    {
+      authorityBoundary:
         "This binds the lightning-bolt Full Auto entry point, its compact one-mission default, collapsed Advanced configuration, and persistent run monitor. It does not itself define the run's lifecycle state machine (see full_auto_play_pause_stop_lifecycle.v1), and it grants no fleet scheduling, release, or public-claim authority.",
       blockerRefs: [],
       contractId: "openagents_desktop.full_auto_dedicated_launcher.v1",

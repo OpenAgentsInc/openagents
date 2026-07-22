@@ -8718,16 +8718,19 @@
       ]
     },
     "docs/sol/CLAIM_PROTOCOL.md": {
-      "sourceSha256": "153a608c4566fe25a3a599c883db31e52b77e95045d5eae9a8d94cb2bcbc35e3",
+      "sourceSha256": "1b38cbfe185218ac8a23e761ae9153563e2c3d24f2ccf6cb6843e021c5cd346e",
       "normativeKeywords": [],
       "inlineCode": [
         "2026-07-10-terra-execution-lane.md",
         "CLAIM-STATUS",
         "MASTER_ROADMAP.md",
-        "roadmap:sol"
+        "roadmap:sol",
+        "self_selected"
       ],
       "urls": [],
-      "issueRefs": [],
+      "issueRefs": [
+        "#9185"
+      ],
       "numericValues": [
         "09",
         "1",
@@ -8737,7 +8740,8 @@
         "2026-07",
         "2026-07",
         "2026-07",
-        "90"
+        "90",
+        "9185"
       ]
     },
     "specs/CONVENTIONS.md": {

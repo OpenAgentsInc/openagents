@@ -146,8 +146,9 @@ describe("behavior contract registry", () => {
     // (readiness-gated routing, four-lane rotation parity, Apple FM advisory,
     // capacity ledger), taking the total from 43 to 47. HANDS-2 (#9173) added
     // one enforced Full Auto autonomy contract (host-verified completion),
-    // taking the total to 48.
-    expect(decoded.contracts).toHaveLength(48)
+    // taking the total to 48. HANDS-6 (#9184) added one enforced Full Auto
+    // autonomy contract (initiative without a GitHub claim), taking it to 49.
+    expect(decoded.contracts).toHaveLength(49)
     const hostVerifiedCompletion = decoded.contracts.find(
       contract => contract.contractId === "openagents_desktop.full_auto_host_verified_completion.v1",
     )
@@ -155,6 +156,13 @@ describe("behavior contract registry", () => {
     expect(hostVerifiedCompletion?.enforcementTier).toBe("test-sweep")
     expect(hostVerifiedCompletion?.oracles).toHaveLength(1)
     expect(hostVerifiedCompletion?.statement).toContain("self-reported completion is treated as evidence only")
+    const autonomyInitiative = decoded.contracts.find(
+      contract => contract.contractId === "openagents_desktop.full_auto_autonomy_initiative.v1",
+    )
+    expect(autonomyInitiative?.state).toBe("enforced")
+    expect(autonomyInitiative?.enforcementTier).toBe("test-sweep")
+    expect(autonomyInitiative?.oracles).toHaveLength(1)
+    expect(autonomyInitiative?.statement).toContain("does not sit idle waiting for a pre-existing GitHub issue")
     const pending = decoded.contracts.filter(contract => contract.state === "pending")
     // FA-UX-01 (#8974) flipped 3 Full Auto contracts from pending to
     // enforced: openagents_desktop.full_auto_dedicated_launcher.v1,
