@@ -74,6 +74,92 @@ describe("boot sequence agent scan", () => {
     expect(agents.find((agent) => agent.id === "grok")?.status).toBe("available")
   })
 
+  test("baseline: with only Grok admitted the scan is exactly the four built-in agents", () => {
+    // #9183 baseline regression: the four-line roster (Codex, Claude Code,
+    // Grok, Apple FM) is preserved when only those lanes exist.
+    const agents = projectBootSequenceAgents(
+      withState({
+        harnessLanes: { claude: { available: true, reason: null }, codex: { available: true, reason: null } },
+        providerLaneCapabilities: [
+          lane({ laneRef: "codex-local", provider: "codex" }),
+          lane({ laneRef: "claude-local", provider: "claude", displayName: "Claude Code" }),
+          lane({ laneRef: "acp:grok-cli", provider: "grok", displayName: "Grok CLI", models: ["grok-4"] }),
+        ],
+        appleFmBoot: { status: "unavailable", detail: "unsupported_hardware", testInference: null },
+      }),
+    )
+    expect(agents.map((agent) => agent.label)).toEqual(["Codex", "Claude Code", "Grok", "Apple FM"])
+  })
+
+  test("the ACP roster is data-driven: an admitted Cursor lane appears with its short name and model (#9183)", () => {
+    const agents = projectBootSequenceAgents(
+      withState({
+        providerLaneCapabilities: [
+          lane({ laneRef: "acp:grok-cli", provider: "grok", displayName: "Grok CLI", models: ["grok-4"] }),
+          lane({ laneRef: "acp:cursor-agent", provider: "cursor", displayName: "Cursor Agent CLI", models: ["cursor-auto"] }),
+        ],
+      }),
+    )
+    // Codex, Claude Code, Grok, Cursor, Apple FM — Cursor now shows, between the
+    // Grok line and the on-device Apple FM line, without a per-peer edit.
+    expect(agents.map((agent) => agent.label)).toEqual(["Codex", "Claude Code", "Grok", "Cursor", "Apple FM"])
+    const cursor = agents.find((agent) => agent.id === "cursor")
+    expect(cursor?.status).toBe("available")
+    expect(cursor?.detail).toBe("cursor-auto")
+  })
+
+  test("a quarantined ACP peer lane reads unavailable with its lane reason as the detail", () => {
+    const agents = projectBootSequenceAgents(
+      withState({
+        providerLaneCapabilities: [
+          lane({
+            laneRef: "acp:cursor-agent",
+            provider: "cursor",
+            displayName: "Cursor Agent CLI",
+            admission: "quarantined",
+            reason: "Cursor Agent CLI is not installed or has not passed its executable probe.",
+          }),
+        ],
+      }),
+    )
+    const cursor = agents.find((agent) => agent.id === "cursor")
+    expect(cursor?.status).toBe("unavailable")
+    expect(cursor?.detail).toBe("Cursor Agent CLI is not installed or has not passed its executable probe.")
+  })
+
+  test("the scan can show up to the full seven-harness roster when every ACP peer is admitted (#9183)", () => {
+    // Codex + Claude Code (built-in) + five admitted ACP peers = the seven
+    // harnesses, plus the on-device Apple FM line. Proves the roster scales past
+    // the historical four with no per-peer branch.
+    const agents = projectBootSequenceAgents(
+      withState({
+        harnessLanes: { claude: { available: true, reason: null }, codex: { available: true, reason: null } },
+        providerLaneCapabilities: [
+          lane({ laneRef: "codex-local", provider: "codex" }),
+          lane({ laneRef: "claude-local", provider: "claude", displayName: "Claude Code" }),
+          lane({ laneRef: "acp:grok-cli", provider: "grok", displayName: "Grok CLI", models: ["grok-4"] }),
+          lane({ laneRef: "acp:cursor-agent", provider: "cursor", displayName: "Cursor Agent CLI", models: ["cursor-auto"] }),
+          lane({ laneRef: "acp:opencode", provider: "opencode", displayName: "OpenCode CLI", models: ["opencode-default"] }),
+          lane({ laneRef: "acp:goose", provider: "goose", displayName: "Goose CLI", models: ["goose-default"] }),
+          lane({ laneRef: "acp:pi", provider: "pi", displayName: "Pi", models: ["pi-default"] }),
+        ],
+        appleFmBoot: { status: "available", detail: "apple-fm-3b", testInference: "I am online." },
+      }),
+    )
+    expect(agents.map((agent) => agent.label)).toEqual([
+      "Codex",
+      "Claude Code",
+      "Grok",
+      "Cursor",
+      "OpenCode",
+      "Goose",
+      "Pi",
+      "Apple FM",
+    ])
+    // The seven harnesses report available; Apple FM is the on-device model.
+    expect(agents.filter((agent) => agent.status === "available")).toHaveLength(8)
+  })
+
   test("Apple FM reflects live discovery: unprobed → checking, ready → available with its test inference", () => {
     const unprobed = projectBootSequenceAgents(base).find((agent) => agent.id === "apple-fm")
     expect(unprobed?.status).toBe("checking")
