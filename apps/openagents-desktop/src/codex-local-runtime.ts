@@ -40,14 +40,15 @@
  *
  * This module never imports `electron` (unit-testable under `pnpm exec vp test`).
  */
-import { mkdirSync, writeFileSync } from "node:fs"
-import { join } from "node:path"
+import { mkdirSync, writeFileSync } from "node:fs";
+import { runCodexHarnessExecAttempt } from "./codex-harness-attempt";
+import { join } from "node:path";
 
 import {
   hashPylonAccountRef,
   pylonAccountEnvironment,
   type ResolvedPylonAccountSelection,
-} from "@openagentsinc/pylon-core/custody/account-registry"
+} from "@openagentsinc/pylon-core/custody/account-registry";
 
 import {
   CODEX_CHILD_SANDBOX,
@@ -58,7 +59,7 @@ import {
   isCodexRateLimitText,
   isCodexReconnectRequiredText,
   type CodexChildUsage,
-} from "./codex-child-contract.ts"
+} from "./codex-child-contract.ts";
 import {
   defaultSpawnCodex,
   codexProviderEnvironment,
@@ -70,13 +71,13 @@ import {
   type CodexAccountHealth,
   type CodexChildAccount,
   type CodexChildSpawn,
-} from "./codex-child-runtime.ts"
+} from "./codex-child-runtime.ts";
 import {
   CODEX_LOCAL_MODEL,
   CODEX_LOCAL_REASONING_EFFORT,
   type CodexLocalAvailability,
   type CodexLocalModelOption,
-} from "./codex-local-contract.ts"
+} from "./codex-local-contract.ts";
 import {
   CLAUDE_LOCAL_DELTA_LIMIT,
   CLAUDE_LOCAL_FINAL_TEXT_LIMIT,
@@ -93,26 +94,23 @@ import {
   type ClaudeLocalImageAttachment,
   type ClaudeLocalQuestion,
   type ClaudeLocalQueueFollowupRequest,
-} from "./claude-local-contract.ts"
+} from "./claude-local-contract.ts";
 import {
   CLAUDE_LOCAL_HISTORY_MESSAGES,
   CLAUDE_LOCAL_HISTORY_MESSAGE_LIMIT,
   claudeThreadWorkspaceSlug,
   type ClaudeLocalHistoryMessage,
-} from "./claude-local-runtime.ts"
-import type { CodexPreflight } from "./codex-preflight.ts"
-import { workbenchItemFromThreadItem } from "./workbench-item-contract.ts"
-import {
-  runCodexAppServerTurn,
-  type CodexAppServerTurnControl,
-} from "./codex-app-server-turn.ts"
-import type { CodexAppServerRequest, CodexAppServerSpawn } from "./codex-app-server-client.ts"
-import type { CodexAppServerSupervisor } from "./codex-app-server-supervisor.ts"
-import type { CodexControlPlaneRegistry } from "./codex-control-plane.ts"
-import type { CodexDurableQueue } from "./codex-durable-queue.ts"
-import type { CodexEcosystem, CodexEcosystemRegistry } from "./codex-ecosystem.ts"
-import type { ClaudeLocalQueueFollowupOutcome } from "./claude-local-runtime.ts"
-import { fullAutoPrompt } from "./full-auto-lane.ts"
+} from "./claude-local-runtime.ts";
+import type { CodexPreflight } from "./codex-preflight.ts";
+import { workbenchItemFromThreadItem } from "./workbench-item-contract.ts";
+import { runCodexAppServerTurn, type CodexAppServerTurnControl } from "./codex-app-server-turn.ts";
+import type { CodexAppServerRequest, CodexAppServerSpawn } from "./codex-app-server-client.ts";
+import type { CodexAppServerSupervisor } from "./codex-app-server-supervisor.ts";
+import type { CodexControlPlaneRegistry } from "./codex-control-plane.ts";
+import type { CodexDurableQueue } from "./codex-durable-queue.ts";
+import type { CodexEcosystem, CodexEcosystemRegistry } from "./codex-ecosystem.ts";
+import type { ClaudeLocalQueueFollowupOutcome } from "./claude-local-runtime.ts";
+import { fullAutoPrompt } from "./full-auto-lane.ts";
 
 /**
  * Full Auto (#8852): prefixed onto the turn prompt whenever `fullAuto` is
@@ -121,26 +119,29 @@ import { fullAutoPrompt } from "./full-auto-lane.ts"
  * each clean completion, not from this instruction asking the model to loop
  * itself.
  */
-export const FULL_AUTO_INSTRUCTION =
-  fullAutoPrompt("codex-local", "").trim()
+export const FULL_AUTO_INSTRUCTION = fullAutoPrompt("codex-local", "").trim();
 
 export type CodexLocalTurnInput = Readonly<{
-  turnRef: string
-  threadRef: string
-  history: ReadonlyArray<ClaudeLocalHistoryMessage>
-  message: string
-  queueRef?: string
-  clientUserMessageId?: string
-  accountRef?: string
-  model?: CodexModel
-  reasoningEffort?: CodexReasoningEffort
-  extensionSelection?: Readonly<{ skillIds?: ReadonlyArray<string>; appIds?: ReadonlyArray<string>; pluginIds?: ReadonlyArray<string> }>
+  turnRef: string;
+  threadRef: string;
+  history: ReadonlyArray<ClaudeLocalHistoryMessage>;
+  message: string;
+  queueRef?: string;
+  clientUserMessageId?: string;
+  accountRef?: string;
+  model?: CodexModel;
+  reasoningEffort?: CodexReasoningEffort;
+  extensionSelection?: Readonly<{
+    skillIds?: ReadonlyArray<string>;
+    appIds?: ReadonlyArray<string>;
+    pluginIds?: ReadonlyArray<string>;
+  }>;
   /**
    * Full Auto (#8852): forces `approvalPolicy: "never"` for this turn (no
    * mid-turn approval interruptions) and prefixes the prompt with the Full
    * Auto instruction. Absent/false preserves the on-request default exactly.
    */
-  fullAuto?: boolean
+  fullAuto?: boolean;
   /**
    * Full Auto #8884: background turns have no renderer capable of answering
    * `item/tool/requestUserInput`; resolve such requests immediately instead
@@ -150,142 +151,154 @@ export type CodexLocalTurnInput = Readonly<{
    * continuation (sender === null) has neither, so the JSON-RPC round trip
    * would block forever and the thread would read permanently nonterminal.
    */
-  autoResolveQuestions?: boolean
+  autoResolveQuestions?: boolean;
   /**
    * Optional image attachments (capability I1). `codex exec` accepts images
    * via `-i, --image <FILE>...` (local file paths), so the runtime writes each
    * attachment into a bounded per-turn subdir of the thread workspace and
    * passes its path. Absent/empty = the prior no-image invocation, unchanged.
    */
-  images?: ReadonlyArray<ClaudeLocalImageAttachment>
+  images?: ReadonlyArray<ClaudeLocalImageAttachment>;
   /** Main-owned startup recovery. Exact account/thread only; never renderer supplied. */
-  recovery?: Readonly<{ threadId: string; accountRef: string }>
-  emit: (event: ClaudeLocalEvent) => void
-}>
+  recovery?: Readonly<{ threadId: string; accountRef: string }>;
+  emit: (event: ClaudeLocalEvent) => void;
+}>;
 
 export type CodexLocalTurnResult =
   | Readonly<{
-      ok: true
-      text: string
-      totalTokens: number | null
-      accountRef: string
-      usage?: ClaudeChildUsage
+      ok: true;
+      text: string;
+      totalTokens: number | null;
+      accountRef: string;
+      usage?: ClaudeChildUsage;
       /** The codex thread id (session continuity receipt), when reported. */
-      threadId: string | null
+      threadId: string | null;
     }>
-  | Readonly<{ ok: false; reason: ClaudeLocalFailureReason; detail: string }>
+  | Readonly<{ ok: false; reason: ClaudeLocalFailureReason; detail: string }>;
 
 export type CodexLocalRuntimeOptions = Readonly<{
   /** Resolved lazily (Electron's userData path is not final at module load). */
-  scratchRoot: () => string
+  scratchRoot: () => string;
   /** Exact top-level coding cwd; replaceable by a future directory setting. */
-  workspaceRoot?: () => string
-  env?: Record<string, string | undefined>
-  spawnImpl?: CodexChildSpawn
-  discoverImpl?: () => Promise<ReadonlyArray<CodexChildAccount>>
-  health?: CodexAccountHealth
+  workspaceRoot?: () => string;
+  env?: Record<string, string | undefined>;
+  spawnImpl?: CodexChildSpawn;
+  discoverImpl?: () => Promise<ReadonlyArray<CodexChildAccount>>;
+  health?: CodexAccountHealth;
   /**
    * The session preflight prober: availability = a PROBE-VERIFIED account
    * exists, and runTurn lazily probes before the FIRST dispatch this session
    * (the anti-speedbump gate). Absent only in unit tests that inject
    * discover/health directly.
    */
-  preflight?: CodexPreflight
+  preflight?: CodexPreflight;
   /** Test-only host deadline. Production turns have no automatic cutoff. */
-  timeoutMs?: number
-  durableQueue?: CodexDurableQueue
+  timeoutMs?: number;
+  durableQueue?: CodexDurableQueue;
   /**
    * Product runtime path. When present every real Codex turn uses the pinned
    * app-server protocol; the legacy exec parser remains only for deterministic
    * fixtures and compatibility tests that omit this option.
    */
   appServer?: Readonly<{
-    binary: () => string | null
-    supervisor?: CodexAppServerSupervisor
+    binary: () => string | null;
+    supervisor?: CodexAppServerSupervisor;
     /** Main-owned app-server truth and managed-policy gate for this exact account target. */
-    controlPlanes?: CodexControlPlaneRegistry
-    ecosystems?: CodexEcosystemRegistry
-    turnReceiptPath?: (account: CodexChildAccount, threadRef: string) => string
+    controlPlanes?: CodexControlPlaneRegistry;
+    ecosystems?: CodexEcosystemRegistry;
+    turnReceiptPath?: (account: CodexChildAccount, threadRef: string) => string;
     installProductSpecSkill: (account: CodexChildAccount) => Readonly<{
-      skillRoot: string
-      skillPath: string
-    }>
-    spawnImpl?: CodexAppServerSpawn
-    onServerRequest?: (request: CodexAppServerRequest) => Promise<unknown>
+      skillRoot: string;
+      skillPath: string;
+    }>;
+    spawnImpl?: CodexAppServerSpawn;
+    onServerRequest?: (request: CodexAppServerRequest) => Promise<unknown>;
     /** ProductSpec capability is advertised only while the host owns admitted work context. */
-    productSpecEnabled?: () => boolean
-    productSpecDynamicTools?: ReadonlyArray<Readonly<Record<string, unknown>>>
-    onProductSpecToolCall?: (request: CodexAppServerRequest) => Promise<unknown | null>
-  }>
+    productSpecEnabled?: () => boolean;
+    productSpecDynamicTools?: ReadonlyArray<Readonly<Record<string, unknown>>>;
+    onProductSpecToolCall?: (request: CodexAppServerRequest) => Promise<unknown | null>;
+  }>;
   /**
    * Typed per-account evidence feed (main wires this into the usage ledger
    * so the fleet readiness projection sees turn-observed reconnect evidence
    * and turn-verified recoveries without parsing display strings).
    */
-  onAccountEvidence?: (input: Readonly<{
-    accountRef: string
-    evidence: "reconnect_required" | "verified"
-  }>) => void
+  onAccountEvidence?: (
+    input: Readonly<{
+      accountRef: string;
+      evidence: "reconnect_required" | "verified";
+    }>,
+  ) => void;
   /** Durable main-owned continuity restored before the first renderer exists. */
-  initialSessions?: ReadonlyArray<Readonly<{
-    threadRef: string
-    threadId: string
-    accountRef: string
-  }>>
+  initialSessions?: ReadonlyArray<
+    Readonly<{
+      threadRef: string;
+      threadId: string;
+      accountRef: string;
+    }>
+  >;
   /** Main-only dispatch receipt; never projected through the renderer bridge. */
-  onDispatch?: (input: Readonly<{
-    threadRef: string
-    turnRef: string
-    accountRef: string
-  }>) => void
+  onDispatch?: (
+    input: Readonly<{
+      threadRef: string;
+      turnRef: string;
+      accountRef: string;
+    }>,
+  ) => void;
   /** Main-only provider identity receipt observed at `thread.started`. */
-  onProviderSession?: (input: Readonly<{
-    threadRef: string
-    turnRef: string
-    accountRef: string
-    threadId: string
-  }>) => void
-}>
+  onProviderSession?: (
+    input: Readonly<{
+      threadRef: string;
+      turnRef: string;
+      accountRef: string;
+      threadId: string;
+    }>,
+  ) => void;
+}>;
 
 export type CodexLocalRuntime = Readonly<{
-  availability: () => Promise<CodexLocalAvailability>
-  runTurn: (input: CodexLocalTurnInput) => Promise<CodexLocalTurnResult>
+  availability: () => Promise<CodexLocalAvailability>;
+  runTurn: (input: CodexLocalTurnInput) => Promise<CodexLocalTurnResult>;
   /** L8: force the next turn to open a fresh provider conversation while
    * the shared dispatcher supplies bounded host-owned history. */
-  resetContinuity: (threadRef: string) => void
-  interrupt: (turnRef: string) => boolean
-  steerCurrent: (request: ClaudeLocalQueueFollowupRequest) => Promise<Readonly<{
-    ok: boolean
-    outcome: "delivered" | "unsupported" | "not_found"
-  }>>
-  queueFollowup: (request: ClaudeLocalQueueFollowupRequest) => ClaudeLocalQueueFollowupOutcome
-  answerQuestion: (request: ClaudeLocalAnswerQuestionRequest) => boolean
-  dispose: () => void
-}>
+  resetContinuity: (threadRef: string) => void;
+  interrupt: (turnRef: string) => boolean;
+  steerCurrent: (request: ClaudeLocalQueueFollowupRequest) => Promise<
+    Readonly<{
+      ok: boolean;
+      outcome: "delivered" | "unsupported" | "not_found";
+    }>
+  >;
+  queueFollowup: (request: ClaudeLocalQueueFollowupRequest) => ClaudeLocalQueueFollowupOutcome;
+  answerQuestion: (request: ClaudeLocalAnswerQuestionRequest) => boolean;
+  dispose: () => void;
+}>;
 
 const bounded = (value: string, limit: number): string =>
-  value.length > limit ? `${value.slice(0, limit - 1)}…` : value
+  value.length > limit ? `${value.slice(0, limit - 1)}…` : value;
 
 const historyPrompt = (
   history: ReadonlyArray<ClaudeLocalHistoryMessage>,
   message: string,
 ): string => {
   const window = history
-    .filter(note => note.role !== "system")
+    .filter((note) => note.role !== "system")
     .slice(-CLAUDE_LOCAL_HISTORY_MESSAGES)
-    .map(note =>
-      `${note.role === "user" ? "User" : "Assistant"}: ${bounded(note.text, CLAUDE_LOCAL_HISTORY_MESSAGE_LIMIT)}`)
-  if (window.length === 0) return message
+    .map(
+      (note) =>
+        `${note.role === "user" ? "User" : "Assistant"}: ${bounded(note.text, CLAUDE_LOCAL_HISTORY_MESSAGE_LIMIT)}`,
+    );
+  if (window.length === 0) return message;
   return [
     "Conversation so far (for context; reply only to the final user message):",
     ...window,
     `User: ${message}`,
-  ].join("\n\n")
-}
+  ].join("\n\n");
+};
 
 /** File extension for a supported image media type (`codex exec -i` path). */
 const codexImageExtension = (mediaType: ClaudeLocalImageAttachment["mediaType"]): string =>
-  mediaType === "image/jpeg" ? "jpg" : mediaType.slice("image/".length)
+  mediaType === "image/jpeg" ? "jpg" : mediaType.slice("image/".length);
 
 /**
  * Write attached images (capability I1) into a bounded per-turn subdir of the
@@ -298,182 +311,235 @@ export const writeCodexTurnImages = (
   turnRef: string,
   images: ReadonlyArray<ClaudeLocalImageAttachment>,
 ): ReadonlyArray<string> => {
-  if (images.length === 0) return []
-  const slug = turnRef.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 120)
-  const dir = join(workspace, ".oa-image-attachments", slug)
-  mkdirSync(dir, { recursive: true })
+  if (images.length === 0) return [];
+  const slug = turnRef.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 120);
+  const dir = join(workspace, ".oa-image-attachments", slug);
+  mkdirSync(dir, { recursive: true });
   return images.map((image, index) => {
-    const filePath = join(dir, `image-${index + 1}.${codexImageExtension(image.mediaType)}`)
-    writeFileSync(filePath, Buffer.from(image.data, "base64"))
-    return filePath
-  })
-}
+    const filePath = join(dir, `image-${index + 1}.${codexImageExtension(image.mediaType)}`);
+    writeFileSync(filePath, Buffer.from(image.data, "base64"));
+    return filePath;
+  });
+};
 
 type ParsedTurnAttempt = Readonly<{
-  outcome: "success" | "reconnect_required" | "incompatible_workflow" | "failed" | "timeout" | "interrupted"
-  text: string
-  usage: CodexChildUsage | null
-  threadId: string | null
-  detail: string
-  preContent: boolean
-  policyDenied: boolean
-  quotaExhausted: boolean
-  rateLimited: boolean
-}>
+  outcome:
+    | "success"
+    | "reconnect_required"
+    | "incompatible_workflow"
+    | "failed"
+    | "timeout"
+    | "interrupted";
+  text: string;
+  usage: CodexChildUsage | null;
+  threadId: string | null;
+  detail: string;
+  preContent: boolean;
+  policyDenied: boolean;
+  quotaExhausted: boolean;
+  rateLimited: boolean;
+}>;
 
 export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexLocalRuntime => {
-  const env = options.env ?? (process.env as Record<string, string | undefined>)
-  const spawnCodex = options.spawnImpl ?? defaultSpawnCodex
-  const discover = options.discoverImpl ?? (() => discoverRegisteredCodexAccounts(env))
-  const health = options.health ?? sharedCodexAccountHealth
-  const timeoutMs = options.timeoutMs
-  const activeTurns = new Map<string, {
-    interrupted: boolean
-    child: ChildLike | null
-    interrupt: (() => void) | null
-    steer: ((message: string, expectedTurnId?: string, clientUserMessageId?: string) => Promise<boolean>) | null
-  }>()
-  const activeTurnByThread = new Map<string, {
-    turnRef: string
-    emit: (event: ClaudeLocalEvent) => void
-    providerTurnId: string | null
-    control: { steer: ((message: string, expectedTurnId?: string, clientUserMessageId?: string) => Promise<boolean>) | null }
-  }>()
-  const followupQueue = new Map<string, Array<{ queueRef: string; message: string }>>()
-  let followupSequence = 0
-  const pendingQuestions = new Map<string, Readonly<{
-    turnRef: string
-    accept: (request: ClaudeLocalAnswerQuestionRequest) => boolean
-    deny: () => void
-  }>>()
-  let questionSequence = 0
+  const env = options.env ?? (process.env as Record<string, string | undefined>);
+  const spawnCodex = options.spawnImpl ?? defaultSpawnCodex;
+  const discover = options.discoverImpl ?? (() => discoverRegisteredCodexAccounts(env));
+  const health = options.health ?? sharedCodexAccountHealth;
+  const timeoutMs = options.timeoutMs;
+  const activeTurns = new Map<
+    string,
+    {
+      interrupted: boolean;
+      child: ChildLike | null;
+      interrupt: (() => void) | null;
+      steer:
+        | ((
+            message: string,
+            expectedTurnId?: string,
+            clientUserMessageId?: string,
+          ) => Promise<boolean>)
+        | null;
+    }
+  >();
+  const activeTurnByThread = new Map<
+    string,
+    {
+      turnRef: string;
+      emit: (event: ClaudeLocalEvent) => void;
+      providerTurnId: string | null;
+      control: {
+        steer:
+          | ((
+              message: string,
+              expectedTurnId?: string,
+              clientUserMessageId?: string,
+            ) => Promise<boolean>)
+          | null;
+      };
+    }
+  >();
+  const followupQueue = new Map<string, Array<{ queueRef: string; message: string }>>();
+  let followupSequence = 0;
+  const pendingQuestions = new Map<
+    string,
+    Readonly<{
+      turnRef: string;
+      accept: (request: ClaudeLocalAnswerQuestionRequest) => boolean;
+      deny: () => void;
+    }>
+  >();
+  let questionSequence = 0;
   /**
    * In-memory continuity: threadRef -> the codex thread session, pinned to
    * the account that created it (resume runs on the SAME isolated home only;
    * a rotated account gets bounded-history prepend instead).
    */
   const sessionByThread = new Map<string, { threadId: string; accountRef: string }>(
-    (options.initialSessions ?? []).map(session => [
+    (options.initialSessions ?? []).map((session) => [
       session.threadRef,
       { threadId: session.threadId, accountRef: session.accountRef },
     ]),
-  )
+  );
 
   const verifiedOrderedAccounts = async (): Promise<{
-    accounts: ReadonlyArray<CodexChildAccount>
-    verified: ReadonlyArray<CodexChildAccount>
+    accounts: ReadonlyArray<CodexChildAccount>;
+    verified: ReadonlyArray<CodexChildAccount>;
   }> => {
     // Lazy first-dispatch probe (anti-speedbump): before the first dispatch
     // this session every registered account gets the real validity probe;
     // probe results land in the SAME health memory this ordering uses.
-    if (options.preflight !== undefined) await options.preflight.ensureProbed()
-    const discovered = health.order(await discover())
+    if (options.preflight !== undefined) await options.preflight.ensureProbed();
+    const discovered = health.order(await discover());
     // The Desktop MVP is a Codex wrapper: app-server turns use exactly the
     // user's ordinary logged-in Codex session. Named Pylon accounts remain a
     // fleet capability and are not eligible for this local workroom lane.
-    const accounts = options.appServer === undefined
-      ? discovered
-      : discovered.filter(account => account.source === "current_session")
-    const verifiedRefs = new Set(options.preflight?.verifiedRefs() ?? [])
+    const accounts =
+      options.appServer === undefined
+        ? discovered
+        : discovered.filter((account) => account.source === "current_session");
+    const verifiedRefs = new Set(options.preflight?.verifiedRefs() ?? []);
     const configurationInvalidRefs = new Set(
       (options.preflight?.results() ?? [])
-        .filter(result => result.state === "config_invalid")
-        .map(result => result.ref),
-    )
+        .filter((result) => result.state === "config_invalid")
+        .map((result) => result.ref),
+    );
     return {
       accounts,
-      verified: accounts.filter(account =>
-        !configurationInvalidRefs.has(account.ref) &&
-        (account.source === "current_session" || verifiedRefs.has(account.ref))),
-    }
-  }
+      verified: accounts.filter(
+        (account) =>
+          !configurationInvalidRefs.has(account.ref) &&
+          (account.source === "current_session" || verifiedRefs.has(account.ref)),
+      ),
+    };
+  };
 
   const availability = async (): Promise<CodexLocalAvailability> => {
-    const { accounts, verified } = await verifiedOrderedAccounts()
-    if (accounts.length === 0) return { state: "unavailable", reason: "no_codex_account" }
+    const { accounts, verified } = await verifiedOrderedAccounts();
+    if (accounts.length === 0) return { state: "unavailable", reason: "no_codex_account" };
     // CHIP EVIDENCE RULE: without a preflight (unit tests), health-ordering
     // alone decides nothing — the chip needs PROBE-VERIFIED evidence.
     if (options.preflight === undefined) {
-      return { state: "unavailable", reason: "no_verified_account" }
+      return { state: "unavailable", reason: "no_verified_account" };
     }
-    const first = verified[0]
+    const first = verified[0];
     if (first === undefined) {
       // Quota honesty (live receipt 2026-07-11): when the only obstacle is a
       // rate limit, "Reconnect in Settings" would be a lie — reconnecting
       // never restores quota. The reason names the rate limit instead.
-      const policyDenied = options.preflight.results()
-        .some(result => result.state === "policy_denied")
-      const quotaExhausted = options.preflight.results()
-        .some(result => result.state === "quota_exhausted")
-      const rateLimited = options.preflight.results()
-        .some(result => result.state === "rate_limited")
-      const invalidConfiguration = options.preflight.results()
-        .find(result => result.state === "config_invalid" && result.configuration !== undefined)
+      const policyDenied = options.preflight
+        .results()
+        .some((result) => result.state === "policy_denied");
+      const quotaExhausted = options.preflight
+        .results()
+        .some((result) => result.state === "quota_exhausted");
+      const rateLimited = options.preflight
+        .results()
+        .some((result) => result.state === "rate_limited");
+      const invalidConfiguration = options.preflight
+        .results()
+        .find((result) => result.state === "config_invalid" && result.configuration !== undefined);
       if (invalidConfiguration?.configuration !== undefined) {
         return {
           state: "unavailable",
           reason: "invalid_config",
           detail: invalidConfiguration.detail,
-        }
+        };
       }
       return {
         state: "unavailable",
-        reason: policyDenied ? "policy_denied" : quotaExhausted ? "quota_exhausted" : rateLimited ? "rate_limited" : "no_verified_account",
-      }
+        reason: policyDenied
+          ? "policy_denied"
+          : quotaExhausted
+            ? "quota_exhausted"
+            : rateLimited
+              ? "rate_limited"
+              : "no_verified_account",
+      };
     }
-    let models: ReadonlyArray<CodexLocalModelOption> | undefined
-    if (options.appServer?.controlPlanes !== undefined && options.appServer.supervisor !== undefined) {
-      const binary = options.appServer.binary()
+    let models: ReadonlyArray<CodexLocalModelOption> | undefined;
+    if (
+      options.appServer?.controlPlanes !== undefined &&
+      options.appServer.supervisor !== undefined
+    ) {
+      const binary = options.appServer.binary();
       if (binary !== null) {
-        const runtimeCwd = join(options.scratchRoot(), "codex-app-server-runtime")
-        mkdirSync(runtimeCwd, { recursive: true })
-        const appServerEnv = first.source === "current_session"
-          ? codexProviderEnvironment(env, { clearCodexHome: true })
-          : pylonAccountEnvironment(codexProviderEnvironment(env), {
-              provider: "codex",
-              selector: "registry_ref",
-              accountRef: first.ref,
-              accountRefHash: hashPylonAccountRef("codex", first.ref),
-              home: first.home,
-            })
+        const runtimeCwd = join(options.scratchRoot(), "codex-app-server-runtime");
+        mkdirSync(runtimeCwd, { recursive: true });
+        const appServerEnv =
+          first.source === "current_session"
+            ? codexProviderEnvironment(env, { clearCodexHome: true })
+            : pylonAccountEnvironment(codexProviderEnvironment(env), {
+                provider: "codex",
+                selector: "registry_ref",
+                accountRef: first.ref,
+                accountRefHash: hashPylonAccountRef("codex", first.ref),
+                home: first.home,
+              });
         try {
           const controlPlane = await options.appServer.controlPlanes.forTarget({
             binary,
             env: appServerEnv,
             cwd: runtimeCwd,
-            ...(options.appServer.spawnImpl === undefined ? {} : { spawnImpl: options.appServer.spawnImpl }),
+            ...(options.appServer.spawnImpl === undefined
+              ? {}
+              : { spawnImpl: options.appServer.spawnImpl }),
             ...(timeoutMs === undefined ? {} : { requestTimeoutMs: timeoutMs }),
             accountRef: first.ref,
             hostTarget: "local-desktop",
-          })
-          const seen = new Set<string>()
-          models = controlPlane.snapshot().models.flatMap(model => {
-            if (model.hidden) return []
+          });
+          const seen = new Set<string>();
+          models = controlPlane.snapshot().models.flatMap((model) => {
+            if (model.hidden) return [];
             const id = isCodexModel(model.id)
               ? model.id
-              : isCodexModel(model.model) ? model.model : null
-            if (id === null || seen.has(id)) return []
+              : isCodexModel(model.model)
+                ? model.model
+                : null;
+            if (id === null || seen.has(id)) return [];
             const supportedReasoningEfforts = model.supportedReasoningEfforts
               .filter(isCodexReasoningEffort)
-              .filter((effort, index, all) => all.indexOf(effort) === index)
-            if (supportedReasoningEfforts.length === 0) return []
-            seen.add(id)
-            const advertisedDefault = model.defaultReasoningEffort
-            const defaultReasoningEffort = advertisedDefault !== null &&
-                isCodexReasoningEffort(advertisedDefault) &&
-                supportedReasoningEfforts.includes(advertisedDefault)
-              ? advertisedDefault
-              : supportedReasoningEfforts.includes(CODEX_LOCAL_REASONING_EFFORT)
-                ? CODEX_LOCAL_REASONING_EFFORT
-                : supportedReasoningEfforts[0]!
-            return [{
-              id,
-              displayName: model.displayName,
-              isDefault: model.isDefault,
-              defaultReasoningEffort,
-              supportedReasoningEfforts,
-            }]
-          })
+              .filter((effort, index, all) => all.indexOf(effort) === index);
+            if (supportedReasoningEfforts.length === 0) return [];
+            seen.add(id);
+            const advertisedDefault = model.defaultReasoningEffort;
+            const defaultReasoningEffort =
+              advertisedDefault !== null &&
+              isCodexReasoningEffort(advertisedDefault) &&
+              supportedReasoningEfforts.includes(advertisedDefault)
+                ? advertisedDefault
+                : supportedReasoningEfforts.includes(CODEX_LOCAL_REASONING_EFFORT)
+                  ? CODEX_LOCAL_REASONING_EFFORT
+                  : supportedReasoningEfforts[0]!;
+            return [
+              {
+                id,
+                displayName: model.displayName,
+                isDefault: model.isDefault,
+                defaultReasoningEffort,
+                supportedReasoningEfforts,
+              },
+            ];
+          });
         } catch {
           // Availability remains account truth. A failed catalog query keeps
           // the single startup fallback; exact turn admission still fails
@@ -486,39 +552,51 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
       accountRef: first.ref,
       verifiedCount: verified.length,
       ...(models === undefined || models.length === 0 ? {} : { models }),
-    }
-  }
+    };
+  };
 
-  const runAttempt = async (input: Readonly<{
-    account: CodexChildAccount
-    threadRef: string
-    turnRef: string
-    workspace: string
-    prompt: string
-    /**
-     * Absolute paths to images written to the turn workspace (capability I1);
-     * passed to `codex exec` as `-i <path>` flags. Empty = no image flags.
-     */
-    imagePaths: ReadonlyArray<string>
-    resumeThreadId: string | null
-    reasoningEffort?: CodexReasoningEffort
-    model: CodexModel
-    clientUserMessageId?: string
-    extensionSelection?: Readonly<{ skillIds?: ReadonlyArray<string>; appIds?: ReadonlyArray<string>; pluginIds?: ReadonlyArray<string> }>
-    onProviderTurn?: (turnId: string) => void
-    fullAuto?: boolean
-    /** Full Auto #8884: see CodexLocalTurnInput.autoResolveQuestions. */
-    autoResolveQuestions?: boolean
-    emit: (event: ClaudeLocalEvent) => void
-    control: {
-      interrupted: boolean
-      child: ChildLike | null
-      interrupt: (() => void) | null
-      steer: ((message: string, expectedTurnId?: string, clientUserMessageId?: string) => Promise<boolean>) | null
-    }
-  }>): Promise<ParsedTurnAttempt> => {
+  const runAttempt = async (
+    input: Readonly<{
+      account: CodexChildAccount;
+      threadRef: string;
+      turnRef: string;
+      workspace: string;
+      prompt: string;
+      /**
+       * Absolute paths to images written to the turn workspace (capability I1);
+       * passed to `codex exec` as `-i <path>` flags. Empty = no image flags.
+       */
+      imagePaths: ReadonlyArray<string>;
+      resumeThreadId: string | null;
+      reasoningEffort?: CodexReasoningEffort;
+      model: CodexModel;
+      clientUserMessageId?: string;
+      extensionSelection?: Readonly<{
+        skillIds?: ReadonlyArray<string>;
+        appIds?: ReadonlyArray<string>;
+        pluginIds?: ReadonlyArray<string>;
+      }>;
+      onProviderTurn?: (turnId: string) => void;
+      fullAuto?: boolean;
+      /** Full Auto #8884: see CodexLocalTurnInput.autoResolveQuestions. */
+      autoResolveQuestions?: boolean;
+      emit: (event: ClaudeLocalEvent) => void;
+      control: {
+        interrupted: boolean;
+        child: ChildLike | null;
+        interrupt: (() => void) | null;
+        steer:
+          | ((
+              message: string,
+              expectedTurnId?: string,
+              clientUserMessageId?: string,
+            ) => Promise<boolean>)
+          | null;
+      };
+    }>,
+  ): Promise<ParsedTurnAttempt> => {
     if (options.appServer !== undefined) {
-      const binary = options.appServer.binary()
+      const binary = options.appServer.binary();
       if (binary === null) {
         return {
           outcome: "incompatible_workflow",
@@ -530,23 +608,24 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
           policyDenied: false,
           quotaExhausted: false,
           rateLimited: false,
-        }
+        };
       }
-      let skill: Readonly<{ skillRoot: string; skillPath: string }>
+      let skill: Readonly<{ skillRoot: string; skillPath: string }>;
       try {
-        skill = options.appServer.installProductSpecSkill(input.account)
+        skill = options.appServer.installProductSpecSkill(input.account);
       } catch (error) {
         return {
           outcome: "incompatible_workflow",
           text: "",
           usage: null,
           threadId: input.resumeThreadId,
-          detail: error instanceof Error ? error.message : "productspec-work skill installation failed",
+          detail:
+            error instanceof Error ? error.message : "productspec-work skill installation failed",
           preContent: true,
           policyDenied: false,
           quotaExhausted: false,
           rateLimited: false,
-        }
+        };
       }
       const selection: ResolvedPylonAccountSelection = {
         provider: "codex",
@@ -554,27 +633,34 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
         accountRef: input.account.ref,
         accountRefHash: hashPylonAccountRef("codex", input.account.ref),
         home: input.account.home,
-      }
+      };
       options.onDispatch?.({
         threadRef: input.threadRef,
         turnRef: input.turnRef,
-        ...(input.clientUserMessageId === undefined ? {} : { clientUserMessageId: input.clientUserMessageId }),
+        ...(input.clientUserMessageId === undefined
+          ? {}
+          : { clientUserMessageId: input.clientUserMessageId }),
         accountRef: input.account.ref,
-      })
+      });
       const onServerRequest = async (request: CodexAppServerRequest): Promise<unknown> => {
-        const isApproval = request.method === "item/commandExecution/requestApproval" ||
-          request.method === "item/fileChange/requestApproval"
+        const isApproval =
+          request.method === "item/commandExecution/requestApproval" ||
+          request.method === "item/fileChange/requestApproval";
         if (isApproval) {
-          const params = request.params !== null && typeof request.params === "object"
-            ? request.params as Record<string, unknown>
-            : {}
-          const requestSummary = request.method === "item/commandExecution/requestApproval"
-            ? (typeof params.command === "string" && params.command.trim() !== ""
+          const params =
+            request.params !== null && typeof request.params === "object"
+              ? (request.params as Record<string, unknown>)
+              : {};
+          const requestSummary =
+            request.method === "item/commandExecution/requestApproval"
+              ? typeof params.command === "string" && params.command.trim() !== ""
                 ? params.command
-                : typeof params.reason === "string" ? params.reason : "Run the requested command")
-            : (typeof params.reason === "string" && params.reason.trim() !== ""
+                : typeof params.reason === "string"
+                  ? params.reason
+                  : "Run the requested command"
+              : typeof params.reason === "string" && params.reason.trim() !== ""
                 ? params.reason
-                : "Apply the requested file changes")
+                : "Apply the requested file changes";
           // Full Auto #8884 defense in depth: with approvalPolicy "never"
           // these requests should not arrive on an autoResolveQuestions turn,
           // but if one does there is no renderer to answer it — decline
@@ -587,61 +673,79 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
                 `Codex requested approval (${redactChildText(requestSummary, input.workspace)}) during an unattended Full Auto turn — auto-declined because no one is present to answer`,
                 CLAUDE_LOCAL_SUMMARY_LIMIT,
               ),
-            })
-            return { decision: "decline" }
+            });
+            return { decision: "decline" };
           }
-          const questionRef = bounded(`approval.${input.turnRef}.${++questionSequence}`, 120)
-          return new Promise(resolve => {
-            let finished = false
-            const finish = (decision: "accept" | "acceptForSession" | "decline", outcome: "answered" | "denied"): void => {
-              if (finished) return
-              finished = true
-              pendingQuestions.delete(questionRef)
-              input.emit({ kind: "question_resolved", questionRef, outcome })
-              resolve({ decision })
-            }
-            const question = bounded(redactChildText(requestSummary, input.workspace), CLAUDE_LOCAL_SUMMARY_LIMIT)
+          const questionRef = bounded(`approval.${input.turnRef}.${++questionSequence}`, 120);
+          return new Promise((resolve) => {
+            let finished = false;
+            const finish = (
+              decision: "accept" | "acceptForSession" | "decline",
+              outcome: "answered" | "denied",
+            ): void => {
+              if (finished) return;
+              finished = true;
+              pendingQuestions.delete(questionRef);
+              input.emit({ kind: "question_resolved", questionRef, outcome });
+              resolve({ decision });
+            };
+            const question = bounded(
+              redactChildText(requestSummary, input.workspace),
+              CLAUDE_LOCAL_SUMMARY_LIMIT,
+            );
             pendingQuestions.set(questionRef, {
               turnRef: input.turnRef,
-              accept: answer => {
-                const labels = answer.answers.flatMap(item => item.labels)
+              accept: (answer) => {
+                const labels = answer.answers.flatMap((item) => item.labels);
                 if (labels.includes("Approve") || labels.includes("Allow once")) {
-                  finish("accept", "answered")
-                  return true
+                  finish("accept", "answered");
+                  return true;
                 }
-                if (labels.includes("Approve for session") || labels.includes("Allow for session")) {
-                  finish("acceptForSession", "answered")
-                  return true
+                if (
+                  labels.includes("Approve for session") ||
+                  labels.includes("Allow for session")
+                ) {
+                  finish("acceptForSession", "answered");
+                  return true;
                 }
                 if (labels.includes("Deny") || labels.includes("Decline")) {
-                  finish("decline", "denied")
-                  return true
+                  finish("decline", "denied");
+                  return true;
                 }
-                return false
+                return false;
               },
               deny: () => finish("decline", "denied"),
-            })
+            });
             input.emit({
               kind: "question_pending",
               questionRef,
               interactionKind: "tool_approval",
               decisionRef: bounded(String(request.id), 120),
-              questions: [{
-                question,
-                header: request.method === "item/commandExecution/requestApproval" ? "Command approval" : "File approval",
-                options: [
-                  { label: "Approve", description: "Approve only this request." },
-                  { label: "Approve for session", description: "Approve matching requests for this Codex session." },
-                  { label: "Deny", description: "Refuse this request." },
-                ],
-                multiSelect: false,
-              }],
-            })
-          })
+              questions: [
+                {
+                  question,
+                  header:
+                    request.method === "item/commandExecution/requestApproval"
+                      ? "Command approval"
+                      : "File approval",
+                  options: [
+                    { label: "Approve", description: "Approve only this request." },
+                    {
+                      label: "Approve for session",
+                      description: "Approve matching requests for this Codex session.",
+                    },
+                    { label: "Deny", description: "Refuse this request." },
+                  ],
+                  multiSelect: false,
+                },
+              ],
+            });
+          });
         }
         if (request.method !== "item/tool/requestUserInput") {
-          if (options.appServer?.onServerRequest !== undefined) return options.appServer.onServerRequest(request)
-          throw new Error(`unsupported Codex server request: ${request.method}`)
+          if (options.appServer?.onServerRequest !== undefined)
+            return options.appServer.onServerRequest(request);
+          throw new Error(`unsupported Codex server request: ${request.method}`);
         }
         // Full Auto #8884: `approvalPolicy: "never"` does NOT suppress native
         // question requests, and a background (sender === null) Full Auto turn
@@ -658,116 +762,148 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
               "Codex asked a question during an unattended Full Auto turn — auto-declined because no one is present to answer; the turn continues",
               CLAUDE_LOCAL_SUMMARY_LIMIT,
             ),
-          })
-          return { answers: {} }
+          });
+          return { answers: {} };
         }
-        const params = request.params !== null && typeof request.params === "object"
-          ? request.params as Record<string, unknown>
-          : {}
-        const rawQuestions = Array.isArray(params.questions) ? params.questions.slice(0, 4) : []
-        const originals = rawQuestions.flatMap(raw => {
-          if (raw === null || typeof raw !== "object") return []
-          const value = raw as Record<string, unknown>
-          if (typeof value.id !== "string" || typeof value.question !== "string") return []
-          const options = Array.isArray(value.options) ? value.options.slice(0, 4).flatMap(option => {
-            if (option === null || typeof option !== "object") return []
-            const item = option as Record<string, unknown>
-            return typeof item.label === "string"
-              ? [{ label: bounded(item.label, 200), ...(typeof item.description === "string"
-                  ? { description: bounded(item.description, CLAUDE_LOCAL_SUMMARY_LIMIT) }
-                  : {}) }]
-              : []
-          }) : []
+        const params =
+          request.params !== null && typeof request.params === "object"
+            ? (request.params as Record<string, unknown>)
+            : {};
+        const rawQuestions = Array.isArray(params.questions) ? params.questions.slice(0, 4) : [];
+        const originals = rawQuestions.flatMap((raw) => {
+          if (raw === null || typeof raw !== "object") return [];
+          const value = raw as Record<string, unknown>;
+          if (typeof value.id !== "string" || typeof value.question !== "string") return [];
+          const options = Array.isArray(value.options)
+            ? value.options.slice(0, 4).flatMap((option) => {
+                if (option === null || typeof option !== "object") return [];
+                const item = option as Record<string, unknown>;
+                return typeof item.label === "string"
+                  ? [
+                      {
+                        label: bounded(item.label, 200),
+                        ...(typeof item.description === "string"
+                          ? { description: bounded(item.description, CLAUDE_LOCAL_SUMMARY_LIMIT) }
+                          : {}),
+                      },
+                    ]
+                  : [];
+              })
+            : [];
           const projected: ClaudeLocalQuestion = {
             question: bounded(value.question, CLAUDE_LOCAL_SUMMARY_LIMIT),
             header: bounded(typeof value.header === "string" ? value.header : "Input", 120),
             options,
             multiSelect: false,
-          }
-          return [{ id: value.id, originalQuestion: value.question, projected }]
-        })
-        if (originals.length === 0) return { answers: {} }
-        const questionRef = bounded(`q.${input.turnRef}.${++questionSequence}`, 120)
-        return new Promise(resolve => {
-          let finished = false
+          };
+          return [{ id: value.id, originalQuestion: value.question, projected }];
+        });
+        if (originals.length === 0) return { answers: {} };
+        const questionRef = bounded(`q.${input.turnRef}.${++questionSequence}`, 120);
+        return new Promise((resolve) => {
+          let finished = false;
           const finish = (response: unknown, outcome: "answered" | "denied"): void => {
-            if (finished) return
-            finished = true
-            pendingQuestions.delete(questionRef)
-            input.emit({ kind: "question_resolved", questionRef, outcome })
-            resolve(response)
-          }
+            if (finished) return;
+            finished = true;
+            pendingQuestions.delete(questionRef);
+            input.emit({ kind: "question_resolved", questionRef, outcome });
+            resolve(response);
+          };
           pendingQuestions.set(questionRef, {
             turnRef: input.turnRef,
-            accept: answer => {
-              const answers: Record<string, { answers: string[] }> = {}
+            accept: (answer) => {
+              const answers: Record<string, { answers: string[] }> = {};
               for (const original of originals) {
-                const selected = answer.answers.find(candidate => candidate.question === original.projected.question)
-                if (selected !== undefined) answers[original.id] = { answers: [...selected.labels] }
+                const selected = answer.answers.find(
+                  (candidate) => candidate.question === original.projected.question,
+                );
+                if (selected !== undefined)
+                  answers[original.id] = { answers: [...selected.labels] };
               }
-              if (Object.keys(answers).length === 0) return false
-              finish({ answers }, "answered")
-              return true
+              if (Object.keys(answers).length === 0) return false;
+              finish({ answers }, "answered");
+              return true;
             },
             deny: () => finish({ answers: {} }, "denied"),
-          })
-          input.emit({ kind: "question_pending", questionRef, questions: originals.map(item => item.projected) })
-        })
-      }
-      const appServerEnv = input.account.source === "current_session"
-        ? codexProviderEnvironment(env, { clearCodexHome: true })
-        : pylonAccountEnvironment(codexProviderEnvironment(env), selection)
-      const productSpecEnabled = options.appServer.productSpecEnabled?.() === true
-      const runtimeCwd = join(options.scratchRoot(), "codex-app-server-runtime")
-      mkdirSync(runtimeCwd, { recursive: true })
+          });
+          input.emit({
+            kind: "question_pending",
+            questionRef,
+            questions: originals.map((item) => item.projected),
+          });
+        });
+      };
+      const appServerEnv =
+        input.account.source === "current_session"
+          ? codexProviderEnvironment(env, { clearCodexHome: true })
+          : pylonAccountEnvironment(codexProviderEnvironment(env), selection);
+      const productSpecEnabled = options.appServer.productSpecEnabled?.() === true;
+      const runtimeCwd = join(options.scratchRoot(), "codex-app-server-runtime");
+      mkdirSync(runtimeCwd, { recursive: true });
       // Full Auto (#8852) forces no mid-turn approval interruptions; every
       // other turn keeps the existing on-request default unchanged.
-      const approvalPolicy: "never" | "on-request" = input.fullAuto === true ? "never" : "on-request"
-      if (options.appServer.controlPlanes !== undefined && options.appServer.supervisor !== undefined) {
+      const approvalPolicy: "never" | "on-request" =
+        input.fullAuto === true ? "never" : "on-request";
+      if (
+        options.appServer.controlPlanes !== undefined &&
+        options.appServer.supervisor !== undefined
+      ) {
         const controlPlane = await options.appServer.controlPlanes.forTarget({
           binary,
           env: appServerEnv,
           cwd: runtimeCwd,
-          ...(options.appServer.spawnImpl === undefined ? {} : { spawnImpl: options.appServer.spawnImpl }),
+          ...(options.appServer.spawnImpl === undefined
+            ? {}
+            : { spawnImpl: options.appServer.spawnImpl }),
           ...(timeoutMs === undefined ? {} : { requestTimeoutMs: timeoutMs }),
           accountRef: input.account.ref,
           hostTarget: "local-desktop",
-        })
+        });
         const denials = [
           controlPlane.gate({ type: "model", value: input.model }),
           controlPlane.gate({ type: "approvalPolicy", value: approvalPolicy }),
           controlPlane.gate({ type: "sandboxMode", value: "danger-full-access" }),
-        ].filter(result => !result.allowed)
+        ].filter((result) => !result.allowed);
         if (denials.length > 0) {
           return {
             outcome: "incompatible_workflow",
             text: "",
             usage: null,
             threadId: input.resumeThreadId,
-            detail: `Codex managed policy denied this turn: ${denials.map(result => `${result.source}: ${result.reason}`).join("; ")}`,
+            detail: `Codex managed policy denied this turn: ${denials.map((result) => `${result.source}: ${result.reason}`).join("; ")}`,
             preContent: true,
             policyDenied: true,
             quotaExhausted: false,
             rateLimited: false,
-          }
+          };
         }
       }
-      const extensionSelection = input.extensionSelection !== undefined &&
-          [input.extensionSelection.skillIds, input.extensionSelection.appIds, input.extensionSelection.pluginIds]
-            .some(ids => (ids?.length ?? 0) > 0)
-        ? input.extensionSelection
-        : undefined
-      let ecosystem: CodexEcosystem | null = null
-      if (extensionSelection !== undefined && options.appServer.ecosystems !== undefined && options.appServer.supervisor !== undefined) {
+      const extensionSelection =
+        input.extensionSelection !== undefined &&
+        [
+          input.extensionSelection.skillIds,
+          input.extensionSelection.appIds,
+          input.extensionSelection.pluginIds,
+        ].some((ids) => (ids?.length ?? 0) > 0)
+          ? input.extensionSelection
+          : undefined;
+      let ecosystem: CodexEcosystem | null = null;
+      if (
+        extensionSelection !== undefined &&
+        options.appServer.ecosystems !== undefined &&
+        options.appServer.supervisor !== undefined
+      ) {
         ecosystem = await options.appServer.ecosystems.forTarget({
           binary,
           env: appServerEnv,
           cwd: runtimeCwd,
-          ...(options.appServer.spawnImpl === undefined ? {} : { spawnImpl: options.appServer.spawnImpl }),
+          ...(options.appServer.spawnImpl === undefined
+            ? {}
+            : { spawnImpl: options.appServer.spawnImpl }),
           ...(timeoutMs === undefined ? {} : { requestTimeoutMs: timeoutMs }),
           accountRef: input.account.ref,
           hostTarget: "local-desktop",
-        })
+        });
       }
       return runCodexAppServerTurn({
         binary,
@@ -775,18 +911,22 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
         workspace: input.workspace,
         runtimeCwd,
         hostTarget: "local-desktop",
-        ...(options.appServer.supervisor === undefined ? {} : { supervisor: options.appServer.supervisor }),
+        ...(options.appServer.supervisor === undefined
+          ? {}
+          : { supervisor: options.appServer.supervisor }),
         threadRef: input.threadRef,
         turnRef: input.turnRef,
         accountRef: input.account.ref,
         prompt: input.prompt,
-        ...(extensionSelection === undefined ? {} : {
-          extensionSelection,
-          admitExtensions: (selection: NonNullable<typeof extensionSelection>) => {
-            if (ecosystem === null) throw new Error("Codex ecosystem authority is unavailable")
-            ecosystem.admitTurnExtensions(selection)
-          },
-        }),
+        ...(extensionSelection === undefined
+          ? {}
+          : {
+              extensionSelection,
+              admitExtensions: (selection: NonNullable<typeof extensionSelection>) => {
+                if (ecosystem === null) throw new Error("Codex ecosystem authority is unavailable");
+                ecosystem.admitTurnExtensions(selection);
+              },
+            }),
         imagePaths: input.imagePaths,
         resumeThreadId: input.resumeThreadId,
         model: input.model,
@@ -802,28 +942,92 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
           : {}),
         control: input.control as CodexAppServerTurnControl,
         emit: input.emit,
-        ...(options.appServer.spawnImpl === undefined ? {} : { spawnImpl: options.appServer.spawnImpl }),
+        ...(options.appServer.spawnImpl === undefined
+          ? {}
+          : { spawnImpl: options.appServer.spawnImpl }),
         onServerRequest,
-        ...(timeoutMs === undefined ? {} : { turnTimeoutMs: timeoutMs, requestTimeoutMs: timeoutMs }),
-        ...(options.appServer.turnReceiptPath === undefined ? {} : { turnReceiptPath: options.appServer.turnReceiptPath(input.account, input.threadRef) }),
-        onProviderSession: threadId => options.onProviderSession?.({
+        ...(timeoutMs === undefined
+          ? {}
+          : { turnTimeoutMs: timeoutMs, requestTimeoutMs: timeoutMs }),
+        ...(options.appServer.turnReceiptPath === undefined
+          ? {}
+          : { turnReceiptPath: options.appServer.turnReceiptPath(input.account, input.threadRef) }),
+        onProviderSession: (threadId) =>
+          options.onProviderSession?.({
+            threadRef: input.threadRef,
+            turnRef: input.turnRef,
+            accountRef: input.account.ref,
+            threadId,
+          }),
+        ...(input.onProviderTurn === undefined ? {} : { onProviderTurn: input.onProviderTurn }),
+      });
+    }
+    // HARN-09 (#9167) strangler gate: route the exec attempt through the SDK
+    // harness adapter when explicitly enabled. Default off — zero change.
+    if (env.OPENAGENTS_DESKTOP_CODEX_HARNESS_ADAPTER === "1") {
+      const harnessSelection: ResolvedPylonAccountSelection = {
+        provider: "codex",
+        selector: "registry_ref",
+        accountRef: input.account.ref,
+        accountRefHash: hashPylonAccountRef("codex", input.account.ref),
+        home: input.account.home,
+      };
+      options.onDispatch?.({
+        threadRef: input.threadRef,
+        turnRef: input.turnRef,
+        accountRef: input.account.ref,
+      });
+      const attempt = await runCodexHarnessExecAttempt({
+        threadRef: input.threadRef,
+        turnRef: input.turnRef,
+        workspace: input.workspace,
+        prompt: input.prompt,
+        model: input.model,
+        reasoningEffort: input.reasoningEffort ?? CODEX_LOCAL_REASONING_EFFORT,
+        sandbox: CODEX_CHILD_SANDBOX,
+        imagePaths: input.imagePaths,
+        resumeThreadId: input.resumeThreadId,
+        env:
+          input.account.source === "current_session"
+            ? codexProviderEnvironment(env, { clearCodexHome: true })
+            : pylonAccountEnvironment(codexProviderEnvironment(env), harnessSelection),
+        spawnCodex,
+        emit: input.emit,
+        registerChild: (child: { readonly kill: (signal?: NodeJS.Signals) => boolean }) => {
+          input.control.child = child as ChildLike;
+          input.control.interrupt = () => child.kill("SIGTERM");
+        },
+        ...(timeoutMs === undefined ? {} : { timeoutMs }),
+      });
+      if (attempt.threadId !== null) {
+        options.onProviderSession?.({
           threadRef: input.threadRef,
           turnRef: input.turnRef,
           accountRef: input.account.ref,
-          threadId,
-        }),
-        ...(input.onProviderTurn === undefined ? {} : { onProviderTurn: input.onProviderTurn }),
-      })
+          threadId: attempt.threadId,
+        });
+      }
+      return {
+        outcome: input.control.interrupted ? "interrupted" : attempt.outcome,
+        text: attempt.text,
+        usage: attempt.usage,
+        threadId: attempt.threadId,
+        detail: attempt.detail,
+        preContent: false,
+        policyDenied: false,
+        quotaExhausted: attempt.quotaExhausted,
+        rateLimited: attempt.rateLimited,
+      };
     }
-    return new Promise(resolve => {
-      const redact = (value: string): string => redactChildText(value, input.workspace)
+    return new Promise((resolve) => {
+      const redact = (value: string): string => redactChildText(value, input.workspace);
       const selection: ResolvedPylonAccountSelection = {
         provider: "codex",
         selector: "registry_ref",
         accountRef: input.account.ref,
         accountRefHash: hashPylonAccountRef("codex", input.account.ref),
         home: input.account.home,
-      }
+      };
       // Fresh turns use the receipted exec recipe (NO --ephemeral: session
       // rollouts persist in the isolated home for resume + receipts).
       // Resumed turns use `exec resume <thread_id>`; resume has no -s/-C
@@ -832,50 +1036,52 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
       // non-variadic token (`-C` fresh, `--skip-git-repo-check` resume)
       // terminates the variadic `--image` list before the positional prompt —
       // otherwise the greedy `<FILE>...` arg would swallow the prompt.
-      const imageFlags = input.imagePaths.flatMap((imagePath) => ["-i", imagePath])
-      const args = input.resumeThreadId === null
-        ? [
-            "exec",
-            "--json",
-            "-m",
-            input.model,
-            "-c",
-            `model_reasoning_effort=${input.reasoningEffort ?? CODEX_LOCAL_REASONING_EFFORT}`,
-            "-s",
-            CODEX_CHILD_SANDBOX,
-            "--skip-git-repo-check",
-            ...imageFlags,
-            "-C",
-            input.workspace,
-            input.prompt,
-          ]
-        : [
-            "exec",
-            "resume",
-            input.resumeThreadId,
-            "--json",
-            "-m",
-            input.model,
-            "-c",
-            `model_reasoning_effort=${input.reasoningEffort ?? CODEX_LOCAL_REASONING_EFFORT}`,
-            "-c",
-            `sandbox_mode="${CODEX_CHILD_SANDBOX}"`,
-            ...imageFlags,
-            "--skip-git-repo-check",
-            input.prompt,
-          ]
+      const imageFlags = input.imagePaths.flatMap((imagePath) => ["-i", imagePath]);
+      const args =
+        input.resumeThreadId === null
+          ? [
+              "exec",
+              "--json",
+              "-m",
+              input.model,
+              "-c",
+              `model_reasoning_effort=${input.reasoningEffort ?? CODEX_LOCAL_REASONING_EFFORT}`,
+              "-s",
+              CODEX_CHILD_SANDBOX,
+              "--skip-git-repo-check",
+              ...imageFlags,
+              "-C",
+              input.workspace,
+              input.prompt,
+            ]
+          : [
+              "exec",
+              "resume",
+              input.resumeThreadId,
+              "--json",
+              "-m",
+              input.model,
+              "-c",
+              `model_reasoning_effort=${input.reasoningEffort ?? CODEX_LOCAL_REASONING_EFFORT}`,
+              "-c",
+              `sandbox_mode="${CODEX_CHILD_SANDBOX}"`,
+              ...imageFlags,
+              "--skip-git-repo-check",
+              input.prompt,
+            ];
       options.onDispatch?.({
         threadRef: input.threadRef,
         turnRef: input.turnRef,
         accountRef: input.account.ref,
-      })
+      });
       const child = spawnCodex({
         args,
-        env: input.account.source === "current_session"
-          ? codexProviderEnvironment(env, { clearCodexHome: true })
-          : pylonAccountEnvironment(codexProviderEnvironment(env), selection),
+        env:
+          input.account.source === "current_session"
+            ? codexProviderEnvironment(env, { clearCodexHome: true })
+            : pylonAccountEnvironment(codexProviderEnvironment(env), selection),
         cwd: input.workspace,
-      })
+      });
       if (child === null) {
         resolve({
           outcome: "failed",
@@ -887,56 +1093,57 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
           policyDenied: false,
           quotaExhausted: false,
           rateLimited: false,
-        })
-        return
+        });
+        return;
       }
-      input.control.child = child
-      if (input.control.interrupted) child.kill("SIGTERM")
+      input.control.child = child;
+      if (input.control.interrupted) child.kill("SIGTERM");
 
-      let done = false
-      let timedOut = false
-      let stderrText = ""
-      let agentText = ""
-      let emittedText = ""
-      let usage: CodexChildUsage | null = null
-      let threadId: string | null = null
-      let errorMessage: string | null = null
-      const pendingToolNames = new Map<string, string>()
+      let done = false;
+      let timedOut = false;
+      let stderrText = "";
+      let agentText = "";
+      let emittedText = "";
+      let usage: CodexChildUsage | null = null;
+      let threadId: string | null = null;
+      let errorMessage: string | null = null;
+      const pendingToolNames = new Map<string, string>();
 
       // Long coding turns are normal and Codex can be quiet while reasoning
       // or running a tool. Production therefore has no host wall-clock kill;
       // the composer's Stop action is the explicit cancellation authority.
       // A bounded timer remains injectable for deterministic failure tests.
-      const timer = timeoutMs === undefined
-        ? undefined
-        : setTimeout(() => {
-            timedOut = true
-            child.kill("SIGTERM")
-          }, timeoutMs)
+      const timer =
+        timeoutMs === undefined
+          ? undefined
+          : setTimeout(() => {
+              timedOut = true;
+              child.kill("SIGTERM");
+            }, timeoutMs);
 
       const finish = (attempt: ParsedTurnAttempt): void => {
-        if (done) return
-        done = true
-        if (timer !== undefined) clearTimeout(timer)
-        input.control.child = null
-        resolve(attempt)
-      }
+        if (done) return;
+        done = true;
+        if (timer !== undefined) clearTimeout(timer);
+        input.control.child = null;
+        resolve(attempt);
+      };
 
       /** Streams the not-yet-emitted suffix of the accumulated agent text. */
       const emitAgentDelta = (): void => {
-        let pending = agentText.slice(emittedText.length)
+        let pending = agentText.slice(emittedText.length);
         while (pending.length > 0) {
-          const slice = pending.slice(0, CLAUDE_LOCAL_DELTA_LIMIT)
-          input.emit({ kind: "text_delta", text: slice })
-          emittedText += slice
-          pending = pending.slice(slice.length)
+          const slice = pending.slice(0, CLAUDE_LOCAL_DELTA_LIMIT);
+          input.emit({ kind: "text_delta", text: slice });
+          emittedText += slice;
+          pending = pending.slice(slice.length);
         }
-      }
+      };
 
       const toolFacts = (
         item: Record<string, unknown>,
       ): Readonly<{ toolName: string; summary: string; ok: boolean }> | null => {
-        const type = typeof item.type === "string" ? item.type : ""
+        const type = typeof item.type === "string" ? item.type : "";
         if (type === "command_execution") {
           // Args summaries use the SAME JSON shape the claude lane emits
           // (JSON.stringify of the tool input) so the shared tool-card
@@ -944,25 +1151,35 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
           return {
             toolName: "Bash",
             summary: bounded(
-              JSON.stringify({ command: redact(typeof item.command === "string" ? item.command : "") }),
+              JSON.stringify({
+                command: redact(typeof item.command === "string" ? item.command : ""),
+              }),
               CLAUDE_LOCAL_SUMMARY_LIMIT,
             ),
-            ok: (typeof item.exit_code === "number" ? item.exit_code === 0 : item.status !== "failed"),
-          }
+            ok:
+              typeof item.exit_code === "number" ? item.exit_code === 0 : item.status !== "failed",
+          };
         }
         if (type === "mcp_tool_call") {
-          const tool = typeof item.tool_name === "string"
-            ? item.tool_name
-            : typeof item.name === "string" ? item.name : "tool"
+          const tool =
+            typeof item.tool_name === "string"
+              ? item.tool_name
+              : typeof item.name === "string"
+                ? item.name
+                : "tool";
           return {
             toolName: bounded(redact(tool), 120),
             summary: "",
             ok: item.status !== "failed",
-          }
+          };
         }
         if (type === "file_change") {
-          const count = Array.isArray(item.changes) ? item.changes.length : 0
-          return { toolName: "FileChange", summary: `${count} file change(s)`, ok: item.status !== "failed" }
+          const count = Array.isArray(item.changes) ? item.changes.length : 0;
+          return {
+            toolName: "FileChange",
+            summary: `${count} file change(s)`,
+            ok: item.status !== "failed",
+          };
         }
         if (type === "web_search") {
           return {
@@ -972,102 +1189,129 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
               CLAUDE_LOCAL_SUMMARY_LIMIT,
             ),
             ok: true,
-          }
+          };
         }
-        return null
-      }
+        return null;
+      };
 
       const handleEvent = (event: Record<string, unknown>): void => {
-        const type = typeof event.type === "string" ? event.type : ""
+        const type = typeof event.type === "string" ? event.type : "";
         if (type === "thread.started" && typeof event.thread_id === "string") {
-          threadId = event.thread_id
+          threadId = event.thread_id;
           options.onProviderSession?.({
             threadRef: input.threadRef,
             turnRef: input.turnRef,
             accountRef: input.account.ref,
             threadId,
-          })
-          return
+          });
+          return;
         }
         if (type === "item.started" || type === "item.updated" || type === "item.completed") {
-          const item = event.item
-          if (item === null || typeof item !== "object") return
-          const record = item as Record<string, unknown>
-          const itemType = typeof record.type === "string" ? record.type : ""
-          const itemId = typeof record.id === "string" ? record.id : `${itemType}-${pendingToolNames.size}`
+          const item = event.item;
+          if (item === null || typeof item !== "object") return;
+          const record = item as Record<string, unknown>;
+          const itemType = typeof record.type === "string" ? record.type : "";
+          const itemId =
+            typeof record.id === "string" ? record.id : `${itemType}-${pendingToolNames.size}`;
           if (itemType === "agent_message") {
             if (typeof record.text === "string" && record.text.length > 0) {
-              const separator = agentText.length > 0 && type === "item.completed" &&
+              const separator =
+                agentText.length > 0 &&
+                type === "item.completed" &&
                 !agentText.endsWith(record.text)
-                ? ""
-                : ""
-              void separator
+                  ? ""
+                  : "";
+              void separator;
               // The exec stream carries the full text per event; accumulate
               // monotonically and emit only the unseen suffix.
-              const candidate = agentText.length === 0
-                ? record.text
-                : record.text.startsWith(agentText)
+              const candidate =
+                agentText.length === 0
                   ? record.text
-                  : `${agentText}\n\n${record.text}`
-              agentText = bounded(redact(candidate), CLAUDE_LOCAL_FINAL_TEXT_LIMIT)
-              emitAgentDelta()
+                  : record.text.startsWith(agentText)
+                    ? record.text
+                    : `${agentText}\n\n${record.text}`;
+              agentText = bounded(redact(candidate), CLAUDE_LOCAL_FINAL_TEXT_LIMIT);
+              emitAgentDelta();
             }
-            return
+            return;
           }
           if (itemType === "reasoning") {
-            if (type === "item.completed" && typeof record.text === "string" && record.text.trim() !== "") {
-              input.emit({ kind: "reasoning", text: bounded(redact(record.text), CLAUDE_LOCAL_SUMMARY_LIMIT) })
+            if (
+              type === "item.completed" &&
+              typeof record.text === "string" &&
+              record.text.trim() !== ""
+            ) {
+              input.emit({
+                kind: "reasoning",
+                text: bounded(redact(record.text), CLAUDE_LOCAL_SUMMARY_LIMIT),
+              });
             }
-            return
+            return;
           }
-          const facts = toolFacts(record)
-          if (facts === null) return
+          const facts = toolFacts(record);
+          if (facts === null) return;
           // Typed payload (#8859): the same structured fields the app-server
           // lane emits, projected from this lane's snake_case stream and
           // redacted with the lane's own redactor. Additive to the summary.
-          const typedItem = workbenchItemFromThreadItem(record, "codex", redact)
-          const typed = typedItem === null ? {} : { item: typedItem }
+          const typedItem = workbenchItemFromThreadItem(record, "codex", redact);
+          const typed = typedItem === null ? {} : { item: typedItem };
           if (type === "item.started" && !pendingToolNames.has(itemId)) {
-            pendingToolNames.set(itemId, facts.toolName)
-            input.emit({ kind: "tool_use", toolName: facts.toolName, summary: facts.summary, ...typed })
-            return
+            pendingToolNames.set(itemId, facts.toolName);
+            input.emit({
+              kind: "tool_use",
+              toolName: facts.toolName,
+              summary: facts.summary,
+              ...typed,
+            });
+            return;
           }
           if (type === "item.completed") {
             if (!pendingToolNames.has(itemId)) {
               // No started event arrived (e.g. file_change): emit the pair
               // so the renderer's FIFO card pairing stays balanced.
-              input.emit({ kind: "tool_use", toolName: facts.toolName, summary: facts.summary, ...typed })
+              input.emit({
+                kind: "tool_use",
+                toolName: facts.toolName,
+                summary: facts.summary,
+                ...typed,
+              });
             }
-            pendingToolNames.delete(itemId)
-            const resultSummary = itemType === "command_execution" &&
-              typeof record.aggregated_output === "string"
-              ? bounded(redact(record.aggregated_output), CLAUDE_LOCAL_SUMMARY_LIMIT)
-              : facts.summary
-            input.emit({ kind: "tool_result", toolName: facts.toolName, ok: facts.ok, summary: resultSummary, ...typed })
+            pendingToolNames.delete(itemId);
+            const resultSummary =
+              itemType === "command_execution" && typeof record.aggregated_output === "string"
+                ? bounded(redact(record.aggregated_output), CLAUDE_LOCAL_SUMMARY_LIMIT)
+                : facts.summary;
+            input.emit({
+              kind: "tool_result",
+              toolName: facts.toolName,
+              ok: facts.ok,
+              summary: resultSummary,
+              ...typed,
+            });
           }
-          return
+          return;
         }
         if (type === "turn.completed") {
-          usage = codexChildUsageFromTurnCompleted(event)
-          return
+          usage = codexChildUsageFromTurnCompleted(event);
+          return;
         }
         if (type === "error" && typeof event.message === "string") {
-          errorMessage = event.message
-          return
+          errorMessage = event.message;
+          return;
         }
         if (type === "turn.failed") {
-          const inner = (event.error as { message?: unknown } | undefined)?.message
-          if (typeof inner === "string") errorMessage = inner
+          const inner = (event.error as { message?: unknown } | undefined)?.message;
+          if (typeof inner === "string") errorMessage = inner;
         }
-      }
+      };
 
-      const jsonLines = makeCodexJsonLineConsumer(handleEvent)
+      const jsonLines = makeCodexJsonLineConsumer(handleEvent);
       child.stdout?.on("data", (chunk: Buffer | string) => {
-        jsonLines.push(typeof chunk === "string" ? chunk : chunk.toString("utf8"))
-      })
+        jsonLines.push(typeof chunk === "string" ? chunk : chunk.toString("utf8"));
+      });
       child.stderr?.on("data", (chunk: Buffer | string) => {
-        stderrText += typeof chunk === "string" ? chunk : chunk.toString("utf8")
-      })
+        stderrText += typeof chunk === "string" ? chunk : chunk.toString("utf8");
+      });
       child.on("error", () => {
         finish({
           outcome: "failed",
@@ -1079,14 +1323,14 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
           policyDenied: false,
           quotaExhausted: false,
           rateLimited: false,
-        })
-      })
+        });
+      });
       child.on("close", (...args: unknown[]) => {
-        jsonLines.flush()
-        const exitCode = typeof args[0] === "number" ? args[0] : null
-        const currentUsage: CodexChildUsage | null = usage
-        const preContent = agentText.trim() === "" &&
-          (currentUsage === null || currentUsage.totalTokens === 0)
+        jsonLines.flush();
+        const exitCode = typeof args[0] === "number" ? args[0] : null;
+        const currentUsage: CodexChildUsage | null = usage;
+        const preContent =
+          agentText.trim() === "" && (currentUsage === null || currentUsage.totalTokens === 0);
         if (input.control.interrupted) {
           finish({
             outcome: "interrupted",
@@ -1098,8 +1342,8 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
             policyDenied: false,
             quotaExhausted: false,
             rateLimited: false,
-          })
-          return
+          });
+          return;
         }
         if (timedOut) {
           finish({
@@ -1112,11 +1356,14 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
             policyDenied: false,
             quotaExhausted: false,
             rateLimited: false,
-          })
-          return
+          });
+          return;
         }
-        const failureText = `${errorMessage ?? ""}\n${stderrText}`
-        if ((exitCode !== 0 || errorMessage !== null) && isCodexReconnectRequiredText(failureText)) {
+        const failureText = `${errorMessage ?? ""}\n${stderrText}`;
+        if (
+          (exitCode !== 0 || errorMessage !== null) &&
+          isCodexReconnectRequiredText(failureText)
+        ) {
           finish({
             outcome: "reconnect_required",
             text: "",
@@ -1127,8 +1374,8 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
             policyDenied: false,
             quotaExhausted: false,
             rateLimited: false,
-          })
-          return
+          });
+          return;
         }
         if (exitCode !== 0 || errorMessage !== null) {
           finish({
@@ -1144,8 +1391,8 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
             policyDenied: isCodexPolicyDenialText(failureText),
             quotaExhausted: isCodexQuotaExhaustionText(failureText),
             rateLimited: isCodexRateLimitText(failureText),
-          })
-          return
+          });
+          return;
         }
         if (agentText.trim() === "") {
           finish({
@@ -1158,8 +1405,8 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
             policyDenied: false,
             quotaExhausted: false,
             rateLimited: false,
-          })
-          return
+          });
+          return;
         }
         finish({
           outcome: "success",
@@ -1171,100 +1418,126 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
           policyDenied: false,
           quotaExhausted: false,
           rateLimited: false,
-        })
-      })
-    })
-  }
+        });
+      });
+    });
+  };
 
   const runTurn = async (input: CodexLocalTurnInput): Promise<CodexLocalTurnResult> => {
     const failure = (
       reason: ClaudeLocalFailureReason,
       detail: string,
-    ): Extract<CodexLocalTurnResult, { ok: false }> =>
-      ({ ok: false, reason, detail: bounded(detail, CLAUDE_LOCAL_SUMMARY_LIMIT) })
+    ): Extract<CodexLocalTurnResult, { ok: false }> => ({
+      ok: false,
+      reason,
+      detail: bounded(detail, CLAUDE_LOCAL_SUMMARY_LIMIT),
+    });
     const emitFailure = (
       result: Extract<CodexLocalTurnResult, { ok: false }>,
     ): CodexLocalTurnResult => {
-      input.emit({ kind: "turn_failed", reason: result.reason, detail: result.detail })
-      return result
-    }
-    let promotedIntent: ReturnType<NonNullable<typeof options.durableQueue>["admitPromotion"]> | null = null
+      input.emit({ kind: "turn_failed", reason: result.reason, detail: result.detail });
+      return result;
+    };
+    let promotedIntent: ReturnType<
+      NonNullable<typeof options.durableQueue>["admitPromotion"]
+    > | null = null;
     if ((input.queueRef === undefined) !== (input.clientUserMessageId === undefined)) {
-      return emitFailure(failure("session_failed", "queue promotion identity is incomplete"))
+      return emitFailure(failure("session_failed", "queue promotion identity is incomplete"));
     }
     if (input.queueRef !== undefined && input.clientUserMessageId !== undefined) {
-      if (options.durableQueue === undefined) return emitFailure(failure("session_failed", "durable queue authority is unavailable"))
-      try { promotedIntent = options.durableQueue.admitPromotion(input.queueRef, input.threadRef, input.clientUserMessageId) }
-      catch { return emitFailure(failure("session_failed", "queued intent is not admitted for promotion")) }
+      if (options.durableQueue === undefined)
+        return emitFailure(failure("session_failed", "durable queue authority is unavailable"));
+      try {
+        promotedIntent = options.durableQueue.admitPromotion(
+          input.queueRef,
+          input.threadRef,
+          input.clientUserMessageId,
+        );
+      } catch {
+        return emitFailure(
+          failure("session_failed", "queued intent is not admitted for promotion"),
+        );
+      }
     }
 
-    const discovered = await verifiedOrderedAccounts()
-    const selectedAccountRef = input.recovery?.accountRef ?? input.accountRef
-    const accounts = selectedAccountRef === undefined
-      ? discovered.accounts
-      : discovered.accounts.filter(account => account.ref === selectedAccountRef)
+    const discovered = await verifiedOrderedAccounts();
+    const selectedAccountRef = input.recovery?.accountRef ?? input.accountRef;
+    const accounts =
+      selectedAccountRef === undefined
+        ? discovered.accounts
+        : discovered.accounts.filter((account) => account.ref === selectedAccountRef);
     if (accounts.length === 0) {
-      return emitFailure(failure(
-        "no_codex_account",
-        "no Codex account is registered in the pylon account registry",
-      ))
+      return emitFailure(
+        failure("no_codex_account", "no Codex account is registered in the pylon account registry"),
+      );
     }
 
     // Desktop uses its launch directory for top-level coding turns. The
     // isolated per-thread fallback remains available to tests/other hosts.
-    const workspace = options.workspaceRoot?.() ??
-      join(options.scratchRoot(), "threads", claudeThreadWorkspaceSlug(input.threadRef))
-    let confirmedQuiescence = false
-    let providerTurnId: string | null = null
+    const workspace =
+      options.workspaceRoot?.() ??
+      join(options.scratchRoot(), "threads", claudeThreadWorkspaceSlug(input.threadRef));
+    let confirmedQuiescence = false;
+    let providerTurnId: string | null = null;
     try {
-      mkdirSync(workspace, { recursive: true })
+      mkdirSync(workspace, { recursive: true });
     } catch {
-      return emitFailure(failure("session_failed", "thread workspace unavailable"))
+      return emitFailure(failure("session_failed", "thread workspace unavailable"));
     }
 
     // Capability I1: write each attachment into a bounded per-turn subdir and
     // collect its absolute path for `codex exec -i <path>`. A write failure is
     // a turn failure (honest — the model would otherwise silently miss the
     // image the user attached).
-    let imagePaths: ReadonlyArray<string>
+    let imagePaths: ReadonlyArray<string>;
     try {
-      imagePaths = writeCodexTurnImages(workspace, input.turnRef, input.images ?? [])
+      imagePaths = writeCodexTurnImages(workspace, input.turnRef, input.images ?? []);
     } catch {
-      return emitFailure(failure("session_failed", "could not stage attached images"))
+      return emitFailure(failure("session_failed", "could not stage attached images"));
     }
 
     const control = {
       interrupted: false,
       child: null as ChildLike | null,
       interrupt: null as (() => void) | null,
-      steer: null as ((message: string, expectedTurnId?: string, clientUserMessageId?: string) => Promise<boolean>) | null,
-    }
-    activeTurns.set(input.turnRef, control)
-    const activeThreadTurn = { turnRef: input.turnRef, emit: input.emit, providerTurnId: null as string | null, control }
-    activeTurnByThread.set(input.threadRef, activeThreadTurn)
-    input.emit({ kind: "turn_started" })
+      steer: null as
+        | ((
+            message: string,
+            expectedTurnId?: string,
+            clientUserMessageId?: string,
+          ) => Promise<boolean>)
+        | null,
+    };
+    activeTurns.set(input.turnRef, control);
+    const activeThreadTurn = {
+      turnRef: input.turnRef,
+      emit: input.emit,
+      providerTurnId: null as string | null,
+      control,
+    };
+    activeTurnByThread.set(input.threadRef, activeThreadTurn);
+    input.emit({ kind: "turn_started" });
     // Spawn-config truth caption (the exec stream echoes no model back).
-    const requestedModel = input.model ?? CODEX_LOCAL_MODEL
-    input.emit({ kind: "model_effective", model: `${requestedModel} (requested)` })
+    const requestedModel = input.model ?? CODEX_LOCAL_MODEL;
+    input.emit({ kind: "model_effective", model: `${requestedModel} (requested)` });
 
     try {
-      let reconnectCount = 0
-      let otherFailures = 0
-      let lastDetail = ""
+      let reconnectCount = 0;
+      let otherFailures = 0;
+      let lastDetail = "";
       for (const account of accounts) {
-        if (control.interrupted) return emitFailure(failure("interrupted", "turn interrupted"))
-        const continuity = sessionByThread.get(input.threadRef)
-        const resumeThreadId = input.recovery !== undefined
-          ? input.recovery.threadId
-          : continuity !== undefined && continuity.accountRef === account.ref
-            ? continuity.threadId
-            : null
-        const basePrompt = resumeThreadId === null
-          ? historyPrompt(input.history, input.message)
-          : input.message
-        const prompt = input.fullAuto === true
-          ? fullAutoPrompt("codex-local", basePrompt)
-          : basePrompt
+        if (control.interrupted) return emitFailure(failure("interrupted", "turn interrupted"));
+        const continuity = sessionByThread.get(input.threadRef);
+        const resumeThreadId =
+          input.recovery !== undefined
+            ? input.recovery.threadId
+            : continuity !== undefined && continuity.accountRef === account.ref
+              ? continuity.threadId
+              : null;
+        const basePrompt =
+          resumeThreadId === null ? historyPrompt(input.history, input.message) : input.message;
+        const prompt =
+          input.fullAuto === true ? fullAutoPrompt("codex-local", basePrompt) : basePrompt;
         const attempt = await runAttempt({
           account,
           threadRef: input.threadRef,
@@ -1277,41 +1550,56 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
           control,
           reasoningEffort: input.reasoningEffort,
           model: requestedModel,
-          ...(input.clientUserMessageId === undefined ? {} : { clientUserMessageId: input.clientUserMessageId }),
-          ...(input.extensionSelection === undefined ? {} : { extensionSelection: input.extensionSelection }),
-          onProviderTurn: id => {
-            providerTurnId = id
-            activeThreadTurn.providerTurnId = id
-            input.emit({ kind: "composer_admission", state: "active_steerable", activeTurnId: id, reason: null })
+          ...(input.clientUserMessageId === undefined
+            ? {}
+            : { clientUserMessageId: input.clientUserMessageId }),
+          ...(input.extensionSelection === undefined
+            ? {}
+            : { extensionSelection: input.extensionSelection }),
+          onProviderTurn: (id) => {
+            providerTurnId = id;
+            activeThreadTurn.providerTurnId = id;
+            input.emit({
+              kind: "composer_admission",
+              state: "active_steerable",
+              activeTurnId: id,
+              reason: null,
+            });
           },
           fullAuto: input.fullAuto,
-          ...(input.autoResolveQuestions === undefined ? {} : { autoResolveQuestions: input.autoResolveQuestions }),
-        })
+          ...(input.autoResolveQuestions === undefined
+            ? {}
+            : { autoResolveQuestions: input.autoResolveQuestions }),
+        });
         if (attempt.outcome === "success") {
-          confirmedQuiescence = true
-          health.recordSuccess(account.ref)
-          options.onAccountEvidence?.({ accountRef: account.ref, evidence: "verified" })
+          confirmedQuiescence = true;
+          health.recordSuccess(account.ref);
+          options.onAccountEvidence?.({ accountRef: account.ref, evidence: "verified" });
           if (attempt.threadId !== null) {
             sessionByThread.set(input.threadRef, {
               threadId: attempt.threadId,
               accountRef: account.ref,
-            })
+            });
           }
-          const usage = attempt.usage
-          const split: ClaudeChildUsage | null = usage === null ? null : {
-            inputTokens: usage.inputTokens,
-            cachedInputTokens: usage.cachedInputTokens,
-            outputTokens: usage.outputTokens,
-            reasoningTokens: usage.reasoningOutputTokens,
-            totalTokens: usage.totalTokens,
-          }
+          const usage = attempt.usage;
+          const split: ClaudeChildUsage | null =
+            usage === null
+              ? null
+              : {
+                  inputTokens: usage.inputTokens,
+                  cachedInputTokens: usage.cachedInputTokens,
+                  outputTokens: usage.outputTokens,
+                  reasoningTokens: usage.reasoningOutputTokens,
+                  totalTokens: usage.totalTokens,
+                };
           input.emit({
             kind: "turn_completed",
             totalTokens: split?.totalTokens ?? null,
             accountRef: account.ref,
             ...(split === null ? {} : { usage: split }),
-          })
-          if (promotedIntent !== null) options.durableQueue?.complete(promotedIntent.queueRef, providerTurnId)
+          });
+          if (promotedIntent !== null)
+            options.durableQueue?.complete(promotedIntent.queueRef, providerTurnId);
           return {
             ok: true,
             text: attempt.text,
@@ -1319,42 +1607,44 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
             accountRef: account.ref,
             ...(split === null ? {} : { usage: split }),
             threadId: attempt.threadId,
-          }
+          };
         }
         if (attempt.outcome === "interrupted") {
-          confirmedQuiescence = true
-          if (promotedIntent !== null) options.durableQueue?.fail(promotedIntent.queueRef, "promoted turn interrupted")
-          return emitFailure(failure("interrupted", "turn interrupted"))
+          confirmedQuiescence = true;
+          if (promotedIntent !== null)
+            options.durableQueue?.fail(promotedIntent.queueRef, "promoted turn interrupted");
+          return emitFailure(failure("interrupted", "turn interrupted"));
         }
         if (attempt.outcome === "timeout") {
-          return emitFailure(failure("timeout", attempt.detail))
+          return emitFailure(failure("timeout", attempt.detail));
         }
         if (attempt.outcome === "reconnect_required") {
           // Typed VISIBLE rotation — never silent: the transcript carries a
           // lane notice before the next candidate account gets the turn.
-          health.recordAuthFailure(account.ref)
-          options.onAccountEvidence?.({ accountRef: account.ref, evidence: "reconnect_required" })
-          reconnectCount += 1
-          lastDetail = attempt.detail
+          health.recordAuthFailure(account.ref);
+          options.onAccountEvidence?.({ accountRef: account.ref, evidence: "reconnect_required" });
+          reconnectCount += 1;
+          lastDetail = attempt.detail;
           input.emit({
             kind: "lane_notice",
             text: bounded(
               `Codex account ${account.ref} needs reconnect — rotating to the next candidate account`,
               CLAUDE_LOCAL_SUMMARY_LIMIT,
             ),
-          })
-          continue
+          });
+          continue;
         }
         if (attempt.outcome === "incompatible_workflow") {
-          confirmedQuiescence = true
-          if (promotedIntent !== null) options.durableQueue?.fail(promotedIntent.queueRef, attempt.detail)
-          return emitFailure(failure("incompatible_workflow", attempt.detail))
+          confirmedQuiescence = true;
+          if (promotedIntent !== null)
+            options.durableQueue?.fail(promotedIntent.queueRef, attempt.detail);
+          return emitFailure(failure("incompatible_workflow", attempt.detail));
         }
         if (attempt.preContent) {
-          confirmedQuiescence = true
+          confirmedQuiescence = true;
           // Non-auth pre-content failure: rotation-eligible, no demotion.
-          otherFailures += 1
-          lastDetail = attempt.detail
+          otherFailures += 1;
+          lastDetail = attempt.detail;
           input.emit({
             kind: "lane_notice",
             text: bounded(
@@ -1367,83 +1657,97 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
                     : `Codex account ${account.ref} failed before producing content (${attempt.detail}) — rotating to the next candidate account`,
               CLAUDE_LOCAL_SUMMARY_LIMIT,
             ),
-          })
-          continue
+          });
+          continue;
         }
         // Post-content failure: terminal — a partial reply never double-runs.
-        confirmedQuiescence = true
-        if (promotedIntent !== null) options.durableQueue?.fail(promotedIntent.queueRef, attempt.detail)
-        return emitFailure(failure("session_failed", attempt.detail))
+        confirmedQuiescence = true;
+        if (promotedIntent !== null)
+          options.durableQueue?.fail(promotedIntent.queueRef, attempt.detail);
+        return emitFailure(failure("session_failed", attempt.detail));
       }
       if (otherFailures === 0) {
-        return emitFailure(failure(
-          "account_reconnect_required",
-          `all ${reconnectCount} available Codex session(s) need reconnect (credentials rejected)`,
-        ))
+        return emitFailure(
+          failure(
+            "account_reconnect_required",
+            `all ${reconnectCount} available Codex session(s) need reconnect (credentials rejected)`,
+          ),
+        );
       }
-      if (promotedIntent !== null) options.durableQueue?.fail(promotedIntent.queueRef, lastDetail)
-      return emitFailure(failure(
-        "session_failed",
-        `all ${accounts.length} available Codex session(s) failed before producing content` +
-          ` (${reconnectCount} need reconnect, ${otherFailures} other failure(s)); last: ${lastDetail}`,
-      ))
+      if (promotedIntent !== null) options.durableQueue?.fail(promotedIntent.queueRef, lastDetail);
+      return emitFailure(
+        failure(
+          "session_failed",
+          `all ${accounts.length} available Codex session(s) failed before producing content` +
+            ` (${reconnectCount} need reconnect, ${otherFailures} other failure(s)); last: ${lastDetail}`,
+        ),
+      );
     } finally {
-      activeTurns.delete(input.turnRef)
-      const active = activeTurnByThread.get(input.threadRef)
-      if (active?.turnRef === input.turnRef) activeTurnByThread.delete(input.threadRef)
+      activeTurns.delete(input.turnRef);
+      const active = activeTurnByThread.get(input.threadRef);
+      if (active?.turnRef === input.turnRef) activeTurnByThread.delete(input.threadRef);
       const durableNext = confirmedQuiescence
-        ? options.durableQueue?.claimNext(input.threadRef, `${input.turnRef}:terminal`) ?? null
-        : null
+        ? (options.durableQueue?.claimNext(input.threadRef, `${input.turnRef}:terminal`) ?? null)
+        : null;
       if (durableNext !== null) {
-        input.emit({ kind: "followup_promoted", queueRef: durableNext.queueRef, intentRef: durableNext.intentRef, clientUserMessageId: durableNext.clientUserMessageId, message: durableNext.message })
+        input.emit({
+          kind: "followup_promoted",
+          queueRef: durableNext.queueRef,
+          intentRef: durableNext.intentRef,
+          clientUserMessageId: durableNext.clientUserMessageId,
+          message: durableNext.message,
+        });
       } else if (options.durableQueue === undefined) {
-        const queue = followupQueue.get(input.threadRef)
+        const queue = followupQueue.get(input.threadRef);
         if (queue !== undefined && queue.length > 0) {
-          const next = queue.shift()!
-          if (queue.length === 0) followupQueue.delete(input.threadRef)
-          input.emit({ kind: "followup_promoted", queueRef: next.queueRef, message: next.message })
+          const next = queue.shift()!;
+          if (queue.length === 0) followupQueue.delete(input.threadRef);
+          input.emit({ kind: "followup_promoted", queueRef: next.queueRef, message: next.message });
         }
       }
     }
-  }
+  };
 
   return {
     availability,
     runTurn,
-    interrupt: turnRef => {
-      const active = activeTurns.get(turnRef)
-      if (active === undefined) return false
+    interrupt: (turnRef) => {
+      const active = activeTurns.get(turnRef);
+      if (active === undefined) return false;
       for (const pending of pendingQuestions.values()) {
-        if (pending.turnRef === turnRef) pending.deny()
+        if (pending.turnRef === turnRef) pending.deny();
       }
-      active.interrupted = true
-      active.interrupt?.()
-      active.child?.kill("SIGTERM")
-      return true
+      active.interrupted = true;
+      active.interrupt?.();
+      active.child?.kill("SIGTERM");
+      return true;
     },
-    steerCurrent: async request => {
-      const active = activeTurnByThread.get(request.threadRef)
-      if (active === undefined) return { ok: false, outcome: "not_found" }
-      if (active.control.steer === null) return { ok: false, outcome: "unsupported" }
-      if (request.expectedTurnId === undefined || active.providerTurnId !== request.expectedTurnId) {
-        return { ok: false, outcome: "not_found" }
+    steerCurrent: async (request) => {
+      const active = activeTurnByThread.get(request.threadRef);
+      if (active === undefined) return { ok: false, outcome: "not_found" };
+      if (active.control.steer === null) return { ok: false, outcome: "unsupported" };
+      if (
+        request.expectedTurnId === undefined ||
+        active.providerTurnId !== request.expectedTurnId
+      ) {
+        return { ok: false, outcome: "not_found" };
       }
       const delivered = await active.control.steer(
         bounded(request.message, CLAUDE_LOCAL_FOLLOWUP_MESSAGE_LIMIT),
         request.expectedTurnId,
         request.clientUserMessageId,
-      )
+      );
       active.emit({
         kind: "lane_notice",
         text: delivered
           ? "Current Codex turn steered with the submitted message"
           : "Current Codex turn rejected the steer request",
-      })
-      return delivered ? { ok: true, outcome: "delivered" } : { ok: false, outcome: "unsupported" }
+      });
+      return delivered ? { ok: true, outcome: "delivered" } : { ok: false, outcome: "unsupported" };
     },
-    queueFollowup: request => {
-      const active = activeTurnByThread.get(request.threadRef)
-      if (active === undefined) return { ok: false, queued: false, reason: "no_active_turn" }
+    queueFollowup: (request) => {
+      const active = activeTurnByThread.get(request.threadRef);
+      if (active === undefined) return { ok: false, queued: false, reason: "no_active_turn" };
       if (options.durableQueue !== undefined) {
         const queued = options.durableQueue.enqueue(
           request.threadRef,
@@ -1451,44 +1755,53 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
           request.intentRef !== undefined && request.clientUserMessageId !== undefined
             ? { intentRef: request.intentRef, clientUserMessageId: request.clientUserMessageId }
             : undefined,
-        )
-        const position = options.durableQueue.list(request.threadRef).filter(entry => entry.status === "queued").findIndex(entry => entry.queueRef === queued.queueRef) + 1
-        active.emit({ kind: "followup_queued", queueRef: queued.queueRef, position })
-        return { ok: true, queued: true, queueRef: queued.queueRef, position }
+        );
+        const position =
+          options.durableQueue
+            .list(request.threadRef)
+            .filter((entry) => entry.status === "queued")
+            .findIndex((entry) => entry.queueRef === queued.queueRef) + 1;
+        active.emit({ kind: "followup_queued", queueRef: queued.queueRef, position });
+        return { ok: true, queued: true, queueRef: queued.queueRef, position };
       }
-      followupSequence += 1
+      followupSequence += 1;
       const queueRef = bounded(
         `followup.${claudeThreadWorkspaceSlug(request.threadRef)}.${followupSequence}`,
         120,
-      )
-      const queue = followupQueue.get(request.threadRef) ?? []
-      queue.push({ queueRef, message: bounded(request.message, CLAUDE_LOCAL_FOLLOWUP_MESSAGE_LIMIT) })
-      followupQueue.set(request.threadRef, queue)
-      active.emit({ kind: "followup_queued", queueRef, position: queue.length })
-      return { ok: true, queued: true, queueRef, position: queue.length }
+      );
+      const queue = followupQueue.get(request.threadRef) ?? [];
+      queue.push({
+        queueRef,
+        message: bounded(request.message, CLAUDE_LOCAL_FOLLOWUP_MESSAGE_LIMIT),
+      });
+      followupQueue.set(request.threadRef, queue);
+      active.emit({ kind: "followup_queued", queueRef, position: queue.length });
+      return { ok: true, queued: true, queueRef, position: queue.length };
     },
-    answerQuestion: request => {
-      const pending = pendingQuestions.get(request.questionRef)
+    answerQuestion: (request) => {
+      const pending = pendingQuestions.get(request.questionRef);
       return pending !== undefined && pending.turnRef === request.turnRef
         ? pending.accept(request)
-        : false
+        : false;
     },
-    resetContinuity: threadRef => { sessionByThread.delete(threadRef) },
+    resetContinuity: (threadRef) => {
+      sessionByThread.delete(threadRef);
+    },
     dispose: () => {
-      for (const pending of pendingQuestions.values()) pending.deny()
-      pendingQuestions.clear()
+      for (const pending of pendingQuestions.values()) pending.deny();
+      pendingQuestions.clear();
       for (const active of activeTurns.values()) {
-        active.interrupted = true
-        active.interrupt?.()
-        active.child?.kill("SIGTERM")
+        active.interrupted = true;
+        active.interrupt?.();
+        active.child?.kill("SIGTERM");
       }
-      activeTurns.clear()
-      activeTurnByThread.clear()
-      followupQueue.clear()
-      sessionByThread.clear()
+      activeTurns.clear();
+      activeTurnByThread.clear();
+      followupQueue.clear();
+      sessionByThread.clear();
     },
-  }
-}
+  };
+};
 
 // ---------------------------------------------------------------------------
 // Scripted fixtures (smoke + tests): a full codex-local turn stream driven
@@ -1496,7 +1809,7 @@ export const makeCodexLocalRuntime = (options: CodexLocalRuntimeOptions): CodexL
 // logs when they are active.
 // ---------------------------------------------------------------------------
 
-export const FIXTURE_CODEX_LOCAL_TEXT = "Codex local **fixture** proof."
+export const FIXTURE_CODEX_LOCAL_TEXT = "Codex local **fixture** proof.";
 export const FIXTURE_CODEX_LOCAL_ACCOUNT: CodexChildAccount = {
   // Shares the fleet's first-READY codex account identity: the provider-accounts
   // fixture advertises `codex-3` (this account) as ready and lists it before
@@ -1510,7 +1823,7 @@ export const FIXTURE_CODEX_LOCAL_ACCOUNT: CodexChildAccount = {
   // deliberate reconnect-required narrative in the fleet assertions.
   ref: "codex-3",
   home: "/nonexistent/codex-local-fixture-home",
-}
+};
 
 export const fixtureCodexLocalTurnStdout = (threadId = "thread-codex-local-fixture"): string =>
   [
@@ -1522,7 +1835,12 @@ export const fixtureCodexLocalTurnStdout = (threadId = "thread-codex-local-fixtu
     }),
     JSON.stringify({
       type: "item.started",
-      item: { id: "item_1", type: "command_execution", command: "echo fixture", status: "in_progress" },
+      item: {
+        id: "item_1",
+        type: "command_execution",
+        command: "echo fixture",
+        status: "in_progress",
+      },
     }),
     JSON.stringify({
       type: "item.completed",
@@ -1541,6 +1859,11 @@ export const fixtureCodexLocalTurnStdout = (threadId = "thread-codex-local-fixtu
     }),
     JSON.stringify({
       type: "turn.completed",
-      usage: { input_tokens: 900, cached_input_tokens: 600, output_tokens: 40, reasoning_output_tokens: 12 },
+      usage: {
+        input_tokens: 900,
+        cached_input_tokens: 600,
+        output_tokens: 40,
+        reasoning_output_tokens: 12,
+      },
     }),
-  ].join("\n")
+  ].join("\n");
