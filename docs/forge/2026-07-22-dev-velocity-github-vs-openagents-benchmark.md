@@ -1,0 +1,389 @@
+# Development Velocity Benchmark — GitHub-centric History versus the OpenAgents System
+
+**Date:** 2026-07-22
+**Lane:** Reference measurement and analysis (`docs/forge/`). This document
+flips no promise state, changes no runtime authority, mints no issue, and
+dispatches no work. Candidate work needs normal Sol admission or an
+owner-accepted work packet.
+**Class:** measurement and analysis, not code.
+**Companion:** `docs/forge/2026-07-22-nostr-git-forge-github-replacement-audit.md`
+(the replacement design and the speed thesis this document tests against real
+history), plus its effect-vs-rust, hosted-services, and grasp-prior-art
+addenda.
+
+**Label key:**
+`[MEASURED]` = a value counted directly from our own chat transcripts.
+`[ESTIMATED]` = a value scaled from a measured sample, stated with its method.
+`[PROJECTED]` = a forward claim about the OpenAgents system that this document
+does not prove from history.
+
+**Privacy note:** the data sources are private agent transcripts. This document
+extracts only counts, rates, timestamps, and patterns. It quotes no prompt
+text, no secret, no token, no repository-private content, and no personal
+data. Every number below is an aggregate signal.
+
+---
+
+## 1. Purpose
+
+The owner states that OpenAgents "can actually be faster than all these
+GitHub-centric flows." The forge replacement audit argues the mechanism from
+GitHub public policy and from owned protocol code. This document tests the same
+claim from a different direction. It measures how the historical
+"GitHub-centric way" actually behaved across four months of our own agent
+work, and it maps each measured friction to the exact part of the OpenAgents
+system that removes it.
+
+The document is deliberately honest about one result. Our history supports the
+speed thesis, but not mainly through the argument the audit leads with. The
+strongest evidence in our own transcripts is the sheer round-trip volume and
+the poll-loop tax, not a wall of GitHub throttle errors. Section 7 states the
+verdict in full.
+
+---
+
+## 2. Methodology
+
+### 2.1 Corpus
+
+| Source | Sessions | Size | Date span |
+| --- | --- | --- | --- |
+| Codex rollout transcripts (`~/.codex/sessions/**`) | 1,547 | about 15 GB | 2026-03-26 to 2026-07-22 |
+| Claude Code transcripts (`~/.claude/projects/**`) | 2,400 | about 2.5 GB | same era |
+| Combined | 3,947 | about 17.5 GB | 118 days |
+
+Each transcript is JSON Lines. Each line is one event. Command executions
+appear as typed records. In Codex they are `function_call` records named
+`exec_command` or `shell`, plus `custom_tool_call` records named `exec`. In
+Claude Code they are `tool_use` blocks named `Bash`. The command text lives in
+a single field on a single line in every case.
+
+### 2.2 What was counted, and how
+
+Two passes ran over the corpus.
+
+**Pass A, whole-corpus text scan (fast, noisy).** A streaming scan counted how
+often command tokens such as `gh issue` and `git push` appear anywhere in the
+transcripts. This pass is an upper bound. It counts real invocations, but it
+also counts the same tokens where they appear inside documentation, skill
+files, `AGENTS.md` quotations, and agent reasoning. Pass A is not the source of
+the headline numbers. It only located clusters and date ranges.
+
+**Pass B, clean command extraction (the headline source).** A deterministic
+one-in-ten sample (every tenth transcript by sorted path) was parsed record by
+record. The parser pulled only the actual command string out of each
+command-execution record and ignored all other text. The sample is 155 Codex
+sessions and 240 Claude sessions. It contains 199,796 real command invocations
+(151,120 Codex, 48,676 Claude). Command tokens were counted inside that clean
+command stream only. Per-session rates in this document are `[MEASURED]` on the
+sample. Corpus totals are `[ESTIMATED]` by scaling the sample by ten, which
+matches the one-in-ten sampling exactly (Codex factor 9.98, Claude factor
+10.00).
+
+### 2.3 Limitations, stated plainly
+
+- These are agent transcripts, not a clean continuous-integration ledger. They
+  record what the agents ran, not a canonical build history. Treat every total
+  as an order-of-magnitude figure with a plus-or-minus band, not a precise
+  count.
+- The one-in-ten sample carries normal sampling error. Rare high-value events
+  such as rate-limit errors were counted across the whole corpus in Pass A
+  instead, so the sample does not hide them.
+- Command counting cannot see GitHub interactions that never took a `gh` or
+  `git` command, for example web-UI actions the owner took by hand. Those are
+  invisible here and are not in any total.
+- A single `gh issue view` and a single `gh issue create` count the same in a
+  volume total, but they cost GitHub very differently. Section 3.2 splits reads
+  from content-creation writes for exactly this reason.
+- Session boundaries are transcript files. One human work session can span
+  several files, and one long-lived orchestrator file can span days. Duration
+  figures reflect files, not human intent.
+
+---
+
+## 3. The historical GitHub tax
+
+### 3.1 Volume — the round-trip tax `[ESTIMATED]`
+
+Every GitHub command below is a network round-trip across the public internet
+to Microsoft infrastructure and back, with REST or GraphQL overhead and
+rate-limit accounting on each call.
+
+| Command class | Codex (est) | Claude (est) | Combined (est) |
+| --- | ---: | ---: | ---: |
+| Total agent shell commands | ~1,508,000 | ~487,000 | ~1,995,000 |
+| `gh` (all GitHub CLI) | ~30,500 | ~7,800 | ~38,200 |
+| `gh issue` | ~24,800 | ~4,600 | ~29,300 |
+| `gh pr` | ~3,500 | ~2,600 | ~6,100 |
+| `gh api` | ~770 | ~270 | ~1,040 |
+| `git push` | ~9,700 | ~2,400 | ~12,200 |
+| `git commit` | ~10,000 | ~2,300 | ~12,200 |
+| `git fetch` | ~4,000 | ~4,800 | ~8,800 |
+| `git clone` | ~170 | ~80 | ~250 |
+
+Two aggregate figures follow from the table.
+
+- **GitHub REST round-trips (all `gh` calls): about 38,000.** `[ESTIMATED]`
+- **Git transport operations to GitHub (push, fetch, clone): about 21,000.**
+  `[ESTIMATED]`
+- **Combined GitHub network interactions: about 59,000 over 118 days, an
+  average near 500 per day, with multi-thousand peaks on fan-out days.**
+  `[ESTIMATED]`
+
+The dominant single line is `gh issue` at about 29,000 calls. The issue tracker
+was the coordination substrate. Agents read the backlog, claimed work, posted
+status, and closed items through the issue API, and each of those touches was a
+round-trip.
+
+### 3.2 The `gh issue` breakdown — mostly reads and polls `[MEASURED]`
+
+Inside the clean Codex sample, the `gh issue` sub-commands split as follows.
+
+| Sub-command | Sample count | Class |
+| --- | ---: | --- |
+| `gh issue view` | 1,161 | read / poll |
+| `gh issue comment` | 700 | content-creation write |
+| `gh issue close` | 375 | state mutation |
+| `gh issue list` | 369 | read / poll |
+| `gh issue create` | 135 | content-creation write |
+| `gh issue edit` | 74 | write |
+
+Reads (`view` plus `list`) are 54 percent of all `gh` calls in the sample.
+Content-creation writes (`comment` plus `create`, plus pull-request `create`)
+are 29 percent. This split matters for the next section, because GitHub meters
+reads and content-creation writes under different ceilings.
+
+### 3.3 Rate-limit friction — the honest core finding
+
+This is the thesis the forge audit leads with, so this document tested it
+hardest. The result is nuanced.
+
+**Generic throttle strings are common but are NOT GitHub tax.** The tokens
+`429` and `rate limit` appear thousands of times across the corpus (about 7,500
+and 12,000 in Codex, about 6,100 and 3,500 in Claude). Almost all of that is
+our own product. OpenAgents builds rate limiters, L402 paywalls, and provider
+back-off, and it handles provider `429` responses from model APIs. Attributing
+those to GitHub would be wrong, so this document excludes them.
+
+**Real GitHub PRIMARY rate-limit hits: three sessions in four months.**
+`[MEASURED]` The canonical GitHub message `API rate limit exceeded for user ID`
+appears in exactly three distinct sessions, dated 2026-04-30, 2026-05-25, and
+2026-06-02. These are the 5,000-per-hour primary REST ceiling, hit during heavy
+`gh api` use. They are real, and they are rare.
+
+**Real GitHub SECONDARY (content-creation) ceiling hits: about zero in
+history.** `[MEASURED]` The canonical secondary-limit strings
+(`You have exceeded a secondary rate limit`, `was submitted too quickly`,
+`triggered an abuse detection mechanism`) do not appear as command output
+anywhere in the historical corpus. The only files that contain those strings
+are dated today, 2026-07-22, and the matches are the forge audit and this very
+benchmark discussing the concept, not a GitHub error return. An earlier cluster
+on 2026-06-28 also turned out to be an agent writing the phrase
+"secondary rate limits" inside an analysis document, not a live throttle event.
+
+**The peak fan-out days did not throttle.** `[MEASURED]` The busiest single days
+(Codex 155 sessions on 2026-06-30, Claude 177 sessions on 2026-07-05) show no
+GitHub throttle errors at all. The three real primary-limit days were not the
+peak fan-out days.
+
+**Why our history did not hit the content-creation wall.** Section 3.2 gives the
+mechanism. Only 29 percent of `gh` calls were content-creation writes. The
+majority were reads and mutations that meter under the larger primary ceiling.
+The writes also spread across many days and, in practice, across more than one
+account and token, so no single hour on a single token concentrated enough
+writes to trip the 500-per-hour secondary cap.
+
+This is the honest headline. The GitHub content-creation ceiling is real
+GitHub policy, and the audit's mechanism is sound, but our own transcripts do
+not show us slamming into it repeatedly. The ceiling is a latent risk that
+would bite harder as write concentration rises, not a routine historical stall.
+
+### 3.4 The fan-out signature `[MEASURED]`
+
+The corpus shows a clear ramp from a single-agent tempo to a fleet tempo.
+
+| Month (2026) | Codex sessions |
+| --- | ---: |
+| March (from the 26th) | 34 |
+| April | 102 |
+| May | 116 |
+| June | 624 |
+| July (to the 22nd) | 671 |
+
+That is roughly a twenty-fold scale-up in monthly session volume from March to
+July. Peak single days reach 155 Codex sessions and 177 Claude sessions, for a
+combined peak above 300 agent sessions in one calendar day.
+
+Codex also carries a native multi-agent orchestration signal. In the sample,
+about 5 percent of Codex sessions are orchestrators that spawn sub-agents. Those
+orchestrators issued 155 `spawn_agent` calls and 1,063 `wait_agent` calls in
+the sample, which scales to roughly 1,550 sub-agent spawns across the corpus.
+Every spawned agent adds its own stream of `gh` and `git` round-trips against
+the same shared GitHub account budget.
+
+### 3.5 Cadence `[MEASURED]`
+
+Per-session command intensity, measured on the sample:
+
+- Codex: about 975 shell commands per session, 19.7 `gh` calls per session,
+  16.0 `gh issue` calls per session, and 6.3 `git push` calls per session.
+- Claude: about 203 shell commands per session, 3.2 `gh` calls per session, and
+  1.0 `git push` per session.
+
+Session duration is strongly bimodal (Codex sample): the median session is about
+1 minute, the 75th percentile is 12 minutes, the 90th percentile is 103
+minutes, and the longest single orchestrator file spans about four days. The
+short tail is delegated single-task and fixture runs. The long tail is
+persistent orchestrator sessions that hold a lease and keep dispatching.
+
+The document cannot measure a clean issue-open-to-close wall-clock time or a
+pull-request-open-to-merge time from these transcripts, because a single
+session rarely contains both ends of one item. That figure needs the issue and
+pull-request event stream, not agent transcripts, and this document does not
+fabricate it.
+
+---
+
+## 4. Per-friction mapping — how the OpenAgents system removes each cost
+
+Each row takes a friction measured in Section 3 and names the exact OpenAgents
+mechanism that removes it, from the replacement audit and the Full Auto grading
+lane. The right column is `[PROJECTED]` unless marked otherwise, because live
+numbers for the owned path are not yet in hand.
+
+| Measured friction (Section 3) | OpenAgents mechanism | Why it removes the cost |
+| --- | --- | --- |
+| ~38,000 `gh` REST round-trips, each crossing the public internet | Owned Nostr relay in the same Google Cloud region as the fleet | A publish or a subscription answers in single-digit to low-tens of milliseconds instead of a public-internet REST round-trip. `[PROJECTED]` on the exact per-call figure. |
+| ~29,000 `gh issue` calls used as the claim and status ledger, 54 percent of them reads and polls | The Sol claim and issue ledger as signed kind 1621 and 1630-1633 events, read as a live relay subscription | The poll loop (`gh issue list` and `gh issue view`) becomes one subscription filter. Events arrive as they are written. No pagination, no repeated GET. `[PROJECTED]` |
+| The content-creation ceiling (about 500 writes per hour per account) as a latent cap on write concentration | An owned relay with no per-account content ceiling | The write budget is OpenAgents policy, not a vendor limit. More agents do not contend for one shared 500-per-hour budget. `[PROJECTED]` |
+| The 5,000-per-hour primary ceiling, hit three times in history under heavy `gh api` use | Direct relay reads of repository events, no REST accounting | The primary ceiling does not apply to an owned relay. `[PROJECTED]` |
+| ~12,000 `git push` operations, each waiting on server-side branch protection and merge-queue checks | Signed-state push rule plus a signed merge receipt | A push is admitted when the commit matches the maintainer-signed 30618 state event. The signature is the credential. There is no merge-queue wait on the internal critical path. `[PROJECTED]` |
+| Issue-template ceremony (`.github/ISSUE_TEMPLATE/strict-bug.yml`) on the internal agent ledger | A kind 1621 issue event carrying exactly the OpenAgents policy tags | The strict-bug gate is correct for public human intake. It is friction for an internal agent ledger. The event carries no more ceremony than policy requires. `[PROJECTED]` |
+| Raw activity is easy to count, verified outcomes are not | The Full Auto grading baseline (`run-grading.ts`, metric `full-auto-decision-v1`) measures cost and latency per host-verified outcome | Velocity is scored as tokens per VERIFIED outcome, not per commit or per API call, so speed cannot be gamed by raw churn. `[MEASURED]` that the method exists and is enforced in the test sweep. |
+
+The single sharpest reused idea, from the audit Section 3, is that the signed
+state event is the push credential. That is the same
+signed-intent-to-admitted-mutation-to-receipt shape as the rest of the
+OpenAgents verification thesis, applied to git hosting.
+
+---
+
+## 5. The OpenAgents alternative, in one paragraph each
+
+**Full Auto throughput model.** Full Auto runs owner-set objectives in a
+continuation loop with a hard turn cap and non-overridable guardrails
+(`docs/analysis/2026-07-22-full-auto-autonomy-decision-quality-rubric.md`). The
+grading baseline `run-grading.ts` (metric `full-auto-decision-v1`, from META-3)
+scores durable run receipts against a D1 to D7 autonomy rubric and divides exact
+token usage by host-verified outcomes only. The throughput unit is therefore
+tokens per VERIFIED outcome, and unknown usage or zero verified outcomes is
+recorded as `not_measured` rather than as zero. This is the correct denominator
+for a velocity claim, because it counts finished, checked work, not raw
+activity.
+
+**Nostr and GRASP forge speed thesis.** The replacement audit shows that the
+NIP-34 event vocabulary is already implemented in owned Effect TypeScript
+(`nostr-effect`), that the relay is owned code, and that only a colocated git
+server and a push-authorization hook are a bounded new build. On that owned
+substrate the claim ledger, the issues, the patches, and the merge receipts are
+signed events on a relay OpenAgents controls. The relay has no per-account
+content ceiling, answers in single-digit milliseconds when it is near the fleet,
+serves live subscriptions instead of poll loops, and carries no merge-queue or
+issue-template ceremony on the internal path. GitHub becomes a read-only mirror
+during migration, so the move is reversible at every stage.
+
+---
+
+## 6. Live Full Auto dogfood — structured slot for operator numbers
+
+A live Full Auto run is being driven concurrently against the `nostr-effect`
+repository. When the operator supplies the run reference and the run report, the
+values drop into the table below. Until then every cell is an explicit blank.
+Do not infer any of these from the historical estimates above. They are a
+different measurement, on the owned path, and must be filled from the live run
+receipt only.
+
+**Run identity**
+
+| Field | Value |
+| --- | --- |
+| `runRef` | _[operator to fill]_ |
+| Target repository | _[operator to fill, expected `nostr-effect`]_ |
+| Start timestamp | _[operator to fill]_ |
+| End or checkpoint timestamp | _[operator to fill]_ |
+| Continuation turns used (cap 20) | _[operator to fill]_ |
+
+**Throughput per verified outcome (from `run-grading.ts`)**
+
+| Metric | Value |
+| --- | --- |
+| Host-verified outcomes | _[operator to fill]_ |
+| Total tokens (exact usage) | _[operator to fill]_ |
+| Tokens per verified outcome | _[operator to fill]_ |
+| Wall-clock per verified outcome | _[operator to fill]_ |
+| D1 to D7 rubric grade | _[operator to fill]_ |
+
+**GitHub interaction on the live run (for direct comparison to Section 3)**
+
+| Metric | Value |
+| --- | --- |
+| `gh` REST round-trips during the run | _[operator to fill]_ |
+| Relay publishes and subscriptions during the run | _[operator to fill]_ |
+| GitHub throttle errors observed | _[operator to fill]_ |
+| Relay round-trip median (ms) | _[operator to fill]_ |
+
+When these cells are filled, compare the live tokens-per-verified-outcome and
+the live relay round-trip against the historical Section 3 round-trip volume and
+the near-zero historical throttle rate. That comparison, not this document's
+estimates, is the direct measured proof of the speed thesis.
+
+---
+
+## 7. Verdict — does our history support the "faster than GitHub-centric" thesis?
+
+**Yes, but through a different argument than the audit leads with.**
+
+The audit leads with the GitHub content-creation ceiling. Our history does not
+strongly support that framing. We hit GitHub's primary rate limit only three
+times in four months, and we hit the secondary content-creation ceiling
+essentially never, even on our peak fan-out days above 300 agent sessions. The
+ceiling is real GitHub policy and it is a genuine latent risk as write
+concentration grows, but it was not a routine historical stall for us. Claiming
+otherwise from our own data would be dishonest. `[MEASURED]`
+
+The stronger, data-supported argument is volume and poll tax. Over 118 days our
+agents made an estimated 38,000 GitHub REST round-trips and 21,000 git transport
+operations, about 59,000 GitHub network interactions, averaging near 500 a day
+and peaking in the multi-thousands on fan-out days. Of the roughly 29,000
+`gh issue` calls, more than half were reads and polls of a backlog that an
+owned relay would deliver as one live subscription. Every one of those 59,000
+interactions paid public-internet REST latency, auth, and rate-limit accounting
+that a near, owned relay does not charge. That is where the measured time went,
+and that is exactly what the owned-relay and live-subscription model removes.
+`[MEASURED]` for the volume, `[PROJECTED]` for the removal until the live
+dogfood in Section 6 is filled.
+
+So the honest verdict is: our history proves a large, real, removable GitHub
+round-trip and ceremony tax, and it proves the tax scaled with fan-out. It does
+not prove that GitHub throttling stalled us historically. The OpenAgents system
+targets both the proven tax and the latent ceiling, and the live Full Auto
+dogfood is the measurement that will turn the projected removal into a measured
+one.
+
+---
+
+## 8. Watch items
+
+- **Fill Section 6 from the live run receipt.** The historical side of this
+  benchmark is complete. The owned-path side is a single structured slot waiting
+  on the operator's `runRef` and run report.
+- **Multi-account attribution.** This document infers that historical writes
+  spread across more than one GitHub account. A follow-up could confirm the
+  account split directly from the transcripts, which would sharpen the
+  secondary-ceiling risk estimate.
+- **Issue-lifecycle cadence.** A clean issue-open-to-close and
+  pull-request-open-to-merge time needs the GitHub event stream, not agent
+  transcripts. It is the one cadence figure this document could not measure.
+- **Re-verify the GitHub limit numbers.** The primary 5,000-per-hour and
+  secondary 500-per-hour figures are GitHub public policy that changes. Re-check
+  them before any external claim, as the replacement audit also warns.

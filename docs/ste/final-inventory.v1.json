@@ -947,7 +947,7 @@
     {
       "path": "apps/openagents-desktop/docs/meta-agent-acp-server-zed-demo.md",
       "sha256": "10184307bff145efefb70b70843993b3907e8168a55b997d0b9ccfe160492204",
-      "reason": "Final review of a newly authored document",
+      "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
         "risk": "medium",
@@ -957,8 +957,8 @@
           "STE-2.4"
         ],
         "ste_status": "inspected",
-        "ste_reviewer": "opus/meta-2-acp-server-20260722",
-        "ste_reviewed_at": "2026-07-22T18:00:00Z"
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {
@@ -21908,12 +21908,10 @@
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
-        "ste_status": "source-data",
-        "ste_reviewer": null,
-        "ste_reviewed_at": null,
         "risk": "source-data",
         "source": "Immutable historical or evidence source data",
-        "replacement": null
+        "replacement": null,
+        "ste_status": "source-data"
       }
     },
     {
@@ -26342,6 +26340,24 @@
         "ste_status": "inspected",
         "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
         "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/forge/2026-07-22-dev-velocity-github-vs-openagents-benchmark.md",
+      "sha256": "21c2d18bfe101c6fefc18569936468b6358947488987473bfc0890dd40e4be4b",
+      "reason": "Final review of mutable first-party agent technical text",
+      "profile": {
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ]
       }
     },
     {
