@@ -18,6 +18,7 @@ use std::os::unix::process::CommandExt;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
+use sha2::{Digest, Sha256};
 
 use crate::managed_sandbox_runtime::{self, RuntimePhase};
 
@@ -652,19 +653,29 @@ where
                 "archiveClaim": "allowed",
             })
         }
-        _ => json!({
-            "_tag": "CheckpointFailed",
-            "schema": CHECKPOINT_STOP_SCHEMA_VERSION,
-            "stopRef": stop_ref,
-            "sandboxRef": sandbox_ref,
-            "resourceGeneration": generation,
-            "observedAt": observed_at,
-            "evidenceRefs": [stop_ref],
-            "attemptedCheckpointRef": string(archive, "checkpointRef")?,
-            "errorRef": "error.sbx10.archive.stop_failed",
-            "lifecycle": "recovery_required",
-            "archiveClaim": "forbidden",
-        }),
+        _ => {
+            let cleanup_request = archive_cleanup_request(archive, checkpoint.clone())?;
+            let cleanup_response = execute_with_driver(driver, cleanup_request, timeout)
+                .map_err(|_| Phase2Error::unavailable("phase2_archive_cleanup_failed"))?;
+            let cleanup = object(
+                &cleanup_response.result,
+                "phase2_archive_cleanup_receipt_invalid",
+            )?;
+            let cleanup_receipt_ref = string(cleanup, "receiptRef")?;
+            json!({
+                "_tag": "CheckpointFailed",
+                "schema": CHECKPOINT_STOP_SCHEMA_VERSION,
+                "stopRef": stop_ref,
+                "sandboxRef": sandbox_ref,
+                "resourceGeneration": generation,
+                "observedAt": observed_at,
+                "evidenceRefs": [stop_ref, cleanup_receipt_ref],
+                "attemptedCheckpointRef": string(archive, "checkpointRef")?,
+                "errorRef": "error.sbx10.archive.stop_failed_checkpoint_cleaned",
+                "lifecycle": "recovery_required",
+                "archiveClaim": "forbidden",
+            })
+        }
     };
     let response = ManagedSandboxPhase2Response {
         schema_version: TARGET_SCHEMA_VERSION.to_string(),
@@ -674,6 +685,48 @@ where
     };
     validate_response(&request, &response)?;
     Ok(response)
+}
+
+fn archive_cleanup_request(
+    archive: &Map<String, Value>,
+    checkpoint: Value,
+) -> Result<ManagedSandboxPhase2Request, Phase2Error> {
+    let identity = Sha256::digest(
+        format!(
+            "archive-cleanup|{}|{}|{}|{}",
+            string(archive, "ownerRef")?,
+            string(archive, "tenantRef")?,
+            string(archive, "checkpointRef")?,
+            string(archive, "stopRef")?,
+        )
+        .as_bytes(),
+    );
+    let identity = format!("{identity:x}");
+    let command_ref = format!("command.sbx10.archive-cleanup.{}", &identity[..32]);
+    let command = json!({
+        "_tag": "DeleteCheckpoint",
+        "schema": COMMAND_SCHEMA_VERSION,
+        "commandRef": command_ref,
+        "idempotencyRef": format!("idempotency.sbx10.archive-cleanup.{}", &identity[..32]),
+        "ownerRef": string(archive, "ownerRef")?,
+        "tenantRef": string(archive, "tenantRef")?,
+        "requestedAt": string(object(&checkpoint, "phase2_archive_checkpoint_invalid")?, "verifiedAt")?,
+        "checkpointRef": string(archive, "checkpointRef")?,
+        "reason": "sandbox_teardown"
+    });
+    let request = ManagedSandboxPhase2Request {
+        schema_version: TARGET_SCHEMA_VERSION.to_string(),
+        action: ManagedSandboxPhase2Action::DeleteCheckpoint,
+        request_ref: command_ref,
+        command: Some(command),
+        checkpoint: Some(checkpoint),
+        capability: None,
+        owner_ref: None,
+        tenant_ref: None,
+        sandbox_ref: None,
+    };
+    request.validate()?;
+    Ok(request)
 }
 
 fn validate_driver_path(driver: &Path) -> Result<(), Phase2Error> {
@@ -2361,9 +2414,51 @@ mod tests {
         assert_eq!(archived.result["archiveClaim"], "allowed");
         assert_eq!(archived.result["checkpoint"], checkpoint());
 
+        let archive_request = request(ManagedSandboxPhase2Action::ArchiveWithCheckpoint);
+        let cleanup_request = archive_cleanup_request(
+            archive_request
+                .command
+                .as_ref()
+                .unwrap()
+                .as_object()
+                .unwrap(),
+            checkpoint(),
+        )
+        .unwrap();
+        let cleanup_response = ManagedSandboxPhase2Response {
+            schema_version: TARGET_SCHEMA_VERSION.to_string(),
+            action: ManagedSandboxPhase2Action::DeleteCheckpoint,
+            request_ref: cleanup_request.request_ref.clone(),
+            result: json!({
+                "schema": CHECKPOINT_DELETE_SCHEMA_VERSION,
+                "receiptRef": "receipt.sbx10.archive.cleanup",
+                "ownerRef": "owner.sbx10.control",
+                "tenantRef": "tenant.sbx10.control",
+                "checkpointRef": "checkpoint.sbx10.control",
+                "sourceSandboxRef": "sandbox.sbx10.control",
+                "sourceResourceGeneration": 7,
+                "contentDigest": digest('d'),
+                "contentDeleted": true,
+                "outcome": "deleted",
+                "reason": "sandbox_teardown",
+                "deletedAt": "2026-07-22T05:00:03.000Z",
+                "evidenceRefs": ["evidence.sbx10.archive.cleanup"]
+            }),
+        };
+        fs::write(
+            &driver,
+            format!(
+                "#!/bin/sh\ninput=$(cat)\nif printf '%s' \"$input\" | grep -q '\"action\":\"delete_checkpoint\"'; then printf '%s' '{}'; else printf '%s' '{}'; fi\n",
+                serde_json::to_string(&cleanup_response).unwrap(),
+                serde_json::to_string(&response).unwrap(),
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(&driver, fs::Permissions::from_mode(0o700)).unwrap();
+
         let failed = execute_archive_with_checkpoint_and_stop(
             &driver,
-            request(ManagedSandboxPhase2Action::ArchiveWithCheckpoint),
+            archive_request,
             Duration::from_secs(2),
             |_, _, _, _, _| Err(()),
         )
@@ -2371,6 +2466,35 @@ mod tests {
         assert_eq!(failed.result["_tag"], "CheckpointFailed");
         assert_eq!(failed.result["archiveClaim"], "forbidden");
         assert_eq!(failed.result["lifecycle"], "recovery_required");
+        assert_eq!(
+            failed.result["evidenceRefs"],
+            json!([
+                "stop.sbx10.control.archive",
+                "receipt.sbx10.archive.cleanup"
+            ])
+        );
+        assert_eq!(
+            failed.result["errorRef"],
+            "error.sbx10.archive.stop_failed_checkpoint_cleaned"
+        );
+
+        fs::write(
+            &driver,
+            format!(
+                "#!/bin/sh\ninput=$(cat)\nif printf '%s' \"$input\" | grep -q '\"action\":\"delete_checkpoint\"'; then exit 1; else printf '%s' '{}'; fi\n",
+                serde_json::to_string(&response).unwrap(),
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(&driver, fs::Permissions::from_mode(0o700)).unwrap();
+        let cleanup_failed = execute_archive_with_checkpoint_and_stop(
+            &driver,
+            request(ManagedSandboxPhase2Action::ArchiveWithCheckpoint),
+            Duration::from_secs(2),
+            |_, _, _, _, _| Err(()),
+        )
+        .unwrap_err();
+        assert_eq!(cleanup_failed.reason_ref, "phase2_archive_cleanup_failed");
         fs::remove_dir_all(root).unwrap();
     }
 
