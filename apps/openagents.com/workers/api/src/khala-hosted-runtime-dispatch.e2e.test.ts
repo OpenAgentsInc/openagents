@@ -260,6 +260,21 @@ describe('hosted chat send -> assistant reply E2E guard (khala_sync.hosted_chat.
     assertAssistantReplied(push.recorded, 'turn.t1', 'Paris')
   })
 
+  test('(a2) an empty provider response settles as an explicit failure instead of silent success', async () => {
+    const push = makeBindingAwareExecutePush()
+    const summary = await runHostedRuntimeTurnDispatch(
+      baseDeps(singleTurnTables({ bodyRef: 'chat_message.msg.1' }), push, okComplete('   ')),
+    )
+
+    expect(summary).toEqual({ answered: 0, claimed: 1, failed: 1, scanned: 1, skipped: 0 })
+    expect(push.recorded.map(record => record.kind)).toEqual([
+      'turn.started',
+      'turn.finished',
+    ])
+    expect(push.recorded.at(-1)?.finishReason).toBe('error')
+    expect(push.recorded.some(record => record.kind === 'text.delta')).toBe(false)
+  })
+
   // (b) BUG #3 REGRESSION — double-encoded intent_json (a JSON string inside
   // jsonb) must STILL resolve the prompt and answer. Runs BOTH encodings: the
   // object form (what the intent_json writer fix produces for new rows) AND the

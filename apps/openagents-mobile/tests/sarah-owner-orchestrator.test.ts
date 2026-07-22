@@ -179,6 +179,142 @@ describe(`contract ${contractId}`, () => {
     expect((await Effect.runPromise(lastState(program))).activeThreadRef).toBe(thread.threadRef);
   });
 
+  test("sends on the owner-private Sarah thread and renders the hosted owner-orchestrator reply", async () => {
+    const replyThread: MobileConversationThread = {
+      ...thread,
+      messageCount: 1,
+      lastMessageAt: now,
+      messages: [{
+        messageRef: "message.sarah.owner-question",
+        threadRef: thread.threadRef,
+        body: "What should we do next?",
+        createdAt: now,
+        updatedAt: now,
+        version: 2,
+      }],
+      timeline: {
+        status: { phase: "live", cursor: 4, pendingMutationCount: 0 },
+        run: {
+          runRef: "run.sarah.owner-orchestrator",
+          routeRef: thread.threadRef,
+          runtime: "openagents_native",
+          backend: "hosted",
+          status: "completed",
+          createdAt: now,
+          updatedAt: now,
+          startedAt: now,
+          completedAt: now,
+          failedAt: null,
+          canceledAt: null,
+          version: 4,
+        },
+        events: [{
+          eventRef: "event.sarah.owner-orchestrator.started",
+          runRef: "run.sarah.owner-orchestrator",
+          sequence: 1,
+          eventType: "turn.started",
+          summary: "Turn started",
+          status: "running",
+          artifactRefs: [],
+          item: {
+            kind: "connected",
+            turnRef: "run.sarah.owner-orchestrator",
+            lane: "hosted_khala",
+          },
+          source: {
+            lane: "hosted_khala",
+            adapterKind: "openagents_native",
+            surface: "server",
+            providerRef: "google-ai-studio",
+            modelRef: "gemma-4-31b-it",
+          },
+          createdAt: now,
+          version: 2,
+        }, {
+          eventRef: "event.sarah.owner-orchestrator.reply",
+          runRef: "run.sarah.owner-orchestrator",
+          sequence: 2,
+          eventType: "text.delta",
+          summary: "Owner update",
+          status: null,
+          artifactRefs: [],
+          item: {
+            kind: "text",
+            messageRef: "message.sarah.owner-orchestrator.reply",
+            text: "The next admitted step is to verify the mobile Sarah conversation.",
+          },
+          source: {
+            lane: "hosted_khala",
+            adapterKind: "openagents_native",
+            surface: "server",
+            providerRef: "google-ai-studio",
+            modelRef: "gemma-4-31b-it",
+          },
+          createdAt: now,
+          version: 3,
+        }, {
+          eventRef: "event.sarah.owner-orchestrator.finished",
+          runRef: "run.sarah.owner-orchestrator",
+          sequence: 3,
+          eventType: "turn.finished",
+          summary: "Turn completed",
+          status: "completed",
+          artifactRefs: [],
+          item: { kind: "terminal", status: "completed" },
+          source: {
+            lane: "hosted_khala",
+            adapterKind: "openagents_native",
+            surface: "server",
+            providerRef: "google-ai-studio",
+            modelRef: "gemma-4-31b-it",
+          },
+          createdAt: now,
+          version: 4,
+        }],
+      },
+    };
+    const sends: Array<Readonly<{ threadRef: string; runtimeTarget: unknown }>> = [];
+    const host: MobileConversationHost = {
+      listThreads: async () => [thread],
+      newThread: async () => ({ ok: true, thread }),
+      openThread: async () => thread,
+      sendMessage: async (input) => {
+        sends.push({ threadRef: input.threadRef, runtimeTarget: input.runtimeTarget });
+        input.onMessageAdmitted?.("message.sarah.owner-question");
+        input.onUpdate?.(replyThread);
+        return { ok: true, thread: replyThread };
+      },
+    };
+    const program = buildHomeProgram({
+      sarah: principal,
+      conversation: {
+        mode: "sync",
+        host,
+        threads: [thread],
+        archivedThreads: [],
+        activeThread: thread,
+      },
+    });
+
+    await Effect.runPromise(program.report(
+      IntentRef("KhalaTurnSubmitted", ComponentValueBinding()),
+      "What should we do next?",
+    ) as Effect.Effect<unknown>);
+    await Effect.runPromise(Effect.yieldNow);
+
+    expect(sends).toEqual([{
+      threadRef: principal.threadRef,
+      runtimeTarget: { lane: "hosted_khala" },
+    }]);
+    const completed = await Effect.runPromise(lastState(program));
+    expect(completed.activeThreadRef).toBe(principal.threadRef);
+    expect(completed.khala.pending).toBe(false);
+    const view = JSON.stringify(renderContentView(completed));
+    expect(view).toContain("What should we do next?");
+    expect(view).toContain("The next admitted step is to verify the mobile Sarah conversation.");
+    expect(mobileHeaderProps(completed)).toEqual({ title: "Sarah", subtitle: null });
+  });
+
   test("jumps to a submitted Sarah message without trapping manual scrolling", async () => {
     let finish: ((value: Awaited<ReturnType<MobileConversationHost["sendMessage"]>>) => void) | undefined;
     const host: MobileConversationHost = {

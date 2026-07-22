@@ -549,18 +549,18 @@ describe('dispatchHostedRuntimeTurn', () => {
     expect(push.recorded.map(r => r.kind)).toEqual(['turn.started'])
   })
 
-  test('empty answer text yields only started + finished(stop)', async () => {
+  test('empty answer text fails explicitly instead of finishing without a reply', async () => {
     const push = makeRecordingExecutePush()
     const outcome = await dispatchHostedRuntimeTurn(
       baseDeps(oneQueuedTurn, push, okComplete('')),
       turn,
     )
-    expect(outcome).toBe('answered')
+    expect(outcome).toBe('failed')
     expect(push.recorded.map(r => r.kind)).toEqual([
       'turn.started',
       'turn.finished',
     ])
-    expect(push.recorded[1]?.finishReason).toBe('stop')
+    expect(push.recorded[1]?.finishReason).toBe('error')
   })
 
   // ---- #8555: metering + balance gate --------------------------------------

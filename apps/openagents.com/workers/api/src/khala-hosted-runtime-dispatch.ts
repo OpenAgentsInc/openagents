@@ -725,6 +725,20 @@ export const dispatchHostedRuntimeTurn = async (
     }
   }
 
+  if (completion.ok && responsePresentation === 'owner_conversation') {
+    completion = {
+      ...completion,
+      text: sanitizeSarahConversationResponse(completion.text),
+    }
+  }
+  // A terminal success without assistant text leaves the mobile composer
+  // looking complete even though Sarah (or an ordinary hosted chat) never
+  // answered. Keep that outcome on the existing explicit failure path so the
+  // client receives terminal truth instead of a silent `turn.finished(stop)`.
+  if (completion.ok && completion.text.trim() === '') {
+    completion = { detail: 'empty_response', ok: false }
+  }
+
   // 3. On failure, still settle the turn so the client stops spinning.
   if (!completion.ok) {
     resolved.log('hosted_runtime_dispatch_failed', {
@@ -741,13 +755,6 @@ export const dispatchHostedRuntimeTurn = async (
     if (failedResult.status !== 'applied') return 'skipped'
     await notifyTurnOutcomeFailSoft(resolved, 'turn_failed', turn)
     return 'failed'
-  }
-
-  if (responsePresentation === 'owner_conversation') {
-    completion = {
-      ...completion,
-      text: sanitizeSarahConversationResponse(completion.text),
-    }
   }
 
   // 4. Success: stream the answer as one text.delta + text.completed, then
