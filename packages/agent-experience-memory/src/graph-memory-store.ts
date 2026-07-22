@@ -189,6 +189,8 @@ export const GraphMemoryPersistedEnvelope = S.Struct({
   current: S.optionalKey(GraphMemoryStoredGraph),
   pending: S.optionalKey(GraphMemoryPendingMutation),
   receipts: S.Array(GraphMemoryOperationReceipt).check(S.isMaxLength(GRAPH_MEMORY_RECEIPT_LIMIT)),
+  receiptHistoryDigest: S.optionalKey(GraphDigest),
+  receiptHistoryCount: S.optionalKey(NonNegativeInteger),
   archiveExports: S.optionalKey(
     S.Array(GraphMemoryArchiveExportRecord).check(S.isMaxLength(GRAPH_MEMORY_RECEIPT_LIMIT)),
   ),
@@ -625,6 +627,12 @@ export const makeGraphMemoryStore = Effect.fn("GraphMemory.makeStore")(function*
       revision: envelope.revision + 1,
       ...(envelope.pending.nextCurrent === undefined ? {} : { current: envelope.pending.nextCurrent }),
       receipts: [...envelope.receipts, envelope.pending.receipt],
+      ...(envelope.receiptHistoryDigest === undefined
+        ? {}
+        : { receiptHistoryDigest: envelope.receiptHistoryDigest }),
+      ...(envelope.receiptHistoryCount === undefined
+        ? {}
+        : { receiptHistoryCount: envelope.receiptHistoryCount }),
       archiveExports: [
         ...(envelope.pending.clearArchiveExports === true ? [] : (envelope.archiveExports ?? [])),
         ...(envelope.pending.archiveExport === undefined ? [] : [envelope.pending.archiveExport]),
@@ -653,6 +661,7 @@ export const makeGraphMemoryStore = Effect.fn("GraphMemory.makeStore")(function*
     requestDigest: GraphDigest,
     compute: (
       current: GraphMemoryStoredGraph | undefined,
+      archiveExports: ReadonlyArray<GraphMemoryArchiveExportRecord>,
     ) => Effect.Effect<Readonly<{
       nextCurrent?: GraphMemoryStoredGraph;
       archiveExport?: GraphMemoryArchiveExportRecord;
@@ -674,10 +683,22 @@ export const makeGraphMemoryStore = Effect.fn("GraphMemory.makeStore")(function*
         yield* recover(scope);
         continue;
       }
-      if ((envelope?.receipts.length ?? 0) >= GRAPH_MEMORY_RECEIPT_LIMIT) {
-        return yield* storeError("mutate", "state_conflict", "The graph memory receipt limit is reached.");
+      const computed = yield* compute(envelope?.current, envelope?.archiveExports ?? []);
+      let receipts = envelope?.receipts ?? [];
+      let receiptHistoryDigest = envelope?.receiptHistoryDigest;
+      let receiptHistoryCount = envelope?.receiptHistoryCount ?? 0;
+      if (receipts.length >= GRAPH_MEMORY_RECEIPT_LIMIT) {
+        if (computed.receipt.operation !== "forget") {
+          return yield* storeError("mutate", "state_conflict", "The graph memory receipt limit is reached.");
+        }
+        receiptHistoryDigest = digest({
+          priorDigest: receiptHistoryDigest,
+          priorCount: receiptHistoryCount,
+          receipts,
+        });
+        receiptHistoryCount += receipts.length;
+        receipts = [];
       }
-      const computed = yield* compute(envelope?.current);
       const prepared = S.decodeUnknownSync(GraphMemoryPersistedEnvelope)({
         schemaId: GRAPH_MEMORY_STATE_SCHEMA_ID,
         scope,
@@ -692,7 +713,9 @@ export const makeGraphMemoryStore = Effect.fn("GraphMemory.makeStore")(function*
             : { clearArchiveExports: computed.clearArchiveExports }),
           receipt: computed.receipt,
         },
-        receipts: envelope?.receipts ?? [],
+        receipts,
+        ...(receiptHistoryDigest === undefined ? {} : { receiptHistoryDigest }),
+        ...(receiptHistoryCount === 0 ? {} : { receiptHistoryCount }),
         archiveExports: envelope?.archiveExports ?? [],
       });
       const staged = yield* stateStore
@@ -771,6 +794,13 @@ export const makeGraphMemoryStore = Effect.fn("GraphMemory.makeStore")(function*
         manifestDigest: priorExport.manifestDigest,
         receipt: priorExport.receipt,
       } satisfies GraphMemoryArchiveExport;
+    }
+    if (envelope?.receipts.some((item) => item.operationRef === operationRef)) {
+      return yield* storeError(
+        "exportArchive",
+        "state_conflict",
+        "The prior export replay payload is no longer available.",
+      );
     }
     const current = envelope?.current;
     if (current === undefined) {
@@ -1037,6 +1067,7 @@ export const makeGraphMemoryStore = Effect.fn("GraphMemory.makeStore")(function*
       ),
       vectorRecords: current.vectorRecords.filter((record) => !vectorTargets.has(record.artifact.artifactRef)),
       summaryRecords: current.summaryRecords.filter((record) => !summaryTargets.has(record.artifact.artifactRef)),
+      archiveRefs: [],
     };
     return { next, sdkReceipt } as const;
   });
@@ -1045,7 +1076,7 @@ export const makeGraphMemoryStore = Effect.fn("GraphMemory.makeStore")(function*
     input: ApplyGraphMemoryDeletePlanInput,
   ) {
     const deleteRequestDigest = requestFingerprint("delete_source", input);
-    return yield* mutate(input.scope, input.operationRef, deleteRequestDigest, (current) =>
+    return yield* mutate(input.scope, input.operationRef, deleteRequestDigest, (current, archiveExports) =>
       Effect.gen(function* () {
         if (current === undefined) {
           return {
@@ -1156,9 +1187,23 @@ export const makeGraphMemoryStore = Effect.fn("GraphMemory.makeStore")(function*
               action?.actionRef ?? executable.success.idempotencyKey,
             );
           });
-        const actionFacts = [...deleteActionFacts(executable.success), ...droppedSnapshotFacts];
+        const replayPurgeFacts = archiveExports.map((item) =>
+          fact("archive", item.operationRef, "delete_internal_archive_replay", item.receipt.receiptRef),
+        );
+        const externalExportFacts = [...new Set([
+          ...current.archiveRefs,
+          ...archiveExports.map((item) => item.archiveRef),
+        ])].sort(compareText).map((archiveRef) =>
+          fact("archive", archiveRef, "owner_export_payload_not_stored"),
+        );
+        const actionFacts = [
+          ...deleteActionFacts(executable.success),
+          ...droppedSnapshotFacts,
+          ...replayPurgeFacts,
+        ];
         return {
           nextCurrent: next,
+          clearArchiveExports: true,
           receipt: makeReceipt({
             requestDigest: deleteRequestDigest,
             operationRef: input.operationRef,
@@ -1173,7 +1218,7 @@ export const makeGraphMemoryStore = Effect.fn("GraphMemory.makeStore")(function*
             sdkReceiptRef: sdkReceipt.receiptRef,
             intended: actionFacts,
             applied: actionFacts,
-            retainedShared,
+            retainedShared: [...retainedShared, ...externalExportFacts],
             unresolved: [],
             failed: [],
             before: accounting(current),
@@ -1189,10 +1234,13 @@ export const makeGraphMemoryStore = Effect.fn("GraphMemory.makeStore")(function*
     operationRef: GraphMemoryOperationRef,
   ) {
     const forgetRequestDigest = requestFingerprint("forget", scope);
-    return yield* mutate(scope, operationRef, forgetRequestDigest, (current) => {
+    return yield* mutate(scope, operationRef, forgetRequestDigest, (current, archiveExports) => {
       const before = accounting(current);
+      const replayPurgeFacts = archiveExports.map((item) =>
+        fact("archive", item.operationRef, "delete_internal_archive_replay", item.receipt.receiptRef),
+      );
       const intended = current === undefined
-        ? []
+        ? replayPurgeFacts
         : [
             fact("graph", current.binding.graphRef, "forget_graph"),
             ...current.artifactInventory.vectors.map((item) => fact("vector", item.artifactRef, "forget_vector")),
@@ -1200,11 +1248,17 @@ export const makeGraphMemoryStore = Effect.fn("GraphMemory.makeStore")(function*
             ...current.artifactInventory.rankingRefs.map((item) => fact("ranking", item.artifactRef, "forget_ranking_ref")),
             ...current.rankingSnapshots.map((item) => fact("ranking", item.snapshotRef, "forget_ranking_snapshot")),
             ...current.archiveRefs.map((item) => fact("archive", item, "forget_archive_accounting")),
+            ...replayPurgeFacts,
           ];
-      const retainedOwnerExports = current?.archiveRefs.map((item) =>
-        fact("archive", item, "owner_export_payload_not_stored"),
-      ) ?? [];
-      const applied = intended.filter((item) => item.plane !== "archive");
+      const retainedOwnerExports = [...new Set([
+        ...(current?.archiveRefs ?? []),
+        ...archiveExports.map((item) => item.archiveRef),
+      ])].sort(compareText).map((archiveRef) =>
+        fact("archive", archiveRef, "owner_export_payload_not_stored"),
+      );
+      const applied = intended.filter((item) =>
+        item.plane !== "archive" || item.reason === "delete_internal_archive_replay",
+      );
       return Effect.succeed({
         clearArchiveExports: true,
         receipt: makeReceipt({

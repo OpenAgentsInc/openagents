@@ -72,9 +72,14 @@ cryptography API.
 
 Archive export returns bytes to the caller. The graph store keeps a bounded
 replay record so that an operation retry returns the exact prior result.
-`forget` removes that replay record with the internal graph and artifact state.
-It reports each caller-held export as retained because the caller controls
-deletion of those external bytes.
+An accepted source deletion and `forget` remove each internal replay record.
+Their receipts distinguish an internal replay deletion from a caller-held
+export. The caller controls deletion of those external bytes.
+
+Receipt history is bounded. When the receipt limit is full, a normal mutation
+fails before it writes pending state. A full-scope `forget` is not blocked. It
+compacts the prior receipt set into a count and a digest, and it keeps the exact
+forget receipt for restart inspection.
 
 ## Boundaries
 

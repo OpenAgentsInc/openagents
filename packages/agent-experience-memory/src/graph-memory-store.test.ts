@@ -441,6 +441,57 @@ describe("portable graph memory conformance", () => {
     expect(retry.archiveRef).toBe(first.archiveRef);
     expect(retry.receipt.receiptDigest).toBe(first.receipt.receiptDigest);
     expect(retry.contentDigest).toBe(first.contentDigest);
+    const forgotten = await Effect.runPromise(store.forget(
+      scope,
+      operationRef("operation.forget-after-replacement-put"),
+    ));
+    expect(forgotten.applied).toContainEqual(expect.objectContaining({
+      plane: "archive",
+      targetRef: exportRef,
+      actionRef: first.receipt.receiptRef,
+      reason: "delete_internal_archive_replay",
+    }));
+    expect(forgotten.retainedShared).toContainEqual(expect.objectContaining({
+      plane: "archive",
+      targetRef: first.archiveRef,
+      reason: "owner_export_payload_not_stored",
+    }));
+  });
+
+  test("forget accounts replay bytes that survive an archive-import replacement", async () => {
+    const driver = await Effect.runPromise(makeInMemoryGraphMemoryStateStore());
+    const store = await Effect.runPromise(makeGraphMemoryStore(driver));
+    const graph = await Effect.runPromise(fixture());
+    await Effect.runPromise(store.put(putFixture(graph)));
+    const exportRef = operationRef("operation.export-before-import");
+    const exported = await Effect.runPromise(store.exportArchive(scope, exportRef));
+    await Effect.runPromise(store.importArchive({
+      operationRef: operationRef("operation.import-replacement"),
+      scope,
+      generation: 2,
+      admission,
+      bytes: exported.bytes,
+    }));
+    const forgotten = await Effect.runPromise(store.forget(
+      scope,
+      operationRef("operation.forget-after-import"),
+    ));
+    const envelope = S.decodeUnknownSync(GraphMemoryPersistedEnvelope)(
+      await Effect.runPromise(driver.load(scope)),
+    );
+
+    expect(forgotten.applied).toContainEqual(expect.objectContaining({
+      plane: "archive",
+      targetRef: exportRef,
+      actionRef: exported.receipt.receiptRef,
+      reason: "delete_internal_archive_replay",
+    }));
+    expect(forgotten.retainedShared).toContainEqual(expect.objectContaining({
+      plane: "archive",
+      targetRef: exported.archiveRef,
+      reason: "owner_export_payload_not_stored",
+    }));
+    expect(envelope.archiveExports).toEqual([]);
   });
 
   test("export CAS refuses a concurrent same-graph artifact-state replacement", async () => {
@@ -596,6 +647,8 @@ describe("portable graph memory conformance", () => {
     const store = await Effect.runPromise(makeGraphMemoryStore(driver));
     const graph = await Effect.runPromise(fixture(scope, false, true));
     await Effect.runPromise(store.put(putFixture(graph)));
+    const exportOperationRef = operationRef("operation.export-before-delete");
+    const exported = await Effect.runPromise(store.exportArchive(scope, exportOperationRef));
     const plan = await Effect.runPromise(planGraphSourceDeletion(graph.built, sourceA, graph.inventory));
     const receipt = await Effect.runPromise(store.applyDeletePlan({
       operationRef: operationRef("operation.delete-artifacts"),
@@ -604,6 +657,9 @@ describe("portable graph memory conformance", () => {
       plan,
     }));
     const after = await Effect.runPromise(store.inspect(scope));
+    const envelope = S.decodeUnknownSync(GraphMemoryPersistedEnvelope)(
+      await Effect.runPromise(driver.load(scope)),
+    );
     const planes = [
       ["vector", plan.actions.vectorActions],
       ["summary", plan.actions.summaryActions],
@@ -636,6 +692,24 @@ describe("portable graph memory conformance", () => {
     expect(after.current?.vectorRecords).toEqual([]);
     expect(after.current?.summaryRecords).toEqual([]);
     expect(after.current?.rankingSnapshots).toEqual([]);
+    expect(after.current?.archiveRefs).toEqual([]);
+    expect(envelope.archiveExports).toEqual([]);
+    expect(receipt.applied).toContainEqual(expect.objectContaining({
+      plane: "archive",
+      targetRef: exportOperationRef,
+      actionRef: exported.receipt.receiptRef,
+      reason: "delete_internal_archive_replay",
+    }));
+    expect(receipt.retainedShared).toContainEqual(expect.objectContaining({
+      plane: "archive",
+      targetRef: exported.archiveRef,
+      reason: "owner_export_payload_not_stored",
+    }));
+    const oldExportRetry = await Effect.runPromise(Effect.result(
+      store.exportArchive(scope, exportOperationRef),
+    ));
+    expect(Result.isFailure(oldExportRetry)).toBe(true);
+    if (Result.isFailure(oldExportRetry)) expect(oldExportRetry.failure.reason).toBe("state_conflict");
   });
 
   test("retries are idempotent and full forget leaves no stored graph or artifact orphan", async () => {
@@ -705,7 +779,7 @@ describe("portable graph memory conformance", () => {
     expect(inspected.current?.binding.graphDigest).toBe(graph.built.snapshot.graphDigest);
   });
 
-  test("an operation reference cannot change requests and a full receipt ledger never stages pending work", async () => {
+  test("an operation reference cannot change requests and saturated history cannot block forget", async () => {
     const driver = await Effect.runPromise(makeInMemoryGraphMemoryStateStore());
     const store = await Effect.runPromise(makeGraphMemoryStore(driver));
     const graph = await Effect.runPromise(fixture());
@@ -732,14 +806,21 @@ describe("portable graph memory conformance", () => {
     });
     expect(await Effect.runPromise(driver.compareAndSet(scope, inspected.revision, saturated))).toBe(true);
     const restarted = await Effect.runPromise(makeGraphMemoryStore(driver));
-    const overflow = await Effect.runPromise(
-      Effect.result(restarted.forget(scope, operationRef("operation.after-limit"))),
+    const forgetReceipt = await Effect.runPromise(
+      restarted.forget(scope, operationRef("operation.after-limit")),
     );
-    const after = await Effect.runPromise(restarted.inspect(scope));
+    const afterRestart = await Effect.runPromise(makeGraphMemoryStore(driver));
+    const after = await Effect.runPromise(afterRestart.inspect(scope));
+    const compacted = S.decodeUnknownSync(GraphMemoryPersistedEnvelope)(
+      await Effect.runPromise(driver.load(scope)),
+    );
 
-    expect(Result.isFailure(overflow)).toBe(true);
-    if (Result.isFailure(overflow)) expect(overflow.failure.reason).toBe("state_conflict");
+    expect(forgetReceipt.operation).toBe("forget");
     expect(after.pendingOperationRef).toBeNull();
-    expect(after.receipts).toHaveLength(GRAPH_MEMORY_RECEIPT_LIMIT);
+    expect(after.current).toBeNull();
+    expect(after.receipts).toEqual([forgetReceipt]);
+    expect(compacted.archiveExports).toEqual([]);
+    expect(compacted.receiptHistoryCount).toBe(GRAPH_MEMORY_RECEIPT_LIMIT);
+    expect(compacted.receiptHistoryDigest).toBeDefined();
   });
 });
