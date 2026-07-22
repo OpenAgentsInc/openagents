@@ -47,10 +47,10 @@
       }
     ],
     "lockDigest": "366f4fd2638f79e85baab8431069dc7149dedf26258a7dfec81b91efff01f14d",
-    "openAgentsCommit": "105985670bb05acae043ae3d492b1099f1378a84",
+    "openAgentsCommit": "3f19dedca13db740d3e0675559daba7c45adade5",
     "sourceState": "clean",
     "desktopBuildRef": "apps/openagents-desktop/dist",
-    "desktopBuildDigest": "49d31332ac93720f96f1e7aceb542371168db8ffe98bb76a0dcf08cfb1037e3c",
+    "desktopBuildDigest": "7b3ee49ee15568f9ca24031b49a98dde648d8fef87c156ebb80c66bd0a6a5c5c",
     "desktopBuildArtifacts": [
       {
         "ref": "apps/openagents-desktop/dist/assets/openagents-icon.png",
@@ -74,19 +74,19 @@
       },
       {
         "ref": "apps/openagents-desktop/dist/native/arm64/foundation-bridge",
-        "digest": "50364adea5958db2b203067c177816ca8b02e1e86011bbd8f70443d9a3434a96"
+        "digest": "c6a711f584ffbcb165a5e9243680769747fc59ccf92bff26ff8b8934ea515cf1"
       },
       {
         "ref": "apps/openagents-desktop/dist/native/arm64/foundation-bridge.manifest.json",
-        "digest": "da48617f350306b1341dc341ed45f7e346d1345bc9fbbeef7b9edb442d981975"
+        "digest": "2cd2aee720b72bc706e64b72f509774ad5c7532ce0b95d7f778feb261b0e8be3"
       },
       {
         "ref": "apps/openagents-desktop/dist/native/arm64/manifest.json",
-        "digest": "9c369914b95ae3a07d40fea2fb4d5eecbc6e7c65f50143c3924b097de05dfc58"
+        "digest": "2a3886ae9a8dbccc8cfa28c076bde4fe8f7d086430ea71fffbef24b23556ce62"
       },
       {
         "ref": "apps/openagents-desktop/dist/native/arm64/oa-desktop-audio",
-        "digest": "f4f995b9aa010fba3c4ca332d3acc219acb1d3433ec0c4f962120f298d95c614"
+        "digest": "5ad16a188f5a2f9d026ce04b48012d8fecd8388296c37de413990216d89d5d14"
       },
       {
         "ref": "apps/openagents-desktop/dist/preload.cjs",
@@ -309,7 +309,7 @@
     "runnerRef": "apps/openagents-desktop/scripts/graph-memory-evaluation.ts",
     "runnerDigest": "fa0b60f4f0b67309590468cfa2ff3b09c10b120a61d3249c3524266461d71ba2",
     "oracleRef": "apps/openagents-desktop/src/desktop-graph-memory-evaluation.ts",
-    "oracleDigest": "064302c3d757846b86a42d94ff70352e18e6c6e6feb15d3aab37f5fa329a1497",
+    "oracleDigest": "f392bdee76ec89c348a4a17c931dcef37c6255cba65566ef456e9fdd67899b5a",
     "runtime": {
       "node": "v24.13.1",
       "platform": "darwin",
@@ -661,7 +661,7 @@
       }
     }
   ],
-  "privateDetailReceiptDigest": "3e0c598e1d40490ec321f21893c0900ad2d00c0d69958f05aa909d15e5bb0cc2",
+  "privateDetailReceiptDigest": "5c23759d41fd65e5352fe0bd806eea1794d02661b9b1c7af5fd743e94fbf76a3",
   "historyOnly": {
     "arm": "history_only",
     "rows": 7,
@@ -687,18 +687,18 @@
       "reason": null
     },
     "falseMergeRate": {
-      "status": "supported",
+      "status": "unsupported",
       "numerator": 0,
-      "denominator": 3,
-      "value": 0,
-      "reason": null
+      "denominator": 0,
+      "value": null,
+      "reason": "graph_state_unavailable"
     },
     "missedEntityRate": {
-      "status": "supported",
-      "numerator": 14,
-      "denominator": 14,
-      "value": 1,
-      "reason": null
+      "status": "unsupported",
+      "numerator": 0,
+      "denominator": 0,
+      "value": null,
+      "reason": "graph_state_unavailable"
     },
     "retrievalPrecision": {
       "status": "supported",
@@ -716,8 +716,8 @@
     },
     "latency": {
       "samples": 21,
-      "p50Ms": 0.2269579999999678,
-      "p95Ms": 0.4030840000000353
+      "p50Ms": 0.23504099999991013,
+      "p95Ms": 0.3672080000001188
     },
     "usage": {
       "truth": "exact",
@@ -759,18 +759,18 @@
       "reason": null
     },
     "falseMergeRate": {
-      "status": "supported",
+      "status": "unsupported",
       "numerator": 0,
-      "denominator": 3,
-      "value": 0,
-      "reason": null
+      "denominator": 0,
+      "value": null,
+      "reason": "graph_state_unavailable"
     },
     "missedEntityRate": {
-      "status": "supported",
-      "numerator": 14,
-      "denominator": 14,
-      "value": 1,
-      "reason": null
+      "status": "unsupported",
+      "numerator": 8,
+      "denominator": 0,
+      "value": null,
+      "reason": "graph_state_unavailable"
     },
     "retrievalPrecision": {
       "status": "supported",
@@ -788,8 +788,8 @@
     },
     "latency": {
       "samples": 21,
-      "p50Ms": 1.1139579999999114,
-      "p95Ms": 2.369957999999997
+      "p50Ms": 1.1005830000001424,
+      "p95Ms": 2.258542000000034
     },
     "usage": {
       "truth": "exact",
@@ -815,6 +815,7 @@
   "comparison": {
     "quality": "inconclusive",
     "reasons": [
+      "required_metric_unsupported",
       "non_complete_rows_present"
     ]
   },
