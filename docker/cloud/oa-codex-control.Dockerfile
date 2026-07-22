@@ -2,6 +2,7 @@
 
 ARG RUST_VERSION=1.90
 ARG DEBIAN_VERSION=bookworm
+ARG NODE_VERSION=24.13.1
 
 FROM rust:${RUST_VERSION}-${DEBIAN_VERSION} AS builder
 WORKDIR /src
@@ -14,11 +15,12 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     cargo build --release --locked -p oa-codex-control && \
     cp /src/target/release/oa-codex-control /usr/local/bin/oa-codex-control
 
-FROM debian:${DEBIAN_VERSION}-slim AS runtime
+FROM node:${NODE_VERSION}-${DEBIAN_VERSION}-slim AS runtime
 
 ARG IMAGE_CREATED=unknown
 ARG IMAGE_REVISION=unknown
 ARG IMAGE_VERSION=dev
+ARG NODE_VERSION=24.13.1
 
 LABEL org.opencontainers.image.title="OpenAgents oa-codex-control" \
       org.opencontainers.image.description="Managed OpenAgents Cloud Codex control daemon (cloud#95 always-on control node)" \
@@ -39,7 +41,6 @@ RUN apt-get update \
       git \
       iproute2 \
       iptables \
-      nodejs \
       openssh-client \
       procps \
       python3 \
@@ -52,6 +53,7 @@ RUN apt-get update \
  && apt-get update \
  && apt-get install -y --no-install-recommends google-cloud-cli \
  && command -v gcloud \
+ && test "$(node --version)" = "v${NODE_VERSION}" \
  && command -v ssh \
  && command -v scp \
  && command -v ssh-keygen \
