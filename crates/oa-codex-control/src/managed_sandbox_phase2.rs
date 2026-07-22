@@ -289,7 +289,118 @@ pub fn execute(
             MAX_DRIVER_DURATION,
         );
     }
+    if request.action == ManagedSandboxPhase2Action::ForkFromCheckpoint {
+        return execute_fork_from_checkpoint(
+            state_root,
+            Path::new(&driver),
+            request,
+            MAX_DRIVER_DURATION,
+        );
+    }
     execute_with_driver(Path::new(&driver), request, MAX_DRIVER_DURATION)
+}
+
+fn execute_fork_from_checkpoint(
+    state_root: &Path,
+    driver: &Path,
+    request: ManagedSandboxPhase2Request,
+    timeout: Duration,
+) -> Result<ManagedSandboxPhase2Response, Phase2Error> {
+    execute_fork_from_checkpoint_with(
+        driver,
+        request,
+        timeout,
+        |owner_ref,
+         tenant_ref,
+         source_sandbox_ref,
+         source_resource_generation,
+         command_ref,
+         checkpoint_ref,
+         source_capability_refs| {
+            managed_sandbox_runtime::prepare_checkpoint_fork(
+                state_root,
+                owner_ref,
+                tenant_ref,
+                source_sandbox_ref,
+                source_resource_generation,
+                command_ref,
+                checkpoint_ref,
+                source_capability_refs,
+            )
+            .map_err(|error| {
+                if error.status() < 500 {
+                    Phase2Error::conflict("phase2_fork_prepare_conflict")
+                } else {
+                    Phase2Error::unavailable("phase2_fork_prepare_failed")
+                }
+            })
+        },
+        |owner_ref, tenant_ref, fork_sandbox_ref, command_ref, succeeded| {
+            managed_sandbox_runtime::finish_checkpoint_fork(
+                state_root,
+                owner_ref,
+                tenant_ref,
+                fork_sandbox_ref,
+                command_ref,
+                succeeded,
+            )
+            .map_err(|_| Phase2Error::unavailable("phase2_fork_finalize_failed"))
+        },
+    )
+}
+
+fn execute_fork_from_checkpoint_with<P, F>(
+    driver: &Path,
+    request: ManagedSandboxPhase2Request,
+    timeout: Duration,
+    prepare: P,
+    finish: F,
+) -> Result<ManagedSandboxPhase2Response, Phase2Error>
+where
+    P: FnOnce(
+        &str,
+        &str,
+        &str,
+        u64,
+        &str,
+        &str,
+        &[String],
+    ) -> Result<managed_sandbox_runtime::CheckpointForkContext, Phase2Error>,
+    F: FnOnce(&str, &str, &str, &str, bool) -> Result<(), Phase2Error>,
+{
+    let command = request.command_object("ForkFromCheckpoint")?;
+    request.checkpoint_object()?;
+    let owner_ref = string(command, "ownerRef")?.to_string();
+    let tenant_ref = string(command, "tenantRef")?.to_string();
+    let source_sandbox_ref = string(command, "expectedSourceSandboxRef")?.to_string();
+    let source_resource_generation = number(command, "expectedSourceResourceGeneration")?;
+    let command_ref = string(command, "commandRef")?.to_string();
+    let checkpoint_ref = string(command, "checkpointRef")?.to_string();
+    let source_capability_refs = ref_array(value(command, "sourceCapabilityRefs")?, false)?;
+    let runtime_context = prepare(
+        &owner_ref,
+        &tenant_ref,
+        &source_sandbox_ref,
+        source_resource_generation,
+        &command_ref,
+        &checkpoint_ref,
+        &source_capability_refs,
+    )?;
+    let fork_sandbox_ref = runtime_context.fork_sandbox_ref.clone();
+    let mut wire = serde_json::to_value(&request)
+        .map_err(|_| Phase2Error::unavailable("phase2_driver_request_encode_failed"))?;
+    wire["runtimeContext"] = serde_json::to_value(runtime_context)
+        .map_err(|_| Phase2Error::unavailable("phase2_fork_context_encode_failed"))?;
+    let response = execute_with_driver_wire(driver, &wire, &request, timeout);
+    let succeeded = response.is_ok();
+    finish(
+        &owner_ref,
+        &tenant_ref,
+        &fork_sandbox_ref,
+        &command_ref,
+        succeeded,
+    )?;
+    response
 }
 
 fn execute_restore_checkpoint(
@@ -2014,6 +2125,110 @@ mod tests {
         assert_eq!(failed.result["_tag"], "CheckpointFailed");
         assert_eq!(failed.result["archiveClaim"], "forbidden");
         assert_eq!(failed.result["lifecycle"], "recovery_required");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn fork_sends_only_the_prepared_runtime_context_and_finalizes() {
+        let root = temp_dir("fork");
+        let driver = root.join("driver.sh");
+        let capture = root.join("request.json");
+        let response = ManagedSandboxPhase2Response {
+            schema_version: TARGET_SCHEMA_VERSION.to_string(),
+            action: ManagedSandboxPhase2Action::ForkFromCheckpoint,
+            request_ref: "command.sbx10.control.fork".to_string(),
+            result: result(ManagedSandboxPhase2Action::ForkFromCheckpoint),
+        };
+        fs::write(
+            &driver,
+            format!(
+                "#!/bin/sh\ncat >'{}'\nprintf '%s' '{}'\n",
+                capture.display(),
+                serde_json::to_string(&response).unwrap()
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(&driver, fs::Permissions::from_mode(0o700)).unwrap();
+        let forked = execute_fork_from_checkpoint_with(
+            &driver,
+            request(ManagedSandboxPhase2Action::ForkFromCheckpoint),
+            Duration::from_secs(2),
+            |owner, tenant, source, generation, command_ref, checkpoint_ref, source_grants| {
+                assert_eq!(owner, "owner.sbx10.control");
+                assert_eq!(tenant, "tenant.sbx10.control");
+                assert_eq!(source, "sandbox.sbx10.control");
+                assert_eq!(generation, 7);
+                assert_eq!(command_ref, "command.sbx10.control.fork");
+                assert_eq!(checkpoint_ref, "checkpoint.sbx10.control");
+                assert_eq!(source_grants, ["capability.sbx10.source"]);
+                Ok(managed_sandbox_runtime::CheckpointForkContext {
+                    schema: "openagents.managed_sandbox_phase2_fork_context.v1",
+                    owner_ref: owner.to_string(),
+                    tenant_ref: tenant.to_string(),
+                    source_sandbox_ref: source.to_string(),
+                    source_resource_generation: generation,
+                    fork_sandbox_ref: "sandbox.sbx10.control.fork".to_string(),
+                    fork_resource_generation: 1,
+                    fork_capability_refs: vec!["capability.sbx10.fork".to_string()],
+                    cleanup_obligation_ref: "cleanup.sbx10.fork".to_string(),
+                })
+            },
+            |owner, tenant, sandbox, command_ref, succeeded| {
+                assert_eq!(owner, "owner.sbx10.control");
+                assert_eq!(tenant, "tenant.sbx10.control");
+                assert_eq!(sandbox, "sandbox.sbx10.control.fork");
+                assert_eq!(command_ref, "command.sbx10.control.fork");
+                assert!(succeeded);
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert_eq!(forked, response);
+        let wire: Value = serde_json::from_slice(&fs::read(capture).unwrap()).unwrap();
+        assert_eq!(
+            wire["runtimeContext"],
+            json!({
+                "schema": "openagents.managed_sandbox_phase2_fork_context.v1",
+                "ownerRef": "owner.sbx10.control",
+                "tenantRef": "tenant.sbx10.control",
+                "sourceSandboxRef": "sandbox.sbx10.control",
+                "sourceResourceGeneration": 7,
+                "forkSandboxRef": "sandbox.sbx10.control.fork",
+                "forkResourceGeneration": 1,
+                "forkCapabilityRefs": ["capability.sbx10.fork"],
+                "cleanupObligationRef": "cleanup.sbx10.fork"
+            })
+        );
+        assert!(wire.get("localPath").is_none());
+
+        fs::write(&driver, "#!/bin/sh\ncat >/dev/null\nexit 1\n").unwrap();
+        let finalized = std::cell::Cell::new(None);
+        let failure = execute_fork_from_checkpoint_with(
+            &driver,
+            request(ManagedSandboxPhase2Action::ForkFromCheckpoint),
+            Duration::from_secs(2),
+            |owner, tenant, source, generation, _, _, _| {
+                Ok(managed_sandbox_runtime::CheckpointForkContext {
+                    schema: "openagents.managed_sandbox_phase2_fork_context.v1",
+                    owner_ref: owner.to_string(),
+                    tenant_ref: tenant.to_string(),
+                    source_sandbox_ref: source.to_string(),
+                    source_resource_generation: generation,
+                    fork_sandbox_ref: "sandbox.sbx10.control.fork".to_string(),
+                    fork_resource_generation: 1,
+                    fork_capability_refs: vec!["capability.sbx10.fork".to_string()],
+                    cleanup_obligation_ref: "cleanup.sbx10.fork".to_string(),
+                })
+            },
+            |_, _, _, _, succeeded| {
+                finalized.set(Some(succeeded));
+                Ok(())
+            },
+        )
+        .unwrap_err();
+        assert_eq!(failure.reason_ref, "phase2_driver_refused");
+        assert_eq!(finalized.get(), Some(false));
         fs::remove_dir_all(root).unwrap();
     }
 

@@ -346,6 +346,19 @@ struct PendingCheckpointRestore {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct PendingCheckpointFork {
+    command_ref: String,
+    checkpoint_ref: String,
+    source_sandbox_ref: String,
+    source_resource_generation: u64,
+    fork_capability_refs: Vec<String>,
+    cleanup_obligation_ref: String,
+    #[serde(default)]
+    completed: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct RuntimeJournal {
     schema_version: String,
     owner_ref: String,
@@ -366,6 +379,8 @@ struct RuntimeJournal {
     cleanup: CleanupObservation,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pending_checkpoint_restore: Option<PendingCheckpointRestore>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pending_checkpoint_fork: Option<PendingCheckpointFork>,
     operations: Vec<OperationRecord>,
 }
 
@@ -538,6 +553,443 @@ pub struct CheckpointRestoreContext {
     pub sandbox_ref: String,
     pub resource_generation: u64,
     pub restored_capability_refs: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CheckpointForkContext {
+    pub schema: &'static str,
+    pub owner_ref: String,
+    pub tenant_ref: String,
+    pub source_sandbox_ref: String,
+    pub source_resource_generation: u64,
+    pub fork_sandbox_ref: String,
+    pub fork_resource_generation: u64,
+    pub fork_capability_refs: Vec<String>,
+    pub cleanup_obligation_ref: String,
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn prepare_checkpoint_fork(
+    state_root: &Path,
+    owner_ref: &str,
+    tenant_ref: &str,
+    source_sandbox_ref: &str,
+    source_resource_generation: u64,
+    command_ref: &str,
+    checkpoint_ref: &str,
+    source_capability_refs: &[String],
+) -> Result<CheckpointForkContext, RuntimeError> {
+    let provider = LiveGceManagedSandboxProvider::from_env()?;
+    prepare_checkpoint_fork_with_provider(
+        state_root,
+        &provider,
+        owner_ref,
+        tenant_ref,
+        source_sandbox_ref,
+        source_resource_generation,
+        command_ref,
+        checkpoint_ref,
+        source_capability_refs,
+        now_ms()?,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn prepare_checkpoint_fork_with_provider(
+    state_root: &Path,
+    provider: &dyn ManagedSandboxProvider,
+    owner_ref: &str,
+    tenant_ref: &str,
+    source_sandbox_ref: &str,
+    source_resource_generation: u64,
+    command_ref: &str,
+    checkpoint_ref: &str,
+    source_capability_refs: &[String],
+    now: u64,
+) -> Result<CheckpointForkContext, RuntimeError> {
+    let source = load_journal(&journal_path(state_root, source_sandbox_ref))?.ok_or_else(|| {
+        RuntimeError::new(
+            404,
+            "resource_not_found",
+            "fork source runtime journal was not found",
+        )
+    })?;
+    if source.owner_ref != owner_ref
+        || source.tenant_ref != tenant_ref
+        || source.sandbox_ref != source_sandbox_ref
+    {
+        return Err(RuntimeError::new(
+            403,
+            "scope_mismatch",
+            "fork source scope does not match durable ownership",
+        ));
+    }
+    if source.generation != source_resource_generation || source.phase != RuntimePhase::Ready {
+        return Err(RuntimeError::new(
+            409,
+            "fork_source_stale",
+            "fork source generation is not ready and current",
+        ));
+    }
+
+    let fork_digest = full_digest(format!(
+        "fork|{owner_ref}|{tenant_ref}|{source_sandbox_ref}|{source_resource_generation}|{checkpoint_ref}|{command_ref}"
+    ));
+    let fork_sandbox_ref = format!("sandbox.sbx10.fork.{}", &fork_digest[..32]);
+    let runtime_capability_ref = format!("capability-ref://run/fork-{fork_digest}");
+    let fork_capability_ref = format!("capability.sbx10.fork.{}", &fork_digest[..32]);
+    if source_capability_refs
+        .iter()
+        .any(|source_ref| source_ref == &fork_capability_ref)
+    {
+        return Err(RuntimeError::new(
+            409,
+            "fork_capability_conflict",
+            "fork capability identity overlaps the source",
+        ));
+    }
+    let cleanup_obligation_ref = format!("cleanup.sbx10.fork.{}", &fork_digest[..32]);
+    let path = journal_path(state_root, &fork_sandbox_ref);
+
+    if let Some(existing) = load_journal(&path)? {
+        let existing = reconcile_unsettled_checkpoint_fork(
+            state_root,
+            provider,
+            existing,
+            owner_ref,
+            &fork_digest,
+            now,
+        )?;
+        return attach_or_replay_checkpoint_fork(
+            &path,
+            existing,
+            owner_ref,
+            tenant_ref,
+            source_sandbox_ref,
+            source_resource_generation,
+            command_ref,
+            checkpoint_ref,
+            &runtime_capability_ref,
+            &fork_capability_ref,
+            &cleanup_obligation_ref,
+            &source,
+        );
+    }
+
+    let mut profile = source.profile.clone();
+    profile.capability_refs = vec![runtime_capability_ref.clone()];
+    profile.profile_digest = format!("sha256:{}", "0".repeat(64));
+    profile.profile_digest = digest_json(&profile)?;
+    let create = execute_with_provider(
+        state_root,
+        provider,
+        ManagedSandboxRuntimeRequest {
+            operation_ref: format!("operation.sbx10.fork.{}", &fork_digest[..32]),
+            idempotency_ref: format!("idempotency.sbx10.fork.{}", &fork_digest[..32]),
+            actor_ref: owner_ref.to_string(),
+            owner_ref: source.owner_ref.clone(),
+            tenant_ref: source.tenant_ref.clone(),
+            program_ref: source.program_ref.clone(),
+            work_unit_ref: source.work_unit_ref.clone(),
+            sandbox_ref: fork_sandbox_ref.clone(),
+            expected_generation: 0,
+            action: RuntimeAction::Create,
+            profile: Some(profile),
+        },
+        now,
+    );
+    if let Err(error) = create {
+        if error.status() == 409 {
+            if let Some(existing) = load_journal(&path)? {
+                let existing = reconcile_unsettled_checkpoint_fork(
+                    state_root,
+                    provider,
+                    existing,
+                    owner_ref,
+                    &fork_digest,
+                    now,
+                )?;
+                return attach_or_replay_checkpoint_fork(
+                    &path,
+                    existing,
+                    owner_ref,
+                    tenant_ref,
+                    source_sandbox_ref,
+                    source_resource_generation,
+                    command_ref,
+                    checkpoint_ref,
+                    &runtime_capability_ref,
+                    &fork_capability_ref,
+                    &cleanup_obligation_ref,
+                    &source,
+                );
+            }
+        }
+        return Err(error);
+    }
+    let create = create.expect("checked successful fork create");
+    if create.phase != RuntimePhase::Ready || create.generation != 1 {
+        return Err(RuntimeError::new(
+            503,
+            "fork_create_failed",
+            "fork runtime did not become ready",
+        ));
+    }
+    let mut fork = load_journal(&path)?.ok_or_else(|| {
+        RuntimeError::new(
+            500,
+            "journal_read_failed",
+            "fork runtime journal disappeared",
+        )
+    })?;
+    fork.pending_checkpoint_fork = Some(PendingCheckpointFork {
+        command_ref: command_ref.to_string(),
+        checkpoint_ref: checkpoint_ref.to_string(),
+        source_sandbox_ref: source_sandbox_ref.to_string(),
+        source_resource_generation,
+        fork_capability_refs: vec![fork_capability_ref],
+        cleanup_obligation_ref,
+        completed: false,
+    });
+    save_journal(&path, &fork)?;
+    checkpoint_fork_context_from_existing(
+        fork,
+        owner_ref,
+        tenant_ref,
+        source_sandbox_ref,
+        source_resource_generation,
+        command_ref,
+        checkpoint_ref,
+    )
+}
+
+fn reconcile_unsettled_checkpoint_fork(
+    state_root: &Path,
+    provider: &dyn ManagedSandboxProvider,
+    journal: RuntimeJournal,
+    owner_ref: &str,
+    fork_digest: &str,
+    now: u64,
+) -> Result<RuntimeJournal, RuntimeError> {
+    if journal.pending_checkpoint_fork.is_some() || journal.phase != RuntimePhase::Provisioning {
+        return Ok(journal);
+    }
+    let receipt = execute_with_provider(
+        state_root,
+        provider,
+        ManagedSandboxRuntimeRequest {
+            operation_ref: format!("operation.sbx10.fork-reconcile.{}", &fork_digest[..32]),
+            idempotency_ref: format!("idempotency.sbx10.fork-reconcile.{}", &fork_digest[..32]),
+            actor_ref: owner_ref.to_string(),
+            owner_ref: journal.owner_ref.clone(),
+            tenant_ref: journal.tenant_ref.clone(),
+            program_ref: journal.program_ref.clone(),
+            work_unit_ref: journal.work_unit_ref.clone(),
+            sandbox_ref: journal.sandbox_ref.clone(),
+            expected_generation: journal.generation,
+            action: RuntimeAction::Reconcile,
+            profile: None,
+        },
+        now,
+    )?;
+    if receipt.phase != RuntimePhase::Ready {
+        return Err(RuntimeError::new(
+            503,
+            "fork_create_failed",
+            "fork runtime reconciliation did not become ready",
+        ));
+    }
+    load_journal(&journal_path(state_root, &journal.sandbox_ref))?.ok_or_else(|| {
+        RuntimeError::new(
+            500,
+            "journal_read_failed",
+            "reconciled fork runtime journal disappeared",
+        )
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn attach_or_replay_checkpoint_fork(
+    path: &Path,
+    mut journal: RuntimeJournal,
+    owner_ref: &str,
+    tenant_ref: &str,
+    source_sandbox_ref: &str,
+    source_resource_generation: u64,
+    command_ref: &str,
+    checkpoint_ref: &str,
+    runtime_capability_ref: &str,
+    fork_capability_ref: &str,
+    cleanup_obligation_ref: &str,
+    source: &RuntimeJournal,
+) -> Result<CheckpointForkContext, RuntimeError> {
+    if journal.pending_checkpoint_fork.is_none() {
+        if journal.owner_ref != owner_ref
+            || journal.tenant_ref != tenant_ref
+            || journal.program_ref != source.program_ref
+            || journal.work_unit_ref != source.work_unit_ref
+            || journal.generation != 1
+            || journal.phase != RuntimePhase::Ready
+            || journal.profile.capability_refs != [runtime_capability_ref]
+        {
+            return Err(RuntimeError::new(
+                409,
+                "fork_conflict",
+                "fork identity is already in use",
+            ));
+        }
+        journal.pending_checkpoint_fork = Some(PendingCheckpointFork {
+            command_ref: command_ref.to_string(),
+            checkpoint_ref: checkpoint_ref.to_string(),
+            source_sandbox_ref: source_sandbox_ref.to_string(),
+            source_resource_generation,
+            fork_capability_refs: vec![fork_capability_ref.to_string()],
+            cleanup_obligation_ref: cleanup_obligation_ref.to_string(),
+            completed: false,
+        });
+        save_journal(path, &journal)?;
+    }
+    checkpoint_fork_context_from_existing(
+        journal,
+        owner_ref,
+        tenant_ref,
+        source_sandbox_ref,
+        source_resource_generation,
+        command_ref,
+        checkpoint_ref,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn checkpoint_fork_context_from_existing(
+    journal: RuntimeJournal,
+    owner_ref: &str,
+    tenant_ref: &str,
+    source_sandbox_ref: &str,
+    source_resource_generation: u64,
+    command_ref: &str,
+    checkpoint_ref: &str,
+) -> Result<CheckpointForkContext, RuntimeError> {
+    let pending = journal.pending_checkpoint_fork.as_ref().ok_or_else(|| {
+        RuntimeError::new(409, "fork_conflict", "fork identity is already in use")
+    })?;
+    if journal.owner_ref != owner_ref
+        || journal.tenant_ref != tenant_ref
+        || journal.phase != RuntimePhase::Ready
+        || journal.generation != 1
+        || pending.command_ref != command_ref
+        || pending.checkpoint_ref != checkpoint_ref
+        || pending.source_sandbox_ref != source_sandbox_ref
+        || pending.source_resource_generation != source_resource_generation
+    {
+        return Err(RuntimeError::new(
+            409,
+            "fork_conflict",
+            "fork replay does not match durable intent",
+        ));
+    }
+    Ok(CheckpointForkContext {
+        schema: "openagents.managed_sandbox_phase2_fork_context.v1",
+        owner_ref: journal.owner_ref,
+        tenant_ref: journal.tenant_ref,
+        source_sandbox_ref: pending.source_sandbox_ref.clone(),
+        source_resource_generation: pending.source_resource_generation,
+        fork_sandbox_ref: journal.sandbox_ref,
+        fork_resource_generation: journal.generation,
+        fork_capability_refs: pending.fork_capability_refs.clone(),
+        cleanup_obligation_ref: pending.cleanup_obligation_ref.clone(),
+    })
+}
+
+pub fn finish_checkpoint_fork(
+    state_root: &Path,
+    owner_ref: &str,
+    tenant_ref: &str,
+    fork_sandbox_ref: &str,
+    command_ref: &str,
+    succeeded: bool,
+) -> Result<(), RuntimeError> {
+    let provider = LiveGceManagedSandboxProvider::from_env()?;
+    finish_checkpoint_fork_with_provider(
+        state_root,
+        &provider,
+        owner_ref,
+        tenant_ref,
+        fork_sandbox_ref,
+        command_ref,
+        succeeded,
+        now_ms()?,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn finish_checkpoint_fork_with_provider(
+    state_root: &Path,
+    provider: &dyn ManagedSandboxProvider,
+    owner_ref: &str,
+    tenant_ref: &str,
+    fork_sandbox_ref: &str,
+    command_ref: &str,
+    succeeded: bool,
+    now: u64,
+) -> Result<(), RuntimeError> {
+    let path = journal_path(state_root, fork_sandbox_ref);
+    let mut journal = load_journal(&path)?.ok_or_else(|| {
+        RuntimeError::new(
+            404,
+            "resource_not_found",
+            "fork runtime journal was not found",
+        )
+    })?;
+    if journal.owner_ref != owner_ref
+        || journal.tenant_ref != tenant_ref
+        || journal.sandbox_ref != fork_sandbox_ref
+        || journal
+            .pending_checkpoint_fork
+            .as_ref()
+            .is_none_or(|pending| pending.command_ref != command_ref)
+    {
+        return Err(RuntimeError::new(
+            409,
+            "fork_scope_conflict",
+            "fork completion does not match durable intent",
+        ));
+    }
+    if succeeded && journal.phase == RuntimePhase::Ready {
+        if let Some(pending) = &mut journal.pending_checkpoint_fork {
+            pending.completed = true;
+        }
+        return save_journal(&path, &journal);
+    }
+    let delete = ManagedSandboxRuntimeRequest {
+        operation_ref: format!(
+            "operation.sbx10.fork-cleanup.{}",
+            &full_digest(command_ref)[..32]
+        ),
+        idempotency_ref: format!(
+            "idempotency.sbx10.fork-cleanup.{}",
+            &full_digest(command_ref)[..32]
+        ),
+        actor_ref: owner_ref.to_string(),
+        owner_ref: journal.owner_ref.clone(),
+        tenant_ref: journal.tenant_ref.clone(),
+        program_ref: journal.program_ref.clone(),
+        work_unit_ref: journal.work_unit_ref.clone(),
+        sandbox_ref: journal.sandbox_ref.clone(),
+        expected_generation: journal.generation,
+        action: RuntimeAction::Delete,
+        profile: None,
+    };
+    let receipt = execute_with_provider(state_root, provider, delete, now)?;
+    if receipt.phase != RuntimePhase::Deleted || !receipt.cleanup_observed {
+        return Err(RuntimeError::new(
+            503,
+            "fork_cleanup_recovery_required",
+            "failed fork cleanup is not complete",
+        ));
+    }
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -863,6 +1315,7 @@ fn execute_create(
         readiness: ReadinessObservation::default(),
         cleanup: CleanupObservation::default(),
         pending_checkpoint_restore: None,
+        pending_checkpoint_fork: None,
         operations: Vec::new(),
     };
     // Cleanup ownership is durable before either the firewall or VM is created.
@@ -941,6 +1394,17 @@ fn execute_existing(
             409,
             "restore_in_progress",
             "the destination is reserved for checkpoint restore completion",
+        ));
+    }
+    if journal
+        .pending_checkpoint_fork
+        .as_ref()
+        .is_some_and(|pending| !pending.completed && request.action != RuntimeAction::Delete)
+    {
+        return Err(RuntimeError::new(
+            409,
+            "fork_in_progress",
+            "the fork runtime is reserved for checkpoint content installation",
         ));
     }
     provider.admit(&journal.profile)?;
@@ -2901,6 +3365,126 @@ mod tests {
             .unwrap();
         assert_eq!(journal.phase, RuntimePhase::RecoveryRequired);
         assert!(journal.pending_checkpoint_restore.is_some());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn checkpoint_fork_creates_a_new_runtime_with_fresh_grants_and_replays() {
+        let root = temporary_root("checkpoint-fork");
+        let provider = TestProvider::new();
+        execute_with_provider(
+            &root,
+            &provider,
+            request(RuntimeAction::Create, "create", 0),
+            1_000,
+        )
+        .unwrap();
+        let source_capabilities = vec!["capability.sbx10.source".to_string()];
+        let context = prepare_checkpoint_fork_with_provider(
+            &root,
+            &provider,
+            "owner-ref://test",
+            "tenant-ref://test",
+            "sandbox-ref://test",
+            1,
+            "command.sbx10.fork",
+            "checkpoint.sbx10.fork",
+            &source_capabilities,
+            2_000,
+        )
+        .unwrap();
+        assert_ne!(context.fork_sandbox_ref, "sandbox-ref://test");
+        assert_eq!(context.fork_resource_generation, 1);
+        assert_eq!(context.fork_capability_refs.len(), 1);
+        assert!(!source_capabilities.contains(&context.fork_capability_refs[0]));
+        let fork_path = journal_path(&root, &context.fork_sandbox_ref);
+        let mut fork_journal = load_journal(&fork_path).unwrap().unwrap();
+        assert_eq!(fork_journal.phase, RuntimePhase::Ready);
+        assert!(fork_journal.profile.capability_refs[0].starts_with("capability-ref://run/fork-"));
+        assert!(fork_journal.pending_checkpoint_fork.is_some());
+
+        // Simulate a process stop after provider create and before lifecycle settlement.
+        fork_journal.pending_checkpoint_fork = None;
+        fork_journal.phase = RuntimePhase::Provisioning;
+        save_journal(&fork_path, &fork_journal).unwrap();
+
+        let replay = prepare_checkpoint_fork_with_provider(
+            &root,
+            &provider,
+            "owner-ref://test",
+            "tenant-ref://test",
+            "sandbox-ref://test",
+            1,
+            "command.sbx10.fork",
+            "checkpoint.sbx10.fork",
+            &source_capabilities,
+            9_000,
+        )
+        .unwrap();
+        assert_eq!(replay, context);
+        assert_eq!(provider.state.lock().unwrap().create_calls, 2);
+
+        finish_checkpoint_fork_with_provider(
+            &root,
+            &provider,
+            "owner-ref://test",
+            "tenant-ref://test",
+            &context.fork_sandbox_ref,
+            "command.sbx10.fork",
+            true,
+            10_000,
+        )
+        .unwrap();
+        assert!(
+            load_journal(&journal_path(&root, &context.fork_sandbox_ref))
+                .unwrap()
+                .unwrap()
+                .pending_checkpoint_fork
+                .is_some_and(|pending| pending.completed)
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn failed_checkpoint_fork_deletes_the_new_runtime() {
+        let root = temporary_root("checkpoint-fork-failure");
+        let provider = TestProvider::new();
+        execute_with_provider(
+            &root,
+            &provider,
+            request(RuntimeAction::Create, "create", 0),
+            1_000,
+        )
+        .unwrap();
+        let context = prepare_checkpoint_fork_with_provider(
+            &root,
+            &provider,
+            "owner-ref://test",
+            "tenant-ref://test",
+            "sandbox-ref://test",
+            1,
+            "command.sbx10.fork-failure",
+            "checkpoint.sbx10.fork-failure",
+            &[],
+            2_000,
+        )
+        .unwrap();
+        finish_checkpoint_fork_with_provider(
+            &root,
+            &provider,
+            "owner-ref://test",
+            "tenant-ref://test",
+            &context.fork_sandbox_ref,
+            "command.sbx10.fork-failure",
+            false,
+            3_000,
+        )
+        .unwrap();
+        let journal = load_journal(&journal_path(&root, &context.fork_sandbox_ref))
+            .unwrap()
+            .unwrap();
+        assert_eq!(journal.phase, RuntimePhase::Deleted);
+        assert!(journal.cleanup.is_clean());
         let _ = fs::remove_dir_all(root);
     }
 

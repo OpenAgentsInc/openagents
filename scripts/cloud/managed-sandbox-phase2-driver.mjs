@@ -17,6 +17,7 @@ import { join } from "node:path";
 const TARGET_SCHEMA_VERSION = "openagents.managed_sandbox_phase2_target.v1";
 const CHECKPOINT_SCHEMA_VERSION = "openagents.managed_sandbox_content_checkpoint.v1";
 const DELETE_SCHEMA_VERSION = "openagents.managed_sandbox_checkpoint_delete_receipt.v1";
+const FORK_SCHEMA_VERSION = "openagents.managed_sandbox_fork_receipt.v1";
 const RESTORE_SCHEMA_VERSION = "openagents.managed_sandbox_restore_receipt.v1";
 const FORMAT_REF = "format.sbx.content-tar.v1";
 const MAX_ARCHIVE_BYTES = 512 * 1024 * 1024;
@@ -612,6 +613,116 @@ const restoreCheckpoint = (request) => {
   }
 };
 
+const validateFork = (request) => {
+  const command = request.command;
+  const checkpoint = request.checkpoint;
+  const runtime = request.runtimeContext;
+  if (
+    command?.["_tag"] !== "ForkFromCheckpoint" ||
+    command.commandRef !== request.requestRef ||
+    checkpoint?.schema !== CHECKPOINT_SCHEMA_VERSION ||
+    command.ownerRef !== checkpoint.ownerRef ||
+    command.tenantRef !== checkpoint.tenantRef ||
+    command.checkpointRef !== checkpoint.checkpointRef ||
+    command.expectedSourceSandboxRef !== checkpoint.sourceSandboxRef ||
+    command.expectedSourceResourceGeneration !== checkpoint.sourceResourceGeneration ||
+    !Array.isArray(command.sourceCapabilityRefs) ||
+    runtime?.schema !== "openagents.managed_sandbox_phase2_fork_context.v1" ||
+    runtime.ownerRef !== command.ownerRef ||
+    runtime.tenantRef !== command.tenantRef ||
+    runtime.sourceSandboxRef !== checkpoint.sourceSandboxRef ||
+    runtime.sourceResourceGeneration !== checkpoint.sourceResourceGeneration ||
+    typeof runtime.forkSandboxRef !== "string" ||
+    runtime.forkSandboxRef === checkpoint.sourceSandboxRef ||
+    runtime.forkResourceGeneration !== 1 ||
+    !Array.isArray(runtime.forkCapabilityRefs) ||
+    runtime.forkCapabilityRefs.length === 0 ||
+    runtime.forkCapabilityRefs.some(
+      (capabilityRef) =>
+        typeof capabilityRef !== "string" || command.sourceCapabilityRefs.includes(capabilityRef),
+    ) ||
+    typeof runtime.cleanupObligationRef !== "string" ||
+    typeof checkpoint.contentDigest !== "string" ||
+    !Number.isSafeInteger(checkpoint.contentBytes) ||
+    checkpoint.contentBytes < 0 ||
+    checkpoint.contentBytes > MAX_ARCHIVE_BYTES
+  ) {
+    throw new DriverError("fork_request_invalid");
+  }
+  return { checkpoint, command, runtime };
+};
+
+const forkFromCheckpoint = (request) => {
+  const { checkpoint, command, runtime } = validateFork(request);
+  const uri = objectUri(checkpoint.ownerRef, checkpoint.tenantRef, checkpoint.checkpointRef);
+  const local = mkdtempSync(join(tmpdir(), "oa-msb-phase2-fork-"));
+  const localArchive = join(local, "content.tar");
+  let remote;
+  try {
+    const content = downloadObject(uri, localArchive);
+    if (
+      content.contentDigest !== checkpoint.contentDigest ||
+      content.contentBytes !== checkpoint.contentBytes
+    ) {
+      throw new DriverError("checkpoint_object_corrupt");
+    }
+    remote = remoteCheckpoint(request.requestRef);
+    remotePrepare(runtime.forkSandboxRef, remote);
+    copyToGuest(runtime.forkSandboxRef, localArchive, remote.archive);
+    const restored = remoteRestore(
+      runtime.forkSandboxRef,
+      request.requestRef,
+      checkpoint.contentDigest,
+    );
+    remote = restored.remote;
+    if (
+      restored.result?.formatRef !== FORMAT_REF ||
+      restored.result.contentDigest !== checkpoint.contentDigest ||
+      restored.result.contentBytes !== checkpoint.contentBytes ||
+      restored.result.repositoryPostImageDigest !== checkpoint.repositoryPostImageDigest
+    ) {
+      throw new DriverError("guest_restore_scope_conflict");
+    }
+    const forkResourceGeneration = observeGeneration(runtime.forkSandboxRef);
+    if (forkResourceGeneration !== runtime.forkResourceGeneration) {
+      throw new DriverError("fork_generation_conflict");
+    }
+    return {
+      schema: FORK_SCHEMA_VERSION,
+      receiptRef: evidenceRef("fork", command.commandRef),
+      ownerRef: command.ownerRef,
+      tenantRef: command.tenantRef,
+      checkpointRef: command.checkpointRef,
+      sourceSandboxRef: checkpoint.sourceSandboxRef,
+      sourceResourceGeneration: checkpoint.sourceResourceGeneration,
+      forkSandboxRef: runtime.forkSandboxRef,
+      forkResourceGeneration,
+      sourceCapabilityRefs: command.sourceCapabilityRefs,
+      forkCapabilityRefs: runtime.forkCapabilityRefs,
+      grantPolicy: "mint_fresh",
+      cleanupObligationRef: runtime.cleanupObligationRef,
+      stateTransfer: {
+        credentials: "excluded",
+        accountSecrets: "excluded",
+        providerHiddenState: "excluded",
+        processMemory: "excluded",
+        processTable: "excluded",
+        ptyState: "excluded",
+        sockets: "excluded",
+        ports: "excluded",
+        networkIdentity: "excluded",
+      },
+      processSessionContinuity: "none",
+      outcome: "created",
+      observedAt: new Date().toISOString(),
+      evidenceRefs: [evidenceRef("fork.readback", command.commandRef)],
+    };
+  } finally {
+    if (remote !== undefined) remoteCleanup(runtime.forkSandboxRef, remote);
+    rmSync(local, { recursive: true, force: true });
+  }
+};
+
 const deleteCheckpoint = (request) => {
   const command = request.command;
   const checkpoint = request.checkpoint;
@@ -689,6 +800,8 @@ const execute = (request) => {
       return verifyCheckpoint(request);
     case "observe_resource_generation":
       return observeResourceGeneration(request);
+    case "fork_from_checkpoint":
+      return forkFromCheckpoint(request);
     case "restore_checkpoint":
       return restoreCheckpoint(request);
     case "delete_checkpoint":

@@ -107,6 +107,7 @@ process.exit(1);
 const checkpointContent = "deterministic content-only checkpoint\n";
 const repositoryPostImageDigest = digest("repository-post-image");
 const restoreSandboxRef = "sandbox.sbx10.driver.restore";
+const forkSandboxRef = "sandbox.sbx10.driver.fork";
 
 const createCommand = {
   _tag: "CreateCheckpoint",
@@ -146,6 +147,7 @@ const makeFixture = () => {
         `OA_MSB_READY:${marker(createCommand.sourceSandboxRef, 3)}:3`,
         `OA_MSB_PROBE:${marker(createCommand.sourceSandboxRef, 4)}:4`,
         `OA_MSB_READY:${marker(restoreSandboxRef, 8)}:8`,
+        `OA_MSB_READY:${marker(forkSandboxRef, 1)}:1`,
         "OA_MSB_READY:0123456789abcdef0123:99",
         "",
       ].join("\n"),
@@ -202,6 +204,37 @@ const restoreRequest = (checkpoint: unknown) => ({
     sandboxRef: restoreSandboxRef,
     resourceGeneration: 8,
     restoredCapabilityRefs: ["capability.sbx10.restore.fresh"],
+  },
+});
+
+const forkRequest = (checkpoint: unknown) => ({
+  schemaVersion: "openagents.managed_sandbox_phase2_target.v1",
+  action: "fork_from_checkpoint",
+  requestRef: "command.sbx10.driver.fork",
+  command: {
+    _tag: "ForkFromCheckpoint",
+    schema: "openagents.managed_sandbox_phase2_command.v1",
+    commandRef: "command.sbx10.driver.fork",
+    idempotencyRef: "idempotency.sbx10.driver.fork",
+    ownerRef: createCommand.ownerRef,
+    tenantRef: createCommand.tenantRef,
+    requestedAt: "2099-07-22T03:08:00.000Z",
+    checkpointRef: createCommand.checkpointRef,
+    expectedSourceSandboxRef: createCommand.sourceSandboxRef,
+    expectedSourceResourceGeneration: createCommand.sourceResourceGeneration,
+    sourceCapabilityRefs: ["capability.sbx10.source"],
+  },
+  checkpoint,
+  runtimeContext: {
+    schema: "openagents.managed_sandbox_phase2_fork_context.v1",
+    ownerRef: createCommand.ownerRef,
+    tenantRef: createCommand.tenantRef,
+    sourceSandboxRef: createCommand.sourceSandboxRef,
+    sourceResourceGeneration: createCommand.sourceResourceGeneration,
+    forkSandboxRef,
+    forkResourceGeneration: 1,
+    forkCapabilityRefs: ["capability.sbx10.fork.fresh"],
+    cleanupObligationRef: "cleanup.sbx10.driver.fork",
   },
 });
 
@@ -388,22 +421,35 @@ describe("managed-sandbox phase-two Google Cloud driver", () => {
     expect(calls).toContain("rm -f");
   });
 
-  test("keeps fork and an unprepared restore closed", () => {
+  test("restores content into a new fork identity with fresh grants", () => {
     const fixture = makeFixture();
-    const result = invoke(
-      {
-        schemaVersion: "openagents.managed_sandbox_phase2_target.v1",
-        action: "fork_from_checkpoint",
-        requestRef: "command.sbx10.driver.fork",
-      },
-      fixture.env,
-    );
-
-    expect(result.status).not.toBe(0);
-    expect(result.stdout).toBe("");
-    expect(result.stderr).toBe("");
-
     const created = invoke(createRequest(), fixture.env);
+    const result = invoke(forkRequest(created.output), fixture.env);
+
+    expect(result.status).toBe(0);
+    expect(result.output).toMatchObject({
+      checkpointRef: createCommand.checkpointRef,
+      sourceSandboxRef: createCommand.sourceSandboxRef,
+      sourceResourceGeneration: 7,
+      forkSandboxRef,
+      forkResourceGeneration: 1,
+      sourceCapabilityRefs: ["capability.sbx10.source"],
+      forkCapabilityRefs: ["capability.sbx10.fork.fresh"],
+      grantPolicy: "mint_fresh",
+      processSessionContinuity: "none",
+      outcome: "created",
+    });
+  });
+
+  test("keeps an unprepared fork and restore closed", () => {
+    const fixture = makeFixture();
+    const created = invoke(createRequest(), fixture.env);
+    const fork = forkRequest(created.output);
+    delete (fork as { runtimeContext?: unknown }).runtimeContext;
+    const unpreparedFork = invoke(fork, fixture.env);
+    expect(unpreparedFork.status).not.toBe(0);
+    expect(unpreparedFork.stdout).toBe("");
+
     const restore = restoreRequest(created.output);
     delete (restore as { runtimeContext?: unknown }).runtimeContext;
     const unpreparedRestore = invoke(restore, fixture.env);
