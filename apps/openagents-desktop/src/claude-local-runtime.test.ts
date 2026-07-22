@@ -1663,7 +1663,7 @@ describe("makeClaudeLocalRuntime.runTurn — HARN-09 slice 2 SDK harness adapter
           type: "system",
           subtype: "init",
           session_id: "session-adapter",
-          model: "claude-haiku-4-5-20251001",
+          model: "claude-sonnet-5",
         }
         yield {
           type: "stream_event",
@@ -1684,7 +1684,7 @@ describe("makeClaudeLocalRuntime.runTurn — HARN-09 slice 2 SDK harness adapter
       threadRef: "thread-adapter",
       history: [],
       message: "hi",
-      model: "claude-haiku-4-5-20251001",
+      model: "claude-sonnet-5",
       emit: sink.emit,
     })
     expect(result.ok).toBe(true)
@@ -1734,7 +1734,7 @@ describe("makeClaudeLocalRuntime.runTurn — HARN-09 slice 2 SDK harness adapter
       threadRef: "thread-sub",
       history: [],
       message: "hi",
-      model: "claude-haiku-4-5-20251001",
+      model: "claude-sonnet-5",
       emit: sink.emit,
     })
     expect(result.ok).toBe(false)
@@ -1744,7 +1744,7 @@ describe("makeClaudeLocalRuntime.runTurn — HARN-09 slice 2 SDK harness adapter
   test("with the flag OFF the same turn keeps the legacy drive (no adapter)", async () => {
     const harness = makeRuntimeHarness({
       script: async function* () {
-        yield { type: "system", subtype: "init", session_id: "session-legacy", model: "claude-haiku-4-5-20251001" }
+        yield { type: "system", subtype: "init", session_id: "session-legacy", model: "claude-sonnet-5" }
         yield {
           type: "stream_event",
           event: { type: "content_block_delta", delta: { type: "text_delta", text: "legacy path" } },
@@ -1763,7 +1763,7 @@ describe("makeClaudeLocalRuntime.runTurn — HARN-09 slice 2 SDK harness adapter
       threadRef: "thread-legacy",
       history: [],
       message: "hi",
-      model: "claude-haiku-4-5-20251001",
+      model: "claude-sonnet-5",
       emit: () => {},
     })
     expect(result.ok).toBe(true)
