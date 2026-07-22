@@ -16,6 +16,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
+use crate::managed_sandbox_phase2::{ManagedSandboxPhase2Action, ManagedSandboxPhase2Request};
+
 const SCHEMA_VERSION: &str = "openagents.managed_sandbox_runtime.v1";
 const MAX_OPERATION_RECORDS: usize = 128;
 const MAX_CAPABILITY_REFS: usize = 32;
@@ -359,6 +361,26 @@ struct PendingCheckpointFork {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct PrivateIngressRecord {
+    capability_ref: String,
+    create_command_ref: String,
+    create_idempotency_ref: String,
+    create_fingerprint: String,
+    issued_at_ms: u64,
+    expires_at_ms: u64,
+    active_response: Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    terminal_command_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    terminal_idempotency_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    terminal_fingerprint: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    terminal_response: Option<Value>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct RuntimeJournal {
     schema_version: String,
     owner_ref: String,
@@ -381,6 +403,8 @@ struct RuntimeJournal {
     pending_checkpoint_restore: Option<PendingCheckpointRestore>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pending_checkpoint_fork: Option<PendingCheckpointFork>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    private_ingress: Vec<PrivateIngressRecord>,
     operations: Vec<OperationRecord>,
 }
 
@@ -553,6 +577,241 @@ pub struct CheckpointRestoreContext {
     pub sandbox_ref: String,
     pub resource_generation: u64,
     pub restored_capability_refs: Vec<String>,
+}
+
+pub fn execute_private_ingress(
+    state_root: &Path,
+    request: &ManagedSandboxPhase2Request,
+) -> Result<Value, RuntimeError> {
+    execute_private_ingress_at(state_root, request, now_ms()?)
+}
+
+fn execute_private_ingress_at(
+    state_root: &Path,
+    request: &ManagedSandboxPhase2Request,
+    now: u64,
+) -> Result<Value, RuntimeError> {
+    let command = request
+        .command
+        .as_ref()
+        .and_then(Value::as_object)
+        .ok_or_else(|| RuntimeError::validation("private_ingress_command_missing"))?;
+    let owner_ref = runtime_string(command, "ownerRef")?;
+    let tenant_ref = runtime_string(command, "tenantRef")?;
+    let sandbox_ref = runtime_string(command, "sandboxRef")?;
+    let generation = runtime_number(command, "resourceGeneration")?;
+    let path = journal_path(state_root, sandbox_ref);
+    let mut journal = load_journal(&path)?.ok_or_else(|| {
+        RuntimeError::new(
+            404,
+            "resource_not_found",
+            "private ingress sandbox was not found",
+        )
+    })?;
+    if journal.owner_ref != owner_ref
+        || journal.tenant_ref != tenant_ref
+        || journal.sandbox_ref != sandbox_ref
+    {
+        return Err(RuntimeError::new(
+            403,
+            "scope_mismatch",
+            "private ingress scope does not match durable ownership",
+        ));
+    }
+    if journal.generation != generation || journal.phase != RuntimePhase::Ready {
+        return Err(RuntimeError::new(
+            409,
+            "generation_conflict",
+            "private ingress requires the current ready generation",
+        ));
+    }
+    let fingerprint = digest_json(command)?;
+    match request.action {
+        ManagedSandboxPhase2Action::CreatePrivateIngress => {
+            let command_ref = runtime_string(command, "commandRef")?;
+            let idempotency_ref = runtime_string(command, "idempotencyRef")?;
+            if let Some(existing) = journal.private_ingress.iter().find(|record| {
+                record.create_command_ref == command_ref
+                    || record.create_idempotency_ref == idempotency_ref
+            }) {
+                if existing.create_fingerprint == fingerprint {
+                    return Ok(existing.active_response.clone());
+                }
+                return Err(RuntimeError::new(
+                    409,
+                    "idempotency_conflict",
+                    "private ingress create identity was reused with different bytes",
+                ));
+            }
+            if journal
+                .private_ingress
+                .iter()
+                .filter(|record| record.terminal_response.is_none())
+                .count()
+                >= MAX_CAPABILITY_REFS
+            {
+                return Err(RuntimeError::new(
+                    409,
+                    "private_ingress_limit",
+                    "the sandbox has too many active private ingress capabilities",
+                ));
+            }
+            let ttl_seconds = runtime_number(command, "ttlSeconds")?;
+            if !(1..=900).contains(&ttl_seconds) {
+                return Err(RuntimeError::validation("private_ingress_ttl_invalid"));
+            }
+            let digest = full_digest(format!(
+                "private-ingress|{owner_ref}|{tenant_ref}|{sandbox_ref}|{generation}|{command_ref}|{idempotency_ref}"
+            ));
+            let capability_ref = format!("capability.sbx10.ingress.{}", &digest[..32]);
+            let issued_at = unix_ms_to_iso(now)?;
+            let expires_at_ms = now.saturating_add(ttl_seconds.saturating_mul(1_000));
+            let expires_at = unix_ms_to_iso(expires_at_ms)?;
+            let access_url_digest = format!(
+                "sha256:{}",
+                full_digest(format!(
+                    "https://openagents.com/api/managed-sandboxes/private-ingress/{capability_ref}"
+                ))
+            );
+            let response = json!({
+                "_tag": "Active",
+                "schema": "openagents.managed_sandbox_private_ingress.v1",
+                "capabilityRef": capability_ref,
+                "sandboxRef": sandbox_ref,
+                "resourceGeneration": generation,
+                "ownerRef": owner_ref,
+                "audienceRef": runtime_string(command, "audienceRef")?,
+                "kind": runtime_string(command, "kind")?,
+                "issuedAt": issued_at,
+                "expiresAt": expires_at,
+                "ttlSeconds": ttl_seconds,
+                "accessUrlDigest": access_url_digest,
+                "accessUrlAtRest": "redacted",
+                "audiencePolicy": "owner_scoped_explicit_audience",
+                "publicAccess": false,
+                "permanentRoute": false,
+                "vnc": "unsupported",
+                "auditRefs": [format!("audit.sbx10.ingress.create.{}", &digest[..32])]
+            });
+            journal.private_ingress.push(PrivateIngressRecord {
+                capability_ref,
+                create_command_ref: command_ref.to_string(),
+                create_idempotency_ref: idempotency_ref.to_string(),
+                create_fingerprint: fingerprint,
+                issued_at_ms: now,
+                expires_at_ms,
+                active_response: response.clone(),
+                terminal_command_ref: None,
+                terminal_idempotency_ref: None,
+                terminal_fingerprint: None,
+                terminal_response: None,
+            });
+            save_journal(&path, &journal)?;
+            Ok(response)
+        }
+        ManagedSandboxPhase2Action::RevokePrivateIngress
+        | ManagedSandboxPhase2Action::ExpirePrivateIngress => {
+            let capability_ref = runtime_string(command, "capabilityRef")?;
+            let command_ref = runtime_string(command, "commandRef")?;
+            let idempotency_ref = runtime_string(command, "idempotencyRef")?;
+            let record = journal
+                .private_ingress
+                .iter_mut()
+                .find(|record| record.capability_ref == capability_ref)
+                .ok_or_else(|| {
+                    RuntimeError::new(
+                        404,
+                        "private_ingress_not_found",
+                        "private ingress capability was not found",
+                    )
+                })?;
+            if let Some(response) = &record.terminal_response {
+                if record.terminal_command_ref.as_deref() == Some(command_ref)
+                    && record.terminal_idempotency_ref.as_deref() == Some(idempotency_ref)
+                    && record.terminal_fingerprint.as_deref() == Some(fingerprint.as_str())
+                {
+                    return Ok(response.clone());
+                }
+                return Err(RuntimeError::new(
+                    409,
+                    "private_ingress_terminal_conflict",
+                    "private ingress capability is already terminal",
+                ));
+            }
+            let supplied = request
+                .capability
+                .as_ref()
+                .ok_or_else(|| RuntimeError::validation("private_ingress_capability_missing"))?;
+            if digest_json(supplied)? != digest_json(&record.active_response)? {
+                return Err(RuntimeError::new(
+                    409,
+                    "private_ingress_capability_conflict",
+                    "private ingress terminal command does not bind active bytes",
+                ));
+            }
+            let expired = now >= record.expires_at_ms;
+            if now < record.issued_at_ms {
+                return Err(RuntimeError::new(
+                    409,
+                    "private_ingress_clock_conflict",
+                    "private ingress terminal time precedes issuance",
+                ));
+            }
+            let terminal_state = match request.action {
+                ManagedSandboxPhase2Action::RevokePrivateIngress if !expired => "revoked",
+                ManagedSandboxPhase2Action::ExpirePrivateIngress if expired => "expired",
+                ManagedSandboxPhase2Action::RevokePrivateIngress => {
+                    return Err(RuntimeError::new(
+                        409,
+                        "private_ingress_expired",
+                        "expired private ingress cannot be revoked",
+                    ));
+                }
+                ManagedSandboxPhase2Action::ExpirePrivateIngress => {
+                    return Err(RuntimeError::new(
+                        409,
+                        "private_ingress_not_expired",
+                        "private ingress expiry is not due",
+                    ));
+                }
+                _ => unreachable!("matched terminal ingress action"),
+            };
+            let terminal_digest = full_digest(format!(
+                "private-ingress-{terminal_state}|{capability_ref}|{command_ref}"
+            ));
+            let mut response = record.active_response.clone();
+            let object = response.as_object_mut().ok_or_else(|| {
+                RuntimeError::new(500, "journal_corrupt", "private ingress state is invalid")
+            })?;
+            object.insert("_tag".to_string(), json!("Cleaned"));
+            object.insert("terminalState".to_string(), json!(terminal_state));
+            object.insert("cleanedAt".to_string(), json!(unix_ms_to_iso(now)?));
+            object.insert(
+                "cleanupReceiptRef".to_string(),
+                json!(format!(
+                    "receipt.sbx10.ingress.cleanup.{}",
+                    &terminal_digest[..32]
+                )),
+            );
+            let audits = object
+                .get_mut("auditRefs")
+                .and_then(Value::as_array_mut)
+                .ok_or_else(|| {
+                    RuntimeError::new(500, "journal_corrupt", "private ingress audit is invalid")
+                })?;
+            audits.push(json!(format!(
+                "audit.sbx10.ingress.{terminal_state}.{}",
+                &terminal_digest[..32]
+            )));
+            record.terminal_command_ref = Some(command_ref.to_string());
+            record.terminal_idempotency_ref = Some(idempotency_ref.to_string());
+            record.terminal_fingerprint = Some(fingerprint);
+            record.terminal_response = Some(response.clone());
+            save_journal(&path, &journal)?;
+            Ok(response)
+        }
+        _ => Err(RuntimeError::validation("private_ingress_action_invalid")),
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -1316,6 +1575,7 @@ fn execute_create(
         cleanup: CleanupObservation::default(),
         pending_checkpoint_restore: None,
         pending_checkpoint_fork: None,
+        private_ingress: Vec::new(),
         operations: Vec::new(),
     };
     // Cleanup ownership is durable before either the firewall or VM is created.
@@ -1394,6 +1654,18 @@ fn execute_existing(
             409,
             "restore_in_progress",
             "the destination is reserved for checkpoint restore completion",
+        ));
+    }
+    if request.action == RuntimeAction::Delete
+        && journal
+            .private_ingress
+            .iter()
+            .any(|record| record.terminal_response.is_none())
+    {
+        return Err(RuntimeError::new(
+            409,
+            "private_ingress_active",
+            "active private ingress must be revoked or expired before delete",
         ));
     }
     if journal
@@ -2724,6 +2996,58 @@ fn full_digest(value: impl AsRef<[u8]>) -> String {
     format!("{:x}", hasher.finalize())
 }
 
+fn runtime_string<'a>(
+    object: &'a serde_json::Map<String, Value>,
+    field: &str,
+) -> Result<&'a str, RuntimeError> {
+    object
+        .get(field)
+        .and_then(Value::as_str)
+        .ok_or_else(|| RuntimeError::validation("private_ingress_field_invalid"))
+}
+
+fn runtime_number(
+    object: &serde_json::Map<String, Value>,
+    field: &str,
+) -> Result<u64, RuntimeError> {
+    object
+        .get(field)
+        .and_then(Value::as_u64)
+        .ok_or_else(|| RuntimeError::validation("private_ingress_field_invalid"))
+}
+
+fn unix_ms_to_iso(timestamp_ms: u64) -> Result<String, RuntimeError> {
+    let seconds = timestamp_ms / 1_000;
+    let millis = timestamp_ms % 1_000;
+    let days = i64::try_from(seconds / 86_400)
+        .map_err(|_| RuntimeError::new(500, "clock_failed", "timestamp exceeds date bounds"))?;
+    let second_of_day = seconds % 86_400;
+    let z = days + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let day_of_era = z - era * 146_097;
+    let year_of_era =
+        (day_of_era - day_of_era / 1_460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let mut year = year_of_era + era * 400;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let month_prime = (5 * day_of_year + 2) / 153;
+    let day = day_of_year - (153 * month_prime + 2) / 5 + 1;
+    let month = month_prime + if month_prime < 10 { 3 } else { -9 };
+    year += i64::from(month <= 2);
+    if !(0..=9_999).contains(&year) {
+        return Err(RuntimeError::new(
+            500,
+            "clock_failed",
+            "timestamp exceeds date bounds",
+        ));
+    }
+    let hour = second_of_day / 3_600;
+    let minute = (second_of_day % 3_600) / 60;
+    let second = second_of_day % 60;
+    Ok(format!(
+        "{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}.{millis:03}Z"
+    ))
+}
+
 fn short_digest(value: &str) -> String {
     full_digest(value)[..20].to_string()
 }
@@ -2962,6 +3286,15 @@ mod tests {
             "labels.openagents-managed=managed-sandbox AND status!=TERMINATED"
         );
         assert!(!LIVE_ACTIVE_SANDBOX_FILTER.contains("!=("));
+    }
+
+    #[test]
+    fn ingress_clock_formats_exact_utc_milliseconds() {
+        assert_eq!(unix_ms_to_iso(0).unwrap(), "1970-01-01T00:00:00.000Z");
+        assert_eq!(
+            unix_ms_to_iso(1_753_146_000_123).unwrap(),
+            "2025-07-22T01:00:00.123Z"
+        );
     }
 
     #[test]
@@ -3485,6 +3818,167 @@ mod tests {
             .unwrap();
         assert_eq!(journal.phase, RuntimePhase::Deleted);
         assert!(journal.cleanup.is_clean());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    fn ingress_request(
+        action: ManagedSandboxPhase2Action,
+        suffix: &str,
+        capability: Option<Value>,
+    ) -> ManagedSandboxPhase2Request {
+        let command = match action {
+            ManagedSandboxPhase2Action::CreatePrivateIngress => json!({
+                "_tag": "CreatePrivateIngress",
+                "schema": "openagents.managed_sandbox_phase2_command.v1",
+                "commandRef": format!("command.sbx10.ingress.{suffix}"),
+                "idempotencyRef": format!("idempotency.sbx10.ingress.{suffix}"),
+                "ownerRef": "owner-ref://test",
+                "tenantRef": "tenant-ref://test",
+                "requestedAt": "2026-07-22T01:00:00.000Z",
+                "sandboxRef": "sandbox-ref://test",
+                "resourceGeneration": 1,
+                "audienceRef": "audience-ref://owner/device-1",
+                "kind": "preview",
+                "ttlSeconds": 300
+            }),
+            ManagedSandboxPhase2Action::RevokePrivateIngress
+            | ManagedSandboxPhase2Action::ExpirePrivateIngress => {
+                let active = capability.as_ref().unwrap();
+                json!({
+                    "_tag": if action == ManagedSandboxPhase2Action::RevokePrivateIngress {
+                        "RevokePrivateIngress"
+                    } else {
+                        "ExpirePrivateIngress"
+                    },
+                    "schema": "openagents.managed_sandbox_phase2_command.v1",
+                    "commandRef": format!("command.sbx10.ingress.{suffix}"),
+                    "idempotencyRef": format!("idempotency.sbx10.ingress.{suffix}"),
+                    "ownerRef": "owner-ref://test",
+                    "tenantRef": "tenant-ref://test",
+                    "requestedAt": "2026-07-22T01:01:00.000Z",
+                    "capabilityRef": active["capabilityRef"],
+                    "sandboxRef": "sandbox-ref://test",
+                    "resourceGeneration": 1
+                })
+            }
+            _ => unreachable!("private ingress request helper"),
+        };
+        ManagedSandboxPhase2Request {
+            schema_version: "openagents.managed_sandbox_phase2_target.v1".to_string(),
+            action,
+            request_ref: command["commandRef"].as_str().unwrap().to_string(),
+            command: Some(command),
+            checkpoint: None,
+            capability,
+            owner_ref: None,
+            tenant_ref: None,
+            sandbox_ref: None,
+        }
+    }
+
+    #[test]
+    fn private_ingress_is_generation_fenced_replayable_and_digest_only() {
+        let root = temporary_root("private-ingress");
+        let provider = TestProvider::new();
+        execute_with_provider(
+            &root,
+            &provider,
+            request(RuntimeAction::Create, "create", 0),
+            1_000,
+        )
+        .unwrap();
+        let create = ingress_request(
+            ManagedSandboxPhase2Action::CreatePrivateIngress,
+            "create",
+            None,
+        );
+        let active = execute_private_ingress_at(&root, &create, 1_753_146_000_000).unwrap();
+        let replay = execute_private_ingress_at(&root, &create, 1_753_146_010_000).unwrap();
+        assert_eq!(replay, active);
+        assert_eq!(active["_tag"], "Active");
+        assert_eq!(active["resourceGeneration"], 1);
+        assert_eq!(active["ttlSeconds"], 300);
+        assert_eq!(active["accessUrlAtRest"], "redacted");
+        assert_eq!(active["publicAccess"], false);
+        assert_eq!(active["permanentRoute"], false);
+        assert_eq!(active["vnc"], "unsupported");
+        let encoded = serde_json::to_string(&active).unwrap();
+        assert!(!encoded.contains("https://"));
+        assert!(!encoded.contains("10.128."));
+        assert!(!encoded.contains("gce"));
+
+        let mut conflict = create.clone();
+        conflict.command.as_mut().unwrap()["audienceRef"] = json!("audience-ref://other/device");
+        assert_eq!(
+            execute_private_ingress_at(&root, &conflict, 1_753_146_020_000)
+                .unwrap_err()
+                .code,
+            "idempotency_conflict"
+        );
+        let revoke = ingress_request(
+            ManagedSandboxPhase2Action::RevokePrivateIngress,
+            "revoke",
+            Some(active.clone()),
+        );
+        let cleaned = execute_private_ingress_at(&root, &revoke, 1_753_146_060_000).unwrap();
+        assert_eq!(cleaned["_tag"], "Cleaned");
+        assert_eq!(cleaned["terminalState"], "revoked");
+        assert_eq!(cleaned["auditRefs"].as_array().unwrap().len(), 2);
+        assert_eq!(
+            execute_private_ingress_at(&root, &revoke, 1_753_146_070_000).unwrap(),
+            cleaned
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn private_ingress_expiry_and_delete_fail_closed() {
+        let root = temporary_root("private-ingress-expiry");
+        let provider = TestProvider::new();
+        execute_with_provider(
+            &root,
+            &provider,
+            request(RuntimeAction::Create, "create", 0),
+            1_000,
+        )
+        .unwrap();
+        let create = ingress_request(
+            ManagedSandboxPhase2Action::CreatePrivateIngress,
+            "expiry-create",
+            None,
+        );
+        let start = 1_753_146_000_000;
+        let active = execute_private_ingress_at(&root, &create, start).unwrap();
+        let delete = execute_with_provider(
+            &root,
+            &provider,
+            request(RuntimeAction::Delete, "delete-with-ingress", 1),
+            start + 1_000,
+        )
+        .unwrap_err();
+        assert_eq!(delete.code, "private_ingress_active");
+        let expire = ingress_request(
+            ManagedSandboxPhase2Action::ExpirePrivateIngress,
+            "expire",
+            Some(active),
+        );
+        assert_eq!(
+            execute_private_ingress_at(&root, &expire, start + 299_999)
+                .unwrap_err()
+                .code,
+            "private_ingress_not_expired"
+        );
+        let cleaned = execute_private_ingress_at(&root, &expire, start + 300_000).unwrap();
+        assert_eq!(cleaned["terminalState"], "expired");
+        let deleted = execute_with_provider(
+            &root,
+            &provider,
+            request(RuntimeAction::Delete, "delete-after-expiry", 1),
+            start + 301_000,
+        )
+        .unwrap();
+        assert_eq!(deleted.phase, RuntimePhase::Deleted);
+        assert!(deleted.cleanup_observed);
         let _ = fs::remove_dir_all(root);
     }
 

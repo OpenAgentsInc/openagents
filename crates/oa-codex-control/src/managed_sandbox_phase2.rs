@@ -42,6 +42,9 @@ pub enum ManagedSandboxPhase2Action {
     ForkFromCheckpoint,
     RestoreCheckpoint,
     DeleteCheckpoint,
+    CreatePrivateIngress,
+    RevokePrivateIngress,
+    ExpirePrivateIngress,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -54,6 +57,8 @@ pub struct ManagedSandboxPhase2Request {
     pub command: Option<Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub checkpoint: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capability: Option<Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub owner_ref: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -129,7 +134,7 @@ impl ManagedSandboxPhase2Request {
 
         match self.action {
             ManagedSandboxPhase2Action::CreateCheckpoint => {
-                self.require_shape(true, false, false)?;
+                self.require_shape(true, false, false, false)?;
                 let command = self.command_object("CreateCheckpoint")?;
                 validate_create_command(command)?;
                 require_equal(
@@ -139,7 +144,7 @@ impl ManagedSandboxPhase2Request {
                 )
             }
             ManagedSandboxPhase2Action::ArchiveWithCheckpoint => {
-                self.require_shape(true, false, false)?;
+                self.require_shape(true, false, false, false)?;
                 let command = self.command_object("ArchiveWithCheckpoint")?;
                 validate_archive_command(command)?;
                 require_equal(
@@ -149,7 +154,7 @@ impl ManagedSandboxPhase2Request {
                 )
             }
             ManagedSandboxPhase2Action::VerifyCheckpoint => {
-                self.require_shape(false, true, false)?;
+                self.require_shape(false, true, false, false)?;
                 let checkpoint = self.checkpoint_object()?;
                 validate_checkpoint(checkpoint)?;
                 require_equal(
@@ -159,7 +164,7 @@ impl ManagedSandboxPhase2Request {
                 )
             }
             ManagedSandboxPhase2Action::ObserveResourceGeneration => {
-                self.require_shape(false, false, true)?;
+                self.require_shape(false, false, false, true)?;
                 let owner_ref = self
                     .owner_ref
                     .as_deref()
@@ -182,7 +187,7 @@ impl ManagedSandboxPhase2Request {
                 )
             }
             ManagedSandboxPhase2Action::ForkFromCheckpoint => {
-                self.require_shape(true, true, false)?;
+                self.require_shape(true, true, false, false)?;
                 let command = self.command_object("ForkFromCheckpoint")?;
                 let checkpoint = self.checkpoint_object()?;
                 validate_fork_command(command)?;
@@ -195,7 +200,7 @@ impl ManagedSandboxPhase2Request {
                 )
             }
             ManagedSandboxPhase2Action::RestoreCheckpoint => {
-                self.require_shape(true, true, false)?;
+                self.require_shape(true, true, false, false)?;
                 let command = self.command_object("RestoreCheckpoint")?;
                 let checkpoint = self.checkpoint_object()?;
                 validate_restore_command(command)?;
@@ -208,12 +213,44 @@ impl ManagedSandboxPhase2Request {
                 )
             }
             ManagedSandboxPhase2Action::DeleteCheckpoint => {
-                self.require_shape(true, true, false)?;
+                self.require_shape(true, true, false, false)?;
                 let command = self.command_object("DeleteCheckpoint")?;
                 let checkpoint = self.checkpoint_object()?;
                 validate_delete_command(command)?;
                 validate_checkpoint(checkpoint)?;
                 validate_basic_command_checkpoint_binding(command, checkpoint)?;
+                require_equal(
+                    &self.request_ref,
+                    string(command, "commandRef")?,
+                    "phase2_request_ref_conflict",
+                )
+            }
+            ManagedSandboxPhase2Action::CreatePrivateIngress => {
+                self.require_shape(true, false, false, false)?;
+                let command = self.command_object("CreatePrivateIngress")?;
+                validate_create_private_ingress_command(command)?;
+                require_equal(
+                    &self.request_ref,
+                    string(command, "commandRef")?,
+                    "phase2_request_ref_conflict",
+                )
+            }
+            ManagedSandboxPhase2Action::RevokePrivateIngress => {
+                self.require_shape(true, false, true, false)?;
+                let command = self.command_object("RevokePrivateIngress")?;
+                validate_terminal_private_ingress_command(command)?;
+                validate_ingress_command_capability_binding(command, self.capability_object()?)?;
+                require_equal(
+                    &self.request_ref,
+                    string(command, "commandRef")?,
+                    "phase2_request_ref_conflict",
+                )
+            }
+            ManagedSandboxPhase2Action::ExpirePrivateIngress => {
+                self.require_shape(true, false, true, false)?;
+                let command = self.command_object("ExpirePrivateIngress")?;
+                validate_terminal_private_ingress_command(command)?;
+                validate_ingress_command_capability_binding(command, self.capability_object()?)?;
                 require_equal(
                     &self.request_ref,
                     string(command, "commandRef")?,
@@ -227,10 +264,12 @@ impl ManagedSandboxPhase2Request {
         &self,
         command: bool,
         checkpoint: bool,
+        capability: bool,
         scope: bool,
     ) -> Result<(), Phase2Error> {
         if self.command.is_some() != command
             || self.checkpoint.is_some() != checkpoint
+            || self.capability.is_some() != capability
             || self.owner_ref.is_some() != scope
             || self.tenant_ref.is_some() != scope
             || self.sandbox_ref.is_some() != scope
@@ -263,6 +302,15 @@ impl ManagedSandboxPhase2Request {
             "phase2_checkpoint_invalid",
         )
     }
+
+    fn capability_object(&self) -> Result<&Map<String, Value>, Phase2Error> {
+        object(
+            self.capability
+                .as_ref()
+                .ok_or_else(|| Phase2Error::invalid("phase2_capability_missing"))?,
+            "phase2_capability_invalid",
+        )
+    }
 }
 
 pub fn execute(
@@ -270,6 +318,27 @@ pub fn execute(
     request: ManagedSandboxPhase2Request,
 ) -> Result<ManagedSandboxPhase2Response, Phase2Error> {
     request.validate()?;
+    if matches!(
+        request.action,
+        ManagedSandboxPhase2Action::CreatePrivateIngress
+            | ManagedSandboxPhase2Action::RevokePrivateIngress
+            | ManagedSandboxPhase2Action::ExpirePrivateIngress
+    ) {
+        let result = managed_sandbox_runtime::execute_private_ingress(state_root, &request)
+            .map_err(|error| {
+                if error.status() < 500 {
+                    Phase2Error::conflict("phase2_private_ingress_conflict")
+                } else {
+                    Phase2Error::unavailable("phase2_private_ingress_failed")
+                }
+            })?;
+        return Ok(ManagedSandboxPhase2Response {
+            schema_version: TARGET_SCHEMA_VERSION.to_string(),
+            action: request.action,
+            request_ref: request.request_ref,
+            result,
+        });
+    }
     let driver = env::var("OA_MANAGED_SANDBOX_PHASE2_DRIVER")
         .map_err(|_| Phase2Error::unavailable("phase2_driver_not_configured"))?;
     validate_driver_path(Path::new(&driver))?;
@@ -557,6 +626,7 @@ where
         request_ref: request.request_ref.clone(),
         command: Some(Value::Object(create_command)),
         checkpoint: None,
+        capability: None,
         owner_ref: None,
         tenant_ref: None,
         sandbox_ref: None,
@@ -795,6 +865,11 @@ fn validate_response(
             request.checkpoint_object()?,
             result,
         ),
+        ManagedSandboxPhase2Action::CreatePrivateIngress
+        | ManagedSandboxPhase2Action::RevokePrivateIngress
+        | ManagedSandboxPhase2Action::ExpirePrivateIngress => Err(Phase2Error::invalid(
+            "phase2_private_ingress_is_native_only",
+        )),
     })();
     validation.map_err(|_| Phase2Error::conflict("phase2_driver_result_invalid"))
 }
@@ -934,6 +1009,85 @@ fn validate_delete_command(command: &Map<String, Value>) -> Result<(), Phase2Err
         return Err(Phase2Error::invalid("phase2_delete_reason_invalid"));
     }
     Ok(())
+}
+
+fn validate_create_private_ingress_command(
+    command: &Map<String, Value>,
+) -> Result<(), Phase2Error> {
+    exact_keys(
+        command,
+        &[
+            "_tag",
+            "schema",
+            "commandRef",
+            "idempotencyRef",
+            "ownerRef",
+            "tenantRef",
+            "requestedAt",
+            "sandboxRef",
+            "resourceGeneration",
+            "audienceRef",
+            "kind",
+            "ttlSeconds",
+        ],
+        "phase2_private_ingress_create_fields_invalid",
+    )?;
+    validate_command_base(command)?;
+    for field in ["sandboxRef", "audienceRef"] {
+        validate_ref(string(command, field)?)?;
+    }
+    number(command, "resourceGeneration")?;
+    let ttl = number(command, "ttlSeconds")?;
+    if !(1..=900).contains(&ttl) || !matches!(string(command, "kind")?, "desktop" | "preview") {
+        return Err(Phase2Error::invalid(
+            "phase2_private_ingress_create_invalid",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_terminal_private_ingress_command(
+    command: &Map<String, Value>,
+) -> Result<(), Phase2Error> {
+    exact_keys(
+        command,
+        &[
+            "_tag",
+            "schema",
+            "commandRef",
+            "idempotencyRef",
+            "ownerRef",
+            "tenantRef",
+            "requestedAt",
+            "capabilityRef",
+            "sandboxRef",
+            "resourceGeneration",
+        ],
+        "phase2_private_ingress_terminal_fields_invalid",
+    )?;
+    validate_command_base(command)?;
+    validate_ref(string(command, "capabilityRef")?)?;
+    validate_ref(string(command, "sandboxRef")?)?;
+    number(command, "resourceGeneration")?;
+    Ok(())
+}
+
+fn validate_ingress_command_capability_binding(
+    command: &Map<String, Value>,
+    capability: &Map<String, Value>,
+) -> Result<(), Phase2Error> {
+    for field in ["capabilityRef", "sandboxRef", "resourceGeneration"] {
+        if value(command, field)? != value(capability, field)? {
+            return Err(Phase2Error::conflict(
+                "phase2_private_ingress_scope_conflict",
+            ));
+        }
+    }
+    require_equal(
+        string(command, "ownerRef")?,
+        string(capability, "ownerRef")?,
+        "phase2_private_ingress_scope_conflict",
+    )
 }
 
 fn validate_command_base(command: &Map<String, Value>) -> Result<(), Phase2Error> {
@@ -1876,6 +2030,11 @@ mod tests {
                 None,
                 None,
             ),
+            ManagedSandboxPhase2Action::CreatePrivateIngress
+            | ManagedSandboxPhase2Action::RevokePrivateIngress
+            | ManagedSandboxPhase2Action::ExpirePrivateIngress => {
+                unreachable!("native private ingress uses dedicated test requests")
+            }
         };
         ManagedSandboxPhase2Request {
             schema_version: TARGET_SCHEMA_VERSION.to_string(),
@@ -1883,6 +2042,7 @@ mod tests {
             request_ref: request_ref.to_string(),
             command,
             checkpoint,
+            capability: None,
             owner_ref,
             tenant_ref,
             sandbox_ref,
@@ -1975,6 +2135,11 @@ mod tests {
                 "deletedAt": "2026-07-22T03:34:01.000Z",
                 "evidenceRefs": ["receipt.sbx10.delete.object"]
             }),
+            ManagedSandboxPhase2Action::CreatePrivateIngress
+            | ManagedSandboxPhase2Action::RevokePrivateIngress
+            | ManagedSandboxPhase2Action::ExpirePrivateIngress => {
+                unreachable!("native private ingress does not use driver fixtures")
+            }
         }
     }
 
@@ -2033,6 +2198,87 @@ mod tests {
         response.result["localPath"] = json!("/Users/private/database.sock");
         let encoded = serde_json::to_vec(&response).unwrap();
         assert!(forbidden_private_material(&encoded));
+    }
+
+    #[test]
+    fn validates_native_private_ingress_commands_and_exact_capability_binding() {
+        let create_command = json!({
+            "_tag": "CreatePrivateIngress",
+            "schema": COMMAND_SCHEMA_VERSION,
+            "commandRef": "command.sbx10.ingress.create",
+            "idempotencyRef": "idempotency.sbx10.ingress.create",
+            "ownerRef": "owner.sbx10.control",
+            "tenantRef": "tenant.sbx10.control",
+            "requestedAt": "2026-07-22T03:35:00.000Z",
+            "sandboxRef": "sandbox.sbx10.control",
+            "resourceGeneration": 7,
+            "audienceRef": "audience.sbx10.owner-device",
+            "kind": "preview",
+            "ttlSeconds": 300
+        });
+        let create = ManagedSandboxPhase2Request {
+            schema_version: TARGET_SCHEMA_VERSION.to_string(),
+            action: ManagedSandboxPhase2Action::CreatePrivateIngress,
+            request_ref: "command.sbx10.ingress.create".to_string(),
+            command: Some(create_command.clone()),
+            checkpoint: None,
+            capability: None,
+            owner_ref: None,
+            tenant_ref: None,
+            sandbox_ref: None,
+        };
+        create.validate().unwrap();
+        let mut long_lived = create;
+        long_lived.command.as_mut().unwrap()["ttlSeconds"] = json!(901);
+        assert!(long_lived.validate().is_err());
+
+        let capability = json!({
+            "_tag": "Active",
+            "schema": "openagents.managed_sandbox_private_ingress.v1",
+            "capabilityRef": "capability.sbx10.ingress.test",
+            "sandboxRef": "sandbox.sbx10.control",
+            "resourceGeneration": 7,
+            "ownerRef": "owner.sbx10.control",
+            "audienceRef": "audience.sbx10.owner-device",
+            "kind": "preview",
+            "issuedAt": "2026-07-22T03:35:00.000Z",
+            "expiresAt": "2026-07-22T03:40:00.000Z",
+            "ttlSeconds": 300,
+            "accessUrlDigest": digest('e'),
+            "accessUrlAtRest": "redacted",
+            "audiencePolicy": "owner_scoped_explicit_audience",
+            "publicAccess": false,
+            "permanentRoute": false,
+            "vnc": "unsupported",
+            "auditRefs": ["audit.sbx10.ingress.create"]
+        });
+        let terminal_command = json!({
+            "_tag": "RevokePrivateIngress",
+            "schema": COMMAND_SCHEMA_VERSION,
+            "commandRef": "command.sbx10.ingress.revoke",
+            "idempotencyRef": "idempotency.sbx10.ingress.revoke",
+            "ownerRef": "owner.sbx10.control",
+            "tenantRef": "tenant.sbx10.control",
+            "requestedAt": "2026-07-22T03:36:00.000Z",
+            "capabilityRef": "capability.sbx10.ingress.test",
+            "sandboxRef": "sandbox.sbx10.control",
+            "resourceGeneration": 7
+        });
+        let terminal = ManagedSandboxPhase2Request {
+            schema_version: TARGET_SCHEMA_VERSION.to_string(),
+            action: ManagedSandboxPhase2Action::RevokePrivateIngress,
+            request_ref: "command.sbx10.ingress.revoke".to_string(),
+            command: Some(terminal_command),
+            checkpoint: None,
+            capability: Some(capability),
+            owner_ref: None,
+            tenant_ref: None,
+            sandbox_ref: None,
+        };
+        terminal.validate().unwrap();
+        let mut mismatch = terminal;
+        mismatch.capability.as_mut().unwrap()["resourceGeneration"] = json!(8);
+        assert!(mismatch.validate().is_err());
     }
 
     #[test]
