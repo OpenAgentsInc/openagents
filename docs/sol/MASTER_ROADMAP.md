@@ -3,7 +3,7 @@
 - Class: authority
 - Date: 2026-07-10
 - Updated: 2026-07-22
-- Revision: 128
+- Revision: 129
 - Status: canonical OpenAgents implementation roadmap
 - Current queue: the
   [`open issue unified completion plan`](./2026-07-21-open-issue-unified-completion-plan.md)
@@ -80,10 +80,11 @@ Cognee, Python, and a third-party memory cloud are not dependencies.
 The ordered program is:
 
 1. #9163 consumes one exact SDK train. It is complete at `b9f01417c7`.
-2. #9164 adds default-off encrypted graph storage and a receipted owner
-   lifecycle.
-3. #9165 adds separate default-off extraction and recall controls. It cannot
-   run in the background or in Full Auto.
+2. #9164 added default-off encrypted graph storage and a receipted owner
+   lifecycle. It is complete at `94b77021ff`.
+3. #9165 added separate default-off extraction and recall controls. It is
+   complete. The host can use this memory only for a foreground turn. The host
+   cannot use it for a background turn, a delegated turn, or a Full Auto turn.
 4. #9166 compares history-only recall with graph-assisted recall. It also
    proves inspect, export, forget, and repeated forget on the real adapter.
 

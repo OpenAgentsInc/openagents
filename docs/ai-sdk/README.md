@@ -85,9 +85,35 @@ retry returns the same bytes. An accepted source delete or full forget removes
 that internal copy. Its receipt records the caller-held export as retained
 because only the caller can delete those external bytes.
 
-Issue #9164 does not add graph data to a prompt. Issue #9165 owns the separate
-default-off extraction and recall path. Issue #9166 owns the quality and owner
-lifecycle evaluation.
+Issue #9164 did not add graph data to a prompt. Issue #9165 added the separate
+default-off extraction and recall path. Issue #9165 is now complete.
+
+The Desktop host has two independent controls. Both controls are off by
+default. The extraction control uses the released DSE contract. The current
+host uses a deterministic parser with zero model calls. The SDK adapter also
+has a model path. That path requires a separate spend grant before a call.
+
+The host uses only the confirmed user and assistant history for the current
+thread. It removes system records. It applies the ATIF redaction boundary
+before it makes immutable source corpora. It binds each corpus and graph to a
+hashed owner and project scope. It does not put the current user message in
+the extraction corpus.
+
+Recall uses the released graph RLM operations with fixed limits. Each injected
+fact has an original source citation. The host marks the block as untrusted
+advice. A recalled fact cannot become profile truth or authority. An empty,
+disabled, failed, background, delegated, or Full Auto path keeps the base
+prompt unchanged. The disabled path does not open graph storage.
+
+The owner-local evidence ledger records graph, manifest, classification,
+query, operation, extraction receipt, and citation digests. It also records
+limits, cap hits, truncation, exact or unavailable extraction usage, model-call
+count, and spend evidence. An unranked text search has an explicit reason
+instead of a ranking digest. The adapter stores extraction evidence before it
+stores the graph. This order prevents a restart evidence gap. The ledger does
+not record recalled text.
+
+Issue #9166 owns the quality and owner lifecycle evaluation.
 
 Docs index: https://github.com/OpenAgentsInc/ai/blob/main/docs/README.md
 

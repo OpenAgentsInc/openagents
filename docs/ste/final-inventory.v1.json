@@ -14942,7 +14942,7 @@
     },
     {
       "path": "docs/ai-sdk/README.md",
-      "sha256": "8188185d3d4961f6e8553beb68889328c417644eb333ea365f14529a38c01db7",
+      "sha256": "e51d2dfdb5643e0db4c8126c940b26cd02e6d7887c3d0212f8e4091b5ea7a4cf",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -41454,7 +41454,7 @@
     },
     {
       "path": "docs/sol/MASTER_ROADMAP.md",
-      "sha256": "4f4209d38480cd3180bdaeef04af122c8bfa9acea14c1b12ade1a502cbf4d457",
+      "sha256": "3f9addd063480c58276d0328345c4600d9e29af71b32acc0c18ce303a0af47a1",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
