@@ -26349,7 +26349,7 @@
     },
     {
       "path": "docs/forge/2026-07-22-nostr-git-server-effect-vs-rust-decision.md",
-      "sha256": "a444c2558a2cb1604e0ec69f46d51834b5fc31ab42ffbd9102b1257062a0aab6",
+      "sha256": "6fc217d301ad9d33c0c9737e80e20a2fd5f0a2e434646a6a644dcdbb1f314e74",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

@@ -15,6 +15,44 @@ Effect TypeScript inside `nostr-effect` in one large sprint?
 `[NEEDS BUILD]` = a bounded new build for OpenAgents, `[SPECULATION]` = a
 forward claim that this audit does not prove.
 
+## Amendment (2026-07-22, same day): the adopted-server reversal condition is TRIGGERED
+
+The GRASP acquisition pass that followed this audit obtained every target,
+including `ngit-grasp`. The full evidence is in
+[`2026-07-22-grasp-ecosystem-prior-art-addendum.md`](2026-07-22-grasp-ecosystem-prior-art-addendum.md)
+and the pinned clones are in the workspace lane `projects/grasp/repos/`.
+Three claims below are corrected by that evidence:
+
+1. **"`ngit-grasp` is not obtainable" is now false.** A GRASP server exposes
+   plain git smart-HTTP at `/<npub>/<identifier>.git` beside its relay, so
+   kind-30617 discovery plus an ordinary `git clone` from `relay.ngit.dev`
+   obtained it. Pinned at `cbf6f1d`, version v1.2.0, MIT license.
+2. **"The Rust option's server half is hollow" is now false.** `ngit-grasp`
+   is a maintained, MIT, production pure-Rust GRASP server. It runs both
+   public instances, embeds a rust-nostr relay, implements GRASP-01/02/06,
+   parses pushed refs from the pack protocol in-process, and validates them
+   against signed 30618 state before git applies refs, with real tests.
+   `[EXISTS]`
+3. **The §8 "owned front → adopted server" reversal condition is met.** All
+   four written conditions hold: clonable, licensed, auditable, maintained.
+   Per this audit's own rule, Step 1b (the owned Effect front plus
+   `git http-backend`) re-opens as a bounded evaluation packet: owned Effect
+   front versus adopting `ngit-grasp` as infrastructure behind an Effect
+   Schema mirror, the `packages/cloud-contract` pattern. The evaluation must
+   answer one question honestly: can the OpenAgents admission policy ride
+   `ngit-grasp` without forking its authorization core. If not, the owned
+   Effect front stands.
+
+**What does not change.** The recommendation remains Option C. Steps 0a
+(`GitReply` 1622→1111 fix), 0b (`ngit` dogfood), 1a (compliant Node/Cloud SQL
+`EventStore` backend plus fleet-rate load test), and 2 (claim ledger through
+typed `nostr-effect` clients) are unaffected. The bright line also stands:
+if `ngit-grasp` is adopted, it runs as process-opaque infrastructure with the
+ref-admission policy contract mirrored in Effect Schema, and any policy the
+server cannot express stays in an Effect front, never in a fork we silently
+maintain. The original text below is retained unchanged as the decision
+record. Read it with this amendment first.
+
 ## Sources read
 
 | Source | What it gave |
@@ -129,7 +167,9 @@ What actually exists on disk, at the pinned commits in
   stock `git-http-backend` plus hook binaries under supervisord. Upstream
   archived it after khatru breakage. It is a design document in code form, not
   an adoptable service.
-- **`ngit-grasp` (the successor).** Not obtainable. Its development is hosted
+- **`ngit-grasp` (the successor).** *(Superseded same day — see the
+  Amendment above. Obtained at `cbf6f1d`, MIT, maintained.)* Original text:
+  Not obtainable. Its development is hosted
   over ngit itself, and our sync lane cannot pull `nostr://` remotes yet. We
   cannot audit, pin, or deploy what we cannot clone. `[SPECULATION]` on its
   quality.
@@ -406,7 +446,9 @@ Each choice above is falsifiable. The evidence that flips it:
   licensed, auditable, and maintained, and its admission model can enforce
   OpenAgents policy without forking, re-evaluate running it as infrastructure
   with an Effect Schema mirror, the `packages/cloud-contract` pattern. Two of
-  those four conditions are unmet today.
+  those four conditions were unmet at first writing. *(Same-day Amendment:
+  all four conditions now hold, this reversal is TRIGGERED, see the
+  Amendment section at the top.)*
 - **Deferred helper → early build.** If Stage 2-3 receipts show agents
   materially blocked by the absence of `nostr://` remotes, or an interop
   partner requires them, pull the Step 7 evaluation forward.
