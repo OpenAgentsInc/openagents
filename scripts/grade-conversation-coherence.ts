@@ -23,6 +23,7 @@ import {
   aggregateBySource,
   parseClaudeConversation,
   parseCodexConversation,
+  parseMultiHarnessConversation,
   scoreConversation,
   type ScoredConversation,
 } from "./coherence-core";
@@ -86,8 +87,11 @@ const gradeFile = (path: string, source: "codex" | "claude-code"): ScoredConvers
   } catch {
     return null;
   }
-  const parsed =
-    source === "codex"
+  const isMultiHarness =
+    content.includes('"type":"khala"') || content.includes('"type":"agent.child.started"');
+  const parsed = isMultiHarness
+    ? parseMultiHarnessConversation(path, content)
+    : source === "codex"
       ? parseCodexConversation(path, content)
       : parseClaudeConversation(path, content);
   return scoreConversation(parsed);

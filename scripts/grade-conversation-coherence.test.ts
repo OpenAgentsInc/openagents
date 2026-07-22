@@ -2,6 +2,7 @@ import { describe, expect, test } from "vite-plus/test";
 import {
   aggregateBySource,
   computeComplexity,
+  parseMultiHarnessConversation,
   detectUserSignals,
   parseClaudeConversation,
   parseCodexConversation,
@@ -260,5 +261,36 @@ describe("computeComplexity", () => {
     );
     expect(aggregate?.meanScore).toBe(95);
     expect(aggregate?.complexityWeightedCoherence).toBeLessThan(95);
+  });
+});
+
+describe("parseMultiHarnessConversation", () => {
+  test("parses combined codex+claude orchestration transcripts", () => {
+    const lines = [
+      JSON.stringify({ type: "user_message", text: "two tasks, one for each delegate" }),
+      JSON.stringify({ type: "agent.child.started", lane: "codex-local", model: "gpt-5.6-terra" }),
+      JSON.stringify({ type: "khala", lane: "codex-local", model: "gpt-5.6-terra", event: { kind: "turn.started" } }),
+      JSON.stringify({ type: "khala", lane: "codex-local", model: "gpt-5.6-terra", event: { kind: "text.delta", text: "poem" } }),
+      JSON.stringify({ type: "khala", lane: "codex-local", model: "gpt-5.6-terra", event: { kind: "turn.finished" } }),
+      JSON.stringify({ type: "agent.child.finished", lane: "codex-local", model: "gpt-5.6-terra" }),
+      JSON.stringify({ type: "agent.child.started", lane: "claude-local", model: "claude-haiku-4-5-20251001" }),
+      JSON.stringify({ type: "agent.child.interacted", lane: "claude-local", fromLane: "codex-local" }),
+      JSON.stringify({ type: "khala", lane: "claude-local", model: "claude-haiku-4-5-20251001", event: { kind: "tool.call", toolName: "Bash" } }),
+      JSON.stringify({ type: "agent.child.finished", lane: "claude-local", model: "claude-haiku-4-5-20251001" }),
+      JSON.stringify({ type: "assistant_message", text: "combined answer" }),
+    ].join("\n");
+    const parsed = parseMultiHarnessConversation("/tmp/multi.jsonl", lines);
+    expect(parsed.source).toBe("multi-harness");
+    expect(parsed.userTurnCount).toBe(1);
+    expect(parsed.assistantTurnCount).toBe(1);
+    expect(parsed.subAgentStarts).toBe(2);
+    expect(parsed.subAgentInteractions).toBe(1);
+    expect(parsed.distinctSubAgents).toBe(2);
+    expect(parsed.models).toEqual(["claude-haiku-4-5-20251001", "gpt-5.6-terra"]);
+    expect(parsed.toolCallCount).toBe(1);
+    const complexity = computeComplexity(parsed);
+    expect(complexity.components.multiModel).toBe(5);
+    expect(complexity.components.subAgentBreadth).toBe(8);
+    expect(complexity.score).toBeGreaterThan(10);
   });
 });

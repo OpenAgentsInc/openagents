@@ -10,7 +10,7 @@
  * analysis, never assurance, release, or public-claim authority.
  */
 
-export type ConversationSource = "codex" | "claude-code";
+export type ConversationSource = "codex" | "claude-code" | "multi-harness";
 
 export type CoherenceSignalKind = "profanity" | "correction" | "interrupt";
 
@@ -436,6 +436,90 @@ export const scoreConversation = (parsed: ParsedConversation): ScoredConversatio
   };
 };
 
+/**
+ * Parse one combined multi-harness orchestration transcript (JSONL lines:
+ * user_message, assistant_message, agent.child.started/interacted/finished,
+ * and khala lines carrying lane + model + one KhalaRuntimeEvent).
+ */
+export const parseMultiHarnessConversation = (
+  path: string,
+  content: string,
+): ParsedConversation => {
+  let userTurnCount = 0;
+  let assistantTurnCount = 0;
+  let toolCallCount = 0;
+  let fileChangeCount = 0;
+  let interruptCount = 0;
+  let firstTimestamp: string | null = null;
+  const signals: CoherenceSignal[] = [];
+  const toolKinds = new Set<string>();
+  const models = new Set<string>();
+  const lanes = new Set<string>();
+  let subAgentStarts = 0;
+  let subAgentInteractions = 0;
+  for (const line of parseJsonLines(content)) {
+    const timestamp = typeof line.timestamp === "string" ? line.timestamp : null;
+    if (firstTimestamp === null && timestamp !== null) firstTimestamp = timestamp;
+    if (typeof line.model === "string" && line.model !== "") models.add(line.model);
+    switch (line.type) {
+      case "user_message":
+        if (typeof line.text === "string" && !isInjectedUserText(line.text)) {
+          userTurnCount += 1;
+          if (userTurnCount > 1) signals.push(...detectUserSignals(line.text, userTurnCount - 1));
+        }
+        break;
+      case "assistant_message":
+        assistantTurnCount += 1;
+        break;
+      case "agent.child.started":
+        subAgentStarts += 1;
+        if (typeof line.lane === "string") lanes.add(line.lane);
+        break;
+      case "agent.child.interacted":
+        subAgentInteractions += 1;
+        break;
+      case "khala": {
+        const event =
+          typeof line.event === "object" && line.event !== null
+            ? (line.event as JsonRecordCompat)
+            : null;
+        if (event === null) break;
+        const kind = event.kind;
+        if (kind === "tool.call") {
+          toolCallCount += 1;
+          toolKinds.add(typeof event.toolName === "string" ? event.toolName : "tool");
+        } else if (kind === "file.change") {
+          fileChangeCount += 1;
+          toolKinds.add("file_change");
+        } else if (kind === "turn.interrupted") {
+          interruptCount += 1;
+        }
+        break;
+      }
+    }
+  }
+  return {
+    source: "multi-harness",
+    path,
+    userTurnCount,
+    assistantTurnCount,
+    toolCallCount,
+    fileChangeCount,
+    interruptCount,
+    firstTimestamp,
+    signals,
+    toolKinds: [...toolKinds].sort(),
+    models: [...models].sort(),
+    subAgentStarts,
+    subAgentInteractions,
+    distinctSubAgents: lanes.size,
+  };
+};
+
+interface JsonRecordCompat {
+  readonly [key: string]: unknown;
+}
+
 export interface SourceAggregate {
   readonly source: ConversationSource;
   readonly graded: number;
@@ -454,7 +538,7 @@ export interface SourceAggregate {
 export const aggregateBySource = (
   conversations: readonly ScoredConversation[],
 ): SourceAggregate[] => {
-  const sources: ConversationSource[] = ["codex", "claude-code"];
+  const sources: ConversationSource[] = ["codex", "claude-code", "multi-harness"];
   const aggregates: SourceAggregate[] = [];
   for (const source of sources) {
     const all = conversations.filter((item) => item.source === source);
