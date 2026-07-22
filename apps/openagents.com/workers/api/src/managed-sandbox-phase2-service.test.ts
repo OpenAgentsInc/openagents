@@ -155,7 +155,7 @@ const makeTarget = (overrides: Partial<ManagedSandboxPhase2Target> = {}) => {
           sourceSandboxRef: source.sourceSandboxRef,
           sourceResourceGeneration: source.sourceResourceGeneration,
           forkSandboxRef: "sandbox.fork.1",
-          forkResourceGeneration: 0,
+          forkResourceGeneration: 1,
           sourceCapabilityRefs: command.sourceCapabilityRefs,
           forkCapabilityRefs: ["capability.fork.command"],
           grantPolicy: "mint_fresh",

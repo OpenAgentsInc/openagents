@@ -160,7 +160,7 @@ const results = {
     sourceSandboxRef: checkpoint.sourceSandboxRef,
     sourceResourceGeneration: checkpoint.sourceResourceGeneration,
     forkSandboxRef: "sandbox.sbx10.control-target.fork",
-    forkResourceGeneration: 0,
+    forkResourceGeneration: 1,
     sourceCapabilityRefs: forkCommand.sourceCapabilityRefs,
     forkCapabilityRefs: ["capability.fork.control-target"],
     grantPolicy: "mint_fresh",

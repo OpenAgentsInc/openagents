@@ -215,7 +215,7 @@ export const ManagedSandboxForkReceiptSchema = S.Struct({
   sourceSandboxRef: SandboxRef,
   sourceResourceGeneration: NonNegativeInt,
   forkSandboxRef: SandboxRef,
-  forkResourceGeneration: S.Literal(0),
+  forkResourceGeneration: PositiveInt,
   sourceCapabilityRefs: BoundedRefs,
   forkCapabilityRefs: BoundedRefs,
   grantPolicy: S.Literal("mint_fresh"),

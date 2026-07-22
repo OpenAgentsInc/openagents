@@ -1194,7 +1194,7 @@ fn validate_fork_result(
         || string(result, "grantPolicy")? != "mint_fresh"
         || string(result, "processSessionContinuity")? != "none"
         || string(result, "outcome")? != "created"
-        || number(result, "forkResourceGeneration")? != 0
+        || number(result, "forkResourceGeneration")? == 0
     {
         return Err(Phase2Error::conflict("phase2_fork_result_invalid"));
     }
@@ -1816,7 +1816,7 @@ mod tests {
                 "sourceSandboxRef": "sandbox.sbx10.control",
                 "sourceResourceGeneration": 7,
                 "forkSandboxRef": "sandbox.sbx10.control.fork",
-                "forkResourceGeneration": 0,
+                "forkResourceGeneration": 1,
                 "sourceCapabilityRefs": ["capability.sbx10.source"],
                 "forkCapabilityRefs": ["capability.sbx10.fork"],
                 "grantPolicy": "mint_fresh",

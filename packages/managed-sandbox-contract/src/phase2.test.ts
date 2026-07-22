@@ -148,7 +148,7 @@ describe("managed sandbox Phase 2 contract", () => {
       sourceSandboxRef: "sandbox.source.1",
       sourceResourceGeneration: 4,
       forkSandboxRef: "sandbox.fork.1",
-      forkResourceGeneration: 0,
+      forkResourceGeneration: 1,
       sourceCapabilityRefs: ["capability.source.command"],
       forkCapabilityRefs: ["capability.fork.command"],
       grantPolicy: "mint_fresh" as const,
@@ -160,7 +160,10 @@ describe("managed sandbox Phase 2 contract", () => {
       evidenceRefs: ["receipt.fork.identity.1"],
     };
 
-    expect(decodeManagedSandboxForkReceipt(receipt).forkResourceGeneration).toBe(0);
+    expect(decodeManagedSandboxForkReceipt(receipt).forkResourceGeneration).toBe(1);
+    expect(() =>
+      decodeManagedSandboxForkReceipt({ ...receipt, forkResourceGeneration: 0 }),
+    ).toThrow();
     expect(() =>
       decodeManagedSandboxForkReceipt({ ...receipt, forkSandboxRef: receipt.sourceSandboxRef }),
     ).toThrow();
