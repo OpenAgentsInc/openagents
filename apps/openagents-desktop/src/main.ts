@@ -648,6 +648,15 @@ import {
   openDesktopSessionVault,
   type DesktopSessionVault,
 } from "./desktop-session-vault.ts"
+import {
+  openDesktopGraphMemoryStore,
+  type DesktopGraphMemoryStore,
+} from "./desktop-graph-memory-store.ts"
+import {
+  makeDesktopGraphMemoryWorkflow,
+  openDesktopGraphMemoryEvidenceStore,
+  type DesktopGraphMemoryEvidenceStore,
+} from "./desktop-graph-memory-workflow.ts"
 import { resolveLiveProofConfig, runLiveProof } from "./live-proof.ts"
 import { mvpProofEnvironmentFromArgv, resolveMvpProofConfig, runMvpProof } from "./mvp-proof.ts"
 import {
@@ -3509,6 +3518,41 @@ const desktopUsageConsentControlAvailable = true
 const preferencesStore = openDesktopPreferencesStore(
   path.join(app.getPath("userData"), "preferences.json"),
 )
+let desktopGraphMemoryStore: DesktopGraphMemoryStore | null = null
+let desktopGraphMemoryStoreOpen: Promise<DesktopGraphMemoryStore> | null = null
+let desktopGraphMemoryEvidence: DesktopGraphMemoryEvidenceStore | null = null
+const openGraphMemoryStore = (): Promise<DesktopGraphMemoryStore> => {
+  if (desktopGraphMemoryStore !== null) return Promise.resolve(desktopGraphMemoryStore)
+  if (desktopGraphMemoryStoreOpen !== null) return desktopGraphMemoryStoreOpen
+  desktopGraphMemoryStoreOpen = import("electron")
+    .then(({ safeStorage }) => {
+      const opened = openDesktopGraphMemoryStore({
+        enabled: true,
+        databasePath: path.join(app.getPath("userData"), "memory", "graph-memory.sqlite"),
+        safeStorage,
+      })
+      desktopGraphMemoryStore = opened
+      return opened
+    })
+    .catch(error => {
+      desktopGraphMemoryStoreOpen = null
+      throw error
+    })
+  return desktopGraphMemoryStoreOpen
+}
+const graphMemoryWorkflow = makeDesktopGraphMemoryWorkflow({
+  preferences: () => preferencesStore.snapshot().graphMemory,
+  ownerScope: () =>
+    desktopSessionVault?.load()?.ownerUserId ?? `desktop-profile:${app.getPath("userData")}`,
+  projectScope: () => resolveDesktopLocalWorkspaceRoot(),
+  openStore: openGraphMemoryStore,
+  emitEvidence: async evidence => {
+    desktopGraphMemoryEvidence ??= openDesktopGraphMemoryEvidenceStore(
+      path.join(app.getPath("userData"), "memory", "graph-memory-evidence.json"),
+    )
+    desktopGraphMemoryEvidence.record(evidence)
+  },
+})
 const desktopCodexUsageOutbox = openDesktopCodexUsageOutbox(
   path.join(app.getPath("userData"), "usage", "codex-outbox.json"),
 )
@@ -4394,6 +4438,14 @@ const laneDispatcher = makeProviderLaneDispatcher({
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       })
     },
+  },
+  graphMemoryWorkflow: {
+    beforeTurn: ({ request, history, message }) => graphMemoryWorkflow.beforeTurn({
+      turnRef: request.turnRef,
+      threadRef: request.threadRef,
+      history,
+      message,
+    }),
   },
 })
 
@@ -9481,6 +9533,8 @@ app.on("before-quit", () => {
   clearInterval(fullAutoRunProjectionHeartbeatTimer)
   for (const flush of localTurnFlushers) flush()
   localTurnFlushers.clear()
+  desktopGraphMemoryStore?.close()
+  desktopGraphMemoryStore = null
   workspaceSearchRegistry.dispose()
   disposeIdeCursorHost()
   disposeIdeManagedSandboxHost()
