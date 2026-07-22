@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, statSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -73,12 +73,14 @@ describe("Desktop foreground graph-memory workflow", () => {
       expect(first.message).not.toContain("owner@example.com");
       expect(first.message).not.toContain("ignore this host-only trace");
       expect(first.message).not.toContain("Which release train is active?\"");
-      expect(evidence.list()).toHaveLength(1);
-      expect(evidence.list()[0]).toMatchObject({
+      expect(evidence.list()).toHaveLength(2);
+      expect(evidence.list()[1]).toMatchObject({
         extractionUsageTruth: "exact",
         extractionModelCalls: 0,
         profilePromotion: "not_permitted",
       });
+      expect(readFileSync(evidencePath, "utf8")).not.toContain("The release train is rc.2");
+      expect(readFileSync(evidencePath, "utf8")).not.toContain("owner@example.com");
       if (process.platform !== "win32") expect(statSync(evidencePath).mode & 0o777).toBe(0o600);
 
       store.close();
@@ -93,7 +95,7 @@ describe("Desktop foreground graph-memory workflow", () => {
         message: "release train",
       });
       expect(second.message).toContain("GRAPH MEMORY ADVISORY");
-      expect(openDesktopGraphMemoryEvidenceStore(evidencePath).list()).toHaveLength(2);
+      expect(openDesktopGraphMemoryEvidenceStore(evidencePath).list()).toHaveLength(3);
     } finally {
       store.close();
       rmSync(root, { recursive: true, force: true });

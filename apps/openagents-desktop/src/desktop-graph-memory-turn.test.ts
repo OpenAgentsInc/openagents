@@ -251,13 +251,12 @@ describe("desktop graph-memory turn adapter", () => {
       profilePromotion: "not_permitted",
     });
     expect(result.evidence?.citations).toHaveLength(1);
-    expect(result.evidence?.citations[0]?.sourceOrigin.corpusRef).toBe(
-      "corpus.desktop-memory-turn",
-    );
+    expect(result.evidence?.citations[0]?.corpusRef).toBe("corpus.desktop-memory-turn");
+    expect(result.evidence?.rankingEvidence).toBe("unranked_text_search");
     expect(result.evidence?.usedElementRefs).toHaveLength(1);
     expect(result.evidence?.hitCaps).toContain("max_returned_elements");
     expect(extractionCalls.count).toBe(1);
-    expect(evidence).toHaveLength(1);
+    expect(evidence).toHaveLength(2);
   });
 
   test("uses the durable operation receipt to avoid a duplicate extraction and apply", async () => {
@@ -277,10 +276,30 @@ describe("desktop graph-memory turn adapter", () => {
     expect(extractionCalls.count).toBe(1);
   });
 
-  test("keeps recall independent when model spend is refused", async () => {
-    let modelCalls = 0;
+  test("stores extraction evidence before the durable graph put", async () => {
+    const layer = stateLayer();
     const deps: DesktopGraphMemoryTurnDependencies = {
       ...dependencies({ count: 0 }, []),
+      emitEvidence: () => Effect.fail(new Error("evidence unavailable")),
+    };
+    await expect(
+      Effect.runPromise(runDesktopGraphMemoryTurn(input(), deps).pipe(Effect.provide(layer))),
+    ).rejects.toMatchObject({ _tag: "DesktopGraphMemory.TurnError", reason: "evidence_failure" });
+    const inspection = await Effect.runPromise(
+      Effect.gen(function* () {
+        const store = yield* GraphMemoryStore;
+        return yield* store.inspect(scope);
+      }).pipe(Effect.provide(layer)),
+    );
+    expect(inspection.current).toBeNull();
+    expect(inspection.receipts).toEqual([]);
+  });
+
+  test("keeps recall independent when model spend is refused", async () => {
+    let modelCalls = 0;
+    const evidence: Array<unknown> = [];
+    const deps: DesktopGraphMemoryTurnDependencies = {
+      ...dependencies({ count: 0 }, evidence),
       extraction: {
         _tag: "Model",
         program: S.decodeUnknownSync(CompiledProgram)({
@@ -305,8 +324,17 @@ describe("desktop graph-memory turn adapter", () => {
       ),
     );
     expect(result._tag).toBe("Completed");
-    if (result._tag === "Completed") expect(result.extraction._tag).toBe("SpendRefused");
+    if (result._tag === "Completed") {
+      expect(result.extraction._tag).toBe("SpendRefused");
+      expect(result.evidence).toMatchObject({
+        extractionStatus: "spend_refused",
+        extractionUsageTruth: "not_run",
+        extractionModelCalls: 0,
+        spendDecision: "refused",
+      });
+    }
     expect(modelCalls).toBe(0);
+    expect(evidence).toHaveLength(1);
   });
 
   test("preserves unavailable model usage truth in the extraction receipt", async () => {

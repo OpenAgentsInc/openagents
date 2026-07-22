@@ -1776,14 +1776,14 @@ export const settingsView = (settings: SettingsState): View => {
         Toggle({
           key: "settings-graph-extraction-toggle",
           value: settings.graphExtractionEnabled,
-          label: settings.graphExtractionEnabled ? "On" : "Off",
+          label: settings.graphExtractionEnabled ? "Extraction on" : "Extraction off",
           onChange: IntentRef("DesktopGraphExtractionToggled", ComponentValueBinding()),
           a11y: { label: settings.graphExtractionEnabled ? "Disable graph extraction" : "Enable graph extraction" },
         }),
         Toggle({
           key: "settings-graph-recall-toggle",
           value: settings.graphRecallEnabled,
-          label: settings.graphRecallEnabled ? "On" : "Off",
+          label: settings.graphRecallEnabled ? "Recall on" : "Recall off",
           onChange: IntentRef("DesktopGraphRecallToggled", ComponentValueBinding()),
           a11y: { label: settings.graphRecallEnabled ? "Disable graph recall" : "Enable graph recall" },
         }),
