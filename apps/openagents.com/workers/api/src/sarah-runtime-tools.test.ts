@@ -360,6 +360,175 @@ describe('Sarah runtime tools', () => {
     ])
   })
 
+  const webCommsTools = () =>
+    makeSarahRuntimeTools({
+      authorizeOperation: authority,
+      env,
+      fullAutoControl: control([]),
+      fullAutoProjection: projection(),
+      khalaCatalog: catalog([]),
+      ownerUserId: 'owner.fixture',
+      sql,
+      threadRef: 'thread.sarah.fixture',
+      turnId: 'turn.fixture',
+    }).find(item => item.definition.name === 'sarah_web_comms')!
+
+  test('sarah_web_comms drafts a public-safe blog post with no delivery by default', async () => {
+    const result = await Effect.runPromise(
+      webCommsTools().execute(
+        {
+          action: 'draft',
+          body: 'We shipped the owner-orchestrator reboot.',
+          kind: 'blog',
+          title: 'Sarah takes company command',
+        },
+        call('sarah_web_comms'),
+      ),
+    )
+    expect(result.isError ?? false).toBe(false)
+    const payload = JSON.parse(result.content) as {
+      draft: { kind: string; title: string }
+      delivery?: unknown
+    }
+    expect(payload.draft.kind).toBe('blog')
+    expect(payload.delivery).toBeUndefined()
+    expect(result.resultRefs).toContain('sarah.web_comms.blog_draft_ready')
+  })
+
+  test('sarah_web_comms returns a repository-delivery handoff when a blog draft asks to deliver', async () => {
+    const result = await Effect.runPromise(
+      webCommsTools().execute(
+        {
+          action: 'draft',
+          body: 'Body text for the delivered document.',
+          deliver: true,
+          kind: 'document',
+          title: 'Company command runbook',
+        },
+        call('sarah_web_comms'),
+      ),
+    )
+    const payload = JSON.parse(result.content) as {
+      delivery?: { channel: string; path: string; repository: string }
+    }
+    expect(payload.delivery).toBeDefined()
+    expect(payload.delivery!.repository).toBe('OpenAgentsInc/openagents')
+    expect(payload.delivery!.channel).toBe('repository_delivery')
+    expect(payload.delivery!.path).toBe('docs/company-command-runbook.md')
+    expect(result.resultRefs).toContain(
+      'sarah.web_comms.blog_or_document_delivery_intent',
+    )
+  })
+
+  test('sarah_web_comms drafts a forum post with no delivery handoff', async () => {
+    const result = await Effect.runPromise(
+      webCommsTools().execute(
+        {
+          action: 'draft',
+          body: 'A loose product-promise report for the forum.',
+          deliver: true,
+          kind: 'forum',
+          title: 'Promise gap report',
+        },
+        call('sarah_web_comms'),
+      ),
+    )
+    const payload = JSON.parse(result.content) as { delivery?: unknown }
+    expect(payload.delivery).toBeUndefined()
+    expect(result.resultRefs).toContain('sarah.web_comms.forum_draft_ready')
+  })
+
+  test('sarah_web_comms queues a timeline post for owner review through the tweet queue', async () => {
+    const result = await Effect.runPromise(
+      webCommsTools().execute(
+        {
+          action: 'publish_outward',
+          body: 'The releases keep moving. — an AI agent',
+          channel: 'timeline',
+          title: 'Weekly status',
+        },
+        call('sarah_web_comms'),
+      ),
+    )
+    expect(result.isError ?? false).toBe(false)
+    const payload = JSON.parse(result.content) as {
+      queued: boolean
+      channel: string
+      delivery: { path: string; mode: string }
+    }
+    expect(payload.queued).toBe(true)
+    expect(payload.channel).toBe('timeline')
+    expect(payload.delivery.path).toBe('docs/sarah/SARAH_TWEET_QUEUE.md')
+    expect(payload.delivery.mode).toBe('append')
+    expect(result.resultRefs).toContain(
+      'sarah.web_comms.queued_for_owner_review',
+    )
+  })
+
+  test('sarah_web_comms drafts a Nostr post on the open channel without refusing', async () => {
+    const result = await Effect.runPromise(
+      webCommsTools().execute(
+        {
+          action: 'publish_outward',
+          body: 'Live on Nostr through the owned relay.',
+          channel: 'nostr',
+          title: 'Nostr note',
+        },
+        call('sarah_web_comms'),
+      ),
+    )
+    expect(result.isError ?? false).toBe(false)
+    const payload = JSON.parse(result.content) as {
+      channel: string
+      delivery: { channel: string }
+    }
+    expect(payload.channel).toBe('nostr')
+    expect(payload.delivery.channel).toBe('repository_delivery')
+    expect(result.resultRefs).toContain('sarah.web_comms.nostr_draft_ready')
+  })
+
+  test('sarah_web_comms refuses animated-spoken publication until admission', async () => {
+    const result = await Effect.runPromise(
+      webCommsTools().execute(
+        {
+          action: 'publish_outward',
+          body: 'This would be spoken by the avatar.',
+          channel: 'animated_spoken',
+          title: 'Spoken update',
+        },
+        call('sarah_web_comms'),
+      ),
+    )
+    expect(result.isError).toBe(true)
+    const payload = JSON.parse(result.content) as {
+      error: string
+      reason: string
+    }
+    expect(payload.error).toBe('web_comms_runtime_unavailable')
+    expect(payload.reason).toBe('refuse_until_admission')
+    expect(result.resultRefs).toContain(
+      'blocker.sarah.web_comms.runtime_unavailable',
+    )
+  })
+
+  test('sarah_web_comms rejects a body that contains secret-shaped material', async () => {
+    const result = await Effect.runPromise(
+      webCommsTools().execute(
+        {
+          action: 'draft',
+          body: 'Here is the access_token: ghp_abcdefgh12345678 for the deploy.',
+          kind: 'blog',
+          title: 'Oops leaked a token',
+        },
+        call('sarah_web_comms'),
+      ),
+    )
+    expect(result.isError).toBe(true)
+    expect(result.resultRefs).toContain(
+      'blocker.sarah.web_comms.unsafe_material',
+    )
+  })
+
   test('a failing dispatch-mapping write never fails codex_workers_start', async () => {
     const tools = makeSarahRuntimeTools({
       authorizeOperation: authority,

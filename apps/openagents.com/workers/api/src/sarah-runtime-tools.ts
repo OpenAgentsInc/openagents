@@ -5,6 +5,10 @@ import {
   makeFullAutoRunControlAuthority,
   makeFullAutoRunProjectionRepository,
 } from '@openagentsinc/khala-sync-server'
+import {
+  detectOpenAgentsMcpUnsafeMaterial,
+  redactOpenAgentsMcpUnsafeText,
+} from '@openagentsinc/mcp-contract'
 import { Effect, Schema as S } from 'effect'
 
 import type { CrmMcpCatalog, McpToolCallOutcome } from './crm-mcp-routes'
@@ -31,6 +35,26 @@ const OWNER_REPOSITORY = 'OpenAgentsInc/openagents'
 const OWNER_REPOSITORY_BRANCH = 'main'
 const OWNER_REPOSITORY_VERIFY = 'pnpm run check'
 
+// Binds the sarah_web_comms tool to grant.sarah.web_communications
+// (AUTHORITY.md rev 7 / docs/authority/SARAH_AUTHORITY.md rev 5). The tool
+// composes the existing repository-delivery and owner-review paths; it is never
+// a second outward-publish authority. Blog and document drafts, the Nostr open
+// channel, and the owner-reviewed X tweet queue deliver through repository
+// delivery now. Animated-spoken publication refuses with a receipt until the
+// owner-supplied animation and speech interfaces and the web-communications
+// broker are deployed, healthy, and receipt-capable.
+const WEB_COMMS_PROGRAM = 'program.sarah_web_communications'
+const SARAH_TWEET_QUEUE_PATH = 'docs/sarah/SARAH_TWEET_QUEUE.md'
+
+const slugify = (value: string): string => {
+  const slug = value
+    .toLowerCase()
+    .replaceAll(/[^a-z0-9]+/g, '-')
+    .replaceAll(/^-+|-+$/g, '')
+    .slice(0, 60)
+  return slug.length === 0 ? 'untitled' : slug
+}
+
 const WorkerCount = S.Number.check(
   S.isInt(),
   S.isGreaterThanOrEqualTo(1),
@@ -52,6 +76,17 @@ const FullAutoStatusInput = S.Struct({ runRef: S.optional(PublicRef) })
 const FullAutoControlInput = S.Struct({
   action: S.Literals(['pause', 'resume', 'stop']),
   runRef: S.optional(PublicRef),
+})
+
+const WebCommsTitle = S.Trim.check(S.isMinLength(3), S.isMaxLength(200))
+const WebCommsBody = S.Trim.check(S.isMinLength(3), S.isMaxLength(4_000))
+const WebCommsInput = S.Struct({
+  action: S.Literals(['draft', 'publish_outward']),
+  kind: S.optional(S.Literals(['blog', 'document', 'forum'])),
+  channel: S.optional(S.Literals(['timeline', 'animated_spoken', 'nostr'])),
+  title: WebCommsTitle,
+  body: WebCommsBody,
+  deliver: S.optional(S.Boolean),
 })
 
 type AuthorizeOperation = (
@@ -621,6 +656,342 @@ export const makeSarahRuntimeTools = <Bindings>(
       ),
   }
 
+  const authorizeWebComms = (
+    action: string,
+    resource: string,
+    toolCallId: string,
+    runtimeAdmitted: boolean,
+    targetEvidenceRefs: ReadonlyArray<string>,
+    gateEvidenceRef: string,
+  ) =>
+    authorize(deps.sql, {
+      action,
+      conditionResults: [
+        {
+          conditionRef: 'condition.owner_scope',
+          evidenceRefs: [`thread:${deps.threadRef}`],
+          passed: true,
+        },
+        {
+          conditionRef: 'condition.redaction',
+          evidenceRefs: ['schema:openagents.sarah.web_comms_tool.v1'],
+          passed: true,
+        },
+        {
+          conditionRef: 'condition.no_unsupported_public_claim',
+          evidenceRefs: ['gate:web_comms_public_safe_text'],
+          passed: true,
+        },
+        {
+          conditionRef: 'condition.web_comms_runtime_admission',
+          evidenceRefs: runtimeAdmitted ? [gateEvidenceRef] : [],
+          passed: runtimeAdmitted,
+        },
+        {
+          conditionRef: 'condition.existing_runtime_gate',
+          evidenceRefs: [gateEvidenceRef],
+          passed: true,
+        },
+        {
+          conditionRef: 'condition.rollback',
+          evidenceRefs: ['gate:repository_delivery_revert'],
+          passed: true,
+        },
+      ],
+      ownerUserId: deps.ownerUserId,
+      programRef: WEB_COMMS_PROGRAM,
+      resource,
+      targetEvidenceRefs,
+      threadRef: deps.threadRef,
+      triggerRef: `turn.${publicRefSegment(deps.turnId)}.tool.${publicRefSegment(toolCallId)}`,
+    }).pipe(
+      Effect.mapError(error =>
+        toolFailureFrom(error, 'authority_decision_failed'),
+      ),
+    )
+
+  const invalidWebCommsArguments = (
+    reason: string,
+    summary: string,
+  ): SarahAgentToolResult => ({
+    authorityReceiptRef: 'receipt.sarah.web_comms.invalid_arguments',
+    content: json({ error: reason, ok: false }),
+    isError: true,
+    resultRefs: ['blocker.sarah.web_comms.invalid_arguments'],
+    summary,
+  })
+
+  const deliveryIntent = (input: {
+    action: string
+    path: string
+    mode: 'create' | 'append'
+    title: string
+    body: string
+    content: string
+  }): Readonly<Record<string, unknown>> => ({
+    action: input.action,
+    body: input.body,
+    branch: OWNER_REPOSITORY_BRANCH,
+    channel: 'repository_delivery',
+    content: input.content,
+    mode: input.mode,
+    note: 'Delivery runs through the normal coding broker, which re-resolves authority and rollback; this tool writes no files.',
+    path: input.path,
+    repository: OWNER_REPOSITORY,
+    title: input.title,
+  })
+
+  const webComms: SarahAgentTool = {
+    definition: {
+      description:
+        'Draft public-safe web communications (blog, document, forum) and deliver them through repository delivery, queue an owner-reviewed X timeline post, or draft a Nostr post. Animated-spoken publication refuses with a receipt until the owner-supplied interfaces and broker are admitted.',
+      name: 'sarah_web_comms',
+      parameters: {
+        additionalProperties: false,
+        properties: {
+          action: { enum: ['draft', 'publish_outward'], type: 'string' },
+          body: { maxLength: 4000, minLength: 3, type: 'string' },
+          channel: {
+            enum: ['timeline', 'animated_spoken', 'nostr'],
+            type: 'string',
+          },
+          deliver: { type: 'boolean' },
+          kind: { enum: ['blog', 'document', 'forum'], type: 'string' },
+          title: { maxLength: 200, minLength: 3, type: 'string' },
+        },
+        required: ['action', 'title', 'body'],
+        type: 'object',
+      },
+    },
+    execute: (raw, toolCall) =>
+      Effect.gen(function* () {
+        const input = yield* Effect.try({
+          try: () =>
+            decodeInput(
+              value =>
+                S.decodeUnknownSync(WebCommsInput)(value, {
+                  onExcessProperty: 'error',
+                }),
+              raw,
+            ),
+          catch: error => toolFailureFrom(error, 'invalid_tool_arguments'),
+        })
+        // Reject secret-shaped material before any authority receipt is minted.
+        const unsafeTags = detectOpenAgentsMcpUnsafeMaterial(
+          `${input.title}\n${input.body}`,
+        )
+        if (unsafeTags.length > 0) {
+          return {
+            authorityReceiptRef:
+              'receipt.sarah.web_comms.unsafe_material_rejected',
+            content: json({
+              error: 'web_comms_unsafe_material',
+              ok: false,
+              reason: 'secret_shaped_material_rejected',
+              tags: unsafeTags,
+            }),
+            isError: true,
+            resultRefs: ['blocker.sarah.web_comms.unsafe_material'],
+            summary:
+              'The draft was rejected because the title or body contained secret-shaped material.',
+          }
+        }
+        // Defense in depth: the reject above already blocks known unsafe
+        // material, so redaction is a no-op on the passing path.
+        const title = redactOpenAgentsMcpUnsafeText(input.title)
+        const body = redactOpenAgentsMcpUnsafeText(input.body)
+        const date = nowIso().slice(0, 10)
+
+        if (input.action === 'draft') {
+          if (input.kind === undefined) {
+            return invalidWebCommsArguments(
+              'web_comms_kind_required',
+              'A draft needs a kind of blog, document, or forum.',
+            )
+          }
+          if (input.channel !== undefined) {
+            return invalidWebCommsArguments(
+              'web_comms_channel_not_allowed_for_draft',
+              'A draft does not take an outward channel.',
+            )
+          }
+          const draftAction =
+            input.kind === 'blog'
+              ? 'draft_blog_post'
+              : input.kind === 'document'
+                ? 'draft_document'
+                : 'draft_forum_post'
+          const draftResource =
+            input.kind === 'forum'
+              ? 'openagents_github_and_forum'
+              : 'openagents_blog_and_documents'
+          const authority = yield* authorizeWebComms(
+            draftAction,
+            draftResource,
+            toolCall.id,
+            true,
+            [`kind:${input.kind}`],
+            'gate:repository_delivery',
+          )
+          if (!authority.allowed) return refused(authority)
+          const canDeliver =
+            input.deliver === true &&
+            (input.kind === 'blog' || input.kind === 'document')
+          const delivery = canDeliver
+            ? deliveryIntent({
+                action: 'deliver_blog_or_document_draft',
+                body,
+                content: `# ${title}\n\n${body}\n`,
+                mode: 'create',
+                path:
+                  input.kind === 'blog'
+                    ? `docs/blog/${date}-${slugify(title)}.md`
+                    : `docs/${slugify(title)}.md`,
+                title,
+              })
+            : null
+          return {
+            authorityReceiptRef: authority.receiptRef,
+            content: json({
+              action: 'draft',
+              draft: { body, kind: input.kind, title },
+              ok: true,
+              ...(delivery === null ? {} : { delivery }),
+            }),
+            resultRefs: [
+              authority.receiptRef,
+              delivery === null
+                ? `sarah.web_comms.${input.kind}_draft_ready`
+                : 'sarah.web_comms.blog_or_document_delivery_intent',
+            ],
+            summary:
+              delivery === null
+                ? `Prepared a public-safe ${input.kind} draft.`
+                : `Prepared a ${input.kind} draft and a repository-delivery handoff.`,
+          }
+        }
+
+        // action === 'publish_outward'
+        if (input.channel === undefined) {
+          return invalidWebCommsArguments(
+            'web_comms_channel_required',
+            'An outward publication needs a channel of timeline, nostr, or animated_spoken.',
+          )
+        }
+        if (input.kind !== undefined) {
+          return invalidWebCommsArguments(
+            'web_comms_kind_not_allowed_for_publish',
+            'An outward publication does not take a draft kind.',
+          )
+        }
+
+        if (input.channel === 'timeline') {
+          // X is not automated. Queue a public-safe draft for the owner to
+          // review and post by hand through repository delivery.
+          const authority = yield* authorizeWebComms(
+            'publish_outward_communication',
+            'openagents_public_timeline',
+            toolCall.id,
+            true,
+            ['channel:timeline'],
+            'gate:owner_tweet_queue',
+          )
+          if (!authority.allowed) return refused(authority)
+          const delivery = deliveryIntent({
+            action: 'publish_outward_communication',
+            body,
+            content: `### ${date} — ${title} · status: draft\n\n> ${body}\n`,
+            mode: 'append',
+            path: SARAH_TWEET_QUEUE_PATH,
+            title,
+          })
+          return {
+            authorityReceiptRef: authority.receiptRef,
+            content: json({
+              channel: 'timeline',
+              delivery,
+              draft: { body, title },
+              ok: true,
+              queued: true,
+            }),
+            resultRefs: [
+              authority.receiptRef,
+              'sarah.web_comms.queued_for_owner_review',
+            ],
+            summary:
+              'Queued a public-safe X timeline draft for the owner to review and post by hand.',
+          }
+        }
+
+        if (input.channel === 'nostr') {
+          // Nostr is an open channel. Produce a public-safe draft and a
+          // repository-delivery handoff; live relay posting is a later lane.
+          const authority = yield* authorizeWebComms(
+            'publish_outward_communication',
+            'openagents_public_timeline',
+            toolCall.id,
+            true,
+            ['channel:nostr'],
+            'gate:nostr_open_channel',
+          )
+          if (!authority.allowed) return refused(authority)
+          const delivery = deliveryIntent({
+            action: 'publish_outward_communication',
+            body,
+            content: `# ${title}\n\nstatus: draft\n\n${body}\n`,
+            mode: 'create',
+            path: `docs/sarah/nostr/${date}-${slugify(title)}.md`,
+            title,
+          })
+          return {
+            authorityReceiptRef: authority.receiptRef,
+            content: json({
+              channel: 'nostr',
+              delivery,
+              draft: { body, title },
+              ok: true,
+            }),
+            resultRefs: [
+              authority.receiptRef,
+              'sarah.web_comms.nostr_draft_ready',
+            ],
+            summary:
+              'Prepared a public-safe Nostr draft and a repository-delivery handoff; no live relay posting yet.',
+          }
+        }
+
+        // channel === 'animated_spoken': refuse until admission.
+        const authority = yield* authorizeWebComms(
+          'publish_animated_spoken_communication',
+          'openagents_animated_spoken_channel',
+          toolCall.id,
+          false,
+          ['channel:animated_spoken'],
+          'gate:web_comms_broker',
+        )
+        return {
+          authorityAllowed: false,
+          authorityReceiptRef: authority.receiptRef,
+          content: json({
+            channel: 'animated_spoken',
+            cite: 'The owner-supplied animation and speech interfaces and the web-communications broker are not yet deployed, healthy, or receipt-capable.',
+            error: 'web_comms_runtime_unavailable',
+            ok: false,
+            reason: 'refuse_until_admission',
+          }),
+          isError: true,
+          resultRefs: [
+            authority.receiptRef,
+            'blocker.sarah.web_comms.runtime_unavailable',
+          ],
+          summary:
+            'Animated-spoken publication refuses until the owner-supplied animation and speech interfaces and the web-communications broker are admitted.',
+        }
+      }).pipe(
+        Effect.mapError(error => toolFailureFrom(error, 'web_comms_failed')),
+      ),
+  }
+
   const harnessStatus: SarahAgentTool | undefined =
     deps.harnessStatus === undefined
       ? undefined
@@ -726,6 +1097,7 @@ export const makeSarahRuntimeTools = <Bindings>(
     workerStatus,
     fullAutoStatus,
     fullAutoControl,
+    webComms,
     ...(harnessStatus === undefined ? [] : [harnessStatus]),
     ...(harnessReview === undefined ? [] : [harnessReview]),
     ...(deps.managedSandboxTools ?? []),
