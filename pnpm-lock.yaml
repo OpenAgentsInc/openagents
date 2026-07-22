@@ -489,11 +489,11 @@ importers:
         specifier: workspace:*
         version: link:../../packages/agent-client-runtime-bridge
       '@openagentsinc/agent-harness-contract':
-        specifier: 0.2.0-rc.2
-        version: 0.2.0-rc.2
+        specifier: 0.2.0-rc.4
+        version: 0.2.0-rc.4
       '@openagentsinc/agent-runtime-schema':
-        specifier: 0.2.0-rc.2
-        version: 0.2.0-rc.2
+        specifier: 0.2.0-rc.4
+        version: 0.2.0-rc.4
       '@openagentsinc/agent-surface':
         specifier: workspace:*
         version: link:../../packages/agent-surface
@@ -4528,11 +4528,17 @@ packages:
   '@openagentsinc/agent-harness-contract@0.2.0-rc.2':
     resolution: {integrity: sha512-PvcY96BWHRrQi5IXthaP/OD+XkV4O2qdOAkvJrGKwuPOJa47deVSAiQQhaBNC8sMaluNvkwP6ZZ1MIO6k1v9oA==}
 
+  '@openagentsinc/agent-harness-contract@0.2.0-rc.4':
+    resolution: {integrity: sha512-4pmJUYHkuB+ougKLRGDKv47zGf647RknrlTTbmjAU/I8N77emv187fK71ZAj67Pc1h5/uDQRpkw+ljekSScnRg==}
+
   '@openagentsinc/agent-runtime-schema@0.1.3-rc.1':
     resolution: {integrity: sha512-kah9CJ8c6kqstPKCeJhcIj6EfVT6JZhsLtqu8Tu7iQBjlkMbfyiiTcV6YNBNwX7v86TTkgRAuxx74gXrSQsn6A==}
 
   '@openagentsinc/agent-runtime-schema@0.2.0-rc.2':
     resolution: {integrity: sha512-RnNI36Kg0sk3YuT6thL+Rsi4WNTSU10RDcuL6LzBITUVFYzyXNyls5sieUIoY2hMHs39FnmZ5d9KyXkUoGUuXQ==}
+
+  '@openagentsinc/agent-runtime-schema@0.2.0-rc.4':
+    resolution: {integrity: sha512-DKziXB7BS/XW7LvX3Bxjy8OBSXQNYadaynaJr/Ly0HQ4PIJIMDWnQovR4MxBq5fesp+EoX8bivxWWICFjEPkQQ==}
 
   '@openagentsinc/ai-model@0.2.0-rc.2':
     resolution: {integrity: sha512-e4Pbp9rnUkEWF3xErXptFVxEPPuiaBSRE3BSAwrJQRkCi47+Y87G08b2+WpAOFsNsl+6U8Z3EL9hJVP6Pleusg==}
@@ -14590,11 +14596,20 @@ snapshots:
       '@openagentsinc/agent-runtime-schema': 0.2.0-rc.2
       effect: 4.0.0-beta.94
 
+  '@openagentsinc/agent-harness-contract@0.2.0-rc.4':
+    dependencies:
+      '@openagentsinc/agent-runtime-schema': 0.2.0-rc.4
+      effect: 4.0.0-beta.94
+
   '@openagentsinc/agent-runtime-schema@0.1.3-rc.1':
     dependencies:
       effect: 4.0.0-beta.94
 
   '@openagentsinc/agent-runtime-schema@0.2.0-rc.2':
+    dependencies:
+      effect: 4.0.0-beta.94
+
+  '@openagentsinc/agent-runtime-schema@0.2.0-rc.4':
     dependencies:
       effect: 4.0.0-beta.94
 
