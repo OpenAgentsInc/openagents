@@ -24214,6 +24214,20 @@
       }
     },
     {
+      "path": "docs/fable/2026-07-21-nostr-native-pivot-analysis.md",
+      "sha256": "19234b49a772deaca625bc0763a79ae3b05389d25a227b2d8d7bddad4ee16479",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "ste_status": "source-data",
+        "ste_reviewer": null,
+        "ste_reviewed_at": null,
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null
+      }
+    },
+    {
       "path": "docs/fable/EXECUTION.md",
       "sha256": "fcbc4954cb55d3d2185a95ae814d1656e542406feb748167031a2abfcab2a69c",
       "reason": "Final review of a converted document",
