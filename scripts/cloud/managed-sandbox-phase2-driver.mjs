@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const TARGET_SCHEMA_VERSION = "openagents.managed_sandbox_phase2_target.v1";
+const ERROR_SCHEMA_VERSION = "openagents.managed_sandbox_phase2_driver_error.v1";
 const CHECKPOINT_SCHEMA_VERSION = "openagents.managed_sandbox_content_checkpoint.v1";
 const DELETE_SCHEMA_VERSION = "openagents.managed_sandbox_checkpoint_delete_receipt.v1";
 const FORK_SCHEMA_VERSION = "openagents.managed_sandbox_fork_receipt.v1";
@@ -42,7 +43,7 @@ const canonicalJson = (value) => {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
   if (value !== null && typeof value === "object") {
     return `{${Object.keys(value)
-      .toSorted()
+      .sort()
       .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`)
       .join(",")}}`;
   }
@@ -242,7 +243,11 @@ const describeObject = (uri) => {
   try {
     const value = JSON.parse(result.stdout);
     if (value === null || typeof value !== "object") return undefined;
-    return value;
+    const metadata = value.custom_fields ?? value.metadata ?? {};
+    if (metadata === null || typeof metadata !== "object" || Array.isArray(metadata)) {
+      throw new DriverError("checkpoint_object_metadata_invalid");
+    }
+    return { ...value, metadata };
   } catch {
     throw new DriverError("checkpoint_object_metadata_invalid");
   }
@@ -830,6 +835,11 @@ try {
     }),
   );
   process.stdout.write("\n");
-} catch {
-  fail();
+} catch (error) {
+  const reasonRef =
+    error instanceof DriverError && /^[a-z0-9_]{1,80}$/u.test(error.message)
+      ? error.message
+      : "internal_driver_failure";
+  process.stdout.write(`${JSON.stringify({ schemaVersion: ERROR_SCHEMA_VERSION, reasonRef })}\n`);
+  process.exitCode = 2;
 }

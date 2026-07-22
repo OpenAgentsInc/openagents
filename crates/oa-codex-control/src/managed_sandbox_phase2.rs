@@ -23,6 +23,7 @@ use sha2::{Digest, Sha256};
 use crate::managed_sandbox_runtime::{self, RuntimePhase};
 
 const TARGET_SCHEMA_VERSION: &str = "openagents.managed_sandbox_phase2_target.v1";
+const DRIVER_ERROR_SCHEMA_VERSION: &str = "openagents.managed_sandbox_phase2_driver_error.v1";
 const COMMAND_SCHEMA_VERSION: &str = "openagents.managed_sandbox_phase2_command.v1";
 const CHECKPOINT_SCHEMA_VERSION: &str = "openagents.managed_sandbox_content_checkpoint.v1";
 const CHECKPOINT_STOP_SCHEMA_VERSION: &str = "openagents.managed_sandbox_checkpoint_stop.v1";
@@ -81,27 +82,27 @@ pub struct ManagedSandboxPhase2Response {
 pub struct Phase2Error {
     status: u16,
     code: &'static str,
-    reason_ref: &'static str,
+    reason_ref: String,
 }
 
 impl Phase2Error {
-    fn new(status: u16, code: &'static str, reason_ref: &'static str) -> Self {
+    fn new(status: u16, code: &'static str, reason_ref: impl Into<String>) -> Self {
         Self {
             status,
             code,
-            reason_ref,
+            reason_ref: reason_ref.into(),
         }
     }
 
-    fn invalid(reason_ref: &'static str) -> Self {
+    fn invalid(reason_ref: impl Into<String>) -> Self {
         Self::new(400, "invalid_request", reason_ref)
     }
 
-    fn conflict(reason_ref: &'static str) -> Self {
+    fn conflict(reason_ref: impl Into<String>) -> Self {
         Self::new(409, "phase2_scope_conflict", reason_ref)
     }
 
-    fn unavailable(reason_ref: &'static str) -> Self {
+    fn unavailable(reason_ref: impl Into<String>) -> Self {
         Self::new(503, "phase2_unavailable", reason_ref)
     }
 
@@ -399,9 +400,9 @@ fn execute_fork_from_checkpoint(
             )
             .map_err(|error| {
                 if error.status() < 500 {
-                    Phase2Error::conflict("phase2_fork_prepare_conflict")
+                    Phase2Error::conflict(format!("phase2_fork_prepare_{}", error.code()))
                 } else {
-                    Phase2Error::unavailable("phase2_fork_prepare_failed")
+                    Phase2Error::unavailable(format!("phase2_fork_prepare_{}", error.code()))
                 }
             })
         },
@@ -446,7 +447,8 @@ where
     let source_resource_generation = number(command, "expectedSourceResourceGeneration")?;
     let command_ref = string(command, "commandRef")?.to_string();
     let checkpoint_ref = string(command, "checkpointRef")?.to_string();
-    let source_capability_refs = ref_array(value(command, "sourceCapabilityRefs")?, false)?;
+    let source_capability_refs =
+        capability_ref_array(value(command, "sourceCapabilityRefs")?, false)?;
     let runtime_context = prepare(
         &owner_ref,
         &tenant_ref,
@@ -549,7 +551,8 @@ where
     let command_ref = string(command, "commandRef")?.to_string();
     let checkpoint_ref = string(command, "checkpointRef")?.to_string();
     let checkpoint_source_generation = number(checkpoint, "sourceResourceGeneration")?;
-    let source_capability_refs = ref_array(value(command, "sourceCapabilityRefs")?, false)?;
+    let source_capability_refs =
+        capability_ref_array(value(command, "sourceCapabilityRefs")?, false)?;
     let runtime_context = prepare(
         &owner_ref,
         &tenant_ref,
@@ -851,7 +854,7 @@ fn execute_with_driver_wire(
     };
     let _ = reader.join();
     if !status.success() {
-        return Err(Phase2Error::unavailable("phase2_driver_refused"));
+        return Err(Phase2Error::unavailable(driver_refusal_reason(&bytes)));
     }
     if bytes.len() as u64 > MAX_DRIVER_RESPONSE_BYTES {
         return Err(Phase2Error::unavailable("phase2_driver_response_too_large"));
@@ -865,6 +868,27 @@ fn execute_with_driver_wire(
         .map_err(|_| Phase2Error::unavailable("phase2_driver_response_invalid"))?;
     validate_response(request, &response)?;
     Ok(response)
+}
+
+fn driver_refusal_reason(bytes: &[u8]) -> String {
+    let Ok(value) = serde_json::from_slice::<Value>(bytes) else {
+        return "phase2_driver_refused".to_string();
+    };
+    if value.get("schemaVersion").and_then(Value::as_str) != Some(DRIVER_ERROR_SCHEMA_VERSION) {
+        return "phase2_driver_refused".to_string();
+    }
+    let Some(reason) = value.get("reasonRef").and_then(Value::as_str) else {
+        return "phase2_driver_refused".to_string();
+    };
+    if reason.is_empty()
+        || reason.len() > 80
+        || !reason
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
+    {
+        return "phase2_driver_refused".to_string();
+    }
+    format!("phase2_driver_{reason}")
 }
 
 fn kill_process_tree(child: &mut std::process::Child) {
@@ -1007,7 +1031,7 @@ fn validate_fork_command(command: &Map<String, Value>) -> Result<(), Phase2Error
     validate_ref(string(command, "checkpointRef")?)?;
     validate_ref(string(command, "expectedSourceSandboxRef")?)?;
     number(command, "expectedSourceResourceGeneration")?;
-    validate_ref_array(value(command, "sourceCapabilityRefs")?, false)
+    validate_capability_ref_array(value(command, "sourceCapabilityRefs")?, false)
 }
 
 fn validate_restore_command(command: &Map<String, Value>) -> Result<(), Phase2Error> {
@@ -1034,7 +1058,7 @@ fn validate_restore_command(command: &Map<String, Value>) -> Result<(), Phase2Er
     validate_ref(string(command, "destinationSandboxRef")?)?;
     number(command, "expectedSourceResourceGeneration")?;
     validate_ref_array(value(command, "admittedServiceRefs")?, false)?;
-    validate_ref_array(value(command, "sourceCapabilityRefs")?, false)
+    validate_capability_ref_array(value(command, "sourceCapabilityRefs")?, false)
 }
 
 fn validate_delete_command(command: &Map<String, Value>) -> Result<(), Phase2Error> {
@@ -1533,12 +1557,12 @@ fn validate_fork_result(
         number(result, "sourceResourceGeneration")?,
         "phase2_fork_source_scope_conflict",
     )?;
-    let source = ref_array(value(result, "sourceCapabilityRefs")?, false)?;
-    let expected_source = ref_array(value(command, "sourceCapabilityRefs")?, false)?;
+    let source = capability_ref_array(value(result, "sourceCapabilityRefs")?, false)?;
+    let expected_source = capability_ref_array(value(command, "sourceCapabilityRefs")?, false)?;
     if source != expected_source {
         return Err(Phase2Error::conflict("phase2_fork_source_grant_conflict"));
     }
-    let fork = ref_array(value(result, "forkCapabilityRefs")?, false)?;
+    let fork = capability_ref_array(value(result, "forkCapabilityRefs")?, false)?;
     if !unique_and_disjoint(&source, &fork)
         || string(result, "forkSandboxRef")? == string(result, "sourceSandboxRef")?
     {
@@ -1627,9 +1651,9 @@ fn validate_restore_result(
             "phase2_restore_service_scope_conflict",
         ));
     }
-    let source = ref_array(value(result, "sourceCapabilityRefs")?, false)?;
-    let expected_source = ref_array(value(command, "sourceCapabilityRefs")?, false)?;
-    let restored = ref_array(value(result, "restoredCapabilityRefs")?, false)?;
+    let source = capability_ref_array(value(result, "sourceCapabilityRefs")?, false)?;
+    let expected_source = capability_ref_array(value(command, "sourceCapabilityRefs")?, false)?;
+    let restored = capability_ref_array(value(result, "restoredCapabilityRefs")?, false)?;
     if source != expected_source || !unique_and_disjoint_right(&source, &restored) {
         return Err(Phase2Error::conflict("phase2_restore_grant_scope_conflict"));
     }
@@ -1819,6 +1843,54 @@ fn validate_ref_array(value: &Value, require_non_empty: bool) -> Result<(), Phas
     ref_array(value, require_non_empty).map(|_| ())
 }
 
+fn capability_ref_array(
+    value: &Value,
+    require_non_empty: bool,
+) -> Result<Vec<String>, Phase2Error> {
+    let values = value
+        .as_array()
+        .ok_or_else(|| Phase2Error::invalid("phase2_capability_ref_array_invalid"))?;
+    if values.len() > 64 || (require_non_empty && values.is_empty()) {
+        return Err(Phase2Error::invalid("phase2_capability_ref_array_invalid"));
+    }
+    values
+        .iter()
+        .map(|value| {
+            let value = value
+                .as_str()
+                .ok_or_else(|| Phase2Error::invalid("phase2_capability_ref_array_invalid"))?;
+            validate_capability_ref(value)?;
+            Ok(value.to_string())
+        })
+        .collect()
+}
+
+fn validate_capability_ref_array(
+    value: &Value,
+    require_non_empty: bool,
+) -> Result<(), Phase2Error> {
+    capability_ref_array(value, require_non_empty).map(|_| ())
+}
+
+fn validate_capability_ref(value: &str) -> Result<(), Phase2Error> {
+    const PREFIX: &str = "capability-ref://run/";
+    if validate_ref(value).is_ok() {
+        return Ok(());
+    }
+    let Some(suffix) = value.strip_prefix(PREFIX) else {
+        return Err(Phase2Error::invalid("phase2_capability_ref_invalid"));
+    };
+    if suffix.len() < 3
+        || suffix.len() > 128
+        || !suffix.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | ':' | '-')
+        })
+    {
+        return Err(Phase2Error::invalid("phase2_capability_ref_invalid"));
+    }
+    Ok(())
+}
+
 fn unique_and_disjoint(left: &[String], right: &[String]) -> bool {
     let left_set: HashSet<&str> = left.iter().map(String::as_str).collect();
     let right_set: HashSet<&str> = right.iter().map(String::as_str).collect();
@@ -1990,7 +2062,7 @@ mod tests {
             "checkpointRef": "checkpoint.sbx10.control",
             "expectedSourceSandboxRef": "sandbox.sbx10.control",
             "expectedSourceResourceGeneration": 7,
-            "sourceCapabilityRefs": ["capability.sbx10.source"]
+            "sourceCapabilityRefs": ["capability-ref://run/source-sbx10"]
         })
     }
 
@@ -2007,7 +2079,7 @@ mod tests {
             "destinationSandboxRef": "sandbox.sbx10.control.restore",
             "expectedSourceResourceGeneration": 7,
             "admittedServiceRefs": ["service.agent-runtime"],
-            "sourceCapabilityRefs": ["capability.sbx10.source"]
+            "sourceCapabilityRefs": ["capability-ref://run/source-sbx10"]
         })
     }
 
@@ -2141,7 +2213,7 @@ mod tests {
                 "sourceResourceGeneration": 7,
                 "forkSandboxRef": "sandbox.sbx10.control.fork",
                 "forkResourceGeneration": 1,
-                "sourceCapabilityRefs": ["capability.sbx10.source"],
+                "sourceCapabilityRefs": ["capability-ref://run/source-sbx10"],
                 "forkCapabilityRefs": ["capability.sbx10.fork"],
                 "grantPolicy": "mint_fresh",
                 "cleanupObligationRef": "cleanup.sbx10.fork",
@@ -2162,7 +2234,7 @@ mod tests {
                 "restoredResourceGeneration": 8,
                 "admittedServiceRefs": ["service.agent-runtime"],
                 "restartedServiceRefs": ["service.agent-runtime"],
-                "sourceCapabilityRefs": ["capability.sbx10.source"],
+                "sourceCapabilityRefs": ["capability-ref://run/source-sbx10"],
                 "restoredCapabilityRefs": ["capability.sbx10.restore"],
                 "grantPolicy": "mint_fresh",
                 "processSessionContinuity": "discontinuous",
@@ -2531,7 +2603,7 @@ mod tests {
                 assert_eq!(generation, 7);
                 assert_eq!(command_ref, "command.sbx10.control.fork");
                 assert_eq!(checkpoint_ref, "checkpoint.sbx10.control");
-                assert_eq!(source_grants, ["capability.sbx10.source"]);
+                assert_eq!(source_grants, ["capability-ref://run/source-sbx10"]);
                 Ok(managed_sandbox_runtime::CheckpointForkContext {
                     schema: "openagents.managed_sandbox_phase2_fork_context.v1",
                     owner_ref: owner.to_string(),
@@ -2635,7 +2707,7 @@ mod tests {
                 assert_eq!(command_ref, "command.sbx10.control.restore");
                 assert_eq!(checkpoint_ref, "checkpoint.sbx10.control");
                 assert_eq!(generation, 7);
-                assert_eq!(source, ["capability.sbx10.source"]);
+                assert_eq!(source, ["capability-ref://run/source-sbx10"]);
                 Ok(managed_sandbox_runtime::CheckpointRestoreContext {
                     schema: "openagents.managed_sandbox_phase2_restore_context.v1",
                     owner_ref: owner.to_string(),
@@ -2756,6 +2828,33 @@ mod tests {
             .unwrap()
             .contains("Users"));
         fs::remove_dir_all(refused_root).unwrap();
+
+        let classified_root = temp_dir("classified-refusal");
+        let classified_driver = classified_root.join("driver.sh");
+        fs::write(
+            &classified_driver,
+            "#!/bin/sh\ncat >/dev/null\nprintf '%s' '{\"schemaVersion\":\"openagents.managed_sandbox_phase2_driver_error.v1\",\"reasonRef\":\"guest_checkpoint_cleanup_failed\"}'\nexit 2\n",
+        )
+        .unwrap();
+        fs::set_permissions(&classified_driver, fs::Permissions::from_mode(0o700)).unwrap();
+        let classified = execute_with_driver(
+            &classified_driver,
+            request(ManagedSandboxPhase2Action::VerifyCheckpoint),
+            Duration::from_secs(2),
+        )
+        .unwrap_err();
+        assert_eq!(
+            classified.reason_ref,
+            "phase2_driver_guest_checkpoint_cleanup_failed"
+        );
+        fs::remove_dir_all(classified_root).unwrap();
+
+        assert_eq!(
+            driver_refusal_reason(
+                br#"{"schemaVersion":"openagents.managed_sandbox_phase2_driver_error.v1","reasonRef":"private /Users/owner"}"#,
+            ),
+            "phase2_driver_refused"
+        );
     }
 
     fn temp_dir(label: &str) -> std::path::PathBuf {

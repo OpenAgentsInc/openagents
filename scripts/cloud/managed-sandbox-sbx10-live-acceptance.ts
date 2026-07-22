@@ -76,6 +76,18 @@ const previewHtml =
   "<!doctype html><title>SBX-10 private preview</title><main>checkpoint fork verified</main>";
 const previewPath = "/workspace/.openagents/preview.html";
 const guestPreviewPath = "workspace/.openagents/preview.html";
+const repositoryPostImageDigest = digest(
+  JSON.stringify([
+    { mode: 493, path: ".openagents", type: "directory" },
+    {
+      digest: digest(previewHtml),
+      mode: 420,
+      path: ".openagents/preview.html",
+      size: Buffer.byteLength(previewHtml),
+      type: "file",
+    },
+  ]),
+);
 const requestedAt = now();
 const retainedUntil = new Date(Date.now() + 24 * 60 * 60 * 1_000).toISOString();
 const capabilityExpiresAt = new Date(Date.now() + 15 * 60 * 1_000).toISOString();
@@ -390,7 +402,7 @@ try {
       sourceToolchainDigest: toolchainDigest,
       repositoryRef: "repository.openagents",
       repositoryRevisionRef: `commit.${sourceRevision}`,
-      repositoryPostImageDigest: digest(`${sourceRevision}|${previewHtml}`),
+      repositoryPostImageDigest,
       formatRef: "format.sbx.content-tar.v1",
       retainedUntil,
       stopRef: ref("stop"),

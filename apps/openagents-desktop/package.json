@@ -88,7 +88,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "typecheck:managed-sandbox-live": "tsc -p tsconfig.managed-sandbox-live.json --noEmit",
     "verify": "pnpm run typecheck && pnpm run test && pnpm run build && OPENAGENTS_DESKTOP_SMOKE=1 pnpm run smoke && pnpm run smoke:react",
-    "check:afs-boundaries": "node --import tsx ../../scripts/check-afs-boundaries.ts"
+    "check:afs-boundaries": "node --import tsx ../../scripts/check-afs-boundaries.ts",
+    "headless-host": "node --import tsx scripts/headless-host-cli.ts"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.172",
