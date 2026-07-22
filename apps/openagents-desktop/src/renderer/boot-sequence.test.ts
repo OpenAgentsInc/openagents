@@ -160,6 +160,52 @@ describe("boot sequence agent scan", () => {
     expect(agents.filter((agent) => agent.status === "available")).toHaveLength(8)
   })
 
+  test("host-run harness: lanes (Goose/OpenCode/Pi) enumerate data-drivenly with honest status (#9183 Part 2)", () => {
+    // The seven-agents Part 2 lanes use the `harness:` prefix (the #9167
+    // host-run SDK-harness family), distinct from the `acp:` trusted peers. The
+    // data-driven roster picks them up with no per-peer branch: detected
+    // Goose/OpenCode read available with their model; detection-only Pi reads
+    // unavailable with its honest reason.
+    const agents = projectBootSequenceAgents(
+      withState({
+        harnessLanes: { claude: { available: true, reason: null }, codex: { available: true, reason: null } },
+        providerLaneCapabilities: [
+          lane({ laneRef: "codex-local", provider: "codex" }),
+          lane({ laneRef: "claude-local", provider: "claude", displayName: "Claude Code" }),
+          lane({ laneRef: "acp:grok-cli", provider: "grok", displayName: "Grok CLI", models: ["grok-4"] }),
+          lane({ laneRef: "acp:cursor-agent", provider: "cursor", displayName: "Cursor Agent CLI", models: ["cursor-auto"] }),
+          lane({ laneRef: "harness:goose", provider: "goose", displayName: "Goose", models: ["goose-configured"] }),
+          lane({ laneRef: "harness:opencode", provider: "opencode", displayName: "OpenCode", models: ["opencode-configured"] }),
+          lane({
+            laneRef: "harness:pi",
+            provider: "pi",
+            displayName: "Pi",
+            models: ["pi-configured"],
+            admission: "quarantined",
+            reason: "Pi is not installed, and Pi runs in-process; the desktop has no Pi session-factory host seam yet (#9183).",
+          }),
+        ],
+        appleFmBoot: { status: "available", detail: "apple-fm-3b", testInference: "I am online." },
+      }),
+    )
+    expect(agents.map((agent) => agent.label)).toEqual([
+      "Codex",
+      "Claude Code",
+      "Grok",
+      "Cursor",
+      "Goose",
+      "OpenCode",
+      "Pi",
+      "Apple FM",
+    ])
+    expect(agents.find((agent) => agent.id === "goose")?.status).toBe("available")
+    expect(agents.find((agent) => agent.id === "goose")?.detail).toBe("goose-configured")
+    expect(agents.find((agent) => agent.id === "opencode")?.status).toBe("available")
+    const pi = agents.find((agent) => agent.id === "pi")
+    expect(pi?.status).toBe("unavailable")
+    expect(pi?.detail?.includes("in-process")).toBe(true)
+  })
+
   test("Apple FM reflects live discovery: unprobed → checking, ready → available with its test inference", () => {
     const unprobed = projectBootSequenceAgents(base).find((agent) => agent.id === "apple-fm")
     expect(unprobed?.status).toBe("checking")

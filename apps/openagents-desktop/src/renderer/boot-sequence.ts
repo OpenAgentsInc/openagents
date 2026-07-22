@@ -14,10 +14,11 @@ import type { DesktopShellState, HarnessLaneAvailability } from "./shell.ts"
  * authority: an agent is "available" only when its lane reports it can actually
  * run a turn.
  *
- * The ACP roster is DATA-DRIVEN (#9183): rather than a hardcoded four lines,
- * the scan enumerates the `acp:`-prefixed lanes the shell projects, so an
- * admitted Cursor (or a future admitted OpenCode/Goose/Pi) appears with honest
- * status the moment its lane is published — no per-peer edit here. Grok remains
+ * The peer roster is DATA-DRIVEN (#9183): rather than a hardcoded four lines,
+ * the scan enumerates the `acp:` trusted-peer lanes AND the `harness:` host-run
+ * SDK-harness lanes (#9167 — OpenCode, Goose, Pi) the shell projects, so an
+ * admitted Cursor or a newly-wired harness lane appears with honest status the
+ * moment its lane is published — no per-peer edit here. Grok remains
  * the flagship ACP target that always shows a scan line, so the panel reads
  * "checking", never a premature "not connected", while discovery is still in
  * flight (owner directive 2026-07-20). Apple FM is listed as the on-device
@@ -109,12 +110,18 @@ export const projectBootSequenceAgents = (
       ? acpLaneStatus(grokCap)
       : discoveryOngoing ? "checking" : "unavailable"
 
-  // Every OTHER admitted/known ACP peer lane the shell projects, in the order
-  // it arrives. This is the data-driven roster (#9183): an admitted Cursor —
-  // and any future admitted OpenCode/Goose/Pi — shows up here with honest
-  // status, with no per-peer branch in this projection.
-  const additionalAcpLines = state.providerLaneCapabilities
-    .filter((lane) => lane.laneRef.startsWith("acp:") && lane.provider !== "grok")
+  // Every OTHER admitted/known peer lane the shell projects, in the order it
+  // arrives. This is the data-driven roster (#9183): an admitted Cursor (an
+  // `acp:` trusted peer) and the host-run SDK-harness lanes (`harness:` —
+  // OpenCode, Goose, Pi, #9167 family) each show up here with honest status,
+  // with no per-peer branch in this projection. Grok is excluded because it is
+  // special-cased above as the flagship line that always shows.
+  const additionalPeerLines = state.providerLaneCapabilities
+    .filter(
+      (lane) =>
+        (lane.laneRef.startsWith("acp:") || lane.laneRef.startsWith("harness:")) &&
+        lane.provider !== "grok",
+    )
     .map(acpLaneLine)
 
   return [
@@ -151,7 +158,7 @@ export const projectBootSequenceAgents = (
             ? "checking…"
             : "not connected",
     },
-    ...additionalAcpLines,
+    ...additionalPeerLines,
     {
       id: "apple-fm",
       label: "Apple FM",

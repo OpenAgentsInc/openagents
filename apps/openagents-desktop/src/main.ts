@@ -185,6 +185,10 @@ import {
   nativeLaneAuthenticationFromAvailability,
   type ProviderLaneRegistryEntry,
 } from "./provider-lane-registry.ts"
+// Seven-agents Part 2 (#9183): host-run SDK-harness lanes (Goose, OpenCode, Pi).
+import { GOOSE_LANE_REF, makeGooseLane } from "./goose-lane.ts"
+import { OPENCODE_LANE_REF, makeOpencodeLane } from "./opencode-local-runtime.ts"
+import { PI_LANE_REF, makePiLane } from "./pi-local-runtime.ts"
 import {
   McpConfigAddChannel,
   McpConfigListChannel,
@@ -4914,6 +4918,10 @@ ipcMain.handle(ClaudeLocalStartChannel, async (event, value: unknown) => {
   if (laneRef === "claude-local") return laneDispatcher.dispatchTurn(claudeLocalLane, request, event.sender)
   if (laneRef === "acp:grok-cli") return laneDispatcher.dispatchTurn(grokAcpClaudeEventLane, request, event.sender)
   if (laneRef === "acp:cursor-agent") return laneDispatcher.dispatchTurn(cursorAcpClaudeEventLane, request, event.sender)
+  // Seven-agents Part 2 (#9183): host-run SDK-harness lanes.
+  if (laneRef === GOOSE_LANE_REF) return laneDispatcher.dispatchTurn(gooseHarness.lane, request, event.sender)
+  if (laneRef === OPENCODE_LANE_REF) return laneDispatcher.dispatchTurn(opencodeHarness.lane, request, event.sender)
+  if (laneRef === PI_LANE_REF) return laneDispatcher.dispatchTurn(piHarness.lane, request, event.sender)
   return { ok: false, error: "This thread is assigned to a different provider lane." }
 })
 
@@ -4955,7 +4963,9 @@ ipcMain.handle(CodexLocalInterruptChannel, (_event, value: unknown) => {
     ? false
     : codexLocal.interrupt(request.turnRef) ||
       grokAcpDriver.interrupt(request.turnRef) ||
-      cursorAcpDriver.interrupt(request.turnRef)
+      cursorAcpDriver.interrupt(request.turnRef) ||
+      gooseHarness.interrupt(request.turnRef) ||
+      opencodeHarness.interrupt(request.turnRef)
 })
 ipcMain.handle(CodexLocalSteerTurnChannel, async (_event, value: unknown) => {
   const request = decodeClaudeLocalQueueFollowupRequest(value)
@@ -5370,12 +5380,27 @@ const cursorAcpClaudeEventLane: ProviderLane<null> = {
   eventChannel: ClaudeLocalEventChannel,
 }
 
+// Seven-agents Part 2 (#9183): the HOST-RUN SDK-harness lanes (the #9167
+// built-in-harness family). Goose (`goose acp` stdio) and OpenCode
+// (`opencode serve` HTTP/SSE) run REAL turns through their SDK adapters; Pi is
+// detection-only until its in-process host session-factory seam exists. All
+// three project into providerLaneEntries() and, via Part 1, the boot roster.
+// They emit the frozen claude-local envelope over ClaudeLocalEventChannel (the
+// same channel the ACP peer lanes use), so a selected thread streams identically
+// regardless of which built-in harness was selected before the registry switch.
+const gooseHarness = makeGooseLane({ resolveWorkspace: resolveDesktopLocalWorkspaceRoot })
+const opencodeHarness = makeOpencodeLane({ resolveWorkspace: resolveDesktopLocalWorkspaceRoot })
+const piHarness = makePiLane({})
+
 const providerLaneCapabilityByRef = (laneRef: string) =>
   laneRef === "codex-local" ? codexLocalLane.capabilities()
     : laneRef === "claude-local" ? claudeLocalLane.capabilities()
       : laneRef === "acp:grok-cli" ? grokAcpLane.capabilities()
         : laneRef === "acp:cursor-agent" ? cursorAcpLane.capabilities()
-          : null
+          : laneRef === GOOSE_LANE_REF ? gooseHarness.lane.capabilities()
+            : laneRef === OPENCODE_LANE_REF ? opencodeHarness.lane.capabilities()
+              : laneRef === PI_LANE_REF ? piHarness.lane.capabilities()
+                : null
 
 // Bug #8998: nativeEntries previously sourced `authentication` from the
 // passive `providerLaneAuthentication` Map, which is only ever populated by
@@ -5445,10 +5470,45 @@ const providerLaneEntries = async (): Promise<ReadonlyArray<ProviderLaneRegistry
       capabilities: { ...capabilities, admission, reason },
     }
   }
+  // Seven-agents Part 2 (#9183): host-run SDK-harness lane entries. Admission is
+  // detection-gated live evidence: a lane is `admitted`/`ready` only when its
+  // binary probe (Goose/OpenCode) succeeds — never a dead card. Pi is always
+  // `quarantined` with an honest reason until its in-process host seam exists.
+  const harnessLaneEntry = async (harness: Readonly<{
+    lane: ProviderLane<null>
+    availability: () => Promise<
+      | Readonly<{ state: "available"; models: ReadonlyArray<string> }>
+      | Readonly<{ state: "unavailable"; reason: string }>
+    >
+  }>): Promise<ProviderLaneRegistryEntry> => {
+    const report = harness.lane.capabilities()
+    const capabilities = projectProviderLaneCapabilities(report)
+    const availability = await harness.availability()
+    const detected = availability.state === "available"
+    const reason = detected ? capabilities.reason : availability.reason
+    const admission = detected ? capabilities.admission : "quarantined"
+    const authentication = detected ? ("ready" as const) : ("missing" as const)
+    return {
+      laneRef: report.laneRef,
+      provider: report.provider,
+      profileRef: report.policy.profileRef,
+      configuration: detected ? "configured" : "unconfigured",
+      authentication,
+      admission,
+      reason,
+      capabilities: { ...capabilities, admission, reason },
+    }
+  }
+  const harnessEntries = await Promise.all([
+    harnessLaneEntry(gooseHarness),
+    harnessLaneEntry(opencodeHarness),
+    harnessLaneEntry(piHarness),
+  ])
   return [
     ...nativeEntries,
     acpPeerEntry(grokAcpLane),
     acpPeerEntry(cursorAcpLane),
+    ...harnessEntries,
   ]
 }
 

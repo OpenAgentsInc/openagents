@@ -364,7 +364,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         statement:
           "When the app opens, show a neutral terminal-style scan (monospace, small, faded) that checks which agents are available — Codex, Claude Code, and every admitted Agent Client Protocol peer (Grok, Cursor, and any newly-wired peer), plus the on-device Apple FM model — and keep track of the discovered harnesses so the system knows it can use them.",
         authorityBoundary:
-          "The Boot Sequence is a PROJECTION over the discovery state the shell owns: harnessLanes for the built-in codex/claude transports, providerLaneCapabilities for the ACP peer lanes, and appleFmBoot for the native Apple FM bridge. The ACP roster is data-driven (#9183): the scan enumerates the acp: lanes the shell projects, so an admitted Cursor — or any future admitted OpenCode/Goose/Pi — appears with honest status the moment its lane is published, and Grok is the flagship target that always shows a scan line so the panel reads 'checking' rather than a premature 'not connected' while discovery is in flight. Apple FM is listed as the on-device model it is, not conflated with the ACP harness set. It invents no discovery authority — an agent is 'available' only when its lane/bridge reports it can run a turn, 'checking' while probing, otherwise 'unavailable'. On open the renderer boot orchestrator probes the Apple FM native bridge (AFM-6) and, only when it reports ready, runs ONE bounded test inference and shows the bounded reply — proving the on-device model actually answers. The surface renders in the empty conversation, reflects live state as lanes and the Apple FM probe resolve, and communicates results without granting any run, spend, or admission authority of its own.",
+          "The Boot Sequence is a PROJECTION over the discovery state the shell owns: harnessLanes for the built-in codex/claude transports, providerLaneCapabilities for the peer lanes, and appleFmBoot for the native Apple FM bridge. The peer roster is data-driven (#9183): the scan enumerates BOTH the acp: trusted-peer lanes and the harness: host-run SDK-harness lanes (#9167 — OpenCode, Goose, Pi) the shell projects, so an admitted Cursor or a newly-wired harness lane appears with honest status the moment its lane is published, and Grok is the flagship target that always shows a scan line so the panel reads 'checking' rather than a premature 'not connected' while discovery is in flight. Apple FM is listed as the on-device model it is, not conflated with the harness set. It invents no discovery authority — an agent is 'available' only when its lane/bridge reports it can run a turn, 'checking' while probing, otherwise 'unavailable'. On open the renderer boot orchestrator probes the Apple FM native bridge (AFM-6) and, only when it reports ready, runs ONE bounded test inference and shows the bounded reply — proving the on-device model actually answers. The surface renders in the empty conversation, reflects live state as lanes and the Apple FM probe resolve, and communicates results without granting any run, spend, or admission authority of its own.",
         evidenceRefs: [
           "apps/openagents-desktop/src/renderer/boot-sequence.ts",
           "apps/openagents-desktop/src/renderer/react-boot-sequence.tsx",
@@ -381,7 +381,7 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
             mode: "unit",
             ref: "apps/openagents-desktop/src/renderer/boot-sequence.test.ts",
             description:
-              "Proves the scan projects the Codex/Claude Code/ACP-peers/Apple FM order, maps a verifying lane to 'checking', a ready lane to 'available' with its model, an admitted Grok ACP lane to 'available', a quarantined lane to 'unavailable', enumerates the acp: roster data-drivenly so an admitted Cursor (and up to the full seven-harness set) appears with its short name and model while preserving the four-line Codex/Claude/Grok/Apple FM baseline when only those exist (#9183), reflects Apple FM live discovery (unprobed → 'checking', ready → 'available' with its bounded test inference, else 'unavailable'), and derives ready-count/scanning from those lines.",
+              "Proves the scan projects the Codex/Claude Code/peers/Apple FM order, maps a verifying lane to 'checking', a ready lane to 'available' with its model, an admitted Grok ACP lane to 'available', a quarantined lane to 'unavailable', enumerates the acp: AND harness: roster data-drivenly so an admitted Cursor and the host-run harness lanes (Goose/OpenCode/Pi, up to the full seven-harness set) appear with their short name and model/reason while preserving the four-line Codex/Claude/Grok/Apple FM baseline when only those exist (#9183), reflects Apple FM live discovery (unprobed → 'checking', ready → 'available' with its bounded test inference, else 'unavailable'), and derives ready-count/scanning from those lines.",
           },
           {
             id: "boot_sequence.renders_in_empty_conversation",
@@ -394,6 +394,43 @@ export const openAgentsDesktopUxContractRegistry: BehaviorContractRegistryDocume
         ],
         verification:
           "Desktop boot-sequence unit, React workbench, and Electron boundary suites plus Desktop typecheck.",
+      },
+      {
+        contractId: "openagents_desktop.chat.host_run_harness_lanes.v1",
+        state: "enforced",
+        surface: "openagents-desktop",
+        productArea: "provider lanes / host-run SDK harnesses",
+        enforcementTier: "test-sweep",
+        blockerRefs: [],
+        source: { channel: "issue", statedBy: "owner", statedOn: "2026-07-22" },
+        statement:
+          "OpenCode, Goose, and Pi are wired into the desktop as host-run SDK-harness lanes so they appear in the agent roster and, where runnable, take turns. A lane reports 'available' only when it can actually run a turn: Goose is available when the goose binary is detected (it runs 'goose acp' over stdio through the SDK adapter), OpenCode is available when the opencode binary is detected (it runs 'opencode serve' HTTP/SSE through the SDK adapter), and Pi stays unavailable with an honest reason because it is an in-process library with no desktop host session-factory seam yet. The desktop NEVER installs these CLIs and NEVER changes PATH — it only DETECTS the binary (a read-only PATH probe plus a version check) and, when absent, the roster shows an honest 'unavailable' reason that points the owner to the official distribution.",
+        authorityBoundary:
+          "These lanes are the built-in-harness-lane family (#9167), host-run through the SDK AgentHarness adapters, distinct from the acp: trusted-peer-profile family (Grok, Cursor) and the native codex-local/claude-local transports. Each is a plain ProviderLane<null> the shared dispatcher folds exactly like the ACP lanes — no private dispatch, journal, or renderer projection. Admission is detection-gated LIVE evidence surfaced in providerLaneEntries(): a lane is admitted/ready only when its binary probe succeeds, never a dead card, and Pi is always quarantined until its host seam exists. Turns run owner-local against the developer's live provider config; the lanes never run a login flow, extract credentials, mutate PATH, or run a copied install command. They grant no run, spend, or public-claim authority of their own.",
+        evidenceRefs: [
+          "apps/openagents-desktop/src/harness-binary-probe.ts",
+          "apps/openagents-desktop/src/harness-provider-lane.ts",
+          "apps/openagents-desktop/src/harness-sdk-turn-runner.ts",
+          "apps/openagents-desktop/src/goose-lane.ts",
+          "apps/openagents-desktop/src/opencode-local-runtime.ts",
+          "apps/openagents-desktop/src/pi-local-runtime.ts",
+          "apps/openagents-desktop/src/goose-lane.test.ts",
+          "apps/openagents-desktop/src/opencode-local-runtime.test.ts",
+          "apps/openagents-desktop/src/pi-local-runtime.test.ts",
+          "apps/openagents-desktop/src/harness-sdk-turn-runner.test.ts",
+        ],
+        oracles: [
+          {
+            id: "host_run_harness_lanes.available_only_when_runnable",
+            kind: "bun-test",
+            mode: "unit",
+            ref: "apps/openagents-desktop/src/goose-lane.test.ts",
+            description:
+              "Proves Goose/OpenCode report 'available' only when their binary probe detects the CLI and 'unavailable' with an honest reason when it is absent, that the probe never mutates PATH or runs an install, and that a detected lane runs one real turn through the SDK adapter lowering onto the frozen renderer envelope, while Pi is detection-only and always unavailable with its precise remaining-seam reason.",
+          },
+        ],
+        verification:
+          "Desktop harness-lane unit suites (goose/opencode/pi/binary-probe/sdk-turn-runner) plus boot-sequence roster and Desktop typecheck.",
       },
       {
         contractId: "openagents_desktop.window.launch_fills_work_area.v1",
