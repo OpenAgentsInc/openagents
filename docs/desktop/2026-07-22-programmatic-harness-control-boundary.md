@@ -118,6 +118,22 @@ renderer. It drives turns through the same dispatch path the Desktop uses:
 The gated e2e `HEADLESS_HOST_LIVE=1 vitest run tests/headless-host-codex.e2e.test.ts`
 runs it through the full production path with no renderer.
 
+The operator command is `pnpm --dir apps/openagents-desktop run headless-host`
+(`scripts/headless-host-cli.ts`):
+
+```sh
+# a real owner-local Codex turn through the production host (spends capacity):
+pnpm --dir apps/openagents-desktop run headless-host -- codex-turn \
+  --message "hey who are you" [--model gpt-5.6-terra] [--sandbox read-only] [--private]
+
+# start a Full Auto run (one durable run record, stable ref):
+pnpm --dir apps/openagents-desktop run headless-host -- full-auto-start \
+  --objective "Implement #NNNN and run the named verification."
+```
+
+It prints the public-safe receipt on stdout. Raw answer text and local
+paths never appear there. `--private` adds the private receipt on stderr.
+
 `deriveHeadlessReceipts` (`src/desktop-headless-receipt.ts`) turns a host
 turn into a public-safe receipt (bounded facts, no raw text or paths) and a
 private receipt (full frames + answer), with `screenHeadlessTurn` /
