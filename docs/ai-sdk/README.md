@@ -11,16 +11,18 @@ npm install @openagentsinc/ai@0.2.0-rc.1
 
 ## Pinned train (OpenAgents monorepo)
 
-Current consumer pin for OpenAgents Desktop RLM (OPENRLM-SDK #9154):
+Current consumer pin for OpenAgents Desktop (train 0.2.0-rc.5, #9161/#9163):
 
-| Package | Version | Role |
-| --- | --- | --- |
-| `@openagentsinc/ai` | `0.2.0-rc.1` | umbrella (`./rlm` re-exports) |
-| `@openagentsinc/rlm` | `0.2.0-rc.1` | first-class RLM engine (Tier D + Tier S) |
-| `@openagentsinc/history-corpus` | `0.2.0-rc.1` | history adapter + `history_recall` host tool |
-| `@openagentsinc/agent-harness-contract` | `0.2.0-rc.1` | L2–L5 harness / host-tool wire |
-| `@openagentsinc/agent-runtime-schema` | `0.2.0-rc.1` | L1 vocabulary |
-| `@openagentsinc/ai-sdk-sandbox-local` | `0.1.3-rc.1` | L3 interop (unchanged pin until next train) |
+| Package                                 | Version      | Role                                           |
+| --------------------------------------- | ------------ | ---------------------------------------------- |
+| `@openagentsinc/ai`                     | `0.2.0-rc.5` | umbrella (`./rlm` re-exports)                  |
+| `@openagentsinc/rlm`                    | `0.2.0-rc.5` | first-class RLM engine (Tier D + Tier S)       |
+| `@openagentsinc/history-corpus`         | `0.2.0-rc.5` | history adapter + `history_recall` host tool   |
+| `@openagentsinc/agent-harness-contract` | `0.2.0-rc.5` | L2–L5 harness / host-tool wire                 |
+| `@openagentsinc/agent-runtime-schema`   | `0.2.0-rc.5` | L1 vocabulary                                  |
+| `@openagentsinc/ai-sdk-sandbox-local`   | `0.2.0-rc.5` | L3 interop                                     |
+| `@openagentsinc/dse`                    | `0.2.0-rc.5` | typed model programs (single authority, #9163) |
+| `@openagentsinc/graph-corpus`           | `0.2.0-rc.5` | derived graph corpora (OA-GMEM consumption)    |
 
 ## OpenAgents-owned adapters (desktop)
 

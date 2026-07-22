@@ -14942,7 +14942,7 @@
     },
     {
       "path": "docs/ai-sdk/README.md",
-      "sha256": "d187677438846a9bf90595badd7e984a836c277dafe08b17d99b619d28dd0aa0",
+      "sha256": "9039160ec2aab06c0aa096b9b93bf9b513a9e598d771555f6c6ba043128bdeb0",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -48230,28 +48230,6 @@
     {
       "path": "packages/cursor-agent-runtime/README.md",
       "sha256": "c75e8b334cf882d4702a481ed551394388467ea5c31098b3bb08514c775f1160",
-      "reason": "Final review of a converted document",
-      "profile": {
-        "ste_mode": "descriptive",
-        "risk": "legacy",
-        "source": null,
-        "replacement": null,
-        "ste_audience": "agent",
-        "ste_agent_compact_revision": "openagents-agent-compact-v1",
-        "ste_accepted_screening_rules": [
-          "STE-2.4",
-          "STE-3.6",
-          "STE-5.1",
-          "STE-8.2"
-        ],
-        "ste_status": "inspected",
-        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-        "ste_reviewed_at": "2026-07-19T22:00:00Z"
-      }
-    },
-    {
-      "path": "packages/dse/README.md",
-      "sha256": "cc761fb998b48fdc23f1f272130dbe131f6db6f8e2805dea84c42c55e3417995",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

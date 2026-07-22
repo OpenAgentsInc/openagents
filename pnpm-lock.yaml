@@ -525,11 +525,14 @@ importers:
         specifier: workspace:*
         version: link:../../packages/cursor-agent-runtime
       '@openagentsinc/dse':
-        specifier: workspace:*
-        version: link:../../packages/dse
+        specifier: 0.2.0-rc.5
+        version: 0.2.0-rc.5
       '@openagentsinc/environment-auth':
         specifier: workspace:*
         version: link:../../packages/environment-auth
+      '@openagentsinc/graph-corpus':
+        specifier: 0.2.0-rc.5
+        version: 0.2.0-rc.5
       '@openagentsinc/grok-harness':
         specifier: workspace:*
         version: link:../../packages/grok-harness
@@ -1857,19 +1860,6 @@ importers:
       '@openagentsinc/agent-stdio-transport':
         specifier: workspace:*
         version: link:../agent-stdio-transport
-    devDependencies:
-      typescript:
-        specifier: 'catalog:'
-        version: 6.0.3
-
-  packages/dse:
-    dependencies:
-      '@openagentsinc/agent-runtime-schema':
-        specifier: 0.1.3-rc.1
-        version: 0.1.3-rc.1
-      effect:
-        specifier: 4.0.0-beta.94
-        version: 4.0.0-beta.94
     devDependencies:
       typescript:
         specifier: 'catalog:'
