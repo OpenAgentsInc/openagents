@@ -19373,6 +19373,28 @@
       }
     },
     {
+      "path": "docs/cloud/2026-07-21-sbx09-independent-admission-disposition.md",
+      "sha256": "2c66ebdc2e8ffc6af7a5b4320f2b8104829de01fc4597590e8180d0206556013",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/cloud/2026-07-21-sbx09-independent-verifier-packet.md",
       "sha256": "fedeb83676eb81113cc64f1c95b54ca798b3a6e8e16554045cc655b004db7dfa",
       "reason": "Final review of a converted document",
@@ -50361,7 +50383,7 @@
     },
     {
       "path": "specs/openagents/managed-agent-sandboxes.assurance-spec.md",
-      "sha256": "73ce53d9ba9befd1e4747d9a158c56287cad1f76bb6c31d3b1e10f1ce62511c6",
+      "sha256": "e94b23c0ed5516f4926e17e7bac01129550515f1fc542a0bbded0e9ed54488df",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

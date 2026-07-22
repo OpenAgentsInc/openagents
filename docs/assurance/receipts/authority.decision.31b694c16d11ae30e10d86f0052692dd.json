@@ -1,0 +1,84 @@
+{
+  "action": "admit_assurance_revision_when_source_spec_allows_owner_designated_independent_reviewer",
+  "actor_role": "independent_reviewer",
+  "condition_results": [
+    {
+      "condition_ref": "condition.independence",
+      "result": "satisfied",
+      "statement": "Reviewer identity authority_delegated_independent_reviewer_grok_sbx09_2026_07_21 is a fresh clean session distinct from the obligation producer assurance_packet_producer_sbx09_9033; evidence was reproduced independently."
+    },
+    {
+      "condition_ref": "condition.verification",
+      "result": "satisfied",
+      "statement": "Reproduced 13 executable oracle criteria GREEN; every armed local-unit oracle passed and no criterion claims a tier above what reproduces. Smoke-gated, receipt-backed, and designed-only criteria stay unobserved and are not claimed observed."
+    },
+    {
+      "condition_ref": "condition.redaction",
+      "result": "satisfied",
+      "statement": "Receipt carries only public-safe counts, refs, and digests; no raw oracle output, secrets, or private prompts."
+    }
+  ],
+  "evidence_refs": [
+    "specs/openagents/managed-agent-sandboxes.assurance-spec.md",
+    "docs/cloud/2026-07-21-sbx09-independent-verifier-packet.md",
+    "docs/cloud/2026-07-21-sbx09-independent-admission-disposition.md",
+    "docs/sol/evidence/2026-07-20-sbx09-live-acceptance.json"
+  ],
+  "grant_ref": "grant.independent_assurance",
+  "independence": {
+    "distinct": true,
+    "producer_ref": "assurance_packet_producer_sbx09_9033",
+    "reviewer_ref": "authority_delegated_independent_reviewer_grok_sbx09_2026_07_21",
+    "statement": "Independent reviewer session distinct from the packet producer; the executable evidence was reproduced, not trusted."
+  },
+  "outcome": "succeeded",
+  "profile_id": "openagents.owner-delegated-autonomy",
+  "profile_revision": 6,
+  "program_ref": "program.managed_agent_sandboxes",
+  "public_safety": {
+    "classification": "reviewed_public_safe",
+    "contains_raw_output": false
+  },
+  "receipt_ref": "authority.decision.31b694c16d11ae30e10d86f0052692dd",
+  "reproduction_summary": {
+    "batches": [
+      {
+        "batch_id": "desktop-oracles",
+        "command": "./node_modules/.bin/vp test --run --root ../.. src/ide/managed-sandbox.test.ts",
+        "cwd": "apps/openagents-desktop",
+        "exit_code": 0,
+        "files": 1,
+        "ok": true,
+        "tests_passed": 6
+      },
+      {
+        "batch_id": "repo-oracles",
+        "command": "./apps/openagents-desktop/node_modules/.bin/vp test --run --root . apps/openagents-mobile/tests/mobile-managed-sandbox.test.ts apps/openagents.com/workers/api/src/managed-sandbox-box-v1-routes.test.ts apps/openagents.com/workers/api/src/sarah-managed-sandbox.test.ts packages/khala-sync-server/src/managed-sandbox-store.test.ts packages/managed-sandbox-contract/src/box-v1.test.ts packages/managed-sandbox-contract/src/lifecycle.test.ts packages/managed-sandbox-contract/src/schemas.test.ts",
+        "cwd": ".",
+        "exit_code": 0,
+        "files": 7,
+        "ok": true,
+        "tests_passed": 43
+      }
+    ],
+    "designed_only": 0,
+    "executable_criteria": 13,
+    "executable_failed": 0,
+    "executable_green": 13,
+    "receipt_backed": 0,
+    "smoke_gated": 0,
+    "total_criteria": 18
+  },
+  "schema_id": "openagents.authority_decision_receipt.v1",
+  "scope_notes": [
+    "Admission means this revision overclaims no evidence tier; it is not a claim that all live criteria pass or that production is enabled.",
+    "O1 full Box SDK independent matrix remained incomplete in this session after a local gcloud DNS fault during residue observation; producer boxCompatibility stays the prior live record and is not rounded up.",
+    "O2 native lifecycle, O3 isolation, O4 zero residue, and O5 production default-off posture were independently observed; O6 Sarah/Desktop remain producer-observed pending separate owner disposition where required.",
+    "This admission grants no production enablement, public-claim, promise-transition, or SBX-10 authority."
+  ],
+  "settled_at": "2026-07-22T00:22:23Z",
+  "started_at": "2026-07-22T00:21:26Z",
+  "target_digest": "sha256:12e204b90936af3981c2dd492a6049820938f907de82c0defa0736ee8764d9c8",
+  "target_ref": "specs/openagents/managed-agent-sandboxes.assurance-spec.md",
+  "trigger_ref": "issue.9033.independent_admission"
+}

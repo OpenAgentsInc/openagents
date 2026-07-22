@@ -4,17 +4,21 @@ assurance_spec_id: "assurance.openagents.managed.agent.sandboxes"
 assurance_revision: 4
 title: "OpenAgents Managed Agent Sandboxes AssuranceSpec"
 artifact_type: "product_assurance"
-lifecycle_state: "proposed"
+lifecycle_state: "admitted"
 author: "OpenAgents"
+admitted_by: "authority_delegated_independent_reviewer_grok_sbx09_2026_07_21"
+admitted_at: "2026-07-22T00:22:23Z"
+admitted_receipt_ref: "authority.decision.31b694c16d11ae30e10d86f0052692dd"
+admitted_receipt_path: "docs/assurance/receipts/authority.decision.31b694c16d11ae30e10d86f0052692dd.json"
 ---
 
 ## Assurance Objective
 
-This revision binds the producer-run SBX-09 staging observations without
-rounding them up to independent acceptance. Contract, staged-runtime, and live
-GCP rungs remain separate: designed proof is not executed proof, no fixture
-can satisfy a live gate, and producer evidence cannot satisfy an independent
-verifier boundary.
+This revision binds the producer-run SBX-09 staging observations and the later
+independent-reviewer reproduction without rounding evidence tiers. Contract,
+staged-runtime, and live GCP rungs remain separate: designed proof is not
+executed proof, no fixture can satisfy a live gate, and admission does not
+enable production, a public availability claim, or SBX-10.
 
 ## Subject
 
@@ -802,7 +806,8 @@ A release operator remains bound to the existing product and release gates.
 ```assurancespec-authority
 {
   "admitted_roles": [
-    "operating_agent"
+    "operating_agent",
+    "owner_designated_independent_reviewer"
   ],
   "policy_state": "designed",
   "proposal_may_change_public_promises": false,
@@ -814,7 +819,8 @@ A release operator remains bound to the existing product and release gates.
     "release_operator"
   ],
   "verifier_roles": [
-    "independent_reviewer"
+    "independent_reviewer",
+    "owner_designated_independent_reviewer"
   ]
 }
 ```
