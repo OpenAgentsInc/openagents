@@ -447,7 +447,8 @@ where
     let source_resource_generation = number(command, "expectedSourceResourceGeneration")?;
     let command_ref = string(command, "commandRef")?.to_string();
     let checkpoint_ref = string(command, "checkpointRef")?.to_string();
-    let source_capability_refs = ref_array(value(command, "sourceCapabilityRefs")?, false)?;
+    let source_capability_refs =
+        capability_ref_array(value(command, "sourceCapabilityRefs")?, false)?;
     let runtime_context = prepare(
         &owner_ref,
         &tenant_ref,
@@ -550,7 +551,8 @@ where
     let command_ref = string(command, "commandRef")?.to_string();
     let checkpoint_ref = string(command, "checkpointRef")?.to_string();
     let checkpoint_source_generation = number(checkpoint, "sourceResourceGeneration")?;
-    let source_capability_refs = ref_array(value(command, "sourceCapabilityRefs")?, false)?;
+    let source_capability_refs =
+        capability_ref_array(value(command, "sourceCapabilityRefs")?, false)?;
     let runtime_context = prepare(
         &owner_ref,
         &tenant_ref,
@@ -1029,7 +1031,7 @@ fn validate_fork_command(command: &Map<String, Value>) -> Result<(), Phase2Error
     validate_ref(string(command, "checkpointRef")?)?;
     validate_ref(string(command, "expectedSourceSandboxRef")?)?;
     number(command, "expectedSourceResourceGeneration")?;
-    validate_ref_array(value(command, "sourceCapabilityRefs")?, false)
+    validate_capability_ref_array(value(command, "sourceCapabilityRefs")?, false)
 }
 
 fn validate_restore_command(command: &Map<String, Value>) -> Result<(), Phase2Error> {
@@ -1056,7 +1058,7 @@ fn validate_restore_command(command: &Map<String, Value>) -> Result<(), Phase2Er
     validate_ref(string(command, "destinationSandboxRef")?)?;
     number(command, "expectedSourceResourceGeneration")?;
     validate_ref_array(value(command, "admittedServiceRefs")?, false)?;
-    validate_ref_array(value(command, "sourceCapabilityRefs")?, false)
+    validate_capability_ref_array(value(command, "sourceCapabilityRefs")?, false)
 }
 
 fn validate_delete_command(command: &Map<String, Value>) -> Result<(), Phase2Error> {
@@ -1555,12 +1557,12 @@ fn validate_fork_result(
         number(result, "sourceResourceGeneration")?,
         "phase2_fork_source_scope_conflict",
     )?;
-    let source = ref_array(value(result, "sourceCapabilityRefs")?, false)?;
-    let expected_source = ref_array(value(command, "sourceCapabilityRefs")?, false)?;
+    let source = capability_ref_array(value(result, "sourceCapabilityRefs")?, false)?;
+    let expected_source = capability_ref_array(value(command, "sourceCapabilityRefs")?, false)?;
     if source != expected_source {
         return Err(Phase2Error::conflict("phase2_fork_source_grant_conflict"));
     }
-    let fork = ref_array(value(result, "forkCapabilityRefs")?, false)?;
+    let fork = capability_ref_array(value(result, "forkCapabilityRefs")?, false)?;
     if !unique_and_disjoint(&source, &fork)
         || string(result, "forkSandboxRef")? == string(result, "sourceSandboxRef")?
     {
@@ -1649,9 +1651,9 @@ fn validate_restore_result(
             "phase2_restore_service_scope_conflict",
         ));
     }
-    let source = ref_array(value(result, "sourceCapabilityRefs")?, false)?;
-    let expected_source = ref_array(value(command, "sourceCapabilityRefs")?, false)?;
-    let restored = ref_array(value(result, "restoredCapabilityRefs")?, false)?;
+    let source = capability_ref_array(value(result, "sourceCapabilityRefs")?, false)?;
+    let expected_source = capability_ref_array(value(command, "sourceCapabilityRefs")?, false)?;
+    let restored = capability_ref_array(value(result, "restoredCapabilityRefs")?, false)?;
     if source != expected_source || !unique_and_disjoint_right(&source, &restored) {
         return Err(Phase2Error::conflict("phase2_restore_grant_scope_conflict"));
     }
@@ -1841,6 +1843,54 @@ fn validate_ref_array(value: &Value, require_non_empty: bool) -> Result<(), Phas
     ref_array(value, require_non_empty).map(|_| ())
 }
 
+fn capability_ref_array(
+    value: &Value,
+    require_non_empty: bool,
+) -> Result<Vec<String>, Phase2Error> {
+    let values = value
+        .as_array()
+        .ok_or_else(|| Phase2Error::invalid("phase2_capability_ref_array_invalid"))?;
+    if values.len() > 64 || (require_non_empty && values.is_empty()) {
+        return Err(Phase2Error::invalid("phase2_capability_ref_array_invalid"));
+    }
+    values
+        .iter()
+        .map(|value| {
+            let value = value
+                .as_str()
+                .ok_or_else(|| Phase2Error::invalid("phase2_capability_ref_array_invalid"))?;
+            validate_capability_ref(value)?;
+            Ok(value.to_string())
+        })
+        .collect()
+}
+
+fn validate_capability_ref_array(
+    value: &Value,
+    require_non_empty: bool,
+) -> Result<(), Phase2Error> {
+    capability_ref_array(value, require_non_empty).map(|_| ())
+}
+
+fn validate_capability_ref(value: &str) -> Result<(), Phase2Error> {
+    const PREFIX: &str = "capability-ref://run/";
+    if validate_ref(value).is_ok() {
+        return Ok(());
+    }
+    let Some(suffix) = value.strip_prefix(PREFIX) else {
+        return Err(Phase2Error::invalid("phase2_capability_ref_invalid"));
+    };
+    if suffix.len() < 3
+        || suffix.len() > 128
+        || !suffix.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | ':' | '-')
+        })
+    {
+        return Err(Phase2Error::invalid("phase2_capability_ref_invalid"));
+    }
+    Ok(())
+}
+
 fn unique_and_disjoint(left: &[String], right: &[String]) -> bool {
     let left_set: HashSet<&str> = left.iter().map(String::as_str).collect();
     let right_set: HashSet<&str> = right.iter().map(String::as_str).collect();
@@ -2012,7 +2062,7 @@ mod tests {
             "checkpointRef": "checkpoint.sbx10.control",
             "expectedSourceSandboxRef": "sandbox.sbx10.control",
             "expectedSourceResourceGeneration": 7,
-            "sourceCapabilityRefs": ["capability.sbx10.source"]
+            "sourceCapabilityRefs": ["capability-ref://run/source-sbx10"]
         })
     }
 
@@ -2029,7 +2079,7 @@ mod tests {
             "destinationSandboxRef": "sandbox.sbx10.control.restore",
             "expectedSourceResourceGeneration": 7,
             "admittedServiceRefs": ["service.agent-runtime"],
-            "sourceCapabilityRefs": ["capability.sbx10.source"]
+            "sourceCapabilityRefs": ["capability-ref://run/source-sbx10"]
         })
     }
 
@@ -2163,7 +2213,7 @@ mod tests {
                 "sourceResourceGeneration": 7,
                 "forkSandboxRef": "sandbox.sbx10.control.fork",
                 "forkResourceGeneration": 1,
-                "sourceCapabilityRefs": ["capability.sbx10.source"],
+                "sourceCapabilityRefs": ["capability-ref://run/source-sbx10"],
                 "forkCapabilityRefs": ["capability.sbx10.fork"],
                 "grantPolicy": "mint_fresh",
                 "cleanupObligationRef": "cleanup.sbx10.fork",
@@ -2184,7 +2234,7 @@ mod tests {
                 "restoredResourceGeneration": 8,
                 "admittedServiceRefs": ["service.agent-runtime"],
                 "restartedServiceRefs": ["service.agent-runtime"],
-                "sourceCapabilityRefs": ["capability.sbx10.source"],
+                "sourceCapabilityRefs": ["capability-ref://run/source-sbx10"],
                 "restoredCapabilityRefs": ["capability.sbx10.restore"],
                 "grantPolicy": "mint_fresh",
                 "processSessionContinuity": "discontinuous",
@@ -2553,7 +2603,7 @@ mod tests {
                 assert_eq!(generation, 7);
                 assert_eq!(command_ref, "command.sbx10.control.fork");
                 assert_eq!(checkpoint_ref, "checkpoint.sbx10.control");
-                assert_eq!(source_grants, ["capability.sbx10.source"]);
+                assert_eq!(source_grants, ["capability-ref://run/source-sbx10"]);
                 Ok(managed_sandbox_runtime::CheckpointForkContext {
                     schema: "openagents.managed_sandbox_phase2_fork_context.v1",
                     owner_ref: owner.to_string(),
@@ -2657,7 +2707,7 @@ mod tests {
                 assert_eq!(command_ref, "command.sbx10.control.restore");
                 assert_eq!(checkpoint_ref, "checkpoint.sbx10.control");
                 assert_eq!(generation, 7);
-                assert_eq!(source, ["capability.sbx10.source"]);
+                assert_eq!(source, ["capability-ref://run/source-sbx10"]);
                 Ok(managed_sandbox_runtime::CheckpointRestoreContext {
                     schema: "openagents.managed_sandbox_phase2_restore_context.v1",
                     owner_ref: owner.to_string(),
