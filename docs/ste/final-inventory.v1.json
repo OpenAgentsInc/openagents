@@ -26314,6 +26314,28 @@
       }
     },
     {
+      "path": "docs/forge/2026-07-22-grasp-ecosystem-prior-art-addendum.md",
+      "sha256": "028b34709c6ced741c0e541bf7e93c80f9bc95a9b6ee0dfc03d35cdd9d8ad819",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/forge/2026-07-22-nostr-git-forge-github-replacement-audit.md",
       "sha256": "b6aa76a87cac2cfb58a8d2643a288d7a7f2486d0391c43139e0b33df5f76374d",
       "reason": "Immutable historical or evidence source data",
@@ -26328,11 +26350,12 @@
     {
       "path": "docs/forge/2026-07-22-nostr-git-server-effect-vs-rust-decision.md",
       "sha256": "a444c2558a2cb1604e0ec69f46d51834b5fc31ab42ffbd9102b1257062a0aab6",
-      "reason": "Final review of mutable first-party agent technical text",
+      "reason": "Final review of a converted document",
       "profile": {
-        "ste_status": "inspected",
-        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
         "ste_audience": "agent",
         "ste_agent_compact_revision": "openagents-agent-compact-v1",
         "ste_accepted_screening_rules": [
@@ -26340,7 +26363,10 @@
           "STE-3.6",
           "STE-5.1",
           "STE-8.2"
-        ]
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {
