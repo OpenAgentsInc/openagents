@@ -119,7 +119,7 @@ OpenAgents build or adoption:
   `clone` and `relays` tags. It may add its own curation, payment, or
   whitelist policy.
 - **Purgatory:** announcements, state events, and PR events "SHOULD be
-  accepted with message 'purgatory: won't be served until git data arrives'"
+  accepted with message `'purgatory: won't be served until git data arrives'`"
   and discarded after 30 minutes if the git data never arrives. Event truth
   and object truth are admitted together, not separately.
 - Pushes must match the latest signed state event, "respecting the recursive

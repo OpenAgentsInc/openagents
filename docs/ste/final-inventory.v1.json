@@ -26315,7 +26315,7 @@
     },
     {
       "path": "docs/forge/2026-07-22-grasp-ecosystem-prior-art-addendum.md",
-      "sha256": "028b34709c6ced741c0e541bf7e93c80f9bc95a9b6ee0dfc03d35cdd9d8ad819",
+      "sha256": "0c80d98279097df365fb63529b5378a6181e3146b38fa1734717722f42908b93",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -26333,6 +26333,18 @@
         "ste_status": "inspected",
         "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
         "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/forge/2026-07-22-hosted-forge-agent-services-rust-extension-analysis.md",
+      "sha256": "4d473c2781cc7a3b5b264ecb648de2595d9ca7c4261b8e4bb5b507e6f30078f6",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null,
+        "ste_status": "source-data"
       }
     },
     {
