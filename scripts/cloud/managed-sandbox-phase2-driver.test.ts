@@ -88,7 +88,7 @@ if (args[0] === "storage" && args[1] === "cp") {
   );
   writeFileSync(metadataPath, JSON.stringify({
     generation: "1",
-    metadata,
+    custom_fields: metadata,
     size: String(readFileSync(object).byteLength),
   }));
   process.exit(0);

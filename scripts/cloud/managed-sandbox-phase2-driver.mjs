@@ -242,7 +242,11 @@ const describeObject = (uri) => {
   try {
     const value = JSON.parse(result.stdout);
     if (value === null || typeof value !== "object") return undefined;
-    return value;
+    const metadata = value.custom_fields ?? value.metadata ?? {};
+    if (metadata === null || typeof metadata !== "object" || Array.isArray(metadata)) {
+      throw new DriverError("checkpoint_object_metadata_invalid");
+    }
+    return { ...value, metadata };
   } catch {
     throw new DriverError("checkpoint_object_metadata_invalid");
   }
