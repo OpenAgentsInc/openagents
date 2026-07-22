@@ -62,11 +62,13 @@ COPY scripts/cloud/managed-sandbox-provider-proxy.py /usr/local/bin/managed-sand
 COPY scripts/cloud/managed-sandbox-control-entrypoint.sh /usr/local/bin/managed-sandbox-control-entrypoint.sh
 COPY scripts/cloud/managed-sandbox-io-driver.mjs /usr/local/bin/managed-sandbox-io-driver.mjs
 COPY scripts/cloud/managed-sandbox-turn-driver.mjs /usr/local/bin/managed-sandbox-turn-driver.mjs
+COPY scripts/cloud/managed-sandbox-phase2-driver.mjs /usr/local/bin/managed-sandbox-phase2-driver.mjs
 RUN chmod 0755 \
       /usr/local/bin/managed-sandbox-provider-proxy.py \
       /usr/local/bin/managed-sandbox-control-entrypoint.sh \
       /usr/local/bin/managed-sandbox-io-driver.mjs \
-      /usr/local/bin/managed-sandbox-turn-driver.mjs
+      /usr/local/bin/managed-sandbox-turn-driver.mjs \
+      /usr/local/bin/managed-sandbox-phase2-driver.mjs
 
 # State root for the durable local job registry (job.json / events.jsonl).
 ENV OA_CODEX_CONTROL_STATE_ROOT=/var/lib/openagents/codex-control

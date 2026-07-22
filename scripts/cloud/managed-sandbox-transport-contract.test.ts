@@ -7,6 +7,7 @@ describe('managed-sandbox guest transport contract', () => {
   for (const driver of [
     'managed-sandbox-io-driver.mjs',
     'managed-sandbox-turn-driver.mjs',
+    'managed-sandbox-phase2-driver.mjs',
   ]) {
     test(`${driver} uses bounded relative SSH key expiry`, () => {
       const source = readFileSync(resolve(import.meta.dirname, driver), 'utf8')
@@ -24,6 +25,18 @@ describe('managed-sandbox guest transport contract', () => {
       }
     })
   }
+
+  test('control image installs the default-off phase-two driver', () => {
+    const source = readFileSync(
+      resolve(import.meta.dirname, '../../docker/cloud/oa-codex-control.Dockerfile'),
+      'utf8',
+    )
+    expect(source).toContain(
+      'COPY scripts/cloud/managed-sandbox-phase2-driver.mjs /usr/local/bin/managed-sandbox-phase2-driver.mjs',
+    )
+    expect(source).toContain('/usr/local/bin/managed-sandbox-phase2-driver.mjs')
+    expect(source).not.toContain('OA_MANAGED_SANDBOX_PHASE2_TARGET_COMMAND=')
+  })
 
   test('guest image admits unprivileged I/O transport and scratch roots', () => {
     const source = readFileSync(
