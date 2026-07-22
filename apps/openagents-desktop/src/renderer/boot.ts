@@ -1535,6 +1535,12 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         setEditorVimEnabled: async (enabled) => {
           await readBridge()?.preferences?.update?.({ editor: { vim: { enabled } } })
         },
+        setGraphExtractionEnabled: async (enabled) => {
+          await readBridge()?.preferences?.update?.({ graphMemory: { graphExtractionEnabled: enabled } })
+        },
+        setGraphRecallEnabled: async (enabled) => {
+          await readBridge()?.preferences?.update?.({ graphMemory: { graphRecallEnabled: enabled } })
+        },
       }, fullAutoHost, {
         status: () => readBridge()?.acpProviders?.status?.() ?? unavailableAcpProviderSettingsBridge.status(),
         action: (provider, action) => readBridge()?.acpProviders?.action?.({ provider, action }) ?? unavailableAcpProviderSettingsBridge.action(provider, action),
@@ -2315,6 +2321,8 @@ const mountDesktopShell = (root: HTMLElement, host: string) =>
         localCodexUsageControlAvailable:
           preferences.privacy.localCodexUsageControlAvailable,
         shareLocalCodexUsage: preferences.privacy.shareLocalCodexUsage,
+        graphExtractionEnabled: preferences.graphMemory.graphExtractionEnabled,
+        graphRecallEnabled: preferences.graphMemory.graphRecallEnabled,
       },
       workspaceEditor: {
         ...current.workspaceEditor,

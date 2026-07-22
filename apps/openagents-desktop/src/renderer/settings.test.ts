@@ -235,6 +235,16 @@ describe("settingsView (state -> component tree)", () => {
     })
   })
 
+  test("graph extraction and recall are separate default-off controls", () => {
+    const defaults = initialSettingsState()
+    const view = settingsView(defaults)
+    expect(defaults.graphExtractionEnabled).toBe(false)
+    expect(defaults.graphRecallEnabled).toBe(false)
+    expect(nodeByKey(view, "settings-graph-memory-copy")?.content).toContain("Extraction can use a semantic model and cause spend")
+    expect(nodeByKey(view, "settings-graph-extraction-toggle")).toMatchObject({ value: false, label: "Off", onChange: { name: "DesktopGraphExtractionToggled" } })
+    expect(nodeByKey(view, "settings-graph-recall-toggle")).toMatchObject({ value: false, label: "Off", onChange: { name: "DesktopGraphRecallToggled" } })
+  })
+
   // tracked: deferred for MVP visible-surface scope (retired 2026-07-13); helper logic retained. see #9066
   test.skip("retired Pylon account placeholders", () => {
     const loading = settingsView(initialSettingsState())

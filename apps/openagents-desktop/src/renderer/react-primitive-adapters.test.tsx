@@ -274,6 +274,31 @@ describe("React workbench shell", () => {
     })
   })
 
+  test("graph memory settings dispatch independent extraction and recall toggles", async () => {
+    const { container } = installDom()
+    const root = createTestRoot(container)
+    const received: Array<{ name: string; payload: unknown }> = []
+    const report: IntentReporter = (ref, payload) => Effect.sync(() => received.push(resolveIntentRef(ref, payload)))
+    const base = fixtureState()
+    await render(root, <WorkbenchShell state={{
+      ...base,
+      workspace: "settings",
+      settings: { ...base.settings, graphExtractionEnabled: false, graphRecallEnabled: true },
+    }} report={report} />)
+    expect(container.textContent).toContain("semantic model and cause spend")
+    const buttons = [...container.querySelectorAll("button")]
+    const extraction = buttons.find(node => node.textContent === "Extraction off")
+    const recall = buttons.find(node => node.textContent === "Recall on")
+    expect(extraction?.getAttribute("aria-pressed")).toBe("false")
+    expect(recall?.getAttribute("aria-pressed")).toBe("true")
+    await interact(() => extraction?.click())
+    await interact(() => recall?.click())
+    expect(received.slice(-2)).toEqual([
+      { name: "DesktopGraphExtractionToggled", payload: true },
+      { name: "DesktopGraphRecallToggled", payload: false },
+    ])
+  })
+
   test("shows the Codex-only update advisory and dispatches the typed update intent", async () => {
     const { container } = installDom()
     const received: Array<{ name: string; payload: unknown }> = []

@@ -2669,6 +2669,8 @@ export type DesktopPresentationRendererHost = Readonly<{
   setSidebarCollapsed: (collapsed: boolean) => Promise<void>;
   setLocalCodexUsageSharing?: (enabled: boolean) => Promise<void>;
   setEditorVimEnabled?: (enabled: boolean) => Promise<void>;
+  setGraphExtractionEnabled?: (enabled: boolean) => Promise<void>;
+  setGraphRecallEnabled?: (enabled: boolean) => Promise<void>;
 }>;
 /**
  * Full Auto (#8853, FA-H1 #8874): main-owned durable per-thread toggle. `set`
@@ -4332,6 +4334,26 @@ export const makeDesktopShellHandlers = (
         yield* SubscriptionRef.update(state, (next) => ({
           ...next,
           settings: { ...next.settings, shareLocalCodexUsage: enabled },
+        }));
+      }),
+    DesktopGraphExtractionToggled: (enabled) =>
+      Effect.gen(function* () {
+        yield* Effect.promise(
+          () => presentationHost.setGraphExtractionEnabled?.(enabled) ?? Promise.resolve(),
+        );
+        yield* SubscriptionRef.update(state, (next) => ({
+          ...next,
+          settings: { ...next.settings, graphExtractionEnabled: enabled },
+        }));
+      }),
+    DesktopGraphRecallToggled: (enabled) =>
+      Effect.gen(function* () {
+        yield* Effect.promise(
+          () => presentationHost.setGraphRecallEnabled?.(enabled) ?? Promise.resolve(),
+        );
+        yield* SubscriptionRef.update(state, (next) => ({
+          ...next,
+          settings: { ...next.settings, graphRecallEnabled: enabled },
         }));
       }),
     DesktopConnectionsRefreshRequested: () => refreshConnections,

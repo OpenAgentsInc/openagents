@@ -30,7 +30,7 @@
 import { Schema } from "effect"
 
 export const DESKTOP_PREFERENCES_SCHEMA_ID =
-  "openagents.desktop.preferences.store.v4" as const
+  "openagents.desktop.preferences.store.v5" as const
 
 /** Additive IPC channels (main ↔ renderer). Public-safe payloads only. */
 export const DesktopPreferencesGetChannel = "openagents-desktop/preferences-get" as const
@@ -38,7 +38,7 @@ export const DesktopPreferencesUpdateChannel = "openagents-desktop/preferences-u
 export const DesktopPreferencesResetChannel = "openagents-desktop/preferences-reset" as const
 
 /** Current on-disk document version. Bump + add a migration when the shape changes. */
-export const DESKTOP_PREFERENCES_VERSION = 4 as const
+export const DESKTOP_PREFERENCES_VERSION = 5 as const
 
 // ---------------------------------------------------------------------------
 // Field vocabularies (bounded enums — never free text).
@@ -153,8 +153,15 @@ export const DesktopEditorPreferencesSchema = Schema.Struct({
 })
 export type DesktopEditorPreferences = typeof DesktopEditorPreferencesSchema.Type
 
+/** Owner-local graph memory controls. Each capability requires separate consent. */
+export const DesktopGraphMemoryPreferencesSchema = Schema.Struct({
+  graphExtractionEnabled: Schema.Boolean,
+  graphRecallEnabled: Schema.Boolean,
+})
+export type DesktopGraphMemoryPreferences = typeof DesktopGraphMemoryPreferencesSchema.Type
+
 // ---------------------------------------------------------------------------
-// Root document (v2).
+// Root document (v5).
 // ---------------------------------------------------------------------------
 
 export const DesktopPreferencesSchema = Schema.Struct({
@@ -167,6 +174,7 @@ export const DesktopPreferencesSchema = Schema.Struct({
   updates: DesktopUpdatePreferencesSchema,
   presentation: DesktopPresentationPreferencesSchema,
   editor: DesktopEditorPreferencesSchema,
+  graphMemory: DesktopGraphMemoryPreferencesSchema,
 })
 export type DesktopPreferences = typeof DesktopPreferencesSchema.Type
 
@@ -206,6 +214,10 @@ export const defaultDesktopPreferences = (): DesktopPreferences => ({
   editor: {
     vim: { enabled: false },
   },
+  graphMemory: {
+    graphExtractionEnabled: false,
+    graphRecallEnabled: false,
+  },
 })
 
 const decodeExit = Schema.decodeUnknownExit(DesktopPreferencesSchema)
@@ -233,6 +245,7 @@ export type DesktopPreferencesMigrationOrigin =
   | "legacy_v1" // nested v1 document lifted into v2 with presentation defaults
   | "legacy_v2" // nested v2 document lifted into v3 with usage consent off
   | "legacy_v3" // nested v3 document lifted into v4 with Vim disabled
+  | "legacy_v4" // nested v4 document lifted into v5 with graph memory disabled
   | "downgraded" // future version → unknown fields dropped, known ones kept
 
 export type DesktopPreferencesMigrationResult = Readonly<{
@@ -262,7 +275,7 @@ const ref = (value: unknown): string | null =>
   typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/.test(value) ? value : null
 
 /**
- * Field-wise normalize an arbitrary record into a full v2 document, filling
+ * Field-wise normalize an arbitrary record into a full v5 document, filling
  * every missing/invalid field from defaults. Used for both `merged` (dirty current)
  * and `legacy_v0` (flat blob) paths — the difference is only WHERE we look for
  * each field, handled by the two accessor sets below.
@@ -275,6 +288,7 @@ const normalize = (
   updates: Record<string, unknown>,
   presentation: Record<string, unknown>,
   editor: Record<string, unknown>,
+  graphMemory: Record<string, unknown>,
 ): DesktopPreferences => {
   const d = defaultDesktopPreferences()
   return {
@@ -317,6 +331,16 @@ const normalize = (
         enabled: bool(asRecord(editor.vim)?.enabled, d.editor.vim.enabled),
       },
     },
+    graphMemory: {
+      graphExtractionEnabled: bool(
+        graphMemory.graphExtractionEnabled,
+        d.graphMemory.graphExtractionEnabled,
+      ),
+      graphRecallEnabled: bool(
+        graphMemory.graphRecallEnabled,
+        d.graphMemory.graphRecallEnabled,
+      ),
+    },
   }
 }
 
@@ -333,9 +357,10 @@ export type DesktopPreferencesPatch = {
   readonly updates?: Record<string, unknown>
   readonly presentation?: Record<string, unknown>
   readonly editor?: Record<string, unknown>
+  readonly graphMemory?: Record<string, unknown>
 }
 
-const sectionKeys = ["appearance", "providerDefaults", "privacy", "notifications", "updates", "presentation", "editor"] as const
+const sectionKeys = ["appearance", "providerDefaults", "privacy", "notifications", "updates", "presentation", "editor", "graphMemory"] as const
 
 /** Decode an untrusted patch: keep only known sections that are plain objects. */
 export const decodeDesktopPreferencesPatch = (value: unknown): DesktopPreferencesPatch => {
@@ -372,6 +397,7 @@ export const migrateDesktopPreferences = (raw: unknown): DesktopPreferencesMigra
       asRecord(record.updates) ?? {},
       asRecord(record.presentation) ?? {},
       asRecord(record.editor) ?? {},
+      asRecord(record.graphMemory) ?? {},
     )
     return { preferences: normalized, origin: "merged", changed: true, fromVersion: rawVersion }
   }
@@ -387,14 +413,14 @@ export const migrateDesktopPreferences = (raw: unknown): DesktopPreferencesMigra
       asRecord(record.updates) ?? {},
       asRecord(record.presentation) ?? {},
       asRecord(record.editor) ?? {},
+      asRecord(record.graphMemory) ?? {},
     )
     return { preferences: normalized, origin: "downgraded", changed: true, fromVersion: rawVersion }
   }
 
-  // Versions 1 and 2 used the same nested sections; v1 had no presentation
-  // section and neither had local-usage consent. Preserve every known value
-  // while the new consent field is seeded false by normalize().
-  if (rawVersion === 1 || rawVersion === 2 || rawVersion === 3) {
+  // Versions 1 through 4 used earlier nested sections. Preserve each known
+  // value. Normalize seeds fields that did not exist in the source version.
+  if (rawVersion === 1 || rawVersion === 2 || rawVersion === 3 || rawVersion === 4) {
     const normalized = normalize(
       asRecord(record.appearance) ?? {},
       asRecord(record.providerDefaults) ?? {},
@@ -402,11 +428,18 @@ export const migrateDesktopPreferences = (raw: unknown): DesktopPreferencesMigra
       asRecord(record.notifications) ?? {},
       asRecord(record.updates) ?? {},
       rawVersion === 1 ? {} : asRecord(record.presentation) ?? {},
-      rawVersion === 3 ? asRecord(record.editor) ?? {} : {},
+      rawVersion >= 3 ? asRecord(record.editor) ?? {} : {},
+      {},
     )
     return {
       preferences: normalized,
-      origin: rawVersion === 1 ? "legacy_v1" : rawVersion === 2 ? "legacy_v2" : "legacy_v3",
+      origin: rawVersion === 1
+        ? "legacy_v1"
+        : rawVersion === 2
+          ? "legacy_v2"
+          : rawVersion === 3
+            ? "legacy_v3"
+            : "legacy_v4",
       changed: true,
       fromVersion: rawVersion,
     }
@@ -422,6 +455,7 @@ export const migrateDesktopPreferences = (raw: unknown): DesktopPreferencesMigra
     asRecord(record.updates) ?? {},
     asRecord(record.presentation) ?? {},
     asRecord(record.editor) ?? {},
+    asRecord(record.graphMemory) ?? {},
   )
   return { preferences: normalized, origin: "legacy_v0", changed: true, fromVersion: rawVersion }
 }

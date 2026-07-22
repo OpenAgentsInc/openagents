@@ -136,6 +136,20 @@ test("sidebar presentation changes remain Effect-owned and search disclosure is 
   });
 });
 
+test("graph extraction and recall toggle independently in Effect-owned state", async () => {
+  const state = await Effect.runPromise(SubscriptionRef.make(initialDesktopShellState("test")));
+  const handlers = makeDesktopShellHandlers(state);
+  const registry = await Effect.runPromise(makeIntentRegistry(desktopShellIntents, handlers));
+  await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopGraphExtractionToggled", StaticPayload(true)))));
+  let settings = (await Effect.runPromise(SubscriptionRef.get(state))).settings;
+  expect(settings.graphExtractionEnabled).toBe(true);
+  expect(settings.graphRecallEnabled).toBe(false);
+  await Effect.runPromise(registry.dispatch(resolveIntentRef(IntentRef("DesktopGraphRecallToggled", StaticPayload(true)))));
+  settings = (await Effect.runPromise(SubscriptionRef.get(state))).settings;
+  expect(settings.graphExtractionEnabled).toBe(true);
+  expect(settings.graphRecallEnabled).toBe(true);
+});
+
 test("AFS-05: adding editor context keeps the active file visible and opens the context tray", async () => {
   const initial: DesktopShellState = { ...initialDesktopShellState("test"), workspace: "files" };
   const state = await Effect.runPromise(SubscriptionRef.make(initial));

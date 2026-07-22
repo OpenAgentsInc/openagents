@@ -147,6 +147,8 @@ export type SettingsState = Readonly<{
   harnessMaintenance: HarnessMaintenanceState
   localCodexUsageControlAvailable: boolean
   shareLocalCodexUsage: boolean
+  graphExtractionEnabled: boolean
+  graphRecallEnabled: boolean
   acpProviders: AcpProviderSettingsState
   acpSupportNotice: string | null
 }>
@@ -234,6 +236,8 @@ export const initialSettingsState = (): SettingsState => ({
   harnessMaintenance: initialHarnessMaintenanceState(),
   localCodexUsageControlAvailable: false,
   shareLocalCodexUsage: false,
+  graphExtractionEnabled: false,
+  graphRecallEnabled: false,
   acpProviders: initialAcpProviderSettingsState(),
   acpSupportNotice: null,
 })
@@ -715,6 +719,14 @@ export const DesktopLocalCodexUsageSharingToggled = defineIntent(
   "DesktopLocalCodexUsageSharingToggled",
   Schema.Boolean,
 )
+export const DesktopGraphExtractionToggled = defineIntent(
+  "DesktopGraphExtractionToggled",
+  Schema.Boolean,
+)
+export const DesktopGraphRecallToggled = defineIntent(
+  "DesktopGraphRecallToggled",
+  Schema.Boolean,
+)
 /**
  * One-click harness update (MAINT-1, #8785). Payload is the harness name;
  * the handler re-validates it against the loaded maintenance list and the
@@ -754,6 +766,8 @@ export const settingsIntents = [
   DesktopOpenAgentsSignInRequested,
   DesktopOpenAgentsSignOutRequested,
   DesktopLocalCodexUsageSharingToggled,
+  DesktopGraphExtractionToggled,
+  DesktopGraphRecallToggled,
   DesktopHarnessUpdateRequested,
   DesktopHarnessMaintenanceRefreshRequested,
   DesktopAcpProviderActionRequested,
@@ -1746,6 +1760,33 @@ export const settingsView = (settings: SettingsState): View => {
               ),
             ]
           : []),
+        Divider({ key: "settings-graph-memory-divider" }),
+        Text({
+          key: "settings-graph-memory-title",
+          content: "Graph memory",
+          variant: "label",
+          color: "textPrimary",
+        }),
+        Text({
+          key: "settings-graph-memory-copy",
+          content: "Extraction can use a semantic model and cause spend. Recall is a separate control that reads only the authorized graph. Both controls are off by default.",
+          variant: "body",
+          color: "textMuted",
+        }),
+        Toggle({
+          key: "settings-graph-extraction-toggle",
+          value: settings.graphExtractionEnabled,
+          label: settings.graphExtractionEnabled ? "On" : "Off",
+          onChange: IntentRef("DesktopGraphExtractionToggled", ComponentValueBinding()),
+          a11y: { label: settings.graphExtractionEnabled ? "Disable graph extraction" : "Enable graph extraction" },
+        }),
+        Toggle({
+          key: "settings-graph-recall-toggle",
+          value: settings.graphRecallEnabled,
+          label: settings.graphRecallEnabled ? "On" : "Off",
+          onChange: IntentRef("DesktopGraphRecallToggled", ComponentValueBinding()),
+          a11y: { label: settings.graphRecallEnabled ? "Disable graph recall" : "Enable graph recall" },
+        }),
         Divider({ key: "settings-harness-maintenance-divider" }),
         ...harnessMaintenanceSection(settings.harnessMaintenance),
         ...acpProviderSettingsView(settings.acpProviders, settings.acpSupportNotice),

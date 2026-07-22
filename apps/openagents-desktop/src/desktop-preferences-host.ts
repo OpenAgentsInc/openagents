@@ -103,6 +103,7 @@ export const openDesktopPreferencesStore = (filePath: string): DesktopPreference
               : {}),
           },
         },
+        graphMemory: { ...current.graphMemory, ...(patch.graphMemory ?? {}) },
       }
       const normalized = migrateDesktopPreferences(merged).preferences
       writeDocument(normalized)

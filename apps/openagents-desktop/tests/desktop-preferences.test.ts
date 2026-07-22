@@ -41,8 +41,9 @@ describe("preferences migration", () => {
     expect(decodeDesktopPreferencesPatch({
       presentation: "collapsed",
       appearance: { density: "compact" },
+      graphMemory: { graphRecallEnabled: true },
       unknown: { secret: "drop-me" },
-    })).toEqual({ appearance: { density: "compact" } })
+    })).toEqual({ appearance: { density: "compact" }, graphMemory: { graphRecallEnabled: true } })
   })
   test("a valid current-version document is accepted unchanged", () => {
     const doc = defaultDesktopPreferences()
@@ -56,6 +57,7 @@ describe("preferences migration", () => {
   test("the default document decodes cleanly against the schema", () => {
     expect(decodeDesktopPreferences(defaultDesktopPreferences())).not.toBeNull()
     expect(defaultDesktopPreferences().editor.vim.enabled).toBe(false)
+    expect(defaultDesktopPreferences().graphMemory).toEqual({ graphExtractionEnabled: false, graphRecallEnabled: false })
   })
 
   test("unusable inputs seed defaults", () => {
@@ -141,6 +143,7 @@ describe("preferences migration", () => {
       notifications: { attentionBadge: true, taskCompletion: true, onlyWhenUnfocused: false },
       updates: { channel: "stable", autoCheck: false, autoDownload: false },
       presentation: { sidebarCollapsed: true, futureDockMode: "floating" },
+      graphMemory: { graphExtractionEnabled: true, graphRecallEnabled: false, futureMode: true },
       quantumTunneling: { enabled: true },
     }
     const result = migrateDesktopPreferences(future)
@@ -151,7 +154,22 @@ describe("preferences migration", () => {
     expect(result.preferences.appearance).toEqual({ density: "cozy", fontScale: "small", reducedMotion: "never" })
     expect(result.preferences.providerDefaults.defaultProvider).toBe("claude")
     expect(result.preferences.presentation).toEqual({ sidebarCollapsed: true })
+    expect(result.preferences.graphMemory).toEqual({ graphExtractionEnabled: true, graphRecallEnabled: false })
     expect("quantumTunneling" in result.preferences).toBe(false)
+  })
+
+  test("a v4 document gains two independent default-off graph memory controls", () => {
+    const current = defaultDesktopPreferences()
+    const { graphMemory: _graphMemory, ...withoutGraphMemory } = current
+    const result = migrateDesktopPreferences({
+      ...withoutGraphMemory,
+      schema: "openagents.desktop.preferences.store.v4",
+      version: 4,
+      editor: { vim: { enabled: true } },
+    })
+    expect(result).toMatchObject({ origin: "legacy_v4", changed: true, fromVersion: 4 })
+    expect(result.preferences.editor.vim.enabled).toBe(true)
+    expect(result.preferences.graphMemory).toEqual({ graphExtractionEnabled: false, graphRecallEnabled: false })
   })
 
   test("a malformed account ref is dropped to null; a valid one survives", () => {
@@ -191,6 +209,11 @@ describe("preferences host", () => {
     const editor = store.update({ editor: { vim: { enabled: true } } })
     expect(editor.editor.vim.enabled).toBe(true)
     expect(openDesktopPreferencesStore(file).snapshot().editor.vim.enabled).toBe(true)
+
+    const extraction = store.update({ graphMemory: { graphExtractionEnabled: true } })
+    expect(extraction.graphMemory).toEqual({ graphExtractionEnabled: true, graphRecallEnabled: false })
+    const recall = store.update({ graphMemory: { graphRecallEnabled: true } })
+    expect(recall.graphMemory).toEqual({ graphExtractionEnabled: true, graphRecallEnabled: true })
   })
 
   test("an update with a bad value is normalized, never persisted raw", () => {
@@ -205,6 +228,9 @@ describe("preferences host", () => {
     const presentation = store.update({ presentation: { sidebarCollapsed: "yes" as never } })
     expect(presentation.presentation.sidebarCollapsed).toBe(true)
     expect(JSON.parse(readFileSync(file, "utf8")).presentation.sidebarCollapsed).toBe(true)
+
+    const graphMemory = store.update({ graphMemory: { graphExtractionEnabled: "yes", graphRecallEnabled: true } })
+    expect(graphMemory.graphMemory).toEqual({ graphExtractionEnabled: false, graphRecallEnabled: true })
   })
 
   test("the persisted file is owner-only (mode 0600)", () => {
