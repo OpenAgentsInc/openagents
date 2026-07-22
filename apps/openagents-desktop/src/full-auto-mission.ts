@@ -1,10 +1,12 @@
 import { Schema } from "effect";
 
+import { renderFullAutoPlanBrief } from "./full-auto-plan.ts";
 import type { FullAutoProfile, FullAutoRecord } from "./full-auto-registry.ts";
 import type { ProviderHandoffTransitionRecord } from "./full-auto-provider-handoff.ts";
 import {
   FULL_AUTO_LEGACY_MIGRATION_DONE_CONDITION,
   FULL_AUTO_LEGACY_MIGRATION_OBJECTIVE,
+  isFullAutoRunAutonomyEnabled,
   type FullAutoRun,
 } from "./full-auto-run-registry.ts";
 import type { LocalTurnRecord } from "./local-turn-journal.ts";
@@ -39,6 +41,20 @@ export const FullAutoMissionResponseObligationSchema = Schema.Literals([
 ]);
 
 /**
+ * HANDS-3 (#9174): the bounded plan brief carried into an AUTONOMY-enabled
+ * run's mission packet -- the current (next unblocking) step plus a compact
+ * prior-progress summary. Absent entirely for a non-autonomy run, so the
+ * packet and rendered prompt are byte-for-byte unchanged for existing runs.
+ */
+export const FullAutoMissionPlanBriefSchema = Schema.Struct({
+  currentStepRef: Schema.NullOr(Ref),
+  currentStepTitle: Schema.NullOr(Schema.String),
+  done: Count,
+  total: Count,
+  text: Schema.String,
+});
+
+/**
  * Private provider prompt authority for one Full Auto attempt. The packet is
  * deliberately not a public receipt: objective and doneCondition are owner
  * content and may leave this boundary only for the selected provider turn.
@@ -59,6 +75,9 @@ export const FullAutoMissionPacketSchema = Schema.Struct({
   priorAcceptedOutcome: Schema.NullOr(FullAutoMissionPriorAcceptedOutcomeSchema),
   previousHandoff: Schema.NullOr(FullAutoMissionPreviousHandoffSchema),
   responseObligations: Schema.Array(FullAutoMissionResponseObligationSchema),
+  /** HANDS-3 (#9174): present ONLY for an autonomy-enabled run carrying a
+   * plan; omitted for every other run. */
+  planBrief: Schema.optional(FullAutoMissionPlanBriefSchema),
   completionAuthority: Schema.Literal(
     "provider completion is self-reported evidence only; the host or owner verifies the done condition",
   ),
@@ -81,6 +100,21 @@ export const compileFullAutoMissionPacket = (
   const completed =
     input.priorAcceptedOutcome?.disposition === "completed" ? input.priorAcceptedOutcome : null;
   const handoff = input.previousHandoff;
+  // HANDS-3 (#9174): include the plan brief ONLY for an autonomy-enabled run
+  // that carries a plan. Every other run omits the key entirely.
+  const planBrief =
+    input.run !== null && isFullAutoRunAutonomyEnabled(input.run) && input.run.autonomy?.plan !== undefined
+      ? (() => {
+          const brief = renderFullAutoPlanBrief(input.run.autonomy.plan);
+          return {
+            currentStepRef: brief.currentStepRef,
+            currentStepTitle: brief.currentStepTitle,
+            done: brief.done,
+            total: brief.total,
+            text: brief.text,
+          };
+        })()
+      : null;
   return Schema.decodeUnknownSync(FullAutoMissionPacketSchema)({
     schema: FULL_AUTO_MISSION_SCHEMA,
     runRef: input.run?.runRef ?? null,
@@ -120,6 +154,7 @@ export const compileFullAutoMissionPacket = (
       "report_evidence_refs",
       "treat_provider_completion_as_unverified",
     ],
+    ...(planBrief === null ? {} : { planBrief }),
     completionAuthority:
       "provider completion is self-reported evidence only; the host or owner verifies the done condition",
   });
@@ -141,6 +176,10 @@ export const renderFullAutoMissionPrompt = (packet: FullAutoMissionPacket): stri
     "",
     "DONE CONDITION (VERBATIM)",
     packet.doneCondition,
+    // HANDS-3 (#9174): the plan brief section appears ONLY for an
+    // autonomy-enabled run carrying a plan; a non-autonomy prompt is
+    // byte-for-byte unchanged.
+    ...(packet.planBrief === undefined ? [] : ["", "PERSISTENT PLAN (host-tracked)", packet.planBrief.text]),
   ].join("\n");
 
 export const appendFullAutoQueuedInstruction = (mission: string, instruction: string): string =>

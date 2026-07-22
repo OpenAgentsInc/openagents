@@ -1,5 +1,6 @@
 import { Schema } from "effect"
 
+import { detectFullAutoChurn, type FullAutoTurnAction } from "./full-auto-churn.ts"
 import type {
   FullAutoRunReport,
   FullAutoRunReportLivenessGap,
@@ -108,6 +109,11 @@ export const FullAutoRunFindingKindSchema = Schema.Literals([
   "missing_evidence",
   "objective_drift_revision",
   "system_forced_stop",
+  /** HANDS-4 (#9175): value-aware churn -- repeated near-identical,
+   * non-advancing `completed` turns, derived from the per-turn action
+   * taxonomy (full-auto-churn.ts) rather than the disposition proxy above.
+   * Emitted only when the caller supplies per-turn actions. */
+  "low_value_churn",
   "clean_success",
 ])
 export type FullAutoRunFindingKind = typeof FullAutoRunFindingKindSchema.Type
@@ -597,6 +603,11 @@ const deriveFindings = (
 export const analyzeFullAutoRunReport = (
   report: FullAutoRunReport,
   now: () => Date = () => new Date(),
+  /** HANDS-4 (#9175): OPTIONAL per-turn action taxonomy rows. When supplied
+   * (an autonomy run), the analyzer adds a value-aware `low_value_churn`
+   * finding derived from the real action signatures, not the disposition
+   * proxy. Absent -> no churn finding, exactly the prior behavior. */
+  actions?: ReadonlyArray<FullAutoTurnAction>,
 ): FullAutoRunAnalysis => {
   const sortedTurns = [...report.turns].toSorted((left, right) => left.createdAt.localeCompare(right.createdAt))
   const turns = analyzeTurns(report.turns)
@@ -606,7 +617,19 @@ export const analyzeFullAutoRunReport = (
   const provider = analyzeProvider(report)
   const evidence = analyzeEvidence(report)
   const objective = analyzeObjective(report)
-  const findings = deriveFindings(report, sortedTurns, turns, liveness, provider, evidence, objective, control)
+  const baseFindings = deriveFindings(report, sortedTurns, turns, liveness, provider, evidence, objective, control)
+  const churn = actions === undefined ? { churn: false, consecutive: 0, signature: null } : detectFullAutoChurn({ actions })
+  const findings: ReadonlyArray<FullAutoRunFinding> = churn.churn
+    ? [
+        ...baseFindings,
+        {
+          kind: "low_value_churn" as const,
+          severity: "concerning" as const,
+          summary: `${churn.consecutive} consecutive completed turns did the same non-advancing work (signature "${churn.signature}").`,
+          evidenceRefs: (actions ?? []).slice(-churn.consecutive).map((action) => action.turnRef).slice(0, 50),
+        },
+      ]
+    : baseFindings
 
   return decodeFullAutoRunAnalysis({
     schema: FULL_AUTO_RUN_ANALYSIS_SCHEMA,

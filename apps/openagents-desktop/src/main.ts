@@ -366,9 +366,11 @@ import {
 import { makeFullAutoRoutingLaneGate } from "./full-auto-routing.ts"
 import {
   FULL_AUTO_RUN_TERMINAL_STATES,
+  isFullAutoRunAutonomyEnabled,
   migrateLegacyFullAutoRegistry,
   openFullAutoRunRegistry,
 } from "./full-auto-run-registry.ts"
+import { buildFullAutoTurnAction, detectFullAutoChurn } from "./full-auto-churn.ts"
 import { buildProviderHandoffEnvelope, openProviderHandoffRegistry, providerHandoffDispositionForEnvelope } from "./full-auto-provider-handoff.ts"
 import { deriveFullAutoRunReceipt, openFullAutoRunReportStore } from "./full-auto-run-report.ts"
 import { decideFullAutoLivenessNotification, settleFullAutoRunLiveness } from "./full-auto-liveness.ts"
@@ -5582,6 +5584,20 @@ const appendFullAutoSystemNote = (threadRef: string, text: string): void => {
   broadcastFullAutoThreadUpdate(threadRef)
 }
 /**
+ * HANDS-4 (#9175): a bounded, stable, public-safe digest of a completed Full
+ * Auto turn's host-owned assistant text, used ONLY as the churn action
+ * signature. The raw text never leaves this function -- the churn gate and the
+ * paused reason carry only the digest and a count, never transcript.
+ */
+const hashFullAutoTurnOutput = (text: string): string => {
+  let hash = 2166136261
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+  return `t${(hash >>> 0).toString(36)}:${text.length.toString(36)}`
+}
+/**
  * Full Auto (#8853): the one place "should the next turn start" is decided,
  * called from two trigger points -- right after a Full-Auto turn completes
  * (above) and once at startup after existing turn-recovery settles (below).
@@ -5611,6 +5627,42 @@ const runFullAutoReconciliation = (options?: Readonly<{ startup?: boolean }>): P
       localTurnJournal.list()
         .filter(record => record.threadRef === threadRef && record.turnRef.startsWith("turn.full-auto."))
         .map(record => ({ disposition: record.disposition, updatedAt: record.updatedAt })),
+    // HANDS-4 (#9175): the value-aware churn gate. OPT-IN -- returns null for
+    // any thread whose bound run does not have autonomy enabled, so default
+    // Full Auto behavior is unchanged. For an autonomy run, it projects the
+    // per-turn action taxonomy from completed Full Auto turns (a bounded hash
+    // of the host-owned assistant text as the action signature -- never the
+    // raw text) and pauses on repeated near-identical, non-advancing turns.
+    // NOTE (remaining scope, #9174/#9175): plan-step attribution
+    // (`advancedPlanStep`) is not yet inferred host-side, so a turn only
+    // resets churn by producing DISTINCT output; wiring provider-reported step
+    // advancement would make the signal stronger.
+    churnSignal: threadRef => {
+      const run = fullAutoRunRegistry.findByThreadRef(threadRef)
+      if (run === null || !isFullAutoRunAutonomyEnabled(run)) return null
+      const record = fullAutoRegistry.record(threadRef)
+      const anchorAt = record?.lastResumedAt ?? record?.enabledAt ?? null
+      const actions = localTurnJournal.list()
+        .filter(entry =>
+          entry.threadRef === threadRef &&
+          entry.turnRef.startsWith("turn.full-auto.") &&
+          entry.disposition === "completed")
+        .toSorted((left, right) => left.updatedAt.localeCompare(right.updatedAt))
+        .map(entry => buildFullAutoTurnAction({
+          turnRef: entry.turnRef,
+          resultHint: hashFullAutoTurnOutput(entry.assistantText),
+          advancedPlanStep: false,
+          at: entry.updatedAt,
+        }))
+      return detectFullAutoChurn({ actions, anchorAt })
+    },
+    onPausedLowValueChurn: (churnThreadRef, pause) => {
+      setFullAutoLiveState(churnThreadRef, "blocked", null, pause.reason)
+      appendFullAutoSystemNote(
+        churnThreadRef,
+        `Full Auto paused: ${pause.consecutiveChurnTurns} near-identical completed turns did not advance the objective (${pause.reason}). Review the thread, then Resume to continue.`,
+      )
+    },
     // FA-H3: only the startup pass may clear a stale (crashed mid-dispatch)
     // lease; a mid-session pass treats a held lease as in-flight and skips.
     ...(options?.startup === true ? { clearStaleLeases: true } : {}),

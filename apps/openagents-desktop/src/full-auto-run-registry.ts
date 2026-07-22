@@ -11,8 +11,15 @@ import path from "node:path"
 
 import { Schema } from "effect"
 
+import { FullAutoPlanSchema, type FullAutoPlan } from "./full-auto-plan.ts"
 import { FULL_AUTO_MAX_CONTINUATIONS } from "./full-auto-reconcile.ts"
 import { FullAutoProfileSchema, type FullAutoProfile, type FullAutoRecord } from "./full-auto-registry.ts"
+import {
+  FullAutoVerificationResultSchema,
+  FullAutoVerificationSpecSchema,
+  type FullAutoVerificationResult,
+  type FullAutoVerificationSpec,
+} from "./full-auto-verification.ts"
 
 /**
  * FA-RUN-01 (#8969): the durable `FullAutoRun` objective/lifecycle/control
@@ -230,6 +237,25 @@ export const FullAutoRunTransitionRecordSchema = Schema.Struct({
 })
 export type FullAutoRunTransitionRecord = typeof FullAutoRunTransitionRecordSchema.Type
 
+/**
+ * HANDS-1..4 (#9172-#9175): the OPT-IN autonomy block. Absent (or
+ * `enabled: false`) means this run behaves EXACTLY as before -- the four
+ * autonomy features (objective selection, host verification, persistent plan,
+ * churn detection) only ever influence a run whose `autonomy.enabled` is true.
+ * Every field is optional/additive so a pre-autonomy run record still decodes.
+ *  - `plan` (HANDS-3): the durable decomposed plan carried across turns.
+ *  - `verification` (HANDS-2): the typed host-runnable done-condition check.
+ *  - `lastVerification` (HANDS-2): the most recent host verdict, kept SEPARATE
+ *    from the provider self-report so "provider done" never becomes "verified".
+ */
+export const FullAutoRunAutonomySchema = Schema.Struct({
+  enabled: Schema.Boolean,
+  plan: Schema.optional(FullAutoPlanSchema),
+  verification: Schema.optional(FullAutoVerificationSpecSchema),
+  lastVerification: Schema.optional(FullAutoVerificationResultSchema),
+})
+export type FullAutoRunAutonomy = typeof FullAutoRunAutonomySchema.Type
+
 export const FullAutoRunSchema = Schema.Struct({
   runRef: Ref,
   /** FA-AC-38: independent of, and optional until bound to, a threadRef. */
@@ -270,9 +296,16 @@ export const FullAutoRunSchema = Schema.Struct({
   pausedAt: Schema.optional(Schema.String),
   stoppedAt: Schema.optional(Schema.String),
   completedAt: Schema.optional(Schema.String),
+  /** HANDS-1..4 (#9172-#9175): opt-in autonomy state; absent = pre-autonomy
+   * behavior, byte-for-byte. */
+  autonomy: Schema.optional(FullAutoRunAutonomySchema),
   transitions: Schema.Array(FullAutoRunTransitionRecordSchema),
 })
 export type FullAutoRun = typeof FullAutoRunSchema.Type
+
+/** Whether autonomy (objective selection / verification / plan / churn) is
+ * active for this run. Pure and total -- an absent block is not enabled. */
+export const isFullAutoRunAutonomyEnabled = (run: FullAutoRun): boolean => run.autonomy?.enabled === true
 
 const FullAutoRunRegistryFileSchema = Schema.Struct({
   schema: Schema.Literal(FULL_AUTO_RUN_REGISTRY_SCHEMA),
@@ -501,6 +534,19 @@ export type FullAutoRunRegistry = Readonly<{
       actor: FullAutoRunActor
     }>,
   ) => FullAutoRun | null
+  /**
+   * HANDS-1..4 (#9172-#9175): bind (or, with null, clear) the opt-in autonomy
+   * block. Additive durable write; missing record is a null no-op. Enabling
+   * autonomy is the per-run gate the four features read -- default runs never
+   * pass through it. */
+  setAutonomy: (runRef: string, autonomy: FullAutoRunAutonomy | null) => FullAutoRun | null
+  /** HANDS-3 (#9174): replace the durable plan (carried across turns). A null
+   * no-op when the record is missing or autonomy is not present. */
+  updatePlan: (runRef: string, plan: FullAutoPlan) => FullAutoRun | null
+  /** HANDS-2 (#9173): record the most recent host verification verdict,
+   * SEPARATE from the provider self-report. Null no-op when missing/no
+   * autonomy. */
+  recordVerification: (runRef: string, result: FullAutoVerificationResult) => FullAutoRun | null
 }>
 
 export const openFullAutoRunRegistry = (
@@ -710,6 +756,46 @@ export const openFullAutoRunRegistry = (
     return next
   }
 
+  const setAutonomy: FullAutoRunRegistry["setAutonomy"] = (runRef, autonomy) => {
+    const index = findIndex(runRef)
+    if (index === -1) return null
+    const next = Schema.decodeUnknownSync(FullAutoRunSchema)(compactRunInput({
+      ...runs[index]!,
+      autonomy: autonomy ?? undefined,
+    }))
+    runs[index] = next
+    persist()
+    return next
+  }
+
+  const updatePlan: FullAutoRunRegistry["updatePlan"] = (runRef, plan) => {
+    const index = findIndex(runRef)
+    if (index === -1) return null
+    const current = runs[index]!
+    if (current.autonomy === undefined) return null
+    const next = Schema.decodeUnknownSync(FullAutoRunSchema)(compactRunInput({
+      ...current,
+      autonomy: { ...current.autonomy, plan },
+    }))
+    runs[index] = next
+    persist()
+    return next
+  }
+
+  const recordVerification: FullAutoRunRegistry["recordVerification"] = (runRef, result) => {
+    const index = findIndex(runRef)
+    if (index === -1) return null
+    const current = runs[index]!
+    if (current.autonomy === undefined) return null
+    const next = Schema.decodeUnknownSync(FullAutoRunSchema)(compactRunInput({
+      ...current,
+      autonomy: { ...current.autonomy, lastVerification: result },
+    }))
+    runs[index] = next
+    persist()
+    return next
+  }
+
   return {
     list,
     get,
@@ -726,6 +812,9 @@ export const openFullAutoRunRegistry = (
     touchLiveness,
     recordAttempt,
     reviseObjective,
+    setAutonomy,
+    updatePlan,
+    recordVerification,
   }
 }
 

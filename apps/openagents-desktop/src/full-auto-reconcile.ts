@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto"
 
+import type { FullAutoChurnDecision } from "./full-auto-churn.ts"
 import type {
   FullAutoProfile,
   FullAutoRecord,
@@ -358,6 +359,20 @@ export const reconcileFullAutoThreads = async (input: Readonly<{
     reason: string
     consecutiveNoProgressTurns: number
   }>) => void
+  /**
+   * HANDS-4 (#9175): OPT-IN value-aware churn signal, projected by the caller
+   * ONLY for an autonomy-enabled run (from the run's plan + per-turn action
+   * taxonomy). Absent -> no churn gate, the exact pre-HANDS-4 behavior. When
+   * it reports churn, the loop pauses durably with a typed `low_value_churn`
+   * reason instead of dispatching another near-identical completed turn.
+   */
+  churnSignal?: (threadRef: string) => FullAutoChurnDecision | null
+  /** HANDS-4 (#9175): the churn gate paused the loop (a value-aware sibling
+   * of onPausedLowConfidence). */
+  onPausedLowValueChurn?: (threadRef: string, pause: Readonly<{
+    reason: string
+    consecutiveChurnTurns: number
+  }>) => void
 }>): Promise<ReadonlyArray<string>> => {
   const now = input.now ?? (() => new Date())
   const inFlight = input.nonterminalThreadRefs()
@@ -493,6 +508,23 @@ export const reconcileFullAutoThreads = async (input: Readonly<{
         input.onPausedLowConfidence?.(threadRef, {
           reason,
           consecutiveNoProgressTurns: progress.consecutive,
+        })
+        return null
+      }
+    }
+    // HANDS-4 (#9175): the value-aware churn gate. Unlike the machine-failure
+    // no-progress gate above, this pauses when a run keeps self-reporting
+    // `completed` on near-identical, non-advancing turns. Opt-in: only an
+    // autonomy run supplies churnSignal, so default runs never reach here.
+    if (input.churnSignal !== undefined) {
+      const churn = input.churnSignal(threadRef)
+      if (churn !== null && churn.churn) {
+        const reason = `low_value_churn:${churn.consecutive}_near_identical_completed_turns`
+        input.registry.pause(threadRef, reason)
+        input.registry.recordDecision(threadRef, { decision: "pause_low_confidence", reason })
+        input.onPausedLowValueChurn?.(threadRef, {
+          reason,
+          consecutiveChurnTurns: churn.consecutive,
         })
         return null
       }
