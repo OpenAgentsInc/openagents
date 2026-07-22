@@ -63,15 +63,15 @@ const profileDigest = required("OA_MANAGED_SANDBOX_PROFILE_DIGEST");
 const gcloud = process.env.OA_MANAGED_SANDBOX_GCLOUD_BIN?.trim() || "gcloud";
 const stamp = `${Date.now()}-${process.pid}`;
 const suffix = sha256(stamp).slice(0, 20);
-const ownerRef = "owner-ref://openagents/primary";
-const tenantRef = "tenant-ref://openagents/primary";
-const actorRef = "principal-ref://owner/sbx10-live-acceptance";
-const audienceRef = "principal-ref://owner/sbx10-live-preview";
-const programRef = "program-ref://managed-agent-sandboxes/sbx10";
-const workUnitRef = `work-unit-ref://managed-agent-sandboxes/sbx10-${suffix}`;
-const sourceSandboxRef = `sandbox-ref://owner-live/sbx10-source-${suffix}`;
-const checkpointRef = `checkpoint-ref://owner-live/sbx10-${suffix}`;
-const sourceCapabilityRef = `capability-ref://run/${sha256(`${stamp}|source`).slice(0, 32)}`;
+const ownerRef = "owner.openagents.primary";
+const tenantRef = "tenant.openagents.primary";
+const actorRef = "principal.owner.sbx10-live-acceptance";
+const audienceRef = "principal.owner.sbx10-live-preview";
+const programRef = "program.managed-agent-sandboxes.sbx10";
+const workUnitRef = `work.sbx10.${suffix}`;
+const sourceSandboxRef = `sandbox.sbx10.source.${suffix}`;
+const checkpointRef = `checkpoint.sbx10.${suffix}`;
+const sourceCapabilityRef = `capability.sbx10.source.${sha256(`${stamp}|source`).slice(0, 32)}`;
 const previewHtml =
   "<!doctype html><title>SBX-10 private preview</title><main>checkpoint fork verified</main>";
 const previewPath = "/workspace/.openagents/preview.html";
@@ -111,7 +111,7 @@ const profile = {
 let sequence = 0;
 const ref = (kind: string): string => {
   sequence += 1;
-  return `${kind}-ref://sbx10-live/${sha256(`${stamp}|${sequence}|${kind}`).slice(0, 32)}`;
+  return `${kind}.sbx10.${sha256(`${stamp}|${sequence}|${kind}`).slice(0, 32)}`;
 };
 const headers = {
   accept: "application/json",
@@ -137,7 +137,8 @@ const post = async <T>(path: string, body: Json, expected = 200): Promise<T> => 
     const publicCode =
       typeof value === "object" && value !== null
         ? String(
-            (value as Record<string, unknown>).code ??
+            (value as Record<string, unknown>).reasonRef ??
+              (value as Record<string, unknown>).code ??
               (value as Record<string, unknown>).error ??
               "unknown",
           )
@@ -387,8 +388,8 @@ try {
       sourceResourceGeneration: sourceGeneration,
       sourceImageDigest: imageDigest,
       sourceToolchainDigest: toolchainDigest,
-      repositoryRef: "repository-ref://github/OpenAgentsInc/openagents",
-      repositoryRevisionRef: `commit-ref://${sourceRevision}`,
+      repositoryRef: "repository.openagents",
+      repositoryRevisionRef: `commit.${sourceRevision}`,
       repositoryPostImageDigest: digest(`${sourceRevision}|${previewHtml}`),
       formatRef: "format.sbx.content-tar.v1",
       retainedUntil,
@@ -453,7 +454,7 @@ try {
   });
   await post(
     "/v1/managed-sandbox/runtime/private-preview",
-    previewRequest("principal-ref://owner/wrong-audience", ref("preview")),
+    previewRequest("principal.owner.wrong-audience", ref("preview")),
     403,
   );
   proof.wrongAudienceDenied = true;
