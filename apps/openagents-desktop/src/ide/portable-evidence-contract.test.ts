@@ -256,7 +256,7 @@ const unclaimedProviderCohort = (cohortRef: string, template: ReturnType<typeof 
 });
 
 describe("IDE-13 portability evidence contract", () => {
-  test("decodes one real local cohort without promoting the remaining simulators", () => {
+  test("decodes the accepted real cohort set without promoting the provider lane", () => {
     const current = decode(
       JSON.parse(
         readFileSync(
@@ -274,17 +274,20 @@ describe("IDE-13 portability evidence contract", () => {
         baseCommitSha: current.baseCommitSha,
       }),
     ).not.toThrow();
-    expect(current.acceptancePassed).toBe(false);
+    expect(current.acceptancePassed).toBe(true);
     expect(
       current.placementCohorts.filter((cohort) => cohort.evidenceClass === "real_local"),
     ).toHaveLength(1);
     expect(
-      current.placementCohorts
-        .filter((cohort) => cohort.targetClass !== "owner_local")
-        .every(
-          (cohort) => cohort.evidenceClass === "simulator" || cohort.evidenceClass === "not_run",
+      current.placementCohorts.filter((cohort) =>
+        ["real_local", "real_owner_managed", "real_openagents_managed"].includes(
+          cohort.evidenceClass,
         ),
-    ).toBe(true);
+      ),
+    ).toHaveLength(3);
+    expect(
+      current.placementCohorts.find((cohort) => cohort.targetClass === "managed_provider"),
+    ).toMatchObject({ evidenceClass: "not_run", capabilityState: "unsupported" });
   });
 
   test("accepts a complete real target, fault, recovery, metric, and review matrix", () => {

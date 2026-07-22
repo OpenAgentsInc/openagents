@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "openagents.ide13.independent_disposition.v1",
+  "issue": 9041,
+  "candidateCommitSha": "e50b2d1456cc2cfa63b702cd603bf40e5dc3ec20",
+  "integratedMainCommitSha": "67154d14cd692d7225bf378603efec986a05c95c",
+  "reviewer": {
+    "kind": "google-cloud-build",
+    "ref": "google-cloud-build.named-deterministic-verifier",
+    "buildId": "ee37e9fe-af8a-4fae-ab9a-855cef244537",
+    "project": "openagentsgemini",
+    "region": "us-central1",
+    "distinctFromProducer": true
+  },
+  "startedAt": "2026-07-22T14:25:14.004829044Z",
+  "finishedAt": "2026-07-22T14:29:58.702345Z",
+  "disposition": "accepted",
+  "verified": [
+    "The selected TypeScript contract and integration tests passed.",
+    "The tracked owner-local, owner-managed, and OpenAgents-managed real-cohort receipts passed contract validation.",
+    "The managed sandbox Rust tests passed.",
+    "The reviewer used the exact integrated main commit."
+  ],
+  "limits": [
+    "This receipt does not admit an external managed provider.",
+    "This receipt does not grant release authority or public-claim authority."
+  ],
+  "publicSafe": true
+}
