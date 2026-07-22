@@ -112,11 +112,23 @@ export const runClaudeHarnessAttempt = async (
     })();
   };
 
+  // Reconstruct the display-only `model_effective` renderer event from the
+  // raw init message (openagents#9167 slice 3): the neutral stream has no
+  // effective-model event, so the host lowers it from the observed message.
+  let announcedModel: string | null = null;
   const adapter = makeClaudeCodeHarnessAdapter({
     query: teedQuery,
     cwd: input.workspace,
     model: input.model,
     queryOverrides: input.queryOverrides,
+    onRawMessage: (message) => {
+      if (message.type !== "system" || message.subtype !== "init") return;
+      const model = (message as { model?: string }).model;
+      if (typeof model === "string" && model.length > 0 && model !== announcedModel) {
+        announcedModel = model;
+        input.emit({ kind: "model_effective", model: model.slice(0, 120) });
+      }
+    },
   });
 
   const program = Effect.gen(function* () {
