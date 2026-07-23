@@ -305,7 +305,7 @@ export const makeProviderAccountLeaseService = (dependencies: {
           AND active_leases.status = 'active'
           AND active_leases.expires_at > ?
          WHERE pa.user_id = ?
-           AND (? IS NULL OR pa.provider = ?)
+           AND (CAST(? AS TEXT) IS NULL OR pa.provider = CAST(? AS TEXT))
            AND pa.status = 'connected'
            AND pa.health = 'healthy'
            AND pa.secret_ref IS NOT NULL
@@ -943,9 +943,9 @@ export const makeProviderAccountLeaseService = (dependencies: {
              LEFT JOIN provider_account_leases next_lease
                ON next_lease.lease_ref = r.next_lease_ref
             WHERE COALESCE(previous_lease.user_id, next_lease.user_id) = ?
-              AND (? IS NULL OR r.run_id = ?)
-              AND (? IS NULL OR r.assignment_id = ?)
-              AND (? IS NULL OR r.order_id = ?)
+              AND (CAST(? AS TEXT) IS NULL OR r.run_id = CAST(? AS TEXT))
+              AND (CAST(? AS TEXT) IS NULL OR r.assignment_id = CAST(? AS TEXT))
+              AND (CAST(? AS TEXT) IS NULL OR r.order_id = CAST(? AS TEXT))
             ORDER BY r.created_at DESC
             LIMIT ?`,
       )
