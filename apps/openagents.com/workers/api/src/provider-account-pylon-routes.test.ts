@@ -263,6 +263,32 @@ const makeGeminiGrant = (
   ...overrides,
 })
 
+const makeClaudeGrant = (
+  overrides: Partial<ProviderAccountAuthGrantRecord> = {},
+): ProviderAccountAuthGrantRecord => ({
+  id: 'provider_grant_claude_owner',
+  providerAccountId: 'provider-account-claude-owner',
+  userId: 'openauth-user-owner',
+  teamId: null,
+  threadId: 'thread.agent_computer.test',
+  workroomId: 'workroom.agent_computer.test',
+  runnerSessionId: 'turn.agent_computer.claude.test',
+  provider: 'anthropic_claude',
+  providerAccountRef: 'provider_account_claude_owner',
+  providerSecretRef: 'provider-auth:provider_account_claude_owner',
+  grantRef: 'provider-auth-grant_claude_owner',
+  status: 'issued',
+  requestedAction: 'agent_computer_claude_turn',
+  metadataJson: '{}',
+  createdAt: '2026-07-23T12:00:00.000Z',
+  updatedAt: '2026-07-23T12:00:00.000Z',
+  expiresAt: '2099-07-23T12:05:00.000Z',
+  usedAt: null,
+  revokedAt: null,
+  failedAt: null,
+  ...overrides,
+})
+
 const linkedSession = (
   tokenHash: string,
   openauthUserId: string | null,
@@ -353,6 +379,63 @@ const geminiMaterialRequest = (
         runnerSessionId: 'turn.agent_computer.gemini.test',
         secretRef:
           'provider-account://google-gemini/worker-secret/GEMINI_API_KEY',
+        ...overrides,
+      }),
+    },
+  )
+
+const makeClaudeMaterialHandlers = (input: {
+  token: string
+  repository: MemoryProviderAccountRepository
+  ownerUserId?: string | null
+  readSecret?: () =>
+    | Readonly<{
+        authContentEnv: 'CLAUDE_CODE_OAUTH_TOKEN'
+        authContentValue: string
+      }>
+    | undefined
+}) =>
+  makeProviderAccountPylonHandlers({
+    agentStore: () =>
+      agentStoreFor(input.token, input.ownerUserId ?? 'openauth-user-owner'),
+    deleteStartedCodexDeviceLogin: () => () => Promise.resolve(),
+    makeProviderAccountRepository: () => input.repository,
+    providerGrantRepository: () => input.repository,
+    readConnectedCodexAuthMaterial: () => Promise.resolve(undefined),
+    readConnectedClaudeAuthMaterial: () =>
+      Promise.resolve(
+        input.readSecret === undefined
+          ? {
+              authContentEnv: 'CLAUDE_CODE_OAUTH_TOKEN',
+              authContentValue: 'sk-ant-oat-claude-secret',
+            }
+          : input.readSecret(),
+      ),
+    readStartedCodexDeviceLogin: () => () => Promise.resolve(undefined),
+    storeConnectedCodexAuth: () => () => Promise.resolve('codex-auth://unused'),
+    storeStartedCodexDeviceLogin: () => () => Promise.resolve(),
+  })
+
+const claudeMaterialRequest = (
+  token: string | undefined,
+  overrides: Record<string, unknown> = {},
+): Request =>
+  new Request(
+    'https://openagents.com/api/pylon/provider-accounts/anthropic-claude/auth-material',
+    {
+      method: 'POST',
+      headers: {
+        ...(token === undefined
+          ? {}
+          : { authorization: `Bearer ${token}` }),
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        grantRef: 'provider-auth-grant_claude_owner',
+        kind: 'claude_agent_anthropic_api_key',
+        providerAccountRef: 'provider_account_claude_owner',
+        runnerSessionId: 'turn.agent_computer.claude.test',
+        secretRef: 'provider-auth:provider_account_claude_owner',
         ...overrides,
       }),
     },
@@ -612,11 +695,13 @@ describe('provider account Pylon device-login routes', () => {
     const token = 'oa_agent_claude_auth_material_token'
     const repository = new MemoryProviderAccountRepository()
     repository.accounts.push(makeAccount({}))
+    repository.grants.push(makeClaudeGrant())
     const calls: Array<{ ownerUserId: string; providerAccountRef: string }> = []
     const handlers = makeProviderAccountPylonHandlers({
       agentStore: () => agentStoreFor(token, 'openauth-user-owner'),
       deleteStartedCodexDeviceLogin: () => () => Promise.resolve(),
       makeProviderAccountRepository: () => repository,
+      providerGrantRepository: () => repository,
       readConnectedCodexAuthMaterial: () => Promise.resolve(undefined),
       readConnectedClaudeAuthMaterial: (_env, ownerUserId, providerAccountRef) => {
         calls.push({ ownerUserId, providerAccountRef })
@@ -631,19 +716,7 @@ describe('provider account Pylon device-login routes', () => {
     })
 
     const response = await handlers.handlePylonProviderClaudeAuthMaterialApi(
-      new Request(
-        'https://openagents.com/api/pylon/provider-accounts/anthropic-claude/auth-material',
-        {
-          method: 'POST',
-          headers: {
-            authorization: `Bearer ${token}`,
-            'content-type': 'application/json',
-          },
-          body: JSON.stringify({
-            providerAccountRef: 'provider_account_claude_owner',
-          }),
-        },
-      ),
+      claudeMaterialRequest(token),
       env(),
     )
     const body = (await response.json()) as {
@@ -666,6 +739,8 @@ describe('provider account Pylon device-login routes', () => {
     ])
     expect(body.authMaterial.authContentEnv).toBe('CLAUDE_CODE_OAUTH_TOKEN')
     expect(body.authMaterial.authContentValue).toBe('sk-ant-oat-claude-secret')
+    expect(repository.grants[0]?.status).toBe('used')
+    expect(repository.grants[0]?.usedAt).not.toBeNull()
   })
 
   test('materializes Gemini secret once for the exact owner and turn grant', async () => {
@@ -886,50 +961,192 @@ describe('provider account Pylon device-login routes', () => {
     expect(repository.grants[0]?.status).toBe('issued')
   })
 
-  test('refuses Claude auth material for an account not owned by the linked user', async () => {
-    const token = 'oa_agent_claude_wrong_owner_token'
+  test.each([
+    [
+      'owner',
+      makeClaudeGrant({ userId: 'openauth-user-other' }),
+      {},
+    ],
+    [
+      'provider',
+      makeClaudeGrant({ provider: 'google_gemini' }),
+      {},
+    ],
+    [
+      'turn',
+      makeClaudeGrant(),
+      { runnerSessionId: 'turn.agent_computer.claude.other' },
+    ],
+    [
+      'grant',
+      makeClaudeGrant(),
+      { grantRef: 'provider-auth-grant_claude_other' },
+    ],
+    [
+      'account',
+      makeClaudeGrant(),
+      { providerAccountRef: 'provider_account_claude_other' },
+    ],
+    [
+      'secret',
+      makeClaudeGrant(),
+      { secretRef: 'provider-auth:provider_account_claude_other' },
+    ],
+    [
+      'action',
+      makeClaudeGrant({ requestedAction: 'probe_claude_turn' }),
+      {},
+    ],
+    [
+      'kind',
+      makeClaudeGrant(),
+      { kind: 'probe_claude_agent_anthropic_api_key' },
+    ],
+  ])(
+    'refuses Claude material when the %s scope does not match',
+    async (_scope, grant, overrides) => {
+      const token = `oa_agent_claude_wrong_${_scope}_token`
+      const repository = new MemoryProviderAccountRepository()
+      repository.grants.push(grant)
+      let secretReads = 0
+      const handlers = makeClaudeMaterialHandlers({
+        token,
+        repository,
+        readSecret: () => {
+          secretReads += 1
+          return {
+            authContentEnv: 'CLAUDE_CODE_OAUTH_TOKEN',
+            authContentValue: 'sk-ant-oat-claude-secret',
+          }
+        },
+      })
+
+      const response =
+        await handlers.handlePylonProviderClaudeAuthMaterialApi(
+          claudeMaterialRequest(token, overrides),
+          env(),
+        )
+      const body = (await response.json()) as { error: string }
+
+      expect(response.status).toBe(409)
+      expect(response.headers.get('cache-control')).toBe('no-store')
+      expect(body.error).toBe('provider_secret_material_scope_mismatch')
+      expect(JSON.stringify(body)).not.toContain('sk-ant-oat-claude-secret')
+      expect(secretReads).toBe(0)
+      expect(repository.grants[0]?.status).toBe('issued')
+    },
+  )
+
+  test('rejects a Claude material request with a missing scope field', async () => {
+    const token = 'oa_agent_claude_missing_scope_token'
     const repository = new MemoryProviderAccountRepository()
-    repository.accounts.push(
-      makeAccount({
-        userId: 'other-owner',
-        providerAccountRef: 'provider_account_claude_other',
-      }),
-    )
-    const handlers = makeProviderAccountPylonHandlers({
-      agentStore: () => agentStoreFor(token, 'openauth-user-owner'),
-      deleteStartedCodexDeviceLogin: () => () => Promise.resolve(),
-      makeProviderAccountRepository: () => repository,
-      readConnectedCodexAuthMaterial: () => Promise.resolve(undefined),
-      readConnectedClaudeAuthMaterial: () =>
-        Promise.resolve({
+    repository.grants.push(makeClaudeGrant())
+    let secretReads = 0
+    const handlers = makeClaudeMaterialHandlers({
+      token,
+      repository,
+      readSecret: () => {
+        secretReads += 1
+        return {
           authContentEnv: 'CLAUDE_CODE_OAUTH_TOKEN',
-          authContentValue: 'sk-ant-oat-should-not-read',
-        }),
-      readStartedCodexDeviceLogin: () => () => Promise.resolve(undefined),
-      storeConnectedCodexAuth: () => () => Promise.resolve('codex-auth://unused'),
-      storeStartedCodexDeviceLogin: () => () => Promise.resolve(),
+          authContentValue: 'sk-ant-oat-claude-secret',
+        }
+      },
     })
 
-    const response = await handlers.handlePylonProviderClaudeAuthMaterialApi(
-      new Request(
-        'https://openagents.com/api/pylon/provider-accounts/anthropic-claude/auth-material',
-        {
-          method: 'POST',
-          headers: {
-            authorization: `Bearer ${token}`,
-            'content-type': 'application/json',
-          },
-          body: JSON.stringify({
-            providerAccountRef: 'provider_account_claude_other',
-          }),
-        },
-      ),
-      env(),
-    )
+    const response =
+      await handlers.handlePylonProviderClaudeAuthMaterialApi(
+        claudeMaterialRequest(token, { runnerSessionId: null }),
+        env(),
+      )
+    const body = (await response.json()) as { error: string }
+
+    expect(response.status).toBe(400)
+    expect(response.headers.get('cache-control')).toBe('no-store')
+    expect(body.error).toBe('provider_secret_material_request_invalid')
+    expect(secretReads).toBe(0)
+    expect(repository.grants[0]?.status).toBe('issued')
+  })
+
+  test('fails closed when Claude secret material is missing', async () => {
+    const token = 'oa_agent_claude_missing_material_token'
+    const repository = new MemoryProviderAccountRepository()
+    repository.grants.push(makeClaudeGrant())
+    const handlers = makeClaudeMaterialHandlers({
+      token,
+      repository,
+      readSecret: () => undefined,
+    })
+
+    const response =
+      await handlers.handlePylonProviderClaudeAuthMaterialApi(
+        claudeMaterialRequest(token),
+        env(),
+      )
     const body = (await response.json()) as { error: string }
 
     expect(response.status).toBe(409)
-    expect(body.error).toBe('provider_account_auth_material_unavailable')
+    expect(body.error).toBe('provider_secret_material_unavailable')
+    expect(repository.grants[0]?.status).toBe('issued')
+  })
+
+  test('rejects replay after one Claude material response', async () => {
+    const token = 'oa_agent_claude_replay_token'
+    const repository = new MemoryProviderAccountRepository()
+    repository.grants.push(makeClaudeGrant())
+    const handlers = makeClaudeMaterialHandlers({ token, repository })
+
+    const first =
+      await handlers.handlePylonProviderClaudeAuthMaterialApi(
+        claudeMaterialRequest(token),
+        env(),
+      )
+    const replay =
+      await handlers.handlePylonProviderClaudeAuthMaterialApi(
+        claudeMaterialRequest(token),
+        env(),
+      )
+    const replayBody = (await replay.json()) as { error: string }
+
+    expect(first.status).toBe(200)
+    expect(replay.status).toBe(409)
+    expect(replayBody.error).toBe('provider_secret_material_unavailable')
+    expect(JSON.stringify(replayBody)).not.toContain(
+      'sk-ant-oat-claude-secret',
+    )
+  })
+
+  test('rejects an expired Claude grant without reading or returning secret material', async () => {
+    const token = 'oa_agent_claude_expired_token'
+    const repository = new MemoryProviderAccountRepository()
+    repository.grants.push(
+      makeClaudeGrant({ expiresAt: '2020-07-23T12:05:00.000Z' }),
+    )
+    let secretReads = 0
+    const handlers = makeClaudeMaterialHandlers({
+      token,
+      repository,
+      readSecret: () => {
+        secretReads += 1
+        return {
+          authContentEnv: 'CLAUDE_CODE_OAUTH_TOKEN',
+          authContentValue: 'sk-ant-oat-claude-secret',
+        }
+      },
+    })
+
+    const response =
+      await handlers.handlePylonProviderClaudeAuthMaterialApi(
+        claudeMaterialRequest(token),
+        env(),
+      )
+    const body = (await response.json()) as { error: string }
+
+    expect(response.status).toBe(409)
+    expect(body.error).toBe('provider_secret_material_unavailable')
+    expect(JSON.stringify(body)).not.toContain('sk-ant-oat-claude-secret')
+    expect(secretReads).toBe(0)
+    expect(repository.grants[0]?.status).toBe('issued')
   })
 
   test('imports local Codex auth under the linked OpenAuth owner without echoing credentials', async () => {

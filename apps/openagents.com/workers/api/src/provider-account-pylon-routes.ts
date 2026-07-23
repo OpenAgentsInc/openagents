@@ -24,6 +24,7 @@ import {
   type StoreConnectedClaudeAuth,
   type StoreConnectedCodexAuth,
   type StoreStartedCodexDeviceLogin,
+  ANTHROPIC_CLAUDE_PROVIDER,
   GOOGLE_GEMINI_PROVIDER,
   connectChatGptCodexLocalAuthForUser,
   connectClaudeLocalAuthForUser,
@@ -185,6 +186,9 @@ const optionalSecretString = (
 
 const GOOGLE_GEMINI_SECRET_MATERIAL_KIND = 'gemini_api_key'
 const GOOGLE_GEMINI_TURN_ACTION = 'agent_computer_gemini_turn'
+const ANTHROPIC_CLAUDE_SECRET_MATERIAL_KIND =
+  'claude_agent_anthropic_api_key'
+const ANTHROPIC_CLAUDE_TURN_ACTION = 'agent_computer_claude_turn'
 
 /** CX-5 (#8549): Claude's single-string bearer analogue of `requiredSecretString`. */
 const requiredClaudeAuthContentValue = (
@@ -460,29 +464,75 @@ export const makeProviderAccountPylonHandlers = <
     const body = await readJsonObject(request).catch(
       (): Record<string, unknown> => ({}),
     )
+    const grantRef = optionalString(body.grantRef)
+    const kind = optionalString(body.kind)
     const providerAccountRef = optionalString(body.providerAccountRef)
-    if (providerAccountRef === undefined) {
+    const runnerSessionId = optionalString(body.runnerSessionId)
+    const secretRef = optionalString(body.secretRef)
+
+    if (
+      grantRef === undefined ||
+      kind === undefined ||
+      providerAccountRef === undefined ||
+      runnerSessionId === undefined ||
+      secretRef === undefined
+    ) {
       return noStoreJsonResponse(
         {
-          error: 'provider_account_ref_required',
+          error: 'provider_secret_material_request_invalid',
           message:
-            'A providerAccountRef is required before Pylon can request Claude auth material from custody.',
+            'The Claude secret-material request must include all required scope references.',
         },
         { status: 400 },
       )
     }
 
+    if (kind !== ANTHROPIC_CLAUDE_SECRET_MATERIAL_KIND) {
+      return noStoreJsonResponse(
+        {
+          error: 'provider_secret_material_scope_mismatch',
+          message: 'The Claude secret-material request scope does not match.',
+        },
+        { status: 409 },
+      )
+    }
+
     try {
-      const account = await routeProviderAccountRepository(
-        dependencies,
-        env,
-      ).findAccountByRef(userId, providerAccountRef)
-      if (account === undefined || account.provider !== 'anthropic_claude') {
+      const grantRepository =
+        dependencies.providerGrantRepository?.(env) ??
+        routeProviderAccountRepository(dependencies, env)
+      const candidateGrant = await grantRepository.findGrantByRef(grantRef)
+
+      if (
+        candidateGrant === undefined ||
+        candidateGrant.userId !== userId ||
+        candidateGrant.provider !== ANTHROPIC_CLAUDE_PROVIDER ||
+        candidateGrant.providerAccountRef !== providerAccountRef ||
+        candidateGrant.providerSecretRef !== secretRef ||
+        candidateGrant.runnerSessionId !== runnerSessionId ||
+        candidateGrant.requestedAction !== ANTHROPIC_CLAUDE_TURN_ACTION
+      ) {
         return noStoreJsonResponse(
           {
-            error: 'provider_account_auth_material_unavailable',
-            message:
-              'Claude provider account auth material is unavailable in custody for this owner.',
+            error: 'provider_secret_material_scope_mismatch',
+            message: 'The Claude secret-material request scope does not match.',
+          },
+          { status: 409 },
+        )
+      }
+
+      const now = Date.parse((dependencies.nowIso ?? currentIsoTimestamp)())
+      const grantExpiresAt = Date.parse(candidateGrant.expiresAt)
+      if (
+        candidateGrant.status !== 'issued' ||
+        !Number.isFinite(now) ||
+        !Number.isFinite(grantExpiresAt) ||
+        grantExpiresAt <= now
+      ) {
+        return noStoreJsonResponse(
+          {
+            error: 'provider_secret_material_unavailable',
+            message: 'Claude secret material is unavailable.',
           },
           { status: 409 },
         )
@@ -501,9 +551,40 @@ export const makeProviderAccountPylonHandlers = <
       if (authMaterial === undefined) {
         return noStoreJsonResponse(
           {
-            error: 'provider_account_auth_material_unavailable',
-            message:
-              'Claude provider account auth material is unavailable in custody for this owner.',
+            error: 'provider_secret_material_unavailable',
+            message: 'Claude secret material is unavailable.',
+          },
+          { status: 409 },
+        )
+      }
+
+      const resolvedGrant = await observedPromise(
+        'ProviderAccountPylon.resolveClaudeGrantForMaterialization',
+        () =>
+          resolveProviderAccountGrant(grantRepository, {
+            actorId: session.credential.id,
+            grantRef,
+            providerAccountRef,
+            runnerSessionId,
+          }),
+      )
+
+      if (
+        resolvedGrant === undefined ||
+        resolvedGrant.ownerUserId !== userId ||
+        resolvedGrant.provider !== ANTHROPIC_CLAUDE_PROVIDER ||
+        resolvedGrant.providerAccountRef !== providerAccountRef ||
+        resolvedGrant.providerSecretRef !== secretRef ||
+        resolvedGrant.runnerSessionId !== runnerSessionId ||
+        resolvedGrant.requestedAction !== ANTHROPIC_CLAUDE_TURN_ACTION ||
+        !('kind' in resolvedGrant.materialization) ||
+        resolvedGrant.materialization.kind !==
+          ANTHROPIC_CLAUDE_SECRET_MATERIAL_KIND
+      ) {
+        return noStoreJsonResponse(
+          {
+            error: 'provider_secret_material_scope_mismatch',
+            message: 'The Claude secret-material request scope does not match.',
           },
           { status: 409 },
         )
@@ -513,20 +594,26 @@ export const makeProviderAccountPylonHandlers = <
         withPylonLinkMetadata({
           schema: 'openagents.pylon.provider_account.claude_auth_material.v1',
           status: 'issued',
+          grantRef,
           providerAccountRef,
+          runnerSessionId,
+          secretRef,
           authMaterial,
         }),
       )
     } catch (error) {
       logWorkerRouteError('pylon_provider_claude_auth_material_failed', error, {
         errorName: providerAccountRouteErrorName(error),
+        grantRef,
         providerAccountRef,
+        runnerSessionId,
+        secretRef,
       })
 
       return noStoreJsonResponse(
         {
-          error: 'provider_account_auth_material_unavailable',
-          message: providerAccountRouteErrorMessage(error),
+          error: 'provider_secret_material_unavailable',
+          message: 'Claude secret material is unavailable.',
         },
         { status: providerAccountRouteErrorStatus(error, 409) },
       )
