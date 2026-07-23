@@ -32881,6 +32881,28 @@
       }
     },
     {
+      "path": "docs/mobile/2026-07-22-openagents-testflight-build-124-release-evidence.md",
+      "sha256": "fdc677e8486b18c536a48da342763b22bb28d3b5052ac518e41b0c841df738fa",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/mpp/2026-06-23-mpp-launch-and-badge-runbook.md",
       "sha256": "e41c6a4c0ca2ce21dae91baa043b7ca210034980c0087aafb8538c0d7055360a",
       "reason": "Final review of a converted document",
