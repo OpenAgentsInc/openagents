@@ -7627,6 +7627,7 @@ const runManagedCloudRuntimeTurnDispatchForEnv = async (
       baseUrl: env.OA_CLOUD_CONTROL_URL ?? '',
       bearerToken: env.OA_CLOUD_CONTROL_TOKEN ?? '',
       gceProvisioningArmed: true,
+      returnAfterPlacementAccepted: true,
     }),
   )
   const client = await defaultMakeKhalaSyncSqlClient(connectionString)

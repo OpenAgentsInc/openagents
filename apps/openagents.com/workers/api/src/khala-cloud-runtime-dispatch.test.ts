@@ -464,6 +464,33 @@ describe('managed cloud terminal provider failover', () => {
       },
     ])
   })
+
+  test('keeps the provider lease active after asynchronous placement acceptance', async () => {
+    const releases: Array<
+      Parameters<ProviderAccountLeaseService['release']>[0]
+    > = []
+    await finalizeManagedCloudProviderLease(
+      {
+        failover: () => Promise.resolve(undefined),
+        release: input => {
+          releases.push(input)
+          return Promise.resolve(true)
+        },
+      },
+      {
+        ...admitted,
+        providerAccountLeaseRef: 'provider-account-lease.async-1',
+      },
+      {
+        outcome: 'launched',
+        placementRef: 'placement.async-1',
+        sessionId: 'ccs.async-1',
+        tokenRevoked: false,
+      },
+      '2026-07-23T12:00:00.000Z',
+    )
+    expect(releases).toEqual([])
+  })
 })
 
 describe('dispatchCloudGcpRuntimeTurn', () => {

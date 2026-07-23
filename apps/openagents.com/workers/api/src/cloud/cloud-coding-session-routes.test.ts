@@ -805,6 +805,65 @@ describe('POST /v1/cloud-coding-sessions', () => {
     expect(fetchCalls).toBe(2)
   })
 
+  test('returns after asynchronous placement acceptance for a bounded cron dispatch', async () => {
+    let fetchCalls = 0
+    const adapter = makeCloudControlCloudCodingAdapter({
+      baseUrl: 'https://cloud.openagents.test',
+      bearerToken: 'secret-test-token',
+      fetch: async () => {
+        fetchCalls += 1
+        return Response.json({
+          agent_computer_isolation_policy: agentComputerIsolationPolicyEcho,
+          binding: {
+            externalRunId: 'run_gce_async',
+            lane: 'cloud-gcp',
+            providerLane: 'gcp',
+            runnerId: 'runner_gce_async',
+          },
+          events: [
+            {
+              dataJson: JSON.stringify({
+                externalRunId: 'run_gce_async',
+                lane: 'cloud-gcp',
+                workContextRef: 'work-context.agent-computer.ccs_async',
+              }),
+              kind: 'cloud.gce.provisioning',
+            },
+          ],
+          externalRunId: 'run_gce_async',
+          status: 'provisioning',
+        })
+      },
+      gceProvisioningArmed: true,
+      returnAfterPlacementAccepted: true,
+    })
+    const session = await Effect.runPromise(
+      adapter.launch({
+        accountRef: 'agent:test-user',
+        lane: 'cloud-gcp',
+        request: {
+          adapter: 'codex',
+          lane: 'cloud-gcp',
+          objective: 'seam-a',
+          options: {
+            authGrantRef: 'grant.public.test',
+            providerAccountRef: 'provider-account.public.test',
+            workContextB64: 'eyJhIjoxfQ==',
+          },
+          repoRef: 'repo:openagents/openagents',
+          repoTrustTier: 'private',
+          timeoutSeconds: 1800,
+          verify: [],
+          workContextRef: 'work-context.agent-computer.ccs_async',
+        },
+        sessionId: 'ccs_async',
+      }),
+    )
+    expect(fetchCalls).toBe(1)
+    expect(session.state).toBe('queued')
+    expect(session.agentComputerState).toBe('provisioning')
+  })
+
   test('fails closed when the control plane omits the isolation-policy echo', async () => {
     const adapter = makeCloudControlCloudCodingAdapter({
       baseUrl: 'https://cloud.openagents.test',

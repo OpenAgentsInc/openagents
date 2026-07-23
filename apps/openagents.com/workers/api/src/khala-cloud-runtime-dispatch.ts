@@ -810,6 +810,10 @@ export const finalizeManagedCloudProviderLease = async (
 ): Promise<void> => {
   const leaseRef = turn.providerAccountLeaseRef
   if (leaseRef === undefined) return
+  // Placement acceptance is asynchronous. Keep the provider account reserved
+  // while the guest can still use its one-use material. A later terminal
+  // reconciliation can release it; the 35-minute expiry remains the fail-safe.
+  if (outcome.outcome === 'launched') return
   if (
     outcome.outcome === 'failed' &&
     outcome.providerFailureClass !== undefined
@@ -841,11 +845,8 @@ export const finalizeManagedCloudProviderLease = async (
         : null,
     leaseRef,
     now,
-    status: outcome.outcome === 'launched' ? 'succeeded' : 'failed',
-    terminalOutcome:
-      outcome.outcome === 'launched'
-        ? 'managed_cloud_placement_accepted'
-        : `managed_cloud_${outcome.reason ?? 'dispatch_failed'}`,
+    status: 'failed',
+    terminalOutcome: `managed_cloud_${outcome.reason ?? 'dispatch_failed'}`,
     userId: turn.ownerUserId,
   })
 }
@@ -1172,8 +1173,8 @@ export const dispatchCloudGcpRuntimeTurn = async (
 
     // 5. Launch accepted (provisioning). Stream a public-safe status line then
     // finish. The token is NOT revoked here — the microVM's inference call runs
-    // asynchronously and needs the live bearer; its short TTL bounds it, and a
-    // completion sweep revokes it once the lifecycle terminal is observed.
+    // asynchronously and needs the live bearer. Its bounded TTL and the
+    // retained provider lease prevent unbounded or overlapping provider use.
     const statusText =
       `Launched an OpenAgents Agent Computer microVM turn for ` +
       `${authorizedTurn.repo}@${authorizedTurn.commit.slice(0, 12)}.`

@@ -776,6 +776,10 @@ export type CloudCodingControlPlaneConfig = Readonly<{
   baseUrl: string
   bearerToken: string
   gceProvisioningArmed: boolean
+  /** Return after the control plane accepts an asynchronous placement. The
+   * managed-cloud cron uses this mode because one scheduled request has a
+   * 30-second execution budget. Interactive callers keep terminal following. */
+  returnAfterPlacementAccepted?: boolean | undefined
   fetch?: typeof fetch
 }>
 
@@ -1403,7 +1407,10 @@ export const makeCloudControlCloudCodingAdapter = (
         // only `provisioning`. Follow the control job to its authoritative
         // terminal state before projecting Sync completion. This also ensures
         // cleanup receipts are validated from the real completed lifecycle.
-        if (placement.status === 'provisioning') {
+        if (
+          placement.status === 'provisioning' &&
+          config.returnAfterPlacementAccepted !== true
+        ) {
           const deadline = currentEpochMillis() + request.timeoutSeconds * 1_000
           while (placement.status === 'provisioning' && currentEpochMillis() < deadline) {
             yield* Effect.promise(

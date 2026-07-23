@@ -40,9 +40,9 @@ import {
   randomUuid,
 } from './runtime-primitives'
 
-/** Default TTL for a minted execution token (10 minutes). Bounds blast radius
- * to well under a single microVM turn's hard timeout. */
-export const DEFAULT_EXECUTION_TOKEN_TTL_SECONDS = 600
+/** Default TTL for a minted execution token (30 minutes). This covers the
+ * 25-minute guest window and stays below the 35-minute provider lease. */
+export const DEFAULT_EXECUTION_TOKEN_TTL_SECONDS = 30 * 60
 
 /** Credential `name` stamped on minted Seam A execution tokens. */
 export const CLOUD_RUNTIME_EXECUTION_TOKEN_NAME =
