@@ -8,9 +8,8 @@
 #   - Ubuntu 22.04 (jammy) debootstrap base: git, python3, ca-certificates,
 #     openssh-client
 #   - Node ${NODE_VERSION} at /usr/local/bin/node
-#   - the PINNED codex binary (npm @openai/codex linux-x64 vendor musl build)
-#     at /usr/local/bin/codex (+ its vendored rg at /usr/local/bin/rg) — the
-#     CX-3 in-VM `codex exec --json` lane depends on this
+#   - seven pinned coding harnesses: codex, claude-code, cursor, goose,
+#     opencode, pi, and grok
 #   - the vsock guest agent (guest-agent.py, agent-guest.service enabled,
 #     AF_VSOCK :1024)
 #   - the Vite Plus packed turn-runner at /opt/agent/turn-runner
@@ -44,6 +43,15 @@ CODEX_VERSION="0.144.0"
 CODEX_TARBALL_SHA256="391a3793d21feff08da2d9132f01107dd56fa5a48a158e23d15c6d56e34f7cb2"
 # package/vendor/x86_64-unknown-linux-musl/bin/codex inside that tarball
 CODEX_BINARY_SHA256="901923c1808a151f6926d41d703c17ad48815662cefb1c8d832a052c44271429"
+CLAUDE_CODE_VERSION="2.1.218"
+OPENCODE_VERSION="1.18.4"
+PI_VERSION="0.81.1"
+GOOSE_VERSION="1.43.0"
+GOOSE_TARBALL_SHA256="a9a96f559a8b5f20b11597b78e4aa5bb0b9b29796ec4f808ca466a3f59a5ec20"
+CURSOR_VERSION="2026.07.20-8cc9c0b"
+CURSOR_TARBALL_SHA256="6e9f17247ffeb5f8f7e2246b4bcd6bb26cb2d5a9f9a4b0012c9a80d868ed25b4"
+GROK_VERSION="0.2.106"
+GROK_BINARY_SHA256="7180d0e03cc2a496033ff3aae2223ce239446a9827a59faa76091c7edd5e1c38"
 TYPESCRIPT_LANGUAGE_SERVER_VERSION="5.3.0"
 TYPESCRIPT_LANGUAGE_SERVER_TARBALL_SHA256="398cacc17fff2108652e7b4050e3182008d17063246b3fea7dcf5fae2ce1560e"
 TYPESCRIPT_VERSION="5.9.3"
@@ -182,8 +190,83 @@ install -m 0755 "$WORK/package/vendor/x86_64-unknown-linux-musl/codex-path/rg" \
   "$MNT/usr/local/bin/rg"
 chroot "$MNT" /usr/local/bin/codex --version >/dev/null \
   || fail "baked codex binary does not execute in the guest chroot"
+chroot "$MNT" /usr/local/bin/codex login --help >/dev/null \
+  || fail "baked codex login command is unavailable"
+if chroot "$MNT" /usr/local/bin/codex login status >"$WORK/codex-login-status.txt" 2>&1; then
+  fail "fresh image unexpectedly reports a logged-in Codex account"
+fi
+grep -Eiq 'not logged in|not authenticated|login required' "$WORK/codex-login-status.txt" \
+  || fail "fresh image Codex login status was not the expected signed-out state"
 
-# --- 5. managed IDE protocol helpers ---------------------------------------
+# --- 5. remaining pinned harnesses -----------------------------------------
+# The npm lock is image-local. It does not inherit the monorepo lock or float
+# transitive versions. No provider key or subscription credential is present.
+echo "==> installing pinned JavaScript harnesses"
+install -d "$MNT/opt/agent/harnesses"
+install -m 0644 "$SCRIPT_DIR/harnesses/package.json" \
+  "$MNT/opt/agent/harnesses/package.json"
+install -m 0644 "$SCRIPT_DIR/harnesses/package-lock.json" \
+  "$MNT/opt/agent/harnesses/package-lock.json"
+chroot "$MNT" /usr/local/bin/npm ci --prefix /opt/agent/harnesses \
+  --ignore-scripts --no-audit --no-fund >/dev/null \
+  || fail "pinned Agent Computer harness npm install failed"
+if ! chroot "$MNT" /bin/sh -c \
+  'cd /opt/agent/harnesses && /usr/local/bin/npm audit signatures --json' \
+  > "$WORK/harness-signatures.json"; then
+  fail "Agent Computer harness npm signature verification failed"
+fi
+jq -e '.invalid == [] and .missing == []' "$WORK/harness-signatures.json" >/dev/null \
+  || fail "Agent Computer harness signature verification reported invalid or missing signatures"
+for harness in claude opencode pi; do
+  [ -x "$MNT/opt/agent/harnesses/node_modules/.bin/$harness" ] \
+    || fail "pinned $harness executable is absent"
+  ln -s "/opt/agent/harnesses/node_modules/.bin/$harness" \
+    "$MNT/usr/local/bin/$harness"
+done
+chroot "$MNT" /usr/local/bin/claude --version | grep -Fq "$CLAUDE_CODE_VERSION" \
+  || fail "baked claude does not report $CLAUDE_CODE_VERSION"
+chroot "$MNT" /usr/local/bin/opencode --version | grep -Fq "$OPENCODE_VERSION" \
+  || fail "baked opencode does not report $OPENCODE_VERSION"
+chroot "$MNT" /usr/local/bin/pi --version | grep -Fq "$PI_VERSION" \
+  || fail "baked pi does not report $PI_VERSION"
+
+echo "==> installing goose $GOOSE_VERSION"
+curl -fsSL -o "$WORK/goose.tgz" \
+  "https://github.com/aaif-goose/goose/releases/download/v${GOOSE_VERSION}/goose-x86_64-unknown-linux-gnu.tar.gz"
+echo "$GOOSE_TARBALL_SHA256  $WORK/goose.tgz" | sha256sum -c - >/dev/null \
+  || fail "goose tarball digest mismatch"
+tar -xzf "$WORK/goose.tgz" -C "$WORK"
+GOOSE_BINARY="$(find "$WORK" -type f -name goose -perm -u+x -print -quit)"
+[ -n "$GOOSE_BINARY" ] || fail "goose release did not contain its executable"
+install -m 0755 "$GOOSE_BINARY" "$MNT/usr/local/bin/goose"
+chroot "$MNT" /usr/local/bin/goose --version | grep -Fq "$GOOSE_VERSION" \
+  || fail "baked goose does not report $GOOSE_VERSION"
+
+echo "==> installing Cursor Agent $CURSOR_VERSION"
+curl -fsSL -o "$WORK/cursor-agent.tgz" \
+  "https://downloads.cursor.com/lab/${CURSOR_VERSION}/linux/x64/agent-cli-package.tar.gz"
+echo "$CURSOR_TARBALL_SHA256  $WORK/cursor-agent.tgz" | sha256sum -c - >/dev/null \
+  || fail "Cursor Agent tarball digest mismatch"
+install -d "$MNT/opt/agent/cursor-agent/$CURSOR_VERSION"
+tar --strip-components=1 -xzf "$WORK/cursor-agent.tgz" \
+  -C "$MNT/opt/agent/cursor-agent/$CURSOR_VERSION"
+[ -x "$MNT/opt/agent/cursor-agent/$CURSOR_VERSION/cursor-agent" ] \
+  || fail "Cursor Agent release did not contain its executable"
+ln -s "/opt/agent/cursor-agent/$CURSOR_VERSION/cursor-agent" \
+  "$MNT/usr/local/bin/cursor-agent"
+chroot "$MNT" /usr/local/bin/cursor-agent --version | grep -Fq "$CURSOR_VERSION" \
+  || fail "baked Cursor Agent does not report $CURSOR_VERSION"
+
+echo "==> installing Grok CLI $GROK_VERSION"
+curl -fsSL -o "$WORK/grok" \
+  "https://storage.googleapis.com/grok-build-public-artifacts/cli/grok-${GROK_VERSION}-linux-x86_64"
+echo "$GROK_BINARY_SHA256  $WORK/grok" | sha256sum -c - >/dev/null \
+  || fail "Grok CLI binary digest mismatch"
+install -m 0755 "$WORK/grok" "$MNT/usr/local/bin/grok"
+chroot "$MNT" /usr/local/bin/grok version | grep -Fq "$GROK_VERSION" \
+  || fail "baked Grok CLI does not report $GROK_VERSION"
+
+# --- 6. managed IDE protocol helpers ---------------------------------------
 echo "==> installing signed TypeScript LSP $TYPESCRIPT_LANGUAGE_SERVER_VERSION with TypeScript $TYPESCRIPT_VERSION"
 install -d "$MNT/opt/agent/typescript-lsp"
 cat > "$MNT/opt/agent/typescript-lsp/package.json" <<'EOF'
@@ -207,7 +290,7 @@ chroot "$MNT" /usr/local/bin/node \
   | grep -qx "$TYPESCRIPT_LANGUAGE_SERVER_VERSION" \
   || fail "baked TypeScript language server does not report the pinned version"
 
-# --- 6. vsock guest agent (source-controlled, proven artifact) ---------------
+# --- 7. vsock guest agent (source-controlled, proven artifact) ---------------
 echo "==> installing vsock guest agent"
 install -d "$MNT/opt/agent"
 install -m 0755 "$SCRIPT_DIR/guest-agent.py" "$MNT/opt/agent/guest-agent.py"
@@ -217,7 +300,7 @@ install -d "$MNT/etc/systemd/system/multi-user.target.wants"
 ln -sf /etc/systemd/system/agent-guest.service \
   "$MNT/etc/systemd/system/multi-user.target.wants/agent-guest.service"
 
-# --- 7. turn-runner -----------------------------------------------------------
+# --- 8. turn-runner -----------------------------------------------------------
 if [ -z "$TURN_RUNNER" ]; then
   echo "==> compiling turn-runner from $REPO_ROOT"
   TURN_RUNNER="$WORK/turn-runner"
@@ -229,7 +312,7 @@ fi
 [ -f "$TURN_RUNNER" ] || fail "turn-runner binary not found: $TURN_RUNNER"
 install -m 0755 "$TURN_RUNNER" "$MNT/opt/agent/turn-runner"
 
-# --- 8. retained portable-session controller ---------------------------------
+# --- 9. retained portable-session controller ---------------------------------
 if [ -z "$PORTABLE_SESSION_CONTROL" ]; then
   echo "==> compiling portable-session-control from $REPO_ROOT"
   PORTABLE_SESSION_CONTROL="$WORK/portable-session-control"
@@ -244,7 +327,7 @@ fi
 install -m 0755 "$PORTABLE_SESSION_CONTROL" \
   "$MNT/opt/agent/portable-session-control"
 
-# --- 9. oa-workroomd -----------------------------------------------------------
+# --- 10. oa-workroomd ----------------------------------------------------------
 WORKROOMD_SHA256="skipped"
 if [ "$SKIP_WORKROOMD" = "0" ]; then
   echo "==> installing oa-workroomd"
@@ -252,7 +335,8 @@ if [ "$SKIP_WORKROOMD" = "0" ]; then
   WORKROOMD_SHA256="$(sha256sum "$WORKROOMD" | cut -d' ' -f1)"
 fi
 
-# --- 10. seal -----------------------------------------------------------------
+# --- 11. seal -----------------------------------------------------------------
+HARNESS_PACKAGE_LOCK_SHA256="$(sha256sum "$SCRIPT_DIR/harnesses/package-lock.json" | cut -d' ' -f1)"
 TURN_RUNNER_SHA256="$(sha256sum "$TURN_RUNNER" | cut -d' ' -f1)"
 PORTABLE_SESSION_CONTROL_SHA256="$(sha256sum "$PORTABLE_SESSION_CONTROL" | cut -d' ' -f1)"
 umount "$MNT"
@@ -270,6 +354,16 @@ cat > "$RECEIPT" <<EOF
   "nodeAbi": "node-v${NODE_VERSION}-linux-x64",
   "codexVersion": "$CODEX_VERSION",
   "codexBinarySha256": "$CODEX_BINARY_SHA256",
+  "harnesses": {
+    "claudeCode": { "version": "$CLAUDE_CODE_VERSION" },
+    "cursor": { "version": "$CURSOR_VERSION", "tarballSha256": "$CURSOR_TARBALL_SHA256" },
+    "goose": { "version": "$GOOSE_VERSION", "tarballSha256": "$GOOSE_TARBALL_SHA256" },
+    "grok": { "version": "$GROK_VERSION", "binarySha256": "$GROK_BINARY_SHA256" },
+    "opencode": { "version": "$OPENCODE_VERSION" },
+    "pi": { "version": "$PI_VERSION" },
+    "npmPackageLockSha256": "$HARNESS_PACKAGE_LOCK_SHA256",
+    "credentialMaterial": "runtime_only"
+  },
   "typescriptLanguageServer": {
     "artifactRef": "artifact.npm.typescript-language-server.${TYPESCRIPT_LANGUAGE_SERVER_VERSION}.sha256-${TYPESCRIPT_LANGUAGE_SERVER_TARBALL_SHA256}",
     "profileRef": "profile.agent-computer.typescript-lsp.v1",
@@ -304,5 +398,5 @@ echo "==> BAKE OK"
 echo "    image:   $OUTPUT"
 echo "    sha256:  $ROOTFS_SHA256"
 echo "    receipt: $RECEIPT"
-echo "Next: boot-smoke the image in a microVM (guest agent ready + 'codex --version'"
+echo "Next: boot-smoke the image in a microVM (guest agent ready + all seven harness version probes"
 echo "over vsock exec), then re-pin rootfsDigest in agent-computer-image.manifest.json."

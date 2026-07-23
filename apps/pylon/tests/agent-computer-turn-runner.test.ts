@@ -207,11 +207,11 @@ describe('agent-computer turn-runner: Codex provider-account broker materializat
       if (!result.ok) throw new Error('unreachable')
       expect(result.codexHome).toBe(join(root, 'turn-codex-1', 'codex-home'))
       expect(result.env.CODEX_HOME).toBe(result.codexHome)
-      expect(result.env.OPENCODE_AUTH_CONTENT).toBe(shortLivedAuthContent)
+      expect(result.env).toEqual({ CODEX_HOME: result.codexHome })
       const nativeAuth = JSON.parse(await readFile(result.authJsonPath, 'utf8'))
       expect(nativeAuth).toMatchObject({
         OPENAI_API_KEY: null,
-        auth_mode: 'chatgpt',
+        auth_mode: 'chatgptAuthTokens',
         tokens: {
           access_token: 'short-lived-access-token-never-serialized',
           id_token: 'short-lived-id-token-never-serialized',
@@ -980,9 +980,8 @@ describe('agent-computer turn-runner: codex exec contracts (CX-3 #8547)', () => 
     expect(env.HOME).toBe('/root')
     expect(env.PATH).toContain('/usr/local/bin')
     // Never the ambient process env (structural secret boundary).
-    expect(Object.keys(env).sort()).toEqual(
-      ['CODEX_HOME', 'HOME', 'OPENCODE_AUTH_CONTENT', 'PATH'].sort(),
-    )
+    expect(Object.keys(env).toSorted()).toEqual(['CODEX_HOME', 'HOME', 'PATH'])
+    expect(env).not.toHaveProperty('OPENCODE_AUTH_CONTENT')
   })
 
   test('parseCodexExecJsonl extracts thread id, message, and EXACT usage', () => {
@@ -1220,6 +1219,8 @@ describe('agent-computer turn-runner: runCodexTurnWithReceipt (CX-3 #8547)', () 
     expect(seen[0]!.binaryPath).toBe(CODEX_BINARY_PATH)
     expect(seen[0]!.cwd).toBe('/work/does-not-matter-here')
     expect(seen[0]!.env.CODEX_HOME).toBe(materializedCodexAuth.codexHome)
+    expect(Object.keys(seen[0]!.env).toSorted()).toEqual(['CODEX_HOME', 'HOME', 'PATH'])
+    expect(seen[0]!.env).not.toHaveProperty('OPENCODE_AUTH_CONTENT')
     expect(seen[0]!.timeoutMs).toBe(CODEX_TURN_DEFAULT_MAX_SECONDS * 1000)
     expect(seen[0]!.args).toContain('--json')
     expect(seen[0]!.args).toContain('objective prompt')

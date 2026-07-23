@@ -52,7 +52,7 @@ import { mkdir, writeFile, readdir } from 'node:fs/promises'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import {
   materializeGitCheckoutWorkspace,
   type GitCheckoutWorkspace,
@@ -110,6 +110,19 @@ export const CODEX_USAGE_RECEIPT_LANE = 'codex_app_server'
 export const CODEX_USAGE_RECEIPT_PROVIDER = 'pylon-codex-org-capacity'
 export const CODEX_USAGE_RECEIPT_MODEL = 'openagents/pylon-codex'
 export const CODEX_TURN_DEFAULT_MAX_SECONDS = 900
+export const AGENT_COMPUTER_HARNESS_IDS = [
+  'codex',
+  'claude-code',
+  'cursor',
+  'goose',
+  'opencode',
+  'pi',
+  'grok',
+] as const
+export type AgentComputerHarnessId = (typeof AGENT_COMPUTER_HARNESS_IDS)[number]
+export type NonCodexHarnessId = Exclude<AgentComputerHarnessId, 'codex'>
+export const AGENT_COMPUTER_DEFAULT_GEMINI_MODEL = 'gemini-3.5-flash'
+export const HARNESS_TURN_DEFAULT_MAX_SECONDS = 900
 
 /**
  * SINGLE-CHARGE HEADER (#8503 owner decision). The microVM's internal
@@ -301,7 +314,7 @@ export const codexAuthJsonFromOpenCodeAuthContent = (
     }
     return JSON.stringify({
       OPENAI_API_KEY: null,
-      auth_mode: 'chatgpt',
+      auth_mode: 'chatgptAuthTokens',
       last_refresh: new Date().toISOString(),
       tokens: {
         access_token: openai.access,
@@ -393,7 +406,6 @@ export const materializeCodexProviderAuth = async (
     codexHome,
     env: {
       CODEX_HOME: codexHome,
-      OPENCODE_AUTH_CONTENT: authContentJson,
     },
     expiresAt,
     providerAccountRef: args.providerAuth.providerAccountRef,
@@ -487,6 +499,35 @@ export type CodexTurnConfig = {
   maxTurnSeconds?: number
 }
 
+export const HARNESS_RUNTIME_SECRET_MATERIAL_PATH =
+  '/api/pylon/provider-accounts/google-gemini/auth-material'
+export const HARNESS_RUNTIME_SECRET_MATERIAL_SCHEMA =
+  'openagents.provider_secret_material.v1'
+
+export type HarnessRuntimeSecretGrant = {
+  kind: 'gemini_api_key'
+  baseUrl: string
+  agentToken: string
+  grantRef: string
+  providerAccountRef: string
+  runnerSessionId: string
+  secretRef: string
+}
+
+export type HarnessTurnConfig = {
+  harness: NonCodexHarnessId
+  binaryPath?: string
+  model?: string
+  maxTurnSeconds?: number
+  runtimeSecretGrant?: HarnessRuntimeSecretGrant
+}
+
+export type VerificationCommand = {
+  commandRef: string
+  argv: string[]
+  timeoutSeconds?: number
+}
+
 type WorkContext = {
   workContextRef: string
   threadRef?: string
@@ -499,6 +540,8 @@ type WorkContext = {
   claudeProviderAuth?: ClaudeProviderAuthConfig
   codexContinuity?: CodexContinuityConfig
   codexTurn?: CodexTurnConfig
+  harnessTurn?: HarnessTurnConfig
+  verificationCommand?: VerificationCommand
   inference?: InferenceConfig
   writeback?: WritebackConfig
 }
@@ -957,6 +1000,480 @@ export const resolveRepositoryCommit = (
   return gitCommitPattern.test(commit) ? commit : null
 }
 
+const sha256Text = (value: string): string =>
+  `sha256:${createHash('sha256').update(value).digest('hex')}`
+
+const verificationCommandRefPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,119}$/u
+const verificationExecutables = new Set(['cargo', 'git', 'node', 'npm', 'pnpm', 'vp'])
+const VERIFICATION_OUTPUT_MAX_BYTES = 1024 * 1024
+const verificationArgIsSafe = (argument: string): boolean =>
+  argument.length >= 1 &&
+  argument.length <= 512 &&
+  Array.from(argument).every(character => {
+    const code = character.codePointAt(0) ?? 0
+    return code >= 0x20 && code !== 0x7f
+  })
+
+export const validateVerificationCommand = (value: VerificationCommand): boolean =>
+  verificationCommandRefPattern.test(value.commandRef) &&
+  value.argv.length >= 1 &&
+  value.argv.length <= 64 &&
+  verificationExecutables.has(value.argv[0] ?? '') &&
+  value.argv.every(verificationArgIsSafe) &&
+  value.argv.reduce((total, argument) => total + argument.length, 0) <= 8192 &&
+  (value.timeoutSeconds === undefined ||
+    (Number.isInteger(value.timeoutSeconds) &&
+      value.timeoutSeconds >= 1 &&
+      value.timeoutSeconds <= 1800))
+
+export type VerificationRun = (input: {
+  argv: string[]
+  cwd: string
+  timeoutMs: number
+}) => { code: number | null; stdout: string; stderr: string; truncated: boolean }
+
+export type VerificationReceipt =
+  | {
+      ok: true
+      commandRef: string
+      exitCode: 0
+      stdoutBytes: number
+      stderrBytes: number
+      stdoutDigest: string
+      stderrDigest: string
+      truncated: boolean
+    }
+  | {
+      ok: false
+      commandRef: string | null
+      reasonRef:
+        | 'verification.command_missing'
+        | 'verification.command_invalid'
+        | 'verification.command_failed'
+      exitCode: number | null
+      stdoutBytes: number
+      stderrBytes: number
+      stdoutDigest: string | null
+      stderrDigest: string | null
+      truncated: boolean
+    }
+
+const defaultVerificationRun: VerificationRun = input => {
+  const [executable, ...args] = input.argv
+  if (executable === undefined) {
+    return { code: null, stderr: '', stdout: '', truncated: false }
+  }
+  const result = spawnSync(executable, args, {
+    cwd: input.cwd,
+    encoding: 'utf8',
+    env: {
+      HOME: '/root',
+      PATH: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+    },
+    killSignal: 'SIGKILL',
+    maxBuffer: VERIFICATION_OUTPUT_MAX_BYTES,
+    timeout: input.timeoutMs,
+  })
+  const stdout = (result.stdout ?? '').slice(0, VERIFICATION_OUTPUT_MAX_BYTES)
+  const stderr = (result.stderr ?? '').slice(0, VERIFICATION_OUTPUT_MAX_BYTES)
+  return {
+    code: result.status,
+    stderr,
+    stdout,
+    truncated:
+      Buffer.byteLength(result.stdout ?? '') > VERIFICATION_OUTPUT_MAX_BYTES ||
+      Buffer.byteLength(result.stderr ?? '') > VERIFICATION_OUTPUT_MAX_BYTES ||
+      result.error?.code === 'ENOBUFS',
+  }
+}
+
+export const runVerificationCommand = (
+  command: VerificationCommand | undefined,
+  workingDirectory: string,
+  run: VerificationRun = defaultVerificationRun,
+): VerificationReceipt => {
+  if (command === undefined) {
+    return {
+      commandRef: null,
+      exitCode: null,
+      ok: false,
+      reasonRef: 'verification.command_missing',
+      stderrBytes: 0,
+      stderrDigest: null,
+      stdoutBytes: 0,
+      stdoutDigest: null,
+      truncated: false,
+    }
+  }
+  if (!validateVerificationCommand(command)) {
+    return {
+      commandRef: verificationCommandRefPattern.test(command.commandRef) ? command.commandRef : null,
+      exitCode: null,
+      ok: false,
+      reasonRef: 'verification.command_invalid',
+      stderrBytes: 0,
+      stderrDigest: null,
+      stdoutBytes: 0,
+      stdoutDigest: null,
+      truncated: false,
+    }
+  }
+  const output = run({
+    argv: command.argv,
+    cwd: workingDirectory,
+    timeoutMs: (command.timeoutSeconds ?? 900) * 1000,
+  })
+  const receipt = {
+    commandRef: command.commandRef,
+    exitCode: output.code,
+    stderrBytes: Buffer.byteLength(output.stderr),
+    stderrDigest: sha256Text(output.stderr),
+    stdoutBytes: Buffer.byteLength(output.stdout),
+    stdoutDigest: sha256Text(output.stdout),
+    truncated: output.truncated,
+  }
+  return output.code === 0 && !output.truncated
+    ? { ...receipt, exitCode: 0, ok: true }
+    : { ...receipt, ok: false, reasonRef: 'verification.command_failed' }
+}
+
+const credentialPatterns = [
+  { reasonRef: 'credential.private_key', pattern: /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/u },
+  { reasonRef: 'credential.github_token', pattern: /\b(?:ghp|github_pat)_[A-Za-z0-9_]{20,}\b/u },
+  { reasonRef: 'credential.google_api_key', pattern: /\bAIza[A-Za-z0-9_-]{30,}\b/u },
+  { reasonRef: 'credential.provider_api_key', pattern: /\b(?:sk|xai)-[A-Za-z0-9_-]{20,}\b/u },
+  { reasonRef: 'credential.jwt', pattern: /\beyJ[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{12,}\b/u },
+] as const
+
+export const scanStagedDiffForCredentialMaterial = (stagedDiff: string): ReadonlyArray<string> =>
+  credentialPatterns
+    .filter(candidate => candidate.pattern.test(stagedDiff))
+    .map(candidate => candidate.reasonRef)
+
+const harnessBinaryPaths: Readonly<Record<NonCodexHarnessId, string>> = {
+  'claude-code': '/usr/local/bin/claude',
+  cursor: '/usr/local/bin/cursor-agent',
+  goose: '/usr/local/bin/goose',
+  grok: '/usr/local/bin/grok',
+  opencode: '/usr/local/bin/opencode',
+  pi: '/usr/local/bin/pi',
+}
+
+export const harnessExecArgs = (input: {
+  harness: NonCodexHarnessId
+  model?: string
+  prompt: string
+  workingDirectory: string
+}): string[] => {
+  const model = input.model ?? AGENT_COMPUTER_DEFAULT_GEMINI_MODEL
+  switch (input.harness) {
+    case 'pi':
+      return ['--print', '--no-session', '--approve', '--provider', 'google', '--model', model, input.prompt]
+    case 'opencode':
+      return ['run', '--model', `google/${model}`, '--format', 'json', '--auto', input.prompt]
+    case 'goose':
+      return ['run', '--no-session', '--text', input.prompt]
+    case 'claude-code':
+      return [
+        '--print', '--output-format', 'stream-json', '--verbose',
+        '--dangerously-skip-permissions',
+        ...(input.model === undefined ? [] : ['--model', input.model]),
+        input.prompt,
+      ]
+    case 'cursor':
+      return [
+        '--print', '--output-format', 'stream-json', '--force', '--trust',
+        '--workspace', input.workingDirectory,
+        ...(input.model === undefined ? [] : ['--model', input.model]),
+        input.prompt,
+      ]
+    case 'grok':
+      return [
+        '--single', input.prompt, '--output-format', 'streaming-json',
+        '--permission-mode', 'bypassPermissions', '--cwd', input.workingDirectory,
+        ...(input.model === undefined ? [] : ['--model', input.model]),
+      ]
+  }
+}
+
+type HarnessRuntimeSecretMaterial = {
+  kind: 'gemini_api_key'
+  value: string
+  secretRef: string
+}
+
+type HarnessRuntimeSecretMaterialization =
+  | { ok: true; material: HarnessRuntimeSecretMaterial; grantRef: string }
+  | {
+      ok: false
+      reasonRef:
+        | 'harness.runtime_secret_broker_unavailable'
+        | 'harness.runtime_secret_material_invalid'
+      status: number | null
+    }
+
+export const materializeHarnessRuntimeSecret = async (
+  grant: HarnessRuntimeSecretGrant,
+  fetchImpl: typeof globalThis.fetch = globalThis.fetch,
+): Promise<HarnessRuntimeSecretMaterialization> => {
+  let response: Response
+  try {
+    response = await fetchImpl(
+      `${grant.baseUrl.replace(/\/+$/u, '')}${HARNESS_RUNTIME_SECRET_MATERIAL_PATH}`,
+      {
+        body: JSON.stringify({
+          grantRef: grant.grantRef,
+          kind: grant.kind,
+          providerAccountRef: grant.providerAccountRef,
+          runnerSessionId: grant.runnerSessionId,
+          secretRef: grant.secretRef,
+        }),
+        headers: {
+          authorization: `Bearer ${grant.agentToken}`,
+          'content-type': 'application/json',
+        },
+        method: 'POST',
+      },
+    )
+  } catch {
+    return {
+      ok: false,
+      reasonRef: 'harness.runtime_secret_broker_unavailable',
+      status: null,
+    }
+  }
+  if (!response.ok) {
+    return {
+      ok: false,
+      reasonRef: 'harness.runtime_secret_broker_unavailable',
+      status: response.status,
+    }
+  }
+  const value = (await response.json().catch((): unknown => null)) as {
+    schemaVersion?: unknown
+    grantRef?: unknown
+    providerAccountRef?: unknown
+    runnerSessionId?: unknown
+    secretRef?: unknown
+    secretValue?: unknown
+  } | null
+  if (
+    value === null ||
+    !response.headers.get('cache-control')?.toLowerCase().includes('no-store') ||
+    value.schemaVersion !== HARNESS_RUNTIME_SECRET_MATERIAL_SCHEMA ||
+    value.grantRef !== grant.grantRef ||
+    value.providerAccountRef !== grant.providerAccountRef ||
+    value.runnerSessionId !== grant.runnerSessionId ||
+    value.secretRef !== grant.secretRef ||
+    typeof value.secretValue !== 'string' ||
+    value.secretValue.length < 8 ||
+    value.secretValue.length > 8192
+  ) {
+    return {
+      ok: false,
+      reasonRef: 'harness.runtime_secret_material_invalid',
+      status: response.status,
+    }
+  }
+  return {
+    grantRef: grant.grantRef,
+    material: {
+      kind: grant.kind,
+      secretRef: grant.secretRef,
+      value: value.secretValue,
+    },
+    ok: true,
+  }
+}
+
+export const harnessExecEnv = (input: {
+  harness: NonCodexHarnessId
+  model?: string
+  runtimeSecret?: HarnessRuntimeSecretMaterial
+  claudeProviderEnv?: Record<string, string>
+  base?: { HOME?: string; PATH?: string }
+}): Record<string, string> | null => {
+  const base = {
+    HOME: input.base?.HOME ?? '/root',
+    PATH: input.base?.PATH ?? '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+  }
+  if (input.harness === 'pi' || input.harness === 'opencode' || input.harness === 'goose') {
+    if (input.runtimeSecret?.kind !== 'gemini_api_key') return null
+    return {
+      ...base,
+      ...(input.harness === 'pi'
+        ? { GEMINI_API_KEY: input.runtimeSecret.value }
+        : input.harness === 'opencode'
+          ? { GOOGLE_GENERATIVE_AI_API_KEY: input.runtimeSecret.value }
+          : {
+              GOOGLE_API_KEY: input.runtimeSecret.value,
+              GOOSE_MODEL: input.model ?? AGENT_COMPUTER_DEFAULT_GEMINI_MODEL,
+              GOOSE_PROVIDER: 'google',
+              GOOSE_DISABLE_KEYRING: 'true',
+            }),
+    }
+  }
+  if (input.harness === 'claude-code') {
+    const token = input.claudeProviderEnv?.CLAUDE_CODE_OAUTH_TOKEN
+    return token === undefined ? null : { ...base, CLAUDE_CODE_OAUTH_TOKEN: token }
+  }
+  return null
+}
+
+export type HarnessFailureClass =
+  | 'auth_required'
+  | 'binary_incompatible'
+  | 'configuration_invalid'
+  | 'network_unavailable'
+  | 'provider_capacity'
+  | 'process_timeout'
+  | 'unknown_exec_failure'
+
+export const classifyHarnessFailure = (stderr: string, exitCode: number | null): HarnessFailureClass => {
+  const text = stderr.toLowerCase()
+  if (/\b(authentication|unauthorized|forbidden|login|api key|token)\b/u.test(text)) return 'auth_required'
+  if (/\b(rate.?limit|quota|capacity|overloaded|resource exhausted)\b/u.test(text)) return 'provider_capacity'
+  if (/\b(timeout|timed out|sigkill)\b/u.test(text) || exitCode === null) return 'process_timeout'
+  if (/\b(network|dns|resolve host|connection refused|unreachable)\b/u.test(text)) return 'network_unavailable'
+  if (/\b(unknown option|unsupported|incompatible|exec format)\b/u.test(text)) return 'binary_incompatible'
+  if (/\b(config|model).{0,24}\b(invalid|missing|unknown|not found)\b/u.test(text)) return 'configuration_invalid'
+  return 'unknown_exec_failure'
+}
+
+export type HarnessExecRun = (input: {
+  binaryPath: string
+  args: string[]
+  cwd: string
+  env: Record<string, string>
+  timeoutMs: number
+}) => { code: number | null; stdout: string; stderr: string }
+
+export type HarnessTurnOutcome =
+  | {
+      ok: true
+      harness: NonCodexHarnessId
+      exitCode: 0
+      stdoutDigest: string
+      stderrDigest: string
+      runtimeSecretRef: string | null
+    }
+  | {
+      ok: false
+      harness: NonCodexHarnessId
+      reasonRef:
+        | 'harness.binary_missing'
+        | 'harness.runtime_secret_required'
+        | 'harness.runtime_secret_broker_unsupported'
+        | 'harness.runtime_secret_broker_unavailable'
+        | 'harness.runtime_secret_material_invalid'
+        | 'harness.exec_failed'
+      exitCode: number | null
+      failureClass?: HarnessFailureClass
+      stderrDigest?: string
+      brokerStatus?: number | null
+    }
+
+const defaultHarnessExecRun: HarnessExecRun = input => {
+  const result = spawnSync(input.binaryPath, input.args, {
+    cwd: input.cwd,
+    encoding: 'utf8',
+    env: input.env,
+    killSignal: 'SIGKILL',
+    maxBuffer: 64 * 1024 * 1024,
+    timeout: input.timeoutMs,
+  })
+  return { code: result.status, stderr: result.stderr ?? '', stdout: result.stdout ?? '' }
+}
+
+export const runHarnessTurn = async (
+  args: {
+    config: HarnessTurnConfig
+    workingDirectory: string
+    prompt: string
+    claudeProviderEnv?: Record<string, string>
+  },
+  deps: {
+    execRun?: HarnessExecRun
+    existsImpl?: (path: string) => boolean
+    fetchImpl?: typeof globalThis.fetch
+  } = {},
+): Promise<HarnessTurnOutcome> => {
+  const binaryPath = args.config.binaryPath ?? harnessBinaryPaths[args.config.harness]
+  if (!(deps.existsImpl ?? existsSync)(binaryPath)) {
+    return { exitCode: null, harness: args.config.harness, ok: false, reasonRef: 'harness.binary_missing' }
+  }
+  let runtimeSecret: HarnessRuntimeSecretMaterial | undefined
+  if (
+    args.config.harness === 'pi' ||
+    args.config.harness === 'opencode' ||
+    args.config.harness === 'goose'
+  ) {
+    if (args.config.runtimeSecretGrant === undefined) {
+      return { exitCode: null, harness: args.config.harness, ok: false, reasonRef: 'harness.runtime_secret_required' }
+    }
+    const materialized = await materializeHarnessRuntimeSecret(
+      args.config.runtimeSecretGrant,
+      deps.fetchImpl,
+    )
+    if (!materialized.ok) {
+      return {
+        brokerStatus: materialized.status,
+        exitCode: null,
+        harness: args.config.harness,
+        ok: false,
+        reasonRef: materialized.reasonRef,
+      }
+    }
+    runtimeSecret = materialized.material
+  } else if (args.config.harness === 'cursor' || args.config.harness === 'grok') {
+    return {
+      exitCode: null,
+      harness: args.config.harness,
+      ok: false,
+      reasonRef: 'harness.runtime_secret_broker_unsupported',
+    }
+  }
+  const env = harnessExecEnv({
+    harness: args.config.harness,
+    ...(args.config.model === undefined ? {} : { model: args.config.model }),
+    ...(runtimeSecret === undefined ? {} : { runtimeSecret }),
+    ...(args.claudeProviderEnv === undefined ? {} : { claudeProviderEnv: args.claudeProviderEnv }),
+  })
+  if (env === null) {
+    return { exitCode: null, harness: args.config.harness, ok: false, reasonRef: 'harness.runtime_secret_required' }
+  }
+  const result = (deps.execRun ?? defaultHarnessExecRun)({
+    args: harnessExecArgs({
+      harness: args.config.harness,
+      ...(args.config.model === undefined ? {} : { model: args.config.model }),
+      prompt: args.prompt,
+      workingDirectory: args.workingDirectory,
+    }),
+    binaryPath,
+    cwd: args.workingDirectory,
+    env,
+    timeoutMs: (args.config.maxTurnSeconds ?? HARNESS_TURN_DEFAULT_MAX_SECONDS) * 1000,
+  })
+  if (result.code !== 0) {
+    return {
+      exitCode: result.code,
+      failureClass: classifyHarnessFailure(result.stderr, result.code),
+      harness: args.config.harness,
+      ok: false,
+      reasonRef: 'harness.exec_failed',
+      stderrDigest: sha256Text(result.stderr),
+    }
+  }
+  return {
+    exitCode: 0,
+    harness: args.config.harness,
+    ok: true,
+    runtimeSecretRef: runtimeSecret?.secretRef ?? null,
+    stderrDigest: sha256Text(result.stderr),
+    stdoutDigest: sha256Text(result.stdout),
+  }
+}
+
 // ---------------------------------------------------------------------------
 // CX-3 (#8547): in-VM Codex execution — args/env/parse/run.
 // ---------------------------------------------------------------------------
@@ -1001,7 +1518,9 @@ export const codexExecEnv = (
   HOME: base.HOME ?? '/root',
   PATH:
     base.PATH ?? '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
-  ...materializationEnv,
+  ...(typeof materializationEnv.CODEX_HOME === 'string'
+    ? { CODEX_HOME: materializationEnv.CODEX_HOME }
+    : {}),
 })
 
 export type CodexExecParse = {
@@ -1109,6 +1628,29 @@ export type CodexTurnReasonRef =
   | 'codex.usage_receipt_failed'
   | 'codex.owner_capacity_charge_disposition_invalid'
 
+export type CodexExecFailureClass =
+  | 'account_exhausted'
+  | 'account_rate_limited'
+  | 'auth_rejected'
+  | 'model_unavailable'
+  | 'network_failed'
+  | 'exec_timeout'
+  | 'exec_failed'
+
+export const classifyCodexExecFailure = (
+  stderr: string,
+  exitCode: number | null,
+): CodexExecFailureClass => {
+  const bounded = stderr.slice(0, 32 * 1024).toLowerCase()
+  if (exitCode === null || /\b(timed out|timeout|sigkill)\b/u.test(bounded)) return 'exec_timeout'
+  if (/\b(quota exhausted|usage limit|credits exhausted|account exhausted)\b/u.test(bounded)) return 'account_exhausted'
+  if (/\b(rate.?limit|too many requests|retry after)\b/u.test(bounded)) return 'account_rate_limited'
+  if (/\b(unauthorized|forbidden|authentication|invalid token|token expired|sign in)\b/u.test(bounded)) return 'auth_rejected'
+  if (/\b(model).{0,40}\b(not found|unavailable|unsupported|does not exist)\b/u.test(bounded)) return 'model_unavailable'
+  if (/\b(network|dns|resolve host|connection refused|connection reset|unreachable)\b/u.test(bounded)) return 'network_failed'
+  return 'exec_failed'
+}
+
 export type CodexTurnOutcome =
   | {
       ok: true
@@ -1127,6 +1669,8 @@ export type CodexTurnOutcome =
       reasonRef: CodexTurnReasonRef
       exitCode: number | null
       receiptStatus?: number | null
+      failureClass?: CodexExecFailureClass
+      stderrDigest?: string
     }
 
 /**
@@ -1177,7 +1721,13 @@ export const runCodexTurnWithReceipt = async (
   })
   const parsed = parseCodexExecJsonl(result.stdout)
   if (result.code !== 0) {
-    return { exitCode: result.code, ok: false, reasonRef: 'codex.exec_failed' }
+    return {
+      exitCode: result.code,
+      failureClass: classifyCodexExecFailure(result.stderr, result.code),
+      ok: false,
+      reasonRef: 'codex.exec_failed',
+      stderrDigest: sha256Text(result.stderr.slice(0, 32 * 1024)),
+    }
   }
   if (parsed.failed) {
     return { exitCode: result.code, ok: false, reasonRef: 'codex.turn_failed' }
@@ -1668,13 +2218,14 @@ async function main() {
   const turnId = wc.turnId ?? 'turn-1'
   const threadRef = wc.threadRef
   const codexContinuity = codexContinuityResultSummary(wc.codexContinuity)
+  const objective = wc.objective ?? `checkout ${wc.repo}@${wc.commit.slice(0, 12)}`
 
   emit({
     kind: 'turn.started',
     turnId,
     workContextRef: wc.workContextRef,
     threadRef,
-    objective: wc.objective ?? `checkout ${wc.repo}@${wc.commit.slice(0, 12)}`,
+    objectiveDigest: sha256Text(objective),
   })
 
   let codexProviderAuth: CodexProviderAuthMaterialization | null = null
@@ -1801,6 +2352,7 @@ async function main() {
   //    CODEX_HOME), fail-closed with typed reasons. Otherwise the proven
   //    deterministic proof-note step runs (no model).
   let codexTurnOutcome: CodexTurnOutcome | null = null
+  let harnessTurnOutcome: HarnessTurnOutcome | null = null
   if (wc.codexTurn !== undefined) {
     const codexTurnConfig = wc.codexTurn
     if (codexProviderAuth === null || !codexProviderAuth.ok) {
@@ -1813,13 +2365,13 @@ async function main() {
       })
       throw new Error('codex.provider_auth_required')
     }
-    const prompt = wc.objective ?? `Work on ${wc.repo}@${resolvedCommit.slice(0, 12)}.`
+    const prompt = objective
     emit({
       kind: 'tool.call',
       turnId,
       tool: 'codex.exec',
       lane: CODEX_USAGE_RECEIPT_LANE,
-      binaryRef: codexTurnConfig.binaryPath ?? CODEX_BINARY_PATH,
+      binaryRef: 'binary.agent-computer.codex.0_144_0',
       homeIsolation: 'scratch_per_turn',
     })
     const codexRuntimeEventId = randomUUID()
@@ -1840,6 +2392,12 @@ async function main() {
         status: 'failed',
         reasonRef: codexTurnOutcome.reasonRef,
         exitCode: codexTurnOutcome.exitCode,
+        ...(codexTurnOutcome.failureClass === undefined
+          ? {}
+          : { failureClass: codexTurnOutcome.failureClass }),
+        ...(codexTurnOutcome.stderrDigest === undefined
+          ? {}
+          : { stderrDigest: codexTurnOutcome.stderrDigest }),
         ...(codexTurnOutcome.receiptStatus === undefined ||
         codexTurnOutcome.receiptStatus === null
           ? {}
@@ -1880,6 +2438,48 @@ async function main() {
     // Stage whatever the codex turn changed so the diff/writeback below see
     // the REAL work (never a synthetic proof note on a codex work unit).
     git(ws.workingDirectory, ['add', '-A'])
+  } else if (wc.harnessTurn !== undefined) {
+    const harness = wc.harnessTurn.harness
+    emit({
+      kind: 'tool.call',
+      turnId,
+      tool: 'harness.exec',
+      harness,
+      binaryRef: `binary.agent-computer.${harness.replaceAll('-', '_')}`,
+      credentialDelivery: 'runtime_only',
+    })
+    harnessTurnOutcome = await runHarnessTurn({
+      config: wc.harnessTurn,
+      ...(claudeProviderAuth?.ok === true ? { claudeProviderEnv: claudeProviderAuth.env } : {}),
+      prompt: objective,
+      workingDirectory: ws.workingDirectory,
+    })
+    if (!harnessTurnOutcome.ok) {
+      emit({
+        kind: 'tool.result',
+        turnId,
+        tool: 'harness.exec',
+        harness,
+        status: 'failed',
+        reasonRef: harnessTurnOutcome.reasonRef,
+        exitCode: harnessTurnOutcome.exitCode,
+        ...(harnessTurnOutcome.failureClass === undefined ? {} : { failureClass: harnessTurnOutcome.failureClass }),
+        ...(harnessTurnOutcome.stderrDigest === undefined ? {} : { stderrDigest: harnessTurnOutcome.stderrDigest }),
+        ...(harnessTurnOutcome.brokerStatus === undefined ? {} : { brokerStatus: harnessTurnOutcome.brokerStatus }),
+      })
+      throw new Error(harnessTurnOutcome.reasonRef)
+    }
+    emit({
+      kind: 'tool.result',
+      turnId,
+      tool: 'harness.exec',
+      harness,
+      status: 'ok',
+      stdoutDigest: harnessTurnOutcome.stdoutDigest,
+      stderrDigest: harnessTurnOutcome.stderrDigest,
+      runtimeSecretRef: harnessTurnOutcome.runtimeSecretRef,
+    })
+    git(ws.workingDirectory, ['add', '-A'])
   } else {
     // Deterministic proof-note step (no model): add a proof note file and
     // produce a genuine staged git diff — real repo mutation + real git.
@@ -1900,13 +2500,30 @@ async function main() {
   const changedFiles = git(ws.workingDirectory, ['diff', '--cached', '--name-only'])
     .split('\n')
     .filter(line => line.trim().length > 0)
-  if (wc.codexTurn === undefined) {
+  if (wc.codexTurn === undefined && wc.harnessTurn === undefined) {
     emit({ kind: 'text.completed', turnId, text: `Checked out ${wc.repo}@${head.slice(0, 12)} and staged a 1-file change.\n${diff}` })
   }
 
+  let verificationReceipt: VerificationReceipt | null = null
+  if (wc.codexTurn !== undefined || wc.harnessTurn !== undefined || wc.verificationCommand !== undefined) {
+    verificationReceipt = runVerificationCommand(wc.verificationCommand, ws.workingDirectory)
+    emit({ kind: 'verification.recorded', turnId, ...verificationReceipt })
+    if (!verificationReceipt.ok) throw new Error(verificationReceipt.reasonRef)
+  }
+
+  const credentialFindings = scanStagedDiffForCredentialMaterial(diffFull)
+  emit({
+    kind: 'credential.scan',
+    turnId,
+    status: credentialFindings.length === 0 ? 'passed' : 'failed',
+    findingCount: credentialFindings.length,
+    reasonRefs: credentialFindings,
+  })
+  if (credentialFindings.length > 0) throw new Error('credential.scan_failed')
+
   // 3. Phase-2 model turn + exact usage receipt (only when configured).
   let modelTokenReceipt: ModelTurnReceipt | null = null
-  if (wc.inference && threadRef) {
+  if (wc.inference && threadRef && wc.harnessTurn === undefined) {
     const runtimeEventId = randomUUID()
     const instructions =
       `You are the OpenAgents Agent Computer coding runtime. In one sentence, ` +
@@ -1977,15 +2594,15 @@ async function main() {
     writebackResult = await runWritebackForTurn({
       changedFileCount: changedFiles.length,
       commitMessage:
-        `chore(agent-computer): ${wc.objective ?? `staged change for ${wc.repo}`}\n\n` +
+        `chore(agent-computer): managed coding turn\n\n` +
         `OpenAgents Agent Computer turn ${turnId} (${wc.workContextRef}).`,
       inference: writebackIdentity,
       prBody:
         `Automated change from an OpenAgents Agent Computer coding turn.\n\n` +
-        `- Objective: ${wc.objective ?? 'agent-computer turn'}\n` +
+        `- Objective digest: ${sha256Text(objective)}\n` +
         `- Base commit: ${head}\n` +
         `- Files changed: ${changedFiles.length}\n`,
-      prTitle: `Agent Computer: ${wc.objective ?? `update ${wc.repo}`}`.slice(0, 120),
+      prTitle: 'Agent Computer: managed coding turn',
       turnId,
       workingDirectory: ws.workingDirectory,
       writeback: wc.writeback,
@@ -2026,6 +2643,7 @@ async function main() {
     headSubject: subject,
     stagedDiffStat: diff,
     stagedDiffBytes: diffFull.length,
+    verification: verificationReceipt,
     codexContinuity,
     codexProviderAuth:
       codexProviderAuth === null
@@ -2082,6 +2700,38 @@ async function main() {
               ok: false,
               reasonRef: codexTurnOutcome.reasonRef,
               exitCode: codexTurnOutcome.exitCode,
+              ...(codexTurnOutcome.failureClass === undefined
+                ? {}
+                : { failureClass: codexTurnOutcome.failureClass }),
+              ...(codexTurnOutcome.stderrDigest === undefined
+                ? {}
+                : { stderrDigest: codexTurnOutcome.stderrDigest }),
+            },
+    harnessTurn:
+      harnessTurnOutcome === null
+        ? null
+        : harnessTurnOutcome.ok
+          ? {
+              ok: true,
+              harness: harnessTurnOutcome.harness,
+              stdoutDigest: harnessTurnOutcome.stdoutDigest,
+              stderrDigest: harnessTurnOutcome.stderrDigest,
+              runtimeSecretRef: harnessTurnOutcome.runtimeSecretRef,
+            }
+          : {
+              ok: false,
+              harness: harnessTurnOutcome.harness,
+              reasonRef: harnessTurnOutcome.reasonRef,
+              exitCode: harnessTurnOutcome.exitCode,
+              ...(harnessTurnOutcome.failureClass === undefined
+                ? {}
+                : { failureClass: harnessTurnOutcome.failureClass }),
+              ...(harnessTurnOutcome.stderrDigest === undefined
+                ? {}
+                : { stderrDigest: harnessTurnOutcome.stderrDigest }),
+              ...(harnessTurnOutcome.brokerStatus === undefined
+                ? {}
+                : { brokerStatus: harnessTurnOutcome.brokerStatus }),
             },
     model: wc.inference?.model ?? null,
     modelTokenReceipt:
@@ -2135,7 +2785,7 @@ if (import.meta.main) {
   main().catch(async (error) => {
     const errorText = String(error)
     const failureReasonRef = activeFailureReasonRef ??
-      /(?:codex|workspace)\.[A-Za-z0-9._:-]+/.exec(errorText)?.[0] ??
+      /(?:codex|workspace|harness|verification|credential)\.[A-Za-z0-9._:-]+/.exec(errorText)?.[0] ??
       'agent_computer.turn_failed'
     const full = {
       schema: 'openagents.khala_runtime_event.v1',

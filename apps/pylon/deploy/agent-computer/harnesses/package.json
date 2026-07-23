@@ -1,0 +1,11 @@
+{
+  "name": "openagents-agent-computer-harnesses",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Pinned JavaScript harness payload for the Agent Computer guest image.",
+  "dependencies": {
+    "@anthropic-ai/claude-code": "2.1.218",
+    "@earendil-works/pi-coding-agent": "0.81.1",
+    "opencode-ai": "1.18.4"
+  }
+}

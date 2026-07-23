@@ -83,9 +83,9 @@
     "kernelSource": "firecracker-ci/v1.10/x86_64/vmlinux-5.10.223",
     "rootfsDigest": "sha256:66333e38cd446a2b3d4bf6121b3e29ecea14b08ad2126812fed6e87b79dde81e",
     "rootfsDigestPrevious": "sha256:54d90722acb400434d8352d2876835b3f9f2700d8b99fa1f8be7952e47ce0d48 (production managed Codex turn proven 2026-07-12)",
-    "rootfsSource": "source-controlled debootstrap jammy bake at PORT-03 retained-control revision 34b62dd73d; retained host/guest inputs are byte-identical through current-main integration revision 4e66e3c062",
+    "rootfsSource": "source-controlled debootstrap jammy bake; seven-harness source is wired and requires a new receipt plus boot smoke before the production rootfsDigest changes",
     "rootfsStatus": "PORT-03 IMAGE LIVE BOOT GREEN 2026-07-13: provisionerKind=live, guest exec code=0, controller digest matched the bake receipt, artifacts extracted, and cleanupReceipt.tornDown=true. Full retained stage/install/activate acceptance remains fail-closed until a managed checkpoint artifact materializer supplies the verified Git post-image/diff and agent lifecycle files to the blank staged guest.",
-    "rootfsBuildScript": "apps/pylon/deploy/agent-computer/build-agent-computer-rootfs.sh (source-controlled bake, CX-3 #8547 item 1: debootstrap jammy + pinned bun/codex + vsock guest agent guest-agent.py/agent-guest.service + turn-runner + oa-workroomd + egress fix; seals sha256 + emits a refs-only bake receipt; run as root on the nested-virt bake host, then boot-smoke and re-pin rootfsDigest)",
+    "rootfsBuildScript": "apps/pylon/deploy/agent-computer/build-agent-computer-rootfs.sh (source-controlled bake: debootstrap jammy + seven pinned harnesses + vsock guest agent + turn-runner + oa-workroomd + egress fix; seals sha256 + emits a refs-only bake receipt; run as root on the nested-virt bake host, then boot-smoke and re-pin rootfsDigest)",
     "codex": {
       "status": "baked_and_boot_smoke_proven_2026_07_10",
       "version": "0.144.0",
@@ -94,6 +94,49 @@
       "binarySha256": "901923c1808a151f6926d41d703c17ad48815662cefb1c8d832a052c44271429",
       "guestInstallPath": "/usr/local/bin/codex",
       "note": "The CX-3 in-VM codex_app_server lane (turn-runner `codexTurn` block: codex exec --json under the broker-redeemed scratch CODEX_HOME, exact usage receipt with tokenChargeMetered:false) is wired and fixture-proven in-repo; its live rung needs this binary baked + one real in-VM turn."
+    },
+    "harnesses": {
+      "status": "source_wired_rebake_and_live_proof_pending",
+      "credentialPolicy": "Provider material is injected for one turn at runtime. No provider key, OAuth token, or subscription home is present in the image or bake receipt.",
+      "credentialScanner": "The turn-runner scans the staged diff before writeback and emits typed finding refs only. Host closeout still requires its isolation scanner and cleanup receipt.",
+      "pi": {
+        "version": "0.81.1",
+        "source": "npm @earendil-works/pi-coding-agent",
+        "model": "google/gemini-3.5-flash",
+        "credentialEnv": "GEMINI_API_KEY"
+      },
+      "opencode": {
+        "version": "1.18.4",
+        "source": "npm opencode-ai",
+        "model": "google/gemini-3.5-flash",
+        "credentialEnv": "GOOGLE_GENERATIVE_AI_API_KEY"
+      },
+      "goose": {
+        "version": "1.43.0",
+        "source": "https://github.com/aaif-goose/goose/releases/download/v1.43.0/goose-x86_64-unknown-linux-gnu.tar.gz",
+        "tarballSha256": "a9a96f559a8b5f20b11597b78e4aa5bb0b9b29796ec4f808ca466a3f59a5ec20",
+        "model": "gemini-3.5-flash",
+        "credentialEnv": "GOOGLE_API_KEY"
+      },
+      "claudeCode": {
+        "version": "2.1.218",
+        "source": "npm @anthropic-ai/claude-code",
+        "credentialEnv": "CLAUDE_CODE_OAUTH_TOKEN"
+      },
+      "cursor": {
+        "executionState": "fail_closed_provider_broker_pending",
+        "version": "2026.07.20-8cc9c0b",
+        "source": "https://downloads.cursor.com/lab/2026.07.20-8cc9c0b/linux/x64/agent-cli-package.tar.gz",
+        "tarballSha256": "6e9f17247ffeb5f8f7e2246b4bcd6bb26cb2d5a9f9a4b0012c9a80d868ed25b4",
+        "credentialEnv": "CURSOR_API_KEY"
+      },
+      "grok": {
+        "executionState": "fail_closed_provider_broker_pending",
+        "version": "0.2.106",
+        "source": "https://storage.googleapis.com/grok-build-public-artifacts/cli/grok-0.2.106-linux-x86_64",
+        "binarySha256": "7180d0e03cc2a496033ff3aae2223ce239446a9827a59faa76091c7edd5e1c38",
+        "credentialEnv": "XAI_API_KEY"
+      }
     },
     "portableSessionControl": {
       "status": "destination_activation_and_signed_lsp_source_wired_rebake_pending",
@@ -183,8 +226,12 @@
     "executor": "agent-computer-executor-from-issue-8473",
     "agents": [
       "codex",
-      "claude_agent",
-      "hosted_khala"
+      "claude-code",
+      "cursor",
+      "goose",
+      "opencode",
+      "pi",
+      "grok"
     ],
     "scmCredentialPath": "openagents-scm-broker-only",
     "modelTurnRuntime": {
