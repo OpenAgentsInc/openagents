@@ -60,6 +60,7 @@ allowBuilds:
   # app-builder-lib carries the Windows installer helper as an optional peer;
   # Linux AppImage generation never executes its install script.
   electron-winstaller: false
+  '@google/genai': set this to true or false
 
 overrides:
   "@effect/platform-browser": 4.0.0-beta.94
@@ -83,9 +84,9 @@ peerDependencyRules:
     - vite
 
 supportedArchitectures:
-  cpu: [current, x64]
-  libc: [current, glibc]
-  os: [current, linux]
+  cpu: [ current, x64 ]
+  libc: [ current, glibc ]
+  os: [ current, linux ]
 
 minimumReleaseAgeExclude:
   - blume@1.0.4

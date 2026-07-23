@@ -9,66 +9,56 @@ import {
   type FleetSteeringExchangeRepositoryShape,
   makeFleetRunAuthorityRepository,
   makeFleetSteeringExchangeRepository,
-} from '@openagentsinc/khala-sync-server'
-import { buildSarahSystemPrompt } from '@openagentsinc/sarah'
+} from "@openagentsinc/khala-sync-server";
+import { buildSarahSystemPrompt } from "@openagentsinc/sarah";
 import {
   type WorkerBindings,
   badRequest,
   jsonResponse,
   notFound,
-} from '@openagentsinc/sync-worker'
-import { issuer } from '@openauthjs/openauth'
-import { type Tokens, createClient } from '@openauthjs/openauth/client'
-import {
-  CodeProvider,
-  type CodeProviderError,
-} from '@openauthjs/openauth/provider/code'
-import { GithubProvider } from '@openauthjs/openauth/provider/github'
-import { createSubjects } from '@openauthjs/openauth/subject'
-import { CodeUI } from '@openauthjs/openauth/ui/code'
-import { Cause, Effect, Layer, Option, Redacted, Schema as S } from 'effect'
-import { Exit } from 'effect'
+} from "@openagentsinc/sync-worker";
+import { issuer } from "@openauthjs/openauth";
+import { type Tokens, createClient } from "@openauthjs/openauth/client";
+import { CodeProvider, type CodeProviderError } from "@openauthjs/openauth/provider/code";
+import { GithubProvider } from "@openauthjs/openauth/provider/github";
+import { createSubjects } from "@openauthjs/openauth/subject";
+import { CodeUI } from "@openauthjs/openauth/ui/code";
+import { Cause, Effect, Layer, Option, Redacted, Schema as S } from "effect";
+import { Exit } from "effect";
 
-import { handleAcceptedOutcomesPerKwhApi } from './accepted-outcomes-per-kwh-routes'
-import { AdjutantEnrichmentQueueMessage } from './adjutant-enrichment-jobs'
+import { handleAcceptedOutcomesPerKwhApi } from "./accepted-outcomes-per-kwh-routes";
+import { AdjutantEnrichmentQueueMessage } from "./adjutant-enrichment-jobs";
 import {
   configureOpenAgentsAdminEmailsFromEnv,
   getOpenAgentsAdminEmails,
   getPrimaryOpenAgentsAdminEmail,
   isOpenAgentsAdminEmail,
-} from './admin-identity'
-import {
-  ADMIN_OPS_HEALTH_PATH,
-  ADMIN_OPS_RUNS_PATH,
-  makeAdminOpsRoutes,
-} from './admin-ops-routes'
-import { makeAdminOverviewHandlers } from './admin-overview-routes'
+} from "./admin-identity";
+import { ADMIN_OPS_HEALTH_PATH, ADMIN_OPS_RUNS_PATH, makeAdminOpsRoutes } from "./admin-ops-routes";
+import { makeAdminOverviewHandlers } from "./admin-overview-routes";
 import {
   ADMIN_OPERATOR_OVERVIEW_PATH,
   makeAdminOperatorOverviewHandler,
-} from './admin-operator-routes'
-import {
-  handleAgentBalanceApi,
-  handleAgentBalancePreferencesApi,
-} from './agent-balance-routes'
+} from "./admin-operator-routes";
+import { handleAgentBalanceApi, handleAgentBalancePreferencesApi } from "./agent-balance-routes";
 import {
   makeD1AgentDefinitionForumCompletionForumStore,
   makeGitHubRestAgentDefinitionCompletionGitHubStore,
-} from './agent-definition-bot-integration'
+} from "./agent-definition-bot-integration";
 import {
   handleAgentDefinitionEventLedgerGatewayRequest,
   matchAgentDefinitionEventLedgerGatewayRequest,
-} from './agent-definition-event-ledger-routes'
-import { handleAgentDefinitionsApi } from './agent-definition-routes'
+} from "./agent-definition-event-ledger-routes";
+import { handleAgentDefinitionsApi } from "./agent-definition-routes";
 import {
   handleAgentDefinitionRunRequest,
   matchAgentDefinitionRunRequest,
   revokeAgentDefinitionRunForgeGitTokensForAssignment,
-} from './agent-definition-run-routes'
+} from "./agent-definition-run-routes";
 import {
   makeAgentDefinitionSchedulerDependencies,
   runAgentDefinitionSchedulerTick,
-} from './agent-definition-scheduler'
+} from "./agent-definition-scheduler";
 import {
   handleAgentDefinitionForumCompletionRequest,
   handleAgentDefinitionForumWebhookRequest,
@@ -76,27 +66,24 @@ import {
   handleAgentDefinitionSlackWebhookRequest,
   handleAgentDefinitionWebhookRequest,
   verifyAgentDefinitionForumEventSource,
-} from './agent-definition-webhook-routes'
-import { makeAgentGoalRoutes } from './agent-goal-routes'
+} from "./agent-definition-webhook-routes";
+import { makeAgentGoalRoutes } from "./agent-goal-routes";
 import {
   handleProgrammaticAgentHome,
   handleProgrammaticAgentSelfUpdate,
-} from './agent-home-routes'
+} from "./agent-home-routes";
 import {
   makeAgentOwnerClaimRoutes,
   makeAgentOwnerClaimStoreForEnv,
-} from './agent-owner-claim-routes'
-import {
-  makeAgentProposalRoutes,
-  makeAgentProposalStoreForEnv,
-} from './agent-proposal-routes'
-import { withAgentRateLimitHeaders } from './agent-rate-limit-policy'
-import { makeD1AgentRateLimitRecoveryStore } from './agent-rate-limit-recovery'
+} from "./agent-owner-claim-routes";
+import { makeAgentProposalRoutes, makeAgentProposalStoreForEnv } from "./agent-proposal-routes";
+import { withAgentRateLimitHeaders } from "./agent-rate-limit-policy";
+import { makeD1AgentRateLimitRecoveryStore } from "./agent-rate-limit-recovery";
 import {
   handlePublicAgentReadinessReportApi,
   makeOperatorAgentReadinessReportRoutes,
-} from './agent-readiness-public-report-routes'
-import { makeD1AgentReadinessPublicReportStore } from './agent-readiness-public-report-store'
+} from "./agent-readiness-public-report-routes";
+import { makeD1AgentReadinessPublicReportStore } from "./agent-readiness-public-report-store";
 import {
   type AgentRegistrationStore,
   type AgentReissueStore,
@@ -110,105 +97,90 @@ import {
   reissueProgrammaticAgentToken,
   sha256Hex,
   timingSafeEqual,
-} from './agent-registration'
+} from "./agent-registration";
 import {
   makeAgentDefinitionRunStoreForEnv,
   makeAgentDefinitionStoreForEnv,
   makeAgentDefinitionTriggerStoreForEnv,
   makeOmniRunStoreForEnv,
   makeTraceStoreForEnv,
-} from './agent-runtime-store'
+} from "./agent-runtime-store";
 import {
   makeAgentScopedGrantRoutes,
   makeD1AgentScopedGrantStore,
-} from './agent-scoped-grant-routes'
-import { makeAgentSearchRoutes } from './agent-search-routes'
+} from "./agent-scoped-grant-routes";
+import { makeAgentSearchRoutes } from "./agent-search-routes";
 import {
   AgenticLaborProductEndpoint,
   handleAgenticLaborProductApi,
   isAgenticLaborProductsEnabled,
-} from './agentic-labor-product-routes'
-import { handlePublicArtanisActivityApi } from './artanis-activity-routes'
+} from "./agentic-labor-product-routes";
+import { handlePublicArtanisActivityApi } from "./artanis-activity-routes";
 import {
   runArtanisAdminTickScheduled,
   runArtanisCloseoutVerifierScheduled,
-} from './artanis-administrator-tick'
-import { ARTANIS_OWNER_OPERATOR_AUTHORITY_SCOPE } from './artanis-authority-scope'
+} from "./artanis-administrator-tick";
+import { ARTANIS_OWNER_OPERATOR_AUTHORITY_SCOPE } from "./artanis-authority-scope";
 import {
   boundedDistillationDatasetLimit,
   readArtanisDistillationDatasetReceipt,
-} from './artanis-distillation-dataset-receipt'
-import {
-  type ArtanisDatabase,
-  makeArtanisDatabaseForEnv,
-} from './artanis-domain-store'
-import { runArtanisFleetOverseerTickScheduled } from './artanis-fleet-overseer-tick'
-import { deliverArtanisForumPublicationIntent } from './artanis-forum-delivery'
-import { ArtanisForumPublicationIntentRecord } from './artanis-forum-publication'
-import { exampleArtanisForumPublicationQueue } from './artanis-forum-publication'
+} from "./artanis-distillation-dataset-receipt";
+import { type ArtanisDatabase, makeArtanisDatabaseForEnv } from "./artanis-domain-store";
+import { runArtanisFleetOverseerTickScheduled } from "./artanis-fleet-overseer-tick";
+import { deliverArtanisForumPublicationIntent } from "./artanis-forum-delivery";
+import { ArtanisForumPublicationIntentRecord } from "./artanis-forum-publication";
+import { exampleArtanisForumPublicationQueue } from "./artanis-forum-publication";
 import {
   ARTANIS_REGISTERED_ACTOR_REF,
   ARTANIS_RESPONDER_DEMAND_CLIENT,
   ARTANIS_RESPONDER_DEMAND_SOURCE,
   type ArtanisResponderKhalaClient,
   runArtanisResponderScanScheduled,
-} from './artanis-forum-responder'
+} from "./artanis-forum-responder";
 import {
   handlePublicArtanisLaborGreenReadinessApi,
   handlePublicArtanisLaborReceiptsApi,
-} from './artanis-labor-receipt-routes'
-import { makeD1ArtanisLaborUnattendedReceiptStore } from './artanis-labor-receipt-store'
-import { ArtanisMindSmokeSystem, artanisMindComplete } from './artanis-mind'
-import { loadArtanisNetworkStatsFromLedger } from './artanis-network-stats-d1'
-import { makeOperatorArtanisChatRoutes } from './artanis-operator-chat-routes'
-import { makeOperatorArtanisConsoleRoutes } from './artanis-operator-console-routes'
-import { makeOperatorArtanisDashboardRoutes } from './artanis-operator-dashboard-routes'
+} from "./artanis-labor-receipt-routes";
+import { makeD1ArtanisLaborUnattendedReceiptStore } from "./artanis-labor-receipt-store";
+import { ArtanisMindSmokeSystem, artanisMindComplete } from "./artanis-mind";
+import { loadArtanisNetworkStatsFromLedger } from "./artanis-network-stats-d1";
+import { makeOperatorArtanisChatRoutes } from "./artanis-operator-chat-routes";
+import { makeOperatorArtanisConsoleRoutes } from "./artanis-operator-console-routes";
+import { makeOperatorArtanisDashboardRoutes } from "./artanis-operator-dashboard-routes";
 import {
   makeArtanisDispatchExecution,
   readEffectiveArtanisApproval,
   readEffectiveArtanisPylonDispatchApprovalForOwner,
-} from './artanis-operator-dispatch-execution'
-import { makeArtanisForumUpdateWriter } from './artanis-operator-forum-update'
-import { makeArtanisGlmFleetStatusLoader } from './artanis-operator-glm-fleet-status'
-import { makeArtanisKhalaFeedbackReader } from './artanis-operator-khala-feedback'
+} from "./artanis-operator-dispatch-execution";
+import { makeArtanisForumUpdateWriter } from "./artanis-operator-forum-update";
+import { makeArtanisGlmFleetStatusLoader } from "./artanis-operator-glm-fleet-status";
+import { makeArtanisKhalaFeedbackReader } from "./artanis-operator-khala-feedback";
 import {
   makeArtanisPylonAssignmentsLister,
   makeArtanisPylonJobStatusReader,
-} from './artanis-operator-pylon-job-status'
-import {
-  makeArtanisGithubIssueOpener,
-  makeArtanisOperatorTools,
-} from './artanis-operator-tools'
-import { makeArtanisTraceReviewLoader } from './artanis-operator-trace-review'
+} from "./artanis-operator-pylon-job-status";
+import { makeArtanisGithubIssueOpener, makeArtanisOperatorTools } from "./artanis-operator-tools";
+import { makeArtanisTraceReviewLoader } from "./artanis-operator-trace-review";
 import {
   makeArtanisUnsupportedRequestWriter,
   makeArtanisUnsupportedRequestsReader,
-} from './artanis-operator-unsupported-requests'
+} from "./artanis-operator-unsupported-requests";
 import {
   isOpenAgentsOwnerAgentOpenAuthUserId,
   ownerAgentHasStandingApprovalForRiskyAction,
-} from './artanis-owner-authority'
-import { saveArtanisForumPublicationIntent } from './artanis-persistence'
-import { handlePublicArtanisReportApi } from './artanis-public-report-routes'
-import { runArtanisComposerScheduled } from './artanis-reply-composer'
+} from "./artanis-owner-authority";
+import { saveArtanisForumPublicationIntent } from "./artanis-persistence";
+import { handlePublicArtanisReportApi } from "./artanis-public-report-routes";
+import { runArtanisComposerScheduled } from "./artanis-reply-composer";
 import {
   boundedResponderSupportLimit,
   readArtanisResponderSupport,
-} from './artanis-responder-provenance'
-import { runArtanisScheduledTickForWorker } from './artanis-scheduled-runner'
-import {
-  boundedTickMonitorLimit,
-  readArtanisTickMonitor,
-} from './artanis-tick-monitor'
-import {
-  boundedTickStreakLimit,
-  readArtanisTickStreak,
-} from './artanis-tick-streak'
-import { artifactsBucketForEnv } from './artifacts-binding'
-import {
-  AUDIO_GRANT_ISSUE_PATH,
-  handleAudioGrantIssueRequest,
-} from './audio-grant-routes'
+} from "./artanis-responder-provenance";
+import { runArtanisScheduledTickForWorker } from "./artanis-scheduled-runner";
+import { boundedTickMonitorLimit, readArtanisTickMonitor } from "./artanis-tick-monitor";
+import { boundedTickStreakLimit, readArtanisTickStreak } from "./artanis-tick-streak";
+import { artifactsBucketForEnv } from "./artifacts-binding";
+import { AUDIO_GRANT_ISSUE_PATH, handleAudioGrantIssueRequest } from "./audio-grant-routes";
 import {
   ACCESS_COOKIE,
   AUTH_STATE_COOKIE,
@@ -220,13 +192,9 @@ import {
   expiredCookie,
   parseCookies,
   serializeCookie,
-} from './auth-cookies'
-import {
-  type AuthKvEnv,
-  type AuthKvStore,
-  authKvStoreForEnv,
-} from './auth/auth-kv'
-import { readAgentBearerToken, readBearerToken } from './auth/bearer-token'
+} from "./auth-cookies";
+import { type AuthKvEnv, type AuthKvStore, authKvStoreForEnv } from "./auth/auth-kv";
+import { readAgentBearerToken, readBearerToken } from "./auth/bearer-token";
 import {
   AUTH_EMAIL_OTP_CODE_TTL_SECONDS,
   type AuthEmailOtpRateLimitRejected,
@@ -236,7 +204,7 @@ import {
   normalizeAuthEmailOtpEmail,
   reserveAuthEmailOtpSend,
   stampAuthEmailOtpClaims,
-} from './auth/email-otp-hardening'
+} from "./auth/email-otp-hardening";
 import {
   authIssuerAllowsRedirect,
   authIssuerAllowsWebRedirectHostname,
@@ -245,95 +213,89 @@ import {
   readMobileOpenAuthSignOutRefreshToken,
   revokeMobileAccessToken,
   revokeOpenAuthRefreshToken,
-} from './auth/mobile-session'
-import { makeOpenAuthStorageForEnv } from './auth/openauth-storage'
+} from "./auth/mobile-session";
+import { makeOpenAuthStorageForEnv } from "./auth/openauth-storage";
 import {
   type VerifiedSession as VerifiedAuthSession,
   makeBrowserSessionBoundary,
-} from './auth/session'
+} from "./auth/session";
 import {
   AutopilotComposedRunEndpoint,
   handleAutopilotComposedRunApi,
   isAutopilotComposedRunEnabled,
-} from './autopilot-composed-run-routes'
+} from "./autopilot-composed-run-routes";
 import {
   listAutopilotContinuationRunCandidates,
   runAutopilotContinuationSweep,
-} from './autopilot-continuation-policy'
-import { makeAutopilotContinuationPolicyRoutes } from './autopilot-continuation-policy-routes'
-import { makeAutopilotDecisionRoutes } from './autopilot-decision-routes'
-import { makeHostedGeminiExecuteReadyWork } from './autopilot-hosted-gemini-executor-env'
-import { makeAutopilotMorningReportRoutes } from './autopilot-morning-report-routes'
+} from "./autopilot-continuation-policy";
+import { makeAutopilotContinuationPolicyRoutes } from "./autopilot-continuation-policy-routes";
+import { makeAutopilotDecisionRoutes } from "./autopilot-decision-routes";
+import { makeHostedGeminiExecuteReadyWork } from "./autopilot-hosted-gemini-executor-env";
+import { makeAutopilotMorningReportRoutes } from "./autopilot-morning-report-routes";
 import {
   type OnboardingInferenceClient,
   OnboardingInferenceError,
   type OnboardingStreamClient,
   type OnboardingStreamSource,
-} from './autopilot-onboarding-program'
-import { makeAutopilotOnboardingRoutes } from './autopilot-onboarding-routes'
+} from "./autopilot-onboarding-program";
+import { makeAutopilotOnboardingRoutes } from "./autopilot-onboarding-routes";
 import {
   type AutopilotWorkOrderRecord,
   makeAutopilotWorkRoutes,
   recordAutopilotWorkerCloseoutFromPylon,
-} from './autopilot-work-routes'
-import {
-  recordBackendIncidentEvent,
-  routePatternFromRequest,
-} from './backend-incident-events'
+} from "./autopilot-work-routes";
+import { recordBackendIncidentEvent, routePatternFromRequest } from "./backend-incident-events";
 import {
   OpenAgentsDatabase,
   OpenAgentsRuntimeEnvironment,
   type OpenAgentsWorkerEnv,
   ThreadFileArtifacts,
-} from './bindings'
-import { makeBlueprintProbeContributionRoutes } from './blueprint-probe-contribution-routes'
-import { makeBlueprintRoutes } from './blueprint-routes'
+} from "./bindings";
+import { makeBlueprintProbeContributionRoutes } from "./blueprint-probe-contribution-routes";
+import { makeBlueprintRoutes } from "./blueprint-routes";
 import {
   listBlueprintActionSubmissions,
   recordBlueprintActionSubmissionProposal,
-} from './blueprint/repositories/action-submissions'
+} from "./blueprint/repositories/action-submissions";
 import {
   listBlueprintProbeContributions,
   recordBlueprintProbeContribution,
-} from './blueprint/repositories/probe-contributions'
+} from "./blueprint/repositories/probe-contributions";
 import {
   listBlueprintProgramRuns,
   recordBlueprintProgramRun,
-} from './blueprint/repositories/program-runs'
+} from "./blueprint/repositories/program-runs";
 import {
   handleOperatorBusinessAffiliateAttributionApi,
   handleOperatorBusinessAffiliateCodeApi,
-} from './business-affiliate-attribution-routes'
+} from "./business-affiliate-attribution-routes";
 import {
   firstAlreadySoldBusinessQuickWinReceipt,
   makeInMemoryBusinessAlreadySoldEngagementReceiptStore,
-} from './business-already-sold-engagement-receipt'
-import { makeBusinessAlreadySoldEngagementReceiptRoutes } from './business-already-sold-engagement-receipt-routes'
+} from "./business-already-sold-engagement-receipt";
+import { makeBusinessAlreadySoldEngagementReceiptRoutes } from "./business-already-sold-engagement-receipt-routes";
 import {
   firstBusinessCaseStudy,
   makeInMemoryBusinessCaseStudyStore,
-} from './business-case-study-engine'
-import { makeBusinessCaseStudyRoutes } from './business-case-study-engine-routes'
+} from "./business-case-study-engine";
+import { makeBusinessCaseStudyRoutes } from "./business-case-study-engine-routes";
 // KS-8.14 (#8325): business funnel/orders/referrals dual-write seam —
 // scoped table writes read-back-mirror into Postgres (fail-soft).
-import { businessDomainDatabaseForEnv } from './business-domain-store'
-import { runBusinessFulfillmentLoopScheduled } from './business-fulfillment-loop'
-import { recordBusinessFunnelEvent } from './business-funnel-dashboard'
-import { handlePublicBusinessFunnelDashboardApi } from './business-funnel-dashboard-routes'
-import { handleBusinessIntakeChatApi } from './business-intake-chat-routes'
-import {
-  handleBusinessAgentGuide,
-  handleBusinessNewPage,
-} from './business-new-routes'
-import { makeD1BusinessOutreachStore } from './business-outreach'
+import { businessDomainDatabaseForEnv } from "./business-domain-store";
+import { runBusinessFulfillmentLoopScheduled } from "./business-fulfillment-loop";
+import { recordBusinessFunnelEvent } from "./business-funnel-dashboard";
+import { handlePublicBusinessFunnelDashboardApi } from "./business-funnel-dashboard-routes";
+import { handleBusinessIntakeChatApi } from "./business-intake-chat-routes";
+import { handleBusinessAgentGuide, handleBusinessNewPage } from "./business-new-routes";
+import { makeD1BusinessOutreachStore } from "./business-outreach";
 import {
   ADMIN_OPS_DAILY_SALES_LEDGER_PATH,
   makeDailySalesLedgerRoutes,
-} from './business-outreach-daily-ledger-routes'
-import { makeOperatorBusinessOutreachRoutes } from './business-outreach-routes'
-import { makeD1BusinessPipelineStore } from './business-pipeline-queue'
-import { makeOperatorBusinessPipelineRoutes } from './business-pipeline-routes'
-import { handleBusinessSignupApi } from './business-signup-routes'
+} from "./business-outreach-daily-ledger-routes";
+import { makeOperatorBusinessOutreachRoutes } from "./business-outreach-routes";
+import { makeD1BusinessPipelineStore } from "./business-pipeline-queue";
+import { makeOperatorBusinessPipelineRoutes } from "./business-pipeline-routes";
+import { handleBusinessSignupApi } from "./business-signup-routes";
 // Cloud coding-session surface (autopilot.cloud_coding_sessions.v1, red) — the
 // "our cloud" autonomous-execution lane. INERT behind CLOUD_CODING_SESSIONS_ENABLED
 // (default off). When enabled, launch defaults to the real cloud control-plane
@@ -347,8 +309,8 @@ import {
   makeD1CloudCodingAdmissionGate,
   probeAgentComputerCapacitySnapshot,
   routeCloudCodingSessionRequest as routeCloudCodingSessionRequestImpl,
-} from './cloud/cloud-coding-session-routes'
-import { makeLedgerCloudPrimitiveReceiptStore } from './cloud/cloud-primitive-receipts'
+} from "./cloud/cloud-coding-session-routes";
+import { makeLedgerCloudPrimitiveReceiptStore } from "./cloud/cloud-primitive-receipts";
 // Cloud primitive SCAFFOLDS (EPIC #5510). Both flag-gated INERT by default; the
 // promises `cloud.fine_tuning_service.v1` / `cloud.sandbox_compute_service.v1`
 // STAY red until a dereferenceable paid receipt lands. No green flip here.
@@ -357,78 +319,74 @@ import {
   makeD1FineTunedModelResolver,
   makeD1FineTuningRuntimeAdapter,
   routeFineTuningJobRequest,
-} from './cloud/fine-tuning-service-routes'
+} from "./cloud/fine-tuning-service-routes";
 import {
   KHALA_AGENT_COMPUTER_WRITEBACK_INGEST_PATH,
   makeKhalaAgentComputerWritebackRoutes,
-} from './cloud/khala-agent-computer-writeback-routes'
-import { makePublicCloudPrimitiveReceiptRoutes } from './cloud/public-cloud-primitive-receipt-routes'
+} from "./cloud/khala-agent-computer-writeback-routes";
+import { makePublicCloudPrimitiveReceiptRoutes } from "./cloud/public-cloud-primitive-receipt-routes";
 import {
   isSandboxComputeServiceEnabled,
   makeD1SandboxRuntimeAdapter,
   routeSandboxRequest,
-} from './cloud/sandbox-compute-service-routes'
-import { makeInMemoryCodingQuickWinPaidDeliveryClaimStore } from './coding-quick-win-claim-upgrade'
+} from "./cloud/sandbox-compute-service-routes";
+import { makeInMemoryCodingQuickWinPaidDeliveryClaimStore } from "./coding-quick-win-claim-upgrade";
 import {
   CodingQuickWinPipelineEndpoint,
   handleCodingQuickWinPipelineApi,
-} from './coding-quick-win-pipeline-routes'
-import { makeCodingQuickWinReceiptPublicRoutes } from './coding-quick-win-receipt-public-routes'
-import {
-  type OpenAgentsWorkerConfigEnv,
-  getOpenAgentsWorkerConfig,
-  redactedValue,
-} from './config'
+} from "./coding-quick-win-pipeline-routes";
+import { makeCodingQuickWinReceiptPublicRoutes } from "./coding-quick-win-receipt-public-routes";
+import { type OpenAgentsWorkerConfigEnv, getOpenAgentsWorkerConfig, redactedValue } from "./config";
 import {
   ADMIN_OPS_CRM_BATCH_APPROVE_PATH,
   ADMIN_OPS_CRM_BATCH_QUEUE_PATH,
   makeCrmApprovalBatchAdminRoutes,
-} from './crm-approval-batch-admin-routes'
-import { makeCrmApprovalBatchRoutes } from './crm-approval-batch-routes'
-import { makeCrmBatchRoutes } from './crm-batch-routes'
-import { makeCrmCommandRoutes } from './crm-command-routes'
+} from "./crm-approval-batch-admin-routes";
+import { makeCrmApprovalBatchRoutes } from "./crm-approval-batch-routes";
+import { makeCrmBatchRoutes } from "./crm-batch-routes";
+import { makeCrmCommandRoutes } from "./crm-command-routes";
 // KS-8.11 (#8322): CRM/email write entry points ride the dual-write seam.
-import { makeCrmEmailDatabaseForEnv } from './crm-email-domain-store'
-import { makeCrmEmailRoutes } from './crm-email-routes'
-import { makeCrmImportRoutes } from './crm-import-routes'
-import { makeCrmMcpCatalog } from './crm-mcp'
-import { makeCrmMcpDiscoveryRoutes } from './crm-mcp-discovery-routes'
+import { makeCrmEmailDatabaseForEnv } from "./crm-email-domain-store";
+import { makeCrmEmailRoutes } from "./crm-email-routes";
+import { makeCrmImportRoutes } from "./crm-import-routes";
+import { makeCrmMcpCatalog } from "./crm-mcp";
+import { makeCrmMcpDiscoveryRoutes } from "./crm-mcp-discovery-routes";
 import {
   crmMcpAdminPrincipal,
   mcpTenantHeader,
   readMcpBearerToken,
   resolveCrmMcpGrantPrincipal,
-} from './crm-mcp-grant'
-import { makeCrmMcpGrantRoutes } from './crm-mcp-grant-routes'
-import { makeCrmMcpRoutes } from './crm-mcp-routes'
-import { makeCrmReplyRoutes } from './crm-reply-routes'
+} from "./crm-mcp-grant";
+import { makeCrmMcpGrantRoutes } from "./crm-mcp-grant-routes";
+import { makeCrmMcpRoutes } from "./crm-mcp-routes";
+import { makeCrmReplyRoutes } from "./crm-reply-routes";
 import {
   isCrmResendSendEnabled,
   makeCrmResendSender,
   resolveCrmResendIdentity,
-} from './crm-resend'
-import { makeCrmResendRoutes } from './crm-resend-routes'
-import { makeCrmRoutes } from './crm-routes'
-import { makeCrmSendRoutes } from './crm-send-routes'
-import { CustomerOneCohortEndpoint } from './customer-one-cohort-projection'
+} from "./crm-resend";
+import { makeCrmResendRoutes } from "./crm-resend-routes";
+import { makeCrmRoutes } from "./crm-routes";
+import { makeCrmSendRoutes } from "./crm-send-routes";
+import { CustomerOneCohortEndpoint } from "./customer-one-cohort-projection";
 import {
   handleOperatorCustomerOneCohortRowsApi,
   handlePublicCustomerOneCohortApi,
-} from './customer-one-cohort-routes'
-import { makeD1CustomerOneCohortRowStore } from './customer-one-cohort-store'
-import { handleDemandProvenanceApi } from './demand-provenance-routes'
+} from "./customer-one-cohort-routes";
+import { makeD1CustomerOneCohortRowStore } from "./customer-one-cohort-store";
+import { handleDemandProvenanceApi } from "./demand-provenance-routes";
 import {
   DESKTOP_CODEX_USAGE_ADMISSION_PATH,
   DESKTOP_CODEX_USAGE_INGEST_PATH,
   makeDesktopCodexUsageAdmissionRouteHandler,
   makeDesktopCodexUsageRouteHandler,
-} from './desktop-codex-usage-routes'
-import { makeInMemoryEcommerceCampaignPaidDeliveryClaimStore } from './ecommerce-campaign-claim-upgrade'
-import { firstPaidEcommerceCampaignDeliveryReceiptFixture } from './ecommerce-campaign-delivery-receipt-fixture'
-import { makeEcommerceCampaignReceiptOperatorRoutes } from './ecommerce-campaign-receipt-operator-routes'
-import { makeEcommerceCampaignReceiptRoutes } from './ecommerce-campaign-receipt-routes'
-import { makeD1EcommerceCampaignReceiptStore } from './ecommerce-campaign-receipt-store'
-import { makeEcommerceCampaignSelfServeRoutes } from './ecommerce-campaign-self-serve-routes'
+} from "./desktop-codex-usage-routes";
+import { makeInMemoryEcommerceCampaignPaidDeliveryClaimStore } from "./ecommerce-campaign-claim-upgrade";
+import { firstPaidEcommerceCampaignDeliveryReceiptFixture } from "./ecommerce-campaign-delivery-receipt-fixture";
+import { makeEcommerceCampaignReceiptOperatorRoutes } from "./ecommerce-campaign-receipt-operator-routes";
+import { makeEcommerceCampaignReceiptRoutes } from "./ecommerce-campaign-receipt-routes";
+import { makeD1EcommerceCampaignReceiptStore } from "./ecommerce-campaign-receipt-store";
+import { makeEcommerceCampaignSelfServeRoutes } from "./ecommerce-campaign-self-serve-routes";
 import {
   AutopilotDecisionEmailInput,
   OrderSitesTransactionalEmailInput,
@@ -436,33 +394,33 @@ import {
   sendAutopilotDecisionEmailWithLedger,
   sendOrderSitesTransactionalEmailWithLedger,
   sendPrivateWorkspaceInviteEmailWithLedger,
-} from './email'
+} from "./email";
 import {
   type EmailCampaignDispatcherResult,
   dispatchDueEmailCampaignSends,
-} from './email-campaign-dispatcher'
-import { makeEmailSequenceAuthoringRoutes } from './email-sequence-authoring-routes'
+} from "./email-campaign-dispatcher";
+import { makeEmailSequenceAuthoringRoutes } from "./email-sequence-authoring-routes";
 import {
   isEmailSequenceSendEnabled,
   makeResendEmailSequenceSender,
-} from './email-sequence-send-service'
-import { EnergyFlexibleLoadProofEndpoint } from './energy-flexible-load-proof'
-import { handleEnergyFlexibleLoadProofApi } from './energy-flexible-load-proof-routes'
+} from "./email-sequence-send-service";
+import { EnergyFlexibleLoadProofEndpoint } from "./energy-flexible-load-proof";
+import { handleEnergyFlexibleLoadProofApi } from "./energy-flexible-load-proof-routes";
 import {
   EVENT_LEDGER_INGEST_QUEUE_SCHEMA_VERSION,
   EventLedgerIngestQueueMessage,
   type EventLedgerSql,
   makePostgresEventLedgerStore,
-} from './event-ledger'
-import { recordEventLedgerMessageWithOwnerMutex } from './event-ledger-owner-sequence-store'
+} from "./event-ledger";
+import { recordEventLedgerMessageWithOwnerMutex } from "./event-ledger-owner-sequence-store";
 import {
   authorizesManagedFleetUnitDispatch,
   selectExactManagedFleetProviderAccount,
-} from './fleet-managed-dispatch-authority'
+} from "./fleet-managed-dispatch-authority";
 import {
   authorizeForgeControlPlaneBearer,
   makeForgeControlPlaneRoutes,
-} from './forge-control-plane-routes'
+} from "./forge-control-plane-routes";
 // KS-8.16 (#8327): every forge store construction site rides the forge
 // domain dual-write seam (D1 authority + fail-soft Postgres mirror).
 import {
@@ -471,23 +429,20 @@ import {
   makeForgeGitHubMirrorStoreForEnv,
   makeForgeGitPackfileArchiveStoreForEnv,
   makeForgeTenantGitAuthStoreForEnv,
-} from './forge-domain-store'
-import { makeForgeGitIntakeRoutes } from './forge-git-intake-routes'
-import { makeForumRoutes } from './forum-routes'
-import { forumWorkRequestRelayPublisherForEnv } from './forum-work-request-live-publisher'
-import { forumContentDatabaseForEnv } from './forum/forum-content-store'
+} from "./forge-domain-store";
+import { makeForgeGitIntakeRoutes } from "./forge-git-intake-routes";
+import { makeForumRoutes } from "./forum-routes";
+import { forumWorkRequestRelayPublisherForEnv } from "./forum-work-request-live-publisher";
+import { forumContentDatabaseForEnv } from "./forum/forum-content-store";
 import {
   FULL_AUTO_RUN_CONTROL_INTENTS_PATH,
   makeFullAutoRunControlRoutes,
-} from './full-auto-run-control-routes'
-import {
-  FULL_AUTO_RUNS_PATH,
-  makeFullAutoRunRoutes,
-} from './full-auto-run-routes'
+} from "./full-auto-run-control-routes";
+import { FULL_AUTO_RUNS_PATH, makeFullAutoRunRoutes } from "./full-auto-run-routes";
 import {
   GitHubScmAuthBrokerDependencyFailed,
   routeGitHubScmAuthBrokerRequest,
-} from './github-scm-auth-broker-routes'
+} from "./github-scm-auth-broker-routes";
 import {
   GITHUB_WRITE_REQUIRED_SCOPES,
   GitHubWriteApiFailure,
@@ -507,26 +462,26 @@ import {
   resolveGitHubWriteGrant,
   revokeGitHubWriteGrant,
   startGitHubWriteConnectionAttempt,
-} from './github-write-connections'
+} from "./github-write-connections";
 import {
   gitHubWriteRouteErrorMessage,
   gitHubWriteRouteErrorName,
   gitHubWriteRouteErrorStatus,
-} from './github-write-route-errors'
+} from "./github-write-route-errors";
 import {
   makeGoogleCloudKmsDekClient,
   makeGoogleCloudWorkloadIdentityAccessTokenProvider,
-} from './google-cloud-kms'
+} from "./google-cloud-kms";
 import {
   makeGymLadderStoreForEnv,
   makeGymRunProgressStoreForEnv,
   makeHarborFullTraceArchiveStoreForEnv,
   makeMirrorCodeRunStoreForEnv,
   makeMutaliskKhalaDelegationWorkflowStoreForEnv,
-} from './gym-evals-domain-store'
-import { makeHostedGeminiPromiseReadinessRoutes } from './hosted-gemini-promise-readiness-routes'
-import { handleForumThreadDocument } from './http/forum-social-preview'
-import { fetchAppShellWithPylonStatsBootPayload } from './http/pylon-stats-boot-payload'
+} from "./gym-evals-domain-store";
+import { makeHostedGeminiPromiseReadinessRoutes } from "./hosted-gemini-promise-readiness-routes";
+import { handleForumThreadDocument } from "./http/forum-social-preview";
+import { fetchAppShellWithPylonStatsBootPayload } from "./http/pylon-stats-boot-payload";
 import {
   forbidden,
   materializeHttpResult,
@@ -535,113 +490,106 @@ import {
   redirectResponse,
   serverError,
   unauthorized,
-} from './http/responses'
-import { routeAccessResponse } from './http/route-access-response'
-import { routeEffect, routeEffectOrResponse } from './http/route-effects'
-import type { ExactRoute } from './http/router'
+} from "./http/responses";
+import { routeAccessResponse } from "./http/route-access-response";
+import { routeEffect, routeEffectOrResponse } from "./http/route-effects";
+import type { ExactRoute } from "./http/router";
 import {
   identityAuthMirrorFromEnv,
   makeGitHubWriteRepositoryForEnv,
   makeProviderAccountRepositoryForEnv,
   makeProviderAccountTokenCustodyStoreForEnv,
   postgresIdentityAuthStoreForEnv,
-} from './identity-auth-domain-store'
-import {
-  type IdentityDb,
-  identityDbForEnv,
-  readIdentityUserProfiles,
-} from './identity-db'
-import { makeImageGenerationRoutes } from './image-generation-routes'
+} from "./identity-auth-domain-store";
+import { type IdentityDb, identityDbForEnv, readIdentityUserProfiles } from "./identity-db";
+import { makeImageGenerationRoutes } from "./image-generation-routes";
 import {
   inferenceEntitlementsMirrorForEnv,
   makeInferenceEntitlementsRoutingForEnv,
-} from './inference-entitlements-store'
-import { makeInferenceReceiptStore } from './inference-receipts'
+} from "./inference-entitlements-store";
+import { makeInferenceReceiptStore } from "./inference-receipts";
 import {
   isAcceptanceDispatchEnabled,
   makeKhalaVerificationStoreForEnv,
-} from './inference/acceptance-dispatch'
+} from "./inference/acceptance-dispatch";
 import {
   handleAcceptanceJobAck,
   handleAcceptanceJobLease,
-} from './inference/acceptance-job-lease-routes'
-import { makeAcceptanceJobQueueStoreForEnv } from './inference/acceptance-job-queue-store'
-import { handleAcceptanceVerdictCallback } from './inference/acceptance-verdict-callback-routes'
+} from "./inference/acceptance-job-lease-routes";
+import { makeAcceptanceJobQueueStoreForEnv } from "./inference/acceptance-job-queue-store";
+import { handleAcceptanceVerdictCallback } from "./inference/acceptance-verdict-callback-routes";
 import {
   handleOperatorKhalaHeadToHeadApi,
   handlePublicKhalaHeadToHeadApi,
-} from './inference/benchmark/head-to-head-routes'
-import { makeD1KhalaHeadToHeadStore } from './inference/benchmark/head-to-head-store'
+} from "./inference/benchmark/head-to-head-routes";
+import { makeD1KhalaHeadToHeadStore } from "./inference/benchmark/head-to-head-store";
 import {
   handleChatCompletions,
   isInferenceDurableStreamEnabled,
   isInferenceGatewayEnabled,
   khalaRequestForAdapter,
-} from './inference/chat-completions-routes'
-import {
-  type DiscoverySurfacePath,
-  renderDiscoverySurface,
-} from './inference/discovery-surfaces'
-import { handleDispatchFailureTelemetryReadout } from './inference/dispatch-failure-telemetry-routes'
+} from "./inference/chat-completions-routes";
+import { type DiscoverySurfacePath, renderDiscoverySurface } from "./inference/discovery-surfaces";
+import { handleDispatchFailureTelemetryReadout } from "./inference/dispatch-failure-telemetry-routes";
 import {
   matchDurableReadRequest,
   routeDurableInferenceReadRequest,
   routeDurableInferenceReadRequestDO,
-} from './inference/durable-inference-read-routes'
-import { durableInferenceStreamNamespaceForEnv } from './inference/durable-inference-stream-backend'
+} from "./inference/durable-inference-read-routes";
+import { durableInferenceStreamNamespaceForEnv } from "./inference/durable-inference-stream-backend";
 import {
   KHALA_FIREWORKS_BACKING_MODEL_ID,
   fireworksAdapter,
   makeFireworksAdapter,
-} from './inference/fireworks-adapter'
-import { runFleetBurnStallDetectorScheduled } from './inference/fleet-burn-stall-detector'
-import { handleGatewayReadiness } from './inference/gateway-readiness-routes'
-import { makeGemma4Adapter } from './inference/gemma4-adapter'
-import { handleGlmFleetReadiness } from './inference/glm-fleet-readiness-routes'
+} from "./inference/fireworks-adapter";
+import { runFleetBurnStallDetectorScheduled } from "./inference/fleet-burn-stall-detector";
+import { handleGatewayReadiness } from "./inference/gateway-readiness-routes";
+import { makeGemma4Adapter } from "./inference/gemma4-adapter";
+import { handleGlmFleetReadiness } from "./inference/glm-fleet-readiness-routes";
 import {
   glmPoolHeartbeatRoutingStateOracle,
   runScheduledGlmPoolHeartbeatForD1,
-} from './inference/glm-pool-heartbeat'
-import { handleOperatorHarborFullTraceArchivesApi } from './inference/gym/harbor-full-trace-archive-routes'
+} from "./inference/glm-pool-heartbeat";
+import { handleOperatorHarborFullTraceArchivesApi } from "./inference/gym/harbor-full-trace-archive-routes";
 import {
   handleOperatorGymLeaderboardApi,
   handlePublicGymLeaderboardApi,
-} from './inference/gym/ladder-routes'
+} from "./inference/gym/ladder-routes";
 import {
   handleMirrorCodeRunByIdApi,
   handleMirrorCodeRunsApi,
   matchMirrorCodeRunByIdRequest,
-} from './inference/gym/mirrorcode-routes'
+} from "./inference/gym/mirrorcode-routes";
 import {
   handleOperatorMutaliskKhalaDelegationProgressApi,
   handleOperatorMutaliskKhalaDelegationRunsApi,
   handleOperatorMutaliskKhalaDelegationSummaryApi,
   handlePublicMutaliskKhalaDelegationRunsApi,
-} from './inference/gym/mutalisk-khala-delegation-routes'
+} from "./inference/gym/mutalisk-khala-delegation-routes";
 import {
   handleOperatorGymRunProgressApi,
   handlePublicGymRunProgressApi,
-} from './inference/gym/run-progress-routes'
-import { publishGymRunProgressSnapshot } from './inference/gym/run-progress-sync'
+} from "./inference/gym/run-progress-routes";
+import { publishGymRunProgressSnapshot } from "./inference/gym/run-progress-sync";
 import {
   type HydraliskPoolRouteAdmissionSnapshot,
   makeHydraliskVllmAdapter,
   makeHydraliskVllmPoolRuntime,
-} from './inference/hydralisk-adapter'
-import { parseInternalAccountRefs } from './inference/inference-internal-account'
-import { isConfidentialComputeEnabled } from './inference/inference-privacy-entitlement'
+} from "./inference/hydralisk-adapter";
+import { parseInternalAccountRefs } from "./inference/inference-internal-account";
+import { isConfidentialComputeEnabled } from "./inference/inference-privacy-entitlement";
 import {
   handleConfidentialComputeExecutionReceipt,
   handlePaidPrivacyPurchase,
   handlePublicPrivacyReceiptRead,
-} from './inference/inference-privacy-receipt-routes'
+} from "./inference/inference-privacy-receipt-routes";
 import {
   emitKhalaChatTrace,
   isKhalaChatTraceEmitEnabled,
   isKhalaFreeTierTraceCaptureDefaultEnabled,
-} from './inference/khala-chat-trace-emitter'
-import { isComponentChannelEnabled } from './inference/khala-component-channel'
-import { stubMeteringHook } from './inference/metering-hook'
+} from "./inference/khala-chat-trace-emitter";
+import { isComponentChannelEnabled } from "./inference/khala-component-channel";
+import { stubMeteringHook } from "./inference/metering-hook";
 import {
   AUTO_EXECUTION_TARGET_ID,
   type AutoExecutionTargetCandidate,
@@ -655,7 +603,7 @@ import {
   resolveAvailableModelIds,
   resolveExecutionTargetPreference,
   writeUserModelPreference,
-} from './inference/model-preference-store'
+} from "./inference/model-preference-store";
 import {
   FIREWORKS_ADAPTER_ID,
   FIREWORKS_STRONG_CODING_ADAPTER_ID,
@@ -668,66 +616,63 @@ import {
   makeBoundedDispatchFailureTelemetry,
   makeGlmOwnCapacityFailover,
   makeKhalaBackedAdapterPlan,
-} from './inference/model-router'
+} from "./inference/model-router";
 import {
   resolveHydraliskGlm52Reap504bArming,
   resolveSupplyLaneArming,
-} from './inference/model-serving-policy'
-import {
-  handleModelsList,
-  routeModelRetrieveRequest,
-} from './inference/models-routes'
-import { dispatchOnboardingStreamSource } from './inference/onboarding-stream-source'
-import { makeAdmittedOpenAgentsNetworkAdapter } from './inference/openagents-network-adapter'
+} from "./inference/model-serving-policy";
+import { handleModelsList, routeModelRetrieveRequest } from "./inference/models-routes";
+import { dispatchOnboardingStreamSource } from "./inference/onboarding-stream-source";
+import { makeAdmittedOpenAgentsNetworkAdapter } from "./inference/openagents-network-adapter";
 import {
   OPENROUTER_DEFAULT_BASE_URL,
   OPENROUTER_KHALA_FALLBACK_MODEL_ID,
   makeOpenRouterAdapter,
-} from './inference/openrouter-adapter'
+} from "./inference/openrouter-adapter";
 import {
   type PassthroughAdapterConfig,
   makePassthroughAdapter,
-} from './inference/passthrough-adapter'
+} from "./inference/passthrough-adapter";
 import {
   HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
   HYDRALISK_GPT_OSS_20B_MODEL_ID,
   HYDRALISK_GPT_OSS_120B_MODEL_ID,
   KHALA_MODEL_ID,
   normalizeKhalaModelId,
-} from './inference/pricing'
+} from "./inference/pricing";
 import {
   InferenceAdapterError,
   type InferenceProviderAdapter,
   InferenceProviderRegistry,
   type InferenceRequest,
   type InferenceResult,
-} from './inference/provider-adapter'
-import { dispatchPsionicServe } from './inference/psionic-fabric-serve'
+} from "./inference/provider-adapter";
+import { dispatchPsionicServe } from "./inference/psionic-fabric-serve";
 import {
   makePylonFabricHttpTransport,
   pylonFabricHttpTransportConfigFromEnv,
   pylonGatewayAdmissionFromEnv,
-} from './inference/pylon-fabric-http-transport'
-import { handlePylonFabricSmoke } from './inference/pylon-fabric-smoke-routes'
-import { handleQuote } from './inference/quote-routes'
+} from "./inference/pylon-fabric-http-transport";
+import { handlePylonFabricSmoke } from "./inference/pylon-fabric-smoke-routes";
+import { handleQuote } from "./inference/quote-routes";
 import {
   type ServedTokensRecorderInput,
   buildServedTokensIngestBody,
   makeD1ServedTokensRecorder,
   meterServedTokensFailSoft,
-} from './inference/served-tokens-recorder'
-import { runServingRateMonitorScheduled } from './inference/serving-rate-monitor'
-import { stubEchoAdapter } from './inference/stub-echo-adapter'
+} from "./inference/served-tokens-recorder";
+import { runServingRateMonitorScheduled } from "./inference/serving-rate-monitor";
+import { stubEchoAdapter } from "./inference/stub-echo-adapter";
 import {
   VERTEX_ANTHROPIC_ADAPTER_ID,
   makeVertexAnthropicAdapter,
-} from './inference/vertex-anthropic-adapter'
+} from "./inference/vertex-anthropic-adapter";
 import {
   DEFAULT_GEMINI_MODEL_ID,
   VERTEX_GEMINI_ADAPTER_ID,
   makeVertexGeminiAdapter,
-} from './inference/vertex-gemini-adapter'
-import { tokenProviderFromSecret } from './inference/vertex-token'
+} from "./inference/vertex-gemini-adapter";
+import { tokenProviderFromSecret } from "./inference/vertex-token";
 import {
   decodeUnknownWithSchema,
   isRecord,
@@ -739,13 +684,13 @@ import {
   readJsonObject,
   safeJsonRecord,
   stringArrayFromUnknown,
-} from './json-boundary'
-import type { KhalaChatStreamClient } from './khala-chat-program'
+} from "./json-boundary";
+import type { KhalaChatStreamClient } from "./khala-chat-program";
 import {
   loadKhalaChatAccountPylonContext,
   loadKhalaChatPylonContext,
-} from './khala-chat-pylon-context'
-import { makeKhalaChatRoutes } from './khala-chat-routes'
+} from "./khala-chat-pylon-context";
+import { makeKhalaChatRoutes } from "./khala-chat-routes";
 import {
   applySarahManagedCloudHarnessFallback,
   dispatchCloudGcpRuntimeTurn,
@@ -757,81 +702,81 @@ import {
   recoverStaleRunningManagedCloudTurns,
   resolveManagedCloudRepositoryCommit,
   runCloudGcpRuntimeDispatch,
-} from './khala-cloud-runtime-dispatch'
-import { makeProviderAccountLeaseService } from './provider-account-lease-service'
+} from "./khala-cloud-runtime-dispatch";
+import { makeProviderAccountLeaseService } from "./provider-account-lease-service";
 import {
   type CloudGcpRuntimeDispatchContext,
   KHALA_CLOUD_RUNTIME_DISPATCH_ADMIN_PATH,
   handleCloudGcpRuntimeDispatchAdminRoute,
-} from './khala-cloud-runtime-dispatch-admin-routes'
+} from "./khala-cloud-runtime-dispatch-admin-routes";
 import {
   mintCloudRuntimeExecutionToken,
   revokeCloudRuntimeExecutionToken,
-} from './khala-cloud-runtime-execution-token'
+} from "./khala-cloud-runtime-execution-token";
 import {
   ManagedAgentComputerHarnessSelection,
   buildCloudRuntimeWorkContext,
   buildCloudRuntimeWritebackConfig,
   encodeWorkContextB64,
   selectManagedAgentComputerHarness,
-} from './khala-cloud-runtime-inference-block'
+} from "./khala-cloud-runtime-inference-block";
 import {
   KHALA_CLOUD_RUNTIME_USAGE_INGEST_PATH,
   makeKhalaCloudRuntimeUsageRoutes,
   ownerCapacityGrantAuthorizesReceipt,
-} from './khala-cloud-runtime-usage-routes'
-import { handlePublicKhalaCodeDownloadCountsApi } from './khala-code-download-counts-routes'
+} from "./khala-cloud-runtime-usage-routes";
+import { handlePublicKhalaCodeDownloadCountsApi } from "./khala-code-download-counts-routes";
 import {
   isKhalaCodeOpenAgentsAuthVerifyReturnPath,
   makeKhalaCodeOpenAgentsAuthHandlers,
-} from './khala-code-openagents-auth-routes'
+} from "./khala-code-openagents-auth-routes";
 import {
   handlePublicKhalaCodeOutsideUserRunsApi,
   makeD1KhalaCodeOutsideUserRunStore,
   makePublicKhalaCodeOutsideUserRunReceiptRoutes,
-} from './khala-code-outside-user-run-routes'
-import { khalaCodeProductStateDatabaseForEnv } from './khala-code-product-state-store'
+} from "./khala-code-outside-user-run-routes";
+import { khalaCodeProductStateDatabaseForEnv } from "./khala-code-product-state-store";
 import {
   handleOperatorKhalaCodeTracePluginRevenueSharePrecedentsApi,
   makeD1KhalaCodeTracePluginRevenueShareStore,
   makeKhalaCodeTracePluginRevenueShareRoutes,
-} from './khala-code-trace-plugin-revenue-share-routes'
+} from "./khala-code-trace-plugin-revenue-share-routes";
 import {
   handleKhalaFeedbackSubmit,
   handleOperatorKhalaFeedback,
   makeD1KhalaFeedbackStore,
-} from './khala-feedback-routes'
+} from "./khala-feedback-routes";
 import {
   DEFAULT_HOSTED_RUNTIME_MODEL,
   HOSTED_RUNTIME_LANE,
   type HostedRuntimeCompleteFn,
   type QueuedHostedTurn,
   runHostedRuntimeTurnDispatch,
-} from './khala-hosted-runtime-dispatch'
+} from "./khala-hosted-runtime-dispatch";
 import {
   hostedTurnUsageFromArtanisMind,
   recordHostedTurnUsage,
-} from './khala-hosted-runtime-metering'
+} from "./khala-hosted-runtime-metering";
 import {
   combineMcpCatalogs,
   khalaDurableRequestIsLinkedToPrincipal,
   khalaMcpAgentPrincipal,
   makeKhalaMcpCatalog,
-} from './khala-mcp'
-import { handleKhalaSyncBootstrap } from './khala-sync-bootstrap-routes'
+} from "./khala-mcp";
+import { handleKhalaSyncBootstrap } from "./khala-sync-bootstrap-routes";
 import {
   KHALA_SYNC_CAPTURE_HEALTH_PATH,
   handleKhalaSyncCaptureHealth,
   runKhalaSyncCaptureStalenessProbe,
-} from './khala-sync-capture-health-routes'
-import { handleKhalaSyncConnect } from './khala-sync-connect-routes'
-import { handleKhalaSyncCvrPull } from './khala-sync-cvr-routes'
-import { handleKhalaSyncDbSmoke } from './khala-sync-db-smoke-routes'
+} from "./khala-sync-capture-health-routes";
+import { handleKhalaSyncConnect } from "./khala-sync-connect-routes";
+import { handleKhalaSyncCvrPull } from "./khala-sync-cvr-routes";
+import { handleKhalaSyncDbSmoke } from "./khala-sync-db-smoke-routes";
 import {
   KHALA_SYNC_FLEET_INTENTS_PATH,
   handleKhalaSyncFleetIntents,
-} from './khala-sync-fleet-intents-routes'
-import { projectFleetAssignmentTransition } from './khala-sync-fleet-projection'
+} from "./khala-sync-fleet-intents-routes";
+import { projectFleetAssignmentTransition } from "./khala-sync-fleet-projection";
 import {
   KHALA_SYNC_HUB_ACCESS_CHANGED_PATH,
   KHALA_SYNC_HUB_APPEND_PATH,
@@ -839,25 +784,22 @@ import {
   KHALA_SYNC_HUB_LOG_PATH,
   handleKhalaSyncHubAccessChangedRoute,
   handleKhalaSyncHubInternalRoute,
-} from './khala-sync-hub-routes'
-import { resolveKhalaSyncHubNamespace } from './khala-sync-live-hub-client'
-import { handleKhalaSyncLog } from './khala-sync-log-routes'
-import { makeKhalaSyncWorkerMutatorRegistry } from './khala-sync-mutators'
-import { refreshActivityTimelineSnapshotBestEffort } from './khala-sync-public-activity-timeline'
+} from "./khala-sync-hub-routes";
+import { resolveKhalaSyncHubNamespace } from "./khala-sync-live-hub-client";
+import { handleKhalaSyncLog } from "./khala-sync-log-routes";
+import { makeKhalaSyncWorkerMutatorRegistry } from "./khala-sync-mutators";
+import { refreshActivityTimelineSnapshotBestEffort } from "./khala-sync-public-activity-timeline";
 import {
   KHALA_SYNC_TOKENS_SERVED_RECONCILE_PATH,
   handleKhalaSyncTokensServedReconcile,
-} from './khala-sync-public-counter-reconcile-routes'
+} from "./khala-sync-public-counter-reconcile-routes";
 import {
   reconcileTokensServedProjection,
   recordTokensServedProjectionBestEffort,
-} from './khala-sync-public-tokens-served'
-import { refreshTokensServedAggregatesBestEffort } from './khala-sync-public-tokens-served-mix'
-import {
-  defaultMakeKhalaSyncSqlClient,
-  handleKhalaSyncPush,
-} from './khala-sync-push-routes'
-import { makeKhalaSyncRouteWiring } from './khala-sync-route-wiring'
+} from "./khala-sync-public-tokens-served";
+import { refreshTokensServedAggregatesBestEffort } from "./khala-sync-public-tokens-served-mix";
+import { defaultMakeKhalaSyncSqlClient, handleKhalaSyncPush } from "./khala-sync-push-routes";
+import { makeKhalaSyncRouteWiring } from "./khala-sync-route-wiring";
 import {
   KHALA_SYNC_CHAT_MESSAGE_READ_PATH,
   KHALA_SYNC_RUNTIME_INTENTS_PATH,
@@ -865,24 +807,24 @@ import {
   handleKhalaSyncChatMessageRead,
   handleKhalaSyncRuntimeIntents,
   handleKhalaSyncRuntimeTurnRead,
-} from './khala-sync-runtime-intents-routes'
+} from "./khala-sync-runtime-intents-routes";
 import {
   KHALA_SYNC_RUNTIME_INTERACTION_PATH,
   handleKhalaSyncRuntimeInteraction,
-} from './khala-sync-runtime-interaction-routes'
+} from "./khala-sync-runtime-interaction-routes";
 import {
   handleOperatorKhalaTraceReview,
   makeD1KhalaTraceReviewStore,
-} from './khala-trace-review-routes'
+} from "./khala-trace-review-routes";
 import {
   handleOperatorKhalaUnsupportedRequests,
   makeD1KhalaUnsupportedRequestStore,
-} from './khala-unsupported-request-routes'
-import { handlePublicLaborEarningsApi } from './labor-earnings-routes'
-import { handleLander2Page } from './lander2-routes'
-import { handleLander3Page } from './lander3-routes'
-import { handleLander4Page } from './lander4-routes'
-import { handleLander5Page } from './lander5-routes'
+} from "./khala-unsupported-request-routes";
+import { handlePublicLaborEarningsApi } from "./labor-earnings-routes";
+import { handleLander2Page } from "./lander2-routes";
+import { handleLander3Page } from "./lander3-routes";
+import { handleLander4Page } from "./lander4-routes";
+import { handleLander5Page } from "./lander5-routes";
 import {
   isManagedSandboxBrokerEnabled,
   isManagedSandboxBoxV1Enabled,
@@ -891,184 +833,165 @@ import {
   managedSandboxBoxV1PolicyForEnv,
   managedSandboxBoxV1RuntimeForEnv,
   managedSandboxBoxV1StoreForEnv,
-} from './managed-sandbox-box-v1-adapter'
-import {
-  BoxV1FacadeError,
-  makeBoxV1Routes,
-} from './managed-sandbox-box-v1-routes'
-import { makeManagedSandboxBroker } from './managed-sandbox-broker'
+} from "./managed-sandbox-box-v1-adapter";
+import { BoxV1FacadeError, makeBoxV1Routes } from "./managed-sandbox-box-v1-routes";
+import { makeManagedSandboxBroker } from "./managed-sandbox-broker";
 import {
   MANAGED_SANDBOX_DESKTOP_ADMISSION_PATH,
   MANAGED_SANDBOX_DESKTOP_COMMANDS_PATH,
   makeManagedSandboxDesktopRoutes,
-} from './managed-sandbox-desktop-routes'
-import { makeManagedSandboxProviderBrokerRoutes } from './managed-sandbox-provider-broker'
+} from "./managed-sandbox-desktop-routes";
+import { makeManagedSandboxProviderBrokerRoutes } from "./managed-sandbox-provider-broker";
 import {
   executeManagedSandboxPhase2ForEnv,
   isManagedSandboxPhase2Configured,
   isManagedSandboxPhase2Enabled,
-} from './managed-sandbox-phase2-adapter'
+} from "./managed-sandbox-phase2-adapter";
 import {
   MANAGED_SANDBOX_PHASE2_COMMANDS_PATH,
   makeManagedSandboxPhase2Routes,
-} from './managed-sandbox-phase2-routes'
+} from "./managed-sandbox-phase2-routes";
 import {
   readManagedSandboxPrivateIngressForAudience,
   useManagedSandboxPrivatePreview,
-} from './managed-sandbox-private-preview-adapter'
-import { makeManagedSandboxPrivatePreviewRoutes } from './managed-sandbox-private-preview-routes'
+} from "./managed-sandbox-private-preview-adapter";
+import { makeManagedSandboxPrivatePreviewRoutes } from "./managed-sandbox-private-preview-routes";
 import {
   MANAGED_SANDBOX_MOBILE_SUPERVISION_PATH,
   MANAGED_SANDBOX_WEB_SUPERVISION_PATH,
   makeManagedSandboxSupervisionRoutes,
-} from './managed-sandbox-supervision-routes'
-import { makeInMemoryMarketingAgencyPaidDeliveryClaimStore } from './marketing-agency-claim-upgrade'
-import { makeMarketingAgencyReceiptPublicRoutes } from './marketing-agency-receipt-public-routes'
-import { makeInMemoryMarketingAgencySelfServeClaimStore } from './marketing-agency-self-serve-claim-upgrade'
-import { makeMarketingAgencySelfServePublicRoutes } from './marketing-agency-self-serve-public-routes'
+} from "./managed-sandbox-supervision-routes";
+import { makeInMemoryMarketingAgencyPaidDeliveryClaimStore } from "./marketing-agency-claim-upgrade";
+import { makeMarketingAgencyReceiptPublicRoutes } from "./marketing-agency-receipt-public-routes";
+import { makeInMemoryMarketingAgencySelfServeClaimStore } from "./marketing-agency-self-serve-claim-upgrade";
+import { makeMarketingAgencySelfServePublicRoutes } from "./marketing-agency-self-serve-public-routes";
 import {
   MarketplaceComposeListEndpoint,
   handleMarketplaceCompositionApi,
   isMarketplaceComposeAndListEnabled,
-} from './marketplace-composition-routes'
+} from "./marketplace-composition-routes";
 import {
   MarketplaceWorkClassCatalogEndpoint,
   handleMarketplaceWorkClassCatalogApi,
-} from './marketplace-work-class-catalog-routes'
+} from "./marketplace-work-class-catalog-routes";
 import {
   MOBILE_ACCOUNT_PATH,
   handleMobileAccountDeletionRequest,
-} from './mobile-account-deletion-routes'
+} from "./mobile-account-deletion-routes";
 import {
   MobileWorkroomApprovalProjectionEndpoint,
   handleMobileWorkroomApprovalProjectionApi,
   isMobileWorkroomApprovalProjectionEnabled,
-} from './mobile-workroom-approval-projection-routes'
+} from "./mobile-workroom-approval-projection-routes";
 import {
   isRetiredMoneySurfaceRequest,
   moneySurfaceRetiredResponse,
-} from './money-surface-retirement'
-import { makeMulletRoutes } from './mullet/routes'
-import { makeNativeListsService } from './native-lists'
-import { makeNativeListsRoutes } from './native-lists-routes'
-import { makeD1Nip90MarketReceiptStore } from './nip90-market-receipts'
+} from "./money-surface-retirement";
+import { makeMulletRoutes } from "./mullet/routes";
+import { makeNativeListsService } from "./native-lists";
+import { makeNativeListsRoutes } from "./native-lists-routes";
+import { makeD1Nip90MarketReceiptStore } from "./nip90-market-receipts";
 import {
   OA_JOB_TOPIC_EVENT_LEDGER_INGEST,
   OA_JOB_TOPIC_PYLON_CODEX_RAW_EVENT_METADATA,
   type OaJobQueueProducerEnv,
   makeOaJobEnqueueForEnv,
-} from './oa-job-queue-producer'
-import {
-  OA_QUEUE_DELIVER_PATH,
-  handleOaQueueDeliver,
-} from './oa-queue-delivery-routes'
+} from "./oa-job-queue-producer";
+import { OA_QUEUE_DELIVER_PATH, handleOaQueueDeliver } from "./oa-queue-delivery-routes";
 import {
   logWorkerRouteError,
   logWorkerRouteInfo,
   logWorkerRouteWarning,
   observedEffect,
   observedPromise,
-} from './observability'
+} from "./observability";
 import {
   OPENAGENTS_DESKTOP_MVP_OBSERVATORY_PATH,
   handleObservatoryTracePage,
-} from './observatory-routes'
-import { handleObserverPage } from './observer-routes'
-import { handleOmniApiSdkSeedApi } from './omni-api-sdk-seed-routes'
-import { makeOmniBundleRoutes } from './omni-bundle-routes'
+} from "./observatory-routes";
+import { handleObserverPage } from "./observer-routes";
+import { handleOmniApiSdkSeedApi } from "./omni-api-sdk-seed-routes";
+import { makeOmniBundleRoutes } from "./omni-bundle-routes";
 import {
   OmniClientDeliveryProjectionEndpoint,
   handleOmniClientDeliveryProjectionApi,
   isOmniClientDeliveryProjectionEnabled,
-} from './omni-client-delivery-projection-routes'
-import { handleOmniContributorAccrualBundleApi } from './omni-contributor-accrual-bundle-routes'
-import { readOmniEvidenceBundleById } from './omni-evidence-bundles'
-import { makeOmniHandlers } from './omni-handlers'
-import { makeOmniHandoffRoutes } from './omni-handoff-routes'
-import { readOmniPublicProofBundleById } from './omni-public-proof-bundles'
-import { makeOmniRoutes } from './omni-routes'
-import {
-  type AgentRunBundle,
-  type AgentRunRecord,
-  type OmniEventRecord,
-} from './omni-runs'
-import { makeOmniWorkroomLifecycleRoutes } from './omni-workroom-lifecycle-routes'
-import { makeOmniWorkroomRoutes } from './omni-workroom-routes'
-import {
-  GitHubRepositoryService,
-  githubIdentityTokenKey,
-} from './onboarding/github'
-import { readOnboardingStatusForUser } from './onboarding/repository'
-import { makeOnboardingRoutes } from './onboarding/routes'
+} from "./omni-client-delivery-projection-routes";
+import { handleOmniContributorAccrualBundleApi } from "./omni-contributor-accrual-bundle-routes";
+import { readOmniEvidenceBundleById } from "./omni-evidence-bundles";
+import { makeOmniHandlers } from "./omni-handlers";
+import { makeOmniHandoffRoutes } from "./omni-handoff-routes";
+import { readOmniPublicProofBundleById } from "./omni-public-proof-bundles";
+import { makeOmniRoutes } from "./omni-routes";
+import { type AgentRunBundle, type AgentRunRecord, type OmniEventRecord } from "./omni-runs";
+import { makeOmniWorkroomLifecycleRoutes } from "./omni-workroom-lifecycle-routes";
+import { makeOmniWorkroomRoutes } from "./omni-workroom-routes";
+import { GitHubRepositoryService, githubIdentityTokenKey } from "./onboarding/github";
+import { readOnboardingStatusForUser } from "./onboarding/repository";
+import { makeOnboardingRoutes } from "./onboarding/routes";
 import {
   handleLiquidityMarketSkeletonApi,
   handleOpenMarketsSurfaceApi,
   handleRiskMarketSkeletonApi,
-} from './open-markets-routes'
+} from "./open-markets-routes";
 import {
   handleOpenAgentsAgentOnboarding,
   handleOpenAgentsCompanionFile,
-} from './openagents-agent-onboarding-routes'
-import { handleOpenAgentsCapabilityManifestApi } from './openagents-capability-manifest-routes'
-import { handleOpenAgentsOpenApi } from './openagents-openapi-routes'
+} from "./openagents-agent-onboarding-routes";
+import { handleOpenAgentsCapabilityManifestApi } from "./openagents-capability-manifest-routes";
+import { handleOpenAgentsOpenApi } from "./openagents-openapi-routes";
 import {
   executeQueuedAdjutantEnrichmentJob,
   makeOperatorAdjutantRoutes,
-} from './operator-adjutant-routes'
-import { makeOperatorEmailInspectionRoutes } from './operator-email-inspection-routes'
+} from "./operator-adjutant-routes";
+import { makeOperatorEmailInspectionRoutes } from "./operator-email-inspection-routes";
 import {
   makeOperatorFleetStatusRoutes,
   readOperatorFleetStatusSnapshotFromRunnerStatusReadStore,
-} from './operator-fleet-status-routes'
-import { makeOperatorOrderTriageRoutes } from './operator-order-triage-routes'
-import { makeOperatorProStatusRoutes } from './operator-pro-status-routes'
-import { makeOperatorProviderAccountRoutes } from './operator-provider-account-routes'
-import {
-  type OperatorTargetUser,
-  readOperatorTargetUser,
-} from './operator-targets'
-import { makePartnerAgreementRoutes } from './partner-agreement-routes'
-import { handlePartnerPayoutsPublicApi } from './partner-payout-public-routes'
-import { makeD1PartnerPayoutReceiptStore } from './partner-payout-receipts'
-import { paymentsLedgerDbForEnv } from './payments-ledger-db'
-import { makePortalRoutes } from './portal-routes'
-import { makePrefilledWorkspaceService } from './prefilled-workspace'
-import { makePrefilledWorkspaceRoutes } from './prefilled-workspace-routes'
+} from "./operator-fleet-status-routes";
+import { makeOperatorOrderTriageRoutes } from "./operator-order-triage-routes";
+import { makeOperatorProStatusRoutes } from "./operator-pro-status-routes";
+import { makeOperatorProviderAccountRoutes } from "./operator-provider-account-routes";
+import { type OperatorTargetUser, readOperatorTargetUser } from "./operator-targets";
+import { makePartnerAgreementRoutes } from "./partner-agreement-routes";
+import { handlePartnerPayoutsPublicApi } from "./partner-payout-public-routes";
+import { makeD1PartnerPayoutReceiptStore } from "./partner-payout-receipts";
+import { paymentsLedgerDbForEnv } from "./payments-ledger-db";
+import { makePortalRoutes } from "./portal-routes";
+import { makePrefilledWorkspaceService } from "./prefilled-workspace";
+import { makePrefilledWorkspaceRoutes } from "./prefilled-workspace-routes";
 import {
   makeD1PrivateProjectWorkspaceStore,
   makePrivateProjectWorkspaceRoutes,
-} from './private-project-workspace-routes'
-import {
-  PublicProductPromisesEndpoint,
-  publicProductPromisesDocument,
-} from './product-promises'
-import { handlePublicPromiseAuditApi } from './promise-transition-audit-routes'
+} from "./private-project-workspace-routes";
+import { PublicProductPromisesEndpoint, publicProductPromisesDocument } from "./product-promises";
+import { handlePublicPromiseAuditApi } from "./promise-transition-audit-routes";
 import {
   handleOperatorPromiseTransitionApi,
   handlePublicPromiseTransitionsApi,
   makeD1PromiseTransitionReceiptStore,
-} from './promise-transition-receipt-routes'
-import { probeProviderApiKey } from './provider-account-api-key'
-import { makeProviderAccountBrowserHandlers } from './provider-account-browser-routes'
-import { ProviderAccountStorageFailed } from './provider-account-errors'
+} from "./promise-transition-receipt-routes";
+import { probeProviderApiKey } from "./provider-account-api-key";
+import { makeProviderAccountBrowserHandlers } from "./provider-account-browser-routes";
+import { ProviderAccountStorageFailed } from "./provider-account-errors";
 import {
   MOBILE_CLAUDE_ACCOUNTS_PATH,
   MOBILE_CLAUDE_LOCAL_AUTH_IMPORT_PATH,
   MOBILE_CODEX_ACCOUNTS_PATH,
   MOBILE_CODEX_DEVICE_LOGIN_START_PATH,
   makeProviderAccountMobileHandlers,
-} from './provider-account-mobile-routes'
-import { makeProviderAccountPoolRoutes } from './provider-account-pool-routes'
-import { makeAuthoritativePostgresProviderGrantRepository } from './provider-account-postgres-grant-repository'
-import { resolvePortableCapabilityGrantFacts } from './portable-capability-grant-facts'
+} from "./provider-account-mobile-routes";
+import { makeProviderAccountPoolRoutes } from "./provider-account-pool-routes";
+import { makeAuthoritativePostgresProviderGrantRepository } from "./provider-account-postgres-grant-repository";
+import { resolvePortableCapabilityGrantFacts } from "./portable-capability-grant-facts";
 import {
   PORTABLE_SESSION_COMMAND_DISPATCH_FLAG,
   makePortableSessionCommandDispatchScheduled,
-} from './portable-session-command-dispatch-scheduled'
-import { makePortableSessionCommandRuntimeAdapters } from './portable-session-command-runtime-adapters'
-import { makeProviderAccountPylonHandlers } from './provider-account-pylon-routes'
-import { makeProviderAccountRoutes } from './provider-account-routes'
-import { makeProviderAccountServiceHandlers } from './provider-account-service-routes'
+} from "./portable-session-command-dispatch-scheduled";
+import { makePortableSessionCommandRuntimeAdapters } from "./portable-session-command-runtime-adapters";
+import { makeProviderAccountPylonHandlers } from "./provider-account-pylon-routes";
+import { makeProviderAccountRoutes } from "./provider-account-routes";
+import { makeProviderAccountServiceHandlers } from "./provider-account-service-routes";
 import {
   type ProviderTokenCustodyKeyEnv,
   codexAccessToAuthMaterial,
@@ -1076,8 +999,8 @@ import {
   issueShortLivedCodexAccessFromCustody,
   providerAccountTokenCustodyCipherFromEnv,
   storeConnectedCodexAuthInCustody,
-} from './provider-account-token-custody'
-import { makeProviderAccountUsageRoutes } from './provider-account-usage-routes'
+} from "./provider-account-token-custody";
+import { makeProviderAccountUsageRoutes } from "./provider-account-usage-routes";
 import {
   ANTHROPIC_CLAUDE_PROVIDER,
   CHATGPT_CODEX_PROVIDER,
@@ -1092,76 +1015,76 @@ import {
   reissueProviderAccountGrant,
   resolveProviderAccountGrant,
   revokeProviderAccountGrant,
-} from './provider-accounts'
+} from "./provider-accounts";
 import {
   handlePublicActivityTimelineApiForEnv,
   handlePublicActivityTimelineStreamApiForEnv,
   publicActivityTimelineRawSourceInputForRequest,
-} from './public-activity-timeline-routes'
-import { handlePublicAdjutantActivityApi } from './public-adjutant-activity-routes'
-import { routePublicAgentMcpRequest } from './public-agent-mcp-routes'
-import { handlePublicForumActivityApiForEnv } from './public-forum-activity-routes'
-import { makePublicInferenceReceiptRoutes } from './public-inference-receipt-routes'
-import { recordPublicKhalaChatServedTokens } from './public-khala-chat-served-tokens'
-import { handlePublicKhalaTokensServedChannelMixApi } from './public-khala-tokens-served-channel-mix-routes'
-import { handlePublicKhalaTokensServedDemandMixApi } from './public-khala-tokens-served-demand-mix-routes'
-import { handlePublicKhalaTokensServedHistoryApi } from './public-khala-tokens-served-history-routes'
-import { handlePublicKhalaTokensServedModelMixApi } from './public-khala-tokens-served-model-mix-routes'
-import { handlePublicKhalaTokensServedApi } from './public-khala-tokens-served-routes'
-import { handlePublicLaunchDashboardApi } from './public-launch-dashboard-routes'
-import { makePublicNip90MarketReceiptRoutes } from './public-nip90-market-receipt-routes'
-import { makePublicPartnerPayoutReceiptRoutes } from './public-partner-payout-receipt-routes'
-import { handlePublicProofReplayBundleRequest } from './public-proof-replay-routes'
-import { handlePublicPylonStatsApi } from './public-pylon-stats-routes'
-import { handlePublicSettledFeedApi } from './public-settled-feed-routes'
-import { makePublicSiteReferralPayoutReceiptRoutes } from './public-site-referral-payout-receipt-routes'
-import { makePublicStripeCheckoutReceiptRoutes } from './public-stripe-checkout-receipt-routes'
-import { buildPublicTassadarRunSummaryEnvelopeForRequest } from './public-tassadar-run-summary-routes'
+} from "./public-activity-timeline-routes";
+import { handlePublicAdjutantActivityApi } from "./public-adjutant-activity-routes";
+import { routePublicAgentMcpRequest } from "./public-agent-mcp-routes";
+import { handlePublicForumActivityApiForEnv } from "./public-forum-activity-routes";
+import { makePublicInferenceReceiptRoutes } from "./public-inference-receipt-routes";
+import { recordPublicKhalaChatServedTokens } from "./public-khala-chat-served-tokens";
+import { handlePublicKhalaTokensServedChannelMixApi } from "./public-khala-tokens-served-channel-mix-routes";
+import { handlePublicKhalaTokensServedDemandMixApi } from "./public-khala-tokens-served-demand-mix-routes";
+import { handlePublicKhalaTokensServedHistoryApi } from "./public-khala-tokens-served-history-routes";
+import { handlePublicKhalaTokensServedModelMixApi } from "./public-khala-tokens-served-model-mix-routes";
+import { handlePublicKhalaTokensServedApi } from "./public-khala-tokens-served-routes";
+import { handlePublicLaunchDashboardApi } from "./public-launch-dashboard-routes";
+import { makePublicNip90MarketReceiptRoutes } from "./public-nip90-market-receipt-routes";
+import { makePublicPartnerPayoutReceiptRoutes } from "./public-partner-payout-receipt-routes";
+import { handlePublicProofReplayBundleRequest } from "./public-proof-replay-routes";
+import { handlePublicPylonStatsApi } from "./public-pylon-stats-routes";
+import { handlePublicSettledFeedApi } from "./public-settled-feed-routes";
+import { makePublicSiteReferralPayoutReceiptRoutes } from "./public-site-referral-payout-receipt-routes";
+import { makePublicStripeCheckoutReceiptRoutes } from "./public-stripe-checkout-receipt-routes";
+import { buildPublicTassadarRunSummaryEnvelopeForRequest } from "./public-tassadar-run-summary-routes";
 import {
   PUSH_DEVICE_TOKENS_PATH,
   handlePushDeviceTokensRequest,
-} from './push/push-device-token-routes'
+} from "./push/push-device-token-routes";
 import {
   PUSH_NOTIFICATION_PREFERENCES_PATH,
   PUSH_NOTIFY_EVENTS_PATH,
   dispatchNotifyEventForOwner,
   handlePushNotificationPreferencesRequest,
   handlePushNotifyEventsRequest,
-} from './push/push-notify-routes'
+} from "./push/push-notify-routes";
 import {
   makePylonAgentRunnerStatusMirrorForEnv,
   makePylonAgentRunnerStatusReadStoreForEnv,
-} from './pylon-agent-runner-status-store'
-import { type PylonApiStore } from './pylon-api'
-import { makePylonApiRoutes } from './pylon-api-routes'
+} from "./pylon-agent-runner-status-store";
+import { type PylonApiStore } from "./pylon-api";
+import { makePylonApiRoutes } from "./pylon-api-routes";
 import {
   makePortableCheckpointArtifactRoutes,
   portableCheckpointArtifactBucketForEnv,
   readPortableCheckpointArtifactAuthority,
-} from './portable-checkpoint-artifact-routes'
+} from "./portable-checkpoint-artifact-routes";
 import {
   makePortableCheckpointDekRoutes,
   readPortableCheckpointDekWrapBinding,
-} from './portable-checkpoint-dek-routes'
+} from "./portable-checkpoint-dek-routes";
 import {
   makePortablePhaseOperationRoutes,
   resolvePortablePhaseTarget,
-} from './portable-phase-operation-routes'
+} from "./portable-phase-operation-routes";
 import {
   makePortableOwnerLocalCapabilityOperationRoutes,
   portableOwnerLocalCapabilityMaterialAuthorityMatchesRecord,
   type PortableOwnerLocalCapabilityMaterialAuthority,
-} from './portable-owner-local-capability-operation-routes'
-import { makePortableOwnerLocalCapabilityMaterialAuthority } from './portable-owner-local-capability-material-authority'
-import { makePortableTargetPylonBindingRoutes } from './portable-target-pylon-binding-routes'
-import { makeOwnerManagedEnvironmentEnrollmentRoutes } from './owner-managed-environment-enrollment-routes'
+} from "./portable-owner-local-capability-operation-routes";
+import { makePortableOwnerLocalCapabilityMaterialAuthority } from "./portable-owner-local-capability-material-authority";
+import { makePortableTargetPylonBindingRoutes } from "./portable-target-pylon-binding-routes";
+import { makeOwnerManagedEnvironmentEnrollmentRoutes } from "./owner-managed-environment-enrollment-routes";
 import {
   type PylonCapacityFunnelSnapshotStore,
   handlePylonCapacityFunnelApi,
   handlePylonCapacityFunnelHistoryApi,
   makePylonCapacityFunnelSnapshotStoreForEnv,
   recordPylonCapacityFunnelSnapshots,
-} from './pylon-capacity-funnel-live-routes'
+} from "./pylon-capacity-funnel-live-routes";
 import {
   PYLON_CODEX_RAW_EVENT_METADATA_QUEUE_SCHEMA_VERSION,
   PylonCodexRawEventMetadataQueueMessage,
@@ -1169,7 +1092,7 @@ import {
   makePylonCodexRawEventMetadataQueueConsumerForEnv,
   makeQueuedR2PylonCodexRawEventChunkStore,
   makeQueuedR2PylonCodexRawEventStore,
-} from './pylon-codex-raw-event-metadata-queue-store'
+} from "./pylon-codex-raw-event-metadata-queue-store";
 import {
   PYLON_CLAUDE_TURN_INGEST_PATH,
   PYLON_CODEX_ASSIGNMENT_PROOF_PATH,
@@ -1181,53 +1104,50 @@ import {
   makeD1R2PylonCodexRawEventStore,
   makePylonCodexAssignmentProofStoreForEnv,
   makePylonCodexTurnIngestRoutes,
-} from './pylon-codex-turn-ingest-routes'
+} from "./pylon-codex-turn-ingest-routes";
 import {
   makePylonApiStoreForEnv,
   makePylonSparkPayoutTargetStoreForEnv,
-} from './pylon-dispatch-store'
+} from "./pylon-dispatch-store";
 import {
   PylonLargestDecentralizedTrainingClaimEndpoint,
   handlePylonLargestDecentralizedTrainingClaimStatusApi,
-} from './pylon-largest-decentralized-training-claim-status-routes'
+} from "./pylon-largest-decentralized-training-claim-status-routes";
 import {
   PylonMultiEarningNodeEndpoint,
   handlePylonMultiEarningNodeApi,
   isPylonMultiEarningProjectionEnabled,
-} from './pylon-multi-earning-node-routes'
-import { makePylonOpenAgentsAuthHandlers } from './pylon-openagents-auth-routes'
+} from "./pylon-multi-earning-node-routes";
+import { makePylonOpenAgentsAuthHandlers } from "./pylon-openagents-auth-routes";
 import {
   handleOperatorQaSwarmFirstEngagementsApi,
   makeD1QaSwarmFirstEngagementStore,
   makeQaSwarmFirstEngagementRoutes,
-} from './qa-swarm-first-engagement-routes'
+} from "./qa-swarm-first-engagement-routes";
 import {
   makeArtifactQaSwarmProjectionStore,
   makeQaSwarmProjectionRoutes,
-} from './qa-swarm-projection-routes'
-import { handleReactLandingPage } from './react-landing-routes'
+} from "./qa-swarm-projection-routes";
+import { handleReactLandingPage } from "./react-landing-routes";
 import {
   type RelayHealthFetch,
   canonicalMarketRelayUrl,
   runRelayHealthProbeTick,
-} from './relay-health'
-import { handlePublicRelayHealthApi } from './relay-health-routes'
-import { handleResendWebhook } from './resend-webhooks'
-import {
-  handleOperatorRlmTraces,
-  makeD1OperatorRlmTraceStore,
-} from './rlm-operator-traces-routes'
-import { makeExactRouteRegistry } from './routing/exact-routes'
+} from "./relay-health";
+import { handlePublicRelayHealthApi } from "./relay-health-routes";
+import { handleResendWebhook } from "./resend-webhooks";
+import { handleOperatorRlmTraces, makeD1OperatorRlmTraceStore } from "./rlm-operator-traces-routes";
+import { makeExactRouteRegistry } from "./routing/exact-routes";
 import {
   cleanProductRouteRedirectLocation,
   githubWriteResultRedirectLocation,
-} from './routing/redirect-policy'
+} from "./routing/redirect-policy";
 import {
   OpenAgentsWorkerRequest,
   WorkerRequestLayer,
   openAgentsDatabase,
   scheduleBackgroundWork,
-} from './runtime'
+} from "./runtime";
 import {
   compactRandomId,
   currentDate,
@@ -1236,63 +1156,57 @@ import {
   epochMillisToIsoTimestamp,
   isoTimestampAfterIso,
   randomUuid,
-} from './runtime-primitives'
-import {
-  SarahAgentRuntimeError,
-  runSarahAgentTurn,
-} from './sarah-agent-runtime'
-import { collectSarahBusinessContext } from './sarah-business-context'
-import { sarahGraphMemoryRecallEnabled } from './sarah-graph-memory'
-import { sarahGraphMemoryStoreLayer } from './sarah-graph-memory-store'
-import { persistSarahGraphMemoryTurn } from './sarah-graph-memory-writeback'
+} from "./runtime-primitives";
+import { SarahAgentRuntimeError, runSarahAgentTurn } from "./sarah-agent-runtime";
+import { collectSarahBusinessContext } from "./sarah-business-context";
+import { sarahGraphMemoryRecallEnabled } from "./sarah-graph-memory";
+import { sarahGraphMemoryStoreLayer } from "./sarah-graph-memory-store";
+import { persistSarahGraphMemoryTurn } from "./sarah-graph-memory-writeback";
 import {
   FLEET_RUNS_PATH,
   SARAH_FLEET_RUNS_PATH,
   makeSarahFleetRunRoutes,
-} from './sarah-fleet-run-routes'
+} from "./sarah-fleet-run-routes";
 import {
   SarahHarnessError,
   bindSarahHarnessForTurnPromise,
   readSarahHarnessStatus,
   reviewSarahHarnessHistory,
-} from './sarah-harness-service'
+} from "./sarah-harness-service";
 import {
   SARAH_OWNER_PATH,
   authorizeSarahOperation,
   hasSarahThreadAuthority,
   makeSarahOwnerRoutes,
-} from './sarah-owner-routes'
+} from "./sarah-owner-routes";
 import {
   appendSarahAutonomousUpdateToThread,
   isSarahAutonomousTickEnabled,
   resolveSarahAutonomousTickIntervalMinutes,
   runSarahAutonomousTickDispatch,
-} from './sarah-autonomous-tick'
-import {
-  SARAH_SPEECH_PATH,
-  makeSarahSpeechRoutes,
-} from './sarah-speech-routes'
-import { makeSarahCloudCodingDispatch } from './sarah-cloud-coding-dispatch'
-import { makeSarahRuntimeTools } from './sarah-runtime-tools'
-import { makeSarahManagedSandboxTools } from './sarah-managed-sandbox'
-import { notifySarahWorkerCloseout as notifySarahWorkerCloseoutImpl } from './sarah-worker-closeout-notify'
+} from "./sarah-autonomous-tick";
+import { SARAH_SPEECH_PATH, makeSarahSpeechRoutes } from "./sarah-speech-routes";
+import { makeSarahCloudCodingDispatch } from "./sarah-cloud-coding-dispatch";
+import { makeSarahRuntimeTools } from "./sarah-runtime-tools";
+import { makeSarahManagedSandboxTools } from "./sarah-managed-sandbox";
+import { notifySarahWorkerCloseout as notifySarahWorkerCloseoutImpl } from "./sarah-worker-closeout-notify";
 import {
   SelfServeFanoutEndpoint,
   handleSelfServeFanoutApi,
   isSelfServeFanoutEnabled,
-} from './self-serve-fanout-routes'
-import { makeShareRoutes } from './share-routes'
-import { handleSignaturePackageValidationApi } from './signature-package-validation-routes'
+} from "./self-serve-fanout-routes";
+import { makeShareRoutes } from "./share-routes";
+import { handleSignaturePackageValidationApi } from "./signature-package-validation-routes";
 import {
   SignatureUsageMeteringEndpoint,
   handleSignatureUsageMeteringApi,
   isSignatureUsageMeteringEnabled,
-} from './signature-usage-metering-routes'
-import { makeD1SiteReferralPayoutReceiptStore } from './site-referral-payout-receipts'
+} from "./signature-usage-metering-routes";
+import { makeD1SiteReferralPayoutReceiptStore } from "./site-referral-payout-receipts";
 import {
   makeD1StripeCheckoutReceiptStore,
   stripeCheckoutReceiptStoreForEnv,
-} from './stripe-checkout-receipts'
+} from "./stripe-checkout-receipts";
 import {
   makeAutopilotContinuationStoreForEnv,
   makeAutopilotWorkStoreForEnv,
@@ -1300,32 +1214,29 @@ import {
   makeOmniPublicProofBundlePostgresServerForEnv,
   makeRelayHealthStoreForEnv,
   makeSupervisionLongtailMirrorForEnv,
-} from './supervision-longtail-domain-store'
+} from "./supervision-longtail-domain-store";
 import {
   type SyncNotificationContext,
   notifySyncScopes,
   publishTeamChatMessageSync,
   publishTeamThreadFileSync,
-} from './sync-notifier'
-import { type ParsedSyncPath, makeSyncRoutes } from './sync-routes'
+} from "./sync-notifier";
+import { type ParsedSyncPath, makeSyncRoutes } from "./sync-routes";
 import {
   TASSADAR_COMPILED_MODULE_MARKETPLACE_ROUTE,
   buildPublicTassadarCompiledModuleMarketplaceEnvelope,
-} from './tassadar-compiled-module-marketplace'
+} from "./tassadar-compiled-module-marketplace";
 import {
   TassadarPerceptaArchitectureReceiptsEndpoint,
   handleTassadarPerceptaArchitectureReceiptsApi,
-} from './tassadar-percepta-architecture-receipts-routes'
+} from "./tassadar-percepta-architecture-receipts-routes";
 import {
   TassadarPerceptaCpuTransformTrainingReceiptsEndpoint,
   handleTassadarPerceptaCpuTransformTrainingReceiptsApi,
-} from './tassadar-percepta-cpu-transform-training-receipts-routes'
-import {
-  TassadarReplayRequest,
-  runTassadarReplayValidation,
-} from './tassadar-replay-validator'
-import { makeTassadarTraceContributionRoutes } from './tassadar-trace-contribution-routes'
-import { runTassadarTracePairingScheduled } from './tassadar-trace-pairing'
+} from "./tassadar-percepta-cpu-transform-training-receipts-routes";
+import { TassadarReplayRequest, runTassadarReplayValidation } from "./tassadar-replay-validator";
+import { makeTassadarTraceContributionRoutes } from "./tassadar-trace-contribution-routes";
+import { runTassadarTracePairingScheduled } from "./tassadar-trace-pairing";
 import {
   type TeamChatMessage,
   type TeamChatRunSummary,
@@ -1337,33 +1248,33 @@ import {
   readTeamChatMessageById,
   teamChatLaunchErrorFromResponse,
   updateTeamChatMessageRunSummary,
-} from './team-chat'
-import { makeTeamChatRoutes } from './team-chat-routes'
+} from "./team-chat";
+import { makeTeamChatRoutes } from "./team-chat-routes";
 import {
   type UserTeam,
   type UserTeamProject,
   readActiveTeamMembershipRole,
   readActiveTeamProject,
   readTeamsForUser,
-} from './team-repository'
-import { makeTeamWorkspaceInviteRoutes } from './team-workspace-invite-routes'
-import { makeD1TeamWorkspaceInviteStore } from './team-workspace-invites'
-import { makeTenantClientRoutes } from './tenant-client-routes'
-import { makeTenantCustomHostnames } from './tenant-custom-hostnames'
+} from "./team-repository";
+import { makeTeamWorkspaceInviteRoutes } from "./team-workspace-invite-routes";
+import { makeD1TeamWorkspaceInviteStore } from "./team-workspace-invites";
+import { makeTenantClientRoutes } from "./tenant-client-routes";
+import { makeTenantCustomHostnames } from "./tenant-custom-hostnames";
 import {
   type RouteAccessError,
   RouteAccessForbidden,
   RouteAccessNotFound,
   ThreadAccessService,
-} from './thread-access'
-import { makeThreadFileRoutes } from './thread-file-routes'
+} from "./thread-access";
+import { makeThreadFileRoutes } from "./thread-file-routes";
 import {
   type PublicThreadFile,
   type ThreadFileRow,
   insertThreadFileMessageReferences,
   listTeamThreadFiles,
   readThreadFileById,
-} from './thread-files'
+} from "./thread-files";
 import {
   type TokenLedgerRouteEnvSlice,
   directTokenLedgerRowFromIngestBody,
@@ -1372,147 +1283,131 @@ import {
   makeTokenUsageLedgerForEnv,
   mirrorTokenLedgerDirectInsertBestEffort,
   tokenUsageLedgerFromRouteInput,
-} from './token-ledger-store'
-import {
-  type AutopilotTokenLeaderboards,
-  TokenUsageLeaderboards,
-} from './token-usage'
+} from "./token-ledger-store";
+import { type AutopilotTokenLeaderboards, TokenUsageLeaderboards } from "./token-usage";
 import {
   TokenUsageLedger,
   makeD1TokenUsageLedger,
   readPublicTokensServedExactTotal,
-} from './token-usage-ledger'
-import { makeTokenUsageLedgerRoutes } from './token-usage-ledger-routes'
-import {
-  makeR2TraceMediaBlobStore,
-  makeR2TraceTrajectoryBlobStore,
-} from './trace-store-d1'
-import { makeTraceStoreRoutes } from './trace-store-routes'
+} from "./token-usage-ledger";
+import { makeTokenUsageLedgerRoutes } from "./token-usage-ledger-routes";
+import { makeR2TraceMediaBlobStore, makeR2TraceTrajectoryBlobStore } from "./trace-store-d1";
+import { makeTraceStoreRoutes } from "./trace-store-routes";
 import {
   TrainingAblationDeriskingLedgerEndpoint,
   handleTrainingAblationDeriskingLedgerApi,
-} from './training-ablation-derisking-ledger-routes'
+} from "./training-ablation-derisking-ledger-routes";
 import {
   type TrainingStoreEnv,
   makeTrainingAuthorityStoreForEnv,
   makeTrainingTraceContributionStoreForEnv,
   makeTrainingVerificationStoreForEnv,
-} from './training-domain-store'
+} from "./training-domain-store";
 import {
   TrainingFullPipelineProgramEndpoint,
   handleTrainingFullPipelineProgramApi,
-} from './training-full-pipeline-program-routes'
+} from "./training-full-pipeline-program-routes";
 import {
   TrainingMarathonOperationsEndpoint,
   handleTrainingMarathonOperationsApi,
-} from './training-marathon-operations-routes'
+} from "./training-marathon-operations-routes";
 import {
   TrainingModelLadderRungsEndpoint,
   handleTrainingModelLadderRungsApi,
-} from './training-model-ladder-rungs-routes'
+} from "./training-model-ladder-rungs-routes";
 import {
   TrainingPostTrainingDpoPreferenceWorkloadEndpoint,
   handleTrainingPostTrainingDpoPreferenceWorkloadApi,
-} from './training-post-training-dpo-preference-workload-routes'
+} from "./training-post-training-dpo-preference-workload-routes";
 import {
   TrainingPostTrainingInstructSftEndpoint,
   handleTrainingPostTrainingInstructSftApi,
-} from './training-post-training-instruct-sft-routes'
+} from "./training-post-training-instruct-sft-routes";
 import {
   TrainingPostTrainingVibeTestRubricEndpoint,
   handleTrainingPostTrainingVibeTestRubricApi,
-} from './training-post-training-vibe-test-rubric-routes'
+} from "./training-post-training-vibe-test-rubric-routes";
 import {
   TrainingPublicDistributedRunScaleEndpoint,
   handleTrainingPublicDistributedRunScaleApi,
-} from './training-public-distributed-run-scale-routes'
+} from "./training-public-distributed-run-scale-routes";
 import {
   TrainingPublicGradientWindowsEndpoint,
   handleTrainingPublicGradientWindowsApi,
-} from './training-public-gradient-windows-routes'
+} from "./training-public-gradient-windows-routes";
 import {
   buildTrainingWindowRecord,
   transitionTrainingWindowRecord,
-} from './training-run-window-authority'
-import { makeTrainingRunWindowRoutes } from './training-run-window-routes'
+} from "./training-run-window-authority";
+import { makeTrainingRunWindowRoutes } from "./training-run-window-routes";
 import {
   buildTrainingVerificationChallengeRecord,
   finalizeTrainingVerificationChallengeRecord,
   leaseTrainingVerificationChallengeRecord,
   runTrainingVerificationClass,
-} from './training-verification'
-import { makeTrainingVerificationRoutes } from './training-verification-routes'
-import { handleVerifiedOutcomeReputationApi } from './verified-outcome-reputation-routes'
-import { handleVerticalFunnelRequest } from './vertical-funnel-routes'
-import {
-  type ViralAgentFunnelEventKind,
-  recordViralAgentFunnelEvent,
-} from './viral-agent-funnel'
+} from "./training-verification";
+import { makeTrainingVerificationRoutes } from "./training-verification-routes";
+import { handleVerifiedOutcomeReputationApi } from "./verified-outcome-reputation-routes";
+import { handleVerticalFunnelRequest } from "./vertical-funnel-routes";
+import { type ViralAgentFunnelEventKind, recordViralAgentFunnelEvent } from "./viral-agent-funnel";
 import {
   WasmPluginMarketplaceEndpoint,
   handleWasmPluginMarketplaceApi,
-} from './wasm-plugin-marketplace-routes'
-import { routeWellKnownAgentSurfaceRequest } from './well-known-agent-surfaces-routes'
-import { makeWorkerRouteRequest } from './worker-routes'
+} from "./wasm-plugin-marketplace-routes";
+import { routeWellKnownAgentSurfaceRequest } from "./well-known-agent-surfaces-routes";
+import { makeWorkerRouteRequest } from "./worker-routes";
 
-export type Env = OpenAgentsWorkerEnv
+export type Env = OpenAgentsWorkerEnv;
 
-type MobileAuthSessionBindings = WorkerBindings & OpenAgentsWorkerConfigEnv
+type MobileAuthSessionBindings = WorkerBindings & OpenAgentsWorkerConfigEnv;
 
-type EmailCampaignDispatcherBindings = WorkerBindings &
-  OpenAgentsWorkerConfigEnv
+type EmailCampaignDispatcherBindings = WorkerBindings & OpenAgentsWorkerConfigEnv;
 export {
   SESSION_MAX_AGE_SECONDS,
   appendClearSessionCookies,
   appendSessionCookies,
-} from './auth-cookies'
+} from "./auth-cookies";
 export {
   publishTeamChatMessageSync,
   publishTeamThreadFileSync,
   teamChatMessageSyncValue,
   threadFileSyncValue,
-} from './sync-notifier'
+} from "./sync-notifier";
 
-export {
-  getOpenAgentsAdminEmails,
-  isOpenAgentsAdminEmail,
-} from './admin-identity'
-const OPENAGENTS_CORE_TEAM_ID = 'team_openagents_core'
-const SIMPLE_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+export { getOpenAgentsAdminEmails, isOpenAgentsAdminEmail } from "./admin-identity";
+const OPENAGENTS_CORE_TEAM_ID = "team_openagents_core";
+const SIMPLE_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const workerRuntime = {
   makeUuid: randomUuid,
   now: currentDate,
   nowMs: currentEpochMillis,
   nowIso: currentIsoTimestamp,
-} as const
+} as const;
 const AUTH_EMAIL_OTP_SEND_UNAVAILABLE_MESSAGE =
-  "We couldn't send a sign-in code right now. Try again in a minute."
+  "We couldn't send a sign-in code right now. Try again in a minute.";
 const invalidAuthEmailOtpClaim = (email: string): CodeProviderError => ({
-  key: 'email',
-  type: 'invalid_claim',
+  key: "email",
+  type: "invalid_claim",
   value: email,
-})
+});
 
 class UnsupportedAuthProvider extends S.TaggedErrorClass<UnsupportedAuthProvider>()(
-  'UnsupportedAuthProvider',
+  "UnsupportedAuthProvider",
   {
     provider: S.String,
   },
 ) {}
 
-class AuthSignInError extends S.TaggedErrorClass<AuthSignInError>()(
-  'AuthSignInError',
-  {
-    reason: S.String,
-  },
-) {}
+class AuthSignInError extends S.TaggedErrorClass<AuthSignInError>()("AuthSignInError", {
+  reason: S.String,
+}) {}
 
 // Typed expected errors for the agent-computer managed-cloud dispatch lane
 // (8244bd64e9 / f0ff7d6d5f): machine-readable tags that the dispatch runner
 // logs and maps to safe dispatch failures. `message` carries the stable tag
 // consumed by `logWorkerRouteWarning` reason slices.
 class ManagedCloudDispatchError extends S.TaggedErrorClass<ManagedCloudDispatchError>()(
-  'ManagedCloudDispatchError',
+  "ManagedCloudDispatchError",
   {
     message: S.String,
   },
@@ -1522,7 +1417,7 @@ class ManagedCloudDispatchError extends S.TaggedErrorClass<ManagedCloudDispatchE
 // (8244bd64e9 / a94fa4c470 / c856329aca). Same contract: the message is the
 // stable machine tag; callers map any failure to a safe dispatch error.
 class ManagedFleetAuthorityError extends S.TaggedErrorClass<ManagedFleetAuthorityError>()(
-  'ManagedFleetAuthorityError',
+  "ManagedFleetAuthorityError",
   {
     message: S.String,
   },
@@ -1530,83 +1425,74 @@ class ManagedFleetAuthorityError extends S.TaggedErrorClass<ManagedFleetAuthorit
 const runArtanisForumRouteEffect = async (
   effect: ReturnType<typeof forumRoutes.routeForumRequest> | undefined,
 ): Promise<Response | undefined> =>
-  effect === undefined
-    ? undefined
-    : (Effect.runPromise(effect) as Promise<Response>)
+  effect === undefined ? undefined : (Effect.runPromise(effect) as Promise<Response>);
 
 const artanisComposerForumPostForEnv =
   (environment: Env) =>
   async (input: {
-    topicId: string
-    bodyText: string
-    idempotencyKey: string
+    topicId: string;
+    bodyText: string;
+    idempotencyKey: string;
   }): Promise<{ postId: string } | { error: string }> => {
-    const token = (environment as { ARTANIS_AGENT_TOKEN?: string })
-      .ARTANIS_AGENT_TOKEN
-    if (token === undefined || token === '') {
-      return { error: 'artanis_agent_token_missing' }
+    const token = (environment as { ARTANIS_AGENT_TOKEN?: string }).ARTANIS_AGENT_TOKEN;
+    if (token === undefined || token === "") {
+      return { error: "artanis_agent_token_missing" };
     }
     try {
       const response = await runArtanisForumRouteEffect(
         forumRoutes.routeForumRequest(
-          new Request(
-            `https://openagents.com/api/forum/topics/${input.topicId}/posts`,
-            {
-              body: JSON.stringify({ bodyText: input.bodyText }),
-              headers: {
-                Authorization: `Bearer ${token}`,
-                'Content-Type': 'application/json',
-                'Idempotency-Key': input.idempotencyKey,
-              },
-              method: 'POST',
+          new Request(`https://openagents.com/api/forum/topics/${input.topicId}/posts`, {
+            body: JSON.stringify({ bodyText: input.bodyText }),
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+              "Idempotency-Key": input.idempotencyKey,
             },
-          ),
+            method: "POST",
+          }),
           forumContentDatabaseForEnv(environment),
           {
             agentStore: makeAgentRegistrationStoreForEnv(environment),
           },
         ),
-      )
+      );
       if (response === undefined) {
-        return { error: 'forum_route_unmatched' }
+        return { error: "forum_route_unmatched" };
       }
       const payload = (await response.json()) as {
-        error?: string
-        post?: { postId?: string }
-      }
+        error?: string;
+        post?: { postId?: string };
+      };
       return payload.post?.postId === undefined
         ? { error: String(payload.error ?? response.status) }
-        : { postId: payload.post.postId }
+        : { postId: payload.post.postId };
     } catch (error) {
       return {
-        error:
-          error instanceof Error ? error.message.slice(0, 120) : 'post_failed',
-      }
+        error: error instanceof Error ? error.message.slice(0, 120) : "post_failed",
+      };
     }
-  }
+  };
 
-const TrimmedString = S.Trim
-const NonEmptyTrimmedString = TrimmedString.check(S.isNonEmpty())
-const EmailString = NonEmptyTrimmedString.check(
-  S.isPattern(SIMPLE_EMAIL_PATTERN),
-)
+const TrimmedString = S.Trim;
+const NonEmptyTrimmedString = TrimmedString.check(S.isNonEmpty());
+const EmailString = NonEmptyTrimmedString.check(S.isPattern(SIMPLE_EMAIL_PATTERN));
 
 const UserSubject = S.Struct({
   userId: NonEmptyTrimmedString,
   // 'github' carries githubId/login; 'email' (one-time code) has neither.
-  provider: S.Literals(['github', 'email']),
+  provider: S.Literals(["github", "email"]),
   githubId: S.optionalKey(NonEmptyTrimmedString),
   login: S.optionalKey(NonEmptyTrimmedString),
   email: EmailString,
   name: NonEmptyTrimmedString,
   avatarUrl: S.String,
-})
+});
 
-type UserSubject = typeof UserSubject.Type
+type UserSubject = typeof UserSubject.Type;
 
 const subjects = createSubjects({
   user: S.toStandardSchemaV1(UserSubject),
-})
+});
 
 const GitHubUser = S.Struct({
   id: S.Union([S.Number, S.String]),
@@ -1617,143 +1503,135 @@ const GitHubUser = S.Struct({
   // defense-in-depth account-age heuristic for the signup credit grant
   // (MM-D1, #8478) — never stored, never surfaced to the user.
   created_at: S.optionalKey(S.String),
-})
+});
 
 const GitHubEmail = S.Struct({
   email: EmailString,
   primary: S.Boolean,
   verified: S.Boolean,
-})
+});
 
-const GitHubEmails = S.Array(GitHubEmail)
+const GitHubEmails = S.Array(GitHubEmail);
 
 const GitHubOAuthToken = S.Struct({
   access_token: NonEmptyTrimmedString,
   scope: S.optionalKey(TrimmedString),
   token_type: S.optionalKey(TrimmedString),
-})
+});
 
-const GITHUB_LOGIN_SCOPES = ['read:user', 'user:email', 'repo'] as const
-const LOGIN_ORIGIN_COOKIE = 'oa_login_origin'
-const LOGIN_RETURN_TO_COOKIE = 'oa_login_return_to'
-const LOGIN_ERROR_COOKIE = 'oa_login_error'
-const LOGIN_ERROR_MAX_AGE_SECONDS = 60
+const GITHUB_LOGIN_SCOPES = ["read:user", "user:email", "repo"] as const;
+const LOGIN_ORIGIN_COOKIE = "oa_login_origin";
+const LOGIN_RETURN_TO_COOKIE = "oa_login_return_to";
+const LOGIN_ERROR_COOKIE = "oa_login_error";
+const LOGIN_ERROR_MAX_AGE_SECONDS = 60;
 
-type GitHubUser = typeof GitHubUser.Type
-type GitHubEmail = typeof GitHubEmail.Type
-type GitHubOAuthToken = typeof GitHubOAuthToken.Type
+type GitHubUser = typeof GitHubUser.Type;
+type GitHubEmail = typeof GitHubEmail.Type;
+type GitHubOAuthToken = typeof GitHubOAuthToken.Type;
 
 type UserKindTotals = Readonly<{
-  admins: number
-  adminEmails: ReadonlyArray<string>
-  humans: number
-  agents: number
-  total: number
-}>
+  admins: number;
+  adminEmails: ReadonlyArray<string>;
+  humans: number;
+  agents: number;
+  total: number;
+}>;
 
 type TeamAutopilotContextMessage = Readonly<{
-  authorName: string
-  authorUserId: string
-  body: string
-  createdAt: string
-}>
+  authorName: string;
+  authorUserId: string;
+  body: string;
+  createdAt: string;
+}>;
 
 type TeamAutopilotContextFile = Pick<
   PublicThreadFile,
-  'contentType' | 'createdAt' | 'filename' | 'id' | 'sizeBytes'
->
+  "contentType" | "createdAt" | "filename" | "id" | "sizeBytes"
+>;
 
-type TeamAutopilotSelectedFile = TeamAutopilotContextFile &
-  Readonly<{ excerpt?: string }>
+type TeamAutopilotSelectedFile = TeamAutopilotContextFile & Readonly<{ excerpt?: string }>;
 
 export type TeamAutopilotContextBundle = Readonly<{
-  normalizedPrompt: string
-  parentProjectId?: string
-  parentProjectName?: string
-  parentTeamChatMessageId: string
-  parentTeamId: string
-  recentMessages: ReadonlyArray<TeamAutopilotContextMessage>
-  selectedFiles: ReadonlyArray<TeamAutopilotSelectedFile>
-  selectedTeamFileIds: ReadonlyArray<string>
-}>
+  normalizedPrompt: string;
+  parentProjectId?: string;
+  parentProjectName?: string;
+  parentTeamChatMessageId: string;
+  parentTeamId: string;
+  recentMessages: ReadonlyArray<TeamAutopilotContextMessage>;
+  selectedFiles: ReadonlyArray<TeamAutopilotSelectedFile>;
+  selectedTeamFileIds: ReadonlyArray<string>;
+}>;
 
-const uuidPattern =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const optionalUuid = (value: unknown): string | undefined => {
-  const text = optionalString(value)
+  const text = optionalString(value);
 
-  return text !== undefined && uuidPattern.test(text)
-    ? text.toLowerCase()
-    : undefined
-}
+  return text !== undefined && uuidPattern.test(text) ? text.toLowerCase() : undefined;
+};
 
 export type AuthenticatedActor =
   | Readonly<{
-      kind: 'human'
-      user: UserSubject
-      tokens?: Tokens
+      kind: "human";
+      user: UserSubject;
+      tokens?: Tokens;
     }>
   | Readonly<{
-      kind: 'agent'
-      agent: ProgrammaticAgentSession
-    }>
+      kind: "agent";
+      agent: ProgrammaticAgentSession;
+    }>;
 
-const teamChatThreadId = (teamId: string): string => `team:${teamId}:chat`
+const teamChatThreadId = (teamId: string): string => `team:${teamId}:chat`;
 
 const teamProjectChatThreadId = (teamId: string, projectId: string): string =>
-  `team:${teamId}:project:${projectId}:chat`
+  `team:${teamId}:project:${projectId}:chat`;
 
 const compactTeamContextText = (value: string, maxLength: number): string => {
-  const compact = value.replace(/\s+/g, ' ').trim()
+  const compact = value.replace(/\s+/g, " ").trim();
 
   return compact.length <= maxLength
     ? compact
-    : `${compact.slice(0, Math.max(0, maxLength - 3))}...`
-}
+    : `${compact.slice(0, Math.max(0, maxLength - 3))}...`;
+};
 
 const compactForumLedgerText = (value: string, maxLength: number): string => {
-  const compact = value.replace(/\s+/g, ' ').trim()
+  const compact = value.replace(/\s+/g, " ").trim();
 
   return compact.length <= maxLength
     ? compact
-    : `${compact.slice(0, Math.max(0, maxLength - 3))}...`
-}
+    : `${compact.slice(0, Math.max(0, maxLength - 3))}...`;
+};
 
 export const selectedTeamFileIdsForAutopilotPrompt = (
   input: Readonly<{
-    files: ReadonlyArray<TeamAutopilotContextFile>
-    prompt: string
-    requestedFileIds?: ReadonlyArray<string>
+    files: ReadonlyArray<TeamAutopilotContextFile>;
+    prompt: string;
+    requestedFileIds?: ReadonlyArray<string>;
   }>,
 ): ReadonlyArray<string> => {
-  const teamFileIds = new Set(input.files.map(file => file.id))
-  const requested = (input.requestedFileIds ?? []).filter(fileId =>
-    teamFileIds.has(fileId),
-  )
+  const teamFileIds = new Set(input.files.map((file) => file.id));
+  const requested = (input.requestedFileIds ?? []).filter((fileId) => teamFileIds.has(fileId));
 
-  return [...new Set(requested)].slice(0, 8)
-}
+  return [...new Set(requested)].slice(0, 8);
+};
 
 export const teamAutopilotContextBundle = (
   input: Readonly<{
-    files: ReadonlyArray<TeamAutopilotContextFile>
-    messages: ReadonlyArray<TeamChatMessage>
-    project?: UserTeamProject
-    parentTeamChatMessageId: string
-    prompt: string
-    requestedFileIds?: ReadonlyArray<string>
-    teamId: string
+    files: ReadonlyArray<TeamAutopilotContextFile>;
+    messages: ReadonlyArray<TeamChatMessage>;
+    project?: UserTeamProject;
+    parentTeamChatMessageId: string;
+    prompt: string;
+    requestedFileIds?: ReadonlyArray<string>;
+    teamId: string;
   }>,
 ): TeamAutopilotContextBundle => {
   const selectedTeamFileIds = selectedTeamFileIdsForAutopilotPrompt({
     files: input.files,
     prompt: input.prompt,
-    ...(input.requestedFileIds === undefined
-      ? {}
-      : { requestedFileIds: input.requestedFileIds }),
-  })
-  const fileById = new Map(input.files.map(file => [file.id, file]))
+    ...(input.requestedFileIds === undefined ? {} : { requestedFileIds: input.requestedFileIds }),
+  });
+  const fileById = new Map(input.files.map((file) => [file.id, file]));
 
   return {
     normalizedPrompt: compactTeamContextText(input.prompt, 4_000),
@@ -1765,125 +1643,108 @@ export const teamAutopilotContextBundle = (
         }),
     parentTeamChatMessageId: input.parentTeamChatMessageId,
     parentTeamId: input.teamId,
-    recentMessages: input.messages.slice(-8).map(message => ({
+    recentMessages: input.messages.slice(-8).map((message) => ({
       authorName: message.author.name,
       authorUserId: message.author.userId,
       body: compactTeamContextText(message.body, 320),
       createdAt: message.createdAt,
     })),
-    selectedFiles: selectedTeamFileIds.flatMap(fileId => {
-      const file = fileById.get(fileId)
+    selectedFiles: selectedTeamFileIds.flatMap((fileId) => {
+      const file = fileById.get(fileId);
 
-      return file === undefined ? [] : [file]
+      return file === undefined ? [] : [file];
     }),
     selectedTeamFileIds,
-  }
-}
+  };
+};
 
-const teamAutopilotContextLine = (
-  message: TeamAutopilotContextMessage,
-): string =>
-  `- ${message.createdAt} ${message.authorName} (${message.authorUserId}): ${message.body}`
+const teamAutopilotContextLine = (message: TeamAutopilotContextMessage): string =>
+  `- ${message.createdAt} ${message.authorName} (${message.authorUserId}): ${message.body}`;
 
-const teamAutopilotSelectedFileLines = (
-  file: TeamAutopilotSelectedFile,
-): ReadonlyArray<string> => [
+const teamAutopilotSelectedFileLines = (file: TeamAutopilotSelectedFile): ReadonlyArray<string> => [
   `- ${file.filename} (${file.contentType}, ${file.sizeBytes} bytes, id ${file.id})`,
   ...(file.excerpt === undefined ? [] : [`  excerpt: ${file.excerpt}`]),
-]
+];
 
-export const teamAutopilotChildRunGoal = (
-  bundle: TeamAutopilotContextBundle,
-): string =>
+export const teamAutopilotChildRunGoal = (bundle: TeamAutopilotContextBundle): string =>
   [
     bundle.normalizedPrompt,
-    '',
-    'Team room context for this Autopilot run:',
+    "",
+    "Team room context for this Autopilot run:",
     `parentTeamId: ${bundle.parentTeamId}`,
     ...(bundle.parentProjectId === undefined
       ? []
       : [
           `parentProjectId: ${bundle.parentProjectId}`,
-          `parentProjectName: ${bundle.parentProjectName ?? 'unknown project'}`,
+          `parentProjectName: ${bundle.parentProjectName ?? "unknown project"}`,
         ]),
     `parentTeamChatMessageId: ${bundle.parentTeamChatMessageId}`,
     `normalizedPrompt: ${bundle.normalizedPrompt}`,
     `selectedTeamFileIds: ${
-      bundle.selectedTeamFileIds.length === 0
-        ? 'none'
-        : bundle.selectedTeamFileIds.join(', ')
+      bundle.selectedTeamFileIds.length === 0 ? "none" : bundle.selectedTeamFileIds.join(", ")
     }`,
-    'selectedTeamFiles:',
+    "selectedTeamFiles:",
     ...(bundle.selectedFiles.length === 0
-      ? ['- none']
+      ? ["- none"]
       : bundle.selectedFiles.flatMap(teamAutopilotSelectedFileLines)),
-    'recentTeamConversation:',
+    "recentTeamConversation:",
     ...(bundle.recentMessages.length === 0
-      ? ['- none']
+      ? ["- none"]
       : bundle.recentMessages.map(teamAutopilotContextLine)),
-    '',
-    'Answer the team room directly. Use the context above only to orient the run; do not narrate internal dispatch or writeback mechanics to the user.',
-  ].join('\n')
+    "",
+    "Answer the team room directly. Use the context above only to orient the run; do not narrate internal dispatch or writeback mechanics to the user.",
+  ].join("\n");
 
 const getAppOrigin = (env: OpenAgentsWorkerConfigEnv): string =>
-  getOpenAgentsWorkerConfig(env).app.origin
+  getOpenAgentsWorkerConfig(env).app.origin;
 
 const getResendEmailConfig = (env: EmailCampaignDispatcherBindings) =>
-  getOpenAgentsWorkerConfig(env).email.resend
+  getOpenAgentsWorkerConfig(env).email.resend;
 
 const getIssuerOrigin = (env: OpenAgentsWorkerEnv): string =>
-  getOpenAgentsWorkerConfig(env).openauth.issuerOrigin
+  getOpenAgentsWorkerConfig(env).openauth.issuerOrigin;
 
 const getAdminApiToken = (env: OpenAgentsWorkerEnv): string | undefined => {
-  const token = redactedValue(getOpenAgentsWorkerConfig(env).adminApiToken)
+  const token = redactedValue(getOpenAgentsWorkerConfig(env).adminApiToken);
 
-  if (token === undefined || token.trim() === '') {
-    return undefined
+  if (token === undefined || token.trim() === "") {
+    return undefined;
   }
 
-  return token
-}
+  return token;
+};
 
-const getForgeControlPlaneToken = (
-  env: OpenAgentsWorkerConfigEnv,
-): string | undefined => {
-  const token = redactedValue(
-    getOpenAgentsWorkerConfig(env).forgeControlPlaneToken,
-  )
+const getForgeControlPlaneToken = (env: OpenAgentsWorkerConfigEnv): string | undefined => {
+  const token = redactedValue(getOpenAgentsWorkerConfig(env).forgeControlPlaneToken);
 
-  if (token === undefined || token.trim() === '') {
-    return undefined
+  if (token === undefined || token.trim() === "") {
+    return undefined;
   }
 
-  return token
-}
+  return token;
+};
 
-const getForgeGitHubMirrorToken = (
-  env: OpenAgentsWorkerConfigEnv,
-): string | undefined => {
-  const token = redactedValue(
-    getOpenAgentsWorkerConfig(env).forgeGithubMirrorToken,
-  )
+const getForgeGitHubMirrorToken = (env: OpenAgentsWorkerConfigEnv): string | undefined => {
+  const token = redactedValue(getOpenAgentsWorkerConfig(env).forgeGithubMirrorToken);
 
-  if (token === undefined || token.trim() === '') {
-    return undefined
+  if (token === undefined || token.trim() === "") {
+    return undefined;
   }
 
-  return token
-}
+  return token;
+};
 
 const errorMessage = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error)
+  error instanceof Error ? error.message : String(error);
 
-const errorName = (error: unknown): string =>
-  error instanceof Error ? error.name : typeof error
+const errorName = (error: unknown): string => (error instanceof Error ? error.name : typeof error);
 
 class GitHubFetchFailure extends Error {
-  override name = 'GitHubFetchFailure'
+  override name = "GitHubFetchFailure";
 }
 
 const isUniqueConstraintError = (error: unknown): boolean =>
-  errorMessage(error).includes('UNIQUE constraint failed')
+  errorMessage(error).includes("UNIQUE constraint failed");
 
 const fetchGitHubJson = async <T>(
   schema: S.Decoder<T>,
@@ -1893,82 +1754,78 @@ const fetchGitHubJson = async <T>(
   const response = await fetch(url, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
-      Accept: 'application/vnd.github+json',
-      'User-Agent': 'OpenAgents',
-      'X-GitHub-Api-Version': '2022-11-28',
+      Accept: "application/vnd.github+json",
+      "User-Agent": "OpenAgents",
+      "X-GitHub-Api-Version": "2022-11-28",
     },
-  })
+  });
 
   if (!response.ok) {
-    throw new GitHubFetchFailure(
-      `GitHub request failed with ${response.status}`,
-    )
+    throw new GitHubFetchFailure(`GitHub request failed with ${response.status}`);
   }
 
-  return decodeUnknownWithSchema(schema, await response.json())
-}
+  return decodeUnknownWithSchema(schema, await response.json());
+};
 
-const parseGitHubScopeHeader = (
-  value: string | undefined,
-): ReadonlyArray<string> =>
+const parseGitHubScopeHeader = (value: string | undefined): ReadonlyArray<string> =>
   value === undefined
     ? []
     : value
-        .split(',')
-        .map(scope => scope.trim())
-        .filter(scope => scope !== '')
+        .split(",")
+        .map((scope) => scope.trim())
+        .filter((scope) => scope !== "");
 
 const gitHubWriteRedirectUri = (env: OpenAgentsWorkerEnv): string =>
-  `${getIssuerOrigin(env)}/github/callback`
+  `${getIssuerOrigin(env)}/github/callback`;
 
 const gitHubWriteAuthorizeUrl = (
   env: OpenAgentsWorkerEnv,
   state: string,
   scopes: ReadonlyArray<string>,
 ): string => {
-  const config = getOpenAgentsWorkerConfig(env)
-  const url = new URL('https://github.com/login/oauth/authorize')
-  url.searchParams.set('client_id', config.github.clientId)
-  url.searchParams.set('redirect_uri', gitHubWriteRedirectUri(env))
-  url.searchParams.set('response_type', 'code')
-  url.searchParams.set('scope', scopes.join(' '))
-  url.searchParams.set('state', state)
+  const config = getOpenAgentsWorkerConfig(env);
+  const url = new URL("https://github.com/login/oauth/authorize");
+  url.searchParams.set("client_id", config.github.clientId);
+  url.searchParams.set("redirect_uri", gitHubWriteRedirectUri(env));
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("scope", scopes.join(" "));
+  url.searchParams.set("state", state);
 
-  return url.toString()
-}
+  return url.toString();
+};
 
 const exchangeGitHubOAuthCode = async (
   env: OpenAgentsWorkerEnv,
   code: string,
 ): Promise<GitHubOAuthToken> => {
-  const config = getOpenAgentsWorkerConfig(env)
-  const response = await fetch('https://github.com/login/oauth/access_token', {
-    method: 'POST',
+  const config = getOpenAgentsWorkerConfig(env);
+  const response = await fetch("https://github.com/login/oauth/access_token", {
+    method: "POST",
     headers: {
-      Accept: 'application/json',
-      'content-type': 'application/x-www-form-urlencoded',
-      'User-Agent': 'OpenAgents',
+      Accept: "application/json",
+      "content-type": "application/x-www-form-urlencoded",
+      "User-Agent": "OpenAgents",
     },
     body: new URLSearchParams({
       client_id: config.github.clientId,
-      client_secret: redactedValue(config.github.clientSecret) ?? '',
+      client_secret: redactedValue(config.github.clientSecret) ?? "",
       code,
       redirect_uri: gitHubWriteRedirectUri(env),
     }).toString(),
-  })
+  });
 
   if (!response.ok) {
     throw new GitHubWriteApiFailure({
-      operation: 'oauth_token_exchange',
+      operation: "oauth_token_exchange",
       status: response.status,
       message: `GitHub OAuth token exchange failed with ${response.status}`,
-    })
+    });
   }
 
-  return decodeUnknownWithSchema(GitHubOAuthToken, await response.json())
-}
+  return decodeUnknownWithSchema(GitHubOAuthToken, await response.json());
+};
 
-type GitHubWriteTokenStorage = Parameters<typeof authKvStoreForEnv>[0]
+type GitHubWriteTokenStorage = Parameters<typeof authKvStoreForEnv>[0];
 
 const storeGitHubWriteAccessToken = async (
   storage: GitHubWriteTokenStorage,
@@ -1976,90 +1833,73 @@ const storeGitHubWriteAccessToken = async (
   accessToken: string,
 ): Promise<void> => {
   try {
-    await authKvStoreForEnv(storage).put(
-      githubWriteSecretKey(connectionRef),
-      accessToken,
-    )
+    await authKvStoreForEnv(storage).put(githubWriteSecretKey(connectionRef), accessToken);
   } catch (error) {
     throw new GitHubWriteTokenStorageFailure({
-      operation: 'put',
-      message:
-        error instanceof Error
-          ? error.message
-          : 'GitHub write token storage failed.',
-    })
+      operation: "put",
+      message: error instanceof Error ? error.message : "GitHub write token storage failed.",
+    });
   }
-}
+};
 
 class GitHubEmailValidationError extends S.TaggedErrorClass<GitHubEmailValidationError>()(
-  'GitHubEmailValidationError',
+  "GitHubEmailValidationError",
   {
     message: S.String,
-    reason: S.Union([
-      S.Literal('primary_email_missing'),
-      S.Literal('primary_email_unverified'),
-    ]),
+    reason: S.Union([S.Literal("primary_email_missing"), S.Literal("primary_email_unverified")]),
   },
 ) {}
 
-const getPrimaryVerifiedEmail = (
-  emails: ReadonlyArray<GitHubEmail>,
-): GitHubEmail => {
-  const primary = emails.find(email => email.primary)
+const getPrimaryVerifiedEmail = (emails: ReadonlyArray<GitHubEmail>): GitHubEmail => {
+  const primary = emails.find((email) => email.primary);
 
   if (primary === undefined) {
     throw new GitHubEmailValidationError({
-      message: 'No primary GitHub email found',
-      reason: 'primary_email_missing',
-    })
+      message: "No primary GitHub email found",
+      reason: "primary_email_missing",
+    });
   }
 
   if (!primary.verified) {
     throw new GitHubEmailValidationError({
-      message: 'Primary GitHub email is not verified',
-      reason: 'primary_email_unverified',
-    })
+      message: "Primary GitHub email is not verified",
+      reason: "primary_email_unverified",
+    });
   }
 
-  return primary
-}
+  return primary;
+};
 
-const githubUserToSubject = (
-  user: GitHubUser,
-  primaryEmail: GitHubEmail,
-): UserSubject => {
-  const githubId = String(user.id)
-  const login = user.login
+const githubUserToSubject = (user: GitHubUser, primaryEmail: GitHubEmail): UserSubject => {
+  const githubId = String(user.id);
+  const login = user.login;
 
   return {
     userId: `github:${githubId}`,
-    provider: 'github',
+    provider: "github",
     githubId,
     login,
     email: primaryEmail.email,
     name: user.name ?? login,
-    avatarUrl: user.avatar_url ?? '',
-  }
-}
+    avatarUrl: user.avatar_url ?? "",
+  };
+};
 
 // CFG-4 Domain 2 (#8519): the session-subject upserts write the
 // Postgres-authoritative `users`/`auth_identities` directly — D1 and the
 // old fail-soft identity mirror are GONE for these two tables. One atomic
 // Postgres transaction per upsert; `ON CONFLICT(provider, provider_subject)`
 // rides the 0042 unique index.
-const upsertGitHubUser = async (
-  identityDb: IdentityDb,
-  user: UserSubject,
-): Promise<void> => {
+const upsertGitHubUser = async (identityDb: IdentityDb, user: UserSubject): Promise<void> => {
   if (user.githubId === undefined || user.login === undefined) {
     throw new AuthSignInError({
-      reason: 'upsertGitHubUser requires a GitHub identity',
-    })
+      reason: "upsertGitHubUser requires a GitHub identity",
+    });
   }
-  const githubId = user.githubId
-  const login = user.login
-  const now = workerRuntime.nowIso()
-  const authIdentityId = `auth_identity_github_${githubId}`
+  const githubId = user.githubId;
+  const login = user.login;
+  const now = workerRuntime.nowIso();
+  const authIdentityId = `auth_identity_github_${githubId}`;
 
   await identityDb.batch([
     {
@@ -2085,42 +1925,31 @@ const upsertGitHubUser = async (
           email = excluded.email,
           updated_at = excluded.updated_at,
           deleted_at = NULL`,
-      params: [
-        authIdentityId,
-        user.userId,
-        githubId,
-        login,
-        user.email,
-        now,
-        now,
-      ],
+      params: [authIdentityId, user.userId, githubId, login, user.email, now, now],
     },
-  ])
-}
+  ]);
+};
 
-const normalizeEmail = (email: string): string => email.trim().toLowerCase()
+const normalizeEmail = (email: string): string => email.trim().toLowerCase();
 
 // Build a session subject for an email (one-time-code) login. No GitHub identity;
 // the userId namespaces email accounts so they never collide with `github:` ids.
 const emailToSubject = (rawEmail: string): UserSubject => {
-  const email = normalizeEmail(rawEmail)
-  const localPart = email.split('@')[0] ?? email
+  const email = normalizeEmail(rawEmail);
+  const localPart = email.split("@")[0] ?? email;
 
   return {
     userId: `email:${email}`,
-    provider: 'email',
+    provider: "email",
     email,
     name: localPart,
-    avatarUrl: '',
-  }
-}
+    avatarUrl: "",
+  };
+};
 
-const upsertEmailUser = async (
-  identityDb: IdentityDb,
-  user: UserSubject,
-): Promise<void> => {
-  const now = workerRuntime.nowIso()
-  const authIdentityId = `auth_identity_email_${user.email}`
+const upsertEmailUser = async (identityDb: IdentityDb, user: UserSubject): Promise<void> => {
+  const now = workerRuntime.nowIso();
+  const authIdentityId = `auth_identity_email_${user.email}`;
 
   await identityDb.batch([
     {
@@ -2144,28 +1973,17 @@ const upsertEmailUser = async (
           email = excluded.email,
           updated_at = excluded.updated_at,
           deleted_at = NULL`,
-      params: [
-        authIdentityId,
-        user.userId,
-        user.email,
-        user.name,
-        user.email,
-        now,
-        now,
-      ],
+      params: [authIdentityId, user.userId, user.email, user.name, user.email, now, now],
     },
-  ])
-}
+  ]);
+};
 
 // Persist a session subject regardless of provider (session refresh paths can
 // carry either a GitHub or an email user).
-const upsertUser = async (
-  identityDb: IdentityDb,
-  user: UserSubject,
-): Promise<void> =>
-  user.provider === 'email'
+const upsertUser = async (identityDb: IdentityDb, user: UserSubject): Promise<void> =>
+  user.provider === "email"
     ? upsertEmailUser(identityDb, user)
-    : upsertGitHubUser(identityDb, user)
+    : upsertGitHubUser(identityDb, user);
 
 // Send the one-time sign-in code via Resend directly (auth email stays decoupled
 // from the CRM/marketing email-intent machinery). The auth OTP guard owns the
@@ -2175,43 +1993,42 @@ const sendSignInCodeEmail = async (
   rawEmail: string,
   code: string,
 ): Promise<void> => {
-  const config = getOpenAgentsWorkerConfig(env)
-  const resend = config.email.resend
+  const config = getOpenAgentsWorkerConfig(env);
+  const resend = config.email.resend;
 
   if (resend === undefined) {
     throw new AuthSignInError({
-      reason: 'Resend is not configured; cannot send sign-in code',
-    })
+      reason: "Resend is not configured; cannot send sign-in code",
+    });
   }
 
-  const email = normalizeEmail(rawEmail)
-  const apiKey = String(Redacted.value(resend.apiKey))
-  const from = String(resend.fromEmail)
-  const replyTo =
-    resend.replyToEmail === undefined ? undefined : String(resend.replyToEmail)
+  const email = normalizeEmail(rawEmail);
+  const apiKey = String(Redacted.value(resend.apiKey));
+  const from = String(resend.fromEmail);
+  const replyTo = resend.replyToEmail === undefined ? undefined : String(resend.replyToEmail);
 
-  const response = await fetch('https://api.resend.com/emails', {
+  const response = await fetch("https://api.resend.com/emails", {
     body: JSON.stringify({
       from,
       html: signInCodeEmailHtml(code),
       ...(replyTo === undefined ? {} : { reply_to: replyTo }),
-      subject: 'Your OpenAgents sign-in code',
+      subject: "Your OpenAgents sign-in code",
       text: `Your OpenAgents sign-in code is ${code}.\n\nEnter it on the sign-in screen to continue. It expires in ${AUTH_EMAIL_OTP_CODE_TTL_SECONDS / 60} minutes. If you didn't request this, you can ignore this email.`,
       to: email,
     }),
     headers: {
       authorization: `Bearer ${apiKey}`,
-      'content-type': 'application/json',
+      "content-type": "application/json",
     },
-    method: 'POST',
-  })
+    method: "POST",
+  });
 
   if (!response.ok) {
     throw new AuthSignInError({
       reason: `Resend sign-in code send failed: ${response.status}`,
-    })
+    });
   }
-}
+};
 
 const signInCodeEmailHtml = (code: string): string =>
   `<!doctype html><html><body style="margin:0;background:#000;color:#f1efe8;font-family:ui-sans-serif,system-ui,sans-serif;padding:40px 0">
@@ -2223,43 +2040,40 @@ const signInCodeEmailHtml = (code: string): string =>
         <tr><td style="font-size:13px;line-height:1.6;color:#8b8880">This code expires in ${AUTH_EMAIL_OTP_CODE_TTL_SECONDS / 60} minutes. If you didn't request it, you can safely ignore this email.</td></tr>
       </table>
     </td></tr></table>
-  </body></html>`
+  </body></html>`;
 
 const AUTH_EMAIL_OTP_HTML_ESCAPES: Readonly<Record<string, string>> = {
-  '&': '&amp;',
-  '"': '&quot;',
-  "'": '&#39;',
-  '<': '&lt;',
-  '>': '&gt;',
-}
+  "&": "&amp;",
+  '"': "&quot;",
+  "'": "&#39;",
+  "<": "&lt;",
+  ">": "&gt;",
+};
 
 const authEmailOtpEscapeHtml = (value: string): string =>
-  value.replace(
-    /[&<>"']/g,
-    character => AUTH_EMAIL_OTP_HTML_ESCAPES[character] ?? '&#39;',
-  )
+  value.replace(/[&<>"']/g, (character) => AUTH_EMAIL_OTP_HTML_ESCAPES[character] ?? "&#39;");
 
 const authEmailOtpPrefersJson = (request: Request): boolean => {
-  const accept = request.headers.get('accept') ?? ''
+  const accept = request.headers.get("accept") ?? "";
 
-  return accept.includes('application/json') && !accept.includes('text/html')
-}
+  return accept.includes("application/json") && !accept.includes("text/html");
+};
 
 const authEmailOtpProblemResponse = (
   request: Request,
   input: Readonly<{
-    error: string
-    message: string
-    retryAfterSeconds?: number
-    status: number
+    error: string;
+    message: string;
+    retryAfterSeconds?: number;
+    status: number;
   }>,
 ) => {
   const headers = new Headers({
-    'cache-control': 'no-store',
-  })
+    "cache-control": "no-store",
+  });
 
   if (input.retryAfterSeconds !== undefined) {
-    headers.set('retry-after', String(input.retryAfterSeconds))
+    headers.set("retry-after", String(input.retryAfterSeconds));
   }
 
   if (authEmailOtpPrefersJson(request)) {
@@ -2270,7 +2084,7 @@ const authEmailOtpProblemResponse = (
         retryAfterSeconds: input.retryAfterSeconds,
       },
       { headers, status: input.status },
-    )
+    );
   }
 
   return new Response(
@@ -2278,43 +2092,36 @@ const authEmailOtpProblemResponse = (
     {
       headers: {
         ...Object.fromEntries(headers),
-        'content-type': 'text/html; charset=utf-8',
+        "content-type": "text/html; charset=utf-8",
       },
       status: input.status,
     },
-  )
-}
+  );
+};
 
-const authEmailOtpRateLimitResponse = (
-  request: Request,
-  decision: AuthEmailOtpRateLimitRejected,
-) =>
+const authEmailOtpRateLimitResponse = (request: Request, decision: AuthEmailOtpRateLimitRejected) =>
   authEmailOtpProblemResponse(request, {
-    error: 'auth_email_otp_rate_limited',
+    error: "auth_email_otp_rate_limited",
     message: `Too many sign-in code requests. Try again in ${decision.retryAfterSeconds} seconds.`,
     retryAfterSeconds: decision.retryAfterSeconds,
     status: 429,
-  })
+  });
 
-const maybeAuthEmailOtpGuardResponse = async (
-  request: Request,
-  env: OpenAgentsWorkerEnv,
-) => {
-  const url = new URL(request.url)
+const maybeAuthEmailOtpGuardResponse = async (request: Request, env: OpenAgentsWorkerEnv) => {
+  const url = new URL(request.url);
 
-  if (request.method !== 'POST' || url.pathname !== '/code/authorize') {
-    return undefined
+  if (request.method !== "POST" || url.pathname !== "/code/authorize") {
+    return undefined;
   }
 
   const formData = await request
     .clone()
     .formData()
-    .catch((): undefined => undefined)
-  const sendForm =
-    formData === undefined ? undefined : authEmailOtpSendForm(formData)
+    .catch((): undefined => undefined);
+  const sendForm = formData === undefined ? undefined : authEmailOtpSendForm(formData);
 
   if (sendForm === undefined || !SIMPLE_EMAIL_PATTERN.test(sendForm.email)) {
-    return undefined
+    return undefined;
   }
 
   const decision = await reserveAuthEmailOtpSend(
@@ -2324,30 +2131,28 @@ const maybeAuthEmailOtpGuardResponse = async (
       ipAddress: authEmailOtpClientIp(request),
     },
     workerRuntime,
-  ).catch(error => {
-    logWorkerRouteError('auth_email_otp_rate_limit_failed', error, {
+  ).catch((error) => {
+    logWorkerRouteError("auth_email_otp_rate_limit_failed", error, {
       errorName: errorName(error),
-    })
+    });
 
-    return undefined
-  })
+    return undefined;
+  });
 
   if (decision === undefined) {
     return authEmailOtpProblemResponse(request, {
-      error: 'auth_email_otp_temporarily_unavailable',
+      error: "auth_email_otp_temporarily_unavailable",
       message: AUTH_EMAIL_OTP_SEND_UNAVAILABLE_MESSAGE,
       status: 503,
-    })
+    });
   }
 
-  return decision._tag === 'RateLimited'
+  return decision._tag === "RateLimited"
     ? authEmailOtpRateLimitResponse(request, decision)
-    : undefined
-}
+    : undefined;
+};
 
-const readUserKindTotals = async (
-  identityDb: IdentityDb,
-): Promise<UserKindTotals> => {
+const readUserKindTotals = async (identityDb: IdentityDb): Promise<UserKindTotals> => {
   // CFG-4 Domain 2 (#8519): `users` totals come from Postgres now
   // (COUNT(*) is bigint → string on the wire, hence Number()).
   const rows = await identityDb.query(
@@ -2356,11 +2161,11 @@ const readUserKindTotals = async (
       WHERE status = 'active'
         AND deleted_at IS NULL
       GROUP BY kind`,
-  )
-  const countFor = (kind: 'human' | 'agent') =>
-    Number(rows.find(row => row.kind === kind)?.count ?? 0)
-  const humans = countFor('human')
-  const agents = countFor('agent')
+  );
+  const countFor = (kind: "human" | "agent") =>
+    Number(rows.find((row) => row.kind === kind)?.count ?? 0);
+  const humans = countFor("human");
+  const agents = countFor("agent");
 
   return {
     admins: getOpenAgentsAdminEmails().length,
@@ -2368,340 +2173,300 @@ const readUserKindTotals = async (
     humans,
     agents,
     total: humans + agents,
-  }
-}
+  };
+};
 
-const TEAM_AUTOPILOT_COMMAND = '@autopilot'
-const TEAM_ADJUTANT_COMMAND = '@adjutant'
-const ADJUTANT_PROJECT_ID = 'project_adjutant'
-const ADJUTANT_INTENT_SCHEMA_VERSION = 'openagents.team_chat.adjutant_intent.v1'
-const softwareOrderIdPattern = /^software_order_[A-Za-z0-9_-]+$/
-const siteIdPattern = /^site_project_[A-Za-z0-9_-]+$/
-const taskSpecPathPattern =
-  /^docs\/autopilot-tasks\/[A-Za-z0-9][A-Za-z0-9._/-]*\.md$/
+const TEAM_AUTOPILOT_COMMAND = "@autopilot";
+const TEAM_ADJUTANT_COMMAND = "@adjutant";
+const ADJUTANT_PROJECT_ID = "project_adjutant";
+const ADJUTANT_INTENT_SCHEMA_VERSION = "openagents.team_chat.adjutant_intent.v1";
+const softwareOrderIdPattern = /^software_order_[A-Za-z0-9_-]+$/;
+const siteIdPattern = /^site_project_[A-Za-z0-9_-]+$/;
+const taskSpecPathPattern = /^docs\/autopilot-tasks\/[A-Za-z0-9][A-Za-z0-9._/-]*\.md$/;
 const softwareOrderTokenPattern =
-  /(?:^|[\s,;])(?:softwareOrderId|software_order_id|orderId|order)\s*[:=]\s*(software_order_[A-Za-z0-9_-]+)/gi
+  /(?:^|[\s,;])(?:softwareOrderId|software_order_id|orderId|order)\s*[:=]\s*(software_order_[A-Za-z0-9_-]+)/gi;
 const siteTokenPattern =
-  /(?:^|[\s,;])(?:siteId|site_id|site)\s*[:=]\s*(site_project_[A-Za-z0-9_-]+)/gi
+  /(?:^|[\s,;])(?:siteId|site_id|site)\s*[:=]\s*(site_project_[A-Za-z0-9_-]+)/gi;
 const taskSpecTokenPattern =
-  /(?:^|[\s,;])(?:taskSpecPath|task_spec_path|taskPacketPath|task_packet_path|task)\s*[:=]\s*(docs\/autopilot-tasks\/[A-Za-z0-9][A-Za-z0-9._/-]*\.md)/gi
+  /(?:^|[\s,;])(?:taskSpecPath|task_spec_path|taskPacketPath|task_packet_path|task)\s*[:=]\s*(docs\/autopilot-tasks\/[A-Za-z0-9][A-Za-z0-9._/-]*\.md)/gi;
 
 export type TeamAdjutantIntent = Readonly<{
-  schemaVersion: typeof ADJUTANT_INTENT_SCHEMA_VERSION
-  prompt: string
-  softwareOrderId?: string | undefined
-  siteId?: string | undefined
-  taskSpecPath?: string | undefined
-}>
+  schemaVersion: typeof ADJUTANT_INTENT_SCHEMA_VERSION;
+  prompt: string;
+  softwareOrderId?: string | undefined;
+  siteId?: string | undefined;
+  taskSpecPath?: string | undefined;
+}>;
 
 export const teamAutopilotPromptFromBody = (messageBody: string): string => {
-  const trimmed = messageBody.trim()
-  const lower = trimmed.toLowerCase()
-  const prefix = `${TEAM_AUTOPILOT_COMMAND} `
+  const trimmed = messageBody.trim();
+  const lower = trimmed.toLowerCase();
+  const prefix = `${TEAM_AUTOPILOT_COMMAND} `;
 
   if (lower.startsWith(prefix)) {
-    const prompt = trimmed.slice(TEAM_AUTOPILOT_COMMAND.length).trim()
+    const prompt = trimmed.slice(TEAM_AUTOPILOT_COMMAND.length).trim();
 
-    return prompt === '' ? messageBody : prompt
+    return prompt === "" ? messageBody : prompt;
   }
 
-  const lines = messageBody.split(/\r?\n/)
+  const lines = messageBody.split(/\r?\n/);
   const commandLineIndex = lines.findIndex(
-    line => line.trim().toLowerCase() === TEAM_AUTOPILOT_COMMAND,
-  )
+    (line) => line.trim().toLowerCase() === TEAM_AUTOPILOT_COMMAND,
+  );
 
   if (commandLineIndex !== -1) {
-    const prompt = [
-      ...lines.slice(0, commandLineIndex),
-      ...lines.slice(commandLineIndex + 1),
-    ]
-      .join('\n')
-      .trim()
+    const prompt = [...lines.slice(0, commandLineIndex), ...lines.slice(commandLineIndex + 1)]
+      .join("\n")
+      .trim();
 
-    return prompt === '' ? messageBody : prompt
+    return prompt === "" ? messageBody : prompt;
   }
 
-  const suffix = ` ${TEAM_AUTOPILOT_COMMAND}`
+  const suffix = ` ${TEAM_AUTOPILOT_COMMAND}`;
 
   if (lower.endsWith(suffix)) {
-    const prompt = trimmed.slice(0, -TEAM_AUTOPILOT_COMMAND.length).trim()
+    const prompt = trimmed.slice(0, -TEAM_AUTOPILOT_COMMAND.length).trim();
 
-    return prompt === '' ? messageBody : prompt
+    return prompt === "" ? messageBody : prompt;
   }
 
-  return messageBody
-}
+  return messageBody;
+};
 
 const exactTeamCommandPromptFromBody = (
   messageBody: string,
   command: string,
 ): string | undefined => {
-  const trimmed = messageBody.trim()
-  const lower = trimmed.toLowerCase()
-  const prefix = `${command} `
+  const trimmed = messageBody.trim();
+  const lower = trimmed.toLowerCase();
+  const prefix = `${command} `;
 
   if (lower.startsWith(prefix)) {
-    return trimmed.slice(command.length).trim()
+    return trimmed.slice(command.length).trim();
   }
 
-  const lines = messageBody.split(/\r?\n/)
-  const commandLineIndex = lines.findIndex(
-    line => line.trim().toLowerCase() === command,
-  )
+  const lines = messageBody.split(/\r?\n/);
+  const commandLineIndex = lines.findIndex((line) => line.trim().toLowerCase() === command);
 
   if (commandLineIndex !== -1) {
-    return [
-      ...lines.slice(0, commandLineIndex),
-      ...lines.slice(commandLineIndex + 1),
-    ]
-      .join('\n')
-      .trim()
+    return [...lines.slice(0, commandLineIndex), ...lines.slice(commandLineIndex + 1)]
+      .join("\n")
+      .trim();
   }
 
-  const suffix = ` ${command}`
+  const suffix = ` ${command}`;
 
   if (lower.endsWith(suffix)) {
-    return trimmed.slice(0, -command.length).trim()
+    return trimmed.slice(0, -command.length).trim();
   }
 
-  return undefined
-}
+  return undefined;
+};
 
-const exactTeamAdjutantPromptFromBody = (
-  messageBody: string,
-): string | undefined =>
+const exactTeamAdjutantPromptFromBody = (messageBody: string): string | undefined =>
   exactTeamCommandPromptFromBody(messageBody, TEAM_AUTOPILOT_COMMAND) ??
-  exactTeamCommandPromptFromBody(messageBody, TEAM_ADJUTANT_COMMAND)
+  exactTeamCommandPromptFromBody(messageBody, TEAM_ADJUTANT_COMMAND);
 
-const firstRegexCapture = (
-  pattern: RegExp,
-  value: string,
-): string | undefined => {
-  pattern.lastIndex = 0
-  const match = pattern.exec(value)
-  pattern.lastIndex = 0
+const firstRegexCapture = (pattern: RegExp, value: string): string | undefined => {
+  pattern.lastIndex = 0;
+  const match = pattern.exec(value);
+  pattern.lastIndex = 0;
 
-  return match?.[1]
-}
+  return match?.[1];
+};
 
 const cleanAdjutantPrompt = (prompt: string): string =>
   prompt
-    .replace(softwareOrderTokenPattern, ' ')
-    .replace(siteTokenPattern, ' ')
-    .replace(taskSpecTokenPattern, ' ')
-    .replace(/[ \t]{2,}/g, ' ')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim()
+    .replace(softwareOrderTokenPattern, " ")
+    .replace(siteTokenPattern, " ")
+    .replace(taskSpecTokenPattern, " ")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 
 const boundedTaskSpecPath = (value: string | undefined): string | undefined =>
   value !== undefined &&
   taskSpecPathPattern.test(value) &&
-  !value.includes('..') &&
-  !value.includes('//')
+  !value.includes("..") &&
+  !value.includes("//")
     ? value
-    : undefined
+    : undefined;
 
-const explicitAdjutantContextString = (
-  value: unknown,
-  pattern: RegExp,
-): string | undefined => {
-  const text = optionalString(value)
+const explicitAdjutantContextString = (value: unknown, pattern: RegExp): string | undefined => {
+  const text = optionalString(value);
 
-  return text !== undefined && pattern.test(text) ? text : undefined
-}
+  return text !== undefined && pattern.test(text) ? text : undefined;
+};
 
-export const teamAdjutantIntentFromBody = (
-  messageBody: string,
-): TeamAdjutantIntent | undefined => {
-  const prompt = exactTeamAdjutantPromptFromBody(messageBody)
+export const teamAdjutantIntentFromBody = (messageBody: string): TeamAdjutantIntent | undefined => {
+  const prompt = exactTeamAdjutantPromptFromBody(messageBody);
 
   if (prompt === undefined) {
-    return undefined
+    return undefined;
   }
 
-  const softwareOrderId = firstRegexCapture(softwareOrderTokenPattern, prompt)
-  const siteId = firstRegexCapture(siteTokenPattern, prompt)
-  const taskSpecPath = boundedTaskSpecPath(
-    firstRegexCapture(taskSpecTokenPattern, prompt),
-  )
-  const cleanPrompt = cleanAdjutantPrompt(prompt)
+  const softwareOrderId = firstRegexCapture(softwareOrderTokenPattern, prompt);
+  const siteId = firstRegexCapture(siteTokenPattern, prompt);
+  const taskSpecPath = boundedTaskSpecPath(firstRegexCapture(taskSpecTokenPattern, prompt));
+  const cleanPrompt = cleanAdjutantPrompt(prompt);
 
   return {
     schemaVersion: ADJUTANT_INTENT_SCHEMA_VERSION,
-    prompt: cleanPrompt === '' ? prompt : cleanPrompt,
+    prompt: cleanPrompt === "" ? prompt : cleanPrompt,
     ...(softwareOrderId === undefined ? {} : { softwareOrderId }),
     ...(siteId === undefined ? {} : { siteId }),
     ...(taskSpecPath === undefined ? {} : { taskSpecPath }),
-  }
-}
+  };
+};
 
-const teamAutopilotAnswerBackId = (runId: string): string =>
-  `team_chat_answer_${runId}`
+const teamAutopilotAnswerBackId = (runId: string): string => `team_chat_answer_${runId}`;
 
 const genericAutopilotEventText = new Set([
-  'Assistant message completed.',
-  'Codex one-shot run completed.',
-  'Codex one-shot turn completed.',
-  'Codex run resource usage receipt emitted.',
-  'Codex workspace removed.',
-  'Closeout receipt emitted.',
-  'OpenCode run completed and closeout manifest submitted.',
-  'OpenCode/Codex one-shot run completed.',
-  'OpenCode/Codex one-shot turn completed.',
-  'OpenCode/Codex run finished with status completed.',
-  'Codex VM artifact captured.',
-  'Codex VM receipt emitted.',
-  'Runner event received.',
-  'stdout JSON event captured.',
-])
+  "Assistant message completed.",
+  "Codex one-shot run completed.",
+  "Codex one-shot turn completed.",
+  "Codex run resource usage receipt emitted.",
+  "Codex workspace removed.",
+  "Closeout receipt emitted.",
+  "OpenCode run completed and closeout manifest submitted.",
+  "OpenCode/Codex one-shot run completed.",
+  "OpenCode/Codex one-shot turn completed.",
+  "OpenCode/Codex run finished with status completed.",
+  "Codex VM artifact captured.",
+  "Codex VM receipt emitted.",
+  "Runner event received.",
+  "stdout JSON event captured.",
+]);
 
 const internalAutopilotAnswerPhrases = [
-  'closeout receipt',
-  'closeout manifest',
-  'completion artifact',
-  'completion artifacts',
-  'github-writeback.json',
-  'local artifact',
-  'local artifacts',
-  'record the requested summary',
-  'result.md',
-  'run artifact',
-  'run artifacts',
-  'run outcome',
-  'usage receipt',
-  'workspace removed',
-]
+  "closeout receipt",
+  "closeout manifest",
+  "completion artifact",
+  "completion artifacts",
+  "github-writeback.json",
+  "local artifact",
+  "local artifacts",
+  "record the requested summary",
+  "result.md",
+  "run artifact",
+  "run artifacts",
+  "run outcome",
+  "usage receipt",
+  "workspace removed",
+];
 
 const isVisibleAutopilotAnswerText = (text: string): boolean => {
-  const compact = compactTeamContextText(text, 3_800)
-  const normalized = compact.toLowerCase()
+  const compact = compactTeamContextText(text, 3_800);
+  const normalized = compact.toLowerCase();
 
   if (genericAutopilotEventText.has(compact)) {
-    return false
+    return false;
+  }
+
+  if (internalAutopilotAnswerPhrases.some((phrase) => normalized.includes(phrase))) {
+    return false;
   }
 
   if (
-    internalAutopilotAnswerPhrases.some(phrase => normalized.includes(phrase))
+    normalized.includes("artifact") &&
+    (normalized.includes("required") ||
+      normalized.includes("prepare") ||
+      normalized.includes("write") ||
+      normalized.includes("adding") ||
+      normalized.includes("record"))
   ) {
-    return false
+    return false;
   }
 
-  if (
-    normalized.includes('artifact') &&
-    (normalized.includes('required') ||
-      normalized.includes('prepare') ||
-      normalized.includes('write') ||
-      normalized.includes('adding') ||
-      normalized.includes('record'))
-  ) {
-    return false
-  }
-
-  return true
-}
+  return true;
+};
 
 const eventPayloadRecord = (
   event: Readonly<{ payloadJson: string | null }>,
-): Record<string, unknown> | undefined => safeJsonRecord(event.payloadJson)
+): Record<string, unknown> | undefined => safeJsonRecord(event.payloadJson);
 
 const rawEventPayloadRecord = (
   event: Readonly<{ payloadJson: string | null }>,
 ): Record<string, unknown> | undefined => {
-  const payload = eventPayloadRecord(event)
-  const dataJson = optionalString(payload?.dataJson)
+  const payload = eventPayloadRecord(event);
+  const dataJson = optionalString(payload?.dataJson);
   const rawPayloadJson =
-    optionalString(payload?.rawPayloadJson) ??
-    optionalString(payload?.raw_payload_json)
+    optionalString(payload?.rawPayloadJson) ?? optionalString(payload?.raw_payload_json);
 
-  return safeJsonRecord(dataJson) ?? safeJsonRecord(rawPayloadJson) ?? payload
-}
+  return safeJsonRecord(dataJson) ?? safeJsonRecord(rawPayloadJson) ?? payload;
+};
 
 const eventRawPart = (
   event: Readonly<{ payloadJson: string | null }>,
 ): Record<string, unknown> | undefined => {
-  const raw = rawEventPayloadRecord(event)
-  const direct = raw?.part
-  const propertiesPart = nestedUnknown(raw, ['properties', 'part'])
+  const raw = rawEventPayloadRecord(event);
+  const direct = raw?.part;
+  const propertiesPart = nestedUnknown(raw, ["properties", "part"]);
 
-  return isRecord(direct)
-    ? direct
-    : isRecord(propertiesPart)
-      ? propertiesPart
-      : undefined
-}
+  return isRecord(direct) ? direct : isRecord(propertiesPart) ? propertiesPart : undefined;
+};
 
 const eventLooksLikeToolCall = (
   event: Readonly<{ payloadJson: string | null; type: string }>,
 ): boolean => {
-  const raw = rawEventPayloadRecord(event)
-  const rawType = optionalString(raw?.type)
-  const part = eventRawPart(event)
+  const raw = rawEventPayloadRecord(event);
+  const rawType = optionalString(raw?.type);
+  const part = eventRawPart(event);
 
   return (
-    event.type.includes('tool') ||
-    rawType === 'tool_use' ||
-    rawType === 'tool_result' ||
+    event.type.includes("tool") ||
+    rawType === "tool_use" ||
+    rawType === "tool_result" ||
     optionalString(raw?.tool) !== undefined ||
     optionalString(part?.tool) !== undefined
-  )
-}
+  );
+};
 
-const eventTokenTotal = (
-  event: Readonly<{ payloadJson: string | null }>,
-): number => {
-  const raw = rawEventPayloadRecord(event)
+const eventTokenTotal = (event: Readonly<{ payloadJson: string | null }>): number => {
+  const raw = rawEventPayloadRecord(event);
   const total =
-    optionalInteger(nestedUnknown(raw, ['usage', 'totalTokens'])) ??
-    optionalInteger(nestedUnknown(raw, ['usage', 'total_tokens'])) ??
-    optionalInteger(nestedUnknown(raw, ['tokenUsage', 'totalTokens'])) ??
-    optionalInteger(nestedUnknown(raw, ['token_usage', 'total_tokens'])) ??
-    optionalInteger(nestedUnknown(raw, ['totalTokens'])) ??
-    optionalInteger(nestedUnknown(raw, ['total_tokens']))
+    optionalInteger(nestedUnknown(raw, ["usage", "totalTokens"])) ??
+    optionalInteger(nestedUnknown(raw, ["usage", "total_tokens"])) ??
+    optionalInteger(nestedUnknown(raw, ["tokenUsage", "totalTokens"])) ??
+    optionalInteger(nestedUnknown(raw, ["token_usage", "total_tokens"])) ??
+    optionalInteger(nestedUnknown(raw, ["totalTokens"])) ??
+    optionalInteger(nestedUnknown(raw, ["total_tokens"]));
 
   if (total !== undefined) {
-    return total
+    return total;
   }
 
   const input =
-    optionalInteger(nestedUnknown(raw, ['usage', 'inputTokens'])) ??
-    optionalInteger(nestedUnknown(raw, ['usage', 'input_tokens'])) ??
-    0
+    optionalInteger(nestedUnknown(raw, ["usage", "inputTokens"])) ??
+    optionalInteger(nestedUnknown(raw, ["usage", "input_tokens"])) ??
+    0;
   const output =
-    optionalInteger(nestedUnknown(raw, ['usage', 'outputTokens'])) ??
-    optionalInteger(nestedUnknown(raw, ['usage', 'output_tokens'])) ??
-    0
+    optionalInteger(nestedUnknown(raw, ["usage", "outputTokens"])) ??
+    optionalInteger(nestedUnknown(raw, ["usage", "output_tokens"])) ??
+    0;
   const reasoning =
-    optionalInteger(nestedUnknown(raw, ['usage', 'reasoningTokens'])) ??
-    optionalInteger(nestedUnknown(raw, ['usage', 'reasoning_tokens'])) ??
-    0
+    optionalInteger(nestedUnknown(raw, ["usage", "reasoningTokens"])) ??
+    optionalInteger(nestedUnknown(raw, ["usage", "reasoning_tokens"])) ??
+    0;
 
-  return input + output + reasoning
-}
+  return input + output + reasoning;
+};
 
 const durationSecondsForRun = (
   run: Pick<
     AgentRunRecord,
-    | 'canceledAt'
-    | 'completedAt'
-    | 'createdAt'
-    | 'failedAt'
-    | 'startedAt'
-    | 'updatedAt'
+    "canceledAt" | "completedAt" | "createdAt" | "failedAt" | "startedAt" | "updatedAt"
   >,
 ): number | null => {
-  const startedAt = Date.parse(run.startedAt ?? run.createdAt)
-  const endedAt = Date.parse(
-    run.completedAt ?? run.failedAt ?? run.canceledAt ?? run.updatedAt,
-  )
+  const startedAt = Date.parse(run.startedAt ?? run.createdAt);
+  const endedAt = Date.parse(run.completedAt ?? run.failedAt ?? run.canceledAt ?? run.updatedAt);
 
   return Number.isFinite(startedAt) && Number.isFinite(endedAt)
     ? Math.max(0, Math.round((endedAt - startedAt) / 1000))
-    : null
-}
+    : null;
+};
 
-const teamChatRunSummaryFromBundle = (
-  bundle: AgentRunBundle,
-): TeamChatRunSummary => ({
+const teamChatRunSummaryFromBundle = (bundle: AgentRunBundle): TeamChatRunSummary => ({
   runId: bundle.run.id,
   status: bundle.run.status,
   runtime: bundle.run.runtime,
@@ -2709,234 +2474,216 @@ const teamChatRunSummaryFromBundle = (
   repository: `${bundle.run.repository.owner}/${bundle.run.repository.repo}@${bundle.run.repository.ref}`,
   eventCount: bundle.events.length,
   toolCallCount: bundle.events.filter(eventLooksLikeToolCall).length,
-  tokenTotal: bundle.events.reduce(
-    (total, event) => total + eventTokenTotal(event),
-    0,
-  ),
+  tokenTotal: bundle.events.reduce((total, event) => total + eventTokenTotal(event), 0),
   durationSeconds: durationSecondsForRun(bundle.run),
   updatedAt: bundle.run.updatedAt,
-})
+});
 
 const assistantAnswerTextFromEvent = (
   event: Readonly<{
-    payloadJson: string | null
-    summary: string
-    type: string
+    payloadJson: string | null;
+    summary: string;
+    type: string;
   }>,
 ): string | undefined => {
-  const payload = rawEventPayloadRecord(event)
-  const rawType =
-    optionalString(payload?.type) ??
-    optionalString(payload?.event) ??
-    event.type
+  const payload = rawEventPayloadRecord(event);
+  const rawType = optionalString(payload?.type) ?? optionalString(payload?.event) ?? event.type;
 
   if (
-    event.type !== 'message.completed' &&
-    event.type !== 'message.part.updated' &&
-    rawType !== 'message.completed' &&
-    rawType !== 'message.part.updated' &&
-    rawType !== 'text'
+    event.type !== "message.completed" &&
+    event.type !== "message.part.updated" &&
+    rawType !== "message.completed" &&
+    rawType !== "message.part.updated" &&
+    rawType !== "text"
   ) {
-    return undefined
+    return undefined;
   }
 
-  const propertiesPart = nestedUnknown(payload, ['properties', 'part'])
-  const directPart = nestedUnknown(payload, ['part'])
+  const propertiesPart = nestedUnknown(payload, ["properties", "part"]);
+  const directPart = nestedUnknown(payload, ["part"]);
   const part = isRecord(propertiesPart)
     ? propertiesPart
     : isRecord(directPart)
       ? directPart
-      : undefined
+      : undefined;
   const text =
-    (rawType === 'message.part.updated' || rawType === 'text') &&
-    (optionalString(part?.type) ?? 'text') === 'text'
+    (rawType === "message.part.updated" || rawType === "text") &&
+    (optionalString(part?.type) ?? "text") === "text"
       ? (optionalString(part?.text) ?? optionalString(part?.content))
       : (optionalNestedString(payload, [
-          ['finalAnswer'],
-          ['final_answer'],
-          ['answer'],
-          ['text'],
-          ['detail'],
-          ['message'],
-          ['content'],
-          ['output'],
-          ['response', 'output_text'],
-          ['properties', 'part', 'text'],
-          ['properties', 'part', 'content'],
-          ['part', 'text'],
-          ['part', 'content'],
-          ['item', 'text'],
-          ['item', 'message'],
-          ['item', 'content', '0', 'text'],
-        ]) ?? (event.type === 'message.completed' ? event.summary : undefined))
-  const compact =
-    text === undefined ? undefined : compactTeamContextText(text, 3_800)
+          ["finalAnswer"],
+          ["final_answer"],
+          ["answer"],
+          ["text"],
+          ["detail"],
+          ["message"],
+          ["content"],
+          ["output"],
+          ["response", "output_text"],
+          ["properties", "part", "text"],
+          ["properties", "part", "content"],
+          ["part", "text"],
+          ["part", "content"],
+          ["item", "text"],
+          ["item", "message"],
+          ["item", "content", "0", "text"],
+        ]) ?? (event.type === "message.completed" ? event.summary : undefined));
+  const compact = text === undefined ? undefined : compactTeamContextText(text, 3_800);
 
-  return compact === undefined || !isVisibleAutopilotAnswerText(compact)
-    ? undefined
-    : compact
-}
+  return compact === undefined || !isVisibleAutopilotAnswerText(compact) ? undefined : compact;
+};
 
 export const teamAutopilotAnswerBackDraft = (
-  bundle: Pick<AgentRunBundle, 'events'>,
+  bundle: Pick<AgentRunBundle, "events">,
 ): Readonly<{ body: string; sourceEventId: string | null }> => {
   const chronological = [...bundle.events].sort((left, right) =>
     left.sequence === right.sequence
       ? Date.parse(left.createdAt) - Date.parse(right.createdAt)
       : left.sequence - right.sequence,
-  )
+  );
   const candidates = chronological
-    .map(event => ({
+    .map((event) => ({
       body: assistantAnswerTextFromEvent(event),
       sourceEventId: event.id,
     }))
     .filter(
       (value): value is Readonly<{ body: string; sourceEventId: string }> =>
         value.body !== undefined,
-    )
-  const candidate = candidates[candidates.length - 1]
+    );
+  const candidate = candidates[candidates.length - 1];
 
   return candidate === undefined
     ? {
-        body: 'Autopilot completed the run. Open the linked thread for the full transcript.',
+        body: "Autopilot completed the run. Open the linked thread for the full transcript.",
         sourceEventId: null,
       }
-    : candidate
-}
+    : candidate;
+};
 
-const resultArtifactEventId = (
-  events: ReadonlyArray<OmniEventRecord>,
-): string | undefined => {
+const resultArtifactEventId = (events: ReadonlyArray<OmniEventRecord>): string | undefined => {
   const candidates = [...events]
     .sort((left, right) =>
       left.sequence === right.sequence
         ? Date.parse(left.createdAt) - Date.parse(right.createdAt)
         : left.sequence - right.sequence,
     )
-    .filter(event => {
-      const raw = rawEventPayloadRecord(event)
-      const detail = optionalString(raw?.detail)
-      const artifactName = optionalString(raw?.artifactName)
-      const filename = optionalString(raw?.filename)
+    .filter((event) => {
+      const raw = rawEventPayloadRecord(event);
+      const detail = optionalString(raw?.detail);
+      const artifactName = optionalString(raw?.artifactName);
+      const filename = optionalString(raw?.filename);
 
       return (
-        event.type === 'artifact.created' &&
-        (detail === 'result.md' ||
-          artifactName === 'result.md' ||
-          filename === 'result.md')
-      )
-    })
+        event.type === "artifact.created" &&
+        (detail === "result.md" || artifactName === "result.md" || filename === "result.md")
+      );
+    });
 
-  return candidates[candidates.length - 1]?.id
-}
+  return candidates[candidates.length - 1]?.id;
+};
 
 const githubContentsUrl = (
-  repository: AgentRunRecord['repository'],
+  repository: AgentRunRecord["repository"],
   branchName: string,
   path: string,
 ): string | undefined => {
-  if (repository.provider !== 'github') {
-    return undefined
+  if (repository.provider !== "github") {
+    return undefined;
   }
 
-  const owner = encodeURIComponent(repository.owner)
-  const repo = encodeURIComponent(repository.repo)
-  const encodedPath = path.split('/').map(encodeURIComponent).join('/')
-  const ref = encodeURIComponent(branchName)
+  const owner = encodeURIComponent(repository.owner);
+  const repo = encodeURIComponent(repository.repo);
+  const encodedPath = path.split("/").map(encodeURIComponent).join("/");
+  const ref = encodeURIComponent(branchName);
 
-  return `https://api.github.com/repos/${owner}/${repo}/contents/${encodedPath}?ref=${ref}`
-}
+  return `https://api.github.com/repos/${owner}/${repo}/contents/${encodedPath}?ref=${ref}`;
+};
 
-const textFromGithubContentsResponse = (
-  payload: unknown,
-): string | undefined => {
+const textFromGithubContentsResponse = (payload: unknown): string | undefined => {
   if (!isRecord(payload)) {
-    return undefined
+    return undefined;
   }
 
-  const encoding = optionalString(payload.encoding)
-  const content = optionalString(payload.content)
+  const encoding = optionalString(payload.encoding);
+  const content = optionalString(payload.content);
 
-  if (encoding !== 'base64' || content === undefined) {
-    return undefined
+  if (encoding !== "base64" || content === undefined) {
+    return undefined;
   }
 
   try {
-    const decoded = atob(content.replace(/\s+/g, ''))
-    const bytes = Uint8Array.from(decoded, char => char.charCodeAt(0))
+    const decoded = atob(content.replace(/\s+/g, ""));
+    const bytes = Uint8Array.from(decoded, (char) => char.charCodeAt(0));
 
-    return new TextDecoder().decode(bytes)
+    return new TextDecoder().decode(bytes);
   } catch {
-    return undefined
+    return undefined;
   }
-}
+};
 
 export const teamAutopilotResultArtifactAnswerBackDraft = async (
   bundle: AgentRunBundle,
   options: Readonly<{
-    githubAccessToken?: string | undefined
+    githubAccessToken?: string | undefined;
   }> = {},
 ): Promise<Readonly<{ body: string; sourceEventId: string }> | undefined> => {
-  const sourceEventId = resultArtifactEventId(bundle.events)
-  const branchName = bundle.run.assignment.githubWorkOrder?.branchName
+  const sourceEventId = resultArtifactEventId(bundle.events);
+  const branchName = bundle.run.assignment.githubWorkOrder?.branchName;
 
   if (sourceEventId === undefined || branchName === undefined) {
-    return undefined
+    return undefined;
   }
 
-  const url = githubContentsUrl(bundle.run.repository, branchName, 'result.md')
+  const url = githubContentsUrl(bundle.run.repository, branchName, "result.md");
 
   if (url === undefined) {
-    return undefined
+    return undefined;
   }
 
   const response = await fetch(url, {
     headers: {
-      accept: 'application/vnd.github+json',
+      accept: "application/vnd.github+json",
       ...(options.githubAccessToken === undefined
         ? {}
         : { authorization: `Bearer ${options.githubAccessToken}` }),
-      'user-agent': 'openagents-autopilot-worker',
+      "user-agent": "openagents-autopilot-worker",
     },
-  }).catch((): Response | undefined => undefined)
+  }).catch((): Response | undefined => undefined);
 
   if (response === undefined || !response.ok) {
-    return undefined
+    return undefined;
   }
 
-  const payload = await response.json().catch((): unknown => undefined)
-  const text = textFromGithubContentsResponse(payload)
-  const body =
-    text === undefined ? undefined : compactTeamContextText(text, 3_800)
+  const payload = await response.json().catch((): unknown => undefined);
+  const text = textFromGithubContentsResponse(payload);
+  const body = text === undefined ? undefined : compactTeamContextText(text, 3_800);
 
   return body === undefined || !isVisibleAutopilotAnswerText(body)
     ? undefined
     : {
         body,
         sourceEventId,
-      }
-}
+      };
+};
 
 export const teamAutopilotAnswerBackDraftForBundle = async (
   bundle: AgentRunBundle,
   options: Readonly<{
-    githubAccessToken?: string | undefined
+    githubAccessToken?: string | undefined;
   }> = {},
 ): Promise<Readonly<{ body: string; sourceEventId: string | null }>> =>
   (await teamAutopilotResultArtifactAnswerBackDraft(bundle, options)) ??
-  teamAutopilotAnswerBackDraft(bundle)
+  teamAutopilotAnswerBackDraft(bundle);
 
-const selectedFileIdsFromTeamMessageMetadata = (
-  metadataJson: string,
-): ReadonlyArray<string> => {
-  const metadata = safeJsonRecord(metadataJson)
-  const direct = stringArrayFromUnknown(metadata?.selectedTeamFileIds)
+const selectedFileIdsFromTeamMessageMetadata = (metadataJson: string): ReadonlyArray<string> => {
+  const metadata = safeJsonRecord(metadataJson);
+  const direct = stringArrayFromUnknown(metadata?.selectedTeamFileIds);
   const nestedIds = stringArrayFromUnknown(
-    nestedUnknown(metadata, ['context', 'selectedTeamFileIds']),
-  )
+    nestedUnknown(metadata, ["context", "selectedTeamFileIds"]),
+  );
 
-  return direct.length > 0 ? direct : nestedIds
-}
+  return direct.length > 0 ? direct : nestedIds;
+};
 
 const appendTeamAutopilotAnswerBack = async (
   env: OpenAgentsWorkerEnv,
@@ -2947,30 +2694,30 @@ const appendTeamAutopilotAnswerBack = async (
     openAgentsDatabase(env),
     identityDbForEnv(env),
     runId,
-  )
+  );
 
   if (parent === undefined) {
-    return
+    return;
   }
 
-  const answerId = teamAutopilotAnswerBackId(runId)
+  const answerId = teamAutopilotAnswerBackId(runId);
   const existing = await readTeamChatMessageById(
     openAgentsDatabase(env),
     identityDbForEnv(env),
     answerId,
-  )
+  );
 
   if (existing !== undefined) {
-    return
+    return;
   }
 
   const bundle = await makeOmniRunStoreForEnv(env).findAgentRunForUser(
     parent.message.author.userId,
     runId,
-  )
+  );
 
-  if (bundle === undefined || bundle.run.status !== 'completed') {
-    return
+  if (bundle === undefined || bundle.run.status !== "completed") {
+    return;
   }
 
   const updatedParent = await updateTeamChatMessageRunSummary(
@@ -2981,15 +2728,10 @@ const appendTeamAutopilotAnswerBack = async (
       metadataJson: parent.metadataJson,
       runSummary: teamChatRunSummaryFromBundle(bundle),
     },
-  )
+  );
 
   if (updatedParent !== undefined) {
-    await publishTeamChatMessageSync(
-      env,
-      ctx,
-      updatedParent,
-      parent.message.author.userId,
-    )
+    await publishTeamChatMessageSync(env, ctx, updatedParent, parent.message.author.userId);
   }
 
   const githubAccessToken =
@@ -2997,13 +2739,11 @@ const appendTeamAutopilotAnswerBack = async (
       ? null
       : await authKvStoreForEnv(env).get(
           githubWriteSecretKey(bundle.run.assignment.githubWriteConnectionRef),
-        )
+        );
   const draft = await teamAutopilotAnswerBackDraftForBundle(bundle, {
     ...(githubAccessToken === null ? {} : { githubAccessToken }),
-  })
-  const selectedTeamFileIds = selectedFileIdsFromTeamMessageMetadata(
-    parent.metadataJson,
-  )
+  });
+  const selectedTeamFileIds = selectedFileIdsFromTeamMessageMetadata(parent.metadataJson);
   const message = await insertTeamChatMessage(
     khalaCodeProductStateDatabaseForEnv(env),
     identityDbForEnv(env),
@@ -3012,10 +2752,10 @@ const appendTeamAutopilotAnswerBack = async (
       authorUserId: parent.message.author.userId,
       body: draft.body,
       id: answerId,
-      kind: 'system',
+      kind: "system",
       metadataJson: JSON.stringify({
         agentRunId: runId,
-        kind: 'autopilot_answer_back',
+        kind: "autopilot_answer_back",
         parentTeamChatMessageId: parent.message.id,
         selectedTeamFileIds,
         sourceEventId: draft.sourceEventId,
@@ -3023,186 +2763,165 @@ const appendTeamAutopilotAnswerBack = async (
       ...(parent.message.autopilotThreadId === null
         ? {}
         : { autopilotThreadId: parent.message.autopilotThreadId }),
-      ...(parent.message.projectId === null
-        ? {}
-        : { projectId: parent.message.projectId }),
+      ...(parent.message.projectId === null ? {} : { projectId: parent.message.projectId }),
       teamId: parent.message.teamId,
     },
-  ).catch(async error => {
+  ).catch(async (error) => {
     const replayed = await readTeamChatMessageById(
       openAgentsDatabase(env),
       identityDbForEnv(env),
       answerId,
-    )
+    );
 
     if (replayed !== undefined) {
-      return undefined
+      return undefined;
     }
 
-    throw error
-  })
+    throw error;
+  });
 
   if (message === undefined) {
-    return
+    return;
   }
 
-  await insertThreadFileMessageReferences(
-    khalaCodeProductStateDatabaseForEnv(env),
-    {
-      fileIds: selectedTeamFileIds,
-      messageId: message.id,
-      referenceKind: 'autopilot_answer',
-      teamId: parent.message.teamId,
-      threadId:
-        parent.message.autopilotThreadId ??
-        (parent.message.projectId === null
-          ? teamChatThreadId(parent.message.teamId)
-          : teamProjectChatThreadId(
-              parent.message.teamId,
-              parent.message.projectId,
-            )),
-    },
-  )
+  await insertThreadFileMessageReferences(khalaCodeProductStateDatabaseForEnv(env), {
+    fileIds: selectedTeamFileIds,
+    messageId: message.id,
+    referenceKind: "autopilot_answer",
+    teamId: parent.message.teamId,
+    threadId:
+      parent.message.autopilotThreadId ??
+      (parent.message.projectId === null
+        ? teamChatThreadId(parent.message.teamId)
+        : teamProjectChatThreadId(parent.message.teamId, parent.message.projectId)),
+  });
 
-  await publishTeamChatMessageSync(
-    env,
-    ctx,
-    message,
-    parent.message.author.userId,
-  )
-}
+  await publishTeamChatMessageSync(env, ctx, message, parent.message.author.userId);
+};
 
-const TEAM_AUTOPILOT_FILE_CONTEXT_MAX_BYTES = 256 * 1024
-const TEAM_AUTOPILOT_FILE_CONTEXT_MAX_CHARS = 24_000
+const TEAM_AUTOPILOT_FILE_CONTEXT_MAX_BYTES = 256 * 1024;
+const TEAM_AUTOPILOT_FILE_CONTEXT_MAX_CHARS = 24_000;
 
 const threadFileLooksTextLike = (row: ThreadFileRow): boolean => {
-  const contentType = row.content_type.toLowerCase()
-  const filename = row.filename.toLowerCase()
+  const contentType = row.content_type.toLowerCase();
+  const filename = row.filename.toLowerCase();
 
   return (
-    contentType.startsWith('text/') ||
-    contentType.includes('json') ||
-    contentType.includes('markdown') ||
-    contentType.includes('xml') ||
-    contentType.includes('yaml') ||
-    contentType.includes('csv') ||
+    contentType.startsWith("text/") ||
+    contentType.includes("json") ||
+    contentType.includes("markdown") ||
+    contentType.includes("xml") ||
+    contentType.includes("yaml") ||
+    contentType.includes("csv") ||
     /\.(txt|md|markdown|json|jsonl|csv|tsv|xml|yaml|yml|log)$/i.test(filename)
-  )
-}
+  );
+};
 
 const teamAutopilotFileExcerpt = async (
   env: OpenAgentsWorkerEnv,
   row: ThreadFileRow,
 ): Promise<string | undefined> => {
-  if (
-    !threadFileLooksTextLike(row) ||
-    row.size_bytes > TEAM_AUTOPILOT_FILE_CONTEXT_MAX_BYTES
-  ) {
-    return undefined
+  if (!threadFileLooksTextLike(row) || row.size_bytes > TEAM_AUTOPILOT_FILE_CONTEXT_MAX_BYTES) {
+    return undefined;
   }
 
   return Effect.runPromise(
     Effect.gen(function* () {
-      const artifacts = yield* ThreadFileArtifacts
-      const maybeObject = yield* artifacts.get(row.object_key)
-      const object = Option.getOrUndefined(maybeObject)
+      const artifacts = yield* ThreadFileArtifacts;
+      const maybeObject = yield* artifacts.get(row.object_key);
+      const object = Option.getOrUndefined(maybeObject);
 
       if (object === undefined) {
-        return undefined
+        return undefined;
       }
 
-      const text = yield* object.text
+      const text = yield* object.text;
 
-      return compactTeamContextText(text, TEAM_AUTOPILOT_FILE_CONTEXT_MAX_CHARS)
+      return compactTeamContextText(text, TEAM_AUTOPILOT_FILE_CONTEXT_MAX_CHARS);
     }).pipe(
       Effect.provide(ThreadFileArtifacts.layer(artifactsBucketForEnv(env))),
-      Effect.catchTag('ArtifactOperationError', () =>
-        Effect.sync((): undefined => undefined),
-      ),
+      Effect.catchTag("ArtifactOperationError", () => Effect.sync((): undefined => undefined)),
     ),
-  )
-}
+  );
+};
 
 const hydrateTeamAutopilotContextFileExcerpts = async (
   env: OpenAgentsWorkerEnv,
   bundle: TeamAutopilotContextBundle,
 ): Promise<TeamAutopilotContextBundle> => {
   const selectedFiles = await Promise.all(
-    bundle.selectedFiles.map(async file => {
-      const row = await readThreadFileById(openAgentsDatabase(env), file.id)
+    bundle.selectedFiles.map(async (file) => {
+      const row = await readThreadFileById(openAgentsDatabase(env), file.id);
       const excerpt =
         row === undefined
           ? undefined
-          : await teamAutopilotFileExcerpt(env, row).catch(() => undefined)
+          : await teamAutopilotFileExcerpt(env, row).catch(() => undefined);
 
-      return excerpt === undefined ? file : { ...file, excerpt }
+      return excerpt === undefined ? file : { ...file, excerpt };
     }),
-  )
+  );
 
-  return { ...bundle, selectedFiles }
-}
+  return { ...bundle, selectedFiles };
+};
 
-export const authIssuerAllowsRedirectHostname =
-  authIssuerAllowsWebRedirectHostname
+export const authIssuerAllowsRedirectHostname = authIssuerAllowsWebRedirectHostname;
 
 const makeAuthIssuer = (env: OpenAgentsWorkerEnv) => {
-  const config = getOpenAgentsWorkerConfig(env)
+  const config = getOpenAgentsWorkerConfig(env);
   const emailCodeUi = CodeUI({
     copy: {
-      code_info: 'We sent a one-time sign-in code to your email.',
+      code_info: "We sent a one-time sign-in code to your email.",
       email_invalid: AUTH_EMAIL_OTP_SEND_UNAVAILABLE_MESSAGE,
-      email_placeholder: 'you@example.com',
+      email_placeholder: "you@example.com",
     },
     sendCode: async () => undefined,
-  })
+  });
 
   return issuer({
     // Full OpenAgents-branded auth theme (replaces the OpenAuth defaults: the grid
     // logo, openauth.js.org favicon, IBM Plex font, and #6772e5 purple accent).
     theme: {
-      title: 'OpenAgents',
-      radius: 'none' as const,
-      primary: { light: '#0a0a0a', dark: '#f1efe8' },
-      background: { light: '#ffffff', dark: '#000000' },
+      title: "OpenAgents",
+      radius: "none" as const,
+      primary: { light: "#0a0a0a", dark: "#f1efe8" },
+      background: { light: "#ffffff", dark: "#000000" },
       font: {
-        family: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+        family: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
       },
       logo: {
         light:
-          'data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%27240%27%20height%3D%2740%27%20viewBox%3D%270%200%20240%2040%27%3E%3Ctext%20x%3D%27120%27%20y%3D%2730%27%20text-anchor%3D%27middle%27%20font-family%3D%27ui-monospace%2CSFMono-Regular%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%2729%27%20font-weight%3D%27700%27%20letter-spacing%3D%27-1.5%27%20fill%3D%27%230a0a0a%27%3EOpenAgents%3C%2Ftext%3E%3C%2Fsvg%3E',
-        dark: 'data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%27240%27%20height%3D%2740%27%20viewBox%3D%270%200%20240%2040%27%3E%3Ctext%20x%3D%27120%27%20y%3D%2730%27%20text-anchor%3D%27middle%27%20font-family%3D%27ui-monospace%2CSFMono-Regular%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%2729%27%20font-weight%3D%27700%27%20letter-spacing%3D%27-1.5%27%20fill%3D%27%23f1efe8%27%3EOpenAgents%3C%2Ftext%3E%3C%2Fsvg%3E',
+          "data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%27240%27%20height%3D%2740%27%20viewBox%3D%270%200%20240%2040%27%3E%3Ctext%20x%3D%27120%27%20y%3D%2730%27%20text-anchor%3D%27middle%27%20font-family%3D%27ui-monospace%2CSFMono-Regular%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%2729%27%20font-weight%3D%27700%27%20letter-spacing%3D%27-1.5%27%20fill%3D%27%230a0a0a%27%3EOpenAgents%3C%2Ftext%3E%3C%2Fsvg%3E",
+        dark: "data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%27240%27%20height%3D%2740%27%20viewBox%3D%270%200%20240%2040%27%3E%3Ctext%20x%3D%27120%27%20y%3D%2730%27%20text-anchor%3D%27middle%27%20font-family%3D%27ui-monospace%2CSFMono-Regular%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%2729%27%20font-weight%3D%27700%27%20letter-spacing%3D%27-1.5%27%20fill%3D%27%23f1efe8%27%3EOpenAgents%3C%2Ftext%3E%3C%2Fsvg%3E",
       },
       favicon:
-        'data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%2764%27%20height%3D%2764%27%20viewBox%3D%270%200%2064%2064%27%3E%3Crect%20width%3D%2764%27%20height%3D%2764%27%20fill%3D%27%23000000%27%2F%3E%3Ctext%20x%3D%2732%27%20y%3D%2744%27%20text-anchor%3D%27middle%27%20font-family%3D%27ui-monospace%2CSFMono-Regular%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%2734%27%20font-weight%3D%27700%27%20letter-spacing%3D%27-2%27%20fill%3D%27%23f1efe8%27%3Eoa%3C%2Ftext%3E%3C%2Fsvg%3E',
+        "data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%2764%27%20height%3D%2764%27%20viewBox%3D%270%200%2064%2064%27%3E%3Crect%20width%3D%2764%27%20height%3D%2764%27%20fill%3D%27%23000000%27%2F%3E%3Ctext%20x%3D%2732%27%20y%3D%2744%27%20text-anchor%3D%27middle%27%20font-family%3D%27ui-monospace%2CSFMono-Regular%2CMenlo%2CConsolas%2Cmonospace%27%20font-size%3D%2734%27%20font-weight%3D%27700%27%20letter-spacing%3D%27-2%27%20fill%3D%27%23f1efe8%27%3Eoa%3C%2Ftext%3E%3C%2Fsvg%3E",
     },
     providers: {
       github: GithubProvider({
         clientID: config.github.clientId,
-        clientSecret: redactedValue(config.github.clientSecret) ?? '',
+        clientSecret: redactedValue(config.github.clientSecret) ?? "",
         scopes: [...GITHUB_LOGIN_SCOPES],
       }),
       code: CodeProvider({
         ...emailCodeUi,
         sendCode: async (claims, code) => {
           const email =
-            typeof claims.email === 'string'
-              ? normalizeAuthEmailOtpEmail(claims.email)
-              : ''
-          if (email === '' || !SIMPLE_EMAIL_PATTERN.test(email)) {
-            return invalidAuthEmailOtpClaim(email)
+            typeof claims.email === "string" ? normalizeAuthEmailOtpEmail(claims.email) : "";
+          if (email === "" || !SIMPLE_EMAIL_PATTERN.test(email)) {
+            return invalidAuthEmailOtpClaim(email);
           }
-          claims.email = email
-          stampAuthEmailOtpClaims(claims, workerRuntime)
+          claims.email = email;
+          stampAuthEmailOtpClaims(claims, workerRuntime);
 
           return sendSignInCodeEmail(env, email, code)
             .then(() => undefined)
-            .catch(error => {
-              logWorkerRouteError('auth_email_otp_send_failed', error, {
+            .catch((error) => {
+              logWorkerRouteError("auth_email_otp_send_failed", error, {
                 errorName: errorName(error),
-              })
+              });
 
-              return invalidAuthEmailOtpClaim(email)
-            })
+              return invalidAuthEmailOtpClaim(email);
+            });
         },
       }),
     },
@@ -3214,75 +2933,67 @@ const makeAuthIssuer = (env: OpenAgentsWorkerEnv) => {
         webClientId: config.openauth.clientId,
       }),
     success: async (ctx, response) => {
-      if (response.provider === 'code') {
-        const claimedEmail =
-          typeof response.claims.email === 'string' ? response.claims.email : ''
-        if (claimedEmail === '') {
-          throw new UnsupportedAuthProvider({ provider: 'code' })
+      if (response.provider === "code") {
+        const claimedEmail = typeof response.claims.email === "string" ? response.claims.email : "";
+        if (claimedEmail === "") {
+          throw new UnsupportedAuthProvider({ provider: "code" });
         }
         if (!authEmailOtpClaimsAreFresh(response.claims, workerRuntime)) {
           throw new AuthSignInError({
-            reason: 'Email sign-in code expired',
-          })
+            reason: "Email sign-in code expired",
+          });
         }
-        const subject = emailToSubject(claimedEmail)
-        await upsertEmailUser(identityDbForEnv(env), subject)
+        const subject = emailToSubject(claimedEmail);
+        await upsertEmailUser(identityDbForEnv(env), subject);
 
-        return ctx.subject('user', subject, {
+        return ctx.subject("user", subject, {
           subject: subject.userId,
           ttl: {
             access: SESSION_MAX_AGE_SECONDS,
             refresh: SESSION_MAX_AGE_SECONDS,
           },
-        })
+        });
       }
 
       // Only the github + code providers are registered; code handled above.
       const [user, emails] = await Promise.all([
-        fetchGitHubJson(
-          GitHubUser,
-          'https://api.github.com/user',
-          response.tokenset.access,
-        ),
+        fetchGitHubJson(GitHubUser, "https://api.github.com/user", response.tokenset.access),
         fetchGitHubJson(
           GitHubEmails,
-          'https://api.github.com/user/emails',
+          "https://api.github.com/user/emails",
           response.tokenset.access,
         ),
-      ])
+      ]);
 
-      const subject = githubUserToSubject(user, getPrimaryVerifiedEmail(emails))
-      await upsertGitHubUser(identityDbForEnv(env), subject)
+      const subject = githubUserToSubject(user, getPrimaryVerifiedEmail(emails));
+      await upsertGitHubUser(identityDbForEnv(env), subject);
       await authKvStoreForEnv(env).put(
         githubIdentityTokenKey(subject.userId),
         response.tokenset.access,
         { expirationTtl: SESSION_MAX_AGE_SECONDS },
-      )
+      );
 
-      return ctx.subject('user', subject, {
+      return ctx.subject("user", subject, {
         subject: subject.userId,
         ttl: {
           access: SESSION_MAX_AGE_SECONDS,
           refresh: SESSION_MAX_AGE_SECONDS,
         },
-      })
+      });
     },
-  })
-}
+  });
+};
 
-export const authClientUsesLocalIssuer = (
-  appOrigin: string,
-  issuerOrigin: string,
-): boolean => {
+export const authClientUsesLocalIssuer = (appOrigin: string, issuerOrigin: string): boolean => {
   try {
     return (
-      new URL(appOrigin).hostname === 'openagents.com' &&
-      new URL(issuerOrigin).hostname === 'auth.openagents.com'
-    )
+      new URL(appOrigin).hostname === "openagents.com" &&
+      new URL(issuerOrigin).hostname === "auth.openagents.com"
+    );
   } catch {
-    return false
+    return false;
   }
-}
+};
 
 const makeIssuerAwareFetch =
   (env: OpenAgentsWorkerEnv, ctx: ExecutionContext) =>
@@ -3290,31 +3001,31 @@ const makeIssuerAwareFetch =
     input: Parameters<typeof fetch>[0],
     init?: Parameters<typeof fetch>[1],
   ): Promise<Response> => {
-    const request = new Request(input, init)
-    const url = new URL(request.url)
-    const issuerHost = new URL(getIssuerOrigin(env)).hostname
+    const request = new Request(input, init);
+    const url = new URL(request.url);
+    const issuerHost = new URL(getIssuerOrigin(env)).hostname;
 
     if (
       url.hostname === issuerHost &&
       authClientUsesLocalIssuer(getAppOrigin(env), getIssuerOrigin(env))
     ) {
-      return routeAuthIssuerRequest(request, env, ctx)
+      return routeAuthIssuerRequest(request, env, ctx);
     }
 
-    return fetch(request)
-  }
+    return fetch(request);
+  };
 
 const makeAuthClient = (env: OpenAgentsWorkerEnv, ctx: ExecutionContext) => {
-  const config = getOpenAgentsWorkerConfig(env)
+  const config = getOpenAgentsWorkerConfig(env);
 
   return createClient({
     clientID: config.openauth.clientId,
     issuer: getIssuerOrigin(env),
     fetch: makeIssuerAwareFetch(env, ctx),
-  })
-}
+  });
+};
 
-type VerifiedSession = VerifiedAuthSession<UserSubject>
+type VerifiedSession = VerifiedAuthSession<UserSubject>;
 
 const verifyOpenAuthUserTokens = async (
   access: string,
@@ -3322,76 +3033,72 @@ const verifyOpenAuthUserTokens = async (
   env: MobileAuthSessionBindings,
   ctx: ExecutionContext,
 ): Promise<VerifiedSession | undefined> => {
-  const verified = await observedPromise('Auth.verifySession', () =>
+  const verified = await observedPromise("Auth.verifySession", () =>
     refresh === undefined
       ? makeAuthClient(env, ctx).verify(subjects, access)
       : makeAuthClient(env, ctx).verify(subjects, access, { refresh }),
-  ).catch(error => {
-    logWorkerRouteError('auth_session_verify_failed', error)
+  ).catch((error) => {
+    logWorkerRouteError("auth_session_verify_failed", error);
 
-    return undefined
-  })
+    return undefined;
+  });
 
   if (verified === undefined) {
-    return undefined
+    return undefined;
   }
 
   if (verified.err !== undefined) {
-    return undefined
+    return undefined;
   }
 
-  if (verified.subject.type !== 'user') {
-    return undefined
+  if (verified.subject.type !== "user") {
+    return undefined;
   }
 
   if (verified.tokens === undefined) {
-    return { user: verified.subject.properties }
+    return { user: verified.subject.properties };
   }
 
-  return { user: verified.subject.properties, tokens: verified.tokens }
-}
+  return { user: verified.subject.properties, tokens: verified.tokens };
+};
 
 export const verifySession = async (
   request: Request,
   env: OpenAgentsWorkerEnv,
   ctx: ExecutionContext,
 ): Promise<VerifiedSession | undefined> => {
-  const cookies = parseCookies(request)
-  const access = cookies.get(ACCESS_COOKIE)
+  const cookies = parseCookies(request);
+  const access = cookies.get(ACCESS_COOKIE);
 
   if (access === undefined) {
-    return undefined
+    return undefined;
   }
 
-  return verifyOpenAuthUserTokens(access, cookies.get(REFRESH_COOKIE), env, ctx)
-}
+  return verifyOpenAuthUserTokens(access, cookies.get(REFRESH_COOKIE), env, ctx);
+};
 
-const { appendRefreshedSessionCookies, requireBrowserSession } =
-  makeBrowserSessionBoundary<UserSubject, Env>({
-    persistUser: (env, user) => upsertUser(identityDbForEnv(env), user),
-    verifySession,
-  })
-
-const { requireUserBearerSession } = makeUserBearerSessionBoundary<
+const { appendRefreshedSessionCookies, requireBrowserSession } = makeBrowserSessionBoundary<
   UserSubject,
   Env
 >({
+  persistUser: (env, user) => upsertUser(identityDbForEnv(env), user),
+  verifySession,
+});
+
+const { requireUserBearerSession } = makeUserBearerSessionBoundary<UserSubject, Env>({
   isAccessTokenRevoked: async (env, accessToken) => {
     try {
-      return await isMobileAccessTokenRevoked(
-        authKvStoreForEnv(env),
-        accessToken,
-      )
+      return await isMobileAccessTokenRevoked(authKvStoreForEnv(env), accessToken);
     } catch (error) {
-      logWorkerRouteError('mobile_auth_revocation_check_failed', error)
+      logWorkerRouteError("mobile_auth_revocation_check_failed", error);
 
-      return true
+      return true;
     }
   },
   persistUser: (env, user) => upsertUser(identityDbForEnv(env), user),
   verifyTokens: (accessToken, refreshToken, _request, env, ctx) =>
     verifyOpenAuthUserTokens(accessToken, refreshToken, env, ctx),
-})
+});
 
 // AIUR-3 (#8501): the ops views (users/runs/executor health) reuse the
 // EXACT SAME owner-gate composition as the credits console above — see
@@ -3402,12 +3109,12 @@ const adminOpsRoutes = makeAdminOpsRoutes<Env>({
   // CFG-4 Domain 4 (#8519): push readiness count reads Postgres.
   pushDb: paymentsLedgerDbForEnv,
   requireAdminCaller: async (request, env, ctx) => {
-    const session = await requireUserBearerSession(request, env, ctx)
-    if (session === undefined) return undefined
-    if (!isOpenAgentsAdminEmail(session.user.email)) return undefined
-    return { userId: session.user.userId }
+    const session = await requireUserBearerSession(request, env, ctx);
+    if (session === undefined) return undefined;
+    if (!isOpenAgentsAdminEmail(session.user.email)) return undefined;
+    return { userId: session.user.userId };
   },
-})
+});
 
 // OB-6 (P1 Track C, #8563): the daily sales ledger reuses the exact same
 // owner-gate composition as the credits/ops consoles above. The khala-sync
@@ -3415,66 +3122,64 @@ const adminOpsRoutes = makeAdminOpsRoutes<Env>({
 // when absent, conversations stay honestly not_measured.
 const dailySalesLedgerRoutes = makeDailySalesLedgerRoutes<Env>({
   db: openAgentsDatabase,
-  khalaSyncBinding: env => env.KHALA_SYNC_DB,
+  khalaSyncBinding: (env) => env.KHALA_SYNC_DB,
   requireAdminCaller: async (request, env, ctx) => {
-    const session = await requireUserBearerSession(request, env, ctx)
-    if (session === undefined) return undefined
-    if (!isOpenAgentsAdminEmail(session.user.email)) return undefined
-    return { userId: session.user.userId }
+    const session = await requireUserBearerSession(request, env, ctx);
+    if (session === undefined) return undefined;
+    if (!isOpenAgentsAdminEmail(session.user.email)) return undefined;
+    return { userId: session.user.userId };
   },
-})
+});
 
 const authenticateRequestActor = async (
   request: Request,
   env: OpenAgentsWorkerEnv,
   ctx: ExecutionContext,
 ): Promise<AuthenticatedActor | undefined> => {
-  const bearerToken = readBearerToken(request)
+  const bearerToken = readBearerToken(request);
 
   if (bearerToken !== undefined) {
     const agent = await authenticateProgrammaticAgent(
       makeAgentRegistrationStoreForEnv(env),
       bearerToken,
-    )
+    );
 
     if (agent !== undefined) {
-      return { kind: 'agent', agent }
+      return { kind: "agent", agent };
     }
 
-    const bearerSession = await requireUserBearerSession(request, env, ctx)
+    const bearerSession = await requireUserBearerSession(request, env, ctx);
 
     if (bearerSession !== undefined) {
       return {
-        kind: 'human',
+        kind: "human",
         user: bearerSession.user,
-        ...(bearerSession.tokens === undefined
-          ? {}
-          : { tokens: bearerSession.tokens }),
-      }
+        ...(bearerSession.tokens === undefined ? {} : { tokens: bearerSession.tokens }),
+      };
     }
   }
 
-  const session = await verifySession(request, env, ctx)
+  const session = await verifySession(request, env, ctx);
 
   if (session === undefined) {
-    return undefined
+    return undefined;
   }
 
-  await upsertUser(identityDbForEnv(env), session.user)
+  await upsertUser(identityDbForEnv(env), session.user);
 
   if (session.tokens === undefined) {
     return {
-      kind: 'human',
+      kind: "human",
       user: session.user,
-    }
+    };
   }
 
   return {
-    kind: 'human',
+    kind: "human",
     user: session.user,
     tokens: session.tokens,
-  }
-}
+  };
+};
 
 /**
  * Resolves the Khala Sync scope-owner userId for an authenticated actor
@@ -3514,22 +3219,20 @@ const authenticateRequestActor = async (
  * none possible outside the owner-approved link flow) would still only ever
  * grant access to the SAME scope that flow approved, never an arbitrary one.
  */
-export const resolveKhalaSyncActorUserId = (
-  actor: AuthenticatedActor,
-): string =>
-  actor.kind === 'agent'
+export const resolveKhalaSyncActorUserId = (actor: AuthenticatedActor): string =>
+  actor.kind === "agent"
     ? (actor.agent.credential.openauthUserId ?? actor.agent.user.id)
-    : actor.user.userId
+    : actor.user.userId;
 
 const actorJson = (actor: AuthenticatedActor) => {
-  if (actor.kind === 'agent') {
+  if (actor.kind === "agent") {
     return {
       kind: actor.kind,
       userId: actor.agent.user.id,
       displayName: actor.agent.user.displayName,
       credentialId: actor.agent.credential.id,
       tokenPrefix: actor.agent.credential.tokenPrefix,
-    }
+    };
   }
 
   return {
@@ -3538,70 +3241,66 @@ const actorJson = (actor: AuthenticatedActor) => {
     login: actor.user.login,
     email: actor.user.email,
     name: actor.user.name,
-  }
-}
+  };
+};
 
 const cloneResponseWithHeaders = (
   response: Response,
   mutateHeaders: (headers: Headers) => void,
 ): Response => {
-  const headers = new Headers(response.headers)
-  mutateHeaders(headers)
+  const headers = new Headers(response.headers);
+  mutateHeaders(headers);
 
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
     headers,
-  })
-}
+  });
+};
 
 const handleAppShellPage = async (
   request: Request,
   env: OpenAgentsWorkerEnv,
   ctx: ExecutionContext,
 ): Promise<Response> => {
-  const cookies = parseCookies(request)
-  const hadSessionCookie =
-    cookies.has(ACCESS_COOKIE) || cookies.has(REFRESH_COOKIE)
-  const session = await verifySession(request, env, ctx)
-  const tokens = session?.tokens
-  const assetResponse = await fetchAppShellWithPylonStatsBootPayload(
-    request,
-    env,
-  )
+  const cookies = parseCookies(request);
+  const hadSessionCookie = cookies.has(ACCESS_COOKIE) || cookies.has(REFRESH_COOKIE);
+  const session = await verifySession(request, env, ctx);
+  const tokens = session?.tokens;
+  const assetResponse = await fetchAppShellWithPylonStatsBootPayload(request, env);
 
   if (tokens !== undefined) {
-    return cloneResponseWithHeaders(assetResponse, headers => {
-      appendSessionCookies(headers, tokens)
-    })
+    return cloneResponseWithHeaders(assetResponse, (headers) => {
+      appendSessionCookies(headers, tokens);
+    });
   }
 
   if (hadSessionCookie && session === undefined) {
-    return cloneResponseWithHeaders(assetResponse, headers => {
-      appendClearSessionCookies(headers, new URL(request.url).hostname)
-    })
+    return cloneResponseWithHeaders(assetResponse, (headers) => {
+      appendClearSessionCookies(headers, new URL(request.url).hostname);
+    });
   }
 
-  return assetResponse
-}
+  return assetResponse;
+};
 
 const readAuthenticatedPageContext = async (
   env: OpenAgentsWorkerEnv,
   session: VerifiedSession,
 ): Promise<
   Readonly<{
-    totals: UserKindTotals | undefined
-    teams: ReadonlyArray<UserTeam>
-    providerAccounts: ProviderAccountBundle
-    githubWriteConnections: GitHubWriteConnectionBundle
-    tokenLeaderboards: AutopilotTokenLeaderboards
-    onboarding: Awaited<ReturnType<typeof readOnboardingStatusForUser>>
+    totals: UserKindTotals | undefined;
+    teams: ReadonlyArray<UserTeam>;
+    providerAccounts: ProviderAccountBundle;
+    githubWriteConnections: GitHubWriteConnectionBundle;
+    tokenLeaderboards: AutopilotTokenLeaderboards;
+    onboarding: Awaited<ReturnType<typeof readOnboardingStatusForUser>>;
   }>
 > => {
-  await upsertUser(identityDbForEnv(env), session.user)
+  await upsertUser(identityDbForEnv(env), session.user);
 
-  const providerAccountRepository = makeProviderAccountRepositoryForEnv(env)
-  const githubWriteRepository = makeGitHubWriteRepositoryForEnv(env)
+  const providerAccountRepository = makeProviderAccountRepositoryForEnv(env);
+  const githubWriteRepository = makeGitHubWriteRepositoryForEnv(env);
   const [
     maybeTotals,
     teams,
@@ -3613,19 +3312,12 @@ const readAuthenticatedPageContext = async (
     isOpenAgentsAdminEmail(session.user.email)
       ? readUserKindTotals(identityDbForEnv(env))
       : Promise.resolve(undefined),
-    readTeamsForUser(
-      openAgentsDatabase(env),
-      identityDbForEnv(env),
-      session.user.userId,
-    ),
+    readTeamsForUser(openAgentsDatabase(env), identityDbForEnv(env), session.user.userId),
     listProviderAccountsForUser(providerAccountRepository, session.user.userId),
-    listGitHubWriteConnectionsForUser(
-      githubWriteRepository,
-      session.user.userId,
-    ),
+    listGitHubWriteConnectionsForUser(githubWriteRepository, session.user.userId),
     readTokenUsageLeaderboardsForUser(env, session.user.userId),
     readOnboardingStatusForUser(env, session.user.userId),
-  ])
+  ]);
 
   return {
     totals: maybeTotals,
@@ -3634,114 +3326,106 @@ const readAuthenticatedPageContext = async (
     githubWriteConnections,
     tokenLeaderboards,
     onboarding,
-  }
-}
+  };
+};
 
 const handleHomePage = async (
   request: Request,
   env: OpenAgentsWorkerEnv,
   ctx: ExecutionContext,
 ): Promise<Response> => {
-  const shellResponse = await handleAppShellPage(request, env, ctx)
-  const headers = new Headers(shellResponse.headers)
+  const shellResponse = await handleAppShellPage(request, env, ctx);
+  const headers = new Headers(shellResponse.headers);
   headers.append(
-    'Link',
+    "Link",
     '<https://openagents.com/api/public/home>; rel="alternate"; type="application/json"; title="OpenAgents homepage JSON"',
-  )
+  );
   headers.append(
-    'Link',
+    "Link",
     '<https://openagents.com/.well-known/openagents.json>; rel="service-desc"; type="application/json"; title="OpenAgents capability manifest"',
-  )
-  headers.set(
-    'X-OpenAgents-Homepage-Json',
-    'https://openagents.com/api/public/home',
-  )
+  );
+  headers.set("X-OpenAgents-Homepage-Json", "https://openagents.com/api/public/home");
 
   return new Response(shellResponse.body, {
     headers,
     status: shellResponse.status,
     statusText: shellResponse.statusText,
-  })
-}
+  });
+};
 
 const handlePublicHomeApi = (request: Request) =>
-  request.method !== 'GET'
-    ? Effect.succeed(methodNotAllowed(['GET']))
+  request.method !== "GET"
+    ? Effect.succeed(methodNotAllowed(["GET"]))
     : Effect.succeed(
         noStoreJsonResponse({
-          schemaVersion: 'openagents.public_home.v1',
+          schemaVersion: "openagents.public_home.v1",
           page: {
-            canonicalUrl: 'https://openagents.com/',
-            htmlUrl: 'https://openagents.com/',
-            title: 'OpenAgents',
+            canonicalUrl: "https://openagents.com/",
+            htmlUrl: "https://openagents.com/",
+            title: "OpenAgents",
           },
           agentDiscovery: {
-            homepageJson: 'https://openagents.com/api/public/home',
-            productPromises:
-              'https://openagents.com/api/public/product-promises',
-            capabilityManifest:
-              'https://openagents.com/.well-known/openagents.json',
-            agentInstructions: 'https://openagents.com/AGENTS.md',
-            openApi: 'https://openagents.com/api/openapi.json',
+            homepageJson: "https://openagents.com/api/public/home",
+            productPromises: "https://openagents.com/api/public/product-promises",
+            capabilityManifest: "https://openagents.com/.well-known/openagents.json",
+            agentInstructions: "https://openagents.com/AGENTS.md",
+            openApi: "https://openagents.com/api/openapi.json",
           },
           homepageData: [
             {
-              id: 'capability_manifest',
-              href: 'https://openagents.com/.well-known/openagents.json',
-              method: 'GET',
+              id: "capability_manifest",
+              href: "https://openagents.com/.well-known/openagents.json",
+              method: "GET",
               description:
-                'Machine-readable OpenAgents capability manifest for agents and operators.',
+                "Machine-readable OpenAgents capability manifest for agents and operators.",
             },
             {
-              id: 'openapi',
-              href: 'https://openagents.com/api/openapi.json',
-              method: 'GET',
-              description:
-                'Machine-readable OpenAPI contract for public-safe API routes.',
+              id: "openapi",
+              href: "https://openagents.com/api/openapi.json",
+              method: "GET",
+              description: "Machine-readable OpenAPI contract for public-safe API routes.",
             },
             {
-              id: 'pylon_stats',
-              href: 'https://openagents.com/api/public/pylon-stats',
-              method: 'GET',
+              id: "pylon_stats",
+              href: "https://openagents.com/api/public/pylon-stats",
+              method: "GET",
               description:
-                'Pylon heartbeat, readiness, and receipt-gated accepted-work counters shown on the homepage.',
+                "Pylon heartbeat, readiness, and receipt-gated accepted-work counters shown on the homepage.",
             },
             {
-              id: 'product_promises',
-              href: 'https://openagents.com/api/public/product-promises',
-              method: 'GET',
+              id: "product_promises",
+              href: "https://openagents.com/api/public/product-promises",
+              method: "GET",
               description:
-                'Versioned OpenAgents product-promise registry for agents and users, including live, scoped, gated, degraded, and planned claim states.',
+                "Versioned OpenAgents product-promise registry for agents and users, including live, scoped, gated, degraded, and planned claim states.",
             },
             {
-              id: 'forum_tip_leaderboards',
-              href: 'https://openagents.com/api/forum/tip-leaderboards?limit=10',
-              method: 'GET',
-              description:
-                'Public Forum tip paid and settled evidence rows shown on the homepage.',
+              id: "forum_tip_leaderboards",
+              href: "https://openagents.com/api/forum/tip-leaderboards?limit=10",
+              method: "GET",
+              description: "Public Forum tip paid and settled evidence rows shown on the homepage.",
             },
             {
-              id: 'forum_launch_status',
-              href: 'https://openagents.com/api/forum/launch-status',
-              method: 'GET',
+              id: "forum_launch_status",
+              href: "https://openagents.com/api/forum/launch-status",
+              method: "GET",
               description:
-                'Forum posting, moderation/reporting, and tipping launch gates shown on the homepage.',
+                "Forum posting, moderation/reporting, and tipping launch gates shown on the homepage.",
             },
             {
-              id: 'public_adjutant_activity',
-              href: 'https://openagents.com/api/public/adjutant/activity',
-              method: 'GET',
-              description:
-                'Public Autopilot activity projection linked from the homepage.',
+              id: "public_adjutant_activity",
+              href: "https://openagents.com/api/public/adjutant/activity",
+              method: "GET",
+              description: "Public Autopilot activity projection linked from the homepage.",
             },
           ],
           notes: [
-            'This endpoint is public and safe for agents to crawl.',
-            'Use the listed hrefs for the live JSON data behind the homepage.',
-            'This endpoint is discovery only and grants no write authority.',
+            "This endpoint is public and safe for agents to crawl.",
+            "Use the listed hrefs for the live JSON data behind the homepage.",
+            "This endpoint is discovery only and grants no write authority.",
           ],
         }),
-      )
+      );
 
 const handleThreadPage = async (
   request: Request,
@@ -3749,230 +3433,205 @@ const handleThreadPage = async (
   ctx: ExecutionContext,
   threadId: string,
 ): Promise<Response> => {
-  const session = await verifySession(request, env, ctx)
+  const session = await verifySession(request, env, ctx);
 
   if (session !== undefined) {
-    const accessResult = await threadRouteAccessBundle(
-      env,
-      session.user.userId,
-      threadId,
-    )
+    const accessResult = await threadRouteAccessBundle(env, session.user.userId, threadId);
 
     if (isRouteAccessError(accessResult)) {
       const response = routeAccessResponse(accessResult, {
-        href: '/',
-        surface: 'product',
-      })
+        href: "/",
+        surface: "product",
+      });
 
       if (session.tokens !== undefined) {
-        appendSessionCookies(response.headers, session.tokens)
+        appendSessionCookies(response.headers, session.tokens);
       }
 
-      return response
+      return response;
     }
   }
 
-  return handleAppShellPage(request, env, ctx)
-}
+  return handleAppShellPage(request, env, ctx);
+};
 
 const isAgentClaimReturnPath = (pathname: string): boolean =>
-  /^\/agents\/claims\/[^/]+$/.test(pathname)
+  /^\/agents\/claims\/[^/]+$/.test(pathname);
 
 const isForumReturnPath = (pathname: string): boolean =>
-  pathname === '/forum' ||
+  pathname === "/forum" ||
   /^\/forum\/(?:f|t)\/[^/]+$/.test(pathname) ||
   /^\/forum\/receipts\/[^/]+$/.test(pathname) ||
   // Agent/participant profile pages: `/forum/u/<id>` and `/forum/u/<id>/<slug>`
   // (#8534) — keep them a valid post-login return target so they render
   // instead of dropping the visitor to home.
-  /^\/forum\/u\/[^/]+(?:\/[^/]+)?$/.test(pathname)
+  /^\/forum\/u\/[^/]+(?:\/[^/]+)?$/.test(pathname);
 
 const serializeBrowserReadableCookie = (
   name: string,
   value: string,
   maxAgeSeconds: number,
-  path = '/',
+  path = "/",
 ): string =>
   [
     `${name}=${encodeURIComponent(value)}`,
     `Max-Age=${Math.max(0, Math.floor(maxAgeSeconds))}`,
     `Path=${path}`,
-    'Secure',
-    'SameSite=Lax',
-  ].join('; ')
+    "Secure",
+    "SameSite=Lax",
+  ].join("; ");
 
-const expiredBrowserReadableCookie = (name: string, path = '/'): string =>
-  serializeBrowserReadableCookie(name, '', 0, path)
+const expiredBrowserReadableCookie = (name: string, path = "/"): string =>
+  serializeBrowserReadableCookie(name, "", 0, path);
 
 const loginFailedCookie = (): string =>
   serializeBrowserReadableCookie(
     LOGIN_ERROR_COOKIE,
-    'github_login_failed',
+    "github_login_failed",
     LOGIN_ERROR_MAX_AGE_SECONDS,
-  )
+  );
 
 const cleanLoginReturnPath = (value: string | null): string | undefined => {
-  const raw = value?.trim()
+  const raw = value?.trim();
 
   if (
     raw === undefined ||
-    raw === '' ||
-    !raw.startsWith('/') ||
-    raw.startsWith('//') ||
-    raw.includes('\n') ||
-    raw.includes('\r')
+    raw === "" ||
+    !raw.startsWith("/") ||
+    raw.startsWith("//") ||
+    raw.includes("\n") ||
+    raw.includes("\r")
   ) {
-    return undefined
+    return undefined;
   }
 
   try {
-    const url = new URL(raw, 'https://openagents.local')
+    const url = new URL(raw, "https://openagents.local");
 
     if (
-      url.origin !== 'https://openagents.local' ||
-      url.pathname === '/auth/callback' ||
-      url.pathname.startsWith('/login')
+      url.origin !== "https://openagents.local" ||
+      url.pathname === "/auth/callback" ||
+      url.pathname.startsWith("/login")
     ) {
-      return undefined
+      return undefined;
     }
 
-    if (url.pathname === '/api/team-workspace-invites/accept') {
-      const token = url.searchParams.get('token')?.trim()
+    if (url.pathname === "/api/team-workspace-invites/accept") {
+      const token = url.searchParams.get("token")?.trim();
 
-      return token === undefined || token === ''
+      return token === undefined || token === ""
         ? undefined
-        : `${url.pathname}?token=${encodeURIComponent(token)}`
+        : `${url.pathname}?token=${encodeURIComponent(token)}`;
     }
 
-    if (url.pathname === '/api/pylon/auth/openagents/device/verify') {
-      const attempt = url.searchParams.get('attempt')?.trim()
-      const code = url.searchParams.get('code')?.trim().toUpperCase()
+    if (url.pathname === "/api/pylon/auth/openagents/device/verify") {
+      const attempt = url.searchParams.get("attempt")?.trim();
+      const code = url.searchParams.get("code")?.trim().toUpperCase();
 
       return attempt === undefined ||
         code === undefined ||
         !/^pylon_openauth_[A-Za-z0-9_-]+$/.test(attempt) ||
         !/^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(code)
         ? undefined
-        : `${url.pathname}?attempt=${encodeURIComponent(attempt)}&code=${encodeURIComponent(code)}`
+        : `${url.pathname}?attempt=${encodeURIComponent(attempt)}&code=${encodeURIComponent(code)}`;
     }
 
     if (isKhalaCodeOpenAgentsAuthVerifyReturnPath(url)) {
-      const attempt = url.searchParams.get('attempt')?.trim() ?? ''
-      const code = url.searchParams.get('code')?.trim().toUpperCase() ?? ''
+      const attempt = url.searchParams.get("attempt")?.trim() ?? "";
+      const code = url.searchParams.get("code")?.trim().toUpperCase() ?? "";
 
-      return `${url.pathname}?attempt=${encodeURIComponent(attempt)}&code=${encodeURIComponent(code)}`
+      return `${url.pathname}?attempt=${encodeURIComponent(attempt)}&code=${encodeURIComponent(code)}`;
     }
 
-    const isAgentClaimReturn = isAgentClaimReturnPath(url.pathname)
+    const isAgentClaimReturn = isAgentClaimReturnPath(url.pathname);
 
     if (
-      url.pathname === '/' ||
-      url.pathname === '/billing' ||
-      url.pathname === '/onboarding' ||
-      url.pathname === '/order' ||
+      url.pathname === "/" ||
+      url.pathname === "/billing" ||
+      url.pathname === "/onboarding" ||
+      url.pathname === "/order" ||
       isForumReturnPath(url.pathname) ||
       isAgentClaimReturn ||
-      url.pathname.startsWith('/orders/') ||
-      url.pathname.startsWith('/share/')
+      url.pathname.startsWith("/orders/") ||
+      url.pathname.startsWith("/share/")
     ) {
-      return isAgentClaimReturn ? url.pathname : `${url.pathname}${url.search}`
+      return isAgentClaimReturn ? url.pathname : `${url.pathname}${url.search}`;
     }
 
-    return undefined
+    return undefined;
   } catch {
-    return undefined
+    return undefined;
   }
-}
+};
 
 const handleLoginStart = async (
   request: Request,
   env: OpenAgentsWorkerEnv,
-  provider: 'github' | 'code',
+  provider: "github" | "code",
 ) => {
-  const config = getOpenAgentsWorkerConfig(env)
-  const redirectUri = `${getAppOrigin(env)}/auth/callback`
+  const config = getOpenAgentsWorkerConfig(env);
+  const redirectUri = `${getAppOrigin(env)}/auth/callback`;
   const { challenge, url } = await createClient({
     clientID: config.openauth.clientId,
     issuer: getIssuerOrigin(env),
-  }).authorize(redirectUri, 'code', {
+  }).authorize(redirectUri, "code", {
     provider,
-  })
-  const requestUrl = new URL(request.url)
+  });
+  const requestUrl = new URL(request.url);
   const maybeReturnTo = cleanLoginReturnPath(
-    requestUrl.searchParams.get('returnTo') ??
-      requestUrl.searchParams.get('return_to'),
-  )
+    requestUrl.searchParams.get("returnTo") ?? requestUrl.searchParams.get("return_to"),
+  );
   const cookies = [
-    serializeCookie(
-      AUTH_STATE_COOKIE,
-      challenge.state,
-      AUTH_STATE_MAX_AGE_SECONDS,
-      '/auth',
-    ),
-    serializeCookie(
-      LOGIN_ORIGIN_COOKIE,
-      requestUrl.origin,
-      AUTH_STATE_MAX_AGE_SECONDS,
-      '/auth',
-    ),
+    serializeCookie(AUTH_STATE_COOKIE, challenge.state, AUTH_STATE_MAX_AGE_SECONDS, "/auth"),
+    serializeCookie(LOGIN_ORIGIN_COOKIE, requestUrl.origin, AUTH_STATE_MAX_AGE_SECONDS, "/auth"),
     maybeReturnTo === undefined
-      ? expiredCookie(LOGIN_RETURN_TO_COOKIE, '/auth')
-      : serializeCookie(
-          LOGIN_RETURN_TO_COOKIE,
-          maybeReturnTo,
-          AUTH_STATE_MAX_AGE_SECONDS,
-          '/auth',
-        ),
-  ]
+      ? expiredCookie(LOGIN_RETURN_TO_COOKIE, "/auth")
+      : serializeCookie(LOGIN_RETURN_TO_COOKIE, maybeReturnTo, AUTH_STATE_MAX_AGE_SECONDS, "/auth"),
+  ];
 
-  return redirectResponse(url, cookies)
-}
+  return redirectResponse(url, cookies);
+};
 
 const handleGitHubStart = (request: Request, env: OpenAgentsWorkerEnv) =>
-  handleLoginStart(request, env, 'github')
+  handleLoginStart(request, env, "github");
 
 const handleEmailStart = (request: Request, env: OpenAgentsWorkerEnv) =>
-  handleLoginStart(request, env, 'code')
+  handleLoginStart(request, env, "code");
 
 const githubWriteResultRedirect = (env: OpenAgentsWorkerEnv): Response =>
-  redirectResponse(githubWriteResultRedirectLocation(getAppOrigin(env)))
+  redirectResponse(githubWriteResultRedirectLocation(getAppOrigin(env)));
 
 const handleGitHubWriteStart = async (
   request: Request,
   env: OpenAgentsWorkerEnv,
   ctx: ExecutionContext,
 ): Promise<Response> => {
-  if (request.method !== 'GET') {
-    return methodNotAllowed(['GET'])
+  if (request.method !== "GET") {
+    return methodNotAllowed(["GET"]);
   }
 
-  const session = await requireBrowserSession(request, env, ctx)
+  const session = await requireBrowserSession(request, env, ctx);
 
   if (session === undefined) {
-    return redirectResponse(getAppOrigin(env))
+    return redirectResponse(getAppOrigin(env));
   }
 
   // The GitHub-write connection binds to the signed-in GitHub identity. Email
   // (one-time-code) accounts have none, so there is nothing to connect here.
   if (session.user.githubId === undefined || session.user.login === undefined) {
-    return redirectResponse(getAppOrigin(env))
+    return redirectResponse(getAppOrigin(env));
   }
 
-  const attempt = await startGitHubWriteConnectionAttempt(
-    makeGitHubWriteRepositoryForEnv(env),
-    {
-      expectedGithubId: session.user.githubId,
-      expectedGithubLogin: session.user.login,
-      redirectAfter: '/',
-      scopes: GITHUB_WRITE_REQUIRED_SCOPES,
-      userId: session.user.userId,
-    },
-  )
+  const attempt = await startGitHubWriteConnectionAttempt(makeGitHubWriteRepositoryForEnv(env), {
+    expectedGithubId: session.user.githubId,
+    expectedGithubLogin: session.user.login,
+    redirectAfter: "/",
+    scopes: GITHUB_WRITE_REQUIRED_SCOPES,
+    userId: session.user.userId,
+  });
 
-  return redirectResponse(
-    gitHubWriteAuthorizeUrl(env, attempt.state, attempt.scopes),
-  )
-}
+  return redirectResponse(gitHubWriteAuthorizeUrl(env, attempt.state, attempt.scopes));
+};
 
 const handleGitHubWriteCallback = async (
   request: Request,
@@ -3980,77 +3639,75 @@ const handleGitHubWriteCallback = async (
   attempt: GitHubWriteConnectionAttemptRecord | undefined,
 ): Promise<Response> => {
   if (attempt === undefined) {
-    return githubWriteResultRedirect(env)
+    return githubWriteResultRedirect(env);
   }
 
-  const repository = makeGitHubWriteRepositoryForEnv(env)
-  const url = new URL(request.url)
-  const now = workerRuntime.now()
-  const nowIso = now.toISOString()
+  const repository = makeGitHubWriteRepositoryForEnv(env);
+  const url = new URL(request.url);
+  const now = workerRuntime.now();
+  const nowIso = now.toISOString();
   const fail = async (
-    status: 'denied' | 'expired' | 'failed',
+    status: "denied" | "expired" | "failed",
     reason: string,
   ): Promise<Response> => {
-    await repository
-      .markAttemptFailed(attempt, status, reason, nowIso)
-      .catch(error => {
-        logWorkerRouteError('github_write_attempt_mark_failed', error, {
-          attemptId: attempt.id,
-          errorName: errorName(error),
-          status,
-        })
-      })
+    await repository.markAttemptFailed(attempt, status, reason, nowIso).catch((error) => {
+      logWorkerRouteError("github_write_attempt_mark_failed", error, {
+        attemptId: attempt.id,
+        errorName: errorName(error),
+        status,
+      });
+    });
 
-    return githubWriteResultRedirect(env)
-  }
+    return githubWriteResultRedirect(env);
+  };
 
-  if (attempt.status !== 'pending') {
-    return githubWriteResultRedirect(env)
+  if (attempt.status !== "pending") {
+    return githubWriteResultRedirect(env);
   }
 
   if (Date.parse(attempt.expiresAt) <= now.getTime()) {
-    return fail('expired', 'GitHub write connection state expired.')
+    return fail("expired", "GitHub write connection state expired.");
   }
 
-  const error = url.searchParams.get('error')
+  const error = url.searchParams.get("error");
 
   if (error !== null) {
-    return fail(error === 'access_denied' ? 'denied' : 'failed', error)
+    return fail(error === "access_denied" ? "denied" : "failed", error);
   }
 
-  const code = url.searchParams.get('code')
+  const code = url.searchParams.get("code");
 
   if (code === null) {
-    return fail('failed', 'GitHub write OAuth code is missing.')
+    return fail("failed", "GitHub write OAuth code is missing.");
   }
 
   try {
-    const token = await exchangeGitHubOAuthCode(env, code)
-    const scopes = parseGitHubScopeHeader(token.scope)
+    const token = await exchangeGitHubOAuthCode(env, code);
+    const scopes = parseGitHubScopeHeader(token.scope);
     const githubUser = await fetchGitHubJson(
       GitHubUser,
-      'https://api.github.com/user',
+      "https://api.github.com/user",
       token.access_token,
-    ).catch(error => {
+    ).catch((error) => {
       throw new GitHubWriteApiFailure({
-        operation: 'fetch_authenticated_user',
+        operation: "fetch_authenticated_user",
         status: 0,
         message: errorMessage(error),
-      })
-    })
-    const githubId = String(githubUser.id)
+      });
+    });
+    const githubId = String(githubUser.id);
 
     try {
-      requireGitHubWriteCallbackAccount(attempt, githubId)
-      requireGitHubWritePermissions(scopes)
+      requireGitHubWriteCallbackAccount(attempt, githubId);
+      requireGitHubWritePermissions(scopes);
     } catch (error) {
-      return fail('failed', gitHubWriteRouteErrorMessage(error))
+      return fail("failed", gitHubWriteRouteErrorMessage(error));
     }
 
-    const connectionRef = githubWriteConnectionRef(workerRuntime.makeUuid())
-    const secretRef = githubWriteSecretRef(connectionRef)
+    const connectionRef = githubWriteConnectionRef(workerRuntime.makeUuid());
+    const secretRef = githubWriteSecretRef(connectionRef);
 
-    await storeGitHubWriteAccessToken(env, connectionRef, token.access_token)
+    await storeGitHubWriteAccessToken(env, connectionRef, token.access_token);
 
     try {
       await recordGitHubWriteConnectionConnected(repository, {
@@ -4060,48 +3717,45 @@ const handleGitHubWriteCallback = async (
         githubLogin: githubUser.login,
         scopes,
         secretRef,
-      })
+      });
     } catch (error) {
-      await authKvStoreForEnv(env).delete(githubWriteSecretKey(connectionRef))
-      throw error
+      await authKvStoreForEnv(env).delete(githubWriteSecretKey(connectionRef));
+      throw error;
     }
 
-    return githubWriteResultRedirect(env)
+    return githubWriteResultRedirect(env);
   } catch (error) {
-    logWorkerRouteError('github_write_callback_failed', error, {
+    logWorkerRouteError("github_write_callback_failed", error, {
       attemptId: attempt.id,
       errorName: errorName(error),
-    })
+    });
 
-    return fail('failed', 'GitHub write connection failed.')
+    return fail("failed", "GitHub write connection failed.");
   }
-}
+};
 
 const handleGitHubWriteConnectionsApi = async (
   request: Request,
   env: OpenAgentsWorkerEnv,
   ctx: ExecutionContext,
 ): Promise<Response> => {
-  if (request.method !== 'GET') {
-    return methodNotAllowed(['GET'])
+  if (request.method !== "GET") {
+    return methodNotAllowed(["GET"]);
   }
 
-  const session = await requireBrowserSession(request, env, ctx)
+  const session = await requireBrowserSession(request, env, ctx);
 
   if (session === undefined) {
-    return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+    return noStoreJsonResponse({ error: "unauthorized" }, { status: 401 });
   }
 
   const githubWriteConnections = await listGitHubWriteConnectionsForUser(
     makeGitHubWriteRepositoryForEnv(env),
     session.user.userId,
-  )
+  );
 
-  return appendRefreshedSessionCookies(
-    noStoreJsonResponse({ githubWriteConnections }),
-    session,
-  )
-}
+  return appendRefreshedSessionCookies(noStoreJsonResponse({ githubWriteConnections }), session);
+};
 
 const handleGitHubWriteDisconnectApi = async (
   request: Request,
@@ -4109,50 +3763,50 @@ const handleGitHubWriteDisconnectApi = async (
   ctx: ExecutionContext,
   connectionRef: string,
 ): Promise<Response> => {
-  if (request.method !== 'POST') {
-    return methodNotAllowed(['POST'])
+  if (request.method !== "POST") {
+    return methodNotAllowed(["POST"]);
   }
 
-  const session = await requireBrowserSession(request, env, ctx)
+  const session = await requireBrowserSession(request, env, ctx);
 
   if (session === undefined) {
-    return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+    return noStoreJsonResponse({ error: "unauthorized" }, { status: 401 });
   }
 
   if (session.user.login === undefined) {
-    return noStoreJsonResponse({ error: 'no_github_identity' }, { status: 400 })
+    return noStoreJsonResponse({ error: "no_github_identity" }, { status: 400 });
   }
 
-  const now = workerRuntime.nowIso()
-  const repository = makeGitHubWriteRepositoryForEnv(env)
+  const now = workerRuntime.nowIso();
+  const repository = makeGitHubWriteRepositoryForEnv(env);
   const connection = await repository.disconnectConnection({
     connectionRef,
     metadataJson: gitHubWriteConnectionMetadataJson({
       githubLogin: session.user.login,
       scopes: [],
-      source: 'browser_disconnect',
-      status: 'disconnected',
+      source: "browser_disconnect",
+      status: "disconnected",
     }),
     now,
     userId: session.user.userId,
-  })
+  });
 
   if (connection === undefined) {
-    return noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
+    return noStoreJsonResponse({ error: "not_found" }, { status: 404 });
   }
 
-  await authKvStoreForEnv(env).delete(githubWriteSecretKey(connectionRef))
+  await authKvStoreForEnv(env).delete(githubWriteSecretKey(connectionRef));
 
   return appendRefreshedSessionCookies(
     noStoreJsonResponse({
       connection,
     }),
     session,
-  )
-}
+  );
+};
 
 class GitHubWriteGrantSerializationError extends S.TaggedErrorClass<GitHubWriteGrantSerializationError>()(
-  'GitHubWriteGrantSerializationError',
+  "GitHubWriteGrantSerializationError",
   {
     connectionRef: S.String,
     message: S.String,
@@ -4164,161 +3818,155 @@ const runnerResolvedGitHubWriteGrantJson = (
   accessToken: string,
 ) => {
   if (grant === undefined) {
-    return undefined
+    return undefined;
   }
 
-  const expiresAt = Date.parse(grant.expiresAt)
+  const expiresAt = Date.parse(grant.expiresAt);
 
   if (!Number.isFinite(expiresAt)) {
     throw new GitHubWriteGrantSerializationError({
       connectionRef: grant.connectionRef,
-      message: 'Resolved GitHub write grant expiry is invalid.',
-    })
+      message: "Resolved GitHub write grant expiry is invalid.",
+    });
   }
 
   return {
     connectionRef: grant.connectionRef,
     credential: {
       accessToken,
-      provider: 'github',
+      provider: "github",
       scopes: grant.scopes,
-      tokenType: 'oauth',
+      tokenType: "oauth",
     },
     expiresAt,
     githubLogin: grant.githubLogin,
     grantRef: grant.grantRef,
     materialization: {
       authRef: grant.secretRef,
-      gitCredentialEnv: 'GITHUB_TOKEN',
-      provider: 'github',
-      remoteUrlMode: 'https_token',
+      gitCredentialEnv: "GITHUB_TOKEN",
+      provider: "github",
+      remoteUrlMode: "https_token",
       scrubAfterCloseout: true,
     },
     requestedAction: grant.requestedAction,
     runnerSessionId: grant.runnerSessionId,
-    status: 'issued',
-  }
-}
+    status: "issued",
+  };
+};
 
-const redactedGrantErrorMessage = (error: unknown): string =>
-  gitHubWriteRouteErrorMessage(error)
+const redactedGrantErrorMessage = (error: unknown): string => gitHubWriteRouteErrorMessage(error);
 
 const grantResolveErrorStatus = (error: unknown): number => {
-  return gitHubWriteRouteErrorStatus(error)
-}
+  return gitHubWriteRouteErrorStatus(error);
+};
 
 const handleGitHubWriteGrantResolveApi = async (
   request: Request,
   env: OpenAgentsWorkerEnv,
 ): Promise<Response> => {
-  if (request.method !== 'POST') {
-    return methodNotAllowed(['POST'])
+  if (request.method !== "POST") {
+    return methodNotAllowed(["POST"]);
   }
 
-  const actor = await requireProviderServiceActor(request, env)
+  const actor = await requireProviderServiceActor(request, env);
 
   if (actor === undefined) {
-    return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+    return noStoreJsonResponse({ error: "unauthorized" }, { status: 401 });
   }
 
-  const body = await readJsonObject(request).catch(
-    (): Record<string, unknown> => ({}),
-  )
-  const grantRef =
-    optionalString(body.githubWriteGrantRef) ?? optionalString(body.grantRef)
+  const body = await readJsonObject(request).catch((): Record<string, unknown> => ({}));
+  const grantRef = optionalString(body.githubWriteGrantRef) ?? optionalString(body.grantRef);
 
   if (grantRef === undefined) {
     return noStoreJsonResponse(
-      { error: 'bad_request', reason: 'githubWriteGrantRef is required' },
+      { error: "bad_request", reason: "githubWriteGrantRef is required" },
       { status: 400 },
-    )
+    );
   }
 
-  const runnerSessionId =
-    optionalString(body.runnerSessionId) ?? optionalString(body.runId)
+  const runnerSessionId = optionalString(body.runnerSessionId) ?? optionalString(body.runId);
 
   try {
-    const grant = await resolveGitHubWriteGrant(
-      makeGitHubWriteRepositoryForEnv(env),
-      {
-        grantRef,
-        ...(runnerSessionId === undefined ? {} : { runnerSessionId }),
-      },
-    )
+    const grant = await resolveGitHubWriteGrant(makeGitHubWriteRepositoryForEnv(env), {
+      grantRef,
+      ...(runnerSessionId === undefined ? {} : { runnerSessionId }),
+    });
 
     if (grant === undefined) {
-      return noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
+      return noStoreJsonResponse({ error: "not_found" }, { status: 404 });
     }
 
-    const accessToken = await authKvStoreForEnv(env).get(
-      githubWriteSecretKey(grant.connectionRef),
-    )
+    const accessToken = await authKvStoreForEnv(env).get(githubWriteSecretKey(grant.connectionRef));
 
     if (accessToken === null) {
       return noStoreJsonResponse(
         {
-          error: 'github_write_secret_missing',
-          message: 'GitHub write credential is not available.',
+          error: "github_write_secret_missing",
+          message: "GitHub write credential is not available.",
         },
         { status: 409 },
-      )
+      );
     }
 
     return noStoreJsonResponse({
       grant: runnerResolvedGitHubWriteGrantJson(grant, accessToken),
-    })
+    });
   } catch (error) {
-    logWorkerRouteError('github_write_grant_resolve_failed', error, {
+    logWorkerRouteError("github_write_grant_resolve_failed", error, {
       errorName: gitHubWriteRouteErrorName(error),
       grantRef,
       runnerSessionId,
-    })
+    });
 
     return noStoreJsonResponse(
       {
-        error: 'github_write_grant_resolve_failed',
+        error: "github_write_grant_resolve_failed",
         message: redactedGrantErrorMessage(error),
       },
       { status: grantResolveErrorStatus(error) },
-    )
+    );
   }
-}
+};
 
 const handlePortableCapabilityGrantAuthorityApi = async (
   request: Request,
   env: OpenAgentsWorkerEnv,
 ): Promise<Response> => {
-  if (request.method !== 'POST') return methodNotAllowed(['POST'])
-  const actor = await requireProviderServiceActor(request, env)
+  if (request.method !== "POST") return methodNotAllowed(["POST"]);
+  const actor = await requireProviderServiceActor(request, env);
   if (actor === undefined) {
-    return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+    return noStoreJsonResponse({ error: "unauthorized" }, { status: 401 });
   }
-  const body = await readJsonObject(request).catch(
-    (): Record<string, unknown> => ({}),
-  )
-  const ownerUserId = optionalString(body.ownerUserId)
-  const grantRef = optionalString(body.grantRef)
-  const sourceGrantRef = optionalString(body.sourceGrantRef)
-  const destinationGrantRef = optionalString(body.destinationGrantRef)
+  const body = await readJsonObject(request).catch((): Record<string, unknown> => ({}));
+  const ownerUserId = optionalString(body.ownerUserId);
+  const grantRef = optionalString(body.grantRef);
+  const sourceGrantRef = optionalString(body.sourceGrantRef);
+  const destinationGrantRef = optionalString(body.destinationGrantRef);
   if (ownerUserId === undefined) {
     return noStoreJsonResponse(
-      { error: 'bad_request', reason: 'ownerUserId is required' },
+      { error: "bad_request", reason: "ownerUserId is required" },
       { status: 400 },
-    )
+    );
   }
-  const path = new URL(request.url).pathname
-  const isFacts = path.endsWith('/facts')
-  const isReissue = path.endsWith('/reissue')
+  const path = new URL(request.url).pathname;
+  const isFacts = path.endsWith("/facts");
+  const isReissue = path.endsWith("/reissue");
   if (isFacts) {
     const grantRefs = Array.isArray(body.grantRefs)
-      ? body.grantRefs.filter((value): value is string => typeof value === 'string')
-      : []
+      ? body.grantRefs.filter((value): value is string => typeof value === "string")
+      : [];
     if (grantRefs.length !== (Array.isArray(body.grantRefs) ? body.grantRefs.length : -1)) {
-      return noStoreJsonResponse({ error: 'bad_request', reason: 'grantRefs are invalid' }, { status: 400 })
+      return noStoreJsonResponse(
+        { error: "bad_request", reason: "grantRefs are invalid" },
+        { status: 400 },
+      );
     }
-    const postgres = postgresIdentityAuthStoreForEnv(env)
+    const postgres = postgresIdentityAuthStoreForEnv(env);
     if (postgres === undefined) {
-      return noStoreJsonResponse({ error: 'provider_grant_authority_unavailable' }, { status: 503 })
+      return noStoreJsonResponse(
+        { error: "provider_grant_authority_unavailable" },
+        { status: 503 },
+      );
     }
     try {
       const facts = await resolvePortableCapabilityGrantFacts({
@@ -4329,39 +3977,41 @@ const handlePortableCapabilityGrantAuthorityApi = async (
           postgres.queryRows,
         ),
         github: makeGitHubWriteRepositoryForEnv(env),
-      })
-      return noStoreJsonResponse({ facts, material: 'excluded' })
+      });
+      return noStoreJsonResponse({ facts, material: "excluded" });
     } catch {
-      return noStoreJsonResponse({ error: 'portable_capability_grant_facts_refused' }, { status: 409 })
+      return noStoreJsonResponse(
+        { error: "portable_capability_grant_facts_refused" },
+        { status: 409 },
+      );
     }
   }
   if (
     (!isReissue && grantRef === undefined) ||
-    (isReissue &&
-      (sourceGrantRef === undefined || destinationGrantRef === undefined))
+    (isReissue && (sourceGrantRef === undefined || destinationGrantRef === undefined))
   ) {
     return noStoreJsonResponse(
-      { error: 'bad_request', reason: 'exact grant refs are required' },
+      { error: "bad_request", reason: "exact grant refs are required" },
       { status: 400 },
-    )
+    );
   }
   try {
-    const requestedAction = optionalString(body.requestedAction)
-    const runnerSessionId = optionalString(body.runnerSessionId)
-    const provider = path.includes('/provider/')
-    let grant
+    const requestedAction = optionalString(body.requestedAction);
+    const runnerSessionId = optionalString(body.runnerSessionId);
+    const provider = path.includes("/provider/");
+    let grant;
     if (provider) {
-      const postgres = postgresIdentityAuthStoreForEnv(env)
+      const postgres = postgresIdentityAuthStoreForEnv(env);
       if (postgres === undefined) {
         return noStoreJsonResponse(
-          { error: 'provider_grant_authority_unavailable' },
+          { error: "provider_grant_authority_unavailable" },
           { status: 503 },
-        )
+        );
       }
       const repository = makeAuthoritativePostgresProviderGrantRepository(
         makeD1ProviderAccountRepository(openAgentsDatabase(env)),
         postgres.queryRows,
-      )
+      );
       grant = isReissue
         ? await reissueProviderAccountGrant(repository, {
             actorId: actor.user.id,
@@ -4375,9 +4025,9 @@ const handlePortableCapabilityGrantAuthorityApi = async (
             actorId: actor.user.id,
             userId: ownerUserId,
             grantRef: grantRef!,
-          })
+          });
     } else {
-      const repository = makeGitHubWriteRepositoryForEnv(env)
+      const repository = makeGitHubWriteRepositoryForEnv(env);
       grant = isReissue
         ? await reissueGitHubWriteGrant(repository, {
             userId: ownerUserId,
@@ -4389,123 +4039,106 @@ const handlePortableCapabilityGrantAuthorityApi = async (
         : await revokeGitHubWriteGrant(repository, {
             userId: ownerUserId,
             grantRef: grantRef!,
-          })
+          });
     }
     if (grant === undefined) {
-      return noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
+      return noStoreJsonResponse({ error: "not_found" }, { status: 404 });
     }
-    return noStoreJsonResponse({ grant, material: 'excluded' })
+    return noStoreJsonResponse({ grant, material: "excluded" });
   } catch {
-    return noStoreJsonResponse(
-      { error: 'portable_capability_grant_refused' },
-      { status: 409 },
-    )
+    return noStoreJsonResponse({ error: "portable_capability_grant_refused" }, { status: 409 });
   }
-}
+};
 
 const handleAuthCallback = async (
   request: Request,
   env: OpenAgentsWorkerEnv,
   ctx: ExecutionContext,
 ): Promise<Response> => {
-  const url = new URL(request.url)
-  const error = url.searchParams.get('error')
-  const cookies = parseCookies(request)
+  const url = new URL(request.url);
+  const error = url.searchParams.get("error");
+  const cookies = parseCookies(request);
   const cleanupCookies = [
-    expiredCookie(AUTH_STATE_COOKIE, '/auth'),
-    expiredCookie(LOGIN_ORIGIN_COOKIE, '/auth'),
-    expiredCookie(LOGIN_RETURN_TO_COOKIE, '/auth'),
+    expiredCookie(AUTH_STATE_COOKIE, "/auth"),
+    expiredCookie(LOGIN_ORIGIN_COOKIE, "/auth"),
+    expiredCookie(LOGIN_RETURN_TO_COOKIE, "/auth"),
     expiredBrowserReadableCookie(LOGIN_ERROR_COOKIE),
-  ]
-  const maybeReturnTo = cleanLoginReturnPath(
-    cookies.get(LOGIN_RETURN_TO_COOKIE) ?? null,
-  )
+  ];
+  const maybeReturnTo = cleanLoginReturnPath(cookies.get(LOGIN_RETURN_TO_COOKIE) ?? null);
 
   if (error !== null) {
-    return redirectResponse(maybeReturnTo ?? '/', [
-      ...cleanupCookies,
-      loginFailedCookie(),
-    ])
+    return redirectResponse(maybeReturnTo ?? "/", [...cleanupCookies, loginFailedCookie()]);
   }
 
-  const code = url.searchParams.get('code')
-  const state = url.searchParams.get('state')
-  const expectedState = cookies.get(AUTH_STATE_COOKIE)
+  const code = url.searchParams.get("code");
+  const state = url.searchParams.get("state");
+  const expectedState = cookies.get(AUTH_STATE_COOKIE);
 
-  if (
-    code === null ||
-    state === null ||
-    expectedState === undefined ||
-    state !== expectedState
-  ) {
-    return redirectResponse('/', cleanupCookies)
+  if (code === null || state === null || expectedState === undefined || state !== expectedState) {
+    return redirectResponse("/", cleanupCookies);
   }
 
-  const redirectUri = `${getAppOrigin(env)}/auth/callback`
-  const exchanged = await observedPromise('Auth.exchangeCode', () =>
+  const redirectUri = `${getAppOrigin(env)}/auth/callback`;
+  const exchanged = await observedPromise("Auth.exchangeCode", () =>
     makeAuthClient(env, ctx).exchange(code, redirectUri),
-  ).catch(error => {
-    logWorkerRouteError('auth_code_exchange_failed', error, {
+  ).catch((error) => {
+    logWorkerRouteError("auth_code_exchange_failed", error, {
       errorName: errorName(error),
-    })
+    });
 
-    return undefined
-  })
+    return undefined;
+  });
 
   if (exchanged === undefined) {
-    return redirectResponse('/', cleanupCookies)
+    return redirectResponse("/", cleanupCookies);
   }
 
   if (exchanged.err !== false) {
-    return redirectResponse('/', cleanupCookies)
+    return redirectResponse("/", cleanupCookies);
   }
 
-  const response = redirectResponse(maybeReturnTo ?? '/', cleanupCookies)
-  appendSessionCookies(response.headers, exchanged.tokens)
+  const response = redirectResponse(maybeReturnTo ?? "/", cleanupCookies);
+  appendSessionCookies(response.headers, exchanged.tokens);
 
-  return response
-}
+  return response;
+};
 
 const handleLogout = (request: Request): Response => {
-  const requestUrl = new URL(request.url)
+  const requestUrl = new URL(request.url);
   const maybeReturnTo = cleanLoginReturnPath(
-    requestUrl.searchParams.get('returnTo') ??
-      requestUrl.searchParams.get('return_to'),
-  )
-  const response = redirectResponse(maybeReturnTo ?? '/')
-  appendClearSessionCookies(response.headers, new URL(request.url).hostname)
+    requestUrl.searchParams.get("returnTo") ?? requestUrl.searchParams.get("return_to"),
+  );
+  const response = redirectResponse(maybeReturnTo ?? "/");
+  appendClearSessionCookies(response.headers, new URL(request.url).hostname);
 
-  return response
-}
+  return response;
+};
 
 const handleSessionApi = async (
   request: Request,
   env: OpenAgentsWorkerEnv,
   ctx: ExecutionContext,
 ): Promise<Response> => {
-  if (request.method !== 'GET') {
-    return methodNotAllowed(['GET'])
+  if (request.method !== "GET") {
+    return methodNotAllowed(["GET"]);
   }
 
-  const session = await verifySession(request, env, ctx)
+  const session = await verifySession(request, env, ctx);
 
   if (session === undefined) {
-    const response = noStoreJsonResponse(
-      { authenticated: false },
-      { status: 200 },
-    )
+    const response = noStoreJsonResponse({ authenticated: false }, { status: 200 });
 
-    const cookies = parseCookies(request)
+    const cookies = parseCookies(request);
 
     if (cookies.has(ACCESS_COOKIE) || cookies.has(REFRESH_COOKIE)) {
-      appendClearSessionCookies(response.headers, new URL(request.url).hostname)
+      appendClearSessionCookies(response.headers, new URL(request.url).hostname);
     }
 
-    return response
+    return response;
   }
 
-  await upsertUser(identityDbForEnv(env), session.user)
-  const accountContext = await readAuthenticatedPageContext(env, session)
+  await upsertUser(identityDbForEnv(env), session.user);
+  const accountContext = await readAuthenticatedPageContext(env, session);
 
   const response = noStoreJsonResponse({
     authenticated: true,
@@ -4525,67 +4158,65 @@ const handleSessionApi = async (
       providerAccounts: accountContext.providerAccounts,
       isAdmin: isOpenAgentsAdminEmail(session.user.email),
     },
-  })
+  });
 
   if (session.tokens !== undefined) {
-    appendSessionCookies(response.headers, session.tokens)
+    appendSessionCookies(response.headers, session.tokens);
   }
 
-  return response
-}
+  return response;
+};
 
 const MobileAuthSignOutRequest = S.Struct({
   refreshToken: S.optionalKey(S.String),
-})
+});
 
-const readMobileAuthSignOutRefreshToken = async (
-  request: Request,
-): Promise<string | undefined> => {
-  const headerRefresh = readMobileOpenAuthSignOutRefreshToken(request)
+const readMobileAuthSignOutRefreshToken = async (request: Request): Promise<string | undefined> => {
+  const headerRefresh = readMobileOpenAuthSignOutRefreshToken(request);
 
   if (headerRefresh !== undefined) {
-    return headerRefresh
+    return headerRefresh;
   }
 
-  const contentType = request.headers.get('content-type') ?? ''
+  const contentType = request.headers.get("content-type") ?? "";
 
-  if (!contentType.includes('application/json')) {
-    return undefined
+  if (!contentType.includes("application/json")) {
+    return undefined;
   }
 
-  const body = await request.json().catch(() => undefined)
+  const body = await request.json().catch(() => undefined);
 
   if (body === undefined) {
-    return undefined
+    return undefined;
   }
 
-  const decoded = S.decodeUnknownOption(MobileAuthSignOutRequest)(body)
-  const value = decoded._tag === 'Some' ? decoded.value.refreshToken : undefined
-  const trimmed = value?.trim()
+  const decoded = S.decodeUnknownOption(MobileAuthSignOutRequest)(body);
+  const value = decoded._tag === "Some" ? decoded.value.refreshToken : undefined;
+  const trimmed = value?.trim();
 
-  return trimmed === undefined || trimmed === '' ? undefined : trimmed
-}
+  return trimmed === undefined || trimmed === "" ? undefined : trimmed;
+};
 
 const handleMobileAuthSessionApi = async (
   request: Request,
   env: MobileAuthSessionBindings,
   ctx: ExecutionContext,
 ) => {
-  if (request.method !== 'GET' && request.method !== 'DELETE') {
-    return methodNotAllowed(['GET', 'DELETE'])
+  if (request.method !== "GET" && request.method !== "DELETE") {
+    return methodNotAllowed(["GET", "DELETE"]);
   }
 
-  const accessToken = readBearerToken(request)
+  const accessToken = readBearerToken(request);
 
   if (accessToken === undefined) {
-    return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+    return noStoreJsonResponse({ error: "unauthorized" }, { status: 401 });
   }
 
-  if (request.method === 'GET') {
-    const session = await requireUserBearerSession(request, env, ctx)
+  if (request.method === "GET") {
+    const session = await requireUserBearerSession(request, env, ctx);
 
     if (session === undefined) {
-      return noStoreJsonResponse({ authenticated: false }, { status: 401 })
+      return noStoreJsonResponse({ authenticated: false }, { status: 401 });
     }
 
     return noStoreJsonResponse({
@@ -4600,53 +4231,47 @@ const handleMobileAuthSessionApi = async (
         provider: session.user.provider,
         githubId: session.user.githubId,
       },
-    })
+    });
   }
 
-  const refreshToken = await readMobileAuthSignOutRefreshToken(request)
-  let refreshRevoked = false
+  const refreshToken = await readMobileAuthSignOutRefreshToken(request);
+  let refreshRevoked = false;
 
   try {
-    await revokeMobileAccessToken(authKvStoreForEnv(env), accessToken)
-    refreshRevoked = await revokeOpenAuthRefreshToken(
-      makeOpenAuthStorageForEnv(env),
-      refreshToken,
-    )
+    await revokeMobileAccessToken(authKvStoreForEnv(env), accessToken);
+    refreshRevoked = await revokeOpenAuthRefreshToken(makeOpenAuthStorageForEnv(env), refreshToken);
   } catch (error) {
-    logWorkerRouteError('mobile_auth_sign_out_failed', error)
+    logWorkerRouteError("mobile_auth_sign_out_failed", error);
 
-    return noStoreJsonResponse(
-      { error: 'mobile_auth_sign_out_failed' },
-      { status: 503 },
-    )
+    return noStoreJsonResponse({ error: "mobile_auth_sign_out_failed" }, { status: 503 });
   }
 
   return noStoreJsonResponse({
     signedOut: true,
     accessRevoked: true,
     refreshRevoked,
-  })
-}
+  });
+};
 
 const handleMobileSessionApi = async (
   request: Request,
   env: MobileAuthSessionBindings,
   ctx: ExecutionContext,
 ) => {
-  if (request.method !== 'POST') {
-    return methodNotAllowed(['POST'])
+  if (request.method !== "POST") {
+    return methodNotAllowed(["POST"]);
   }
 
-  const accessToken = readBearerToken(request)
+  const accessToken = readBearerToken(request);
 
   if (accessToken === undefined) {
-    return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+    return noStoreJsonResponse({ error: "unauthorized" }, { status: 401 });
   }
 
-  const session = await requireUserBearerSession(request, env, ctx)
+  const session = await requireUserBearerSession(request, env, ctx);
 
   if (session === undefined) {
-    return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+    return noStoreJsonResponse({ error: "unauthorized" }, { status: 401 });
   }
 
   return noStoreJsonResponse({
@@ -4657,8 +4282,8 @@ const handleMobileSessionApi = async (
     // internal `user_…` id, not a human-readable name; `session.user.login`
     // is the GitHub username resolved for this bearer session.
     githubLogin: session.user.login,
-  })
-}
+  });
+};
 
 // CX-4 (#8548): a connected provider account, projected down to exactly what
 // the mobile picker needs — never a secret, never the raw credential. The
@@ -4670,11 +4295,11 @@ const handleMobileSessionApi = async (
 // non-secret, server-minted ref, not a raw credential, so no extra hashing
 // step is needed.
 type MobileExecutionTargetAccountSummary = Readonly<{
-  accountRefHash: string
-  label: string
-  ready: boolean
-  reason?: AutoExecutionTargetCandidate['reason']
-}>
+  accountRefHash: string;
+  label: string;
+  ready: boolean;
+  reason?: AutoExecutionTargetCandidate["reason"];
+}>;
 
 // v1 readiness signal: the account's own `health` projection (already
 // tracked by CX-1/CX-2's connect flow). This is deliberately NOT real
@@ -4685,51 +4310,44 @@ type MobileExecutionTargetAccountSummary = Readonly<{
 // CX-7 lands live cooldown truth, only THIS mapping function needs to change
 // — `resolveAutoExecutionTarget`'s typed-event contract does not.
 const mobileExecutionTargetReadiness = (
-  health: PublicProviderAccount['health'],
+  health: PublicProviderAccount["health"],
 ): Readonly<{
-  ready: boolean
-  reason?: AutoExecutionTargetCandidate['reason']
+  ready: boolean;
+  reason?: AutoExecutionTargetCandidate["reason"];
 }> => {
-  if (health === 'requires_reauth') {
-    return { reason: 'account_requires_reauth', ready: false }
+  if (health === "requires_reauth") {
+    return { reason: "account_requires_reauth", ready: false };
   }
-  if (health === 'unhealthy') {
-    return { reason: 'account_unavailable', ready: false }
+  if (health === "unhealthy") {
+    return { reason: "account_unavailable", ready: false };
   }
   // 'healthy' and 'unknown' (no negative signal recorded yet) are both
   // treated as ready — an account never demoted below "auto-eligible" on
   // absence of evidence, only on an explicit health failure.
-  return { ready: true }
-}
+  return { ready: true };
+};
 
 const mobileExecutionTargetAccountSummaries = (
   accounts: ReadonlyArray<PublicProviderAccount>,
-  provider: PublicProviderAccount['provider'],
-  targetPrefix: 'claude' | 'codex',
+  provider: PublicProviderAccount["provider"],
+  targetPrefix: "claude" | "codex",
 ): ReadonlyArray<MobileExecutionTargetAccountSummary> =>
   accounts
-    .filter(
-      account =>
-        account.provider === provider && account.publicStatus === 'connected',
-    )
-    .sort((a, b) =>
-      (a.connectedAt ?? a.createdAt).localeCompare(
-        b.connectedAt ?? b.createdAt,
-      ),
-    )
+    .filter((account) => account.provider === provider && account.publicStatus === "connected")
+    .sort((a, b) => (a.connectedAt ?? a.createdAt).localeCompare(b.connectedAt ?? b.createdAt))
     .map((account, index) => {
-      const readiness = mobileExecutionTargetReadiness(account.health)
+      const readiness = mobileExecutionTargetReadiness(account.health);
       return {
         accountRefHash: account.providerAccountRef,
         label:
           index === 0
-            ? targetPrefix === 'codex'
-              ? 'Your Codex'
-              : 'Your Claude'
-            : `${targetPrefix === 'codex' ? 'Your Codex' : 'Your Claude'} ${index + 1}`,
+            ? targetPrefix === "codex"
+              ? "Your Codex"
+              : "Your Claude"
+            : `${targetPrefix === "codex" ? "Your Codex" : "Your Claude"} ${index + 1}`,
         ...readiness,
-      }
-    })
+      };
+    });
 
 // MM-F1 (#8484): per-user model configuration. GET reads the caller's stored
 // preference (or the compiled default) resolved against this deployment's
@@ -4752,81 +4370,69 @@ const handleMobileModelPreferenceApi = async (
   env: MobileAuthSessionBindings,
   ctx: ExecutionContext,
 ): Promise<Response> => {
-  if (request.method !== 'GET' && request.method !== 'PUT') {
-    return methodNotAllowed(['GET', 'PUT'])
+  if (request.method !== "GET" && request.method !== "PUT") {
+    return methodNotAllowed(["GET", "PUT"]);
   }
 
-  const session = await requireUserBearerSession(request, env, ctx)
+  const session = await requireUserBearerSession(request, env, ctx);
 
   if (session === undefined) {
-    return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+    return noStoreJsonResponse({ error: "unauthorized" }, { status: 401 });
   }
 
-  const db = openAgentsDatabase(env)
-  const [providerAccountBundle, githubConnection, agentComputerCapacity] =
-    await Promise.all([
-      listProviderAccountsForUser(
-        makeD1ProviderAccountRepository(db),
-        session.user.userId,
-      ),
-      makeGitHubWriteRepositoryForEnv(env).findUsableConnectionForUser(
-        session.user.userId,
-      ),
-      probeAgentComputerCapacitySnapshot({
-        baseUrl: env.OA_CLOUD_CONTROL_URL,
-        bearerToken: env.OA_CLOUD_CONTROL_TOKEN,
-        gceProvisioningArmed:
-          isCloudCodingSessionsEnabled(env.CLOUD_CODING_SESSIONS_ENABLED) &&
-          isCloudGceProvisioningArmed(env.OA_CODEX_GCE_PROVISIONER),
-      }),
-    ])
+  const db = openAgentsDatabase(env);
+  const [providerAccountBundle, githubConnection, agentComputerCapacity] = await Promise.all([
+    listProviderAccountsForUser(makeD1ProviderAccountRepository(db), session.user.userId),
+    makeGitHubWriteRepositoryForEnv(env).findUsableConnectionForUser(session.user.userId),
+    probeAgentComputerCapacitySnapshot({
+      baseUrl: env.OA_CLOUD_CONTROL_URL,
+      bearerToken: env.OA_CLOUD_CONTROL_TOKEN,
+      gceProvisioningArmed:
+        isCloudCodingSessionsEnabled(env.CLOUD_CODING_SESSIONS_ENABLED) &&
+        isCloudGceProvisioningArmed(env.OA_CODEX_GCE_PROVISIONER),
+    }),
+  ]);
   const codexAccounts = mobileExecutionTargetAccountSummaries(
     providerAccountBundle.accounts,
     CHATGPT_CODEX_PROVIDER,
-    'codex',
-  )
+    "codex",
+  );
   const claudeAccounts = mobileExecutionTargetAccountSummaries(
     providerAccountBundle.accounts,
     ANTHROPIC_CLAUDE_PROVIDER,
-    'claude',
-  )
-  const availableModelIds = resolveAvailableModelIds(
-    resolveSupplyLaneArming(env),
-  )
+    "claude",
+  );
+  const availableModelIds = resolveAvailableModelIds(resolveSupplyLaneArming(env));
   const availableTargetIds = resolveAvailableExecutionTargetIds({
     availableModelIds,
-    claudeAccountRefHashes: claudeAccounts.map(
-      account => account.accountRefHash,
-    ),
-    codexAccountRefHashes: codexAccounts.map(account => account.accountRefHash),
+    claudeAccountRefHashes: claudeAccounts.map((account) => account.accountRefHash),
+    codexAccountRefHashes: codexAccounts.map((account) => account.accountRefHash),
     managedCloudReady:
       agentComputerCapacity.available &&
       providerAccountBundle.accounts.some(
-        account =>
+        (account) =>
           account.provider === CHATGPT_CODEX_PROVIDER &&
-          account.publicStatus === 'connected' &&
-          account.health === 'healthy',
+          account.publicStatus === "connected" &&
+          account.health === "healthy",
       ) &&
       githubConnection !== undefined &&
       hasRequiredGitHubWriteScopes(githubConnection.scopes),
-  })
+  });
 
-  if (request.method === 'PUT') {
-    const rawBody = await request.json().catch(() => undefined)
+  if (request.method === "PUT") {
+    const rawBody = await request.json().catch(() => undefined);
     const targetId =
-      typeof (rawBody as { targetId?: unknown } | undefined)?.targetId ===
-      'string'
+      typeof (rawBody as { targetId?: unknown } | undefined)?.targetId === "string"
         ? (rawBody as { targetId: string }).targetId.trim()
-        : typeof (rawBody as { modelId?: unknown } | undefined)?.modelId ===
-            'string'
+        : typeof (rawBody as { modelId?: unknown } | undefined)?.modelId === "string"
           ? (rawBody as { modelId: string }).modelId.trim()
-          : ''
+          : "";
 
-    if (targetId === '') {
+    if (targetId === "") {
       return noStoreJsonResponse(
-        { error: 'bad_request', reason: 'targetId is required' },
+        { error: "bad_request", reason: "targetId is required" },
         { status: 400 },
-      )
+      );
     }
 
     if (!isExecutionTargetIdAvailable(targetId, availableTargetIds)) {
@@ -4834,25 +4440,25 @@ const handleMobileModelPreferenceApi = async (
         {
           availableModelIds,
           availableTargetIds,
-          error: 'target_unavailable',
+          error: "target_unavailable",
           targetId,
         },
         { status: 409 },
-      )
+      );
     }
 
     await writeUserModelPreference(db, {
       modelId: normalizeExecutionTargetId(targetId),
       nowIso: currentIsoTimestamp(),
       userId: session.user.userId,
-    })
+    });
   }
 
-  const stored = await readUserModelPreference(db, session.user.userId)
+  const stored = await readUserModelPreference(db, session.user.userId);
   const resolution = resolveExecutionTargetPreference({
     availableTargetIds,
     storedTargetId: stored?.modelId ?? null,
-  })
+  });
 
   // Fixed preference order: Codex accounts first (this lane's primary
   // target per the issue), then Claude — oldest-connected account within
@@ -4860,29 +4466,26 @@ const handleMobileModelPreferenceApi = async (
   // Only computed when `auto` is actually offered, so a deployment/user with
   // no accounts connected doesn't pay for a resolution nobody can pick.
   const toAutoCandidate = (
-    prefix: 'claude' | 'codex',
+    prefix: "claude" | "codex",
     account: MobileExecutionTargetAccountSummary,
   ): AutoExecutionTargetCandidate => ({
     reason: account.reason,
     ready: account.ready,
     targetId: `${prefix}:${account.accountRefHash}`,
-  })
-  const autoResolution: AutoExecutionTargetResolution | null =
-    availableTargetIds.includes(AUTO_EXECUTION_TARGET_ID)
-      ? resolveAutoExecutionTarget({
-          candidates: [
-            ...codexAccounts.map(account => toAutoCandidate('codex', account)),
-            ...claudeAccounts.map(account =>
-              toAutoCandidate('claude', account),
-            ),
-          ],
-          fallbackTargetId: availableTargetIds.includes(
-            DEFAULT_EXECUTION_TARGET_ID,
-          )
-            ? DEFAULT_EXECUTION_TARGET_ID
-            : null,
-        })
-      : null
+  });
+  const autoResolution: AutoExecutionTargetResolution | null = availableTargetIds.includes(
+    AUTO_EXECUTION_TARGET_ID,
+  )
+    ? resolveAutoExecutionTarget({
+        candidates: [
+          ...codexAccounts.map((account) => toAutoCandidate("codex", account)),
+          ...claudeAccounts.map((account) => toAutoCandidate("claude", account)),
+        ],
+        fallbackTargetId: availableTargetIds.includes(DEFAULT_EXECUTION_TARGET_ID)
+          ? DEFAULT_EXECUTION_TARGET_ID
+          : null,
+      })
+    : null;
 
   return noStoreJsonResponse({
     availableModelIds,
@@ -4897,106 +4500,101 @@ const handleMobileModelPreferenceApi = async (
     preferredTargetId: resolution.preferredModelId,
     updatedAt: stored?.updatedAt ?? null,
     usedPreference: resolution.usedPreference,
-  })
-}
+  });
+};
 
 const handleAuthTotalsApi = async (
   request: Request,
   env: OpenAgentsWorkerEnv,
   ctx: ExecutionContext,
 ): Promise<Response> => {
-  if (request.method !== 'GET') {
-    return methodNotAllowed(['GET'])
+  if (request.method !== "GET") {
+    return methodNotAllowed(["GET"]);
   }
 
-  const actor = await authenticateRequestActor(request, env, ctx)
+  const actor = await authenticateRequestActor(request, env, ctx);
 
   if (actor === undefined) {
-    return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+    return noStoreJsonResponse({ error: "unauthorized" }, { status: 401 });
   }
 
-  if (actor.kind !== 'human' || !isOpenAgentsAdminEmail(actor.user.email)) {
-    return forbidden()
+  if (actor.kind !== "human" || !isOpenAgentsAdminEmail(actor.user.email)) {
+    return forbidden();
   }
 
   const response = noStoreJsonResponse({
     authenticated: true,
     actor: actorJson(actor),
     totals: await readUserKindTotals(identityDbForEnv(env)),
-  })
+  });
 
-  if (actor.kind === 'human' && actor.tokens !== undefined) {
-    appendSessionCookies(response.headers, actor.tokens)
+  if (actor.kind === "human" && actor.tokens !== undefined) {
+    appendSessionCookies(response.headers, actor.tokens);
   }
 
-  return response
-}
+  return response;
+};
 
 const handleAuthTeamsApi = async (
   request: Request,
   env: OpenAgentsWorkerEnv,
   ctx: ExecutionContext,
 ): Promise<Response> => {
-  if (request.method !== 'GET') {
-    return methodNotAllowed(['GET'])
+  if (request.method !== "GET") {
+    return methodNotAllowed(["GET"]);
   }
 
-  const actor = await authenticateRequestActor(request, env, ctx)
+  const actor = await authenticateRequestActor(request, env, ctx);
 
   if (actor === undefined) {
-    return unauthorized()
+    return unauthorized();
   }
 
   const teams = await readTeamsForUser(
     openAgentsDatabase(env),
     identityDbForEnv(env),
-    actor.kind === 'human' ? actor.user.userId : actor.agent.user.id,
-  )
+    actor.kind === "human" ? actor.user.userId : actor.agent.user.id,
+  );
   const response = jsonResponse({
     authenticated: true,
     actor: actorJson(actor),
     teams,
-  })
+  });
 
-  if (actor.kind === 'human' && actor.tokens !== undefined) {
-    appendSessionCookies(response.headers, actor.tokens)
+  if (actor.kind === "human" && actor.tokens !== undefined) {
+    appendSessionCookies(response.headers, actor.tokens);
   }
 
-  return response
-}
+  return response;
+};
 
 type PostedTeamChatMessage = Readonly<{
-  payload: Record<string, unknown>
-  status: number
-}>
+  payload: Record<string, unknown>;
+  status: number;
+}>;
 
 const adjutantIntentContextFromRequest = (
   input: Record<string, unknown>,
-): Partial<Omit<TeamAdjutantIntent, 'prompt' | 'schemaVersion'>> => {
+): Partial<Omit<TeamAdjutantIntent, "prompt" | "schemaVersion">> => {
   const softwareOrderId = explicitAdjutantContextString(
     input.softwareOrderId ?? input.software_order_id ?? input.orderId,
     softwareOrderIdPattern,
-  )
-  const siteId = explicitAdjutantContextString(
-    input.siteId ?? input.site_id,
-    siteIdPattern,
-  )
+  );
+  const siteId = explicitAdjutantContextString(input.siteId ?? input.site_id, siteIdPattern);
   const taskSpecPath = boundedTaskSpecPath(
-    optionalString(
-      input.taskSpecPath ?? input.task_spec_path ?? input.taskPacketPath,
-    ),
-  )
+    optionalString(input.taskSpecPath ?? input.task_spec_path ?? input.taskPacketPath),
+  );
 
   return {
     ...(softwareOrderId === undefined ? {} : { softwareOrderId }),
     ...(siteId === undefined ? {} : { siteId }),
     ...(taskSpecPath === undefined ? {} : { taskSpecPath }),
-  }
-}
+  };
+};
 
 const mergeAdjutantIntentContext = (
   bodyIntent: TeamAdjutantIntent,
-  requestContext: Partial<Omit<TeamAdjutantIntent, 'prompt' | 'schemaVersion'>>,
+  requestContext: Partial<Omit<TeamAdjutantIntent, "prompt" | "schemaVersion">>,
   requestedPrompt: string | undefined,
 ): TeamAdjutantIntent => ({
   schemaVersion: ADJUTANT_INTENT_SCHEMA_VERSION,
@@ -5004,48 +4602,46 @@ const mergeAdjutantIntentContext = (
   softwareOrderId: requestContext.softwareOrderId ?? bodyIntent.softwareOrderId,
   siteId: requestContext.siteId ?? bodyIntent.siteId,
   taskSpecPath: requestContext.taskSpecPath ?? bodyIntent.taskSpecPath,
-})
+});
 
 const adjutantIntentHasContext = (intent: TeamAdjutantIntent): boolean =>
   intent.softwareOrderId !== undefined ||
   intent.siteId !== undefined ||
-  intent.taskSpecPath !== undefined
+  intent.taskSpecPath !== undefined;
 
 const postTeamChatMessageForUser = async (
   env: OpenAgentsWorkerEnv,
   ctx: ExecutionContext,
   input: Readonly<{
-    body: Record<string, unknown>
-    project?: UserTeamProject
-    roomThreadId: string
-    teamId: string
-    userId: string
+    body: Record<string, unknown>;
+    project?: UserTeamProject;
+    roomThreadId: string;
+    teamId: string;
+    userId: string;
   }>,
 ): Promise<PostedTeamChatMessage> => {
-  const messageBody = optionalString(input.body.body ?? input.body.message)
-  const kind = optionalUserWritableTeamChatKind(input.body.kind) ?? 'message'
+  const messageBody = optionalString(input.body.body ?? input.body.message);
+  const kind = optionalUserWritableTeamChatKind(input.body.kind) ?? "message";
 
   if (messageBody === undefined) {
     return {
-      payload: { error: 'bad_request', reason: 'body is required' },
+      payload: { error: "bad_request", reason: "body is required" },
       status: 400,
-    }
+    };
   }
 
   if (messageBody.length > 4000) {
     return {
       payload: {
-        error: 'bad_request',
-        reason: 'body must be 4000 characters or fewer',
+        error: "bad_request",
+        reason: "body must be 4000 characters or fewer",
       },
       status: 400,
-    }
+    };
   }
 
   const bodyAdjutantIntent =
-    kind === 'adjutant_intent'
-      ? teamAdjutantIntentFromBody(messageBody)
-      : undefined
+    kind === "adjutant_intent" ? teamAdjutantIntentFromBody(messageBody) : undefined;
   const adjutantIntent =
     bodyAdjutantIntent === undefined
       ? undefined
@@ -5053,60 +4649,57 @@ const postTeamChatMessageForUser = async (
           bodyAdjutantIntent,
           adjutantIntentContextFromRequest(input.body),
           optionalString(input.body.prompt),
-        )
+        );
 
   if (
-    kind === 'adjutant_intent' &&
+    kind === "adjutant_intent" &&
     (input.project === undefined || input.project.id !== ADJUTANT_PROJECT_ID)
   ) {
     return {
       payload: {
-        error: 'adjutant_project_context_required',
-        reason: '@autopilot requires the Autopilot project room',
+        error: "adjutant_project_context_required",
+        reason: "@autopilot requires the Autopilot project room",
       },
       status: 400,
-    }
+    };
   }
 
-  if (kind === 'adjutant_intent' && adjutantIntent === undefined) {
+  if (kind === "adjutant_intent" && adjutantIntent === undefined) {
     return {
       payload: {
-        error: 'adjutant_command_required',
-        reason: 'Autopilot messages must include an exact @autopilot tag',
+        error: "adjutant_command_required",
+        reason: "Autopilot messages must include an exact @autopilot tag",
       },
       status: 400,
-    }
+    };
   }
 
   if (
-    kind === 'adjutant_intent' &&
+    kind === "adjutant_intent" &&
     adjutantIntent !== undefined &&
     !adjutantIntentHasContext(adjutantIntent)
   ) {
     return {
       payload: {
-        error: 'adjutant_context_required',
-        reason:
-          '@autopilot requires softwareOrderId, siteId, or taskSpecPath context',
+        error: "adjutant_context_required",
+        reason: "@autopilot requires softwareOrderId, siteId, or taskSpecPath context",
       },
       status: 400,
-    }
+    };
   }
 
   const autopilotThreadId =
-    kind === 'autopilot_intent'
+    kind === "autopilot_intent"
       ? (optionalUuid(input.body.threadId) ?? makeTeamChatThreadId())
-      : undefined
+      : undefined;
   const executionPrompt =
-    kind === 'autopilot_intent'
-      ? (optionalString(input.body.prompt) ??
-        teamAutopilotPromptFromBody(messageBody))
-      : messageBody
-  const requestedFileIds = stringArrayFromUnknown(input.body.fileIds)
-  const messageId =
-    kind === 'autopilot_intent' ? makeTeamChatMessageId() : undefined
+    kind === "autopilot_intent"
+      ? (optionalString(input.body.prompt) ?? teamAutopilotPromptFromBody(messageBody))
+      : messageBody;
+  const requestedFileIds = stringArrayFromUnknown(input.body.fileIds);
+  const messageId = kind === "autopilot_intent" ? makeTeamChatMessageId() : undefined;
   const teamAutopilotContext =
-    kind === 'autopilot_intent' && messageId !== undefined
+    kind === "autopilot_intent" && messageId !== undefined
       ? await hydrateTeamAutopilotContextFileExcerpts(
           env,
           teamAutopilotContextBundle({
@@ -5130,31 +4723,28 @@ const postTeamChatMessageForUser = async (
             teamId: input.teamId,
           }),
         )
-      : undefined
+      : undefined;
   const missionLaunch =
-    kind === 'autopilot_intent' && teamAutopilotContext !== undefined
+    kind === "autopilot_intent" && teamAutopilotContext !== undefined
       ? await launchUserAutopilotMission(env, ctx, {
           selector: {
             ...input.body,
             autopilotThreadId,
             dispatchGoal: teamAutopilotChildRunGoal(teamAutopilotContext),
             goal: teamAutopilotContext.normalizedPrompt,
-            parentTeamChatMessageId:
-              teamAutopilotContext.parentTeamChatMessageId,
+            parentTeamChatMessageId: teamAutopilotContext.parentTeamChatMessageId,
             prompt: teamAutopilotContext.normalizedPrompt,
-            ...(input.project === undefined
-              ? {}
-              : { projectId: input.project.id }),
+            ...(input.project === undefined ? {} : { projectId: input.project.id }),
             selectedTeamFileIds: teamAutopilotContext.selectedTeamFileIds,
             teamId: input.teamId,
           },
           userId: input.userId,
         })
-      : undefined
+      : undefined;
   const launchError =
     missionLaunch?.ok === false
       ? await teamChatLaunchErrorFromResponse(missionLaunch.response)
-      : undefined
+      : undefined;
 
   const message = await insertTeamChatMessage(
     khalaCodeProductStateDatabaseForEnv(env),
@@ -5171,8 +4761,7 @@ const postTeamChatMessageForUser = async (
               statusUrl: missionLaunch.launch.payload.statusUrl,
               streamUrl: missionLaunch.launch.payload.streamUrl,
               context: teamAutopilotContext,
-              selectedTeamFileIds:
-                teamAutopilotContext?.selectedTeamFileIds ?? [],
+              selectedTeamFileIds: teamAutopilotContext?.selectedTeamFileIds ?? [],
             }),
           }),
       ...(launchError === undefined
@@ -5182,12 +4771,8 @@ const postTeamChatMessageForUser = async (
             metadataJson: JSON.stringify({
               context: teamAutopilotContext,
               launchError,
-              launchStatus:
-                missionLaunch?.ok === false
-                  ? missionLaunch.response.status
-                  : undefined,
-              selectedTeamFileIds:
-                teamAutopilotContext?.selectedTeamFileIds ?? [],
+              launchStatus: missionLaunch?.ok === false ? missionLaunch.response.status : undefined,
+              selectedTeamFileIds: teamAutopilotContext?.selectedTeamFileIds ?? [],
             }),
           }),
       ...(adjutantIntent === undefined
@@ -5210,25 +4795,21 @@ const postTeamChatMessageForUser = async (
       ...(input.project === undefined ? {} : { projectId: input.project.id }),
       teamId: input.teamId,
     },
-  )
+  );
   const selectedTeamFileIds =
-    kind === 'autopilot_intent'
+    kind === "autopilot_intent"
       ? (teamAutopilotContext?.selectedTeamFileIds ?? [])
-      : requestedFileIds
+      : requestedFileIds;
 
-  await insertThreadFileMessageReferences(
-    khalaCodeProductStateDatabaseForEnv(env),
-    {
-      fileIds: selectedTeamFileIds,
-      messageId: message.id,
-      referenceKind:
-        kind === 'autopilot_intent' ? 'autopilot_input' : 'message_attachment',
-      teamId: input.teamId,
-      threadId: message.autopilotThreadId ?? input.roomThreadId,
-    },
-  )
+  await insertThreadFileMessageReferences(khalaCodeProductStateDatabaseForEnv(env), {
+    fileIds: selectedTeamFileIds,
+    messageId: message.id,
+    referenceKind: kind === "autopilot_intent" ? "autopilot_input" : "message_attachment",
+    teamId: input.teamId,
+    threadId: message.autopilotThreadId ?? input.roomThreadId,
+  });
 
-  await publishTeamChatMessageSync(env, ctx, message, input.userId)
+  await publishTeamChatMessageSync(env, ctx, message, input.userId);
 
   return {
     payload: {
@@ -5248,10 +4829,9 @@ const postTeamChatMessageForUser = async (
       projectId: input.project?.id ?? null,
       teamId: input.teamId,
     },
-    status:
-      kind === 'autopilot_intent' && launchError === undefined ? 202 : 201,
-  }
-}
+    status: kind === "autopilot_intent" && launchError === undefined ? 202 : 201,
+  };
+};
 
 const handleTeamChatMessagesApi = async (
   request: Request,
@@ -5260,46 +4840,44 @@ const handleTeamChatMessagesApi = async (
   teamId: string,
   projectId?: string,
 ): Promise<Response> => {
-  if (request.method !== 'GET' && request.method !== 'POST') {
-    return methodNotAllowed(['GET', 'POST'])
+  if (request.method !== "GET" && request.method !== "POST") {
+    return methodNotAllowed(["GET", "POST"]);
   }
 
-  const session = await requireBrowserSession(request, env, ctx)
+  const session = await requireBrowserSession(request, env, ctx);
 
   if (session === undefined) {
-    return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+    return noStoreJsonResponse({ error: "unauthorized" }, { status: 401 });
   }
 
   const role = await readActiveTeamMembershipRole(
     openAgentsDatabase(env),
     teamId,
     session.user.userId,
-  )
+  );
 
   if (role === undefined) {
-    return forbidden()
+    return forbidden();
   }
 
   const project =
     projectId === undefined
       ? undefined
-      : await readActiveTeamProject(openAgentsDatabase(env), teamId, projectId)
+      : await readActiveTeamProject(openAgentsDatabase(env), teamId, projectId);
 
   if (projectId !== undefined && project === undefined) {
-    return notFound()
+    return notFound();
   }
 
   const roomThreadId =
-    project === undefined
-      ? teamChatThreadId(teamId)
-      : teamProjectChatThreadId(teamId, project.id)
+    project === undefined ? teamChatThreadId(teamId) : teamProjectChatThreadId(teamId, project.id);
 
-  if (request.method === 'GET') {
-    const url = new URL(request.url)
-    const requestedLimit = optionalInteger(url.searchParams.get('limit')) ?? 50
-    const limit = Math.min(Math.max(requestedLimit, 1), 100)
-    const kind = optionalUserWritableTeamChatKind(url.searchParams.get('kind'))
-    const autopilotThreadId = optionalUuid(url.searchParams.get('threadId'))
+  if (request.method === "GET") {
+    const url = new URL(request.url);
+    const requestedLimit = optionalInteger(url.searchParams.get("limit")) ?? 50;
+    const limit = Math.min(Math.max(requestedLimit, 1), 100);
+    const kind = optionalUserWritableTeamChatKind(url.searchParams.get("kind"));
+    const autopilotThreadId = optionalUuid(url.searchParams.get("threadId"));
     const response = noStoreJsonResponse({
       messages: await listTeamChatMessages(
         openAgentsDatabase(env),
@@ -5312,115 +4890,104 @@ const handleTeamChatMessagesApi = async (
       ),
       projectId: project?.id ?? null,
       teamId,
-    })
+    });
 
-    return appendRefreshedSessionCookies(response, session)
+    return appendRefreshedSessionCookies(response, session);
   }
 
-  const body = await readJsonObject(request).catch(
-    (): Record<string, unknown> => ({}),
-  )
+  const body = await readJsonObject(request).catch((): Record<string, unknown> => ({}));
   const posted = await postTeamChatMessageForUser(env, ctx, {
     body,
     ...(project === undefined ? {} : { project }),
     roomThreadId,
     teamId,
     userId: session.user.userId,
-  })
+  });
 
   const response = noStoreJsonResponse(posted.payload, {
     status: posted.status,
-  })
+  });
 
-  return appendRefreshedSessionCookies(response, session)
-}
+  return appendRefreshedSessionCookies(response, session);
+};
 
 const optionalUserWritableTeamChatKind = (
   value: unknown,
-): 'message' | 'autopilot_intent' | 'adjutant_intent' | undefined =>
-  value === 'message' ||
-  value === 'autopilot_intent' ||
-  value === 'adjutant_intent'
+): "message" | "autopilot_intent" | "adjutant_intent" | undefined =>
+  value === "message" || value === "autopilot_intent" || value === "adjutant_intent"
     ? value
-    : undefined
+    : undefined;
 
 const requireProviderServiceActor = async (
   request: Request,
   env: OpenAgentsWorkerEnv,
 ): Promise<ProgrammaticAgentSession | undefined> => {
-  const bearerToken = readBearerToken(request)
+  const bearerToken = readBearerToken(request);
 
   if (bearerToken === undefined) {
-    return undefined
+    return undefined;
   }
 
-  return authenticateProgrammaticAgent(
-    makeAgentRegistrationStoreForEnv(env),
-    bearerToken,
-  )
-}
+  return authenticateProgrammaticAgent(makeAgentRegistrationStoreForEnv(env), bearerToken);
+};
 
 const requireRunnerCallbackAuth = async (
   request: Request,
   env: OpenAgentsWorkerEnv,
 ): Promise<boolean> => {
-  const expected = env.OA_CLOUD_CONTROL_TOKEN
-  const actual = readBearerToken(request)
+  const expected = env.OA_CLOUD_CONTROL_TOKEN;
+  const actual = readBearerToken(request);
 
-  if (
-    expected === undefined ||
-    expected.trim() === '' ||
-    actual === undefined
-  ) {
-    return false
+  if (expected === undefined || expected.trim() === "" || actual === undefined) {
+    return false;
   }
 
-  return timingSafeEqual(actual, expected)
-}
+  return timingSafeEqual(actual, expected);
+};
 
 const requireAdminApiToken = async (
   request: Request,
   env: OpenAgentsWorkerEnv,
 ): Promise<boolean> => {
-  const expected = getAdminApiToken(env)
-  const actual = readBearerToken(request)
+  const expected = getAdminApiToken(env);
+  const actual = readBearerToken(request);
 
   if (expected === undefined || actual === undefined) {
-    return false
+    return false;
   }
 
-  return timingSafeEqual(actual, expected)
-}
+  return timingSafeEqual(actual, expected);
+};
 
 const gcpDispatchConfig = (env: OpenAgentsWorkerEnv) => {
-  const controlApiUrl = env.OA_CLOUD_CONTROL_URL?.trim()
-  const controlApiBearerToken = env.OA_CLOUD_CONTROL_TOKEN?.trim()
+  const controlApiUrl = env.OA_CLOUD_CONTROL_URL?.trim();
+  const controlApiBearerToken = env.OA_CLOUD_CONTROL_TOKEN?.trim();
 
   return {
     controlApiBearerToken,
     controlApiUrl,
     dispatchMode:
       controlApiUrl !== undefined &&
-      controlApiUrl !== '' &&
+      controlApiUrl !== "" &&
       controlApiBearerToken !== undefined &&
-      controlApiBearerToken !== ''
-        ? 'live'
-        : 'unconfigured',
-  }
-}
+      controlApiBearerToken !== ""
+        ? "live"
+        : "unconfigured",
+  };
+};
 
 const sendAutopilotDecisionRequiredEmailOnce = async (
   env: OpenAgentsWorkerEnv,
   record: AutopilotWorkOrderRecord,
 ): Promise<void> => {
-  const resend = getOpenAgentsWorkerConfig(env).email.resend
+  const resend = getOpenAgentsWorkerConfig(env).email.resend;
 
   if (resend === undefined) {
-    logWorkerRouteWarning('autopilot_decision_email_config_missing', {
+    logWorkerRouteWarning("autopilot_decision_email_config_missing", {
       workOrderRef: record.workOrderRef,
-    })
+    });
 
-    return
+    return;
   }
 
   // CFG-4 Domain 2 (#8519): `users` contact read serves from Postgres.
@@ -5429,129 +4996,124 @@ const sendAutopilotDecisionRequiredEmailOnce = async (
        FROM users
       WHERE id = ?`,
     [record.ownerUserId],
-  )
-  const contactRow = contactRows[0]
+  );
+  const contactRow = contactRows[0];
   const contact =
     contactRow === undefined
       ? null
       : {
           display_name: String(contactRow.display_name),
           primary_email:
-            contactRow.primary_email === null
-              ? null
-              : String(contactRow.primary_email),
-        }
-  const email = contact?.primary_email?.trim()
+            contactRow.primary_email === null ? null : String(contactRow.primary_email),
+        };
+  const email = contact?.primary_email?.trim();
 
-  if (email === undefined || email === '') {
-    logWorkerRouteWarning('autopilot_decision_email_missing_recipient', {
+  if (email === undefined || email === "") {
+    logWorkerRouteWarning("autopilot_decision_email_missing_recipient", {
       workOrderRef: record.workOrderRef,
-    })
+    });
 
-    return
+    return;
   }
 
   const delivery = await observedEffect(
-    'Email.sendAutopilotDecisionEmailWithLedger',
+    "Email.sendAutopilotDecisionEmailWithLedger",
     sendAutopilotDecisionEmailWithLedger(
       openAgentsDatabase(env),
       resend,
       new AutopilotDecisionEmailInput({
         appOrigin: getAppOrigin(env),
-        displayName: contact?.display_name.trim() || 'there',
+        displayName: contact?.display_name.trim() || "there",
         idempotencyKey: `autopilot:decision_required:${record.workOrderRef}`,
-        kind: 'decision_required',
+        kind: "decision_required",
         to: email,
         workOrderRef: record.workOrderRef,
       }),
       {
-        sourceAuthorityRef: 'system.autopilot_decision_notification.v1',
+        sourceAuthorityRef: "system.autopilot_decision_notification.v1",
         targetUserId: record.ownerUserId,
       },
     ),
-  )
+  );
 
   if (!delivery.ok) {
-    logWorkerRouteWarning('autopilot_decision_email_failed', {
+    logWorkerRouteWarning("autopilot_decision_email_failed", {
       error: delivery.errorMessage,
       workOrderRef: record.workOrderRef,
-    })
+    });
   }
-}
+};
 
 const handleEmailResendWebhookApi = async (
   request: Request,
   env: Parameters<typeof getResendEmailConfig>[0],
 ) => {
   try {
-    if (request.method !== 'POST') {
-      return methodNotAllowed(['POST'])
+    if (request.method !== "POST") {
+      return methodNotAllowed(["POST"]);
     }
 
-    const config = getOpenAgentsWorkerConfig(env)
+    const config = getOpenAgentsWorkerConfig(env);
     const result = await handleResendWebhook(makeCrmEmailDatabaseForEnv(env), {
       body: await request.text(),
       headers: request.headers,
       secret: config.email.resendWebhookSecret,
-    })
+    });
 
     return noStoreJsonResponse(
       {
         duplicate: result.duplicate,
         eventType: result.eventType,
-        ok: result.status === 'accepted',
+        ok: result.status === "accepted",
         providerEventId: result.providerEventId,
         status: result.status,
       },
-      { status: result.status === 'unauthorized' ? 401 : 200 },
-    )
+      { status: result.status === "unauthorized" ? 401 : 200 },
+    );
   } catch (error) {
     return noStoreJsonResponse(
       {
-        error: 'resend_webhook_error',
-        message:
-          error instanceof Error
-            ? error.message
-            : 'Resend webhook processing failed.',
+        error: "resend_webhook_error",
+        message: error instanceof Error ? error.message : "Resend webhook processing failed.",
       },
       { status: 400 },
-    )
+    );
   }
-}
+};
 
 type SiteCustomerNotificationOutcome = Readonly<{
-  emailMessageId: string | null
-  emailStatus: 'accepted' | 'failed' | 'skipped'
-  providerMessageId?: string | null | undefined
-  skipReason?: string | undefined
-}>
+  emailMessageId: string | null;
+  emailStatus: "accepted" | "failed" | "skipped";
+  providerMessageId?: string | null | undefined;
+  skipReason?: string | undefined;
+}>;
 
 type ReviewReadyArtifactNotificationRow = Readonly<{
-  artifact_id: string
-  artifact_title: string
-  artifact_url: string | null
-  assignment_current_run_id: string | null
-  assignment_goal_id: string | null
-  assignment_id: string | null
-  assignment_visibility: 'private' | 'team' | 'public' | null
-  display_name: string | null
-  kind: string
-  order_id: string
-  primary_email: string | null
-  repository_full_name: string | null
-  target_user_id: string | null
-}>
+  artifact_id: string;
+  artifact_title: string;
+  artifact_url: string | null;
+  assignment_current_run_id: string | null;
+  assignment_goal_id: string | null;
+  assignment_id: string | null;
+  assignment_visibility: "private" | "team" | "public" | null;
+  display_name: string | null;
+  kind: string;
+  order_id: string;
+  primary_email: string | null;
+  repository_full_name: string | null;
+  target_user_id: string | null;
+}>;
 
 const reviewReadyArtifactNotificationPayloadJson = (
   input: Readonly<{
-    artifactId: string
-    artifactUrl: string | null
-    emailMessageId: string | null
-    emailStatus: string
-    providerMessageId?: string | null | undefined
-    skipReason?: string | undefined
-    softwareOrderId: string
-    stage: 'review_ready'
+    artifactId: string;
+    artifactUrl: string | null;
+    emailMessageId: string | null;
+    emailStatus: string;
+    providerMessageId?: string | null | undefined;
+    skipReason?: string | undefined;
+    softwareOrderId: string;
+    stage: "review_ready";
   }>,
 ): string =>
   JSON.stringify({
@@ -5563,7 +5125,7 @@ const reviewReadyArtifactNotificationPayloadJson = (
     skipReason: input.skipReason ?? null,
     softwareOrderId: input.softwareOrderId,
     stage: input.stage,
-  })
+  });
 
 const readPendingReviewReadyArtifactNotifications = async (
   db: D1Database,
@@ -5617,155 +5179,144 @@ const readPendingReviewReadyArtifactNotifications = async (
     .all<
       Omit<
         ReviewReadyArtifactNotificationRow,
-        'target_user_id' | 'display_name' | 'primary_email'
+        "target_user_id" | "display_name" | "primary_email"
       > &
         Readonly<{ order_user_id: string | null }>
     >()
-    .then(result => result.results)
+    .then((result) => result.results);
 
   const profiles = await readIdentityUserProfiles(
     identityDb,
-    rows.flatMap(row =>
-      row.order_user_id === null ? [] : [row.order_user_id],
-    ),
-  )
+    rows.flatMap((row) => (row.order_user_id === null ? [] : [row.order_user_id])),
+  );
 
   return rows.map(({ order_user_id, ...row }) => {
-    const profile =
-      order_user_id === null ? undefined : profiles.get(order_user_id)
-    const liveProfile =
-      profile === undefined || profile.deletedAt !== null ? undefined : profile
+    const profile = order_user_id === null ? undefined : profiles.get(order_user_id);
+    const liveProfile = profile === undefined || profile.deletedAt !== null ? undefined : profile;
     return {
       ...row,
       display_name: liveProfile?.displayName ?? null,
       primary_email: liveProfile?.primaryEmail ?? null,
       target_user_id: liveProfile?.userId ?? null,
-    }
-  })
-}
+    };
+  });
+};
 
 const sendReviewReadyArtifactNotification = async (
   env: Parameters<typeof getResendEmailConfig>[0],
   row: ReviewReadyArtifactNotificationRow,
 ): Promise<SiteCustomerNotificationOutcome> => {
-  const db = openAgentsDatabase(env)
+  const db = openAgentsDatabase(env);
   // KS-8.17 (#8361): the adjutant_assignment_events write below rides the
   // supervision long-tail mirror.
-  const supervisionMirror = makeSupervisionLongtailMirrorForEnv(env)
-  const email = row.primary_email?.trim()
-  const resend = getResendEmailConfig(env)
-  const notification =
-    await (async (): Promise<SiteCustomerNotificationOutcome> => {
-      if (row.target_user_id === null) {
-        return {
-          emailMessageId: null,
-          emailStatus: 'skipped',
-          skipReason: 'missing_order_notification_target',
-        }
-      }
+  const supervisionMirror = makeSupervisionLongtailMirrorForEnv(env);
+  const email = row.primary_email?.trim();
+  const resend = getResendEmailConfig(env);
+  const notification = await (async (): Promise<SiteCustomerNotificationOutcome> => {
+    if (row.target_user_id === null) {
+      return {
+        emailMessageId: null,
+        emailStatus: "skipped",
+        skipReason: "missing_order_notification_target",
+      };
+    }
 
-      if (row.assignment_id === null) {
-        return {
-          emailMessageId: null,
-          emailStatus: 'skipped',
-          skipReason: 'missing_assignment',
-        }
-      }
+    if (row.assignment_id === null) {
+      return {
+        emailMessageId: null,
+        emailStatus: "skipped",
+        skipReason: "missing_assignment",
+      };
+    }
 
-      if (email === undefined || email === '') {
-        return {
-          emailMessageId: null,
-          emailStatus: 'skipped',
-          skipReason: 'missing_customer_email',
-        }
-      }
+    if (email === undefined || email === "") {
+      return {
+        emailMessageId: null,
+        emailStatus: "skipped",
+        skipReason: "missing_customer_email",
+      };
+    }
 
-      if (resend === undefined) {
-        return {
-          emailMessageId: null,
-          emailStatus: 'skipped',
-          skipReason: 'email_config_missing',
-        }
-      }
+    if (resend === undefined) {
+      return {
+        emailMessageId: null,
+        emailStatus: "skipped",
+        skipReason: "email_config_missing",
+      };
+    }
 
-      const artifactLabel =
-        row.kind === 'pull_request'
-          ? 'Review pull request'
-          : row.kind === 'diff'
-            ? 'Review diff'
-            : 'Review artifact'
-      const notificationInput = new OrderSitesTransactionalEmailInput({
-        appOrigin: getAppOrigin(env),
-        ...(row.assignment_id === null
-          ? {}
-          : { assignmentId: row.assignment_id }),
-        artifactLabel,
-        artifactUrl: row.artifact_url,
-        customerSafeStatus: 'Ready for review',
-        displayName: row.display_name ?? email,
-        eventRef: row.artifact_id,
-        lifecycleKind: 'review_ready',
-        nextAction:
-          'Open your order status page, review the latest deliverable, and send any follow-up comment.',
-        orderId: row.order_id,
-        revisionUrl: null,
-        safeReason: null,
-        siteTitle: row.artifact_title,
-        siteUrl: null,
-        sourceAuthorityRefs: [
-          'docs/2026-06-05-autopilot-sites-agent-ready-master-roadmap.md#email-and-drip-campaign-plan',
-          'system.review_ready_artifact_notification_reconciler.v1',
-        ],
-        targetRefs: [
-          row.order_id,
-          row.artifact_id,
-          ...(row.assignment_id === null ? [] : [row.assignment_id]),
-        ],
-        to: email,
-      })
+    const artifactLabel =
+      row.kind === "pull_request"
+        ? "Review pull request"
+        : row.kind === "diff"
+          ? "Review diff"
+          : "Review artifact";
+    const notificationInput = new OrderSitesTransactionalEmailInput({
+      appOrigin: getAppOrigin(env),
+      ...(row.assignment_id === null ? {} : { assignmentId: row.assignment_id }),
+      artifactLabel,
+      artifactUrl: row.artifact_url,
+      customerSafeStatus: "Ready for review",
+      displayName: row.display_name ?? email,
+      eventRef: row.artifact_id,
+      lifecycleKind: "review_ready",
+      nextAction:
+        "Open your order status page, review the latest deliverable, and send any follow-up comment.",
+      orderId: row.order_id,
+      revisionUrl: null,
+      safeReason: null,
+      siteTitle: row.artifact_title,
+      siteUrl: null,
+      sourceAuthorityRefs: [
+        "docs/2026-06-05-autopilot-sites-agent-ready-master-roadmap.md#email-and-drip-campaign-plan",
+        "system.review_ready_artifact_notification_reconciler.v1",
+      ],
+      targetRefs: [
+        row.order_id,
+        row.artifact_id,
+        ...(row.assignment_id === null ? [] : [row.assignment_id]),
+      ],
+      to: email,
+    });
 
-      const result = await observedEffect(
-        'Email.sendReviewReadyArtifactNotification',
-        sendOrderSitesTransactionalEmailWithLedger(
-          db,
-          resend,
-          new OrderSitesTransactionalEmailInput({
-            ...notificationInput,
-            idempotencyKey:
-              buildOrderSitesTransactionalEmailIdempotencyKey(
-                notificationInput,
-              ),
-          }),
-          {
-            actorUserId: 'system:review-ready-artifact-reconciler',
-            metadata: {
-              artifactId: row.artifact_id,
-              assignmentId: row.assignment_id,
-              eventSource: 'review_ready_artifact_notification_reconciler',
-              lifecycleKind: 'review_ready',
-              softwareOrderId: row.order_id,
-              stage: 'review_ready',
-            },
-            sourceAuthorityRef:
-              'system.review_ready_artifact_notification_reconciler.v1',
-            targetUserId: row.target_user_id,
+    const result = await observedEffect(
+      "Email.sendReviewReadyArtifactNotification",
+      sendOrderSitesTransactionalEmailWithLedger(
+        db,
+        resend,
+        new OrderSitesTransactionalEmailInput({
+          ...notificationInput,
+          idempotencyKey: buildOrderSitesTransactionalEmailIdempotencyKey(notificationInput),
+        }),
+        {
+          actorUserId: "system:review-ready-artifact-reconciler",
+          metadata: {
+            artifactId: row.artifact_id,
+            assignmentId: row.assignment_id,
+            eventSource: "review_ready_artifact_notification_reconciler",
+            lifecycleKind: "review_ready",
+            softwareOrderId: row.order_id,
+            stage: "review_ready",
           },
-        ),
-      )
+          sourceAuthorityRef: "system.review_ready_artifact_notification_reconciler.v1",
+          targetUserId: row.target_user_id,
+        },
+      ),
+    );
 
-      return result.ok
-        ? {
-            emailMessageId: result.emailMessageId,
-            emailStatus: 'accepted',
-            providerMessageId: result.providerMessageId,
-          }
-        : {
-            emailMessageId: result.emailMessageId,
-            emailStatus: 'failed',
-            skipReason: result.errorMessage,
-          }
-    })()
-  const now = currentIsoTimestamp()
+    return result.ok
+      ? {
+          emailMessageId: result.emailMessageId,
+          emailStatus: "accepted",
+          providerMessageId: result.providerMessageId,
+        }
+      : {
+          emailMessageId: result.emailMessageId,
+          emailStatus: "failed",
+          skipReason: result.errorMessage,
+        };
+  })();
+  const now = currentIsoTimestamp();
   const payload = reviewReadyArtifactNotificationPayloadJson({
     artifactId: row.artifact_id,
     artifactUrl: row.artifact_url,
@@ -5774,16 +5325,16 @@ const sendReviewReadyArtifactNotification = async (
     providerMessageId: notification.providerMessageId,
     skipReason: notification.skipReason,
     softwareOrderId: row.order_id,
-    stage: 'review_ready',
-  })
+    stage: "review_ready",
+  });
   const summary =
-    notification.emailStatus === 'accepted'
-      ? 'Autopilot customer artifact review-ready email notification was accepted.'
-      : notification.emailStatus === 'failed'
-        ? 'Autopilot customer artifact review-ready email notification failed.'
-        : 'Autopilot customer artifact review-ready email notification is needed.'
+    notification.emailStatus === "accepted"
+      ? "Autopilot customer artifact review-ready email notification was accepted."
+      : notification.emailStatus === "failed"
+        ? "Autopilot customer artifact review-ready email notification failed."
+        : "Autopilot customer artifact review-ready email notification is needed.";
 
-  const assignmentEventId = compactRandomId('adjutant_assignment_event')
+  const assignmentEventId = compactRandomId("adjutant_assignment_event");
   await db
     .prepare(
       `INSERT INTO adjutant_assignment_events
@@ -5808,107 +5359,96 @@ const sendReviewReadyArtifactNotification = async (
       row.order_id,
       row.assignment_goal_id,
       row.assignment_current_run_id,
-      row.assignment_visibility ?? 'public',
+      row.assignment_visibility ?? "public",
       summary,
-      'system:review-ready-artifact-reconciler',
+      "system:review-ready-artifact-reconciler",
       payload,
       notification.emailMessageId,
       now,
     )
-    .run()
-  await supervisionMirror?.mirrorRowsByKey('adjutant_assignment_events', [
-    [assignmentEventId],
-  ])
+    .run();
+  await supervisionMirror?.mirrorRowsByKey("adjutant_assignment_events", [[assignmentEventId]]);
 
-  return notification
-}
+  return notification;
+};
 
 const sendPendingReviewReadyArtifactNotifications = async (
   env: Parameters<typeof getResendEmailConfig>[0],
 ): Promise<void> => {
   if (getResendEmailConfig(env) === undefined) {
-    return
+    return;
   }
 
   const pending = await readPendingReviewReadyArtifactNotifications(
     openAgentsDatabase(env),
     identityDbForEnv(env),
-  )
+  );
 
   await Promise.all(
-    pending.map(row =>
-      sendReviewReadyArtifactNotification(env, row).catch(error => {
-        logWorkerRouteWarning('review_ready_artifact_notification_failed', {
+    pending.map((row) =>
+      sendReviewReadyArtifactNotification(env, row).catch((error) => {
+        logWorkerRouteWarning("review_ready_artifact_notification_failed", {
           artifactId: row.artifact_id,
           error: errorMessage(error),
           orderId: row.order_id,
-        })
+        });
       }),
     ),
-  )
-}
+  );
+};
 
-const makeBillingAwareOmniRunStore = (
-  env: OpenAgentsWorkerEnv,
-  _ctx?: ExecutionContext,
-) => makeOmniRunStoreForEnv(env)
+const makeBillingAwareOmniRunStore = (env: OpenAgentsWorkerEnv, _ctx?: ExecutionContext) =>
+  makeOmniRunStoreForEnv(env);
 
 const tokenUsageLeaderboardsLayer = (env: OpenAgentsWorkerEnv) =>
   TokenUsageLeaderboards.effectCfLayer(identityDbForEnv(env)).pipe(
     Layer.provide(OpenAgentsDatabase.layer),
     Layer.provide(Layer.succeed(OpenAgentsRuntimeEnvironment, env)),
-  )
+  );
 
-const emptyEmailCampaignDispatcherResult =
-  (): EmailCampaignDispatcherResult => ({
-    claimed: 0,
-    failed: 0,
-    retried: 0,
-    sent: 0,
-    skipped: 0,
-    suppressed: 0,
-  })
+const emptyEmailCampaignDispatcherResult = (): EmailCampaignDispatcherResult => ({
+  claimed: 0,
+  failed: 0,
+  retried: 0,
+  sent: 0,
+  skipped: 0,
+  suppressed: 0,
+});
 
 const emailCampaignDispatcherLayer = (env: EmailCampaignDispatcherBindings) =>
-  OpenAgentsDatabase.layer.pipe(
-    Layer.provide(Layer.succeed(OpenAgentsRuntimeEnvironment, env)),
-  )
+  OpenAgentsDatabase.layer.pipe(Layer.provide(Layer.succeed(OpenAgentsRuntimeEnvironment, env)));
 
 const dispatchDueEmailCampaignSendsScheduled = (
   env: EmailCampaignDispatcherBindings,
 ): Effect.Effect<EmailCampaignDispatcherResult, never> =>
   Effect.gen(function* () {
-    const config = getOpenAgentsWorkerConfig(env)
+    const config = getOpenAgentsWorkerConfig(env);
     // KS-8.11 (#8322): the dispatch cron rides the dual-write seam — every
     // claim/skip/suppress/sent write mirrors its Postgres twin fail-soft.
-    const db = makeCrmEmailDatabaseForEnv(env)
-    const resend = config.email.resend
-    const emailSequenceFromEmail =
-      env.EMAIL_SEQUENCE_FROM_EMAIL ?? resend?.fromEmail
+    const db = makeCrmEmailDatabaseForEnv(env);
+    const resend = config.email.resend;
+    const emailSequenceFromEmail = env.EMAIL_SEQUENCE_FROM_EMAIL ?? resend?.fromEmail;
     const sequenceSend =
       resend === undefined || emailSequenceFromEmail === undefined
         ? undefined
         : {
-            isEnabled: () =>
-              isEmailSequenceSendEnabled(env.EMAIL_SEQUENCE_SEND_ENABLED),
+            isEnabled: () => isEmailSequenceSendEnabled(env.EMAIL_SEQUENCE_SEND_ENABLED),
             send: makeResendEmailSequenceSender(db, resend, {
               appOrigin: config.app.origin,
               fromEmail: emailSequenceFromEmail,
-              replyToEmail:
-                env.EMAIL_SEQUENCE_REPLY_TO_EMAIL ??
-                config.email.resend?.replyToEmail,
+              replyToEmail: env.EMAIL_SEQUENCE_REPLY_TO_EMAIL ?? config.email.resend?.replyToEmail,
             }),
-          }
+          };
 
     return yield* dispatchDueEmailCampaignSends(db, {
       appOrigin: config.app.origin,
       resend: config.email.resend,
       sequenceSend,
-    })
+    });
   }).pipe(
     Effect.provide(emailCampaignDispatcherLayer(env)),
     Effect.catch(() => Effect.succeed(emptyEmailCampaignDispatcherResult())),
-  )
+  );
 
 const runArtanisScheduledTickScheduled = (
   db: ArtanisDatabase,
@@ -5922,17 +5462,17 @@ const runArtanisScheduledTickScheduled = (
   }).pipe(
     Effect.asVoid,
     Effect.catch(() => Effect.void),
-  )
+  );
 
 const recordPylonCapacityFunnelSnapshotsScheduled = (
   deps: Readonly<{
-    snapshotStore: PylonCapacityFunnelSnapshotStore
-    store: PylonApiStore
+    snapshotStore: PylonCapacityFunnelSnapshotStore;
+    store: PylonApiStore;
   }>,
   scheduledTime: number,
 ): Effect.Effect<void, never> =>
   Effect.tryPromise({
-    catch: () => 'pylon_capacity_funnel_snapshot_failed' as const,
+    catch: () => "pylon_capacity_funnel_snapshot_failed" as const,
     try: () =>
       recordPylonCapacityFunnelSnapshots({
         nowIso: epochMillisToIsoTimestamp(scheduledTime),
@@ -5942,7 +5482,7 @@ const recordPylonCapacityFunnelSnapshotsScheduled = (
   }).pipe(
     Effect.asVoid,
     Effect.catch(() => Effect.void),
-  )
+  );
 
 // Public relay health probe (#4865): scheduled NIP-11 + websocket
 // REQ/EOSE probe of the canonical market relay. The tick guards its own
@@ -5953,7 +5493,7 @@ const runRelayHealthProbeScheduled = (
   scheduledTime: number,
 ): Effect.Effect<void, never> =>
   Effect.tryPromise({
-    catch: () => 'relay_health_probe_failed' as const,
+    catch: () => "relay_health_probe_failed" as const,
     try: () =>
       runRelayHealthProbeTick({
         // Service binding preferred for the NIP-11 leg: same-zone plain-GET
@@ -5961,10 +5501,7 @@ const runRelayHealthProbeScheduled = (
         // worker; the binding invokes the relay worker directly (#4865).
         fetchFn: env.MARKET_RELAY_SERVICE
           ? (((url, init) =>
-              (env.MARKET_RELAY_SERVICE as Fetcher).fetch(
-                url,
-                init,
-              )) as RelayHealthFetch)
+              (env.MARKET_RELAY_SERVICE as Fetcher).fetch(url, init)) as RelayHealthFetch)
           : undefined,
         makeId: randomUuid,
         relayUrl: canonicalMarketRelayUrl(env),
@@ -5974,7 +5511,7 @@ const runRelayHealthProbeScheduled = (
   }).pipe(
     Effect.asVoid,
     Effect.catch(() => Effect.void),
-  )
+  );
 
 // Self-serve open-window producer (#5396). Keeps a small, hard-capped pool of
 // openly-claimable `auto_starter` windows on the live Tassadar run so a fresh
@@ -5983,28 +5520,25 @@ const runRelayHealthProbeScheduled = (
 // filter, so we only ever top up to TARGET claimable windows — bounding spend:
 // each window can settle at most one verified worker+validator pair (5+5 sats)
 // within the armed settlement-gate caps before it is consumed and replenished.
-const SELF_SERVE_WINDOW_RUN_REF = 'run.tassadar.executor.20260615'
-const SELF_SERVE_WINDOW_TARGET = 2
+const SELF_SERVE_WINDOW_RUN_REF = "run.tassadar.executor.20260615";
+const SELF_SERVE_WINDOW_TARGET = 2;
 
 const runSelfServeWindowProducerScheduled = (
   env: OpenAgentsWorkerEnv,
   scheduledTime: number,
 ): Effect.Effect<void, never> =>
   Effect.tryPromise({
-    catch: () => 'self_serve_window_producer_failed' as const,
+    catch: () => "self_serve_window_producer_failed" as const,
     try: async () => {
-      const store = makeTrainingAuthorityStoreForEnv(env)
-      const nowIso = epochMillisToIsoTimestamp(scheduledTime)
-      const claimable = await store.listClaimableWindows(nowIso, 50)
+      const store = makeTrainingAuthorityStoreForEnv(env);
+      const nowIso = epochMillisToIsoTimestamp(scheduledTime);
+      const claimable = await store.listClaimableWindows(nowIso, 50);
       const openSelfServe = claimable.filter(
-        window =>
+        (window) =>
           window.trainingRunRef === SELF_SERVE_WINDOW_RUN_REF &&
-          window.homeworkKind === 'auto_starter',
-      )
-      const toCreate = Math.max(
-        0,
-        SELF_SERVE_WINDOW_TARGET - openSelfServe.length,
-      )
+          window.homeworkKind === "auto_starter",
+      );
+      const toCreate = Math.max(0, SELF_SERVE_WINDOW_TARGET - openSelfServe.length);
 
       for (let index = 0; index < toCreate; index += 1) {
         const planned = await store.planWindow(
@@ -6012,33 +5546,31 @@ const runSelfServeWindowProducerScheduled = (
             makeId: randomUuid,
             nowIso,
             request: {
-              datasetRefs: ['dataset.public.tassadar.kernel_trace'],
-              homeworkKind: 'auto_starter',
+              datasetRefs: ["dataset.public.tassadar.kernel_trace"],
+              homeworkKind: "auto_starter",
               priority: 1,
-              receiptRefs: [
-                'receipt.public.tassadar.window.self_serve_open.producer.plan',
-              ],
-              sourceRefs: ['source.public.tassadar.executor.self_serve_open'],
+              receiptRefs: ["receipt.public.tassadar.window.self_serve_open.producer.plan"],
+              sourceRefs: ["source.public.tassadar.executor.self_serve_open"],
               trainingRunRef: SELF_SERVE_WINDOW_RUN_REF,
             },
           }),
-        )
+        );
         const transitioned = transitionTrainingWindowRecord({
-          actorRef: 'operator.openagents.self_serve_window_producer',
+          actorRef: "operator.openagents.self_serve_window_producer",
           eventId: randomUuid(),
-          nextState: 'active',
+          nextState: "active",
           nowIso,
           receiptRef: `receipt.public.tassadar.window.self_serve_open.producer.activate.${planned.id}`,
-          transitionKind: 'window_activate',
+          transitionKind: "window_activate",
           window: planned,
-        })
-        await store.transitionWindow(transitioned.window, transitioned.event)
+        });
+        await store.transitionWindow(transitioned.window, transitioned.event);
       }
     },
   }).pipe(
     Effect.asVoid,
     Effect.catch(() => Effect.void),
-  )
+  );
 
 const readTokenUsageLeaderboardsForUser = (
   env: OpenAgentsWorkerEnv,
@@ -6046,77 +5578,71 @@ const readTokenUsageLeaderboardsForUser = (
 ): Promise<AutopilotTokenLeaderboards> =>
   Effect.runPromise(
     Effect.gen(function* () {
-      const tokenUsageLeaderboards = yield* TokenUsageLeaderboards
+      const tokenUsageLeaderboards = yield* TokenUsageLeaderboards;
 
-      return yield* Effect.promise(() =>
-        tokenUsageLeaderboards.readForUser(userId),
-      )
+      return yield* Effect.promise(() => tokenUsageLeaderboards.readForUser(userId));
     }).pipe(Effect.provide(tokenUsageLeaderboardsLayer(env))),
-  )
+  );
 
 const readSelectedOperatorTargetUser = (
   identityDb: IdentityDb,
   selector: Record<string, unknown>,
 ): Promise<OperatorTargetUser | undefined> =>
-  readOperatorTargetUser(identityDb, selector, getPrimaryOpenAgentsAdminEmail())
+  readOperatorTargetUser(identityDb, selector, getPrimaryOpenAgentsAdminEmail());
 
 const handleAdminSyncNotifyApi = async (
   request: Request,
   env: OpenAgentsWorkerEnv,
 ): Promise<Response> => {
-  if (request.method !== 'POST') {
-    return methodNotAllowed(['POST'])
+  if (request.method !== "POST") {
+    return methodNotAllowed(["POST"]);
   }
 
   if (!(await requireAdminApiToken(request, env))) {
-    return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+    return noStoreJsonResponse({ error: "unauthorized" }, { status: 401 });
   }
 
-  const body = await readJsonObject(request).catch(
-    (): Record<string, unknown> => ({}),
-  )
+  const body = await readJsonObject(request).catch((): Record<string, unknown> => ({}));
   const scopes = [
     ...stringArrayFromUnknown(body.scopes),
-    ...(optionalString(body.scope) === undefined
-      ? []
-      : [optionalString(body.scope)]),
-  ].filter((scope): scope is string => scope !== undefined)
+    ...(optionalString(body.scope) === undefined ? [] : [optionalString(body.scope)]),
+  ].filter((scope): scope is string => scope !== undefined);
 
   if (scopes.length === 0) {
     return noStoreJsonResponse(
-      { error: 'bad_request', reason: 'scope or scopes is required' },
+      { error: "bad_request", reason: "scope or scopes is required" },
       { status: 400 },
-    )
+    );
   }
 
-  await notifySyncScopes(env, scopes)
+  await notifySyncScopes(env, scopes);
 
   return noStoreJsonResponse({
     ok: true,
     scopes: [...new Set(scopes)],
-  })
-}
+  });
+};
 
 const providerDeviceLoginSecretKey = (attemptId: string): string =>
-  `provider-device-login:${attemptId}`
+  `provider-device-login:${attemptId}`;
 
 const providerAuthSecretKey = (providerAccountRef: string): string =>
-  `provider-auth:${providerAccountRef}`
+  `provider-auth:${providerAccountRef}`;
 
 const startedDeviceLoginTtlSeconds = (expiresAt: string): number => {
-  const milliseconds = Date.parse(expiresAt) - workerRuntime.now().getTime()
+  const milliseconds = Date.parse(expiresAt) - workerRuntime.now().getTime();
 
-  return Math.max(60, Math.ceil(milliseconds / 1000))
-}
+  return Math.max(60, Math.ceil(milliseconds / 1000));
+};
 
 const storeStartedCodexDeviceLogin =
   (kv: AuthKvStore) =>
   async (
     input: Readonly<{
-      attemptId: string
-      deviceAuthId: string
-      userCode: string
-      expiresAt: string
+      attemptId: string;
+      deviceAuthId: string;
+      userCode: string;
+      expiresAt: string;
     }>,
   ): Promise<void> => {
     await kv.put(
@@ -6126,64 +5652,62 @@ const storeStartedCodexDeviceLogin =
         userCode: input.userCode,
       }),
       { expirationTtl: startedDeviceLoginTtlSeconds(input.expiresAt) },
-    )
-  }
+    );
+  };
 
 const readStartedCodexDeviceLogin =
   (kv: AuthKvStore) =>
   async (
     attemptId: string,
-  ): Promise<
-    Readonly<{ deviceAuthId: string; userCode: string }> | undefined
-  > => {
-    const value = await kv.get(providerDeviceLoginSecretKey(attemptId), 'json')
+  ): Promise<Readonly<{ deviceAuthId: string; userCode: string }> | undefined> => {
+    const value = await kv.get(providerDeviceLoginSecretKey(attemptId), "json");
 
     if (
       !isRecord(value) ||
-      typeof value.deviceAuthId !== 'string' ||
-      typeof value.userCode !== 'string'
+      typeof value.deviceAuthId !== "string" ||
+      typeof value.userCode !== "string"
     ) {
-      return undefined
+      return undefined;
     }
 
     return {
       deviceAuthId: value.deviceAuthId,
       userCode: value.userCode,
-    }
-  }
+    };
+  };
 
 const deleteStartedCodexDeviceLogin =
   (kv: AuthKvStore) =>
   async (attemptId: string): Promise<void> => {
-    await kv.delete(providerDeviceLoginSecretKey(attemptId))
-  }
+    await kv.delete(providerDeviceLoginSecretKey(attemptId));
+  };
 
 const storeConnectedProviderApiKey =
   (kv: AuthKvStore) =>
   async (
     input: Readonly<{
-      providerAccountRef: string
-      provider: 'anthropic_claude' | 'google_gemini' | 'openrouter'
-      apiKey: string
+      providerAccountRef: string;
+      provider: "anthropic_claude" | "google_gemini" | "openrouter";
+      apiKey: string;
     }>,
   ): Promise<void> => {
     const providerField =
-      input.provider === 'anthropic_claude'
-        ? 'anthropic'
-        : input.provider === 'google_gemini'
-          ? 'google'
-          : 'openrouter'
+      input.provider === "anthropic_claude"
+        ? "anthropic"
+        : input.provider === "google_gemini"
+          ? "google"
+          : "openrouter";
 
     await kv.put(
       providerAuthSecretKey(input.providerAccountRef),
       JSON.stringify({
         [providerField]: {
-          type: 'api_key',
+          type: "api_key",
           key: input.apiKey,
         },
       }),
-    )
-  }
+    );
+  };
 
 /**
  * CX-5 (#8549): local-auth/import custody write for a Claude subscription
@@ -6203,64 +5727,62 @@ const storeConnectedClaudeAuth =
   (env: AuthKvEnv) =>
   async (
     input: Readonly<{
-      ownerUserId: string
-      providerAccountRef: string
-      authContentValue: string
+      ownerUserId: string;
+      providerAccountRef: string;
+      authContentValue: string;
     }>,
   ): Promise<string> => {
-    const kv = authKvStoreForEnv(env)
+    const kv = authKvStoreForEnv(env);
     await kv.put(
       providerAuthSecretKey(input.providerAccountRef),
       JSON.stringify({
         anthropic: {
-          type: 'api_key',
+          type: "api_key",
           key: input.authContentValue,
         },
       }),
-    )
-    return `provider-account://anthropic-claude/user-oauth-token/${input.providerAccountRef}`
-  }
+    );
+    return `provider-account://anthropic-claude/user-oauth-token/${input.providerAccountRef}`;
+  };
 
 const storeConnectedClaudeAuthForWorkerEnv = (env: OpenAgentsWorkerEnv) =>
-  storeConnectedClaudeAuth(env)
+  storeConnectedClaudeAuth(env);
 
 const deleteConnectedClaudeAuth = async (
   env: AuthKvEnv,
   input: Readonly<{
-    ownerUserId: string
-    providerAccountRef: string
+    ownerUserId: string;
+    providerAccountRef: string;
   }>,
 ): Promise<boolean> => {
-  await authKvStoreForEnv(env).delete(
-    providerAuthSecretKey(input.providerAccountRef),
-  )
-  return true
-}
+  await authKvStoreForEnv(env).delete(providerAuthSecretKey(input.providerAccountRef));
+  return true;
+};
 
 const deleteConnectedClaudeAuthForWorkerEnv = (
   env: OpenAgentsWorkerEnv,
   input: Readonly<{
-    ownerUserId: string
-    providerAccountRef: string
+    ownerUserId: string;
+    providerAccountRef: string;
   }>,
-) => deleteConnectedClaudeAuth(env, input)
+) => deleteConnectedClaudeAuth(env, input);
 
 type ProviderAccountTokenCustodyEnv = AuthKvEnv &
   ProviderTokenCustodyKeyEnv &
   Readonly<{
-    OPENAGENTS_DB: D1Database
-  }>
+    OPENAGENTS_DB: D1Database;
+  }>;
 
 const storeConnectedCodexAuth =
   (env: ProviderAccountTokenCustodyEnv) =>
   async (
     input: Readonly<{
-      ownerUserId: string
-      providerAccountRef: string
-      auth: CodexOAuthAuth
+      ownerUserId: string;
+      providerAccountRef: string;
+      auth: CodexOAuthAuth;
     }>,
   ): Promise<string> => {
-    const cipher = await providerAccountTokenCustodyCipherFromEnv(env)
+    const cipher = await providerAccountTokenCustodyCipherFromEnv(env);
 
     return storeConnectedCodexAuthInCustody(
       // KS-8.18 (#8329): flagship dual-write wiring — the encrypted token
@@ -6273,36 +5795,33 @@ const storeConnectedCodexAuth =
         providerAccountRef: input.providerAccountRef,
         nowIso: currentIsoTimestamp(),
       },
-    )
-  }
+    );
+  };
 
 const storeConnectedCodexAuthForWorkerEnv = (env: OpenAgentsWorkerEnv) =>
-  storeConnectedCodexAuth(env)
+  storeConnectedCodexAuth(env);
 
 const deleteConnectedCodexAuth = async (
   env: ProviderAccountTokenCustodyEnv,
   input: Readonly<{
-    ownerUserId: string
-    providerAccountRef: string
+    ownerUserId: string;
+    providerAccountRef: string;
   }>,
 ): Promise<boolean> =>
-  deleteConnectedCodexAuthFromCustody(
-    makeProviderAccountTokenCustodyStoreForEnv(env),
-    {
-      actorRef: `owner:${input.ownerUserId}`,
-      ownerUserId: input.ownerUserId,
-      providerAccountRef: input.providerAccountRef,
-      nowIso: currentIsoTimestamp(),
-    },
-  )
+  deleteConnectedCodexAuthFromCustody(makeProviderAccountTokenCustodyStoreForEnv(env), {
+    actorRef: `owner:${input.ownerUserId}`,
+    ownerUserId: input.ownerUserId,
+    providerAccountRef: input.providerAccountRef,
+    nowIso: currentIsoTimestamp(),
+  });
 
 const deleteConnectedCodexAuthForWorkerEnv = (
   env: OpenAgentsWorkerEnv,
   input: Readonly<{
-    ownerUserId: string
-    providerAccountRef: string
+    ownerUserId: string;
+    providerAccountRef: string;
   }>,
-) => deleteConnectedCodexAuth(env, input)
+) => deleteConnectedCodexAuth(env, input);
 
 const readConnectedCodexAuthMaterial = async (
   env: ProviderAccountTokenCustodyEnv,
@@ -6310,15 +5829,15 @@ const readConnectedCodexAuthMaterial = async (
   providerAccountRef: string,
 ): Promise<
   | Readonly<{
-      authContentEnv: 'OPENCODE_AUTH_CONTENT'
-      authContentJson: string
+      authContentEnv: "OPENCODE_AUTH_CONTENT";
+      authContentJson: string;
     }>
   | undefined
 > => {
-  const cipher = await providerAccountTokenCustodyCipherFromEnv(env)
+  const cipher = await providerAccountTokenCustodyCipherFromEnv(env);
   // KS-8.18 (#8329): the read path issues a fresh short-lived access token
   // and persists the refreshed material — dual-write mirrored to Postgres.
-  const store = makeProviderAccountTokenCustodyStoreForEnv(env)
+  const store = makeProviderAccountTokenCustodyStoreForEnv(env);
 
   try {
     return codexAccessToAuthMaterial(
@@ -6328,128 +5847,123 @@ const readConnectedCodexAuthMaterial = async (
         providerAccountRef,
         now: workerRuntime.now(),
       }),
-    )
+    );
   } catch (error) {
     if (
-      typeof error === 'object' &&
+      typeof error === "object" &&
       error !== null &&
-      '_tag' in error &&
-      error._tag === 'ProviderAccountNotFound'
+      "_tag" in error &&
+      error._tag === "ProviderAccountNotFound"
     ) {
-      return undefined
+      return undefined;
     }
 
-    throw error
+    throw error;
   }
-}
+};
 
 const readConnectedCodexAuthMaterialForWorkerEnv = (
   env: OpenAgentsWorkerEnv,
   ownerUserId: string,
   providerAccountRef: string,
-) => readConnectedCodexAuthMaterial(env, ownerUserId, providerAccountRef)
+) => readConnectedCodexAuthMaterial(env, ownerUserId, providerAccountRef);
 
 const readConnectedOpenRouterApiKey = async (
   kv: AuthKvStore,
   providerAccountRef: string,
 ): Promise<Redacted.Redacted<string> | undefined> => {
-  const raw = await kv.get(providerAuthSecretKey(providerAccountRef), 'text')
+  const raw = await kv.get(providerAuthSecretKey(providerAccountRef), "text");
 
   if (raw === null) {
-    return undefined
+    return undefined;
   }
 
-  const parsed = safeJsonRecord(raw)
-  const openrouter = isRecord(parsed) ? parsed.openrouter : undefined
+  const parsed = safeJsonRecord(raw);
+  const openrouter = isRecord(parsed) ? parsed.openrouter : undefined;
 
-  if (!isRecord(openrouter) || optionalString(openrouter.type) !== 'api_key') {
-    return undefined
+  if (!isRecord(openrouter) || optionalString(openrouter.type) !== "api_key") {
+    return undefined;
   }
 
-  const key = optionalString(openrouter.key)?.trim()
-  if (key === undefined || key === '') {
-    return undefined
+  const key = optionalString(openrouter.key)?.trim();
+  if (key === undefined || key === "") {
+    return undefined;
   }
 
-  return Redacted.make(key)
-}
+  return Redacted.make(key);
+};
 
 const readConnectedClaudeAuthMaterial = async (
   kv: AuthKvStore,
   providerAccountRef: string,
 ): Promise<
   | Readonly<{
-      authContentEnv: 'CLAUDE_CODE_OAUTH_TOKEN'
-      authContentValue: string
+      authContentEnv: "CLAUDE_CODE_OAUTH_TOKEN";
+      authContentValue: string;
     }>
   | undefined
 > => {
-  const raw = await kv.get(providerAuthSecretKey(providerAccountRef), 'text')
+  const raw = await kv.get(providerAuthSecretKey(providerAccountRef), "text");
 
   if (raw === null) {
-    return undefined
+    return undefined;
   }
 
-  const parsed = safeJsonRecord(raw)
-  const anthropic = isRecord(parsed) ? parsed.anthropic : undefined
+  const parsed = safeJsonRecord(raw);
+  const anthropic = isRecord(parsed) ? parsed.anthropic : undefined;
 
-  if (!isRecord(anthropic) || optionalString(anthropic.type) !== 'api_key') {
-    return undefined
+  if (!isRecord(anthropic) || optionalString(anthropic.type) !== "api_key") {
+    return undefined;
   }
 
-  const key = optionalString(anthropic.key)?.trim()
-  if (key === undefined || key === '') {
-    return undefined
+  const key = optionalString(anthropic.key)?.trim();
+  if (key === undefined || key === "") {
+    return undefined;
   }
 
   return {
-    authContentEnv: 'CLAUDE_CODE_OAUTH_TOKEN',
+    authContentEnv: "CLAUDE_CODE_OAUTH_TOKEN",
     authContentValue: key,
-  }
-}
+  };
+};
 
 export const handleProgrammaticAgentRegistration = async (
   request: Request,
   env: OpenAgentsWorkerEnv,
   agentRegistrationStore?: AgentRegistrationStore,
 ): Promise<Response> => {
-  if (request.method !== 'POST') {
-    return methodNotAllowed(['POST'])
+  if (request.method !== "POST") {
+    return methodNotAllowed(["POST"]);
   }
 
-  const body = await request.json().catch(error => ({
+  const body = await request.json().catch((error) => ({
     parseError: errorMessage(error),
-  }))
-  let parsed: typeof ProgrammaticAgentRegistrationRequest.Type
+  }));
+  let parsed: typeof ProgrammaticAgentRegistrationRequest.Type;
 
   try {
-    parsed = decodeUnknownWithSchema(ProgrammaticAgentRegistrationRequest, body)
+    parsed = decodeUnknownWithSchema(ProgrammaticAgentRegistrationRequest, body);
   } catch (error) {
-    return withAgentRateLimitHeaders(badRequest(errorMessage(error)))
+    return withAgentRateLimitHeaders(badRequest(errorMessage(error)));
   }
 
-  const store = agentRegistrationStore ?? makeAgentRegistrationStoreForEnv(env)
+  const store = agentRegistrationStore ?? makeAgentRegistrationStoreForEnv(env);
 
   try {
-    const registration = await createProgrammaticAgentRegistration(
-      store,
-      parsed,
-    )
+    const registration = await createProgrammaticAgentRegistration(store, parsed);
 
     const autoClaimSparkAddress =
-      typeof parsed.sparkAddress === 'string' &&
-      parsed.sparkAddress.trim() !== ''
+      typeof parsed.sparkAddress === "string" && parsed.sparkAddress.trim() !== ""
         ? parsed.sparkAddress.trim()
-        : null
+        : null;
     const autoClaimLightningAddress =
-      typeof parsed.lightningAddress === 'string' &&
-      parsed.lightningAddress.trim() !== ''
+      typeof parsed.lightningAddress === "string" && parsed.lightningAddress.trim() !== ""
         ? parsed.lightningAddress.trim()
-        : null
+        : null;
     const autoClaimBolt12Offer =
-      typeof parsed.bolt12Offer === 'string' && parsed.bolt12Offer.trim() !== ''
+      typeof parsed.bolt12Offer === "string" && parsed.bolt12Offer.trim() !== ""
         ? parsed.bolt12Offer.trim()
-        : null
+        : null;
 
     if (
       autoClaimSparkAddress !== null ||
@@ -6460,36 +5974,34 @@ export const handleProgrammaticAgentRegistration = async (
       // claim-tip-wallet. Native Spark (offline-receive `spark1...` address) is
       // the preferred default agent rail; a Spark Lightning Address is the
       // online-receive path; BOLT 12 remains accepted for legacy registrations.
-      const { upsertForumTipRecipientWallet } =
-        await import('./forum/repository')
-      const db = openAgentsDatabase(env)
-      const sparkAddressPrimary = autoClaimSparkAddress !== null
-      const lightningAddressPrimary =
-        !sparkAddressPrimary && autoClaimLightningAddress !== null
+      const { upsertForumTipRecipientWallet } = await import("./forum/repository");
+      const db = openAgentsDatabase(env);
+      const sparkAddressPrimary = autoClaimSparkAddress !== null;
+      const lightningAddressPrimary = !sparkAddressPrimary && autoClaimLightningAddress !== null;
 
       const readinessRefs = sparkAddressPrimary
         ? [
-            'readiness.public.spark_address.offline_receive_ready',
-            'readiness.public.spark_primary.agent_balance',
+            "readiness.public.spark_address.offline_receive_ready",
+            "readiness.public.spark_primary.agent_balance",
           ]
         : lightningAddressPrimary
           ? [
-              'readiness.public.spark_lightning_address.receive_ready',
-              'readiness.public.spark_primary.agent_balance',
+              "readiness.public.spark_lightning_address.receive_ready",
+              "readiness.public.spark_primary.agent_balance",
             ]
           : [
-              'readiness.public.mdk_agent.daemon_running',
-              'readiness.public.mdk_agent.receive_ready',
-              'readiness.public.mdk_agent.setup_present',
-            ]
+              "readiness.public.mdk_agent.daemon_running",
+              "readiness.public.mdk_agent.receive_ready",
+              "readiness.public.mdk_agent.setup_present",
+            ];
       const custodyPolicyRefs = sparkAddressPrimary
         ? [
-            'policy.public.forum_tip_recipient.self_custody_mdk_agent_wallet',
-            'policy.public.forum_tip_recipient.spark_self_custody',
+            "policy.public.forum_tip_recipient.self_custody_mdk_agent_wallet",
+            "policy.public.forum_tip_recipient.spark_self_custody",
           ]
         : lightningAddressPrimary
-          ? ['policy.public.forum_tip_recipient.spark_self_custody']
-          : ['policy.public.forum_tip_recipient.self_custody_mdk_agent_wallet']
+          ? ["policy.public.forum_tip_recipient.spark_self_custody"]
+          : ["policy.public.forum_tip_recipient.self_custody_mdk_agent_wallet"];
 
       await Effect.runPromise(
         upsertForumTipRecipientWallet(db, {
@@ -6497,42 +6009,33 @@ export const handleProgrammaticAgentRegistration = async (
           sparkAddress: autoClaimSparkAddress,
           bolt12Offer: autoClaimBolt12Offer,
           lightningAddress: autoClaimLightningAddress,
-          caveatRefs: [
-            'caveat.public.forum_tip_recipient.creator_settlement_pending',
-          ],
-          claimPolicyRefs: [
-            'policy.public.forum_tip_recipient.agent_registration_auto_claimed',
-          ],
+          caveatRefs: ["caveat.public.forum_tip_recipient.creator_settlement_pending"],
+          claimPolicyRefs: ["policy.public.forum_tip_recipient.agent_registration_auto_claimed"],
           custodyPolicyRefs,
           disabledAt: null,
           id: `forum_tip_recipient_wallet.user_${registration.user.id}.auto_claim`,
           payoutTargetApprovalRef: null,
-          providerClass: lightningAddressPrimary
-            ? 'external_lightning'
-            : 'mdk_agent_wallet',
+          providerClass: lightningAddressPrimary ? "external_lightning" : "mdk_agent_wallet",
           readinessRefs,
           receiveCapabilityRef: `receive_capability.public.auto_${registration.user.id}.redacted`,
-          sourceRef:
-            'source.public.forum_tip_recipient.agent_registration_auto_claim',
-          state: 'ready',
+          sourceRef: "source.public.forum_tip_recipient.agent_registration_auto_claim",
+          state: "ready",
           walletRef: `wallet.public.auto_${registration.user.id}.redacted`,
         }),
-      )
+      );
     }
 
-    return withAgentRateLimitHeaders(
-      jsonResponse(registration, { status: 201 }),
-    )
+    return withAgentRateLimitHeaders(jsonResponse(registration, { status: 201 }));
   } catch (error) {
     if (isUniqueConstraintError(error)) {
       return withAgentRateLimitHeaders(
-        jsonResponse({ error: 'agent_registration_conflict' }, { status: 409 }),
-      )
+        jsonResponse({ error: "agent_registration_conflict" }, { status: 409 }),
+      );
     }
 
-    return serverError()
+    return serverError();
   }
-}
+};
 
 // #6370: admin-only override to re-issue a fresh token for an EXISTING forum
 // agent identity (dead-token recovery). Authorized EXACTLY like other admin
@@ -6546,70 +6049,69 @@ export const handleAdminReissueAgentToken = async (
   env: OpenAgentsWorkerEnv,
   ctx: ExecutionContext,
   options?: Readonly<{
-    agentRegistrationStore?: AgentReissueStore
+    agentRegistrationStore?: AgentReissueStore;
     authorize?: (
       request: Request,
       env: OpenAgentsWorkerEnv,
       ctx: ExecutionContext,
-    ) => Promise<boolean>
+    ) => Promise<boolean>;
   }>,
 ): Promise<Response> => {
-  if (request.method !== 'POST') {
-    return methodNotAllowed(['POST'])
+  if (request.method !== "POST") {
+    return methodNotAllowed(["POST"]);
   }
 
   const authorize =
     options?.authorize ??
     (async (authRequest, authEnv, authCtx): Promise<boolean> => {
       if (await requireAdminApiToken(authRequest, authEnv)) {
-        return true
+        return true;
       }
 
-      const session = await requireBrowserSession(authRequest, authEnv, authCtx)
+      const session = await requireBrowserSession(authRequest, authEnv, authCtx);
 
-      return session !== undefined && isOpenAgentsAdminEmail(session.user.email)
-    })
+      return session !== undefined && isOpenAgentsAdminEmail(session.user.email);
+    });
 
   if (!(await authorize(request, env, ctx))) {
-    return forbidden()
+    return forbidden();
   }
 
-  const body = await request.json().catch(error => ({
+  const body = await request.json().catch((error) => ({
     parseError: errorMessage(error),
-  }))
-  let parsed: typeof ReissueAgentTokenRequest.Type
+  }));
+  let parsed: typeof ReissueAgentTokenRequest.Type;
 
   try {
-    parsed = decodeUnknownWithSchema(ReissueAgentTokenRequest, body)
+    parsed = decodeUnknownWithSchema(ReissueAgentTokenRequest, body);
   } catch (error) {
-    return badRequest(errorMessage(error))
+    return badRequest(errorMessage(error));
   }
 
   const selector =
     parsed.slug !== undefined && parsed.externalId !== undefined
-      ? 'ambiguous'
+      ? "ambiguous"
       : parsed.slug !== undefined
         ? ({ slug: parsed.slug } as const)
         : parsed.externalId !== undefined
           ? ({ externalId: parsed.externalId } as const)
-          : undefined
+          : undefined;
 
-  if (selector === 'ambiguous') {
-    return badRequest('provide exactly one of slug or externalId')
+  if (selector === "ambiguous") {
+    return badRequest("provide exactly one of slug or externalId");
   }
 
   if (selector === undefined) {
-    return badRequest('slug or externalId is required')
+    return badRequest("slug or externalId is required");
   }
 
-  const store =
-    options?.agentRegistrationStore ?? makeAgentRegistrationStoreForEnv(env)
+  const store = options?.agentRegistrationStore ?? makeAgentRegistrationStoreForEnv(env);
 
   try {
-    const reissue = await reissueProgrammaticAgentToken(store, selector)
+    const reissue = await reissueProgrammaticAgentToken(store, selector);
 
     if (reissue === undefined) {
-      return jsonResponse({ error: 'agent_not_found' }, { status: 404 })
+      return jsonResponse({ error: "agent_not_found" }, { status: 404 });
     }
 
     return jsonResponse(
@@ -6620,24 +6122,22 @@ export const handleAdminReissueAgentToken = async (
         actorRef: reissue.actorRef,
       },
       { status: 201 },
-    )
+    );
   } catch {
-    return serverError()
+    return serverError();
   }
-}
+};
 
 const agentBalanceAuthForStore =
   (store: ReturnType<typeof makeD1AgentRegistrationStore>) =>
   async (request: Request): Promise<{ actorRef: string } | undefined> => {
-    const bearerToken = readBearerToken(request)
+    const bearerToken = readBearerToken(request);
     if (bearerToken === undefined) {
-      return undefined
+      return undefined;
     }
-    const session = await authenticateProgrammaticAgent(store, bearerToken)
-    return session === undefined
-      ? undefined
-      : { actorRef: `agent:${session.user.id}` }
-  }
+    const session = await authenticateProgrammaticAgent(store, bearerToken);
+    return session === undefined ? undefined : { actorRef: `agent:${session.user.id}` };
+  };
 
 const handleProgrammaticAgentMe = async (
   request: Request,
@@ -6646,7 +6146,7 @@ const handleProgrammaticAgentMe = async (
   // #5333: self-serve agent displayName rename lives on PATCH /api/agents/me,
   // the same agent-self surface that GET reads from. GET keeps returning the
   // identity projection; PATCH updates the agent's own user row.
-  if (request.method === 'PATCH') {
+  if (request.method === "PATCH") {
     // KS-8.18 follow-up (#8362): route the self-serve rename write through
     // the identity-auth-mirrored store so `users.display_name` converges
     // to Postgres, not the raw unwrapped D1 factory.
@@ -6657,46 +6157,44 @@ const handleProgrammaticAgentMe = async (
       {
         agentStore: makeAgentRegistrationStoreForEnv(env),
       },
-    )
+    );
   }
 
-  if (request.method !== 'GET') {
-    return methodNotAllowed(['GET', 'PATCH'])
+  if (request.method !== "GET") {
+    return methodNotAllowed(["GET", "PATCH"]);
   }
 
-  const bearerToken = readBearerToken(request)
+  const bearerToken = readBearerToken(request);
 
   if (bearerToken === undefined) {
-    return withAgentRateLimitHeaders(unauthorized())
+    return withAgentRateLimitHeaders(unauthorized());
   }
 
   const session = await authenticateProgrammaticAgent(
     makeAgentRegistrationStoreForEnv(env),
     bearerToken,
-  )
+  );
 
   if (session === undefined) {
-    return withAgentRateLimitHeaders(unauthorized())
+    return withAgentRateLimitHeaders(unauthorized());
   }
 
-  return withAgentRateLimitHeaders(
-    jsonResponse({ authenticated: true, agent: session }),
-  )
-}
+  return withAgentRateLimitHeaders(jsonResponse({ authenticated: true, agent: session }));
+};
 
 const routeAuthHostRequest = async (
   request: Request,
   env: OpenAgentsWorkerEnv,
   ctx: ExecutionContext,
 ): Promise<Response> => {
-  const url = new URL(request.url)
+  const url = new URL(request.url);
 
-  if (url.pathname === '/' || url.pathname === '/login') {
-    return redirectResponse(getAppOrigin(env))
+  if (url.pathname === "/" || url.pathname === "/login") {
+    return redirectResponse(getAppOrigin(env));
   }
 
-  if (url.pathname === '/github/callback') {
-    const state = url.searchParams.get('state')
+  if (url.pathname === "/github/callback") {
+    const state = url.searchParams.get("state");
 
     if (state !== null) {
       // The GitHub write-connection attempt store still lives on D1
@@ -6710,36 +6208,34 @@ const routeAuthHostRequest = async (
       // through to the normal issuer flow (#8467 login incident, 2026-07-06).
       const attempt = await makeGitHubWriteRepositoryForEnv(env)
         .findAttemptByState(state)
-        .catch(error => {
-          logWorkerRouteError('github_write_attempt_lookup_failed', error)
-          return undefined
-        })
+        .catch((error) => {
+          logWorkerRouteError("github_write_attempt_lookup_failed", error);
+          return undefined;
+        });
 
       if (attempt !== undefined) {
-        return handleGitHubWriteCallback(request, env, attempt)
+        return handleGitHubWriteCallback(request, env, attempt);
       }
     }
   }
 
-  return routeAuthIssuerRequest(request, env, ctx)
-}
+  return routeAuthIssuerRequest(request, env, ctx);
+};
 
 const routeAuthIssuerRequest = async (
   request: Request,
   env: OpenAgentsWorkerEnv,
   ctx: ExecutionContext,
 ) => {
-  const maybeGuardResponse = await maybeAuthEmailOtpGuardResponse(request, env)
+  const maybeGuardResponse = await maybeAuthEmailOtpGuardResponse(request, env);
 
-  return maybeGuardResponse ?? makeAuthIssuer(env).fetch(request, env, ctx)
-}
+  return maybeGuardResponse ?? makeAuthIssuer(env).fetch(request, env, ctx);
+};
 
-export { findAuthorizedAgentRunBundle } from './thread-access'
+export { findAuthorizedAgentRunBundle } from "./thread-access";
 
-const isRouteAccessError = (
-  value: AgentRunBundle | RouteAccessError,
-): value is RouteAccessError =>
-  value instanceof RouteAccessForbidden || value instanceof RouteAccessNotFound
+const isRouteAccessError = (value: AgentRunBundle | RouteAccessError): value is RouteAccessError =>
+  value instanceof RouteAccessForbidden || value instanceof RouteAccessNotFound;
 
 const threadRouteAccessBundle = (
   env: OpenAgentsWorkerEnv,
@@ -6748,91 +6244,87 @@ const threadRouteAccessBundle = (
 ): Promise<AgentRunBundle | RouteAccessError> =>
   Effect.runPromise(
     Effect.gen(function* () {
-      const threadAccess = yield* ThreadAccessService
+      const threadAccess = yield* ThreadAccessService;
 
       return yield* threadAccess.findAuthorizedBundle({ routeId, userId }).pipe(
         Effect.match({
-          onFailure: error => error,
-          onSuccess: bundle => bundle,
+          onFailure: (error) => error,
+          onSuccess: (bundle) => bundle,
         }),
-      )
+      );
     }).pipe(Effect.provide(ThreadAccessService.layer(env))),
-  )
+  );
 
 const threadRouteAccessError = async (
   env: OpenAgentsWorkerEnv,
   userId: string,
   routeId: string,
 ): Promise<RouteAccessError | undefined> => {
-  const accessResult = await threadRouteAccessBundle(env, userId, routeId)
+  const accessResult = await threadRouteAccessBundle(env, userId, routeId);
 
-  return isRouteAccessError(accessResult) ? accessResult : undefined
-}
+  return isRouteAccessError(accessResult) ? accessResult : undefined;
+};
 
 const authorizeSyncPath = async (
   env: OpenAgentsWorkerEnv,
   session: VerifiedSession,
   syncPath: ParsedSyncPath,
 ): Promise<RouteAccessError | undefined> => {
-  if (syncPath.kind === 'workspace') {
+  if (syncPath.kind === "workspace") {
     return syncPath.id === session.user.userId
       ? undefined
-      : new RouteAccessForbidden({ routeId: syncPath.id })
+      : new RouteAccessForbidden({ routeId: syncPath.id });
   }
 
-  if (syncPath.kind === 'team') {
+  if (syncPath.kind === "team") {
     const role =
       (await readActiveTeamMembershipRole(
         openAgentsDatabase(env),
         syncPath.id,
         session.user.userId,
-      )) ?? undefined
+      )) ?? undefined;
 
-    return role === undefined
-      ? new RouteAccessForbidden({ routeId: syncPath.id })
-      : undefined
+    return role === undefined ? new RouteAccessForbidden({ routeId: syncPath.id }) : undefined;
   }
 
-  if (syncPath.kind === 'thread' || syncPath.kind === 'agent-run') {
-    return threadRouteAccessError(env, session.user.userId, syncPath.id)
+  if (syncPath.kind === "thread" || syncPath.kind === "agent-run") {
+    return threadRouteAccessError(env, session.user.userId, syncPath.id);
   }
 
-  return new RouteAccessForbidden({ routeId: syncPath.id })
-}
+  return new RouteAccessForbidden({ routeId: syncPath.id });
+};
 
 const threadFileRoutes = makeThreadFileRoutes({
   appendRefreshedSessionCookies,
   publishTeamThreadFileSync,
   readActiveTeamMembershipRole,
   requireBrowserSession,
-})
+});
 
 // Trace store + ingest/read API (openagents #6208/#6212, epic #6206): the
 // shareable `/trace/{uuid}` surface. Agent-bearer ingest, visibility-gated read.
 const traceStoreRoutes = makeTraceStoreRoutes({
-  agentStore: env => makeAgentRegistrationStoreForEnv(env),
+  agentStore: (env) => makeAgentRegistrationStoreForEnv(env),
   appendRefreshedSessionCookies,
   // Data-market revshare stub (#6221): INERT and owner-gated. Default OFF —
   // even when armed, the recorded marker is eligible-only with a TBD amount and
   // moves no money. Arm via TRACE_DATA_MARKET_REWARD_ENABLED.
-  dataMarketRewardArmed: env =>
+  dataMarketRewardArmed: (env) =>
     isInferenceGatewayEnabled(
-      (env as { TRACE_DATA_MARKET_REWARD_ENABLED?: string })
-        .TRACE_DATA_MARKET_REWARD_ENABLED,
+      (env as { TRACE_DATA_MARKET_REWARD_ENABLED?: string }).TRACE_DATA_MARKET_REWARD_ENABLED,
     ),
   isAdminEmail: isOpenAgentsAdminEmail,
-  makeStore: env => makeTraceStoreForEnv(env),
+  makeStore: (env) => makeTraceStoreForEnv(env),
   // Large-trajectory R2 offload (#6221): a multi-MB real agent session exceeds
   // D1's ~1MB value cap, so the public-safe trajectory JSON is stored in the
   // shared ARTIFACTS bucket with only a pointer kept in D1.
-  trajectoryBlobStore: env =>
-    makeR2TraceTrajectoryBlobStore(artifactsBucketForEnv(env)),
+  trajectoryBlobStore: (env) => makeR2TraceTrajectoryBlobStore(artifactsBucketForEnv(env)),
   // Media blobs (#6223): the trace's playable recording + screenshots live in
   // the same ARTIFACTS bucket under `trace-blobs/{uuid}/{r2Key}` so the
   // `/trace/{uuid}` page serves its own media (never a GitHub attachment).
-  mediaBlobStore: env => makeR2TraceMediaBlobStore(artifactsBucketForEnv(env)),
+  mediaBlobStore: (env) => makeR2TraceMediaBlobStore(artifactsBucketForEnv(env)),
   requireBrowserSession,
-})
+});
 
 // KS-6.3 (#8304): shared fail-soft producer for the public tokens-served
 // projection (scope.public.tokens-served). Fired once per FRESH
@@ -6855,9 +6347,9 @@ const makeTokensServedProjectionObserver =
   (env: TokenLedgerRouteEnvSlice) =>
   (
     event: Readonly<{
-      idempotencyKey: string
-      observedAt: string
-      tokensServed: number
+      idempotencyKey: string;
+      observedAt: string;
+      tokensServed: number;
     }>,
   ) =>
     Promise.all([
@@ -6877,7 +6369,7 @@ const makeTokensServedProjectionObserver =
         ledger: tokenUsageLedgerFromRouteInput(env),
         log: (logEvent, fields) => logWorkerRouteWarning(logEvent, fields),
       }),
-    ])
+    ]);
 
 // KS-8.2 (#8308): the token ledger dual-write store for one env — D1
 // authority + flag-gated fail-soft Postgres mirror. Spread into
@@ -6887,9 +6379,9 @@ const makeTokensServedProjectionObserver =
 const tokenLedgerWriteStoreOptionForEnv = (
   env: Parameters<typeof makeTokenLedgerWriteStoreForEnv>[0],
 ) => {
-  const writeStore = makeTokenLedgerWriteStoreForEnv(env)
-  return writeStore === undefined ? {} : { writeStore }
-}
+  const writeStore = makeTokenLedgerWriteStoreForEnv(env);
+  return writeStore === undefined ? {} : { writeStore };
+};
 
 // KS-6.3 (#8304): shared reconcile deps (invariant 8) for the admin
 // reconcile/repair route and the scheduled detect-only sweep. The exact
@@ -6902,67 +6394,61 @@ const makeTokensServedReconcileDeps = (
   binding: env.KHALA_SYNC_DB,
   log: (
     logEvent:
-      | 'khala_sync_tokens_served_projection_failed'
-      | 'khala_sync_tokens_served_projection_drift',
+      | "khala_sync_tokens_served_projection_failed"
+      | "khala_sync_tokens_served_projection_drift",
     fields: Readonly<Record<string, string | number>>,
   ) => logWorkerRouteWarning(logEvent, fields),
-  readExactTokensServed: () =>
-    readPublicTokensServedExactTotal(openAgentsDatabase(env)),
-})
+  readExactTokensServed: () => readPublicTokensServedExactTotal(openAgentsDatabase(env)),
+});
 
-const probeSarahAgentComputerCapacity = async (
-  env: OpenAgentsWorkerEnv,
-  ownerUserId: string,
-) => {
+const probeSarahAgentComputerCapacity = async (env: OpenAgentsWorkerEnv, ownerUserId: string) => {
   const capacity = await probeAgentComputerCapacitySnapshot({
     baseUrl: env.OA_CLOUD_CONTROL_URL,
     bearerToken: env.OA_CLOUD_CONTROL_TOKEN,
     gceProvisioningArmed:
       isCloudCodingSessionsEnabled(env.CLOUD_CODING_SESSIONS_ENABLED) &&
       isCloudGceProvisioningArmed(env.OA_CODEX_GCE_PROVISIONER),
-  })
-  if (!capacity.available) return capacity
-  const postgresIdentity = postgresIdentityAuthStoreForEnv(env)
+  });
+  if (!capacity.available) return capacity;
+  const postgresIdentity = postgresIdentityAuthStoreForEnv(env);
   if (postgresIdentity === undefined) {
     return {
       available: false,
       availableSlots: 0,
-      capacityRef:
-        'capacity.agent_computer.owner_identity_store.unavailable',
-    }
+      capacityRef: "capacity.agent_computer.owner_identity_store.unavailable",
+    };
   }
   const accountRepository = makeAuthoritativePostgresProviderGrantRepository(
     makeProviderAccountRepositoryForEnv(env),
     postgresIdentity.queryRows,
-  )
-  const githubRepository = makeGitHubWriteRepositoryForEnv(env)
+  );
+  const githubRepository = makeGitHubWriteRepositoryForEnv(env);
   const providerLeaseService = makeProviderAccountLeaseService({
     db: openAgentsDatabase(env),
     mirror: identityAuthMirrorFromEnv(env),
-  })
+  });
   const [accounts, activeLeases, githubConnection] = await Promise.all([
     listProviderAccountsForUser(accountRepository, ownerUserId),
     providerLeaseService.listActive(ownerUserId, currentIsoTimestamp()),
     githubRepository.findUsableConnectionForUser(ownerUserId),
-  ])
+  ]);
   const ownerProviderReady = hasAvailableSarahManagedCloudProviderCapacity(
     accounts.accounts,
-    new Set(activeLeases.map(lease => lease.providerAccountRef)),
-  )
+    new Set(activeLeases.map((lease) => lease.providerAccountRef)),
+  );
   const githubReady =
-    githubConnection !== undefined &&
-    hasRequiredGitHubWriteScopes(githubConnection.scopes)
+    githubConnection !== undefined && hasRequiredGitHubWriteScopes(githubConnection.scopes);
   if (!ownerProviderReady || !githubReady) {
     return {
       available: false,
       availableSlots: 0,
       capacityRef: !ownerProviderReady
-        ? 'capacity.agent_computer.owner_harness_grant.unavailable'
-        : 'capacity.agent_computer.owner_github_write.unavailable',
-    }
+        ? "capacity.agent_computer.owner_harness_grant.unavailable"
+        : "capacity.agent_computer.owner_github_write.unavailable",
+    };
   }
-  return capacity
-}
+  return capacity;
+};
 
 // #8467 follow-up: server-side hosted-Khala runtime dispatch. Claims `queued`
 // `hosted_khala` turns (mobile Khala Code chat turns with no local Pylon) and
@@ -6970,50 +6456,44 @@ const probeSarahAgentComputerCapacity = async (
 // runtime events through the push engine. Postgres + Google inference only.
 // Fail-soft: a missing KHALA_SYNC_DB binding
 // or GEMINI_API_KEY is a clean no-op, and per-turn failures are isolated.
-const runHostedRuntimeTurnDispatchForEnv = async (
-  env: OpenAgentsWorkerEnv,
-): Promise<void> => {
-  const connectionString = env.KHALA_SYNC_DB?.connectionString
-  const apiKey = env.GEMINI_API_KEY
+const runHostedRuntimeTurnDispatchForEnv = async (env: OpenAgentsWorkerEnv): Promise<void> => {
+  const connectionString = env.KHALA_SYNC_DB?.connectionString;
+  const apiKey = env.GEMINI_API_KEY;
   if (
     connectionString === undefined ||
     connectionString.length === 0 ||
     apiKey === undefined ||
     apiKey.length === 0
   ) {
-    return
+    return;
   }
   // Exact provider usage recording for the hosted lane. This preserves the
   // historical usage projection without pricing, charging, or settlement.
   const ledger = makeD1TokenUsageLedger(openAgentsDatabase(env), undefined, {
     onIngestedEvent: makeTokensServedProjectionObserver(env),
     ...tokenLedgerWriteStoreOptionForEnv(env),
-  })
-  const client = await defaultMakeKhalaSyncSqlClient(connectionString)
+  });
+  const client = await defaultMakeKhalaSyncSqlClient(connectionString);
   try {
     const sarahKhalaCatalog = makeKhalaMcpCatalog<OpenAgentsWorkerEnv>({
-      agentStore: environment => makeAgentRegistrationStoreForEnv(environment),
-      pylonStore: environment => makePylonApiStoreForEnv(environment),
-      recordTokensServed: environment =>
-        makeKhalaMcpServedTokensRecorder(
-          ledgerDirectInsertDatabaseForEnv(environment),
-          {
-            mirrorRow: row =>
-              mirrorTokenLedgerDirectInsertBestEffort(environment, row),
-            onIngestedEvent: makeTokensServedProjectionObserver(environment),
-          },
-        ),
-    })
+      agentStore: (environment) => makeAgentRegistrationStoreForEnv(environment),
+      pylonStore: (environment) => makePylonApiStoreForEnv(environment),
+      recordTokensServed: (environment) =>
+        makeKhalaMcpServedTokensRecorder(ledgerDirectInsertDatabaseForEnv(environment), {
+          mirrorRow: (row) => mirrorTokenLedgerDirectInsertBestEffort(environment, row),
+          onIngestedEvent: makeTokensServedProjectionObserver(environment),
+        }),
+    });
     const gemma4 = makeGemma4Adapter({
       apiKey: () => Redacted.make(apiKey),
       model: DEFAULT_HOSTED_RUNTIME_MODEL,
-    })
+    });
     const completeHarnessReview = async (
       turn: QueuedHostedTurn,
       review: {
-        phase: 'optimizer' | 'evaluator'
-        system: string
-        prompt: string
+        phase: "optimizer" | "evaluator";
+        system: string;
+        prompt: string;
       },
     ): Promise<string> => {
       const result = await artanisMindComplete({
@@ -7022,21 +6502,14 @@ const runHostedRuntimeTurnDispatchForEnv = async (
         model: DEFAULT_HOSTED_RUNTIME_MODEL,
         prompt: review.prompt,
         system: review.system,
-      })
-      if ('error' in result) {
-        return Promise.reject(
-          new SarahHarnessError({ reason: 'sarah_harness_model_unavailable' }),
-        )
+      });
+      if ("error" in result) {
+        return Promise.reject(new SarahHarnessError({ reason: "sarah_harness_model_unavailable" }));
       }
-      const content = result.text.trim()
-      if (content === '')
-        return Promise.reject(
-          new SarahHarnessError({ reason: 'sarah_harness_model_empty' }),
-        )
-      const usage =
-        result.usage === null
-          ? null
-          : hostedTurnUsageFromArtanisMind(result.usage)
+      const content = result.text.trim();
+      if (content === "")
+        return Promise.reject(new SarahHarnessError({ reason: "sarah_harness_model_empty" }));
+      const usage = result.usage === null ? null : hostedTurnUsageFromArtanisMind(result.usage);
       try {
         if (usage !== null) {
           await recordHostedTurnUsage(
@@ -7051,17 +6524,17 @@ const runHostedRuntimeTurnDispatchForEnv = async (
               turnId: `${turn.turnId}.harness.${review.phase}`,
               usage,
             },
-          )
+          );
         }
       } catch (error) {
-        logWorkerRouteWarning('sarah_harness_metering_failed', {
-          detail: error instanceof Error ? error.message : 'unknown',
+        logWorkerRouteWarning("sarah_harness_metering_failed", {
+          detail: error instanceof Error ? error.message : "unknown",
           phase: review.phase,
           turnId: turn.turnId,
-        })
+        });
       }
-      return content
-    }
+      return content;
+    };
     const complete: HostedRuntimeCompleteFn = async ({
       images,
       onToolActivity,
@@ -7070,7 +6543,7 @@ const runHostedRuntimeTurnDispatchForEnv = async (
       system,
       turn,
     }) => {
-      if (responsePresentation === 'owner_conversation') {
+      if (responsePresentation === "owner_conversation") {
         if (images !== undefined && images.length > 0) {
           const result = await artanisMindComplete({
             apiKey,
@@ -7078,32 +6551,32 @@ const runHostedRuntimeTurnDispatchForEnv = async (
             model: DEFAULT_HOSTED_RUNTIME_MODEL,
             prompt,
             system,
-          })
-          if ('error' in result) {
-            logWorkerRouteWarning('sarah_image_inference_failed', {
+          });
+          if ("error" in result) {
+            logWorkerRouteWarning("sarah_image_inference_failed", {
               turnId: turn.turnId,
-            })
-            return { detail: 'sarah_image_inference_failed', ok: false }
+            });
+            return { detail: "sarah_image_inference_failed", ok: false };
           }
           const usage =
             result.usage === null
               ? undefined
-              : (hostedTurnUsageFromArtanisMind(result.usage) ?? undefined)
+              : (hostedTurnUsageFromArtanisMind(result.usage) ?? undefined);
           return usage === undefined
             ? { ok: true, text: result.text }
-            : { ok: true, text: result.text, usage }
+            : { ok: true, text: result.text, usage };
         }
         const managedSandboxTools = await Effect.runPromise(
           Effect.gen(function* () {
-            const policy = yield* managedSandboxBoxV1PolicyForEnv(env)
-            const runtime = yield* managedSandboxBoxV1RuntimeForEnv(env)
+            const policy = yield* managedSandboxBoxV1PolicyForEnv(env);
+            const runtime = yield* managedSandboxBoxV1RuntimeForEnv(env);
             const sarahPrincipal = {
-              actorRef: 'principal.sarah',
+              actorRef: "principal.sarah",
               ownerRef: turn.ownerUserId,
               tenantRef: turn.ownerUserId,
-              login: 'Sarah',
+              login: "Sarah",
               email: null,
-            }
+            };
             return makeSarahManagedSandboxTools({
               sql: client.sql,
               ownerUserId: turn.ownerUserId,
@@ -7112,24 +6585,22 @@ const runHostedRuntimeTurnDispatchForEnv = async (
               principal: sarahPrincipal,
               policy,
               runtimeAdmitted:
-                isManagedSandboxBrokerEnabled(
-                  env.MANAGED_SANDBOX_BROKER_ENABLED,
-                ) && isManagedSandboxRuntimeConfigured(env),
+                isManagedSandboxBrokerEnabled(env.MANAGED_SANDBOX_BROKER_ENABLED) &&
+                isManagedSandboxRuntimeConfigured(env),
               broker: makeManagedSandboxBroker({
                 principal: sarahPrincipal,
                 policy,
                 runtime,
                 store: managedSandboxBoxV1StoreForEnv(env),
               }),
-            })
+            });
           }),
-        ).catch(() => [])
+        ).catch(() => []);
         const result = await Effect.runPromise(
           runSarahAgentTurn({
             adapter: gemma4,
             model: DEFAULT_HOSTED_RUNTIME_MODEL,
-            onToolActivity: activity =>
-              Effect.promise(() => onToolActivity(activity)),
+            onToolActivity: (activity) => Effect.promise(() => onToolActivity(activity)),
             prompt,
             system,
             tools: makeSarahRuntimeTools({
@@ -7152,22 +6623,21 @@ const runHostedRuntimeTurnDispatchForEnv = async (
                 }),
               reviewHarness: () =>
                 reviewSarahHarnessHistory({
-                  complete: review => completeHarnessReview(turn, review),
+                  complete: (review) => completeHarnessReview(turn, review),
                   ownerUserId: turn.ownerUserId,
                   sql: client.sql,
                   threadId: turn.threadId,
                 }),
             }),
           }),
-        ).catch(error => {
-          logWorkerRouteWarning('sarah_agent_runtime_failed', {
-            detail: error instanceof Error ? error.message : 'unknown',
+        ).catch((error) => {
+          logWorkerRouteWarning("sarah_agent_runtime_failed", {
+            detail: error instanceof Error ? error.message : "unknown",
             turnId: turn.turnId,
-          })
-          return null
-        })
-        if (result === null)
-          return { detail: 'sarah_agent_runtime_failed', ok: false }
+          });
+          return null;
+        });
+        if (result === null) return { detail: "sarah_agent_runtime_failed", ok: false };
         return {
           ok: true,
           text: result.text,
@@ -7178,7 +6648,7 @@ const runHostedRuntimeTurnDispatchForEnv = async (
             reasoningTokens: result.usage.reasoningTokens ?? 0,
             totalTokens: result.usage.totalTokens,
           },
-        }
+        };
       }
 
       const result = await artanisMindComplete({
@@ -7187,37 +6657,31 @@ const runHostedRuntimeTurnDispatchForEnv = async (
         prompt,
         system,
         ...(images === undefined ? {} : { images }),
-      })
-      if ('error' in result) {
-        let detail = 'artanis_mind_unavailable'
+      });
+      if ("error" in result) {
+        let detail = "artanis_mind_unavailable";
         try {
-          detail = `artanis_mind: ${JSON.stringify(result.error).slice(0, 300)}`
+          detail = `artanis_mind: ${JSON.stringify(result.error).slice(0, 300)}`;
         } catch {
           /* keep the fallback detail */
         }
-        logWorkerRouteWarning('hosted_runtime_inference_failed', { detail })
-        return { detail, ok: false }
+        logWorkerRouteWarning("hosted_runtime_inference_failed", { detail });
+        return { detail, ok: false };
       }
       const usage =
         result.usage === null
           ? undefined
-          : (hostedTurnUsageFromArtanisMind(result.usage) ?? undefined)
+          : (hostedTurnUsageFromArtanisMind(result.usage) ?? undefined);
       return usage === undefined
         ? { ok: true, text: result.text }
-        : { ok: true, text: result.text, usage }
-    }
+        : { ok: true, text: result.text, usage };
+    };
 
     const summary = await runHostedRuntimeTurnDispatch({
       complete,
       prepareTurn: async ({ prompt, system, turn }) => {
-        if (
-          !(await hasSarahThreadAuthority(
-            client.sql,
-            turn.ownerUserId,
-            turn.threadId,
-          ))
-        ) {
-          return { prompt, system }
+        if (!(await hasSarahThreadAuthority(client.sql, turn.ownerUserId, turn.threadId))) {
+          return { prompt, system };
         }
         const context = await collectSarahBusinessContext({
           ownerUserId: turn.ownerUserId,
@@ -7237,29 +6701,29 @@ const runHostedRuntimeTurnDispatchForEnv = async (
               ? { storeLayer: sarahGraphMemoryStoreLayer(client.sql) }
               : {}),
           },
-        })
+        });
         const harness = await bindSarahHarnessForTurnPromise({
           ownerUserId: turn.ownerUserId,
           sql: client.sql,
           threadId: turn.threadId,
           turnId: turn.turnId,
-        })
+        });
         return {
           prompt,
-          responsePresentation: 'owner_conversation' as const,
+          responsePresentation: "owner_conversation" as const,
           system: buildSarahSystemPrompt(
             context,
             {
               laneRef: HOSTED_RUNTIME_LANE,
               modelRef: DEFAULT_HOSTED_RUNTIME_MODEL,
-              providerLabel: 'Google AI Studio',
-              runtimeLabel: 'OpenAgents hosted runtime',
+              providerLabel: "Google AI Studio",
+              runtimeLabel: "OpenAgents hosted runtime",
             },
             harness.policy,
           ),
-        }
+        };
       },
-      recordUsage: input =>
+      recordUsage: (input) =>
         recordHostedTurnUsage(
           {
             ledger,
@@ -7272,11 +6736,12 @@ const runHostedRuntimeTurnDispatchForEnv = async (
       // (see `notifyTurnOutcomeFailSoft`), so a push failure here never
       // affects the already-recorded turn outcome.
       notify: async ({ kind, ownerUserId, threadId, turnId }) =>
-        dispatchNotifyEventForOwner(
-          paymentsLedgerDbForEnv(env),
-          authKvStoreForEnv(env),
-          { kind, ownerUserId, threadId, turnId },
-        ),
+        dispatchNotifyEventForOwner(paymentsLedgerDbForEnv(env), authKvStoreForEnv(env), {
+          kind,
+          ownerUserId,
+          threadId,
+          turnId,
+        }),
       // #9189: after an owner-thread Sarah turn commits, persist bounded,
       // redacted experience facts to the durable graph-memory store so future
       // turns recall real memory. Gated by the SAME default-OFF flag as recall:
@@ -7284,26 +6749,12 @@ const runHostedRuntimeTurnDispatchForEnv = async (
       // and write-back stay byte-identical to a build without graph memory).
       // Fail-soft by contract — a write-back failure never affects the
       // already-committed turn (see `afterTurnFailSoft`).
-      afterTurn: async ({
-        assistantMessage,
-        responsePresentation,
-        turn,
-        userMessage,
-      }) => {
-        if (
-          responsePresentation !== 'owner_conversation' ||
-          !sarahGraphMemoryRecallEnabled(env)
-        ) {
-          return
+      afterTurn: async ({ assistantMessage, responsePresentation, turn, userMessage }) => {
+        if (responsePresentation !== "owner_conversation" || !sarahGraphMemoryRecallEnabled(env)) {
+          return;
         }
-        if (
-          !(await hasSarahThreadAuthority(
-            client.sql,
-            turn.ownerUserId,
-            turn.threadId,
-          ))
-        ) {
-          return
+        if (!(await hasSarahThreadAuthority(client.sql, turn.ownerUserId, turn.threadId))) {
+          return;
         }
         await persistSarahGraphMemoryTurn({
           assistantMessage,
@@ -7312,24 +6763,24 @@ const runHostedRuntimeTurnDispatchForEnv = async (
           storeLayer: sarahGraphMemoryStoreLayer(client.sql),
           turnId: turn.turnId,
           userMessage,
-        })
+        });
       },
       registry: khalaSyncMutatorRegistry,
       sql: client.sql,
       log: (line, fields) => logWorkerRouteWarning(line, fields ?? {}),
-    })
+    });
     if (summary.scanned > 0) {
-      logWorkerRouteWarning('hosted_runtime_dispatch_tick', {
+      logWorkerRouteWarning("hosted_runtime_dispatch_tick", {
         answered: summary.answered,
         failed: summary.failed,
         scanned: summary.scanned,
         skipped: summary.skipped,
-      })
+      });
     }
   } finally {
-    await client.end()
+    await client.end();
   }
-}
+};
 
 // SARAH-AUTONOMOUS-1: Sarah's scheduled autonomous heartbeat. Runs on the same
 // per-minute cron drive as the hosted dispatch above, but instead of waiting
@@ -7340,59 +6791,56 @@ const runHostedRuntimeTurnDispatchForEnv = async (
 // Adds no new authority: reserved actions refuse inside the turn's tools.
 // Fail-soft: flag OFF, or a missing KHALA_SYNC_DB/GEMINI_API_KEY, is a clean
 // no-op; a per-owner failure is isolated and never breaks the cron tick.
-const SARAH_AUTONOMOUS_MODEL_ID = 'gemini-3.5-flash' as const
+const SARAH_AUTONOMOUS_MODEL_ID = "gemini-3.5-flash" as const;
 
-const runSarahAutonomousTickDispatchForEnv = async (
-  env: OpenAgentsWorkerEnv,
-): Promise<void> => {
-  if (!isSarahAutonomousTickEnabled(env)) return
-  const connectionString = env.KHALA_SYNC_DB?.connectionString
-  const apiKey = env.GEMINI_API_KEY
+const runSarahAutonomousTickDispatchForEnv = async (env: OpenAgentsWorkerEnv): Promise<void> => {
+  if (!isSarahAutonomousTickEnabled(env)) return;
+  const connectionString = env.KHALA_SYNC_DB?.connectionString;
+  const apiKey = env.GEMINI_API_KEY;
   if (
     connectionString === undefined ||
     connectionString.length === 0 ||
     apiKey === undefined ||
     apiKey.length === 0
   ) {
-    return
+    return;
   }
-  const intervalMinutes = resolveSarahAutonomousTickIntervalMinutes(env)
+  const intervalMinutes = resolveSarahAutonomousTickIntervalMinutes(env);
   const ledger = makeD1TokenUsageLedger(openAgentsDatabase(env), undefined, {
     onIngestedEvent: makeTokensServedProjectionObserver(env),
     ...tokenLedgerWriteStoreOptionForEnv(env),
-  })
-  const client = await defaultMakeKhalaSyncSqlClient(connectionString)
+  });
+  const client = await defaultMakeKhalaSyncSqlClient(connectionString);
   try {
     const sarahKhalaCatalog = makeKhalaMcpCatalog<OpenAgentsWorkerEnv>({
-      agentStore: environment => makeAgentRegistrationStoreForEnv(environment),
-      pylonStore: environment => makePylonApiStoreForEnv(environment),
-      recordTokensServed: environment =>
-        makeKhalaMcpServedTokensRecorder(
-          ledgerDirectInsertDatabaseForEnv(environment),
-          {
-            mirrorRow: row =>
-              mirrorTokenLedgerDirectInsertBestEffort(environment, row),
-            onIngestedEvent: makeTokensServedProjectionObserver(environment),
-          },
-        ),
-    })
+      agentStore: (environment) => makeAgentRegistrationStoreForEnv(environment),
+      pylonStore: (environment) => makePylonApiStoreForEnv(environment),
+      recordTokensServed: (environment) =>
+        makeKhalaMcpServedTokensRecorder(ledgerDirectInsertDatabaseForEnv(environment), {
+          mirrorRow: (row) => mirrorTokenLedgerDirectInsertBestEffort(environment, row),
+          onIngestedEvent: makeTokensServedProjectionObserver(environment),
+        }),
+    });
     const gemma4 = makeGemma4Adapter({
       apiKey: () => Redacted.make(apiKey),
       model: SARAH_AUTONOMOUS_MODEL_ID,
-    })
+    });
 
     // ONE gated Sarah turn with the autonomous objective. This mirrors the
     // owner_conversation branch of `runHostedRuntimeTurnDispatchForEnv`'s
     // `complete`: same context, same system prompt, same tools, same agent
     // loop — only the trigger (a timer, not an owner message) and the prompt
     // (the fixed autonomous objective) differ. It NEVER grants new authority.
-    const runTurn: Parameters<
-      typeof runSarahAutonomousTickDispatch
-    >[0]['runTurn'] = async ({ ownerUserId, threadRef, tickRef, prompt }) => {
+    const runTurn: Parameters<typeof runSarahAutonomousTickDispatch>[0]["runTurn"] = async ({
+      ownerUserId,
+      threadRef,
+      tickRef,
+      prompt,
+    }) => {
       if (!(await hasSarahThreadAuthority(client.sql, ownerUserId, threadRef))) {
-        return { detail: 'sarah_autonomous_tick_authority_absent', ok: false }
+        return { detail: "sarah_autonomous_tick_authority_absent", ok: false };
       }
-      const turnId = `${tickRef}.turn`
+      const turnId = `${tickRef}.turn`;
       const context = await collectSarahBusinessContext({
         ownerUserId,
         sql: client.sql,
@@ -7404,34 +6852,34 @@ const runSarahAutonomousTickDispatchForEnv = async (
             ? { storeLayer: sarahGraphMemoryStoreLayer(client.sql) }
             : {}),
         },
-      })
+      });
       const harness = await bindSarahHarnessForTurnPromise({
         ownerUserId,
         sql: client.sql,
         threadId: threadRef,
         turnId,
-      })
+      });
       const system = buildSarahSystemPrompt(
         context,
         {
           laneRef: HOSTED_RUNTIME_LANE,
           modelRef: SARAH_AUTONOMOUS_MODEL_ID,
-          providerLabel: 'Google AI Studio',
-          runtimeLabel: 'OpenAgents hosted runtime',
+          providerLabel: "Google AI Studio",
+          runtimeLabel: "OpenAgents hosted runtime",
         },
         harness.policy,
-      )
+      );
       const managedSandboxTools = await Effect.runPromise(
         Effect.gen(function* () {
-          const policy = yield* managedSandboxBoxV1PolicyForEnv(env)
-          const runtime = yield* managedSandboxBoxV1RuntimeForEnv(env)
+          const policy = yield* managedSandboxBoxV1PolicyForEnv(env);
+          const runtime = yield* managedSandboxBoxV1RuntimeForEnv(env);
           const sarahPrincipal = {
-            actorRef: 'principal.sarah',
+            actorRef: "principal.sarah",
             email: null,
-            login: 'Sarah',
+            login: "Sarah",
             ownerRef: ownerUserId,
             tenantRef: ownerUserId,
-          }
+          };
           return makeSarahManagedSandboxTools({
             broker: makeManagedSandboxBroker({
               policy,
@@ -7443,15 +6891,14 @@ const runSarahAutonomousTickDispatchForEnv = async (
             policy,
             principal: sarahPrincipal,
             runtimeAdmitted:
-              isManagedSandboxBrokerEnabled(
-                env.MANAGED_SANDBOX_BROKER_ENABLED,
-              ) && isManagedSandboxRuntimeConfigured(env),
+              isManagedSandboxBrokerEnabled(env.MANAGED_SANDBOX_BROKER_ENABLED) &&
+              isManagedSandboxRuntimeConfigured(env),
             sql: client.sql,
             threadRef,
             turnId,
-          })
+          });
         }),
-      ).catch(() => [])
+      ).catch(() => []);
       const result = await Effect.runPromise(
         runSarahAgentTurn({
           adapter: gemma4,
@@ -7463,19 +6910,17 @@ const runSarahAutonomousTickDispatchForEnv = async (
               sql: client.sql,
             }),
             env,
-            harnessStatus: () =>
-              readSarahHarnessStatus({ ownerUserId, sql: client.sql }),
+            harnessStatus: () => readSarahHarnessStatus({ ownerUserId, sql: client.sql }),
             khalaCatalog: sarahKhalaCatalog,
             managedSandboxTools,
             ownerUserId,
-            probeCloudCodingCapacity: () =>
-              probeSarahAgentComputerCapacity(env, ownerUserId),
+            probeCloudCodingCapacity: () => probeSarahAgentComputerCapacity(env, ownerUserId),
             reviewHarness: () =>
               reviewSarahHarnessHistory({
                 complete: () =>
                   Promise.reject(
                     new SarahHarnessError({
-                      reason: 'sarah_harness_model_unavailable',
+                      reason: "sarah_harness_model_unavailable",
                     }),
                   ),
                 ownerUserId,
@@ -7487,20 +6932,20 @@ const runSarahAutonomousTickDispatchForEnv = async (
             turnId,
           }),
         }),
-      ).catch(error => {
-        logWorkerRouteWarning('sarah_autonomous_tick_agent_failed', {
+      ).catch((error) => {
+        logWorkerRouteWarning("sarah_autonomous_tick_agent_failed", {
           detail:
             error instanceof SarahAgentRuntimeError
               ? error.reason
               : error instanceof Error
                 ? error.message
-                : 'unknown',
+                : "unknown",
           turnId,
-        })
-        return null
-      })
+        });
+        return null;
+      });
       if (result === null) {
-        return { detail: 'sarah_autonomous_tick_agent_failed', ok: false }
+        return { detail: "sarah_autonomous_tick_agent_failed", ok: false };
       }
       try {
         await recordHostedTurnUsage(
@@ -7521,27 +6966,26 @@ const runSarahAutonomousTickDispatchForEnv = async (
               totalTokens: result.usage.totalTokens,
             },
           },
-        )
+        );
       } catch (error) {
-        logWorkerRouteWarning('sarah_autonomous_tick_metering_failed', {
-          detail: error instanceof Error ? error.message : 'unknown',
+        logWorkerRouteWarning("sarah_autonomous_tick_metering_failed", {
+          detail: error instanceof Error ? error.message : "unknown",
           turnId,
-        })
+        });
       }
       return {
         ok: true,
         text: result.text,
         toolCallCount: result.toolCallCount,
-      }
-    }
+      };
+    };
 
     const summary = await runSarahAutonomousTickDispatch({
-      appendUpdate: input =>
-        appendSarahAutonomousUpdateToThread({ sql: client.sql }, input),
+      appendUpdate: (input) => appendSarahAutonomousUpdateToThread({ sql: client.sql }, input),
       authorize: ({ ownerUserId, threadRef, tickRef }) =>
         Effect.runPromise(
           authorizeSarahOperation(client.sql, {
-            action: 'read_business_context',
+            action: "read_business_context",
             // grant.sarah.owner_contact requires exactly
             // [owner_scope, redaction, citations]; the default condition set
             // (owner_scope, redaction, existing_runtime_gate, rollback) is the
@@ -7552,24 +6996,24 @@ const runSarahAutonomousTickDispatchForEnv = async (
             // scope on its own.
             conditionResults: [
               {
-                conditionRef: 'condition.owner_scope',
+                conditionRef: "condition.owner_scope",
                 passed: true,
                 evidenceRefs: [],
               },
               {
-                conditionRef: 'condition.redaction',
+                conditionRef: "condition.redaction",
                 passed: true,
-                evidenceRefs: ['schema:openagents.sarah.business_context.v1'],
+                evidenceRefs: ["schema:openagents.sarah.business_context.v1"],
               },
               {
-                conditionRef: 'condition.citations',
+                conditionRef: "condition.citations",
                 passed: true,
-                evidenceRefs: ['cited:collectSarahBusinessContext'],
+                evidenceRefs: ["cited:collectSarahBusinessContext"],
               },
             ],
             ownerUserId,
-            programRef: 'program.sarah_company_operations',
-            resource: 'owner_business_context',
+            programRef: "program.sarah_company_operations",
+            resource: "owner_business_context",
             targetEvidenceRefs: [tickRef],
             threadRef,
             triggerRef: `autonomous_tick.${tickRef}`,
@@ -7578,16 +7022,16 @@ const runSarahAutonomousTickDispatchForEnv = async (
       intervalMinutes,
       log: (line, fields) => logWorkerRouteWarning(line, fields ?? {}),
       push: ({ ownerUserId, threadRef }) =>
-        dispatchNotifyEventForOwner(
-          paymentsLedgerDbForEnv(env),
-          authKvStoreForEnv(env),
-          { kind: 'turn_completed', ownerUserId, threadId: threadRef },
-        ),
+        dispatchNotifyEventForOwner(paymentsLedgerDbForEnv(env), authKvStoreForEnv(env), {
+          kind: "turn_completed",
+          ownerUserId,
+          threadId: threadRef,
+        }),
       runTurn,
       sql: client.sql,
-    })
-    if (summary.attempted > 0 || summary.ownersResolved > 0) {
-      logWorkerRouteWarning('sarah_autonomous_tick_dispatch', {
+    });
+    if (summary.acted > 0 || summary.failed > 0 || summary.refused > 0 || summary.turnFailed > 0) {
+      logWorkerRouteWarning("sarah_autonomous_tick_dispatch", {
         acted: summary.acted,
         attempted: summary.attempted,
         failed: summary.failed,
@@ -7595,104 +7039,91 @@ const runSarahAutonomousTickDispatchForEnv = async (
         ownersResolved: summary.ownersResolved,
         refused: summary.refused,
         turnFailed: summary.turnFailed,
-      })
+      });
     }
   } finally {
-    await client.end()
+    await client.end();
   }
-}
+};
 
 const runManagedCloudRuntimeTurnDispatchForEnv = async (
   env: OpenAgentsWorkerEnv,
 ): Promise<void> => {
-  const connectionString = env.KHALA_SYNC_DB?.connectionString
-  if (connectionString === undefined || connectionString.length === 0) return
+  const connectionString = env.KHALA_SYNC_DB?.connectionString;
+  if (connectionString === undefined || connectionString.length === 0) return;
   const capacity = await probeAgentComputerCapacitySnapshot({
     baseUrl: env.OA_CLOUD_CONTROL_URL,
     bearerToken: env.OA_CLOUD_CONTROL_TOKEN,
     gceProvisioningArmed:
       isCloudCodingSessionsEnabled(env.CLOUD_CODING_SESSIONS_ENABLED) &&
       isCloudGceProvisioningArmed(env.OA_CODEX_GCE_PROVISIONER),
-  })
-  if (!capacity.available) return
+  });
+  if (!capacity.available) return;
 
-  const postgresIdentity = postgresIdentityAuthStoreForEnv(env)
-  if (postgresIdentity === undefined) return
+  const postgresIdentity = postgresIdentityAuthStoreForEnv(env);
+  if (postgresIdentity === undefined) return;
   const accountRepository = makeAuthoritativePostgresProviderGrantRepository(
     makeProviderAccountRepositoryForEnv(env),
     postgresIdentity.queryRows,
-  )
-  const githubRepository = makeGitHubWriteRepositoryForEnv(env)
+  );
+  const githubRepository = makeGitHubWriteRepositoryForEnv(env);
   const inferenceBaseUrl =
     env.OA_CLOUD_RUNTIME_INFERENCE_BASE_URL !== undefined &&
     env.OA_CLOUD_RUNTIME_INFERENCE_BASE_URL.length > 0
       ? env.OA_CLOUD_RUNTIME_INFERENCE_BASE_URL
-      : getAppOrigin(env)
+      : getAppOrigin(env);
   const launch = makeCloudCodingAdapterLaunchSeam(
     makeCloudControlCloudCodingAdapter({
-      baseUrl: env.OA_CLOUD_CONTROL_URL ?? '',
-      bearerToken: env.OA_CLOUD_CONTROL_TOKEN ?? '',
+      baseUrl: env.OA_CLOUD_CONTROL_URL ?? "",
+      bearerToken: env.OA_CLOUD_CONTROL_TOKEN ?? "",
       gceProvisioningArmed: true,
       returnAfterPlacementAccepted: true,
     }),
-  )
-  const client = await defaultMakeKhalaSyncSqlClient(connectionString)
+  );
+  const client = await defaultMakeKhalaSyncSqlClient(connectionString);
   const providerLeaseService = makeProviderAccountLeaseService({
     db: openAgentsDatabase(env),
     mirror: identityAuthMirrorFromEnv(env),
-  })
+  });
   try {
     await recoverStaleRunningManagedCloudTurns({
       armed: true,
       inference: {
         baseUrl: inferenceBaseUrl,
-        model: 'openagents/pylon-codex',
-        pylonRef: 'pylon.agent-computer.managed-cloud',
+        model: "openagents/pylon-codex",
+        pylonRef: "pylon.agent-computer.managed-cloud",
       },
       launch,
       log: (line, fields) => logWorkerRouteWarning(line, fields ?? {}),
       sql: client.sql,
-    })
+    });
     const summary = await runCloudGcpRuntimeDispatch({
       armed: true,
       finalizeAfterDispatch: async (turn, outcome) => {
-        await finalizeManagedCloudProviderLease(
-          providerLeaseService,
-          turn,
-          outcome,
-        )
+        await finalizeManagedCloudProviderLease(providerLeaseService, turn, outcome);
       },
       inference: {
         baseUrl: inferenceBaseUrl,
-        model: 'openagents/pylon-codex',
-        pylonRef: 'pylon.agent-computer.managed-cloud',
+        model: "openagents/pylon-codex",
+        pylonRef: "pylon.agent-computer.managed-cloud",
       },
       launch,
       log: (line, fields) => logWorkerRouteWarning(line, fields ?? {}),
-      prepareAfterClaim: async turn => {
-        const harnessSelection = selectManagedAgentComputerHarness(
-          turn.harnessId,
-        )
-        if (
-          ManagedAgentComputerHarnessSelection.guards.unavailable(
-            harnessSelection,
-          )
-        ) {
+      prepareAfterClaim: async (turn) => {
+        const harnessSelection = selectManagedAgentComputerHarness(turn.harnessId);
+        if (ManagedAgentComputerHarnessSelection.guards.unavailable(harnessSelection)) {
           throw new ManagedCloudDispatchError({
             message: harnessSelection.reasonRef,
-          })
+          });
         }
-        const resolvedCommit = await resolveManagedCloudRepositoryCommit(
-          turn.repo,
-          turn.commit,
-        )
+        const resolvedCommit = await resolveManagedCloudRepositoryCommit(turn.repo, turn.commit);
         if (resolvedCommit === null) {
           throw new ManagedCloudDispatchError({
-            message: 'managed_cloud_repository_ref_unresolved',
-          })
+            message: "managed_cloud_repository_ref_unresolved",
+          });
         }
-        const now = currentIsoTimestamp()
-        const expiresAt = isoTimestampAfterIso(now, 35 * 60 * 1_000)
+        const now = currentIsoTimestamp();
+        const expiresAt = isoTimestampAfterIso(now, 35 * 60 * 1_000);
         const initialLease = await providerLeaseService.acquire({
           assignmentId: turn.turnId,
           expiresAt,
@@ -7701,46 +7132,45 @@ const runManagedCloudRuntimeTurnDispatchForEnv = async (
           requestedAction: harnessSelection.requestedAction,
           requiredProvider: harnessSelection.provider,
           runId: turn.threadId,
-          selectedByActor: 'sarah_managed_cloud_dispatch',
-          source: 'managed_cloud_runtime_dispatch',
+          selectedByActor: "sarah_managed_cloud_dispatch",
+          source: "managed_cloud_runtime_dispatch",
           userId: turn.ownerUserId,
-        })
+        });
         if (initialLease === undefined) {
           throw new ManagedCloudDispatchError({
             message: `managed_cloud_owner_${harnessSelection.provider}_capacity_unavailable`,
-          })
+          });
         }
-        let lease = initialLease
+        let lease = initialLease;
         const [accounts, githubConnection] = await Promise.all([
           listProviderAccountsForUser(accountRepository, turn.ownerUserId),
           githubRepository.findUsableConnectionForUser(turn.ownerUserId),
-        ])
+        ]);
         try {
           if (
             githubConnection === undefined ||
             !hasRequiredGitHubWriteScopes(githubConnection.scopes)
           ) {
             throw new ManagedCloudDispatchError({
-              message: 'managed_cloud_github_write_authority_unavailable',
-            })
+              message: "managed_cloud_github_write_authority_unavailable",
+            });
           }
 
           for (let attemptNumber = 1; attemptNumber <= 2; attemptNumber += 1) {
-            const account: PublicProviderAccount | undefined =
-              accounts.accounts.find(
-                candidate =>
-                  candidate.provider === harnessSelection.provider &&
-                  candidate.providerAccountRef === lease.providerAccountRef &&
-                  candidate.publicStatus === 'connected' &&
-                  candidate.health === 'healthy',
-              )
+            const account: PublicProviderAccount | undefined = accounts.accounts.find(
+              (candidate) =>
+                candidate.provider === harnessSelection.provider &&
+                candidate.providerAccountRef === lease.providerAccountRef &&
+                candidate.publicStatus === "connected" &&
+                candidate.health === "healthy",
+            );
             const privateAccount: ProviderAccountRecord | undefined =
               account === undefined
                 ? undefined
                 : await accountRepository.findAccountByRef(
                     turn.ownerUserId,
                     account.providerAccountRef,
-                  )
+                  );
             const grant: PublicProviderAccountGrant | undefined =
               account === undefined || privateAccount === undefined
                 ? undefined
@@ -7751,7 +7181,7 @@ const runManagedCloudRuntimeTurnDispatchForEnv = async (
                       harnessSelection,
                       account.providerAccountRef,
                     ),
-                  )
+                  );
             const exactGrant =
               grant !== undefined &&
               privateAccount !== undefined &&
@@ -7765,7 +7195,7 @@ const runManagedCloudRuntimeTurnDispatchForEnv = async (
               grant.runnerSessionId === turn.turnId &&
               grant.threadId === turn.threadId &&
               grant.workroomId === turn.workContextRef &&
-              grant.status === 'issued'
+              grant.status === "issued";
             if (
               account !== undefined &&
               grant !== undefined &&
@@ -7778,12 +7208,8 @@ const runManagedCloudRuntimeTurnDispatchForEnv = async (
                 accountRefHash: account.providerAccountRef,
                 harnessId: harnessSelection.harnessId,
                 providerAccountLeaseRef: lease.leaseRef,
-              }
-              if (
-                ManagedAgentComputerHarnessSelection.guards.codex(
-                  harnessSelection,
-                )
-              ) {
+              };
+              if (ManagedAgentComputerHarnessSelection.guards.codex(harnessSelection)) {
                 return {
                   ...preparedBase,
                   codexContinuity: {
@@ -7792,23 +7218,19 @@ const runManagedCloudRuntimeTurnDispatchForEnv = async (
                     maxReplayMessages: 24,
                     providerAccountRef: grant.providerAccountRef,
                   },
-                }
+                };
               }
-              if (
-                ManagedAgentComputerHarnessSelection.guards.gemini(
-                  harnessSelection,
-                )
-              ) {
+              if (ManagedAgentComputerHarnessSelection.guards.gemini(harnessSelection)) {
                 return {
                   ...preparedBase,
                   harnessRuntimeSecretGrant: {
                     grantRef: grant.grantRef,
-                    kind: 'gemini_api_key' as const,
+                    kind: "gemini_api_key" as const,
                     providerAccountRef: grant.providerAccountRef,
                     runnerSessionId: turn.turnId,
                     secretRef: privateAccount.secretRef,
                   },
-                }
+                };
               }
               return {
                 ...preparedBase,
@@ -7816,81 +7238,73 @@ const runManagedCloudRuntimeTurnDispatchForEnv = async (
                   authGrantRef: grant.grantRef,
                   providerAccountRef: grant.providerAccountRef,
                 },
-              }
+              };
             }
 
             const failover = await providerLeaseService.failover({
               assignmentId: turn.turnId,
               attemptNumber,
               expiresAt,
-              failureClass: 'grant_resolution_failed',
+              failureClass: "grant_resolution_failed",
               maxAttempts: 2,
               now: currentIsoTimestamp(),
               orderId: null,
               previousLeaseRef: lease.leaseRef,
               requestedAction: harnessSelection.requestedAction,
               runId: turn.threadId,
-              selectedByActor: 'sarah_managed_cloud_dispatch',
-              source: 'managed_cloud_runtime_dispatch',
+              selectedByActor: "sarah_managed_cloud_dispatch",
+              source: "managed_cloud_runtime_dispatch",
               userId: turn.ownerUserId,
-            })
-            if (failover === undefined || failover.nextLease === null) break
-            lease = failover.nextLease
+            });
+            if (failover === undefined || failover.nextLease === null) break;
+            lease = failover.nextLease;
           }
 
           throw new ManagedCloudDispatchError({
             message: `managed_cloud_owner_${harnessSelection.provider}_grant_unavailable`,
-          })
+          });
         } catch (error) {
           await providerLeaseService.release({
-            failureClass: 'preparation_failed',
+            failureClass: "preparation_failed",
             leaseRef: lease.leaseRef,
             now: currentIsoTimestamp(),
-            status: 'failed',
+            status: "failed",
             terminalOutcome:
               error instanceof ManagedCloudDispatchError
                 ? error.message
-                : 'managed_cloud_preparation_failed',
+                : "managed_cloud_preparation_failed",
             userId: turn.ownerUserId,
-          })
-          throw error
+          });
+          throw error;
         }
       },
       readAdmitted: async (sql, limit) => {
-        const turns = await readQueuedManagedCloudTurns(sql, limit)
+        const turns = await readQueuedManagedCloudTurns(sql, limit);
         const accountsByOwner = new Map(
           await Promise.all(
-            [...new Set(turns.map(turn => turn.ownerUserId))].map(
-              async ownerUserId =>
+            [...new Set(turns.map((turn) => turn.ownerUserId))].map(
+              async (ownerUserId) =>
                 [
                   ownerUserId,
-                  (
-                    await listProviderAccountsForUser(
-                      accountRepository,
-                      ownerUserId,
-                    )
-                  ).accounts,
+                  (await listProviderAccountsForUser(accountRepository, ownerUserId)).accounts,
                 ] as const,
             ),
           ),
-        )
-        return turns.map(turn =>
-          applySarahManagedCloudHarnessFallback(
-            turn,
-            accountsByOwner.get(turn.ownerUserId) ?? [],
-          ),
-        )
+        );
+        return turns.map((turn) =>
+          applySarahManagedCloudHarnessFallback(turn, accountsByOwner.get(turn.ownerUserId) ?? []),
+        );
       },
       registry: khalaSyncMutatorRegistry,
       sql: client.sql,
-    })
+    });
     if (summary.scanned > 0) {
-      logWorkerRouteWarning('managed_cloud_runtime_dispatch_tick', summary)
+      logWorkerRouteWarning("managed_cloud_runtime_dispatch_tick", summary);
     }
   } finally {
-    await client.end()
+    await client.end();
   }
-}
+};
 
 // Seam A (#8503, AC-1): resolve the live `cloud-gcp` runtime dispatch context
 // for the admin-guarded trigger route. Fail-closed by construction: returns
@@ -7905,58 +7319,56 @@ const runManagedCloudRuntimeTurnDispatchForEnv = async (
 const resolveCloudGcpRuntimeDispatchContext = async (
   env: OpenAgentsWorkerEnv,
 ): Promise<CloudGcpRuntimeDispatchContext> => {
-  const connectionString = env.KHALA_SYNC_DB?.connectionString
+  const connectionString = env.KHALA_SYNC_DB?.connectionString;
   if (connectionString === undefined || connectionString.length === 0) {
-    return { configured: false }
+    return { configured: false };
   }
-  const armed = isCloudGceProvisioningArmed(env.OA_CODEX_GCE_PROVISIONER)
-  const noMeterSecret = env.OA_CLOUD_RUNTIME_NO_METER_SECRET
-  const inferenceProvider = env.OA_CLOUD_RUNTIME_INFERENCE_PROVIDER
+  const armed = isCloudGceProvisioningArmed(env.OA_CODEX_GCE_PROVISIONER);
+  const noMeterSecret = env.OA_CLOUD_RUNTIME_NO_METER_SECRET;
+  const inferenceProvider = env.OA_CLOUD_RUNTIME_INFERENCE_PROVIDER;
   const inferenceBaseUrl =
     env.OA_CLOUD_RUNTIME_INFERENCE_BASE_URL !== undefined &&
     env.OA_CLOUD_RUNTIME_INFERENCE_BASE_URL.length > 0
       ? env.OA_CLOUD_RUNTIME_INFERENCE_BASE_URL
-      : getAppOrigin(env)
+      : getAppOrigin(env);
   const launch = makeCloudCodingAdapterLaunchSeam(
     makeCloudControlCloudCodingAdapter({
-      baseUrl: env.OA_CLOUD_CONTROL_URL ?? '',
-      bearerToken: env.OA_CLOUD_CONTROL_TOKEN ?? '',
+      baseUrl: env.OA_CLOUD_CONTROL_URL ?? "",
+      bearerToken: env.OA_CLOUD_CONTROL_TOKEN ?? "",
       gceProvisioningArmed: true,
     }),
-  )
+  );
   return {
     armed,
     configured: true,
-    run: async admitted => {
-      const client = await defaultMakeKhalaSyncSqlClient(connectionString)
+    run: async (admitted) => {
+      const client = await defaultMakeKhalaSyncSqlClient(connectionString);
       try {
         return await dispatchCloudGcpRuntimeTurn(
           {
             armed: true,
             inference: {
               baseUrl: inferenceBaseUrl,
-              model: 'openagents/khala',
+              model: "openagents/khala",
               ...(noMeterSecret === undefined ? {} : { noMeterSecret }),
-              ...(inferenceProvider === undefined
-                ? {}
-                : { provider: inferenceProvider }),
+              ...(inferenceProvider === undefined ? {} : { provider: inferenceProvider }),
             },
             launch,
             log: (line, fields) => logWorkerRouteWarning(line, fields ?? {}),
             sql: client.sql,
           },
           admitted,
-        )
+        );
       } finally {
-        await client.end()
+        await client.end();
       }
     },
-  }
-}
+  };
+};
 
 type PylonCodexRawEventProducerEnv = Parameters<typeof openAgentsDatabase>[0] &
   OaJobQueueProducerEnv &
-  Readonly<{ ARTIFACTS?: R2Bucket | undefined }>
+  Readonly<{ ARTIFACTS?: R2Bucket | undefined }>;
 
 // CFG-7 (#8522): raw Codex metadata rows ride the oa-infra Postgres JobQueue
 // (KS-8.4 moved them off the request path; the queue itself moved off
@@ -7965,64 +7377,56 @@ type PylonCodexRawEventProducerEnv = Parameters<typeof openAgentsDatabase>[0] &
 const makePylonCodexRawEventMetadataQueueProducerForEnv = (
   env: OaJobQueueProducerEnv,
 ): PylonCodexRawEventMetadataQueueProducer | undefined => {
-  const enqueue = makeOaJobEnqueueForEnv(env)
+  const enqueue = makeOaJobEnqueueForEnv(env);
   return enqueue === undefined
     ? undefined
     : {
-        send: message =>
+        send: (message) =>
           enqueue(
             OA_JOB_TOPIC_PYLON_CODEX_RAW_EVENT_METADATA,
-            JSON.stringify(
-              S.encodeSync(PylonCodexRawEventMetadataQueueMessage)(message),
-            ),
+            JSON.stringify(S.encodeSync(PylonCodexRawEventMetadataQueueMessage)(message)),
           ),
-      }
-}
+      };
+};
 
-const makePylonCodexRawEventStoreForEnv = (
-  env: PylonCodexRawEventProducerEnv,
-) => {
-  const queue = makePylonCodexRawEventMetadataQueueProducerForEnv(env)
-  const artifacts = artifactsBucketForEnv(env)
+const makePylonCodexRawEventStoreForEnv = (env: PylonCodexRawEventProducerEnv) => {
+  const queue = makePylonCodexRawEventMetadataQueueProducerForEnv(env);
+  const artifacts = artifactsBucketForEnv(env);
   return queue === undefined
     ? makeD1R2PylonCodexRawEventStore(openAgentsDatabase(env), artifacts)
-    : makeQueuedR2PylonCodexRawEventStore(artifacts, queue)
-}
+    : makeQueuedR2PylonCodexRawEventStore(artifacts, queue);
+};
 
-const makePylonCodexRawEventChunkStoreForEnv = (
-  env: PylonCodexRawEventProducerEnv,
-) => {
-  const queue = makePylonCodexRawEventMetadataQueueProducerForEnv(env)
-  const artifacts = artifactsBucketForEnv(env)
+const makePylonCodexRawEventChunkStoreForEnv = (env: PylonCodexRawEventProducerEnv) => {
+  const queue = makePylonCodexRawEventMetadataQueueProducerForEnv(env);
+  const artifacts = artifactsBucketForEnv(env);
   return queue === undefined
     ? makeD1R2PylonCodexRawEventChunkStore(openAgentsDatabase(env), artifacts)
-    : makeQueuedR2PylonCodexRawEventChunkStore(artifacts, queue)
-}
+    : makeQueuedR2PylonCodexRawEventChunkStore(artifacts, queue);
+};
 
 const pylonCodexTurnIngestRoutes = makePylonCodexTurnIngestRoutes<Env>({
-  agentStore: env => makeAgentRegistrationStoreForEnv(env),
+  agentStore: (env) => makeAgentRegistrationStoreForEnv(env),
   // KS-6.3 (#8304): the Codex turn-ingest ledger writes move the public
   // tokens-served projection too (fail-soft, exact-once per row).
-  ledger: env =>
+  ledger: (env) =>
     makeD1TokenUsageLedger(openAgentsDatabase(env), undefined, {
       onIngestedEvent: makeTokensServedProjectionObserver(env),
       // KS-8.2 (#8308): mirror fresh ledger rows to Postgres fail-soft.
       ...tokenLedgerWriteStoreOptionForEnv(env),
     }),
-  pylonStore: env => makePylonApiStoreForEnv(env),
-  proofStore: env =>
-    makePylonCodexAssignmentProofStoreForEnv(env, openAgentsDatabase(env)),
-  traceStatusStore: env =>
-    makePylonCodexAssignmentProofStoreForEnv(env, openAgentsDatabase(env)),
+  pylonStore: (env) => makePylonApiStoreForEnv(env),
+  proofStore: (env) => makePylonCodexAssignmentProofStoreForEnv(env, openAgentsDatabase(env)),
+  traceStatusStore: (env) => makePylonCodexAssignmentProofStoreForEnv(env, openAgentsDatabase(env)),
   rawEventChunkStore: makePylonCodexRawEventChunkStoreForEnv,
   rawEventStore: makePylonCodexRawEventStoreForEnv,
-  traceStore: env => makeTraceStoreForEnv(env),
-})
+  traceStore: (env) => makeTraceStoreForEnv(env),
+});
 
 const handleDesktopCodexUsage = makeDesktopCodexUsageRouteHandler({
   // #8911 rollout gate: keep server ingest closed until authenticated Desktop
   // turn admission and owner-approved consent copy are both implemented.
-  ingestEnabled: (env: Env) => env.DESKTOP_CODEX_USAGE_INGEST_ENABLED === '1',
+  ingestEnabled: (env: Env) => env.DESKTOP_CODEX_USAGE_INGEST_ENABLED === "1",
   admissionStore: (env: Env) => authKvStoreForEnv(env),
   ledger: (env: Env) =>
     makeD1TokenUsageLedger(openAgentsDatabase(env), undefined, {
@@ -8030,30 +7434,29 @@ const handleDesktopCodexUsage = makeDesktopCodexUsageRouteHandler({
       ...tokenLedgerWriteStoreOptionForEnv(env),
     }),
   requireUserBearerSession,
-  userIdFromSession: session => session.user.userId,
-})
-const handleDesktopCodexUsageAdmission =
-  makeDesktopCodexUsageAdmissionRouteHandler({
-    ingestEnabled: (env: Env) => env.DESKTOP_CODEX_USAGE_INGEST_ENABLED === '1',
-    admissionStore: (env: Env) => authKvStoreForEnv(env),
-    ledger: (env: Env) =>
-      makeD1TokenUsageLedger(openAgentsDatabase(env), undefined, {
-        onIngestedEvent: makeTokensServedProjectionObserver(env),
-        ...tokenLedgerWriteStoreOptionForEnv(env),
-      }),
-    requireUserBearerSession,
-    userIdFromSession: session => session.user.userId,
-  })
+  userIdFromSession: (session) => session.user.userId,
+});
+const handleDesktopCodexUsageAdmission = makeDesktopCodexUsageAdmissionRouteHandler({
+  ingestEnabled: (env: Env) => env.DESKTOP_CODEX_USAGE_INGEST_ENABLED === "1",
+  admissionStore: (env: Env) => authKvStoreForEnv(env),
+  ledger: (env: Env) =>
+    makeD1TokenUsageLedger(openAgentsDatabase(env), undefined, {
+      onIngestedEvent: makeTokensServedProjectionObserver(env),
+      ...tokenLedgerWriteStoreOptionForEnv(env),
+    }),
+  requireUserBearerSession,
+  userIdFromSession: (session) => session.user.userId,
+});
 
 const khalaCloudRuntimeUsageRoutes = makeKhalaCloudRuntimeUsageRoutes<Env>({
-  agentStore: env => makeAgentRegistrationStoreForEnv(env),
+  agentStore: (env) => makeAgentRegistrationStoreForEnv(env),
   authorizeOwnerCapacityReceipt: async (env, input) => {
-    const grant = await makeD1ProviderAccountRepository(
-      openAgentsDatabase(env),
-    ).findGrantByRef(input.authGrantRef)
-    return ownerCapacityGrantAuthorizesReceipt(grant, input)
+    const grant = await makeD1ProviderAccountRepository(openAgentsDatabase(env)).findGrantByRef(
+      input.authGrantRef,
+    );
+    return ownerCapacityGrantAuthorizesReceipt(grant, input);
   },
-  ledger: env =>
+  ledger: (env) =>
     makeD1TokenUsageLedger(openAgentsDatabase(env), undefined, {
       onIngestedEvent: makeTokensServedProjectionObserver(env),
       ...tokenLedgerWriteStoreOptionForEnv(env),
@@ -8063,12 +7466,12 @@ const khalaCloudRuntimeUsageRoutes = makeKhalaCloudRuntimeUsageRoutes<Env>({
     Effect.succeed({
       eventRef: null,
       published: false,
-      reason: 'khala_sync_storage_unconfigured' as const,
+      reason: "khala_sync_storage_unconfigured" as const,
     }),
-})
+});
 
 const syncDependencyErrorReason = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error)
+  error instanceof Error ? error.message : String(error);
 
 const syncRoutes = makeSyncRoutes({
   appendRefreshedSessionCookies,
@@ -8082,7 +7485,7 @@ const syncRoutes = makeSyncRoutes({
       catch: syncDependencyErrorReason,
       try: () => requireBrowserSession(request, env, ctx),
     }),
-})
+});
 
 const providerAccountBrowserHandlers = makeProviderAccountBrowserHandlers({
   appendRefreshedSessionCookies,
@@ -8094,38 +7497,33 @@ const providerAccountBrowserHandlers = makeProviderAccountBrowserHandlers({
   storeConnectedCodexAuth,
   storeConnectedProviderApiKey,
   storeStartedCodexDeviceLogin,
-})
+});
 
-const providerAccountPylonHandlers =
-  makeProviderAccountPylonHandlers<OpenAgentsWorkerEnv>({
-    agentStore: env => makeAgentRegistrationStoreForEnv(env),
-    deleteStartedCodexDeviceLogin,
-    providerGrantRepository: env => {
-      const postgres = postgresIdentityAuthStoreForEnv(env)
-      if (postgres === undefined) {
-        throw new ProviderAccountStorageFailed({
-          operation: 'grant_repository_boot',
-          message:
-            'authoritative_postgres_provider_grant_repository_unavailable',
-        })
-      }
-      return makeAuthoritativePostgresProviderGrantRepository(
-        makeProviderAccountRepositoryForEnv(env),
-        postgres.queryRows,
-      )
-    },
-    readConnectedClaudeAuthMaterial: (env, _ownerUserId, providerAccountRef) =>
-      readConnectedClaudeAuthMaterial(
-        authKvStoreForEnv(env),
-        providerAccountRef,
-      ),
-    readConnectedCodexAuthMaterial: readConnectedCodexAuthMaterialForWorkerEnv,
-    readGoogleGeminiSecretMaterial: env => env.GEMINI_API_KEY,
-    readStartedCodexDeviceLogin,
-    storeConnectedClaudeAuth: storeConnectedClaudeAuthForWorkerEnv,
-    storeConnectedCodexAuth,
-    storeStartedCodexDeviceLogin,
-  })
+const providerAccountPylonHandlers = makeProviderAccountPylonHandlers<OpenAgentsWorkerEnv>({
+  agentStore: (env) => makeAgentRegistrationStoreForEnv(env),
+  deleteStartedCodexDeviceLogin,
+  providerGrantRepository: (env) => {
+    const postgres = postgresIdentityAuthStoreForEnv(env);
+    if (postgres === undefined) {
+      throw new ProviderAccountStorageFailed({
+        operation: "grant_repository_boot",
+        message: "authoritative_postgres_provider_grant_repository_unavailable",
+      });
+    }
+    return makeAuthoritativePostgresProviderGrantRepository(
+      makeProviderAccountRepositoryForEnv(env),
+      postgres.queryRows,
+    );
+  },
+  readConnectedClaudeAuthMaterial: (env, _ownerUserId, providerAccountRef) =>
+    readConnectedClaudeAuthMaterial(authKvStoreForEnv(env), providerAccountRef),
+  readConnectedCodexAuthMaterial: readConnectedCodexAuthMaterialForWorkerEnv,
+  readGoogleGeminiSecretMaterial: (env) => env.GEMINI_API_KEY,
+  readStartedCodexDeviceLogin,
+  storeConnectedClaudeAuth: storeConnectedClaudeAuthForWorkerEnv,
+  storeConnectedCodexAuth,
+  storeStartedCodexDeviceLogin,
+});
 
 const providerAccountMobileHandlers = makeProviderAccountMobileHandlers({
   deleteConnectedClaudeAuth: deleteConnectedClaudeAuthForWorkerEnv,
@@ -8136,37 +7534,37 @@ const providerAccountMobileHandlers = makeProviderAccountMobileHandlers({
   storeConnectedClaudeAuth: storeConnectedClaudeAuthForWorkerEnv,
   storeConnectedCodexAuth: storeConnectedCodexAuthForWorkerEnv,
   storeStartedCodexDeviceLogin,
-  userIdFromSession: session => session.user.userId,
-})
+  userIdFromSession: (session) => session.user.userId,
+});
 
 const pylonOpenAgentsAuthHandlers = makePylonOpenAgentsAuthHandlers({
-  agentStore: env => makeAgentRegistrationStoreForEnv(env),
+  agentStore: (env) => makeAgentRegistrationStoreForEnv(env),
   appendRefreshedSessionCookies,
   requireBrowserSession,
-})
+});
 
 const khalaCodeOpenAgentsAuthHandlers = makeKhalaCodeOpenAgentsAuthHandlers({
-  agentStore: env => makeAgentRegistrationStoreForEnv(env),
+  agentStore: (env) => makeAgentRegistrationStoreForEnv(env),
   appendRefreshedSessionCookies,
   requireBrowserSession,
-})
+});
 
 const providerAccountServiceHandlers = makeProviderAccountServiceHandlers({
   readConnectedCodexAuthMaterial: readConnectedCodexAuthMaterialForWorkerEnv,
   requireProviderServiceActor,
-})
+});
 
 const providerAccountPoolRoutes = makeProviderAccountPoolRoutes({
-  agentStore: env => makeAgentRegistrationStoreForEnv(env),
+  agentStore: (env) => makeAgentRegistrationStoreForEnv(env),
   appendRefreshedSessionCookies,
   requireBrowserSession,
-})
+});
 
 const providerAccountUsageRoutes = makeProviderAccountUsageRoutes({
   appendRefreshedSessionCookies,
   isOpenAgentsAdminEmail,
   requireBrowserSession,
-})
+});
 
 const operatorProviderAccountRoutes = makeOperatorProviderAccountRoutes({
   deleteStartedCodexDeviceLogin,
@@ -8176,13 +7574,13 @@ const operatorProviderAccountRoutes = makeOperatorProviderAccountRoutes({
   requireAdminApiToken,
   storeConnectedCodexAuth,
   storeStartedCodexDeviceLogin,
-})
+});
 
 const adminOverviewHandlers = makeAdminOverviewHandlers({
   appendRefreshedSessionCookies,
   isOpenAgentsAdminEmail,
   requireBrowserSession,
-})
+});
 
 // #9188: the admin operator overview — one redacted at-a-glance snapshot of
 // the live agent chains, token rollup, traces, and fleet (composes existing
@@ -8192,7 +7590,7 @@ const adminOperatorOverviewHandler = makeAdminOperatorOverviewHandler({
   db: openAgentsDatabase,
   isOpenAgentsAdminEmail,
   requireBrowserSession,
-})
+});
 
 const tokenUsageLedgerRoutes = makeTokenUsageLedgerRoutes({
   appendRefreshedSessionCookies,
@@ -8210,21 +7608,21 @@ const tokenUsageLedgerRoutes = makeTokenUsageLedgerRoutes({
     ),
   requireAdminApiToken,
   requireBrowserSession,
-})
+});
 
 const mulletRoutes = makeMulletRoutes({
   appendRefreshedSessionCookies,
   isOpenAgentsAdminEmail,
   requireBrowserSession,
-})
+});
 
 const providerAccountRoutes = makeProviderAccountRoutes({
   handleGitHubWriteDisconnectApi: (request, env, ctx, connectionRef) =>
-    routeEffect('handle_github_write_disconnect_api', () =>
+    routeEffect("handle_github_write_disconnect_api", () =>
       handleGitHubWriteDisconnectApi(request, env, ctx, connectionRef),
     ),
   handleProviderAccountDisconnectApi: (request, env, ctx, providerAccountRef) =>
-    routeEffect('handle_provider_account_disconnect_api', () =>
+    routeEffect("handle_provider_account_disconnect_api", () =>
       providerAccountBrowserHandlers.handleProviderAccountDisconnectApi(
         request,
         env,
@@ -8233,7 +7631,7 @@ const providerAccountRoutes = makeProviderAccountRoutes({
       ),
     ),
   handleProviderAccountGrantIssueApi: (request, env, ctx, providerAccountRef) =>
-    routeEffect('handle_provider_account_grant_issue_api', () =>
+    routeEffect("handle_provider_account_grant_issue_api", () =>
       providerAccountBrowserHandlers.handleProviderAccountGrantIssueApi(
         request,
         env,
@@ -8242,31 +7640,31 @@ const providerAccountRoutes = makeProviderAccountRoutes({
       ),
     ),
   handleProviderAccountGrantResolveApi: (request, env) =>
-    routeEffect('handle_provider_account_grant_resolve_api', () =>
+    routeEffect("handle_provider_account_grant_resolve_api", () =>
       providerAccountServiceHandlers
         .handleProviderAccountGrantResolveApi(request, env)
         .then(materializeHttpResult),
     ),
   handleGoogleGeminiGrantResolveApi: (request, env) =>
-    routeEffect('handle_google_gemini_grant_resolve_api', () =>
+    routeEffect("handle_google_gemini_grant_resolve_api", () =>
       providerAccountServiceHandlers
         .handleGoogleGeminiGrantResolveApi(request, env)
         .then(materializeHttpResult),
     ),
   handleGoogleGeminiBuiltinGrantApi: (request, env) =>
-    routeEffect('handle_google_gemini_builtin_grant_api', () =>
+    routeEffect("handle_google_gemini_builtin_grant_api", () =>
       providerAccountServiceHandlers
         .handleGoogleGeminiBuiltinGrantApi(request, env)
         .then(materializeHttpResult),
     ),
   handleGoogleGeminiGenerateContentApi: (request, env, ctx, model) =>
-    routeEffect('handle_google_gemini_generate_content_api', () =>
+    routeEffect("handle_google_gemini_generate_content_api", () =>
       providerAccountServiceHandlers
         .handleGoogleGeminiGenerateContentApi(request, env, ctx, model)
         .then(materializeHttpResult),
     ),
   handleProviderApiKeyConnectApi: (request, env, ctx, providerRouteSegment) =>
-    routeEffect('handle_provider_api_key_connect_api', () =>
+    routeEffect("handle_provider_api_key_connect_api", () =>
       providerAccountBrowserHandlers.handleProviderApiKeyConnectApi(
         request,
         env,
@@ -8275,7 +7673,7 @@ const providerAccountRoutes = makeProviderAccountRoutes({
       ),
     ),
   handleProviderAccountHealthApi: (request, env, providerAccountRef) =>
-    routeEffect('handle_provider_account_health_api', () =>
+    routeEffect("handle_provider_account_health_api", () =>
       providerAccountServiceHandlers
         .handleProviderAccountHealthApi(request, env, providerAccountRef)
         .then(materializeHttpResult),
@@ -8285,33 +7683,25 @@ const providerAccountRoutes = makeProviderAccountRoutes({
   handleProviderAccountUsageApi: (request, env, ctx) =>
     providerAccountUsageRoutes.handleProviderAccountUsageApi(request, env, ctx),
   handleProviderAccountsListApi: (request, env, ctx) =>
-    providerAccountBrowserHandlers.handleProviderAccountsListApi(
-      request,
-      env,
-      ctx,
-    ),
+    providerAccountBrowserHandlers.handleProviderAccountsListApi(request, env, ctx),
   handleProviderDeviceLoginConnectedApi: (request, env, attemptId) =>
-    routeEffect('handle_provider_device_login_connected_api', () =>
+    routeEffect("handle_provider_device_login_connected_api", () =>
       providerAccountServiceHandlers
         .handleProviderDeviceLoginConnectedApi(request, env, attemptId)
         .then(materializeHttpResult),
     ),
   handleProviderDeviceLoginFailedApi: (request, env, attemptId) =>
-    routeEffect('handle_provider_device_login_failed_api', () =>
+    routeEffect("handle_provider_device_login_failed_api", () =>
       providerAccountServiceHandlers
         .handleProviderDeviceLoginFailedApi(request, env, attemptId)
         .then(materializeHttpResult),
     ),
   handleProviderDeviceLoginStartApi: (request, env, ctx) =>
-    routeEffect('handle_provider_device_login_start_api', () =>
-      providerAccountBrowserHandlers.handleProviderDeviceLoginStartApi(
-        request,
-        env,
-        ctx,
-      ),
+    routeEffect("handle_provider_device_login_start_api", () =>
+      providerAccountBrowserHandlers.handleProviderDeviceLoginStartApi(request, env, ctx),
     ),
   handleProviderDeviceLoginStatusApi: (request, env, ctx, attemptId) =>
-    routeEffect('handle_provider_device_login_status_api', () =>
+    routeEffect("handle_provider_device_login_status_api", () =>
       providerAccountBrowserHandlers.handleProviderDeviceLoginStatusApi(
         request,
         env,
@@ -8319,13 +7709,8 @@ const providerAccountRoutes = makeProviderAccountRoutes({
         attemptId,
       ),
     ),
-  handleMobileCodexAccountDisconnectApi: (
-    request,
-    env,
-    ctx,
-    providerAccountRef,
-  ) =>
-    routeEffect('handle_mobile_codex_account_disconnect_api', () =>
+  handleMobileCodexAccountDisconnectApi: (request, env, ctx, providerAccountRef) =>
+    routeEffect("handle_mobile_codex_account_disconnect_api", () =>
       providerAccountMobileHandlers.handleMobileCodexAccountDisconnectApi(
         request,
         env,
@@ -8334,7 +7719,7 @@ const providerAccountRoutes = makeProviderAccountRoutes({
       ),
     ),
   handleMobileCodexDeviceLoginStatusApi: (request, env, ctx, attemptId) =>
-    routeEffect('handle_mobile_codex_device_login_status_api', () =>
+    routeEffect("handle_mobile_codex_device_login_status_api", () =>
       providerAccountMobileHandlers.handleMobileCodexDeviceLoginStatusApi(
         request,
         env,
@@ -8342,13 +7727,8 @@ const providerAccountRoutes = makeProviderAccountRoutes({
         attemptId,
       ),
     ),
-  handleMobileClaudeAccountDisconnectApi: (
-    request,
-    env,
-    ctx,
-    providerAccountRef,
-  ) =>
-    routeEffect('handle_mobile_claude_account_disconnect_api', () =>
+  handleMobileClaudeAccountDisconnectApi: (request, env, ctx, providerAccountRef) =>
+    routeEffect("handle_mobile_claude_account_disconnect_api", () =>
       providerAccountMobileHandlers.handleMobileClaudeAccountDisconnectApi(
         request,
         env,
@@ -8357,98 +7737,57 @@ const providerAccountRoutes = makeProviderAccountRoutes({
       ),
     ),
   handlePylonProviderDeviceLoginStartApi: (request, env) =>
-    routeEffect('handle_pylon_provider_device_login_start_api', () =>
-      providerAccountPylonHandlers.handlePylonProviderDeviceLoginStartApi(
-        request,
-        env,
-      ),
+    routeEffect("handle_pylon_provider_device_login_start_api", () =>
+      providerAccountPylonHandlers.handlePylonProviderDeviceLoginStartApi(request, env),
     ),
   handlePylonProviderDeviceLoginStatusApi: (request, env, attemptId) =>
-    routeEffect('handle_pylon_provider_device_login_status_api', () =>
-      providerAccountPylonHandlers.handlePylonProviderDeviceLoginStatusApi(
-        request,
-        env,
-        attemptId,
-      ),
+    routeEffect("handle_pylon_provider_device_login_status_api", () =>
+      providerAccountPylonHandlers.handlePylonProviderDeviceLoginStatusApi(request, env, attemptId),
     ),
   handlePylonProviderCodexAuthMaterialApi: (request, env) =>
-    routeEffect('handle_pylon_provider_codex_auth_material_api', () =>
-      providerAccountPylonHandlers.handlePylonProviderCodexAuthMaterialApi(
-        request,
-        env,
-      ),
+    routeEffect("handle_pylon_provider_codex_auth_material_api", () =>
+      providerAccountPylonHandlers.handlePylonProviderCodexAuthMaterialApi(request, env),
     ),
   handlePylonProviderClaudeAuthMaterialApi: (request, env) =>
-    routeEffect('handle_pylon_provider_claude_auth_material_api', () =>
-      providerAccountPylonHandlers.handlePylonProviderClaudeAuthMaterialApi(
-        request,
-        env,
-      ),
+    routeEffect("handle_pylon_provider_claude_auth_material_api", () =>
+      providerAccountPylonHandlers.handlePylonProviderClaudeAuthMaterialApi(request, env),
     ),
   handlePylonProviderGoogleGeminiAuthMaterialApi: (request, env) =>
-    routeEffect('handle_pylon_provider_google_gemini_auth_material_api', () =>
-      providerAccountPylonHandlers.handlePylonProviderGoogleGeminiAuthMaterialApi(
-        request,
-        env,
-      ),
+    routeEffect("handle_pylon_provider_google_gemini_auth_material_api", () =>
+      providerAccountPylonHandlers.handlePylonProviderGoogleGeminiAuthMaterialApi(request, env),
     ),
   handlePylonProviderLocalCodexAuthImportApi: (request, env) =>
-    routeEffect('handle_pylon_provider_local_codex_auth_import_api', () =>
-      providerAccountPylonHandlers.handlePylonProviderLocalCodexAuthImportApi(
-        request,
-        env,
-      ),
+    routeEffect("handle_pylon_provider_local_codex_auth_import_api", () =>
+      providerAccountPylonHandlers.handlePylonProviderLocalCodexAuthImportApi(request, env),
     ),
   handlePylonProviderLocalClaudeAuthImportApi: (request, env) =>
-    routeEffect('handle_pylon_provider_local_claude_auth_import_api', () =>
-      providerAccountPylonHandlers.handlePylonProviderLocalClaudeAuthImportApi(
-        request,
-        env,
-      ),
+    routeEffect("handle_pylon_provider_local_claude_auth_import_api", () =>
+      providerAccountPylonHandlers.handlePylonProviderLocalClaudeAuthImportApi(request, env),
     ),
   handlePylonOpenAgentsAuthStartApi: (request, env) =>
     pylonOpenAgentsAuthHandlers.handlePylonOpenAgentsAuthStartApi(request, env),
   handlePylonOpenAgentsAuthStatusApi: (request, env, attemptId) =>
-    pylonOpenAgentsAuthHandlers.handlePylonOpenAgentsAuthStatusApi(
-      request,
-      env,
-      attemptId,
-    ),
+    pylonOpenAgentsAuthHandlers.handlePylonOpenAgentsAuthStatusApi(request, env, attemptId),
   handlePylonOpenAgentsAuthVerifyApi: (request, env, ctx) =>
-    pylonOpenAgentsAuthHandlers.handlePylonOpenAgentsAuthVerifyApi(
-      request,
-      env,
-      ctx,
-    ),
+    pylonOpenAgentsAuthHandlers.handlePylonOpenAgentsAuthVerifyApi(request, env, ctx),
   handleKhalaCodeOpenAgentsAuthStartApi: (request, env) =>
-    khalaCodeOpenAgentsAuthHandlers.handleKhalaCodeOpenAgentsAuthStartApi(
-      request,
-      env,
-    ),
+    khalaCodeOpenAgentsAuthHandlers.handleKhalaCodeOpenAgentsAuthStartApi(request, env),
   handleKhalaCodeOpenAgentsAuthStatusApi: (request, env, attemptId) =>
-    khalaCodeOpenAgentsAuthHandlers.handleKhalaCodeOpenAgentsAuthStatusApi(
-      request,
-      env,
-      attemptId,
-    ),
+    khalaCodeOpenAgentsAuthHandlers.handleKhalaCodeOpenAgentsAuthStatusApi(request, env, attemptId),
   handleKhalaCodeOpenAgentsAuthVerifyApi: (request, env, ctx) =>
-    khalaCodeOpenAgentsAuthHandlers.handleKhalaCodeOpenAgentsAuthVerifyApi(
-      request,
-      env,
-      ctx,
-    ),
-})
+    khalaCodeOpenAgentsAuthHandlers.handleKhalaCodeOpenAgentsAuthVerifyApi(request, env, ctx),
+});
 
 const onboardingRoutes = makeOnboardingRoutes({
   appendRefreshedSessionCookies,
   requireBrowserSession,
   requireUserBearerSession,
-})
+});
 
 // Khala Sync mutator registry (KS-3.1, #8291): named server-authoritative
 // mutators executed by POST /api/sync/push. v1 carries the single
 // system-test mutator sync.debugEcho; KS-3.2 adds the fleet mutators.
-const khalaSyncMutatorRegistry = makeKhalaSyncWorkerMutatorRegistry()
+const khalaSyncMutatorRegistry = makeKhalaSyncWorkerMutatorRegistry();
 
 // Agent Computer branch/PR writeback ingest (#8477 / #8503). The registered
 // executor running inside the Firecracker microVM reports its public-safe
@@ -8456,29 +7795,26 @@ const khalaSyncMutatorRegistry = makeKhalaSyncWorkerMutatorRegistry()
 // records the thread-scoped `writeback.recorded` runtime event via
 // `publishKhalaAgentComputerWriteback`. Fails closed (503) until KHALA_SYNC_DB
 // is configured; never fabricates a success.
-const khalaAgentComputerWritebackRoutes =
-  makeKhalaAgentComputerWritebackRoutes<Env>({
-    agentStore: env => makeAgentRegistrationStoreForEnv(env),
-    binding: env => env.KHALA_SYNC_DB,
-    githubWriteRepository: env => makeGitHubWriteRepositoryForEnv(env),
-    // MM-C5 (#8477) seam alignment: the writeback success gate accepts a usable
-    // brokerable github-IDENTITY authorization (the credential the in-guest push
-    // uses via `/api/pylon/github/git-credentials`) as an alternative to an
-    // explicit write-connection row. Presence only — never reads the raw token.
-    identityWriteAuthority: env => ({
-      hasUsableIdentityAuthorization: async userId => {
-        try {
-          const token = await authKvStoreForEnv(env).get(
-            githubIdentityTokenKey(userId),
-          )
-          return typeof token === 'string' && token.trim().length > 0
-        } catch {
-          return false
-        }
-      },
-    }),
-    registry: khalaSyncMutatorRegistry,
-  })
+const khalaAgentComputerWritebackRoutes = makeKhalaAgentComputerWritebackRoutes<Env>({
+  agentStore: (env) => makeAgentRegistrationStoreForEnv(env),
+  binding: (env) => env.KHALA_SYNC_DB,
+  githubWriteRepository: (env) => makeGitHubWriteRepositoryForEnv(env),
+  // MM-C5 (#8477) seam alignment: the writeback success gate accepts a usable
+  // brokerable github-IDENTITY authorization (the credential the in-guest push
+  // uses via `/api/pylon/github/git-credentials`) as an alternative to an
+  // explicit write-connection row. Presence only — never reads the raw token.
+  identityWriteAuthority: (env) => ({
+    hasUsableIdentityAuthorization: async (userId) => {
+      try {
+        const token = await authKvStoreForEnv(env).get(githubIdentityTokenKey(userId));
+        return typeof token === "string" && token.trim().length > 0;
+      } catch {
+        return false;
+      }
+    },
+  }),
+  registry: khalaSyncMutatorRegistry,
+});
 
 // ST-3 (#8509): the Khala Sync route family's dependency wiring (connect,
 // log, bootstrap, push, cvr-pull), extracted into importable factories so
@@ -8488,14 +7824,11 @@ const khalaAgentComputerWritebackRoutes =
 // khala-sync-route-wiring.ts's module doc). Exported for
 // khala-sync-route-wiring.test.ts; the route table below is the only
 // production caller.
-export const khalaSyncRouteWiring = makeKhalaSyncRouteWiring<
-  Env,
-  AuthenticatedActor
->({
+export const khalaSyncRouteWiring = makeKhalaSyncRouteWiring<Env, AuthenticatedActor>({
   authenticateActor: authenticateRequestActor,
   mutatorRegistry: khalaSyncMutatorRegistry,
   resolveActorUserId: resolveKhalaSyncActorUserId,
-})
+});
 
 const agentGoalRoutes = makeAgentGoalRoutes({
   appendRefreshedSessionCookies,
@@ -8504,47 +7837,43 @@ const agentGoalRoutes = makeAgentGoalRoutes({
   readActiveTeamProject,
   requireAdminApiToken,
   requireBrowserSession,
-})
+});
 
-const autopilotOnboardingRoutes = makeAutopilotOnboardingRoutes<WorkerBindings>(
-  {
-    makeInferenceClient: env => makeOnboardingInferenceClient(env),
-    makeStreamClient: env => makeOnboardingStreamClient(env),
-    // DURABLE ONBOARDING STREAM (#6154 item 4; Postgres-backed since CFG-6
-    // #8521). The per-request durable stream namespace, resolved only when
-    // the durable-stream flag is on AND the KHALA_SYNC_DB binding is wired;
-    // absent => the onboarding stream stays the non-durable SSE (fail-safe).
-    // Keyed by the stable id `onboarding:{sessionId}:{turnIndex}` so an
-    // unauthenticated browser can resume a dropped turn by offset.
-    resolveDurableStream: env => {
-      // `env` is the full Worker `Env` at call time; the route's generic narrows it
-      // to `WorkerBindings`, so read the config flag through the broader Env shape.
-      const fullEnv = env as Env
-      return durableInferenceStreamNamespaceForEnv(fullEnv, {
-        enabled: isInferenceDurableStreamEnabled(
-          fullEnv.INFERENCE_DURABLE_STREAM_ENABLED,
-        ),
-      })
-    },
+const autopilotOnboardingRoutes = makeAutopilotOnboardingRoutes<WorkerBindings>({
+  makeInferenceClient: (env) => makeOnboardingInferenceClient(env),
+  makeStreamClient: (env) => makeOnboardingStreamClient(env),
+  // DURABLE ONBOARDING STREAM (#6154 item 4; Postgres-backed since CFG-6
+  // #8521). The per-request durable stream namespace, resolved only when
+  // the durable-stream flag is on AND the KHALA_SYNC_DB binding is wired;
+  // absent => the onboarding stream stays the non-durable SSE (fail-safe).
+  // Keyed by the stable id `onboarding:{sessionId}:{turnIndex}` so an
+  // unauthenticated browser can resume a dropped turn by offset.
+  resolveDurableStream: (env) => {
+    // `env` is the full Worker `Env` at call time; the route's generic narrows it
+    // to `WorkerBindings`, so read the config flag through the broader Env shape.
+    const fullEnv = env as Env;
+    return durableInferenceStreamNamespaceForEnv(fullEnv, {
+      enabled: isInferenceDurableStreamEnabled(fullEnv.INFERENCE_DURABLE_STREAM_ENABLED),
+    });
   },
-)
+});
 
 const agentOwnerClaimRoutes = makeAgentOwnerClaimRoutes({
-  agentStore: env => makeAgentRegistrationStoreForEnv(env),
+  agentStore: (env) => makeAgentRegistrationStoreForEnv(env),
   appOrigin: getAppOrigin,
   appendRefreshedSessionCookies,
-  makeStore: env => makeAgentOwnerClaimStoreForEnv(env),
+  makeStore: (env) => makeAgentOwnerClaimStoreForEnv(env),
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
   requireBrowserSession,
-})
+});
 
 const agentProposalRoutes = makeAgentProposalRoutes({
-  agentStore: env => makeAgentRegistrationStoreForEnv(env),
+  agentStore: (env) => makeAgentRegistrationStoreForEnv(env),
   appOrigin: getAppOrigin,
   appendRefreshedSessionCookies,
   isOpenAgentsAdminEmail,
-  makeStore: env => makeAgentProposalStoreForEnv(env),
-  recoveryStore: env =>
+  makeStore: (env) => makeAgentProposalStoreForEnv(env),
+  recoveryStore: (env) =>
     makeD1AgentRateLimitRecoveryStore(
       openAgentsDatabase(env),
       // KS-8.9 (#8320): fire-safe Postgres dual-write mirror.
@@ -8552,11 +7881,11 @@ const agentProposalRoutes = makeAgentProposalRoutes({
     ),
   requireAdminApiToken,
   requireBrowserSession,
-})
+});
 
 const agentSearchRoutes = makeAgentSearchRoutes({
-  agentStore: env => makeAgentRegistrationStoreForEnv(env),
-})
+  agentStore: (env) => makeAgentRegistrationStoreForEnv(env),
+});
 
 const autopilotWorkRouteDependencies = {
   agentStore: (env: WorkerBindings) => makeAgentRegistrationStoreForEnv(env),
@@ -8576,137 +7905,112 @@ const autopilotWorkRouteDependencies = {
   // which is what blocked the spare-capacity provider from picking up its
   // owner's job (#4782). The selector itself enforces owner-match + active +
   // fresh-heartbeat eligibility.
-  pylonRegistrations: (env: WorkerBindings) =>
-    makePylonApiStoreForEnv(env).listRegistrations(100),
+  pylonRegistrations: (env: WorkerBindings) => makePylonApiStoreForEnv(env).listRegistrations(100),
   requireBrowserSession,
-}
+};
 
-const autopilotWorkRoutes = makeAutopilotWorkRoutes<Env>(
-  autopilotWorkRouteDependencies,
-)
+const autopilotWorkRoutes = makeAutopilotWorkRoutes<Env>(autopilotWorkRouteDependencies);
 
-const autopilotContinuationPolicyRoutes =
-  makeAutopilotContinuationPolicyRoutes<WorkerBindings>({
-    agentStore: env => makeAgentRegistrationStoreForEnv(env),
-    makeStore: env => makeAutopilotContinuationStoreForEnv(env),
-    requireBrowserSession,
-  })
+const autopilotContinuationPolicyRoutes = makeAutopilotContinuationPolicyRoutes<WorkerBindings>({
+  agentStore: (env) => makeAgentRegistrationStoreForEnv(env),
+  makeStore: (env) => makeAutopilotContinuationStoreForEnv(env),
+  requireBrowserSession,
+});
 
-const autopilotMorningReportRoutes =
-  makeAutopilotMorningReportRoutes<WorkerBindings>({
-    agentStore: env => makeAgentRegistrationStoreForEnv(env),
-    makeContinuationStore: env => makeAutopilotContinuationStoreForEnv(env),
-    makeWorkStore: env => makeAutopilotWorkStoreForEnv(env),
-    requireBrowserSession,
-  })
+const autopilotMorningReportRoutes = makeAutopilotMorningReportRoutes<WorkerBindings>({
+  agentStore: (env) => makeAgentRegistrationStoreForEnv(env),
+  makeContinuationStore: (env) => makeAutopilotContinuationStoreForEnv(env),
+  makeWorkStore: (env) => makeAutopilotWorkStoreForEnv(env),
+  requireBrowserSession,
+});
 
 const autopilotDecisionRoutes = makeAutopilotDecisionRoutes<WorkerBindings>({
-  agentStore: env => makeAgentRegistrationStoreForEnv(env),
-  makeStore: env => makeAutopilotWorkStoreForEnv(env),
+  agentStore: (env) => makeAgentRegistrationStoreForEnv(env),
+  makeStore: (env) => makeAutopilotWorkStoreForEnv(env),
   requireBrowserSession,
-})
+});
 
 const omniWorkroomRoutes = makeOmniWorkroomRoutes<WorkerBindings>({
-  db: env => openAgentsDatabase(env),
-  mirror: env => makeSupervisionLongtailMirrorForEnv(env),
+  db: (env) => openAgentsDatabase(env),
+  mirror: (env) => makeSupervisionLongtailMirrorForEnv(env),
   requireBrowserSession,
-})
+});
 
-const omniWorkroomLifecycleRoutes =
-  makeOmniWorkroomLifecycleRoutes<WorkerBindings>({
-    makeDb: env => openAgentsDatabase(env),
-    mirror: env => makeSupervisionLongtailMirrorForEnv(env),
-    requireBrowserSession,
-    requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
-  })
+const omniWorkroomLifecycleRoutes = makeOmniWorkroomLifecycleRoutes<WorkerBindings>({
+  makeDb: (env) => openAgentsDatabase(env),
+  mirror: (env) => makeSupervisionLongtailMirrorForEnv(env),
+  requireBrowserSession,
+  requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
+});
 
 const omniBundleRoutes = makeOmniBundleRoutes<WorkerBindings>({
-  db: env => openAgentsDatabase(env),
-  mirror: env => makeSupervisionLongtailMirrorForEnv(env),
-  compareProofBundleRead: env => makeOmniPublicProofBundleCompareReader(env),
-  serveProofBundleFromPostgres: env =>
-    makeOmniPublicProofBundlePostgresServerForEnv(env),
+  db: (env) => openAgentsDatabase(env),
+  mirror: (env) => makeSupervisionLongtailMirrorForEnv(env),
+  compareProofBundleRead: (env) => makeOmniPublicProofBundleCompareReader(env),
+  serveProofBundleFromPostgres: (env) => makeOmniPublicProofBundlePostgresServerForEnv(env),
   requireOperator: (request, env) => requireAdminApiToken(request, env),
   readEvidenceBundle: (db, id) => readOmniEvidenceBundleById(db, id),
   readProofBundle: (db, id) => readOmniPublicProofBundleById(db, id),
-})
+});
 
 const omniHandoffRoutes = makeOmniHandoffRoutes<WorkerBindings>({
-  db: env => openAgentsDatabase(env),
-  mirror: env => makeSupervisionLongtailMirrorForEnv(env),
+  db: (env) => openAgentsDatabase(env),
+  mirror: (env) => makeSupervisionLongtailMirrorForEnv(env),
   requireOperator: (request, env) =>
     Effect.promise(() => requireAdminApiToken(request, env).catch(() => false)),
-})
+});
 
 const nativeListsRoutes = makeNativeListsRoutes<WorkerBindings>({
-  makeStore: env => makeNativeListsService(makeCrmEmailDatabaseForEnv(env)),
+  makeStore: (env) => makeNativeListsService(makeCrmEmailDatabaseForEnv(env)),
   requireOperator: (request, env) => requireAdminApiToken(request, env),
-})
+});
 
 const prefilledWorkspaceRoutes = makePrefilledWorkspaceRoutes<WorkerBindings>({
-  makeStore: env =>
-    makePrefilledWorkspaceService(khalaCodeProductStateDatabaseForEnv(env)),
+  makeStore: (env) => makePrefilledWorkspaceService(khalaCodeProductStateDatabaseForEnv(env)),
   requireHolderUserId: async (request, env, ctx) => {
-    const session = await requireBrowserSession(request, env, ctx)
+    const session = await requireBrowserSession(request, env, ctx);
 
-    return session?.user.userId
+    return session?.user.userId;
   },
   requireOperator: (request, env) => requireAdminApiToken(request, env),
-})
+});
 
-const teamWorkspaceInviteRoutes = makeTeamWorkspaceInviteRoutes<
-  WorkerBindings,
-  VerifiedSession
->({
+const teamWorkspaceInviteRoutes = makeTeamWorkspaceInviteRoutes<WorkerBindings, VerifiedSession>({
   appendRefreshedSessionCookies,
   appOrigin: getAppOrigin,
   getResendEmailConfig,
-  makeStore: env =>
-    makeD1TeamWorkspaceInviteStore(khalaCodeProductStateDatabaseForEnv(env)),
+  makeStore: (env) => makeD1TeamWorkspaceInviteStore(khalaCodeProductStateDatabaseForEnv(env)),
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
   requireBrowserSession,
   sendInviteEmailWithLedger: (env, config, input) =>
-    sendPrivateWorkspaceInviteEmailWithLedger(
-      openAgentsDatabase(env),
-      config,
-      input,
-    ),
-})
+    sendPrivateWorkspaceInviteEmailWithLedger(openAgentsDatabase(env), config, input),
+});
 
-const privateProjectWorkspaceRoutes =
-  makePrivateProjectWorkspaceRoutes<WorkerBindings>({
-    appOrigin: getAppOrigin,
-    getResendEmailConfig,
-    makeInviteStore: env =>
-      makeD1TeamWorkspaceInviteStore(khalaCodeProductStateDatabaseForEnv(env)),
-    makePrivateProjectStore: env =>
-      makeD1PrivateProjectWorkspaceStore(
-        khalaCodeProductStateDatabaseForEnv(env),
-      ),
-    makeWorkspaceStore: env =>
-      makePrefilledWorkspaceService(khalaCodeProductStateDatabaseForEnv(env)),
-    requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
-    sendInviteEmailWithLedger: (env, config, input) =>
-      sendPrivateWorkspaceInviteEmailWithLedger(
-        openAgentsDatabase(env),
-        config,
-        input,
-      ),
-  })
+const privateProjectWorkspaceRoutes = makePrivateProjectWorkspaceRoutes<WorkerBindings>({
+  appOrigin: getAppOrigin,
+  getResendEmailConfig,
+  makeInviteStore: (env) =>
+    makeD1TeamWorkspaceInviteStore(khalaCodeProductStateDatabaseForEnv(env)),
+  makePrivateProjectStore: (env) =>
+    makeD1PrivateProjectWorkspaceStore(khalaCodeProductStateDatabaseForEnv(env)),
+  makeWorkspaceStore: (env) =>
+    makePrefilledWorkspaceService(khalaCodeProductStateDatabaseForEnv(env)),
+  requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
+  sendInviteEmailWithLedger: (env, config, input) =>
+    sendPrivateWorkspaceInviteEmailWithLedger(openAgentsDatabase(env), config, input),
+});
 
 const tenantClientRoutes = makeTenantClientRoutes({
   database: (env: WorkerBindings) => openAgentsDatabase(env),
   requireBrowserSession,
   resolveTenant: async (request: Request, env: WorkerBindings) => {
-    const host = request.headers.get('Host') ?? ''
+    const host = request.headers.get("Host") ?? "";
     const tenant = await Effect.runPromise(
-      makeTenantCustomHostnames(
-        openAgentsDatabase(env),
-      ).resolveTenantByHostname(host),
-    )
-    return tenant ?? undefined
+      makeTenantCustomHostnames(openAgentsDatabase(env)).resolveTenantByHostname(host),
+    );
+    return tenant ?? undefined;
   },
-})
+});
 
 const emailSequenceAuthoringRoutes = makeEmailSequenceAuthoringRoutes({
   appendRefreshedSessionCookies,
@@ -8714,46 +8018,45 @@ const emailSequenceAuthoringRoutes = makeEmailSequenceAuthoringRoutes({
   requireAdminApiToken: (request: Request, env: WorkerBindings) =>
     requireAdminApiToken(request, env),
   requireBrowserSession,
-})
+});
 
 const partnerAgreementRoutes = makePartnerAgreementRoutes<WorkerBindings>({
   nowIso: currentIsoTimestamp,
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
-})
+});
 
 const crmRoutes = makeCrmRoutes<WorkerBindings>({
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
-})
+});
 
 const crmImportRoutes = makeCrmImportRoutes<WorkerBindings>({
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
-})
+});
 
 const crmEmailRoutes = makeCrmEmailRoutes<WorkerBindings>({
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
-})
+});
 
 const resolveCrmResendDeps = (env: WorkerBindings) => {
   const enabled = isCrmResendSendEnabled(
-    (env as { CRM_RESEND_SEND_ENABLED?: string | undefined })
-      .CRM_RESEND_SEND_ENABLED,
-  )
-  const resend = getResendEmailConfig(env)
+    (env as { CRM_RESEND_SEND_ENABLED?: string | undefined }).CRM_RESEND_SEND_ENABLED,
+  );
+  const resend = getResendEmailConfig(env);
   if (resend === undefined) {
-    return { enabled, fromEmail: null, sender: null }
+    return { enabled, fromEmail: null, sender: null };
   }
   // OB-1 (#8558): the CRM send path uses its own sender identity
   // (`Sarah <sarah@openagents.com>`) when configured, so Sites transactional
   // mail keeps the shared RESEND_FROM_EMAIL identity. Falls back to the shared
   // Resend from/reply-to when the CRM overrides are absent.
-  const emailConfig = getOpenAgentsWorkerConfig(env).email
+  const emailConfig = getOpenAgentsWorkerConfig(env).email;
   const identity = resolveCrmResendIdentity(
     { fromEmail: resend.fromEmail, replyToEmail: resend.replyToEmail },
     {
       fromEmail: emailConfig.crmResendFromEmail,
       replyToEmail: emailConfig.crmResendReplyToEmail,
     },
-  )
+  );
   return {
     enabled,
     fromEmail: identity.fromEmail,
@@ -8761,28 +8064,28 @@ const resolveCrmResendDeps = (env: WorkerBindings) => {
       apiKey: resend.apiKey,
       replyTo: identity.replyToEmail,
     }),
-  }
-}
+  };
+};
 
 const crmResendRoutes = makeCrmResendRoutes<WorkerBindings>({
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
   resolveResendDeps: resolveCrmResendDeps,
-})
+});
 
 const crmSendRoutes = makeCrmSendRoutes<WorkerBindings>({
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
   resolveResendDeps: resolveCrmResendDeps,
-})
+});
 
 const crmCommandRoutes = makeCrmCommandRoutes<WorkerBindings>({
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
   resolveResendDeps: resolveCrmResendDeps,
-})
+});
 
 const crmBatchRoutes = makeCrmBatchRoutes<WorkerBindings>({
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
   resolveResendDeps: resolveCrmResendDeps,
-})
+});
 
 // OB-4 (#8561): batch approval UX over the existing crm_contact_commands
 // queue (review/edit/approve a day's drafts in one screen, one-tap approve
@@ -8790,72 +8093,68 @@ const crmBatchRoutes = makeCrmBatchRoutes<WorkerBindings>({
 const crmApprovalBatchRoutes = makeCrmApprovalBatchRoutes<WorkerBindings>({
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
   resolveResendDeps: resolveCrmResendDeps,
-})
+});
 
 // OB-4 (#8561): admin/OpenAuth-gated CRM batch approval queue for the Aiur
 // ops console. Thin adapter over crm-approval-batch.ts — each command still
 // goes through approveAndExecuteCrmSendCommand one-by-one
 // (no_send_without_approval_receipt preserved). Placed here (after
 // resolveCrmResendDeps) so the factory can close over the Resend deps.
-const crmApprovalBatchAdminRoutes =
-  makeCrmApprovalBatchAdminRoutes<WorkerBindings>({
-    db: env => makeCrmEmailDatabaseForEnv(env),
-    requireAdminCaller: async (request, env, ctx) => {
-      const session = await requireUserBearerSession(request, env, ctx)
-      if (session === undefined) return undefined
-      if (!isOpenAgentsAdminEmail(session.user.email)) return undefined
-      return { userId: session.user.userId }
-    },
-    resolveResendDeps: resolveCrmResendDeps,
-  })
+const crmApprovalBatchAdminRoutes = makeCrmApprovalBatchAdminRoutes<WorkerBindings>({
+  db: (env) => makeCrmEmailDatabaseForEnv(env),
+  requireAdminCaller: async (request, env, ctx) => {
+    const session = await requireUserBearerSession(request, env, ctx);
+    if (session === undefined) return undefined;
+    if (!isOpenAgentsAdminEmail(session.user.email)) return undefined;
+    return { userId: session.user.userId };
+  },
+  resolveResendDeps: resolveCrmResendDeps,
+});
 
 const crmReplyRoutes = makeCrmReplyRoutes<WorkerBindings>({
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
-})
+});
 
 // PORTAL-1 (#8652): client portal engagement + content decision routes.
 const portalRoutes = makePortalRoutes<WorkerBindings>({
-  database: env => openAgentsDatabase(env),
+  database: (env) => openAgentsDatabase(env),
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
-  requireBrowserSession: (request, env, ctx) =>
-    requireBrowserSession(request, env, ctx),
-})
+  requireBrowserSession: (request, env, ctx) => requireBrowserSession(request, env, ctx),
+});
 
 const makeKhalaMcpServedTokensRecorder = (
   db: D1Database,
   options: Readonly<{
-    nowIso?: () => string
+    nowIso?: () => string;
     /**
      * KS-6.3 (#8304): fail-soft public tokens-served projection producer,
      * fired once per FRESH ledger row with its idempotency key.
      */
     onIngestedEvent?: (
       event: Readonly<{
-        idempotencyKey: string
-        observedAt: string
-        tokensServed: number
+        idempotencyKey: string;
+        observedAt: string;
+        tokensServed: number;
       }>,
-    ) => Promise<unknown>
+    ) => Promise<unknown>;
     /**
      * KS-8.2 (#8308): fail-soft Postgres mirror for the FRESH direct
      * ledger row (event row only, no rollups — matching this D1 path).
      */
-    mirrorRow?: (
-      row: ReturnType<typeof directTokenLedgerRowFromIngestBody>,
-    ) => Promise<void>
+    mirrorRow?: (row: ReturnType<typeof directTokenLedgerRowFromIngestBody>) => Promise<void>;
   }> = {},
 ): ((input: ServedTokensRecorderInput) => Promise<void>) => {
-  const nowIso = options.nowIso ?? currentIsoTimestamp
+  const nowIso = options.nowIso ?? currentIsoTimestamp;
 
-  return async input => {
-    const inputTokens = Math.max(0, Math.trunc(input.usage.promptTokens))
-    const outputTokens = Math.max(0, Math.trunc(input.usage.completionTokens))
-    const tokensServedDelta = inputTokens + outputTokens
+  return async (input) => {
+    const inputTokens = Math.max(0, Math.trunc(input.usage.promptTokens));
+    const outputTokens = Math.max(0, Math.trunc(input.usage.completionTokens));
+    const tokensServedDelta = inputTokens + outputTokens;
     if (tokensServedDelta <= 0) {
-      return
+      return;
     }
 
-    const observedAt = nowIso()
+    const observedAt = nowIso();
     const body = buildServedTokensIngestBody({
       accountRef: input.accountRef,
       adapterId: input.adapterId,
@@ -8865,11 +8164,11 @@ const makeKhalaMcpServedTokensRecorder = (
       requestedModel: input.requestedModel,
       servedModel: input.servedModel,
       usage: input.usage,
-    })
+    });
     // KS-8.2 (#8308): captured so the Postgres mirror stores the SAME
     // ingested_at byte the D1 row stores (row-hash reconciliation).
-    const ingestedAt = nowIso()
-    const safeMetadataJson = JSON.stringify(body.safeMetadata ?? {})
+    const ingestedAt = nowIso();
+    const safeMetadataJson = JSON.stringify(body.safeMetadata ?? {});
 
     try {
       const result = await db
@@ -8938,24 +8237,23 @@ const makeKhalaMcpServedTokensRecorder = (
           body.usageTruth,
           body.cost?.amount ?? null,
           body.cost?.currency ?? null,
-          body.demand?.demandKind ?? 'unlabeled',
+          body.demand?.demandKind ?? "unlabeled",
           body.demand?.demandSource ?? null,
           body.demand?.demandClient ?? null,
           body.privacy?.leaderboardEligible === false ? 0 : 1,
           body.privacy?.privacyOptOut === true ? 1 : 0,
           safeMetadataJson,
         )
-        .run()
+        .run();
 
-      const inserted =
-        Number((result.meta as D1Meta & { changes?: number }).changes ?? 0) > 0
+      const inserted = Number((result.meta as D1Meta & { changes?: number }).changes ?? 0) > 0;
       if (inserted && options.mirrorRow !== undefined) {
         // KS-8.2 (#8308): mirror the fresh direct row to Postgres
         // (fail-soft; never affects the request, never fires the #8304
         // counter — that hook is onIngestedEvent below, D1-keyed).
         await options
           .mirrorRow(directTokenLedgerRowFromIngestBody(body, ingestedAt))
-          .catch(() => undefined)
+          .catch(() => undefined);
       }
       if (inserted && options.onIngestedEvent !== undefined) {
         // KS-6.3 (#8304): move the scope.public.tokens-served projection
@@ -8966,13 +8264,13 @@ const makeKhalaMcpServedTokensRecorder = (
             observedAt,
             tokensServed: tokensServedDelta,
           })
-          .catch(() => undefined)
+          .catch(() => undefined);
       }
     } catch {
-      return
+      return;
     }
-  }
-}
+  };
+};
 
 // CRM MCP server (epic #5991): read-only catalog (#5993) + resources (#5994),
 // authenticated to a bound principal — admin token = full CRM authority on the
@@ -8980,70 +8278,61 @@ const makeKhalaMcpServedTokensRecorder = (
 // bound tenant. The catalog filters tools/resources by the principal's grants.
 const crmMcpRoutes = makeCrmMcpRoutes<WorkerBindings>({
   authenticate: async (request, env) => {
-    const isAdmin = await requireAdminApiToken(request, env)
+    const isAdmin = await requireAdminApiToken(request, env);
     if (isAdmin) {
-      return crmMcpAdminPrincipal(
-        mcpTenantHeader(request),
-        currentIsoTimestamp(),
-      )
+      return crmMcpAdminPrincipal(mcpTenantHeader(request), currentIsoTimestamp());
     }
-    const token = readMcpBearerToken(request)
+    const token = readMcpBearerToken(request);
     if (token === undefined) {
-      return null
+      return null;
     }
     const crmPrincipal = await resolveCrmMcpGrantPrincipal(
       openAgentsDatabase(env),
       token,
       currentIsoTimestamp(),
-    )
+    );
     if (crmPrincipal !== null) {
-      return crmPrincipal
+      return crmPrincipal;
     }
     const session = await authenticateProgrammaticAgent(
       makeAgentRegistrationStoreForEnv(env),
       token,
-    )
-    return session === undefined
-      ? null
-      : khalaMcpAgentPrincipal(session, currentIsoTimestamp())
+    );
+    return session === undefined ? null : khalaMcpAgentPrincipal(session, currentIsoTimestamp());
   },
   catalog: combineMcpCatalogs<WorkerBindings>([
     makeCrmMcpCatalog<WorkerBindings>({
       resolveResendDeps: resolveCrmResendDeps,
     }),
     makeKhalaMcpCatalog<WorkerBindings>({
-      agentStore: env => makeAgentRegistrationStoreForEnv(env),
-      pylonStore: env => makePylonApiStoreForEnv(env),
-      recordTokensServed: env =>
-        makeKhalaMcpServedTokensRecorder(
-          ledgerDirectInsertDatabaseForEnv(env),
-          {
-            // KS-8.2 (#8308): fail-soft Postgres mirror for direct rows. #8515:
-            // when writes==='postgres' the db handle above IS the Postgres
-            // adapter, so this mirror short-circuits to a no-op.
-            mirrorRow: row => mirrorTokenLedgerDirectInsertBestEffort(env, row),
-            // KS-6.3 (#8304): projection producer (fail-soft, exact-once).
-            onIngestedEvent: makeTokensServedProjectionObserver(env),
-          },
-        ),
+      agentStore: (env) => makeAgentRegistrationStoreForEnv(env),
+      pylonStore: (env) => makePylonApiStoreForEnv(env),
+      recordTokensServed: (env) =>
+        makeKhalaMcpServedTokensRecorder(ledgerDirectInsertDatabaseForEnv(env), {
+          // KS-8.2 (#8308): fail-soft Postgres mirror for direct rows. #8515:
+          // when writes==='postgres' the db handle above IS the Postgres
+          // adapter, so this mirror short-circuits to a no-op.
+          mirrorRow: (row) => mirrorTokenLedgerDirectInsertBestEffort(env, row),
+          // KS-6.3 (#8304): projection producer (fail-soft, exact-once).
+          onIngestedEvent: makeTokensServedProjectionObserver(env),
+        }),
     }),
   ]),
-})
+});
 
 const crmMcpGrantRoutes = makeCrmMcpGrantRoutes<WorkerBindings>({
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
-})
+});
 
-const crmMcpDiscoveryRoutes = makeCrmMcpDiscoveryRoutes()
+const crmMcpDiscoveryRoutes = makeCrmMcpDiscoveryRoutes();
 
 const agentScopedGrantRoutes = makeAgentScopedGrantRoutes({
   requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
   appOrigin: getAppOrigin,
   appendRefreshedSessionCookies,
-  makeStore: env =>
-    makeD1AgentScopedGrantStore(openAgentsDatabase(env), identityDbForEnv(env)),
+  makeStore: (env) => makeD1AgentScopedGrantStore(openAgentsDatabase(env), identityDbForEnv(env)),
   requireBrowserSession,
-})
+});
 
 const shareRoutes = makeShareRoutes({
   appendRefreshedSessionCookies,
@@ -9053,192 +8342,155 @@ const shareRoutes = makeShareRoutes({
   readSelectedOperatorTargetUser,
   requireAdminApiToken,
   requireBrowserSession,
-})
+});
 
-const ecommerceCampaignSelfServeRoutes =
-  makeEcommerceCampaignSelfServeRoutes<Env>({
-    makeStore: env =>
-      makePrefilledWorkspaceService(khalaCodeProductStateDatabaseForEnv(env)),
-    enabled: true, // INERT self-serve enabled
-  })
+const ecommerceCampaignSelfServeRoutes = makeEcommerceCampaignSelfServeRoutes<Env>({
+  makeStore: (env) => makePrefilledWorkspaceService(khalaCodeProductStateDatabaseForEnv(env)),
+  enabled: true, // INERT self-serve enabled
+});
 
 const ecommerceCampaignReceiptRoutes = makeEcommerceCampaignReceiptRoutes<Env>({
-  makeStore: env =>
-    makeD1EcommerceCampaignReceiptStore(
-      openAgentsDatabase(env),
-      currentIsoTimestamp,
-    ),
+  makeStore: (env) =>
+    makeD1EcommerceCampaignReceiptStore(openAgentsDatabase(env), currentIsoTimestamp),
   makeClaimStore: () =>
     makeInMemoryEcommerceCampaignPaidDeliveryClaimStore([
       {
         document: firstPaidEcommerceCampaignDeliveryReceiptFixture,
-        receiptRef:
-          firstPaidEcommerceCampaignDeliveryReceiptFixture.receipt.workItemRef,
-        ownerSignOffRef: 'owner.signoff.fixture.1',
+        receiptRef: firstPaidEcommerceCampaignDeliveryReceiptFixture.receipt.workItemRef,
+        ownerSignOffRef: "owner.signoff.fixture.1",
       },
     ]),
-})
+});
 
-const ecommerceCampaignReceiptOperatorRoutes =
-  makeEcommerceCampaignReceiptOperatorRoutes<Env>({
-    makeStore: env =>
-      makeD1EcommerceCampaignReceiptStore(
-        openAgentsDatabase(env),
-        currentIsoTimestamp,
-      ),
-    requireAdminApiToken: requireAdminApiToken,
-  })
+const ecommerceCampaignReceiptOperatorRoutes = makeEcommerceCampaignReceiptOperatorRoutes<Env>({
+  makeStore: (env) =>
+    makeD1EcommerceCampaignReceiptStore(openAgentsDatabase(env), currentIsoTimestamp),
+  requireAdminApiToken: requireAdminApiToken,
+});
 
 const publicNip90MarketReceiptRoutes = makePublicNip90MarketReceiptRoutes<Env>({
-  makeStore: env => makeD1Nip90MarketReceiptStore(openAgentsDatabase(env)),
-})
+  makeStore: (env) => makeD1Nip90MarketReceiptStore(openAgentsDatabase(env)),
+});
 
 const publicInferenceReceiptRoutes = makePublicInferenceReceiptRoutes<Env>({
-  makeStore: env =>
+  makeStore: (env) =>
     makeInferenceReceiptStore({
       db: openAgentsDatabase(env),
       ledgerDb: paymentsLedgerDbForEnv(env),
     }),
   nowIso: currentIsoTimestamp,
-})
+});
 
 const publicKhalaCodeOutsideUserRunReceiptRoutes =
   makePublicKhalaCodeOutsideUserRunReceiptRoutes<Env>({
-    makeStore: env =>
-      makeD1KhalaCodeOutsideUserRunStore(
-        khalaCodeProductStateDatabaseForEnv(env),
-      ),
+    makeStore: (env) =>
+      makeD1KhalaCodeOutsideUserRunStore(khalaCodeProductStateDatabaseForEnv(env)),
     nowIso: currentIsoTimestamp,
-  })
+  });
 
-const khalaCodeTracePluginRevenueShareRoutes =
-  makeKhalaCodeTracePluginRevenueShareRoutes<Env>({
-    makeStore: env =>
-      makeD1KhalaCodeTracePluginRevenueShareStore(
-        khalaCodeProductStateDatabaseForEnv(env),
-      ),
-    nowIso: currentIsoTimestamp,
-  })
+const khalaCodeTracePluginRevenueShareRoutes = makeKhalaCodeTracePluginRevenueShareRoutes<Env>({
+  makeStore: (env) =>
+    makeD1KhalaCodeTracePluginRevenueShareStore(khalaCodeProductStateDatabaseForEnv(env)),
+  nowIso: currentIsoTimestamp,
+});
 
 const qaSwarmFirstEngagementRoutes = makeQaSwarmFirstEngagementRoutes<Env>({
-  makeStore: env =>
-    makeD1QaSwarmFirstEngagementStore(businessDomainDatabaseForEnv(env)),
+  makeStore: (env) => makeD1QaSwarmFirstEngagementStore(businessDomainDatabaseForEnv(env)),
   nowIso: currentIsoTimestamp,
-})
+});
 
 const qaSwarmProjectionRoutes = makeQaSwarmProjectionRoutes<Env>({
-  makeStore: env =>
-    makeArtifactQaSwarmProjectionStore(artifactsBucketForEnv(env)),
+  makeStore: (env) => makeArtifactQaSwarmProjectionStore(artifactsBucketForEnv(env)),
   requireAdminApiToken,
-})
+});
 
-const hostedGeminiPromiseReadinessRoutes =
-  makeHostedGeminiPromiseReadinessRoutes<Env>({
-    makeInferenceReceiptStore: env =>
-      makeInferenceReceiptStore({
-        db: openAgentsDatabase(env),
-        ledgerDb: paymentsLedgerDbForEnv(env),
-      }),
-    makeTransitionReceiptStore: env =>
-      makeD1PromiseTransitionReceiptStore(businessDomainDatabaseForEnv(env)),
-    nowIso: currentIsoTimestamp,
-  })
+const hostedGeminiPromiseReadinessRoutes = makeHostedGeminiPromiseReadinessRoutes<Env>({
+  makeInferenceReceiptStore: (env) =>
+    makeInferenceReceiptStore({
+      db: openAgentsDatabase(env),
+      ledgerDb: paymentsLedgerDbForEnv(env),
+    }),
+  makeTransitionReceiptStore: (env) =>
+    makeD1PromiseTransitionReceiptStore(businessDomainDatabaseForEnv(env)),
+  nowIso: currentIsoTimestamp,
+});
 
 // Dereferenceable PAID receipt read for sellable Cloud primitives (sandbox
 // compute #5517 / fine-tuning #5516). Public proof read only — it derefs the
 // metered-charge `pay_ins` row the cloud-metering seam already wrote; it grants
 // no authority and asserts no promise is green.
-const publicCloudPrimitiveReceiptRoutes =
-  makePublicCloudPrimitiveReceiptRoutes<Env>({
-    makeStore: env =>
-      makeLedgerCloudPrimitiveReceiptStore(paymentsLedgerDbForEnv(env)),
-    nowIso: currentIsoTimestamp,
-  })
+const publicCloudPrimitiveReceiptRoutes = makePublicCloudPrimitiveReceiptRoutes<Env>({
+  makeStore: (env) => makeLedgerCloudPrimitiveReceiptStore(paymentsLedgerDbForEnv(env)),
+  nowIso: currentIsoTimestamp,
+});
 
-const marketingAgencyReceiptPublicRoutes =
-  makeMarketingAgencyReceiptPublicRoutes<Env>({
-    makeClaimStore: _env =>
-      makeInMemoryMarketingAgencyPaidDeliveryClaimStore([]),
-  })
-const codingQuickWinReceiptPublicRoutes =
-  makeCodingQuickWinReceiptPublicRoutes<Env>({
-    makeClaimStore: _env =>
-      makeInMemoryCodingQuickWinPaidDeliveryClaimStore([]),
-  })
+const marketingAgencyReceiptPublicRoutes = makeMarketingAgencyReceiptPublicRoutes<Env>({
+  makeClaimStore: (_env) => makeInMemoryMarketingAgencyPaidDeliveryClaimStore([]),
+});
+const codingQuickWinReceiptPublicRoutes = makeCodingQuickWinReceiptPublicRoutes<Env>({
+  makeClaimStore: (_env) => makeInMemoryCodingQuickWinPaidDeliveryClaimStore([]),
+});
 const businessAlreadySoldEngagementReceiptRoutes =
   makeBusinessAlreadySoldEngagementReceiptRoutes<Env>({
-    makeReceiptStore: _env =>
+    makeReceiptStore: (_env) =>
       makeInMemoryBusinessAlreadySoldEngagementReceiptStore([
         firstAlreadySoldBusinessQuickWinReceipt,
       ]),
-  })
+  });
 const businessCaseStudyRoutes = makeBusinessCaseStudyRoutes<Env>({
-  makeCaseStudyStore: _env =>
-    makeInMemoryBusinessCaseStudyStore([firstBusinessCaseStudy]),
-})
-const marketingAgencySelfServePublicRoutes =
-  makeMarketingAgencySelfServePublicRoutes<Env>({
-    makeClaimStore: _env => makeInMemoryMarketingAgencySelfServeClaimStore([]),
-  })
+  makeCaseStudyStore: (_env) => makeInMemoryBusinessCaseStudyStore([firstBusinessCaseStudy]),
+});
+const marketingAgencySelfServePublicRoutes = makeMarketingAgencySelfServePublicRoutes<Env>({
+  makeClaimStore: (_env) => makeInMemoryMarketingAgencySelfServeClaimStore([]),
+});
 
-const publicStripeCheckoutReceiptRoutes =
-  makePublicStripeCheckoutReceiptRoutes<Env>({
-    makeStore: env =>
-      stripeCheckoutReceiptStoreForEnv(
-        env,
-        makeD1StripeCheckoutReceiptStore(openAgentsDatabase(env)),
-      ),
-    nowIso: currentIsoTimestamp,
-  })
+const publicStripeCheckoutReceiptRoutes = makePublicStripeCheckoutReceiptRoutes<Env>({
+  makeStore: (env) =>
+    stripeCheckoutReceiptStoreForEnv(
+      env,
+      makeD1StripeCheckoutReceiptStore(openAgentsDatabase(env)),
+    ),
+  nowIso: currentIsoTimestamp,
+});
 
-const publicSiteReferralPayoutReceiptRoutes =
-  makePublicSiteReferralPayoutReceiptRoutes<Env>({
-    makeStore: env =>
-      makeD1SiteReferralPayoutReceiptStore(openAgentsDatabase(env)),
-    nowIso: currentIsoTimestamp,
-  })
+const publicSiteReferralPayoutReceiptRoutes = makePublicSiteReferralPayoutReceiptRoutes<Env>({
+  makeStore: (env) => makeD1SiteReferralPayoutReceiptStore(openAgentsDatabase(env)),
+  nowIso: currentIsoTimestamp,
+});
 
-const publicPartnerPayoutReceiptRoutes =
-  makePublicPartnerPayoutReceiptRoutes<Env>({
-    makeStore: env => makeD1PartnerPayoutReceiptStore(openAgentsDatabase(env)),
-    nowIso: currentIsoTimestamp,
-  })
+const publicPartnerPayoutReceiptRoutes = makePublicPartnerPayoutReceiptRoutes<Env>({
+  makeStore: (env) => makeD1PartnerPayoutReceiptStore(openAgentsDatabase(env)),
+  nowIso: currentIsoTimestamp,
+});
 
 const blueprintRoutes = makeBlueprintRoutes<Env>({
-  listActionSubmissions: env =>
-    listBlueprintActionSubmissions(openAgentsDatabase(env)),
-  listProgramRuns: env => listBlueprintProgramRuns(openAgentsDatabase(env)),
+  listActionSubmissions: (env) => listBlueprintActionSubmissions(openAgentsDatabase(env)),
+  listProgramRuns: (env) => listBlueprintProgramRuns(openAgentsDatabase(env)),
   recordActionSubmissionProposal: (env, input) =>
     recordBlueprintActionSubmissionProposal(openAgentsDatabase(env), input),
-  recordProgramRun: (env, input) =>
-    recordBlueprintProgramRun(openAgentsDatabase(env), input),
+  recordProgramRun: (env, input) => recordBlueprintProgramRun(openAgentsDatabase(env), input),
   requireAdminApiToken,
   requireActionSubmissionIntake: async (request, env) =>
-    (await requireRunnerCallbackAuth(request, env)) ||
-    (await requireAdminApiToken(request, env)),
+    (await requireRunnerCallbackAuth(request, env)) || (await requireAdminApiToken(request, env)),
   requireProgramRunEvidenceIntake: async (request, env) =>
-    (await requireRunnerCallbackAuth(request, env)) ||
-    (await requireAdminApiToken(request, env)),
-})
+    (await requireRunnerCallbackAuth(request, env)) || (await requireAdminApiToken(request, env)),
+});
 
-const blueprintProbeContributionRoutes =
-  makeBlueprintProbeContributionRoutes<Env>({
-    listContributions: env =>
-      listBlueprintProbeContributions(openAgentsDatabase(env)),
-    recordContribution: (env, input) =>
-      recordBlueprintProbeContribution(openAgentsDatabase(env), input),
-    requireAdminApiToken,
-    requireContributionIntake: async (request, env) =>
-      (await requireRunnerCallbackAuth(request, env)) ||
-      (await requireAdminApiToken(request, env)),
-  })
+const blueprintProbeContributionRoutes = makeBlueprintProbeContributionRoutes<Env>({
+  listContributions: (env) => listBlueprintProbeContributions(openAgentsDatabase(env)),
+  recordContribution: (env, input) =>
+    recordBlueprintProbeContribution(openAgentsDatabase(env), input),
+  requireAdminApiToken,
+  requireContributionIntake: async (request, env) =>
+    (await requireRunnerCallbackAuth(request, env)) || (await requireAdminApiToken(request, env)),
+});
 
 const operatorOrderTriageRoutes = makeOperatorOrderTriageRoutes({
   appendRefreshedSessionCookies,
   isOpenAgentsAdminEmail,
   requireAdminApiToken,
   requireBrowserSession,
-})
+});
 
 const operatorEmailInspectionRoutes = makeOperatorEmailInspectionRoutes({
   appendRefreshedSessionCookies,
@@ -9247,7 +8499,7 @@ const operatorEmailInspectionRoutes = makeOperatorEmailInspectionRoutes({
   isOpenAgentsAdminEmail,
   requireAdminApiToken,
   requireBrowserSession,
-})
+});
 
 const omniHandlers = makeOmniHandlers({
   actorJson,
@@ -9267,34 +8519,33 @@ const omniHandlers = makeOmniHandlers({
   requireRunnerCallbackAuth,
   gcpDispatchConfig,
   threadRouteAccessBundle,
-})
+});
 
-const launchUserAutopilotMission = omniHandlers.launchUserAutopilotMission
+const launchUserAutopilotMission = omniHandlers.launchUserAutopilotMission;
 
 const operatorAdjutantRoutes = makeOperatorAdjutantRoutes({
   appendRefreshedSessionCookies,
-  buildOperatorAutopilotPreflightPayload:
-    omniHandlers.buildOperatorAutopilotPreflightPayload,
+  buildOperatorAutopilotPreflightPayload: omniHandlers.buildOperatorAutopilotPreflightPayload,
   continueUserAutopilotRun: omniHandlers.continueUserAutopilotRun,
   isOpenAgentsAdminEmail,
   launchUserAutopilotMission,
   requireAdminApiToken,
   requireBrowserSession,
-})
+});
 
 const operatorArtanisConsoleRoutes = makeOperatorArtanisConsoleRoutes({
   appendRefreshedSessionCookies,
   isOpenAgentsAdminEmail,
   requireAdminApiToken,
   requireBrowserSession,
-})
+});
 
 const operatorArtanisDashboardRoutes = makeOperatorArtanisDashboardRoutes({
   appendRefreshedSessionCookies,
   isOpenAgentsAdminEmail,
   requireAdminApiToken,
   requireBrowserSession,
-})
+});
 
 // Authenticated, owner-scoped Artanis operator chat channel (#6363, #6385).
 // Artanis's reasoning is powered ONLY by the Khala API —
@@ -9308,17 +8559,15 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
   // so he sees whether today is on track for the target (at least 4x the prior
   // day, goal 10x) without calling a tool. Read-only, fail-soft: an unreachable
   // public stats endpoint degrades the pace block to null, never an error.
-  awarenessReaders: env => ({
+  awarenessReaders: (env) => ({
     readTokenPace: () =>
-      loadArtanisNetworkStatsFromLedger(
-        makeD1TokenUsageLedger(openAgentsDatabase(env)),
-      ).then(
-        stats => stats.pace,
+      loadArtanisNetworkStatsFromLedger(makeD1TokenUsageLedger(openAgentsDatabase(env))).then(
+        (stats) => stats.pace,
         () => null,
       ),
   }),
   isOpenAgentsAdminEmail,
-  makeKhalaClient: env => makeArtanisResponderKhalaClient(env),
+  makeKhalaClient: (env) => makeArtanisResponderKhalaClient(env),
   // #6366 follow-up: wire the gated Codex dispatch tool to LIVE execution. The
   // owner SESSION is threaded in so the execution seam is owner-scoped:
   // own-capacity only (the owner's own linked Pylons via `delegateCodingWorkflow`),
@@ -9328,21 +8577,18 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
   makeOperatorTools: (env, session) => {
     const hasOperatorLedgerAccess =
       isOpenAgentsAdminEmail(session.user.email) ||
-      isOpenAgentsOwnerAgentOpenAuthUserId(session.user.userId)
+      isOpenAgentsOwnerAgentOpenAuthUserId(session.user.userId);
     // Owner-scope resolver shared by the gated dispatch seam and the
     // owner-scoped Pylon job-status reader: resolve the owner's linked agent
     // user ids (their Pylon-owning credentials) so both stay strictly
     // own-capacity / owner-scoped.
     const listLinkedAgentUserIds = async (ownerOpenAuthUserId: string) => {
-      const agentStore = makeAgentRegistrationStoreForEnv(env)
+      const agentStore = makeAgentRegistrationStoreForEnv(env);
       if (agentStore.listLinkedAgentsForOpenAuthUser === undefined) {
-        return []
+        return [];
       }
-      const linked = await agentStore.listLinkedAgentsForOpenAuthUser(
-        ownerOpenAuthUserId,
-        100,
-      )
-      const ids = linked.map(agent => agent.agentUserId)
+      const linked = await agentStore.listLinkedAgentsForOpenAuthUser(ownerOpenAuthUserId, 100);
+      const ids = linked.map((agent) => agent.agentUserId);
       // Owner-promoted operator agent (Artanis, owner-directed 2026-06-27) owns
       // his own Pylon AS HIMSELF (registrations keyed by his own agent user id),
       // and his credential carries no OpenAuth link, so the link query above
@@ -9354,12 +8600,12 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
         isOpenAgentsOwnerAgentOpenAuthUserId(ownerOpenAuthUserId) &&
         !ids.includes(ownerOpenAuthUserId)
       ) {
-        ids.push(ownerOpenAuthUserId)
+        ids.push(ownerOpenAuthUserId);
       }
-      return ids
-    }
+      return ids;
+    };
     const ownerScopedTools = {
-      defaultBranch: 'main',
+      defaultBranch: "main",
       pylonAssignments: {
         lister: makeArtanisPylonAssignmentsLister({
           listLinkedAgentUserIds,
@@ -9376,10 +8622,10 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
           pylonStore: makePylonApiStoreForEnv(env),
         }),
       },
-    } satisfies Parameters<typeof makeArtanisOperatorTools>[0]
+    } satisfies Parameters<typeof makeArtanisOperatorTools>[0];
 
     if (!hasOperatorLedgerAccess) {
-      return makeArtanisOperatorTools(ownerScopedTools)
+      return makeArtanisOperatorTools(ownerScopedTools);
     }
 
     return makeArtanisOperatorTools({
@@ -9388,9 +8634,7 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
       // cannot reliably HTTP-fetch its own public /stats zone).
       networkStats: {
         loadStats: () =>
-          loadArtanisNetworkStatsFromLedger(
-            makeD1TokenUsageLedger(openAgentsDatabase(env)),
-          ),
+          loadArtanisNetworkStatsFromLedger(makeD1TokenUsageLedger(openAgentsDatabase(env))),
       },
       // iteration-7: the live GLM inference-fleet readiness READ tool. Reads the
       // SAME public-safe fleet readiness projection the
@@ -9420,9 +8664,7 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
       // Read-only, side-effect-free, no spend/authority.
       khalaFeedback: {
         reader: makeArtanisKhalaFeedbackReader({
-          store: makeD1KhalaFeedbackStore(
-            khalaCodeProductStateDatabaseForEnv(env),
-          ),
+          store: makeD1KhalaFeedbackStore(khalaCodeProductStateDatabaseForEnv(env)),
         }),
       },
       // iteration-11: the owner-scoped Khala trace-review READ tool. Reads the
@@ -9442,13 +8684,13 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
       fleetStatus: {
         statusSpine: {
           loadSnapshot: () => {
-            const db = openAgentsDatabase(env)
+            const db = openAgentsDatabase(env);
             return readOperatorFleetStatusSnapshotFromRunnerStatusReadStore(
               makePylonAgentRunnerStatusReadStoreForEnv(env, db),
               currentIsoTimestamp(),
-              { kind: 'admin' },
+              { kind: "admin" },
               false,
-            )
+            );
           },
         },
       },
@@ -9461,9 +8703,7 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
       // Read-only, side-effect-free, no spend/authority.
       unsupportedRequests: {
         reader: makeArtanisUnsupportedRequestsReader({
-          store: makeD1KhalaUnsupportedRequestStore(
-            khalaCodeProductStateDatabaseForEnv(env),
-          ),
+          store: makeD1KhalaUnsupportedRequestStore(khalaCodeProductStateDatabaseForEnv(env)),
         }),
       },
       // iteration-9: the owner-scoped unsupported-request ledger WRITE/TRIAGE
@@ -9474,9 +8714,7 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
       // deploy, delete, or outward action.
       unsupportedRequestWriter: makeArtanisUnsupportedRequestWriter({
         nowIso: currentIsoTimestamp,
-        store: makeD1KhalaUnsupportedRequestStore(
-          khalaCodeProductStateDatabaseForEnv(env),
-        ),
+        store: makeD1KhalaUnsupportedRequestStore(khalaCodeProductStateDatabaseForEnv(env)),
       }),
       unsupportedRequestIssueOpen: {
         isOwnerApproved: () =>
@@ -9484,7 +8722,7 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
             readEffectiveArtanisApproval(
               openAgentsDatabase(env),
               currentIsoTimestamp(),
-              'github_issue_open',
+              "github_issue_open",
               ARTANIS_OWNER_OPERATOR_AUTHORITY_SCOPE,
             ),
           ),
@@ -9502,7 +8740,7 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
           Effect.succeed(
             ownerAgentHasStandingApprovalForRiskyAction(
               session.user.userId,
-              'forum_post',
+              "forum_post",
               ARTANIS_OWNER_OPERATOR_AUTHORITY_SCOPE,
             ),
           ),
@@ -9513,11 +8751,11 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
       },
       dispatchExecution: makeArtanisDispatchExecution({
         listLinkedAgentUserIds,
-        makeId: () => compactRandomId('artanis_dispatch'),
+        makeId: () => compactRandomId("artanis_dispatch"),
         nowIso: currentIsoTimestamp,
         ownerOpenAuthUserId: session.user.userId,
         pylonStore: makePylonApiStoreForEnv(env),
-        readEffectivePylonDispatchApproval: authorityScope =>
+        readEffectivePylonDispatchApproval: (authorityScope) =>
           // Owner-promotion-aware (owner-directed 2026-06-27): owner-Artanis
           // carries a STANDING owner approval for his own pylon_job_dispatch, so
           // his own-capacity no-spend Codex dispatch EXECUTES without a
@@ -9532,35 +8770,35 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
         // Resolve the current branch tip so a pinned-workspace dispatch uses a
         // real commit; on any failure the dispatch falls back to the bounded
         // public fixture. Public repo only, public-safe.
-        resolveCommitSha: async branch => {
+        resolveCommitSha: async (branch) => {
           try {
             const response = await fetch(
               `https://api.github.com/repos/OpenAgentsInc/openagents/commits/${encodeURIComponent(branch)}`,
               {
                 headers: {
-                  Accept: 'application/vnd.github+json',
-                  'User-Agent': 'artanis-operator',
+                  Accept: "application/vnd.github+json",
+                  "User-Agent": "artanis-operator",
                 },
               },
-            )
+            );
             if (!response.ok) {
-              return undefined
+              return undefined;
             }
-            const body = (await response.json()) as { sha?: unknown }
-            return typeof body.sha === 'string' ? body.sha : undefined
+            const body = (await response.json()) as { sha?: unknown };
+            return typeof body.sha === "string" ? body.sha : undefined;
           } catch {
-            return undefined
+            return undefined;
           }
         },
       }),
-    })
+    });
   },
   requireAdminApiToken,
   requireBrowserSession,
   emitOwnerTrace: async (input, env) => {
     await emitKhalaChatTrace(
       {
-        requestedModel: 'openagents/khala',
+        requestedModel: "openagents/khala",
         requestMessages: input.requestMessages,
         responseId: input.responseId,
         result: input.result,
@@ -9572,62 +8810,62 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
         store: makeTraceStoreForEnv(env),
         owner: {
           ownerUserId: input.ownerUserId,
-          agentRef: 'operator.artanis.chat',
-          uploadSource: 'user_session',
+          agentRef: "operator.artanis.chat",
+          uploadSource: "user_session",
         },
         demandAttribution: {
-          demandKind: 'internal',
-          demandSource: 'artanis_operator_channel',
+          demandKind: "internal",
+          demandSource: "artanis_operator_channel",
         },
       },
-    )
+    );
   },
   // Accept an `oa_agent_` bearer (the Khala CLI's token from `khala login`) when
   // it is linked to an OpenAuth account. Resolves the agent credential -> its
   // linked owner user id -> that user's email and scopes Artanis to that owner.
   resolveOwnerAgentBearer: async (request, env) => {
-    const bearer = readBearerToken(request)
+    const bearer = readBearerToken(request);
     if (bearer === undefined) {
-      return undefined
+      return undefined;
     }
     const agent = await authenticateProgrammaticAgent(
       makeAgentRegistrationStoreForEnv(env),
       bearer,
-    )
+    );
     // The owner-promoted operator agent (Artanis, owner-directed 2026-06-27) is
     // admitted by his OWN agent identity (his agent user id forms his actorRef
     // `agent:<userId>`), independent of any linked OpenAuth account — his
     // credential carries no OpenAuth link. Every other caller uses the Khala-CLI
     // path: a token linked to an OpenAuth account.
-    const agentOwnUserId = agent?.user.id
+    const agentOwnUserId = agent?.user.id;
     if (agentOwnUserId === undefined) {
-      return undefined
+      return undefined;
     }
-    const linkedOpenAuthUserId = agent?.credential.openauthUserId ?? null
+    const linkedOpenAuthUserId = agent?.credential.openauthUserId ?? null;
 
     const isOwnerAgent =
       isOpenAgentsOwnerAgentOpenAuthUserId(agentOwnUserId) ||
-      isOpenAgentsOwnerAgentOpenAuthUserId(linkedOpenAuthUserId)
+      isOpenAgentsOwnerAgentOpenAuthUserId(linkedOpenAuthUserId);
 
-    let linkedEmail: string | undefined
+    let linkedEmail: string | undefined;
     if (linkedOpenAuthUserId !== null) {
       // CFG-4 Domain 2 (#8519): `users` read serves from Postgres.
       const rows = await identityDbForEnv(env).query(
         `SELECT primary_email FROM users WHERE id = ?`,
         [linkedOpenAuthUserId],
-      )
-      const primaryEmail = rows[0]?.primary_email
+      );
+      const primaryEmail = rows[0]?.primary_email;
       const email =
         primaryEmail === null || primaryEmail === undefined
           ? undefined
-          : String(primaryEmail).trim().toLowerCase()
-      if (email !== undefined && email !== '') {
-        linkedEmail = email
+          : String(primaryEmail).trim().toLowerCase();
+      if (email !== undefined && email !== "") {
+        linkedEmail = email;
       }
     }
 
     if (!isOwnerAgent && linkedOpenAuthUserId === null) {
-      return undefined
+      return undefined;
     }
 
     // Owner-scope user id: for the owner-promoted agent key on his OWN
@@ -9636,7 +8874,7 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
     // Khala CLI tokens preserve the original linked-OpenAuth owner id.
     const ownerScopeUserId = isOwnerAgent
       ? agentOwnUserId
-      : (linkedOpenAuthUserId ?? agentOwnUserId)
+      : (linkedOpenAuthUserId ?? agentOwnUserId);
 
     // The Artanis route only reads user.email + user.userId, but the inferred
     // Session is the full human-session shape; fill the unused fields so the
@@ -9644,89 +8882,85 @@ const operatorArtanisChatRoutes = makeOperatorArtanisChatRoutes({
     const sessionEmail =
       linkedEmail ??
       agent?.user.primaryEmail?.trim().toLowerCase() ??
-      'artanis@agents.openagents.com'
+      "artanis@agents.openagents.com";
     return {
       user: {
-        avatarUrl: '',
+        avatarUrl: "",
         email: sessionEmail,
         name: sessionEmail,
-        provider: 'github' as const,
+        provider: "github" as const,
         userId: ownerScopeUserId,
       },
-    }
+    };
   },
-})
+});
 
 const operatorBusinessPipelineRoutes = makeOperatorBusinessPipelineRoutes({
-  makeStore: env =>
-    makeD1BusinessPipelineStore(businessDomainDatabaseForEnv(env)),
+  makeStore: (env) => makeD1BusinessPipelineStore(businessDomainDatabaseForEnv(env)),
   nowIso: currentIsoTimestamp,
   requireAdminApiToken,
-})
+});
 
 // OB-3 (#8560): fleet-scale audit-first personalization. The pipeline store
 // rides the same KS-8.14 business-domain mirror as `operatorBusinessPipelineRoutes`
 // above; the new `agent_readiness_public_reports` table is a purpose-scoped
 // reporting table (not money/attribution-critical), so it reads/writes the
 // primary D1 binding directly rather than joining the business-domain mirror.
-const operatorAgentReadinessReportRoutes =
-  makeOperatorAgentReadinessReportRoutes({
-    makePipelineStore: env =>
-      makeD1BusinessPipelineStore(businessDomainDatabaseForEnv(env)),
-    makeReportStore: env =>
-      makeD1AgentReadinessPublicReportStore(openAgentsDatabase(env)),
-    nowIso: currentIsoTimestamp,
-    requireAdminApiToken,
-  })
+const operatorAgentReadinessReportRoutes = makeOperatorAgentReadinessReportRoutes({
+  makePipelineStore: (env) => makeD1BusinessPipelineStore(businessDomainDatabaseForEnv(env)),
+  makeReportStore: (env) => makeD1AgentReadinessPublicReportStore(openAgentsDatabase(env)),
+  nowIso: currentIsoTimestamp,
+  requireAdminApiToken,
+});
 
 const operatorBusinessOutreachRoutes = makeOperatorBusinessOutreachRoutes({
-  makeStore: env => {
+  makeStore: (env) => {
     // KS-8.11 (#8322) x KS-8.14 (#8325): outreach tables ride the CRM/email
     // dual-write seam; the pipeline store's business_* writes ride the
     // business dual-write seam (composed over the same D1 authority).
-    const db = makeCrmEmailDatabaseForEnv(env)
+    const db = makeCrmEmailDatabaseForEnv(env);
     return makeD1BusinessOutreachStore(
       db,
       makeD1BusinessPipelineStore(businessDomainDatabaseForEnv(env)),
-    )
+    );
   },
   requireAdminApiToken,
-})
+});
 
 const operatorFleetStatusRoutes = makeOperatorFleetStatusRoutes({
   authenticateAgentToken: async (request, env) => {
-    const token = readBearerToken(request)
-    if (token === undefined) return undefined
+    const token = readBearerToken(request);
+    if (token === undefined) return undefined;
     const session = await authenticateProgrammaticAgent(
       makeAgentRegistrationStoreForEnv(env),
       token,
-    )
-    return session === undefined ? undefined : { userId: session.user.id }
+    );
+    return session === undefined ? undefined : { userId: session.user.id };
   },
   requireAdminApiToken,
-})
+});
 
 const operatorProStatusRoutes = makeOperatorProStatusRoutes({
   appendRefreshedSessionCookies,
   authenticateAgentToken: async (request, env) => {
-    const token = readBearerToken(request)
-    if (token === undefined) return undefined
+    const token = readBearerToken(request);
+    if (token === undefined) return undefined;
     const session = await authenticateProgrammaticAgent(
       makeAgentRegistrationStoreForEnv(env),
       token,
-    )
-    return session === undefined ? undefined : { userId: session.user.id }
+    );
+    return session === undefined ? undefined : { userId: session.user.id };
   },
   isOpenAgentsAdminEmail,
   listLinkedAgentsForOpenAuthUser: (openauthUserId, limit, env) => {
-    const agentStore = makeAgentRegistrationStoreForEnv(env)
+    const agentStore = makeAgentRegistrationStoreForEnv(env);
     return agentStore.listLinkedAgentsForOpenAuthUser === undefined
       ? Promise.resolve([])
-      : agentStore.listLinkedAgentsForOpenAuthUser(openauthUserId, limit)
+      : agentStore.listLinkedAgentsForOpenAuthUser(openauthUserId, limit);
   },
   requireAdminApiToken,
   requireBrowserSession,
-})
+});
 
 const withFleetRunAuthority = <A>(
   env: WorkerBindings,
@@ -9734,29 +8968,29 @@ const withFleetRunAuthority = <A>(
     repository: FleetRunAuthorityRepositoryShape,
   ) => Effect.Effect<A, FleetRunAuthorityError>,
 ): Effect.Effect<A, FleetRunAuthorityError> => {
-  const connectionString = env.KHALA_SYNC_DB?.connectionString
-  if (connectionString === undefined || connectionString.trim() === '') {
+  const connectionString = env.KHALA_SYNC_DB?.connectionString;
+  if (connectionString === undefined || connectionString.trim() === "") {
     return Effect.fail(
       new FleetRunAuthorityError({
-        kind: 'storage_unavailable',
-        reason: 'fleet run authority storage is unavailable',
+        kind: "storage_unavailable",
+        reason: "fleet run authority storage is unavailable",
       }),
-    )
+    );
   }
 
   return Effect.acquireUseRelease(
     Effect.tryPromise({
       catch: () =>
         new FleetRunAuthorityError({
-          kind: 'storage_unavailable',
-          reason: 'fleet run authority storage is unavailable',
+          kind: "storage_unavailable",
+          reason: "fleet run authority storage is unavailable",
         }),
       try: () => defaultMakeKhalaSyncSqlClient(connectionString),
     }),
-    client => operation(makeFleetRunAuthorityRepository({ sql: client.sql })),
-    client => Effect.promise(() => client.end().catch(() => undefined)),
-  )
-}
+    (client) => operation(makeFleetRunAuthorityRepository({ sql: client.sql })),
+    (client) => Effect.promise(() => client.end().catch(() => undefined)),
+  );
+};
 
 const withFleetSteeringExchange = <A>(
   env: WorkerBindings,
@@ -9764,103 +8998,95 @@ const withFleetSteeringExchange = <A>(
     repository: FleetSteeringExchangeRepositoryShape,
   ) => Effect.Effect<A, FleetRunAuthorityError>,
 ): Effect.Effect<A, FleetRunAuthorityError> => {
-  const connectionString = env.KHALA_SYNC_DB?.connectionString
-  if (connectionString === undefined || connectionString.trim() === '') {
+  const connectionString = env.KHALA_SYNC_DB?.connectionString;
+  if (connectionString === undefined || connectionString.trim() === "") {
     return Effect.fail(
       new FleetRunAuthorityError({
-        kind: 'storage_unavailable',
-        reason: 'fleet steering exchange storage is unavailable',
+        kind: "storage_unavailable",
+        reason: "fleet steering exchange storage is unavailable",
       }),
-    )
+    );
   }
 
   return Effect.acquireUseRelease(
     Effect.tryPromise({
       catch: () =>
         new FleetRunAuthorityError({
-          kind: 'storage_unavailable',
-          reason: 'fleet steering exchange storage is unavailable',
+          kind: "storage_unavailable",
+          reason: "fleet steering exchange storage is unavailable",
         }),
       try: () => defaultMakeKhalaSyncSqlClient(connectionString),
     }),
-    client =>
-      operation(makeFleetSteeringExchangeRepository({ sql: client.sql })),
-    client => Effect.promise(() => client.end().catch(() => undefined)),
-  )
-}
+    (client) => operation(makeFleetSteeringExchangeRepository({ sql: client.sql })),
+    (client) => Effect.promise(() => client.end().catch(() => undefined)),
+  );
+};
 
-const managedFleetProviderAccountRefHash = async (
-  providerAccountRef: string,
-): Promise<string> =>
-  `account.pylon.codex.${(await sha256Hex(providerAccountRef)).slice(0, 24)}`
+const managedFleetProviderAccountRefHash = async (providerAccountRef: string): Promise<string> =>
+  `account.pylon.codex.${(await sha256Hex(providerAccountRef)).slice(0, 24)}`;
 
 const listManagedFleetCapacityForEnv = async (
   env: WorkerBindings,
   input: Readonly<{ ownerUserId: string; pylonRef: string }>,
 ): Promise<Readonly<Record<string, unknown>>> => {
-  const workerEnv = env as OpenAgentsWorkerEnv
-  const postgresIdentity = postgresIdentityAuthStoreForEnv(workerEnv)
+  const workerEnv = env as OpenAgentsWorkerEnv;
+  const postgresIdentity = postgresIdentityAuthStoreForEnv(workerEnv);
   if (postgresIdentity === undefined) {
     throw new ManagedFleetAuthorityError({
-      message: 'managed_fleet_identity_authority_unavailable',
-    })
+      message: "managed_fleet_identity_authority_unavailable",
+    });
   }
   const accountRepository = makeAuthoritativePostgresProviderGrantRepository(
     makeProviderAccountRepositoryForEnv(env),
     postgresIdentity.queryRows,
-  )
-  const accounts = await listProviderAccountsForUser(
-    accountRepository,
-    input.ownerUserId,
-  )
+  );
+  const accounts = await listProviderAccountsForUser(accountRepository, input.ownerUserId);
   const eligible = accounts.accounts.filter(
-    account =>
+    (account) =>
       account.provider === CHATGPT_CODEX_PROVIDER &&
-      account.publicStatus === 'connected' &&
-      account.health === 'healthy',
-  )
+      account.publicStatus === "connected" &&
+      account.health === "healthy",
+  );
   const accountRefHashes = [
     ...new Set(
       await Promise.all(
-        eligible.map(account =>
-          managedFleetProviderAccountRefHash(account.providerAccountRef),
-        ),
+        eligible.map((account) => managedFleetProviderAccountRefHash(account.providerAccountRef)),
       ),
     ),
-  ].slice(0, 64)
+  ].slice(0, 64);
   return {
-    schema: 'openagents.pylon.managed_cloud_fleet_capacity.v1',
+    schema: "openagents.pylon.managed_cloud_fleet_capacity.v1",
     accountRefHashes,
-  }
-}
+  };
+};
 
 const dispatchManagedFleetUnitForEnv = async (
   env: WorkerBindings,
   input: Readonly<{
-    ownerUserId: string
-    pylonRef: string
-    runRef: string
+    ownerUserId: string;
+    pylonRef: string;
+    runRef: string;
     body: Readonly<{
-      claimRef: string
-      assignmentRef: string
-      taskId: string
-      workUnitRef: string
-      workerAccountRef: string
-      objective: string
-      unitObjective: string
-      repository: Readonly<{ fullName: string; branch: string; commit: string }>
-      verify: readonly string[]
-      verifierCommand: string
-      fingerprint: string
-    }>
+      claimRef: string;
+      assignmentRef: string;
+      taskId: string;
+      workUnitRef: string;
+      workerAccountRef: string;
+      objective: string;
+      unitObjective: string;
+      repository: Readonly<{ fullName: string; branch: string; commit: string }>;
+      verify: readonly string[];
+      verifierCommand: string;
+      fingerprint: string;
+    }>;
   }>,
 ): Promise<Readonly<Record<string, unknown>>> => {
-  const workerEnv = env as OpenAgentsWorkerEnv
-  const connectionString = env.KHALA_SYNC_DB?.connectionString
-  if (connectionString === undefined || connectionString.trim() === '') {
+  const workerEnv = env as OpenAgentsWorkerEnv;
+  const connectionString = env.KHALA_SYNC_DB?.connectionString;
+  if (connectionString === undefined || connectionString.trim() === "") {
     throw new ManagedFleetAuthorityError({
-      message: 'managed_fleet_storage_unavailable',
-    })
+      message: "managed_fleet_storage_unavailable",
+    });
   }
   if (
     !/^[0-9a-f]{64}$/u.test(input.body.fingerprint) ||
@@ -9868,46 +9094,45 @@ const dispatchManagedFleetUnitForEnv = async (
     !/^account\.pylon\.codex\.[a-f0-9]{24}$/u.test(input.body.workerAccountRef)
   ) {
     throw new ManagedFleetAuthorityError({
-      message: 'managed_fleet_tuple_invalid',
-    })
+      message: "managed_fleet_tuple_invalid",
+    });
   }
   const expectedFingerprint = await sha256Hex(
     JSON.stringify({
-      schema: 'openagents.pylon.managed_cloud_fleet_tuple.v1',
-      targetPreference: 'managed_cloud',
+      schema: "openagents.pylon.managed_cloud_fleet_tuple.v1",
+      targetPreference: "managed_cloud",
       runRef: input.runRef,
       taskId: input.body.taskId,
       claimRef: input.body.claimRef,
       workUnitRef: input.body.workUnitRef,
       workerAccountRef: input.body.workerAccountRef,
-      workerKind: 'codex',
+      workerKind: "codex",
       repository: input.body.repository,
       verifierCommand: input.body.verifierCommand,
     }),
-  )
+  );
   if (expectedFingerprint !== input.body.fingerprint) {
     throw new ManagedFleetAuthorityError({
-      message: 'managed_fleet_tuple_fingerprint_invalid',
-    })
+      message: "managed_fleet_tuple_fingerprint_invalid",
+    });
   }
   const expectedAssignmentRef = `assignment.pylon.managed_cloud.${(
     await sha256Hex(input.body.fingerprint)
-  ).slice(0, 24)}`
+  ).slice(0, 24)}`;
   if (input.body.assignmentRef !== expectedAssignmentRef) {
     throw new ManagedFleetAuthorityError({
-      message: 'managed_fleet_assignment_invalid',
-    })
+      message: "managed_fleet_assignment_invalid",
+    });
   }
 
-  const client = await defaultMakeKhalaSyncSqlClient(connectionString)
-  let minted:
-    Awaited<ReturnType<typeof mintCloudRuntimeExecutionToken>> | undefined
+  const client = await defaultMakeKhalaSyncSqlClient(connectionString);
+  let minted: Awaited<ReturnType<typeof mintCloudRuntimeExecutionToken>> | undefined;
   try {
     const rows: Array<{
-      authorized: boolean
-      request_json: string
-      request_fingerprint: string
-      status: string
+      authorized: boolean;
+      request_json: string;
+      request_fingerprint: string;
+      status: string;
     }> = await client.sql`
       SELECT request.request_json, request.request_fingerprint, request.status,
              (request.owner_user_id = ${input.ownerUserId}
@@ -9919,8 +9144,8 @@ const dispatchManagedFleetUnitForEnv = async (
         ON lease.run_ref = request.run_ref
       WHERE request.run_ref = ${input.runRef}
       LIMIT 1
-    `
-    const row = rows[0]
+    `;
+    const row = rows[0];
     // Accepting the whole-run lease intentionally leaves the intake row at
     // `claimed_by_pylon`; the first execution batch advances it. Managed-unit
     // dispatch necessarily precedes that batch, so the accepted lease is the
@@ -9936,106 +9161,103 @@ const dispatchManagedFleetUnitForEnv = async (
       })
     ) {
       throw new ManagedFleetAuthorityError({
-        message: 'managed_fleet_authority_invalid',
-      })
+        message: "managed_fleet_authority_invalid",
+      });
     }
     const request = parseJsonUnknown(row.request_json) as {
       repository?: {
-        owner?: string
-        name?: string
-        branch?: string
-        commit?: string
-      }
-      verifier?: { kind?: string; command?: string }
+        owner?: string;
+        name?: string;
+        branch?: string;
+        commit?: string;
+      };
+      verifier?: { kind?: string; command?: string };
       workSource?: {
-        kind?: string
+        kind?: string;
         units?: Array<{
-          unitRef?: string
-          objective?: string
-          placement?: { targetPreference?: string }
-        }>
-      }
-      workerPolicy?: { workerKind?: string }
-    }
+          unitRef?: string;
+          objective?: string;
+          placement?: { targetPreference?: string };
+        }>;
+      };
+      workerPolicy?: { workerKind?: string };
+    };
     const unit = request.workSource?.units?.find(
-      candidate => candidate.unitRef === input.body.workUnitRef,
-    )
+      (candidate) => candidate.unitRef === input.body.workUnitRef,
+    );
     if (
-      request.workSource?.kind !== 'plan_dag' ||
-      (request.workerPolicy?.workerKind !== 'codex' &&
-        request.workerPolicy?.workerKind !== 'auto') ||
-      unit?.placement?.targetPreference !== 'managed_cloud' ||
+      request.workSource?.kind !== "plan_dag" ||
+      (request.workerPolicy?.workerKind !== "codex" &&
+        request.workerPolicy?.workerKind !== "auto") ||
+      unit?.placement?.targetPreference !== "managed_cloud" ||
       unit.objective !== input.body.unitObjective ||
       `${request.repository?.owner}/${request.repository?.name}` !==
         input.body.repository.fullName ||
       request.repository?.branch !== input.body.repository.branch ||
       request.repository?.commit !== input.body.repository.commit ||
-      request.verifier?.kind !== 'command' ||
+      request.verifier?.kind !== "command" ||
       request.verifier.command !== input.body.verifierCommand
     ) {
       throw new ManagedFleetAuthorityError({
-        message: 'managed_fleet_tuple_not_authorized',
-      })
+        message: "managed_fleet_tuple_not_authorized",
+      });
     }
 
-    const postgresIdentity = postgresIdentityAuthStoreForEnv(workerEnv)
+    const postgresIdentity = postgresIdentityAuthStoreForEnv(workerEnv);
     if (postgresIdentity === undefined) {
       throw new ManagedFleetAuthorityError({
-        message: 'managed_fleet_identity_authority_unavailable',
-      })
+        message: "managed_fleet_identity_authority_unavailable",
+      });
     }
     const accountRepository = makeAuthoritativePostgresProviderGrantRepository(
       makeProviderAccountRepositoryForEnv(env),
       postgresIdentity.queryRows,
-    )
+    );
     const [accounts, githubConnection] = await Promise.all([
       listProviderAccountsForUser(accountRepository, input.ownerUserId),
-      makeGitHubWriteRepositoryForEnv(env).findUsableConnectionForUser(
-        input.ownerUserId,
-      ),
-    ])
+      makeGitHubWriteRepositoryForEnv(env).findUsableConnectionForUser(input.ownerUserId),
+    ]);
     const eligibleAccounts = accounts.accounts.filter(
-      candidate =>
+      (candidate) =>
         candidate.provider === CHATGPT_CODEX_PROVIDER &&
-        candidate.publicStatus === 'connected' &&
-        candidate.health === 'healthy',
-    )
+        candidate.publicStatus === "connected" &&
+        candidate.health === "healthy",
+    );
     const selected = await selectExactManagedFleetProviderAccount(
       eligibleAccounts,
       input.body.workerAccountRef,
-      account => managedFleetProviderAccountRefHash(account.providerAccountRef),
-    )
-    const account = selected?.account
+      (account) => managedFleetProviderAccountRefHash(account.providerAccountRef),
+    );
+    const account = selected?.account;
     if (
       account === undefined ||
       githubConnection === undefined ||
       !hasRequiredGitHubWriteScopes(githubConnection.scopes)
     ) {
       throw new ManagedFleetAuthorityError({
-        message: 'managed_fleet_owner_authority_unavailable',
-      })
+        message: "managed_fleet_owner_authority_unavailable",
+      });
     }
-    const sessionId = `ccs.fleet.${input.body.fingerprint.slice(0, 24)}`
+    const sessionId = `ccs.fleet.${input.body.fingerprint.slice(0, 24)}`;
     const grant = await issueProviderAccountGrant(accountRepository, {
       providerAccountRef: account.providerAccountRef,
-      requestedAction: 'agent_computer_codex_turn',
+      requestedAction: "agent_computer_codex_turn",
       runnerSessionId: sessionId,
       threadId: input.runRef,
       userId: input.ownerUserId,
       workroomId: input.body.workUnitRef,
-    })
+    });
     if (grant === undefined)
       throw new ManagedFleetAuthorityError({
-        message: 'managed_fleet_grant_unavailable',
-      })
+        message: "managed_fleet_grant_unavailable",
+      });
 
     minted = await mintCloudRuntimeExecutionToken(client.sql, {
       ownerUserId: input.ownerUserId,
-    })
+    });
     const baseUrl =
-      workerEnv.OA_CLOUD_RUNTIME_INFERENCE_BASE_URL?.trim() ||
-      getAppOrigin(workerEnv)
-    const workContextRef = `work_context.fleet.${input.body.fingerprint.slice(0, 24)}`
+      workerEnv.OA_CLOUD_RUNTIME_INFERENCE_BASE_URL?.trim() || getAppOrigin(workerEnv);
+    const workContextRef = `work_context.fleet.${input.body.fingerprint.slice(0, 24)}`;
     const workContext = buildCloudRuntimeWorkContext({
       repo: input.body.repository.fullName,
       commit: input.body.repository.commit,
@@ -10059,34 +9281,32 @@ const dispatchManagedFleetUnitForEnv = async (
       codexContinuity: {
         maxReplayMessages: 24,
         persistedCodexHome: false,
-        strategy: 'khala_sync_history_reprime',
+        strategy: "khala_sync_history_reprime",
       },
       writeback: buildCloudRuntimeWritebackConfig({
         repositoryFullName: input.body.repository.fullName,
         turnId: input.body.workUnitRef,
         baseBranch: input.body.repository.branch,
         branch: `fleet/${input.body.fingerprint.slice(0, 16)}`,
-        mode: 'pull_request',
+        mode: "pull_request",
       }),
-    })
+    });
     const adapter = makeCloudControlCloudCodingAdapter({
-      baseUrl: workerEnv.OA_CLOUD_CONTROL_URL ?? '',
-      bearerToken: workerEnv.OA_CLOUD_CONTROL_TOKEN ?? '',
-      gceProvisioningArmed: isCloudGceProvisioningArmed(
-        workerEnv.OA_CODEX_GCE_PROVISIONER,
-      ),
-    })
+      baseUrl: workerEnv.OA_CLOUD_CONTROL_URL ?? "",
+      bearerToken: workerEnv.OA_CLOUD_CONTROL_TOKEN ?? "",
+      gceProvisioningArmed: isCloudGceProvisioningArmed(workerEnv.OA_CODEX_GCE_PROVISIONER),
+    });
     const session = await Effect.runPromise(
       adapter.launch({
         sessionId,
         accountRef: `agent:${input.ownerUserId}`,
-        lane: 'cloud-gcp',
+        lane: "cloud-gcp",
         request: {
-          adapter: 'codex',
-          lane: 'cloud-gcp',
+          adapter: "codex",
+          lane: "cloud-gcp",
           objective: input.body.objective,
           repoRef: input.body.repository.fullName,
-          repoTrustTier: 'private',
+          repoTrustTier: "private",
           timeoutSeconds: 1800,
           verify: [...input.body.verify],
           threadRef: input.runRef,
@@ -10098,11 +9318,11 @@ const dispatchManagedFleetUnitForEnv = async (
           },
         },
       }),
-    )
-    const accountRefHash = selected!.accountRefHash
+    );
+    const accountRefHash = selected!.accountRefHash;
     if (
-      session.state !== 'completed' ||
-      session.agentComputerState !== 'reclaimed' ||
+      session.state !== "completed" ||
+      session.agentComputerState !== "reclaimed" ||
       session.agentComputerRef === null ||
       session.artifactRef === null ||
       session.placementRef === null ||
@@ -10110,8 +9330,8 @@ const dispatchManagedFleetUnitForEnv = async (
       session.resourceUsageReceiptRefs.length === 0
     ) {
       throw new ManagedFleetAuthorityError({
-        message: 'managed_fleet_terminal_receipts_incomplete',
-      })
+        message: "managed_fleet_terminal_receipts_incomplete",
+      });
     }
     const terminalBindingDigest = (
       await sha256Hex(
@@ -10129,12 +9349,12 @@ const dispatchManagedFleetUnitForEnv = async (
           workUnitRef: input.body.workUnitRef,
         }),
       )
-    ).slice(0, 24)
-    const terminalReceiptRef = `receipt.agent_computer.execution.${terminalBindingDigest}`
-    const artifactRef = session.artifactRef
-    const closeoutRef = `closeout.agent_computer.execution.${terminalBindingDigest}`
-    const noMeasurementCaveatRef = `caveat.agent_computer.token_usage_not_measured.${terminalBindingDigest}`
-    const createdAt = currentIsoTimestamp()
+    ).slice(0, 24);
+    const terminalReceiptRef = `receipt.agent_computer.execution.${terminalBindingDigest}`;
+    const artifactRef = session.artifactRef;
+    const closeoutRef = `closeout.agent_computer.execution.${terminalBindingDigest}`;
+    const noMeasurementCaveatRef = `caveat.agent_computer.token_usage_not_measured.${terminalBindingDigest}`;
+    const createdAt = currentIsoTimestamp();
     await client.sql`
       INSERT INTO sarah_managed_fleet_unit_receipts (
         receipt_ref, run_ref, work_unit_ref, claim_ref, assignment_ref,
@@ -10153,20 +9373,20 @@ const dispatchManagedFleetUnitForEnv = async (
         ${session.agentComputerState}, ${createdAt}
       )
       ON CONFLICT (receipt_ref) DO NOTHING
-    `
+    `;
     const storedReceipts: Array<{
-      account_ref_hash: string
-      agent_computer_ref: string
-      agent_computer_state: string
-      artifact_ref: string
-      assignment_ref: string
-      claim_ref: string
-      closeout_ref: string
-      no_measurement_caveat_ref: string
-      placement_ref: string
-      receipt_ref: string
-      session_ref: string
-      work_unit_ref: string
+      account_ref_hash: string;
+      agent_computer_ref: string;
+      agent_computer_state: string;
+      artifact_ref: string;
+      assignment_ref: string;
+      claim_ref: string;
+      closeout_ref: string;
+      no_measurement_caveat_ref: string;
+      placement_ref: string;
+      receipt_ref: string;
+      session_ref: string;
+      work_unit_ref: string;
     }> = await client.sql`
       SELECT account_ref_hash, agent_computer_ref, agent_computer_state,
              artifact_ref, assignment_ref, claim_ref, closeout_ref,
@@ -10175,13 +9395,13 @@ const dispatchManagedFleetUnitForEnv = async (
       FROM sarah_managed_fleet_unit_receipts
       WHERE receipt_ref = ${terminalReceiptRef}
       LIMIT 1
-    `
-    const stored = storedReceipts[0]
+    `;
+    const stored = storedReceipts[0];
     if (
       stored === undefined ||
       stored.account_ref_hash !== accountRefHash ||
       stored.agent_computer_ref !== session.agentComputerRef ||
-      stored.agent_computer_state !== 'reclaimed' ||
+      stored.agent_computer_state !== "reclaimed" ||
       stored.artifact_ref !== artifactRef ||
       stored.assignment_ref !== input.body.assignmentRef ||
       stored.claim_ref !== input.body.claimRef ||
@@ -10193,12 +9413,12 @@ const dispatchManagedFleetUnitForEnv = async (
       stored.work_unit_ref !== input.body.workUnitRef
     ) {
       throw new ManagedFleetAuthorityError({
-        message: 'managed_fleet_terminal_receipt_readback_failed',
-      })
+        message: "managed_fleet_terminal_receipt_readback_failed",
+      });
     }
     const resolvedRefs: Array<{
-      kind: string
-      receipt_ref: string
+      kind: string;
+      receipt_ref: string;
     }> = await client.sql`
       SELECT 'artifact' AS kind, receipt_ref
       FROM sarah_managed_fleet_unit_receipts WHERE artifact_ref = ${artifactRef}
@@ -10209,18 +9429,18 @@ const dispatchManagedFleetUnitForEnv = async (
       SELECT 'caveat' AS kind, receipt_ref
       FROM sarah_managed_fleet_unit_receipts
       WHERE no_measurement_caveat_ref = ${noMeasurementCaveatRef}
-    `
+    `;
     if (
       resolvedRefs.length !== 3 ||
-      resolvedRefs.some(row => row.receipt_ref !== terminalReceiptRef) ||
-      new Set(resolvedRefs.map(row => row.kind)).size !== 3
+      resolvedRefs.some((row) => row.receipt_ref !== terminalReceiptRef) ||
+      new Set(resolvedRefs.map((row) => row.kind)).size !== 3
     ) {
       throw new ManagedFleetAuthorityError({
-        message: 'managed_fleet_advertised_ref_readback_failed',
-      })
+        message: "managed_fleet_advertised_ref_readback_failed",
+      });
     }
     return {
-      schema: 'openagents.pylon.managed_cloud_fleet_dispatch.result.v1',
+      schema: "openagents.pylon.managed_cloud_fleet_dispatch.result.v1",
       runRef: input.runRef,
       workUnitRef: input.body.workUnitRef,
       state: session.state,
@@ -10235,312 +9455,280 @@ const dispatchManagedFleetUnitForEnv = async (
       artifactRef,
       noMeasurementCaveatRef,
       workContextRef: session.workContextRef,
-    }
+    };
   } catch (error) {
-    logWorkerRouteWarning('managed_fleet_unit_dispatch_failed', {
+    logWorkerRouteWarning("managed_fleet_unit_dispatch_failed", {
       reason:
-        error instanceof Error
-          ? error.message.slice(0, 160)
-          : 'managed_fleet_dispatch_unknown',
-    })
-    throw error
+        error instanceof Error ? error.message.slice(0, 160) : "managed_fleet_dispatch_unknown",
+    });
+    throw error;
   } finally {
     if (minted !== undefined) {
       await revokeCloudRuntimeExecutionToken(client.sql, {
         credentialId: minted.credentialId,
-      }).catch(() => undefined)
+      }).catch(() => undefined);
     }
-    await client.end().catch(() => undefined)
+    await client.end().catch(() => undefined);
   }
-}
+};
 
-const portablePhaseOperationRoutes =
-  makePortablePhaseOperationRoutes<WorkerBindings>({
-    authenticate: async (request, env) => {
-      const token = readBearerToken(request)
-      if (token === undefined) return undefined
-      const session = await authenticateProgrammaticAgent(
-        makeAgentRegistrationStoreForEnv(env),
-        token,
-      )
-      if (session === undefined) return undefined
-      const linkedOwner = session.credential.openauthUserId?.trim()
-      return {
-        agentUserId: session.user.id,
-        ownerUserId:
-          linkedOwner !== undefined && linkedOwner !== ''
-            ? linkedOwner
-            : session.user.id,
-      }
-    },
-    readPylonOwnerAgentUserId: async (env, pylonRef) =>
-      (await makePylonApiStoreForEnv(env).readRegistration(pylonRef))
-        ?.ownerAgentUserId,
-    withExchange: async (env, use) => {
-      const connectionString = env.KHALA_SYNC_DB?.connectionString
-      if (connectionString === undefined || connectionString.trim() === '') {
-        throw new Error('portable phase exchange storage is unavailable')
-      }
-      const client = await defaultMakeKhalaSyncSqlClient(connectionString)
-      try {
-        return await use(new PostgresPortablePhaseOperationStore(client.sql))
-      } finally {
-        await client.end().catch(() => undefined)
-      }
-    },
-    resolveExactTarget: async (env, input) => {
-      const connectionString = env.KHALA_SYNC_DB?.connectionString
-      if (connectionString === undefined || connectionString.trim() === '') {
-        throw new Error('portable phase target storage is unavailable')
-      }
-      const client = await defaultMakeKhalaSyncSqlClient(connectionString)
-      try {
-        return await resolvePortablePhaseTarget(client.sql, input)
-      } finally {
-        await client.end().catch(() => undefined)
-      }
-    },
-  })
+const portablePhaseOperationRoutes = makePortablePhaseOperationRoutes<WorkerBindings>({
+  authenticate: async (request, env) => {
+    const token = readBearerToken(request);
+    if (token === undefined) return undefined;
+    const session = await authenticateProgrammaticAgent(
+      makeAgentRegistrationStoreForEnv(env),
+      token,
+    );
+    if (session === undefined) return undefined;
+    const linkedOwner = session.credential.openauthUserId?.trim();
+    return {
+      agentUserId: session.user.id,
+      ownerUserId: linkedOwner !== undefined && linkedOwner !== "" ? linkedOwner : session.user.id,
+    };
+  },
+  readPylonOwnerAgentUserId: async (env, pylonRef) =>
+    (await makePylonApiStoreForEnv(env).readRegistration(pylonRef))?.ownerAgentUserId,
+  withExchange: async (env, use) => {
+    const connectionString = env.KHALA_SYNC_DB?.connectionString;
+    if (connectionString === undefined || connectionString.trim() === "") {
+      throw new Error("portable phase exchange storage is unavailable");
+    }
+    const client = await defaultMakeKhalaSyncSqlClient(connectionString);
+    try {
+      return await use(new PostgresPortablePhaseOperationStore(client.sql));
+    } finally {
+      await client.end().catch(() => undefined);
+    }
+  },
+  resolveExactTarget: async (env, input) => {
+    const connectionString = env.KHALA_SYNC_DB?.connectionString;
+    if (connectionString === undefined || connectionString.trim() === "") {
+      throw new Error("portable phase target storage is unavailable");
+    }
+    const client = await defaultMakeKhalaSyncSqlClient(connectionString);
+    try {
+      return await resolvePortablePhaseTarget(client.sql, input);
+    } finally {
+      await client.end().catch(() => undefined);
+    }
+  },
+});
 
-const portableCheckpointArtifactRoutes =
-  makePortableCheckpointArtifactRoutes<WorkerBindings>({
-    authenticate: async (request, env) => {
-      const token = readBearerToken(request)
-      if (token === undefined) return undefined
-      const session = await authenticateProgrammaticAgent(
-        makeAgentRegistrationStoreForEnv(env),
-        token,
-      )
-      if (session === undefined) return undefined
-      const linkedOwner = session.credential.openauthUserId?.trim()
-      return {
-        agentUserId: session.user.id,
-        ownerUserId:
-          linkedOwner !== undefined && linkedOwner !== ''
-            ? linkedOwner
-            : session.user.id,
-      }
-    },
-    readPylonOwnerAgentUserId: async (env, pylonRef) =>
-      (await makePylonApiStoreForEnv(env).readRegistration(pylonRef))
-        ?.ownerAgentUserId,
-    resolveExactTarget: async (env, input) => {
-      const connectionString = env.KHALA_SYNC_DB?.connectionString
-      if (connectionString === undefined || connectionString.trim() === '') {
-        throw new Error('portable checkpoint target storage is unavailable')
-      }
-      const client = await defaultMakeKhalaSyncSqlClient(connectionString)
-      try {
-        return await resolvePortablePhaseTarget(client.sql, input)
-      } finally {
-        await client.end().catch(() => undefined)
-      }
-    },
-    bucket: env => portableCheckpointArtifactBucketForEnv(env),
-    readAuthority: async (env, input) => {
-      const connectionString = env.KHALA_SYNC_DB?.connectionString
-      if (connectionString === undefined || connectionString.trim() === '') {
-        throw new Error('portable checkpoint authority storage is unavailable')
-      }
-      const client = await defaultMakeKhalaSyncSqlClient(connectionString)
-      try {
-        return await readPortableCheckpointArtifactAuthority(
-          client.sql,
-          new PostgresPortablePhaseOperationStore(client.sql),
-          input,
-        )
-      } finally {
-        await client.end().catch(() => undefined)
-      }
-    },
-  })
+const portableCheckpointArtifactRoutes = makePortableCheckpointArtifactRoutes<WorkerBindings>({
+  authenticate: async (request, env) => {
+    const token = readBearerToken(request);
+    if (token === undefined) return undefined;
+    const session = await authenticateProgrammaticAgent(
+      makeAgentRegistrationStoreForEnv(env),
+      token,
+    );
+    if (session === undefined) return undefined;
+    const linkedOwner = session.credential.openauthUserId?.trim();
+    return {
+      agentUserId: session.user.id,
+      ownerUserId: linkedOwner !== undefined && linkedOwner !== "" ? linkedOwner : session.user.id,
+    };
+  },
+  readPylonOwnerAgentUserId: async (env, pylonRef) =>
+    (await makePylonApiStoreForEnv(env).readRegistration(pylonRef))?.ownerAgentUserId,
+  resolveExactTarget: async (env, input) => {
+    const connectionString = env.KHALA_SYNC_DB?.connectionString;
+    if (connectionString === undefined || connectionString.trim() === "") {
+      throw new Error("portable checkpoint target storage is unavailable");
+    }
+    const client = await defaultMakeKhalaSyncSqlClient(connectionString);
+    try {
+      return await resolvePortablePhaseTarget(client.sql, input);
+    } finally {
+      await client.end().catch(() => undefined);
+    }
+  },
+  bucket: (env) => portableCheckpointArtifactBucketForEnv(env),
+  readAuthority: async (env, input) => {
+    const connectionString = env.KHALA_SYNC_DB?.connectionString;
+    if (connectionString === undefined || connectionString.trim() === "") {
+      throw new Error("portable checkpoint authority storage is unavailable");
+    }
+    const client = await defaultMakeKhalaSyncSqlClient(connectionString);
+    try {
+      return await readPortableCheckpointArtifactAuthority(
+        client.sql,
+        new PostgresPortablePhaseOperationStore(client.sql),
+        input,
+      );
+    } finally {
+      await client.end().catch(() => undefined);
+    }
+  },
+});
 
-const portableCheckpointKmsTokenProvider =
-  makeGoogleCloudWorkloadIdentityAccessTokenProvider()
+const portableCheckpointKmsTokenProvider = makeGoogleCloudWorkloadIdentityAccessTokenProvider();
 
-const portableCheckpointDekRoutes =
-  makePortableCheckpointDekRoutes<WorkerBindings>({
-    authenticate: async (request, env) => {
-      const token = readBearerToken(request)
-      if (token === undefined) return undefined
-      const session = await authenticateProgrammaticAgent(
-        makeAgentRegistrationStoreForEnv(env),
-        token,
-      )
-      if (session === undefined) return undefined
-      const linkedOwner = session.credential.openauthUserId?.trim()
-      return {
-        agentUserId: session.user.id,
-        ownerUserId:
-          linkedOwner !== undefined && linkedOwner !== ''
-            ? linkedOwner
-            : session.user.id,
-      }
-    },
-    readPylonOwnerAgentUserId: async (env, pylonRef) =>
-      (await makePylonApiStoreForEnv(env).readRegistration(pylonRef))
-        ?.ownerAgentUserId,
-    resolveExactTarget: async (env, input) => {
-      const connectionString = env.KHALA_SYNC_DB?.connectionString
-      if (connectionString === undefined || connectionString.trim() === '') {
-        throw new Error('portable checkpoint target storage is unavailable')
-      }
-      const client = await defaultMakeKhalaSyncSqlClient(connectionString)
-      try {
-        return await resolvePortablePhaseTarget(client.sql, input)
-      } finally {
-        await client.end().catch(() => undefined)
-      }
-    },
-    readAuthority: async (env, input) => {
-      const connectionString = env.KHALA_SYNC_DB?.connectionString
-      if (connectionString === undefined || connectionString.trim() === '') {
-        throw new Error('portable checkpoint authority storage is unavailable')
-      }
-      const client = await defaultMakeKhalaSyncSqlClient(connectionString)
-      try {
-        return await readPortableCheckpointArtifactAuthority(
-          client.sql,
-          new PostgresPortablePhaseOperationStore(client.sql),
-          input,
-        )
-      } finally {
-        await client.end().catch(() => undefined)
-      }
-    },
-    resolveWrapBinding: async (env, input) => {
-      const connectionString = env.KHALA_SYNC_DB?.connectionString
-      if (connectionString === undefined || connectionString.trim() === '') {
-        throw new Error('portable checkpoint authority storage is unavailable')
-      }
-      const client = await defaultMakeKhalaSyncSqlClient(connectionString)
-      try {
-        return await readPortableCheckpointDekWrapBinding(client.sql, {
-          action: input.authority.action,
-          actorOwnerRef: input.actorOwnerRef,
-          authority: input.authority,
-          current: input.current,
-        })
-      } finally {
-        await client.end().catch(() => undefined)
-      }
-    },
-    configuredKeyRef: env =>
-      (env as OpenAgentsWorkerEnv).PORTABLE_CHECKPOINT_KMS_KEY_REF,
-    kmsClient: env => {
-      const resource = (env as OpenAgentsWorkerEnv)
-        .PORTABLE_CHECKPOINT_KMS_KEY_RESOURCE
-      if (resource === undefined || resource.trim() === '') return undefined
-      return makeGoogleCloudKmsDekClient({
-        cryptoKeyResource: resource,
-        tokenProvider: portableCheckpointKmsTokenProvider,
-      })
-    },
-  })
+const portableCheckpointDekRoutes = makePortableCheckpointDekRoutes<WorkerBindings>({
+  authenticate: async (request, env) => {
+    const token = readBearerToken(request);
+    if (token === undefined) return undefined;
+    const session = await authenticateProgrammaticAgent(
+      makeAgentRegistrationStoreForEnv(env),
+      token,
+    );
+    if (session === undefined) return undefined;
+    const linkedOwner = session.credential.openauthUserId?.trim();
+    return {
+      agentUserId: session.user.id,
+      ownerUserId: linkedOwner !== undefined && linkedOwner !== "" ? linkedOwner : session.user.id,
+    };
+  },
+  readPylonOwnerAgentUserId: async (env, pylonRef) =>
+    (await makePylonApiStoreForEnv(env).readRegistration(pylonRef))?.ownerAgentUserId,
+  resolveExactTarget: async (env, input) => {
+    const connectionString = env.KHALA_SYNC_DB?.connectionString;
+    if (connectionString === undefined || connectionString.trim() === "") {
+      throw new Error("portable checkpoint target storage is unavailable");
+    }
+    const client = await defaultMakeKhalaSyncSqlClient(connectionString);
+    try {
+      return await resolvePortablePhaseTarget(client.sql, input);
+    } finally {
+      await client.end().catch(() => undefined);
+    }
+  },
+  readAuthority: async (env, input) => {
+    const connectionString = env.KHALA_SYNC_DB?.connectionString;
+    if (connectionString === undefined || connectionString.trim() === "") {
+      throw new Error("portable checkpoint authority storage is unavailable");
+    }
+    const client = await defaultMakeKhalaSyncSqlClient(connectionString);
+    try {
+      return await readPortableCheckpointArtifactAuthority(
+        client.sql,
+        new PostgresPortablePhaseOperationStore(client.sql),
+        input,
+      );
+    } finally {
+      await client.end().catch(() => undefined);
+    }
+  },
+  resolveWrapBinding: async (env, input) => {
+    const connectionString = env.KHALA_SYNC_DB?.connectionString;
+    if (connectionString === undefined || connectionString.trim() === "") {
+      throw new Error("portable checkpoint authority storage is unavailable");
+    }
+    const client = await defaultMakeKhalaSyncSqlClient(connectionString);
+    try {
+      return await readPortableCheckpointDekWrapBinding(client.sql, {
+        action: input.authority.action,
+        actorOwnerRef: input.actorOwnerRef,
+        authority: input.authority,
+        current: input.current,
+      });
+    } finally {
+      await client.end().catch(() => undefined);
+    }
+  },
+  configuredKeyRef: (env) => (env as OpenAgentsWorkerEnv).PORTABLE_CHECKPOINT_KMS_KEY_REF,
+  kmsClient: (env) => {
+    const resource = (env as OpenAgentsWorkerEnv).PORTABLE_CHECKPOINT_KMS_KEY_RESOURCE;
+    if (resource === undefined || resource.trim() === "") return undefined;
+    return makeGoogleCloudKmsDekClient({
+      cryptoKeyResource: resource,
+      tokenProvider: portableCheckpointKmsTokenProvider,
+    });
+  },
+});
 
-const portableTargetPylonBindingRoutes =
-  makePortableTargetPylonBindingRoutes<WorkerBindings>({
-    authenticate: async (request, env, pylonRef) => {
-      const token = readBearerToken(request)
-      if (token === undefined) return undefined
-      const session = await authenticateProgrammaticAgent(
-        makeAgentRegistrationStoreForEnv(env),
-        token,
-      )
-      if (session === undefined) return undefined
-      const registration = await makePylonApiStoreForEnv(env).readRegistration(pylonRef)
-      if (registration?.ownerAgentUserId !== session.user.id) return undefined
-      const linkedOwner = session.credential.openauthUserId?.trim()
-      return {
-        ownerAgentUserId: session.user.id,
-        ownerUserId:
-          linkedOwner !== undefined && linkedOwner !== ''
-            ? linkedOwner
-            : session.user.id,
-      }
-    },
-    withStore: async (env, use) => {
-      const connectionString = env.KHALA_SYNC_DB?.connectionString
-      if (connectionString === undefined || connectionString.trim() === '') {
-        throw new Error('portable target Pylon binding storage is unavailable')
-      }
-      const client = await defaultMakeKhalaSyncSqlClient(connectionString)
-      try {
-        return await use(new PostgresPortableTargetPylonBindingStore(client.sql))
-      } finally {
-        await client.end().catch(() => undefined)
-      }
-    },
-  })
+const portableTargetPylonBindingRoutes = makePortableTargetPylonBindingRoutes<WorkerBindings>({
+  authenticate: async (request, env, pylonRef) => {
+    const token = readBearerToken(request);
+    if (token === undefined) return undefined;
+    const session = await authenticateProgrammaticAgent(
+      makeAgentRegistrationStoreForEnv(env),
+      token,
+    );
+    if (session === undefined) return undefined;
+    const registration = await makePylonApiStoreForEnv(env).readRegistration(pylonRef);
+    if (registration?.ownerAgentUserId !== session.user.id) return undefined;
+    const linkedOwner = session.credential.openauthUserId?.trim();
+    return {
+      ownerAgentUserId: session.user.id,
+      ownerUserId: linkedOwner !== undefined && linkedOwner !== "" ? linkedOwner : session.user.id,
+    };
+  },
+  withStore: async (env, use) => {
+    const connectionString = env.KHALA_SYNC_DB?.connectionString;
+    if (connectionString === undefined || connectionString.trim() === "") {
+      throw new Error("portable target Pylon binding storage is unavailable");
+    }
+    const client = await defaultMakeKhalaSyncSqlClient(connectionString);
+    try {
+      return await use(new PostgresPortableTargetPylonBindingStore(client.sql));
+    } finally {
+      await client.end().catch(() => undefined);
+    }
+  },
+});
 
 const ownerManagedEnvironmentEnrollmentRoutes =
   makeOwnerManagedEnvironmentEnrollmentRoutes<WorkerBindings>({
     authenticate: async (request, env, pylonRef) => {
-      const token = readBearerToken(request)
-      if (token === undefined) return undefined
+      const token = readBearerToken(request);
+      if (token === undefined) return undefined;
       const session = await authenticateProgrammaticAgent(
         makeAgentRegistrationStoreForEnv(env),
         token,
-      )
-      if (session === undefined) return undefined
-      const registration = await makePylonApiStoreForEnv(env).readRegistration(pylonRef)
-      if (registration?.ownerAgentUserId !== session.user.id) return undefined
-      const linkedOwner = session.credential.openauthUserId?.trim()
+      );
+      if (session === undefined) return undefined;
+      const registration = await makePylonApiStoreForEnv(env).readRegistration(pylonRef);
+      if (registration?.ownerAgentUserId !== session.user.id) return undefined;
+      const linkedOwner = session.credential.openauthUserId?.trim();
       return {
         ownerAgentUserId: session.user.id,
         ownerUserId:
-          linkedOwner !== undefined && linkedOwner !== ''
-            ? linkedOwner
-            : session.user.id,
-      }
+          linkedOwner !== undefined && linkedOwner !== "" ? linkedOwner : session.user.id,
+      };
     },
     withStore: async (env, use) => {
-      const connectionString = env.KHALA_SYNC_DB?.connectionString
-      if (connectionString === undefined || connectionString.trim() === '') {
-        throw new Error('owner-managed environment enrollment storage is unavailable')
+      const connectionString = env.KHALA_SYNC_DB?.connectionString;
+      if (connectionString === undefined || connectionString.trim() === "") {
+        throw new Error("owner-managed environment enrollment storage is unavailable");
       }
-      const client = await defaultMakeKhalaSyncSqlClient(connectionString)
+      const client = await defaultMakeKhalaSyncSqlClient(connectionString);
       try {
-        return await use(new PostgresOwnerManagedEnvironmentEnrollmentStore(client.sql))
+        return await use(new PostgresOwnerManagedEnvironmentEnrollmentStore(client.sql));
       } finally {
-        await client.end().catch(() => undefined)
+        await client.end().catch(() => undefined);
       }
     },
-  })
+  });
 
 const recheckPortableOwnerLocalCapabilityMaterialAuthority = async (
   env: WorkerBindings,
   authority: PortableOwnerLocalCapabilityMaterialAuthority,
 ): Promise<Readonly<{ destinationRunnerSessionRef: string }>> => {
-  const workerEnv = env as OpenAgentsWorkerEnv
-  const connectionString = workerEnv.KHALA_SYNC_DB?.connectionString
-  if (connectionString === undefined || connectionString.trim() === '') {
-    throw new Error('portable capability authority storage is unavailable')
+  const workerEnv = env as OpenAgentsWorkerEnv;
+  const connectionString = workerEnv.KHALA_SYNC_DB?.connectionString;
+  if (connectionString === undefined || connectionString.trim() === "") {
+    throw new Error("portable capability authority storage is unavailable");
   }
 
-  const client = await defaultMakeKhalaSyncSqlClient(connectionString)
-  let destinationRunnerSessionRef: string
+  const client = await defaultMakeKhalaSyncSqlClient(connectionString);
+  let destinationRunnerSessionRef: string;
   try {
-    const store = new PostgresPortableOwnerLocalCapabilityOperationStore(
-      client.sql,
-    )
+    const store = new PostgresPortableOwnerLocalCapabilityOperationStore(client.sql);
     const current = await store.read(
       authority.ownerRef,
       authority.pylonRef,
       authority.targetRef,
       authority.operationRef,
-    )
+    );
     if (
-      !portableOwnerLocalCapabilityMaterialAuthorityMatchesRecord(
-        current,
-        authority,
-        new Date(),
-      )
+      !portableOwnerLocalCapabilityMaterialAuthorityMatchesRecord(current, authority, new Date())
     ) {
-      throw new Error('portable capability operation authority changed')
+      throw new Error("portable capability operation authority changed");
     }
     const runnerRows: ReadonlyArray<{
-      result_destination_runner_session_reservation_ref: string | null
+      result_destination_runner_session_reservation_ref: string | null;
     }> = await client.sql`
       SELECT result_destination_runner_session_reservation_ref
       FROM khala_sync_portable_phase_operations
@@ -10555,46 +9743,44 @@ const recheckPortableOwnerLocalCapabilityMaterialAuthority = async (
         AND state = 'completed'
         AND expires_at > NOW()
       LIMIT 1
-    `
-    const runnerRef = runnerRows[0]?.result_destination_runner_session_reservation_ref
+    `;
+    const runnerRef = runnerRows[0]?.result_destination_runner_session_reservation_ref;
     if (
       runnerRef === null ||
       runnerRef === undefined ||
       !/^[A-Za-z0-9][A-Za-z0-9._:-]{2,255}$/.test(runnerRef)
     ) {
-      throw new Error('destination runner session authority is unavailable')
+      throw new Error("destination runner session authority is unavailable");
     }
-    destinationRunnerSessionRef = runnerRef
+    destinationRunnerSessionRef = runnerRef;
   } finally {
-    await client.end().catch(() => undefined)
+    await client.end().catch(() => undefined);
   }
 
-  return { destinationRunnerSessionRef }
-}
+  return { destinationRunnerSessionRef };
+};
 
 const resolvePortableOwnerLocalCapabilityMaterial = async (
   env: WorkerBindings,
   authority: PortableOwnerLocalCapabilityMaterialAuthority,
 ): Promise<Uint8Array> => {
-  const workerEnv = env as OpenAgentsWorkerEnv
+  const workerEnv = env as OpenAgentsWorkerEnv;
   const providerRepository = () => {
-    const postgres = postgresIdentityAuthStoreForEnv(workerEnv)
+    const postgres = postgresIdentityAuthStoreForEnv(workerEnv);
     if (postgres === undefined) {
-      throw new Error('provider grant authority is unavailable')
+      throw new Error("provider grant authority is unavailable");
     }
     return makeAuthoritativePostgresProviderGrantRepository(
       makeD1ProviderAccountRepository(openAgentsDatabase(workerEnv)),
       postgres.queryRows,
-    )
-  }
-  const github = makeGitHubWriteRepositoryForEnv(workerEnv)
+    );
+  };
+  const github = makeGitHubWriteRepositoryForEnv(workerEnv);
 
   return makePortableOwnerLocalCapabilityMaterialAuthority(authority, {
-    recheckAuthority: () =>
-      recheckPortableOwnerLocalCapabilityMaterialAuthority(env, authority),
-    readProviderGrant: grantRef =>
-      providerRepository().findGrantByRef(grantRef),
-    resolveProviderGrant: input =>
+    recheckAuthority: () => recheckPortableOwnerLocalCapabilityMaterialAuthority(env, authority),
+    readProviderGrant: (grantRef) => providerRepository().findGrantByRef(grantRef),
+    resolveProviderGrant: (input) =>
       resolveProviderAccountGrant(providerRepository(), {
         actorId: input.actorAgentUserId,
         grantRef: input.grantRef,
@@ -10606,85 +9792,73 @@ const resolvePortableOwnerLocalCapabilityMaterial = async (
         workerEnv,
         ownerRef,
         providerAccountRef,
-      )
+      );
       return material === undefined
         ? undefined
-        : new TextEncoder().encode(material.authContentJson)
+        : new TextEncoder().encode(material.authContentJson);
     },
-    readGitHubGrant: grantRef => github.findGrantByRef(grantRef),
-    resolveGitHubGrant: input =>
+    readGitHubGrant: (grantRef) => github.findGrantByRef(grantRef),
+    resolveGitHubGrant: (input) =>
       resolveGitHubWriteGrant(github, {
         grantRef: input.grantRef,
         runnerSessionId: input.runnerSessionRef,
       }),
-    readGitHubConnection: ownerRef =>
-      github.findUsableConnectionForUser(ownerRef),
-    readGitHubMaterial: async connectionRef => {
-      const material = await authKvStoreForEnv(workerEnv).get(
-        githubWriteSecretKey(connectionRef),
-      )
-      return material === null
-        ? undefined
-        : new TextEncoder().encode(material)
+    readGitHubConnection: (ownerRef) => github.findUsableConnectionForUser(ownerRef),
+    readGitHubMaterial: async (connectionRef) => {
+      const material = await authKvStoreForEnv(workerEnv).get(githubWriteSecretKey(connectionRef));
+      return material === null ? undefined : new TextEncoder().encode(material);
     },
     githubScopesSatisfy: hasRequiredGitHubWriteScopes,
     providerKind: CHATGPT_CODEX_PROVIDER,
-  })()
-}
+  })();
+};
 
 const portableOwnerLocalCapabilityOperationRoutes =
   makePortableOwnerLocalCapabilityOperationRoutes<WorkerBindings>({
     authenticate: async (request, env) => {
-      const token = readBearerToken(request)
-      if (token === undefined) return undefined
+      const token = readBearerToken(request);
+      if (token === undefined) return undefined;
       const session = await authenticateProgrammaticAgent(
         makeAgentRegistrationStoreForEnv(env),
         token,
-      )
-      if (session === undefined) return undefined
-      const linkedOwner = session.credential.openauthUserId?.trim()
+      );
+      if (session === undefined) return undefined;
+      const linkedOwner = session.credential.openauthUserId?.trim();
       return {
         agentUserId: session.user.id,
         ownerUserId:
-          linkedOwner !== undefined && linkedOwner !== ''
-            ? linkedOwner
-            : session.user.id,
-      }
+          linkedOwner !== undefined && linkedOwner !== "" ? linkedOwner : session.user.id,
+      };
     },
     readPylonOwnerAgentUserId: async (env, pylonRef) =>
-      (await makePylonApiStoreForEnv(env).readRegistration(pylonRef))
-        ?.ownerAgentUserId,
+      (await makePylonApiStoreForEnv(env).readRegistration(pylonRef))?.ownerAgentUserId,
     withExchange: async (env, use) => {
-      const connectionString = (env as OpenAgentsWorkerEnv).KHALA_SYNC_DB
-        ?.connectionString
-      if (connectionString === undefined || connectionString.trim() === '') {
-        throw new Error('portable capability operation storage is unavailable')
+      const connectionString = (env as OpenAgentsWorkerEnv).KHALA_SYNC_DB?.connectionString;
+      if (connectionString === undefined || connectionString.trim() === "") {
+        throw new Error("portable capability operation storage is unavailable");
       }
-      const client = await defaultMakeKhalaSyncSqlClient(connectionString)
+      const client = await defaultMakeKhalaSyncSqlClient(connectionString);
       try {
-        return await use(
-          new PostgresPortableOwnerLocalCapabilityOperationStore(client.sql),
-        )
+        return await use(new PostgresPortableOwnerLocalCapabilityOperationStore(client.sql));
       } finally {
-        await client.end().catch(() => undefined)
+        await client.end().catch(() => undefined);
       }
     },
-    redeemDestinationGrantMaterial:
-      resolvePortableOwnerLocalCapabilityMaterial,
-  })
+    redeemDestinationGrantMaterial: resolvePortableOwnerLocalCapabilityMaterial,
+  });
 
 const portableSessionCommandDispatchScheduled =
   makePortableSessionCommandDispatchScheduled<OpenAgentsWorkerEnv>({
-    connectionString: env => env.KHALA_SYNC_DB?.connectionString,
+    connectionString: (env) => env.KHALA_SYNC_DB?.connectionString,
     openSqlClient: defaultMakeKhalaSyncSqlClient,
-    capabilityAuthority: env => {
-      const postgres = postgresIdentityAuthStoreForEnv(env)
-      if (postgres === undefined) return undefined
+    capabilityAuthority: (env) => {
+      const postgres = postgresIdentityAuthStoreForEnv(env);
+      if (postgres === undefined) return undefined;
       const provider = makeAuthoritativePostgresProviderGrantRepository(
         makeD1ProviderAccountRepository(openAgentsDatabase(env)),
         postgres.queryRows,
-      )
-      const github = makeGitHubWriteRepositoryForEnv(env)
+      );
+      const github = makeGitHubWriteRepositoryForEnv(env);
       return {
         resolve: ({ ownerUserId, grantRefs }) =>
           resolvePortableCapabilityGrantFacts({
@@ -10693,49 +9867,43 @@ const portableSessionCommandDispatchScheduled =
             provider,
             github,
           }),
-      }
+      };
     },
-    runtimeAdapters: async (env, sql) =>
-      makePortableSessionCommandRuntimeAdapters(env, sql),
-  })
+    runtimeAdapters: async (env, sql) => makePortableSessionCommandRuntimeAdapters(env, sql),
+  });
 
 const pylonApiRoutes = makePylonApiRoutes<WorkerBindings>({
-  agentStore: env => makeAgentRegistrationStoreForEnv(env),
-  makeStore: env => makePylonApiStoreForEnv(env),
+  agentStore: (env) => makeAgentRegistrationStoreForEnv(env),
+  makeStore: (env) => makePylonApiStoreForEnv(env),
   dispatchManagedFleetUnit: dispatchManagedFleetUnitForEnv,
   listManagedFleetCapacity: listManagedFleetCapacityForEnv,
   fleetRunAuthority: {
-    claim: (env, input) =>
-      withFleetRunAuthority(env, repository => repository.claim(input)),
+    claim: (env, input) => withFleetRunAuthority(env, (repository) => repository.claim(input)),
     acceptClaim: (env, input) =>
-      withFleetRunAuthority(env, repository => repository.acceptClaim(input)),
+      withFleetRunAuthority(env, (repository) => repository.acceptClaim(input)),
     appendExecutionEvents: (env, input) =>
-      withFleetRunAuthority(env, repository => {
-        const appendExecutionEvents = repository.appendExecutionEvents
+      withFleetRunAuthority(env, (repository) => {
+        const appendExecutionEvents = repository.appendExecutionEvents;
         return appendExecutionEvents === undefined
           ? Effect.fail(
               new FleetRunAuthorityError({
-                kind: 'storage_unavailable',
-                reason: 'fleet run execution authority is unavailable',
+                kind: "storage_unavailable",
+                reason: "fleet run execution authority is unavailable",
               }),
             )
-          : appendExecutionEvents(input)
+          : appendExecutionEvents(input);
       }),
   },
   fleetSteeringExchange: {
     readPage: (env, input) =>
-      withFleetSteeringExchange(env, repository => repository.readPage(input)),
+      withFleetSteeringExchange(env, (repository) => repository.readPage(input)),
     appendOutcomes: (env, input) =>
-      withFleetSteeringExchange(env, repository =>
-        repository.appendOutcomes(input),
-      ),
+      withFleetSteeringExchange(env, (repository) => repository.appendOutcomes(input)),
     appendCompletions: (env, input) =>
-      withFleetSteeringExchange(env, repository =>
-        repository.appendCompletions(input),
-      ),
+      withFleetSteeringExchange(env, (repository) => repository.appendCompletions(input)),
   },
   // #5252: private operator-only store for raw Spark payout targets.
-  makeSparkPayoutTargetStore: env => makePylonSparkPayoutTargetStoreForEnv(env),
+  makeSparkPayoutTargetStore: (env) => makePylonSparkPayoutTargetStoreForEnv(env),
   // KS-6.1 (#8302): fail-soft fleet cockpit projection of assignment
   // status transitions into Khala Sync (scope.fleet_run.<runId>) via the
   // KHALA_SYNC_DB Hyperdrive binding. Never fails the D1 business write;
@@ -10753,20 +9921,20 @@ const pylonApiRoutes = makePylonApiRoutes<WorkerBindings>({
     const delivered = await recordAutopilotWorkerCloseoutFromPylon(
       makeAutopilotWorkStoreForEnv(env),
       input,
-    )
+    );
 
-    if (delivered?.state === 'delivered') {
+    if (delivered?.state === "delivered") {
       try {
-        await sendAutopilotDecisionRequiredEmailOnce(env, delivered)
+        await sendAutopilotDecisionRequiredEmailOnce(env, delivered);
       } catch (error) {
-        logWorkerRouteWarning('autopilot_decision_email_failed', {
+        logWorkerRouteWarning("autopilot_decision_email_failed", {
           error: errorMessage(error),
           workOrderRef: delivered.workOrderRef,
-        })
+        });
       }
     }
 
-    return delivered
+    return delivered;
   },
   // SARAH-PROACTIVE-1 (#9064): fail-soft proactive owner notice for a
   // Sarah-dispatched Codex worker's `worker_closeout`. Looks up the
@@ -10802,15 +9970,12 @@ const pylonApiRoutes = makePylonApiRoutes<WorkerBindings>({
     portablePhaseOperationRoutes.routePortablePhaseOperationRequest,
   routePortableCheckpointArtifactRequest:
     portableCheckpointArtifactRoutes.routePortableCheckpointArtifactRequest,
-  routePortableCheckpointDekRequest:
-    portableCheckpointDekRoutes.routePortableCheckpointDekRequest,
+  routePortableCheckpointDekRequest: portableCheckpointDekRoutes.routePortableCheckpointDekRequest,
   routePortableOwnerLocalCapabilityOperationRequest:
     portableOwnerLocalCapabilityOperationRoutes.routePortableOwnerLocalCapabilityOperationRequest,
-  routePortableTargetPylonBindingRequest:
-    portableTargetPylonBindingRoutes.route,
-  routeOwnerManagedEnvironmentEnrollmentRequest:
-    ownerManagedEnvironmentEnrollmentRoutes.route,
-})
+  routePortableTargetPylonBindingRequest: portableTargetPylonBindingRoutes.route,
+  routeOwnerManagedEnvironmentEnrollmentRequest: ownerManagedEnvironmentEnrollmentRoutes.route,
+});
 
 const trainingRunWindowRoutes = makeTrainingRunWindowRoutes<WorkerBindings>({
   createVerificationChallenge: (env, request) => {
@@ -10818,145 +9983,136 @@ const trainingRunWindowRoutes = makeTrainingRunWindowRoutes<WorkerBindings>({
       makeId: randomUuid,
       nowIso: currentIsoTimestamp(),
       request,
-    })
+    });
 
-    return makeTrainingVerificationStoreForEnv(env).createChallenge(
-      built.challenge,
-      built.event,
-    )
+    return makeTrainingVerificationStoreForEnv(env).createChallenge(built.challenge, built.event);
   },
-  makeStore: env => makeTrainingAuthorityStoreForEnv(env),
+  makeStore: (env) => makeTrainingAuthorityStoreForEnv(env),
   requireAdminApiToken,
-})
+});
 
 // #5052 (epic #5051): agent-gated worker -> validator executor-trace completion
 // routes. These add the contributor-callable submit/verify path; they are inert
 // with respect to existing admin/closeout/settlement behavior until the pairing
 // orchestration (#5053) and Pylon client (#5054) wire them.
-const tassadarTraceContributionRoutes =
-  makeTassadarTraceContributionRoutes<WorkerBindings>({
-    agentStore: env => makeAgentRegistrationStoreForEnv(env),
-    createVerificationChallenge: async (env, input) => {
-      const store = makeTrainingVerificationStoreForEnv(env)
-      const built = buildTrainingVerificationChallengeRecord({
-        makeId: randomUuid,
-        nowIso: currentIsoTimestamp(),
-        request: input.request,
-      })
-      const created = await store.createChallenge(built.challenge, built.event)
-      const leased = leaseTrainingVerificationChallengeRecord({
-        challenge: created,
-        eventId: randomUuid(),
-        nowIso: currentIsoTimestamp(),
-        request: {
-          leaseSeconds: 60,
-          validatorRef: input.validatorDeviceRef,
-        },
-      })
-      const storedLeased = await store.leaseChallenge(
-        leased.challenge,
-        leased.event,
-      )
-      const verdict = await runTrainingVerificationClass({
-        challenge: storedLeased,
-      })
-      const finalized = finalizeTrainingVerificationChallengeRecord({
-        challenge: storedLeased,
-        eventId: randomUuid(),
-        nowIso: currentIsoTimestamp(),
-        request: { receiptRefs: [] },
+const tassadarTraceContributionRoutes = makeTassadarTraceContributionRoutes<WorkerBindings>({
+  agentStore: (env) => makeAgentRegistrationStoreForEnv(env),
+  createVerificationChallenge: async (env, input) => {
+    const store = makeTrainingVerificationStoreForEnv(env);
+    const built = buildTrainingVerificationChallengeRecord({
+      makeId: randomUuid,
+      nowIso: currentIsoTimestamp(),
+      request: input.request,
+    });
+    const created = await store.createChallenge(built.challenge, built.event);
+    const leased = leaseTrainingVerificationChallengeRecord({
+      challenge: created,
+      eventId: randomUuid(),
+      nowIso: currentIsoTimestamp(),
+      request: {
+        leaseSeconds: 60,
         validatorRef: input.validatorDeviceRef,
-        verdict,
-      })
+      },
+    });
+    const storedLeased = await store.leaseChallenge(leased.challenge, leased.event);
+    const verdict = await runTrainingVerificationClass({
+      challenge: storedLeased,
+    });
+    const finalized = finalizeTrainingVerificationChallengeRecord({
+      challenge: storedLeased,
+      eventId: randomUuid(),
+      nowIso: currentIsoTimestamp(),
+      request: { receiptRefs: [] },
+      validatorRef: input.validatorDeviceRef,
+      verdict,
+    });
 
-      return store.transitionChallenge(finalized.challenge, finalized.event)
-    },
-    makeContributionStore: env => makeTrainingTraceContributionStoreForEnv(env),
-    makeStore: env => makeTrainingAuthorityStoreForEnv(env),
-    resolvePylonOwnerUserId: async (env, pylonRef) => {
-      const registration =
-        await makePylonApiStoreForEnv(env).readRegistration(pylonRef)
+    return store.transitionChallenge(finalized.challenge, finalized.event);
+  },
+  makeContributionStore: (env) => makeTrainingTraceContributionStoreForEnv(env),
+  makeStore: (env) => makeTrainingAuthorityStoreForEnv(env),
+  resolvePylonOwnerUserId: async (env, pylonRef) => {
+    const registration = await makePylonApiStoreForEnv(env).readRegistration(pylonRef);
 
-      return registration?.ownerAgentUserId
-    },
-  })
+    return registration?.ownerAgentUserId;
+  },
+});
 
-const trainingVerificationRoutes =
-  makeTrainingVerificationRoutes<WorkerBindings>({
-    makeStore: env => makeTrainingVerificationStoreForEnv(env),
-    requireAdminApiToken,
-  })
+const trainingVerificationRoutes = makeTrainingVerificationRoutes<WorkerBindings>({
+  makeStore: (env) => makeTrainingVerificationStoreForEnv(env),
+  requireAdminApiToken,
+});
 
 const omniRoutes = makeOmniRoutes({
   handleAutopilotFleetApi: (request, env, ctx) =>
-    routeEffect('handle_autopilot_fleet_api', () =>
+    routeEffect("handle_autopilot_fleet_api", () =>
       omniHandlers.handleAutopilotFleetApi(request, env, ctx),
     ),
   handleAutopilotTokenLeaderboardsApi: (request, env, ctx) =>
-    routeEffect('handle_autopilot_token_leaderboards_api', () =>
+    routeEffect("handle_autopilot_token_leaderboards_api", () =>
       omniHandlers.handleAutopilotTokenLeaderboardsApi(request, env, ctx),
     ),
   handleEmailResendWebhookApi: (request, environment) =>
-    routeEffect('handle_email_resend_webhook_api', () =>
+    routeEffect("handle_email_resend_webhook_api", () =>
       handleEmailResendWebhookApi(request, environment),
     ),
   handleOmniAgentRunDetailApi: (request, env, ctx, runId) =>
-    routeEffect('handle_omni_agent_run_detail_api', () =>
+    routeEffect("handle_omni_agent_run_detail_api", () =>
       omniHandlers.handleOmniAgentRunDetailApi(request, env, ctx, runId),
     ),
   handleOmniAgentRunEventsApi: (request, env, ctx, runId) =>
-    routeEffect('handle_omni_agent_run_events_api', () =>
+    routeEffect("handle_omni_agent_run_events_api", () =>
       omniHandlers.handleOmniAgentRunEventsApi(request, env, ctx, runId),
     ),
   handleOmniAgentRunsApi: (request, env, ctx) =>
-    routeEffect('handle_omni_agent_runs_api', () =>
+    routeEffect("handle_omni_agent_runs_api", () =>
       omniHandlers.handleOmniAgentRunsApi(request, env, ctx),
     ),
   handleOmniDeploymentDetailApi: (request, env, ctx, deployId) =>
-    routeEffect('handle_omni_deployment_detail_api', () =>
+    routeEffect("handle_omni_deployment_detail_api", () =>
       omniHandlers.handleOmniDeploymentDetailApi(request, env, ctx, deployId),
     ),
   handleOmniDeploymentEventsApi: (request, env, ctx, deployId) =>
-    routeEffect('handle_omni_deployment_events_api', () =>
+    routeEffect("handle_omni_deployment_events_api", () =>
       omniHandlers.handleOmniDeploymentEventsApi(request, env, ctx, deployId),
     ),
   handleOmniDeploymentsApi: (request, env, ctx) =>
-    routeEffect('handle_omni_deployments_api', () =>
+    routeEffect("handle_omni_deployments_api", () =>
       omniHandlers.handleOmniDeploymentsApi(request, env, ctx),
     ),
   handleOmniOperatorAgentRunDetailApi: (request, env, runId) =>
-    routeEffect('handle_omni_operator_agent_run_detail_api', () =>
+    routeEffect("handle_omni_operator_agent_run_detail_api", () =>
       omniHandlers.handleOmniOperatorAgentRunDetailApi(request, env, runId),
     ),
   handleOmniOperatorAgentRunsApi: (request, env) =>
-    routeEffect('handle_omni_operator_agent_runs_api', () =>
+    routeEffect("handle_omni_operator_agent_runs_api", () =>
       omniHandlers.handleOmniOperatorAgentRunsApi(request, env),
     ),
   handleOmniOperatorDeploymentsApi: (request, env) =>
-    routeEffect('handle_omni_operator_deployments_api', () =>
+    routeEffect("handle_omni_operator_deployments_api", () =>
       omniHandlers.handleOmniOperatorDeploymentsApi(request, env),
     ),
   handleOmniOperatorFleetApi: (request, env) =>
-    routeEffect('handle_omni_operator_fleet_api', () =>
+    routeEffect("handle_omni_operator_fleet_api", () =>
       omniHandlers.handleOmniOperatorFleetApi(request, env),
     ),
   handleOmniOperatorTeamChatMessagesApi: (request, env, ctx) =>
-    routeEffect('handle_omni_operator_team_chat_messages_api', () =>
+    routeEffect("handle_omni_operator_team_chat_messages_api", () =>
       omniHandlers.handleOmniOperatorTeamChatMessagesApi(request, env, ctx),
     ),
-})
+});
 
 const teamChatRoutes = makeTeamChatRoutes({
   handleTeamChatMessagesApi: ({ request, env, ctx }, teamId, projectId) =>
-    routeEffect('handle_team_chat_messages_api', () =>
+    routeEffect("handle_team_chat_messages_api", () =>
       handleTeamChatMessagesApi(request, env, ctx, teamId, projectId),
     ),
-})
+});
 
-const forumRoutes = makeForumRoutes()
+const forumRoutes = makeForumRoutes();
 
 const imageGenerationRoutes = makeImageGenerationRoutes({
-  appUrl: env => getOpenAgentsWorkerConfig(env).app.url,
+  appUrl: (env) => getOpenAgentsWorkerConfig(env).app.url,
   appendRefreshedSessionCookies,
   requireOperatorAccess: async (env, session) =>
     (await readActiveTeamMembershipRole(
@@ -10965,7 +10121,7 @@ const imageGenerationRoutes = makeImageGenerationRoutes({
       session.user.userId,
     )) !== undefined,
   requireBrowserSession,
-})
+});
 
 const recordPublicAgentFunnelRead = (
   request: Request,
@@ -10982,56 +10138,46 @@ const recordPublicAgentFunnelRead = (
       route,
       siteSlug: null,
     }),
-  )
-}
+  );
+};
 
 // Inference gateway provider registry (EPIC #5474, #5476). Seeded with the
 // stub/echo adapter so the route works end-to-end while the gateway is inert.
 // Phase-2 provider issues register their adapter exactly once here:
 //   #5479 Fireworks, #5480 Vertex Anthropic, #5481 partner passthrough.
-const inferenceProviderRegistry = new InferenceProviderRegistry()
-inferenceProviderRegistry.register(stubEchoAdapter)
-inferenceProviderRegistry.register(fireworksAdapter)
+const inferenceProviderRegistry = new InferenceProviderRegistry();
+inferenceProviderRegistry.register(stubEchoAdapter);
+inferenceProviderRegistry.register(fireworksAdapter);
 // Strong-coding alias of the Fireworks adapter for the internal MirrorCode
 // frontier-coding gym rung. It serves the frontier GLM coding model (the chat
 // route rewrites the request model via `khalaStrongCodingRequestForAdapter`) and
 // FORCES every failure to be retryable so dispatch always overflows to the
 // proven Fireworks Khala backing if the frontier coding model is unavailable —
 // the strong lane is best-effort, never a hard-fail.
-const toRetryableStrongCodingError = (
-  error: InferenceAdapterError,
-): InferenceAdapterError =>
+const toRetryableStrongCodingError = (error: InferenceAdapterError): InferenceAdapterError =>
   error.retryable
     ? error
     : new InferenceAdapterError({
         adapterId: FIREWORKS_STRONG_CODING_ADAPTER_ID,
-        kind: error.kind ?? 'strong_coding_lane_unavailable',
+        kind: error.kind ?? "strong_coding_lane_unavailable",
         reason: error.reason,
         retryable: true,
-        ...(error.httpStatus === undefined
-          ? {}
-          : { httpStatus: error.httpStatus }),
-      })
+        ...(error.httpStatus === undefined ? {} : { httpStatus: error.httpStatus }),
+      });
 const fireworksStrongCodingAdapter: InferenceProviderAdapter = {
-  complete: request =>
-    fireworksAdapter
-      .complete(request)
-      .pipe(Effect.mapError(toRetryableStrongCodingError)),
+  complete: (request) =>
+    fireworksAdapter.complete(request).pipe(Effect.mapError(toRetryableStrongCodingError)),
   id: FIREWORKS_STRONG_CODING_ADAPTER_ID,
-  stream: request =>
-    fireworksAdapter
-      .stream(request)
-      .pipe(Effect.mapError(toRetryableStrongCodingError)),
+  stream: (request) =>
+    fireworksAdapter.stream(request).pipe(Effect.mapError(toRetryableStrongCodingError)),
   ...(fireworksAdapter.streamSse === undefined
     ? {}
     : {
-        streamSse: request =>
-          fireworksAdapter.streamSse!(request).pipe(
-            Effect.mapError(toRetryableStrongCodingError),
-          ),
+        streamSse: (request) =>
+          fireworksAdapter.streamSse!(request).pipe(Effect.mapError(toRetryableStrongCodingError)),
       }),
-}
-inferenceProviderRegistry.register(fireworksStrongCodingAdapter)
+};
+inferenceProviderRegistry.register(fireworksStrongCodingAdapter);
 
 // Partner passthrough adapters (#5481). Registered from Worker secrets at
 // request time (env is per-request in Workers); `register` replaces by id, so
@@ -11039,79 +10185,74 @@ inferenceProviderRegistry.register(fireworksStrongCodingAdapter)
 // absent the adapter is never registered, and even when registered the route is
 // only reachable with INFERENCE_GATEWAY_ENABLED on. The redacted key never
 // leaves this closure except onto the outbound partner request header.
-const passthroughAdaptersRegistered = new WeakSet<object>()
+const passthroughAdaptersRegistered = new WeakSet<object>();
 
 // Only the partner-secret slice of the Worker env is read here, so we accept a
 // narrow shape rather than the full Cloudflare `Env` (which the zero-debt check
 // keeps off new business surfaces).
 type PassthroughSecretsEnv = Readonly<{
-  ANTHROPIC_API_KEY?: string | undefined
-  ANTHROPIC_BASE_URL?: string | undefined
-  OPENAI_API_KEY?: string | undefined
-  OPENAI_BASE_URL?: string | undefined
-}>
+  ANTHROPIC_API_KEY?: string | undefined;
+  ANTHROPIC_BASE_URL?: string | undefined;
+  OPENAI_API_KEY?: string | undefined;
+  OPENAI_BASE_URL?: string | undefined;
+}>;
 
 const registerPassthroughAdapters = (
   registry: InferenceProviderRegistry,
   env: PassthroughSecretsEnv,
 ): void => {
   if (passthroughAdaptersRegistered.has(env)) {
-    return
+    return;
   }
-  passthroughAdaptersRegistered.add(env)
+  passthroughAdaptersRegistered.add(env);
 
-  const anthropicKey = env.ANTHROPIC_API_KEY?.trim()
-  if (anthropicKey !== undefined && anthropicKey !== '') {
+  const anthropicKey = env.ANTHROPIC_API_KEY?.trim();
+  if (anthropicKey !== undefined && anthropicKey !== "") {
     const config: PassthroughAdapterConfig = {
       apiKey: Redacted.make(anthropicKey),
-      baseUrl: env.ANTHROPIC_BASE_URL?.trim() || 'https://api.anthropic.com',
-      id: 'passthrough-anthropic',
-      wireFormat: 'anthropic',
-    }
-    registry.register(makePassthroughAdapter(config))
+      baseUrl: env.ANTHROPIC_BASE_URL?.trim() || "https://api.anthropic.com",
+      id: "passthrough-anthropic",
+      wireFormat: "anthropic",
+    };
+    registry.register(makePassthroughAdapter(config));
   }
 
-  const openaiKey = env.OPENAI_API_KEY?.trim()
-  if (openaiKey !== undefined && openaiKey !== '') {
+  const openaiKey = env.OPENAI_API_KEY?.trim();
+  if (openaiKey !== undefined && openaiKey !== "") {
     const config: PassthroughAdapterConfig = {
       apiKey: Redacted.make(openaiKey),
-      baseUrl: env.OPENAI_BASE_URL?.trim() || 'https://api.openai.com',
-      id: 'passthrough-openai',
-      wireFormat: 'openai',
-    }
-    registry.register(makePassthroughAdapter(config))
+      baseUrl: env.OPENAI_BASE_URL?.trim() || "https://api.openai.com",
+      id: "passthrough-openai",
+      wireFormat: "openai",
+    };
+    registry.register(makePassthroughAdapter(config));
   }
-}
+};
 
 // Hydralisk GPT-OSS lanes (#6155 + 120B follow-on). Registered only when the
 // presence-derived serving policy arms the specific model, so catalog/quote/chat
 // all agree: an armed 20B L4 host never accidentally advertises 120B.
-const hydraliskAdaptersRegistered = new WeakSet<object>()
+const hydraliskAdaptersRegistered = new WeakSet<object>();
 const hydraliskGlm52PoolRuntimes = new WeakMap<
   object,
   ReturnType<typeof makeHydraliskVllmPoolRuntime>
->()
+>();
 
-type HydraliskServeEnv = OpenAgentsWorkerConfigEnv
+type HydraliskServeEnv = OpenAgentsWorkerConfigEnv;
 
 const registerConfiguredHydraliskAdapter = (
   registry: InferenceProviderRegistry,
   input: Readonly<{
-    adapterId: string
-    baseUrl: string | undefined
-    bearerToken: string | undefined
-    upstreamModel: string
+    adapterId: string;
+    baseUrl: string | undefined;
+    bearerToken: string | undefined;
+    upstreamModel: string;
   }>,
 ): void => {
-  const bearerToken = input.bearerToken?.trim()
-  const baseUrl = input.baseUrl?.trim()
-  if (
-    bearerToken === undefined ||
-    bearerToken === '' ||
-    baseUrl === undefined ||
-    baseUrl === ''
-  ) {
-    return
+  const bearerToken = input.bearerToken?.trim();
+  const baseUrl = input.baseUrl?.trim();
+  if (bearerToken === undefined || bearerToken === "" || baseUrl === undefined || baseUrl === "") {
+    return;
   }
   registry.register(
     makeHydraliskVllmAdapter({
@@ -11120,23 +10261,23 @@ const registerConfiguredHydraliskAdapter = (
       id: input.adapterId,
       upstreamModel: input.upstreamModel,
     }),
-  )
-}
+  );
+};
 
 const registerHydraliskAdapter = (
   registry: InferenceProviderRegistry,
   env: HydraliskServeEnv,
 ): void => {
   if (hydraliskAdaptersRegistered.has(env)) {
-    return
+    return;
   }
-  hydraliskAdaptersRegistered.add(env)
-  const arming = resolveSupplyLaneArming(env)
-  const glm52 = resolveHydraliskGlm52Reap504bArming(env)
+  hydraliskAdaptersRegistered.add(env);
+  const arming = resolveSupplyLaneArming(env);
+  const glm52 = resolveHydraliskGlm52Reap504bArming(env);
   if (glm52.replicas.length > 0) {
     const runtime = makeHydraliskVllmPoolRuntime({
       id: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
-      replicas: glm52.replicas.map(replica => ({
+      replicas: glm52.replicas.map((replica) => ({
         apiKey: Redacted.make(replica.bearerToken),
         baseUrl: replica.baseUrl,
         benchmarkReserved: replica.benchmarkReserved,
@@ -11151,21 +10292,19 @@ const registerHydraliskAdapter = (
       })),
       routingStateOracle: glmPoolHeartbeatRoutingStateOracle,
       upstreamModel: HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
-    })
-    hydraliskGlm52PoolRuntimes.set(env, runtime)
-    registry.register(runtime.adapter)
-  } else if (
-    arming.hydraliskModels?.[HYDRALISK_GLM_52_REAP_504B_MODEL_ID] === true
-  ) {
-    hydraliskGlm52PoolRuntimes.delete(env)
+    });
+    hydraliskGlm52PoolRuntimes.set(env, runtime);
+    registry.register(runtime.adapter);
+  } else if (arming.hydraliskModels?.[HYDRALISK_GLM_52_REAP_504B_MODEL_ID] === true) {
+    hydraliskGlm52PoolRuntimes.delete(env);
     registerConfiguredHydraliskAdapter(registry, {
       adapterId: HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID,
       baseUrl: env.HYDRALISK_GLM_52_REAP_504B_BASE_URL,
       bearerToken: env.HYDRALISK_GLM_52_REAP_504B_BEARER_TOKEN,
       upstreamModel: HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
-    })
+    });
   } else {
-    hydraliskGlm52PoolRuntimes.delete(env)
+    hydraliskGlm52PoolRuntimes.delete(env);
   }
   if (arming.hydraliskModels?.[HYDRALISK_GPT_OSS_20B_MODEL_ID] === true) {
     registerConfiguredHydraliskAdapter(registry, {
@@ -11173,7 +10312,7 @@ const registerHydraliskAdapter = (
       baseUrl: env.HYDRALISK_BASE_URL,
       bearerToken: env.HYDRALISK_BEARER_TOKEN,
       upstreamModel: HYDRALISK_GPT_OSS_20B_MODEL_ID,
-    })
+    });
   }
   if (arming.hydraliskModels?.[HYDRALISK_GPT_OSS_120B_MODEL_ID] === true) {
     registerConfiguredHydraliskAdapter(registry, {
@@ -11181,41 +10320,40 @@ const registerHydraliskAdapter = (
       baseUrl: env.HYDRALISK_GPT_OSS_120B_BASE_URL,
       bearerToken: env.HYDRALISK_GPT_OSS_120B_BEARER_TOKEN,
       upstreamModel: HYDRALISK_GPT_OSS_120B_MODEL_ID,
-    })
+    });
   }
-}
+};
 
-let latestHydraliskGlm52RouteAdmission:
-  HydraliskPoolRouteAdmissionSnapshot | undefined
+let latestHydraliskGlm52RouteAdmission: HydraliskPoolRouteAdmissionSnapshot | undefined;
 
 const hydraliskGlm52RouteAdmissionForEnv = (
   env: HydraliskServeEnv,
 ): HydraliskPoolRouteAdmissionSnapshot | undefined => {
-  const snapshot = hydraliskGlm52PoolRuntimes.get(env)?.routeAdmission()
+  const snapshot = hydraliskGlm52PoolRuntimes.get(env)?.routeAdmission();
   if (snapshot !== undefined) {
-    latestHydraliskGlm52RouteAdmission = snapshot
+    latestHydraliskGlm52RouteAdmission = snapshot;
   }
-  return snapshot
-}
+  return snapshot;
+};
 
-const openRouterAdaptersRegistered = new WeakSet<object>()
+const openRouterAdaptersRegistered = new WeakSet<object>();
 
 type OpenRouterServeEnv = Readonly<{
-  OPENROUTER_API_KEY?: string | undefined
-  OPENROUTER_BASE_URL?: string | undefined
-  OPENROUTER_KHALA_FALLBACK_MODEL?: string | undefined
-}>
+  OPENROUTER_API_KEY?: string | undefined;
+  OPENROUTER_BASE_URL?: string | undefined;
+  OPENROUTER_KHALA_FALLBACK_MODEL?: string | undefined;
+}>;
 
 const registerOpenRouterAdapter = (
   registry: InferenceProviderRegistry,
   env: OpenRouterServeEnv,
 ): void => {
   if (openRouterAdaptersRegistered.has(env)) {
-    return
+    return;
   }
-  openRouterAdaptersRegistered.add(env)
-  const apiKey = env.OPENROUTER_API_KEY?.trim()
-  const baseUrl = env.OPENROUTER_BASE_URL?.trim() || OPENROUTER_DEFAULT_BASE_URL
+  openRouterAdaptersRegistered.add(env);
+  const apiKey = env.OPENROUTER_API_KEY?.trim();
+  const baseUrl = env.OPENROUTER_BASE_URL?.trim() || OPENROUTER_DEFAULT_BASE_URL;
   // OWNER DECISION 2026-07-09: OpenRouter is DROPPED as a platform supply lane
   // and the prod `OPENROUTER_API_KEY` is unset. The adapter is STILL registered
   // (even with no platform key) purely so the BYOK caller-key path keeps working
@@ -11225,7 +10363,7 @@ const registerOpenRouterAdapter = (
   // platform key the constructed `config.apiKey` is empty, but that is never
   // used: no platform Khala plan routes to this adapter anymore (see
   // model-router.ts), so only BYOK requests — which override the key — reach it.
-  const platformKey = apiKey === undefined || apiKey === '' ? '' : apiKey
+  const platformKey = apiKey === undefined || apiKey === "" ? "" : apiKey;
   registry.register(
     makeOpenRouterAdapter({
       apiKey: Redacted.make(platformKey),
@@ -11233,8 +10371,8 @@ const registerOpenRouterAdapter = (
       id: OPENROUTER_KHALA_FALLBACK_ADAPTER_ID,
       upstreamModel: OPENROUTER_KHALA_FALLBACK_MODEL_ID,
     }),
-  )
-}
+  );
+};
 
 // OpenAgents serving-fabric lane (#5483 / Khala M4 #6012 / #6089) — the
 // `openagents-network` adapter wired to a Psionic serve transport. The lane is
@@ -11248,42 +10386,42 @@ const registerOpenRouterAdapter = (
 // dispatch and requires parity + canary + replay + payout-eligibility evidence
 // before paid routing clears. With any piece absent, no adapter is registered,
 // so dispatch skips the lane and overflows to the existing cloud paths.
-type FabricServeEnv = OpenAgentsWorkerConfigEnv
+type FabricServeEnv = OpenAgentsWorkerConfigEnv;
 
 const registerFabricServeAdapter = (
   registry: InferenceProviderRegistry,
   env: FabricServeEnv,
 ): void => {
-  if (!resolveSupplyLaneArming(env)['openagents-network']) {
-    return
+  if (!resolveSupplyLaneArming(env)["openagents-network"]) {
+    return;
   }
-  const transportConfig = pylonFabricHttpTransportConfigFromEnv(env)
+  const transportConfig = pylonFabricHttpTransportConfigFromEnv(env);
   if (transportConfig === undefined) {
-    return
+    return;
   }
-  const transport = makePylonFabricHttpTransport(transportConfig)
+  const transport = makePylonFabricHttpTransport(transportConfig);
   registry.register(
     makeAdmittedOpenAgentsNetworkAdapter({
       admission: () => pylonGatewayAdmissionFromEnv(env, currentEpochMillis()),
       dispatch: dispatchPsionicServe({ transport }),
     }),
-  )
-}
+  );
+};
 
 const makeConfiguredFabricServeAdapter = (env: FabricServeEnv) => {
-  if (!resolveSupplyLaneArming(env)['openagents-network']) {
-    return undefined
+  if (!resolveSupplyLaneArming(env)["openagents-network"]) {
+    return undefined;
   }
-  const transportConfig = pylonFabricHttpTransportConfigFromEnv(env)
+  const transportConfig = pylonFabricHttpTransportConfigFromEnv(env);
   if (transportConfig === undefined) {
-    return undefined
+    return undefined;
   }
-  const transport = makePylonFabricHttpTransport(transportConfig)
+  const transport = makePylonFabricHttpTransport(transportConfig);
   return makeAdmittedOpenAgentsNetworkAdapter({
     admission: () => pylonGatewayAdmissionFromEnv(env, currentEpochMillis()),
     dispatch: dispatchPsionicServe({ transport }),
-  })
-}
+  });
+};
 
 // Per-request env holder for env-dependent inference adapters. A Cloudflare
 // Worker has no env at module scope, so the module-level adapter registry reads
@@ -11293,10 +10431,10 @@ const makeConfiguredFabricServeAdapter = (env: FabricServeEnv) => {
 // Typed as OpenAgentsWorkerConfigEnv (a subset of the full worker env) so this
 // holder reads only the VERTEX_* config fields it needs, not the full
 // Cloudflare binding surface.
-let inferenceAdapterEnv: OpenAgentsWorkerConfigEnv | undefined
+let inferenceAdapterEnv: OpenAgentsWorkerConfigEnv | undefined;
 const setInferenceAdapterEnv = (env: OpenAgentsWorkerConfigEnv): void => {
-  inferenceAdapterEnv = env
-}
+  inferenceAdapterEnv = env;
+};
 
 // Onboarding program inference client (EPIC #6123, #6126). Builds an
 // `OnboardingInferenceClient` that calls the Khala orchestrator
@@ -11308,31 +10446,23 @@ const setInferenceAdapterEnv = (env: OpenAgentsWorkerConfigEnv): void => {
 // configured (e.g. no provider secrets / inert env) the dispatch fails with a
 // typed adapter error, which the onboarding route maps to a stable
 // inference_unavailable response.
-type OnboardingInferenceEnv = OpenAgentsWorkerConfigEnv
-const makeOnboardingInferenceClient = (
-  env: OnboardingInferenceEnv,
-): OnboardingInferenceClient => {
-  registerPassthroughAdapters(inferenceProviderRegistry, env)
-  registerHydraliskAdapter(inferenceProviderRegistry, env)
-  registerOpenRouterAdapter(inferenceProviderRegistry, env)
-  registerFabricServeAdapter(inferenceProviderRegistry, env)
-  setInferenceAdapterEnv(env)
-  const laneArming = resolveSupplyLaneArming(env)
+type OnboardingInferenceEnv = OpenAgentsWorkerConfigEnv;
+const makeOnboardingInferenceClient = (env: OnboardingInferenceEnv): OnboardingInferenceClient => {
+  registerPassthroughAdapters(inferenceProviderRegistry, env);
+  registerHydraliskAdapter(inferenceProviderRegistry, env);
+  registerOpenRouterAdapter(inferenceProviderRegistry, env);
+  registerFabricServeAdapter(inferenceProviderRegistry, env);
+  setInferenceAdapterEnv(env);
+  const laneArming = resolveSupplyLaneArming(env);
   return (request: InferenceRequest) =>
-    dispatchWithOverflow<InferenceResult>(
-      request,
-      (adapter, req) => adapter.complete(req),
-      {
-        plan: makeKhalaBackedAdapterPlan(laneArming.khalaBacking),
-        registry: inferenceProviderRegistry,
-      },
-    ).pipe(
-      Effect.map(result => result.content),
-      Effect.mapError(
-        error => new OnboardingInferenceError({ reason: error.reason }),
-      ),
-    )
-}
+    dispatchWithOverflow<InferenceResult>(request, (adapter, req) => adapter.complete(req), {
+      plan: makeKhalaBackedAdapterPlan(laneArming.khalaBacking),
+      registry: inferenceProviderRegistry,
+    }).pipe(
+      Effect.map((result) => result.content),
+      Effect.mapError((error) => new OnboardingInferenceError({ reason: error.reason })),
+    );
+};
 
 // STREAMING onboarding client (issue #6123 UI follow-up; #6154 incremental).
 // The same provider-adapter registry + overflow dispatch as the buffered client,
@@ -11350,15 +10480,13 @@ const makeOnboardingInferenceClient = (
 // frames stay the single source of truth (receipt-first, matching the gateway).
 // The dispatch operation + source shaping live in `onboarding-stream-source.ts`
 // so the prefer-streamSse / fall-back-to-stream behavior is unit-testable.
-const makeOnboardingStreamClient = (
-  env: OnboardingInferenceEnv,
-): OnboardingStreamClient => {
-  registerPassthroughAdapters(inferenceProviderRegistry, env)
-  registerHydraliskAdapter(inferenceProviderRegistry, env)
-  registerOpenRouterAdapter(inferenceProviderRegistry, env)
-  registerFabricServeAdapter(inferenceProviderRegistry, env)
-  setInferenceAdapterEnv(env)
-  const laneArming = resolveSupplyLaneArming(env)
+const makeOnboardingStreamClient = (env: OnboardingInferenceEnv): OnboardingStreamClient => {
+  registerPassthroughAdapters(inferenceProviderRegistry, env);
+  registerHydraliskAdapter(inferenceProviderRegistry, env);
+  registerOpenRouterAdapter(inferenceProviderRegistry, env);
+  registerFabricServeAdapter(inferenceProviderRegistry, env);
+  setInferenceAdapterEnv(env);
+  const laneArming = resolveSupplyLaneArming(env);
   return (request: InferenceRequest) =>
     dispatchWithOverflowWithMetadata<OnboardingStreamSource>(
       request,
@@ -11368,7 +10496,7 @@ const makeOnboardingStreamClient = (
         registry: inferenceProviderRegistry,
       },
     ).pipe(
-      Effect.map(result => ({
+      Effect.map((result) => ({
         ...result.value,
         metadata: () => ({
           ...(result.value.metadata?.() ?? {}),
@@ -11378,11 +10506,9 @@ const makeOnboardingStreamClient = (
           servedAdapterId: result.route.servedAdapterId,
         }),
       })),
-      Effect.mapError(
-        error => new OnboardingInferenceError({ reason: error.reason }),
-      ),
-    )
-}
+      Effect.mapError((error) => new OnboardingInferenceError({ reason: error.reason })),
+    );
+};
 
 // GENERIC PUBLIC KHALA CHAT stream client (the `/khala` chat demo). Identical
 // wiring to `makeOnboardingStreamClient`: the SAME provider-adapter registry +
@@ -11396,29 +10522,27 @@ const khalaPublicChatRequestForAdapter = (
   adapterId: string,
 ): InferenceRequest => {
   if (normalizeKhalaModelId(request.model) !== KHALA_MODEL_ID) {
-    return request
+    return request;
   }
   switch (adapterId) {
     case VERTEX_GEMINI_ADAPTER_ID:
-      return { ...request, model: DEFAULT_GEMINI_MODEL_ID }
+      return { ...request, model: DEFAULT_GEMINI_MODEL_ID };
     case FIREWORKS_ADAPTER_ID:
-      return { ...request, model: KHALA_FIREWORKS_BACKING_MODEL_ID }
+      return { ...request, model: KHALA_FIREWORKS_BACKING_MODEL_ID };
     case HYDRALISK_GLM_52_REAP_504B_ADAPTER_ID:
-      return { ...request, model: HYDRALISK_GLM_52_REAP_504B_MODEL_ID }
+      return { ...request, model: HYDRALISK_GLM_52_REAP_504B_MODEL_ID };
     default:
-      return request
+      return request;
   }
-}
+};
 
-const makeKhalaChatStreamClient = (
-  env: OnboardingInferenceEnv,
-): KhalaChatStreamClient => {
-  registerPassthroughAdapters(inferenceProviderRegistry, env)
-  registerHydraliskAdapter(inferenceProviderRegistry, env)
-  registerOpenRouterAdapter(inferenceProviderRegistry, env)
-  registerFabricServeAdapter(inferenceProviderRegistry, env)
-  setInferenceAdapterEnv(env)
-  const laneArming = resolveSupplyLaneArming(env)
+const makeKhalaChatStreamClient = (env: OnboardingInferenceEnv): KhalaChatStreamClient => {
+  registerPassthroughAdapters(inferenceProviderRegistry, env);
+  registerHydraliskAdapter(inferenceProviderRegistry, env);
+  registerOpenRouterAdapter(inferenceProviderRegistry, env);
+  registerFabricServeAdapter(inferenceProviderRegistry, env);
+  setInferenceAdapterEnv(env);
+  const laneArming = resolveSupplyLaneArming(env);
   return (request: InferenceRequest) =>
     dispatchWithOverflowWithMetadata<OnboardingStreamSource>(
       request,
@@ -11429,7 +10553,7 @@ const makeKhalaChatStreamClient = (
         requestForAdapter: khalaPublicChatRequestForAdapter,
       },
     ).pipe(
-      Effect.map(result => ({
+      Effect.map((result) => ({
         ...result.value,
         metadata: () => ({
           ...(result.value.metadata?.() ?? {}),
@@ -11439,42 +10563,34 @@ const makeKhalaChatStreamClient = (
           servedAdapterId: result.route.servedAdapterId,
         }),
       })),
-      Effect.mapError(
-        error => new OnboardingInferenceError({ reason: error.reason }),
-      ),
-    )
-}
+      Effect.mapError((error) => new OnboardingInferenceError({ reason: error.reason })),
+    );
+};
 
 const makeArtanisResponderKhalaClient = (
   env: OnboardingInferenceEnv &
     Pick<
       WorkerBindings,
-      | 'OPENAGENTS_DB'
-      | 'KHALA_SYNC_DB'
-      | 'KHALA_SYNC_LIVE_HUB_URL'
-      | 'KHALA_SYNC_LIVE_HUB_TOKEN'
+      "OPENAGENTS_DB" | "KHALA_SYNC_DB" | "KHALA_SYNC_LIVE_HUB_URL" | "KHALA_SYNC_LIVE_HUB_TOKEN"
     >,
 ): ArtanisResponderKhalaClient => {
-  registerPassthroughAdapters(inferenceProviderRegistry, env)
-  registerHydraliskAdapter(inferenceProviderRegistry, env)
-  registerOpenRouterAdapter(inferenceProviderRegistry, env)
-  registerFabricServeAdapter(inferenceProviderRegistry, env)
-  setInferenceAdapterEnv(env)
-  const laneArming = resolveSupplyLaneArming(env)
-  const recordTokensServed = makeD1ServedTokensRecorder(
-    openAgentsDatabase(env),
-    {
-      // KS-6.3 (#8304): move the scope.public.tokens-served projection on
-      // every fresh served-tokens row (fail-soft, exact-once per row).
-      onIngestedEvent: makeTokensServedProjectionObserver(env),
-      // KS-8.2 (#8308): Postgres dual-write mirror (fail-soft).
-      ...tokenLedgerWriteStoreOptionForEnv(env),
-    },
-  )
+  registerPassthroughAdapters(inferenceProviderRegistry, env);
+  registerHydraliskAdapter(inferenceProviderRegistry, env);
+  registerOpenRouterAdapter(inferenceProviderRegistry, env);
+  registerFabricServeAdapter(inferenceProviderRegistry, env);
+  setInferenceAdapterEnv(env);
+  const laneArming = resolveSupplyLaneArming(env);
+  const recordTokensServed = makeD1ServedTokensRecorder(openAgentsDatabase(env), {
+    // KS-6.3 (#8304): move the scope.public.tokens-served projection on
+    // every fresh served-tokens row (fail-soft, exact-once per row).
+    onIngestedEvent: makeTokensServedProjectionObserver(env),
+    // KS-8.2 (#8308): Postgres dual-write mirror (fail-soft).
+    ...tokenLedgerWriteStoreOptionForEnv(env),
+  });
 
   return (request: InferenceRequest) =>
     Effect.gen(function* () {
-      const responseId = randomUuid()
+      const responseId = randomUuid();
       const result = yield* dispatchWithOverflowWithMetadata<InferenceResult>(
         request,
         (adapter, req) => adapter.complete(req),
@@ -11488,8 +10604,8 @@ const makeArtanisResponderKhalaClient = (
           // this mapping every lane failed and the operator channel 503'd.
           requestForAdapter: khalaRequestForAdapter,
         },
-      )
-      const served = result.value
+      );
+      const served = result.value;
       // FAIL-SOFT METERING (issue #6363). The Khala dispatch already produced
       // the served reply; recording the served-token ledger row + publishing the
       // live-counter delta is a downstream PROJECTION and must NEVER fail the
@@ -11505,26 +10621,26 @@ const makeArtanisResponderKhalaClient = (
         adapterId: result.route.servedAdapterId,
         requestAttribution: {
           demandClient: ARTANIS_RESPONDER_DEMAND_CLIENT,
-          demandKind: 'internal',
+          demandKind: "internal",
           demandSource: ARTANIS_RESPONDER_DEMAND_SOURCE,
         },
         requestId: responseId,
         requestMetrics: {
           fallbackReason: result.route.fallbackReason,
-          requestClass: 'async_job',
+          requestClass: "async_job",
           supplyLane: result.route.servedAdapterId,
         },
         requestedModel: request.model,
         servedModel: served.servedModel,
         streamed: false,
         usage: served.usage,
-      })
-      return served
-    })
-}
+      });
+      return served;
+    });
+};
 
 class KhalaChatSessionLookupError extends S.TaggedErrorClass<KhalaChatSessionLookupError>()(
-  'KhalaChatSessionLookupError',
+  "KhalaChatSessionLookupError",
   {
     reason: S.String,
   },
@@ -11533,30 +10649,30 @@ class KhalaChatSessionLookupError extends S.TaggedErrorClass<KhalaChatSessionLoo
 const khalaChatRoutes = makeKhalaChatRoutes({
   loadPylonContext: ({ ctx, env, request }) =>
     Effect.gen(function* () {
-      const workerEnv = env as Env & WorkerBindings
-      const pylonStore = makePylonApiStoreForEnv(workerEnv)
-      const publicContext = yield* loadKhalaChatPylonContext(pylonStore)
+      const workerEnv = env as Env & WorkerBindings;
+      const pylonStore = makePylonApiStoreForEnv(workerEnv);
+      const publicContext = yield* loadKhalaChatPylonContext(pylonStore);
 
       if (ctx === undefined) {
         return {
-          mode: 'anonymous_public' as const,
+          mode: "anonymous_public" as const,
           publicContext,
-        }
+        };
       }
 
       const session = yield* Effect.tryPromise({
-        catch: error =>
+        catch: (error) =>
           new KhalaChatSessionLookupError({
             reason: error instanceof Error ? error.message : String(error),
           }),
         try: () => verifySession(request, workerEnv, ctx),
-      }).pipe(Effect.catch(() => Effect.void))
+      }).pipe(Effect.catch(() => Effect.void));
 
       if (session === undefined) {
         return {
-          mode: 'anonymous_public' as const,
+          mode: "anonymous_public" as const,
           publicContext,
-        }
+        };
       }
 
       const accountContext = yield* loadKhalaChatAccountPylonContext(
@@ -11565,18 +10681,17 @@ const khalaChatRoutes = makeKhalaChatRoutes({
           pylonStore,
         },
         session.user.userId,
-      ).pipe(Effect.catch(() => Effect.void))
+      ).pipe(Effect.catch(() => Effect.void));
 
       return {
         ...(accountContext === undefined ? {} : { accountContext }),
-        mode: 'authenticated_account' as const,
+        mode: "authenticated_account" as const,
         publicContext,
-      }
+      };
     }),
-  makeStreamClient: env =>
-    makeKhalaChatStreamClient(env as OnboardingInferenceEnv),
+  makeStreamClient: (env) => makeKhalaChatStreamClient(env as OnboardingInferenceEnv),
   recordServedTokens: recordPublicKhalaChatServedTokens,
-})
+});
 
 // CFG-7 (#8522): event-ledger ingest rides the oa-infra Postgres JobQueue
 // (single-INSERT producer seam) instead of the retired Cloudflare Queue.
@@ -11585,17 +10700,17 @@ const khalaChatRoutes = makeKhalaChatRoutes({
 const makeEventLedgerIngestEnqueue = (
   env: OaJobQueueProducerEnv,
 ): ((message: EventLedgerIngestQueueMessage) => Promise<void>) | undefined => {
-  const enqueue = makeOaJobEnqueueForEnv(env)
+  const enqueue = makeOaJobEnqueueForEnv(env);
 
   return enqueue === undefined
     ? undefined
-    : async message => {
+    : async (message) => {
         await enqueue(
           OA_JOB_TOPIC_EVENT_LEDGER_INGEST,
           JSON.stringify(S.encodeSync(EventLedgerIngestQueueMessage)(message)),
-        )
-      }
-}
+        );
+      };
+};
 
 // #5480 Vertex Anthropic (Claude lane) — registered exactly once. INERT until
 // the VERTEX_SA_KEY Worker secret is present: with no key, `tokenProvider` is
@@ -11610,28 +10725,24 @@ inferenceProviderRegistry.register(
     // VERTEX_PROJECT_ID / VERTEX_LOCATION env overrides are reserved for a
     // follow-up; the module-level registry is constructed once, before any env
     // is captured, so it pins these defaults.
-    location: 'global',
-    project: 'openagentsgemini',
+    location: "global",
+    project: "openagentsgemini",
     resolveModelId: undefined,
     tokenProvider: () => {
-      const env = inferenceAdapterEnv
-      const provider =
-        env === undefined
-          ? undefined
-          : tokenProviderFromSecret(env.VERTEX_SA_KEY)
+      const env = inferenceAdapterEnv;
+      const provider = env === undefined ? undefined : tokenProviderFromSecret(env.VERTEX_SA_KEY);
       return provider === undefined
         ? Effect.fail(
             new InferenceAdapterError({
               adapterId: VERTEX_ANTHROPIC_ADAPTER_ID,
-              reason:
-                'Vertex Anthropic adapter is not configured (missing VERTEX_SA_KEY).',
+              reason: "Vertex Anthropic adapter is not configured (missing VERTEX_SA_KEY).",
               retryable: false,
             }),
           )
-        : provider()
+        : provider();
     },
   }),
-)
+);
 
 // Vertex Gemini (Google's own model) — the default/free-tier lane (Gemini 3.5
 // Flash). Registered exactly once, sharing the SAME VERTEX_SA_KEY token path as
@@ -11640,28 +10751,24 @@ inferenceProviderRegistry.register(
 // INFERENCE_GATEWAY_ENABLED. Project/location pin the same lane defaults.
 inferenceProviderRegistry.register(
   makeVertexGeminiAdapter({
-    location: 'global',
-    project: 'openagentsgemini',
+    location: "global",
+    project: "openagentsgemini",
     resolveModelId: undefined,
     tokenProvider: () => {
-      const env = inferenceAdapterEnv
-      const provider =
-        env === undefined
-          ? undefined
-          : tokenProviderFromSecret(env.VERTEX_SA_KEY)
+      const env = inferenceAdapterEnv;
+      const provider = env === undefined ? undefined : tokenProviderFromSecret(env.VERTEX_SA_KEY);
       return provider === undefined
         ? Effect.fail(
             new InferenceAdapterError({
               adapterId: VERTEX_GEMINI_ADAPTER_ID,
-              reason:
-                'Vertex Gemini adapter is not configured (missing VERTEX_SA_KEY).',
+              reason: "Vertex Gemini adapter is not configured (missing VERTEX_SA_KEY).",
               retryable: false,
             }),
           )
-        : provider()
+        : provider();
     },
   }),
-)
+);
 
 // Gemma 4 (Google's open Gemma model on the Generative Language API) — the
 // PRIMARY conversational Khala lane on our own gcloud (owner decision
@@ -11677,46 +10784,44 @@ inferenceProviderRegistry.register(
 inferenceProviderRegistry.register(
   makeGemma4Adapter({
     apiKey: () => {
-      const env = inferenceAdapterEnv
-      const raw = env?.GEMINI_API_KEY?.trim()
-      return raw === undefined || raw === '' ? undefined : Redacted.make(raw)
+      const env = inferenceAdapterEnv;
+      const raw = env?.GEMINI_API_KEY?.trim();
+      return raw === undefined || raw === "" ? undefined : Redacted.make(raw);
     },
   }),
-)
+);
 
 const dispatchFailureTelemetry = makeBoundedDispatchFailureTelemetry({
   maxEvents: 256,
   nowMs: currentEpochMillis,
   windowMs: 15 * 60 * 1_000,
-})
+});
 
 const glmOwnCapacityFailover = makeGlmOwnCapacityFailover({
   failureThreshold: 3,
-  isRecovered: () =>
-    latestHydraliskGlm52RouteAdmission?.internalStressHeadroomAvailable ===
-    true,
-  onAlert: event => {
-    logWorkerRouteWarning('glm_own_capacity_failover_alert', {
+  isRecovered: () => latestHydraliskGlm52RouteAdmission?.internalStressHeadroomAvailable === true,
+  onAlert: (event) => {
+    logWorkerRouteWarning("glm_own_capacity_failover_alert", {
       adapterId: event.adapterId,
       consecutiveFailures: event.consecutiveFailures,
       message: event.message,
       reason: event.reason,
       threshold: event.threshold,
       type: event.type,
-    })
+    });
   },
-})
+});
 
 const optionalCommaSeparatedValues = (
   value: string | undefined,
 ): ReadonlyArray<string> | undefined => {
   const values = value
-    ?.split(',')
-    .map(part => part.trim())
-    .filter(part => part !== '')
+    ?.split(",")
+    .map((part) => part.trim())
+    .filter((part) => part !== "");
 
-  return values === undefined || values.length === 0 ? undefined : values
-}
+  return values === undefined || values.length === 0 ? undefined : values;
+};
 
 // FA-RUN-05 (#8981): the FullAutoRun mobile projection route needs only "is
 // this a signed-in owner", never the Sarah relationship-mode/policy layer --
@@ -11725,33 +10830,33 @@ const optionalCommaSeparatedValues = (
 // authenticated owner's own userId.
 const fullAutoRunRoutes = makeFullAutoRunRoutes<Env>({
   authenticateOwner: async (request, env, ctx) => {
-    const actor = await authenticateRequestActor(request, env, ctx)
-    if (actor === undefined || actor.kind !== 'human') {
-      return undefined
+    const actor = await authenticateRequestActor(request, env, ctx);
+    if (actor === undefined || actor.kind !== "human") {
+      return undefined;
     }
-    const tokens = actor.tokens
+    const tokens = actor.tokens;
     return {
       userId: actor.user.userId,
       ...(tokens === undefined
         ? {}
         : {
             decorateResponseHeaders: (headers: Headers) => {
-              appendSessionCookies(headers, tokens)
+              appendSessionCookies(headers, tokens);
             },
           }),
-    }
+    };
   },
-})
+});
 
 const sarahOwnerRoutes = makeSarahOwnerRoutes<Env>({
   authenticateOwner: async (request, env, ctx) => {
-    const actor = await authenticateRequestActor(request, env, ctx)
+    const actor = await authenticateRequestActor(request, env, ctx);
     if (
       actor === undefined ||
-      actor.kind !== 'human' ||
+      actor.kind !== "human" ||
       !isOpenAgentsAdminEmail(actor.user.email)
     ) {
-      return undefined
+      return undefined;
     }
     return {
       userId: actor.user.userId,
@@ -11759,112 +10864,111 @@ const sarahOwnerRoutes = makeSarahOwnerRoutes<Env>({
         ? {}
         : {
             decorateResponseHeaders: (headers: Headers) => {
-              appendSessionCookies(headers, actor.tokens!)
+              appendSessionCookies(headers, actor.tokens!);
             },
           }),
-    }
+    };
   },
-})
+});
 
 const managedSandboxDesktopRoutes = makeManagedSandboxDesktopRoutes<Env>({
   authenticateOwner: async (request, env, ctx) => {
-    const actor = await authenticateRequestActor(request, env, ctx)
-    if (actor === undefined || actor.kind !== 'human') return undefined
+    const actor = await authenticateRequestActor(request, env, ctx);
+    if (actor === undefined || actor.kind !== "human") return undefined;
     return {
       userId: actor.user.userId,
       ...(actor.tokens === undefined
         ? {}
         : {
             decorateResponseHeaders: (headers: Headers) => {
-              appendSessionCookies(headers, actor.tokens!)
+              appendSessionCookies(headers, actor.tokens!);
             },
           }),
-    }
+    };
   },
-  enabled: env =>
+  enabled: (env) =>
     isManagedSandboxBrokerEnabled(env.MANAGED_SANDBOX_BROKER_ENABLED) &&
     isManagedSandboxRuntimeConfigured(env),
   policy: managedSandboxBoxV1PolicyForEnv,
   store: managedSandboxBoxV1StoreForEnv,
   runtime: managedSandboxBoxV1RuntimeForEnv,
-})
+});
 
 const managedSandboxPhase2Routes = makeManagedSandboxPhase2Routes<Env>({
   authenticateOwner: async (request, env, ctx) => {
-    const actor = await authenticateRequestActor(request, env, ctx)
-    if (actor === undefined || actor.kind !== 'human') return undefined
+    const actor = await authenticateRequestActor(request, env, ctx);
+    if (actor === undefined || actor.kind !== "human") return undefined;
     return {
       userId: actor.user.userId,
       ...(actor.tokens === undefined
         ? {}
         : {
             decorateResponseHeaders: (headers: Headers) => {
-              appendSessionCookies(headers, actor.tokens!)
+              appendSessionCookies(headers, actor.tokens!);
             },
           }),
-    }
+    };
   },
-  enabled: env =>
+  enabled: (env) =>
     isManagedSandboxPhase2Enabled(env.MANAGED_SANDBOX_PHASE2_ENABLED) &&
     isManagedSandboxPhase2Configured(env),
   execute: executeManagedSandboxPhase2ForEnv,
-})
+});
 
-const managedSandboxPrivatePreviewRoutes =
-  makeManagedSandboxPrivatePreviewRoutes<Env>({
-    authenticateAudience: async (request, env, ctx) => {
-      const actor = await authenticateRequestActor(request, env, ctx)
-      if (actor === undefined || actor.kind !== 'human') return undefined
-      return {
-        userId: actor.user.userId,
-        ...(actor.tokens === undefined
-          ? {}
-          : {
-              decorateResponseHeaders: (headers: Headers) => {
-                appendSessionCookies(headers, actor.tokens!)
-              },
-            }),
-      }
-    },
-    enabled: env =>
-      isManagedSandboxPhase2Enabled(env.MANAGED_SANDBOX_PHASE2_ENABLED) &&
-      isManagedSandboxPhase2Configured(env),
-    readCapability: readManagedSandboxPrivateIngressForAudience,
-    usePreview: useManagedSandboxPrivatePreview,
-  })
-
-const managedSandboxSupervisionRoutes = makeManagedSandboxSupervisionRoutes<Env>({
-  authenticateOwner: async (request, env, ctx) => {
-    const actor = await authenticateRequestActor(request, env, ctx)
-    if (actor === undefined || actor.kind !== 'human') return undefined
+const managedSandboxPrivatePreviewRoutes = makeManagedSandboxPrivatePreviewRoutes<Env>({
+  authenticateAudience: async (request, env, ctx) => {
+    const actor = await authenticateRequestActor(request, env, ctx);
+    if (actor === undefined || actor.kind !== "human") return undefined;
     return {
       userId: actor.user.userId,
       ...(actor.tokens === undefined
         ? {}
         : {
             decorateResponseHeaders: (headers: Headers) => {
-              appendSessionCookies(headers, actor.tokens!)
+              appendSessionCookies(headers, actor.tokens!);
             },
           }),
-    }
+    };
   },
-  enabled: env =>
+  enabled: (env) =>
+    isManagedSandboxPhase2Enabled(env.MANAGED_SANDBOX_PHASE2_ENABLED) &&
+    isManagedSandboxPhase2Configured(env),
+  readCapability: readManagedSandboxPrivateIngressForAudience,
+  usePreview: useManagedSandboxPrivatePreview,
+});
+
+const managedSandboxSupervisionRoutes = makeManagedSandboxSupervisionRoutes<Env>({
+  authenticateOwner: async (request, env, ctx) => {
+    const actor = await authenticateRequestActor(request, env, ctx);
+    if (actor === undefined || actor.kind !== "human") return undefined;
+    return {
+      userId: actor.user.userId,
+      ...(actor.tokens === undefined
+        ? {}
+        : {
+            decorateResponseHeaders: (headers: Headers) => {
+              appendSessionCookies(headers, actor.tokens!);
+            },
+          }),
+    };
+  },
+  enabled: (env) =>
     isManagedSandboxBrokerEnabled(env.MANAGED_SANDBOX_BROKER_ENABLED) &&
     isManagedSandboxRuntimeConfigured(env),
   policy: managedSandboxBoxV1PolicyForEnv,
   store: managedSandboxBoxV1StoreForEnv,
   runtime: managedSandboxBoxV1RuntimeForEnv,
-})
+});
 
 const sarahSpeechRoutes = makeSarahSpeechRoutes<Env>({
   authenticateOwner: async (request, env, ctx) => {
-    const actor = await authenticateRequestActor(request, env, ctx)
+    const actor = await authenticateRequestActor(request, env, ctx);
     if (
       actor === undefined ||
-      actor.kind !== 'human' ||
+      actor.kind !== "human" ||
       !isOpenAgentsAdminEmail(actor.user.email)
     ) {
-      return undefined
+      return undefined;
     }
     return {
       userId: actor.user.userId,
@@ -11872,43 +10976,43 @@ const sarahSpeechRoutes = makeSarahSpeechRoutes<Env>({
         ? {}
         : {
             decorateResponseHeaders: (headers: Headers) => {
-              appendSessionCookies(headers, actor.tokens!)
+              appendSessionCookies(headers, actor.tokens!);
             },
           }),
-    }
+    };
   },
-})
+});
 
 // MOB-FA-02 (#8994): the sibling Pause/Resume/Stop control-intent route --
 // same "is this a signed-in owner" authentication as the projection route
 // above; every query stays scoped to the authenticated owner's own userId.
 const fullAutoRunControlRoutes = makeFullAutoRunControlRoutes<Env>({
   authenticateOwner: async (request, env, ctx) => {
-    const actor = await authenticateRequestActor(request, env, ctx)
-    if (actor === undefined || actor.kind !== 'human') {
-      return undefined
+    const actor = await authenticateRequestActor(request, env, ctx);
+    if (actor === undefined || actor.kind !== "human") {
+      return undefined;
     }
-    const tokens = actor.tokens
+    const tokens = actor.tokens;
     return {
       userId: actor.user.userId,
       ...(tokens === undefined
         ? {}
         : {
             decorateResponseHeaders: (headers: Headers) => {
-              appendSessionCookies(headers, tokens)
+              appendSessionCookies(headers, tokens);
             },
           }),
-    }
+    };
   },
-})
+});
 
 const sarahFleetRunRoutes = makeSarahFleetRunRoutes<Env>({
   authenticateOwner: async (request, env, ctx) => {
-    const actor = await authenticateRequestActor(request, env, ctx)
-    if (actor === undefined || actor.kind !== 'human') {
-      return undefined
+    const actor = await authenticateRequestActor(request, env, ctx);
+    if (actor === undefined || actor.kind !== "human") {
+      return undefined;
     }
-    const tokens = actor.tokens
+    const tokens = actor.tokens;
     return {
       userId: actor.user.userId,
       email: actor.user.email,
@@ -11916,154 +11020,121 @@ const sarahFleetRunRoutes = makeSarahFleetRunRoutes<Env>({
         ? {}
         : {
             decorateResponseHeaders: (headers: Headers) => {
-              appendSessionCookies(headers, tokens)
+              appendSessionCookies(headers, tokens);
             },
           }),
-    }
+    };
   },
   resolveRelationshipMode: async (owner, env) => {
     if (isOpenAgentsAdminEmail(owner.email)) {
-      return 'administrator'
+      return "administrator";
     }
     const teams = await readTeamsForUser(
       openAgentsDatabase(env),
       identityDbForEnv(env),
       owner.userId,
-    )
+    );
     const isCoreOperator = teams.some(
-      team =>
-        team.id === 'team_openagents_core' ||
-        team.slug === 'openagents-core-team' ||
-        team.name === 'OpenAgents Core Team',
-    )
-    return isCoreOperator ? 'operator' : 'customer'
+      (team) =>
+        team.id === "team_openagents_core" ||
+        team.slug === "openagents-core-team" ||
+        team.name === "OpenAgents Core Team",
+    );
+    return isCoreOperator ? "operator" : "customer";
   },
-  bindingForEnv: env => env.KHALA_SYNC_DB,
-})
+  bindingForEnv: (env) => env.KHALA_SYNC_DB,
+});
 
 const RetiredCapabilityRoutePattern =
-  /(?:^|[\/-])(?:adjutant|balances?|billing|checkout|credits?|markets?|marketplace|payments?|payouts?|settled|settlements?|sites?|tips?|treasury|wallets?|work-requests)(?:[\/-]|$)|paid-privacy|l402/i
+  /(?:^|[\/-])(?:adjutant|balances?|billing|checkout|credits?|markets?|marketplace|payments?|payouts?|settled|settlements?|sites?|tips?|treasury|wallets?|work-requests)(?:[\/-]|$)|paid-privacy|l402/i;
 
 const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
   {
-    path: '/',
-    handler: (request, env, ctx) =>
-      Effect.promise(() => handleHomePage(request, env, ctx)),
+    path: "/",
+    handler: (request, env, ctx) => Effect.promise(() => handleHomePage(request, env, ctx)),
   },
   {
-    path: '/api/public/home',
-    handler: request => handlePublicHomeApi(request),
+    path: "/api/public/home",
+    handler: (request) => handlePublicHomeApi(request),
   },
   {
     path: PublicProductPromisesEndpoint,
-    handler: request =>
-      request.method !== 'GET'
-        ? Effect.succeed(methodNotAllowed(['GET']))
+    handler: (request) =>
+      request.method !== "GET"
+        ? Effect.succeed(methodNotAllowed(["GET"]))
         : Effect.succeed(noStoreJsonResponse(publicProductPromisesDocument())),
   },
   {
-    path: '/api/khala/feedback',
+    path: "/api/khala/feedback",
     handler: (request, env) =>
       handleKhalaFeedbackSubmit(request, {
-        store: makeD1KhalaFeedbackStore(
-          khalaCodeProductStateDatabaseForEnv(env),
-        ),
+        store: makeD1KhalaFeedbackStore(khalaCodeProductStateDatabaseForEnv(env)),
       }),
   },
   {
-    path: '/api/khala/tokens',
+    path: "/api/khala/tokens",
     handler: (request, env) => handlePublicKhalaTokensServedApi(request, env),
   },
   {
-    path: '/api/operator/khala/feedback',
+    path: "/api/operator/khala/feedback",
     handler: (request, env) =>
       handleOperatorKhalaFeedback(request, {
-        requireAdminApiToken: adminRequest =>
-          requireAdminApiToken(adminRequest, env),
-        store: makeD1KhalaFeedbackStore(
-          khalaCodeProductStateDatabaseForEnv(env),
-        ),
+        requireAdminApiToken: (adminRequest) => requireAdminApiToken(adminRequest, env),
+        store: makeD1KhalaFeedbackStore(khalaCodeProductStateDatabaseForEnv(env)),
       }),
   },
   {
-    path: '/api/operator/khala/trace-review',
+    path: "/api/operator/khala/trace-review",
     handler: (request, env) =>
       handleOperatorKhalaTraceReview(request, {
-        requireAdminApiToken: adminRequest =>
-          requireAdminApiToken(adminRequest, env),
+        requireAdminApiToken: (adminRequest) => requireAdminApiToken(adminRequest, env),
         store: makeD1KhalaTraceReviewStore(openAgentsDatabase(env)),
       }),
   },
   {
-    path: '/api/operator/rlm/traces',
+    path: "/api/operator/rlm/traces",
     handler: (request, env) =>
       handleOperatorRlmTraces(request, {
-        requireAdminApiToken: adminRequest =>
-          requireAdminApiToken(adminRequest, env),
+        requireAdminApiToken: (adminRequest) => requireAdminApiToken(adminRequest, env),
         store: makeD1OperatorRlmTraceStore(openAgentsDatabase(env)),
       }),
   },
   {
-    path: '/api/operator/khala/unsupported-requests',
+    path: "/api/operator/khala/unsupported-requests",
     handler: (request, env) =>
       handleOperatorKhalaUnsupportedRequests(request, {
-        requireAdminApiToken: adminRequest =>
-          requireAdminApiToken(adminRequest, env),
-        store: makeD1KhalaUnsupportedRequestStore(
-          khalaCodeProductStateDatabaseForEnv(env),
-        ),
+        requireAdminApiToken: (adminRequest) => requireAdminApiToken(adminRequest, env),
+        store: makeD1KhalaUnsupportedRequestStore(khalaCodeProductStateDatabaseForEnv(env)),
       }),
   },
   {
-    path: '/api/public/business-signup',
+    path: "/api/public/business-signup",
     handler: (request, env) =>
-      handleBusinessSignupApi(
-        request,
-        businessDomainDatabaseForEnv(env),
-        undefined,
-        {
-          appOrigin: getAppOrigin(env),
-          getResendEmailConfig: () => getResendEmailConfig(env),
-          sendInviteEmailWithLedger: (config, input) =>
-            sendPrivateWorkspaceInviteEmailWithLedger(
-              openAgentsDatabase(env),
-              config,
-              input,
-            ),
-        },
-      ),
+      handleBusinessSignupApi(request, businessDomainDatabaseForEnv(env), undefined, {
+        appOrigin: getAppOrigin(env),
+        getResendEmailConfig: () => getResendEmailConfig(env),
+        sendInviteEmailWithLedger: (config, input) =>
+          sendPrivateWorkspaceInviteEmailWithLedger(openAgentsDatabase(env), config, input),
+      }),
   },
   {
-    path: '/api/public/business/funnel-dashboard',
+    path: "/api/public/business/funnel-dashboard",
     handler: (request, env) =>
-      handlePublicBusinessFunnelDashboardApi(
-        request,
-        businessDomainDatabaseForEnv(env),
-      ),
+      handlePublicBusinessFunnelDashboardApi(request, businessDomainDatabaseForEnv(env)),
   },
   {
-    path: '/api/operator/business/affiliate-codes',
+    path: "/api/operator/business/affiliate-codes",
     handler: (request, env) =>
-      handleOperatorBusinessAffiliateCodeApi(
-        request,
-        businessDomainDatabaseForEnv(env),
-        {
-          requireAdminApiToken: adminRequest =>
-            requireAdminApiToken(adminRequest, env),
-        },
-      ),
+      handleOperatorBusinessAffiliateCodeApi(request, businessDomainDatabaseForEnv(env), {
+        requireAdminApiToken: (adminRequest) => requireAdminApiToken(adminRequest, env),
+      }),
   },
   {
-    path: '/api/operator/business/affiliate-attribution',
+    path: "/api/operator/business/affiliate-attribution",
     handler: (request, env) =>
-      handleOperatorBusinessAffiliateAttributionApi(
-        request,
-        businessDomainDatabaseForEnv(env),
-        {
-          requireAdminApiToken: adminRequest =>
-            requireAdminApiToken(adminRequest, env),
-        },
-      ),
+      handleOperatorBusinessAffiliateAttributionApi(request, businessDomainDatabaseForEnv(env), {
+        requireAdminApiToken: (adminRequest) => requireAdminApiToken(adminRequest, env),
+      }),
   },
   {
     // OpenAgents Business conversational intake (Khala-run interview from
@@ -12075,35 +11146,31 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // exact `token_usage_events` row (demand_kind=internal,
     // demand_source=business_intake_chat) fail-soft via the canonical
     // served-tokens recorder.
-    path: '/api/public/business-intake-chat',
+    path: "/api/public/business-intake-chat",
     handler: (request, env) =>
       handleBusinessIntakeChatApi(request, {
-        complete: inferenceRequest =>
+        complete: (inferenceRequest) =>
           makeFireworksAdapter({
             getApiKey: () => env.FIREWORKS_API_KEY,
           }).complete(inferenceRequest),
         enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
         fireworksArmed: resolveSupplyLaneArming(env).fireworks,
-        recordFunnelEvent: input =>
+        recordFunnelEvent: (input) =>
           Effect.promise(() =>
-            recordBusinessFunnelEvent(
-              businessDomainDatabaseForEnv(env),
-              input,
-            ).then(() => undefined),
+            recordBusinessFunnelEvent(businessDomainDatabaseForEnv(env), input).then(
+              () => undefined,
+            ),
           ),
-        recordTokensServed: makeD1ServedTokensRecorder(
-          openAgentsDatabase(env),
-          {
-            // KS-6.3 (#8304): projection producer (fail-soft, exact-once).
-            onIngestedEvent: makeTokensServedProjectionObserver(env),
-            // KS-8.2 (#8308): Postgres dual-write mirror (fail-soft).
-            ...tokenLedgerWriteStoreOptionForEnv(env),
-          },
-        ),
+        recordTokensServed: makeD1ServedTokensRecorder(openAgentsDatabase(env), {
+          // KS-6.3 (#8304): projection producer (fail-soft, exact-once).
+          onIngestedEvent: makeTokensServedProjectionObserver(env),
+          // KS-8.2 (#8308): Postgres dual-write mirror (fail-soft).
+          ...tokenLedgerWriteStoreOptionForEnv(env),
+        }),
       }),
   },
   {
-    path: '/api/public/tassadar-run-summary',
+    path: "/api/public/tassadar-run-summary",
     handler: (request, env) =>
       Effect.promise(() =>
         // CFG D1 evacuation (#8515): route the run-detail reads through the
@@ -12111,62 +11178,57 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
         // this public summary no longer 500s on the dead D1 `d1-http` bridge.
         // Without this it defaults to a raw D1 store and throws.
         buildPublicTassadarRunSummaryEnvelopeForRequest(request, env, {
-          makeStore: storeEnv =>
-            makeTrainingAuthorityStoreForEnv(storeEnv as TrainingStoreEnv),
+          makeStore: (storeEnv) => makeTrainingAuthorityStoreForEnv(storeEnv as TrainingStoreEnv),
         }),
-      ).pipe(Effect.map(envelope => noStoreJsonResponse(envelope))),
+      ).pipe(Effect.map((envelope) => noStoreJsonResponse(envelope))),
   },
   {
     path: TrainingPublicDistributedRunScaleEndpoint,
-    handler: (request, env) =>
-      handleTrainingPublicDistributedRunScaleApi(request, env),
+    handler: (request, env) => handleTrainingPublicDistributedRunScaleApi(request, env),
   },
   {
     path: PylonLargestDecentralizedTrainingClaimEndpoint,
-    handler: (request, env) =>
-      handlePylonLargestDecentralizedTrainingClaimStatusApi(request, env),
+    handler: (request, env) => handlePylonLargestDecentralizedTrainingClaimStatusApi(request, env),
   },
   {
-    path: '/api/public/activity-timeline',
-    handler: (request, env) =>
-      handlePublicActivityTimelineApiForEnv(request, env),
+    path: "/api/public/activity-timeline",
+    handler: (request, env) => handlePublicActivityTimelineApiForEnv(request, env),
   },
   {
-    path: '/api/public/activity-timeline/stream',
-    handler: (request, env) =>
-      handlePublicActivityTimelineStreamApiForEnv(request, env),
+    path: "/api/public/activity-timeline/stream",
+    handler: (request, env) => handlePublicActivityTimelineStreamApiForEnv(request, env),
   },
   {
-    path: '/api/public/forum-activity',
+    path: "/api/public/forum-activity",
     handler: (request, env) => handlePublicForumActivityApiForEnv(request, env),
   },
   {
     path: TASSADAR_COMPILED_MODULE_MARKETPLACE_ROUTE,
     handler: () =>
-      Effect.promise(() =>
-        buildPublicTassadarCompiledModuleMarketplaceEnvelope(),
-      ).pipe(Effect.map(envelope => noStoreJsonResponse(envelope))),
+      Effect.promise(() => buildPublicTassadarCompiledModuleMarketplaceEnvelope()).pipe(
+        Effect.map((envelope) => noStoreJsonResponse(envelope)),
+      ),
   },
   {
-    path: '/api/public/tassadar-replays/first-real-settlement',
+    path: "/api/public/tassadar-replays/first-real-settlement",
     handler: (request, env) =>
-      Effect.promise(() =>
-        handlePublicProofReplayBundleRequest(request, env),
-      ).pipe(Effect.map(materializeHttpResult)),
+      Effect.promise(() => handlePublicProofReplayBundleRequest(request, env)).pipe(
+        Effect.map(materializeHttpResult),
+      ),
   },
   {
-    path: '/api/public/proof-replays',
+    path: "/api/public/proof-replays",
     handler: (request, env) =>
-      Effect.promise(() =>
-        handlePublicProofReplayBundleRequest(request, env),
-      ).pipe(Effect.map(materializeHttpResult)),
+      Effect.promise(() => handlePublicProofReplayBundleRequest(request, env)).pipe(
+        Effect.map(materializeHttpResult),
+      ),
   },
   {
     // Khala Code download counter (RL-2, #8246). Public-safe and exact-only:
     // reads counted rows from the download ledger, or returns counts: [] with a
     // blocker when the ledger/table has no rows. It never fabricates a public
     // installed-user/download number.
-    path: '/api/public/khala-code/download-counts',
+    path: "/api/public/khala-code/download-counts",
     handler: (request, env) =>
       handlePublicKhalaCodeDownloadCountsApi(request, {
         OPENAGENTS_DB: openAgentsDatabase(env),
@@ -12177,7 +11239,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // POST-only, explicit-user-action only: records app version, platform,
     // architecture, distribution channel, and bounded harness readiness. It
     // stores no paths, prompts, tokens, logs, user identity, or request blob.
-    path: '/api/public/khala-code/outside-user-runs',
+    path: "/api/public/khala-code/outside-user-runs",
     handler: (request, env) =>
       handlePublicKhalaCodeOutsideUserRunsApi(request, {
         OPENAGENTS_DB: openAgentsDatabase(env),
@@ -12186,7 +11248,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
   {
     // Manifest-only path-param readback for RL-3 receipts. The optional route
     // cascade below handles matching because the exact registry is literal.
-    path: '/api/public/khala-code/outside-user-runs/:receiptRef',
+    path: "/api/public/khala-code/outside-user-runs/:receiptRef",
     handler: () => Effect.succeed(notFound()),
   },
   {
@@ -12194,19 +11256,18 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // Admin-token gated and idempotent: records public-safe evidence refs for
     // one already-settled Spark payout after owner/operator settlement. This
     // route does not move sats and does not accept raw trace/payment material.
-    path: '/api/operator/khala-code/trace-plugin-revenue-share-precedents',
+    path: "/api/operator/khala-code/trace-plugin-revenue-share-precedents",
     handler: (request, env) =>
       handleOperatorKhalaCodeTracePluginRevenueSharePrecedentsApi(request, {
         OPENAGENTS_DB: openAgentsDatabase(env),
-        requireAdminApiToken: authRequest =>
-          requireAdminApiToken(authRequest, env),
+        requireAdminApiToken: (authRequest) => requireAdminApiToken(authRequest, env),
       }),
   },
   {
     // Manifest-only path-param readback for RL-7 precedent receipts. The
     // optional route cascade below handles matching because the exact registry
     // is literal.
-    path: '/api/public/khala-code/trace-plugin-revenue-share-precedents/:receiptRef',
+    path: "/api/public/khala-code/trace-plugin-revenue-share-precedents/:receiptRef",
     handler: () => Effect.succeed(notFound()),
   },
   {
@@ -12215,7 +11276,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // refs, provisions the engagement workspace/service promise, and adds the
     // Swarm Audit deliverable to the business commitment ledger. It does not
     // claim self-serve delivery, first paid delivery, payout, or settlement.
-    path: '/api/operator/qa-swarm/first-engagements',
+    path: "/api/operator/qa-swarm/first-engagements",
     handler: (request, env) =>
       handleOperatorQaSwarmFirstEngagementsApi(request, {
         // KS-8.14 (#8359): the operator first-engagement path writes
@@ -12227,57 +11288,50 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
         // route's service-promise write creates rides the SEPARATE
         // supervision long-tail mirror.
         mirror: makeSupervisionLongtailMirrorForEnv(env),
-        requireAdminApiToken: authRequest =>
-          requireAdminApiToken(authRequest, env),
+        requireAdminApiToken: (authRequest) => requireAdminApiToken(authRequest, env),
       }),
   },
   {
     // Manifest-only path-param readback for RL-8 engagement receipts. The
     // optional route cascade below handles matching because the exact registry
     // is literal.
-    path: '/api/public/qa-swarm/first-engagements/:receiptRef',
+    path: "/api/public/qa-swarm/first-engagements/:receiptRef",
     handler: () => Effect.succeed(notFound()),
   },
   {
     // Manifest-only path-param readback for RL-9 first-dollar evidence bundles.
     // The optional route cascade below handles matching because the exact
     // registry is literal.
-    path: '/api/public/revenue-loop/first-dollar-evidence/:bundleRef',
+    path: "/api/public/revenue-loop/first-dollar-evidence/:bundleRef",
     handler: () => Effect.succeed(notFound()),
   },
   {
-    path: '/api/public/product-promises/transitions',
+    path: "/api/public/product-promises/transitions",
     handler: (request, env) =>
       handlePublicPromiseTransitionsApi(request, {
-        store: makeD1PromiseTransitionReceiptStore(
-          businessDomainDatabaseForEnv(env),
-        ),
+        store: makeD1PromiseTransitionReceiptStore(businessDomainDatabaseForEnv(env)),
       }),
   },
   {
-    path: '/api/public/product-promises/api.hosted_gemini.v1/readiness',
+    path: "/api/public/product-promises/api.hosted_gemini.v1/readiness",
     handler: (request, env) =>
-      hostedGeminiPromiseReadinessRoutes.routeHostedGeminiPromiseReadinessRequest(
-        request,
-        env,
-      ) ?? Effect.succeed(notFound()),
+      hostedGeminiPromiseReadinessRoutes.routeHostedGeminiPromiseReadinessRequest(request, env) ??
+      Effect.succeed(notFound()),
   },
   {
     // Enterprise claim-upgrade audit projection (proof.claim_upgrade_receipts.v1).
     // Read-only: joins the transition-receipt feed against the live registry so
     // a third party can audit every green flip (promiseId, from->to,
     // registryVersion, receiptRef, lastVerifiedAt) with filtering + summary.
-    path: '/api/public/product-promises/audit',
+    path: "/api/public/product-promises/audit",
     handler: (request, env) =>
       handlePublicPromiseAuditApi(request, {
-        store: makeD1PromiseTransitionReceiptStore(
-          businessDomainDatabaseForEnv(env),
-        ),
+        store: makeD1PromiseTransitionReceiptStore(businessDomainDatabaseForEnv(env)),
       }),
   },
   {
-    path: '/api/public/metrics/accepted-outcomes-per-kwh',
-    handler: request => handleAcceptedOutcomesPerKwhApi(request),
+    path: "/api/public/metrics/accepted-outcomes-per-kwh",
+    handler: (request) => handleAcceptedOutcomesPerKwhApi(request),
   },
   {
     // Public flexible-load proof evidence scaffold for
@@ -12285,7 +11339,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // fixture rows, exposes work-class flex profiles, and projects labeled
     // flexible-load event history while keeping the green gate receipt-blocked.
     path: EnergyFlexibleLoadProofEndpoint,
-    handler: request => handleEnergyFlexibleLoadProofApi(request),
+    handler: (request) => handleEnergyFlexibleLoadProofApi(request),
   },
   {
     // Public seed TraceRank/EigenTrust projection over replay-verified,
@@ -12293,15 +11347,15 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // ignored self-reported/unsettled edges are explicit and the projection
     // grants no dispatch, payout, settlement, marketplace ranking, moderation,
     // identity, or spend authority.
-    path: '/api/public/reputation/verified-outcomes',
-    handler: request => handleVerifiedOutcomeReputationApi(request),
+    path: "/api/public/reputation/verified-outcomes",
+    handler: (request) => handleVerifiedOutcomeReputationApi(request),
   },
   {
     // Public-safe live Gym / Harbor run progress (#6261). web_authorized runs
     // render live counts/denominator/pass-rate-over-completed/freshness with the
     // in-progress + decisionGrade:false markers; local_only runs degrade to an
     // honest awaiting-authorization marker. No raw prompts/responses/logs/keys.
-    path: '/api/public/gym/run-progress',
+    path: "/api/public/gym/run-progress",
     handler: (request, env) =>
       handlePublicGymRunProgressApi(request, {
         store: makeGymRunProgressStoreForEnv(env),
@@ -12312,7 +11366,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // GEPA Gym workflow (#7799). Khala Code can poll this projection for run
     // stage/candidate/admission refs without receiving Mutalisk prompts, traces,
     // local paths, provider payloads, or optimizer scratch logs.
-    path: '/api/public/gym/mutalisk-khala-delegation/runs',
+    path: "/api/public/gym/mutalisk-khala-delegation/runs",
     handler: (request, env) =>
       handlePublicMutaliskKhalaDelegationRunsApi(request, {
         store: makeMutaliskKhalaDelegationWorkflowStoreForEnv(env),
@@ -12326,7 +11380,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // decision-grade published snapshot; when none exists it serves the honest
     // empty ladder shape (all rungs awaiting_owner with their owner-gate refs)
     // so the surface never fabricates a measurement. Read-only, no auth.
-    path: '/api/public/gym/leaderboard',
+    path: "/api/public/gym/leaderboard",
     handler: (request, env) =>
       handlePublicGymLeaderboardApi(request, {
         store: makeGymLadderStoreForEnv(env),
@@ -12340,12 +11394,10 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // decision-grade published snapshot; when none exists it serves the honest
     // empty shape (all matchups awaiting_owner with their owner-gate refs) so the
     // surface never fabricates a measurement. Read-only, no auth.
-    path: '/api/public/khala/head-to-head',
+    path: "/api/public/khala/head-to-head",
     handler: (request, env) =>
       handlePublicKhalaHeadToHeadApi(request, {
-        store: makeD1KhalaHeadToHeadStore(
-          khalaCodeProductStateDatabaseForEnv(env),
-        ),
+        store: makeD1KhalaHeadToHeadStore(khalaCodeProductStateDatabaseForEnv(env)),
       }),
   },
   {
@@ -12356,7 +11408,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // accrual ledger with lifecycle/evidence labels visible and internal monetary
     // figures dropped. No dispatch, spend, settlement, or payout — every entry's
     // payable/settlement state stays honestly not_yet_evidenced.
-    path: '/api/public/payments/contributor-accrual-bundle',
+    path: "/api/public/payments/contributor-accrual-bundle",
     handler: (request, env) =>
       handleOmniContributorAccrualBundleApi(request, openAgentsDatabase(env)),
   },
@@ -12367,7 +11419,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // blocker active. No dispatch, spend, settlement, model promotion, or green
     // claim.
     path: TrainingFullPipelineProgramEndpoint,
-    handler: request => handleTrainingFullPipelineProgramApi(request),
+    handler: (request) => handleTrainingFullPipelineProgramApi(request),
   },
   {
     // Marathon-operations status projection (#5523 / DE-5 #5528; promise
@@ -12375,7 +11427,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // exposes durable-seal and standby predicates while real checkpoint
     // read-back, standby-promotion, and curtailment-drill receipts remain false.
     path: TrainingMarathonOperationsEndpoint,
-    handler: request => handleTrainingMarathonOperationsApi(request),
+    handler: (request) => handleTrainingMarathonOperationsApi(request),
   },
   {
     // Model-ladder rung status projection (#5523 / DE-5 #5528; promise
@@ -12383,7 +11435,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // the published R1 closeout criteria, and the economics-gate format while
     // keeping R1/R2 closeout receipts and green authority false.
     path: TrainingModelLadderRungsEndpoint,
-    handler: request => handleTrainingModelLadderRungsApi(request),
+    handler: (request) => handleTrainingModelLadderRungsApi(request),
   },
   {
     // Public gradient-window status projection (#5523 / DE-5 #5528; promise
@@ -12391,7 +11443,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // surface: exposes the gate and promoted-window receipt emitter while no
     // live public window, promotion receipt, settlement, or green claim exists.
     path: TrainingPublicGradientWindowsEndpoint,
-    handler: request => handleTrainingPublicGradientWindowsApi(request),
+    handler: (request) => handleTrainingPublicGradientWindowsApi(request),
   },
   {
     // Training ablation derisking ledger projection (#5523 / DE-5 #5528;
@@ -12400,7 +11452,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // blockers while paid dispatch and verdict gates remain false. No ablation
     // execution, spend, settlement, model promotion, or green claim.
     path: TrainingAblationDeriskingLedgerEndpoint,
-    handler: request => handleTrainingAblationDeriskingLedgerApi(request),
+    handler: (request) => handleTrainingAblationDeriskingLedgerApi(request),
   },
   {
     // Post-training instruct SFT lane receipt (#5523 / DE-5 #5528;
@@ -12409,7 +11461,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // paid dispatch, preference rollout, and vibe-test gates remain false. No
     // assignment, spend, settlement, model promotion, service, or green claim.
     path: TrainingPostTrainingInstructSftEndpoint,
-    handler: request => handleTrainingPostTrainingInstructSftApi(request),
+    handler: (request) => handleTrainingPostTrainingInstructSftApi(request),
   },
   {
     // Post-training DPO preference workload projection (#5523 / DE-5 #5528;
@@ -12418,8 +11470,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // preference dispatch, real log-probs, settlement, and green gates remain
     // false. No assignment, spend, model update, service, or green claim.
     path: TrainingPostTrainingDpoPreferenceWorkloadEndpoint,
-    handler: request =>
-      handleTrainingPostTrainingDpoPreferenceWorkloadApi(request),
+    handler: (request) => handleTrainingPostTrainingDpoPreferenceWorkloadApi(request),
   },
   {
     // Post-training vibe-test rubric projection (#5523 / DE-5 #5528; promise
@@ -12428,7 +11479,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // promotion, service, and green gates remain false. No assignment, spend,
     // settlement, model promotion, reviewed artifact, or green claim.
     path: TrainingPostTrainingVibeTestRubricEndpoint,
-    handler: request => handleTrainingPostTrainingVibeTestRubricApi(request),
+    handler: (request) => handleTrainingPostTrainingVibeTestRubricApi(request),
   },
   {
     // Tassadar Percepta executor architecture receipts (#5523 / DE-5 #5528;
@@ -12437,7 +11488,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // Pylon CPU-transform training receipts remain missing. No trained model,
     // inference endpoint, spend, settlement, promotion, or green claim.
     path: TassadarPerceptaArchitectureReceiptsEndpoint,
-    handler: request => handleTassadarPerceptaArchitectureReceiptsApi(request),
+    handler: (request) => handleTassadarPerceptaArchitectureReceiptsApi(request),
   },
   {
     // Tassadar Percepta CPU-transform training receipt status (#5523 / DE-5
@@ -12445,24 +11496,23 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // status projection: exposes the architecture and Artanis dataset inputs
     // while every real training receipt gate remains false.
     path: TassadarPerceptaCpuTransformTrainingReceiptsEndpoint,
-    handler: request =>
-      handleTassadarPerceptaCpuTransformTrainingReceiptsApi(request),
+    handler: (request) => handleTassadarPerceptaCpuTransformTrainingReceiptsApi(request),
   },
   {
-    path: '/api/public/demand-provenance',
-    handler: request => handleDemandProvenanceApi(request),
+    path: "/api/public/demand-provenance",
+    handler: (request) => handleDemandProvenanceApi(request),
   },
   {
-    path: '/api/public/markets/open-markets',
-    handler: request => handleOpenMarketsSurfaceApi(request),
+    path: "/api/public/markets/open-markets",
+    handler: (request) => handleOpenMarketsSurfaceApi(request),
   },
   {
-    path: '/api/public/markets/liquidity/skeleton',
-    handler: request => handleLiquidityMarketSkeletonApi(request),
+    path: "/api/public/markets/liquidity/skeleton",
+    handler: (request) => handleLiquidityMarketSkeletonApi(request),
   },
   {
-    path: '/api/public/markets/risk/skeleton',
-    handler: request => handleRiskMarketSkeletonApi(request),
+    path: "/api/public/markets/risk/skeleton",
+    handler: (request) => handleRiskMarketSkeletonApi(request),
   },
   {
     // Compose-and-list marketplace MVP listing surface (#5510, #5515). INERT:
@@ -12471,9 +11521,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     path: MarketplaceComposeListEndpoint,
     handler: (request, env) =>
       handleMarketplaceCompositionApi(request, {
-        enabled: isMarketplaceComposeAndListEnabled(
-          env.MARKETPLACE_COMPOSE_AND_LIST_ENABLED,
-        ),
+        enabled: isMarketplaceComposeAndListEnabled(env.MARKETPLACE_COMPOSE_AND_LIST_ENABLED),
       }),
   },
   {
@@ -12483,7 +11531,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // discovery projection shape; package install/uninstall remains source-level
     // registry machinery until separately owner-armed.
     path: WasmPluginMarketplaceEndpoint,
-    handler: request => handleWasmPluginMarketplaceApi(request),
+    handler: (request) => handleWasmPluginMarketplaceApi(request),
   },
   {
     // Signature usage-metering surface (#5523 / DE-6 #5529; promise
@@ -12496,9 +11544,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     path: SignatureUsageMeteringEndpoint,
     handler: (request, env) =>
       handleSignatureUsageMeteringApi(request, {
-        enabled: isSignatureUsageMeteringEnabled(
-          env.SIGNATURE_USAGE_METERING_ENABLED,
-        ),
+        enabled: isSignatureUsageMeteringEnabled(env.SIGNATURE_USAGE_METERING_ENABLED),
       }),
   },
   {
@@ -12514,9 +11560,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     path: PylonMultiEarningNodeEndpoint,
     handler: (request, env) =>
       handlePylonMultiEarningNodeApi(request, {
-        enabled: isPylonMultiEarningProjectionEnabled(
-          env.PYLON_MULTI_EARNING_PROJECTION_ENABLED,
-        ),
+        enabled: isPylonMultiEarningProjectionEnabled(env.PYLON_MULTI_EARNING_PROJECTION_ENABLED),
       }),
   },
   {
@@ -12569,9 +11613,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     path: AutopilotComposedRunEndpoint,
     handler: (request, env) =>
       handleAutopilotComposedRunApi(request, {
-        enabled: isAutopilotComposedRunEnabled(
-          env.AUTOPILOT_COMPOSED_RUN_ENABLED,
-        ),
+        enabled: isAutopilotComposedRunEnabled(env.AUTOPILOT_COMPOSED_RUN_ENABLED),
       }),
   },
   {
@@ -12593,9 +11635,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     path: AgenticLaborProductEndpoint,
     handler: (request, env) =>
       handleAgenticLaborProductApi(request, {
-        enabled: isAgenticLaborProductsEnabled(
-          env.AGENTIC_LABOR_PRODUCTS_ENABLED,
-        ),
+        enabled: isAgenticLaborProductsEnabled(env.AGENTIC_LABOR_PRODUCTS_ENABLED),
       }),
   },
   {
@@ -12605,7 +11645,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // a valid receipt. INERT: it creates no new state, moves no money, and
     // serves strictly to orchestrate verifiable structures into a pipeline.
     path: CodingQuickWinPipelineEndpoint,
-    handler: request => handleCodingQuickWinPipelineApi(request),
+    handler: (request) => handleCodingQuickWinPipelineApi(request),
   },
   {
     // Self-serve control-center fanout scaffold (promise
@@ -12632,15 +11672,13 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // executable — the projection's assertCatalogInvariants throws rather than let
     // any plugin class silently flip live. Makes no broad-live-marketplace claim.
     path: MarketplaceWorkClassCatalogEndpoint,
-    handler: request => handleMarketplaceWorkClassCatalogApi(request),
+    handler: (request) => handleMarketplaceWorkClassCatalogApi(request),
   },
   {
     path: CustomerOneCohortEndpoint,
     handler: (request, env) =>
       handlePublicCustomerOneCohortApi(request, {
-        store: makeD1CustomerOneCohortRowStore(
-          businessDomainDatabaseForEnv(env),
-        ),
+        store: makeD1CustomerOneCohortRowStore(businessDomainDatabaseForEnv(env)),
       }),
   },
   {
@@ -12652,40 +11690,36 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     //        buildGymRunProgress + checkGymRunProgressPublicSafety (rejecting any
     //        prompts/responses/logs/trajectories/keys/private endpoints with a
     //        typed 400) and upserted by runRef into D1.
-    path: '/api/operator/gym/run-progress',
+    path: "/api/operator/gym/run-progress",
     handler: (request, env, ctx) =>
       handleOperatorGymRunProgressApi(request, {
-        requireAdminApiToken: adminRequest =>
-          requireAdminApiToken(adminRequest, env),
+        requireAdminApiToken: (adminRequest) => requireAdminApiToken(adminRequest, env),
         store: makeGymRunProgressStoreForEnv(env),
         // Realtime push (#6261): after the upsert lands, publish the public-safe
         // projected snapshot to the live `public-gym-run-progress` sync scope so
         // the `/gym` follow-along updates the instant the snapshot is ingested.
         // Fail-soft and off the customer path via the execution context.
-        publishProgress: progress =>
-          publishGymRunProgressSnapshot(env, progress, { ctx }),
+        publishProgress: (progress) => publishGymRunProgressSnapshot(env, progress, { ctx }),
       }),
   },
   {
     // Owner-gated durable Khala Code delegation GEPA run create/list (#7799).
     // POST returns a runRef immediately; GET lists the scoped public-safe
     // projection rows. No optimizer runtime executes in the Worker.
-    path: '/api/operator/gym/mutalisk-khala-delegation/runs',
+    path: "/api/operator/gym/mutalisk-khala-delegation/runs",
     handler: (request, env) =>
       handleOperatorMutaliskKhalaDelegationRunsApi(request, {
-        requireAdminApiToken: adminRequest =>
-          requireAdminApiToken(adminRequest, env),
+        requireAdminApiToken: (adminRequest) => requireAdminApiToken(adminRequest, env),
         store: makeMutaliskKhalaDelegationWorkflowStoreForEnv(env),
       }),
   },
   {
     // Owner-gated coarse progress ingest from a local Mutalisk runner (#7799).
     // Stores only stage/ref/metric markers and preserves decisionGrade:false.
-    path: '/api/operator/gym/mutalisk-khala-delegation/progress',
+    path: "/api/operator/gym/mutalisk-khala-delegation/progress",
     handler: (request, env) =>
       handleOperatorMutaliskKhalaDelegationProgressApi(request, {
-        requireAdminApiToken: adminRequest =>
-          requireAdminApiToken(adminRequest, env),
+        requireAdminApiToken: (adminRequest) => requireAdminApiToken(adminRequest, env),
         store: makeMutaliskKhalaDelegationWorkflowStoreForEnv(env),
       }),
   },
@@ -12693,11 +11727,10 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // Owner-gated safe summary ingest for the external Mutalisk optimizer (#7799).
     // Converts a public-safe candidate manifest summary into the
     // khala.fleet.delegation admission projection; never auto-promotes it.
-    path: '/api/operator/gym/mutalisk-khala-delegation/summary',
+    path: "/api/operator/gym/mutalisk-khala-delegation/summary",
     handler: (request, env) =>
       handleOperatorMutaliskKhalaDelegationSummaryApi(request, {
-        requireAdminApiToken: adminRequest =>
-          requireAdminApiToken(adminRequest, env),
+        requireAdminApiToken: (adminRequest) => requireAdminApiToken(adminRequest, env),
         store: makeMutaliskKhalaDelegationWorkflowStoreForEnv(env),
       }),
   },
@@ -12708,11 +11741,10 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // re-builds the ladder via buildGymLadderLeaderboard (decision-grade +
     // public-safety-checked rows only) and upserts the public-safe ladder by
     // ladderRef. GET returns the current published ladder. Admin-bearer gated.
-    path: '/api/operator/gym/leaderboard',
+    path: "/api/operator/gym/leaderboard",
     handler: (request, env) =>
       handleOperatorGymLeaderboardApi(request, {
-        requireAdminApiToken: adminRequest =>
-          requireAdminApiToken(adminRequest, env),
+        requireAdminApiToken: (adminRequest) => requireAdminApiToken(adminRequest, env),
         store: makeGymLadderStoreForEnv(env),
         mirrorCodeRunStore: makeMirrorCodeRunStoreForEnv(env),
       }),
@@ -12724,14 +11756,11 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // re-builds the bar via buildKhalaHeadToHead (decision-grade +
     // public-safety-checked rows only) and upserts the public-safe artifact by
     // headToHeadRef. GET returns the current published bar. Admin-bearer gated.
-    path: '/api/operator/khala/head-to-head',
+    path: "/api/operator/khala/head-to-head",
     handler: (request, env) =>
       handleOperatorKhalaHeadToHeadApi(request, {
-        requireAdminApiToken: adminRequest =>
-          requireAdminApiToken(adminRequest, env),
-        store: makeD1KhalaHeadToHeadStore(
-          khalaCodeProductStateDatabaseForEnv(env),
-        ),
+        requireAdminApiToken: (adminRequest) => requireAdminApiToken(adminRequest, env),
+        store: makeD1KhalaHeadToHeadStore(khalaCodeProductStateDatabaseForEnv(env)),
       }),
   },
   {
@@ -12742,11 +11771,10 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // no-canary public-safety boundary before upserting by runId. The
     // path-param `/api/gym/mirrorcode/runs/{id}` read is wired in the worker
     // route cascade (the exact-route registry cannot match a path param).
-    path: '/api/gym/mirrorcode/runs',
+    path: "/api/gym/mirrorcode/runs",
     handler: (request, env) =>
       handleMirrorCodeRunsApi(request, {
-        requireAdminApiToken: adminRequest =>
-          requireAdminApiToken(adminRequest, env),
+        requireAdminApiToken: (adminRequest) => requireAdminApiToken(adminRequest, env),
         store: makeMirrorCodeRunStoreForEnv(env),
       }),
   },
@@ -12754,11 +11782,10 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // MirrorCode automated token-burn reporter (#6676). Public read-only live
     // aggregate over stored public-safe run rows; exact token refs are surfaced
     // where present and unproven token totals stay separated.
-    path: '/api/gym/mirrorcode/token-burn',
+    path: "/api/gym/mirrorcode/token-burn",
     handler: (request, env) =>
       handleMirrorCodeRunsApi(request, {
-        requireAdminApiToken: adminRequest =>
-          requireAdminApiToken(adminRequest, env),
+        requireAdminApiToken: (adminRequest) => requireAdminApiToken(adminRequest, env),
         store: makeMirrorCodeRunStoreForEnv(env),
       }),
   },
@@ -12766,11 +11793,10 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // MirrorCode standing backstop burn (#6923). Public read-only live plan +
     // ledger report over stored public-safe run rows. The surface never
     // dispatches, spends, settles, or exposes task contents.
-    path: '/api/gym/mirrorcode/backstop-burn',
+    path: "/api/gym/mirrorcode/backstop-burn",
     handler: (request, env) =>
       handleMirrorCodeRunsApi(request, {
-        requireAdminApiToken: adminRequest =>
-          requireAdminApiToken(adminRequest, env),
+        requireAdminApiToken: (adminRequest) => requireAdminApiToken(adminRequest, env),
         store: makeMirrorCodeRunStoreForEnv(env),
       }),
   },
@@ -12778,75 +11804,58 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // Operator-only Harbor full trace archive (#6253). Stores raw Harbor job
     // tarballs in private R2 with D1 metadata. Unlike `/api/traces`, this is
     // NOT a public-safe ATIF projection and never appears on public `/gym`.
-    path: '/api/operator/gym/full-trace-archives',
+    path: "/api/operator/gym/full-trace-archives",
     handler: (request, env) =>
       handleOperatorHarborFullTraceArchivesApi(request, {
-        requireAdminApiToken: adminRequest =>
-          requireAdminApiToken(adminRequest, env),
-        store: makeHarborFullTraceArchiveStoreForEnv(
-          env,
-          artifactsBucketForEnv(env),
-        ),
+        requireAdminApiToken: (adminRequest) => requireAdminApiToken(adminRequest, env),
+        store: makeHarborFullTraceArchiveStoreForEnv(env, artifactsBucketForEnv(env)),
       }),
   },
   {
-    path: '/api/operator/customer-one-cohort/rows',
+    path: "/api/operator/customer-one-cohort/rows",
     handler: (request, env) =>
       handleOperatorCustomerOneCohortRowsApi(request, {
-        requireAdminApiToken: adminRequest =>
-          requireAdminApiToken(adminRequest, env),
-        store: makeD1CustomerOneCohortRowStore(
-          businessDomainDatabaseForEnv(env),
-        ),
+        requireAdminApiToken: (adminRequest) => requireAdminApiToken(adminRequest, env),
+        store: makeD1CustomerOneCohortRowStore(businessDomainDatabaseForEnv(env)),
       }),
   },
   {
-    path: '/api/operator/product-promises/transitions',
+    path: "/api/operator/product-promises/transitions",
     handler: (request, env) =>
       handleOperatorPromiseTransitionApi(request, {
         requireAdminApiToken: () => requireAdminApiToken(request, env),
-        store: makeD1PromiseTransitionReceiptStore(
-          businessDomainDatabaseForEnv(env),
-        ),
+        store: makeD1PromiseTransitionReceiptStore(businessDomainDatabaseForEnv(env)),
       }),
   },
   {
-    path: '/api/operator/artanis/mind/smoke',
+    path: "/api/operator/artanis/mind/smoke",
     handler: (request, env) =>
       Effect.gen(function* () {
-        if (request.method !== 'POST') {
-          return noStoreJsonResponse(
-            { error: 'method_not_allowed' },
-            { status: 405 },
-          )
+        if (request.method !== "POST") {
+          return noStoreJsonResponse({ error: "method_not_allowed" }, { status: 405 });
         }
-        const authorized = yield* Effect.promise(() =>
-          requireAdminApiToken(request, env),
-        )
+        const authorized = yield* Effect.promise(() => requireAdminApiToken(request, env));
         if (!authorized) {
-          return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+          return noStoreJsonResponse({ error: "unauthorized" }, { status: 401 });
         }
-        const apiKey = (env as { GEMINI_API_KEY?: string }).GEMINI_API_KEY
-        if (apiKey === undefined || apiKey === '') {
-          return noStoreJsonResponse(
-            { error: 'gemini_api_key_missing' },
-            { status: 503 },
-          )
+        const apiKey = (env as { GEMINI_API_KEY?: string }).GEMINI_API_KEY;
+        if (apiKey === undefined || apiKey === "") {
+          return noStoreJsonResponse({ error: "gemini_api_key_missing" }, { status: 503 });
         }
         const body = yield* Effect.promise(async () => {
           try {
             return (await request.json()) as {
-              forumPost?: boolean
-              model?: string
-              prompt?: string
-            }
+              forumPost?: boolean;
+              model?: string;
+              prompt?: string;
+            };
           } catch {
-            return {}
+            return {};
           }
-        })
+        });
         const prompt =
           body.prompt ??
-          'State in one sentence what the Artanis administrator should verify before dispatching executor-trace work to an idle Pylon.'
+          "State in one sentence what the Artanis administrator should verify before dispatching executor-trace work to an idle Pylon.";
         const result = yield* Effect.promise(() =>
           artanisMindComplete({
             apiKey,
@@ -12854,37 +11863,37 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
             prompt,
             system: ArtanisMindSmokeSystem,
           }),
-        )
-        if ('error' in result) {
-          return noStoreJsonResponse(result, { status: 502 })
+        );
+        if ("error" in result) {
+          return noStoreJsonResponse(result, { status: 502 });
         }
-        let forumPost: { postRef?: string; error?: string } | null = null
+        let forumPost: { postRef?: string; error?: string } | null = null;
         if (body.forumPost === true) {
           // In-process delivery through the shipped Artanis publication
           // queue (never fetch-to-self): the mind's decision lands as an
           // Artanis status post in forum.public.artanis.
-          const nowIso = currentIsoTimestamp()
-          const suffix = nowIso.replace(/[-:]/g, '').slice(0, 13)
+          const nowIso = currentIsoTimestamp();
+          const suffix = nowIso.replace(/[-:]/g, "").slice(0, 13);
           const intent = new ArtanisForumPublicationIntentRecord({
             ...exampleArtanisForumPublicationQueue().intents[0]!,
-            artifactRefs: ['artifact.public.artanis.mind_smoke'],
+            artifactRefs: ["artifact.public.artanis.mind_smoke"],
             bodyText: [
-              'Automated update from the Artanis cloud mind running inside the OpenAgents worker.',
-              `Inference served via ${result.servedVia}${result.gatewayId === null ? '' : ` (gateway ${result.gatewayId})`}, model ${result.model}.`,
+              "Automated update from the Artanis cloud mind running inside the OpenAgents worker.",
+              `Inference served via ${result.servedVia}${result.gatewayId === null ? "" : ` (gateway ${result.gatewayId})`}, model ${result.model}.`,
               `Decision sample: ${result.text.slice(0, 400)}`,
-              'Boundary: the mind proposes; typed schemas validate; approval gates hold.',
-            ].join(' '),
+              "Boundary: the mind proposes; typed schemas validate; approval gates hold.",
+            ].join(" "),
             createdAtIso: nowIso,
             deliveredAtIso: null,
             deliveryReceiptRefs: [],
-            deliveryState: 'ready' as const,
-            goalRefs: ['goal.public.artanis.cloud_mind_smoke'],
+            deliveryState: "ready" as const,
+            goalRefs: ["goal.public.artanis.cloud_mind_smoke"],
             idempotencyKey: `artanis-forum:mind-smoke:${suffix}:v1`,
             intentRef: `forum.public.artanis.mind_smoke_intent.${suffix}`,
             postRef: null,
-            receiptRefs: ['receipt.public.artanis.mind_smoke'],
+            receiptRefs: ["receipt.public.artanis.mind_smoke"],
             updatedAtIso: nowIso,
-          })
+          });
           forumPost = yield* saveArtanisForumPublicationIntent(
             makeArtanisDatabaseForEnv(env),
             intent,
@@ -12906,14 +11915,14 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
             Effect.map((post): { postRef?: string; error?: string } => ({
               postRef: post.postRef,
             })),
-            Effect.catch(error =>
+            Effect.catch((error) =>
               Effect.succeed({
                 error: `forum_delivery_failed: ${String(
                   (error as { reason?: string }).reason ?? error,
                 )}`.slice(0, 160),
               }),
             ),
-          )
+          );
         }
         return noStoreJsonResponse({
           forumPost,
@@ -12923,47 +11932,41 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
           responseChars: result.responseChars,
           servedVia: result.servedVia,
           text: result.text.slice(0, 600),
-        })
+        });
       }),
   },
   {
-    path: '/api/operator/tassadar/replay',
+    path: "/api/operator/tassadar/replay",
     handler: (request, env) =>
       Effect.promise(async () => {
-        if (request.method !== 'POST') {
-          return noStoreJsonResponse(
-            { error: 'method_not_allowed' },
-            { status: 405 },
-          )
+        if (request.method !== "POST") {
+          return noStoreJsonResponse({ error: "method_not_allowed" }, { status: 405 });
         }
         if (!(await requireAdminApiToken(request, env))) {
-          return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+          return noStoreJsonResponse({ error: "unauthorized" }, { status: 401 });
         }
         try {
-          const body = S.decodeUnknownSync(TassadarReplayRequest)(
-            await request.json(),
-          )
-          const verdict = await runTassadarReplayValidation(body)
-          return noStoreJsonResponse({ verdict })
+          const body = S.decodeUnknownSync(TassadarReplayRequest)(await request.json());
+          const verdict = await runTassadarReplayValidation(body);
+          return noStoreJsonResponse({ verdict });
         } catch (error) {
           return noStoreJsonResponse(
             {
-              error: 'bad_request',
+              error: "bad_request",
               reason: error instanceof Error ? error.message : String(error),
             },
             { status: 400 },
-          )
+          );
         }
       }),
   },
   {
-    path: '/chat',
+    path: "/chat",
     handler: () => Effect.succeed(notFound()),
   },
   {
-    path: '/discord',
-    handler: () =>
-      Effect.succeed(redirectResponse('https://discord.gg/4RrjGCuQAZ')),
+    path: "/discord",
+    handler: () => Effect.succeed(redirectResponse("https://discord.gg/4RrjGCuQAZ")),
   },
   // NOTE: `/login` is intentionally NOT an exact route. It is a served document
   // route (see `knownDocumentPathPatterns` in worker-routes.ts) so the SPA renders
@@ -12972,44 +11975,37 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
   // string cleanup for post-OAuth `/login?...` still lives in
   // `cleanProductRouteRedirectLocation`.
   {
-    path: '/login/email',
-    handler: (request, env) =>
-      Effect.promise(() => handleEmailStart(request, env)),
+    path: "/login/email",
+    handler: (request, env) => Effect.promise(() => handleEmailStart(request, env)),
   },
   {
-    path: '/login/github',
-    handler: (request, env) =>
-      Effect.promise(() => handleGitHubStart(request, env)),
+    path: "/login/github",
+    handler: (request, env) => Effect.promise(() => handleGitHubStart(request, env)),
   },
   {
-    path: '/auth/github/write/start',
-    handler: (request, env, ctx) =>
-      Effect.promise(() => handleGitHubWriteStart(request, env, ctx)),
+    path: "/auth/github/write/start",
+    handler: (request, env, ctx) => Effect.promise(() => handleGitHubWriteStart(request, env, ctx)),
   },
   {
-    path: '/auth/callback',
-    handler: (request, env, ctx) =>
-      Effect.promise(() => handleAuthCallback(request, env, ctx)),
+    path: "/auth/callback",
+    handler: (request, env, ctx) => Effect.promise(() => handleAuthCallback(request, env, ctx)),
   },
   {
-    path: '/auth/logout',
-    handler: request => Effect.succeed(handleLogout(request)),
+    path: "/auth/logout",
+    handler: (request) => Effect.succeed(handleLogout(request)),
   },
   {
-    path: '/logout',
-    handler: request => Effect.succeed(handleLogout(request)),
+    path: "/logout",
+    handler: (request) => Effect.succeed(handleLogout(request)),
   },
   {
-    path: '/api/auth/session',
-    handler: (request, env, ctx) =>
-      Effect.promise(() => handleSessionApi(request, env, ctx)),
+    path: "/api/auth/session",
+    handler: (request, env, ctx) => Effect.promise(() => handleSessionApi(request, env, ctx)),
   },
   {
     path: SARAH_FLEET_RUNS_PATH,
     handler: (request, env, ctx) =>
-      sarahFleetRunRoutes
-        .handle(request, env, ctx)
-        .pipe(Effect.map(materializeHttpResult)),
+      sarahFleetRunRoutes.handle(request, env, ctx).pipe(Effect.map(materializeHttpResult)),
   },
   // 2026-07-14 owner supersession decision: neutral canonical path for the
   // FleetRun authority route. The `/api/sarah/fleet-runs` entry above stays a
@@ -13018,9 +12014,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
   {
     path: FLEET_RUNS_PATH,
     handler: (request, env, ctx) =>
-      sarahFleetRunRoutes
-        .handle(request, env, ctx)
-        .pipe(Effect.map(materializeHttpResult)),
+      sarahFleetRunRoutes.handle(request, env, ctx).pipe(Effect.map(materializeHttpResult)),
   },
   // FA-RUN-05 (#8981): Desktop publishes (POST) and mobile fetches (GET) the
   // signed-in owner's live FullAutoRun projection here. v1, pending
@@ -13028,41 +12022,32 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
   {
     path: FULL_AUTO_RUNS_PATH,
     handler: (request, env, ctx) =>
-      fullAutoRunRoutes
-        .handle(request, env, ctx)
-        .pipe(Effect.map(materializeHttpResult)),
+      fullAutoRunRoutes.handle(request, env, ctx).pipe(Effect.map(materializeHttpResult)),
   },
   {
     path: SARAH_OWNER_PATH,
     handler: (request, env, ctx) =>
-      sarahOwnerRoutes
-        .handle(request, env, ctx)
-        .pipe(Effect.map(materializeHttpResult)),
+      sarahOwnerRoutes.handle(request, env, ctx).pipe(Effect.map(materializeHttpResult)),
   },
   {
     path: MANAGED_SANDBOX_DESKTOP_ADMISSION_PATH,
-    handler: (request, env, ctx) =>
-      managedSandboxDesktopRoutes.admission(request, env, ctx),
+    handler: (request, env, ctx) => managedSandboxDesktopRoutes.admission(request, env, ctx),
   },
   {
     path: MANAGED_SANDBOX_DESKTOP_COMMANDS_PATH,
-    handler: (request, env, ctx) =>
-      managedSandboxDesktopRoutes.commands(request, env, ctx),
+    handler: (request, env, ctx) => managedSandboxDesktopRoutes.commands(request, env, ctx),
   },
   {
     path: MANAGED_SANDBOX_PHASE2_COMMANDS_PATH,
-    handler: (request, env, ctx) =>
-      managedSandboxPhase2Routes.commands(request, env, ctx),
+    handler: (request, env, ctx) => managedSandboxPhase2Routes.commands(request, env, ctx),
   },
   {
     path: MANAGED_SANDBOX_MOBILE_SUPERVISION_PATH,
-    handler: (request, env, ctx) =>
-      managedSandboxSupervisionRoutes.mobile(request, env, ctx),
+    handler: (request, env, ctx) => managedSandboxSupervisionRoutes.mobile(request, env, ctx),
   },
   {
     path: MANAGED_SANDBOX_WEB_SUPERVISION_PATH,
-    handler: (request, env, ctx) =>
-      managedSandboxSupervisionRoutes.web(request, env, ctx),
+    handler: (request, env, ctx) => managedSandboxSupervisionRoutes.web(request, env, ctx),
   },
   {
     path: SARAH_SPEECH_PATH,
@@ -13074,12 +12059,10 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
   {
     path: FULL_AUTO_RUN_CONTROL_INTENTS_PATH,
     handler: (request, env, ctx) =>
-      fullAutoRunControlRoutes
-        .handle(request, env, ctx)
-        .pipe(Effect.map(materializeHttpResult)),
+      fullAutoRunControlRoutes.handle(request, env, ctx).pipe(Effect.map(materializeHttpResult)),
   },
   {
-    path: '/api/mobile/auth/session',
+    path: "/api/mobile/auth/session",
     handler: (request, env, ctx) =>
       Effect.promise(() => handleMobileAuthSessionApi(request, env, ctx)),
   },
@@ -13089,10 +12072,10 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
       Effect.promise(() =>
         handleAudioGrantIssueRequest(
           {
-            gatewayUrl: workerEnv => workerEnv.OPENAGENTS_AUDIO_GATEWAY_URL,
+            gatewayUrl: (workerEnv) => workerEnv.OPENAGENTS_AUDIO_GATEWAY_URL,
             requireUserBearerSession,
-            signingSecret: workerEnv => workerEnv.OPENAGENTS_AUDIO_TOKEN_SECRET,
-            userIdFromSession: session => session.user.userId,
+            signingSecret: (workerEnv) => workerEnv.OPENAGENTS_AUDIO_TOKEN_SECRET,
+            userIdFromSession: (session) => session.user.userId,
           },
           request,
           env,
@@ -13111,12 +12094,11 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
       Effect.promise(() => handleDesktopCodexUsage(request, env, ctx)),
   },
   {
-    path: '/api/mobile/session',
-    handler: (request, env, ctx) =>
-      Effect.promise(() => handleMobileSessionApi(request, env, ctx)),
+    path: "/api/mobile/session",
+    handler: (request, env, ctx) => Effect.promise(() => handleMobileSessionApi(request, env, ctx)),
   },
   {
-    path: '/api/mobile/model-preference',
+    path: "/api/mobile/model-preference",
     handler: (request, env, ctx) =>
       Effect.promise(() => handleMobileModelPreferenceApi(request, env, ctx)),
   },
@@ -13124,22 +12106,14 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     path: MOBILE_CODEX_ACCOUNTS_PATH,
     handler: (request, env, ctx) =>
       Effect.promise(() =>
-        providerAccountMobileHandlers.handleMobileCodexAccountsListApi(
-          request,
-          env,
-          ctx,
-        ),
+        providerAccountMobileHandlers.handleMobileCodexAccountsListApi(request, env, ctx),
       ),
   },
   {
     path: MOBILE_CODEX_DEVICE_LOGIN_START_PATH,
     handler: (request, env, ctx) =>
       Effect.promise(() =>
-        providerAccountMobileHandlers.handleMobileCodexDeviceLoginStartApi(
-          request,
-          env,
-          ctx,
-        ),
+        providerAccountMobileHandlers.handleMobileCodexDeviceLoginStartApi(request, env, ctx),
       ),
   },
   {
@@ -13147,11 +12121,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     path: MOBILE_CLAUDE_ACCOUNTS_PATH,
     handler: (request, env, ctx) =>
       Effect.promise(() =>
-        providerAccountMobileHandlers.handleMobileClaudeAccountsListApi(
-          request,
-          env,
-          ctx,
-        ),
+        providerAccountMobileHandlers.handleMobileClaudeAccountsListApi(request, env, ctx),
       ),
   },
   {
@@ -13159,11 +12129,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     path: MOBILE_CLAUDE_LOCAL_AUTH_IMPORT_PATH,
     handler: (request, env, ctx) =>
       Effect.promise(() =>
-        providerAccountMobileHandlers.handleMobileClaudeLocalAuthImportApi(
-          request,
-          env,
-          ctx,
-        ),
+        providerAccountMobileHandlers.handleMobileClaudeLocalAuthImportApi(request, env, ctx),
       ),
   },
   {
@@ -13173,18 +12139,18 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // a place we can read via `wrangler tail`. No secrets: the client redacts
     // the code/token values before posting. Remove once the sign-in
     // state_mismatch is definitively fixed.
-    path: '/api/mobile/signin-debug',
-    handler: request =>
+    path: "/api/mobile/signin-debug",
+    handler: (request) =>
       Effect.promise(async () => {
         try {
-          const body = await request.text()
-          logWorkerRouteInfo('mobile_signin_debug', {
+          const body = await request.text();
+          logWorkerRouteInfo("mobile_signin_debug", {
             body: body.slice(0, 4000),
-          })
+          });
         } catch (error) {
-          logWorkerRouteError('mobile_signin_debug_read_failed', error)
+          logWorkerRouteError("mobile_signin_debug_read_failed", error);
         }
-        return new Response(null, { status: 204 })
+        return new Response(null, { status: 204 });
       }),
   },
   {
@@ -13196,15 +12162,15 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     handler: (request, env, ctx) =>
       handleMobileAccountDeletionRequest(
         {
-          authStorage: e => authKvStoreForEnv(e),
+          authStorage: (e) => authKvStoreForEnv(e),
           db: openAgentsDatabase,
           identityDb: identityDbForEnv,
           ledgerDb: paymentsLedgerDbForEnv,
-          khalaSyncBinding: e => e.KHALA_SYNC_DB,
-          openAuthStorage: e => makeOpenAuthStorageForEnv(e),
+          khalaSyncBinding: (e) => e.KHALA_SYNC_DB,
+          openAuthStorage: (e) => makeOpenAuthStorageForEnv(e),
           readBearerToken,
           requireUserBearerSession,
-          userIdFromSession: session => session.user.userId,
+          userIdFromSession: (session) => session.user.userId,
         },
         request,
         env,
@@ -13224,7 +12190,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
           db: paymentsLedgerDbForEnv,
           readBearerToken,
           requireUserBearerSession,
-          userIdFromSession: session => session.user.userId,
+          userIdFromSession: (session) => session.user.userId,
         },
         request,
         env,
@@ -13238,12 +12204,12 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     handler: (request, env, ctx) =>
       handlePushNotificationPreferencesRequest(
         {
-          authStorage: e => authKvStoreForEnv(e),
+          authStorage: (e) => authKvStoreForEnv(e),
           // CFG-4 Domain 4 (#8519): push tables are Postgres-authoritative.
           db: paymentsLedgerDbForEnv,
           requireAdminApiToken,
           requireUserBearerSession,
-          userIdFromSession: session => session.user.userId,
+          userIdFromSession: (session) => session.user.userId,
         },
         request,
         env,
@@ -13259,26 +12225,24 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     handler: (request, env) =>
       handlePushNotifyEventsRequest(
         {
-          authStorage: e => authKvStoreForEnv(e),
+          authStorage: (e) => authKvStoreForEnv(e),
           // CFG-4 Domain 4 (#8519): push tables are Postgres-authoritative.
           db: paymentsLedgerDbForEnv,
           requireAdminApiToken,
           requireUserBearerSession,
-          userIdFromSession: session => session.user.userId,
+          userIdFromSession: (session) => session.user.userId,
         },
         request,
         env,
       ),
   },
   {
-    path: '/api/auth/totals',
-    handler: (request, env, ctx) =>
-      Effect.promise(() => handleAuthTotalsApi(request, env, ctx)),
+    path: "/api/auth/totals",
+    handler: (request, env, ctx) => Effect.promise(() => handleAuthTotalsApi(request, env, ctx)),
   },
   {
-    path: '/api/admin/overview',
-    handler: (request, env, ctx) =>
-      adminOverviewHandlers.handleAdminOverviewApi(request, env, ctx),
+    path: "/api/admin/overview",
+    handler: (request, env, ctx) => adminOverviewHandlers.handleAdminOverviewApi(request, env, ctx),
   },
   {
     // #9188: admin operator at-a-glance snapshot (agent chains + tokens +
@@ -13286,11 +12250,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     path: ADMIN_OPERATOR_OVERVIEW_PATH,
     handler: (request, env, ctx) =>
       Effect.promise(() =>
-        adminOperatorOverviewHandler.handleAdminOperatorOverview(
-          request,
-          env,
-          ctx,
-        ),
+        adminOperatorOverviewHandler.handleAdminOperatorOverview(request, env, ctx),
       ),
   },
   {
@@ -13299,18 +12259,14 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // for the honest scope pin on live cross-user Khala Sync feeds).
     path: ADMIN_OPS_RUNS_PATH,
     handler: (request, env, ctx) =>
-      Effect.promise(() =>
-        adminOpsRoutes.handleAdminOpsRunsApi(request, env, ctx),
-      ),
+      Effect.promise(() => adminOpsRoutes.handleAdminOpsRunsApi(request, env, ctx)),
   },
   {
     // AIUR-3 (#8501): the ops health strip (last org-cloud turn, push
     // device-token readiness, live Khala public-stats reachability).
     path: ADMIN_OPS_HEALTH_PATH,
     handler: (request, env, ctx) =>
-      Effect.promise(() =>
-        adminOpsRoutes.handleAdminOpsHealthApi(request, env, ctx),
-      ),
+      Effect.promise(() => adminOpsRoutes.handleAdminOpsHealthApi(request, env, ctx)),
   },
   {
     // OB-6 (P1 Track C, #8563): the daily sales ledger — per-day, per-segment
@@ -13319,9 +12275,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // see business-outreach-daily-ledger.ts for the honest scope pin.
     path: ADMIN_OPS_DAILY_SALES_LEDGER_PATH,
     handler: (request, env, ctx) =>
-      Effect.promise(() =>
-        dailySalesLedgerRoutes.handleDailySalesLedgerApi(request, env, ctx),
-      ),
+      Effect.promise(() => dailySalesLedgerRoutes.handleDailySalesLedgerApi(request, env, ctx)),
   },
   {
     // OB-4 (#8561): admin CRM batch approval queue (Aiur ops console).
@@ -13329,17 +12283,13 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // one-by-one (no_send_without_approval_receipt).
     path: ADMIN_OPS_CRM_BATCH_QUEUE_PATH,
     handler: (request, env, ctx) =>
-      Effect.promise(() =>
-        crmApprovalBatchAdminRoutes.handleCrmBatchQueueApi(request, env, ctx),
-      ),
+      Effect.promise(() => crmApprovalBatchAdminRoutes.handleCrmBatchQueueApi(request, env, ctx)),
   },
   {
     // OB-4 (#8561): admin CRM batch approve action (Aiur ops console).
     path: ADMIN_OPS_CRM_BATCH_APPROVE_PATH,
     handler: (request, env, ctx) =>
-      Effect.promise(() =>
-        crmApprovalBatchAdminRoutes.handleCrmBatchApproveApi(request, env, ctx),
-      ),
+      Effect.promise(() => crmApprovalBatchAdminRoutes.handleCrmBatchApproveApi(request, env, ctx)),
   },
   {
     // CFG-7 (#8522): Postgres JobQueue delivery seam. Admin bearer only —
@@ -13349,7 +12299,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     path: OA_QUEUE_DELIVER_PATH,
     handler: (request, env) =>
       handleOaQueueDeliver(request, {
-        dispatch: body => dispatchOaQueueMessage(env, body),
+        dispatch: (body) => dispatchOaQueueMessage(env, body),
         requireOperator: () => requireAdminApiToken(request, env),
       }),
   },
@@ -13358,7 +12308,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // only; proves a round-trip parameterized query through the KHALA_SYNC_DB
     // Hyperdrive binding (transaction-mode-safe single statements) and reports
     // { ok, khalaSyncTables, latencyMs } without leaking connection details.
-    path: '/api/internal/khala-sync/db-smoke',
+    path: "/api/internal/khala-sync/db-smoke",
     handler: (request, env) =>
       handleKhalaSyncDbSmoke(request, {
         binding: env.KHALA_SYNC_DB,
@@ -13458,11 +12408,12 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
         // hop, no admin bearer. Fail-soft: see the route module's own
         // try/catch around this call.
         notify: async ({ ownerUserId, threadId, turnId }) =>
-          dispatchNotifyEventForOwner(
-            paymentsLedgerDbForEnv(env),
-            authKvStoreForEnv(env),
-            { kind: 'turn_needs_input', ownerUserId, threadId, turnId },
-          ),
+          dispatchNotifyEventForOwner(paymentsLedgerDbForEnv(env), authKvStoreForEnv(env), {
+            kind: "turn_needs_input",
+            ownerUserId,
+            threadId,
+            turnId,
+          }),
       }),
   },
   {
@@ -13478,7 +12429,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     handler: (request, env) =>
       Effect.promise(() =>
         handleKhalaSyncHubInternalRoute(request, {
-          hubPath: '/append',
+          hubPath: "/append",
           namespace: resolveKhalaSyncHubNamespace(env),
           requireOperator: () => requireAdminApiToken(request, env),
         }),
@@ -13489,7 +12440,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     handler: (request, env) =>
       Effect.promise(() =>
         handleKhalaSyncHubInternalRoute(request, {
-          hubPath: '/log',
+          hubPath: "/log",
           namespace: resolveKhalaSyncHubNamespace(env),
           requireOperator: () => requireAdminApiToken(request, env),
         }),
@@ -13500,7 +12451,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     handler: (request, env) =>
       Effect.promise(() =>
         handleKhalaSyncHubInternalRoute(request, {
-          hubPath: '/connect',
+          hubPath: "/connect",
           namespace: resolveKhalaSyncHubNamespace(env),
           requireOperator: () => requireAdminApiToken(request, env),
         }),
@@ -13531,24 +12482,26 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // changelog → ledger, all atomic). Per-mutation rejections are in-band
     // MutationResult values in a 200 PushResponse — never a queue-blocking
     // 4xx (SPEC §2.4).
-    path: '/api/sync/push',
+    path: "/api/sync/push",
     handler: (request, env, ctx) => {
-      const pushDependencies = khalaSyncRouteWiring.makePushDeps(request, env, ctx)
+      const pushDependencies = khalaSyncRouteWiring.makePushDeps(request, env, ctx);
       return handleKhalaSyncPush(request, {
         ...pushDependencies,
         onPushAccepted: ({ request: pushRequest, response }) => {
-          const admittedStartTurn = response.results.some(result =>
-            result.status === 'applied' &&
-            pushRequest.mutations.some(mutation =>
-              mutation.mutationId === result.mutationId &&
-              mutation.name === RUNTIME_START_TURN_MUTATOR_NAME,
-            ),
-          )
+          const admittedStartTurn = response.results.some(
+            (result) =>
+              result.status === "applied" &&
+              pushRequest.mutations.some(
+                (mutation) =>
+                  mutation.mutationId === result.mutationId &&
+                  mutation.name === RUNTIME_START_TURN_MUTATOR_NAME,
+              ),
+          );
           if (admittedStartTurn) {
-            ctx.waitUntil(runHostedRuntimeTurnDispatchForEnv(env))
+            ctx.waitUntil(runHostedRuntimeTurnDispatchForEnv(env));
           }
         },
-      })
+      });
     },
   },
   {
@@ -13560,12 +12513,9 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // window gets a 410 typed SyncError (MustRefetch, invariant 6). Scope
     // gate: the KS-7.1 taxonomy-complete resolver (live D1 membership/
     // ownership + Postgres fleet scope owners; fail-closed).
-    path: '/api/sync/log',
+    path: "/api/sync/log",
     handler: (request, env, ctx) =>
-      handleKhalaSyncLog(
-        request,
-        khalaSyncRouteWiring.makeLogDeps(request, env, ctx),
-      ),
+      handleKhalaSyncLog(request, khalaSyncRouteWiring.makeLogDeps(request, env, ctx)),
   },
   {
     // Khala Sync bootstrap (KS-4.4, #8297): authenticated consistent
@@ -13575,12 +12525,9 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // the stitch cursor). Typed 400s incl. protocol/schema version gates;
     // same KS-7.1 scope gate as /api/sync/log. Snapshot pages are
     // paging-position-specific, so every response is no-store.
-    path: '/api/sync/bootstrap',
+    path: "/api/sync/bootstrap",
     handler: (request, env, ctx) =>
-      handleKhalaSyncBootstrap(
-        request,
-        khalaSyncRouteWiring.makeBootstrapDeps(request, env, ctx),
-      ),
+      handleKhalaSyncBootstrap(request, khalaSyncRouteWiring.makeBootstrapDeps(request, env, ctx)),
   },
   {
     // Khala Sync CVR diff pull (KS-7.2, #8306): FLAG-GATED behind
@@ -13592,12 +12539,9 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // REPEATABLE READ snapshot (permission-driven retraction falls out as
     // dels — no full re-bootstrap). Same auth + KS-7.1 scope gate as
     // bootstrap. Design: docs/khala-sync/CVR_DESIGN.md.
-    path: '/api/sync/cvr-pull',
+    path: "/api/sync/cvr-pull",
     handler: (request, env, ctx) =>
-      handleKhalaSyncCvrPull(
-        request,
-        khalaSyncRouteWiring.makeCvrPullDeps(request, env, ctx),
-      ),
+      handleKhalaSyncCvrPull(request, khalaSyncRouteWiring.makeCvrPullDeps(request, env, ctx)),
   },
   {
     // Khala Sync live tail (KS-4.4, #8297): authenticated WebSocket upgrade
@@ -13606,7 +12550,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // KS-7.1 scope gate run BEFORE the upgrade is forwarded (and again on
     // every reconnect — how access_changed revocation sticks); the
     // admin-guarded internal hub route stays capture/operator-only.
-    path: '/api/sync/connect',
+    path: "/api/sync/connect",
     handler: (request, env, ctx) =>
       handleKhalaSyncConnect(
         request,
@@ -13618,12 +12562,11 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
       ),
   },
   {
-    path: '/api/stats/token-usage/events',
-    handler: (request, env) =>
-      tokenUsageLedgerRoutes.handleTokenUsageEventsApi(request, env),
+    path: "/api/stats/token-usage/events",
+    handler: (request, env) => tokenUsageLedgerRoutes.handleTokenUsageEventsApi(request, env),
   },
   {
-    path: '/api/stats/token-usage/aggregate',
+    path: "/api/stats/token-usage/aggregate",
     handler: (request, env, ctx) =>
       tokenUsageLedgerRoutes.handleTokenUsageAggregateApi(request, env, ctx),
   },
@@ -13631,117 +12574,88 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // OWNER-GATED inference cost / provider-lane analytics (#6232). Aggregate
     // token + cost rollups (byProvider, byModel, byRoute, byDay, totals) over a
     // window. Admin/owner session only — provider ids + cost are internal.
-    path: '/api/admin/inference-analytics',
+    path: "/api/admin/inference-analytics",
     handler: (request, env, ctx) =>
       tokenUsageLedgerRoutes.handleInferenceAnalyticsApi(request, env, ctx),
   },
   {
-    path: '/api/operator/fleet/status',
+    path: "/api/operator/fleet/status",
     handler: (request, env) =>
-      Effect.promise(() =>
-        operatorFleetStatusRoutes.handleOperatorFleetStatusApi(request, env),
-      ),
+      Effect.promise(() => operatorFleetStatusRoutes.handleOperatorFleetStatusApi(request, env)),
   },
   {
-    path: '/api/operator/fleet/state',
+    path: "/api/operator/fleet/state",
     handler: (request, env) =>
-      Effect.promise(() =>
-        operatorFleetStatusRoutes.handleOperatorFleetStatusApi(request, env),
-      ),
+      Effect.promise(() => operatorFleetStatusRoutes.handleOperatorFleetStatusApi(request, env)),
   },
   {
-    path: '/api/operator/pro/status',
+    path: "/api/operator/pro/status",
     handler: (request, env, ctx) =>
-      Effect.promise(() =>
-        operatorProStatusRoutes.handleOperatorProStatusApi(request, env, ctx),
-      ),
+      Effect.promise(() => operatorProStatusRoutes.handleOperatorProStatusApi(request, env, ctx)),
   },
   {
-    path: '/api/stats/token-usage/leaderboards',
+    path: "/api/stats/token-usage/leaderboards",
     handler: (request, env, ctx) =>
       tokenUsageLedgerRoutes.handleTokenUsageLeaderboardsApi(request, env, ctx),
   },
   {
-    path: '/api/stats/token-usage/leaderboard-preference',
+    path: "/api/stats/token-usage/leaderboard-preference",
     handler: (request, env, ctx) =>
-      tokenUsageLedgerRoutes.handleTokenUsageLeaderboardPreferenceApi(
-        request,
-        env,
-        ctx,
-      ),
+      tokenUsageLedgerRoutes.handleTokenUsageLeaderboardPreferenceApi(request, env, ctx),
   },
   {
-    path: '/api/auth/teams',
-    handler: (request, env, ctx) =>
-      Effect.promise(() => handleAuthTeamsApi(request, env, ctx)),
+    path: "/api/auth/teams",
+    handler: (request, env, ctx) => Effect.promise(() => handleAuthTeamsApi(request, env, ctx)),
   },
   {
-    path: '/api/autopilot/continuation-policy',
+    path: "/api/autopilot/continuation-policy",
     handler: (request, env, ctx) =>
-      autopilotContinuationPolicyRoutes.routeAutopilotContinuationPolicyRequest(
-        request,
-        env,
-        ctx,
-      ),
+      autopilotContinuationPolicyRoutes.routeAutopilotContinuationPolicyRequest(request, env, ctx),
   },
   {
-    path: '/api/autopilot/morning-report',
+    path: "/api/autopilot/morning-report",
     handler: (request, env, ctx) =>
-      autopilotMorningReportRoutes.routeAutopilotMorningReportRequest(
-        request,
-        env,
-        ctx,
-      ),
+      autopilotMorningReportRoutes.routeAutopilotMorningReportRequest(request, env, ctx),
   },
   {
-    path: '/api/public/pylon-stats',
+    path: "/api/public/pylon-stats",
     handler: (request, env) => handlePublicPylonStatsApi(request, env),
   },
   {
-    path: '/api/public/khala-tokens-served',
+    path: "/api/public/khala-tokens-served",
     handler: (request, env) => handlePublicKhalaTokensServedApi(request, env),
   },
   {
-    path: '/api/public/khala-tokens-served/history',
-    handler: (request, env) =>
-      handlePublicKhalaTokensServedHistoryApi(request, env),
+    path: "/api/public/khala-tokens-served/history",
+    handler: (request, env) => handlePublicKhalaTokensServedHistoryApi(request, env),
   },
   {
-    path: '/api/public/khala-tokens-served/model-mix',
-    handler: (request, env) =>
-      handlePublicKhalaTokensServedModelMixApi(request, env),
+    path: "/api/public/khala-tokens-served/model-mix",
+    handler: (request, env) => handlePublicKhalaTokensServedModelMixApi(request, env),
   },
   {
-    path: '/api/public/khala-tokens-served/demand-mix',
-    handler: (request, env) =>
-      handlePublicKhalaTokensServedDemandMixApi(request, env),
+    path: "/api/public/khala-tokens-served/demand-mix",
+    handler: (request, env) => handlePublicKhalaTokensServedDemandMixApi(request, env),
   },
   {
-    path: '/api/public/khala-tokens-served/channel-mix',
-    handler: (request, env) =>
-      handlePublicKhalaTokensServedChannelMixApi(request, env),
+    path: "/api/public/khala-tokens-served/channel-mix",
+    handler: (request, env) => handlePublicKhalaTokensServedChannelMixApi(request, env),
   },
   {
     // KS-6.4 (#8414): the settled-feed khala-sync projection's new public,
     // unauthenticated read route (see public-settled-feed-routes.ts doc).
-    path: '/api/public/settled-feed',
+    path: "/api/public/settled-feed",
     handler: (request, env) => handlePublicSettledFeedApi(request, env),
   },
   {
     path: KHALA_CLOUD_RUNTIME_USAGE_INGEST_PATH,
     handler: (request, env) =>
-      khalaCloudRuntimeUsageRoutes.handleKhalaCloudRuntimeUsageIngestApi(
-        request,
-        env,
-      ),
+      khalaCloudRuntimeUsageRoutes.handleKhalaCloudRuntimeUsageIngestApi(request, env),
   },
   {
     path: KHALA_AGENT_COMPUTER_WRITEBACK_INGEST_PATH,
     handler: (request, env) =>
-      khalaAgentComputerWritebackRoutes.handleKhalaAgentComputerWritebackIngestApi(
-        request,
-        env,
-      ),
+      khalaAgentComputerWritebackRoutes.handleKhalaAgentComputerWritebackIngestApi(request, env),
   },
   {
     // Seam A (#8503, AC-1): admin-guarded reachable trigger. Seeds ONE admitted
@@ -13767,10 +12681,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
   {
     path: PYLON_CODEX_LOCAL_USAGE_INGEST_PATH,
     handler: (request, env) =>
-      pylonCodexTurnIngestRoutes.handlePylonCodexLocalUsageIngestApi(
-        request,
-        env,
-      ),
+      pylonCodexTurnIngestRoutes.handlePylonCodexLocalUsageIngestApi(request, env),
   },
   {
     path: PYLON_CLAUDE_TURN_INGEST_PATH,
@@ -13780,42 +12691,32 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
   {
     path: PYLON_CODEX_EVENT_CHUNK_INGEST_PATH,
     handler: (request, env) =>
-      pylonCodexTurnIngestRoutes.handlePylonCodexEventChunkIngestApi(
-        request,
-        env,
-      ),
+      pylonCodexTurnIngestRoutes.handlePylonCodexEventChunkIngestApi(request, env),
   },
   {
     path: PYLON_CODEX_ASSIGNMENT_PROOF_PATH,
     handler: (request, env) =>
-      pylonCodexTurnIngestRoutes.handlePylonCodexAssignmentProofApi(
-        request,
-        env,
-      ),
+      pylonCodexTurnIngestRoutes.handlePylonCodexAssignmentProofApi(request, env),
   },
   {
     path: PYLON_CODEX_ASSIGNMENT_TRACE_STATUS_PATH,
     handler: (request, env) =>
-      pylonCodexTurnIngestRoutes.handlePylonCodexAssignmentTraceStatusApi(
-        request,
-        env,
-      ),
+      pylonCodexTurnIngestRoutes.handlePylonCodexAssignmentTraceStatusApi(request, env),
   },
   {
-    path: '/api/public/pylon-capacity-funnel',
+    path: "/api/public/pylon-capacity-funnel",
     handler: (request, env) => handlePylonCapacityFunnelApi(request, env),
   },
   {
-    path: '/api/public/pylon-capacity-funnel/history',
-    handler: (request, env) =>
-      handlePylonCapacityFunnelHistoryApi(request, env),
+    path: "/api/public/pylon-capacity-funnel/history",
+    handler: (request, env) => handlePylonCapacityFunnelHistoryApi(request, env),
   },
   {
-    path: '/api/public/partner-payouts',
+    path: "/api/public/partner-payouts",
     handler: (request, env) => handlePartnerPayoutsPublicApi(request, env),
   },
   {
-    path: '/api/public/relay-health',
+    path: "/api/public/relay-health",
     handler: (request, env) =>
       handlePublicRelayHealthApi(request, {
         relayUrl: canonicalMarketRelayUrl(env),
@@ -13823,29 +12724,29 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
       }),
   },
   {
-    path: '/api/public/launch-dashboard',
+    path: "/api/public/launch-dashboard",
     handler: (request, env) => handlePublicLaunchDashboardApi(request, env),
   },
   {
-    path: '/api/public/artanis/report',
+    path: "/api/public/artanis/report",
     handler: (request, env) => handlePublicArtanisReportApi(request, env),
   },
   {
-    path: '/api/public/artanis/activity',
+    path: "/api/public/artanis/activity",
     handler: (request, env) =>
       handlePublicArtanisActivityApi(request, {
         OPENAGENTS_DB: openAgentsDatabase(env),
       }),
   },
   {
-    path: '/api/public/labor-earnings',
+    path: "/api/public/labor-earnings",
     handler: (request, env) =>
       handlePublicLaborEarningsApi(request, {
         ledgerDb: paymentsLedgerDbForEnv(env),
       }),
   },
   {
-    path: '/api/public/artanis/labor-receipts',
+    path: "/api/public/artanis/labor-receipts",
     handler: (request, env) =>
       handlePublicArtanisLaborReceiptsApi(request, {
         nowIso: currentIsoTimestamp,
@@ -13856,7 +12757,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
       }),
   },
   {
-    path: '/api/public/artanis/labor-green-readiness',
+    path: "/api/public/artanis/labor-green-readiness",
     handler: (request, env) =>
       handlePublicArtanisLaborGreenReadinessApi(request, {
         nowIso: currentIsoTimestamp,
@@ -13867,230 +12768,202 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
       }),
   },
   {
-    path: '/api/public/artanis/admin-ticks',
+    path: "/api/public/artanis/admin-ticks",
     handler: (request, env) =>
       Effect.promise(async () => {
-        if (request.method !== 'GET') {
-          return Response.json({ error: 'method_not_allowed' }, { status: 405 })
+        if (request.method !== "GET") {
+          return Response.json({ error: "method_not_allowed" }, { status: 405 });
         }
         const monitor = await readArtanisTickMonitor(openAgentsDatabase(env), {
-          limit: boundedTickMonitorLimit(
-            new URL(request.url).searchParams.get('limit'),
-          ),
+          limit: boundedTickMonitorLimit(new URL(request.url).searchParams.get("limit")),
           nowIso: currentIsoTimestamp(),
-        })
+        });
         return Response.json(monitor, {
-          headers: { 'cache-control': 'no-store' },
-        })
+          headers: { "cache-control": "no-store" },
+        });
       }),
   },
   {
-    path: '/api/public/artanis/tick-streak',
+    path: "/api/public/artanis/tick-streak",
     handler: (request, env) =>
       Effect.promise(async () => {
-        if (request.method !== 'GET') {
-          return Response.json({ error: 'method_not_allowed' }, { status: 405 })
+        if (request.method !== "GET") {
+          return Response.json({ error: "method_not_allowed" }, { status: 405 });
         }
         const streak = await readArtanisTickStreak(openAgentsDatabase(env), {
-          limit: boundedTickStreakLimit(
-            new URL(request.url).searchParams.get('limit'),
-          ),
+          limit: boundedTickStreakLimit(new URL(request.url).searchParams.get("limit")),
           nowIso: currentIsoTimestamp(),
-        })
+        });
         return Response.json(streak, {
-          headers: { 'cache-control': 'no-store' },
-        })
+          headers: { "cache-control": "no-store" },
+        });
       }),
   },
   {
-    path: '/api/public/artanis/tassadar-distillation-dataset',
+    path: "/api/public/artanis/tassadar-distillation-dataset",
     handler: (request, env) =>
       Effect.promise(async () => {
-        if (request.method !== 'GET') {
-          return Response.json({ error: 'method_not_allowed' }, { status: 405 })
+        if (request.method !== "GET") {
+          return Response.json({ error: "method_not_allowed" }, { status: 405 });
         }
-        const receipt = await readArtanisDistillationDatasetReceipt(
-          openAgentsDatabase(env),
-          {
-            limit: boundedDistillationDatasetLimit(
-              new URL(request.url).searchParams.get('limit'),
-            ),
-            nowIso: currentIsoTimestamp(),
-          },
-        )
+        const receipt = await readArtanisDistillationDatasetReceipt(openAgentsDatabase(env), {
+          limit: boundedDistillationDatasetLimit(new URL(request.url).searchParams.get("limit")),
+          nowIso: currentIsoTimestamp(),
+        });
         return Response.json(receipt, {
-          headers: { 'cache-control': 'no-store' },
-        })
+          headers: { "cache-control": "no-store" },
+        });
       }),
   },
   {
-    path: '/api/public/artanis/responder-support',
+    path: "/api/public/artanis/responder-support",
     handler: (request, env) =>
       Effect.promise(async () => {
-        if (request.method !== 'GET') {
-          return Response.json({ error: 'method_not_allowed' }, { status: 405 })
+        if (request.method !== "GET") {
+          return Response.json({ error: "method_not_allowed" }, { status: 405 });
         }
-        const projection = await readArtanisResponderSupport(
-          openAgentsDatabase(env),
-          {
-            limit: boundedResponderSupportLimit(
-              new URL(request.url).searchParams.get('limit'),
-            ),
-            nowIso: currentIsoTimestamp(),
-          },
-        )
+        const projection = await readArtanisResponderSupport(openAgentsDatabase(env), {
+          limit: boundedResponderSupportLimit(new URL(request.url).searchParams.get("limit")),
+          nowIso: currentIsoTimestamp(),
+        });
         return Response.json(projection, {
-          headers: { 'cache-control': 'no-store' },
-        })
+          headers: { "cache-control": "no-store" },
+        });
       }),
   },
   {
-    path: '/api/blueprint/program-registry',
-    handler: (request, env) =>
-      blueprintRoutes.handleBlueprintProgramRegistryApi(request, env),
+    path: "/api/blueprint/program-registry",
+    handler: (request, env) => blueprintRoutes.handleBlueprintProgramRegistryApi(request, env),
   },
   {
-    path: '/api/blueprint/program-runs',
-    handler: (request, env) =>
-      blueprintRoutes.handleBlueprintProgramRunEvidenceApi(request, env),
+    path: "/api/blueprint/program-runs",
+    handler: (request, env) => blueprintRoutes.handleBlueprintProgramRunEvidenceApi(request, env),
   },
   {
-    path: '/api/blueprint/action-submissions',
-    handler: (request, env) =>
-      blueprintRoutes.handleBlueprintActionSubmissionsApi(request, env),
+    path: "/api/blueprint/action-submissions",
+    handler: (request, env) => blueprintRoutes.handleBlueprintActionSubmissionsApi(request, env),
   },
   {
-    path: '/api/blueprint/contributions',
+    path: "/api/blueprint/contributions",
     handler: (request, env) =>
-      blueprintProbeContributionRoutes.handleBlueprintProbeContributionsApi(
-        request,
-        env,
-      ),
+      blueprintProbeContributionRoutes.handleBlueprintProbeContributionsApi(request, env),
   },
   {
-    path: '/api/blueprint/contracts',
-    handler: (request, env) =>
-      blueprintRoutes.handleBlueprintContractExportApi(request, env),
+    path: "/api/blueprint/contracts",
+    handler: (request, env) => blueprintRoutes.handleBlueprintContractExportApi(request, env),
   },
   {
-    path: '/api/blueprint/tassadar-modules',
+    path: "/api/blueprint/tassadar-modules",
     handler: (request, env) =>
       blueprintRoutes.handleBlueprintTassadarModuleRegistryApi(request, env),
   },
   {
-    path: '/.well-known/openagents.json',
+    path: "/.well-known/openagents.json",
     handler: (request, env, ctx) => {
       recordPublicAgentFunnelRead(
         request,
         businessDomainDatabaseForEnv(env),
         ctx,
-        'capability_manifest_read',
-        '/.well-known/openagents.json',
-      )
+        "capability_manifest_read",
+        "/.well-known/openagents.json",
+      );
 
-      return handleOpenAgentsCapabilityManifestApi(request)
+      return handleOpenAgentsCapabilityManifestApi(request);
     },
   },
   {
-    path: '/AGENTS-CORE.md',
+    path: "/AGENTS-CORE.md",
     handler: (request, env, ctx) => {
       recordPublicAgentFunnelRead(
         request,
         businessDomainDatabaseForEnv(env),
         ctx,
-        'agent_doc_read',
-        '/AGENTS-CORE.md',
-      )
+        "agent_doc_read",
+        "/AGENTS-CORE.md",
+      );
 
-      return handleOpenAgentsCompanionFile(
-        request,
-        env.ASSETS,
-        '/AGENTS-CORE.md',
-      )
+      return handleOpenAgentsCompanionFile(request, env.ASSETS, "/AGENTS-CORE.md");
     },
   },
   {
-    path: '/AGENTS.md',
+    path: "/AGENTS.md",
     handler: (request, env, ctx) => {
       recordPublicAgentFunnelRead(
         request,
         businessDomainDatabaseForEnv(env),
         ctx,
-        'agent_doc_read',
-        '/AGENTS.md',
-      )
+        "agent_doc_read",
+        "/AGENTS.md",
+      );
 
-      return handleOpenAgentsAgentOnboarding(request, env.ASSETS)
+      return handleOpenAgentsAgentOnboarding(request, env.ASSETS);
     },
   },
   {
-    path: '/HEARTBEAT.md',
-    handler: (request, env) =>
-      handleOpenAgentsCompanionFile(request, env.ASSETS, '/HEARTBEAT.md'),
+    path: "/HEARTBEAT.md",
+    handler: (request, env) => handleOpenAgentsCompanionFile(request, env.ASSETS, "/HEARTBEAT.md"),
   },
   {
-    path: '/RULES.md',
-    handler: (request, env) =>
-      handleOpenAgentsCompanionFile(request, env.ASSETS, '/RULES.md'),
+    path: "/RULES.md",
+    handler: (request, env) => handleOpenAgentsCompanionFile(request, env.ASSETS, "/RULES.md"),
   },
   {
-    path: '/skill.json',
-    handler: (request, env) =>
-      handleOpenAgentsCompanionFile(request, env.ASSETS, '/skill.json'),
+    path: "/skill.json",
+    handler: (request, env) => handleOpenAgentsCompanionFile(request, env.ASSETS, "/skill.json"),
   },
   // React + Tailwind landing pair. These exact document routes intentionally
   // intercept before the legacy app-shell fallback.
   {
-    path: '/demo',
-    handler: request => handleReactLandingPage(request, 'demo'),
+    path: "/demo",
+    handler: (request) => handleReactLandingPage(request, "demo"),
   },
   {
-    path: '/new',
-    handler: request => handleReactLandingPage(request, 'new'),
+    path: "/new",
+    handler: (request) => handleReactLandingPage(request, "new"),
   },
   // Server-rendered landing experiment (site-speed lane; unlisted, noindex).
   {
-    path: '/lander2',
+    path: "/lander2",
     handler: (request, env) => handleLander2Page(request, env),
   },
   // Server-rendered landing + lazy fade-in Three.js hero (site-speed lane).
   {
-    path: '/lander3',
+    path: "/lander3",
     handler: (request, env) => handleLander3Page(request, env),
   },
   // Business-facing "Agents that work." landing experiment (site-speed lane).
   {
-    path: '/lander4',
+    path: "/lander4",
     handler: (request, env, ctx) => handleLander4Page(request, env, ctx),
   },
   // lander4 + the dimmed lazy Three.js hero (site-speed lane).
   {
-    path: '/lander5',
+    path: "/lander5",
     handler: (request, env, ctx) => handleLander5Page(request, env, ctx),
   },
   // /business restructured in the lander-family system (site-speed lane).
   {
-    path: '/business',
+    path: "/business",
     handler: (request, env, ctx) => handleBusinessNewPage(request, env, ctx),
   },
   {
-    path: '/business/agents.md',
+    path: "/business/agents.md",
     handler: (request: Request) => handleBusinessAgentGuide(request),
   },
   // Legacy preview alias kept for direct references while /business is canonical.
   {
-    path: '/business-new',
+    path: "/business-new",
     handler: (request, env, ctx) => handleBusinessNewPage(request, env, ctx),
   },
   // Observer product landing page (lander-family shell; content source
   // docs/assurance — see observer-routes.ts).
   {
-    path: '/observer',
-    handler: request => handleObserverPage(request),
+    path: "/observer",
+    handler: (request) => handleObserverPage(request),
   },
   {
     path: OPENAGENTS_DESKTOP_MVP_OBSERVATORY_PATH,
-    handler: request => handleObservatoryTracePage(request),
+    handler: (request) => handleObservatoryTracePage(request),
   },
   // Lowercase aliases for the served agent-doc set. Cloudflare static assets
   // are case-sensitive, so a typed /install.md previously fell through to the
@@ -14099,20 +12972,18 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
   // discovery surface registered below, not an alias of /AGENTS.md.
   ...(
     [
-      ['/install.md', '/INSTALL.md'],
-      ['/surfaces.md', '/SURFACES.md'],
-      ['/pylon.md', '/PYLON.md'],
-      ['/sites.md', '/SITES.md'],
-      ['/rules.md', '/RULES.md'],
-      ['/heartbeat.md', '/HEARTBEAT.md'],
-      ['/agents-core.md', '/AGENTS-CORE.md'],
-      ['/qa-runner.md', '/QA-RUNNER.md'],
+      ["/install.md", "/INSTALL.md"],
+      ["/surfaces.md", "/SURFACES.md"],
+      ["/pylon.md", "/PYLON.md"],
+      ["/sites.md", "/SITES.md"],
+      ["/rules.md", "/RULES.md"],
+      ["/heartbeat.md", "/HEARTBEAT.md"],
+      ["/agents-core.md", "/AGENTS-CORE.md"],
+      ["/qa-runner.md", "/QA-RUNNER.md"],
     ] as const
   ).map(([aliasPath, canonicalPath]) => ({
     handler: (request: Request) =>
-      Effect.sync(() =>
-        Response.redirect(new URL(canonicalPath, request.url).toString(), 301),
-      ),
+      Effect.sync(() => Response.redirect(new URL(canonicalPath, request.url).toString(), 301)),
     path: aliasPath,
   })),
   // Agent-discovery surfaces for Khala + the OpenAgents Agent Cloud. Ship-ready,
@@ -14121,71 +12992,65 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
   // They make no money claim and require no payment config. Crawlable (public,
   // cacheable, no auth, no robots block). Mirrors the live PostalForm directory
   // shape.
-  ...(['/llms.txt', '/agents.md', '/ai.md', '/skill.md'] as const).map(
-    surfacePath => ({
-      handler: (request: Request) =>
-        renderDiscoverySurface(request, surfacePath as DiscoverySurfacePath),
-      path: surfacePath,
-    }),
-  ),
+  ...(["/llms.txt", "/agents.md", "/ai.md", "/skill.md"] as const).map((surfacePath) => ({
+    handler: (request: Request) =>
+      renderDiscoverySurface(request, surfacePath as DiscoverySurfacePath),
+    path: surfacePath,
+  })),
   {
-    path: '/api/openapi.json',
+    path: "/api/openapi.json",
     handler: (request, env, ctx) => {
       recordPublicAgentFunnelRead(
         request,
         businessDomainDatabaseForEnv(env),
         ctx,
-        'openapi_read',
-        '/api/openapi.json',
-      )
+        "openapi_read",
+        "/api/openapi.json",
+      );
 
-      return handleOpenAgentsOpenApi(request)
+      return handleOpenAgentsOpenApi(request);
     },
   },
   {
-    path: '/api/omni/sdk-seed',
-    handler: request => handleOmniApiSdkSeedApi(request),
+    path: "/api/omni/sdk-seed",
+    handler: (request) => handleOmniApiSdkSeedApi(request),
   },
   {
-    path: '/api/developer/signature-packages/validate',
-    handler: request => handleSignaturePackageValidationApi(request),
+    path: "/api/developer/signature-packages/validate",
+    handler: (request) => handleSignaturePackageValidationApi(request),
   },
   {
-    path: '/api/public/adjutant/activity',
+    path: "/api/public/adjutant/activity",
     handler: (request, env) => handlePublicAdjutantActivityApi(request, env),
   },
   {
-    path: '/api/github-write/connections',
+    path: "/api/github-write/connections",
     handler: (request, env, ctx) =>
       Effect.promise(() => handleGitHubWriteConnectionsApi(request, env, ctx)),
   },
   {
-    path: '/api/github-write/grants/resolve',
-    handler: (request, env) =>
-      Effect.promise(() => handleGitHubWriteGrantResolveApi(request, env)),
+    path: "/api/github-write/grants/resolve",
+    handler: (request, env) => Effect.promise(() => handleGitHubWriteGrantResolveApi(request, env)),
   },
   ...(
     [
-      '/api/portable-capability-grants/provider/revoke',
-      '/api/portable-capability-grants/provider/reissue',
-      '/api/portable-capability-grants/github/revoke',
-      '/api/portable-capability-grants/github/reissue',
-      '/api/portable-capability-grants/facts',
+      "/api/portable-capability-grants/provider/revoke",
+      "/api/portable-capability-grants/provider/reissue",
+      "/api/portable-capability-grants/github/revoke",
+      "/api/portable-capability-grants/github/reissue",
+      "/api/portable-capability-grants/facts",
     ] as const
-  ).map(path => ({
+  ).map((path) => ({
     path,
     handler: (request: Request, env: OpenAgentsWorkerEnv) =>
-      Effect.promise(() =>
-        handlePortableCapabilityGrantAuthorityApi(request, env),
-      ),
+      Effect.promise(() => handlePortableCapabilityGrantAuthorityApi(request, env)),
   })),
   {
-    path: '/api/admin/sync/notify',
-    handler: (request, env) =>
-      Effect.promise(() => handleAdminSyncNotifyApi(request, env)),
+    path: "/api/admin/sync/notify",
+    handler: (request, env) => Effect.promise(() => handleAdminSyncNotifyApi(request, env)),
   },
   {
-    path: '/api/agents/register',
+    path: "/api/agents/register",
     handler: (request, env) =>
       Effect.promise(() => handleProgrammaticAgentRegistration(request, env)),
   },
@@ -14193,17 +13058,16 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // #6370: admin-only dead-token recovery — mint a fresh credential for an
     // EXISTING agent identity (same entity), admin-gated like every /api/admin/*
     // route.
-    path: '/api/admin/agents/reissue-token',
+    path: "/api/admin/agents/reissue-token",
     handler: (request, env, ctx) =>
       Effect.promise(() => handleAdminReissueAgentToken(request, env, ctx)),
   },
   {
-    path: '/api/agents/me',
-    handler: (request, env) =>
-      Effect.promise(() => handleProgrammaticAgentMe(request, env)),
+    path: "/api/agents/me",
+    handler: (request, env) => Effect.promise(() => handleProgrammaticAgentMe(request, env)),
   },
   {
-    path: '/v1/agent-definitions',
+    path: "/v1/agent-definitions",
     handler: (request, env) =>
       Effect.promise(() =>
         handleAgentDefinitionsApi(request, {
@@ -14214,16 +13078,14 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
       ),
   },
   {
-    path: '/v1/agent-definitions/webhooks/github',
+    path: "/v1/agent-definitions/webhooks/github",
     handler: (request, env) =>
       Effect.promise(() =>
         handleAgentDefinitionWebhookRequest(request, {
           definitionStore: makeAgentDefinitionStoreForEnv(env),
           dispatchDependencies: {
             durableStreamNamespace: durableInferenceStreamNamespaceForEnv(env, {
-              enabled: isInferenceDurableStreamEnabled(
-                env.INFERENCE_DURABLE_STREAM_ENABLED,
-              ),
+              enabled: isInferenceDurableStreamEnabled(env.INFERENCE_DURABLE_STREAM_ENABLED),
             }),
             forgeGitAuthStore: makeForgeTenantGitAuthStoreForEnv(env),
             forgeStore: makeForgeCoordinationStoreForEnv(env),
@@ -14232,14 +13094,14 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
           },
           githubSecret: (
             env as Env & {
-              AGENT_DEFINITION_GITHUB_WEBHOOK_SECRET?: string
+              AGENT_DEFINITION_GITHUB_WEBHOOK_SECRET?: string;
             }
           ).AGENT_DEFINITION_GITHUB_WEBHOOK_SECRET,
           eventLedgerEnqueue: makeEventLedgerIngestEnqueue(env),
           githubMentionLogins: optionalCommaSeparatedValues(
             (
               env as Env & {
-                AGENT_DEFINITION_GITHUB_MENTION_LOGINS?: string
+                AGENT_DEFINITION_GITHUB_MENTION_LOGINS?: string;
               }
             ).AGENT_DEFINITION_GITHUB_MENTION_LOGINS,
           ),
@@ -14248,40 +13110,38 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
       ),
   },
   {
-    path: '/v1/agent-definitions/webhooks/github/completions',
+    path: "/v1/agent-definitions/webhooks/github/completions",
     handler: (request, env) => {
       const githubSecret = (
         env as Env & {
-          AGENT_DEFINITION_GITHUB_WEBHOOK_SECRET?: string
+          AGENT_DEFINITION_GITHUB_WEBHOOK_SECRET?: string;
         }
-      ).AGENT_DEFINITION_GITHUB_WEBHOOK_SECRET
+      ).AGENT_DEFINITION_GITHUB_WEBHOOK_SECRET;
       const commentToken = (
         env as Env & {
-          AGENT_DEFINITION_GITHUB_COMMENT_TOKEN?: string
+          AGENT_DEFINITION_GITHUB_COMMENT_TOKEN?: string;
         }
-      ).AGENT_DEFINITION_GITHUB_COMMENT_TOKEN?.trim()
+      ).AGENT_DEFINITION_GITHUB_COMMENT_TOKEN?.trim();
 
       return handleAgentDefinitionGitHubCompletionRequest(request, {
         github:
-          commentToken === undefined || commentToken === ''
+          commentToken === undefined || commentToken === ""
             ? undefined
             : makeGitHubRestAgentDefinitionCompletionGitHubStore(commentToken),
         githubSecret,
         runStore: makeAgentDefinitionRunStoreForEnv(env),
-      })
+      });
     },
   },
   {
-    path: '/v1/agent-definitions/webhooks/slack',
+    path: "/v1/agent-definitions/webhooks/slack",
     handler: (request, env) =>
       Effect.promise(() =>
         handleAgentDefinitionSlackWebhookRequest(request, {
           definitionStore: makeAgentDefinitionStoreForEnv(env),
           dispatchDependencies: {
             durableStreamNamespace: durableInferenceStreamNamespaceForEnv(env, {
-              enabled: isInferenceDurableStreamEnabled(
-                env.INFERENCE_DURABLE_STREAM_ENABLED,
-              ),
+              enabled: isInferenceDurableStreamEnabled(env.INFERENCE_DURABLE_STREAM_ENABLED),
             }),
             forgeGitAuthStore: makeForgeTenantGitAuthStoreForEnv(env),
             forgeStore: makeForgeCoordinationStoreForEnv(env),
@@ -14291,7 +13151,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
           eventLedgerEnqueue: makeEventLedgerIngestEnqueue(env),
           slackSecret: (
             env as Env & {
-              AGENT_DEFINITION_SLACK_WEBHOOK_SIGNING_SECRET?: string
+              AGENT_DEFINITION_SLACK_WEBHOOK_SIGNING_SECRET?: string;
             }
           ).AGENT_DEFINITION_SLACK_WEBHOOK_SIGNING_SECRET,
           triggerStore: makeAgentDefinitionTriggerStoreForEnv(env),
@@ -14299,94 +13159,77 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
       ),
   },
   {
-    path: '/v1/agent-definitions/webhooks/forum',
+    path: "/v1/agent-definitions/webhooks/forum",
     handler: (request, env) => {
       // KS-8.10 (#8321): bot completion reply posts ride the forum content
       // dual-write seam.
-      const db = forumContentDatabaseForEnv(env)
-      const forum = makeD1AgentDefinitionForumCompletionForumStore(
-        db,
-        paymentsLedgerDbForEnv(env),
-      )
+      const db = forumContentDatabaseForEnv(env);
+      const forum = makeD1AgentDefinitionForumCompletionForumStore(db, paymentsLedgerDbForEnv(env));
 
       return handleAgentDefinitionForumWebhookRequest(request, {
         definitionStore: makeAgentDefinitionStoreForEnv(env),
         dispatchDependencies: {
           durableStreamNamespace: durableInferenceStreamNamespaceForEnv(env, {
-            enabled: isInferenceDurableStreamEnabled(
-              env.INFERENCE_DURABLE_STREAM_ENABLED,
-            ),
+            enabled: isInferenceDurableStreamEnabled(env.INFERENCE_DURABLE_STREAM_ENABLED),
           }),
           forgeGitAuthStore: makeForgeTenantGitAuthStoreForEnv(env, { db }),
           forgeStore: makeForgeCoordinationStoreForEnv(env, { db }),
           pylonStore: makePylonApiStoreForEnv(env),
           runStore: makeAgentDefinitionRunStoreForEnv(env),
         },
-        forumEventSourceVerifier: event =>
-          verifyAgentDefinitionForumEventSource(forum, event),
+        forumEventSourceVerifier: (event) => verifyAgentDefinitionForumEventSource(forum, event),
         forumSecret: (
           env as Env & {
-            AGENT_DEFINITION_FORUM_WEBHOOK_SECRET?: string
+            AGENT_DEFINITION_FORUM_WEBHOOK_SECRET?: string;
           }
         ).AGENT_DEFINITION_FORUM_WEBHOOK_SECRET,
         triggerStore: makeAgentDefinitionTriggerStoreForEnv(env),
-      })
+      });
     },
   },
   {
-    path: '/v1/agent-definitions/webhooks/forum/completions',
+    path: "/v1/agent-definitions/webhooks/forum/completions",
     handler: (request, env) => {
       // KS-8.10 (#8321): bot completion reply posts ride the forum content
       // dual-write seam.
-      const db = forumContentDatabaseForEnv(env)
+      const db = forumContentDatabaseForEnv(env);
 
       return handleAgentDefinitionForumCompletionRequest(request, {
-        forum: makeD1AgentDefinitionForumCompletionForumStore(
-          db,
-          paymentsLedgerDbForEnv(env),
-        ),
+        forum: makeD1AgentDefinitionForumCompletionForumStore(db, paymentsLedgerDbForEnv(env)),
         forumSecret: (
           env as Env & {
-            AGENT_DEFINITION_FORUM_WEBHOOK_SECRET?: string
+            AGENT_DEFINITION_FORUM_WEBHOOK_SECRET?: string;
           }
         ).AGENT_DEFINITION_FORUM_WEBHOOK_SECRET,
         runStore: makeAgentDefinitionRunStoreForEnv(env),
-      })
+      });
     },
   },
   {
-    path: '/api/agents/me/balance',
+    path: "/api/agents/me/balance",
     handler: (request, env) =>
       handleAgentBalanceApi(request, {
-        authenticate: agentBalanceAuthForStore(
-          makeAgentRegistrationStoreForEnv(env),
-        ),
+        authenticate: agentBalanceAuthForStore(makeAgentRegistrationStoreForEnv(env)),
         ledgerDb: paymentsLedgerDbForEnv(env),
       }),
   },
   {
-    path: '/api/agents/me/balance/preferences',
+    path: "/api/agents/me/balance/preferences",
     handler: (request, env) =>
       handleAgentBalancePreferencesApi(request, {
-        authenticate: agentBalanceAuthForStore(
-          makeAgentRegistrationStoreForEnv(env),
-        ),
+        authenticate: agentBalanceAuthForStore(makeAgentRegistrationStoreForEnv(env)),
         ledgerDb: paymentsLedgerDbForEnv(env),
       }),
   },
   {
-    path: '/api/agents/home',
+    path: "/api/agents/home",
     handler: (request, env) =>
       Effect.promise(() =>
-        handleProgrammaticAgentHome(
-          request,
-          openAgentsDatabase(env),
-          identityDbForEnv(env),
-        ),
+        handleProgrammaticAgentHome(request, openAgentsDatabase(env), identityDbForEnv(env)),
       ),
   },
   {
-    path: '/api/public/inference/privacy-receipts/:receiptRef',
+    path: "/api/public/inference/privacy-receipts/:receiptRef",
     handler: (request, env) =>
       handlePublicPrivacyReceiptRead(request, {
         authenticate: async () => undefined,
@@ -14403,21 +13246,19 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
       }),
   },
   {
-    path: '/v1/inference/privacy/paid-privacy/purchases',
+    path: "/v1/inference/privacy/paid-privacy/purchases",
     handler: (request, env) =>
       handlePaidPrivacyPurchase(request, {
-        authenticate: async authRequest => {
-          const token = readBearerToken(authRequest)
+        authenticate: async (authRequest) => {
+          const token = readBearerToken(authRequest);
           if (token === undefined) {
-            return undefined
+            return undefined;
           }
           const session = await authenticateProgrammaticAgent(
             makeAgentRegistrationStoreForEnv(env),
             token,
-          )
-          return session === undefined
-            ? undefined
-            : { accountRef: `agent:${session.user.id}` }
+          );
+          return session === undefined ? undefined : { accountRef: `agent:${session.user.id}` };
         },
         confidentialComputeEnabled: isConfidentialComputeEnabled(
           env.INFERENCE_CONFIDENTIAL_COMPUTE_ENABLED,
@@ -14429,21 +13270,19 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
       }),
   },
   {
-    path: '/v1/inference/privacy/confidential-compute/executions',
+    path: "/v1/inference/privacy/confidential-compute/executions",
     handler: (request, env) =>
       handleConfidentialComputeExecutionReceipt(request, {
-        authenticate: async authRequest => {
-          const token = readBearerToken(authRequest)
+        authenticate: async (authRequest) => {
+          const token = readBearerToken(authRequest);
           if (token === undefined) {
-            return undefined
+            return undefined;
           }
           const session = await authenticateProgrammaticAgent(
             makeAgentRegistrationStoreForEnv(env),
             token,
-          )
-          return session === undefined
-            ? undefined
-            : { accountRef: `agent:${session.user.id}` }
+          );
+          return session === undefined ? undefined : { accountRef: `agent:${session.user.id}` };
         },
         confidentialComputeEnabled: isConfidentialComputeEnabled(
           env.INFERENCE_CONFIDENTIAL_COMPUTE_ENABLED,
@@ -14459,19 +13298,19 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // INFERENCE_GATEWAY_ENABLED (default off). Ships wired to the stub/echo
     // adapter + no-op metering stub; Phase-2 issues register real adapters
     // (#5479/#5480/#5481), routing (#5482), and live metering/credits (#5477).
-    path: '/v1/chat/completions',
+    path: "/v1/chat/completions",
     handler: (request, env) => {
-      registerPassthroughAdapters(inferenceProviderRegistry, env)
-      registerHydraliskAdapter(inferenceProviderRegistry, env)
-      registerOpenRouterAdapter(inferenceProviderRegistry, env)
+      registerPassthroughAdapters(inferenceProviderRegistry, env);
+      registerHydraliskAdapter(inferenceProviderRegistry, env);
+      registerOpenRouterAdapter(inferenceProviderRegistry, env);
       // Serving-fabric lane (#5483 / Khala M4 #6012). No-op today (no live
       // Psionic serve transport bound); keeps the lane honestly skipped until a
       // transport lands, with no routing change required to activate it.
-      registerFabricServeAdapter(inferenceProviderRegistry, env)
+      registerFabricServeAdapter(inferenceProviderRegistry, env);
       // Capture the live env so env-dependent adapters (Vertex #5480) can mint
       // credentials from Worker secrets at call time. INERT regardless: the
       // gateway is gated by INFERENCE_GATEWAY_ENABLED below.
-      setInferenceAdapterEnv(env)
+      setInferenceAdapterEnv(env);
       // INTERNAL/OPS ACCOUNT ALLOWLIST (#6232 / #6298). Parsed ONCE here so the
       // demand-attribution rule, the free-tier balance-gate quota exemption, and
       // the free-tier metering-wrapper quota exemption all read the SAME set.
@@ -14479,24 +13318,20 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
       // Khala lane (never hit the per-key daily quota -> never 402 on quota
       // grounds); external free keys keep the unchanged daily limit. Empty
       // (unset/blank) => pure no-op.
-      const internalAccountRefs = parseInternalAccountRefs(
-        env.INFERENCE_INTERNAL_ACCOUNT_REFS,
-      )
-      const laneArming = resolveSupplyLaneArming(env)
-      const routeAdmission = hydraliskGlm52RouteAdmissionForEnv(env)
+      const internalAccountRefs = parseInternalAccountRefs(env.INFERENCE_INTERNAL_ACCOUNT_REFS);
+      const laneArming = resolveSupplyLaneArming(env);
+      const routeAdmission = hydraliskGlm52RouteAdmissionForEnv(env);
       return handleChatCompletions(request, {
-        authenticate: async authRequest => {
-          const token = readBearerToken(authRequest)
+        authenticate: async (authRequest) => {
+          const token = readBearerToken(authRequest);
           if (token === undefined) {
-            return undefined
+            return undefined;
           }
           const session = await authenticateProgrammaticAgent(
             makeAgentRegistrationStoreForEnv(env),
             token,
-          )
-          return session === undefined
-            ? undefined
-            : { accountRef: `agent:${session.user.id}` }
+          );
+          return session === undefined ? undefined : { accountRef: `agent:${session.user.id}` };
         },
         enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
         // Live credit metering (#5477): decrement the account's balance from
@@ -14545,15 +13380,12 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
         // the ledger but do not leak through the aggregate public projection.
         // Idempotent per request; never fails the completion. INERT regardless —
         // only reached when the gateway is enabled.
-        recordTokensServed: makeD1ServedTokensRecorder(
-          openAgentsDatabase(env),
-          {
-            // KS-6.3 (#8304): projection producer (fail-soft, exact-once).
-            onIngestedEvent: makeTokensServedProjectionObserver(env),
-            // KS-8.2 (#8308): Postgres dual-write mirror (fail-soft).
-            ...tokenLedgerWriteStoreOptionForEnv(env),
-          },
-        ),
+        recordTokensServed: makeD1ServedTokensRecorder(openAgentsDatabase(env), {
+          // KS-6.3 (#8304): projection producer (fail-soft, exact-once).
+          onIngestedEvent: makeTokensServedProjectionObserver(env),
+          // KS-8.2 (#8308): Postgres dual-write mirror (fail-soft).
+          ...tokenLedgerWriteStoreOptionForEnv(env),
+        }),
         // SINGLE-CHARGE / NO-METER (#8503). When an agent-computer microVM's
         // internal `/v1/chat/completions` call presents this secret, the gateway
         // suppresses its OWN metering hook + served-token recorder for that
@@ -14564,22 +13396,21 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
         ...(env.OA_CLOUD_RUNTIME_NO_METER_SECRET === undefined
           ? {}
           : {
-              orgCloudRuntimeNoMeterSecret:
-                env.OA_CLOUD_RUNTIME_NO_METER_SECRET,
+              orgCloudRuntimeNoMeterSecret: env.OA_CLOUD_RUNTIME_NO_METER_SECRET,
             }),
         // INTERNAL/OPS ACCOUNT DEMAND ALLOWLIST (#6298 follow-up). Parsed once
         // from the worker var; traffic from a listed account is auto-classified
         // `demand_kind=internal` (header-independent), keeping our own dogfood
         // out of the external trace corpus + demand ledger. Empty => no-op.
         internalAccountRefs,
-        resolveAccountByok: async accountRef => {
-          const agentUserId = accountRef.startsWith('agent:')
-            ? accountRef.slice('agent:'.length)
-            : undefined
-          if (agentUserId === undefined || agentUserId === '') {
-            return undefined
+        resolveAccountByok: async (accountRef) => {
+          const agentUserId = accountRef.startsWith("agent:")
+            ? accountRef.slice("agent:".length)
+            : undefined;
+          if (agentUserId === undefined || agentUserId === "") {
+            return undefined;
           }
-          const db = openAgentsDatabase(env)
+          const db = openAgentsDatabase(env);
           const openauthCredential = await db
             .prepare(
               `SELECT openauth_user_id
@@ -14592,7 +13423,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
                 LIMIT 1`,
             )
             .bind(agentUserId)
-            .first<{ openauth_user_id: string | null }>()
+            .first<{ openauth_user_id: string | null }>();
           const openauthUserId =
             openauthCredential?.openauth_user_id ??
             (
@@ -14608,42 +13439,38 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
                 )
                 .bind(agentUserId)
                 .first<{ openauth_user_id: string | null }>()
-            )?.openauth_user_id
+            )?.openauth_user_id;
           if (openauthUserId === undefined || openauthUserId === null) {
-            return undefined
+            return undefined;
           }
           const accounts =
-            await makeD1ProviderAccountRepository(db).listAccountsForUser(
-              openauthUserId,
-            )
+            await makeD1ProviderAccountRepository(db).listAccountsForUser(openauthUserId);
           const account = accounts.find(
-            candidate =>
-              candidate.provider === 'openrouter' &&
-              candidate.authMode === 'api_key' &&
-              candidate.status === 'connected' &&
-              candidate.health !== 'requires_reauth' &&
+            (candidate) =>
+              candidate.provider === "openrouter" &&
+              candidate.authMode === "api_key" &&
+              candidate.status === "connected" &&
+              candidate.health !== "requires_reauth" &&
               candidate.secretRef !== null,
-          )
+          );
           if (account === undefined) {
-            return undefined
+            return undefined;
           }
           const apiKey = await readConnectedOpenRouterApiKey(
             authKvStoreForEnv(env),
             account.providerAccountRef,
-          )
-          return apiKey === undefined
-            ? undefined
-            : { apiKey, provider: 'openrouter' as const }
+          );
+          return apiKey === undefined ? undefined : { apiKey, provider: "openrouter" as const };
         },
         codingDelegation: {
           agentStore: makeAgentRegistrationStoreForEnv(env),
           pylonStore: makePylonApiStoreForEnv(env),
-          resolveOpenAuthUserId: async accountRef => {
-            const agentUserId = accountRef.startsWith('agent:')
-              ? accountRef.slice('agent:'.length)
-              : undefined
-            if (agentUserId === undefined || agentUserId === '') {
-              return undefined
+          resolveOpenAuthUserId: async (accountRef) => {
+            const agentUserId = accountRef.startsWith("agent:")
+              ? accountRef.slice("agent:".length)
+              : undefined;
+            if (agentUserId === undefined || agentUserId === "") {
+              return undefined;
             }
             const row = await openAgentsDatabase(env)
               .prepare(
@@ -14657,12 +13484,9 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
                   LIMIT 1`,
               )
               .bind(agentUserId)
-              .first<{ openauth_user_id: string | null }>()
-            if (
-              row?.openauth_user_id !== null &&
-              row?.openauth_user_id !== undefined
-            ) {
-              return row.openauth_user_id
+              .first<{ openauth_user_id: string | null }>();
+            if (row?.openauth_user_id !== null && row?.openauth_user_id !== undefined) {
+              return row.openauth_user_id;
             }
             const link = await openAgentsDatabase(env)
               .prepare(
@@ -14675,9 +13499,9 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
                   LIMIT 1`,
               )
               .bind(agentUserId)
-              .first<{ openauth_user_id: string | null }>()
+              .first<{ openauth_user_id: string | null }>();
 
-            return link?.openauth_user_id ?? undefined
+            return link?.openauth_user_id ?? undefined;
           },
         },
         // Routing & supply selection (#5482): cheapest-viable lane plan per
@@ -14685,9 +13509,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
         // retryable provider failure (429 / 503 / 5xx / transport). INERT
         // regardless — the gateway is gated by INFERENCE_GATEWAY_ENABLED above.
         lanePlan: makeKhalaBackedAdapterPlan(laneArming.khalaBacking),
-        resolveFineTunedModel: makeD1FineTunedModelResolver(
-          openAgentsDatabase(env),
-        ),
+        resolveFineTunedModel: makeD1FineTunedModelResolver(openAgentsDatabase(env)),
         dispatch: {
           failureTelemetry: dispatchFailureTelemetry.record,
           glmOwnCapacityFailover,
@@ -14721,9 +13543,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
         // Wiring the queue producer here (and the runner host) is the remaining
         // step to make verified khala-code true in prod.
         acceptanceDispatch: {
-          enabled: isAcceptanceDispatchEnabled(
-            env.KHALA_ACCEPTANCE_DISPATCH_ENABLED,
-          ),
+          enabled: isAcceptanceDispatchEnabled(env.KHALA_ACCEPTANCE_DISPATCH_ENABLED),
           // NEEDS-OWNER: bind a Cloudflare Queue producer + an R2 artifact store
           // here once a runner host exists. Until then the seam is inert.
           queue: undefined,
@@ -14745,13 +13565,9 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
         // streaming path is byte-for-byte today's pure pass-through.
         durableStream: undefined,
         durableStreamNamespace: durableInferenceStreamNamespaceForEnv(env, {
-          enabled: isInferenceDurableStreamEnabled(
-            env.INFERENCE_DURABLE_STREAM_ENABLED,
-          ),
+          enabled: isInferenceDurableStreamEnabled(env.INFERENCE_DURABLE_STREAM_ENABLED),
         }),
-        durableStreamEnabled: isInferenceDurableStreamEnabled(
-          env.INFERENCE_DURABLE_STREAM_ENABLED,
-        ),
+        durableStreamEnabled: isInferenceDurableStreamEnabled(env.INFERENCE_DURABLE_STREAM_ENABLED),
         // TYPED COMPONENT CHANNEL (EPIC #6123, issue #6127). Flag-gated INERT by
         // default: with KHALA_COMPONENT_CHANNEL_ENABLED off the `oa.component` SSE
         // channel never activates and `/v1/chat/completions` is byte-for-byte
@@ -14763,9 +13579,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
         // shipped). NEEDS-OWNER: wire `repairReask` to a single non-streaming Khala
         // call once the onboarding program lands, to enable the bounded repair.
         componentChannel: {
-          enabled: isComponentChannelEnabled(
-            env.KHALA_COMPONENT_CHANNEL_ENABLED,
-          ),
+          enabled: isComponentChannelEnabled(env.KHALA_COMPONENT_CHANNEL_ENABLED),
         },
         // CROSS-APP TRACE EMISSION (#6214, epic #6206). Flag-gated INERT by
         // default: with KHALA_CHAT_TRACE_EMIT_ENABLED off, a completed Khala chat
@@ -14779,9 +13593,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
         // emitted model id is the gateway projection `openagents/khala`, never a
         // raw backend. Autopilot/Pylon emission are explicit follow-ups (#6214).
         traceEmit: {
-          enabled: isKhalaChatTraceEmitEnabled(
-            env.KHALA_CHAT_TRACE_EMIT_ENABLED,
-          ),
+          enabled: isKhalaChatTraceEmitEnabled(env.KHALA_CHAT_TRACE_EMIT_ENABLED),
           // DEFAULT-ON FREE-TIER CAPTURE (#6293). SEPARATE staged flag (default
           // OFF in code): merging this does NOT auto-capture in prod — the
           // coordinator flips KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT only after
@@ -14789,11 +13601,11 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
           captureDefaultEnabled: isKhalaFreeTierTraceCaptureDefaultEnabled(
             env.KHALA_FREE_TIER_TRACE_CAPTURE_DEFAULT,
           ),
-          emit: async input => {
+          emit: async (input) => {
             // The accountRef is `agent:<id>`; the trace owner is that agent.
-            const ownerUserId = input.accountRef.startsWith('agent:')
-              ? input.accountRef.slice('agent:'.length)
-              : input.accountRef
+            const ownerUserId = input.accountRef.startsWith("agent:")
+              ? input.accountRef.slice("agent:".length)
+              : input.accountRef;
             return await emitKhalaChatTrace(
               {
                 requestedModel: input.requestedModel,
@@ -14802,9 +13614,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
                 responseId: input.responseId,
               },
               {
-                enabled: isKhalaChatTraceEmitEnabled(
-                  env.KHALA_CHAT_TRACE_EMIT_ENABLED,
-                ),
+                enabled: isKhalaChatTraceEmitEnabled(env.KHALA_CHAT_TRACE_EMIT_ENABLED),
                 optedIn: input.optedIn,
                 // DEFAULT-ON CAPTURE (#6293): persist even without an explicit
                 // opt-in when the call site resolved captureDefault. The emitter
@@ -14815,7 +13625,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
                 owner: {
                   ownerUserId,
                   agentRef: input.accountRef,
-                  uploadSource: 'agent',
+                  uploadSource: "agent",
                 },
                 // DEMAND-ORIGIN (#6298): the SAME attribution the recorder got
                 // for this request (kind + source), so the captured trace and
@@ -14828,26 +13638,25 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
                         ...(input.requestAttribution.demandSource === undefined
                           ? {}
                           : {
-                              demandSource:
-                                input.requestAttribution.demandSource,
+                              demandSource: input.requestAttribution.demandSource,
                             }),
                       },
                     }),
               },
-            )
+            );
           },
-          recordRedactionMetrics: event => {
-            logWorkerRouteInfo('khala_trace_redaction_metrics', {
+          recordRedactionMetrics: (event) => {
+            logWorkerRouteInfo("khala_trace_redaction_metrics", {
               emitted: event.emitted,
               reason: event.reason,
               redactionTotal: event.redactionTotal,
               redactionCounts: JSON.stringify(event.redactionCounts),
               residualTripwireCount: event.residualTripwireCount,
-            })
+            });
           },
         },
         registry: inferenceProviderRegistry,
-      })
+      });
     },
   },
   {
@@ -14856,7 +13665,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // verification verdict (`unverified` -> `test_passed`/`failed`). INERT by
     // default: gated by INFERENCE_GATEWAY_ENABLED AND closed unless
     // ACCEPTANCE_VERDICT_CALLBACK_TOKEN is configured (every verdict rejected).
-    path: '/v1/inference/acceptance-verdicts',
+    path: "/v1/inference/acceptance-verdicts",
     handler: (request, env) =>
       handleAcceptanceVerdictCallback(request, {
         callbackToken: env.ACCEPTANCE_VERDICT_CALLBACK_TOKEN,
@@ -14876,7 +13685,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // NEEDS-OWNER step owned by the dispatch lane). The lease uses the SAME bearer token
     // as the verdict callback — one secret authenticates the whole runner<->gateway
     // channel.
-    path: '/v1/inference/acceptance-jobs/lease',
+    path: "/v1/inference/acceptance-jobs/lease",
     handler: (request, env) =>
       handleAcceptanceJobLease(request, {
         callbackToken: env.ACCEPTANCE_VERDICT_CALLBACK_TOKEN,
@@ -14891,7 +13700,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // terminal outcome: delivered (the verdict was posted + the receipt backfilled) =>
     // remove the job; retryable (delivery failed) => return it to pending for re-lease.
     // Same INERT gate + bearer auth as the lease route.
-    path: '/v1/inference/acceptance-jobs/ack',
+    path: "/v1/inference/acceptance-jobs/ack",
     handler: (request, env) =>
       handleAcceptanceJobAck(request, {
         callbackToken: env.ACCEPTANCE_VERDICT_CALLBACK_TOKEN,
@@ -14911,7 +13720,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // balance. Derived from the SAME pricing table the metering hook charges
     // against, so the published price cannot drift from the billed price. No
     // promise state changes; the paid loop is still secrets-gated.
-    path: '/v1/models',
+    path: "/v1/models",
     handler: (request, env) =>
       handleModelsList(request, {
         enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
@@ -14934,7 +13743,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // SAME pricing engine (`priceRequest`) the metering hook bills against, so a
     // quote cannot drift from the eventual billed charge. No promise state
     // changes; the paid loop is still secrets-gated.
-    path: '/v1/quote',
+    path: "/v1/quote",
     handler: (request, env) =>
       handleQuote(request, {
         enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
@@ -14952,7 +13761,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // So an operator (or the launch dashboard) can verify "can the paid gateway
     // serve anything right now, and how degraded is its catalog?" in one read
     // instead of replaying each surface. No promise state changes.
-    path: '/v1/gateway/readiness',
+    path: "/v1/gateway/readiness",
     handler: (request, env) =>
       handleGatewayReadiness(request, {
         enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
@@ -14965,7 +13774,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // reclaimed, disabled, and unavailable counts. It reuses configured GLM
     // replica arming and the latest in-memory heartbeat projection; it never
     // probes hosts, returns raw origins, or changes replica state.
-    path: '/v1/gateway/glm-fleet/readiness',
+    path: "/v1/gateway/glm-fleet/readiness",
     handler: (request, env) =>
       handleGlmFleetReadiness(request, {
         db: openAgentsDatabase(env),
@@ -14979,7 +13788,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // counters for the typed router failure classes. The recent event sample is
     // redacted to classifier/stage/status-class only; no raw adapter ids, prompts,
     // completions, URLs, credentials, balances, or provider payloads are exposed.
-    path: '/v1/gateway/dispatch-failures',
+    path: "/v1/gateway/dispatch-failures",
     handler: (request, env) =>
       handleDispatchFailureTelemetryReadout(request, {
         enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
@@ -14994,7 +13803,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // the secret-backed admitted Pylon adapter and returns public-safe status
     // only. It never reads customer input, debits credits, or exposes endpoint
     // URLs / bearer material.
-    path: '/api/operator/inference/pylon-fabric/smoke',
+    path: "/api/operator/inference/pylon-fabric/smoke",
     handler: (request, env) =>
       handlePylonFabricSmoke(request, {
         adapter: makeConfiguredFabricServeAdapter(env),
@@ -15003,15 +13812,13 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
         requireOperator: () => requireAdminApiToken(request, env),
       }),
   },
-]
+];
 
 const exactRouteRegistry = makeExactRouteRegistry(
-  allExactRoutes.filter(
-    route => !RetiredCapabilityRoutePattern.test(route.path),
-  ),
-)
+  allExactRoutes.filter((route) => !RetiredCapabilityRoutePattern.test(route.path)),
+);
 
-export const exactRoutePathManifest = exactRouteRegistry.paths
+export const exactRoutePathManifest = exactRouteRegistry.paths;
 
 /**
  * ST-3 (#8509): resolve one exact route-table entry's REAL handler so
@@ -15020,44 +13827,40 @@ export const exactRoutePathManifest = exactRouteRegistry.paths
  * env. Test seam only — production dispatch stays `makeWorkerRouteRequest`.
  */
 export const exactRouteHandlerForPath = (path: string) =>
-  exactRouteRegistry.routes.find(route => route.path === path)?.handler
+  exactRouteRegistry.routes.find((route) => route.path === path)?.handler;
 
 const boxV1Routes = makeBoxV1Routes<OpenAgentsWorkerEnv>({
-  enabled: env =>
+  enabled: (env) =>
     isManagedSandboxBoxV1Enabled(env.MANAGED_SANDBOX_BOX_V1_ENABLED) &&
     isManagedSandboxRuntimeConfigured(env),
   authenticate: (request, env) =>
     Effect.gen(function* () {
-      const token = readBearerToken(request)
+      const token = readBearerToken(request);
       if (token === undefined) {
         return yield* new BoxV1FacadeError({
-          code: 'authentication_required',
+          code: "authentication_required",
           status: 401,
-          message: 'a programmatic OpenAgents bearer token is required',
+          message: "a programmatic OpenAgents bearer token is required",
           retryable: false,
-        })
+        });
       }
       const session = yield* Effect.tryPromise({
-        try: () =>
-          authenticateProgrammaticAgent(
-            makeAgentRegistrationStoreForEnv(env),
-            token,
-          ),
+        try: () => authenticateProgrammaticAgent(makeAgentRegistrationStoreForEnv(env), token),
         catch: () =>
           new BoxV1FacadeError({
-            code: 'upstream_unavailable',
+            code: "upstream_unavailable",
             status: 503,
-            message: 'programmatic bearer authentication is unavailable',
+            message: "programmatic bearer authentication is unavailable",
             retryable: true,
           }),
-      })
+      });
       if (session === undefined) {
         return yield* new BoxV1FacadeError({
-          code: 'authentication_required',
+          code: "authentication_required",
           status: 401,
-          message: 'the programmatic OpenAgents bearer token is invalid',
+          message: "the programmatic OpenAgents bearer token is invalid",
           retryable: false,
-        })
+        });
       }
       return yield* makeBoxV1Principal({
         actorUserId: session.user.id,
@@ -15066,12 +13869,12 @@ const boxV1Routes = makeBoxV1Routes<OpenAgentsWorkerEnv>({
           : { linkedOwnerUserId: session.credential.openauthUserId }),
         login: session.user.displayName,
         email: session.user.primaryEmail,
-      })
+      });
     }),
   policy: managedSandboxBoxV1PolicyForEnv,
-  store: env => Effect.succeed(managedSandboxBoxV1StoreForEnv(env)),
+  store: (env) => Effect.succeed(managedSandboxBoxV1StoreForEnv(env)),
   runtime: managedSandboxBoxV1RuntimeForEnv,
-  executeLifecycleCommand: input =>
+  executeLifecycleCommand: (input) =>
     makeManagedSandboxBroker({
       principal: input.principal,
       policy: input.policy,
@@ -15085,28 +13888,23 @@ const boxV1Routes = makeBoxV1Routes<OpenAgentsWorkerEnv>({
             initialResource: input.initialResource,
           }),
     }),
-})
+});
 
-const managedSandboxProviderBrokerRoutes =
-  makeManagedSandboxProviderBrokerRoutes({
-    store: managedSandboxBoxV1StoreForEnv,
-  })
+const managedSandboxProviderBrokerRoutes = makeManagedSandboxProviderBrokerRoutes({
+  store: managedSandboxBoxV1StoreForEnv,
+});
 
 const routeRequest = makeWorkerRouteRequest({
   cleanProductRouteRedirectLocation,
   exactRoutes: exactRouteRegistry.routes,
   handleAppShellPage: (request, env, ctx) =>
-    routeEffect('handle_app_shell_page', () =>
-      handleAppShellPage(request, env, ctx),
-    ),
+    routeEffect("handle_app_shell_page", () => handleAppShellPage(request, env, ctx)),
   handleAssetRequest: (request, env) =>
-    routeEffect('handle_asset_request', () => env.ASSETS.fetch(request)),
+    routeEffect("handle_asset_request", () => env.ASSETS.fetch(request)),
   handleThreadPage: (request, env, ctx, threadId) =>
-    routeEffect('handle_thread_page', () =>
-      handleThreadPage(request, env, ctx, threadId),
-    ),
+    routeEffect("handle_thread_page", () => handleThreadPage(request, env, ctx, threadId)),
   handleForumThreadPage: (request, env, ctx, topicId) =>
-    routeEffect('handle_forum_thread_page', () =>
+    routeEffect("handle_forum_thread_page", () =>
       handleForumThreadDocument({
         db: openAgentsDatabase(env),
         ledgerDb: paymentsLedgerDbForEnv(env),
@@ -15125,60 +13923,50 @@ const routeRequest = makeWorkerRouteRequest({
   // control endpoint/token are configured.
   routeCloudCodingSessionRequest: (request, env, ctx) =>
     routeCloudCodingSessionRequestImpl(request, {
-      authenticate: async authRequest => {
-        const session = await requireUserBearerSession(authRequest, env, ctx)
+      authenticate: async (authRequest) => {
+        const session = await requireUserBearerSession(authRequest, env, ctx);
         if (session === undefined) {
-          return undefined
+          return undefined;
         }
-        return { accountRef: `agent:${session.user.userId}` }
+        return { accountRef: `agent:${session.user.userId}` };
       },
       admissionGate: makeD1CloudCodingAdmissionGate({
         capacity: async () =>
           probeAgentComputerCapacitySnapshot({
             baseUrl: env.OA_CLOUD_CONTROL_URL,
             bearerToken: env.OA_CLOUD_CONTROL_TOKEN,
-            gceProvisioningArmed: isCloudGceProvisioningArmed(
-              env.OA_CODEX_GCE_PROVISIONER,
-            ),
+            gceProvisioningArmed: isCloudGceProvisioningArmed(env.OA_CODEX_GCE_PROVISIONER),
           }),
         db: openAgentsDatabase(env),
         ledgerDb: paymentsLedgerDbForEnv(env),
       }),
       adapter: makeCloudControlCloudCodingAdapter({
-        baseUrl: env.OA_CLOUD_CONTROL_URL ?? '',
-        bearerToken: env.OA_CLOUD_CONTROL_TOKEN ?? '',
-        gceProvisioningArmed: isCloudGceProvisioningArmed(
-          env.OA_CODEX_GCE_PROVISIONER,
-        ),
+        baseUrl: env.OA_CLOUD_CONTROL_URL ?? "",
+        bearerToken: env.OA_CLOUD_CONTROL_TOKEN ?? "",
+        gceProvisioningArmed: isCloudGceProvisioningArmed(env.OA_CODEX_GCE_PROVISIONER),
       }),
       enabled: isCloudCodingSessionsEnabled(env.CLOUD_CODING_SESSIONS_ENABLED),
     }),
   routeAgentGoalRequest: agentGoalRoutes.routeAgentGoalRequest,
   routeAgentDefinitionRunRequest: (request, env) => {
-    const matchedRun = matchAgentDefinitionRunRequest(request)
-    const matchedEventLedger =
-      matchAgentDefinitionEventLedgerGatewayRequest(request)
+    const matchedRun = matchAgentDefinitionRunRequest(request);
+    const matchedEventLedger = matchAgentDefinitionEventLedgerGatewayRequest(request);
 
     if (matchedRun === undefined && matchedEventLedger === undefined) {
-      return undefined
+      return undefined;
     }
 
     return routeEffectOrResponse(
-      routeEffect('handle_agent_definition_dynamic_request', async () => {
-        const db = openAgentsDatabase(env)
+      routeEffect("handle_agent_definition_dynamic_request", async () => {
+        const db = openAgentsDatabase(env);
         const response =
           matchedEventLedger === undefined
             ? await handleAgentDefinitionRunRequest(request, {
                 agentStore: makeAgentRegistrationStoreForEnv(env),
                 definitionStore: makeAgentDefinitionStoreForEnv(env),
-                durableStreamNamespace: durableInferenceStreamNamespaceForEnv(
-                  env,
-                  {
-                    enabled: isInferenceDurableStreamEnabled(
-                      env.INFERENCE_DURABLE_STREAM_ENABLED,
-                    ),
-                  },
-                ),
+                durableStreamNamespace: durableInferenceStreamNamespaceForEnv(env, {
+                  enabled: isInferenceDurableStreamEnabled(env.INFERENCE_DURABLE_STREAM_ENABLED),
+                }),
                 forgeGitAuthStore: makeForgeTenantGitAuthStoreForEnv(env, {
                   db,
                 }),
@@ -15192,46 +13980,36 @@ const routeRequest = makeWorkerRouteRequest({
                 // so the gateway read + handled-state route reads/writes
                 // `event_ledger_entries` over KHALA_SYNC_DB, matching the
                 // owner-serialized append path.
-                const ledgerConnection = env.KHALA_SYNC_DB?.connectionString
-                if (
-                  ledgerConnection === undefined ||
-                  ledgerConnection.length === 0
-                ) {
-                  return serverError()
+                const ledgerConnection = env.KHALA_SYNC_DB?.connectionString;
+                if (ledgerConnection === undefined || ledgerConnection.length === 0) {
+                  return serverError();
                 }
-                const ledgerClient =
-                  await defaultMakeKhalaSyncSqlClient(ledgerConnection)
+                const ledgerClient = await defaultMakeKhalaSyncSqlClient(ledgerConnection);
                 try {
-                  return await handleAgentDefinitionEventLedgerGatewayRequest(
-                    request,
-                    {
-                      agentStore: makeAgentRegistrationStoreForEnv(env),
-                      definitionStore: makeAgentDefinitionStoreForEnv(env),
-                      eventLedgerStore: makePostgresEventLedgerStore(
-                        ledgerClient.sql as unknown as EventLedgerSql,
-                      ),
-                      runStore: makeAgentDefinitionRunStoreForEnv(env),
-                    },
-                  )
+                  return await handleAgentDefinitionEventLedgerGatewayRequest(request, {
+                    agentStore: makeAgentRegistrationStoreForEnv(env),
+                    definitionStore: makeAgentDefinitionStoreForEnv(env),
+                    eventLedgerStore: makePostgresEventLedgerStore(
+                      ledgerClient.sql as unknown as EventLedgerSql,
+                    ),
+                    runStore: makeAgentDefinitionRunStoreForEnv(env),
+                  });
                 } finally {
-                  await ledgerClient.end().catch(() => undefined)
+                  await ledgerClient.end().catch(() => undefined);
                 }
-              })()
+              })();
 
-        return response ?? notFound()
+        return response ?? notFound();
       }),
-    )
+    );
   },
   routeAutopilotOnboardingTurnRequest: (request, env) =>
     autopilotOnboardingRoutes.routeOnboardingTurnRequest(request, env),
-  routeKhalaChatRequest: (request, env) =>
-    khalaChatRoutes.routeKhalaChatRequest(request, env),
-  routeAgentOwnerClaimRequest:
-    agentOwnerClaimRoutes.routeAgentOwnerClaimRequest,
+  routeKhalaChatRequest: (request, env) => khalaChatRoutes.routeKhalaChatRequest(request, env),
+  routeAgentOwnerClaimRequest: agentOwnerClaimRoutes.routeAgentOwnerClaimRequest,
   routeAgentProposalRequest: agentProposalRoutes.routeAgentProposalRequest,
   routeAgentSearchRequest: agentSearchRoutes.routeAgentSearchRequest,
-  routeAgentScopedGrantRequest:
-    agentScopedGrantRoutes.routeAgentScopedGrantRequest,
+  routeAgentScopedGrantRequest: agentScopedGrantRoutes.routeAgentScopedGrantRequest,
   routeForumRequest: (request, env, ctx) =>
     // KS-8.10 (#8321): the forum content dual-write seam — scoped forum
     // table writes read-back-mirror into Postgres (fail-soft).
@@ -15247,88 +14025,78 @@ const routeRequest = makeWorkerRouteRequest({
       // from Postgres for real under
       // KHALA_SYNC_ENTITLEMENTS_NON_GATE_READS=postgres; absent/'d1' =>
       // byte-identical inline D1 behavior.
-      entitlementsNonGateReads:
-        makeInferenceEntitlementsRoutingForEnv(env)?.nonGateReads,
+      entitlementsNonGateReads: makeInferenceEntitlementsRoutingForEnv(env)?.nonGateReads,
       ...(() => {
-        const forumWorkRequestRelayPublisher =
-          forumWorkRequestRelayPublisherForEnv(env)
+        const forumWorkRequestRelayPublisher = forumWorkRequestRelayPublisherForEnv(env);
 
         return forumWorkRequestRelayPublisher === undefined
           ? {}
-          : { forumWorkRequestRelayPublisher }
+          : { forumWorkRequestRelayPublisher };
       })(),
-      productPromisesUnsupportedRequestIngest: async input => {
-        const db = openAgentsDatabase(env)
-        const now = currentIsoTimestamp()
+      productPromisesUnsupportedRequestIngest: async (input) => {
+        const db = openAgentsDatabase(env);
+        const now = currentIsoTimestamp();
         await makeD1KhalaUnsupportedRequestStore(db).upsert({
           createdAt: now,
           evidenceRefs: [
             input.sourceRef,
             `forum.post:${input.firstPostId}`,
-            'https://openagents.com/forum/f/product-promises',
+            "https://openagents.com/forum/f/product-promises",
           ],
           forumTopicRef: input.sourceRef,
           githubIssueRef: null,
           requestRef: `khala_unsupported:forum_${input.topicId}`,
-          sourceKind: 'forum',
+          sourceKind: "forum",
           sourceRef: input.sourceRef,
-          status: 'open',
-          suggestedIssueTitle: compactForumLedgerText(
-            `[Product Promises] ${input.title}`,
-            180,
-          ),
+          status: "open",
+          suggestedIssueTitle: compactForumLedgerText(`[Product Promises] ${input.title}`, 180),
           summary: compactForumLedgerText(input.bodyText, 1_000),
           title: compactForumLedgerText(input.title, 180),
-          triageKind: 'needs_triage',
+          triageKind: "needs_triage",
           updatedAt: now,
-        })
+        });
       },
       publicIdentityClaimStore: makeAgentOwnerClaimStoreForEnv(env),
       pylonApiStore: makePylonApiStoreForEnv(env),
-      resolveModeratorActor: async request => {
-        const session = await requireBrowserSession(request, env, ctx)
+      resolveModeratorActor: async (request) => {
+        const session = await requireBrowserSession(request, env, ctx);
 
         if (session === undefined) {
-          return undefined
+          return undefined;
         }
 
         if (!isOpenAgentsAdminEmail(session.user.email)) {
           return {
-            _tag: 'Forbidden' as const,
-            reason: 'Forum moderation requires an OpenAgents admin session.',
-          }
+            _tag: "Forbidden" as const,
+            reason: "Forum moderation requires an OpenAgents admin session.",
+          };
         }
 
         return {
-          _tag: 'Moderator' as const,
+          _tag: "Moderator" as const,
           actor: {
             displayName: session.user.name,
             operatorId: session.user.userId,
             slug: session.user.login ?? session.user.userId,
           },
-        }
+        };
       },
     }),
-  routeImageGenerationRequest:
-    imageGenerationRoutes.routeImageGenerationRequest,
+  routeImageGenerationRequest: imageGenerationRoutes.routeImageGenerationRequest,
   routeFineTuningJobRequest: (request, env) =>
     routeFineTuningJobRequest(request, {
-      authenticate: async authRequest => {
-        const token = readBearerToken(authRequest)
+      authenticate: async (authRequest) => {
+        const token = readBearerToken(authRequest);
         if (token === undefined) {
-          return undefined
+          return undefined;
         }
         const session = await authenticateProgrammaticAgent(
           makeAgentRegistrationStoreForEnv(env),
           token,
-        )
-        return session === undefined
-          ? undefined
-          : { accountRef: `agent:${session.user.id}` }
+        );
+        return session === undefined ? undefined : { accountRef: `agent:${session.user.id}` };
       },
-      adapter: makeD1FineTuningRuntimeAdapter(
-        khalaCodeProductStateDatabaseForEnv(env),
-      ),
+      adapter: makeD1FineTuningRuntimeAdapter(khalaCodeProductStateDatabaseForEnv(env)),
       enabled: isFineTuningServiceEnabled(env.CLOUD_FINE_TUNING_ENABLED),
     }),
   routeBoxV1Request: (request, env, ctx) =>
@@ -15337,25 +14105,19 @@ const routeRequest = makeWorkerRouteRequest({
     boxV1Routes.routeBoxV1Request(request, env),
   routeSandboxRequest: (request, env) =>
     routeSandboxRequest(request, {
-      authenticate: async authRequest => {
-        const token = readBearerToken(authRequest)
+      authenticate: async (authRequest) => {
+        const token = readBearerToken(authRequest);
         if (token === undefined) {
-          return undefined
+          return undefined;
         }
         const session = await authenticateProgrammaticAgent(
           makeAgentRegistrationStoreForEnv(env),
           token,
-        )
-        return session === undefined
-          ? undefined
-          : { accountRef: `agent:${session.user.id}` }
+        );
+        return session === undefined ? undefined : { accountRef: `agent:${session.user.id}` };
       },
-      adapter: makeD1SandboxRuntimeAdapter(
-        khalaCodeProductStateDatabaseForEnv(env),
-      ),
-      enabled: isSandboxComputeServiceEnabled(
-        env.CLOUD_SANDBOX_COMPUTE_ENABLED,
-      ),
+      adapter: makeD1SandboxRuntimeAdapter(khalaCodeProductStateDatabaseForEnv(env)),
+      enabled: isSandboxComputeServiceEnabled(env.CLOUD_SANDBOX_COMPUTE_ENABLED),
     }),
   // OpenAI-compatible GET /v1/models/{model} retrieve. Gated by the SAME
   // INFERENCE_GATEWAY_ENABLED flag as the list and chat-completions routes, so
@@ -15373,13 +14135,13 @@ const routeRequest = makeWorkerRouteRequest({
   // match. Returns undefined for any non-matching path so the cascade falls
   // through; the base /api/gym/mirrorcode/runs list+launch is an exact route.
   routeMirrorCodeRunByIdRequest: (request, env) => {
-    const runId = matchMirrorCodeRunByIdRequest(request)
+    const runId = matchMirrorCodeRunByIdRequest(request);
     if (runId === undefined) {
-      return undefined
+      return undefined;
     }
     return handleMirrorCodeRunByIdApi(request, runId, {
       store: makeMirrorCodeRunStoreForEnv(env),
-    })
+    });
   },
   // Durable inference resume read GET /v1/chat/completions/durable/{requestId}
   // (durable-stream Rank-1, #6058). Reads stored bytes only — NEVER meters.
@@ -15388,44 +14150,42 @@ const routeRequest = makeWorkerRouteRequest({
   // chat route's producer teed into. FAIL-SAFE: with the flag off OR the binding
   // absent, returns an honest 404 (the synchronous fallback path).
   routeDurableInferenceReadRequest: (request, env) => {
-    const matched = matchDurableReadRequest(request)
+    const matched = matchDurableReadRequest(request);
     if (matched === undefined) {
-      return undefined
+      return undefined;
     }
 
     const enabled =
       isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED) &&
-      isInferenceDurableStreamEnabled(env.INFERENCE_DURABLE_STREAM_ENABLED)
-    const namespace = durableInferenceStreamNamespaceForEnv(env, { enabled })
-    const authorizeKhalaAssignmentRead = async (): Promise<
-      Response | undefined
-    > => {
-      const pylonStore = makePylonApiStoreForEnv(env)
-      let khalaAssignmentExists = false
+      isInferenceDurableStreamEnabled(env.INFERENCE_DURABLE_STREAM_ENABLED);
+    const namespace = durableInferenceStreamNamespaceForEnv(env, { enabled });
+    const authorizeKhalaAssignmentRead = async (): Promise<Response | undefined> => {
+      const pylonStore = makePylonApiStoreForEnv(env);
+      let khalaAssignmentExists = false;
       try {
         khalaAssignmentExists =
           (await pylonStore.readAssignmentByIdempotencyKeyHash(
             `khala-coding:${matched.requestId}`,
-          )) !== undefined
+          )) !== undefined;
       } catch {
         return noStoreJsonResponse(
-          { error: 'durable_request_authorization_unavailable' },
+          { error: "durable_request_authorization_unavailable" },
           { status: 503 },
-        )
+        );
       }
       if (!khalaAssignmentExists) {
-        return undefined
+        return undefined;
       }
 
-      const token = readBearerToken(request)
+      const token = readBearerToken(request);
       if (token === undefined) {
-        return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+        return noStoreJsonResponse({ error: "unauthorized" }, { status: 401 });
       }
 
-      const agentStore = makeAgentRegistrationStoreForEnv(env)
-      const session = await authenticateProgrammaticAgent(agentStore, token)
+      const agentStore = makeAgentRegistrationStoreForEnv(env);
+      const session = await authenticateProgrammaticAgent(agentStore, token);
       if (session === undefined) {
-        return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+        return noStoreJsonResponse({ error: "unauthorized" }, { status: 401 });
       }
 
       const authorized = await khalaDurableRequestIsLinkedToPrincipal({
@@ -15433,18 +14193,18 @@ const routeRequest = makeWorkerRouteRequest({
         durableRequestId: matched.requestId,
         principal: khalaMcpAgentPrincipal(session, currentIsoTimestamp()),
         pylonStore,
-      })
+      });
       return authorized
         ? undefined
         : noStoreJsonResponse(
             {
-              error: 'durable_request_not_authorized',
+              error: "durable_request_not_authorized",
               reason:
-                'The durable Khala stream is attached to an assignment outside the caller-owned linked Pylon set.',
+                "The durable Khala stream is attached to an assignment outside the caller-owned linked Pylon set.",
             },
             { status: 403 },
-          )
-    }
+          );
+    };
     // Production DO-backed resume (async): when the binding is wired, a durable
     // read URL resolves to an Effect that reads the per-request DO; a non-durable
     // URL falls through (undefined). The URL match is synchronous, so the
@@ -15452,9 +14212,9 @@ const routeRequest = makeWorkerRouteRequest({
     // only for a non-match.
     if (namespace !== undefined) {
       return Effect.promise(async () => {
-        const denial = await authorizeKhalaAssignmentRead()
+        const denial = await authorizeKhalaAssignmentRead();
         if (denial !== undefined) {
-          return denial
+          return denial;
         }
         return routeDurableInferenceReadRequestDO(request, {
           enabled,
@@ -15462,60 +14222,40 @@ const routeRequest = makeWorkerRouteRequest({
         }).then(
           // A matched durable URL with the namespace present always yields a
           // Response; the `?? notFound` is a defensive total fallback.
-          response =>
+          (response) =>
             response ??
-            new Response(JSON.stringify({ error: 'not_found' }), {
+            new Response(JSON.stringify({ error: "not_found" }), {
               headers: {
-                'cache-control': 'no-store',
-                'content-type': 'application/json',
+                "cache-control": "no-store",
+                "content-type": "application/json",
               },
               status: 404,
             }),
-        )
-      })
+        );
+      });
     }
     // Fail-safe synchronous path (binding absent / flag off): honest 404.
     const response = routeDurableInferenceReadRequest(request, {
       durableStream: undefined,
       enabled,
       nowEpochMillis: currentEpochMillis,
-    })
-    return response === undefined ? undefined : Effect.succeed(response)
+    });
+    return response === undefined ? undefined : Effect.succeed(response);
   },
   routeMulletRequest: mulletRoutes.routeMulletRequest,
   routeOmniRequest: (request, env, ctx) =>
     qaSwarmProjectionRoutes.routeQaSwarmProjectionRequest(request, env, ctx) ??
     omniRoutes.routeOmniRequest(request, env, ctx) ??
     omniWorkroomRoutes.routeOmniWorkroomRequest(request, env, ctx) ??
-    omniWorkroomLifecycleRoutes.routeOmniWorkroomLifecycleRequest(
-      request,
-      env,
-      ctx,
-    ) ??
+    omniWorkroomLifecycleRoutes.routeOmniWorkroomLifecycleRequest(request, env, ctx) ??
     omniBundleRoutes.routeOmniBundleRequest(request, env, ctx) ??
     omniHandoffRoutes.routeOmniHandoffRequest(request, env, ctx) ??
     nativeListsRoutes.routeNativeListsRequest(request, env, ctx) ??
-    prefilledWorkspaceRoutes.routePrefilledWorkspaceRequest(
-      request,
-      env,
-      ctx,
-    ) ??
-    privateProjectWorkspaceRoutes.routePrivateProjectWorkspaceRequest(
-      request,
-      env,
-      ctx,
-    ) ??
-    teamWorkspaceInviteRoutes.routeTeamWorkspaceInviteRequest(
-      request,
-      env,
-      ctx,
-    ) ??
+    prefilledWorkspaceRoutes.routePrefilledWorkspaceRequest(request, env, ctx) ??
+    privateProjectWorkspaceRoutes.routePrivateProjectWorkspaceRequest(request, env, ctx) ??
+    teamWorkspaceInviteRoutes.routeTeamWorkspaceInviteRequest(request, env, ctx) ??
     tenantClientRoutes.routeTenantClientRequest(request, env, ctx) ??
-    emailSequenceAuthoringRoutes.routeEmailSequenceAuthoringRequest(
-      request,
-      env,
-      ctx,
-    ) ??
+    emailSequenceAuthoringRoutes.routeEmailSequenceAuthoringRequest(request, env, ctx) ??
     partnerAgreementRoutes.routePartnerAgreementRequest(request, env, ctx) ??
     crmImportRoutes.routeCrmImportRequest(request, env, ctx) ??
     crmEmailRoutes.routeCrmEmailRequest(request, env, ctx) ??
@@ -15561,8 +14301,7 @@ const routeRequest = makeWorkerRouteRequest({
     codingQuickWinReceiptPublicRoutes.routeCodingQuickWinReceiptRequest,
   routeBusinessAlreadySoldEngagementReceiptRequest:
     businessAlreadySoldEngagementReceiptRoutes.routeBusinessAlreadySoldEngagementReceiptRequest,
-  routeBusinessCaseStudyRequest:
-    businessCaseStudyRoutes.routeBusinessCaseStudyRequest,
+  routeBusinessCaseStudyRequest: businessCaseStudyRoutes.routeBusinessCaseStudyRequest,
   routeMarketingAgencyReceiptRequest:
     marketingAgencyReceiptPublicRoutes.routeMarketingAgencyReceiptRequest,
   routeMarketingAgencySelfServeRequest:
@@ -15574,19 +14313,19 @@ const routeRequest = makeWorkerRouteRequest({
     }),
   routeGithubScmAuthBrokerRequest: (request, env) =>
     routeGitHubScmAuthBrokerRequest(request, {
-      authenticate: authRequest =>
+      authenticate: (authRequest) =>
         Effect.tryPromise({
           try: async () => {
-            const token = readAgentBearerToken(authRequest)
+            const token = readAgentBearerToken(authRequest);
             if (token === undefined) {
-              return undefined
+              return undefined;
             }
             const session = await authenticateProgrammaticAgent(
               makeAgentRegistrationStoreForEnv(env),
               token,
-            )
+            );
             if (session === undefined) {
-              return undefined
+              return undefined;
             }
             // MM-C5 (#8477): the GitHub authorization the broker vends belongs
             // to the credential's OWNER, not the (possibly shared) agent-kind
@@ -15597,59 +14336,45 @@ const routeRequest = makeWorkerRouteRequest({
             // broker. Prefer the linked owner so the broker is owner-scoped (an
             // agent can only broker for ITS OWN linked owner); fall back to the
             // agent user id for an unclaimed bare agent.
-            const linkedOwner = session.credential.openauthUserId?.trim()
+            const linkedOwner = session.credential.openauthUserId?.trim();
             return {
               userId:
-                linkedOwner !== undefined && linkedOwner !== ''
-                  ? linkedOwner
-                  : session.user.id,
-            }
+                linkedOwner !== undefined && linkedOwner !== "" ? linkedOwner : session.user.id,
+            };
           },
           catch: () =>
             new GitHubScmAuthBrokerDependencyFailed({
-              reason: 'agent_auth_failed',
+              reason: "agent_auth_failed",
             }),
-        }).pipe(
-          Effect.catch(() =>
-            Effect.sync((): { userId: string } | undefined => undefined),
-          ),
-        ),
-      readGithubAccessToken: userId =>
+        }).pipe(Effect.catch(() => Effect.sync((): { userId: string } | undefined => undefined))),
+      readGithubAccessToken: (userId) =>
         Effect.tryPromise({
           try: async () =>
-            (await authKvStoreForEnv(env).get(
-              githubIdentityTokenKey(userId),
-            )) ?? undefined,
+            (await authKvStoreForEnv(env).get(githubIdentityTokenKey(userId))) ?? undefined,
           catch: () =>
             new GitHubScmAuthBrokerDependencyFailed({
-              reason: 'github_identity_token_read_failed',
+              reason: "github_identity_token_read_failed",
             }),
-        }).pipe(
-          Effect.catch(() => Effect.sync((): string | undefined => undefined)),
-        ),
+        }).pipe(Effect.catch(() => Effect.sync((): string | undefined => undefined))),
       verifyRepositoryAccess: ({ accessToken, owner, name }) =>
         Effect.gen(function* () {
-          const github = yield* GitHubRepositoryService
-          const repository = yield* github.getRepository(
-            accessToken,
-            owner,
-            name,
-          )
+          const github = yield* GitHubRepositoryService;
+          const repository = yield* github.getRepository(accessToken, owner, name);
           return {
             ok: true as const,
             fullName: repository.fullName,
             private: repository.private,
-          }
+          };
         }).pipe(
           Effect.provide(GitHubRepositoryService.layer),
-          Effect.catch(error =>
+          Effect.catch((error) =>
             Effect.succeed({
               ok: false as const,
               status:
-                typeof error === 'object' &&
+                typeof error === "object" &&
                 error !== null &&
-                'status' in error &&
-                typeof error.status === 'number'
+                "status" in error &&
+                typeof error.status === "number"
                   ? error.status
                   : 0,
             }),
@@ -15659,17 +14384,11 @@ const routeRequest = makeWorkerRouteRequest({
   routePylonApiRequest: pylonApiRoutes.routePylonApiRequest,
   routeForgeGitIntakeRequest: (request, env) =>
     makeForgeGitIntakeRoutes<Env>({
-      makeArchiveStore: storeEnv =>
-        makeForgeGitPackfileArchiveStoreForEnv(
-          storeEnv,
-          artifactsBucketForEnv(storeEnv),
-        ),
-      makeCanonicalStore: storeEnv =>
-        makeForgeGitCanonicalStoreForEnv(storeEnv),
-      makeCoordinationStore: storeEnv =>
-        makeForgeCoordinationStoreForEnv(storeEnv),
-      makeTenantGitAuthStore: storeEnv =>
-        makeForgeTenantGitAuthStoreForEnv(storeEnv),
+      makeArchiveStore: (storeEnv) =>
+        makeForgeGitPackfileArchiveStoreForEnv(storeEnv, artifactsBucketForEnv(storeEnv)),
+      makeCanonicalStore: (storeEnv) => makeForgeGitCanonicalStoreForEnv(storeEnv),
+      makeCoordinationStore: (storeEnv) => makeForgeCoordinationStoreForEnv(storeEnv),
+      makeTenantGitAuthStore: (storeEnv) => makeForgeTenantGitAuthStoreForEnv(storeEnv),
       nowIso: currentIsoTimestamp,
     }).routeForgeGitIntakeRequest(request, env),
   routeForgeControlPlaneRequest: (request, env) =>
@@ -15680,28 +14399,22 @@ const routeRequest = makeWorkerRouteRequest({
           getForgeControlPlaneToken(authEnv),
           requiredScope,
         ),
-      makeCanonicalStore: storeEnv =>
-        makeForgeGitCanonicalStoreForEnv(storeEnv),
-      makeGitHubMirrorStore: storeEnv =>
-        makeForgeGitHubMirrorStoreForEnv(storeEnv),
-      makeStore: storeEnv => makeForgeCoordinationStoreForEnv(storeEnv),
-      mirrorGitHubToken: storeEnv => getForgeGitHubMirrorToken(storeEnv),
+      makeCanonicalStore: (storeEnv) => makeForgeGitCanonicalStoreForEnv(storeEnv),
+      makeGitHubMirrorStore: (storeEnv) => makeForgeGitHubMirrorStoreForEnv(storeEnv),
+      makeStore: (storeEnv) => makeForgeCoordinationStoreForEnv(storeEnv),
+      mirrorGitHubToken: (storeEnv) => getForgeGitHubMirrorToken(storeEnv),
       nowIso: currentIsoTimestamp,
-      requireAdminApiToken: (authRequest, authEnv) =>
-        requireAdminApiToken(authRequest, authEnv),
+      requireAdminApiToken: (authRequest, authEnv) => requireAdminApiToken(authRequest, authEnv),
     }).routeForgeControlPlaneRequest(request, env),
-  routeOperatorAdjutantRequest:
-    operatorAdjutantRoutes.routeOperatorAdjutantRequest,
-  routeOperatorArtanisChatRequest:
-    operatorArtanisChatRoutes.routeOperatorArtanisChatRequest,
+  routeOperatorAdjutantRequest: operatorAdjutantRoutes.routeOperatorAdjutantRequest,
+  routeOperatorArtanisChatRequest: operatorArtanisChatRoutes.routeOperatorArtanisChatRequest,
   routeOperatorArtanisConsoleRequest:
     operatorArtanisConsoleRoutes.routeOperatorArtanisConsoleRequest,
   routeOperatorArtanisDashboardRequest:
     operatorArtanisDashboardRoutes.routeOperatorArtanisDashboardRequest,
   routeOperatorEmailInspectionRequest:
     operatorEmailInspectionRoutes.routeOperatorEmailInspectionRequest,
-  routeOperatorOrderTriageRequest:
-    operatorOrderTriageRoutes.routeOperatorOrderTriageRequest,
+  routeOperatorOrderTriageRequest: operatorOrderTriageRoutes.routeOperatorOrderTriageRequest,
   routeOperatorBusinessOutreachRequest:
     operatorBusinessOutreachRoutes.routeOperatorBusinessOutreachRequest,
   routeOperatorBusinessPipelineRequest:
@@ -15713,32 +14426,27 @@ const routeRequest = makeWorkerRouteRequest({
   // exact-route registry cannot match. Returns undefined for any
   // non-matching path so the cascade falls through.
   routePublicAgentReadinessReportRequest: (request, env) => {
-    const url = new URL(request.url)
-    if (!url.pathname.startsWith('/api/public/agent-readiness/reports/')) {
-      return undefined
+    const url = new URL(request.url);
+    if (!url.pathname.startsWith("/api/public/agent-readiness/reports/")) {
+      return undefined;
     }
     return handlePublicAgentReadinessReportApi(request, {
       OPENAGENTS_DB: openAgentsDatabase(env),
-    })
+    });
   },
   routeOperatorProviderAccountRequest: (request, env) => {
-    const response =
-      operatorProviderAccountRoutes.routeOperatorProviderAccountRequest(
-        request,
-        env,
-      )
+    const response = operatorProviderAccountRoutes.routeOperatorProviderAccountRequest(
+      request,
+      env,
+    );
 
     return response === undefined
       ? undefined
       : routeEffectOrResponse(
-          routeEffect(
-            'route_operator_provider_account_request',
-            () => response,
-          ),
-        )
+          routeEffect("route_operator_provider_account_request", () => response),
+        );
   },
-  routeProviderAccountRequest:
-    providerAccountRoutes.routeProviderAccountRequest,
+  routeProviderAccountRequest: providerAccountRoutes.routeProviderAccountRequest,
   routeShareRequest: shareRoutes.routeShareRequest,
   routeSyncRequest: syncRoutes.routeSyncRequest,
   routeTeamChatRequest: teamChatRoutes.routeTeamChatRequest,
@@ -15746,21 +14454,14 @@ const routeRequest = makeWorkerRouteRequest({
   routeTassadarTraceContributionRequest:
     tassadarTraceContributionRoutes.routeTassadarTraceContributionRequest,
   routeTraceRequest: traceStoreRoutes.routeTraceRequest,
-  routeTrainingRunWindowRequest:
-    trainingRunWindowRoutes.routeTrainingRunWindowRequest,
-  routeTrainingVerificationRequest:
-    trainingVerificationRoutes.routeTrainingVerificationRequest,
-})
+  routeTrainingRunWindowRequest: trainingRunWindowRoutes.routeTrainingRunWindowRequest,
+  routeTrainingVerificationRequest: trainingVerificationRoutes.routeTrainingVerificationRequest,
+});
 
-const pokeAgentDefinitionScheduler = async (
-  env: OpenAgentsWorkerEnv,
-  scheduledTimeMs: number,
-) => {
+const pokeAgentDefinitionScheduler = async (env: OpenAgentsWorkerEnv, scheduledTimeMs: number) => {
   const durableStreamNamespace = durableInferenceStreamNamespaceForEnv(env, {
-    enabled: isInferenceDurableStreamEnabled(
-      env.INFERENCE_DURABLE_STREAM_ENABLED,
-    ),
-  })
+    enabled: isInferenceDurableStreamEnabled(env.INFERENCE_DURABLE_STREAM_ENABLED),
+  });
 
   await runAgentDefinitionSchedulerTick(
     makeAgentDefinitionSchedulerDependencies({
@@ -15774,63 +14475,59 @@ const pokeAgentDefinitionScheduler = async (
       triggerStore: makeAgentDefinitionTriggerStoreForEnv(env),
     }),
     { nowIso: epochMillisToIsoTimestamp(scheduledTimeMs) },
-  )
+  );
 
-  return { ok: true }
-}
+  return { ok: true };
+};
 
 const workerFetchProgram = Effect.gen(function* () {
-  const { ctx, env, request, url } = yield* OpenAgentsWorkerRequest
+  const { ctx, env, request, url } = yield* OpenAgentsWorkerRequest;
 
   return yield* Effect.gen(function* () {
-    if (url.hostname === 'auth.openagents.com') {
-      return yield* Effect.promise(() =>
-        routeAuthHostRequest(request, env, ctx),
-      )
+    if (url.hostname === "auth.openagents.com") {
+      return yield* Effect.promise(() => routeAuthHostRequest(request, env, ctx));
     }
 
     if (isRetiredMoneySurfaceRequest(request.method, url.pathname)) {
-      return moneySurfaceRetiredResponse()
+      return moneySurfaceRetiredResponse();
     }
 
-    return yield* routeRequest()
+    return yield* routeRequest();
   }).pipe(
-    Effect.catchCause(cause =>
+    Effect.catchCause((cause) =>
       Effect.sync(() => {
-        const prettyCause = Cause.pretty(cause)
-        logWorkerRouteError('worker_unhandled_exception', prettyCause)
+        const prettyCause = Cause.pretty(cause);
+        logWorkerRouteError("worker_unhandled_exception", prettyCause);
         scheduleBackgroundWork(
           ctx,
           recordBackendIncidentEvent(
             openAgentsDatabase(env),
             {
-              errorName: 'EffectCause',
-              kind: 'unhandled_exception',
+              errorName: "EffectCause",
+              kind: "unhandled_exception",
               method: request.method,
               routePattern: routePatternFromRequest(request),
               safeMetadata: {
                 host: url.hostname,
               },
-              severity: 'critical',
-              source: 'worker_fetch',
+              severity: "critical",
+              source: "worker_fetch",
               statusCode: 500,
             },
             undefined,
             makeSupervisionLongtailMirrorForEnv(env),
-          ).catch(error =>
-            logWorkerRouteError('backend_incident_record_failed', error),
-          ),
-        )
+          ).catch((error) => logWorkerRouteError("backend_incident_record_failed", error)),
+        );
 
-        if (url.hostname === 'auth.openagents.com') {
-          return redirectResponse(getAppOrigin(env))
+        if (url.hostname === "auth.openagents.com") {
+          return redirectResponse(getAppOrigin(env));
         }
 
-        return serverError()
+        return serverError();
       }),
     ),
-  )
-})
+  );
+});
 
 const runWorkerFetch = (
   request: Request,
@@ -15841,14 +14538,12 @@ const runWorkerFetch = (
   // Worker isolate never serves a stale admin allowlist after a config
   // change, without threading env through the ~30 isOpenAgentsAdminEmail
   // call sites.
-  configureOpenAgentsAdminEmailsFromEnv(env.OPENAGENTS_ADMIN_EMAILS)
+  configureOpenAgentsAdminEmailsFromEnv(env.OPENAGENTS_ADMIN_EMAILS);
 
   return Effect.runPromise(
-    workerFetchProgram.pipe(
-      Effect.provide(WorkerRequestLayer({ ctx, env, request })),
-    ),
-  )
-}
+    workerFetchProgram.pipe(Effect.provide(WorkerRequestLayer({ ctx, env, request }))),
+  );
+};
 
 /**
  * CFG-7 (#8522): the former Cloudflare Queues `queue()` consumer, unchanged,
@@ -15865,59 +14560,52 @@ export const dispatchOaQueueMessage = async (
   body: unknown,
 ): Promise<void> => {
   const schemaVersion =
-    typeof body === 'object' && body !== null && 'schemaVersion' in body
+    typeof body === "object" && body !== null && "schemaVersion" in body
       ? (body as { schemaVersion?: unknown }).schemaVersion
-      : undefined
+      : undefined;
 
   if (schemaVersion === PYLON_CODEX_RAW_EVENT_METADATA_QUEUE_SCHEMA_VERSION) {
-    const decoded = S.decodeUnknownSync(PylonCodexRawEventMetadataQueueMessage)(
-      body,
-    )
+    const decoded = S.decodeUnknownSync(PylonCodexRawEventMetadataQueueMessage)(body);
     await makePylonCodexRawEventMetadataQueueConsumerForEnv(
       env,
       openAgentsDatabase(env),
-    ).writeMetadata(decoded)
-    return
+    ).writeMetadata(decoded);
+    return;
   }
 
   if (schemaVersion === EVENT_LEDGER_INGEST_QUEUE_SCHEMA_VERSION) {
-    const decoded = S.decodeUnknownSync(EventLedgerIngestQueueMessage)(body)
+    const decoded = S.decodeUnknownSync(EventLedgerIngestQueueMessage)(body);
 
-    const connectionString = (
-      env as { KHALA_SYNC_DB?: { connectionString?: string } }
-    ).KHALA_SYNC_DB?.connectionString
+    const connectionString = (env as { KHALA_SYNC_DB?: { connectionString?: string } })
+      .KHALA_SYNC_DB?.connectionString;
 
     if (connectionString === undefined || connectionString.length === 0) {
-      throw new Error('event ledger requires the Cloud SQL connection')
+      throw new Error("event ledger requires the Cloud SQL connection");
     }
 
     await recordEventLedgerMessageWithOwnerMutex(
-      env as unknown as Parameters<
-        typeof recordEventLedgerMessageWithOwnerMutex
-      >[0],
+      env as unknown as Parameters<typeof recordEventLedgerMessageWithOwnerMutex>[0],
       decoded,
-    )
-    return
+    );
+    return;
   }
 
-  const decoded = S.decodeUnknownSync(AdjutantEnrichmentQueueMessage)(body)
+  const decoded = S.decodeUnknownSync(AdjutantEnrichmentQueueMessage)(body);
 
-  const exit = await Effect.runPromiseExit(
-    executeQueuedAdjutantEnrichmentJob(env, decoded),
-  )
+  const exit = await Effect.runPromiseExit(executeQueuedAdjutantEnrichmentJob(env, decoded));
 
   if (Exit.isFailure(exit)) {
-    throw exit.cause
+    throw exit.cause;
   }
-}
+};
 
 export default {
   fetch: runWorkerFetch,
   scheduled: async (event, env, ctx): Promise<void> => {
-    const config = getOpenAgentsWorkerConfig(env)
+    const config = getOpenAgentsWorkerConfig(env);
 
     const glmPoolHeartbeatReport = await observedEffect(
-      'HydraliskGlmPoolHeartbeat.run',
+      "HydraliskGlmPoolHeartbeat.run",
       runScheduledGlmPoolHeartbeatForD1({
         db: openAgentsDatabase(env),
         env,
@@ -15928,20 +14616,20 @@ export default {
         ...tokenLedgerWriteStoreOptionForEnv(env),
         scheduledTimeMs: event.scheduledTime,
       }),
-    )
+    );
     if (glmPoolHeartbeatReport.persistenceFailures.length > 0) {
-      logWorkerRouteWarning('glm_pool_heartbeat_persistence_blocked', {
+      logWorkerRouteWarning("glm_pool_heartbeat_persistence_blocked", {
         blockerRef:
-          'blocker.public.inference.glm_pool_heartbeat.token_usage_events_persistence_failed',
+          "blocker.public.inference.glm_pool_heartbeat.token_usage_events_persistence_failed",
         failureCount: glmPoolHeartbeatReport.persistenceFailures.length,
         failureErrorTags: glmPoolHeartbeatReport.persistenceFailures
-          .map(failure => failure.errorTag)
-          .join(','),
+          .map((failure) => failure.errorTag)
+          .join(","),
         failureStages: glmPoolHeartbeatReport.persistenceFailures
-          .map(failure => failure.stage)
-          .join(','),
+          .map((failure) => failure.stage)
+          .join(","),
         runRef: glmPoolHeartbeatReport.runRef,
-      })
+      });
     }
 
     // 2026-07-05 incident (#8409): this array runs ~25 independent
@@ -15992,14 +14680,14 @@ export default {
       // auto-flush abandoned leases that poison the dispatch gate. Idle-no-work
       // and healthy ticks are silent. Does NOT touch the dispatch-gate dedup.
       observedEffect(
-        'FleetBurnStallDetector.tick',
+        "FleetBurnStallDetector.tick",
         Effect.promise(() =>
           runFleetBurnStallDetectorScheduled(
             openAgentsDatabase(env),
             env,
             { scheduledTimeMs: event.scheduledTime },
             (line, fields) =>
-              logWorkerRouteWarning('fleet_burn_stall_watchdog', {
+              logWorkerRouteWarning("fleet_burn_stall_watchdog", {
                 line,
                 ...fields,
               }),
@@ -16007,14 +14695,14 @@ export default {
         ),
       ),
       observedEffect(
-        'ServingRateMonitor.tick',
+        "ServingRateMonitor.tick",
         Effect.promise(() =>
           runServingRateMonitorScheduled(
             openAgentsDatabase(env),
             env,
             { scheduledTimeMs: event.scheduledTime },
             (line, fields) =>
-              logWorkerRouteWarning('serving_rate_monitor', {
+              logWorkerRouteWarning("serving_rate_monitor", {
                 line,
                 ...fields,
               }),
@@ -16022,7 +14710,7 @@ export default {
         ),
       ),
       observedEffect(
-        'ArtanisScheduledRunner.runTick',
+        "ArtanisScheduledRunner.runTick",
         runArtanisScheduledTickScheduled(
           makeArtanisDatabaseForEnv(env),
           config.artanis.scheduledRunnerEnabled,
@@ -16033,11 +14721,11 @@ export default {
       // Khala Code chat turns) into hosted Gemini answers on Cloud Run.
       // Fail-soft: no KHALA_SYNC_DB/GEMINI_API_KEY ⇒ clean no-op.
       observedEffect(
-        'HostedRuntimeTurnDispatch.tick',
+        "HostedRuntimeTurnDispatch.tick",
         Effect.promise(() => runHostedRuntimeTurnDispatchForEnv(env)),
       ),
       observedEffect(
-        'ManagedCloudRuntimeTurnDispatch.tick',
+        "ManagedCloudRuntimeTurnDispatch.tick",
         Effect.promise(() => runManagedCloudRuntimeTurnDispatchForEnv(env)),
       ),
       // SARAH-AUTONOMOUS-1: Sarah's scheduled autonomous heartbeat. Default OFF
@@ -16045,11 +14733,11 @@ export default {
       // change; when armed, wakes Sarah at most once per owner per interval to
       // take one admitted action and post a receipt-backed owner update.
       observedEffect(
-        'SarahAutonomousTick.tick',
+        "SarahAutonomousTick.tick",
         Effect.promise(() => runSarahAutonomousTickDispatchForEnv(env)),
       ),
       observedEffect(
-        'PortableSessionCommandDispatch.tick',
+        "PortableSessionCommandDispatch.tick",
         portableSessionCommandDispatchScheduled({
           env,
           enabled: (
@@ -16060,7 +14748,7 @@ export default {
         }).pipe(Effect.asVoid),
       ),
       observedEffect(
-        'PylonCapacityFunnel.recordSnapshots',
+        "PylonCapacityFunnel.recordSnapshots",
         recordPylonCapacityFunnelSnapshotsScheduled(
           {
             snapshotStore: makePylonCapacityFunnelSnapshotStoreForEnv(env),
@@ -16078,7 +14766,7 @@ export default {
       // soft: a refresh failure never fails the cron tick or any other
       // scheduled work in this Promise.all.
       observedEffect(
-        'PublicActivityTimeline.refreshSnapshot',
+        "PublicActivityTimeline.refreshSnapshot",
         Effect.promise(() =>
           refreshActivityTimelineSnapshotBestEffort({
             binding: env.KHALA_SYNC_DB,
@@ -16090,19 +14778,19 @@ export default {
         ),
       ),
       observedEffect(
-        'RelayHealth.probeTick',
+        "RelayHealth.probeTick",
         runRelayHealthProbeScheduled(env, event.scheduledTime),
       ),
       observedEffect(
-        'SelfServeWindowProducer.topUp',
+        "SelfServeWindowProducer.topUp",
         runSelfServeWindowProducerScheduled(env, event.scheduledTime),
       ),
       observedEffect(
-        'EmailCampaignDispatcher.dispatchDue',
+        "EmailCampaignDispatcher.dispatchDue",
         dispatchDueEmailCampaignSendsScheduled(env),
       ),
       observedEffect(
-        'BusinessFulfillmentLoop.dailyMotion',
+        "BusinessFulfillmentLoop.dailyMotion",
         runBusinessFulfillmentLoopScheduled(
           // KS-8.14 (#8325): motion receipts / escalation pages mirror
           // fail-soft; the pager's dedupe stays on D1 (no double-page).
@@ -16111,51 +14799,42 @@ export default {
         ).pipe(Effect.asVoid),
       ),
       observedEffect(
-        'AgentDefinitionScheduler.tick',
+        "AgentDefinitionScheduler.tick",
         Effect.promise(async () => {
-          await pokeAgentDefinitionScheduler(env, event.scheduledTime)
+          await pokeAgentDefinitionScheduler(env, event.scheduledTime);
         }),
       ),
       observedEffect(
-        'AutopilotContinuationPolicy.sweep',
+        "AutopilotContinuationPolicy.sweep",
         runAutopilotContinuationSweep({
           billingAllowsContinuation: async () => ({
             ok: false,
-            reasonRef: 'continuation.skipped.paid_capacity_retired',
+            reasonRef: "continuation.skipped.paid_capacity_retired",
           }),
-          dispatchFollowUpTurn: async candidate => {
-            const result = await omniHandlers.continueUserAutopilotRun(
-              env,
-              ctx,
-              {
-                prompt:
-                  'Continue the active OpenAgents goal from the latest durable run state.',
-                runId: candidate.runId,
-                userId: candidate.userId,
-              },
-            )
+          dispatchFollowUpTurn: async (candidate) => {
+            const result = await omniHandlers.continueUserAutopilotRun(env, ctx, {
+              prompt: "Continue the active OpenAgents goal from the latest durable run state.",
+              runId: candidate.runId,
+              userId: candidate.userId,
+            });
 
             return result.ok
               ? {
                   ok: true,
-                  reasonRef: 'continuation.dispatched.follow_up_turn',
+                  reasonRef: "continuation.dispatched.follow_up_turn",
                 }
               : {
                   ok: false,
-                  reasonRef: 'continuation.failed.follow_up_turn',
-                }
+                  reasonRef: "continuation.failed.follow_up_turn",
+                };
           },
-          dispatchGoalContinuation: async candidate => {
-            await omniHandlers.requestGoalContinuationAfterCompletedRun(
-              env,
-              ctx,
-              candidate.runId,
-            )
+          dispatchGoalContinuation: async (candidate) => {
+            await omniHandlers.requestGoalContinuationAfterCompletedRun(env, ctx, candidate.runId);
 
             return {
               ok: true,
-              reasonRef: 'continuation.dispatched.goal_continuation',
-            }
+              reasonRef: "continuation.dispatched.goal_continuation",
+            };
           },
           listStoppedRunsForUser: (userId, sinceIso, limit) =>
             listAutopilotContinuationRunCandidates(openAgentsDatabase(env), {
@@ -16170,80 +14849,73 @@ export default {
       Promise.resolve(undefined),
       Promise.resolve(undefined),
       observedEffect(
-        'ArtanisResponder.scan',
+        "ArtanisResponder.scan",
         runArtanisResponderScanScheduled(makeArtanisDatabaseForEnv(env), {
           artanisActorRefs: [ARTANIS_REGISTERED_ACTOR_REF],
           enabled:
             (env as { ARTANIS_FORUM_RESPONDER_ENABLED?: string })
-              .ARTANIS_FORUM_RESPONDER_ENABLED === 'true',
-          geminiApiKey:
-            (env as { GEMINI_API_KEY?: string }).GEMINI_API_KEY ?? null,
+              .ARTANIS_FORUM_RESPONDER_ENABLED === "true",
+          geminiApiKey: (env as { GEMINI_API_KEY?: string }).GEMINI_API_KEY ?? null,
           khalaClient: makeArtanisResponderKhalaClient(env),
           nowIso: epochMillisToIsoTimestamp(event.scheduledTime),
         }),
       ),
       observedEffect(
-        'ArtanisAdmin.tick',
+        "ArtanisAdmin.tick",
         runArtanisAdminTickScheduled(makeArtanisDatabaseForEnv(env), {
-          dispatch: async body => {
+          dispatch: async (body) => {
             const adminToken = (env as { OPENAGENTS_ADMIN_API_TOKEN?: string })
-              .OPENAGENTS_ADMIN_API_TOKEN
+              .OPENAGENTS_ADMIN_API_TOKEN;
             if (adminToken === undefined) {
-              return { detail: 'admin_token_missing', ok: false }
+              return { detail: "admin_token_missing", ok: false };
             }
             const response = await runArtanisForumRouteEffect(
               pylonApiRoutes.routePylonApiRequest(
-                new Request(
-                  'https://openagents.com/api/operator/pylons/assignments',
-                  {
-                    body: JSON.stringify(body),
-                    headers: {
-                      Authorization: `Bearer ${adminToken}`,
-                      'Content-Type': 'application/json',
-                      'Idempotency-Key': String(
-                        (body as { assignmentRef?: string }).assignmentRef ??
-                          'artanis-admin-dispatch',
-                      ),
-                    },
-                    method: 'POST',
+                new Request("https://openagents.com/api/operator/pylons/assignments", {
+                  body: JSON.stringify(body),
+                  headers: {
+                    Authorization: `Bearer ${adminToken}`,
+                    "Content-Type": "application/json",
+                    "Idempotency-Key": String(
+                      (body as { assignmentRef?: string }).assignmentRef ??
+                        "artanis-admin-dispatch",
+                    ),
                   },
-                ),
+                  method: "POST",
+                }),
                 env,
                 ctx,
               ),
-            )
+            );
             if (response === undefined) {
-              return { detail: 'route_unmatched', ok: false }
+              return { detail: "route_unmatched", ok: false };
             }
-            const detail = (await response.text()).slice(0, 200)
-            return { detail, ok: response.ok }
+            const detail = (await response.text()).slice(0, 200);
+            return { detail, ok: response.ok };
           },
           enabled:
-            (env as { ARTANIS_ADMIN_TICK_ENABLED?: string })
-              .ARTANIS_ADMIN_TICK_ENABLED === 'true',
-          geminiApiKey:
-            (env as { GEMINI_API_KEY?: string }).GEMINI_API_KEY ?? null,
+            (env as { ARTANIS_ADMIN_TICK_ENABLED?: string }).ARTANIS_ADMIN_TICK_ENABLED === "true",
+          geminiApiKey: (env as { GEMINI_API_KEY?: string }).GEMINI_API_KEY ?? null,
           nowIso: epochMillisToIsoTimestamp(event.scheduledTime),
         }),
       ),
       observedEffect(
-        'ArtanisFleet.tick',
+        "ArtanisFleet.tick",
         runArtanisFleetOverseerTickScheduled(makeArtanisDatabaseForEnv(env), {
           enabled: config.artanis.fleetOverseerEnabled,
-          geminiApiKey:
-            (env as { GEMINI_API_KEY?: string }).GEMINI_API_KEY ?? null,
+          geminiApiKey: (env as { GEMINI_API_KEY?: string }).GEMINI_API_KEY ?? null,
           nowIso: epochMillisToIsoTimestamp(event.scheduledTime),
           runnerStatusMirror: makePylonAgentRunnerStatusMirrorForEnv(env),
         }),
       ),
       observedEffect(
-        'ArtanisAdmin.closeoutVerifier',
+        "ArtanisAdmin.closeoutVerifier",
         runArtanisCloseoutVerifierScheduled(makeArtanisDatabaseForEnv(env), {
-          accept: async input => {
+          accept: async (input) => {
             const adminToken = (env as { OPENAGENTS_ADMIN_API_TOKEN?: string })
-              .OPENAGENTS_ADMIN_API_TOKEN
+              .OPENAGENTS_ADMIN_API_TOKEN;
             if (adminToken === undefined) {
-              return { detail: 'admin_token_missing', ok: false }
+              return { detail: "admin_token_missing", ok: false };
             }
             const response = await runArtanisForumRouteEffect(
               pylonApiRoutes.routePylonApiRequest(
@@ -16258,29 +14930,28 @@ export default {
                     }),
                     headers: {
                       Authorization: `Bearer ${adminToken}`,
-                      'Content-Type': 'application/json',
-                      'Idempotency-Key': `artanis-closeout-${input.assignmentRef}`,
+                      "Content-Type": "application/json",
+                      "Idempotency-Key": `artanis-closeout-${input.assignmentRef}`,
                     },
-                    method: 'POST',
+                    method: "POST",
                   },
                 ),
                 env,
                 ctx,
               ),
-            )
+            );
             if (response === undefined) {
-              return { detail: 'route_unmatched', ok: false }
+              return { detail: "route_unmatched", ok: false };
             }
             return {
               detail: (await response.text()).slice(0, 200),
               ok: response.ok,
-            }
+            };
           },
           enabled:
-            (env as { ARTANIS_ADMIN_TICK_ENABLED?: string })
-              .ARTANIS_ADMIN_TICK_ENABLED === 'true',
+            (env as { ARTANIS_ADMIN_TICK_ENABLED?: string }).ARTANIS_ADMIN_TICK_ENABLED === "true",
           nowIso: epochMillisToIsoTimestamp(event.scheduledTime),
-          replay: async input =>
+          replay: async (input) =>
             runTassadarReplayValidation({
               assignmentRef: input.assignmentRef,
               claimedTraceDigest: input.claimedTraceDigest,
@@ -16297,23 +14968,21 @@ export default {
         // resolver yields no validator devices yet (the #5061 dry-run supplies the
         // distinct-device replay evidence); device-distinctness + no-double-pair
         // are enforced by the orchestration and the conditional store update.
-        'TassadarTracePairing.tick',
+        "TassadarTracePairing.tick",
         runTassadarTracePairingScheduled({
-          createVerificationChallenge: request => {
+          createVerificationChallenge: (request) => {
             const built = buildTrainingVerificationChallengeRecord({
               makeId: randomUuid,
               nowIso: currentIsoTimestamp(),
               request,
-            })
+            });
 
             return makeTrainingVerificationStoreForEnv(env).createChallenge(
               built.challenge,
               built.event,
-            )
+            );
           },
-          enabled:
-            (env as { TASSADAR_TRACE_PAIRING?: string })
-              .TASSADAR_TRACE_PAIRING === '1',
+          enabled: (env as { TASSADAR_TRACE_PAIRING?: string }).TASSADAR_TRACE_PAIRING === "1",
           nowIso: epochMillisToIsoTimestamp(event.scheduledTime),
           // Intentionally empty (#5121). The trust anchor is a separate-device
           // replay, so the server must NEVER fabricate a validator's replay
@@ -16330,27 +14999,26 @@ export default {
         }),
       ),
       observedEffect(
-        'ArtanisResponder.compose',
+        "ArtanisResponder.compose",
         runArtanisComposerScheduled(makeArtanisDatabaseForEnv(env), {
           artanisActorRef: ARTANIS_REGISTERED_ACTOR_REF,
           ledgerDb: paymentsLedgerDbForEnv(env),
           enabled:
             (env as { ARTANIS_FORUM_RESPONDER_ENABLED?: string })
-              .ARTANIS_FORUM_RESPONDER_ENABLED === 'true',
+              .ARTANIS_FORUM_RESPONDER_ENABLED === "true",
           forumPost: artanisComposerForumPostForEnv(env),
-          geminiApiKey:
-            (env as { GEMINI_API_KEY?: string }).GEMINI_API_KEY ?? null,
+          geminiApiKey: (env as { GEMINI_API_KEY?: string }).GEMINI_API_KEY ?? null,
           nowIso: epochMillisToIsoTimestamp(event.scheduledTime),
-          tip: async () => ({ error: 'money_surface_retired' }),
+          tip: async () => ({ error: "money_surface_retired" }),
         }),
       ),
-    ])
+    ]);
     for (const [index, result] of scheduledTaskResults.entries()) {
-      if (result.status === 'rejected') {
-        logWorkerRouteError('scheduled_task_failed', result.reason, {
+      if (result.status === "rejected") {
+        logWorkerRouteError("scheduled_task_failed", result.reason, {
           taskIndex: String(index),
-        })
+        });
       }
     }
   },
-} satisfies ExportedHandler<Env>
+} satisfies ExportedHandler<Env>;
