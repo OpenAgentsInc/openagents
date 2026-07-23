@@ -50,7 +50,13 @@
  */
 import { mkdir, writeFile, readdir } from 'node:fs/promises'
 import { execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import {
+  chownSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+} from 'node:fs'
 import { join } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import {
@@ -1457,7 +1463,9 @@ export type HarnessExecRun = (input: {
   args: string[]
   cwd: string
   env: Record<string, string>
+  gid?: number
   timeoutMs: number
+  uid?: number
 }) => { code: number | null; stdout: string; stderr: string }
 
 export type HarnessTurnOutcome =
@@ -1742,9 +1750,11 @@ const defaultHarnessExecRun: HarnessExecRun = input => {
     cwd: input.cwd,
     encoding: 'utf8',
     env: input.env,
+    ...(input.gid === undefined ? {} : { gid: input.gid }),
     killSignal: 'SIGKILL',
     maxBuffer: 64 * 1024 * 1024,
     timeout: input.timeoutMs,
+    ...(input.uid === undefined ? {} : { uid: input.uid }),
   })
   return { code: result.status, stderr: result.stderr ?? '', stdout: result.stdout ?? '' }
 }
@@ -1812,22 +1822,61 @@ export const runHarnessTurn = async (
   if (env === null) {
     return { exitCode: null, harness: args.config.harness, ok: false, reasonRef: 'harness.runtime_secret_required' }
   }
-  const result = (deps.execRun ?? defaultHarnessExecRun)({
-    args: harnessExecArgs({
-      harness: args.config.harness,
-      ...(args.config.model === undefined ? {} : { model: args.config.model }),
-      prompt: args.prompt,
-      workingDirectory: args.workingDirectory,
-    }),
-    binaryPath,
-    cwd: args.workingDirectory,
-    env,
-    timeoutMs: (args.config.maxTurnSeconds ?? HARNESS_TURN_DEFAULT_MAX_SECONDS) * 1000,
-  })
+  const runClaudeAsNonRoot =
+    args.config.harness === 'claude-code' && deps.execRun === undefined
+  const claudeUid = 65_534
+  let claudeHome: string | undefined
+  let result: ReturnType<HarnessExecRun>
+  if (runClaudeAsNonRoot) {
+    claudeHome = mkdtempSync('/tmp/openagents-claude-harness-')
+    chownSync(claudeHome, claudeUid, claudeUid)
+    const prepared = spawnSync('/bin/chown', [
+      '-R',
+      `${claudeUid}:${claudeUid}`,
+      args.workingDirectory,
+    ])
+    if (prepared.status !== 0) {
+      rmSync(claudeHome, { force: true, recursive: true })
+      return {
+        exitCode: prepared.status,
+        failureClass: 'configuration_invalid',
+        harness: args.config.harness,
+        ok: false,
+        reasonRef: 'harness.exec_failed',
+      }
+    }
+  }
+  try {
+    result = (deps.execRun ?? defaultHarnessExecRun)({
+      args: harnessExecArgs({
+        harness: args.config.harness,
+        ...(args.config.model === undefined ? {} : { model: args.config.model }),
+        prompt: args.prompt,
+        workingDirectory: args.workingDirectory,
+      }),
+      binaryPath,
+      cwd: args.workingDirectory,
+      env: claudeHome === undefined ? env : { ...env, HOME: claudeHome },
+      ...(runClaudeAsNonRoot ? { gid: claudeUid, uid: claudeUid } : {}),
+      timeoutMs:
+        (args.config.maxTurnSeconds ?? HARNESS_TURN_DEFAULT_MAX_SECONDS) *
+        1000,
+    })
+  } finally {
+    if (runClaudeAsNonRoot) {
+      spawnSync('/bin/chown', ['-R', '0:0', args.workingDirectory])
+      if (claudeHome !== undefined) {
+        rmSync(claudeHome, { force: true, recursive: true })
+      }
+    }
+  }
   if (result.code !== 0) {
     return {
       exitCode: result.code,
-      failureClass: classifyHarnessFailure(result.stderr, result.code),
+      failureClass: classifyHarnessFailure(
+        `${result.stderr}\n${result.stdout}`,
+        result.code,
+      ),
       harness: args.config.harness,
       ok: false,
       reasonRef: 'harness.exec_failed',
