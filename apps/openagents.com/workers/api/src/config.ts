@@ -19,6 +19,18 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // real hosted backing store is a separate composition-root change; the
   // baseline resolves to the SDK disabled adapter (empty recall).
   SARAH_GRAPH_MEMORY_RECALL_ENABLED?: string | undefined
+  // SARAH-AUTONOMOUS-1: default-OFF gate for Sarah's scheduled autonomous tick.
+  // Unset/false: no owner is resolved, no autonomous turn runs, and the cron
+  // tick is byte-identical to a build without it. Set "true"/"1"/"on" to let
+  // Sarah wake on the per-minute cron drive (bounded to at most one tick per
+  // owner per interval), assess company state, take ONE admitted action through
+  // her existing gated tools, and post the owner a receipt-backed update. Adds
+  // no new authority — the turn's tools still gate through the admitted Sarah
+  // authority profile, so reserved actions refuse exactly as on an owner turn.
+  SARAH_AUTONOMOUS_TICK_ENABLED?: string | undefined
+  // Optional interval override for the autonomous tick, in whole minutes. Unset
+  // keeps the 15-minute default; parsed values are clamped to [5, 240].
+  SARAH_AUTONOMOUS_TICK_INTERVAL_MINUTES?: string | undefined
   // Shared HMAC secret for host-only AUDIO-2 grants. This is a Worker secret,
   // never a public var or response field, and must match the private audio
   // gateway's OPENAGENTS_AUDIO_TOKEN_SECRET. Missing/weak values fail closed.

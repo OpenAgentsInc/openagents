@@ -1243,9 +1243,16 @@ import {
 } from './sarah-harness-service'
 import {
   SARAH_OWNER_PATH,
+  authorizeSarahOperation,
   hasSarahThreadAuthority,
   makeSarahOwnerRoutes,
 } from './sarah-owner-routes'
+import {
+  appendSarahAutonomousUpdateToThread,
+  isSarahAutonomousTickEnabled,
+  resolveSarahAutonomousTickIntervalMinutes,
+  runSarahAutonomousTickDispatch,
+} from './sarah-autonomous-tick'
 import {
   SARAH_SPEECH_PATH,
   makeSarahSpeechRoutes,
@@ -7242,6 +7249,240 @@ const runHostedRuntimeTurnDispatchForEnv = async (
         failed: summary.failed,
         scanned: summary.scanned,
         skipped: summary.skipped,
+      })
+    }
+  } finally {
+    await client.end()
+  }
+}
+
+// SARAH-AUTONOMOUS-1: Sarah's scheduled autonomous heartbeat. Runs on the same
+// per-minute cron drive as the hosted dispatch above, but instead of waiting
+// for a queued owner turn it wakes Sarah on a timer (default every 15 min, at
+// most one tick per owner per interval — see `sarah-autonomous-tick.ts`), runs
+// ONE Sarah turn with the fixed autonomous objective through the exact same
+// tools + authority brokers, and posts the owner a receipt-backed update.
+// Adds no new authority: reserved actions refuse inside the turn's tools.
+// Fail-soft: flag OFF, or a missing KHALA_SYNC_DB/GEMINI_API_KEY, is a clean
+// no-op; a per-owner failure is isolated and never breaks the cron tick.
+const runSarahAutonomousTickDispatchForEnv = async (
+  env: OpenAgentsWorkerEnv,
+): Promise<void> => {
+  if (!isSarahAutonomousTickEnabled(env)) return
+  const connectionString = env.KHALA_SYNC_DB?.connectionString
+  const apiKey = env.GEMINI_API_KEY
+  if (
+    connectionString === undefined ||
+    connectionString.length === 0 ||
+    apiKey === undefined ||
+    apiKey.length === 0
+  ) {
+    return
+  }
+  const intervalMinutes = resolveSarahAutonomousTickIntervalMinutes(env)
+  const ledger = makeD1TokenUsageLedger(openAgentsDatabase(env), undefined, {
+    onIngestedEvent: makeTokensServedProjectionObserver(env),
+    ...tokenLedgerWriteStoreOptionForEnv(env),
+  })
+  const client = await defaultMakeKhalaSyncSqlClient(connectionString)
+  try {
+    const sarahKhalaCatalog = makeKhalaMcpCatalog<OpenAgentsWorkerEnv>({
+      agentStore: environment => makeAgentRegistrationStoreForEnv(environment),
+      pylonStore: environment => makePylonApiStoreForEnv(environment),
+      recordTokensServed: environment =>
+        makeKhalaMcpServedTokensRecorder(
+          ledgerDirectInsertDatabaseForEnv(environment),
+          {
+            mirrorRow: row =>
+              mirrorTokenLedgerDirectInsertBestEffort(environment, row),
+            onIngestedEvent: makeTokensServedProjectionObserver(environment),
+          },
+        ),
+    })
+    const gemma4 = makeGemma4Adapter({
+      apiKey: () => Redacted.make(apiKey),
+      model: DEFAULT_HOSTED_RUNTIME_MODEL,
+    })
+
+    // ONE gated Sarah turn with the autonomous objective. This mirrors the
+    // owner_conversation branch of `runHostedRuntimeTurnDispatchForEnv`'s
+    // `complete`: same context, same system prompt, same tools, same agent
+    // loop — only the trigger (a timer, not an owner message) and the prompt
+    // (the fixed autonomous objective) differ. It NEVER grants new authority.
+    const runTurn: Parameters<
+      typeof runSarahAutonomousTickDispatch
+    >[0]['runTurn'] = async ({ ownerUserId, threadRef, tickRef, prompt }) => {
+      if (!(await hasSarahThreadAuthority(client.sql, ownerUserId, threadRef))) {
+        return { detail: 'sarah_autonomous_tick_authority_absent', ok: false }
+      }
+      const turnId = `${tickRef}.turn`
+      const context = await collectSarahBusinessContext({
+        ownerUserId,
+        sql: client.sql,
+        threadRef,
+        graphMemoryRecall: {
+          enabled: sarahGraphMemoryRecallEnabled(env),
+          query: prompt,
+          ...(sarahGraphMemoryRecallEnabled(env)
+            ? { storeLayer: sarahGraphMemoryStoreLayer(client.sql) }
+            : {}),
+        },
+      })
+      const harness = await bindSarahHarnessForTurnPromise({
+        ownerUserId,
+        sql: client.sql,
+        threadId: threadRef,
+        turnId,
+      })
+      const system = buildSarahSystemPrompt(
+        context,
+        {
+          laneRef: HOSTED_RUNTIME_LANE,
+          modelRef: DEFAULT_HOSTED_RUNTIME_MODEL,
+          providerLabel: 'Google AI Studio',
+          runtimeLabel: 'OpenAgents hosted runtime',
+        },
+        harness.policy,
+      )
+      const managedSandboxTools = await Effect.runPromise(
+        Effect.gen(function* () {
+          const policy = yield* managedSandboxBoxV1PolicyForEnv(env)
+          const runtime = yield* managedSandboxBoxV1RuntimeForEnv(env)
+          const sarahPrincipal = {
+            actorRef: 'principal.sarah',
+            email: null,
+            login: 'Sarah',
+            ownerRef: ownerUserId,
+            tenantRef: ownerUserId,
+          }
+          return makeSarahManagedSandboxTools({
+            broker: makeManagedSandboxBroker({
+              policy,
+              principal: sarahPrincipal,
+              runtime,
+              store: managedSandboxBoxV1StoreForEnv(env),
+            }),
+            ownerUserId,
+            policy,
+            principal: sarahPrincipal,
+            runtimeAdmitted:
+              isManagedSandboxBrokerEnabled(
+                env.MANAGED_SANDBOX_BROKER_ENABLED,
+              ) && isManagedSandboxRuntimeConfigured(env),
+            sql: client.sql,
+            threadRef,
+            turnId,
+          })
+        }),
+      ).catch(() => [])
+      const result = await Effect.runPromise(
+        runSarahAgentTurn({
+          adapter: gemma4,
+          model: DEFAULT_HOSTED_RUNTIME_MODEL,
+          prompt,
+          system,
+          tools: makeSarahRuntimeTools({
+            env,
+            harnessStatus: () =>
+              readSarahHarnessStatus({ ownerUserId, sql: client.sql }),
+            khalaCatalog: sarahKhalaCatalog,
+            managedSandboxTools,
+            ownerUserId,
+            reviewHarness: () =>
+              reviewSarahHarnessHistory({
+                complete: () =>
+                  Promise.reject(
+                    new SarahHarnessError({
+                      reason: 'sarah_harness_model_unavailable',
+                    }),
+                  ),
+                ownerUserId,
+                sql: client.sql,
+                threadId: threadRef,
+              }),
+            sql: client.sql,
+            threadRef,
+            turnId,
+          }),
+        }),
+      ).catch(error => {
+        logWorkerRouteWarning('sarah_autonomous_tick_agent_failed', {
+          detail: error instanceof Error ? error.message : 'unknown',
+          turnId,
+        })
+        return null
+      })
+      if (result === null) {
+        return { detail: 'sarah_autonomous_tick_agent_failed', ok: false }
+      }
+      try {
+        await recordHostedTurnUsage(
+          {
+            ledger,
+            log: (line, fields) => logWorkerRouteWarning(line, fields ?? {}),
+          },
+          {
+            observedAt: currentIsoTimestamp(),
+            ownerUserId,
+            threadId: threadRef,
+            turnId,
+            usage: {
+              cacheReadTokens: result.usage.cachedPromptTokens ?? 0,
+              inputTokens: result.usage.promptTokens,
+              outputTokens: result.usage.completionTokens,
+              reasoningTokens: result.usage.reasoningTokens ?? 0,
+              totalTokens: result.usage.totalTokens,
+            },
+          },
+        )
+      } catch (error) {
+        logWorkerRouteWarning('sarah_autonomous_tick_metering_failed', {
+          detail: error instanceof Error ? error.message : 'unknown',
+          turnId,
+        })
+      }
+      return {
+        ok: true,
+        text: result.text,
+        toolCallCount: result.toolCallCount,
+      }
+    }
+
+    const summary = await runSarahAutonomousTickDispatch({
+      appendUpdate: input =>
+        appendSarahAutonomousUpdateToThread({ sql: client.sql }, input),
+      authorize: ({ ownerUserId, threadRef, tickRef }) =>
+        Effect.runPromise(
+          authorizeSarahOperation(client.sql, {
+            action: 'read_business_context',
+            ownerUserId,
+            programRef: 'program.sarah_company_operations',
+            resource: 'owner_business_context',
+            targetEvidenceRefs: [tickRef],
+            threadRef,
+            triggerRef: `autonomous_tick.${tickRef}`,
+          }),
+        ),
+      intervalMinutes,
+      log: (line, fields) => logWorkerRouteWarning(line, fields ?? {}),
+      push: ({ ownerUserId, threadRef }) =>
+        dispatchNotifyEventForOwner(
+          paymentsLedgerDbForEnv(env),
+          authKvStoreForEnv(env),
+          { kind: 'turn_completed', ownerUserId, threadId: threadRef },
+        ),
+      runTurn,
+      sql: client.sql,
+    })
+    if (summary.attempted > 0 || summary.ownersResolved > 0) {
+      logWorkerRouteWarning('sarah_autonomous_tick_dispatch', {
+        acted: summary.acted,
+        attempted: summary.attempted,
+        failed: summary.failed,
+        intervalSkipped: summary.intervalSkipped,
+        ownersResolved: summary.ownersResolved,
+        refused: summary.refused,
+        turnFailed: summary.turnFailed,
       })
     }
   } finally {
@@ -15502,6 +15743,14 @@ export default {
       observedEffect(
         'ManagedCloudRuntimeTurnDispatch.tick',
         Effect.promise(() => runManagedCloudRuntimeTurnDispatchForEnv(env)),
+      ),
+      // SARAH-AUTONOMOUS-1: Sarah's scheduled autonomous heartbeat. Default OFF
+      // (SARAH_AUTONOMOUS_TICK_ENABLED) ⇒ clean no-op with zero behavior
+      // change; when armed, wakes Sarah at most once per owner per interval to
+      // take one admitted action and post a receipt-backed owner update.
+      observedEffect(
+        'SarahAutonomousTick.tick',
+        Effect.promise(() => runSarahAutonomousTickDispatchForEnv(env)),
       ),
       observedEffect(
         'PortableSessionCommandDispatch.tick',
