@@ -776,42 +776,38 @@ describe('dispatchCloudGcpRuntimeTurn', () => {
   })
 
   test.each([
-    ['cursor', 'agent_computer_cursor_auth_mode_unavailable'],
-    ['grok', 'agent_computer_grok_auth_mode_unavailable'],
+    ['cursor', 'cursor_api_key'],
+    ['grok', 'xai_api_key'],
   ] as const)(
-    '%s fails with a typed unavailable reason before grant or mint',
-    async (harnessId, reason) => {
+    '%s launches with an exact runtime-secret grant',
+    async (harnessId, kind) => {
       reset()
-      let prepared = false
-      let launched = false
+      const captured: { b64?: string } = {}
       const push = makeRecordingExecutePush()
       const result = await dispatchCloudGcpRuntimeTurn(
         baseDeps({
           executePush: push.executePush,
-          launch: input => {
-            launched = true
-            return okLaunch()(input)
-          },
-          prepareAfterClaim: turn => {
-            prepared = true
-            return Promise.resolve(turn)
-          },
+          launch: okLaunch(captured),
+          prepareAfterClaim: turn =>
+            Promise.resolve({
+              ...turn,
+              harnessRuntimeSecretGrant: {
+                grantRef: `grant.${harnessId}.1`,
+                kind,
+                providerAccountRef: `provider-account.${harnessId}.1`,
+                runnerSessionId: turn.turnId,
+                secretRef: `worker-secret.${harnessId}.1`,
+              },
+            }),
         }),
         { ...admitted, harnessId },
       )
 
-      expect(result).toEqual({
-        outcome: 'failed',
-        reason,
-        tokenRevoked: false,
+      expect(result.outcome).toBe('launched')
+      expect(decodeWorkContextB64(captured.b64!).harnessTurn).toMatchObject({
+        harness: harnessId,
+        runtimeSecretGrant: { kind },
       })
-      expect(prepared).toBe(false)
-      expect(launched).toBe(false)
-      expect(mintCalls).toHaveLength(0)
-      expect(push.recorded.map(event => event.kind)).toEqual([
-        'turn.started',
-        'turn.finished',
-      ])
     },
   )
 

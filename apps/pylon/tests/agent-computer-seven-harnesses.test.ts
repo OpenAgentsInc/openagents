@@ -355,20 +355,52 @@ describe('Agent Computer seven-harness runtime (#9193)', () => {
     })
   })
 
-  test.each(['cursor', 'grok'] as const)(
-    '%s stays fail-closed until its provider broker exists',
-    async harness => {
-      expect(await runHarnessTurn(
+  test.each([
+    ['cursor', 'cursor_api_key', 'CURSOR_API_KEY'],
+    ['grok', 'xai_api_key', 'XAI_API_KEY'],
+  ] as const)(
+    '%s receives only its brokered runtime key',
+    async (harness, kind, envName) => {
+      const secret = `${harness}-runtime-secret`
+      const grant = { ...runtimeGrant, kind }
+      const observed: Array<Parameters<HarnessExecRun>[0]> = []
+      const outcome = await runHarnessTurn(
         {
-          config: { harness },
+          config: { harness, runtimeSecretGrant: grant },
           prompt: 'bounded objective',
           workingDirectory: '/work',
         },
-        { existsImpl: () => true },
-      )).toMatchObject({
-        ok: false,
-        reasonRef: 'harness.runtime_secret_broker_unsupported',
+        {
+          execRun: input => {
+            observed.push(input)
+            return { code: 0, stderr: '', stdout: '{"type":"result"}' }
+          },
+          existsImpl: () => true,
+          fetchImpl: (async (url, init) => {
+            expect(String(url)).toContain(
+              harness === 'cursor' ? '/cursor/' : '/xai-grok/',
+            )
+            expect(JSON.stringify(init)).not.toContain(secret)
+            return Response.json(
+              {
+                grantRef: grant.grantRef,
+                providerAccountRef: grant.providerAccountRef,
+                runnerSessionId: grant.runnerSessionId,
+                schemaVersion: HARNESS_RUNTIME_SECRET_MATERIAL_SCHEMA,
+                secretRef: grant.secretRef,
+                secretValue: secret,
+              },
+              { headers: { 'cache-control': 'private, no-store' } },
+            )
+          }) as typeof globalThis.fetch,
+        },
+      )
+      expect(outcome.ok).toBe(true)
+      expect(observed[0]?.env).toMatchObject({
+        [envName]: secret,
+        HOME: '/root',
       })
+      expect(JSON.stringify(outcome)).not.toContain(secret)
     },
   )
 
@@ -694,8 +726,14 @@ describe('Agent Computer managed verification and credential scan', () => {
 
   test('credential scan emits only typed finding refs', () => {
     const secret = `AIza${'x'.repeat(36)}`
-    const findings = scanStagedDiffForCredentialMaterial(`+export const value = '${secret}'`)
-    expect(findings).toEqual(['credential.google_api_key'])
+    const cursorSecret = `crsr_${'a'.repeat(64)}`
+    const findings = scanStagedDiffForCredentialMaterial(
+      `+export const values = ['${secret}', '${cursorSecret}']`,
+    )
+    expect(findings).toEqual([
+      'credential.google_api_key',
+      'credential.cursor_api_key',
+    ])
     expect(JSON.stringify(findings)).not.toContain(secret)
     expect(scanStagedDiffForCredentialMaterial('+const key = process.env.GEMINI_API_KEY')).toEqual([])
   })

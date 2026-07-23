@@ -28,6 +28,11 @@ type ProviderAccountRouteDependencies<Bindings = OpenAgentsEnv> = Readonly<{
     request: Request,
     env: Bindings,
   ) => RouteEffect
+  handlePylonProviderHarnessAuthMaterialApi: (
+    request: Request,
+    env: Bindings,
+    provider: 'cursor' | 'xai_grok',
+  ) => RouteEffect
   handleGoogleGeminiGrantResolveApi: (
     request: Request,
     env: Bindings,
@@ -256,6 +261,26 @@ export const makeProviderAccountRoutes = <Bindings = OpenAgentsEnv>(
     ) {
       return routeEffectOrResponse(
         dependencies.handlePylonProviderGoogleGeminiAuthMaterialApi(request, env),
+      )
+    }
+
+    if (url.pathname === '/api/pylon/provider-accounts/cursor/auth-material') {
+      return routeEffectOrResponse(
+        dependencies.handlePylonProviderHarnessAuthMaterialApi(
+          request,
+          env,
+          'cursor',
+        ),
+      )
+    }
+
+    if (url.pathname === '/api/pylon/provider-accounts/xai-grok/auth-material') {
+      return routeEffectOrResponse(
+        dependencies.handlePylonProviderHarnessAuthMaterialApi(
+          request,
+          env,
+          'xai_grok',
+        ),
       )
     }
 

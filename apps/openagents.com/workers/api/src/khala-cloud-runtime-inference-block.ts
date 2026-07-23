@@ -76,12 +76,17 @@ export const ManagedAgentComputerHarnessSelection = S.TaggedUnion({
     provider: S.Literal('google_gemini'),
     requestedAction: S.Literal('agent_computer_gemini_turn'),
   },
-  unavailable: {
-    harnessId: S.Literals(['cursor', 'grok']),
-    reasonRef: S.Literals([
-      'agent_computer_cursor_auth_mode_unavailable',
-      'agent_computer_grok_auth_mode_unavailable',
-    ]),
+  cursor: {
+    harnessId: S.Literal('cursor'),
+    provider: S.Literal('cursor'),
+    requestedAction: S.Literal('agent_computer_cursor_turn'),
+    secretKind: S.Literal('cursor_api_key'),
+  },
+  grok: {
+    harnessId: S.Literal('grok'),
+    provider: S.Literal('xai_grok'),
+    requestedAction: S.Literal('agent_computer_grok_turn'),
+    secretKind: S.Literal('xai_api_key'),
   },
 }).annotate({ identifier: 'ManagedAgentComputerHarnessSelection' })
 export type ManagedAgentComputerHarnessSelection =
@@ -113,14 +118,18 @@ export const selectManagedAgentComputerHarness = (
         requestedAction: 'agent_computer_gemini_turn',
       })
     case 'cursor':
-      return ManagedAgentComputerHarnessSelection.cases.unavailable.make({
+      return ManagedAgentComputerHarnessSelection.cases.cursor.make({
         harnessId,
-        reasonRef: 'agent_computer_cursor_auth_mode_unavailable',
+        provider: 'cursor',
+        requestedAction: 'agent_computer_cursor_turn',
+        secretKind: 'cursor_api_key',
       })
     case 'grok':
-      return ManagedAgentComputerHarnessSelection.cases.unavailable.make({
+      return ManagedAgentComputerHarnessSelection.cases.grok.make({
         harnessId,
-        reasonRef: 'agent_computer_grok_auth_mode_unavailable',
+        provider: 'xai_grok',
+        requestedAction: 'agent_computer_grok_turn',
+        secretKind: 'xai_api_key',
       })
   }
 }
@@ -176,7 +185,7 @@ export type CloudRuntimeClaudeProviderAuthConfig = Readonly<{
 }>
 
 export type CloudRuntimeHarnessRuntimeSecretGrant = Readonly<{
-  kind: 'gemini_api_key'
+  kind: 'gemini_api_key' | 'cursor_api_key' | 'xai_api_key'
   baseUrl: string
   agentToken: string
   grantRef: string
@@ -194,7 +203,7 @@ export type CloudRuntimeHarnessTurnConfig = Readonly<{
 }>
 
 export type CloudRuntimeHarnessSecretGrantRef = Readonly<{
-  kind: 'gemini_api_key'
+  kind: 'gemini_api_key' | 'cursor_api_key' | 'xai_api_key'
   grantRef: string
   providerAccountRef: string
   runnerSessionId: string
@@ -231,12 +240,6 @@ export const buildManagedAgentComputerHarnessBlocks = (
 }> => {
   const selection = input.selection
   if (ManagedAgentComputerHarnessSelection.guards.codex(selection)) return {}
-  if (ManagedAgentComputerHarnessSelection.guards.unavailable(selection)) {
-    throw new ManagedAgentComputerHarnessConfigurationError({
-      harnessId: selection.harnessId,
-      reasonRef: selection.reasonRef,
-    })
-  }
   if (ManagedAgentComputerHarnessSelection.guards.claude(selection)) {
     const grant = input.claudeProviderAuthGrant
     if (grant === undefined) {
@@ -258,7 +261,11 @@ export const buildManagedAgentComputerHarnessBlocks = (
   const grant = input.runtimeSecretGrant
   if (
     grant === undefined ||
-    grant.kind !== 'gemini_api_key' ||
+    (ManagedAgentComputerHarnessSelection.guards.gemini(selection)
+      ? grant.kind !== 'gemini_api_key'
+      : ManagedAgentComputerHarnessSelection.guards.cursor(selection)
+        ? grant.kind !== 'cursor_api_key'
+        : grant.kind !== 'xai_api_key') ||
     grant.runnerSessionId !== input.turnId ||
     input.ownerUserId.length === 0 ||
     input.pylonRef === undefined ||
@@ -266,13 +273,15 @@ export const buildManagedAgentComputerHarnessBlocks = (
   ) {
     throw new ManagedAgentComputerHarnessConfigurationError({
       harnessId: selection.harnessId,
-      reasonRef: 'agent_computer_gemini_grant_unavailable',
+      reasonRef: ManagedAgentComputerHarnessSelection.guards.gemini(selection)
+        ? 'agent_computer_gemini_grant_unavailable'
+        : `agent_computer_${selection.harnessId}_grant_unavailable`,
     })
   }
   return {
     harnessTurn: {
       harness: selection.harnessId,
-      model: selection.model,
+      ...('model' in selection ? { model: selection.model } : {}),
       runtimeSecretGrant: {
         agentToken: input.agentToken,
         baseUrl: input.baseUrl,

@@ -2,6 +2,11 @@ import { Effect, Layer, Redacted, Schema as S } from 'effect'
 import * as Context from 'effect/Context'
 
 export type OpenAgentsWorkerConfigEnv = Readonly<{
+  // Runtime-only Agent Computer harness credentials. Each value is mounted
+  // from Secret Manager and leaves the worker only through an exact,
+  // owner-scoped, one-use provider grant.
+  CURSOR_API_KEY?: string | undefined
+  XAI_API_KEY?: string | undefined
   // SARAH-ACT-1 (#9065): comma-separated admin emails. Unset or empty keeps
   // the compiled default (chris@openagents.com) exactly as before; set,
   // this value becomes the exact admin list. Widens platform-wide admin

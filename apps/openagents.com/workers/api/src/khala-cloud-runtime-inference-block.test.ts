@@ -64,27 +64,27 @@ describe('managed Agent Computer harness selection', () => {
     },
   )
 
-  test('selects Claude subscription auth and refuses Cursor and Grok explicitly', () => {
+  test('selects the exact Claude, Cursor, and Grok credential lanes', () => {
     expect(selectManagedAgentComputerHarness('claude-code')).toMatchObject({
       _tag: 'claude',
       harnessId: 'claude-code',
       provider: 'anthropic_claude',
       requestedAction: 'agent_computer_claude_turn',
     })
-    expect(selectManagedAgentComputerHarness('cursor')).toEqual(
-      expect.objectContaining({
-        _tag: 'unavailable',
-        harnessId: 'cursor',
-        reasonRef: 'agent_computer_cursor_auth_mode_unavailable',
-      }),
-    )
-    expect(selectManagedAgentComputerHarness('grok')).toEqual(
-      expect.objectContaining({
-        _tag: 'unavailable',
-        harnessId: 'grok',
-        reasonRef: 'agent_computer_grok_auth_mode_unavailable',
-      }),
-    )
+    expect(selectManagedAgentComputerHarness('cursor')).toMatchObject({
+      _tag: 'cursor',
+      harnessId: 'cursor',
+      provider: 'cursor',
+      requestedAction: 'agent_computer_cursor_turn',
+      secretKind: 'cursor_api_key',
+    })
+    expect(selectManagedAgentComputerHarness('grok')).toMatchObject({
+      _tag: 'grok',
+      harnessId: 'grok',
+      provider: 'xai_grok',
+      requestedAction: 'agent_computer_grok_turn',
+      secretKind: 'xai_api_key',
+    })
   })
 
   test('builds only ref-scoped Gemini and Claude auth blocks', () => {

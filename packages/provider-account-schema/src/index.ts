@@ -35,10 +35,16 @@ export const GoogleGeminiProvider = S.Literal('google_gemini')
 export type GoogleGeminiProvider = typeof GoogleGeminiProvider.Type
 export const AnthropicClaudeProvider = S.Literal('anthropic_claude')
 export type AnthropicClaudeProvider = typeof AnthropicClaudeProvider.Type
+export const CursorProvider = S.Literal('cursor')
+export type CursorProvider = typeof CursorProvider.Type
+export const XaiGrokProvider = S.Literal('xai_grok')
+export type XaiGrokProvider = typeof XaiGrokProvider.Type
 export const ProviderAccountProvider = S.Union([
   ChatGptCodexProvider,
   GoogleGeminiProvider,
   AnthropicClaudeProvider,
+  CursorProvider,
+  XaiGrokProvider,
 ])
 export type ProviderAccountProvider = typeof ProviderAccountProvider.Type
 

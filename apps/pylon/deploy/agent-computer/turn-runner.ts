@@ -512,11 +512,20 @@ export type CodexTurnConfig = {
 
 export const HARNESS_RUNTIME_SECRET_MATERIAL_PATH =
   '/api/pylon/provider-accounts/google-gemini/auth-material'
+
+export const harnessRuntimeSecretMaterialPath = (
+  kind: HarnessRuntimeSecretGrant['kind'],
+): string =>
+  kind === 'gemini_api_key'
+    ? HARNESS_RUNTIME_SECRET_MATERIAL_PATH
+    : kind === 'cursor_api_key'
+      ? '/api/pylon/provider-accounts/cursor/auth-material'
+      : '/api/pylon/provider-accounts/xai-grok/auth-material'
 export const HARNESS_RUNTIME_SECRET_MATERIAL_SCHEMA =
   'openagents.provider_secret_material.v1'
 
 export type HarnessRuntimeSecretGrant = {
-  kind: 'gemini_api_key'
+  kind: 'gemini_api_key' | 'cursor_api_key' | 'xai_api_key'
   baseUrl: string
   agentToken: string
   grantRef: string
@@ -1185,6 +1194,7 @@ const credentialPatterns = [
   { reasonRef: 'credential.private_key', pattern: /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/u },
   { reasonRef: 'credential.github_token', pattern: /\b(?:ghp|github_pat)_[A-Za-z0-9_]{20,}\b/u },
   { reasonRef: 'credential.google_api_key', pattern: /\bAIza[A-Za-z0-9_-]{30,}\b/u },
+  { reasonRef: 'credential.cursor_api_key', pattern: /\bcrsr_[a-f0-9]{32,}\b/iu },
   { reasonRef: 'credential.provider_api_key', pattern: /\b(?:sk|xai)-[A-Za-z0-9_-]{20,}\b/u },
   { reasonRef: 'credential.jwt', pattern: /\beyJ[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{12,}\b/u },
 ] as const
@@ -1261,7 +1271,7 @@ export const harnessExecArgs = (input: {
 }
 
 type HarnessRuntimeSecretMaterial = {
-  kind: 'gemini_api_key'
+  kind: 'gemini_api_key' | 'cursor_api_key' | 'xai_api_key'
   value: string
   secretRef: string
 }
@@ -1283,7 +1293,7 @@ export const materializeHarnessRuntimeSecret = async (
   let response: Response
   try {
     response = await fetchImpl(
-      `${grant.baseUrl.replace(/\/+$/u, '')}${HARNESS_RUNTIME_SECRET_MATERIAL_PATH}`,
+      `${grant.baseUrl.replace(/\/+$/u, '')}${harnessRuntimeSecretMaterialPath(grant.kind)}`,
       {
         body: JSON.stringify({
           grantRef: grant.grantRef,
@@ -1380,6 +1390,16 @@ export const harnessExecEnv = (input: {
   if (input.harness === 'claude-code') {
     const token = input.claudeProviderEnv?.CLAUDE_CODE_OAUTH_TOKEN
     return token === undefined ? null : { ...base, CLAUDE_CODE_OAUTH_TOKEN: token }
+  }
+  if (input.harness === 'cursor') {
+    return input.runtimeSecret?.kind === 'cursor_api_key'
+      ? { ...base, CURSOR_API_KEY: input.runtimeSecret.value }
+      : null
+  }
+  if (input.harness === 'grok') {
+    return input.runtimeSecret?.kind === 'xai_api_key'
+      ? { ...base, XAI_API_KEY: input.runtimeSecret.value }
+      : null
   }
   return null
 }
@@ -1722,7 +1742,9 @@ export const runHarnessTurn = async (
   if (
     args.config.harness === 'pi' ||
     args.config.harness === 'opencode' ||
-    args.config.harness === 'goose'
+    args.config.harness === 'goose' ||
+    args.config.harness === 'cursor' ||
+    args.config.harness === 'grok'
   ) {
     if (args.config.runtimeSecretGrant === undefined) {
       return { exitCode: null, harness: args.config.harness, ok: false, reasonRef: 'harness.runtime_secret_required' }
@@ -1752,13 +1774,6 @@ export const runHarnessTurn = async (
       }
     }
     runtimeSecret = materialized.material
-  } else if (args.config.harness === 'cursor' || args.config.harness === 'grok') {
-    return {
-      exitCode: null,
-      harness: args.config.harness,
-      ok: false,
-      reasonRef: 'harness.runtime_secret_broker_unsupported',
-    }
   }
   const env = harnessExecEnv({
     harness: args.config.harness,

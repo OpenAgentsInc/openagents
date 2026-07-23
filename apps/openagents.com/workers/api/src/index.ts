@@ -7678,15 +7678,6 @@ const runManagedCloudRuntimeTurnDispatchForEnv = async (
         const harnessSelection = selectManagedAgentComputerHarness(
           turn.harnessId,
         )
-        if (
-          ManagedAgentComputerHarnessSelection.guards.unavailable(
-            harnessSelection,
-          )
-        ) {
-          throw new ManagedCloudDispatchError({
-            message: harnessSelection.reasonRef,
-          })
-        }
         const resolvedCommit = await resolveManagedCloudRepositoryCommit(
           turn.repo,
           turn.commit,
@@ -7800,7 +7791,7 @@ const runManagedCloudRuntimeTurnDispatchForEnv = async (
                 }
               }
               if (
-                ManagedAgentComputerHarnessSelection.guards.gemini(
+                !ManagedAgentComputerHarnessSelection.guards.claude(
                   harnessSelection,
                 )
               ) {
@@ -7808,7 +7799,11 @@ const runManagedCloudRuntimeTurnDispatchForEnv = async (
                   ...preparedBase,
                   harnessRuntimeSecretGrant: {
                     grantRef: grant.grantRef,
-                    kind: 'gemini_api_key' as const,
+                    kind: ManagedAgentComputerHarnessSelection.guards.gemini(
+                      harnessSelection,
+                    )
+                      ? ('gemini_api_key' as const)
+                      : harnessSelection.secretKind,
                     providerAccountRef: grant.providerAccountRef,
                     runnerSessionId: turn.turnId,
                     secretRef: privateAccount.secretRef,
@@ -8125,7 +8120,9 @@ const providerAccountPylonHandlers =
         providerAccountRef,
       ),
     readConnectedCodexAuthMaterial: readConnectedCodexAuthMaterialForWorkerEnv,
+    readCursorSecretMaterial: env => env.CURSOR_API_KEY,
     readGoogleGeminiSecretMaterial: env => env.GEMINI_API_KEY,
+    readXaiSecretMaterial: env => env.XAI_API_KEY,
     readStartedCodexDeviceLogin,
     storeConnectedClaudeAuth: storeConnectedClaudeAuthForWorkerEnv,
     storeConnectedCodexAuth,
@@ -8251,6 +8248,14 @@ const providerAccountRoutes = makeProviderAccountRoutes({
       providerAccountServiceHandlers
         .handleProviderAccountGrantResolveApi(request, env)
         .then(materializeHttpResult),
+    ),
+  handlePylonProviderHarnessAuthMaterialApi: (request, env, provider) =>
+    routeEffect('handle_pylon_provider_harness_auth_material_api', () =>
+      providerAccountPylonHandlers.handlePylonProviderHarnessAuthMaterialApi(
+        request,
+        env,
+        provider,
+      ),
     ),
   handleGoogleGeminiGrantResolveApi: (request, env) =>
     routeEffect('handle_google_gemini_grant_resolve_api', () =>

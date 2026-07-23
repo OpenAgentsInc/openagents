@@ -449,6 +449,10 @@ describe('provider api key connect route dispatch', () => {
       handleProviderAccountDisconnectApi: stub('disconnect', calls),
       handleProviderAccountGrantIssueApi: stub('grantIssue', calls),
       handleProviderAccountGrantResolveApi: stub('grantResolve', calls),
+      handlePylonProviderHarnessAuthMaterialApi: stub(
+        'harnessAuthMaterial',
+        calls,
+      ),
       handleGoogleGeminiGrantResolveApi: stub('geminiGrantResolve', calls),
       handleGoogleGeminiBuiltinGrantApi: stub('geminiBuiltinGrant', calls),
       handleGoogleGeminiGenerateContentApi: stub('geminiGenerate', calls),

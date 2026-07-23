@@ -25,7 +25,9 @@ import {
   type StoreConnectedCodexAuth,
   type StoreStartedCodexDeviceLogin,
   ANTHROPIC_CLAUDE_PROVIDER,
+  CURSOR_PROVIDER,
   GOOGLE_GEMINI_PROVIDER,
+  XAI_GROK_PROVIDER,
   connectChatGptCodexLocalAuthForUser,
   connectClaudeLocalAuthForUser,
   makeD1ProviderAccountRepository,
@@ -49,11 +51,13 @@ type HttpResponse = globalThis.Response
 
 type ProviderAccountPylonBindings = Readonly<{
   AUTH_KV?: AuthKvStore | undefined
+  CURSOR_API_KEY?: string | undefined
   GEMINI_API_KEY?: string | undefined
   KHALA_SYNC_DB?: Readonly<{ connectionString: string }> | undefined
   OPENAGENTS_DB: D1Database
   PROVIDER_TOKEN_CUSTODY_AES_KEY_B64?: string | undefined
   PROVIDER_TOKEN_CUSTODY_AES_KEY_ID?: string | undefined
+  XAI_API_KEY?: string | undefined
 }>
 
 type ConnectedCodexAuthMaterial = Readonly<{
@@ -90,6 +94,8 @@ type ProviderAccountPylonDependencies<
   readGoogleGeminiSecretMaterial?: (
     bindings: Bindings,
   ) => string | undefined
+  readCursorSecretMaterial?: (bindings: Bindings) => string | undefined
+  readXaiSecretMaterial?: (bindings: Bindings) => string | undefined
   readStartedCodexDeviceLogin: (kv: AuthKvStore) => ReadStartedCodexDeviceLogin
   startDeviceLogin?: StartCodexDeviceLogin
   storeConnectedCodexAuth: (env: Bindings) => StoreConnectedCodexAuth
@@ -186,6 +192,10 @@ const optionalSecretString = (
 
 const GOOGLE_GEMINI_SECRET_MATERIAL_KIND = 'gemini_api_key'
 const GOOGLE_GEMINI_TURN_ACTION = 'agent_computer_gemini_turn'
+const CURSOR_SECRET_MATERIAL_KIND = 'cursor_api_key'
+const CURSOR_TURN_ACTION = 'agent_computer_cursor_turn'
+const XAI_SECRET_MATERIAL_KIND = 'xai_api_key'
+const XAI_GROK_TURN_ACTION = 'agent_computer_grok_turn'
 const ANTHROPIC_CLAUDE_SECRET_MATERIAL_KIND =
   'claude_agent_anthropic_api_key'
 const ANTHROPIC_CLAUDE_TURN_ACTION = 'agent_computer_claude_turn'
@@ -760,6 +770,142 @@ export const makeProviderAccountPylonHandlers = <
         {
           error: 'provider_secret_material_unavailable',
           message: providerAccountRouteErrorMessage(error),
+        },
+        { status: providerAccountRouteErrorStatus(error, 409) },
+      )
+    }
+  },
+
+  handlePylonProviderHarnessAuthMaterialApi: async (
+    request: Request,
+    env: Bindings,
+    provider: typeof CURSOR_PROVIDER | typeof XAI_GROK_PROVIDER,
+  ) => {
+    if (request.method !== 'POST') return methodNotAllowed(['POST'])
+    const session = await requireAgent(dependencies, request, env)
+    if (session === undefined) {
+      return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+    }
+    const userId = linkedOpenAuthOwnerUserId(session)
+    if (userId === undefined) return pylonAgentNotLinkedResponse()
+    const body = await readJsonObject(request).catch(
+      (): Record<string, unknown> => ({}),
+    )
+    const grantRef = optionalString(body.grantRef)
+    const kind = optionalString(body.kind)
+    const providerAccountRef = optionalString(body.providerAccountRef)
+    const runnerSessionId = optionalString(body.runnerSessionId)
+    const secretRef = optionalString(body.secretRef)
+    if (
+      grantRef === undefined ||
+      kind === undefined ||
+      providerAccountRef === undefined ||
+      runnerSessionId === undefined ||
+      secretRef === undefined
+    ) {
+      return noStoreJsonResponse(
+        {
+          error: 'provider_secret_material_request_invalid',
+          message:
+            'The harness secret-material request must include all required scope references.',
+        },
+        { status: 400 },
+      )
+    }
+    const expectedKind =
+      provider === CURSOR_PROVIDER
+        ? CURSOR_SECRET_MATERIAL_KIND
+        : XAI_SECRET_MATERIAL_KIND
+    const expectedAction =
+      provider === CURSOR_PROVIDER ? CURSOR_TURN_ACTION : XAI_GROK_TURN_ACTION
+    if (kind !== expectedKind) {
+      return noStoreJsonResponse(
+        {
+          error: 'provider_secret_material_scope_mismatch',
+          message: 'The harness secret-material request scope does not match.',
+        },
+        { status: 409 },
+      )
+    }
+    try {
+      const grantRepository =
+        dependencies.providerGrantRepository?.(env) ??
+        routeProviderAccountRepository(dependencies, env)
+      const candidateGrant = await grantRepository.findGrantByRef(grantRef)
+      if (
+        candidateGrant === undefined ||
+        candidateGrant.userId !== userId ||
+        candidateGrant.provider !== provider ||
+        candidateGrant.providerAccountRef !== providerAccountRef ||
+        candidateGrant.providerSecretRef !== secretRef ||
+        candidateGrant.runnerSessionId !== runnerSessionId ||
+        candidateGrant.requestedAction !== expectedAction
+      ) {
+        return noStoreJsonResponse(
+          {
+            error: 'provider_secret_material_scope_mismatch',
+            message: 'The harness secret-material request scope does not match.',
+          },
+          { status: 409 },
+        )
+      }
+      const secretValue = (
+        provider === CURSOR_PROVIDER
+          ? dependencies.readCursorSecretMaterial?.(env)
+          : dependencies.readXaiSecretMaterial?.(env)
+      )?.trim()
+      if (secretValue === undefined || secretValue === '') {
+        return noStoreJsonResponse(
+          {
+            error: 'provider_secret_material_unavailable',
+            message: 'Harness secret material is unavailable.',
+          },
+          { status: 409 },
+        )
+      }
+      const resolvedGrant = await resolveProviderAccountGrant(grantRepository, {
+        actorId: session.credential.id,
+        grantRef,
+        providerAccountRef,
+        runnerSessionId,
+      })
+      if (
+        resolvedGrant === undefined ||
+        resolvedGrant.ownerUserId !== userId ||
+        resolvedGrant.provider !== provider ||
+        resolvedGrant.providerAccountRef !== providerAccountRef ||
+        resolvedGrant.providerSecretRef !== secretRef ||
+        resolvedGrant.runnerSessionId !== runnerSessionId ||
+        resolvedGrant.requestedAction !== expectedAction
+      ) {
+        return noStoreJsonResponse(
+          {
+            error: 'provider_secret_material_scope_mismatch',
+            message: 'The harness secret-material request scope does not match.',
+          },
+          { status: 409 },
+        )
+      }
+      return noStoreJsonResponse({
+        schemaVersion: 'openagents.provider_secret_material.v1',
+        grantRef,
+        providerAccountRef,
+        runnerSessionId,
+        secretRef,
+        secretValue,
+      })
+    } catch (error) {
+      logWorkerRouteError('pylon_provider_harness_auth_material_failed', error, {
+        errorName: providerAccountRouteErrorName(error),
+        grantRef,
+        provider,
+        providerAccountRef,
+        runnerSessionId,
+      })
+      return noStoreJsonResponse(
+        {
+          error: 'provider_secret_material_unavailable',
+          message: 'Harness secret material is unavailable.',
         },
         { status: providerAccountRouteErrorStatus(error, 409) },
       )

@@ -309,6 +309,8 @@ export type ManagedAgentComputerGrantIssueInput = Readonly<{
     | 'agent_computer_codex_turn'
     | 'agent_computer_gemini_turn'
     | 'agent_computer_claude_turn'
+    | 'agent_computer_cursor_turn'
+    | 'agent_computer_grok_turn'
   runnerSessionId: string
   threadId: string
   userId: string
@@ -317,10 +319,7 @@ export type ManagedAgentComputerGrantIssueInput = Readonly<{
 
 export const managedAgentComputerGrantIssueInput = (
   turn: CloudGcpAdmittedWorkContext,
-  selection: Exclude<
-    ReturnType<typeof selectManagedAgentComputerHarness>,
-    { readonly _tag: 'unavailable' }
-  >,
+  selection: ReturnType<typeof selectManagedAgentComputerHarness>,
   providerAccountRef: string,
 ): ManagedAgentComputerGrantIssueInput => ({
   providerAccountRef,
@@ -851,8 +850,7 @@ export const finalizeManagedCloudProviderLease = async (
     outcome.providerFailureClass !== undefined
   ) {
     const selection = selectManagedAgentComputerHarness(turn.harnessId)
-    if (!ManagedAgentComputerHarnessSelection.guards.unavailable(selection)) {
-      await service.failover({
+    await service.failover({
         assignmentId: turn.turnId,
         attemptNumber: 1,
         expiresAt: isoTimestampAfterIso(now, 35 * 60 * 1_000),
@@ -866,9 +864,8 @@ export const finalizeManagedCloudProviderLease = async (
         selectedByActor: 'sarah_managed_cloud_dispatch',
         source: 'managed_cloud_runtime_terminal_failover',
         userId: turn.ownerUserId,
-      })
-      return
-    }
+    })
+    return
   }
   await service.release({
     failureClass:
@@ -1001,27 +998,6 @@ export const dispatchCloudGcpRuntimeTurn = async (
   seq += 1
 
   const requestedHarness = selectManagedAgentComputerHarness(turn.harnessId)
-  if (
-    ManagedAgentComputerHarnessSelection.guards.unavailable(requestedHarness)
-  ) {
-    await record(
-      2,
-      buildEvent(resolved, turn, seq, {
-        finishReason: 'error' satisfies KhalaRuntimeFinishReason,
-        kind: 'turn.finished',
-      }),
-    )
-    resolved.log('cloud_gcp_runtime_dispatch_harness_unavailable', {
-      harnessId: requestedHarness.harnessId,
-      reason: requestedHarness.reasonRef,
-      turnId: turn.turnId,
-    })
-    return {
-      outcome: 'failed',
-      reason: requestedHarness.reasonRef,
-      tokenRevoked: false,
-    }
-  }
 
   // 2. Mint the short-lived owner-linked execution token. Everything from here
   // is wrapped so a throw still revokes it (the guest must never run with a

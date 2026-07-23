@@ -384,6 +384,51 @@ const geminiMaterialRequest = (
     },
   )
 
+const makeHarnessGrant = (
+  provider: 'cursor' | 'xai_grok',
+): ProviderAccountAuthGrantRecord =>
+  makeGeminiGrant({
+    id: `provider_grant_${provider}_owner`,
+    grantRef: `provider-auth-grant_${provider}_owner`,
+    provider,
+    providerAccountId: `provider_account_${provider}_owner`,
+    providerAccountRef: `provider_account_${provider}_owner`,
+    providerSecretRef:
+      provider === 'cursor'
+        ? 'provider-account://cursor/worker-secret/CURSOR_API_KEY'
+        : 'provider-account://xai-grok/worker-secret/XAI_API_KEY',
+    requestedAction:
+      provider === 'cursor'
+        ? 'agent_computer_cursor_turn'
+        : 'agent_computer_grok_turn',
+    runnerSessionId: `turn.agent_computer.${provider}.test`,
+  })
+
+const harnessMaterialRequest = (
+  token: string,
+  provider: 'cursor' | 'xai_grok',
+): Request =>
+  new Request(
+    `https://openagents.com/api/pylon/provider-accounts/${provider === 'cursor' ? 'cursor' : 'xai-grok'}/auth-material`,
+    {
+      body: JSON.stringify({
+        grantRef: `provider-auth-grant_${provider}_owner`,
+        kind: provider === 'cursor' ? 'cursor_api_key' : 'xai_api_key',
+        providerAccountRef: `provider_account_${provider}_owner`,
+        runnerSessionId: `turn.agent_computer.${provider}.test`,
+        secretRef:
+          provider === 'cursor'
+            ? 'provider-account://cursor/worker-secret/CURSOR_API_KEY'
+            : 'provider-account://xai-grok/worker-secret/XAI_API_KEY',
+      }),
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+      },
+      method: 'POST',
+    },
+  )
+
 const makeClaudeMaterialHandlers = (input: {
   token: string
   repository: MemoryProviderAccountRepository
@@ -779,6 +824,53 @@ describe('provider account Pylon device-login routes', () => {
     expect(repository.grants[0]?.status).toBe('used')
     expect(repository.grants[0]?.usedAt).not.toBeNull()
   })
+
+  test.each([
+    ['cursor', 'cursor-secret-value'],
+    ['xai_grok', 'xai-secret-value'],
+  ] as const)(
+    'materializes %s secret once for the exact owner and turn grant',
+    async (provider, secretValue) => {
+      const token = `oa_agent_${provider}_material_token`
+      const repository = new MemoryProviderAccountRepository()
+      repository.grants.push(makeHarnessGrant(provider))
+      const handlers = makeProviderAccountPylonHandlers({
+        agentStore: () => agentStoreFor(token, 'openauth-user-owner'),
+        deleteStartedCodexDeviceLogin: () => () => Promise.resolve(),
+        makeProviderAccountRepository: () => repository,
+        providerGrantRepository: () => repository,
+        readConnectedCodexAuthMaterial: () => Promise.resolve(undefined),
+        readCursorSecretMaterial: () => 'cursor-secret-value',
+        readStartedCodexDeviceLogin: () => () => Promise.resolve(undefined),
+        readXaiSecretMaterial: () => 'xai-secret-value',
+        storeConnectedCodexAuth: () => () =>
+          Promise.resolve('codex-auth://unused'),
+        storeStartedCodexDeviceLogin: () => () => Promise.resolve(),
+      })
+
+      const response =
+        await handlers.handlePylonProviderHarnessAuthMaterialApi(
+          harnessMaterialRequest(token, provider),
+          env(),
+          provider,
+        )
+      const body = (await response.json()) as Record<string, unknown>
+
+      expect(response.status).toBe(200)
+      expect(response.headers.get('cache-control')).toBe('no-store')
+      expect(body.secretValue).toBe(secretValue)
+      expect(repository.grants[0]?.status).toBe('used')
+
+      const replay =
+        await handlers.handlePylonProviderHarnessAuthMaterialApi(
+          harnessMaterialRequest(token, provider),
+          env(),
+          provider,
+        )
+      expect(replay.status).toBe(409)
+      expect(JSON.stringify(await replay.json())).not.toContain(secretValue)
+    },
+  )
 
   test.each([
     [
