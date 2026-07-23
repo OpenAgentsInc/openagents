@@ -39783,6 +39783,28 @@
       }
     },
     {
+      "path": "docs/sarah/2026-07-22-sarah-autonomous-operations-program.md",
+      "sha256": "533971e9130c09ad9e4f196411c363e2fb46ade8e2acef3c832a464217c89956",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/sarah/2026-07-22-sarah-company-command-analysis.md",
       "sha256": "1c27ef015d06c361954e1466632f299bf3ec6141154d903a4baef0a09c94d724",
       "reason": "Final review of a converted document",
