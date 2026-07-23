@@ -7,6 +7,15 @@ the single current IDE build sequence. This document refines the accepted IDE
 recommendations and ProductSpecs. It does not by itself admit a dependency, a
 Rust crate, product implementation, release, or public claim.
 
+## 2026-07-23 disposition
+
+The owner selected the tracked Zed fork
+[`Omega`](../sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md) as the
+primary Desktop and IDE destination.
+The Omega plan supersedes this document's shell and GPUI rejection.
+This document remains useful evidence for the Effect authority boundary,
+process supervision, and measured native-workload gates.
+
 ## Decision
 
 OpenAgents should build a Zed-quality integrated agent IDE with an

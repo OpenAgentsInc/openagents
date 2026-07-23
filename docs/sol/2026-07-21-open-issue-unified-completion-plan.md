@@ -15,6 +15,21 @@
 - Claim control: [`CLAIM_PROTOCOL.md`](./CLAIM_PROTOCOL.md)
 - Roadmap authority: [`MASTER_ROADMAP.md`](./MASTER_ROADMAP.md)
 
+## 2026-07-23 Omega disposition
+
+The owner selected the tracked Zed fork
+[`Omega`](./2026-07-23-omega-zed-primary-surface-accepted-plan.md) as the
+primary Desktop and IDE destination.
+This plan still completes #9041 against the current Electron application.
+That result supplies an incumbent movement, mobile-control, package, and
+rollback baseline for Omega.
+It does not make Electron the final destination and does not prove Omega.
+
+Issue #9035 still closes with an honest superseded or not-planned disposition.
+No new Electron shell or editor-parity work starts from this plan.
+An Omega consumer of the managed sandbox and checkpoint contracts requires its
+own admitted packet after the generated capability protocol exists.
+
 ## Outcome
 
 Move all seven issues in scope to an honest terminal state.
@@ -103,6 +118,8 @@ IDE-13 must consume the same managed sandbox and checkpoint contracts as
 It must not create a second movement, storage, or attachment authority.
 Its accepted placement set is owner-local, owner-managed, and
 OpenAgents-managed.
+Its evidence applies to the current Electron application and becomes an Omega
+migration baseline.
 
 ### Managed RLM admission
 

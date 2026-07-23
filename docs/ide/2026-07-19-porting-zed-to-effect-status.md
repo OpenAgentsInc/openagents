@@ -9,6 +9,15 @@
   [`ROADMAP.md`](./ROADMAP.md), current code, live issue state, tests, and
   receipts.
 
+## 2026-07-23 disposition
+
+The owner selected the tracked Zed fork
+[`Omega`](../sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md) as the
+primary Desktop and IDE destination.
+This document remains evidence for the completed Electron semantic-port path.
+Its statement that OpenAgents is not porting Zed is no longer the destination
+decision.
+
 ## Why this document exists
 
 The next video is "Porting Zed to Effect." This document collects, in one

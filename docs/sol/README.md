@@ -6,9 +6,14 @@
 - Owner: Sol roadmap
 
 Sol owns the OpenAgents roadmap that uses implementation results.
-The accepted Desktop Codex Workroom baseline has four active programs.
-These programs cover Full Auto, P1 managed-agent-sandbox, cross-platform release,
-and the owner-approved packet ledgers for Amp, T3 Desktop, and T3 mobile.
+Omega, a tracked Zed fork, is the primary Desktop and IDE destination.
+The current Electron application remains the supported release and rollback
+source until the Omega cutover gates pass.
+
+The accepted Desktop Codex Workroom baseline retains its active programs.
+These programs cover Full Auto, P1 managed-agent-sandbox, cross-platform
+release, and the owner-approved packet ledgers for Amp, T3 Desktop, and T3
+mobile.
 The three 2026-07-17 surface ProductSpecs are results that agree with the roadmap.
 Exact issues and packets continue to control dispatch.
 
@@ -53,6 +58,11 @@ or copy/paste prompt in a dated analysis. Refresh the authorities above.
 - [`../../AUTHORITY.md`](../../AUTHORITY.md) — the current owner action profile.
   It specifies programs, grants, budgets, independence, blocker routes,
   reserved actions, and receipt policy.
+- [`2026-07-23-omega-zed-primary-surface-accepted-plan.md`](./2026-07-23-omega-zed-primary-surface-accepted-plan.md)
+  — active owner direction for Omega as the primary Desktop and IDE
+  destination. It owns the Rust application core, packaged Node/Effect
+  companion, selective Buzz/Nostr, migration, proof, and cutover packet order.
+  It admits planning and contract work only.
 - [`2026-07-18-owner-delegated-autonomy-accepted-plan.md`](./2026-07-18-owner-delegated-autonomy-accepted-plan.md)
   — active owner direction. It removes generic owner and device waits.
   It also directs completion of Full Auto, root specs, and Fast Follow.
@@ -146,9 +156,9 @@ These documents explain decisions or preserve point-in-time evidence. They are
 not current queues:
 
 - [`2026-07-23-nostr-first-rust-effect-desktop-analysis.md`](./2026-07-23-nostr-first-rust-effect-desktop-analysis.md)
-  — fresh evaluation of a Nostr-first Desktop with a larger Rust mechanics
-  layer. It recommends a bounded Buzz-derived Nostr engine and a separate Zed
-  fork test. It does not revise the current ProductSpec or dispatch work.
+  — retained comparison analysis for a Nostr-first Desktop with a larger Rust
+  mechanics layer. The Omega plan supersedes its shell-selection question.
+  Its Rust, Buzz, Nostr, provenance, and authority evidence remains useful.
 
 - [`2026-07-20-pylon-bip39-nostr-spark-identity-recovery-audit.md`](./2026-07-20-pylon-bip39-nostr-spark-identity-recovery-audit.md)
   — audit of the shared BIP-39 root that produced Pylon Nostr and Spark keys.

@@ -7,6 +7,20 @@ Each teardown separates observed evidence from inference, then asks which
 boundaries, workflows, and failure modes should change OpenAgents product
 decisions.
 
+## 2026-07-23 Omega disposition
+
+The owner selected
+[`Omega`](../sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md), a
+tracked Zed fork, as the primary OpenAgents Desktop and IDE destination.
+The dated Zed, Cursor, and Buzz teardowns remain unchanged source evidence.
+Their target recommendations do not override the later owner decision.
+
+The Omega plan adapts the Cursor tracked-fork model, the complete Zed editor and
+project substrate, and selected Buzz/Nostr identity, memory, Git, reputation,
+and evidence mechanics.
+It retains the teardown warnings about upstream debt, GPL duties, fragmented
+state, relay authority, broad credentials, and copied product policy.
+
 ## Current set
 
 | Teardown                                                                                                               | Subject                                                                                                                                                                                                                                                                                                                                                                                                  | Central finding                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |

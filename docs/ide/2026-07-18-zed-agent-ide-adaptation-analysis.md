@@ -7,6 +7,16 @@ Status: supporting source-grounded reference and architecture analysis.
 document's phase and packet ordering. This document does not admit
 implementation work, change a ProductSpec, or authorize copying upstream code.
 
+## 2026-07-23 disposition
+
+The owner selected the tracked Zed fork
+[`Omega`](../sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md) as the
+primary Desktop and IDE destination.
+The Omega plan supersedes this document's Monaco, Pierre, Effect Native, and
+no-fork destination.
+Its project-graph, identity, local/remote, extension, and authority findings
+remain evidence.
+
 ## Executive decision
 
 Zed should become OpenAgents' primary public architecture and behavior

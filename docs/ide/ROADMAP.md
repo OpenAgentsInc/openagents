@@ -1,15 +1,35 @@
 # OpenAgents IDE roadmap
 
 Date: 2026-07-19
-Status: canonical IDE build sequence
+Updated: 2026-07-23
+Status: superseded Electron implementation sequence
 Baseline: OpenAgents `43b5dbc56e`. Cursor evidence through 3.11.13
+
+## 2026-07-23 owner disposition
+
+The owner selected
+[`Omega`](../sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md), a
+tracked Zed fork, as the primary OpenAgents Desktop and IDE destination.
+The Omega plan now owns the shell, editor, authority-service, migration, and
+cutover sequence.
+
+This roadmap remains the factual record for the current Electron IDE.
+Its landed Effect services, contracts, tests, and receipts are migration input.
+They are not discarded.
+This roadmap no longer dispatches new Electron shell or editor-parity packets.
+Live defect, release, and current-issue authority remains unchanged.
+
+Omega implementation cannot start from this supersession note.
+It first requires the ProductSpec, AssuranceSpec, invariant, release, and
+packet admission named in the accepted plan.
 
 ## Purpose and authority
 
-This is the single implementation roadmap for the OpenAgents IDE. It replaces
-the overlapping packet sequences in the dated files in this directory. Those
-files remain architecture, package, and reference evidence. They no longer
-independently define order or completion.
+This was the single implementation roadmap for the Electron OpenAgents IDE.
+It replaced the overlapping packet sequences in the dated files in this
+directory. Those files and this roadmap remain architecture, package,
+implementation, and reference evidence. They do not define the current Omega
+order.
 
 The product contracts remain authoritative for intent:
 
@@ -33,12 +53,12 @@ receipts remain the status and dispatch authorities. A row here being next does
 not claim that its dependencies, implementation, assurance, release, or public
 promise have already been admitted.
 
-The outcome is straightforward: a developer should be able to use OpenAgents
-as their everyday editor and agent IDE without reopening Cursor, VS Code, or
-Zed for a maintained workflow. OpenAgents should match Cursor's observable
-breadth, achieve Zed-quality integration, reuse the useful TypeScript packages
-instead of forking VS Code, and keep the better OpenAgents model, harness,
-placement, authority, receipt, and data-custody architecture unbundled.
+The Electron-roadmap outcome was straightforward: a developer could use
+OpenAgents as an everyday editor and agent IDE without reopening Cursor, VS
+Code, or Zed for a maintained workflow. The owner now chooses to obtain the
+coherent Zed editor substrate through Omega while preserving the stronger
+OpenAgents model, harness, placement, authority, receipt, and data-custody
+architecture.
 
 ## Evidence reconciled
 
@@ -67,7 +87,7 @@ The sources have different jobs:
 
 | Source     | What OpenAgents takes                                                                                                                                             | What OpenAgents does not take                                                                                     |
 | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| Zed        | one coherent project/document/language/Git/terminal/agent graph. Agent context and code evidence as native IDE concepts                                           | GPUI, a Rust application core, or Zed's editor implementation                                                     |
+| Zed        | the complete coherent native editor and project substrate through the tracked Omega fork, subject to the accepted migration gates                                  | OpenAgents product, command, credential, Sync, Full Auto, update, or receipt authority                           |
 | VS Code    | Monaco. Focused URI, language, LSP, terminal, debug, and behavior-test lessons                                                                                    | a Code-OSS fork, Explorer/workbench internals, or trusted extension host                                          |
 | Pierre     | focused React tree and diff kernels, theming seams, virtualized review UX                                                                                         | filesystem, Git, document, mutation, session, or policy authority                                                 |
 | Cursor     | the complete capability breadth users now expect and the concrete local-data failure modes to avoid                                                               | closed custody, cloud-only inference, plaintext auth in a general state DB, hidden uploads, or fragmented erasure |
@@ -682,7 +702,7 @@ unreviewed.
 Terminal/session/task/test identity and retention stay in Effect. Xterm is the
 screen projection. The packet reuses the typed Node terminal transport and
 redaction path. It does not admit a Rust PTY helper because the measured
-TypeScript/Node fallback passes and no six-target correctness or percentile
+TypeScript/Node fallback passes and no target-matrix correctness or percentile
 deficit justifies a native binary.
 
 Add profiles, splits, reconnect, resize, signals, links under policy, named
@@ -937,7 +957,7 @@ Every implementation packet supplies, in proportion to its boundary:
   screen-reader journeys.
 - performance and leak budgets with exact p50/p95/p99, heap, handle, worker,
   and disposal evidence.
-- six-target fixtures where the capability is platform-sensitive.
+- current target-matrix fixtures where the capability is platform-sensitive.
 - rollback and substitution tests for every external library or native helper.
 
 The release-blocking integrated corpus must eventually cover:
@@ -962,12 +982,15 @@ The release-blocking integrated corpus must eventually cover:
     Sarah while preserving one lifecycle authority and distinct actor
     receipts.
 
-## Explicit non-goals and rejected shortcuts
+## Historical Electron non-goals and rejected shortcuts
 
 - no Code-OSS/Cursor fork.
-- no Zed/GPUI port.
+- no Zed/GPUI port inside the Electron implementation.
+  The Omega plan supersedes this destination limit.
 - no VS Code workbench, Explorer, internal `vs/*`, or trusted extension host.
-- no second Rust application core or database.
+- no second Rust application core or database beside Electron.
+  Omega instead has one Rust application core and one adjacent Node/Effect
+  product service with one writable owner for each domain.
 - no renderer filesystem, Git, terminal, credential, or raw-root authority.
 - no direct harness mutation of Monaco.
 - no embeddings requirement for useful repository intelligence.

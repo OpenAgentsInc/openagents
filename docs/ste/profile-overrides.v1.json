@@ -1,6 +1,17 @@
 {
   "schema": "openagents-ste-profile-overrides-v1",
   "profiles": {
+    "docs/sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md": {
+      "ste_mode": "mixed",
+      "ste_status": "checked",
+      "ste_reviewer": "codex/omega-zed-primary-plan-20260723",
+      "ste_reviewed_at": "2026-07-23T22:54:48Z",
+      "risk": "high",
+      "source": null,
+      "replacement": null,
+      "ste_audience": "human",
+      "ste_accepted_screening_rules": ["STE-2.4"]
+    },
     "docs/sol/2026-07-21-open-issue-unified-completion-plan.md": {
       "ste_mode": "mixed",
       "ste_status": "checked",

@@ -1,9 +1,9 @@
-# MASTER ROADMAP — Full Auto, managed sandboxes, and trust-complete surfaces
+# MASTER ROADMAP — Omega, Full Auto, and trust-complete work
 
 - Class: authority
 - Date: 2026-07-10
-- Updated: 2026-07-22
-- Revision: 131
+- Updated: 2026-07-23
+- Revision: 132
 - Status: canonical OpenAgents implementation roadmap
 - Current queue: the
   [`open issue unified completion plan`](./2026-07-21-open-issue-unified-completion-plan.md)
@@ -29,6 +29,10 @@
 This file owns product direction, durable gates, issue projection, and dependency
 order. Current code, tests, live issues, deployments, and receipts own factual
 proof, dated plans and analyses are evidence only.
+
+## Active P0 — Omega primary-surface transition
+
+The owner selected [`Omega`](./2026-07-23-omega-zed-primary-surface-accepted-plan.md), a tracked Zed fork, as the primary Desktop and IDE destination. Omega Rust is the application core. Packaged Node 24 and Effect first carry the current product control plane. Bounded packets can move suitable domains to Rust through one-authority cutovers. Selected Buzz and Nostr mechanics add signed identity, memory, Git facts, evidence, reputation, and channel projections without relay authority. OMEGA-00 through OMEGA-12 own the dependency order. This update admits no implementation. The current Electron application remains the supported evidence and rollback subject until all ProductSpec, AssuranceSpec, migration, license, accessibility, release, and owner gates pass. The current issue plan keeps its order, and Omega does not reroute the pending Full Auto release closure.
 
 ## Active P0 — Full Auto flagship and surface-vision reconciliation
 
@@ -241,8 +245,8 @@ AssuranceSpec program queue remains.
 
 1. **The ProductSpec-native Codex Workroom MVP is the accepted baseline.** Its signed local-first Desktop journey stays proven, closed R0–R7 successors do not silently reopen.
 2. **Sarah is an authenticated owner orchestrator, not a standalone app or public front door.** `/sarah/*` stays tombstoned, `principal.sarah` lives in the stable owner-private mobile thread and receives only exact brokered actions. The SBX-07 broker and SBX-09 acceptance are complete. SBX-10 does not create a public cloud claim or a generic administration surface.
-3. **Desktop is the deep workbench, mobile has the T3 ledger plus closed #8980 first-screen proof, and web is the public trust/API surface.** Unpacketized expansion cannot preempt Full Auto.
-4. **Retained UI uses Effect Native.** Electron, React Native/Expo, DOM, native, and canvas are hosts/renderers over shared typed components and intents.
+3. **Omega is the primary Desktop and IDE destination, mobile has the T3 ledger plus closed #8980 first-screen proof, and web is the public trust/API surface.** The current Electron application stays supported until the Omega cutover gate. Unpacketized expansion cannot preempt Full Auto.
+4. **The current Electron and independent mobile/web projections use Effect Native.** Omega uses the Zed and GPUI Rust substrate plus packaged Node 24 and `omega-effectd`. One generated protocol and one owner per domain prevent split authority.
 5. **Khala Sync is cross-device authority, not chat transport.** It carries owner-scoped projections and durable outcomes, local stores remain bounded caches/offline queues.
 6. **Sol owns dispatch sequence.** Fable's 2026-07-17 analysis is reconciled evidence and an outcome crosswalk, never a parallel queue.
 7. **Desktop and mobile remain greenfield OpenAgents destinations.** Deprecated clients are extraction sources, the accepted mobile identity and icon stay unchanged.
@@ -286,13 +290,10 @@ AssuranceSpec program queue remains.
     Apple FM stays advisory-only, routing stays inside the owner grant,
     concurrency needs its own spec revision (#9114), #8978/#8979 remain the
     only path to assurance and release claims.
-
 ## Product and authority model
 
-**Active product:** OpenAgents is a local-first, ProductSpec-native coding
-workbench with Desktop as the deep host, mobile as the bounded remote
-controller/workbench, and openagents.com as the public trust/API surface.
-Named durable Full Auto runs are the flagship short-term journey.
+**Active product:** OpenAgents is a local-first, ProductSpec-native company workbench. Omega is the primary Desktop and IDE destination.
+The current Electron application remains the supported deep host during migration. Mobile is the bounded remote controller/workbench, openagents.com is the public trust/API surface, and named Full Auto runs remain the flagship short-term journey.
 
 **Dormant design horizon:** managed-target breadth beyond #9023, portable host
 movement/failback, concurrent Full Auto portfolios, autonomous provider
@@ -571,7 +572,7 @@ dispatch and exact plans own dependency order.
 | Program                         | Open issues                                            | Owning plan                                                                    |
 | ------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------ |
 | Managed sandboxes               | #9023, #9032, #9033                                    | `2026-07-19-managed-agent-sandboxes-accepted-plan.md`                          |
-| Agent IDE and parity            | #9035, #9041, #9042, #9043, #9044, #9045, #9046, #9047 | `docs/ide/ROADMAP.md`                                                          |
+| Agent IDE and parity            | #9035, #9041, #9042, #9043, #9044, #9045, #9046, #9047 | `2026-07-21-open-issue-unified-completion-plan.md`                             |
 | VSE engine groundwork           | #9104, #9105, #9106, #9108, #9109                      | `docs/fable/2026-07-20-verifiable-software-engine-gap-analysis-and-roadmap.md` |
 | Full Auto first verifiable mode | #9110, #9111, #9112, #9113, #9114                      | `docs/fable/2026-07-20-full-auto-first-verifiable-mode.md`                     |
 

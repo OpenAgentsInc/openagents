@@ -7,6 +7,15 @@ Status: supporting source-grounded package and architecture analysis.
 document's packet ordering. This document does not admit dependencies, modify
 a ProductSpec, authorize implementation, or independently reorder work.
 
+## 2026-07-23 disposition
+
+The owner selected the tracked Zed fork
+[`Omega`](../sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md) as the
+primary Desktop and IDE destination.
+This analysis remains evidence for focused protocol and package use.
+Its Monaco-first destination does not apply to Omega.
+The rejection of a Code-OSS fork remains unchanged.
+
 ## Decision
 
 Use VS Code as OpenAgents' main **TypeScript package donor** and a detailed

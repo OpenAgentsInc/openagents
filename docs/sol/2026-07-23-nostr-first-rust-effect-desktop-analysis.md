@@ -2,11 +2,42 @@
 
 - Date: 2026-07-23
 - Class: architecture analysis
-- Status: recommended direction for evaluation
+- Status: shell comparison superseded; architecture evidence retained
 - Dispatch: no
 - Owner: OpenAgents Desktop architecture
 - Base: `94222bcdd1acfc88cba5f02afc4040d9f6373b89`
 - Source snapshot: exact sources and document digests in this analysis
+
+## Owner disposition
+
+The owner selected
+[`Omega`](./2026-07-23-omega-zed-primary-surface-accepted-plan.md), a tracked
+Zed fork, as the primary Desktop and IDE destination on 2026-07-23.
+That accepted plan supersedes this document's open shell-selection question.
+
+The Electron and Zed comparison now proves migration, regression, and rollback.
+It no longer selects the destination.
+The current Electron application remains the supported release until Omega
+passes the accepted plan's ProductSpec, AssuranceSpec, authority-service,
+license, migration, accessibility, release, and owner gates.
+
+The Rust, Buzz, Nostr, provenance, process-isolation, and non-amplifying
+authority analysis below remains valid evidence.
+Where this analysis says that an evaluation will select the future shell, use
+the accepted Omega plan instead.
+
+A direct audit of the pinned Zed source also changes the process recommendation.
+Omega Rust is the application core, not only a shell client.
+It owns the Zed project, editor, Git, language, terminal, task, extension,
+remote, and local-process graph.
+The app package includes exact Node 24 and `omega-effectd` beside the Rust
+process.
+That service first carries current OpenAgents product contracts and
+coordination.
+Bounded packets can move suitable durable stores and runtime state machines to
+Rust through differential proof, atomic cutover, old-path deletion, and
+rollback.
+No domain can have two writable authorities.
 
 ## Decision
 
@@ -660,7 +691,7 @@ Measure:
 - packaged accessibility
 - release, signature, update, and rollback
 - upstream rebase conflicts and patch size
-- six supported build targets where required
+- the complete Desktop target matrix required by current release authority
 
 The Zed test must include the editor accessibility tree.
 The audited Zed build did not expose the custom editor in the macOS
@@ -693,7 +724,7 @@ The engine must pass:
 - corrupt-store and crash recovery
 - bounded queue and overload tests
 - signer isolation tests
-- six-target package checks
+- current target-matrix package checks
 
 Two Nostr implementations create a useful oracle.
 They also create drift risk.
@@ -710,14 +741,14 @@ The test must prove these rules:
 - a compromised helper cannot widen Effect policy
 - the renderer never receives a seed or `nsec`
 
-### Gate 4: shell decision
+### Gate 4: Omega migration proof
 
-The Zed fork must win the common product journey by a material amount.
-It must also have an acceptable rebase and release cost.
-The owner must accept its license and product reset.
-
-If these conditions do not hold, keep Electron.
-Graduate only the Rust Nostr engine.
+The owner selected the Zed fork as the destination.
+The common product journey must now prove the migration and cutover.
+Omega must have an acceptable rebase, license, accessibility, release, and
+rollback cost.
+If these conditions do not hold, the current Electron application remains the
+supported release while the owner reviews the Omega plan.
 
 ## Risks and reversal tests
 
@@ -734,7 +765,7 @@ Graduate only the Rust Nostr engine.
 | The product copies broad chat before it proves work value | Stop when chat breadth delays the feature-to-delivery journey |
 | Company setup and key recovery stay too technical | Stop expansion until setup and recovery pass user tests |
 | protocol implementations drift | Stop import when shared fixtures do not produce identical wire facts |
-| native package work grows without control | Stop new helpers until the native component manifest proves six-target update and rollback |
+| native package work grows without control | Stop new helpers until the native component manifest proves update and rollback for the current target matrix |
 | copied source creates upgrade debt | Stop when the owned patch is larger than the retained value |
 | Zed fork creates continuous rebase work | Reject the fork when the patch budget or conflict rate exceeds the set limit |
 | GPL duties do not fit the product | Reject direct Zed reuse after legal review |
@@ -743,8 +774,11 @@ Graduate only the Rust Nostr engine.
 
 ## Recommended sequence
 
-The next authority update should create one accepted evaluation plan.
-It should not start a full migration.
+The
+[`accepted Omega plan`](./2026-07-23-omega-zed-primary-surface-accepted-plan.md)
+supersedes this proposed sequence.
+It keeps these evidence packets but adds the required Effect authority-service,
+ProductSpec, AssuranceSpec, migration, release, and cutover dependencies.
 
 The plan should contain these packets:
 
@@ -793,7 +827,7 @@ The strongest near-term shape is:
 - ProductSpec-first for intent and AssuranceSpec-first for proof
 - Full Auto for multi-agent work and portable placement
 - Desktop for deep work and mobile for safe remote control
-- Zed as a real comparative fork, not an embedded library
+- Omega as the tracked Zed fork, not an embedded library
 
 Buzz supplies unified signed context.
 OpenAgents adds executable authority, agent placement, proof, delivery, and
@@ -801,5 +835,5 @@ remote control.
 
 That shape makes the product a work system, not only a social editor.
 It keeps one command and receipt authority.
-The benchmark can now decide whether the final shell stays Electron or becomes
-a Zed-derived native application.
+The benchmark now decides when Omega can replace Electron and whether the
+migration must stop for owner review.

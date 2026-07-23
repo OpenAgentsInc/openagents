@@ -1,14 +1,14 @@
 ---
 fast_follow_spec_format_version: "0.1"
 fast_follow_spec_id: "openagents.fast_follow"
-fast_follow_revision: 4
-title: "OpenAgents Amp Thread-Fabric Fast Follow"
+fast_follow_revision: 5
+title: "OpenAgents Fast Follow"
 artifact_type: "learning_intent"
 lifecycle_state: "admitted"
 author: "OpenAgents"
 linked_target_repo: "OpenAgentsInc/openagents"
 created_at: "2026-07-16T00:00:00Z"
-updated_at: "2026-07-19T06:05:00Z"
+updated_at: "2026-07-23T22:54:48Z"
 ---
 
 # OpenAgents Fast Follow
@@ -38,10 +38,17 @@ or weaken an invariant.
 The later
 `docs/fable/2026-07-17-surface-vision-gap-analysis-and-roadmap.md` maps this
 learning program onto the Full Auto, release, trust, workbench, mobile, web,
-and cross-cutting surface outcomes. `docs/sol/MASTER_ROADMAP.md` revision 119
+and cross-cutting surface outcomes. `docs/sol/MASTER_ROADMAP.md` revision 132
 owns that reconciliation and current sequence. The crosswalk does not reorder
 the `initial_program`, manufacture a candidate, admit autonomous provider/fleet
 policy, or turn Fable prose into target authority.
+
+The owner's 2026-07-23
+`docs/sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md` selects Omega,
+a tracked Zed fork, as the primary Desktop and IDE destination. Revision 5
+updates the Zed and Buzz lessons and adds the Omega directive. The accepted
+plan, not this learning intent, owns the migration sequence. The ordered Amp
+`initial_program` stays unchanged.
 
 ## Target
 
@@ -1009,8 +1016,8 @@ policy, or turn Fable prose into target authority.
       {
         "id": "gpui_editor_and_scm_wholesale",
         "kind": "architecture",
-        "summary": "Reject adopting GPUI, Zed's Rust editor and CRDT, Project Panel, or mutable SCM wholesale; reproduce the coherent behavior with the target's Effect Native, Monaco, Pierre, WorkContext, authority, and receipt boundaries.",
-        "stance": "reject"
+        "summary": "Adapt the complete GPUI, editor, buffer, project, language, Git, terminal, task, remote, extension, and native shell substrate through the tracked Omega fork. Run packaged Node 24 and Effect beside the Rust application for product contracts and coordination. Move other domains to Rust only through one-authority semantic cutovers.",
+        "stance": "adapt_with_stronger_boundaries"
       }
     ]
   },
@@ -1207,6 +1214,18 @@ policy, or turn Fable prose into target authority.
         "id": "approval_gates_and_structural_loop_prevention",
         "kind": "product_ux",
         "summary": "Adapt human approval as a typed step inside automation and prevent trigger loops by construction through excluded event classes, with moderation as a private workflow whose enforcement bites at the identity seam.",
+        "stance": "adapt_with_stronger_boundaries"
+      },
+      {
+        "id": "signed_identity_and_channel_projection",
+        "kind": "architecture",
+        "summary": "Adapt signed human and agent identity, purpose-bound context grants, presence, and channel projections so conversation, code, reviews, decisions, and evidence stay linked without making a relay the company record or command authority.",
+        "stance": "adapt_with_stronger_boundaries"
+      },
+      {
+        "id": "nostr_git_reputation_and_evidence",
+        "kind": "protocol",
+        "summary": "Adapt signed Git collaboration, NIP-32 reputation, and evidence facts as admitted inputs and public-safe projections while OpenAgents keeps outcome, acceptance, delivery, and receipt authority.",
         "stance": "adapt_with_stronger_boundaries"
       },
       {
@@ -1514,6 +1533,59 @@ policy, or turn Fable prose into target authority.
       "FF-AC-04",
       "FF-AC-06",
       "FF-AC-09"
+    ]
+  },
+  {
+    "id": "omega.zed_primary_surface",
+    "title": "Omega tracked Zed fork and selective Buzz integration",
+    "priority": 600,
+    "source_refs": [
+      "cursor.cursor#startup_restore_oracle",
+      "zed_industries.zed#typed_project_capability_graph",
+      "zed_industries.zed#local_remote_capability_symmetry",
+      "zed_industries.zed#project_bound_agent_context",
+      "zed_industries.zed#integrated_ide_verification",
+      "zed_industries.zed#gpui_editor_and_scm_wholesale",
+      "block.buzz#runtime_formal_conformance_replay",
+      "block.buzz#owner_decryptable_agent_memory",
+      "block.buzz#acp_pool_supervision_and_typed_stall_fates",
+      "block.buzz#signed_identity_and_channel_projection",
+      "block.buzz#nostr_git_reputation_and_evidence",
+      "block.buzz#relay_substrate_shells_and_custom_kind_registry",
+      "openagents.synthesis#target_native_adaptation"
+    ],
+    "target_scopes": [
+      "apps/openagents-desktop",
+      "packages/agent-runtime-schema",
+      "packages/assurance-spec",
+      "crates",
+      "docs/sol"
+    ],
+    "desired_outcome": "Make Omega the tracked Zed-based primary Desktop and IDE with Rust as the application core and packaged Node 24 plus Effect as the adjacent product-contract and coordination service; move suitable domains to Rust through one-authority cutovers; add selected Buzz and Nostr identity, memory, Git, reputation, and evidence mechanics without relay authority.",
+    "work_products": [
+      "study_packet",
+      "gap_assessment",
+      "product_spec_delta",
+      "assurance_delta",
+      "candidate_issue",
+      "implementation"
+    ],
+    "constraints": [
+      "The accepted Omega plan owns packet order and implementation admission.",
+      "Use one exact Zed pin, a tracked upstream relationship, a patch budget, provenance, source delivery, and a deletion path.",
+      "Extract the Electron-main product control plane into packaged omega-effectd before a complete Omega comparison.",
+      "Give every project, document, thread, run, command, credential, Sync, update, and receipt domain one writable owner.",
+      "A Rust port needs differential semantic proof, versioned migration, atomic cutover, old-path deletion, and rollback.",
+      "A signed Nostr event, relay acknowledgement, or membership never becomes an OpenAgents command or accepted outcome.",
+      "The current Electron application remains the supported release and rollback source until the cutover gate passes."
+    ],
+    "acceptance_refs": [
+      "FF-AC-03",
+      "FF-AC-04",
+      "FF-AC-05",
+      "FF-AC-09",
+      "FF-AC-10",
+      "FF-AC-11"
     ]
   },
   {
