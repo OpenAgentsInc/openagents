@@ -699,7 +699,11 @@ const GUEST_MAC: &str = "06:00:AC:10:00:02";
 /// vsock port the baked guest agent listens on (see `guest-agent.py`).
 const GUEST_AGENT_PORT: u32 = 1024;
 /// Bound the in-guest exec so a stuck turn cannot hang the host session.
-const GUEST_EXEC_TIMEOUT_SECS: u64 = 300;
+// A cold OpenAgents checkout, harness turn, dependency preparation, and pinned
+// verification can exceed five minutes. Keep the guest window below the
+// managed-cloud provider lease (35 minutes) so the worker still owns the
+// provider grant when execution returns.
+const GUEST_EXEC_TIMEOUT_SECS: u64 = 25 * 60;
 
 /// True when this host can run firecracker microVMs: it is Linux and `/dev/kvm`
 /// exists and is accessible. Side-effect-free; performs no boot.
@@ -1397,6 +1401,12 @@ pub fn contains_forbidden_material(value: &str) -> bool {
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicBool, Ordering};
+
+    #[test]
+    fn guest_exec_window_covers_a_cold_repository_turn() {
+        assert_eq!(GUEST_EXEC_TIMEOUT_SECS, 25 * 60);
+        assert!(GUEST_EXEC_TIMEOUT_SECS < 35 * 60);
+    }
 
     struct FailingProvisioner {
         fail_exec: bool,
