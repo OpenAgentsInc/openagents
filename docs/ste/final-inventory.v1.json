@@ -39915,6 +39915,28 @@
       }
     },
     {
+      "path": "docs/sarah/2026-07-22-segmind-talking-avatar-pipeline.md",
+      "sha256": "f0cc6b2eb94daa22c03afa393a98c69ab4b124052cdf0400fa456ed36f73085f",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/sarah/EN-GAPS.md",
       "sha256": "7726335b3606589c6fe3b2792177152940152a5a24554b8417a8919b382a103f",
       "reason": "Final review of a converted document",
