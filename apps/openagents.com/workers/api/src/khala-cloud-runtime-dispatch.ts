@@ -252,6 +252,12 @@ const hasEligibleManagedCloudProvider = (
       account.hasSecretRef,
   )
 
+export const hasSarahManagedCloudProviderCapacity = (
+  accounts: ReadonlyArray<ManagedCloudProviderAvailability>,
+): boolean =>
+  hasEligibleManagedCloudProvider(accounts, 'chatgpt_codex') ||
+  hasEligibleManagedCloudProvider(accounts, 'google_gemini')
+
 /**
  * Keep Codex as Sarah's primary harness. Select the brokered Gemini-backed
  * OpenCode harness only when Codex has no usable account and Gemini does.

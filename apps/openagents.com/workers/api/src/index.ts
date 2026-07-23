@@ -750,6 +750,7 @@ import {
   applySarahManagedCloudHarnessFallback,
   dispatchCloudGcpRuntimeTurn,
   finalizeManagedCloudProviderLease,
+  hasSarahManagedCloudProviderCapacity,
   managedAgentComputerGrantIssueInput,
   makeCloudCodingAdapterLaunchSeam,
   readQueuedManagedCloudTurns,
@@ -6938,21 +6939,18 @@ const probeSarahAgentComputerCapacity = async (
     listProviderAccountsForUser(accountRepository, ownerUserId),
     githubRepository.findUsableConnectionForUser(ownerUserId),
   ])
-  const ownerCodexReady = accounts.accounts.some(
-    account =>
-      account.provider === CHATGPT_CODEX_PROVIDER &&
-      account.publicStatus === 'connected' &&
-      account.health === 'healthy',
+  const ownerProviderReady = hasSarahManagedCloudProviderCapacity(
+    accounts.accounts,
   )
   const githubReady =
     githubConnection !== undefined &&
     hasRequiredGitHubWriteScopes(githubConnection.scopes)
-  if (!ownerCodexReady || !githubReady) {
+  if (!ownerProviderReady || !githubReady) {
     return {
       available: false,
       availableSlots: 0,
-      capacityRef: !ownerCodexReady
-        ? 'capacity.agent_computer.owner_codex_grant.unavailable'
+      capacityRef: !ownerProviderReady
+        ? 'capacity.agent_computer.owner_harness_grant.unavailable'
         : 'capacity.agent_computer.owner_github_write.unavailable',
     }
   }

@@ -14,6 +14,7 @@ import {
   applySarahManagedCloudHarnessFallback,
   dispatchCloudGcpRuntimeTurn,
   finalizeManagedCloudProviderLease,
+  hasSarahManagedCloudProviderCapacity,
   makeCloudCodingAdapterLaunchSeam,
   managedAgentComputerGrantIssueInput,
   planCloudGcpRuntimeAccountDispatch,
@@ -121,6 +122,21 @@ describe('Sarah managed cloud harness fallback', () => {
         account('google_gemini'),
       ]),
     ).toBe(turn)
+  })
+
+  test('admits either the Codex primary or Gemini fallback as owner capacity', () => {
+    expect(
+      hasSarahManagedCloudProviderCapacity([account('chatgpt_codex')]),
+    ).toBe(true)
+    expect(
+      hasSarahManagedCloudProviderCapacity([account('google_gemini')]),
+    ).toBe(true)
+    expect(
+      hasSarahManagedCloudProviderCapacity([
+        account('chatgpt_codex', { health: 'requires_reauth' }),
+        account('google_gemini', { hasSecretRef: false }),
+      ]),
+    ).toBe(false)
   })
 
   test('selects OpenCode before claim when Codex is dead and Gemini is eligible', () => {
