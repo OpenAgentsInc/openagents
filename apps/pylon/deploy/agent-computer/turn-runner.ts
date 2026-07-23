@@ -1266,7 +1266,13 @@ export const harnessExecArgs = (input: {
     case 'grok':
       return [
         '--single', input.prompt, '--output-format', 'streaming-json',
-        '--permission-mode', 'bypassPermissions', '--cwd', input.workingDirectory,
+        '--always-approve',
+        '--max-turns', '10',
+        '--no-plan',
+        '--no-subagents',
+        '--no-memory',
+        '--disable-web-search',
+        '--cwd', input.workingDirectory,
         ...(input.model === undefined ? [] : ['--model', input.model]),
       ]
   }
@@ -1403,7 +1409,15 @@ export const harnessExecEnv = (input: {
   }
   if (input.harness === 'grok') {
     return input.runtimeSecret?.kind === 'xai_api_key'
-      ? { ...base, XAI_API_KEY: input.runtimeSecret.value }
+      ? {
+          ...base,
+          XAI_API_KEY: input.runtimeSecret.value,
+          GROK_DISABLE_AUTOUPDATER: '1',
+          GROK_MEMORY: '0',
+          GROK_SANDBOX: 'off',
+          GROK_SUBAGENTS: '0',
+          GROK_WRITE_FILE: '1',
+        }
       : null
   }
   return null

@@ -168,8 +168,13 @@ describe('Agent Computer seven-harness runtime (#9193)', () => {
       'make the change',
       '--output-format',
       'streaming-json',
-      '--permission-mode',
-      'bypassPermissions',
+      '--always-approve',
+      '--max-turns',
+      '10',
+      '--no-plan',
+      '--no-subagents',
+      '--no-memory',
+      '--disable-web-search',
       '--cwd',
       '/workspace',
     ])
@@ -407,6 +412,15 @@ describe('Agent Computer seven-harness runtime (#9193)', () => {
       expect(observed[0]?.env).toMatchObject({
         [envName]: secret,
         HOME: '/root',
+        ...(harness === 'grok'
+          ? {
+              GROK_DISABLE_AUTOUPDATER: '1',
+              GROK_MEMORY: '0',
+              GROK_SANDBOX: 'off',
+              GROK_SUBAGENTS: '0',
+              GROK_WRITE_FILE: '1',
+            }
+          : {}),
       })
       expect(JSON.stringify(outcome)).not.toContain(secret)
     },
