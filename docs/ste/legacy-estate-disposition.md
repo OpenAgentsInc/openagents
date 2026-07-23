@@ -22,7 +22,7 @@ The source-data state applies to these categories:
 - Generated artifacts, fixtures, and snapshots
 - Formal model and model-configuration source files
 - Immutable receipts, evidence, changelogs, audits, analyses, and after-action records
-- Archives, backups, transcripts, and reference material
+- Archives, backups, and reference material
 - Historical Sol plans, issue sources, tombstones, and receipts that the Sol manifest classifies as noncurrent
 
 The final inventory is the provenance record for these files.

@@ -55,6 +55,7 @@ export interface CheckerConfig {
   readonly steIssue: 9;
   readonly glossaryRevision: string;
   readonly governedExtensions: readonly string[];
+  readonly excludedPrefixes: readonly string[];
   readonly sourceDataPrefixes: readonly string[];
   readonly proceduralPathSignals: readonly string[];
   readonly controlPaths: readonly string[];
@@ -87,7 +88,8 @@ export const validateAgentCompactTerms = (value: AgentCompactTerms): readonly st
 };
 
 export const isGovernedPath = (path: string, config: CheckerConfig): boolean =>
-  config.governedExtensions.includes(extname(path).toLowerCase());
+  config.governedExtensions.includes(extname(path).toLowerCase()) &&
+  !config.excludedPrefixes.some((prefix) => path.startsWith(prefix));
 
 export const deriveProfile = (path: string, config: CheckerConfig): SteProfile => {
   const sourceData = config.sourceDataPrefixes.some((prefix) => path.startsWith(prefix));

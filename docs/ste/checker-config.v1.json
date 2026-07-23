@@ -4,8 +4,8 @@
   "steIssue": 9,
   "glossaryRevision": "openagents-ste-glossary-v1",
   "governedExtensions": [".md", ".mdx", ".rst", ".adoc", ".txt", ".tla", ".cfg"],
+  "excludedPrefixes": ["docs/transcripts/"],
   "sourceDataPrefixes": [
-    "docs/transcripts/",
     "docs/reference/",
     "apps/openagents.com/apps/start/public/docs/"
   ],

@@ -10,6 +10,7 @@ import {
   dictionaryWords,
   extractProse,
   inspectStructure,
+  isGovernedPath,
   validateGlossary,
   validateAgentCompactTerms,
   type CheckerConfig,
@@ -23,8 +24,8 @@ const config: CheckerConfig = {
   steIssue: 9,
   glossaryRevision: "test-v1",
   governedExtensions: [".md"],
+  excludedPrefixes: ["docs/transcripts/"],
   sourceDataPrefixes: [
-    "docs/transcripts/",
     "docs/reference/",
     "apps/openagents.com/apps/start/public/docs/",
   ],
@@ -80,7 +81,8 @@ describe("STE profiles and glossary", () => {
   test("classifies controls, procedures, and source data", () => {
     expect(deriveProfile("AGENTS.md", config).risk).toBe("control");
     expect(deriveProfile("docs/release-runbook.md", config).ste_mode).toBe("mixed");
-    expect(deriveProfile("docs/transcripts/a.md", config).ste_status).toBe("source-data");
+    expect(isGovernedPath("docs/transcripts/a.md", config)).toBe(false);
+    expect(isGovernedPath("docs/release-runbook.md", config)).toBe(true);
     expect(
       deriveProfile("apps/openagents.com/apps/start/public/docs/index.md", config),
     ).toMatchObject({

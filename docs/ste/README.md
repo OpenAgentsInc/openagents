@@ -40,9 +40,12 @@ Also treat quoted legal text and third-party text as source data.
 Add an STE frame around source data when readers need an explanation.
 The frame must identify the source and its purpose.
 
-The transcript archive is immutable source data.
-Do not change transcript bodies.
-Write new transcript labels and summaries in STE.
+## Excluded paths
+
+The `docs/transcripts/` archive is outside STE governance.
+Do not add a transcript file to the STE ledger, baseline, or final inventory.
+Transcript text can keep the speaker's words and style.
+All other repository controls continue to apply to the archive.
 
 ## Document profiles
 
