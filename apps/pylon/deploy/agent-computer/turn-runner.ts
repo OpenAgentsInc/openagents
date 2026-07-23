@@ -256,6 +256,8 @@ export type CodexProviderAuthConfig = {
 export type ClaudeProviderAuthConfig = {
   baseUrl: string
   agentToken: string
+  ownerUserId: string
+  pylonRef?: string
   providerAccountRef: string
   authGrantRef: string
   kind: 'claude_agent_anthropic_api_key'
@@ -631,6 +633,7 @@ export type HarnessTurnConfig = {
 export const writebackIdentityForTurn = (input: {
   inference?: InferenceConfig
   codexTurn?: CodexTurnConfig
+  claudeProviderAuth?: ClaudeProviderAuthConfig
   harnessTurn?: HarnessTurnConfig
 }): InferenceConfig | undefined => {
   if (input.inference !== undefined) return input.inference
@@ -643,6 +646,19 @@ export const writebackIdentityForTurn = (input: {
       ...(input.codexTurn.pylonRef === undefined
         ? {}
         : { pylonRef: input.codexTurn.pylonRef }),
+    }
+  }
+  if (input.claudeProviderAuth !== undefined) {
+    return {
+      agentToken: input.claudeProviderAuth.agentToken,
+      baseUrl: input.claudeProviderAuth.baseUrl,
+      lane: 'claude_pylon',
+      model: 'openagents/pylon-claude',
+      ownerUserId: input.claudeProviderAuth.ownerUserId,
+      ...(input.claudeProviderAuth.pylonRef === undefined
+        ? {}
+        : { pylonRef: input.claudeProviderAuth.pylonRef }),
+      provider: 'pylon-claude-org-capacity',
     }
   }
   const grant = input.harnessTurn?.runtimeSecretGrant

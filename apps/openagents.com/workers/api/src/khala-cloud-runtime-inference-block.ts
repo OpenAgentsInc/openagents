@@ -191,6 +191,8 @@ export type CloudRuntimeCodexTurnConfig = Readonly<{
 export type CloudRuntimeClaudeProviderAuthConfig = Readonly<{
   baseUrl: string
   agentToken: string
+  ownerUserId: string
+  pylonRef?: string | undefined
   providerAccountRef: string
   authGrantRef: string
   kind: 'claude_agent_anthropic_api_key'
@@ -271,6 +273,10 @@ export const buildManagedAgentComputerHarnessBlocks = (
         authGrantRef: grant.authGrantRef,
         baseUrl: input.baseUrl,
         kind: grant.kind,
+        ownerUserId: input.ownerUserId,
+        ...(input.pylonRef === undefined
+          ? {}
+          : { pylonRef: input.pylonRef }),
         providerAccountRef: grant.providerAccountRef,
         runnerSessionId: grant.runnerSessionId,
         secretRef: grant.secretRef,

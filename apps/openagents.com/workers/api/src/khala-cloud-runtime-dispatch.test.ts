@@ -775,6 +775,8 @@ describe('dispatchCloudGcpRuntimeTurn', () => {
       authGrantRef: 'provider-auth-grant.claude.owner-1',
       baseUrl: 'https://staging.example',
       kind: 'claude_agent_anthropic_api_key',
+      ownerUserId: admitted.ownerUserId,
+      pylonRef: 'pylon.agent-computer.fixture',
       providerAccountRef: 'provider-account.claude.owner-1',
       runnerSessionId: 'turn.t1',
       secretRef: 'provider-secret.claude.owner-1',

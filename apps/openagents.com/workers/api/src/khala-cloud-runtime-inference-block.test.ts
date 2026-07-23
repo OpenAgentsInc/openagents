@@ -154,6 +154,7 @@ describe('managed Agent Computer harness selection', () => {
         authGrantRef: 'grant.claude.owner.turn-1',
         baseUrl: 'https://openagents.example',
         kind: 'claude_agent_anthropic_api_key',
+        ownerUserId: 'owner.fixture',
         providerAccountRef: 'provider-account.claude.owner',
         runnerSessionId: 'turn-1',
         secretRef: 'provider-secret.claude.owner',

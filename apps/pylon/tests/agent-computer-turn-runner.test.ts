@@ -92,6 +92,8 @@ const claudeProviderAuth: ClaudeProviderAuthConfig = {
   baseUrl: 'https://openagents.example',
   agentToken: 'agent-secret-token-should-never-be-serialized',
   kind: 'claude_agent_anthropic_api_key',
+  ownerUserId: 'owner.public.claude',
+  pylonRef: 'pylon.public.claude',
   providerAccountRef: 'provider-account.public.claude.owner',
   runnerSessionId: 'turn.public.claude.owner',
   secretRef: 'provider-secret.public.claude.owner',
@@ -136,6 +138,23 @@ describe('agent-computer turn-runner: writeback identity', () => {
         },
       }),
     ).toBeUndefined()
+  })
+
+  test('reuses the Claude provider grant identity for writeback', () => {
+    expect(
+      writebackIdentityForTurn({
+        claudeProviderAuth,
+        harnessTurn: { harness: 'claude-code' },
+      }),
+    ).toEqual({
+      agentToken: claudeProviderAuth.agentToken,
+      baseUrl: claudeProviderAuth.baseUrl,
+      lane: 'claude_pylon',
+      model: 'openagents/pylon-claude',
+      ownerUserId: claudeProviderAuth.ownerUserId,
+      provider: 'pylon-claude-org-capacity',
+      pylonRef: claudeProviderAuth.pylonRef,
+    })
   })
 })
 
