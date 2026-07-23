@@ -110,6 +110,8 @@ describe("provider account lease service", () => {
     });
 
     expect(lease).toMatchObject({
+      activeLeaseCountBeforeSelection: 0,
+      operatorPriority: 10,
       providerAccountRef: "provider-owner-codex",
       selectedByActor: "sarah_cloud_dispatch",
     });
@@ -134,6 +136,9 @@ describe("provider account lease service", () => {
       user_id: "owner-a",
     });
     expect(JSON.parse(persisted?.metadata_json ?? "{}")).toMatchObject({
+      activeLeaseCountBeforeSelection: 0,
+      operatorPriority: 10,
+      providerAccountRef: "provider-owner-codex",
       source: "sarah_cloud_coding_session",
     });
   });

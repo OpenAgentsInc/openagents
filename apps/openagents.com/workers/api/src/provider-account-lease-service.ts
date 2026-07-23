@@ -173,8 +173,6 @@ type LeaseInsertRow = Readonly<{
   selected_by_policy_version: typeof PROVIDER_ACCOUNT_LEASE_POLICY_VERSION;
   selection_reason: string;
   selected_by_actor: string;
-  active_lease_count_before_selection: number;
-  operator_priority: number;
   started_at: string;
   expires_at: string;
   last_touched_at: string;
@@ -197,6 +195,22 @@ type ActiveLeaseRow = Readonly<{
 
 const leaseSelectionReason = (activeLeaseCount: number, operatorPriority: number): string =>
   `Selected connected healthy account with ${activeLeaseCount} active lease(s), priority ${operatorPriority}, and no cooldown, reconnect marker, or low-credit flag.`;
+
+const LEASE_SELECTION_REASON_PATTERN =
+  /^Selected connected healthy account with (\d+) active lease\(s\), priority (\d+), and no cooldown, reconnect marker, or low-credit flag\.$/;
+
+const parseLeaseSelectionMetrics = (
+  selectionReason: string,
+): Readonly<{ activeLeaseCount: number; operatorPriority: number }> => {
+  const match = LEASE_SELECTION_REASON_PATTERN.exec(selectionReason);
+  if (match === null) {
+    throw new Error("provider_account_lease_selection_reason_invalid");
+  }
+  return {
+    activeLeaseCount: Number(match[1]),
+    operatorPriority: Number(match[2]),
+  };
+};
 
 const expireStaleLeases = async (db: D1Database, now: string): Promise<void> => {
   // The key-less expiry update is not mirrored on the hot path. The normal
@@ -284,12 +298,7 @@ export const makeProviderAccountLeaseService = (dependencies: {
            NULL,
            NULL,
            NULL,
-           json_object(
-             'source', ?,
-             'providerAccountRef', pa.provider_account_ref,
-             'activeLeaseCountBeforeSelection', COUNT(active_leases.id),
-             'operatorPriority', pa.operator_priority
-           )
+           ?
          FROM provider_accounts pa
          LEFT JOIN provider_account_leases active_leases
            ON active_leases.provider_account_id = pa.id
@@ -324,10 +333,6 @@ export const makeProviderAccountLeaseService = (dependencies: {
            selected_by_policy_version,
            selection_reason,
            selected_by_actor,
-           CAST(json_extract(metadata_json, '$.activeLeaseCountBeforeSelection') AS INTEGER)
-             AS active_lease_count_before_selection,
-           CAST(json_extract(metadata_json, '$.operatorPriority') AS INTEGER)
-             AS operator_priority,
            started_at,
            expires_at,
            last_touched_at,
@@ -345,7 +350,7 @@ export const makeProviderAccountLeaseService = (dependencies: {
         input.now,
         input.expiresAt,
         input.now,
-        input.source,
+        JSON.stringify({ source: input.source }),
         input.now,
         input.userId,
         input.requiredProvider ?? null,
@@ -357,6 +362,26 @@ export const makeProviderAccountLeaseService = (dependencies: {
     if (row === null) {
       return undefined;
     }
+
+    const selectionMetrics = parseLeaseSelectionMetrics(row.selection_reason);
+    await db
+      .prepare(
+        `UPDATE provider_account_leases
+            SET metadata_json = ?
+          WHERE id = ?
+            AND user_id = ?`,
+      )
+      .bind(
+        JSON.stringify({
+          source: input.source,
+          providerAccountRef: row.provider_account_ref,
+          activeLeaseCountBeforeSelection: selectionMetrics.activeLeaseCount,
+          operatorPriority: selectionMetrics.operatorPriority,
+        }),
+        row.id,
+        input.userId,
+      )
+      .run();
 
     await db
       .prepare(
@@ -398,9 +423,12 @@ export const makeProviderAccountLeaseService = (dependencies: {
       selectedByActor: row.selected_by_actor,
       selectionReason:
         row.selection_reason ??
-        leaseSelectionReason(row.active_lease_count_before_selection, row.operator_priority),
-      activeLeaseCountBeforeSelection: row.active_lease_count_before_selection,
-      operatorPriority: row.operator_priority,
+        leaseSelectionReason(
+          selectionMetrics.activeLeaseCount,
+          selectionMetrics.operatorPriority,
+        ),
+      activeLeaseCountBeforeSelection: selectionMetrics.activeLeaseCount,
+      operatorPriority: selectionMetrics.operatorPriority,
       startedAt: row.started_at,
       expiresAt: row.expires_at,
       lastTouchedAt: row.last_touched_at,
