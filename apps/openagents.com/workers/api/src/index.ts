@@ -747,6 +747,7 @@ import {
 } from './khala-chat-pylon-context'
 import { makeKhalaChatRoutes } from './khala-chat-routes'
 import {
+  applySarahManagedCloudHarnessFallback,
   dispatchCloudGcpRuntimeTurn,
   finalizeManagedCloudProviderLease,
   managedAgentComputerGrantIssueInput,
@@ -7838,7 +7839,31 @@ const runManagedCloudRuntimeTurnDispatchForEnv = async (
           throw error
         }
       },
-      readAdmitted: readQueuedManagedCloudTurns,
+      readAdmitted: async (sql, limit) => {
+        const turns = await readQueuedManagedCloudTurns(sql, limit)
+        const accountsByOwner = new Map(
+          await Promise.all(
+            [...new Set(turns.map(turn => turn.ownerUserId))].map(
+              async ownerUserId =>
+                [
+                  ownerUserId,
+                  (
+                    await listProviderAccountsForUser(
+                      accountRepository,
+                      ownerUserId,
+                    )
+                  ).accounts,
+                ] as const,
+            ),
+          ),
+        )
+        return turns.map(turn =>
+          applySarahManagedCloudHarnessFallback(
+            turn,
+            accountsByOwner.get(turn.ownerUserId) ?? [],
+          ),
+        )
+      },
       registry: khalaSyncMutatorRegistry,
       sql: client.sql,
     })

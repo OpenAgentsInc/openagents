@@ -233,6 +233,46 @@ export type CloudGcpAdmittedWorkContext = Readonly<{
   claudeProviderAuthGrant?: CloudRuntimeClaudeProviderAuthGrantRef | undefined
 }>
 
+type ManagedCloudProviderAvailability = Readonly<{
+  provider: 'chatgpt_codex' | 'google_gemini' | string
+  publicStatus: string
+  health: string
+  hasSecretRef: boolean
+}>
+
+const hasEligibleManagedCloudProvider = (
+  accounts: ReadonlyArray<ManagedCloudProviderAvailability>,
+  provider: 'chatgpt_codex' | 'google_gemini',
+): boolean =>
+  accounts.some(
+    account =>
+      account.provider === provider &&
+      account.publicStatus === 'connected' &&
+      account.health === 'healthy' &&
+      account.hasSecretRef,
+  )
+
+/**
+ * Keep Codex as Sarah's primary harness. Select the brokered Gemini-backed
+ * OpenCode harness only when Codex has no usable account and Gemini does.
+ * Selection occurs before the atomic turn claim, so the claimed harness cannot
+ * change during preparation or execution.
+ */
+export const applySarahManagedCloudHarnessFallback = (
+  turn: CloudGcpAdmittedWorkContext,
+  accounts: ReadonlyArray<ManagedCloudProviderAvailability>,
+): CloudGcpAdmittedWorkContext => {
+  if (
+    turn.harnessId !== undefined ||
+    !turn.turnId.startsWith('turn.sarah_cloud.') ||
+    hasEligibleManagedCloudProvider(accounts, 'chatgpt_codex') ||
+    !hasEligibleManagedCloudProvider(accounts, 'google_gemini')
+  ) {
+    return turn
+  }
+  return { ...turn, harnessId: 'opencode' }
+}
+
 export type ManagedAgentComputerGrantIssueInput = Readonly<{
   providerAccountRef: string
   requestedAction:

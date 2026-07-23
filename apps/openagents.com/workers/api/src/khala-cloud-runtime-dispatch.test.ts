@@ -11,6 +11,7 @@ import {
 } from './cloud/cloud-coding-session-routes'
 import {
   CLOUD_GCP_RUNTIME_DISPATCH_CLIENT_GROUP_ID,
+  applySarahManagedCloudHarnessFallback,
   dispatchCloudGcpRuntimeTurn,
   finalizeManagedCloudProviderLease,
   makeCloudCodingAdapterLaunchSeam,
@@ -86,6 +87,70 @@ describe('managed cloud queued turn projection', () => {
       }),
     ])
     expect(turns[0]).not.toHaveProperty('branch')
+  })
+})
+
+describe('Sarah managed cloud harness fallback', () => {
+  const turn: CloudGcpAdmittedWorkContext = {
+    commit: 'c'.repeat(40),
+    eventCount: 0,
+    ownerUserId: 'owner.fixture',
+    repo: 'OpenAgentsInc/openagents',
+    threadId: 'thread.sarah_cloud.fixture',
+    turnId: 'turn.sarah_cloud.fixture',
+    workContextRef: 'work_context.thread.sarah_cloud.fixture',
+  }
+  const account = (
+    provider: 'chatgpt_codex' | 'google_gemini',
+    overrides: Partial<{
+      health: string
+      publicStatus: string
+      hasSecretRef: boolean
+    }> = {},
+  ) => ({
+    health: overrides.health ?? 'healthy',
+    hasSecretRef: overrides.hasSecretRef ?? true,
+    provider,
+    publicStatus: overrides.publicStatus ?? 'connected',
+  })
+
+  test('keeps Codex primary when both providers are eligible', () => {
+    expect(
+      applySarahManagedCloudHarnessFallback(turn, [
+        account('chatgpt_codex'),
+        account('google_gemini'),
+      ]),
+    ).toBe(turn)
+  })
+
+  test('selects OpenCode before claim when Codex is dead and Gemini is eligible', () => {
+    expect(
+      applySarahManagedCloudHarnessFallback(turn, [
+        account('chatgpt_codex', { health: 'requires_reauth' }),
+        account('google_gemini'),
+      ]),
+    ).toEqual({ ...turn, harnessId: 'opencode' })
+  })
+
+  test('does not change non-Sarah turns, explicit harnesses, or no-fallback state', () => {
+    const gemini = account('google_gemini')
+    expect(
+      applySarahManagedCloudHarnessFallback(
+        { ...turn, turnId: 'turn.user.fixture' },
+        [gemini],
+      ),
+    ).toEqual({ ...turn, turnId: 'turn.user.fixture' })
+    expect(
+      applySarahManagedCloudHarnessFallback(
+        { ...turn, harnessId: 'claude-code' },
+        [gemini],
+      ),
+    ).toEqual({ ...turn, harnessId: 'claude-code' })
+    expect(
+      applySarahManagedCloudHarnessFallback(turn, [
+        account('google_gemini', { hasSecretRef: false }),
+      ]),
+    ).toBe(turn)
   })
 })
 
