@@ -343,11 +343,32 @@ if [ -z "$TURN_RUNNER" ]; then
   TURN_RUNNER="$WORK/turn-runner"
   (cd "$REPO_ROOT" && vp pack \
     apps/pylon/deploy/agent-computer/turn-runner.ts \
-    --out-dir "$WORK/turn-runner-build" --platform node --target node24)
+    --out-dir "$WORK/turn-runner-build" --platform node --target node24 \
+    --deps.always-bundle '.*')
   TURN_RUNNER="$WORK/turn-runner-build/turn-runner.mjs"
 fi
 [ -f "$TURN_RUNNER" ] || fail "turn-runner binary not found: $TURN_RUNNER"
 install_packed_node_bundle "$TURN_RUNNER" "turn-runner" "turn-runner.bundle"
+
+# Prove that the packed entry and every runtime dependency resolve inside the
+# sealed guest. An intentionally incomplete work context must reach the
+# turn-runner's typed failure closeout and write its public-safe result artifact.
+# A missing external workspace package, broken entry point, or incomplete chunk
+# set fails the bake here instead of producing an empty live microVM artifact.
+install -d "$MNT/qa/artifacts"
+printf '{}\n' > "$MNT/tmp/turn-runner-bake-probe.json"
+if chroot "$MNT" /usr/bin/env \
+  OA_ARTIFACT_DIR=/qa/artifacts \
+  /opt/agent/turn-runner /tmp/turn-runner-bake-probe.json \
+  >"$WORK/turn-runner-bake-probe.stdout" 2>"$WORK/turn-runner-bake-probe.stderr"; then
+  fail "turn-runner bake probe unexpectedly accepted an incomplete work context"
+fi
+jq -e \
+  '.schemaVersion == "openagents.agent_computer.turn_result.v1"
+   and .failureReasonRef == "agent_computer.turn_failed"' \
+  "$MNT/qa/artifacts/result.json" >/dev/null \
+  || fail "turn-runner bake probe did not emit the typed failure artifact"
+rm -rf "$MNT/qa/artifacts" "$MNT/tmp/turn-runner-bake-probe.json"
 
 # --- 9. retained portable-session controller ---------------------------------
 if [ -z "$PORTABLE_SESSION_CONTROL" ]; then

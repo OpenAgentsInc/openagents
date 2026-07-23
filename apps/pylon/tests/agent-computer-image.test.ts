@@ -63,4 +63,15 @@ describe("Agent Computer seven-harness image pins (#9193)", () => {
     expect(bake).not.toContain("XAI_API_KEY=");
     expect(bake).toContain('credentialMaterial": "runtime_only"');
   });
+
+  test("turn-runner bundle is self-contained and executes a typed bake probe", () => {
+    expect(bake).toContain("--deps.always-bundle '.*'");
+    expect(bake).toContain("turn-runner-bake-probe.json");
+    expect(bake).toContain(
+      '.schemaVersion == "openagents.agent_computer.turn_result.v1"',
+    );
+    expect(bake).toContain(
+      '.failureReasonRef == "agent_computer.turn_failed"',
+    );
+  });
 });
