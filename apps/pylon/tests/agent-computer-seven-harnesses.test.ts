@@ -4,10 +4,13 @@ import {
   AGENT_COMPUTER_HARNESS_IDS,
   classifyCodexExecFailure,
   classifyHarnessFailure,
+  codexExecArgs,
   HARNESS_RUNTIME_SECRET_MATERIAL_PATH,
   HARNESS_RUNTIME_SECRET_MATERIAL_SCHEMA,
   harnessExecArgs,
   harnessExecEnv,
+  harnessStagedChangeAdmission,
+  parseHarnessUsageReceipt,
   runHarnessTurn,
   runVerificationCommand,
   scanStagedDiffForCredentialMaterial,
@@ -72,6 +75,230 @@ describe('Agent Computer seven-harness runtime (#9193)', () => {
     ])
   })
 
+  test('pins the command shape for every harness', () => {
+    expect(codexExecArgs({
+      prompt: 'make the change',
+      workingDirectory: '/workspace',
+    })).toEqual([
+      'exec',
+      '--json',
+      '--skip-git-repo-check',
+      '--ignore-user-config',
+      '--dangerously-bypass-approvals-and-sandbox',
+      '--cd',
+      '/workspace',
+      'make the change',
+    ])
+    expect(harnessExecArgs({
+      harness: 'claude-code',
+      prompt: 'make the change',
+      workingDirectory: '/workspace',
+    })).toEqual([
+      '--print',
+      '--output-format',
+      'stream-json',
+      '--verbose',
+      '--dangerously-skip-permissions',
+      'make the change',
+    ])
+    expect(harnessExecArgs({
+      harness: 'cursor',
+      prompt: 'make the change',
+      workingDirectory: '/workspace',
+    })).toEqual([
+      '--print',
+      '--output-format',
+      'stream-json',
+      '--force',
+      '--trust',
+      '--workspace',
+      '/workspace',
+      'make the change',
+    ])
+    expect(harnessExecArgs({
+      harness: 'goose',
+      prompt: 'make the change',
+      workingDirectory: '/workspace',
+    })).toEqual(['run', '--no-session', '--text', 'make the change'])
+    expect(harnessExecArgs({
+      harness: 'opencode',
+      prompt: 'make the change',
+      workingDirectory: '/workspace',
+    })).toEqual([
+      'run',
+      '--model',
+      `google/${AGENT_COMPUTER_DEFAULT_GEMINI_MODEL}`,
+      '--format',
+      'json',
+      '--auto',
+      'make the change',
+    ])
+    expect(harnessExecArgs({
+      harness: 'pi',
+      prompt: 'make the change',
+      workingDirectory: '/workspace',
+    })).toEqual([
+      '--print',
+      '--mode',
+      'json',
+      '--no-session',
+      '--approve',
+      '--provider',
+      'google',
+      '--model',
+      AGENT_COMPUTER_DEFAULT_GEMINI_MODEL,
+      'make the change',
+    ])
+    expect(harnessExecArgs({
+      harness: 'grok',
+      prompt: 'make the change',
+      workingDirectory: '/workspace',
+    })).toEqual([
+      '--single',
+      'make the change',
+      '--output-format',
+      'streaming-json',
+      '--permission-mode',
+      'bypassPermissions',
+      '--cwd',
+      '/workspace',
+    ])
+  })
+
+  test.each([
+    [
+      'codex',
+      JSON.stringify({
+        type: 'turn.completed',
+        usage: {
+          cached_input_tokens: 10,
+          input_tokens: 100,
+          output_tokens: 20,
+          reasoning_output_tokens: 5,
+        },
+      }),
+      'codex.turn_completed.v1',
+      125,
+      ['cacheWriteInputTokens'],
+    ],
+    [
+      'claude-code',
+      JSON.stringify({
+        type: 'result',
+        usage: {
+          cache_creation_input_tokens: 7,
+          cache_read_input_tokens: 11,
+          input_tokens: 100,
+          output_tokens: 20,
+        },
+      }),
+      'claude_code.result.v1',
+      120,
+      ['reasoningTokens'],
+    ],
+    [
+      'opencode',
+      JSON.stringify({
+        type: 'step_finish',
+        part: {
+          tokens: {
+            cache: { read: 11, write: 7 },
+            input: 100,
+            output: 20,
+            reasoning: 5,
+            total: 125,
+          },
+        },
+      }),
+      'opencode.step_finish.v1',
+      125,
+      [],
+    ],
+    [
+      'pi',
+      JSON.stringify({
+        messages: [
+          {
+            role: 'assistant',
+            usage: {
+              cacheRead: 11,
+              cacheWrite: 7,
+              input: 100,
+              output: 20,
+              reasoning: 5,
+              totalTokens: 125,
+            },
+          },
+        ],
+        type: 'agent_end',
+      }),
+      'pi.agent_end.v1',
+      125,
+      [],
+    ],
+  ] as const)(
+    '%s parses its stable machine-readable exact usage receipt',
+    (harness, stdout, parserRef, totalTokens, unsupportedFields) => {
+      const receipt = parseHarnessUsageReceipt(harness, stdout)
+      expect(receipt).toMatchObject({
+        harness,
+        parserRef,
+        status: 'exact',
+        unsupportedFields,
+        usage: { totalTokens },
+      })
+      expect(JSON.stringify(receipt)).not.toContain(stdout)
+    },
+  )
+
+  test('Pi keeps an omitted optional reasoning field explicitly unsupported', () => {
+    const receipt = parseHarnessUsageReceipt('pi', JSON.stringify({
+      messages: [{
+        role: 'assistant',
+        usage: {
+          cacheRead: 11,
+          cacheWrite: 7,
+          input: 100,
+          output: 20,
+          totalTokens: 120,
+        },
+      }],
+      type: 'agent_end',
+    }))
+    expect(receipt).toMatchObject({
+      status: 'exact',
+      unsupportedFields: ['reasoningTokens'],
+    })
+    if (receipt.status === 'exact') {
+      expect(receipt.usage).not.toHaveProperty('reasoningTokens')
+    }
+  })
+
+  test.each(['cursor', 'goose', 'grok'] as const)(
+    '%s explicitly reports usage_unavailable instead of estimating tokens',
+    harness => {
+      expect(parseHarnessUsageReceipt(
+        harness,
+        '{"usage":{"input_tokens":100,"output_tokens":20}}',
+      )).toEqual({
+        harness,
+        reasonRef: 'harness.usage_unavailable',
+        status: 'usage_unavailable',
+      })
+    },
+  )
+
+  test.each(['codex', 'claude-code', 'opencode', 'pi'] as const)(
+    '%s reports usage_unavailable when its exact event is absent',
+    harness => {
+      expect(parseHarnessUsageReceipt(harness, '{"type":"text","text":"done"}')).toEqual({
+        harness,
+        reasonRef: 'harness.usage_unavailable',
+        status: 'usage_unavailable',
+      })
+    },
+  )
+
   test.each(['pi', 'opencode', 'goose'] as const)(
     '%s receives only its runtime Gemini key and pinned model',
     harness => {
@@ -92,6 +319,20 @@ describe('Agent Computer seven-harness runtime (#9193)', () => {
         expect(JSON.stringify(args)).toContain(AGENT_COMPUTER_DEFAULT_GEMINI_MODEL)
       }
       expect(Object.keys(env ?? {}).some(key => key.includes('TOKEN'))).toBe(false)
+      expect(Object.keys(env ?? {}).toSorted()).toEqual(
+        harness === 'pi'
+          ? ['GEMINI_API_KEY', 'HOME', 'PATH']
+          : harness === 'opencode'
+            ? ['GOOGLE_GENERATIVE_AI_API_KEY', 'HOME', 'PATH']
+            : [
+                'GOOGLE_API_KEY',
+                'GOOSE_DISABLE_KEYRING',
+                'GOOSE_MODEL',
+                'GOOSE_PROVIDER',
+                'HOME',
+                'PATH',
+              ],
+      )
     },
   )
 
@@ -99,7 +340,11 @@ describe('Agent Computer seven-harness runtime (#9193)', () => {
     expect(harnessExecEnv({
       harness: 'claude-code',
       claudeProviderEnv: { CLAUDE_CODE_OAUTH_TOKEN: 'claude-secret', UNRELATED: 'drop-me' },
-    })).toEqual(expect.objectContaining({ CLAUDE_CODE_OAUTH_TOKEN: 'claude-secret' }))
+    })).toEqual({
+      CLAUDE_CODE_OAUTH_TOKEN: 'claude-secret',
+      HOME: '/root',
+      PATH: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+    })
   })
 
   test.each(['cursor', 'grok'] as const)(
@@ -146,6 +391,13 @@ describe('Agent Computer seven-harness runtime (#9193)', () => {
       expect(serialized).not.toContain(forbidden)
     }
     expect(JSON.stringify(runtimeGrant)).not.toContain(secret)
+    expect(outcome).toMatchObject({
+      ok: true,
+      usageReceipt: {
+        reasonRef: 'harness.usage_unavailable',
+        status: 'usage_unavailable',
+      },
+    })
   })
 
   test('harness failures are typed and redacted', async () => {
@@ -270,5 +522,16 @@ describe('Agent Computer managed verification and credential scan', () => {
     expect(findings).toEqual(['credential.google_api_key'])
     expect(JSON.stringify(findings)).not.toContain(secret)
     expect(scanStagedDiffForCredentialMaterial('+const key = process.env.GEMINI_API_KEY')).toEqual([])
+  })
+
+  test('a coding harness requires at least one admitted staged file', () => {
+    expect(harnessStagedChangeAdmission([])).toEqual({
+      ok: false,
+      reasonRef: 'harness.staged_change_required',
+    })
+    expect(harnessStagedChangeAdmission(['src/change.ts'])).toEqual({
+      changedFileCount: 1,
+      ok: true,
+    })
   })
 })

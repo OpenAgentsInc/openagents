@@ -43,6 +43,7 @@ import {
   parseRepoFullName,
   runModelTurnReceipt,
   resolveRepositoryCommit,
+  requestedWritebackFailureReason,
   runWritebackForTurn,
   shortLivedOpenCodeAuthExpiresAt,
   usageIngestBody,
@@ -863,18 +864,22 @@ describe('turn-runner writeback: runWritebackForTurn', () => {
     expect(result.outcome.pullRequestNumber).toBe(3)
   })
 
-  test('PR open failure after a successful push degrades to branch_pushed', async () => {
+  test('PR open failure after a successful push remains a terminal requested-writeback failure', async () => {
     const { fetchImpl } = writebackFetch({
       pullsPost: new Response('{}', { status: 500 }),
       pullsList: new Response(JSON.stringify([]), { status: 200 }),
     })
     const { gitRun } = recordingGitRun()
     const result = await runWriteback(fetchImpl, gitRun)
-    expect(result.outcome.status).toBe('branch_pushed')
+    expect(result.outcome.status).toBe('failed')
+    expect(result.outcome.reasonRef).toBe('writeback.pull_request_failed')
     expect(result.outcome.pullRequestUrl).toBeUndefined()
+    expect(requestedWritebackFailureReason(result)).toBe(
+      'writeback.pull_request_failed',
+    )
   })
 
-  test('a rejected ingest (server gate blocked) surfaces recorded=false honestly', async () => {
+  test('a rejected ingest is a terminal requested-writeback failure', async () => {
     const { fetchImpl } = writebackFetch({
       ingest: new Response(
         JSON.stringify({ ok: false, decision: 'permission_blocked', reason: 'github_write_connection_required' }),
@@ -887,6 +892,16 @@ describe('turn-runner writeback: runWritebackForTurn', () => {
     expect(result.outcome.status).toBe('pull_request_opened')
     expect(result.recorded).toBe(false)
     expect(result.recordDecision).toBe('permission_blocked')
+    expect(requestedWritebackFailureReason(result)).toBe(
+      'writeback.record_failed',
+    )
+  })
+
+  test('a recorded writeback has no terminal failure reason', async () => {
+    const { fetchImpl } = writebackFetch()
+    const { gitRun } = recordingGitRun()
+    const result = await runWriteback(fetchImpl, gitRun)
+    expect(requestedWritebackFailureReason(result)).toBeNull()
   })
 })
 

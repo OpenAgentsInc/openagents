@@ -1156,6 +1156,15 @@ export const scanStagedDiffForCredentialMaterial = (stagedDiff: string): Readonl
     .filter(candidate => candidate.pattern.test(stagedDiff))
     .map(candidate => candidate.reasonRef)
 
+export const harnessStagedChangeAdmission = (
+  changedFiles: ReadonlyArray<string>,
+):
+  | { ok: true; changedFileCount: number }
+  | { ok: false; reasonRef: 'harness.staged_change_required' } =>
+  changedFiles.length > 0
+    ? { changedFileCount: changedFiles.length, ok: true }
+    : { ok: false, reasonRef: 'harness.staged_change_required' }
+
 const harnessBinaryPaths: Readonly<Record<NonCodexHarnessId, string>> = {
   'claude-code': '/usr/local/bin/claude',
   cursor: '/usr/local/bin/cursor-agent',
@@ -1174,7 +1183,18 @@ export const harnessExecArgs = (input: {
   const model = input.model ?? AGENT_COMPUTER_DEFAULT_GEMINI_MODEL
   switch (input.harness) {
     case 'pi':
-      return ['--print', '--no-session', '--approve', '--provider', 'google', '--model', model, input.prompt]
+      return [
+        '--print',
+        '--mode',
+        'json',
+        '--no-session',
+        '--approve',
+        '--provider',
+        'google',
+        '--model',
+        model,
+        input.prompt,
+      ]
     case 'opencode':
       return ['run', '--model', `google/${model}`, '--format', 'json', '--auto', input.prompt]
     case 'goose':
@@ -1362,6 +1382,7 @@ export type HarnessTurnOutcome =
       stdoutDigest: string
       stderrDigest: string
       runtimeSecretRef: string | null
+      usageReceipt: HarnessUsageReceipt
     }
   | {
       ok: false
@@ -1378,6 +1399,248 @@ export type HarnessTurnOutcome =
       stderrDigest?: string
       brokerStatus?: number | null
     }
+
+export type HarnessExactUsage = {
+  inputTokens: number
+  outputTokens: number
+  cacheReadInputTokens: number
+  totalTokens: number
+  reasoningTokens?: number
+  cacheWriteInputTokens?: number
+}
+
+export type HarnessUsageField =
+  | 'reasoningTokens'
+  | 'cacheWriteInputTokens'
+
+export type HarnessUsageReceipt =
+  | {
+      status: 'exact'
+      harness: AgentComputerHarnessId
+      parserRef:
+        | 'codex.turn_completed.v1'
+        | 'claude_code.result.v1'
+        | 'opencode.step_finish.v1'
+        | 'pi.agent_end.v1'
+      usageRef: string
+      usage: HarnessExactUsage
+      unsupportedFields: ReadonlyArray<HarnessUsageField>
+    }
+  | {
+      status: 'usage_unavailable'
+      harness: AgentComputerHarnessId
+      reasonRef: 'harness.usage_unavailable'
+    }
+
+const jsonLineRecords = (stdout: string): ReadonlyArray<Record<string, unknown>> => {
+  const records: Array<Record<string, unknown>> = []
+  for (const line of stdout.split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed.startsWith('{')) continue
+    try {
+      const value = JSON.parse(trimmed) as unknown
+      if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+        records.push(value as Record<string, unknown>)
+      }
+    } catch {
+      // A CLI can mix a banner with its JSONL stream. Ignore non-JSON lines.
+    }
+  }
+  return records
+}
+
+const finiteTokenOrNull = (value: unknown): number | null =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? Math.trunc(value)
+    : null
+
+/**
+ * Parse only stable, machine-readable usage contracts. Exact receipts identify
+ * each field that the CLI does not report. A successful process without an
+ * exact total gets `usage_unavailable`. The runner never derives token counts
+ * from output bytes or text.
+ */
+export const parseHarnessUsageReceipt = (
+  harness: AgentComputerHarnessId,
+  stdout: string,
+): HarnessUsageReceipt => {
+  if (harness === 'codex') {
+    const usage = parseCodexExecJsonl(stdout).usage
+    if (usage !== null && usage.inputTokens + usage.outputTokens > 0) {
+      return {
+        harness,
+        parserRef: 'codex.turn_completed.v1',
+        status: 'exact',
+        usage: {
+          cacheReadInputTokens: usage.cacheReadTokens,
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+          reasoningTokens: usage.reasoningTokens,
+          totalTokens: usage.totalTokens,
+        },
+        unsupportedFields: ['cacheWriteInputTokens'],
+        usageRef: `usage.harness.codex.${randomUUID()}`,
+      }
+    }
+  } else if (harness === 'claude-code') {
+    const result = jsonLineRecords(stdout).findLast(record => record.type === 'result')
+    const usage = result?.usage
+    if (usage !== null && typeof usage === 'object' && !Array.isArray(usage)) {
+      const record = usage as Record<string, unknown>
+      const inputTokens = finiteTokenOrNull(record.input_tokens)
+      const outputTokens = finiteTokenOrNull(record.output_tokens)
+      if (inputTokens !== null && outputTokens !== null && inputTokens + outputTokens > 0) {
+        const cacheReadInputTokens =
+          finiteTokenOrNull(record.cache_read_input_tokens) ?? 0
+        const cacheWriteInputTokens =
+          finiteTokenOrNull(record.cache_creation_input_tokens) ?? 0
+        return {
+          harness,
+          parserRef: 'claude_code.result.v1',
+          status: 'exact',
+          usage: {
+            cacheReadInputTokens,
+            cacheWriteInputTokens,
+            inputTokens,
+            outputTokens,
+            totalTokens: inputTokens + outputTokens,
+          },
+          unsupportedFields: ['reasoningTokens'],
+          usageRef: `usage.harness.claude_code.${randomUUID()}`,
+        }
+      }
+    }
+  } else if (harness === 'opencode') {
+    const finish = jsonLineRecords(stdout).findLast(
+      record => record.type === 'step_finish',
+    )
+    const part =
+      finish?.part !== null &&
+      typeof finish?.part === 'object' &&
+      !Array.isArray(finish.part)
+        ? finish.part as Record<string, unknown>
+        : undefined
+    const tokens =
+      part?.tokens !== null &&
+      typeof part?.tokens === 'object' &&
+      !Array.isArray(part.tokens)
+        ? part.tokens as Record<string, unknown>
+        : undefined
+    const cache =
+      tokens?.cache !== null &&
+      typeof tokens?.cache === 'object' &&
+      !Array.isArray(tokens.cache)
+        ? tokens.cache as Record<string, unknown>
+        : undefined
+    const inputTokens = finiteTokenOrNull(tokens?.input)
+    const outputTokens = finiteTokenOrNull(tokens?.output)
+    const reasoningTokens = finiteTokenOrNull(tokens?.reasoning)
+    const cacheReadInputTokens = finiteTokenOrNull(cache?.read)
+    const cacheWriteInputTokens = finiteTokenOrNull(cache?.write)
+    const totalTokens = finiteTokenOrNull(tokens?.total)
+    if (
+      inputTokens !== null &&
+      outputTokens !== null &&
+      reasoningTokens !== null &&
+      cacheReadInputTokens !== null &&
+      cacheWriteInputTokens !== null &&
+      totalTokens !== null &&
+      totalTokens > 0
+    ) {
+      return {
+        harness,
+        parserRef: 'opencode.step_finish.v1',
+        status: 'exact',
+        usage: {
+          cacheReadInputTokens,
+          cacheWriteInputTokens,
+          inputTokens,
+          outputTokens,
+          reasoningTokens,
+          totalTokens,
+        },
+        unsupportedFields: [],
+        usageRef: `usage.harness.opencode.${randomUUID()}`,
+      }
+    }
+  } else if (harness === 'pi') {
+    const agentEnd = jsonLineRecords(stdout).findLast(
+      record => record.type === 'agent_end',
+    )
+    const messages = Array.isArray(agentEnd?.messages) ? agentEnd.messages : []
+    const totals: HarnessExactUsage = {
+      cacheReadInputTokens: 0,
+      cacheWriteInputTokens: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+    }
+    let reasoningTokens = 0
+    let reasoningAvailable = true
+    let assistantUsageCount = 0
+    for (const message of messages) {
+      if (
+        message === null ||
+        typeof message !== 'object' ||
+        Array.isArray(message) ||
+        (message as Record<string, unknown>).role !== 'assistant'
+      ) {
+        continue
+      }
+      const usage = (message as Record<string, unknown>).usage
+      if (usage === null || typeof usage !== 'object' || Array.isArray(usage)) {
+        continue
+      }
+      const record = usage as Record<string, unknown>
+      const inputTokens = finiteTokenOrNull(record.input)
+      const outputTokens = finiteTokenOrNull(record.output)
+      const cacheReadInputTokens = finiteTokenOrNull(record.cacheRead)
+      const cacheWriteInputTokens = finiteTokenOrNull(record.cacheWrite)
+      const totalTokens = finiteTokenOrNull(record.totalTokens)
+      if (
+        inputTokens === null ||
+        outputTokens === null ||
+        cacheReadInputTokens === null ||
+        cacheWriteInputTokens === null ||
+        totalTokens === null
+      ) {
+        return {
+          harness,
+          reasonRef: 'harness.usage_unavailable',
+          status: 'usage_unavailable',
+        }
+      }
+      totals.inputTokens += inputTokens
+      totals.outputTokens += outputTokens
+      totals.cacheReadInputTokens += cacheReadInputTokens
+      totals.cacheWriteInputTokens += cacheWriteInputTokens
+      const messageReasoningTokens = finiteTokenOrNull(record.reasoning)
+      if (messageReasoningTokens === null) {
+        reasoningAvailable = false
+      } else {
+        reasoningTokens += messageReasoningTokens
+      }
+      totals.totalTokens += totalTokens
+      assistantUsageCount += 1
+    }
+    if (assistantUsageCount > 0 && totals.totalTokens > 0) {
+      if (reasoningAvailable) totals.reasoningTokens = reasoningTokens
+      return {
+        harness,
+        parserRef: 'pi.agent_end.v1',
+        status: 'exact',
+        usage: totals,
+        unsupportedFields: reasoningAvailable ? [] : ['reasoningTokens'],
+        usageRef: `usage.harness.pi.${randomUUID()}`,
+      }
+    }
+  }
+  return {
+    harness,
+    reasonRef: 'harness.usage_unavailable',
+    status: 'usage_unavailable',
+  }
+}
 
 const defaultHarnessExecRun: HarnessExecRun = input => {
   const result = spawnSync(input.binaryPath, input.args, {
@@ -1477,6 +1740,7 @@ export const runHarnessTurn = async (
     runtimeSecretRef: runtimeSecret?.secretRef ?? null,
     stderrDigest: sha256Text(result.stderr),
     stdoutDigest: sha256Text(result.stdout),
+    usageReceipt: parseHarnessUsageReceipt(args.config.harness, result.stdout),
   }
 }
 
@@ -2009,6 +2273,15 @@ export type WritebackTurnResult = {
   recordStatus?: number
 }
 
+export const requestedWritebackFailureReason = (
+  result: WritebackTurnResult,
+): string | null => {
+  if (result.outcome.status === 'failed') {
+    return result.outcome.reasonRef ?? 'writeback.failed'
+  }
+  return result.recorded ? null : 'writeback.record_failed'
+}
+
 /**
  * Run the branch/PR writeback for one turn: broker credential -> commit -> push
  * scoped branch (never force / never base) -> optional PR -> POST the outcome to
@@ -2119,8 +2392,8 @@ export const runWritebackForTurn = async (
     return post(failed(classifyPushFailure(push.stderr)))
   }
 
-  // 4. Optionally open a PR (user-controlled). A PR failure after a successful
-  //    push degrades honestly to `branch_pushed` (the branch really is there).
+  // 4. Optionally open a PR (user-controlled). The branch exists after a push,
+  //    but a requested PR is still incomplete when the API call fails.
   if (wb.mode === 'pull_request') {
     const pr = await openPullRequest(
       { baseBranch: wb.baseBranch, body: args.prBody, branch: wb.branch, credential, repositoryFullName: wb.repositoryFullName, title: args.prTitle },
@@ -2137,7 +2410,7 @@ export const runWritebackForTurn = async (
         status: pr.reused ? 'pull_request_reused' : 'pull_request_opened',
       })
     }
-    // Fall through to branch_pushed.
+    return post(failed('writeback.pull_request_failed'))
   }
 
   return post({
@@ -2521,6 +2794,7 @@ async function main() {
       stdoutDigest: harnessTurnOutcome.stdoutDigest,
       stderrDigest: harnessTurnOutcome.stderrDigest,
       runtimeSecretRef: harnessTurnOutcome.runtimeSecretRef,
+      usageReceipt: harnessTurnOutcome.usageReceipt,
     })
     git(ws.workingDirectory, ['add', '-A'])
   } else {
@@ -2543,6 +2817,20 @@ async function main() {
   const changedFiles = git(ws.workingDirectory, ['diff', '--cached', '--name-only'])
     .split('\n')
     .filter(line => line.trim().length > 0)
+  if (wc.harnessTurn !== undefined) {
+    const admission = harnessStagedChangeAdmission(changedFiles)
+    emit({
+      kind: 'tool.result',
+      turnId,
+      tool: 'harness.staged_change.admit',
+      harness: wc.harnessTurn.harness,
+      status: admission.ok ? 'ok' : 'failed',
+      ...(admission.ok
+        ? { changedFileCount: admission.changedFileCount }
+        : { reasonRef: admission.reasonRef }),
+    })
+    if (!admission.ok) throw new Error(admission.reasonRef)
+  }
   if (wc.codexTurn === undefined && wc.harnessTurn === undefined) {
     emit({ kind: 'text.completed', turnId, text: `Checked out ${wc.repo}@${head.slice(0, 12)} and staged a 1-file change.\n${diff}` })
   }
@@ -2607,7 +2895,8 @@ async function main() {
 
   // 3b. MM-C5 (#8477) branch/PR writeback under the user's GitHub authorization.
   //     Only when the work-context carries a `writeback` block AND there is a
-  //     real staged change to publish. Fail-soft + token-safe. A CX-3 codex
+  //     real staged change to publish. A requested writeback is terminal when
+  //     publish or recording fails. A CX-3 codex
   //     turn supplies the same identity fields (agent bearer + owner) when no
   //     `inference` block is present, so a codex work unit can publish its
   //     branch/PR too.
@@ -2625,7 +2914,13 @@ async function main() {
             : { pylonRef: wc.codexTurn.pylonRef }),
         })
   let writebackResult: WritebackTurnResult | null = null
-  if (wc.writeback && writebackIdentity && changedFiles.length > 0) {
+  if (wc.writeback !== undefined) {
+    if (writebackIdentity === undefined) {
+      throw new Error('writeback.identity_required')
+    }
+    if (changedFiles.length === 0) {
+      throw new Error('writeback.staged_change_required')
+    }
     emit({
       kind: 'tool.call',
       turnId,
@@ -2671,6 +2966,10 @@ async function main() {
         ? {}
         : { recordedEventId: writebackResult.recordEventId }),
     })
+    const writebackFailureReason = requestedWritebackFailureReason(writebackResult)
+    if (writebackFailureReason !== null) {
+      throw new Error(writebackFailureReason)
+    }
   }
 
   // 4. Result bundle (copied out by the host provisioner). Token-safe: the
@@ -2760,6 +3059,7 @@ async function main() {
               stdoutDigest: harnessTurnOutcome.stdoutDigest,
               stderrDigest: harnessTurnOutcome.stderrDigest,
               runtimeSecretRef: harnessTurnOutcome.runtimeSecretRef,
+              usageReceipt: harnessTurnOutcome.usageReceipt,
             }
           : {
               ok: false,
@@ -2828,7 +3128,7 @@ if (import.meta.main) {
   main().catch(async (error) => {
     const errorText = String(error)
     const failureReasonRef = activeFailureReasonRef ??
-      /(?:codex|workspace|harness|verification|credential)\.[A-Za-z0-9._:-]+/.exec(errorText)?.[0] ??
+      /(?:codex|workspace|harness|verification|credential|writeback)\.[A-Za-z0-9._:-]+/.exec(errorText)?.[0] ??
       'agent_computer.turn_failed'
     const full = {
       schema: 'openagents.khala_runtime_event.v1',
