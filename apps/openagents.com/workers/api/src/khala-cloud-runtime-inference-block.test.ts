@@ -77,6 +77,8 @@ describe('managed Agent Computer harness selection', () => {
     const geminiBlocks = buildManagedAgentComputerHarnessBlocks({
       agentToken: 'short-lived-agent-token',
       baseUrl: 'https://openagents.example',
+      ownerUserId: 'owner.fixture',
+      pylonRef: 'pylon.agent-computer.fixture',
       runtimeSecretGrant: {
         grantRef: 'grant.gemini.owner.turn-1',
         kind: 'gemini_api_key',
@@ -94,6 +96,8 @@ describe('managed Agent Computer harness selection', () => {
         agentToken: 'short-lived-agent-token',
         grantRef: 'grant.gemini.owner.turn-1',
         kind: 'gemini_api_key',
+        ownerUserId: 'owner.fixture',
+        pylonRef: 'pylon.agent-computer.fixture',
         providerAccountRef: 'provider-account.gemini.owner',
         runnerSessionId: 'turn-1',
         secretRef: 'secret-manager:openagents-gemini-api-key',
@@ -107,6 +111,7 @@ describe('managed Agent Computer harness selection', () => {
     const claudeBlocks = buildManagedAgentComputerHarnessBlocks({
       agentToken: 'short-lived-agent-token',
       baseUrl: 'https://openagents.example',
+      ownerUserId: 'owner.fixture',
       claudeProviderAuthGrant: {
         authGrantRef: 'grant.claude.owner.turn-1',
         providerAccountRef: 'provider-account.claude.owner',

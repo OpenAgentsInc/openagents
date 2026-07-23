@@ -159,6 +159,8 @@ export type CloudRuntimeHarnessRuntimeSecretGrant = Readonly<{
   baseUrl: string
   agentToken: string
   grantRef: string
+  ownerUserId: string
+  pylonRef: string
   providerAccountRef: string
   runnerSessionId: string
   secretRef: string
@@ -196,6 +198,8 @@ export const buildManagedAgentComputerHarnessBlocks = (
     selection: ManagedAgentComputerHarnessSelection
     baseUrl: string
     agentToken: string
+    ownerUserId: string
+    pylonRef?: string | undefined
     turnId: string
     runtimeSecretGrant?: CloudRuntimeHarnessSecretGrantRef | undefined
     claudeProviderAuthGrant?: CloudRuntimeClaudeProviderAuthGrantRef | undefined
@@ -234,7 +238,10 @@ export const buildManagedAgentComputerHarnessBlocks = (
   if (
     grant === undefined ||
     grant.kind !== 'gemini_api_key' ||
-    grant.runnerSessionId !== input.turnId
+    grant.runnerSessionId !== input.turnId ||
+    input.ownerUserId.length === 0 ||
+    input.pylonRef === undefined ||
+    input.pylonRef.length === 0
   ) {
     throw new ManagedAgentComputerHarnessConfigurationError({
       harnessId: selection.harnessId,
@@ -250,6 +257,8 @@ export const buildManagedAgentComputerHarnessBlocks = (
         baseUrl: input.baseUrl,
         grantRef: grant.grantRef,
         kind: grant.kind,
+        ownerUserId: input.ownerUserId,
+        pylonRef: input.pylonRef,
         providerAccountRef: grant.providerAccountRef,
         runnerSessionId: grant.runnerSessionId,
         secretRef: grant.secretRef,

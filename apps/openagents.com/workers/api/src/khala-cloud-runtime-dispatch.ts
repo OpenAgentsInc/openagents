@@ -961,6 +961,10 @@ export const dispatchCloudGcpRuntimeTurn = async (
     const harnessBlocks = buildManagedAgentComputerHarnessBlocks({
       agentToken: minted.rawToken,
       baseUrl: resolved.inference.baseUrl,
+      ownerUserId: ownerId,
+      ...(resolved.inference.pylonRef === undefined
+        ? {}
+        : { pylonRef: resolved.inference.pylonRef }),
       selection: authorizedHarness,
       turnId: authorizedTurn.turnId,
       ...(authorizedTurn.harnessRuntimeSecretGrant === undefined
