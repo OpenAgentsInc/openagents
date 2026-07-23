@@ -39133,27 +39133,6 @@
       ]
     },
     {
-      "path": "docs/sarah/2026-07-22-episode-261-script.md",
-      "ste_issue": 9,
-      "ste_mode": "descriptive",
-      "ste_glossary_revision": "openagents-ste-glossary-v1",
-      "ste_status": "inspected",
-      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-      "ste_reviewed_at": "2026-07-19T22:00:00Z",
-      "owner": "OpenAgents documentation",
-      "risk": "legacy",
-      "source": null,
-      "replacement": null,
-      "ste_audience": "agent",
-      "ste_agent_compact_revision": "openagents-agent-compact-v1",
-      "ste_accepted_screening_rules": [
-        "STE-2.4",
-        "STE-3.6",
-        "STE-5.1",
-        "STE-8.2"
-      ]
-    },
-    {
       "path": "docs/sarah/2026-07-22-note-to-sarah-memory-upgrade.md",
       "ste_issue": 9,
       "ste_mode": "descriptive",
@@ -46912,6 +46891,19 @@
     },
     {
       "path": "docs/transcripts/260.md",
+      "ste_issue": 9,
+      "ste_mode": "source-data",
+      "ste_glossary_revision": "openagents-ste-glossary-v1",
+      "ste_status": "source-data",
+      "ste_reviewer": null,
+      "ste_reviewed_at": null,
+      "owner": "OpenAgents documentation",
+      "risk": "source-data",
+      "source": "Preserved transcript archive",
+      "replacement": null
+    },
+    {
+      "path": "docs/transcripts/261.md",
       "ste_issue": 9,
       "ste_mode": "source-data",
       "ste_glossary_revision": "openagents-ste-glossary-v1",

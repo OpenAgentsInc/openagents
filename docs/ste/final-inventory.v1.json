@@ -39827,28 +39827,6 @@
       }
     },
     {
-      "path": "docs/sarah/2026-07-22-episode-261-script.md",
-      "sha256": "2ea148c72e84bd76068014f301f87e3ce2608342f87f97407d5550e09abc7073",
-      "reason": "Final review of a converted document",
-      "profile": {
-        "ste_mode": "descriptive",
-        "risk": "legacy",
-        "source": null,
-        "replacement": null,
-        "ste_audience": "agent",
-        "ste_agent_compact_revision": "openagents-agent-compact-v1",
-        "ste_accepted_screening_rules": [
-          "STE-2.4",
-          "STE-3.6",
-          "STE-5.1",
-          "STE-8.2"
-        ],
-        "ste_status": "inspected",
-        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-        "ste_reviewed_at": "2026-07-19T22:00:00Z"
-      }
-    },
-    {
       "path": "docs/sarah/2026-07-22-note-to-sarah-memory-upgrade.md",
       "sha256": "4e6396b3b3f24819e35d3333a38a08258d06df3f5c3f6cee35d41ee78e47e617",
       "reason": "Final review of a converted document",
@@ -47289,6 +47267,18 @@
     {
       "path": "docs/transcripts/260.md",
       "sha256": "6c413845a8fc9da64153cfcbf96d4042d1360b924050221095b478cc41ae3aed",
+      "reason": "Preserved transcript archive",
+      "profile": {
+        "ste_mode": "source-data",
+        "risk": "source-data",
+        "source": "Preserved transcript archive",
+        "replacement": null,
+        "ste_status": "source-data"
+      }
+    },
+    {
+      "path": "docs/transcripts/261.md",
+      "sha256": "3281fe054f8203921c75a6a00013b9fa6a243a9099d8c4f1e4da8d355ad1276c",
       "reason": "Preserved transcript archive",
       "profile": {
         "ste_mode": "source-data",
