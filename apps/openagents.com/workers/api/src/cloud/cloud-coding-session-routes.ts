@@ -193,6 +193,35 @@ export const AgentComputerLifecycleState = S.Literals([
 export type AgentComputerLifecycleState =
   typeof AgentComputerLifecycleState.Type
 
+export const AgentComputerGuestFailureClass = S.Literals([
+  'account_exhausted',
+  'account_rate_limited',
+  'auth_rejected',
+  'model_unavailable',
+  'network_failed',
+  'exec_timeout',
+  'exec_failed',
+])
+export type AgentComputerGuestFailureClass =
+  typeof AgentComputerGuestFailureClass.Type
+
+export const AgentComputerGuestLaunchFailureReason = S.Literals([
+  'agent_computer_guest_account_exhausted',
+  'agent_computer_guest_account_rate_limited',
+  'agent_computer_guest_auth_rejected',
+  'agent_computer_guest_model_unavailable',
+  'agent_computer_guest_network_failed',
+  'agent_computer_guest_exec_timeout',
+  'agent_computer_guest_exec_failed',
+])
+export type AgentComputerGuestLaunchFailureReason =
+  typeof AgentComputerGuestLaunchFailureReason.Type
+
+export const agentComputerGuestLaunchFailureReason = (
+  failureClass: AgentComputerGuestFailureClass,
+): AgentComputerGuestLaunchFailureReason =>
+  `agent_computer_guest_${failureClass}`
+
 export type CloudCodingSession = Readonly<{
   sessionId: string
   accountRef: string
@@ -692,12 +721,18 @@ export class CloudCodingAdapterError extends Error {
   readonly _tag = 'CloudCodingAdapterError'
   readonly adapterId: string
   readonly reason: string
+  readonly guestFailureClass: AgentComputerGuestFailureClass | undefined
 
-  constructor(input: Readonly<{ adapterId: string; reason: string }>) {
+  constructor(input: Readonly<{
+    adapterId: string
+    reason: string
+    guestFailureClass?: AgentComputerGuestFailureClass | undefined
+  }>) {
     super(`[${input.adapterId}] ${input.reason}`)
     this.name = 'CloudCodingAdapterError'
     this.adapterId = input.adapterId
     this.reason = input.reason
+    this.guestFailureClass = input.guestFailureClass
   }
 }
 
@@ -885,7 +920,7 @@ const agentComputerIsolationPolicy = (
   },
 })
 
-type CloudPlacementEvent = Readonly<{
+export type CloudPlacementEvent = Readonly<{
   kind: string
   receiptRefs: ReadonlyArray<string>
   artifactRefs: ReadonlyArray<string>
@@ -971,6 +1006,47 @@ const cleanupReceiptFromEvent = (
   event: CloudPlacementEvent,
 ): Record<string, unknown> | undefined =>
   recordFromUnknown(event.data.cleanupReceipt)
+
+const agentComputerGuestFailureClassFromUnknown = (
+  value: unknown,
+): AgentComputerGuestFailureClass | undefined => {
+  switch (value) {
+    case 'account_exhausted':
+    case 'account_rate_limited':
+    case 'auth_rejected':
+    case 'model_unavailable':
+    case 'network_failed':
+    case 'exec_timeout':
+    case 'exec_failed':
+      return value
+    default:
+      return undefined
+  }
+}
+
+export const guestFailureClassFromTerminalPlacementEvents = (
+  events: ReadonlyArray<CloudPlacementEvent>,
+): AgentComputerGuestFailureClass | undefined => {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index]
+    if (event === undefined) continue
+    const nestedResult =
+      recordFromUnknown(event.data.turnResult) ??
+      recordFromUnknown(event.data.turn_result)
+    for (const value of [
+      event.data.guestFailureClass,
+      event.data.guest_failure_class,
+      event.data.failureClass,
+      event.data.failure_class,
+      nestedResult?.failureClass,
+      nestedResult?.failure_class,
+    ]) {
+      const failureClass = agentComputerGuestFailureClassFromUnknown(value)
+      if (failureClass !== undefined) return failureClass
+    }
+  }
+  return undefined
+}
 
 const lifecycleReceiptRefsFromEvents = (
   events: ReadonlyArray<CloudPlacementEvent>,
@@ -1382,10 +1458,18 @@ export const makeCloudControlCloudCodingAdapter = (
             )
           }
           if (placement.status !== 'completed') {
+            const guestFailureClass =
+              guestFailureClassFromTerminalPlacementEvents(placement.events)
             return yield* Effect.fail(
               new CloudCodingAdapterError({
                 adapterId: LIVE_CLOUD_CODING_ADAPTER_ID,
-                reason: `cloud_job_terminal_${placement.status}`,
+                reason:
+                  guestFailureClass === undefined
+                    ? `cloud_job_terminal_${placement.status}`
+                    : agentComputerGuestLaunchFailureReason(guestFailureClass),
+                ...(guestFailureClass === undefined
+                  ? {}
+                  : { guestFailureClass }),
               }),
             )
           }

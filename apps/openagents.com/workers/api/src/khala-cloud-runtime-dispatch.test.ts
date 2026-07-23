@@ -12,9 +12,11 @@ import {
 import {
   CLOUD_GCP_RUNTIME_DISPATCH_CLIENT_GROUP_ID,
   dispatchCloudGcpRuntimeTurn,
+  finalizeManagedCloudProviderLease,
   makeCloudCodingAdapterLaunchSeam,
   managedAgentComputerGrantIssueInput,
   planCloudGcpRuntimeAccountDispatch,
+  providerFailoverFailureClassForGuestFailure,
   readQueuedManagedCloudTurns,
   runCloudGcpRuntimeDispatch,
   resolveManagedCloudRepositoryCommit,
@@ -24,6 +26,7 @@ import {
   type CloudGcpRuntimeDispatchDependencies,
 } from './khala-cloud-runtime-dispatch'
 import { decodeWorkContextB64 } from './khala-cloud-runtime-inference-block'
+import type { ProviderAccountLeaseService } from './provider-account-lease-service'
 
 // A no-op SQL (mint/revoke are faked, executePush is faked; the SQL handle is
 // only passed through, never queried directly in these tests).
@@ -223,6 +226,112 @@ const reset = () => {
   mintCalls.length = 0
   revokeCalls.length = 0
 }
+
+describe('managed cloud terminal provider failover', () => {
+  test.each([
+    ['auth_rejected', 'token_invalidated'],
+    ['account_exhausted', 'quota_exhausted'],
+    ['account_rate_limited', 'rate_limited'],
+    ['network_failed', 'provider_outage'],
+    ['model_unavailable', 'provider_outage'],
+    ['exec_timeout', 'launch_timeout'],
+    ['exec_failed', 'runner_failure'],
+  ] as const)('maps %s to %s', (guestFailureClass, providerFailureClass) => {
+    expect(
+      providerFailoverFailureClassForGuestFailure(guestFailureClass),
+    ).toBe(providerFailureClass)
+  })
+
+  test('records one terminal failover receipt instead of generically releasing the lease', async () => {
+    const failovers: Array<Parameters<ProviderAccountLeaseService['failover']>[0]> = []
+    const releases: Array<Parameters<ProviderAccountLeaseService['release']>[0]> = []
+    const service: Pick<ProviderAccountLeaseService, 'failover' | 'release'> = {
+      failover: input => {
+        failovers.push(input)
+        return Promise.resolve(undefined)
+      },
+      release: input => {
+        releases.push(input)
+        return Promise.resolve(true)
+      },
+    }
+
+    await finalizeManagedCloudProviderLease(
+      service,
+      {
+        ...admitted,
+        providerAccountLeaseRef: 'provider-account-lease.terminal-1',
+      },
+      {
+        outcome: 'failed',
+        providerFailureClass: 'token_invalidated',
+        reason: 'agent_computer_guest_auth_rejected',
+        tokenRevoked: true,
+      },
+      '2026-07-23T12:00:00.000Z',
+    )
+
+    expect(releases).toEqual([])
+    expect(failovers).toEqual([
+      {
+        assignmentId: admitted.turnId,
+        attemptNumber: 1,
+        expiresAt: '2026-07-23T12:35:00.000Z',
+        failureClass: 'token_invalidated',
+        maxAttempts: 1,
+        now: '2026-07-23T12:00:00.000Z',
+        orderId: null,
+        previousLeaseRef: 'provider-account-lease.terminal-1',
+        requestedAction: 'agent_computer_codex_turn',
+        runId: admitted.threadId,
+        selectedByActor: 'sarah_managed_cloud_dispatch',
+        source: 'managed_cloud_runtime_terminal_failover',
+        userId: admitted.ownerUserId,
+      },
+    ])
+  })
+
+  test('keeps the existing release path for an ordinary placement failure', async () => {
+    const failovers: Array<Parameters<ProviderAccountLeaseService['failover']>[0]> = []
+    const releases: Array<Parameters<ProviderAccountLeaseService['release']>[0]> = []
+    const service: Pick<ProviderAccountLeaseService, 'failover' | 'release'> = {
+      failover: input => {
+        failovers.push(input)
+        return Promise.resolve(undefined)
+      },
+      release: input => {
+        releases.push(input)
+        return Promise.resolve(true)
+      },
+    }
+
+    await finalizeManagedCloudProviderLease(
+      service,
+      {
+        ...admitted,
+        providerAccountLeaseRef: 'provider-account-lease.ordinary-1',
+      },
+      {
+        outcome: 'failed',
+        reason: 'capacity_unavailable',
+        tokenRevoked: true,
+      },
+      '2026-07-23T12:00:00.000Z',
+    )
+
+    expect(failovers).toEqual([])
+    expect(releases).toEqual([
+      {
+        failureClass: 'capacity_unavailable',
+        leaseRef: 'provider-account-lease.ordinary-1',
+        now: '2026-07-23T12:00:00.000Z',
+        status: 'failed',
+        terminalOutcome: 'managed_cloud_capacity_unavailable',
+        userId: admitted.ownerUserId,
+      },
+    ])
+  })
+})
 
 describe('dispatchCloudGcpRuntimeTurn', () => {
   test('derives an owner-scoped provider grant request from the claimed turn', () => {
@@ -532,13 +641,18 @@ describe('dispatchCloudGcpRuntimeTurn', () => {
     reset()
     const push = makeRecordingExecutePush()
     const refuse: CloudGcpPlacementLaunchFn = () =>
-      Promise.resolve({ ok: false, reason: 'cloud_placement_http_503' })
+      Promise.resolve({
+        ok: false,
+        providerFailureClass: 'provider_outage',
+        reason: 'agent_computer_guest_network_failed',
+      })
     const result = await dispatchCloudGcpRuntimeTurn(
       baseDeps({ executePush: push.executePush, launch: refuse }),
       admitted,
     )
     expect(result.outcome).toBe('failed')
-    expect(result.reason).toBe('cloud_placement_http_503')
+    expect(result.reason).toBe('agent_computer_guest_network_failed')
+    expect(result.providerFailureClass).toBe('provider_outage')
     expect(result.tokenRevoked).toBe(true)
     expect(revokeCalls).toEqual(['agentcred.seam-a.1'])
     expect(push.recorded.map(r => r.kind)).toEqual(['turn.started', 'turn.finished'])
@@ -962,5 +1076,28 @@ describe('makeCloudCodingAdapterLaunchSeam', () => {
       ok: false,
       reason: 'cloud_gce_provisioning_not_armed',
     })
+  })
+
+  test('maps an allowlisted guest failure to a provider failover class without raw detail', async () => {
+    const adapter: CloudCodingRuntimeAdapter = {
+      id: 'fake',
+      get: () => Effect.sync((): undefined => undefined),
+      launch: () =>
+        Effect.fail(
+          new CloudCodingAdapterError({
+            adapterId: 'openagents-cloud-control',
+            guestFailureClass: 'account_rate_limited',
+            reason: 'agent_computer_guest_account_rate_limited',
+          }),
+        ),
+    }
+    const seam = makeCloudCodingAdapterLaunchSeam(adapter)
+    const result = await seam(launchInput)
+    expect(result).toEqual({
+      ok: false,
+      providerFailureClass: 'rate_limited',
+      reason: 'agent_computer_guest_account_rate_limited',
+    })
+    expect(JSON.stringify(result)).not.toContain('raw provider message')
   })
 })

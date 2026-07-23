@@ -8,11 +8,13 @@ import {
   type CloudCodingRuntimeAdapter,
   type CloudCodingSession,
   type CloudCodingSessionServiceDeps,
+  type CloudPlacementEvent,
   AGENT_COMPUTER_ISOLATION_POLICY_SCHEMA,
   CloudCodingAdapterError,
   MAX_CLOUD_CODING_TIMEOUT_SECONDS,
   MAX_CLOUD_CODING_WORK_CONTEXT_B64_LENGTH,
   admissibleLanesForTrustTier,
+  agentComputerGuestLaunchFailureReason,
   allowCloudCodingAdmissionGate,
   cloudCodingSessionReceiptRef,
   configuredAgentComputerCapacitySnapshot,
@@ -20,6 +22,7 @@ import {
   decidePlacement,
   handleCloudCodingSessionGet,
   handleCloudCodingSessionLaunch,
+  guestFailureClassFromTerminalPlacementEvents,
   isCloudGceProvisioningArmed,
   isCloudCodingSessionsEnabled,
   makeCloudControlCloudCodingAdapter,
@@ -80,6 +83,51 @@ const agentComputerIsolationPolicyEcho = {
     subscription_capacity_resale: false,
   },
 }
+
+const terminalEvent = (
+  data: Readonly<Record<string, unknown>>,
+): CloudPlacementEvent => ({
+  artifactRefs: [],
+  data,
+  digest: null,
+  kind: 'cloud.gce.cleanup',
+  receiptRefs: [],
+})
+
+describe('Agent Computer guest failure projection', () => {
+  test.each([
+    'account_exhausted',
+    'account_rate_limited',
+    'auth_rejected',
+    'model_unavailable',
+    'network_failed',
+    'exec_timeout',
+    'exec_failed',
+  ] as const)('retains only allowlisted %s from terminal events', failureClass => {
+    expect(
+      guestFailureClassFromTerminalPlacementEvents([
+        terminalEvent({
+          failureClass,
+          message: 'raw provider message must not be projected',
+        }),
+      ]),
+    ).toBe(failureClass)
+    expect(agentComputerGuestLaunchFailureReason(failureClass)).toBe(
+      `agent_computer_guest_${failureClass}`,
+    )
+  })
+
+  test('ignores unknown classes and raw terminal messages', () => {
+    expect(
+      guestFailureClassFromTerminalPlacementEvents([
+        terminalEvent({
+          failureClass: 'private_provider_error_token_123',
+          message: 'raw provider message',
+        }),
+      ]),
+    ).toBeUndefined()
+  })
+})
 
 describe('cloud coding sessions feature flag', () => {
   test('defaults off and only enables on explicit truthy tokens', () => {

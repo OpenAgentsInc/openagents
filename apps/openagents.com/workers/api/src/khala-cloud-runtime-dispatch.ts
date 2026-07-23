@@ -54,6 +54,7 @@ import {
 } from '@openagentsinc/khala-sync-server'
 
 import type {
+  AgentComputerGuestFailureClass,
   CloudCodingRuntimeAdapter,
   CloudCodingSessionRequest,
 } from './cloud/cloud-coding-session-routes'
@@ -76,7 +77,13 @@ import {
   type MintExecutionTokenInput,
   type MintedExecutionToken,
 } from './khala-cloud-runtime-execution-token'
-import { currentIsoTimestamp, randomUuid } from './runtime-primitives'
+import type { ProviderAccountFailoverFailureClass } from './provider-account-failover-policy'
+import type { ProviderAccountLeaseService } from './provider-account-lease-service'
+import {
+  currentIsoTimestamp,
+  isoTimestampAfterIso,
+  randomUuid,
+} from './runtime-primitives'
 
 /** The CloudCodingLane marker this consumer owns. */
 export const CLOUD_GCP_RUNTIME_LANE = 'cloud-gcp'
@@ -132,6 +139,26 @@ export const DEFAULT_CLOUD_GCP_VERIFICATION_COMMAND = {
   commandRef: 'verify.agent-computer.git_diff_cached_check',
   timeoutSeconds: 120,
 } as const
+
+export const providerFailoverFailureClassForGuestFailure = (
+  failureClass: AgentComputerGuestFailureClass,
+): ProviderAccountFailoverFailureClass => {
+  switch (failureClass) {
+    case 'auth_rejected':
+      return 'token_invalidated'
+    case 'account_exhausted':
+      return 'quota_exhausted'
+    case 'account_rate_limited':
+      return 'rate_limited'
+    case 'network_failed':
+    case 'model_unavailable':
+      return 'provider_outage'
+    case 'exec_timeout':
+      return 'launch_timeout'
+    case 'exec_failed':
+      return 'runner_failure'
+  }
+}
 
 const refPart = (value: string): string => value.replace(/[^a-zA-Z0-9_.:-]/g, '_')
 
@@ -435,7 +462,11 @@ export type CloudGcpPlacementResult =
       lifecycleReceiptRefs: ReadonlyArray<string>
       agentComputerState: string
     }>
-  | Readonly<{ ok: false; reason: string }>
+  | Readonly<{
+      ok: false
+      reason: string
+      providerFailureClass?: ProviderAccountFailoverFailureClass | undefined
+    }>
 
 /** The injected placement launch seam (default wraps the cloud-control adapter). */
 export type CloudGcpPlacementLaunchFn = (
@@ -646,7 +677,56 @@ export type CloudGcpDispatchOutcome = Readonly<{
   placementRef?: string
   sessionId?: string
   reason?: string
+  providerFailureClass?: ProviderAccountFailoverFailureClass | undefined
 }>
+
+export const finalizeManagedCloudProviderLease = async (
+  service: Pick<ProviderAccountLeaseService, 'failover' | 'release'>,
+  turn: CloudGcpAdmittedWorkContext,
+  outcome: CloudGcpDispatchOutcome,
+  now = currentIsoTimestamp(),
+): Promise<void> => {
+  const leaseRef = turn.providerAccountLeaseRef
+  if (leaseRef === undefined) return
+  if (
+    outcome.outcome === 'failed' &&
+    outcome.providerFailureClass !== undefined
+  ) {
+    const selection = selectManagedAgentComputerHarness(turn.harnessId)
+    if (!ManagedAgentComputerHarnessSelection.guards.unavailable(selection)) {
+      await service.failover({
+        assignmentId: turn.turnId,
+        attemptNumber: 1,
+        expiresAt: isoTimestampAfterIso(now, 35 * 60 * 1_000),
+        failureClass: outcome.providerFailureClass,
+        maxAttempts: 1,
+        now,
+        orderId: null,
+        previousLeaseRef: leaseRef,
+        requestedAction: selection.requestedAction,
+        runId: turn.threadId,
+        selectedByActor: 'sarah_managed_cloud_dispatch',
+        source: 'managed_cloud_runtime_terminal_failover',
+        userId: turn.ownerUserId,
+      })
+      return
+    }
+  }
+  await service.release({
+    failureClass:
+      outcome.outcome === 'failed'
+        ? (outcome.reason ?? 'dispatch_failed')
+        : null,
+    leaseRef,
+    now,
+    status: outcome.outcome === 'launched' ? 'succeeded' : 'failed',
+    terminalOutcome:
+      outcome.outcome === 'launched'
+        ? 'managed_cloud_placement_accepted'
+        : `managed_cloud_${outcome.reason ?? 'dispatch_failed'}`,
+    userId: turn.ownerUserId,
+  })
+}
 
 /**
  * Dispatch a single admitted `cloud-gcp` work-context end-to-end. NEVER throws
@@ -922,7 +1002,8 @@ export const dispatchCloudGcpRuntimeTurn = async (
     })
 
     if (!placement.ok) {
-      // Launch refused: the guest never runs — revoke the token NOW.
+      // Placement did not complete successfully. Revoke the bounded execution
+      // token now; the terminal guest failure is retained only as a typed class.
       await record(
         nextMutationId,
         buildEvent(resolved, authorizedTurn, seq, {
@@ -938,6 +1019,9 @@ export const dispatchCloudGcpRuntimeTurn = async (
       const outcome = {
         credentialId: minted.credentialId,
         outcome: 'failed' as const,
+        ...(placement.providerFailureClass === undefined
+          ? {}
+          : { providerFailureClass: placement.providerFailureClass }),
         reason: placement.reason,
         tokenRevoked: true,
       }
@@ -1203,6 +1287,16 @@ export const makeCloudCodingAdapterLaunchSeam = (
     const reason = Option.isSome(failure)
       ? failure.value.reason
       : 'cloud_placement_effect_failed'
-    return { ok: false, reason }
+    const providerFailureClass =
+      Option.isSome(failure) && failure.value.guestFailureClass !== undefined
+        ? providerFailoverFailureClassForGuestFailure(
+            failure.value.guestFailureClass,
+          )
+        : undefined
+    return {
+      ok: false,
+      reason,
+      ...(providerFailureClass === undefined ? {} : { providerFailureClass }),
+    }
   }
 }

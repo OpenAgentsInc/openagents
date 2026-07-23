@@ -276,4 +276,86 @@ describe("provider account lease service", () => {
     expect(firstAccount?.recent_failure_class).toBe("rate_limited");
     expect(firstAccount?.cooldown_until).not.toBeNull();
   });
+
+  test("records a bounded terminal audit receipt and quarantines an invalid token", async () => {
+    await insertAccount(sqlite, {
+      id: "account_terminal",
+      operatorPriority: 1,
+      provider: "chatgpt_codex",
+      providerAccountRef: "provider-terminal",
+      userId: "owner-a",
+    });
+    const service = makeProviderAccountLeaseService({ db: sqlite.db });
+    const lease = await service.acquire({
+      assignmentId: "assignment-terminal",
+      expiresAt,
+      now,
+      orderId: null,
+      requiredProvider: "chatgpt_codex",
+      requestedAction: "agent_computer_codex_turn",
+      runId: "run-terminal",
+      selectedByActor: "sarah_managed_cloud_dispatch",
+      source: "managed_cloud_runtime_dispatch",
+      userId: "owner-a",
+    });
+
+    const result = await service.failover({
+      assignmentId: "assignment-terminal",
+      attemptNumber: 1,
+      expiresAt,
+      failureClass: "token_invalidated",
+      maxAttempts: 1,
+      now,
+      orderId: null,
+      previousLeaseRef: lease?.leaseRef ?? "",
+      requestedAction: "agent_computer_codex_turn",
+      runId: "run-terminal",
+      selectedByActor: "sarah_managed_cloud_dispatch",
+      source: "managed_cloud_runtime_terminal_failover",
+      userId: "owner-a",
+    });
+
+    expect(result).toMatchObject({
+      action: {
+        accountStateAction: "requires_reauth",
+        failureClass: "token_invalidated",
+      },
+      nextLease: null,
+      outcome: "blocked",
+      receipt: {
+        attemptNumber: 1,
+        failureClass: "token_invalidated",
+        maxAttempts: 1,
+        outcome: "blocked",
+      },
+    });
+    const receipts = await service.listFailoverReceipts({
+      assignmentId: "assignment-terminal",
+      limit: 10,
+      orderId: null,
+      runId: "run-terminal",
+      userId: "owner-a",
+    });
+    expect(receipts).toHaveLength(1);
+    expect(receipts[0]).toMatchObject({
+      failureClass: "token_invalidated",
+      previousLeaseRef: lease?.leaseRef,
+    });
+    const account = await sqlite.db
+      .prepare(
+        `SELECT health, reauth_required_reason, recent_failure_class
+           FROM provider_accounts
+          WHERE id = 'account_terminal'`,
+      )
+      .first<{
+        health: string;
+        reauth_required_reason: string | null;
+        recent_failure_class: string | null;
+      }>();
+    expect(account).toEqual({
+      health: "requires_reauth",
+      reauth_required_reason: "token_invalidated",
+      recent_failure_class: "token_invalidated",
+    });
+  });
 });

@@ -748,6 +748,7 @@ import {
 import { makeKhalaChatRoutes } from './khala-chat-routes'
 import {
   dispatchCloudGcpRuntimeTurn,
+  finalizeManagedCloudProviderLease,
   managedAgentComputerGrantIssueInput,
   makeCloudCodingAdapterLaunchSeam,
   readQueuedManagedCloudTurns,
@@ -7637,19 +7638,11 @@ const runManagedCloudRuntimeTurnDispatchForEnv = async (
     const summary = await runCloudGcpRuntimeDispatch({
       armed: true,
       finalizeAfterDispatch: async (turn, outcome) => {
-        if (turn.providerAccountLeaseRef === undefined) return
-        await providerLeaseService.release({
-          failureClass:
-            outcome.outcome === 'failed' ? (outcome.reason ?? 'dispatch_failed') : null,
-          leaseRef: turn.providerAccountLeaseRef,
-          now: currentIsoTimestamp(),
-          status: outcome.outcome === 'launched' ? 'succeeded' : 'failed',
-          terminalOutcome:
-            outcome.outcome === 'launched'
-              ? 'managed_cloud_placement_accepted'
-              : `managed_cloud_${outcome.reason ?? 'dispatch_failed'}`,
-          userId: turn.ownerUserId,
-        })
+        await finalizeManagedCloudProviderLease(
+          providerLeaseService,
+          turn,
+          outcome,
+        )
       },
       inference: {
         baseUrl: inferenceBaseUrl,
