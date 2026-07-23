@@ -208,6 +208,24 @@ export type HostedRuntimePrepareTurnFn = (
   }>
 >
 
+/**
+ * Optional post-completion hook, fired fail-soft AFTER a turn's terminal
+ * `turn.finished(stop)` is durably recorded (the user-visible answer is already
+ * committed). It receives the turn's ORIGINAL confirmed user message and the
+ * confirmed assistant response. It NEVER affects the turn outcome — a throw or
+ * rejection is swallowed (see `afterTurnFailSoft`). Absent by default so every
+ * existing caller/test is unchanged. Sarah graph-memory write-back (#9189) uses
+ * this to persist bounded redacted experience facts.
+ */
+export type HostedRuntimeAfterTurnFn = (
+  input: Readonly<{
+    turn: QueuedHostedTurn
+    userMessage: string
+    assistantMessage: string
+    responsePresentation?: 'owner_conversation' | undefined
+  }>,
+) => Promise<unknown>
+
 /** Injectable push-engine seam so tests never need the real engine. */
 export type HostedRuntimeExecutePushFn = typeof executePushEngine
 
@@ -241,6 +259,10 @@ export type HostedRuntimeDispatchDependencies = Readonly<{
   /** Fail-soft push notification on turn_completed/turn_failed (#9063).
    * Absent by default so every existing caller/test is unchanged. */
   notify?: HostedRuntimeNotifyFn | undefined
+  /** Fail-soft post-completion hook (#9189 Sarah graph-memory write-back).
+   * Fired after the terminal `turn.finished(stop)` is recorded. Absent by
+   * default so every existing caller/test is unchanged. */
+  afterTurn?: HostedRuntimeAfterTurnFn | undefined
 }>
 
 export type HostedRuntimeDispatchSummary = Readonly<{
@@ -266,11 +288,13 @@ type ResolvedDeps = Readonly<{
   recordUsage: HostedRuntimeRecordUsageFn | undefined
   prepareTurn: HostedRuntimePrepareTurnFn | undefined
   notify: HostedRuntimeNotifyFn | undefined
+  afterTurn: HostedRuntimeAfterTurnFn | undefined
 }>
 
 const resolveDeps = (
   deps: HostedRuntimeDispatchDependencies,
 ): ResolvedDeps => ({
+  afterTurn: deps.afterTurn,
   complete: deps.complete,
   executePush: deps.executePush ?? executePushEngine,
   limit:
@@ -492,6 +516,34 @@ const notifyTurnOutcomeFailSoft = async (
   }
 }
 
+/**
+ * Fail-soft post-completion hook (#9189). NEVER throws or rejects — the turn's
+ * answer is already durable by the time this runs, so a write-back failure must
+ * never affect the committed outcome or wedge the batch.
+ */
+const afterTurnFailSoft = async (
+  resolved: ResolvedDeps,
+  turn: QueuedHostedTurn,
+  userMessage: string,
+  assistantMessage: string,
+  responsePresentation: 'owner_conversation' | undefined,
+): Promise<void> => {
+  if (resolved.afterTurn === undefined) return
+  try {
+    await resolved.afterTurn({
+      assistantMessage,
+      responsePresentation,
+      turn,
+      userMessage,
+    })
+  } catch (error) {
+    resolved.log('hosted_runtime_dispatch_after_turn_failed', {
+      detail: error instanceof Error ? error.message : 'unknown',
+      turnId: turn.turnId,
+    })
+  }
+}
+
 const sarahToolAuthority = (activity: SarahAgentToolActivity) => ({
   allowed: activity.authorityAllowed ?? true,
   authorityRef:
@@ -695,11 +747,15 @@ export const dispatchHostedRuntimeTurn = async (
   // 2. Resolve the prompt and drive inference.
   let completion: HostedRuntimeCompletion
   let responsePresentation: 'owner_conversation' | undefined
+  // The ORIGINAL confirmed user message (not the recall-augmented prompt), kept
+  // for the fail-soft post-completion hook (#9189 graph-memory write-back).
+  let userMessage: string | null = null
   try {
     const message = await resolveHostedTurnMessage(resolved.sql, turn)
     if (message === null) {
       completion = { detail: 'prompt_unresolved', ok: false }
     } else {
+      userMessage = message.prompt
       const prepared =
         resolved.prepareTurn === undefined
           ? { prompt: message.prompt, system: resolved.systemPrompt }
@@ -859,6 +915,18 @@ export const dispatchHostedRuntimeTurn = async (
   )
   if (finishedResult.status !== 'applied') return 'skipped'
   await notifyTurnOutcomeFailSoft(resolved, 'turn_completed', turn)
+  // Fail-soft post-completion write-back (#9189). The answer is durable; a
+  // write-back failure here never affects the committed turn. Only fires with a
+  // resolved original user message and a non-empty assistant answer.
+  if (userMessage !== null) {
+    await afterTurnFailSoft(
+      resolved,
+      turn,
+      userMessage,
+      completion.text,
+      responsePresentation,
+    )
+  }
   resolved.log('hosted_runtime_dispatch_answered', {
     responseChars: completion.text.length,
     turnId: turn.turnId,

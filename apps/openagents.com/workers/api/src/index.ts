@@ -1229,6 +1229,7 @@ import { runSarahAgentTurn } from './sarah-agent-runtime'
 import { collectSarahBusinessContext } from './sarah-business-context'
 import { sarahGraphMemoryRecallEnabled } from './sarah-graph-memory'
 import { sarahGraphMemoryStoreLayer } from './sarah-graph-memory-store'
+import { persistSarahGraphMemoryTurn } from './sarah-graph-memory-writeback'
 import {
   FLEET_RUNS_PATH,
   SARAH_FLEET_RUNS_PATH,
@@ -7194,6 +7195,43 @@ const runHostedRuntimeTurnDispatchForEnv = async (
           authKvStoreForEnv(env),
           { kind, ownerUserId, threadId, turnId },
         ),
+      // #9189: after an owner-thread Sarah turn commits, persist bounded,
+      // redacted experience facts to the durable graph-memory store so future
+      // turns recall real memory. Gated by the SAME default-OFF flag as recall:
+      // with the flag unset, no store is opened and nothing is written (recall
+      // and write-back stay byte-identical to a build without graph memory).
+      // Fail-soft by contract — a write-back failure never affects the
+      // already-committed turn (see `afterTurnFailSoft`).
+      afterTurn: async ({
+        assistantMessage,
+        responsePresentation,
+        turn,
+        userMessage,
+      }) => {
+        if (
+          responsePresentation !== 'owner_conversation' ||
+          !sarahGraphMemoryRecallEnabled(env)
+        ) {
+          return
+        }
+        if (
+          !(await hasSarahThreadAuthority(
+            client.sql,
+            turn.ownerUserId,
+            turn.threadId,
+          ))
+        ) {
+          return
+        }
+        await persistSarahGraphMemoryTurn({
+          assistantMessage,
+          enabled: true,
+          ownerUserId: turn.ownerUserId,
+          storeLayer: sarahGraphMemoryStoreLayer(client.sql),
+          turnId: turn.turnId,
+          userMessage,
+        })
+      },
       registry: khalaSyncMutatorRegistry,
       sql: client.sql,
       log: (line, fields) => logWorkerRouteWarning(line, fields ?? {}),
