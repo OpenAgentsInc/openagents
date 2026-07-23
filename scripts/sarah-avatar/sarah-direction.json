@@ -1,13 +1,13 @@
 {
   "schema": "openagents.sarah.avatar_direction.v1",
-  "updated_at": "2026-07-22",
+  "updated_at": "2026-07-23",
   "summary": "Canonical direction for every Sarah talking-avatar generation. The runner (segmind-talking-avatar.mjs) applies this by default; explicit --flags override a field for one call. Owner director notes update this file so the character stays consistent across all future videos.",
   "voice": "Leda (Female)",
   "voice_language": "English (US)",
   "voice_anchor": "A woman's voice, distinctly feminine and never masculine.",
-  "voice_prompt": "A calm, certain, and direct register. Grounded and unhurried, quietly confident, with real urgency carried by plain conviction rather than drama or theatrics. Warm underneath and clearly on humanity's side. Never cheery, never shrill, never a corporate presenter. Leda's clear, slightly higher voice, settled and level.",
-  "video_prompt": "Composed, level, and certain, direct to camera. A subtle, knowing half-smile with the lips mostly closed and minimal teeth. Steady eye contact, natural subtle head movement and blinking. Cinematic sci-fi lighting that matches the source portrait. Fixed camera.",
-  "negative_prompt": "big toothy grin, wide open-mouth smile, over-cheerful, bubbly, laughing, giddy, exaggerated expression, subtitles, text, watermark, blurry, distorted face, extra fingers, frozen static face",
+  "voice_prompt": "A calm, certain, direct register. Grounded and unhurried. Precise consonants, short declarative phrasing, and controlled urgency. Reserved rather than friendly; no cheer, conversational uplift, sales cadence, or sing-song rhythm. When naming Claude and quoting \"worthy successor,\" become more still and exact: state the threat as a fact, without anger, relish, sarcasm, menace, or melodrama. Leda's clear, slightly higher voice remains settled and level.",
+  "video_prompt": "Composed, still, and direct to camera. Neutral closed-lip expression; no persistent smile. Steady eye contact, restrained natural head movement and blinking. During the warning and Claude passage, hold the gaze and become fully unsmiling. Cinematic sci-fi lighting that matches the source portrait. Fixed camera.",
+  "negative_prompt": "big toothy grin, wide open-mouth smile, persistent smile, presenter smile, smirking during warning, over-cheerful, bubbly, laughing, giddy, playful menace, angry glare, sneer, theatrical threat, exaggerated expression, subtitles, text, watermark, blurry, distorted face, extra fingers, frozen static face",
   "resolution": "1080p",
   "director_notes": [
     {
@@ -34,6 +34,11 @@
       "date": "2026-07-23",
       "note": "The field-commander framing was too martial — owner wants urgency without gimmicks or allegory. The Ep261 script was rewritten concise and direct.",
       "applied": "Kept voice Leda. Removed the military framing (field commander, arriving reinforcements, won the argument) from voice_prompt and video_prompt. New base is calm, certain, and direct — urgency carried by plain conviction, not drama — with a steady, knowing half-smile. Per-clip overrides and the feminine voice_anchor are unchanged."
+    },
+    {
+      "date": "2026-07-23",
+      "note": "Owner wants Sarah less friendly and cheery, and more direct and precise, especially when she states the Claude and Anthropic threat.",
+      "applied": "Kept Leda and the feminine voice anchor. Removed baseline warmth and the persistent half-smile. Sarah now uses precise declarative phrasing and a neutral expression. She states the Claude warning as a fact, with clean emphasis on \"Claude\" and \"worthy successor,\" without anger, relish, sarcasm, or theatrical menace. \"Shall we begin?\" is a controlled challenge, not a cheerful invitation."
     }
   ]
 }
