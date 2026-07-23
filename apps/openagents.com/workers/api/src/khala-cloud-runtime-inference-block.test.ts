@@ -76,6 +76,11 @@ describe('buildCloudRuntimeWorkContext', () => {
       repo: 'octocat/Hello-World',
       threadRef: 'thread.t1',
       turnId: 'turn.t1',
+      verificationCommand: {
+        argv: ['git', 'diff', '--cached', '--check'],
+        commandRef: 'verify.agent-computer.git_diff_cached_check',
+        timeoutSeconds: 120,
+      },
       workContextRef: 'work-context.agent-computer.wc1',
     })
     expect(wc.branch).toBe(CLOUD_RUNTIME_DEFAULT_BRANCH)
@@ -83,6 +88,11 @@ describe('buildCloudRuntimeWorkContext', () => {
     expect(wc.inference).toBe(inference)
     expect(wc.threadRef).toBe('thread.t1')
     expect(wc.repo).toBe('octocat/Hello-World')
+    expect(wc.verificationCommand).toEqual({
+      argv: ['git', 'diff', '--cached', '--check'],
+      commandRef: 'verify.agent-computer.git_diff_cached_check',
+      timeoutSeconds: 120,
+    })
   })
 })
 

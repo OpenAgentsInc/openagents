@@ -120,6 +120,11 @@ export const DEFAULT_CLOUD_GCP_RUNTIME_DISPATCH_LIMIT = 4
 /** Default placement timeout (seconds). */
 export const DEFAULT_CLOUD_GCP_RUNTIME_TIMEOUT_SECONDS = 1800
 export const DEFAULT_CODEX_CONTINUITY_REPLAY_MESSAGES = 24
+export const DEFAULT_CLOUD_GCP_VERIFICATION_COMMAND = {
+  argv: ['git', 'diff', '--cached', '--check'],
+  commandRef: 'verify.agent-computer.git_diff_cached_check',
+  timeoutSeconds: 120,
+} as const
 
 const refPart = (value: string): string => value.replace(/[^a-zA-Z0-9_.:-]/g, '_')
 
@@ -176,6 +181,14 @@ export type CloudGcpAdmittedWorkContext = Readonly<{
     | undefined
   /** CX-7 (#8551): non-secret account hash selected for non-continuity turns. */
   accountRefHash?: string | undefined
+  /** Direct-argv verifier. The guest runs it after staging and before writeback. */
+  verificationCommand?:
+    | Readonly<{
+        commandRef: string
+        argv: ReadonlyArray<string>
+        timeoutSeconds?: number | undefined
+      }>
+    | undefined
 }>
 
 type ManagedCloudQueueRow = Readonly<{
@@ -742,6 +755,9 @@ export const dispatchCloudGcpRuntimeTurn = async (
       ...(codexContinuityConfig === undefined
         ? {}
         : { codexContinuity: codexContinuityConfig }),
+      verificationCommand:
+        authorizedTurn.verificationCommand ??
+        DEFAULT_CLOUD_GCP_VERIFICATION_COMMAND,
     })
     const workContextB64 = encodeWorkContextB64(workContext)
 

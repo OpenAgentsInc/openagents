@@ -63,6 +63,13 @@ export type CloudRuntimeCodexTurnConfig = Readonly<{
   maxTurnSeconds?: number | undefined
 }>
 
+/** A bounded direct-argv verifier for one managed coding turn. */
+export type CloudRuntimeVerificationCommand = Readonly<{
+  commandRef: string
+  argv: ReadonlyArray<string>
+  timeoutSeconds?: number | undefined
+}>
+
 /**
  * CX-6 (#8550) continuity strategy (a): fresh Codex provision, re-prime from
  * custody, then bounded Khala Sync history replay. Persisted CODEX_HOME
@@ -89,6 +96,7 @@ export type CloudRuntimeWorkContext = Readonly<{
   writeback?: CloudRuntimeWritebackConfig
   providerAuth?: CloudRuntimeCodexProviderAuthConfig
   codexContinuity?: CloudRuntimeCodexContinuityConfig
+  verificationCommand?: CloudRuntimeVerificationCommand
 }>
 
 /** Default lane the ingest route accepts for the hosted-Khala model turn. */
@@ -194,6 +202,7 @@ export type BuildWorkContextInput = Readonly<{
   writeback?: CloudRuntimeWritebackConfig | undefined
   providerAuth?: CloudRuntimeCodexProviderAuthConfig | undefined
   codexContinuity?: CloudRuntimeCodexContinuityConfig | undefined
+  verificationCommand?: CloudRuntimeVerificationCommand | undefined
 }>
 
 /** Build the full work-context object the turn-runner reads from `/tmp/wc.json`. */
@@ -214,6 +223,9 @@ export const buildCloudRuntimeWorkContext = (
   ...(input.writeback === undefined ? {} : { writeback: input.writeback }),
   ...(input.providerAuth === undefined ? {} : { providerAuth: input.providerAuth }),
   ...(input.codexContinuity === undefined ? {} : { codexContinuity: input.codexContinuity }),
+  ...(input.verificationCommand === undefined
+    ? {}
+    : { verificationCommand: input.verificationCommand }),
 })
 
 /**

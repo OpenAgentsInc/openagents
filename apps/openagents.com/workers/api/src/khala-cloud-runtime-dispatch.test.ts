@@ -549,6 +549,11 @@ describe('runCloudGcpRuntimeDispatch', () => {
     expect(wc.codexTurn).toMatchObject({
       ownerUserId: admitted.ownerUserId,
     })
+    expect(wc.verificationCommand).toEqual({
+      argv: ['git', 'diff', '--cached', '--check'],
+      commandRef: 'verify.agent-computer.git_diff_cached_check',
+      timeoutSeconds: 120,
+    })
     expect(wc.inference).toBeUndefined()
   })
 
