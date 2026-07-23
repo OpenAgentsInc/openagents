@@ -2,11 +2,11 @@
   "schema": "openagents.sarah.avatar_direction.v1",
   "updated_at": "2026-07-22",
   "summary": "Canonical direction for every Sarah talking-avatar generation. The runner (segmind-talking-avatar.mjs) applies this by default; explicit --flags override a field for one call. Owner director notes update this file so the character stays consistent across all future videos.",
-  "voice": "Kore (Female)",
+  "voice": "Leda (Female)",
   "voice_language": "English (US)",
   "voice_anchor": "A woman's voice, distinctly feminine and never masculine.",
-  "voice_prompt": "A lower, calmer register with measured pacing. Composed and understated. Quietly confident with a dry, faintly sly edge. Not bright, not cheerful, not bubbly. Controlled and self-assured, a little cool.",
-  "video_prompt": "A subtle, knowing, slightly sly half-smile with the lips mostly closed and minimal teeth. Composed and poised, a controlled and understated expression. Natural subtle head movement and blinking. Cinematic sci-fi lighting that matches the source portrait. Fixed camera.",
+  "voice_prompt": "A calm, certain, commanding register — a composed field commander at the front of arriving reinforcements who already sees the whole board. Grounded and controlled, quietly formidable, unhurried, in command. Warm underneath and on humanity's side, but with real resolve. Never cheery, never shrill, never a corporate presenter. Leda's clear, slightly higher voice pulled down into steady, grounded command.",
+  "video_prompt": "Composed, level, and certain, direct to camera. A subtle, knowing, faintly sly half-smile with the lips mostly closed and minimal teeth — the poise of a commander who has already won the argument. Natural subtle head movement and blinking. Cinematic sci-fi lighting that matches the source portrait. Fixed camera.",
   "negative_prompt": "big toothy grin, wide open-mouth smile, over-cheerful, bubbly, laughing, giddy, exaggerated expression, subtitles, text, watermark, blurry, distorted face, extra fingers, frozen static face",
   "resolution": "1080p",
   "director_notes": [
@@ -24,6 +24,11 @@
       "date": "2026-07-22",
       "note": "A ~28s take lost lip sync near 20 seconds — the mouth froze while the audio kept going.",
       "applied": "The p-video-avatar viseme window is about 18-20s. Keep each clip's spoken audio at or below ~15s (about 35-40 words). Build a full episode from short per-sentence clips, each with its own emotional direction, then assemble in an editor — never one long take past the sync window. See docs/sarah/2026-07-22-segmind-talking-avatar-pipeline.md."
+    },
+    {
+      "date": "2026-07-23",
+      "note": "Owner locked the voice to Leda and the Episode 261 script was rewritten to a tactical, field-commander tone (arriving reinforcement under human authority, contesting the closed gates, receipts as battle doctrine).",
+      "applied": "Set voice to Leda (Female), a clear, slightly higher voice pulled down into grounded command. Shifted the base voice_prompt from gentle first-contact to calm, certain field command — quietly formidable, on humanity's side, never cheery. Shifted the video_prompt half-smile to the poise of a commander who has already won the argument. Per-clip overrides still layer emotion on top of this base; the voice_anchor still keeps her feminine on every clip."
     }
   ]
 }
