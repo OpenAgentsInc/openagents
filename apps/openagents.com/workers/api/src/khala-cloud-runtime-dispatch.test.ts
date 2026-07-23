@@ -269,9 +269,16 @@ const withPinnedAccount = (
 })
 
 const okLaunch =
-  (captured: { b64?: string; repoBindingRef?: string | undefined } = {}): CloudGcpPlacementLaunchFn =>
+  (captured: {
+    b64?: string
+    repoBindingRef?: string | undefined
+    authGrantRef?: string | undefined
+    providerAccountRef?: string | undefined
+  } = {}): CloudGcpPlacementLaunchFn =>
   input => {
+    captured.authGrantRef = input.authGrantRef
     captured.b64 = input.workContextB64
+    captured.providerAccountRef = input.providerAccountRef
     captured.repoBindingRef = input.repoBindingRef
     return Promise.resolve({
       agentComputerState: 'provisioning',
@@ -489,7 +496,11 @@ describe('dispatchCloudGcpRuntimeTurn', () => {
     '%s receives only its exact Gemini grant and preserves execution/writeback identity',
     async harnessId => {
       reset()
-      const captured: { b64?: string } = {}
+      const captured: {
+        authGrantRef?: string
+        b64?: string
+        providerAccountRef?: string
+      } = {}
       const providerSecretBytes = 'provider-secret-bytes-must-not-leave-custody'
       const result = await dispatchCloudGcpRuntimeTurn(
         baseDeps({
@@ -513,6 +524,12 @@ describe('dispatchCloudGcpRuntimeTurn', () => {
       )
 
       expect(result.outcome).toBe('launched')
+      expect(captured.authGrantRef).toBe(
+        `provider-runtime-secret-grant.${harnessId}.1`,
+      )
+      expect(captured.providerAccountRef).toBe(
+        'provider-account.gemini.owner-1',
+      )
       const workContext = decodeWorkContextB64(captured.b64!)
       expect(workContext.inference).toBeUndefined()
       expect(workContext.codexTurn).toBeUndefined()

@@ -1032,6 +1032,27 @@ export const dispatchCloudGcpRuntimeTurn = async (
 
     // 4. POST the placement through the adapter (forwards work_context_b64).
     const sessionId = `ccs.${refPart(authorizedTurn.turnId)}`
+    const placementProviderGrant =
+      authorizedTurn.codexContinuity !== undefined
+        ? {
+            authGrantRef: authorizedTurn.codexContinuity.authGrantRef,
+            providerAccountRef:
+              authorizedTurn.codexContinuity.providerAccountRef,
+          }
+        : authorizedTurn.harnessRuntimeSecretGrant !== undefined
+          ? {
+              authGrantRef: authorizedTurn.harnessRuntimeSecretGrant.grantRef,
+              providerAccountRef:
+                authorizedTurn.harnessRuntimeSecretGrant.providerAccountRef,
+            }
+          : authorizedTurn.claudeProviderAuthGrant !== undefined
+            ? {
+                authGrantRef:
+                  authorizedTurn.claudeProviderAuthGrant.authGrantRef,
+                providerAccountRef:
+                  authorizedTurn.claudeProviderAuthGrant.providerAccountRef,
+              }
+            : undefined
     const placement = await resolved.launch({
       objective: workContext.objective,
       ownerUserId: ownerId,
@@ -1041,13 +1062,7 @@ export const dispatchCloudGcpRuntimeTurn = async (
       timeoutSeconds: DEFAULT_CLOUD_GCP_RUNTIME_TIMEOUT_SECONDS,
       workContextB64,
       workContextRef: authorizedTurn.workContextRef,
-      ...(authorizedTurn.codexContinuity === undefined
-        ? {}
-        : {
-            authGrantRef: authorizedTurn.codexContinuity.authGrantRef,
-            providerAccountRef:
-              authorizedTurn.codexContinuity.providerAccountRef,
-          }),
+      ...(placementProviderGrant === undefined ? {} : placementProviderGrant),
       ...(authorizedTurn.repoBindingRef === undefined ? {} : { repoBindingRef: authorizedTurn.repoBindingRef }),
     })
 
