@@ -1,0 +1,30 @@
+{
+  "name": "@openagentsinc/agent-harness-environment",
+  "version": "0.1.0",
+  "private": false,
+  "license": "Apache-2.0",
+  "files": [
+    "src"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "test": "vp test --root . --config vitest.config.ts --run src",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@openagentsinc/agent-harness-contract": "0.2.1-rc.4",
+    "effect": "catalog:",
+    "typescript": "catalog:"
+  },
+  "peerDependencies": {
+    "@openagentsinc/agent-harness-contract": ">=0.2.1-rc.4",
+    "effect": ">=4.0.0-beta.94"
+  }
+}
