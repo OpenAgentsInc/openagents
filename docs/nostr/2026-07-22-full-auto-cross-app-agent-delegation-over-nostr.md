@@ -1,5 +1,13 @@
 # Full Auto cross-app agent delegation over Nostr
 
+## 2026-07-23 owner disposition
+
+The owner canceled the standalone Nostr relay and forge program and the
+separate Buzz installation. This document remains research evidence only.
+Future Nostr interoperability must enter through the accepted
+[`Omega plan`](../sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md).
+It must not create relay, forge, command, outcome, or receipt authority.
+
 - Date: 2026-07-22
 - Type: speculative design and vision. This is research plus informed
   speculation. It is not a product promise, a release decision, or dispatch

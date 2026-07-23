@@ -14,6 +14,11 @@ The owner selected
 [`Omega`](./2026-07-23-omega-zed-primary-surface-accepted-plan.md), a tracked
 Zed fork, as the primary Desktop and IDE destination on 2026-07-23.
 That accepted plan supersedes this document's open shell-selection question.
+The owner also canceled the separate Buzz installation and standalone Nostr
+relay and forge program. The later recommendation to keep hosted Buzz during a
+client test is superseded. Omega will implement useful Buzz workroom outcomes
+as native GPUI panes. Existing configured agents will attach through explicit
+adapters and keep their custody boundaries.
 
 The Electron and Zed comparison now proves migration, regression, and rollback.
 It no longer selects the destination.

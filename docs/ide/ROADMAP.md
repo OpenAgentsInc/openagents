@@ -12,6 +12,10 @@ The owner selected
 tracked Zed fork, as the primary OpenAgents Desktop and IDE destination.
 The Omega plan now owns the shell, editor, authority-service, migration, and
 cutover sequence.
+It also owns native GPUI workrooms and existing-agent attachment.
+An attached agent, such as Hermes, keeps its existing home and configuration.
+The separate Buzz installation and standalone relay and forge program are
+canceled.
 
 This roadmap remains the factual record for the current Electron IDE.
 Its landed Effect services, contracts, tests, and receipts are migration input.

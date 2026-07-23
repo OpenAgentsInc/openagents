@@ -1,14 +1,14 @@
 ---
 fast_follow_spec_format_version: "0.1"
 fast_follow_spec_id: "openagents.fast_follow"
-fast_follow_revision: 5
+fast_follow_revision: 6
 title: "OpenAgents Fast Follow"
 artifact_type: "learning_intent"
 lifecycle_state: "admitted"
 author: "OpenAgents"
 linked_target_repo: "OpenAgentsInc/openagents"
 created_at: "2026-07-16T00:00:00Z"
-updated_at: "2026-07-23T22:54:48Z"
+updated_at: "2026-07-23T23:31:00Z"
 ---
 
 # OpenAgents Fast Follow
@@ -45,10 +45,10 @@ policy, or turn Fable prose into target authority.
 
 The owner's 2026-07-23
 `docs/sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md` selects Omega,
-a tracked Zed fork, as the primary Desktop and IDE destination. Revision 5
-updates the Zed and Buzz lessons and adds the Omega directive. The accepted
-plan, not this learning intent, owns the migration sequence. The ordered Amp
-`initial_program` stays unchanged.
+a tracked Zed fork, as the primary Desktop and IDE destination. Revision 6
+adds the native workroom and existing-agent attachment lessons to the Omega
+directive. The accepted plan, not this learning intent, owns the migration
+sequence. The ordered Amp `initial_program` stays unchanged.
 
 ## Target
 
@@ -1223,6 +1223,12 @@ plan, not this learning intent, owns the migration sequence. The ordered Amp
         "stance": "adapt_with_stronger_boundaries"
       },
       {
+        "id": "existing_agent_attachment",
+        "kind": "product_ux",
+        "summary": "Treat a fixed runtime catalog and an arbitrary command override as insufficient portability. Attach an existing configured agent through an explicit adapter that preserves its home, credentials, memory, skills, tools, and sessions, and show each capability gap.",
+        "stance": "adapt_with_stronger_boundaries"
+      },
+      {
         "id": "nostr_git_reputation_and_evidence",
         "kind": "protocol",
         "summary": "Adapt signed Git collaboration, NIP-32 reputation, and evidence facts as admitted inputs and public-safe projections while OpenAgents keeps outcome, acceptance, delivery, and receipt authority.",
@@ -1537,7 +1543,7 @@ plan, not this learning intent, owns the migration sequence. The ordered Amp
   },
   {
     "id": "omega.zed_primary_surface",
-    "title": "Omega tracked Zed fork and selective Buzz integration",
+    "title": "Omega tracked Zed fork with native workrooms and external agents",
     "priority": 600,
     "source_refs": [
       "cursor.cursor#startup_restore_oracle",
@@ -1550,6 +1556,7 @@ plan, not this learning intent, owns the migration sequence. The ordered Amp
       "block.buzz#owner_decryptable_agent_memory",
       "block.buzz#acp_pool_supervision_and_typed_stall_fates",
       "block.buzz#signed_identity_and_channel_projection",
+      "block.buzz#existing_agent_attachment",
       "block.buzz#nostr_git_reputation_and_evidence",
       "block.buzz#relay_substrate_shells_and_custom_kind_registry",
       "openagents.synthesis#target_native_adaptation"
@@ -1561,7 +1568,7 @@ plan, not this learning intent, owns the migration sequence. The ordered Amp
       "crates",
       "docs/sol"
     ],
-    "desired_outcome": "Make Omega the tracked Zed-based primary Desktop and IDE with Rust as the application core and packaged Node 24 plus Effect as the adjacent product-contract and coordination service; move suitable domains to Rust through one-authority cutovers; add selected Buzz and Nostr identity, memory, Git, reputation, and evidence mechanics without relay authority.",
+    "desired_outcome": "Make Omega the tracked Zed-based primary Desktop, IDE, and company workroom. Use Rust as the application core and packaged Node 24 plus Effect as the adjacent product-contract and coordination service. Move suitable domains to Rust through one-authority cutovers. Add native GPUI workrooms, existing-agent attachment, and selected Buzz and Nostr identity, memory, Git, reputation, and evidence mechanics without relay authority.",
     "work_products": [
       "study_packet",
       "gap_assessment",
@@ -1575,6 +1582,8 @@ plan, not this learning intent, owns the migration sequence. The ordered Amp
       "Use one exact Zed pin, a tracked upstream relationship, a patch budget, provenance, source delivery, and a deletion path.",
       "Extract the Electron-main product control plane into packaged omega-effectd before a complete Omega comparison.",
       "Give every project, document, thread, run, command, credential, Sync, update, and receipt domain one writable owner.",
+      "Do not deploy Buzz or copy an external agent home, credential store, memory store, or configuration into Omega.",
+      "An attached agent keeps its existing custody boundary. Omega uses an explicit adapter and shows unsupported capabilities.",
       "A Rust port needs differential semantic proof, versioned migration, atomic cutover, old-path deletion, and rollback.",
       "A signed Nostr event, relay acknowledgement, or membership never becomes an OpenAgents command or accepted outcome.",
       "The current Electron application remains the supported release and rollback source until the cutover gate passes."

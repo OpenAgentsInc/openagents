@@ -1,5 +1,46 @@
 # Buzz self-host and Sarah runbook — 2026-07-22
 
+> **Canceled plan — do not execute.**
+>
+> The owner canceled the separate OpenAgents Buzz installation on 2026-07-23.
+> The current
+> [`Omega plan`](../sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md)
+> replaces this runbook.
+> Omega will implement the useful Buzz workroom outcomes as native GPUI panes.
+> This document remains historical source evidence.
+> Its commands, checklists, Sarah posting path, DNS path, deployment path, and
+> fork opportunities are inactive.
+
+## Cancellation and retained deployment inventory
+
+The canceled #9195 lane created a private Google Cloud deployment before the
+owner changed direction.
+The lane did not complete DNS, public WSS, NIP-42, nonmember rejection, or
+independent NIP-29 acceptance.
+It did not produce an accepted OpenAgents product surface.
+
+The last public-safe work record identified:
+
+- Buzz source commit `acfbb1bb6af54cb29cb152496ff43b8285dcb8cf`
+- GCE instance `buzz-community-1` in `us-central1-a`
+- reserved address `buzz-openagents-ip` at `34.135.238.164`
+- Artifact Registry image digest
+  `sha256:9369c5849027ca266cdbb14581e73d30f4543927ff9d5ca811a8ec3e2eb0c478`
+- GCS PostgreSQL backup
+  `gs://openagentsgemini-buzz-backups/postgres/buzz-initial-20260723T135223Z.sql.gz`
+- stopped-stack snapshot `buzz-community-1-initial-20260723`
+
+The last issue status said that the private stack was healthy and that
+`buzz.openagents.com` was not in DNS.
+The current planning pass could not refresh the Google Cloud command-line
+login.
+It therefore does not claim a current runtime state or a completed cloud
+retirement.
+Issue closure and plan cancellation do not prove resource deletion.
+Do not delete the retained backup, snapshot, secrets, address, disk, image, or
+instance without a current inventory and a separate verified retirement
+action.
+
 This runbook explains how to run our own Buzz instance. It explains how Sarah
 can communicate in that instance. It explains how our team and our community
 can join and participate. It is grounded in the read-only teardown at

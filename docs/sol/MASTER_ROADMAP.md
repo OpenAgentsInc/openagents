@@ -3,7 +3,7 @@
 - Class: authority
 - Date: 2026-07-10
 - Updated: 2026-07-23
-- Revision: 132
+- Revision: 133
 - Status: canonical OpenAgents implementation roadmap
 - Current queue: the
   [`open issue unified completion plan`](./2026-07-21-open-issue-unified-completion-plan.md)
@@ -32,7 +32,7 @@ proof, dated plans and analyses are evidence only.
 
 ## Active P0 — Omega primary-surface transition
 
-The owner selected [`Omega`](./2026-07-23-omega-zed-primary-surface-accepted-plan.md), a tracked Zed fork, as the primary Desktop and IDE destination. Omega Rust is the application core. Packaged Node 24 and Effect first carry the current product control plane. Bounded packets can move suitable domains to Rust through one-authority cutovers. Selected Buzz and Nostr mechanics add signed identity, memory, Git facts, evidence, reputation, and channel projections without relay authority. OMEGA-00 through OMEGA-12 own the dependency order. This update admits no implementation. The current Electron application remains the supported evidence and rollback subject until all ProductSpec, AssuranceSpec, migration, license, accessibility, release, and owner gates pass. The current issue plan keeps its order, and Omega does not reroute the pending Full Auto release closure.
+The owner selected [`Omega`](./2026-07-23-omega-zed-primary-surface-accepted-plan.md), a tracked Zed fork, as the primary Desktop, IDE, and company workroom destination. Omega Rust is the application core. Packaged Node 24 and Effect first carry the current product control plane. Bounded packets can move suitable domains to Rust through one-authority cutovers. Native GPUI panes will supply durable Buzz-style workrooms, agent supervision, reviews, approvals, and receipts. Existing configured agents, such as Hermes, attach through explicit adapters and keep their own homes, credentials, memory, skills, tools, and sessions. Standard Nostr support is an interoperability boundary, not relay authority. The separate Buzz deployment and the standalone Nostr relay and forge program are canceled. Issues #9185 and #9194 through #9204 must close as not planned after this plan is current on `main`. OMEGA-00 through OMEGA-12 and OMEGA-WR-00 through OMEGA-WR-08 own the dependency order. This update admits planning and contract work only. The current Electron application remains the supported evidence and rollback subject until all ProductSpec, AssuranceSpec, migration, license, accessibility, release, and owner gates pass. Omega does not reroute the pending Full Auto release closure.
 
 ## Active P0 — Full Auto flagship and surface-vision reconciliation
 
@@ -245,44 +245,45 @@ AssuranceSpec program queue remains.
 
 1. **The ProductSpec-native Codex Workroom MVP is the accepted baseline.** Its signed local-first Desktop journey stays proven, closed R0–R7 successors do not silently reopen.
 2. **Sarah is an authenticated owner orchestrator, not a standalone app or public front door.** `/sarah/*` stays tombstoned, `principal.sarah` lives in the stable owner-private mobile thread and receives only exact brokered actions. The SBX-07 broker and SBX-09 acceptance are complete. SBX-10 does not create a public cloud claim or a generic administration surface.
-3. **Omega is the primary Desktop and IDE destination, mobile has the T3 ledger plus closed #8980 first-screen proof, and web is the public trust/API surface.** The current Electron application stays supported until the Omega cutover gate. Unpacketized expansion cannot preempt Full Auto.
-4. **The current Electron and independent mobile/web projections use Effect Native.** Omega uses the Zed and GPUI Rust substrate plus packaged Node 24 and `omega-effectd`. One generated protocol and one owner per domain prevent split authority.
-5. **Khala Sync is cross-device authority, not chat transport.** It carries owner-scoped projections and durable outcomes, local stores remain bounded caches/offline queues.
-6. **Sol owns dispatch sequence.** Fable's 2026-07-17 analysis is reconciled evidence and an outcome crosswalk, never a parallel queue.
-7. **Desktop and mobile remain greenfield OpenAgents destinations.** Deprecated clients are extraction sources, the accepted mobile identity and icon stay unchanged.
-8. **Terra is a claimed execution lane under Sol.** Live claims select work, the [lane contract](./2026-07-10-terra-execution-lane.md) governs collisions and handoff.
-9. **Reference audits are evidence.** Only the exact owner-admitted T3/Amp packets authorize adaptation, source parity never bypasses target contracts or receipts.
-10. **Cross-device, mixed-fleet, and portability claims stay proof-rung bounded.** The completed MVP implies none of them.
-11. **Mobile expansion is exact-plan bounded.** The T3 ledger is active authority and #8980 is closed bounded evidence, Khala/T3 source behavior alone is not.
-12. **Remote workrooms are exact-admission substrate.** Closed proofs do not create a general remote-execution program, #9023 now admits only the named GCP managed-sandbox lifecycle, compatibility, IDE, Sarah, supervision, and proof packets.
-13. **Desktop is tokenless over one host-owned Runtime Gateway.** The renderer receives projections/emits closed intents, credentials, raw runtime, processes, and durable state stay host-owned.
-14. **Active expansion is explicit.** Full Auto #8967, managed sandboxes #9023, release #8913, and the Amp/T3 ledgers own their bounded scopes, closed #8980 and prior tombstones are evidence, not queues.
-15. **Parent/subagent history is loss-accounted.** Every supported item renders once or becomes an explicit redaction/gap, provider-native history stays owner-local until typed adoption.
-16. **Predictable visible behavior is a release contract.** Paint, paging, failure/privacy, accessibility, restart, and host/device journeys need executable UX proof, media only demonstrates.
-17. **Effect service topology is explicit.** Scope direction, freshness, replacement, disposal, cancellation, and perimeter bridges stay typed.
-18. **Coding-session identity is host-independent.** Durable identities never derive from machine, process, path, provider home, or cloud vendor, checkpoint movement is not process-memory migration.
-19. **Any reauthorized remote targets are peer target classes.** They share lifecycle/isolation/receipt laws, clients never call vendor control planes or silently change custody.
-20. **Cross-host capability remains least-privilege.** Credentials stay in approved custody under scoped leases, checkpoints, Sync, prompts, logs, and receipts remain secret-free.
-21. **Bounded mobile controller work is active, conversational voice remains closed.** Any later persona-neutral voice uses the same typed authority/receipt path as text and never becomes ambient or voice-only authority.
-22. **Agent topology is durable operating state.** Causal parentage, lifecycle, transcript identity, replay, and navigation remain exact rather than inferred from prose.
-23. **Persistent voice remains closed not-planned.** Historical audio receipts grant no current promise, any future retained-audio dogfood requires a new conspicuous custody decision.
-24. **Interrupted-turn recovery and autonomous next-turn work are separate promises.** Each needs its own durable journal/queue, reconciliation, idempotency, and evidence.
-25. **ProductSpec is the native intent language.** It digest-binds accepted criteria, work, and distinct evidence/verification/acceptance states without granting a skill self-approval.
-26. **The retained TypeScript estate uses Node + pnpm + Vite Plus.** The [conversion plan](./2026-07-14-node-pnpm-vite-plus-full-conversion-plan.md) retains deletion and outstanding-value gates, related work still needs a claim.
-27. **FULL HARVEST: the full Amp port is approved and composes with Full Auto.**
+3. **Omega is the primary Desktop, IDE, and company workroom destination, mobile has the T3 ledger plus closed #8980 first-screen proof, and web is the public trust/API surface.** The current Electron application stays supported until the Omega cutover gate. Unpacketized expansion cannot preempt Full Auto.
+4. **Omega implements the useful Buzz outcomes natively.** Native GPUI workrooms keep conversation, code, reviews, decisions, agent work, approvals, and receipts together. Existing configured agents attach through explicit adapters and retain their custody boundaries. The separate Buzz installation and standalone relay and forge product are canceled.
+5. **The current Electron and independent mobile/web projections use Effect Native.** Omega uses the Zed and GPUI Rust substrate plus packaged Node 24 and `omega-effectd`. One generated protocol and one owner per domain prevent split authority.
+6. **Khala Sync is cross-device authority, not chat transport.** It carries owner-scoped projections and durable outcomes, local stores remain bounded caches/offline queues.
+7. **Sol owns dispatch sequence.** Fable's 2026-07-17 analysis is reconciled evidence and an outcome crosswalk, never a parallel queue.
+8. **Desktop and mobile remain greenfield OpenAgents destinations.** Deprecated clients are extraction sources, the accepted mobile identity and icon stay unchanged.
+9. **Terra is a claimed execution lane under Sol.** Live claims select work, the [lane contract](./2026-07-10-terra-execution-lane.md) governs collisions and handoff.
+10. **Reference audits are evidence.** Only the exact owner-admitted T3/Amp packets authorize adaptation, source parity never bypasses target contracts or receipts.
+11. **Cross-device, mixed-fleet, and portability claims stay proof-rung bounded.** The completed MVP implies none of them.
+12. **Mobile expansion is exact-plan bounded.** The T3 ledger is active authority and #8980 is closed bounded evidence, Khala/T3 source behavior alone is not.
+13. **Remote workrooms are exact-admission substrate.** Closed proofs do not create a general remote-execution program, #9023 now admits only the named GCP managed-sandbox lifecycle, compatibility, IDE, Sarah, supervision, and proof packets.
+14. **Desktop is tokenless over one host-owned Runtime Gateway.** The renderer receives projections/emits closed intents, credentials, raw runtime, processes, and durable state stay host-owned.
+15. **Active expansion is explicit.** Full Auto #8967, managed sandboxes #9023, release #8913, and the Amp/T3 ledgers own their bounded scopes, closed #8980 and prior tombstones are evidence, not queues.
+16. **Parent/subagent history is loss-accounted.** Every supported item renders once or becomes an explicit redaction/gap, provider-native history stays owner-local until typed adoption.
+17. **Predictable visible behavior is a release contract.** Paint, paging, failure/privacy, accessibility, restart, and host/device journeys need executable UX proof, media only demonstrates.
+18. **Effect service topology is explicit.** Scope direction, freshness, replacement, disposal, cancellation, and perimeter bridges stay typed.
+19. **Coding-session identity is host-independent.** Durable identities never derive from machine, process, path, provider home, or cloud vendor, checkpoint movement is not process-memory migration.
+20. **Any reauthorized remote targets are peer target classes.** They share lifecycle/isolation/receipt laws, clients never call vendor control planes or silently change custody.
+21. **Cross-host capability remains least-privilege.** Credentials stay in approved custody under scoped leases, checkpoints, Sync, prompts, logs, and receipts remain secret-free.
+22. **Bounded mobile controller work is active, conversational voice remains closed.** Any later persona-neutral voice uses the same typed authority/receipt path as text and never becomes ambient or voice-only authority.
+23. **Agent topology is durable operating state.** Causal parentage, lifecycle, transcript identity, replay, and navigation remain exact rather than inferred from prose.
+24. **Persistent voice remains closed not-planned.** Historical audio receipts grant no current promise, any future retained-audio dogfood requires a new conspicuous custody decision.
+25. **Interrupted-turn recovery and autonomous next-turn work are separate promises.** Each needs its own durable journal/queue, reconciliation, idempotency, and evidence.
+26. **ProductSpec is the native intent language.** It digest-binds accepted criteria, work, and distinct evidence/verification/acceptance states without granting a skill self-approval.
+27. **The retained TypeScript estate uses Node + pnpm + Vite Plus.** The [conversion plan](./2026-07-14-node-pnpm-vite-plus-full-conversion-plan.md) retains deletion and outstanding-value gates, related work still needs a claim.
+28. **FULL HARVEST: the full Amp port is approved and composes with Full Auto.**
     Every material capability in the Amp gap analysis is active scope,
     `blocked_by_policy` is superseded. Work packets sequence delivery, not
     approval, but they do not outrank #8967, duplicate a surface-vision packet,
     or grant autonomous provider/fleet policy.
-28. **Full Auto is the flagship short-term product program.** ProductSpec rev
+29. **Full Auto is the flagship short-term product program.** ProductSpec rev
     10 and #8967 own the local one-active-run contract. Dedicated run UX,
     analysis, visible dogfood, assurance, and packaged release close before
     broader autonomous routing or portfolio claims.
-29. **The three surface-vision ProductSpecs are roadmap-reconciled outcomes,
+30. **The three surface-vision ProductSpecs are roadmap-reconciled outcomes,
     not blanket dispatch.** Their acceptance criteria define the target shape,
     the canonical waves, live issues, accepted packet ledgers, owner gates, and
     proof rungs in this file decide what may execute and what may be claimed.
-30. **Full Auto ships as the first verifiable mode (owner direction
+31. **Full Auto ships as the first verifiable mode (owner direction
     2026-07-20).** The four-provider readiness flow (Codex/Claude/Grok/
     Apple FM) gates owner-ordered, at-capacity operation, and roadmap work
     executes as verifiable runs. FAV-00 #9110 (#9111-#9114) owns the

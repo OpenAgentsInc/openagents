@@ -7,6 +7,13 @@
 
 Sol owns the OpenAgents roadmap that uses implementation results.
 Omega, a tracked Zed fork, is the primary Desktop and IDE destination.
+Omega is also the primary company workroom destination.
+It implements useful Buzz outcomes as native GPUI panes.
+Existing configured agents attach through explicit adapters and keep their
+custody boundaries.
+
+The separate Buzz installation and standalone relay and forge program are
+canceled.
 The current Electron application remains the supported release and rollback
 source until the Omega cutover gates pass.
 
@@ -61,7 +68,8 @@ or copy/paste prompt in a dated analysis. Refresh the authorities above.
 - [`2026-07-23-omega-zed-primary-surface-accepted-plan.md`](./2026-07-23-omega-zed-primary-surface-accepted-plan.md)
   — active owner direction for Omega as the primary Desktop and IDE
   destination. It owns the Rust application core, packaged Node/Effect
-  companion, selective Buzz/Nostr, migration, proof, and cutover packet order.
+  companion, native workrooms, existing-agent adapters, bounded Nostr
+  interoperability, migration, proof, and cutover packet order.
   It admits planning and contract work only.
 - [`2026-07-18-owner-delegated-autonomy-accepted-plan.md`](./2026-07-18-owner-delegated-autonomy-accepted-plan.md)
   — active owner direction. It removes generic owner and device waits.

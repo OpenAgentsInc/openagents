@@ -15,9 +15,13 @@ tracked Zed fork, as the primary OpenAgents Desktop and IDE destination.
 The dated Zed, Cursor, and Buzz teardowns remain unchanged source evidence.
 Their target recommendations do not override the later owner decision.
 
-The Omega plan adapts the Cursor tracked-fork model, the complete Zed editor and
-project substrate, and selected Buzz/Nostr identity, memory, Git, reputation,
-and evidence mechanics.
+The Omega plan adapts the Cursor tracked-fork model and the complete Zed editor
+and project substrate. It implements useful Buzz workroom outcomes as native
+GPUI panes. It also attaches existing configured agents through explicit
+adapters. The agent keeps its home, credentials, memory, skills, tools, and
+sessions. Selected Nostr identity, Git, reputation, and evidence mechanics stay
+bounded interoperability inputs.
+The plan does not deploy Buzz or create a separate relay and forge product.
 It retains the teardown warnings about upstream debt, GPL duties, fragmented
 state, relay authority, broad credentials, and copied product policy.
 

@@ -384,7 +384,7 @@
     },
     {
       "path": "FASTFOLLOW.md",
-      "sha256": "e55e0362d23e2af13b6078c539f2908017b54138260ef58792b5a7e8cf404417",
+      "sha256": "cacac47b94f637296bbcfcf30069fa49cf8b232c61e90fe0a38de143ae0f9857",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -19297,7 +19297,7 @@
     },
     {
       "path": "docs/buzz/2026-07-22-buzz-self-host-and-sarah-runbook.md",
-      "sha256": "5c387ea7824d2f96e4f4ef37cbb3fcc1b21d29f9afbb02252a19bd44d9e5e4e1",
+      "sha256": "483fdc8ab05faacbe6e3cf6d7e68c78a98a38891130e47dd4ad7792df68cf68d",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -19319,7 +19319,7 @@
     },
     {
       "path": "docs/buzz/README.md",
-      "sha256": "7afdfc7aa4c75dc7e89e99055a49c29ce1e22e6824d482a3b2f6356937893831",
+      "sha256": "fe9c68fdb801e9f598171a6de270155c8d329856d8d9120a2b8e4f8ac5c98e6a",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -27918,7 +27918,7 @@
     },
     {
       "path": "docs/ide/README.md",
-      "sha256": "0e7c4166349af7118fd5b60b69d8f7546fd219c3ac051f933268ffd04e7da7b9",
+      "sha256": "bbdbaaa0993eefdb997d68de8c413cd76c5c9e25c87c07c92321a683cced4258",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -27940,7 +27940,7 @@
     },
     {
       "path": "docs/ide/ROADMAP.md",
-      "sha256": "3a27d68dd6901143cb499cad1cbc97921a909f18c6409d777185c3c3a858085e",
+      "sha256": "5bbfa7532761608e62f5a72b050c5730264accbbd221474f4d0128226acc1f29",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -33606,7 +33606,7 @@
     },
     {
       "path": "docs/nostr/2026-07-22-full-auto-cross-app-agent-delegation-over-nostr.md",
-      "sha256": "fd9c500f74909bfbf09c55b83c8db08c80c5e940f8d80e66d1b8770b5bcd1c80",
+      "sha256": "9344216c26d1000f20fd5e98e3b2fc185258ebf1c0de26ef4ce760a43f9fc07d",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -41825,7 +41825,7 @@
     },
     {
       "path": "docs/sol/2026-07-23-nostr-first-rust-effect-desktop-analysis.md",
-      "sha256": "1aa1aa56e9c2745d5345373c9cd74cd8b3bd26f1457246f3b058711d66ba5bcd",
+      "sha256": "21dd2f0e6546b38bd77215736dcdfc8efbfde93bb158dd3086dddf8442a3db9e",
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
@@ -41837,7 +41837,7 @@
     },
     {
       "path": "docs/sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md",
-      "sha256": "16509fd70092b04041182697f88bf888c708c75a1041c9172a186c9ac274d77f",
+      "sha256": "b895d275933d799cdfa82160b5a28412faacad2ce5d3a9630e4699557f788c16",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
@@ -41877,7 +41877,7 @@
     },
     {
       "path": "docs/sol/CLAIM_PROTOCOL.md",
-      "sha256": "1b38cbfe185218ac8a23e761ae9153563e2c3d24f2ccf6cb6843e021c5cd346e",
+      "sha256": "d038ea3a63c0cb197110fdc06e8dc126290d13f5e80a86899a0084969bf04493",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -41903,7 +41903,7 @@
     },
     {
       "path": "docs/sol/MASTER_ROADMAP.md",
-      "sha256": "77678cc8a4e47187c09fe9c1c63d1a28e2d6aebf9fff5391f94516e827a3cc0a",
+      "sha256": "5834b38274062d8f76d1cc11a622cd65c7a98a670df8a1d97ce33be8e44eba55",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -41943,7 +41943,7 @@
     },
     {
       "path": "docs/sol/README.md",
-      "sha256": "75f5c486dc499144c31f7f63585add248429f6ee6aa62fe99d6693f335909df0",
+      "sha256": "562abc1bf86850eb352a9c942f8ef2d86e2c569fe535158f8a3143a0b4e5d744",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -43874,7 +43874,7 @@
     },
     {
       "path": "docs/teardowns/README.md",
-      "sha256": "0cd4bdad8b0619c54e43ccd887c41c295929f306c57b8ea95d7b8f52ada11caf",
+      "sha256": "97823a2220478d4597c29651dad31afbbb37577747f27ec6b279a6a5e17c2a0f",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

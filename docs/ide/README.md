@@ -8,9 +8,10 @@ grant implementation authority by themselves.
 Current destination plan:
 
 - [Omega, the Zed-based OpenAgents IDE](../sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md)
-  — the owner-selected primary Desktop and IDE destination, its Effect
-  authority-service boundary, selective Buzz/Nostr scope, migration plan, and
-  cutover gates.
+  — the owner-selected primary Desktop, IDE, and company workroom destination.
+  It defines the Effect authority-service boundary, native GPUI workrooms,
+  existing-agent adapters, bounded Nostr interoperability, migration plan, and
+  cutover gates. It cancels the separate Buzz installation.
 - [OpenAgents IDE roadmap](./ROADMAP.md) — the superseded Electron
   dependency-ordered sequence and the factual record for delivered IDE
   behavior, contracts, and receipts.

@@ -3,8 +3,10 @@
 - Class: accepted owner authority and plan ledger
 - Status: active
 - Date: 2026-07-23
+- Updated: 2026-07-23
+- Plan revision: 2
 - Owner authority: current owner conversation
-- Base commit: `8f047b841d5bb809dae73d31b530cfe27227f740`
+- Base commit: `db331e6d1770041fc1c25b8e934a70d0ea01faf4`
 - Dispatch: plan and contract admission only
 - Product name: Omega
 - Primary surface: OpenAgents Desktop and IDE
@@ -26,6 +28,15 @@ Omega will be the deep-work surface for company work.
 It will combine the durable OpenAgents workroom with a first-class native IDE.
 It will connect conversation, decisions, code, reviews, evidence, approval,
 delivery, and signed social context.
+
+OpenAgents will not run Buzz as a separate team product.
+The planned OpenAgents Buzz installation and its separate forge program are
+canceled.
+Omega will implement the useful Buzz outcomes as native GPUI workroom panes.
+The result must also let a user attach an existing configured agent, such as
+Hermes.
+Omega must not replace the agent's home, memory, skills, tools, identity,
+provider setup, or credentials.
 
 This decision selects the destination.
 It does not make the current Electron application obsolete today.
@@ -58,14 +69,18 @@ until Omega passes the cutover gates in this plan.
 9. A supervised Rust Nostr component can own protocol mechanics, local event
    storage, relay sessions, replay, and signature operations.
    A typed OpenAgents admission still decides what those facts mean.
-10. OpenAgents can adapt selected Buzz mechanics for signed identity, memory,
-   agent presence, Git collaboration, and proof.
-   It will not import Buzz as a second product or relay authority.
+10. Omega will reproduce the useful Buzz workroom behavior in native GPUI
+    panes.
+    It will not run Buzz as a second product, relay, forge, or authority.
 11. Mobile and web will continue to use the same durable OpenAgents work record.
    They will not depend on Zed state.
 12. ProductSpec, AssuranceSpec, invariants, release contracts, and repository
     law must change through their own admitted packets before product-code
     migration or primary cutover.
+13. Omega will support bring-your-own agents.
+    An existing agent can attach through ACP or another admitted adapter.
+    Omega must preserve the agent's existing configuration and show the exact
+    capability boundary.
 
 ## The Cursor lesson
 
@@ -103,12 +118,13 @@ Omega must support this complete journey:
 
 1. Open a current company work record.
 2. Inspect its exact conversation, decisions, code, and evidence.
-3. Queue, steer, interrupt, or replace an agent in the same durable thread.
-4. Open the attached project and file without delay.
-5. Edit, review, test, and verify the change.
-6. Approve and perform the exact delivery action.
-7. Inspect the commit, release, or service receipt.
-8. Continue or supervise the same work from mobile or web.
+3. Attach an existing configured agent or select an OpenAgents-managed agent.
+4. Queue, steer, interrupt, or replace an agent in the same durable thread.
+5. Open the attached project and file without delay.
+6. Edit, review, test, and verify the change.
+7. Approve and perform the exact delivery action.
+8. Inspect the commit, release, or service receipt.
+9. Continue or supervise the same work from mobile or web.
 
 ## Architecture boundary
 
@@ -126,7 +142,8 @@ Omega Rust application
   logic, Sync/cloud adapters, and not-yet-migrated durable services
                          |
   isolated extension host, oa-nostrd/signer, ACP/provider workers,
-       Codex, Claude, Grok, MCP, Pylon, and cloud APIs
+       user-owned agents, Codex, Claude, Hermes, Grok, MCP,
+       Pylon, and cloud APIs
 ```
 
 This is one product with two supervised processes.
@@ -218,7 +235,7 @@ The useful Node boundary is one adjacent product and policy service.
 | ProductSpec and AssuranceSpec parsers, policy composition, action semantics, approval rules | Node/Effect | Keep in Effect until a Rust port has differential semantic proof |
 | workroom, thread, Full Auto, provider policy, Sync, cloud adapters | Node/Effect first | Port only when a packet removes duplicate code or closes a measured gap |
 | durable event and receipt storage | current Effect service first | Select one Rust or Effect store in OMEGA-01. Migrate atomically. Never dual-write as authority. |
-| provider, MCP, and managed-worker processes | isolated workers under Rust supervision | Keep process and resource control in Rust. Keep product admission in the shared contract. |
+| provider, MCP, user-owned agent, and managed-worker processes | isolated workers under Rust supervision | Keep process and resource control in Rust. Preserve an attached agent's home and configuration. Keep product admission in the shared contract. |
 
 Rust ports use the same standard as upstream imports:
 
@@ -252,38 +269,129 @@ evidence.
 The packaged Omega application must pass its own performance, accessibility,
 recovery, update, and release gates.
 
-## What Omega takes from Buzz
+## Buzz replication scope in Omega
 
-The first Buzz-derived scope is selective:
+Omega will reproduce product outcomes from Buzz.
+It will not seek source, screen, or event-kind parity.
+The OpenAgents ProductSpec and AssuranceSpec will define acceptance.
 
-- signed human and agent identities
-- signed agent profile and presence facts
-- purpose-bound context grants
-- owner-readable agent memory
-- signed Git collaboration facts
-- NIP-32 reputation and evidence facts
-- ACP worker-pool state with typed stalls
-- conformance replay for event and signature behavior
-- signed channel projections that group discussion, work, reviews, and
-  decisions
+The current Buzz review uses these exact source snapshots:
 
-The first protocol allow-list can include the already audited OA, AA, AP, AE,
-and AB event families.
-AM and AO remain derived projections.
-NIP-34 Git facts and NIP-32 reputation facts remain evidence inputs.
+- Buzz `acfbb1bb6af54cb29cb152496ff43b8285dcb8cf`
+- the earlier teardown and Git follow-up snapshots in the Buzz teardown
+- Hermes Agent `5be99b6fce16e7d5304196bc9faf3f0cdfc3031f`
 
-Omega will not import:
+The Buzz snapshot is version `0.4.23`.
+Its managed-agent runtime catalog names Goose, Claude Code, Codex, and Buzz
+Agent.
+It accepts a custom executable path, but its configuration bridge and runtime
+metadata still depend on the known catalog.
+This is the product gap in the owner-supplied feedback.
 
-- Buzz server or relay authority
-- Buzz product state as OpenAgents state
-- Tauri or Flutter shells
-- raw provider credentials
-- relay membership as a capability
-- a signed event as an OpenAgents command or accepted outcome
-- relay history as a complete company record
+The Hermes snapshot provides an ACP standard-I/O adapter through `hermes acp`.
+That adapter loads the user's existing `HERMES_HOME` and `.env`.
+It also uses the existing Hermes sessions, memory, skills, tools, and MCP
+configuration.
+Omega can therefore attach Hermes without creating a second Hermes profile.
+The Hermes ACP documentation identifies gaps in native messaging and scheduled
+task features.
+Omega must show each adapter gap instead of claiming complete agent parity.
 
-The owning OpenAgents service must admit every action through current owner,
-scope, generation, and policy checks.
+### Capability disposition
+
+| Buzz product behavior | Omega disposition |
+| --- | --- |
+| Home, inbox, mentions, blockers, and recent activity | Required as a native GPUI attention pane. |
+| Stream channels, threads, replies, reactions, pins, and bookmarks | Required as native GPUI workroom and thread panes. |
+| Direct and group messages | Required through the durable OpenAgents thread model. Private content keeps its current audience rules. |
+| Agent directory, personas, teams, presence, and status | Required as an agent roster and workroom membership view. |
+| Existing user-configured agents | Required. Omega attaches them through an admitted adapter and does not replace their configuration. |
+| Conversation history and agent context | Required. A workroom joins exact conversation, decisions, files, changes, reviews, and receipts. |
+| Search | Required across authorized workroom records, projects, files, symbols, changes, and receipts. |
+| Files, uploads, previews, canvases, and media comments | Required for files and previews. Canvas and frame comments can follow after the first dogfood slice. |
+| Git repositories, changes, patches, reviews, approvals, and merge state | Required in the native editor and review panes. Git refs and admitted policy remain authority. |
+| Workflows and human approval steps | Required after the first workroom slice. Structural loop prevention is mandatory. |
+| Read state, reminders, scheduled posts, and notifications | Required through current OpenAgents continuity and notification contracts. |
+| Forum and long-form social posts | Project the existing OpenAgents Forum where useful. Do not create a second forum authority. |
+| Membership, roles, moderation, and tombstones | Required before a multi-user workroom release. Enforcement stays at the OpenAgents identity and command seams. |
+| Voice huddles | Deferred. Reuse the governed audio lane only after a new voice decision. Do not clone the Buzz media stack. |
+| Agent metrics and live observability | Required as typed usage, health, progress, stall, and receipt projections. |
+| Owner-readable agent memory | Required as an invariant. The owner audit cannot depend on agent cooperation. |
+| Agent-first JSON command surface | Use Pylon and the generated Omega protocol. Do not add a Buzz CLI dependency. |
+| ACP subprocess pool, queues, crash recovery, and typed stalls | Required under the Omega Rust supervisor. |
+| Runtime conformance replay | Required at selected identity, command, store, migration, and receipt seams. |
+| Nostr identity, groups, DMs, Git facts, pairing, and signed evidence | Keep as optional protocol interoperability and signed projections. Nostr is not workroom authority. |
+| Buzz custom NIPs and selected standard NIPs | Use only through a versioned OpenAgents allow-list. Define the signer, audience, retention, and authority rules. |
+| Buzz self-hosting, relay, Postgres, Redis, MinIO, search, and admin stack | Canceled. Omega does not depend on a Buzz installation. |
+| Buzz Tauri, Flutter, web, and admin clients | Rejected. GPUI Omega, OpenAgents mobile, and openagents.com own the product surfaces. |
+| Relay-as-workspace and custom-kind dispatch as product policy | Rejected. A signed event is an input or projection, not an accepted command or outcome. |
+| Buzz non-streaming agent turn model | Rejected. Omega keeps loss-accounted streaming and durable native histories. |
+| Community-pooled model compute | Reconcile with Pylon and NIP-90. Do not create a second compute authority. |
+
+### Bring-your-own agent contract
+
+Omega must not make an agent portable by copying its secret files.
+It must make the connection portable through an explicit adapter contract.
+
+The first adapter classes are:
+
+1. an ACP standard-I/O executable, such as `hermes acp`
+2. an ACP local or remote endpoint with authenticated transport
+3. a native OpenAgents harness
+4. a bounded terminal adapter for an agent that has no ACP support
+5. an MCP tool provider that is not represented as a full agent
+
+An attached agent record must contain:
+
+- one stable external-agent reference
+- adapter type, executable or endpoint identity, and version
+- an opaque configuration-home grant
+- configuration ownership and mutation policy
+- declared and observed capabilities
+- project and workroom memberships
+- process generation, health, stall, restart, and cancel state
+- signer and OpenAgents identity bindings
+- audience, retention, and provenance rules
+- exact action and outcome receipt references
+
+The default configuration policy is `use_existing_read_only`.
+Omega does not run setup, login, model selection, provider changes, skill
+installation, memory migration, or configuration writes during attachment.
+The user can admit a separate configuration change later.
+The adapter receives only the minimum transport and workroom values.
+It must not receive a replacement home by default.
+
+The agent keeps its existing provider, model, credentials, skills, memory,
+MCP servers, tools, sessions, and local preferences.
+Omega shows those facts as agent-owned or externally owned.
+It does not claim that it can inspect every private value.
+Omega policy still limits which project, command, file, network, publication,
+and delivery effects the agent can request.
+An external configuration cannot widen OpenAgents authority.
+
+Detaching the agent revokes its Omega capability and workroom membership.
+It does not delete or rewrite the agent home.
+Restarting Omega must reconnect or show a typed degraded state.
+It must not silently mint a replacement agent or identity.
+
+The first Hermes acceptance journey is:
+
+1. Detect the existing `hermes` executable and ACP adapter.
+2. Select the existing `HERMES_HOME` without reading secret values.
+3. Show the adapter, version, configuration owner, and capability preview.
+4. Attach through `hermes acp` without running setup or login.
+5. Add Hermes to one Omega workroom and send one bounded task.
+6. Stream text, tools, permissions, progress, and the final outcome.
+7. Prove that existing Hermes memory, skills, and MCP tools stay available.
+8. Prove that attachment and detachment do not change the configured home.
+9. Restart Omega and resume or report a typed reconnect failure.
+10. Prove that no credential or private configuration value entered a log,
+    Sync record, Nostr event, or public receipt.
+
+### Authority boundary
+
+The owning OpenAgents service admits every action through current owner, scope,
+generation, and policy checks.
 Rust enforces local capabilities.
 Node/Effect composes product policy until an admitted Rust port replaces that
 exact authority.
@@ -322,9 +430,9 @@ consensus.
 | OMEGA-03 | Extract the current Electron-main product control plane into packaged Node 24 `omega-effectd`. Keep current Desktop as its first client and preserve exact behavior. | OMEGA-01/02 | not admitted |
 | OMEGA-04 | Add the Omega Rust service supervisor and separate generated `omega-openagents` protocol. Add component handshake, local capability, version ranges, refs, generations, hard frame limits, bounded queues, backpressure, cancellation, overload, gap, restart, health, and conformance fixtures. Start read-only. | OMEGA-03 | not admitted |
 | OMEGA-05 | Move admitted local process, native enforcement, credential-custody, update, event-store, or receipt mechanics to Rust in bounded packets. Each port uses differential replay and deletes the old authority path at cutover. | OMEGA-04 | not admitted |
-| OMEGA-06 | Port the durable workroom, thread, provider, harness, and Full Auto product projections to GPUI. Keep each exact authority in its OMEGA-01 owner. | OMEGA-04/05 | not admitted |
+| OMEGA-06 | Port the durable workroom, thread, provider, harness, and Full Auto product projections to GPUI. Execute the OMEGA-WR fast path below. Keep each exact authority in its OMEGA-01 owner. | OMEGA-04/05 | not admitted |
 | OMEGA-07 | Join the workroom to the Zed project, editor, Git, language, review, and terminal graph. Prove immediate file open, OS association, project movement, and editor/workroom mode change. | OMEGA-06 | not admitted |
-| OMEGA-08 | Add the selective Buzz and isolated Rust Nostr core. Prove signer isolation, relay gaps, offline replay, identity, reputation, evidence, Git facts, extension-host isolation, and an authority that cannot expand. | OMEGA-04/05/06 | not admitted |
+| OMEGA-08 | Add the Omega-native social and optional Nostr interoperability core. Prove signer isolation, relay gaps, offline replay, identity, reputation, evidence, Git facts, extension-host isolation, and an authority that cannot expand. Do not deploy Buzz. | OMEGA-04/05/06 | not admitted |
 | OMEGA-09 | Preserve local and managed placement plus mobile and web control over the same work record. | OMEGA-06/07 | not admitted |
 | OMEGA-10 | Migrate versioned user data without credential export. Quiesce active runs, preserve stable refs, prove export, import, rollback, and N-1 Electron recovery. | OMEGA-06/08/09 | not admitted |
 | OMEGA-11 | Build the complete signed target matrix and compatible Rust, remote-server, Node, Effect, Nostr, extension-host, worker, and protocol component envelope. Prove target-specific companion discovery, GPL source delivery, update, rollback, recovery, accessibility, performance, and owner acceptance. | OMEGA-00 through OMEGA-10 | not admitted |
@@ -334,6 +442,55 @@ Each implementation packet requires a current claim, exact paths, hot contracts,
 tests, and final proof.
 Run parallel work only on paths that do not overlap.
 The shared-contract owner must first freeze the applicable schema.
+
+## Omega workroom fast path
+
+This path puts the workroom in Omega early.
+It does not wait for every later Rust migration.
+It uses the minimum `omega-effectd` and protocol slice that can preserve one
+authority and one durable work record.
+
+| Packet | Outcome | Dependency | Dispatch state |
+| --- | --- | --- | --- |
+| OMEGA-WR-00 | Freeze the workroom ProductSpec delta, native pane grammar, item identities, and first dogfood journey. | OMEGA-00/01/02 | not admitted |
+| OMEGA-WR-01 | Add native GPUI Workrooms, Threads, Agents, and Attention pane types. Keep the first view read-only against real durable records. | OMEGA-03/04 and WR-00 | not admitted |
+| OMEGA-WR-02 | Add channel, thread, reply, reaction, presence, read-state, search, and notification projections. | WR-01 | not admitted |
+| OMEGA-WR-03 | Add the external-agent adapter contract and the Hermes acceptance journey. Add Codex, Claude, Goose, Grok, Pylon, and other agents through the same registry. | WR-01 and OMEGA-04 | not admitted |
+| OMEGA-WR-04 | Join workroom messages to project, file, terminal, changes, diff, review, approval, test, commit, and delivery panes. | WR-01/03 and OMEGA-07 | not admitted |
+| OMEGA-WR-05 | Add receipts, blockers, decisions, workflow approval steps, and structural loop prevention. | WR-02/04 | not admitted |
+| OMEGA-WR-06 | Add signed identity, owner-readable memory status, and optional Nostr input and projection adapters. | WR-02/03/05 and OMEGA-08 | not admitted |
+| OMEGA-WR-07 | Add multi-user membership, moderation, tombstones, Forum projection, and public-safe social views. | WR-02/05/06 | not admitted |
+| OMEGA-WR-08 | Move OpenAgents daily coordination into the proven Omega workroom. Keep GitHub as the monorepo origin until a separate cutover passes. | WR-01 through WR-07 | owner dogfood gate |
+
+The first useful dogfood target is WR-01 through WR-04.
+The team must open a workroom and attach Hermes or another existing agent.
+The team must discuss one feature and inspect its project and changes.
+The team must then review, approve, and see the delivery receipt in Omega.
+
+## Canceled Buzz and forge issue program
+
+The owner cancels the separate issue graph.
+The reusable requirements move into the Omega packets above.
+Keep landed code unless a later packet proves that no active path uses it.
+
+| Issue | Owner disposition | Preserved Omega requirement |
+| --- | --- | --- |
+| #9194 | Close as not planned. | One native company work home in Omega. |
+| #9195 | Close as not planned and release the canceled claim. | No separate Buzz deployment. Preserve a public-safe retirement inventory. |
+| #9196 | Close as not planned. | Stable identity, membership, revocation, and isolated signers. |
+| #9197 | Close as not planned. | Native channels, threads, reactions, presence, and public-safe agent posts. |
+| #9198 | Close as not planned. | Bounded Sarah and agent read, post, failure, and receipt paths. |
+| #9199 | Close as not planned. | NIP-34 and ngit fixtures can remain optional Omega interop tests. |
+| #9200 | Close as not planned. | Native claim and work activity panes with one-writer authority. |
+| #9201 | Close as not planned. | Re-admit durability, replay, and load proof only for an Omega-owned service. |
+| #9202 | Close as not planned. | Reconcile push admission with the Omega Rust Git core. |
+| #9203 | Close as not planned. | Native patch, review, approval, merge, and receipt panes. |
+| #9204 | Close as not planned. | Keep ngit and ngit-grasp as optional research evidence. |
+| #9185 | Close as not planned. | Preserve the landed typed ledger, signer, durable store, and subscription code. Cancel its residual hosted relay program. |
+
+Issue closure is a program disposition.
+It does not revert the commits that landed through #9185.
+It does not prove the deletion of an external cloud resource.
 
 ## Product and authority gates
 
@@ -355,6 +512,9 @@ Before OMEGA-08:
 - prove that the archive, relay, and index cannot use seed or `nsec` material
 - define separate purpose, retention, export, deletion, and Sync policy for
   each store
+- prove that a user-owned agent can attach without a configuration or secret
+  copy
+- prove that detach and restart do not change the external agent home
 
 Before OMEGA-11:
 
@@ -397,6 +557,8 @@ They do not become Omega evidence.
 | Omega is one fatal domain | An editor, Git, index, Nostr, or agent fault can terminate the complete durable work record. |
 | The bridge creates split authority | Electron, Omega, mobile, or web can settle one action differently. |
 | Nostr widens authority | A signature, post, relay acknowledgement, or membership can start or settle work without Effect admission. |
+| Agent attachment becomes agent takeover | Omega changes an external agent home, login, provider, model, memory, skill, tool, or credential without a separate admitted action. |
+| External agents become a policy bypass | An attached agent can request an effect outside the declared capability and OpenAgents policy intersection. |
 | Migration proof loses truth | The migration proof does not preserve stable refs, active-run checkpoints, credentials, or N-1 recovery. |
 | Accessibility becomes worse | The packaged editor journey fails the accepted accessibility gate. |
 | Omega does not improve the product | The complete journey does not materially improve editor and work completion results. |
@@ -412,6 +574,9 @@ This plan does not:
 - move a product domain to Rust without semantic proof and one-authority cutover
 - make a relay the company database or command authority
 - import the complete Buzz server, relay, Tauri, or Flutter application
+- run a separate OpenAgents Buzz community or forge product
+- claim complete Buzz feature or protocol parity
+- copy or replace an attached agent's configuration by default
 - make mobile or web depend on GPUI or local Omega state
 - reopen closed work only because its current host is Electron
 
@@ -434,3 +599,25 @@ This plan does not:
 
 This plan claim ends after the documentation commit lands on `main`.
 OMEGA-00 and later packets require new implementation claims.
+
+## Plan revision 2 claim
+
+- Actor: `codex-root-omega-buzz-plan-20260723`
+- Claimed at: `2026-07-23T23:15:49Z`
+- Base: `db331e6d1770041fc1c25b8e934a70d0ea01faf4`
+- Branch: `codex/omega-buzz-native-plan`
+- Worktree:
+  `/Users/christopherdavid/work/openagents-worktrees/omega-buzz-native-plan-20260723`
+- Scope: cancel the separate Buzz program, define complete Omega-native
+  workroom scope, add bring-your-own agent requirements, reconcile plans, and
+  record issue disposition
+- Hot contracts: Sol roadmap, Fast Follow revision, Sol document manifest,
+  STE inventory, and issue state
+- Excluded contracts: ProductSpec, AssuranceSpec, `AGENTS.md`, `INVARIANTS.md`,
+  release specifications, and product code
+- Verification: GitHub issue audit, source review, Sol document checks, Fast
+  Follow validation, STE checks, internal-link checks, and changed-file review
+
+This claim ends after both documentation commits land on `main`, the canceled
+issues have terminal comments, and the task worktrees and branches are
+reconciled.
