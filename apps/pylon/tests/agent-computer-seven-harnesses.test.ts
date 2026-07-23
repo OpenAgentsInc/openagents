@@ -419,16 +419,14 @@ describe('Agent Computer seven-harness runtime (#9193)', () => {
       expect(observed[0]?.env).toMatchObject({
         [envName]: secret,
         HOME: '/root',
-        ...(harness === 'grok'
-          ? {
-              GROK_DISABLE_AUTOUPDATER: '1',
-              GROK_MEMORY: '0',
-              GROK_SANDBOX: 'off',
-              GROK_SUBAGENTS: '0',
-              GROK_WRITE_FILE: '1',
-            }
-          : {}),
       })
+      if (harness === 'grok') {
+        expect(observed[0]?.env).toEqual({
+          HOME: '/root',
+          PATH: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+          XAI_API_KEY: secret,
+        })
+      }
       expect(JSON.stringify(outcome)).not.toContain(secret)
     },
   )

@@ -1423,11 +1423,6 @@ export const harnessExecEnv = (input: {
       ? {
           ...base,
           XAI_API_KEY: input.runtimeSecret.value,
-          GROK_DISABLE_AUTOUPDATER: '1',
-          GROK_MEMORY: '0',
-          GROK_SANDBOX: 'off',
-          GROK_SUBAGENTS: '0',
-          GROK_WRITE_FILE: '1',
         }
       : null
   }
