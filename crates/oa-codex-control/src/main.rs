@@ -1998,9 +1998,80 @@ fn microvm_turn_runner_command(work_context_b64: &str) -> Vec<String> {
 #[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct MicrovmTurnResult {
+    exit_code: Option<i32>,
+    failure_class: Option<String>,
     failure_reason_ref: Option<String>,
     model: Option<String>,
     model_token_receipt: Option<MicrovmModelReceipt>,
+    receipt_status: Option<u16>,
+    stderr_digest: Option<String>,
+}
+
+#[derive(Debug, Default, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PublicMicrovmFailureDiagnostic {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    guest_exit_code: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    guest_failure_class: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    guest_failure_reason_ref: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    guest_receipt_status: Option<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    guest_stderr_digest: Option<String>,
+}
+
+impl MicrovmTurnResult {
+    fn public_failure_diagnostic(&self) -> PublicMicrovmFailureDiagnostic {
+        let guest_failure_class = self.failure_class.as_deref().and_then(|value| {
+            matches!(
+                value,
+                "account_exhausted"
+                    | "account_rate_limited"
+                    | "auth_rejected"
+                    | "model_unavailable"
+                    | "network_failed"
+                    | "exec_timeout"
+                    | "exec_failed"
+            )
+            .then(|| value.to_string())
+        });
+        let guest_stderr_digest = self.stderr_digest.as_deref().and_then(|value| {
+            value
+                .strip_prefix("sha256:")
+                .filter(|digest| {
+                    digest.len() == 64
+                        && digest
+                            .bytes()
+                            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+                })
+                .map(|_| value.to_string())
+        });
+        PublicMicrovmFailureDiagnostic {
+            guest_exit_code: self.exit_code.filter(|value| (-1..=255).contains(value)),
+            guest_failure_class,
+            guest_failure_reason_ref: self
+                .failure_reason_ref
+                .as_deref()
+                .and_then(public_reason_ref),
+            guest_receipt_status: self
+                .receipt_status
+                .filter(|value| (100..=599).contains(value)),
+            guest_stderr_digest,
+        }
+    }
+}
+
+fn add_public_microvm_failure_diagnostic(event_data: &mut Value, result: &MicrovmTurnResult) {
+    let Value::Object(event_fields) = event_data else {
+        return;
+    };
+    let Ok(Value::Object(guest_fields)) = serde_json::to_value(result.public_failure_diagnostic())
+    else {
+        return;
+    };
+    event_fields.extend(guest_fields);
 }
 
 #[derive(Debug, Deserialize)]
@@ -2355,20 +2426,21 @@ fn run_org_cloud_microvm_worker(
     } else {
         "failed"
     };
+    let mut terminal_event_data = serde_json::json!({
+        "workContextRef": work_context_ref,
+        "runnerId": runner_id,
+        "exitCode": exit_code,
+        "failureClass": failure_class,
+        "failureReasonRef": failure_reason_ref,
+        "guestDiagnosticTail": guest_diagnostic_tail,
+    });
+    add_public_microvm_failure_diagnostic(&mut terminal_event_data, &result);
     append_job_event(
         &config,
         &run_id,
         JobEventInput {
             artifact_refs,
-            data_json: Some(json_string(&serde_json::json!({
-                "workContextRef": work_context_ref,
-                "runnerId": runner_id,
-                "exitCode": exit_code,
-                "failureClass": failure_class,
-                "failureReasonRef": failure_reason_ref,
-                "guestFailureReasonRef": result.failure_reason_ref,
-                "guestDiagnosticTail": guest_diagnostic_tail,
-            }))?),
+            data_json: Some(json_string(&terminal_event_data)?),
             detail: Some("Agent Computer microVM turn finished.".to_string()),
             digest: None,
             kind: "turn.completed".to_string(),
@@ -6827,6 +6899,71 @@ echo '{"status":"ok"}'
         .unwrap();
         assignment.created_at_ms = now_ms().unwrap();
         assignment
+    }
+
+    #[test]
+    fn microvm_result_propagates_public_auth_rejection_without_raw_material() {
+        let result: MicrovmTurnResult = serde_json::from_str(concat!(
+            r#"{"failureClass":"auth_rejected","exitCode":1,"#,
+            r#""failureReasonRef":"codex.exec_failed","receiptStatus":403,"#,
+            r#""stderrDigest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","#,
+            r#""stderr":"Bearer private-token","accessToken":"secret-value"}"#
+        ))
+        .unwrap();
+
+        let diagnostic = result.public_failure_diagnostic();
+        assert_eq!(
+            diagnostic,
+            PublicMicrovmFailureDiagnostic {
+                guest_exit_code: Some(1),
+                guest_failure_class: Some("auth_rejected".to_string()),
+                guest_failure_reason_ref: Some("codex.exec_failed".to_string()),
+                guest_receipt_status: Some(403),
+                guest_stderr_digest: Some(format!("sha256:{}", "a".repeat(64))),
+            }
+        );
+        let serialized = serde_json::to_string(&diagnostic).unwrap();
+        assert!(serialized.contains("\"guestFailureClass\":\"auth_rejected\""));
+        assert!(serialized.contains("\"guestReceiptStatus\":403"));
+        assert!(!serialized.contains("Bearer"));
+        assert!(!serialized.contains("private-token"));
+        assert!(!serialized.contains("accessToken"));
+        assert!(!serialized.contains("secret-value"));
+
+        let mut event_data = serde_json::json!({
+            "failureClass": "guest_command_failed",
+            "exitCode": 1,
+        });
+        add_public_microvm_failure_diagnostic(&mut event_data, &result);
+        assert_eq!(
+            event_data
+                .pointer("/guestFailureClass")
+                .and_then(Value::as_str),
+            Some("auth_rejected")
+        );
+        assert_eq!(
+            event_data
+                .pointer("/guestReceiptStatus")
+                .and_then(Value::as_u64),
+            Some(403)
+        );
+        let terminal_serialized = event_data.to_string();
+        assert!(!terminal_serialized.contains("Bearer"));
+        assert!(!terminal_serialized.contains("secret-value"));
+    }
+
+    #[test]
+    fn microvm_result_drops_unapproved_failure_fields() {
+        let result: MicrovmTurnResult = serde_json::from_str(concat!(
+            r#"{"failureClass":"auth_rejected:Bearer-secret","exitCode":999,"#,
+            r#""failureReasonRef":"private.secret.ref","receiptStatus":700,"#,
+            r#""stderrDigest":"sha256:NOT-A-DIGEST"}"#
+        ))
+        .unwrap();
+
+        let diagnostic = result.public_failure_diagnostic();
+        assert_eq!(diagnostic, PublicMicrovmFailureDiagnostic::default());
+        assert_eq!(serde_json::to_string(&diagnostic).unwrap(), "{}");
     }
 
     #[test]
