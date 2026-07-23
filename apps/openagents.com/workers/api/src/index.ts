@@ -540,6 +540,7 @@ import { routeAccessResponse } from './http/route-access-response'
 import { routeEffect, routeEffectOrResponse } from './http/route-effects'
 import type { ExactRoute } from './http/router'
 import {
+  identityAuthMirrorFromEnv,
   makeGitHubWriteRepositoryForEnv,
   makeProviderAccountRepositoryForEnv,
   makeProviderAccountTokenCustodyStoreForEnv,
@@ -752,6 +753,7 @@ import {
   resolveManagedCloudRepositoryCommit,
   runCloudGcpRuntimeDispatch,
 } from './khala-cloud-runtime-dispatch'
+import { makeProviderAccountLeaseService } from './provider-account-lease-service'
 import {
   type CloudGcpRuntimeDispatchContext,
   KHALA_CLOUD_RUNTIME_DISPATCH_ADMIN_PATH,
@@ -1223,6 +1225,7 @@ import {
   currentEpochMillis,
   currentIsoTimestamp,
   epochMillisToIsoTimestamp,
+  isoTimestampAfterIso,
   randomUuid,
 } from './runtime-primitives'
 import { runSarahAgentTurn } from './sarah-agent-runtime'
@@ -7611,9 +7614,28 @@ const runManagedCloudRuntimeTurnDispatchForEnv = async (
     }),
   )
   const client = await defaultMakeKhalaSyncSqlClient(connectionString)
+  const providerLeaseService = makeProviderAccountLeaseService({
+    db: openAgentsDatabase(env),
+    mirror: identityAuthMirrorFromEnv(env),
+  })
   try {
     const summary = await runCloudGcpRuntimeDispatch({
       armed: true,
+      finalizeAfterDispatch: async (turn, outcome) => {
+        if (turn.providerAccountLeaseRef === undefined) return
+        await providerLeaseService.release({
+          failureClass:
+            outcome.outcome === 'failed' ? (outcome.reason ?? 'dispatch_failed') : null,
+          leaseRef: turn.providerAccountLeaseRef,
+          now: currentIsoTimestamp(),
+          status: outcome.outcome === 'launched' ? 'succeeded' : 'failed',
+          terminalOutcome:
+            outcome.outcome === 'launched'
+              ? 'managed_cloud_placement_accepted'
+              : `managed_cloud_${outcome.reason ?? 'dispatch_failed'}`,
+          userId: turn.ownerUserId,
+        })
+      },
       inference: {
         baseUrl: inferenceBaseUrl,
         model: 'openagents/pylon-codex',
@@ -7631,52 +7653,109 @@ const runManagedCloudRuntimeTurnDispatchForEnv = async (
             message: 'managed_cloud_repository_ref_unresolved',
           })
         }
+        const now = currentIsoTimestamp()
+        const expiresAt = isoTimestampAfterIso(now, 35 * 60 * 1_000)
+        const initialLease = await providerLeaseService.acquire({
+          assignmentId: turn.turnId,
+          expiresAt,
+          now,
+          orderId: null,
+          requestedAction: 'agent_computer_codex_turn',
+          requiredProvider: CHATGPT_CODEX_PROVIDER,
+          runId: turn.threadId,
+          selectedByActor: 'sarah_managed_cloud_dispatch',
+          source: 'managed_cloud_runtime_dispatch',
+          userId: turn.ownerUserId,
+        })
+        if (initialLease === undefined) {
+          throw new ManagedCloudDispatchError({
+            message: 'managed_cloud_owner_codex_capacity_unavailable',
+          })
+        }
+        let lease = initialLease
         const [accounts, githubConnection] = await Promise.all([
           listProviderAccountsForUser(accountRepository, turn.ownerUserId),
           githubRepository.findUsableConnectionForUser(turn.ownerUserId),
         ])
-        const account = accounts.accounts.find(
-          candidate =>
-            candidate.provider === CHATGPT_CODEX_PROVIDER &&
-            candidate.publicStatus === 'connected' &&
-            candidate.health === 'healthy',
-        )
-        if (account === undefined) {
+        try {
+          if (
+            githubConnection === undefined ||
+            !hasRequiredGitHubWriteScopes(githubConnection.scopes)
+          ) {
+            throw new ManagedCloudDispatchError({
+              message: 'managed_cloud_github_write_authority_unavailable',
+            })
+          }
+
+          for (let attemptNumber = 1; attemptNumber <= 2; attemptNumber += 1) {
+            const account = accounts.accounts.find(
+              candidate =>
+                candidate.provider === CHATGPT_CODEX_PROVIDER &&
+                candidate.providerAccountRef === lease.providerAccountRef &&
+                candidate.publicStatus === 'connected' &&
+                candidate.health === 'healthy',
+            )
+            const grant =
+              account === undefined
+                ? undefined
+                : await issueProviderAccountGrant(accountRepository, {
+                    providerAccountRef: account.providerAccountRef,
+                    requestedAction: 'agent_computer_codex_turn',
+                    runnerSessionId: turn.turnId,
+                    threadId: turn.threadId,
+                    userId: turn.ownerUserId,
+                    workroomId: turn.workContextRef,
+                  })
+            if (account !== undefined && grant !== undefined) {
+              return {
+                ...turn,
+                commit: resolvedCommit,
+                accountRefHash: account.providerAccountRef,
+                codexContinuity: {
+                  accountRefHash: account.providerAccountRef,
+                  authGrantRef: grant.grantRef,
+                  maxReplayMessages: 24,
+                  providerAccountRef: grant.providerAccountRef,
+                },
+                providerAccountLeaseRef: lease.leaseRef,
+              }
+            }
+
+            const failover = await providerLeaseService.failover({
+              assignmentId: turn.turnId,
+              attemptNumber,
+              expiresAt,
+              failureClass: 'grant_resolution_failed',
+              maxAttempts: 2,
+              now: currentIsoTimestamp(),
+              orderId: null,
+              previousLeaseRef: lease.leaseRef,
+              requestedAction: 'agent_computer_codex_turn',
+              runId: turn.threadId,
+              selectedByActor: 'sarah_managed_cloud_dispatch',
+              source: 'managed_cloud_runtime_dispatch',
+              userId: turn.ownerUserId,
+            })
+            if (failover === undefined || failover.nextLease === null) break
+            lease = failover.nextLease
+          }
+
           throw new ManagedCloudDispatchError({
             message: 'managed_cloud_owner_codex_grant_unavailable',
           })
-        }
-        if (
-          githubConnection === undefined ||
-          !hasRequiredGitHubWriteScopes(githubConnection.scopes)
-        ) {
-          throw new ManagedCloudDispatchError({
-            message: 'managed_cloud_github_write_authority_unavailable',
+        } catch (error) {
+          await providerLeaseService.release({
+            failureClass: 'preparation_failed',
+            leaseRef: lease.leaseRef,
+            now: currentIsoTimestamp(),
+            status: 'failed',
+            terminalOutcome:
+              error instanceof ManagedCloudDispatchError
+                ? error.message
+                : 'managed_cloud_preparation_failed',
+            userId: turn.ownerUserId,
           })
-        }
-        const grant = await issueProviderAccountGrant(accountRepository, {
-          providerAccountRef: account.providerAccountRef,
-          requestedAction: 'agent_computer_codex_turn',
-          runnerSessionId: turn.turnId,
-          threadId: turn.threadId,
-          userId: turn.ownerUserId,
-          workroomId: turn.workContextRef,
-        })
-        if (grant === undefined) {
-          throw new ManagedCloudDispatchError({
-            message: 'managed_cloud_owner_codex_grant_unavailable',
-          })
-        }
-        return {
-          ...turn,
-          commit: resolvedCommit,
-          accountRefHash: account.providerAccountRef,
-          codexContinuity: {
-            accountRefHash: account.providerAccountRef,
-            authGrantRef: grant.grantRef,
-            maxReplayMessages: 24,
-            providerAccountRef: grant.providerAccountRef,
-          },
+          throw error
         }
       },
       readAdmitted: readQueuedManagedCloudTurns,

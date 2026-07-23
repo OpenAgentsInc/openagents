@@ -611,6 +611,65 @@ describe('runCloudGcpRuntimeDispatch', () => {
     ])
     expect(push.recorded.at(-1)?.finishReason).toBe('error')
   })
+
+  test('finalizes prepared lease state after launch success and refusal', async () => {
+    reset()
+    const finalized: Array<{
+      leaseRef: string | undefined
+      outcome: string
+      reason: string | undefined
+    }> = []
+    const prepareAfterClaim = (turn: CloudGcpAdmittedWorkContext) =>
+      Promise.resolve({
+        ...withPinnedAccount(turn, 'acct_owner'),
+        providerAccountLeaseRef: 'provider-account-lease_ref_managed',
+      })
+    const finalizeAfterDispatch: NonNullable<
+      CloudGcpRuntimeDispatchDependencies['finalizeAfterDispatch']
+    > = (turn, outcome) => {
+      finalized.push({
+        leaseRef: turn.providerAccountLeaseRef,
+        outcome: outcome.outcome,
+        reason: outcome.reason,
+      })
+      return Promise.resolve()
+    }
+
+    const launched = await dispatchCloudGcpRuntimeTurn(
+      baseDeps({
+        executePush: makeRecordingExecutePush().executePush,
+        finalizeAfterDispatch,
+        launch: okLaunch(),
+        prepareAfterClaim,
+      }),
+      admitted,
+    )
+    const refused = await dispatchCloudGcpRuntimeTurn(
+      baseDeps({
+        executePush: makeRecordingExecutePush().executePush,
+        finalizeAfterDispatch,
+        launch: () =>
+          Promise.resolve({ ok: false, reason: 'capacity_unavailable' }),
+        prepareAfterClaim,
+      }),
+      { ...admitted, turnId: 'turn.t2' },
+    )
+
+    expect(launched.outcome).toBe('launched')
+    expect(refused.outcome).toBe('failed')
+    expect(finalized).toEqual([
+      {
+        leaseRef: 'provider-account-lease_ref_managed',
+        outcome: 'launched',
+        reason: undefined,
+      },
+      {
+        leaseRef: 'provider-account-lease_ref_managed',
+        outcome: 'failed',
+        reason: 'capacity_unavailable',
+      },
+    ])
+  })
 })
 
 describe('makeCloudCodingAdapterLaunchSeam', () => {

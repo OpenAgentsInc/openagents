@@ -189,6 +189,8 @@ export type CloudGcpAdmittedWorkContext = Readonly<{
         timeoutSeconds?: number | undefined
       }>
     | undefined
+  /** Atomic owner-scoped provider selection lease. It contains no credential. */
+  providerAccountLeaseRef?: string | undefined
 }>
 
 type ManagedCloudQueueRow = Readonly<{
@@ -451,6 +453,13 @@ export type CloudGcpRuntimeDispatchDependencies = Readonly<{
   prepareAfterClaim?:
     | ((turn: CloudGcpAdmittedWorkContext) => Promise<CloudGcpAdmittedWorkContext>)
     | undefined
+  /** Settles any lease or other preparation state after dispatch completes. */
+  finalizeAfterDispatch?:
+    | ((
+        turn: CloudGcpAdmittedWorkContext,
+        outcome: CloudGcpDispatchOutcome,
+      ) => Promise<void>)
+    | undefined
   activeAccountRefHashes?: ReadonlyArray<string> | undefined
   accountStates?: ReadonlyArray<CloudGcpRuntimeAccountState> | undefined
   /** Token mint seam (default the real mint). */
@@ -656,12 +665,26 @@ export const dispatchCloudGcpRuntimeTurn = async (
   // is wrapped so a throw still revokes it (the guest must never run with a
   // live credential we lost track of).
   let minted: MintedExecutionToken | undefined
+  let authorizedTurn = turn
+  let prepared = false
   const messageId = `msg.${resolved.uuid()}`
   let nextMutationId = 2
+  const finalize = async (outcome: CloudGcpDispatchOutcome): Promise<void> => {
+    if (!prepared || deps.finalizeAfterDispatch === undefined) return
+    try {
+      await deps.finalizeAfterDispatch(authorizedTurn, outcome)
+    } catch (error) {
+      resolved.log('cloud_gcp_runtime_dispatch_finalize_failed', {
+        detail: error instanceof Error ? error.message : 'unknown',
+        turnId: authorizedTurn.turnId,
+      })
+    }
+  }
   try {
-    const authorizedTurn = deps.prepareAfterClaim === undefined
+    authorizedTurn = deps.prepareAfterClaim === undefined
       ? turn
       : await deps.prepareAfterClaim(turn)
+    prepared = true
     minted = await resolved.mint(resolved.sql, {
       ownerUserId: ownerId,
       ...(resolved.inference.ttlSeconds === undefined
@@ -812,12 +835,14 @@ export const dispatchCloudGcpRuntimeTurn = async (
         reason: placement.reason,
         turnId: authorizedTurn.turnId,
       })
-      return {
+      const outcome = {
         credentialId: minted.credentialId,
-        outcome: 'failed',
+        outcome: 'failed' as const,
         reason: placement.reason,
         tokenRevoked: true,
       }
+      await finalize(outcome)
+      return outcome
     }
 
     // 5. Launch accepted (provisioning). Stream a public-safe status line then
@@ -856,13 +881,15 @@ export const dispatchCloudGcpRuntimeTurn = async (
       placementRef: placement.placementRef,
       turnId: authorizedTurn.turnId,
     })
-    return {
+    const outcome = {
       credentialId: minted.credentialId,
-      outcome: 'launched',
+      outcome: 'launched' as const,
       placementRef: placement.placementRef,
       sessionId: placement.sessionId,
       tokenRevoked: false,
     }
+    await finalize(outcome)
+    return outcome
   } catch (error) {
     // Any thrown failure after mint MUST revoke the token so no live credential
     // is left dangling for a turn that will never run.
@@ -891,12 +918,14 @@ export const dispatchCloudGcpRuntimeTurn = async (
       detail: error instanceof Error ? error.message : 'unknown',
       turnId: turn.turnId,
     })
-    return {
+    const outcome = {
       ...(minted === undefined ? {} : { credentialId: minted.credentialId }),
-      outcome: 'failed',
+      outcome: 'failed' as const,
       reason: 'dispatch_threw',
       tokenRevoked,
     }
+    await finalize(outcome)
+    return outcome
   }
 }
 
