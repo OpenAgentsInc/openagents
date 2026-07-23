@@ -433,6 +433,22 @@ describe('autonomous trigger is bound by the admitted Sarah authority profile', 
     expect(decision._tag).toBe('Allowed')
   })
 
+  test('read_business_context is DENIED with the default delegated-ops conditions (missing citations) — the prod tick regression', async () => {
+    // grant.sarah.owner_contact requires [owner_scope, redaction, citations].
+    // The default authorizeSarahOperation condition set (owner_scope, redaction,
+    // existing_runtime_gate, rollback) is the delegated_operations shape and
+    // matches NO grant for read_business_context. The tick trigger must supply
+    // the owner_contact conditions explicitly; if it falls back to the default,
+    // every tick refuses in production (grant.none). This locks that fix.
+    const decision = await decideSarah('read_business_context', 'owner_business_context', [
+      'condition.owner_scope',
+      'condition.redaction',
+      'condition.existing_runtime_gate',
+      'condition.rollback',
+    ])
+    expect(decision._tag).toBe('Denied')
+  })
+
   test('a reserved action (move_financial_value) is DENIED regardless of the autonomous trigger', async () => {
     const decision = await decideSarah('move_financial_value', 'owner_business_context', [
       'condition.owner_scope',

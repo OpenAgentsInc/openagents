@@ -7455,6 +7455,31 @@ const runSarahAutonomousTickDispatchForEnv = async (
         Effect.runPromise(
           authorizeSarahOperation(client.sql, {
             action: 'read_business_context',
+            // grant.sarah.owner_contact requires exactly
+            // [owner_scope, redaction, citations]; the default condition set
+            // (owner_scope, redaction, existing_runtime_gate, rollback) is the
+            // delegated_operations shape and would match no grant here, so the
+            // trigger gate must supply the owner_contact conditions. owner_scope
+            // is AND-ed with the live hasSarahThreadAuthority check inside
+            // authorizeSarahOperation, so passing passed:true here never widens
+            // scope on its own.
+            conditionResults: [
+              {
+                conditionRef: 'condition.owner_scope',
+                passed: true,
+                evidenceRefs: [],
+              },
+              {
+                conditionRef: 'condition.redaction',
+                passed: true,
+                evidenceRefs: ['schema:openagents.sarah.business_context.v1'],
+              },
+              {
+                conditionRef: 'condition.citations',
+                passed: true,
+                evidenceRefs: ['cited:collectSarahBusinessContext'],
+              },
+            ],
             ownerUserId,
             programRef: 'program.sarah_company_operations',
             resource: 'owner_business_context',
