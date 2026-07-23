@@ -598,7 +598,7 @@ describe('dispatchCloudGcpRuntimeTurn', () => {
     const selection = {
       _tag: 'gemini',
       harnessId: 'pi',
-      model: 'gemini-3.5-flash',
+      model: 'gemini-3.1-pro-preview-customtools',
       provider: 'google_gemini',
       requestedAction: 'agent_computer_gemini_turn',
     } as const
@@ -707,7 +707,10 @@ describe('dispatchCloudGcpRuntimeTurn', () => {
       expect(workContext.providerAuth).toBeUndefined()
       expect(workContext.harnessTurn).toEqual({
         harness: harnessId,
-        model: 'gemini-3.5-flash',
+        model:
+          harnessId === 'pi'
+            ? 'gemini-3.1-pro-preview-customtools'
+            : 'gemini-3.5-flash',
         runtimeSecretGrant: {
           agentToken: 'oa_agent_RAWTOKEN0123456789abcdef',
           baseUrl: 'https://staging.example',

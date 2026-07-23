@@ -38,7 +38,7 @@ describe("Agent Computer seven-harness image pins (#9193)", () => {
       credentialScannerRequired: true,
       providerCredentialPolicy: "broker_only",
     });
-    expect(manifest.guestImage.harnesses.status).toBe("source_wired_rebake_and_live_proof_pending");
+    expect(manifest.guestImage.harnesses.status).toBe("seven_harness_image_live_qualification_in_progress");
   });
 
   test("image-local npm lock fixes Claude Code, Pi, and OpenCode versions", () => {

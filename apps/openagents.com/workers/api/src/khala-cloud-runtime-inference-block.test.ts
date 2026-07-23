@@ -10,6 +10,7 @@ import {
   CLOUD_RUNTIME_WRITEBACK_DEFAULT_INGEST_PATH,
   CLOUD_RUNTIME_WRITEBACK_DEFAULT_MODE,
   MANAGED_AGENT_COMPUTER_GEMINI_MODEL,
+  MANAGED_AGENT_COMPUTER_PI_MODEL,
   ManagedAgentComputerHarnessSelection,
   buildManagedAgentComputerHarnessBlocks,
   buildCloudRuntimeInferenceConfig,
@@ -51,7 +52,7 @@ describe('managed Agent Computer harness selection', () => {
     ).toBeUndefined()
   })
 
-  test.each(['goose', 'opencode', 'pi'] as const)(
+  test.each(['goose', 'opencode'] as const)(
     '%s selects the exact Gemini grant and model',
     harnessId => {
       expect(selectManagedAgentComputerHarness(harnessId)).toMatchObject({
@@ -63,6 +64,16 @@ describe('managed Agent Computer harness selection', () => {
       })
     },
   )
+
+  test('Pi selects the Google custom-tools model', () => {
+    expect(selectManagedAgentComputerHarness('pi')).toMatchObject({
+      _tag: 'gemini',
+      harnessId: 'pi',
+      model: MANAGED_AGENT_COMPUTER_PI_MODEL,
+      provider: 'google_gemini',
+      requestedAction: 'agent_computer_gemini_turn',
+    })
+  })
 
   test('selects the exact Claude, Cursor, and Grok credential lanes', () => {
     expect(selectManagedAgentComputerHarness('claude-code')).toMatchObject({
@@ -106,7 +117,7 @@ describe('managed Agent Computer harness selection', () => {
     })
     expect(geminiBlocks.harnessTurn).toMatchObject({
       harness: 'pi',
-      model: MANAGED_AGENT_COMPUTER_GEMINI_MODEL,
+      model: MANAGED_AGENT_COMPUTER_PI_MODEL,
       runtimeSecretGrant: {
         agentToken: 'short-lived-agent-token',
         grantRef: 'grant.gemini.owner.turn-1',

@@ -58,6 +58,8 @@ export const managedAgentComputerHarnessIdFromExecutionTargetId = (
 
 export const MANAGED_AGENT_COMPUTER_DEFAULT_HARNESS = 'codex' as const
 export const MANAGED_AGENT_COMPUTER_GEMINI_MODEL = 'gemini-3.5-flash' as const
+export const MANAGED_AGENT_COMPUTER_PI_MODEL =
+  'gemini-3.1-pro-preview-customtools' as const
 
 export const ManagedAgentComputerHarnessSelection = S.TaggedUnion({
   codex: {
@@ -72,7 +74,10 @@ export const ManagedAgentComputerHarnessSelection = S.TaggedUnion({
   },
   gemini: {
     harnessId: S.Literals(['goose', 'opencode', 'pi']),
-    model: S.Literal(MANAGED_AGENT_COMPUTER_GEMINI_MODEL),
+    model: S.Literals([
+      MANAGED_AGENT_COMPUTER_GEMINI_MODEL,
+      MANAGED_AGENT_COMPUTER_PI_MODEL,
+    ]),
     provider: S.Literal('google_gemini'),
     requestedAction: S.Literal('agent_computer_gemini_turn'),
   },
@@ -110,10 +115,16 @@ export const selectManagedAgentComputerHarness = (
       })
     case 'goose':
     case 'opencode':
-    case 'pi':
       return ManagedAgentComputerHarnessSelection.cases.gemini.make({
         harnessId,
         model: MANAGED_AGENT_COMPUTER_GEMINI_MODEL,
+        provider: 'google_gemini',
+        requestedAction: 'agent_computer_gemini_turn',
+      })
+    case 'pi':
+      return ManagedAgentComputerHarnessSelection.cases.gemini.make({
+        harnessId,
+        model: MANAGED_AGENT_COMPUTER_PI_MODEL,
         provider: 'google_gemini',
         requestedAction: 'agent_computer_gemini_turn',
       })

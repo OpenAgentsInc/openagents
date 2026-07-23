@@ -81,11 +81,18 @@
   "guestImage": {
     "kernelDigest": "sha256:22847375721aceea63d934c28f2dfce4670b6f52ec904fae19f5145a970c1e65",
     "kernelSource": "firecracker-ci/v1.10/x86_64/vmlinux-5.10.223",
-    "rootfsDigest": "sha256:66333e38cd446a2b3d4bf6121b3e29ecea14b08ad2126812fed6e87b79dde81e",
-    "rootfsDigestPrevious": "sha256:54d90722acb400434d8352d2876835b3f9f2700d8b99fa1f8be7952e47ce0d48 (production managed Codex turn proven 2026-07-12)",
-    "rootfsSource": "source-controlled debootstrap jammy bake; seven-harness source is wired and requires a new receipt plus boot smoke before the production rootfsDigest changes",
-    "rootfsStatus": "PORT-03 IMAGE LIVE BOOT GREEN 2026-07-13: provisionerKind=live, guest exec code=0, controller digest matched the bake receipt, artifacts extracted, and cleanupReceipt.tornDown=true. Full retained stage/install/activate acceptance remains fail-closed until a managed checkpoint artifact materializer supplies the verified Git post-image/diff and agent lifecycle files to the blank staged guest.",
+    "rootfsDigest": "sha256:80a2b6a0028911bc1b803b7616194fccb1a8dffb125dfcba2791c1d19351e62a",
+    "rootfsDigestPrevious": "sha256:3f8e1accef9ef04fb6cfa6750b6f27a10f18cb30e7536bc45dbbf87f8d44fb1 (seven-harness v17 rollback image)",
+    "rootfsSource": "source-controlled debootstrap jammy seven-harness v19 bake at commit ab07fc4220",
+    "rootfsStatus": "SEVEN-HARNESS V19 IMAGE LIVE BOOT GREEN 2026-07-23: provisionerKind=live, all seven pinned version probes returned code 0, artifacts were extracted, cleanupReceipt.tornDown=true, and the host retained zero Firecracker processes and zero runtime directories.",
     "rootfsBuildScript": "apps/pylon/deploy/agent-computer/build-agent-computer-rootfs.sh (source-controlled bake: debootstrap jammy + seven pinned harnesses + vsock guest agent + turn-runner + oa-workroomd + egress fix; seals sha256 + emits a refs-only bake receipt; run as root on the nested-virt bake host, then boot-smoke and re-pin rootfsDigest)",
+    "rootfsBakeReceipt": {
+      "bakedAt": "2026-07-23T16:42:27Z",
+      "sourceCommit": "ab07fc42200a79491ebe3d6f0f6c6897204f018d",
+      "turnRunnerSha256": "88ae234cbec41e02ff0f924842a992437b266af5f36ed8b8fdc2c84114d6bd0e",
+      "portableSessionControlSha256": "acab20cd4f03a4f27e1c8f1b9e6e352c3a6866efb3783f831895c70bc1431b25",
+      "workroomdSha256": "59d2623c6b5629b75be3889eb457a5957e7d3d6044f4b12dd0d45ddcc319d063"
+    },
     "codex": {
       "status": "baked_and_boot_smoke_proven_2026_07_10",
       "version": "0.144.0",
@@ -96,13 +103,13 @@
       "note": "The CX-3 in-VM codex_app_server lane (turn-runner `codexTurn` block: codex exec --json under the broker-redeemed scratch CODEX_HOME, exact usage receipt with tokenChargeMetered:false) is wired and fixture-proven in-repo; its live rung needs this binary baked + one real in-VM turn."
     },
     "harnesses": {
-      "status": "source_wired_rebake_and_live_proof_pending",
+      "status": "seven_harness_image_live_qualification_in_progress",
       "credentialPolicy": "Provider material is injected for one turn at runtime. No provider key, OAuth token, or subscription home is present in the image or bake receipt.",
       "credentialScanner": "The turn-runner scans the staged diff before writeback and emits typed finding refs only. Host closeout still requires its isolation scanner and cleanup receipt.",
       "pi": {
         "version": "0.81.1",
         "source": "npm @earendil-works/pi-coding-agent",
-        "model": "google/gemini-3.5-flash",
+        "model": "google/gemini-3.1-pro-preview-customtools",
         "credentialEnv": "GEMINI_API_KEY"
       },
       "opencode": {
@@ -124,14 +131,14 @@
         "credentialEnv": "CLAUDE_CODE_OAUTH_TOKEN"
       },
       "cursor": {
-        "executionState": "fail_closed_provider_broker_pending",
+        "executionState": "runtime_secret_and_real_writeback_qualified",
         "version": "2026.07.20-8cc9c0b",
         "source": "https://downloads.cursor.com/lab/2026.07.20-8cc9c0b/linux/x64/agent-cli-package.tar.gz",
         "tarballSha256": "6e9f17247ffeb5f8f7e2246b4bcd6bb26cb2d5a9f9a4b0012c9a80d868ed25b4",
         "credentialEnv": "CURSOR_API_KEY"
       },
       "grok": {
-        "executionState": "fail_closed_provider_broker_pending",
+        "executionState": "runtime_secret_qualified_model_turn_pending",
         "version": "0.2.106",
         "source": "https://storage.googleapis.com/grok-build-public-artifacts/cli/grok-0.2.106-linux-x86_64",
         "binarySha256": "7180d0e03cc2a496033ff3aae2223ce239446a9827a59faa76091c7edd5e1c38",
@@ -139,7 +146,7 @@
       }
     },
     "portableSessionControl": {
-      "status": "destination_activation_and_signed_lsp_source_wired_rebake_pending",
+      "status": "destination_activation_and_signed_lsp_live_boot_proven",
       "source": "apps/pylon/deploy/agent-computer/portable-session-control.ts",
       "guestInstallPath": "/opt/agent/portable-session-control",
       "contract": "fixed PORT-03 stage/materialize/activate/continue/quiesce/checkpoint/export/abort/reclaim/wipeCapability protocol; checkpoint and capability bytes plus private continuation tasks cross only authenticated bounded seams; no arbitrary command surface",
@@ -153,7 +160,7 @@
       },
       "managedHelperArtifacts": {
         "typescriptLsp": {
-          "admissionState": "source_wired_rebake_pending",
+          "admissionState": "baked_and_live_boot_proven",
           "artifactRef": "artifact.npm.typescript-language-server.5_3_0.sha256-398cacc17fff2108652e7b4050e3182008d17063246b3fea7dcf5fae2ce1560e",
           "profileRef": "profile.agent-computer.typescript-lsp.v1",
           "version": "5.3.0",
@@ -205,17 +212,17 @@
         }
       },
       "bakeReceiptField": "portableSessionControlSha256",
-      "portableSessionControlSha256": "820f18c5ea9b24f072f9e41755881b8235ab5e3835e00c7793780d4ddb659437",
+      "portableSessionControlSha256": "acab20cd4f03a4f27e1c8f1b9e6e352c3a6866efb3783f831895c70bc1431b25",
       "liveBootProof": {
-        "provedAt": "2026-07-13",
+        "provedAt": "2026-07-23",
         "provisionerKind": "live",
         "execCode": 0,
         "artifactsExtracted": true,
         "tornDown": true,
-        "provisionReceiptDigest": "sha256:371df018106efd86d8e39796956ddac881b8ea3cd5d1b68ee480ca21819e08b1",
-        "cleanupReceiptDigest": "sha256:1dfa54ec2d6fd22171182d3ebbc36094a593b5b37cfbfae685560d07826ae399"
+        "provisionReceiptDigest": "sha256:ea4f88f40c0b3a2f4e65f72d1db92e307947405ce61ec342087d1f4f4f04aa6a",
+        "cleanupReceiptDigest": "sha256:21be66f03601320d8e009f917a07febc18279902e746c883e5c6de82650a7443"
       },
-      "note": "The recorded digest proves the prior capability controller image only. Source now supervises a generation-bound recursive Node watcher and npm-signature-verified TypeScript LSP. PTY, DAP, and native helpers remain explicit unsupported omissions. The LSP is typescript-language-server, not tsserver. debugpy remains an uninstalled candidate because its exact PyPI wheel has no signature or PEP 740 provenance. Re-bake and a full live chain are required before updating portableSessionControlSha256 or claiming managed LSP availability."
+      "note": "The recorded digest is the controller in the live v19 image. The image supervises a generation-bound recursive Node watcher and an npm-signature-verified TypeScript LSP. PTY, DAP, and native helpers remain explicit unsupported omissions. The LSP is typescript-language-server, not tsserver. debugpy remains uninstalled because its exact PyPI wheel has no signature or PEP 740 provenance."
     },
     "scratchPolicy": "per-work-context-disposable",
     "scratchWipeReceiptRequired": true,
