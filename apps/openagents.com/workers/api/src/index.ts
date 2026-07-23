@@ -7328,6 +7328,8 @@ const runHostedRuntimeTurnDispatchForEnv = async (
 // Adds no new authority: reserved actions refuse inside the turn's tools.
 // Fail-soft: flag OFF, or a missing KHALA_SYNC_DB/GEMINI_API_KEY, is a clean
 // no-op; a per-owner failure is isolated and never breaks the cron tick.
+const SARAH_AUTONOMOUS_MODEL_ID = 'gemini-3.5-flash' as const
+
 const runSarahAutonomousTickDispatchForEnv = async (
   env: OpenAgentsWorkerEnv,
 ): Promise<void> => {
@@ -7364,7 +7366,7 @@ const runSarahAutonomousTickDispatchForEnv = async (
     })
     const gemma4 = makeGemma4Adapter({
       apiKey: () => Redacted.make(apiKey),
-      model: DEFAULT_HOSTED_RUNTIME_MODEL,
+      model: SARAH_AUTONOMOUS_MODEL_ID,
     })
 
     // ONE gated Sarah turn with the autonomous objective. This mirrors the
@@ -7401,7 +7403,7 @@ const runSarahAutonomousTickDispatchForEnv = async (
         context,
         {
           laneRef: HOSTED_RUNTIME_LANE,
-          modelRef: DEFAULT_HOSTED_RUNTIME_MODEL,
+          modelRef: SARAH_AUTONOMOUS_MODEL_ID,
           providerLabel: 'Google AI Studio',
           runtimeLabel: 'OpenAgents hosted runtime',
         },
@@ -7441,7 +7443,7 @@ const runSarahAutonomousTickDispatchForEnv = async (
       const result = await Effect.runPromise(
         runSarahAgentTurn({
           adapter: gemma4,
-          model: DEFAULT_HOSTED_RUNTIME_MODEL,
+          model: SARAH_AUTONOMOUS_MODEL_ID,
           prompt,
           system,
           tools: makeSarahRuntimeTools({
