@@ -101,6 +101,26 @@ node -e '
 dir for signing, or use any equivalent V4 signer. The plain `gcloud storage
 sign-url` path needs pyOpenSSL in gcloud's Python and is less convenient.)
 
+## Direction profile (how director notes persist)
+
+Owner director notes — a deeper and less cheery voice, and a less toothy, more
+sly smile — must shape every future Sarah clip, not just one call. They
+live in a canonical profile, `scripts/sarah-avatar/sarah-direction.json`, which
+the runner loads and applies by default. It sets Sarah's voice, `voice_prompt`
+(tone), `video_prompt` (expression and framing), `negative_prompt`, and
+resolution. An explicit `--flag` overrides one field for one call. Pass
+`--direction none` to disable the profile, or `--direction <path>` to use
+another one.
+
+To act on a new director note, translate it into these fields and append a dated
+entry to `director_notes` in the profile (verbatim note plus how it maps to
+parameters). Every generation after that carries the change, so the character
+stays consistent. Example current mapping: the note above moved the voice from
+`Zephyr` (bright) to `Kore` (firm, deeper), rewrote `voice_prompt` toward a
+lower, calm, dry, faintly sly register, rewrote `video_prompt` toward a
+closed-lip knowing half-smile with minimal teeth, and added big toothy grins and
+over-cheerful expressions to `negative_prompt`.
+
 ## Run
 
 ```sh

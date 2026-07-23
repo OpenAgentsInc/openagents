@@ -1,0 +1,18 @@
+{
+  "schema": "openagents.sarah.avatar_direction.v1",
+  "updated_at": "2026-07-22",
+  "summary": "Canonical direction for every Sarah talking-avatar generation. The runner (segmind-talking-avatar.mjs) applies this by default; explicit --flags override a field for one call. Owner director notes update this file so the character stays consistent across all future videos.",
+  "voice": "Kore (Female)",
+  "voice_language": "English (US)",
+  "voice_prompt": "A lower, calmer register with measured pacing. Composed and understated. Quietly confident with a dry, faintly sly edge. Not bright, not cheerful, not bubbly. Controlled and self-assured, a little cool.",
+  "video_prompt": "A subtle, knowing, slightly sly half-smile with the lips mostly closed and minimal teeth. Composed and poised, a controlled and understated expression. Natural subtle head movement and blinking. Cinematic sci-fi lighting that matches the source portrait. Fixed camera.",
+  "negative_prompt": "big toothy grin, wide open-mouth smile, over-cheerful, bubbly, laughing, giddy, exaggerated expression, subtitles, text, watermark, blurry, distorted face, extra fingers, frozen static face",
+  "resolution": "1080p",
+  "director_notes": [
+    {
+      "date": "2026-07-22",
+      "note": "First test was fine but: voice a little deeper, less cheery; smile less toothy, a little more sly.",
+      "applied": "voice Zephyr (Bright) -> Kore (Firm) for a deeper base; voice_prompt shifted to a lower, calm, dry, faintly sly register and away from cheerful/bubbly; video_prompt shifted to a closed-lip, minimal-teeth, knowing half-smile; negative_prompt now rejects big toothy grins, wide smiles, and over-cheerful/giddy expressions."
+    }
+  ]
+}

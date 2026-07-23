@@ -40,13 +40,32 @@
 //   --timeout-min <n>    max minutes to poll, default 15.
 
 import { readFileSync, writeFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 const args = process.argv.slice(2)
 const flag = (name, fallback = undefined) => {
   const i = args.indexOf(`--${name}`)
   return i >= 0 && i + 1 < args.length ? args[i + 1] : fallback
 }
+
+// Canonical Sarah direction. Applied to every generation so the owner's
+// director notes (voice register, expression, framing) stay consistent across
+// all future videos. An explicit --flag overrides one field for one call.
+// Point elsewhere with --direction <path>, or --direction none to disable.
+const loadDirection = () => {
+  const chosen = flag('direction')
+  if (chosen === 'none') return {}
+  const path =
+    chosen ||
+    resolve(dirname(fileURLToPath(import.meta.url)), 'sarah-direction.json')
+  try {
+    return JSON.parse(readFileSync(path, 'utf8'))
+  } catch {
+    return {}
+  }
+}
+const direction = loadDirection()
 
 const resolveApiKey = () => {
   if (process.env.SEGMIND_API_KEY) return process.env.SEGMIND_API_KEY.trim()
@@ -90,24 +109,27 @@ const buildBody = () => {
       throw new Error('kling avatar models are audio-driven; pass --audio <url>.')
     return { image_url: image, audio_url: audio }
   }
-  // p-video-avatar (Pruna) and compatible script-or-audio models.
+  // p-video-avatar (Pruna) and compatible script-or-audio models. Defaults come
+  // from the canonical Sarah direction profile; --flags override per call.
   const body = {
     image,
-    voice: flag('voice', 'Zephyr (Female)'),
-    voice_language: 'English (US)',
+    voice: flag('voice', direction.voice || 'Zephyr (Female)'),
+    voice_language: flag('voice-language', direction.voice_language || 'English (US)'),
     voice_prompt: flag(
       'voice-prompt',
-      'Warm, confident, friendly, upbeat — speaking with a genuine smile.',
+      direction.voice_prompt ||
+        'Warm, confident, friendly, upbeat — speaking with a genuine smile.',
     ),
     video_prompt: flag(
       'video-prompt',
-      'The person smiles warmly and greets the camera, with natural subtle ' +
-        'head movement and blinking.',
+      direction.video_prompt ||
+        'The person greets the camera, with natural subtle head movement and blinking.',
     ),
     negative_prompt:
+      flag('negative-prompt', direction.negative_prompt) ||
       'subtitles, text, watermark, blurry, distorted face, extra fingers, ' +
-      'frozen static face',
-    resolution: flag('resolution', '1080p'),
+        'frozen static face',
+    resolution: flag('resolution', direction.resolution || '1080p'),
     seed: Number(flag('seed', '4242')),
   }
   if (audio) body.audio = audio
