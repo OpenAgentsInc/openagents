@@ -13,6 +13,7 @@ import {
   CLOUD_GCP_RUNTIME_DISPATCH_CLIENT_GROUP_ID,
   dispatchCloudGcpRuntimeTurn,
   makeCloudCodingAdapterLaunchSeam,
+  managedAgentComputerGrantIssueInput,
   planCloudGcpRuntimeAccountDispatch,
   readQueuedManagedCloudTurns,
   runCloudGcpRuntimeDispatch,
@@ -224,6 +225,31 @@ const reset = () => {
 }
 
 describe('dispatchCloudGcpRuntimeTurn', () => {
+  test('derives an owner-scoped provider grant request from the claimed turn', () => {
+    const selection = {
+      _tag: 'gemini',
+      harnessId: 'pi',
+      model: 'gemini-3.5-flash',
+      provider: 'google_gemini',
+      requestedAction: 'agent_computer_gemini_turn',
+    } as const
+
+    expect(
+      managedAgentComputerGrantIssueInput(
+        admitted,
+        selection,
+        'provider-account.gemini.owner-1',
+      ),
+    ).toEqual({
+      providerAccountRef: 'provider-account.gemini.owner-1',
+      requestedAction: 'agent_computer_gemini_turn',
+      runnerSessionId: admitted.turnId,
+      threadId: admitted.threadId,
+      userId: admitted.ownerUserId,
+      workroomId: admitted.workContextRef,
+    })
+  })
+
   test('happy path: claim -> mint -> launch(work_context_b64) -> status -> finished(stop); token NOT revoked', async () => {
     reset()
     const push = makeRecordingExecutePush()
@@ -266,6 +292,181 @@ describe('dispatchCloudGcpRuntimeTurn', () => {
     expect(wc.inference!.ownerUserId).toBe('github:14167547')
     expect(wc.inference!.noMeterSecret).toBe('no-meter')
     expect(wc.inference!.provider).toBe('vertex-gemini')
+  })
+
+  test.each(['goose', 'opencode', 'pi'] as const)(
+    '%s receives only its exact Gemini grant and preserves execution/writeback identity',
+    async harnessId => {
+      reset()
+      const captured: { b64?: string } = {}
+      const providerSecretBytes = 'provider-secret-bytes-must-not-leave-custody'
+      const result = await dispatchCloudGcpRuntimeTurn(
+        baseDeps({
+          executePush: makeRecordingExecutePush().executePush,
+          launch: okLaunch(captured),
+          prepareAfterClaim: turn =>
+            Promise.resolve({
+              ...turn,
+              harnessId,
+              harnessRuntimeSecretGrant: {
+                grantRef: `provider-runtime-secret-grant.${harnessId}.1`,
+                kind: 'gemini_api_key',
+                providerAccountRef: 'provider-account.gemini.owner-1',
+                runnerSessionId: turn.turnId,
+                secretRef: 'provider-secret.gemini.owner-1',
+              },
+              writeback: { baseBranch: 'main', mode: 'branch_only' },
+            }),
+        }),
+        { ...admitted, harnessId },
+      )
+
+      expect(result.outcome).toBe('launched')
+      const workContext = decodeWorkContextB64(captured.b64!)
+      expect(workContext.inference).toBeUndefined()
+      expect(workContext.codexTurn).toBeUndefined()
+      expect(workContext.providerAuth).toBeUndefined()
+      expect(workContext.harnessTurn).toEqual({
+        harness: harnessId,
+        model: 'gemini-3.5-flash',
+        runtimeSecretGrant: {
+          agentToken: 'oa_agent_RAWTOKEN0123456789abcdef',
+          baseUrl: 'https://staging.example',
+          grantRef: `provider-runtime-secret-grant.${harnessId}.1`,
+          kind: 'gemini_api_key',
+          providerAccountRef: 'provider-account.gemini.owner-1',
+          runnerSessionId: admitted.turnId,
+          secretRef: 'provider-secret.gemini.owner-1',
+        },
+      })
+      expect(workContext).toMatchObject({
+        commit: admitted.commit,
+        repo: admitted.repo,
+        threadRef: admitted.threadId,
+        turnId: admitted.turnId,
+        verificationCommand: {
+          argv: ['git', 'diff', '--cached', '--check'],
+          commandRef: 'verify.agent-computer.git_diff_cached_check',
+          timeoutSeconds: 120,
+        },
+        workContextRef: admitted.workContextRef,
+        writeback: {
+          baseBranch: 'main',
+          mode: 'branch_only',
+          repositoryFullName: admitted.repo,
+        },
+      })
+      expect(JSON.stringify(workContext)).not.toContain(providerSecretBytes)
+    },
+  )
+
+  test('Claude receives the exact auth block without Codex or generic inference fallback', async () => {
+    reset()
+    const captured: { b64?: string } = {}
+    const result = await dispatchCloudGcpRuntimeTurn(
+      baseDeps({
+        executePush: makeRecordingExecutePush().executePush,
+        launch: okLaunch(captured),
+        prepareAfterClaim: turn =>
+          Promise.resolve({
+            ...turn,
+            claudeProviderAuthGrant: {
+              authGrantRef: 'provider-auth-grant.claude.owner-1',
+              providerAccountRef: 'provider-account.claude.owner-1',
+            },
+            harnessId: 'claude-code',
+          }),
+      }),
+      { ...admitted, harnessId: 'claude-code' },
+    )
+
+    expect(result.outcome).toBe('launched')
+    const workContext = decodeWorkContextB64(captured.b64!)
+    expect(workContext.harnessTurn).toEqual({ harness: 'claude-code' })
+    expect(workContext.claudeProviderAuth).toEqual({
+      agentToken: 'oa_agent_RAWTOKEN0123456789abcdef',
+      authGrantRef: 'provider-auth-grant.claude.owner-1',
+      baseUrl: 'https://staging.example',
+      providerAccountRef: 'provider-account.claude.owner-1',
+    })
+    expect(workContext.inference).toBeUndefined()
+    expect(workContext.codexTurn).toBeUndefined()
+    expect(workContext.providerAuth).toBeUndefined()
+  })
+
+  test.each([
+    ['cursor', 'agent_computer_cursor_auth_mode_unavailable'],
+    ['grok', 'agent_computer_grok_auth_mode_unavailable'],
+  ] as const)(
+    '%s fails with a typed unavailable reason before grant or mint',
+    async (harnessId, reason) => {
+      reset()
+      let prepared = false
+      let launched = false
+      const push = makeRecordingExecutePush()
+      const result = await dispatchCloudGcpRuntimeTurn(
+        baseDeps({
+          executePush: push.executePush,
+          launch: input => {
+            launched = true
+            return okLaunch()(input)
+          },
+          prepareAfterClaim: turn => {
+            prepared = true
+            return Promise.resolve(turn)
+          },
+        }),
+        { ...admitted, harnessId },
+      )
+
+      expect(result).toEqual({
+        outcome: 'failed',
+        reason,
+        tokenRevoked: false,
+      })
+      expect(prepared).toBe(false)
+      expect(launched).toBe(false)
+      expect(mintCalls).toHaveLength(0)
+      expect(push.recorded.map(event => event.kind)).toEqual([
+        'turn.started',
+        'turn.finished',
+      ])
+    },
+  )
+
+  test('a mismatched Gemini runner session fails closed and revokes the execution token', async () => {
+    reset()
+    let launched = false
+    const result = await dispatchCloudGcpRuntimeTurn(
+      baseDeps({
+        executePush: makeRecordingExecutePush().executePush,
+        launch: input => {
+          launched = true
+          return okLaunch()(input)
+        },
+        prepareAfterClaim: turn =>
+          Promise.resolve({
+            ...turn,
+            harnessId: 'pi',
+            harnessRuntimeSecretGrant: {
+              grantRef: 'provider-runtime-secret-grant.pi.1',
+              kind: 'gemini_api_key',
+              providerAccountRef: 'provider-account.gemini.owner-1',
+              runnerSessionId: 'turn.other-owner-session',
+              secretRef: 'provider-secret.gemini.owner-1',
+            },
+          }),
+      }),
+      { ...admitted, harnessId: 'pi' },
+    )
+
+    expect(result).toMatchObject({
+      outcome: 'failed',
+      reason: 'agent_computer_gemini_grant_unavailable',
+      tokenRevoked: true,
+    })
+    expect(launched).toBe(false)
+    expect(revokeCalls).toEqual(['agentcred.seam-a.1'])
   })
 
   test('forwards a repo binding ref to placement when present', async () => {

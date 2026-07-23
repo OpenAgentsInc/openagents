@@ -18,7 +18,91 @@
 // returned blob, which the caller passes straight to the placement adapter and
 // then discards. This module never logs them; the blob is opaque to the daemon.
 
+import { Schema as S } from 'effect'
+
 import { parseJsonUnknown } from './json-boundary'
+
+export const AGENT_COMPUTER_HARNESS_IDS = [
+  'codex',
+  'claude-code',
+  'cursor',
+  'goose',
+  'opencode',
+  'pi',
+  'grok',
+] as const
+
+export const AgentComputerHarnessId = S.Literals(AGENT_COMPUTER_HARNESS_IDS)
+export type AgentComputerHarnessId = typeof AgentComputerHarnessId.Type
+
+export const MANAGED_AGENT_COMPUTER_DEFAULT_HARNESS = 'codex' as const
+export const MANAGED_AGENT_COMPUTER_GEMINI_MODEL = 'gemini-3.5-flash' as const
+
+export const ManagedAgentComputerHarnessSelection = S.TaggedUnion({
+  codex: {
+    harnessId: S.Literal('codex'),
+    provider: S.Literal('chatgpt_codex'),
+    requestedAction: S.Literal('agent_computer_codex_turn'),
+  },
+  claude: {
+    harnessId: S.Literal('claude-code'),
+    provider: S.Literal('anthropic_claude'),
+    requestedAction: S.Literal('agent_computer_claude_turn'),
+  },
+  gemini: {
+    harnessId: S.Literals(['goose', 'opencode', 'pi']),
+    model: S.Literal(MANAGED_AGENT_COMPUTER_GEMINI_MODEL),
+    provider: S.Literal('google_gemini'),
+    requestedAction: S.Literal('agent_computer_gemini_turn'),
+  },
+  unavailable: {
+    harnessId: S.Literals(['cursor', 'grok']),
+    reasonRef: S.Literals([
+      'agent_computer_cursor_auth_mode_unavailable',
+      'agent_computer_grok_auth_mode_unavailable',
+    ]),
+  },
+}).annotate({ identifier: 'ManagedAgentComputerHarnessSelection' })
+export type ManagedAgentComputerHarnessSelection =
+  typeof ManagedAgentComputerHarnessSelection.Type
+
+export const selectManagedAgentComputerHarness = (
+  harnessId: AgentComputerHarnessId = MANAGED_AGENT_COMPUTER_DEFAULT_HARNESS,
+): ManagedAgentComputerHarnessSelection => {
+  switch (harnessId) {
+    case 'codex':
+      return ManagedAgentComputerHarnessSelection.cases.codex.make({
+        harnessId,
+        provider: 'chatgpt_codex',
+        requestedAction: 'agent_computer_codex_turn',
+      })
+    case 'claude-code':
+      return ManagedAgentComputerHarnessSelection.cases.claude.make({
+        harnessId,
+        provider: 'anthropic_claude',
+        requestedAction: 'agent_computer_claude_turn',
+      })
+    case 'goose':
+    case 'opencode':
+    case 'pi':
+      return ManagedAgentComputerHarnessSelection.cases.gemini.make({
+        harnessId,
+        model: MANAGED_AGENT_COMPUTER_GEMINI_MODEL,
+        provider: 'google_gemini',
+        requestedAction: 'agent_computer_gemini_turn',
+      })
+    case 'cursor':
+      return ManagedAgentComputerHarnessSelection.cases.unavailable.make({
+        harnessId,
+        reasonRef: 'agent_computer_cursor_auth_mode_unavailable',
+      })
+    case 'grok':
+      return ManagedAgentComputerHarnessSelection.cases.unavailable.make({
+        harnessId,
+        reasonRef: 'agent_computer_grok_auth_mode_unavailable',
+      })
+  }
+}
 
 /** The turn-runner's `InferenceConfig`, re-stated as the builder's output. */
 export type CloudRuntimeInferenceConfig = Readonly<{
@@ -63,6 +147,117 @@ export type CloudRuntimeCodexTurnConfig = Readonly<{
   maxTurnSeconds?: number | undefined
 }>
 
+export type CloudRuntimeClaudeProviderAuthConfig = Readonly<{
+  baseUrl: string
+  agentToken: string
+  providerAccountRef: string
+  authGrantRef: string
+}>
+
+export type CloudRuntimeHarnessRuntimeSecretGrant = Readonly<{
+  kind: 'gemini_api_key'
+  baseUrl: string
+  agentToken: string
+  grantRef: string
+  providerAccountRef: string
+  runnerSessionId: string
+  secretRef: string
+}>
+
+export type CloudRuntimeHarnessTurnConfig = Readonly<{
+  harness: Exclude<AgentComputerHarnessId, 'codex'>
+  model?: string | undefined
+  runtimeSecretGrant?: CloudRuntimeHarnessRuntimeSecretGrant | undefined
+}>
+
+export type CloudRuntimeHarnessSecretGrantRef = Readonly<{
+  kind: 'gemini_api_key'
+  grantRef: string
+  providerAccountRef: string
+  runnerSessionId: string
+  secretRef: string
+}>
+
+export type CloudRuntimeClaudeProviderAuthGrantRef = Readonly<{
+  authGrantRef: string
+  providerAccountRef: string
+}>
+
+export class ManagedAgentComputerHarnessConfigurationError extends S.TaggedErrorClass<ManagedAgentComputerHarnessConfigurationError>()(
+  'ManagedAgentComputerHarnessConfigurationError',
+  {
+    harnessId: AgentComputerHarnessId,
+    reasonRef: S.String,
+  },
+) {}
+
+export const buildManagedAgentComputerHarnessBlocks = (
+  input: Readonly<{
+    selection: ManagedAgentComputerHarnessSelection
+    baseUrl: string
+    agentToken: string
+    turnId: string
+    runtimeSecretGrant?: CloudRuntimeHarnessSecretGrantRef | undefined
+    claudeProviderAuthGrant?: CloudRuntimeClaudeProviderAuthGrantRef | undefined
+  }>,
+): Readonly<{
+  harnessTurn?: CloudRuntimeHarnessTurnConfig | undefined
+  claudeProviderAuth?: CloudRuntimeClaudeProviderAuthConfig | undefined
+}> => {
+  const selection = input.selection
+  if (ManagedAgentComputerHarnessSelection.guards.codex(selection)) return {}
+  if (ManagedAgentComputerHarnessSelection.guards.unavailable(selection)) {
+    throw new ManagedAgentComputerHarnessConfigurationError({
+      harnessId: selection.harnessId,
+      reasonRef: selection.reasonRef,
+    })
+  }
+  if (ManagedAgentComputerHarnessSelection.guards.claude(selection)) {
+    const grant = input.claudeProviderAuthGrant
+    if (grant === undefined) {
+      throw new ManagedAgentComputerHarnessConfigurationError({
+        harnessId: selection.harnessId,
+        reasonRef: 'agent_computer_claude_grant_unavailable',
+      })
+    }
+    return {
+      claudeProviderAuth: {
+        agentToken: input.agentToken,
+        authGrantRef: grant.authGrantRef,
+        baseUrl: input.baseUrl,
+        providerAccountRef: grant.providerAccountRef,
+      },
+      harnessTurn: { harness: selection.harnessId },
+    }
+  }
+  const grant = input.runtimeSecretGrant
+  if (
+    grant === undefined ||
+    grant.kind !== 'gemini_api_key' ||
+    grant.runnerSessionId !== input.turnId
+  ) {
+    throw new ManagedAgentComputerHarnessConfigurationError({
+      harnessId: selection.harnessId,
+      reasonRef: 'agent_computer_gemini_grant_unavailable',
+    })
+  }
+  return {
+    harnessTurn: {
+      harness: selection.harnessId,
+      model: selection.model,
+      runtimeSecretGrant: {
+        agentToken: input.agentToken,
+        baseUrl: input.baseUrl,
+        grantRef: grant.grantRef,
+        kind: grant.kind,
+        providerAccountRef: grant.providerAccountRef,
+        runnerSessionId: grant.runnerSessionId,
+        secretRef: grant.secretRef,
+      },
+    },
+  }
+}
+
 /** A bounded direct-argv verifier for one managed coding turn. */
 export type CloudRuntimeVerificationCommand = Readonly<{
   commandRef: string
@@ -93,8 +288,10 @@ export type CloudRuntimeWorkContext = Readonly<{
   objective: string
   inference?: CloudRuntimeInferenceConfig
   codexTurn?: CloudRuntimeCodexTurnConfig
+  harnessTurn?: CloudRuntimeHarnessTurnConfig
   writeback?: CloudRuntimeWritebackConfig
   providerAuth?: CloudRuntimeCodexProviderAuthConfig
+  claudeProviderAuth?: CloudRuntimeClaudeProviderAuthConfig
   codexContinuity?: CloudRuntimeCodexContinuityConfig
   verificationCommand?: CloudRuntimeVerificationCommand
 }>
@@ -199,8 +396,10 @@ export type BuildWorkContextInput = Readonly<{
   objective?: string | undefined
   inference?: CloudRuntimeInferenceConfig | undefined
   codexTurn?: CloudRuntimeCodexTurnConfig | undefined
+  harnessTurn?: CloudRuntimeHarnessTurnConfig | undefined
   writeback?: CloudRuntimeWritebackConfig | undefined
   providerAuth?: CloudRuntimeCodexProviderAuthConfig | undefined
+  claudeProviderAuth?: CloudRuntimeClaudeProviderAuthConfig | undefined
   codexContinuity?: CloudRuntimeCodexContinuityConfig | undefined
   verificationCommand?: CloudRuntimeVerificationCommand | undefined
 }>
@@ -220,9 +419,19 @@ export const buildCloudRuntimeWorkContext = (
   workContextRef: input.workContextRef,
   ...(input.inference === undefined ? {} : { inference: input.inference }),
   ...(input.codexTurn === undefined ? {} : { codexTurn: input.codexTurn }),
+  ...(input.harnessTurn === undefined
+    ? {}
+    : { harnessTurn: input.harnessTurn }),
   ...(input.writeback === undefined ? {} : { writeback: input.writeback }),
-  ...(input.providerAuth === undefined ? {} : { providerAuth: input.providerAuth }),
-  ...(input.codexContinuity === undefined ? {} : { codexContinuity: input.codexContinuity }),
+  ...(input.providerAuth === undefined
+    ? {}
+    : { providerAuth: input.providerAuth }),
+  ...(input.claudeProviderAuth === undefined
+    ? {}
+    : { claudeProviderAuth: input.claudeProviderAuth }),
+  ...(input.codexContinuity === undefined
+    ? {}
+    : { codexContinuity: input.codexContinuity }),
   ...(input.verificationCommand === undefined
     ? {}
     : { verificationCommand: input.verificationCommand }),
@@ -248,5 +457,7 @@ export const encodeWorkContextB64 = (
 export const decodeWorkContextB64 = (b64: string): CloudRuntimeWorkContext => {
   const binary = atob(b64)
   const bytes = Uint8Array.from(binary, ch => ch.charCodeAt(0))
-  return parseJsonUnknown(new TextDecoder().decode(bytes)) as CloudRuntimeWorkContext
+  return parseJsonUnknown(
+    new TextDecoder().decode(bytes),
+  ) as CloudRuntimeWorkContext
 }

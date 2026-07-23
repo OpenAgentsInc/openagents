@@ -58,10 +58,17 @@ import type {
   CloudCodingSessionRequest,
 } from './cloud/cloud-coding-session-routes'
 import {
+  ManagedAgentComputerHarnessConfigurationError,
+  ManagedAgentComputerHarnessSelection,
+  buildManagedAgentComputerHarnessBlocks,
   buildCloudRuntimeInferenceConfig,
   buildCloudRuntimeWorkContext,
   buildCloudRuntimeWritebackConfig,
   encodeWorkContextB64,
+  selectManagedAgentComputerHarness,
+  type AgentComputerHarnessId,
+  type CloudRuntimeClaudeProviderAuthGrantRef,
+  type CloudRuntimeHarnessSecretGrantRef,
 } from './khala-cloud-runtime-inference-block'
 import {
   mintCloudRuntimeExecutionToken,
@@ -191,7 +198,41 @@ export type CloudGcpAdmittedWorkContext = Readonly<{
     | undefined
   /** Atomic owner-scoped provider selection lease. It contains no credential. */
   providerAccountLeaseRef?: string | undefined
+  /** Exact guest harness. Omitted preserves the existing Codex default. */
+  harnessId?: AgentComputerHarnessId | undefined
+  /** Ref-only Gemini grant. Provider bytes remain in server custody. */
+  harnessRuntimeSecretGrant?: CloudRuntimeHarnessSecretGrantRef | undefined
+  /** Ref-only Claude grant. Provider bytes remain in server custody. */
+  claudeProviderAuthGrant?: CloudRuntimeClaudeProviderAuthGrantRef | undefined
 }>
+
+export type ManagedAgentComputerGrantIssueInput = Readonly<{
+  providerAccountRef: string
+  requestedAction:
+    | 'agent_computer_codex_turn'
+    | 'agent_computer_gemini_turn'
+    | 'agent_computer_claude_turn'
+  runnerSessionId: string
+  threadId: string
+  userId: string
+  workroomId: string
+}>
+
+export const managedAgentComputerGrantIssueInput = (
+  turn: CloudGcpAdmittedWorkContext,
+  selection: Exclude<
+    ReturnType<typeof selectManagedAgentComputerHarness>,
+    { readonly _tag: 'unavailable' }
+  >,
+  providerAccountRef: string,
+): ManagedAgentComputerGrantIssueInput => ({
+  providerAccountRef,
+  requestedAction: selection.requestedAction,
+  runnerSessionId: turn.turnId,
+  threadId: turn.threadId,
+  userId: turn.ownerUserId,
+  workroomId: turn.workContextRef,
+})
 
 type ManagedCloudQueueRow = Readonly<{
   event_count: string | number
@@ -661,6 +702,29 @@ export const dispatchCloudGcpRuntimeTurn = async (
   }
   seq += 1
 
+  const requestedHarness = selectManagedAgentComputerHarness(turn.harnessId)
+  if (
+    ManagedAgentComputerHarnessSelection.guards.unavailable(requestedHarness)
+  ) {
+    await record(
+      2,
+      buildEvent(resolved, turn, seq, {
+        finishReason: 'error' satisfies KhalaRuntimeFinishReason,
+        kind: 'turn.finished',
+      }),
+    )
+    resolved.log('cloud_gcp_runtime_dispatch_harness_unavailable', {
+      harnessId: requestedHarness.harnessId,
+      reason: requestedHarness.reasonRef,
+      turnId: turn.turnId,
+    })
+    return {
+      outcome: 'failed',
+      reason: requestedHarness.reasonRef,
+      tokenRevoked: false,
+    }
+  }
+
   // 2. Mint the short-lived owner-linked execution token. Everything from here
   // is wrapped so a throw still revokes it (the guest must never run with a
   // live credential we lost track of).
@@ -685,6 +749,18 @@ export const dispatchCloudGcpRuntimeTurn = async (
       ? turn
       : await deps.prepareAfterClaim(turn)
     prepared = true
+    const authorizedHarness = selectManagedAgentComputerHarness(
+      authorizedTurn.harnessId,
+    )
+    if (
+      authorizedHarness._tag !== requestedHarness._tag ||
+      authorizedHarness.harnessId !== requestedHarness.harnessId
+    ) {
+      throw new ManagedAgentComputerHarnessConfigurationError({
+        harnessId: authorizedHarness.harnessId,
+        reasonRef: 'agent_computer_harness_selection_changed_after_claim',
+      })
+    }
     minted = await resolved.mint(resolved.sql, {
       ownerUserId: ownerId,
       ...(resolved.inference.ttlSeconds === undefined
@@ -762,6 +838,22 @@ export const dispatchCloudGcpRuntimeTurn = async (
               ? {}
               : { pylonRef: resolved.inference.pylonRef }),
           }
+    const harnessBlocks = buildManagedAgentComputerHarnessBlocks({
+      agentToken: minted.rawToken,
+      baseUrl: resolved.inference.baseUrl,
+      selection: authorizedHarness,
+      turnId: authorizedTurn.turnId,
+      ...(authorizedTurn.harnessRuntimeSecretGrant === undefined
+        ? {}
+        : {
+            runtimeSecretGrant: authorizedTurn.harnessRuntimeSecretGrant,
+          }),
+      ...(authorizedTurn.claudeProviderAuthGrant === undefined
+        ? {}
+        : {
+            claudeProviderAuthGrant: authorizedTurn.claudeProviderAuthGrant,
+          }),
+    })
     const workContext = buildCloudRuntimeWorkContext({
       commit: authorizedTurn.commit,
       repo: authorizedTurn.repo,
@@ -771,10 +863,18 @@ export const dispatchCloudGcpRuntimeTurn = async (
       ...(authorizedTurn.branch === undefined ? {} : { branch: authorizedTurn.branch }),
       ...(authorizedTurn.objective === undefined ? {} : { objective: authorizedTurn.objective }),
       ...(writebackConfig === undefined ? {} : { writeback: writebackConfig }),
-      ...(codexTurnConfig === undefined
-        ? { inference: inferenceConfig }
-        : { codexTurn: codexTurnConfig }),
+      ...(ManagedAgentComputerHarnessSelection.guards.codex(authorizedHarness)
+        ? codexTurnConfig === undefined
+          ? { inference: inferenceConfig }
+          : { codexTurn: codexTurnConfig }
+        : {}),
       ...(providerAuthConfig === undefined ? {} : { providerAuth: providerAuthConfig }),
+      ...(harnessBlocks.harnessTurn === undefined
+        ? {}
+        : { harnessTurn: harnessBlocks.harnessTurn }),
+      ...(harnessBlocks.claudeProviderAuth === undefined
+        ? {}
+        : { claudeProviderAuth: harnessBlocks.claudeProviderAuth }),
       ...(codexContinuityConfig === undefined
         ? {}
         : { codexContinuity: codexContinuityConfig }),
@@ -921,7 +1021,10 @@ export const dispatchCloudGcpRuntimeTurn = async (
     const outcome = {
       ...(minted === undefined ? {} : { credentialId: minted.credentialId }),
       outcome: 'failed' as const,
-      reason: 'dispatch_threw',
+      reason:
+        error instanceof ManagedAgentComputerHarnessConfigurationError
+          ? error.reasonRef
+          : 'dispatch_threw',
       tokenRevoked,
     }
     await finalize(outcome)

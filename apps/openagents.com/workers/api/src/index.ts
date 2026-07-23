@@ -748,6 +748,7 @@ import {
 import { makeKhalaChatRoutes } from './khala-chat-routes'
 import {
   dispatchCloudGcpRuntimeTurn,
+  managedAgentComputerGrantIssueInput,
   makeCloudCodingAdapterLaunchSeam,
   readQueuedManagedCloudTurns,
   resolveManagedCloudRepositoryCommit,
@@ -764,9 +765,11 @@ import {
   revokeCloudRuntimeExecutionToken,
 } from './khala-cloud-runtime-execution-token'
 import {
+  ManagedAgentComputerHarnessSelection,
   buildCloudRuntimeWorkContext,
   buildCloudRuntimeWritebackConfig,
   encodeWorkContextB64,
+  selectManagedAgentComputerHarness,
 } from './khala-cloud-runtime-inference-block'
 import {
   KHALA_CLOUD_RUNTIME_USAGE_INGEST_PATH,
@@ -1076,7 +1079,9 @@ import {
   CHATGPT_CODEX_PROVIDER,
   type CodexOAuthAuth,
   type ProviderAccountBundle,
+  type ProviderAccountRecord,
   type PublicProviderAccount,
+  type PublicProviderAccountGrant,
   issueProviderAccountGrant,
   listProviderAccountsForUser,
   makeD1ProviderAccountRepository,
@@ -7654,6 +7659,18 @@ const runManagedCloudRuntimeTurnDispatchForEnv = async (
       launch,
       log: (line, fields) => logWorkerRouteWarning(line, fields ?? {}),
       prepareAfterClaim: async turn => {
+        const harnessSelection = selectManagedAgentComputerHarness(
+          turn.harnessId,
+        )
+        if (
+          ManagedAgentComputerHarnessSelection.guards.unavailable(
+            harnessSelection,
+          )
+        ) {
+          throw new ManagedCloudDispatchError({
+            message: harnessSelection.reasonRef,
+          })
+        }
         const resolvedCommit = await resolveManagedCloudRepositoryCommit(
           turn.repo,
           turn.commit,
@@ -7670,8 +7687,8 @@ const runManagedCloudRuntimeTurnDispatchForEnv = async (
           expiresAt,
           now,
           orderId: null,
-          requestedAction: 'agent_computer_codex_turn',
-          requiredProvider: CHATGPT_CODEX_PROVIDER,
+          requestedAction: harnessSelection.requestedAction,
+          requiredProvider: harnessSelection.provider,
           runId: turn.threadId,
           selectedByActor: 'sarah_managed_cloud_dispatch',
           source: 'managed_cloud_runtime_dispatch',
@@ -7679,7 +7696,7 @@ const runManagedCloudRuntimeTurnDispatchForEnv = async (
         })
         if (initialLease === undefined) {
           throw new ManagedCloudDispatchError({
-            message: 'managed_cloud_owner_codex_capacity_unavailable',
+            message: `managed_cloud_owner_${harnessSelection.provider}_capacity_unavailable`,
           })
         }
         let lease = initialLease
@@ -7698,36 +7715,96 @@ const runManagedCloudRuntimeTurnDispatchForEnv = async (
           }
 
           for (let attemptNumber = 1; attemptNumber <= 2; attemptNumber += 1) {
-            const account = accounts.accounts.find(
-              candidate =>
-                candidate.provider === CHATGPT_CODEX_PROVIDER &&
-                candidate.providerAccountRef === lease.providerAccountRef &&
-                candidate.publicStatus === 'connected' &&
-                candidate.health === 'healthy',
-            )
-            const grant =
+            const account: PublicProviderAccount | undefined =
+              accounts.accounts.find(
+                candidate =>
+                  candidate.provider === harnessSelection.provider &&
+                  candidate.providerAccountRef === lease.providerAccountRef &&
+                  candidate.publicStatus === 'connected' &&
+                  candidate.health === 'healthy',
+              )
+            const privateAccount: ProviderAccountRecord | undefined =
               account === undefined
                 ? undefined
-                : await issueProviderAccountGrant(accountRepository, {
-                    providerAccountRef: account.providerAccountRef,
-                    requestedAction: 'agent_computer_codex_turn',
-                    runnerSessionId: turn.turnId,
-                    threadId: turn.threadId,
-                    userId: turn.ownerUserId,
-                    workroomId: turn.workContextRef,
-                  })
-            if (account !== undefined && grant !== undefined) {
-              return {
+                : await accountRepository.findAccountByRef(
+                    turn.ownerUserId,
+                    account.providerAccountRef,
+                  )
+            const grant: PublicProviderAccountGrant | undefined =
+              account === undefined || privateAccount === undefined
+                ? undefined
+                : await issueProviderAccountGrant(
+                    accountRepository,
+                    managedAgentComputerGrantIssueInput(
+                      turn,
+                      harnessSelection,
+                      account.providerAccountRef,
+                    ),
+                  )
+            const exactGrant =
+              grant !== undefined &&
+              privateAccount !== undefined &&
+              privateAccount.userId === turn.ownerUserId &&
+              privateAccount.provider === harnessSelection.provider &&
+              privateAccount.providerAccountRef === lease.providerAccountRef &&
+              privateAccount.secretRef !== null &&
+              grant.provider === harnessSelection.provider &&
+              grant.providerAccountRef === lease.providerAccountRef &&
+              grant.requestedAction === harnessSelection.requestedAction &&
+              grant.runnerSessionId === turn.turnId &&
+              grant.threadId === turn.threadId &&
+              grant.workroomId === turn.workContextRef &&
+              grant.status === 'issued'
+            if (
+              account !== undefined &&
+              grant !== undefined &&
+              privateAccount !== undefined &&
+              exactGrant
+            ) {
+              const preparedBase = {
                 ...turn,
                 commit: resolvedCommit,
                 accountRefHash: account.providerAccountRef,
-                codexContinuity: {
-                  accountRefHash: account.providerAccountRef,
+                harnessId: harnessSelection.harnessId,
+                providerAccountLeaseRef: lease.leaseRef,
+              }
+              if (
+                ManagedAgentComputerHarnessSelection.guards.codex(
+                  harnessSelection,
+                )
+              ) {
+                return {
+                  ...preparedBase,
+                  codexContinuity: {
+                    accountRefHash: account.providerAccountRef,
+                    authGrantRef: grant.grantRef,
+                    maxReplayMessages: 24,
+                    providerAccountRef: grant.providerAccountRef,
+                  },
+                }
+              }
+              if (
+                ManagedAgentComputerHarnessSelection.guards.gemini(
+                  harnessSelection,
+                )
+              ) {
+                return {
+                  ...preparedBase,
+                  harnessRuntimeSecretGrant: {
+                    grantRef: grant.grantRef,
+                    kind: 'gemini_api_key' as const,
+                    providerAccountRef: grant.providerAccountRef,
+                    runnerSessionId: turn.turnId,
+                    secretRef: privateAccount.secretRef,
+                  },
+                }
+              }
+              return {
+                ...preparedBase,
+                claudeProviderAuthGrant: {
                   authGrantRef: grant.grantRef,
-                  maxReplayMessages: 24,
                   providerAccountRef: grant.providerAccountRef,
                 },
-                providerAccountLeaseRef: lease.leaseRef,
               }
             }
 
@@ -7740,7 +7817,7 @@ const runManagedCloudRuntimeTurnDispatchForEnv = async (
               now: currentIsoTimestamp(),
               orderId: null,
               previousLeaseRef: lease.leaseRef,
-              requestedAction: 'agent_computer_codex_turn',
+              requestedAction: harnessSelection.requestedAction,
               runId: turn.threadId,
               selectedByActor: 'sarah_managed_cloud_dispatch',
               source: 'managed_cloud_runtime_dispatch',
@@ -7751,7 +7828,7 @@ const runManagedCloudRuntimeTurnDispatchForEnv = async (
           }
 
           throw new ManagedCloudDispatchError({
-            message: 'managed_cloud_owner_codex_grant_unavailable',
+            message: `managed_cloud_owner_${harnessSelection.provider}_grant_unavailable`,
           })
         } catch (error) {
           await providerLeaseService.release({

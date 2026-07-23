@@ -1,17 +1,134 @@
+import { Schema as S } from 'effect'
 import { describe, expect, test } from 'vitest'
 
 import {
+  AGENT_COMPUTER_HARNESS_IDS,
+  AgentComputerHarnessId,
   CLOUD_RUNTIME_DEFAULT_BRANCH,
   CLOUD_RUNTIME_INFERENCE_DEFAULT_LANE,
   CLOUD_RUNTIME_WRITEBACK_BRANCH_PREFIX,
   CLOUD_RUNTIME_WRITEBACK_DEFAULT_INGEST_PATH,
   CLOUD_RUNTIME_WRITEBACK_DEFAULT_MODE,
+  MANAGED_AGENT_COMPUTER_GEMINI_MODEL,
+  ManagedAgentComputerHarnessSelection,
+  buildManagedAgentComputerHarnessBlocks,
   buildCloudRuntimeInferenceConfig,
   buildCloudRuntimeWorkContext,
   buildCloudRuntimeWritebackConfig,
   decodeWorkContextB64,
   encodeWorkContextB64,
+  selectManagedAgentComputerHarness,
 } from './khala-cloud-runtime-inference-block'
+
+describe('managed Agent Computer harness selection', () => {
+  test('decodes all seven IDs and preserves Codex as the default', () => {
+    expect(
+      AGENT_COMPUTER_HARNESS_IDS.every(harnessId =>
+        S.is(AgentComputerHarnessId)(harnessId),
+      ),
+    ).toBe(true)
+    expect(S.is(AgentComputerHarnessId)('unknown-harness')).toBe(false)
+    expect(selectManagedAgentComputerHarness()).toMatchObject({
+      _tag: 'codex',
+      harnessId: 'codex',
+      provider: 'chatgpt_codex',
+      requestedAction: 'agent_computer_codex_turn',
+    })
+  })
+
+  test.each(['goose', 'opencode', 'pi'] as const)(
+    '%s selects the exact Gemini grant and model',
+    harnessId => {
+      expect(selectManagedAgentComputerHarness(harnessId)).toMatchObject({
+        _tag: 'gemini',
+        harnessId,
+        model: MANAGED_AGENT_COMPUTER_GEMINI_MODEL,
+        provider: 'google_gemini',
+        requestedAction: 'agent_computer_gemini_turn',
+      })
+    },
+  )
+
+  test('selects Claude subscription auth and refuses Cursor and Grok explicitly', () => {
+    expect(selectManagedAgentComputerHarness('claude-code')).toMatchObject({
+      _tag: 'claude',
+      harnessId: 'claude-code',
+      provider: 'anthropic_claude',
+      requestedAction: 'agent_computer_claude_turn',
+    })
+    expect(selectManagedAgentComputerHarness('cursor')).toEqual(
+      expect.objectContaining({
+        _tag: 'unavailable',
+        harnessId: 'cursor',
+        reasonRef: 'agent_computer_cursor_auth_mode_unavailable',
+      }),
+    )
+    expect(selectManagedAgentComputerHarness('grok')).toEqual(
+      expect.objectContaining({
+        _tag: 'unavailable',
+        harnessId: 'grok',
+        reasonRef: 'agent_computer_grok_auth_mode_unavailable',
+      }),
+    )
+  })
+
+  test('builds only ref-scoped Gemini and Claude auth blocks', () => {
+    const gemini = selectManagedAgentComputerHarness('pi')
+    const geminiBlocks = buildManagedAgentComputerHarnessBlocks({
+      agentToken: 'short-lived-agent-token',
+      baseUrl: 'https://openagents.example',
+      runtimeSecretGrant: {
+        grantRef: 'grant.gemini.owner.turn-1',
+        kind: 'gemini_api_key',
+        providerAccountRef: 'provider-account.gemini.owner',
+        runnerSessionId: 'turn-1',
+        secretRef: 'secret-manager:openagents-gemini-api-key',
+      },
+      selection: gemini,
+      turnId: 'turn-1',
+    })
+    expect(geminiBlocks.harnessTurn).toMatchObject({
+      harness: 'pi',
+      model: MANAGED_AGENT_COMPUTER_GEMINI_MODEL,
+      runtimeSecretGrant: {
+        agentToken: 'short-lived-agent-token',
+        grantRef: 'grant.gemini.owner.turn-1',
+        kind: 'gemini_api_key',
+        providerAccountRef: 'provider-account.gemini.owner',
+        runnerSessionId: 'turn-1',
+        secretRef: 'secret-manager:openagents-gemini-api-key',
+      },
+    })
+    expect(JSON.stringify(geminiBlocks)).not.toContain(
+      'gemini-provider-secret-bytes',
+    )
+
+    const claude = selectManagedAgentComputerHarness('claude-code')
+    const claudeBlocks = buildManagedAgentComputerHarnessBlocks({
+      agentToken: 'short-lived-agent-token',
+      baseUrl: 'https://openagents.example',
+      claudeProviderAuthGrant: {
+        authGrantRef: 'grant.claude.owner.turn-1',
+        providerAccountRef: 'provider-account.claude.owner',
+      },
+      selection: claude,
+      turnId: 'turn-1',
+    })
+    expect(claudeBlocks).toEqual({
+      claudeProviderAuth: {
+        agentToken: 'short-lived-agent-token',
+        authGrantRef: 'grant.claude.owner.turn-1',
+        baseUrl: 'https://openagents.example',
+        providerAccountRef: 'provider-account.claude.owner',
+      },
+      harnessTurn: { harness: 'claude-code' },
+    })
+    expect(S.is(ManagedAgentComputerHarnessSelection)(claude)).toBe(true)
+    expect(JSON.stringify(claudeBlocks)).not.toContain(
+      'claude-provider-secret-bytes',
+    )
+  })
+})
 
 describe('buildCloudRuntimeInferenceConfig', () => {
   test('builds the exact contract with lane default and required fields', () => {
