@@ -58,6 +58,7 @@ import type {
   CloudCodingRuntimeAdapter,
   CloudCodingSessionRequest,
 } from './cloud/cloud-coding-session-routes'
+import { sha256Hex } from './agent-registration'
 import {
   ManagedAgentComputerHarnessConfigurationError,
   ManagedAgentComputerHarnessSelection,
@@ -163,6 +164,20 @@ export const providerFailoverFailureClassForGuestFailure = (
 }
 
 const refPart = (value: string): string => value.replace(/[^a-zA-Z0-9_.:-]/g, '_')
+const CONTINUITY_REF_PART_MAX_LENGTH = 96
+
+const boundedContinuityRefPart = async (value: string): Promise<string> => {
+  const safe = refPart(value)
+  if (safe.length <= CONTINUITY_REF_PART_MAX_LENGTH) return safe
+  const digest = (await sha256Hex(value)).slice(0, 16)
+  return `${safe.slice(0, CONTINUITY_REF_PART_MAX_LENGTH - digest.length - 1)}.${digest}`
+}
+
+export const codexContinuityResultRef = async (
+  threadId: string,
+  turnId: string,
+): Promise<string> =>
+  `continuity.codex.${await boundedContinuityRefPart(threadId)}.${await boundedContinuityRefPart(turnId)}`
 
 export type CloudGcpRuntimeAccountQuotaState =
   | 'available'
@@ -1169,7 +1184,10 @@ export const dispatchCloudGcpRuntimeTurn = async (
           authority: runtimeToolAuthority('codex.continuity.reprime'),
           kind: 'tool.result',
           providerExecuted: false,
-          resultRef: `continuity.codex.${refPart(authorizedTurn.threadId)}.${refPart(authorizedTurn.turnId)}`,
+          resultRef: await codexContinuityResultRef(
+            authorizedTurn.threadId,
+            authorizedTurn.turnId,
+          ),
           toolCallId: `tool.${resolved.uuid()}`,
           toolName: 'codex.continuity.rebuilt',
         }),

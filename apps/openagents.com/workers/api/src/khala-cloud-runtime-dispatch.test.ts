@@ -914,6 +914,57 @@ describe('dispatchCloudGcpRuntimeTurn', () => {
     expect(JSON.stringify(wc.codexContinuity)).not.toMatch(/CODEX_HOME|token|secret|authJson/i)
   })
 
+  test('reclaim resume bounds the continuity result ref for long Sarah turn ids', async () => {
+    reset()
+    const push = makeRecordingExecutePush()
+    const longThreadId = `thread.sarah_cloud.${'thread_segment.'.repeat(10)}`
+    const longTurnId = `turn.sarah_cloud.${'turn_segment.'.repeat(12)}`
+    const result = await dispatchCloudGcpRuntimeTurn(
+      baseDeps({
+        executePush: push.executePush,
+        launch: okLaunch({}),
+      }),
+      {
+        ...admitted,
+        codexContinuity: {
+          accountRefHash: 'acct_hash_long',
+          authGrantRef: 'grant.codex.long',
+          providerAccountRef: 'provider-account.codex.long',
+        },
+        threadId: longThreadId,
+        turnId: longTurnId,
+      },
+    )
+
+    expect(result.outcome).toBe('launched')
+    const resultRef = push.recorded.find(
+      event => event.kind === 'tool.result',
+    )?.resultRef
+    expect(resultRef).toMatch(/^continuity\.codex\./)
+    expect(resultRef?.length).toBeLessThanOrEqual(256)
+
+    const secondPush = makeRecordingExecutePush()
+    await dispatchCloudGcpRuntimeTurn(
+      baseDeps({
+        executePush: secondPush.executePush,
+        launch: okLaunch({}),
+      }),
+      {
+        ...admitted,
+        codexContinuity: {
+          accountRefHash: 'acct_hash_long',
+          authGrantRef: 'grant.codex.long',
+          providerAccountRef: 'provider-account.codex.long',
+        },
+        threadId: longThreadId,
+        turnId: longTurnId,
+      },
+    )
+    expect(
+      secondPush.recorded.find(event => event.kind === 'tool.result')?.resultRef,
+    ).toBe(resultRef)
+  })
+
   test('launch refused: finished(error) and token IS revoked', async () => {
     reset()
     const push = makeRecordingExecutePush()
