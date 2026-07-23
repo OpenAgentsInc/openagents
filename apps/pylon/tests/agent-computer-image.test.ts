@@ -74,4 +74,10 @@ describe("Agent Computer seven-harness image pins (#9193)", () => {
       '.failureReasonRef == "agent_computer.turn_failed"',
     );
   });
+
+  test("reserves enough guest space for a real repository checkout and verification", () => {
+    expect(bake).toContain("SIZE_MIB=12288");
+    expect(bake).toContain("MIN_RUNTIME_FREE_KIB=$((6 * 1024 * 1024))");
+    expect(bake).toContain('"runtimeFreeKib": $RUNTIME_FREE_KIB');
+  });
 });

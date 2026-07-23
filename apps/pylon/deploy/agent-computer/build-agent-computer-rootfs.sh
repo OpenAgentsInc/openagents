@@ -67,7 +67,7 @@ usage() {
   cat <<'EOF'
 Usage: sudo build-agent-computer-rootfs.sh [options]
   --output PATH        output ext4 image (default ./agent-computer-rootfs-<date>.ext4)
-  --size-mib N         image size in MiB (default 4096)
+  --size-mib N         image size in MiB (default 12288)
   --turn-runner PATH   prebuilt Node/Vite Plus turn-runner executable (required
                        unless --repo-root lets this script compile it)
   --portable-session-control PATH
@@ -84,7 +84,8 @@ EOF
 }
 
 OUTPUT=""
-SIZE_MIB=4096
+SIZE_MIB=12288
+MIN_RUNTIME_FREE_KIB=$((6 * 1024 * 1024))
 TURN_RUNNER=""
 PORTABLE_SESSION_CONTROL=""
 REPO_ROOT=""
@@ -396,6 +397,12 @@ if [ "$SKIP_WORKROOMD" = "0" ]; then
 fi
 
 # --- 11. seal -----------------------------------------------------------------
+RUNTIME_FREE_KIB="$(df -Pk "$MNT" | awk 'NR == 2 { print $4 }')"
+case "$RUNTIME_FREE_KIB" in
+  ''|*[!0-9]*) fail "could not measure sealed guest free space" ;;
+esac
+[ "$RUNTIME_FREE_KIB" -ge "$MIN_RUNTIME_FREE_KIB" ] \
+  || fail "sealed guest needs at least ${MIN_RUNTIME_FREE_KIB}KiB free for repository checkout and verification; found ${RUNTIME_FREE_KIB}KiB"
 HARNESS_PACKAGE_LOCK_SHA256="$(sha256sum "$SCRIPT_DIR/harnesses/package-lock.json" | cut -d' ' -f1)"
 TURN_RUNNER_SHA256="$(sha256sum "$TURN_RUNNER" | cut -d' ' -f1)"
 PORTABLE_SESSION_CONTROL_SHA256="$(sha256sum "$PORTABLE_SESSION_CONTROL" | cut -d' ' -f1)"
@@ -411,6 +418,7 @@ cat > "$RECEIPT" <<EOF
   "bakedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "suite": "$SUITE",
   "sizeMib": $SIZE_MIB,
+  "runtimeFreeKib": $RUNTIME_FREE_KIB,
   "nodeVersion": "$NODE_VERSION",
   "nodeAbi": "node-v${NODE_VERSION}-linux-x64",
   "codexVersion": "$CODEX_VERSION",
