@@ -76,6 +76,37 @@ describe('Sarah bounded agent runtime', () => {
     expect(result.text).toBe('The provider recovered.')
   })
 
+  test('retries one empty inference envelope before any tool can run', async () => {
+    let attempts = 0
+    const adapter: InferenceProviderAdapter = {
+      complete: () =>
+        Effect.suspend(() => {
+          attempts += 1
+          return Effect.succeed({
+            content: attempts === 1 ? '' : 'The second envelope is complete.',
+            finishReason: 'STOP',
+            servedModel: 'gemma-4-31b-it',
+            usage,
+          })
+        }),
+      id: 'fixture.sarah',
+      stream: () => Effect.succeed([]),
+    }
+
+    const result = await Effect.runPromise(
+      runSarahAgentTurn({
+        adapter,
+        model: 'gemma-4-31b-it',
+        prompt: 'Check current state.',
+        system: 'You are Sarah.',
+        tools: [],
+      }),
+    )
+
+    expect(attempts).toBe(2)
+    expect(result.text).toBe('The second envelope is complete.')
+  })
+
   test('executes a tool, emits ordered activity, and composes a final answer', async () => {
     const requests: Array<unknown> = []
     const activity: Array<SarahAgentToolActivity> = []

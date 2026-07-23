@@ -1,10 +1,11 @@
 import { Duration, Effect, Exit, Schedule, Schema as S } from 'effect'
 
-import type {
-  InferenceMessage,
-  InferenceProviderAdapter,
-  InferenceToolCall,
-  InferenceUsage,
+import {
+  InferenceAdapterError,
+  type InferenceMessage,
+  type InferenceProviderAdapter,
+  type InferenceToolCall,
+  type InferenceUsage,
 } from './inference/provider-adapter'
 import { parseJsonUnknown } from './json-boundary'
 
@@ -54,6 +55,11 @@ export type SarahAgentToolActivity = Readonly<{
 export class SarahAgentRuntimeError extends S.TaggedErrorClass<SarahAgentRuntimeError>()(
   'SarahAgentRuntimeError',
   { reason: S.String },
+) {}
+
+class SarahAgentEmptyReplyError extends S.TaggedErrorClass<SarahAgentEmptyReplyError>()(
+  'SarahAgentEmptyReplyError',
+  {},
 ) {}
 
 export type SarahAgentTurnResult = Readonly<{
@@ -154,22 +160,33 @@ export const runSarahAgentTurn = (
           stream: false,
         })
         .pipe(
+          Effect.flatMap(result => {
+            const hasToolCalls = (result.toolCalls?.length ?? 0) > 0
+            return result.content.trim() === '' && !hasToolCalls
+              ? Effect.fail(new SarahAgentEmptyReplyError())
+              : Effect.succeed(result)
+          }),
           Effect.retry({
             schedule: Schedule.spaced(
               Duration.millis(SARAH_AGENT_INFERENCE_RETRY_DELAY_MS),
             ),
             times: SARAH_AGENT_INFERENCE_RETRY_COUNT,
-            while: error => error.retryable,
+            while: error =>
+              error instanceof SarahAgentEmptyReplyError ||
+              (error instanceof InferenceAdapterError && error.retryable),
           }),
-          Effect.mapError(error => runtimeFailure(error.reason)),
+          Effect.mapError(error =>
+            runtimeFailure(
+              error instanceof SarahAgentEmptyReplyError
+                ? 'sarah_agent_empty_reply'
+                : error.reason,
+            ),
+          ),
         )
       usage = addUsage(usage, completion.usage)
       servedModel = completion.servedModel
       const requested = completion.toolCalls ?? []
       if (requested.length === 0 || !advertiseTools) {
-        if (completion.content.trim() === '') {
-          return yield* runtimeFailure('sarah_agent_empty_reply')
-        }
         return {
           servedModel,
           text: completion.content,
