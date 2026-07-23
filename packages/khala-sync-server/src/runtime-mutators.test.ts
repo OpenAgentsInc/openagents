@@ -160,6 +160,7 @@ const runtimeEvent = (
       | "agent.child.started"
       | "agent.child.progress"
       | "agent.child.finished"
+      | "writeback.recorded"
     threadId: string
     turnId: string
     sequence: number
@@ -174,7 +175,7 @@ const runtimeEvent = (
       | "interrupted"
       | "unknown"
       | undefined
-    lane?: "codex_app_server" | "claude_pylon" | undefined
+    lane?: "codex_app_server" | "claude_pylon" | "ai_sdk_harness_sandbox" | undefined
     providerRef?: string | undefined
     childAgentId?: string | undefined
     childRunId?: string | undefined
@@ -191,9 +192,15 @@ const runtimeEvent = (
     redactionClass: "private_ref",
     sequence: input.sequence,
     source: {
-      adapterKind: input.lane === "claude_pylon" ? "claude_code" : "codex",
+      adapterKind:
+        input.lane === "claude_pylon"
+          ? "claude_code"
+          : input.lane === "ai_sdk_harness_sandbox"
+            ? "hosted_container"
+            : "codex",
       lane: input.lane ?? "codex_app_server",
-      surface: "desktop",
+      surface:
+        input.lane === "ai_sdk_harness_sandbox" ? "server" : "desktop",
       ...(input.providerRef === undefined ? {} : { providerRef: input.providerRef }),
     },
     threadId: input.threadId,
@@ -229,6 +236,17 @@ const runtimeEvent = (
         parentAgentId: input.parentAgentId!,
         ...(input.taskRef === undefined ? {} : { taskRef: input.taskRef }),
         finishReason: input.finishReason ?? "stop",
+      }
+    case "writeback.recorded":
+      return {
+        ...base,
+        branch: "pylon/agent-computer-runtime-receipt",
+        branchUrl:
+          "https://github.com/OpenAgentsInc/openagents/tree/pylon/agent-computer-runtime-receipt",
+        changedFileCount: 1,
+        repositoryFullName: "OpenAgentsInc/openagents",
+        status: "branch_pushed",
+        writebackRef: "writeback.private.agent-computer.runtime-receipt",
       }
   }
 }
@@ -1578,6 +1596,73 @@ describe.skipIf(!hasLocalPostgres())(
         WHERE turn_id = ${turnId}
       `
       expect(Number(events[0]!.count)).toBe(2)
+    })
+
+    test("a terminal turn accepts one ordered writeback receipt and fences later output", async () => {
+      const client = freshClient()
+      const threadId = "runtime-thread.terminal-writeback.9191"
+      const turnId = "runtime-turn.terminal-writeback.9191"
+      const response = await executePush({
+        registry,
+        request: pushRequest(client, [
+          envelope(1, RUNTIME_START_TURN_MUTATOR_NAME, controlIntent({
+            intentId: "runtime-intent.terminal-writeback.start.9191",
+            kind: "turn.start",
+            threadId,
+            turnId,
+          })),
+          envelope(2, RUNTIME_RECORD_EVENT_MUTATOR_NAME, runtimeEvent({
+            eventId: "runtime-event.terminal-writeback.started.9191",
+            kind: "turn.started",
+            sequence: 0,
+            threadId,
+            turnId,
+          })),
+          envelope(3, RUNTIME_RECORD_EVENT_MUTATOR_NAME, runtimeEvent({
+            eventId: "runtime-event.terminal-writeback.finished.9191",
+            kind: "turn.finished",
+            sequence: 1,
+            threadId,
+            turnId,
+          })),
+          envelope(4, RUNTIME_RECORD_EVENT_MUTATOR_NAME, runtimeEvent({
+            eventId: "runtime-event.terminal-writeback.receipt.9191",
+            kind: "writeback.recorded",
+            lane: "ai_sdk_harness_sandbox",
+            sequence: 2,
+            threadId,
+            turnId,
+          })),
+          envelope(5, RUNTIME_RECORD_EVENT_MUTATOR_NAME, runtimeEvent({
+            eventId: "runtime-event.terminal-writeback.late-text.9191",
+            kind: "text.delta",
+            sequence: 3,
+            text: "stale provider output",
+            threadId,
+            turnId,
+          })),
+        ]),
+        sql: sql as unknown as SyncSql,
+        userId: client.userId,
+      })
+
+      expect(response.results.map(result => result.status)).toEqual([
+        "applied",
+        "applied",
+        "applied",
+        "applied",
+        "rejected",
+      ])
+      expect(response.results[4]!.errorCode).toBe(RUNTIME_EVENT_STATE_REJECTION)
+      const rows: Array<{ event_count: number; status: string; events: number }> = await sql`
+        SELECT t.event_count::int AS event_count,
+               t.status,
+               (SELECT count(*)::int FROM khala_sync_runtime_events e
+                WHERE e.turn_id = t.turn_id) AS events
+        FROM khala_sync_runtime_turns t
+        WHERE t.turn_id = ${turnId}
+      `
+      expect(rows).toEqual([{ event_count: 3, events: 3, status: "completed" }])
     })
 
     test("interrupt fences stale worker events and the durable sequence refuses gaps", async () => {

@@ -1891,8 +1891,15 @@ export const runtimeRecordEventMutator: MutatorDefinition =
         turnStatus === "failed" ||
         turnStatus === "interrupted" ||
         turnStatus === "closed"
+      // A writeback receipt is an immutable post-run result. The managed
+      // Agent Computer can publish its scoped branch only after the coding
+      // turn has finished, so this one event kind can append to a terminal
+      // turn. It increments the event cursor but does not change terminal
+      // status or settled_at. All provider-output events remain fenced.
+      const terminalWritebackReceipt =
+        terminal && event.kind === "writeback.recorded"
       if (
-        terminal ||
+        (terminal && !terminalWritebackReceipt) ||
         (turnStatus === "queued" && event.kind !== "turn.started") ||
         (turnStatus === "running" && event.kind === "turn.started")
       ) {
