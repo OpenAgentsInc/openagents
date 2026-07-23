@@ -7,13 +7,12 @@
  *    POST failed (server down) and the CLI reported a bare
  *    `Pylon auth failed` exit 1 for a flow that substantively succeeded.
  *
- * 2. Owner directive: the OpenAgents server link is opt-in / disabled by
- *    default. The DEFAULT `auth codex` flow is LOCAL-ONLY — isolated device
- *    login + local config registration with ZERO network calls to
- *    openagents.com. The server link runs only behind `--openagents-link`,
- *    and when that opt-in flow's import fails after a successful local
- *    connect, the result is an honest `connected_local_only` projection —
- *    never a throw.
+ * 2. Owner directive: the OpenAgents server link is opt-in and disabled by
+ *    default. The default `auth codex` flow is local-only. It uses an isolated
+ *    device login and a local config registration. It makes zero network calls
+ *    to openagents.com. The server link runs only with `--openagents-link`.
+ *    If this import fails after a successful local connect, the result is a
+ *    `connected_local_only` projection. It is not an exception.
  */
 import { describe, expect, test } from "vite-plus/test"
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
@@ -89,9 +88,9 @@ describe("pylon auth codex — LOCAL-ONLY default (owner directive)", () => {
     })
   })
 
-  test("--openagents-link is rejected for non-codex targets", () => {
-    expect(() => parsePylonAuthArgs(["claude", "--openagents-link"])).toThrow(
-      "--openagents-link is only valid for pylon auth codex",
+  test("--openagents-link is rejected for the OpenAgents target", () => {
+    expect(() => parsePylonAuthArgs(["openagents", "--openagents-link"])).toThrow(
+      "--openagents-link is only valid for pylon auth codex or claude",
     )
   })
 })

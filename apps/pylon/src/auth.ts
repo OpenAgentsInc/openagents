@@ -102,17 +102,26 @@ export type PylonAuthCodexProjection = {
 }
 
 /**
- * Local-only Claude auth projection. Claude uses setup-token file storage, not
- * Codex device-login or OpenAgents provider-account import.
+ * Claude auth projection. The default stays local-only. The explicit
+ * `--openagents-link` path imports the isolated setup-token through the typed
+ * provider-account route without projecting the token.
  */
 export type PylonAuthClaudeProjection = {
   schema: "pylon.auth.claude.v1"
-  status: "connected"
+  status: "connected" | "connected_local_only"
   accountRef: string
   provider: "claude_agent"
+  openAgents?: PylonAuthOpenAgentsProjection
   localClaude: {
     setupTokenStatus: "completed" | "skipped_existing_auth"
     reason?: string
+  }
+  openAgentsProviderAccount: {
+    accountStatus: string
+    attemptId: string
+    attemptStatus: string
+    providerAccountRef: string
+    source: "pylon_local_claude_auth"
   }
   blockerRefs: string[]
 }
@@ -248,8 +257,8 @@ export function parsePylonAuthArgs(args: string[]): PylonAuthArgs {
   } else if (parsed.setupToken !== null) {
     throw new Error("--token / --setup-token is only valid for pylon auth claude")
   }
-  if (parsed.openAgentsLink && parsed.target !== "codex") {
-    throw new Error("--openagents-link is only valid for pylon auth codex")
+  if (parsed.openAgentsLink && parsed.target === "openagents") {
+    throw new Error("--openagents-link is only valid for pylon auth codex or claude")
   }
 
   return parsed
@@ -836,6 +845,7 @@ async function readLocalCodexOAuthAuth(input: {
 function configuredProviderAccountRef(
   config: Record<string, unknown>,
   accountRef: string,
+  provider: "codex" | "claude_agent" = "codex",
 ): string | null {
   const dev = recordAt(config, "dev")
   const accounts = Array.isArray(dev.accounts) ? dev.accounts : []
@@ -844,7 +854,7 @@ function configuredProviderAccountRef(
       continue
     }
     const record = account as Record<string, unknown>
-    if (record.provider === "codex" && record.ref === accountRef) {
+    if (record.provider === provider && record.ref === accountRef) {
       return optionalStringAt(record, "openAgentsProviderAccountRef") ?? null
     }
   }
@@ -853,6 +863,7 @@ function configuredProviderAccountRef(
 
 async function writeConfiguredProviderAccountRef(input: {
   accountRef: string
+  provider?: "codex" | "claude_agent"
   providerAccountRef: string
   summary: Pick<BootstrapSummary, "paths">
 }): Promise<void> {
@@ -864,7 +875,7 @@ async function writeConfiguredProviderAccountRef(input: {
       return false
     }
     const record = account as Record<string, unknown>
-    return record.provider === "codex" && record.ref === input.accountRef
+    return record.provider === (input.provider ?? "codex") && record.ref === input.accountRef
   })
   if (index === -1) {
     return
@@ -889,6 +900,8 @@ type OpenAgentsLocalCodexAuthImportResponse = {
   }
   pylonLink: { owner: "openauth"; status: "linked" }
 }
+
+type OpenAgentsLocalClaudeAuthImportResponse = OpenAgentsLocalCodexAuthImportResponse
 
 function parseLocalCodexAuthImportResponse(
   body: Record<string, unknown>,
@@ -939,6 +952,49 @@ async function importLocalCodexAuth(input: {
           ? {}
           : { providerAccountRef: input.providerAccountRef }),
         auth,
+      }),
+    },
+  )
+  return parseLocalCodexAuthImportResponse(await readJsonResponse(response))
+}
+
+const defaultClaudeAccountHome = (
+  summary: Pick<BootstrapSummary, "paths">,
+  accountRef: string,
+): string => join(summary.paths.home, "accounts", "claude_agent", accountRef)
+
+async function importLocalClaudeAuth(input: {
+  accountRef: string
+  agentToken: string
+  baseUrl: string
+  fetcher: PylonAccountsConnectFetcher
+  providerAccountRef: string | null
+  summary: Pick<BootstrapSummary, "paths">
+}): Promise<OpenAgentsLocalClaudeAuthImportResponse> {
+  const authContentValue = (
+    await readFile(
+      join(defaultClaudeAccountHome(input.summary, input.accountRef), "claude-oauth-token"),
+      "utf8",
+    )
+  ).trim()
+  if (authContentValue === "") {
+    throw new Error("local Claude auth is empty")
+  }
+  const response = await input.fetcher(
+    `${input.baseUrl}/api/pylon/provider-accounts/anthropic-claude/local-auth/import`,
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${input.agentToken}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        accountLabel: input.accountRef,
+        createNew: input.providerAccountRef === null,
+        ...(input.providerAccountRef === null
+          ? {}
+          : { providerAccountRef: input.providerAccountRef }),
+        authContentValue,
       }),
     },
   )
@@ -1194,9 +1250,8 @@ export async function runPylonAuthCodex(
 }
 
 /**
- * Local Claude account connect via setup-token file storage. Does not run
- * OpenAgents device-login or Codex provider-account import — those remain
- * Codex-only. Token material is never projected.
+ * Local Claude account connect via setup-token file storage. OpenAgents
+ * linking is opt-in and token material is never projected.
  */
 export async function runPylonAuthClaude(
   summary: Pick<BootstrapSummary, "bootstrap" | "paths">,
@@ -1204,7 +1259,18 @@ export async function runPylonAuthClaude(
   options: PylonAuthOptions = {},
 ): Promise<PylonAuthClaudeProjection> {
   const env = options.env ?? (Runtime.env as Record<string, string | undefined>)
+  const fetcher = options.fetcher ?? fetch
+  const baseUrl = baseUrlFrom(args, env)
+  const openAgents = args.openAgentsLink
+    ? await runPylonAuthOpenAgents(summary, { ...args, target: "openagents" }, options)
+    : null
   const accountRef = args.accountRef ?? await nextClaudeAccountRef(summary)
+  const configBeforeConnect = await readConfig(summary)
+  const previousProviderAccountRef = configuredProviderAccountRef(
+    configBeforeConnect,
+    accountRef,
+    "claude_agent",
+  )
   const started = await runPylonAccountsConnect(
     summary,
     claudeConnectArgs({
@@ -1219,16 +1285,87 @@ export async function runPylonAuthClaude(
       ? "skipped_existing_auth"
       : "completed"
 
+  if (openAgents === null) {
+    const projection = {
+      schema: "pylon.auth.claude.v1",
+      status: "connected",
+      accountRef,
+      provider: "claude_agent",
+      localClaude: {
+        setupTokenStatus,
+        ...(started.deviceLogin.reason !== undefined ? { reason: started.deviceLogin.reason } : {}),
+      },
+      openAgentsProviderAccount: {
+        accountStatus: "not_attempted_local_only",
+        attemptId: "not_attempted",
+        attemptStatus: "not_attempted",
+        providerAccountRef: previousProviderAccountRef ?? accountRef,
+        source: "pylon_local_claude_auth",
+      },
+      blockerRefs: started.blockerRefs,
+    } satisfies PylonAuthClaudeProjection
+    assertPublicProjectionSafe(projection)
+    return projection
+  }
+
+  let imported: OpenAgentsLocalClaudeAuthImportResponse
+  try {
+    imported = await importLocalClaudeAuth({
+      accountRef,
+      agentToken: openAgents.agentToken,
+      baseUrl,
+      fetcher,
+      providerAccountRef: previousProviderAccountRef,
+      summary,
+    })
+    await writeConfiguredProviderAccountRef({
+      accountRef,
+      provider: "claude_agent",
+      providerAccountRef: imported.account.providerAccountRef,
+      summary,
+    })
+  } catch {
+    const projection = {
+      schema: "pylon.auth.claude.v1",
+      status: "connected_local_only",
+      accountRef,
+      provider: "claude_agent",
+      openAgents: openAgents.projection,
+      localClaude: {
+        setupTokenStatus,
+        ...(started.deviceLogin.reason !== undefined ? { reason: started.deviceLogin.reason } : {}),
+      },
+      openAgentsProviderAccount: {
+        accountStatus: "import_failed",
+        attemptId: "not_attempted",
+        attemptStatus: "not_attempted",
+        providerAccountRef: previousProviderAccountRef ?? accountRef,
+        source: "pylon_local_claude_auth",
+      },
+      blockerRefs: ["blocker.pylon.auth.claude.openagents_provider_import_failed"],
+    } satisfies PylonAuthClaudeProjection
+    assertPublicProjectionSafe(projection)
+    return projection
+  }
+
   const projection = {
     schema: "pylon.auth.claude.v1",
     status: "connected",
     accountRef,
     provider: "claude_agent",
+    openAgents: openAgents.projection,
     localClaude: {
       setupTokenStatus,
       ...(started.deviceLogin.reason !== undefined ? { reason: started.deviceLogin.reason } : {}),
     },
-    blockerRefs: started.blockerRefs,
+    openAgentsProviderAccount: {
+      accountStatus: imported.account.status,
+      attemptId: imported.attempt.id,
+      attemptStatus: imported.attempt.status,
+      providerAccountRef: imported.account.providerAccountRef,
+      source: "pylon_local_claude_auth",
+    },
+    blockerRefs: [],
   } satisfies PylonAuthClaudeProjection
   assertPublicProjectionSafe(projection)
   return projection

@@ -299,6 +299,10 @@ describe("pylon auth", () => {
         accountRef: "claude-auth",
         provider: "claude_agent",
         localClaude: { setupTokenStatus: "completed", reason: "setup_token" },
+        openAgentsProviderAccount: {
+          accountStatus: "not_attempted_local_only",
+          source: "pylon_local_claude_auth",
+        },
       })
       assertPublicProjectionSafe(projection)
       expect(JSON.stringify(projection)).not.toContain(secret)
@@ -306,6 +310,95 @@ describe("pylon auth", () => {
       expect(await readFile(join(home, "accounts", "claude_agent", "claude-auth", "claude-oauth-token"), "utf8")).toBe(
         `${secret}\n`,
       )
+    })
+  })
+
+  test("links an isolated Claude setup-token without projecting it", async () => {
+    await withHome(async home => {
+      const summary = createBootstrapSummary(parseBootstrapArgs(["--json"]), {
+        PYLON_HOME: home,
+      })
+      const secret = "sk-ant-oat-auth-link-secret"
+      const calls: Array<{ body: string | undefined; url: string }> = []
+      const fetcher: typeof fetch = async (input, init) => {
+        const url = String(input)
+        calls.push({
+          url,
+          body: typeof init?.body === "string" ? init.body : undefined,
+        })
+        if (url === "https://openagents.example/api/pylon/auth/openagents/device/start") {
+          return jsonResponse({
+            schema: "openagents.pylon.auth.openagents.v1",
+            status: "linked",
+            linkedAgent: { tokenPrefix: "oa_agent_fixture" },
+          })
+        }
+        if (
+          url ===
+          "https://openagents.example/api/pylon/provider-accounts/anthropic-claude/local-auth/import"
+        ) {
+          expect(JSON.parse(String(init?.body))).toMatchObject({
+            accountLabel: "claude-linked",
+            createNew: true,
+            authContentValue: secret,
+          })
+          return jsonResponse({
+            account: {
+              status: "connected",
+              providerAccountRef: "provider_account_claude",
+            },
+            attempt: { id: "provider_attempt_claude_1", status: "connected" },
+            pylonLink: { owner: "openauth", status: "linked" },
+          }, 201)
+        }
+        throw new Error(`unexpected fetch ${url}`)
+      }
+
+      const projection = await runPylonAuthClaude(
+        summary,
+        parsePylonAuthArgs([
+          "claude",
+          "--account",
+          "claude-linked",
+          "--token",
+          secret,
+          "--openagents-link",
+          "--agent-token",
+          "oa_agent_fixture_123",
+          "--base-url",
+          "https://openagents.example",
+          "--json",
+        ]),
+        { env: { PYLON_HOME: home }, fetcher },
+      )
+
+      expect(projection).toMatchObject({
+        schema: "pylon.auth.claude.v1",
+        status: "connected",
+        accountRef: "claude-linked",
+        openAgentsProviderAccount: {
+          accountStatus: "connected",
+          attemptId: "provider_attempt_claude_1",
+          providerAccountRef: "provider_account_claude",
+          source: "pylon_local_claude_auth",
+        },
+      })
+      expect(calls).toHaveLength(2)
+      expect(JSON.stringify(projection)).not.toContain(secret)
+      expect(
+        JSON.parse(await readFile(join(home, "config.json"), "utf8")),
+      ).toMatchObject({
+        dev: {
+          accounts: [
+            {
+              provider: "claude_agent",
+              ref: "claude-linked",
+              openAgentsProviderAccountRef: "provider_account_claude",
+            },
+          ],
+        },
+      })
+      assertPublicProjectionSafe(projection)
     })
   })
 
