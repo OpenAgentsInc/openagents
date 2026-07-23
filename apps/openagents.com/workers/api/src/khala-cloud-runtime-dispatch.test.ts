@@ -71,6 +71,7 @@ describe('managed cloud queued turn projection', () => {
         {
           event_count: 0,
           goal_body: 'Repair issue #9191.',
+          harness_execution_target_id: 'harness.opencode',
           owner_user_id: 'owner.fixture',
           repository_name: 'openagents',
           repository_owner: 'OpenAgentsInc',
@@ -86,6 +87,7 @@ describe('managed cloud queued turn projection', () => {
     expect(turns).toEqual([
       expect.objectContaining({
         commit,
+        harnessId: 'opencode',
         repo: 'OpenAgentsInc/openagents',
         writeback: { mode: 'branch_only' },
       }),

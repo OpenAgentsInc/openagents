@@ -150,6 +150,7 @@ describe('Sarah runtime tools', () => {
       tool.execute(
         {
           count: 1,
+          harness: 'pi',
           objective: 'Run issue #9191 on owned Agent Computer capacity.',
         },
         call('codex_workers_start'),
@@ -164,6 +165,7 @@ describe('Sarah runtime tools', () => {
     expect(cloudDispatches).toEqual([
       expect.objectContaining({
         commit: 'a'.repeat(40),
+        harnessId: 'pi',
         repository: 'OpenAgentsInc/openagents',
       }),
     ])

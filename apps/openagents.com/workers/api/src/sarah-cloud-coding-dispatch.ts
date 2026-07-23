@@ -17,6 +17,10 @@ import {
 } from '@openagentsinc/khala-sync-server'
 import { Effect, Schema as S } from 'effect'
 
+import {
+  AgentComputerHarnessId,
+  managedAgentComputerHarnessExecutionTargetId,
+} from './khala-cloud-runtime-inference-block'
 import { currentIsoTimestamp } from './runtime-primitives'
 
 const PublicRef = S.Trim.check(
@@ -36,6 +40,7 @@ const Objective = S.Trim.check(S.isMinLength(3), S.isMaxLength(8_000))
 
 const SarahCloudCodingDispatchInput = S.Struct({
   commit: ImmutableCommit,
+  harnessId: S.optionalKey(AgentComputerHarnessId),
   objective: Objective,
   ownerUserId: PublicRef,
   parentThreadRef: PublicRef,
@@ -131,6 +136,12 @@ export const makeSarahCloudCodingDispatch = (
         target: {
           adapterKind: 'openagents_native',
           lane: 'managed_cloud',
+          ...(input.harnessId === undefined
+            ? {}
+            : {
+                executionTargetId:
+                  managedAgentComputerHarnessExecutionTargetId(input.harnessId),
+              }),
         },
         threadId: refs.threadRef,
         turnId: refs.cloudTurnRef,

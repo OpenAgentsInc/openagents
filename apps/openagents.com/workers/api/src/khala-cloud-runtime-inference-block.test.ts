@@ -17,6 +17,8 @@ import {
   buildCloudRuntimeWritebackConfig,
   decodeWorkContextB64,
   encodeWorkContextB64,
+  managedAgentComputerHarnessExecutionTargetId,
+  managedAgentComputerHarnessIdFromExecutionTargetId,
   selectManagedAgentComputerHarness,
 } from './khala-cloud-runtime-inference-block'
 
@@ -34,6 +36,19 @@ describe('managed Agent Computer harness selection', () => {
       provider: 'chatgpt_codex',
       requestedAction: 'agent_computer_codex_turn',
     })
+  })
+
+  test('round-trips the durable harness execution target', () => {
+    for (const harnessId of AGENT_COMPUTER_HARNESS_IDS) {
+      expect(
+        managedAgentComputerHarnessIdFromExecutionTargetId(
+          managedAgentComputerHarnessExecutionTargetId(harnessId),
+        ),
+      ).toBe(harnessId)
+    }
+    expect(
+      managedAgentComputerHarnessIdFromExecutionTargetId('runner.opencode'),
+    ).toBeUndefined()
   })
 
   test.each(['goose', 'opencode', 'pi'] as const)(

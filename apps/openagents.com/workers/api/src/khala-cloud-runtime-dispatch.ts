@@ -66,6 +66,7 @@ import {
   buildCloudRuntimeWorkContext,
   buildCloudRuntimeWritebackConfig,
   encodeWorkContextB64,
+  managedAgentComputerHarnessIdFromExecutionTargetId,
   selectManagedAgentComputerHarness,
   type AgentComputerHarnessId,
   type CloudRuntimeClaudeProviderAuthGrantRef,
@@ -333,6 +334,7 @@ export const managedAgentComputerGrantIssueInput = (
 type ManagedCloudQueueRow = Readonly<{
   event_count: string | number
   goal_body: string
+  harness_execution_target_id: string | null
   owner_user_id: string
   repository_name: string
   repository_owner: string
@@ -363,10 +365,14 @@ export const readQueuedManagedCloudTurns = async (
   const rows: Array<ManagedCloudQueueRow> = await sql`
     SELECT t.turn_id, t.thread_id, t.owner_user_id, t.event_count,
            t.work_context_ref, t.repository_owner, t.repository_name,
-           t.repository_ref, m.body AS goal_body
+           t.repository_ref, m.body AS goal_body,
+           i.intent_json -> 'target' ->> 'executionTargetId'
+             AS harness_execution_target_id
     FROM khala_sync_runtime_turns t
     JOIN khala_sync_chat_messages m
       ON m.message_id = t.goal_message_id AND m.thread_id = t.thread_id
+    LEFT JOIN khala_sync_runtime_control_intents i
+      ON i.intent_id = t.latest_intent_id
     WHERE t.status = 'queued'
       AND t.lane = ${MANAGED_CLOUD_RUNTIME_LANE}
       AND t.work_context_ref IS NOT NULL
@@ -378,10 +384,14 @@ export const readQueuedManagedCloudTurns = async (
   `
   return rows.map((row): CloudGcpAdmittedWorkContext => {
     const pinnedCommit = IMMUTABLE_GIT_SHA.test(row.repository_ref)
+    const harnessId = managedAgentComputerHarnessIdFromExecutionTargetId(
+      row.harness_execution_target_id,
+    )
     return {
       ...(pinnedCommit ? {} : { branch: row.repository_ref }),
       commit: row.repository_ref,
       eventCount: Number(row.event_count),
+      ...(harnessId === undefined ? {} : { harnessId }),
       objective: row.goal_body,
       ownerUserId: row.owner_user_id,
       repo: `${row.repository_owner}/${row.repository_name}`,

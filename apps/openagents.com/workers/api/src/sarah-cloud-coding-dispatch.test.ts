@@ -10,6 +10,7 @@ import {
 
 const input = {
   commit: 'a'.repeat(40),
+  harnessId: 'pi' as const,
   objective: 'Repair issue #9191 and run the pinned verification.',
   ownerUserId: 'owner.fixture',
   parentThreadRef: 'thread.sarah.fixture',
@@ -70,6 +71,7 @@ describe('Sarah cloud coding dispatch', () => {
       redactionClass: 'private_ref',
       target: {
         adapterKind: 'openagents_native',
+        executionTargetId: 'harness.pi',
         lane: 'managed_cloud',
       },
       visibility: 'private',

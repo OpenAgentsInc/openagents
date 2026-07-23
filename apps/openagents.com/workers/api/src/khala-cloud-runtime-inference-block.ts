@@ -34,6 +34,27 @@ export const AGENT_COMPUTER_HARNESS_IDS = [
 
 export const AgentComputerHarnessId = S.Literals(AGENT_COMPUTER_HARNESS_IDS)
 export type AgentComputerHarnessId = typeof AgentComputerHarnessId.Type
+export const MANAGED_AGENT_COMPUTER_HARNESS_TARGET_PREFIX = 'harness.'
+
+export const managedAgentComputerHarnessExecutionTargetId = (
+  harnessId: AgentComputerHarnessId,
+): string => `${MANAGED_AGENT_COMPUTER_HARNESS_TARGET_PREFIX}${harnessId}`
+
+export const managedAgentComputerHarnessIdFromExecutionTargetId = (
+  executionTargetId: string | null | undefined,
+): AgentComputerHarnessId | undefined => {
+  if (
+    executionTargetId === undefined ||
+    executionTargetId === null ||
+    !executionTargetId.startsWith(MANAGED_AGENT_COMPUTER_HARNESS_TARGET_PREFIX)
+  ) {
+    return undefined
+  }
+  const candidate = executionTargetId.slice(
+    MANAGED_AGENT_COMPUTER_HARNESS_TARGET_PREFIX.length,
+  )
+  return AGENT_COMPUTER_HARNESS_IDS.find(harnessId => harnessId === candidate)
+}
 
 export const MANAGED_AGENT_COMPUTER_DEFAULT_HARNESS = 'codex' as const
 export const MANAGED_AGENT_COMPUTER_GEMINI_MODEL = 'gemini-3.5-flash' as const

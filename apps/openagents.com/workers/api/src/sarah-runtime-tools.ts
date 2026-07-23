@@ -13,6 +13,7 @@ import { Effect, Schema as S } from 'effect'
 
 import type { CrmMcpCatalog, McpToolCallOutcome } from './crm-mcp-routes'
 import { resolveManagedCloudRepositoryCommit } from './khala-cloud-runtime-dispatch'
+import { AgentComputerHarnessId } from './khala-cloud-runtime-inference-block'
 import { khalaMcpOwnerPrincipal } from './khala-mcp'
 import { currentIsoTimestamp } from './runtime-primitives'
 import {
@@ -73,6 +74,7 @@ const PublicRef = S.Trim.check(
 const StartWorkersInput = S.Struct({
   objective: Objective,
   count: WorkerCount,
+  harness: S.optional(AgentComputerHarnessId),
   maxParallel: S.optional(WorkerCount),
 })
 const SpawnStatusInput = S.Struct({ spawnRef: PublicRef })
@@ -423,6 +425,18 @@ export const makeSarahRuntimeTools = <Bindings>(
         additionalProperties: false,
         properties: {
           count: { maximum: 8, minimum: 1, type: 'integer' },
+          harness: {
+            enum: [
+              'codex',
+              'claude-code',
+              'cursor',
+              'goose',
+              'opencode',
+              'pi',
+              'grok',
+            ],
+            type: 'string',
+          },
           maxParallel: { maximum: 8, minimum: 1, type: 'integer' },
           objective: { maxLength: 8000, minLength: 3, type: 'string' },
         },
@@ -516,6 +530,9 @@ export const makeSarahRuntimeTools = <Bindings>(
             ? yield* deps
                 .dispatchCloudCoding({
                   commit,
+                  ...(input.harness === undefined
+                    ? {}
+                    : { harnessId: input.harness }),
                   objective: input.objective,
                   ownerUserId: deps.ownerUserId,
                   parentThreadRef: deps.threadRef,
