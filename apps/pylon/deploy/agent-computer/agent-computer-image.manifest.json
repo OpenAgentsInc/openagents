@@ -81,15 +81,15 @@
   "guestImage": {
     "kernelDigest": "sha256:22847375721aceea63d934c28f2dfce4670b6f52ec904fae19f5145a970c1e65",
     "kernelSource": "firecracker-ci/v1.10/x86_64/vmlinux-5.10.223",
-    "rootfsDigest": "sha256:80a2b6a0028911bc1b803b7616194fccb1a8dffb125dfcba2791c1d19351e62a",
-    "rootfsDigestPrevious": "sha256:3f8e1accef9ef04fb6cfa6750b6f27a10f18cb30e7536bc45dbbf87f8d44fb1 (seven-harness v17 rollback image)",
-    "rootfsSource": "source-controlled debootstrap jammy seven-harness v19 bake at commit ab07fc4220",
-    "rootfsStatus": "SEVEN-HARNESS V19 IMAGE LIVE BOOT GREEN 2026-07-23: provisionerKind=live, all seven pinned version probes returned code 0, artifacts were extracted, cleanupReceipt.tornDown=true, and the host retained zero Firecracker processes and zero runtime directories.",
+    "rootfsDigest": "sha256:570e747a732f7b062c2062788c8480952928193502a471e261e07e0a2628abe8",
+    "rootfsDigestPrevious": "sha256:5b2c941a9c10b9fa4c27ed8fcba38553b30b559a12c8c3aadc82e20ab5a22876 (seven-harness v21 rollback image)",
+    "rootfsSource": "source-controlled debootstrap jammy seven-harness v22 bake at commit bd407c9ae13b25c8e39522eb63f3caa69c733712",
+    "rootfsStatus": "SEVEN-HARNESS V22 IMAGE LIVE BOOT GREEN 2026-07-23: provisionerKind=live, all seven pinned version probes returned code 0, artifacts were extracted, cleanupReceipt.tornDown=true, and the host retained zero Firecracker processes and zero runtime directories after the boot smoke.",
     "rootfsBuildScript": "apps/pylon/deploy/agent-computer/build-agent-computer-rootfs.sh (source-controlled bake: debootstrap jammy + seven pinned harnesses + vsock guest agent + turn-runner + oa-workroomd + egress fix; seals sha256 + emits a refs-only bake receipt; run as root on the nested-virt bake host, then boot-smoke and re-pin rootfsDigest)",
     "rootfsBakeReceipt": {
-      "bakedAt": "2026-07-23T16:42:27Z",
-      "sourceCommit": "ab07fc42200a79491ebe3d6f0f6c6897204f018d",
-      "turnRunnerSha256": "88ae234cbec41e02ff0f924842a992437b266af5f36ed8b8fdc2c84114d6bd0e",
+      "bakedAt": "2026-07-23T18:23:17Z",
+      "sourceCommit": "bd407c9ae13b25c8e39522eb63f3caa69c733712",
+      "turnRunnerSha256": "6893ac36741a90b160306ebc65bef5c33bafbf9cfb01cf4c0e140f32ba3407dc",
       "portableSessionControlSha256": "acab20cd4f03a4f27e1c8f1b9e6e352c3a6866efb3783f831895c70bc1431b25",
       "workroomdSha256": "59d2623c6b5629b75be3889eb457a5957e7d3d6044f4b12dd0d45ddcc319d063"
     },
@@ -107,18 +107,21 @@
       "credentialPolicy": "Provider material is injected for one turn at runtime. No provider key, OAuth token, or subscription home is present in the image or bake receipt.",
       "credentialScanner": "The turn-runner scans the staged diff before writeback and emits typed finding refs only. Host closeout still requires its isolation scanner and cleanup receipt.",
       "pi": {
+        "executionState": "runtime_secret_and_real_writeback_qualified",
         "version": "0.81.1",
         "source": "npm @earendil-works/pi-coding-agent",
         "model": "google/gemini-3.1-pro-preview-customtools",
         "credentialEnv": "GEMINI_API_KEY"
       },
       "opencode": {
+        "executionState": "runtime_secret_and_real_writeback_qualified",
         "version": "1.18.4",
         "source": "npm opencode-ai",
         "model": "google/gemini-3.5-flash",
         "credentialEnv": "GOOGLE_GENERATIVE_AI_API_KEY"
       },
       "goose": {
+        "executionState": "runtime_secret_and_real_writeback_qualified",
         "version": "1.43.0",
         "source": "https://github.com/aaif-goose/goose/releases/download/v1.43.0/goose-x86_64-unknown-linux-gnu.tar.gz",
         "tarballSha256": "a9a96f559a8b5f20b11597b78e4aa5bb0b9b29796ec4f808ca466a3f59a5ec20",
@@ -126,6 +129,7 @@
         "credentialEnv": "GOOGLE_API_KEY"
       },
       "claudeCode": {
+        "executionState": "owner_reauthentication_required",
         "version": "2.1.218",
         "source": "npm @anthropic-ai/claude-code",
         "credentialEnv": "CLAUDE_CODE_OAUTH_TOKEN"
@@ -138,11 +142,24 @@
         "credentialEnv": "CURSOR_API_KEY"
       },
       "grok": {
-        "executionState": "runtime_secret_qualified_model_turn_pending",
+        "executionState": "runtime_secret_and_real_writeback_qualified",
         "version": "0.2.106",
         "source": "https://storage.googleapis.com/grok-build-public-artifacts/cli/grok-0.2.106-linux-x86_64",
         "binarySha256": "7180d0e03cc2a496033ff3aae2223ce239446a9827a59faa76091c7edd5e1c38",
-        "credentialEnv": "XAI_API_KEY"
+        "credentialEnv": "XAI_API_KEY",
+        "qualification": {
+          "provedAt": "2026-07-23",
+          "turnRef": "turn.sarah_cloud.turn.agent_computer_qualification.grok.1784834289674.call.agent_computer_qualification.grok.1784834289674",
+          "artifactRefs": [
+            "artifact.sha256.33b9c6a2a6040613e1a0f052d4cb1f5570bcc94d84efe78b8399d46d752dbb44",
+            "artifact.sha256.e2f67bda7daac11bb4e0f34f6145949532f97d482b5a0f44c1e9ba36fca69f2"
+          ],
+          "commit": "856cb68d63b7e612b3df503d0ca27b8718213ed7",
+          "parentCommit": "bd407c9ae13b25c8e39522eb63f3caa69c733712",
+          "changedFileCount": 1,
+          "cleanupReceipt": "sha256:f9916432500861cd53863231bba21419d57a41b0de911827e8006615395de11f",
+          "leaseTerminalOutcome": "managed_cloud_turn_completed"
+        }
       }
     },
     "portableSessionControl": {
@@ -219,10 +236,10 @@
         "execCode": 0,
         "artifactsExtracted": true,
         "tornDown": true,
-        "provisionReceiptDigest": "sha256:ea4f88f40c0b3a2f4e65f72d1db92e307947405ce61ec342087d1f4f4f04aa6a",
-        "cleanupReceiptDigest": "sha256:21be66f03601320d8e009f917a07febc18279902e746c883e5c6de82650a7443"
+        "provisionReceiptDigest": "sha256:c6f4d998617dd0baafbe1daf879b52ba2fdfc81fc15a97c1c74835311fc18f86",
+        "cleanupReceiptDigest": "sha256:4ee0a53ae5c51ed50c1451c0d45564c7f1bda659ecebafa58aa126752fa0e1d3"
       },
-      "note": "The recorded digest is the controller in the live v19 image. The image supervises a generation-bound recursive Node watcher and an npm-signature-verified TypeScript LSP. PTY, DAP, and native helpers remain explicit unsupported omissions. The LSP is typescript-language-server, not tsserver. debugpy remains uninstalled because its exact PyPI wheel has no signature or PEP 740 provenance."
+      "note": "The recorded digest is the controller in the live v22 image. The image supervises a generation-bound recursive Node watcher and an npm-signature-verified TypeScript LSP. PTY, DAP, and native helpers remain explicit unsupported omissions. The LSP is typescript-language-server, not tsserver. debugpy remains uninstalled because its exact PyPI wheel has no signature or PEP 740 provenance."
     },
     "scratchPolicy": "per-work-context-disposable",
     "scratchWipeReceiptRequired": true,
