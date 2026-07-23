@@ -1276,6 +1276,7 @@ export const harnessExecArgs = (input: {
       ]
     case 'grok':
       return [
+        '--no-auto-update',
         '--single', input.prompt, '--output-format', 'streaming-json',
         '--always-approve',
         '--max-turns', '10',

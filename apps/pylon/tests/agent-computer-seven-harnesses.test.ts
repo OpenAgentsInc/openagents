@@ -169,6 +169,7 @@ describe('Agent Computer seven-harness runtime (#9193)', () => {
       prompt: 'make the change',
       workingDirectory: '/workspace',
     })).toEqual([
+      '--no-auto-update',
       '--single',
       'make the change',
       '--output-format',
