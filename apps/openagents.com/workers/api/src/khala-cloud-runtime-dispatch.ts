@@ -883,8 +883,10 @@ type TerminalManagedCloudProviderLeaseRow = Readonly<{
 /**
  * Release provider capacity after an asynchronous Agent Computer turn settles.
  * The placement dispatcher must keep the lease while the guest runs. A later
- * worker tick uses the durable turn state to close that lease before it selects
- * capacity for more work.
+ * worker tick uses a terminal failure state or the immutable writeback receipt
+ * to close that lease before it selects capacity for more work. Placement
+ * acceptance alone marks the runtime turn completed and is not a safe release
+ * signal while the asynchronous guest still runs.
  */
 export const reconcileTerminalManagedCloudProviderLeases = async (
   sql: SyncSql,
@@ -903,7 +905,18 @@ export const reconcileTerminalManagedCloudProviderLeases = async (
       ON t.turn_id = l.assignment_id
     WHERE l.status = 'active'
       AND l.selected_by_actor = 'sarah_managed_cloud_dispatch'
-      AND t.status IN ('completed', 'failed', 'interrupted')
+      AND (
+        t.status IN ('failed', 'interrupted')
+        OR (
+          t.status = 'completed'
+          AND EXISTS (
+            SELECT 1
+            FROM khala_sync_runtime_events e
+            WHERE e.turn_id = t.turn_id
+              AND e.kind = 'writeback.recorded'
+          )
+        )
+      )
     ORDER BY t.settled_at ASC, t.turn_id ASC
     LIMIT ${boundedLimit}
   `

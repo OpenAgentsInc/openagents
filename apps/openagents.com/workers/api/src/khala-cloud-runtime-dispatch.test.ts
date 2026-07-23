@@ -519,6 +519,24 @@ describe('managed cloud terminal provider failover', () => {
 })
 
 describe('managed cloud terminal provider lease reconciliation', () => {
+  test('requires a writeback receipt before it selects a completed turn', async () => {
+    let query = ''
+    const sql = ((strings: TemplateStringsArray) => {
+      query = strings.join('?')
+      return Promise.resolve([])
+    }) as unknown as SyncSql
+
+    await reconcileTerminalManagedCloudProviderLeases(
+      sql,
+      { release: () => Promise.resolve(true) },
+      '2026-07-23T12:00:00.000Z',
+      2,
+    )
+
+    expect(query).toContain("t.status = 'completed'")
+    expect(query).toContain("e.kind = 'writeback.recorded'")
+  })
+
   test('releases completed turns as succeeded and failed turns as failed', async () => {
     const sql = (() =>
       Promise.resolve([
