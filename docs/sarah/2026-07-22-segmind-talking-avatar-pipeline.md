@@ -143,6 +143,24 @@ node scripts/sarah-avatar/segmind-talking-avatar.mjs \
   --out ~/Downloads/sarah/sarah-intro-kling.mp4
 ```
 
+## Clip length and the lip-sync window (important)
+
+`p-video-avatar` (Pruna) reliably drives the mouth for roughly the first 18 to
+20 seconds of audio. Past that window the viseme track runs out: the mouth
+freezes or drifts while the TTS audio keeps playing. A ~28 second take showed
+this — sync held through the reflective open and then broke near 20 seconds.
+
+Rule: keep each generated clip's spoken audio at or below about 15 seconds
+(roughly 35 to 40 words) so sync holds for the whole clip with margin. Build a
+full episode by generating one short clip per sentence or short beat, each with
+its own emotional direction, then assemble the clips in an editor. Do not push
+a single long take past the sync window and expect the mouth to keep up.
+
+- Short beat (safe): a single line or short sentence, about 8 to 15 seconds.
+- Never: a full paragraph in one generation for a produced, lip-synced clip.
+- Assembly: concatenate the short clips (a hard cut, a transition, or an
+  external B-roll clip at a natural beat) rather than relying on one long render.
+
 ## How it works (Segmind Async Inference V2)
 
 Video models must use the async API for reliability. The runner:

@@ -19,6 +19,11 @@
       "date": "2026-07-22",
       "note": "A per-clip 'low and dry' voice direction made the voice come out masculine on one clip. She must always sound like a woman.",
       "applied": "Added voice_anchor: 'A woman's voice, distinctly feminine and never masculine.' The runner prepends this to EVERY voice_prompt (base or per-clip override), so no per-clip emotional direction — however low or dry — can flip her perceived gender. Her gender is locked at the profile layer, not left to each prompt."
+    },
+    {
+      "date": "2026-07-22",
+      "note": "A ~28s take lost lip sync near 20 seconds — the mouth froze while the audio kept going.",
+      "applied": "The p-video-avatar viseme window is about 18-20s. Keep each clip's spoken audio at or below ~15s (about 35-40 words). Build a full episode from short per-sentence clips, each with its own emotional direction, then assemble in an editor — never one long take past the sync window. See docs/sarah/2026-07-22-segmind-talking-avatar-pipeline.md."
     }
   ]
 }
