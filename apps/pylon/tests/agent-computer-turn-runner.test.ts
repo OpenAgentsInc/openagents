@@ -469,21 +469,22 @@ describe('agent-computer turn-runner: request contracts', () => {
     )
   })
 
-  test('ingest body carries EXACT reasoning + cache-read tokens (#8503)', () => {
+  test('ingest body carries EXACT reasoning + cache read/write tokens (#8503)', () => {
+    const usage = chatCompletionUsage({
+      usage: {
+        prompt_tokens: 41,
+        completion_tokens: 17,
+        completion_tokens_details: { reasoning_tokens: 12 },
+        prompt_tokens_details: { cached_tokens: 8 },
+        total_tokens: 58,
+      },
+    })
     const body = usageIngestBody({
       inference,
       threadId: 'scope.thread.proof',
       turnId: 'turn-microvm-2',
       observedAt: '2026-07-07T00:00:00.000Z',
-      usage: chatCompletionUsage({
-        usage: {
-          prompt_tokens: 41,
-          completion_tokens: 17,
-          completion_tokens_details: { reasoning_tokens: 12 },
-          prompt_tokens_details: { cached_tokens: 8 },
-          total_tokens: 58,
-        },
-      }),
+      usage: { ...usage, cacheWriteTokens: 3 },
       usageRef: 'usage.hosted_khala.def',
     })
     expect(body.usage).toEqual({
@@ -492,7 +493,7 @@ describe('agent-computer turn-runner: request contracts', () => {
       outputTokens: 5,
       reasoningTokens: 12,
       cacheReadInputTokens: 8,
-      cacheWriteInputTokens: 0,
+      cacheWriteInputTokens: 3,
       totalTokens: 58,
     })
   })

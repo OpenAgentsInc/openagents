@@ -81,6 +81,8 @@ export const KHALA_CLOUD_RUNTIME_USAGE_SCHEMA_VERSION =
 export const AGENT_COMPUTER_DEFAULT_PROVIDER = 'vertex-gemini'
 /** The ingest route only accepts these lanes; the hosted-Khala model turn is `hosted_khala`. */
 export const AGENT_COMPUTER_RECEIPT_LANE = 'hosted_khala'
+export const AGENT_COMPUTER_HARNESS_BACKEND_PROFILE =
+  'omega-hosted-gemini'
 export const CODEX_PROVIDER_AUTH_MATERIAL_PATH =
   '/api/pylon/provider-accounts/chatgpt-codex/auth-material'
 export const CLAUDE_PROVIDER_AUTH_MATERIAL_PATH =
@@ -515,6 +517,8 @@ export type HarnessRuntimeSecretGrant = {
   baseUrl: string
   agentToken: string
   grantRef: string
+  ownerUserId: string
+  pylonRef: string
   providerAccountRef: string
   runnerSessionId: string
   secretRef: string
@@ -595,6 +599,7 @@ export type ChatCompletionUsage = {
   totalTokens: number
   reasoningTokens: number
   cacheReadTokens: number
+  cacheWriteTokens?: number
 }
 
 /**
@@ -740,7 +745,7 @@ export const usageIngestBody = (input: {
     outputTokens: integerOrZero(input.usage.outputTokens),
     reasoningTokens: integerOrZero(input.usage.reasoningTokens),
     cacheReadInputTokens: integerOrZero(input.usage.cacheReadTokens),
-    cacheWriteInputTokens: 0,
+    cacheWriteInputTokens: integerOrZero(input.usage.cacheWriteTokens),
     totalTokens: integerOrZero(input.usage.totalTokens),
   },
 })
@@ -1383,6 +1388,12 @@ export type HarnessTurnOutcome =
       stderrDigest: string
       runtimeSecretRef: string | null
       usageReceipt: HarnessUsageReceipt
+      runtimeUsageReceipt: {
+        tokenUsageEventRef: string | null
+        insertedTokenUsage: boolean
+        tokenChargeMetered: boolean
+        tokensServedDelta: number
+      } | null
     }
   | {
       ok: false
@@ -1393,11 +1404,14 @@ export type HarnessTurnOutcome =
         | 'harness.runtime_secret_broker_unsupported'
         | 'harness.runtime_secret_broker_unavailable'
         | 'harness.runtime_secret_material_invalid'
+        | 'harness.usage_receipt_failed'
+        | 'harness.usage_unavailable'
         | 'harness.exec_failed'
       exitCode: number | null
       failureClass?: HarnessFailureClass
       stderrDigest?: string
       brokerStatus?: number | null
+      receiptStatus?: number | null
     }
 
 export type HarnessExactUsage = {
@@ -1680,6 +1694,17 @@ export const runHarnessTurn = async (
     if (args.config.runtimeSecretGrant === undefined) {
       return { exitCode: null, harness: args.config.harness, ok: false, reasonRef: 'harness.runtime_secret_required' }
     }
+    if (
+      args.config.runtimeSecretGrant.ownerUserId.trim() === '' ||
+      args.config.runtimeSecretGrant.pylonRef.trim() === ''
+    ) {
+      return {
+        exitCode: null,
+        harness: args.config.harness,
+        ok: false,
+        reasonRef: 'harness.runtime_secret_material_invalid',
+      }
+    }
     const materialized = await materializeHarnessRuntimeSecret(
       args.config.runtimeSecretGrant,
       deps.fetchImpl,
@@ -1733,6 +1758,78 @@ export const runHarnessTurn = async (
       stderrDigest: sha256Text(result.stderr),
     }
   }
+  const usageReceipt = parseHarnessUsageReceipt(args.config.harness, result.stdout)
+  let runtimeUsageReceipt: Extract<HarnessTurnOutcome, { ok: true }>['runtimeUsageReceipt'] = null
+  if (args.config.harness === 'opencode' || args.config.harness === 'pi') {
+    if (
+      usageReceipt.status !== 'exact' ||
+      usageReceipt.unsupportedFields.length > 0 ||
+      usageReceipt.usage.reasoningTokens === undefined ||
+      usageReceipt.usage.cacheWriteInputTokens === undefined
+    ) {
+      return {
+        exitCode: 0,
+        harness: args.config.harness,
+        ok: false,
+        reasonRef: 'harness.usage_unavailable',
+        stderrDigest: sha256Text(result.stderr),
+      }
+    }
+    const grant = args.config.runtimeSecretGrant
+    if (grant === undefined) {
+      return {
+        exitCode: 0,
+        harness: args.config.harness,
+        ok: false,
+        reasonRef: 'harness.runtime_secret_required',
+      }
+    }
+    const receipt = await postExactUsageReceipt(
+      {
+        authGrantRef: grant.grantRef,
+        identity: {
+          agentToken: grant.agentToken,
+          backendProfile: AGENT_COMPUTER_HARNESS_BACKEND_PROFILE,
+          baseUrl: grant.baseUrl,
+          lane: AGENT_COMPUTER_RECEIPT_LANE,
+          model: args.config.model ?? AGENT_COMPUTER_DEFAULT_GEMINI_MODEL,
+          ownerUserId: grant.ownerUserId,
+          provider: AGENT_COMPUTER_DEFAULT_PROVIDER,
+          pylonRef: grant.pylonRef,
+        },
+        observedAt: nowIso(),
+        providerAccountRef: grant.providerAccountRef,
+        threadId: grant.runnerSessionId,
+        turnId: grant.runnerSessionId,
+        usage: {
+          cacheReadTokens: usageReceipt.usage.cacheReadInputTokens,
+          cacheWriteTokens: usageReceipt.usage.cacheWriteInputTokens,
+          inputTokens: usageReceipt.usage.inputTokens,
+          outputTokens: usageReceipt.usage.outputTokens,
+          reasoningTokens: usageReceipt.usage.reasoningTokens,
+          totalTokens: usageReceipt.usage.totalTokens,
+        },
+        usageRef: usageReceipt.usageRef,
+      },
+      deps.fetchImpl,
+    )
+    if (!receipt.ok) {
+      return {
+        exitCode: 0,
+        harness: args.config.harness,
+        ok: false,
+        reasonRef: 'harness.usage_receipt_failed',
+        receiptStatus: receipt.status,
+        stderrDigest: sha256Text(result.stderr),
+      }
+    }
+    runtimeUsageReceipt = {
+      insertedTokenUsage: receipt.insertedTokenUsage,
+      tokenChargeMetered: receipt.tokenChargeMetered,
+      tokenUsageEventRef: receipt.tokenUsageEventRef,
+      tokensServedDelta: receipt.tokensServedDelta,
+    }
+  }
   return {
     exitCode: 0,
     harness: args.config.harness,
@@ -1740,7 +1837,8 @@ export const runHarnessTurn = async (
     runtimeSecretRef: runtimeSecret?.secretRef ?? null,
     stderrDigest: sha256Text(result.stderr),
     stdoutDigest: sha256Text(result.stdout),
-    usageReceipt: parseHarnessUsageReceipt(args.config.harness, result.stdout),
+    runtimeUsageReceipt,
+    usageReceipt,
   }
 }
 
@@ -2782,6 +2880,9 @@ async function main() {
         ...(harnessTurnOutcome.failureClass === undefined ? {} : { failureClass: harnessTurnOutcome.failureClass }),
         ...(harnessTurnOutcome.stderrDigest === undefined ? {} : { stderrDigest: harnessTurnOutcome.stderrDigest }),
         ...(harnessTurnOutcome.brokerStatus === undefined ? {} : { brokerStatus: harnessTurnOutcome.brokerStatus }),
+        ...(harnessTurnOutcome.receiptStatus === undefined
+          ? {}
+          : { receiptStatus: harnessTurnOutcome.receiptStatus }),
       })
       throw new Error(harnessTurnOutcome.reasonRef)
     }
@@ -2795,6 +2896,7 @@ async function main() {
       stderrDigest: harnessTurnOutcome.stderrDigest,
       runtimeSecretRef: harnessTurnOutcome.runtimeSecretRef,
       usageReceipt: harnessTurnOutcome.usageReceipt,
+      runtimeUsageReceipt: harnessTurnOutcome.runtimeUsageReceipt,
     })
     git(ws.workingDirectory, ['add', '-A'])
   } else {
@@ -3060,6 +3162,7 @@ async function main() {
               stderrDigest: harnessTurnOutcome.stderrDigest,
               runtimeSecretRef: harnessTurnOutcome.runtimeSecretRef,
               usageReceipt: harnessTurnOutcome.usageReceipt,
+              runtimeUsageReceipt: harnessTurnOutcome.runtimeUsageReceipt,
             }
           : {
               ok: false,
@@ -3075,6 +3178,9 @@ async function main() {
               ...(harnessTurnOutcome.brokerStatus === undefined
                 ? {}
                 : { brokerStatus: harnessTurnOutcome.brokerStatus }),
+              ...(harnessTurnOutcome.receiptStatus === undefined
+                ? {}
+                : { receiptStatus: harnessTurnOutcome.receiptStatus }),
             },
     model: wc.inference?.model ?? null,
     modelTokenReceipt:

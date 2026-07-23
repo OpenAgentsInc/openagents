@@ -5,6 +5,7 @@ import {
   classifyCodexExecFailure,
   classifyHarnessFailure,
   codexExecArgs,
+  KHALA_CLOUD_RUNTIME_USAGE_INGEST_PATH,
   HARNESS_RUNTIME_SECRET_MATERIAL_PATH,
   HARNESS_RUNTIME_SECRET_MATERIAL_SCHEMA,
   harnessExecArgs,
@@ -32,6 +33,8 @@ describe('Agent Computer seven-harness runtime (#9193)', () => {
     baseUrl: 'https://openagents.example',
     grantRef: 'grant.provider-secret.gemini.turn-1',
     kind: 'gemini_api_key' as const,
+    ownerUserId: 'github:300914913',
+    pylonRef: 'pylon.agent-computer.proof',
     providerAccountRef: 'provider-account.google-gemini.owner',
     runnerSessionId: 'runner-session.turn-1',
     secretRef: 'secret-manager:openagents-gemini-api-key',
@@ -392,12 +395,180 @@ describe('Agent Computer seven-harness runtime (#9193)', () => {
     }
     expect(JSON.stringify(runtimeGrant)).not.toContain(secret)
     expect(outcome).toMatchObject({
+      ok: false,
+      reasonRef: 'harness.usage_unavailable',
+    })
+  })
+
+  test('Gemini OpenCode posts one exact hosted-Khala usage receipt without serializing tokens', async () => {
+    const secret = 'gemini-runtime-secret-never-serialized'
+    const selectedModel = 'gemini-3.5-pro'
+    const rawStdout = JSON.stringify({
+      type: 'step_finish',
+      part: {
+        tokens: {
+          cache: { read: 11, write: 7 },
+          input: 100,
+          output: 20,
+          reasoning: 5,
+          total: 125,
+        },
+      },
+      rawOutput: 'private model output',
+    })
+    const materialize = materialFetch(secret)
+    const receiptBodies: Array<Record<string, unknown>> = []
+    const fetchImpl = (async (
+      url: string | URL | Request,
+      init?: RequestInit,
+    ) => {
+      if (String(url).endsWith(HARNESS_RUNTIME_SECRET_MATERIAL_PATH)) {
+        return materialize(url, init)
+      }
+      expect(String(url)).toBe(
+        `${runtimeGrant.baseUrl}${KHALA_CLOUD_RUNTIME_USAGE_INGEST_PATH}`,
+      )
+      expect((init?.headers ?? {}) as Record<string, string>).toHaveProperty(
+        'Authorization',
+        `Bearer ${runtimeGrant.agentToken}`,
+      )
+      const body = JSON.parse(String(init?.body)) as Record<string, unknown>
+      receiptBodies.push(body)
+      expect(body).toMatchObject({
+        authGrantRef: runtimeGrant.grantRef,
+        backendProfile: 'omega-hosted-gemini',
+        lane: 'hosted_khala',
+        model: selectedModel,
+        ownerUserId: runtimeGrant.ownerUserId,
+        provider: 'vertex-gemini',
+        providerAccountRef: runtimeGrant.providerAccountRef,
+        pylonRef: runtimeGrant.pylonRef,
+        threadId: runtimeGrant.runnerSessionId,
+        turnId: runtimeGrant.runnerSessionId,
+        usage: {
+          cacheReadInputTokens: 11,
+          cacheWriteInputTokens: 7,
+          inputTokens: 100,
+          outputTokens: 20,
+          reasoningTokens: 5,
+          totalTokens: 125,
+        },
+      })
+      expect(JSON.stringify(body)).not.toContain(runtimeGrant.agentToken)
+      expect(JSON.stringify(body)).not.toContain(secret)
+      return Response.json({
+        insertedTokenUsage: true,
+        tokenChargeMetered: true,
+        tokenUsageEventRef: 'event.harness.opencode.exact-usage',
+        tokensServedDelta: 125,
+      })
+    }) as typeof globalThis.fetch
+
+    const outcome = await runHarnessTurn(
+      {
+        config: {
+          harness: 'opencode',
+          model: selectedModel,
+          runtimeSecretGrant: runtimeGrant,
+        },
+        prompt: 'private objective prompt',
+        workingDirectory: '/private/workspace',
+      },
+      {
+        execRun: () => ({ code: 0, stdout: rawStdout, stderr: '' }),
+        existsImpl: () => true,
+        fetchImpl,
+      },
+    )
+
+    expect(receiptBodies).toHaveLength(1)
+    expect(outcome).toMatchObject({
       ok: true,
+      runtimeUsageReceipt: {
+        insertedTokenUsage: true,
+        tokenChargeMetered: true,
+        tokenUsageEventRef: 'event.harness.opencode.exact-usage',
+        tokensServedDelta: 125,
+      },
       usageReceipt: {
-        reasonRef: 'harness.usage_unavailable',
-        status: 'usage_unavailable',
+        status: 'exact',
+        usage: {
+          cacheReadInputTokens: 11,
+          cacheWriteInputTokens: 7,
+          reasoningTokens: 5,
+        },
       },
     })
+    const serialized = JSON.stringify(outcome)
+    for (const forbidden of [
+      runtimeGrant.agentToken,
+      secret,
+      'private objective prompt',
+      'private model output',
+      '/private/workspace',
+    ]) {
+      expect(serialized).not.toContain(forbidden)
+    }
+  })
+
+  test('Gemini OpenCode fails closed when exact usage receipt ingest fails', async () => {
+    const secret = 'gemini-runtime-secret-never-serialized'
+    const materialize = materialFetch(secret)
+    const fetchImpl = (async (
+      url: string | URL | Request,
+      init?: RequestInit,
+    ) => {
+      if (String(url).endsWith(HARNESS_RUNTIME_SECRET_MATERIAL_PATH)) {
+        return materialize(url, init)
+      }
+      return Response.json(
+        { reason: `upstream rejected Bearer ${runtimeGrant.agentToken}` },
+        { status: 503 },
+      )
+    }) as typeof globalThis.fetch
+    const outcome = await runHarnessTurn(
+      {
+        config: {
+          harness: 'opencode',
+          runtimeSecretGrant: runtimeGrant,
+        },
+        prompt: 'private objective',
+        workingDirectory: '/private/workspace',
+      },
+      {
+        execRun: () => ({
+          code: 0,
+          stderr: '',
+          stdout: JSON.stringify({
+            part: {
+              tokens: {
+                cache: { read: 11, write: 7 },
+                input: 100,
+                output: 20,
+                reasoning: 5,
+                total: 125,
+              },
+            },
+            type: 'step_finish',
+          }),
+        }),
+        existsImpl: () => true,
+        fetchImpl,
+      },
+    )
+
+    expect(outcome).toMatchObject({
+      exitCode: 0,
+      ok: false,
+      reasonRef: 'harness.usage_receipt_failed',
+      receiptStatus: 503,
+    })
+    const serialized = JSON.stringify(outcome)
+    expect(serialized).not.toContain(runtimeGrant.agentToken)
+    expect(serialized).not.toContain(secret)
+    expect(serialized).not.toContain('upstream rejected')
+    expect(serialized).not.toContain('private objective')
+    expect(serialized).not.toContain('/private/workspace')
   })
 
   test('harness failures are typed and redacted', async () => {
