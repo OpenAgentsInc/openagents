@@ -80,8 +80,8 @@ claim.
 
 The host verifies the done condition before it admits completion. An owner Stop
 or override always stops the run. The self-claim record is ready for an
-admitted projection. Issue #9185 no longer supplies a standalone relay program.
-The accepted Omega plan owns any future integration.
+admitted projection. Closed issue #9185 no longer supplies a standalone relay
+program. The accepted Omega plan owns any future integration.
 
 The absence of an open GitHub issue is never a reason to stop in autonomy mode.
 

@@ -1867,7 +1867,7 @@
       ]
     },
     "docs/sol/MASTER_ROADMAP.md": {
-      "sourceSha256": "5834b38274062d8f76d1cc11a622cd65c7a98a670df8a1d97ce33be8e44eba55",
+      "sourceSha256": "6692f0ada7208bd8a3dc1a7a90fb5e18870d3053ac3091b27376fd4546bab0f8",
       "normativeKeywords": [],
       "inlineCode": [
         "/",
@@ -1965,7 +1965,6 @@
         "khala.identity_sync_contract.v1",
         "latest",
         "live roadmap issue artifact",
-        "main",
         "main",
         "main",
         "main",
@@ -2368,6 +2367,7 @@
         "2026-07",
         "2026-07",
         "2026-07",
+        "2026-07",
         "21",
         "21",
         "21",
@@ -2375,6 +2375,7 @@
         "22",
         "22",
         "22",
+        "23",
         "23",
         "23",
         "23",
@@ -8780,7 +8781,7 @@
       ]
     },
     "docs/sol/CLAIM_PROTOCOL.md": {
-      "sourceSha256": "d038ea3a63c0cb197110fdc06e8dc126290d13f5e80a86899a0084969bf04493",
+      "sourceSha256": "ca2932bb44c195b338bea28221ebde209f14fe5e028d1daef1d7d7e6f25191bd",
       "normativeKeywords": [],
       "inlineCode": [
         "2026-07-10-terra-execution-lane.md",

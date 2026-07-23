@@ -41837,7 +41837,7 @@
     },
     {
       "path": "docs/sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md",
-      "sha256": "b895d275933d799cdfa82160b5a28412faacad2ce5d3a9630e4699557f788c16",
+      "sha256": "78da0cfc3fd8da057cebb27adc4ce4d6648d01dc97a000e0191db44ef465fe9f",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
@@ -41877,7 +41877,7 @@
     },
     {
       "path": "docs/sol/CLAIM_PROTOCOL.md",
-      "sha256": "d038ea3a63c0cb197110fdc06e8dc126290d13f5e80a86899a0084969bf04493",
+      "sha256": "ca2932bb44c195b338bea28221ebde209f14fe5e028d1daef1d7d7e6f25191bd",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -41903,7 +41903,7 @@
     },
     {
       "path": "docs/sol/MASTER_ROADMAP.md",
-      "sha256": "5834b38274062d8f76d1cc11a622cd65c7a98a670df8a1d97ce33be8e44eba55",
+      "sha256": "6692f0ada7208bd8a3dc1a7a90fb5e18870d3053ac3091b27376fd4546bab0f8",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

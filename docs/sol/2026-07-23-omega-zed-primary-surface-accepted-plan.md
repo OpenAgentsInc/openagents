@@ -475,22 +475,31 @@ Keep landed code unless a later packet proves that no active path uses it.
 
 | Issue | Owner disposition | Preserved Omega requirement |
 | --- | --- | --- |
-| #9194 | Close as not planned. | One native company work home in Omega. |
-| #9195 | Close as not planned and release the canceled claim. | No separate Buzz deployment. Preserve a public-safe retirement inventory. |
-| #9196 | Close as not planned. | Stable identity, membership, revocation, and isolated signers. |
-| #9197 | Close as not planned. | Native channels, threads, reactions, presence, and public-safe agent posts. |
-| #9198 | Close as not planned. | Bounded Sarah and agent read, post, failure, and receipt paths. |
-| #9199 | Close as not planned. | NIP-34 and ngit fixtures can remain optional Omega interop tests. |
-| #9200 | Close as not planned. | Native claim and work activity panes with one-writer authority. |
-| #9201 | Close as not planned. | Re-admit durability, replay, and load proof only for an Omega-owned service. |
-| #9202 | Close as not planned. | Reconcile push admission with the Omega Rust Git core. |
-| #9203 | Close as not planned. | Native patch, review, approval, merge, and receipt panes. |
-| #9204 | Close as not planned. | Keep ngit and ngit-grasp as optional research evidence. |
-| #9185 | Close as not planned. | Preserve the landed typed ledger, signer, durable store, and subscription code. Cancel its residual hosted relay program. |
+| #9194 | Closed as not planned on 2026-07-23. | One native company work home in Omega. |
+| #9195 | Closed as not planned after a claim release on 2026-07-23. | No separate Buzz deployment. Preserve a public-safe retirement inventory. |
+| #9196 | Closed as not planned on 2026-07-23. | Stable identity, membership, revocation, and isolated signers. |
+| #9197 | Closed as not planned on 2026-07-23. | Native channels, threads, reactions, presence, and public-safe agent posts. |
+| #9198 | Closed as not planned on 2026-07-23. | Bounded Sarah and agent read, post, failure, and receipt paths. |
+| #9199 | Closed as not planned on 2026-07-23. | NIP-34 and ngit fixtures can remain optional Omega interop tests. |
+| #9200 | Closed as not planned on 2026-07-23. | Native claim and work activity panes with one-writer authority. |
+| #9201 | Closed as not planned on 2026-07-23. | Re-admit durability, replay, and load proof only for an Omega-owned service. |
+| #9202 | Closed as not planned on 2026-07-23. | Reconcile push admission with the Omega Rust Git core. |
+| #9203 | Closed as not planned on 2026-07-23. | Native patch, review, approval, merge, and receipt panes. |
+| #9204 | Closed as not planned on 2026-07-23. | Keep ngit and ngit-grasp as optional research evidence. |
+| #9185 | Closed as not planned on 2026-07-23. | Preserve the landed typed ledger, signer, durable store, and subscription code. Cancel its residual hosted relay program. |
 
 Issue closure is a program disposition.
 It does not revert the commits that landed through #9185.
 It does not prove the deletion of an external cloud resource.
+
+The GitHub audit at `2026-07-23T23:30:40Z` verified that every issue in the
+table had state `CLOSED`, reason `NOT_PLANNED`, and label `wontfix`.
+The #9195
+[`CLAIM-RELEASE`](https://github.com/OpenAgentsInc/openagents/issues/9195#issuecomment-5064534570)
+records the unlanded worktree and the separate cloud-retirement boundary.
+The #9194
+[`epic closeout`](https://github.com/OpenAgentsInc/openagents/issues/9194#issuecomment-5064540276)
+links the issue graph to this plan.
 
 ## Product and authority gates
 
