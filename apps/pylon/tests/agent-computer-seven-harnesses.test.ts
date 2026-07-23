@@ -420,11 +420,13 @@ describe('Agent Computer seven-harness runtime (#9193)', () => {
       expect(outcome.ok).toBe(true)
       expect(observed[0]?.env).toMatchObject({
         [envName]: secret,
-        HOME: '/root',
+        HOME:
+          harness === 'grok' ? '/tmp/openagents-grok-home' : '/root',
       })
       if (harness === 'grok') {
         expect(observed[0]?.env).toEqual({
-          HOME: '/root',
+          GROK_HOME: '/tmp/openagents-grok-home',
+          HOME: '/tmp/openagents-grok-home',
           PATH: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
           XAI_API_KEY: secret,
         })

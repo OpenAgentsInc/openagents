@@ -1431,6 +1431,8 @@ export const harnessExecEnv = (input: {
     return input.runtimeSecret?.kind === 'xai_api_key'
       ? {
           ...base,
+          GROK_HOME: '/tmp/openagents-grok-home',
+          HOME: '/tmp/openagents-grok-home',
           XAI_API_KEY: input.runtimeSecret.value,
         }
       : null
