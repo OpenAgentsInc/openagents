@@ -409,6 +409,7 @@ class FakeProviderAccountD1 {
         assignmentId,
         orderId,
         policyVersion,
+        selectedByActor,
         now,
         expiresAt,
       ] = values as [
@@ -418,6 +419,7 @@ class FakeProviderAccountD1 {
         string | null,
         string | null,
         string | null,
+        string,
         string,
         string,
         string,
@@ -432,8 +434,8 @@ class FakeProviderAccountD1 {
           ).length
 
           return (
-            account.user_id === values[11] &&
-            (values[12] === null || account.provider === values[12]) &&
+            account.user_id === values[13] &&
+            (values[14] === null || account.provider === values[14]) &&
             account.status === 'connected' &&
             account.health === 'healthy' &&
             account.secret_ref !== null &&
@@ -494,7 +496,7 @@ class FakeProviderAccountD1 {
         order_id: orderId,
         selected_by_policy_version: policyVersion,
         selection_reason: `Selected connected healthy account with ${activeLeaseCount} active lease(s), priority ${selected.operator_priority}, and no cooldown, reconnect marker, or low-credit flag.`,
-        selected_by_actor: 'operator_provider_account_routes',
+        selected_by_actor: selectedByActor,
         active_lease_count_before_selection: activeLeaseCount,
         operator_priority: selected.operator_priority,
         started_at: now,
@@ -575,7 +577,7 @@ class FakeProviderAccountD1 {
     }
 
     if (query.includes('FROM provider_account_leases l')) {
-      const [userId, now] = values as [string, string]
+      const [userId, , now] = values as [string, string, string]
 
       return this.leases
         .filter(
@@ -652,19 +654,31 @@ class FakeProviderAccountD1 {
       query.includes('UPDATE provider_account_leases') &&
       query.includes("SET status = 'failed'")
     ) {
-      const [, failureClass, leaseRef] = values as [string, string, string]
-      this.leases = this.leases.map(lease =>
-        lease.lease_ref === leaseRef
-          ? { ...lease, status: 'failed', failure_class: failureClass }
-          : lease,
-      ) as Array<FakeLeaseRow>
+      const [, failureClass, , leaseRef, userId] = values as [
+        string,
+        string,
+        string,
+        string,
+        string,
+      ]
+      this.leases = this.leases.map(lease => {
+        if (
+          lease.lease_ref !== leaseRef ||
+          lease.user_id !== userId ||
+          lease.status !== 'active'
+        ) {
+          return lease
+        }
+        changes += 1
+        return { ...lease, status: 'failed', failure_class: failureClass }
+      }) as Array<FakeLeaseRow>
     }
 
     if (
       query.includes('UPDATE provider_accounts') &&
       query.includes('last_failed_launch_at')
     ) {
-      const accountId = values[values.length - 1]
+      const accountId = values[values.length - 2]
       this.accounts = this.accounts.map(account =>
         account.id === accountId
           ? {

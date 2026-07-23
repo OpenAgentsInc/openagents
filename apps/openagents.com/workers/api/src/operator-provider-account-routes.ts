@@ -40,9 +40,12 @@ import {
 } from './provider-account-domain'
 import {
   type ProviderAccountFailoverFailureClass,
-  classifyProviderAccountFailover,
   classifyProviderAccountHealthEvent,
 } from './provider-account-failover-policy'
+import {
+  makeProviderAccountLeaseService,
+  type ProviderAccountLeaseService,
+} from './provider-account-lease-service'
 import { PROVIDER_ACCOUNT_LEASE_POLICY_VERSION } from './provider-account-lease-policy'
 import {
   providerAccountRouteErrorMessage,
@@ -234,29 +237,6 @@ type ProviderAccountFailoverResponse = Readonly<{
   attemptNumber: number
   maxAttempts: number
   customerSafeStatus: string
-}>
-
-type ProviderAccountFailoverReceiptProjection = Readonly<{
-  receiptId: string
-  runId: string | null
-  assignmentId: string | null
-  orderId: string | null
-  requestedAction: string
-  previousLeaseRef: string | null
-  previousProviderAccountRef: string | null
-  nextLeaseRef: string | null
-  nextProviderAccountRef: string | null
-  failureClass: ProviderAccountFailoverFailureClass
-  accountStateAction: string
-  cooldownUntil: string | null
-  outcome: 'retrying' | 'blocked'
-  attemptNumber: number
-  maxAttempts: number
-  customerSafeStatus: string
-  operatorSummary: string
-  customerSafeSummary: string | null
-  policyVersion: typeof PROVIDER_ACCOUNT_LEASE_POLICY_VERSION
-  createdAt: string
 }>
 
 type ProviderAccountLeaseListItem = Readonly<{
@@ -816,470 +796,6 @@ const mapWithConcurrency = async <Input, Output>(
   return results
 }
 
-type LeaseInsertRow = Readonly<{
-  id: string
-  lease_ref: string
-  provider_account_id: string
-  provider_account_ref: string
-  requested_action: string
-  run_id: string | null
-  assignment_id: string | null
-  order_id: string | null
-  selected_by_policy_version: typeof PROVIDER_ACCOUNT_LEASE_POLICY_VERSION
-  selection_reason: string
-  selected_by_actor: string
-  active_lease_count_before_selection: number
-  operator_priority: number
-  started_at: string
-  expires_at: string
-  last_touched_at: string
-  status: 'active'
-}>
-
-type ExistingLeaseRow = Readonly<{
-  lease_ref: string
-  provider: ProviderAccountProvider
-  provider_account_id: string
-  provider_account_ref: string
-  requested_action: string
-  run_id: string | null
-  assignment_id: string | null
-  order_id: string | null
-}>
-
-type ActiveLeaseRow = ExistingLeaseRow &
-  Readonly<{
-    expires_at: string
-    status: 'active'
-    user_id: string
-  }>
-
-const leaseSelectionReason = (
-  activeLeaseCount: number,
-  operatorPriority: number,
-): string =>
-  `Selected connected healthy account with ${activeLeaseCount} active lease(s), priority ${operatorPriority}, and no cooldown, reconnect marker, or low-credit flag.`
-
-const acquireProviderAccountLease = async (
-  db: D1Database,
-  input: Readonly<{
-    userId: string
-    requiredProvider: ProviderAccountProvider | null
-    requestedAction: string
-    runId: string | null
-    assignmentId: string | null
-    orderId: string | null
-    now: string
-    expiresAt: string
-  }>,
-  // KS-8.18 follow-up (#8362): fail-soft identity/auth mirror handle.
-  mirror?: IdentityAuthMirror | undefined,
-): Promise<ProviderAccountLeaseResponse | undefined> => {
-  // NOTE: this bulk stale-expiry UPDATE is deliberately NOT mirrored here —
-  // it touches an unbounded number of rows with no individual ids in
-  // scope, and this function runs on the hot lease-acquire path. Those
-  // status='expired' transitions converge on the next `--restart` backfill
-  // sweep instead of adding an unbounded Postgres write to a hot path.
-  await db
-    .prepare(
-      `UPDATE provider_account_leases
-          SET status = 'expired',
-              terminal_outcome = 'expired_before_release'
-        WHERE status = 'active'
-          AND expires_at <= ?`,
-    )
-    .bind(input.now)
-    .run()
-
-  const leaseId = compactRandomId('provider_account_lease')
-  const leaseRef = compactRandomId('provider-account-lease_ref')
-  const row = await db
-    .prepare(
-      `INSERT INTO provider_account_leases
-        (id,
-         lease_ref,
-         provider_account_id,
-         user_id,
-         team_id,
-         provider,
-         provider_account_ref,
-         requested_action,
-         run_id,
-         assignment_id,
-         order_id,
-         selected_by_policy_version,
-         selection_reason,
-         selected_by_actor,
-         status,
-         started_at,
-         expires_at,
-         last_touched_at,
-         released_at,
-         terminal_outcome,
-         failure_class,
-         metadata_json)
-       SELECT
-         ?,
-         ?,
-         pa.id,
-         pa.user_id,
-         pa.team_id,
-         pa.provider,
-         pa.provider_account_ref,
-         ?,
-         ?,
-         ?,
-         ?,
-         ?,
-         printf(
-           'Selected connected healthy account with %d active lease(s), priority %d, and no cooldown, reconnect marker, or low-credit flag.',
-           COUNT(active_leases.id),
-           pa.operator_priority
-         ),
-         'operator_provider_account_routes',
-         'active',
-         ?,
-         ?,
-         ?,
-         NULL,
-         NULL,
-         NULL,
-         json_object(
-           'source', 'operator_lease_acquire',
-           'providerAccountRef', pa.provider_account_ref,
-           'activeLeaseCountBeforeSelection', COUNT(active_leases.id),
-           'operatorPriority', pa.operator_priority
-         )
-       FROM provider_accounts pa
-       LEFT JOIN provider_account_leases active_leases
-         ON active_leases.provider_account_id = pa.id
-        AND active_leases.status = 'active'
-        AND active_leases.expires_at > ?
-       WHERE pa.user_id = ?
-         AND (? IS NULL OR pa.provider = ?)
-         AND pa.status = 'connected'
-         AND pa.health = 'healthy'
-         AND pa.secret_ref IS NOT NULL
-         AND pa.deleted_at IS NULL
-         AND COALESCE(pa.low_credit_flag, 0) = 0
-         AND pa.reauth_required_reason IS NULL
-         AND (pa.cooldown_until IS NULL OR pa.cooldown_until <= ?)
-       GROUP BY pa.id
-       HAVING COUNT(active_leases.id) < COALESCE(pa.lease_limit, 1)
-       ORDER BY
-         COUNT(active_leases.id) ASC,
-         pa.operator_priority ASC,
-         COALESCE(pa.last_selected_at, pa.connected_at, pa.created_at) ASC,
-         pa.provider_account_ref ASC
-       LIMIT 1
-       RETURNING
-         id,
-         lease_ref,
-         provider_account_id,
-         provider_account_ref,
-         requested_action,
-         run_id,
-         assignment_id,
-         order_id,
-         selected_by_policy_version,
-         selection_reason,
-         selected_by_actor,
-         CAST(json_extract(metadata_json, '$.activeLeaseCountBeforeSelection') AS INTEGER)
-           AS active_lease_count_before_selection,
-         CAST(json_extract(metadata_json, '$.operatorPriority') AS INTEGER)
-           AS operator_priority,
-         started_at,
-         expires_at,
-         last_touched_at,
-         status`,
-    )
-    .bind(
-      leaseId,
-      leaseRef,
-      input.requestedAction,
-      input.runId,
-      input.assignmentId,
-      input.orderId,
-      PROVIDER_ACCOUNT_LEASE_POLICY_VERSION,
-      input.now,
-      input.expiresAt,
-      input.now,
-      input.now,
-      input.userId,
-      input.requiredProvider ?? null,
-      input.requiredProvider ?? null,
-      input.now,
-    )
-    .first<LeaseInsertRow>()
-
-  if (row === null) {
-    return undefined
-  }
-
-  await db
-    .prepare(
-      `UPDATE provider_accounts
-          SET last_selected_at = ?,
-              updated_at = ?
-        WHERE id = ?`,
-    )
-    .bind(input.now, input.now, row.provider_account_id)
-    .run()
-
-  if (mirror !== undefined) {
-    await mirror.mirrorRowsByKey('provider_account_leases', [[row.id]])
-    await mirror.mirrorRowsByKey('provider_accounts', [
-      [row.provider_account_id],
-    ])
-  }
-
-  const accountLabelRow = await db
-    .prepare(
-      `SELECT COALESCE(operator_label, account_label) AS account_label
-       FROM provider_accounts
-       WHERE id = ?`,
-    )
-    .bind(row.provider_account_id)
-    .first<Readonly<{ account_label: string | null }>>()
-
-  return {
-    leaseId: row.id,
-    leaseRef: row.lease_ref,
-    providerAccountId: row.provider_account_id,
-    providerAccountRef: row.provider_account_ref,
-    accountLabel: accountLabelRow?.account_label ?? null,
-    requestedAction: row.requested_action,
-    runId: row.run_id,
-    assignmentId: row.assignment_id,
-    orderId: row.order_id,
-    selectedByPolicyVersion: row.selected_by_policy_version,
-    selectedByActor: row.selected_by_actor,
-    selectionReason:
-      row.selection_reason ??
-      leaseSelectionReason(
-        row.active_lease_count_before_selection,
-        row.operator_priority,
-      ),
-    activeLeaseCountBeforeSelection: row.active_lease_count_before_selection,
-    operatorPriority: row.operator_priority,
-    startedAt: row.started_at,
-    expiresAt: row.expires_at,
-    lastTouchedAt: row.last_touched_at,
-    status: row.status,
-  }
-}
-
-const findLeaseByRef = async (
-  db: D1Database,
-  leaseRef: string,
-): Promise<ExistingLeaseRow | undefined> => {
-  const row = await db
-    .prepare(
-      `SELECT lease_ref,
-              provider,
-              provider_account_id,
-              provider_account_ref,
-              requested_action,
-              run_id,
-              assignment_id,
-              order_id
-       FROM provider_account_leases
-       WHERE lease_ref = ?`,
-    )
-    .bind(leaseRef)
-    .first<ExistingLeaseRow>()
-
-  return row === null ? undefined : row
-}
-
-const findActiveLeaseByRef = async (
-  db: D1Database,
-  input: Readonly<{ leaseRef: string; now: string; userId: string }>,
-): Promise<ActiveLeaseRow | undefined> => {
-  await expireStaleProviderAccountLeases(db, input.now)
-
-  const row = await db
-    .prepare(
-      `SELECT lease_ref,
-              provider_account_id,
-              provider_account_ref,
-              requested_action,
-              run_id,
-              assignment_id,
-              order_id,
-              expires_at,
-              status,
-              user_id
-       FROM provider_account_leases
-       WHERE lease_ref = ?
-         AND user_id = ?
-         AND status = 'active'
-         AND expires_at > ?`,
-    )
-    .bind(input.leaseRef, input.userId, input.now)
-    .first<ActiveLeaseRow>()
-
-  return row === null ? undefined : row
-}
-
-// KS-8.18 follow-up (#8362): deliberately NOT mirrored — called from
-// read-heavy paths (`findActiveLeaseByRef`, `listActiveProviderAccountLeases`)
-// as a bulk, key-less UPDATE. Mirroring here would add an unbounded
-// Postgres write to hot read paths. These status='expired' transitions
-// converge on the next `--restart` backfill sweep instead.
-const expireStaleProviderAccountLeases = async (
-  db: D1Database,
-  now: string,
-): Promise<void> => {
-  await db
-    .prepare(
-      `UPDATE provider_account_leases
-          SET status = 'expired',
-              terminal_outcome = 'expired_before_release'
-        WHERE status = 'active'
-          AND expires_at <= ?`,
-    )
-    .bind(now)
-    .run()
-}
-
-const listActiveProviderAccountLeases = async (
-  db: D1Database,
-  userId: string,
-  now: string,
-): Promise<ReadonlyArray<ProviderAccountLeaseListItem>> => {
-  await expireStaleProviderAccountLeases(db, now)
-
-  const rows = await db
-    .prepare(
-      `SELECT l.lease_ref,
-              l.provider_account_ref,
-              COALESCE(pa.operator_label, pa.account_label) AS account_label,
-              l.requested_action,
-              l.run_id,
-              l.assignment_id,
-              l.order_id,
-              l.started_at,
-              l.expires_at,
-              l.last_touched_at,
-              l.status
-       FROM provider_account_leases l
-       JOIN provider_accounts pa ON pa.id = l.provider_account_id
-       WHERE l.user_id = ?
-         AND l.status = 'active'
-         AND l.expires_at > ?
-       ORDER BY l.started_at DESC
-       LIMIT 100`,
-    )
-    .bind(userId, now)
-    .all<
-      Readonly<{
-        lease_ref: string
-        provider_account_ref: string
-        account_label: string | null
-        requested_action: string
-        run_id: string | null
-        assignment_id: string | null
-        order_id: string | null
-        started_at: string
-        expires_at: string
-        last_touched_at: string | null
-        status: string
-      }>
-    >()
-
-  return rows.results.map(row => ({
-    accountLabel: row.account_label,
-    assignmentId: row.assignment_id,
-    expiresAt: row.expires_at,
-    lastTouchedAt: row.last_touched_at,
-    leaseRef: row.lease_ref,
-    orderId: row.order_id,
-    providerAccountRef: row.provider_account_ref,
-    requestedAction: row.requested_action,
-    runId: row.run_id,
-    startedAt: row.started_at,
-    status: row.status,
-  }))
-}
-
-const explainProviderAccountLeaseSelection = async (
-  db: D1Database,
-  userId: string,
-  now: string,
-): Promise<ProviderAccountLeaseExplainResponse> => {
-  await expireStaleProviderAccountLeases(db, now)
-
-  const row = await db
-    .prepare(
-      `SELECT pa.provider_account_ref,
-              COALESCE(pa.operator_label, pa.account_label) AS account_label,
-              COUNT(active_leases.id) AS active_lease_count,
-              COALESCE(pa.lease_limit, 1) AS lease_limit,
-              pa.operator_priority
-       FROM provider_accounts pa
-       LEFT JOIN provider_account_leases active_leases
-         ON active_leases.provider_account_id = pa.id
-        AND active_leases.status = 'active'
-        AND active_leases.expires_at > ?
-       WHERE pa.user_id = ?
-         AND pa.provider = 'chatgpt_codex'
-         AND pa.status = 'connected'
-         AND pa.health = 'healthy'
-         AND pa.secret_ref IS NOT NULL
-         AND pa.deleted_at IS NULL
-         AND COALESCE(pa.low_credit_flag, 0) = 0
-         AND pa.reauth_required_reason IS NULL
-         AND (pa.cooldown_until IS NULL OR pa.cooldown_until <= ?)
-       GROUP BY pa.id
-       HAVING COUNT(active_leases.id) < COALESCE(pa.lease_limit, 1)
-       ORDER BY
-         COUNT(active_leases.id) ASC,
-         pa.operator_priority ASC,
-         COALESCE(pa.last_selected_at, pa.connected_at, pa.created_at) ASC,
-         pa.provider_account_ref ASC
-       LIMIT 1`,
-    )
-    .bind(now, userId, now)
-    .first<
-      Readonly<{
-        provider_account_ref: string
-        account_label: string | null
-        active_lease_count: number
-        lease_limit: number
-        operator_priority: number
-      }>
-    >()
-
-  if (row === null) {
-    return {
-      status: 'none',
-      providerAccountRef: null,
-      accountLabel: null,
-      selectedByPolicyVersion: PROVIDER_ACCOUNT_LEASE_POLICY_VERSION,
-      selectionReason:
-        'No connected healthy ChatGPT/Codex account is currently eligible for lease.',
-      activeLeaseCount: null,
-      leaseLimit: null,
-      operatorPriority: null,
-    }
-  }
-
-  return {
-    status: 'selected',
-    providerAccountRef: row.provider_account_ref,
-    accountLabel: row.account_label,
-    selectedByPolicyVersion: PROVIDER_ACCOUNT_LEASE_POLICY_VERSION,
-    selectionReason: leaseSelectionReason(
-      row.active_lease_count,
-      row.operator_priority,
-    ),
-    activeLeaseCount: row.active_lease_count,
-    leaseLimit: row.lease_limit,
-    operatorPriority: row.operator_priority,
-  }
-}
-
 const fleetEligibilityReasons = (
   row: Readonly<{
     status: string
@@ -1332,11 +848,10 @@ const sanityCommandFor = (providerAccountRef: string): string =>
 
 const providerAccountFleetDashboard = async (
   db: D1Database,
+  leaseService: ProviderAccountLeaseService,
   userId: string,
   now: string,
 ): Promise<ProviderAccountFleetDashboardResponse> => {
-  await expireStaleProviderAccountLeases(db, now)
-
   const [accountRows, activeLeases, selector] = await Promise.all([
     db
       .prepare(
@@ -1408,8 +923,8 @@ const providerAccountFleetDashboard = async (
           active_lease_count: number
         }>
       >(),
-    listActiveProviderAccountLeases(db, userId, now),
-    explainProviderAccountLeaseSelection(db, userId, now),
+    leaseService.listActive(userId, now),
+    leaseService.explainSelection(userId, now),
   ])
 
   const accounts = accountRows.results.map(row => {
@@ -1518,398 +1033,7 @@ const resetOperatorProviderAccount = async (
   return changed
 }
 
-const touchProviderAccountLease = async (
-  db: D1Database,
-  input: Readonly<{ leaseRef: string; now: string; expiresAt: string }>,
-  // KS-8.18 follow-up (#8362): fail-soft identity/auth mirror handle.
-  mirror?: IdentityAuthMirror | undefined,
-): Promise<boolean> => {
-  const result = await db
-    .prepare(
-      `UPDATE provider_account_leases
-          SET last_touched_at = ?,
-              expires_at = ?
-        WHERE lease_ref = ?
-          AND status = 'active'`,
-    )
-    .bind(input.now, input.expiresAt, input.leaseRef)
-    .run()
-
-  if (result.success && mirror !== undefined) {
-    // Keyed by `lease_ref` here, not the table's `id` PK — scan-mirror.
-    await mirror.mirrorRowsWhere(
-      'provider_account_leases',
-      ['lease_ref'],
-      [input.leaseRef],
-    )
-  }
-  return result.success
-}
-
-const releaseProviderAccountLease = async (
-  db: D1Database,
-  input: Readonly<{
-    leaseRef: string
-    now: string
-    status: 'released' | 'succeeded' | 'failed'
-    terminalOutcome: string
-    failureClass: string | null
-  }>,
-  // KS-8.18 follow-up (#8362): fail-soft identity/auth mirror handle.
-  mirror?: IdentityAuthMirror | undefined,
-): Promise<boolean> => {
-  const result = await db
-    .prepare(
-      `UPDATE provider_account_leases
-          SET status = ?,
-              released_at = ?,
-              terminal_outcome = ?,
-              failure_class = ?
-        WHERE lease_ref = ?
-          AND status = 'active'`,
-    )
-    .bind(
-      input.status,
-      input.now,
-      input.terminalOutcome,
-      input.failureClass,
-      input.leaseRef,
-    )
-    .run()
-
-  if (result.success && mirror !== undefined) {
-    await mirror.mirrorRowsWhere(
-      'provider_account_leases',
-      ['lease_ref'],
-      [input.leaseRef],
-    )
-  }
-  return result.success
-}
-
-const applyFailoverAccountState = async (
-  db: D1Database,
-  input: Readonly<{
-    lease: ExistingLeaseRow
-    failureClass: ProviderAccountFailoverFailureClass
-    now: string
-  }>,
-  // KS-8.18 follow-up (#8362): fail-soft identity/auth mirror handle.
-  mirror?: IdentityAuthMirror | undefined,
-): Promise<ReturnType<typeof classifyProviderAccountFailover>> => {
-  const action = classifyProviderAccountFailover(input.failureClass, input.now)
-
-  await db
-    .prepare(
-      `UPDATE provider_account_leases
-          SET status = 'failed',
-              released_at = ?,
-              terminal_outcome = ?
-        WHERE lease_ref = ?`,
-    )
-    .bind(input.now, input.failureClass, input.lease.lease_ref)
-    .run()
-  if (mirror !== undefined) {
-    await mirror.mirrorRowsWhere(
-      'provider_account_leases',
-      ['lease_ref'],
-      [input.lease.lease_ref],
-    )
-  }
-
-  if (action.accountStateAction !== 'do_not_poison_account') {
-    await db
-      .prepare(
-        `UPDATE provider_accounts
-            SET health = COALESCE(?, health),
-                status = CASE
-                  WHEN ? = 'requires_reauth' THEN 'unhealthy'
-                  WHEN ? = 'unhealthy' THEN 'unhealthy'
-                  ELSE status
-                END,
-                low_credit_flag = ?,
-                cooldown_until = ?,
-                recent_failure_class = ?,
-                last_failed_launch_at = ?,
-                reauth_required_reason = CASE
-                  WHEN ? = 'requires_reauth' THEN ?
-                  ELSE reauth_required_reason
-                END,
-                refill_note = CASE
-                  WHEN ? = 1 THEN 'Refill or rotate this ChatGPT/Codex account before reuse.'
-                  ELSE refill_note
-                END,
-                last_status_at = ?,
-                updated_at = ?
-          WHERE id = ?`,
-      )
-      .bind(
-        action.health,
-        action.health,
-        action.health,
-        action.lowCredit ? 1 : 0,
-        action.cooldownUntil,
-        action.recentFailureClass,
-        input.now,
-        action.health,
-        input.failureClass,
-        action.lowCredit ? 1 : 0,
-        input.now,
-        input.now,
-        input.lease.provider_account_id,
-      )
-      .run()
-  } else {
-    await db
-      .prepare(
-        `UPDATE provider_accounts
-            SET recent_failure_class = ?,
-                last_failed_launch_at = ?,
-                updated_at = ?
-          WHERE id = ?`,
-      )
-      .bind(
-        action.recentFailureClass,
-        input.now,
-        input.now,
-        input.lease.provider_account_id,
-      )
-      .run()
-  }
-  if (mirror !== undefined) {
-    await mirror.mirrorRowsByKey('provider_accounts', [
-      [input.lease.provider_account_id],
-    ])
-  }
-
-  return action
-}
-
-const recordFailoverReceipt = async (
-  db: D1Database,
-  input: Readonly<{
-    action: ReturnType<typeof classifyProviderAccountFailover>
-    attemptNumber: number
-    maxAttempts: number
-    now: string
-    outcome: 'retrying' | 'blocked'
-    previousLease: ExistingLeaseRow | null
-    nextLease: ProviderAccountLeaseResponse | null
-    requestedAction: string
-    runId: string | null
-    assignmentId: string | null
-    orderId: string | null
-  }>,
-  // KS-8.18 follow-up (#8362): fail-soft identity/auth mirror handle.
-  mirror?: IdentityAuthMirror | undefined,
-): Promise<ProviderAccountFailoverReceiptProjection> => {
-  const receiptId = compactRandomId('provider_account_failover_receipt')
-  const customerSafeStatus =
-    input.outcome === 'blocked'
-      ? 'Work is blocked until another eligible account is available.'
-      : input.action.customerSafeStatus
-  const operatorSummary =
-    input.outcome === 'blocked'
-      ? `Provider account failover blocked after ${input.attemptNumber}/${input.maxAttempts} attempt(s); no eligible ChatGPT/Codex account was available.`
-      : `Provider account failover retrying after ${input.action.failureClass}; next account lease was created.`
-  const customerSafeSummary =
-    input.outcome === 'blocked'
-      ? 'Work is waiting for operator capacity before it can continue.'
-      : 'Work is retrying through another connected execution account.'
-
-  await db
-    .prepare(
-      `INSERT INTO provider_account_failover_receipts
-        (id,
-         run_id,
-         assignment_id,
-         order_id,
-         requested_action,
-         previous_lease_ref,
-         previous_provider_account_ref,
-         next_lease_ref,
-         next_provider_account_ref,
-         failure_class,
-         account_state_action,
-         cooldown_until,
-         outcome,
-         attempt_number,
-         max_attempts,
-         customer_safe_status,
-         policy_version,
-         operator_summary,
-         customer_safe_summary,
-         created_at,
-         metadata_json)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-    .bind(
-      receiptId,
-      input.runId,
-      input.assignmentId,
-      input.orderId,
-      input.requestedAction,
-      input.previousLease?.lease_ref ?? null,
-      input.previousLease?.provider_account_ref ?? null,
-      input.nextLease?.leaseRef ?? null,
-      input.nextLease?.providerAccountRef ?? null,
-      input.action.failureClass,
-      input.action.accountStateAction,
-      input.action.cooldownUntil,
-      input.outcome,
-      input.attemptNumber,
-      input.maxAttempts,
-      customerSafeStatus,
-      PROVIDER_ACCOUNT_LEASE_POLICY_VERSION,
-      operatorSummary,
-      customerSafeSummary,
-      input.now,
-      JSON.stringify({
-        accountStateAction: input.action.accountStateAction,
-        cooldownUntil: input.action.cooldownUntil,
-        failureClass: input.action.failureClass,
-        outcome: input.outcome,
-        policyVersion: PROVIDER_ACCOUNT_LEASE_POLICY_VERSION,
-        source: 'operator_provider_account_failover',
-      }),
-    )
-    .run()
-
-  if (mirror !== undefined) {
-    await mirror.mirrorRowsByKey('provider_account_failover_receipts', [
-      [receiptId],
-    ])
-  }
-
-  return {
-    receiptId,
-    runId: input.runId,
-    assignmentId: input.assignmentId,
-    orderId: input.orderId,
-    requestedAction: input.requestedAction,
-    previousLeaseRef: input.previousLease?.lease_ref ?? null,
-    previousProviderAccountRef:
-      input.previousLease?.provider_account_ref ?? null,
-    nextLeaseRef: input.nextLease?.leaseRef ?? null,
-    nextProviderAccountRef: input.nextLease?.providerAccountRef ?? null,
-    failureClass: input.action.failureClass,
-    accountStateAction: input.action.accountStateAction,
-    cooldownUntil: input.action.cooldownUntil,
-    outcome: input.outcome,
-    attemptNumber: input.attemptNumber,
-    maxAttempts: input.maxAttempts,
-    customerSafeStatus,
-    operatorSummary,
-    customerSafeSummary,
-    policyVersion: PROVIDER_ACCOUNT_LEASE_POLICY_VERSION,
-    createdAt: input.now,
-  }
-}
-
-const listFailoverReceipts = async (
-  db: D1Database,
-  input: Readonly<{
-    userId: string
-    runId: string | null
-    assignmentId: string | null
-    orderId: string | null
-    limit: number
-  }>,
-): Promise<ReadonlyArray<ProviderAccountFailoverReceiptProjection>> => {
-  const rows = await db
-    .prepare(
-      `SELECT r.id,
-              r.run_id,
-              r.assignment_id,
-              r.order_id,
-              r.requested_action,
-              r.previous_lease_ref,
-              r.previous_provider_account_ref,
-              r.next_lease_ref,
-              r.next_provider_account_ref,
-              r.failure_class,
-              r.account_state_action,
-              r.cooldown_until,
-              r.outcome,
-              r.attempt_number,
-              r.max_attempts,
-              r.customer_safe_status,
-              r.policy_version,
-              r.operator_summary,
-              r.customer_safe_summary,
-              r.created_at
-         FROM provider_account_failover_receipts r
-         LEFT JOIN provider_account_leases previous_lease
-           ON previous_lease.lease_ref = r.previous_lease_ref
-         LEFT JOIN provider_account_leases next_lease
-           ON next_lease.lease_ref = r.next_lease_ref
-        WHERE COALESCE(previous_lease.user_id, next_lease.user_id) = ?
-          AND (? IS NULL OR r.run_id = ?)
-          AND (? IS NULL OR r.assignment_id = ?)
-          AND (? IS NULL OR r.order_id = ?)
-        ORDER BY r.created_at DESC
-        LIMIT ?`,
-    )
-    .bind(
-      input.userId,
-      input.runId,
-      input.runId,
-      input.assignmentId,
-      input.assignmentId,
-      input.orderId,
-      input.orderId,
-      input.limit,
-    )
-    .all<
-      Readonly<{
-        id: string
-        run_id: string | null
-        assignment_id: string | null
-        order_id: string | null
-        requested_action: string
-        previous_lease_ref: string | null
-        previous_provider_account_ref: string | null
-        next_lease_ref: string | null
-        next_provider_account_ref: string | null
-        failure_class: ProviderAccountFailoverFailureClass
-        account_state_action: string
-        cooldown_until: string | null
-        outcome: 'retrying' | 'blocked'
-        attempt_number: number
-        max_attempts: number
-        customer_safe_status: string
-        policy_version: typeof PROVIDER_ACCOUNT_LEASE_POLICY_VERSION
-        operator_summary: string
-        customer_safe_summary: string | null
-        created_at: string
-      }>
-    >()
-
-  return rows.results.map(row => ({
-    receiptId: row.id,
-    runId: row.run_id,
-    assignmentId: row.assignment_id,
-    orderId: row.order_id,
-    requestedAction: row.requested_action,
-    previousLeaseRef: row.previous_lease_ref,
-    previousProviderAccountRef: row.previous_provider_account_ref,
-    nextLeaseRef: row.next_lease_ref,
-    nextProviderAccountRef: row.next_provider_account_ref,
-    failureClass: row.failure_class,
-    accountStateAction: row.account_state_action,
-    cooldownUntil: row.cooldown_until,
-    outcome: row.outcome,
-    attemptNumber: row.attempt_number,
-    maxAttempts: row.max_attempts,
-    customerSafeStatus: row.customer_safe_status,
-    operatorSummary: row.operator_summary,
-    customerSafeSummary: row.customer_safe_summary,
-    policyVersion: row.policy_version,
-    createdAt: row.created_at,
-  }))
-}
-
-// KS-8.18 follow-up (#8362): default to the identity-auth-mirrored
+ // KS-8.18 follow-up (#8362): default to the identity-auth-mirrored
 // factory so operator-driven provider-account writes (health, grants,
 // events) converge to Postgres; the injectable override stays available
 // for tests that pass their own in-memory/fake repository.
@@ -1920,6 +1044,14 @@ const repositoryFor = <Bindings extends OperatorProviderAccountEnv>(
   dependencies.makeProviderAccountRepository !== undefined
     ? dependencies.makeProviderAccountRepository(openAgentsDatabase(env))
     : makeProviderAccountRepositoryForEnv(env)
+
+const leaseServiceFor = <Bindings extends OperatorProviderAccountEnv>(
+  env: Bindings,
+): ProviderAccountLeaseService =>
+  makeProviderAccountLeaseService({
+    db: openAgentsDatabase(env),
+    mirror: identityAuthMirrorFromEnv(env),
+  })
 
 export const makeOperatorProviderAccountRoutes = <
   Bindings extends OperatorProviderAccountEnv,
@@ -2386,20 +1518,18 @@ export const makeOperatorProviderAccountRoutes = <
     }
 
     try {
-      const lease = await acquireProviderAccountLease(
-        openAgentsDatabase(env),
-        {
-          assignmentId: optionalString(body.assignmentId) ?? null,
-          expiresAt,
-          now,
-          orderId: optionalString(body.orderId) ?? null,
-          requiredProvider: requiredProvider ?? null,
-          requestedAction,
-          runId: optionalString(body.runId) ?? null,
-          userId: targetUser.userId,
-        },
-        identityAuthMirrorFromEnv(env),
-      )
+      const lease = await leaseServiceFor(env).acquire({
+        assignmentId: optionalString(body.assignmentId) ?? null,
+        expiresAt,
+        now,
+        orderId: optionalString(body.orderId) ?? null,
+        requiredProvider: requiredProvider ?? null,
+        requestedAction,
+        runId: optionalString(body.runId) ?? null,
+        selectedByActor: 'operator_provider_account_routes',
+        source: 'operator_lease_acquire',
+        userId: targetUser.userId,
+      })
 
       if (lease === undefined) {
         return noStoreJsonResponse(
@@ -2469,7 +1599,7 @@ export const makeOperatorProviderAccountRoutes = <
     }
 
     const now = currentIsoTimestamp()
-    const lease = await findActiveLeaseByRef(openAgentsDatabase(env), {
+    const lease = await leaseServiceFor(env).findActive({
       leaseRef,
       now,
       userId: targetUser.userId,
@@ -2480,12 +1610,12 @@ export const makeOperatorProviderAccountRoutes = <
     }
 
     const requestedAction =
-      optionalString(body.requestedAction) ?? lease.requested_action
+      optionalString(body.requestedAction) ?? lease.requestedAction
     const runnerSessionId =
       optionalString(body.runnerSessionId) ??
       optionalString(body.runId) ??
-      lease.run_id ??
-      lease.lease_ref
+      lease.runId ??
+      lease.leaseRef
     const threadId = optionalString(body.threadId)
     const workroomId = optionalString(body.workroomId)
 
@@ -2493,7 +1623,7 @@ export const makeOperatorProviderAccountRoutes = <
       const grant = await issueProviderAccountGrant(
         repositoryFor(env, dependencies),
         {
-          providerAccountRef: lease.provider_account_ref,
+          providerAccountRef: lease.providerAccountRef,
           requestedAction,
           runnerSessionId,
           userId: targetUser.userId,
@@ -2508,12 +1638,12 @@ export const makeOperatorProviderAccountRoutes = <
 
       return noStoreJsonResponse(
         {
-          leaseRef: lease.lease_ref,
-          providerAccountRef: lease.provider_account_ref,
+          leaseRef: lease.leaseRef,
+          providerAccountRef: lease.providerAccountRef,
           requestedAction,
-          runId: lease.run_id,
-          assignmentId: lease.assignment_id,
-          orderId: lease.order_id,
+          runId: lease.runId,
+          assignmentId: lease.assignmentId,
+          orderId: lease.orderId,
           grant: {
             grantRef: grant.grantRef,
             status: grant.status,
@@ -2602,84 +1732,42 @@ export const makeOperatorProviderAccountRoutes = <
       )
     }
 
-    const db = openAgentsDatabase(env)
-    const mirror = identityAuthMirrorFromEnv(env)
-    const previousLease = await findLeaseByRef(db, previousLeaseRef)
-
-    if (previousLease === undefined) {
-      return noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
-    }
-
     try {
-      const action = await applyFailoverAccountState(
-        db,
-        {
-          failureClass,
-          lease: previousLease,
-          now,
-        },
-        mirror,
-      )
-      const exhausted = attemptNumber >= maxAttempts
-      const nextLease =
-        exhausted || !action.retryAllowed
-          ? null
-          : ((await acquireProviderAccountLease(
-              db,
-              {
-                assignmentId:
-                  optionalString(body.assignmentId) ??
-                  previousLease.assignment_id ??
-                  null,
-                expiresAt: isoTimestampAfterIso(now, 15 * 60 * 1_000),
-                now,
-                orderId:
-                  optionalString(body.orderId) ??
-                  previousLease.order_id ??
-                  null,
-                requiredProvider: previousLease.provider,
-                requestedAction,
-                runId:
-                  optionalString(body.runId) ?? previousLease.run_id ?? null,
-                userId: targetUser.userId,
-              },
-              mirror,
-            )) ?? null)
-      const outcome = nextLease === null ? 'blocked' : 'retrying'
+      const result = await leaseServiceFor(env).failover({
+        assignmentId: optionalString(body.assignmentId) ?? null,
+        attemptNumber,
+        expiresAt: isoTimestampAfterIso(now, 15 * 60 * 1_000),
+        failureClass,
+        maxAttempts,
+        now,
+        orderId: optionalString(body.orderId) ?? null,
+        previousLeaseRef,
+        requestedAction,
+        runId: optionalString(body.runId) ?? null,
+        selectedByActor: 'operator_provider_account_routes',
+        source: 'operator_provider_account_failover',
+        userId: targetUser.userId,
+      })
 
-      const receipt = await recordFailoverReceipt(
-        db,
-        {
-          action,
-          assignmentId:
-            optionalString(body.assignmentId) ?? previousLease.assignment_id,
-          attemptNumber,
-          maxAttempts,
-          nextLease,
-          now,
-          orderId: optionalString(body.orderId) ?? previousLease.order_id,
-          outcome,
-          previousLease,
-          requestedAction,
-          runId: optionalString(body.runId) ?? previousLease.run_id,
-        },
-        mirror,
-      )
+      if (result === undefined) {
+        return noStoreJsonResponse({ error: 'not_found' }, { status: 404 })
+      }
 
       return noStoreJsonResponse(
         {
-          receiptId: receipt.receiptId,
-          accountStateAction: action.accountStateAction,
+          receiptId: result.receipt.receiptId,
+          accountStateAction: result.action.accountStateAction,
           attemptNumber,
-          customerSafeStatus: receipt.customerSafeStatus,
+          customerSafeStatus: result.receipt.customerSafeStatus,
           failureClass,
           maxAttempts,
-          nextLease,
-          outcome,
-          previousLeaseRef: previousLease.lease_ref,
-          previousProviderAccountRef: previousLease.provider_account_ref,
+          nextLease: result.nextLease,
+          outcome: result.outcome,
+          previousLeaseRef: result.previousLease.leaseRef,
+          previousProviderAccountRef:
+            result.previousLease.providerAccountRef,
         } satisfies ProviderAccountFailoverResponse,
-        { status: outcome === 'blocked' ? 409 : 201 },
+        { status: result.outcome === 'blocked' ? 409 : 201 },
       )
     } catch (error) {
       logWorkerRouteError('operator_provider_account_failover_failed', error, {
@@ -2722,7 +1810,7 @@ export const makeOperatorProviderAccountRoutes = <
       )
     }
 
-    const receipts = await listFailoverReceipts(openAgentsDatabase(env), {
+    const receipts = await leaseServiceFor(env).listFailoverReceipts({
       assignmentId: optionalString(body.assignmentId) ?? null,
       limit: optionalLimit(body.limit, 25, 100),
       orderId: optionalString(body.orderId) ?? null,
@@ -2761,6 +1849,7 @@ export const makeOperatorProviderAccountRoutes = <
     return noStoreJsonResponse(
       await providerAccountFleetDashboard(
         openAgentsDatabase(env),
+        leaseServiceFor(env),
         targetUser.userId,
         currentIsoTimestamp(),
       ),
@@ -2792,8 +1881,7 @@ export const makeOperatorProviderAccountRoutes = <
       )
     }
 
-    const leases = await listActiveProviderAccountLeases(
-      openAgentsDatabase(env),
+    const leases = await leaseServiceFor(env).listActive(
       targetUser.userId,
       currentIsoTimestamp(),
     )
@@ -2827,8 +1915,7 @@ export const makeOperatorProviderAccountRoutes = <
     }
 
     return noStoreJsonResponse(
-      await explainProviderAccountLeaseSelection(
-        openAgentsDatabase(env),
+      await leaseServiceFor(env).explainSelection(
         targetUser.userId,
         currentIsoTimestamp(),
       ),
@@ -2848,6 +1935,18 @@ export const makeOperatorProviderAccountRoutes = <
     const body = await readJsonObject(request).catch(
       (): Record<string, unknown> => ({}),
     )
+    const targetUser = await dependencies.readSelectedOperatorTargetUser(
+      identityDbForEnv(env),
+      body,
+    )
+
+    if (targetUser === undefined) {
+      return noStoreJsonResponse(
+        { error: 'target_user_not_found' },
+        { status: 404 },
+      )
+    }
+
     const leaseRef = optionalString(body.leaseRef)
 
     if (leaseRef === undefined) {
@@ -2858,18 +1957,15 @@ export const makeOperatorProviderAccountRoutes = <
     }
 
     const now = currentIsoTimestamp()
-    const touched = await touchProviderAccountLease(
-      openAgentsDatabase(env),
-      {
-        expiresAt: isoTimestampAfterIso(
-          now,
-          clampLeaseTtlSeconds(optionalParallelNumber(body.ttlSeconds)) * 1_000,
-        ),
-        leaseRef,
+    const touched = await leaseServiceFor(env).touch({
+      expiresAt: isoTimestampAfterIso(
         now,
-      },
-      identityAuthMirrorFromEnv(env),
-    )
+        clampLeaseTtlSeconds(optionalParallelNumber(body.ttlSeconds)) * 1_000,
+      ),
+      leaseRef,
+      now,
+      userId: targetUser.userId,
+    })
 
     return touched
       ? noStoreJsonResponse({ leaseRef, status: 'touched' })
@@ -2889,6 +1985,18 @@ export const makeOperatorProviderAccountRoutes = <
     const body = await readJsonObject(request).catch(
       (): Record<string, unknown> => ({}),
     )
+    const targetUser = await dependencies.readSelectedOperatorTargetUser(
+      identityDbForEnv(env),
+      body,
+    )
+
+    if (targetUser === undefined) {
+      return noStoreJsonResponse(
+        { error: 'target_user_not_found' },
+        { status: 404 },
+      )
+    }
+
     const leaseRef = optionalString(body.leaseRef)
     const status = optionalString(body.status)
     const releaseStatus =
@@ -2903,17 +2011,14 @@ export const makeOperatorProviderAccountRoutes = <
       )
     }
 
-    const released = await releaseProviderAccountLease(
-      openAgentsDatabase(env),
-      {
-        failureClass: optionalString(body.failureClass) ?? null,
-        leaseRef,
-        now: currentIsoTimestamp(),
-        status: releaseStatus,
-        terminalOutcome: optionalString(body.terminalOutcome) ?? releaseStatus,
-      },
-      identityAuthMirrorFromEnv(env),
-    )
+    const released = await leaseServiceFor(env).release({
+      failureClass: optionalString(body.failureClass) ?? null,
+      leaseRef,
+      now: currentIsoTimestamp(),
+      status: releaseStatus,
+      terminalOutcome: optionalString(body.terminalOutcome) ?? releaseStatus,
+      userId: targetUser.userId,
+    })
 
     return released
       ? noStoreJsonResponse({ leaseRef, status: releaseStatus })
