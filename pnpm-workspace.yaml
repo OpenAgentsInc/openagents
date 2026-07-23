@@ -43,6 +43,7 @@ catalog:
   vite-plus: 0.2.4
 
 allowBuilds:
+  "@google/genai": false
   "@electron/node-gyp": true
   "@openrouter/sdk": false
   "@shopify/react-native-skia": true
@@ -83,9 +84,9 @@ peerDependencyRules:
     - vite
 
 supportedArchitectures:
-  cpu: [current, x64]
-  libc: [current, glibc]
-  os: [current, linux]
+  cpu: [ current, x64 ]
+  libc: [ current, glibc ]
+  os: [ current, linux ]
 
 minimumReleaseAgeExclude:
   - blume@1.0.4
