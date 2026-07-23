@@ -2127,6 +2127,31 @@ fn extracted_artifact_refs(host_artifact_dir: &Path) -> Result<Vec<String>, Stri
     Ok(refs)
 }
 
+#[derive(Debug, Default, Eq, PartialEq)]
+struct ExtractedArtifactAdmission {
+    artifact_refs: Vec<String>,
+    failure_reason_ref: Option<String>,
+}
+
+fn admit_extracted_artifacts(
+    artifacts_extracted: bool,
+    refs: Result<Vec<String>, String>,
+) -> ExtractedArtifactAdmission {
+    if !artifacts_extracted {
+        return ExtractedArtifactAdmission::default();
+    }
+    match refs {
+        Ok(artifact_refs) => ExtractedArtifactAdmission {
+            artifact_refs,
+            failure_reason_ref: None,
+        },
+        Err(_) => ExtractedArtifactAdmission {
+            artifact_refs: Vec::new(),
+            failure_reason_ref: Some("agent_computer.artifact_missing".to_string()),
+        },
+    }
+}
+
 fn microvm_failure_class(exit_code: i32, output: &str) -> Option<&'static str> {
     if exit_code == 0 {
         return None;
@@ -2390,11 +2415,17 @@ fn run_org_cloud_microvm_worker(
     } else {
         MicrovmTurnResult::default()
     };
-    let artifact_refs = if outcome.cleanup_receipt.artifacts_extracted {
-        extracted_artifact_refs(&host_artifact_dir)?
-    } else {
-        Vec::new()
-    };
+    let artifact_admission = admit_extracted_artifacts(
+        outcome.cleanup_receipt.artifacts_extracted,
+        if outcome.cleanup_receipt.artifacts_extracted {
+            extracted_artifact_refs(&host_artifact_dir)
+        } else {
+            Ok(Vec::new())
+        },
+    );
+    let artifact_refs = artifact_admission.artifact_refs;
+    let artifacts_admitted = outcome.cleanup_receipt.artifacts_extracted
+        && artifact_admission.failure_reason_ref.is_none();
 
     // provisioned (active) — echoes the work-context ref for the isolation check.
     let provision_receipt_ref = format!("receipt.cloud.gce.provision.{run_short}");
@@ -2477,18 +2508,23 @@ fn run_org_cloud_microvm_worker(
         .as_ref()
         .map(|exec| exec.output.as_str())
         .unwrap_or("");
-    let failure_class = microvm_failure_class(exit_code, exec_output);
+    let failure_class = artifact_admission
+        .failure_reason_ref
+        .as_ref()
+        .map(|_| "artifact_missing")
+        .or_else(|| microvm_failure_class(exit_code, exec_output));
     let failure_reason_ref = outcome
         .session_failure
         .as_ref()
         .map(|failure| failure.reason_ref.clone())
         .or_else(|| (!cleanup_verified).then(|| "cloud_vm.teardown_not_verified".to_string()))
+        .or(artifact_admission.failure_reason_ref)
         .or_else(|| microvm_failure_reason_ref(exit_code, exec_output));
     let guest_diagnostic_tail = bounded_guest_diagnostic_tail(exec_output);
     let terminal_status = microvm_terminal_status(
         exit_code,
         outcome.session_failure.is_some(),
-        outcome.cleanup_receipt.artifacts_extracted,
+        artifacts_admitted,
         cleanup_verified,
     );
     let mut terminal_event_data = serde_json::json!({
@@ -5673,6 +5709,24 @@ mod tests {
             .unwrap_err()
             .contains("exceeds the 64-file bound"));
         fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn missing_extracted_artifact_fails_admission_without_stranding_the_job() {
+        let admission = admit_extracted_artifacts(
+            true,
+            Err("Agent Computer completed without an extracted artifact".to_string()),
+        );
+
+        assert!(admission.artifact_refs.is_empty());
+        assert_eq!(
+            admission.failure_reason_ref.as_deref(),
+            Some("agent_computer.artifact_missing")
+        );
+        assert_eq!(
+            microvm_terminal_status(0, false, admission.failure_reason_ref.is_none(), true),
+            "failed"
+        );
     }
 
     #[test]
