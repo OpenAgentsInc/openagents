@@ -2160,6 +2160,8 @@ fn microvm_failure_class(exit_code: i32, output: &str) -> Option<&'static str> {
     Some(
         if normalized.contains("turn-runner") && normalized.contains("not found") {
             "turn_runner_unavailable"
+        } else if normalized.contains("harness.exec") {
+            "harness_exec_failed"
         } else if normalized.contains("codex.exec") || normalized.contains("codex_") {
             "codex_exec_failed"
         } else if normalized.contains("provider_auth")
@@ -2188,7 +2190,12 @@ fn microvm_failure_reason_ref(exit_code: i32, output: &str) -> Option<String> {
             !(character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | ':' | '-'))
         })
         .filter(|token| {
-            token.starts_with("codex.provider_auth")
+            token.starts_with("harness.")
+                || token.starts_with("verification.")
+                || token.starts_with("credential.")
+                || token.starts_with("writeback.")
+                || token.starts_with("agent_computer.")
+                || token.starts_with("codex.provider_auth")
                 || token.starts_with("codex.exec")
                 || token.starts_with("workspace.checkout")
         })
@@ -2218,9 +2225,17 @@ struct GuestDiagnosticEvent {
 const MAX_GUEST_DIAGNOSTIC_EVENTS: usize = 8;
 
 fn public_reason_ref(value: &str) -> Option<String> {
-    let allowed_prefix = ["codex.", "workspace.", "agent_computer."]
-        .iter()
-        .any(|prefix| value.starts_with(prefix));
+    let allowed_prefix = [
+        "harness.",
+        "verification.",
+        "credential.",
+        "writeback.",
+        "codex.",
+        "workspace.",
+        "agent_computer.",
+    ]
+    .iter()
+    .any(|prefix| value.starts_with(prefix));
     (allowed_prefix
         && value.len() <= 120
         && value
@@ -7193,5 +7208,30 @@ echo '{"status":"ok"}'
         assert!(!serialized.contains("Bearer"));
         assert!(!serialized.contains("authMaterial"));
         assert!(!serialized.contains("repository content"));
+    }
+
+    #[test]
+    fn harness_failures_keep_the_typed_reason_and_class() {
+        let output = concat!(
+            r#"{"kind":"tool.call","tool":"workspace.checkout"}"#,
+            "\n",
+            r#"{"kind":"tool.result","tool":"workspace.checkout","status":"ok"}"#,
+            "\n",
+            r#"{"kind":"tool.result","tool":"harness.exec","status":"failed","reasonRef":"harness.exec_failed","errorClass":"codex_exec","private":"discard"}"#,
+        );
+        assert_eq!(
+            microvm_failure_class(1, output),
+            Some("harness_exec_failed")
+        );
+        assert_eq!(
+            microvm_failure_reason_ref(1, output).as_deref(),
+            Some("harness.exec_failed")
+        );
+        let tail = bounded_guest_diagnostic_tail(output);
+        assert_eq!(
+            tail.last().and_then(|event| event.reason_ref.as_deref()),
+            Some("harness.exec_failed")
+        );
+        assert!(!serde_json::to_string(&tail).unwrap().contains("private"));
     }
 }

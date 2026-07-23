@@ -8,6 +8,7 @@ import {
   KHALA_CLOUD_RUNTIME_USAGE_INGEST_PATH,
   HARNESS_RUNTIME_SECRET_MATERIAL_PATH,
   HARNESS_RUNTIME_SECRET_MATERIAL_SCHEMA,
+  HARNESS_TURN_DEFAULT_MAX_SECONDS,
   harnessExecArgs,
   harnessExecEnv,
   harnessStagedChangeAdmission,
@@ -28,6 +29,10 @@ const verificationOutputFixture: VerificationRun = () => ({
 })
 
 describe('Agent Computer seven-harness runtime (#9193)', () => {
+  test('reserves a bounded cold-turn window before host verification', () => {
+    expect(HARNESS_TURN_DEFAULT_MAX_SECONDS).toBe(20 * 60)
+  })
+
   const runtimeGrant = {
     agentToken: 'short-lived-agent-bearer',
     baseUrl: 'https://openagents.example',

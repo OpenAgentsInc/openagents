@@ -711,7 +711,7 @@ const AGENT_COMPUTER_GUEST_VCPU_COUNT: u64 = 4;
 // verification can exceed five minutes. Keep the guest window below the
 // managed-cloud provider lease (35 minutes) so the worker still owns the
 // provider grant when execution returns.
-const GUEST_EXEC_TIMEOUT_SECS: u64 = 25 * 60;
+const GUEST_EXEC_TIMEOUT_SECS: u64 = 32 * 60;
 
 /// True when this host can run firecracker microVMs: it is Linux and `/dev/kvm`
 /// exists and is accessible. Side-effect-free; performs no boot.
@@ -1426,7 +1426,7 @@ mod tests {
 
     #[test]
     fn guest_exec_window_covers_a_cold_repository_turn() {
-        assert_eq!(GUEST_EXEC_TIMEOUT_SECS, 25 * 60);
+        assert_eq!(GUEST_EXEC_TIMEOUT_SECS, 32 * 60);
         assert!(GUEST_EXEC_TIMEOUT_SECS < 35 * 60);
     }
 
