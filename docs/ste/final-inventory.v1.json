@@ -19296,6 +19296,50 @@
       }
     },
     {
+      "path": "docs/buzz/2026-07-22-buzz-self-host-and-sarah-runbook.md",
+      "sha256": "5c387ea7824d2f96e4f4ef37cbb3fcc1b21d29f9afbb02252a19bd44d9e5e4e1",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/buzz/README.md",
+      "sha256": "7afdfc7aa4c75dc7e89e99055a49c29ce1e22e6824d482a3b2f6356937893831",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/changelog/2026-07-16-desktop-0.1.0-rc.13.md",
       "sha256": "694259c3e4041b06c6e889a536a13c2e9ee2d4cb3ba6a9b1c3ecbd3a08d60656",
       "reason": "Immutable historical or evidence source data",
