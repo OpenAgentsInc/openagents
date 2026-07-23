@@ -371,6 +371,7 @@ describe('Agent Computer seven-harness runtime (#9193)', () => {
     })).toEqual({
       CLAUDE_CODE_OAUTH_TOKEN: 'claude-secret',
       HOME: '/root',
+      IS_SANDBOX: '1',
       PATH: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
     })
   })

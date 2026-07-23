@@ -1411,7 +1411,9 @@ export const harnessExecEnv = (input: {
   }
   if (input.harness === 'claude-code') {
     const token = input.claudeProviderEnv?.CLAUDE_CODE_OAUTH_TOKEN
-    return token === undefined ? null : { ...base, CLAUDE_CODE_OAUTH_TOKEN: token }
+    return token === undefined
+      ? null
+      : { ...base, CLAUDE_CODE_OAUTH_TOKEN: token, IS_SANDBOX: '1' }
   }
   if (input.harness === 'cursor') {
     return input.runtimeSecret?.kind === 'cursor_api_key'
