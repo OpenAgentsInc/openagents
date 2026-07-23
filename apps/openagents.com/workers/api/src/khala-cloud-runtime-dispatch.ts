@@ -91,6 +91,7 @@ export const CLOUD_GCP_RUNTIME_LANE = 'cloud-gcp'
 /** Default valid runtime-event lane stamped on the streamed events. */
 export const CLOUD_GCP_RUNTIME_EVENT_LANE: KhalaRuntimeLane = 'hosted_khala'
 export const MANAGED_CLOUD_RUNTIME_LANE: KhalaRuntimeLane = 'managed_cloud'
+export const MANAGED_CLOUD_RUNTIME_STALE_AFTER_MS = 40 * 60 * 1_000
 const IMMUTABLE_GIT_SHA = /^[0-9a-f]{40}$/i
 
 export const resolveManagedCloudRepositoryCommit = async (
@@ -319,6 +320,18 @@ type ManagedCloudQueueRow = Readonly<{
   work_context_ref: string
 }>
 
+export type ManagedCloudRunningTurn = Pick<
+  CloudGcpAdmittedWorkContext,
+  'eventCount' | 'ownerUserId' | 'runtimeLane' | 'threadId' | 'turnId'
+>
+
+type ManagedCloudRunningRow = Readonly<{
+  event_count: string | number
+  owner_user_id: string
+  thread_id: string
+  turn_id: string
+}>
+
 /** Reads only repository-bound managed-cloud turns. The start mutator rejects
  * this lane on an unbound thread, so this query never invents repo authority. */
 export const readQueuedManagedCloudTurns = async (
@@ -361,6 +374,31 @@ export const readQueuedManagedCloudTurns = async (
       },
     }
   })
+}
+
+/** Read stale in-flight turns only after their 35-minute provider lease has
+ * expired. A recovery never replays provider or repository work. */
+export const readStaleRunningManagedCloudTurns = async (
+  sql: SyncSql,
+  cutoffIso: string,
+  limit: number,
+): Promise<ReadonlyArray<ManagedCloudRunningTurn>> => {
+  const rows: Array<ManagedCloudRunningRow> = await sql`
+    SELECT turn_id, thread_id, owner_user_id, event_count
+    FROM khala_sync_runtime_turns
+    WHERE status = 'running'
+      AND lane = ${MANAGED_CLOUD_RUNTIME_LANE}
+      AND updated_at <= ${cutoffIso}
+    ORDER BY updated_at ASC
+    LIMIT ${limit}
+  `
+  return rows.map(row => ({
+    eventCount: Number(row.event_count),
+    ownerUserId: row.owner_user_id,
+    runtimeLane: MANAGED_CLOUD_RUNTIME_LANE,
+    threadId: row.thread_id,
+    turnId: row.turn_id,
+  }))
 }
 
 export type CloudGcpAccountDispatchDecision =
@@ -644,7 +682,7 @@ const eventSource = (deps: ResolvedDeps, lane: KhalaRuntimeLane) =>
 
 const buildEvent = (
   deps: ResolvedDeps,
-  turn: CloudGcpAdmittedWorkContext,
+  turn: ManagedCloudRunningTurn,
   sequence: number,
   extra: Record<string, unknown>,
 ): KhalaRuntimeEvent =>
@@ -674,7 +712,7 @@ const runtimeToolAuthority = (toolRef: string) => ({
 
 const recordRuntimeEvent = (
   deps: ResolvedDeps,
-  turn: CloudGcpAdmittedWorkContext,
+  turn: ManagedCloudRunningTurn,
   input: Readonly<{
     mutationId: number
     sequence: number
@@ -711,6 +749,44 @@ const recordRuntimeEvent = (
       }
       return result
     })
+}
+
+/**
+ * Settle a managed-cloud turn after its worker generation is lost. The
+ * 40-minute cutoff is longer than the 35-minute provider lease, so recovery
+ * cannot release or reuse live provider capacity and never replays the turn.
+ */
+export const recoverStaleRunningManagedCloudTurns = async (
+  deps: CloudGcpRuntimeDispatchDependencies,
+): Promise<number> => {
+  const resolved = resolveDeps(deps)
+  const cutoffIso = isoTimestampAfterIso(
+    resolved.now(),
+    -MANAGED_CLOUD_RUNTIME_STALE_AFTER_MS,
+  )
+  const stale = await readStaleRunningManagedCloudTurns(
+    resolved.sql,
+    cutoffIso,
+    resolved.limit,
+  )
+  let recovered = 0
+  for (const turn of stale) {
+    const result = await recordRuntimeEvent(resolved, turn, {
+      extra: {
+        kind: 'turn.interrupted',
+        reasonRef: 'managed_cloud_worker_generation_lost',
+      },
+      mutationId: 1,
+      sequence: turn.eventCount,
+    })
+    if (result.status === 'applied') {
+      recovered += 1
+      resolved.log('managed_cloud_runtime_dispatch_recovered_interrupted', {
+        turnId: turn.turnId,
+      })
+    }
+  }
+  return recovered
 }
 
 /** Terminal outcome of dispatching one admitted `cloud-gcp` work-context. */

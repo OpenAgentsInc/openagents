@@ -754,6 +754,7 @@ import {
   managedAgentComputerGrantIssueInput,
   makeCloudCodingAdapterLaunchSeam,
   readQueuedManagedCloudTurns,
+  recoverStaleRunningManagedCloudTurns,
   resolveManagedCloudRepositoryCommit,
   runCloudGcpRuntimeDispatch,
 } from './khala-cloud-runtime-dispatch'
@@ -7634,6 +7635,17 @@ const runManagedCloudRuntimeTurnDispatchForEnv = async (
     mirror: identityAuthMirrorFromEnv(env),
   })
   try {
+    await recoverStaleRunningManagedCloudTurns({
+      armed: true,
+      inference: {
+        baseUrl: inferenceBaseUrl,
+        model: 'openagents/pylon-codex',
+        pylonRef: 'pylon.agent-computer.managed-cloud',
+      },
+      launch,
+      log: (line, fields) => logWorkerRouteWarning(line, fields ?? {}),
+      sql: client.sql,
+    })
     const summary = await runCloudGcpRuntimeDispatch({
       armed: true,
       finalizeAfterDispatch: async (turn, outcome) => {

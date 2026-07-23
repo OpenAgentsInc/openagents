@@ -20,6 +20,7 @@ import {
   planCloudGcpRuntimeAccountDispatch,
   providerFailoverFailureClassForGuestFailure,
   readQueuedManagedCloudTurns,
+  recoverStaleRunningManagedCloudTurns,
   runCloudGcpRuntimeDispatch,
   resolveManagedCloudRepositoryCommit,
   type CloudGcpAdmittedWorkContext,
@@ -177,6 +178,7 @@ type RecordedEvent = {
   toolName: string | undefined
   finishReason: string | undefined
   resultRef: string | undefined
+  reasonRef: string | undefined
   sequence: number
   clientId: string
 }
@@ -198,6 +200,7 @@ const makeRecordingExecutePush = (
       toolName?: string
       finishReason?: string
       resultRef?: string
+      reasonRef?: string
       sequence: number
     }
     const rec: RecordedEvent = {
@@ -206,6 +209,7 @@ const makeRecordingExecutePush = (
       kind: event.kind,
       mutationId: envelope.mutationId,
       resultRef: event.resultRef,
+      reasonRef: event.reasonRef,
       sequence: event.sequence,
       toolName: event.toolName,
       userId: input.userId,
@@ -315,6 +319,46 @@ const reset = () => {
   mintCalls.length = 0
   revokeCalls.length = 0
 }
+
+describe('managed cloud interrupted-turn recovery', () => {
+  test('settles only post-lease stale running turns without replaying work', async () => {
+    reset()
+    const queryValues: unknown[] = []
+    const sql = ((_strings: TemplateStringsArray, ...values: unknown[]) => {
+      queryValues.push(...values)
+      return Promise.resolve([
+        {
+          event_count: 1,
+          owner_user_id: 'owner.fixture',
+          thread_id: 'thread.fixture',
+          turn_id: 'turn.sarah_cloud.fixture',
+        },
+      ])
+    }) as unknown as SyncSql
+    const push = makeRecordingExecutePush()
+
+    const recovered = await recoverStaleRunningManagedCloudTurns(
+      baseDeps({
+        executePush: push.executePush,
+        now: () => '2026-07-23T09:15:00.000Z',
+        sql,
+      }),
+    )
+
+    expect(recovered).toBe(1)
+    expect(queryValues).toContain('2026-07-23T08:35:00.000Z')
+    expect(push.recorded).toEqual([
+      expect.objectContaining({
+        kind: 'turn.interrupted',
+        reasonRef: 'managed_cloud_worker_generation_lost',
+        sequence: 1,
+        userId: 'owner.fixture',
+      }),
+    ])
+    expect(mintCalls).toHaveLength(0)
+    expect(revokeCalls).toHaveLength(0)
+  })
+})
 
 describe('managed cloud terminal provider failover', () => {
   test.each([
