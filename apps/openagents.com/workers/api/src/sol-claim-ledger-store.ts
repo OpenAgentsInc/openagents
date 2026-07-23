@@ -190,20 +190,39 @@ const canonicalFrame = (event: SignedNostrEvent): string =>
     sig: event.sig,
   });
 
-const matchesQuery = (
-  row: StoredSolClaimLedgerEvent,
+/**
+ * The bounded index fields a claim-ledger subscription filter narrows on
+ * (everything beyond the repository coordinate itself). A `StoredSolClaimLedgerEvent`
+ * satisfies this shape structurally, and the live subscription runtime reuses
+ * the same predicate so a stored query and a live delivery filter identically.
+ */
+export interface SolClaimLedgerFilterableFields {
+  readonly kind: number;
+  readonly pubkey: string;
+  readonly createdAt: number;
+  readonly workItemRef: string | null;
+}
+
+/**
+ * The single source of truth for the non-coordinate filter narrowing (kind /
+ * work-item / author / since). The coordinate match is applied separately by
+ * the caller. Shared by the durable coordinate query and the live subscription
+ * runtime so a fresh read and a streamed delivery never diverge.
+ */
+export const solClaimLedgerEventMatchesOptions = (
+  fields: SolClaimLedgerFilterableFields,
   options: SolClaimLedgerFilterOptions,
 ): boolean => {
-  if (options.kinds !== undefined && !options.kinds.includes(row.kind)) {
+  if (options.kinds !== undefined && !options.kinds.includes(fields.kind)) {
     return false;
   }
-  if (options.workItemRef !== undefined && row.workItemRef !== options.workItemRef) {
+  if (options.workItemRef !== undefined && fields.workItemRef !== options.workItemRef) {
     return false;
   }
-  if (options.authors !== undefined && !options.authors.includes(row.pubkey)) {
+  if (options.authors !== undefined && !options.authors.includes(fields.pubkey)) {
     return false;
   }
-  if (options.sinceEpochSeconds !== undefined && row.createdAt < options.sinceEpochSeconds) {
+  if (options.sinceEpochSeconds !== undefined && fields.createdAt < options.sinceEpochSeconds) {
     return false;
   }
   return true;
@@ -278,7 +297,7 @@ export const makeSolClaimLedgerEventStore = (
     queryRepositoryCoordinate: (repositoryCoordinate, options = {}) =>
       Effect.gen(function* () {
         const rows = yield* persistence.queryByCoordinate(repositoryCoordinate);
-        const matched = rows.filter((row) => matchesQuery(row, options));
+        const matched = rows.filter((row) => solClaimLedgerEventMatchesOptions(row, options));
         // Newest first; persistence should already return this order, but the
         // store re-sorts so the contract does not depend on backend ordering.
         // Non-mutating: sort a spread copy (toSorted is not in this tsc lib target).
