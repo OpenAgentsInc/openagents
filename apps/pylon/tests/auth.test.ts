@@ -319,6 +319,23 @@ describe("pylon auth", () => {
         PYLON_HOME: home,
       })
       const secret = "sk-ant-oat-auth-link-secret"
+      const customAccountHome = join(home, "custom-claude-home")
+      await mkdir(customAccountHome, { recursive: true })
+      await writeFile(join(customAccountHome, "claude-oauth-token"), `${secret}\n`)
+      await writeFile(
+        join(home, "config.json"),
+        `${JSON.stringify({
+          dev: {
+            accounts: [
+              {
+                provider: "claude_agent",
+                ref: "claude-linked",
+                home: customAccountHome,
+              },
+            ],
+          },
+        })}\n`,
+      )
       const calls: Array<{ body: string | undefined; url: string }> = []
       const fetcher: typeof fetch = async (input, init) => {
         const url = String(input)
@@ -360,8 +377,6 @@ describe("pylon auth", () => {
           "claude",
           "--account",
           "claude-linked",
-          "--token",
-          secret,
           "--openagents-link",
           "--agent-token",
           "oa_agent_fixture_123",
@@ -393,6 +408,7 @@ describe("pylon auth", () => {
             {
               provider: "claude_agent",
               ref: "claude-linked",
+              home: customAccountHome,
               openAgentsProviderAccountRef: "provider_account_claude",
             },
           ],

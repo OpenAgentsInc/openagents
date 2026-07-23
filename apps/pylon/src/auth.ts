@@ -759,6 +759,7 @@ function codexConnectArgs(input: {
 
 function claudeConnectArgs(input: {
   accountRef: string
+  home: string | null
   setupToken: string | null
 }): PylonAccountsConnectArgs {
   return {
@@ -768,7 +769,7 @@ function claudeConnectArgs(input: {
     agentToken: null,
     baseUrl: null,
     createNewOpenAgentsAccount: true,
-    home: null,
+    home: input.home,
     forceDeviceLogin: false,
     json: true,
     openAgentsAttemptId: null,
@@ -856,6 +857,25 @@ function configuredProviderAccountRef(
     const record = account as Record<string, unknown>
     if (record.provider === provider && record.ref === accountRef) {
       return optionalStringAt(record, "openAgentsProviderAccountRef") ?? null
+    }
+  }
+  return null
+}
+
+function configuredAccountHome(
+  config: Record<string, unknown>,
+  accountRef: string,
+  provider: "codex" | "claude_agent",
+): string | null {
+  const dev = recordAt(config, "dev")
+  const accounts = Array.isArray(dev.accounts) ? dev.accounts : []
+  for (const account of accounts) {
+    if (account === null || typeof account !== "object" || Array.isArray(account)) {
+      continue
+    }
+    const record = account as Record<string, unknown>
+    if (record.provider === provider && record.ref === accountRef) {
+      return optionalStringAt(record, "home") ?? null
     }
   }
   return null
@@ -966,6 +986,7 @@ const defaultClaudeAccountHome = (
 async function importLocalClaudeAuth(input: {
   accountRef: string
   agentToken: string
+  authHome: string
   baseUrl: string
   fetcher: PylonAccountsConnectFetcher
   providerAccountRef: string | null
@@ -973,7 +994,7 @@ async function importLocalClaudeAuth(input: {
 }): Promise<OpenAgentsLocalClaudeAuthImportResponse> {
   const authContentValue = (
     await readFile(
-      join(defaultClaudeAccountHome(input.summary, input.accountRef), "claude-oauth-token"),
+      join(input.authHome, "claude-oauth-token"),
       "utf8",
     )
   ).trim()
@@ -1271,10 +1292,14 @@ export async function runPylonAuthClaude(
     accountRef,
     "claude_agent",
   )
+  const authHome =
+    configuredAccountHome(configBeforeConnect, accountRef, "claude_agent") ??
+    defaultClaudeAccountHome(summary, accountRef)
   const started = await runPylonAccountsConnect(
     summary,
     claudeConnectArgs({
       accountRef,
+      home: authHome,
       setupToken: args.setupToken,
     }),
     { env },
@@ -1313,6 +1338,7 @@ export async function runPylonAuthClaude(
     imported = await importLocalClaudeAuth({
       accountRef,
       agentToken: openAgents.agentToken,
+      authHome,
       baseUrl,
       fetcher,
       providerAccountRef: previousProviderAccountRef,
