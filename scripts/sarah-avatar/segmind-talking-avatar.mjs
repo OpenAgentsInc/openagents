@@ -111,15 +111,23 @@ const buildBody = () => {
   }
   // p-video-avatar (Pruna) and compatible script-or-audio models. Defaults come
   // from the canonical Sarah direction profile; --flags override per call.
+  // The voice_anchor is prepended to EVERY voice_prompt (base or per-clip
+  // override) so no per-clip emotional direction — however low or dry — can
+  // flip her perceived gender. Her gender is locked at the profile layer.
+  const anchor = direction.voice_anchor ? String(direction.voice_anchor).trim() : ''
+  const rawVoicePrompt = flag(
+    'voice-prompt',
+    direction.voice_prompt ||
+      'Warm, confident, friendly, upbeat — speaking with a genuine smile.',
+  )
   const body = {
     image,
     voice: flag('voice', direction.voice || 'Zephyr (Female)'),
     voice_language: flag('voice-language', direction.voice_language || 'English (US)'),
-    voice_prompt: flag(
-      'voice-prompt',
-      direction.voice_prompt ||
-        'Warm, confident, friendly, upbeat — speaking with a genuine smile.',
-    ),
+    voice_prompt:
+      anchor && !rawVoicePrompt.startsWith(anchor)
+        ? `${anchor} ${rawVoicePrompt}`
+        : rawVoicePrompt,
     video_prompt: flag(
       'video-prompt',
       direction.video_prompt ||
