@@ -2,9 +2,11 @@ import { describe, expect, test } from 'vite-plus/test'
 import {
   chmodSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -24,6 +26,8 @@ import {
   harnessExecEnv,
   harnessStagedChangeAdmission,
   parseHarnessUsageReceipt,
+  prepareClaudeWorkspaceTraversal,
+  restoreClaudeWorkspaceTraversal,
   runHarnessTurn,
   runVerificationCommand,
   scanStagedDiffForCredentialMaterial,
@@ -385,6 +389,60 @@ describe('Agent Computer seven-harness runtime (#9193)', () => {
       IS_SANDBOX: '1',
       PATH: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
     })
+  })
+
+  test('Claude gets temporary execute-only traversal to its cached workspace', () => {
+    const fixtureRoot = mkdtempSync(join(tmpdir(), 'openagents-claude-traversal-'))
+    const cacheRoot = join(fixtureRoot, 'private', 'turns')
+    const workingDirectory = join(cacheRoot, 'turn-1', 'repo')
+    mkdirSync(workingDirectory, { recursive: true })
+    chmodSync(fixtureRoot, 0o700)
+    chmodSync(join(fixtureRoot, 'private'), 0o700)
+    chmodSync(cacheRoot, 0o700)
+    const originalModes = new Map(
+      [fixtureRoot, join(fixtureRoot, 'private'), cacheRoot].map(path => [
+        path,
+        statSync(path).mode & 0o777,
+      ]),
+    )
+
+    try {
+      const changed = prepareClaudeWorkspaceTraversal(
+        workingDirectory,
+        cacheRoot,
+        fixtureRoot,
+      )
+      for (const path of originalModes.keys()) {
+        const mode = statSync(path).mode & 0o777
+        expect(mode & 0o001).toBe(0o001)
+        expect(mode & 0o006).toBe(0)
+      }
+      restoreClaudeWorkspaceTraversal(changed)
+      for (const [path, mode] of originalModes) {
+        expect(statSync(path).mode & 0o777).toBe(mode)
+      }
+    } finally {
+      rmSync(fixtureRoot, { force: true, recursive: true })
+    }
+  })
+
+  test('Claude traversal rejects a workspace outside the configured cache root', () => {
+    const fixtureRoot = mkdtempSync(join(tmpdir(), 'openagents-claude-boundary-'))
+    const cacheRoot = join(fixtureRoot, 'cache')
+    const outsideWorkspace = join(fixtureRoot, 'outside')
+    mkdirSync(cacheRoot)
+    mkdirSync(outsideWorkspace)
+    try {
+      expect(() =>
+        prepareClaudeWorkspaceTraversal(
+          outsideWorkspace,
+          cacheRoot,
+          fixtureRoot,
+        ),
+      ).toThrow('claude.workspace_outside_cache_root')
+    } finally {
+      rmSync(fixtureRoot, { force: true, recursive: true })
+    }
   })
 
   test.each([

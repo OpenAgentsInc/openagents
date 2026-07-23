@@ -51,13 +51,16 @@
 import { mkdir, writeFile, readdir } from 'node:fs/promises'
 import { execFileSync, spawnSync } from 'node:child_process'
 import {
+  chmodSync,
   chownSync,
   existsSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
+  statSync,
 } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import {
   materializeGitCheckoutWorkspace,
@@ -73,6 +76,74 @@ let activeFailureDiagnostic: {
   stderrDigest?: string
 } | null = null
 const CACHE_ROOT = process.env.OA_CACHE_ROOT ?? '/root/.agent-computer/turns'
+
+export type ClaudeWorkspaceTraversalPermission = Readonly<{
+  mode: number
+  path: string
+}>
+
+export const prepareClaudeWorkspaceTraversal = (
+  workingDirectory: string,
+  cacheRoot = CACHE_ROOT,
+  traversalBoundary = join(
+    sep,
+    relative(sep, resolve(cacheRoot)).split(sep)[0] ?? '',
+  ),
+): ReadonlyArray<ClaudeWorkspaceTraversalPermission> => {
+  const resolvedCacheRoot = realpathSync(resolve(cacheRoot))
+  const resolvedWorkingDirectory = realpathSync(resolve(workingDirectory))
+  const resolvedTraversalBoundary = realpathSync(resolve(traversalBoundary))
+  const cacheRelativeToBoundary = relative(
+    resolvedTraversalBoundary,
+    resolvedCacheRoot,
+  )
+  const workspaceRelativePath = relative(
+    resolvedCacheRoot,
+    resolvedWorkingDirectory,
+  )
+  if (
+    cacheRelativeToBoundary === '..' ||
+    cacheRelativeToBoundary.startsWith(`..${sep}`) ||
+    isAbsolute(cacheRelativeToBoundary) ||
+    workspaceRelativePath === '..' ||
+    workspaceRelativePath.startsWith(`..${sep}`) ||
+    isAbsolute(workspaceRelativePath)
+  ) {
+    throw new Error('claude.workspace_outside_cache_root')
+  }
+
+  const ancestorPaths: Array<string> = []
+  let currentPath = dirname(resolvedWorkingDirectory)
+  while (true) {
+    ancestorPaths.push(currentPath)
+    if (currentPath === resolvedTraversalBoundary) break
+    currentPath = dirname(currentPath)
+  }
+
+  const changedPermissions: Array<ClaudeWorkspaceTraversalPermission> = []
+  try {
+    for (const ancestorPath of ancestorPaths.reverse()) {
+      const mode = statSync(ancestorPath).mode & 0o7777
+      if ((mode & 0o001) !== 0) continue
+      chmodSync(ancestorPath, mode | 0o001)
+      changedPermissions.push({ mode, path: ancestorPath })
+    }
+    return changedPermissions
+  } catch (error) {
+    for (const permission of changedPermissions.reverse()) {
+      chmodSync(permission.path, permission.mode)
+    }
+    throw error
+  }
+}
+
+export const restoreClaudeWorkspaceTraversal = (
+  changedPermissions: ReadonlyArray<ClaudeWorkspaceTraversalPermission>,
+): void => {
+  for (const permission of [...changedPermissions].reverse()) {
+    chmodSync(permission.path, permission.mode)
+  }
+}
 
 // The exact ingest contract this runtime posts to. Canonical source of truth:
 // `apps/openagents.com/workers/api/src/khala-cloud-runtime-usage-routes.ts`
@@ -1830,17 +1901,33 @@ export const runHarnessTurn = async (
     args.config.harness === 'grok' && deps.execRun === undefined
   const claudeUid = 65_534
   let claudeHome: string | undefined
+  let claudeTraversalPermissions: ReadonlyArray<ClaudeWorkspaceTraversalPermission> = []
   let grokHome: string | undefined
   let result: ReturnType<HarnessExecRun>
   if (runClaudeAsNonRoot) {
     claudeHome = mkdtempSync('/tmp/openagents-claude-harness-')
     chownSync(claudeHome, claudeUid, claudeUid)
+    try {
+      claudeTraversalPermissions = prepareClaudeWorkspaceTraversal(
+        args.workingDirectory,
+      )
+    } catch {
+      rmSync(claudeHome, { force: true, recursive: true })
+      return {
+        exitCode: null,
+        failureClass: 'configuration_invalid',
+        harness: args.config.harness,
+        ok: false,
+        reasonRef: 'harness.exec_failed',
+      }
+    }
     const prepared = spawnSync('/bin/chown', [
       '-R',
       `${claudeUid}:${claudeUid}`,
       args.workingDirectory,
     ])
     if (prepared.status !== 0) {
+      restoreClaudeWorkspaceTraversal(claudeTraversalPermissions)
       rmSync(claudeHome, { force: true, recursive: true })
       return {
         exitCode: prepared.status,
@@ -1878,6 +1965,7 @@ export const runHarnessTurn = async (
   } finally {
     if (runClaudeAsNonRoot) {
       spawnSync('/bin/chown', ['-R', '0:0', args.workingDirectory])
+      restoreClaudeWorkspaceTraversal(claudeTraversalPermissions)
       if (claudeHome !== undefined) {
         rmSync(claudeHome, { force: true, recursive: true })
       }
