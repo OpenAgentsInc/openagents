@@ -106,6 +106,10 @@ type ProviderAccountRouteDependencies<Bindings = OpenAgentsEnv> = Readonly<{
     request: Request,
     env: Bindings,
   ) => RouteEffect
+  handlePylonProviderGoogleGeminiAuthMaterialApi: (
+    request: Request,
+    env: Bindings,
+  ) => RouteEffect
   handlePylonProviderLocalCodexAuthImportApi: (
     request: Request,
     env: Bindings,
@@ -243,6 +247,15 @@ export const makeProviderAccountRoutes = <Bindings = OpenAgentsEnv>(
     ) {
       return routeEffectOrResponse(
         dependencies.handlePylonProviderClaudeAuthMaterialApi(request, env),
+      )
+    }
+
+    if (
+      url.pathname ===
+      '/api/pylon/provider-accounts/google-gemini/auth-material'
+    ) {
+      return routeEffectOrResponse(
+        dependencies.handlePylonProviderGoogleGeminiAuthMaterialApi(request, env),
       )
     }
 

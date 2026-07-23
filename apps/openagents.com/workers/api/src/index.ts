@@ -8008,6 +8008,7 @@ const providerAccountPylonHandlers =
         providerAccountRef,
       ),
     readConnectedCodexAuthMaterial: readConnectedCodexAuthMaterialForWorkerEnv,
+    readGoogleGeminiSecretMaterial: env => env.GEMINI_API_KEY,
     readStartedCodexDeviceLogin,
     storeConnectedClaudeAuth: storeConnectedClaudeAuthForWorkerEnv,
     storeConnectedCodexAuth,
@@ -8268,6 +8269,13 @@ const providerAccountRoutes = makeProviderAccountRoutes({
   handlePylonProviderClaudeAuthMaterialApi: (request, env) =>
     routeEffect('handle_pylon_provider_claude_auth_material_api', () =>
       providerAccountPylonHandlers.handlePylonProviderClaudeAuthMaterialApi(
+        request,
+        env,
+      ),
+    ),
+  handlePylonProviderGoogleGeminiAuthMaterialApi: (request, env) =>
+    routeEffect('handle_pylon_provider_google_gemini_auth_material_api', () =>
+      providerAccountPylonHandlers.handlePylonProviderGoogleGeminiAuthMaterialApi(
         request,
         env,
       ),

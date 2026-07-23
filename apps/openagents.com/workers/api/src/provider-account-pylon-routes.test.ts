@@ -236,6 +236,33 @@ const makeAccount = (
   ...overrides,
 })
 
+const makeGeminiGrant = (
+  overrides: Partial<ProviderAccountAuthGrantRecord> = {},
+): ProviderAccountAuthGrantRecord => ({
+  id: 'provider_grant_gemini_owner',
+  providerAccountId: 'provider_account_gemini_owner',
+  userId: 'openauth-user-owner',
+  teamId: null,
+  threadId: 'thread.agent_computer.test',
+  workroomId: 'workroom.agent_computer.test',
+  runnerSessionId: 'turn.agent_computer.gemini.test',
+  provider: 'google_gemini',
+  providerAccountRef: 'provider_account_gemini_owner',
+  providerSecretRef:
+    'provider-account://google-gemini/worker-secret/GEMINI_API_KEY',
+  grantRef: 'provider-auth-grant_gemini_owner',
+  status: 'issued',
+  requestedAction: 'agent_computer_gemini_turn',
+  metadataJson: '{}',
+  createdAt: '2026-07-23T12:00:00.000Z',
+  updatedAt: '2026-07-23T12:00:00.000Z',
+  expiresAt: '2099-07-23T12:05:00.000Z',
+  usedAt: null,
+  revokedAt: null,
+  failedAt: null,
+  ...overrides,
+})
+
 const linkedSession = (
   tokenHash: string,
   openauthUserId: string | null,
@@ -284,6 +311,52 @@ const agentStoreFor = (
     updateAgentDisplayName: () => Promise.resolve(0),
   }
 }
+
+const makeGeminiMaterialHandlers = (input: {
+  token: string
+  repository: MemoryProviderAccountRepository
+  ownerUserId?: string | null
+  readSecret?: () => string | undefined
+}) =>
+  makeProviderAccountPylonHandlers({
+    agentStore: () =>
+      agentStoreFor(input.token, input.ownerUserId ?? 'openauth-user-owner'),
+    deleteStartedCodexDeviceLogin: () => () => Promise.resolve(),
+    makeProviderAccountRepository: () => input.repository,
+    providerGrantRepository: () => input.repository,
+    readConnectedCodexAuthMaterial: () => Promise.resolve(undefined),
+    readGoogleGeminiSecretMaterial:
+      input.readSecret ?? (() => 'gemini-secret-value'),
+    readStartedCodexDeviceLogin: () => () => Promise.resolve(undefined),
+    storeConnectedCodexAuth: () => () => Promise.resolve('codex-auth://unused'),
+    storeStartedCodexDeviceLogin: () => () => Promise.resolve(),
+  })
+
+const geminiMaterialRequest = (
+  token: string | undefined,
+  overrides: Record<string, unknown> = {},
+): Request =>
+  new Request(
+    'https://openagents.com/api/pylon/provider-accounts/google-gemini/auth-material',
+    {
+      method: 'POST',
+      headers: {
+        ...(token === undefined
+          ? {}
+          : { authorization: `Bearer ${token}` }),
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        grantRef: 'provider-auth-grant_gemini_owner',
+        kind: 'gemini_api_key',
+        providerAccountRef: 'provider_account_gemini_owner',
+        runnerSessionId: 'turn.agent_computer.gemini.test',
+        secretRef:
+          'provider-account://google-gemini/worker-secret/GEMINI_API_KEY',
+        ...overrides,
+      }),
+    },
+  )
 
 describe('provider account Pylon device-login routes', () => {
   test('starts and completes Codex device login under the linked OpenAuth owner', async () => {
@@ -593,6 +666,224 @@ describe('provider account Pylon device-login routes', () => {
     ])
     expect(body.authMaterial.authContentEnv).toBe('CLAUDE_CODE_OAUTH_TOKEN')
     expect(body.authMaterial.authContentValue).toBe('sk-ant-oat-claude-secret')
+  })
+
+  test('materializes Gemini secret once for the exact owner and turn grant', async () => {
+    const token = 'oa_agent_gemini_material_token'
+    const repository = new MemoryProviderAccountRepository()
+    repository.grants.push(makeGeminiGrant())
+    let secretReads = 0
+    const handlers = makeGeminiMaterialHandlers({
+      token,
+      repository,
+      readSecret: () => {
+        secretReads += 1
+        return 'gemini-secret-value'
+      },
+    })
+
+    const response =
+      await handlers.handlePylonProviderGoogleGeminiAuthMaterialApi(
+        geminiMaterialRequest(token),
+        env(),
+      )
+    const body = (await response.json()) as Record<string, unknown>
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('cache-control')).toBe('no-store')
+    expect(body).toEqual({
+      schemaVersion: 'openagents.provider_secret_material.v1',
+      grantRef: 'provider-auth-grant_gemini_owner',
+      providerAccountRef: 'provider_account_gemini_owner',
+      runnerSessionId: 'turn.agent_computer.gemini.test',
+      secretRef:
+        'provider-account://google-gemini/worker-secret/GEMINI_API_KEY',
+      secretValue: 'gemini-secret-value',
+    })
+    expect(secretReads).toBe(1)
+    expect(repository.grants[0]?.status).toBe('used')
+    expect(repository.grants[0]?.usedAt).not.toBeNull()
+  })
+
+  test.each([
+    [
+      'owner',
+      makeGeminiGrant({ userId: 'openauth-user-other' }),
+      {},
+    ],
+    [
+      'turn',
+      makeGeminiGrant(),
+      { runnerSessionId: 'turn.agent_computer.gemini.other' },
+    ],
+    [
+      'grant',
+      makeGeminiGrant(),
+      { grantRef: 'provider-auth-grant_gemini_other' },
+    ],
+    [
+      'account',
+      makeGeminiGrant(),
+      { providerAccountRef: 'provider_account_gemini_other' },
+    ],
+    [
+      'secret',
+      makeGeminiGrant(),
+      {
+        secretRef:
+          'provider-account://google-gemini/worker-secret/OTHER_SECRET',
+      },
+    ],
+    [
+      'action',
+      makeGeminiGrant({ requestedAction: 'probe_gemini_turn' }),
+      {},
+    ],
+    ['kind', makeGeminiGrant(), { kind: 'probe_gemini_api_key' }],
+  ])(
+    'refuses Gemini material when the %s scope does not match',
+    async (_scope, grant, overrides) => {
+      const token = `oa_agent_gemini_wrong_${_scope}_token`
+      const repository = new MemoryProviderAccountRepository()
+      repository.grants.push(grant)
+      let secretReads = 0
+      const handlers = makeGeminiMaterialHandlers({
+        token,
+        repository,
+        readSecret: () => {
+          secretReads += 1
+          return 'gemini-secret-value'
+        },
+      })
+
+      const response =
+        await handlers.handlePylonProviderGoogleGeminiAuthMaterialApi(
+          geminiMaterialRequest(token, overrides),
+          env(),
+        )
+      const body = (await response.json()) as { error: string }
+
+      expect(response.status).toBe(409)
+      expect(response.headers.get('cache-control')).toBe('no-store')
+      expect(body.error).toBe('provider_secret_material_scope_mismatch')
+      expect(JSON.stringify(body)).not.toContain('gemini-secret-value')
+      expect(secretReads).toBe(0)
+      expect(repository.grants[0]?.status).toBe('issued')
+    },
+  )
+
+  test('rejects a Gemini material request with a missing scope field', async () => {
+    const token = 'oa_agent_gemini_missing_scope_token'
+    const repository = new MemoryProviderAccountRepository()
+    repository.grants.push(makeGeminiGrant())
+    let secretReads = 0
+    const handlers = makeGeminiMaterialHandlers({
+      token,
+      repository,
+      readSecret: () => {
+        secretReads += 1
+        return 'gemini-secret-value'
+      },
+    })
+
+    const response =
+      await handlers.handlePylonProviderGoogleGeminiAuthMaterialApi(
+        geminiMaterialRequest(token, { runnerSessionId: null }),
+        env(),
+      )
+    const body = (await response.json()) as { error: string }
+
+    expect(response.status).toBe(400)
+    expect(response.headers.get('cache-control')).toBe('no-store')
+    expect(body.error).toBe('provider_secret_material_request_invalid')
+    expect(secretReads).toBe(0)
+    expect(repository.grants[0]?.status).toBe('issued')
+  })
+
+  test('fails closed when Gemini secret material is missing', async () => {
+    const token = 'oa_agent_gemini_missing_material_token'
+    const repository = new MemoryProviderAccountRepository()
+    repository.grants.push(makeGeminiGrant())
+    const handlers = makeGeminiMaterialHandlers({
+      token,
+      repository,
+      readSecret: () => undefined,
+    })
+
+    const response =
+      await handlers.handlePylonProviderGoogleGeminiAuthMaterialApi(
+        geminiMaterialRequest(token),
+        env(),
+      )
+    const body = (await response.json()) as { error: string }
+
+    expect(response.status).toBe(409)
+    expect(body.error).toBe('provider_secret_material_unavailable')
+    expect(repository.grants[0]?.status).toBe('issued')
+  })
+
+  test('rejects replay after one Gemini material response', async () => {
+    const token = 'oa_agent_gemini_replay_token'
+    const repository = new MemoryProviderAccountRepository()
+    repository.grants.push(makeGeminiGrant())
+    const handlers = makeGeminiMaterialHandlers({ token, repository })
+
+    const first =
+      await handlers.handlePylonProviderGoogleGeminiAuthMaterialApi(
+        geminiMaterialRequest(token),
+        env(),
+      )
+    const replay =
+      await handlers.handlePylonProviderGoogleGeminiAuthMaterialApi(
+        geminiMaterialRequest(token),
+        env(),
+      )
+    const replayBody = (await replay.json()) as { error: string }
+
+    expect(first.status).toBe(200)
+    expect(replay.status).toBe(409)
+    expect(replayBody.error).toBe('provider_secret_material_unavailable')
+    expect(JSON.stringify(replayBody)).not.toContain('gemini-secret-value')
+  })
+
+  test('rejects an expired Gemini grant without returning secret material', async () => {
+    const token = 'oa_agent_gemini_expired_token'
+    const repository = new MemoryProviderAccountRepository()
+    repository.grants.push(
+      makeGeminiGrant({ expiresAt: '2020-07-23T12:05:00.000Z' }),
+    )
+    const handlers = makeGeminiMaterialHandlers({ token, repository })
+
+    const response =
+      await handlers.handlePylonProviderGoogleGeminiAuthMaterialApi(
+        geminiMaterialRequest(token),
+        env(),
+      )
+    const body = (await response.json()) as { error: string }
+
+    expect(response.status).toBe(409)
+    expect(body.error).toBe('provider_secret_material_unavailable')
+    expect(JSON.stringify(body)).not.toContain('gemini-secret-value')
+    expect(repository.grants[0]?.status).toBe('issued')
+  })
+
+  test('requires an Agent Computer bearer header for Gemini material', async () => {
+    const token = 'oa_agent_gemini_header_token'
+    const repository = new MemoryProviderAccountRepository()
+    repository.grants.push(makeGeminiGrant())
+    const handlers = makeGeminiMaterialHandlers({ token, repository })
+
+    const response =
+      await handlers.handlePylonProviderGoogleGeminiAuthMaterialApi(
+        geminiMaterialRequest(undefined),
+        env(),
+      )
+    const body = (await response.json()) as { error: string }
+
+    expect(response.status).toBe(401)
+    expect(response.headers.get('cache-control')).toBe('no-store')
+    expect(body.error).toBe('unauthorized')
+    expect(repository.grants[0]?.status).toBe('issued')
   })
 
   test('refuses Claude auth material for an account not owned by the linked user', async () => {

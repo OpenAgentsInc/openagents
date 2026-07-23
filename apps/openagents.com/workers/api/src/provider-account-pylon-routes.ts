@@ -24,6 +24,7 @@ import {
   type StoreConnectedClaudeAuth,
   type StoreConnectedCodexAuth,
   type StoreStartedCodexDeviceLogin,
+  GOOGLE_GEMINI_PROVIDER,
   connectChatGptCodexLocalAuthForUser,
   connectClaudeLocalAuthForUser,
   makeD1ProviderAccountRepository,
@@ -47,6 +48,7 @@ type HttpResponse = globalThis.Response
 
 type ProviderAccountPylonBindings = Readonly<{
   AUTH_KV?: AuthKvStore | undefined
+  GEMINI_API_KEY?: string | undefined
   KHALA_SYNC_DB?: Readonly<{ connectionString: string }> | undefined
   OPENAGENTS_DB: D1Database
   PROVIDER_TOKEN_CUSTODY_AES_KEY_B64?: string | undefined
@@ -84,6 +86,9 @@ type ProviderAccountPylonDependencies<
     ownerUserId: string,
     providerAccountRef: string,
   ) => Promise<ConnectedClaudeAuthMaterial | undefined>
+  readGoogleGeminiSecretMaterial?: (
+    bindings: Bindings,
+  ) => string | undefined
   readStartedCodexDeviceLogin: (kv: AuthKvStore) => ReadStartedCodexDeviceLogin
   startDeviceLogin?: StartCodexDeviceLogin
   storeConnectedCodexAuth: (env: Bindings) => StoreConnectedCodexAuth
@@ -177,6 +182,9 @@ const optionalSecretString = (
     ? value
     : undefined
 }
+
+const GOOGLE_GEMINI_SECRET_MATERIAL_KIND = 'gemini_api_key'
+const GOOGLE_GEMINI_TURN_ACTION = 'agent_computer_gemini_turn'
 
 /** CX-5 (#8549): Claude's single-string bearer analogue of `requiredSecretString`. */
 const requiredClaudeAuthContentValue = (
@@ -518,6 +526,152 @@ export const makeProviderAccountPylonHandlers = <
       return noStoreJsonResponse(
         {
           error: 'provider_account_auth_material_unavailable',
+          message: providerAccountRouteErrorMessage(error),
+        },
+        { status: providerAccountRouteErrorStatus(error, 409) },
+      )
+    }
+  },
+
+  handlePylonProviderGoogleGeminiAuthMaterialApi: async (
+    request: Request,
+    env: Bindings,
+  ) => {
+    if (request.method !== 'POST') {
+      return methodNotAllowed(['POST'])
+    }
+
+    const session = await requireAgent(dependencies, request, env)
+    if (session === undefined) {
+      return noStoreJsonResponse({ error: 'unauthorized' }, { status: 401 })
+    }
+
+    const userId = linkedOpenAuthOwnerUserId(session)
+    if (userId === undefined) {
+      return pylonAgentNotLinkedResponse()
+    }
+
+    const body = await readJsonObject(request).catch(
+      (): Record<string, unknown> => ({}),
+    )
+    const grantRef = optionalString(body.grantRef)
+    const kind = optionalString(body.kind)
+    const providerAccountRef = optionalString(body.providerAccountRef)
+    const runnerSessionId = optionalString(body.runnerSessionId)
+    const secretRef = optionalString(body.secretRef)
+
+    if (
+      grantRef === undefined ||
+      kind === undefined ||
+      providerAccountRef === undefined ||
+      runnerSessionId === undefined ||
+      secretRef === undefined
+    ) {
+      return noStoreJsonResponse(
+        {
+          error: 'provider_secret_material_request_invalid',
+          message:
+            'The Gemini secret-material request must include all required scope references.',
+        },
+        { status: 400 },
+      )
+    }
+
+    if (kind !== GOOGLE_GEMINI_SECRET_MATERIAL_KIND) {
+      return noStoreJsonResponse(
+        {
+          error: 'provider_secret_material_scope_mismatch',
+          message: 'The Gemini secret-material request scope does not match.',
+        },
+        { status: 409 },
+      )
+    }
+
+    try {
+      const grantRepository =
+        dependencies.providerGrantRepository?.(env) ??
+        routeProviderAccountRepository(dependencies, env)
+      const candidateGrant = await grantRepository.findGrantByRef(grantRef)
+
+      if (
+        candidateGrant === undefined ||
+        candidateGrant.userId !== userId ||
+        candidateGrant.provider !== GOOGLE_GEMINI_PROVIDER ||
+        candidateGrant.providerAccountRef !== providerAccountRef ||
+        candidateGrant.providerSecretRef !== secretRef ||
+        candidateGrant.runnerSessionId !== runnerSessionId ||
+        candidateGrant.requestedAction !== GOOGLE_GEMINI_TURN_ACTION
+      ) {
+        return noStoreJsonResponse(
+          {
+            error: 'provider_secret_material_scope_mismatch',
+            message: 'The Gemini secret-material request scope does not match.',
+          },
+          { status: 409 },
+        )
+      }
+
+      const secretValue =
+        dependencies.readGoogleGeminiSecretMaterial?.(env)?.trim()
+      if (secretValue === undefined || secretValue === '') {
+        return noStoreJsonResponse(
+          {
+            error: 'provider_secret_material_unavailable',
+            message: 'Gemini secret material is unavailable.',
+          },
+          { status: 409 },
+        )
+      }
+
+      const resolvedGrant = await observedPromise(
+        'ProviderAccountPylon.resolveGoogleGeminiGrantForMaterialization',
+        () =>
+          resolveProviderAccountGrant(grantRepository, {
+            actorId: session.credential.id,
+            grantRef,
+            providerAccountRef,
+            runnerSessionId,
+          }),
+      )
+
+      if (
+        resolvedGrant === undefined ||
+        resolvedGrant.ownerUserId !== userId ||
+        resolvedGrant.provider !== GOOGLE_GEMINI_PROVIDER ||
+        resolvedGrant.providerAccountRef !== providerAccountRef ||
+        resolvedGrant.providerSecretRef !== secretRef ||
+        resolvedGrant.runnerSessionId !== runnerSessionId ||
+        resolvedGrant.requestedAction !== GOOGLE_GEMINI_TURN_ACTION
+      ) {
+        return noStoreJsonResponse(
+          {
+            error: 'provider_secret_material_scope_mismatch',
+            message: 'The Gemini secret-material request scope does not match.',
+          },
+          { status: 409 },
+        )
+      }
+
+      return noStoreJsonResponse({
+        schemaVersion: 'openagents.provider_secret_material.v1',
+        grantRef,
+        providerAccountRef,
+        runnerSessionId,
+        secretRef,
+        secretValue,
+      })
+    } catch (error) {
+      logWorkerRouteError('pylon_provider_gemini_auth_material_failed', error, {
+        errorName: providerAccountRouteErrorName(error),
+        grantRef,
+        providerAccountRef,
+        runnerSessionId,
+        secretRef,
+      })
+
+      return noStoreJsonResponse(
+        {
+          error: 'provider_secret_material_unavailable',
           message: providerAccountRouteErrorMessage(error),
         },
         { status: providerAccountRouteErrorStatus(error, 409) },

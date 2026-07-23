@@ -480,6 +480,10 @@ describe('provider api key connect route dispatch', () => {
         'pylonClaudeAuthMaterial',
         calls,
       ),
+      handlePylonProviderGoogleGeminiAuthMaterialApi: stub(
+        'pylonGoogleGeminiAuthMaterial',
+        calls,
+      ),
       handlePylonProviderLocalCodexAuthImportApi: stub(
         'pylonLocalCodexAuthImport',
         calls,
@@ -583,6 +587,7 @@ describe('provider api key connect route dispatch', () => {
       '/api/pylon/provider-accounts/chatgpt-codex/device-login/start',
       '/api/pylon/provider-accounts/chatgpt-codex/device-login/provider_attempt_1',
       '/api/pylon/provider-accounts/chatgpt-codex/local-auth/import',
+      '/api/pylon/provider-accounts/google-gemini/auth-material',
     ]) {
       const effect = router.routeProviderAccountRequest(
         new Request(`https://openagents.com${path}`, { method: 'POST' }),
@@ -601,6 +606,7 @@ describe('provider api key connect route dispatch', () => {
       'pylonDeviceStart',
       'pylonDeviceStatus',
       'pylonLocalCodexAuthImport',
+      'pylonGoogleGeminiAuthMaterial',
     ])
   })
 
