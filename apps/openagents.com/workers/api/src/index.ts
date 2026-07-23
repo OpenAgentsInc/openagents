@@ -750,7 +750,7 @@ import {
   applySarahManagedCloudHarnessFallback,
   dispatchCloudGcpRuntimeTurn,
   finalizeManagedCloudProviderLease,
-  hasSarahManagedCloudProviderCapacity,
+  hasAvailableSarahManagedCloudProviderCapacity,
   managedAgentComputerGrantIssueInput,
   makeCloudCodingAdapterLaunchSeam,
   readQueuedManagedCloudTurns,
@@ -6936,12 +6936,18 @@ const probeSarahAgentComputerCapacity = async (
     postgresIdentity.queryRows,
   )
   const githubRepository = makeGitHubWriteRepositoryForEnv(env)
-  const [accounts, githubConnection] = await Promise.all([
+  const providerLeaseService = makeProviderAccountLeaseService({
+    db: openAgentsDatabase(env),
+    mirror: identityAuthMirrorFromEnv(env),
+  })
+  const [accounts, activeLeases, githubConnection] = await Promise.all([
     listProviderAccountsForUser(accountRepository, ownerUserId),
+    providerLeaseService.listActive(ownerUserId, currentIsoTimestamp()),
     githubRepository.findUsableConnectionForUser(ownerUserId),
   ])
-  const ownerProviderReady = hasSarahManagedCloudProviderCapacity(
+  const ownerProviderReady = hasAvailableSarahManagedCloudProviderCapacity(
     accounts.accounts,
+    new Set(activeLeases.map(lease => lease.providerAccountRef)),
   )
   const githubReady =
     githubConnection !== undefined &&

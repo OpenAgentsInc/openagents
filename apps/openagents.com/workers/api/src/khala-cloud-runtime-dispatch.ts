@@ -260,6 +260,28 @@ export const hasSarahManagedCloudProviderCapacity = (
   hasEligibleManagedCloudProvider(accounts, 'google_gemini')
 
 /**
+ * Sarah must not advertise an account that a non-expired provider lease
+ * already reserves. Provider-account projections do not expose per-account
+ * lease limits, so this check is deliberately conservative: one live lease
+ * makes that account unavailable to the autonomous one-turn lane.
+ */
+export const hasAvailableSarahManagedCloudProviderCapacity = (
+  accounts: ReadonlyArray<
+    ManagedCloudProviderAvailability & { providerAccountRef: string }
+  >,
+  activeProviderAccountRefs: ReadonlySet<string>,
+): boolean =>
+  accounts.some(
+    account =>
+      !activeProviderAccountRefs.has(account.providerAccountRef) &&
+      (account.provider === 'chatgpt_codex' ||
+        account.provider === 'google_gemini') &&
+      account.publicStatus === 'connected' &&
+      account.health === 'healthy' &&
+      account.hasSecretRef,
+  )
+
+/**
  * Keep Codex as Sarah's primary harness. Select the brokered Gemini-backed
  * OpenCode harness only when Codex has no usable account and Gemini does.
  * Selection occurs before the atomic turn claim, so the claimed harness cannot

@@ -14,6 +14,7 @@ import {
   applySarahManagedCloudHarnessFallback,
   dispatchCloudGcpRuntimeTurn,
   finalizeManagedCloudProviderLease,
+  hasAvailableSarahManagedCloudProviderCapacity,
   hasSarahManagedCloudProviderCapacity,
   makeCloudCodingAdapterLaunchSeam,
   managedAgentComputerGrantIssueInput,
@@ -137,6 +138,29 @@ describe('Sarah managed cloud harness fallback', () => {
         account('chatgpt_codex', { health: 'requires_reauth' }),
         account('google_gemini', { hasSecretRef: false }),
       ]),
+    ).toBe(false)
+  })
+
+  test('preflight excludes provider accounts with live leases', () => {
+    const codex = {
+      ...account('chatgpt_codex'),
+      providerAccountRef: 'provider-account.codex.owner',
+    }
+    const gemini = {
+      ...account('google_gemini'),
+      providerAccountRef: 'provider-account.gemini.owner',
+    }
+    expect(
+      hasAvailableSarahManagedCloudProviderCapacity(
+        [codex, gemini],
+        new Set([codex.providerAccountRef]),
+      ),
+    ).toBe(true)
+    expect(
+      hasAvailableSarahManagedCloudProviderCapacity(
+        [codex, gemini],
+        new Set([codex.providerAccountRef, gemini.providerAccountRef]),
+      ),
     ).toBe(false)
   })
 
