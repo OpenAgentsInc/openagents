@@ -180,6 +180,75 @@ describe('Sarah bounded agent runtime', () => {
     ).toBe('required')
   })
 
+  test('requires text instead of another tool after an empty post-tool envelope', async () => {
+    const requests: Array<unknown> = []
+    const adapter = adapterFor(
+      [
+        {
+          content: '',
+          finishReason: 'tool_calls',
+          servedModel: 'gemma-4-31b-it',
+          toolCalls: [
+            {
+              function: {
+                arguments: '{}',
+                name: 'inspect_state',
+              },
+              id: 'call.inspect',
+              type: 'function',
+            },
+          ],
+          usage,
+        },
+        {
+          content: '',
+          finishReason: 'STOP',
+          servedModel: 'gemma-4-31b-it',
+          usage,
+        },
+        {
+          content: 'I inspected the current state.',
+          finishReason: 'STOP',
+          servedModel: 'gemma-4-31b-it',
+          usage,
+        },
+      ],
+      requests,
+    )
+
+    const result = await Effect.runPromise(
+      runSarahAgentTurn({
+        adapter,
+        model: 'gemma-4-31b-it',
+        prompt: 'Check current state.',
+        system: 'You are Sarah.',
+        tools: [
+          {
+            definition: {
+              description: 'Inspect the current state.',
+              name: 'inspect_state',
+              parameters: { type: 'object' },
+            },
+            execute: () =>
+              Effect.succeed({
+                authorityReceiptRef: 'receipt.inspect',
+                content: 'State inspected.',
+                resultRefs: ['result.inspect'],
+                summary: 'State inspected.',
+              }),
+          },
+        ],
+      }),
+    )
+
+    expect(result.text).toBe('I inspected the current state.')
+    expect(result.toolCallCount).toBe(1)
+    expect(
+      (requests[2] as { passthroughParams: { tool_choice: string } })
+        .passthroughParams.tool_choice,
+    ).toBe('none')
+  })
+
   test('executes a tool, emits ordered activity, and composes a final answer', async () => {
     const requests: Array<unknown> = []
     const activity: Array<SarahAgentToolActivity> = []

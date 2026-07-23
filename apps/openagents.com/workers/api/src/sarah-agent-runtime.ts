@@ -146,7 +146,7 @@ export const runSarahAgentTurn = (
     for (let round = 0; round <= SARAH_AGENT_MAX_TOOL_ROUNDS; round += 1) {
       const advertiseTools =
         toolDefinitions.length > 0 && round < SARAH_AGENT_MAX_TOOL_ROUNDS
-      let retryEmptyReplyWithRequiredTool = false
+      let retryEmptyReply = false
       const completion = yield* Effect.suspend(() =>
         input.adapter.complete({
           messages,
@@ -156,8 +156,10 @@ export const runSarahAgentTurn = (
             temperature: 0.3,
             ...(advertiseTools
               ? {
-                  tool_choice: retryEmptyReplyWithRequiredTool
-                    ? 'required'
+                  tool_choice: retryEmptyReply
+                    ? toolCallCount === 0
+                      ? 'required'
+                      : 'none'
                     : 'auto',
                   tools: toolDefinitions,
                 }
@@ -169,7 +171,7 @@ export const runSarahAgentTurn = (
         Effect.flatMap(result => {
           const hasToolCalls = (result.toolCalls?.length ?? 0) > 0
           if (result.content.trim() === '' && !hasToolCalls) {
-            retryEmptyReplyWithRequiredTool = advertiseTools
+            retryEmptyReply = advertiseTools
             return Effect.fail(new SarahAgentEmptyReplyError())
           }
           return Effect.succeed(result)
