@@ -155,6 +155,8 @@ describe('Agent Computer seven-harness runtime (#9193)', () => {
       'google',
       '--model',
       AGENT_COMPUTER_DEFAULT_GEMINI_MODEL,
+      '--thinking',
+      'low',
       'make the change',
     ])
     expect(harnessExecArgs({
@@ -323,6 +325,9 @@ describe('Agent Computer seven-harness runtime (#9193)', () => {
       expect(Object.values(env ?? {})).toContain(secret)
       if (harness === 'goose') {
         expect(env?.GOOSE_MODEL).toBe(AGENT_COMPUTER_DEFAULT_GEMINI_MODEL)
+        expect(env?.GOOSE_MODE).toBe('auto')
+        expect(env?.GOOSE_MAX_TURNS).toBe('10')
+        expect(env?.GEMINI3_THINKING_LEVEL).toBe('low')
       } else {
         expect(JSON.stringify(args)).toContain(AGENT_COMPUTER_DEFAULT_GEMINI_MODEL)
       }
@@ -333,8 +338,11 @@ describe('Agent Computer seven-harness runtime (#9193)', () => {
           : harness === 'opencode'
             ? ['GOOGLE_GENERATIVE_AI_API_KEY', 'HOME', 'PATH']
             : [
+                'GEMINI3_THINKING_LEVEL',
                 'GOOGLE_API_KEY',
                 'GOOSE_DISABLE_KEYRING',
+                'GOOSE_MAX_TURNS',
+                'GOOSE_MODE',
                 'GOOSE_MODEL',
                 'GOOSE_PROVIDER',
                 'HOME',

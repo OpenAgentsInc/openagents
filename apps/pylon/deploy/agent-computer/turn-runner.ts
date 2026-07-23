@@ -1241,6 +1241,8 @@ export const harnessExecArgs = (input: {
         'google',
         '--model',
         model,
+        '--thinking',
+        'low',
         input.prompt,
       ]
     case 'opencode':
@@ -1384,6 +1386,9 @@ export const harnessExecEnv = (input: {
               GOOSE_MODEL: input.model ?? AGENT_COMPUTER_DEFAULT_GEMINI_MODEL,
               GOOSE_PROVIDER: 'google',
               GOOSE_DISABLE_KEYRING: 'true',
+              GOOSE_MODE: 'auto',
+              GOOSE_MAX_TURNS: '10',
+              GEMINI3_THINKING_LEVEL: 'low',
             }),
     }
   }
