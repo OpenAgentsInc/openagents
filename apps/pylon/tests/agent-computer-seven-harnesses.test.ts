@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vite-plus/test'
 import {
   AGENT_COMPUTER_DEFAULT_GEMINI_MODEL,
+  AGENT_COMPUTER_DEFAULT_GROK_MODEL,
   AGENT_COMPUTER_HARNESS_IDS,
   classifyCodexExecFailure,
   classifyHarnessFailure,
@@ -181,6 +182,8 @@ describe('Agent Computer seven-harness runtime (#9193)', () => {
       '--disable-web-search',
       '--cwd',
       '/workspace',
+      '--model',
+      AGENT_COMPUTER_DEFAULT_GROK_MODEL,
     ])
   })
 

@@ -130,6 +130,7 @@ export const AGENT_COMPUTER_HARNESS_IDS = [
 export type AgentComputerHarnessId = (typeof AGENT_COMPUTER_HARNESS_IDS)[number]
 export type NonCodexHarnessId = Exclude<AgentComputerHarnessId, 'codex'>
 export const AGENT_COMPUTER_DEFAULT_GEMINI_MODEL = 'gemini-3.5-flash'
+export const AGENT_COMPUTER_DEFAULT_GROK_MODEL = 'grok-build-0.1'
 // A cold repository task can spend more than 15 minutes in the harness before
 // the pinned verifier starts. Keep this below the host exec window so the
 // verifier, writeback, and cleanup still have a separate bounded budget.
@@ -1283,7 +1284,7 @@ export const harnessExecArgs = (input: {
         '--no-memory',
         '--disable-web-search',
         '--cwd', input.workingDirectory,
-        ...(input.model === undefined ? [] : ['--model', input.model]),
+        '--model', input.model ?? AGENT_COMPUTER_DEFAULT_GROK_MODEL,
       ]
   }
 }
