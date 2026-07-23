@@ -548,7 +548,10 @@ impl CloudVmProvisioner for LiveFirecrackerProvisioner {
                 "guest_mac": GUEST_MAC,
                 "host_dev_name": net.tap
             }],
-            "machine-config": { "vcpu_count": 2, "mem_size_mib": 2048 },
+            "machine-config": {
+                "vcpu_count": AGENT_COMPUTER_GUEST_VCPU_COUNT,
+                "mem_size_mib": AGENT_COMPUTER_GUEST_MEMORY_MIB
+            },
             "vsock": { "guest_cid": 3, "uds_path": uds_path.to_string_lossy() }
         });
 
@@ -698,6 +701,11 @@ impl CloudVmProvisioner for LiveFirecrackerProvisioner {
 const GUEST_MAC: &str = "06:00:AC:10:00:02";
 /// vsock port the baked guest agent listens on (see `guest-agent.py`).
 const GUEST_AGENT_PORT: u32 = 1024;
+/// A cold OpenAgents checkout plus dependency preparation can exceed the
+/// kernel OOM margin of the former 2 GiB guest. The live host admits one turn
+/// at a time, so reserve half of its 16 GiB RAM for the disposable microVM.
+const AGENT_COMPUTER_GUEST_MEMORY_MIB: u64 = 8 * 1024;
+const AGENT_COMPUTER_GUEST_VCPU_COUNT: u64 = 4;
 /// Bound the in-guest exec so a stuck turn cannot hang the host session.
 // A cold OpenAgents checkout, harness turn, dependency preparation, and pinned
 // verification can exceed five minutes. Keep the guest window below the
@@ -1190,6 +1198,20 @@ pub struct CloudVmSessionFailure {
     pub reason_ref: String,
 }
 
+fn public_exec_failure_reason(error: &CloudVmError) -> &'static str {
+    let detail = error.message().to_ascii_lowercase();
+    if detail.contains("timed out") || detail.contains("timeout") {
+        "cloud_vm.exec_timeout"
+    } else if detail.contains("vsock stream closed")
+        || detail.contains("connection reset")
+        || detail.contains("broken pipe")
+    {
+        "cloud_vm.guest_agent_disconnected"
+    } else {
+        "cloud_vm.exec_failed"
+    }
+}
+
 /// The public-safe outcome of a full Cloud-VM session. Refs-only + a host dir
 /// the artifacts were extracted into. This is what the HTTP route returns to the
 /// qa-runner; it maps onto the seam's provision -> exec -> copyOut -> teardown.
@@ -1269,10 +1291,10 @@ pub fn run_cloud_vm_session(
             });
         }
         Some((command, args)) => match provisioner.exec(&vm, command, args) {
-            Err(_) => {
+            Err(error) => {
                 session_failure = Some(CloudVmSessionFailure {
                     stage: "exec".to_string(),
-                    reason_ref: "cloud_vm.exec_failed".to_string(),
+                    reason_ref: public_exec_failure_reason(&error).to_string(),
                 });
             }
             Ok(result) => {
@@ -1406,6 +1428,28 @@ mod tests {
     fn guest_exec_window_covers_a_cold_repository_turn() {
         assert_eq!(GUEST_EXEC_TIMEOUT_SECS, 25 * 60);
         assert!(GUEST_EXEC_TIMEOUT_SECS < 35 * 60);
+    }
+
+    #[test]
+    fn guest_machine_has_cold_repository_capacity() {
+        assert_eq!(AGENT_COMPUTER_GUEST_MEMORY_MIB, 8 * 1024);
+        assert_eq!(AGENT_COMPUTER_GUEST_VCPU_COUNT, 4);
+    }
+
+    #[test]
+    fn exec_transport_failures_keep_only_typed_public_reasons() {
+        assert_eq!(
+            public_exec_failure_reason(&CloudVmError::Runtime(
+                "vsock stream closed before a response".to_string(),
+            )),
+            "cloud_vm.guest_agent_disconnected"
+        );
+        assert_eq!(
+            public_exec_failure_reason(&CloudVmError::Runtime(
+                "private path and command detail".to_string(),
+            )),
+            "cloud_vm.exec_failed"
+        );
     }
 
     struct FailingProvisioner {
