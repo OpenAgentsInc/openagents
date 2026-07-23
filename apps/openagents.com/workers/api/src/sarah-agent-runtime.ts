@@ -146,43 +146,51 @@ export const runSarahAgentTurn = (
     for (let round = 0; round <= SARAH_AGENT_MAX_TOOL_ROUNDS; round += 1) {
       const advertiseTools =
         toolDefinitions.length > 0 && round < SARAH_AGENT_MAX_TOOL_ROUNDS
-      const completion = yield* input.adapter
-        .complete({
+      let retryEmptyReplyWithRequiredTool = false
+      const completion = yield* Effect.suspend(() =>
+        input.adapter.complete({
           messages,
           model: input.model,
           passthroughParams: {
             max_tokens: 2_048,
             temperature: 0.3,
             ...(advertiseTools
-              ? { tool_choice: 'auto', tools: toolDefinitions }
+              ? {
+                  tool_choice: retryEmptyReplyWithRequiredTool
+                    ? 'required'
+                    : 'auto',
+                  tools: toolDefinitions,
+                }
               : { tool_choice: 'none' }),
           },
           stream: false,
-        })
-        .pipe(
-          Effect.flatMap(result => {
-            const hasToolCalls = (result.toolCalls?.length ?? 0) > 0
-            return result.content.trim() === '' && !hasToolCalls
-              ? Effect.fail(new SarahAgentEmptyReplyError())
-              : Effect.succeed(result)
-          }),
-          Effect.retry({
-            schedule: Schedule.spaced(
-              Duration.millis(SARAH_AGENT_INFERENCE_RETRY_DELAY_MS),
-            ),
-            times: SARAH_AGENT_INFERENCE_RETRY_COUNT,
-            while: error =>
-              error instanceof SarahAgentEmptyReplyError ||
-              (error instanceof InferenceAdapterError && error.retryable),
-          }),
-          Effect.mapError(error =>
-            runtimeFailure(
-              error instanceof SarahAgentEmptyReplyError
-                ? 'sarah_agent_empty_reply'
-                : error.reason,
-            ),
+        }),
+      ).pipe(
+        Effect.flatMap(result => {
+          const hasToolCalls = (result.toolCalls?.length ?? 0) > 0
+          if (result.content.trim() === '' && !hasToolCalls) {
+            retryEmptyReplyWithRequiredTool = advertiseTools
+            return Effect.fail(new SarahAgentEmptyReplyError())
+          }
+          return Effect.succeed(result)
+        }),
+        Effect.retry({
+          schedule: Schedule.spaced(
+            Duration.millis(SARAH_AGENT_INFERENCE_RETRY_DELAY_MS),
           ),
-        )
+          times: SARAH_AGENT_INFERENCE_RETRY_COUNT,
+          while: error =>
+            error instanceof SarahAgentEmptyReplyError ||
+            (error instanceof InferenceAdapterError && error.retryable),
+        }),
+        Effect.mapError(error =>
+          runtimeFailure(
+            error instanceof SarahAgentEmptyReplyError
+              ? 'sarah_agent_empty_reply'
+              : error.reason,
+          ),
+        ),
+      )
       usage = addUsage(usage, completion.usage)
       servedModel = completion.servedModel
       const requested = completion.toolCalls ?? []
