@@ -1243,6 +1243,10 @@ export const harnessExecArgs = (input: {
         model,
         '--thinking',
         'low',
+        '--system-prompt',
+        'You are a non-interactive coding executor. Use the available tools to complete the requested change in the current workspace. Do not only explain or propose the change.',
+        '--tools',
+        'read,bash,edit,write,grep,find,ls',
         input.prompt,
       ]
     case 'opencode':
