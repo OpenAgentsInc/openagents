@@ -60,6 +60,12 @@ import {
 
 const ARTIFACT_DIR = process.env.OA_ARTIFACT_DIR ?? '/qa/artifacts'
 let activeFailureReasonRef: string | null = null
+let activeFailureDiagnostic: {
+  exitCode: number | null
+  failureClass?: string
+  receiptStatus?: number | null
+  stderrDigest?: string
+} | null = null
 const CACHE_ROOT = process.env.OA_CACHE_ROOT ?? '/root/.agent-computer/turns'
 
 // The exact ingest contract this runtime posts to. Canonical source of truth:
@@ -1640,8 +1646,33 @@ export type CodexExecFailureClass =
 export const classifyCodexExecFailure = (
   stderr: string,
   exitCode: number | null,
+  stdout = '',
 ): CodexExecFailureClass => {
-  const bounded = stderr.slice(0, 32 * 1024).toLowerCase()
+  const failureMessages: string[] = []
+  for (const line of stdout.split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed.startsWith('{')) continue
+    try {
+      const event = JSON.parse(trimmed) as unknown
+      if (event === null || typeof event !== 'object' || Array.isArray(event)) continue
+      const record = event as Record<string, unknown>
+      if (record.type !== 'error' && record.type !== 'turn.failed') continue
+      const nestedError =
+        record.error !== null && typeof record.error === 'object' && !Array.isArray(record.error)
+          ? (record.error as Record<string, unknown>)
+          : null
+      for (const candidate of [
+        record.message,
+        typeof record.error === 'string' ? record.error : undefined,
+        nestedError?.message,
+      ]) {
+        if (typeof candidate === 'string') failureMessages.push(candidate)
+      }
+    } catch {
+      continue
+    }
+  }
+  const bounded = `${stderr.slice(0, 32 * 1024)}\n${failureMessages.join('\n').slice(0, 32 * 1024)}`.toLowerCase()
   if (exitCode === null || /\b(timed out|timeout|sigkill)\b/u.test(bounded)) return 'exec_timeout'
   if (/\b(quota exhausted|usage limit|credits exhausted|account exhausted)\b/u.test(bounded)) return 'account_exhausted'
   if (/\b(rate.?limit|too many requests|retry after)\b/u.test(bounded)) return 'account_rate_limited'
@@ -1723,7 +1754,7 @@ export const runCodexTurnWithReceipt = async (
   if (result.code !== 0) {
     return {
       exitCode: result.code,
-      failureClass: classifyCodexExecFailure(result.stderr, result.code),
+      failureClass: classifyCodexExecFailure(result.stderr, result.code, result.stdout),
       ok: false,
       reasonRef: 'codex.exec_failed',
       stderrDigest: sha256Text(result.stderr.slice(0, 32 * 1024)),
@@ -2385,6 +2416,18 @@ async function main() {
       workingDirectory: ws.workingDirectory,
     })
     if (!codexTurnOutcome.ok) {
+      activeFailureDiagnostic = {
+        exitCode: codexTurnOutcome.exitCode,
+        ...(codexTurnOutcome.failureClass === undefined
+          ? {}
+          : { failureClass: codexTurnOutcome.failureClass }),
+        ...(codexTurnOutcome.stderrDigest === undefined
+          ? {}
+          : { stderrDigest: codexTurnOutcome.stderrDigest }),
+        ...(codexTurnOutcome.receiptStatus === undefined
+          ? {}
+          : { receiptStatus: codexTurnOutcome.receiptStatus }),
+      }
       emit({
         kind: 'tool.result',
         turnId,
@@ -2801,6 +2844,7 @@ if (import.meta.main) {
       JSON.stringify({
         schemaVersion: 'openagents.agent_computer.turn_result.v1',
         failureReasonRef,
+        ...(activeFailureDiagnostic ?? {}),
       }),
     )
     process.stdout.write(`${JSON.stringify(full)}\n`)

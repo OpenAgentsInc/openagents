@@ -32,6 +32,7 @@ import {
   chatCompletionUsage,
   chatCompletionText,
   chatCompletionsRequest,
+  classifyCodexExecFailure,
   classifyPushFailure,
   claudeProviderAuthMaterialRequest,
   codexContinuityResultSummary,
@@ -1011,6 +1012,14 @@ describe('agent-computer turn-runner: codex exec contracts (CX-3 #8547)', () => 
     expect(parseCodexExecJsonl(JSON.stringify({ type: 'error' })).failed).toBe(true)
   })
 
+  test('classifies a provider failure from JSONL without retaining its message', () => {
+    const stdout = JSON.stringify({
+      type: 'error',
+      message: 'You have hit your usage limit. Retry later.',
+    })
+    expect(classifyCodexExecFailure('', 1, stdout)).toBe('account_exhausted')
+  })
+
   test('cached_input_tokens is clamped to input_tokens', () => {
     const parsed = parseCodexExecJsonl(
       JSON.stringify({
@@ -1093,6 +1102,38 @@ describe('agent-computer turn-runner: runCodexTurnWithReceipt (CX-3 #8547)', () 
     )
     expect(outcome.ok).toBe(false)
     if (!outcome.ok) expect(outcome.reasonRef).toBe('codex.binary_missing')
+    expect(calls).toHaveLength(0)
+  })
+
+  test('nonzero JSONL provider error returns a typed public-safe class', async () => {
+    const { calls, fetchImpl } = receiptFetch()
+    const outcome = await runCodexTurnWithReceipt(
+      {
+        codexTurn,
+        providerAuth: materializedCodexAuth,
+        prompt: 'p',
+        threadId: 't',
+        turnId: 'u',
+      },
+      {
+        execRun: () => ({
+          code: 1,
+          stdout: JSON.stringify({
+            type: 'turn.failed',
+            error: { message: 'Too many requests. Retry after 30 seconds.' },
+          }),
+          stderr: '',
+        }),
+        existsImpl: () => true,
+        fetchImpl,
+      },
+    )
+    expect(outcome.ok).toBe(false)
+    if (!outcome.ok) {
+      expect(outcome.reasonRef).toBe('codex.exec_failed')
+      expect(outcome.failureClass).toBe('account_rate_limited')
+      expect(JSON.stringify(outcome)).not.toContain('Too many requests')
+    }
     expect(calls).toHaveLength(0)
   })
 
