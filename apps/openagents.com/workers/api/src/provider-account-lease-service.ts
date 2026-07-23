@@ -271,11 +271,11 @@ export const makeProviderAccountLeaseService = (dependencies: {
            ?,
            ?,
            ?,
-           printf(
-             'Selected connected healthy account with %d active lease(s), priority %d, and no cooldown, reconnect marker, or low-credit flag.',
-             COUNT(active_leases.id),
-             pa.operator_priority
-           ),
+           'Selected connected healthy account with ' ||
+             CAST(COUNT(active_leases.id) AS TEXT) ||
+             ' active lease(s), priority ' ||
+             CAST(pa.operator_priority AS TEXT) ||
+             ', and no cooldown, reconnect marker, or low-credit flag.',
            ?,
            'active',
            ?,
