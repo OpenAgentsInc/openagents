@@ -1,9 +1,10 @@
 import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
-import type {
-  InferenceProviderAdapter,
-  InferenceResult,
+import {
+  InferenceAdapterError,
+  type InferenceProviderAdapter,
+  type InferenceResult,
 } from './inference/provider-adapter'
 import {
   type SarahAgentToolActivity,
@@ -36,6 +37,45 @@ const adapterFor = (
 }
 
 describe('Sarah bounded agent runtime', () => {
+  test('retries one retryable inference failure before any tool can run', async () => {
+    let attempts = 0
+    const adapter: InferenceProviderAdapter = {
+      complete: () =>
+        Effect.suspend(() => {
+          attempts += 1
+          return attempts === 1
+            ? Effect.fail(
+                new InferenceAdapterError({
+                  adapterId: 'fixture.sarah',
+                  reason: 'retryable: transient provider failure',
+                  retryable: true,
+                }),
+              )
+            : Effect.succeed({
+                content: 'The provider recovered.',
+                finishReason: 'STOP',
+                servedModel: 'gemma-4-31b-it',
+                usage,
+              })
+        }),
+      id: 'fixture.sarah',
+      stream: () => Effect.succeed([]),
+    }
+
+    const result = await Effect.runPromise(
+      runSarahAgentTurn({
+        adapter,
+        model: 'gemma-4-31b-it',
+        prompt: 'Check current state.',
+        system: 'You are Sarah.',
+        tools: [],
+      }),
+    )
+
+    expect(attempts).toBe(2)
+    expect(result.text).toBe('The provider recovered.')
+  })
+
   test('executes a tool, emits ordered activity, and composes a final answer', async () => {
     const requests: Array<unknown> = []
     const activity: Array<SarahAgentToolActivity> = []

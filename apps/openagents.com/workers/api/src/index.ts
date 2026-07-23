@@ -1228,7 +1228,10 @@ import {
   isoTimestampAfterIso,
   randomUuid,
 } from './runtime-primitives'
-import { runSarahAgentTurn } from './sarah-agent-runtime'
+import {
+  SarahAgentRuntimeError,
+  runSarahAgentTurn,
+} from './sarah-agent-runtime'
 import { collectSarahBusinessContext } from './sarah-business-context'
 import { sarahGraphMemoryRecallEnabled } from './sarah-graph-memory'
 import { sarahGraphMemoryStoreLayer } from './sarah-graph-memory-store'
@@ -7472,7 +7475,12 @@ const runSarahAutonomousTickDispatchForEnv = async (
         }),
       ).catch(error => {
         logWorkerRouteWarning('sarah_autonomous_tick_agent_failed', {
-          detail: error instanceof Error ? error.message : 'unknown',
+          detail:
+            error instanceof SarahAgentRuntimeError
+              ? error.reason
+              : error instanceof Error
+                ? error.message
+                : 'unknown',
           turnId,
         })
         return null

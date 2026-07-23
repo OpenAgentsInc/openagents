@@ -1,4 +1,4 @@
-import { Effect, Exit, Schema as S } from 'effect'
+import { Duration, Effect, Exit, Schedule, Schema as S } from 'effect'
 
 import type {
   InferenceMessage,
@@ -10,6 +10,8 @@ import { parseJsonUnknown } from './json-boundary'
 
 export const SARAH_AGENT_MAX_TOOL_ROUNDS = 6
 export const SARAH_AGENT_TOOL_RESULT_MAX_CHARS = 8_000
+export const SARAH_AGENT_INFERENCE_RETRY_COUNT = 1
+export const SARAH_AGENT_INFERENCE_RETRY_DELAY_MS = 250
 
 export type SarahAgentToolDefinition = Readonly<{
   name: string
@@ -151,7 +153,16 @@ export const runSarahAgentTurn = (
           },
           stream: false,
         })
-        .pipe(Effect.mapError(error => runtimeFailure(error.reason)))
+        .pipe(
+          Effect.retry({
+            schedule: Schedule.spaced(
+              Duration.millis(SARAH_AGENT_INFERENCE_RETRY_DELAY_MS),
+            ),
+            times: SARAH_AGENT_INFERENCE_RETRY_COUNT,
+            while: error => error.retryable,
+          }),
+          Effect.mapError(error => runtimeFailure(error.reason)),
+        )
       usage = addUsage(usage, completion.usage)
       servedModel = completion.servedModel
       const requested = completion.toolCalls ?? []
