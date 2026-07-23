@@ -1,5 +1,15 @@
 import { describe, expect, test } from 'vite-plus/test'
 import {
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import {
   AGENT_COMPUTER_DEFAULT_GEMINI_MODEL,
   AGENT_COMPUTER_DEFAULT_GROK_MODEL,
   AGENT_COMPUTER_HARNESS_IDS,
@@ -434,6 +444,50 @@ describe('Agent Computer seven-harness runtime (#9193)', () => {
       expect(JSON.stringify(outcome)).not.toContain(secret)
     },
   )
+
+  test('Grok receives an existing private runtime home that is removed after execution', async () => {
+    const fixtureRoot = mkdtempSync(join(tmpdir(), 'openagents-grok-home-test-'))
+    try {
+      const binaryPath = join(fixtureRoot, 'grok-fixture')
+      const observedHomePath = join(fixtureRoot, 'observed-home')
+      writeFileSync(
+        binaryPath,
+        '#!/bin/sh\n[ -d "$HOME" ] && [ "$HOME" = "$GROK_HOME" ] || exit 41\nprintf %s "$HOME" > "$PWD/observed-home"\n',
+      )
+      chmodSync(binaryPath, 0o700)
+      const outcome = await runHarnessTurn(
+        {
+          config: {
+            binaryPath,
+            harness: 'grok',
+            runtimeSecretGrant: { ...runtimeGrant, kind: 'xai_api_key' },
+          },
+          prompt: 'bounded objective',
+          workingDirectory: fixtureRoot,
+        },
+        {
+          fetchImpl: (async () =>
+            Response.json(
+              {
+                grantRef: runtimeGrant.grantRef,
+                providerAccountRef: runtimeGrant.providerAccountRef,
+                runnerSessionId: runtimeGrant.runnerSessionId,
+                schemaVersion: HARNESS_RUNTIME_SECRET_MATERIAL_SCHEMA,
+                secretRef: runtimeGrant.secretRef,
+                secretValue: 'grok-runtime-secret',
+              },
+              { headers: { 'cache-control': 'private, no-store' } },
+            )) as typeof globalThis.fetch,
+        },
+      )
+      expect(outcome).toMatchObject({ exitCode: 0, ok: true })
+      const observedHome = readFileSync(observedHomePath, 'utf8')
+      expect(observedHome).toMatch(/^\/tmp\/openagents-grok-harness-/u)
+      expect(existsSync(observedHome)).toBe(false)
+    } finally {
+      rmSync(fixtureRoot, { force: true, recursive: true })
+    }
+  })
 
   test('Gemini Pi materializes inside the guest and excludes all secret bytes', async () => {
     const observed: Array<Parameters<HarnessExecRun>[0]> = []

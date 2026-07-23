@@ -1826,8 +1826,11 @@ export const runHarnessTurn = async (
   }
   const runClaudeAsNonRoot =
     args.config.harness === 'claude-code' && deps.execRun === undefined
+  const runGrokWithPrivateHome =
+    args.config.harness === 'grok' && deps.execRun === undefined
   const claudeUid = 65_534
   let claudeHome: string | undefined
+  let grokHome: string | undefined
   let result: ReturnType<HarnessExecRun>
   if (runClaudeAsNonRoot) {
     claudeHome = mkdtempSync('/tmp/openagents-claude-harness-')
@@ -1848,6 +1851,9 @@ export const runHarnessTurn = async (
       }
     }
   }
+  if (runGrokWithPrivateHome) {
+    grokHome = mkdtempSync('/tmp/openagents-grok-harness-')
+  }
   try {
     result = (deps.execRun ?? defaultHarnessExecRun)({
       args: harnessExecArgs({
@@ -1858,7 +1864,12 @@ export const runHarnessTurn = async (
       }),
       binaryPath,
       cwd: args.workingDirectory,
-      env: claudeHome === undefined ? env : { ...env, HOME: claudeHome },
+      env:
+        claudeHome !== undefined
+          ? { ...env, HOME: claudeHome }
+          : grokHome !== undefined
+            ? { ...env, GROK_HOME: grokHome, HOME: grokHome }
+            : env,
       ...(runClaudeAsNonRoot ? { gid: claudeUid, uid: claudeUid } : {}),
       timeoutMs:
         (args.config.maxTurnSeconds ?? HARNESS_TURN_DEFAULT_MAX_SECONDS) *
@@ -1870,6 +1881,9 @@ export const runHarnessTurn = async (
       if (claudeHome !== undefined) {
         rmSync(claudeHome, { force: true, recursive: true })
       }
+    }
+    if (grokHome !== undefined) {
+      rmSync(grokHome, { force: true, recursive: true })
     }
   }
   if (result.code !== 0) {
