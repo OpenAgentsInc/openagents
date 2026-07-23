@@ -41824,8 +41824,20 @@
       }
     },
     {
+      "path": "docs/sol/2026-07-23-nostr-first-rust-effect-desktop-analysis.md",
+      "sha256": "25a2a9c53f7c13c1ce77a54fb8be01f9f54ed6d3542f4ff96da5b32fd3b20d61",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null,
+        "ste_status": "source-data"
+      }
+    },
+    {
       "path": "docs/sol/CHALLENGE_LEDGER.md",
-      "sha256": "bea729136337736225ab0659ed6a32624af5708f13da3315e1980a246066e66f",
+      "sha256": "ffcca47377dfb059d4b59a8db36d45853d4253090f61bcb0c4f3e90ac3a5b322",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -41913,7 +41925,7 @@
     },
     {
       "path": "docs/sol/README.md",
-      "sha256": "e85fc91a2f3cd1fd26905796b696b36dc8bf8c459ab59966e4a906078d05158c",
+      "sha256": "e6bfbca10a383002dcabbb5faf09d590b9fb907cb53ddb4fb4a14fe6605a4079",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

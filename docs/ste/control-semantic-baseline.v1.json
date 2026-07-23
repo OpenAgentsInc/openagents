@@ -1528,7 +1528,7 @@
       ]
     },
     "docs/sol/README.md": {
-      "sourceSha256": "e85fc91a2f3cd1fd26905796b696b36dc8bf8c459ab59966e4a906078d05158c",
+      "sourceSha256": "e6bfbca10a383002dcabbb5faf09d590b9fb907cb53ddb4fb4a14fe6605a4079",
       "normativeKeywords": [],
       "inlineCode": [
         "../../AUTHORITY.md",
@@ -1583,6 +1583,7 @@
         "2026-07-18-vercel-ai-sdk-source-derived-effect-conversion-audit.md",
         "2026-07-19-managed-agent-sandboxes-accepted-plan.md",
         "2026-07-20-pylon-bip39-nostr-spark-identity-recovery-audit.md",
+        "2026-07-23-nostr-first-rust-effect-desktop-analysis.md",
         "AGENTS.md",
         "CHALLENGE_LEDGER.md",
         "CLAIM_PROTOCOL.md",
@@ -1819,6 +1820,10 @@
         "2026-07",
         "2026-07",
         "2026-07",
+        "2026-07",
+        "2026-07",
+        "23",
+        "23",
         "27",
         "27",
         "3",
