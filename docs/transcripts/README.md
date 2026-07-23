@@ -1,8 +1,9 @@
 # OpenAgents Transcript Theme Guide
 
-This directory contains machine-generated transcripts for episodes `001`-`255`
-of the OpenAgents video corpus, plus occasional clearly marked future-episode
-drafts. Episode [`086`](086.md) transcribes only the OpenAgents MVP Launch
+This directory contains machine-generated transcripts for episodes `001`-`260`
+of the OpenAgents video corpus, plus clearly marked future-episode drafts.
+Episodes [`261`](261.md)-[`262`](262.md) are prepared scripts.
+Episode [`086`](086.md) transcribes only the OpenAgents MVP Launch
 presentation excerpt from the PlebLab Startup Day 2024 recording,
 `00:58:21`-`01:10:10`, not the full eight-hour event video. Episode
 [`237`](237.md) is the prepared-remarks launch essay plus video transcript for
@@ -40,6 +41,14 @@ source: study adjacent agent products and codebases, preserve evidence in
 content-addressed packets, admit product-specific gaps through ProductSpec and
 AssuranceSpec authority, and continuously drive OpenAgents Desktop toward
 functional parity without copying closed trust assumptions.
+
+Episodes [`256`](256.md)-[`262`](262.md) move from the first Desktop release
+candidate to Omega. Episodes 257 and 258 introduce the “last agent IDE” promise
+through file-open and crash-isolation failures. Episode 259 makes the IDE the
+engine of verifiable software and reconnects it to Nostr, Bitcoin, and the
+OpenAgents market. Episode 260 introduces Sarah. Episode 261 gives her a voice.
+Episode 262 lets Sarah present Omega as the Zed-based, constantly released
+company workroom and ecosystem cockpit that carries that promise forward.
 
 Use this file as a navigation map. The transcripts are good enough for theme discovery, but verify wording against the video before using them as quote-grade source material. Most transcript files include the original source URL in their header.
 
@@ -421,6 +430,13 @@ Use this file as a navigation map. The transcripts are good enough for theme dis
 | [`253` Goodbye Bun](253.md) | Removes Bun from the OpenAgents production trust and failure path after contrasting Anthropic ownership with vendor-neutral Node governance. The repo completes its Node, pnpm, and Vite Plus cutover, informed by Effect-heavy OpenCode and T3 Code references, while the episode frames portable, inspectable, plural infrastructure as both an engineering and competitive requirement. |
 | [`254` Bug Bash](254.md) | Cuts the host's own development workflow over from Claude Code and Codex Desktop to the near-alpha OpenAgents Desktop app, then uses the app to improve itself. The first on-camera self-hosted commit fixes user-state typography, while live dogfooding exposes queued-message replay loops, per-chat composer-state leaks, follow-up image attachment failures, restart/binary ambiguity, and the release-critical gap between a promising Full Auto harness and dependable operation. |
 | [`255` FastFollow: Building Agent Parity](255.md) | Introduces FastFollow as a standing, machine-readable learning and work-source contract for OpenAgents. Starting from the teardown archive and a close reading of AMP's durable thread fabric, remote control, plugins, and specialist agents, the episode separates learning intent (FastFollow) from product intent (ProductSpec) and proof intent (AssuranceSpec), seeds reusable study packets and an OpenAgents-specific implementation program, and dogfoods the first evidence-grounded gap analysis through Full Auto. |
+| [`256` OpenAgents Desktop Release Candidate](256.md) | Publishes the first hot-off-the-presses Desktop release candidate for macOS and Linux, shows same-thread harness failover, and asks users for immediate bug reports. |
+| [`257` Cursor Fails to Open a File](257.md) | Turns a basic file-open failure in Cursor into the “your last agent IDE” promise, with immediate file open and fast editor/workroom mode changes as the first standard. |
+| [`258` Why ChatGPT Desktop Kept Crashing](258.md) | Uses a fatal Git-worker memory failure to define bounded work, worker isolation, typed degradation, durable state, and incident-scale proof as conditional requirements for the last agent IDE. |
+| [`259` Verifiable Software and the Energy Layer](259.md) | Positions the OpenAgents IDE as the engine of verifiable software: create, test, verify, attest, and sell work through receipts, network review, Nostr reputation, Bitcoin, and accepted outcomes per kilowatt-hour. |
+| [`260` Spawning Sarah](260.md) | Introduces Sarah as the agent who can run internal work, sales, and service while the founder steps away for paternity leave. |
+| [`261` Hello World](261.md) | Gives Sarah her own voice: calm, direct, committed to serving and empowering humanity, and ready to begin. |
+| [`262` Omega, Your Last IDE](262.md) | Sarah introduces the planned Zed-based Omega: a constantly released native IDE and company workroom that accepts existing configured agents, adapts Buzz workroom ideas, and opens into the wider Nostr and OpenAgents marketplace without becoming its gatekeeper. |
 
 ## Major Themes
 
@@ -508,7 +524,9 @@ Episode [`237`](237.md) names the organizing principle the earlier episodes were
 
 **OpenAgents Desktop, subagents, Fleet, ProductSpec, and Assurance:**
 [`246`](246.md) -> [`248`](248.md) -> [`249`](249.md) -> [`250`](250.md) ->
-[`251`](251.md) -> [`252`](252.md) -> [`254`](254.md) -> [`255`](255.md).
+[`251`](251.md) -> [`252`](252.md) -> [`254`](254.md) -> [`255`](255.md) ->
+[`256`](256.md) -> [`257`](257.md) -> [`258`](258.md) -> [`259`](259.md) ->
+[`260`](260.md) -> [`261`](261.md) -> [`262`](262.md).
 
 ## Maintenance Notes
 

@@ -2453,9 +2453,10 @@
         "docs/sol/CHALLENGE_LEDGER.md",
         "docs/sol/MASTER_ROADMAP.md",
         "docs/sol/README.md",
-        "docs/teardowns/README.md"
+        "docs/teardowns/README.md",
+        "docs/transcripts/262.md"
       ],
-      "inboundSourceCount": 15,
+      "inboundSourceCount": 16,
       "issueLinks": [
         9185,
         9194,
