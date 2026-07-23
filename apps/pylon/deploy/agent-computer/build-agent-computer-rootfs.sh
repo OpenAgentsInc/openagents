@@ -12,9 +12,11 @@
 #     opencode, pi, and grok
 #   - the vsock guest agent (guest-agent.py, agent-guest.service enabled,
 #     AF_VSOCK :1024)
-#   - the Vite Plus packed turn-runner at /opt/agent/turn-runner
+#   - the Vite Plus packed turn-runner bundle at /opt/agent/turn-runner.bundle
+#     with an executable link at /opt/agent/turn-runner
 #     of apps/pylon/deploy/agent-computer/turn-runner.ts)
-#   - the fixed PORT-03 retained-session controller at
+#   - the fixed PORT-03 retained-session controller bundle at
+#     /opt/agent/portable-session-control.bundle with an executable link at
 #     /opt/agent/portable-session-control (no arbitrary command surface)
 #   - the signed TypeScript language server artifact at a fixed /opt/agent path
 #     for the managed LSP profile; DAP stays unadmitted
@@ -104,6 +106,28 @@ done
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
+install_packed_node_bundle() {
+  local entry="$1"
+  local entry_name="$2"
+  local bundle_name="$3"
+  local source_dir
+  local target_dir
+
+  source_dir="$(cd "$(dirname "$entry")" && pwd)"
+  target_dir="$MNT/opt/agent/$bundle_name"
+  install -d "$target_dir"
+
+  # Vite Plus can emit imports beside the entry file. Keep the complete
+  # executable bundle so that the entry does not lose a runtime or dynamic
+  # chunk after it enters the guest image.
+  find "$source_dir" -maxdepth 1 -type f -name '*.mjs' -exec \
+    install -m 0644 '{}' "$target_dir/" \;
+  [ -f "$target_dir/$(basename "$entry")" ] \
+    || fail "packed Node entry was not copied: $entry"
+  chmod 0755 "$target_dir/$(basename "$entry")"
+  ln -s "$bundle_name/$(basename "$entry")" "$MNT/opt/agent/$entry_name"
+}
+
 # --- preflight (fail-closed; never a partial silent bake) -------------------
 [ "$(uname -s)" = "Linux" ] || fail "bake host must be Linux (this is a guest rootfs bake)"
 [ "$(uname -m)" = "x86_64" ] || fail "bake host must be x86_64"
@@ -133,6 +157,7 @@ MNT="$WORK/mnt"
 mkdir -p "$MNT"
 cleanup() {
   set +e
+  mountpoint -q "$MNT/proc" && umount "$MNT/proc"
   mountpoint -q "$MNT" && umount "$MNT"
   rm -rf "$WORK"
 }
@@ -147,6 +172,9 @@ mount -o loop "$OUTPUT" "$MNT"
 echo "==> debootstrap $SUITE (git, python3, ca-certificates, openssh-client)"
 debootstrap --include=git,python3,ca-certificates,openssh-client,zstd \
   "$SUITE" "$MNT" "$MIRROR"
+# Native harness probes need the normal Linux process view. The mount is a
+# bake-time input only and is removed before the image is sealed.
+mount -t proc proc "$MNT/proc"
 
 echo "$SUITE" >/dev/null # suite recorded in the receipt below
 echo "agent-computer" > "$MNT/etc/hostname"
@@ -217,6 +245,15 @@ if ! chroot "$MNT" /bin/sh -c \
 fi
 jq -e '.invalid == [] and .missing == []' "$WORK/harness-signatures.json" >/dev/null \
   || fail "Agent Computer harness signature verification reported invalid or missing signatures"
+# Lifecycle scripts stay disabled for the full dependency tree. Run only the
+# signed, exact-version Claude package installer after the signature audit so
+# that its platform-native executable is materialized.
+chroot "$MNT" /usr/local/bin/node \
+  /opt/agent/harnesses/node_modules/@anthropic-ai/claude-code/install.cjs \
+  || fail "pinned Claude native executable install failed"
+chroot "$MNT" /usr/local/bin/node \
+  /opt/agent/harnesses/node_modules/opencode-ai/postinstall.mjs \
+  || fail "pinned OpenCode native executable install failed"
 for harness in claude opencode pi; do
   [ -x "$MNT/opt/agent/harnesses/node_modules/.bin/$harness" ] \
     || fail "pinned $harness executable is absent"
@@ -310,7 +347,7 @@ if [ -z "$TURN_RUNNER" ]; then
   TURN_RUNNER="$WORK/turn-runner-build/turn-runner.mjs"
 fi
 [ -f "$TURN_RUNNER" ] || fail "turn-runner binary not found: $TURN_RUNNER"
-install -m 0755 "$TURN_RUNNER" "$MNT/opt/agent/turn-runner"
+install_packed_node_bundle "$TURN_RUNNER" "turn-runner" "turn-runner.bundle"
 
 # --- 9. retained portable-session controller ---------------------------------
 if [ -z "$PORTABLE_SESSION_CONTROL" ]; then
@@ -324,8 +361,10 @@ if [ -z "$PORTABLE_SESSION_CONTROL" ]; then
 fi
 [ -f "$PORTABLE_SESSION_CONTROL" ] \
   || fail "portable-session-control binary not found: $PORTABLE_SESSION_CONTROL"
-install -m 0755 "$PORTABLE_SESSION_CONTROL" \
-  "$MNT/opt/agent/portable-session-control"
+install_packed_node_bundle \
+  "$PORTABLE_SESSION_CONTROL" \
+  "portable-session-control" \
+  "portable-session-control.bundle"
 
 # --- 10. oa-workroomd ----------------------------------------------------------
 WORKROOMD_SHA256="skipped"
@@ -339,6 +378,7 @@ fi
 HARNESS_PACKAGE_LOCK_SHA256="$(sha256sum "$SCRIPT_DIR/harnesses/package-lock.json" | cut -d' ' -f1)"
 TURN_RUNNER_SHA256="$(sha256sum "$TURN_RUNNER" | cut -d' ' -f1)"
 PORTABLE_SESSION_CONTROL_SHA256="$(sha256sum "$PORTABLE_SESSION_CONTROL" | cut -d' ' -f1)"
+umount "$MNT/proc"
 umount "$MNT"
 e2fsck -fy "$OUTPUT" >/dev/null || [ $? -le 1 ] || fail "e2fsck reported unrecovered errors"
 ROOTFS_SHA256="$(sha256sum "$OUTPUT" | cut -d' ' -f1)"
