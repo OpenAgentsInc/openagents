@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
 import { makeProviderAccountLeaseService } from "./provider-account-lease-service";
+import { makeD1ProviderAccountRepository } from "./provider-account-repository";
+import { connectChatGptCodexLocalAuthForUser } from "./provider-account-service";
 import { IDENTITY_AUTH_DOMAIN_D1_SCHEMA, makeSqliteD1, type SqliteD1 } from "./test/sqlite-d1";
 
 const now = "2026-07-23T04:40:00.000Z";
@@ -141,6 +143,90 @@ describe("provider account lease service", () => {
       providerAccountRef: "provider-owner-codex",
       source: "sarah_cloud_coding_session",
     });
+  });
+
+  test("makes a reconnected local Codex account leaseable by clearing stale failure markers", async () => {
+    await insertAccount(sqlite, {
+      id: "account_reconnected_codex",
+      operatorPriority: 10,
+      provider: "chatgpt_codex",
+      providerAccountRef: "provider-reconnected-codex",
+      userId: "owner-a",
+    });
+    await sqlite.db
+      .prepare(
+        `UPDATE provider_accounts
+            SET health = 'requires_reauth',
+                low_credit_flag = 1,
+                cooldown_until = '2099-01-01T00:00:00.000Z',
+                recent_failure_class = 'custody_material_unavailable',
+                reauth_required_reason = 'custody_material_unavailable',
+                refill_note = 'stale'
+          WHERE id = 'account_reconnected_codex'`,
+      )
+      .run();
+
+    await connectChatGptCodexLocalAuthForUser(
+      makeD1ProviderAccountRepository(sqlite.db),
+      {
+        auth: {
+          access: "access-test-only",
+          expires: Date.parse("2026-07-24T04:40:00.000Z"),
+          refresh: "refresh-test-only",
+          type: "oauth",
+        },
+        providerAccountRef: "provider-reconnected-codex",
+        userId: "owner-a",
+      },
+      () =>
+        Promise.resolve(
+          "provider-account://chatgpt-codex/test/provider-reconnected-codex",
+        ),
+      {
+        makeId: prefix => `${prefix}_reconnect`,
+        now: () => new Date(now),
+      },
+    );
+
+    const state = await sqlite.db
+      .prepare(
+        `SELECT health, low_credit_flag, cooldown_until, recent_failure_class,
+                reauth_required_reason, refill_note
+           FROM provider_accounts
+          WHERE id = 'account_reconnected_codex'`,
+      )
+      .first<{
+        health: string;
+        low_credit_flag: number;
+        cooldown_until: string | null;
+        recent_failure_class: string | null;
+        reauth_required_reason: string | null;
+        refill_note: string | null;
+      }>();
+    expect(state).toEqual({
+      cooldown_until: null,
+      health: "healthy",
+      low_credit_flag: 0,
+      reauth_required_reason: null,
+      recent_failure_class: null,
+      refill_note: null,
+    });
+
+    const lease = await makeProviderAccountLeaseService({
+      db: sqlite.db,
+    }).acquire({
+      assignmentId: "assignment-reconnected",
+      expiresAt,
+      now,
+      orderId: null,
+      requiredProvider: "chatgpt_codex",
+      requestedAction: "agent_computer_codex_turn",
+      runId: "run-reconnected",
+      selectedByActor: "sarah_managed_cloud_dispatch",
+      source: "managed_cloud_runtime_dispatch",
+      userId: "owner-a",
+    });
+    expect(lease?.providerAccountRef).toBe("provider-reconnected-codex");
   });
 
   test("does not touch or release another owner lease", async () => {
