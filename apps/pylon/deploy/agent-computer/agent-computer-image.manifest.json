@@ -45,13 +45,7 @@
       "source": "firecracker-ci/v1.10/x86_64/ubuntu-22.04.ext4 (STOCK CI rootfs, NOT the baked agent-computer image)",
       "sha256": "040927105bd01b19e7b02cd5da5a9552b428a7f84bd5ffc22ebfce4ddf258a07",
       "stagedAt": "/srv/openagents/cloud-vm/rootfs.ext4",
-      "missingRuntime": [
-        "git",
-        "bun",
-        "node",
-        "openagents-pylon-runtime",
-        "guest-agent"
-      ]
+      "missingRuntime": ["git", "bun", "node", "openagents-pylon-runtime", "guest-agent"]
     },
     "provenLifecycle": {
       "boot": "microVM booted in ~1s with its own guest kernel 5.10.223 (host runs 6.17), 2 vCPUs / 1024 MiB",
@@ -71,10 +65,7 @@
     "gcpProject": "openagentsgemini",
     "nestedVirtualization": true,
     "kvmDeviceRequired": true,
-    "allowedMachineFamilies": [
-      "n2",
-      "n1-haswell-or-newer"
-    ],
+    "allowedMachineFamilies": ["n2", "n1-haswell-or-newer"],
     "inboundNetwork": "none",
     "defaultAccess": "iap-ssh-only"
   },
@@ -94,6 +85,7 @@
       "workroomdSha256": "59d2623c6b5629b75be3889eb457a5957e7d3d6044f4b12dd0d45ddcc319d063"
     },
     "codex": {
+      "executionState": "owner_reauthentication_required",
       "status": "baked_and_boot_smoke_proven_2026_07_10",
       "version": "0.144.0",
       "source": "npm @openai/codex-0.144.0-linux-x64 (vendor x86_64-unknown-linux-musl static-pie build)",
@@ -103,7 +95,7 @@
       "note": "The CX-3 in-VM codex_app_server lane (turn-runner `codexTurn` block: codex exec --json under the broker-redeemed scratch CODEX_HOME, exact usage receipt with tokenChargeMetered:false) is wired and fixture-proven in-repo; its live rung needs this binary baked + one real in-VM turn."
     },
     "harnesses": {
-      "status": "seven_harness_image_live_qualification_in_progress",
+      "status": "five_of_seven_runtime_qualified_owner_reauthentication_required_for_codex_and_claude_code",
       "credentialPolicy": "Provider material is injected for one turn at runtime. No provider key, OAuth token, or subscription home is present in the image or bake receipt.",
       "credentialScanner": "The turn-runner scans the staged diff before writeback and emits typed finding refs only. Host closeout still requires its isolation scanner and cleanup receipt.",
       "pi": {
@@ -111,14 +103,58 @@
         "version": "0.81.1",
         "source": "npm @earendil-works/pi-coding-agent",
         "model": "google/gemini-3.1-pro-preview-customtools",
-        "credentialEnv": "GEMINI_API_KEY"
+        "credentialEnv": "GEMINI_API_KEY",
+        "qualification": {
+          "provedAt": "2026-07-23",
+          "turnRef": "turn.sarah_cloud.turn.agent_computer_qualification.pi.1784826334038.call.agent_computer_qualification.pi.1784826334038",
+          "exitCode": 0,
+          "artifactRefs": [
+            "artifact.sha256.dee9c040c920e8604fe63d80d849494d15d4d18e614d2fa653b26c98d3888dcb",
+            "artifact.sha256.5b5868e5efda9c491e4327d283a3be7286ab4b37c9ece9f1aabc931a1b5a09ae"
+          ],
+          "commit": "ac3540145129debfc9cde44711b5a4d82ec04648",
+          "parentCommit": "b5a5ff1b186bef39338e9d7c55e1d478bbf96726",
+          "changedFileCount": 1,
+          "cleanupReceipt": "sha256:e0dd89e23345e407e490e186e68c8308eff770fea62be278c476aa51e773ad22",
+          "leaseTerminalOutcome": "managed_cloud_turn_completed",
+          "usage": {
+            "truth": "exact",
+            "inputTokens": 24261,
+            "outputTokens": 404,
+            "reasoningTokens": 163,
+            "cacheReadTokens": 15807,
+            "totalTokens": 40309
+          }
+        }
       },
       "opencode": {
         "executionState": "runtime_secret_and_real_writeback_qualified",
         "version": "1.18.4",
         "source": "npm opencode-ai",
         "model": "google/gemini-3.5-flash",
-        "credentialEnv": "GOOGLE_GENERATIVE_AI_API_KEY"
+        "credentialEnv": "GOOGLE_GENERATIVE_AI_API_KEY",
+        "qualification": {
+          "provedAt": "2026-07-23",
+          "turnRef": "turn.sarah_cloud.tick.sarah.7bc530262a6ed6114051ecf6.b1983122.turn.wem4m3uh",
+          "exitCode": 0,
+          "artifactRefs": [
+            "artifact.sha256.aa4f2337e3d19fed96b5f3a03937c43da06b9066e7945e739b731bd8ee6f0cc5",
+            "artifact.sha256.eee3dae8cb1c7fc2165be1e05dff4a2f6bd70854291b2351f7788948a226b9e0"
+          ],
+          "commit": "bb3d55592243e2e1410a0e58a538e86b14e19fd2",
+          "parentCommit": "87cab462a1c41478f4346e092a36013c7290b5aa",
+          "changedFileCount": 53,
+          "cleanupReceipt": "sha256:ec84a2a9e2233e6f8626c0f5de832c98c01e370a3df514e95d9d91faa641f3e3",
+          "leaseTerminalOutcome": "managed_cloud_turn_completed",
+          "usage": {
+            "truth": "exact",
+            "inputTokens": 1649,
+            "outputTokens": 329,
+            "reasoningTokens": 74,
+            "cacheReadTokens": 164496,
+            "totalTokens": 166474
+          }
+        }
       },
       "goose": {
         "executionState": "runtime_secret_and_real_writeback_qualified",
@@ -126,7 +162,25 @@
         "source": "https://github.com/aaif-goose/goose/releases/download/v1.43.0/goose-x86_64-unknown-linux-gnu.tar.gz",
         "tarballSha256": "a9a96f559a8b5f20b11597b78e4aa5bb0b9b29796ec4f808ca466a3f59a5ec20",
         "model": "gemini-3.5-flash",
-        "credentialEnv": "GOOGLE_API_KEY"
+        "credentialEnv": "GOOGLE_API_KEY",
+        "qualification": {
+          "provedAt": "2026-07-23",
+          "turnRef": "turn.sarah_cloud.turn.agent_computer_qualification.goose.1784820384270.call.agent_computer_qualification.goose.1784820384270",
+          "exitCode": 0,
+          "artifactRefs": [
+            "artifact.sha256.74a59f54ce19cab6af48f934c7faea74602fdb2d71b89392358f2067b4beb957",
+            "artifact.sha256.9b5006a0af3e0799c6ff7c0f55315b21368a08cd23521e1d183c04dcca0ff2e0"
+          ],
+          "commit": "06e3329876150fc7a9d59c5aa0043347d23e9599",
+          "parentCommit": "2e0662f338447473b05818f92c008b3568967659",
+          "changedFileCount": 1,
+          "cleanupReceipt": "sha256:0197417b280dbc0c651b534069505e0bfed0d94ec6e626c22f7913b06a85ebca",
+          "leaseTerminalOutcome": "managed_cloud_turn_completed",
+          "usage": {
+            "truth": "unavailable",
+            "reasonRef": "harness.usage_unavailable"
+          }
+        }
       },
       "claudeCode": {
         "executionState": "owner_reauthentication_required",
@@ -139,7 +193,25 @@
         "version": "2026.07.20-8cc9c0b",
         "source": "https://downloads.cursor.com/lab/2026.07.20-8cc9c0b/linux/x64/agent-cli-package.tar.gz",
         "tarballSha256": "6e9f17247ffeb5f8f7e2246b4bcd6bb26cb2d5a9f9a4b0012c9a80d868ed25b4",
-        "credentialEnv": "CURSOR_API_KEY"
+        "credentialEnv": "CURSOR_API_KEY",
+        "qualification": {
+          "provedAt": "2026-07-23",
+          "turnRef": "turn.sarah_cloud.turn.agent_computer_qualification.cursor.1784836407842.call.agent_computer_qualification.cursor.1784836407842",
+          "exitCode": 0,
+          "artifactRefs": [
+            "artifact.sha256.e746b40ffa8c2c5bce695654fee18acc4fd5e767ee45296085a17c94e5c6a153",
+            "artifact.sha256.5b52954d5be3e36dae66b9698e09b2e86f3ac902c987ea2b99652d33e0cb38b4"
+          ],
+          "commit": "048a962a20c91df5f924544a3df4f99ae07a1d67",
+          "parentCommit": "6079e9d2214ae2e8786d541bbae0cff21df226e8",
+          "changedFileCount": 1,
+          "cleanupReceipt": "sha256:9361e2b8f23d3ba917154b2b2286ead32fa9e099d992928598105413a74c8e57",
+          "leaseTerminalOutcome": "managed_cloud_turn_completed",
+          "usage": {
+            "truth": "unavailable",
+            "reasonRef": "harness.usage_unavailable"
+          }
+        }
       },
       "grok": {
         "executionState": "runtime_secret_and_real_writeback_qualified",
@@ -150,6 +222,7 @@
         "qualification": {
           "provedAt": "2026-07-23",
           "turnRef": "turn.sarah_cloud.turn.agent_computer_qualification.grok.1784834289674.call.agent_computer_qualification.grok.1784834289674",
+          "exitCode": 0,
           "artifactRefs": [
             "artifact.sha256.33b9c6a2a6040613e1a0f052d4cb1f5570bcc94d84efe78b8399d46d752dbb44",
             "artifact.sha256.e2f67bda7daac11bb4e0f34f6145949532f97d482b5a0f44c1e9ba36fca69f2"
@@ -158,7 +231,11 @@
           "parentCommit": "bd407c9ae13b25c8e39522eb63f3caa69c733712",
           "changedFileCount": 1,
           "cleanupReceipt": "sha256:f9916432500861cd53863231bba21419d57a41b0de911827e8006615395de11f",
-          "leaseTerminalOutcome": "managed_cloud_turn_completed"
+          "leaseTerminalOutcome": "managed_cloud_turn_completed",
+          "usage": {
+            "truth": "unavailable",
+            "reasonRef": "harness.usage_unavailable"
+          }
         }
       }
     },
@@ -248,15 +325,7 @@
   "runtime": {
     "pylonRuntime": "apps/pylon",
     "executor": "agent-computer-executor-from-issue-8473",
-    "agents": [
-      "codex",
-      "claude-code",
-      "cursor",
-      "goose",
-      "opencode",
-      "pi",
-      "grok"
-    ],
+    "agents": ["codex", "claude-code", "cursor", "goose", "opencode", "pi", "grok"],
     "scmCredentialPath": "openagents-scm-broker-only",
     "modelTurnRuntime": {
       "status": "in_microvm_exact_model_token_receipt_proven",

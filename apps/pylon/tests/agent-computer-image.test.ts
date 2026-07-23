@@ -7,6 +7,7 @@ const manifest = JSON.parse(
   readFileSync(resolve(imageRoot, "agent-computer-image.manifest.json"), "utf8"),
 ) as {
   guestImage: {
+    codex: Record<string, unknown>;
     harnesses: Record<string, Record<string, unknown> | string>;
   };
   isolation: {
@@ -38,7 +39,29 @@ describe("Agent Computer seven-harness image pins (#9193)", () => {
       credentialScannerRequired: true,
       providerCredentialPolicy: "broker_only",
     });
-    expect(manifest.guestImage.harnesses.status).toBe("seven_harness_image_live_qualification_in_progress");
+    expect(manifest.guestImage.harnesses.status).toBe(
+      "five_of_seven_runtime_qualified_owner_reauthentication_required_for_codex_and_claude_code",
+    );
+    for (const harnessId of ["cursor", "goose", "opencode", "pi", "grok"]) {
+      expect(manifest.guestImage.harnesses[harnessId]).toMatchObject({
+        executionState: "runtime_secret_and_real_writeback_qualified",
+        qualification: {
+          changedFileCount: expect.any(Number),
+          cleanupReceipt: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
+          commit: expect.stringMatching(/^[a-f0-9]{40}$/u),
+          exitCode: 0,
+          leaseTerminalOutcome: "managed_cloud_turn_completed",
+          parentCommit: expect.stringMatching(/^[a-f0-9]{40}$/u),
+          turnRef: expect.stringMatching(/^turn\./u),
+        },
+      });
+    }
+    expect(manifest.guestImage.codex).toMatchObject({
+      executionState: "owner_reauthentication_required",
+    });
+    expect(manifest.guestImage.harnesses.claudeCode).toMatchObject({
+      executionState: "owner_reauthentication_required",
+    });
   });
 
   test("image-local npm lock fixes Claude Code, Pi, and OpenCode versions", () => {
@@ -67,12 +90,8 @@ describe("Agent Computer seven-harness image pins (#9193)", () => {
   test("turn-runner bundle is self-contained and executes a typed bake probe", () => {
     expect(bake).toContain("--deps.always-bundle '.*'");
     expect(bake).toContain("turn-runner-bake-probe.json");
-    expect(bake).toContain(
-      '.schemaVersion == "openagents.agent_computer.turn_result.v1"',
-    );
-    expect(bake).toContain(
-      '.failureReasonRef == "agent_computer.turn_failed"',
-    );
+    expect(bake).toContain('.schemaVersion == "openagents.agent_computer.turn_result.v1"');
+    expect(bake).toContain('.failureReasonRef == "agent_computer.turn_failed"');
   });
 
   test("reserves enough guest space for a real repository checkout and verification", () => {
