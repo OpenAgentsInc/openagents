@@ -750,6 +750,7 @@ import {
   applySarahManagedCloudHarnessFallback,
   dispatchCloudGcpRuntimeTurn,
   finalizeManagedCloudProviderLease,
+  reconcileTerminalManagedCloudProviderLeases,
   hasAvailableSarahManagedCloudProviderCapacity,
   managedAgentComputerGrantIssueInput,
   makeCloudCodingAdapterLaunchSeam,
@@ -7642,6 +7643,10 @@ const runManagedCloudRuntimeTurnDispatchForEnv = async (
     mirror: identityAuthMirrorFromEnv(env),
   })
   try {
+    await reconcileTerminalManagedCloudProviderLeases(
+      client.sql,
+      providerLeaseService,
+    )
     await recoverStaleRunningManagedCloudTurns({
       armed: true,
       inference: {

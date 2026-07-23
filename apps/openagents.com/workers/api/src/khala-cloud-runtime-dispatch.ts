@@ -873,6 +873,56 @@ export const finalizeManagedCloudProviderLease = async (
   })
 }
 
+type TerminalManagedCloudProviderLeaseRow = Readonly<{
+  lease_ref: string
+  owner_user_id: string
+  status: 'completed' | 'failed' | 'interrupted'
+  turn_id: string
+}>
+
+/**
+ * Release provider capacity after an asynchronous Agent Computer turn settles.
+ * The placement dispatcher must keep the lease while the guest runs. A later
+ * worker tick uses the durable turn state to close that lease before it selects
+ * capacity for more work.
+ */
+export const reconcileTerminalManagedCloudProviderLeases = async (
+  sql: SyncSql,
+  service: Pick<ProviderAccountLeaseService, 'release'>,
+  now = currentIsoTimestamp(),
+  limit = DEFAULT_CLOUD_GCP_RUNTIME_DISPATCH_LIMIT,
+): Promise<number> => {
+  const boundedLimit =
+    Number.isSafeInteger(limit) && limit > 0
+      ? Math.min(limit, 100)
+      : DEFAULT_CLOUD_GCP_RUNTIME_DISPATCH_LIMIT
+  const rows: Array<TerminalManagedCloudProviderLeaseRow> = await sql`
+    SELECT l.lease_ref, t.owner_user_id, t.status, t.turn_id
+    FROM provider_account_leases l
+    JOIN khala_sync_runtime_turns t
+      ON t.turn_id = l.assignment_id
+    WHERE l.status = 'active'
+      AND l.selected_by_actor = 'sarah_managed_cloud_dispatch'
+      AND t.status IN ('completed', 'failed', 'interrupted')
+    ORDER BY t.settled_at ASC, t.turn_id ASC
+    LIMIT ${boundedLimit}
+  `
+  let released = 0
+  for (const row of rows) {
+    const succeeded = row.status === 'completed'
+    const didRelease = await service.release({
+      failureClass: succeeded ? null : `managed_cloud_turn_${row.status}`,
+      leaseRef: row.lease_ref,
+      now,
+      status: succeeded ? 'succeeded' : 'failed',
+      terminalOutcome: `managed_cloud_turn_${row.status}`,
+      userId: row.owner_user_id,
+    })
+    if (didRelease) released += 1
+  }
+  return released
+}
+
 /**
  * Dispatch a single admitted `cloud-gcp` work-context end-to-end. NEVER throws
  * for an ordinary failure — it settles the turn (`turn.finished` error) and

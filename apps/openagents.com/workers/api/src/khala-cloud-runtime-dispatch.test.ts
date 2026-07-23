@@ -21,6 +21,7 @@ import {
   planCloudGcpRuntimeAccountDispatch,
   providerFailoverFailureClassForGuestFailure,
   readQueuedManagedCloudTurns,
+  reconcileTerminalManagedCloudProviderLeases,
   recoverStaleRunningManagedCloudTurns,
   runCloudGcpRuntimeDispatch,
   resolveManagedCloudRepositoryCommit,
@@ -514,6 +515,61 @@ describe('managed cloud terminal provider failover', () => {
       '2026-07-23T12:00:00.000Z',
     )
     expect(releases).toEqual([])
+  })
+})
+
+describe('managed cloud terminal provider lease reconciliation', () => {
+  test('releases completed turns as succeeded and failed turns as failed', async () => {
+    const sql = (() =>
+      Promise.resolve([
+        {
+          lease_ref: 'provider-account-lease.completed-1',
+          owner_user_id: 'owner.fixture',
+          status: 'completed',
+          turn_id: 'turn.completed-1',
+        },
+        {
+          lease_ref: 'provider-account-lease.failed-1',
+          owner_user_id: 'owner.fixture',
+          status: 'failed',
+          turn_id: 'turn.failed-1',
+        },
+      ])) as unknown as SyncSql
+    const releases: Array<
+      Parameters<ProviderAccountLeaseService['release']>[0]
+    > = []
+
+    const released = await reconcileTerminalManagedCloudProviderLeases(
+      sql,
+      {
+        release: input => {
+          releases.push(input)
+          return Promise.resolve(true)
+        },
+      },
+      '2026-07-23T12:00:00.000Z',
+      2,
+    )
+
+    expect(released).toBe(2)
+    expect(releases).toEqual([
+      {
+        failureClass: null,
+        leaseRef: 'provider-account-lease.completed-1',
+        now: '2026-07-23T12:00:00.000Z',
+        status: 'succeeded',
+        terminalOutcome: 'managed_cloud_turn_completed',
+        userId: 'owner.fixture',
+      },
+      {
+        failureClass: 'managed_cloud_turn_failed',
+        leaseRef: 'provider-account-lease.failed-1',
+        now: '2026-07-23T12:00:00.000Z',
+        status: 'failed',
+        terminalOutcome: 'managed_cloud_turn_failed',
+        userId: 'owner.fixture',
+      },
+    ])
   })
 })
 
