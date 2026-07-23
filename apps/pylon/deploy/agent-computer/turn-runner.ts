@@ -535,6 +535,36 @@ export type HarnessTurnConfig = {
   runtimeSecretGrant?: HarnessRuntimeSecretGrant
 }
 
+export const writebackIdentityForTurn = (input: {
+  inference?: InferenceConfig
+  codexTurn?: CodexTurnConfig
+  harnessTurn?: HarnessTurnConfig
+}): InferenceConfig | undefined => {
+  if (input.inference !== undefined) return input.inference
+  if (input.codexTurn !== undefined) {
+    return {
+      agentToken: input.codexTurn.agentToken,
+      baseUrl: input.codexTurn.baseUrl,
+      model: CODEX_USAGE_RECEIPT_MODEL,
+      ownerUserId: input.codexTurn.ownerUserId,
+      ...(input.codexTurn.pylonRef === undefined
+        ? {}
+        : { pylonRef: input.codexTurn.pylonRef }),
+    }
+  }
+  const grant = input.harnessTurn?.runtimeSecretGrant
+  if (grant === undefined) return undefined
+  return {
+    agentToken: grant.agentToken,
+    baseUrl: grant.baseUrl,
+    model:
+      input.harnessTurn?.model ?? AGENT_COMPUTER_DEFAULT_GEMINI_MODEL,
+    ownerUserId: grant.ownerUserId,
+    pylonRef: grant.pylonRef,
+    provider: AGENT_COMPUTER_DEFAULT_PROVIDER,
+  }
+}
+
 export type VerificationCommand = {
   commandRef: string
   argv: string[]
@@ -3017,19 +3047,7 @@ async function main() {
   //     turn supplies the same identity fields (agent bearer + owner) when no
   //     `inference` block is present, so a codex work unit can publish its
   //     branch/PR too.
-  const writebackIdentity: InferenceConfig | undefined =
-    wc.inference ??
-    (wc.codexTurn === undefined
-      ? undefined
-      : {
-          agentToken: wc.codexTurn.agentToken,
-          baseUrl: wc.codexTurn.baseUrl,
-          model: CODEX_USAGE_RECEIPT_MODEL,
-          ownerUserId: wc.codexTurn.ownerUserId,
-          ...(wc.codexTurn.pylonRef === undefined
-            ? {}
-            : { pylonRef: wc.codexTurn.pylonRef }),
-        })
+  const writebackIdentity = writebackIdentityForTurn(wc)
   let writebackResult: WritebackTurnResult | null = null
   if (wc.writeback !== undefined) {
     if (writebackIdentity === undefined) {

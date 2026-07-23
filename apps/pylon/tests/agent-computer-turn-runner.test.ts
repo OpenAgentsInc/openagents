@@ -47,6 +47,7 @@ import {
   runWritebackForTurn,
   shortLivedOpenCodeAuthExpiresAt,
   usageIngestBody,
+  writebackIdentityForTurn,
   type ClaudeProviderAuthConfig,
   type CodexExecRun,
   type CodexProviderAuthConfig,
@@ -92,6 +93,48 @@ const claudeProviderAuth: ClaudeProviderAuthConfig = {
   agentToken: 'agent-secret-token-should-never-be-serialized',
   providerAccountRef: 'provider-account.public.claude.owner',
 }
+
+describe('agent-computer turn-runner: writeback identity', () => {
+  test('reuses the exact Gemini harness grant identity for writeback', () => {
+    expect(
+      writebackIdentityForTurn({
+        harnessTurn: {
+          harness: 'opencode',
+          model: 'gemini-3.5-flash',
+          runtimeSecretGrant: {
+            agentToken: inference.agentToken,
+            baseUrl: inference.baseUrl,
+            grantRef: 'grant.public.gemini.owner.turn',
+            kind: 'gemini_api_key',
+            ownerUserId: inference.ownerUserId,
+            pylonRef: inference.pylonRef!,
+            providerAccountRef: 'provider-account.public.gemini.owner',
+            runnerSessionId: 'turn.public.gemini.owner',
+            secretRef: 'provider-secret.public.gemini.owner',
+          },
+        },
+      }),
+    ).toEqual({
+      agentToken: inference.agentToken,
+      baseUrl: inference.baseUrl,
+      model: 'gemini-3.5-flash',
+      ownerUserId: inference.ownerUserId,
+      pylonRef: inference.pylonRef,
+      provider: AGENT_COMPUTER_DEFAULT_PROVIDER,
+    })
+  })
+
+  test('fails closed when a non-Codex harness has no runtime identity', () => {
+    expect(
+      writebackIdentityForTurn({
+        harnessTurn: {
+          harness: 'opencode',
+          model: 'gemini-3.5-flash',
+        },
+      }),
+    ).toBeUndefined()
+  })
+})
 
 const shortLivedAuthContent = JSON.stringify({
   openai: {
