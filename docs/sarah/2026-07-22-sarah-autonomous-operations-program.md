@@ -38,8 +38,8 @@ All through existing brokers, all receipted:
   (`codex_workers_start`).
 - Read Full Auto and steer an existing run (pause, resume, stop) when state
   calls for it.
-- Draft blog, document, Forum, or timeline content (`sarah_web_comms`); the
-  timeline draft queues for owner review.
+- Draft blog, document, Forum, or timeline content (`sarah_web_comms`).
+  The timeline draft queues for owner review.
 - Post a proactive, receipt-backed owner-thread update summarizing what she
   observed and did.
 - Record a `NEEDS-OWNER` blocker and continue on a non-blocked item.
@@ -66,7 +66,7 @@ the next admitted action. Waiting is not an action.
 - Every tick emits a proactive owner-thread update, so the owner sees what Sarah
   did without opening a console.
 - Every action emits its existing target receipt.
-- The operator dashboard (`/admin/operator`) is the at-a-glance view; a future
+- The operator dashboard (`/admin/operator`) is the at-a-glance view. A future
   slice adds a Sarah panel (last tick, last action, last owner update, blocker
   count) so "what is Sarah doing right now" is answerable at a glance.
 
@@ -78,14 +78,14 @@ Sarah is working when the numbers move without the owner prompting her:
 - Coding tasks delegated and closed out.
 - Backlog burn-down (open issues, Full Auto runs advanced).
 - Owner updates delivered per day.
-- Zero reserved-boundary violations; every action carries a receipt.
+- Zero reserved-boundary violations, with a receipt for every action.
 
 ## Rollout
 
 1. Land the tick behind the default-off flag with tests (the bounded first
    implementation).
 2. Owner enables the flag on a conservative interval and budget.
-3. Watch the receipts and the owner updates; widen the interval, budget, and
+3. Watch the receipts and the owner updates. Widen the interval, budget, and
    action set only as the receipts prove it safe.
 4. Later slices: the dashboard Sarah panel, richer decision policy, and — once
    the graph memory is enabled — memory-informed continuity across ticks.
