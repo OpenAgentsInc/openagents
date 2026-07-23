@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-21",
-  "sourceTreeSha256": "1aa5c3cf6020686fbc72b694194f648fd081cc4de5901fae90703fc37294fb0b",
+  "sourceTreeSha256": "17076145c488869ee58b62040ca761354f741a8af73c6c01b2b3acc0b242c22b",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -2415,7 +2415,7 @@
       "owner": "OpenAgents Desktop Nostr and native architecture",
       "disposition": "retain-decision-analysis",
       "dispatch": false,
-      "sha256": "25a2a9c53f7c13c1ce77a54fb8be01f9f54ed6d3542f4ff96da5b32fd3b20d61",
+      "sha256": "8d0379c86760f7f87c824fed1bf3908c9bdfb5a08f5128a91c7bf31245dd05ff",
       "status": "recommended direction for evaluation",
       "snapshot": "exact sources and document digests in this analysis",
       "reviewedAt": "2026-07-21",

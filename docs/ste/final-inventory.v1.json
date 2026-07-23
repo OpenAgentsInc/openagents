@@ -41825,7 +41825,7 @@
     },
     {
       "path": "docs/sol/2026-07-23-nostr-first-rust-effect-desktop-analysis.md",
-      "sha256": "25a2a9c53f7c13c1ce77a54fb8be01f9f54ed6d3542f4ff96da5b32fd3b20d61",
+      "sha256": "8d0379c86760f7f87c824fed1bf3908c9bdfb5a08f5128a91c7bf31245dd05ff",
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
