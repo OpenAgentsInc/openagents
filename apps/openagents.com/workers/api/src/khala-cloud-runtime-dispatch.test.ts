@@ -753,7 +753,10 @@ describe('dispatchCloudGcpRuntimeTurn', () => {
             ...turn,
             claudeProviderAuthGrant: {
               authGrantRef: 'provider-auth-grant.claude.owner-1',
+              kind: 'claude_agent_anthropic_api_key',
               providerAccountRef: 'provider-account.claude.owner-1',
+              runnerSessionId: turn.turnId,
+              secretRef: 'provider-secret.claude.owner-1',
             },
             harnessId: 'claude-code',
           }),
@@ -768,7 +771,10 @@ describe('dispatchCloudGcpRuntimeTurn', () => {
       agentToken: 'oa_agent_RAWTOKEN0123456789abcdef',
       authGrantRef: 'provider-auth-grant.claude.owner-1',
       baseUrl: 'https://staging.example',
+      kind: 'claude_agent_anthropic_api_key',
       providerAccountRef: 'provider-account.claude.owner-1',
+      runnerSessionId: 'turn.t1',
+      secretRef: 'provider-secret.claude.owner-1',
     })
     expect(workContext.inference).toBeUndefined()
     expect(workContext.codexTurn).toBeUndefined()

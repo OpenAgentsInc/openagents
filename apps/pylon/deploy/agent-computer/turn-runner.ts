@@ -180,6 +180,9 @@ export type ClaudeProviderAuthConfig = {
   agentToken: string
   providerAccountRef: string
   authGrantRef: string
+  kind: 'claude_agent_anthropic_api_key'
+  runnerSessionId: string
+  secretRef: string
 }
 
 export type CodexProviderAuthMaterialization =
@@ -235,8 +238,11 @@ export const claudeProviderAuthMaterialRequest = (
   providerAuth: ClaudeProviderAuthConfig,
 ): { url: string; headers: Record<string, string>; body: string } => ({
   body: JSON.stringify({
+    grantRef: providerAuth.authGrantRef,
+    kind: providerAuth.kind,
     providerAccountRef: providerAuth.providerAccountRef,
-    authGrantRef: providerAuth.authGrantRef,
+    runnerSessionId: providerAuth.runnerSessionId,
+    secretRef: providerAuth.secretRef,
   }),
   headers: {
     Authorization: `Bearer ${providerAuth.agentToken}`,
@@ -2750,6 +2756,7 @@ async function main() {
 
   let claudeProviderAuth: ClaudeProviderAuthMaterialization | null = null
   if (wc.claudeProviderAuth !== undefined) {
+    activeFailureReasonRef = 'claude.provider_auth_materialization_failed'
     emit({
       kind: 'tool.call',
       turnId,
@@ -2780,6 +2787,7 @@ async function main() {
       authGrantRef: claudeProviderAuth.authGrantRef,
       delivery: 'env:CLAUDE_CODE_OAUTH_TOKEN',
     })
+    activeFailureReasonRef = null
   }
 
   // 1. Real repo checkout via the #8475 materializer (unauthenticated depth-1

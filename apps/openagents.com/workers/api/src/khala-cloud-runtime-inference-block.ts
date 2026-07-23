@@ -182,6 +182,9 @@ export type CloudRuntimeClaudeProviderAuthConfig = Readonly<{
   agentToken: string
   providerAccountRef: string
   authGrantRef: string
+  kind: 'claude_agent_anthropic_api_key'
+  runnerSessionId: string
+  secretRef: string
 }>
 
 export type CloudRuntimeHarnessRuntimeSecretGrant = Readonly<{
@@ -212,7 +215,10 @@ export type CloudRuntimeHarnessSecretGrantRef = Readonly<{
 
 export type CloudRuntimeClaudeProviderAuthGrantRef = Readonly<{
   authGrantRef: string
+  kind: 'claude_agent_anthropic_api_key'
   providerAccountRef: string
+  runnerSessionId: string
+  secretRef: string
 }>
 
 export class ManagedAgentComputerHarnessConfigurationError extends S.TaggedErrorClass<ManagedAgentComputerHarnessConfigurationError>()(
@@ -253,7 +259,10 @@ export const buildManagedAgentComputerHarnessBlocks = (
         agentToken: input.agentToken,
         authGrantRef: grant.authGrantRef,
         baseUrl: input.baseUrl,
+        kind: grant.kind,
         providerAccountRef: grant.providerAccountRef,
+        runnerSessionId: grant.runnerSessionId,
+        secretRef: grant.secretRef,
       },
       harnessTurn: { harness: selection.harnessId },
     }

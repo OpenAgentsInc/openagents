@@ -7814,7 +7814,10 @@ const runManagedCloudRuntimeTurnDispatchForEnv = async (
                 ...preparedBase,
                 claudeProviderAuthGrant: {
                   authGrantRef: grant.grantRef,
+                  kind: 'claude_agent_anthropic_api_key' as const,
                   providerAccountRef: grant.providerAccountRef,
+                  runnerSessionId: grant.runnerSessionId,
+                  secretRef: privateAccount.secretRef,
                 },
               }
             }

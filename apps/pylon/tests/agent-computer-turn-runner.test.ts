@@ -91,7 +91,10 @@ const claudeProviderAuth: ClaudeProviderAuthConfig = {
   authGrantRef: 'grant.public.claude.owner.turn',
   baseUrl: 'https://openagents.example',
   agentToken: 'agent-secret-token-should-never-be-serialized',
+  kind: 'claude_agent_anthropic_api_key',
   providerAccountRef: 'provider-account.public.claude.owner',
+  runnerSessionId: 'turn.public.claude.owner',
+  secretRef: 'provider-secret.public.claude.owner',
 }
 
 describe('agent-computer turn-runner: writeback identity', () => {
@@ -151,8 +154,11 @@ describe('agent-computer turn-runner: Claude provider-account broker materializa
     expect(req.url).toBe(`${claudeProviderAuth.baseUrl}${CLAUDE_PROVIDER_AUTH_MATERIAL_PATH}`)
     expect(req.headers.Authorization).toBe(`Bearer ${claudeProviderAuth.agentToken}`)
     expect(JSON.parse(req.body)).toEqual({
-      authGrantRef: claudeProviderAuth.authGrantRef,
+      grantRef: claudeProviderAuth.authGrantRef,
+      kind: claudeProviderAuth.kind,
       providerAccountRef: claudeProviderAuth.providerAccountRef,
+      runnerSessionId: claudeProviderAuth.runnerSessionId,
+      secretRef: claudeProviderAuth.secretRef,
     })
     expect(req.body).not.toContain('claude-oauth-token')
   })

@@ -129,7 +129,10 @@ describe('managed Agent Computer harness selection', () => {
       ownerUserId: 'owner.fixture',
       claudeProviderAuthGrant: {
         authGrantRef: 'grant.claude.owner.turn-1',
+        kind: 'claude_agent_anthropic_api_key',
         providerAccountRef: 'provider-account.claude.owner',
+        runnerSessionId: 'turn-1',
+        secretRef: 'provider-secret.claude.owner',
       },
       selection: claude,
       turnId: 'turn-1',
@@ -139,7 +142,10 @@ describe('managed Agent Computer harness selection', () => {
         agentToken: 'short-lived-agent-token',
         authGrantRef: 'grant.claude.owner.turn-1',
         baseUrl: 'https://openagents.example',
+        kind: 'claude_agent_anthropic_api_key',
         providerAccountRef: 'provider-account.claude.owner',
+        runnerSessionId: 'turn-1',
+        secretRef: 'provider-secret.claude.owner',
       },
       harnessTurn: { harness: 'claude-code' },
     })
