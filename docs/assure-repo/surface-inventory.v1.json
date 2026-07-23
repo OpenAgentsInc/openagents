@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:8b194aaf765e4fc8b1b11a0894e26fe0a0233414f83b5305388ab114f6a1ac72",
+  "sourceDigest": "sha256:0613c1ced55a52de082604a93619f7aa46f5754d5cd20fa11943dd983d9b6d8d",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -435,7 +435,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "apps/pylon (330 tracked test files)"
+          "ref": "apps/pylon (332 tracked test files)"
         },
         {
           "type": "behavior-contract",
