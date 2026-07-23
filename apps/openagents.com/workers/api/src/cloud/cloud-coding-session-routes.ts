@@ -967,6 +967,11 @@ const publicRefFromEventData = (
   key: string,
 ): string | undefined => publicRefFromUnknown(event.data[key])
 
+const cleanupReceiptFromEvent = (
+  event: CloudPlacementEvent,
+): Record<string, unknown> | undefined =>
+  recordFromUnknown(event.data.cleanupReceipt)
+
 const lifecycleReceiptRefsFromEvents = (
   events: ReadonlyArray<CloudPlacementEvent>,
 ): ReadonlyArray<string> =>
@@ -1128,12 +1133,27 @@ const normalizeCloudPlacementResponse = (
   }
 }
 
-const hasVerifiedReclaimEvidence = (event: CloudPlacementEvent): boolean =>
-  event.kind === 'cloud.gce.cleanup' &&
-  (publicRefFromEventData(event, 'scratchWipeReceiptRef') ??
-    publicRefFromEventData(event, 'scratch_wipe_receipt_ref')) !== undefined &&
-  (publicRefFromEventData(event, 'microvmDestroyReceiptRef') ??
-    publicRefFromEventData(event, 'microvm_destroy_receipt_ref')) !== undefined
+const hasVerifiedReclaimEvidence = (event: CloudPlacementEvent): boolean => {
+  if (event.kind !== 'cloud.gce.cleanup') {
+    return false
+  }
+  const cleanupReceipt = cleanupReceiptFromEvent(event)
+  if (cleanupReceipt?.tornDown !== true) {
+    return false
+  }
+  const scratchWipeReceiptRef = publicRefFromUnknown(
+    cleanupReceipt.scratchWipeReceiptRef,
+  )
+  const microvmDestroyReceiptRef = publicRefFromUnknown(
+    cleanupReceipt.microvmDestroyReceiptRef,
+  )
+  return (
+    scratchWipeReceiptRef !== undefined &&
+    microvmDestroyReceiptRef !== undefined &&
+    event.receiptRefs.includes(scratchWipeReceiptRef) &&
+    event.receiptRefs.includes(microvmDestroyReceiptRef)
+  )
+}
 
 const validateAgentComputerPlacement = (
   placement: CloudPlacementResponse,
@@ -1165,10 +1185,13 @@ const validateAgentComputerPlacement = (
   if (placement.binding.workContextRef !== expectedWorkContextRef) {
     return 'agent_computer_work_context_binding_mismatch'
   }
+  const cleanupEvents = placement.events.filter(
+    event => event.kind === 'cloud.gce.cleanup',
+  )
   if (
-    placement.events.some(
-      event => event.kind === 'cloud.gce.cleanup' && !hasVerifiedReclaimEvidence(event),
-    )
+    cleanupEvents.some(event => !hasVerifiedReclaimEvidence(event)) ||
+    (placement.status === 'completed' &&
+      !cleanupEvents.some(hasVerifiedReclaimEvidence))
   ) {
     return 'agent_computer_reclaim_evidence_missing'
   }

@@ -709,11 +709,18 @@ describe('POST /v1/cloud-coding-sessions', () => {
             },
             {
               dataJson: JSON.stringify({
-                microvmDestroyReceiptRef: 'receipt.microvm.destroy.daemon',
-                scratchWipeReceiptRef: 'receipt.scratch.wipe.daemon',
+                cleanupReceipt: {
+                  microvmDestroyReceiptRef: 'receipt.microvm.destroy.daemon',
+                  scratchWipeReceiptRef: 'receipt.scratch.wipe.daemon',
+                  tornDown: true,
+                },
                 workContextRef: 'work-context.agent-computer.ccs_daemon',
               }),
               kind: 'cloud.gce.cleanup',
+              receiptRefs: [
+                'receipt.microvm.destroy.daemon',
+                'receipt.scratch.wipe.daemon',
+              ],
             },
           ],
           agent_computer_isolation_policy: agentComputerIsolationPolicyEcho,
@@ -1035,6 +1042,130 @@ describe('POST /v1/cloud-coding-sessions', () => {
     )
   })
 
+  test('fails closed when a terminal placement has no cleanup event', async () => {
+    const adapter = makeCloudControlCloudCodingAdapter({
+      baseUrl: 'https://cloud.openagents.test',
+      bearerToken: 'secret-test-token',
+      fetch: async () =>
+        Response.json({
+          agent_computer_isolation_policy: agentComputerIsolationPolicyEcho,
+          binding: {
+            externalRunId: 'run_gce_1',
+            lane: 'cloud-gcp',
+            providerLane: 'gcp',
+            runnerId: 'runner_gce_1',
+            workContextRef: 'work-context.agent-computer.ccs_fixed',
+          },
+          events: [],
+          externalRunId: 'run_gce_1',
+          status: 'completed',
+        }),
+      gceProvisioningArmed: true,
+    })
+    const response = await run(
+      handleCloudCodingSessionLaunch(launchRequest(validBody), {
+        ...baseDeps(),
+        adapter,
+      }),
+    )
+    expect(response.status).toBe(502)
+    expect(((await response.json()) as { reason: string }).reason).toBe(
+      'agent_computer_reclaim_evidence_missing',
+    )
+  })
+
+  test('fails closed when cleanup refs are present but teardown is not verified', async () => {
+    const scratchRef = 'receipt.cloud.gce.scratch_wipe.run_gce_1'
+    const destroyRef = 'receipt.cloud.gce.microvm_destroy.run_gce_1'
+    const adapter = makeCloudControlCloudCodingAdapter({
+      baseUrl: 'https://cloud.openagents.test',
+      bearerToken: 'secret-test-token',
+      fetch: async () =>
+        Response.json({
+          agent_computer_isolation_policy: agentComputerIsolationPolicyEcho,
+          binding: {
+            externalRunId: 'run_gce_1',
+            lane: 'cloud-gcp',
+            providerLane: 'gcp',
+            runnerId: 'runner_gce_1',
+            workContextRef: 'work-context.agent-computer.ccs_fixed',
+          },
+          events: [
+            {
+              dataJson: JSON.stringify({
+                cleanupReceipt: {
+                  microvmDestroyReceiptRef: destroyRef,
+                  scratchWipeReceiptRef: scratchRef,
+                  tornDown: false,
+                },
+              }),
+              receiptRefs: [scratchRef, destroyRef],
+              type: 'cloud.gce.cleanup',
+            },
+          ],
+          externalRunId: 'run_gce_1',
+          status: 'completed',
+        }),
+      gceProvisioningArmed: true,
+    })
+    const response = await run(
+      handleCloudCodingSessionLaunch(launchRequest(validBody), {
+        ...baseDeps(),
+        adapter,
+      }),
+    )
+    expect(response.status).toBe(502)
+    expect(((await response.json()) as { reason: string }).reason).toBe(
+      'agent_computer_reclaim_evidence_missing',
+    )
+  })
+
+  test('fails closed when cleanup evidence refs are not attached to the cleanup event', async () => {
+    const adapter = makeCloudControlCloudCodingAdapter({
+      baseUrl: 'https://cloud.openagents.test',
+      bearerToken: 'secret-test-token',
+      fetch: async () =>
+        Response.json({
+          agent_computer_isolation_policy: agentComputerIsolationPolicyEcho,
+          binding: {
+            externalRunId: 'run_gce_1',
+            lane: 'cloud-gcp',
+            providerLane: 'gcp',
+            runnerId: 'runner_gce_1',
+            workContextRef: 'work-context.agent-computer.ccs_fixed',
+          },
+          events: [
+            {
+              dataJson: JSON.stringify({
+                cleanupReceipt: {
+                  microvmDestroyReceiptRef:
+                    'receipt.cloud.gce.microvm_destroy.run_gce_1',
+                  scratchWipeReceiptRef:
+                    'receipt.cloud.gce.scratch_wipe.run_gce_1',
+                  tornDown: true,
+                },
+              }),
+              receiptRefs: ['receipt.unrelated'],
+              type: 'cloud.gce.cleanup',
+            },
+          ],
+          externalRunId: 'run_gce_1',
+          status: 'completed',
+        }),
+      gceProvisioningArmed: true,
+    })
+    const response = await run(
+      handleCloudCodingSessionLaunch(launchRequest(validBody), {
+        ...baseDeps(),
+        adapter,
+      }),
+    )
+    expect(response.status).toBe(502)
+    expect(((await response.json()) as { reason: string }).reason).toBe(
+      'agent_computer_reclaim_evidence_missing',
+    )
+  })
+
   test('maps a runtime adapter failure to 502', async () => {
     const adapter: CloudCodingRuntimeAdapter = {
       ...stubCloudCodingAdapter,
@@ -1185,13 +1316,20 @@ describe('POST /v1/cloud-coding-sessions', () => {
             },
             {
               dataJson: JSON.stringify({
-                cleanupReceiptRef: 'sha256:cleanup',
+                cleanupReceipt: {
+                  cleanupReceiptRef: 'sha256:cleanup',
+                  microvmDestroyReceiptRef: 'sha256:microvm-destroy',
+                  scratchWipeReceiptRef: 'sha256:scratch-wipe',
+                  tornDown: true,
+                },
                 leaseRef: 'lease.gce.vm.ccs_fixed',
-                microvmDestroyReceiptRef: 'sha256:microvm-destroy',
-                scratchWipeReceiptRef: 'sha256:scratch-wipe',
               }),
               kind: 'cleanup',
-              receiptRefs: ['sha256:cleanup'],
+              receiptRefs: [
+                'sha256:cleanup',
+                'sha256:scratch-wipe',
+                'sha256:microvm-destroy',
+              ],
               type: 'cloud.gce.cleanup',
             },
           ],

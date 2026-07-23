@@ -682,6 +682,11 @@ impl CloudVmProvisioner for LiveFirecrackerProvisioner {
         // 3. Remove the jail dir — wipes the per-run scratch rootfs and vsock.
         std::fs::remove_dir_all(&jail_dir)
             .map_err(|error| CloudVmError::Runtime(format!("teardown jail: {error}")))?;
+        if jail_dir.exists() {
+            return Err(CloudVmError::Runtime(
+                "teardown jail removal was not verified".to_string(),
+            ));
+        }
         Ok(())
     }
 }
@@ -1171,6 +1176,16 @@ pub struct CloudVmCleanupReceipt {
     pub emitted_at_ms: u128,
 }
 
+/// Public-safe failure information for a provisioned session. The reason is a
+/// stable ref. It does not contain raw command output, host paths, or provider
+/// error text.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudVmSessionFailure {
+    pub stage: String,
+    pub reason_ref: String,
+}
+
 /// The public-safe outcome of a full Cloud-VM session. Refs-only + a host dir
 /// the artifacts were extracted into. This is what the HTTP route returns to the
 /// qa-runner; it maps onto the seam's provision -> exec -> copyOut -> teardown.
@@ -1184,8 +1199,10 @@ pub struct CloudVmSessionOutcome {
     pub os: CloudVmOs,
     /// Which lane executed (`fake` / `live`).
     pub provisioner_kind: String,
-    /// The exec transcript (mirrors `CloudVmHandle.exec`'s `{ code, output }`).
-    pub exec: VmExecResult,
+    /// The exec transcript when the guest command ran.
+    pub exec: Option<VmExecResult>,
+    /// A stable public-safe failure record for exec or artifact extraction.
+    pub session_failure: Option<CloudVmSessionFailure>,
     /// Host directory the artifacts were extracted into.
     pub extracted_to: String,
     pub provision_receipt: CloudVmProvisionReceipt,
@@ -1234,20 +1251,43 @@ pub fn run_cloud_vm_session(
         emitted_at_ms: now_ms,
     };
 
-    // exec -> copy_out, with a guaranteed teardown afterwards.
-    let session = (|| -> Result<(VmExecResult, bool), CloudVmError> {
-        let (command, args) = session_command
-            .split_first()
-            .ok_or_else(|| CloudVmError::InvalidRequest("session command is empty".to_string()))?;
-        let exec = provisioner.exec(&vm, command, args)?;
-        provisioner.copy_out(&vm, VM_ARTIFACT_DIR, host_artifact_dir)?;
-        Ok((exec, true))
-    })();
+    // exec -> copy_out, with a guaranteed teardown afterwards. A failure after
+    // provision is represented in the outcome so the cleanup receipt is never
+    // lost.
+    let mut exec = None;
+    let mut artifacts_extracted = false;
+    let mut session_failure = None;
+    match session_command.split_first() {
+        None => {
+            session_failure = Some(CloudVmSessionFailure {
+                stage: "exec".to_string(),
+                reason_ref: "cloud_vm.session_command_missing".to_string(),
+            });
+        }
+        Some((command, args)) => match provisioner.exec(&vm, command, args) {
+            Err(_) => {
+                session_failure = Some(CloudVmSessionFailure {
+                    stage: "exec".to_string(),
+                    reason_ref: "cloud_vm.exec_failed".to_string(),
+                });
+            }
+            Ok(result) => {
+                exec = Some(result);
+                match provisioner.copy_out(&vm, VM_ARTIFACT_DIR, host_artifact_dir) {
+                    Ok(()) => artifacts_extracted = true,
+                    Err(_) => {
+                        session_failure = Some(CloudVmSessionFailure {
+                            stage: "copy_out".to_string(),
+                            reason_ref: "cloud_vm.copy_out_failed".to_string(),
+                        });
+                    }
+                }
+            }
+        },
+    }
 
     // Teardown ALWAYS runs, even if exec/copy_out failed. Never leak a VM.
     let torn_down = provisioner.teardown(&vm).is_ok();
-
-    let (exec, artifacts_extracted) = session?;
 
     let cleanup_receipt = CloudVmCleanupReceipt {
         contract_version: CLOUD_VM_PROVISIONER_VERSION.to_string(),
@@ -1255,7 +1295,10 @@ pub fn run_cloud_vm_session(
         vm_ref: vm.id.clone(),
         torn_down,
         artifacts_extracted,
-        receipt_digest: receipt_digest(&format!("cleanup|{}|{}", request.run_id, vm.id)),
+        receipt_digest: receipt_digest(&format!(
+            "cleanup|{}|{}|{torn_down}|{artifacts_extracted}",
+            request.run_id, vm.id
+        )),
         emitted_at_ms: now_ms,
     };
 
@@ -1265,6 +1308,7 @@ pub fn run_cloud_vm_session(
         os: vm.os,
         provisioner_kind: provisioner.kind().as_str().to_string(),
         exec,
+        session_failure,
         extracted_to: host_artifact_dir.to_string_lossy().to_string(),
         provision_receipt,
         cleanup_receipt,
@@ -1352,6 +1396,70 @@ pub fn contains_forbidden_material(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    struct FailingProvisioner {
+        fail_exec: bool,
+        fail_copy_out: bool,
+        fail_teardown: bool,
+        teardown_called: AtomicBool,
+    }
+
+    impl FailingProvisioner {
+        fn new(fail_exec: bool, fail_copy_out: bool, fail_teardown: bool) -> Self {
+            Self {
+                fail_exec,
+                fail_copy_out,
+                fail_teardown,
+                teardown_called: AtomicBool::new(false),
+            }
+        }
+    }
+
+    impl CloudVmProvisioner for FailingProvisioner {
+        fn kind(&self) -> ProvisionerKind {
+            ProvisionerKind::Fake
+        }
+
+        fn provision(&self, request: &CloudVmRequest) -> Result<ProvisionedVm, CloudVmError> {
+            FakeProvisioner.provision(request)
+        }
+
+        fn exec(
+            &self,
+            vm: &ProvisionedVm,
+            command: &str,
+            args: &[String],
+        ) -> Result<VmExecResult, CloudVmError> {
+            if self.fail_exec {
+                Err(CloudVmError::Runtime("private exec detail".to_string()))
+            } else {
+                FakeProvisioner.exec(vm, command, args)
+            }
+        }
+
+        fn copy_out(
+            &self,
+            vm: &ProvisionedVm,
+            vm_path: &str,
+            host_dir: &Path,
+        ) -> Result<(), CloudVmError> {
+            if self.fail_copy_out {
+                Err(CloudVmError::Runtime("private copy-out detail".to_string()))
+            } else {
+                FakeProvisioner.copy_out(vm, vm_path, host_dir)
+            }
+        }
+
+        fn teardown(&self, _vm: &ProvisionedVm) -> Result<(), CloudVmError> {
+            self.teardown_called.store(true, Ordering::SeqCst);
+            if self.fail_teardown {
+                Err(CloudVmError::Runtime("private teardown detail".to_string()))
+            } else {
+                Ok(())
+            }
+        }
+    }
 
     fn request(os: CloudVmOs) -> CloudVmRequest {
         CloudVmRequest {
@@ -1443,8 +1551,10 @@ mod tests {
         assert!(outcome.provision_receipt.healthy);
 
         // exec: ran the session command.
-        assert_eq!(outcome.exec.code, 0);
-        assert!(outcome.exec.output.contains("qa-session"));
+        let exec = outcome.exec.as_ref().expect("successful exec");
+        assert_eq!(exec.code, 0);
+        assert!(exec.output.contains("qa-session"));
+        assert!(outcome.session_failure.is_none());
 
         // copy_out: artifacts dereferenceable on the host.
         let result = std::fs::read_to_string(dir.join("result.json")).unwrap();
@@ -1460,6 +1570,83 @@ mod tests {
             .receipt_digest
             .starts_with("sha256:"));
 
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn exec_failure_preserves_verified_cleanup_receipt() {
+        let dir = tmp_dir("exec-failure-cleanup");
+        let provisioner = FailingProvisioner::new(true, false, false);
+        let outcome = run_cloud_vm_session(
+            &provisioner,
+            &request(CloudVmOs::Linux),
+            &session_command(),
+            &dir,
+            1_001,
+        )
+        .expect("provisioned failure returns an outcome");
+
+        assert!(provisioner.teardown_called.load(Ordering::SeqCst));
+        assert!(outcome.cleanup_receipt.torn_down);
+        assert!(!outcome.cleanup_receipt.artifacts_extracted);
+        assert!(outcome.exec.is_none());
+        assert_eq!(
+            outcome.session_failure,
+            Some(CloudVmSessionFailure {
+                stage: "exec".to_string(),
+                reason_ref: "cloud_vm.exec_failed".to_string(),
+            })
+        );
+        assert!(!serde_json::to_string(&outcome)
+            .unwrap()
+            .contains("private exec detail"));
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn copy_out_failure_preserves_exec_and_verified_cleanup_receipt() {
+        let dir = tmp_dir("copy-out-failure-cleanup");
+        let provisioner = FailingProvisioner::new(false, true, false);
+        let outcome = run_cloud_vm_session(
+            &provisioner,
+            &request(CloudVmOs::Linux),
+            &session_command(),
+            &dir,
+            1_002,
+        )
+        .expect("provisioned failure returns an outcome");
+
+        assert!(provisioner.teardown_called.load(Ordering::SeqCst));
+        assert!(outcome.cleanup_receipt.torn_down);
+        assert!(!outcome.cleanup_receipt.artifacts_extracted);
+        assert_eq!(outcome.exec.as_ref().map(|exec| exec.code), Some(0));
+        assert_eq!(
+            outcome
+                .session_failure
+                .as_ref()
+                .map(|failure| failure.reason_ref.as_str()),
+            Some("cloud_vm.copy_out_failed")
+        );
+        cleanup(&dir);
+    }
+
+    #[test]
+    fn teardown_failure_cannot_mint_verified_cleanup() {
+        let dir = tmp_dir("teardown-failure");
+        let provisioner = FailingProvisioner::new(false, false, true);
+        let outcome = run_cloud_vm_session(
+            &provisioner,
+            &request(CloudVmOs::Linux),
+            &session_command(),
+            &dir,
+            1_003,
+        )
+        .expect("teardown failure returns its cleanup receipt");
+
+        assert!(provisioner.teardown_called.load(Ordering::SeqCst));
+        assert!(!outcome.cleanup_receipt.torn_down);
+        assert!(outcome.cleanup_receipt.artifacts_extracted);
+        assert!(outcome.session_failure.is_none());
         cleanup(&dir);
     }
 
@@ -1643,9 +1830,15 @@ mod tests {
         .expect("live cloud-vm session");
         println!(
             "LIVE-PROOF vm_id={} extracted_to={} exec_code={}",
-            outcome.vm_id, outcome.extracted_to, outcome.exec.code
+            outcome.vm_id,
+            outcome.extracted_to,
+            outcome.exec.as_ref().map(|exec| exec.code).unwrap_or(-1)
         );
-        assert_eq!(outcome.exec.code, 0, "in-guest turn must exit 0");
+        assert_eq!(
+            outcome.exec.as_ref().map(|exec| exec.code),
+            Some(0),
+            "in-guest turn must exit 0"
+        );
         let result_path = dir.join("result.json");
         assert!(result_path.exists(), "artifacts must be extracted");
         // The extracted result.json must carry the pinned base commit — proof the

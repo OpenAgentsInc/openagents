@@ -2254,6 +2254,72 @@ fn bounded_guest_diagnostic_tail(output: &str) -> Vec<GuestDiagnosticEvent> {
     events
 }
 
+fn microvm_cleanup_event_input(
+    run_short: &str,
+    work_context_ref: &str,
+    receipt: &cloud_vm::CloudVmCleanupReceipt,
+) -> Result<JobEventInput, String> {
+    let cleanup_verified = receipt.torn_down;
+    let cleanup_receipt_refs = if cleanup_verified {
+        vec![
+            receipt.receipt_digest.clone(),
+            format!("receipt.cloud.gce.scratch_wipe.{run_short}"),
+            format!("receipt.cloud.gce.microvm_destroy.{run_short}"),
+        ]
+    } else {
+        Vec::new()
+    };
+    let cleanup_receipt_json = if cleanup_verified {
+        serde_json::json!({
+            "tornDown": true,
+            "cleanupReceiptRef": cleanup_receipt_refs[0],
+            "scratchWipeReceiptRef": cleanup_receipt_refs[1],
+            "microvmDestroyReceiptRef": cleanup_receipt_refs[2],
+        })
+    } else {
+        serde_json::json!({
+            "tornDown": false,
+        })
+    };
+    Ok(JobEventInput {
+        artifact_refs: Vec::new(),
+        data_json: Some(json_string(&serde_json::json!({
+            "workContextRef": work_context_ref,
+            "artifactsExtracted": receipt.artifacts_extracted,
+            "cleanupReceipt": cleanup_receipt_json,
+        }))?),
+        detail: Some(if cleanup_verified {
+            "Agent Computer microVM reclaimed: scratch wiped, microVM destroyed.".to_string()
+        } else {
+            "Agent Computer microVM reclaim was not verified.".to_string()
+        }),
+        digest: Some(receipt.receipt_digest.clone()),
+        kind: "cloud.gce.cleanup".to_string(),
+        receipt_refs: cleanup_receipt_refs,
+        redacted: !cleanup_verified,
+        source: "control".to_string(),
+        summary: if cleanup_verified {
+            "Agent Computer microVM reclaimed (scratch wiped, microVM destroyed).".to_string()
+        } else {
+            "Agent Computer microVM reclaim not verified.".to_string()
+        },
+        type_: "cloud.gce.cleanup".to_string(),
+    })
+}
+
+fn microvm_terminal_status(
+    exit_code: i32,
+    session_failed: bool,
+    artifacts_extracted: bool,
+    cleanup_verified: bool,
+) -> &'static str {
+    if exit_code == 0 && !session_failed && artifacts_extracted && cleanup_verified {
+        "completed"
+    } else {
+        "failed"
+    }
+}
+
 /// Worker thread: boot the microVM, run the turn, then emit lifecycle receipts
 /// and a terminal status. Teardown (scratch wipe + microVM destroy) is guaranteed
 /// inside `run_cloud_vm_session`; we surface its cleanup receipt as the reclaim
@@ -2314,12 +2380,21 @@ fn run_org_cloud_microvm_worker(
         }
     };
 
-    // Read the public-safe result the turn-runner copied out (no secrets in it).
-    let result: MicrovmTurnResult = fs::read_to_string(host_artifact_dir.join("result.json"))
-        .ok()
-        .and_then(|raw| serde_json::from_str(&raw).ok())
-        .unwrap_or_default();
-    let artifact_refs = extracted_artifact_refs(&host_artifact_dir)?;
+    // Read extracted public-safe artifacts only when copy-out succeeded. A
+    // failed exec or copy-out still reaches cleanup admission below.
+    let result: MicrovmTurnResult = if outcome.cleanup_receipt.artifacts_extracted {
+        fs::read_to_string(host_artifact_dir.join("result.json"))
+            .ok()
+            .and_then(|raw| serde_json::from_str(&raw).ok())
+            .unwrap_or_default()
+    } else {
+        MicrovmTurnResult::default()
+    };
+    let artifact_refs = if outcome.cleanup_receipt.artifacts_extracted {
+        extracted_artifact_refs(&host_artifact_dir)?
+    } else {
+        Vec::new()
+    };
 
     // provisioned (active) — echoes the work-context ref for the isolation check.
     let provision_receipt_ref = format!("receipt.cloud.gce.provision.{run_short}");
@@ -2386,46 +2461,36 @@ fn run_org_cloud_microvm_worker(
     )?;
     let _ = usage;
 
-    // cleanup / reclaim: scratch-wipe + microVM-destroy receipt refs (the reclaim
-    // evidence the isolation posture requires). Guaranteed teardown ran already.
-    let scratch_wipe_ref = format!("receipt.cloud.gce.scratch_wipe.{run_short}");
-    let microvm_destroy_ref = format!("receipt.cloud.gce.microvm_destroy.{run_short}");
+    // Cleanup/reclaim refs are evidence claims. Mint them only after teardown
+    // verified that the per-run jail and scratch state are absent.
+    let cleanup_verified = outcome.cleanup_receipt.torn_down;
     let cleanup = append_job_event(
         &config,
         &run_id,
-        JobEventInput {
-            artifact_refs: Vec::new(),
-            data_json: Some(json_string(&serde_json::json!({
-                "workContextRef": work_context_ref,
-                "tornDown": outcome.cleanup_receipt.torn_down,
-                "artifactsExtracted": outcome.cleanup_receipt.artifacts_extracted,
-                "scratchWipeReceiptRef": scratch_wipe_ref,
-                "microvmDestroyReceiptRef": microvm_destroy_ref,
-            }))?),
-            detail: Some(
-                "Agent Computer microVM reclaimed: scratch wiped, microVM destroyed.".to_string(),
-            ),
-            digest: Some(outcome.cleanup_receipt.receipt_digest.clone()),
-            kind: "cloud.gce.cleanup".to_string(),
-            receipt_refs: vec![scratch_wipe_ref, microvm_destroy_ref],
-            redacted: false,
-            source: "control".to_string(),
-            summary: "Agent Computer microVM reclaimed (scratch wiped, microVM destroyed)."
-                .to_string(),
-            type_: "cloud.gce.cleanup".to_string(),
-        },
+        microvm_cleanup_event_input(&run_short, &work_context_ref, &outcome.cleanup_receipt)?,
     )?;
     let _ = cleanup;
 
-    let exit_code = outcome.exec.code;
-    let failure_class = microvm_failure_class(exit_code, &outcome.exec.output);
-    let failure_reason_ref = microvm_failure_reason_ref(exit_code, &outcome.exec.output);
-    let guest_diagnostic_tail = bounded_guest_diagnostic_tail(&outcome.exec.output);
-    let terminal_status = if exit_code == 0 {
-        "completed"
-    } else {
-        "failed"
-    };
+    let exit_code = outcome.exec.as_ref().map(|exec| exec.code).unwrap_or(-1);
+    let exec_output = outcome
+        .exec
+        .as_ref()
+        .map(|exec| exec.output.as_str())
+        .unwrap_or("");
+    let failure_class = microvm_failure_class(exit_code, exec_output);
+    let failure_reason_ref = outcome
+        .session_failure
+        .as_ref()
+        .map(|failure| failure.reason_ref.clone())
+        .or_else(|| (!cleanup_verified).then(|| "cloud_vm.teardown_not_verified".to_string()))
+        .or_else(|| microvm_failure_reason_ref(exit_code, exec_output));
+    let guest_diagnostic_tail = bounded_guest_diagnostic_tail(exec_output);
+    let terminal_status = microvm_terminal_status(
+        exit_code,
+        outcome.session_failure.is_some(),
+        outcome.cleanup_receipt.artifacts_extracted,
+        cleanup_verified,
+    );
     let mut terminal_event_data = serde_json::json!({
         "workContextRef": work_context_ref,
         "runnerId": runner_id,
@@ -2433,6 +2498,7 @@ fn run_org_cloud_microvm_worker(
         "failureClass": failure_class,
         "failureReasonRef": failure_reason_ref,
         "guestDiagnosticTail": guest_diagnostic_tail,
+        "cleanupVerified": cleanup_verified,
     });
     add_public_microvm_failure_diagnostic(&mut terminal_event_data, &result);
     append_job_event(
@@ -5501,6 +5567,73 @@ mod tests {
         assert!(cmd[2].contains("base64 -d > /tmp/wc.json"));
         assert!(cmd[2].contains("/opt/agent/turn-runner /tmp/wc.json"));
         assert!(cmd[2].contains(cloud_vm::VM_ARTIFACT_DIR));
+    }
+
+    #[test]
+    fn microvm_cleanup_event_mints_reclaim_refs_only_after_verified_teardown() {
+        let receipt = cloud_vm::CloudVmCleanupReceipt {
+            contract_version: cloud_vm::CLOUD_VM_PROVISIONER_VERSION.to_string(),
+            run_ref: "run-ref://sha256/example".to_string(),
+            vm_ref: "cloud-vm-ref://sha256/example".to_string(),
+            torn_down: true,
+            artifacts_extracted: true,
+            receipt_digest: "sha256:cleanup".to_string(),
+            emitted_at_ms: 1,
+        };
+        let event =
+            microvm_cleanup_event_input("abc123", "work-context.public.example", &receipt).unwrap();
+        let data: Value = serde_json::from_str(event.data_json.as_deref().unwrap()).unwrap();
+
+        assert_eq!(event.receipt_refs.len(), 3);
+        assert_eq!(
+            data.pointer("/cleanupReceipt/tornDown")
+                .and_then(Value::as_bool),
+            Some(true)
+        );
+        for key in ["scratchWipeReceiptRef", "microvmDestroyReceiptRef"] {
+            let evidence_ref = data
+                .pointer(&format!("/cleanupReceipt/{key}"))
+                .and_then(Value::as_str)
+                .expect("cleanup evidence ref");
+            assert!(event.receipt_refs.iter().any(|value| value == evidence_ref));
+        }
+    }
+
+    #[test]
+    fn microvm_cleanup_event_withholds_reclaim_refs_when_teardown_is_unverified() {
+        let receipt = cloud_vm::CloudVmCleanupReceipt {
+            contract_version: cloud_vm::CLOUD_VM_PROVISIONER_VERSION.to_string(),
+            run_ref: "run-ref://sha256/example".to_string(),
+            vm_ref: "cloud-vm-ref://sha256/example".to_string(),
+            torn_down: false,
+            artifacts_extracted: true,
+            receipt_digest: "sha256:cleanup".to_string(),
+            emitted_at_ms: 1,
+        };
+        let event =
+            microvm_cleanup_event_input("abc123", "work-context.public.example", &receipt).unwrap();
+        let data: Value = serde_json::from_str(event.data_json.as_deref().unwrap()).unwrap();
+
+        assert!(event.receipt_refs.is_empty());
+        assert_eq!(
+            data.pointer("/cleanupReceipt/tornDown")
+                .and_then(Value::as_bool),
+            Some(false)
+        );
+        assert!(data
+            .pointer("/cleanupReceipt/scratchWipeReceiptRef")
+            .is_none());
+        assert!(data
+            .pointer("/cleanupReceipt/microvmDestroyReceiptRef")
+            .is_none());
+    }
+
+    #[test]
+    fn microvm_terminal_status_requires_successful_session_and_verified_cleanup() {
+        assert_eq!(microvm_terminal_status(0, false, true, true), "completed");
+        assert_eq!(microvm_terminal_status(0, false, true, false), "failed");
+        assert_eq!(microvm_terminal_status(0, true, false, true), "failed");
+        assert_eq!(microvm_terminal_status(1, false, true, true), "failed");
     }
 
     #[test]
