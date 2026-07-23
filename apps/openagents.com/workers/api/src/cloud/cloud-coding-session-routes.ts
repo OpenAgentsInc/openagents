@@ -119,10 +119,19 @@ const CloudCodingSessionRequestBody = S.Struct({
 // cloud VM indefinitely.
 export const DEFAULT_CLOUD_CODING_TIMEOUT_SECONDS = 1800
 export const MAX_CLOUD_CODING_TIMEOUT_SECONDS = 14400
+export const MAX_CLOUD_CODING_WORK_CONTEXT_B64_LENGTH = 256 * 1024
 export const DEFAULT_AGENT_COMPUTER_IDLE_RECLAIM_SECONDS = 1800
 export const AGENT_COMPUTER_ISOLATION_POLICY_SCHEMA =
   'openagents.agent_computer_isolation_policy.v1'
 export const AGENT_COMPUTER_PROVIDER_CREDENTIAL_POLICY = 'broker_only'
+const CloudCodingWorkContextB64 = S.String.check(
+  S.isMinLength(4),
+  S.isMaxLength(MAX_CLOUD_CODING_WORK_CONTEXT_B64_LENGTH),
+  S.isPattern(
+    /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u,
+  ),
+)
+type CloudCodingWorkContextB64 = typeof CloudCodingWorkContextB64.Type
 
 const USER_CAPACITY_OPTION_KEYS = new Set([
   'pylonRef',
@@ -808,6 +817,43 @@ const stringOption = (
   key: string,
 ): string | undefined => publicRefFromUnknown(options[key])
 
+type CloudCodingWorkContextB64Validation =
+  | Readonly<{
+      valid: true
+      value: CloudCodingWorkContextB64 | undefined
+    }>
+  | Readonly<{
+      valid: false
+      reason:
+        | 'cloud_coding_work_context_b64_invalid'
+        | 'cloud_coding_work_context_b64_too_large'
+    }>
+
+const validateCloudCodingWorkContextB64 = (
+  options: Readonly<Record<string, unknown>>,
+): CloudCodingWorkContextB64Validation => {
+  const value = options.workContextB64
+  if (value === undefined) {
+    return { valid: true, value: undefined }
+  }
+  if (
+    typeof value === 'string' &&
+    value.length > MAX_CLOUD_CODING_WORK_CONTEXT_B64_LENGTH
+  ) {
+    return {
+      reason: 'cloud_coding_work_context_b64_too_large',
+      valid: false,
+    }
+  }
+  if (!S.is(CloudCodingWorkContextB64)(value) || btoa(atob(value)) !== value) {
+    return {
+      reason: 'cloud_coding_work_context_b64_invalid',
+      valid: false,
+    }
+  }
+  return { valid: true, value }
+}
+
 const agentComputerIsolationPolicy = (
   request: CloudCodingSessionRequest,
 ) => ({
@@ -1173,6 +1219,18 @@ export const makeCloudControlCloudCodingAdapter = (
             notArmed('cloud_codex_provider_account_ref_missing'),
           )
         }
+        const workContextB64Validation = validateCloudCodingWorkContextB64(
+          request.options,
+        )
+        if (!workContextB64Validation.valid) {
+          return yield* Effect.fail(
+            new CloudCodingAdapterError({
+              adapterId: LIVE_CLOUD_CODING_ADAPTER_ID,
+              reason: workContextB64Validation.reason,
+            }),
+          )
+        }
+        const workContextB64 = workContextB64Validation.value
         const placementResult = yield* Effect.tryPromise({
           catch: error =>
             new CloudCodingAdapterError({
@@ -1184,11 +1242,6 @@ export const makeCloudControlCloudCodingAdapter = (
             }),
           try: async () => {
             const workContextRef = workContextRefForSession(request, sessionId)
-            // Seam A (#8503, AC-1): forward the opaque base64 work-context blob
-            // (repo/commit + inference block, incl. a short-lived owner-linked
-            // agent bearer) so the daemon runs the turn INSIDE a Firecracker
-            // The placement boundary carries an opaque work-context ref only.
-            // Raw/base64 context never crosses into the GCP control request.
             const response = await fetchImpl(`${baseUrl}/v1/placement`, {
               body: JSON.stringify({
                 auth_grant_ref: authGrantRef,
@@ -1211,6 +1264,9 @@ export const makeCloudControlCloudCodingAdapter = (
                   : { thread_ref: request.threadRef }),
                 timeout_seconds: request.timeoutSeconds,
                 wallet_authority: false,
+                ...(workContextB64 === undefined
+                  ? {}
+                  : { work_context_b64: workContextB64 }),
                 work_context_ref: workContextRef,
               }),
               headers: {

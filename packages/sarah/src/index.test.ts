@@ -15,8 +15,8 @@ import {
 
 describe("Sarah owner-orchestrator contract", () => {
   it("binds the admitted root authority and keeps self-amplification reserved", () => {
-    expect(ROOT_AUTHORITY_REVISION).toBe(7);
-    expect(SARAH_AUTHORITY_REVISION).toBe(5);
+    expect(ROOT_AUTHORITY_REVISION).toBe(8);
+    expect(SARAH_AUTHORITY_REVISION).toBe(6);
     expect(SARAH_RUNTIME_AUTHORITY_PROFILE.authorityMayAmplify).toBe(false);
     expect(SARAH_RUNTIME_AUTHORITY_PROFILE.reservedActions).toContain("increase_own_authority");
     expect(SARAH_RUNTIME_AUTHORITY_PROFILE.reservedActions).toContain(

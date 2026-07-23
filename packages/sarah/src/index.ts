@@ -6,9 +6,9 @@ export const SARAH_PRINCIPAL_SCHEMA = "openagents.sarah.principal.v1" as const;
 export const SARAH_CONTEXT_SCHEMA = "openagents.sarah.business_context.v1" as const;
 export const SARAH_HARNESS_POLICY_SCHEMA = "openagents.sarah.harness_policy.v1" as const;
 export const SARAH_AUTHORITY_PROFILE_REF = "openagents.sarah-owner-orchestrator" as const;
-export const SARAH_AUTHORITY_REVISION = 5 as const;
+export const SARAH_AUTHORITY_REVISION = 6 as const;
 export const ROOT_AUTHORITY_PROFILE_REF = "openagents.owner-delegated-autonomy" as const;
-export const ROOT_AUTHORITY_REVISION = 7 as const;
+export const ROOT_AUTHORITY_REVISION = 8 as const;
 
 const Ref = S.Trim.check(S.isMinLength(1), S.isMaxLength(256));
 const Summary = S.String.check(S.isMaxLength(4_000));
@@ -285,6 +285,7 @@ export const SARAH_RUNTIME_AUTHORITY_PROFILE: AuthorityRuntimeProfile = {
       ],
       resources: [
         "OpenAgentsInc/openagents",
+        "owner_coding_capacity",
         "owner_linked_pylon_coding_capacity",
         "owner_full_auto_runs",
         "owner_private_sarah_harness",

@@ -80,7 +80,7 @@ describe(`contract ${contractId}`, () => {
     expect(first.status).toBe(200);
     expect(body.principal).toMatchObject({
       memory: "durable_cited",
-      rootAuthorityRevision: 7,
+      rootAuthorityRevision: 8,
     });
     expect(body.principal.threadRef).toMatch(/^thread\.sarah\.[0-9a-f]{24}$/);
     expect(JSON.stringify(await second.json())).toContain(body.principal.threadRef);

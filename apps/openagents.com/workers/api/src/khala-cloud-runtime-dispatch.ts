@@ -212,20 +212,26 @@ export const readQueuedManagedCloudTurns = async (
     ORDER BY t.created_at ASC
     LIMIT ${limit}
   `
-  return rows.map(row => ({
-    branch: row.repository_ref,
-    commit: row.repository_ref,
-    eventCount: Number(row.event_count),
-    objective: row.goal_body,
-    ownerUserId: row.owner_user_id,
-    repo: `${row.repository_owner}/${row.repository_name}`,
-    repoBindingRef: `repo-binding.thread.${refPart(row.thread_id)}`,
-    runtimeLane: MANAGED_CLOUD_RUNTIME_LANE,
-    threadId: row.thread_id,
-    turnId: row.turn_id,
-    workContextRef: row.work_context_ref,
-    writeback: { mode: 'pull_request' },
-  }))
+  return rows.map((row): CloudGcpAdmittedWorkContext => {
+    const pinnedCommit = IMMUTABLE_GIT_SHA.test(row.repository_ref)
+    return {
+      ...(pinnedCommit ? {} : { branch: row.repository_ref }),
+      commit: row.repository_ref,
+      eventCount: Number(row.event_count),
+      objective: row.goal_body,
+      ownerUserId: row.owner_user_id,
+      repo: `${row.repository_owner}/${row.repository_name}`,
+      repoBindingRef: `repo-binding.thread.${refPart(row.thread_id)}`,
+      runtimeLane: MANAGED_CLOUD_RUNTIME_LANE,
+      threadId: row.thread_id,
+      turnId: row.turn_id,
+      workContextRef: row.work_context_ref,
+      writeback: {
+        mode: pinnedCommit ? 'branch_only' : 'pull_request',
+        ...(pinnedCommit ? {} : { baseBranch: row.repository_ref }),
+      },
+    }
+  })
 }
 
 export type CloudGcpAccountDispatchDecision =

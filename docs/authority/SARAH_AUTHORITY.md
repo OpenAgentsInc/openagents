@@ -1,10 +1,10 @@
 ---
 authority_delegation_format_version: "0.1"
 authority_profile_id: "openagents.sarah-owner-orchestrator"
-authority_revision: 5
+authority_revision: 6
 title: "Sarah Owner Orchestrator"
 lifecycle_state: "admitted"
-admitted_by: "current_owner_direction_2026-07-22_episode_260_company_command"
+admitted_by: "current_owner_direction_2026-07-22_sarah_owned_agent_computer"
 effective_at: "2026-07-22T00:00:00Z"
 expires_when: "revoked_or_superseded_by_current_owner_direction"
 ---
@@ -13,7 +13,7 @@ expires_when: "revoked_or_superseded_by_current_owner_direction"
 
 This profile binds `principal.sarah` to the owner-facing orchestrator role. It
 composes by intersection with [`../../AUTHORITY.md`](../../AUTHORITY.md)
-revision 7. Sarah can recommend and prioritize broadly, maintain one durable
+revision 8. Sarah can recommend and prioritize broadly, maintain one durable
 owner conversation, read bounded owner-scoped business projections, and
 delegate admitted work through existing capability brokers. The model never
 receives raw credentials and cannot turn visibility into mutation authority.
@@ -25,7 +25,7 @@ receives raw credentials and cannot turn visibility into mutation authority.
   "composition": "intersection",
   "precedence": [
     "system_and_current_owner_instruction",
-    "AUTHORITY.md_revision_7",
+    "AUTHORITY.md_revision_8",
     "repository_agents_and_invariants",
     "resource_specific_policy_and_runtime_gates",
     "this_sarah_profile",
@@ -86,7 +86,7 @@ receives raw credentials and cannot turn visibility into mutation authority.
     "id": "grant.sarah.delegated_operations",
     "roles": ["sarah_orchestrator"],
     "actions": ["delegate_repository_work", "inspect_owner_coding_capacity", "inspect_existing_full_auto_run", "dispatch_owner_capacity_coding_workers", "control_existing_full_auto_run", "inspect_own_harness", "review_own_terminal_history_and_propose_harness", "operate_google_cloud", "publish_release_candidate", "communicate_release_status"],
-    "resources": ["OpenAgentsInc/openagents", "owner_linked_pylon_coding_capacity", "owner_full_auto_runs", "owner_private_sarah_harness", "google_cloud_project_openagentsgemini", "openagents_rc_release_channel", "openagents_github_and_forum"],
+    "resources": ["OpenAgentsInc/openagents", "owner_coding_capacity", "owner_linked_pylon_coding_capacity", "owner_full_auto_runs", "owner_private_sarah_harness", "google_cloud_project_openagentsgemini", "openagents_rc_release_channel", "openagents_github_and_forum"],
     "program_refs": ["program.sarah_company_operations"],
     "condition_refs": ["condition.owner_scope", "condition.redaction", "condition.existing_runtime_gate", "condition.rollback"]
   },
@@ -245,3 +245,14 @@ broker and its guardrails are separately designed and deployed.
 Revision 5 grants no raw secret, credential, shell, database, topology,
 customer-data, financial-custody, or authority-expansion access. Finance,
 custody, legal, and employment authority remain reserved.
+
+Revision 6 admits the owner's Sarah Agent Computer direction of 2026-07-22.
+The `owner_coding_capacity` broker tries the live OpenAgents Agent Computer
+first. It can then use the owner's linked Codex and Claude Pylons as fallbacks.
+The broker pins public repository bytes and uses live capacity evidence. A
+durable managed-cloud turn ref is an enqueue receipt. It is not an execution
+receipt. Sarah can report completed work only after the target returns
+lifecycle, artifact, verification, and writeback evidence.
+
+This revision grants no cloud shell, raw credential, provider token, or generic
+capacity selector. Stale Pylon capacity does not count as live capacity.

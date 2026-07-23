@@ -1257,6 +1257,7 @@ import {
   SARAH_SPEECH_PATH,
   makeSarahSpeechRoutes,
 } from './sarah-speech-routes'
+import { makeSarahCloudCodingDispatch } from './sarah-cloud-coding-dispatch'
 import { makeSarahRuntimeTools } from './sarah-runtime-tools'
 import { makeSarahManagedSandboxTools } from './sarah-managed-sandbox'
 import { notifySarahWorkerCloseout as notifySarahWorkerCloseoutImpl } from './sarah-worker-closeout-notify'
@@ -6894,6 +6895,57 @@ const makeTokensServedReconcileDeps = (
     readPublicTokensServedExactTotal(openAgentsDatabase(env)),
 })
 
+const probeSarahAgentComputerCapacity = async (
+  env: OpenAgentsWorkerEnv,
+  ownerUserId: string,
+) => {
+  const capacity = await probeAgentComputerCapacitySnapshot({
+    baseUrl: env.OA_CLOUD_CONTROL_URL,
+    bearerToken: env.OA_CLOUD_CONTROL_TOKEN,
+    gceProvisioningArmed:
+      isCloudCodingSessionsEnabled(env.CLOUD_CODING_SESSIONS_ENABLED) &&
+      isCloudGceProvisioningArmed(env.OA_CODEX_GCE_PROVISIONER),
+  })
+  if (!capacity.available) return capacity
+  const postgresIdentity = postgresIdentityAuthStoreForEnv(env)
+  if (postgresIdentity === undefined) {
+    return {
+      available: false,
+      availableSlots: 0,
+      capacityRef:
+        'capacity.agent_computer.owner_identity_store.unavailable',
+    }
+  }
+  const accountRepository = makeAuthoritativePostgresProviderGrantRepository(
+    makeProviderAccountRepositoryForEnv(env),
+    postgresIdentity.queryRows,
+  )
+  const githubRepository = makeGitHubWriteRepositoryForEnv(env)
+  const [accounts, githubConnection] = await Promise.all([
+    listProviderAccountsForUser(accountRepository, ownerUserId),
+    githubRepository.findUsableConnectionForUser(ownerUserId),
+  ])
+  const ownerCodexReady = accounts.accounts.some(
+    account =>
+      account.provider === CHATGPT_CODEX_PROVIDER &&
+      account.publicStatus === 'connected' &&
+      account.health === 'healthy',
+  )
+  const githubReady =
+    githubConnection !== undefined &&
+    hasRequiredGitHubWriteScopes(githubConnection.scopes)
+  if (!ownerCodexReady || !githubReady) {
+    return {
+      available: false,
+      availableSlots: 0,
+      capacityRef: !ownerCodexReady
+        ? 'capacity.agent_computer.owner_codex_grant.unavailable'
+        : 'capacity.agent_computer.owner_github_write.unavailable',
+    }
+  }
+  return capacity
+}
+
 // #8467 follow-up: server-side hosted-Khala runtime dispatch. Claims `queued`
 // `hosted_khala` turns (mobile Khala Code chat turns with no local Pylon) and
 // answers them with hosted Gemini inference, writing the response back as
@@ -7063,9 +7115,14 @@ const runHostedRuntimeTurnDispatchForEnv = async (
             prompt,
             system,
             tools: makeSarahRuntimeTools({
+              dispatchCloudCoding: makeSarahCloudCodingDispatch({
+                sql: client.sql,
+              }),
               env,
               khalaCatalog: sarahKhalaCatalog,
               ownerUserId: turn.ownerUserId,
+              probeCloudCodingCapacity: () =>
+                probeSarahAgentComputerCapacity(env, turn.ownerUserId),
               sql: client.sql,
               threadRef: turn.threadId,
               turnId: turn.turnId,
@@ -7382,12 +7439,17 @@ const runSarahAutonomousTickDispatchForEnv = async (
           prompt,
           system,
           tools: makeSarahRuntimeTools({
+            dispatchCloudCoding: makeSarahCloudCodingDispatch({
+              sql: client.sql,
+            }),
             env,
             harnessStatus: () =>
               readSarahHarnessStatus({ ownerUserId, sql: client.sql }),
             khalaCatalog: sarahKhalaCatalog,
             managedSandboxTools,
             ownerUserId,
+            probeCloudCodingCapacity: () =>
+              probeSarahAgentComputerCapacity(env, ownerUserId),
             reviewHarness: () =>
               reviewSarahHarnessHistory({
                 complete: () =>

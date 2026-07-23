@@ -446,12 +446,18 @@ come from the Freerange teardown
   compatibility envelope, first-launch health proof, atomic fallback, and
   rollback receipt.
 
-- Under `AUTHORITY.md` revision 5 and Sarah authority revision 3,
-  `principal.sarah` may dispatch only bounded coding workers through the
-  authenticated owner's existing linked Pylon capacity and may dispatch only
-  pause/resume/stop intents for an existing owner Full Auto run. The coding
-  broker pins a real public repository commit and returns actual assignment
-  refs. Full Auto remains Desktop-authoritative: a server intent is `pending`
+- Under `AUTHORITY.md` revision 8 and Sarah authority revision 6,
+  `principal.sarah` can dispatch bounded coding workers through the closed
+  `owner_coding_capacity` broker. The broker tries a live OpenAgents Agent
+  Computer first. It can then use the authenticated owner's linked Codex and
+  Claude Pylons as fallbacks. It must not count stale Pylon capacity as live
+  capacity. The coding broker pins a real public repository commit. A Pylon
+  dispatch returns assignment refs. An Agent Computer dispatch returns a
+  durable managed-cloud turn ref. The turn ref does not prove execution.
+  Target lifecycle, artifact, verification, and writeback receipts prove
+  execution. Sarah can also dispatch only pause/resume/stop intents for an
+  existing owner Full Auto run. Full Auto remains Desktop-authoritative: a
+  server intent is `pending`
   until Desktop applies it. Sarah may additionally inspect her exact released
   conversational bundle and ask a broker to review only completed turns from
   her authenticated owner's stable Sarah thread. Terminal experience rows are
@@ -467,7 +473,7 @@ come from the Freerange teardown
   assurance-admission, candidate self-promotion, or authority-expansion
   capability.
 
-- Under `AUTHORITY.md` revision 7 and Sarah authority revision 5, the Episode
+- Under `AUTHORITY.md` revision 8 and Sarah authority revision 6, the Episode
   260 owner direction of 2026-07-22 admits Sarah's company-command scope for
   the owner's parental leave. Sarah may publish or promote a **stable** release
   and communicate its status, but only through the existing release broker,

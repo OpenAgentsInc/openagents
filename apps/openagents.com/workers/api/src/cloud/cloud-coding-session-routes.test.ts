@@ -11,6 +11,7 @@ import {
   AGENT_COMPUTER_ISOLATION_POLICY_SCHEMA,
   CloudCodingAdapterError,
   MAX_CLOUD_CODING_TIMEOUT_SECONDS,
+  MAX_CLOUD_CODING_WORK_CONTEXT_B64_LENGTH,
   admissibleLanesForTrustTier,
   allowCloudCodingAdmissionGate,
   cloudCodingSessionReceiptRef,
@@ -630,7 +631,7 @@ describe('POST /v1/cloud-coding-sessions', () => {
     expect(body.agent_computer_ref).toBe('agent-computer.run_gce_1')
   })
 
-  test('Seam A: never forwards work_context_b64 on cloud-gcp', async () => {
+  test('Seam A: forwards the validated opaque work context to cloud-gcp', async () => {
     let placementBody: Record<string, unknown> | undefined
     const adapter = makeCloudControlCloudCodingAdapter({
       baseUrl: 'https://cloud.openagents.test',
@@ -652,7 +653,7 @@ describe('POST /v1/cloud-coding-sessions', () => {
       },
       gceProvisioningArmed: true,
     })
-    await Effect.runPromise(
+    const session = await Effect.runPromise(
       adapter.launch({
         accountRef: 'agent:test-user',
         lane: 'cloud-gcp',
@@ -674,7 +675,8 @@ describe('POST /v1/cloud-coding-sessions', () => {
         sessionId: 'ccs_fixed',
       }),
     )
-    expect('work_context_b64' in (placementBody ?? {})).toBe(false)
+    expect(placementBody?.work_context_b64).toBe('eyJhIjoxfQ==')
+    expect(JSON.stringify(session)).not.toContain('eyJhIjoxfQ==')
   })
 
   test('Seam A: accepts the real daemon shape (workContextRef only in the cloud.gce.provisioning event, none on binding)', async () => {
@@ -815,51 +817,105 @@ describe('POST /v1/cloud-coding-sessions', () => {
     )
   })
 
-  test('Seam A: does NOT forward work_context_b64 on the cloud-gcp lane', async () => {
-    let placementBody: Record<string, unknown> | undefined
+  test('Seam A: rejects malformed work context before cloud placement', async () => {
+    let fetchCalls = 0
     const adapter = makeCloudControlCloudCodingAdapter({
       baseUrl: 'https://cloud.openagents.test',
       bearerToken: 'secret-test-token',
-      fetch: async (_url, init) => {
-        placementBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+      fetch: async () => {
+        fetchCalls += 1
         return Response.json({
           agent_computer_isolation_policy: agentComputerIsolationPolicyEcho,
           binding: {
-            externalRunId: 'run_shc_1',
+            externalRunId: 'run_gce_1',
             lane: 'cloud-gcp',
             providerLane: 'gcp',
-            runnerId: 'runner_shc_1',
+            runnerId: 'runner_gce_1',
             workContextRef: 'work-context.agent-computer.wc1',
           },
-          externalRunId: 'run_shc_1',
+          externalRunId: 'run_gce_1',
           status: 'running',
         })
       },
       gceProvisioningArmed: true,
     })
-    await Effect.runPromise(
-      adapter.launch({
-        accountRef: 'agent:test-user',
-        lane: 'cloud-gcp',
-        request: {
-          adapter: 'codex',
-          lane: 'cloud-gcp',
-          objective: 'seam-a',
-          options: {
-            authGrantRef: 'grant.public.test',
-            providerAccountRef: 'provider-account.public.test',
-            workContextB64: 'eyJhIjoxfQ==',
-          },
-          repoRef: 'repo:openagents/openagents',
-          repoTrustTier: 'private',
-          timeoutSeconds: 1800,
-          verify: [],
-          workContextRef: 'work-context.agent-computer.wc1',
+    await Promise.all(
+      ["abc'; rm -rf / #", 'a b c', 'abc=def', 'A===', 'AB=='].map(
+        async workContextB64 => {
+          await expect(
+            Effect.runPromise(
+              adapter.launch({
+                accountRef: 'agent:test-user',
+                lane: 'cloud-gcp',
+                request: {
+                  adapter: 'codex',
+                  lane: 'cloud-gcp',
+                  objective: 'seam-a',
+                  options: {
+                    authGrantRef: 'grant.public.test',
+                    providerAccountRef: 'provider-account.public.test',
+                    workContextB64,
+                  },
+                  repoRef: 'repo:openagents/openagents',
+                  repoTrustTier: 'private',
+                  timeoutSeconds: 1800,
+                  verify: [],
+                  workContextRef: 'work-context.agent-computer.wc1',
+                },
+                sessionId: 'ccs_fixed',
+              }),
+            ),
+          ).rejects.toMatchObject({
+            adapterId: 'openagents-cloud-control',
+            reason: 'cloud_coding_work_context_b64_invalid',
+          })
         },
-        sessionId: 'ccs_fixed',
-      }),
+      ),
     )
-    expect('work_context_b64' in (placementBody ?? {})).toBe(false)
+    expect(fetchCalls).toBe(0)
+  })
+
+  test('Seam A: rejects an oversized work context before cloud placement', async () => {
+    let fetchCalls = 0
+    const adapter = makeCloudControlCloudCodingAdapter({
+      baseUrl: 'https://cloud.openagents.test',
+      bearerToken: 'secret-test-token',
+      fetch: async () => {
+        fetchCalls += 1
+        return Response.json({})
+      },
+      gceProvisioningArmed: true,
+    })
+    await expect(
+      Effect.runPromise(
+        adapter.launch({
+          accountRef: 'agent:test-user',
+          lane: 'cloud-gcp',
+          request: {
+            adapter: 'codex',
+            lane: 'cloud-gcp',
+            objective: 'seam-a',
+            options: {
+              authGrantRef: 'grant.public.test',
+              providerAccountRef: 'provider-account.public.test',
+              workContextB64: 'A'.repeat(
+                MAX_CLOUD_CODING_WORK_CONTEXT_B64_LENGTH + 1,
+              ),
+            },
+            repoRef: 'repo:openagents/openagents',
+            repoTrustTier: 'private',
+            timeoutSeconds: 1800,
+            verify: [],
+            workContextRef: 'work-context.agent-computer.wc1',
+          },
+          sessionId: 'ccs_fixed',
+        }),
+      ),
+    ).rejects.toMatchObject({
+      adapterId: 'openagents-cloud-control',
+      reason: 'cloud_coding_work_context_b64_too_large',
+    })
+    expect(fetchCalls).toBe(0)
   })
 
   test('Seam A: omits work_context_b64 when no option is supplied (Codex path)', async () => {

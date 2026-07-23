@@ -13,30 +13,27 @@ const catalog = (
   callTool: (_env, _request, _principal, name, args) => {
     calls.push({ args, name })
     if (name === 'khala.spawn') {
+      const count =
+        typeof (args as { count?: unknown }).count === 'number'
+          ? (args as { count: number }).count
+          : 2
       return Promise.resolve({
         content: [
           {
-            text: JSON.stringify({ assignedCount: 2, ok: true }),
+            text: JSON.stringify({ assignedCount: count, ok: true }),
             type: 'text',
           },
         ],
         structuredContent: {
-          assignedCount: 2,
+          assignedCount: count,
           blockerRefs: [],
-          children: [
-            {
-              assignmentRef: 'assignment.fixture.1',
+          children: Array.from({ length: count }, (_value, index) => ({
+              assignmentRef: `assignment.fixture.${index + 1}`,
               ok: true,
-              workerRef: 'worker.fixture.1',
-            },
-            {
-              assignmentRef: 'assignment.fixture.2',
-              ok: true,
-              workerRef: 'worker.fixture.2',
-            },
-          ],
+              workerRef: `worker.fixture.${index + 1}`,
+          })),
           ok: true,
-          requestedCount: 2,
+          requestedCount: count,
           spawnRef: 'spawn.public.khala_coding.fixture',
         },
       })
@@ -115,6 +112,154 @@ const call = (name: string) => ({
 })
 
 describe('Sarah runtime tools', () => {
+  test('queues a live Agent Computer turn before consulting Pylon fallback capacity', async () => {
+    const calls: Array<Readonly<{ name: string; args: unknown }>> = []
+    const cloudDispatches: Array<unknown> = []
+    const tools = makeSarahRuntimeTools({
+      authorizeOperation: authority,
+      dispatchCloudCoding: dispatchInput => {
+        cloudDispatches.push(dispatchInput)
+        return Effect.succeed({
+          cloudTurnRef: 'turn.sarah_cloud.fixture',
+          dispatchRef: 'dispatch.sarah_cloud.fixture',
+          threadRef: 'thread.sarah_cloud.fixture',
+          workContextRef: 'work_context.thread.sarah_cloud.fixture',
+        })
+      },
+      env,
+      fullAutoControl: control([]),
+      fullAutoProjection: projection(),
+      khalaCatalog: catalog(calls),
+      ownerUserId: 'owner.fixture',
+      probeCloudCodingCapacity: () =>
+        Promise.resolve({
+          available: true,
+          availableSlots: 1,
+          capacityRef: 'capacity.agent_computer.control_plane.live',
+        }),
+      resolveRepositoryCommit: () => Promise.resolve('a'.repeat(40)),
+      sql,
+      threadRef: 'thread.sarah.fixture',
+      turnId: 'turn.fixture',
+    })
+    const tool = tools.find(
+      item => item.definition.name === 'codex_workers_start',
+    )!
+
+    const result = await Effect.runPromise(
+      tool.execute(
+        {
+          count: 1,
+          objective: 'Run issue #9191 on owned Agent Computer capacity.',
+        },
+        call('codex_workers_start'),
+      ),
+    )
+
+    expect(result).toMatchObject({
+      isError: false,
+      summary:
+        'Queued one live OpenAgents Agent Computer turn and started 1 of 1 requested coding worker.',
+    })
+    expect(cloudDispatches).toEqual([
+      expect.objectContaining({
+        commit: 'a'.repeat(40),
+        repository: 'OpenAgentsInc/openagents',
+      }),
+    ])
+    expect(calls.filter(entry => entry.name === 'khala.spawn')).toHaveLength(0)
+    expect(result.resultRefs).toContain('turn.sarah_cloud.fixture')
+  })
+
+  test('falls back from unavailable Agent Computer capacity to Codex and then Claude Pylons', async () => {
+    const calls: Array<Readonly<{ name: string; args: unknown }>> = []
+    const fallbackCatalog: CrmMcpCatalog<typeof env> = {
+      ...catalog([]),
+      callTool: (_env, _request, _principal, name, args) => {
+        calls.push({ args, name })
+        const workflow = (args as { workflow?: string }).workflow
+        if (name !== 'khala.spawn') {
+          return Promise.resolve({
+            content: [{ text: '{}', type: 'text' }],
+          })
+        }
+        if (workflow === 'codex_agent_task') {
+          return Promise.resolve({
+            content: [{ text: '{"ok":false}', type: 'text' }],
+            isError: true,
+            structuredContent: {
+              assignedCount: 0,
+              blockerRefs: ['blocker.fixture.codex_unavailable'],
+              children: [],
+              requestedCount: 1,
+              spawnRef: 'spawn.fixture.codex',
+            },
+          })
+        }
+        return Promise.resolve({
+          content: [{ text: '{"ok":true}', type: 'text' }],
+          structuredContent: {
+            assignedCount: 1,
+            blockerRefs: [],
+            children: [
+              {
+                assignmentRef: 'assignment.fixture.claude',
+                ok: true,
+                workerRef: 'worker.fixture.claude',
+              },
+            ],
+            requestedCount: 1,
+            spawnRef: 'spawn.fixture.claude',
+          },
+        })
+      },
+    }
+    const tools = makeSarahRuntimeTools({
+      authorizeOperation: authority,
+      env,
+      fullAutoControl: control([]),
+      fullAutoProjection: projection(),
+      khalaCatalog: fallbackCatalog,
+      ownerUserId: 'owner.fixture',
+      probeCloudCodingCapacity: () =>
+        Promise.resolve({
+          available: false,
+          availableSlots: 0,
+          capacityRef:
+            'capacity.agent_computer.control_plane.unavailable',
+        }),
+      resolveRepositoryCommit: () => Promise.resolve('a'.repeat(40)),
+      sql,
+      threadRef: 'thread.sarah.fixture',
+      turnId: 'turn.fixture',
+    })
+    const tool = tools.find(
+      item => item.definition.name === 'codex_workers_start',
+    )!
+
+    const result = await Effect.runPromise(
+      tool.execute(
+        { count: 1, objective: 'Run the fallback fixture.' },
+        call('codex_workers_start'),
+      ),
+    )
+
+    expect(
+      calls
+        .filter(entry => entry.name === 'khala.spawn')
+        .map(entry => (entry.args as { workflow: string }).workflow),
+    ).toEqual(['codex_agent_task', 'claude_agent_task'])
+    expect(result).toMatchObject({
+      isError: false,
+      summary:
+        'Started 1 of 1 requested coding worker through owner-linked fallback capacity.',
+    })
+    expect(result.resultRefs).toContain(
+      'capacity.agent_computer.control_plane.unavailable',
+    )
+    expect(result.resultRefs).toContain('assignment.fixture.claude')
+  })
+
   test('dispatches bounded Codex workers through the real owner-capacity broker with a pinned commit', async () => {
     const calls: Array<Readonly<{ name: string; args: unknown }>> = []
     const tools = makeSarahRuntimeTools({
@@ -145,7 +290,8 @@ describe('Sarah runtime tools', () => {
     )
     expect(result).toMatchObject({
       isError: false,
-      summary: 'Started 2 of 2 requested Codex workers.',
+      summary:
+        'Started 2 of 2 requested coding workers through owner-linked fallback capacity.',
     })
     expect(calls).toEqual([
       {

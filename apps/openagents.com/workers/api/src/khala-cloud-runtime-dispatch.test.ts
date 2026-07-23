@@ -14,6 +14,7 @@ import {
   dispatchCloudGcpRuntimeTurn,
   makeCloudCodingAdapterLaunchSeam,
   planCloudGcpRuntimeAccountDispatch,
+  readQueuedManagedCloudTurns,
   runCloudGcpRuntimeDispatch,
   resolveManagedCloudRepositoryCommit,
   type CloudGcpAdmittedWorkContext,
@@ -50,6 +51,37 @@ describe('managed cloud repository commit resolution', () => {
       'OpenAgentsInc/openagents', 'missing',
       (async () => new Response(null, { status: 404 })) as typeof fetch,
     )).toBeNull()
+  })
+})
+
+describe('managed cloud queued turn projection', () => {
+  test('preserves an immutable Sarah dispatch commit and uses branch-only writeback', async () => {
+    const commit = 'c'.repeat(40)
+    const sql = (() =>
+      Promise.resolve([
+        {
+          event_count: 0,
+          goal_body: 'Repair issue #9191.',
+          owner_user_id: 'owner.fixture',
+          repository_name: 'openagents',
+          repository_owner: 'OpenAgentsInc',
+          repository_ref: commit,
+          thread_id: 'thread.sarah_cloud.fixture',
+          turn_id: 'turn.sarah_cloud.fixture',
+          work_context_ref: 'work_context.thread.sarah_cloud.fixture',
+        },
+      ])) as unknown as SyncSql
+
+    const turns = await readQueuedManagedCloudTurns(sql, 1)
+
+    expect(turns).toEqual([
+      expect.objectContaining({
+        commit,
+        repo: 'OpenAgentsInc/openagents',
+        writeback: { mode: 'branch_only' },
+      }),
+    ])
+    expect(turns[0]).not.toHaveProperty('branch')
   })
 })
 

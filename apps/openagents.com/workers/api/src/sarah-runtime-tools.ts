@@ -24,6 +24,10 @@ import type {
   SarahHarnessReviewOutcome,
   SarahHarnessStatus,
 } from './sarah-harness-service'
+import type {
+  SarahCloudCodingDispatch,
+  SarahCloudCodingDispatchReceipt,
+} from './sarah-cloud-coding-dispatch'
 import {
   type SarahOperationAuthorityInput,
   type SarahOperationAuthorityOutcome,
@@ -109,6 +113,15 @@ export type SarahRuntimeToolDependencies<Bindings> = Readonly<{
   harnessStatus?: (() => Effect.Effect<SarahHarnessStatus, unknown>) | undefined
   reviewHarness?:
     (() => Effect.Effect<SarahHarnessReviewOutcome, unknown>) | undefined
+  probeCloudCodingCapacity?:
+    (() => Promise<
+      Readonly<{
+        available: boolean
+        availableSlots: number
+        capacityRef: string
+      }>
+    >) | undefined
+  dispatchCloudCoding?: SarahCloudCodingDispatch | undefined
   managedSandboxTools?: ReadonlyArray<SarahAgentTool> | undefined
 }>
 
@@ -219,6 +232,36 @@ const successfulChildAssignmentRefs = (
   })
 }
 
+type WorkerSpawnProjection = Readonly<{
+  assigned: number
+  assignmentRefs: ReadonlyArray<string>
+  blockerRefs: ReadonlyArray<string>
+  refs: ReadonlyArray<string>
+  requested: number
+  workflow: 'claude_agent_task' | 'codex_agent_task'
+}>
+
+const workerSpawnProjection = (
+  outcome: McpToolCallOutcome,
+  requestedFallback: number,
+  workflow: WorkerSpawnProjection['workflow'],
+): WorkerSpawnProjection => {
+  const value = structuredFor(outcome)
+  const spawnRef = stringField(value, 'spawnRef')
+  const blockerRefs = stringArrayField(value, 'blockerRefs')
+  return {
+    assigned: numberField(value, 'assignedCount') ?? 0,
+    assignmentRefs: successfulChildAssignmentRefs(value),
+    blockerRefs,
+    refs: [spawnRef, ...childResultRefs(value), ...blockerRefs].filter(
+      (entry): entry is string => entry !== null,
+    ),
+    requested:
+      numberField(value, 'requestedCount') ?? requestedFallback,
+    workflow,
+  }
+}
+
 const publicRefSegment = (value: string): string =>
   value.replaceAll(/[^A-Za-z0-9_.:-]/g, '_').slice(0, 120)
 
@@ -306,7 +349,7 @@ export const makeSarahRuntimeTools = <Bindings>(
   const capacity: SarahAgentTool = {
     definition: {
       description:
-        'Check the owner-linked Pylon Codex worker capacity available right now.',
+        'Check live OpenAgents Agent Computer capacity and owner-linked Pylon coding capacity.',
       name: 'codex_workers_capacity',
       parameters: {
         additionalProperties: false,
@@ -318,21 +361,52 @@ export const makeSarahRuntimeTools = <Bindings>(
       Effect.gen(function* () {
         const authority = yield* authorizeCall(
           'inspect_owner_coding_capacity',
-          'owner_linked_pylon_coding_capacity',
+          'owner_coding_capacity',
           toolCall.id,
         )
         if (!authority.allowed) return refused(authority)
-        const outcome = yield* callMcp('khala.capacity', {})
+        const [cloud, outcome] = yield* Effect.all([
+          deps.probeCloudCodingCapacity === undefined
+            ? Effect.succeed({
+                available: false,
+                availableSlots: 0,
+                capacityRef:
+                  'capacity.agent_computer.control_plane.unconfigured',
+              })
+            : toolPromise(
+                deps.probeCloudCodingCapacity,
+                'cloud_capacity_unavailable',
+              ).pipe(
+                Effect.catch(() =>
+                  Effect.succeed({
+                    available: false,
+                    availableSlots: 0,
+                    capacityRef:
+                      'capacity.agent_computer.control_plane.unavailable',
+                  }),
+                ),
+              ),
+          callMcp('khala.capacity', {}),
+        ])
         const value = structuredFor(outcome)
         const pylons = Array.isArray(value.pylons) ? value.pylons.length : 0
-        return resultFromMcp(
-          outcome,
-          authority.receiptRef,
-          pylons === 0
-            ? 'No owner-linked Pylon is currently reporting Codex capacity.'
-            : `${pylons} owner-linked Pylon${pylons === 1 ? ' is' : 's are'} reporting capacity.`,
-          ['capacity.owner_linked_pylon.codex'],
-        )
+        return {
+          authorityReceiptRef: authority.receiptRef,
+          content: json({
+            agentComputer: cloud,
+            ownerLinkedPylons: value.pylons ?? [],
+          }),
+          isError: false,
+          resultRefs: [
+            cloud.capacityRef,
+            'capacity.owner_linked_pylon.codex',
+          ],
+          summary: cloud.available
+            ? `OpenAgents Agent Computer capacity is live with ${cloud.availableSlots} available slot${cloud.availableSlots === 1 ? '' : 's'}.`
+            : pylons === 0
+              ? 'No live OpenAgents Agent Computer or owner-linked Pylon coding capacity is available.'
+              : `OpenAgents Agent Computer capacity is unavailable; ${pylons} owner-linked Pylon${pylons === 1 ? ' is' : 's are'} reporting capacity.`,
+        }
       }).pipe(
         Effect.mapError(error =>
           toolFailureFrom(error, 'capacity_unavailable'),
@@ -343,7 +417,7 @@ export const makeSarahRuntimeTools = <Bindings>(
   const startWorkers: SarahAgentTool = {
     definition: {
       description:
-        'Start 1-8 real Codex workers on owner-linked Pylon capacity against a pinned OpenAgents main commit.',
+        'Start 1-8 coding workers against a pinned OpenAgents main commit. Use live OpenAgents Agent Computer capacity first, then owner-linked Codex and Claude Pylons.',
       name: 'codex_workers_start',
       parameters: {
         additionalProperties: false,
@@ -371,7 +445,7 @@ export const makeSarahRuntimeTools = <Bindings>(
         })
         const authority = yield* authorizeCall(
           'dispatch_owner_capacity_coding_workers',
-          'owner_linked_pylon_coding_capacity',
+          'owner_coding_capacity',
           toolCall.id,
           [`repo:${OWNER_REPOSITORY}`, `branch:${OWNER_REPOSITORY_BRANCH}`],
         )
@@ -414,31 +488,114 @@ export const makeSarahRuntimeTools = <Bindings>(
               'I could not resolve an immutable OpenAgents main commit, so no workers were started.',
           }
         }
-        const outcome = yield* callMcp('khala.spawn', {
-          branch: OWNER_REPOSITORY_BRANCH,
-          commit,
-          count: input.count,
-          maxParallel: input.maxParallel ?? input.count,
-          objective: input.objective,
-          repo: OWNER_REPOSITORY,
-          verify: OWNER_REPOSITORY_VERIFY,
-          workflow: 'codex_agent_task',
-        })
-        const value = structuredFor(outcome)
-        const assigned = numberField(value, 'assignedCount') ?? 0
-        const requested = numberField(value, 'requestedCount') ?? input.count
-        const spawnRef = stringField(value, 'spawnRef')
-        const blockers = stringArrayField(value, 'blockerRefs')
-        const refs = [spawnRef, ...childResultRefs(value), ...blockers].filter(
-          (entry): entry is string => entry !== null,
+        const cloudCapacity =
+          deps.probeCloudCodingCapacity === undefined
+            ? {
+                available: false,
+                availableSlots: 0,
+                capacityRef:
+                  'capacity.agent_computer.control_plane.unconfigured',
+              }
+            : yield* toolPromise(
+                deps.probeCloudCodingCapacity,
+                'cloud_capacity_unavailable',
+              ).pipe(
+                Effect.catch(() =>
+                  Effect.succeed({
+                    available: false,
+                    availableSlots: 0,
+                    capacityRef:
+                      'capacity.agent_computer.control_plane.unavailable',
+                  }),
+                ),
+              )
+        const cloudReceipt: SarahCloudCodingDispatchReceipt | undefined =
+          cloudCapacity.available &&
+          cloudCapacity.availableSlots > 0 &&
+          deps.dispatchCloudCoding !== undefined
+            ? yield* deps
+                .dispatchCloudCoding({
+                  commit,
+                  objective: input.objective,
+                  ownerUserId: deps.ownerUserId,
+                  parentThreadRef: deps.threadRef,
+                  repository: OWNER_REPOSITORY,
+                  toolCallId: toolCall.id,
+                  turnId: deps.turnId,
+                })
+                .pipe(
+                  Effect.catch(() =>
+                    Effect.sync((): undefined => undefined),
+                  ),
+                )
+            : undefined
+        const cloudAssigned = cloudReceipt === undefined ? 0 : 1
+        const remainingAfterCloud = Math.max(0, input.count - cloudAssigned)
+        const callSpawn = (
+          workflow: WorkerSpawnProjection['workflow'],
+          count: number,
+        ) =>
+          callMcp('khala.spawn', {
+            branch: OWNER_REPOSITORY_BRANCH,
+            commit,
+            count,
+            maxParallel: Math.min(input.maxParallel ?? input.count, count),
+            objective: input.objective,
+            repo: OWNER_REPOSITORY,
+            verify: OWNER_REPOSITORY_VERIFY,
+            workflow,
+          })
+        const codexSpawn =
+          remainingAfterCloud === 0
+            ? undefined
+            : workerSpawnProjection(
+                yield* callSpawn('codex_agent_task', remainingAfterCloud),
+                remainingAfterCloud,
+                'codex_agent_task',
+              )
+        const remainingAfterCodex = Math.max(
+          0,
+          remainingAfterCloud - (codexSpawn?.assigned ?? 0),
         )
+        const claudeSpawn =
+          remainingAfterCodex === 0
+            ? undefined
+            : workerSpawnProjection(
+                yield* callSpawn('claude_agent_task', remainingAfterCodex),
+                remainingAfterCodex,
+                'claude_agent_task',
+              )
+        const pylonSpawns = [codexSpawn, claudeSpawn].filter(
+          (spawn): spawn is WorkerSpawnProjection => spawn !== undefined,
+        )
+        const assigned =
+          cloudAssigned +
+          pylonSpawns.reduce((total, spawn) => total + spawn.assigned, 0)
+        const blockers = [
+          ...(cloudReceipt === undefined ? [cloudCapacity.capacityRef] : []),
+          ...pylonSpawns.flatMap(spawn => spawn.blockerRefs),
+        ]
+        const refs = [
+          ...(cloudReceipt === undefined
+            ? []
+            : [
+                cloudReceipt.dispatchRef,
+                cloudReceipt.cloudTurnRef,
+                cloudReceipt.threadRef,
+                cloudReceipt.workContextRef,
+              ]),
+          ...pylonSpawns.flatMap(spawn => spawn.refs),
+          ...blockers,
+        ]
         // SARAH-PROACTIVE-1 (#9064): capture (ownerUserId, threadRef) for each
         // admitted assignment now, while we are inside this authenticated
         // Sarah turn. Best-effort: a mapping-write failure must never fail
         // this tool call — the real dispatch above already happened, and a
         // missing mapping only means the eventual worker_closeout stays a
         // silent no-op (recorded, but no proactive owner notice).
-        const dispatchedAssignmentRefs = successfulChildAssignmentRefs(value)
+        const dispatchedAssignmentRefs = pylonSpawns.flatMap(
+          spawn => spawn.assignmentRefs,
+        )
         if (dispatchedAssignmentRefs.length > 0) {
           yield* Effect.promise(() =>
             Promise.allSettled(
@@ -453,14 +610,39 @@ export const makeSarahRuntimeTools = <Bindings>(
             ),
           )
         }
-        return resultFromMcp(
-          outcome,
-          authority.receiptRef,
-          assigned === 0
-            ? 'No Codex workers started; owner-linked capacity is unavailable or rejected the request.'
-            : `Started ${assigned} of ${requested} requested Codex worker${requested === 1 ? '' : 's'}.`,
-          refs.length === 0 ? ['blocker.sarah.codex_workers.no_receipt'] : refs,
-        )
+        return {
+          authorityReceiptRef: authority.receiptRef,
+          content: json({
+            assignedCount: assigned,
+            blockerRefs: blockers,
+            cloud:
+              cloudReceipt === undefined
+                ? {
+                    capacityRef: cloudCapacity.capacityRef,
+                    queued: false,
+                  }
+                : {
+                    ...cloudReceipt,
+                    capacityRef: cloudCapacity.capacityRef,
+                    queued: true,
+                  },
+            ok: assigned === input.count,
+            requestedCount: input.count,
+            pylonFallbacks: pylonSpawns,
+            schema: 'openagents.sarah.coding_dispatch.v1',
+          }),
+          isError: assigned === 0,
+          resultRefs:
+            refs.length === 0
+              ? ['blocker.sarah.codex_workers.no_receipt']
+              : refs,
+          summary:
+            assigned === 0
+              ? 'No coding worker started; live Agent Computer, Codex Pylon, and Claude Pylon capacity are unavailable or rejected the request.'
+              : cloudReceipt === undefined
+                ? `Started ${assigned} of ${input.count} requested coding worker${input.count === 1 ? '' : 's'} through owner-linked fallback capacity.`
+                : `Queued one live OpenAgents Agent Computer turn and started ${assigned} of ${input.count} requested coding worker${input.count === 1 ? '' : 's'}.`,
+        }
       }).pipe(
         Effect.mapError(error =>
           toolFailureFrom(error, 'worker_dispatch_failed'),

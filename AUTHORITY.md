@@ -1,10 +1,10 @@
 ---
 authority_delegation_format_version: "0.1"
 authority_profile_id: "openagents.owner-delegated-autonomy"
-authority_revision: 7
+authority_revision: 8
 title: "OpenAgents Owner-Delegated Autonomous Delivery"
 lifecycle_state: "admitted"
-admitted_by: "current_owner_direction_2026-07-22_episode_260_company_command"
+admitted_by: "current_owner_direction_2026-07-22_sarah_owned_agent_computer"
 effective_at: "2026-07-22T00:00:00Z"
 expires_when: "revoked_or_superseded_by_current_owner_direction"
 ---
@@ -103,6 +103,21 @@ It refuses with a receipt and admits no customer-data or financial reach until a
 This revision does not admit raw secret, credential, shell, database, topology, customer-data, financial-custody, legal, employment, or authority-expansion access.
 The reserved set below is unchanged.
 
+Revision 8 admits the owner's Sarah Agent Computer direction of 2026-07-22.
+Sarah can dispatch bounded repository work through `owner_coding_capacity`.
+That resource is a closed broker composition.
+
+It tries the live OpenAgents Agent Computer first.
+It can then use the owner's linked Codex and Claude
+Pylons as fallbacks. The broker must pin public repository bytes and must use
+live capacity evidence. An Agent Computer enqueue receipt proves only that the
+managed-cloud turn is durable. Only target lifecycle, artifact, verification,
+and writeback receipts prove that the coding work ran.
+
+This revision does not give Sarah a cloud shell, a credential, a provider
+token, or a generic capacity selector. It does not permit stale Pylon capacity
+to count as live capacity.
+
 It does not grant unlimited company authority. It grants the exact reversible,
 evidence-bound actions below, under conservative bootstrap budgets. Current
 owner instructions, system policy, law, [`AGENTS.md`](AGENTS.md),
@@ -183,7 +198,7 @@ higher authority. The format and resolution laws live in
     "id": "grant.sarah_company_orchestration",
     "roles": ["sarah_orchestrator"],
     "actions": ["maintain_owner_contact", "read_business_context", "propose_company_decision", "prioritize_program_work", "delegate_repository_work", "inspect_owner_coding_capacity", "inspect_existing_full_auto_run", "dispatch_owner_capacity_coding_workers", "control_existing_full_auto_run", "inspect_own_harness", "review_own_terminal_history_and_propose_harness", "inspect_release_and_issue_status", "inspect_forum_activity", "inspect_full_auto_and_fleet_status", "inspect_cloud_health", "operate_google_cloud", "publish_release_candidate", "communicate_release_status"],
-    "resources": ["owner_private_conversation", "owner_business_context", "owner_private_sarah_harness", "company_priority_ledger", "OpenAgentsInc/openagents", "owner_linked_pylon_coding_capacity", "owner_full_auto_runs", "github_openagentsinc", "openagents_forum", "google_cloud_project_openagentsgemini_via_documented_automation_identity", "openagents_rc_release_channel", "openagents_updates_service", "openagents_full_auto_and_fleet"],
+    "resources": ["owner_private_conversation", "owner_business_context", "owner_private_sarah_harness", "company_priority_ledger", "OpenAgentsInc/openagents", "owner_coding_capacity", "owner_linked_pylon_coding_capacity", "owner_full_auto_runs", "github_openagentsinc", "openagents_forum", "google_cloud_project_openagentsgemini_via_documented_automation_identity", "openagents_rc_release_channel", "openagents_updates_service", "openagents_full_auto_and_fleet"],
     "program_refs": ["program.full_auto_release", "program.root_specs", "program.fast_follow_full_harvest", "program.promise_growth_revenue"],
     "condition_refs": ["condition.owner_scope", "condition.capability_broker", "condition.citations", "condition.existing_runtime_gate", "condition.verification", "condition.redaction", "condition.rollback"]
   },

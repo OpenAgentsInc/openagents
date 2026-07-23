@@ -326,7 +326,7 @@
     },
     {
       "path": "AUTHORITY.md",
-      "sha256": "9228436cd8b2e186db5cc07468000d8e75e2ec98fc6d4f2a03fd493c7a6da7d4",
+      "sha256": "14013cd12d854ebfc4753461ce016314b95db1423abee086576104b6a7834648",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -428,7 +428,7 @@
     },
     {
       "path": "INVARIANTS.md",
-      "sha256": "4abc4f78d002f90ef27294fa82a793433dc7f4b55a12bd2b1fc97a6edc8914d1",
+      "sha256": "670c485b195c7b764f856a643fea65fa7e2226cef8d19dae779b2ef44d851e8d",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -16983,7 +16983,7 @@
     },
     {
       "path": "docs/authority/SARAH_AUTHORITY.md",
-      "sha256": "5d37e763618a6b39815e25671827639be236c8eb8a9da05412ff336a9bb46885",
+      "sha256": "660229d2cf21fe69b9afdcc1c2a331da5fa9fb21bef481fca06233b88aa6bb1d",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

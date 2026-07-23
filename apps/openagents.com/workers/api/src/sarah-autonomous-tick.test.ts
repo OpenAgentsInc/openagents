@@ -75,6 +75,15 @@ describe('resolveSarahAutonomousTickIntervalMinutes', () => {
 })
 
 describe('interval bucketing + deterministic tick ref', () => {
+  test('the objective forbids repeated unchanged capacity blockers and selects another admitted action', () => {
+    expect(SARAH_AUTONOMOUS_TICK_OBJECTIVE).toContain(
+      'Never repeat an unchanged capacity blocker',
+    )
+    expect(SARAH_AUTONOMOUS_TICK_OBJECTIVE).toContain(
+      'take a different admitted action',
+    )
+  })
+
   test('bucket is stable within an interval and advances across it', () => {
     const interval = 15
     const base = 1_700_000_000_000

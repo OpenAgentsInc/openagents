@@ -626,7 +626,7 @@
       ]
     },
     "INVARIANTS.md": {
-      "sourceSha256": "4abc4f78d002f90ef27294fa82a793433dc7f4b55a12bd2b1fc97a6edc8914d1",
+      "sourceSha256": "670c485b195c7b764f856a643fea65fa7e2226cef8d19dae779b2ef44d851e8d",
       "normativeKeywords": [
         "MAY",
         "MUST",
@@ -1039,6 +1039,7 @@
         "origin/main",
         "out_of_order",
         "ownerAgentUserId",
+        "owner_coding_capacity",
         "owner_full",
         "packages/*",
         "packages/assurance-spec/src/semantic-planner.ts",
@@ -1397,7 +1398,6 @@
         "260",
         "280",
         "3",
-        "3",
         "4",
         "4",
         "4",
@@ -1408,18 +1408,19 @@
         "410",
         "410",
         "4751",
-        "5",
-        "5",
         "500",
+        "6",
+        "6",
         "6",
         "6",
         "6224",
         "64",
         "7",
         "7",
-        "7",
         "7.3",
         "75",
+        "8",
+        "8",
         "8",
         "8",
         "8252",
@@ -1473,7 +1474,7 @@
       ]
     },
     "AUTHORITY.md": {
-      "sourceSha256": "9228436cd8b2e186db5cc07468000d8e75e2ec98fc6d4f2a03fd493c7a6da7d4",
+      "sourceSha256": "14013cd12d854ebfc4753461ce016314b95db1423abee086576104b6a7834648",
       "normativeKeywords": [],
       "inlineCode": [
         "/changelog",
@@ -1482,7 +1483,8 @@
         "docs/authority/AUTHORITY_DELEGATION_SPEC.md",
         "docs/authority/SARAH_AUTHORITY.md",
         "gcloud",
-        "openagents.managed_sandbox.v1"
+        "openagents.managed_sandbox.v1",
+        "owner_coding_capacity"
       ],
       "urls": [],
       "issueRefs": [],
@@ -1505,6 +1507,8 @@
         "2026-07",
         "2026-07",
         "2026-07",
+        "2026-07",
+        "22",
         "22",
         "260",
         "260",
@@ -1519,7 +1523,8 @@
         "6",
         "6",
         "7",
-        "7"
+        "8",
+        "8"
       ]
     },
     "docs/sol/README.md": {
