@@ -1,0 +1,21 @@
+{
+  "fixture": "sarah-community-journey.receipt.manifest.v1",
+  "contract": "docs/omega/2026-07-24-sarah-community-journey-proof.md",
+  "packet": "SARAH-CW-09",
+  "issue": "OpenAgentsInc/openagents#9231",
+  "schema": "openagents.sarah.community_journey_receipt.v1",
+  "receipts": [
+    {
+      "id": "receipt.simulated.v1",
+      "path": "receipt.simulated.json",
+      "mode": "simulated"
+    }
+  ],
+  "negative": [
+    {
+      "id": "secret-field",
+      "path": "negative/secret-field.json",
+      "expect": "redaction_reject"
+    }
+  ]
+}

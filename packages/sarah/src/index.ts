@@ -448,6 +448,8 @@ export * from "./nostr-memory/index.ts";
 export * from "./nostr-migration/index.ts";
 // SARAH-NR-09 — Nostr journey proof harness and public-safe receipt
 export * from "./nostr-journey/index.ts";
+// SARAH-CW-09 — community outside-developer journey proof harness
+export * from "./community-journey/index.ts";
 // SARAH-NR-03 — owned relay load-proof harness (local + remote)
 export * from "./relay-load-proof/index.ts";
 // SARAH-CW-03 — community work-unit tick decomposition (pure types)

@@ -100,3 +100,19 @@ pnpm --dir packages/sarah test -- src/xp/xp.test.ts
 ```
 
 Spec: `docs/omega/2026-07-24-sarah-workroom-mvp-spec.md` §35.
+
+## Community journey proof (`SARAH-CW-09`)
+
+`@openagentsinc/sarah/community-journey` simulates the automatable
+outside-developer community workroom journey with mocks and emits
+`openagents.sarah.community_journey_receipt.v1`. It does not require a real
+outside developer or a live relay. Human invite, pane, and confirmation steps
+remain residual.
+
+```sh
+pnpm --dir packages/sarah test
+pnpm --dir packages/sarah run generate:community-journey-receipt -- --out fixtures/sarah-community-journey/receipt.simulated.json
+node fixtures/sarah-community-journey/validate.mjs
+```
+
+Proof document: `docs/omega/2026-07-24-sarah-community-journey-proof.md`.

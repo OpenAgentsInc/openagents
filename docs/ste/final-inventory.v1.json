@@ -34140,6 +34140,28 @@
       }
     },
     {
+      "path": "docs/omega/2026-07-24-sarah-community-journey-proof.md",
+      "sha256": "77ff9200eac7bf9ed7997deaacba6ba63a86e00afa8f80f0564109b73ba86676",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/omega/2026-07-24-sarah-memory-runtime.md",
       "sha256": "1cfe33ebb3d4326adc201245b787cdb18afd3ff4686e9abd0d3dc5c73efabc38",
       "reason": "Final review of a converted document",
@@ -34267,7 +34289,43 @@
     },
     {
       "path": "docs/omega/README.md",
-      "sha256": "02cfc5573a873662a30db5c9a92cfd868509fa191efa4066ba0999518f5a0245",
+      "sha256": "4f26deba14f7882f21bf0adcc3776affc002fcf79e7862d43cc6a25ad45e151a",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "active",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "human",
+        "ste_accepted_screening_rules": [
+          "STE-2.4"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/omega/README.md",
+      "sha256": "4f26deba14f7882f21bf0adcc3776affc002fcf79e7862d43cc6a25ad45e151a",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "active",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "human",
+        "ste_accepted_screening_rules": [
+          "STE-2.4"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/omega/README.md",
+      "sha256": "4f26deba14f7882f21bf0adcc3776affc002fcf79e7862d43cc6a25ad45e151a",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -48008,7 +48066,51 @@
     },
     {
       "path": "packages/sarah/README.md",
-      "sha256": "ef561a91e5c1eb60f43577a50e5c06142845ebde24c24db6f41bcee85c72ef9f",
+      "sha256": "31e6f2ef48a6bbb3dfdd2d62388da790ccda0105c8f8095fabb0cd896f1ed19a",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "packages/sarah/README.md",
+      "sha256": "31e6f2ef48a6bbb3dfdd2d62388da790ccda0105c8f8095fabb0cd896f1ed19a",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "packages/sarah/README.md",
+      "sha256": "31e6f2ef48a6bbb3dfdd2d62388da790ccda0105c8f8095fabb0cd896f1ed19a",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
