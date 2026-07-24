@@ -341,6 +341,9 @@ import { handleBusinessSignupApi } from './business-signup-routes'
 // OA_CLOUD_CONTROL_URL/TOKEN are configured. The promise STAYS red until a real
 // desktop-originated GCE run produces artifact + receipt evidence.
 import {
+  CloudCodingPreparationError,
+  type CloudCodingPreparedSessionRequest,
+  type CloudCodingSessionPreparer,
   isCloudCodingSessionsEnabled,
   isCloudGceProvisioningArmed,
   makeCloudControlCloudCodingAdapter,
@@ -6963,6 +6966,274 @@ const probeSarahAgentComputerCapacity = async (
     }
   }
   return capacity
+}
+
+const releaseCloudCodingAdmissionReservation = async (
+  env: OpenAgentsWorkerEnv,
+  sessionId: string,
+): Promise<void> => {
+  await openAgentsDatabase(env)
+    .prepare('DELETE FROM cloud_coding_admission_reservations WHERE session_id = ?')
+    .bind(sessionId)
+    .run()
+}
+
+const makeCloudCodingSessionPreparerForEnv = (
+  env: OpenAgentsWorkerEnv,
+): CloudCodingSessionPreparer => {
+  const prepare = async (
+    input: Parameters<CloudCodingSessionPreparer>[0],
+  ): Promise<CloudCodingPreparedSessionRequest> => {
+    const ownerUserId = input.ownerUserId
+    if (ownerUserId === undefined || ownerUserId.trim() === '') {
+      throw new CloudCodingPreparationError({
+        reason: 'cloud_coding_owner_identity_unavailable',
+      })
+    }
+    if (input.request.adapter !== 'codex') {
+      throw new CloudCodingPreparationError({
+        reason: 'cloud_coding_adapter_authority_unavailable',
+      })
+    }
+    const connectionString = env.KHALA_SYNC_DB?.connectionString
+    if (connectionString === undefined || connectionString.trim() === '') {
+      throw new CloudCodingPreparationError({
+        reason: 'cloud_coding_runtime_storage_unavailable',
+      })
+    }
+    const postgresIdentity = postgresIdentityAuthStoreForEnv(env)
+    if (postgresIdentity === undefined) {
+      throw new CloudCodingPreparationError({
+        reason: 'cloud_coding_owner_identity_store_unavailable',
+      })
+    }
+
+    const accountRepository = makeAuthoritativePostgresProviderGrantRepository(
+      makeProviderAccountRepositoryForEnv(env),
+      postgresIdentity.queryRows,
+    )
+    const providerLeaseService = makeProviderAccountLeaseService({
+      db: openAgentsDatabase(env),
+      mirror: identityAuthMirrorFromEnv(env),
+    })
+    let credentialId: string | undefined
+    let leaseRef: string | undefined
+    const releasePreparedAuthorities = async (cleanup: Readonly<{
+      failureClass: string | null
+      status: 'failed' | 'succeeded'
+      terminalOutcome: string
+    }>): Promise<void> => {
+      try {
+        if (credentialId !== undefined) {
+          const cleanupClient = await defaultMakeKhalaSyncSqlClient(
+            connectionString,
+          )
+          try {
+            await revokeCloudRuntimeExecutionToken(cleanupClient.sql, {
+              credentialId,
+            })
+          } finally {
+            await cleanupClient.end()
+          }
+        }
+      } finally {
+        try {
+          if (leaseRef !== undefined) {
+            await providerLeaseService.release({
+              ...cleanup,
+              leaseRef,
+              now: currentIsoTimestamp(),
+              userId: ownerUserId,
+            })
+          }
+        } finally {
+          await releaseCloudCodingAdmissionReservation(env, input.sessionId)
+        }
+      }
+    }
+    try {
+      const branchOption = input.request.options.branch
+      const branch =
+        typeof branchOption === 'string' && branchOption.trim() !== ''
+          ? branchOption.trim()
+          : 'main'
+      const threadRef =
+        input.request.threadRef ?? `thread.cloud-coding.${input.sessionId}`
+      const now = currentIsoTimestamp()
+      const lease = await providerLeaseService.acquire({
+        assignmentId: input.sessionId,
+        expiresAt: isoTimestampAfterIso(now, 35 * 60 * 1_000),
+        now,
+        orderId: null,
+        requestedAction: 'agent_computer_codex_turn',
+        requiredProvider: CHATGPT_CODEX_PROVIDER,
+        requiredProviderAccountRef: null,
+        runId: threadRef,
+        selectedByActor: 'cloud_coding_session_route',
+        source: 'cloud_coding_session_route',
+        userId: ownerUserId,
+      })
+      if (lease === undefined) {
+        throw new CloudCodingPreparationError({
+          reason: 'cloud_coding_owner_codex_capacity_unavailable',
+        })
+      }
+      leaseRef = lease.leaseRef
+
+      const [accounts, githubConnection, resolvedCommit] = await Promise.all([
+        listProviderAccountsForUser(accountRepository, ownerUserId),
+        makeGitHubWriteRepositoryForEnv(env).findUsableConnectionForUser(
+          ownerUserId,
+        ),
+        resolveManagedCloudRepositoryCommit(input.request.repoRef, branch),
+      ])
+      const providerAccount = accounts.accounts.find(
+        account =>
+          account.provider === CHATGPT_CODEX_PROVIDER &&
+          account.providerAccountRef === lease.providerAccountRef &&
+          account.publicStatus === 'connected' &&
+          account.health === 'healthy',
+      )
+      if (providerAccount === undefined) {
+        throw new CloudCodingPreparationError({
+          reason: 'cloud_coding_owner_codex_authority_unavailable',
+        })
+      }
+      if (
+        githubConnection === undefined ||
+        !hasRequiredGitHubWriteScopes(githubConnection.scopes)
+      ) {
+        throw new CloudCodingPreparationError({
+          reason: 'cloud_coding_owner_github_write_authority_unavailable',
+        })
+      }
+      if (resolvedCommit === null) {
+        throw new CloudCodingPreparationError({
+          reason: 'cloud_coding_repository_ref_unresolved',
+        })
+      }
+      const grant = await issueProviderAccountGrant(accountRepository, {
+        providerAccountRef: providerAccount.providerAccountRef,
+        requestedAction: 'agent_computer_codex_turn',
+        runnerSessionId: input.sessionId,
+        threadId: threadRef,
+        userId: ownerUserId,
+        workroomId: input.workContextRef,
+      })
+      if (grant === undefined) {
+        throw new CloudCodingPreparationError({
+          reason: 'cloud_coding_owner_codex_grant_unavailable',
+        })
+      }
+
+      const client = await defaultMakeKhalaSyncSqlClient(connectionString)
+      let minted: Awaited<ReturnType<typeof mintCloudRuntimeExecutionToken>>
+      try {
+        minted = await mintCloudRuntimeExecutionToken(client.sql, {
+          ownerUserId,
+        })
+        credentialId = minted.credentialId
+      } finally {
+        await client.end()
+      }
+      const baseUrl =
+        env.OA_CLOUD_RUNTIME_INFERENCE_BASE_URL?.trim() || getAppOrigin(env)
+      const workContext = buildCloudRuntimeWorkContext({
+        branch,
+        codexContinuity: {
+          maxReplayMessages: 24,
+          persistedCodexHome: false,
+          strategy: 'khala_sync_history_reprime',
+        },
+        codexTurn: {
+          agentToken: minted.rawToken,
+          baseUrl,
+          ownerUserId,
+          pylonRef: 'pylon.agent-computer.public-cloud-coding',
+        },
+        commit: resolvedCommit,
+        objective: input.request.objective,
+        providerAuth: {
+          agentToken: minted.rawToken,
+          authGrantRef: grant.grantRef,
+          baseUrl,
+          providerAccountRef: grant.providerAccountRef,
+        },
+        repo: input.request.repoRef,
+        threadRef,
+        turnId: input.sessionId,
+        verificationCommand: {
+          argv:
+            input.request.verify.length === 0
+              ? ['git', 'diff', '--check']
+              : input.request.verify,
+          commandRef: 'verify.agent-computer.public_cloud_coding_request',
+          timeoutSeconds: 120,
+        },
+        workContextRef: input.workContextRef,
+        writeback: buildCloudRuntimeWritebackConfig({
+          baseBranch: branch,
+          repositoryFullName: input.request.repoRef,
+          turnId: input.sessionId,
+        }),
+      })
+
+      return {
+        finalize: outcome =>
+          Effect.tryPromise({
+            try: () =>
+              releasePreparedAuthorities({
+                failureClass:
+                  outcome.status === 'completed' ? null : 'runtime_failed',
+                status:
+                  outcome.status === 'completed' ? 'succeeded' : 'failed',
+                terminalOutcome:
+                  outcome.status === 'completed'
+                    ? 'cloud_coding_session_completed'
+                    : `cloud_coding_session_${outcome.reason ?? 'failed'}`,
+              }),
+            catch: () =>
+              new CloudCodingPreparationError({
+                reason: 'cloud_coding_session_finalization_failed',
+              }),
+          }),
+        request: {
+          ...input.request,
+          threadRef,
+          options: {
+            ...input.request.options,
+            authGrantRef: grant.grantRef,
+            providerAccountRef: grant.providerAccountRef,
+            workContextB64: encodeWorkContextB64(workContext),
+          },
+        },
+      }
+    } catch (error) {
+      try {
+        await releasePreparedAuthorities({
+          failureClass: 'preparation_failed',
+          status: 'failed',
+          terminalOutcome:
+            error instanceof Error
+              ? error.message
+              : 'cloud_coding_session_preparation_failed',
+        })
+      } finally {
+        throw error
+      }
+    }
+  }
+
+  return input =>
+    Effect.tryPromise({
+      try: () => prepare(input),
+      catch: error =>
+        error instanceof CloudCodingPreparationError
+          ? error
+          : new CloudCodingPreparationError({
+              reason: 'cloud_coding_session_preparation_failed',
+            }),
+    })
 }
 
 // #8467 follow-up: server-side hosted-Khala runtime dispatch. Claims `queued`
@@ -15185,7 +15456,10 @@ const routeRequest = makeWorkerRouteRequest({
         if (session === undefined) {
           return undefined
         }
-        return { accountRef: `agent:${session.user.userId}` }
+        return {
+          accountRef: `agent:${session.user.userId}`,
+          ownerUserId: session.user.userId,
+        }
       },
       admissionGate: makeD1CloudCodingAdmissionGate({
         capacity: async () =>
@@ -15207,6 +15481,7 @@ const routeRequest = makeWorkerRouteRequest({
         ),
       }),
       enabled: isCloudCodingSessionsEnabled(env.CLOUD_CODING_SESSIONS_ENABLED),
+      prepareSession: makeCloudCodingSessionPreparerForEnv(env),
     }),
   routeAgentGoalRequest: agentGoalRoutes.routeAgentGoalRequest,
   routeAgentDefinitionRunRequest: (request, env) => {

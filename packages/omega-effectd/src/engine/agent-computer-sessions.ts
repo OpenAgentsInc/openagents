@@ -41,6 +41,11 @@ export type AgentComputerSessionRecord = Readonly<{
   artifactRef: string | null
   agentComputerRef: string | null
   agentComputerState: string | null
+  leaseRefs: ReadonlyArray<string>
+  lifecycleReceiptRefs: ReadonlyArray<string>
+  resourceUsageReceiptRefs: ReadonlyArray<string>
+  metered: boolean | null
+  meteringReceiptRef: string | null
   startedAt: string
   updatedAt: string
 }>
@@ -69,6 +74,11 @@ const projectRecord = (
   artifactRef: projection.artifact_ref ?? null,
   agentComputerRef: projection.agent_computer_ref ?? null,
   agentComputerState: projection.agent_computer_state ?? null,
+  leaseRefs: projection.lease_refs ?? [],
+  lifecycleReceiptRefs: projection.lifecycle_receipt_refs ?? [],
+  resourceUsageReceiptRefs: projection.resource_usage_receipt_refs ?? [],
+  metered: projection.metered ?? null,
+  meteringReceiptRef: projection.receipt_ref ?? null,
   startedAt: meta.startedAt,
   updatedAt: new Date().toISOString(),
 })

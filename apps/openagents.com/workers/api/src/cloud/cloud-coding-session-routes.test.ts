@@ -11,6 +11,7 @@ import {
   type CloudPlacementEvent,
   AGENT_COMPUTER_ISOLATION_POLICY_SCHEMA,
   CloudCodingAdapterError,
+  CloudCodingPreparationError,
   MAX_CLOUD_CODING_TIMEOUT_SECONDS,
   MAX_CLOUD_CODING_WORK_CONTEXT_B64_LENGTH,
   admissibleLanesForTrustTier,
@@ -34,7 +35,10 @@ import {
 
 const run = <A>(effect: Effect.Effect<A>): Promise<A> => Effect.runPromise(effect)
 
-const authOk: CloudCodingAuth = async () => ({ accountRef: 'agent:test-user' })
+const authOk: CloudCodingAuth = async () => ({
+  accountRef: 'agent:test-user',
+  ownerUserId: 'test-user',
+})
 const authOther: CloudCodingAuth = async () => ({ accountRef: 'agent:other' })
 const authNone: CloudCodingAuth = async () => undefined
 
@@ -412,6 +416,114 @@ describe('POST /v1/cloud-coding-sessions', () => {
     )
     expect(response.status).toBe(200)
     expect(launched).toBe(true)
+  })
+
+  test('prepares owner authority on the server and finalizes it after launch', async () => {
+    const finalized: Array<Readonly<{ status: string }>> = []
+    let launchedOptions: Readonly<Record<string, unknown>> | undefined
+    const adapter: CloudCodingRuntimeAdapter = {
+      ...stubCloudCodingAdapter,
+      launch: input => {
+        launchedOptions = input.request.options
+        return stubCloudCodingAdapter.launch(input)
+      },
+    }
+    const response = await run(
+      handleCloudCodingSessionLaunch(
+        launchRequest(validBodyWithoutProviderRefs),
+        baseDeps({
+          adapter,
+          prepareSession: input =>
+            Effect.succeed({
+              finalize: outcome =>
+                Effect.sync(() => {
+                  finalized.push(outcome)
+                }),
+              request: {
+                ...input.request,
+                options: {
+                  authGrantRef: 'grant.server-owned',
+                  providerAccountRef: 'provider-account.server-owned',
+                  workContextB64: 'c2VydmVyLW93bmVk',
+                },
+              },
+            }),
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(launchedOptions).toHaveProperty('authGrantRef', 'grant.server-owned')
+    expect(finalized).toHaveLength(1)
+    expect(finalized[0]).toMatchObject({ status: 'completed' })
+    expect(JSON.stringify(await response.json())).not.toContain('server-owned')
+  })
+
+  test('finalizes server authority when runtime launch fails', async () => {
+    const finalized: Array<
+      Readonly<{ reason?: string | undefined; status: string }>
+    > = []
+    const response = await run(
+      handleCloudCodingSessionLaunch(
+        launchRequest(validBodyWithoutProviderRefs),
+        baseDeps({
+          adapter: {
+            ...stubCloudCodingAdapter,
+            launch: () =>
+              Effect.fail(
+                new CloudCodingAdapterError({
+                  adapterId: 'test',
+                  reason: 'placement_failed',
+                }),
+              ),
+          },
+          prepareSession: input =>
+            Effect.succeed({
+              finalize: outcome =>
+                Effect.sync(() => {
+                  finalized.push(outcome)
+                }),
+              request: input.request,
+            }),
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(502)
+    expect(finalized).toEqual([
+      { reason: 'placement_failed', status: 'failed' },
+    ])
+  })
+
+  test('fails closed before launch when server authority is unavailable', async () => {
+    let launched = false
+    const response = await run(
+      handleCloudCodingSessionLaunch(
+        launchRequest(validBodyWithoutProviderRefs),
+        baseDeps({
+          adapter: {
+            ...stubCloudCodingAdapter,
+            launch: input => {
+              launched = true
+              return stubCloudCodingAdapter.launch(input)
+            },
+          },
+          prepareSession: () =>
+            Effect.fail(
+              new CloudCodingPreparationError({
+                reason: 'cloud_coding_owner_codex_authority_unavailable',
+              }),
+            ),
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(502)
+    expect(launched).toBe(false)
+    expect(await response.json()).toEqual({
+      error: 'runtime_error',
+      reason: 'cloud_coding_owner_codex_authority_unavailable',
+    })
   })
 
   test('rejects caller-supplied user Pylon selectors before admission or placement', async () => {

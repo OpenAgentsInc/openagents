@@ -1687,7 +1687,38 @@ export const makeLedgerCloudCodingMeteringHook = (
 // fake.
 export type CloudCodingAuth = (
   request: Request,
-) => Promise<Readonly<{ accountRef: string }> | undefined>
+) => Promise<Readonly<{ accountRef: string; ownerUserId?: string }> | undefined>
+
+export type CloudCodingSessionPreparationOutcome = Readonly<{
+  reason?: string | undefined
+  session?: CloudCodingSession | undefined
+  status: 'completed' | 'failed'
+}>
+
+export type CloudCodingPreparedSessionRequest = Readonly<{
+  finalize?: (
+    outcome: CloudCodingSessionPreparationOutcome,
+  ) => Effect.Effect<void, CloudCodingPreparationError>
+  request: CloudCodingSessionRequest
+}>
+
+export class CloudCodingPreparationError extends S.TaggedErrorClass<CloudCodingPreparationError>()(
+    'CloudCodingPreparationError',
+    { reason: S.String },
+  ) {}
+
+export type CloudCodingSessionPreparer = (
+  input: Readonly<{
+    accountRef: string
+    ownerUserId: string | undefined
+    request: CloudCodingSessionRequest
+    sessionId: string
+    workContextRef: string
+  }>,
+) => Effect.Effect<
+  CloudCodingPreparedSessionRequest,
+  CloudCodingPreparationError
+>
 
 export type CloudCodingSessionServiceDeps = Readonly<{
   // Whether the surface is enabled (env.CLOUD_CODING_SESSIONS_ENABLED, default
@@ -1700,6 +1731,9 @@ export type CloudCodingSessionServiceDeps = Readonly<{
   // Runtime adapter. Defaults to a fail-closed adapter; tests may inject the
   // stub explicitly, but production must never silently fake success.
   adapter?: CloudCodingRuntimeAdapter
+  // Resolves authenticated-owner runtime authority without accepting provider
+  // grants, credentials, or work-context blobs from the public client.
+  prepareSession?: CloudCodingSessionPreparer
   // Metering/receipt hook. Defaults to the no-op/log stub.
   meteringHook?: CloudCodingMeteringHook
   // Deterministic id injection for tests.
@@ -1919,6 +1953,30 @@ export const handleCloudCodingSessionLaunch = (
       return admissionRefusalResponse(admission)
     }
 
+    const prepared =
+      deps.prepareSession === undefined
+        ? { ok: true as const, value: { request: sessionRequest } }
+        : yield* deps
+            .prepareSession({
+              accountRef: session.accountRef,
+              ownerUserId: session.ownerUserId,
+              request: sessionRequest,
+              sessionId,
+              workContextRef,
+            })
+            .pipe(
+              Effect.map(value => ({ ok: true as const, value })),
+              Effect.catch(error =>
+                Effect.succeed({ ok: false as const, reason: error.reason }),
+              ),
+            )
+    if (!prepared.ok) {
+      return noStoreJsonResponse(
+        { error: 'runtime_error', reason: prepared.reason },
+        { status: 502 },
+      )
+    }
+
     const adapter =
       deps.adapter ??
       makeCloudControlCloudCodingAdapter({
@@ -1932,7 +1990,7 @@ export const handleCloudCodingSessionLaunch = (
       .launch({
         accountRef: session.accountRef,
         lane: placement.lane,
-        request: sessionRequest,
+        request: prepared.value.request,
         sessionId,
       })
       .pipe(
@@ -1945,8 +2003,36 @@ export const handleCloudCodingSessionLaunch = (
         ),
       )
     if (!launched.ok) {
+      const finalizationReason = yield* (
+        prepared.value.finalize?.({
+          reason: launched.reason,
+          status: 'failed',
+        }) ?? Effect.void
+      ).pipe(
+        Effect.asVoid,
+        Effect.catch(error => Effect.succeed(error.reason)),
+      )
       return noStoreJsonResponse(
-        { error: 'runtime_error', reason: launched.reason },
+        {
+          error: 'runtime_error',
+          reason: finalizationReason ?? launched.reason,
+        },
+        { status: 502 },
+      )
+    }
+
+    const finalizationReason = yield* (
+      prepared.value.finalize?.({
+        session: launched.session,
+        status: 'completed',
+      }) ?? Effect.void
+    ).pipe(
+      Effect.asVoid,
+      Effect.catch(error => Effect.succeed(error.reason)),
+    )
+    if (finalizationReason !== undefined) {
+      return noStoreJsonResponse(
+        { error: 'runtime_error', reason: finalizationReason },
         { status: 502 },
       )
     }
