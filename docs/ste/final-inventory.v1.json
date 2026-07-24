@@ -33628,7 +33628,7 @@
     },
     {
       "path": "docs/omega/2026-07-23-identity-first-onboarding-roadmap.md",
-      "sha256": "d3c7e61e2c5a91969db51f55a7e2dad464f815eeecee078c5b43333a176ea9a2",
+      "sha256": "9a8151bc30bcfaa015d08d53c81b92a3495ea3f5a2e51aeac090a85925f2583e",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
@@ -33646,7 +33646,7 @@
     },
     {
       "path": "docs/omega/README.md",
-      "sha256": "898787495d230c1cfbbacdea7ea6c6e182e0ce798a7dfb28e3b6603672c46cd4",
+      "sha256": "10ba46e26e042261bbca868b95b274d7fa9070c9e36fa2af091e73664dbcacf5",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -33664,7 +33664,7 @@
     },
     {
       "path": "docs/omega/ROADMAP.md",
-      "sha256": "fa373fbc39cd3c2ab78c8f8ef70e6248fae767087a1126cb32699d70389c035d",
+      "sha256": "01cd5a7b96541e1a6c9f87392ce1be7cc48a9e7f482717e1d347697b629c3489",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",

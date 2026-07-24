@@ -27,4 +27,5 @@ This target is a branded bootstrap prerelease.
 It is not a Desktop feature-parity or primary-cutover claim.
 
 The first product slice is identity-first onboarding.
-It creates a new Omega GPUI surface before Editor Onboarding.
+It adds identity first to the existing GPUI onboarding structure.
+It preserves the current Theme and Agent Setup sections.

@@ -2,7 +2,8 @@
 
 - Class: owner-accepted work-packet ledger
 - Date: 2026-07-23
-- Revision: 2
+- Revised: 2026-07-24
+- Revision: 3
 - Status: active initial roadmap
 - Product: Omega, the Zed-based OpenAgents Desktop application
 - Client repository: `OpenAgentsInc/omega`
@@ -160,9 +161,11 @@ Use the
 [identity-first onboarding roadmap](./2026-07-23-identity-first-onboarding-roadmap.md)
 for its contract, architecture, issue order, and proof gates.
 
-This slice builds new native GPUI interfaces.
-It does not extend the inherited Zed onboarding screen.
-The inherited screen becomes Editor Onboarding.
+This slice uses the inherited Zed onboarding structure as its base.
+It adds a new native identity section before editor setup.
+It preserves the current Theme section exactly.
+It also preserves the current registry-agent setup for later expansion.
+The shared screen gets FirstRun and EditorSetup modes.
 
 Start the rebrand at application identity and the new first-run surface.
 Do not use a repository-wide string replacement as the implementation method.
@@ -342,7 +345,7 @@ The journey is:
 
 Also test:
 
-- identity setup before Editor Onboarding
+- identity section before editor setup sections
 - identity continuity after restart
 - locked, lost, and unavailable custody
 - no secret in logs, telemetry, or crash output
@@ -981,12 +984,12 @@ The queue starts now:
 1. OMEGA-OID-00: freeze the identity-first contract.
 2. OMEGA-OID-01: isolate Omega application identity and data.
 3. OMEGA-OID-02: publish the shared identity contract.
-4. OMEGA-OID-03: build the fixture-backed GPUI shell.
+4. OMEGA-OID-03: add fixture identity states to the current GPUI screen.
 5. OMEGA-OID-04: add isolated signing and secure custody.
 6. OMEGA-OID-05: add recovery and explicit creation.
 7. OMEGA-OID-06: connect live identity state to GPUI.
 8. OMEGA-OID-07: route every first launch through identity setup.
-9. OMEGA-OID-08: preserve inherited setup as Editor Onboarding.
+9. OMEGA-OID-08: add the Editor Onboarding replay mode.
 10. OMEGA-OID-09: prove the packaged identity-first journey.
 11. OMEGA-RC1-01 through OMEGA-RC1-07: complete the bootstrap release.
 12. OMEGA-OA-01 through OMEGA-OA-10: close Desktop parity.

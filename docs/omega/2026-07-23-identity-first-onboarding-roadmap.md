@@ -2,13 +2,14 @@
 
 - Class: owner-accepted work-packet ledger
 - Date: 2026-07-23
-- Revision: 1
+- Revised: 2026-07-24
+- Revision: 2
 - Status: active plan
 - Product: Omega
 - Client repository: `OpenAgentsInc/omega`
 - Shared contract repository: `OpenAgentsInc/openagents`
 - Owner authority: the 2026-07-23 Omega onboarding direction
-- OpenAgents base: `815e89f146b8d8aaa681840e183bfdf0ae9031d1`
+- OpenAgents base: `ae40fdad85492cb922bc6c11bc9252a728561df4`
 - Omega source pin: `30c80504403b7dcb10c7d0a476577014ebc871f6`
 - Buzz onboarding study pin: `acfbb1bb6af54cb29cb152496ff43b8285dcb8cf`
 
@@ -25,8 +26,10 @@ The user can start it after identity setup.
 The user can also reopen it later.
 
 The new journey will use Omega branding and native GPUI components.
+It will use the current Zed onboarding structure as its base.
+It will preserve the current theme selector exactly.
+It will preserve the current agent setup section for later expansion.
 It will not port the Buzz React or Tauri user interface.
-It will not extend the inherited Zed onboarding screen.
 
 This roadmap starts the rebrand with a new product surface.
 It does not use a repository-wide string replacement as the implementation method.
@@ -71,6 +74,38 @@ The current onboarding page is one editor setup page.
 It includes theme, keymap, agent, import, Vim, trust, and telemetry controls.
 It has no cryptographic identity step.
 It can split and serialize as a workspace item.
+
+The screen shell is `Onboarding::render` in
+`crates/onboarding/src/onboarding.rs`.
+It provides the centered 780-pixel column, header, Finish action, scroll state,
+focus traversal, divider, and page body.
+
+The body composition is `render_basics_page` in
+`crates/onboarding/src/basics_page.rs`.
+Its section order is:
+
+1. Theme.
+2. Base keymap.
+3. Agent Setup.
+4. Editor settings import.
+5. Vim mode.
+6. Project trust.
+7. Telemetry.
+
+The theme section is already a complete live control.
+It supports Light, Dark, and System appearance.
+It shows One, Ayu, and Gruvbox preview families.
+It writes the selected mode and theme to the settings file.
+System mode stores the matched light and dark family.
+
+The Agent Setup section uses the shared `AgentSetupButton`.
+It reads installed agents from `AllAgentServersSettings`.
+It offers `claude-acp`, `codex-acp`, `github-copilot-cli`, and `cursor`.
+An Install action writes registry agent settings and selects the agent.
+
+The first tile is different.
+`render_zed_agent_button` uses Zed account state, plans, URLs, and sign-in.
+Omega cannot rename that tile without replacing its service contract.
 
 The current Omega application identity is still Zed.
 The application uses Zed names, application IDs, paths, and credential behavior.
@@ -163,6 +198,7 @@ The Omega source review used these paths at the Omega source pin:
 - `crates/paths/src/paths.rs`
 - `crates/release_channel/src/lib.rs`
 - `crates/zed_credentials_provider/src/zed_credentials_provider.rs`
+- `crates/ui/src/components/ai/agent_setup_button.rs`
 
 The Buzz source review used these paths at the Buzz study pin:
 
@@ -280,10 +316,26 @@ UI code must not select them.
 
 ## 6. User journey
 
-The first journey has four short stages.
-Recovery and blocked states can replace a stage.
+Keep the current vertically scrolling onboarding structure.
+Do not replace it with a modal or a multi-page wizard.
+Add identity as the first section in that structure.
 
-### 6.1 Stage 1: Welcome
+The first-run section order is:
+
+1. Omega identity.
+2. Theme.
+3. Base keymap.
+4. Agent Setup.
+5. Editor settings import.
+6. Vim mode.
+7. Project trust.
+8. Telemetry.
+
+The identity section can show an inline substate.
+Recovery and blocked states replace only that section.
+They do not replace the complete page.
+
+### 6.1 Omega identity section
 
 Show the Omega mark, product name, and one clear value statement.
 Show these primary actions:
@@ -301,8 +353,6 @@ An explanation link answers:
 - What happens if I lose access?
 - Is this my OpenAgents account?
 
-### 6.2 Stage 2: Create or recover
-
 The create path makes one Nostr-only person key pair.
 It makes no wallet.
 It makes no network request.
@@ -319,8 +369,13 @@ Omega does not automatically read candidate secrets.
 The user authorizes each candidate read.
 Multiple valid identities require an explicit choice.
 
-### 6.3 Stage 3: Protect recovery
+After success, show the public `npub` and a short fingerprint.
+Let the user add an optional local display name and avatar.
+Do not publish a kind `0` event.
 
+### 6.2 Recovery protection
+
+Show recovery protection inside the identity section.
 Omega offers an encrypted recovery artifact.
 The custody service creates the artifact.
 The GPUI layer never receives the plain signing secret.
@@ -333,19 +388,53 @@ Omega must keep a visible `Recovery needed` state.
 Normal onboarding does not show or copy a raw `nsec`.
 Manual raw export is outside this roadmap.
 
-### 6.4 Stage 4: Make it yours
+### 6.3 Theme section
 
-Show the public `npub` and a short fingerprint.
-Let the user add a display name and avatar.
-These fields are optional.
+Preserve the current theme section exactly.
+Do not change its layout, theme families, controls, preview rendering, or settings behavior.
 
-Omega stores this first profile locally.
-It does not publish a kind `0` event during onboarding.
-Later Sync or Nostr setup can ask for publication.
+The preserved contract includes:
 
-The final action is Enter Omega.
-It opens Editor Onboarding on a new installation.
-The user can postpone Editor Onboarding without losing identity completion.
+- Light, Dark, and System controls
+- One, Ayu, and Gruvbox families
+- matched light and dark themes in System mode
+- the current preview tile rendering
+- immediate settings-file updates
+- current selection and focus styling
+
+Move the function only if reuse requires an extraction.
+If it moves, require a byte-equivalent behavior test.
+Do not add Omega brand colors to the editor theme choices.
+
+### 6.4 Agent Setup section
+
+Preserve the current Agent Setup structure and registry-agent behavior.
+Keep `AgentSetupButton` and the current install interaction.
+Keep the four current featured registry IDs.
+Do not reduce the section to one OpenAgents agent.
+
+The Zed Agent tile is a separate compatibility problem.
+It uses Zed account, plan, trial, URL, and sign-in services.
+Do not relabel this tile as Omega Agent without an Omega service.
+Hide it or show an honest unavailable state when Omega disables Zed services.
+Keep that disposition narrow to the Zed-hosted tile.
+
+Later work can expand this section with more agents and capability truth.
+This onboarding packet must not redesign the registry-agent flow.
+
+### 6.5 Remaining editor setup
+
+Preserve the current base keymap, settings import, Vim, trust, and telemetry structure.
+Change Zed text only when the new Omega journey exposes it.
+Do not change the editor settings behavior in the identity packet.
+
+The Finish action requires a durable identity.
+It also records the independent Editor Onboarding completion.
+If identity is incomplete, keep Finish disabled and explain the required action.
+
+Reopening Editor Onboarding uses the same screen.
+It shows the completed identity as a compact status section.
+It keeps Theme and Agent Setup available.
 
 ## 7. Blocked and recovery states
 
@@ -407,24 +496,32 @@ The crate consumes an admitted shared contract.
 It must not use a relative path into the OpenAgents monorepo.
 It uses a released version, digest, and conformance vectors.
 
-### 8.2 `omega_onboarding`
+### 8.2 Existing `onboarding` crate
 
-Add a new GPUI crate.
-It owns:
+Keep the current `onboarding` crate and screen structure.
+Do not add an `omega_onboarding` crate.
 
-- the first-run state machine
-- the new Omega onboarding shell
-- focus and keyboard order
-- safe input and validation states
-- recovery progress
-- optional local profile data
-- the handoff to Editor Onboarding
-- the handoff to Omega Home
+Add the identity state machine as a new logical component.
+The expected source seam is `crates/onboarding/src/identity_section.rs`.
+Compose it before `render_theme_section` in the existing page body.
+
+Keep these source responsibilities:
+
+- `onboarding.rs` owns the page shell, actions, focus, scroll, and Finish behavior.
+- `basics_page.rs` owns the ordered editor setup sections.
+- `theme_preview.rs` owns the existing theme preview rendering.
+- `agent_setup_button.rs` owns the shared agent tile.
+- `identity_section.rs` owns identity presentation and safe input.
+
+Add an explicit view mode:
+
+- `FirstRun` shows the full identity section first.
+- `EditorSetup` shows compact identity status and the same editor sections.
 
 The view is an application singleton.
-It cannot split.
+Make it non-splittable while it contains identity controls.
 It does not serialize a secret or a pending secret.
-It rebuilds its state from public identity facts after restart.
+It rebuilds its identity state from public facts after restart.
 
 Background tasks stay in owned task fields.
 Dropping a view must not produce a half-committed identity.
@@ -453,34 +550,40 @@ Identity setup and editor setup use independent versioned state.
 
 ### 8.4 Editor Onboarding
 
-Keep the current settings behavior.
-Rename the inherited component and actions as they enter this path.
+Keep the current screen as the Editor Onboarding base.
+Keep its settings behavior and section order.
+Use `OpenEditorOnboarding` for the replay action.
 
-The target names are:
+The FirstRun mode adds identity before the preserved editor sections.
+The EditorSetup mode reuses those sections after first run.
+Do not create a second copy of Theme or Agent Setup.
 
-- `EditorOnboarding`
-- `OpenEditorOnboarding`
-- Finish Editor Setup
-- Return to Editor Setup
-
-Do not rebuild this screen in the identity packet.
-Do not reuse it as the new Omega identity shell.
-Its wider redesign can occur in a later editor packet.
+Rename public Zed copy when this path exposes it.
+Do not rename internal compatibility identifiers without review.
+The wider editor setup redesign can occur in a later packet.
 
 ## 9. Omega visual direction
 
-The new shell must look like Omega, not a recolored Zed page.
-It uses the OpenAgents dark field and energy-blue accent.
-It uses the current GPUI theme roles for text, focus, status, and contrast.
+Preserve the current Zed onboarding proportions and section rhythm.
+Keep the centered column, header row, divider, vertical spacing, and scrolling page.
+Use the current GPUI component vocabulary.
 
-The surface uses:
+Replace the Zed logo, product heading, and product subtitle with Omega assets and copy.
+Use the OpenAgents energy-blue accent only for Omega identity and primary state.
+Do not force a dark brand surface over the selected editor theme.
+
+Preserve the Theme section exactly.
+The theme choice must continue to change the live onboarding appearance.
+Do not add decorative Omega effects to its preview tiles.
+
+The identity section uses:
 
 - one Omega mark
-- one primary heading
+- one clear identity heading
 - one short explanation
-- one dominant action
-- one quiet alternate action
-- one restrained identity diagram or fingerprint
+- one dominant Create action
+- one quiet recovery action
+- one public fingerprint after success
 
 It does not use decorative card grids.
 It does not use continuous animation.
@@ -503,10 +606,13 @@ Each new surface uses Omega names, assets, URLs, and telemetry names.
 The implementation order is:
 
 1. Isolate the application and data identity.
-2. Add the Omega brand assets used by the new shell.
-3. Build the new identity-first surface.
-4. Rename inherited onboarding only at the Editor Onboarding boundary.
-5. Replace other inherited surfaces when their native Omega replacement starts.
+2. Add the Omega brand assets used by the existing shell.
+3. Add identity as the first section in the existing composition.
+4. Preserve Theme exactly.
+5. Preserve the registry-agent setup section.
+6. Disposition the Zed-hosted agent tile honestly.
+7. Add the Editor Onboarding replay mode.
+8. Replace other inherited surfaces when their native Omega replacement starts.
 
 Do not run an automatic Zed-to-Omega text replacement.
 Do not rename internal compatibility identifiers without review.
@@ -525,12 +631,12 @@ They are not created or dispatched by this roadmap.
 | OMEGA-OID-00 | Freeze the Omega identity-first onboarding contract | `openagents` | none |
 | OMEGA-OID-01 | Isolate Omega application identity and first-run data | `omega` | OMEGA-OID-00 |
 | OMEGA-OID-02 | Publish the sovereign identity contract for Omega | `openagents` | OMEGA-OID-00 |
-| OMEGA-OID-03 | Build the fixture-backed Omega onboarding shell | `omega` | OMEGA-OID-00 |
+| OMEGA-OID-03 | Add fixture identity states to the Omega onboarding screen | `omega` | OMEGA-OID-00 |
 | OMEGA-OID-04 | Add the isolated Omega signer and secure custody | `omega` | OMEGA-OID-01, OMEGA-OID-02 |
 | OMEGA-OID-05 | Add identity recovery and explicit creation | `omega` | OMEGA-OID-04 |
 | OMEGA-OID-06 | Connect live identity state to the GPUI journey | `omega` | OMEGA-OID-03, OMEGA-OID-05 |
 | OMEGA-OID-07 | Route every first launch through Omega onboarding | `omega` | OMEGA-OID-06 |
-| OMEGA-OID-08 | Preserve inherited setup as Editor Onboarding | `omega` | OMEGA-OID-07 |
+| OMEGA-OID-08 | Add the Editor Onboarding replay mode | `omega` | OMEGA-OID-07 |
 | OMEGA-OID-09 | Prove the packaged identity-first journey | both | OMEGA-OID-08 |
 
 ### 11.1 OMEGA-OID-00: freeze the contract
@@ -594,24 +700,30 @@ Falsifier:
 
 - Omega needs a relative monorepo path or a normal API returns a secret.
 
-### 11.4 OMEGA-OID-03: build the fixture shell
+### 11.4 OMEGA-OID-03: adapt the existing screen
 
 Work:
 
-- Build the new GPUI component and state views.
-- Add Omega copy, assets, and semantic roles.
+- Keep `Onboarding::render` as the screen structure.
+- Add the identity section before Theme.
+- Add Omega header copy, assets, and semantic roles.
 - Use fixture identity states only.
 - Add keyboard, focus, narrow-window, and visual tests.
 - Add blocked, empty, loading, and error views.
+- Add a preservation test for the exact theme behavior.
+- Add a preservation test for registry-agent setup.
+- Add the accepted Zed-hosted tile disposition.
 
 Exit:
 
 - The owner can review the complete journey without a real key write.
-- The surface contains no Zed product text.
+- Theme behavior matches the current source.
+- Registry-agent setup behavior matches the current source.
+- The Omega header and identity section contain no Zed product text.
 
 Falsifier:
 
-- The packet ports React or changes the inherited editor setup page.
+- The packet ports React or changes Theme or registry-agent behavior.
 
 ### 11.5 OMEGA-OID-04: add custody
 
@@ -687,27 +799,29 @@ Work:
 
 Exit:
 
-- Every clean launch reaches identity setup before an inherited Zed surface.
+- Every clean launch focuses identity before an editor setup interaction.
 - Every completed launch resumes the requested work.
 
 Falsifier:
 
 - A path, restored workspace, or second process bypasses identity setup.
 
-### 11.9 OMEGA-OID-08: preserve editor setup
+### 11.9 OMEGA-OID-08: add editor replay mode
 
 Work:
 
-- Rename the inherited component at its public boundary.
 - Give editor setup an independent completion version.
-- Add the identity-to-editor handoff.
+- Add FirstRun and EditorSetup modes to the shared screen.
+- Show compact identity status in EditorSetup mode.
 - Add the editor-to-home handoff.
 - Add a command and menu action to reopen Editor Onboarding.
+- Keep Theme and registry-agent setup available in both modes.
 
 Exit:
 
-- Identity completion cannot suppress Editor Onboarding.
+- Identity completion cannot remove Editor Onboarding.
 - Editor completion cannot suppress identity recovery.
+- The implementation has one Theme section and one Agent Setup section.
 
 Falsifier:
 
@@ -745,7 +859,7 @@ After OMEGA-OID-00:
 
 - OMEGA-OID-01 can isolate application state.
 - OMEGA-OID-02 can publish the shared contract.
-- OMEGA-OID-03 can build the fixture shell.
+- OMEGA-OID-03 can adapt the existing screen with fixtures.
 
 OMEGA-OID-04 waits for state isolation and the released contract.
 OMEGA-OID-05 waits for custody.
@@ -774,8 +888,8 @@ ProductSpec must define:
 - no automatic publication
 - restart stability
 - import, archive, delete, and reset behavior
-- Editor Onboarding handoff
-- the reopen path for both onboarding surfaces
+- FirstRun and EditorSetup modes
+- the Editor Onboarding reopen path
 
 ProductSpec must state that a person identity is not a wallet.
 It must state that a Nostr signature is not command admission.
@@ -828,9 +942,11 @@ The implementation must include these named journeys:
 11. An offline user can complete local identity setup.
 12. A stale task cannot update a newer transaction.
 13. A saved launch intent resumes after completion.
-14. Identity and Editor Onboarding have separate completion.
+14. Identity and Editor Onboarding modes have separate completion.
 15. No test tripwire finds a plain secret.
-16. No test finds a Zed product label in the new journey.
+16. Theme selection matches the current theme behavior.
+17. Registry-agent setup matches the current behavior.
+18. No test finds a Zed product label in the Omega header or identity section.
 
 ## 16. Non-goals
 
@@ -839,7 +955,7 @@ This roadmap does not:
 - port Buzz
 - deploy a Buzz relay
 - add community onboarding
-- add agent harness setup
+- expand the current agent registry
 - add a wallet
 - publish a Nostr profile
 - add Nostr direct messages
@@ -847,7 +963,7 @@ This roadmap does not:
 - add cloud custody
 - add NIP-AB pairing
 - finish the complete Omega rebrand
-- redesign Editor Onboarding
+- redesign the preserved editor settings sections
 - migrate Zed or Electron secrets
 
 ## 17. RC integration
@@ -866,7 +982,7 @@ The RC cannot ship with an exposed Zed product label.
 
 ## 18. Rollback
 
-Before launch routing changes, rollback removes the new fixture shell.
+Before launch routing changes, rollback removes the fixture identity section.
 It does not touch a real identity.
 
 After custody starts, rollback must preserve:
@@ -891,12 +1007,12 @@ OMEGA-OID-01 and OMEGA-OID-03 can start after its contract decisions.
 
 ## 20. Plan claim
 
-- Claim actor: `codex-root-omega-identity-onboarding-20260723`
-- Claim time: `2026-07-24T04:54:38Z`
+- Claim actor: `codex-root-omega-identity-onboarding-r2-20260724`
+- Claim time: `2026-07-24T05:06:27Z`
 - Repository: `OpenAgentsInc/openagents`
 - Branch: `main`
-- Base commit: `815e89f146b8d8aaa681840e183bfdf0ae9031d1`
-- Scope: the identity-first onboarding plan and Omega roadmap index
+- Base commit: `ae40fdad85492cb922bc6c11bc9252a728561df4`
+- Scope: the identity-first plan, Zed structure clarification, and Omega roadmap index
 - Owned paths:
   - `docs/omega/2026-07-23-identity-first-onboarding-roadmap.md`
   - `docs/omega/README.md`

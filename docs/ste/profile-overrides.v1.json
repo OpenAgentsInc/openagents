@@ -4,8 +4,8 @@
     "docs/omega/2026-07-23-identity-first-onboarding-roadmap.md": {
       "ste_mode": "mixed",
       "ste_status": "checked",
-      "ste_reviewer": "codex/omega-identity-onboarding-20260723",
-      "ste_reviewed_at": "2026-07-24T04:54:38Z",
+      "ste_reviewer": "codex/omega-identity-onboarding-r2-20260724",
+      "ste_reviewed_at": "2026-07-24T05:06:27Z",
       "risk": "high",
       "source": null,
       "replacement": null,
@@ -15,8 +15,8 @@
     "docs/omega/README.md": {
       "ste_mode": "descriptive",
       "ste_status": "checked",
-      "ste_reviewer": "codex/omega-roadmap-20260723",
-      "ste_reviewed_at": "2026-07-23T23:45:00Z",
+      "ste_reviewer": "codex/omega-identity-onboarding-r2-20260724",
+      "ste_reviewed_at": "2026-07-24T05:06:27Z",
       "risk": "active",
       "source": null,
       "replacement": null,
@@ -26,8 +26,8 @@
     "docs/omega/ROADMAP.md": {
       "ste_mode": "mixed",
       "ste_status": "checked",
-      "ste_reviewer": "codex/omega-roadmap-20260723",
-      "ste_reviewed_at": "2026-07-23T23:45:00Z",
+      "ste_reviewer": "codex/omega-identity-onboarding-r2-20260724",
+      "ste_reviewed_at": "2026-07-24T05:06:27Z",
       "risk": "high",
       "source": null,
       "replacement": null,
