@@ -14,7 +14,7 @@
   "quoteRef": "quote.public.community.1",
   "operatorRef": "operator.public.member.dev_1",
   "expiresAtRef": "expiry.public.community.quote_1",
-  "requestRelay": "wss://relay.openagents.com",
+  "requestRelay": "wss://nos.lol",
   "status": "payment-required",
   "statusExtra": "labor_quote",
   "feedbackType": "quote",

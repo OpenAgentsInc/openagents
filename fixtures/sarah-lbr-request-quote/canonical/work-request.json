@@ -22,7 +22,7 @@
   "groupRef": "group.public.community.workroom",
   "forumTopicRef": "topic.public.forum.community_1",
   "deadlineRef": "deadline.public.community.20260724",
-  "relays": ["wss://relay.openagents.com"],
+  "relays": ["wss://nos.lol"],
   "requiredParams": [
     "lbr_objective_ref",
     "lbr_repository_ref",
