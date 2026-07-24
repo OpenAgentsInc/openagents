@@ -220,8 +220,21 @@ script.
    lacks `drawtext`, render a PNG label (Pillow) and use the `overlay` filter,
    or use `pnpm --dir apps/qa-runner run overlay-text`.
 5. **Assemble (A / B / C).** Keep Sarah audio continuous. Cut picture only.
-   Verify T1 on the silence after spoken `zed` (about 17.50 s). Set T2 near
-   `0.78 * D`. Do not copy older fractions when they disagree with the audio.
+   Derive T1 from the silence after spoken `zed` (about 17.50 s). Set T2 near
+   `0.78 * D` only as a start value. Do not copy older fractions when they
+   disagree with the audio. Prefer the one-command helper (#9234):
+
+```sh
+node scripts/sarah-avatar/assemble-rc.mjs \
+  --sarah-master ~/Desktop/Sarah/262/262-sarah-master.mp4 \
+  --screenshare ~/Desktop/Sarah/262/262-screenshare-omega-welcome.mp4 \
+  --cutaway /path/to/omega2.jpg \
+  --cutaway-seconds 6.3192 \
+  --desktop-transcript ~/Desktop/Sarah/262/262transcript.md \
+  --repo-transcript docs/transcripts/262.md \
+  --require-transcript-lock \
+  --out ~/Desktop/Sarah/262/262-rc-no-music.mp4
+```
 
 | Part | Picture | Timing |
 | --- | --- | --- |
@@ -231,11 +244,13 @@ script.
 
 Write the clean plate to `~/Desktop/Sarah/262/262-rc-no-music.mp4`.
 Optional music sibling: `262-rc-with-music.mp4` via the pipeline music
-section.
-6. **Verify.** Sample frames near opening, mid-screenshare (confirm scroll or
-   click motion), and close. Also check `T2 − 1 s`, `T2 − 0.5 s`, and `T2`
-   for Finder/Desktop leak. Confirm the Welcome label and that no foreign side
-   panel is in the product frame.
+section. Before assemble, lock Desktop `262transcript.md` to the spoken body
+in [`262.md`](262.md).
+6. **Verify.** The assemble helper fails on Finder/Desktop-like pixels in the
+   mid tail at `T2 − 1 s`, `T2 − 0.5 s`, and `T2 − 1 frame`. Also sample
+   opening, mid-screenshare (confirm scroll or click motion), and close by
+   eye. Confirm the Welcome label and that no foreign side panel is in the
+   product frame.
 7. **Notes.** Keep local production notes beside the MP4s (for example
    `262-rc-notes.md`). Do not commit MP4s.
 

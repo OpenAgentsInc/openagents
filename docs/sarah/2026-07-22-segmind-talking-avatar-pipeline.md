@@ -369,20 +369,41 @@ Keep Sarah's spoken audio end to end. Cut **picture** only:
 | C | Sarah master | T2 → `D` |
 
 `D` is the Sarah master duration. Do not copy old T1/T2 fractions blindly.
-For Episode 262, verify T1 on the silence after spoken `zed` (about 17.50 s)
-and set T2 near `0.78 * D`. Older notes that disagree with the audio are
-wrong for that cut.
+Derive T1 from the silence after the spoken pause (for Episode 262, after
+`zed`, about 17.50 s). Set T2 near `0.78 * D` only as a start value, then
+confirm it on the audio. Older notes that disagree with the audio are wrong
+for that cut.
 
-Concatenate to
-`~/Desktop/Sarah/<episode>/<episode>-rc-no-music.mp4`. Optional music mix
-writes `<episode>-rc-with-music.mp4` (see **Music bed (ElevenLabs)** below).
+Use the one-command helper (#9234). It writes the no-music RC, derives T1 from
+silence in a search window, supports a second mid cutaway still, checks the
+Desktop paste against `docs/transcripts/<episode>.md`, and fails when
+Finder-like frames appear near T2:
+
+```sh
+node scripts/sarah-avatar/assemble-rc.mjs \
+  --sarah-master ~/Desktop/Sarah/262/262-sarah-master.mp4 \
+  --screenshare ~/Desktop/Sarah/262/262-screenshare-omega-welcome.mp4 \
+  --cutaway /path/to/omega2.jpg \
+  --cutaway-seconds 6.3192 \
+  --desktop-transcript ~/Desktop/Sarah/262/262transcript.md \
+  --repo-transcript docs/transcripts/262.md \
+  --require-transcript-lock \
+  --out ~/Desktop/Sarah/262/262-rc-no-music.mp4
+```
+
+Pass `--t1` only after you verify the pause on the audio. Pass `--t2` when
+`0.78 * D` is wrong for the close. Tests:
+`node --test scripts/sarah-avatar/assemble-rc.test.mjs`.
+
+Optional music mix writes `<episode>-rc-with-music.mp4` (see **Music bed
+(ElevenLabs)** below). Keep `*-rc-no-music.mp4` as the clean plate.
 
 ### Step 5 — Verify and stop
 
-- Sample frames at opening, mid-screenshare, and close.
-- Before you call the RC good, extract frames at `T2 − 1 s`, `T2 − 0.5 s`,
-  and `T2`. Reject the cut if those frames show Finder, Desktop, or another
-  non-product surface (Episode 262 leaked about the last 0.9 s of the mid).
+- The assemble helper already samples the mid tail at `T2 − 1 s`,
+  `T2 − 0.5 s`, and `T2 − 1 frame` (still Part B) and exits non-zero on
+  Finder/Desktop-like pixels. Do not skip that QC for a release candidate.
+- Also sample frames at opening, mid-screenshare, and close by eye.
 - Confirm the product label and a clean product frame.
 - Confirm the clean plate has no music. If you mix music, keep
   `*-rc-no-music.mp4` as the clean plate.
@@ -474,8 +495,8 @@ Mix (audible Episode 261 louder path):
 
 ### Code and tooling improvements (tracked candidates)
 
-Item 1 shipped in #9233. The rest remain future fix work. Do not treat open
-items as done.
+Items 1 and 2 shipped (#9233, #9234). The rest remain future fix work. Do not
+treat open items as done.
 
 1. **`scripts/omega-screen-control` (shipped #9233):** Hard-stops recording
    before app teardown. Rejects Cmd+Q key quit. Optional
@@ -483,10 +504,14 @@ items as done.
    `record-motion`). Trims Finder/Desktop-like tails when the frame heuristic
    fires. Tests:
    `node --test scripts/omega-screen-control/recording-lifecycle.test.mjs`.
-2. **RC assemble helper:** One command that takes sarah-master +
-   screenshare + optional cutaway stills + T1/T2, writes the no-music RC,
-   verifies frames at the cut points, and exits non-zero if Finder-like
-   pixels appear near T2.
+2. **RC assemble helper (shipped #9234):**
+   `scripts/sarah-avatar/assemble-rc.mjs`. One command that takes
+   sarah-master + screenshare + optional cutaway stills + T1/T2, writes the
+   no-music RC, derives T1 from the post-spoken silence window (not folklore
+   fractions alone), supports a second mid cutaway beat, checks Desktop paste
+   against `docs/transcripts/<episode>.md`, verifies frames at the cut
+   points, and exits non-zero if Finder-like pixels appear near T2. Tests:
+   `node --test scripts/sarah-avatar/assemble-rc.test.mjs`.
 3. **`scripts/sarah-avatar/elevenlabs-music-bed.mjs` (or similar):** Read
    `elevenlabs.env`, generate a bed into the episode folder, optional
    `--mix` onto the RC. Document that script here when it lands.
@@ -500,7 +525,7 @@ items as done.
    completion KVPs for development builds.
 6. **Cutaway inventory:** Keep cutaway stills under the episode Desktop
    folder or ignored `.artifacts/episode-N/cutaways/` with a manifest.
-   Do not rely on one screenshare duration alone.
+   Do not rely on one screenshare duration alone. Tracked as #9237.
 
 ## How it works (Segmind Async Inference V2)
 
