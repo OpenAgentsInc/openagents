@@ -6,7 +6,9 @@ import {
   publicKeyFromSecret,
   signEventTemplate,
 } from "./crypto.ts";
+import { makeNip44OwnerCipher } from "./nip44-cipher.ts";
 import { assertSarahNostrPublicSafe } from "./redaction.ts";
+import type { SarahNostrCipher } from "../nostr-turn/types.ts";
 import {
   SARAH_NOSTR_IDENTITY_SCHEMA,
   SARAH_NOSTR_IDENTITY_SECRET_ENV,
@@ -20,6 +22,26 @@ import {
 } from "./types.ts";
 
 const decodeIdentity = S.decodeUnknownSync(SarahNostrPublicIdentity);
+
+/**
+ * Build sealed signer + NIP-44 owner cipher from one secret load.
+ * The secret is copied into closures; caller may zero the source buffer.
+ */
+export const createSealedSarahNostrStack = (params: {
+  readonly secretKey: Uint8Array;
+  readonly ownerPubkeyHex: string;
+  readonly lifecycle?: SarahNostrLifecycleState;
+}): {
+  readonly signer: SarahNostrSigner;
+  readonly cipher: SarahNostrCipher;
+} => {
+  const signer = createSealedSarahNostrSigner(params);
+  const cipher = makeNip44OwnerCipher({
+    sarahSecretKey: params.secretKey,
+    ownerPubkeyHex: params.ownerPubkeyHex,
+  });
+  return { signer, cipher };
+};
 
 /**
  * Create a sealed Sarah signer that holds secret bytes only in a closure.

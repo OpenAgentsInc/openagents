@@ -16,7 +16,7 @@
     "access": "public"
   },
   "scripts": {
-    "test": "vp test --run src/index.test.ts src/nostr-identity/nostr-identity.test.ts src/nostr-turn/nostr-turn.test.ts src/nostr-turn/consumer.test.ts",
+    "test": "vp test --run src/index.test.ts src/nostr-identity/nostr-identity.test.ts src/nostr-identity/nip44-cipher.test.ts src/nostr-turn/nostr-turn.test.ts src/nostr-turn/consumer.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
@@ -24,7 +24,8 @@
     "@noble/hashes": "1.7.1",
     "@openagentsinc/authority": "workspace:*",
     "@scure/base": "1.2.4",
-    "effect": "catalog:"
+    "effect": "catalog:",
+    "@noble/ciphers": "1.2.1"
   },
   "devDependencies": {
     "typescript": "catalog:"

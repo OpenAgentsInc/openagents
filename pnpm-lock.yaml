@@ -2579,6 +2579,9 @@ importers:
 
   packages/sarah:
     dependencies:
+      '@noble/ciphers':
+        specifier: 1.2.1
+        version: 1.2.1
       '@noble/curves':
         specifier: 1.8.1
         version: 1.8.1

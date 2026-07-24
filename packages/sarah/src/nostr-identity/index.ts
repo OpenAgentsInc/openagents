@@ -19,6 +19,15 @@ export {
   verifySignedEvent,
 } from "./crypto.ts";
 export {
+  makeNip44OwnerCipher,
+  secretKeyFromHex,
+} from "./nip44-cipher.ts";
+export {
+  decrypt as nip44Decrypt,
+  encrypt as nip44Encrypt,
+  getConversationKey,
+} from "./nip44.ts";
+export {
   SarahNostrSecretLeakError,
   assertSarahNostrPublicSafe,
   toPublicSafeJson,
@@ -26,6 +35,7 @@ export {
 export {
   assertLifecycleTransition,
   createSealedSarahNostrSigner,
+  createSealedSarahNostrStack,
   generateSarahNostrSigner,
   loadSarahNostrSignerFromSecretManagerMount,
   type SarahNostrSecretSource,

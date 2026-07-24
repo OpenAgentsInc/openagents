@@ -24,6 +24,10 @@ export {
   type SarahNostrTurnPublishResult,
 } from "./service.ts";
 export {
+  createWebSocketRelayPublisher,
+  type WsPublisherHandle,
+} from "./ws-publisher.ts";
+export {
   SARAH_AUTHORITY_RECEIPT_KIND,
   SARAH_NIP_AM_KIND,
   SARAH_NIP_AO_KIND,

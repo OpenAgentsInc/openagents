@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:660cd8cb8d0399b2d09826bdb7be27e8a200afe830ff64883d7929305396a776",
+  "sourceDigest": "sha256:c8dc23d50c763a757c75e865095b1a87757219502420331f619faaa1069d054e",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -2811,7 +2811,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "packages/sarah (4 tracked test files)"
+          "ref": "packages/sarah (5 tracked test files)"
         }
       ],
       "obligation": {
