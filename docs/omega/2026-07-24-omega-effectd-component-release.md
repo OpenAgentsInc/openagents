@@ -6,6 +6,31 @@
 - Source commit: `be342ea7525ac50fbf836978dcd1ba6714345f42`
 - Status: complete
 
+## RC.5 replacement
+
+The next Omega candidate must use
+[`omega-effectd-v0.1.0-rc.5`](https://github.com/OpenAgentsInc/openagents/releases/tag/omega-effectd-v0.1.0-rc.5).
+RC.5 supersedes RC.4 because framed Stop refreshed host evidence before it
+committed the local terminal transition. A paused run could therefore become
+stranded when its selected provider lost authentication.
+
+RC.5 makes Stop independent of provider authentication, lane readiness, and
+host-evidence refresh. Cached live-turn evidence is used only to request
+interruption of an already-known active turn.
+
+| Field | Value |
+| --- | --- |
+| Source commit | `5307ec18f9717c8060ff49239ff368150bee40ed` |
+| Source tree | `e5314142d2b0da57f3da0085854eeb2bef97c05e` |
+| Archive | `omega-effectd-v0.1.0-macos-arm64.tar.gz` |
+| Archive SHA-256 | `a1d7662cb1e45a9a22bb71a742189babb55fcfbd5ca687204123d85824bbcb1b` |
+| Manifest SHA-256 | `c6f89764b21c6299eadd57c8353675505535cf8f09059cd022961f9054426b10` |
+
+Two clean builds produced identical archive and manifest bytes. The package
+type check and all 201 tests passed. The repository fast guard passed before
+the source commit reached `main`. A clean download from the GitHub prerelease
+matched the local archive, sidecar, and manifest bytes.
+
 ## RC.4 replacement
 
 The next Omega candidate must use
