@@ -10,6 +10,7 @@ import { createInterface } from "node:readline";
 import {
   resolveAgentComputerSessionsPath,
   resolveFullAutoNativeBindingsPath,
+  resolveFullAutoProviderHandoffsPath,
   resolveFullAutoRegistryPath,
   resolveFullAutoRunReportsPath,
   resolveFullAutoRunsPath,
@@ -39,6 +40,7 @@ import {
   getFullAutoRunAction,
   getFullAutoRunReceiptAction,
   getFullAutoRunReportAction,
+  handoffFullAutoRunAction,
   listFullAutoRunsAction,
   pauseFullAutoRunAction,
   resumeFullAutoRunAction,
@@ -52,7 +54,10 @@ import {
   type FullAutoRunControlAction,
 } from "../engine/full-auto-run-control-intent.ts";
 import type { FullAutoControlCapabilities } from "../engine/full-auto-control-server.ts";
-import { decodeFullAutoControlRunStartRequest } from "../engine/full-auto-control-contract.ts";
+import {
+  decodeFullAutoControlRunHandoffRequest,
+  decodeFullAutoControlRunStartRequest,
+} from "../engine/full-auto-control-contract.ts";
 import { FULL_AUTO_DEFAULT_LANE, FULL_AUTO_LANE_POLICIES } from "../engine/full-auto-lane.ts";
 import {
   FULL_AUTO_MAX_CONCURRENT_RUNS,
@@ -70,6 +75,8 @@ import {
 } from "../engine/full-auto-liveness.ts";
 import type { FullAutoRotationReason } from "../engine/full-auto-registry.ts";
 import type { FullAutoRunState } from "../engine/full-auto-run-registry.ts";
+import { openProviderHandoffRegistry } from "../engine/full-auto-provider-handoff.ts";
+import type { DesktopThread } from "../support/chat-contract.ts";
 import type { OmegaEffectdService } from "../service.ts";
 import { Schema } from "effect";
 import { LocalTurnRecordSchema, type LocalTurnRecord } from "../support/local-turn-journal.ts";
@@ -180,6 +187,7 @@ export const createOmegaEffectdFramedServer = (
   const registry = openFullAutoRegistry(resolveFullAutoRegistryPath(paths));
   const reportStore = openFullAutoRunReportStore(resolveFullAutoRunReportsPath(paths));
   const nativeBindings = openFullAutoNativeBindingStore(resolveFullAutoNativeBindingsPath(paths));
+  const providerHandoffs = openProviderHandoffRegistry(resolveFullAutoProviderHandoffsPath(paths));
   const agentComputerSessions = openAgentComputerSessionStore(
     resolveAgentComputerSessionsPath(paths),
   );
@@ -466,6 +474,64 @@ export const createOmegaEffectdFramedServer = (
       return threadRef;
     },
     isLaneEligible: (laneRef) => laneReadiness.get(laneRef) === true,
+    listLanes: async () => [],
+    providerLaneRegistry: {
+      switchThread: (request) => {
+        if (!(request.laneRef in FULL_AUTO_LANE_POLICIES)) {
+          return {
+            ok: false,
+            reason: "unknown_lane",
+            message: "That provider lane is not registered.",
+            missingCapabilities: [],
+          };
+        }
+        if (laneReadiness.get(request.laneRef) !== true) {
+          return {
+            ok: false,
+            reason: "missing_auth",
+            message: "That provider lane has no verified authentication.",
+            missingCapabilities: [],
+          };
+        }
+        if (request.thread === null) {
+          return {
+            ok: false,
+            reason: "thread_not_found",
+            message: "That thread does not exist.",
+            missingCapabilities: [],
+          };
+        }
+        return {
+          ok: true,
+          threadRef: request.threadRef,
+          laneRef: request.laneRef,
+          previousLaneRef:
+            registry.record(request.threadRef)?.profile?.lane ?? FULL_AUTO_DEFAULT_LANE,
+          history: [],
+          truncated: false,
+        };
+      },
+    },
+    getThread: (threadRef): DesktopThread | null => {
+      const evidence = evidenceByThread.get(threadRef);
+      if (evidence?.present !== true) return null;
+      const run = runRegistry.findByThreadRef(threadRef);
+      if (run === null) return null;
+      return {
+        id: threadRef,
+        title: run.title,
+        updatedAt: run.lastProgressAt ?? run.createdAt,
+        notes: evidence.turns
+          .filter((turn) => turn.assistantText.trim() !== "")
+          .map((turn) => ({
+            key: turn.assistantMessageKey,
+            role: "assistant" as const,
+            text: turn.assistantText,
+            timestamp: turn.updatedAt,
+          })),
+      };
+    },
+    providerHandoffRegistry: providerHandoffs,
     interruptLiveTurn: () => {
       const interrupted = preparedInterruptResult;
       preparedInterruptResult = false;
@@ -618,6 +684,7 @@ export const createOmegaEffectdFramedServer = (
           "start",
           "pause",
           "resume",
+          "handoff",
           "stop",
           "retry",
           "get_capacity",
@@ -1235,6 +1302,53 @@ export const createOmegaEffectdFramedServer = (
         const detail = projectDetail(actionContext(), params.runRef);
         return respond(request.id, true, {
           run: detail,
+        });
+      }
+      case "handoff": {
+        const params = (request.params ?? {}) as {
+          runRef?: string;
+          targetLaneRef?: string;
+        };
+        const decodedBody = decodeFullAutoControlRunHandoffRequest(request.params ?? {});
+        const body =
+          decodedBody === null
+            ? null
+            : {
+                ...decodedBody,
+                ...(decodedBody.reason === undefined
+                  ? {}
+                  : { reason: redactDiagnosticText(decodedBody.reason) }),
+              };
+        if (typeof params.runRef !== "string" || params.runRef.length === 0 || body === null) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError("invalid_request", "handoff requires runRef and targetLaneRef."),
+          );
+        }
+        const targetRun = runRegistry.get(params.runRef);
+        if (targetRun?.threadRef !== undefined) {
+          await refreshThreadEvidence(targetRun.runRef, targetRun.threadRef);
+          await refreshLane(body.targetLaneRef, targetRun.threadRef);
+        }
+        const outcome = await handoffFullAutoRunAction(actionContext(), params.runRef, body);
+        if (!outcome.ok) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError("invalid_request", outcome.error.message),
+          );
+        }
+        const reboundRun = runRegistry.get(params.runRef);
+        if (reboundRun?.threadRef !== undefined && reboundRun.profile !== undefined) {
+          registry.bindProfile(reboundRun.threadRef, reboundRun.profile);
+        }
+        const detail = projectDetail(actionContext(), params.runRef);
+        return respond(request.id, true, {
+          run: detail,
+          transition: outcome.value.transition,
         });
       }
       default:

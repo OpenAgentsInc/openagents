@@ -4,6 +4,7 @@ import path from "node:path";
 import { describe, expect, test } from "vite-plus/test";
 
 import { createOmegaEffectdService } from "../service.ts";
+import { openFullAutoRegistry } from "../engine/full-auto-registry.ts";
 import { openFullAutoRunRegistry } from "../engine/full-auto-run-registry.ts";
 import { resolveFullAutoRegistryPath, resolveFullAutoRunsPath } from "../paths.ts";
 import { createOmegaEffectdFramedServer } from "./server.ts";
@@ -105,6 +106,15 @@ describe("omega-effectd framed protocol", () => {
       expect(run.runRef).toMatch(/^run\.full-auto\./);
       expect(run.objective).toContain("framed protocol");
 
+      const earlyHandoff = await server.handleLine(
+        request("handoff-early", 1, "handoff", {
+          runRef: run.runRef,
+          targetLaneRef: "claude-local",
+        }),
+      );
+      expect(earlyHandoff?.ok).toBe(false);
+      expect(earlyHandoff?.error?.message).toContain("only while paused");
+
       const detail = await server.handleLine(request("3", 1, "get_run", { runRef: run.runRef }));
       expect(detail?.ok).toBe(true);
       expect((detail?.result as { run: { title: string } }).run.title).toBe("FA-03 start");
@@ -112,6 +122,52 @@ describe("omega-effectd framed protocol", () => {
       const paused = await server.handleLine(request("4", 1, "pause", { runRef: run.runRef }));
       expect(paused?.ok).toBe(true);
       expect((paused?.result as { run: { state: string } }).run.state).toMatch(/paus/);
+
+      const refusedHandoff = await server.handleLine(
+        request("handoff-refused", 1, "handoff", {
+          runRef: run.runRef,
+          targetLaneRef: "lane.unknown",
+        }),
+      );
+      expect(refusedHandoff?.ok).toBe(false);
+
+      const handedOff = await server.handleLine(
+        request("handoff-ok", 1, "handoff", {
+          runRef: run.runRef,
+          targetLaneRef: "claude-local",
+          reason:
+            "Owner requested a second provider with sk-live-fake-api-key-should-never-appear-1234567890.",
+        }),
+      );
+      expect(handedOff?.ok).toBe(true);
+      const handoffResult = handedOff?.result as {
+        run: { lane: string };
+        transition: { from: string; to: string; disposition: string };
+      };
+      expect(handoffResult.run.lane).toBe("claude-local");
+      expect(handoffResult.transition).toMatchObject({
+        from: "codex-local",
+        to: "claude-local",
+        disposition: "complete_within_bounds",
+      });
+      expect(JSON.stringify(handedOff)).not.toContain(
+        "sk-live-fake-api-key-should-never-appear-1234567890",
+      );
+      expect(
+        openFullAutoRunRegistry(resolveFullAutoRunsPath({ dataRoot: root })).get(run.runRef)
+          ?.profile?.lane,
+      ).toBe("claude-local");
+      const boundThread = openFullAutoRunRegistry(resolveFullAutoRunsPath({ dataRoot: root })).get(
+        run.runRef,
+      )?.threadRef;
+      expect(boundThread).toBeDefined();
+      expect(
+        boundThread === undefined
+          ? undefined
+          : openFullAutoRegistry(resolveFullAutoRegistryPath({ dataRoot: root })).record(
+              boundThread,
+            )?.profile?.lane,
+      ).toBe("claude-local");
 
       const resumed = await server.handleLine(request("5", 1, "resume", { runRef: run.runRef }));
       expect(resumed?.ok).toBe(true);

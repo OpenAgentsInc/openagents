@@ -14,7 +14,10 @@
 `omega-effectd` speaks a framed stdio protocol for Omega Rust supervision.
 
 - Methods: `initialize`, `health`, `list_runs`, `get_run`, `start`, `pause`,
-  `resume`, `stop`, `retry`
+  `resume`, `handoff`, `stop`, `retry`
+- A manual handoff is legal only while paused. It rechecks the target lane
+  against the live Omega host, durably rebinds both run and dispatch profiles,
+  and records a bounded provider-handoff transition.
 - Generation fencing refuses stale supervisor generations
 - Durable runs stay under `{dataRoot}/full-auto/runs.json`
 - Run projections omit objective and transcript (redacted for supervisor
@@ -42,6 +45,12 @@ The archive SHA-256 is
 The Omega RC packager must verify and install this asset at the component path.
 Until an installed Omega candidate has the component, the panels report that
 the component is unavailable.
+
+The first component candidate did not expose the existing manual-handoff
+authority over the framed protocol. Issue
+[#9215](https://github.com/OpenAgentsInc/openagents/issues/9215) adds that
+missing packaged boundary. The replacement component receipt supersedes the
+RC.1 input for the final Omega candidate.
 
 The GPUI launcher landed in
 [2026-07-24-omega-full-auto-gpui-launcher.md](./2026-07-24-omega-full-auto-gpui-launcher.md).

@@ -24,7 +24,7 @@ Independent assurance is still required.
 | 3 | Redaction by explicit field lists | green (automated) | FA-05/FA-07 receipt, attention, and `list_runs` redaction tests |
 | 4 | 2026-07-17 eviction incident shape | green (automated) | Drop host thread registry yields `stalled` / `host_thread_missing` / `stop_only` in FA-04 and FA-07 matrix |
 | 5 | Owner-real multi-turn unattended run on Omega | blocked | Needs installed Omega and live own-capacity lanes |
-| 6 | Visible Codex to Claude handoff on Omega | blocked | Envelope tests exist. Live sidebar handoff is not yet run on packaged Omega. |
+| 6 | Visible Codex to Claude handoff on Omega | partial | The framed service now exposes paused-only, live-lane-revalidated, durable handoff under #9215. Live sidebar proof is still required on the replacement packaged candidate. |
 | 7 | Packaged restart reconciliation | partial | Supervisor restart and native evidence survive in Rust FA-07 test. Packaged RC install is absent (`/Applications/Omega.app` missing). |
 | 8 | Mobile pause/resume/stop typed outcomes | green (automated) | FA-05 and FA-07 `apply_control_intent` matrix |
 | 9 | No ordinary chat sets Full Auto authority | green (code) | Dedicated panel only. No composer Full Auto start path. |

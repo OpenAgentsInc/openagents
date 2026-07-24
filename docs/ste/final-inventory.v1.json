@@ -33896,7 +33896,7 @@
     },
     {
       "path": "docs/omega/2026-07-24-omega-effectd-supervisor.md",
-      "sha256": "b381dddad0bea4d16abc09cdb8cd2c75c19aeb532b61b40df6c1a0f439db18d5",
+      "sha256": "b716089f21c9b7824dd6ba0efe07fdcb4390bb1ece87745ca32b389630b6a242",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
@@ -33958,7 +33958,7 @@
     },
     {
       "path": "docs/omega/2026-07-24-omega-full-auto-proof-matrix.md",
-      "sha256": "5ecad116a3cce684c87e33077f981bcb04a9215e6a1a0d69752414389c2ea4a3",
+      "sha256": "1bc9e4a327736b63ed323327ff95d060024d84c1eea4b3b993a20084b5c5ba56",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

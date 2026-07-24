@@ -46,6 +46,7 @@ export type OmegaEffectdInitializeResult = Readonly<{
     | "start"
     | "pause"
     | "resume"
+    | "handoff"
     | "stop"
     | "retry"
     | "get_capacity"
@@ -314,6 +315,7 @@ export const isOmegaEffectdHostResponse = (value: unknown): value is OmegaEffect
 export const redactDiagnosticText = (text: string): string =>
   text
     .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, "Bearer [redacted]")
+    .replace(/\b(?:sk|xox[baprs]|gh[pousr])-[A-Za-z0-9_-]{16,}\b/gi, "[redacted-token]")
     .replace(/\/Users\/[^/\s]+/g, "/Users/[redacted]")
     .replace(/\/home\/[^/\s]+/g, "/home/[redacted]")
     .replace(/[A-Za-z0-9+/]{32,}={0,2}/g, "[redacted-token]");
