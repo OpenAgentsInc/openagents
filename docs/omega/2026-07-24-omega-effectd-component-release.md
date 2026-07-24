@@ -6,6 +6,33 @@
 - Source commit: `be342ea7525ac50fbf836978dcd1ba6714345f42`
 - Status: complete
 
+## RC.6 replacement
+
+The next Omega candidate must use
+[`omega-effectd-v0.1.0-rc.6`](https://github.com/OpenAgentsInc/openagents/releases/tag/omega-effectd-v0.1.0-rc.6).
+RC.6 supersedes RC.5 because Full Auto reports and authenticated controls must
+remain available away from the desktop, and a configured turn cap must be an
+enforced terminal condition rather than advisory metadata.
+
+RC.6 projects current run reports into the configured Sync directory and
+ingests authenticated mobile Pause, Resume, and Stop commands with typed
+outcomes. Reconciliation now stops a run when its configured maximum turn
+count is reached.
+
+| Field | Value |
+| --- | --- |
+| Source commit | `5bb31ac857b917b14c6455a7df268825cfbf773f` |
+| Source tree | `ce9d37bb3a59ae7e2c807e2d524c196af17484ed` |
+| Archive | `omega-effectd-v0.1.0-macos-arm64.tar.gz` |
+| Archive SHA-256 | `b55f703229ff9299923a84b0843f9c926fbd75b08e787f5d6e79744fd114c836` |
+| Manifest SHA-256 | `13f0e094c5d120426f4ede3afedd24f04abec71e29abcd7700c0fd2e36037953` |
+
+Two clean builds produced identical archive, sidecar, and manifest bytes. The
+package type check and all 207 tests passed. The repository fast guard passed
+at the source commit. A clean download from the GitHub prerelease matched the
+local archive, sidecar, and manifest bytes. The release tag, source commit,
+source tree, and embedded manifest were verified independently.
+
 ## RC.5 replacement
 
 The next Omega candidate must use
