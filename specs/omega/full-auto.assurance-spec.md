@@ -1,7 +1,7 @@
 ---
 assurance_spec_format_version: "0.1"
 assurance_spec_id: "assurance.omega.full.auto.host"
-assurance_revision: 1
+assurance_revision: 2
 title: "Omega Full Auto Host AssuranceSpec"
 artifact_type: "product_assurance"
 lifecycle_state: "proposed"
@@ -73,9 +73,9 @@ It does not replace Desktop Full Auto AssuranceSpec rev 6.
 | Profile | Capability | Gap |
 | --- | --- | --- |
 | openagents_docs | Freeze and ProductSpec validation | Not a runtime proof |
-| omega_effectd_local | Supervised Node service after FA-01 | Not available until FA-01 |
-| omega_gpui_dev | Launcher and monitor after FA-03 | Not available until FA-03 |
-| omega_packaged_rc | Packaged owner journey after FA-07 | Not available until FA-07 |
+| omega_effectd_local | Supervised Node service (FA-01+) | Automated FA-07 matrix green |
+| omega_gpui_dev | Launcher and monitor (FA-03+) | Code-level no-composer proof green |
+| omega_packaged_rc | Packaged owner journey | Blocked until signed RC install + owner run |
 
 ## Falsifiers
 
@@ -87,5 +87,7 @@ It does not replace Desktop Full Auto AssuranceSpec rev 6.
 ## Gates
 
 - This AssuranceSpec stays `proposed`.
-- FA-07 owner journey proof may produce observations.
+- FA-07 may produce observations (see
+  `docs/omega/2026-07-24-omega-full-auto-proof-matrix.md`).
 - Require independent admission before any release or public claim.
+- Do not treat fixture-only or harness-only proof as packaged owner journey.

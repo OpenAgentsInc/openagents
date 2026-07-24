@@ -1,5 +1,18 @@
 # NEEDS-OWNER
 
+## OPEN — FA-07 packaged Omega journey + independent assurance (#26, 2026-07-24)
+
+Automated FA-07 matrix is landed (see
+`docs/omega/2026-07-24-omega-full-auto-proof-matrix.md`). `OMEGA-OA-05` does
+**not** close until:
+
+1. Signed Omega RC is installed (`/Applications/Omega.app`) — see workspace
+   `NEEDS_OWNER.md` Omega RC row and `OpenAgentsInc/omega` #16.
+2. Owner runs one real multi-turn Full Auto journey from the Omega panel.
+3. Owner captures one live cross-provider handoff with sidebar evidence.
+4. Independent reviewer admits `specs/omega/full-auto.assurance-spec.md`
+   against exact candidate digests (producer must not self-admit).
+
 ## RESOLVED — IDE-13 owner-managed environment authority (2026-07-22)
 
 IDE-13 requires an owner-managed execution target. The current target binding

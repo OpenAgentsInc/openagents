@@ -33781,11 +33781,12 @@
     {
       "path": "docs/omega/2026-07-24-omega-full-auto-native-project-join.md",
       "sha256": "f82a3e9e5857c3b51a8c6bd8c450cddd12958db93accbeec93098cd08cce1a6b",
-      "reason": "Final review of mutable first-party agent technical text",
+      "reason": "Final review of a converted document",
       "profile": {
-        "ste_status": "inspected",
-        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
         "ste_audience": "agent",
         "ste_agent_compact_revision": "openagents-agent-compact-v1",
         "ste_accepted_screening_rules": [
@@ -33793,7 +33794,32 @@
           "STE-3.6",
           "STE-5.1",
           "STE-8.2"
-        ]
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/omega/2026-07-24-omega-full-auto-proof-matrix.md",
+      "sha256": "5ecad116a3cce684c87e33077f981bcb04a9215e6a1a0d69752414389c2ea4a3",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {
@@ -48049,7 +48075,7 @@
     },
     {
       "path": "specs/omega/full-auto.assurance-spec.md",
-      "sha256": "531ff06bc62c29013f08d6f947ea862f6cf8b40d70a891c4a2f0a5505a107848",
+      "sha256": "2e6be63942e54c2ca4fb892e663aa54d784065d495b6c2a3d549c22296fdf383",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
