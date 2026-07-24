@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "sourceRoot": "docs/sol",
   "inventoryReviewDate": "2026-07-21",
-  "sourceTreeSha256": "97a73652ebd094b27ce455dab1a939563dfea8f682dfa37b0ef02a576e2cff41",
+  "sourceTreeSha256": "4ae6680e6e6d8aa7fb6b8c38a69a3fb2090c7dbac6c28f966ea018b544a925e1",
   "documents": [
     {
       "path": "docs/sol/2026-07-10-episode-195-followup-analysis.md",
@@ -2481,6 +2481,27 @@
         9202,
         9203,
         9204
+      ]
+    },
+    {
+      "path": "docs/sol/2026-07-24-cw-lane-interruption-recovery.md",
+      "class": "receipt",
+      "owner": "Sol proof",
+      "disposition": "retain-evidence",
+      "dispatch": false,
+      "sha256": "255bdbb7830324835f3955447d5bd91688cd5267a73d50cd97859ac6e44f9121",
+      "status": "retain-evidence",
+      "snapshot": "2026-07-24",
+      "reviewedAt": "2026-07-21",
+      "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
+      "inboundLinks": [],
+      "inboundSourceCount": 0,
+      "issueLinks": [
+        9226,
+        9227,
+        9228,
+        9229,
+        9231
       ]
     },
     {

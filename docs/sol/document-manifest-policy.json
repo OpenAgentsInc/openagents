@@ -422,6 +422,12 @@
       "owner": "Sol roadmap",
       "disposition": "retain-contract",
       "dispatch": false
+    },
+    "docs/sol/2026-07-24-cw-lane-interruption-recovery.md": {
+      "class": "receipt",
+      "owner": "Sol proof",
+      "disposition": "retain-evidence",
+      "dispatch": false
     }
   }
 }
