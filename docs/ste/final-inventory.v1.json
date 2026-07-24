@@ -13783,7 +13783,7 @@
     },
     {
       "path": "apps/qa-runner/src/compose/README.md",
-      "sha256": "89f02e37c8ced01f383161457ec9ba98dd5c116d5d51b85c5df919a9a482e468",
+      "sha256": "115c9b8f5c24d633cc84f98adca8f141d5ccbf9554759c46b8f8644c3ce70fd9",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

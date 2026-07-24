@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:5e1a1dd51cb03093bb667290357adc1b711d18448aaf506676f3df30fefea218",
+  "sourceDigest": "sha256:09b4c0becef45152f7f7ea6d160d98b171be148d2bb48e45d239ff316c3420e7",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -480,7 +480,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "apps/qa-runner (55 tracked test files)"
+          "ref": "apps/qa-runner (56 tracked test files)"
         }
       ],
       "obligation": {

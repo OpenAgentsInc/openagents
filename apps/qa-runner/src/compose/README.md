@@ -46,14 +46,14 @@ ffmpeg.
 
 ```sh
 # single run
-pnpm --dir apps/qa-runner run compose -- --run runs/khala-zeratul-demo --out /tmp/demo.mp4
+pnpm --dir apps/qa-runner run compose --run runs/khala-zeratul-demo --out /tmp/demo.mp4
 
 # before/after side-by-side
-pnpm --dir apps/qa-runner run compose -- \
+pnpm --dir apps/qa-runner run compose \
   --before runs/before-dir --after runs/after-dir --out /tmp/ba.mp4
 
 # inspect the resolved plan without rendering
-pnpm --dir apps/qa-runner run compose -- --run runs/khala-zeratul-demo --plan-only
+pnpm --dir apps/qa-runner run compose --run runs/khala-zeratul-demo --plan-only
 ```
 
 Flags: `--run`, `--before`/`--after`, `--out`, `--brand`, `--plan-only`.
@@ -75,6 +75,36 @@ filter). The executor probes for `drawtext` at render time:
   (`brew install ffmpeg` usually includes it, verify with
   `ffmpeg -filters | grep drawtext`) for full text.
 
+## Timed text on any video
+
+The QA compose command above is for QA run directories.
+Use `overlay-text` to add timed text to an arbitrary video:
+
+```sh
+pnpm --dir apps/qa-runner run overlay-text \
+  --input /path/to/source.mp4 \
+  --cues src/compose/timed-text.example.json \
+  --out /path/to/output.mp4
+```
+
+The cue sheet uses `openagents.media.timed_text.v1`.
+Each cue has a start time, an end time, text, and one of these styles:
+`title`, `center`, `lower-third`, or `state-label`.
+Newline characters make multiline text.
+
+The command gets the source size and duration with `ffprobe`.
+It renders each text frame as a transparent PNG with Playwright.
+It then uses the FFmpeg `overlay` filter for the specified time range.
+This method does not require the FFmpeg `drawtext`, `subtitles`, or `ass`
+filters.
+
+The command maps the optional source-audio stream into the output.
+The default `--audio copy` keeps the source audio without a re-encode.
+Use `--audio aac` when the MP4 container does not support the source codec.
+
+The command refuses to replace an output file.
+Use `--force` only when you intend to replace that exact file.
+
 ## Files
 
 - `plan.ts` — typed `ComposeInput` / `ComposePlan` Effect Schema model.
@@ -82,6 +112,9 @@ filter). The executor probes for `drawtext` at render time:
 - `load.ts` — reads a run dir into public-safe `ComposeRunMeta` (the only input I/O).
 - `ffmpeg.ts` — `buildFfmpegArgs` (pure) + `renderComposePlan` (spawns ffmpeg).
 - `cli.ts` — the `compose` CLI entrypoint.
+- `timed-text.ts` — the cue schema, text-frame renderer, and FFmpeg plan.
+- `timed-text-cli.ts` — the `overlay-text` CLI entrypoint.
+- `timed-text.example.json` — a bounded example cue sheet.
 - `*.test.ts` — unit tests for the planner and arg builder.
 
 ## Deferred follow-up

@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "openagents.media.timed_text.v1",
+  "cues": [
+    {
+      "startSeconds": 0,
+      "endSeconds": 3,
+      "text": "OPENAGENTS EPISODE 262\nPROJECT OMEGA",
+      "style": "title"
+    },
+    {
+      "startSeconds": 3,
+      "endSeconds": 6,
+      "text": "ZED - CURRENT",
+      "style": "state-label"
+    },
+    {
+      "startSeconds": 6,
+      "endSeconds": 9,
+      "text": "PRODUCT DIRECTION\nNOT SHIPPED OMEGA UI",
+      "style": "lower-third"
+    }
+  ]
+}

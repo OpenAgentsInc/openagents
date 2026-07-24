@@ -6,7 +6,8 @@ Episodes [`261`](261.md)-[`263`](263.md) are prepared scripts.
 Episodes 262 and 263 have separate
 [`Project Omega`](262-production-requests.md) and
 [`Forking Zed`](263-production-requests.md) production request packets for
-footage, attribution, and proof inputs that are not in the repository.
+recording and publication gates, non-blocking asset replacements, attribution,
+and proof inputs that are not in the repository.
 Episode [`086`](086.md) transcribes only the OpenAgents MVP Launch
 presentation excerpt from the PlebLab Startup Day 2024 recording,
 `00:58:21`-`01:10:10`, not the full eight-hour event video. Episode

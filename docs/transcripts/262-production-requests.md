@@ -1,6 +1,7 @@
 # Episode 262 Production Requests
 
-Status: requested inputs with non-blocking defaults.
+Status: production can start now. One final-narration gate and non-blocking
+asset replacements apply.
 Applies to: [`Project Omega`](262.md).
 Requested by: Episode 262 production packet.
 
@@ -8,19 +9,42 @@ Episode 262 is the nontechnical product introduction.
 Technical repository footage belongs in
 [`Episode 263`](263.md).
 
-## Request 262-01: Sarah performance master
+## Recording and publication gate
 
-Priority: required for the intended final episode.
+No additional owner-supplied input is necessary before production starts.
+Use the current Sarah direction and generation runner.
+Make the final narration before you lock the picture edit.
 
-Provide the approved Sarah performance path and generation method.
-Include the clean voice track, picture master, and rights status.
+These items are necessary before publication:
+
+- Use the approved final Sarah narration and confirm its rights status.
+- Burn each product-state and evidence label into the video.
+- Review the rights and privacy state of each asset that appears.
+- Show visible support for the public Omega fork claim.
+  A current static repository capture is sufficient.
+
+The Sarah picture master is optional.
+Use cutaways and title cards when it is not available.
+Do not wait for historical masters, fresh product recordings, a named Buzz
+source, a branded Omega build, or Episode 263 build proof.
+
+## Request 262-01: final Sarah narration
+
+Priority: required before final publication.
+
+Provide or generate the approved final Sarah voice track.
+Include its generation method and rights status.
+Use it to set the final shot timing.
+
+An approved Sarah picture master is recommended but optional.
 
 Default if unavailable: create an editorial cut with temporary narration.
 Label it `EDITORIAL ASSEMBLY - NOT FINAL SARAH PERFORMANCE`.
+Do not publish that cut as the final Sarah performance.
 
 ## Request 262-02: historical episode masters
 
-Priority: high.
+Priority: recommended and replaceable.
 
 Provide source masters for these moments:
 
@@ -38,7 +62,7 @@ Do not fabricate historical product footage.
 
 ## Request 262-03: archive montage
 
-Priority: high.
+Priority: recommended and replaceable.
 
 Provide or approve short clips for:
 
@@ -57,7 +81,7 @@ Keep each product and fixture label visible.
 
 ## Request 262-04: current product captures
 
-Priority: high.
+Priority: recommended and replaceable.
 
 Provide fresh, redacted captures of:
 
@@ -73,7 +97,7 @@ Do not edit separate captures into one claimed live journey.
 
 ## Request 262-05: Cursor and Zed source footage
 
-Priority: high.
+Priority: recommended and replaceable.
 
 Record:
 
@@ -90,7 +114,7 @@ pages.
 
 ## Request 262-06: public Omega fork reveal
 
-Priority: high.
+Priority: required claim support. Recorded footage is optional.
 
 Record the public `OpenAgentsInc/omega` repository.
 Show the parent repository line and the Omega README.
@@ -101,7 +125,7 @@ Do not imply that the source is already a branded build.
 
 ## Request 262-07: Buzz feedback attribution
 
-Priority: medium.
+Priority: optional.
 
 Confirm whether the Buzz user can be named.
 Provide exact approved attribution and quote permission.
@@ -109,6 +133,30 @@ Provide exact approved attribution and quote permission.
 Default if unavailable: use `A NEW BUZZ USER`.
 Paraphrase the “one home screen for the company” insight.
 Do not show a private message or identifying account details.
+
+## Timed text overlays
+
+Truth-state labels are necessary before publication.
+Slogan and transition overlays are optional polish.
+
+The repository now includes a timed text-overlay command.
+It accepts an arbitrary video, preserves its optional source audio, and does
+not require the FFmpeg `drawtext` filter:
+
+```sh
+pnpm --dir apps/qa-runner run overlay-text \
+  --input /path/to/episode-262-picture-lock.mp4 \
+  --cues src/compose/timed-text.example.json \
+  --out /path/to/episode-262-labeled.mp4
+```
+
+Copy the
+[`example cue sheet`](../../apps/qa-runner/src/compose/timed-text.example.json)
+and set its time ranges after the narration is final.
+Use `title`, `center`, `lower-third`, and `state-label` styles.
+Use `--audio aac` when the MP4 container does not support the source audio
+codec.
+The command refuses to replace an existing output unless `--force` is present.
 
 ## Delivery checklist
 
