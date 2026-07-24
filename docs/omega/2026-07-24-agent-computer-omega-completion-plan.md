@@ -2,7 +2,7 @@
 
 - Date: 2026-07-24
 - Class: owner-accepted work-packet ledger
-- Status: active plan
+- Status: OpenAgents closeout complete. Omega acceptance in progress.
 - Scope: close openagents `#9190` and `#9193`, then make Omega a first-class
   Agent Computer client
 - OpenAgents source: `1ca2959fb2f7b8bfdfe5d664adfd9302323de305`
@@ -26,8 +26,8 @@ This plan does not make Omega the primary Desktop release by itself.
 
 | Issue | Title | Current state |
 | --- | --- | --- |
-| [#9190](https://github.com/OpenAgentsInc/openagents/issues/9190) | EPIC: Sarah operational coding on Agent Computer | Open |
-| [#9193](https://github.com/OpenAgentsInc/openagents/issues/9193) | Agent Computer image: all seven harnesses | Open |
+| [#9190](https://github.com/OpenAgentsInc/openagents/issues/9190) | EPIC: Sarah operational coding on Agent Computer | Complete 2026-07-24 |
+| [#9193](https://github.com/OpenAgentsInc/openagents/issues/9193) | Agent Computer image: all seven harnesses | Complete 2026-07-24 |
 
 Closed children that this plan reuses:
 
@@ -35,6 +35,14 @@ Closed children that this plan reuses:
 | --- | --- |
 | [#9191](https://github.com/OpenAgentsInc/openagents/issues/9191) | Sarah dispatches to live `cloud_coding_session`, stops tick spin, proves a real turn |
 | [#9192](https://github.com/OpenAgentsInc/openagents/issues/9192) | `@openagentsinc/agent-harness-environment` publishes typed environments |
+| [#9205](https://github.com/OpenAgentsInc/openagents/issues/9205) | Native Codex authorization completes one real Firecracker turn |
+| [#9206](https://github.com/OpenAgentsInc/openagents/issues/9206) | Image update cadence and requalification runbook |
+| [#9207](https://github.com/OpenAgentsInc/openagents/issues/9207) | Codex-first selection with typed fallback |
+| [#9208](https://github.com/OpenAgentsInc/openagents/issues/9208) | Criterion-by-criterion Sarah epic closeout |
+
+Production revision `openagents-monolith-00239-bk7` serves the qualified
+Codex-first readiness mirror at 100 percent traffic. Health, retired `/sarah`,
+and real-browser portal smokes passed after deployment.
 
 ## 3. Current truth
 
