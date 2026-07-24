@@ -2308,8 +2308,8 @@ importers:
         specifier: 0.2.1-rc.4
         version: 0.2.1-rc.4
       '@openagentsinc/agent-harness-environment':
-        specifier: workspace:*
-        version: link:../harness-environment
+        specifier: 0.1.0-rc.1
+        version: 0.1.0-rc.1(@openagentsinc/agent-harness-contract@0.2.1-rc.4)(@openagentsinc/agent-runtime-schema@0.2.1-rc.4)(effect@4.0.0-beta.94)
       '@openagentsinc/agent-runtime-schema':
         specifier: 0.2.1-rc.4
         version: 0.2.1-rc.4
@@ -4821,6 +4821,14 @@ packages:
 
   '@openagentsinc/agent-harness-contract@0.2.1-rc.4':
     resolution: {integrity: sha512-VAOawIGqaQAQFp0IFclV9bE3zPwCpLP0/LSmYMJmvMAOotvkqfpdQ3Ty8is7lUD65wSM2onhM4vd0TrOVGsJqA==}
+
+  '@openagentsinc/agent-harness-environment@0.1.0-rc.1':
+    resolution: {integrity: sha512-Ee+KtqkUXPApKV5c2bSqqHOdKk7hyUVDuizu7xKVL/XDpFsj0W+1uLRH3sa/4WIuUFytlj5Sz7t45qLx/Qk6KQ==}
+    hasBin: true
+    peerDependencies:
+      '@openagentsinc/agent-harness-contract': '>=0.2.1-rc.4'
+      '@openagentsinc/agent-runtime-schema': '>=0.2.1-rc.4'
+      effect: 4.0.0-beta.94
 
   '@openagentsinc/agent-runtime-schema@0.2.1-rc.4':
     resolution: {integrity: sha512-MbA2NOoi4cgzGocfFMAf5XM+wEo0Ev8L8ElFloFb/QuLGnuTXAfykApjsupoV7MozuhjhGIRQwde3wwsI+35HQ==}
@@ -15410,6 +15418,12 @@ snapshots:
 
   '@openagentsinc/agent-harness-contract@0.2.1-rc.4':
     dependencies:
+      '@openagentsinc/agent-runtime-schema': 0.2.1-rc.4
+      effect: 4.0.0-beta.94
+
+  '@openagentsinc/agent-harness-environment@0.1.0-rc.1(@openagentsinc/agent-harness-contract@0.2.1-rc.4)(@openagentsinc/agent-runtime-schema@0.2.1-rc.4)(effect@4.0.0-beta.94)':
+    dependencies:
+      '@openagentsinc/agent-harness-contract': 0.2.1-rc.4
       '@openagentsinc/agent-runtime-schema': 0.2.1-rc.4
       effect: 4.0.0-beta.94
 

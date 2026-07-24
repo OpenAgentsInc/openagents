@@ -28,7 +28,7 @@ This freeze does not admit a release.
 | --- | --- | --- |
 | Completion plan | `docs/omega/2026-07-24-agent-computer-omega-completion-plan.md` | OpenAgents pin below |
 | Roadmap packet | `docs/omega/ROADMAP.md` §7.8 `OMEGA-OA-08` | portable execution |
-| Harness environment | `@openagentsinc/agent-harness-environment` | `0.1.0` at pin |
+| Harness environment | `@openagentsinc/agent-harness-environment` | `0.1.0-rc.1` (HE-02 npm) |
 | Full Auto freeze | `docs/omega/2026-07-24-full-auto-contract-freeze.md` | separate product |
 | Shared runtime prerequisite | roadmap `OMEGA-OA-01` | required before AC-01 |
 
@@ -91,7 +91,11 @@ revision and an explicit Omega issue note.
   runtime seam (`OMEGA-OA-01`) or an explicit owner staging note that names the
   temporary substitute.
 - Prefer the released harness-environment artifact (HE-02) over monorepo
-  relative imports.
+  relative imports. HE-02 published
+  `@openagentsinc/agent-harness-environment@0.1.0-rc.1`
+  (tarball SHA-256
+  `9ed2d1c2439dfd33f736b2d3f63795144f7ffb9ad0ce8965f49cc78cd44334fd`).
+  See [2026-07-24-he02-harness-environment-release.md](./2026-07-24-he02-harness-environment-release.md).
 
 ## 5. Non-goals
 

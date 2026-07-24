@@ -83,9 +83,9 @@ peerDependencyRules:
     - vite
 
 supportedArchitectures:
-  cpu: [current, x64]
-  libc: [current, glibc]
-  os: [current, linux]
+  cpu: [ current, x64 ]
+  libc: [ current, glibc ]
+  os: [ current, linux ]
 
 minimumReleaseAgeExclude:
   - blume@1.0.4
@@ -107,3 +107,4 @@ minimumReleaseAgeExclude:
   - "@openagentsinc/dse@0.2.0-rc.4 || 0.2.0-rc.5 || 0.2.0-rc.6 || 0.2.0-rc.7 || 0.2.1-rc.2 || 0.2.1-rc.3 || 0.2.1-rc.4"
   - "@openagentsinc/graph-corpus@0.2.0-rc.4 || 0.2.0-rc.5 || 0.2.0-rc.6 || 0.2.0-rc.7 || 0.2.1-rc.2 || 0.2.1-rc.3 || 0.2.1-rc.4"
   - "@openagentsinc/conformance-kit@0.2.1-rc.2 || 0.2.1-rc.3 || 0.2.1-rc.4"
+  - '@openagentsinc/agent-harness-environment@0.1.0-rc.1'

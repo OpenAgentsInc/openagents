@@ -1,6 +1,6 @@
 {
   "name": "@openagentsinc/agent-harness-environment",
-  "version": "0.1.0",
+  "version": "0.1.0-rc.1",
   "private": false,
   "license": "Apache-2.0",
   "files": [
@@ -20,7 +20,8 @@
   "scripts": {
     "test": "vp test --root . --config vitest.config.ts --run src",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "run:openagents-cloud": "node --import tsx ./src/run-openagents-cloud-harness.ts"
+    "run:openagents-cloud": "node --import tsx ./src/run-openagents-cloud-harness.ts",
+    "pack:digest": "node --import tsx ./scripts/pack-digest.ts"
   },
   "devDependencies": {
     "@openagentsinc/agent-harness-contract": "0.2.1-rc.4",

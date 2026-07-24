@@ -220,6 +220,8 @@ Falsifier:
 
 ### HE-02: Released artifact for Omega consumption
 
+Status: complete on openagents `#9210` (npm `@openagentsinc/agent-harness-environment@0.1.0-rc.1`).
+
 Owning repository: `OpenAgentsInc/openagents`
 
 Work:

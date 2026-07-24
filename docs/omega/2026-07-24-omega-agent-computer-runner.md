@@ -7,7 +7,10 @@
 - Pack SHA-256: `54de828f1e17d4cef5524255a0ad78e800d86d25f1cc4964ee934ebe7ac57855`
 - Freeze: [2026-07-24-omega-agent-computer-contract-freeze.md](./2026-07-24-omega-agent-computer-contract-freeze.md)
 - Environment: `HarnessEnvironment.openagents_cloud`
-- Runner: `@openagentsinc/agent-harness-environment` `makeOpenAgentsCloudHarnessEnvironmentRunner`
+- Runner: `@openagentsinc/agent-harness-environment@0.1.0-rc.1`
+  `makeOpenAgentsCloudHarnessEnvironmentRunner`
+  (HE-02 release
+  [2026-07-24-he02-harness-environment-release.md](./2026-07-24-he02-harness-environment-release.md))
 
 ## Result
 

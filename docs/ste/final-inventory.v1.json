@@ -33721,8 +33721,26 @@
       }
     },
     {
+      "path": "docs/omega/2026-07-24-he02-harness-environment-release.md",
+      "sha256": "46ab47fafba9220c4c1a75fa964d9e767dff3a114b44039179d4d56d231f0c6e",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_accepted_screening_rules": [
+          "STE-2.4"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/omega/2026-07-24-omega-agent-computer-contract-freeze.md",
-      "sha256": "bf1d37e3184e5f31b5c20a17d4c95b7b35e642dcda014c7b989991e17e4c045d",
+      "sha256": "1d620ca9daaa0625ef0a0732610ee977f9b7ef645c841ca91d4e0deb6315e5e3",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -33780,7 +33798,7 @@
     },
     {
       "path": "docs/omega/2026-07-24-omega-agent-computer-runner.md",
-      "sha256": "defe4873a07987e27c38891fcca9cad5100869c80aa20a1fbe2557880d5e2932",
+      "sha256": "b70595b70a3439cdfbbfb313718993dc58246ccb4bb5a61e06bb5072e93208d0",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -33962,7 +33980,7 @@
     },
     {
       "path": "docs/omega/README.md",
-      "sha256": "ed780dd8e6ecc924cb74287382737f721037a6e9e97ff8131abc466e1121a4df",
+      "sha256": "d9bcdeda2224842296ac379392f13765e18c5f5898b424b6c6f705269a2c5e16",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
