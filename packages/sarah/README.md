@@ -18,6 +18,22 @@ Contract: `docs/omega/2026-07-24-sarah-nostr-identity-contract.md`.
 `@openagentsinc/sarah/nostr-turn` holds the durable kind-44300 / live NIP-AO
 publish path and the relay-primary consumer.
 
+## Owned relay load proof (`SARAH-NR-03`)
+
+`@openagentsinc/sarah/relay-load-proof` measures publish and subscribe rate and
+latency against a local `nostr-effect` `startTestRelay` host, a package mock,
+or a remote `RELAY_URL`.
+
+```sh
+pnpm --dir packages/sarah run test -- src/relay-load-proof/relay-load-proof.test.ts
+pnpm --dir packages/sarah run load-proof
+RELAY_URL=wss://relay.openagents.com pnpm --dir packages/sarah run load-proof
+```
+
+Runbook: `docs/ops/2026-07-24-owned-nostr-relay-deploy.md`.
+Pin: `nostr-effect` `77073343c68f159f3dea80ddbe9e9896b1f052f2`
+(`nostr-effect/relay/node`, `…/postgres`).
+
 ## Nostr migration (`SARAH-NR-08`)
 
 `@openagentsinc/sarah/nostr-migration` holds the stage machine

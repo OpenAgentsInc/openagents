@@ -10,5 +10,5 @@
     "types": ["node", "vite-plus-matchers"],
     "exactOptionalPropertyTypes": true
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "scripts/**/*.ts"]
 }

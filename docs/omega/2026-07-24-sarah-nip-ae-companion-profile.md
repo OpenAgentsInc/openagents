@@ -298,7 +298,7 @@ The wire form is always `entity.<24 lowercase hex>`.
 
 ## 7. Derived graph rule
 
-The graph is derived. The graph is never authority.
+Derive the graph from the events. Never treat the graph as authority.
 
 ### 7.1 Two stores
 

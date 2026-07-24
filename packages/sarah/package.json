@@ -12,25 +12,30 @@
     "./nostr-identity": "./src/nostr-identity/index.ts",
     "./nostr-turn": "./src/nostr-turn/index.ts",
     "./nostr-migration": "./src/nostr-migration/index.ts",
-    "./nostr-journey": "./src/nostr-journey/index.ts"
+    "./nostr-journey": "./src/nostr-journey/index.ts",
+    "./relay-load-proof": "./src/relay-load-proof/index.ts"
   },
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
-    "test": "vp test --run src/index.test.ts src/nostr-identity/nostr-identity.test.ts src/nostr-identity/nip44-cipher.test.ts src/nostr-turn/nostr-turn.test.ts src/nostr-turn/consumer.test.ts src/nostr-migration/nostr-migration.test.ts src/nostr-journey/nostr-journey.test.ts",
+    "test": "vp test --run src/index.test.ts src/nostr-identity/nostr-identity.test.ts src/nostr-identity/nip44-cipher.test.ts src/nostr-turn/nostr-turn.test.ts src/nostr-turn/consumer.test.ts src/nostr-migration/nostr-migration.test.ts src/nostr-journey/nostr-journey.test.ts src/relay-load-proof/relay-load-proof.test.ts",
     "generate:journey-receipt": "node --import tsx src/nostr-journey/generate-receipt.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "load-proof": "node --import tsx scripts/relay-load-proof.ts"
   },
   "dependencies": {
+    "@noble/ciphers": "1.2.1",
     "@noble/curves": "1.8.1",
     "@noble/hashes": "1.7.1",
     "@openagentsinc/authority": "workspace:*",
     "@scure/base": "1.2.4",
     "effect": "catalog:",
-    "@noble/ciphers": "1.2.1"
+    "nostr-effect": "https://github.com/OpenAgentsInc/nostr-effect/archive/77073343c68f159f3dea80ddbe9e9896b1f052f2.tar.gz",
+    "ws": "8.18.3"
   },
   "devDependencies": {
+    "@types/ws": "8.18.1",
     "typescript": "catalog:"
   }
 }

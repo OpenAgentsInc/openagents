@@ -48,17 +48,20 @@ Read these documents in this order:
     [Sarah Nostr identity contract](./2026-07-24-sarah-nostr-identity-contract.md)
     (`SARAH-NR-04`).
 17. Read the
+    [owned Nostr relay deploy runbook](../ops/2026-07-24-owned-nostr-relay-deploy.md)
+    (`SARAH-NR-03`, Option A host in `nostr-effect`).
+18. Read the
     [Sarah NIP-AE companion profile](./2026-07-24-sarah-nip-ae-companion-profile.md)
     (`SARAH-NR-07a`).
-18. Read the
+19. Read the
     [Sarah Nostr migration and cutover](./2026-07-24-sarah-nostr-cutover.md)
     (`SARAH-NR-08`).
-19. Read the
+20. Read the
     [Sarah Nostr journey proof](./2026-07-24-sarah-nostr-journey-proof.md)
     (`SARAH-NR-09`).
-20. Read the [accepted Omega plan](../sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md).
-21. Read the [master roadmap](../sol/MASTER_ROADMAP.md).
-22. Read the [Desktop release contract](../deploy/openagents-desktop-cross-platform-release.md).
+21. Read the [accepted Omega plan](../sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md).
+22. Read the [master roadmap](../sol/MASTER_ROADMAP.md).
+23. Read the [Desktop release contract](../deploy/openagents-desktop-cross-platform-release.md).
 
 The Omega roadmap owns the implementation order.
 The release-readiness audit owns the current brand and package gap.
@@ -82,6 +85,7 @@ The Sarah workroom MVP specification owns the proposed first workroom slice.
 Part 1 puts one native Sarah conversation pane on the current OpenAgents API
 record. Part 2 moves the Sarah runtime to Nostr on an owned relay, per the
 owner direction of 2026-07-24.
+
 The Sarah Nostr record contract freezes kinds `44300` and `44301`, the
 conversation identifier, causal links, fixtures, the §7 projection map, and
 the §21 boundary for `SARAH-NR-00`.
@@ -100,6 +104,11 @@ stage machine, `SARAH_NOSTR_RECORD_MODE`, drift comparison, and
 export/rollback for `SARAH-NR-08`. Production default stays `khala`.
 The Sarah Nostr journey proof owns the automated receipt harness and the
 residual live install checklist for `SARAH-NR-09`.
+
+The owned Nostr relay deploy runbook records Option A hosting from
+`nostr-effect`. It records the Node pin, Cloud Run steps, Cloud SQL steps,
+DNS for `relay.openagents.com`, and the load-proof harness exit
+(`SARAH-NR-03`).
 
 Part 3 is the v2 roadmap for the semi-public community workroom. Outside
 developers point their own compute at bounded work there. They earn experience

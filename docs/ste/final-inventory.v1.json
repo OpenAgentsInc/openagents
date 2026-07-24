@@ -14079,7 +14079,7 @@
     },
     {
       "path": "docs/DEPLOYMENT.md",
-      "sha256": "a8685c5f6a1dab2fc9d35710a0f7831ff25f9d670feb16a2febcf448c2a117c0",
+      "sha256": "0dedfd5f9f14a384e896b61b14f8825621a8867c270fee6d2d8298bcece3f235",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
@@ -34122,7 +34122,7 @@
     },
     {
       "path": "docs/omega/2026-07-24-sarah-nip-ae-companion-profile.md",
-      "sha256": "590bcc64ca6b0e9dfed92cd8a8f1d34cca02519315c174beb129ac4e581cbc94",
+      "sha256": "077ae1047720a2d5b0e01f0f8317479368a943a4e5cbbdb044d151b198b4f9a3",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
@@ -34212,7 +34212,7 @@
     },
     {
       "path": "docs/omega/2026-07-24-sarah-workroom-mvp-spec.md",
-      "sha256": "7ae1b969a110896335fdcee3131b6b54231aa8aebed953c6c8f34985cb0fd567",
+      "sha256": "2e6b05d70a3d7f893e98e90a2c12dabf48bc1f02483d6356f984ae7e3ca6ad41",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -34230,7 +34230,7 @@
     },
     {
       "path": "docs/omega/README.md",
-      "sha256": "c58a111c7bd7a5469345398d09dc8d7caf06f8bb0d914928b970b80520f9cead",
+      "sha256": "27750e82ab765c940ac944bd512756bd65f2b8a93e206b948252035cd0d38bd7",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -34751,6 +34751,28 @@
       "profile": {
         "ste_mode": "descriptive",
         "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/ops/2026-07-24-owned-nostr-relay-deploy.md",
+      "sha256": "a54a0089901aca8dcaf99fc2a56b89119ba3390fd94d76d154632bf9c70d9f0a",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "mixed",
+        "risk": "high",
         "source": null,
         "replacement": null,
         "ste_audience": "agent",
@@ -47931,7 +47953,7 @@
     },
     {
       "path": "packages/sarah/README.md",
-      "sha256": "0e317eb6b872aa15feb11df048dbc58e8fd9621fbf0a1a37e6ef5d6c5cc2cd93",
+      "sha256": "019b22b38588c6120ea8ade613beb36bffa96fc0cf2a2aa3ae12263369149843",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

@@ -446,3 +446,5 @@ export * from "./nostr-turn/index.ts";
 export * from "./nostr-migration/index.ts";
 // SARAH-NR-09 — Nostr journey proof harness and public-safe receipt
 export * from "./nostr-journey/index.ts";
+// SARAH-NR-03 — owned relay load-proof harness (local + remote)
+export * from "./relay-load-proof/index.ts";
