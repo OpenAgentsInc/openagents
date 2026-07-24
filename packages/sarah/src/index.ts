@@ -440,3 +440,5 @@ export const decodeSarahPrincipalApiResponse = (value: unknown) =>
 
 // SARAH-NR-04 — Nostr identity, sealed signer, Secret Manager custody
 export * from "./nostr-identity/index.ts";
+// SARAH-NR-05 — durable/live ladder publish path (turn service core)
+export * from "./nostr-turn/index.ts";
