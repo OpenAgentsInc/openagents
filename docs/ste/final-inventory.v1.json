@@ -34364,42 +34364,6 @@
       }
     },
     {
-      "path": "docs/omega/README.md",
-      "sha256": "c1c9206fa97f02c1eabd62348adf7536f663e408fcb02fd6857758211af547b5",
-      "reason": "Final review of a converted document",
-      "profile": {
-        "ste_mode": "descriptive",
-        "risk": "active",
-        "source": null,
-        "replacement": null,
-        "ste_audience": "human",
-        "ste_accepted_screening_rules": [
-          "STE-2.4"
-        ],
-        "ste_status": "inspected",
-        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-        "ste_reviewed_at": "2026-07-19T22:00:00Z"
-      }
-    },
-    {
-      "path": "docs/omega/README.md",
-      "sha256": "c1c9206fa97f02c1eabd62348adf7536f663e408fcb02fd6857758211af547b5",
-      "reason": "Final review of a converted document",
-      "profile": {
-        "ste_mode": "descriptive",
-        "risk": "active",
-        "source": null,
-        "replacement": null,
-        "ste_audience": "human",
-        "ste_accepted_screening_rules": [
-          "STE-2.4"
-        ],
-        "ste_status": "inspected",
-        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-        "ste_reviewed_at": "2026-07-19T22:00:00Z"
-      }
-    },
-    {
       "path": "docs/omega/ROADMAP.md",
       "sha256": "f9025f6ccf9ade4043262af99fa5e27d1aebca1582d30d10f120b60427ed64cb",
       "reason": "Final review of a converted document",
