@@ -57,9 +57,12 @@ The Full Auto contract freeze owns the admitted lifecycle, digests, redaction
 map, and first-port cuts for `OMEGA-FA-00`.
 The Agent Computer completion plan owns closeout of openagents `#9190` and
 `#9193` plus Omega cloud-capacity integration.
+
 The Sarah workroom MVP specification owns the proposed first workroom slice.
-It puts one native Sarah conversation pane on the existing OpenAgents API
-record. It is a proposal, not an admitted packet ledger.
+Part 1 puts one native Sarah conversation pane on the current OpenAgents API
+record. Part 2 moves the Sarah runtime to Nostr on an owned relay, per the
+owner direction of 2026-07-24. It is a proposal, not an admitted packet
+ledger.
 
 The accepted plan owns the product and repository boundary.
 The master roadmap owns priority across OpenAgents programs.
