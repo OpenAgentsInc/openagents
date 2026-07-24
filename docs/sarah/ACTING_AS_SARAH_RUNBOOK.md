@@ -149,3 +149,13 @@ Before approval or publication, confirm all of these statements:
 
 If one statement is false, keep the output as a draft.
 Name the missing input or gate.
+
+## 7. Recording videos with product screenshares
+
+When the output is a Sarah episode video, keep the spoken transcript short.
+Prefer a live product screenshare over a still of the same frame.
+Do not restore stale clip-manifest wording into the spoken script.
+
+For Omega Welcome and other controlled product picture, follow
+[`../transcripts/SARAH_VIDEO_SCREENSHARE.md`](../transcripts/SARAH_VIDEO_SCREENSHARE.md)
+and use `scripts/omega-screen-control/`.

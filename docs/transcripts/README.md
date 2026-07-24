@@ -52,8 +52,9 @@ candidate to Omega. Episodes 257 and 258 introduce the “last agent IDE” prom
 through file-open and crash-isolation failures. Episode 259 makes the IDE the
 engine of verifiable software and reconnects it to Nostr, Bitcoin, and the
 OpenAgents market. Episode 260 introduces Sarah. Episode 261 gives her a voice.
-Episode 262 reviews the many OpenAgents product arcs, names the missing durable
-product foundation, and introduces Project Omega as the Zed-based answer.
+Episode 262 reviews the product decision in a short Sarah script and introduces
+Project Omega as the Zed-based answer, with a live Welcome screenshare preferred
+over stills ([`SARAH_VIDEO_SCREENSHARE.md`](SARAH_VIDEO_SCREENSHARE.md)).
 Episode 263 opens the fork and tours the Rust workspace, GPUI, native IDE
 substrate, branding work, Rust and Effect boundary, and migration order.
 

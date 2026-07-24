@@ -1,0 +1,601 @@
+#!/usr/bin/env node
+// Drive Omega's Welcome / onboarding UI for Sarah episode screenshares.
+//
+// Prefer a live screenshare of this controlled UI over a static screenshot.
+// The spoken script stays short; this tool only moves the picture.
+//
+// Requirements (macOS):
+// - An Omega binary or Omega.app
+// - Accessibility permission for the terminal / agent host (System Settings →
+//   Privacy & Security → Accessibility)
+// - Optional: `cliclick` on PATH for coordinate fallback
+//
+// Usage:
+//   node scripts/omega-screen-control/omega-screen-control.mjs launch
+//   node scripts/omega-screen-control/omega-screen-control.mjs click --title "Aiur"
+//   node scripts/omega-screen-control/omega-screen-control.mjs key --combo "cmd+enter"
+//   node scripts/omega-screen-control/omega-screen-control.mjs dump-ax
+//   node scripts/omega-screen-control/omega-screen-control.mjs shot welcome-setup
+//   node scripts/omega-screen-control/omega-screen-control.mjs quit
+//
+// Env:
+//   OMEGA_BIN                 Absolute path to the omega binary
+//   OMEGA_APP                 Absolute path to Omega.app (fallback)
+//   OMEGA_USER_DATA_DIR       Reuse a data dir (default: fresh temp dir)
+//   OMEGA_KEEP_USER_DATA=1    Do not delete the temp data dir on quit
+//   OMEGA_PROCESS_NAME        AX process name (default: omega)
+
+import { spawn, execFileSync } from 'node:child_process'
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
+const STATE_PATH = join(tmpdir(), 'openagents-omega-screen-control.json')
+const SHOTS_DIR = join(__dirname, 'shots')
+
+const args = process.argv.slice(2)
+const command = args[0]
+const flag = (name, fallback = undefined) => {
+  const i = args.indexOf(`--${name}`)
+  return i >= 0 && i + 1 < args.length ? args[i + 1] : fallback
+}
+const hasFlag = (name) => args.includes(`--${name}`)
+
+function usage() {
+  console.log(`Usage:
+  omega-screen-control.mjs launch [--bin <path>] [--app <path>] [--user-data-dir <dir>]
+  omega-screen-control.mjs menu --bar Help --item "Editor Onboarding"
+  omega-screen-control.mjs click --title <AX title>
+  omega-screen-control.mjs click-at --x 0.22 --y 0.42
+  omega-screen-control.mjs key --combo cmd+enter|cmd+shift+p|...
+  omega-screen-control.mjs wait --contains <text> [--timeout-ms 30000]
+  omega-screen-control.mjs dump-ax [--out <path>]
+  omega-screen-control.mjs shot <shot-id>
+  omega-screen-control.mjs quit
+
+Shots live in scripts/omega-screen-control/shots/*.json
+
+Notes:
+  First-run Welcome opens only when Nostr custody is not Ready.
+  Reset Ready custody with Omega's omega-identity CLI:
+    cargo run -p omega_identity --bin omega-identity -- --channel rc wipe --yes
+  On a machine that already has a Ready identity, open Welcome with:
+    Help → Editor Onboarding   (or Help → Show Welcome)
+`)
+}
+
+function targetPid() {
+  const state = loadState()
+  if (state?.pid) return Number(state.pid)
+  return null
+}
+
+function activateOmega() {
+  const pid = targetPid()
+  if (pid) {
+    runOsascript(`
+tell application "System Events"
+  set p to first process whose unix id is ${pid}
+  set frontmost of p to true
+end tell
+`)
+    return
+  }
+  const name = processName()
+  runOsascript(`
+tell application "System Events"
+  if not (exists process "${name}") then error "Omega process '${name}' is not running"
+  set frontmost of process "${name}" to true
+end tell
+`)
+}
+
+function processRefAppleScript() {
+  const pid = targetPid()
+  if (pid) return `first process whose unix id is ${pid}`
+  return `process "${processName()}"`
+}
+
+function menuClick(bar, item) {
+  activateOmega()
+  const ref = processRefAppleScript()
+  const barEsc = String(bar).replace(/"/g, '\\"')
+  const itemEsc = String(item).replace(/"/g, '\\"')
+  runOsascript(`
+tell application "System Events"
+  set p to ${ref}
+  set frontmost of p to true
+  click menu item "${itemEsc}" of menu "${barEsc}" of menu bar item "${barEsc}" of menu bar 1 of p
+end tell
+`)
+  console.log(`menu: ${bar} → ${item}`)
+}
+
+function windowBounds() {
+  activateOmega()
+  const ref = processRefAppleScript()
+  const raw = runOsascript(`
+tell application "System Events"
+  set p to ${ref}
+  set frontmost of p to true
+  set w to window 1 of p
+  set b to position of w
+  set s to size of w
+  return (item 1 of b as text) & "," & (item 2 of b as text) & "," & (item 1 of s as text) & "," & (item 2 of s as text)
+end tell
+`)
+  const [x, y, w, h] = raw.split(',').map((n) => Number(n))
+  if (![x, y, w, h].every((n) => Number.isFinite(n))) {
+    throw new Error(`Could not read window bounds: ${raw}`)
+  }
+  return { x, y, w, h }
+}
+
+function clickAt(xFrac, yFrac) {
+  const bounds = windowBounds()
+  const x = Math.round(bounds.x + bounds.w * Number(xFrac))
+  const y = Math.round(bounds.y + bounds.h * Number(yFrac))
+  if (!commandExists('cliclick') && !existsSync('/opt/homebrew/bin/cliclick')) {
+    // Fallback: AppleScript click at screen position via System Events is limited;
+    // use cliclick when available.
+    throw new Error(
+      `click-at needs cliclick on PATH (wanted ${x},${y} for fractions ${xFrac},${yFrac})`,
+    )
+  }
+  const bin = commandExists('cliclick') ? 'cliclick' : '/opt/homebrew/bin/cliclick'
+  execFileSync(bin, [`c:${x},${y}`])
+  console.log(`clicked-at: ${xFrac},${yFrac} → ${x},${y}`)
+}
+
+function loadState() {
+  if (!existsSync(STATE_PATH)) return null
+  try {
+    return JSON.parse(readFileSync(STATE_PATH, 'utf8'))
+  } catch {
+    return null
+  }
+}
+
+function saveState(state) {
+  writeFileSync(STATE_PATH, JSON.stringify(state, null, 2) + '\n')
+}
+
+function clearState() {
+  if (existsSync(STATE_PATH)) rmSync(STATE_PATH)
+}
+
+function resolveOmegaBin() {
+  const fromFlag = flag('bin') || process.env.OMEGA_BIN
+  if (fromFlag) return resolve(fromFlag)
+
+  const app =
+    flag('app') ||
+    process.env.OMEGA_APP ||
+    '/Users/christopherdavid/work/omega-worktrees/issue-8-identity-proof/target/omega-identity-rc/dmg-src/Omega.app'
+  const nested = join(app, 'Contents/MacOS/omega')
+  if (existsSync(nested)) return nested
+
+  const candidates = [
+    '/Applications/Omega.app/Contents/MacOS/omega',
+    join(process.env.HOME || '', 'Applications/Omega.app/Contents/MacOS/omega'),
+  ]
+  for (const c of candidates) {
+    if (existsSync(c)) return c
+  }
+  throw new Error(
+    'Omega binary not found. Set OMEGA_BIN or OMEGA_APP, or pass --bin / --app.',
+  )
+}
+
+function processName() {
+  return process.env.OMEGA_PROCESS_NAME || 'omega'
+}
+
+function runOsascript(source) {
+  try {
+    return execFileSync('osascript', ['-e', source], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim()
+  } catch (err) {
+    const stderr = err.stderr?.toString?.() || err.message
+    throw new Error(`osascript failed: ${stderr}`)
+  }
+}
+
+function sleep(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+}
+
+function dumpAx() {
+  activateOmega()
+  const ref = processRefAppleScript()
+  return runOsascript(`
+tell application "System Events"
+  set p to ${ref}
+  set frontmost of p to true
+  set out to ""
+  repeat with w in windows of p
+    set out to out & "WINDOW: " & (name of w as text) & linefeed
+    try
+      repeat with ui in entire contents of w
+        try
+          set r to role of ui as text
+          set n to ""
+          try
+            set n to name of ui as text
+          end try
+          if n is not "" and n is not "missing value" then
+            set out to out & r & " | " & n & linefeed
+          end if
+        end try
+      end repeat
+    end try
+  end repeat
+  return out
+end tell
+`)
+}
+
+function axContains(text) {
+  const tree = dumpAx()
+  return tree.toLowerCase().includes(String(text).toLowerCase())
+}
+
+function waitContains(text, timeoutMs) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    try {
+      if (axContains(text)) return true
+    } catch {
+      // process may still be starting
+    }
+    sleep(400)
+  }
+  throw new Error(`Timed out waiting for AX text containing: ${text}`)
+}
+
+function clickTitle(title) {
+  activateOmega()
+  const ref = processRefAppleScript()
+  const escaped = String(title).replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+  try {
+    runOsascript(`
+tell application "System Events"
+  set p to ${ref}
+  set frontmost of p to true
+  set target to missing value
+  repeat with w in windows of p
+    try
+      set matches to (every UI element of w whose name is "${escaped}")
+      if (count of matches) > 0 then
+        set target to item 1 of matches
+        exit repeat
+      end if
+    end try
+    try
+      set deep to (every UI element of entire contents of w whose name is "${escaped}")
+      if (count of deep) > 0 then
+        set target to item 1 of deep
+        exit repeat
+      end if
+    end try
+  end repeat
+  if target is missing value then error "No UI element named ${escaped}"
+  click target
+end tell
+`)
+    console.log(`clicked: ${title}`)
+    return
+  } catch (primaryErr) {
+    if (!existsSync('/opt/homebrew/bin/cliclick') && !commandExists('cliclick')) {
+      throw primaryErr
+    }
+    const pos = runOsascript(`
+tell application "System Events"
+  set p to ${ref}
+  set frontmost of p to true
+  set target to missing value
+  repeat with w in windows of p
+    try
+      set deep to (every UI element of entire contents of w whose name is "${escaped}")
+      if (count of deep) > 0 then
+        set target to item 1 of deep
+        exit repeat
+      end if
+    end try
+  end repeat
+  if target is missing value then error "No UI element named ${escaped}"
+  set posn to position of target
+  set sz to size of target
+  return ((item 1 of posn) + (item 1 of sz) / 2) & "," & ((item 2 of posn) + (item 2 of sz) / 2)
+end tell
+`)
+    const [x, y] = pos.split(',').map((n) => Math.round(Number(n)))
+    const bin = commandExists('cliclick') ? 'cliclick' : '/opt/homebrew/bin/cliclick'
+    execFileSync(bin, [`c:${x},${y}`])
+    console.log(`clicked via cliclick: ${title} @ ${x},${y}`)
+  }
+}
+
+function commandExists(bin) {
+  try {
+    execFileSync('which', [bin], { stdio: 'ignore' })
+    return true
+  } catch {
+    return false
+  }
+}
+
+function keyCombo(combo) {
+  activateOmega()
+  const parts = String(combo)
+    .toLowerCase()
+    .split('+')
+    .map((p) => p.trim())
+    .filter(Boolean)
+  const key = parts[parts.length - 1]
+  const mods = parts.slice(0, -1)
+  const modMap = {
+    cmd: 'command down',
+    command: 'command down',
+    ctrl: 'control down',
+    control: 'control down',
+    alt: 'option down',
+    option: 'option down',
+    shift: 'shift down',
+  }
+  const using = mods
+    .map((m) => modMap[m])
+    .filter(Boolean)
+    .join(', ')
+  const keyCodeMap = {
+    enter: 'return',
+    return: 'return',
+    escape: 'escape',
+    esc: 'escape',
+    tab: 'tab',
+    space: 'space',
+  }
+  const keyName = keyCodeMap[key] || key
+  const usingClause = using ? ` using {${using}}` : ''
+  if (keyName.length === 1) {
+    runOsascript(`tell application "System Events" to keystroke "${keyName}"${usingClause}`)
+  } else {
+    runOsascript(`tell application "System Events" to keystroke ${keyName}${usingClause}`)
+  }
+  console.log(`keyed: ${combo}`)
+}
+
+function listOmegaPids() {
+  try {
+    const out = execFileSync('pgrep', ['-f', '/Contents/MacOS/omega'], {
+      encoding: 'utf8',
+    })
+    return out
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map(Number)
+      .filter((n) => Number.isFinite(n))
+  } catch {
+    return []
+  }
+}
+
+function launch() {
+  const bin = resolveOmegaBin()
+  const reuse = flag('user-data-dir') || process.env.OMEGA_USER_DATA_DIR
+  const userDataDir = reuse
+    ? resolve(reuse)
+    : mkdtempSync(join(tmpdir(), 'omega-screen-control-'))
+  // Fresh Welcome needs a disposable data dir AND a separate instance.
+  // Without ZED_STATELESS, a second launch hands off to an existing Omega.
+  const env = {
+    ...process.env,
+    ZED_EXPERIMENTAL_A11Y: '1',
+    ZED_STATELESS: process.env.ZED_STATELESS || '1',
+  }
+  const before = new Set(listOmegaPids())
+  console.log(`launching: ${bin}`)
+  console.log(`user-data-dir: ${userDataDir}`)
+  console.log(`a11y: ZED_EXPERIMENTAL_A11Y=1`)
+  console.log(`stateless: ZED_STATELESS=${env.ZED_STATELESS}`)
+  if (before.size > 0) {
+    console.log(
+      `note: ${before.size} Omega process(es) already running; using a separate ZED_STATELESS instance`,
+    )
+  }
+  const child = spawn(bin, [`--user-data-dir=${userDataDir}`], {
+    env,
+    detached: true,
+    stdio: 'ignore',
+  })
+  child.unref()
+  // Resolve the real app pid (spawn pid can be a short-lived wrapper).
+  let appPid = child.pid
+  const deadline = Date.now() + 8000
+  while (Date.now() < deadline) {
+    const now = listOmegaPids().filter((pid) => !before.has(pid))
+    if (now.length > 0) {
+      appPid = now[now.length - 1]
+      break
+    }
+    sleep(200)
+  }
+  saveState({
+    pid: appPid,
+    spawnPid: child.pid,
+    bin,
+    userDataDir,
+    createdAt: new Date().toISOString(),
+    ephemeral: !reuse,
+  })
+  console.log(`pid: ${appPid}`)
+  console.log(`state: ${STATE_PATH}`)
+}
+
+function quit() {
+  const state = loadState()
+  const name = processName()
+  try {
+    runOsascript(`
+tell application "System Events"
+  if exists process "${name}" then
+    tell process "${name}" to set frontmost to true
+  end if
+end tell
+tell application "System Events" to keystroke "q" using {command down}
+`)
+  } catch {
+    if (state?.pid) {
+      try {
+        process.kill(state.pid, 'SIGTERM')
+      } catch {
+        // already gone
+      }
+    }
+  }
+  if (
+    state?.ephemeral &&
+    state?.userDataDir &&
+    process.env.OMEGA_KEEP_USER_DATA !== '1'
+  ) {
+    try {
+      rmSync(state.userDataDir, { recursive: true, force: true })
+      console.log(`removed user-data-dir: ${state.userDataDir}`)
+    } catch (err) {
+      console.warn(`could not remove user-data-dir: ${err.message}`)
+    }
+  }
+  clearState()
+  console.log('quit requested')
+}
+
+async function runShot(shotId) {
+  const path = join(SHOTS_DIR, `${shotId}.json`)
+  if (!existsSync(path)) {
+    throw new Error(`Shot not found: ${path}`)
+  }
+  const shot = JSON.parse(readFileSync(path, 'utf8'))
+  console.log(`shot: ${shot.id}`)
+  if (shot.label) console.log(`label: ${shot.label}`)
+  for (const [index, step] of (shot.steps || []).entries()) {
+    const op = step.op
+    console.log(`[${index + 1}/${shot.steps.length}] ${op}${step.title ? ` ${step.title}` : ''}${step.contains ? ` ${step.contains}` : ''}`)
+    switch (op) {
+      case 'launch':
+        launch()
+        break
+      case 'wait':
+        sleep(Number(step.ms || 0))
+        break
+      case 'wait_ax':
+        waitContains(step.contains, Number(step.timeoutMs || 30000))
+        break
+      case 'menu':
+        menuClick(step.bar, step.item)
+        break
+      case 'click':
+        clickTitle(step.title)
+        break
+      case 'click_at':
+        clickAt(step.x, step.y)
+        break
+      case 'key':
+        keyCombo(step.combo)
+        break
+      case 'dump_ax':
+        console.log(dumpAx())
+        break
+      case 'quit':
+        quit()
+        break
+      default:
+        throw new Error(`Unknown shot op: ${op}`)
+    }
+    if (step.pauseMs) sleep(Number(step.pauseMs))
+  }
+  console.log('shot complete')
+}
+
+try {
+  switch (command) {
+    case 'launch':
+      launch()
+      break
+    case 'menu': {
+      const bar = flag('bar')
+      const item = flag('item')
+      if (!bar || !item) throw new Error('--bar and --item are required')
+      menuClick(bar, item)
+      break
+    }
+    case 'click': {
+      const title = flag('title')
+      if (!title) throw new Error('--title is required')
+      clickTitle(title)
+      break
+    }
+    case 'click-at': {
+      const x = flag('x')
+      const y = flag('y')
+      if (x == null || y == null) throw new Error('--x and --y are required (0..1 fractions)')
+      clickAt(x, y)
+      break
+    }
+    case 'key': {
+      const combo = flag('combo')
+      if (!combo) throw new Error('--combo is required')
+      keyCombo(combo)
+      break
+    }
+    case 'wait': {
+      const contains = flag('contains')
+      if (!contains) throw new Error('--contains is required')
+      waitContains(contains, Number(flag('timeout-ms', '30000')))
+      console.log(`found: ${contains}`)
+      break
+    }
+    case 'dump-ax': {
+      const tree = dumpAx()
+      const out = flag('out')
+      if (out) {
+        writeFileSync(resolve(out), tree + '\n')
+        console.log(`wrote ${out}`)
+      } else {
+        console.log(tree)
+      }
+      break
+    }
+    case 'shot': {
+      const shotId = args[1]
+      if (!shotId) throw new Error('shot id required')
+      await runShot(shotId)
+      break
+    }
+    case 'quit':
+      quit()
+      break
+    case undefined:
+    case 'help':
+    case '-h':
+    case '--help':
+      usage()
+      break
+    default:
+      usage()
+      throw new Error(`Unknown command: ${command}`)
+  }
+} catch (err) {
+  console.error(err.message || err)
+  process.exit(1)
+}

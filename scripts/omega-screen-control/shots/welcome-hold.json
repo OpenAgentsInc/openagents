@@ -1,0 +1,16 @@
+{
+  "id": "welcome-hold",
+  "label": "OMEGA WELCOME - CURRENT",
+  "purpose": "Launch Omega, open Editor Onboarding, and hold for a cutaway. No theme/keymap clicks.",
+  "steps": [
+    { "op": "launch" },
+    { "op": "wait", "ms": 2500 },
+    {
+      "op": "menu",
+      "bar": "Help",
+      "item": "Editor Onboarding",
+      "pauseMs": 2000
+    },
+    { "op": "wait", "ms": 3000 }
+  ]
+}

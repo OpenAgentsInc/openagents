@@ -4,10 +4,16 @@ Status: production can start now. One final-narration gate and non-blocking
 asset replacements apply.
 Applies to: [`Project Omega`](262.md).
 Requested by: Episode 262 production packet.
+Screenshare control:
+[`Sarah video screenshare`](SARAH_VIDEO_SCREENSHARE.md).
 
 Episode 262 is the nontechnical product introduction.
 Technical repository footage belongs in
 [`Episode 263`](263.md).
+
+The short spoken script in [`262.md`](262.md) is the word authority.
+Local clip manifests and long-take manifests may be stale. Do not restore
+longer spoken wording from them.
 
 ## Recording and publication gate
 
@@ -22,14 +28,17 @@ These items are necessary before publication:
 - Review the rights and privacy state of each asset that appears.
 - Show visible support for the public Omega fork claim.
   A current static repository capture is sufficient.
+- Prefer a live Omega Welcome screenshare over a still of the same frame
+  (Request 262-08).
 
 The Sarah picture master is required for this release candidate.
 Generate it with the current Sarah direction and Segmind runner.
 Use the longest practical Sarah generations, up to 60 seconds for each
 generation. Split only at a full-screen cutaway, a service limit, or a verified
 quality defect.
-Do not wait for historical masters, fresh product recordings, a named Buzz
-source, a branded Omega build, or Episode 263 build proof.
+Do not wait for historical masters, a named Buzz source, a fully branded
+Omega release build, or Episode 263 build proof.
+A current Omega Welcome screenshare is welcome now.
 
 ## Request 262-01: final Sarah narration
 
@@ -123,6 +132,36 @@ Use `omega1.jpg` for the public repository and fork line.
 Use `omega2.jpg` for the Omega README and product direction.
 Label it `OMEGA SOURCE - CURRENT`.
 Do not imply that the source is already a branded build.
+
+## Request 262-08: live Omega Welcome screenshare
+
+Priority: recommended. Preferred over a Welcome still.
+
+Record a live Omega Welcome setup window during the short "out of the box /
+Omega" beat in [`262.md`](262.md).
+
+Drive the window with:
+
+```sh
+export OMEGA_BIN="/path/to/Omega.app/Contents/MacOS/omega"
+node scripts/omega-screen-control/omega-screen-control.mjs shot welcome-setup
+```
+
+Show real UI motion:
+
+- `Welcome to Omega` / `Your last IDE.`
+- Theme family `Aiur` selected
+- Base keymap `VS Code` selected
+- Optional: `Create identity` click (owner may need one Keychain approval)
+
+Label it `OMEGA WELCOME - CURRENT`.
+Do not present Welcome as a finished product release.
+Do not lengthen Sarah's spoken lines to cover the screenshare.
+Hold the screen under the existing short lines, or cut with silence and a
+lower-third.
+
+Default if a live build is unavailable: use one labeled still of Welcome, then
+replace it when the live shot exists.
 
 ## Request 262-07: Buzz feedback attribution
 

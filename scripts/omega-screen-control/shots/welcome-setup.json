@@ -1,0 +1,38 @@
+{
+  "id": "welcome-setup",
+  "label": "OMEGA WELCOME - CURRENT",
+  "purpose": "Live Welcome / Editor Onboarding screenshare for Episode 262. Prefer this over a still image.",
+  "notes": [
+    "First-run Welcome auto-opens only when Nostr custody is not Ready.",
+    "On a machine with Ready identity, this shot opens Help → Editor Onboarding.",
+    "Finish Setup stays disabled until a local Nostr identity is ready.",
+    "Create identity may open a Keychain prompt. Owner may need to approve once.",
+    "AX labels on GPUI are sparse. Prefer menu + click-at over click-by-title.",
+    "Burn the OMEGA WELCOME - CURRENT label into the edit.",
+    "Screen Recording permission needs a Cursor restart after grant before capture APIs work."
+  ],
+  "steps": [
+    { "op": "launch" },
+    { "op": "wait", "ms": 2500 },
+    {
+      "op": "menu",
+      "bar": "Help",
+      "item": "Editor Onboarding",
+      "pauseMs": 1200
+    },
+    {
+      "op": "click_at",
+      "x": 0.22,
+      "y": 0.42,
+      "pauseMs": 700,
+      "note": "Approximate Aiur theme card on a ~1536x1084 Welcome layout"
+    },
+    {
+      "op": "click_at",
+      "x": 0.28,
+      "y": 0.72,
+      "pauseMs": 900,
+      "note": "Approximate VS Code keymap tile"
+    }
+  ]
+}
