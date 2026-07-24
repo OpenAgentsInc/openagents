@@ -40,6 +40,10 @@ At this revision, this set is Episodes 260, 261, 262, and 263.
 The set must grow when the README adds a later approved Sarah episode.
 Do not select only the episode that is close to the current topic.
 
+Episode 262 final script at `docs/transcripts/262.md` is required background
+for Omega and product-strategy language. Status: final script. Do not invent
+alternate Omega wording that conflicts with 262.
+
 Approved final Sarah text defines her accepted language.
 Production notes can define delivery and product-state labels.
 They do not turn a planned feature into a shipped feature.
@@ -156,14 +160,24 @@ When the output is a Sarah episode video, keep the spoken transcript short.
 Prefer a live product screenshare over a still of the same frame.
 Do not restore stale clip-manifest wording into the spoken script.
 
+Before any new Sarah episode RC, read **Episode 262 lessons (2026-07-24)** in
+[`2026-07-22-segmind-talking-avatar-pipeline.md`](2026-07-22-segmind-talking-avatar-pipeline.md).
+That section covers screenshare Finder leaks, FIT pad and window size,
+SIGTERM quit (never Cmd+Q), second mid picture, ElevenLabs music generate and
+mix, TTS `zed` spelling, spoken paste authority, A/B/C cut verification, and
+Omega onboarding reopen traps.
+
+Spoken paste: write
+`~/Desktop/Sarah/<episode>/<episode>transcript.md` with spoken words only.
+When the script locks, update `docs/transcripts/<episode>.md` to the final
+spoken text. Header metadata stays in the repository transcript.
+
 For Omega Welcome and other controlled product picture, follow
 [`../transcripts/SARAH_VIDEO_SCREENSHARE.md`](../transcripts/SARAH_VIDEO_SCREENSHARE.md)
 and use `scripts/omega-screen-control/`.
 
-For a full release-candidate episode edit (Sarah master + screenshare, no
-music), follow the proven end-to-end path in
+For a full release-candidate episode edit (Sarah master + screenshare +
+optional music), follow the proven end-to-end path in
 [`2026-07-22-segmind-talking-avatar-pipeline.md`](2026-07-22-segmind-talking-avatar-pipeline.md)
-under **Episode RC assembly (proven)**. Keep working media under
-`~/Desktop/Sarah/<episode>/`. Keep a plain spoken-only copy as
-`<episode>transcript.md` in that folder for paste into tools. Do not commit
-generated MP4s.
+under **Episode RC assembly (proven)** and the music bed section. Keep working
+media under `~/Desktop/Sarah/<episode>/`. Do not commit generated MP4s.

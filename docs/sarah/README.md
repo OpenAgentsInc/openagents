@@ -53,8 +53,9 @@ implementation, quality, and contract record.
   approved Sarah episodes, owner-scoped memory review, voice, claim state,
   publication gates, and episode video screenshares (§7).
 - **`2026-07-22-segmind-talking-avatar-pipeline.md`** — produced talking-head
-  clips via Segmind, plus the proven Episode RC assembly path (Sarah master +
-  live screenshare, no music) under `~/Desktop/Sarah/<episode>/`.
+  clips via Segmind, proven Episode RC assembly under
+  `~/Desktop/Sarah/<episode>/`, **Episode 262 lessons**, and the ElevenLabs
+  music-bed path (`~/work/.secrets/elevenlabs.env`).
 - **`../transcripts/SARAH_VIDEO_SCREENSHARE.md`** — control Omega and cut
   product picture under a short Sarah script.
 - **`SARAH_CONTRACTS.md`** — the behavior-contract registry rendering: what

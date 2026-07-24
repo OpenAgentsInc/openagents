@@ -2,8 +2,9 @@
 
 This directory contains machine-generated transcripts for episodes `001`-`260`
 of the OpenAgents video corpus, plus clearly marked future-episode drafts.
-Episodes [`261`](261.md)-[`263`](263.md) are prepared scripts.
-Episodes 262 and 263 have separate
+Episode [`262`](262.md) is a final Sarah script (required Acting-as-Sarah
+background for Omega and product-strategy language). Episodes [`261`](261.md)
+and [`263`](263.md) are prepared scripts. Episodes 262 and 263 have separate
 [`Project Omega`](262-production-requests.md) and
 [`Forking Zed`](263-production-requests.md) production request packets for
 recording and publication gates, non-blocking asset replacements, attribution,
@@ -52,11 +53,13 @@ candidate to Omega. Episodes 257 and 258 introduce the “last agent IDE” prom
 through file-open and crash-isolation failures. Episode 259 makes the IDE the
 engine of verifiable software and reconnects it to Nostr, Bitcoin, and the
 OpenAgents market. Episode 260 introduces Sarah. Episode 261 gives her a voice.
-Episode 262 reviews the product decision in a short Sarah script and introduces
-Project Omega as the Zed-based answer, with a live Welcome screenshare preferred
-over stills ([`SARAH_VIDEO_SCREENSHARE.md`](SARAH_VIDEO_SCREENSHARE.md)). A local
-no-music release candidate was assembled on 2026-07-24 under
-`~/Desktop/Sarah/262/` using the proven Segmind + screenshare path in
+Episode 262 is the final short Sarah script for the product decision and
+introduces Project Omega as the Zed-based answer, with a live Welcome
+screenshare preferred over stills
+([`SARAH_VIDEO_SCREENSHARE.md`](SARAH_VIDEO_SCREENSHARE.md)). Local
+release candidates (no-music clean plate and optional with-music sibling)
+were assembled on 2026-07-24 under `~/Desktop/Sarah/262/` using the proven
+Segmind + screenshare path and Episode 262 lessons in
 [`../sarah/2026-07-22-segmind-talking-avatar-pipeline.md`](../sarah/2026-07-22-segmind-talking-avatar-pipeline.md).
 Episode 263 opens the fork and tours the Rust workspace, GPUI, native IDE
 substrate, branding work, Rust and Effect boundary, and migration order.

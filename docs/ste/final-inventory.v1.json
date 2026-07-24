@@ -40388,7 +40388,7 @@
     },
     {
       "path": "docs/sarah/2026-07-22-segmind-talking-avatar-pipeline.md",
-      "sha256": "061ea8375df8de771cee3ca2221c1b0faf18f84cdb6083b723994d6273d69414",
+      "sha256": "e70976743e91178cae5f294346411c4a73edeea0c39fa179f881e08d66c76326",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -40410,7 +40410,7 @@
     },
     {
       "path": "docs/sarah/ACTING_AS_SARAH_RUNBOOK.md",
-      "sha256": "7180d25ba20f05f2b69b02e1ddfe203f9089828aec8408284eca5958a59f492f",
+      "sha256": "b528da6ccc957ef7974713106f1e5693f1ddb5587ff478883fc42f68d3c531e3",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
@@ -40520,7 +40520,7 @@
     },
     {
       "path": "docs/sarah/README.md",
-      "sha256": "525c7848ea77e0e56116eb5f816a208ca32b5e89123f4df5c8f0cb12ad7d99b0",
+      "sha256": "d675791884d1773af4f26c96c23c206ff657fe05b742262c8164a1464b095bb6",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

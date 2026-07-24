@@ -251,10 +251,13 @@ existing short lines, or use silence with a lower-third label.
 ## Episode RC assembly (proven)
 
 Date proven: 2026-07-24. Episode: 262 (Project Omega). Result: local
-release-candidate MP4 with **no background music**.
+release-candidate MP4. Keep a clean plate without music and an optional
+sibling with a documented music bed.
 
 This is the default path for a short Sarah episode that needs one talking-head
-master and one live product screenshare. Music stays for a later owner pass.
+master, a live product screenshare, and at least one second mid picture
+(cutaway still or second shot). Read **Episode 262 lessons (2026-07-24)**
+before you start a new RC.
 
 ### Folder contract
 
@@ -263,7 +266,9 @@ master and one live product screenshare. Music stays for a later owner pass.
   <episode>transcript.md          # spoken words only (paste into tools)
   <episode>-sarah-master.mp4      # Segmind full take
   <episode>-screenshare-….mp4     # controlled product capture
-  <episode>-rc-no-music.mp4       # assembled RC
+  cutaways/                       # stills (or ignored .artifacts/episode-N/cutaways/)
+  <episode>-rc-no-music.mp4       # assembled RC (clean plate)
+  <episode>-rc-with-music.mp4     # optional music mix
   <episode>-rc-notes.md           # local production notes (optional)
   rc-work/                        # intermediates (optional)
 ```
@@ -275,13 +280,16 @@ Episode 262 used:
   262transcript.md
   262-sarah-master.mp4
   262-screenshare-omega-welcome.mp4
+  cutaways/ (or omega2 still)
   262-rc-no-music.mp4
+  262-rc-with-music.mp4
   262-rc-notes.md
 ```
 
 Do not commit those media files. Spoken authority stays in
-`docs/transcripts/<episode>.md`. The Desktop `*transcript.md` file is a
-copy-paste helper with no stage notes.
+`docs/transcripts/<episode>.md` (update that file to the final spoken text when
+the script locks). The Desktop `*transcript.md` file is a paste helper: spoken
+words only, no stage notes. Header metadata stays in the repository transcript.
 
 ### Step 1 — Lock spoken words
 
@@ -312,10 +320,19 @@ fallback master was required.
 
 ### Step 3 — Record a clean product screenshare
 
-Prefer `record-motion` with `welcome-tour` (enlarged window, theme/keymap
-clicks, drag-scroll). A static `welcome-hold` is only a fallback. Keep Omega
-frontmost. Hide or close unrelated side panels before capture. Do not click
-Create identity in unattended capture.
+Prefer `record-motion` with `welcome-tour`. Keep the Omega window near
+`1280×900` (do not maximize). Use FIT decrease plus a dark pad
+(`0x0E0E10`), then crop the full window. A static `welcome-hold` is only a
+fallback. Keep Omega frontmost. Hide or close unrelated side panels before
+capture. Do not click Create identity in unattended capture.
+
+Stop recording with `omega-screen-control quit` (SIGTERM). Do **not** use
+Cmd+Q during capture. Cmd+Q can quit the wrong app.
+
+Also prepare a **second mid picture** (cutaway still or second shot). One
+continuous screenshare alone looks flat and leaves no cover for a bad tail.
+Episode 262 used Welcome motion, then an `omega2` README still for the last
+about 6 s of the mid section.
 
 ```sh
 export OMEGA_BIN="/path/to/Omega.app/Contents/MacOS/omega"
@@ -336,33 +353,146 @@ pnpm --dir apps/qa-runner run overlay-text \
   --out /path/to/screenshare-labeled.mp4
 ```
 
+Keep cutaway stills under the episode Desktop folder or ignored
+`.artifacts/episode-N/cutaways/` with a manifest.
+
 ### Step 4 — Assemble A / B / C (audio continuous)
 
 Keep Sarah's spoken audio end to end. Cut **picture** only:
 
 | Part | Picture | Timing |
 | --- | --- | --- |
-| A | Sarah master | `0` → about `0.38 * D` |
-| B | Labeled screenshare (loop or trim) under Sarah audio | about `0.38 * D` → `0.85 * D` |
-| C | Sarah master | about `0.85 * D` → `D` |
+| A | Sarah master | `0` → T1 |
+| B | Mid product picture (motion, then second beat / cutaway) | T1 → T2 |
+| C | Sarah master | T2 → `D` |
 
-`D` is the Sarah master duration. Episode 262 used `D ≈ 40.76 s`,
-`T1 = 15.49 s`, `T2 = 34.65 s`. Concatenate to
-`~/Desktop/Sarah/<episode>/<episode>-rc-no-music.mp4`.
+`D` is the Sarah master duration. Do not copy old T1/T2 fractions blindly.
+For Episode 262, verify T1 on the silence after spoken `zed` (about 17.50 s)
+and set T2 near `0.78 * D`. Older notes that disagree with the audio are
+wrong for that cut.
 
-Optional fork stills (`OMEGA SOURCE - CURRENT`) may sit ready as b-roll. The
-proven 262 RC did not need them when the Welcome screenshare filled Part B.
+Concatenate to
+`~/Desktop/Sarah/<episode>/<episode>-rc-no-music.mp4`. Optional music mix
+writes `<episode>-rc-with-music.mp4` (see **Music bed (ElevenLabs)** below).
 
 ### Step 5 — Verify and stop
 
 - Sample frames at opening, mid-screenshare, and close.
+- Before you call the RC good, extract frames at `T2 − 1 s`, `T2 − 0.5 s`,
+  and `T2`. Reject the cut if those frames show Finder, Desktop, or another
+  non-product surface (Episode 262 leaked about the last 0.9 s of the mid).
 - Confirm the product label and a clean product frame.
-- Confirm no music track on the RC.
+- Confirm the clean plate has no music. If you mix music, keep
+  `*-rc-no-music.mp4` as the clean plate.
 - Record local notes. Do not treat the RC as a public post until publication
   gates in the episode production-requests file are green.
 
 Screenshare shot detail:
 [`../transcripts/SARAH_VIDEO_SCREENSHARE.md`](../transcripts/SARAH_VIDEO_SCREENSHARE.md).
+
+## Episode 262 lessons (2026-07-24)
+
+Use this section before every new Sarah episode RC. It records failures that
+must not repeat, the proven music path, and tooling work that is still open.
+
+### Circles and failures to never repeat
+
+1. **Screenshare leak into Finder/Desktop.** Recording past Omega into Finder
+   or Desktop at the end of Part B spoiled about the last 0.9 s of the mid on
+   Episode 262. Always verify frames at `T2 − 1 s`, `T2 − 0.5 s`, and `T2`
+   before you declare the RC good.
+2. **Maximized Omega / Retina crop / cover-fill zoom.** Maximized windows and
+   cover-fill zoom crushed Welcome. The winning path: window about
+   `1280×900` (not maximized), FIT decrease, dark pad `0x0E0E10`, crop the
+   full window.
+3. **Never quit with Cmd+Q during capture.** Use SIGTERM only through
+   `omega-screen-control quit`. Cmd+Q can quit the wrong app (Cursor or
+   another frontmost app).
+4. **One continuous mid looked like one still.** Need a second mid beat
+   (cutaway still or second shot) for visual variety and to cover a bad
+   tail. Episode 262: Welcome motion, then `omega2` README still for the
+   last about 6 s of the mid.
+5. **Music had no recipe.** Older notes said "owner music pass" but gave no
+   generate or mix steps. Agents searched the wrong places. The proven
+   ElevenLabs Music path is below. Episode 261 bed reuse is a fallback only.
+6. **TTS product name `zed`.** For British pronunciation `/zed/`, write
+   lowercase `zed` in the paste transcript. Uppercase `Zed` can become
+   "Zeed".
+7. **Spoken authority.** Paste-only file:
+   `~/Desktop/Sarah/<ep>/<ep>transcript.md`. When the script locks, update
+   `docs/transcripts/<ep>.md` to the final spoken text. Header metadata stays
+   in the repository transcript. The Sarah body is spoken words only.
+8. **A / B / C.** Continuous Sarah audio. Picture cuts only. Episode 262
+   proven cuts: T1 after `zed` (about 17.50 s), T2 ≈ `0.78 * D`. Verify on
+   the audio. Do not copy older fractions when they disagree.
+9. **Omega reopen mess (product capture).** For the owner, Help → Editor
+   Onboarding and Welcome "Return to Onboarding" appeared to do nothing.
+   `⌘P` is the file picker, not the command palette (`⌘⇧P`). Treat this as
+   known product failure plus the code improvements below. Do not claim it
+   is fixed until it is fixed.
+
+### Music bed (ElevenLabs)
+
+Secret file: `~/work/.secrets/elevenlabs.env` with `ELEVENLABS_API_KEY`.
+Never print the key. Never invent a key. If the file or key is missing, say
+so and stop the music path (or fall back only when the owner accepts an
+existing bed).
+
+On 2026-07-24 this machine had no `~/work/.secrets/elevenlabs.env`. Create
+that file before you generate a new bed.
+
+Generate:
+
+```sh
+# Load key from ~/work/.secrets/elevenlabs.env (do not echo it).
+# music_length_ms = RC duration in milliseconds.
+curl -sS -X POST \
+  "https://api.elevenlabs.io/v1/music?output_format=mp3_48000_192" \
+  -H "xi-api-key: ${ELEVENLABS_API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model_id": "music_v2",
+    "force_instrumental": true,
+    "music_length_ms": <RC_DURATION_MS>,
+    "prompt": "Instrumental cinematic sci-fi underscore. Sparse midrange. No vocals. Calm pulse under spoken narration."
+  }' \
+  -o ~/Desktop/Sarah/<episode>/<episode>-music-bed.mp3
+```
+
+Mix (audible Episode 261 louder path):
+
+1. `loudnorm` the bed.
+2. Apply volume about `-3 dB`.
+3. Fade in 1.5 s. Fade out 3 s.
+4. `amix` with Sarah voice, then `alimiter`.
+5. Write `*-rc-with-music.mp4`. Keep `*-rc-no-music.mp4` as the clean plate.
+
+### Code and tooling improvements (tracked candidates — not shipped)
+
+These items are future fix work. Do not treat them as done.
+
+1. **`scripts/omega-screen-control`:** Hard-stop recording before app
+   teardown. Reject or trim frames that match desktop/Finder heuristics.
+   Optional `--safe-tail-seconds` that freezes the last clean frame. Never
+   document Cmd+Q as a quit path.
+2. **RC assemble helper:** One command that takes sarah-master +
+   screenshare + optional cutaway stills + T1/T2, writes the no-music RC,
+   verifies frames at the cut points, and exits non-zero if Finder-like
+   pixels appear near T2.
+3. **`scripts/sarah-avatar/elevenlabs-music-bed.mjs` (or similar):** Read
+   `elevenlabs.env`, generate a bed into the episode folder, optional
+   `--mix` onto the RC. Document that script here when it lands.
+4. **Segmind/TTS paste lint:** Warn if uppercase `Zed` appears in the spoken
+   paste when the British voice is selected.
+5. **Omega product (`OpenAgentsInc/omega`):** Make Help → Editor Onboarding
+   and Welcome "Return to Onboarding" reopen first-run/editor onboarding
+   reliably (fix silent no-op when `with_local_workspace` fails or a
+   completion KVP blocks). Add matching command-palette strings. Document
+   `⌘⇧P` vs `⌘P` in Omega help. Add a reset-onboarding action that clears
+   completion KVPs for development builds.
+6. **Cutaway inventory:** Keep cutaway stills under the episode Desktop
+   folder or ignored `.artifacts/episode-N/cutaways/` with a manifest.
+   Do not rely on one screenshare duration alone.
 
 ## How it works (Segmind Async Inference V2)
 
@@ -403,7 +533,10 @@ standardizing a model for Sarah's comms.
   generated clips.
 - The **screenshare captures** stay under `~/Desktop/Sarah/<episode>/`. Do not
   commit them.
-- The **API key** stays in `~/work/.secrets/segmind.env`. Never commit or print.
+- The **Segmind API key** stays in `~/work/.secrets/segmind.env`. Never commit
+  or print.
+- The **ElevenLabs API key** stays in `~/work/.secrets/elevenlabs.env`. Never
+  commit or print.
 - Only this runbook, the screenshare control doc, and the committed scripts
   under `scripts/sarah-avatar/` and `scripts/omega-screen-control/` are
   committed.
@@ -419,5 +552,7 @@ standardizing a model for Sarah's comms.
 - Voice source: Segmind built-in TTS vs our own voice (the OAV/pipecat voice
   stack) fed in as `--audio`.
 - Cost and rate posture for routine comms generation.
-- Owner music pass and publication gates for each episode RC under
-  `~/Desktop/Sarah/<episode>/`.
+- Wire the music and RC helper scripts listed in **Episode 262 lessons**. Fix
+  the Omega onboarding reopen bug. Keep publication gates for each episode RC
+  under `~/Desktop/Sarah/<episode>/`. The music generate/mix path is documented
+  in this file. It is not yet a committed helper script.
