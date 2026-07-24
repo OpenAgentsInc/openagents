@@ -80,7 +80,7 @@ The audit used these sources on 2026-07-24:
 
 The owner needs agents that continue while the owner is away.
 The owner needs many personal accounts and providers in one system.
-The owner needs smart rotation when one account is exhausted.
+The owner needs smart rotation when one account exhausts its budget.
 The owner needs a start action that means leave the keyboard.
 
 The composer toggle failed that need.
@@ -96,14 +96,14 @@ The host keeps dispatching admitted turns against one granted workspace.
 The loop stops only on stop, typed failure, typed completion, or a turn cap.
 
 The current Desktop surface is a dedicated launcher and a read-only run view.
-The legacy composer toggle is retired.
+Retire the legacy composer toggle.
 Ordinary chat must not start Full Auto authority.
 
 ### 4.3 Verifiable-mode role
 
 Full Auto is also the first verifiable mode.
 Readiness must gate the run.
-Capacity must be typed truth.
+Express capacity as typed truth.
 Apple FM stays advisory only.
 Provider self-report cannot prove success.
 Reports and receipts must close the evidence chain.
@@ -545,7 +545,7 @@ OMEGA-OA-01 shared runtime seam
 Parallel work is safe only when paths do not collide:
 
 - FA-00 can draft while OA-03 and OA-04 finish.
-- FA-01 can extract modules while GPUI fixtures are designed.
+- FA-01 can extract modules while the team designs GPUI fixtures.
 - Brand and RC packets stay independent of Full Auto.
 
 Do not parallelize two writers for:

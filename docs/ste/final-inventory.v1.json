@@ -33668,7 +33668,7 @@
     },
     {
       "path": "docs/omega/2026-07-24-agent-computer-omega-completion-plan.md",
-      "sha256": "bd1bfbc303aad0357a7efce3aeb1a32328e2697081d4ebb9673c84be3f7be49c",
+      "sha256": "c477263a3cac1ece4617f152c31d5fb2e0f2b53225208793c1304e35212f8275",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
@@ -33686,7 +33686,7 @@
     },
     {
       "path": "docs/omega/2026-07-24-full-auto-port-audit.md",
-      "sha256": "86368c90cb0a180f8e8b1e188906d4207cdd77c88e6d1c3d1aff8111c2451eed",
+      "sha256": "5d8aee71f65d799a8bda4c90a3b300f0b9fb6315db6bd0ff2fb95e6b364b6681",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",

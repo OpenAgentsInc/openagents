@@ -59,7 +59,7 @@ Closed children that this plan reuses:
    That login must never touch the default `~/.codex` home.
 2. The image "kept updated" requirement has bake tooling, but no standing
    update cadence or closeout runbook receipt.
-3. `#9190` cannot close while Codex is unqualified.
+3. Keep Codex unqualified and do not close `#9190`.
 4. `@openagentsinc/agent-harness-environment` has no production caller yet.
    Sarah still uses a direct dispatch path.
    Omega has no Agent Computer runner yet.
@@ -126,7 +126,7 @@ Work:
 Exit:
 
 - Seven of seven harnesses are runtime-qualified.
-- The owner action is checked off after proof.
+- Check off the owner action after proof.
 
 Falsifier:
 
@@ -147,7 +147,7 @@ Work:
 
 Exit:
 
-- `#9193` is closed with seven qualified harnesses and an update policy.
+- Close `#9193` with seven qualified harnesses and an update policy.
 - A later agent can rebake without reconstructing tribal knowledge.
 
 Falsifier:
@@ -161,7 +161,7 @@ Owning repository: `OpenAgentsInc/openagents`
 
 Work:
 
-- After Codex is qualified, correct the no-preference default.
+- After Codex qualification, correct the no-preference default.
 - Prefer Codex first when live and ready.
 - Fall back through the admitted ordered set on typed refusal.
 - Keep explicit `harnessId` selection authoritative when present.
@@ -191,7 +191,7 @@ Work:
 
 Exit:
 
-- `#9190` is closed with an explicit criterion-by-criterion receipt.
+- Close `#9190` with an explicit criterion-by-criterion receipt.
 
 Falsifier:
 
@@ -392,7 +392,7 @@ This plan does not:
 
 ## 10. Completion rule
 
-The OpenAgents half is complete when `#9193` and `#9190` are closed with the
+Complete the OpenAgents half after you close `#9193` and `#9190` with the
 AC-01 through AC-04 receipts.
 
 The Omega half is complete when OMEGA-AC-03 proves one live Omega-started
