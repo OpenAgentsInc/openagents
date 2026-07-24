@@ -1,26 +1,23 @@
 # NEEDS-OWNER
 
-## OPEN — SARAH-CW-05 owner appeal identity npub (#9229, 2026-07-24)
+## RESOLVED — SARAH-CW-05 owner appeal identity npub (#9229, 2026-07-24)
 
 Community workroom arbitration code is in the `packages/sarah` community-
 arbitration module. The owner is the arbiter of last resort. A member appeal
 needs a verifiable destination. Register the **owner Nostr public key** as the
 authoritative appeal identity.
 
-Supply **public** material only:
-
-1. Owner `npub` (bech32) or 32-byte hex pubkey.
-2. Confirm that the key may be written to the single admitted registry path
-   `docs/omega/owner-appeal-identity.json` (revision 1).
-3. Optional: set process env `OPENAGENTS_OWNER_APPEAL_PUBKEY` or
-   `OPENAGENTS_OWNER_APPEAL_NPUB` for local proof without a committed file.
+The existing Omega RC sovereign identity manifest supplied the public identity
+without reading or moving its Keychain secret. Revision 1 is registered at
+`docs/omega/owner-appeal-identity.json`. The record binds the public key and
+`npub` to the Omega RC identity and records an auditable registration ref.
 
 Do not send private key material, mnemonic text, or any secret. Sarah cannot
-author owner rulings. Only a signature from this key is valid. Until the key
-exists, do not open the community room. Version 1 awards experience only and
-pays nothing, but appeals must still be verifiable.
+author owner rulings. Only a signature from this key is valid. Version 1 awards
+experience only and pays nothing, but appeals are now addressable and
+verifiable against the admitted public key.
 
-Blocker ref: `needs_owner.owner_appeal_npub`. Packet: `SARAH-CW-05`.
+Resolved blocker ref: `needs_owner.owner_appeal_npub`. Packet: `SARAH-CW-05`.
 
 ## OPEN — FA-07 packaged Omega journey + independent assurance (#26, 2026-07-24)
 

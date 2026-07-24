@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
+import { readFileSync } from "node:fs";
 
 import { AUTHORITY_DECISION_RECEIPT_SCHEMA } from "@openagentsinc/authority";
 
@@ -330,6 +331,29 @@ describe("SARAH-CW-05 dispute appeals and owner rulings", () => {
 });
 
 describe("SARAH-CW-05 owner appeal identity registry", () => {
+  it("admits the registered Omega owner appeal identity", () => {
+    const registration = JSON.parse(
+      readFileSync(
+        new URL(
+          "../../../../docs/omega/owner-appeal-identity.json",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    );
+    const resolution = resolveOwnerAppealIdentity({ registration });
+
+    expect(isOwnerAppealIdentityReady(resolution)).toBe(true);
+    if (resolution.lifecycle === "admitted") {
+      expect(resolution.pubkey).toBe(
+        "48c3bd00ce0ffdaa1b5b974ffea4bbac1c37a0ddfb164ac6bd1f5a3299bb21b3",
+      );
+      expect(resolution.npub).toBe(
+        "npub1frpm6qxwpl765x6mja8laf9m4swr0gxalvty434aradr9xdmyxes2xa9vw",
+      );
+    }
+  });
+
   it("resolves missing when no registration and no env pubkey", () => {
     const resolution = resolveOwnerAppealIdentity({});
     expect(resolution.lifecycle).toBe("missing");

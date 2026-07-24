@@ -456,5 +456,7 @@ export * from "./relay-load-proof/index.ts";
 export * from "./community/index.ts";
 // SARAH-CW-04 — NIP-LBR work request and quote lane
 export * from "./lbr-request-quote/index.ts";
+// SARAH-CW-05 — community arbitration decision and dispute appeal path
+export * from "./community-arbitration/index.ts";
 // SARAH-CW-06 — experience awards, rank projection, badges (not currency)
 export * from "./xp/index.ts";

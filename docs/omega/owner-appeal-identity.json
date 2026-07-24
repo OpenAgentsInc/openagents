@@ -1,0 +1,11 @@
+{
+  "schema": "openagents.sarah.owner_appeal_identity.v1",
+  "packet": "SARAH-CW-05",
+  "lifecycle": "admitted",
+  "pubkey": "48c3bd00ce0ffdaa1b5b974ffea4bbac1c37a0ddfb164ac6bd1f5a3299bb21b3",
+  "npub": "npub1frpm6qxwpl765x6mja8laf9m4swr0gxalvty434aradr9xdmyxes2xa9vw",
+  "revision": 1,
+  "registeredAt": "2026-07-24T22:55:46Z",
+  "registeredByRef": "operator.owner.omega_rc_identity",
+  "registrationRef": "registration.owner_appeal.omega_rc.v1"
+}

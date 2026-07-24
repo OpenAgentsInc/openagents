@@ -450,7 +450,7 @@
     },
     {
       "path": "NEEDS_OWNER.md",
-      "sha256": "2ea52a349cd45037e7e9fa52c0b252fd742ccca3949d89e093ccef2353cc970c",
+      "sha256": "be306969924aa5f9cb26e9ea102a4702f8f9bb0eeaefe87e9d40621ee7ac55f1",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -33726,7 +33726,7 @@
     },
     {
       "path": "docs/omega/2026-07-24-community-workroom-contract.md",
-      "sha256": "cf31fbfe0b2bc7fac259301bd0022f345caa3e72275dd36089e887c5dec8fda3",
+      "sha256": "0b4a2571dfaa6f1d1e711b2a05144acd7bdd4ba5fa25451c048769879b37ce41",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
@@ -48088,7 +48088,7 @@
     },
     {
       "path": "packages/sarah/README.md",
-      "sha256": "2efddb5dbddb510d1f368383c188ca8a6669663cfa6ef44efe44f63ef2269e26",
+      "sha256": "9b8f5ce26302538e7930332bbc0eecb005eaeea92d26dc2952b9e1fbfe59e2d2",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

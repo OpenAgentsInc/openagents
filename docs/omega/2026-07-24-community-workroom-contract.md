@@ -393,8 +393,11 @@ Requirements:
 3. A ruling is a signed event from that key. Sarah cannot author one.
 4. Registration changes are auditable.
 
-The registration location is a later packet. This freeze only freezes the
-rule that appeal authority is the owner key and never Sarah.
+The single admitted registry location is
+`docs/omega/owner-appeal-identity.json`. It contains public identity material
+only, records a monotonic revision and registration reference, and supports
+auditable rotation through a superseding registration. Until that identity is
+registered, owner rulings cannot be verified and the room must not open.
 
 ## 13. Abuse counters (contract anchors)
 

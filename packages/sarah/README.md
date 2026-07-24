@@ -112,6 +112,21 @@ node fixtures/sarah-lbr-request-quote/validate.mjs
 Spec: `docs/omega/2026-07-24-sarah-workroom-mvp-spec.md` §32. Fixtures:
 `fixtures/sarah-lbr-request-quote/`.
 
+## Community arbitration (`SARAH-CW-05`)
+
+`@openagentsinc/sarah/community-arbitration` holds typed acceptance and
+rejection decisions, independent-verifier enforcement, member appeals, and
+owner-ruling validation. Sarah decides acceptance, never payment, and cannot
+author an owner ruling. The admitted owner appeal identity is resolved from
+`docs/omega/owner-appeal-identity.json` or a public-only local environment
+override; a missing identity keeps the room blocked.
+
+```sh
+pnpm --dir packages/sarah test -- src/community-arbitration/community-arbitration.test.ts
+```
+
+Spec: `docs/omega/2026-07-24-sarah-workroom-mvp-spec.md` §34 and §40.1.
+
 ## Experience points (`SARAH-CW-06`)
 
 `@openagentsinc/sarah/xp` holds the community workroom experience namespace
