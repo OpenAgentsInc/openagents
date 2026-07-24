@@ -1080,7 +1080,7 @@ Each packet names its owning repository.
 | `SARAH-NR-06` | omega | the pane reads and writes Nostr | planned |
 | `SARAH-NR-07` | openagents | memory, read state, and reminders | planned |
 | `SARAH-NR-08` | openagents | migration and cutover | planned |
-| `SARAH-NR-09` | openagents | prove the Nostr journey | planned |
+| `SARAH-NR-09` | openagents | prove the Nostr journey | automated harness done (`docs/omega/2026-07-24-sarah-nostr-journey-proof.md`), live install residual |
 
 The `SARAH-NR-01` lane is the Node and Google Cloud migration in the protocol
 repository. Its plan is

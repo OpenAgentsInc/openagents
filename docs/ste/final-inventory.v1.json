@@ -34123,7 +34123,7 @@
     {
       "path": "docs/omega/2026-07-24-sarah-nip-ae-companion-profile.md",
       "sha256": "590bcc64ca6b0e9dfed92cd8a8f1d34cca02519315c174beb129ac4e581cbc94",
-      "reason": "New contract document for SARAH-NR-07a",
+      "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
         "risk": "high",
@@ -34134,14 +34134,14 @@
           "STE-2.4"
         ],
         "ste_status": "inspected",
-        "ste_reviewer": "grok-build/sarah-nr-07a-2026-07-24",
-        "ste_reviewed_at": "2026-07-24T22:00:00Z"
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {
       "path": "docs/omega/2026-07-24-sarah-nostr-cutover.md",
       "sha256": "9afc1b920e0ba3f13411f4e433c70b5d1768d8153a7e8e9ef14fffa69e5233aa",
-      "reason": "New cutover document for SARAH-NR-08",
+      "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
         "risk": "high",
@@ -34152,8 +34152,44 @@
           "STE-2.4"
         ],
         "ste_status": "inspected",
-        "ste_reviewer": "grok-build/sarah-nr-08-2026-07-24",
-        "ste_reviewed_at": "2026-07-24T22:00:00Z"
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/omega/2026-07-24-sarah-nostr-identity-contract.md",
+      "sha256": "15728bc0aebd45393c1d30409d16aa4b950f50cf0c1287c785fe3df553e6397e",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "mixed",
+        "risk": "high",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "human",
+        "ste_accepted_screening_rules": [
+          "STE-2.4"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/omega/2026-07-24-sarah-nostr-journey-proof.md",
+      "sha256": "dde144d4eb26f6ff3ed87ddfd8fcb4df4568bdf32b6f55cf38419a44a40def76",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "mixed",
+        "risk": "high",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "human",
+        "ste_accepted_screening_rules": [
+          "STE-2.4"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {
@@ -34175,26 +34211,8 @@
       }
     },
     {
-      "path": "docs/omega/2026-07-24-sarah-nostr-identity-contract.md",
-      "sha256": "15728bc0aebd45393c1d30409d16aa4b950f50cf0c1287c785fe3df553e6397e",
-      "reason": "New contract document for SARAH-NR-04",
-      "profile": {
-        "ste_mode": "mixed",
-        "risk": "high",
-        "source": null,
-        "replacement": null,
-        "ste_audience": "human",
-        "ste_accepted_screening_rules": [
-          "STE-2.4"
-        ],
-        "ste_status": "inspected",
-        "ste_reviewer": "grok-build/sarah-nr-04-2026-07-24",
-        "ste_reviewed_at": "2026-07-24T21:15:00Z"
-      }
-    },
-    {
       "path": "docs/omega/2026-07-24-sarah-workroom-mvp-spec.md",
-      "sha256": "8ee000d153c85d8d28039a03c2bd966995384bd23e9d4ddf37592495632d341c",
+      "sha256": "7ae1b969a110896335fdcee3131b6b54231aa8aebed953c6c8f34985cb0fd567",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -34212,7 +34230,7 @@
     },
     {
       "path": "docs/omega/README.md",
-      "sha256": "21876fab65be37a5debfb50bdb768a88ac2774c3017aef63d85c85b331d876eb",
+      "sha256": "c58a111c7bd7a5469345398d09dc8d7caf06f8bb0d914928b970b80520f9cead",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -47913,7 +47931,7 @@
     },
     {
       "path": "packages/sarah/README.md",
-      "sha256": "a0e7dda08f9ffd89930cc4ca5d2ea5c6556759502b0cace5bc1a0e1e7767ee1b",
+      "sha256": "0e317eb6b872aa15feb11df048dbc58e8fd9621fbf0a1a37e6ef5d6c5cc2cd93",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

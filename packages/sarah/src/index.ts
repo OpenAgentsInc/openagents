@@ -444,3 +444,5 @@ export * from "./nostr-identity/index.ts";
 export * from "./nostr-turn/index.ts";
 // SARAH-NR-08 — migration stage machine, mapping, drift, export/rollback
 export * from "./nostr-migration/index.ts";
+// SARAH-NR-09 — Nostr journey proof harness and public-safe receipt
+export * from "./nostr-journey/index.ts";

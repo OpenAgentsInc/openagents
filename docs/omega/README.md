@@ -53,9 +53,12 @@ Read these documents in this order:
 18. Read the
     [Sarah Nostr migration and cutover](./2026-07-24-sarah-nostr-cutover.md)
     (`SARAH-NR-08`).
-19. Read the [accepted Omega plan](../sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md).
-20. Read the [master roadmap](../sol/MASTER_ROADMAP.md).
-21. Read the [Desktop release contract](../deploy/openagents-desktop-cross-platform-release.md).
+19. Read the
+    [Sarah Nostr journey proof](./2026-07-24-sarah-nostr-journey-proof.md)
+    (`SARAH-NR-09`).
+20. Read the [accepted Omega plan](../sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md).
+21. Read the [master roadmap](../sol/MASTER_ROADMAP.md).
+22. Read the [Desktop release contract](../deploy/openagents-desktop-cross-platform-release.md).
 
 The Omega roadmap owns the implementation order.
 The release-readiness audit owns the current brand and package gap.
@@ -85,14 +88,18 @@ the §21 boundary for `SARAH-NR-00`.
 The Sarah Nostr identity contract freezes Secret Manager custody, the sealed
 signer, NIP-OA/AA attestation, and lifecycle for `principal.sarah`
 (`SARAH-NR-04`).
+
 The Sarah NIP-AE companion profile freezes kind `30174` memory engrams
 (`SARAH-NR-07a`).
 It freezes NIP-44 encryption to the owner and HMAC-blinded `d` tags.
 It freezes companion body fields.
 It states that the graph index is derived and never authority.
+
 The Sarah Nostr cutover note owns the `shadow` / `cutover` / `retirement`
 stage machine, `SARAH_NOSTR_RECORD_MODE`, drift comparison, and
 export/rollback for `SARAH-NR-08`. Production default stays `khala`.
+The Sarah Nostr journey proof owns the automated receipt harness and the
+residual live install checklist for `SARAH-NR-09`.
 
 Part 3 is the v2 roadmap for the semi-public community workroom. Outside
 developers point their own compute at bounded work there. They earn experience

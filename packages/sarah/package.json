@@ -11,13 +11,15 @@
     ".": "./src/index.ts",
     "./nostr-identity": "./src/nostr-identity/index.ts",
     "./nostr-turn": "./src/nostr-turn/index.ts",
-    "./nostr-migration": "./src/nostr-migration/index.ts"
+    "./nostr-migration": "./src/nostr-migration/index.ts",
+    "./nostr-journey": "./src/nostr-journey/index.ts"
   },
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
-    "test": "vp test --run src/index.test.ts src/nostr-identity/nostr-identity.test.ts src/nostr-identity/nip44-cipher.test.ts src/nostr-turn/nostr-turn.test.ts src/nostr-turn/consumer.test.ts src/nostr-migration/nostr-migration.test.ts",
+    "test": "vp test --run src/index.test.ts src/nostr-identity/nostr-identity.test.ts src/nostr-identity/nip44-cipher.test.ts src/nostr-turn/nostr-turn.test.ts src/nostr-turn/consumer.test.ts src/nostr-migration/nostr-migration.test.ts src/nostr-journey/nostr-journey.test.ts",
+    "generate:journey-receipt": "node --import tsx src/nostr-journey/generate-receipt.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
