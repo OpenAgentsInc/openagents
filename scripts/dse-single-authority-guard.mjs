@@ -79,7 +79,7 @@ const lockfile = readFileSync(join(root, "pnpm-lock.yaml"), "utf8");
 for (const name of trainPackages) {
   const escapedName = name.replace("/", "\\/");
   const versions = new Set(
-    [...lockfile.matchAll(new RegExp(`${escapedName}@([^':(\\s]+)`, "g"))].map((match) => match[1]),
+    [...lockfile.matchAll(new RegExp(`${escapedName}@([^':()\\s]+)`, "g"))].map((match) => match[1]),
   );
   if (versions.size !== 1 || !versions.has(train)) {
     failures.push(`pnpm-lock.yaml: ${name} versions are ${[...versions].join(", ") || "absent"}`);
