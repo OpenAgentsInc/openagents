@@ -3,7 +3,7 @@
 - Class: owner-accepted work-packet ledger
 - Date: 2026-07-23
 - Revised: 2026-07-24
-- Revision: 3
+- Revision: 4
 - Status: active initial roadmap
 - Product: Omega, the Zed-based OpenAgents Desktop application
 - Client repository: `OpenAgentsInc/omega`
@@ -505,6 +505,13 @@ Port:
 
 Provider text must not determine success.
 Only typed outcomes can close a run.
+
+Use the
+[Full Auto port audit](./2026-07-24-full-auto-port-audit.md)
+for the current Desktop topology, Omega seam map, ordered FA packets, and
+proof gates.
+That audit specializes this packet.
+It does not replace ProductSpec or AssuranceSpec authority.
 
 ### 7.6 Packet OMEGA-OA-06: native agent-to-code loop
 

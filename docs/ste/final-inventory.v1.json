@@ -33645,6 +33645,24 @@
       }
     },
     {
+      "path": "docs/omega/2026-07-24-full-auto-port-audit.md",
+      "sha256": "86368c90cb0a180f8e8b1e188906d4207cdd77c88e6d1c3d1aff8111c2451eed",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "mixed",
+        "risk": "high",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "human",
+        "ste_accepted_screening_rules": [
+          "STE-2.4"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/omega/2026-07-24-release-readiness-brand-audit.md",
       "sha256": "f07463d7e356ba1c80ed47efce9cacc5dd78dfc088a9a899a19e055085319a1a",
       "reason": "Final review of a converted document",
@@ -33664,7 +33682,7 @@
     },
     {
       "path": "docs/omega/README.md",
-      "sha256": "21dd8950b9b07e7f7b8c5ea577c1a6f78771951bf17b7d9c6f3b5430f57743b4",
+      "sha256": "44fe49ddf9359057838feaf6869e4f9bbc18c83f66e76640d0d9c9631cccf891",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -33682,7 +33700,7 @@
     },
     {
       "path": "docs/omega/ROADMAP.md",
-      "sha256": "01cd5a7b96541e1a6c9f87392ce1be7cc48a9e7f482717e1d347697b629c3489",
+      "sha256": "60322b46455178fa67134f72cf27ace5779d1ffcb2b29a97de1b69911c4bf7a3",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",

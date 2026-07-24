@@ -1951,9 +1951,10 @@
       "reviewedAt": "2026-07-21",
       "reviewTrigger": "only on proof invalidation, reopen, provenance correction, or archive selection",
       "inboundLinks": [
+        "docs/omega/2026-07-24-full-auto-port-audit.md",
         "docs/sol/README.md"
       ],
-      "inboundSourceCount": 1,
+      "inboundSourceCount": 2,
       "issueLinks": [
         8852,
         8853,
@@ -2133,9 +2134,10 @@
       "reviewedAt": "2026-07-21",
       "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
       "inboundLinks": [
+        "docs/omega/2026-07-24-full-auto-port-audit.md",
         "docs/sol/README.md"
       ],
-      "inboundSourceCount": 1,
+      "inboundSourceCount": 2,
       "issueLinks": []
     },
     {
@@ -2451,6 +2453,7 @@
         "docs/ide/ROADMAP.md",
         "docs/nostr/2026-07-22-full-auto-cross-app-agent-delegation-over-nostr.md",
         "docs/omega/2026-07-23-identity-first-onboarding-roadmap.md",
+        "docs/omega/2026-07-24-full-auto-port-audit.md",
         "docs/omega/README.md",
         "docs/omega/ROADMAP.md",
         "docs/refactor/2026-06-09-bun-effect-monorepo.md",
@@ -2462,7 +2465,7 @@
         "docs/teardowns/README.md",
         "docs/transcripts/263.md"
       ],
-      "inboundSourceCount": 20,
+      "inboundSourceCount": 21,
       "issueLinks": [
         9185,
         9194,
