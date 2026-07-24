@@ -1,4 +1,4 @@
-import type { DesktopWorkspaceAdmission } from "../desktop-coding-catalog.ts"
+import type { DesktopWorkspaceAdmission } from "../desktop-workspace-admission.ts"
 import type { IdePortableClientSnapshot } from "./portable-client-contract.ts"
 
 export type IdePortableMutationPermit = Readonly<{

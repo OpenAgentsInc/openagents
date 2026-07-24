@@ -1,8 +1,15 @@
 {
-  "extends": "../../tsconfig.json",
   "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2023", "DOM"],
+    "strict": true,
+    "skipLibCheck": true,
     "noEmit": true,
-    "types": ["node", "vite-plus-matchers"]
+    "types": ["node", "vite-plus-matchers"],
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": false
   },
   "include": ["src/**/*", "scripts/**/*"]
 }

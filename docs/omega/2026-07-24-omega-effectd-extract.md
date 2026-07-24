@@ -4,7 +4,7 @@
 - Packet: `OMEGA-FA-01`
 - Omega issue: [OpenAgentsInc/omega#20](https://github.com/OpenAgentsInc/omega/issues/20)
 - Package: `@openagentsinc/omega-effectd` `0.1.0`
-- Pack SHA-256: `a78676b5e82d1f01ed86a9163ed11e9c1829b3d2c93c5eed208ac5fa3d7f09b8`
+- Pack SHA-256: `0717aa2fef95734773257ec702848e3d226631b7e298cc128cfc12e8de0d0847`
 - Freeze: [2026-07-24-full-auto-contract-freeze.md](./2026-07-24-full-auto-contract-freeze.md)
 
 ## Result

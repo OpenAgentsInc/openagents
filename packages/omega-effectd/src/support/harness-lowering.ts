@@ -18,7 +18,7 @@ import {
   CLAUDE_LOCAL_DELTA_LIMIT,
   CLAUDE_LOCAL_SUMMARY_LIMIT,
   type ClaudeLocalEvent,
-} from "./claude-local-contract";
+} from "./claude-local-contract.ts";
 
 const bounded = (value: string, limit: number): string =>
   value.length > limit ? value.slice(0, limit) : value;

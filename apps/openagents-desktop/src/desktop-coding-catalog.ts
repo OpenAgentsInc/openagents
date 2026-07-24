@@ -60,20 +60,8 @@ export type DesktopCodingCatalogSnapshot = Readonly<{
   issues: ReturnType<typeof validateCodingSessionCatalog>
 }>
 
-/**
- * One durable identity admission for a user-selected repository checkout.
- *
- * The raw root is deliberately absent. It remains only in the private binding
- * file, while every product/runtime surface shares these opaque refs.
- */
-export type DesktopWorkspaceAdmission = Readonly<{
-  grantRef: string
-  projectRef: string
-  repositoryRef: string
-  worktreeRef: string
-  workContextRef: string
-  sessionRef: string
-}>
+export type { DesktopWorkspaceAdmission } from "@openagentsinc/omega-effectd/support/desktop-workspace-admission.ts"
+import type { DesktopWorkspaceAdmission } from "@openagentsinc/omega-effectd/support/desktop-workspace-admission.ts"
 
 export type DesktopWorkspaceAdmissionResult = Readonly<{
   snapshot: DesktopCodingCatalogSnapshot
