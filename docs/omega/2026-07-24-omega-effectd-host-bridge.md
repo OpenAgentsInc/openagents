@@ -42,7 +42,7 @@ decision mechanism. Host dispatch acknowledges admission of the exact leased
 ## Verification
 
 - `pnpm --dir packages/omega-effectd typecheck`
-- `pnpm --dir packages/omega-effectd test` — 197 passed
+- `pnpm --dir packages/omega-effectd test` — 198 passed
 
 The test matrix covers exactly-one leased dispatch, missing-host refusal,
 missing-thread typed stall, generation rollover and stale reply rejection,

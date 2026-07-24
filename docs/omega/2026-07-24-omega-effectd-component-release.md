@@ -6,25 +6,30 @@
 - Source commit: `be342ea7525ac50fbf836978dcd1ba6714345f42`
 - Status: complete
 
-## RC.2 replacement
+## RC.3 replacement
 
 The final Omega candidate must use
-[`omega-effectd-v0.1.0-rc.2`](https://github.com/OpenAgentsInc/openagents/releases/tag/omega-effectd-v0.1.0-rc.2),
-which supersedes RC.1 by exposing the existing paused-only Full Auto provider
-handoff authority over the framed protocol.
+[`omega-effectd-v0.1.0-rc.3`](https://github.com/OpenAgentsInc/openagents/releases/tag/omega-effectd-v0.1.0-rc.3).
+RC.3 supersedes RC.2 because GPUI Agent threads are provider-bound: changing
+only the stored lane left the retained Codex thread unable to execute a Claude
+continuation. No Omega candidate containing RC.2 was signed or published.
 
 | Field | Value |
 | --- | --- |
-| Source commit | `c164bc25c42dab369d645d77c99f86b083323540` |
-| Source tree | `26378837c60dbcd4253918cb1a07ce8c36f0c5a8` |
+| Source commit | `b8057682598d3744f09f6c6daf24823644b1e3ab` |
+| Source tree | `722c22887f43290161373d6c79e48914f5d27548` |
 | Archive | `omega-effectd-v0.1.0-macos-arm64.tar.gz` |
-| Archive SHA-256 | `f9b4bb93216d4a09dea97a3a94ab1679e1a8d9c13c68a93affd5818d08554cd8` |
+| Archive SHA-256 | `0fb275283686f9de27d326de1c87bbd0ed8ed1360126956658a2c29818d1ea6c` |
 
 Two clean builds produced the same archive digest. The package type check and
-all 197 tests passed. The framed test covers running-state refusal, unknown
-lane refusal, paused Codex-to-Claude handoff, durable run and dispatch-profile
-rebinding, resume, and secret-shaped handoff-reason redaction. RC.1 remains an
-immutable historical input but lacks this packaged handoff method.
+all 198 tests passed. The framed path creates a distinct target-lane Agent
+thread, atomically records the new run execution binding, transfers the full
+continuation grant, and repairs an interrupted second registry write before
+reconciliation. Source evidence is sealed into the report before migration;
+the next target-provider mission includes the owner objective and prior
+handoff. The transition receipt names both source and target thread refs.
+RC.1 and RC.2 remain immutable historical inputs, but neither is eligible for
+the final Omega candidate.
 
 ## Result
 
@@ -61,7 +66,7 @@ The build command produced the same archive digest in two runs. A clean
 download from the GitHub prerelease had the same digest. The extracted service
 passed the framed `initialize` and `health` checks with a temporary data root.
 
-The package type check passed. All 197 package tests passed. The repository
+The package type check passed. All 198 package tests passed. The repository
 fast main guard passed before the source commit reached `main`.
 
 ## Omega use

@@ -32,7 +32,7 @@ service. Crash recovery re-reads disk truth. GPUI is not run authority.
 
 ## Verification
 
-- `pnpm --dir packages/omega-effectd test` — 197 passed
+- `pnpm --dir packages/omega-effectd test` — 198 passed
 - `cargo test -p omega_effectd` in Omega — supervisor start/health/restart/stop
   and disk recovery
 
