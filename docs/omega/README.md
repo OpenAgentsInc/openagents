@@ -68,9 +68,11 @@ Read these documents in this order:
 23. Read the
     [Sarah community journey proof](./2026-07-24-sarah-community-journey-proof.md)
     (`SARAH-CW-09`).
-24. Read the [accepted Omega plan](../sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md).
-25. Read the [master roadmap](../sol/MASTER_ROADMAP.md).
-26. Read the [Desktop release contract](../deploy/openagents-desktop-cross-platform-release.md).
+24. Read the
+    [NIP adoption candidates](./2026-07-24-nip-adoption-candidates.md).
+25. Read the [accepted Omega plan](../sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md).
+26. Read the [master roadmap](../sol/MASTER_ROADMAP.md).
+27. Read the [Desktop release contract](../deploy/openagents-desktop-cross-platform-release.md).
 
 The Omega roadmap owns the implementation order.
 The release-readiness audit owns the current brand and package gap.
