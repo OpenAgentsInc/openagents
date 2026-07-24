@@ -464,28 +464,28 @@ Never print the key. Never invent a key. If the file or key is missing, say
 so and stop the music path (or fall back only when the owner accepts an
 existing bed).
 
-On 2026-07-24 this machine had no `~/work/.secrets/elevenlabs.env`. Create
-that file before you generate a new bed.
-
-Generate:
+Create that file before you generate a new bed. The checked-in helper is
+`scripts/sarah-avatar/elevenlabs-music-bed.mjs` (#9235). It loads the secret
+file, posts `music_v2` with `force_instrumental`, and can mix onto the RC.
 
 ```sh
-# Load key from ~/work/.secrets/elevenlabs.env (do not echo it).
-# music_length_ms = RC duration in milliseconds.
-curl -sS -X POST \
-  "https://api.elevenlabs.io/v1/music?output_format=mp3_48000_192" \
-  -H "xi-api-key: ${ELEVENLABS_API_KEY}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model_id": "music_v2",
-    "force_instrumental": true,
-    "music_length_ms": <RC_DURATION_MS>,
-    "prompt": "Instrumental cinematic sci-fi underscore. Sparse midrange. No vocals. Calm pulse under spoken narration."
-  }' \
-  -o ~/Desktop/Sarah/<episode>/<episode>-music-bed.mp3
+# After assemble-rc wrote the clean plate:
+node scripts/sarah-avatar/elevenlabs-music-bed.mjs \
+  --rc ~/Desktop/Sarah/<episode>/<episode>-rc-no-music.mp4 \
+  --mix
+# writes <episode>-music-bed.mp3 and <episode>-rc-with-music.mp4
+# keeps <episode>-rc-no-music.mp4 untouched
 ```
 
-Mix (audible Episode 261 louder path):
+Bed only (no mix):
+
+```sh
+node scripts/sarah-avatar/elevenlabs-music-bed.mjs \
+  --rc ~/Desktop/Sarah/<episode>/<episode>-rc-no-music.mp4
+# or: --music-length-ms <RC_DURATION_MS> --bed-out …/<episode>-music-bed.mp3
+```
+
+Mix recipe inside `--mix` (audible Episode 261 louder path):
 
 1. `loudnorm` the bed.
 2. Apply volume about `-3 dB`.
@@ -493,10 +493,13 @@ Mix (audible Episode 261 louder path):
 4. `amix` with Sarah voice, then `alimiter`.
 5. Write `*-rc-with-music.mp4`. Keep `*-rc-no-music.mp4` as the clean plate.
 
+Tests mock HTTP (`node --test scripts/sarah-avatar/elevenlabs-music-bed.test.mjs`).
+Do not call live ElevenLabs from automated checks.
+
 ### Code and tooling improvements (tracked candidates)
 
-Items 1 and 2 shipped (#9233, #9234). The rest remain future fix work. Do not
-treat open items as done.
+Items 1–3 shipped (#9233, #9234, #9235). The rest remain future fix work. Do
+not treat open items as done.
 
 1. **`scripts/omega-screen-control` (shipped #9233):** Hard-stops recording
    before app teardown. Rejects Cmd+Q key quit. Optional
@@ -512,9 +515,12 @@ treat open items as done.
    against `docs/transcripts/<episode>.md`, verifies frames at the cut
    points, and exits non-zero if Finder-like pixels appear near T2. Tests:
    `node --test scripts/sarah-avatar/assemble-rc.test.mjs`.
-3. **`scripts/sarah-avatar/elevenlabs-music-bed.mjs` (or similar):** Read
-   `elevenlabs.env`, generate a bed into the episode folder, optional
-   `--mix` onto the RC. Document that script here when it lands.
+3. **ElevenLabs music bed (shipped #9235):**
+   `scripts/sarah-avatar/elevenlabs-music-bed.mjs`. Reads
+   `~/work/.secrets/elevenlabs.env`, generates `music_v2` instrumental beds,
+   optional `--mix` (Ep261 louder: loudnorm, `-3 dB`, fades, amix, alimiter).
+   Keeps `*-rc-no-music.mp4` as the clean plate. Tests:
+   `node --test scripts/sarah-avatar/elevenlabs-music-bed.test.mjs`.
 4. **Segmind/TTS paste lint:** Warn if uppercase `Zed` appears in the spoken
    paste when the British voice is selected.
 5. **Omega product (`OpenAgentsInc/omega`):** Make Help → Editor Onboarding
@@ -585,7 +591,8 @@ standardizing a model for Sarah's comms.
 - Voice source: Segmind built-in TTS vs our own voice (the OAV/pipecat voice
   stack) fed in as `--audio`.
 - Cost and rate posture for routine comms generation.
-- Wire the music and RC helper scripts listed in **Episode 262 lessons**. Fix
-  the Omega onboarding reopen bug. Keep publication gates for each episode RC
-  under `~/Desktop/Sarah/<episode>/`. The music generate/mix path is documented
-  in this file. It is not yet a committed helper script.
+- Wire remaining Episode 262 tooling (Segmind paste lint, cutaway inventory).
+  Fix the Omega onboarding reopen bug. Keep publication gates for each episode
+  RC under `~/Desktop/Sarah/<episode>/`. Music generate/mix is
+  `scripts/sarah-avatar/elevenlabs-music-bed.mjs` (#9235). RC assemble is
+  `scripts/sarah-avatar/assemble-rc.mjs` (#9234).

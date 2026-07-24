@@ -55,7 +55,8 @@ implementation, quality, and contract record.
 - **`2026-07-22-segmind-talking-avatar-pipeline.md`** — produced talking-head
   clips via Segmind, proven Episode RC assembly under
   `~/Desktop/Sarah/<episode>/`, **Episode 262 lessons**, and the ElevenLabs
-  music-bed path (`~/work/.secrets/elevenlabs.env`).
+  music-bed path (`scripts/sarah-avatar/elevenlabs-music-bed.mjs`, secret
+  `~/work/.secrets/elevenlabs.env`).
 - **`../transcripts/SARAH_VIDEO_SCREENSHARE.md`** — control Omega and cut
   product picture under a short Sarah script.
 - **`SARAH_CONTRACTS.md`** — the behavior-contract registry rendering: what

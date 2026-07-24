@@ -180,9 +180,10 @@ Full detail:
 - **Second mid picture.** Welcome motion alone is not enough. Episode 262
   finder-fix v2 used Welcome motion, then an `omega2` README still for the
   last about 6 s of the mid.
-- **Music.** Proven ElevenLabs Music generate + mix lives in the Segmind
-  pipeline doc (**Music bed (ElevenLabs)**). Secret:
-  `~/work/.secrets/elevenlabs.env`. Do not invent a key.
+- **Music.** Use `scripts/sarah-avatar/elevenlabs-music-bed.mjs` (#9235) with
+  `--rc …/*-rc-no-music.mp4 --mix`. Secret file:
+  `~/work/.secrets/elevenlabs.env`. Do not invent a key. Detail:
+  Segmind pipeline doc (**Music bed (ElevenLabs)**).
 
 ### Proven RC capture and edit (2026-07-24)
 
@@ -243,9 +244,17 @@ node scripts/sarah-avatar/assemble-rc.mjs \
 | C | Sarah (name + first-builds close) | T2 to `D` |
 
 Write the clean plate to `~/Desktop/Sarah/262/262-rc-no-music.mp4`.
-Optional music sibling: `262-rc-with-music.mp4` via the pipeline music
-section. Before assemble, lock Desktop `262transcript.md` to the spoken body
-in [`262.md`](262.md).
+Optional music sibling via the checked-in helper:
+
+```sh
+node scripts/sarah-avatar/elevenlabs-music-bed.mjs \
+  --rc ~/Desktop/Sarah/262/262-rc-no-music.mp4 \
+  --mix
+# → 262-music-bed.mp3 + 262-rc-with-music.mp4 (plate untouched)
+```
+
+Before assemble, lock Desktop `262transcript.md` to the spoken body in
+[`262.md`](262.md).
 6. **Verify.** The assemble helper fails on Finder/Desktop-like pixels in the
    mid tail at `T2 − 1 s`, `T2 − 0.5 s`, and `T2 − 1 frame`. Also sample
    opening, mid-screenshare (confirm scroll or click motion), and close by
