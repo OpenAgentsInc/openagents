@@ -1,0 +1,73 @@
+{
+  "action": "admit_assurance_revision_when_source_spec_allows_owner_designated_independent_reviewer",
+  "actor_role": "independent_reviewer",
+  "condition_results": [
+    {
+      "condition_ref": "condition.independence",
+      "result": "satisfied",
+      "statement": "Reviewer identity euler_owner_designated_independent_reviewer_2026_07_24 is a fresh clean session distinct from the obligation producer omega_full_auto_assurance_producer_e7f7f894ac; evidence was reproduced independently."
+    },
+    {
+      "condition_ref": "condition.verification",
+      "result": "satisfied",
+      "statement": "Reproduced 4 executable oracle criteria GREEN; every armed local-unit oracle passed and no criterion claims a tier above what reproduces. Smoke-gated, receipt-backed, and designed-only criteria stay unobserved and are not claimed observed."
+    },
+    {
+      "condition_ref": "condition.redaction",
+      "result": "satisfied",
+      "statement": "Receipt carries only public-safe counts, refs, and digests; no raw oracle output, secrets, or private prompts."
+    }
+  ],
+  "evidence_refs": [
+    "specs/omega/full-auto.assurance-spec.md",
+    "specs/omega/full-auto.product-spec.md",
+    "docs/omega/2026-07-24-full-auto-port-audit.md"
+  ],
+  "grant_ref": "grant.independent_assurance",
+  "independence": {
+    "distinct": true,
+    "producer_ref": "omega_full_auto_assurance_producer_e7f7f894ac",
+    "reviewer_ref": "euler_owner_designated_independent_reviewer_2026_07_24",
+    "statement": "Independent reviewer session distinct from the packet producer; the executable evidence was reproduced, not trusted."
+  },
+  "outcome": "succeeded",
+  "profile_id": "openagents.owner-delegated-autonomy",
+  "profile_revision": 6,
+  "program_ref": "program.full_auto_release",
+  "public_safety": {
+    "classification": "reviewed_public_safe",
+    "contains_raw_output": false
+  },
+  "receipt_ref": "authority.decision.1954518244492185756509b3cfec6e3e",
+  "reproduction_summary": {
+    "batches": [
+      {
+        "batch_id": "repo-oracles",
+        "command": "./apps/openagents-desktop/node_modules/.bin/vp test --run --root . packages/omega-effectd/src/engine/full-auto-capacity.test.ts packages/omega-effectd/src/engine/full-auto-routing.test.ts packages/omega-effectd/src/engine/full-auto-run-report.test.ts packages/omega-effectd/src/protocol/server.host-bridge.test.ts",
+        "cwd": ".",
+        "exit_code": 0,
+        "files": 4,
+        "ok": true,
+        "tests_passed": 50
+      }
+    ],
+    "designed_only": 0,
+    "executable_criteria": 4,
+    "executable_failed": 0,
+    "executable_green": 4,
+    "receipt_backed": 0,
+    "smoke_gated": 0,
+    "total_criteria": 8
+  },
+  "schema_id": "openagents.authority_decision_receipt.v1",
+  "scope_notes": [
+    "Design admission only: 8 criteria map to 8 ready obligations. The bounded review tool reproduced all 4 executable criteria GREEN (50 tests across 4 files); 4 criteria remain unclassified and are not claimed observed.",
+    "Signed installed candidate passage, provider-run evidence above the reproduced source tier, owner observation, independent candidate verification, release approval, and public claims remain unadmitted.",
+    "The designated verifier and release roles remain separate; this admission grants no execution, release, public-claim, or promise-transition authority."
+  ],
+  "settled_at": "2026-07-24T18:57:03Z",
+  "started_at": "2026-07-24T18:57:00Z",
+  "target_digest": "sha256:b5b84098e820d0dd146b368f224ef7a10b107bf5b383ea2b6740c6d64b6bfc5f",
+  "target_ref": "specs/omega/full-auto.assurance-spec.md",
+  "trigger_ref": "owner_direction.2026_07_24.omega_assurance_independent_review"
+}

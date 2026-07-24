@@ -4,8 +4,12 @@ assurance_spec_id: "assurance.omega.full.auto.host"
 assurance_revision: 5
 title: "Omega Full Auto Host AssuranceSpec"
 artifact_type: "product_assurance"
-lifecycle_state: "proposed"
+lifecycle_state: "admitted"
 author: "OpenAgents"
+admitted_by: "euler_owner_designated_independent_reviewer_2026_07_24"
+admitted_at: "2026-07-24T18:57:03Z"
+admitted_receipt_ref: "authority.decision.1954518244492185756509b3cfec6e3e"
+admitted_receipt_path: "docs/assurance/receipts/authority.decision.1954518244492185756509b3cfec6e3e.json"
 ---
 
 ## Assurance Objective

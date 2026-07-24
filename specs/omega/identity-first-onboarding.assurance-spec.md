@@ -4,8 +4,12 @@ assurance_spec_id: "assurance.omega.identity.first.onboarding"
 assurance_revision: 2
 title: "Omega Identity-First Onboarding AssuranceSpec"
 artifact_type: "product_assurance"
-lifecycle_state: "proposed"
+lifecycle_state: "admitted"
 author: "OpenAgents"
+admitted_by: "euler_owner_designated_independent_reviewer_2026_07_24"
+admitted_at: "2026-07-24T18:56:52Z"
+admitted_receipt_ref: "authority.decision.2d660f7602ee99ac6c4a7a2fe906ba0f"
+admitted_receipt_path: "docs/assurance/receipts/authority.decision.2d660f7602ee99ac6c4a7a2fe906ba0f.json"
 ---
 
 ## Assurance Objective

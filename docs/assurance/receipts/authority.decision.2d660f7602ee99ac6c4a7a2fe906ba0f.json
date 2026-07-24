@@ -1,0 +1,63 @@
+{
+  "action": "admit_assurance_revision_when_source_spec_allows_owner_designated_independent_reviewer",
+  "actor_role": "independent_reviewer",
+  "condition_results": [
+    {
+      "condition_ref": "condition.independence",
+      "result": "satisfied",
+      "statement": "Reviewer identity euler_owner_designated_independent_reviewer_2026_07_24 is a fresh clean session distinct from the obligation producer omega_identity_assurance_producer_e7f7f894ac; evidence was reproduced independently."
+    },
+    {
+      "condition_ref": "condition.verification",
+      "result": "satisfied",
+      "statement": "Reproduced 0 executable oracle criteria GREEN; every armed local-unit oracle passed and no criterion claims a tier above what reproduces. Smoke-gated, receipt-backed, and designed-only criteria stay unobserved and are not claimed observed."
+    },
+    {
+      "condition_ref": "condition.redaction",
+      "result": "satisfied",
+      "statement": "Receipt carries only public-safe counts, refs, and digests; no raw oracle output, secrets, or private prompts."
+    }
+  ],
+  "evidence_refs": [
+    "specs/omega/identity-first-onboarding.assurance-spec.md",
+    "specs/omega/identity-first-onboarding.product-spec.md",
+    "docs/omega/2026-07-23-identity-first-onboarding-roadmap.md"
+  ],
+  "grant_ref": "grant.independent_assurance",
+  "independence": {
+    "distinct": true,
+    "producer_ref": "omega_identity_assurance_producer_e7f7f894ac",
+    "reviewer_ref": "euler_owner_designated_independent_reviewer_2026_07_24",
+    "statement": "Independent reviewer session distinct from the packet producer; the executable evidence was reproduced, not trusted."
+  },
+  "outcome": "succeeded",
+  "profile_id": "openagents.owner-delegated-autonomy",
+  "profile_revision": 6,
+  "program_ref": "program.full_auto_release",
+  "public_safety": {
+    "classification": "reviewed_public_safe",
+    "contains_raw_output": false
+  },
+  "receipt_ref": "authority.decision.2d660f7602ee99ac6c4a7a2fe906ba0f",
+  "reproduction_summary": {
+    "batches": [],
+    "designed_only": 12,
+    "executable_criteria": 0,
+    "executable_failed": 0,
+    "executable_green": 0,
+    "receipt_backed": 0,
+    "smoke_gated": 0,
+    "total_criteria": 12
+  },
+  "schema_id": "openagents.authority_decision_receipt.v1",
+  "scope_notes": [
+    "Design admission only: 12 criteria map to 6 ready obligations, with no executable, smoke, or receipt-backed criterion claimed observed.",
+    "Installed candidate passage, owner journey observation, independent candidate verification, release approval, and public claims remain unadmitted.",
+    "This admission grants no execution, release, public-claim, or promise-transition authority."
+  ],
+  "settled_at": "2026-07-24T18:56:52Z",
+  "started_at": "2026-07-24T18:56:52Z",
+  "target_digest": "sha256:86a0b414be71df319c1fbf705eae5b7c1cc7d8405caa67478b11ab84baa0f6cd",
+  "target_ref": "specs/omega/identity-first-onboarding.assurance-spec.md",
+  "trigger_ref": "owner_direction.2026_07_24.omega_assurance_independent_review"
+}
