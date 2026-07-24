@@ -25,8 +25,8 @@ Two clean builds produced the same archive digest. The package type check and
 all 198 tests passed. The framed path creates a distinct target-lane Agent
 thread, atomically records the new run execution binding, transfers the full
 continuation grant, and repairs an interrupted second registry write before
-reconciliation. Source evidence is sealed into the report before migration;
-the next target-provider mission includes the owner objective and prior
+reconciliation. Source evidence is sealed into the report before migration.
+The next target-provider mission includes the owner objective and prior
 handoff. The transition receipt names both source and target thread refs.
 RC.1 and RC.2 remain immutable historical inputs, but neither is eligible for
 the final Omega candidate.
