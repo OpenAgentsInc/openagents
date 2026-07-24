@@ -123,6 +123,7 @@
       "reviewedAt": "2026-07-21",
       "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
       "inboundLinks": [
+        "docs/omega/2026-07-23-identity-first-onboarding-roadmap.md",
         "docs/sol/2026-07-10-openagents-desktop-product-architecture.md",
         "docs/sol/2026-07-12-july10-delegation-backroom-preparation-manifest.md",
         "docs/sol/MASTER_ROADMAP.md",
@@ -140,7 +141,7 @@
         "docs/sol/issues/native-authenticated-sync-hosts.md",
         "docs/sol/issues/native-conversation-continuation.md"
       ],
-      "inboundSourceCount": 16,
+      "inboundSourceCount": 17,
       "issueLinks": [
         8547,
         8566,
@@ -2378,9 +2379,10 @@
       "reviewedAt": "2026-07-21",
       "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
       "inboundLinks": [
+        "docs/omega/2026-07-23-identity-first-onboarding-roadmap.md",
         "docs/sol/README.md"
       ],
-      "inboundSourceCount": 1,
+      "inboundSourceCount": 2,
       "issueLinks": []
     },
     {
@@ -2448,6 +2450,7 @@
         "docs/ide/README.md",
         "docs/ide/ROADMAP.md",
         "docs/nostr/2026-07-22-full-auto-cross-app-agent-delegation-over-nostr.md",
+        "docs/omega/2026-07-23-identity-first-onboarding-roadmap.md",
         "docs/omega/README.md",
         "docs/omega/ROADMAP.md",
         "docs/refactor/2026-06-09-bun-effect-monorepo.md",
@@ -2459,7 +2462,7 @@
         "docs/teardowns/README.md",
         "docs/transcripts/263.md"
       ],
-      "inboundSourceCount": 19,
+      "inboundSourceCount": 20,
       "issueLinks": [
         9185,
         9194,
@@ -2585,6 +2588,7 @@
         "docs/grok/README.md",
         "docs/mvp/2026-07-13-openagents-codex-workroom-mvp-audit.md",
         "docs/mvp/README.md",
+        "docs/omega/2026-07-23-identity-first-onboarding-roadmap.md",
         "docs/omega/README.md",
         "docs/omega/ROADMAP.md",
         "docs/qa/README.md",
@@ -2629,7 +2633,7 @@
         "docs/terra/NEXT.md",
         "docs/terra/README.md"
       ],
-      "inboundSourceCount": 55,
+      "inboundSourceCount": 56,
       "issueLinks": [
         8547,
         8566,

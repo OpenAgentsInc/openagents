@@ -33627,8 +33627,26 @@
       }
     },
     {
+      "path": "docs/omega/2026-07-23-identity-first-onboarding-roadmap.md",
+      "sha256": "d3c7e61e2c5a91969db51f55a7e2dad464f815eeecee078c5b43333a176ea9a2",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "mixed",
+        "risk": "high",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "human",
+        "ste_accepted_screening_rules": [
+          "STE-2.4"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/omega/README.md",
-      "sha256": "525fc6733bd12b5fbf52139a1e21e1fecc7d809d3a12d29f45d24449f2419c4c",
+      "sha256": "898787495d230c1cfbbacdea7ea6c6e182e0ce798a7dfb28e3b6603672c46cd4",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -33646,7 +33664,7 @@
     },
     {
       "path": "docs/omega/ROADMAP.md",
-      "sha256": "adc8079e1bdef9768561f0d2754bbc67f1ee30f2298324a8666bec90124f1652",
+      "sha256": "fa373fbc39cd3c2ab78c8f8ef70e6248fae767087a1126cb32699d70389c035d",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
@@ -39975,11 +39993,12 @@
     {
       "path": "docs/sarah/ACTING_AS_SARAH_RUNBOOK.md",
       "sha256": "8b144e129edd93e5dfac9d7f88008f54bb444e67ad0a048866ad69710c68e0da",
-      "reason": "Final review of mutable first-party agent technical text",
+      "reason": "Final review of a converted document",
       "profile": {
-        "ste_status": "inspected",
-        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_mode": "mixed",
+        "risk": "high",
+        "source": null,
+        "replacement": null,
         "ste_audience": "agent",
         "ste_agent_compact_revision": "openagents-agent-compact-v1",
         "ste_accepted_screening_rules": [
@@ -39987,7 +40006,10 @@
           "STE-3.6",
           "STE-5.1",
           "STE-8.2"
-        ]
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {

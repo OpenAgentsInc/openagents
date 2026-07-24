@@ -2,7 +2,7 @@
 
 - Class: owner-accepted work-packet ledger
 - Date: 2026-07-23
-- Revision: 1
+- Revision: 2
 - Status: active initial roadmap
 - Product: Omega, the Zed-based OpenAgents Desktop application
 - Client repository: `OpenAgentsInc/omega`
@@ -18,11 +18,12 @@ Released TypeScript and Effect artifacts supply shared OpenAgents semantics.
 
 The implementation order is:
 
-1. Release a fully branded Omega bootstrap candidate.
-2. Port the current OpenAgents Desktop product.
-3. Add selected Buzz workroom and Nostr capabilities.
-4. Make Omega the primary desktop application.
-5. Retire the Electron application after a safe migration window.
+1. Build the identity-first Omega onboarding journey.
+2. Release a fully branded Omega bootstrap candidate.
+3. Port the current OpenAgents Desktop product.
+4. Add selected Buzz workroom and Nostr capabilities.
+5. Make Omega the primary desktop application.
+6. Retire the Electron application after a safe migration window.
 
 The first target is `v0.2.0-rc1` during the 2026-07-23 owner session.
 The target name is Omega.
@@ -46,6 +47,10 @@ Each release and cutover needs its named evidence.
 
 The current Electron application remains supported.
 It remains the rollback source until the final cutover.
+
+The [identity-first onboarding roadmap](./2026-07-23-identity-first-onboarding-roadmap.md)
+owns the first native product journey.
+It specializes the brand and identity lane in this roadmap.
 
 ## 3. Current source truth
 
@@ -148,7 +153,33 @@ Omega must not read or write Zed user data.
 Omega must not read Electron Desktop secrets.
 The first release must not migrate existing state.
 
-### 6.3 Packet OMEGA-RC1-01: freeze source and legal inputs
+### 6.3 Identity-first implementation slice
+
+The first native product slice is Omega identity onboarding.
+Use the
+[identity-first onboarding roadmap](./2026-07-23-identity-first-onboarding-roadmap.md)
+for its contract, architecture, issue order, and proof gates.
+
+This slice builds new native GPUI interfaces.
+It does not extend the inherited Zed onboarding screen.
+The inherited screen becomes Editor Onboarding.
+
+Start the rebrand at application identity and the new first-run surface.
+Do not use a repository-wide string replacement as the implementation method.
+The RC scan remains the release falsifier for exposed Zed product text.
+
+Do not write a real person key before these gates pass:
+
+- Omega data and credential isolation
+- ProductSpec identity-profile admission
+- AssuranceSpec proof design
+- a released and digested shared identity contract
+- secure-only custody
+
+The suggested issue order is OMEGA-OID-00 through OMEGA-OID-09.
+OMEGA-OID-09 joins the RC installed-journey gate.
+
+### 6.4 Packet OMEGA-RC1-01: freeze source and legal inputs
 
 Inputs:
 
@@ -173,9 +204,12 @@ Exit:
 - The package contains the correct legal material.
 - No Zed commercial terms appear as Omega terms.
 
-### 6.4 Packet OMEGA-RC1-02: replace public branding
+### 6.5 Packet OMEGA-RC1-02: replace public branding
 
 Replace all user-visible Zed branding.
+Build new Omega surfaces in vertical slices.
+Do not use an automatic global text replacement.
+Use the final scan to find release blockers.
 The scan must cover:
 
 - application and executable names
@@ -199,7 +233,7 @@ Exit:
 - Omega does not collide with a Zed installation.
 - The release record lists each retained technical identifier.
 
-### 6.5 Packet OMEGA-RC1-03: isolate services and data
+### 6.6 Packet OMEGA-RC1-03: isolate services and data
 
 Disable inherited Zed production endpoints by default.
 This work includes:
@@ -232,7 +266,7 @@ Exit:
 - A filesystem audit finds no Zed data mutation.
 - A normal Zed installation still works after the Omega test.
 
-### 6.6 Packet OMEGA-RC1-04: create an owned build path
+### 6.7 Packet OMEGA-RC1-04: create an owned build path
 
 Do not use the inherited Zed release workflow.
 Create an Omega-owned local release command.
@@ -261,7 +295,7 @@ Exit:
 - The command fails on a dirty source tree.
 - The command fails when required identity data is absent.
 
-### 6.7 Packet OMEGA-RC1-05: package and sign
+### 6.8 Packet OMEGA-RC1-05: package and sign
 
 Use the OpenAgents Developer ID convention.
 Sign the application and all nested native code.
@@ -286,7 +320,7 @@ Exit:
 - Notarization and staple checks pass.
 - The Team ID is `HQWSG26L43`.
 
-### 6.8 Packet OMEGA-RC1-06: verify the installed journey
+### 6.9 Packet OMEGA-RC1-06: verify the installed journey
 
 Test from a clean user profile.
 Keep any installed Zed application in place.
@@ -308,6 +342,10 @@ The journey is:
 
 Also test:
 
+- identity setup before Editor Onboarding
+- identity continuity after restart
+- locked, lost, and unavailable custody
+- no secret in logs, telemetry, or crash output
 - first start without network access
 - disabled service states
 - invalid or absent update metadata
@@ -325,7 +363,7 @@ Exit:
 - An independent reviewer accepts the receipt.
 - No release-blocking defect remains open.
 
-### 6.9 Packet OMEGA-RC1-07: publish the prerelease
+### 6.10 Packet OMEGA-RC1-07: publish the prerelease
 
 Publish only after OMEGA-RC1-01 through OMEGA-RC1-06 pass.
 Use tag `v0.2.0-rc1`.
@@ -940,25 +978,20 @@ Do not parallelize two changes to one authority contract.
 
 The queue starts now:
 
-1. OMEGA-RC1-01: freeze source and legal inputs.
-2. OMEGA-RC1-02: replace public branding.
-3. OMEGA-RC1-03: isolate services and data.
-4. OMEGA-RC1-04: create the owned build path.
-5. OMEGA-RC1-05: package and sign.
-6. OMEGA-RC1-06: verify the installed journey.
-7. OMEGA-RC1-07: publish the prerelease.
-8. OMEGA-OA-01: add the shared runtime seam.
-9. OMEGA-OA-02: add one agent front door.
-10. OMEGA-OA-03: port conversations and controls.
-11. OMEGA-OA-04: bind identity, Sync, and mobile.
-12. OMEGA-OA-05: port Full Auto.
-13. OMEGA-OA-06: complete the native agent-to-code loop.
-14. OMEGA-OA-07: complete settings and agent support.
-15. OMEGA-OA-08: add portable execution.
-16. OMEGA-OA-09: add secondary capabilities.
-17. OMEGA-OA-10: close Desktop parity.
-18. OMEGA-BZ-00 through OMEGA-BZ-09: add selected Buzz outcomes.
-19. Complete migration, release, cutover, and retirement.
+1. OMEGA-OID-00: freeze the identity-first contract.
+2. OMEGA-OID-01: isolate Omega application identity and data.
+3. OMEGA-OID-02: publish the shared identity contract.
+4. OMEGA-OID-03: build the fixture-backed GPUI shell.
+5. OMEGA-OID-04: add isolated signing and secure custody.
+6. OMEGA-OID-05: add recovery and explicit creation.
+7. OMEGA-OID-06: connect live identity state to GPUI.
+8. OMEGA-OID-07: route every first launch through identity setup.
+9. OMEGA-OID-08: preserve inherited setup as Editor Onboarding.
+10. OMEGA-OID-09: prove the packaged identity-first journey.
+11. OMEGA-RC1-01 through OMEGA-RC1-07: complete the bootstrap release.
+12. OMEGA-OA-01 through OMEGA-OA-10: close Desktop parity.
+13. OMEGA-BZ-00 through OMEGA-BZ-09: add selected Buzz outcomes.
+14. Complete migration, release, cutover, and retirement.
 
 Only the current ready packet can mutate its owned paths.
 A failed packet stays open with typed evidence.

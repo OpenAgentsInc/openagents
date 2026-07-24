@@ -1,6 +1,17 @@
 {
   "schema": "openagents-ste-profile-overrides-v1",
   "profiles": {
+    "docs/omega/2026-07-23-identity-first-onboarding-roadmap.md": {
+      "ste_mode": "mixed",
+      "ste_status": "checked",
+      "ste_reviewer": "codex/omega-identity-onboarding-20260723",
+      "ste_reviewed_at": "2026-07-24T04:54:38Z",
+      "risk": "high",
+      "source": null,
+      "replacement": null,
+      "ste_audience": "human",
+      "ste_accepted_screening_rules": ["STE-2.4"]
+    },
     "docs/omega/README.md": {
       "ste_mode": "descriptive",
       "ste_status": "checked",
