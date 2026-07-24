@@ -310,7 +310,7 @@ export const createOmegaEffectdFramedServer = (
     return evidence;
   };
 
-  const refreshLane = async (lane: string, threadRef?: string): Promise<boolean> => {
+  const probeLane = async (lane: string, threadRef?: string): Promise<boolean> => {
     const result = objectResult(
       await hostRequest("lane_readiness", {
         lane,
@@ -322,8 +322,35 @@ export const createOmegaEffectdFramedServer = (
       result.admitted === true &&
       result.fullAuto === true &&
       result.state === "available";
+    return ready;
+  };
+
+  const refreshLane = async (lane: string, threadRef?: string): Promise<boolean> => {
+    const expectedGeneration = generation;
+    const ready = await probeLane(lane, threadRef);
+    if (generation !== expectedGeneration) {
+      throw new OmegaEffectdHostBridgeError(
+        "stale_generation",
+        "The supervisor generation changed before lane readiness was recorded.",
+      );
+    }
     laneReadiness.set(lane, ready);
     return ready;
+  };
+
+  const refreshCapacityReadiness = async (expectedGeneration: number): Promise<void> => {
+    const readiness = await Promise.all(
+      Object.keys(FULL_AUTO_LANE_POLICIES)
+        .sort()
+        .map(async (lane) => [lane, await probeLane(lane)] as const),
+    );
+    if (generation !== expectedGeneration) {
+      throw new OmegaEffectdHostBridgeError(
+        "stale_generation",
+        "The supervisor generation changed before capacity readiness was recorded.",
+      );
+    }
+    for (const [lane, ready] of readiness) laneReadiness.set(lane, ready);
   };
 
   const flushNotes = async (): Promise<void> => {
@@ -901,6 +928,7 @@ export const createOmegaEffectdFramedServer = (
         return respond(request.id, true, { run: detail });
       }
       case "get_capacity": {
+        await refreshCapacityReadiness(request.generation);
         return respond(request.id, true, projectCapacity());
       }
       case "decide_attention": {

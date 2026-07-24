@@ -39,6 +39,97 @@ const startParams = {
 };
 
 describe("omega-effectd host bridge", () => {
+  test("refreshes every host lane before it projects capacity", async () => {
+    await withRoot(async (root) => {
+      const probedLanes: string[] = [];
+      const baseHost = makeOmegaEffectdTestHost();
+      const service = createOmegaEffectdService({ paths: { dataRoot: root } });
+      const server = createOmegaEffectdFramedServer(
+        service,
+        { dataRoot: root },
+        {
+          hostRequestHandler: async (frame) => {
+            if (frame.method !== "lane_readiness") return baseHost(frame);
+            const lane = (frame.params as { lane: string }).lane;
+            probedLanes.push(lane);
+            return {
+              known: true,
+              admitted: true,
+              fullAuto: true,
+              state: lane === "codex-local" ? "available" : "unavailable",
+            };
+          },
+        },
+      );
+      await server.handleLine(request("init", 0, "initialize", { generation: 1 }));
+
+      const capacity = await server.handleLine(request("capacity", 1, "get_capacity"));
+
+      expect(capacity?.ok).toBe(true);
+      expect(probedLanes.sort()).toEqual([
+        "acp:cursor-agent",
+        "acp:grok-cli",
+        "claude-local",
+        "codex-local",
+        "harness:goose",
+        "harness:opencode",
+        "harness:pi",
+      ]);
+      const lanes = (capacity?.result as { lanes: Array<{ lane: string; state: string }> }).lanes;
+      expect(lanes.find((lane) => lane.lane === "codex-local")?.state).toBe("available");
+      expect(lanes.find((lane) => lane.lane === "claude-local")?.state).toBe("unavailable");
+    });
+  });
+
+  test("rejects a capacity refresh from an old supervisor generation", async () => {
+    await withRoot(async (root) => {
+      const emitted: OmegaEffectdHostRequest[] = [];
+      const service = createOmegaEffectdService({ paths: { dataRoot: root } });
+      const server = createOmegaEffectdFramedServer(
+        service,
+        { dataRoot: root },
+        {
+          emitHostRequest: (frame) => {
+            emitted.push(frame);
+          },
+        },
+      );
+      await server.handleLine(request("init-1", 0, "initialize", { generation: 1 }));
+      const oldCapacity = server.handleLine(request("capacity-1", 1, "get_capacity"));
+      await Promise.resolve();
+      expect(emitted.filter((frame) => frame.generation === 1)).toHaveLength(7);
+
+      const initialized = await server.handleLine(
+        request("init-2", 1, "initialize", { generation: 2 }),
+      );
+      expect(initialized?.ok).toBe(true);
+      const stale = await oldCapacity;
+      expect(stale?.ok).toBe(false);
+      expect(stale?.error?.code).toBe("stale_generation");
+
+      const currentCapacity = server.handleLine(request("capacity-2", 2, "get_capacity"));
+      await Promise.resolve();
+      const currentRequests = emitted.filter((frame) => frame.generation === 2);
+      expect(currentRequests).toHaveLength(7);
+      for (const frame of currentRequests) {
+        await server.handleLine(
+          JSON.stringify({
+            schema: OMEGA_EFFECTD_PROTOCOL_SCHEMA,
+            kind: "host_response",
+            id: frame.id,
+            generation: frame.generation,
+            ok: true,
+            result: { known: true, admitted: true, fullAuto: true, state: "available" },
+          }),
+        );
+      }
+      const current = await currentCapacity;
+      expect(current?.ok).toBe(true);
+      const lanes = (current?.result as { lanes: Array<{ state: string }> }).lanes;
+      expect(lanes.every((lane) => lane.state === "available")).toBe(true);
+    });
+  });
+
   test("dispatches the exact leased continuation once", async () => {
     await withRoot(async (root) => {
       const dispatched: OmegaEffectdHostRequest[] = [];
