@@ -7695,6 +7695,8 @@ const runManagedCloudRuntimeTurnDispatchForEnv = async (
           now,
           orderId: null,
           requestedAction: harnessSelection.requestedAction,
+          requiredProviderAccountRef:
+            turn.requiredProviderAccountRef ?? null,
           requiredProvider: harnessSelection.provider,
           runId: turn.threadId,
           selectedByActor: 'sarah_managed_cloud_dispatch',

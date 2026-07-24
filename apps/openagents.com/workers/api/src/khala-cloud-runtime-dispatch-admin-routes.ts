@@ -111,6 +111,7 @@ const parseAdmittedBody = (raw: unknown): ParsedBody => {
   const branch = asString(body['branch'])
   const objective = asString(body['objective'])
   const repoBindingRef = asString(body['repoBindingRef'])
+  const requiredProviderAccountRef = asString(body['requiredProviderAccountRef'])
   const runtimeLane = asString(body['runtimeLane'])
 
   // MM-C5 (#8477) optional writeback block. Present => the microVM pushes a
@@ -149,6 +150,9 @@ const parseAdmittedBody = (raw: unknown): ParsedBody => {
       ...(branch === undefined ? {} : { branch }),
       ...(objective === undefined ? {} : { objective }),
       ...(repoBindingRef === undefined ? {} : { repoBindingRef }),
+      ...(requiredProviderAccountRef === undefined
+        ? {}
+        : { requiredProviderAccountRef }),
       ...(runtimeLane === undefined
         ? {}
         : { runtimeLane: runtimeLane as CloudGcpAdmittedWorkContext['runtimeLane'] }),

@@ -159,7 +159,7 @@ describe('handleCloudGcpRuntimeDispatchAdminRoute', () => {
     expect(json.reason).toBe('cloud_placement_effect_failed')
   })
 
-  test('passes optional fields (branch, objective, runtimeLane) through', async () => {
+  test('passes optional fields and an exact provider account through', async () => {
     const { deps, runCalls } = makeDeps()
     await handleCloudGcpRuntimeDispatchAdminRoute(
       post({
@@ -167,6 +167,7 @@ describe('handleCloudGcpRuntimeDispatchAdminRoute', () => {
         branch: 'feature/x',
         eventCount: 3,
         objective: 'implement #1234',
+        requiredProviderAccountRef: 'provider-account.codex.owner-1',
         runtimeLane: 'hosted_khala',
       }),
       env,
@@ -176,6 +177,7 @@ describe('handleCloudGcpRuntimeDispatchAdminRoute', () => {
       branch: 'feature/x',
       eventCount: 3,
       objective: 'implement #1234',
+      requiredProviderAccountRef: 'provider-account.codex.owner-1',
       runtimeLane: 'hosted_khala',
     })
   })

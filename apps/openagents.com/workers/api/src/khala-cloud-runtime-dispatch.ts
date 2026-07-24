@@ -243,6 +243,8 @@ export type CloudGcpAdmittedWorkContext = Readonly<{
     | undefined
   /** Atomic owner-scoped provider selection lease. It contains no credential. */
   providerAccountLeaseRef?: string | undefined
+  /** Admin-admitted exact provider account. Selection still validates owner and provider. */
+  requiredProviderAccountRef?: string | undefined
   /** Exact guest harness. Omitted preserves the existing Codex default. */
   harnessId?: AgentComputerHarnessId | undefined
   /** Ref-only Gemini grant. Provider bytes remain in server custody. */
