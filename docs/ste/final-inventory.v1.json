@@ -42613,6 +42613,24 @@
       }
     },
     {
+      "path": "docs/sol/2026-07-24-cw-lane-interruption-recovery.md",
+      "sha256": "255bdbb7830324835f3955447d5bd91688cd5267a73d50cd97859ac6e44f9121",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "high",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "human",
+        "ste_accepted_screening_rules": [
+          "STE-2.4"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/sol/CHALLENGE_LEDGER.md",
       "sha256": "934f0b5703cd082834ebdc1b07bea1f3aad178261433d4192eede0a2b5d478ba",
       "reason": "Final review of a converted document",
