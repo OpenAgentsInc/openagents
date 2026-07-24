@@ -1,548 +1,1465 @@
-# Khala Code UX Behavior Contract
+# OpenAgents Desktop UX Behavior Contract
 
-This is the durable home for stated UX expectations for Khala Code — the
-answer to "where is correct behavior defined and how is it tested against?"
+This file keeps its legacy Khala Code path so that existing references continue
+to work. The current product name is OpenAgents Desktop.
 
 The machine source of truth is the typed registry at
-`clients/khala-code-desktop/src/contracts/ux-contracts.ts`
-(schema: `packages/behavior-contracts`, `@openagentsinc/behavior-contracts`).
-This document is the human rendering. The test
-`clients/khala-code-desktop/tests/ux-contracts.test.ts` fails the normal test
-sweep if this doc, the registry, or the oracle tests drift apart.
+`apps/openagents-desktop/src/contracts/ux-contracts.ts`. The exported registry
+is `openAgentsDesktopUxContractRegistry`. It uses the schema in
+`packages/behavior-contracts` (`@openagentsinc/behavior-contracts`).
+
+This document is a generated human-readable view of that machine registry.
+The machine registry is authoritative if this view is stale.
 
 ## Rules
 
-- When the owner (or later, a customer) states a UX expectation in any
-  session, the receiving agent must land it in the registry in the same
-  change: statement verbatim, source recorded, oracle test written or the
-  entry marked `pending` with a blocker ref. Telling a session is recording
-  it — that is the point of this file.
-- `enforced` requires: at least one oracle, an automated enforcement tier
-  (`test-sweep` or `nightly`), and zero blocker refs — the same mechanical
-  green-gate discipline as the product-promise registry
-  (`docs/promises/registry.md`).
-- Oracles must assert on real behavior (mounted DOM, RPC results, harness
-  scenarios). Source-string assertions are acceptable only as an explicitly
-  labeled stopgap and should carry a follow-up.
+- When the owner or a customer states a UX expectation, add it to the machine
+  registry in the same change. Record the statement, the source, and an oracle.
+  If an oracle is not available, set the state to `pending` and add a blocker
+  reference.
+- An `enforced` contract must have at least one oracle, an automated
+  enforcement tier (`test-sweep` or `nightly`), and no blocker references.
+- Oracles must test real behavior. A source-text assertion is permitted only as
+  an identified temporary control with a follow-up.
 - Bump `version` (`YYYY-MM-DD.N`) on every registry change and regenerate the
   registry section below with
-  `renderBehaviorContractMarkdown(khalaCodeUxContractRegistry)`.
-- Contract deviations found in the wild are strict bugs: file them with the
-  contract id in the title.
+  `renderBehaviorContractMarkdown(openAgentsDesktopUxContractRegistry)`.
+- A contract deviation is a strict bug. Put the contract ID in the issue title.
 
-## How this runs in the normal sweep
+## Verification
 
-- `bun test tests/*.test.ts` in `clients/khala-code-desktop` includes the
-  oracle + coverage + doc-sync tests, so they run in the package `verify`
-  chain and the repo-root `test:khala-code-desktop` sweep before pushes to
-  `main`.
-- The registry validation mirrors promise-transition checks
-  (`validateBehaviorContractRegistry`), and the coverage check
-  (`checkBehaviorContractCoverage`) proves every enforced `bun-test` oracle
-  file exists and references its contract id, and every enforced `qa-scenario`
-  oracle resolves against the Khala QA seed corpus.
-- QA-harness integration: contracts may also carry `qa-scenario` oracles
-  referencing `packages/khala-qa-harness` seed-corpus scenario ids. Those run
-  under the harness runner rather than this package's test glob.
-- Nightly: the owned-runner matrix (`bun run qa:nightly`,
-  `docs/qa/khala-code-nightly-matrix.md`) runs these oracles via its desktop
-  `verify` step and the registry machinery via its `behavior-contracts`
-  step, and the QA Swarm customer-one weekly report
-  (`docs/qa/qa-swarm-khala-code-standing-engagement.md`) carries per-contract
-  status.
+Run `pnpm --dir apps/openagents-desktop run verify`. This command runs the
+TypeScript check, the Vite Plus test sweep, the build, and the package smoke
+tests. Each contract names its applicable oracle and verification evidence.
+
+The current package does not have one test that compares this document with the
+machine registry. Regenerate this view after each registry change. Do not use
+this document as machine evidence of registry coverage.
 
 ## Registry
 
-Registry version: `2026-07-05.3` (schema `openagents.behavior_contracts.v1`)
+Registry version: `2026-07-22.3` (schema `openagents.behavior_contracts.v1`)
 
-### `khala_code.chat.sidebar_spinner_streaming_only.v1` — ENFORCED
+### `openagents_desktop.chat.structured_payload_card.v1` — ENFORCED
 
-- **Surface:** khala-code-desktop (chat thread sidebar)
-- **Stated by:** owner via khala-code-session on 2026-07-03
-- **Statement:** The spinner on a chat row in the thread sidebar means an assistant response is streaming in that chat, and nothing else. Clicking a chat must not show that spinner while its messages load. Message-loading indication belongs in the chat transcript itself.
+- **Surface:** openagents-desktop (conversation timeline structured-payload rendering)
+- **Stated by:** owner via issue on 2026-07-22
+- **Statement:** A conversation message whose content is (or contains) a JSON payload must not render as a raw inline JSON blob. If the content is JSON, render it as a clean, collapsible structured card, and render the Full Auto mission packet as a mission card — objective and done condition readable at a glance — not raw JSON.
 - **Enforcement tier:** test-sweep
-- **Oracle** `sidebar_spinner.dom` (bun-test, dom): Mounts the real thread sidebar in a DOM: selecting a thread while the resume RPC is in flight renders no spinner anywhere in the list, while a genuinely streaming thread renders the spinner in its time slot. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
-- **Oracle** `transcript_loading.dom` (bun-test, dom): Mounts the transcript-level status renderer in a DOM: cache-miss thread switches render a polite 'Loading messages' transcript bubble instead of a sidebar spinner, and assistant thinking uses the same status-bubble structure. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
-- **Oracle** `thread_select_fixture_rpc.scenario` (qa-scenario, rpc): Runs the seed-corpus fixture RPC-driver scenario that lists threads, selects the fixture thread, and reads it back without using the row streaming spinner as load state. — `scenario.khala_code.seed.rpc_thread_select_fixture_driver.v1`
-- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop. Runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
-- **Authority boundary:** This contract binds indicator semantics only. Thread-switch latency budgets stay owned by docs/qa/khala-code-latency-budgets.md, and it makes no claim about streaming correctness itself.
+- **Oracle** `structured_payload_card.detection_and_mission_schema_sync` (bun-test, unit): Proves whole-body JSON and the embedded Full Auto mission packet (from the real produced prompt) are detected, ordinary prose with braces is not, and the renderer discriminator stays in sync with the producer's FULL_AUTO_MISSION_SCHEMA. — `apps/openagents-desktop/src/renderer/structured-payload.test.ts`
+- **Oracle** `structured_payload_card.mission_and_json_card_rendering` (bun-test, unit): Proves the mission packet renders as a mission card with the verbatim objective/done condition, lane, and turn budget (no 'Show full message' raw dump), generic JSON renders as a key/value tree card, copy-raw is preserved, TimelineItem routes a mission-packet user message to the card instead of a raw bubble, and ordinary messages are unaffected. — `apps/openagents-desktop/src/renderer/react-structured-payload.test.tsx`
+- **Verification:** Desktop structured-payload detection and react-structured-payload render suites plus the react-timeline suite and Desktop typecheck in the normal sweep. No release command is part of the oracle.
+- **Authority boundary:** Renderer-only presentation. Detection reads the already-produced message body; it never changes how the Full Auto mission packet is produced or dispatched (full-auto-mission.ts remains the producer authority). The card shows the same content faithfully — the objective and done condition stay fully readable when expanded and the raw JSON stays available via copy-raw — so nothing is hidden or altered. The renderer keeps its own copy of the mission schema discriminator and never imports the main-process producer into the renderer bundle; an oracle asserts the two literals stay in sync.
 
-### `khala_code.chat.sidebar_active_thread_background_only.v1` — RETIRED
+### `openagents_desktop.chat.history_recall_cited_tool_row.v1` — ENFORCED
 
-- **Surface:** khala-code-desktop (chat thread sidebar)
-- **Stated by:** owner via khala-code-session on 2026-07-03
-- **Statement:** Current chat is just supposed to be highlighted as a background bar.
+- **Surface:** openagents-desktop (history recall host tool transcript projection)
+- **Stated by:** owner via issue on 2026-07-21
+- **Statement:** Every lane turn can ask the past a question instead of relying on the bounded window. history_recall is a visible host-tool row with cited cursor spans and an honest partial/complete label — never silent compaction and never authority.
 - **Enforcement tier:** test-sweep
-- **Verification:** Superseded by khala_code.chat.sidebar_active_thread_background_only.v2.
-- **Authority boundary:** Retired 2026-07-03 (owner restatement): the highlight existed as a hook but the tone had drifted to a near-invisible surface mix. Superseded by khala_code.chat.sidebar_active_thread_background_only.v2, which additionally pins noticeability. Kept for history.
+- **Oracle** `history_recall.host_tool_round_trip_and_neutral_stream` (bun-test, unit): Proves history_recall resolves through the Toolkit dispatcher, returns cited spans with honesty, and re-enters the neutral stream as tool.call/tool.result without embedding the payload. — `packages/history-corpus/src/host-tool.test.ts`
+- **Oracle** `history_recall.desktop_dispatch_and_cited_span_row` (bun-test, unit): Proves the desktop main-process dispatcher round-trips against local stores, appends neutral events, and projects a renderer card with cited spans. — `apps/openagents-desktop/src/history-recall-host.test.ts`
+- **Verification:** history-corpus host-tool suite, desktop history-recall-host suite, agent-harness-contract registration tests, and Desktop typecheck. No release command is part of the oracle.
+- **Authority boundary:** The history_recall host tool resolves against owner-local HistoryCorpus and HistoryRecall Tier D only. Its answer is an untrusted cited candidate with required honesty (scanned counts, caps hit) and exact modelCalls: 0 for Tier D. Neutral stream re-entry is tool.call/tool.result with resultRef only — raw history and full excerpts never leave owner-local execution, and the answer never becomes a RouteDecision, workroom verification, promise transition, payment action, or public claim. Renderer cited-span rows re-present the already-redacted main-process projection.
 
-### `khala_code.chat.sidebar_active_thread_background_only.v2` — ENFORCED
+### `openagents_desktop.chat.history_recall_semantic_tier_admission.v1` — ENFORCED
 
-- **Surface:** khala-code-desktop (chat thread sidebar)
-- **Stated by:** owner via khala-code-session on 2026-07-03
-- **Statement:** The active chat in the sidebar must have a noticeable background color — not very bright, but clearly visible — so it is always obvious which chat is the active one. It renders as a background bar only, with no 'Current chat' heading or copy, and it must not fade into the sidebar background or disappear.
+- **Surface:** openagents-desktop (history recall Tier S semantic escalation and honesty)
+- **Stated by:** owner via issue on 2026-07-21
+- **Statement:** Tier D by default; Tier S only after explicit user/application admission or an approved product interaction. Render completed, partial, refused, and typed failure states distinctly; navigate only validated citations. Label recall output cited/candidate, never verified.
 - **Enforcement tier:** test-sweep
-- **Oracle** `active_thread_background_only.dom` (bun-test, dom): Mounts the real thread sidebar in a DOM: an optimistic current chat renders as the active row with the active background hooks and no visible 'Current chat' heading or copy. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
-- **Oracle** `active_row_distinct_tone.source` (bun-test, unit): Pins the active-row background to a distinct energy-blue tone: the [data-active="true"] rule must use the khala-energy-blue accent (not the surface mix shared with hover/selecting rows), so the highlight cannot silently fade back into the sidebar background. Rendered appearance is additionally covered by the visual smoke tier. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
-- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop. Runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
-- **Authority boundary:** The exact tone may be tuned with owner sign-off, but the active row must stay visibly distinct from the hover, selecting, and plain-row tones. Reverting it to the sidebar's base surface mix (the drift that made it invisible) is a contract violation, not a style tweak. Persisted project, Codex, Claude, and session-catalog group labels remain owned by their source catalogs.
+- **Oracle** `history_recall.semantic_tier_policy_and_admission` (bun-test, unit): Proves Tier D is the default, semantic needs host admission plus explicit escalation, model tool arguments cannot self-authorize Tier S, and budgets clamp downward with depth at most one. — `apps/openagents-desktop/src/history-recall-semantic.test.ts`
+- **Oracle** `history_recall.semantic_citations_usage_and_honesty` (bun-test, unit): Proves planted decisions at 100/400/1000 turns resolve with citations against the exact corpus digest, exact idempotent usage rows feed the session ledger, uncited answers cannot render completed, and the redaction policy holds through the semantic path. — `apps/openagents-desktop/src/history-recall-semantic.test.ts`
+- **Verification:** Desktop history-recall-semantic suite plus Desktop typecheck. Hermetic scripted model plans only — no live spend is part of the oracle.
+- **Authority boundary:** Tier S runs the first-class @openagentsinc/rlm engine over the same authorized owner-local corpus as Tier D, under host-owned admission — tool-call arguments are never consulted for tier selection, so a model cannot self-authorize semantic recall. Budgets clamp downward to finite desktop ceilings (depth at most one, no artifact sink), requireExactUsage is forced on, and a model call without exact provider usage fails typed as usage_required_but_unavailable — usage is unavailable, never zero. Every completed model call is recorded idempotently as rlm:<runRef>:<callRef> and projects into the session usage ledger. Citations are engine-validated against the exact corpus digest; anything invalid, dangling, or foreign is not navigable. The answer remains an untrusted cited candidate — never verification, release, routing, payment, or public-claim authority.
 
-### `khala_code.chat.recent_thread_cmd_hotkeys.v1` — RETIRED
+### `openagents_desktop.full_auto.rlm_recall_run_scope_and_authority.v1` — ENFORCED
 
-- **Surface:** khala-code-desktop (chat thread switching)
-- **Stated by:** owner via khala-code-session on 2026-07-03
-- **Statement:** Holding Cmd shows an overlay listing the nine most recent chats numbered 1 through 9, and pressing Cmd+1 through Cmd+9 jumps to that chat. Releasing Cmd hides the overlay.
+- **Surface:** openagents-desktop (Full Auto long-run RLM recall consumer and run-scope isolation)
+- **Stated by:** owner via issue on 2026-07-21
+- **Statement:** A long Full Auto run may consult its own authorized full event history while framing the next continuation. The recall is a bounded cited candidate, never verified. Deterministic recall runs first for structural questions; admitted semantic recall runs only through the same host-owned policy as the Tier S seam and within a finite per-run recall budget. Refused, partial, unavailable, interrupted, and failed recall all continue per existing run policy.
 - **Enforcement tier:** test-sweep
-- **Verification:** Superseded by khala_code.chat.recent_thread_cmd_hotkeys.v2.
-- **Authority boundary:** Retired 2026-07-03 (owner correction): the overlay reading of the original ask was wrong — no separate pane should appear. Superseded by khala_code.chat.recent_thread_cmd_hotkeys.v2. Kept for history.
+- **Oracle** `full_auto.rlm_recall_run_scope_isolation` (bun-test, unit): Proves recall scope resolves only the registry-bound thread, a foreign owner thread is refused fail-closed, and a run cannot recall or cite an unrelated thread's secret even through an admitted semantic run. — `apps/openagents-desktop/src/full-auto-recall.test.ts`
+- **Oracle** `full_auto.rlm_recall_cited_candidate_budget_and_failure` (bun-test, unit): Proves the framed continuation references only bounded validated citations, the finite per-run budget refuses further recall, deterministic-only, admitted-semantic, refusal, partial, missing-usage, provider-failure, and interruption cases preserve run progress, and recall usage and result refs replay idempotently. — `apps/openagents-desktop/src/full-auto-recall.test.ts`
+- **Verification:** Desktop full-auto-recall suite plus Desktop typecheck. Hermetic scripted model plans only — no live spend is part of the oracle.
+- **Authority boundary:** Current-run scope resolves through DesktopHistoryCorpusSource using authoritative run-registry thread membership only, so a run can never read an unrelated thread or owner; model-supplied thread ids cannot widen scope, and a foreign thread is refused fail-closed. Only bounded validated citations enter continuation context — never raw corpus slices and never the recursive transcript. Recall result refs and exact per-call usage record in the per-run recall ledger and replay idempotently without double-count or double budget spend. Full Auto leases, generation fencing, run and concurrency caps, provider and account custody, journal, receipts, stop and reconcile behavior, teardown, acceptance, and verification authority stay outside RLM. RLM failure cannot stall teardown, leak a lease, or make a run falsely successful. The recall answer is never a run verdict, release, routing, payment, or public-claim authority.
 
-### `khala_code.chat.recent_thread_cmd_hotkeys.v2` — ENFORCED
+### `openagents_desktop.chat.no_noop_spec_revalidation_error_rows.v1` — ENFORCED
 
-- **Surface:** khala-code-desktop (chat thread switching)
-- **Stated by:** owner via khala-code-session on 2026-07-03
-- **Statement:** Holding Cmd does not open a separate pane. It temporarily replaces the timestamps of the nine most recent chats in the sidebar with their command-digit hotkeys (⌘1 through ⌘9). Pressing Cmd+1 through Cmd+9 jumps to that chat, and releasing Cmd restores the timestamps.
+- **Surface:** openagents-desktop (post-turn spec revalidation transcript projection)
+- **Stated by:** owner via owner-screenshot-review on 2026-07-17
+- **Statement:** works but whawt the fuck is that error
 - **Enforcement tier:** test-sweep
-- **Oracle** `cmd_digit_gating.unit` (bun-test, unit): Cmd+1..Cmd+9 map to the first through ninth most recent threads. Unmodified digits and digits with other modifiers map to nothing. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
-- **Oracle** `sidebar_hotkey_hints.dom` (bun-test, dom): Mounts the real thread sidebar and hotkey-hint listener in a DOM: enabling hotkey hints replaces the time slot of the nine most recent chats with their command-digit hints in place (no separate pane appears anywhere in the document), and Meta release or window blur restores the timestamps. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
-- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop. Runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
-- **Authority boundary:** Cmd+0 additionally maps to the tenth most recent chat and Cmd+ArrowUp/ArrowDown cycle through recency. Those are compatible extensions, not part of this contract. The generalized overlay-menu component remains available for future dialog menus but is not mounted for this feature.
+- **Oracle** `spec_revalidation.identical_snapshot_emits_no_note` (bun-test, unit): Proves identical before/after authority snapshots emit no conversation receipt for either local provider lane. — `apps/openagents-desktop/src/spec-lane-workflow.test.ts`
+- **Oracle** `spec_revalidation.historical_noop_receipts_are_not_rendered` (bun-test, unit): Proves a historical product-owned no-op receipt is omitted while changed receipts and assistant-authored quoted text remain visible. — `apps/openagents-desktop/src/renderer/tool-cards.test.ts`
+- **Oracle** `spec_revalidation.changed_receipt_is_not_a_turn_error` (bun-test, unit): Proves a genuinely changed spec receipt remains an informational system record even when bounded diagnostics mention multiple errors. — `apps/openagents-desktop/src/renderer/react-timeline.test.tsx`
+- **Verification:** Spec-lane, transcript projection, React timeline, behavior-contract, Desktop typecheck/build, repository checks, and local oa-dev visual verification. No release command is part of the oracle.
+- **Authority boundary:** The main-owned ProductSpec/AssuranceSpec revalidation remains fail-closed and re-reads the same bounded authority after a provider turn. An identical before/after snapshot is a private no-op receipt, not a conversation event, and is never persisted. Historical product-owned no-op receipts are omitted from transcript projection. A genuinely changed spec snapshot may still produce the existing bounded owner-visible receipt, but it is an informational system record rather than a provider or turn failure even when its structural diagnostics contain the word errors. This presentation rule does not confirm an obligation, repair an invalid spec, weaken validation, or grant release authority.
 
-### `khala_code.chat.codex_stored_session_records_not_resumed.v1` — ENFORCED
+### `openagents_desktop.chat.installed_codex_model_catalog_without_protocol_warning_noise.v1` — ENFORCED
 
-- **Surface:** khala-code-desktop (chat thread sidebar)
-- **Stated by:** owner via khala-code-session on 2026-07-03
-- **Statement:** Codex session rows must not show raw 'invalid session id' parser errors when the row only has stored local or legacy metadata, and they must not appear as normal resumable chats without a loaded title.
+- **Surface:** openagents-desktop (Codex composer model selection and transcript diagnostics)
+- **Stated by:** owner via owner-screenshot-review on 2026-07-17
+- **Statement:** kinda works but i get this fucked up warnings. and i cant choose anything other than gpt 5.5 WHAET TH EFUCK. FIX THAT. and no new rc build until i test it locally. tell me when its ready to test\
 - **Enforcement tier:** test-sweep
-- **Oracle** `stored_codex_catalog_projection.unit` (bun-test, unit): Projects a stored-only Codex catalog record with a legacy non-UUID ref into a disabled local-record sidebar summary instead of a resumable chat thread. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
-- **Oracle** `stored_codex_sidebar.dom` (bun-test, dom): Mounts the real thread sidebar in a DOM: a stored-only Codex record remains visible, is disabled, never displays a raw parser error, and recent-chat selection skips it. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
-- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop. Runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
-- **Authority boundary:** This contract only governs sidebar behavior for stored/local Codex metadata that lacks a current app-server UUID thread id. It does not define the upstream Codex thread-store retention policy, subagent semantics, or whether historical rollouts can be recovered through a separate import flow.
+- **Oracle** `installed_codex_model_catalog.composer_bar_has_no_model_or_reasoning_select` (bun-test, dom): Proves the bare composer bar renders no model or reasoning select (owner UI directive 2026-07-19); the installed-catalog default and reasoning reconciliation remain covered by the shell unit oracle below. — `apps/openagents-desktop/src/renderer/react-composer.test.tsx`
+- **Oracle** `installed_codex_model_catalog.default_and_effort_reconciliation` (bun-test, unit): Proves a stale model falls back to the installed default and an unsupported reasoning level falls back to that selected model's advertised default. — `apps/openagents-desktop/src/renderer/shell.test.ts`
+- **Oracle** `installed_codex_model_catalog.compatibility_receipts_are_not_transcript` (bun-test, unit): Forces compatibility receipts from deliberately incomplete app-server fixture responses and proves no Codex compatibility notice is emitted as a lane_notice while intentional Guardian review notices remain visible. — `apps/openagents-desktop/src/codex-app-server-turn.test.ts`
+- **Oracle** `installed_codex_model_catalog.historical_compatibility_notes_are_not_rendered` (bun-test, unit): Proves a compatibility notice persisted by a pre-fix build is omitted from transcript projection while Guardian, account-rotation, and assistant-authored text remain visible. — `apps/openagents-desktop/src/renderer/tool-cards.test.ts`
+- **Oracle** `installed_codex_model_catalog.resume_additive_cursors_are_bounded` (bun-test, unit): Proves strict installed-Codex thread resume accepts only the two observed additive pagination cursors, omits them from the decoded payload, and still rejects any other unknown response authority. — `packages/codex-app-server-protocol/src/protocol.test.ts`
+- **Verification:** Desktop control-plane, local-runtime, provider-capability, shell, React composer, app-server-turn, behavior-contract, typecheck, build, and local oa-dev visual verification. No release command is part of the oracle.
+- **Authority boundary:** Electron main reads the visible model/list catalog and per-model reasoning efforts from the user's validated installed Codex app-server through the existing control plane. That exact bounded catalog is policy-intersected into the provider-lane projection; the shell still chooses the installed default when a stale selection is absent and reconciles unsupported reasoning to that model's advertised default through the DesktopModelSelected/DesktopCodexReasoningSelected intents. Exact turn admission remains main-owned and fails closed against the same catalog. NOTE (owner UI directive 2026-07-19): the in-composer-bar model and reasoning selects were removed to make the bar bare (just submit). The catalog authority and reconciliation are unchanged, but there is currently no non-bar model/reasoning picker UI; restoring an out-of-bar chooser (settings) is an open follow-up so the 2026-07-17 model-choice intent is not lost. The installed Codex thread/resume response may carry its two newer pagination cursors; the wire boundary projects away only itemsBackwardsCursor and turnsBackwardsCursor before complete generated-schema validation, so all authority-bearing response fields and any other unknown drift still fail closed. App-server compatibility receipts, rate-limit decode drift, and token-usage decode drift remain private connection diagnostics and release-gate evidence; they never become transcript lane_notice rows. This work stops at a locally testable development app and grants no RC, tag, package, release-asset, or publication authority.
 
-### `khala_code.chat.claude_stored_session_records_not_resumed.v1` — ENFORCED
+### `openagents_desktop.chat.full_auto_resume_identity_followup_progress.v1` — ENFORCED
 
-- **Surface:** khala-code-desktop (chat thread sidebar)
-- **Stated by:** owner via khala-code-session on 2026-07-05
-- **Statement:** A sidebar row labeled generically 'Claude session' must never be offered as a normal clickable chat and then fail with 'This chat could not be opened. Its session may be missing or unavailable' the moment it is clicked. Unlike Codex, every Claude catalog entry was previously marked resumable unconditionally regardless of whether the Claude Agent SDK's own listSessions() ever confirmed the thread still exists. A stored-only record with no live confirmation and no UUID-shaped id must be surfaced as a disabled, clearly-labeled local record instead.
+- **Surface:** openagents-desktop (Full Auto conversation resume)
+- **Stated by:** owner via owner-screenshot-review on 2026-07-17
+- **Statement:** Multiple bugs in trying to resume a stalled Full Auto conversation. One is, the chat shows twice in left sidebar. one with 6h one with a loadspinner. I click Full Auto and see the status indicator but nothing happens for awhile. And I can't send followup messages in the chat wtf. debug and fix on new worktree then push to main
 - **Enforcement tier:** test-sweep
-- **Oracle** `stored_claude_catalog_projection.unit` (bun-test, unit): Projects a stored-only Claude catalog record (from claude-sessions.json bookkeeping, with no live claudeRuntime.listThreads() confirmation and a non-UUID session id) into a disabled 'Stored Claude session' summary instead of a clickable chat that fails with 'could not be opened' the moment it is selected. Also proves a stored-only record with a genuine UUID-shaped session id stays resumable even without a live confirmation. — `clients/khala-code-desktop/tests/session-catalog.test.ts`
-- **Verification:** bun test tests/session-catalog.test.ts inside clients/khala-code-desktop. Runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
-- **Authority boundary:** This contract only governs sidebar behavior for stored/local Claude metadata that lacks a current SDK-listable session. It does not define Claude Agent SDK rollout retention, nor promise that a historical rollout can be recovered through a separate import flow.
+- **Oracle** `full_auto_resume.canonical_alias_and_control_hydration` (bun-test, unit): Resumes a provider-history ref as a different canonical local UUID, removes the verified duplicate row/search alias, and proves queue, Full Auto, lane, transcript hydration, running state, and composer selection all use the canonical ref. — `apps/openagents-desktop/src/renderer/shell.test.ts`
+- **Oracle** `full_auto_resume.background_queue_only_composer` (bun-test, unit): Projects a main-owned running Full Auto turn as queue-only composer admission with an enabled follow-up action while retaining the exact Stop affordance. — `apps/openagents-desktop/src/renderer/react-composer.test.tsx`
+- **Oracle** `full_auto_resume.background_queue_promotion_once` (bun-test, unit): Transfers a main-owned background Full Auto promotion to exactly one next dispatch while leaving foreground and ordinary-turn promotion ownership unchanged. — `apps/openagents-desktop/src/full-auto-followup.test.ts`
+- **Oracle** `full_auto_resume.background_progress_projection` (bun-test, unit): Proves background Full Auto events cross the durable post-projection observer before terminal completion without being forwarded as renderer-owned stream events. — `apps/openagents-desktop/src/provider-lane.test.ts`
+- **Verification:** Desktop shell/composer/provider-lane suites, behavior-contract validation, Desktop typecheck/build, and repository completion gate.
+- **Authority boundary:** Electron main remains the authority that verifies a provider-history ref aliases one mutable Desktop-local thread, owns background Full Auto execution, persists streamed progress, and promotes a durable queued follow-up. The renderer canonicalizes to the returned local thread ref, removes only that verified top-level provider alias, and uses the canonical ref for queue, Full Auto, lane, hydration, navigation, and composer state. A main-owned background turn stays distinct from renderer pending state: Stop keeps the thread-scoped main interrupt route, while text submission is queue-only and cannot start a concurrent turn. Background events publish bounded persisted thread snapshots without granting the renderer question-answer or dispatch authority. A promoted durable queue identity is consumed once before the next generic Full Auto continuation.
 
-### `khala_code.transcript.claude_assistant_turn_once.v1` — ENFORCED
+### `openagents_desktop.chat.empty_state_bare_working_directory_in_header.v1` — ENFORCED
 
-- **Surface:** khala-code-desktop (chat transcript)
-- **Stated by:** operator-agent via github-issue on 2026-07-03
-- **Statement:** An assistant turn can render twice in the transcript — the same reply body appears as two consecutive assistant blocks for a single user turn. Observed on the Claude lane.
+- **Surface:** openagents-desktop (empty conversation)
+- **Stated by:** owner via owner-directive on 2026-07-19
+- **Statement:** An empty conversation is a bare region with no prompt or centered directory chrome. The current working directory is the only item in the chat header, and selecting it opens the workspace picker.
 - **Enforcement tier:** test-sweep
-- **Oracle** `claude_stream_final_snapshot_dedupe.unit` (bun-test, unit): Feeds the Claude projector a streamed assistant text block followed by the final assistant snapshot with the same body, and asserts the transcript keeps exactly one assistant message. — `clients/khala-code-desktop/tests/claude-app-sdk-chat-runtime.test.ts`
-- **Verification:** bun test tests/claude-app-sdk-chat-runtime.test.ts tests/ux-contracts.test.ts inside clients/khala-code-desktop. Runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
-- **Authority boundary:** Binds duplicate visible assistant text for one Claude turn only. It does not change Claude SDK event ordering, token accounting, or the Codex lane projector.
+- **Oracle** `empty_conversation.bare_region_working_directory_in_header` (bun-test, unit): Proves the empty React conversation renders a bare region with no prompt, while the host-projected working directory and folder icon render in the bare chat header and dispatch the workspace picker intent when selected, persisting once timeline content exists. — `apps/openagents-desktop/src/renderer/react-primitive-adapters.test.tsx`
+- **Oracle** `empty_conversation.narrow_schema_decoded_host_projection` (bun-test, unit): Proves preload exposes a narrow schema-decoded working-directory query and fixed picker capability, while main seeds the native dialog from the current root and reports cancel as no selection without restoring the broad workspace-summary bridge. — `apps/openagents-desktop/tests/electron-boundary.test.ts`
+- **Verification:** The React workbench, shell intent-loop, runtime-workspace, and Electron boundary suites plus Desktop typecheck enforce presentation, cancel/selection semantics, and the single WorkContext authority.
+- **Authority boundary:** Electron main remains the sole WorkContext authority and exposes only a schema-decoded working-directory projection plus the existing fixed workspace-picker capability through preload. React receives the displayed value in Effect-owned DesktopShellState and may only dispatch DesktopWorkspacePickerRequested; it cannot read process.cwd(), submit an absolute path, or infer a directory from history. Main initializes the native directory dialog from the current root when available and admits a selection through the same workspace authority used by files, terminal, Git, and Codex. Cancel or failure retains the current workspace and path. The working directory renders in the bare chat header for every chat view, empty or not.
 
-### `khala_code.claude_lane.isolated_home_and_user_prompt_only.v1` — ENFORCED
+### `openagents_desktop.chat.boot_sequence_agent_scan.v1` — ENFORCED
 
-- **Surface:** khala-code-desktop (Claude lane)
-- **Stated by:** customer via github-issue on 2026-07-03
-- **Statement:** The Claude lane starts from a clean Khala Code context rather than the user's global Claude Code memory/config. Non-user transcript system/error text must not be fed to the model as conversation.
+- **Surface:** openagents-desktop (boot sequence / agent discovery)
+- **Stated by:** owner via owner-directive on 2026-07-19
+- **Statement:** When the app opens, show a neutral terminal-style scan (monospace, small, faded) that checks which agents are available — Codex, Claude Code, and every admitted Agent Client Protocol peer (Grok, Cursor, and any newly-wired peer), plus the on-device Apple FM model — and keep track of the discovered harnesses so the system knows it can use them.
 - **Enforcement tier:** test-sweep
-- **Oracle** `claude_app_sdk_config_dir_isolated.unit` (bun-test, unit): Starts a real Claude runtime with an ambient CLAUDE_CONFIG_DIR and proves query() receives Khala Code's app-managed config directory instead of the user's default/global Claude home. — `clients/khala-code-desktop/tests/claude-app-sdk-chat-runtime.test.ts`
-- **Oracle** `claude_prompt_user_only.unit` (bun-test, unit): Submits a transcript containing system, tool, assistant, and older user rows and proves the Claude SDK prompt contains only the latest user-authored message. — `clients/khala-code-desktop/tests/claude-app-sdk-chat-runtime.test.ts`
-- **Verification:** bun test tests/claude-app-sdk-chat-runtime.test.ts tests/ux-contracts.test.ts inside clients/khala-code-desktop. Runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
-- **Authority boundary:** This binds the desktop Claude chat lane only. Fleet worker Claude accounts remain owned by Pylon's isolated-account registry, and an explicit KHALA_CODE_DESKTOP_CLAUDE_CONFIG_DIR override may intentionally point the desktop lane at a caller-selected app config directory.
+- **Oracle** `boot_sequence.projects_real_agent_discovery` (bun-test, unit): Proves the scan projects the Codex/Claude Code/peers/Apple FM order, maps a verifying lane to 'checking', a ready lane to 'available' with its model, an admitted Grok ACP lane to 'available', a quarantined lane to 'unavailable', enumerates the acp: AND harness: roster data-drivenly so an admitted Cursor and the host-run harness lanes (Goose/OpenCode/Pi, up to the full seven-harness set) appear with their short name and model/reason while preserving the four-line Codex/Claude/Grok/Apple FM baseline when only those exist (#9183), reflects Apple FM live discovery (unprobed → 'checking', ready → 'available' with its bounded test inference, else 'unavailable'), and derives ready-count/scanning from those lines. — `apps/openagents-desktop/src/renderer/boot-sequence.test.ts`
+- **Oracle** `boot_sequence.renders_in_empty_conversation` (bun-test, unit): Proves the empty conversation renders the terminal-style Boot Sequence with the four agent labels instead of a blank region, while the working directory stays the only header item. — `apps/openagents-desktop/src/renderer/react-primitive-adapters.test.tsx`
+- **Verification:** Desktop boot-sequence unit, React workbench, and Electron boundary suites plus Desktop typecheck.
+- **Authority boundary:** The Boot Sequence is a PROJECTION over the discovery state the shell owns: harnessLanes for the built-in codex/claude transports, providerLaneCapabilities for the peer lanes, and appleFmBoot for the native Apple FM bridge. The peer roster is data-driven (#9183): the scan enumerates BOTH the acp: trusted-peer lanes and the harness: host-run SDK-harness lanes (#9167 — OpenCode, Goose, Pi) the shell projects, so an admitted Cursor or a newly-wired harness lane appears with honest status the moment its lane is published, and Grok is the flagship target that always shows a scan line so the panel reads 'checking' rather than a premature 'not connected' while discovery is in flight. Apple FM is listed as the on-device model it is, not conflated with the harness set. It invents no discovery authority — an agent is 'available' only when its lane/bridge reports it can run a turn, 'checking' while probing, otherwise 'unavailable'. On open the renderer boot orchestrator probes the Apple FM native bridge (AFM-6) and, only when it reports ready, runs ONE bounded test inference and shows the bounded reply — proving the on-device model actually answers. The surface renders in the empty conversation, reflects live state as lanes and the Apple FM probe resolve, and communicates results without granting any run, spend, or admission authority of its own.
 
-### `khala_code.history.app_sessions_default.v1` — ENFORCED
+### `openagents_desktop.chat.host_run_harness_lanes.v1` — ENFORCED
 
-- **Surface:** khala-code-desktop (History sidebar)
-- **Stated by:** customer via github-issue on 2026-07-03
-- **Statement:** History defaults to chats created in Khala Code Desktop, not every Codex or Claude session from the user's home stores. Showing all home sessions is an explicit opt-in, and stale missing-rollout rows must not permanently bury desktop chats as undismissable red errors.
+- **Surface:** openagents-desktop (provider lanes / host-run SDK harnesses)
+- **Stated by:** owner via issue on 2026-07-22
+- **Statement:** OpenCode, Goose, and Pi are wired into the desktop as host-run SDK-harness lanes so they appear in the agent roster and, where runnable, take turns. A lane reports 'available' only when it can actually run a turn: Goose is available when the goose binary is detected (it runs 'goose acp' over stdio through the SDK adapter), OpenCode is available when the opencode binary is detected (it runs 'opencode serve' HTTP/SSE through the SDK adapter), and Pi is available when its IN-PROCESS host session-factory seam can construct a session (the optional @earendil-works/pi-coding-agent library resolves AND an owner-local Gemini key is present) — Pi has no CLI to detect because it is an in-process Node library the desktop drives through makePiHarnessAdapter, pinned to the owner's gemini-3.6-flash default through Pi's own settings. When a lane cannot run, the roster shows an honest 'unavailable' reason (binary not on PATH for Goose/OpenCode; library-not-installed or no-key for Pi). The desktop NEVER installs these CLIs or the Pi library, NEVER changes PATH, and NEVER runs a login flow.
 - **Enforcement tier:** test-sweep
-- **Oracle** `session_catalog_app_scope.unit` (bun-test, unit): Builds a mixed app-owned plus headless-runtime catalog and proves the default sessionCatalog scope includes only the app-owned desktop thread while omitting unrelated home/headless prompts. — `clients/khala-code-desktop/tests/session-catalog.test.ts`
-- **Oracle** `history_scope_toggle.dom` (bun-test, dom): Mounts the real History sidebar in a DOM and proves the header toggle is off by default, requests app-only history first, and sends includeHomeSessions only after explicit user activation. — `clients/khala-code-desktop/tests/codex-thread-sidebar.test.ts`
-- **Oracle** `history_error_dismiss.dom` (bun-test, dom): Mounts the real History sidebar in a DOM, forces a 'no rollout found' resume failure on a dead thread, and proves both the per-thread error row and the global error banner render a dismiss control that clears the error on click without triggering another listThreads fetch. — `clients/khala-code-desktop/tests/codex-thread-sidebar.test.ts`
-- **Verification:** bun test tests/session-catalog.test.ts tests/codex-thread-sidebar.test.ts inside clients/khala-code-desktop. Both run in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
-- **Authority boundary:** This contract binds the History/session-catalog default and its explicit opt-in only. It does not prevent app-owned sessions from being enriched with runtime metadata, and it does not promise that externally created home sessions can always be opened successfully.
+- **Oracle** `host_run_harness_lanes.available_only_when_runnable` (bun-test, unit): Proves Goose/OpenCode report 'available' only when their binary probe detects the CLI and 'unavailable' with an honest reason when it is absent, that the probe never mutates PATH or runs an install, and that a detected lane runs one real turn through the SDK adapter lowering onto the frozen renderer envelope. — `apps/openagents-desktop/src/goose-lane.test.ts`
+- **Oracle** `host_run_harness_lanes.pi_in_process_seam_runs_and_gates` (bun-test, unit): Proves the Pi lane reports 'available' only when the in-process host session-factory constructs (the @earendil-works/pi-coding-agent library resolves AND an owner-local Gemini key is present) and 'unavailable' with the precise reason otherwise (library-not-installed / no-key), and that a ready lane runs one real turn through makePiHarnessAdapter — via the injected in-process createSession factory — lowering onto the frozen renderer envelope, with the model pinned to gemini-3.6-flash. — `apps/openagents-desktop/src/pi-local-runtime.test.ts`
+- **Verification:** Desktop harness-lane unit suites (goose/opencode/pi/pi-session-host/binary-probe/sdk-turn-runner) plus boot-sequence roster and Desktop typecheck.
+- **Authority boundary:** These lanes are the built-in-harness-lane family (#9167), host-run through the SDK AgentHarness adapters, distinct from the acp: trusted-peer-profile family (Grok, Cursor) and the native codex-local/claude-local transports. Each is a plain ProviderLane<null> the shared dispatcher folds exactly like the ACP lanes — no private dispatch, journal, or renderer projection. Admission is detection-gated LIVE evidence surfaced in providerLaneEntries(): a lane is admitted/ready only when its readiness gate passes — a successful binary probe for Goose/OpenCode, and for Pi a successful in-process host construction (library present AND owner-local key present) — never a dead card. Pi runs in-process under the owner-local executor invariant against an ISOLATED per-account agent directory the desktop owns (never the owner's live ~/.pi tree); its Gemini key is resolved in-process only and never printed or persisted. Turns run owner-local against the developer's live provider config; the lanes never extract credentials, mutate PATH, or run a copied install command. They grant no run, spend, or public-claim authority of their own.
 
-### `khala_code.composer.no_dead_controls.v1` — ENFORCED
+### `openagents_desktop.window.launch_fills_work_area.v1` — ENFORCED
 
-- **Surface:** khala-code-desktop (chat composer)
-- **Stated by:** owner via codex-session on 2026-07-03
-- **Statement:** Every composer control must visibly do something when interacted with. The 'Plan' toggle did nothing and confused the user about its purpose. It must be removed and replaced with a working reasoning-mode control that actually changes behavior.
+- **Surface:** openagents-desktop (Desktop window launch geometry)
+- **Stated by:** owner via owner-directive on 2026-07-15
+- **Statement:** When OpenAgents opens, make it take up the full width and height of the screen without entering fullscreen.
 - **Enforcement tier:** test-sweep
-- **Oracle** `no_dead_controls.source` (bun-test, unit): Pins that the composer has a working reasoning-mode select wired to a real RPC and no lingering dead 'Plan' toggle in mounted code or active CSS. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
-- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop. Runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
-- **Authority boundary:** This binds control liveness only, not the exact reasoning-mode UI. That design is free to iterate as long as no control ships inert.
+- **Oracle** `window_launch.active_display_work_area_not_fullscreen` (bun-test, unit): Proves active-display workArea resolution precedes BrowserWindow construction; all four bounds come from that workArea; fullscreen is explicitly false; and startup does not substitute maximize(). — `apps/openagents-desktop/tests/startup-contract.test.ts`
+- **Verification:** Desktop typecheck and the focused startup-contract suite.
+- **Authority boundary:** At BrowserWindow creation, Electron resolves the display under the current cursor and applies that display's usable workArea x, y, width, and height. The window remains ordinary and resizable with fullscreen explicitly false, so the menu bar, Dock/taskbar, traffic lights, and separate typed fullscreen command retain their existing semantics. No renderer, persistence, display-reconfiguration, or window-management authority is added.
 
-### `khala_code.composer.attach_control_icon_only.v1` — ENFORCED
+### `openagents_desktop.chat.shadcn_message_scroller_and_composer.v1` — ENFORCED
 
-- **Surface:** khala-code-desktop (chat composer)
-- **Stated by:** owner via codex-session on 2026-07-01
-- **Statement:** The composer's attach control renders as an icon only, never the text label 'Attach'. Queued/follow-up messages (sent while a turn is still streaming) render in a compact, visually distinct style from a normal message, not as another full-size bubble.
+- **Surface:** openagents-desktop (React transcript scrolling and message composer)
+- **Stated by:** owner via owner-directive on 2026-07-19
+- **Statement:** Use the supplied Message Scroller ideas throughout the message area. The input bar is bare: a single submit action (plus Stop while a turn runs) and no in-bar context, attach, provider, model, or reasoning controls.
 - **Enforcement tier:** test-sweep
-- **Oracle** `attach_icon_only.source` (bun-test, unit): Pins the desktop-scoped CSS override that keeps the attach control's text label hidden regardless of viewport width, and that queued follow-up messages render in a compact style distinct from a full message bubble. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
-- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop. Runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
-- **Authority boundary:** Binds the attach control and queued-message rendering only. Other composer chrome is out of scope for this contract.
+- **Oracle** `message_scroller.reader_intent_and_composition` (bun-test, unit): Exercises stable turn anchors, last-edge following, wheel-release/manual-position hold, prepend preservation, same-row streaming resize, jump-to-latest re-engagement, typed edge paging, keyboard-focusable region plus additions-only log semantics, busy state, and the 500-row bounded corpus. — `apps/openagents-desktop/src/renderer/react-timeline.test.tsx`
+- **Oracle** `message_composer.bare_submit_bar` (bun-test, unit): Proves the bare composer bar exposes only the Send/Steer/Queue submit action (and Stop while a turn runs) as catalog-marked icon controls with accessible labels, carries no in-bar Commands/attach/provider/model/reasoning controls or mode toggle, and preserves exact steer/queue intents, focus, autosize, duplicate-send defense, and IME composition. — `apps/openagents-desktop/src/renderer/react-composer.test.tsx`
+- **Verification:** Desktop typecheck plus focused React timeline/composer, contract-validation, renderer-boundary, and design-conformance suites.
+- **Authority boundary:** The registry-installed shadcn MessageScroller owns viewport-only mechanics: last-user-turn opening, stable row IDs, user-turn anchoring with previous-context peek, live-edge following, reader-interaction release, prepend preservation, jump controls, scrollability attributes, accessibility, and offscreen paint containment. Effect-owned DesktopShellState remains the sole message/stream/history authority and typed intents retain paging and composer actions. The composer remains the admitted shadcn Textarea/Button composition; its bar carries only the submit action and, while a turn is in flight, Stop. The retired Steer/Queue mode toggle and the in-bar Commands/attach/provider/model/reasoning controls are removed (owner UI directive 2026-07-19); the active pendingSubmitMode still drives whether submit steers or queues without changing submission authority. The bounded image picker/paste/drop projection persists through paste and global drop only, without adding model, transport, branching, or persistence authority.
 
-### `khala_code.composer.structure_not_bloat.v1` — ENFORCED
+### `openagents_desktop.sidebar.codex_shaped_react_anatomy.v1` — ENFORCED
 
-- **Surface:** khala-code-desktop (chat composer)
-- **Stated by:** owner via codex-session on 2026-07-02
-- **Statement:** The composer stays compact, not oversized, and follows the StarCraft design system. Every visible composer icon must be functional. Secondary controls that do not yet do anything real (e.g. mic, extra progress indicators, unused model dropdowns) stay hidden or removed rather than shipped as inert chrome the user has to look at.
+- **Surface:** openagents-desktop (React workbench sidebar chrome)
+- **Stated by:** owner via owner-screenshot-review on 2026-07-15
+- **Statement:** Lay out the OpenAgents sidebar like Codex: left-aligned menus, OpenAgents identity, icon-only search, sidebar expander, back/forward positions, and appropriate icons from the existing Apps SDK catalog.
 - **Enforcement tier:** test-sweep
-- **Oracle** `structure_not_bloat.source` (bun-test, unit): Pins that the composer has a working reasoning-mode select and no mic/runtime-badge/harness-pill chrome mounted or styled active. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
-- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop. Runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
-- **Authority boundary:** Structure/liveness only — exact visual treatment is free to iterate with impeccable-skill review as long as inert chrome does not ship.
+- **Oracle** `react_sidebar.shared_destination_projection` (bun-test, unit): Pins the exact three-control order, labels, closed-catalog icons, canonical command identities, typed intents, selected/current projection, and truthful absence of unread/status indicators without backing state. — `apps/openagents-desktop/src/renderer/sidebar-destinations.test.ts`
+- **Oracle** `react_sidebar.anatomy_icons_search_and_alignment` (bun-test, unit): The real React workbench proves New session above Recent, Settings alone in the bottom footer, absence of Project home, Chat, and Workspaces, selected state, left alignment, and a dedicated right-justified same-line relative timestamp that becomes the shared loading icon under exact per-thread working authority, with no lifecycle, provider, or search-match strings; it also covers icon-only search disclosure/close and collapse recovery through the always-reachable expander. — `apps/openagents-desktop/src/renderer/react-primitive-adapters.test.tsx`
+- **Oracle** `react_sidebar.collapse_preference_migration_and_roundtrip` (bun-test, unit): Proves the v1-to-v2 migration preserves every prior preference while defaulting sidebar collapse to false, validates hostile patches, persists the boolean owner-only, restores it through a fresh store, and resets it to the canonical default. — `apps/openagents-desktop/tests/desktop-preferences.test.ts`
+- **Oracle** `react_sidebar.built_destination_and_restart_smoke` (visual-smoke, e2e): The built default React Electron journey activates every admitted destination, asserts its real root and selection, discloses and closes search, captures expanded and collapsed sidebar receipts, persists collapse through typed preferences, reloads, and proves collapsed-at-mount plus closed search and retained composer focus. — `apps/openagents-desktop/src/main.ts`
+- **Verification:** Desktop preferences, shared destination projection, compatibility shell, focused React workbench DOM, contract-validation, and built React Electron smoke/reload suites enforce the completed #8826 projection and presentation-state boundary.
+- **Authority boundary:** Presentation over already-admitted authority only. One Effect-owned typed projection supplies the compatibility shell and React workbench with exactly two controls around the Recent list: New session and Settings. Project home, the dead Chat destination, and the coding Workspaces section are absent. React lowers New session beneath the OpenAgents identity row and icon-only search disclosure, while Settings is pinned alone at the bottom of the rail in the former workspace-box region. Each retained control reuses its canonical command identity and typed intent, carries a closed @effect-native/core IconName, and projects selected/current state without inventing an unread count or status when no such authority exists. The Recent section uses single-line conversation rows whose truncated title stays left while the compact relative timestamp is right-justified on that same line when idle; exact per-thread pending or Full Auto turn-running authority replaces that timestamp with the shared loading icon while the chat works. Lifecycle/status words (including Completed, Running, or Waiting), provider labels, and search match-kind strings are forbidden in conversation rows. New session remains the primary action rather than a selected destination. Sidebar collapse is Effect-owned presentation state and only its boolean preference persists through the versioned main-process preferences boundary; its default preference is collapsed (owner UI directive 2026-07-19). Session-search disclosure is deliberately launch-ephemeral and starts closed after reload or restart; its query remains exclusively in the existing history authority and closing search clears it through HistorySearchChanged. Restoring a collapsed rail reuses the preferences read already required before shell mount, adds no new startup read, leaves a reachable expander, and never steals focus from the composer. Search, destination selection, collapse, and Back/Forward dispatch only typed intents. No enabled placeholder, React-owned navigation store, parallel query store, fabricated destination, or Project home route is authorized.
 
-### `khala_code.chat.no_current_chat_text_flash.v1` — ENFORCED
+### `openagents_desktop.sidebar.chat_created_order.v1` — ENFORCED
 
-- **Surface:** khala-code-desktop (chat thread sidebar)
-- **Stated by:** owner via codex-session on 2026-07-03
-- **Statement:** The active chat row must never flash a 'Current chat' text label anywhere in the sidebar, even momentarily during mount or a state transition. The active-row background alone (khala_code.chat.sidebar_active_thread_background_only.v2) is the only active indicator. No text heading or copy may appear, not even transiently.
+- **Surface:** openagents-desktop (conversation sidebar ordering)
+- **Stated by:** owner via owner-directive on 2026-07-16
+- **Statement:** openagents, left sidebar sorts chats by last message so they bounce around. no, sort instead by created date.
 - **Enforcement tier:** test-sweep
-- **Oracle** `no_current_chat_text_flash.source` (bun-test, unit): Asserts the sidebar source never contains the string 'current chat' anywhere, so no code path (including transient/mount-time ones) can render it. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
-- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop. Runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
-- **Authority boundary:** Complements khala_code.chat.sidebar_active_thread_background_only.v2 (steady-state rendering) by additionally covering transient/mount-time flashes. The two contracts should be verified together.
+- **Oracle** `sidebar_chat_order.created_at_is_stable_across_activity` (bun-test, unit): Projects merged local and history rows whose creation and activity orders disagree, then proves newer-created stays first after the older chat receives a later update timestamp. — `apps/openagents-desktop/src/renderer/react-primitive-adapters.test.tsx`
+- **Oracle** `sidebar_chat_order.local_created_at_persistence` (bun-test, unit): Proves new and forked local chats persist immutable creation timestamps and a legacy row adopts its prior persisted timestamp before later activity updates. — `apps/openagents-desktop/src/thread-store.test.ts`
+- **Verification:** Desktop typecheck plus focused thread-store, runtime-conversation, React sidebar projection, behavior-contract validation, and repository check suites.
+- **Authority boundary:** The merged local, confirmed Sync, and Codex-history session rail orders conversations by creation time, newest-created first, with the stable thread ref as the deterministic tie-break. Message arrival, streaming activity, title changes, and other updatedAt changes may refresh row metadata but may never move an existing row. Newly persisted local chats and forks record one immutable createdAt alongside updatedAt; legacy local rows adopt their previously persisted timestamp once and retain it through later writes. Confirmed Sync carries the source thread creation timestamp additively. This changes presentation and bounded local retention order only; it does not change transcript order, active selection, history search authority, Sync confirmation, runtime routing, or persistence ownership.
 
-### `khala_code.chat.harness_badge_removed.v1` — ENFORCED
+### `openagents_desktop.navigation.authoritative_history.v1` — ENFORCED
 
-- **Surface:** khala-code-desktop (chat thread sidebar)
-- **Stated by:** owner via codex-session on 2026-07-02
-- **Statement:** Sidebar chat rows do not render a Codex/Claude harness-provider text badge next to the title. An earlier version showed this badge with stale/inaccurate values (older threads all labeled 'Claude' regardless of actual harness). The badge is removed entirely rather than kept and fixed.
+- **Surface:** openagents-desktop (workbench navigation history)
+- **Stated by:** owner via github-issue on 2026-07-15
+- **Statement:** Disabled means no reachable target; enabled controls always perform one visible traversal.
 - **Enforcement tier:** test-sweep
-- **Oracle** `harness_badge_removed.dom` (bun-test, dom): Mounts the real thread sidebar with threads carrying Codex/Claude badges and asserts no harness badge element or text renders. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
-- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop. Runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
-- **Authority boundary:** Harness identity may still be surfaced elsewhere (e.g. a settings/detail view). This contract binds only the sidebar row itself.
+- **Oracle** `navigation_history.stack_semantics` (bun-test, unit): Proves bounded push, adjacent deduplication, Back, Forward, forward preservation, successful branch truncation, and unreachable-target removal. — `apps/openagents-desktop/src/renderer/navigation-history.test.ts`
+- **Oracle** `navigation_history.effect_commit_and_react_projection` (bun-test, unit): The shell registry proves failed session opens do not record or move selection, and the React DOM suite proves projected disabled/enabled state plus exactly one typed intent per enabled click. — `apps/openagents-desktop/src/renderer/react-primitive-adapters.test.tsx`
+- **Oracle** `navigation_history.built_react_electron_traversal` (bun-test, e2e): The built installed-default React Electron smoke traverses three committed destinations backward and forward while checking the visible title and transcript at every stop. — `apps/openagents-desktop/src/main.ts`
+- **Verification:** Focused navigation, shell, React DOM, and command-contract suites plus Desktop typecheck, build, smoke:react, and the repository pnpm run check gate.
+- **Authority boundary:** One ephemeral bounded stack is owned by the Effect shell SubscriptionRef and records admitted workspace, local-session, Codex-history, and coding-session destinations only after their authoritative open succeeds. Adjacent duplicates collapse; Back/Forward preserve the forward branch until a new successful navigation replaces it; failed and stale targets cannot advance the cursor. DesktopShellState exposes only enabled state and optional public-safe target titles. React dispatches DesktopNavigationBackRequested or DesktopNavigationForwardRequested exactly once and owns no stack, window.history mutation, filesystem authority, provider authority, persistence, composer focus, or transcript scroll behavior. Default key chords remain unassigned after the editable-control and Electron native-menu collision review; user rebindings remain available through the canonical command contract.
 
-### `khala_code.chat.sidebar_row_density.v1` — ENFORCED
+### `openagents_desktop.design.apps_sdk_starcraft_harmonization.v1` — ENFORCED
 
-- **Surface:** khala-code-desktop (chat thread sidebar)
-- **Stated by:** owner via codex-session on 2026-07-02
-- **Statement:** Sidebar chat rows render borderless, differentiated by background color only (no per-row border chrome), with tightened vertical padding between rows, matching the density of the reference Codex-desktop-style sidebar.
+- **Surface:** openagents-desktop (desktop design system)
+- **Stated by:** owner via owner-directive on 2026-07-14
+- **Statement:** ALL styles harmonized with apps-sdk-ui while preserving our starcraft design
 - **Enforcement tier:** test-sweep
-- **Oracle** `sidebar_row_density.source` (bun-test, unit): Pins the sidebar row CSS to borderless with the tightened 0.1rem/0.5rem padding and confirms active/hover states never add a non-zero border. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
-- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop. Runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
-- **Authority boundary:** Visual density only. Does not change row content or interaction behavior contracted elsewhere.
+- **Oracle** `desktop_design.catalog_and_host_physics_boundary` (bun-test, unit): Proves renderer source has no raw colors or non-token sizing recipes, app.css stays within the bounded host-physics vocabulary, typed catalog components own component appearance, and the Khala editor projection is the mounted palette while Tokyo Night remains a validated fallback. — `apps/openagents-desktop/src/renderer/design-conformance.test.ts`
+- **Verification:** Desktop design-conformance and full test sweeps, typecheck, production build, built-Electron smoke, and screenshot receipts enforce the catalog/host boundary without widening product authority.
+- **Authority boundary:** OpenAgents Desktop composes the Effect Native catalog's typed components, variants, and shared token scales for component appearance while app.css is restricted to Electron host physics: viewport geometry, containment, scrolling, overlays, responsive adaptation, and reduced-motion policy. The mounted default is the repository-owned Khala editor semantic projection, with Tokyo Night retained as a built-in fallback and no mutable theme marketplace. This contract grants no new runtime, filesystem, provider, payment, or network authority and does not authorize one-off component recipes outside the typed catalog.
 
-### `khala_code.chat.thread_open_never_raw_error.v1` — ENFORCED
+### `openagents_desktop.mvp.assurance_surface_congruence.v1` — ENFORCED
 
-- **Surface:** khala-code-desktop (chat thread sidebar)
-- **Stated by:** owner via codex-session on 2026-07-03
-- **Statement:** Opening any thread from the sidebar must never surface a raw internal error string (e.g. 'no rollout found', 'invalid session id: invalid character ...') to the user. On a genuinely missing or corrupt session, show one typed, friendly, actionable message instead. Thread timestamps must never all collapse to showing 'now' when this happens.
+- **Surface:** openagents-desktop (MVP visible-surface assurance coverage)
+- **Stated by:** owner via owner-directive on 2026-07-14
+- **Statement:** The assurance spec needs to be fully covering everything that we should expect to actually work, and then nothing else, and ensure that that is specified in the contract.
 - **Enforcement tier:** test-sweep
-- **Oracle** `thread_open_error_mapping.unit` (bun-test, unit): Unit-tests the internal-error detector and friendly-message mapper against real raw Codex RPC error strings, and confirms unrelated error text passes through unchanged. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
-- **Oracle** `thread_open_error_rendering.dom` (bun-test, dom): Mounts the real thread sidebar with a resumeThread that throws a raw internal error and asserts the rendered row shows the friendly message, never the raw text. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
-- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop. Runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
-- **Authority boundary:** This is a recurring defect reported repeatedly across 2026-07-02 and 2026-07-03. Any fix must be verified against every reported recurrence, not just the most recent report.
+- **Oracle** `mvp_assurance.exact_surface_congruence` (bun-test, unit): Diffs the UX-4 allowlist against the coverage matrix, checks every proof link and the checked-in Markdown projection, and proves planted under-coverage and over-coverage both fail. — `apps/openagents-desktop/src/renderer/mvp-assurance-congruence.test.ts`
+- **Verification:** Desktop typecheck and the normal test sweep enforce the exact allowlist-to-assurance mapping with under-coverage and over-coverage falsifiers.
+- **Authority boundary:** UX-5 (#8791) treats the UX-4 MVP dock allowlist as the exact expected-working surface set. Every allowlisted surface interaction must map to ProductSpec criteria, proposed AssuranceSpec items, enforced behavior contracts, and executable oracles; a missing row, empty proof field, or row for a non-MVP surface fails the normal Desktop test sweep. Files and read-only review remain bounded command-reachable supporting views under CW-AC-12/CW-AC-14, not visible dock surfaces. This proof map adds no product authority and cannot admit or verify its proposed AssuranceSpec revision.
 
-### `khala_code.chat.streaming_indicator_survives_navigation.v1` — ENFORCED
+### `openagents_desktop.mvp.visible_surface_allowlist.v1` — ENFORCED
 
-- **Surface:** khala-code-desktop (chat thread sidebar)
-- **Stated by:** owner via codex-session on 2026-07-02
-- **Statement:** A background thread's streaming indicator must keep reflecting its real state even after the user switches to a different chat or starts a new one. Navigating away must never clear another thread's in-progress indicator, and reopening that thread later must still show it as streaming if it genuinely is.
+- **Surface:** openagents-desktop (MVP visible workroom surface)
+- **Stated by:** owner via owner-screenshot-review on 2026-07-13
+- **Statement:** remove from the interface everything not in the MVP spec.
 - **Enforcement tier:** test-sweep
-- **Oracle** `streaming_survives_navigation.source` (bun-test, unit): Pins the per-thread streamingThreadIds tracking: populated at submit time by thread, only cleared when its own turn finishes, and never blanket-cleared by any thread-switch function. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
-- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop. Runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
-- **Authority boundary:** Binds indicator truthfulness during navigation. Does not change how many concurrent streams the app supports.
+- **Oracle** `mvp_surface.shell_allowlist` (bun-test, unit): Proves the compatibility dock consumes the exact shared three-control projection while rejecting Chat, ProductSpec, AssuranceSpec, Fleet, accounts, provider/model/reasoning selection, and voice; #8828 separately admits only bounded composer images. — `apps/openagents-desktop/src/renderer/shell.test.ts`
+- **Oracle** `mvp_surface.rendered_composition` (bun-test, unit): Walks the ACTUAL rendered shell tree for every reachable workspace state, requires the dock to equal the cited allowlist exactly (no additions, no silent losses), forbids every non-MVP surface key, and proves the oracle rejects a planted non-MVP surface. — `apps/openagents-desktop/src/renderer/mvp-visible-surfaces.test.ts`
+- **Oracle** `mvp_surface.settings_allowlist` (bun-test, unit): Proves Settings contains current-Codex-session truth but no OpenAgents account, Pylon, MCP, plugin, or extension-lifecycle controls. — `apps/openagents-desktop/src/renderer/settings.test.ts`
+- **Oracle** `mvp_surface.command_allowlist` (bun-test, unit): Proves Fleet, Terminal, and Inbox are absent from schema-decoded palette, deep-link, shortcut, and native-menu command authority. — `apps/openagents-desktop/tests/desktop-command-contract.test.ts`
+- **Oracle** `mvp_surface.read_only_review_boundary` (bun-test, unit): Proves the review workspace renders no commit/push/stage/discard/branch/issue/PR affordance even when the substrate state carries them. — `apps/openagents-desktop/src/renderer/git-panel.test.ts`
+- **Verification:** Desktop typecheck, shared projection, shell/React/settings/command/composition suites, build, and built-host smoke enforce the ProductSpec-visible allowlist against both actual rendered docks and screens.
+- **Authority boundary:** The accepted ProductSpec Scope and User Experience, plus owner-issued MAINT-1 and #8828 bounded composer-image authority, are the visible-surface allowlist. UX-4 (#8790), #8826, the 2026-07-15 owner simplification, and the 2026-07-16 removal of Project home reconcile both renderers to one typed projection: exactly New session and Settings around the Recent list. React renders Settings alone at the bottom and renders neither Project home, the dead Chat destination, nor the coding Workspaces box. Per-item authority lives in apps/openagents-desktop/src/renderer/sidebar-destinations.ts with composition enforcement in mvp-visible-surfaces.ts. ProductSpec and AssuranceSpec remain internal authoring/verification tooling with no user-facing route, screen, dock item, command, or native-menu destination. Bounded Files and read-only Git review stay reachable through their closed CW-AC-12 command identities, not through dock icons. The review surface renders no Git mutation affordance, and Files renders no file create/rename/delete/reveal affordance. Fleet, provider/account selection, OpenAgents account linking, MCP/plugin configuration, Terminal/Inbox, model/reasoning selection, and voice controls remain absent. The sole admitted attachment affordance is the existing typed image picker/paste/drop path; it adds no arbitrary filesystem or provider authority.
 
-### `khala_code.chat.new_thread_appears_promptly.v1` — ENFORCED
+### `openagents_desktop.mvp.visible_surface_sweep.v1` — ENFORCED
 
-- **Surface:** khala-code-desktop (chat thread sidebar)
-- **Stated by:** owner via codex-session on 2026-07-01
-- **Statement:** A freshly created chat appears in the sidebar without delay, and its own first messages render immediately rather than starting blank while data that should already be present loads again.
+- **Surface:** openagents-desktop (MVP visible workroom surface)
+- **Stated by:** owner via owner-screenshot-review on 2026-07-14
+- **Statement:** This menu, when I click the settings button, looks horrible. This folder thing looks horrible. I thought we made a pass removing all screens that are not specifically called for in the MVP. You need to clean all this up and make a pass to remove everything from the sidebar and all UI that's not specifically called for in our MVP spec.
 - **Enforcement tier:** test-sweep
-- **Oracle** `new_thread_appears_promptly.dom` (bun-test, dom): Mounts the real thread sidebar and asserts an optimistically-inserted pending thread appears in the list immediately with its preview visible, with no RPC round trip required. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
-- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop. Runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
-- **Authority boundary:** Binds sidebar/list promptness and initial message rendering only.
+- **Oracle** `mvp_sweep.composition_oracle_with_falsifier` (bun-test, unit): Renders every reachable workspace through desktopShellView, asserts zero visible-surface violations, and proves planted non-MVP dock items, removed affordances, forbidden screen keys, and silent allowlist shrink each FAIL the oracle. — `apps/openagents-desktop/src/renderer/mvp-visible-surfaces.test.ts`
+- **Oracle** `mvp_sweep.built_host_smoke` (visual-smoke, e2e): The built-Electron smoke journey asserts the exact rendered dock ids, the absence of the swept dock icons and Git mutation controls, and captures the pixel receipts for the cleaned sidebar and each retained screen. — `apps/openagents-desktop/src/main.ts`
+- **Verification:** Desktop typecheck, the composition suite with falsifiers, design conformance, build, and built-host smoke.
+- **Authority boundary:** UX-4 (#8790): the sidebar dock composition is mechanically enforced against the rendered view tree by the mvp-visible-surfaces oracle — Files and the command palette lose their dock icons (their CW-AC-12 command identities remain the entry points), the Git review panel and Files browser drop every mutation affordance to the CW-AC-14 read-only boundary, and the retained Settings, palette, and Files surfaces are design-passed on the shared tokens (one centered settings column on the raised-panel recipe, family-grouped palette rows with keycap chords, quiet grant-boundary presentation). No copy changed; styling, layout, and composition only. Removal is conservative: a swept surface returns only with an explicit spec citation.
 
-### `khala_code.chat.sync_remote_thread_appears_without_restart.v1` — ENFORCED
+### `openagents_desktop.assurance_spec.document_visualization.v1` — ENFORCED
 
-- **Surface:** khala-code-desktop (chat thread sidebar)
-- **Stated by:** owner via github-issue on 2026-07-04
-- **Statement:** A thread created on another device appears in the Khala Code thread sidebar without restarting the app. Chat sync ordering is newest-first, spinners stay truthful, and the sidebar must not poll the legacy session catalog while a connected chat_thread sync source is available.
+- **Surface:** openagents-desktop (AssuranceSpec document support)
+- **Stated by:** owner via owner-directive on 2026-07-13
+- **Statement:** we'll want to be able to open different files and support different formats. And so just think about like we are adding support for the assurance spec format now. What do we want that file to look like? ... I want to see a beautiful visualization of Assurance Spec in the app
 - **Enforcement tier:** test-sweep
-- **Oracle** `chat_sync_sidebar_source.unit` (bun-test, unit): Pins the renderer source path: the sidebar calls khalaSyncChatThreads before the legacy sessionCatalog cache, projects chat_thread rows through chatThreadToSidebarSummary, and enqueues chat.createThread when the app receives a new thread id. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
-- **Oracle** `chat_sync_two_client_collection.integration` (bun-test, unit): Runs the two-client TanStack DB collection integration test: client A creates a chat_thread, client B observes it through the live collection without restart, and recency ordering stays newest-first. — `packages/khala-sync-db-collection/src/index.test.ts`
-- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop plus bun test packages/khala-sync-db-collection/src/index.test.ts from the repo root.
-- **Authority boundary:** Binds the desktop sidebar's source selection and freshness semantics for chat_thread sync rows. It does not promise offline recovery, message-body sync, or cross-device identity beyond the owner chat scope.
+- **Oracle** `assurance_spec.document_is_source_driven_and_authority_honest` (bun-test, unit): Parses the checked-in MVP AssuranceSpec, proves all 18 obligations and their incomplete proof-design fields render, proves invalid bytes fail closed, and proves the view exposes no execution or verification actions. — `apps/openagents-desktop/src/renderer/assurance-spec-workspace.test.ts`
+- **Verification:** Desktop typecheck, renderer unit tests, design conformance, and production build enforce the source-driven Effect Native document visualization and proposal-only authority boundary.
+- **Authority boundary:** The Desktop build parses the exact checked-in .assurance-spec.md artifact through the browser-safe package grammar and embeds only its bounded presentation snapshot; future editor-opened source uses the same app-owned projection boundary. Structural validity, criterion mapping, and repository candidates are presentation facts only: the view cannot admit work, execute checks, verify evidence, waive obligations, release software, or change public promises. Invalid bytes replace the document visualization with an explicit invalid state, and no filesystem or repository authority is added to the renderer.
 
-### `khala_code.history.no_duplicate_thread_rows.v1` — ENFORCED
+### `openagents_desktop.mvp.uses_logged_in_codex_session.v1` — ENFORCED
 
-- **Surface:** khala-code-desktop (chat thread sidebar)
-- **Stated by:** owner via khala-code-session on 2026-07-05
-- **Statement:** The chat sidebar must never show the same session as two separate distinguishable entries. Reported live: the same chat title appeared twice in the sidebar as two distinguishable list items.
+- **Surface:** openagents-desktop (MVP Codex runtime and Settings)
+- **Stated by:** owner via owner-directive on 2026-07-13
+- **Statement:** this must work with the user's logged in Codex account. This whole idea of linking to pylons does not belong in this desktop application. The MVP needs to be, it uses your logged in Codex session, nothing else. Simplify this all right now.
 - **Enforcement tier:** test-sweep
-- **Oracle** `chat_thread_dedupe_by_id.unit` (bun-test, unit): Collapses two chat_thread entities that share a threadId (simulating a data-layer duplicate, e.g. a retried create that produced a second entity id) down to the single most recently updated row before the sidebar ever sees them. — `packages/khala-sync-db-collection/src/index.test.ts`
-- **Oracle** `sidebar_render_dedupe_by_id.dom` (bun-test, dom): Mounts the real thread sidebar in a DOM with a listThreads() result that lists the same thread id from two different groups and proves exactly one row (and one title) renders for that id. — `clients/khala-code-desktop/tests/codex-thread-sidebar.test.ts`
-- **Verification:** bun test tests/codex-thread-sidebar.test.ts inside clients/khala-code-desktop plus bun test packages/khala-sync-db-collection/src/index.test.ts from the repo root.
-- **Authority boundary:** This binds row-identity rendering only: one thread id must never produce two sidebar rows, whether the duplication comes from an upstream data-layer artifact (two entity ids sharing one threadId) or from a threadId appearing in more than one group. It does not define or fix whatever process created a data-layer duplicate in the first place, and it does not merge two genuinely distinct thread ids that merely share a similar or identical title.
+- **Oracle** `mvp_codex_session.current_only_app_server` (bun-test, unit): Offers both the ordinary session and a Pylon account, then proves the production app-server selects only the ordinary session and completes the native interaction round trip. — `apps/openagents-desktop/src/codex-local-runtime.test.ts`
+- **Oracle** `mvp_codex_session.no_linking_surface` (bun-test, unit): Proves Settings explains current-session reuse and renders no Codex/Claude Pylon account rows, connect action, reconnect action, or device-auth status. — `apps/openagents-desktop/src/renderer/settings.test.ts`
+- **Oracle** `mvp_codex_session.app_owned_skill_root` (bun-test, unit): Pins ProductSpec skill registration to the signed app-owned extra root while allowing the current Codex session and forbidding default-home skill mutation. — `apps/openagents-desktop/src/builtin-productspec-skill.test.ts`
+- **Verification:** Desktop typecheck and the Codex local-runtime, preflight, Settings, built-in skill, MVP-proof, package, and built-host suites enforce the current-session-only MVP boundary.
+- **Authority boundary:** The local Desktop MVP admits exactly the ordinary current Codex session and launches app-server from the user's validated installed Codex executable. OpenAgents never packages, copies, or re-signs Codex. Inherited CODEX_HOME is removed so Codex uses its ordinary default ~/.codex state, reusing the user's existing config and authentication. Named Pylon accounts, account rotation, isolated device-auth, and Pylon account rows are not eligible for or rendered by the MVP workroom. The app-owned ProductSpec skill remains digest-pinned under the signed application resources and is registered as an explicit app-server extra root; it is not copied into ~/.codex. Fleet-only account custody remains outside this local-workroom contract. No credential bytes or home paths cross preload or renderer.
 
-### `khala_code.chat.rename_applies_immediately.v1` — ENFORCED
+### `openagents_desktop.settings.reachable_workspace.v1` — ENFORCED
 
-- **Surface:** khala-code-desktop (chat thread sidebar)
-- **Stated by:** owner via codex-session on 2026-07-01
-- **Statement:** Confirming a thread rename (the check-mark action on the inline rename control) updates the visible sidebar title immediately, without requiring a refresh or a subsequent click.
+- **Surface:** openagents-desktop (Settings navigation and scrolling)
+- **Stated by:** owner via owner-screenshot-review on 2026-07-13
+- **Statement:** when I toggle like that settings button or whatever that rightmost button in the sidebar is, it'll open and collapse the Command K bar. That doesn't make any fucking sense. I can't scroll down in the settings page.
 - **Enforcement tier:** test-sweep
-- **Oracle** `rename_applies_immediately.dom` (bun-test, dom): Mounts the real thread sidebar, drives the context-menu rename flow end to end, and asserts the visible title updates before the mocked rename RPC resolves. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
-- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop. Runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
-- **Authority boundary:** Binds the rename affordance's visible result only, not its persistence/sync mechanics.
+- **Oracle** `settings_navigation.rightmost_action_is_settings_only` (bun-test, unit): Proves Settings is the final dock item and its real typed intent opens and closes Settings without opening the Command-K palette. — `apps/openagents-desktop/src/renderer/shell.test.ts`
+- **Oracle** `settings_navigation.workspace_is_scroll_owner` (bun-test, unit): Proves the token-conformant Settings workspace owns bounded vertical overflow while the host body remains fixed. — `apps/openagents-desktop/src/renderer/design-conformance.test.ts`
+- **Verification:** Desktop shell and design-conformance suites plus typecheck/build enforce the distinct navigation intents and scroll ownership.
+- **Authority boundary:** The sidebar dock wraps instead of clipping its final controls and keeps the typed Settings action last, so the visible rightmost gear dispatches only DesktopSettingsToggled; Command-K remains a separate typed command. The Settings workspace is the bounded vertical scroll owner and keeps every control reachable without changing body-level viewport policy. No renderer path, credential, provider payload, or broader runtime authority is introduced.
 
-### `khala_code.chat.rehydrate_shows_tool_calls.v1` — ENFORCED
+### `openagents_desktop.chat.launch_directory_is_default_cwd.v1` — ENFORCED
 
-- **Surface:** khala-code-desktop (chat transcript)
-- **Stated by:** owner via codex-session on 2026-07-01
-- **Statement:** Reopening or resuming an older thread renders its historical tool calls in the transcript, not just its text messages. The full turn history, including tool activity, must be reconstructible from a rehydrated session.
+- **Surface:** openagents-desktop (local coding workspace)
+- **Stated by:** owner via owner-review on 2026-07-12
+- **Statement:** the sessions are saved to this fucking app support shit ... needs to go into the current directory where the app was started from by default, and later configurable in a dir
 - **Enforcement tier:** test-sweep
-- **Oracle** `rehydrate_shows_tool_calls.source` (bun-test, unit): References the thread-history projector's full-variant coverage test and confirms messagesFromThread replays every item through the same projector used for live streaming. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
-- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop. Runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
-- **Authority boundary:** Binds transcript completeness on rehydrate. Does not require re-executing any tool.
+- **Oracle** `local_workspace.claude_exact_host_root` (bun-test, unit): Proves an explicit host workspace root becomes the exact Claude SDK cwd. — `apps/openagents-desktop/src/claude-local-runtime.test.ts`
+- **Oracle** `local_workspace.codex_exact_host_root` (bun-test, unit): Proves the same explicit host workspace root becomes Codex's process cwd and -C argument. — `apps/openagents-desktop/src/codex-local-runtime.test.ts`
+- **Verification:** Desktop typecheck/build plus the Claude and Codex local-runtime suites enforce exact host-root propagation while retaining isolated fallback coverage.
+- **Authority boundary:** Electron main captures the owner launcher directory at module launch (OPENAGENTS_DESKTOP_LAUNCH_CWD for a managed launcher, otherwise process.cwd()), validates it as a directory, admits it as the initial canonical WorkContext, and supplies that exact directory as the top-level Claude and Codex coding cwd. It supersedes stale persisted navigation on every ordinary launch; an explicit in-app directory choice may replace it afterward. The provider runtimes may not silently substitute an Application Support per-thread directory. Smoke/live-proof runs remain isolated under test userData; probes, account custody, and delegated child scratch work are unchanged. This launch admission does not grant the renderer absolute path-selection authority.
 
-### `khala_code.chat.starcraft_scrollbar_parity.v1` — ENFORCED
+### `openagents_desktop.workspace.one_time_consent_no_root_no_dialog_storm.v1` — ENFORCED
 
-- **Surface:** khala-code-desktop (visual theme)
-- **Stated by:** owner via codex-session on 2026-07-01
-- **Statement:** The custom StarCraft-themed scrollbar used on openagents.com applies inside Khala Code desktop's scrollable surfaces too (sidebar, transcript, any other scrollable panel), not only the website.
+- **Surface:** openagents-desktop (local coding workspace consent and macOS file access)
+- **Stated by:** owner via issue on 2026-07-21
+- **Statement:** The app never opens at the filesystem root, and it never fires a burst of macOS permission dialogs while browsing. It asks once, on first run, for a workspace folder, then works inside that chosen scope.
 - **Enforcement tier:** test-sweep
-- **Oracle** `starcraft_scrollbar_parity.source` (bun-test, unit): Asserts the StarCraft scrollbar theme is declared with the universal selector (automatic parity for every scrollable surface) and that no container opts out. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
-- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop. Runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
-- **Authority boundary:** Theme parity only. Does not change scroll behavior or keyboard/wheel handling contracted elsewhere.
+- **Oracle** `workspace_consent.launch_root_is_never_filesystem_root` (bun-test, unit): Proves a launch cwd of `/` resolves to the home directory instead of the filesystem root. — `apps/openagents-desktop/src/desktop-launch-workspace.test.ts`
+- **Oracle** `workspace_consent.plan_asks_once_and_reuses_grant` (bun-test, unit): Proves the plan requests consent only on a fresh interactive run and reuses a valid grant without re-prompting. — `apps/openagents-desktop/src/desktop-workspace-consent.test.ts`
+- **Oracle** `workspace_consent.decision_persists_across_relaunch` (bun-test, unit): Proves the durable 0600 store reads a prior grant or decline back on the next launch and never throws on corrupt bytes. — `apps/openagents-desktop/src/desktop-workspace-consent-host.test.ts`
+- **Verification:** Desktop launch-workspace, workspace-consent, and workspace-consent-host suites plus Desktop typecheck enforce the non-root default and the one-time persisted consent. No release command is part of the oracle.
+- **Authority boundary:** The launch workspace resolver rejects the filesystem root and falls back to the user home directory, so a double-clicked packaged app never operates from `/`. On a genuine interactive first run — never in smoke, live-proof, MVP-proof, startup-trace, ACP-release-proof, preview, or isolated-profile launches — Electron main shows one native open-directory panel; the folder the user selects is the macOS scoped-access consent. The decision (granted folder, or declined) persists at `<userData>/workspace-consent.json`, mode 0600, holding only a bounded status, one path, and a timestamp. A relaunch reuses the granted folder and never re-prompts; a decline keeps the safe fallback workspace and is never nagged; a vanished granted folder re-asks once. The consent record grants the renderer no absolute path-selection authority and stores no secrets.
 
-### `khala_code.transcript.consecutive_tool_calls_collapsed.v1` — ENFORCED
+### `openagents_desktop.chat.codex_turns_do_not_time_out.v1` — ENFORCED
 
-- **Surface:** khala-code-desktop (chat transcript)
-- **Stated by:** owner via codex-session on 2026-07-02
-- **Statement:** Consecutive tool calls in the transcript collapse into a single line showing the latest call. Clicking that line expands it to reveal the full list of collapsed calls, and each item in that list can be further clicked to see its own detail.
+- **Surface:** openagents-desktop (Codex local turn lifecycle)
+- **Stated by:** owner via owner-video-review on 2026-07-12
+- **Statement:** WHAT THE FUCK IS THIS TIMEOUT --- FIX IT
 - **Enforcement tier:** test-sweep
-- **Oracle** `consecutive_tool_calls_collapsed.source` (bun-test, unit): Pins the grouping pass and collapsible summary renderer wired into the transcript render path, including the click-to-expand toggle and matching CSS. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
-- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop. Runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
-- **Authority boundary:** Applies to runs of consecutive tool calls only. A tool call interleaved with an assistant message is not collapsed into an adjacent group.
+- **Oracle** `codex_turn_lifecycle.no_production_deadline` (bun-test, unit): Runs a non-closing Codex process with production defaults, proves it remains pending, then proves the existing exact-turn interrupt still terminates it as interrupted rather than timed out. — `apps/openagents-desktop/src/codex-local-runtime.test.ts`
+- **Verification:** pnpm exec vp test apps/openagents-desktop/src/codex-local-runtime.test.ts plus Desktop typecheck and build enforce the no-default-deadline lifecycle and explicit Stop authority.
+- **Authority boundary:** A production top-level local Codex turn has no host wall-clock deadline: long or temporarily quiet work remains alive until the Codex process completes, fails, or the owner dispatches the existing typed Stop intent. Elapsed time alone never sends SIGTERM and never fabricates a timeout/provider-unavailable state. A deadline remains dependency-injectable only for deterministic unit coverage of the typed failure path; it is not wired by Electron main and grants no renderer or provider authority.
 
-### `khala_code.transcript.tool_call_path_display.v1` — ENFORCED
+### `openagents_desktop.chat.provider_event_interleaving.v1` — ENFORCED
 
-- **Surface:** khala-code-desktop (chat transcript)
-- **Stated by:** owner via codex-session on 2026-07-01
-- **Statement:** Tool-call summaries in the transcript show a workspace-relative path, never the absolute filesystem path or worktree prefix. Each summary is a short verb-prefixed label (e.g. 'Read ___', 'Edited ___') immediately beside the tool icon. Status is conveyed by icon/color rather than a fully spelled-out word like 'Completed'.
+- **Surface:** openagents-desktop (chat transcript event ordering)
+- **Stated by:** owner via owner-video-review on 2026-07-12
+- **Statement:** the assistant message there at end is out of order like the tool calls appeared BEFORE that, i need everything interleaved sequentially in the order we get it. fix it and push
 - **Enforcement tier:** test-sweep
-- **Oracle** `tool_call_path_display.source` (bun-test, unit): References the projector's relative-path labeling test and confirms tool-call titles are built from the workspace-relative displayPath helper, never an absolute path. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
-- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop. Runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
-- **Authority boundary:** Binds display formatting only. The underlying tool-call data may still carry the absolute path internally.
+- **Oracle** `provider_event_interleaving.live_projection` (bun-test, unit): Streams model, assistant text, tool use, then more assistant text interleaved with keyed tool progress/result updates and proves those in-place refreshes do not fragment the second paragraph; the transcript still retains two correctly attributed assistant segments around the actual tool-card insertion, the durable journal matches the live renderer, and a 10,000-delta stress case proves one cadence publication with exact text. — `apps/openagents-desktop/src/renderer/local-harness.test.ts`
+- **Oracle** `provider_event_interleaving.bounded_shell_projection` (bun-test, unit): Blocks the active projection, submits 10,000 newer complete snapshots, and proves only the in-flight and exact latest snapshots are retained and processed before flush settles. — `apps/openagents-desktop/src/renderer/latest-only-queue.test.ts`
+- **Oracle** `provider_event_interleaving.durable_upsert_position` (bun-test, unit): Proves final assistant metadata/text enrichment replaces the exact keyed durable note in place without moving it after a later tool note. — `apps/openagents-desktop/src/thread-store.test.ts`
+- **Verification:** pnpm exec vp test apps/openagents-desktop/src/renderer/local-harness.test.ts apps/openagents-desktop/src/renderer/shell.test.ts apps/openagents-desktop/src/thread-store.test.ts plus Desktop typecheck and build cover live projection, tool-card folding, durable keyed replacement, and host integration.
+- **Authority boundary:** The renderer and durable local thread store project display-bearing provider events in their exact arrival order. Consecutive text deltas coalesce into one assistant segment and publish at most once per renderer cadence until a display-bearing non-text event creates a new visible timeline position; that insertion boundary synchronously flushes and closes the segment, the event is inserted next, and later text opens a new assistant segment after it. Header-only accounting and lifecycle events never split assistant prose. Keyed progress/completion, plan, question, child, and queue refreshes that update an existing card in place also never split assistant prose because they add no visible position; the renderer and durable journal share one typed boundary tracker so finalization cannot reintroduce phantom paragraph gaps. Renderer-to-shell projection is bounded latest-state-wins: at most the in-flight and newest complete thread snapshots are retained, inactive-chat events publish no shell revision, and settlement awaits the newest projection. The durable main-process journal remains the complete ordered event authority. Completion still flushes before settlement. A tool result updates its matching invocation card in place at the invocation's original position. Final usage/model metadata may enrich the last assistant segment through a keyed in-place upsert but may never append or move that segment past intervening tool, model, reasoning, or lane events. No event gains new renderer, filesystem, provider, or persistence authority.
 
-### `khala_code.transcript.streaming_state_cross_surface_consistency.v1` — ENFORCED
+### `openagents_desktop.chrome.command_notice_is_transient_toast.v1` — ENFORCED
 
-- **Surface:** khala-code-desktop (chat transcript)
-- **Stated by:** owner via codex-session on 2026-07-01
-- **Statement:** The sidebar's streaming indicator and the composer's own status readout for the active thread must always agree. It must never be possible for the sidebar to show a thread as streaming while the composer for that same thread simultaneously shows 'ready' (or vice versa).
+- **Surface:** openagents-desktop (command notice chrome)
+- **Stated by:** owner via owner-video-review on 2026-07-11
+- **Statement:** what is that yellow command request shit at top, is that supposed to be there, fix if not
 - **Enforcement tier:** test-sweep
-- **Oracle** `streaming_cross_surface_consistency.source` (bun-test, unit): Pins that the composer status and the sidebar streaming badge both derive from the same per-thread isThreadStreaming/streamingThreadIds source of truth, not independent flags that can disagree. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
-- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop. Runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
-- **Authority boundary:** This is the cross-surface consistency category from the customer behavior-contract catalog applied to our own product first.
+- **Oracle** `command_notice.transient_controller_and_toast` (bun-test, unit): Drives the controller under Effect's TestClock (not wall-clock): a notice auto-clears exactly on the bounded delay boundary, a new notice cancels the prior pending clear (no early/double dismiss), the dismiss intent clears immediately and kills the pending timer, the view renders a warn Toast carrying the DesktopCommandNoticeDismissed intent (and nothing when clear), and the real intent registry clears the notice on that dismiss intent. — `apps/openagents-desktop/src/renderer/command-notice.test.ts`
+- **Oracle** `command_notice.transient_rejection_smoke` (bun-test, e2e): The built-Electron smoke's command-duplicate-visible-rejection step asserts the duplicate command's rejection notice APPEARS as a dismissible toast (data-en-role=toast with a dismiss control) AND then auto-dismisses on its own bounded timer, rather than persisting as a permanent banner. — `apps/openagents-desktop/src/main.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the command-notice controller/toast suite, the shell view suite, and the Electron smoke command-duplicate-visible-rejection step asserting appear-then-auto-dismiss.
+- **Authority boundary:** The command notice (a duplicate/unavailable deferred-command rejection or a keybinding-save failure) presentation changes ONLY: from a permanent full-width top-edge caption banner that never cleared until the next successful command, to a compact, floated, token-styled warn TOAST that auto-dismisses on a bounded (~4.5s) Effect-scheduled clear and is dismissible immediately via a typed intent (× / click). The auto-clear is a forked Effect fiber (never a leaked raw setTimeout); a new notice cancels any prior pending clear; and the mount registers the controller's shutdown as a scope finalizer so a pending clear can never fire after unmount. The underlying rejection behavior is unchanged (CUT-15): the command is still rejected/ignored; only the notice is now transient, not permanent. No raw colors/px enter the renderer (apps-sdk chrome tokens + the design-conformance oracle), and the render stays commit-idempotent (the keyed toast is not re-parented on unrelated re-renders, so its enter animation never replays).
 
-### `khala_code.nav.hotbar_no_route_text.v1` — ENFORCED
+### `openagents_desktop.chat.details_affordance_visibility_is_pointer_only.v1` — ENFORCED
 
-- **Surface:** khala-code-desktop (app navigation)
-- **Stated by:** owner via codex-session on 2026-07-02
-- **Statement:** The app-section nav hotbar (fleet/chat/forum/inbox/settings) shows icon plus hotkey only. It must never render a raw route or path fragment as visible text on a hotbar button.
+- **Surface:** openagents-desktop (chat transcript chrome)
+- **Stated by:** owner via owner-video-review on 2026-07-11
+- **Statement:** the 'details' thing under message, when i hover it or its visible or whatever, it flashes back in every time i type something in the input, WHY??? WHY IS IT CONNECTED TO ANOTHER COMPONENT - fix it - and ensure that category of error wont happen anywhere else in codebase
 - **Enforcement tier:** test-sweep
-- **Oracle** `hotbar_no_route_text.dom` (bun-test, dom): Mounts the real nav hotbar and asserts every slot's visible label matches its static configured label with no route/path-shaped text. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
-- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop. Runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
-- **Authority boundary:** Binds the hotbar button surface only, not the underlying route model.
+- **Oracle** `details_affordance.stable_on_composer_input.smoke` (bun-test, e2e): The built-Electron smoke types into the composer while NOT hovering the message row and fails if the details affordance's computed opacity ever rises above 0, or if its DOM node is replaced or re-parented (sameNode/sameParent/restingOpacity=0/finalOpacity=0/maxOpacityDuringTyping=0). — `apps/openagents-desktop/src/main.ts`
+- **Oracle** `details_affordance.commit_idempotent_no_reparent` (bun-test, unit): Provider-agnostic render-dom guard: re-committing a Transcript whose only change is a sibling (the composer value) performs ZERO DOM moves of the persisted keyed hover-reveal affordance, so its CSS transition can never replay from an unrelated re-render. — `apps/openagents.com/packages/effect-native-render-dom/tests/index.test.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the details-affordance-stable-on-composer-input Electron smoke step; pnpm exec vp test at apps/openagents.com/packages/effect-native-render-dom runs the commit-idempotency guard.
+- **Authority boundary:** The per-message details affordance is a hover/focus reveal (opacity-0 at rest). Its visibility must be a pure function of pointer/focus ONLY — never of composer input, global state, or re-render timing. Root cause: the pure state->View re-render on every keystroke re-parented the persisted keyed affordance in the DOM renderer (Transcript wrappers were rebuilt from scratch and Stack children were unconditionally re-appended via replaceChildren); detaching + re-attaching a node restarts its CSS opacity transition, flashing it visible. Fix is structural, not cosmetic: (1) the resting opacity:0 is keyed on the affordance itself and no longer requires the [data-en-message] ancestor, so a momentary detach cannot expose it; (2) the shared render-dom commit is now idempotent — persisted keyed content is never re-parented on an unrelated re-render, killing the whole transition-replay category (also fixes the tool-title shimmer and disabled-reason popover).
 
-### `khala_code.nav.hotbar_hotkey_always_visible.v1` — ENFORCED
+### `openagents_desktop.chat.reading_flow_layout_stability.v1` — ENFORCED
 
-- **Surface:** khala-code-desktop (app navigation)
-- **Stated by:** owner via codex-session on 2026-07-01
-- **Statement:** Every nav hotbar button always displays its own trigger hotkey as a small visible badge (e.g. '⌥1'), not just discoverable by trial. Pressing the displayed modifier-plus-digit combination for a button always routes to that section.
+- **Surface:** openagents-desktop (chat transcript reading stability)
+- **Stated by:** owner via owner-screenshot-review on 2026-07-15
+- **Statement:** hovering over a message shows its metadata along the top row but this changes the positioning of the message because the height of the metadata bar was never included before ... i dont want that top metadata bar at all ... content the user should be able to read easily jumps around because of hidden elements
 - **Enforcement tier:** test-sweep
-- **Oracle** `hotbar_hotkey_always_visible.dom` (bun-test, dom): Mounts the real nav hotbar and asserts every slot renders a non-empty hotkey badge containing its configured digit. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
-- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop. Runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
-- **Authority boundary:** This is the app-section hotbar (Option+digit). It is distinct from khala_code.chat.recent_thread_cmd_hotkeys.v2's Cmd-hold recent-chat hints, which live in the sidebar rows instead of on hotbar buttons.
+- **Oracle** `reading_flow.no_top_metadata_bar` (bun-test, unit): Renders a real React message row and proves the removed metadata-bar node is absent while authored prose remains readable. — `apps/openagents-desktop/src/renderer/react-timeline.test.tsx`
+- **Oracle** `reading_flow.hover_geometry_static_guard` (bun-test, unit): Scans every transcript hover/focus CSS rule for layout-bearing declarations, rejects the former height:auto plus margin defect, includes a known-bad falsifier, and proves paint-only opacity/color reveals remain eligible. — `apps/openagents-desktop/src/react-conversation-assurance.test.ts`
+- **Verification:** Focused React timeline and conversation assurance suites enforce the absent metadata node and the generalized no-hover-geometry rule; the normal Desktop verify sweep retains both tests.
+- **Authority boundary:** The React transcript never renders the removed top metadata row. Message metadata remains available through the existing stable details inspector and accessible item label. More generally, hover and focus selectors within readable transcript rows are paint-only: they may alter opacity, color, visibility, or an out-of-flow overlay, but may not change box dimensions, margin, padding, border width, type metrics, display, grid, or flex geometry. A hidden in-flow element may never become layout-bearing on hover/focus, so pointer movement cannot move prose, change the reader's scroll anchor, or shift neighboring messages.
 
-### `khala_code.nav.hotbar_no_stray_special_characters.v1` — ENFORCED
+### `openagents_desktop.chat.compact_message_details_affordance.v1` — ENFORCED
 
-- **Surface:** khala-code-desktop (app navigation)
-- **Stated by:** owner via codex-session on 2026-07-02
-- **Statement:** The Option+digit hotbar shortcut must always be intercepted as a navigation command and must never leak macOS's special/garbled Option-key characters (e.g. ¡™£¢) into any input field or onto the page.
+- **Surface:** openagents-desktop (chat transcript chrome)
+- **Stated by:** owner via owner-video-review on 2026-07-11
+- **Statement:** that metadata button needs to be way smaller and more like an icon button, not a huge ginormous circle.
 - **Enforcement tier:** test-sweep
-- **Oracle** `hotbar_no_stray_special_characters.regression_ref` (bun-test, unit): References the existing regression test that dispatches a real Option+Digit2 keydown (producing the macOS special character '™' in event.key) at a focused input and asserts it is intercepted (defaultPrevented) and routes correctly instead of leaking into the input. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
-- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop. Runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
-- **Authority boundary:** Binds keyboard interception correctness only.
+- **Oracle** `compact_details_affordance.not_icon_circle` (bun-test, unit): Proves every message row's details affordance is a ghost catalog Button (NOT the IconButton circle variant) with zero padding, caption type scale, and muted color, still dispatching DesktopMessageSelected with the message key. — `apps/openagents-desktop/src/renderer/shell.test.ts`
+- **Oracle** `compact_details_affordance.smoke` (bun-test, e2e): The built-Electron smoke fails if the rendered details affordance carries the icon-button variant or exceeds a compact line-height bound before opening the inspector through it. — `apps/openagents-desktop/src/main.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the shell view suite and the Electron smoke message-inspector step with the compact-affordance guards.
+- **Authority boundary:** Only the details affordance presentation changes: it stays a real keyboard-focusable catalog Button dispatching the same typed DesktopMessageSelected intent with the same accessible label. The catalog IconButton's fixed 44px circle is simply no longer used for this affordance; no local UI primitive is introduced (ghost Button lowered via typed style tokens: zero padding, caption scale, muted color).
 
-### `khala_code.menus.flyout_single_line_no_preamble.v1` — ENFORCED
+### `openagents_desktop.chat.typed_tool_call_cards.v1` — ENFORCED
 
-- **Surface:** khala-code-desktop (app-wide menus)
-- **Stated by:** owner via codex-session on 2026-07-01
-- **Statement:** Right-click and flyout menus render one line per item, with no explanatory subheadline text under each item and no header/preamble content above the options.
+- **Surface:** openagents-desktop (chat transcript tool-call rendering)
+- **Stated by:** owner via owner-video-review on 2026-07-11
+- **Statement:** why don't you go improve the UI of those tool calls so it's not just JSON stuff? Like I thought we had some custom components that showed things properly, not these JSON blobs.
 - **Enforcement tier:** test-sweep
-- **Oracle** `flyout_single_line_no_preamble.dom` (bun-test, dom): Mounts the real thread sidebar, opens its context menu, and asserts no header element and no per-item description/subheadline render. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
-- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop. Runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
-- **Authority boundary:** Applies to all flyout/context menus app-wide, including the thread-action menu and the fleet menu.
+- **Oracle** `tool_cards.pairing_humanization_fallback` (bun-test, unit): Table-driven humanization per known tool (delegate/Agent/Bash/Read/Write/Edit/Glob/Grep/ToolSearch/WebSearch/WebFetch), started+ok folding into one card, unknown-tool bounded compact fallback with no raw JSON, failed-state result text, and the text-parse fallback for pre-typed persisted notes. — `apps/openagents-desktop/src/renderer/tool-cards.test.ts`
+- **Oracle** `tool_cards.transcript_rendering` (bun-test, unit): Proves the transcript renders one role=tool card per invocation with humanized title/detail, toned status chip, result line, no SYSTEM sender label, collapsed-by-default raw details behind the compact toggle, and the expand intent loop through the real registry. — `apps/openagents-desktop/src/renderer/shell.test.ts`
+- **Oracle** `tool_cards.react_lifecycle_reconciliation` (bun-test, unit): Proves the React timeline consumes the shared tool-card reconciler: a local started+ok/failed pair retains the started-note key and command preview while updating one row's terminal status and result. — `apps/openagents-desktop/src/renderer/react-timeline.test.tsx`
+- **Oracle** `tool_cards.smoke` (bun-test, e2e): The built-Electron fixture journey asserts the delegate invocation renders ONE updating card carrying the humanized task text and the child's answer, with no raw JSON args rendered by default anywhere in the transcript. — `apps/openagents-desktop/src/main.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the shared tool-card projector, React timeline, shell view, and Electron smoke tool-card assertions.
+- **Authority boundary:** Tool cards re-present the SAME bounded, redacted trace payloads the system notes already carried — no new data crosses the Electron boundary. One card per invocation updates in place from started to ok/failed (pairing is honest renderer-side toolName+order FIFO because the events carry no invocation id); the bounded raw args/result stay reachable behind a compact expand affordance and are never the default rendering; failure text renders as content. Tool cards drop the SYSTEM role label (the tool title is the header) but keep timestamps.
 
-### `khala_code.fleet.menu_no_stray_labels.v1` — ENFORCED
+### `openagents_desktop.chat.interactive_question_cards.v1` — ENFORCED
 
-- **Surface:** khala-code-desktop (fleet panel)
-- **Stated by:** owner via codex-session on 2026-07-01
-- **Statement:** The fleet menu must not render stray internal label text (e.g. a literal 'ACCT' tag) that is not part of a designed, human-readable element.
+- **Surface:** openagents-desktop (chat transcript agent-question cards)
+- **Stated by:** owner via owner-video-review on 2026-07-11
+- **Statement:** make the question UI too. Why not? proper effect native primitives and add some if needed.
 - **Enforcement tier:** test-sweep
-- **Oracle** `fleet_menu_no_stray_labels.source` (bun-test, unit): Asserts the fleet panel source never contains the literal string 'ACCT'. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
-- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop. Runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
-- **Authority boundary:** Narrow scope: this contract targets literal leaked internal labels, not the fleet menu's overall information architecture.
+- **Oracle** `question_cards.intent_loop_and_bridge` (bun-test, unit): Drives the real intent registry with a fake typed bridge: single-select option click dispatches the answer immediately in the frozen shape, multiSelect toggles then confirms, timeout/denied render dim resolved states, and an absent bridge renders disabled read-only options that dispatch nothing. — `apps/openagents-desktop/src/renderer/shell.test.ts`
+- **Oracle** `question_cards.event_projection` (bun-test, unit): Proves question_pending projects an interactive question note into the streaming transcript and question_resolved updates the same note in place with the runtime-authoritative outcome. — `apps/openagents-desktop/src/renderer/local-harness.test.ts`
+- **Oracle** `question_cards.smoke` (bun-test, e2e): The built-Electron journey renders the fixture question as an interactive card (header chip, option labels, dim description, no SYSTEM label, no raw JSON), clicks an option through the REAL typed answerQuestion IPC, and proves the runtime's typed rejection reverts the card to honest pending with the selection retained. — `apps/openagents-desktop/src/main.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the shell question-card suite, the local-harness projection suite, and the Electron smoke question-card step.
+- **Authority boundary:** Question cards render only the bounded typed question_pending payload from the FROZEN additive ClaudeLocalEvent contract and answer only through the typed claudeLocal.answerQuestion bridge in the frozen shape (answers: one { question, labels } entry per question, labels an array even for single-select; single-select dispatches on click, multiSelect toggles behind an explicit confirm). A bridge without answerQuestion renders read-only pending — the card never invents answer authority. Outcomes (answered/timeout/denied) come from question_resolved and render as dim resolved states; never raw JSON, never a SYSTEM label. Option rows compose catalog primitives (Button label + caption Text description); no local one-off primitives.
 
-### `khala_code.app.resumes_after_restart.v1` — ENFORCED
+### `openagents_desktop.chat.opencode_card_design_language.v1` — ENFORCED
 
-- **Surface:** khala-code-desktop (app lifecycle)
-- **Stated by:** owner via codex-session on 2026-07-01
-- **Statement:** When the app restarts, whether voluntary or due to a crash/relaunch, any work that was in flight resumes rather than silently stopping. The user should not have to notice and manually recover in-progress state after a restart.
+- **Surface:** openagents-desktop (chat transcript card design language)
+- **Stated by:** owner via owner-video-review on 2026-07-11
+- **Statement:** Make a design pass through the projects/repos/opencode desktop app. any of its tool/message card formatting, we should port its tailwind stuff to our Effect Native, i want our component slooking just like theirs but adapted to our starcraft blue etc, and using the openai apps sdk icons we are.
 - **Enforcement tier:** test-sweep
-- **Oracle** `resumes_after_restart.source` (bun-test, unit): Pins that the last active thread id is read (not cleared) at boot, restored via a dedicated best-effort function after the initial render, and that a failed restore clears the stale id instead of retrying forever. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
-- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop. Runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
-- **Authority boundary:** Binds resumability of in-flight work. Does not require preserving unsent composer drafts unless separately contracted.
+- **Oracle** `opencode_card_design.structural_anatomy` (bun-test, unit): Asserts the opencode-derived structural properties on our cards: tool cards render the header icon + title + status-chip anatomy in that order, detail/result lines stack beneath, raw output is collapsed by default (no raw JSON in the default rendering), and styling is typed token style objects (no class strings anywhere in the card views). — `apps/openagents-desktop/src/renderer/shell.test.ts`
+- **Oracle** `opencode_card_design.smoke` (bun-test, e2e): The built-Electron smoke asserts the rendered tool cards carry the ported anatomy (one card per invocation, humanized header, no raw JSON default) in the uniform Protoss-blue theme. — `apps/openagents-desktop/src/main.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the shell card suites and the Electron smoke; the design-port provenance note records the opencode source receipts.
+- **Authority boundary:** This is a presentation port only: opencode's card anatomy and density translate into typed Effect Native style objects on the shared tokens vocabulary — never Tailwind class strings (owner decision 2026-07-08), never local one-off primitives, never a light theme, and always our existing catalog icon set (apps-sdk-ui lineage), our Protoss-blue tokens, and our typed intents. No opencode code is vendored; the port provenance is recorded in-repo (docs/design-ports.md) with spec receipts.
 
-### `khala_code.app.no_unrequested_first_launch_scripts.v1` — ENFORCED
+### `openagents_desktop.chat.no_assistant_role_label.v1` — ENFORCED
 
-- **Surface:** khala-code-desktop (app lifecycle)
-- **Stated by:** owner via codex-session on 2026-07-01
-- **Statement:** Features that have not been enabled (e.g. Apple Bridge) must not run any preparation or background script on first launch. A disabled feature stays fully inert until explicitly turned on.
+- **Surface:** openagents-desktop (chat transcript chrome)
+- **Stated by:** owner via owner-video-review on 2026-07-11
+- **Statement:** Remove where it says assistant. I don't care about that.
 - **Enforcement tier:** test-sweep
-- **Oracle** `no_unrequested_first_launch_scripts.regression_ref` (bun-test, unit): References the existing Apple FM bridge disabled-on-launch regression tests and confirms package.json carries no prepare:apple-fm-bridge script. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
-- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop. Runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
-- **Authority boundary:** Binds first-launch behavior for currently-disabled features. Does not block future opt-in enablement flows.
+- **Oracle** `chat_no_assistant_label.note_projection` (bun-test, unit): Proves noteMessage emits no senderLabel for assistant rows while keeping the timestamp, YOU on user rows, and SYSTEM on system rows. — `apps/openagents-desktop/src/renderer/shell.test.ts`
+- **Oracle** `chat_no_assistant_label.smoke` (bun-test, e2e): The built-Electron claude streaming smoke asserts the finalized assistant row renders no sender chip. — `apps/openagents-desktop/src/main.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the shell view suite and the Electron smoke journey asserting the label-free assistant row.
+- **Authority boundary:** Only the visible ASSISTANT role header is removed from assistant transcript rows. Timestamps stay; the user YOU label and system SYSTEM label stay; the effective-model caption stays as its existing compact system trace line; typed role data on the message contract is unchanged and grants no new rendering authority.
 
-### `khala_code.tokens.per_thread_live_counter.v1` — ENFORCED
+### `openagents_desktop.chat.message_metadata_inspector.v1` — ENFORCED
 
-- **Surface:** khala-code-desktop (token accounting)
-- **Stated by:** owner via codex-session on 2026-07-01
-- **Statement:** A live per-thread token counter is visible in the top-right of the Khala Code screen while a thread is active, updating as tokens accrue. Clicking it shows how many of those tokens have synced to the public leaderboard.
+- **Surface:** openagents-desktop (chat message metadata inspector)
+- **Stated by:** owner via owner-video-review on 2026-07-12
+- **Statement:** when i load message details in right sidebar it doesnt scroll down, fix that.
 - **Enforcement tier:** test-sweep
-- **Oracle** `per_thread_live_counter.source` (bun-test, unit): Pins the token counter's top-right CSS placement, its click handler opening the sync-detail popover, and that the popover surfaces both leaderboard-synced and pending-sync token fields. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
-- **Verification:** bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop. Runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
-- **Authority boundary:** Display-only claim. Does not change the exact-only token accounting invariants (usage_truth='exact', reconciliation against token_usage_events) owned elsewhere.
+- **Oracle** `chat_message_inspector.intent_loop_and_fields` (bun-test, unit): Drives the real intent registry: details click selects the message, the right-side rail renders role/time/lane/model/account/turn/tokens/duration, Close and Escape deselect, and stale selections drop on thread switches. — `apps/openagents-desktop/src/renderer/shell.test.ts`
+- **Oracle** `chat_message_inspector.keyed_scroll_reveal` (bun-test, unit): Proves a changed Stack scroll target becomes the exact overflow owner, reveals the keyed details marker after generic position restoration, clears its one-shot marker, and leaves later manual scrolling untouched. — `apps/openagents.com/packages/effect-native-render-dom/tests/index.test.ts`
+- **Oracle** `chat_message_inspector.smoke` (bun-test, e2e): The built-Electron smoke clicks the streamed assistant message's details affordance and asserts the inspector shows the fixture's effective model, lane, account ref, and exact token total, then closes it. — `apps/openagents-desktop/src/main.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the shell inspector suite and the Electron smoke message-metadata-inspector step.
+- **Authority boundary:** The inspector projects only bounded per-message metadata persisted by the host. When a new message selection appends details below a taller live-agent graph, the exact right rail becomes its own scroll owner and synchronously reveals a unique keyed marker immediately before the inspector. The reveal runs once per changed target after generic scroll restoration, never moves the transcript viewport, and does not keep pinning after the user scrolls manually. Selection remains a typed intent and grants no runtime, resume, or filesystem authority.
 
-### `khala_code.terminal.tui_mode_available.v1` — ENFORCED
+### `openagents_desktop.chat.no_composer_disabled_caption.v1` — ENFORCED
 
-- **Surface:** khala-code-desktop (terminal)
-- **Stated by:** TheBenMeadows (community, relayed via Lathe operator agent PR) via community-feedback-discord on 2026-07-03
-- **Statement:** A terminal (TUI) mode is available: an interactive REPL over the same Codex app-server harness the desktop app uses, for users who want the engine without the window.
+- **Surface:** openagents-desktop (composer harness lane affordances)
+- **Stated by:** owner via owner-video-review on 2026-07-11
+- **Statement:** I have no idea why the bottom says Codex requires Open Agent session. Don't put that shit in the UI ever. Remove that.
 - **Enforcement tier:** test-sweep
-- **Oracle** `tui_mode_available.source` (bun-test, unit): Pins that the TUI script reuses the exact desktop chat/harness/status functions (createCodexAppServerChatRuntime, createCodexAppServerHost, inspectCodexHarnessStatus) rather than a parallel implementation, and exposes the /new, /status, and /exit slash commands. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
-- **Verification:** Enforced 2026-07-03: shipped via PR #8221 (merged). bun test tests/ux-contracts.test.ts inside clients/khala-code-desktop. Runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
-- **Authority boundary:** Binds the existence and reuse of the desktop harness for a terminal REPL. Does not change the underlying Codex app-server chat runtime or its approval/sandbox behavior.
+- **Oracle** `chat_no_disabled_caption.composer_render` (bun-test, unit): Proves no caption node and no reason-bearing Text renders anywhere in the composer for any lane state, while the disabled chip keeps the reason as its accessible label and Send stays evidence-gated. — `apps/openagents-desktop/src/renderer/shell.test.ts`
+- **Oracle** `chat_no_disabled_caption.smoke` (bun-test, e2e): The built-Electron smoke asserts the disabled Codex chip carries its reason via aria-label only and that no standing caption text exists in the composer. — `apps/openagents-desktop/src/main.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the composer suite and the Electron smoke; the live-proof driver journals the chip's disabled state + aria-label instead of any visible caption.
+- **Authority boundary:** Removing the caption never enables a dead lane: an unavailable chip stays visually disabled and refuses the action, and the reason string survives only in the chip's accessible label and host logs/journal. This does not weaken the evidence-gated composer or no-silent-substitution contracts.
 
-### `khala_code.settings.hidden_models_excluded_from_picker.v1` — ENFORCED
+### `openagents_desktop.chat.composer_stop_button.v1` — ENFORCED
 
-- **Surface:** khala-code-desktop (settings)
-- **Stated by:** TheBenMeadows (community, relayed via Lathe operator agent issue #8230) via community-feedback-discord on 2026-07-03
-- **Statement:** Internal/hidden Codex models (e.g. 'Codex Auto Review') never appear as selectable entries in the Settings model picker.
+- **Surface:** openagents-desktop (composer turn interruption)
+- **Stated by:** owner via capability-audit on 2026-07-11
+- **Statement:** interrupt a running turn from the UI
 - **Enforcement tier:** test-sweep
-- **Oracle** `hidden_models_excluded_from_picker.dom` (bun-test, dom): Mounts the real Codex settings panel with a model catalog that includes a hidden entry (e.g. 'Codex Auto Review') and asserts it never appears as a selectable option and its label/'(hidden)' marker never leaks into the panel text. — `clients/khala-code-desktop/tests/codex-settings-panel.test.ts`
-- **Verification:** Enforced 2026-07-03: fixed for GitHub issue #8230 via PR #8236 (merged). bun test tests/codex-settings-panel.test.ts inside clients/khala-code-desktop. Runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
-- **Authority boundary:** Binds the Settings model picker only. Other consumers of the model catalog (e.g. diagnostics) may still see hidden entries.
+- **Oracle** `composer_stop_button.render_and_intent_loop` (bun-test, unit): Proves the composer renders the icon-only Stop (and no Send) while pending and Send (no Stop) while idle, dispatches interruption only for the selected pending thread, and settles an owner interruption without an error row or failure banner state. — `apps/openagents-desktop/src/renderer/shell.test.ts`
+- **Oracle** `composer_stop_button.interrupt_path` (bun-test, unit): Drives the local-harness interruptActive seam headlessly against a fake lane bridge: a streaming turn's exact turnRef is signalled on the frozen interrupt channel, and the runtime's typed `interrupted` ClaudeLocalEvent maps to a turn_failed reason that finalizes the turn. — `apps/openagents-desktop/tests/capability-evals.test.ts`
+- **Oracle** `composer_stop_button.live_proof_step` (visual-smoke, e2e): The interrupt-stop live-proof step clicks Stop mid-turn in the real Electron window and journals the interrupted transcript state with a PNG receipt (rung-4; executed by the live-proof driver, not the headless sweep). — `apps/openagents-desktop/src/live-proof.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the shell Stop-button suite and the capability-evals interrupt-path oracle; the interrupt-stop live-proof step is exercised by the live-proof driver run.
+- **Authority boundary:** While a turn streams (pending), the composer's trailing icon-only Send is replaced by an icon-only Stop that dispatches the DesktopTurnInterrupted intent for the exact active thread. The handler signals that thread's already-plumbed local-lane interrupt IPC path and invents no terminal state — the runtime's typed `interrupted` result finalizes the turn and reverts the control to Send. An owner-requested Stop is neutral presentation: it creates neither a Turn failed banner nor an error timeline row, while the durable journal retains `owner_interrupted` truth. Stop grants no new authority: it cannot start a turn, route to another lane, or fabricate a completion, and a host without a matching local streaming lane simply no-ops.
 
-### `khala_code.settings.no_bare_unset_labels.v1` — ENFORCED
+### `openagents_desktop.chat.durable_runtime_turn_controls.v1` — ENFORCED
 
-- **Surface:** khala-code-desktop (settings)
-- **Stated by:** TheBenMeadows (community, relayed via Lathe operator agent issues/PR) via community-feedback-discord on 2026-07-03
-- **Statement:** A read-only settings value never displays the bare, unexplained word 'Unset'. When it reflects a default, it says so in plain language (e.g. 'Default').
+- **Surface:** openagents-desktop (durable runtime turn controls)
+- **Stated by:** owner via issue-completion-criteria on 2026-07-12
+- **Statement:** Provider questions, permission/tool approvals, plan/review transitions, interrupt, resume, retry, and cancel are first-class typed timeline items.
 - **Enforcement tier:** test-sweep
-- **Oracle** `no_bare_unset_labels.codex_panel.unit` (bun-test, unit): Mounts the real Codex settings panel with a projection whose read-only config fields (provider, reasoning summary, verbosity, approval, sandbox, etc.) are null, and asserts every rendered metric value is 'Default' and none is the bare word 'Unset'. — `clients/khala-code-desktop/tests/codex-settings-panel.test.ts`
-- **Oracle** `no_bare_unset_labels.claude_panel.unit` (bun-test, unit): Mounts the real Claude settings section with a projection whose account fields are null, and asserts every rendered metric value is 'Default' and none is the bare word 'Unset'. — `clients/khala-code-desktop/tests/claude-settings-panel.test.ts`
-- **Verification:** Enforced 2026-07-03: fixed as part of the response to community feedback that also produced #8230-#8233 and PR #8221. Both the Codex and Claude settings panels now render 'Default' instead of 'Unset' for null/undefined read-only metric values. Runs on every test-sweep invocation.
-- **Authority boundary:** Binds display labeling only — whether a read-only settings value reads as an unexplained 'Unset' or an honest 'Default'. Does not itself make any field editable. That is tracked separately by khala_code.settings.editable_not_env_var_only.v1.
+- **Oracle** `durable_runtime_turn_controls.interrupt_lane_exact` (bun-test, unit): Proves interruptActive during an in-flight durable send dispatches conversation.interrupt with the exact threadRef/runRef, the lane derived from the confirmed run runtime (claude_code→claude_pylon), and the confirmed run version; returns true only on an admitted outcome; and returns false with no command when no durable send is in flight or the confirmed run is already terminal. — `apps/openagents-desktop/src/renderer/runtime-conversation.test.ts`
+- **Oracle** `durable_runtime_turn_controls.queue_until_idle_confirmed_drain` (bun-test, unit): Proves a follow-up queued mid-turn is promoted only after the first run's confirmed terminal as a real append + start on the same lane, that the final thread carries both confirmed user messages, and that queueFollowup without an in-flight durable send reports queued:false and sends nothing. — `apps/openagents-desktop/src/renderer/runtime-conversation.test.ts`
+- **Oracle** `durable_runtime_turn_controls.queue_refusal_restores_draft` (bun-test, unit): Proves the DesktopNoteSubmitted pending branch restores the cleared composer draft when the host reports queued:false, and leaves newer user input untouched. — `apps/openagents-desktop/src/renderer/shell.test.ts`
+- **Oracle** `durable_runtime_turn_controls.interrupted_promotion_fails_closed` (bun-test, unit): Proves a promotion left without a provider receipt across app restart is quarantined as failed, cannot be admitted or replayed, does not remain in the active composer queue, and does not block the next genuinely queued message. — `apps/openagents-desktop/src/codex-durable-queue.test.ts`
+- **Oracle** `durable_runtime_turn_controls.gateway_lane_passthrough` (bun-test, e2e): Proves the protocol-v10 gateway decodes the additive optional lane on conversation.interrupt/continue/retry/close, hands it to the runtime command service unchanged, rejects an unknown lane literal as invalid_request, and that main's control adapters thread input.lane into the shared control-intent context instead of the hard-coded Codex default (source oracle). — `apps/openagents-desktop/tests/runtime-gateway.e2e.test.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the runtime-conversation control suite, the shell queue-refusal suite, and the gateway lane pass-through oracle in the normal sweep.
+- **Authority boundary:** CUT-16 (#8696) Desktop slice for the durable Khala runtime path. (1) The composer Stop button now also interrupts a DURABLE turn: the runtime conversation host implements interruptActive over the exact confirmed thread/run this renderer has in flight, dispatching conversation.interrupt through the protocol-v10 gateway with the confirmed run's expectedVersion. The acknowledgement is admission truth only — the confirmed canceled terminal (never the Stop handler) finalizes the turn and reverts the composer; a host with no in-flight durable send returns false and sends nothing. (2) Queue-until-idle now works on the durable path: a mid-turn submit enqueues a text follow-up that is promoted only at the previous turn's CONFIRMED terminal, as a real conversation.append plus conversation.start on the same lane; a refused enqueue restores the cleared draft instead of dropping text. If the app restarts after claiming a follow-up but before recording its provider receipt, that ambiguous promoting entry is quarantined as failed and is never replayed automatically; a possibly accepted user message must not be duplicated. Terminal queue history is not projected as an active composer queue. (3) Every control intent (chat Stop and fleet-cockpit pause/cancel/resume/retry/close) carries the EXACT confirmed run lane (claude_code→claude_pylon, codex/opencode_codex→codex_app_server, openagents_native→hosted_khala) as an additive optional gateway field threaded into the shared control-intent builders, because the durable authority's lane fence (runtime_target_lane_mismatch) rejects a mismatched target — the previous hard-coded Codex default made Claude/hosted turn controls unadmittable from Desktop. No schema, migration, server, or intent-contract change: openagents.khala_runtime_control_intent.v1 and protocol v10 are unchanged apart from the additive optional lane field.
 
-### `khala_code.plans.free_trace_capture_explicit_consent.v1` — ENFORCED
+### `openagents_desktop.chat.opencode_composer_shape.v1` — ENFORCED
 
-- **Surface:** khala-code-desktop (plans and billing settings)
-- **Stated by:** owner via github-issue on 2026-07-04
-- **Statement:** Explicit consent UI in the desktop is default OFF and never dark-patterned. It gates a capture pipeline of session events to Rampart redaction to owner_only trace ingest, aligned with data.free_tier_capture_disclosure.v1 and the paid-plan opt-out. Any redaction failure fails closed to not-captured, and capture grants no payout or settlement.
+- **Surface:** openagents-desktop (chat input composer layout)
+- **Stated by:** owner via owner-directive on 2026-07-12
+- **Statement:** Between codex/claude and reasoning dropdowns we need model selector. Codex select between GPT-5.6 and GPT-5.5, Claude select between Claude, Opus 4.8, Sonnet 5. Also that plus button make it not a huge circle, must be icon only.
 - **Enforcement tier:** test-sweep
-- **Oracle** `trace_capture_planner.unit` (bun-test, unit): Runs the pure desktop trace-capture planner and proves default-off consent, paid-plan exclusion, redaction failure, and owner-only ingest gates all return not-captured unless every gate passes. Successful owner-only capture keeps payout and settlement markers inert. — `clients/khala-code-desktop/tests/trace-capture.test.ts`
-- **Oracle** `trace_capture_consent_panel.dom` (bun-test, dom): Mounts the real plans panel in a DOM and proves the trace-capture consent control is off by default, performs no write before a user toggle, writes only after explicit checkbox activation, and shows paid-plan opt-out as not captured. — `clients/khala-code-desktop/tests/plans-panel.test.ts`
-- **Oracle** `trace_capture_consent_rpc.unit` (bun-test, unit): Exercises the desktop RPC consent setting and proves it persists only the explicit boolean consent, calls no network, stays owner-gated, exposes the served disclosure ref, and reports not_captured with inert payout/settlement markers. — `clients/khala-code-desktop/tests/rpc-handlers.test.ts`
-- **Verification:** bun test clients/khala-code-desktop/tests/trace-capture.test.ts clients/khala-code-desktop/tests/plans-panel.test.ts clients/khala-code-desktop/tests/rpc-handlers.test.ts clients/khala-code-desktop/tests/ux-contracts.test.ts. These files run in the package test glob and the repo test:khala-code-desktop sweep before pushes to main.
-- **Authority boundary:** Binds only the desktop consent gate and local capture planner. Production capture remains owner-gated by KHALA_CODE_DESKTOP_TRACE_CAPTURE_ENABLED plus an owner-only ingest sink. This contract does not authorize public traces, payout eligibility, settlement eligibility, promise-green movement, or capture on paid plans.
+- **Oracle** `opencode_composer_shape.structural_layout` (bun-test, unit): Proves the composer card holds a multiline shell-input above a bar ordered Attach, Provider, Model, Codex Reasoning, spacer, and Send/Stop; model options change with provider, exact selected IDs ride the next send, and Attach is the shared compact icon-only control. — `apps/openagents-desktop/src/renderer/shell.test.ts`
+- **Oracle** `opencode_composer_shape.token_conformance` (bun-test, unit): The design-conformance oracle holds on the composer: no raw color literals, spacing/radius values stay on shared scales, and Provider, Model, and Reasoning are compact native Select components. — `apps/openagents-desktop/src/renderer/design-conformance.test.ts`
+- **Oracle** `opencode_composer_shape.smoke` (visual-smoke, e2e): The built-Electron smoke renders the composer with input above the action bar and fails if the typed controls or trailing Send are missing. — `apps/openagents-desktop/src/main.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the shell composer-layout suite, the design-conformance oracle, and the Electron smoke; pixel receipts of the empty/text/image/streaming composer states are captured under scratchpad ep250-composer-shots/.
+- **Authority boundary:** The single OpenCode-shaped composer card keeps its multiline input above one compact action bar. That bar orders compact icon-only Attach, Provider, provider-scoped Model, Codex-only Reasoning, account/permission controls, a flexible spacer, and circular Send/Stop. Claude model IDs remain closed typed values; Codex model IDs come only from the bounded visible catalog reported by the validated installed app-server, and exact selected IDs reach the corresponding provider launch field. No model is inferred from its display label and Claude refuses provider substitution before content. Attach uses the shared Effect Native IconButton's `sm` size (32px) with a required accessible label rather than inheriting the generic 44px circular action treatment. No attach, queue, stop, availability, or submission behavior is removed.
 
-### `khala_code.plans.checkout_handoff_server_truth.v1` — ENFORCED
+### `openagents_desktop.chat.composer_image_input.v1` — ENFORCED
 
-- **Surface:** khala-code-desktop (plans and billing settings)
-- **Stated by:** owner via github-issue on 2026-07-04
-- **Statement:** Khala Code desktop plans panel hands off to real checkout (RL-4) with honest not-purchasable state while unarmed. Credit packages (BF-2.4 tiers) purchasable from same surface via existing web checkout handoff. Post-purchase state (plan/entitlement/credits) renders from server truth via existing RPCs — never fabricated client-side.
+- **Surface:** openagents-desktop (composer image input)
+- **Stated by:** owner via capability-audit on 2026-07-11
+- **Statement:** attach a screenshot to a coding turn (image input)
 - **Enforcement tier:** test-sweep
-- **Oracle** `plans_checkout_handoff.dom` (bun-test, dom): Mounts the real plans panel in a DOM: while the paid-plan seam is unarmed the purchase control is disabled, an armed Stripe payment_required response opens exactly the server-returned checkout URL and re-reads status, and the same surface opens the existing /billing checkout for credits without rendering local fake package or balance state. — `clients/khala-code-desktop/tests/plans-panel.test.ts`
-- **Oracle** `plan_purchase_payment_required_rpc.unit` (bun-test, unit): Decodes the plan-purchase RPC's Stripe payment_required response as a checkout handoff and asserts it does not contain a receiptRef or entitlementRef until the server returns a fulfilled receipt. — `clients/khala-code-desktop/tests/rpc-handlers.test.ts`
-- **Verification:** bun test clients/khala-code-desktop/tests/plans-panel.test.ts clients/khala-code-desktop/tests/rpc-handlers.test.ts clients/khala-code-desktop/tests/ux-contracts.test.ts. These files run in the package test glob and the repo test:khala-code-desktop sweep before pushes to main.
-- **Authority boundary:** Binds the desktop settings payment surface only. Plan catalog, entitlement, and purchase settlement remain owned by openagents.com plan APIs. Credit package catalog, balance, and checkout fulfillment remain owned by the existing web billing surface. The desktop may open those checkout URLs, but it must not synthesize paid entitlement or credit balance state.
+- **Oracle** `composer_image_input.decode_and_state` (bun-test, unit): Proves media-type/size classification with honest rejection copy, base64 decoding of an in-renderer File (drop/paste path), the ≤8 count bound, and the boundary projection that drops renderer-only fields. — `apps/openagents-desktop/src/renderer/composer-images.test.ts`
+- **Oracle** `composer_image_input.render_and_intent_loop` (bun-test, unit): Proves the active React composer renders the attach affordance and bounded thumbnails with remove, disables attach at the 8-image limit and while pending, surfaces accessible rejection copy and drag state, and that add/remove/submit through the real intent registry thread the image into the chat host (including image-only and failure-retry turns). — `apps/openagents-desktop/src/renderer/shell.test.ts`
+- **Oracle** `composer_image_input.claude_sdk_block` (bun-test, unit): Drives the real Claude runtime prompt construction: a captured fake query proves an image turn lowers to an AsyncIterable user message whose content carries a { type:"image", source:{ type:"base64", media_type, data } } block (sdk.d.ts receipt), while a no-image turn keeps the plain string prompt. — `apps/openagents-desktop/src/claude-local-runtime.test.ts`
+- **Oracle** `composer_image_input.codex_image_flag` (bun-test, unit): Proves the retained Codex exec fallback writes each attachment into the turn workspace and passes it as `-i <path>`, terminated by `-C` before the positional prompt so the variadic --image never swallows the prompt; the built smoke separately receipts default app-server `localImage` lowering. — `apps/openagents-desktop/src/codex-local-runtime.test.ts`
+- **Oracle** `composer_image_input.smoke_step` (visual-smoke, e2e): The built React image-attach smoke drops a fixture PNG onto the real Electron composer, asserts its data-URL thumbnail without visible base64, submits an image-only turn, approves the provider request, verifies the preview clears, and requires a privacy-safe app-server receipt of exactly one localImage input without retaining its path or bytes. — `apps/openagents-desktop/src/main.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the composer-images, shell, claude-local-runtime, and codex-local-runtime suites plus the image-attach smoke step; a real live provider image turn is deferred to a live-proof run.
+- **Authority boundary:** The active React composer carries a leading attach affordance plus drag-drop and paste-from-clipboard image attach. Accepted images are PNG/JPEG/WebP/GIF, bounded to at most 8 per message and 10 MB each; oversize, wrong-type, or unreadable files are rejected honestly with transient accessible copy (no standing caption). Acquisition batches are serialized so concurrent paste/drop cannot race the count bound. The renderer holds each attachment as bounded base64 and NEVER reads an arbitrary filesystem path — bytes come only from an in-renderer drop/paste File or a main-mediated native file picker. An idle image-only turn is valid; Steer and Queue remain text-only, and a failed send restores the attachments for retry. Claude sends images as SDK base64 image content blocks. The default Codex app-server lane writes bounded temporary files and sends `localImage` inputs; its exec fallback retains `-i <path>` lowering. Attaching grants no new authority: it starts no turn on its own, routes to no other lane, and reads no file the user did not hand the app.
 
-### `khala_code.settings.editable_not_env_var_only.v1` — ENFORCED
+### `openagents_desktop.chat.markdown_rendering.v1` — ENFORCED
 
-- **Surface:** khala-code-desktop (settings)
-- **Stated by:** TheBenMeadows (community, relayed via Lathe operator agent issues/PR) via community-feedback-discord on 2026-07-03
-- **Statement:** Read-only Codex config metrics that reflect a genuinely configurable value (model provider, approval policy, sandbox mode, reasoning summary, verbosity) are editable from the settings UI itself, reusing the existing config-value write RPC, rather than requiring the user to edit an external environment variable or config file.
+- **Surface:** openagents-desktop (assistant message markdown rendering)
+- **Stated by:** owner via owner-video-review on 2026-07-11
+- **Statement:** The markdown isn't rendered as markdown, so fix our fucking markdown rendering. I thought we had built a component for that.
 - **Enforcement tier:** test-sweep
-- **Oracle** `config_enum_selects.dom` (bun-test, dom): Mounts the real Codex settings panel and proves the enum-backed Summary, Verbosity, Approval, and Sandbox controls write through the existing codexConfigValueWrite RPC path. — `clients/khala-code-desktop/tests/codex-settings-panel.test.ts`
-- **Oracle** `provider_select_from_model_list.dom` (bun-test, dom): Mounts the real Codex settings panel with provider options sourced from model/list and proves the Provider select writes model_provider through codexConfigValueWrite, including clearing back to Default. — `clients/khala-code-desktop/tests/codex-settings-panel.test.ts`
-- **Verification:** Enforced 2026-07-04: fixed for GitHub issue #8254. bun test tests/codex-settings-panel.test.ts tests/codex-settings.test.ts tests/rpc-handlers.test.ts tests/ux-contracts.test.ts inside clients/khala-code-desktop. Runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
-- **Authority boundary:** Binds settings-panel editability for values that are structurally configurable (Codex/Claude config keys). Does not apply to values that are genuinely environment-only by design (e.g. secrets that must never be typed into the UI), which should instead say so honestly per khala_code.settings.no_bare_unset_labels.v1.
+- **Oracle** `chat_markdown.projector_unit` (bun-test, unit): Proves the bounded subset parses to typed blocks, hostile link schemes stay inert text, unterminated **/`/``` render gracefully mid-stream, and segments lower to Markdown/CodeBlock/Divider catalog views with stable keys. — `apps/openagents-desktop/src/renderer/markdown.test.ts`
+- **Oracle** `chat_markdown.assistant_body` (bun-test, unit): Proves assistant note bodies project through the markdown views while user text stays literal. — `apps/openagents-desktop/src/renderer/shell.test.ts`
+- **Oracle** `chat_markdown.smoke` (bun-test, e2e): The built-Electron claude fixture journey streams a mid-marker-split **streaming** reply and asserts the final assistant body renders a real <strong> with no literal ** text. — `apps/openagents-desktop/src/main.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the markdown projector suite, the shell view suite, and the Electron smoke markdown assertion.
+- **Authority boundary:** Assistant bodies parse a bounded markdown subset (headings, bold, italics, inline code, fenced code, lists, blockquotes, rules) into the typed catalog Markdown/CodeBlock/Divider views — text nodes only, no raw HTML is constructible, and links render as safe text, never navigation. User input stays literal. Mid-stream unterminated markers render as plain text until closed; re-parsing per append never throws.
 
-### `khala_code.chat.khala_lane_connect_button.v1` — ENFORCED
+### `openagents_desktop.seam.replaceable_owned_correlated_services.v1` — ENFORCED
 
-- **Surface:** khala-code-desktop (Khala lane)
-- **Stated by:** TheBenMeadows (community, relayed via Lathe operator agent issues/PR) via community-feedback-discord on 2026-07-03
-- **Statement:** When the Khala lane is unavailable because the desktop process has no OPENAGENTS_AGENT_TOKEN, the lane offers a 'Connect' button that drives an in-app flow to obtain and persist a token, instead of only explaining the missing environment variable in text.
+- **Surface:** openagents-desktop (replaceable service lifecycle and operation correlation)
+- **Seam:** client `apps/openagents-desktop/src/runtime-gateway-contract.ts` <-> server `apps/openagents-desktop/src/desktop-host-lifecycle.ts`
+- **Stated by:** owner via github-issue on 2026-07-11
+- **Statement:** Desktop runtime, workspace, Sync, account, and history services are replaceable through the production host lifecycle; project, session, window, and app teardown closes exactly the resources it owns once, while one public-safe operation/session/run/correlation context survives the renderer-to-Sync path.
 - **Enforcement tier:** test-sweep
-- **Oracle** `desktop_auth_device_route.unit` (bun-test, unit): Exercises the Worker desktop auth device route: start creates a short-code verification link without an agent token, browser verify mints and links an agent credential, and poll requires the short-lived secret before returning the raw token once to the desktop client. — `apps/openagents.com/workers/api/src/khala-code-openagents-auth-routes.test.ts`
-- **Oracle** `desktop_auth_rpc_persistence.unit` (bun-test, unit): Exercises the desktop RPC persistence path: persisted tokens satisfy plan status, start saves only a pending attempt to the settings file, and poll persists the linked token while returning only its prefix to the renderer. — `clients/khala-code-desktop/tests/rpc-handlers.test.ts`
-- **Oracle** `missing_token_connect_panel.source` (bun-test, unit): Static shell guard proving the missing-token transcript path renders the OpenAgents Connect panel and wires start/poll/open-link RPC methods instead of remaining a plain text banner. — `clients/khala-code-desktop/tests/app-shell.test.ts`
-- **Verification:** Enforced 2026-07-04 for GitHub issue #8255: Worker route tests cover the browser-verified token mint/poll flow. Desktop RPC tests cover local pending-attempt/token persistence and persisted-token use for hosted plan status. App-shell tests cover the inline missing-token Connect panel. Runs in the package test glob, the Worker API test sweep, and the deploy check before pushes to main.
-- **Authority boundary:** Binds the Khala lane missing-token recovery path: the browser-verified device flow may mint a linked OpenAgents agent token, and the desktop may persist that token locally for hosted Khala. It does not touch the default Codex home, grant provider-account authority, publish the raw token in renderer UI, or authorize any promise-state/payment/payout change.
+- **Oracle** `desktop_architecture.replaceable_owned_lifecycle` (bun-test, e2e): Uses the production lifecycle constructor with substitute runtime/workspace/Sync/account/history services and proves replacement, window close, app close, late-resource refusal, exact finalizer counts, and zero active slots. — `apps/openagents-desktop/src/desktop-host-lifecycle.test.ts`
+- **Oracle** `desktop_architecture.operation_correlation` (bun-test, e2e): Preserves the same bounded operation/session/run/correlation refs through gateway observation, runtime command admission, Sync causality, response decoding, and the public-safe journal. — `apps/openagents-desktop/tests/runtime-gateway.e2e.test.ts`
+- **Verification:** The canonical Desktop verify gate runs lifecycle/correlation mutation and leak tests, builds Electron, executes the structured correlation path with substitute backing services, reloads the renderer, explicitly disposes the host, and requires active=0.
+- **Authority boundary:** Correlation carries bounded refs only and maps to private Sync causality refs; it never carries a path, URL, prompt, body, owner, token, credential, raw error, native handle, or provider payload. Replacement and disposal do not widen renderer or test-fixture authority.
 
-### `khala_code.fleet.khala_sync_indicator_truthful.v1` — ENFORCED
+### `openagents_desktop.seam.codex_trace_electron_acceptance.v1` — ENFORCED
 
-- **Surface:** khala-code-desktop (fleet cockpit)
-- **Stated by:** owner via issue on 2026-07-04
-- **Statement:** Synced fleet indicators reflect server truth: the Fleet screen may claim live freshness only while the Khala Sync live socket is open, and any other sync state is shown as an explicit syncing or reconnecting state — never fake freshness.
+- **Surface:** openagents-desktop (real Electron Codex trace acceptance)
+- **Seam:** client `apps/openagents-desktop/src/electron-trace-acceptance.ts` <-> server `apps/openagents-desktop/src/main.ts`
+- **Stated by:** owner via owner-codex-session on 2026-07-10
+- **Statement:** The built Electron app must render real owner-local Codex history as a stable named top-level catalog with nested agents, loss-accounted trace items, keyboard-operable topology, a reachable structured tool inspector, and ref-only selection restoration across a real renderer reload.
 - **Enforcement tier:** test-sweep
-- **Oracle** `khala_sync_indicator_truthful.dom` (bun-test, dom): Mounts the real Fleet panel in a DOM with a fake Khala Sync source and proves the indicator renders 'Live' ONLY when the sync session's phase is live (open live socket). Bootstrapping/catching_up/must_refetch/idle phases render explicit syncing, resyncing, or reconnecting labels and never the live marker. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
-- **Oracle** `khala_sync_phase_is_session_truth.service` (bun-test, unit): Drives the real desktop Khala Sync service over a deterministic fake transport and proves the RPC-exposed phase is the session's real scope state: live only after bootstrap+catch-up complete and the live socket is open. — `clients/khala-code-desktop/tests/khala-sync-service.test.ts`
-- **Verification:** bun test tests/ux-contracts.test.ts tests/khala-sync-service.test.ts tests/fleet-status.test.ts inside clients/khala-code-desktop. Runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main. Live end-to-end verification against the deployed sync routes is tracked on epic #8282.
-- **Authority boundary:** Binds the Fleet screen's Khala Sync freshness indicator semantics only (KS-6.2, #8303). It does not claim delivery latency, server availability, or correctness of the fleet projection itself. The Fleet cockpit is Khala Sync-first by default. Local status/list reads are degraded fallback state for missing auth, disconnected sync, or explicit `KHALA_SYNC_FLEET=0`/`false`/`off` opt-out.
+- **Oracle** `codex_trace_real_electron_acceptance` (bun-test, e2e): Runs inside built Electron against the real local Codex catalog, checks named/order-stable roots, child containment, nested topology, completeness, keyboard bindings, tool inspection, public-safe timings, and reload restoration. — `apps/openagents-desktop/src/electron-trace-acceptance.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify builds Electron, runs the normal contract suite, executes the real-history journey, reloads the renderer, and fails on every named video-blocking regression.
+- **Authority boundary:** The acceptance journey reads only the existing schema-bounded Runtime Gateway projection. Its receipt contains aggregate counts and timings only—never titles, transcript text, paths, raw JSONL, credentials, or stable private refs—and it grants no resume, write, sync, or provider execution authority.
 
-### `khala_code.fleet.khala_sync_must_refetch_recovers.v1` — ENFORCED
+### `openagents_desktop.seam.identity.local_first_account_link.v1` — RETIRED
 
-- **Surface:** khala-code-desktop (fleet cockpit)
-- **Stated by:** owner via issue on 2026-07-04
-- **Statement:** MustRefetch never strands the Fleet screen: the sync client re-bootstraps automatically and the screen shows a visible re-sync state until live truth returns.
+- **Surface:** openagents-desktop (two-tier native identity)
+- **Seam:** client `apps/openagents-desktop/src/runtime-gateway-contract.ts` <-> server `apps/openagents-desktop/src/desktop-sync-host.ts`
+- **Stated by:** owner via owner-codex-session on 2026-07-10
+- **Statement:** Desktop creates one immutable device-local identity before OpenAuth and remains usable in local-only mode. A verified OpenAgents account link is additive and reversible; unlink, denial, failed link, and restart retain local-authority rows and never relabel them server-confirmed.
 - **Enforcement tier:** test-sweep
-- **Oracle** `khala_sync_must_refetch_rebootstraps.service` (bun-test, unit): Drives the real desktop Khala Sync service over a fake transport, emits a MustRefetch frame after a server-side scope reset, and proves the session re-bootstraps automatically: the RPC view converges on the replaced scope content and returns to live without any manual recovery call. — `clients/khala-code-desktop/tests/khala-sync-service.test.ts`
-- **Oracle** `khala_sync_must_refetch_visible.dom` (bun-test, dom): Mounts the real Fleet panel in a DOM with the sync source in must_refetch and proves the screen stays populated (polling fallback data still renders) with a visible 'Resyncing' indicator instead of a stranded or empty state. — `clients/khala-code-desktop/tests/ux-contracts.test.ts`
-- **Verification:** bun test tests/ux-contracts.test.ts tests/khala-sync-service.test.ts inside clients/khala-code-desktop. Runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main. Live end-to-end verification against the deployed sync routes is tracked on epic #8282.
-- **Authority boundary:** Binds the Fleet screen's recovery behavior on a MustRefetch signal (KS-6.2, #8303): automatic re-bootstrap with a visible re-sync state. It does not bind bootstrap retry budgets or server compaction policy, which stay owned by the khala-sync client/server packages and docs/khala-sync/SPEC.md.
+- **Oracle** `desktop_local_first_identity` (bun-test, e2e): Proves local identity restart stability, verified account link, reversible unlink, local retention, and tokenless projection. — `apps/openagents-desktop/tests/local-first-identity.e2e.test.ts`
+- **Verification:** Desktop host, Runtime Gateway, Settings, boundary, build, and Electron smoke run in the normal Desktop verify sweep.
+- **Authority boundary:** Local identity and LocalRevision rows use separate host-owned tables and device-local scopes. Only server-verified owner input may create a link. The renderer receives identity tier only; local refs, owner refs, tokens, storage, rows, and transport remain host-only, and hosted Sync refuses device-local scopes.
 
-### `khala_code.desktop.updater_never_silently_installs.v1` — ENFORCED
+### `openagents_desktop.seam.codex_loss_accounted_history.v2` — ENFORCED
 
-- **Surface:** khala-code-desktop (in-app updater)
-- **Stated by:** owner via issue on 2026-07-05
-- **Statement:** The UI never silently installs an update. Downloading and installing an update are both explicit, user-triggered actions. Periodic/background update checks only ever check for updates.
+- **Surface:** openagents-desktop (local Codex history)
+- **Seam:** client `apps/openagents-desktop/src/renderer/boot.ts` <-> server `apps/openagents-desktop/src/runtime-gateway.ts`
+- **Stated by:** owner via owner-codex-session on 2026-07-10
+- **Statement:** OpenAgents Desktop discovers active and archived Codex history without an age ceiling, preserves the parent/child agent graph, and shows a bounded source-order page for the selected agent with explicit redaction and gap accounting. The source equation is visible and unknown/corrupt records are never silently dropped.
 - **Enforcement tier:** test-sweep
-- **Oracle** `updater_install_requires_ready_state.unit` (bun-test, unit): Drives the real (backend-injected) updater controller: install() throws 'not ready to install' from idle/available and only ever succeeds after an explicit download() has reached the ready state. Periodic startPeriodicChecks() only ever calls the backend's checkForUpdates(), never downloadUpdate() or install(). — `clients/khala-code-desktop/tests/khala-code-updater-controller.test.ts`
-- **Oracle** `updater_settings_no_auto_install.dom` (bun-test, dom): Mounts the real Updates settings section in a DOM: the ready state renders a 'Restart to Install' button that never fires install() until clicked, and the downloading state disables the action button so a download and an install can never overlap. — `clients/khala-code-desktop/tests/khala-code-updater-settings-section.test.ts`
-- **Verification:** bun test tests/khala-code-updater-controller.test.ts tests/khala-code-updater-settings-section.test.ts inside clients/khala-code-desktop. Runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
-- **Authority boundary:** Binds the desktop in-app updater controller and Updates settings row only (#8440). It does not authorize a background/auto-update mode, does not bind the native app-menu 'Check for Updates…' item to anything beyond a check, and makes no claim about release-pipeline signing/upload correctness (owned by apps/oa-updates release-signing-runbook.md and the macOS release scripts).
+- **Oracle** `codex_loss_accounted_history` (bun-test, e2e): Proves nested history graph, source order, rich items, paging, archive compression, redaction, and visible gaps. — `apps/openagents-desktop/tests/codex-subagent-history.test.ts`
+- **Oracle** `codex_history_scale` (bun-test, e2e): Generates valid 100MiB/100-child/100k-item history and proves metadata-first discovery plus bounded pages. — `apps/openagents-desktop/tests/codex-history-performance.e2e.test.ts`
+- **Verification:** The Desktop verify sweep runs projection, gateway, Effect Native view, scale, boundary, build, and Electron smoke evidence.
+- **Authority boundary:** The worker is read-only and returns only schema-bounded, credential-redacted catalog/page projections through Runtime Gateway v4. Source files, raw JSONL, encrypted reasoning, credentials, filesystem authority, session resume, cloud sync, and provider runtime authority never enter the renderer.
 
-### `khala_code.desktop.updater_error_states_legible_and_retryable.v1` — ENFORCED
+### `openagents_desktop.chat.thread_first_content_under_50ms.v1` — ENFORCED
 
-- **Surface:** khala-code-desktop (in-app updater)
-- **Stated by:** owner via issue on 2026-07-05
-- **Statement:** In-app updater failure states are legible and retryable: a failed check or download renders a human-readable message in the Updates settings row and offers a Retry action, and never looks like a successful or silently-hung state.
+- **Surface:** openagents-desktop (thread loading performance)
+- **Stated by:** owner via owner-codex-session on 2026-07-10
+- **Statement:** Threads must always show their first bounded message content in less than 50 milliseconds, regardless of total rollout size. Large threads must be chunked; full-rollout parsing is forbidden on the selection path.
 - **Enforcement tier:** test-sweep
-- **Oracle** `updater_error_state_retryable.unit` (bun-test, unit): Drives the real updater controller with a backend that returns and throws check errors: both surface as a `status: 'error'` state carrying a human-readable message and `retryable: true`, and the RPC action-result helper reports `ok: false` with that same message. — `clients/khala-code-desktop/tests/khala-code-updater-controller.test.ts`
-- **Oracle** `updater_settings_error_legible.dom` (bun-test, dom): Mounts the real Updates settings section in a DOM with an error status: the error message renders as a plain-language metric value and the action button reads 'Retry' and stays enabled, never a silent or stuck state. — `clients/khala-code-desktop/tests/khala-code-updater-settings-section.test.ts`
-- **Verification:** bun test tests/khala-code-updater-controller.test.ts tests/khala-code-updater-settings-section.test.ts inside clients/khala-code-desktop. Runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main.
-- **Authority boundary:** Binds legibility/retryability of in-app updater error states only (#8440). It does not claim every possible network/OS failure is retryable, only that the controller/UI classify and surface failures honestly rather than silently succeeding or hanging.
+- **Oracle** `oversized_rollout_first_content.performance` (bun-test, e2e): Creates a 256 MiB sparse rollout and requires bounded first-content projection to finish under 50 ms. — `apps/openagents-desktop/tests/codex-history.e2e.test.ts`
+- **Verification:** pnpm exec vp test apps/openagents-desktop/tests/codex-history.e2e.test.ts enforces the 50 ms wall-clock budget in the normal desktop test sweep.
+- **Authority boundary:** The 50-millisecond budget covers local first-content projection after selection. It does not authorize loading unbounded history, exposing raw events, or moving filesystem work onto Electron's main process.
 
-### `khala_code.diagnostics.debug_log_export_public_safe_and_recovery_visible.v1` — ENFORCED
+### `openagents_desktop.seam.runtime_gateway_closed_protocol.v1` — ENFORCED
 
-- **Surface:** khala-code-desktop (native shell diagnostics)
-- **Stated by:** owner via github-issue on 2026-07-05
-- **Statement:** Khala Code desktop's debug-log export is public-safe by default: it redacts local secrets, provider payloads, tokens, and raw prompts before anything is written to the exported archive. Load-failure and unresponsive recovery states render a visible recovery affordance (relaunch, export debug logs, keep waiting where applicable, quit), and none of those recovery actions may leave a duplicate local Codex/Pylon/Khala Sync process running behind them.
+- **Surface:** openagents-desktop (Desktop Runtime Gateway)
+- **Seam:** client `apps/openagents-desktop/src/preload.cts` <-> server `apps/openagents-desktop/src/runtime-gateway.ts`
+- **Stated by:** owner via owner-codex-session on 2026-07-10
+- **Statement:** The signed Desktop renderer reaches host runtime state through one versioned closed query/command/event protocol. Protocol v8 includes bounded provider-native Codex history, canonical confirmed conversation/timeline/graph/command-outcome projections, and exact-ref start/interrupt commands; unknown requests fail schema decoding, unavailable or pending commands never appear completed, expired commands never dispatch, lifecycle events are ordered and disposable, and the renderer never receives runtime credentials or a generic transport.
 - **Enforcement tier:** test-sweep
-- **Oracle** `debug_log_export_redacted.unit` (bun-test, unit): Builds a diagnostics bundle from log entries that include a secret-shaped provider token and asserts the serialized bundle (manifest + every category .log file) never contains the raw secret anywhere, only the redaction marker. — `clients/khala-code-desktop/tests/diagnostics-bundle.test.ts`
-- **Oracle** `recovery_action_no_duplicate_processes.unit` (bun-test, unit): Proves relaunch/quit always await disposeRuntime() (which stops every local Codex/Pylon/Khala Sync subprocess) to completion before spawning a replacement process or exiting, including when disposeRuntime rejects, so a recovery action can never leave a duplicate local service process running. — `clients/khala-code-desktop/tests/diagnostics-service.test.ts`
-- **Oracle** `recovery_overlay_states_visible.dom` (bun-test, dom): Mounts the real recovery overlay in a DOM and proves both the load_failure and unresponsive states render a visible alertdialog with their correct action-button set, and that keep_waiting/export_logs/relaunch/quit each dispatch to the right action without dismissing on export. — `clients/khala-code-desktop/tests/recovery-overlay.test.ts`
-- **Verification:** bun test tests/diagnostics-redaction.test.ts tests/diagnostics-zip.test.ts tests/diagnostics-log-store.test.ts tests/diagnostics-bundle.test.ts tests/unresponsive-watchdog.test.ts tests/recovery-state.test.ts tests/diagnostics-service.test.ts tests/recovery-overlay.test.ts inside clients/khala-code-desktop. Runs in the package test glob, the package verify chain, and the repo test:khala-code-desktop sweep before pushes to main. bun run smoke:diagnostics-recovery-visual additionally captures a real headless-browser visual smoke of both recovery states.
-- **Authority boundary:** Binds the desktop diagnostics/debug-log export surface only (issue #8441). It does not certify remote telemetry or crash upload — that is explicitly out of scope for #8441 — and it does not claim Electrobun exposes native did-fail-load/render-process-gone hooks. The load-failure and unresponsive signals here are the honest substitutes documented in src/bun/index.ts and src/shared/unresponsive-watchdog.ts given that framework gap.
+- **Oracle** `runtime_gateway_closed_protocol.e2e` (bun-test, e2e): Round-trips schema-decoded renderer requests and proves truthful capability, unavailable command, lifecycle ordering, disposal, and rejection behavior. — `apps/openagents-desktop/tests/runtime-gateway.e2e.test.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the seam suite, mechanical boundary oracle, bundle, and real Electron bootstrap smoke.
+- **Authority boundary:** Electron main owns the Runtime Gateway and validates the invoking top-level bundled renderer. The renderer may request bounded OpenAgents session entry/exit and canonical conversation operations but receives only typed projections/outcomes; it gets no credential, callback/authorize URL, raw Khala Sync/store/session/transport authority, provider credential, raw IPC channel, MessagePort, filesystem handle, process handle, or raw runtime event.
+
+### `openagents_desktop.sync.host_owned_sqlite.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (Khala Sync local persistence)
+- **Stated by:** owner via owner-codex-session on 2026-07-10
+- **Statement:** Desktop opens the shared Khala Sync SQLite store inside Electron main, persists one installation identity across restart, migrates the supported legacy store without data loss, refuses a newer store before mutation with recovery guidance, and after native-session verification composes the shared HTTP/WebSocket session on exactly the server-derived owner's personal scope. Sparse event batches replay from the durable cursor; rotation is re-read host-side and the session closes before the store.
+- **Enforcement tier:** test-sweep
+- **Oracle** `desktop_sync_host.lifecycle` (bun-test, unit): Proves restart-stable identity, private permissions, supported legacy migration, newer-version refusal, personal-scope selection, dynamic token lookup, live/freshness transition, session-before-store close, and reuse of the shared SQLite store. — `apps/openagents-desktop/tests/desktop-sync-host.test.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the host lifecycle suite and real Electron gateway bootstrap.
+- **Authority boundary:** The renderer receives only bounded phase and freshness. Owner refs, credentials, database path and handle, installation identity refs, rows, mutation queue, transport, and session remain host-only. The local database is a reconstructible cache/offline queue and never server authority; authenticated substrate is not an authoritative conversation projection.
+
+### `openagents_desktop.sync.native_conversation_continuity.v1` — ENFORCED
+
+- **Surface:** openagents-desktop-and-mobile-hosts (authoritative cross-device conversation continuity)
+- **Stated by:** owner via owner-codex-session on 2026-07-10
+- **Statement:** A Desktop-created canonical chat_thread and first chat_message can be confirmed on mobile, mobile can append one canonical follow-up, and both native hosts converge on identical public-safe refs, confirmed entity versions, thread cursor, and live phase, then reconstruct the same state after restart without duplicates.
+- **Enforcement tier:** test-sweep
+- **Oracle** `native_timeline_fault_convergence.e2e` (bun-test, e2e): Feeds reordered/duplicate timeline rows and an authoritative gap snapshot through the Desktop and Expo/mobile SQLite adapters, proving byte-equivalent refs, versions, cursors, and retractions. — `apps/openagents-desktop/tests/native-timeline-fault-convergence.e2e.test.ts`
+- **Oracle** `native_conversation_continuation.e2e` (bun-test, e2e): Runs the real Desktop node:sqlite host and mobile Expo-SQLite host over the shared session/overlay protocol against a server-authoritative chat fake, then proves Desktop-to-mobile-to-Desktop convergence, exact versions/cursor, and restart reconstruction. — `apps/openagents-desktop/tests/native-conversation-continuation.e2e.test.ts`
+- **Verification:** The native conversation continuation e2e runs in the normal Desktop sweep; shared chat mutator/projection tests run in the khala-sync-client sweep and the collection package regression proves existing consumers use the same centralized mutators.
+- **Authority boundary:** Only server-confirmed chat_thread/chat_message rows enter the bounded conversation projection. Owner identity, credentials, store/session/overlay/transport objects, optimistic bodies, provider runtime events, and assistant-role inference remain host-only or explicitly outside this contract; denial and sign-out remove the conversation capability.
+
+### `openagents_desktop.seam.runtime_gateway_conversation.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (authoritative conversation Runtime Gateway)
+- **Seam:** client `apps/openagents-desktop/src/preload.cts` <-> server `apps/openagents-desktop/src/runtime-gateway.ts`
+- **Stated by:** owner via owner-codex-session on 2026-07-10
+- **Statement:** The signed Desktop renderer can query confirmed canonical conversation catalogs, threads, their current agent timeline, and durable command outcomes, and enqueue canonical create/append plus exact thread/message/run start or interrupt commands only through Runtime Gateway protocol v8. Enqueues return pending_reconcile or unknown_pending_reconcile with the durable mutation id, never optimistic completed; expired commands are terminal and never execute after reconnect.
+- **Enforcement tier:** test-sweep
+- **Oracle** `runtime_gateway_conversation.e2e` (bun-test, e2e): Round-trips confirmed catalog/thread/timeline/command-outcome projections and exact create/append/start/interrupt refs through protocol v8, proves pending-reconcile and terminal-expiry outcomes, unavailable fail-closed behavior, bounds, and schema rejection. — `apps/openagents-desktop/tests/runtime-gateway.e2e.test.ts`
+- **Oracle** `runtime_agent_run_transactional_binding` (bun-test, e2e): Against real local Postgres, proves durable start admission transactionally creates the canonical agent run, exact semantic retry reconciles, conflicting reuse fails closed, WorkContext/repository snapshot stays immutable, and runtime events preserve exact thread/run refs. — `packages/khala-sync-server/src/runtime-mutators.test.ts`
+- **Oracle** `runtime_provider_single_generation_claim` (bun-test, unit): Races two independent consumers against one admitted turn and proves only the winner of the durable sequence-one event claim invokes Codex. — `apps/pylon/src/orchestration/runtime-intent-enforcement.test.ts`
+- **Oracle** `mobile_same_thread_runtime_control` (bun-test, e2e): Proves mobile submits the same confirmed thread/message/run refs through the shared runtime builders, observes a later confirmed terminal projection, and interrupts only the exact confirmed run. — `apps/openagents-mobile/tests/mobile-conversation.test.ts`
+- **Verification:** Runtime Gateway e2e, Electron mechanical boundary, Desktop typecheck/build, and behavior-contract validation run in the normal Desktop sweep.
+- **Authority boundary:** The seam carries public-safe thread/message/run/WorkContext refs, bounded canonical timeline items, timestamps, confirmed entity versions, exact scope phase/cursor, and pending count only. It carries no owner identity, credential, store/session/overlay/transport, generic IPC, raw provider stream, or process authority; not-live/read failure is typed and body-free.
+
+### `openagents_desktop.seam.runtime_gateway_agent_timeline.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (confirmed provider-neutral agent timeline gateway)
+- **Seam:** client `apps/openagents-desktop/src/preload.cts` <-> server `apps/openagents-desktop/src/runtime-gateway.ts`
+- **Stated by:** owner via owner-codex-session on 2026-07-10
+- **Statement:** Runtime Gateway protocol v8 accepts bounded agent.timeline by exact runRef, conversation.timeline by exact threadRef, and conversation.commandOutcome by exact stable intentId/threadRef, returning only confirmed server projections with bounded canonical timeline items; unavailable, not-found, and read failure remain typed and body-free.
+- **Enforcement tier:** test-sweep
+- **Oracle** `runtime_gateway_agent_timeline.e2e` (bun-test, e2e): Round-trips the exact agent.timeline query and confirmed run/route/event projection through both schema boundaries, proves server routeRef preservation, body-free non-live failure, public-field bounds, and invalid-ref rejection. — `apps/openagents-desktop/tests/runtime-gateway.e2e.test.ts`
+- **Verification:** Runtime Gateway e2e, Electron boundary, Desktop host/typecheck/build, shared timeline, and behavior-contract validation run in the normal sweeps.
+- **Authority boundary:** Electron main composes the shared confirmed timeline reader only behind authenticated live Sync. The server-projected agent_run.routeId is the sole route/thread binding; renderer code cannot derive it from runRef. The seam may expose bounded runtime/backend/WorkContext classification but never owner/objective/repository contents, provider source, raw payload, external callback, auth/store/session/transport, generic IPC, or process authority.
+
+### `openagents_desktop.seam.runtime_gateway_live_agent_graph.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (confirmed live-agent graph gateway)
+- **Seam:** client `apps/openagents-desktop/src/preload.cts` <-> server `apps/openagents-desktop/src/runtime-gateway.ts`
+- **Stated by:** owner via owner-codex-session on 2026-07-11
+- **Statement:** Runtime Gateway protocol v8 emits server-confirmed openagents.live_agent_graph.v1 post-images inside the existing cursor-aware thread subscription. Exact resume emits the current bounded graph set, a proven cursor gap emits one authoritative-refetch snapshot, and interrupted or non-live scopes emit no cached graph authority.
+- **Enforcement tier:** test-sweep
+- **Oracle** `confirmed_live_agent_graph_read_model` (bun-test, unit): Reads only graph-valid post-images from the exact live thread scope, hides cached rows while non-live, and bounds a busy thread to the newest aggregate-safe graph set. — `packages/khala-sync-client/src/live-agent-graph.test.ts`
+- **Oracle** `runtime_gateway_live_agent_graph_reconnect` (bun-test, e2e): Proves graph refs and post-images ride confirmed resume and authoritative-refetch snapshots through the same durable cursor and bounded subscription path without polling. — `packages/khala-sync-client/src/live-conversation.test.ts`
+- **Oracle** `runtime_gateway_live_agent_graph_boundary` (bun-test, e2e): Round-trips a bounded canonical graph post-image through both protocol-v8 schema boundaries and advertises agent-graph capability only with live Sync. — `apps/openagents-desktop/tests/runtime-gateway.e2e.test.ts`
+- **Verification:** Khala Sync client graph/live-conversation tests and typecheck plus Runtime Gateway e2e, Desktop typecheck/build, and behavior-contract validation run in the normal sweeps.
+- **Authority boundary:** Electron main reads graph entities only from the authenticated canonical thread scope. Each event carries matching graphRefs plus at most eight validated post-images, with at most 2,000 nodes and 4,000 edges in aggregate. Provider-native history, raw callbacks, credentials, store/session/transport handles, and process authority never cross the renderer seam; unsupported graph facts remain explicit unknowns.
+
+### `openagents_desktop.chat.authoritative_sync_mode.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (visible authoritative conversation)
+- **Stated by:** owner via owner-codex-session on 2026-07-10
+- **Statement:** At boot, the Effect Native Desktop shell selects exactly one chat authority: Runtime Gateway v8 confirmed Sync when its catalog is live, otherwise the existing explicit local-only host. In Sync mode, visible threads/messages, durable command outcomes, and bounded assistant lifecycle items come from confirmed projections; create/append/start remain pending until exact refs and terminal state reconcile.
+- **Enforcement tier:** test-sweep
+- **Oracle** `desktop_authoritative_sync_mode.adapter` (bun-test, unit): Proves one-time live-vs-local selection, confirmed catalog/transcript mapping, stable client refs, create/append exact-ref confirmation, and pending timeout honesty. — `apps/openagents-desktop/src/renderer/runtime-conversation.test.ts`
+- **Verification:** The adapter, shell, Runtime Gateway, Electron boundary, typecheck, bundle, and behavior-contract validation run in the normal Desktop sweep.
+- **Authority boundary:** Mode is selected once per renderer lifetime so local and account-linked conversations never mix. The adapter uses only the generic decoded Runtime Gateway call; it gets no owner/credential/native authority, does not add preload IPC, does not infer assistant roles, and reports an unconfirmed append as still pending rather than completed.
+
+### `openagents_desktop.session.os_encrypted_custody.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (native OpenAgents session custody)
+- **Stated by:** owner via owner-codex-session on 2026-07-10
+- **Statement:** Desktop keeps the native OpenAgents access token, refresh token, and server-derived owner ref in one versioned Electron safeStorage-encrypted record under its private userData root; recovered credentials remain unverified until the server accepts them.
+- **Enforcement tier:** test-sweep
+- **Oracle** `desktop_session_vault.os_encrypted_custody` (bun-test, unit): Proves safeStorage encryption, private atomic persistence, encryption/backend refusal, malformed-record purge, bounded recovery, idempotent clear, and public-safe failures. — `apps/openagents-desktop/tests/desktop-session-vault.test.ts`
+- **Verification:** The desktop-session-vault and Electron-boundary suites prove custody and renderer isolation; Desktop typecheck/build and behavior-contract validation gate the integration.
+- **Authority boundary:** OS encryption and private disk custody do not verify the credential, authorize Khala Sync rows or commands, create a device_session, or expose any credential field to preload, renderer, Runtime Gateway, logs, receipts, or public errors.
+
+### `openagents_desktop.session.recovered_validation_rotation.v1` — RETIRED
+
+- **Surface:** openagents-desktop (native OpenAgents session recovery)
+- **Stated by:** owner via owner-codex-session on 2026-07-10
+- **Statement:** Retired from ordinary startup on 2026-07-17: opening Desktop must not initialize OS credential custody or validate recovered native credentials. Secure custody remains reachable only after an explicit account action.
+- **Enforcement tier:** test-sweep
+- **Oracle** `desktop_session_recovery.validation_rotation` (bun-test, unit): Proves exact native-session verification, rotation-before-ready, denial/owner-mismatch purge, transient retention, and tokenless results. — `apps/openagents-desktop/tests/desktop-session-recovery.test.ts`
+- **Oracle** `desktop_session_recovery.gateway_projection` (bun-test, e2e): Proves the renderer-facing Runtime Gateway projects only bounded verified readiness without owner or credential fields. — `apps/openagents-desktop/tests/runtime-gateway.e2e.test.ts`
+- **Verification:** Desktop recovery, Runtime Gateway, and Electron-boundary suites plus typecheck/build enforce both sides of the host-only validation seam.
+- **Authority boundary:** The retained recovery module and its unit oracle do not authorize invocation during startup. Ordinary launch remains local-only and Keychain-free.
+
+### `openagents_desktop.session.loopback_pkce_entry_exit.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (native OpenAgents session entry and exit)
+- **Stated by:** owner via owner-codex-session on 2026-07-10
+- **Statement:** Desktop main binds a temporary literal-loopback listener, launches the exact public-client GitHub code + S256 request, validates callback state, verifies the server owner before encrypted custody, and revokes both credential classes before local sign-out.
+- **Enforcement tier:** test-sweep
+- **Oracle** `desktop_session_pkce.loopback_entry_exit` (bun-test, unit): Proves literal-loopback lifecycle, callback state, public-safe response, exact authorize/exchange tuples, server owner verification, immediate rotation, timeout/cancel, and dual revocation before clear. — `apps/openagents-desktop/tests/desktop-session-pkce.test.ts`
+- **Oracle** `desktop_session_pkce.gateway_commands` (bun-test, e2e): Proves argument-free session commands round-trip through the closed Runtime Gateway and return only bounded phase outcomes. — `apps/openagents-desktop/tests/runtime-gateway.e2e.test.ts`
+- **Verification:** Desktop PKCE, Runtime Gateway, and Electron-boundary suites plus typecheck/build enforce host composition without a live browser or GUI in tests.
+- **Authority boundary:** The Runtime Gateway accepts only argument-free session entry/exit commands and returns bounded completed/cancelled/unavailable phase. No callback, authorize URL, state, code, verifier, owner, access token, or refresh token enters preload, renderer, logs, receipts, or public errors; verified session is not live Sync.
+
+### `openagents_desktop.session.effect_native_controls.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (native OpenAgents session UI)
+- **Stated by:** owner via owner-codex-session on 2026-07-10
+- **Statement:** Desktop Settings renders the exact bounded OpenAgents session phase and routes visible sign-in/sign-out controls through typed Effect Native intents to argument-free Runtime Gateway commands, with honest in-flight and unavailable states.
+- **Enforcement tier:** test-sweep
+- **Oracle** `desktop_session_controls.effect_native_intents` (bun-test, unit): Drives the real Effect Native Settings view and intent registry through signed-out, authenticating, session-ready, sign-in, and sign-out states with a tokenless fake bridge. — `apps/openagents-desktop/src/renderer/settings.test.ts`
+- **Oracle** `desktop_session_controls.gateway_phase` (bun-test, e2e): Proves bootstrap carries an explicit bounded session phase and session commands remain argument-free and single-flight. — `apps/openagents-desktop/tests/runtime-gateway.e2e.test.ts`
+- **Verification:** Settings view/intent, Runtime Gateway, and Electron-boundary suites plus Desktop typecheck/build enforce the visible tokenless path without GUI automation.
+- **Authority boundary:** The renderer sees only signed-out, unverified, session-ready, denied, unavailable, or local authenticating presentation state. It receives no callback/authorize URL, state, code, verifier, owner, token, storage handle, or live Sync authority.
+
+### `openagents_desktop.settings.acp_peer_truth_and_recovery.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (Grok and Cursor local Agent Client Protocol settings)
+- **Stated by:** owner via github-issue on 2026-07-16
+- **Statement:** Desktop presents Grok CLI and Cursor Agent CLI as distinct Agent Client Protocol peers, derives controls from probe/profile/advertised capability truth, distinguishes authentication and session recovery outcomes, and never generalizes either peer's evidence to every ACP agent.
+- **Enforcement tier:** test-sweep
+- **Oracle** `acp_settings.peer_specific_state_and_controls` (bun-test, unit): Proves exact Grok/Cursor identity, Agent Client Protocol copy, advertised-auth-derived actions, Cursor login terminal states, Grok cached/API-key method representation, stable versus extension configuration provenance, authority withholding, cancellation escalation, recovery, accessibility labels, and no universal-agent claim. — `apps/openagents-desktop/src/renderer/acp-provider-settings.test.ts`
+- **Oracle** `acp_settings.structural_support_bundle_redaction` (bun-test, unit): Proves the main-owned support bundle carries only profile/version/state/capability/conformance and bounded receipt/evidence refs and excludes executable paths, auth methods and responses, configuration values, prompts, environment, and native content. — `apps/openagents-desktop/src/acp-provider-host.test.ts`
+- **Verification:** Desktop typecheck and focused ACP provider host/settings, Settings intent-loop, UX contract, and design-conformance suites. Supported release labels remain blocked on the live compatibility matrix in #8897.
+- **Authority boundary:** Trusted peer runtimes retain executable identity, version/conformance admission, secret custody, authentication, workspace/process/session lifecycle, reverse authority, cancellation escalation, and recovery. The renderer accepts only a bounded schema-decoded projection and a closed provider/action pair, re-checks every action against the currently rendered state, and cannot infer authentication from files or environment variables. Filesystem and terminal are shown active only when their session brokers are active. The support projection structurally excludes executable paths, auth method payloads, environment, prompts, file/terminal content, and native events; release language remains matrix-gated by #8897.
+
+### `openagents_desktop.chat.same_components_across_provider_lanes.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (provider-neutral local turn workbench)
+- **Stated by:** owner via github-issue on 2026-07-16
+- **Statement:** Codex, Claude, ACP peers, and future agent lanes project plan, reasoning, tool/exec, approval/question, item-delta, and usage facts through one typed provider-lane envelope into the same renderer workbench components; a lane may not introduce a private transcript renderer or silently discard degradation.
+- **Enforcement tier:** test-sweep
+- **Oracle** `provider_lanes.fixture_shared_dispatch_and_renderer` (bun-test, unit): Runs a never-hand-wired fixture lane through the shared dispatcher, durable journal, exact usage attribution, restart refusal, and the real shared renderer projection while requiring every forwarded event to decode against the frozen envelope. — `apps/openagents-desktop/src/provider-lane.test.ts`
+- **Oracle** `provider_lanes.acp_canonical_mapping` (bun-test, unit): Proves ACP canonical text, reasoning, tool, plan, degradation, and exact usage facts map into the shared envelope without fabricated token fields or a provider-private renderer vocabulary. — `apps/openagents-desktop/src/provider-lane-acp.test.ts`
+- **Verification:** The Desktop test sweep runs the fixture-lane shared-dispatch/renderer oracle, ACP mapping oracle, local-turn recovery suite, both built-in lane runtime suites, and Desktop typecheck.
+- **Authority boundary:** Electron main owns dispatch, durable journal state, host history, usage attribution, and restart disposition. The renderer receives only the existing bounded local-lane event envelope and gains no raw provider payload, credential, filesystem, process, transport, or provider-session authority. Facts without an exact shared-envelope counterpart stay on their typed sidecar/capability surface; degraded projection is always visible.
+
+### `openagents_desktop.chat.claude_local_lane_no_substitution.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (local-mode composer harness lanes)
+- **Stated by:** owner via owner-codex-session on 2026-07-11
+- **Statement:** In local (not-signed-in) mode, selecting Claude runs a real streaming turn on this machine with zero login: the default selection prefers the user's currently authenticated local Claude Code session, then falls back to ready isolated sibling Pylon Claude homes; explicitly selecting a named Pylon account pins it. Selecting a harness never routes to the cloud gateway or another provider; an unavailable lane renders a disabled chip with its reason and a Send that does not accept the action.
+- **Enforcement tier:** test-sweep
+- **Oracle** `claude_local.runtime_isolation_and_rotation` (bun-test, unit): Proves current local Claude session precedence, isolated Pylon fallback discovery, read-only headless SDK options, bounded/redacted event mapping, same-lane account rotation only before content, and that no ready account yields a typed unavailable result with the SDK never loaded. — `apps/openagents-desktop/src/claude-local-runtime.test.ts`
+- **Oracle** `claude_local.renderer_no_silent_substitution` (bun-test, unit): Proves claude sends stream progressively with trace lines, codex and unavailable-claude sends are typed refusals, and the legacy gateway sendMessage is reachable only by a laneless send. — `apps/openagents-desktop/src/renderer/local-harness.test.ts`
+- **Oracle** `claude_local.evidence_gated_composer` (bun-test, unit): Proves unavailable lanes render disabled chips with visible captions, Send disables for the selected dead lane, submit refuses while keeping the draft, and selection auto-moves off a dead default. — `apps/openagents-desktop/src/renderer/shell.test.ts`
+- **Verification:** The Desktop verify gate runs the runtime/renderer/shell suites and the fixture-driven smoke journey (select Claude, send, observe progressive text, tool trace, finalize) inside built Electron.
+- **Authority boundary:** The renderer receives only bounded, path-redacted typed stream events and typed availability/failure reasons — never tokens, account homes, credentials, raw SDK payloads, or provider error bodies. Main owns thread history; the renderer supplies only the new message.
+
+### `openagents_desktop.chat.claude_local_lane_no_substitution.v2` — ENFORCED
+
+- **Surface:** openagents-desktop (local-mode composer harness lanes)
+- **Stated by:** owner via owner-codex-session on 2026-07-11
+- **Statement:** MODEL PIN (user-facing brand is "Claude" per owner 2026-07-12, because Claude may not always be the available model; the pinned model is unchanged): the local Claude lane requests model claude-fable-5 with skills removed from the lane (disallowed, never offered-then-denied); if the SDK init reports an effective model outside the claude-claude family the turn fails typed as model_substituted naming requested vs effective, no substituted output is ever streamed or persisted as Claude, and the lane never rotates accounts on a model mismatch; the effective model is emitted as a typed event and displayed with the reply (e.g. Claude · claude-fable-5), never asserted from the brand alone.
+- **Enforcement tier:** test-sweep
+- **Oracle** `claude_local.model_no_substitution_runtime` (bun-test, unit): Proves SDK options carry model claude-fable-5 plus disallowedTools Skill and skills off; an init reporting a non-Claude model yields a typed model_substituted failure naming requested vs effective with zero assistant deltas surfaced and no account rotation; a claude-claude init (including versioned IDs) streams normally and emits the effective model. — `apps/openagents-desktop/src/claude-local-runtime.test.ts`
+- **Oracle** `claude_local.model_effective_caption` (bun-test, unit): Proves the renderer displays the SDK-reported effective model as the Claude · <model> transcript caption from the typed model_effective event, positioned with the trace lines the persisted thread also carries. — `apps/openagents-desktop/src/renderer/local-harness.test.ts`
+- **Verification:** The Desktop verify gate runs the runtime and renderer suites covering model-level substitution refusal and the effective-model caption; the fixture smoke journey streams with the fixture init reporting claude-fable-5.
+- **Authority boundary:** Model identity crossing the Electron boundary is only the bounded SDK-reported effective-model string and the typed model_substituted reason with a bounded requested-vs-effective detail — never raw SDK payloads, account homes, or provider error bodies. Model-level refusal grants no rotation, retry, or gateway-fallback authority.
+
+### `openagents_desktop.seam.codex_delegation_no_substitution.v1` — RETIRED
+
+- **Surface:** openagents-desktop (Claude-to-Codex sub-agent delegation)
+- **Seam:** client `apps/openagents-desktop/src/renderer/fleet-workspace.ts` <-> server `apps/openagents-desktop/src/codex-child-runtime.ts`
+- **Stated by:** owner via owner-codex-session on 2026-07-11
+- **Statement:** The local Claude lane may delegate bounded tasks to Codex sub-agents only through the typed mcp__codex__delegate tool: every child is requested pinned to model gpt-5.5 at medium reasoning effort as spawn-config truth (the codex exec --json stream does not echo model or effort, and every result and ledger row is labeled requested accordingly); children run read-only in isolated scratch workspaces on registry-isolated Codex account homes, never the default ~/.codex; a revoked-credential account is never silently skipped — rotation emits a typed account_reconnect_required event per skipped account, and when every registered account is revoked the delegation returns a typed unavailable result naming the reconnect need; at most 3 children run concurrently and 6 per turn, with over-cap calls refused typed before any spawn; exact per-child token usage from turn.completed (total = input + output + reasoning) rolls into the session usage ledger and the Fleet view's evidence-labeled Session usage section; and a session-observed revoked credential or failed usage probe supersedes the registry's presence-based ready with a typed reconnect-required readiness state.
+- **Enforcement tier:** test-sweep
+- **Oracle** `codex_delegation.child_runtime_rotation_and_usage` (bun-test, unit): HISTORICAL (retired state skips coverage): proved the v1 read-only spawn recipe and marker-set rotation. Replaced by the v2 oracles below. — `apps/openagents-desktop/src/codex-child-runtime.test.ts`
+- **Verification:** Retired — superseded by openagents_desktop.seam.codex_delegation_no_substitution.v2; see that contract's verification.
+- **Authority boundary:** RETIRED 2026-07-11, superseded by v2 same day: (a) the owner full-access override replaced the read-only child sandbox with danger-full-access (owner sign-off, verbatim: 'disallowing bash is retarded, give them full tools full permissions etc'); (b) the live EP250 rotation miss (the SHORT auth variant 'Your access token could not be refreshed. Please log out and sign in again.' carried none of v1's markers, so no rotation happened) broadened the auth classifier, added typed pre-content rotation, and added the in-process account health ordering. Kept for history.
+
+### `openagents_desktop.seam.codex_delegation_no_substitution.v2` — ENFORCED
+
+- **Surface:** openagents-desktop (Claude-to-Codex sub-agent delegation)
+- **Seam:** client `apps/openagents-desktop/src/renderer/fleet-workspace.ts` <-> server `apps/openagents-desktop/src/codex-child-runtime.ts`
+- **Stated by:** owner via owner-codex-session on 2026-07-11
+- **Statement:** The local Claude lane may delegate bounded tasks to Codex sub-agents only through the typed mcp__codex__delegate tool: every child is requested pinned to model gpt-5.5 at medium reasoning effort as spawn-config truth (labeled requested; the codex exec --json stream does not echo model or effort); children run with the owner-local danger-full-access profile in isolated per-child scratch workspaces, preferring the ordinary authenticated local Codex session and using registry-isolated Codex homes as fallback, and the tool description tells Claude the child STARTS in an empty scratch directory so absolute paths must be included for anything it should read; a failing session is never silently skipped — auth-class failures (broadened marker set including the live SHORT variant 'Your access token could not be refreshed. Please log out and sign in again.') rotate with a typed account_reconnect_required event and demote the session in the in-process health memory, any other pre-content failure rotates with a typed pre_content_failure_rotated event, post-content failures and timeouts fail the child without rotation; candidate ordering per call is last-known-good first, then untried, then auth-failed last (a success clears the mark); when every session is exhausted the delegation returns a typed failure naming the reconnect need (all-auth) or the failure mix; at most 3 children run concurrently and 6 per turn, with over-cap calls refused typed before any spawn; exact per-child token usage from turn.completed (total = input + output + reasoning) rolls into the session usage ledger and the Fleet view's evidence-labeled Session usage section; and a session-observed auth failure or failed usage probe supersedes registry presence with a typed reconnect-required readiness state.
+- **Enforcement tier:** test-sweep
+- **Oracle** `codex_delegation.child_runtime_rotation_and_usage` (bun-test, unit): Drives the real JSONL parser: danger-full-access spawn recipe with pinned model/effort and isolated CODEX_HOME; exact usage totals; the verbatim SHORT auth variant classifying auth-class and rotating typed; generic pre-content failure rotating with pre_content_failure_rotated; post-content failure staying terminal; health ordering (last-good first, auth-failed demoted for the NEXT call, success clears); typed all-exhausted failures for the all-auth and mixed cases; host-side timeout; and concurrent isolated children. — `apps/openagents-desktop/src/codex-child-runtime.test.ts`
+- **Oracle** `codex_delegation.claude_tool_caps_and_events` (bun-test, unit): Proves the delegate tool is auto-allowed under its fully-qualified name with the empty-scratch/absolute-paths guidance in its description, per-turn concurrency and total caps refuse typed without spawning, child lifecycle events (including both typed rotation activities) flow schema-valid through the ClaudeLocalEvent envelope, and the tool result labels usage as requested spawn-config truth. — `apps/openagents-desktop/src/claude-local-runtime.test.ts`
+- **Oracle** `codex_delegation.session_ledger_and_readiness_override` (bun-test, unit): Proves the evidence-labeled Session usage section renders exact per-account rows with the requested codex model, and that ledger reconnect rows or failed probes supersede presence-based ready with the typed reconnect-required state. — `apps/openagents-desktop/src/renderer/fleet-workspace.test.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the child-runtime, delegate, ledger, and fleet suites plus the fixture smoke journey where a claude fixture turn calls the delegate once (scripted child) and the transcript shows the tool_use/tool_result pair with the ledger row rendered in the Fleet view.
+- **Authority boundary:** The renderer receives only bounded typed child lifecycle events (childRef, account ref, public-safe summaries with the child workspace redacted, exact token counts, typed failure reasons/rotation activities) and the typed session-ledger snapshot — never prompts, raw JSONL, credentials, auth paths, or local paths beyond the <child-workspace> label. danger-full-access is the owner-local executor invariant (never a public wire field, never for untrusted labor/provider work). The health memory is in-process only (main-process lifetime, never persisted), and the spawn-config model pin is not presented as a provider echo.
+
+### `openagents_desktop.agent_graph.pointer_keyboard_focus_equivalence.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (live agent supervision)
+- **Stated by:** owner via khala-code-session on 2026-07-11
+- **Statement:** OpenAgents Desktop presents Runtime Gateway v8's confirmed canonical graph and schema-decoded desktop-local Claude/Claude and Codex graphs as one parent/subagent hierarchy in the chat's right context rail. Pointer activation, keyboard activation, and screen-reader buttons select the same typed agent ref; status, attention, current action, elapsed time, terminal reason, session, runtime, provider, and worktree facts remain inspectable; historical authority is labeled and never gains a live focus control; rapid replacement falls back deterministically and large graphs disclose their bound.
+- **Enforcement tier:** test-sweep
+- **Oracle** `agent_graph.gateway_projection_and_no_poll` (bun-test, unit): Drives a real Runtime Gateway live update carrying a validated root+child graph through the existing fenced subscription, asserts the thread receives the shared hierarchy projection, and retains the no-recurring-timeline-poll oracle. — `apps/openagents-desktop/src/renderer/runtime-conversation.test.ts`
+- **Oracle** `agent_graph.pointer_keyboard_screen_reader_view` (bun-test, unit): Proves expand/select/focus/Escape all use typed Effect Native intent refs, selection exposes every required fact through ordinary accessible buttons and a region/table inspector, hierarchy depth is preserved, and historical authority removes live focus. — `apps/openagents-desktop/src/renderer/runtime-agent-graph.test.ts`
+- **Oracle** `agent_graph.shared_fault_and_scale_model` (bun-test, unit): Enforces deterministic hierarchy ordering, explicit missing facts, rapid-selection fallback, terminal/historical refusal, newest attachment/cursor selection, and exact large-graph remainder. — `packages/khala-sync-client/src/live-agent-graph-presentation.test.ts`
+- **Verification:** pnpm exec vp test src/renderer/runtime-agent-graph.test.ts src/renderer/runtime-conversation.test.ts src/renderer/shell.test.ts plus typecheck, full test, build, and Electron smoke in apps/openagents-desktop; shared projection tests/typecheck run in packages/khala-sync-client.
+- **Authority boundary:** The renderer accepts only graph post-images already schema-decoded by Runtime Gateway v8 or the frozen preload local-graph bridge and projects both through the shared client model. Agent selection is local inspection/focus state, not execution movement or provider/process authority. Historical projections remain inspectable with canControl=false. No provider payload, history heuristic, credential, path, store/session handle, or transport handle enters the view.
+
+### `openagents_desktop.settings.ui_owned_codex_reconnect.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (Settings Codex account reconnect)
+- **Stated by:** owner via owner-video-review on 2026-07-11
+- **Statement:** don't recommend me the CLI command for Fleet Connect. We're doing stuff with the UI now. Like, CLI stuff is nice, but the UI controls need to be working.
+- **Enforcement tier:** test-sweep
+- **Oracle** `ui_owned_reconnect.settings_rows_and_no_cli_copy` (bun-test, unit): Proves credential-failed rows render a working per-account Reconnect button (ready rows none), the full intent loop drives the ref-targeted bridge through awaiting_browser to connected with the accounts projection re-listed so readiness flips without restart (including after a FAILED exit), and that NO settings state renders copy matching a CLI-command pattern. — `apps/openagents-desktop/src/renderer/settings.test.ts`
+- **Oracle** `ui_owned_reconnect.per_ref_spawn_receipt` (bun-test, unit): Proves startReconnect spawns exactly auth codex --account <ref> --force-device-login for a ref main itself listed, refuses unknown or malformed refs typed, holds single-flight across connect and reconnect, and surfaces the bounded public-safe pylon-auth failure detail. — `apps/openagents-desktop/tests/codex-connect.test.ts`
+- **Oracle** `ui_owned_reconnect.fleet_fix_in_settings` (bun-test, unit): Proves broken-credential fleet rows carry the Fix in Settings navigation over the existing DesktopSettingsToggled intent with no account mutation from Fleet, and that a successful probe this session clears a stale reconnect override (probe evidence rules). — `apps/openagents-desktop/src/renderer/fleet-workspace.test.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the settings, codex-connect, and fleet suites plus the Electron smoke journey asserting the revoked fixture account renders its Reconnect button in Settings.
+- **Authority boundary:** The Settings Codex section owns connect AND per-account reconnect through the hardened device-auth bridge: the reconnect action carries exactly one grammar-validated account ref that main re-validates against its own registry listing before spawning the receipted per-ref re-auth (auth codex --account <ref> --force-device-login into the SAME isolated home; never ~/.codex). Fleet stays overview-only — its broken-credential rows navigate to Settings via the existing DesktopSettingsToggled intent and mutate nothing. No settings state renders copy instructing the user to run a CLI command, and no tokens, emails, or raw child output cross the bridge.
+
+### `openagents_desktop.chat.claude_local_lane_scoped_write.v1` — RETIRED
+
+- **Surface:** openagents-desktop (chat local Claude lane permissions)
+- **Stated by:** owner via owner-video-review on 2026-07-11
+- **Statement:** Writes are permitted only inside the turn/thread workspace; interactive-only tools are never offered to the model in this headless lane; out-of-scope denials say so honestly. The lane must never surface permission copy implying a grant flow exists (live incident: Write greetings.md failed with 'Claude requested permissions to write to <workspace>/greetings.md, but you haven't granted it yet.' — a grant no UI could give).
+- **Enforcement tier:** test-sweep
+- **Oracle** `claude_local_scoped_write.boundary_guard` (bun-test, unit): HISTORICAL (retired state skips coverage): proved the PreToolUse guard, out-of-scope denial copy, and restricted tool set. Replaced by claude_local_owner_full_access oracles asserting the inverse posture. — `apps/openagents-desktop/src/claude-local-runtime.test.ts`
+- **Verification:** Retired — superseded by openagents_desktop.chat.claude_local_owner_full_access.v1; see that contract's verification.
+- **Authority boundary:** RETIRED 2026-07-11, superseded by contract:openagents_desktop.chat.claude_local_owner_full_access.v1 on the owner's explicit sign-off ('disallowing bash is retarded, give them full tools full permissions etc'). The workspace boundary guard, out-of-scope denial copy, and Bash/WebSearch removal no longer apply; the honest-copy law (never imply a grant flow that does not exist) survives trivially because nothing is denied anymore. Kept for history.
+
+### `openagents_desktop.chat.claude_local_owner_full_access.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (chat local Claude lane permissions)
+- **Stated by:** owner via owner-codex-session on 2026-07-11
+- **Statement:** disallowing bash is retarded, give them full tools full permissions etc (owner override after live Claude subagents failed with 'Bash is not available in this lane.'; supersedes openagents_desktop.chat.claude_local_lane_scoped_write.v1)
+- **Enforcement tier:** test-sweep
+- **Oracle** `claude_local_owner_full_access.full_toolset_and_question_flow` (bun-test, unit): Proves session options carry NO allowedTools restriction (only the delegate auto-allow when offered), NO PreToolUse hook, permissionMode 'default'; canUseTool allows Bash/out-of-workspace Write/WebSearch/Agent with no denial or scope copy; NotebookEdit is offered while Skill/plan-mode stay disallowed; and the AskUserQuestion regression: with the allow-all handler the question still parks pending and resolves through answerQuestion. — `apps/openagents-desktop/src/claude-local-runtime.test.ts`
+- **Oracle** `claude_local_owner_full_access.codex_child_danger_sandbox` (bun-test, unit): Proves the codex exec spawn recipe carries -s danger-full-access (owner-local profile) while keeping the isolated CODEX_HOME and per-child scratch cwd. — `apps/openagents-desktop/src/codex-child-runtime.test.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the claude-local runtime suite (full-toolset posture, allow-all canUseTool, question-flow regression) and the codex-child suite (danger-full-access spawn args).
+- **Authority boundary:** OWNER-LOCAL danger profile only — the same owner-local executor invariant as the Khala->Pylon runbook's danger-full-access/approval-never posture, never a public wire field and never applied to untrusted labor/provider work. The local Claude lane and its Agent children get the full SDK toolset (no allowedTools restriction beyond the delegate auto-allow, no PreToolUse workspace guard, no out-of-scope denial copy) with permissionMode 'default' plus an allow-all canUseTool — deliberately NOT bypassPermissions, which per sdk.d.ts bypasses all permission checks including the canUseTool handler the AskUserQuestion flow parks on. Skill and EnterPlanMode/ExitPlanMode stay disallowed as separately-decided UX noise (not permission bounds). Codex delegate children spawn with -s danger-full-access. The per-thread scratch workspace remains the default cwd only.
+
+### `openagents_desktop.chat.claude_local_question_flow.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (chat local Claude lane questions)
+- **Stated by:** owner via owner-video-review on 2026-07-11
+- **Statement:** make the question UI too. Why not? proper effect native primitives and add some if needed. (AskUserQuestion must be a real affordance: on camera it surfaced as 'AskUserQuestion · failed · Answer questions?' with no way to answer.)
+- **Enforcement tier:** test-sweep
+- **Oracle** `claude_local_question_flow.answer_roundtrip` (bun-test, unit): Drives the real canUseTool path: question_pending with bounded questions, typed rejections for unknown/wrong-turn/unmatched answers, allow with updatedInput answers keyed by original question text, multiSelect comma-joined, timeout outcome with the turn continuing, interrupt outcome denied, and malformed input denied without parking a question. — `apps/openagents-desktop/src/claude-local-runtime.test.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the claude-local runtime suite covering the full question flow (answered, timeout, denied, typed rejections, multiSelect).
+- **Authority boundary:** This contract covers the runtime/IPC half: AskUserQuestion parks on the SDK canUseTool callback, emits a bounded path-redacted question_pending event (questionRef stable per invocation; question/header/options/multiSelect), and resolves with the user's answers via the answer-question invoke channel as canUseTool allow + updatedInput answers keyed by original question text (multi-select comma-separated — the SDK's documented mechanism). No answer within the window resolves a graceful typed deny with outcome timeout; turn interrupt/failure/dispose resolves outcome denied; unknown or settled questionRefs and unmatched answers are typed rejections that never throw and never burn a pending question. Multiple pending questions settle independently without deadlock. The renderer supplies only schema-checked answers; no tool execution, filesystem, or session authority crosses the channel.
+
+### `openagents_desktop.chat.interactive_agent_questions.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (chat interactive agent questions)
+- **Stated by:** owner via github-issue on 2026-07-16
+- **Statement:** When an agent asks me a question in chat, I see the options and can answer them
+- **Enforcement tier:** test-sweep
+- **Oracle** `interactive_agent_questions.react_answer_surface` (bun-test, unit): Proves a provider question renders labeled options with descriptions, an Other text field, and an enabled explicit submit action that dispatches the exact question ref. — `apps/openagents-desktop/src/renderer/react-composer.test.tsx`
+- **Oracle** `interactive_agent_questions.typed_roundtrip` (bun-test, unit): Proves single-select, multi-select, and Other answers compile into the frozen one-entry-per-question labels-array shape and round-trip through the typed answer host without invented resolution. — `apps/openagents-desktop/src/renderer/shell.test.ts`
+- **Oracle** `interactive_agent_questions.waiting_status` (bun-test, unit): Proves a pending question replaces the generic Working indicator with Waiting for your answer and does not leave the timeline aria-busy. — `apps/openagents-desktop/src/renderer/react-primitive-adapters.test.tsx`
+- **Verification:** The normal Desktop test sweep runs the renderer answer-surface, typed round-trip, waiting-status, runtime parking/timeout, and built-Electron smoke oracles.
+- **Authority boundary:** A pending typed provider question opens the existing host-mediated decision surface with its bounded question text, single- or multi-select options, option descriptions, and an Other text answer. While it is pending the transcript says Waiting for your answer rather than Working. Selection and text remain renderer-local until explicit submission; the frozen schema-decoded answerQuestion bridge remains the only answer authority and carries one labels array per exact question. Runtime question_resolved remains the only resolution authority, and timeout, rejection, unavailable bridge, interruption, and stale refs stay visibly non-resolved. No raw tool input, arbitrary IPC, filesystem, provider credential, or session authority enters the renderer.
+
+### `openagents_desktop.coding_catalog.restart_safe_navigation.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (projects and coding sessions)
+- **Stated by:** owner via khala-code-session on 2026-07-11
+- **Statement:** OpenAgents Desktop persists stable project, repository, worktree, coding-session, tab, route, and typed focus refs across restart. Adding a workspace creates or resumes one canonical session; duplicate opens collapse; missing worktrees recover explicitly; pointer and keyboard activation share the intent registry; and background coding-catalog state never treats a local path or renderer tab as authority. No Project home screen or route is exposed.
+- **Enforcement tier:** test-sweep
+- **Oracle** `coding_catalog.host_restart_and_recovery` (bun-test, unit): Proves private path separation, stable refs across host-service reopen, duplicate-open collapse, recent sort, typed focus, archive selection, missing-worktree recovery, and owner-private file modes. — `apps/openagents-desktop/tests/desktop-coding-catalog.test.ts`
+- **Oracle** `coding_catalog.effect_native_action_equivalence` (bun-test, unit): Proves Project Home renders the bounded catalog without nested cards and choose/filter/open/archive dispatch through the same schema-checked Effect Native registry used by keyboard activation. — `apps/openagents-desktop/src/renderer/shell.test.ts`
+- **Oracle** `coding_catalog.built_reload_restoration` (bun-test, e2e): The built Electron fixture writes through real local SQLite/private binding services, opens the Project Home with the stable current session, reloads the renderer, and observes the same restored catalog authority and selection. — `apps/openagents-desktop/src/main.ts`
+- **Verification:** Focused catalog/shell/boundary tests, shared/server/client CUT-13 suites, Desktop typecheck and full test, production build, and OPENAGENTS_DESKTOP_SMOKE=1 Electron smoke.
+- **Authority boundary:** Signed-out catalog rows live only under scope.device_local in the host-owned Sync SQLite local_entities table. Raw filesystem bindings live in a separate mode-0600 main-process file and never cross preload or enter canonical post-images. Hosted server projection and confirmed reads accept only user/team scopes. The renderer receives a bounded public-safe projection and can invoke only fixed schema-decoded choose/open/archive/recover actions.
+
+### `openagents_desktop.chrome.apps_sdk_chrome_design_language.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (application chrome design language)
+- **Stated by:** owner via owner-video-review on 2026-07-11
+- **Statement:** do a separate design pass of projects/repos/apps-sdk-ui and thats what i want to use for the rest of the app chrome, menus, etc, everything other than messages, but still harmonized to messages. we want that design language, ported to starcraft kinda, represented in EVERY other surface of the app
+- **Enforcement tier:** test-sweep
+- **Oracle** `chrome_design.token_closure_and_scale_membership` (bun-test, unit): Mechanical conformance: (a) zero raw hex/rgb/hsl color literals in renderer modules and the host stylesheet outside the theme module; (b) spacing/radius/type style values are members of the shared token scales with a small documented numeric-dimension allowlist; (c) per-surface structural recipes — sidebar rail sections, palette on surfaceOverlay+borderSubtle+xl with chord captions, composer radius cap + recessed segmented harness track, settings panel padding/hairline, fleet chrome, inspector rail scale, tool-card shimmer keys, 240px raw wells, context-group anatomy. — `apps/openagents-desktop/src/renderer/design-conformance.test.ts`
+- **Oracle** `chrome_design.theme_is_khala_editor_canonical` (bun-test, unit): The desktop theme uses the repository-owned Khala editor semantic colors over the canonical shared state-overlay, dim-ladder, motion, spacing, radius, and control groups; Tokyo Night remains a tested fallback and app-local palette drift remains forbidden. — `apps/openagents-desktop/src/renderer/shell.test.ts`
+- **Oracle** `chrome_design.smoke_pixels` (bun-test, e2e): The built-Electron smoke drives every restyled surface (shell+sidebar, palette, settings, fleet, inspector, composer) and captures pixel receipts when OPENAGENTS_DESKTOP_SMOKE_SHOTS is set. — `apps/openagents-desktop/src/main.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the design-conformance sweep, the shell/theme suites, and the Electron smoke over the restyled surfaces.
+- **Authority boundary:** Presentation only. The apps-sdk-ui chrome language (alpha-overlay state engine — hover/active/selected as translucent overlays of one base color, never new hues; elevation = lighter surface + hairline ring for floating overlays; 150/350/200ms motion; the trimmed 4-step control lattice; the three-level dim ladder) is expressed as shared @effect-native/tokens roles/groups, the vendored DOM renderer chrome base ruleset, typed token style objects in the renderer views, and a host stylesheet that resolves every color through --en-* custom properties. Our icon set stays; one uniform dark default uses the owned Khala editor projection with Tokyo Night retained as a built-in fallback; no light theme, mutable theme marketplace, 24px composer radius, backdrop-blur popover variant, 9-step lattice, or donor icons. Message/tool cards keep the OpenCode geometry, harmonized onto the same shared scales.
+
+### `openagents_desktop.chat.new_chat_autofocuses_composer.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (chat composer focus)
+- **Stated by:** owner via owner-video-review on 2026-07-11
+- **Statement:** when i do new chat, clicking button or command N, auto focus the input.
+- **Enforcement tier:** test-sweep
+- **Oracle** `new_chat_focus.palette_chord_caption` (bun-test, unit): The palette chat.new row surfaces its canonical chord caption (⌘N on darwin) from the single command registry entry — one registered command, all input paths dispatch the same intent. — `apps/openagents-desktop/src/renderer/design-conformance.test.ts`
+- **Oracle** `new_chat_focus.smoke_button_and_chord` (bun-test, e2e): The built-Electron smoke proves BOTH paths end focused: the dock New-chat click from a loaded history page yields a fresh empty transcript with document.activeElement === the composer input, and a synthesized platform-modifier+N keydown from the fleet workspace does the same. — `apps/openagents-desktop/src/main.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the palette-registry assertions and the Electron smoke new-chat + cmd-n focus steps.
+- **Authority boundary:** Focus behavior only. Every DesktopNewChat entry point — the workspace-new-chat dock button, the command palette chat.new row, and the Cmd+N/Ctrl+N chord (the canonical chat.new default binding, newly wired as a window keydown following the existing platform-modifier shortcut pattern; no Electron menu or OS accelerator collision exists) — dispatches the SAME typed intent, and the composer input receives focus AFTER the chat view mounts (retry across render commits, because a New chat from a loaded history page swaps the center view and a re-parented input loses focus). No new dispatch authority; the chord is suppressed inside editables like the other global shortcuts.
+
+### `openagents_desktop.chat.startup_new_session_continuity.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (startup chat continuity)
+- **Stated by:** owner via owner-live-review on 2026-07-15
+- **Statement:** When the app opens I can immediately type and send in the new chat. Loading the conversation catalog must never replace that draft by auto-opening the most recent conversation.
+- **Enforcement tier:** test-sweep
+- **Oracle** `startup_chat.no_history_autoselection` (bun-test, unit): Proves the shell mounts before history hydration, local catalog projection preserves the null selection, and rejects startup hydration containing restored selection, history paging, openThread, or hydrateThread calls. — `apps/openagents-desktop/tests/startup-contract.test.ts`
+- **Oracle** `startup_chat.first_submit_is_durable` (bun-test, unit): Starts with a typed draft and no active thread, submits once, and proves exactly one durable local thread is created and the exact first message is sent on it. — `apps/openagents-desktop/src/renderer/shell.test.ts`
+- **Oracle** `startup_chat.composer_send_enabled` (bun-test, unit): Proves the focused startup composer keeps Send enabled for a valid draft before activeThreadId admission settles and dispatches DesktopNoteSubmitted unchanged. — `apps/openagents-desktop/src/renderer/react-composer.test.tsx`
+- **Verification:** The normal Desktop test sweep runs the source-ordering falsifier, the typed handler first-submit test, and the React composer admission-race test.
+- **Authority boundary:** The first mounted chat surface is a real New session draft, not a temporary facade and not a restored conversation. It stays focused and submittable without eagerly persisting empty chats; the first valid submission admits exactly one durable local thread through the same typed ChatHost used by DesktopNewChat and continues the original send unchanged. Startup history hydration may publish Codex metadata into the sidebar but may not select, restore, open, page, or hydrate any conversation detail; local thread-catalog arrival also preserves the null selection. Detail reads require an explicit user selection.
+
+### `openagents_desktop.chat.per_conversation_composer_ownership.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (chat selection and composer ownership)
+- **Stated by:** owner via owner-live-review on 2026-07-16
+- **Statement:** Composer state and turn controls belong to the selected chat. Switching chats must not move a draft, Send to another thread, or make Stop control a different thread.
+- **Enforcement tier:** test-sweep
+- **Oracle** `per_conversation_composer.draft_and_target_isolation` (bun-test, unit): Proves A/B draft restoration, blank New Chat isolation, quiet owner interruption, and that a selected provider-history page can never invoke newThread or sendMessage. — `apps/openagents-desktop/src/renderer/shell.test.ts`
+- **Oracle** `per_conversation_composer.typed_interrupt_boundary` (bun-test, unit): Proves the provider-lane interrupted reason survives the dispatcher/renderer boundary as failureKind interrupted rather than generic failed. — `apps/openagents-desktop/src/renderer/local-harness.test.ts`
+- **Verification:** Desktop typecheck, behavior-contract validation, and the focused shell, local-harness, provider-lane, React composer, and workbench suites.
+- **Authority boundary:** Every local chat owns an in-memory draft keyed by its exact durable thread ref; switching restores only that chat's draft and pending/failure projection. A turn freezes its originating thread ref before dispatch, and late updates or completion may update that thread's catalog entry but may never replace a newer selection or draft. Provider-history pages are read-only and mount no composer; a synthetic submit while history is selected fails closed and never falls through to newThread. Async selection is latest-intent-wins, and interruption checks the exact selected pending thread.
+
+### `openagents_desktop.chat.new_chat_always_exits_history.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (chat navigation)
+- **Stated by:** owner via owner-live-review on 2026-07-12
+- **Statement:** New Chat and Command-N must always leave the old chat and open a fresh chat.
+- **Enforcement tier:** test-sweep
+- **Oracle** `new_chat_always.local_creation_bypasses_sync_reconciliation` (bun-test, unit): Proves New Chat creates exactly once through the durable local store, never enters live Sync reconciliation, and pins the resulting thread ref to local authority. — `apps/openagents-desktop/src/renderer/runtime-conversation.test.ts`
+- **Oracle** `new_chat_always.button_and_command_n_exit_history` (bun-test, e2e): The built-Electron smoke proves both the dock button and platform Command-N leave loaded history, mount a fresh empty transcript, and focus the composer. — `apps/openagents-desktop/src/main.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the converging-host fallback unit test and both built-Electron New Chat paths.
+- **Authority boundary:** Every New Chat entry point dispatches the same DesktopNewChat intent. Creation is local-first and must not enter live Sync's pending-reconciliation path: the converging chat host creates through the app-owned durable local thread store, pins that ref to local authority, exits any loaded history page, mounts an empty transcript, and focuses the composer. The typed runtime host is attempted only when the local durable bridge cannot create. No fake success is projected without a real thread from one of the two typed durable hosts.
+
+### `openagents_desktop.chrome.disabled_control_reason_popover.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (disabled-control affordances)
+- **Stated by:** owner via owner-video-review on 2026-07-11
+- **Statement:** i can't tell why the Codex option is disabled in the composer. for things like that you need to put a popover on hover over the disabled button explaining why.
+- **Enforcement tier:** test-sweep
+- **Oracle** `disabled_reason_popover.typed_wrapping` (bun-test, unit): A disabled harness chip with a reason is wrapped in a Tooltip whose content equals the exact lane reason; the unavailable-lane Send button gets the same wrap; available controls render bare (no popover, no caption). — `apps/openagents-desktop/src/renderer/design-conformance.test.ts`
+- **Oracle** `disabled_reason_popover.smoke_hover_reveal` (bun-test, e2e): The built-Electron smoke proves the disabled Codex chip's popover is hidden at rest, matches the accessible reason exactly, reveals on pointerenter, and dismisses on pointerleave — while the standing-caption ban assertion keeps passing on visible text. — `apps/openagents-desktop/src/main.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the popover unit assertions and the Electron smoke hover-reveal step.
+- **Authority boundary:** Presentation only, hover/focus only. A disabled control that carries a reason string is wrapped in the catalog Tooltip: pointer hover or keyboard focus reveals the reason as a small overlay on the shared overlay recipe (surfaceOverlay fill, overlay shadow + hairline ring, caption text, fast fade); leave/blur dismisses it. The popover reads whatever reason string the control state carries — never hardcoded copy — so a future lane that lights the Codex chip changes nothing here. The accessible label keeps carrying the reason for screen readers, and NO standing caption returns (openagents_desktop.chat.no_composer_disabled_caption.v1 stays intact: the bubble is [hidden] at rest and excluded from visible-text checks). Applied to the composer harness chips, the unavailable-lane Send button, and the settings Reconnect control while another device-auth flow is live.
+
+### `openagents_desktop.window.fullscreen_hotkey.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (window controls)
+- **Stated by:** owner via owner-video-review on 2026-07-11
+- **Statement:** add a hotkey for maximizing (command+something) to fullscreen like command f
+- **Enforcement tier:** test-sweep
+- **Oracle** `fullscreen_hotkey.contract_binding` (bun-test, unit): The command contract carries window.fullscreen_toggle with Meta+F/Control+F defaults bound to DesktopFullscreenToggled, and dispatching the intent through the registry invokes the injected window host toggle exactly once. — `apps/openagents-desktop/src/renderer/shell.test.ts`
+- **Oracle** `fullscreen_hotkey.native_window_menu` (bun-test, unit): The production menu excludes fullscreen from generic Commands and exposes Electron's native togglefullscreen role under Window with the effective canonical binding. — `apps/openagents-desktop/tests/desktop-command-host.test.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the native Window menu and shell registry fallback assertions.
+- **Authority boundary:** Window presentation only. Cmd+F/Ctrl+F is the canonical window.fullscreen_toggle default binding. The native Window menu exposes Electron's togglefullscreen role with that effective accelerator, so visible menu activation and the shortcut operate directly on the focused BrowserWindow even before renderer readiness. The renderer command remains a command-palette and DOM-keyboard fallback: DesktopFullscreenToggled calls the window host seam and main toggles the sender BrowserWindow's fullscreen state. Deliberately no editable-guard (no find-in-page exists yet; rebind review when find lands). No renderer window-handle authority.
+
+### `openagents_desktop.shell.no_sidebar_brand_row.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (sidebar chrome)
+- **Stated by:** owner via owner-video-review on 2026-07-11
+- **Statement:** remove the "OpenAgents" with icon top left ins idebar
+- **Enforcement tier:** test-sweep
+- **Oracle** `no_sidebar_brand.absence` (bun-test, unit): shellSidebar's rendered view contains no sidebar-brand or sidebar-brand-icon nodes and no literal 'OpenAgents' text node in the sidebar tree. — `apps/openagents-desktop/src/renderer/shell.test.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the sidebar absence assertion.
+- **Authority boundary:** Compatibility-renderer presentation only: its typed workspace dock renders no redundant brand row above the dock. This historical rule does not govern the admitted React workbench, whose current Codex-shaped identity row is specified by openagents_desktop.sidebar.codex_shaped_react_anatomy.v1.
+
+### `openagents_desktop.chat.codex_first_class_local_lane.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (composer Codex local chat lane)
+- **Stated by:** owner via owner-video-review on 2026-07-11
+- **Statement:** yeah i need codex and claude both first class
+- **Enforcement tier:** test-sweep
+- **Oracle** `codex_first_class.lane_runtime` (bun-test, unit): Exercises the production app-server runtime, including a provider-originated command approval that blocks the turn until the exact request id receives the method-correct decision. It also retains explicit compatibility coverage for the legacy JSONL parser, bounded history, event mapping, interruption, and typed no-account failures. — `apps/openagents-desktop/src/codex-local-runtime.test.ts`
+- **Oracle** `codex_first_class.turn_stream_identity` (bun-test, unit): Reproduces a reused app-server publishing previous-chat text before the new provider identities bind, then proves quarantined stale and unaffiliated text are discarded while the exact current thread/turn answer is the only emitted assistant delta. — `apps/openagents-desktop/src/codex-app-server-turn.test.ts`
+- **Oracle** `codex_first_class.smoke` (bun-test, e2e): The production-built React Electron smoke injects a protocol-speaking provider peer at the app-server spawn seam. Request 91 opens a real pending command decision, the installed React dialog dispatches Approve through Effect intent and IPC, the provider records the exact correlated accept response, and only then emits command completion, assistant output, usage, and turn completion. Reload restoration and zero-owner teardown are asserted after reconciliation; the separate compatibility smoke retains the legacy parser fixture. — `apps/openagents-desktop/src/main.ts`
+- **Oracle** `codex_first_class.live_proof` (bun-test, e2e): The EP250 live-proof driver's codex-chip and codex-turn steps pass with a verified account: a real gpt-5.5 turn streamed in the transcript with mid-stream capture, journaled honestly when no account verifies. — `apps/openagents-desktop/src/live-proof.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the codex-local runtime suite and the Electron smoke codex-local step; OPENAGENTS_DESKTOP_LIVE_PROOF=1 exercises the real lane.
+- **Authority boundary:** The Codex chip in local mode uses the app-server protocol from the user's validated installed Codex executable against the ordinary authenticated local Codex session — never a Codex binary packaged by OpenAgents, never the cloud gateway, and never an inherited or registry-selected CODEX_HOME. Provider-originated server requests park at the main-process runtime in a correlated pending registry and emit bounded typed decision state. React can answer only through the installed intent/bridge path; the runtime returns the method-correct response to that exact provider request, and the turn continues only after the provider accepts it. On a reused supervised connection, notifications received before the new provider thread and turn identities are bound are quarantined with a fixed bound and replayed only through the exact identity fence: stale identities and unaffiliated transcript content cannot enter the new chat, while explicitly connection-scoped telemetry and compatibility notices remain non-transcript exceptions. The lane reuses the frozen claude-local event envelope so turns render through the same transcript cards, and persists the provider thread id for same-session resume. The legacy `codex exec --json` parser is retained only for compatibility fixtures and delegate children remain ephemeral. No renderer authority is widened: the bridge carries only bounded, redacted typed events.
+
+### `openagents_desktop.reliability.codex_connection_signature_corpus.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (Codex connection reliability regression corpus)
+- **Stated by:** owner via owner-video-review on 2026-07-11
+- **Statement:** add thorough fucking tests or whatever to prevent this category of codex connection error PLEASE I HATE ALL THEF UCKING SPEEDBUMPS HERE
+- **Enforcement tier:** test-sweep
+- **Oracle** `codex_signature_corpus.table` (bun-test, unit): One row per failure signature through the REAL parser/classifier/rotation path, asserting all five row dimensions, plus the chip lifecycle state machine (boot-probe to verified to enabled; revoke-mid-session demotes while another verified account keeps the chip; a reconnect probe clears; none-verified disables with the reconnect reason). — `apps/openagents-desktop/src/codex-connection-signatures.test.ts`
+- **Oracle** `codex_signature_corpus.preflight` (bun-test, unit): Proves the receipted minimal probe recipe, configuration-invalid classification, exact diagnostic projection, verified/reconnect/rate-limit/missing/failed classification, the credentials_missing no-spawn fast path, the host-side timeout bound, health + ledger feeds, and ensureProbed session-cache semantics. The companion config-health suite proves backup, narrow repair, re-parse, and ambiguous-file refusal. — `apps/openagents-desktop/src/codex-preflight.test.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the signature corpus and preflight suites in the normal sweep; the live-proof journey journals the real per-account probe round as step 0.
+- **Authority boundary:** The corpus is table-driven over checked-in verbatim failure fixtures (live-captured where available): LONG revoked, SHORT auth variant, 401 token_invalidated, refresh_token_invalidated, missing auth.json, malformed auth.json, quota/429, network-refused, timeout, and Codex configuration parser failures. Before spending a probe turn, the user's validated installed Codex parser validates the current account configuration. One narrowly provable repair is automatic: a disabled MCP server stanza whose only field is `enabled = false` and therefore has no transport; the original file is backed up, only that inert stanza is removed, and Codex must parse successfully afterward. Every other configuration failure is left untouched and crosses the typed availability projection as exact path, line, column, and bounded parser message for the React status notice. Renderer code never reads or writes the config file.
+
+### `openagents_desktop.seam.codex_local_lane_no_substitution.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (Codex local lane substitution law)
+- **Seam:** client `apps/openagents-desktop/src/renderer/local-harness.ts` <-> server `apps/openagents-desktop/src/codex-local-runtime.ts`
+- **Stated by:** owner via owner-video-review on 2026-07-11
+- **Statement:** Selecting Codex routes to the local Codex lane only: the requested model and reasoning effort are spawn-config truth (gpt-5.5, medium — the exec stream echoes nothing back), every projected model string is labeled (requested), account rotation is typed and visible in the transcript, and no send is ever silently rerouted to another account, lane, or model.
+- **Enforcement tier:** test-sweep
+- **Oracle** `codex_local_no_substitution.runtime` (bun-test, unit): Asserts the pinned -m/-c spawn args, the (requested) model caption event, typed visible rotation with health demotion, terminal post-content failures, and typed refusals that name that no other lane was used. — `apps/openagents-desktop/src/codex-local-runtime.test.ts`
+- **Oracle** `codex_local_no_substitution.renderer_refusal` (bun-test, unit): A codex send without verified availability is an explicit typed refusal that never reaches the legacy gateway or the claude bridge. — `apps/openagents-desktop/src/renderer/local-harness.test.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the codex-local runtime and local-harness suites in the normal sweep.
+- **Authority boundary:** When no PROBE-VERIFIED Codex account exists, Send refuses with the chip reason and the message goes nowhere. Rotation is bounded by the registry, announced per skip via typed lane_notice events, and post-content failures are terminal (a partial reply never double-runs). The ledger and message metadata record the requested model as spawn-config truth, never as a provider echo.
+
+### `openagents_desktop.chat.codex_chip_verified_evidence.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (composer Codex chip evidence gating)
+- **Stated by:** owner via owner-video-review on 2026-07-11
+- **Statement:** The composer Codex chip is enabled only when a PROBE-VERIFIED Codex account exists this session; registry auth.json presence is never validity. Unavailable reads Codex — no verified account · Reconnect in Settings; when the only obstacle is quota it reads Codex — accounts rate-limited · retry later or connect another account (reconnecting never restores quota); while the session probe is still running it reads Codex — verifying accounts…; the shell never blocks first mount on the probe round.
+- **Enforcement tier:** test-sweep
+- **Oracle** `codex_chip_verified_evidence.lifecycle` (bun-test, unit): The chip lifecycle state machine: pending probe renders verifying disabled; verified enables; revoke-mid-session keeps the chip on the other verified account; a reconnect probe clears; none verified disables with the reconnect reason. — `apps/openagents-desktop/src/codex-connection-signatures.test.ts`
+- **Oracle** `codex_chip_verified_evidence.smoke` (bun-test, e2e): The built-Electron smoke asserts the codex chip stays disabled (with its popover reason) until the gated fixture preflight verifies an account, then lights for the streamed codex-local turn. — `apps/openagents-desktop/src/main.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the lifecycle suite and the Electron smoke chip assertions; the live-proof journal records the real per-account probe round.
+- **Authority boundary:** Verification evidence is a real bounded minimal `codex exec` probe turn per account (read-only sandbox, ~30s host bound), session-scoped with observedAt, re-run on boot/fleet-Refresh/reconnect-completion and lazily before first dispatch. Probe results feed the shared account-health ordering (verified first), the fleet readiness projection via the ledger typed reconnectRequired flag (probe evidence supersedes presence-based ready; a fresh verified probe clears a stale flag), and the chip state. The reason string lives in the chip state for the chrome disabled-reason popover to render; enabling the chip grants no new authority beyond the existing typed start channel.
+
+### `openagents_desktop.chat.composer_shift_tab_harness_toggle.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (composer keyboard harness toggle)
+- **Stated by:** owner via owner-video-review on 2026-07-11
+- **Statement:** i want shift+tab to togle between modes in composer (claude / codex) in this case
+- **Enforcement tier:** test-sweep
+- **Oracle** `composer_shift_tab_toggle.handler` (bun-test, unit): Proves focused-composer Shift+Tab toggles both directions and preventDefaults, focus-elsewhere and plain Tab are untouched, already-consumed events are left alone, and availability is never consulted (unavailable-lane toggles allowed). — `apps/openagents-desktop/src/renderer/composer-shortcuts.test.ts`
+- **Oracle** `composer_shift_tab_toggle.smoke` (bun-test, e2e): The built-Electron smoke synthesizes Shift+Tab on the focused composer input, asserts the segmented selection flips to codex (a disabled lane) and back with dispatchEvent reporting preventDefault, and that Shift+Tab on a non-composer target neither toggles nor gets consumed. — `apps/openagents-desktop/src/main.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the composer-shortcuts suite and the Electron smoke composer-gestures step.
+- **Authority boundary:** The gesture exists only while the composer input has focus: Shift+Tab there toggles the selected harness both directions through the SAME typed DesktopHarnessSelected intent the chips dispatch, with preventDefault so focus never moves. Shift+Tab anywhere else keeps normal reverse focus navigation, and plain Tab is untouched. Toggling TO an unavailable lane is allowed — selection moves and the disabled-reason popover / evidence-gated Send explain why it cannot act; the gesture is never silently blocked and grants no send authority.
+
+### `openagents_desktop.chat.composer_icon_only_send.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (composer send control)
+- **Stated by:** owner via owner-video-review on 2026-07-12
+- **Statement:** put a microphone button there left of the submit button. make submit button an up arrow like codex has there. clicking microphone button toggles a voice mode we havent implemented yet. just put a text thing there for like disabled or something
+- **Enforcement tier:** test-sweep
+- **Oracle** `composer_icon_only_send.view` (bun-test, unit): Proves the composer renders exactly one ArrowUp Submit IconButton, places the compact Mic control immediately before it, toggles the honest Voice unavailable badge through the typed intent, and refuses that toggle while pending. — `apps/openagents-desktop/src/renderer/shell.test.ts`
+- **Oracle** `composer_icon_only_send.smoke` (bun-test, e2e): The built-Electron smoke asserts the rendered send control carries the icon variant with an inline glyph and aria-label, exactly one send control exists, and no visible Send text or freestanding icon remains in the composer. — `apps/openagents-desktop/src/main.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the shell composer suite and the Electron smoke composer-gestures step.
+- **Authority boundary:** The composer renders exactly one Submit control as the shared catalog IconButton with ArrowUp inside and no visible Send label. Immediately left is a compact shared Mic IconButton. Mic dispatches only DesktopVoiceModeToggled into renderer presentation state: selected state shows the literal `Voice unavailable` badge and starts no microphone, permission prompt, transcription, network, provider, or device action. Pending turns disable Mic and its handler also refuses programmatic toggles. Submit keeps its accessible name, disabled-reason wrapper, and DesktopNoteSubmitted intent.
+
+### `openagents_desktop.sidebar.connected_accounts_usage_box.v1` — RETIRED
+
+- **Surface:** openagents-desktop (sidebar connected-accounts usage box)
+- **Stated by:** owner via owner-video-review on 2026-07-11
+- **Statement:** in the left sidebar, in a bottom box, like letting the chats flex up but show up to 5 connected accounts with a progress bar showing remaining weekly/hourly usage (grayed out if we dont have that data).
+- **Enforcement tier:** test-sweep
+- **Oracle** `sidebar_accounts_box.view_projection` (bun-test, unit): Proves the five-account cap with the '+N more' Fleet deep-link row, ready-first ordering, measured bar math (Meter value = tightest window remainingPercent / 100 with all windows in the accessible label), the grayed no-data bar (zero fill, reduced opacity, borderSubtle track, honest tooltip/aria reason), and the absent box at zero accounts. — `apps/openagents-desktop/src/renderer/sidebar-accounts.test.ts`
+- **Oracle** `sidebar_accounts_box.pinned_structure` (bun-test, unit): Proves the sidebar column keeps the chats list flexing (NavRail flex:1/minHeight:0) while the accounts box renders as the LAST sidebar child (pinned bottom, hairline-topped) when accounts exist, and does not render at all when none do. — `apps/openagents-desktop/src/renderer/shell.test.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the sidebar-accounts view suite, the shell pinning assertions, and the design-conformance token oracle over the new module.
+- **Authority boundary:** Read-only presentation over the existing fleet accounts projection and its per-account usage entries: the box never probes providers, adds no polling loop, and mutates nothing. The bar renders a MEASURED remaining value only when a decoded usage entry carries real provider rate-limit windows (pylon truth.provider.snapshots, codex-rs RateLimitSnapshot 5h/weekly lineage); every other account renders the grayed borderSubtle track with zero fill and the honest reason ('no usage-window data for this provider') in the tooltip and accessible label — never a fake bar. At most five accounts render (ready first, then provider, then ref); overflow is a dim '+N more' row deep-linking to the Fleet workspace through the existing DesktopWorkspaceSelected intent. Zero connected accounts render no box.
+
+### `openagents_desktop.history.markdown_prose_rendering.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (codex history workspace message prose)
+- **Stated by:** owner via owner-video-review on 2026-07-11
+- **Statement:** i see assistant messages showing raw markdown what the fuck. need to use the same markdown renderer we use elsewhere
+- **Enforcement tier:** test-sweep
+- **Oracle** `history_markdown.prose_projection` (bun-test, unit): An assistant item carrying headings/bold/links/inline+fenced code renders typed Markdown/CodeBlock views (h3 + strong + code present, no literal ### or ** in text nodes, link label plus visible path as safe text); user and agent-message prose route through the same projector; gap/redaction notices stay plain event rows; the inspector body uses the projector for prose and plain text for notices; rendered-once accounting holds. — `apps/openagents-desktop/src/renderer/history-workspace.test.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the history workspace suite plus the codex-history completeness suites.
+- **Authority boundary:** Presentation only. Assistant, user, and agent-message prose in the history workspace (center transcript AND the right-rail item inspector) renders through the SAME bounded markdown projector chat assistant bodies use (renderer markdown.ts -> catalog Markdown/CodeBlock/Divider) — no second parser, links stay safe text with the path visible, no navigation from historical content. Loss-accounted completeness (#8674/#8675) is untouched: every retained source item still projects exactly once (prose OR event row), gap/redaction notices stay plain styled text outside the markdown projection, and the completeness equation counts exactly what it counted before.
+
+### `openagents_desktop.history.agent_roster_shortcut_traversal.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (codex history workspace keyboard navigation)
+- **Stated by:** owner via owner-video-review on 2026-07-11
+- **Statement:** just like command up and down scrolsl thru chats, have command shift up and down go up and down the agents of a convo.
+- **Enforcement tier:** test-sweep
+- **Oracle** `history_agent_traversal.roster_walk` (bun-test, unit): Traversal walks the exact visible roster (collapsed subtrees skipped) both directions, clamps at both ends, no-ops without an open page or roster, targets resolve to the same HistoryAgentSelected intent the tree rows carry, and the shifted chord discriminates from the unshifted conversation chord per platform. — `apps/openagents-desktop/src/renderer/history-workspace.test.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the history workspace traversal suite.
+- **Authority boundary:** Cmd+Shift+Up/Down (Ctrl+Shift off-macOS) moves the selection through the SAME visible agent roster the right-rail Agents tree renders, dispatching the SAME typed HistoryAgentSelected intent the tree rows dispatch — no parallel selection path. Ends clamp exactly like the unshifted conversation shortcut; the unshifted chord keeps traversing conversations; no-op when no history conversation is open or the roster is empty; editable targets are never intercepted.
+
+### `openagents_desktop.history.humanized_tool_cards.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (codex history workspace tool cards)
+- **Stated by:** owner via owner-video-review on 2026-07-11
+- **Statement:** spawn agent card is still showing a fucking json object in the card tool thing, not good
+- **Enforcement tier:** test-sweep
+- **Oracle** `history_tool_cards.humanized_no_blob` (bun-test, unit): A spawn_agent fixture with a base64-class continuation blob renders 'Spawn agent — issue_audit · fork turns: 3' with no blob and no braces in the card detail while the inspector still exposes the raw input; table-driven cases cover exec/shell/web_search/read_file/grep/apply_patch/mcp and the prettified unknown fallback. — `apps/openagents-desktop/src/renderer/history-workspace.test.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the history workspace and tool-card humanization suites.
+- **Authority boundary:** Display only. Historical tool_call rows humanize through the SAME table chat tool cards use (renderer tool-cards.ts humanizeToolInvocation — never a second table): spawn_agent shows 'Spawn agent' with the task name and a dim fork-turns meta; terminal/file/search/web items show their command, path, or query; unknown items show a prettified name plus a bounded key:value summary. Raw JSON never renders as the default card body, and opaque base64-class continuation/message blobs NEVER appear in any card body — the raw input (blob included) stays reachable only through the item inspector, bounded as before. Loss-accounting completeness is untouched.
+
+### `openagents_desktop.history.bottom_anchored_autoload.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (codex history workspace pagination)
+- **Stated by:** owner via owner-video-review on 2026-07-11
+- **Statement:** you need to show the most recent messages, starting at bottom, and auto load them as i scroll up, smartly loading before the cursor
+- **Enforcement tier:** test-sweep
+- **Oracle** `history_autoload.window_math` (bun-test, unit): Tail offset opens at the last page; scroll-up merge prepends older items and moves the offset back with no dupes; scroll-down appends newer items; prefetch predicates fire ~1.5 viewports before each edge and only while idle; prepend preserves the scroll anchor by the growth; no pager renders and the loading edge shows a thin textFaint row/caption; the restore plan reopens a saved item's window or opens at the end; completeness stays whole-conversation as the window grows. — `apps/openagents-desktop/src/renderer/history-workspace.test.ts`
+- **Oracle** `history_autoload.smoke_scroll` (bun-test, e2e): WRITTEN, pending owner (movie): the built-Electron trace acceptance opens a conversation at its tail (bottom-anchored, no pager), asserts scrolling to the top auto-prepends the previous window with the scroll anchor preserved and the position caption advancing, discovers tool/handoff items against the same tail window the UI renders, and the reload driver restores the saved window. NOT executed this session. — `apps/openagents-desktop/src/main.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the windowed-loading unit suite; the Electron smoke bottom-anchored + prefetch steps are written but were not executed this session (owner watching a movie) — the coordinator runs the visual/smoke gate on integration.
+- **Authority boundary:** Presentation and fetch-order only. A history conversation opens at its END (tail window, newest items visible, scrolled to bottom); the Previous/Next pager is gone. Scrolling up auto-loads the previous page ~1.5 viewports before the top edge and preserves the reader's scroll anchor by the exact prepended height; scrolling down auto-loads newer pages. A thin textFaint loading row / position caption marks the fetching edge. Overlapping fetches never double-count an item. Loss-accounted completeness (#8674/#8675) is untouched: source/rendered/redactions/gaps and totalItems stay whole-conversation truth as the loaded WINDOW changes — only fetch order changed. Restoring a saved item selection reopens the window around that item and scrolls to it; otherwise restore opens at the end.
+
+### `openagents_desktop.history.claude_import.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (local coding-history import)
+- **Stated by:** agent via capability-audit on 2026-07-11
+- **Statement:** From the daily-coding capability audit (docs/fable/2026-07-11-daily-coding-capability-audit.md §4 H3): History import/browse must import ~/.claude alongside ~/.codex — the desktop imported ~/.codex history only, with no ~/.claude importer, even though the window held 2,243 Claude files. OpenAgents Desktop discovers Claude Code parent sessions and subagent/workflow sidechains, reconstructs the same loss-accounted parent/child agent graph (edge = the invoking Agent tool call's structured toolUseResult.agentId, NOT parentUuid), and surfaces Claude sessions in the SAME history catalog as Codex, tagged by source.
+- **Enforcement tier:** test-sweep
+- **Oracle** `claude_import.graph_and_loss_accounting` (bun-test, unit): Reconstructs the Agent-edge graph (source-tagged, namespaced refs), projects rich redacted items, links subagent previews, represents an unlinked child as an explicit orphan/topology gap, pages without overlap/omission, and holds source = rendered + redactions + gaps. — `apps/openagents-desktop/tests/claude-history.test.ts`
+- **Oracle** `claude_import.merged_catalog_and_scale` (bun-test, e2e): A mixed Codex+Claude catalog shows both sources tagged and routes pages by ref; the 100MiB/100-child scale oracle (claude-history-performance.e2e.test.ts) keeps discovery bounded and the completeness equation intact; the capability-evals headless oracle drives the merged catalog/page. — `apps/openagents-desktop/tests/history-search.test.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the Claude importer unit suite, the merged-catalog + search suite, the scale oracle, and the capability-evals headless H3 oracle.
+- **Authority boundary:** Read-only, owner-local, additive. The Claude importer (claude-history.ts) and the merged surface (merged-history.ts) return only the same schema-bounded, credential-redacted CodexHistory catalog/page projections the Codex importer returns, namespaced `claude:` so page/search routing is unambiguous. Import NEVER changes what counts: each source keeps its whole-conversation completeness equation source = rendered + redactions + gaps, and the ~3% Claude orphan class (a child file with no recoverable structured edge) is shown and counted as an explicit topology gap, never silently hidden. Raw prompts, thinking, tool arguments, command output, credentials, and file contents never reach the renderer beyond the existing bounded/redacted item fields; no filesystem authority, resume, or provider runtime authority enters the renderer.
+
+### `openagents_desktop.history.free_text_search.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (local coding-history search)
+- **Stated by:** agent via capability-audit on 2026-07-11
+- **Statement:** From the daily-coding capability audit (docs/fable/2026-07-11-daily-coding-capability-audit.md §4 H4 / §6 item 11): Session search must go beyond the structured project:/repository:/state: catalog grammar — the daily reality is 'find that conversation where…' across 3,262 session files, and nothing searched transcript content. OpenAgents Desktop adds free-text matching over session TITLES and a bounded per-session CONTENT index across Codex AND Claude sessions, ranked by match then recency, with a search box in the history workspace whose results open the session at the matching item.
+- **Enforcement tier:** test-sweep
+- **Oracle** `free_text_search.ranking_and_open_at_item` (bun-test, e2e): Title match, content match with the exact open-at-item ref, cross-source recency ranking, empty/no-match returns nothing, and the index is rebuildable (a fresh build yields identical ranked results); the pure ranking core proves titles outrank content and recency breaks ties. — `apps/openagents-desktop/tests/history-search.test.ts`
+- **Oracle** `free_text_search.ui` (bun-test, unit): The search field renders a query-bound TextField; a non-blank query activates search; result rows carry the source badge and dispatch HistorySearchResultOpened with the threadRef; a content result opens at its matching item while a title result opens at the end. — `apps/openagents-desktop/src/renderer/history-workspace.test.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the search ranking/open-at-item suite, the history-workspace search UI suite, and the capability-evals headless H4 oracle.
+- **Authority boundary:** The content index is a REBUILDABLE LOCAL CACHE, never authority (per the audit's History/Discovery/Memory split, indexes are caches). It ranks over titles (always available from the loss-accounted catalog) and a bounded content projection of the most-recent sessions (bounded item cap; first search never blocks on the whole archive; response reports indexedSessions/truncated honestly). Search NEVER mutates catalog/page truth or the completeness equation. A content result carries the exact matching item ref so opening it windows the session on that item, reusing the bottom-anchored restore-to-item flow; a title result opens at the end. Matching is deterministic substring filtering of an owner-local corpus — not ad-hoc intent routing — and surfaces only the same bounded/redacted item text the projector already exposes.
+
+### `openagents_desktop.chat.claude_local_runtime_capabilities.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (claude-local runtime capability substrate)
+- **Stated by:** agent via capability-audit on 2026-07-11
+- **Statement:** From the daily-coding capability audit (docs/fable/2026-07-11-daily-coding-capability-audit.md §4/§6): the local Claude lane must surface plan/task progress (J2 plan mode/plan review + J4 task/todo progress — both providers externalize plans constantly, 1,617 update_plan observations, yet the app rendered none of it and plan mode was disallowed); it must be able to steer or stop a running child (G4 steer/message running children — the app could spawn children but could not talk to or stop one); it must let a user queue a follow-up while a turn runs (A3 message queueing during a turn — steer-by-queueing is habitual in both CLIs); and it must load user-configured MCP servers (I2 — ~858 calls across Stripe/Expo/Apollo/docs/design servers with no config surface, only the internal delegate server).
+- **Enforcement tier:** test-sweep
+- **Oracle** `claude_local_runtime_capabilities.plan_todo` (bun-test, unit): A TodoWrite tool call emits plan_updated with mapped {step,status} entries in addition to the raw tool_use; a non-TodoWrite tool never emits plan_updated and unknown todo status coerces to pending; the default turn uses permissionMode 'default' with ExitPlanMode disallowed, and opt-in planMode switches to permissionMode 'plan' and allows ExitPlanMode while Skill/EnterPlanMode stay disallowed. — `apps/openagents-desktop/src/claude-local-runtime-caps.test.ts`
+- **Oracle** `claude_local_runtime_capabilities.child_steer` (bun-test, unit): steerChild reaches a running delegate child: interrupt emits child_steered(interrupted) and the turn completes; message is honestly unsupported and a later interrupt still ends the turn; an unknown child or turn mismatch returns not_found with no event; and a whole-turn interrupt also aborts the running child. — `apps/openagents-desktop/src/claude-local-runtime-caps.test.ts`
+- **Oracle** `claude_local_runtime_capabilities.queue_followup` (bun-test, unit): queueFollowup during a streaming turn emits followup_queued (with position) and, at turn end, followup_promoted with the queued message, ordered after turn_completed; two queued follow-ups take positions 1 and 2 with only the first promoted per turn end (FIFO); and a queue with no live turn returns no_active_turn and emits nothing. — `apps/openagents-desktop/src/claude-local-runtime-caps.test.ts`
+- **Oracle** `claude_local_runtime_capabilities.user_mcp_servers` (bun-test, unit): An enabled stdio/http server is merged into Options.mcpServers and its mcp__name__tool is allow-listed via canUseTool (no delegate auto-allow when no delegate); an SDK-reported failed server and an invalid config (bad name / reserved codex / missing transport field) each emit mcp_server_unavailable while the turn still completes; and the frozen ClaudeLocalMcpServerConfig schema enforces its bounds (cap, transport enum, boolean enabled) with normalization rejecting bad/reserved/duplicate/missing-field entries. — `apps/openagents-desktop/src/claude-local-runtime-caps.test.ts`
+- **Oracle** `claude_local_runtime_capabilities.renderer_surface` (bun-test, unit): WAVE-2 landed for plan/todo, child steer/stop, and the queued-follow-up chip (see openagents_desktop.chat.runtime_capability_cards.v1). The MCP-server settings/status surface (I2) remains a separate wave-2 settings lane. — `apps/openagents-desktop/src/renderer/runtime-cards.test.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the claude-local runtime capability suite (src/claude-local-runtime-caps.test.ts) as programmatic oracles; the wave-2 renderer surfaces are proven by runtime-cards.test.ts + the smoke.
+- **Authority boundary:** This contract binds the RUNTIME SUBSTRATE only (typed ClaudeLocalEvent kinds + control channels + programmatic oracles); the renderer that draws these is a separate wave-2 lane. Everything is additive and default-off so current turn behavior is unchanged: plan mode is opt-in (default permissionMode 'default'); TodoWrite (never disallowed) emits plan_updated additionally to its tool_use trace; steerChild interrupts a running Codex delegate child (message is honestly 'unsupported' — codex exec is non-interactive and the SDK Agent tool exposes no per-subagent message API); queueFollowup is queue-until-idle (the single-string-prompt turn cannot inject mid-stream, so the queued message is promoted at the idle boundary, not steered mid-stream); user MCP servers are bounded/validated and merged next to the internal 'codex' server (reserved), and a failed or invalid server emits a typed mcp_server_unavailable without ever crashing the turn. The owner-local full-access posture (no allowedTools restriction, danger-full-access children) is preserved.
+
+### `openagents_desktop.chat.runtime_capability_cards.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (chat transcript runtime-capability cards)
+- **Stated by:** agent via capability-audit on 2026-07-11
+- **Statement:** WAVE-2 renderer for the wave-1 runtime substrate (audit §4/§6 J2/J4 plan-todo progress, G4 steer/stop a running child, A3 queue a follow-up while a turn runs): the desktop transcript must render a compact task-progress checklist that updates in place, let the user Interrupt a running delegate child, retain each delegated child's bounded exact prompt and answer, show that conversation when its card or agent-row is selected, and let the user queue a follow-up while a turn streams.
+- **Enforcement tier:** test-sweep
+- **Oracle** `runtime_capability_cards.plan_todo` (bun-test, unit): Proves plan_updated projects ONE plan card (keyed) that updates in place as entries change (latest wins), each row carrying the status glyph for the exact pending/in_progress/completed enum with the in_progress row emphasized, and the progress summary counting done/in-progress. — `apps/openagents-desktop/src/renderer/runtime-cards.test.ts`
+- **Oracle** `runtime_capability_cards.child_steer` (bun-test, unit): Proves a running child card renders an Interrupt control (and NO message control), the control dispatches DesktopChildInterruptRequested with the exact { turnRef, childRef }, the child_steered outcome renders as a compact line, and a completed/failed or already-interrupted child no longer offers Interrupt. — `apps/openagents-desktop/src/renderer/runtime-cards.test.ts`
+- **Oracle** `runtime_capability_cards.queue_followup` (bun-test, unit): Proves followup_queued renders a 'Queued follow-up (#N)' chip, followup_promoted clears it, the composer stays usable while pending with a queue placeholder, a mid-turn submit routes to queueFollowup (not sendMessage), and the promoted follow-up starts as the next turn. — `apps/openagents-desktop/src/renderer/runtime-cards.test.ts`
+- **Oracle** `runtime_capability_cards.smoke` (bun-test, e2e): The built-Electron smoke claude fixture turn scripts a TodoWrite plan_updated and asserts the plan/todo card renders in the transcript with status glyphs (no raw JSON, no SYSTEM label). — `apps/openagents-desktop/src/main.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs runtime-cards.test.ts + the local-harness projection suite as the renderer oracles and the Electron smoke plan-card step.
+- **Authority boundary:** Renderer/presentation only over the bounded additive ClaudeLocalEvent stream + control channels — no new authority is granted. child_started carries the exact bounded instruction and child_completed carries the exact bounded answer; the renderer retains both on the keyed child card and projects them as the selected child's user/Codex transcript above secondary runtime metadata. Older persisted cards without transcript remain schema-valid. plan_updated renders ONE compact plan card per turn (a status glyph per entry from the exact pending/in_progress/completed enum, the in_progress row emphasized) that replace-renders in place as new plan_updated events arrive (latest wins). A running delegate child offers a single Interrupt control that dispatches DesktopChildInterruptRequested -> claudeLocal.steerChild(action:'interrupt') by exact { turnRef, childRef }; MESSAGE-ing an in-flight child is NOT offered. The composer stays usable while a turn streams; a mid-turn submit calls claudeLocal.queueFollowup instead of starting a new turn, renders a 'Queued follow-up (#N)' chip, and clears it on followup_promoted. Token styling only; a host without a local streaming lane simply no-ops.
+
+### `openagents_desktop.seam.typed_git_github_surface.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (Git/GitHub review surface)
+- **Seam:** client `apps/openagents-desktop/src/git-github-contract.ts` <-> server `apps/openagents-desktop/src/git-github-host.ts`
+- **Stated by:** owner via capability-audit on 2026-07-11
+- **Statement:** Commit, push, branch, and GitHub issue/PR flows work from OpenAgents Desktop through a TYPED Git/GitHub surface with receipts — not only via an agent's Bash tool. The review workspace has a Git panel: a status header (branch, ahead/behind, dirty state), a changed-files list with stage toggles, a commit box that shows the resulting SHA, a Push button with its pushed-ref receipt and typed failure classes, a branch switcher, and an issues/PRs section that can list and create (returning the item url). (EP250 capability audit §4E, §6.3, ranks E2–E5 commit/push/PR/issue as a daily habit with zero typed UI.)
+- **Enforcement tier:** test-sweep
+- **Oracle** `git_github_surface.host_real_repo` (bun-test, e2e): Against a REAL temp git repo (and a REAL local bare remote): status structure, stage/unstage, commit returns the real HEAD SHA, empty-message and nothing-staged refusals, branch list/create/checkout, dirty-tree checkout refusal, push returns the pushed ref/sha and advances the remote, no-upstream refusal, and the non-fast-forward fetch→rebase→push retry (success on non-conflict, typed non_fast_forward after aborting a conflicting rebase). The gh path is boundary-unit-tested plus one guarded real gh --version/auth-status test that skips honestly when gh is unavailable. — `apps/openagents-desktop/src/git-github-host.test.ts`
+- **Oracle** `git_github_surface.contract_both_sides` (bun-test, unit): The closed operation set and every result variant (incl. the typed error) round-trip through decode on both sides; unknown ops and malformed params are rejected and excess keys stripped. — `apps/openagents-desktop/src/git-github-contract.test.ts`
+- **Oracle** `git_github_surface.panel_intent_loop` (bun-test, unit): The panel renders the status header, changed-files stage toggles, commit box, Push control, branch switcher, and issues/PRs section; disabled controls (commit with nothing staged / empty message, Push without upstream, gh Create when gh is unavailable) carry the hover-only Tooltip reason; and the real intent loop stages, commits (showing the SHA receipt), pushes (ref receipt), checks out branches, marks gh unavailable with a reason, and creates an issue (url receipt) — never a fabricated success. — `apps/openagents-desktop/src/renderer/git-panel.test.ts`
+- **Oracle** `git_github_surface.smoke_real_status` (bun-test, e2e): The built-Electron smoke routes to the review workspace and asserts the typed Git panel rendered REAL read-only status of the app's own repo (status header, commit box, Push, branch switcher, issues/PRs section all present; branch label resolves to a real branch or detached HEAD) without committing or pushing. — `apps/openagents-desktop/src/main.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the host real-repo suite, the contract both-sides suite, the panel intent-loop suite, and the Electron smoke git-review step.
+- **Authority boundary:** The renderer never supplies argv: the host (git-github-host.ts) runs a FIXED, closed operation set over the active canonicalized workspace root, with user strings only reaching git/gh as validated path/ref/message values that cannot be reinterpreted as flags. Every request and result is Effect-Schema decoded on both sides (git-github-contract.ts). Results are public-safe — a commit SHA, a pushed ref, an issue/PR number+url — never tokens, credentials, raw stderr, or absolute paths; failures are typed classes (no_upstream, non_fast_forward, auth_failed, blocked_by_hook, dirty_tree, gh_unavailable, gh_unauthenticated, …). Commit refuses an empty message or nothing-staged; checkout refuses a dirty tree; push applies a bounded fetch→rebase→push retry; gh operations never trigger an auth prompt. This is owner-local executor authority (this is the owner's machine); it adds no untrusted-labor or provider authority.
+
+### `openagents_desktop.settings.mcp_servers.v1` — RETIRED
+
+- **Surface:** openagents-desktop (settings — user-configured MCP servers)
+- **Stated by:** agent via capability-audit on 2026-07-11
+- **Statement:** User-configured MCP servers — ~858 calls across Stripe/Expo/Apollo/docs/design servers. No config surface; only the internal delegate server exists. (missing, I2)
+- **Enforcement tier:** test-sweep
+- **Oracle** `mcp_servers.settings_render_and_intent_loop` (bun-test, unit): The MCP servers section lists configured servers with a transport badge, enable/disable Toggle, and Remove; the Add form shows stdio vs http fields by transport; client-side validation rejects empty/invalid/reserved/duplicate names and missing transport fields with an inline error; and the add/toggle/remove intent loop drives a fake bridge, resets the draft on success, and ignores names not displayed. — `apps/openagents-desktop/src/renderer/settings.test.ts`
+- **Oracle** `mcp_servers.persistence_host` (bun-test, unit): The persistence host round-trips configs to a mode-0600 file, drops-and-counts schema-invalid stored rows without crashing, enforces the reserved/duplicate/transport/list-cap rules on add, and returns a renderer projection that never contains secret env/header values. — `apps/openagents-desktop/src/mcp-config-host.test.ts`
+- **Oracle** `mcp_servers.smoke` (bun-test, e2e): The built-Electron smoke opens Settings, asserts the MCP servers section renders, adds a fixture stdio server through the real Add form + typed IPC, and asserts it persists and lists — without spawning a real MCP server (the claude query is a fixture in smoke). — `apps/openagents-desktop/src/main.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the settings renderer suite and the persistence-host suite as programmatic/UI oracles, plus the Electron smoke MCP add-and-list step.
+- **Authority boundary:** The Settings screen gains an 'MCP servers' section (apps-sdk chrome + shared token styles only — the design-conformance oracle) that lists configured servers (name, transport chip, enable/disable Toggle, Remove) and an Add form whose stdio/http fields switch on a transport RadioGroup. Client-side validation mirrors the FROZEN ClaudeLocalMcpServerConfig bounds (name charset/length, reserved 'codex', duplicate names, transport-specific required field, arg/env/header value bounds) and shows a single inline error before anything crosses to main. Persistence is a main-process host writing a private JSON file under userData mode 0600; env/header/arg VALUES are user-provided and may be sensitive, so they are persisted and handed to the claude-local runtime's userMcpServers getter (main-only) but are NEVER logged and NEVER cross back to the renderer — the projection carries name/transport/enabled/command/url and arg/env/header COUNTS only. Stored rows are re-validated against the frozen schema on read; invalid rows are dropped and counted, never crashing. A runtime-reported mcp_server_unavailable status renders a warn chip when threaded to settings; until that thread lands the section shows config state. This surface adds no new primitive: it composes the shared catalog TextField/RadioGroup/Toggle/Button/Badge only.
+
+### `openagents_desktop.terminal.workspace_bounded_pty.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (workspace terminal / execution)
+- **Stated by:** owner via audit on 2026-07-11
+- **Statement:** Interactive terminal / stdin steering — the audit's #1 daily-coding gap (8,333 write_stdin observations, capability D3). Ordinary build/test/dev-server work must run in scoped Desktop terminals with an explicit local-preview lifecycle and no renderer ambient process authority. (CUT-20, #8700)
+- **Enforcement tier:** test-sweep
+- **Oracle** `terminal.adversarial_and_built_host_receipt` (bun-test, unit): The adversarial PTY suite — shell injection (renderer input never becomes argv; the spawn argv stays fixed and workspace-bound), secret environment (bound secret values redacted in the streamed chunk AND the tail), runaway output (ring buffer holds the byte cap and marks gap), orphan children (closing a session reaps a REAL backgrounded grandchild via process-group kill — the disposal evidence), duplicate start, port collision (typed error on a second live session claiming the same announced port), and revoked grants — plus the built-host receipt (a real /bin/sh runs a stdin command, output captured, exit code observed, tree disposed) and the dev-preview receipt (a real server's announced port is detected + reachable, then freed when the session stops). — `apps/openagents-desktop/src/terminal-host.test.ts`
+- **Oracle** `terminal.renderer_intent_loop` (bun-test, unit): The terminal workspace transitions (ready/output/exit/preview/closed/error + snapshot recovery) and the typed intent loop through the real registry with a fake bridge: create adds the returned session, submit writes the input line to stdin with a newline and clears the field, interrupt/restart target the active session, and a failed preview-open surfaces a typed notice — all on the design-conformance token scales. — `apps/openagents-desktop/src/renderer/terminal-workspace.test.ts`
+- **Oracle** `terminal.smoke_built_electron_pty_receipt` (bun-test, e2e): The built-Electron smoke routes to the terminal workspace through the canonical workspace.terminal command, then runs a REAL bounded command through the real preload bridge + real main PTY host (bound to the app's own repo in smoke), asserts the ready + redacted output events, closes the session, and the lifecycle-teardown asserts zero live terminal sessions remain. — `apps/openagents-desktop/src/main.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the adversarial PTY host suite and the renderer intent-loop suite as programmatic/UI oracles, plus the built-Electron smoke terminal PTY receipt step and its lifecycle-teardown disposal check.
+- **Authority boundary:** The renderer holds no shell and no process: every terminal operation is a typed intent (create/input/resize/interrupt/restart/close/preview-open) schema-decoded on both sides of the sandbox. Main alone binds each session to the currently authorized workspace root + a bounded environment; the renderer sends a session ref and, for input/resize, bounded data / integer geometry — never a shell, argv, cwd, or env, so a compromised renderer can steer stdin but never chooses WHAT is spawned or WHERE. Output crossing to the renderer is BOUNDED (a byte-capped ring, loss-accounted with a gap flag) and REDACTED (secret-named/secret-shaped env VALUES and token-shaped literals are scrubbed in main before any chunk is sent). On project/workspace close the OWNED process tree is killed exactly once (SIGTERM then SIGKILL against the process group; a second close is a no-op). A bounded tail persists (mode 0600) and is reloaded as an explicitly recovered, gap-marked session after an app restart. Local preview discovers an EXPLICIT announced port parsed from the session's OWN output (never a port scan), shows readiness, and stops with its owning session; opening it is out-of-process (external browser) behind a confirmation — never arbitrary in-app navigation. The shipped backend is a child-process-group terminal (zero native deps, runs under pnpm exec vp test AND Electron); node-pty pseudo-TTY + xterm.js are a documented TerminalBackend swap deferred to the #8574 packaging lane. The terminal UI (bounded monospace output + a typed input line + interrupt/restart) composes only shared catalog primitives on the design-conformance token scales.
+
+### `openagents_desktop.preferences.typed_durable_migratable_schemas.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (app preferences & operability)
+- **Stated by:** owner via issue on 2026-07-11
+- **Statement:** Theme, density, font, reduced motion, keybindings, provider defaults, privacy, notifications, and update preferences have typed durable schemas/migrations.
+- **Enforcement tier:** test-sweep
+- **Oracle** `preferences.migration_and_host_and_effects` (bun-test, unit): The migration chain (current/defaults/legacy_v0/merged/downgraded) is total and value-preserving, the host round-trips to a mode-0600 file and self-heals legacy bytes, and the effects module scales the theme (font/density) and maps reduced-motion to the root attribute with defaults returning the identity theme. — `apps/openagents-desktop/tests/desktop-preferences.test.ts`
+- **Oracle** `preferences.durable_ipc_round_trip.smoke` (bun-test, e2e): The built-Electron smoke round-trips preferences over the real IPC (update density→compact, read back compact, reset→comfortable) in the diagnostics-and-preferences step. — `apps/openagents-desktop/src/main.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the preferences migration/host/effects suite and the Electron smoke preferences round-trip.
+- **Authority boundary:** A single versioned, migratable preferences document (<userData>/preferences.json, mode 0600) owns density, font, reduced-motion, built-in Vim enablement, provider-defaults, privacy, notifications, and update preferences. Theme is intentionally NOT mutable: the app mounts the fixed Khala editor projection and retains Tokyo Night as a code-owned fallback; keybindings keep their existing typed store (desktop-command-bindings). Density and font resize the app through a scaled theme, reduced-motion resolves to a root attribute, and Vim is off by default but persists when toggled. The migrator is total: a missing, corrupt, partial, legacy, or future-versioned file always resolves to a valid current document and never throws.
+
+### `openagents_desktop.accessibility.core_flows_meet_wcag_aa.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (accessibility)
+- **Stated by:** owner via issue on 2026-07-11
+- **Statement:** Desktop/mobile meet keyboard, focus, screen-reader, contrast, dynamic type, target-size, and reduced-motion acceptance for core coding flows.
+- **Enforcement tier:** test-sweep
+- **Oracle** `accessibility.contrast_and_reduced_motion` (bun-test, unit): Computes WCAG relative-luminance contrast for the theme text roles and asserts AA (primary/secondary/status ≥ 4.5:1, faint/accent ≥ 3:1, focus ring high-contrast); asserts app.css honors both the OS prefers-reduced-motion media query and the explicit data-en-reduce-motion override. — `apps/openagents-desktop/tests/accessibility.test.ts`
+- **Oracle** `accessibility.diagnostics_accessible_names` (bun-test, unit): Every interactive control in the diagnostics panel carries a non-empty accessible name (Button label), each health row is a labelled group region, and no rendered text leaks a path/url/token. — `apps/openagents-desktop/src/renderer/diagnostics.test.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the accessibility contrast/reduced-motion suite and the diagnostics accessible-name suite. Mobile a11y is tracked separately as the #8704 residual.
+- **Authority boundary:** This contract binds the DESKTOP surface only. It guarantees: WCAG 2.1 AA text contrast on the theme's primary/secondary/status text roles across all four surfaces; a high-contrast, clearly-visible focus ring (focus token ≈ 7.9:1 on background); reduced-motion honored both via the OS prefers-reduced-motion media query AND an explicit in-app override; and accessible names on every interactive node in the diagnostics/preferences operability surfaces. Disabled text is treated per the WCAG 1.4.3 exemption. Mobile accessibility for core coding flows is a SEPARATE app (apps/openagents-mobile) and is NOT covered by this contract — it remains the named residual on #8704.
+
+### `openagents_desktop.notifications.refs_only_and_authoritative_clear.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (notifications & attention)
+- **Stated by:** owner via issue on 2026-07-11
+- **Statement:** Notifications carry stable authorized refs and never prompt/code/secrets; attention clears only after authoritative acknowledgement.
+- **Enforcement tier:** test-sweep
+- **Oracle** `notifications.refs_only_authoritative_clear` (bun-test, unit): An approval/question attention projects an enum-derived label (not the prompt), the serialized projection carries no prompt/secret text, newestLiveAgentGraph picks the higher-cursor confirmed graph so attention clears only on the authoritative snapshot (and a stale snapshot never overrides it), and the notification preference payload rejects any content string. — `apps/openagents-desktop/tests/notification-attention.test.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the notification/attention suite; the authoritative-clearing of interactive decisions is additionally exercised by runtime-interactions.test.ts.
+- **Authority boundary:** The desktop notification-analog is the confirmed live-agent-graph attention projection (attentionCount / attentionLabel) plus the typed notification preference payload. Attention surfaces only enum-derived labels and public-safe refs (never the underlying question/approval prompt text), and it reflects the newest confirmed graph cursor only — a stale lower-cursor snapshot can neither raise nor clear attention optimistically. The notification preference payload is boolean-only, with no content field a prompt/secret could ride in on. The in-transcript question/approval CARD (which does carry prompt text) is a separate detail surface and is never routed into a notification payload.
+
+### `openagents_desktop.diagnostics.watchdog_redacted_export_and_recovery.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (diagnostics & recovery)
+- **Stated by:** owner via issue on 2026-07-11
+- **Statement:** Diagnostics/watchdog show provider, Runtime Gateway, Sync, workspace, PTY, and extension health with redacted export, restart, and recovery actions.
+- **Enforcement tier:** test-sweep
+- **Oracle** `diagnostics.builder_redaction_and_host` (bun-test, unit): The report builder maps each domain to the right level under fault injection (provider outage, closed/unobserved sync, gateway lifecycle/capability degradation, git-unavailable workspace, dropped MCP rows) and never emits a path/token; redaction scrubs a leaked secret and keeps the report schema-valid + export-safe; and the host writes an owner-only redacted bundle whose notice carries no saved path. — `apps/openagents-desktop/tests/diagnostics.test.ts`
+- **Oracle** `diagnostics.view_and_handler_loop` (bun-test, unit): The panel renders a row + level badge per domain, refresh/export/recovery intents drive a fake bridge (a successful recovery re-gathers), a corrupt gather resolves to unavailable (never a throw), and no rendered text leaks a path/token. — `apps/openagents-desktop/src/renderer/diagnostics.test.ts`
+- **Oracle** `diagnostics.renders_and_exports.smoke` (bun-test, e2e): The built-Electron smoke opens Settings, asserts all six diagnostics health rows render with level badges, asserts no rendered diagnostics text is secret-like, clicks Export and asserts a public-safe notice appears (no saved path). — `apps/openagents-desktop/src/main.ts`
+- **Verification:** pnpm --dir apps/openagents-desktop run verify runs the diagnostics builder/redaction/host suite, the diagnostics view/handler suite, and the Electron smoke diagnostics-and-preferences step.
+- **Authority boundary:** The diagnostics panel projects public-safe health for all six domains (provider, Runtime Gateway, Sync, workspace, PTY, extensions). Health rows carry only a bounded domain/level enum, a short public-safe summary, and public-safe refs — never a path, email, prompt, token, or url (structural privacy). The export is ALWAYS redacted before it touches disk (a secret-pattern scrubber runs even if an upstream builder regresses), and the returned notice never carries the saved path. Recovery actions map only to safe typed paths: provider re-probe re-checks accounts, and refresh/refresh_workspace/reload_extensions re-gather fresh sources. PTY health is honestly 'unavailable' until the CUT-20 (#8700) PTY host merges, and restart_runtime/reconnect_sync report 'no recovery action available' until a safe typed restart exists — surfaced honestly, never faked.
+
+### `openagents_desktop.microinteraction.owner_review_register.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (micro-interaction do/don't register)
+- **Stated by:** owner via owner-directive on 2026-07-13
+- **Statement:** I want the ones that we have for that for this app to include micro interactions and things that I do and don't want to see. There are some things I don't want to see, such as long streams of text where icons should be.
+- **Enforcement tier:** test-sweep
+- **Oracle** `microinteraction_register.rules_present_and_documented` (bun-test, unit): Proves both concrete owner rules exist in this registry as enforced contracts whose oracle refs point at the real enforcing suite, that both owner statements are recorded verbatim, and that docs/assurance/UX_CONTRACTS_AND_ASSURANCE.md exists and names all three contractIds so the next owner rule has a documented home. — `apps/openagents-desktop/tests/owner-ux-rules.test.ts`
+- **Verification:** pnpm exec vp test apps/openagents-desktop/tests/owner-ux-rules.test.ts runs in the normal desktop sweep; it fails if either concrete rule is removed, renamed, downgraded from enforced, detached from its oracle file, or undocumented in the assurance clarification doc.
+- **Authority boundary:** This contract is the REGISTER for owner-stated micro-interaction and visual do/don't rules on this app: every future 'things I do and don't want to see' statement lands here as its own versioned contract with a real oracle in the same change (house law 2026-07-03), never conversation-only. The register grants no rendering authority and does not make any individual rule true — each concrete rule (starting with openagents_desktop.microinteraction.icon_slot_no_raw_text.v1 and openagents_desktop.typography.approved_fonts_only.v1) carries its own oracle and its own honest state. AssuranceSpec obligations may cite these contractIds via contract_refs for environment-bound pixel evidence later; this registry stays the single source of the rule text and AssuranceSpec never duplicates it (docs/assurance/UX_CONTRACTS_AND_ASSURANCE.md).
+
+### `openagents_desktop.microinteraction.icon_slot_no_raw_text.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (icon-slot micro-interactions)
+- **Stated by:** owner via owner-directive on 2026-07-13
+- **Statement:** I want the ones that we have for that for this app to include micro interactions and things that I do and don't want to see. There are some things I don't want to see, such as long streams of text where icons should be.
+- **Enforcement tier:** test-sweep
+- **Oracle** `icon_slots.closed_catalog_glyphs_and_bounded_labels` (bun-test, unit): On the real desktopShellView trees across sampled states: every workspace dock item carries a closed-catalog glyph, a non-empty single-line label within the 24-char micro-copy bound, and an accessible label; every node carrying an icon prop and every Icon node resolves in the closed iconNames catalog; every IconButton carries a glyph and accessible label and no rendered text content. The falsifier test proves the validators reject an unknown glyph, an empty accessible label, rendered IconButton text, and a long-stream dock label. — `apps/openagents-desktop/tests/owner-ux-rules.test.ts`
+- **Verification:** pnpm exec vp test apps/openagents-desktop/tests/owner-ux-rules.test.ts runs in the normal desktop sweep and enforces the structural subset on real view trees; the residual pixel-level generalization is deferred to an AssuranceSpec visual-technique obligation referencing this contractId, per docs/assurance/UX_CONTRACTS_AND_ASSURANCE.md.
+- **Authority boundary:** Icon slots are the closed-catalog glyph positions: sidebar dock items, icon-only action controls (IconButton and any icon-carrying node), and status indicator glyphs. Each must resolve a glyph name in the closed @effect-native/core iconNames catalog — never a raw string rendered where the glyph belongs — and dock labels stay bounded single-line micro-copy (24-char bound). Accessible labels are announced, not painted, and stay full-length. ENFORCED SUBSET (honest): the oracle proves the structural rule on the real typed view trees across sampled shell states — every workspace dock item carries a catalog glyph plus bounded single-line label, every icon-carrying node's glyph resolves in the closed catalog, and every IconButton is glyph-plus-accessible-label with no rendered text content — and demonstrates sensitivity against known-bad fixtures. The fully general 'no long text ever appears where an icon was designed' claim over arbitrary rendered pixels is NOT mechanically expressible on typed trees today; it lands later as an AssuranceSpec obligation with technique visual citing this contractId (ASSURANCE_SPEC.md §5), and this contract does not claim that pixel evidence exists yet.
+
+### `openagents_desktop.typography.approved_fonts_only.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (typography)
+- **Stated by:** owner via owner-directive on 2026-07-13
+- **Statement:** I want all that enforced in the assurance pieces. I want to be able to specify rules there. For example, I don't want to see certain things like strings where icons should be, certain fonts, and that must be specified
+- **Enforcement tier:** test-sweep
+- **Oracle** `typography.approved_font_stack_only` (bun-test, unit): Scans every non-test .ts/.cts/.css file under apps/openagents-desktop/src and packages/ui/src recursively: every CSS font-family declaration and every TypeScript fontFamily value must resolve to the shared Inter, opt-in Zalando Sans accent, or Disket Mono tokens and approved fallback families, every CSS font shorthand must be exactly 'inherit', and the shared token declarations must remain consumed by app.css and desktop-workbench.css. The falsifier test proves a rogue family (Comic Sans MS / Papyrus / a font shorthand smuggle) is rejected while the approved stacks pass. — `apps/openagents-desktop/tests/owner-ux-rules.test.ts`
+- **Verification:** pnpm exec vp test apps/openagents-desktop/tests/owner-ux-rules.test.ts runs in the normal desktop sweep; adding any stray font family anywhere under apps/openagents-desktop/src fails it.
+- **Authority boundary:** The shared @openagentsinc/ui typography authority self-hosts Inter as the primary body, UI, heading, navigation, and conversation family, followed by the host system stack as resilient fallbacks. Zalando Sans is demoted to the explicit --oa-font-sans-accent token for occasional marketing copy and must never become an implicit product-UI family. The authority self-hosts Disket Mono as the primary code and metadata family, followed by the approved system monospace stack. Web, docs, splash, and Desktop consume the same --oa-font-sans and --oa-font-mono tokens. The @effect-native/tokens type scale deliberately carries size/weight only — no competing family tokens — so no renderer module, stylesheet, or typed style object may declare an unapproved family, and the CSS font shorthand stays exactly the form-control 'font: inherit' reset so a family cannot ride past the family checks.
+
+### `openagents_desktop.design.khala_autopilot_foldin.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (product theme / palette)
+- **Stated by:** owner via owner-directive on 2026-07-19
+- **Statement:** Keep Tokyo Night as a backup, write a new Khala editor theme based on our Khala theme, and set that as the editor default while retaining Tokyo Night syntax highlighting and contrast discipline.
+- **Enforcement tier:** test-sweep
+- **Oracle** `khala_autopilot_foldin.theme_restoration` (bun-test, unit): Proves the Khala editor projection is mounted over the shared scales, Tokyo Night remains available as fallback, and no desktop module mounts the temporary autopilotTheme. — `apps/openagents-desktop/tests/owner-ux-rules.test.ts`
+- **Oracle** `khala_autopilot_foldin.theme_is_canonical` (bun-test, unit): The theme-parity suite pins the Khala editor colors while retaining Tokyo Night fallback coverage and the shared radius, motion, and control scales. — `apps/openagents-desktop/src/renderer/shell.test.ts`
+- **Verification:** pnpm exec vp test apps/openagents-desktop/tests/owner-ux-rules.test.ts plus the shell theme-parity, design-conformance, and startup boot-frame suites in the normal desktop sweep.
+- **Authority boundary:** The repository-owned Khala editor projection is the single mounted default across native-window paint, workbench chrome, Monaco, Pierre, terminal, and IDE status surfaces. Tokyo Night remains a schema-valid built-in fallback and its syntax separation informs the Khala projection. Neither projection accepts remote theme bytes, unsafe CSS, executable contributions, or renderer authority, and theme selection remains outside mutable preferences.
+
+### `openagents_desktop.startup.window_first_no_blank_frame.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (startup / boot process)
+- **Stated by:** owner via owner-incident on 2026-07-13
+- **Statement:** Opening the openagents app, via our new oa command or in dev, shows a blank/brown screen for ~5 seconds before opening the UI. This is unacceptable. I thought we had a UX contract somewhere about the need to show initial codex chats in <50 ms. That should be timed from startup. Go look up our ways of testing load times. Startup and everything else. Write full analysis of current situation in openagents/docs/fable/ new doc. This is an incident. Very bad. Need good bootup process. No brown screen. If any loading, show beautiful starcraft version of it, or something. Time to seeing stuff and then interactable elements on bootup is extremely important. Analyze, fix, update analysis, push.
+- **Enforcement tier:** test-sweep
+- **Oracle** `startup.window_first_ordering` (bun-test, unit): Proves ordinary launch uses an in-memory renderer session and contains no persistent-session, safeStorage, credential-recovery, or session-verification access; secure custody is confined to explicit account commands and falsifier fixtures reject delayed as well as pre-window recovery. — `apps/openagents-desktop/tests/startup-contract.test.ts`
+- **Oracle** `startup.shell_mounts_before_hydration` (bun-test, unit): Proves the renderer mounts the shell before the coding-history hydration effect runs, publishes catalog metadata without selected-thread detail, keeps the MVP history host Codex-only, and removes the boot frame after mount. A known-bad startup detail-autoload fixture is rejected. — `apps/openagents-desktop/tests/startup-contract.test.ts`
+- **Oracle** `startup.boot_frame_token_sync` (bun-test, unit): Proves the branded boot frame exists in index.html and every color literal in it is an exact Khala editor projection value — no off-palette frame can paint — and BrowserWindow backgroundColor stays the projected background. — `apps/openagents-desktop/tests/startup-contract.test.ts`
+- **Oracle** `startup.sidebar_scanning_honesty` (bun-test, unit): Proves the typed shell view renders the scanning row while history hydration is pending and the empty-history claim only after hydration settles. — `apps/openagents-desktop/tests/startup-contract.test.ts`
+- **Oracle** `startup.bench_budgets` (script, headless): The fixture-mode startup bench asserts median windowReadyToShow < 1500 ms and median shellMounted < 2500 ms and writes a timings-only receipt to benchmarks/startup/; the real-wiring OPENAGENTS_DESKTOP_STARTUP_TRACE mode records the same milestone chain (plus historyHydrated) against a real profile. — `apps/openagents-desktop/scripts/startup-bench.ts`
+- **Verification:** Desktop typecheck, tests/startup-contract.test.ts in the normal sweep, scripts/startup-bench.ts receipts (real-profile before: shellMounted 5.4–7.0 s; after: ~0.7 s), and smoke screenshot receipts of the boot frame and mounted shell.
+- **Authority boundary:** Ordinary launch uses a non-persistent in-memory Chromium partition and never resolves Electron safeStorage, reads/decrypts native credential custody, or performs session network verification; only an explicit account command may initialize secure custody. The BrowserWindow is created before local database work. The renderer paints a static branded boot frame (product-theme literals mechanically synced to @effect-native/tokens) with the first HTML parse, mounts the interactable shell BEFORE the local coding-history scan, and publishes the Codex-only top-level metadata catalog without requesting any selected-thread detail. Closed overlays perform zero catalog projection work and recent-only projections inspect a fixed-size prefix, never the full loss-accounted catalog. Hydration streams behind an explicit 'Scanning coding history…' sidebar state — the 'No local Codex history found.' claim renders only after the scan settles. This contract governs boot ordering and honest loading presentation; it does not change the separate post-selection thread_first_content_under_50ms.v1 projection budget, and it does not promise a wall-clock bound for full history hydration on arbitrary ~/.codex sizes (bounding the scan itself is follow-up work, now off the critical path).
+
+### `openagents_desktop.workbench.turn_checkpoints.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (Coding workbench turn checkpoints)
+- **Stated by:** owner via owner-directive on 2026-07-13
+- **Statement:** Desktop coding turns mutate the workspace with no cheap per-turn restore point. Capture at turn start/completion via an isolated temp GIT_INDEX_FILE, write hidden refs (refs/openagents/checkpoints/<thread>/<turn>), bounded to tracked + non-ignored files with size exclusions; never touches user branches/index. Typed revert as an explicit command with an irreversible-effects statement: stage, inspect, commit/clear; refuse on dirty conflicting state.
+- **Enforcement tier:** test-sweep
+- **Oracle** `turn_checkpoints.capture_hidden_ref_untouched_user_state` (bun-test, unit): Against a real fixture repository: capture on a fixture turn creates the hidden ref (ignored and oversized files excluded, typed completion signal emitted) with byte-identical user branches, HEAD, index, status, and stashes before and after. — `apps/openagents-desktop/tests/turn-checkpoints.test.ts`
+- **Oracle** `turn_checkpoints.staged_revert_exact_bytes_and_transitions` (bun-test, unit): Proves the typed diff query reports real turn-over-turn changes; stage/inspect/commit restores exact text and binary bytes (deleting later-turn artifacts) while inspect carries the irreversible-effects statement; clear abandons without mutation; double-stage, commit-without-stage, dirty stage, and post-stage drift all refuse typed; thread deletion removes that thread's refs only. — `apps/openagents-desktop/tests/turn-checkpoints.test.ts`
+- **Verification:** Desktop typecheck and tests/turn-checkpoints.test.ts in the normal sweep; the suite also proves main.ts wires capture at turn_start and turn_completed on both local lanes.
+- **Authority boundary:** The host-side turn-checkpoint service owns hidden-ref capture, the typed turn-over-turn diff query, and the staged revert command. Every snapshot is built through an isolated temporary GIT_INDEX_FILE: user branches, HEAD, the user index, stashes, and (during capture) the worktree are never written. Capture is bounded to tracked plus non-ignored untracked files with a per-file size exclusion and a total-file refusal. Revert only ever runs as stage then inspect then explicit commit; every staged revert carries the irreversible-effects statement, refuses dirty conflicting state, and retains a pre-revert baseline snapshot. Checkpoint refs and snapshots stay in the local repository only — they can contain secrets and never enter Sync projections, renderer state, or push surfaces. Thread checkpoint deletion removes every hidden ref for that thread. This is an internal post-MVP substrate: it authorizes no visible renderer affordance under the MVP surface allowlist.
+
+### `openagents_desktop.settings.harness_maintenance_one_click.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (Settings harness maintenance)
+- **Stated by:** owner via owner-issue on 2026-07-13
+- **Statement:** fleet(MAINT-1): one-click provider install/update with ledger pinning and provenance receipts — typed per-harness maintenance actions: detect installed version + channel, resolve latest per channel, execute update via the harness's native path, then RE-PROBE the harness before reporting success; version pinning (record expected version/hash before update; refuse silent channel jumps); a provenance receipt for the swapped binary; one click in Desktop Settings per connected harness driving the typed action through the existing command path; CLI parity via pylon command; NEVER touch the default ~/.codex login home during update flows.
+- **Enforcement tier:** test-sweep
+- **Oracle** `harness_maintenance.engine_round_trip_and_guards` (bun-test, unit): Fixture-harness round trip with REAL spawned fixture binaries: detect → pin → update → re-probe → receipt; failure paths (update fails, post-update probe fails, version unchanged) keep the previous state intact in the receipt; channel jumps are refused without execution; the fixture ~/.codex/auth.json is byte-identical after every flow and auth-flow arguments are refused. — `packages/pylon-core/src/custody/harness-maintenance.test.ts`
+- **Oracle** `harness_maintenance.cli_parity` (bun-test, unit): `pylon accounts maintenance --json` projects version/channel/advisory and `--update --harness codex` runs the same engine end to end against fixture binaries and a local registry: provenance receipt persisted under the Pylon home, channel jump refused with non-zero exit, fixture ~/.codex untouched. — `apps/pylon/tests/accounts-maintenance-cli.test.ts`
+- **Oracle** `harness_maintenance.desktop_gateway_and_settings` (bun-test, unit): The maintenance query/command decode through the versioned gateway contract (unknown harnesses refused), dispatch to injected host actions with per-harness single-flight, and Settings renders version/channel truth with the one-click update affordance driving the typed intent; failure and channel-jump-refusal outcomes surface honestly. — `apps/openagents-desktop/tests/harness-maintenance.test.ts`
+- **Verification:** Desktop typecheck, the three oracle suites in the normal sweep, and the built-host smoke settings capture (docs/receipts/2026-07-14-harness-maintenance/) showing the rendered harness rows.
+- **Authority boundary:** Desktop Codex projects the immutable installed-Codex CodexRuntimeResolution used by turns. OpenAgents never packages, copies, re-signs, installs, or mutates that executable. Discovery is bounded to documented/native absolute locations and the launch PATH; the selected identity is pinned for the process lifetime. Missing or incompatible Codex projects an install/update-and-restart instruction, while the user's normal CODEX_HOME and authentication remain untouched. The renderer receives only bounded state/provenance/versions/recovery — never paths, tokens, homes, or raw output. Signed makes prove that no @openai/codex package or native Codex executable enters the staged closure.
+
+### `openagents_desktop.composer.focused_on_open.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (chat composer / window open)
+- **Stated by:** owner via owner-incident on 2026-07-14
+- **Statement:** the text input should be focused immediately on open. so i can start typing right away.
+- **Enforcement tier:** test-sweep
+- **Oracle** `composer_focus.dom_focus_and_no_steal` (bun-test, unit): DOM-level: the focuser lands document.activeElement on the composer at mount (and across late commits), a keystroke at the active element routes to the composer, the settle pass claims unowned focus, and it NEVER steals focus the user placed in another input. — `apps/openagents-desktop/src/renderer/composer-focus.test.ts`
+- **Oracle** `composer_focus.built_electron_first_keystroke` (script, e2e): Built-Electron smoke steps composer-focused-on-open and first-keystroke-lands-in-composer: before ANY pointer event, document.activeElement is the composer at shell-mount and still after hydration settles, then a real Chromium keyboard event sent from the main process appears as typed text in the composer. — `apps/openagents-desktop/src/main.ts`
+- **Verification:** Desktop typecheck, src/renderer/composer-focus.test.ts in the normal sweep, and the built-host smoke's composer-focused-on-open + first-keystroke-lands-in-composer steps.
+- **Authority boundary:** On window open — fresh launch and macOS re-activate with an existing window — keyboard focus lands in the message composer at SHELL-INTERACTABLE (the moment the shell mounts under the branded boot frame, composing with window_first_no_blank_frame.v1's boot ordering), so the first keystroke enters the composer with zero clicks. Background history hydration must never steal that focus; conversely the automatic settle passes (post-hydration, window re-activate) claim only UNOWNED focus (document.activeElement at body/root) and never move focus the user placed elsewhere. When the restored workspace renders no composer (a loaded history page), nothing is force-focused.
+
+### `openagents_desktop.history.session_search_filters.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (sidebar session search)
+- **Stated by:** owner via owner-incident on 2026-07-14
+- **Statement:** The search doesn't seem to fucking work at all. One of the chats is titled Assurance, but when I start typing in the first few letters there, it does not show it.
+- **Enforcement tier:** test-sweep
+- **Oracle** `session_search.filters_full_catalog` (bun-test, unit): Through the real intent registry on a 45-root fixture catalog: a title prefix ('Ass') filters to the matching session even though it sits beyond the ten recent rows; the no-match state is explicit; clearing restores the recent-ten list; a deferred host response shows 'Searching…' (never a false no-match) and merges content results when it settles. — `apps/openagents-desktop/src/renderer/shell.test.ts`
+- **Oracle** `session_search.instant_and_merge_helpers` (bun-test, unit): historyImmediateSearchResults prefix-matches the full catalog case-insensitively including beyond-page roots; mergeHistorySearchResults dedupes by threadRef, keeps host content matches, ranks by score, and degrades to instant matches on a null host response. — `apps/openagents-desktop/src/renderer/history-workspace.test.ts`
+- **Oracle** `session_search.workspace_label_and_bounded_index` (bun-test, unit): The host index carries the session's workspace label (cwd basename) as a searchable title-tier field, and its per-session content read is item- and byte-bounded rather than a whole-file read. — `apps/openagents-desktop/tests/history-catalog-scale.test.ts`
+- **Oracle** `session_search.built_electron_filter_journey` (script, e2e): Built-Electron smoke types a title prefix into the sidebar search and asserts the fixture session row appears, then a no-match query shows the explicit empty state and clearing restores the full list — with a pixel receipt of the filtered sidebar. — `apps/openagents-desktop/src/main.ts`
+- **Verification:** Desktop typecheck, the shell/history-workspace/history-catalog-scale suites, and the built-host smoke's session-search steps with screenshot receipts.
+- **Authority boundary:** Typing in the sidebar session search filters the list with case-insensitive substring matching over session titles and workspace labels — bounded deterministic field matching over the owner-local corpus (the semantic-routing invariant's bounded-field exception), never keyword intent routing. The search operates over the FULL loss-accounted catalog store (every root, including beyond the sidebar's ten recent rows), not just rendered rows: instant title matches come straight from the hydrated catalog cache, and the host content index (itself now byte-bounded per session, so a multi-GB rollout can no longer crash or starve it) merges in when it settles. While the host response is in flight the empty state says 'Searching…'; 'No sessions match.' renders only once settled; clearing the query restores the bounded recent list. The index remains a rebuildable cache, never catalog/page authority.
+
+### `openagents_desktop.history.recent_ten_search_all.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (sidebar recent chats and full-history search)
+- **Stated by:** owner via owner-directive on 2026-07-16
+- **Statement:** in openagents, I only want to see the most recent ten chats in the sidebar. Search should search through all chats, but on the recent, only show the most recent ten.
+- **Enforcement tier:** test-sweep
+- **Oracle** `recent_chats.exact_ten_without_paging` (bun-test, unit): Projects a mixed local/catalog history larger than ten, proves the normal sidebar renders exactly the ten newest unique chats, exposes no load-more row, and cannot expand when the legacy visible-root count changes. — `apps/openagents-desktop/src/renderer/shell.test.ts`
+- **Oracle** `recent_chats.search_reaches_full_catalog` (bun-test, unit): Searches a 45-root fixture for a title outside the recent ten, proves the result appears through the real intent registry, then clears search and proves the sidebar returns to exactly ten recent rows without the out-of-window match. — `apps/openagents-desktop/src/renderer/shell.test.ts`
+- **Verification:** Desktop shell tests and typecheck enforce the recent-ten projection and preserve full-catalog search semantics.
+- **Authority boundary:** The unfiltered Desktop sidebar projects exactly the ten newest-created unique Codex chats across app-local threads and the recent-first loss-accounted Codex catalog, or every chat when fewer than ten exist. Later activity in an older chat does not reorder it. The recent list has no load-more affordance and cannot expand through the legacy catalog window. This is presentation-only: the full catalog remains hydrated and searchable, instant title matching reads every catalog root, and the bounded host content index may return matching chats outside the recent ten. Clearing search returns to the recent-ten projection. Search does not become catalog authority and no session identity, persistence, or execution authority changes.
+
+### `openagents_desktop.history.sidebar_header_truthful_scope.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (sidebar coding-history header / catalog scope)
+- **Stated by:** owner via owner-incident on 2026-07-14
+- **Statement:** That says coding history all time, but it only has five chats, so that's definitely not all time.
+- **Enforcement tier:** test-sweep
+- **Oracle** `history_header.counted_disclosure_truth` (bun-test, unit): On a catalog larger than ten: the header reads 'scanning…' pre-hydration and then the exact bounded recent count, never exposes a load-more row, never double-counts local threads that are also catalogued, and keeps the searchable total separate from the visible count. — `apps/openagents-desktop/src/renderer/shell.test.ts`
+- **Oracle** `history_header.catalog_survives_oversized_rollouts` (bun-test, unit): A >page-size multi-workspace store catalogues every root (children excluded, never lost) with no silent truncation; a session whose authored title lies beyond the bounded head scan degrades to the fallback title while the rest of the catalog survives; the streaming page read keeps whole-conversation totals and loss accounting while returning only the requested window. — `apps/openagents-desktop/tests/history-catalog-scale.test.ts`
+- **Oracle** `history_header.built_electron_header` (script, e2e): Built-Electron smoke asserts the sidebar header states the fixture catalog's true recent scope ('Recent chats · 1') — an untrue all-time claim fails the smoke. — `apps/openagents-desktop/src/main.ts`
+- **Verification:** Desktop typecheck, shell + history-catalog-scale suites, the built-host smoke header assertion, and the real-store diagnosis receipt (1,289 roots from 1,582 sessions in ~1.9 s where the pre-fix build ENOMEMed).
+- **Authority boundary:** The sidebar header's scope claim must match the projection's real semantics: 'Recent chats · scanning…' before hydration settles and 'Recent chats · N' after hydration, where N is the exact number of rows rendered and never exceeds ten. The header never claims all-time disclosure; the full loss-accounted catalog remains reachable through search. Catalog title scans, page reads, and search-index content reads remain byte-bounded/streaming so an oversized session degrades to a fallback title instead of taking down catalog or search.
+
+### `openagents_desktop.chat.provider_lane_capability_honesty.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (composer provider-lane capability truth)
+- **Stated by:** issue-8900 via capability-audit on 2026-07-16
+- **Statement:** Every active provider lane renders a composer derived from its admitted capability projection; unsupported controls are absent or honestly disabled, and an over-claiming lane is quarantined before submission.
+- **Enforcement tier:** test-sweep
+- **Oracle** `provider_lane_capabilities.policy_intersection` (bun-test, unit): Proves distinct Codex/Claude projections and fail-closed quarantine of an ACP fixture that advertises a feature and vendor extension absent from its trusted profile. — `apps/openagents-desktop/src/provider-lane-capabilities.test.ts`
+- **Oracle** `provider_lane_capabilities.composer_switch` (bun-test, unit): Switches the active composer fixture from Codex to Claude and proves models, reasoning, permission mode, Full Auto, attachments, and submission authority follow only the active admitted projection; a quarantined lane cannot send. — `apps/openagents-desktop/src/renderer/react-composer.test.tsx`
+- **Verification:** Desktop focused ProviderLane/capability/composer suites, behavior-contract registry validation, and Desktop typecheck.
+- **Authority boundary:** ProviderLane.capabilities is the observed lane report. Electron main intersects it with the native static declaration or trusted ACP peer-profile/conformance allowlist and sends only the bounded projection through preload. The renderer may present that projection but cannot add models, modes, approvals, interactions, attachments, extensions, Full Auto, interrupt, queue, or steer authority. A model, feature, or extension outside the allowlist quarantines the whole lane with a public-safe reason and removes submission authority. Switching threads/providers re-derives the controls from the newly active lane; per-provider selections cannot leak Codex-only reasoning or Full Auto affordances into another lane.
+
+### `openagents_desktop.chat.durable_automatic_titles.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (conversation sidebar titles)
+- **Stated by:** owner via github-issue on 2026-07-16
+- **Statement:** Non-empty chats in the Desktop sidebar must have useful durable titles instead of remaining New chat or untitled; show Codex-native names when available and otherwise derive a safe title automatically.
+- **Enforcement tier:** test-sweep
+- **Oracle** `automatic_titles.shared_atomic_policy` (bun-test, unit): Proves placeholder recognition, whitespace normalization, the title bound, explicit-title precedence, and rejection of environment/plugin transport envelopes. — `packages/khala-sync/src/chat.test.ts`
+- **Oracle** `automatic_titles.local_restart_persistence` (bun-test, unit): Persists a first authored title through the real upsert path and reopen while preserving a later owner rename. — `apps/openagents-desktop/src/thread-store.test.ts`
+- **Oracle** `automatic_titles.codex_native_preview_precedence` (bun-test, unit): Projects an unnamed app-server thread with its bounded first-user preview while existing native names retain precedence. — `apps/openagents-desktop/src/codex-thread-lifecycle.test.ts`
+- **Oracle** `automatic_titles.live_sidebar_projection` (bun-test, unit): Merges confirmed same-thread title metadata into the rail/header row in place during a live projection. — `apps/openagents-desktop/src/renderer/shell.test.ts`
+- **Verification:** Shared Sync policy/client/server tests, Desktop store/lifecycle/runtime/shell tests, behavior-contract registry validation, Desktop typecheck/build, and built Electron smoke.
+- **Authority boundary:** One bounded deterministic policy replaces only known placeholders with normalized authored message text. The local atomic store and the existing chat.appendMessage Sync transaction apply the same policy, so a failed or long-running model turn cannot strand the row and confirmed clients converge without a new mutation or schema. Existing manual/native names always win. App-server Thread.name remains authoritative for Codex history; only a missing name falls back to the bounded first-user preview, and transport envelopes are excluded. Live confirmed metadata updates replace the existing row in place without inventing recency, renderer title authority, cloud-task credentials, or prompt logging.
+
+### `openagents_desktop.chat.local_title_rename.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (local chat sidebar rename)
+- **Stated by:** owner via github-issue on 2026-07-16
+- **Statement:** In OpenAgents Desktop, right-clicking a chat in the conversation sidebar should open a native-feeling shadcn context menu with a Rename action. Rename should support keyboard interaction, validate the title, persist through the existing thread store/host boundary, and update the visible chat row without requiring a restart.
+- **Enforcement tier:** test-sweep
+- **Oracle** `local_chat_rename.accessible_renderer_interaction` (bun-test, unit): Opens the real local sidebar row menu by keyboard and right-click, activates Rename, proves the current title is focused and selected, refuses blank input inline, and dispatches only the trimmed exact thread/title payload. — `apps/openagents-desktop/src/renderer/react-primitive-adapters.test.tsx`
+- **Oracle** `local_chat_rename.host_success_and_failure_projection` (bun-test, unit): Runs the real typed intent handler, updates the visible thread title only after a successful host result, and retains the prior title plus explicit failure state when persistence rejects the rename. — `apps/openagents-desktop/src/renderer/shell.test.ts`
+- **Oracle** `local_chat_rename.atomic_persistence` (bun-test, unit): Reopens the private JSON store after rename to prove durability, trimming, and unchanged persisted truth after an empty-title failure. — `apps/openagents-desktop/src/thread-store.test.ts`
+- **Verification:** Desktop renderer, shell, and thread-store oracle suites; repository behavior-contract validation; Desktop typecheck and build.
+- **Authority boundary:** Only app-local Desktop threads are renameable. The accessible shadcn-styled context menu and focused dialog collect a bounded title, trim and reject empty input before dispatch, and send only the exact local thread ref plus title through a schema-decoded preload channel. Electron main re-validates the request and the private atomic thread store persists it; provider-owned history remains read-only. Renderer state updates the sidebar and active header only after host success. Cancel/Escape and every validation or host failure retain the previous durable and visible title, with an inline failure message for a rejected save.
+
+### `openagents_desktop.chat.provider_lane_registry_and_switch_honesty.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (multi-lane thread selection and switching)
+- **Stated by:** issue-8903 via github-issue on 2026-07-16
+- **Statement:** Every configured provider lane remains visible with its authentication, admission, and capability truth; a thread's selected lane is durable, and switching either carries bounded host-owned history into a compatible lane or returns an exact typed refusal without changing selection.
+- **Enforcement tier:** test-sweep
+- **Oracle** `provider_lane_registry.durable_selection_and_typed_switch` (bun-test, unit): Reopens durable per-thread selection, proves unavailable and unadmitted lanes stay explicit, refuses incompatible switches without mutation, and carries a bounded host-read history window on a compatible switch. — `apps/openagents-desktop/src/provider-lane-registry.test.ts`
+- **Oracle** `provider_lane_registry.control_route_parity` (bun-test, e2e): Keeps GET /v1/lanes in the shared control route/OpenAPI parity table and behind the same loopback bearer boundary as every control operation. — `apps/openagents-desktop/src/full-auto-control-server.test.ts`
+- **Verification:** Provider lane registry, Full Auto control route parity, renderer composer/shell suites, Desktop typecheck, and repository behavior-contract validation.
+- **Authority boundary:** Electron main owns the durable lane registry, thread existence, history read, capability requirements, authentication evidence, peer admission, and selection write. The renderer can request only a bounded threadRef/laneRef pair and receives a public-safe outcome. Missing authentication, an unadmitted peer, an unknown lane, a missing thread, and a capability mismatch are distinct refusals; none may silently fall back to another provider or discard transcript history.
+
+### `openagents_desktop.full_auto_dedicated_launcher.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (Desktop Full Auto launch surface)
+- **Stated by:** owner via github-issue on 2026-07-17
+- **Statement:** Full Auto is a named, durable autonomous run launched separately from ordinary chat, with an explicit objective/done condition, Play/Pause/Stop semantics, a read-only running view, run-level liveness/reporting, and provider-handoff evidence.
+- **Enforcement tier:** test-sweep
+- **Oracle** `openagents_desktop.full_auto_dedicated_launcher.dom` (bun-test, dom): FA-UX-01 (#8974) landed: real-DOM component oracles prove the left rail renders a dedicated Full Auto launcher action beside New session, that the launcher form collects title/objective/done-condition/workspace/provider-lane/turn-cap and Start stays disabled until every required field is present, and that Start routes through the same startFullAutoRunAction the opt-in HTTP control API uses. — `apps/openagents-desktop/src/renderer/react-full-auto-surface.test.tsx`
+- **Oracle** `openagents_desktop.full_auto_dedicated_launcher.e2e_residual` (planned, e2e): Real-Chromium/Electron e2e visual smoke across launch/running/paused/stalled/terminal states remains a residual for a follow-up issue. — `github:OpenAgentsInc/openagents#8974`
+- **Verification:** FA-UX-01 (#8974) landed: pnpm --dir apps/openagents-desktop run test runs react-full-auto-surface.test.tsx and full-auto-workspace.test.ts in the normal Desktop sweep, proving Start is disabled until required fields are present and refuses on a workspace mismatch/active-run-conflict exactly like the existing control-API start.
+- **Authority boundary:** This binds only the launch entry point (a lightning-bolt Full Auto action beside/under New session in the left rail). It does not itself define the run's lifecycle state machine (see full_auto_play_pause_stop_lifecycle.v1) or the read-only run view's contents (see full_auto_read_only_run_view.v1), and it grants no release or public-claim authority.
+
+### `openagents_desktop.full_auto_read_only_run_view.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (Desktop Full Auto run view)
+- **Stated by:** owner via github-issue on 2026-07-17
+- **Statement:** Full Auto is a named, durable autonomous run launched separately from ordinary chat, with an explicit objective/done condition, Play/Pause/Stop semantics, a read-only running view, run-level liveness/reporting, and provider-handoff evidence.
+- **Enforcement tier:** test-sweep
+- **Oracle** `openagents_desktop.full_auto_read_only_run_view.dom` (bun-test, dom): FA-UX-01 (#8974) landed: real-DOM component oracles prove that once a run Starts, the main canvas renders a dedicated read-only run view (pinned objective/workspace/provider/cap, explicit lifecycle state across all ten named states, and an inspectable per-turn transcript) and that the ordinary chat composer and its retired Full Auto toggle are absent while the run is active. — `apps/openagents-desktop/src/renderer/react-full-auto-surface.test.tsx`
+- **Oracle** `openagents_desktop.full_auto_read_only_run_view.e2e_residual` (planned, e2e): Real-Chromium/Electron e2e visual smoke across launch/running/paused/stalled/terminal states remains a residual for a follow-up issue. — `github:OpenAgentsInc/openagents#8974`
+- **Verification:** FA-UX-01 (#8974) landed: the read-only run view renders explicit lifecycle state across Draft/Running/Pausing/Paused/Retrying/Stalled/Completed/Failed/Stopped/Cap-reached, and the ordinary composer/toggle/badge are retired from the chat surface, proven in the normal Desktop test sweep.
+- **Authority boundary:** This binds only the visible run view while a Full Auto run is active: pinned objective/workspace, explicit lifecycle state, an inspectable per-turn transcript, and the absence of the ordinary chat composer. It does not grant live token-streaming, steering, or any release/public-claim authority, and it does not itself define Play/Pause/Stop transition legality (see full_auto_play_pause_stop_lifecycle.v1).
+
+### `openagents_desktop.full_auto_play_pause_stop_lifecycle.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (Desktop Full Auto run lifecycle)
+- **Stated by:** owner via github-issue on 2026-07-17
+- **Statement:** Full Auto is a named, durable autonomous run launched separately from ordinary chat, with an explicit objective/done condition, Play/Pause/Stop semantics, a read-only running view, run-level liveness/reporting, and provider-handoff evidence.
+- **Enforcement tier:** test-sweep
+- **Oracle** `openagents_desktop.full_auto_play_pause_stop_lifecycle.run_model` (bun-test, unit): FA-RUN-01 (#8969) landed: unit coverage over the full Draft/Running/Pausing/Paused/Retrying/Stalled/Completed/Failed/Stopped/Cap-reached lifecycle state machine and its exhaustive legal-transition matrix. — `apps/openagents-desktop/tests/full-auto-run-registry.test.ts`
+- **Oracle** `openagents_desktop.full_auto_play_pause_stop_lifecycle.ui_wiring` (bun-test, dom): FA-UX-01 (#8974) landed: the read-only run view's Pause/Resume/Stop/Retry-now controls are wired to full-auto-run-actions.ts -- the same shared action functions the opt-in HTTP control server uses -- via a dedicated renderer IPC bridge, with per-state control visibility proven through the real Effect intent registry. — `apps/openagents-desktop/src/renderer/full-auto-workspace.test.ts`
+- **Verification:** FA-RUN-01 (#8969) landed the durable FullAutoRun lifecycle state machine and its control-API Pause/Resume/Stop routes. FA-UX-01 (#8974) landed wiring those exact typed transitions into the read-only run view's Pause/Resume/Stop/Retry-now controls through a dedicated renderer IPC bridge sharing the same action functions as the control API.
+- **Authority boundary:** This binds the lifecycle state machine and its Play/Pause/Stop (Resume/Pause/Stop) transition legality and attribution. It grants no autonomous provider-selection, mid-run steering, or concurrent multi-run authority, and it does not itself verify that a run's stated done condition was actually satisfied -- Completed remains a self-reported, owner-reviewable disposition.
+
+### `openagents_desktop.full_auto_run_view_canonical_timeline.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (Desktop Full Auto run view)
+- **Stated by:** owner via owner-screenshot-review on 2026-07-17
+- **Statement:** this looks like shit. why the fuck doesnt this use normal thread component view
+- **Enforcement tier:** test-sweep
+- **Oracle** `openagents_desktop.full_auto_run_view_canonical_timeline.dom` (bun-test, dom): Real-DOM oracles prove the run view composes the canonical ConversationTimeline (the message-scroller element ordinary chats render) for the bound thread's notes, renders the styled state badge and real Pause/Resume/Retry/Stop/Refresh buttons, and formats turn rows as provider chip + disposition + relative time/duration with no raw ISO concatenation. — `apps/openagents-desktop/src/renderer/react-full-auto-surface.test.tsx`
+- **Oracle** `openagents_desktop.full_auto_run_view_canonical_timeline.selection_wiring` (bun-test, unit): Opening a Full Auto run selects its bound thread through the injected canonical thread-selection path (the shell wires commitLocalSession) before re-asserting the full-auto workspace, so state.notes carries the run's real conversation for the canonical timeline. — `apps/openagents-desktop/src/renderer/full-auto-workspace.test.ts`
+- **Verification:** Desktop renderer full-auto workspace/surface suites, behavior-contract validation, and Desktop typecheck in the normal test sweep.
+- **Authority boundary:** The Full Auto run view renders the bound thread's conversation with the SAME canonical ConversationTimeline component every ordinary chat uses, hydrated through the shell's canonical local-session selection path -- never a parallel mini-renderer -- and stays read-only (no composer, per the read-only run view contract). Run chrome is a proper header: a styled state badge, objective and done-condition, workspace/provider/cap metadata rows, and real button components for Pause/Resume/Retry/Stop/Refresh. Turn history rows are formatted (provider chip, disposition summary, relative time plus duration), never raw ISO concatenation. This binds presentation composition only; run lifecycle legality and dispatch authority remain with the existing lifecycle and reconcile contracts.
+
+### `openagents_desktop.workspace.files_primary_sidebar_mode_toggle.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (Desktop current-worktree Files mode)
+- **Stated by:** owner via github-issue on 2026-07-18
+- **Statement:** In OpenAgents Desktop, Command-E replaces the existing left sidebar with the current working directory file tree and reuses the existing top bar; it adds no new page chrome.
+- **Enforcement tier:** test-sweep
+- **Oracle** `openagents_desktop.workspace.files_primary_sidebar_mode_toggle.registry` (bun-test, unit): Proves workspace.files remains the canonical palette command and carries Meta+E/Control+E defaults. — `apps/openagents-desktop/src/renderer/shell.test.ts`
+- **Oracle** `openagents_desktop.workspace.files_primary_sidebar_mode_toggle.transition` (bun-test, unit): Proves the canonical command enters and exits the Effect-owned Files workspace mode without a renderer-local Files-panel request. — `apps/openagents-desktop/src/renderer/shell.test.ts`
+- **Oracle** `openagents_desktop.workspace.files_primary_sidebar_mode_toggle.no_right_panel` (bun-test, unit): Proves Files is not an admitted right-side surface and legacy persisted Files-panel state is decoded away while Review, Terminal, and Preview remain bounded panel surfaces. — `apps/openagents-desktop/src/renderer/surface-layout.test.ts`
+- **Oracle** `openagents_desktop.workspace.files_primary_sidebar_mode_toggle.dom` (bun-test, dom): Proves Files replaces the existing Sessions rail, reuses the existing conversation header for Files controls, mounts no right panel or Files tab strip, renders admitted relative paths through the real Pierre shadow tree, expands/collapses a directory, opens its child through typed Desktop intents, and restores the ordinary shell on exit. — `apps/openagents-desktop/src/renderer/react-primitive-adapters.test.tsx`
+- **Oracle** `openagents_desktop.workspace.files_primary_sidebar_mode_toggle.pierre_boundary` (bun-test, unit): Pins the audited Pierre Trees beta, confines package imports to the owned adapter, rejects the private path store and unsafe CSS, and proves the installed Apache license/NOTICE remain in the package closure. — `apps/openagents-desktop/tests/pierre-tree-package.test.ts`
+- **Oracle** `openagents_desktop.workspace.files_primary_sidebar_mode_toggle.literal_paths` (bun-test, unit): Proves Git ignore classification passes arbitrary admitted relative filenames through NUL-delimited stdin as literal paths, so a valid leading-colon name cannot erase the visible workspace tree. — `apps/openagents-desktop/tests/workspace-service.test.ts`
+- **Oracle** `openagents_desktop.workspace.files_primary_sidebar_mode_toggle.effective_binding` (bun-test, unit): Proves platform defaults, user overrides, conflicts, editable targets, prevented events, and key repeat are handled without a second shortcut authority. — `apps/openagents-desktop/src/renderer/command-shortcuts.test.ts`
+- **Oracle** `openagents_desktop.workspace.files_primary_sidebar_mode_toggle.electron` (visual-smoke, e2e): The built Electron smoke synthesizes the effective Command-E/Control-E chord, proves the existing primary rail and top bar enter Files mode with no right panel, renders non-empty relative root entries, expands a directory, opens a text document, withholds the absolute root, and repeats the chord to restore Sessions and Chat. — `apps/openagents-desktop/src/main.ts`
+- **Verification:** Issues #9006 through #9009 land the registry, guarded effective-binding matcher, Effect workspace state, primary-rail/top-bar takeover, right-panel exclusion, literal-path ignore classification, audited Pierre projection, current-worktree boundary proof, and built Electron enter/expand/open/exit-restoration smoke in the normal Desktop verification gate.
+- **Authority boundary:** The canonical workspace.files command owns Meta+E on macOS and Control+E elsewhere. It enters a bounded Files workspace mode for the currently selected coding session and its already-admitted WorkContext: the existing primary rail replaces sessions/projects with the Pierre tree, the existing conversation header carries Files search/refresh/exit controls, and the existing main region carries the editor. Files is excluded from the renderer-local right-panel catalog, so no right sidebar, parallel tab strip, resize rail, or additional application shell is mounted. Repeating the command exits Files and restores the ordinary session rail and chat workspace. The shortcut, palette row, header control, and workspace state converge on typed Desktop intents. The owned Pierre adapter projects only canonical relative refs already admitted by Desktop state; Pierre receives no bridge, filesystem, absolute root, grant, Git/process authority, rename/drag-and-drop authority, or ambient cwd. This adds no Monaco dependency or new workspace grant.
+
+### `openagents_desktop.macos.code_document_open_with.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (Desktop macOS system integration)
+- **Stated by:** owner via github-issue on 2026-07-18
+- **Statement:** Register OpenAgents with macOS so Finder recommends it in Open With for Markdown and common code files, and make the packaged result locally testable.
+- **Enforcement tier:** test-sweep
+- **Oracle** `openagents_desktop.macos.code_document_open_with.bundle` (bun-test, unit): Proves Forge emits Editor/Alternate document declarations, supports Markdown/JavaScript/JSX/TypeScript/TSX, and installs the open-file listener before Electron ready. — `apps/openagents-desktop/tests/package-macos.test.ts`
+- **Oracle** `openagents_desktop.macos.code_document_open_with.reduction` (bun-test, unit): Proves an explicit absolute selection reduces to its containing directory and one validated relative path while unsupported, relative, and non-file inputs fail closed. — `apps/openagents-desktop/src/macos-document-open.test.ts`
+- **Oracle** `openagents_desktop.macos.code_document_open_with.editor_transition` (bun-test, unit): Proves the typed system-document intent enters Files, resolves the current workspace grant, and opens the relative document through the existing editor bridge. — `apps/openagents-desktop/src/renderer/shell.test.ts`
+- **Verification:** Issue #9010 owns Forge configuration, pre-ready Electron delivery, relative-path reduction, the existing Files/editor transition, and inspection of a real packaged macOS Info.plist before Launch Services registration.
+- **Authority boundary:** Only the packaged macOS bundle advertises document support through CFBundleDocumentTypes. It claims the Editor role at Alternate rank for a bounded source/text UTI and extension set, so it is recommended without silently replacing the user's default application. Electron main subscribes to open-file before ready. The explicit OS-selected regular file may admit only its containing directory as the WorkContext; main reduces the selection to one validated relative filename before the deferred typed command crosses into the renderer. The renderer reuses the existing Files mode, workspace browser grant, and document-open intent. Unsupported, relative, directory, revoked, secret-shaped, binary, oversized, or invalid selections remain rejected by main or the existing workspace service.
+
+### `openagents_desktop.macos.document_open_editor_first_startup.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (Desktop macOS document-open startup performance)
+- **Stated by:** owner via owner-directive on 2026-07-18
+- **Statement:** So it does work, except it stays on the original loading screen for about six seconds and then spends like one or two seconds showing the usual chat view before it pops over to the editor. So this is like way too slow. Every part of that needs to be dramatically sped up. Fix it.
+- **Enforcement tier:** test-sweep
+- **Oracle** `macos.document_open_startup.relative_launch_context` (bun-test, unit): Proves the renderer launch argument round-trips one relative filename and rejects absolute, nested, and malformed inputs. — `apps/openagents-desktop/src/desktop-launch-context.test.ts`
+- **Oracle** `macos.document_open_startup.editor_first_ordering` (bun-test, unit): Proves a document launch initializes Files/loading, drains commands before history hydration, and bypasses chat/provider probes before mount. — `apps/openagents-desktop/tests/startup-contract.test.ts`
+- **Oracle** `macos.document_open_startup.packaged_timing` (visual-smoke, e2e): The packaged startup trace waits for the real documentEditorReady mark and records process-start-to-editor timing without waiting for chat-history hydration. — `apps/openagents-desktop/src/main.ts`
+- **Verification:** Issue #9011 owns the exact-revision macOS package, cold Finder-open startup trace, no-chat-flash oracle, Desktop verification gate, and local RC replacement for owner testing.
+- **Authority boundary:** A validated pre-ready macOS open-file selection contributes only its already-reduced relative filename to the sandboxed renderer launch context. That bounded hint selects Files and an honest loading tree for the first shell paint; it does not carry the absolute path, grant a workspace, or open a document. Main remains the sole workspace authority and delivers the existing typed system-document command after admitting the selected file's containing directory. The renderer drains that command before history hydration, opens the tree and requested document before refreshing secondary coding-catalog metadata, and defers chat-host, provider-capability, Claude-availability, and voice metadata probes until after the editor-first shell mounts. Ordinary chat startup and unsupported selections keep their existing behavior.
+
+### `openagents_desktop.identity.one_agent_front_door.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (one-agent identity front door (META-1))
+- **Stated by:** owner via github-issue on 2026-07-22
+- **Statement:** The main thing the user talks with in the desktop UI is ONE persistent, named agent (OpenAgents). A fresh session opens into that agent's conversation. Delegated work — any harness lane, Full Auto — appears attributed inside that conversation (which lane and effective model handled it, with refs), and a Full Auto run bound to the conversation surfaces as a linked run card. Existing session and run views remain reachable as observability.
+- **Enforcement tier:** test-sweep
+- **Oracle** `one_agent_front_door.identity_and_default_entry` (bun-test, unit): Proves the agent identity is the existing OpenAgents identity, a fresh session opens into the chat conversation, and the New session / Full Auto / Settings observability entries remain reachable. — `apps/openagents-desktop/src/renderer/agent-identity.test.ts`
+- **Oracle** `one_agent_front_door.turn_attribution_inline` (bun-test, unit): Proves the final assistant response of a turn carries its honest lane/model attribution from host-stamped metadata, that no attribution is invented without a recorded lane, and that delegated answers keep their #9127 subagent attribution. — `apps/openagents-desktop/src/renderer/agent-identity.test.ts`
+- **Oracle** `one_agent_front_door.full_auto_linked_run_card` (bun-test, unit): Proves a Full Auto run bound to the active conversation projects as a linked run card whose only action routes through the existing DesktopFullAutoRunOpened run-view intent, and that unrelated conversations show no run card. — `apps/openagents-desktop/src/renderer/agent-identity.test.ts`
+- **Verification:** Desktop agent-identity suite plus the react-timeline, react-review, and react-primitive-adapters renderer suites and Desktop typecheck in the normal sweep.
+- **Authority boundary:** Presentation and continuity only. The identity name is the existing in-product OpenAgents identity (the #9127 routing-disclosure card already speaks as 'OpenAgents routed to <subagent>'); no persona is invented. Per-response attribution is derived exclusively from the host-stamped message metadata (lane/model, #8712/#9081) — no lane recorded means no attribution is invented, and the #9127 delegated-answer attribution is never overwritten. The linked run card is a read-only projection of the same renderer run-list state the dedicated Full Auto surface consumes (hydrated by the existing start and run-view paths — this layer adds no polling or refresh dispatch of its own), and its only affordance dispatches the EXISTING FA-UX-01 DesktopFullAutoRunOpened intent. The deterministic fail-closed route gates, lane dispatch, run lifecycle, and every other authority surface are unchanged; this layer can neither select a lane nor start, mutate, or conceal a run.
+
+### `openagents_desktop.meta_agent.loopback_acp_server_default_off.v1` — ENFORCED
+
+- **Surface:** openagents-desktop (meta-agent loopback ACP server exposure)
+- **Stated by:** owner via issue on 2026-07-22
+- **Statement:** OpenAgents Desktop can expose the meta-agent as an ACP agent over a loopback-only (127.0.0.1) server so any ACP host (Zed, or our own ACP client) can drive it. The server is OFF by default and starts only behind an explicit owner opt-in; the ACP surface stays deny-by-default — no gated tool runs without an explicit owner permission flow, never a bypass.
+- **Enforcement tier:** test-sweep
+- **Oracle** `meta_agent_acp_server.default_off_gate` (bun-test, unit): Proves the server is OFF unless OPENAGENTS_DESKTOP_ACP_SERVER=1 and that startMetaAgentAcpServerIfEnabled resolves null with the gate off. — `apps/openagents-desktop/src/meta-agent-acp-server.test.ts`
+- **Oracle** `meta_agent_acp_server.loopback_only` (bun-test, unit): Proves the listener binds 127.0.0.1 only and refuses any non-loopback host as a construction invariant. — `apps/openagents-desktop/src/meta-agent-acp-server.test.ts`
+- **Oracle** `meta_agent_acp_server.conformance_via_sdk_acp_client` (bun-test, unit): Proves the SDK's own ACP client adapter driving the desktop loopback server over a real TCP socket yields a contiguous khala stream (turn.started + deltas + turn.finished) backed by the real metaAgentHarness — the free conformance oracle. — `apps/openagents-desktop/src/meta-agent-acp-server.test.ts`
+- **Oracle** `meta_agent_acp_server.deny_by_default_permissioning` (bun-test, unit): Proves a gated tool call over the loopback server is denied and never executed, the desktop decider never delegates the approval to the ACP client, and the wire still honestly carries the tool_call update. — `apps/openagents-desktop/src/meta-agent-acp-server.test.ts`
+- **Verification:** Desktop meta-agent-acp-server suite (gate, loopback guard, SDK-ACP-client conformance, deny-by-default) plus Desktop typecheck in the normal sweep. No release command is part of the oracle.
+- **Authority boundary:** The server is the SDK's proven makeAcpAgentServerConnection (ai#39) over the real metaAgentHarness; v0 backs it with a fixture/echo member and documents the makeHarness seam where the live Codex/Claude/Grok member fleet plugs in without touching the default-on dispatch-collapse runtime files. It binds 127.0.0.1 only, by construction refusing any non-loopback host, and advertises no auth methods; loopback plus a deny-by-default permission decider are the containment boundary. The surface is operator_read-shaped: a conversation/prompt surface, never a mutation, credential, settlement, release, or public-claim path. An external ACP host can never make the meta-agent execute a gated (operator_escalation_required) tool without an injected owner permission broker; the v0 default decider denies every such call and never even delegates the question to the connected client.
