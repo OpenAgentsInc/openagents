@@ -40507,6 +40507,24 @@
       }
     },
     {
+      "path": "docs/sarah/2026-07-24-sarah-memory-on-nostr-audit.md",
+      "sha256": "d476b4f7843c3cf0b329bcb564536e0d37dcb94a93afae3c5d52dc32f0914be0",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "human",
+        "ste_accepted_screening_rules": [
+          "STE-2.4"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/sarah/ACTING_AS_SARAH_RUNBOOK.md",
       "sha256": "b528da6ccc957ef7974713106f1e5693f1ddb5587ff478883fc42f68d3c531e3",
       "reason": "Final review of a converted document",
