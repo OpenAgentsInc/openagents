@@ -1,112 +1,123 @@
 # Episode 262 Production Requests
 
 Status: requested inputs with non-blocking defaults.
-Applies to: [`Omega, Your Last IDE`](262.md).
+Applies to: [`Project Omega`](262.md).
 Requested by: Episode 262 production packet.
 
-The script and source pack can support an honest edit now. The following inputs
-would improve the episode. None of them blocks the first assembly because each
-request has a defined fallback.
+Episode 262 is the nontechnical product introduction.
+Technical repository footage belongs in
+[`Episode 263`](263.md).
 
 ## Request 262-01: Sarah performance master
 
 Priority: required for the intended final episode.
 
-Provide the highest-quality Sarah performance recording for Episode 262, or
-provide the approved path and generation method for a new recording. Include
-the clean voice track, the picture master, and the rights status.
+Provide the approved Sarah performance path and generation method.
+Include the clean voice track, picture master, and rights status.
 
-Default if unavailable: create a research cut with temporary narration and
-clearly label it `EDITORIAL ASSEMBLY — NOT FINAL SARAH PERFORMANCE`.
+Default if unavailable: create an editorial cut with temporary narration.
+Label it `EDITORIAL ASSEMBLY - NOT FINAL SARAH PERFORMANCE`.
 
-## Request 262-02: Episodes 257-259 source masters
-
-Priority: high.
-
-Provide the source-master paths for Episodes 257, 258, and 259. The preferred
-extracts are:
-
-- Episode 257: `Let's build an IDE` and `your last agent IDE`
-- Episode 258: hard Git limits, worker isolation, typed degradation, and
-  durable state
-- Episode 259: the scope, evidence, independent verification, receipt, and
-  acceptance sequence
-
-Default if unavailable: use the published cuts when their reuse rights are
-clear. Otherwise, use kinetic-text cards tied to the checked transcripts. Do
-not generate a fake historical product shot.
-
-## Request 262-03: Fresh product captures
+## Request 262-02: historical episode masters
 
 Priority: high.
 
-Provide or approve fresh, redacted captures of:
+Provide source masters for these moments:
 
-- the current OpenAgents Desktop real Full Auto workbench
-- a populated rich diff
-- a pending owner approval
-- the OpenAgents mobile owner-attention or approval surface
+- Episode 183: the zero-base reset
+- Episode 196: the one-product consolidation
+- Episode 237: “we have covered a lot of ground”
+- Episode 251: the Desktop base-hit decision
+- Episode 257: “your last agent IDE”
+- Episode 258: reliability and crash isolation
+- Episode 259: verifiable software and accepted outcomes
 
-The preferred mobile proof is a real Desktop-to-server-to-mobile handoff. If
-that proof is not available, record a deterministic simulator fixture and keep
-the fixture label visible.
+Default if unavailable: use published cuts when reuse rights are clear.
+Otherwise, use checked transcript title cards.
+Do not fabricate historical product footage.
 
-Default if unavailable: use the existing real Full Auto frame and the named
-deterministic fixture images in [`262.md`](262.md). Keep each evidence label and
-do not edit separate captures into a claim of one live end-to-end run.
+## Request 262-03: archive montage
 
-## Request 262-04: Third-party source-media decision
+Priority: high.
+
+Provide or approve short clips for:
+
+- document chat
+- Faerie coding
+- agent graphs
+- plugins and the agent store
+- Onyx mobile
+- AutoDev
+- Pylon and the Tassadar run board
+- OpenAgents Desktop
+- ProductSpec, approval, and receipt views
+
+Default if unavailable: use repository screenshots and episode-title cards.
+Keep each product and fixture label visible.
+
+## Request 262-04: current product captures
+
+Priority: high.
+
+Provide fresh, redacted captures of:
+
+- OpenAgents Desktop chat and Full Auto
+- files and review
+- a plan or approval
+- a receipt
+- the current mobile attention surface
+
+Default if unavailable: use the existing real Full Auto frame and named
+deterministic fixtures.
+Do not edit separate captures into one claimed live journey.
+
+## Request 262-05: Cursor and Zed source footage
+
+Priority: high.
+
+Record:
+
+- Cursor's first-party `0.2.0` changelog
+- Cursor's first-party fork explanation
+- a clean local Zed project
+- file open, Git, terminal, agent thread, and split panes
+
+Keep `ZED - CURRENT` visible.
+Do not present Zed footage as Omega footage.
+
+Default if unavailable: use slow browser moves across the cited first-party
+pages.
+
+## Request 262-06: public Omega fork reveal
+
+Priority: high.
+
+Record the public `OpenAgentsInc/omega` repository.
+Show the parent repository line and the Omega README.
+
+Default if unavailable: use a static repository capture.
+Label it `OMEGA SOURCE - CURRENT`.
+Do not imply that the source is already a branded build.
+
+## Request 262-07: Buzz feedback attribution
 
 Priority: medium.
 
-Confirm one of these production policies:
+Confirm whether the Buzz user can be named.
+Provide exact approved attribution and quote permission.
 
-1. Record all Zed and Buzz behavior again in clean local installations.
-2. Permit attributed use of the exact first-party stills listed in
-   [`262.md`](262.md) after a rights review.
-
-Default if unavailable: use a new local Zed recording. For Buzz, use the
-Apache-2.0 repository screenshots with source attribution after the final
-license review. Use the names only to identify the products. Do not imply
-endorsement and do not reuse either product's branding as Omega branding.
-
-## Request 262-05: Buzz feedback attribution
-
-Priority: medium.
-
-Confirm whether the Buzz user's feedback can be attributed by name or handle.
-If yes, provide the exact approved attribution and confirm permission to quote
-it on screen.
-
-Default if unavailable: identify the source only as `A NEW BUZZ USER` and
-paraphrase the feedback. Do not show a private message, account name, avatar, or
-other identifying detail.
-
-## Request 262-06: First branded Omega build
-
-Priority: future replacement, not a current blocker.
-
-When the first real Omega-branded build exists, provide:
-
-- the build and commit identifier
-- a clean startup recording
-- the first native GPUI workroom
-- the packaged Node and Effect service health view
-- the release or acceptance receipt that defines what the build proves
-
-Default before that milestone: show the public Omega repository and label it
-`OMEGA REPOSITORY — BOOTSTRAP`. Do not present a stock Zed build or a mock
-screen as completed Omega product.
+Default if unavailable: use `A NEW BUZZ USER`.
+Paraphrase the “one home screen for the company” insight.
+Do not show a private message or identifying account details.
 
 ## Delivery checklist
 
 For each supplied asset, include:
 
-- the absolute source path or stable download URL
+- the absolute source path or stable URL
 - the owner and rights status
 - the capture date and product version
 - the evidence label that must remain visible
-- the private details that the editor must mask
+- private details that the editor must mask
 
-The editor can replace a placeholder only when the supplied asset proves the
-same claim as the placeholder.
+The editor can replace a placeholder only when the asset proves the same claim.

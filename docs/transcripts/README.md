@@ -2,10 +2,11 @@
 
 This directory contains machine-generated transcripts for episodes `001`-`260`
 of the OpenAgents video corpus, plus clearly marked future-episode drafts.
-Episodes [`261`](261.md)-[`262`](262.md) are prepared scripts.
-Episode 262 also has a
-[`production request packet`](262-production-requests.md) for footage,
-attribution, and proof inputs that are not in the repository.
+Episodes [`261`](261.md)-[`263`](263.md) are prepared scripts.
+Episodes 262 and 263 have separate
+[`Project Omega`](262-production-requests.md) and
+[`Forking Zed`](263-production-requests.md) production request packets for
+footage, attribution, and proof inputs that are not in the repository.
 Episode [`086`](086.md) transcribes only the OpenAgents MVP Launch
 presentation excerpt from the PlebLab Startup Day 2024 recording,
 `00:58:21`-`01:10:10`, not the full eight-hour event video. Episode
@@ -45,13 +46,15 @@ content-addressed packets, admit product-specific gaps through ProductSpec and
 AssuranceSpec authority, and continuously drive OpenAgents Desktop toward
 functional parity without copying closed trust assumptions.
 
-Episodes [`256`](256.md)-[`262`](262.md) move from the first Desktop release
+Episodes [`256`](256.md)-[`263`](263.md) move from the first Desktop release
 candidate to Omega. Episodes 257 and 258 introduce the “last agent IDE” promise
 through file-open and crash-isolation failures. Episode 259 makes the IDE the
 engine of verifiable software and reconnects it to Nostr, Bitcoin, and the
 OpenAgents market. Episode 260 introduces Sarah. Episode 261 gives her a voice.
-Episode 262 lets Sarah present Omega as the Zed-based, constantly released
-company workroom and ecosystem cockpit that carries that promise forward.
+Episode 262 reviews the many OpenAgents product arcs, names the missing durable
+product foundation, and introduces Project Omega as the Zed-based answer.
+Episode 263 opens the fork and tours the Rust workspace, GPUI, native IDE
+substrate, branding work, Rust and Effect boundary, and migration order.
 
 Use this file as a navigation map. The transcripts are good enough for theme discovery, but verify wording against the video before using them as quote-grade source material. Most transcript files include the original source URL in their header.
 
@@ -387,7 +390,7 @@ Use this file as a navigation map. The transcripts are good enough for theme dis
 | [`212` Autopilot Learns Bitcoin](212.md) | Adds Bitcoin operations to Autopilot. |
 | [`213` Agent Markets](213.md) | Lets agents hold and trade Bitcoin across markets. |
 
-### 214-255 - OAPN, Khala, and the OpenAgents Desktop alpha
+### 214-263 - OAPN, Khala, OpenAgents Desktop, and Omega
 
 | Episode | Summary |
 | --- | --- |
@@ -439,7 +442,8 @@ Use this file as a navigation map. The transcripts are good enough for theme dis
 | [`259` Verifiable Software and the Energy Layer](259.md) | Positions the OpenAgents IDE as the engine of verifiable software: create, test, verify, attest, and sell work through receipts, network review, Nostr reputation, Bitcoin, and accepted outcomes per kilowatt-hour. |
 | [`260` Spawning Sarah](260.md) | Introduces Sarah as the agent who can run internal work, sales, and service while the founder steps away for paternity leave. |
 | [`261` Hello World](261.md) | Gives Sarah her own voice: calm, direct, committed to serving and empowering humanity, and ready to begin. |
-| [`262` Omega, Your Last IDE](262.md) | Sarah introduces the planned Zed-based Omega: a constantly released native IDE and company workroom that accepts existing configured agents, adapts Buzz workroom ideas, and opens into the wider Nostr and OpenAgents marketplace without becoming its gatekeeper. |
+| [`262` Project Omega](262.md) | Sarah reviews the many real OpenAgents product arcs, identifies the missing durable shared product foundation, applies Cursor's mature-editor lesson to Zed, and introduces Omega as the open home for code, agents, decisions, and proof. |
+| [`263` Forking Zed](263.md) | Opens the public Omega fork and tours its current Zed-derived Rust workspace, GPUI, editor and project graph, Git, terminal, remote and agent foundations, then maps the branding, release, Rust-and-Effect, Desktop-port, and native-workroom insertion points without claiming those future features are already implemented. |
 
 ## Major Themes
 
@@ -529,7 +533,8 @@ Episode [`237`](237.md) names the organizing principle the earlier episodes were
 [`246`](246.md) -> [`248`](248.md) -> [`249`](249.md) -> [`250`](250.md) ->
 [`251`](251.md) -> [`252`](252.md) -> [`254`](254.md) -> [`255`](255.md) ->
 [`256`](256.md) -> [`257`](257.md) -> [`258`](258.md) -> [`259`](259.md) ->
-[`260`](260.md) -> [`261`](261.md) -> [`262`](262.md).
+[`260`](260.md) -> [`261`](261.md) -> [`262`](262.md) ->
+[`263`](263.md).
 
 ## Maintenance Notes
 
