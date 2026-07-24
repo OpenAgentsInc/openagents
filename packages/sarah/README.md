@@ -70,15 +70,26 @@ node fixtures/sarah-nostr-journey/validate.mjs
 
 Proof document: `docs/omega/2026-07-24-sarah-nostr-journey-proof.md`.
 
+## Community membership (`SARAH-CW-02`)
+
+`@openagentsinc/sarah/community` holds invitation-only membership, NIP-OA
+agent-to-operator attestation, NIP-AA AUTH attach helpers, NIP-AP persona
+refs, immediate agent/member revocation, and per-operator rate limits.
+
+Contract pointer: `docs/omega/2026-07-24-sarah-community-membership.md`.
+Spec: `docs/omega/2026-07-24-sarah-workroom-mvp-spec.md` §31.
+
 ## Community work units (`SARAH-CW-03`)
 
-`@openagentsinc/sarah/community` holds pure types and templates that decompose
-one Sarah tick into many bounded community work units. Each unit has a narrow
-grant (target, allowed actions, budget, expiration, idempotency identity). No
-unit carries a Sarah grant. An expired grant is refused, not extended.
+The same `@openagentsinc/sarah/community` path holds pure types and templates
+that decompose one Sarah tick into many bounded community work units. Each
+unit has a narrow grant (target, allowed actions, budget, expiration,
+idempotency identity). No unit carries a Sarah grant. An expired grant is
+refused, not extended.
 
 ```sh
 pnpm --dir packages/sarah test -- src/community/work-units.test.ts
+pnpm --dir packages/sarah test -- src/community/community.test.ts
 ```
 
 Source: `packages/sarah/src/community/work-units.ts`.

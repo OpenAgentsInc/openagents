@@ -452,7 +452,7 @@ export * from "./nostr-journey/index.ts";
 export * from "./community-journey/index.ts";
 // SARAH-NR-03 — owned relay load-proof harness (local + remote)
 export * from "./relay-load-proof/index.ts";
-// SARAH-CW-03 — community work-unit tick decomposition (pure types)
+// SARAH-CW-02 / SARAH-CW-03 — membership + work-unit decomposition
 export * from "./community/index.ts";
 // SARAH-CW-06 — experience awards, rank projection, badges (not currency)
 export * from "./xp/index.ts";
