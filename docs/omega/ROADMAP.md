@@ -513,6 +513,15 @@ proof gates.
 That audit specializes this packet.
 It does not replace ProductSpec or AssuranceSpec authority.
 
+Before FA implementation packets, admit the
+[Full Auto contract freeze](./2026-07-24-full-auto-contract-freeze.md)
+(`OMEGA-FA-00`, Omega issue `#19`).
+The freeze pins Desktop ProductSpec rev 14 digests.
+It also pins the Omega host delta in
+`specs/omega/full-auto.product-spec.md`.
+It pins the redaction map.
+It defers MemoHarness and initiative for the first port.
+
 ### 7.6 Packet OMEGA-OA-06: native agent-to-code loop
 
 Connect work records to Zed projects and worktrees.

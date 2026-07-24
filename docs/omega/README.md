@@ -18,15 +18,20 @@ Read these documents in this order:
 4. Read the
    [Full Auto port audit](./2026-07-24-full-auto-port-audit.md).
 5. Read the
+   [Full Auto contract freeze](./2026-07-24-full-auto-contract-freeze.md)
+   (`OMEGA-FA-00`).
+6. Read the
    [Agent Computer and Omega completion plan](./2026-07-24-agent-computer-omega-completion-plan.md).
-6. Read the [accepted Omega plan](../sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md).
-7. Read the [master roadmap](../sol/MASTER_ROADMAP.md).
-8. Read the [Desktop release contract](../deploy/openagents-desktop-cross-platform-release.md).
+7. Read the [accepted Omega plan](../sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md).
+8. Read the [master roadmap](../sol/MASTER_ROADMAP.md).
+9. Read the [Desktop release contract](../deploy/openagents-desktop-cross-platform-release.md).
 
 The Omega roadmap owns the implementation order.
 The release-readiness audit owns the current brand and package gap.
 The identity-first roadmap owns the first native product journey.
 The Full Auto port audit owns the Desktop-to-Omega Full Auto port plan.
+The Full Auto contract freeze owns the admitted lifecycle, digests, redaction
+map, and first-port cuts for `OMEGA-FA-00`.
 The Agent Computer completion plan owns closeout of openagents `#9190` and
 `#9193` plus Omega cloud-capacity integration.
 

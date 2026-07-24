@@ -33685,6 +33685,24 @@
       }
     },
     {
+      "path": "docs/omega/2026-07-24-full-auto-contract-freeze.md",
+      "sha256": "f2fa10b79392cde2d20a47bba1fab1edea894e26962a1b666138c9c05ac05156",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "mixed",
+        "risk": "high",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "human",
+        "ste_accepted_screening_rules": [
+          "STE-2.4"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/omega/2026-07-24-full-auto-port-audit.md",
       "sha256": "5d8aee71f65d799a8bda4c90a3b300f0b9fb6315db6bd0ff2fb95e6b364b6681",
       "reason": "Final review of a converted document",
@@ -33722,7 +33740,7 @@
     },
     {
       "path": "docs/omega/README.md",
-      "sha256": "7048f95e69a49fe6d8a57fb02c3834f5c1279141c0518c907ea0b718e70c5583",
+      "sha256": "7d42594d3b8cd7cb7567d90e0a86546a9be5f20ab46f1b1bfee1665f07b1e275",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -33740,7 +33758,7 @@
     },
     {
       "path": "docs/omega/ROADMAP.md",
-      "sha256": "60322b46455178fa67134f72cf27ace5779d1ffcb2b29a97de1b69911c4bf7a3",
+      "sha256": "4629c409e1a2a210caac762eb58bce93325a8b8b78db1f7d1c8780f7b186e74b",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
@@ -47885,6 +47903,42 @@
         "source": "Formal model source data",
         "replacement": null,
         "ste_status": "source-data"
+      }
+    },
+    {
+      "path": "specs/omega/full-auto.assurance-spec.md",
+      "sha256": "531ff06bc62c29013f08d6f947ea862f6cf8b40d70a891c4a2f0a5505a107848",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "mixed",
+        "risk": "high",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "human",
+        "ste_accepted_screening_rules": [
+          "STE-2.4"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "specs/omega/full-auto.product-spec.md",
+      "sha256": "09f8c2c2c14df6f5272737e26b85dbe3f20704ce66345a9377353710a8d6dddc",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "mixed",
+        "risk": "high",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "human",
+        "ste_accepted_screening_rules": [
+          "STE-2.4"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {
