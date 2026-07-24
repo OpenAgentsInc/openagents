@@ -20,28 +20,30 @@ Read these documents in this order:
 5. Read the
    [Omega 3D avatar and Verse harvest audit](./2026-07-24-omega-3d-avatar-verse-harvest-audit.md).
 6. Read the
-   [Full Auto port audit](./2026-07-24-full-auto-port-audit.md).
+   [Grok Build Rust harvest](./2026-07-24-grok-build-rust-harvest.md).
 7. Read the
+   [Full Auto port audit](./2026-07-24-full-auto-port-audit.md).
+8. Read the
    [Full Auto contract freeze](./2026-07-24-full-auto-contract-freeze.md)
    (`OMEGA-FA-00`).
-8. Read the
+9. Read the
    [omega-effectd extract](./2026-07-24-omega-effectd-extract.md)
    (`OMEGA-FA-01`).
-9. Read the
+10. Read the
    [omega-effectd supervisor](./2026-07-24-omega-effectd-supervisor.md)
    (`OMEGA-FA-02`).
-10. Read the
-    [omega-effectd host bridge](./2026-07-24-omega-effectd-host-bridge.md).
 11. Read the
-    [Agent Computer and Omega completion plan](./2026-07-24-agent-computer-omega-completion-plan.md).
+    [omega-effectd host bridge](./2026-07-24-omega-effectd-host-bridge.md).
 12. Read the
-    [HE-02 harness-environment release](./2026-07-24-he02-harness-environment-release.md).
+    [Agent Computer and Omega completion plan](./2026-07-24-agent-computer-omega-completion-plan.md).
 13. Read the
+    [HE-02 harness-environment release](./2026-07-24-he02-harness-environment-release.md).
+14. Read the
     [Sarah workroom MVP specification](./2026-07-24-sarah-workroom-mvp-spec.md)
     (`OMEGA-SW-00` through `OMEGA-SW-07`).
-14. Read the [accepted Omega plan](../sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md).
-15. Read the [master roadmap](../sol/MASTER_ROADMAP.md).
-16. Read the [Desktop release contract](../deploy/openagents-desktop-cross-platform-release.md).
+15. Read the [accepted Omega plan](../sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md).
+16. Read the [master roadmap](../sol/MASTER_ROADMAP.md).
+17. Read the [Desktop release contract](../deploy/openagents-desktop-cross-platform-release.md).
 
 The Omega roadmap owns the implementation order.
 The release-readiness audit owns the current brand and package gap.
@@ -51,6 +53,9 @@ product behavior and framework code that must not move into native GPUI.
 The 3D avatar and Verse harvest owns the separate path from historical Verse,
 Three.js, React Three Fiber, and Ruins of Atlantis into a Nostr-primary native
 Omega Avatar Stage.
+
+The Grok Build Rust harvest owns the boundary between direct Rust candidates,
+behavior and test ports, and terminal or runtime systems that must not move.
 
 The Full Auto port audit owns the Desktop-to-Omega Full Auto port plan.
 The Full Auto contract freeze owns the admitted lifecycle, digests, redaction

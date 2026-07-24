@@ -40,6 +40,19 @@
         "STE-2.4"
       ]
     },
+    "docs/omega/2026-07-24-grok-build-rust-harvest.md": {
+      "ste_mode": "mixed",
+      "ste_status": "checked",
+      "ste_reviewer": "codex/omega-grok-rust-harvest-20260724",
+      "ste_reviewed_at": "2026-07-24T19:03:27Z",
+      "risk": "high",
+      "source": null,
+      "replacement": null,
+      "ste_audience": "human",
+      "ste_accepted_screening_rules": [
+        "STE-2.4"
+      ]
+    },
     "docs/omega/2026-07-24-full-auto-port-audit.md": {
       "ste_mode": "mixed",
       "ste_status": "checked",
