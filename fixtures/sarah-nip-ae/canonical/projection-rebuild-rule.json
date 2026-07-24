@@ -1,0 +1,24 @@
+{
+  "fixture_id": "projection.rebuild_rule.valid",
+  "expect": "accept",
+  "note": "Graph projection is derived and never authority.",
+  "rules": {
+    "durable_authority": "nip_ae_engrams",
+    "kind": 30174,
+    "projection_is_authority": false,
+    "on_disagreement": "engrams_win",
+    "ranking_location": "projection_only",
+    "rebuildable_from_engrams": true,
+    "memory_without_engram": "defect"
+  },
+  "example_engram_slugs": [
+    "mem/fact/owner-prefers-codex",
+    "mem/example"
+  ],
+  "example_projection": {
+    "elements": 2,
+    "relations": 1,
+    "ranking_refs": 1,
+    "source": "rebuild_from_engrams"
+  }
+}

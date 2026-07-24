@@ -1,0 +1,17 @@
+{
+  "fixture_id": "owner-authors-engram.invalid",
+  "expect": "reject",
+  "reason": "sarah_must_author_kind_30174",
+  "wire_event": {
+    "kind": 30174,
+    "pubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+    "created_at": 1753387300,
+    "content": "nip44:v2:ciphertext:owner-authors-fixture",
+    "tags": [
+      ["d", "72d4f9629106451505d7d341ea85bb3ebad4f654fcfd2aad100d5a35f8a85cba"],
+      ["p", "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"],
+      ["alt", "encrypted agent memory record"]
+    ]
+  },
+  "note": "Owner pubkey equals event pubkey and p tag. Sarah must author."
+}

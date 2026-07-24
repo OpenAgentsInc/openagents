@@ -47,9 +47,12 @@ Read these documents in this order:
 16. Read the
     [Sarah Nostr identity contract](./2026-07-24-sarah-nostr-identity-contract.md)
     (`SARAH-NR-04`).
-17. Read the [accepted Omega plan](../sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md).
-18. Read the [master roadmap](../sol/MASTER_ROADMAP.md).
-19. Read the [Desktop release contract](../deploy/openagents-desktop-cross-platform-release.md).
+17. Read the
+    [Sarah NIP-AE companion profile](./2026-07-24-sarah-nip-ae-companion-profile.md)
+    (`SARAH-NR-07a`).
+18. Read the [accepted Omega plan](../sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md).
+19. Read the [master roadmap](../sol/MASTER_ROADMAP.md).
+20. Read the [Desktop release contract](../deploy/openagents-desktop-cross-platform-release.md).
 
 The Omega roadmap owns the implementation order.
 The release-readiness audit owns the current brand and package gap.
@@ -79,6 +82,11 @@ the §21 boundary for `SARAH-NR-00`.
 The Sarah Nostr identity contract freezes Secret Manager custody, the sealed
 signer, NIP-OA/AA attestation, and lifecycle for `principal.sarah`
 (`SARAH-NR-04`).
+The Sarah NIP-AE companion profile freezes kind `30174` memory engrams
+(`SARAH-NR-07a`).
+It freezes NIP-44 encryption to the owner and HMAC-blinded `d` tags.
+It freezes companion body fields.
+It states that the graph index is derived and never authority.
 
 Part 3 is the v2 roadmap for the semi-public community workroom. Outside
 developers point their own compute at bounded work there. They earn experience

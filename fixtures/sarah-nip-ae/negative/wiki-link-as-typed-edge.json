@@ -1,0 +1,27 @@
+{
+  "fixture_id": "wiki-link-as-typed-edge.invalid",
+  "expect": "reject",
+  "reason": "wiki_links_are_not_the_graph",
+  "claim": {
+    "treat_wiki_links_as_typed_edges": true
+  },
+  "decrypted_payload": {
+    "slug": "mem/example",
+    "value": "See [[mem/entity/owner]] only.",
+    "openagents": {
+      "schema": "openagents.sarah.nip_ae_companion.v1",
+      "admission": "admitted",
+      "entityId": "entity.ffffffffffffffffffffffff",
+      "contentDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "sourceEventRefs": [
+        {
+          "eventId": "1111111111111111111111111111111111111111111111111111111111111111",
+          "role": "turn_record"
+        }
+      ],
+      "relations": [],
+      "derivedFromSlugs": []
+    }
+  },
+  "note": "Wiki links in value are human cross-reference. Typed edges require openagents.relations."
+}

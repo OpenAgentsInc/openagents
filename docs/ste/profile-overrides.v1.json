@@ -105,6 +105,19 @@
         "STE-2.4"
       ]
     },
+    "docs/omega/2026-07-24-sarah-nip-ae-companion-profile.md": {
+      "ste_mode": "mixed",
+      "ste_status": "checked",
+      "ste_reviewer": "grok-build/sarah-nr-07a-2026-07-24",
+      "ste_reviewed_at": "2026-07-24T22:00:00Z",
+      "risk": "high",
+      "source": null,
+      "replacement": null,
+      "ste_audience": "human",
+      "ste_accepted_screening_rules": [
+        "STE-2.4"
+      ]
+    },
     "specs/omega/full-auto.product-spec.md": {
       "ste_mode": "mixed",
       "ste_status": "checked",

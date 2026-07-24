@@ -1,0 +1,49 @@
+{
+  "fixture_id": "memory.with_relations.valid",
+  "expect": "accept",
+  "wire_event": {
+    "id": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "kind": 30174,
+    "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+    "created_at": 1753387302,
+    "content": "nip44:v2:ciphertext:memory-with-relations-fixture",
+    "tags": [
+      ["d", "2a93fa200395921923724765c52989fa4a2b3b81095940f8e9cb4e002664af25"],
+      ["p", "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"],
+      ["alt", "encrypted agent memory record"]
+    ],
+    "sig": "fixture-signature-not-for-production"
+  },
+  "slug": "mem/fact/owner-prefers-codex",
+  "conversation_key_hex": "c41c775356fd92eadc63ff5a0dc1da211b268cbea22316767095b2871ea1412d",
+  "decrypted_payload": {
+    "slug": "mem/fact/owner-prefers-codex",
+    "value": "Owner prefers Codex for coding tasks. See also related entity.",
+    "openagents": {
+      "schema": "openagents.sarah.nip_ae_companion.v1",
+      "admission": "admitted",
+      "entityId": "entity.cccccccccccccccccccccccc",
+      "contentDigest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "sourceEventRefs": [
+        {
+          "eventId": "2222222222222222222222222222222222222222222222222222222222222222",
+          "role": "tool_result"
+        }
+      ],
+      "relations": [
+        {
+          "type": "about",
+          "targetSlug": "mem/entity/owner",
+          "direction": "out"
+        },
+        {
+          "type": "derived_from",
+          "targetSlug": "mem/fact/coding-tool-preference",
+          "direction": "out"
+        }
+      ],
+      "derivedFromSlugs": ["mem/fact/coding-tool-preference"]
+    }
+  },
+  "human_wiki_link_note": "value may contain [[mem/entity/owner]] for humans; typed edges are openagents.relations only"
+}

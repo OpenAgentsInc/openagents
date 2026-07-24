@@ -33327,6 +33327,23 @@
       ]
     },
     {
+      "path": "docs/omega/2026-07-24-sarah-nip-ae-companion-profile.md",
+      "ste_issue": 9,
+      "ste_mode": "mixed",
+      "ste_glossary_revision": "openagents-ste-glossary-v1",
+      "ste_status": "inspected",
+      "ste_reviewer": "grok-build/sarah-nr-07a-2026-07-24",
+      "ste_reviewed_at": "2026-07-24T22:00:00Z",
+      "owner": "OpenAgents documentation",
+      "risk": "high",
+      "source": null,
+      "replacement": null,
+      "ste_audience": "human",
+      "ste_accepted_screening_rules": [
+        "STE-2.4"
+      ]
+    },
+    {
       "path": "docs/omega/2026-07-24-sarah-nostr-identity-contract.md",
       "ste_issue": 9,
       "ste_mode": "mixed",

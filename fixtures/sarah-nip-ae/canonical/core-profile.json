@@ -1,0 +1,23 @@
+{
+  "fixture_id": "core.profile.valid",
+  "expect": "accept",
+  "wire_event": {
+    "id": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "kind": 30174,
+    "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+    "created_at": 1753387304,
+    "content": "nip44:v2:ciphertext:core-profile-fixture",
+    "tags": [
+      ["d", "bdc233238ffe52e272b44cc233c8f33a2bc510b08be04495b225964283be4a90"],
+      ["p", "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"],
+      ["alt", "encrypted agent memory record"]
+    ],
+    "sig": "fixture-signature-not-for-production"
+  },
+  "slug": "core",
+  "conversation_key_hex": "c41c775356fd92eadc63ff5a0dc1da211b268cbea22316767095b2871ea1412d",
+  "decrypted_payload": {
+    "slug": "core",
+    "profile": "Sarah is the owner orchestrator. Memory uses NIP-AE engrams."
+  }
+}

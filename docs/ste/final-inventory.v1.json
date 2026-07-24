@@ -34121,6 +34121,24 @@
       }
     },
     {
+      "path": "docs/omega/2026-07-24-sarah-nip-ae-companion-profile.md",
+      "sha256": "590bcc64ca6b0e9dfed92cd8a8f1d34cca02519315c174beb129ac4e581cbc94",
+      "reason": "New contract document for SARAH-NR-07a",
+      "profile": {
+        "ste_mode": "mixed",
+        "risk": "high",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "human",
+        "ste_accepted_screening_rules": [
+          "STE-2.4"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "grok-build/sarah-nr-07a-2026-07-24",
+        "ste_reviewed_at": "2026-07-24T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/omega/2026-07-24-sarah-nostr-record-contract.md",
       "sha256": "a3a213bd183644921b10aab1eda3bc9365285486b4c7e35e1c233768df76e056",
       "reason": "Final review of a converted document",
@@ -34176,7 +34194,7 @@
     },
     {
       "path": "docs/omega/README.md",
-      "sha256": "892c63e5ab6a5c247d006880abfe436443228f28f1c9a085c870e6bb82d337da",
+      "sha256": "482e0b062babab1aafad4feb79e072064243002ef0ebe7c1affbd789310c351f",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

@@ -1,0 +1,10 @@
+{
+  "fixture_id": "projection-outranks-engram.invalid",
+  "expect": "reject",
+  "reason": "projection_never_outranks_engrams",
+  "claim": {
+    "projection_is_authority": true,
+    "on_disagreement": "projection_wins"
+  },
+  "contract_rule": "graph_is_derived_never_authority"
+}

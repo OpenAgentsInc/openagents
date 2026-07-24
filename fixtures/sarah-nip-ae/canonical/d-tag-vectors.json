@@ -1,0 +1,21 @@
+{
+  "fixture_id": "d-tag.vectors.valid",
+  "expect": "accept",
+  "note": "NIP-AE pinned test conversation key only. Do not use in production.",
+  "conversation_key_hex": "c41c775356fd92eadc63ff5a0dc1da211b268cbea22316767095b2871ea1412d",
+  "domain": "agent-memory/v1/d-tag",
+  "vectors": [
+    {
+      "slug": "core",
+      "d": "bdc233238ffe52e272b44cc233c8f33a2bc510b08be04495b225964283be4a90"
+    },
+    {
+      "slug": "mem/example",
+      "d": "72d4f9629106451505d7d341ea85bb3ebad4f654fcfd2aad100d5a35f8a85cba"
+    },
+    {
+      "slug": "mem/fact/owner-prefers-codex",
+      "d": "2a93fa200395921923724765c52989fa4a2b3b81095940f8e9cb4e002664af25"
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "fixture": "sarah-nip-ae.canonical.manifest.v1",
+  "contract": "docs/omega/2026-07-24-sarah-nip-ae-companion-profile.md",
+  "kinds": {
+    "engram": 30174
+  },
+  "extensions": [
+    { "id": "openagents.sarah.nip_ae_companion", "version": 1 }
+  ],
+  "nip_ae": {
+    "d_tag_domain": "agent-memory/v1/d-tag",
+    "alt": "encrypted agent memory record",
+    "test_conversation_key_hex": "c41c775356fd92eadc63ff5a0dc1da211b268cbea22316767095b2871ea1412d"
+  },
+  "fixtures": [
+    "canonical/d-tag-vectors.json",
+    "canonical/memory-admitted-fact.json",
+    "canonical/memory-candidate-fact.json",
+    "canonical/memory-with-relations.json",
+    "canonical/memory-tombstone.json",
+    "canonical/core-profile.json",
+    "canonical/projection-rebuild-rule.json"
+  ],
+  "negatives": [
+    "negative/plaintext-content.json",
+    "negative/wrong-kind.json",
+    "negative/missing-d-tag.json",
+    "negative/missing-p-tag.json",
+    "negative/missing-alt.json",
+    "negative/owner-authors-engram.json",
+    "negative/ranking-in-body.json",
+    "negative/feedback-weight-in-body.json",
+    "negative/d-tag-slug-mismatch.json",
+    "negative/projection-outranks-engram.json",
+    "negative/wiki-link-as-typed-edge.json",
+    "negative/admitted-without-source.json"
+  ]
+}
