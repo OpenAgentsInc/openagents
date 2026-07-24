@@ -36,9 +36,12 @@ Read these documents in this order:
     [Agent Computer and Omega completion plan](./2026-07-24-agent-computer-omega-completion-plan.md).
 12. Read the
     [HE-02 harness-environment release](./2026-07-24-he02-harness-environment-release.md).
-13. Read the [accepted Omega plan](../sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md).
-14. Read the [master roadmap](../sol/MASTER_ROADMAP.md).
-15. Read the [Desktop release contract](../deploy/openagents-desktop-cross-platform-release.md).
+13. Read the
+    [Sarah workroom MVP specification](./2026-07-24-sarah-workroom-mvp-spec.md)
+    (`OMEGA-SW-00` through `OMEGA-SW-07`).
+14. Read the [accepted Omega plan](../sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md).
+15. Read the [master roadmap](../sol/MASTER_ROADMAP.md).
+16. Read the [Desktop release contract](../deploy/openagents-desktop-cross-platform-release.md).
 
 The Omega roadmap owns the implementation order.
 The release-readiness audit owns the current brand and package gap.
@@ -54,6 +57,9 @@ The Full Auto contract freeze owns the admitted lifecycle, digests, redaction
 map, and first-port cuts for `OMEGA-FA-00`.
 The Agent Computer completion plan owns closeout of openagents `#9190` and
 `#9193` plus Omega cloud-capacity integration.
+The Sarah workroom MVP specification owns the proposed first workroom slice.
+It puts one native Sarah conversation pane on the existing OpenAgents API
+record. It is a proposal, not an admitted packet ledger.
 
 The accepted plan owns the product and repository boundary.
 The master roadmap owns priority across OpenAgents programs.

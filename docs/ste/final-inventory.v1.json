@@ -34103,8 +34103,26 @@
       }
     },
     {
+      "path": "docs/omega/2026-07-24-sarah-workroom-mvp-spec.md",
+      "sha256": "d2a7a1ad3785fb23a6fe365b185c27f23165195ad88d5c38264965ea3e68fd44",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "high",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "human",
+        "ste_accepted_screening_rules": [
+          "STE-2.4"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/omega/README.md",
-      "sha256": "2d90fa840f134a0eef0e25b3c34d1daefec37d7a07a3a9a41215113f882cac68",
+      "sha256": "7c7d95913c7bee3b2e0526d11dc15012a85bf0a4781aac56fd5a38fe575697ef",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
