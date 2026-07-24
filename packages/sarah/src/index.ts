@@ -452,3 +452,5 @@ export * from "./nostr-journey/index.ts";
 export * from "./relay-load-proof/index.ts";
 // SARAH-CW-03 — community work-unit tick decomposition (pure types)
 export * from "./community/index.ts";
+// SARAH-CW-06 — experience awards, rank projection, badges (not currency)
+export * from "./xp/index.ts";

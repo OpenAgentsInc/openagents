@@ -84,3 +84,19 @@ pnpm --dir packages/sarah test -- src/community/work-units.test.ts
 Source: `packages/sarah/src/community/work-units.ts`.
 Spec: `docs/omega/2026-07-24-sarah-workroom-mvp-spec.md` §33 and §38.2.
 Issue: OpenAgentsInc/openagents#9225.
+
+## Experience points (`SARAH-CW-06`)
+
+`@openagentsinc/sarah/xp` holds the community workroom experience namespace
+`com.openagents.xp`, fixed point table, NIP-32 award templates (kind `1985`),
+NIP-85 rank projection pure functions (kind `30382`), and NIP-58 badge
+definition/award/profile templates (kinds `30009` / `8` / `10008`).
+
+Experience is recognition of accepted work. It is not currency. Do not call it
+"earnings". Settlement for a paid room stays deferred (`SARAH-CW-07` / #9230).
+
+```sh
+pnpm --dir packages/sarah test -- src/xp/xp.test.ts
+```
+
+Spec: `docs/omega/2026-07-24-sarah-workroom-mvp-spec.md` §35.

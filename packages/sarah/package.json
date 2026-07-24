@@ -15,13 +15,14 @@
     "./nostr-journey": "./src/nostr-journey/index.ts",
     "./relay-load-proof": "./src/relay-load-proof/index.ts",
     "./nostr-memory": "./src/nostr-memory/index.ts",
-    "./community": "./src/community/index.ts"
+    "./community": "./src/community/index.ts",
+    "./xp": "./src/xp/index.ts"
   },
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
-    "test": "vp test --run src/index.test.ts src/nostr-identity/nostr-identity.test.ts src/nostr-identity/nip44-cipher.test.ts src/nostr-turn/nostr-turn.test.ts src/nostr-turn/consumer.test.ts src/nostr-memory/nostr-memory.test.ts src/nostr-migration/nostr-migration.test.ts src/nostr-journey/nostr-journey.test.ts src/relay-load-proof/relay-load-proof.test.ts src/community/work-units.test.ts",
+    "test": "vp test --run src/index.test.ts src/nostr-identity/nostr-identity.test.ts src/nostr-identity/nip44-cipher.test.ts src/nostr-turn/nostr-turn.test.ts src/nostr-turn/consumer.test.ts src/nostr-memory/nostr-memory.test.ts src/nostr-migration/nostr-migration.test.ts src/nostr-journey/nostr-journey.test.ts src/relay-load-proof/relay-load-proof.test.ts src/community/work-units.test.ts src/xp/xp.test.ts",
     "generate:journey-receipt": "node --import tsx src/nostr-journey/generate-receipt.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "load-proof": "node --import tsx scripts/relay-load-proof.ts"
