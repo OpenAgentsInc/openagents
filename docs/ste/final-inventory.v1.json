@@ -450,7 +450,7 @@
     },
     {
       "path": "NEEDS_OWNER.md",
-      "sha256": "739ace9388b4854717e346e5e77a6f9e2580e996cb9e3861564ffd89d0d28862",
+      "sha256": "5d01dd12df7bb0afef57cc4dc378dd1b34306b2d7c15fb51933b1ca96eddb055",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
