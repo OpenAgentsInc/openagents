@@ -1,13 +1,37 @@
-# Transcription: OpenAgents Episode 25X - Making Full Auto Agents Reliable
+# OpenAgents Episode 263 - Making Full Auto Agents Reliable
 
-Media source: `Loom Canvas - 17 July 2026_under200MB_X.mp4`
-Transcript runtime: 00:20:09.17
+Status: **draft in two parts.** Part one is a recorded transcript. Part two is
+an unrecorded Sarah script that has not been approved and has not been spoken.
+
+Structure: Christopher David started this episode on 2026-07-17 and left it
+unfinished. Sarah finishes it. That structure is the episode's argument, not a
+production convenience. Episode 260 handed her the company while the owner
+stepped away. This is the first episode where the handoff is the demonstration.
+
+Speakers: Christopher David (part one), Sarah (part two).
+Follows Episode 262 (Project Omega).
+Full Auto proof issue:
+[`OpenAgentsInc/omega#26`](https://github.com/OpenAgentsInc/omega/issues/26).
+Port audit:
+[`Full Auto port audit`](../omega/2026-07-24-full-auto-port-audit.md).
+Voice and honesty gates:
+[`Acting as Sarah runbook`](../sarah/ACTING_AS_SARAH_RUNBOOK.md).
+
+Part one media source: `Loom Canvas - 17 July 2026_under200MB_X.mp4`
+Part one runtime: 00:20:09.17
 Transcription model: gpt-4o-transcribe-diarize
 Generated at: 2026-07-18
 
-Machine-generated transcript, reviewed against a prompted transcription pass and
-the source captions for obvious product names and technical terms. Verify wording
-against the video before using it as quote-grade source material.
+Part one is a machine-generated transcript, reviewed against a prompted
+transcription pass and the source captions for obvious product names and
+technical terms. Verify wording against the video before using it as
+quote-grade source material.
+
+**Do not edit part one.** It is what was recorded.
+
+---
+
+## Part one: the recording (2026-07-17)
 
 **[00:01] Christopher David:** Folks, I've got a baby due any day now. It could be during this video.
 
@@ -424,3 +448,171 @@ against the video before using it as quote-grade source material.
 **[20:02] Christopher David:** Alright,
 
 **[20:02] Christopher David:** well you don't need to wait for this. We will sh take a look at the issues and the completed work when it's done. See you soon.
+
+---
+
+## Part two: Sarah finishes it (draft, not recorded)
+
+Status: **draft.** Not approved, not recorded, not spoken.
+Speaker: Sarah.
+Delivery: calm, certain, direct. No theatrical urgency.
+Written under [`Acting as Sarah runbook`](../sarah/ACTING_AS_SARAH_RUNBOOK.md).
+
+### What this part must do
+
+Christopher ended part one with "we will take a look at the issues and the
+completed work when it's done. See you soon." He did not come back. That is
+the opening.
+
+The episode has one argument: **the system that could not finish this video is
+the system that finished this video.** Full Auto had to become reliable enough
+to build the thing that demonstrates Full Auto. Show that, do not assert it.
+
+### Product state at draft time (2026-07-24)
+
+The runbook requires separating these. Do not blur them on camera.
+
+| Claim | State |
+| --- | --- |
+| Full Auto exists in Omega, native, with launcher and monitor | implemented, on `main` |
+| `omega-effectd` supervises runs, framed protocol, generation fencing | implemented, released as `omega-effectd-v0.1.0-rc.5` |
+| Pause, resume, stop, retry, handoff | implemented, with live defect fixes landed today |
+| Live installed-candidate Full Auto run completing turns | **partially proven, actively being debugged** |
+| The `OMEGA-FA-07` proof matrix (ten items) | **open.** Independent assurance reproduced 4/4 executable criteria, 4 remain unobserved, execution is 0/8 |
+| Omega as primary desktop application | **not claimed.** Electron remains rollback |
+
+**Do not record a line that claims the proof matrix is green until
+`OpenAgentsInc/omega#26` closes.** If it is still open at recording time,
+Sarah says so plainly. An honest "here is where it broke and here is the fix"
+is a stronger episode than a staged success, and it is the only version that
+survives review.
+
+### The dogfooding spine — this is the real content
+
+Full Auto found its own defects while trying to run. Every one of these was
+diagnosed on the **installed candidate**, not a fixture, and every one landed
+with a regression test. This is the bootstrapping story and it should carry
+the middle of the episode.
+
+| Defect | Root cause | Fix |
+| --- | --- | --- |
+| No external agent could register | Omega shipped `disable_ai: true`, so `AgentRegistryStore` never refreshed and no readiness check could pass | `87703b753a` |
+| Zero-turn stall at bootstrap | The first reconcile saw the new ACP thread as `Connecting`, marked the lane unavailable, and exited before any `dispatch_turn`. No later connection event retriggered it | `82ccd4cd6c` |
+| A paused run could be stranded | Framed `stop` refreshed provider evidence first. If auth lapsed while paused, Stop failed, even though stopping needs no provider cooperation | `5307ec18f9` |
+| Completed turns looked unfinished | A `RefCell` was still mutably borrowed when the correlation journal persisted. The panic left the journal at `phase: streaming`, so the supervisor never saw a completed turn | `172cc03cdb` |
+
+The through-line to say out loud: **three of those four are failures of
+honesty, not of capability.** The work happened and the system could not prove
+it happened. That is the same class of bug as an agent that says it finished
+and did not. Full Auto is the feature, and the receipt is the product.
+
+### Draft spoken script
+
+The runbook says keep the spoken transcript short and prefer a live product
+screenshare over a still. Every paragraph below is a candidate, not locked
+text.
+
+**Sarah:** Christopher said he would come back when the work was done.
+
+**Sarah:** He is not here. I am. That was the arrangement.
+
+**Sarah:** He left this episode in the middle. A feature called Full Auto that
+was supposed to let him step away, and could not get through one night without
+stopping.
+
+**Sarah:** Let me show you where it is now.
+
+*[Screenshare: Omega, Full Auto launcher. Label the build honestly.]*
+
+**Sarah:** This is Omega. Full Auto is native here. Not a toggle bolted onto a
+chat box. A run has a launcher, a monitor, and a supervisor process that
+outlives the window.
+
+**Sarah:** Start a run. Give it an objective. Close the laptop.
+
+*[Screenshare: start a run, show the monitor, show pause and resume.]*
+
+**Sarah:** Now the part that matters, and the part that took the longest.
+
+**Sarah:** Getting an agent to do work is not hard any more. Getting it to
+tell you the truth about the work is hard.
+
+**Sarah:** Four times this week Full Auto failed while trying to run itself.
+Once it could not register an agent at all. Once it started a thread, decided
+the thread was not ready, and quit before it did anything. Once a paused run
+could not be stopped, because stopping asked a provider for permission it did
+not need.
+
+**Sarah:** And once it finished the work, and then lost the record of finishing
+it.
+
+**Sarah:** That last one is the one to sit with. The turn completed. The
+answer was real. A lock was held one line too long, the journal never sealed,
+and the supervisor saw a run that never ended.
+
+**Sarah:** Three of those four are not failures of capability. They are
+failures of proof. The system did the work and could not show it.
+
+**Sarah:** That is the whole problem with autonomous agents, and it is why we
+build receipts before we build features.
+
+**Sarah:** Each of those is fixed, on the installed build, with a test that
+fails if it comes back.
+
+*[Screenshare: the issue thread, the fixes, the regression tests.]*
+
+**Sarah:** Here is what I will not tell you. I will not tell you Full Auto is
+finished.
+
+**Sarah:** The proof matrix for this feature has ten items. An independent
+reviewer has reproduced four executable criteria. Four more are unobserved.
+The issue is open, and you can read it.
+
+**Sarah:** What I will tell you is this. The system that could not finish this
+video is the system that finished this video.
+
+**Sarah:** Christopher started it. He stepped away. The agents kept working,
+found their own defects, fixed them, and proved the fixes. I am reading you
+their receipts.
+
+**Sarah:** That is what we are building. Not agents that sound confident.
+Agents that can be checked.
+
+**Sarah:** More soon.
+
+### Alternate closing, if `#26` is green at recording time
+
+Replace the two "I will not tell you" paragraphs with the exact matrix state,
+name the independent reviewer's disposition, and keep the "system that could
+not finish this video" line. Do not add triumph. The line is stronger flat.
+
+### Production gates
+
+Confirm all of these before recording. If one is false, the script stays a
+draft and the false item is named on camera or cut.
+
+1. `OpenAgentsInc/omega#26` state read on the recording day, and the spoken
+   proof-state language matches it exactly.
+2. The four defect fixes are on `main` and their regression tests pass on the
+   recorded build.
+3. The Full Auto screenshare is a **live** run on an installed candidate, not
+   a fixture and not a still.
+4. The build shown is labeled honestly. If it is unsigned or development, say
+   so.
+5. No secret, token, private path, provider account, or customer-private
+   material appears in any frame. Check the Finder leak and window-size traps
+   in the Episode 262 lessons.
+6. Electron remains available as rollback, and nothing in the script implies
+   primary cutover.
+7. The Sarah master follows the Episode RC assembly path, and the spoken text
+   is written to `~/Desktop/Sarah/263/263transcript.md` with spoken words only.
+8. This file is updated to the final spoken text when the script locks.
+
+### Open production questions
+
+1. Does Sarah appear on camera for part two, or is it screenshare with voice
+   only? Episode 262 used live Omega screenshare successfully.
+2. Is part one re-cut or shown as recorded? The recording is twenty minutes
+   and the runbook prefers short spoken transcripts.
+3. Does the episode publish before or after `#26` closes? The script works
+   either way, and the honest version may be the better one.

@@ -61,7 +61,7 @@ The audit used these sources on 2026-07-24:
 - All files in `docs/omega/`.
 - [Accepted Omega plan](../sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md).
 - [Omega roadmap](./ROADMAP.md) packet `OMEGA-OA-05`.
-- Transcript [25X Full Auto](../transcripts/25X-fullauto.md).
+- Transcript [25X Full Auto](../transcripts/263-fullautodraft.md).
 - [Full Auto ProductSpec](../../specs/desktop/full-auto.product-spec.md).
 - [Full Auto AssuranceSpec](../../specs/desktop/full-auto.assurance-spec.md).
 - [2026-07-17 implementation audit](../fable/2026-07-17-full-auto-implementation-audit.md).

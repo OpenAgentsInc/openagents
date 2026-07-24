@@ -1,7 +1,7 @@
-# Episode 263 Production Requests
+# Forking Zed Production Requests (Episode 26X, unscheduled)
 
 Status: requested inputs with non-blocking defaults.
-Applies to: [`Forking Zed`](263.md).
+Applies to: [`Forking Zed`](26X-forkingzed.md).
 Requested by: Episode 263 production packet.
 
 Episode 263 is the technical source and architecture tour.

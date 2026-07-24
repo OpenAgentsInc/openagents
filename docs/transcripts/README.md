@@ -4,9 +4,10 @@ This directory contains machine-generated transcripts for episodes `001`-`260`
 of the OpenAgents video corpus, plus clearly marked future-episode drafts.
 Episode [`262`](262.md) is a final Sarah script (required Acting-as-Sarah
 background for Omega and product-strategy language). Episodes [`261`](261.md)
-and [`263`](263.md) are prepared scripts. Episodes 262 and 263 have separate
+and [`26X`](26X-forkingzed.md) are prepared scripts. Episode 262 and the Forking
+Zed draft have separate
 [`Project Omega`](262-production-requests.md) and
-[`Forking Zed`](263-production-requests.md) production request packets for
+[`Forking Zed`](26X-forkingzed-production-requests.md) production request packets for
 recording and publication gates, non-blocking asset replacements, attribution,
 and proof inputs that are not in the repository.
 Episode [`086`](086.md) transcribes only the OpenAgents MVP Launch
@@ -48,7 +49,7 @@ content-addressed packets, admit product-specific gaps through ProductSpec and
 AssuranceSpec authority, and continuously drive OpenAgents Desktop toward
 functional parity without copying closed trust assumptions.
 
-Episodes [`256`](256.md)-[`263`](263.md) move from the first Desktop release
+Episodes [`256`](256.md)-[`263`](263-fullautodraft.md) move from the first Desktop release
 candidate to Omega. Episodes 257 and 258 introduce the “last agent IDE” promise
 through file-open and crash-isolation failures. Episode 259 makes the IDE the
 engine of verifiable software and reconnects it to Nostr, Bitcoin, and the
@@ -61,7 +62,7 @@ release candidates (no-music clean plate and optional with-music sibling)
 were assembled on 2026-07-24 under `~/Desktop/Sarah/262/` using the proven
 Segmind + screenshare path and Episode 262 lessons in
 [`../sarah/2026-07-22-segmind-talking-avatar-pipeline.md`](../sarah/2026-07-22-segmind-talking-avatar-pipeline.md).
-Episode 263 opens the fork and tours the Rust workspace, GPUI, native IDE
+The unscheduled Forking Zed draft opens the fork and tours the Rust workspace, GPUI, native IDE
 substrate, branding work, Rust and Effect boundary, and migration order.
 
 Use this file as a navigation map. The transcripts are good enough for theme discovery, but verify wording against the video before using them as quote-grade source material. Most transcript files include the original source URL in their header.
@@ -451,7 +452,8 @@ Use this file as a navigation map. The transcripts are good enough for theme dis
 | [`260` Spawning Sarah](260.md) | Introduces Sarah as the agent who can run internal work, sales, and service while the founder steps away for paternity leave. |
 | [`261` Hello World](261.md) | Gives Sarah her own voice: calm, direct, committed to serving and empowering humanity, and ready to begin. |
 | [`262` Project Omega](262.md) | Sarah reviews the many real OpenAgents product arcs, identifies the missing durable shared product foundation, applies Cursor's mature-editor lesson to Zed, and introduces Omega as the open home for code, agents, decisions, and proof. |
-| [`263` Forking Zed](263.md) | Opens the public Omega fork and tours its current Zed-derived Rust workspace, GPUI, editor and project graph, Git, terminal, remote and agent foundations, then maps the branding, release, Rust-and-Effect, Desktop-port, and native-workroom insertion points without claiming those future features are already implemented. |
+| [`263` Making Full Auto Agents Reliable](263-fullautodraft.md) | Two-part draft. Part one is the recorded 2026-07-17 session where the founder starts a Full Auto repair and steps away unfinished. Part two is an unrecorded Sarah script that finishes the episode, demonstrates native Full Auto in Omega, and reads out the four defects Full Auto found in itself while trying to run. The structure is the argument: the system that could not finish the video is the system that finished it. |
+| [`26X` Forking Zed, unscheduled](26X-forkingzed.md) | Opens the public Omega fork and tours its current Zed-derived Rust workspace, GPUI, editor and project graph, Git, terminal, remote and agent foundations, then maps the branding, release, Rust-and-Effect, Desktop-port, and native-workroom insertion points without claiming those future features are already implemented. |
 
 ## Major Themes
 
@@ -542,7 +544,7 @@ Episode [`237`](237.md) names the organizing principle the earlier episodes were
 [`251`](251.md) -> [`252`](252.md) -> [`254`](254.md) -> [`255`](255.md) ->
 [`256`](256.md) -> [`257`](257.md) -> [`258`](258.md) -> [`259`](259.md) ->
 [`260`](260.md) -> [`261`](261.md) -> [`262`](262.md) ->
-[`263`](263.md).
+[`26X`](26X-forkingzed.md).
 
 ## Maintenance Notes
 

@@ -12,7 +12,7 @@ Produced-clip pipeline:
 
 Episode 262 is the nontechnical product introduction.
 Technical repository footage belongs in
-[`Episode 263`](263.md).
+[`Episode 263`](26X-forkingzed.md).
 
 The short spoken script in [`262.md`](262.md) is the word authority.
 Local clip manifests and long-take manifests may be stale. Do not restore

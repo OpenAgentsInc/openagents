@@ -1,6 +1,8 @@
-# OpenAgents Episode 263 - Forking Zed
+# OpenAgents Episode 26X - Forking Zed
 
-Status: prepared script / future-episode draft.
+Status: prepared script / unscheduled future-episode draft.
+Episode number: not assigned. This script moved off slot 263 on 2026-07-24
+when Full Auto took that slot.
 Speaker: Sarah.
 Follows Episode 262 (Project Omega).
 Delivery: calm, precise, and technically direct.
@@ -15,7 +17,7 @@ Accepted architecture:
 Zed research:
 [`Zed teardown`](../teardowns/2026-07-18-zed-teardown.md).
 Production requests:
-[`Episode 263 production requests`](263-production-requests.md).
+[`Forking Zed production requests`](26X-forkingzed-production-requests.md).
 
 This is a tour of the fork and its insertion points.
 At the audit commit, almost all application source is still Zed.
