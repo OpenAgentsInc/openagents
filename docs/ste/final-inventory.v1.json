@@ -450,7 +450,7 @@
     },
     {
       "path": "NEEDS_OWNER.md",
-      "sha256": "9ee7443b762c4457581c1a38d40774b717e07099ceb27b9ae835978b3fcf2831",
+      "sha256": "2ea52a349cd45037e7e9fa52c0b252fd742ccca3949d89e093ccef2353cc970c",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -21714,7 +21714,7 @@
     },
     {
       "path": "docs/deploy/2026-07-24-agent-computer-image-update-cadence-runbook.md",
-      "sha256": "c66d1515a60182f1e3dce03a1280b93915e888d2037ec7fbd51ec8acfde2c61e",
+      "sha256": "7db3faffbd94f7c25f5c19b4156b45c36c4cfb926f2fbb8b942674a0e9d772c7",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",

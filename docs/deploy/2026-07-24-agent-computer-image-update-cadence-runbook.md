@@ -201,7 +201,7 @@ For Codex, also update `guestImage.codex.executionState` (see next section).
 Commit manifest changes in the same push that cites the qualification issue
 comment.
 
-## 7. Codex owner-reauthentication gate (AC-01)
+## 7. Codex native-auth qualification gate (AC-01)
 
 As of 2026-07-24, six harnesses are runtime-qualified on the live v24 image.
 Codex is **not** qualified.
@@ -212,16 +212,20 @@ The manifest records:
 "guestImage.codex.executionState": "owner_reauthentication_required"
 ```
 
-The baked Codex binary is present and boot-smoke proven.
-A live Codex coding turn still needs a fresh owner device login into an
-**isolated** Codex home for Agent Computer.
+The baked Codex binary is present and boot-smoke proven. The owner Mac's
+ChatGPT-bundled Codex also has a working native ChatGPT session: both a real
+read-only turn and the Omega `codex-acp` account-read guard pass without an
+interactive login. The former Settings → Connections handoff was stale. There
+is no owner reauthentication task.
 
-**Never** run `codex login` or `pylon auth codex` against the default
-`~/.codex` home. That flow clears the owner live session.
+Default `~/.codex` is a read-only source of native Codex state for this proof.
+Never run login or logout against it. AC-01 must add a bounded, secret-safe path
+that materializes an explicitly selected native credential source into an
+isolated, per-turn scratch `CODEX_HOME` and removes it during teardown.
 
 AC-01 ([#9205](https://github.com/OpenAgentsInc/openagents/issues/9205)) owns
-the owner action, the isolated login, one real Codex qualification turn, and
-flipping `guestImage.codex.executionState` to qualified.
+that isolated materialization, one real Codex qualification turn, and flipping
+`guestImage.codex.executionState` to qualified.
 
 This runbook does not close `#9193` while Codex lacks a real-turn receipt.
 Do not mark Codex qualified in the manifest without AC-01 proof.
