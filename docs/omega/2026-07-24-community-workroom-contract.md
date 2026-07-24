@@ -181,7 +181,7 @@ The upstream NIP index marks them unrecommended.
 
 The landed membership schema is
 `openagents.sarah.community_membership.v1`. The admitted v1 gate is exactly
-`invitation_only`; `application_with_review` and `open_with_probation` remain
+`invitation_only`. `application_with_review` and `open_with_probation` remain
 reserved. A join without a valid invitation is refused as
 `invitation_required`.
 
