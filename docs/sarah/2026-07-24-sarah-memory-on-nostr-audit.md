@@ -2,7 +2,7 @@
 
 - Class: audit and recommendation
 - Date: 2026-07-24
-- Status: proposed, not admitted
+- Status: recommendation accepted by the owner on 2026-07-24
 - Question: where do Sarah's memories live after the Nostr cutover
 - Owning packet: `SARAH-NR-07` (openagents `#9221`)
 - Program: `docs/omega/2026-07-24-sarah-workroom-mvp-spec.md` Part 2
@@ -224,15 +224,43 @@ The Part 2 boundary applies unchanged. Exact metering, admission authority,
 target broker execution, secret custody, and Git object safety stay where they
 are. Memory adds one item: **ranking state stays in the projection.**
 
-### 8.2 Search is the real cost
+### 8.2 The index lives in Google Cloud (owner decision, 2026-07-24)
 
-Cloud SQL gives authorized full-text search over plaintext today. Encrypted
-engrams remove that. Client-side indexing over decrypted content is the honest
-replacement.
+The owner decided that Sarah's index lives in OpenAgents Google Cloud. It is
+not local-only. This section states what that buys and what it costs, because
+the cost is real and must not be described away.
 
-Do not put decrypted memory content in a server index and call it search. If a
-server-side index is ever needed, it needs its own owner decision, because it
-reintroduces exactly the operator readability that NIP-AE removes.
+**What it buys.** One index serves every client. Recall works the same on
+desktop and on mobile, and a new device inherits memory without rebuilding it.
+A local-only index cannot do that.
+
+**What it costs.** Building a graph and vector index requires decrypted
+content, so OpenAgents Google Cloud holds derived memory material at rest. The
+relay operator still cannot read the record. The index host can read what the
+index contains.
+
+**What does not change.** Sarah's turn service already holds her key, because
+it signs and encrypts as Sarah. So the index does not grant a new capability.
+The change is that decrypted derivatives are now persisted rather than
+transient.
+
+**Required mitigations.** These are not optional, because they are what keeps
+the decision honest.
+
+1. The index stores only redacted, bounded derivatives. `guardMemoryText`
+   applies before anything is indexed, exactly as it does at write time.
+2. The index is owner-scoped by the existing one-way digest, and is encrypted
+   at rest under Google Cloud defaults.
+3. The index is derived. It is rebuildable from engrams and is destroyed and
+   rebuilt rather than repaired.
+4. The owner can list and delete the index for their scope, and deletion
+   removes derived rows without touching the engrams.
+5. The product must never say the index is unreadable by OpenAgents. The
+   accurate claim is that the relay operator cannot read the record.
+
+Client-side search over locally decrypted engrams stays available and stays
+the stronger privacy path for a user who wants it. The hosted index is the
+default, not the only option.
 
 ### 8.3 Listing is best-effort
 
@@ -289,17 +317,57 @@ The design is wrong if any of these becomes true.
 9. A new custom kind ships for something NIP-AE fields already express.
 10. A companion field ships without a written specification and fixtures.
 
-## 12. Open questions for the owner
+## 12. Owner decisions (2026-07-24)
 
-1. Approve NIP-AE adoption plus an OpenAgents companion profile, rather than a
-   new kind.
-2. Approve the memory export format, since it is also the backup story.
-3. Decide whether the derived projection may live server-side at all, given
-   §8.2. A local-only projection is the strongest privacy posture and the
-   weakest cross-device story.
-4. Decide the retention rule for tombstoned engrams. Relays honor NIP-09
-   deletion by policy, not by protocol, and honoring and non-honoring relays
-   will diverge.
+All four are answered.
+
+| Question | Decision |
+| --- | --- |
+| Adopt NIP-AE, or write a new kind | **Adopt NIP-AE.** Start with the engram envelope unchanged |
+| Where the derived index lives | **OpenAgents Google Cloud.** See §8.2 for the cost and its mitigations |
+| Export format | Delegated. Recorded in §12.1 |
+| Tombstone retention | Delegated. Recorded in §12.2 |
+
+### 12.1 Export format
+
+`openagents.sarah_memory_export.v1`. Two parts in one archive.
+
+**Events.** Newline-delimited JSON of the raw signed engram events, byte for
+byte as published. Not a re-serialization. A reader must be able to verify
+every signature with any NIP-01 implementation and no OpenAgents code.
+
+**Manifest.** The agent public key, the owner public key, and the event count.
+Then the ordered list of event identifiers and the export time. Then a SHA-256
+over the canonical concatenation of the event lines.
+
+Rules:
+
+- Include tombstones. An export that hides deletions is not an audit trail.
+- Exclude the derived index. It is rebuildable, and shipping it would ship
+  decrypted content into a file the owner may move anywhere.
+- The archive is encrypted at rest to the owner. The plaintext engrams stay
+  encrypted inside it, so the export is exactly as private as the record.
+- Verification is offline. That is the whole point, and it is also the backup
+  story from §9.
+
+### 12.2 Tombstone retention
+
+Retain tombstones indefinitely on the owned relay. Never garbage-collect one.
+
+A tombstone is the only durable proof that a deletion was intentional. If it
+expires, an observer cannot tell a deleted memory from a memory that never
+existed. The owner then loses the ability to audit their own deletions.
+
+Publish both signals. The in-band tombstone with `"value": null` is the
+protocol semantic that readers act on. A NIP-09 deletion request goes to
+honoring relays.
+
+Do not depend on NIP-09 being honored. Relays honor it by policy, not by
+protocol, so honoring and non-honoring relays diverge on pre-deletion history.
+The in-band tombstone is what makes the outcome deterministic on our relay.
+
+The derived index drops a tombstoned slug on the next rebuild. It does not
+retain a shadow copy.
 
 ## 13. Research basis
 

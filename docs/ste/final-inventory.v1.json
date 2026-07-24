@@ -34122,7 +34122,7 @@
     },
     {
       "path": "docs/omega/2026-07-24-sarah-workroom-mvp-spec.md",
-      "sha256": "7b60fd463df3dca32d65a4ec72f602098bd6fac7bbb4451e3f2a8c3719274de7",
+      "sha256": "7e700b26332c0b5ba68931298fcd8efc438e7a98d6ec892f7902d03e1c9538f9",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -40508,7 +40508,7 @@
     },
     {
       "path": "docs/sarah/2026-07-24-sarah-memory-on-nostr-audit.md",
-      "sha256": "d476b4f7843c3cf0b329bcb564536e0d37dcb94a93afae3c5d52dc32f0914be0",
+      "sha256": "70f4de128c97c771703dedb708d09a8a040575232210dbcf3da0a51fa6475b70",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

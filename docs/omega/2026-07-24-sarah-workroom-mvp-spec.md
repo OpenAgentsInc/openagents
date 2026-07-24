@@ -533,23 +533,20 @@ Nostr-primary work then changes the source, not the product.
 A packaged journey receipt is required in addition to these commands. A test
 pass is not a product claim.
 
-## 15. Owner blockers
+## 15. Owner decisions
 
-These items need an owner decision before the lane closes.
+All Part 1 and Part 2 decisions are answered as of 2026-07-24.
 
-1. Approve the Omega OpenAuth client identity for the account sign-in. The
-   Electron client id must not be reused by a second application.
-2. Confirm that the owner-scoped admin gate stays for the MVP release text.
-3. Confirm the disposition of the autonomous tick flag during the dogfood
-   window.
-4. Choose the relay hosting option in §23.3. Option B needs a policy reversal,
-   because `apps/nostr-relay` is a retired path in `AGENTS.md` and in the
-   Google Cloud authority guard.
-5. Approve the Secret Manager entries for the Sarah signing material, and the
-   service account that may read them.
+| Decision | Answer |
+| --- | --- |
+| Omega OpenAuth client identity | `openagents-omega`, distinct from the Electron `openagents-desktop` identity |
+| Owner-scoped admin gate for the MVP | stays, and the release text says so |
+| Autonomous tick during dogfood | stays default off. Omega must not enable it |
+| Relay hosting | Option A, the `nostr-effect` repository. See §23.3 |
+| Secret Manager entries for Sarah signing | approved, in project `openagentsgemini` |
 
-Record each item in `NEEDS_OWNER.md` as a named screen or action when the
-lane starts. Continue every unaffected packet while an item waits.
+Record any later irreducible owner action in `NEEDS_OWNER.md` as a named
+screen or action, and continue every unaffected packet while it waits.
 
 ## 16. Research basis
 
@@ -1015,26 +1012,25 @@ provider in DNS-only mode and points at Google Cloud.
 
 ### 23.3 Where the relay service lives
 
-Two options exist and the choice is an owner decision.
+**Decided 2026-07-24: Option A.** The relay service is hosted from the
+`nostr-effect` repository, with its own Cloud Run service and deploy runbook.
 
-Option A hosts the relay service from the `nostr-effect` repository, with its
-own Cloud Run service and deploy runbook. It keeps the protocol repository as
-the single home of relay code.
+The reason is that Option A needs no policy reversal. Option B would have
+hosted the service in this monorepo, which matches the deploy, secret, and
+check conventions more closely, but `apps/nostr-relay` is a retired path. It
+is listed in the retired set inside `scripts/google-cloud-authority-guard.mjs`,
+and `AGENTS.md` records that the service was deleted and must not be
+recreated. Reviving it would need an owner direction, an `AGENTS.md` change,
+and a guard change in one packet.
 
-Option B hosts the relay service in this monorepo as a new Cloud Run app that
-consumes the `nostr-effect` library. It matches the deploy, secret, and check
-conventions most closely.
+Option A avoids all of that and keeps relay code in one repository.
 
-Option B has a blocker that must not be worked around quietly. `apps/nostr-relay`
-is a retired path. It is listed in the retired set inside
-`scripts/google-cloud-authority-guard.mjs`, and `AGENTS.md` records that the
-service was deleted and must not be recreated. Reviving a relay app path is a
-policy reversal that needs an owner direction, an `AGENTS.md` change, and a
-guard change in the same packet.
+The deploy still targets Google Cloud in project `openagentsgemini`, still
+uses Cloud SQL, and still mounts secrets from Secret Manager. Only the owning
+repository is settled here.
 
-The recommendation is Option A for the first deployment, because it needs no
-policy reversal and the migration work already lives in that repository. Move
-to Option B later only if the operator burden argues for it.
+Revisit Option B only if operator burden argues for it later. Do not treat
+this as permanent architecture.
 
 ### 23.4 Required relay behavior
 
@@ -1356,7 +1352,7 @@ authority model. It does not give an outside agent any part of Sarah's
 authority.
 
 In v1 it is also not paid. Experience is recognition, not currency. A member
-must understand that before they spend compute, so §35.4 makes it a copy
+must understand that before they spend compute, so §35.5 makes it a copy
 requirement and not a footnote.
 
 ## 29. Gates from v1
@@ -1552,7 +1548,43 @@ defect. They also include an accepted review of another member's result, and a
 first accepted unit in a new job type. Decay is a later decision, not a
 first-version feature.
 
-### 35.4 Say plainly that v1 does not pay
+### 35.4 The scoring function, draft
+
+The owner asked for a draft. This is it, and it is deliberately boring.
+
+Fixed integer points per accepted outcome. No hidden weights, no multipliers,
+and no model in the loop.
+
+| Award | Points |
+| --- | --- |
+| Accepted work unit, tier 1 | 10 |
+| Accepted work unit, tier 2 | 20 |
+| Accepted work unit, tier 3 | 40 |
+| Accepted independent verification | 5 |
+| Reproduced defect | 8 |
+| Accepted review of another member's result | 3 |
+| First accepted unit in a new job type | 5, once per job type |
+
+Total experience is the sum of a member's award points. Nothing else
+contributes.
+
+Levels are fixed thresholds published beside the table, not a curve that can
+be retuned quietly. A tier is set on the request before any quote arrives, so
+a member knows the value before they spend compute.
+
+Three rules make it auditable.
+
+1. Recomputable. Anyone with the award stream computes the same total. The
+   NIP-85 rank event is a projection of this sum and never a separate opinion.
+2. No decay in the first version. Decay is a later decision with its own
+   published rule.
+3. No feedback into pay. A tier may gate which units a member can take.
+   Experience never multiplies a payment, and the first version pays nothing.
+
+Publish the table and the thresholds in the room. A reputation function that
+members cannot check is a ranking they cannot trust.
+
+### 35.5 Say plainly that v1 does not pay
 
 A member spends their own compute and their own provider budget. They must
 know before they start that v1 returns experience and not money.
@@ -1720,13 +1752,38 @@ outcome in their own words.
 
 ## 40. Owner decisions for v2
 
-1. Approve the two-room split, and the rule that a private fact reaches the
-   community room only through a deliberate publication.
-2. Choose the membership gate: invitation only, application with review, or
-   open with a probation tier.
-3. Approve the dispute and appeal path. Sarah cannot be the only arbiter of a
-   decision about Sarah's own work.
-4. Approve the scoring function for publication. An unpublished reputation
-   function is not auditable.
-5. Confirm the v1 copy that states plainly that the room does not pay.
-6. Decide when to reopen the paid version against the §36.5 gates.
+Answered on 2026-07-24.
+
+| Decision | Answer |
+| --- | --- |
+| The two-room split | approved. A private fact reaches the community room only through a deliberate publication |
+| Membership gate | **invitation only** for now |
+| Dispute and appeal path | **the owner is the arbiter of last resort.** See §40.1 |
+| Scoring function | draft in §35.4, published in the room, open to revision |
+| v1 copy that the room does not pay | approved, and required by §35.5 |
+| When to reopen the paid version | against the §36.5 gates, not before |
+
+### 40.1 The owner as arbiter
+
+Sarah accepts and rejects work. She cannot be the final word on a decision
+about her own work, so the appeal goes to the owner.
+
+That requires one thing the system does not have yet: **the owner's Nostr
+public key registered as the authoritative appeal identity.** Without it, an
+appeal has no verifiable destination and a member cannot check that a ruling
+came from the owner rather than from Sarah.
+
+Requirements for that registration:
+
+1. The key is recorded in a single admitted location, and every client reads
+   it from there rather than embedding a copy.
+2. A ruling is a signed event from that key. Sarah cannot author one.
+3. The registration is itself auditable, so a member can see when the
+   authoritative key changed and who changed it.
+4. Rotation has a path, because an appeal identity that cannot rotate is a
+   permanent single point of failure.
+
+The owner must supply the public key. It is recorded in `NEEDS_OWNER.md` at
+the workspace root. Until it exists, `SARAH-CW-05` cannot close and the
+community room must not open. A room whose work is unpaid still needs an
+appeal that a member can verify.
