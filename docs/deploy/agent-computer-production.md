@@ -24,10 +24,13 @@ Use the
 [native Codex auth qualification bridge](../../apps/pylon/deploy/agent-computer/README.md#native-codex-auth-qualification-bridge)
 for an owner-native credential. It validates the explicit source only through
 isolated app-server `account/read`. It never mutates the source or default
-`~/.codex`. Live import and grant handoff stay disabled until the operator
-supplies both explicit live flags. The HTTPS endpoint binds encrypted custody
-to the selected owner. It then acquires a lease for the imported account before
-it issues the grant.
+`~/.codex`.
+
+Live import and grant handoff stay disabled until the operator supplies both
+explicit live flags. The HTTPS endpoint binds encrypted custody to the selected
+owner. It then acquires a lease for the imported account before it issues the
+grant. When the product owner and native login use different email aliases,
+supply the native alias through `--native-account-email`.
 
 ## 1. Build the control image
 

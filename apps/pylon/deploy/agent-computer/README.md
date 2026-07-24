@@ -212,7 +212,9 @@ lease receipts plus the `providerAccountRef` and `authGrantRef` consumed by
 - HTTPS and `OPENAGENTS_OPERATOR_ADMIN_TOKEN`
 - exact runner-session and workroom refs
 - an exact private match between the native app-server account email and the
-  selected owner email (the email is never returned)
+  expected native account email (the email is never returned). By default this
+  is the selected owner email. Use `--native-account-email` for an explicit
+  account alias
 - separate `--allow-live-credential-import` and `--allow-live-handoff` flags
 
 First run the same inputs without either live flag:
@@ -224,6 +226,7 @@ pnpm agent-computer:codex-auth dry-run \
   --scratch-root /private/tmp/openagents-codex-qualification \
   --base-url https://openagents.com \
   --owner-email owner@example.com \
+  --native-account-email native-login@example.com \
   --runner-session-id '<agent-computer-turn-ref>' \
   --workroom-id '<owner-workroom-ref>'
 ```
@@ -237,6 +240,7 @@ pnpm agent-computer:codex-auth handoff \
   --scratch-root /private/tmp/openagents-codex-qualification \
   --base-url https://openagents.com \
   --owner-email owner@example.com \
+  --native-account-email native-login@example.com \
   --runner-session-id '<agent-computer-turn-ref>' \
   --workroom-id '<owner-workroom-ref>' \
   --allow-live-credential-import \

@@ -268,7 +268,7 @@ for await (const line of createInterface({ input: process.stdin })) {
     });
   });
 
-  test("refuses handoff when the native and selected owner identities differ", async () => {
+  test("refuses handoff when the native identity differs from its explicit expected identity", async () => {
     await withFixture(async (fixture) => {
       let fetchCalls = 0;
       await expect(
@@ -283,6 +283,8 @@ for await (const line of createInterface({ input: process.stdin })) {
             "https://openagents.com",
             "--owner-email",
             "different-owner@example.test",
+            "--native-account-email",
+            "another-native-owner@example.test",
             "--lease-ref",
             "lease.codex.test",
             "--runner-session-id",
@@ -321,6 +323,8 @@ for await (const line of createInterface({ input: process.stdin })) {
           "--base-url",
           "https://openagents.com",
           "--owner-email",
+          "custody-owner@example.test",
+          "--native-account-email",
           "owner@example.test",
           "--lease-ref",
           "lease.codex.test",
@@ -382,7 +386,7 @@ for await (const line of createInterface({ input: process.stdin })) {
       ]);
       const importText = await observedRequests[0]!.text();
       expect(JSON.parse(importText)).toEqual({
-        email: "owner@example.test",
+        email: "custody-owner@example.test",
         auth: {
           type: "oauth",
           access: authSecret,
@@ -394,7 +398,7 @@ for await (const line of createInterface({ input: process.stdin })) {
       });
       const leaseText = await observedRequests[1]!.text();
       expect(JSON.parse(leaseText)).toEqual({
-        email: "owner@example.test",
+        email: "custody-owner@example.test",
         providerAccountRef: "provider-account.codex.test",
         requiredProvider: "chatgpt_codex",
         requestedAction: "agent_computer.codex_turn",
@@ -403,7 +407,7 @@ for await (const line of createInterface({ input: process.stdin })) {
       expect(leaseText).not.toContain(authSecret);
       const grantText = await observedRequests[2]!.text();
       expect(JSON.parse(grantText)).toEqual({
-        email: "owner@example.test",
+        email: "custody-owner@example.test",
         leaseRef: "lease.codex.acquired",
         runnerSessionId: "turn.codex.test",
         workroomId: "workroom.codex.test",

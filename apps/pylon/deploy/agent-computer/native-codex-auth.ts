@@ -288,7 +288,7 @@ export const materializeNativeCodexAuth = async (
     rmSync(codexHome, { recursive: true, force: true });
     throw new NativeCodexAuthError(
       "account_validation_failed",
-      "The native Codex identity does not match the selected owner identity.",
+      "The native Codex identity does not match the expected native account identity.",
     );
   }
   return { codexHome, authJsonPath, account };
@@ -603,7 +603,8 @@ export const runNativeCodexAuthCli = async (
     scratchRoot,
     codexBinary: parsed.values.get("--codex-binary"),
     accountReader: dependencies.accountReader,
-    expectedAccountEmail: parsed.values.get("--owner-email"),
+    expectedAccountEmail:
+      parsed.values.get("--native-account-email") ?? parsed.values.get("--owner-email"),
   });
   const publicStatus = {
     ok: true,

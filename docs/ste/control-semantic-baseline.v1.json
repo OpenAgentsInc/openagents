@@ -7895,9 +7895,10 @@
       ]
     },
     "docs/deploy/agent-computer-production.md": {
-      "sourceSha256": "59160ec41923c9903dca54fefa66957fd7d3cb278df30038c3129bda3a3690e5",
+      "sourceSha256": "924508419d51c4ee7e9788d00ed902513e5c4eeaba989d8e124f2b076e179754",
       "normativeKeywords": [],
       "inlineCode": [
+        "--native-account-email",
         "/dev/kvm",
         "/v1/cloud-vm/readiness",
         "/v1/placement",

@@ -11515,7 +11515,7 @@
     },
     {
       "path": "apps/pylon/deploy/agent-computer/README.md",
-      "sha256": "b79849b731ee0381975d80af757bea136e2cf574fea82378d7aa0650f6ecc71c",
+      "sha256": "3cc30805d3477b73aa4d339c05ea33882bacacd2da01a9b1749742d1c0ee1067",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
@@ -21754,7 +21754,7 @@
     },
     {
       "path": "docs/deploy/agent-computer-production.md",
-      "sha256": "59160ec41923c9903dca54fefa66957fd7d3cb278df30038c3129bda3a3690e5",
+      "sha256": "924508419d51c4ee7e9788d00ed902513e5c4eeaba989d8e124f2b076e179754",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
