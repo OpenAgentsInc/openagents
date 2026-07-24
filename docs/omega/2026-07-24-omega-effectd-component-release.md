@@ -6,9 +6,36 @@
 - Source commit: `be342ea7525ac50fbf836978dcd1ba6714345f42`
 - Status: complete
 
+## RC.4 replacement
+
+The next Omega candidate must use
+[`omega-effectd-v0.1.0-rc.4`](https://github.com/OpenAgentsInc/openagents/releases/tag/omega-effectd-v0.1.0-rc.4).
+RC.4 supersedes RC.3 because `get_capacity` used a process-local readiness
+cache. The cache was empty before the first run reconciliation. Thus, an
+available host lane could appear unavailable during the initial capacity
+check.
+
+RC.4 probes all Full Auto lanes through the Omega host bridge before it
+projects capacity. The host request and cache update use the active supervisor
+generation. A generation change rejects the pending capacity result. It does
+not let data from an old host generation enter the new cache.
+
+| Field | Value |
+| --- | --- |
+| Source commit | `db6412190b3de5712d2a0957644af5c76679f697` |
+| Source tree | `5958316faa32e327580e30ef7006002cfcae2471` |
+| Archive | `omega-effectd-v0.1.0-macos-arm64.tar.gz` |
+| Archive SHA-256 | `242da72ae741e27524c5782f5b6a38eb6869ed43fbfcb7ba05fe14fb04b737d6` |
+| Manifest SHA-256 | `f1f2c238545d3fa51e43cc4365ef1df0d0340db0b3c6ee6139251140269600dd` |
+
+Two clean builds produced the same archive digest. The package type check and
+all 200 tests passed. The repository fast guard passed before the source
+commit reached `main`. A clean download from the GitHub prerelease matched the
+local archive and manifest digests.
+
 ## RC.3 replacement
 
-The final Omega candidate must use
+The RC.3 Omega candidate had to use
 [`omega-effectd-v0.1.0-rc.3`](https://github.com/OpenAgentsInc/openagents/releases/tag/omega-effectd-v0.1.0-rc.3).
 RC.3 supersedes RC.2 because GPUI Agent threads are provider-bound: changing
 only the stored lane left the retained Codex thread unable to execute a Claude
@@ -29,7 +56,7 @@ reconciliation. Source evidence is sealed into the report before migration.
 The next target-provider mission includes the owner objective and prior
 handoff. The transition receipt names both source and target thread refs.
 RC.1 and RC.2 remain immutable historical inputs, but neither is eligible for
-the final Omega candidate.
+the RC.3 Omega candidate. RC.3 is now an immutable historical input.
 
 Independent clean-room verification used a strict host that permanently bound
 each created thread to its creation lane and rejected mismatched dispatch. The
