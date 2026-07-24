@@ -8,6 +8,7 @@
 import { createInterface } from "node:readline"
 
 import {
+  resolveFullAutoNativeBindingsPath,
   resolveFullAutoRegistryPath,
   resolveFullAutoRunReportsPath,
   resolveFullAutoRunsPath,
@@ -19,6 +20,12 @@ import {
   openFullAutoRunRegistry,
 } from "../engine/full-auto-run-registry.ts"
 import { openFullAutoRunReportStore } from "../engine/full-auto-run-report.ts"
+import {
+  assessFullAutoNativeBoundary,
+  buildFullAutoNativeBinding,
+  openFullAutoNativeBindingStore,
+  projectFullAutoNativeEvidence,
+} from "../engine/full-auto-native-binding.ts"
 import {
   FULL_AUTO_CONTROL_CALLER_LABEL,
   getFullAutoRunAction,
@@ -61,6 +68,8 @@ import {
   type OmegaEffectdCapacityResult,
   type OmegaEffectdHealthResult,
   type OmegaEffectdInitializeResult,
+  type OmegaEffectdNativeBinding,
+  type OmegaEffectdNativeEvidence,
   type OmegaEffectdProtocolError,
   type OmegaEffectdPublishProjectionResult,
   type OmegaEffectdResponse,
@@ -74,42 +83,6 @@ const OWNER_CONFIGURABLE_GUARDRAILS = Object.freeze([
   "maxPerTurnFailures",
   "tokenBudgetRef",
 ] as const)
-
-const projectDetail = (
-  ctx: FullAutoRunActionContext,
-  runRef: string,
-): OmegaEffectdRunDetail | null => {
-  const outcome = getFullAutoRunAction(ctx, runRef)
-  if (!outcome.ok) return null
-  const run = outcome.value
-  const report = getFullAutoRunReportAction(ctx, runRef)
-  const turns = report.ok
-    ? report.value.turns.map(turn => ({
-        turnRef: turn.turnRef,
-        lane: turn.lane,
-        outcomeSummary: turn.outcomeSummary,
-        createdAt: turn.createdAt,
-      }))
-    : []
-  return {
-    runRef: run.runRef,
-    threadRef: run.threadRef ?? null,
-    state: run.state,
-    title: run.title,
-    objective: run.objective,
-    doneCondition: run.doneCondition,
-    workspaceRef: run.workspaceRef ?? null,
-    lane: run.lane ?? null,
-    turnCap: run.turnCap,
-    successfulAttempts: run.successfulAttempts,
-    failedAttempts: run.failedAttempts,
-    stallCause: run.stallCause ?? null,
-    recoveryAction: run.recoveryAction,
-    terminalReason: run.terminalReason ?? null,
-    updatedAt: run.lastProgressAt ?? run.createdAt,
-    turns,
-  }
-}
 
 const redactedError = (
   code: OmegaEffectdProtocolError["code"],
@@ -135,7 +108,48 @@ export const createOmegaEffectdFramedServer = (
   const runRegistry = openFullAutoRunRegistry(resolveFullAutoRunsPath(paths))
   const registry = openFullAutoRegistry(resolveFullAutoRegistryPath(paths))
   const reportStore = openFullAutoRunReportStore(resolveFullAutoRunReportsPath(paths))
+  const nativeBindings = openFullAutoNativeBindingStore(resolveFullAutoNativeBindingsPath(paths))
 
+  const projectDetail = (
+    ctx: FullAutoRunActionContext,
+    runRef: string,
+  ): OmegaEffectdRunDetail | null => {
+    const outcome = getFullAutoRunAction(ctx, runRef)
+    if (!outcome.ok) return null
+    const run = outcome.value
+    const report = getFullAutoRunReportAction(ctx, runRef)
+    const turns = report.ok
+      ? report.value.turns.map(turn => ({
+          turnRef: turn.turnRef,
+          lane: turn.lane,
+          outcomeSummary: turn.outcomeSummary,
+          createdAt: turn.createdAt,
+        }))
+      : []
+    const binding = nativeBindings.get(runRef)
+    const nativeEvidence: OmegaEffectdNativeEvidence | null = binding
+      ? projectFullAutoNativeEvidence(binding)
+      : null
+    return {
+      runRef: run.runRef,
+      threadRef: run.threadRef ?? null,
+      state: run.state,
+      title: run.title,
+      objective: run.objective,
+      doneCondition: run.doneCondition,
+      workspaceRef: run.workspaceRef ?? null,
+      lane: run.lane ?? null,
+      turnCap: run.turnCap,
+      successfulAttempts: run.successfulAttempts,
+      failedAttempts: run.failedAttempts,
+      stallCause: run.stallCause ?? null,
+      recoveryAction: run.recoveryAction,
+      terminalReason: run.terminalReason ?? null,
+      updatedAt: run.lastProgressAt ?? run.createdAt,
+      nativeEvidence,
+      turns,
+    }
+  }
   const capabilities: FullAutoControlCapabilities = {
     registry,
     runRegistry,
@@ -277,6 +291,8 @@ export const createOmegaEffectdFramedServer = (
           "apply_control_intent",
           "get_sync_status",
           "publish_projection",
+          "get_native_binding",
+          "assess_native_boundary",
         ],
         dataRoot: health.dataRoot,
         activeRunLimit: FULL_AUTO_RUN_ACTIVE_LIMIT,
@@ -330,6 +346,13 @@ export const createOmegaEffectdFramedServer = (
         return respond(request.id, true, { run: detail })
       }
       case "start": {
+        const raw = (request.params ?? {}) as {
+          projectRef?: string
+          worktreeRef?: string
+          worktreeAbsolutePath?: string
+          gitHead?: string
+          rebaseUnsafe?: boolean
+        }
         const body = decodeFullAutoControlRunStartRequest(request.params ?? {})
         if (body === null) {
           return respond(
@@ -342,6 +365,17 @@ export const createOmegaEffectdFramedServer = (
             ),
           )
         }
+        if (raw.rebaseUnsafe === true) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError(
+              "invalid_request",
+              "rebase_unsafe: refusing to start Full Auto on a rebase-unsafe worktree.",
+            ),
+          )
+        }
         const outcome = startFullAutoRunAction(actionContext(), body)
         if (!outcome.ok) {
           return respond(
@@ -349,6 +383,24 @@ export const createOmegaEffectdFramedServer = (
             false,
             undefined,
             redactedError("invalid_request", outcome.error.message),
+          )
+        }
+        if (
+          typeof raw.projectRef === "string" &&
+          raw.projectRef.length > 0 &&
+          typeof raw.worktreeRef === "string" &&
+          raw.worktreeRef.length > 0
+        ) {
+          nativeBindings.put(
+            buildFullAutoNativeBinding({
+              runRef: outcome.value.runRef,
+              workspaceRef: body.workspaceRef,
+              projectRef: raw.projectRef,
+              worktreeRef: raw.worktreeRef,
+              worktreeAbsolutePath: raw.worktreeAbsolutePath,
+              gitHead: raw.gitHead,
+              rebaseUnsafe: false,
+            }),
           )
         }
         const detail = projectDetail(actionContext(), outcome.value.runRef)
@@ -493,6 +545,59 @@ export const createOmegaEffectdFramedServer = (
           reason: syncStatus().reason,
         }
         return respond(request.id, true, result)
+      }
+      case "get_native_binding": {
+        const params = (request.params ?? {}) as { runRef?: string }
+        if (typeof params.runRef !== "string" || params.runRef.length === 0) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError("invalid_request", "get_native_binding requires runRef."),
+          )
+        }
+        const run = getFullAutoRunAction(actionContext(), params.runRef)
+        if (!run.ok) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError("run_not_found", "No Full Auto run exists for that runRef."),
+          )
+        }
+        const binding = nativeBindings.get(params.runRef)
+        return respond(request.id, true, {
+          binding: (binding as OmegaEffectdNativeBinding | null) ?? null,
+        })
+      }
+      case "assess_native_boundary": {
+        const params = (request.params ?? {}) as {
+          runRef?: string
+          currentWorktreePathDigest?: string
+        }
+        if (typeof params.runRef !== "string" || params.runRef.length === 0) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError("invalid_request", "assess_native_boundary requires runRef."),
+          )
+        }
+        const run = getFullAutoRunAction(actionContext(), params.runRef)
+        if (!run.ok) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError("run_not_found", "No Full Auto run exists for that runRef."),
+          )
+        }
+        const assessment = assessFullAutoNativeBoundary({
+          binding: nativeBindings.get(params.runRef),
+          expectedWorkspaceRef: capabilities.resolveWorkspaceRef(),
+          currentWorktreePathDigest: params.currentWorktreePathDigest,
+        })
+        return respond(request.id, true, { assessment })
       }
       case "retry": {
         const params = (request.params ?? {}) as { runRef?: string }

@@ -280,4 +280,65 @@ describe("omega-effectd framed protocol", () => {
       )
     })
   })
+
+  test("FA-06 native project/worktree binding and boundary assessment", async () => {
+    await withRoot(async root => {
+      const service = createOmegaEffectdService({ paths: { dataRoot: root } })
+      const server = createOmegaEffectdFramedServer(service, { dataRoot: root })
+      await server.handleLine(request("1", 0, "initialize", { generation: 1 }))
+
+      const refused = await server.handleLine(
+        request("2", 1, "start", {
+          workspaceRef: "workspace.omega.supervised",
+          title: "unsafe",
+          objective: "Should refuse rebase-unsafe starts.",
+          doneCondition: "Start is refused.",
+          projectRef: "project.1",
+          worktreeRef: "worktree.1",
+          rebaseUnsafe: true,
+        }),
+      )
+      expect(refused?.ok).toBe(false)
+      expect(refused?.error?.message).toContain("rebase_unsafe")
+
+      const started = await server.handleLine(
+        request("3", 1, "start", {
+          workspaceRef: "workspace.omega.supervised",
+          title: "FA-06 bind",
+          objective: "Bind to native project truth.",
+          doneCondition: "Evidence refs exist.",
+          projectRef: "project.99",
+          worktreeRef: "worktree.12",
+          worktreeAbsolutePath: "/tmp/omega-fa06-demo",
+          gitHead: "deadbeef",
+        }),
+      )
+      expect(started?.ok).toBe(true)
+      const run = (
+        started?.result as {
+          run: {
+            runRef: string
+            nativeEvidence: { projectRef: string; worktreeRef: string; gitHead: string | null }
+          }
+        }
+      ).run
+      expect(run.nativeEvidence.projectRef).toBe("project.99")
+      expect(run.nativeEvidence.worktreeRef).toBe("worktree.12")
+      expect(run.nativeEvidence.gitHead).toBe("deadbeef")
+
+      const binding = await server.handleLine(
+        request("4", 1, "get_native_binding", { runRef: run.runRef }),
+      )
+      expect(binding?.ok).toBe(true)
+      expect(
+        (binding?.result as { binding: { projectRef: string } }).binding.projectRef,
+      ).toBe("project.99")
+
+      const assess = await server.handleLine(
+        request("5", 1, "assess_native_boundary", { runRef: run.runRef }),
+      )
+      expect(assess?.ok).toBe(true)
+      expect((assess?.result as { assessment: { ok: boolean } }).assessment.ok).toBe(true)
+    })
+  })
 })

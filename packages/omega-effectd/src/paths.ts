@@ -18,6 +18,7 @@ export const FULL_AUTO_RUNS_FILE = "runs.json" as const
 export const FULL_AUTO_RUN_REPORTS_FILE = "run-reports.json" as const
 export const FULL_AUTO_CONTROL_FILE = "control.json" as const
 export const FULL_AUTO_REGISTRY_FILE = "registry.json" as const
+export const FULL_AUTO_NATIVE_BINDINGS_FILE = "native-bindings.json" as const
 
 export const resolveFullAutoDir = (paths: OmegaEffectdPaths): string =>
   path.join(paths.dataRoot, FULL_AUTO_DIR_NAME)
@@ -33,3 +34,6 @@ export const resolveFullAutoControlPath = (paths: OmegaEffectdPaths): string =>
 
 export const resolveFullAutoRegistryPath = (paths: OmegaEffectdPaths): string =>
   path.join(resolveFullAutoDir(paths), FULL_AUTO_REGISTRY_FILE)
+
+export const resolveFullAutoNativeBindingsPath = (paths: OmegaEffectdPaths): string =>
+  path.join(resolveFullAutoDir(paths), FULL_AUTO_NATIVE_BINDINGS_FILE)

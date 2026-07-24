@@ -50,9 +50,30 @@ export type OmegaEffectdInitializeResult = Readonly<{
     | "apply_control_intent"
     | "get_sync_status"
     | "publish_projection"
+    | "get_native_binding"
+    | "assess_native_boundary"
   >
   dataRoot: string
   activeRunLimit: number
+}>
+
+/** FA-06: native project/worktree join (public-safe digests only). */
+export type OmegaEffectdNativeEvidence = Readonly<{
+  projectRef: string
+  worktreeRef: string
+  worktreePathDigest: string | null
+  gitHead: string | null
+}>
+
+export type OmegaEffectdNativeBinding = Readonly<{
+  runRef: string
+  workspaceRef: string
+  projectRef: string
+  worktreeRef: string
+  worktreePathDigest: string | null
+  gitHead: string | null
+  rebaseUnsafe: boolean
+  boundAt: string
 }>
 
 /** FA-05: honest Sync availability (Omega OA-04 session may be absent). */
@@ -118,6 +139,7 @@ export type OmegaEffectdRunDetail = Readonly<{
   recoveryAction: string
   terminalReason: string | null
   updatedAt: string
+  nativeEvidence: OmegaEffectdNativeEvidence | null
   turns: ReadonlyArray<{
     turnRef: string
     lane: string
@@ -135,6 +157,11 @@ export type OmegaEffectdStartParams = Readonly<{
   model?: string
   turnCap?: number
   autonomy?: boolean
+  projectRef?: string
+  worktreeRef?: string
+  worktreeAbsolutePath?: string
+  gitHead?: string
+  rebaseUnsafe?: boolean
 }>
 
 export type OmegaEffectdHealthResult = Readonly<{
