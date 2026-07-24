@@ -66,8 +66,12 @@ The Agent Computer completion plan owns closeout of openagents `#9190` and
 The Sarah workroom MVP specification owns the proposed first workroom slice.
 Part 1 puts one native Sarah conversation pane on the current OpenAgents API
 record. Part 2 moves the Sarah runtime to Nostr on an owned relay, per the
-owner direction of 2026-07-24. It is a proposal, not an admitted packet
-ledger.
+owner direction of 2026-07-24.
+
+Part 3 is the v2 roadmap for the semi-public community workroom. Outside
+developers point their own compute at bounded work there. They earn experience
+and Bitcoin, and Sarah arbitrates. The specification is a proposal, not an
+admitted packet ledger.
 
 The accepted plan owns the product and repository boundary.
 The master roadmap owns priority across OpenAgents programs.

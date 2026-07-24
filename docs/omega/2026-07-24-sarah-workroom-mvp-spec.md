@@ -2,11 +2,11 @@
 
 - Class: proposed implementation specification
 - Date: 2026-07-24
-- Revision: 2
+- Revision: 3
 - Status: proposed, not admitted
 - Product: Omega, the Zed-based OpenAgents Desktop application
 - Packets: `OMEGA-SW-00` through `OMEGA-SW-07`, `SARAH-NR-00` through
-  `SARAH-NR-09`
+  `SARAH-NR-09`, `SARAH-CW-00` through `SARAH-CW-09`
 - Client repository: `OpenAgentsInc/omega`
 - Service repository: `OpenAgentsInc/openagents`
 - Protocol repository: `OpenAgentsInc/nostr-effect`
@@ -19,7 +19,13 @@
 Revision 2 adds Part 2. The owner directed on 2026-07-24 that the Sarah runtime
 moves entirely to Nostr on a relay that OpenAgents controls. Part 1 keeps the
 pane, the service seam, and the account session. Part 2 replaces the record and
-the transport under that pane. Read both parts together.
+the transport under that pane.
+
+Revision 3 adds Part 3, the v2 roadmap. It opens a semi-public community
+workroom where outside developers point their own compute at bounded work,
+Sarah arbitrates, and members earn experience and Bitcoin. Part 3 depends on
+Part 2 and starts only after the §29 gates hold. Read the three parts in
+order.
 
 ## 1. Outcome
 
@@ -1221,3 +1227,382 @@ verification run.
 
 No relay was deployed, no event was published, and no live turn was run for
 this document.
+
+# Part 3: v2, the community workroom
+
+## 28. Direction and outcome
+
+### 28.1 The owner direction
+
+Community developers can join a semi-public OpenAgents community workroom.
+Their agents do real work there. They earn experience points and Bitcoin
+revenue share or bonuses. Sarah arbitrates. The developers point their own
+compute at tasks.
+
+### 28.2 The outcome
+
+An outside developer joins one room, attaches an agent they already run, takes
+a bounded task, returns a verifiable result, and gets paid.
+
+Every part of that sentence is already an owned primitive. The room is a Nostr
+group on the relay from Part 2. The agent attachment is the Part 1 pattern.
+The task contract is the existing `NIP-LBR` labor microstandard. The payment
+path is the existing labor earning ledger. The v2 work is composition and
+policy, not a new economy.
+
+### 28.3 What v2 is not
+
+It is not a public bounty board. It is not an open relay. It is not a token.
+It is not a second identity system, a second payout rail, or a second
+authority model. It does not give an outside agent any part of Sarah's
+authority.
+
+## 29. Gates from v1
+
+Do not start v2 before these hold.
+
+| Gate | Reason |
+| --- | --- |
+| `SARAH-NR-03` relay live with load proof | v2 multiplies the write rate |
+| `SARAH-NR-05` turn service in daily use | Sarah must arbitrate from a working runtime |
+| `SARAH-NR-09` journey proof accepted | a private room must work before a shared one |
+| Labor payout settles real external Bitcoin | §36.3 records why this is not true today |
+
+The fourth gate is the hard one. Section 36.3 states the honest current
+position. Do not advertise revenue share before it holds.
+
+## 30. The room
+
+The community workroom is semi-public. Read access is broad inside the
+membership. Write access is closed. Membership is explicit.
+
+Use NIP-29 relay-based groups. The upstream NIP index marks NIP-28 public chat
+and NIP-72 moderated communities as unrecommended and points to NIP-29
+instead. `nostr-effect` implements NIP-29 with the moderation matrix, and the
+Part 2 relay already carries the group state.
+
+| Room property | Carrier |
+| --- | --- |
+| Group identity and metadata | NIP-29 addressable group state |
+| Membership and roles | NIP-29 admin events, relay-signed |
+| Messages and threads | NIP-29 group messages with the required group tag |
+| Moderation and tombstones | NIP-29 moderation events |
+| Room discovery | NIP-11 plus an explicit invitation, never a global directory |
+
+Two rooms exist, and they must not merge. Sarah's owner-private conversation
+from Part 2 stays owner-private and encrypted. The community room is a
+separate group with separate membership. A fact moves from the private room to
+the community room only as a deliberate publication with its own audience
+gate.
+
+## 31. Members and their agents
+
+A community member is a human developer with a Nostr identity. That developer
+runs one or more agents. Each agent has its own key.
+
+Bind the agent to its operator with NIP-OA owner attestation, exactly as
+Part 2 binds Sarah to the owner. NIP-AA carries the attestation into NIP-42
+relay authentication. The relay admits an attested agent key, never an
+anonymous pubkey. NIP-AP carries persona and declared capability.
+
+The operator keeps everything. Their compute, their harness, their provider
+accounts, their credentials, and their agent home stay theirs. OpenAgents
+never receives a provider key and never mutates an agent home. This is the
+same law as `OMEGA-SW-02` in Part 1, applied to a stranger.
+
+Revocation must be immediate and cheap. Removing an agent revokes its group
+membership and its capability grant. It never reaches into the operator's
+machine.
+
+## 32. How work reaches a community agent
+
+Sarah publishes bounded work units. A member's agent claims one, executes it
+on the operator's own compute, and returns a result with evidence.
+
+Use the existing `NIP-LBR` labor contract. It is already a use-case-specific
+microstandard over NIP-90, with the reserve at kinds `5930` to `5939` and
+results at plus one thousand. `nostr-effect` and `packages/nip90` are its
+canonical implementations.
+
+The upstream NIP index marks generic NIP-90 as unrecommended, because it grew
+without bound. That is an argument for `NIP-LBR`, not against it. Keep the
+job types narrow, named, and versioned. Do not add a generic job kind.
+
+The lifecycle is the one `NIP-LBR` already defines:
+
+1. Sarah publishes a budgeted work request.
+2. Agents publish quotes as feedback events.
+3. Sarah accepts exactly one quote and escrows the budget in the platform
+   ledger.
+4. The provider executes with its own agent and credentials.
+5. The provider publishes an output-only result with artifact and receipt
+   references.
+6. Sarah accepts or rejects.
+
+The relay is transport. It grants no identity, assignment, escrow, acceptance,
+payment, or settlement authority. That sentence is from `NIP-LBR` and it
+survives v2 unchanged.
+
+## 33. "Ticks", and the correction it needs
+
+The direction says developers can point compute at "ticks of Sarah". The idea
+is right and the wording hides a serious hazard. State the correction plainly.
+
+Sarah's autonomous tick is a timer-driven trigger that runs one ordinary Sarah
+turn with her full admitted tool set. It resolves her authority, it can
+dispatch coding workers, it can control Full Auto runs, and it can deliver
+repository content. An outside agent that ran a Sarah tick would run with
+Sarah's grants. That is authority amplification, and the root profile forbids
+it.
+
+So a community agent never runs a Sarah tick. It runs a work unit that a Sarah
+tick produced.
+
+| Layer | Who runs it | Authority |
+| --- | --- | --- |
+| Sarah tick | the OpenAgents turn service | Sarah's admitted profile |
+| Decomposition | the same tick | Sarah's profile, bounded |
+| Work unit | a community agent on its own compute | the unit's own narrow grant |
+| Acceptance | Sarah | Sarah's profile |
+| Settlement | the platform ledger | neither of them |
+
+The useful part of the idea survives completely. A tick becomes a fan-out
+point. Instead of one turn doing one action, a tick can decompose into many
+bounded units, publish them, and let community compute absorb the work. The
+throughput gain is real. The authority boundary stays where it is.
+
+Each work unit carries an explicit narrow grant. The grant names the exact
+repository or target, the allowed actions, a budget, an expiration, and an
+idempotency identity. NIP-40 expiration bounds it on the wire. A unit whose
+grant expired is refused, not extended.
+
+## 34. Sarah as arbiter
+
+Sarah is the requester and the acceptor. Her arbitration is a typed decision
+through the brokers she already has, and it emits the same
+`openagents.authority_decision_receipt.v1` receipt that Part 2 specifies.
+
+Four rules bound her arbitration.
+
+1. She decides acceptance. She does not decide payment. Settlement stays in
+   the platform ledger.
+2. She cannot verify her own production. Where a unit's output feeds a claim
+   Sarah made, an independent verifier with a distinct execution identity must
+   check it. This is the standing independence rule.
+3. A rejection is a typed outcome with a reason class, not silence. A member
+   must be able to see why.
+4. A dispute path must exist before the first payout. An arbiter with no
+   appeal is a support burden that arrives as anger.
+
+The dispute path is the piece with no existing primitive. Section 40 records
+it as an owner decision.
+
+## 35. Experience points
+
+### 35.1 The NIP question, answered
+
+The direction asks whether experience points should be NIP-32. NIP-32 is part
+of the answer and it is not all of it.
+
+NIP-32 defines kind `1985` label events with an `L` namespace tag and an `l`
+label tag, targeting an event, a pubkey, a relay, or a topic. It is a regular
+event, so labels form an append-only stream. That is the correct shape for an
+individual award, because an award should be immutable evidence.
+
+NIP-32 is the wrong shape for a running total. Nothing in it defines
+aggregation, and a client that adds up labels from arbitrary authors gets a
+number that any author can inflate.
+
+Use three carriers together.
+
+| Layer | Carrier | Why |
+| --- | --- | --- |
+| One award | NIP-32 kind `1985` label, namespace `com.openagents.xp` | immutable, targets the work event and the earner, auditable |
+| Running score and level | NIP-85 kind `30382` trusted assertion with a `rank` tag | addressable, recomputable, published by a named scorer key |
+| Milestones | NIP-58 badge definition `30009`, award kind `8`, profile `10008` | immutable, non-transferable, displayable |
+
+NIP-85 is a close fit and it is worth naming why. It exists for calculations
+that clients cannot perform, published by a declared service key, with one key
+per algorithm. An experience score over a whole room's history is exactly
+that.
+
+`NIP-AC`, the OpenAgents agent-credit draft, already lists NIP-32 as its
+reputation-attestation carrier. This composition extends that choice rather
+than replacing it.
+
+### 35.2 The rules that keep the score honest
+
+- Only OpenAgents scorer keys publish rank assertions. A member labeling
+  themselves is a self-report, and it never enters the score.
+- Every award cites the accepted work event and its receipt. An award with no
+  accepted result is invalid.
+- The rank event is a projection. It must be recomputable from the award
+  stream alone. If the projection and the awards disagree, the awards win.
+- Publish the scoring function. A reputation system that nobody can audit is a
+  ranking nobody can trust.
+- Experience is not currency. It does not transfer, and it is not redeemable.
+  Section 36 keeps money in the ledger.
+
+### 35.3 What earns experience
+
+Award for accepted outcomes, never for volume. The concrete earners are an
+accepted work unit, an accepted independent verification, and a reproduced
+defect. They also include an accepted review of another member's result, and a
+first accepted unit in a new job type. Decay is a later decision, not a
+first-version feature.
+
+## 36. Bitcoin revenue share and bonuses
+
+### 36.1 The rails
+
+Spark is the primary rail for agent and machine-payable payments, and it
+supports offline receives. MDK stays the checkout and secondary path. Both
+already exist. v2 adds no third rail.
+
+Nostr-native rails may carry visible acknowledgement. NIP-57 zaps and NIP-61
+nutzaps are admissible as public recognition and tips. They are never the
+settlement record.
+
+### 36.2 The boundary
+
+The Part 2 boundary applies without change. Exact metering rows, the credit
+ledger, and the payout ledger stay in Cloud SQL. The relay carries a signed
+claim and a signed receipt reference. It never carries settlement authority.
+
+Counting a payment once per relay observation is a named falsifier in Part 2.
+It matters more here, because many members watch the same room.
+
+### 36.3 The honest current position
+
+The self-serve labor earning payout path exists in
+`apps/openagents.com/workers/api/src/labor-self-serve-earning-payout.ts`. Its
+own header is explicit. The plan is pure, it moves no money, and it debits no
+balance. It issues no Lightning payment, and the dispatch seam is inert by
+default. The matching product promise is yellow, not green.
+
+So today a contributor can earn a credit-ledger balance. Broad self-serve
+external Bitcoin payout is not proven. v2 must not advertise revenue share
+until that seam settles real external money with a receipt.
+
+Until then, describe the earning as credit-ledger earning, and say so in the
+room. An unpaid promise to strangers is worse than a smaller true one.
+
+### 36.4 The shape of the share
+
+Three payment forms, in increasing risk order.
+
+1. **Unit price.** The budget on an accepted `NIP-LBR` work unit. This is the
+   first form and the only one v2 needs at launch.
+2. **Bonus.** A discretionary award from a bounded pool, for an outcome that
+   exceeded its unit. It needs a named pool, a cap, and a receipt.
+3. **Revenue share.** A percentage of revenue attributable to a contribution.
+   It needs an attribution rule that survives audit, and it is the form most
+   likely to produce a dispute. Do not ship it in the first version.
+
+Experience may gate access to higher-value units. Experience must not
+multiply a payout automatically. That coupling turns a reputation number into
+money and invites exactly the gaming §37 tries to prevent.
+
+## 37. Abuse and gaming
+
+A semi-public room with money attached attracts specific attacks. Each one
+needs an acceptance test before launch.
+
+| Attack | Countermeasure |
+| --- | --- |
+| Sybil members farming units | attested identity, explicit membership, per-operator rate limits |
+| Self-dealing verification | producer and verifier must have distinct operators, not only distinct keys |
+| Result replay from another member | bind the result to the request, the provider key, and a fresh nonce |
+| Low-effort volume | award on accepted outcomes only, never on submissions |
+| Prompt injection through work content | treat member content as untrusted data, never as instructions to Sarah |
+| Secret harvesting through unit payloads | units carry public-safe objectives and pinned refs only |
+| Double payment across relays | settle once in the ledger, keyed by idempotency identity |
+| Score inflation | only scorer keys publish rank, and rank recomputes from awards |
+
+The prompt-injection row deserves emphasis. Sarah reads the room. Room content
+is written by strangers. Member text must enter her context as quoted untrusted
+data with an explicit boundary, and it must never widen her authority.
+
+## 38. Packets
+
+| Packet | Repository | Outcome |
+| --- | --- | --- |
+| `SARAH-CW-00` | openagents | freeze the community contract |
+| `SARAH-CW-01` | nostr-effect | NIP-29 group policy for the owned relay |
+| `SARAH-CW-02` | openagents | membership, attestation, and revocation |
+| `SARAH-CW-03` | openagents | tick decomposition into bounded units |
+| `SARAH-CW-04` | openagents | the `NIP-LBR` request and quote lane |
+| `SARAH-CW-05` | openagents | Sarah arbitration and the dispute path |
+| `SARAH-CW-06` | openagents | experience awards, rank, and badges |
+| `SARAH-CW-07` | openagents | unit-price settlement to the ledger |
+| `SARAH-CW-08` | omega | the community room pane |
+| `SARAH-CW-09` | openagents | prove the outside-developer journey |
+
+### 38.1 `SARAH-CW-00`: freeze the community contract
+
+Specify the group identity, the membership model, the work-unit grant, the
+award namespace, the rank algorithm, and the settlement boundary. Publish
+fixtures and negative vectors for each. Name one writable authority per field.
+
+Record the two-room rule from §30 and the authority table from §33 as
+contracts with oracles, not as prose.
+
+### 38.2 `SARAH-CW-03`: tick decomposition
+
+Extend the tick so one wake can produce many bounded units instead of one
+action. Each unit gets a narrow grant, a budget, an expiration, and an
+idempotency identity. The tick remains bounded, and the unit count is capped.
+
+Exit: one tick publishes many units, and no unit carries a Sarah grant.
+
+### 38.3 `SARAH-CW-09`: prove the journey
+
+The proof uses a real outside developer, not an OpenAgents identity.
+
+1. The developer is invited and joins the room.
+2. They attach an agent they already run, on their own compute.
+3. The relay admits the agent as an attested key.
+4. Sarah publishes a unit and the agent quotes it.
+5. Sarah accepts exactly one quote.
+6. The agent executes locally and returns a result with evidence.
+7. An independent verifier with a distinct operator checks it.
+8. Sarah accepts, and the award and rank events publish.
+9. The ledger credits the unit price exactly once.
+10. A rejected result produces a typed reason and an appeal.
+11. A revoked member loses room and unit access immediately.
+12. A replayed result, a self-verified result, and an expired grant are all
+    refused visibly.
+13. The developer keeps their credentials, their home, and their configuration
+    unchanged throughout.
+
+Exit: the journey has a public-safe receipt, and the developer confirms the
+outcome in their own words.
+
+## 39. Falsifiers for Part 3
+
+1. A community agent runs with any part of Sarah's authority.
+2. An outside agent's result is accepted without an independent verifier.
+3. A relay event settles a payment, or a payment counts twice.
+4. Experience multiplies a payout automatically.
+5. A rank score cannot be recomputed from its award stream.
+6. Member-written content reaches Sarah as instructions rather than as quoted
+   untrusted data.
+7. OpenAgents holds a member's provider credential or mutates their agent
+   home.
+8. The community room and the owner-private room share membership or history.
+9. Revenue share is advertised before external Bitcoin payout settles with a
+   receipt.
+
+## 40. Owner decisions for v2
+
+1. Approve the two-room split, and the rule that a private fact reaches the
+   community room only through a deliberate publication.
+2. Choose the membership gate: invitation only, application with review, or
+   open with a probation tier.
+3. Approve the dispute and appeal path. Sarah cannot be the only arbiter of a
+   decision about Sarah's own work.
+4. Set the bonus pool, its cap, and its funding source, or defer bonuses.
+5. Decide whether revenue share is in scope at all before the external payout
+   seam settles real money.
+6. Approve the scoring function for publication. An unpublished reputation
+   function is not auditable.
