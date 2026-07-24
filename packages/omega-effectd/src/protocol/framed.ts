@@ -45,11 +45,28 @@ export type OmegaEffectdInitializeResult = Readonly<{
     | "retry"
     | "get_capacity"
     | "decide_attention"
+    | "get_report"
+    | "get_receipt"
+    | "apply_control_intent"
+    | "get_sync_status"
+    | "publish_projection"
   >
   dataRoot: string
   activeRunLimit: number
 }>
 
+/** FA-05: honest Sync availability (Omega OA-04 session may be absent). */
+export type OmegaEffectdSyncStatus = Readonly<{
+  available: boolean
+  publishBlocksDispatch: false
+  reason: string
+}>
+
+export type OmegaEffectdPublishProjectionResult = Readonly<{
+  ok: boolean
+  status: "published" | "sync_unavailable" | "run_not_found"
+  reason?: string
+}>
 /** Per-lane capacity ledger (FA-04). Public-safe: lane refs and typed states only. */
 export type OmegaEffectdLaneCapacity = Readonly<{
   lane: string

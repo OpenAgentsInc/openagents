@@ -206,4 +206,78 @@ describe("omega-effectd framed protocol", () => {
       expect(JSON.stringify(note)).not.toContain("SECRET_DONE")
     })
   })
+
+  test("FA-05 report, receipt redaction, mobile intent, and Sync stub", async () => {
+    await withRoot(async root => {
+      const service = createOmegaEffectdService({ paths: { dataRoot: root } })
+      const server = createOmegaEffectdFramedServer(service, { dataRoot: root })
+      await server.handleLine(request("1", 0, "initialize", { generation: 1 }))
+
+      const started = await server.handleLine(
+        request("2", 1, "start", {
+          workspaceRef: "workspace.omega.supervised",
+          title: "FA-05 report",
+          objective: "PRIVATE_OBJECTIVE_TEXT_MUST_NOT_ENTER_RECEIPT",
+          doneCondition: "PRIVATE_DONE_CONDITION",
+          turnCap: 6,
+        }),
+      )
+      expect(started?.ok).toBe(true)
+      const runRef = (started?.result as { run: { runRef: string } }).run.runRef
+
+      const report = await server.handleLine(request("3", 1, "get_report", { runRef }))
+      expect(report?.ok).toBe(true)
+      expect((report?.result as { report: { runRef: string } }).report.runRef).toBe(runRef)
+
+      const receipt = await server.handleLine(request("4", 1, "get_receipt", { runRef }))
+      expect(receipt?.ok).toBe(true)
+      const publicReceipt = (receipt?.result as { receipt: Record<string, unknown> }).receipt
+      expect(typeof publicReceipt.objectiveDigest).toBe("string")
+      expect(JSON.stringify(publicReceipt)).not.toContain("PRIVATE_OBJECTIVE")
+      expect(JSON.stringify(publicReceipt)).not.toContain("PRIVATE_DONE")
+
+      const paused = await server.handleLine(
+        request("5", 1, "apply_control_intent", {
+          intentId: "intent.pause.1",
+          runRef,
+          action: "pause",
+        }),
+      )
+      expect(paused?.ok).toBe(true)
+      expect((paused?.result as { outcome: { status: string } }).outcome.status).toBe("applied")
+
+      const resumed = await server.handleLine(
+        request("6", 1, "apply_control_intent", {
+          intentId: "intent.resume.1",
+          runRef,
+          action: "resume",
+        }),
+      )
+      expect((resumed?.result as { outcome: { status: string } }).outcome.status).toBe("applied")
+
+      const sync = await server.handleLine(request("7", 1, "get_sync_status"))
+      expect(sync?.ok).toBe(true)
+      expect((sync?.result as { available: boolean; publishBlocksDispatch: boolean }).available).toBe(
+        false,
+      )
+      expect(
+        (sync?.result as { publishBlocksDispatch: boolean }).publishBlocksDispatch,
+      ).toBe(false)
+
+      const publish = await server.handleLine(request("8", 1, "publish_projection", { runRef }))
+      expect(publish?.ok).toBe(true)
+      expect((publish?.result as { status: string }).status).toBe("sync_unavailable")
+
+      const stopped = await server.handleLine(
+        request("9", 1, "apply_control_intent", {
+          intentId: "intent.stop.1",
+          runRef,
+          action: "stop",
+        }),
+      )
+      expect((stopped?.result as { outcome: { status: string; resultLifecycleState?: string } }).outcome.status).toBe(
+        "applied",
+      )
+    })
+  })
 })

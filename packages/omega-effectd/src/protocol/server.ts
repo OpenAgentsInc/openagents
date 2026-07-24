@@ -22,6 +22,7 @@ import { openFullAutoRunReportStore } from "../engine/full-auto-run-report.ts"
 import {
   FULL_AUTO_CONTROL_CALLER_LABEL,
   getFullAutoRunAction,
+  getFullAutoRunReceiptAction,
   getFullAutoRunReportAction,
   listFullAutoRunsAction,
   pauseFullAutoRunAction,
@@ -31,6 +32,10 @@ import {
   stopFullAutoRunAction,
   type FullAutoRunActionContext,
 } from "../engine/full-auto-run-actions.ts"
+import {
+  applyFullAutoRunControlIntent,
+  type FullAutoRunControlAction,
+} from "../engine/full-auto-run-control-intent.ts"
 import type { FullAutoControlCapabilities } from "../engine/full-auto-control-server.ts"
 import { decodeFullAutoControlRunStartRequest } from "../engine/full-auto-control-contract.ts"
 import { FULL_AUTO_DEFAULT_LANE, FULL_AUTO_LANE_POLICIES } from "../engine/full-auto-lane.ts"
@@ -57,8 +62,10 @@ import {
   type OmegaEffectdHealthResult,
   type OmegaEffectdInitializeResult,
   type OmegaEffectdProtocolError,
+  type OmegaEffectdPublishProjectionResult,
   type OmegaEffectdResponse,
   type OmegaEffectdRunDetail,
+  type OmegaEffectdSyncStatus,
 } from "./framed.ts"
 
 const OWNER_CONFIGURABLE_GUARDRAILS = Object.freeze([
@@ -148,6 +155,19 @@ export const createOmegaEffectdFramedServer = (
     now: () => new Date(),
     actor: "control_api",
     callerLabel: FULL_AUTO_CONTROL_CALLER_LABEL,
+  })
+
+  const mobileActionContext = (): FullAutoRunActionContext => ({
+    capabilities,
+    now: () => new Date(),
+    actor: "mobile",
+    callerLabel: "mobile control intent",
+  })
+
+  const syncStatus = (): OmegaEffectdSyncStatus => ({
+    available: false,
+    publishBlocksDispatch: false,
+    reason: "omega_khala_sync_session_unavailable",
   })
 
   const projectCapacity = (): OmegaEffectdCapacityResult => {
@@ -252,6 +272,11 @@ export const createOmegaEffectdFramedServer = (
           "retry",
           "get_capacity",
           "decide_attention",
+          "get_report",
+          "get_receipt",
+          "apply_control_intent",
+          "get_sync_status",
+          "publish_projection",
         ],
         dataRoot: health.dataRoot,
         activeRunLimit: FULL_AUTO_RUN_ACTIVE_LIMIT,
@@ -366,6 +391,108 @@ export const createOmegaEffectdFramedServer = (
         })
         const result: OmegaEffectdAttentionResult = decision
         return respond(request.id, true, { attention: result })
+      }
+      case "get_report": {
+        const params = (request.params ?? {}) as { runRef?: string }
+        if (typeof params.runRef !== "string" || params.runRef.length === 0) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError("invalid_request", "get_report requires runRef."),
+          )
+        }
+        const outcome = getFullAutoRunReportAction(actionContext(), params.runRef)
+        if (!outcome.ok) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError("run_not_found", outcome.error.message),
+          )
+        }
+        return respond(request.id, true, { report: outcome.value })
+      }
+      case "get_receipt": {
+        const params = (request.params ?? {}) as { runRef?: string }
+        if (typeof params.runRef !== "string" || params.runRef.length === 0) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError("invalid_request", "get_receipt requires runRef."),
+          )
+        }
+        const outcome = getFullAutoRunReceiptAction(actionContext(), params.runRef)
+        if (!outcome.ok) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError("run_not_found", outcome.error.message),
+          )
+        }
+        return respond(request.id, true, { receipt: outcome.value })
+      }
+      case "apply_control_intent": {
+        const params = (request.params ?? {}) as {
+          intentId?: string
+          runRef?: string
+          action?: string
+        }
+        if (
+          typeof params.intentId !== "string" ||
+          params.intentId.length === 0 ||
+          typeof params.runRef !== "string" ||
+          params.runRef.length === 0 ||
+          (params.action !== "pause" && params.action !== "resume" && params.action !== "stop")
+        ) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError(
+              "invalid_request",
+              "apply_control_intent requires intentId, runRef, and action pause|resume|stop.",
+            ),
+          )
+        }
+        const outcome = applyFullAutoRunControlIntent(mobileActionContext(), {
+          intentId: params.intentId,
+          runRef: params.runRef,
+          action: params.action as FullAutoRunControlAction,
+        })
+        return respond(request.id, true, { outcome })
+      }
+      case "get_sync_status": {
+        return respond(request.id, true, syncStatus())
+      }
+      case "publish_projection": {
+        const params = (request.params ?? {}) as { runRef?: string }
+        if (typeof params.runRef !== "string" || params.runRef.length === 0) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError("invalid_request", "publish_projection requires runRef."),
+          )
+        }
+        const run = getFullAutoRunAction(actionContext(), params.runRef)
+        if (!run.ok) {
+          const result: OmegaEffectdPublishProjectionResult = {
+            ok: false,
+            status: "run_not_found",
+            reason: "No Full Auto run exists for that runRef.",
+          }
+          return respond(request.id, true, result)
+        }
+        // Honest stub: Sync publish never blocks local dispatch (exit criterion).
+        const result: OmegaEffectdPublishProjectionResult = {
+          ok: false,
+          status: "sync_unavailable",
+          reason: syncStatus().reason,
+        }
+        return respond(request.id, true, result)
       }
       case "retry": {
         const params = (request.params ?? {}) as { runRef?: string }
