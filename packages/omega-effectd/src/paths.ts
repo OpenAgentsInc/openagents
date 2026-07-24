@@ -19,6 +19,8 @@ export const FULL_AUTO_RUN_REPORTS_FILE = "run-reports.json" as const
 export const FULL_AUTO_CONTROL_FILE = "control.json" as const
 export const FULL_AUTO_REGISTRY_FILE = "registry.json" as const
 export const FULL_AUTO_NATIVE_BINDINGS_FILE = "native-bindings.json" as const
+export const AGENT_COMPUTER_DIR_NAME = "agent-computer" as const
+export const AGENT_COMPUTER_SESSIONS_FILE = "sessions.json" as const
 
 export const resolveFullAutoDir = (paths: OmegaEffectdPaths): string =>
   path.join(paths.dataRoot, FULL_AUTO_DIR_NAME)
@@ -37,3 +39,9 @@ export const resolveFullAutoRegistryPath = (paths: OmegaEffectdPaths): string =>
 
 export const resolveFullAutoNativeBindingsPath = (paths: OmegaEffectdPaths): string =>
   path.join(resolveFullAutoDir(paths), FULL_AUTO_NATIVE_BINDINGS_FILE)
+
+export const resolveAgentComputerDir = (paths: OmegaEffectdPaths): string =>
+  path.join(paths.dataRoot, AGENT_COMPUTER_DIR_NAME)
+
+export const resolveAgentComputerSessionsPath = (paths: OmegaEffectdPaths): string =>
+  path.join(resolveAgentComputerDir(paths), AGENT_COMPUTER_SESSIONS_FILE)

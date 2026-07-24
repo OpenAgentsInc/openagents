@@ -8,6 +8,7 @@
 import { createInterface } from "node:readline"
 
 import {
+  resolveAgentComputerSessionsPath,
   resolveFullAutoNativeBindingsPath,
   resolveFullAutoRegistryPath,
   resolveFullAutoRunReportsPath,
@@ -26,6 +27,13 @@ import {
   openFullAutoNativeBindingStore,
   projectFullAutoNativeEvidence,
 } from "../engine/full-auto-native-binding.ts"
+import {
+  openAgentComputerSessionStore,
+  refreshAgentComputerSession,
+  runAgentComputerTurn,
+  startAgentComputerSession,
+} from "../engine/agent-computer-sessions.ts"
+import type { FetchLike } from "@openagentsinc/agent-harness-environment"
 import {
   FULL_AUTO_CONTROL_CALLER_LABEL,
   getFullAutoRunAction,
@@ -98,9 +106,17 @@ export type OmegaEffectdFramedServer = Readonly<{
   serveStdio: () => Promise<void>
 }>
 
+export type OmegaEffectdFramedServerOptions = Readonly<{
+  /** Test-only fetch injection for Agent Computer Worker calls. */
+  agentComputerFetch?: FetchLike
+  /** Test-only sleep injection for Agent Computer turn polling. */
+  agentComputerSleep?: (durationMs: number) => import("effect").Effect.Effect<void>
+}>
+
 export const createOmegaEffectdFramedServer = (
   service: OmegaEffectdService,
   paths: OmegaEffectdPaths,
+  options: OmegaEffectdFramedServerOptions = {},
 ): OmegaEffectdFramedServer => {
   let generation = 0
   let initialized = false
@@ -109,6 +125,9 @@ export const createOmegaEffectdFramedServer = (
   const registry = openFullAutoRegistry(resolveFullAutoRegistryPath(paths))
   const reportStore = openFullAutoRunReportStore(resolveFullAutoRunReportsPath(paths))
   const nativeBindings = openFullAutoNativeBindingStore(resolveFullAutoNativeBindingsPath(paths))
+  const agentComputerSessions = openAgentComputerSessionStore(
+    resolveAgentComputerSessionsPath(paths),
+  )
 
   const projectDetail = (
     ctx: FullAutoRunActionContext,
@@ -293,6 +312,11 @@ export const createOmegaEffectdFramedServer = (
           "publish_projection",
           "get_native_binding",
           "assess_native_boundary",
+          "start_agent_computer_session",
+          "refresh_agent_computer_session",
+          "run_agent_computer_turn",
+          "get_agent_computer_session",
+          "list_agent_computer_sessions",
         ],
         dataRoot: health.dataRoot,
         activeRunLimit: FULL_AUTO_RUN_ACTIVE_LIMIT,
@@ -598,6 +622,173 @@ export const createOmegaEffectdFramedServer = (
           currentWorktreePathDigest: params.currentWorktreePathDigest,
         })
         return respond(request.id, true, { assessment })
+      }
+      case "start_agent_computer_session": {
+        const params = (request.params ?? {}) as {
+          bearerToken?: string
+          controlPlaneBaseUrl?: string
+          repoRef?: string
+          objective?: string
+          adapter?: "codex" | "claude_agent"
+          lane?: "cloud-gcp"
+          verify?: ReadonlyArray<string>
+        }
+        if (
+          typeof params.bearerToken !== "string" ||
+          typeof params.controlPlaneBaseUrl !== "string" ||
+          typeof params.repoRef !== "string" ||
+          typeof params.objective !== "string"
+        ) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError(
+              "invalid_request",
+              "start_agent_computer_session requires bearerToken, controlPlaneBaseUrl, repoRef, and objective.",
+            ),
+          )
+        }
+        const outcome = await startAgentComputerSession(agentComputerSessions, {
+          bearerToken: params.bearerToken,
+          controlPlaneBaseUrl: params.controlPlaneBaseUrl,
+          repoRef: params.repoRef,
+          objective: params.objective,
+          ...(params.adapter === undefined ? {} : { adapter: params.adapter }),
+          ...(params.lane === undefined ? {} : { lane: params.lane }),
+          ...(params.verify === undefined ? {} : { verify: params.verify }),
+          ...(options.agentComputerFetch === undefined
+            ? {}
+            : { fetch: options.agentComputerFetch }),
+        })
+        if (!outcome.ok) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError("invalid_request", outcome.message),
+          )
+        }
+        return respond(request.id, true, { session: outcome.session })
+      }
+      case "refresh_agent_computer_session": {
+        const params = (request.params ?? {}) as {
+          bearerToken?: string
+          sessionRef?: string
+        }
+        if (typeof params.bearerToken !== "string" || typeof params.sessionRef !== "string") {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError(
+              "invalid_request",
+              "refresh_agent_computer_session requires bearerToken and sessionRef.",
+            ),
+          )
+        }
+        const existing = agentComputerSessions.get(params.sessionRef)
+        if (existing === null) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError("invalid_request", "No Agent Computer session exists for that sessionRef."),
+          )
+        }
+        const outcome = await refreshAgentComputerSession(agentComputerSessions, {
+          bearerToken: params.bearerToken,
+          session: existing,
+          ...(options.agentComputerFetch === undefined
+            ? {}
+            : { fetch: options.agentComputerFetch }),
+        })
+        if (!outcome.ok) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError("invalid_request", outcome.message),
+          )
+        }
+        return respond(request.id, true, { session: outcome.session })
+      }
+      case "run_agent_computer_turn": {
+        const params = (request.params ?? {}) as {
+          bearerToken?: string
+          controlPlaneBaseUrl?: string
+          repoRef?: string
+          objective?: string
+          adapter?: "codex" | "claude_agent"
+          lane?: "cloud-gcp"
+          verify?: ReadonlyArray<string>
+        }
+        if (
+          typeof params.bearerToken !== "string" ||
+          typeof params.controlPlaneBaseUrl !== "string" ||
+          typeof params.repoRef !== "string" ||
+          typeof params.objective !== "string"
+        ) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError(
+              "invalid_request",
+              "run_agent_computer_turn requires bearerToken, controlPlaneBaseUrl, repoRef, and objective.",
+            ),
+          )
+        }
+        const outcome = await runAgentComputerTurn(agentComputerSessions, {
+          bearerToken: params.bearerToken,
+          controlPlaneBaseUrl: params.controlPlaneBaseUrl,
+          repoRef: params.repoRef,
+          objective: params.objective,
+          ...(params.adapter === undefined ? {} : { adapter: params.adapter }),
+          ...(params.lane === undefined ? {} : { lane: params.lane }),
+          ...(params.verify === undefined ? {} : { verify: params.verify }),
+          ...(options.agentComputerFetch === undefined
+            ? {}
+            : { fetch: options.agentComputerFetch }),
+          ...(options.agentComputerSleep === undefined
+            ? {}
+            : { sleep: options.agentComputerSleep }),
+          ...(options.agentComputerFetch === undefined
+            ? {}
+            : { pollIntervalMs: 1, maxPollAttempts: 120 }),
+        })
+        if (!outcome.ok) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError("invalid_request", outcome.message),
+          )
+        }
+        return respond(request.id, true, {
+          session: outcome.session,
+          finishReason: outcome.finishReason,
+          eventKinds: outcome.eventKinds,
+        })
+      }
+      case "get_agent_computer_session": {
+        const params = (request.params ?? {}) as { sessionRef?: string }
+        if (typeof params.sessionRef !== "string" || params.sessionRef.length === 0) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError("invalid_request", "get_agent_computer_session requires sessionRef."),
+          )
+        }
+        return respond(request.id, true, {
+          session: agentComputerSessions.get(params.sessionRef),
+        })
+      }
+      case "list_agent_computer_sessions": {
+        return respond(request.id, true, {
+          sessions: agentComputerSessions.list(),
+        })
       }
       case "retry": {
         const params = (request.params ?? {}) as { runRef?: string }

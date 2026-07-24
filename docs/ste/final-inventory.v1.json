@@ -33739,6 +33739,24 @@
       }
     },
     {
+      "path": "docs/omega/2026-07-24-omega-agent-computer-runner.md",
+      "sha256": "defe4873a07987e27c38891fcca9cad5100869c80aa20a1fbe2557880d5e2932",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_accepted_screening_rules": [
+          "STE-2.4"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/omega/2026-07-24-omega-effectd-extract.md",
       "sha256": "a3d4fd5edfaca185bbab4554e99bae027b54fec2829ed48cf1ab2a23d2637a3a",
       "reason": "Final review of a converted document",

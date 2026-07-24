@@ -52,6 +52,11 @@ export type OmegaEffectdInitializeResult = Readonly<{
     | "publish_projection"
     | "get_native_binding"
     | "assess_native_boundary"
+    | "start_agent_computer_session"
+    | "refresh_agent_computer_session"
+    | "run_agent_computer_turn"
+    | "get_agent_computer_session"
+    | "list_agent_computer_sessions"
   >
   dataRoot: string
   activeRunLimit: number
@@ -162,6 +167,30 @@ export type OmegaEffectdStartParams = Readonly<{
   worktreeAbsolutePath?: string
   gitHead?: string
   rebaseUnsafe?: boolean
+}>
+
+/** AC-01: public-safe Agent Computer session projection (no bearer/objective). */
+export type OmegaEffectdAgentComputerSession = Readonly<{
+  sessionRef: string
+  environment: "openagents_cloud"
+  controlPlaneBaseUrl: string
+  repoRef: string
+  objectiveDigest: string
+  state: string
+  adapter: string | null
+  lane: string | null
+  placementRef: string | null
+  artifactRef: string | null
+  agentComputerRef: string | null
+  agentComputerState: string | null
+  startedAt: string
+  updatedAt: string
+}>
+
+export type OmegaEffectdAgentComputerTurnResult = Readonly<{
+  session: OmegaEffectdAgentComputerSession
+  finishReason: string
+  eventKinds: ReadonlyArray<string>
 }>
 
 export type OmegaEffectdHealthResult = Readonly<{

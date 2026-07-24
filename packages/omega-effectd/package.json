@@ -33,6 +33,7 @@
   "dependencies": {
     "@effect-native/core": "workspace:*",
     "@openagentsinc/agent-harness-contract": "0.2.1-rc.4",
+    "@openagentsinc/agent-harness-environment": "workspace:*",
     "@openagentsinc/agent-runtime-schema": "0.2.1-rc.4",
     "@openagentsinc/assurance-spec": "workspace:*",
     "@openagentsinc/environment-auth": "workspace:*",
