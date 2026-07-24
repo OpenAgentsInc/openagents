@@ -437,3 +437,6 @@ export const decodeSarahPrincipalApiResponse = (value: unknown) =>
   S.decodeUnknownSync(SarahPrincipalApiResponseSchema)(value, {
     onExcessProperty: "error",
   });
+
+// SARAH-NR-04 — Nostr identity, sealed signer, Secret Manager custody
+export * from "./nostr-identity/index.ts";

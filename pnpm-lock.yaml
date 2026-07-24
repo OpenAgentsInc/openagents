@@ -2579,9 +2579,18 @@ importers:
 
   packages/sarah:
     dependencies:
+      '@noble/curves':
+        specifier: 1.8.1
+        version: 1.8.1
+      '@noble/hashes':
+        specifier: 1.7.1
+        version: 1.7.1
       '@openagentsinc/authority':
         specifier: workspace:*
         version: link:../authority
+      '@scure/base':
+        specifier: 1.2.4
+        version: 1.2.4
       effect:
         specifier: 4.0.0-beta.94
         version: 4.0.0-beta.94

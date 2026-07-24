@@ -44,9 +44,12 @@ Read these documents in this order:
 15. Read the
     [Sarah Nostr record contract](./2026-07-24-sarah-nostr-record-contract.md)
     (`SARAH-NR-00`).
-16. Read the [accepted Omega plan](../sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md).
-17. Read the [master roadmap](../sol/MASTER_ROADMAP.md).
-18. Read the [Desktop release contract](../deploy/openagents-desktop-cross-platform-release.md).
+16. Read the
+    [Sarah Nostr identity contract](./2026-07-24-sarah-nostr-identity-contract.md)
+    (`SARAH-NR-04`).
+17. Read the [accepted Omega plan](../sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md).
+18. Read the [master roadmap](../sol/MASTER_ROADMAP.md).
+19. Read the [Desktop release contract](../deploy/openagents-desktop-cross-platform-release.md).
 
 The Omega roadmap owns the implementation order.
 The release-readiness audit owns the current brand and package gap.
@@ -73,6 +76,9 @@ owner direction of 2026-07-24.
 The Sarah Nostr record contract freezes kinds `44300` and `44301`, the
 conversation identifier, causal links, fixtures, the §7 projection map, and
 the §21 boundary for `SARAH-NR-00`.
+The Sarah Nostr identity contract freezes Secret Manager custody, the sealed
+signer, NIP-OA/AA attestation, and lifecycle for `principal.sarah`
+(`SARAH-NR-04`).
 
 Part 3 is the v2 roadmap for the semi-public community workroom. Outside
 developers point their own compute at bounded work there. They earn experience

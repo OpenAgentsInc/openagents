@@ -174,6 +174,10 @@ SET_SECRETS=(
   # per-turn Agent Computer materialization). Raw auth material never enters
   # Cloud Run env files or source; only this Secret Manager key is mounted.
   "PROVIDER_TOKEN_CUSTODY_AES_KEY_B64=provider-token-custody-aes-key-b64:latest"
+  # SARAH-NR-04: principal.sarah Nostr service key. Secret Manager only —
+  # create `sarah-nostr-identity-secret` out of band (64-hex or nsec1…).
+  # Runtime loads into a sealed signer and clears this env slot; never log it.
+  "SARAH_NOSTR_IDENTITY_SECRET=sarah-nostr-identity-secret:latest"
   "ARTANIS_AGENT_TOKEN=openagents-artanis-agent-token:latest"
   # Desktop audio grants are issued by this monolith and verified by the
   # grant-gated audio edge. Keep the shared HMAC mounted across every deploy.

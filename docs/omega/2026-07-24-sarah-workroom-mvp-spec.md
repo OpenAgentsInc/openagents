@@ -1070,12 +1070,12 @@ Each packet names its owning repository.
 | --- | --- | --- | --- |
 | `SARAH-NR-00` | openagents | freeze the Nostr record contract | done, see `docs/omega/2026-07-24-sarah-nostr-record-contract.md` |
 | `SARAH-NR-01a` | nostr-effect | remove Cloudflare, set the Node target | done, `787f7b5` |
-| `SARAH-NR-01b` | nostr-effect | extract the relay core out of the Bun backend | planned |
+| `SARAH-NR-01b` | nostr-effect | extract the relay core out of the Bun backend | done, `6e91cad` + `9813d31` |
 | `SARAH-NR-01c` | nostr-effect | replace the Bun toolchain with pnpm and Vite Plus | planned |
-| `SARAH-NR-01d` | nostr-effect | Node and Cloud SQL `EventStore` implementations | planned |
-| `SARAH-NR-02` | nostr-effect | Node WebSocket relay host | planned |
+| `SARAH-NR-01d` | nostr-effect | Node and Cloud SQL `EventStore` implementations | done, `76df424` |
+| `SARAH-NR-02` | nostr-effect | Node WebSocket relay host | done, `776fc2b` |
 | `SARAH-NR-03` | openagents | deploy the owned relay with load proof | planned |
-| `SARAH-NR-04` | openagents | Sarah identity, Secret Manager custody, signing | planned |
+| `SARAH-NR-04` | openagents | Sarah identity, Secret Manager custody, signing | done, see `docs/omega/2026-07-24-sarah-nostr-identity-contract.md` |
 | `SARAH-NR-05` | openagents | the Sarah turn service on the relay | planned |
 | `SARAH-NR-06` | omega | the pane reads and writes Nostr | planned |
 | `SARAH-NR-07` | openagents | memory, read state, and reminders | planned |

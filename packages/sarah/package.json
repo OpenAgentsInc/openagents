@@ -8,17 +8,21 @@
   ],
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./nostr-identity": "./src/nostr-identity/index.ts"
   },
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
-    "test": "vp test --run src/*.test.ts",
+    "test": "vp test --run src/index.test.ts src/nostr-identity/nostr-identity.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@noble/curves": "1.8.1",
+    "@noble/hashes": "1.7.1",
     "@openagentsinc/authority": "workspace:*",
+    "@scure/base": "1.2.4",
     "effect": "catalog:"
   },
   "devDependencies": {
