@@ -7935,6 +7935,46 @@ const resolveCloudGcpRuntimeDispatchContext = async (
     run: async admitted => {
       const client = await defaultMakeKhalaSyncSqlClient(connectionString)
       try {
+        const existingTurns = (await client.sql`
+          SELECT event_count, owner_user_id, status, thread_id
+          FROM khala_sync_runtime_turns
+          WHERE turn_id = ${admitted.turnId}
+        `) as Array<{
+          event_count: number
+          owner_user_id: string
+          status: string
+          thread_id: string
+        }>
+        const existingTurn = existingTurns[0]
+        if (existingTurn === undefined) {
+          if (admitted.eventCount !== 0) {
+            throw new Error('cloud_gcp_runtime_new_turn_event_count_must_be_zero')
+          }
+          const now = currentIsoTimestamp()
+          const [repositoryOwner, repositoryName] = admitted.repo.split('/')
+          if (repositoryOwner === undefined || repositoryName === undefined) {
+            throw new Error('cloud_gcp_runtime_repository_ref_invalid')
+          }
+          await client.sql`
+            INSERT INTO khala_sync_runtime_turns
+              (turn_id, thread_id, owner_user_id, lane, status, event_count,
+               created_at, updated_at, work_context_ref, repository_provider,
+               repository_owner, repository_name, repository_ref)
+            VALUES
+              (${admitted.turnId}, ${admitted.threadId}, ${admitted.ownerUserId},
+               ${admitted.runtimeLane ?? 'hosted_khala'}, 'queued', 0, ${now}, ${now},
+               ${admitted.workContextRef}, 'github', ${repositoryOwner},
+               ${repositoryName}, ${admitted.branch ?? admitted.commit})
+            ON CONFLICT (turn_id) DO NOTHING
+          `
+        } else if (
+          existingTurn.owner_user_id !== admitted.ownerUserId ||
+          existingTurn.thread_id !== admitted.threadId ||
+          existingTurn.status !== 'queued' ||
+          existingTurn.event_count !== admitted.eventCount
+        ) {
+          throw new Error('cloud_gcp_runtime_admitted_turn_mismatch')
+        }
         return await dispatchCloudGcpRuntimeTurn(
           {
             armed: true,
