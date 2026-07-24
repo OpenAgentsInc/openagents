@@ -28,15 +28,14 @@
 // reads or returns them — only the non-secret `credentialId`, `placementRef`,
 // `sessionId`, and outcome are echoed back.
 
-import { methodNotAllowed, noStoreJsonResponse, serverError, unauthorized } from './http/responses'
+import { methodNotAllowed, noStoreJsonResponse, serverError, unauthorized } from "./http/responses";
 import type {
   CloudGcpAdmittedWorkContext,
   CloudGcpDispatchOutcome,
-} from './khala-cloud-runtime-dispatch'
+} from "./khala-cloud-runtime-dispatch";
 
 /** Admin-only reachable trigger path for a single `cloud-gcp` dispatch. */
-export const KHALA_CLOUD_RUNTIME_DISPATCH_ADMIN_PATH =
-  '/api/admin/khala/cloud/runtime-dispatch'
+export const KHALA_CLOUD_RUNTIME_DISPATCH_ADMIN_PATH = "/api/admin/khala/cloud/runtime-dispatch";
 
 /**
  * A resolved dispatch context. `configured:false` means the environment has no
@@ -47,45 +46,45 @@ export const KHALA_CLOUD_RUNTIME_DISPATCH_ADMIN_PATH =
  */
 export type CloudGcpRuntimeDispatchContext =
   | Readonly<{
-      configured: true
-      armed: boolean
-      run: (admitted: CloudGcpAdmittedWorkContext) => Promise<CloudGcpDispatchOutcome>
+      configured: true;
+      armed: boolean;
+      run: (admitted: CloudGcpAdmittedWorkContext) => Promise<CloudGcpDispatchOutcome>;
     }>
-  | Readonly<{ configured: false }>
+  | Readonly<{ configured: false }>;
 
 export type CloudGcpRuntimeDispatchAdminRouteDeps<Bindings> = Readonly<{
   /** Shared Worker admin-bearer gate. */
-  requireAdminApiToken: (request: Request, env: Bindings) => Promise<boolean>
+  requireAdminApiToken: (request: Request, env: Bindings) => Promise<boolean>;
   /** Resolve the dispatch context (SQL client + armed flag + run closure). */
-  resolveContext: (env: Bindings) => Promise<CloudGcpRuntimeDispatchContext>
-  log?: ((line: string, fields?: Record<string, unknown>) => void) | undefined
-}>
+  resolveContext: (env: Bindings) => Promise<CloudGcpRuntimeDispatchContext>;
+  log?: ((line: string, fields?: Record<string, unknown>) => void) | undefined;
+}>;
 
 type ParsedBody =
   | Readonly<{ ok: true; value: CloudGcpAdmittedWorkContext }>
-  | Readonly<{ ok: false; error: string }>
+  | Readonly<{ ok: false; error: string }>;
 
 const asString = (value: unknown): string | undefined =>
-  typeof value === 'string' && value.length > 0 ? value : undefined
+  typeof value === "string" && value.length > 0 ? value : undefined;
 
 const parseAdmittedBody = (raw: unknown): ParsedBody => {
-  if (raw === null || typeof raw !== 'object') {
-    return { error: 'body_must_be_object', ok: false }
+  if (raw === null || typeof raw !== "object") {
+    return { error: "body_must_be_object", ok: false };
   }
-  const body = raw as Record<string, unknown>
-  const ownerUserId = asString(body['ownerUserId'])
-  const threadId = asString(body['threadId'])
-  const turnId = asString(body['turnId'])
-  const workContextRef = asString(body['workContextRef'])
-  const repo = asString(body['repo'])
-  const commit = asString(body['commit'])
-  const missing: Array<string> = []
-  if (ownerUserId === undefined) missing.push('ownerUserId')
-  if (threadId === undefined) missing.push('threadId')
-  if (turnId === undefined) missing.push('turnId')
-  if (workContextRef === undefined) missing.push('workContextRef')
-  if (repo === undefined) missing.push('repo')
-  if (commit === undefined) missing.push('commit')
+  const body = raw as Record<string, unknown>;
+  const ownerUserId = asString(body["ownerUserId"]);
+  const threadId = asString(body["threadId"]);
+  const turnId = asString(body["turnId"]);
+  const workContextRef = asString(body["workContextRef"]);
+  const repo = asString(body["repo"]);
+  const commit = asString(body["commit"]);
+  const missing: Array<string> = [];
+  if (ownerUserId === undefined) missing.push("ownerUserId");
+  if (threadId === undefined) missing.push("threadId");
+  if (turnId === undefined) missing.push("turnId");
+  if (workContextRef === undefined) missing.push("workContextRef");
+  if (repo === undefined) missing.push("repo");
+  if (commit === undefined) missing.push("commit");
   if (
     ownerUserId === undefined ||
     threadId === undefined ||
@@ -94,47 +93,56 @@ const parseAdmittedBody = (raw: unknown): ParsedBody => {
     repo === undefined ||
     commit === undefined
   ) {
-    return { error: `missing_fields:${missing.join(',')}`, ok: false }
+    return { error: `missing_fields:${missing.join(",")}`, ok: false };
   }
 
-  const eventCountRaw = body['eventCount']
+  const eventCountRaw = body["eventCount"];
   const eventCount =
     eventCountRaw === undefined
       ? 0
-      : typeof eventCountRaw === 'number' && Number.isSafeInteger(eventCountRaw) && eventCountRaw >= 0
+      : typeof eventCountRaw === "number" &&
+          Number.isSafeInteger(eventCountRaw) &&
+          eventCountRaw >= 0
         ? eventCountRaw
-        : undefined
+        : undefined;
   if (eventCount === undefined) {
-    return { error: 'event_count_must_be_nonnegative_integer', ok: false }
+    return { error: "event_count_must_be_nonnegative_integer", ok: false };
   }
 
-  const branch = asString(body['branch'])
-  const objective = asString(body['objective'])
-  const repoBindingRef = asString(body['repoBindingRef'])
-  const requiredProviderAccountRef = asString(body['requiredProviderAccountRef'])
-  const runtimeLane = asString(body['runtimeLane'])
+  const branch = asString(body["branch"]);
+  const objective = asString(body["objective"]);
+  const repoBindingRef = asString(body["repoBindingRef"]);
+  const authGrantRef = asString(body["authGrantRef"]);
+  const requiredProviderAccountRef = asString(body["requiredProviderAccountRef"]);
+  const runtimeLane = asString(body["runtimeLane"]);
+  if ((authGrantRef === undefined) !== (requiredProviderAccountRef === undefined)) {
+    return {
+      error: "auth_grant_and_provider_account_must_be_supplied_together",
+      ok: false,
+    };
+  }
 
   // MM-C5 (#8477) optional writeback block. Present => the microVM pushes a
   // scoped branch / opens a PR under the user GitHub authorization and records
   // the thread-scoped writeback.recorded event. `mode` must be a known literal.
-  const writebackRaw = body['writeback']
-  let writeback: CloudGcpAdmittedWorkContext['writeback'] | undefined
+  const writebackRaw = body["writeback"];
+  let writeback: CloudGcpAdmittedWorkContext["writeback"] | undefined;
   if (writebackRaw !== undefined) {
-    if (writebackRaw === null || typeof writebackRaw !== 'object') {
-      return { error: 'writeback_must_be_object', ok: false }
+    if (writebackRaw === null || typeof writebackRaw !== "object") {
+      return { error: "writeback_must_be_object", ok: false };
     }
-    const wb = writebackRaw as Record<string, unknown>
-    const mode = wb['mode']
-    if (mode !== undefined && mode !== 'branch_only' && mode !== 'pull_request') {
-      return { error: 'writeback_mode_invalid', ok: false }
+    const wb = writebackRaw as Record<string, unknown>;
+    const mode = wb["mode"];
+    if (mode !== undefined && mode !== "branch_only" && mode !== "pull_request") {
+      return { error: "writeback_mode_invalid", ok: false };
     }
-    const wbBranch = asString(wb['branch'])
-    const wbBaseBranch = asString(wb['baseBranch'])
+    const wbBranch = asString(wb["branch"]);
+    const wbBaseBranch = asString(wb["baseBranch"]);
     writeback = {
-      ...(mode === undefined ? {} : { mode: mode as 'branch_only' | 'pull_request' }),
+      ...(mode === undefined ? {} : { mode: mode as "branch_only" | "pull_request" }),
       ...(wbBranch === undefined ? {} : { branch: wbBranch }),
       ...(wbBaseBranch === undefined ? {} : { baseBranch: wbBaseBranch }),
-    }
+    };
   }
 
   return {
@@ -150,16 +158,22 @@ const parseAdmittedBody = (raw: unknown): ParsedBody => {
       ...(branch === undefined ? {} : { branch }),
       ...(objective === undefined ? {} : { objective }),
       ...(repoBindingRef === undefined ? {} : { repoBindingRef }),
-      ...(requiredProviderAccountRef === undefined
+      ...(authGrantRef === undefined || requiredProviderAccountRef === undefined
         ? {}
-        : { requiredProviderAccountRef }),
+        : {
+            codexContinuity: {
+              authGrantRef,
+              providerAccountRef: requiredProviderAccountRef,
+            },
+          }),
+      ...(requiredProviderAccountRef === undefined ? {} : { requiredProviderAccountRef }),
       ...(runtimeLane === undefined
         ? {}
-        : { runtimeLane: runtimeLane as CloudGcpAdmittedWorkContext['runtimeLane'] }),
+        : { runtimeLane: runtimeLane as CloudGcpAdmittedWorkContext["runtimeLane"] }),
       ...(writeback === undefined ? {} : { writeback }),
     },
-  }
-}
+  };
+};
 
 /**
  * Handle a POST to {@link KHALA_CLOUD_RUNTIME_DISPATCH_ADMIN_PATH}. Admin-only.
@@ -173,67 +187,67 @@ export const handleCloudGcpRuntimeDispatchAdminRoute = async <Bindings>(
   env: Bindings,
   deps: CloudGcpRuntimeDispatchAdminRouteDeps<Bindings>,
 ) => {
-  if (request.method !== 'POST') {
-    return methodNotAllowed(['POST'])
+  if (request.method !== "POST") {
+    return methodNotAllowed(["POST"]);
   }
   if (!(await deps.requireAdminApiToken(request, env))) {
-    return unauthorized()
+    return unauthorized();
   }
 
-  let rawBody: unknown
+  let rawBody: unknown;
   try {
-    rawBody = await request.json()
+    rawBody = await request.json();
   } catch {
-    return noStoreJsonResponse({ error: 'invalid_json', ok: false }, { status: 400 })
+    return noStoreJsonResponse({ error: "invalid_json", ok: false }, { status: 400 });
   }
-  const parsed = parseAdmittedBody(rawBody)
+  const parsed = parseAdmittedBody(rawBody);
   if (!parsed.ok) {
-    return noStoreJsonResponse({ error: parsed.error, ok: false }, { status: 400 })
+    return noStoreJsonResponse({ error: parsed.error, ok: false }, { status: 400 });
   }
 
-  let context: CloudGcpRuntimeDispatchContext
+  let context: CloudGcpRuntimeDispatchContext;
   try {
-    context = await deps.resolveContext(env)
+    context = await deps.resolveContext(env);
   } catch (error) {
-    deps.log?.('cloud_gcp_runtime_dispatch_admin_resolve_threw', {
-      detail: error instanceof Error ? error.message : 'unknown',
-    })
-    return serverError()
+    deps.log?.("cloud_gcp_runtime_dispatch_admin_resolve_threw", {
+      detail: error instanceof Error ? error.message : "unknown",
+    });
+    return serverError();
   }
 
   if (!context.configured) {
     return noStoreJsonResponse(
-      { error: 'cloud_gcp_runtime_not_configured', ok: false },
+      { error: "cloud_gcp_runtime_not_configured", ok: false },
       { status: 503 },
-    )
+    );
   }
 
   // FAIL-CLOSED: refuse before any mint/placement when the lane is not armed.
   if (!context.armed) {
-    deps.log?.('cloud_gcp_runtime_dispatch_admin_not_armed', {
+    deps.log?.("cloud_gcp_runtime_dispatch_admin_not_armed", {
       turnId: parsed.value.turnId,
-    })
+    });
     return noStoreJsonResponse(
-      { armed: false, ok: false, reason: 'cloud_gcp_runtime_not_armed' },
+      { armed: false, ok: false, reason: "cloud_gcp_runtime_not_armed" },
       { status: 409 },
-    )
+    );
   }
 
-  let outcome: CloudGcpDispatchOutcome
+  let outcome: CloudGcpDispatchOutcome;
   try {
-    outcome = await context.run(parsed.value)
+    outcome = await context.run(parsed.value);
   } catch (error) {
-    deps.log?.('cloud_gcp_runtime_dispatch_admin_run_threw', {
-      detail: error instanceof Error ? error.message : 'unknown',
+    deps.log?.("cloud_gcp_runtime_dispatch_admin_run_threw", {
+      detail: error instanceof Error ? error.message : "unknown",
       turnId: parsed.value.turnId,
-    })
-    return serverError()
+    });
+    return serverError();
   }
 
   return noStoreJsonResponse(
     {
       armed: true,
-      ok: outcome.outcome === 'launched',
+      ok: outcome.outcome === "launched",
       outcome: outcome.outcome,
       tokenRevoked: outcome.tokenRevoked,
       ...(outcome.credentialId === undefined ? {} : { credentialId: outcome.credentialId }),
@@ -242,5 +256,5 @@ export const handleCloudGcpRuntimeDispatchAdminRoute = async <Bindings>(
       ...(outcome.reason === undefined ? {} : { reason: outcome.reason }),
     },
     { status: 200 },
-  )
-}
+  );
+};
