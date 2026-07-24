@@ -40,7 +40,7 @@ describe("Agent Computer seven-harness image pins (#9193)", () => {
       providerCredentialPolicy: "broker_only",
     });
     expect(manifest.guestImage.harnesses.status).toBe(
-      "five_of_seven_runtime_qualified_owner_reauthentication_required_for_codex_and_claude_code",
+      "six_of_seven_runtime_qualified_owner_reauthentication_required_for_codex",
     );
     for (const harnessId of ["cursor", "goose", "opencode", "pi", "grok"]) {
       expect(manifest.guestImage.harnesses[harnessId]).toMatchObject({
@@ -60,7 +60,14 @@ describe("Agent Computer seven-harness image pins (#9193)", () => {
       executionState: "owner_reauthentication_required",
     });
     expect(manifest.guestImage.harnesses.claudeCode).toMatchObject({
-      executionState: "owner_reauthentication_required",
+      executionState: "runtime_secret_and_real_writeback_qualified",
+      qualification: {
+        exitCode: 0,
+        leaseTerminalOutcome: "managed_cloud_turn_completed",
+        usage: {
+          truth: "exact",
+        },
+      },
     });
   });
 

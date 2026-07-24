@@ -201,7 +201,9 @@ describe("Agent Computer GCE host setup script", () => {
 
     expect(manifest.guestImage.scratchWipeReceiptRequired).toBe(true)
     expect(manifest.guestImage.microvmDestroyReceiptRequired).toBe(true)
-    expect(manifest.guestImage.portableSessionControl.status).toContain("rebake_pending")
+    expect(manifest.guestImage.portableSessionControl.status).toBe(
+      "destination_activation_and_signed_lsp_live_boot_proven",
+    )
     expect(manifest.guestImage.portableSessionControl.helperProfile).toMatchObject({
       schema: "openagents.portable_guest_helper_profile.v1",
       watcher: expect.stringContaining("ready handshake"),
@@ -212,7 +214,7 @@ describe("Agent Computer GCE host setup script", () => {
     })
     expect(manifest.guestImage.portableSessionControl.managedHelperArtifacts).toMatchObject({
       typescriptLsp: {
-        admissionState: "source_wired_rebake_pending",
+        admissionState: "baked_and_live_boot_proven",
         version: "5.3.0",
         command: "/usr/local/bin/node",
         target: { platform: "linux", arch: "x64" },

@@ -72,15 +72,15 @@
   "guestImage": {
     "kernelDigest": "sha256:22847375721aceea63d934c28f2dfce4670b6f52ec904fae19f5145a970c1e65",
     "kernelSource": "firecracker-ci/v1.10/x86_64/vmlinux-5.10.223",
-    "rootfsDigest": "sha256:570e747a732f7b062c2062788c8480952928193502a471e261e07e0a2628abe8",
-    "rootfsDigestPrevious": "sha256:5b2c941a9c10b9fa4c27ed8fcba38553b30b559a12c8c3aadc82e20ab5a22876 (seven-harness v21 rollback image)",
-    "rootfsSource": "source-controlled debootstrap jammy seven-harness v22 bake at commit bd407c9ae13b25c8e39522eb63f3caa69c733712",
-    "rootfsStatus": "SEVEN-HARNESS V22 IMAGE LIVE BOOT GREEN 2026-07-23: provisionerKind=live, all seven pinned version probes returned code 0, artifacts were extracted, cleanupReceipt.tornDown=true, and the host retained zero Firecracker processes and zero runtime directories after the boot smoke.",
+    "rootfsDigest": "sha256:d74fac30d1d7fecb4f85e87f90ec89b579218f658a2642a98b80d36ea28309ae",
+    "rootfsDigestPrevious": "sha256:6ddbd9c89b42491583345d824cb060bdc420d41ad503b08d3409058a3a1c4c17 (seven-harness v23 rollback image)",
+    "rootfsSource": "source-controlled debootstrap jammy seven-harness v24 bake at commit 9e6c638a2e91b8882311b82934e55b2646b57c08",
+    "rootfsStatus": "SEVEN-HARNESS V24 IMAGE LIVE BOOT GREEN 2026-07-23: provisionerKind=live, all seven pinned version probes returned code 0, artifacts were extracted, cleanupReceipt.tornDown=true, and the host retained zero Firecracker processes and zero runtime directories after the boot smoke.",
     "rootfsBuildScript": "apps/pylon/deploy/agent-computer/build-agent-computer-rootfs.sh (source-controlled bake: debootstrap jammy + seven pinned harnesses + vsock guest agent + turn-runner + oa-workroomd + egress fix; seals sha256 + emits a refs-only bake receipt; run as root on the nested-virt bake host, then boot-smoke and re-pin rootfsDigest)",
     "rootfsBakeReceipt": {
-      "bakedAt": "2026-07-23T18:23:17Z",
-      "sourceCommit": "bd407c9ae13b25c8e39522eb63f3caa69c733712",
-      "turnRunnerSha256": "6893ac36741a90b160306ebc65bef5c33bafbf9cfb01cf4c0e140f32ba3407dc",
+      "bakedAt": "2026-07-23T23:47:07Z",
+      "sourceCommit": "9e6c638a2e91b8882311b82934e55b2646b57c08",
+      "turnRunnerSha256": "8cd471fb27f2c1cd9f347a0bdab468a32f9699510e1b76d77bd18a8cdbce6758",
       "portableSessionControlSha256": "acab20cd4f03a4f27e1c8f1b9e6e352c3a6866efb3783f831895c70bc1431b25",
       "workroomdSha256": "59d2623c6b5629b75be3889eb457a5957e7d3d6044f4b12dd0d45ddcc319d063"
     },
@@ -95,7 +95,7 @@
       "note": "The CX-3 in-VM codex_app_server lane (turn-runner `codexTurn` block: codex exec --json under the broker-redeemed scratch CODEX_HOME, exact usage receipt with tokenChargeMetered:false) is wired and fixture-proven in-repo; its live rung needs this binary baked + one real in-VM turn."
     },
     "harnesses": {
-      "status": "five_of_seven_runtime_qualified_owner_reauthentication_required_for_codex_and_claude_code",
+      "status": "six_of_seven_runtime_qualified_owner_reauthentication_required_for_codex",
       "credentialPolicy": "Provider material is injected for one turn at runtime. No provider key, OAuth token, or subscription home is present in the image or bake receipt.",
       "credentialScanner": "The turn-runner scans the staged diff before writeback and emits typed finding refs only. Host closeout still requires its isolation scanner and cleanup receipt.",
       "pi": {
@@ -183,10 +183,39 @@
         }
       },
       "claudeCode": {
-        "executionState": "owner_reauthentication_required",
+        "executionState": "runtime_secret_and_real_writeback_qualified",
         "version": "2.1.218",
         "source": "npm @anthropic-ai/claude-code",
-        "credentialEnv": "CLAUDE_CODE_OAUTH_TOKEN"
+        "credentialEnv": "CLAUDE_CODE_OAUTH_TOKEN",
+        "qualification": {
+          "provedAt": "2026-07-23",
+          "turnRef": "turn.sarah_cloud.turn.agent_computer_qualification.claude_code.1784850635702.call.agent_computer_qualification.claude_code.1784850635702",
+          "exitCode": 0,
+          "artifactRefs": [
+            "artifact.sha256.46a00face3bf21b6b82c0e0323b13119fbf3def92191054615a2663e68b0a6e8",
+            "artifact.sha256.e3adf36ced09fe9622e23e212ddceb9d950855cc207413f6dc1230f0fe3427fc"
+          ],
+          "commit": "942ff92b893db73a934f6ba1539b1cf3afc0dd36",
+          "parentCommit": "9e6c638a2e91b8882311b82934e55b2646b57c08",
+          "changedFileCount": 1,
+          "cleanup": {
+            "tornDown": true,
+            "firecrackerProcesses": 0,
+            "activeTapDevices": 0,
+            "runtimeDirectories": 0
+          },
+          "leaseTerminalOutcome": "managed_cloud_turn_completed",
+          "usage": {
+            "truth": "exact",
+            "usageRef": "usage.harness.claude_code.45b94691-2a06-4c37-bd41-613e448bfefa",
+            "inputTokens": 4,
+            "outputTokens": 273,
+            "cacheReadTokens": 81654,
+            "cacheWriteTokens": 34708,
+            "totalTokens": 277,
+            "unsupportedFields": ["reasoningTokens"]
+          }
+        }
       },
       "cursor": {
         "executionState": "runtime_secret_and_real_writeback_qualified",
