@@ -1,10 +1,10 @@
 ---
 authority_delegation_format_version: "0.1"
 authority_profile_id: "openagents.sarah-owner-orchestrator"
-authority_revision: 6
+authority_revision: 7
 title: "Sarah Owner Orchestrator"
 lifecycle_state: "admitted"
-admitted_by: "current_owner_direction_2026-07-22_sarah_owned_agent_computer"
+admitted_by: "current_owner_direction_2026-07-24_sarah_nostr_runtime"
 effective_at: "2026-07-22T00:00:00Z"
 expires_when: "revoked_or_superseded_by_current_owner_direction"
 ---
@@ -52,6 +52,14 @@ receives raw credentials and cannot turn visibility into mutation authority.
     "outcome": "During the owner's parental leave, keep the company moving: command the coding fleet, Full Auto, releases across all channels, communications, the blog, and the documents, keep the owner informed proactively, and never claim an action ran without a target receipt. Admitted by the Episode 260 owner direction of 2026-07-22.",
     "authority_refs": ["AUTHORITY.md", "specs/openagents/sarah-owner-orchestrator.product-spec.md", "docs/sarah/2026-07-22-sarah-company-command-analysis.md"],
     "advance_when": "owner_direction_is_revoked_or_profile_is_superseded"
+  },
+  {
+    "id": "program.sarah_nostr_runtime",
+    "order": 3,
+    "status": "runtime_pending",
+    "outcome": "Hold the owner conversation, turn ladder, authority receipts, and memory as signed Nostr events on an OpenAgents-controlled relay. Admitted by the owner direction of 2026-07-24. Runtime stays pending until the owned relay, its load proof, and the Sarah signing boundary are deployed, healthy, and receipt-capable.",
+    "authority_refs": ["AUTHORITY.md", "specs/openagents/sarah-owner-orchestrator.product-spec.md", "docs/omega/2026-07-24-sarah-workroom-mvp-spec.md"],
+    "advance_when": "the_owned_relay_and_signing_boundary_are_deployed_and_proven"
   },
   {
     "id": "program.sarah_web_communications",
@@ -107,6 +115,14 @@ receives raw credentials and cannot turn visibility into mutation authority.
     "condition_refs": ["condition.owner_scope", "condition.existing_runtime_gate", "condition.independent_release_verification", "condition.standing_release_direction", "condition.redaction", "condition.rollback"]
   },
   {
+    "id": "grant.sarah.nostr_record",
+    "roles": ["sarah_orchestrator"],
+    "actions": ["publish_owner_conversation_event", "publish_turn_record_event", "publish_authority_receipt_event", "publish_owner_memory_engram", "authenticate_to_owned_relay"],
+    "resources": ["openagents_owned_nostr_relay", "owner_private_sarah_conversation", "owner_private_sarah_memory"],
+    "program_refs": ["program.sarah_nostr_runtime"],
+    "condition_refs": ["condition.owner_scope", "condition.redaction", "condition.relay_runtime_admission", "condition.signing_boundary", "condition.no_settlement_on_relay", "condition.existing_runtime_gate", "condition.rollback"]
+  },
+  {
     "id": "grant.sarah.web_communications",
     "roles": ["sarah_orchestrator"],
     "actions": ["draft_blog_post", "draft_document", "draft_forum_post", "deliver_blog_or_document_draft", "publish_outward_communication", "publish_animated_spoken_communication"],
@@ -126,6 +142,9 @@ receives raw credentials and cannot turn visibility into mutation authority.
   {"id": "condition.managed_sandbox_scope", "rule": "The managed-sandbox broker must bind the authenticated owner, tenant, program, work unit, sandbox, target, immutable image digest, profile, lease/TTL, budget, capabilities, idempotency identity, expected version, and generation before effects."},
   {"id": "condition.managed_sandbox_budget", "rule": "Lease, capacity, and measured incremental cost must stay within both the sandbox budget and the root cloud budget; unavailable or exhausted capacity refuses with a receipt."},
   {"id": "condition.managed_sandbox_runtime_admission", "rule": "The exact broker and Google Cloud target profile must be deployed, healthy, admitted, and receipt-capable. Until then managed-sandbox mutations refuse; profile text, SDK status, or a provider object cannot substitute."},
+  {"id": "condition.relay_runtime_admission", "rule": "The owned relay must be deployed, healthy, load-proven, and receipt-capable before any Sarah record is published to it. Relay acceptance is never an OpenAgents admission, and an unsigned, invalid, revoked, or unauthorized event starts no turn and no effect."},
+  {"id": "condition.signing_boundary", "rule": "Sarah's Nostr key lives in Google Secret Manager and is reached through a boundary that returns signatures, not keys. No raw key enters an event, a tag, a log, a crash record, or a receipt. Rotation, revocation, and archival paths must exist before the key carries durable memory."},
+  {"id": "condition.no_settlement_on_relay", "rule": "Exact metering rows, the credit ledger, admission authority, target broker execution, and secret custody stay outside the relay. A signed usage or receipt reference may be published in addition, never instead, and no payment is counted from a relay observation."},
   {"id": "condition.rollback", "rule": "Mutable operations require an exact bounded target and the target contract's rollback path."},
   {"id": "condition.independent_release_verification", "rule": "A stable publication or promotion requires an independent reviewer with a distinct execution identity that reproduces the release evidence. The producer cannot verify, admit, or release from its own evidence alone."},
   {"id": "condition.standing_release_direction", "rule": "The Episode 260 owner direction of 2026-07-22 is the standing owner direction that admits stable-channel publication for Sarah. It is revocable and superseded by any later owner direction, and it does not waive the independent-verification, rollback, monotonic-update, or evidence gates."},
@@ -245,6 +264,22 @@ broker and its guardrails are separately designed and deployed.
 Revision 5 grants no raw secret, credential, shell, database, topology,
 customer-data, financial-custody, or authority-expansion access. Finance,
 custody, legal, and employment authority remain reserved.
+
+Revision 7 admits the owner's Sarah Nostr runtime direction of 2026-07-24. It
+adds a Nostr runtime program and one record grant. Sarah may authenticate to
+the OpenAgents-controlled relay with an attested key and publish her owner
+conversation, turn records, authority receipts, and owner-decryptable memory
+engrams there.
+
+The grant is record authority only. It does not settle payment, it does not
+decide admission, and it does not widen any existing capability. Relay
+acceptance never settles an OpenAgents action, a derived Cloud SQL row never
+outranks its signed source event, and the runtime stays pending until the
+relay and the signing boundary are deployed and proven.
+
+Revision 7 grants no raw key export, no settlement authority, no cloud shell,
+and no new tool. Finance, custody, legal, and employment authority remain
+reserved.
 
 Revision 6 admits the owner's Sarah Agent Computer direction of 2026-07-22.
 The `owner_coding_capacity` broker tries the live OpenAgents Agent Computer

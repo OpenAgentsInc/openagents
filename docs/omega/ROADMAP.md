@@ -3,7 +3,7 @@
 - Class: owner-accepted work-packet ledger
 - Date: 2026-07-23
 - Revised: 2026-07-24
-- Revision: 4
+- Revision: 5
 - Status: active initial roadmap
 - Product: Omega, the Zed-based OpenAgents Desktop application
 - Client repository: `OpenAgentsInc/omega`
@@ -108,8 +108,13 @@ The old authority path must stop after that cutover.
 
 1. Zed owns editor, project, buffer, language, terminal, and worktree truth.
 2. OpenAgents owns work, agent, policy, receipt, and run truth.
-3. Khala Sync owns shared conversation and timeline truth.
-4. Nostr is an interoperability boundary, not command authority.
+3. Nostr owns the Sarah conversation and timeline record on an
+   OpenAgents-controlled relay. Khala Sync keeps that role for every other
+   surface until a separate cutover names it. Admitted by the owner direction
+   of 2026-07-24.
+4. Nostr carries the record. It is still not command authority. A valid signed
+   event proves that a key signed exact bytes. It proves neither authorization
+   nor truth, and relay acceptance never settles an OpenAgents action.
 5. GitHub remains repository and claim authority until a separate cutover.
 6. External agents keep their own configuration and credential custody.
 7. Omega must not create a second home for an external agent.

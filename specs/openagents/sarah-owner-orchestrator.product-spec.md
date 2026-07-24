@@ -2,10 +2,10 @@
 spec_format_version: "0.1"
 title: "Sarah Owner Orchestrator"
 artifact_type: "prd"
-spec_revision: 5
+spec_revision: 6
 author: "OpenAgents"
 created_at: "2026-07-18T00:00:00Z"
-updated_at: "2026-07-22T00:00:00Z"
+updated_at: "2026-07-24T00:00:00Z"
 linked_github_repo: "OpenAgentsInc/openagents"
 custom_sections:
   - id: "custom-owner-gates"
@@ -25,6 +25,7 @@ tool_metadata:
   openagents_assurance_spec_status: "revision 3 exactly rebinds this rev-4 intent after SBX-00 authority admission; SARAH-AC-21 through SARAH-AC-23 have complete proposed proof design while SARAH-AC-01 through SARAH-AC-20 remain needs_design"
   openagents_revision_4_note: "Rev 4 adds the owner-directed managed-sandbox outcome without granting a generic cloud shell or pretending the broker is already live. Sarah may create, list, inspect, dispatch into, interrupt, stop, resume, and delete exact owner-scoped OpenAgents-managed GCP sandboxes only after the managed-sandbox ProductSpec, SBX-00 authority revision, target broker, and live GCP proof land. Every action binds program/work-unit/target/profile/TTL/budget/capability refs and returns authority plus target receipts. It remains distinct from remote Full Auto start, raw topology, broad cloud credentials, and generic container administration. Adds SARAH-AC-21 through SARAH-AC-23."
   openagents_revision_5_note: "Rev 5 records the Episode 260 company-command direction of 2026-07-22 (AUTHORITY.md revision 7 + Sarah authority revision 5). Sarah runs the company during the owner's parental leave and commands the coding fleet, Full Auto, releases across all channels, communications, the blog, and the documents. Stable release is admitted through the same release broker under an independent reviewer and the standing Episode 260 direction, never waiving verification, rollback, monotonic-update, or evidence gates. Web communications are admitted: blog and document drafts deliver through repository delivery now; outward timeline and animated-spoken publication refuse with a receipt until the owner supplies the animation and speech interfaces and the web-communications broker and guardrails are deployed and healthy. Sales operations are admitted as intent only and refuse with a receipt until a bounded sales broker and its guardrails are separately deployed. No customer-data, financial-custody, legal, secret, or authority-expansion reach is admitted. Adds SARAH-AC-24 through SARAH-AC-27."
+  openagents_revision_6_note: "Rev 6 records the owner direction of 2026-07-24 that moves Sarah's runtime entirely to Nostr on an OpenAgents-controlled relay. The conversation, turn lifecycle, activity ladder, authority receipts, memory, read state, and proactive updates become signed events. Exact metering, admission authority, target broker execution, secret custody, and Git object safety do not move. AC-01 through AC-03 are rebound to the Nostr record with the Khala Sync thread retained as a compatibility surface until the cutover packet retires it. Memory adopts NIP-AE engrams with an OpenAgents companion profile, and the graph becomes a derived rebuildable index that never outranks its engrams. Adds SARAH-AC-28 through SARAH-AC-31."
 ---
 
 ## Problem
@@ -58,6 +59,8 @@ in:
   - brokered repository, Google Cloud, RC release, GitHub, and Forum operations under exact authority
   - Gemma 4 buffered function calling for bounded owner-linked Codex worker dispatch/status and existing Full Auto run read/pause/resume/stop
   - after exact authority and broker admission, managed-sandbox create/list/inspect/dispatch/interrupt/stop/resume/delete for the authenticated owner's Google Cloud capacity through `specs/openagents/managed-agent-sandboxes.product-spec.md`
+  - the owner-private conversation, turn ladder, authority receipts, and memory as signed Nostr events on an OpenAgents-controlled relay
+  - NIP-AE engram memory with an OpenAgents companion profile, and a derived graph index that is rebuildable from the engram stream
   - one released content-addressed six-dimension Sarah conversational harness bound immutably before each provider turn
   - owner-private terminal-thread experience compilation, bounded candidate production, held-out evaluation, and an independent Blueprint release gate for next-turn activation
   - stable release publication and promotion through the existing release broker under independent verification and the standing Episode 260 owner direction
@@ -65,6 +68,7 @@ in:
   - a self-introduction as a repository-hosted communication
 out:
   - a separate Sarah app, public web landing, prospect CRM, transcript database, provider dispatcher, or issue queue
+  - a second conversation record, a relay that settles payment, or a server-side index over decrypted memory
   - avatar, video, ambient voice, GPU rendering, or public sales-persona infrastructure
   - raw database dumps, raw credentials, private paths, customer-private payloads, or unbounded context in model prompts
   - outward publication to the public timeline or animated-spoken publication before the owner supplies the animation and speech interfaces and the web-communications broker and guardrails are deployed and healthy
@@ -97,9 +101,25 @@ ran until a target receipt exists.
   Sarah thread. Another owner cannot observe or mutate it.
 - **SARAH-AC-02:** The same thread and history survive app restart, device
   change, and repeated bootstrap without duplicate identities or conversations.
-- **SARAH-AC-03:** Mobile pins Sarah inside the existing conversation UI and
-  sends Sarah messages through the hosted Khala runtime. Public `/sarah` stays
-  404 and no second persona state machine returns.
+- **SARAH-AC-03:** A supported client pins Sarah inside its existing
+  conversation UI and sends Sarah messages through the admitted runtime. Public
+  `/sarah` stays 404 and no second persona state machine returns.
+- **SARAH-AC-28:** After the cutover, the owner conversation record is signed
+  NIP-44 encrypted Nostr events on an OpenAgents-controlled relay. The relay
+  operator cannot read conversation content. A Cloud SQL row is a derived
+  projection and never outranks the signed event it came from.
+- **SARAH-AC-29:** Relay acceptance is never an OpenAgents admission. An
+  unsigned, invalid, revoked, or unauthorized event starts no turn and no
+  effect. Every effect still resolves through the existing authority service.
+- **SARAH-AC-30:** Exact metering rows, the credit ledger, admission authority,
+  target broker execution, and secret custody stay outside the relay. A signed
+  usage reference may be published in addition, never instead, and the public
+  counter reconciles only to exact rows.
+- **SARAH-AC-31:** Memory is NIP-AE engrams encrypted to the owner under the
+  symmetric conversation key, so the owner can always decrypt what Sarah
+  remembers. The graph index is rebuildable from the engram stream, ranking
+  state never changes a durable record, and a truncated listing is reported as
+  a gap rather than an empty set.
 - **SARAH-AC-04:** Current business claims cite exact bounded sources with
   freshness and owner/private classification. Missing sources fail soft and
   remain explicit.

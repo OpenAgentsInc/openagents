@@ -428,7 +428,7 @@
     },
     {
       "path": "INVARIANTS.md",
-      "sha256": "670c485b195c7b764f856a643fea65fa7e2226cef8d19dae779b2ef44d851e8d",
+      "sha256": "059ed991939a1b1425ccb5a881c12bb98708b686ee92fa37b5fc5df8b8df590f",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -16983,7 +16983,7 @@
     },
     {
       "path": "docs/authority/SARAH_AUTHORITY.md",
-      "sha256": "660229d2cf21fe69b9afdcc1c2a331da5fa9fb21bef481fca06233b88aa6bb1d",
+      "sha256": "5fa94486c1da8581fbae3864c2396758a531f9f453ae709a0562a6f9defda72a",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -34158,7 +34158,7 @@
     },
     {
       "path": "docs/omega/ROADMAP.md",
-      "sha256": "4629c409e1a2a210caac762eb58bce93325a8b8b78db1f7d1c8780f7b186e74b",
+      "sha256": "f9025f6ccf9ade4043262af99fa5e27d1aebca1582d30d10f120b60427ed64cb",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
@@ -48683,7 +48683,7 @@
     },
     {
       "path": "specs/openagents/sarah-owner-orchestrator.product-spec.md",
-      "sha256": "b9bdd352276785b1744479fcda8249fe1920076c4180626ddcb071df2f633db2",
+      "sha256": "f6fdecbea64261a4263760382e996db62663de8b7639e55a8899c1704193aed5",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

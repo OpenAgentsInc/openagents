@@ -374,9 +374,14 @@ come from the Freerange teardown
   conversation as compact human-readable activity while they happen, the UI
   may hide internal refs and runtime plumbing but must never hide whether a
   tool was actually used or whether it succeeded.
-- Sarah has one deterministic opaque owner-private Khala Sync thread. That
-  thread and its confirmed history are durable memory, fresh business context
-  is projected from bounded owner-scoped/public-safe adapters. Raw credentials,
+- Sarah has one deterministic opaque owner-private conversation. Its record is
+  the Khala Sync thread today and moves to signed, NIP-44 encrypted Nostr
+  events on an OpenAgents-controlled relay under the owner direction of
+  2026-07-24. The conversation and its confirmed history are durable memory,
+  fresh business context is projected from bounded owner-scoped/public-safe
+  adapters. After that cutover a Cloud SQL row is a derived projection and
+  never outranks the signed event it came from, and relay acceptance is never
+  an OpenAgents admission. Raw credentials,
   mnemonics, private paths, customer-private payloads, and unbounded database or
   tool output never enter the prompt, Sync post-images, logs, or receipts.
 - Every Sarah bootstrap and hosted dispatch revalidates that the authenticated
