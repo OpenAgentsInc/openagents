@@ -23,8 +23,11 @@ These items are necessary before publication:
 - Show visible support for the public Omega fork claim.
   A current static repository capture is sufficient.
 
-The Sarah picture master is optional.
-Use cutaways and title cards when it is not available.
+The Sarah picture master is required for this release candidate.
+Generate it with the current Sarah direction and Segmind runner.
+Use the longest practical Sarah generations, up to 60 seconds for each
+generation. Split only at a full-screen cutaway, a service limit, or a verified
+quality defect.
 Do not wait for historical masters, fresh product recordings, a named Buzz
 source, a branded Omega build, or Episode 263 build proof.
 
@@ -36,11 +39,8 @@ Provide or generate the approved final Sarah voice track.
 Include its generation method and rights status.
 Use it to set the final shot timing.
 
-An approved Sarah picture master is recommended but optional.
-
-Default if unavailable: create an editorial cut with temporary narration.
-Label it `EDITORIAL ASSEMBLY - NOT FINAL SARAH PERFORMANCE`.
-Do not publish that cut as the final Sarah performance.
+An approved Sarah picture master is required.
+Do not substitute temporary narration or unrelated Sarah footage.
 
 ## Request 262-02: historical episode masters
 
@@ -119,7 +119,8 @@ Priority: required claim support. Recorded footage is optional.
 Record the public `OpenAgentsInc/omega` repository.
 Show the parent repository line and the Omega README.
 
-Default if unavailable: use a static repository capture.
+Use `omega1.jpg` for the public repository and fork line.
+Use `omega2.jpg` for the Omega README and product direction.
 Label it `OMEGA SOURCE - CURRENT`.
 Do not imply that the source is already a branded build.
 

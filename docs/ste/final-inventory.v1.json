@@ -304,7 +304,7 @@
     },
     {
       "path": "AGENTS.md",
-      "sha256": "2c476f51bf6bb1bd3ce7e488739444120fc53b08aea76810a31b7c618067b4e9",
+      "sha256": "d25ebf0c6af3fe1289b1d209d5419f719d7631dea34934d831bbbec9cf89a242",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -340,7 +340,7 @@
     },
     {
       "path": "CLAUDE.md",
-      "sha256": "2c476f51bf6bb1bd3ce7e488739444120fc53b08aea76810a31b7c618067b4e9",
+      "sha256": "d25ebf0c6af3fe1289b1d209d5419f719d7631dea34934d831bbbec9cf89a242",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -39952,7 +39952,7 @@
     },
     {
       "path": "docs/sarah/2026-07-22-segmind-talking-avatar-pipeline.md",
-      "sha256": "27baad2c96c50284b6f93b3c53cb03bc504a652c314ef0d8e26098a6c2aafda5",
+      "sha256": "2670dde0137a5d5ba29e2de2471ff08f1b0ce18b70a73df9bf6d3b4ccfce2159",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -39970,6 +39970,24 @@
         "ste_status": "inspected",
         "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
         "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/sarah/ACTING_AS_SARAH_RUNBOOK.md",
+      "sha256": "8b144e129edd93e5dfac9d7f88008f54bb444e67ad0a048866ad69710c68e0da",
+      "reason": "Final review of mutable first-party agent technical text",
+      "profile": {
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ]
       }
     },
     {
@@ -40062,7 +40080,7 @@
     },
     {
       "path": "docs/sarah/README.md",
-      "sha256": "c95f732b0733590c99cd654d2bf50260fa6435a984c77b1e6fdd644287d7cbcf",
+      "sha256": "2e0b8713a1f455e3d83cb3ebcf04351a62b4090a2ddcfb9bcd601939ed0e7529",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

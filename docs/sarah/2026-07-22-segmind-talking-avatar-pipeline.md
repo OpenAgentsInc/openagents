@@ -143,23 +143,25 @@ node scripts/sarah-avatar/segmind-talking-avatar.mjs \
   --out ~/Downloads/sarah/sarah-intro-kling.mp4
 ```
 
-## Clip length and the lip-sync window (important)
+## Generation length and edit points
 
-`p-video-avatar` (Pruna) reliably drives the mouth for roughly the first 18 to
-20 seconds of audio. Past that window the viseme track runs out: the mouth
-freezes or drifts while the TTS audio keeps playing. A ~28 second take showed
-this — sync held through the reflective open and then broke near 20 seconds.
+Episode 261 proved that a long, continuous Sarah performance gives a better
+result than many short clips. Use the longest practical generation. Target a
+maximum duration of 60 seconds for each generation.
 
-Rule: keep each generated clip's spoken audio at or below about 15 seconds
-(roughly 35 to 40 words) so sync holds for the whole clip with margin. Build a
-full episode by generating one short clip per sentence or short beat, each with
-its own emotional direction, then assemble the clips in an editor. Do not push
-a single long take past the sync window and expect the mouth to keep up.
+Do not split a performance at each sentence. Split only when one of these
+conditions applies:
 
-- Short beat (safe): a single line or short sentence, about 8 to 15 seconds.
-- Never: a full paragraph in one generation for a produced, lip-synced clip.
-- Assembly: concatenate the short clips (a hard cut, a transition, or an
-  external B-roll clip at a natural beat) rather than relying on one long render.
+- A full-screen cutaway gives the editor a natural place to join two
+  performances.
+- The model or the service requires a shorter input.
+- A verified sync or quality defect makes a shorter generation necessary.
+
+When a full-screen cutaway exists, put the join below that cutaway. This method
+keeps Sarah's performance continuous and prevents an unnecessary visible cut.
+If a section is longer than 60 seconds, use the nearest full-screen cutaway as
+the preferred boundary. If there is no suitable cutaway, use the nearest
+natural change in the subject.
 
 ## How it works (Segmind Async Inference V2)
 

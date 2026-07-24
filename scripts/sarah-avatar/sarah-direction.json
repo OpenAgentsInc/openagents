@@ -23,7 +23,7 @@
     {
       "date": "2026-07-22",
       "note": "A ~28s take lost lip sync near 20 seconds — the mouth froze while the audio kept going.",
-      "applied": "The p-video-avatar viseme window is about 18-20s. Keep each clip's spoken audio at or below ~15s (about 35-40 words). Build a full episode from short per-sentence clips, each with its own emotional direction, then assemble in an editor — never one long take past the sync window. See docs/sarah/2026-07-22-segmind-talking-avatar-pipeline.md."
+      "applied": "This early result is superseded by the Episode 261 long-generation proof and the 2026-07-23 direction below."
     },
     {
       "date": "2026-07-23",
@@ -39,6 +39,11 @@
       "date": "2026-07-23",
       "note": "Owner wants Sarah less friendly and cheery, and more direct and precise, especially when she states the Claude and Anthropic threat.",
       "applied": "Kept Leda and the feminine voice anchor. Removed baseline warmth and the persistent half-smile. Sarah now uses precise declarative phrasing and a neutral expression. She states the Claude warning as a fact, with clean emphasis on \"Claude\" and \"worthy successor,\" without anger, relish, sarcasm, or theatrical menace. \"Shall we begin?\" is a controlled challenge, not a cheerful invitation."
+    },
+    {
+      "date": "2026-07-23",
+      "note": "Prefer generations that are as long as possible, up to 60 seconds, unless there is a full cutaway.",
+      "applied": "Use the longest practical continuous Sarah performance, with a target maximum of 60 seconds for each generation. Do not split at each sentence. Split at a full-screen cutaway, a service limit, or a verified quality defect. Put performance joins below full-screen cutaways when possible."
     }
   ]
 }

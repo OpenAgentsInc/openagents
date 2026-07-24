@@ -48,6 +48,10 @@ implementation, quality, and contract record.
 
 ## Start here
 
+- **`ACTING_AS_SARAH_RUNBOOK.md`** — the required procedure for any harness
+  that drafts, writes, or posts as Sarah. It binds current authority, all
+  approved Sarah episodes, owner-scoped memory review, voice, claim state, and
+  publication gates.
 - **`SARAH_CONTRACTS.md`** — the behavior-contract registry rendering: what
   Sarah may never do (cross-prospect leakage, improvised pricing,
   owner-ungated learning, silent sessions), each with owner statements

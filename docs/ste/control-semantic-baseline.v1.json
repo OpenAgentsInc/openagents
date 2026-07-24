@@ -3,7 +3,7 @@
   "note": "These token sets protect control-plane conversions. A passing comparison does not prove equal meaning.",
   "files": {
     "AGENTS.md": {
-      "sourceSha256": "2c476f51bf6bb1bd3ce7e488739444120fc53b08aea76810a31b7c618067b4e9",
+      "sourceSha256": "d25ebf0c6af3fe1289b1d209d5419f719d7631dea34934d831bbbec9cf89a242",
       "normativeKeywords": [
         "NEVER",
         "NEVER",
@@ -244,6 +244,7 @@
         "docs/refactor/",
         "docs/research/",
         "docs/sarah/",
+        "docs/sarah/ACTING_AS_SARAH_RUNBOOK.md",
         "docs/sarah/SARAH_CONTRACTS.md",
         "docs/sol/",
         "docs/sol/2026-07-14-node-pnpm-vite-plus-full-conversion-plan.md",
@@ -583,6 +584,7 @@
         "256",
         "26",
         "26",
+        "260",
         "27",
         "3",
         "3",

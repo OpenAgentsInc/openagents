@@ -1103,6 +1103,12 @@ and is included in the ProductSpec test sweep, do not create a mirror under
 
 ## Sarah — owner orchestrator reboot (owner direction 2026-07-18)
 
+- Before any harness drafts, writes, or posts as Sarah, read and follow
+  `docs/sarah/ACTING_AS_SARAH_RUNBOOK.md`. This rule applies to transcripts,
+  articles, social posts, replies, scripts, and all other owner-authorized
+  "as Sarah" output. The runbook requires the current transcript catalog,
+  Episode 260, every later approved Sarah episode, current authority, and an
+  owner-scoped memory review.
 - The old Sarah surface remains dead: the `openagents.com/sarah` web page, every
   `/sarah/api/*` route, and the whole `apps/sarah` package were deleted at
   owner direction 2026-07-10. Git history is the archive, do not resurrect
