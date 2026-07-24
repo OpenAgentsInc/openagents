@@ -1867,7 +1867,7 @@
       ]
     },
     "docs/sol/MASTER_ROADMAP.md": {
-      "sourceSha256": "6692f0ada7208bd8a3dc1a7a90fb5e18870d3053ac3091b27376fd4546bab0f8",
+      "sourceSha256": "bee511427d864aa6b458af40e9f141268a7d75aa16bbc598f91761b3080f4a39",
       "normativeKeywords": [],
       "inlineCode": [
         "/",
@@ -1914,7 +1914,6 @@
         "MVP AssuranceSpec",
         "MVP ProductSpec",
         "MVP README",
-        "ManagedRuntime",
         "Mobile any-host fleet controller",
         "Omega",
         "OpenChamber whole-product teardown",
@@ -1976,7 +1975,6 @@
         "not planned",
         "not planned",
         "not planned",
-        "omega-effectd",
         "open issue unified completion plan",
         "openagents.com trust surface",
         "openagents.mutation.v1",
@@ -2261,7 +2259,7 @@
         "13",
         "13",
         "13",
-        "133",
+        "134",
         "14",
         "14",
         "14",
@@ -2380,7 +2378,6 @@
         "23",
         "23",
         "23",
-        "24",
         "24",
         "24",
         "24",

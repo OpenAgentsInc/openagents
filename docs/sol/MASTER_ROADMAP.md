@@ -3,7 +3,7 @@
 - Class: authority
 - Date: 2026-07-10
 - Updated: 2026-07-23
-- Revision: 133
+- Revision: 134
 - Status: canonical OpenAgents implementation roadmap
 - Current queue: the
   [`open issue unified completion plan`](./2026-07-21-open-issue-unified-completion-plan.md)
@@ -247,16 +247,16 @@ AssuranceSpec program queue remains.
 2. **Sarah is an authenticated owner orchestrator, not a standalone app or public front door.** `/sarah/*` stays tombstoned, `principal.sarah` lives in the stable owner-private mobile thread and receives only exact brokered actions. The SBX-07 broker and SBX-09 acceptance are complete. SBX-10 does not create a public cloud claim or a generic administration surface.
 3. **Omega is the primary Desktop, IDE, and company workroom destination, mobile has the T3 ledger plus closed #8980 first-screen proof, and web is the public trust/API surface.** The current Electron application stays supported until the Omega cutover gate. Unpacketized expansion cannot preempt Full Auto.
 4. **Omega implements the useful Buzz outcomes natively.** Native GPUI workrooms keep conversation, code, reviews, decisions, agent work, approvals, and receipts together. Existing configured agents attach through explicit adapters and retain their custody boundaries. The separate Buzz installation and standalone relay and forge product are canceled.
-5. **The current Electron and independent mobile/web projections use Effect Native.** Omega uses the Zed and GPUI Rust substrate plus packaged Node 24 and `omega-effectd`. One generated protocol and one owner per domain prevent split authority.
+5. **Omega client code and reusable OpenAgents services have separate source homes.** The Omega repository owns the tracked Zed fork, Rust/GPUI client, and Omega-only integration. The OpenAgents monorepo owns consumable TypeScript packages, Effect services and contracts, current Electron migration code, React Native mobile, web, Pylon, and cloud services. Omega pins immutable monorepo artifacts. One generated protocol and one owner per domain prevent split authority.
 6. **Khala Sync is cross-device authority, not chat transport.** It carries owner-scoped projections and durable outcomes, local stores remain bounded caches/offline queues.
 7. **Sol owns dispatch sequence.** Fable's 2026-07-17 analysis is reconciled evidence and an outcome crosswalk, never a parallel queue.
-8. **Desktop and mobile remain greenfield OpenAgents destinations.** Deprecated clients are extraction sources, the accepted mobile identity and icon stay unchanged.
+8. **Omega and mobile are independent OpenAgents clients.** Omega is the tracked-fork Desktop destination in its own repository. React Native mobile stays in this monorepo unless a separate migration packet proves a better repository boundary. Deprecated clients are extraction sources, and the accepted mobile identity and icon stay unchanged.
 9. **Terra is a claimed execution lane under Sol.** Live claims select work, the [lane contract](./2026-07-10-terra-execution-lane.md) governs collisions and handoff.
 10. **Reference audits are evidence.** Only the exact owner-admitted T3/Amp packets authorize adaptation, source parity never bypasses target contracts or receipts.
 11. **Cross-device, mixed-fleet, and portability claims stay proof-rung bounded.** The completed MVP implies none of them.
 12. **Mobile expansion is exact-plan bounded.** The T3 ledger is active authority and #8980 is closed bounded evidence, Khala/T3 source behavior alone is not.
 13. **Remote workrooms are exact-admission substrate.** Closed proofs do not create a general remote-execution program, #9023 now admits only the named GCP managed-sandbox lifecycle, compatibility, IDE, Sarah, supervision, and proof packets.
-14. **Desktop is tokenless over one host-owned Runtime Gateway.** The renderer receives projections/emits closed intents, credentials, raw runtime, processes, and durable state stay host-owned.
+14. **Each client stays tokenless across its host boundary.** The current Electron renderer receives projections and emits closed intents through its host-owned Runtime Gateway. Omega GPUI uses its generated local protocol and Rust supervisor. Credentials, raw runtime, processes, and durable authority do not enter either view layer.
 15. **Active expansion is explicit.** Full Auto #8967, managed sandboxes #9023, release #8913, and the Amp/T3 ledgers own their bounded scopes, closed #8980 and prior tombstones are evidence, not queues.
 16. **Parent/subagent history is loss-accounted.** Every supported item renders once or becomes an explicit redaction/gap, provider-native history stays owner-local until typed adoption.
 17. **Predictable visible behavior is a release contract.** Paint, paging, failure/privacy, accessibility, restart, and host/device journeys need executable UX proof, media only demonstrates.
@@ -293,8 +293,7 @@ AssuranceSpec program queue remains.
     only path to assurance and release claims.
 ## Product and authority model
 
-**Active product:** OpenAgents is a local-first, ProductSpec-native company workbench. Omega is the primary Desktop and IDE destination.
-The current Electron application remains the supported deep host during migration. Mobile is the bounded remote controller/workbench, openagents.com is the public trust/API surface, and named Full Auto runs remain the flagship short-term journey.
+**Active product:** OpenAgents is a local-first, ProductSpec-native company workbench. Omega is the separate-repository primary Desktop and IDE. It consumes immutable monorepo artifacts. The current Electron app remains the migration host. Mobile remains the independent monorepo client, openagents.com remains the public trust/API surface, and named Full Auto runs remain the flagship short-term journey.
 
 **Dormant design horizon:** managed-target breadth beyond #9023, portable host
 movement/failback, concurrent Full Auto portfolios, autonomous provider
@@ -398,9 +397,10 @@ Desktop depth remains seven explicit acceptance gates:
 | D5   | Server-authoritative Fleet attention/control/outcomes/receipts                                                                          | Desktop/mobile show matching state and durable controls converge under replay/reconnect                                                                     |
 | D6   | Fuses, signing/notarization, install/update/rollback/recovery, legacy lockout, support diagnostics                                      | Clean machine completes install, first run, update/interruption/resume, rollback/reinstall, uninstall, and support export                                   |
 
-### Desktop host boundary
+### Current Electron host boundary during Omega migration
 
-- The Runtime Gateway is private host composition, not a public server, second
+- The current Electron Runtime Gateway is private host composition, not a
+  public server, second
   Pylon, claim registry, run database, or state authority.
 - Electron keeps sandbox/context isolation, `nodeIntegration: false`,
   restrictive CSP, deny-by-default permission/navigation/window-open policy,
@@ -440,9 +440,9 @@ The binding R1/R2 detail is
 - Optimistic/local state is explicit and reversible. Approval, stop, payment,
   claim, credential, and destructive actions are not committed before
   authoritative acknowledgement.
-- Desktop/mobile share one Effect Native domain, identifiers, enums, errors,
-  Sync semantics, intent IDs, and outcome grammar even where host capabilities
-  differ.
+- Omega, Electron, mobile, and web use versioned monorepo contracts for shared
+  identifiers, Sync semantics, intents, and outcomes.
+  They do not share a renderer or client-local store.
 
 ### Remote workrooms and portable sessions
 
@@ -653,9 +653,9 @@ that cites it.
    decide execution, credentials, money, policy, and terminal outcomes.
 5. **Private evidence, bounded projections.** Raw work stays on its owning
    plane, completion remains independently verifiable.
-6. **Effect Native for retained UI.** Shared components/intents move upstream,
-   hosts/renderers are capability boundaries. Deletion beats conversion for
-   retired surfaces.
+6. **Package-first TypeScript and native Omega UI.** Reusable TypeScript and
+   Effect code becomes consumable monorepo packages. Omega-only client code
+   stays in Omega. Other clients keep their renderers.
 7. **The exact MVP journey is the exit.** Placeholder panes, a secure shell,
    broad parity claims, or a Fleet cockpit do not satisfy #8756 or manufacture
    its numbered ProductSpec acceptance.
@@ -700,11 +700,10 @@ that cites it.
 21. **Effect scope direction is enforced.** Wider scopes never capture
     narrower authority, ambient cwd, AsyncLocalStorage, renderer paths, and
     module singletons do not select runtime authority.
-22. **One request processor, many transports.** Embedded, Electron, socket,
-    remote Pylon, mobile Sync, browser, and tests share decoding, WorkContext,
-    policy, handlers, transactions, events, and receipts. Public values reuse
-    canonical Effect Schema identity, `ManagedRuntime`, Promise, and native
-    bridges stay in named perimeter modules.
+22. **One request processor, many transports.** Embedded, Electron, Omega,
+    socket, remote Pylon, mobile Sync, browser, and tests use versioned
+    monorepo contracts for the same processor. Native bridges stay in named
+    perimeter modules.
 23. **Interruption is cancellation.** Provider/tool/subagent/stream/host/UI
     adapters preserve cancellation and run owned finalizers once, defects do
     not become success or recoverable tool failure.

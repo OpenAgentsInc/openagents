@@ -44,10 +44,20 @@ Rust through differential proof, atomic cutover, old-path deletion, and
 rollback.
 No domain can have two writable authorities.
 
+Omega now has a separate source-repository boundary.
+The tracked Zed fork, primary Desktop client, Rust and GPUI code, Omega-only
+workers, packaging, and upstream integration belong in the Omega repository.
+The OpenAgents monorepo will define and produce selected consumable TypeScript
+packages, Effect services, Effect Schema contracts, generated-client sources,
+and conformance fixtures that Omega consumes as immutable versioned artifacts.
+The current Electron client, React Native mobile client, web app, Pylon, and
+cloud services can remain in the monorepo because they have separate runtime
+and release boundaries.
+
 ## Decision
 
-OpenAgents can use much more Rust in the Desktop codebase.
-OpenAgents should test this direction now.
+Omega can use much more Rust in its dedicated repository.
+The migration must prove this direction.
 The first target should be a medium Rust Nostr engine, not a full Buzz port.
 
 OpenAgents should also test a stronger product thesis.
@@ -66,18 +76,12 @@ This split is larger than the current small Rust helper model.
 It is still one product with one authority model.
 It is not a second application core.
 
-OpenAgents should also test a Zed fork.
-That test must stay separate from the current Desktop.
-A Zed fork is a native-shell and license decision.
-It is not an efficient way to import some editor widgets.
-
-The recommended evaluation has two candidates:
-
-1. Add a Rust Nostr engine below the current Electron and Effect host.
-2. Make an isolated GPL Zed fork that connects to OpenAgents services.
-
-The same product journey must test both candidates.
-The result must decide the future shell.
+The owner selected the Zed fork after the comparison in this analysis.
+The fork must stay separate from the current Electron source.
+It now lives in the dedicated Omega repository and consumes versioned
+OpenAgents services and contracts.
+The comparison remains migration and regression evidence.
+It no longer decides the future shell.
 
 This analysis does not revise a ProductSpec.
 It does not admit Rust crates or copied source.
@@ -115,11 +119,13 @@ These tasks form a protocol and data plane.
 They are not only small OS calls.
 A supervised Rust process can own this plane and not own product semantics.
 
-OpenAgents already has Rust and Effect in one repository.
-The root Cargo workspace contains Cloud crates.
-Desktop also packages the `oa-desktop-audio` Rust helper.
+The OpenAgents monorepo already showed that Rust and Effect toolchains can
+coexist.
+Its root Cargo workspace contains Cloud crates.
+The current Electron client also packages the `oa-desktop-audio` Rust helper.
 This proves that the toolchains can coexist.
-It does not prove that two application authorities are safe.
+It does not select the Omega source repository or prove that two application
+authorities are safe.
 
 The current Rust exception is too narrow for this proposal.
 The current ProductSpec, invariants, and IDE roadmap must change before
@@ -179,8 +185,9 @@ It can still use the correct authority for each action.
 | accepted OpenAgents command and outcome | Effect command processor |
 | thread and fleet product state | Khala Sync and current service authority |
 | provider, harness, and worktree execution | Pylon and current runtime services |
-| file, document, Git, terminal, and IDE state | Effect project graph |
-| user interface and product projection | Effect Native |
+| file, document, Git, terminal, and IDE state | Omega Rust project graph |
+| primary Desktop user interface and product projection | Omega GPUI |
+| product contracts, policy, commands, approvals, and shared projections | Monorepo Effect services |
 | public proof | admitted receipt and evidence compiler |
 
 A relay acceptance is not an IDE save.
@@ -448,11 +455,12 @@ The initial scope should not include:
 
 ## The proposed Rust boundary
 
-The first Rust program should be a supervised Desktop engine.
+The first Rust program should be a supervised Omega-native engine in the Omega
+repository.
 This analysis uses `oa-nostrd` as a temporary name.
 
 The process should have a versioned contract.
-Effect Schema should remain the contract source.
+Effect Schema in the OpenAgents monorepo should remain the contract source.
 Generated fixtures must test the Rust decoder.
 
 The process can own:
@@ -483,7 +491,7 @@ The process must not own:
 
 Use a process boundary.
 Do not use FFI, N-API, or a linked native module.
-The process must not share the Electron address space.
+The process must not share the fatal GPUI application domain.
 
 The protocol needs:
 
@@ -497,10 +505,11 @@ The protocol needs:
 - crash and incompatible-version states
 - contract fixtures in both languages
 
-The current Desktop build has one special audio-binary path.
-The new work should first add a native component manifest.
+The current Electron build has one special audio-binary path.
+Omega should first add a native component manifest in its repository.
 That manifest should describe each binary and target.
-It should also describe its protocol, hash, signature, and rollback.
+It should also bind the OpenAgents monorepo commit, consumed package and
+service artifacts, protocol, hash, signature, and rollback.
 
 ## What to port from Buzz
 
@@ -526,6 +535,9 @@ The audit estimates 12,000 to 18,000 Rust lines.
 
 These parts need new OpenAgents names and boundaries.
 They also need a file-level provenance record.
+Native-client crates belong in the Omega repository.
+Reusable TypeScript semantics and canonical Effect contracts belong in the
+OpenAgents monorepo.
 Do not keep Buzz product policy in generic event code.
 
 ### Adapt as algorithms
@@ -543,7 +555,7 @@ Do not copy Tauri command handlers.
 Do not create a second Khala Sync database.
 Do not infer channel security from event tags.
 
-### Keep outside the Desktop core
+### Keep outside the Omega core
 
 - `buzz-relay`
 - `buzz-db`
@@ -558,7 +570,7 @@ Do not infer channel security from event tags.
 
 These parts assume Buzz server policy.
 They also assume Postgres, Redis, object storage, or Tauri state.
-OpenAgents should keep hosted Buzz external during the first client test.
+OpenAgents will not operate hosted Buzz as a separate product.
 
 The small Buzz WebSocket client is only seed evidence.
 It does not provide a complete relay pool.
@@ -623,7 +635,7 @@ Direct Zed reuse is coherent only as a fork of the application.
 That fork would replace the current shell.
 It would also replace many release and accessibility proofs.
 
-The isolated Zed test should:
+The Omega implementation should:
 
 1. Select a fresh exact Zed pin.
 2. Keep the stock project and editor architecture.
@@ -632,8 +644,8 @@ The isolated Zed test should:
 5. Keep OpenAgents product authority in the service contract.
 6. Measure the same end-to-end journey as the current Desktop.
 
-Do not copy this spike into `apps/openagents-desktop`.
-Keep it in an isolated experiment until a decision.
+Do not copy the fork into `apps/openagents-desktop`.
+Create and maintain it in the dedicated Omega repository.
 
 A Zed fork can win only if the owner accepts:
 
@@ -651,11 +663,12 @@ Legal review must decide the distribution model.
 
 ## Comparison test
 
-Three builds should run the same journey:
+The migration comparison should run the same journey in these subjects:
 
 1. Current Electron and Effect Desktop.
-2. Electron and Effect with the Rust Nostr engine.
-3. The isolated Zed fork with OpenAgents and Nostr clients.
+2. Omega with pinned OpenAgents Effect-service artifacts.
+3. An optional current-Electron Nostr helper build when it supplies useful
+   differential protocol evidence.
 
 The journey is:
 
@@ -759,7 +772,7 @@ supported release while the owner reviews the Omega plan.
 
 | Risk | Reversal test |
 | --- | --- |
-| Rust becomes a second product core | Stop when Rust starts to define commands, approvals, projects, or receipts |
+| Rust becomes a second product authority | Stop when Rust starts to define unadmitted product commands, approvals, policy, or receipts |
 | Nostr and Khala become rival truths | Stop when one user action can settle differently in both stores |
 | A channel becomes command authority | Stop when membership or a signed post can start work without Effect admission |
 | Relay history appears complete when it is partial | Stop when the user interface hides gaps, relay scope, or replay state |
@@ -811,9 +824,14 @@ The test should treat the work channel as a durable context view.
 It should connect people, agents, decisions, code, proof, approval, and
 delivery.
 
-OpenAgents can port selected Buzz Rust into the Desktop repository.
+OpenAgents can port selected native-client Buzz Rust into the Omega repository.
 It should port a coherent Nostr protocol engine.
 It should not copy the Buzz application or relay server.
+
+The OpenAgents monorepo should produce the reusable Effect and TypeScript
+substrate as immutable versioned artifacts.
+Omega should consume those artifacts as a pinned client.
+Mobile and web remain separate clients and must not depend on Omega internals.
 
 OpenAgents can also use good Rust from Codex and Grok Build.
 It should extract small mechanics with exact provenance.

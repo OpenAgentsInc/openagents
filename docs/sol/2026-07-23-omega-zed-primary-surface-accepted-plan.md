@@ -4,9 +4,9 @@
 - Status: active
 - Date: 2026-07-23
 - Updated: 2026-07-23
-- Plan revision: 2
+- Plan revision: 3
 - Owner authority: current owner conversation
-- Base commit: `db331e6d1770041fc1c25b8e934a70d0ea01faf4`
+- Base commit: `c348abb746f70d58f240e8f24a7f6f4ce802f239`
 - Dispatch: plan and contract admission only
 - Product name: Omega
 - Primary surface: OpenAgents Desktop and IDE
@@ -21,6 +21,10 @@
 
 OpenAgents will make Omega its primary Desktop and IDE destination.
 Omega will start as a tracked fork of Zed.
+The fork and all primary Desktop client code will live in a separate Omega
+repository.
+Omega will not be a subtree, workspace member, or client package in this
+monorepo.
 OpenAgents will use the complete Zed editor and project substrate.
 It will not recreate that substrate in the current Electron shell.
 
@@ -50,37 +54,134 @@ until Omega passes the cutover gates in this plan.
 3. OpenAgents will keep a tracked upstream relationship.
    The fork must have a small owned patch, a rebase budget, and an update
    record.
-4. Omega Rust will own the native application core. This core includes editor,
+4. The tracked Zed fork and all Omega client implementation will live in a
+   separate Omega repository.
+5. The OpenAgents monorepo will own reusable TypeScript packages and Effect
+   services.
+   It will also own Effect Schema contracts, generated-client sources,
+   conformance fixtures, and platform adapters.
+   Omega and other clients can consume these artifacts.
+6. Omega Rust will own the native application core. This core includes editor,
    buffer, project, language, Git, terminal, task, extension, local and remote
    IDE, ACP process, and native enforcement mechanics.
-5. A packaged Node 24 and Effect service will run beside the Rust application.
+7. A packaged Node 24 and Effect service will run beside the Rust application.
    It will first host the current OpenAgents product control plane while the
    migration moves suitable storage, runtime, and native enforcement into Rust.
-6. Effect will continue to define ProductSpec and AssuranceSpec contracts,
+8. Effect will continue to define ProductSpec and AssuranceSpec contracts,
    policy composition, action semantics, and typed coordination where Effect is
    the stronger implementation.
-7. Rust can own durable state, runtime state machines, credential custody,
+9. Rust can own durable state, runtime state machines, credential custody,
    receipts, and other product domains after an admitted packet proves semantic
    parity and one-authority cutover. Rust does not gain authority only because
    code moves to Rust.
-8. Rust and Effect will use one generated, versioned process protocol.
+10. Rust and Effect will use one generated, versioned process protocol.
    They will not keep two project, document, thread, run, command, or receipt
    stores synchronized by convention.
-9. A supervised Rust Nostr component can own protocol mechanics, local event
-   storage, relay sessions, replay, and signature operations.
-   A typed OpenAgents admission still decides what those facts mean.
-10. Omega will reproduce the useful Buzz workroom behavior in native GPUI
+11. A supervised Rust Nostr component can own protocol mechanics, local event
+    storage, relay sessions, replay, and signature operations.
+    A typed OpenAgents admission still decides what those facts mean.
+12. Omega will reproduce the useful Buzz workroom behavior in native GPUI
     panes.
     It will not run Buzz as a second product, relay, forge, or authority.
-11. Mobile and web will continue to use the same durable OpenAgents work record.
-   They will not depend on Zed state.
-12. ProductSpec, AssuranceSpec, invariants, release contracts, and repository
+13. Mobile and web will continue to use the same durable OpenAgents work record.
+    They will not depend on Zed state.
+14. ProductSpec, AssuranceSpec, invariants, release contracts, and repository
     law must change through their own admitted packets before product-code
     migration or primary cutover.
-13. Omega will support bring-your-own agents.
+15. Omega will support bring-your-own agents.
     An existing agent can attach through ACP or another admitted adapter.
     Omega must preserve the agent's existing configuration and show the exact
     capability boundary.
+
+## Repository and package boundary
+
+The Omega repository starts as the tracked Zed fork.
+It owns:
+
+- the Zed source tree, upstream remotes, pins, patches, and merge records
+- Omega Rust, GPUI panes, client state, native commands, and desktop-only
+  workers
+- Omega-only adapters, application assets, packaging, updates, and release
+  integration
+- the Rust side of the generated local protocol and the supervisor that starts
+  the packaged Node service
+- Omega client tests, accessibility proof, performance proof, and release proof
+
+The OpenAgents monorepo owns reusable platform code.
+It will define and produce selected consumable TypeScript packages, Effect
+services and layers, Effect Schema contracts, generated-client sources,
+conformance fixtures, shared runtimes, and cloud-service adapters.
+It also owns `openagents.com`, Pylon, cloud services, and independent clients
+that do not belong in the Zed-derived Desktop application.
+
+Not every current workspace package is ready for cross-repository use.
+OMEGA-01 and OMEGA-03 must define a supported export surface for each selected
+package.
+Each artifact must have compiled JavaScript and declarations.
+It must have concrete dependency versions, provenance, and a software bill of
+materials.
+It must also have compatibility tests, an immutable version, and a digest
+before Omega consumes it.
+An acceptance or release build cannot depend on a relative path into this
+monorepo or on an unpublished `workspace:*` edge.
+
+The dependency direction is from Omega to released OpenAgents artifacts.
+A shared monorepo package must not depend on Omega client internals.
+Omega must pin exact package or service artifacts in its lock and component
+manifest.
+It must not copy shared TypeScript or Effect source into the fork.
+The canonical process schema stays in the monorepo.
+Omega consumes generated Rust bindings or another immutable Rust contract
+artifact and does not maintain a second handwritten schema.
+
+The source for the reusable `omega-effectd` service stays in the OpenAgents
+monorepo.
+The current Electron client can consume its workspace build during extraction.
+The Omega repository owns the thin bootstrap, supervisor, and package
+integration for the released service artifact.
+One compatibility manifest binds both repository commits, OpenAgents package
+versions and digests, the generated protocol version, Node version, and data
+schema version.
+
+Client code can stay in the monorepo only when it has a separate runtime and
+release boundary that makes placement in Omega incorrect.
+Each exception must name its client owner, shared package edges, release path,
+and migration or retirement gate.
+An exception cannot create a second primary Desktop.
+
+The current exceptions are:
+
+- `apps/openagents-desktop` remains as the supported Electron migration,
+  compatibility, and rollback client.
+  It can receive already-admitted closure work and required security,
+  reliability, release, extraction, migration, and rollback changes.
+  New primary Desktop product work belongs in Omega.
+- `apps/openagents-mobile` remains the React Native and Expo mobile client.
+  It consumes monorepo packages directly and has its own native, OTA, signing,
+  and store-release path.
+  It does not depend on GPUI, Zed state, or an Omega-local store.
+- `apps/openagents.com` remains the web and public trust surface.
+  Pylon and cloud services remain service or operator surfaces, not Omega
+  client code.
+
+Omega becoming the primary Desktop client is not a reason to move mobile into
+the Omega repository.
+A later mobile move requires a separate accepted migration packet.
+That packet must replace all workspace-only dependencies with immutable
+artifacts.
+It must transfer Expo, native build, OTA, signing, provenance, test, and
+rollback ownership.
+It must preserve one shared authority.
+It must prove that the new repository has more value than atomic cross-client
+changes.
+
+If mobile moves, it will normally use its own repository instead of entering
+the Zed fork.
+
+Shared logic must stay independent of GPUI, Electron renderer, React Native,
+and web rendering.
+Client components stay with their owning client unless an accepted packet
+proves a portable component boundary.
 
 ## The Cursor lesson
 
@@ -129,14 +230,16 @@ Omega must support this complete journey:
 ## Architecture boundary
 
 ```text
-Omega Rust application
+Omega repository
+  Omega Rust application
   GPUI, editor, buffer, project, Git, language, terminal, tasks,
   local/remote IDE, ACP client, native enforcement, OS credential broker,
   component supervisor, Rust-owned stores
                          |
        one generated, versioned local process protocol
                          |
- packaged Node 24 + omega-effectd
+ packaged Node 24 + omega-effectd artifact
+  published from the OpenAgents monorepo and pinned by Omega
   ProductSpec and AssuranceSpec contracts, workroom coordination,
   policy composition, approvals, provider rules, Full Auto product
   logic, Sync/cloud adapters, and not-yet-migrated durable services
@@ -147,6 +250,7 @@ Omega Rust application
 ```
 
 This is one product with two supervised processes.
+It is not one source repository.
 The app package includes an exact Node 24 component and the compiled
 `omega-effectd` program.
 Omega Rust launches the service and binds it to an inherited standard-I/O or
@@ -424,18 +528,18 @@ consensus.
 
 | Packet | Outcome | Dependency | Dispatch state |
 | --- | --- | --- | --- |
-| OMEGA-00 | Freeze fork topology and an exact Zed pin. Freeze license, provenance, source, patch, upstream-merge, and deletion records. Prove a clean stock build. | this plan | not admitted for mutation |
-| OMEGA-01 | Write the Omega ProductSpec delta and complete contract crosswalk. Assign each domain to Rust, Node/Effect, or an isolated worker. Select the single store and generated protocol source for each shared identity. Propose repository-law and invariant changes. | OMEGA-00 | not admitted |
+| OMEGA-00 | Create and admit the separate Omega tracked-fork repository. Freeze an exact Zed pin, upstream remotes, branch policy, license, provenance, source, patch, merge, source-delivery, deletion, and cross-repository receipt records. Prove a clean stock build in that repository. | this plan | not admitted for mutation |
+| OMEGA-01 | Write the Omega ProductSpec delta and complete contract crosswalk. Assign each domain to Rust, Node/Effect, or an isolated worker, and assign its source repository and artifact owner. Select the single store and generated protocol source for each shared identity. Define the package export, version, digest, dependency-direction, and conformance rules. Propose repository-law and invariant changes. | OMEGA-00 | not admitted |
 | OMEGA-02 | Write the Omega AssuranceSpec delta, common journey, threat model, benchmark, accessibility checks, release checks, process-failure checks, and independent-verifier rules. | OMEGA-01 | not admitted |
-| OMEGA-03 | Extract the current Electron-main product control plane into packaged Node 24 `omega-effectd`. Keep current Desktop as its first client and preserve exact behavior. | OMEGA-01/02 | not admitted |
-| OMEGA-04 | Add the Omega Rust service supervisor and separate generated `omega-openagents` protocol. Add component handshake, local capability, version ranges, refs, generations, hard frame limits, bounded queues, backpressure, cancellation, overload, gap, restart, health, and conformance fixtures. Start read-only. | OMEGA-03 | not admitted |
-| OMEGA-05 | Move admitted local process, native enforcement, credential-custody, update, event-store, or receipt mechanics to Rust in bounded packets. Each port uses differential replay and deletes the old authority path at cutover. | OMEGA-04 | not admitted |
-| OMEGA-06 | Port the durable workroom, thread, provider, harness, and Full Auto product projections to GPUI. Execute the OMEGA-WR fast path below. Keep each exact authority in its OMEGA-01 owner. | OMEGA-04/05 | not admitted |
-| OMEGA-07 | Join the workroom to the Zed project, editor, Git, language, review, and terminal graph. Prove immediate file open, OS association, project movement, and editor/workroom mode change. | OMEGA-06 | not admitted |
-| OMEGA-08 | Add the Omega-native social and optional Nostr interoperability core. Prove signer isolation, relay gaps, offline replay, identity, reputation, evidence, Git facts, extension-host isolation, and an authority that cannot expand. Do not deploy Buzz. | OMEGA-04/05/06 | not admitted |
-| OMEGA-09 | Preserve local and managed placement plus mobile and web control over the same work record. | OMEGA-06/07 | not admitted |
+| OMEGA-03 | In the OpenAgents monorepo, extract, test, and produce the consumable Node 24 `omega-effectd` service and required TypeScript packages. Keep current Desktop as the first workspace consumer. In the Omega repository, pin and package the immutable service artifact. Preserve exact behavior. | OMEGA-01/02 | not admitted |
+| OMEGA-04 | In the Omega repository, add the Rust service supervisor and consume the separate generated `omega-openagents` protocol. In the monorepo, keep the canonical schema, fixtures, and generated-client sources. Add component handshake, local capability, version ranges, refs, generations, hard frame limits, bounded queues, backpressure, cancellation, overload, gap, restart, health, and conformance fixtures. Start read-only. | OMEGA-03 | not admitted |
+| OMEGA-05 | In the Omega repository, move admitted local process, native enforcement, credential-custody, update, event-store, or receipt mechanics to Rust in bounded packets. Each port uses differential replay and deletes the old authority path at cutover. Reusable Effect semantics remain monorepo packages until their own admitted cutover. | OMEGA-04 | not admitted |
+| OMEGA-06 | In the Omega repository, port the durable workroom, thread, provider, harness, and Full Auto product projections to GPUI. Execute the OMEGA-WR fast path below. Keep portable contracts and services in monorepo packages and each exact authority in its OMEGA-01 owner. | OMEGA-04/05 | not admitted |
+| OMEGA-07 | In the Omega repository, join the workroom to the Zed project, editor, Git, language, review, and terminal graph. Prove immediate file open, OS association, project movement, and editor/workroom mode change. | OMEGA-06 | not admitted |
+| OMEGA-08 | In the Omega repository, add the Omega-native social and optional Nostr interoperability core. Keep reusable schemas and semantic fixtures in the monorepo. Prove signer isolation, relay gaps, offline replay, identity, reputation, evidence, Git facts, extension-host isolation, and an authority that cannot expand. Do not deploy Buzz. | OMEGA-04/05/06 | not admitted |
+| OMEGA-09 | Preserve local and managed placement plus mobile and web control over the same work record. Keep React Native mobile and web independent of Omega source, GPUI, and local state. | OMEGA-06/07 | not admitted |
 | OMEGA-10 | Migrate versioned user data without credential export. Quiesce active runs, preserve stable refs, prove export, import, rollback, and N-1 Electron recovery. | OMEGA-06/08/09 | not admitted |
-| OMEGA-11 | Build the complete signed target matrix and compatible Rust, remote-server, Node, Effect, Nostr, extension-host, worker, and protocol component envelope. Prove target-specific companion discovery, GPL source delivery, update, rollback, recovery, accessibility, performance, and owner acceptance. | OMEGA-00 through OMEGA-10 | not admitted |
+| OMEGA-11 | Build the complete signed target matrix and cross-repository compatibility manifest for Rust, remote-server, Node, Effect, Nostr, extension-host, worker, packages, and protocol artifacts. Bind both repository commits and every artifact digest. Prove target-specific companion discovery, GPL source delivery, update, rollback, recovery, accessibility, performance, and owner acceptance. | OMEGA-00 through OMEGA-10 | not admitted |
 | OMEGA-12 | Make Omega the primary release and retire the Electron shell only after the rollback window and final disposition. | OMEGA-11 | owner gate |
 
 Each implementation packet requires a current claim, exact paths, hot contracts,
@@ -449,6 +553,9 @@ This path puts the workroom in Omega early.
 It does not wait for every later Rust migration.
 It uses the minimum `omega-effectd` and protocol slice that can preserve one
 authority and one durable work record.
+Native panes and Omega-only adapters land in the Omega repository.
+Portable contracts, Effect services, projections, and conformance fixtures
+land as consumable monorepo packages.
 
 | Packet | Outcome | Dependency | Dispatch state |
 | --- | --- | --- | --- |
@@ -460,7 +567,7 @@ authority and one durable work record.
 | OMEGA-WR-05 | Add receipts, blockers, decisions, workflow approval steps, and structural loop prevention. | WR-02/04 | not admitted |
 | OMEGA-WR-06 | Add signed identity, owner-readable memory status, and optional Nostr input and projection adapters. | WR-02/03/05 and OMEGA-08 | not admitted |
 | OMEGA-WR-07 | Add multi-user membership, moderation, tombstones, Forum projection, and public-safe social views. | WR-02/05/06 | not admitted |
-| OMEGA-WR-08 | Move OpenAgents daily coordination into the proven Omega workroom. Keep GitHub as the monorepo origin until a separate cutover passes. | WR-01 through WR-07 | owner dogfood gate |
+| OMEGA-WR-08 | Move OpenAgents daily coordination into the proven Omega workroom. Keep GitHub as source and claim authority for both repositories until a separate cutover passes. Do not route Omega source through the monorepo. | WR-01 through WR-07 | owner dogfood gate |
 
 The first useful dogfood target is WR-01 through WR-04.
 The team must open a workroom and attach Hermes or another existing agent.
@@ -508,7 +615,10 @@ Before OMEGA-03:
 - admit the Omega ProductSpec and AssuranceSpec
 - reconcile Desktop, Full Auto, IDE, mobile, and release contracts
 - revise repository law and invariants through their own review
-- choose the supported source path or repository for the GPL fork
+- create and admit the dedicated Omega repository and its tracked Zed upstream
+- define the supported monorepo package and service export surfaces
+- prove immutable artifact versions, digests, concrete dependencies,
+  provenance, and cross-repository conformance
 - define the stable product, bundle, channel, tag, state-root, and migration
   identity
 
@@ -530,6 +640,9 @@ Before OMEGA-11:
 - pass the complete Desktop target matrix required by current release authority
 - bind Omega, Node 24, `omega-effectd`, and native components to one signed
   compatibility and rollback record
+- bind the Omega commit, OpenAgents monorepo commit, package versions and
+  digests, generated protocol version, and schema version in each release
+  receipt
 - supply GPL Corresponding Source, notices, build instructions, and source
   receipts after legal review
 - pass the same ProductSpec and AssuranceSpec journey in the current Desktop
@@ -562,6 +675,11 @@ They do not become Omega evidence.
 | --- | --- |
 | The fork becomes an uncontrolled product | The owned patch or merge conflict rate exceeds the accepted budget. |
 | GPL duties do not fit the release | Legal review or source-delivery proof does not accept the release model. |
+| Repository dependency reverses | A monorepo package imports Omega client code or requires the Zed fork. |
+| Omega copies shared source | Stop when Omega copies TypeScript or Effect service source. |
+| Package and protocol versions drift | A build or receipt cannot bind both repository commits and all package, service, generated-protocol, and schema versions. |
+| Omega code enters the monorepo | Stop when new Omega-only code lands in the monorepo. |
+| A second Desktop grows | Stop when a monorepo client gets new primary Desktop work. |
 | Rust and Effect create split product authority | A domain has two writable authoritative stores or can settle differently in Rust and Node. |
 | Omega is one fatal domain | An editor, Git, index, Nostr, or agent fault can terminate the complete durable work record. |
 | The bridge creates split authority | Electron, Omega, mobile, or web can settle one action differently. |
@@ -580,6 +698,11 @@ This plan does not:
 - authorize product-code mutation
 - authorize a public availability, parity, or replacement claim
 - authorize release, production enablement, spend, or credential export
+- place the Zed fork, Omega GPUI code, or new Omega client implementation in
+  the OpenAgents monorepo
+- copy monorepo package or Effect-service source into Omega
+- move React Native mobile into Omega without a separate accepted client
+  migration
 - move a product domain to Rust without semantic proof and one-authority cutover
 - make a relay the company database or command authority
 - import the complete Buzz server, relay, Tauri, or Flutter application
@@ -630,3 +753,25 @@ OMEGA-00 and later packets require new implementation claims.
 This claim ends after both documentation commits land on `main`, the canceled
 issues have terminal comments, and the task worktrees and branches are
 reconciled.
+
+## Plan revision 3 claim
+
+- Actor: `codex-root-omega-repository-boundary-20260723`
+- Claimed at: `2026-07-23T23:54:44Z`
+- Base: `c348abb746f70d58f240e8f24a7f6f4ce802f239`
+- Branch: `codex/omega-repository-boundary`
+- Worktree:
+  `/Users/christopherdavid/work/openagents-worktrees/omega-repository-boundary`
+- Scope: define the separate Omega repository, consumable monorepo package and
+  Effect-service boundary, Electron migration exception, and independent mobile
+  placement
+- Hot contracts: Sol master roadmap, Omega plan, mobile plan, Sol document
+  manifest, and STE inventory
+- Excluded contracts: ProductSpec, AssuranceSpec, `AGENTS.md`, `INVARIANTS.md`,
+  release specifications, package manifests, lockfile, and product code
+- Verification: Sol document checks, STE checks, internal-link checks, and
+  changed-file review
+
+This claim ends after the documentation commit lands on `main`.
+OMEGA-00 and later packets require new implementation claims in the repository
+that owns each packet.

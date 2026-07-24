@@ -1,6 +1,10 @@
 # Bun Effect Monorepo Reset
 
 Date: 2026-06-09
+Class: historical reset plan
+Status: complete historical record
+Current Desktop repository placement: superseded by the
+[`Omega accepted plan`](../sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md)
 
 ## Decision
 
@@ -10,6 +14,24 @@ for the active OpenAgents product stack.
 The old Cargo/Tauri/pruned-MVP tree has been removed from the current working
 tree. The retained historical material is `docs/transcripts/`. The Git history
 remains the archive for deleted tracked files.
+
+## Current repository boundary
+
+The reset remains the origin of the current OpenAgents monorepo.
+It no longer means that all client source belongs in this repository.
+
+The monorepo will define and produce selected consumable TypeScript packages,
+Effect services and layers, Effect Schema contracts, generated-client sources,
+shared runtimes, and cloud adapters.
+It also retains web, Pylon, cloud services, the current Electron migration
+client, and the independent React Native mobile client.
+
+The primary Desktop client is Omega in a separate tracked Zed-fork repository.
+Omega consumes immutable versioned monorepo artifacts.
+It does not live in this workspace and does not copy reusable TypeScript or
+Effect source.
+The current Electron application remains only for admitted closure, support,
+extraction, migration, compatibility, and rollback work.
 
 ## Imported Sources
 
