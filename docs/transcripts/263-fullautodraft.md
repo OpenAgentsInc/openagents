@@ -602,17 +602,39 @@ Each spoken claim, and what must be true before it may be recorded. This is the
 runbook's honesty gate applied line by line. Update the state column as
 capability lands.
 
-| Spoken claim | Required before it may be spoken | State at 2026-07-24 |
-| --- | --- | --- |
-| "This is the workroom" | the Omega workroom pane exists and renders conversation, activity, and receipts | planned, `OMEGA-SW-03` |
-| "Full Auto is on... since he left" | a genuinely unattended multi-hour run on an installed candidate | partially proven, `omega#26` open |
-| "Several ChatGPT accounts. Claude. Grok." | multi-account, multi-provider capacity visible and routable in Omega | Pylon has the account pool; the Omega surface is not proven |
-| "It ran out. It moved." | a live cross-provider handoff mid-objective with transcript evidence | implemented, item 5 of the `omega#26` matrix, unproven live |
-| "recorded the error, recovered, and continued" | typed stall and recovery rather than silent death, replayed | item 1 of the matrix, the 2026-07-17 incident shape |
-| "These objectives are OpenAgents issues" | Full Auto running real repository work, not a fixture | required, and the falsifier if faked |
-| "The change. The test. The verification. The receipt." | the receipt inspector and an end-to-end evidence chain | planned, `OMEGA-SW-05` |
-| "away for [exact duration]" | a real measured elapsed time from the run record | fill in at recording, never estimate |
-| "from his phone" | mobile pause/resume/stop with typed outcomes | item 7 of the matrix |
+| Spoken claim | Required before it may be spoken | Issue | State at 2026-07-24 |
+| --- | --- | --- | --- |
+| "This is the workroom" | the Omega workroom pane renders conversation, activity, and receipts | `omega#34` | planned |
+| "conversation, agents, work, and receipts are one place" | Full Auto runs appear **inside** the workroom, not a separate panel | `omega#41` | **gap, opened 2026-07-24** |
+| "Full Auto is on... since he left" | a genuinely unattended multi-hour run on an installed candidate | `omega#26` | partially proven, open |
+| "Several ChatGPT accounts. Claude. Grok." | a connected-account roster visible in Omega, mapped to lanes | `omega#42` | **gap, opened 2026-07-24** |
+| "It ran out. It moved." | a live cross-provider handoff mid-objective with transcript evidence | `omega#26` item 5 | implemented, unproven live |
+| "recorded the error, recovered, and continued" | typed stall and recovery rather than silent death, replayed | `omega#26` item 1 | the 2026-07-17 incident shape |
+| "These objectives are OpenAgents issues" | Full Auto running real repository work, not a fixture | `omega#26` item 2 | required, and the falsifier if faked |
+| "The change. The test. The verification. The receipt." | an end-to-end evidence chain for one completed work unit | `omega#43` | **gap, opened 2026-07-24** |
+| "away for [exact duration]" | measured elapsed unattended time read from the run record | `omega#41` | fill in at recording, never estimate |
+| "from his phone" | mobile pause/resume/stop with typed outcomes | `omega#26` item 7 | implemented, unproven live |
+
+### The three gaps
+
+Completing the already-open issues is **not** enough to record this episode.
+An audit on 2026-07-24 compared every line above against the issue set and
+found three capabilities with no owner:
+
+1. **`omega#41`** — Full Auto runs shown inside the Sarah workroom. Today
+   `crates/full_auto_ui` is its own dock panel and the Sarah pane does not
+   exist yet. Nothing joins them, so a viewer would see two unrelated panels
+   while Sarah says they are one place.
+2. **`omega#42`** — a connected-account roster in Omega. `OMEGA-FA-04` built
+   the routing engine and the panel shows capacity **lanes**, but a lane is
+   not an account, and connecting one is still a command-line action. This is
+   the founder's loudest complaint in part one, so it cannot be missing from
+   part two.
+3. **`omega#43`** — the work-unit evidence chain. `OMEGA-FA-05` produces
+   digests and counts by design, and `OMEGA-SW-05` inspects Sarah's authority
+   decisions, which is a different object. Nothing opens change, test,
+   verification, and receipt as one chain — and that is the episode's
+   strongest claim.
 
 **The rule:** if the ledger is not green for a line, cut the line. Do not
 re-word a planned capability into something that sounds shipped. A shorter
