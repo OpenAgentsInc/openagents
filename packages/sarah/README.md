@@ -96,6 +96,22 @@ Source: `packages/sarah/src/community/work-units.ts`.
 Spec: `docs/omega/2026-07-24-sarah-workroom-mvp-spec.md` §33 and §38.2.
 Issue: OpenAgentsInc/openagents#9225.
 
+## NIP-LBR request and quote lane (`SARAH-CW-04`)
+
+`@openagentsinc/sarah/lbr-request-quote` composes budgeted community work
+requests (kind `5934`) and provider quotes (kind `7000`) for the v2 community
+workroom. Protocol validation stays in `@openagentsinc/nip90` / `docs/nips/LBR.md`.
+This module only adds work-unit grant binding, the v1 `no_spend` settlement
+fence, NIP-40 expiration, and Sarah-grant refusal.
+
+```sh
+pnpm --dir packages/sarah test -- src/lbr-request-quote/lbr-request-quote.test.ts
+node fixtures/sarah-lbr-request-quote/validate.mjs
+```
+
+Spec: `docs/omega/2026-07-24-sarah-workroom-mvp-spec.md` §32. Fixtures:
+`fixtures/sarah-lbr-request-quote/`.
+
 ## Experience points (`SARAH-CW-06`)
 
 `@openagentsinc/sarah/xp` holds the community workroom experience namespace

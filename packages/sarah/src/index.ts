@@ -454,5 +454,7 @@ export * from "./community-journey/index.ts";
 export * from "./relay-load-proof/index.ts";
 // SARAH-CW-02 / SARAH-CW-03 — membership + work-unit decomposition
 export * from "./community/index.ts";
+// SARAH-CW-04 — NIP-LBR work request and quote lane
+export * from "./lbr-request-quote/index.ts";
 // SARAH-CW-06 — experience awards, rank projection, badges (not currency)
 export * from "./xp/index.ts";

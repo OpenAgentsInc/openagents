@@ -2591,6 +2591,9 @@ importers:
       '@openagentsinc/authority':
         specifier: workspace:*
         version: link:../authority
+      '@openagentsinc/nip90':
+        specifier: workspace:*
+        version: link:../nip90
       '@scure/base':
         specifier: 1.2.4
         version: 1.2.4
@@ -20040,7 +20043,7 @@ snapshots:
       buffer-image-size: 0.6.4
       entities: 7.0.1
       whatwg-mimetype: 3.0.0
-      ws: 8.21.0
+      ws: 8.21.1
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
