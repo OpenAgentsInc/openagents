@@ -70,11 +70,13 @@ describe("SARAH-NR-05 turn ladder publish path", () => {
     ).toThrow(/not claimed/);
   });
 
-  it("claim store enforces exactly one holder", () => {
+  it("claim store enforces exactly one holder and unreclaimable terminal", () => {
     const store = new SarahTurnClaimStore();
     expect(store.tryClaim({ turnRef: "t1", conversation: "sarah." + "00".repeat(12) })).not.toBeNull();
     expect(store.tryClaim({ turnRef: "t1", conversation: "sarah." + "00".repeat(12) })).toBeNull();
-    store.release("t1");
-    expect(store.tryClaim({ turnRef: "t1", conversation: "sarah." + "00".repeat(12) })).not.toBeNull();
+    store.complete("t1");
+    // Terminal turns must not be re-claimed (exactly one answer).
+    expect(store.tryClaim({ turnRef: "t1", conversation: "sarah." + "00".repeat(12) })).toBeNull();
+    expect(store.tryClaim({ turnRef: "t2", conversation: "sarah." + "00".repeat(12) })).not.toBeNull();
   });
 });

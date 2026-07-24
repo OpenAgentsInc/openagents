@@ -10,6 +10,8 @@ import type { SarahTurnClaim } from "./types.ts";
  */
 export class SarahTurnClaimStore {
   private readonly claims = new Map<string, SarahTurnClaim>();
+  /** Terminal turnRefs must never be re-claimed (exactly-once answers). */
+  private readonly terminal = new Set<string>();
 
   tryClaim(input: {
     readonly turnRef: string;
@@ -17,7 +19,7 @@ export class SarahTurnClaimStore {
     readonly claimEventId?: string;
     readonly nowMs?: number;
   }): SarahTurnClaim | null {
-    if (this.claims.has(input.turnRef)) {
+    if (this.claims.has(input.turnRef) || this.terminal.has(input.turnRef)) {
       return null;
     }
     const claim: SarahTurnClaim = {
@@ -36,8 +38,15 @@ export class SarahTurnClaimStore {
     return this.claims.get(turnRef);
   }
 
-  release(turnRef: string): void {
+  /** Mark turn terminal and drop the active claim. Ref cannot be claimed again. */
+  complete(turnRef: string): void {
     this.claims.delete(turnRef);
+    this.terminal.add(turnRef);
+  }
+
+  /** @deprecated Prefer complete() so terminal turns stay unreclaimable. */
+  release(turnRef: string): void {
+    this.complete(turnRef);
   }
 
   size(): number {

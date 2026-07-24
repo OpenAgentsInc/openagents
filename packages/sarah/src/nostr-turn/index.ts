@@ -1,8 +1,18 @@
 /**
- * Sarah Nostr turn ladder — SARAH-NR-05 core (publish path).
- * Full hosted-consumer cutover wires this into Cloud Run next.
+ * Sarah Nostr turn ladder — SARAH-NR-05 core (publish path + relay-primary consumer).
  */
 export { SarahTurnClaimStore } from "./claim.ts";
+export {
+  SarahRelayTurnConsumer,
+  createMemoryRelayPublisher,
+  type SarahRelayAgentFailure,
+  type SarahRelayAgentOutcome,
+  type SarahRelayAgentResult,
+  type SarahRelayAgentRunner,
+  type SarahRelayInboundMessage,
+  type SarahRelayPublisher,
+  type SarahRelayTurnConsumerResult,
+} from "./consumer.ts";
 export {
   buildDurableTurnRecordTemplate,
   buildLiveAoFrameTemplate,

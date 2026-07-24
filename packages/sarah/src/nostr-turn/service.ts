@@ -113,7 +113,7 @@ export class SarahNostrTurnService {
       ...(input.parents !== undefined ? { parents: input.parents } : {}),
       ...(input.payload !== undefined ? { payload: input.payload } : {}),
     });
-    this.claims.release(input.turnRef);
+    this.claims.complete(input.turnRef);
     return result;
   }
 

@@ -16,7 +16,7 @@
     "access": "public"
   },
   "scripts": {
-    "test": "vp test --run src/index.test.ts src/nostr-identity/nostr-identity.test.ts src/nostr-turn/nostr-turn.test.ts",
+    "test": "vp test --run src/index.test.ts src/nostr-identity/nostr-identity.test.ts src/nostr-turn/nostr-turn.test.ts src/nostr-turn/consumer.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
