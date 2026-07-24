@@ -12,10 +12,10 @@ import {
   validateFullAutoRoutingPolicy,
   type FullAutoRoutingLaneGate,
 } from "./full-auto-routing.ts"
-import type { ProviderLaneCapabilityReport } from "./provider-lane-capabilities.ts"
-import { gooseCapabilities } from "./goose-lane.ts"
-import { opencodeCapabilities } from "./opencode-local-runtime.ts"
-import { piCapabilities } from "./pi-local-runtime.ts"
+import type { ProviderLaneCapabilityReport } from "../support/provider-lane-capabilities.ts"
+import { gooseCapabilities } from "../support/goose-lane.ts"
+import { opencodeCapabilities } from "../support/opencode-local-runtime.ts"
+import { piCapabilities } from "../support/pi-local-runtime.ts"
 
 /**
  * FA-RT-01 (#8987): the routing policy is admitted or refused as a WHOLE at

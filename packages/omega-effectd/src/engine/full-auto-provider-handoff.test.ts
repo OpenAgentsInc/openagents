@@ -5,7 +5,7 @@ import path from "node:path"
 
 import { Schema } from "effect"
 
-import type { DesktopThread } from "./chat-contract.ts"
+import type { DesktopThread } from "../support/chat-contract.ts"
 import {
   PROVIDER_HANDOFF_ENVELOPE_SCHEMA,
   PROVIDER_HANDOFF_TRANSITION_LIMIT,

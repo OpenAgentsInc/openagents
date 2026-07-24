@@ -1,0 +1,81 @@
+/**
+ * Provider-keyed Full Auto policy (L6 #8901).
+ *
+ * The durable loop stores the SPI lane ref, not a provider-specific enum. The
+ * built-in policies live here so prompt framing and background-question
+ * behavior cannot drift between main's reconciliation path and lane adapters.
+ * Future admitted ACP lanes add one policy entry after their peer profile has
+ * proven the same background-question invariant.
+ *
+ * Seven-agents (#9187): the three host-run SDK-harness lanes (Goose, OpenCode,
+ * Pi) are first-class Full-Auto action lanes. Each settles a background
+ * approval/question WITHOUT a renderer, so a background turn can never park
+ * forever waiting for input — the `autoResolveQuestions` invariant:
+ *   - Goose: the live `goose acp` transport answers every
+ *     `session/request_permission` at the wire by selecting an `allow` option.
+ *   - Pi: the in-process host runs with `permissionMode: "allow-all"` (no turn
+ *     driver ever submits an approval), so a built-in tool call is auto-allowed.
+ *   - OpenCode: the response-driven `POST /session/{id}/message` settles the
+ *     whole turn under a bounded per-prompt timeout, so it fails closed with a
+ *     typed `timeout` rather than parking.
+ */
+export const FULL_AUTO_DEFAULT_LANE = "codex-local" as const
+
+export type FullAutoLanePolicy = Readonly<{
+  instruction: string
+  /** A background turn has no renderer to answer questions. Eligibility is
+   * fail-closed unless the lane can settle them without parking forever. */
+  autoResolveQuestions: boolean
+}>
+
+const SHARED_INSTRUCTION =
+  "Full Auto is on for this turn. Look at this repository's own README, docs " +
+  "folder (if any), open issues, and specs/** ProductSpec/AssuranceSpec " +
+  "obligations surfaced in the bounded spec context. Treat unmet obligations " +
+  "as candidate work, never as provider-owned verdicts. Pick ONE concrete, real, useful next " +
+  "thing to do here, and do it now. Do not ask clarifying questions -- make " +
+  "a reasonable judgment call and proceed. Stop once this one thing is done; " +
+  "you will be asked to continue with the next one."
+
+export const FULL_AUTO_LANE_POLICIES: Readonly<Record<string, FullAutoLanePolicy>> = {
+  "codex-local": {
+    instruction: `${SHARED_INSTRUCTION} Use the repository's own agent instructions and documentation as authority.`,
+    autoResolveQuestions: true,
+  },
+  "claude-local": {
+    instruction: `${SHARED_INSTRUCTION} Use available Claude Code skills only when they are already enabled for this workspace.`,
+    autoResolveQuestions: true,
+  },
+  "acp:grok-cli": {
+    instruction: `${SHARED_INSTRUCTION} Use only the capabilities admitted by the pinned Grok CLI peer profile.`,
+    autoResolveQuestions: true,
+  },
+  "acp:cursor-agent": {
+    instruction: `${SHARED_INSTRUCTION} Use only the capabilities admitted by the pinned Cursor Agent CLI peer profile.`,
+    autoResolveQuestions: true,
+  },
+  // Seven-agents (#9187): host-run SDK-harness lanes. `autoResolveQuestions` is
+  // true because each harness settles a background approval without a renderer
+  // (see the module doc): Goose auto-allows at the ACP wire, Pi runs allow-all,
+  // OpenCode is response-driven under a bounded timeout.
+  "harness:goose": {
+    instruction: `${SHARED_INSTRUCTION} Use only the capabilities of the host-run Goose harness (its configured provider and built-in tools).`,
+    autoResolveQuestions: true,
+  },
+  "harness:opencode": {
+    instruction: `${SHARED_INSTRUCTION} Use only the capabilities of the host-run OpenCode harness (its configured default model and tools).`,
+    autoResolveQuestions: true,
+  },
+  "harness:pi": {
+    instruction: `${SHARED_INSTRUCTION} Use only the capabilities of the host-run Pi harness (its in-process session and built-in tools).`,
+    autoResolveQuestions: true,
+  },
+}
+
+export const fullAutoLanePolicy = (laneRef: string): FullAutoLanePolicy | null =>
+  FULL_AUTO_LANE_POLICIES[laneRef] ?? null
+
+export const fullAutoPrompt = (laneRef: string, message: string): string => {
+  const policy = fullAutoLanePolicy(laneRef)
+  return policy === null ? message : `${policy.instruction}\n\n${message}`
+}

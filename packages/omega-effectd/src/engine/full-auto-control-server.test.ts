@@ -32,7 +32,7 @@ import {
 import { reconcileFullAutoThreads } from "./full-auto-reconcile.ts"
 import { openFullAutoRunRegistry, type FullAutoRunRegistry } from "./full-auto-run-registry.ts"
 import { openFullAutoRunReportStore } from "./full-auto-run-report.ts"
-import { LOCAL_TURN_RECORD_SCHEMA, type LocalTurnRecord } from "./local-turn-journal.ts"
+import { LOCAL_TURN_RECORD_SCHEMA, type LocalTurnRecord } from "../support/local-turn-journal.ts"
 import { readFileSync } from "node:fs"
 import {
   buildFullAutoPolicyOptions,
@@ -40,7 +40,7 @@ import {
   parseFullAutoLaneOption,
   readControlConnection,
   verifyControlProcessIdentity,
-} from "../scripts/full-auto-control-client.ts"
+} from "../../scripts/full-auto-control-client.ts"
 
 const GRANTED_WORKSPACE = "/granted/full-auto/workspace"
 

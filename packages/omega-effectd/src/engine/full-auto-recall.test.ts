@@ -34,11 +34,11 @@ import type { KhalaRuntimeSource } from "@openagentsinc/agent-runtime-schema"
 import { RlmError } from "@openagentsinc/rlm"
 import { describe, expect, test } from "vite-plus/test"
 
-import type { HistoryRecallHostSources } from "./history-recall-host.ts"
+import type { HistoryRecallHostSources } from "../support/history-recall-host.ts"
 import type {
   DesktopRlmCompleteFn,
   DesktopSemanticRecallAdmission,
-} from "./history-recall-semantic.ts"
+} from "../support/history-recall-semantic.ts"
 import {
   openFullAutoRunRegistry,
   type FullAutoRunRegistry,

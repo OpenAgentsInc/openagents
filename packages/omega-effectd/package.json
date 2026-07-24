@@ -1,0 +1,52 @@
+{
+  "name": "@openagentsinc/omega-effectd",
+  "version": "0.1.0",
+  "private": false,
+  "license": "Apache-2.0",
+  "description": "Supervised Node 24 + Effect Full Auto engine for Omega (and Desktop)",
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "exports": {
+    ".": "./src/index.ts",
+    "./paths": "./src/paths.ts",
+    "./service": "./src/service.ts",
+    "./engine/*": "./src/engine/*",
+    "./support/*": "./src/support/*",
+    "./scripts/*": "./scripts/*"
+  },
+  "bin": {
+    "omega-effectd": "./src/bin/omega-effectd.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "test": "vp test --root . --config vitest.config.ts --run src",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "pack:digest": "node --import tsx ./scripts/pack-digest.ts"
+  },
+  "dependencies": {
+    "@effect-native/core": "workspace:*",
+    "@openagentsinc/agent-harness-contract": "0.2.1-rc.4",
+    "@openagentsinc/agent-runtime-schema": "0.2.1-rc.4",
+    "@openagentsinc/assurance-spec": "workspace:*",
+    "@openagentsinc/environment-auth": "workspace:*",
+    "@openagentsinc/history-corpus": "0.2.1-rc.4",
+    "@openagentsinc/khala-sync": "workspace:*",
+    "@openagentsinc/khala-sync-client": "workspace:*",
+    "@openagentsinc/portable-session-contract": "workspace:*",
+    "@openagentsinc/product-spec": "workspace:*",
+    "@openagentsinc/rlm": "0.2.1-rc.4",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "typescript": "catalog:"
+  },
+  "engines": {
+    "node": "^24.13.1"
+  }
+}

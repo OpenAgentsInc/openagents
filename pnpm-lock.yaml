@@ -551,6 +551,9 @@ importers:
       '@openagentsinc/managed-sandbox-contract':
         specifier: workspace:*
         version: link:../../packages/managed-sandbox-contract
+      '@openagentsinc/omega-effectd':
+        specifier: workspace:*
+        version: link:../../packages/omega-effectd
       '@openagentsinc/portable-session-contract':
         specifier: workspace:*
         version: link:../../packages/portable-session-contract
@@ -2292,6 +2295,49 @@ importers:
       postgres:
         specifier: 3.4.9
         version: 3.4.9
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+
+  packages/omega-effectd:
+    dependencies:
+      '@effect-native/core':
+        specifier: workspace:*
+        version: link:../../apps/openagents.com/packages/effect-native-core
+      '@openagentsinc/agent-harness-contract':
+        specifier: 0.2.1-rc.4
+        version: 0.2.1-rc.4
+      '@openagentsinc/agent-runtime-schema':
+        specifier: 0.2.1-rc.4
+        version: 0.2.1-rc.4
+      '@openagentsinc/assurance-spec':
+        specifier: workspace:*
+        version: link:../assurance-spec
+      '@openagentsinc/environment-auth':
+        specifier: workspace:*
+        version: link:../environment-auth
+      '@openagentsinc/history-corpus':
+        specifier: 0.2.1-rc.4
+        version: 0.2.1-rc.4
+      '@openagentsinc/khala-sync':
+        specifier: workspace:*
+        version: link:../khala-sync
+      '@openagentsinc/khala-sync-client':
+        specifier: workspace:*
+        version: link:../khala-sync-client
+      '@openagentsinc/portable-session-contract':
+        specifier: workspace:*
+        version: link:../portable-session-contract
+      '@openagentsinc/product-spec':
+        specifier: workspace:*
+        version: link:../product-spec
+      '@openagentsinc/rlm':
+        specifier: 0.2.1-rc.4
+        version: 0.2.1-rc.4
+      effect:
+        specifier: 4.0.0-beta.94
+        version: 4.0.0-beta.94
+    devDependencies:
       typescript:
         specifier: 'catalog:'
         version: 6.0.3

@@ -14,7 +14,7 @@ import path from "node:path"
 import type { FullAutoLivenessProjection } from "./full-auto-liveness.ts"
 import { openFullAutoRunRegistry, type FullAutoRunRegistry } from "./full-auto-run-registry.ts"
 import type { ProviderHandoffTransitionRecord } from "./full-auto-provider-handoff.ts"
-import { LOCAL_TURN_RECORD_SCHEMA, type LocalTurnRecord } from "./local-turn-journal.ts"
+import { LOCAL_TURN_RECORD_SCHEMA, type LocalTurnRecord } from "../support/local-turn-journal.ts"
 import { FULL_AUTO_MAX_CONSECUTIVE_FAILURES } from "./full-auto-reconcile.ts"
 import type { FullAutoRecord } from "./full-auto-registry.ts"
 import {

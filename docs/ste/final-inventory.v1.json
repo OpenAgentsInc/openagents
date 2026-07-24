@@ -33721,6 +33721,24 @@
       }
     },
     {
+      "path": "docs/omega/2026-07-24-omega-effectd-extract.md",
+      "sha256": "d72ae69c4ead7b70ccb63fa496812e53fea168f07b099b24a8a1bd0f11225a24",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "mixed",
+        "risk": "high",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "human",
+        "ste_accepted_screening_rules": [
+          "STE-2.4"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/omega/2026-07-24-release-readiness-brand-audit.md",
       "sha256": "f07463d7e356ba1c80ed47efce9cacc5dd78dfc088a9a899a19e055085319a1a",
       "reason": "Final review of a converted document",
@@ -33740,7 +33758,7 @@
     },
     {
       "path": "docs/omega/README.md",
-      "sha256": "7d42594d3b8cd7cb7567d90e0a86546a9be5f20ab46f1b1bfee1665f07b1e275",
+      "sha256": "0a79cc2cbc92739da4ec34cec973229dedb5792752ada5b78384d803c10b733a",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -46102,6 +46120,24 @@
         "ste_status": "inspected",
         "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
         "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "packages/omega-effectd/README.md",
+      "sha256": "c149d80aa839db50554596c66baa72de95c1820ed6f3613a33dbe2151e42ca16",
+      "reason": "Final review of mutable first-party agent technical text",
+      "profile": {
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ]
       }
     },
     {

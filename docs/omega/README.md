@@ -21,10 +21,13 @@ Read these documents in this order:
    [Full Auto contract freeze](./2026-07-24-full-auto-contract-freeze.md)
    (`OMEGA-FA-00`).
 6. Read the
+   [omega-effectd extract](./2026-07-24-omega-effectd-extract.md)
+   (`OMEGA-FA-01`).
+7. Read the
    [Agent Computer and Omega completion plan](./2026-07-24-agent-computer-omega-completion-plan.md).
-7. Read the [accepted Omega plan](../sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md).
-8. Read the [master roadmap](../sol/MASTER_ROADMAP.md).
-9. Read the [Desktop release contract](../deploy/openagents-desktop-cross-platform-release.md).
+8. Read the [accepted Omega plan](../sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md).
+9. Read the [master roadmap](../sol/MASTER_ROADMAP.md).
+10. Read the [Desktop release contract](../deploy/openagents-desktop-cross-platform-release.md).
 
 The Omega roadmap owns the implementation order.
 The release-readiness audit owns the current brand and package gap.
