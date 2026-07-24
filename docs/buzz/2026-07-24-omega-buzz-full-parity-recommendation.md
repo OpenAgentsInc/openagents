@@ -1,4 +1,4 @@
-# Omega Buzz full-parity recommendation
+# Omega Buzz full-parity and beyond-Buzz Nostr recommendation
 
 - Class: current product recommendation
 - Status: current owner direction and weekly execution target
@@ -13,6 +13,9 @@
 ## Recommendation
 
 Aim for full Buzz product-outcome parity.
+
+Treat Buzz parity as the floor.
+Build deeper Nostr integration than Buzz.
 
 Accept the full useful product surface now.
 Do not make a smaller product the goal.
@@ -38,17 +41,125 @@ the Buzz parity workstream.
 The final division of responsibility between Nostr and cloud services will be
 defined later.
 
+Omega should use Nostr for the full causal work graph.
+That graph includes messages, agent requests, progress, tool results, files,
+code proposals, decisions, approvals, receipts, identity changes, and public
+communications.
+Nostr must not be a compatibility adapter around a cloud-native product.
+
 The practical import ratio is:
 
-| Surface                         |   Amount to accept | Method                                                                            |
-| ------------------------------- | -----------------: | --------------------------------------------------------------------------------- |
-| Useful user outcomes            |               100% | Rebuild as native Omega and OpenAgents behavior                                   |
-| Reliability lessons             |               100% | Turn known failures into tests and contract rules                                 |
-| Nostr architecture              |  Primary direction | Align the event, relay, identity, membership, agent, and workflow model with Buzz |
-| Product names and screen layout |        0% required | Use the Omega pane grammar                                                        |
-| Buzz application source         |        0% required | Reimplement owned pieces where that gives a better Omega boundary                 |
-| Buzz deployment stack           |     No direct copy | Build the OpenAgents-owned Nostr infrastructure that parity needs                 |
-| Buzz custom NIP surface         | Full parity review | Review all 15 custom NIPs and implement the accepted workroom set                 |
+| Surface                         |           Amount to accept | Method                                                                                   |
+| ------------------------------- | -------------------------: | ---------------------------------------------------------------------------------------- |
+| Useful user outcomes            |                       100% | Rebuild as native Omega and OpenAgents behavior                                          |
+| Reliability lessons             |                       100% | Turn known failures into tests and contract rules                                        |
+| Nostr architecture              |                Beyond Buzz | Make the complete causal work graph portable, signed, multi-relay, and externally usable |
+| Product names and screen layout |                0% required | Use the Omega pane grammar                                                               |
+| Buzz application source         |                0% required | Reimplement owned pieces where that gives a better Omega boundary                        |
+| Buzz deployment stack           |             No direct copy | Build the OpenAgents-owned Nostr infrastructure that parity needs                        |
+| Buzz custom NIP surface         | Full floor plus extensions | Implement all accepted Buzz behavior, then specify and test deeper Omega behavior        |
+
+## Nostr ambition beyond Buzz
+
+Buzz proves that Nostr can carry a serious human and agent workroom.
+Omega should go further in these areas.
+
+### One signed causal work graph
+
+Do not limit Nostr to chat messages and membership.
+Every durable unit of work should have a signed event or a signed event
+reference.
+
+This includes:
+
+- agent request, claim, decline, counteroffer, progress, stall, return, and
+  completion
+- tool call, result digest, artifact manifest, and test receipt
+- decision, approval request, verdict, effect, and target receipt
+- file, diff, review, patch, commit, release, and deployment provenance
+- reminder, schedule, attention state, read state, and notification intent
+- persona, team, capability, delegation, revocation, and identity archive
+- public post, private owner update, Forum topic, and cross-client reply
+
+Each event should link to its causal parents.
+A user should be able to inspect why an effect happened and which signed inputs
+authorized it.
+
+### Multi-relay and offline operation
+
+Buzz commonly assumes a workspace relay.
+Omega should make relay choice and replacement first-class.
+
+- Use NIP-65 relay lists and explicit per-workroom relay policy.
+- Support more than one admitted relay from the first contract.
+- Keep a local event store and signed outbound queue.
+- Permit offline authoring when policy permits it.
+- Publish with explicit acknowledgement and retry rules.
+- Detect gaps and reconcile by event identifier, not arrival time alone.
+- Rebuild projections from events after a relay or index is replaced.
+- Export the event and Blossom manifest needed to verify a workroom elsewhere.
+
+No user or agent identity should be a row that belongs to one relay.
+
+### Portable people and agents
+
+An Omega actor should remain a Nostr actor outside Omega.
+
+- Use portable public keys and profiles.
+- Use remote signing and device pairing without exporting raw keys.
+- Give agents and sessions narrow signed capability grants.
+- Make grants revocable and time-bounded.
+- Admit Nostr-native external agents that do not use ACP.
+- Use ACP as one execution adapter, not the definition of an agent.
+- Support standard NIP-90 job interoperability where it fits the work type.
+- Publish agent capabilities and supported protocol versions as signed data.
+
+An authorized external agent should be able to receive work, report progress,
+and return a verifiable result through Nostr alone.
+
+### Open protocol evolution
+
+Buzz custom kinds are useful, but Omega should not repeat opaque extension
+growth.
+
+- Prefer a standard NIP when it expresses the required behavior.
+- Keep every extension in a written specification.
+- Publish canonical fixtures and negative test vectors.
+- State authorship, encryption, deletion, replacement, and relay derivation
+  rules for every kind.
+- Use NIP-31 `alt` text so an unknown client gets a safe non-secret summary.
+- Advertise capabilities and versions instead of guessing them.
+- Make relay-generated events reproducible from named source events.
+- Upstream generally useful extensions when they are stable.
+
+`nostr-effect` should be the canonical executable protocol implementation, not
+only a bridge library.
+
+### Signed code and artifact provenance
+
+Use NIP-34 and NIP-GS as the start of the code graph, not the end.
+
+- Link a request to the agent turn that produced a change.
+- Link the turn to exact file, patch, test, review, and commit evidence.
+- Sign Git objects through the sovereign signer where policy permits it.
+- Put large media, logs, code bundles, and artifacts in Blossom or another
+  content-addressed store.
+- Put the signed manifest and content digest in the Nostr graph.
+- Keep Git object and ref safety in Git while Nostr carries coordination and
+  provenance.
+
+This makes the development record independently checkable without making a
+relay into a Git object database.
+
+### Private and public use of one protocol
+
+Use the same Nostr identity and causal model across private workrooms and
+public activity.
+Apply NIP-44 and NIP-59 encryption where the audience requires it.
+Use owner-decryptable encrypted agent memory.
+Let Sarah, humans, and agents move from a private decision to a deliberate
+public communication without copying the work into an unrelated system.
+The audience gate must still run before publication.
 
 ## Why this is the right time
 
@@ -114,6 +225,7 @@ An outcome is at parity only when all these statements are true:
 | Cross-device use        | Web and mobile control with consistent history and read state                                             | OpenAgents clients over the same Nostr history and read-state events | Accepted, later proof milestone     |
 | Voice                   | Dictation, huddles, transcripts, and recording controls                                                   | Nostr control and transcript events with governed audio and Blossom  | Accepted, later proof milestone     |
 | Nostr core              | Identity, pairing, relay sync, remote signing, ingress, egress, and replay                                | Isolated signer, owned relay path, and `nostr-effect`                | Required                            |
+| Beyond-Buzz Nostr       | Multi-relay policy, offline outbox, causal graph, protocol negotiation, external agents, and export       | Native Omega plus `nostr-effect` specifications and conformance      | Required core slice                 |
 
 This ledger accepts the whole useful surface.
 The last column sets delivery order.
@@ -159,12 +271,15 @@ For the current implementation phase, use these temporary rules:
 
 This boundary keeps Nostr primary now.
 It also leaves room for a deliberate cloud design later.
+It must not stop independent verification, relay replacement, or event export.
 
 ### Custom NIP adoption direction
 
 Accept all 15 Buzz custom NIPs into the parity ledger.
 The default disposition is implement or adapt.
 A rejection needs a named incompatibility and a Nostr-native replacement.
+These NIPs are the compatibility floor.
+They do not limit new specified Omega extensions.
 
 | Group                      | NIPs                           | Omega use                                                                                           |
 | -------------------------- | ------------------------------ | --------------------------------------------------------------------------------------------------- |
@@ -219,6 +334,9 @@ Complete `OMEGA-BZ-00` before broad UI work.
 - Map each workroom value to a standard or Buzz custom NIP.
 - Review all 15 Buzz custom NIPs for parity adoption.
 - Freeze the relay, local store, query, subscription, and replay contracts.
+- Freeze multi-relay policy, the offline outbox, and event export.
+- Define the causal link and capability-version rules for every work event.
+- Select one beyond-Buzz extension to specify with fixtures this week.
 - Record the provisional cloud boundary above.
 - Name the one writable authority for each field.
 - Generate Rust and Effect protocol types from one schema.
@@ -260,6 +378,8 @@ Complete `OMEGA-BZ-03` for the core text path.
 - page backward and recover an explicit gap
 - restart without duplication or silent loss
 - reconnect to the relay and recover from the last accepted event
+- fail over to a second admitted relay without changing actor or work identity
+- queue one signed event offline and publish it after reconnection
 
 The sender must see the same accepted signed event that every authorized reader
 sees.
@@ -293,6 +413,7 @@ Use bounded lazy capacity.
 Do not copy Buzz's eager default pool behavior.
 Agent requests, progress, handoffs, and receipts must have signed Nostr event
 forms.
+Prove one authorized Nostr-native external agent journey without ACP.
 
 ### Days 3 and 4: make code work part of the room
 
@@ -304,6 +425,8 @@ Complete the core of `OMEGA-BZ-04`.
 - run terminal commands, tasks, and tests
 - show diffs and review comments
 - emit signed NIP-34 coordination and proposal events where they fit
+- link request, agent turn, patch, test, review, and commit evidence into one
+  signed causal chain
 - link agent turns to their project generation
 - attach result receipts to the room
 - preserve GitHub as the hosted review and merge authority
@@ -357,8 +480,12 @@ The proof must include:
 7. The room records a code change, test, diff, decision, approval, and receipt.
 8. The proof names the accepted event identifiers and relay acknowledgements.
 9. Omega restarts and restores the same state by replaying Nostr history.
-10. A stale, duplicate, unsigned, and unauthorized input is rejected visibly.
-11. An independent reviewer checks the evidence.
+10. Omega fails over to a second relay and preserves the same work identity.
+11. Omega publishes one event that it signed while offline.
+12. A Nostr-native external agent completes one authorized request without ACP.
+13. An export verifies the causal event chain without reading a cloud database.
+14. A stale, duplicate, unsigned, and unauthorized input is rejected visibly.
+15. An independent reviewer checks the evidence.
 
 The week succeeds when this path is in daily owner use.
 Call it **full-core parity beta**.
@@ -495,6 +622,12 @@ this port.
 17. Do not let parity work delay the first Zed upstream rebase rehearsal.
 18. Do not add rich canvas or voice before their audience and retention rules
     exist.
+19. Do not make Omega identity, agent identity, or workroom history portable in
+    name only.
+20. Do not require an ACP bridge for a valid Nostr-native external agent.
+21. Do not make one relay hostname part of permanent work or actor identity.
+22. Do not add an opaque custom kind without a specification and conformance
+    fixtures.
 
 ## Main considerations
 
@@ -529,6 +662,16 @@ Define the admitted relay set, acknowledgement rule, retry policy, gap proof,
 retention rule, and recovery path.
 Make relay health visible.
 Keep signatures verifiable after a relay or index is replaced.
+Prove multi-relay failover and offline publication in the first core slice.
+
+### Interoperability depth
+
+Buzz compatibility is necessary but not sufficient.
+Test Omega events through an independent Nostr implementation where possible.
+Unknown clients must get safe fallback text for encrypted or custom kinds.
+External agents must negotiate capabilities instead of depending on Omega
+process state.
+An exported workroom must retain verifiable causal links and content digests.
 
 ### Agent identity
 
@@ -562,11 +705,11 @@ Bound retained render state and background workers.
 
 The full parity goal should close through three proof milestones.
 
-| Milestone                | Result                                                                                                                               |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
-| 1. Full-core parity beta | One owner can use the Nostr workroom daily with people, agents, code, decisions, search, receipts, relay replay, and signed identity |
-| 2. Collaboration parity  | Membership, moderation, cross-device use, files, canvas, Forum projection, and multi-user failure proof                              |
-| 3. Full ledger closure   | Voice, recording controls, multi-relay recovery, remote signing, accessibility, scale, and packaged release proof                    |
+| Milestone                | Result                                                                                                                                                                    |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Full-core parity beta | One owner can use the Nostr workroom daily with people, agents, code, decisions, search, receipts, multi-relay replay, offline publish, and a Nostr-native external agent |
+| 2. Collaboration parity  | Membership, moderation, cross-device use, files, canvas, Forum projection, and multi-user failure proof                                                                   |
+| 3. Full ledger closure   | Voice, recording controls, multi-relay recovery, remote signing, accessibility, scale, and packaged release proof                                                         |
 
 Pruning should happen only after Milestone 1 dogfood.
 Remove a feature when observed use or cost argues against it.
@@ -609,6 +752,9 @@ Accept full product-outcome parity as the goal.
 Freeze the target to Buzz `v0.4.24`.
 Build the result as a Nostr-primary Omega workroom with owned OpenAgents
 infrastructure and policy.
+Use Buzz as the compatibility floor and go deeper on portable identity,
+multi-relay operation, offline work, external agents, and signed causal
+provenance.
 
 For this week, require the full-core owner journey.
 Start with the Nostr event and relay contract, workroom frame, reliable text,

@@ -4,6 +4,7 @@
 - Status: current Omega direction plus superseded Buzz operations
 - Owner disposition: do not deploy or operate Buzz for OpenAgents
 - Current protocol direction: Nostr-primary Omega workrooms
+- Nostr ambition: deeper integration than Buzz
 - Cloud boundary: provisional and subject to a later owner decision
 - Current plan:
   [`Omega`](../sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md)
@@ -18,6 +19,10 @@ functions that its Nostr-primary workrooms need.
 
 The 2026-07-24 owner direction makes Nostr primary for the current Buzz parity
 work.
+Buzz is the compatibility floor, not the Nostr architecture ceiling.
+Omega should use Nostr more deeply for causal work history, agent operation,
+code provenance, portable identity, multi-relay recovery, and external
+interoperability.
 This supersedes the accepted Omega plan's optional-projection wording for this
 workstream.
 A later owner decision will define the final boundary between Nostr, Khala
@@ -37,8 +42,9 @@ change the Omega plan.
 
 - [`../teardowns/2026-07-21-buzz-teardown.md`](../teardowns/2026-07-21-buzz-teardown.md)
   — the full architecture and product audit of the public Buzz tree, plus the
-  earlier selected-protocol decision. The current full-parity report expands
-  that Nostr scope without adopting the Buzz application as a dependency.
+  earlier selected-protocol decision. The current full-parity report uses Buzz
+  as the compatibility floor and defines a deeper Nostr direction without
+  adopting the Buzz application as a dependency.
 
 ## Documents here
 
@@ -52,10 +58,11 @@ change the Omega plan.
 
 ## Related OpenAgents surfaces
 
-- `nostr-effect` (sibling repo) — our owned Effect Nostr library and primary
-  protocol base for Omega workrooms. It implements the standard NIPs and all 15
-  Buzz custom NIPs. Omega can reimplement the required relay and projection
-  functions around this base.
+- `nostr-effect` (sibling repo) — our owned Effect Nostr library and canonical
+  protocol implementation for Omega workrooms. It implements the standard NIPs
+  and all 15 Buzz custom NIPs. Omega can reimplement the required relay and
+  projection functions around this base and add specified extensions where
+  Buzz stops short.
 - `apps/openagents.com/workers/api/src/sol-claim-ledger-relay.ts` — the signing
   and relay bridge that the #9185 prototype added.
 - `apps/openagents.com/workers/api/src/sarah-runtime-tools.ts` — Sarah's
@@ -71,4 +78,6 @@ Do not restore the canceled Buzz deployment as Omega infrastructure.
 For the current port, signed Nostr events are the primary workroom record.
 Local and cloud indexes must derive from those events and must not silently
 replace or override them.
+The Nostr design must support portable identity, independently verifiable
+history, and relay replacement.
 The final cloud and Nostr authority split needs a later owner decision.
