@@ -33833,8 +33833,30 @@
       }
     },
     {
+      "path": "docs/omega/2026-07-24-omega-effectd-component-release.md",
+      "sha256": "dace1857a7b38944fd3e10bb936d9d9e036a8212670e892dbee6ed42e38d54c6",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "mixed",
+        "risk": "high",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/omega/2026-07-24-omega-effectd-extract.md",
-      "sha256": "a3d4fd5edfaca185bbab4554e99bae027b54fec2829ed48cf1ab2a23d2637a3a",
+      "sha256": "7682d71bc0a7db9cfd60cc0d32da84815137c3e0c5c5e97e1a5fc12e40a518ba",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
@@ -33874,7 +33896,7 @@
     },
     {
       "path": "docs/omega/2026-07-24-omega-effectd-supervisor.md",
-      "sha256": "b6adf364eff6035e0ffb1742fb40bafa67b7b58929999674f24499edae281a1b",
+      "sha256": "b381dddad0bea4d16abc09cdb8cd2c75c19aeb532b61b40df6c1a0f439db18d5",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",

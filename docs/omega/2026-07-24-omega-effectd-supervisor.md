@@ -33,7 +33,15 @@ service. Crash recovery re-reads disk truth. GPUI is not run authority.
 - `cargo test -p omega_effectd` in Omega — supervisor start/health/restart/stop
   and disk recovery
 
-## Deferred
+## Component release
 
-- Packaged Node 24 + digest install into Omega release artifacts
-- GPUI launcher landed in [2026-07-24-omega-full-auto-gpui-launcher.md](./2026-07-24-omega-full-auto-gpui-launcher.md)
+OpenAgents released the service and the fixed Node.js runtime as
+[`omega-effectd-v0.1.0-rc.1`](https://github.com/OpenAgentsInc/openagents/releases/tag/omega-effectd-v0.1.0-rc.1).
+The archive SHA-256 is
+`52fb8333ee65b944ba47b2ec00abc77b3826aa7f9a4cacc3ca6f7d37e139ffa5`.
+The Omega RC packager must verify and install this asset at the component path.
+Until an installed Omega candidate has the component, the panels report that
+the component is unavailable.
+
+The GPUI launcher landed in
+[2026-07-24-omega-full-auto-gpui-launcher.md](./2026-07-24-omega-full-auto-gpui-launcher.md).

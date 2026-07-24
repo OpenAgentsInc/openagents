@@ -25,6 +25,16 @@ Durable files stay under `{dataRoot}/full-auto/`.
 - `pnpm --dir packages/omega-effectd test` — 177 passed
 - `pnpm --dir packages/omega-effectd run pack:digest` — digest above
 
+## Standalone macOS component
+
+The source package is not the Omega run artifact. OpenAgents now releases the
+standalone macOS arm64 component as
+[`omega-effectd-v0.1.0-rc.1`](https://github.com/OpenAgentsInc/openagents/releases/tag/omega-effectd-v0.1.0-rc.1).
+The archive SHA-256 is
+`52fb8333ee65b944ba47b2ec00abc77b3826aa7f9a4cacc3ca6f7d37e139ffa5`.
+See
+[the component release receipt](./2026-07-24-omega-effectd-component-release.md).
+
 ## Deferred to later FA packets
 
 - Rust supervisor and framed protocol — see
