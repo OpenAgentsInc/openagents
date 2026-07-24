@@ -152,20 +152,17 @@ describe("omega-effectd Agent Computer runner (AC-01)", () => {
       const fetchImpl: typeof fetch = async (_input, init) => {
         const method = init?.method ?? "GET"
         if (method === "POST") {
-          return jsonResponse(200, sessionProjection({ id: "ccs_ac01_turn", state: "queued" }))
+          return jsonResponse(
+            200,
+            sessionProjection({
+              id: "ccs_ac01_turn",
+              state: "completed",
+              artifact_ref: "artifact.ac01.turn",
+            }),
+          )
         }
         getCount += 1
-        if (getCount === 1) {
-          return jsonResponse(200, sessionProjection({ id: "ccs_ac01_turn", state: "running" }))
-        }
-        return jsonResponse(
-          200,
-          sessionProjection({
-            id: "ccs_ac01_turn",
-            state: "completed",
-            artifact_ref: "artifact.ac01.turn",
-          }),
-        )
+        return jsonResponse(502, { error: "lifecycle_store_unavailable" })
       }
 
       const service = createOmegaEffectdService({ paths: { dataRoot: root } })
@@ -196,6 +193,7 @@ describe("omega-effectd Agent Computer runner (AC-01)", () => {
       expect(result.finishReason).toBe("stop")
       expect(result.eventKinds[0]).toBe("turn.started")
       expect(result.eventKinds.at(-1)).toBe("turn.finished")
+      expect(getCount).toBe(0)
       expect(JSON.stringify(turn)).not.toContain("secret-bearer-token-ac01-turn")
       expect(JSON.stringify(turn)).not.toContain("Observe one Agent Computer turn")
 

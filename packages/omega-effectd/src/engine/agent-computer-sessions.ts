@@ -281,6 +281,16 @@ export type RunAgentComputerTurnResult =
 
 const CLOUD_SESSION_REF_RE = /cloud coding session ([^\s;]+)/i
 
+const isCloudCodingSessionProjection = (
+  value: unknown,
+): value is CloudCodingSessionProjection => {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false
+  const row = value as Record<string, unknown>
+  return typeof row.id === "string" && typeof row.state === "string" &&
+    Array.isArray(row.lease_refs) && Array.isArray(row.lifecycle_receipt_refs) &&
+    Array.isArray(row.resource_usage_receipt_refs)
+}
+
 const extractCloudSessionRef = (eventKinds: ReadonlyArray<{ kind: string; text?: string }>): string | null => {
   for (const event of eventKinds) {
     if (typeof event.text !== "string") continue
@@ -321,13 +331,29 @@ export const runAgentComputerTurn = async (
   }
 
   const environment = makeOpenAgentsCloudHarnessEnvironment(controlPlaneBaseUrl)
+  let terminalProjection: CloudCodingSessionProjection | null = null
+  const baseFetch = input.fetch ?? globalThis.fetch
+  const runtimeFetch: FetchLike = async (request, init) => {
+    const response = await baseFetch(request, init)
+    if (response.ok && init?.method === "POST") {
+      const url = new URL(request)
+      if (url.pathname === "/v1/cloud-coding-sessions") {
+        const body = await response.clone().json().catch((): unknown => null)
+        if (
+          isCloudCodingSessionProjection(body) &&
+          ["completed", "failed", "cancelled"].includes(body.state)
+        ) terminalProjection = body
+      }
+    }
+    return response
+  }
   const runner = makeOpenAgentsCloudHarnessEnvironmentRunner({
     bearerToken,
     repoRef,
     ...(input.adapter === undefined ? {} : { adapter: input.adapter }),
     ...(input.lane === undefined ? {} : { lane: input.lane }),
     ...(input.verify === undefined ? {} : { verify: [...input.verify] }),
-    ...(input.fetch === undefined ? {} : { fetch: input.fetch }),
+    fetch: runtimeFetch,
     ...(input.pollIntervalMs === undefined ? {} : { pollIntervalMs: input.pollIntervalMs }),
     ...(input.maxPollAttempts === undefined ? {} : { maxPollAttempts: input.maxPollAttempts }),
     ...(input.sleep === undefined ? {} : { sleep: input.sleep }),
@@ -376,11 +402,12 @@ export const runAgentComputerTurn = async (
       const nestedClass =
         typeof nested?.failureClass === "string" ? nested.failureClass : null
       const message =
+        detail ??
         failureClass ??
         nestedClass ??
         (error instanceof Error && error.message.length > 0
           ? error.message
-          : detail) ??
+          : null) ??
         (typeof error === "string" ? error : "agent computer turn failed")
       return { ok: false as const, message }
     },
@@ -407,18 +434,22 @@ export const runAgentComputerTurn = async (
     }
   }
 
-  const client = makeCloudCodingSessionClient({
-    launchUrl: openAgentsCloudCodingSessionLaunchUrl(environment),
-    bearerToken,
-    ...(input.fetch === undefined ? {} : { fetch: input.fetch }),
-  })
-  const projection = await Effect.runPromise(client.get(cloudSessionRef)).then(
-    value => ({ ok: true as const, value }),
-    error => ({
-      ok: false as const,
-      message: error instanceof Error ? error.message : "session lookup failed",
-    }),
-  )
+  const projection = terminalProjection === null
+    ? await (() => {
+        const client = makeCloudCodingSessionClient({
+          launchUrl: openAgentsCloudCodingSessionLaunchUrl(environment),
+          bearerToken,
+          ...(input.fetch === undefined ? {} : { fetch: input.fetch }),
+        })
+        return Effect.runPromise(client.get(cloudSessionRef)).then(
+          value => ({ ok: true as const, value }),
+          error => ({
+            ok: false as const,
+            message: error instanceof Error ? error.message : "session lookup failed",
+          }),
+        )
+      })()
+    : { ok: true as const, value: terminalProjection }
   if (!projection.ok) {
     return { ok: false, code: "refresh_failed", message: projection.message }
   }
