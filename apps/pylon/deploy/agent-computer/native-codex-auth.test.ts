@@ -401,7 +401,7 @@ for await (const line of createInterface({ input: process.stdin })) {
         email: "custody-owner@example.test",
         providerAccountRef: "provider-account.codex.test",
         requiredProvider: "chatgpt_codex",
-        requestedAction: "agent_computer.codex_turn",
+        requestedAction: "agent_computer_codex_turn",
         runId: "turn.codex.test",
       });
       expect(leaseText).not.toContain(authSecret);
@@ -411,7 +411,7 @@ for await (const line of createInterface({ input: process.stdin })) {
         leaseRef: "lease.codex.acquired",
         runnerSessionId: "turn.codex.test",
         workroomId: "workroom.codex.test",
-        requestedAction: "agent_computer.codex_turn",
+        requestedAction: "agent_computer_codex_turn",
       });
       expect(grantText).not.toContain(authSecret);
       expect(JSON.stringify(result)).toContain("grant.codex.test");

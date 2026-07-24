@@ -437,7 +437,7 @@ export const acquireCodexLease = async (
       email: input.ownerEmail,
       providerAccountRef: input.providerAccountRef,
       requiredProvider: "chatgpt_codex",
-      requestedAction: "agent_computer.codex_turn",
+      requestedAction: "agent_computer_codex_turn",
       runId: input.runnerSessionId,
     }),
   });
@@ -503,7 +503,7 @@ export const issueExistingCodexLeaseGrant = async (
       leaseRef: input.leaseRef,
       runnerSessionId: input.runnerSessionId,
       workroomId: input.workroomId,
-      requestedAction: "agent_computer.codex_turn",
+      requestedAction: "agent_computer_codex_turn",
     }),
   });
   const payload = await response.json().catch((): unknown => null);
