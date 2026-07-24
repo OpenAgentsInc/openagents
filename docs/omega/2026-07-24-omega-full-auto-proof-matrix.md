@@ -39,18 +39,13 @@ Independent assurance is still required.
 
 ## Native Codex authentication
 
-Omega commit `31efeaffbc` adds **Use Existing Codex Login** to the ChatGPT Subscription provider. The import runs inside Omega, reads the same local `auth.json` used by Codex (`$CODEX_HOME/auth.json` or `~/.codex/auth.json`), validates its file permissions, size, token shape, and expiry, and then stores the credentials through Omega's own system-keychain provider. The source file is not changed, and token values are not written to settings or logs.
+The supported Codex lane is Omega's registered `codex-acp` external agent. Omega starts that agent through its native Zed-derived ACP host, and Codex remains the single owner of its local configuration, authentication, and token rotation. A user who is already logged into Codex does not need to import or copy that session into an Omega language-model provider.
 
-This is the supported Codex lane for the owner-real journey. It uses Omega's native Zed-derived provider stack and does not depend on the legacy OpenAgents/Pylon account bridge. The existing browser OAuth flow remains available when there is no reusable local Codex session.
-
-Focused verification on the implementation commit:
-
-- `cargo test -p language_models codex_cli_credentials` — 2 passed
-- `./script/clippy -p language_models` — passed
+Omega commit `31efeaffbc` briefly implemented a token-copying import and was rejected during independent review because it would create two competing refresh-token stores. The replacement candidate reverts that import and keeps the owner-real journey on the existing ACP authority. This path does not depend on the legacy OpenAgents/Pylon account bridge.
 
 ## Owner blockers (smallest irreducible)
 
-1. Produce and install a signed Omega RC candidate containing the native Codex-login import (`script/bundle-omega-rc` then install).
+1. Produce and install a signed Omega RC candidate using the native `codex-acp` authority (`script/bundle-omega-rc` then install).
 2. Run one owner-real multi-turn Full Auto journey on that candidate.
 3. Capture one live cross-provider handoff with sidebar/report evidence.
 4. Independent reviewer admits `specs/omega/full-auto.assurance-spec.md` against the exact candidate digests.
