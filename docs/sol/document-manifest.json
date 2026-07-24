@@ -2347,9 +2347,10 @@
       "reviewedAt": "2026-07-21",
       "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
       "inboundLinks": [
+        "docs/buzz/2026-07-24-omega-buzz-full-parity-recommendation.md",
         "docs/ide/2026-07-19-porting-zed-to-effect-status.md"
       ],
-      "inboundSourceCount": 1,
+      "inboundSourceCount": 2,
       "issueLinks": [
         9035
       ]
@@ -2444,6 +2445,7 @@
       "reviewTrigger": "whenever the owning authority, contract, issue state, or acceptance boundary changes",
       "inboundLinks": [
         "docs/buzz/2026-07-22-buzz-self-host-and-sarah-runbook.md",
+        "docs/buzz/2026-07-24-omega-buzz-full-parity-recommendation.md",
         "docs/buzz/README.md",
         "docs/ide/2026-07-18-vscode-typescript-reuse-analysis.md",
         "docs/ide/2026-07-18-zed-agent-ide-adaptation-analysis.md",
@@ -2465,7 +2467,7 @@
         "docs/teardowns/README.md",
         "docs/transcripts/263.md"
       ],
-      "inboundSourceCount": 21,
+      "inboundSourceCount": 22,
       "issueLinks": [
         9185,
         9194,

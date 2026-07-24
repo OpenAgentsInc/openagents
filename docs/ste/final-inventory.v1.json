@@ -26874,7 +26874,7 @@
     },
     {
       "path": "docs/game/README.md",
-      "sha256": "23912e624a7146d552faa7348a95f5954049af5d4fb0afc3a36841f4d686baa9",
+      "sha256": "e3122d9c7705b6446231a18d59500c38ab091d17ed1003d304334dabc54b97da",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -33801,6 +33801,24 @@
       }
     },
     {
+      "path": "docs/omega/2026-07-24-omega-3d-avatar-verse-harvest-audit.md",
+      "sha256": "65a8a50edc40754b2433817079631b5fdf6eaff36c8b2dbaa5f8e7a58c170329",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "mixed",
+        "risk": "high",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "human",
+        "ste_accepted_screening_rules": [
+          "STE-2.4"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/omega/2026-07-24-omega-agent-computer-contract-freeze.md",
       "sha256": "1d620ca9daaa0625ef0a0732610ee977f9b7ef645c841ca91d4e0deb6315e5e3",
       "reason": "Final review of a converted document",
@@ -34086,7 +34104,7 @@
     },
     {
       "path": "docs/omega/README.md",
-      "sha256": "d661cc4443f463c1670242c19662cd176c1adc13583485ac38ad3c646e5a8fdb",
+      "sha256": "2d90fa840f134a0eef0e25b3c34d1daefec37d7a07a3a9a41215113f882cac68",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

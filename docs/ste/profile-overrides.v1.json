@@ -27,6 +27,19 @@
         "STE-2.4"
       ]
     },
+    "docs/omega/2026-07-24-omega-3d-avatar-verse-harvest-audit.md": {
+      "ste_mode": "mixed",
+      "ste_status": "checked",
+      "ste_reviewer": "codex/omega-3d-avatar-verse-audit-20260724",
+      "ste_reviewed_at": "2026-07-24T20:00:00Z",
+      "risk": "high",
+      "source": null,
+      "replacement": null,
+      "ste_audience": "human",
+      "ste_accepted_screening_rules": [
+        "STE-2.4"
+      ]
+    },
     "docs/omega/2026-07-24-full-auto-port-audit.md": {
       "ste_mode": "mixed",
       "ste_status": "checked",

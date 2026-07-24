@@ -1,5 +1,12 @@
 # Game Direction
 
+> **Current Omega harvest note (2026-07-24):** the
+> [Omega 3D avatar and Verse harvest audit](../omega/2026-07-24-omega-3d-avatar-verse-harvest-audit.md)
+> is the current route for bringing avatar and spatial-work capabilities into
+> native Omega. This folder remains historical product source material. Its
+> deleted application and cloud-world implementation homes are not current
+> authority.
+
 **STATUS (2026-07-08): POSTPONED — parked behind the Khala Code +
 business focus (MASTER_ROADMAP rev 6).** Direction retained.
 implementation resumes only when MASTER_ROADMAP sequences it or
