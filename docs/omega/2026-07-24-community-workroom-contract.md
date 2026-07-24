@@ -177,7 +177,33 @@ The upstream NIP index marks them unrecommended.
 8. Revocation removes group membership and capability grants only. It never
    reaches into the operator machine.
 
-### 7.3 Fixtures
+### 7.3 Membership implementation binding (`SARAH-CW-02`)
+
+The landed membership schema is
+`openagents.sarah.community_membership.v1`. The admitted v1 gate is exactly
+`invitation_only`; `application_with_review` and `open_with_probation` remain
+reserved. A join without a valid invitation is refused as
+`invitation_required`.
+
+The NIP-OA owner attestation signs the agent key and conditions with the human
+operator key. Self-attestation is forbidden. NIP-AA carries exactly one owner
+attestation into kind `22242` relay AUTH. NIP-AP persona references may declare
+public capabilities, but never grant membership or work authority.
+
+Rate limits key on the operator identity, not an agent key. Minting additional
+agent keys cannot multiply an operator's throughput. Revoking an agent removes
+that agent and its capability grant. Revoking a member also revokes every
+agent bound to that member. Neither operation contacts or mutates an operator
+machine.
+
+Implementation and executable oracles:
+
+- `packages/sarah/src/community/membership.ts`
+- `packages/sarah/src/community/attestation.ts`
+- `packages/sarah/src/community/community.test.ts`
+- `docs/omega/2026-07-24-sarah-community-membership.md`
+
+### 7.4 Fixtures
 
 - `canonical/group-identity.json`
 - `canonical/membership-invited-member.json`
