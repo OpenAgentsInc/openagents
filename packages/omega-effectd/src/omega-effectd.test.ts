@@ -18,6 +18,8 @@ import {
   classifyFullAutoDispatchFailureReason,
   recoveryActionForCause,
 } from "./engine/full-auto-liveness.ts"
+import { FULL_AUTO_MAX_CONTINUATIONS } from "./engine/full-auto-reconcile.ts"
+import { FULL_AUTO_RUN_TURN_CAP_DEFAULT } from "./engine/full-auto-run-registry.ts"
 
 describe("omega-effectd freeze constants", () => {
   test("keeps the eight-run active limit", () => {
@@ -42,6 +44,10 @@ describe("omega-effectd freeze constants", () => {
   test("keeps default lane and receipt schema id", () => {
     expect(FULL_AUTO_DEFAULT_LANE).toBe("codex-local")
     expect(FULL_AUTO_RUN_RECEIPT_SCHEMA).toBe("openagents.desktop.full_auto_run_receipt.v1")
+  })
+
+  test("keeps the run and reconciliation turn-cap defaults coherent", () => {
+    expect(FULL_AUTO_RUN_TURN_CAP_DEFAULT).toBe(FULL_AUTO_MAX_CONTINUATIONS)
   })
 })
 

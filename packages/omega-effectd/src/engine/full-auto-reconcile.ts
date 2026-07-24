@@ -244,6 +244,8 @@ export type FullAutoContinuationMessageCompiler = (input: Readonly<{
   attempt: number
 }>) => string
 
+export type FullAutoContinuationCapResolver = (threadRef: string) => number | null
+
 export type FullAutoWorkspaceBlockReason = "workspace_mismatch" | "workspace_unbound"
 
 /**
@@ -333,6 +335,10 @@ export const reconcileFullAutoThreads = async (input: Readonly<{
    * before EACH attempt. A rotation therefore observes the handoff recorded
    * by the prior attempt instead of reusing stale/generic prompt text. */
   compileDispatchMessage?: FullAutoContinuationMessageCompiler
+  /** Resolve the run-level turn cap for this thread. The fixed continuation
+   * default applies only when the host does not supply a run-level cap. A
+   * stricter thread guardrail always wins. */
+  continuationCap?: FullAutoContinuationCapResolver
   onDispatched?: (threadRef: string, result: Readonly<{
     turnRef: string
     profile?: FullAutoProfile
@@ -495,9 +501,13 @@ export const reconcileFullAutoThreads = async (input: Readonly<{
     // FA-GD-01 (#8991): guardrails.maxTurns generalizes the built-in cap;
     // absent, the existing FULL_AUTO_MAX_CONTINUATIONS semantics (reason,
     // attribution, callback) are preserved byte-for-byte.
-    const effectiveTurnCap = record.guardrails?.maxTurns ?? FULL_AUTO_MAX_CONTINUATIONS
+    const runTurnCap = input.continuationCap?.(threadRef) ?? FULL_AUTO_MAX_CONTINUATIONS
+    const guardrailTurnCap = record.guardrails?.maxTurns
+    const guardrailCap = guardrailTurnCap !== undefined && guardrailTurnCap <= runTurnCap
+    const effectiveTurnCap = guardrailTurnCap === undefined
+      ? runTurnCap
+      : Math.min(runTurnCap, guardrailTurnCap)
     if (record.continuationCount >= effectiveTurnCap) {
-      const guardrailCap = record.guardrails?.maxTurns !== undefined
       const reason = guardrailCap ? "guardrail_max_turns" : "continuation_cap_reached"
       input.registry.recordDecision(threadRef, {
         decision: "stop_guardrail",
@@ -726,7 +736,6 @@ export const reconcileFullAutoThreads = async (input: Readonly<{
           // continuation to settle). Pre-dispatch cap handling above still
           // covers rows already at the cap with no new dispatch.
           if (continuationCount >= effectiveTurnCap) {
-            const guardrailCap = record.guardrails?.maxTurns !== undefined
             const reason = guardrailCap ? "guardrail_max_turns" : "continuation_cap_reached"
             input.registry.recordDecision(threadRef, {
               decision: "stop_guardrail",

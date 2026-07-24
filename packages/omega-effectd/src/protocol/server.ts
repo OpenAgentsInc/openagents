@@ -451,6 +451,7 @@ export const createOmegaEffectdFramedServer = (
             disposition: turn.disposition,
             updatedAt: turn.updatedAt,
           })),
+        continuationCap: (threadRef) => runRegistry.findByThreadRef(threadRef)?.turnCap ?? null,
         compileDispatchMessage: (input) => {
           const run = runRegistry.findByThreadRef(input.threadRef);
           const priorAcceptedOutcome = [...(evidenceByThread.get(input.threadRef)?.turns ?? [])]

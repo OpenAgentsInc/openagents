@@ -208,6 +208,46 @@ describe("omega-effectd framed protocol", () => {
     });
   });
 
+  test("a launcher turn cap of one reaches cap_reached after one accepted continuation", async () => {
+    await withRoot(async (root) => {
+      const service = createOmegaEffectdService({ paths: { dataRoot: root } });
+      let dispatchedTurns = 0;
+      const server = createOmegaEffectdFramedServer(
+        service,
+        { dataRoot: root },
+        {
+          hostRequestHandler: makeOmegaEffectdTestHost((hostRequest) => {
+            if (hostRequest.method === "dispatch_turn") dispatchedTurns += 1;
+          }),
+        },
+      );
+      await server.handleLine(request("1", 0, "initialize", { generation: 1 }));
+
+      const started = await server.handleLine(
+        request("2", 1, "start", {
+          workspaceRef: "workspace.omega.supervised",
+          title: "One turn only",
+          objective: "Accept exactly one continuation.",
+          doneCondition: "The configured continuation cap is reached.",
+          turnCap: 1,
+        }),
+      );
+
+      expect(started?.ok).toBe(true);
+      expect(dispatchedTurns).toBe(1);
+      expect((started?.result as { run: { turnCap: number; state: string } }).run).toMatchObject({
+        turnCap: 1,
+        state: "cap_reached",
+      });
+
+      const runRef = (started?.result as { run: { runRef: string } }).run.runRef;
+      const detail = await server.handleLine(request("3", 1, "get_run", { runRef }));
+      expect((detail?.result as { run: { successfulAttempts: number; state: string } }).run)
+        .toMatchObject({ successfulAttempts: 1, state: "cap_reached" });
+      expect(dispatchedTurns).toBe(1);
+    });
+  });
+
   test("stops a paused run without refreshing an unavailable provider lane", async () => {
     await withRoot(async (root) => {
       const baseHost = makeOmegaEffectdTestHost();
