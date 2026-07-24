@@ -33650,7 +33650,7 @@
     },
     {
       "path": "docs/omega/2026-07-23-identity-first-onboarding-roadmap.md",
-      "sha256": "9a8151bc30bcfaa015d08d53c81b92a3495ea3f5a2e51aeac090a85925f2583e",
+      "sha256": "1925bc638bfa099920f8283418cf69046db2a7a33ce31a577a790c7b8454efa6",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
@@ -47993,6 +47993,50 @@
         "ste_audience": "human",
         "ste_accepted_screening_rules": [
           "STE-2.4"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "specs/omega/identity-first-onboarding.assurance-spec.md",
+      "sha256": "7880cc9d474ca516be82d2e6e3d42d603ec0f0d3041c6b0e3ebf1ac7867d5aa6",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "specs/omega/identity-first-onboarding.product-spec.md",
+      "sha256": "fdbf66ee5c9c89a357be14d19aa21197313ab39b2c95bdc330743bda37a91c12",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
         ],
         "ste_status": "inspected",
         "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",

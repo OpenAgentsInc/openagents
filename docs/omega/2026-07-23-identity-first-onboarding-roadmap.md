@@ -3,14 +3,14 @@
 - Class: owner-accepted work-packet ledger
 - Date: 2026-07-23
 - Revised: 2026-07-24
-- Revision: 2
+- Revision: 3
 - Status: active plan
 - Product: Omega
 - Client repository: `OpenAgentsInc/omega`
 - Shared contract repository: `OpenAgentsInc/openagents`
 - Owner authority: the 2026-07-23 Omega onboarding direction
-- OpenAgents base: `ae40fdad85492cb922bc6c11bc9252a728561df4`
-- Omega source pin: `30c80504403b7dcb10c7d0a476577014ebc871f6`
+- OpenAgents base: `cf5a2085b1b422bc6a41483ea0e43820a331a5a0`
+- Omega source pin: `8a570a7ddc15ff3cfbf9affd020f83aa0ec07d5c`
 - Buzz onboarding study pin: `acfbb1bb6af54cb29cb152496ff43b8285dcb8cf`
 
 ## 1. Owner outcome
@@ -58,19 +58,23 @@ The proposed first-run message is:
 The supporting text must explain local custody and recovery.
 It must not present Nostr terms before the user asks for technical details.
 
-## 3. Current implementation truth
+## 3. Initial implementation baseline
 
-The current Omega source still uses the inherited Zed first-open path.
+This section records the source audit at
+`30c80504403b7dcb10c7d0a476577014ebc871f6`.
+It is the baseline for the implementation status in section 3.1.
+
+At that source pin, Omega used the inherited Zed first-open path.
 `FIRST_OPEN` is one key-value flag in `crates/onboarding/src/onboarding.rs`.
 Omega writes the flag when it opens the current onboarding page.
 It does not wait for successful completion.
 
-The current launch paths are also not consistent.
+The launch paths at that pin were not consistent.
 A restored workspace can bypass the first-open check.
 A path-open request can bypass the first-open check.
 The `AlwaysNew` path has a second copy of the check.
 
-The current onboarding page is one editor setup page.
+The onboarding page at that pin was one editor setup page.
 It includes theme, keymap, agent, import, Vim, trust, and telemetry controls.
 It has no cryptographic identity step.
 It can split and serialize as a workspace item.
@@ -107,18 +111,54 @@ The first tile is different.
 `render_zed_agent_button` uses Zed account state, plans, URLs, and sign-in.
 Omega cannot rename that tile without replacing its service contract.
 
-The current Omega application identity is still Zed.
+The Omega application identity at that pin was still Zed.
 The application uses Zed names, application IDs, paths, and credential behavior.
 The development credential provider writes unencrypted JSON.
 Omega must not put a person signing secret in that provider.
 
-The Omega workspace has no Nostr or secp256k1 dependency.
+The Omega workspace at that pin had no Nostr or secp256k1 dependency.
 It has the `zeroize` dependency.
 The new contract must select and admit the cryptographic implementation.
 
 The current `@openagentsinc/sovereign-identity` package is not ready for Omega.
 It exports TypeScript source and uses a workspace-only dependency.
 Omega needs a compiled, versioned, and digested contract artifact.
+
+### 3.1 Implementation and assurance status
+
+The identity implementation and its automated source gates have landed in
+Omega. The source pin includes application isolation, native identity
+contracts, secure custody, recovery, the live onboarding section, startup
+routing, and Editor Onboarding replay. The last identity journey commit in
+that sequence is `40b3478ce9`.
+
+These source facts do not admit an installed candidate.
+They do not prove the real operating-system secret store or package lifecycle.
+Separate checks must prove offline use, assistive use, Zed state isolation,
+and secret tripwires in a signed package.
+
+The proposed intent artifacts are:
+
+- [Omega identity-first ProductSpec](../../specs/omega/identity-first-onboarding.product-spec.md)
+- [Omega identity-first AssuranceSpec](../../specs/omega/identity-first-onboarding.assurance-spec.md)
+
+These two documents remain proposals.
+This roadmap records no owner acceptance or proof-design admission.
+It records no candidate admission, owner observation, independent
+verification, release, or public claim.
+
+| Work area | Current state |
+| --- | --- |
+| Omega implementation | Landed at the Omega source pin |
+| Automated source gates | Landed in Omega source |
+| ProductSpec | Proposed revision 1 |
+| AssuranceSpec | Proposed revision 1 |
+| Shared package publication and digest admission | Pending |
+| Exact installed-candidate binding | Pending |
+| Manual candidate matrix | Pending |
+| Owner observation | Pending |
+| Independent verification | Pending |
+| Release decision | Pending |
 
 ## 4. Source study
 
@@ -624,7 +664,8 @@ The scan is a falsifier, not the implementation plan.
 ## 11. Suggested GitHub issue sequence
 
 This roadmap suggests these issues.
-They are not created or dispatched by this roadmap.
+The roadmap itself did not create or dispatch them.
+Section 3.1 gives the current program status.
 
 | ID | Suggested issue title | Repository | Depends on |
 | --- | --- | --- | --- |
@@ -873,7 +914,8 @@ Only one packet can change application identity at a time.
 
 ## 13. ProductSpec delta
 
-ProductSpec must define:
+The proposed [ProductSpec](../../specs/omega/identity-first-onboarding.product-spec.md)
+defines the current identity intent. It includes:
 
 - the first-launch route
 - the three identity roles
@@ -891,12 +933,15 @@ ProductSpec must define:
 - FirstRun and EditorSetup modes
 - the Editor Onboarding reopen path
 
-ProductSpec must state that a person identity is not a wallet.
-It must state that a Nostr signature is not command admission.
+The proposal states that a person identity is not a wallet.
+It does not make a Nostr signature into command admission.
+Owner acceptance is pending.
 
 ## 14. AssuranceSpec delta
 
-AssuranceSpec must define tests for:
+The proposed
+[AssuranceSpec](../../specs/omega/identity-first-onboarding.assurance-spec.md)
+defines source and installed-candidate gates. Its manual matrix includes:
 
 - clean identity absence
 - one existing identity
@@ -923,7 +968,8 @@ AssuranceSpec must define tests for:
 - reduced motion
 
 The independent verifier must use the exact installed candidate.
-Owner acceptance does not replace independent verification.
+Owner observation does not replace independent verification.
+Proof-design admission and candidate execution are pending.
 
 ## 15. Required first-run tests
 
@@ -1002,10 +1048,11 @@ This roadmap is complete when OMEGA-OID-09 passes.
 Completion needs code, tests, installed evidence, and review.
 A plan, fixture, or screenshot is not completion.
 
-The next ready packet is OMEGA-OID-00.
-OMEGA-OID-01 and OMEGA-OID-03 can start after its contract decisions.
+The implementation packets and automated source gates have landed.
+The next open packet is OMEGA-OID-09.
+It needs an admitted proof design and an exact installed candidate.
 
-## 20. Plan claim
+## 20. Original plan claim
 
 - Claim actor: `codex-root-omega-identity-onboarding-r2-20260724`
 - Claim time: `2026-07-24T05:06:27Z`
@@ -1021,7 +1068,7 @@ OMEGA-OID-01 and OMEGA-OID-03 can start after its contract decisions.
 - Hot contract: `docs/omega/ROADMAP.md`
 - ProductSpec state: proposed delta, not admitted
 - AssuranceSpec state: proposed delta, not admitted
-- Suggested issues: not created
+- Suggested issues at claim time: not created
 
 Verification:
 
