@@ -701,9 +701,10 @@ export const dispatchHostedRuntimeTurn = async (
   seq += 1
   let mutationId = 2
 
-  // SARAH-NR-05 shadow dual-publish: when this is a Sarah owner thread and
-  // SARAH_NOSTR_SHADOW_PUBLISH=1, mirror the ladder onto Nostr. Fail-soft —
-  // Khala Sync remains the record authority until NR-08 cutover.
+  // SARAH-NR-05 / SARAH-NR-08 dual-publish: when this is a Sarah owner thread
+  // and SARAH_NOSTR_RECORD_MODE is shadow|nostr (or legacy
+  // SARAH_NOSTR_SHADOW_PUBLISH=1), mirror the ladder onto Nostr. Fail-soft —
+  // default production mode stays khala; cutover (mode=nostr) is operator-gated.
   let nostrBridge: SarahNostrTurnBridge | null = null
   if (isSarahOwnerThread(turn.threadId)) {
     nostrBridge = tryCreateSarahNostrTurnBridgeFromEnv({

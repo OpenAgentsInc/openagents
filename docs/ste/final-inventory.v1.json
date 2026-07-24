@@ -34139,6 +34139,24 @@
       }
     },
     {
+      "path": "docs/omega/2026-07-24-sarah-nostr-cutover.md",
+      "sha256": "9afc1b920e0ba3f13411f4e433c70b5d1768d8153a7e8e9ef14fffa69e5233aa",
+      "reason": "New cutover document for SARAH-NR-08",
+      "profile": {
+        "ste_mode": "mixed",
+        "risk": "high",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "human",
+        "ste_accepted_screening_rules": [
+          "STE-2.4"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "grok-build/sarah-nr-08-2026-07-24",
+        "ste_reviewed_at": "2026-07-24T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/omega/2026-07-24-sarah-nostr-record-contract.md",
       "sha256": "a3a213bd183644921b10aab1eda3bc9365285486b4c7e35e1c233768df76e056",
       "reason": "Final review of a converted document",
@@ -34194,7 +34212,7 @@
     },
     {
       "path": "docs/omega/README.md",
-      "sha256": "482e0b062babab1aafad4feb79e072064243002ef0ebe7c1affbd789310c351f",
+      "sha256": "21876fab65be37a5debfb50bdb768a88ac2774c3017aef63d85c85b331d876eb",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -47895,7 +47913,7 @@
     },
     {
       "path": "packages/sarah/README.md",
-      "sha256": "0248a1971f5e360c9063f43bd9d6e760fa42e973ee59287ec4bd14d5d4d98499",
+      "sha256": "a0e7dda08f9ffd89930cc4ca5d2ea5c6556759502b0cace5bc1a0e1e7767ee1b",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

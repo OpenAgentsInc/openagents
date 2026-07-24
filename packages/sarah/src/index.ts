@@ -442,3 +442,5 @@ export const decodeSarahPrincipalApiResponse = (value: unknown) =>
 export * from "./nostr-identity/index.ts";
 // SARAH-NR-05 — durable/live ladder publish path (turn service core)
 export * from "./nostr-turn/index.ts";
+// SARAH-NR-08 — migration stage machine, mapping, drift, export/rollback
+export * from "./nostr-migration/index.ts";
