@@ -33,7 +33,18 @@ import {
 } from "../engine/full-auto-run-actions.ts"
 import type { FullAutoControlCapabilities } from "../engine/full-auto-control-server.ts"
 import { decodeFullAutoControlRunStartRequest } from "../engine/full-auto-control-contract.ts"
-import { FULL_AUTO_DEFAULT_LANE } from "../engine/full-auto-lane.ts"
+import { FULL_AUTO_DEFAULT_LANE, FULL_AUTO_LANE_POLICIES } from "../engine/full-auto-lane.ts"
+import {
+  FULL_AUTO_MAX_CONCURRENT_RUNS,
+  projectFullAutoCapacityLedger,
+} from "../engine/full-auto-capacity.ts"
+import { FULL_AUTO_NON_OVERRIDABLE_GUARDRAILS } from "../engine/full-auto-reconcile.ts"
+import {
+  decideFullAutoLivenessNotification,
+  type FullAutoStallCause,
+} from "../engine/full-auto-liveness.ts"
+import type { FullAutoRotationReason } from "../engine/full-auto-registry.ts"
+import type { FullAutoRunState } from "../engine/full-auto-run-registry.ts"
 import type { OmegaEffectdService } from "../service.ts"
 import {
   isOmegaEffectdRequest,
@@ -41,12 +52,21 @@ import {
   OMEGA_EFFECTD_PROTOCOL_VERSION,
   OMEGA_EFFECTD_SERVICE_VERSION,
   redactDiagnosticText,
+  type OmegaEffectdAttentionResult,
+  type OmegaEffectdCapacityResult,
   type OmegaEffectdHealthResult,
   type OmegaEffectdInitializeResult,
   type OmegaEffectdProtocolError,
   type OmegaEffectdResponse,
   type OmegaEffectdRunDetail,
 } from "./framed.ts"
+
+const OWNER_CONFIGURABLE_GUARDRAILS = Object.freeze([
+  "maxWallClockMs",
+  "maxTurns",
+  "maxPerTurnFailures",
+  "tokenBudgetRef",
+] as const)
 
 const projectDetail = (
   ctx: FullAutoRunActionContext,
@@ -130,6 +150,42 @@ export const createOmegaEffectdFramedServer = (
     callerLabel: FULL_AUTO_CONTROL_CALLER_LABEL,
   })
 
+  const projectCapacity = (): OmegaEffectdCapacityResult => {
+    const active = runRegistry.activeRuns()
+    const coolingByLane = new Map<string, FullAutoRotationReason>()
+    for (const record of registry.list()) {
+      const history = record.rotationHistory ?? []
+      const last = history[history.length - 1]
+      if (last === undefined) continue
+      if (
+        last.reason === "account_exhausted" ||
+        last.reason === "rate_limited" ||
+        last.reason === "provider_error"
+      ) {
+        coolingByLane.set(last.toLane, last.reason)
+      }
+    }
+    const lanes = projectFullAutoCapacityLedger({
+      laneGate: laneRef => {
+        if (!(laneRef in FULL_AUTO_LANE_POLICIES)) return null
+        const eligible =
+          capabilities.isLaneEligible?.(laneRef) ?? laneRef === FULL_AUTO_DEFAULT_LANE
+        return eligible ? { admitted: true, fullAuto: true } : { admitted: false, fullAuto: false }
+      },
+      activeRunsByLane: lane =>
+        active.filter(run => (run.profile?.lane ?? null) === lane).length,
+      coolingReasonByLane: lane => coolingByLane.get(lane) ?? null,
+    })
+    return {
+      activeRunLimit: FULL_AUTO_MAX_CONCURRENT_RUNS,
+      activeRunCount: active.length,
+      lanes,
+      nonOverridableGuardrails: [...FULL_AUTO_NON_OVERRIDABLE_GUARDRAILS],
+      ownerConfigurableGuardrails: [...OWNER_CONFIGURABLE_GUARDRAILS],
+      enabledThreadsNeverEvicted: true,
+    }
+  }
+
   const respond = (
     id: string,
     ok: boolean,
@@ -194,6 +250,8 @@ export const createOmegaEffectdFramedServer = (
           "resume",
           "stop",
           "retry",
+          "get_capacity",
+          "decide_attention",
         ],
         dataRoot: health.dataRoot,
         activeRunLimit: FULL_AUTO_RUN_ACTIVE_LIMIT,
@@ -270,6 +328,44 @@ export const createOmegaEffectdFramedServer = (
         }
         const detail = projectDetail(actionContext(), outcome.value.runRef)
         return respond(request.id, true, { run: detail })
+      }
+      case "get_capacity": {
+        return respond(request.id, true, projectCapacity())
+      }
+      case "decide_attention": {
+        const params = (request.params ?? {}) as {
+          runRef?: string
+          permissionGranted?: boolean
+          previousDedupKey?: string | null
+        }
+        if (typeof params.runRef !== "string" || params.runRef.length === 0) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError("invalid_request", "decide_attention requires runRef."),
+          )
+        }
+        const detail = projectDetail(actionContext(), params.runRef)
+        if (detail === null) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError("run_not_found", "No Full Auto run exists for that runRef."),
+          )
+        }
+        const decision = decideFullAutoLivenessNotification({
+          runRef: detail.runRef,
+          runTitle: detail.title,
+          projectedState: detail.state as FullAutoRunState,
+          cause: (detail.stallCause as FullAutoStallCause | null) ?? null,
+          previousDedupKey:
+            typeof params.previousDedupKey === "string" ? params.previousDedupKey : null,
+          permissionGranted: params.permissionGranted === true,
+        })
+        const result: OmegaEffectdAttentionResult = decision
+        return respond(request.id, true, { attention: result })
       }
       case "retry": {
         const params = (request.params ?? {}) as { runRef?: string }

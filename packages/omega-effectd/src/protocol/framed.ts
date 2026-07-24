@@ -43,10 +43,37 @@ export type OmegaEffectdInitializeResult = Readonly<{
     | "resume"
     | "stop"
     | "retry"
+    | "get_capacity"
+    | "decide_attention"
   >
   dataRoot: string
   activeRunLimit: number
 }>
+
+/** Per-lane capacity ledger (FA-04). Public-safe: lane refs and typed states only. */
+export type OmegaEffectdLaneCapacity = Readonly<{
+  lane: string
+  state: "available" | "busy" | "cooling" | "exhausted" | "unavailable"
+  activeRuns: number
+  reason: string
+}>
+
+export type OmegaEffectdCapacityResult = Readonly<{
+  activeRunLimit: number
+  activeRunCount: number
+  lanes: ReadonlyArray<OmegaEffectdLaneCapacity>
+  nonOverridableGuardrails: ReadonlyArray<string>
+  ownerConfigurableGuardrails: ReadonlyArray<string>
+  enabledThreadsNeverEvicted: true
+}>
+
+/** Redacted attention decision (FA-04). Never carries objective/transcript. */
+export type OmegaEffectdAttentionResult = Readonly<{
+  notify: boolean
+  dedupKey: string
+  title: string
+  body: string
+} | null>
 
 /** Redacted durable run projection for list/monitor (no objective/transcript). */
 export type OmegaEffectdRunSnapshot = Readonly<{

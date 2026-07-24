@@ -1,3 +1,4 @@
+import { Schema } from "effect"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -12,6 +13,11 @@ import {
   FULL_AUTO_RUN_RECEIPT_SCHEMA,
   createOmegaEffectdService,
 } from "./index.ts"
+import { FullAutoGuardrailsSchema } from "./engine/full-auto-registry.ts"
+import {
+  classifyFullAutoDispatchFailureReason,
+  recoveryActionForCause,
+} from "./engine/full-auto-liveness.ts"
 
 describe("omega-effectd freeze constants", () => {
   test("keeps the eight-run active limit", () => {
@@ -36,6 +42,29 @@ describe("omega-effectd freeze constants", () => {
   test("keeps default lane and receipt schema id", () => {
     expect(FULL_AUTO_DEFAULT_LANE).toBe("codex-local")
     expect(FULL_AUTO_RUN_RECEIPT_SCHEMA).toBe("openagents.desktop.full_auto_run_receipt.v1")
+  })
+})
+
+describe("omega-effectd FA-04 guardrail immunity and missing-thread recovery", () => {
+  test("FullAutoGuardrailsSchema has no escape hatch for non-overridable laws", () => {
+    const decoded = Schema.decodeUnknownSync(FullAutoGuardrailsSchema)({
+      maxTurns: 12,
+      workspace_binding: false,
+      own_capacity_only: false,
+      no_rate_limit_reset_triggering: true,
+      rateLimitReset: true,
+    })
+    expect(decoded).toEqual({ maxTurns: 12 })
+    expect(Object.keys(decoded).sort()).toEqual(["maxTurns"])
+  })
+
+  test("missing host thread classifies to stop_only stall", () => {
+    expect(classifyFullAutoDispatchFailureReason("host_thread_missing")).toBe("host_thread_missing")
+    expect(classifyFullAutoDispatchFailureReason("That conversation no longer exists.")).toBe(
+      "host_thread_missing",
+    )
+    expect(recoveryActionForCause("host_thread_missing")).toBe("stop_only")
+    expect(recoveryActionForCause("rate_limited")).toBe("retry_now")
   })
 })
 

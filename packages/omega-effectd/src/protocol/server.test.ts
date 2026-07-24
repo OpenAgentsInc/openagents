@@ -1,11 +1,11 @@
-import { mkdtempSync, rmSync } from "node:fs"
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { describe, expect, test } from "vite-plus/test"
 
 import { createOmegaEffectdService } from "../service.ts"
 import { openFullAutoRunRegistry } from "../engine/full-auto-run-registry.ts"
-import { resolveFullAutoRunsPath } from "../paths.ts"
+import { resolveFullAutoRegistryPath, resolveFullAutoRunsPath } from "../paths.ts"
 import { createOmegaEffectdFramedServer } from "./server.ts"
 import { OMEGA_EFFECTD_PROTOCOL_SCHEMA } from "./framed.ts"
 
@@ -107,6 +107,103 @@ describe("omega-effectd framed protocol", () => {
       // list_runs stays redacted (no objective text).
       const listed = await server.handleLine(request("7", 1, "list_runs"))
       expect(JSON.stringify(listed)).not.toContain("framed protocol")
+    })
+  })
+
+  test("FA-04 capacity, guardrail immunity, missing-thread stall, and redacted attention", async () => {
+    await withRoot(async root => {
+      const service = createOmegaEffectdService({ paths: { dataRoot: root } })
+      const server = createOmegaEffectdFramedServer(service, { dataRoot: root })
+      const init = await server.handleLine(request("1", 0, "initialize", { generation: 1 }))
+      expect(init?.ok).toBe(true)
+      expect((init?.result as { capabilities: string[] }).capabilities).toContain("get_capacity")
+      expect((init?.result as { capabilities: string[] }).capabilities).toContain("decide_attention")
+
+      const capacity = await server.handleLine(request("2", 1, "get_capacity"))
+      expect(capacity?.ok).toBe(true)
+      const cap = capacity?.result as {
+        activeRunLimit: number
+        nonOverridableGuardrails: string[]
+        ownerConfigurableGuardrails: string[]
+        enabledThreadsNeverEvicted: boolean
+        lanes: Array<{ lane: string; state: string }>
+      }
+      expect(cap.activeRunLimit).toBe(8)
+      expect(cap.nonOverridableGuardrails).toEqual([
+        "workspace_binding",
+        "own_capacity_only",
+        "no_rate_limit_reset_triggering",
+      ])
+      expect(cap.ownerConfigurableGuardrails).toEqual([
+        "maxWallClockMs",
+        "maxTurns",
+        "maxPerTurnFailures",
+        "tokenBudgetRef",
+      ])
+      expect(cap.enabledThreadsNeverEvicted).toBe(true)
+      expect(cap.lanes.length).toBeGreaterThan(0)
+      expect(cap.lanes.some(lane => lane.lane === "codex-local")).toBe(true)
+
+      const started = await server.handleLine(
+        request("3", 1, "start", {
+          workspaceRef: "workspace.omega.supervised",
+          title: "FA-04 missing thread",
+          objective: "SECRET_OBJECTIVE_SHOULD_NOT_LEAK_INTO_ATTENTION",
+          doneCondition: "SECRET_DONE_CONDITION",
+          turnCap: 8,
+          guardrails: {
+            maxTurns: 8,
+            workspace_binding: false,
+            own_capacity_only: false,
+            no_rate_limit_reset_triggering: true,
+          },
+        }),
+      )
+      expect(started?.ok).toBe(true)
+      const run = (started?.result as { run: { runRef: string; threadRef: string; state: string } }).run
+      expect(run.threadRef).toMatch(/^thread\.omega\./)
+
+      // Drop the thread record on disk (simulates cache eviction / vanished host
+      // thread). Enabled Full Auto records are never silently dropped by the
+      // registry eviction policy — this is the falsifier class for FA-04.
+      const registryPath = resolveFullAutoRegistryPath({ dataRoot: root })
+      writeFileSync(
+        registryPath,
+        JSON.stringify({ schema: "openagents.desktop.full_auto_registry.v1", records: [] }, null, 2),
+      )
+
+      const serviceB = createOmegaEffectdService({ paths: { dataRoot: root } })
+      const serverB = createOmegaEffectdFramedServer(serviceB, { dataRoot: root })
+      await serverB.handleLine(request("10", 0, "initialize", { generation: 2 }))
+      const detail = await serverB.handleLine(request("11", 2, "get_run", { runRef: run.runRef }))
+      expect(detail?.ok).toBe(true)
+      const stalled = (
+        detail?.result as {
+          run: { state: string; stallCause: string | null; recoveryAction: string; objective: string }
+        }
+      ).run
+      expect(stalled.state).toBe("stalled")
+      expect(stalled.stallCause).toBe("host_thread_missing")
+      expect(stalled.recoveryAction).toBe("stop_only")
+      expect(stalled.objective).toContain("SECRET_OBJECTIVE")
+
+      const attention = await serverB.handleLine(
+        request("12", 2, "decide_attention", {
+          runRef: run.runRef,
+          permissionGranted: true,
+        }),
+      )
+      expect(attention?.ok).toBe(true)
+      const note = (
+        attention?.result as {
+          attention: { notify: boolean; title: string; body: string; dedupKey: string } | null
+        }
+      ).attention
+      expect(note).not.toBeNull()
+      expect(note?.notify).toBe(true)
+      expect(note?.title).toContain("stalled")
+      expect(JSON.stringify(note)).not.toContain("SECRET_OBJECTIVE")
+      expect(JSON.stringify(note)).not.toContain("SECRET_DONE")
     })
   })
 })
