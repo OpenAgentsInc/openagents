@@ -88,8 +88,10 @@ behavior and test ports, and terminal or runtime systems that must not move.
 
 The OpenAgents Mobile adaptation audit owns the product recommendation for an
 Omega mobile controller. It keeps one OpenAgents store app, makes Omega a
-first-class host, and defines a Nostr-primary path to full controller parity.
-It also separates current surface parity from live Omega host integration.
+first-class host, and makes Omega issue `#31` the first mobile parity target.
+It defines a Nostr-primary thin-whole workroom before generic ACP, Git, or
+terminal control. It also separates closed source packets from physical mobile
+parity.
 
 The Full Auto port audit owns the Desktop-to-Omega Full Auto port plan.
 The Full Auto contract freeze owns the admitted lifecycle, digests, redaction

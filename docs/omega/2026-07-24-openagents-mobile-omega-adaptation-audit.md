@@ -4,7 +4,8 @@
 - Date: 2026-07-24
 - Owner: OpenAgents
 - Audience: product, mobile, Omega, protocol, release, and assurance teams
-- Decision: keep one OpenAgents mobile app and add an Omega connection
+- Decision: keep one OpenAgents mobile app and make Omega issue `#31` its first
+  complete Omega surface
 
 ## 1. Decision
 
@@ -25,15 +26,23 @@ Aim for full controller parity as the destination.
 Do not define parity as a source-code copy or a small desktop layout.
 Define it as the complete safe control of Omega from a phone or tablet.
 
-The next seven days must prove one real Nostr control path.
-The proof must use a real Omega host and a physical mobile device.
+Start with the complete user-facing scope of Omega issue `#31`.
+Do not start with a generic ACP thread, Git control, or a terminal.
+Give each issue `#31` capability a mobile location and an honest source state.
+Connect every permitted action to its current Nostr or Omega owner.
+
+Use a thin-whole implementation before you add visual depth.
+The next seven days must make the owner-private room, the community room,
+Full Auto work, provider accounts, and evidence chain available on mobile.
+The proof must use real Nostr records, a real Omega host, and physical devices.
 It must not use a fixture as the host authority.
 
 ## 2. Short recommendation
 
 The recommended product shape is:
 
-> OpenAgents Mobile is the owner application. Omega is its native coding host.
+> OpenAgents Mobile is the owner application. The Sarah workroom from Omega
+> issue `#31` is its first complete Omega surface.
 
 This shape keeps one mobile identity and one release path.
 It also lets the app control other OpenAgents targets later.
@@ -41,6 +50,7 @@ Examples include managed Agent Computers and NIP-90 services.
 
 Use **Connect Omega** as the pairing action.
 Use **Omega** as a destination label in the app.
+Use **Workroom** as the first route after the connection.
 Use **OpenAgents** in the store, bundle, push, and update identity.
 
 Do not build the phone application with GPUI now.
@@ -54,8 +64,8 @@ This audit used these exact source states:
 
 | Source | Revision | Audit use |
 | --- | --- | --- |
-| `OpenAgentsInc/openagents` | `3124d72c63ac9f497431fd961ac63bfc0ac31b4a` | Current mobile source, plans, receipts, and release rules |
-| `OpenAgentsInc/omega` | `3949e4529179a7adcc75b19d80c4115d9e9fa4ea` | Current Omega, GPUI, agent, Nostr, and workroom source |
+| `OpenAgentsInc/openagents` | `3c7cf346cbcc6f7a250de67c71fd017669009834` | Current mobile source, Sarah records, plans, receipts, and release rules |
+| `OpenAgentsInc/omega` | `9ba3791d61173b4f5facda2785f23119f87fb6b5` | Current Omega, GPUI, agent, Nostr, workroom, and Full Auto source |
 | `pingdotgg/t3code` teardown pin | `8b5469863ae1dd696e696de30240ec3da607962d` | The existing T3 Code teardown baseline |
 | `pingdotgg/t3code` current source | `38cfc25e5422e468303f2010f639cf3de9ad89ba` | Upstream changes after the teardown |
 
@@ -71,10 +81,13 @@ The primary OpenAgents records were:
 - `docs/deploy/openagents-mobile-production-release.md`
 - `docs/mobile/2026-07-22-openagents-testflight-build-124-release-evidence.md`
 
-The audit also checked the live OpenAgents GitHub issue state.
+The audit also checked the live OpenAgents and Omega GitHub issue state.
 GitHub reports `#8597` and its named mobile children as closed.
 The final `#8597` comment calls mobile a dormant follow-on substrate.
-No open issue had `mobile` in its title at audit time.
+Omega issue [`#31`](https://github.com/OpenAgentsInc/omega/issues/31) is open.
+GitHub closed its named Omega, OpenAgents, and `nostr-effect` child issues.
+The source audit below shows that some child results are still projection
+skeletons or local-only implementations.
 
 This conflicts with `docs/sol/issues/app-mobile.md`.
 That file still calls the old track active.
@@ -170,6 +183,10 @@ The implemented modules cover these areas:
 - files, changes, Git, terminal, and settings
 - controller directory and environment connection views
 
+The app already depends on `@openagentsinc/sarah`.
+It also has a Full Auto run projection and mobile run controls.
+Thus, issue `#31` needs new record adapters and joined views, not a new shell.
+
 This is useful source and design work.
 It is not complete product integration.
 
@@ -212,10 +229,12 @@ It is not a VT terminal and is not Ghostty parity.
 | Store identity and OTA | Real | Keep unchanged |
 | Secure local session | Real for OpenAuth | Add Nostr device identity and grants |
 | SQLite and offline queue | Real | Reuse for Omega events and commands |
-| Sarah and Khala Sync | Real cloud lane | Keep during migration, not Omega authority |
+| Sarah conversation | Real Khala Sync mobile lane | Replace its record with the issue `#31` Nostr record |
 | T3 mobile shell | Source and tests exist | Reuse |
-| Agent transcript | Real for Sync data | Add Omega ACP projection |
-| Attention and controls | Strong contracts | Bind to Omega outcomes |
+| Transcript and work log | Real for Sync data | Bind to Sarah Nostr messages and activity |
+| Attention and controls | Strong contracts | Bind to NIP-RS and Omega outcomes |
+| Full Auto | Live mobile projection exists | Bind to the Omega run registry and controls |
+| Community workroom | No mobile route | Add NIP-29, NIP-LBR, membership, and experience views |
 | Files and search | Client contract only | Add bounded Omega adapter |
 | Changes and review | Client contract only | Add Omega diff adapter |
 | Git | Client contract only | Add Omega Git admission and receipts |
@@ -262,7 +281,7 @@ There is no Omega mobile binary target.
 The GPUI mobile interfaces are a research seam.
 They are not a reason to restart the current mobile app.
 
-### 6.2 Omega Nostr is early and Sarah-specific
+### 6.2 The Nostr path is not ready for a parity claim
 
 Omega includes `nostr` with NIP-44 support.
 It has a Sarah Nostr conversation client in `omega_effectd`.
@@ -270,10 +289,49 @@ It also has NIP-42 authentication tests and signed event construction.
 
 The default conversation client uses `MockRelayAdapter`.
 The source says that production needs a real WebSocket relay client.
-No general Omega coding-session Nostr bridge exists.
+The workroom mark-read action is local-only and does not publish NIP-RS.
+The community room is an in-memory projection skeleton.
+The workroom disables its composer because no source admits community publish.
 
-This is the most important current Omega gap.
-Do not build the mobile UI ahead of this transport and admission path.
+Omega now shows Full Auto runs in the Sarah workroom.
+The separate Full Auto panel also shows provider accounts and an evidence
+chain. These results do not yet form one headless workroom contract.
+
+Build the thin mobile surface and the real transport together.
+An unavailable source must appear as unavailable in the mobile surface.
+Do not let a fixture, an empty projection, or a closed issue appear complete.
+
+### 6.3 Issue `#31` is the first mobile parity target
+
+Issue `#31` has three product parts and three Full Auto extensions.
+GitHub shows the child issues as closed and the epic as open.
+For mobile, a closed child means that there is source to reuse.
+It does not mean that a physical phone has parity.
+
+| Issue `#31` area | Audited source state | First mobile result |
+| --- | --- | --- |
+| Identity binding (`#32`) | Omega binding source exists | Show the owner key, host key, binding state, grant scope, and revocation state |
+| Private Sarah room (`#33`-`#37`) | Client source exists | Show signed messages, activity, controls, receipts, attention, and gaps |
+| Memory, read state, and reminders (`#9221`, `#9232`) | Nostr contracts exist | Decrypt memory, search locally, publish read state, and manage reminders |
+| Full Auto in the workroom (`#41`) | Run rows are present in `workroom_ui` | Show objective, lane, state, exact unattended time, live activity, terminal reason, and permitted controls |
+| Provider accounts (`#42`) | Roster parsing is present in `full_auto_ui` | Show provider accounts, readiness, quota, lane mapping, and an honest isolated-login handoff |
+| Evidence chain (`#43`) | A public-safe inspector exists in `full_auto_ui` | Open objective, turn, change, test, host verification, authority decision, and receipt as one object |
+| Community room (`#38`, `#9224`-`#9231`) | Omega shows a skeleton | Separate both rooms. Add membership, work, disputes, experience, and badges |
+
+The mobile route must show all these areas in its first product slice.
+Each action must use the role and grant from the source record.
+The app can show a record without an action.
+A blocked action must show its exact blocker and its required handoff.
+
+Provider login is the important example.
+The phone can request a connection and show its progress.
+The Omega host must own the isolated device-login flow and token custody.
+The phone must never receive a provider token or change the default agent home.
+
+The community room has a second important boundary.
+An owner, a member, and a verifier have different controls.
+The mobile app must derive those controls from signed membership and grants.
+It must not show an owner action to an untrusted member.
 
 ## 7. Product options
 
@@ -294,79 +352,93 @@ A wish for a different icon is not sufficient evidence.
 ```mermaid
 flowchart LR
     M["OpenAgents Mobile\nEffect Native and Expo"]
-    L["Local mobile store\nSecure key, SQLite, outbox"]
-    R["Nostr relays\nDiscovery, private events, replay"]
-    B["Omega mobile bridge\nProjection and command admission"]
-    O["Omega owners\nAgent, ACP, Project, Git, Terminal"]
-    E["omega-effectd\nFull Auto and background service"]
-    A["Agent harnesses\nACP on the Omega host"]
-    C["Optional OpenAgents services\nPush, blobs, compute"]
+    L["Local mobile read model\nDevice key, SQLite, outbox"]
+    R["Nostr record\nPrivate Sarah, memory, read, reminders, community"]
+    B["Omega issue 31 host bridge\nFull Auto, accounts, evidence"]
+    O["Omega operation owners\nRuns, projects, tests, credentials"]
+    S["OpenAgents admitted services\nSarah turns, metering, scoring"]
+    C["Optional services\nBody-free push and encrypted blobs"]
 
     M <--> L
     M <--> R
     R <--> B
     B <--> O
-    B <--> E
-    O <--> A
+    S <--> R
     C -. "support only" .-> M
     C -. "support only" .-> R
 ```
 
 ### 8.1 Protocol boundary
 
-Use a versioned protocol such as `openagents.omega.mobile.v1`.
-The exact name is a candidate, not a frozen value.
+Reuse the issue `#31` Nostr record contracts.
+Do not put them in a second mobile REST contract.
+Do not make one new aggregate event that copies the full record.
 
-The first contract must define:
+Build an `Issue31WorkroomReadModel` in the app.
+It is a local projection and not durable authority.
+It joins these inputs by stable reference:
 
-- device and Omega host identity
-- host discovery and relay hints
-- pairing challenge, grant, renewal, and revocation
-- session and thread stable references
-- snapshot, delta, cursor, sequence, and gap state
-- attention state and exact return target
-- command intent, expected version, and idempotency reference
-- command admission, durable outcome, and receipt
-- capability scope and expiration
-- artifact and content references
-- bounded error and unavailable states
+- the owner-private Sarah record
+- NIP-AE memory, NIP-RS read state, and NIP-ER reminders
+- the NIP-29 community record and NIP-LBR work lifecycle
+- membership, attestation, revocation, experience, rank, and badges
+- the small Omega host projection for Full Auto, accounts, and evidence
 
-Freeze event kinds only in the contract packet.
-Do not reuse Sarah kinds for coding control by accident.
+Add one versioned host adjunct contract only where Nostr has no source.
+A candidate name is `openagents.omega.issue31.host.v1`.
+It must define host identity, pairing, grants, Full Auto state and controls,
+provider handoff state, evidence references, admission, outcomes, and gaps.
+
+Rust and TypeScript must decode the same canonical and negative fixtures.
+The GPUI pane and the mobile route must consume headless projections.
+Neither view can be the source of a record.
 
 ### 8.2 Nostr must be deeper than T3
 
 T3 uses account identity and environment connections.
 Omega must use Nostr for more of the real boundary.
 
-Nostr must own these cross-device facts:
+Nostr must own these issue `#31` cross-device facts:
 
 - device identity
 - Omega host identity
 - host announcements
 - pairing grants and revocations
-- encrypted controller events
-- command intents
-- signed admission and outcome receipts
-- attention references
-- portable target discovery
+- the encrypted owner-private conversation
+- owner-decryptable memory
+- read state and reminders
+- the community group, membership, and attestations
+- work requests, quotes, results, disputes, and appeals
+- experience awards, rank assertions, and badges
+- encrypted host command intents and signed outcomes
 
 Use NIP-44 for private payloads.
 Use a separate device key on each phone or tablet.
 Keep the owner key out of the mobile view tree.
 
-ACP stays local to the Omega host.
-The phone must not open ACP connections to each agent process.
-Omega converts admitted mobile intents into existing local operations.
+Full Auto execution, provider credentials, local changes, tests, and host
+verification stay on the Omega host.
+The host publishes only bounded projections and public-safe references.
+The phone sends typed intents and waits for the host-owned outcome.
 
 The relay is transport and storage.
-The relay is not execution authority.
-Omega remains the authority for local files, Git, terminals, and agent runs.
+It is not identity admission, execution, scoring, or settlement authority.
 
 ### 8.3 Cloud boundary
 
-Direct Omega control must work when `openagents.com` is unavailable.
-The user can still need reachable Nostr relays.
+The Nostr record must not become a REST mirror in `openagents.com`.
+The user must be able to read confirmed records when the application service
+is unavailable and the relays are reachable.
+
+Some issue `#31` actions still need an admitted OpenAgents service.
+Sarah turn admission, exact metering, scorer assertions, and service-key
+custody do not move to a relay or to the phone.
+If that service is unavailable, the app must show the exact unavailable state.
+It must not hide the existing record or invent a successful turn.
+
+Pairing and local Omega run control must not require an OpenAuth session.
+The one-time OpenAuth binding can identify a metering relationship.
+It must not become the Nostr identity or the command session.
 
 Optional OpenAgents services can provide:
 
@@ -374,7 +446,7 @@ Optional OpenAgents services can provide:
 - an owned Nostr relay
 - encrypted content-addressed blobs
 - managed Agent Computers
-- NIP-90 discovery and payment support
+- later NIP-90 discovery and payment support
 - account recovery that does not replace device keys
 
 Push payloads must contain only opaque references.
@@ -391,19 +463,20 @@ It must not be a gate for pairing one phone with one Omega host.
 | --- | --- | --- |
 | Adaptive shell and navigation | Mobile | Keep the current Effect Native view |
 | Controller directory | Omega host directory | Replace cloud environment rows with signed host records |
-| Conversation and work log | `agent` and `acp_thread` | Add a bounded projection adapter |
-| Approval and input cards | `acp_thread` | Map ACP elicitations and permission state |
-| Composer and run controls | `agent_ui` and `acp_thread` | Route typed intents through Omega admission |
-| Runtime queue | Agent thread owner | Preserve idempotency and show durable outcomes |
-| Attention inbox | Agent and workroom state | Publish exact signed targets |
-| Portable session controls | Omega and `omega_effectd` | Bind to real host and run generations |
-| Files and path context | `project` | Expose bounded tree, read, and search projections |
-| Changes and review | `project`, diff owners, and receipts | Bind exact versions and line references |
-| Git view | `git` | Add scoped operations and confirmed receipts |
-| Terminal view | `terminal` | Start read-only, then add an explicit session grant |
-| Full Auto header and controls | `omega_effectd` | Use its run generation and durable outcomes |
-| Sarah workroom | `workroom_ui` and Nostr | Keep one identity and one app navigation model |
+| Existing Sarah route | Sarah Nostr record | Replace the Khala Sync source and keep the conversation-first layout |
+| Conversation and work log | Sarah record and `workroom_ui` | Show messages, activity, pending state, terminal state, and gaps |
+| Approval and input cards | Sarah authority and receipts | Use the receipt inspector grammar for decisions and refusals |
+| Composer and run controls | Sarah service and `omega_effectd` | Route send, interrupt, pause, resume, and stop as typed intents |
+| Attention inbox | NIP-RS and NIP-ER | Deep-link to the exact room, message, reminder, run, or receipt |
+| Portable session controls | Omega and `omega_effectd` | Bind to the real host, grant, run, and generation |
+| Current mobile Full Auto projection | `omega_effectd` | Replace the OpenAgents run source with the Omega run registry |
+| Changes and review view | Full Auto evidence owner | Use it first for bounded issue `#43` change and test evidence |
+| Settings and environment rows | Omega host and provider roster | Show the host, account state, lane mapping, and connect handoff |
+| Two-pane tablet layout | Sarah and community records | Show both room selectors without merging history or membership |
 | SQLite outbox | Mobile | Reuse for Nostr publish and receipt convergence |
+
+The generic files, Git, and terminal components remain useful.
+They start after issue `#31` reaches its physical-device gate.
 
 ### 9.2 T3 behavior to continue harvesting
 
@@ -471,174 +544,256 @@ Each parity row needs these proofs:
 These are high-authority surfaces.
 They also create the most expensive physical test matrix.
 
-Start with transcript, attention, queue, steer, and stop.
-Add read-only files and changes next.
+Start with the complete issue `#31` workroom.
+Add generic files, changes, ACP threads, and Git after that gate.
 Add Git writes and terminal input after grant and receipt tests pass.
 
-### 10.5 Do not make NIP-90 the first control path
+### 10.5 Do not replace NIP-LBR with generic NIP-90
 
-NIP-90 is an important later target.
-It is not a replacement for the owned Omega host bridge.
+Issue `#31` includes the narrow NIP-LBR request and quote lane.
+Implement that lane now because it is part of the community room.
+Do not add a generic job kind or a payment path.
 
-First prove the owner device and owner Omega relationship.
-Then add NIP-90 services to the same target directory.
+Generic NIP-90 target discovery remains a later target.
+It is not a replacement for the issue `#31` record or host bridge.
 
-## 11. Full-parity target
+### 10.6 Do not make an interactive skeleton
 
-Full parity should mean **T3 controller breadth plus OpenAgents advantages**.
+Do not enable a button until its source owner can admit the intent.
+Do not make an empty community projection look like an empty community.
+Do not make a queued provider handoff look like a connected account.
+Do not make an allowed authority decision look like completed work.
 
-### 11.1 T3 breadth
+Keep source, freshness, gap, pending, refusal, and terminal state visible.
+Use an explicit **Continue on Omega** handoff when the host must do the work.
 
-The mobile app can:
+## 11. Ordered parity target
 
-- find and pair with Omega hosts
-- see all admitted projects and sessions
-- start and continue agent work
-- inspect complete thread and child-agent state
-- answer approvals and questions
-- queue, steer, pause, resume, stop, and retry
-- browse bounded files and search results
-- inspect changes and submit review instructions
-- perform admitted Git operations
-- open bounded terminal sessions
-- receive push and return to the exact target
-- recover after offline, restart, duplicates, and gaps
+Full parity remains the destination.
+The first gate is issue `#31` parity.
+The second gate is generic Omega controller parity.
 
-### 11.2 OpenAgents advantage
+### 11.1 Issue `#31` parity
 
-The parity target must also include:
+The first gate has this user-visible contract:
 
-- Nostr device and host identity
-- cloud-independent pairing
-- portable signed grants
-- relay-independent event verification
-- signed command and outcome receipts
-- portable sessions across Omega and managed targets
-- NIP-90 target discovery in a later wave
-- Sarah and workroom continuity in the same application
+| Capability | The owner can see | The permitted user can do |
+| --- | --- | --- |
+| Connection and identity | Device key, Omega key, owner binding, grant, relay, freshness, and revocation | Pair, renew, and revoke a device without a cloud login gate |
+| Owner-private Sarah | Signed transcript, activity, state, and gaps | Send, interrupt, retry a safe failure, and open its receipt |
+| Memory | Owner-decryptable NIP-AE engrams and local search results | Inspect what Sarah remembers and remove local search data without deleting the signed record |
+| Read state and reminders | NIP-RS cursor state and NIP-ER reminder state | Mark read, create, change, dismiss, and expire reminders |
+| Attention and receipts | Exact message, run, decision, and result targets | Open the exact target and inspect allowed, refused, pending, or completed state |
+| Full Auto | Objective, lane, exact time, state, and reason | Pause, resume, stop, and ask Sarah about a run |
+| Provider accounts | Provider, account label, readiness, quota, and lane mapping | Request a safe connect handoff and follow its host-owned progress |
+| Evidence chain | Objective, turn, change, test, host verification, decision, and receipt | Open each bounded hop and reject a broken or mismatched chain |
+| Community membership | Group, member, agent, operator attestation, persona, grant, and revocation | Invite, join, attach an agent, or revoke when the signed role permits it |
+| Community work | Work unit, quote, one accepted provider, result, verification, rejection, dispute, and appeal | Take the role-scoped action for each lifecycle state |
+| Experience | Accepted award events, recomputed total, scorer rank, and badges | Inspect the source for an award and detect a rank mismatch |
 
-This is deeper integration than T3.
-It is also more work than a route adapter.
+The owner-private room and the community room must never share history,
+membership, a thread reference, or an optimistic state.
+The community room must always say that v1 awards experience and pays no money.
 
-### 11.3 Parity claim rule
+### 11.2 The minimum useful implementation is a thin whole
 
-Do not claim full parity until all required rows pass:
+The first mobile version does not need final animation or dense desktop layout.
+It needs a real source and an honest state for every row in section 11.1.
 
-- a current Omega host
+Each row must have one of these results:
+
+- a real read and a real permitted action
+- a real read and an explicit role-based read-only state
+- an unavailable state with the exact missing source
+- an Omega handoff with a tracked outcome
+
+An absent route, a fixture-backed success, and an enabled dead control do not
+meet the minimum.
+
+### 11.3 Generic Omega controller parity follows issue `#31`
+
+After the first gate, add the remaining T3 controller breadth:
+
+- admitted projects, sessions, agent threads, and child-agent state
+- approvals, questions, queue, steer, retry, and generic stop controls
+- bounded files, search, changes, diffs, and review instructions
+- admitted Git operations
+- bounded terminal sessions
+- portable movement across Omega and managed Agent Computers
+- later generic NIP-90 target discovery
+
+This order makes the first mobile result more Nostr-centric than T3.
+It also stops generic workbench work from delaying the current Omega product.
+
+### 11.4 Parity claim rule
+
+Do not claim issue `#31` parity until every section 11.1 row passes with:
+
+- a current Omega host and the current OpenAgents record contract
 - a signed iOS build on a physical device
 - a signed Android build on a physical device
-- fresh install and upgrade
-- foreground, background, and process death
-- offline outbox and relay replay
-- duplicate, reordered, and missing events
-- device revocation
-- stale command rejection
+- fresh install, upgrade, foreground, background, and process death
+- offline outbox, relay replay, duplicates, reordering, and gaps
+- device, member, and agent revocation
+- stale and unauthorized command refusal
 - accessibility traversal
-- no private data in push, logs, or receipts
+- no private data in push, logs, public events, or receipts
 
 ## 12. Recommended next-seven-day plan
 
 This audit does not admit a packet in this section.
 These candidate names identify proposed work units.
 
-### `OMEGA-MOB-00` — Freeze the product and protocol boundary
+### `OMEGA-MOB-31-00` — Freeze the issue `#31` mobile coverage map
 
 Deliver:
 
-- the OpenAgents product-name decision
-- the first threat model
-- stable references and projection budgets
-- Nostr event classes and encryption rules
-- grant, revocation, sequence, gap, and receipt rules
+- one row for every issue `#31` capability in section 11.1
+- the local `Issue31WorkroomReadModel`
+- the minimal `openagents.omega.issue31.host.v1` adjunct
+- stable references, bounds, source, freshness, gap, and role state
 - shared canonical and negative fixtures
+- a Workroom route with owner-private and community room selectors
+- visible unavailable states for every source that is not connected yet
 
 Exit:
 
 - Rust and TypeScript decoders pass the same fixture set
+- no issue `#31` capability is absent from the route or coverage map
+- no existing Nostr record gets a duplicate mobile event kind
 - no exact local path or credential can enter a public projection
 
-### `OMEGA-MOB-01` — Add a real Omega relay transport
+### `OMEGA-MOB-31-01` — Connect mobile and Omega to the real Nostr record
 
 Deliver:
 
-- a production WebSocket relay adapter
+- a production WebSocket relay adapter for the Omega conversation client
+- the mobile Nostr client with device-key custody
 - NIP-42 support where the relay requires it
-- NIP-44 private controller payloads
+- NIP-17, NIP-44, and NIP-59 owner-private records
+- NIP-AE, NIP-RS, NIP-ER, NIP-29, and NIP-LBR subscriptions
 - reconnect, backoff, replay, and relay failover
-- device and host key custody
+- Omega host discovery, pairing, scoped grants, and revocation
 
 Exit:
 
-- the test does not use `MockRelayAdapter`
+- the physical-device proof does not use `MockRelayAdapter`
+- a phone and Omega converge on the same confirmed event references
 - a relay outage does not create false completion
+- confirmed records remain readable during an application-service outage
 
-### `OMEGA-MOB-02` — Project one real Omega session
+### `OMEGA-MOB-31-02` — Complete the owner-private mobile room
 
 Deliver:
 
-- one signed Omega host announcement
-- one bounded session directory row
-- one live ACP thread projection
-- transcript, work-group, run, and attention state
-- exact freshness and gap state
+- the signed Sarah transcript and bounded activity ladder
+- send, pending, confirmed, refused, failed, and interrupted states
+- the authority receipt inspector
+- proactive attention and exact deep links
+- owner-decryptable NIP-AE memory with an on-device search index
+- cross-device NIP-RS read state
+- NIP-ER reminder create, change, dismiss, and expiration controls
 
 Exit:
 
-- the phone shows a real Omega agent event
-- the proof blocks all traffic to `openagents.com` and still passes
+- a physical phone sends to Sarah and receives a confirmed reply
+- interrupt remains pending until the terminal record arrives
+- Omega and mobile agree on read state after restart and replay
+- the owner can inspect every memory item that Sarah can use
 
-### `OMEGA-MOB-03` — Admit queue, steer, and stop
+### `OMEGA-MOB-31-03` — Join Full Auto, accounts, and evidence
 
 Deliver:
 
-- typed mobile intents
-- expected version and idempotency references
-- local Omega admission
-- durable outcome receipts
-- offline retry without duplicate action
+- Full Auto rows with objective, lane, state, live work, terminal reason, and
+  exact unattended duration
+- pause, resume, and stop intents through the Omega host bridge
+- provider-account roster, readiness, quota, and account-to-lane mapping
+- a phone-initiated and host-owned isolated login handoff
+- the issue `#43` objective-to-receipt evidence chain
+- public-safe bounded change, test, and host-verification data
 
 Exit:
 
-- each action completes only from an Omega-owned result
-- duplicate delivery produces one operation
+- one mobile workroom contains the conversation, run, account, and evidence
+- a control completes only from an Omega-owned terminal result
+- a provider token and the default agent home never enter the mobile path
+- a broken evidence hop fails closed
 
-### `OMEGA-MOB-04` — Pair and revoke a physical device
+### `OMEGA-MOB-31-04` — Complete the community mobile room
 
 Deliver:
 
-- **Connect Omega** in the existing app
-- a QR or short pairing challenge
-- a signed, scoped, expiring device grant
-- local revoke and remote revoke
-- honest lost-host and revoked states
+- the isolated NIP-29 group transcript and membership roster
+- human-to-agent attestation, persona, grant, and revocation state
+- work-unit list, request, quote, one-provider acceptance, result, and refusal
+- independent verification with a distinct operator
+- typed rejection, dispute, and appeal state
+- award events, recomputed total, scorer rank, and NIP-58 badges
+- role-scoped controls for owner, member, agent operator, and verifier
+- experience-only copy in the room, invitation, and first-run view
 
 Exit:
 
-- a revoked device cannot issue a new accepted command
-- old relay events cannot restore the grant
+- the owner-private and community stores have no shared history or membership
+- an authorized mobile role can complete each non-payment lifecycle action
+- replayed, self-verified, expired, and revoked results are visibly refused
+- no screen calls experience an earning or offers a settlement action
 
-### `OMEGA-MOB-05` — Prove the vertical slice
+### `OMEGA-MOB-31-05` — Prove the thin whole on physical devices
 
 Deliver:
 
-- one physical iOS journey
-- one physical Android journey
+- one complete physical iOS journey
+- one complete physical Android journey
+- the owner-private journey from send through receipt
+- the Full Auto journey from run through evidence
+- the community journey from membership through award or typed appeal
 - background and restart recovery
-- relay duplicate, reorder, gap, and outage tests
-- a public-safe receipt
+- relay duplicate, reorder, gap, outage, and failover tests
+- device, member, and agent revocation tests
+- the section 11.1 coverage receipt
 
 Exit:
 
-- pair, list, inspect, steer, stop, restart, and revoke all pass
+- every section 11.1 row has a physical-device result
+- a public-safe receipt binds the mobile build, Omega commit, record contract,
+  relay result, host result, and test result
 
-### Stretch work
+### Recommended sequence for this week
 
-If the first six cuts finish early, add read-only files and changes.
-Do not use Git writes or interactive terminal input as stretch work.
+Day 1 freezes `OMEGA-MOB-31-00` and opens all source sections in the route.
+Day 2 finishes the real relay path and the owner-private room.
+Day 3 joins the three Omega host extensions from issues `#41` through `#43`.
+Day 4 connects the community record and all role-scoped actions.
+Day 5 runs the full integration journey and fixes false-success states.
+Days 6 and 7 run physical-device, restart, relay-failure, revocation,
+accessibility, and redaction proofs.
+
+After the shared fixtures land, use three independent work lanes:
+
+- mobile Nostr record and workroom UI
+- Omega host adjunct and the real relay adapter
+- end-to-end fixtures, failures, and physical proof
+
+Do not use generic ACP, Git writes, or interactive terminal input as stretch
+work. If a lane finishes early, it must close a missing issue `#31` row or add
+a failure proof.
 
 ## 13. Work after the first week
 
-### Wave 2 — Workbench breadth
+### Wave 2 — Issue `#31` depth
+
+Add:
+
+- large-history pagination and local encrypted search controls
+- richer reminder, memory, group, and evidence navigation
+- multi-relay health, failover, and recovery controls
+- community moderation and abuse-report views
+- native performance work for long transcripts and work-unit lists
+- a scheduled physical-device regression matrix
+
+### Wave 3 — Generic workbench breadth
 
 Add:
 
@@ -650,7 +805,7 @@ Add:
 - project and thread filters
 - settled and snoozed thread behavior
 
-### Wave 3 — High-authority controls
+### Wave 4 — High-authority controls
 
 Add:
 
@@ -660,16 +815,16 @@ Add:
 - approval renewal and revocation
 - stronger native diff and terminal rendering
 
-### Wave 4 — OpenAgents network advantage
+### Wave 5 — OpenAgents network advantage
 
 Add:
 
 - portable movement across Omega and managed Agent Computers
-- NIP-90 jobs in the target directory
+- generic NIP-90 jobs in the target directory
 - paid-job status and receipts
 - optional encrypted blob transfer
 - body-free push references
-- multi-relay health and recovery
+- portable grants across admitted targets
 
 ## 14. Risks and controls
 
@@ -677,9 +832,15 @@ Add:
 | --- | --- |
 | Relay events arrive twice or out of order | Event ID, sequence, cursor, expected version, and idempotency reference |
 | A stolen phone controls Omega | Device key, scoped grant, expiration, local revoke, and remote revoke |
-| Cloud becomes an authority gate | Direct Nostr pairing and cloud-independent control proof |
+| Cloud becomes the conversation record | Direct Nostr reads, no REST mirror, and cloud-independent pairing |
 | A relay sees private work | NIP-44 payloads and opaque tags |
-| Large files or diffs exhaust the phone | Bounded pages, truncation, content references, and explicit fetch |
+| A closed child issue hides a skeleton | Source, freshness, gap, interaction, and physical-proof rows for each capability |
+| Community and private rooms merge | Separate stores, keys, membership, history, cursors, and negative tests |
+| Member content changes Sarah instructions | Quote it as untrusted data and keep the work-unit grant narrow |
+| Community controls amplify authority | Signed roles, operator attestation, explicit grants, and immediate revocation |
+| Experience looks like compensation | Fixed no-payment copy and no settlement controls in v1 |
+| Provider login damages a live account | Host-owned isolated homes, explicit handoff, and no token projection |
+| Evidence exposes private work | Public-safe refs, bounded summaries, and host-owned content fetch |
 | Mobile state invents success | Outcome only from the Omega operation owner |
 | GPUI thread state leaks into protocol | A headless projection layer with stable schemas |
 | T3 upstream keeps moving | Capability ledger and scheduled behavior review |
@@ -688,22 +849,24 @@ Add:
 
 ## 15. Final advice
 
-Aim for full parity, but aim at the correct object.
+Aim for full parity, and use issue `#31` as the first complete object.
 
 The object is not “T3 Code on a phone.”
-The object is “OpenAgents Mobile can safely operate Omega.”
+The first object is “the complete Nostr-first Sarah workroom on a phone.”
 
 Keep the current mobile application.
 Reuse its T3-derived components and offline state.
-Build a new Omega host bridge behind them.
-Make that bridge Nostr-primary from its first real packet.
+Reuse the issue `#31` Nostr record instead of making a mobile record.
+Add only the host adjunct for Full Auto, accounts, and evidence.
 
-The best result for the next seven days is not 43 green source rows.
-It is one undeniable end-to-end journey:
+The best result for the next seven days is one undeniable thin-whole journey:
 
-> A physical phone pairs with Omega through Nostr, sees a real ACP thread,
-> steers or stops it, receives a signed durable receipt, survives restart,
-> and loses authority when the owner revokes the device.
+> A physical phone connects to Omega through Nostr and opens the two-room Sarah
+> workroom. The owner talks to Sarah, interrupts a turn, reads memory and
+> attention state, controls a Full Auto run, follows its provider and evidence,
+> and performs every permitted community action. The app survives replay and
+> restart, and it loses authority after revocation.
 
-After that proof, full controller breadth is a fast and credible port.
-Before that proof, more mobile screens only increase the parity illusion.
+Do not spend this week on a generic ACP controller, Git writes, or a terminal.
+After issue `#31` reaches this gate, the remaining T3 controller breadth can
+use the same identity, transport, grants, receipts, and physical test harness.

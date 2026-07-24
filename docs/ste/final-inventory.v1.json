@@ -34141,7 +34141,7 @@
     },
     {
       "path": "docs/omega/2026-07-24-openagents-mobile-omega-adaptation-audit.md",
-      "sha256": "331cd8b8f3c80e110a49b22478005e11145a30e7adfe2fbb072590a3553966a1",
+      "sha256": "600b8b32dfd5e844d494f76550ab4f914a15ce444e3bf6f659ee317bd82d5222",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
@@ -34347,7 +34347,7 @@
     },
     {
       "path": "docs/omega/README.md",
-      "sha256": "c1c9206fa97f02c1eabd62348adf7536f663e408fcb02fd6857758211af547b5",
+      "sha256": "fdd615855eda288b5a5fde2b8c3d8696429485f957df3b80a51671416ee4203d",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
