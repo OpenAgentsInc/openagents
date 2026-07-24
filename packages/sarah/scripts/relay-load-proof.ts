@@ -9,7 +9,7 @@
  *
  * Remote:
  *
- *   RELAY_URL=wss://relay.openagents.com pnpm --dir packages/sarah run load-proof
+ *   RELAY_URL=wss://<owned-relay-host> pnpm --dir packages/sarah run load-proof
  *
  * Force mock host:
  *
