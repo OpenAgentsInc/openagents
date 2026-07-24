@@ -1,0 +1,49 @@
+{
+  "fixture_id": "authority-receipt.succeeded.valid",
+  "expect": "accept",
+  "wire_event": {
+    "id": "4444444444444444444444444444444444444444444444444444444444444444",
+    "kind": 44301,
+    "pubkey": "0202020202020202020202020202020202020202020202020202020202020202",
+    "created_at": 1753387206,
+    "content": "nip44:v2:ciphertext:authority-receipt-fixture",
+    "tags": [
+      ["p", "0101010101010101010101010101010101010101010101010101010101010101"],
+      ["agent", "0202020202020202020202020202020202020202020202020202020202020202"],
+      ["conversation", "sarah.aaaaaaaaaaaaaaaaaaaaaaaa"],
+      ["receipt", "receipt.authority.sarah.fixture.1"],
+      ["alt", "OpenAgents Sarah authority receipt (encrypted)"],
+      ["e", "2222222222222222222222222222222222222222222222222222222222222222", "", "authority-of"]
+    ],
+    "sig": "fixture-signature-not-for-production"
+  },
+  "decrypted_payload": {
+    "schema": "openagents.authority_decision_receipt.v1",
+    "receiptRef": "receipt.authority.sarah.fixture.1",
+    "profileRef": "openagents.sarah-owner-orchestrator",
+    "profileRevision": 7,
+    "programRef": "program.sarah_nostr_runtime",
+    "grantRef": "grant.sarah_nostr_record",
+    "actorRef": "principal.sarah",
+    "actorRole": "owner_orchestrator",
+    "action": "publish_turn_record_event",
+    "targetRef": "openagents_owned_nostr_relay",
+    "triggerRef": "turn.fixture.1",
+    "conditionResults": [
+      {
+        "conditionRef": "condition.owned_relay_ready",
+        "passed": true,
+        "evidenceRefs": ["evidence.relay.load_proof.fixture"]
+      }
+    ],
+    "startedAt": "2026-07-24T20:00:05.000Z",
+    "settledAt": "2026-07-24T20:00:06.000Z",
+    "outcome": "succeeded",
+    "evidenceRefs": ["evidence.authority.decision.fixture"]
+  },
+  "honesty_rules": [
+    "publishing_receipt_never_makes_decision",
+    "missing_receipt_never_permits_action",
+    "relay_acceptance_is_not_admission"
+  ]
+}

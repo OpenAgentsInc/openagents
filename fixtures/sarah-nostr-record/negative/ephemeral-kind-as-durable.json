@@ -1,0 +1,20 @@
+{
+  "fixture_id": "ephemeral-kind-as-durable.invalid",
+  "expect": "reject",
+  "reason": "kind_24200_is_ephemeral_not_durable_turn_record",
+  "wire_event": {
+    "kind": 24200,
+    "pubkey": "0202020202020202020202020202020202020202020202020202020202020202",
+    "created_at": 1753387200,
+    "content": "nip44:v2:ciphertext",
+    "tags": [
+      ["p", "0101010101010101010101010101010101010101010101010101010101010101"],
+      ["agent", "0202020202020202020202020202020202020202020202020202020202020202"],
+      ["conversation", "sarah.aaaaaaaaaaaaaaaaaaaaaaaa"],
+      ["entry", "turn.started"],
+      ["turn", "turn.fixture.bad"],
+      ["alt", "OpenAgents Sarah turn record (encrypted)"],
+      ["e", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "", "prompt"]
+    ]
+  }
+}

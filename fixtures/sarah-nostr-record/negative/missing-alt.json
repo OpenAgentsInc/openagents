@@ -1,0 +1,18 @@
+{
+  "fixture_id": "missing-alt.invalid",
+  "expect": "reject",
+  "reason": "nip31_alt_required",
+  "wire_event": {
+    "kind": 44301,
+    "pubkey": "0202020202020202020202020202020202020202020202020202020202020202",
+    "created_at": 1753387200,
+    "content": "nip44:v2:ciphertext",
+    "tags": [
+      ["p", "0101010101010101010101010101010101010101010101010101010101010101"],
+      ["agent", "0202020202020202020202020202020202020202020202020202020202020202"],
+      ["conversation", "sarah.aaaaaaaaaaaaaaaaaaaaaaaa"],
+      ["receipt", "receipt.authority.sarah.fixture.bad"],
+      ["e", "2222222222222222222222222222222222222222222222222222222222222222", "", "authority-of"]
+    ]
+  }
+}

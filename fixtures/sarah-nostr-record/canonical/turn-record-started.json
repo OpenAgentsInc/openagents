@@ -1,0 +1,36 @@
+{
+  "fixture_id": "turn-record.turn_started.valid",
+  "expect": "accept",
+  "wire_event": {
+    "id": "1111111111111111111111111111111111111111111111111111111111111111",
+    "kind": 44300,
+    "pubkey": "0202020202020202020202020202020202020202020202020202020202020202",
+    "created_at": 1753387200,
+    "content": "nip44:v2:ciphertext:turn-started-fixture",
+    "tags": [
+      ["p", "0101010101010101010101010101010101010101010101010101010101010101"],
+      ["agent", "0202020202020202020202020202020202020202020202020202020202020202"],
+      ["conversation", "sarah.aaaaaaaaaaaaaaaaaaaaaaaa"],
+      ["entry", "turn.started"],
+      ["turn", "turn.fixture.1"],
+      ["alt", "OpenAgents Sarah turn record (encrypted)"],
+      ["e", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "", "prompt"]
+    ],
+    "sig": "fixture-signature-not-for-production"
+  },
+  "decrypted_payload": {
+    "schema": "openagents.sarah.turn_record.v1",
+    "entry": "turn.started",
+    "conversation": "sarah.aaaaaaaaaaaaaaaaaaaaaaaa",
+    "turnRef": "turn.fixture.1",
+    "seq": 1,
+    "timestamp": "2026-07-24T20:00:00.000Z",
+    "parents": [
+      {
+        "eventId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "marker": "prompt"
+      }
+    ],
+    "payload": {}
+  }
+}

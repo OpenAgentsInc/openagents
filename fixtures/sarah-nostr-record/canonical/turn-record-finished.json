@@ -1,0 +1,43 @@
+{
+  "fixture_id": "turn-record.turn_finished.valid",
+  "expect": "accept",
+  "wire_event": {
+    "id": "3333333333333333333333333333333333333333333333333333333333333333",
+    "kind": 44300,
+    "pubkey": "0202020202020202020202020202020202020202020202020202020202020202",
+    "created_at": 1753387210,
+    "content": "nip44:v2:ciphertext:turn-finished-fixture",
+    "tags": [
+      ["p", "0101010101010101010101010101010101010101010101010101010101010101"],
+      ["agent", "0202020202020202020202020202020202020202020202020202020202020202"],
+      ["conversation", "sarah.aaaaaaaaaaaaaaaaaaaaaaaa"],
+      ["entry", "turn.finished"],
+      ["turn", "turn.fixture.1"],
+      ["alt", "OpenAgents Sarah turn record (encrypted)"],
+      ["e", "1111111111111111111111111111111111111111111111111111111111111111", "", "root"],
+      ["e", "2222222222222222222222222222222222222222222222222222222222222222", "", "parent"]
+    ],
+    "sig": "fixture-signature-not-for-production"
+  },
+  "decrypted_payload": {
+    "schema": "openagents.sarah.turn_record.v1",
+    "entry": "turn.finished",
+    "conversation": "sarah.aaaaaaaaaaaaaaaaaaaaaaaa",
+    "turnRef": "turn.fixture.1",
+    "seq": 3,
+    "timestamp": "2026-07-24T20:00:10.000Z",
+    "parents": [
+      {
+        "eventId": "1111111111111111111111111111111111111111111111111111111111111111",
+        "marker": "root"
+      },
+      {
+        "eventId": "2222222222222222222222222222222222222222222222222222222222222222",
+        "marker": "parent"
+      }
+    ],
+    "payload": {
+      "reason": "completed"
+    }
+  }
+}

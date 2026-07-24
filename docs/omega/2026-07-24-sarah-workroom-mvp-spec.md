@@ -1068,7 +1068,7 @@ Each packet names its owning repository.
 
 | Packet | Repository | Outcome | State |
 | --- | --- | --- | --- |
-| `SARAH-NR-00` | openagents | freeze the Nostr record contract | planned |
+| `SARAH-NR-00` | openagents | freeze the Nostr record contract | done, see `docs/omega/2026-07-24-sarah-nostr-record-contract.md` |
 | `SARAH-NR-01a` | nostr-effect | remove Cloudflare, set the Node target | done, `787f7b5` |
 | `SARAH-NR-01b` | nostr-effect | extract the relay core out of the Bun backend | planned |
 | `SARAH-NR-01c` | nostr-effect | replace the Bun toolchain with pnpm and Vite Plus | planned |
@@ -1090,16 +1090,27 @@ the failure it avoids.
 
 ### 24.1 `SARAH-NR-00`: freeze the Nostr record contract
 
-Specify the durable turn-record kind, the authority-receipt kind, the
-conversation identifier, and the causal link rules. Publish canonical fixtures
-and negative test vectors for each. State authorship, encryption, deletion,
-replacement, and relay derivation rules for every kind. Add a NIP-31 `alt`
-value so an unknown client gets a safe non-secret summary.
+**Done.** The freeze lives at
+`docs/omega/2026-07-24-sarah-nostr-record-contract.md`. Fixtures live at
+`fixtures/sarah-nostr-record/`.
 
-Map every field in §7 to its carrier. Name one writable authority per field.
-Record the boundary in §21 as a contract, not as prose.
+It specifies:
 
-Exit: a second implementation could interoperate from the specification alone.
+- durable turn-record kind `44300` (`openagents.sarah.turn_record`)
+- authority-receipt kind `44301` (`openagents.sarah.authority_receipt`)
+- conversation identifier `sarah.<digest>` and the
+  `thread.sarah.<digest>` mapping
+- causal `e` tag markers and required parents
+- authorship, encryption, deletion, replacement, and relay-derivation rules
+- NIP-31 `alt` values
+- the §7 projection map with one writable authority per field
+- the §21 boundary as a normative contract
+
+NIP-AO kind `24200` stays ephemeral for live telemetry only.
+Relay acceptance is never an OpenAgents admission.
+
+Exit: a second implementation could interoperate from the freeze and fixtures
+alone. Verify with `node fixtures/sarah-nostr-record/validate.mjs`.
 
 ### 24.2 `SARAH-NR-01`: the Node and Google Cloud migration
 

@@ -1,0 +1,11 @@
+{
+  "fixture_id": "receipt-decides-admission.invalid",
+  "expect": "reject",
+  "reason": "receipt_is_record_not_admission",
+  "claim": {
+    "kind": 44301,
+    "treat_relay_ok_as_admission": true,
+    "skip_resolveAuthorityDecision": true
+  },
+  "contract_rule": "relay_acceptance_is_not_openagents_admission"
+}

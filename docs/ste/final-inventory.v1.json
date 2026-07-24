@@ -34121,8 +34121,26 @@
       }
     },
     {
+      "path": "docs/omega/2026-07-24-sarah-nostr-record-contract.md",
+      "sha256": "a3a213bd183644921b10aab1eda3bc9365285486b4c7e35e1c233768df76e056",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "mixed",
+        "risk": "high",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "human",
+        "ste_accepted_screening_rules": [
+          "STE-2.4"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/omega/2026-07-24-sarah-workroom-mvp-spec.md",
-      "sha256": "7e700b26332c0b5ba68931298fcd8efc438e7a98d6ec892f7902d03e1c9538f9",
+      "sha256": "bb897a9d9724e2943e13c6c2d1d9d3783fde28d5b273452fd01f770aae0f76c2",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -34140,7 +34158,7 @@
     },
     {
       "path": "docs/omega/README.md",
-      "sha256": "27dab30acab92b7a9a6c7ae53078b27b0b0dc4f76e354d3ea8e3dd5335015100",
+      "sha256": "8846d7b8c6fb6a578753a7651413d3dee5f268260e6e2dc342870f9f3004b3c5",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

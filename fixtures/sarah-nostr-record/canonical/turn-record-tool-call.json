@@ -1,0 +1,44 @@
+{
+  "fixture_id": "turn-record.tool_call.valid",
+  "expect": "accept",
+  "wire_event": {
+    "id": "2222222222222222222222222222222222222222222222222222222222222222",
+    "kind": 44300,
+    "pubkey": "0202020202020202020202020202020202020202020202020202020202020202",
+    "created_at": 1753387205,
+    "content": "nip44:v2:ciphertext:tool-call-fixture",
+    "tags": [
+      ["p", "0101010101010101010101010101010101010101010101010101010101010101"],
+      ["agent", "0202020202020202020202020202020202020202020202020202020202020202"],
+      ["conversation", "sarah.aaaaaaaaaaaaaaaaaaaaaaaa"],
+      ["entry", "tool.call"],
+      ["turn", "turn.fixture.1"],
+      ["alt", "OpenAgents Sarah turn record (encrypted)"],
+      ["e", "1111111111111111111111111111111111111111111111111111111111111111", "", "root"],
+      ["e", "1111111111111111111111111111111111111111111111111111111111111111", "", "parent"]
+    ],
+    "sig": "fixture-signature-not-for-production"
+  },
+  "decrypted_payload": {
+    "schema": "openagents.sarah.turn_record.v1",
+    "entry": "tool.call",
+    "conversation": "sarah.aaaaaaaaaaaaaaaaaaaaaaaa",
+    "turnRef": "turn.fixture.1",
+    "seq": 2,
+    "timestamp": "2026-07-24T20:00:05.000Z",
+    "parents": [
+      {
+        "eventId": "1111111111111111111111111111111111111111111111111111111111111111",
+        "marker": "root"
+      },
+      {
+        "eventId": "1111111111111111111111111111111111111111111111111111111111111111",
+        "marker": "parent"
+      }
+    ],
+    "payload": {
+      "toolRef": "tool.fixture.lookup",
+      "callRef": "tool.call.fixture.1"
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "fixture_id": "conversation-mapping.valid",
+  "expect": "accept",
+  "legacy_thread_ref": "thread.sarah.aaaaaaaaaaaaaaaaaaaaaaaa",
+  "conversation_tag_value": "sarah.aaaaaaaaaaaaaaaaaaaaaaaa",
+  "rules": [
+    "strip_thread_prefix",
+    "add_thread_prefix",
+    "digest_unchanged",
+    "raw_owner_id_forbidden"
+  ]
+}

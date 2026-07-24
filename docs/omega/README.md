@@ -40,10 +40,13 @@ Read these documents in this order:
     [HE-02 harness-environment release](./2026-07-24-he02-harness-environment-release.md).
 14. Read the
     [Sarah workroom MVP specification](./2026-07-24-sarah-workroom-mvp-spec.md)
-    (`OMEGA-SW-00` through `OMEGA-SW-07`).
-15. Read the [accepted Omega plan](../sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md).
-16. Read the [master roadmap](../sol/MASTER_ROADMAP.md).
-17. Read the [Desktop release contract](../deploy/openagents-desktop-cross-platform-release.md).
+    (`OMEGA-SW-00` through `OMEGA-SW-07`, `SARAH-NR-00` through `SARAH-NR-09`).
+15. Read the
+    [Sarah Nostr record contract](./2026-07-24-sarah-nostr-record-contract.md)
+    (`SARAH-NR-00`).
+16. Read the [accepted Omega plan](../sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md).
+17. Read the [master roadmap](../sol/MASTER_ROADMAP.md).
+18. Read the [Desktop release contract](../deploy/openagents-desktop-cross-platform-release.md).
 
 The Omega roadmap owns the implementation order.
 The release-readiness audit owns the current brand and package gap.
@@ -67,6 +70,9 @@ The Sarah workroom MVP specification owns the proposed first workroom slice.
 Part 1 puts one native Sarah conversation pane on the current OpenAgents API
 record. Part 2 moves the Sarah runtime to Nostr on an owned relay, per the
 owner direction of 2026-07-24.
+The Sarah Nostr record contract freezes kinds `44300` and `44301`, the
+conversation identifier, causal links, fixtures, the §7 projection map, and
+the §21 boundary for `SARAH-NR-00`.
 
 Part 3 is the v2 roadmap for the semi-public community workroom. Outside
 developers point their own compute at bounded work there. They earn experience

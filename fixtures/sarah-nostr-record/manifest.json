@@ -1,0 +1,30 @@
+{
+  "fixture": "sarah-nostr-record.canonical.manifest.v1",
+  "contract": "docs/omega/2026-07-24-sarah-nostr-record-contract.md",
+  "kinds": {
+    "turn_record": 44300,
+    "authority_receipt": 44301,
+    "ephemeral_observer": 24200
+  },
+  "extensions": [
+    { "id": "openagents.sarah.turn_record", "version": 1 },
+    { "id": "openagents.sarah.authority_receipt", "version": 1 }
+  ],
+  "fixtures": [
+    "canonical/conversation-mapping.json",
+    "canonical/turn-record-started.json",
+    "canonical/turn-record-tool-call.json",
+    "canonical/turn-record-finished.json",
+    "canonical/authority-receipt-succeeded.json"
+  ],
+  "negatives": [
+    "negative/ephemeral-kind-as-durable.json",
+    "negative/missing-conversation-tag.json",
+    "negative/missing-causal-parent.json",
+    "negative/plaintext-content.json",
+    "negative/missing-alt.json",
+    "negative/owner-authors-turn-record.json",
+    "negative/replaceable-d-tag.json",
+    "negative/receipt-decides-admission.json"
+  ]
+}

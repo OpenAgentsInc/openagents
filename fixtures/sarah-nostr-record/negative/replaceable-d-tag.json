@@ -1,0 +1,21 @@
+{
+  "fixture_id": "replaceable-d-tag.invalid",
+  "expect": "reject",
+  "reason": "replacement_forbidden_no_d_tag",
+  "wire_event": {
+    "kind": 44300,
+    "pubkey": "0202020202020202020202020202020202020202020202020202020202020202",
+    "created_at": 1753387200,
+    "content": "nip44:v2:ciphertext",
+    "tags": [
+      ["d", "turn.fixture.bad"],
+      ["p", "0101010101010101010101010101010101010101010101010101010101010101"],
+      ["agent", "0202020202020202020202020202020202020202020202020202020202020202"],
+      ["conversation", "sarah.aaaaaaaaaaaaaaaaaaaaaaaa"],
+      ["entry", "turn.started"],
+      ["turn", "turn.fixture.bad"],
+      ["alt", "OpenAgents Sarah turn record (encrypted)"],
+      ["e", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "", "prompt"]
+    ]
+  }
+}
