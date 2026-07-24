@@ -3,14 +3,25 @@
 - Class: source evidence, current port recommendation, and canceled operations plan
 - Status: current Omega direction plus superseded Buzz operations
 - Owner disposition: do not deploy or operate Buzz for OpenAgents
+- Current protocol direction: Nostr-primary Omega workrooms
+- Cloud boundary: provisional and subject to a later owner decision
 - Current plan:
   [`Omega`](../sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md)
 
 This directory keeps the source-grounded Buzz analysis and the canceled
 self-host runbook.
 OpenAgents will not run a separate Buzz instance.
-It will not use Buzz as a sidecar, relay, forge, team room, or product
+It will not use the Buzz application as a sidecar, forge, team room, or product
 dependency.
+Omega will implement and operate the Nostr relay, event, query, and projection
+functions that its Nostr-primary workrooms need.
+
+The 2026-07-24 owner direction makes Nostr primary for the current Buzz parity
+work.
+This supersedes the accepted Omega plan's optional-projection wording for this
+workstream.
+A later owner decision will define the final boundary between Nostr, Khala
+Sync, Cloud SQL, and other cloud services.
 
 Omega will implement the useful Buzz workroom outcomes as native Zed GPUI
 panes.
@@ -26,24 +37,25 @@ change the Omega plan.
 
 - [`../teardowns/2026-07-21-buzz-teardown.md`](../teardowns/2026-07-21-buzz-teardown.md)
   — the full architecture and product audit of the public Buzz tree, plus the
-  central decision to adopt selected protocols and not adopt the Buzz product
-  substrate.
+  earlier selected-protocol decision. The current full-parity report expands
+  that Nostr scope without adopting the Buzz application as a dependency.
 
 ## Documents here
 
 - [`2026-07-24-omega-buzz-full-parity-recommendation.md`](2026-07-24-omega-buzz-full-parity-recommendation.md)
   — the current recommendation to accept full Buzz product-outcome parity,
-  rebuild it through Omega authorities, and deliver full-core owner dogfood
-  this week.
+  rebuild it as a Nostr-primary Omega workroom, and deliver full-core owner
+  dogfood this week.
 - [`2026-07-22-buzz-self-host-and-sarah-runbook.md`](2026-07-22-buzz-self-host-and-sarah-runbook.md)
   — retained historical installation and Sarah-integration evidence.
   Its commands and checklist are inactive.
 
 ## Related OpenAgents surfaces
 
-- `nostr-effect` (sibling repo) — our owned Effect Nostr library and retained
-  relay prototype. It implements the standard NIPs and all 15 Buzz custom
-  NIPs. The Omega plan does not admit a standalone relay deployment.
+- `nostr-effect` (sibling repo) — our owned Effect Nostr library and primary
+  protocol base for Omega workrooms. It implements the standard NIPs and all 15
+  Buzz custom NIPs. Omega can reimplement the required relay and projection
+  functions around this base.
 - `apps/openagents.com/workers/api/src/sol-claim-ledger-relay.ts` — the signing
   and relay bridge that the #9185 prototype added.
 - `apps/openagents.com/workers/api/src/sarah-runtime-tools.ts` — Sarah's
@@ -55,6 +67,8 @@ change the Omega plan.
 
 This directory is not dispatch authority.
 Do not execute the retained deployment commands.
-The relay-as-workspace substrate remains rejected.
-Cloud SQL and Khala Sync remain the conversation and projection authority.
-The Omega accepted plan owns the current workroom direction.
+Do not restore the canceled Buzz deployment as Omega infrastructure.
+For the current port, signed Nostr events are the primary workroom record.
+Local and cloud indexes must derive from those events and must not silently
+replace or override them.
+The final cloud and Nostr authority split needs a later owner decision.

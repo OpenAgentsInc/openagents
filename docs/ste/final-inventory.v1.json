@@ -19319,7 +19319,7 @@
     },
     {
       "path": "docs/buzz/2026-07-24-omega-buzz-full-parity-recommendation.md",
-      "sha256": "3f11f9b31d0f8383a3e193323eaa209b463397a169ad9684a6efce7f2a9b0469",
+      "sha256": "7f6f417d7a8751d6fc30b4c7ed641ed04097b52d4dce570bfdb42bcdac4249e1",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -19341,7 +19341,7 @@
     },
     {
       "path": "docs/buzz/README.md",
-      "sha256": "a85031de53d2d4343b319b3e9f933e97213a3a1db733a26e36bff4f156b4c9be",
+      "sha256": "069da9dc685a30b7c4c1d49bdbc8264fa1da9c0a710e6215b22fcf1a659e5e31",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
