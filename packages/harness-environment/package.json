@@ -3,6 +3,9 @@
   "version": "0.1.0-rc.1",
   "private": false,
   "license": "Apache-2.0",
+  "bin": {
+    "run-openagents-cloud-harness": "./src/run-openagents-cloud-harness.ts"
+  },
   "files": [
     "src"
   ],
@@ -10,9 +13,6 @@
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts"
-  },
-  "bin": {
-    "run-openagents-cloud-harness": "./src/run-openagents-cloud-harness.ts"
   },
   "publishConfig": {
     "access": "public"

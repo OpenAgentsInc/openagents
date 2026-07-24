@@ -2,14 +2,17 @@
   "name": "@openagentsinc/omega-effectd",
   "version": "0.1.0",
   "private": false,
-  "license": "Apache-2.0",
   "description": "Supervised Node 24 + Effect Full Auto engine for Omega (and Desktop)",
-  "type": "module",
-  "sideEffects": false,
+  "license": "Apache-2.0",
+  "bin": {
+    "omega-effectd": "./src/bin/omega-effectd.ts"
+  },
   "files": [
     "src",
     "README.md"
   ],
+  "type": "module",
+  "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
     "./paths": "./src/paths.ts",
@@ -18,9 +21,6 @@
     "./support/*": "./src/support/*",
     "./protocol/*": "./src/protocol/*",
     "./scripts/*": "./scripts/*"
-  },
-  "bin": {
-    "omega-effectd": "./src/bin/omega-effectd.ts"
   },
   "publishConfig": {
     "access": "public"
