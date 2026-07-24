@@ -1,24 +1,92 @@
 {
-  "ok": false,
+  "ok": true,
   "packet": "OMEGA-AC-03",
   "path": "omega-effectd runAgentComputerTurn -> HarnessEnvironment.openagents_cloud",
   "controlPlaneBaseUrl": "https://openagents.com",
   "repoRef": "OpenAgentsInc/openagents",
-  "adapter": "claude_agent",
-  "verify": [
-    "git",
-    "rev-parse",
-    "HEAD"
-  ],
-  "pollIntervalMs": 2000,
-  "maxPollAttempts": 300,
-  "objectiveDigest": "d215ce61767f1cdbbdac279c21c7b85f9bad4692f19994b1949437776c53d7cf",
-  "startedAt": "2026-07-24T11:31:50.117Z",
-  "finishedAt": "2026-07-24T11:31:50.314Z",
-  "error": {
-    "code": "turn_failed",
-    "message": "unauthorized"
+  "adapter": "codex",
+  "sessionRef": "ccs_0ce9a05c48134942864e0aa646c46158",
+  "workContextRef": "work-context.agent-computer.ccs_0ce9a05c48134942864e0aa646c46158",
+  "baseCommit": "1b13175cd516c71a5b9c5cacc32459b1e233fd1c",
+  "objectiveDigest": "sha256:f07ede1b20767ff294badcc3a1210aff811fb873d1aa04e88f460c67878d36d6",
+  "placement": {
+    "lane": "cloud-gcp",
+    "provisionerKind": "live",
+    "provisionReceiptRef": "receipt.cloud.gce.provision.26f11e3429d0df04",
+    "status": "completed",
+    "exitCode": 0
   },
-  "durableDiskContainsBearer": false,
-  "durableDiskContainsObjective": false
+  "artifacts": {
+    "result": "artifact.sha256.43f319b58d0c02ae3e0e9dfcc9e69184430ace343db519c15d7d5ba9400d9f27",
+    "stagedDiff": "artifact.sha256.6777ed2199fbcab502b6de587db0c9443b8744a79f2ea5c13e69f5c387e16376",
+    "stagedDiffBytes": 382,
+    "changedFileCount": 1
+  },
+  "verification": {
+    "commandRef": "verify.agent-computer.public_cloud_coding_request",
+    "command": [
+      "git",
+      "diff",
+      "--cached",
+      "--check"
+    ],
+    "exitCode": 0,
+    "ok": true,
+    "stdoutDigest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stderrDigest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "truncated": false
+  },
+  "usage": {
+    "lane": "codex_app_server",
+    "provider": "pylon-codex-org-capacity",
+    "model": "openagents/pylon-codex",
+    "inputTokens": 94650,
+    "outputTokens": 465,
+    "reasoningTokens": 51,
+    "cacheReadTokens": 81920,
+    "totalTokens": 95166,
+    "usageRef": "usage.codex_app_server.5439b84c-7bb6-429d-acf7-5d69a3c835b9",
+    "tokenUsageEventRef": "event.inference.served-tokens.khala-cloud-runtime.c86e266dc8bb48404b6ba3327bbc941e",
+    "insertedTokenUsage": true,
+    "tokenChargeMetered": false
+  },
+  "resourceUsage": {
+    "schema": "openagents.resource_usage_receipt.v1",
+    "vmSeconds": 90,
+    "meteringSource": "node_measured",
+    "receiptRef": "receipt.cloud.gce.resource_usage.26f11e3429d0df04"
+  },
+  "writeback": {
+    "status": "pull_request_merged",
+    "recorded": true,
+    "recordedEventId": "event.private.agent_computer.writeback.16eee685-1f1f-4053-86c7-5eadb0752d7b",
+    "branch": "pylon/agent-computer-ccs_0ce9a05c48134942864e0aa646c46158",
+    "commit": "e4de4450ec3c1a63d285ecf84fb1d327e43597ff",
+    "pullRequest": "https://github.com/OpenAgentsInc/openagents/pull/9213",
+    "mergeCommit": "ecabc813e5698f32c1246b26bad80b18c8a8002d"
+  },
+  "cleanup": {
+    "artifactsExtracted": true,
+    "tornDown": true,
+    "cleanupVerified": true,
+    "cleanupReceiptRef": "sha256:86f28ab5acc779ae70ec0515542c9dde594f1abf51033f8189d5cd01ae02cd56",
+    "scratchWipeReceiptRef": "receipt.cloud.gce.scratch_wipe.26f11e3429d0df04",
+    "microvmDestroyReceiptRef": "receipt.cloud.gce.microvm_destroy.26f11e3429d0df04"
+  },
+  "sharedCapacityAuthority": {
+    "sarahIssue": "https://github.com/OpenAgentsInc/openagents/issues/9191",
+    "samePlacementLane": "cloud-gcp",
+    "sameReceiptClass": "cloud.gce"
+  },
+  "production": {
+    "revision": "openagents-monolith-00241-drv",
+    "trafficPercent": 100,
+    "ready": true
+  },
+  "independentVerification": {
+    "testFiles": 4,
+    "testsPassed": 81,
+    "testsFailed": 0
+  },
+  "ranAt": "2026-07-24T14:59:26.101Z"
 }

@@ -33798,7 +33798,7 @@
     },
     {
       "path": "docs/omega/2026-07-24-omega-agent-computer-live-proof.md",
-      "sha256": "210594c6f9f1c204c5c3ec58f3a7314fb5794212ee81d7fbf5bad66189938cd2",
+      "sha256": "e617195ca67e78f37c9d8e6b5451b6b68de47e33b73dc449c393b7c6146e02a8",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -36121,6 +36121,28 @@
     {
       "path": "docs/qa/observer/README.md",
       "sha256": "244414ecdda5e27cc8d08eb4d0045eb257917a0a24fe7d455956bc4957f55d01",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/qa/omega-ac03-agent-computer-qualification.md",
+      "sha256": "88109f4eb34f87527812216aae06117b58298cb70824dc12b3c32629208f74e4",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
