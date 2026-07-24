@@ -12,7 +12,7 @@
 - Protocol repository: `OpenAgentsInc/nostr-effect`
 - OpenAgents pin: `93bbdd70b1` (`origin/main`, 2026-07-24)
 - Omega pin: `87703b753a` (`origin/main`, 2026-07-24)
-- `nostr-effect` pin: `c160378` (`main`, 2026-07-24)
+- `nostr-effect` pin: `c160378` (`main`, 2026-07-24), migrated at `787f7b5`
 - STE issue: 9
 - Glossary revision: `openagents-ste-glossary-v1`
 
@@ -508,6 +508,11 @@ These items need an owner decision before the lane closes.
 2. Confirm that the owner-scoped admin gate stays for the MVP release text.
 3. Confirm the disposition of the autonomous tick flag during the dogfood
    window.
+4. Choose the relay hosting option in §23.3. Option B needs a policy reversal,
+   because `apps/nostr-relay` is a retired path in `AGENTS.md` and in the
+   Google Cloud authority guard.
+5. Approve the Secret Manager entries for the Sarah signing material, and the
+   service account that may read them.
 
 Record each item in `NEEDS_OWNER.md` as a named screen or action when the
 lane starts. Continue every unaffected packet while an item waits.
@@ -648,26 +653,70 @@ handler, a filter matcher, and a subscription manager. It also has a policy
 pipeline, an authentication service, a NIP module registry, and a NIP-86 admin
 service.
 
-### 18.2 The two structural gaps
+### 18.2 The three structural gaps
+
+The owner direction of 2026-07-24 is exact. OpenAgents has removed all
+dependence on, and usage of, Cloudflare and Bun. Everything must run on Node
+with the Node and Vite Plus stack that this monorepo uses, and must deploy to
+Google Cloud. The gaps below are what that costs in the protocol repository.
 
 The first gap is storage. `src/relay/storage/EventStore.ts` is a clean
-seven-method interface. It has exactly two implementations. One is
-`BunSqliteStore`, which imports `bun:sqlite`. The other is `DoSqliteStore`,
-which targets Cloudflare Durable Objects. Cloudflare is retired for
-OpenAgents and must not return as a runtime.
+seven-method interface. Before 2026-07-24 it had exactly two implementations.
+`BunSqliteStore` imports `bun:sqlite`. `DoSqliteStore` targeted Cloudflare
+Durable Objects, and the Cloudflare backend was deleted on 2026-07-24.
 
-There is no Postgres store and no Cloud SQL store. A durable
-production relay therefore needs a new `EventStore` implementation.
+There is no Postgres store and no Cloud SQL store. A durable production relay
+therefore needs a new `EventStore` implementation on Node.
 
-The second gap is the host. `BunServer.ts` uses `Bun.serve`. The package
-exports the Cloudflare backend but does not export the Bun backend. The
-OpenAgents monorepo targets Node 24 and forbids Bun in its supported paths.
-A Node WebSocket host for the relay core does not exist yet.
+The second gap is the host. `BunServer.ts` uses `Bun.serve`. There is no Node
+WebSocket host for the relay core.
+
+The third gap is deeper than a missing backend, and it is easy to miss. The
+relay core is not portable today. `RelayServer`, `RelayServerLive`,
+`RelayConfig`, `RelayHandle`, and `ConnectionData` all live inside
+`src/relay/backends/bun/BunServer.ts`. `MemoryEventStoreLive` lives inside
+`src/relay/backends/bun/BunSqliteStore.ts`. The `src/relay/index.ts` barrel
+imports every one of them from the Bun backend.
+
+The consequence is exact. The `nostr-effect/relay` entry point cannot be
+imported from Node at all, because its import graph reaches `bun:sqlite`. The
+Node port therefore starts with an extraction, not with a new backend.
+
+### 18.3 The Bun toolchain
+
+The protocol repository is a Bun project end to end. The measured state at pin `c160378` is 146 test files on `bun:test` out of
+373 source files. It also has `bun` in every package script and
+`"types": ["bun"]` in the typecheck configuration. Its agent contract
+instructed agents to prefer Bun over Node.
+
+That contract is inverted as of 2026-07-24. The conversion itself is one
+planned stage, not a per-change cleanup, because two test runners in one
+repository is the failure to avoid.
+
+### 18.4 What already landed
+
+`nostr-effect` commit `7f6a5dd` (2026-07-24) completed Stage 1 of the
+migration. It deleted the Cloudflare backend, `wrangler.toml`, the deployment
+guide, the four Cloudflare package exports, the three Cloudflare scripts, and
+the `@cloudflare/workers-types` and `wrangler` development dependencies.
+
+That removal surfaced one real coupling. `@cloudflare/workers-types` was
+silently supplying the web platform globals for the whole repository,
+including `Blob`, `Headers`, `MessageEvent`, and `RequestInfo`. The fix
+declares those from the platform library with `lib` set to `ESNext` and `DOM`.
+
+The commit also added the migration plan at
+`docs/2026-07-24-node-google-cloud-migration.md` and inverted the Bun mandate
+in that repository's agent contract. It marked the Bun and Cloudflare
+assumptions in the architecture, API, buildout, and Blossom documents.
+
+Verification for that commit was `tsc` clean plus 1430 tests passing and zero
+failing across 146 files.
 
 Neither gap touches the protocol. The library dependencies are
 `@noble`, `@scure`, `effect`, and `pako`. Those run on Node without change.
 
-### 18.3 Version skew
+### 18.5 Version skew
 
 `nostr-effect` pins `effect` at `4.0.0-beta.94`. The monorepo catalog pins the
 same beta line. The two must be moved together. A packet that bumps one and
@@ -751,10 +800,16 @@ reconciles to the exact rows.
 Sarah gets one Nostr identity for `principal.sarah`. The owner gets the
 identity that Omega already creates in `omega_identity`.
 
-The service key must not sit in an environment variable in plain text. The
-first admitted custody path is Google Secret Manager plus a signing boundary
-that returns signatures, not keys. NIP-46 remote signing is the protocol form
-of that boundary and `nostr-effect` implements it.
+The service key must not sit in an environment variable in plain text and must
+not sit in a repository file. Google Secret Manager in project
+`openagentsgemini` is the admitted custody path, mounted at runtime by the
+same deploy mechanism the monolith already uses.
+
+Secret Manager holds the material. It does not remove the need for a signing
+boundary. The turn service should reach a signer that returns signatures, not
+keys, so a compromised process cannot exfiltrate the identity. NIP-46 remote
+signing is the protocol form of that boundary and `nostr-effect` implements
+it.
 
 NIP-OA owner attestation binds Sarah's key to the owner with condition
 clauses. NIP-AA carries that attestation into relay authentication. A relay
@@ -847,20 +902,58 @@ negentropy, not by arrival time.
 
 ## 23. The owned relay
 
-### 23.1 Deployment shape
+### 23.1 Runtime and stack
 
-The relay runs on Google Cloud. Cloud Run is the first target because the
-monorepo already deploys the API that way. A WebSocket workload with long
-connections may need a GCE or a Cloud Run configuration with the correct
-timeout and concurrency settings. The packet must measure this, not assume it.
+The relay runs on Node 24. It uses the same stack this monorepo uses: pnpm,
+Vite Plus, and Effect. It does not use Bun, and it does not use Cloudflare.
 
-Cloud SQL Postgres is the store. Cloudflare Workers, Durable Objects, D1, and
-R2 remain retired and must not appear in any lane of this build.
+That rule has no exception and no compatibility lane. Bun is not admitted as a
+runtime, a package manager, a test runner, or a build tool. Cloudflare
+Workers, Durable Objects, D1, and R2 are retired and must not appear in any
+lane of this build.
+
+### 23.2 Deployment shape
+
+The relay deploys to Google Cloud in project `openagentsgemini`. Cloud Run is
+the first target because the monorepo already deploys the API that way. Its
+Node entry is `apps/openagents.com/workers/api/src/cloudrun/server.ts`, and
+its deploy script attaches Cloud SQL and mounts Secret Manager.
+
+A WebSocket workload with long connections may need a GCE shape, or a Cloud
+Run configuration with the correct timeout, concurrency, and session-affinity
+settings. The packet must measure this, not assume it.
+
+Cloud SQL Postgres is the event store. Google Secret Manager holds every
+secret, including the Sarah signing material in §22.1. No secret reaches an
+environment file in the repository, an event, a tag, or a log.
 
 The public hostname is `relay.openagents.com`. DNS stays with the current
 provider in DNS-only mode and points at Google Cloud.
 
-### 23.2 Required relay behavior
+### 23.3 Where the relay service lives
+
+Two options exist and the choice is an owner decision.
+
+Option A hosts the relay service from the `nostr-effect` repository, with its
+own Cloud Run service and deploy runbook. It keeps the protocol repository as
+the single home of relay code.
+
+Option B hosts the relay service in this monorepo as a new Cloud Run app that
+consumes the `nostr-effect` library. It matches the deploy, secret, and check
+conventions most closely.
+
+Option B has a blocker that must not be worked around quietly. `apps/nostr-relay`
+is a retired path. It is listed in the retired set inside
+`scripts/google-cloud-authority-guard.mjs`, and `AGENTS.md` records that the
+service was deleted and must not be recreated. Reviving a relay app path is a
+policy reversal that needs an owner direction, an `AGENTS.md` change, and a
+guard change in the same packet.
+
+The recommendation is Option A for the first deployment, because it needs no
+policy reversal and the migration work already lives in that repository. Move
+to Option B later only if the operator burden argues for it.
+
+### 23.4 Required relay behavior
 
 | Requirement | Carrier |
 | --- | --- |
@@ -876,7 +969,7 @@ provider in DNS-only mode and points at Google Cloud.
 Custom kinds advertise through `supported_extensions`, never through
 `supported_nips`. That rule is already the convention in the library.
 
-### 23.3 Durability and load proof
+### 23.5 Durability and load proof
 
 The relay is coordination critical path once Sarah runs on it. It needs the
 proof that openagents `#9201` specified before that issue was closed.
@@ -894,18 +987,27 @@ An unproven relay is not admitted as the Sarah record.
 
 Each packet names its owning repository.
 
-| Packet | Repository | Outcome |
-| --- | --- | --- |
-| `SARAH-NR-00` | openagents | freeze the Nostr record contract |
-| `SARAH-NR-01` | nostr-effect | Postgres `EventStore` for Cloud SQL |
-| `SARAH-NR-02` | nostr-effect | Node WebSocket relay host |
-| `SARAH-NR-03` | openagents | deploy the owned relay with load proof |
-| `SARAH-NR-04` | openagents | Sarah identity, custody, and remote signing |
-| `SARAH-NR-05` | openagents | the Sarah turn service on the relay |
-| `SARAH-NR-06` | omega | the pane reads and writes Nostr |
-| `SARAH-NR-07` | openagents | memory, read state, and reminders |
-| `SARAH-NR-08` | openagents | migration and cutover |
-| `SARAH-NR-09` | openagents | prove the Nostr journey |
+| Packet | Repository | Outcome | State |
+| --- | --- | --- | --- |
+| `SARAH-NR-00` | openagents | freeze the Nostr record contract | planned |
+| `SARAH-NR-01a` | nostr-effect | remove Cloudflare, set the Node target | done, `787f7b5` |
+| `SARAH-NR-01b` | nostr-effect | extract the relay core out of the Bun backend | planned |
+| `SARAH-NR-01c` | nostr-effect | replace the Bun toolchain with pnpm and Vite Plus | planned |
+| `SARAH-NR-01d` | nostr-effect | Node and Cloud SQL `EventStore` implementations | planned |
+| `SARAH-NR-02` | nostr-effect | Node WebSocket relay host | planned |
+| `SARAH-NR-03` | openagents | deploy the owned relay with load proof | planned |
+| `SARAH-NR-04` | openagents | Sarah identity, Secret Manager custody, signing | planned |
+| `SARAH-NR-05` | openagents | the Sarah turn service on the relay | planned |
+| `SARAH-NR-06` | omega | the pane reads and writes Nostr | planned |
+| `SARAH-NR-07` | openagents | memory, read state, and reminders | planned |
+| `SARAH-NR-08` | openagents | migration and cutover | planned |
+| `SARAH-NR-09` | openagents | prove the Nostr journey | planned |
+
+The `SARAH-NR-01` lane is the Node and Google Cloud migration in the protocol
+repository. Its plan is
+`nostr-effect` `docs/2026-07-24-node-google-cloud-migration.md`. Do not run
+`SARAH-NR-01c` as a per-change cleanup. Two test runners in one repository is
+the failure it avoids.
 
 ### 24.1 `SARAH-NR-00`: freeze the Nostr record contract
 
@@ -920,25 +1022,46 @@ Record the boundary in §21 as a contract, not as prose.
 
 Exit: a second implementation could interoperate from the specification alone.
 
-### 24.2 `SARAH-NR-01`: the Postgres `EventStore`
+### 24.2 `SARAH-NR-01`: the Node and Google Cloud migration
 
-Implement the seven-method `EventStore` interface against Cloud SQL Postgres
-on Node. Support append, replaceable, and parameterized replaceable storage.
-Support the filter grammar that the clients use, including tag filters.
+This lane runs in `nostr-effect`. Its plan document owns the detail.
 
-Prove durability across a restart. Prove that a duplicate insert is idempotent.
-Prove that a replaceable event replaces only an older event.
+**`SARAH-NR-01a`, complete.** Commit `787f7b5` removed the Cloudflare backend,
+`wrangler.toml`, the deployment guide, the Cloudflare package exports and
+scripts, and the `@cloudflare/workers-types` and `wrangler` development
+dependencies. It replaced the vendor-supplied web platform globals with the
+platform library, inverted the Bun mandate in the agent contract, and recorded
+the remaining stages.
 
-Exit: the store passes the existing relay test suites with the new backend.
+**`SARAH-NR-01b`.** Move `RelayServer`, `RelayServerLive`, `RelayConfig`,
+`RelayHandle`, and `ConnectionData` out of the Bun backend into the
+platform-agnostic core. Move `MemoryEventStore` into `src/relay/storage`.
+Rewrite the `src/relay/index.ts` barrel so it imports no backend directly.
+Exit: `nostr-effect/relay` imports under Node with no `bun:` specifier in its
+import graph.
+
+**`SARAH-NR-01c`.** Adopt pnpm and Node 24. Adopt Vite Plus and move `test`,
+`typecheck`, `lint`, and `fmt` onto `vp`. Convert the 146 `bun:test` files to
+the Vite Plus runner in one stage. Replace `@types/bun` with `@types/node`.
+Delete the Bun backend and the Bun entry. Exit: no `bun` binary, no `bun:`
+import, no `Bun.` API call, and no `@types/bun` reference in the tracked tree.
+
+**`SARAH-NR-01d`.** Implement `NodeSqliteStore` on `node:sqlite` for
+development, and `PostgresStore` against Cloud SQL for production. Both
+implement the seven-method `EventStore` interface with append, replaceable,
+and parameterized replaceable storage, plus the tag-filter grammar the clients
+use. Prove durability across a restart, an idempotent duplicate insert, and a
+replaceable event that replaces only an older event. Exit: the existing relay
+test suites pass against both backends.
 
 ### 24.3 `SARAH-NR-02`: the Node relay host
 
-Add a Node WebSocket host for the relay core. Keep the core untouched. Export
-the new backend from the package.
+Add `NodeServer` on `node:http` plus `ws`. Keep the core untouched. Export the
+Node backend from the package.
 
 Carry the connection discipline that the relay core already assumes. That
-includes a connection limit, an authentication challenge, a heartbeat, and a
-slow-client policy.
+includes a connection limit, an authentication challenge, a heartbeat with a
+miss limit, and a slow-client policy.
 
 Exit: the relay runs on Node 24 with no Bun and no Cloudflare import in the
 served path.
@@ -946,7 +1069,7 @@ served path.
 ### 24.4 `SARAH-NR-03`: deploy the owned relay
 
 Deploy to Google Cloud. Serve `relay.openagents.com`. Run the load test in
-§23.3 and publish the report. Write the operator notes.
+§23.5 and publish the report. Write the operator notes.
 
 Point `relay-health.ts` at the owned relay and keep the third-party relay as a
 separate monitored target while the market lane still uses it.
@@ -955,9 +1078,13 @@ Exit: the relay is live, measured, and monitored, with a public-safe receipt.
 
 ### 24.5 `SARAH-NR-04`: identity, custody, and signing
 
-Create the Sarah identity. Store the key material behind a signing boundary
-that returns signatures. Bind the key to the owner with NIP-OA. Carry the
+Create the Sarah identity. Put the key material in Google Secret Manager in
+project `openagentsgemini`, and reach it through a signing boundary that
+returns signatures. Bind the key to the owner with NIP-OA. Carry the
 attestation into NIP-42 relay authentication with NIP-AA.
+
+Mount the secret with the existing deploy path. Do not add a second secret
+mechanism, a repository environment file, or a build-time key.
 
 Write the rotation, revocation, and archival path. Prove that no raw key
 reaches an event, a log, a crash record, or a receipt.
@@ -1051,8 +1178,11 @@ The Nostr move is wrong if any of these becomes true.
 6. One relay hostname becomes part of Sarah's identity or a work identity.
 7. A custom kind ships without a specification and conformance fixtures.
 8. The relay operator can read the owner conversation content.
-9. A Cloudflare or Bun runtime returns in the served relay path.
-10. The Sarah authority profile gains a capability because the record moved.
+9. A Cloudflare or Bun runtime, package manager, test runner, or build tool
+   returns anywhere in the relay lane.
+10. A secret reaches a repository file or an environment file instead of
+    Secret Manager.
+11. The Sarah authority profile gains a capability because the record moved.
 
 ## 26. Risks
 
@@ -1081,6 +1211,13 @@ Cloudflare backends, the relay core, `src/core/NipAO.ts`, `src/core/NipAM.ts`,
 It read openagents `#9185` and `#9201` including the closing note, the forge
 decision audit with its GRASP amendment, `sol-claim-ledger-relay.ts`,
 `relay-health.ts`, and `forum-work-requests.ts`.
+
+The runtime and deployment claims come from the root `package.json`, the
+`vite.config.ts` Vite Plus configuration, `scripts/zero-supported-bun-guard.mjs`,
+`scripts/google-cloud-authority-guard.mjs`, and `docs/DEPLOYMENT.md`.
+
+The Stage 1 migration facts come from `nostr-effect` commit `787f7b5` and its
+verification run.
 
 No relay was deployed, no event was published, and no live turn was run for
 this document.
