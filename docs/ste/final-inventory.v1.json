@@ -48275,7 +48275,7 @@
     },
     {
       "path": "specs/omega/full-auto.assurance-spec.md",
-      "sha256": "040ba8687d0ff27c83f61613a3f138174416280a12542656f1e26bf5ae99ea80",
+      "sha256": "7c888bcc687dd7bfce7204429640ec8443a50bae730c8b47ea3f8f3c917f9b23",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
