@@ -1,0 +1,90 @@
+{
+  "id": "welcome-tour",
+  "label": "OMEGA WELCOME - CURRENT",
+  "purpose": "Zoomed Welcome walk on the RIGHT onboarding pane: theme clicks and scroll. Prefer over a static hold.",
+  "notes": [
+    "Current Welcome is a split Onboarding tab: empty left, content on the right. Click fractions must stay in x>=0.52.",
+    "Use record-motion. Do not click Create identity unattended (Keychain).",
+    "Burn OMEGA WELCOME - CURRENT into the edit."
+  ],
+  "steps": [
+    { "op": "launch" },
+    { "op": "wait", "ms": 2500 },
+    {
+      "op": "menu",
+      "bar": "Help",
+      "item": "Editor Onboarding",
+      "pauseMs": 1500
+    },
+    { "op": "enlarge", "pauseMs": 500 },
+    { "op": "wait", "ms": 900 },
+    {
+      "op": "click_at",
+      "x": 0.62,
+      "y": 0.38,
+      "pauseMs": 700,
+      "note": "Identity / create region (visual only — do not rely on Keychain)"
+    },
+    {
+      "op": "click_at",
+      "x": 0.72,
+      "y": 0.55,
+      "pauseMs": 650,
+      "note": "Theme header / first theme preview"
+    },
+    {
+      "op": "click_at",
+      "x": 0.78,
+      "y": 0.58,
+      "pauseMs": 650,
+      "note": "Second theme preview"
+    },
+    {
+      "op": "click_at",
+      "x": 0.68,
+      "y": 0.58,
+      "pauseMs": 700,
+      "note": "First theme again"
+    },
+    {
+      "op": "scroll_drag",
+      "direction": "down",
+      "amount": 4,
+      "pauseMs": 600,
+      "note": "Scroll right pane — dragScroll uses x=0.55 which is on the content edge"
+    },
+    {
+      "op": "click_at",
+      "x": 0.7,
+      "y": 0.7,
+      "pauseMs": 700,
+      "note": "Lower Welcome after scroll"
+    },
+    {
+      "op": "scroll_drag",
+      "direction": "down",
+      "amount": 3,
+      "pauseMs": 600
+    },
+    {
+      "op": "click_at",
+      "x": 0.68,
+      "y": 0.75,
+      "pauseMs": 800,
+      "note": "Keymap / toggles region"
+    },
+    {
+      "op": "scroll_drag",
+      "direction": "up",
+      "amount": 3,
+      "pauseMs": 700
+    },
+    {
+      "op": "click_at",
+      "x": 0.72,
+      "y": 0.55,
+      "pauseMs": 900,
+      "note": "Back to themes"
+    }
+  ]
+}

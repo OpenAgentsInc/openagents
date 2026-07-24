@@ -312,15 +312,16 @@ fallback master was required.
 
 ### Step 3 — Record a clean product screenshare
 
-Prefer `welcome-hold` (Help → Editor Onboarding). Keep Omega frontmost. Hide
-or close unrelated side panels before capture. Re-record if a foreign UI
-(for example a Gemini panel) is in frame.
+Prefer `record-motion` with `welcome-tour` (enlarged window, theme/keymap
+clicks, drag-scroll). A static `welcome-hold` is only a fallback. Keep Omega
+frontmost. Hide or close unrelated side panels before capture. Do not click
+Create identity in unattended capture.
 
 ```sh
 export OMEGA_BIN="/path/to/Omega.app/Contents/MacOS/omega"
-node scripts/omega-screen-control/omega-screen-control.mjs record \
-  --shot welcome-hold \
-  --seconds 20 \
+node scripts/omega-screen-control/omega-screen-control.mjs record-motion \
+  --shot welcome-tour \
+  --seconds 28 \
   --out ~/Desktop/Sarah/262/262-screenshare-omega-welcome.mp4
 node scripts/omega-screen-control/omega-screen-control.mjs quit
 ```

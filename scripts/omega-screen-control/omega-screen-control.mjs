@@ -17,7 +17,9 @@
 //   node scripts/omega-screen-control/omega-screen-control.mjs dump-ax
 //   node scripts/omega-screen-control/omega-screen-control.mjs shot welcome-setup
 //   node scripts/omega-screen-control/omega-screen-control.mjs record --shot welcome-hold --seconds 20 --out ~/Desktop/Sarah/262/welcome.mp4
+//   node scripts/omega-screen-control/omega-screen-control.mjs record-motion --shot welcome-tour --seconds 28 --out ~/Desktop/Sarah/262/262-screenshare-omega-welcome.mp4
 //   node scripts/omega-screen-control/omega-screen-control.mjs quit
+//     (SIGTERM/SIGKILL on tracked Omega pid — never Cmd+Q)
 //
 // Env:
 //   OMEGA_BIN                 Absolute path to the omega binary
@@ -62,7 +64,7 @@ function usage() {
   omega-screen-control.mjs dump-ax [--out <path>]
   omega-screen-control.mjs shot <shot-id>
   omega-screen-control.mjs record --shot <shot-id> --out <mp4> [--seconds 20] [--screen-device 4]
-  omega-screen-control.mjs quit
+  omega-screen-control.mjs quit   # SIGTERM tracked pid; never Cmd+Q
 
 Shots live in scripts/omega-screen-control/shots/*.json
 
@@ -361,6 +363,17 @@ function keyCombo(combo) {
     .map((m) => modMap[m])
     .filter(Boolean)
     .join(', ')
+  // Named keys that need AppleScript key codes (not keystroke names).
+  const keyCodeOnly = {
+    up: 126,
+    down: 125,
+    left: 123,
+    right: 124,
+    pageup: 116,
+    pagedown: 121,
+    home: 115,
+    end: 119,
+  }
   const keyCodeMap = {
     enter: 'return',
     return: 'return',
@@ -369,14 +382,113 @@ function keyCombo(combo) {
     tab: 'tab',
     space: 'space',
   }
-  const keyName = keyCodeMap[key] || key
   const usingClause = using ? ` using {${using}}` : ''
-  if (keyName.length === 1) {
-    runOsascript(`tell application "System Events" to keystroke "${keyName}"${usingClause}`)
+  if (keyCodeOnly[key] != null) {
+    runOsascript(
+      `tell application "System Events" to key code ${keyCodeOnly[key]}${usingClause}`,
+    )
   } else {
-    runOsascript(`tell application "System Events" to keystroke ${keyName}${usingClause}`)
+    const keyName = keyCodeMap[key] || key
+    if (keyName.length === 1) {
+      runOsascript(
+        `tell application "System Events" to keystroke "${keyName}"${usingClause}`,
+      )
+    } else {
+      runOsascript(
+        `tell application "System Events" to keystroke ${keyName}${usingClause}`,
+      )
+    }
   }
   console.log(`keyed: ${combo}`)
+}
+
+function enlargeOmegaWindow() {
+  activateOmega()
+  const ref = processRefAppleScript()
+  // Large centered window so Welcome UI is legible when cropped/zoomed.
+  runOsascript(`
+tell application "System Events"
+  set p to ${ref}
+  set frontmost of p to true
+  set w to window 1 of p
+  set size of w to {1480, 980}
+  set position of w to {220, 60}
+end tell
+`)
+  console.log('enlarged Omega window to ~1480x980')
+}
+
+function dragScroll(direction, amount = 1) {
+  // Scroll the RIGHT Welcome pane (split onboarding: content is x>~0.5).
+  const bounds = windowBounds()
+  const bin = commandExists('cliclick') ? 'cliclick' : '/opt/homebrew/bin/cliclick'
+  const x = Math.round(bounds.x + bounds.w * 0.72)
+  const y = Math.round(bounds.y + bounds.h * 0.55)
+  // Move pointer into the pane first.
+  execFileSync(bin, [`m:${x},${y}`])
+  sleep(120)
+  const delta = direction === 'up' ? 8 : -8
+  for (let i = 0; i < amount; i++) {
+    try {
+      execFileSync(
+        'python3',
+        [
+          '-c',
+          `
+import Quartz, time
+e = Quartz.CGEventCreateScrollWheelEvent(None, Quartz.kCGScrollEventUnitLine, 1, ${delta})
+Quartz.CGEventPost(Quartz.kCGHIDEventTap, e)
+time.sleep(0.05)
+`,
+        ],
+        { stdio: 'ignore' },
+      )
+    } catch {
+      const yStart =
+        direction === 'up'
+          ? Math.round(bounds.y + bounds.h * 0.38)
+          : Math.round(bounds.y + bounds.h * 0.78)
+      const yEnd =
+        direction === 'up'
+          ? Math.round(bounds.y + bounds.h * 0.78)
+          : Math.round(bounds.y + bounds.h * 0.38)
+      execFileSync(bin, [
+        `m:${x},${yStart}`,
+        `dd:${x},${yStart}`,
+        `dm:${x},${yEnd}`,
+        `du:${x},${yEnd}`,
+      ])
+    }
+    sleep(350)
+  }
+  console.log(`scroll ${direction} x${amount} @ (${x},${y})`)
+}
+
+function displayScaleFactor() {
+  // ffmpeg avfoundation captures physical pixels on Retina; AX bounds are points.
+  try {
+    const raw = runOsascript(`
+tell application "Finder" to return 1
+`)
+    void raw
+  } catch {
+    // ignore
+  }
+  try {
+    const out = execFileSync(
+      'python3',
+      [
+        '-c',
+        'import AppKit; print(AppKit.NSScreen.mainScreen().backingScaleFactor())',
+      ],
+      { encoding: 'utf8' },
+    ).trim()
+    const n = Number(out)
+    if (Number.isFinite(n) && n >= 1) return n
+  } catch {
+    // fall through
+  }
+  return 2
 }
 
 function listOmegaPids() {
@@ -448,25 +560,34 @@ function launch() {
 }
 
 function quit() {
+  // Never send Cmd+Q — that can quit Cursor if Omega is not frontmost.
+  // Prefer SIGTERM on the tracked Omega pid(s) from STATE_PATH.
   const state = loadState()
-  const name = processName()
-  try {
-    runOsascript(`
-tell application "System Events"
-  if exists process "${name}" then
-    tell process "${name}" to set frontmost to true
-  end if
-end tell
-tell application "System Events" to keystroke "q" using {command down}
-`)
-  } catch {
-    if (state?.pid) {
-      try {
-        process.kill(state.pid, 'SIGTERM')
-      } catch {
-        // already gone
-      }
+  const pids = []
+  for (const key of ['pid', 'spawnPid']) {
+    const n = Number(state?.[key])
+    if (Number.isFinite(n) && n > 0 && !pids.includes(n)) pids.push(n)
+  }
+  for (const pid of pids) {
+    try {
+      process.kill(pid, 'SIGTERM')
+      console.log(`SIGTERM: ${pid}`)
+    } catch {
+      // already gone
     }
+  }
+  if (pids.length > 0) sleep(800)
+  for (const pid of pids) {
+    try {
+      process.kill(pid, 0)
+      process.kill(pid, 'SIGKILL')
+      console.log(`SIGKILL: ${pid}`)
+    } catch {
+      // already gone
+    }
+  }
+  if (pids.length === 0) {
+    console.log('quit: no tracked Omega pid in state; nothing to signal')
   }
   if (
     state?.ephemeral &&
@@ -516,6 +637,12 @@ async function runShot(shotId) {
         break
       case 'key':
         keyCombo(step.combo)
+        break
+      case 'scroll_drag':
+        dragScroll(step.direction || 'down', Number(step.amount || 1))
+        break
+      case 'enlarge':
+        enlargeOmegaWindow()
         break
       case 'dump_ax':
         console.log(dumpAx())
@@ -606,6 +733,171 @@ async function recordShot() {
   quit()
 }
 
+async function recordMotion() {
+  // Setup Welcome, enlarge for legibility, then record WHILE running motion.
+  // Post-process crops/zooms to the Omega window region.
+  const shotId = flag('shot') || 'welcome-tour'
+  const out = flag('out')
+  const seconds = Number(flag('seconds', '28'))
+  if (!out) throw new Error('--out <mp4 path> is required')
+  if (!Number.isFinite(seconds) || seconds < 5) {
+    throw new Error('--seconds must be >= 5')
+  }
+
+  const path = join(SHOTS_DIR, `${shotId}.json`)
+  if (!existsSync(path)) throw new Error(`Shot not found: ${path}`)
+  const shot = JSON.parse(readFileSync(path, 'utf8'))
+  const steps = shot.steps || []
+  const setupOps = new Set(['launch', 'wait', 'wait_ax', 'menu', 'enlarge'])
+  const setup = []
+  const motion = []
+  let seenMotionBoundary = false
+  for (const step of steps) {
+    if (!seenMotionBoundary && setupOps.has(step.op)) {
+      setup.push(step)
+      continue
+    }
+    seenMotionBoundary = true
+    motion.push(step)
+  }
+  if (setup.length === 0) {
+    throw new Error('record-motion shot needs launch/menu setup steps first')
+  }
+
+  console.log(`record-motion shot=${shotId} setup=${setup.length} motion=${motion.length}`)
+  // Run setup as a temporary shot.
+  for (const [index, step] of setup.entries()) {
+    console.log(`[setup ${index + 1}/${setup.length}] ${step.op}`)
+    switch (step.op) {
+      case 'launch':
+        launch()
+        break
+      case 'wait':
+        sleep(Number(step.ms || 0))
+        break
+      case 'wait_ax':
+        waitContains(step.contains, Number(step.timeoutMs || 30000))
+        break
+      case 'menu':
+        menuClick(step.bar, step.item)
+        break
+      case 'enlarge':
+        enlargeOmegaWindow()
+        break
+      default:
+        throw new Error(`Unexpected setup op: ${step.op}`)
+    }
+    if (step.pauseMs) sleep(Number(step.pauseMs))
+  }
+  enlargeOmegaWindow()
+  sleep(600)
+
+  const absolute = resolve(expandHome(out))
+  mkdirSync(dirname(absolute), { recursive: true })
+  const rawPath = absolute.replace(/\.mp4$/i, '') + '-raw-full.mp4'
+  const screenDevice = detectScreenDevice()
+  const ffmpegBin = commandExists('ffmpeg')
+    ? 'ffmpeg'
+    : existsSync('/opt/homebrew/bin/ffmpeg')
+      ? '/opt/homebrew/bin/ffmpeg'
+      : null
+  if (!ffmpegBin) throw new Error('ffmpeg not found on PATH')
+
+  activateOmega()
+  const boundsBefore = windowBounds()
+  console.log(
+    `recording motion ${seconds}s device=${screenDevice} window=${JSON.stringify(boundsBefore)}`,
+  )
+  const ff = spawn(
+    ffmpegBin,
+    [
+      '-y',
+      '-f',
+      'avfoundation',
+      '-framerate',
+      '30',
+      '-capture_cursor',
+      '1',
+      '-i',
+      `${screenDevice}:none`,
+      '-t',
+      String(seconds),
+      '-c:v',
+      'libx264',
+      '-pix_fmt',
+      'yuv420p',
+      '-an',
+      rawPath,
+    ],
+    { stdio: ['ignore', 'inherit', 'inherit'] },
+  )
+
+  // Give ffmpeg a moment to start, then drive the UI.
+  sleep(900)
+  for (const [index, step] of motion.entries()) {
+    console.log(`[motion ${index + 1}/${motion.length}] ${step.op}`)
+    switch (step.op) {
+      case 'wait':
+        sleep(Number(step.ms || 0))
+        break
+      case 'click_at':
+        clickAt(step.x, step.y)
+        break
+      case 'click':
+        clickTitle(step.title)
+        break
+      case 'key':
+        keyCombo(step.combo)
+        break
+      case 'scroll_drag':
+        dragScroll(step.direction || 'down', Number(step.amount || 1))
+        break
+      case 'enlarge':
+        enlargeOmegaWindow()
+        break
+      case 'menu':
+        menuClick(step.bar, step.item)
+        break
+      default:
+        console.warn(`skipping unsupported motion op: ${step.op}`)
+    }
+    if (step.pauseMs) sleep(Number(step.pauseMs))
+  }
+
+  const exitCode = await new Promise((resolvePromise) => {
+    ff.on('exit', (code) => resolvePromise(code ?? 1))
+  })
+  if (exitCode !== 0) {
+    throw new Error(`ffmpeg exited ${exitCode}`)
+  }
+
+  // Crop/zoom to the RIGHT onboarding content pane (legible Welcome copy).
+  // AX bounds are points; Retina capture is in physical pixels.
+  const scale = displayScaleFactor()
+  const b = boundsBefore
+  const pad = 16
+  // Content lives on the right ~58% of the Welcome/Onboarding window.
+  const contentX = b.x + b.w * 0.42
+  const contentY = b.y + 36
+  const contentW = b.w * 0.56
+  const contentH = b.h - 56
+  const cropX = Math.max(0, Math.round((contentX - pad) * scale))
+  const cropY = Math.max(0, Math.round((contentY - pad) * scale))
+  const cropW = Math.round((contentW + pad * 2) * scale)
+  const cropH = Math.round((contentH + pad * 2) * scale)
+  // Even dimensions for yuv420p.
+  const even = (n) => (n % 2 === 0 ? n : n - 1)
+  const vf = `crop=${even(cropW)}:${even(cropH)}:${even(cropX)}:${even(cropY)},scale=1920:1088:force_original_aspect_ratio=decrease,pad=1920:1088:(ow-iw)/2:(oh-ih)/2,setsar=1`
+  console.log(`zoom crop scale=${scale}: ${vf}`)
+  execFileSync(
+    ffmpegBin,
+    ['-y', '-i', rawPath, '-vf', vf, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-an', absolute],
+    { stdio: ['ignore', 'inherit', 'inherit'] },
+  )
+  console.log(`wrote zoomed motion capture ${absolute}`)
+  quit()
+}
+
 try {
   switch (command) {
     case 'launch':
@@ -663,6 +955,9 @@ try {
     }
     case 'record':
       await recordShot()
+      break
+    case 'record-motion':
+      await recordMotion()
       break
     case 'quit':
       quit()
