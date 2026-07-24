@@ -7895,7 +7895,7 @@
       ]
     },
     "docs/deploy/agent-computer-production.md": {
-      "sourceSha256": "dd6d4797132d613240c5e4b433d5fb858d0cd25cddd432d8ded6514f197b5508",
+      "sourceSha256": "59160ec41923c9903dca54fefa66957fd7d3cb278df30038c3129bda3a3690e5",
       "normativeKeywords": [],
       "inlineCode": [
         "/dev/kvm",
@@ -7910,6 +7910,7 @@
         "OA_CODEX_GCE_PROVISIONER=live",
         "OA_CODEX_GCE_PROVISIONER=live",
         "PROVIDER_TOKEN_CUSTODY_AES_KEY_B64",
+        "account/read",
         "main",
         "main",
         "oa-cloud",
@@ -7921,7 +7922,8 @@
         "tornDown: true",
         "turn.agent-computer-smoke.20260712T235107Z",
         "turn.finished",
-        "turn.started"
+        "turn.started",
+        "~/.codex"
       ],
       "urls": [],
       "issueRefs": [],

@@ -1605,6 +1605,59 @@ describe('operator provider account routes', () => {
     })
   })
 
+  test('imports native Codex auth into owner custody before a lease exists', async () => {
+    const repository = new FakeProviderAccountRepository()
+    repository.accounts.push(connectedAccount({ health: 'requires_reauth' }))
+    const fixture = makeRoutes(repository)
+    const response = await fixture.routes.routeOperatorProviderAccountRequest(
+      new Request(
+        'https://openagents.com/api/operator/provider-accounts/chatgpt-codex/native-auth/import',
+        {
+          body: JSON.stringify({
+            email: 'chris@openagents.com',
+            providerAccountRef: 'provider-account_ref_test',
+            auth: {
+              type: 'oauth',
+              access: 'native-access-secret',
+              refresh: 'native-refresh-secret',
+              expires: 1_800_000_000_000,
+              accountId: 'account-native',
+              idToken: 'native-id-secret',
+            },
+          }),
+          method: 'POST',
+        },
+      ),
+      { OPENAGENTS_DB: db() },
+    )
+    if (response === undefined) throw new Error('route did not match')
+    const text = await response.text()
+
+    expect(response.status).toBe(201)
+    expect(JSON.parse(text)).toEqual({
+      ok: true,
+      providerAccountRef: 'provider-account_ref_test',
+      accountStatus: 'connected',
+      custodyStatus: 'stored',
+    })
+    expect(fixture.connectedAuths.get('provider-account_ref_test')).toEqual({
+      type: 'oauth',
+      access: 'native-access-secret',
+      refresh: 'native-refresh-secret',
+      expires: 1_800_000_000_000,
+      accountId: 'account-native',
+      idToken: 'native-id-secret',
+    })
+    expect(repository.accounts[0]).toMatchObject({
+      providerAccountRef: 'provider-account_ref_test',
+      status: 'connected',
+      health: 'healthy',
+    })
+    expect(text).not.toContain('native-access-secret')
+    expect(text).not.toContain('native-refresh-secret')
+    expect(text).not.toContain('native-id-secret')
+  })
+
   test('denies expired lease grant issue without creating a grant', async () => {
     const repository = new FakeProviderAccountRepository()
     const database = new FakeProviderAccountD1()

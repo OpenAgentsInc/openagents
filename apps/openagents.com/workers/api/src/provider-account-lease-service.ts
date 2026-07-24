@@ -103,6 +103,7 @@ export type ProviderAccountLeaseService = Readonly<{
     input: Readonly<{
       userId: string;
       requiredProvider: ProviderAccountProvider | null;
+      requiredProviderAccountRef?: string | null;
       requestedAction: string;
       runId: string | null;
       assignmentId: string | null;
@@ -306,6 +307,7 @@ export const makeProviderAccountLeaseService = (dependencies: {
           AND active_leases.expires_at > ?
          WHERE pa.user_id = ?
            AND (CAST(? AS TEXT) IS NULL OR pa.provider = CAST(? AS TEXT))
+           AND (CAST(? AS TEXT) IS NULL OR pa.provider_account_ref = CAST(? AS TEXT))
            AND pa.status = 'connected'
            AND pa.health = 'healthy'
            AND pa.secret_ref IS NOT NULL
@@ -355,6 +357,8 @@ export const makeProviderAccountLeaseService = (dependencies: {
         input.userId,
         input.requiredProvider ?? null,
         input.requiredProvider ?? null,
+        input.requiredProviderAccountRef ?? null,
+        input.requiredProviderAccountRef ?? null,
         input.now,
       )
       .first<LeaseInsertRow>();

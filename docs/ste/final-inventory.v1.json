@@ -11515,7 +11515,7 @@
     },
     {
       "path": "apps/pylon/deploy/agent-computer/README.md",
-      "sha256": "ef0d775d9aba03be2d011e2ad8fc5bc7ecb14d8378a5774d8ce9ae9eee146e8f",
+      "sha256": "b79849b731ee0381975d80af757bea136e2cf574fea82378d7aa0650f6ecc71c",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
@@ -21754,7 +21754,7 @@
     },
     {
       "path": "docs/deploy/agent-computer-production.md",
-      "sha256": "dd6d4797132d613240c5e4b433d5fb858d0cd25cddd432d8ded6514f197b5508",
+      "sha256": "59160ec41923c9903dca54fefa66957fd7d3cb278df30038c3129bda3a3690e5",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
@@ -33686,7 +33686,7 @@
     },
     {
       "path": "docs/omega/2026-07-24-agent-computer-omega-completion-plan.md",
-      "sha256": "1ef2c0391ec55c70c5afeb1b008efdc36ffa5a5cbd6138da50b0c71269c4c657",
+      "sha256": "8874c84475b89dbe6490d6cfc312c481fd3340fcb3cd4f9311a9faec869351b4",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",

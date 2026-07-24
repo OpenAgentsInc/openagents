@@ -109,13 +109,13 @@ Packets AC-01 through AC-04 close the open OpenAgents issues.
 Packets HE-01 through HE-02 finish the reusable harness environment.
 Packets OMEGA-AC-00 through OMEGA-AC-03 make Omega a real cloud client.
 
-### AC-01: Codex owner re-authentication and qualification
+### AC-01: Native Codex auth materialization and qualification
 
 Owning repository: `OpenAgentsInc/openagents`
 
 Work:
 
-- Record the exact owner action in workspace `NEEDS_OWNER.md`.
+- Select the existing native Codex credential source explicitly.
 - Use an isolated Codex home for Agent Computer only.
 - Never run `codex login` against the default `~/.codex` home.
 - Prove one real Codex coding turn on the current guest image.
@@ -368,16 +368,26 @@ Full Auto remains a dedicated run.
 Agent Computer remains one execution environment.
 Neither absorbs the other.
 
-## 8. Owner action required
+## 8. Native Codex qualification gate
 
-AC-01 needs one irreducible owner action:
+The corrected `#9205` finding supersedes the earlier reauthentication task.
+The owner Mac already has a native Codex session that passes app-server
+`account/read`. Do not use the retired Pylon account UI. AC-01 now needs:
 
-1. Authenticate an isolated Codex account for Agent Computer.
-2. Confirm the login used an isolated home, not `~/.codex`.
-3. Allow the qualification turn to proceed.
+1. explicit selection of the native `auth.json` source
+2. isolated scratch materialization and read-only app-server validation
+3. owner-scoped encrypted import followed by a lease targeted to the imported
+   account
+4. explicit, separate operator arming for encrypted credential import and grant
+   issuance
+5. explicit operator arming for the qualification turn
 
-Record that action in workspace `NEEDS_OWNER.md` before waiting.
-Continue AC runbook drafting and HE design while waiting.
+No command may run Codex login or logout against the default `~/.codex`.
+The checked-in CLI can upload native credential bytes only when the operator
+supplies `--allow-live-credential-import`. The server binds the write to the
+selected owner and reuses existing encrypted token custody, then targets lease
+acquisition to that returned account ref. Grant issuance remains separately
+gated by `--allow-live-handoff`.
 
 ## 9. Non-goals
 

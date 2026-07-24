@@ -174,6 +174,88 @@ That runbook owns `agent-computer-image.manifest.json` as the only checked-in
 image truth, harness qualification recording, and the Codex owner-reauth gate
 before `#9193` may close.
 
+## Native Codex auth qualification bridge
+
+The retired Pylon account UI is not the Codex qualification path. Use the
+bounded repository CLI with an explicitly selected native Codex `auth.json`:
+
+```sh
+pnpm agent-computer:codex-auth status \
+  --source-auth-json /explicit/native-codex-home/auth.json \
+  --scratch-root /private/tmp/openagents-codex-qualification
+```
+
+The command rejects a missing, oversized, malformed, or group-readable source.
+It copies only `auth.json` into a new mode-0700 scratch `CODEX_HOME`, writes the
+copy mode 0600, starts `codex app-server` against that scratch home, and calls
+`account/read` with `refreshToken: false`. It never calls `account/login/start`
+or `account/logout`, and it never writes the selected source or the default
+`~/.codex`. Its JSON output contains status and account type only, not an email,
+token, credential value, or credential-derived digest. `status` and `dry-run`
+remove scratch before returning.
+
+Use `materialize` only for a local bounded qualification process that will use
+the returned `codexHome`. Run `cleanup` with that exact marked path afterward.
+The cleanup command refuses an unmarked path or a path outside the declared
+scratch root.
+
+The live handoff first imports the selected native OAuth material into an
+owner-scoped provider account through the existing encrypted provider-token
+custody store, acquires a lease targeted to that exact account, then calls the
+existing operator lease-grant route. Its output contains only the custody and
+lease receipts plus the `providerAccountRef` and `authGrantRef` consumed by
+`CloudRuntimeCodexProviderAuthConfig` and
+`materializeCodexProviderAuth`. It requires all of these gates:
+
+- an owner that can receive a new Codex account, or an explicit existing
+  `--provider-account-ref` to reconnect
+- HTTPS and `OPENAGENTS_OPERATOR_ADMIN_TOKEN`
+- exact runner-session and workroom refs
+- an exact private match between the native app-server account email and the
+  selected owner email (the email is never returned)
+- separate `--allow-live-credential-import` and `--allow-live-handoff` flags
+
+First run the same inputs without either live flag:
+
+```sh
+OPENAGENTS_OPERATOR_ADMIN_TOKEN="$(security find-generic-password -w -s openagents-operator-admin)" \
+pnpm agent-computer:codex-auth dry-run \
+  --source-auth-json "$HOME/.codex/auth.json" \
+  --scratch-root /private/tmp/openagents-codex-qualification \
+  --base-url https://openagents.com \
+  --owner-email owner@example.com \
+  --runner-session-id '<agent-computer-turn-ref>' \
+  --workroom-id '<owner-workroom-ref>'
+```
+
+The exact armed import-and-grant command is:
+
+```sh
+OPENAGENTS_OPERATOR_ADMIN_TOKEN="$(security find-generic-password -w -s openagents-operator-admin)" \
+pnpm agent-computer:codex-auth handoff \
+  --source-auth-json "$HOME/.codex/auth.json" \
+  --scratch-root /private/tmp/openagents-codex-qualification \
+  --base-url https://openagents.com \
+  --owner-email owner@example.com \
+  --runner-session-id '<agent-computer-turn-ref>' \
+  --workroom-id '<owner-workroom-ref>' \
+  --allow-live-credential-import \
+  --allow-live-handoff
+```
+
+Do not put the operator token on the command line. The CLI does not create a
+second account registry or dispatch a turn. Credential import uses the same
+owner-scoped account repository and encrypted custody service as the existing
+Pylon import path. When `--provider-account-ref` is omitted, it reuses the
+owner's sole Codex account or creates one if none exists. Multiple accounts
+require an explicit ref. When provided, it reconnects only that owner's
+matching Codex account. Lease acquisition is then pinned to the returned
+account ref. After a successful handoff, the live Agent Computer dispatcher
+must add its own short-lived agent bearer and run the returned refs through the
+existing per-turn redemption and turn-runner contract. A missing connected
+account, lease, runner bearer, live control
+readiness, or writeback authority is a hard stop.
+
 ## Image Manifest
 
 `agent-computer-image.manifest.json` records the public image contract:

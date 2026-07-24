@@ -15,6 +15,7 @@
     "dev:pylon": "pnpm --dir apps/pylon run start",
     "dev:openagents-desktop": "pnpm --dir apps/openagents-desktop run dev",
     "dev:openagents-mobile": "pnpm --dir apps/openagents-mobile run dev",
+    "agent-computer:codex-auth": "node --import tsx apps/pylon/deploy/agent-computer/native-codex-auth.ts",
     "deploy:aiur": "pnpm --dir apps/aiur run deploy",
     "check": "pnpm run fmt:check && vp lint --quiet",
     "check:fast": "vp lint --quiet && pnpm run check:agent-client-protocol && pnpm run check:agent-client-protocol-conformance && pnpm run check:codex-app-server-protocol && pnpm run check:ste:all && pnpm run check:ste-control-semantics && node scripts/vp1-retired-money-surface-guard.mjs . && node scripts/zero-supported-bun-guard.mjs . && node scripts/dse-single-authority-guard.mjs . && node scripts/google-cloud-authority-guard.mjs && pnpm run check:assure-repo && pnpm run check:assure-repo-audit && pnpm run check:assure-repo-drift",

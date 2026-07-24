@@ -17,8 +17,17 @@ by [Agent Computer image update cadence runbook](./2026-07-24-agent-computer-ima
   the `oa-cloud` Artifact Registry repository.
 - Secret Manager has a current `oa-cloud-run-bridge-control-token` version.
 - Secret Manager has a current `provider-token-custody-aes-key-b64` version.
-  the monolith deploy mounts it as `PROVIDER_TOKEN_CUSTODY_AES_KEY_B64`.
+  The monolith deploy mounts it as `PROVIDER_TOKEN_CUSTODY_AES_KEY_B64`.
 - The control URL is reachable from the production Cloud Run VPC connector.
+
+Use the
+[native Codex auth qualification bridge](../../apps/pylon/deploy/agent-computer/README.md#native-codex-auth-qualification-bridge)
+for an owner-native credential. It validates the explicit source only through
+isolated app-server `account/read`. It never mutates the source or default
+`~/.codex`. Live import and grant handoff stay disabled until the operator
+supplies both explicit live flags. The HTTPS endpoint binds encrypted custody
+to the selected owner. It then acquires a lease for the imported account before
+it issues the grant.
 
 ## 1. Build the control image
 

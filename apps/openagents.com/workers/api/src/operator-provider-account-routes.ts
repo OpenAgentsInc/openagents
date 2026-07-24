@@ -25,6 +25,7 @@ import {
   startOpenAiCodexDeviceLogin,
 } from './provider-account-client'
 import {
+  type CodexOAuthAuth,
   type DeleteStartedCodexDeviceLogin,
   type PollCodexDeviceLogin,
   type ProviderAccountProvider,
@@ -53,12 +54,14 @@ import {
   providerAccountRouteErrorStatus,
 } from './provider-account-route-errors'
 import {
+  connectChatGptCodexLocalAuthForUser,
   issueProviderAccountGrant,
   recordProviderAccountHealth,
   refreshChatGptCodexDeviceLoginForUser,
   resolveProviderAccountGrant,
   startChatGptCodexDeviceLogin,
 } from './provider-accounts'
+import { ProviderAccountCredentialMaterial } from './provider-account-errors'
 import { identityDbForEnv, type IdentityDb } from './identity-db'
 import { openAgentsDatabase } from './runtime'
 import {
@@ -92,6 +95,41 @@ const providerAccountProvider = (
   value === 'google_gemini'
     ? value
     : undefined
+
+const requiredCodexAuthString = (
+  record: Record<string, unknown>,
+  key: string,
+): string => {
+  const value = record[key]
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new ProviderAccountCredentialMaterial({
+      fieldName: `auth.${key}`,
+      message: 'Native Codex auth material is missing a required field.',
+    })
+  }
+  return value
+}
+
+const nativeCodexOAuthAuthFromBody = (
+  body: Record<string, unknown>,
+): CodexOAuthAuth => {
+  const auth =
+    body.auth !== null && typeof body.auth === 'object' && !Array.isArray(body.auth)
+      ? (body.auth as Record<string, unknown>)
+      : {}
+  const accountId = optionalString(auth.accountId)
+  const idToken = optionalString(auth.idToken)
+  const expires = auth.expires
+
+  return {
+    type: 'oauth',
+    access: requiredCodexAuthString(auth, 'access'),
+    refresh: requiredCodexAuthString(auth, 'refresh'),
+    expires: typeof expires === 'number' && Number.isFinite(expires) ? expires : 0,
+    ...(accountId === undefined ? {} : { accountId }),
+    ...(idToken === undefined ? {} : { idToken }),
+  }
+}
 
 export type ProviderAccountSanityProbeResult =
   | ProviderAccountSanityClassification
@@ -1490,6 +1528,7 @@ export const makeOperatorProviderAccountRoutes = <
       requiredProviderValue === undefined
         ? undefined
         : providerAccountProvider(requiredProviderValue)
+    const requiredProviderAccountRef = optionalString(body.providerAccountRef)
     const now = currentIsoTimestamp()
     const leaseTtlSeconds = clampLeaseTtlSeconds(
       optionalParallelNumber(body.ttlSeconds),
@@ -1524,6 +1563,7 @@ export const makeOperatorProviderAccountRoutes = <
         now,
         orderId: optionalString(body.orderId) ?? null,
         requiredProvider: requiredProvider ?? null,
+        requiredProviderAccountRef: requiredProviderAccountRef ?? null,
         requestedAction,
         runId: optionalString(body.runId) ?? null,
         selectedByActor: 'operator_provider_account_routes',
@@ -1681,6 +1721,101 @@ export const makeOperatorProviderAccountRoutes = <
           message: providerAccountRouteErrorMessage(error),
         },
         { status: providerAccountRouteErrorStatus(error, 502) },
+      )
+    }
+  }
+
+  const importNativeAuthForOwner = async (
+    request: Request,
+    env: Bindings,
+  ): Promise<HttpResponse> => {
+    const rejected = await rejectUnlessOperatorAdminRoute(request, env, 'POST')
+
+    if (rejected !== undefined) {
+      return rejected
+    }
+
+    const body = await readJsonObject(request).catch(
+      (): Record<string, unknown> => ({}),
+    )
+    const targetUser = await dependencies.readSelectedOperatorTargetUser(
+      identityDbForEnv(env),
+      body,
+    )
+
+    if (targetUser === undefined) {
+      return noStoreJsonResponse(
+        { error: 'target_user_not_found' },
+        { status: 404 },
+      )
+    }
+
+    const providerAccountRef = optionalString(body.providerAccountRef)
+    const accountLabel = optionalString(body.accountLabel)
+
+    try {
+      const repository = repositoryFor(env, dependencies)
+      const ownerCodexAccounts = (await repository.listAccountsForUser(
+        targetUser.userId,
+      )).filter(
+        account =>
+          account.provider === 'chatgpt_codex' && account.deletedAt === null,
+      )
+      if (providerAccountRef === undefined && ownerCodexAccounts.length > 1) {
+        return noStoreJsonResponse(
+          {
+            error: 'provider_account_selection_required',
+            message:
+              'Multiple owner Codex accounts exist; providerAccountRef is required.',
+          },
+          { status: 409 },
+        )
+      }
+      const selectedProviderAccountRef =
+        providerAccountRef ?? ownerCodexAccounts[0]?.providerAccountRef
+      const result = await observedPromise(
+        'OperatorProviderAccount.connectNativeCodexAuthForOwner',
+        () =>
+          connectChatGptCodexLocalAuthForUser(
+            repository,
+            {
+              userId: targetUser.userId,
+              auth: nativeCodexOAuthAuthFromBody(body),
+              ...(selectedProviderAccountRef === undefined
+                ? { createNew: true }
+                : { providerAccountRef: selectedProviderAccountRef }),
+              ...(accountLabel === undefined ? {} : { accountLabel }),
+            },
+            dependencies.storeConnectedCodexAuth(env),
+          ),
+      )
+
+      return noStoreJsonResponse(
+        {
+          ok: true,
+          providerAccountRef: result.providerAccountRef,
+          accountStatus: result.account.status,
+          custodyStatus: 'stored',
+        },
+        { status: 201 },
+      )
+    } catch (error) {
+      logWorkerRouteError(
+        'operator_provider_native_codex_auth_import_failed',
+        error,
+        {
+          errorName: providerAccountRouteErrorName(error),
+          providerAccountRef,
+          targetUserId: targetUser.userId,
+        },
+      )
+
+      return noStoreJsonResponse(
+        {
+          error: 'operator_provider_native_codex_auth_import_failed',
+          message: providerAccountRouteErrorMessage(error),
+        },
+        { status: providerAccountRouteErrorStatus(error, 400) },
       )
     }
   }
@@ -2122,6 +2257,13 @@ export const makeOperatorProviderAccountRoutes = <
         url.pathname === '/api/operator/provider-accounts/chatgpt-codex/leases'
       ) {
         return acquireLease(request, env)
+      }
+
+      if (
+        url.pathname ===
+        '/api/operator/provider-accounts/chatgpt-codex/native-auth/import'
+      ) {
+        return importNativeAuthForOwner(request, env)
       }
 
       if (

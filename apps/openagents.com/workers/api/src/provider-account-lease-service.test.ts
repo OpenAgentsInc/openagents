@@ -145,6 +145,39 @@ describe("provider account lease service", () => {
     });
   });
 
+  test("targets lease acquisition to an explicit owner provider account ref", async () => {
+    await insertAccount(sqlite, {
+      id: "account_owner_codex_first",
+      operatorPriority: 1,
+      provider: "chatgpt_codex",
+      providerAccountRef: "provider-owner-codex-first",
+      userId: "owner-a",
+    });
+    await insertAccount(sqlite, {
+      id: "account_owner_codex_selected",
+      operatorPriority: 20,
+      provider: "chatgpt_codex",
+      providerAccountRef: "provider-owner-codex-selected",
+      userId: "owner-a",
+    });
+
+    const lease = await makeProviderAccountLeaseService({ db: sqlite.db }).acquire({
+      assignmentId: null,
+      expiresAt,
+      now,
+      orderId: null,
+      requiredProvider: "chatgpt_codex",
+      requiredProviderAccountRef: "provider-owner-codex-selected",
+      requestedAction: "agent_computer.codex_turn",
+      runId: "turn-selected",
+      selectedByActor: "operator_provider_account_routes",
+      source: "operator_lease_acquire",
+      userId: "owner-a",
+    });
+
+    expect(lease?.providerAccountRef).toBe("provider-owner-codex-selected");
+  });
+
   test("makes a reconnected local Codex account leaseable by clearing stale failure markers", async () => {
     await insertAccount(sqlite, {
       id: "account_reconnected_codex",
