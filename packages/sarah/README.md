@@ -69,3 +69,18 @@ node fixtures/sarah-nostr-journey/validate.mjs
 ```
 
 Proof document: `docs/omega/2026-07-24-sarah-nostr-journey-proof.md`.
+
+## Community work units (`SARAH-CW-03`)
+
+`@openagentsinc/sarah/community` holds pure types and templates that decompose
+one Sarah tick into many bounded community work units. Each unit has a narrow
+grant (target, allowed actions, budget, expiration, idempotency identity). No
+unit carries a Sarah grant. An expired grant is refused, not extended.
+
+```sh
+pnpm --dir packages/sarah test -- src/community/work-units.test.ts
+```
+
+Source: `packages/sarah/src/community/work-units.ts`.
+Spec: `docs/omega/2026-07-24-sarah-workroom-mvp-spec.md` §33 and §38.2.
+Issue: OpenAgentsInc/openagents#9225.

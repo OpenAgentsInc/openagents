@@ -450,3 +450,5 @@ export * from "./nostr-migration/index.ts";
 export * from "./nostr-journey/index.ts";
 // SARAH-NR-03 — owned relay load-proof harness (local + remote)
 export * from "./relay-load-proof/index.ts";
+// SARAH-CW-03 — community work-unit tick decomposition (pure types)
+export * from "./community/index.ts";
