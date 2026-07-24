@@ -1,7 +1,7 @@
 # Buzz docs
 
-- Class: historical source and canceled operations plan
-- Status: superseded
+- Class: source evidence, current port recommendation, and canceled operations plan
+- Status: current Omega direction plus superseded Buzz operations
 - Owner disposition: do not deploy or operate Buzz for OpenAgents
 - Current plan:
   [`Omega`](../sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md)
@@ -31,6 +31,10 @@ change the Omega plan.
 
 ## Documents here
 
+- [`2026-07-24-omega-buzz-full-parity-recommendation.md`](2026-07-24-omega-buzz-full-parity-recommendation.md)
+  — the current recommendation to accept full Buzz product-outcome parity,
+  rebuild it through Omega authorities, and deliver full-core owner dogfood
+  this week.
 - [`2026-07-22-buzz-self-host-and-sarah-runbook.md`](2026-07-22-buzz-self-host-and-sarah-runbook.md)
   — retained historical installation and Sarah-integration evidence.
   Its commands and checklist are inactive.

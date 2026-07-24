@@ -19318,8 +19318,30 @@
       }
     },
     {
+      "path": "docs/buzz/2026-07-24-omega-buzz-full-parity-recommendation.md",
+      "sha256": "3f11f9b31d0f8383a3e193323eaa209b463397a169ad9684a6efce7f2a9b0469",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/buzz/README.md",
-      "sha256": "fe9c68fdb801e9f598171a6de270155c8d329856d8d9120a2b8e4f8ac5c98e6a",
+      "sha256": "a85031de53d2d4343b319b3e9f933e97213a3a1db733a26e36bff4f156b4c9be",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
