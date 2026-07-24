@@ -13,6 +13,21 @@ Automated FA-07 matrix is landed (see
 4. Independent reviewer admits `specs/omega/full-auto.assurance-spec.md`
    against exact candidate digests (producer must not self-admit).
 
+## OPEN — AC-03 live Agent Computer bearer + capacity (#30, 2026-07-24)
+
+Omega Agent Computer code path is landed (AC-00…AC-02). Live AC-03 proof from
+`omega-effectd` failed admission with `unauthorized` (receipt
+`docs/omega/2026-07-24-omega-agent-computer-live-proof.md`). Keep
+`OpenAgentsInc/omega` #30 open. Do not reopen openagents `#9190` / `#9191`.
+
+1. Provide a runtime bearer the cloud coding-session admission gate accepts
+   (mobile/user credit-bearing session — not a bare `oa_a*` agent registry
+   token). Put it only in the process environment as `OPENAGENTS_AGENT_TOKEN`.
+2. Confirm Pool B credit and live Agent Computer capacity remain available.
+3. Re-run `packages/omega-effectd/scripts/ac03-live-proof.ts` or Omega Agent
+   Computer panel Start, then capture public-safe session/placement/artifact/
+   usage/teardown refs matching the Sarah `#9191` proof class.
+
 ## RESOLVED — IDE-13 owner-managed environment authority (2026-07-22)
 
 IDE-13 requires an owner-managed execution target. The current target binding

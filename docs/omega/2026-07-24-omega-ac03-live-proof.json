@@ -1,0 +1,24 @@
+{
+  "ok": false,
+  "packet": "OMEGA-AC-03",
+  "path": "omega-effectd runAgentComputerTurn -> HarnessEnvironment.openagents_cloud",
+  "controlPlaneBaseUrl": "https://openagents.com",
+  "repoRef": "OpenAgentsInc/openagents",
+  "adapter": "claude_agent",
+  "verify": [
+    "git",
+    "rev-parse",
+    "HEAD"
+  ],
+  "pollIntervalMs": 2000,
+  "maxPollAttempts": 300,
+  "objectiveDigest": "d215ce61767f1cdbbdac279c21c7b85f9bad4692f19994b1949437776c53d7cf",
+  "startedAt": "2026-07-24T11:31:50.117Z",
+  "finishedAt": "2026-07-24T11:31:50.314Z",
+  "error": {
+    "code": "turn_failed",
+    "message": "unauthorized"
+  },
+  "durableDiskContainsBearer": false,
+  "durableDiskContainsObjective": false
+}

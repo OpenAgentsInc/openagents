@@ -351,10 +351,29 @@ export const runAgentComputerTurn = async (
     }),
   ).then(
     value => ({ ok: true as const, value }),
-    error => ({
-      ok: false as const,
-      message: error instanceof Error ? error.message : "agent computer turn failed",
-    }),
+    error => {
+      const record =
+        typeof error === "object" && error !== null
+          ? (error as Record<string, unknown>)
+          : null
+      const failureClass =
+        typeof record?.failureClass === "string" ? record.failureClass : null
+      const detail = typeof record?.detail === "string" ? record.detail : null
+      const nested =
+        typeof record?.error === "object" && record.error !== null
+          ? (record.error as Record<string, unknown>)
+          : null
+      const nestedClass =
+        typeof nested?.failureClass === "string" ? nested.failureClass : null
+      const message =
+        failureClass ??
+        nestedClass ??
+        (error instanceof Error && error.message.length > 0
+          ? error.message
+          : detail) ??
+        (typeof error === "string" ? error : "agent computer turn failed")
+      return { ok: false as const, message }
+    },
   )
 
   if (!turnOutcome.ok) {

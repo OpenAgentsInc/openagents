@@ -450,7 +450,7 @@
     },
     {
       "path": "NEEDS_OWNER.md",
-      "sha256": "5d01dd12df7bb0afef57cc4dc378dd1b34306b2d7c15fb51933b1ca96eddb055",
+      "sha256": "0cd195bf867495598e1379090b72aa470a7419320b730366fe607955e0ee4821",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -33723,11 +33723,12 @@
     {
       "path": "docs/omega/2026-07-24-omega-agent-computer-contract-freeze.md",
       "sha256": "bf1d37e3184e5f31b5c20a17d4c95b7b35e642dcda014c7b989991e17e4c045d",
-      "reason": "Final review of mutable first-party agent technical text",
+      "reason": "Final review of a converted document",
       "profile": {
-        "ste_status": "inspected",
-        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
         "ste_audience": "agent",
         "ste_agent_compact_revision": "openagents-agent-compact-v1",
         "ste_accepted_screening_rules": [
@@ -33735,12 +33736,33 @@
           "STE-3.6",
           "STE-5.1",
           "STE-8.2"
-        ]
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {
       "path": "docs/omega/2026-07-24-omega-agent-computer-launch-surface.md",
       "sha256": "1d5fdca9657c2f96f1b5089d510f251189e004eecb6217e3d2316eaa92b745ad",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_accepted_screening_rules": [
+          "STE-2.4"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/omega/2026-07-24-omega-agent-computer-live-proof.md",
+      "sha256": "210594c6f9f1c204c5c3ec58f3a7314fb5794212ee81d7fbf5bad66189938cd2",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
