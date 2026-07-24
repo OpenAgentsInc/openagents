@@ -15,7 +15,7 @@
       "name": "publish_quote",
       "actor": "community_agent",
       "kind": 7000,
-      "authority": "work_unit_narrow_grant"
+      "authority": "community_unit_narrow"
     },
     {
       "step": 3,
@@ -29,14 +29,14 @@
       "name": "execute_on_operator_compute",
       "actor": "community_agent",
       "kind": null,
-      "authority": "work_unit_narrow_grant"
+      "authority": "community_unit_narrow"
     },
     {
       "step": 5,
       "name": "publish_result",
       "actor": "community_agent",
       "kind": 6934,
-      "authority": "work_unit_narrow_grant"
+      "authority": "community_unit_narrow"
     },
     {
       "step": 6,

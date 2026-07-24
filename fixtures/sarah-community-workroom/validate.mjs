@@ -11,8 +11,17 @@ const root = dirname(fileURLToPath(import.meta.url));
 const manifest = JSON.parse(readFileSync(join(root, "manifest.json"), "utf8"));
 
 const GRANT_SCHEMA = "openagents.sarah.community_work_unit_grant.v1";
+const UNIT_SCHEMA = "openagents.sarah.community_work_unit.v1";
+const AUTHORITY_CLASS = "community_unit_narrow";
 const XP_NAMESPACE = "com.openagents.xp";
 const HEX64_RE = /^[0-9a-f]{64}$/;
+const ALLOWED_ACTIONS = new Set([
+  "quote_work_unit",
+  "execute_public_objective",
+  "return_evidence",
+  "verify_peer_result",
+  "review_peer_result",
+]);
 
 const EXPECTED_SCORING = {
   accepted_work_unit_tier_1: 10,
@@ -27,7 +36,7 @@ const EXPECTED_SCORING = {
 const AUTHORITY_LAYERS = [
   ["sarah_tick", "openagents_turn_service", "sarah_admitted_profile"],
   ["decomposition", "openagents_turn_service", "sarah_profile_bounded"],
-  ["work_unit", "community_agent_own_compute", "work_unit_narrow_grant"],
+  ["work_unit", "community_agent_own_compute", "community_unit_narrow"],
   ["acceptance", "sarah", "sarah_admitted_profile"],
   ["settlement", "platform_ledger", "neither_sarah_nor_community_agent"],
 ];
@@ -42,24 +51,23 @@ const load = (rel) => JSON.parse(readFileSync(join(root, rel), "utf8"));
 
 const isNonEmptyString = (value) => typeof value === "string" && value.length > 0;
 
-const assertGrantShape = (id, grant, { requireValid = true } = {}) => {
+const getGrant = (fixture) => fixture.unit?.grant ?? fixture.grant;
+
+const assertGrantShape = (id, grant) => {
   if (!grant || typeof grant !== "object") {
     fail(id, "grant object required");
-    return false;
+    return { grant: null, missing: ["grant"] };
   }
   if (grant.schema !== GRANT_SCHEMA) {
-    if (requireValid) fail(id, `grant.schema must be ${GRANT_SCHEMA}`);
+    fail(id, `grant.schema must be ${GRANT_SCHEMA}`);
   }
   const missing = [];
   for (const field of [
-    "unitRef",
-    "groupId",
     "targetRef",
     "allowedActions",
     "budget",
-    "expiresAt",
+    "expiresAtUnix",
     "idempotencyId",
-    "tier",
     "authorityClass",
   ]) {
     if (grant[field] === undefined || grant[field] === null) missing.push(field);
@@ -111,22 +119,33 @@ const assertAcceptAgent = (id, fixture) => {
 };
 
 const assertAcceptGrant = (id, fixture) => {
-  const { grant, missing } = assertGrantShape(id, fixture.grant);
+  const unit = fixture.unit;
+  if (!unit) return fail(id, "unit object required");
+  if (unit.schema !== UNIT_SCHEMA) fail(id, `unit.schema must be ${UNIT_SCHEMA}`);
+  if (!isNonEmptyString(unit.unitRef)) fail(id, "unitRef required");
+  if (!isNonEmptyString(unit.tickRef)) fail(id, "tickRef required");
+  if (!isNonEmptyString(unit.objective)) fail(id, "objective required");
+  if (![1, 2, 3].includes(unit.experienceTier)) {
+    fail(id, "experienceTier must be 1, 2, or 3");
+  }
+  const { grant, missing } = assertGrantShape(id, getGrant(fixture));
   if (!grant) return;
   if (missing.length > 0) fail(id, `grant missing fields: ${missing.join(",")}`);
   if (!Array.isArray(grant.allowedActions) || grant.allowedActions.length < 1) {
     fail(id, "allowedActions must be non-empty");
   }
   if (grant.allowedActions?.includes("*")) fail(id, "wildcard allowedActions forbidden");
-  if (grant.authorityClass !== "work_unit_narrow_grant") {
-    fail(id, "authorityClass must be work_unit_narrow_grant");
+  for (const action of grant.allowedActions ?? []) {
+    if (!ALLOWED_ACTIONS.has(action)) fail(id, `unknown allowedAction ${action}`);
   }
-  if (grant.sarahProfileGrant !== false && grant.sarahProfileGrant !== undefined) {
-    fail(id, "sarahProfileGrant must be false or absent");
+  if (grant.authorityClass !== AUTHORITY_CLASS) {
+    fail(id, `authorityClass must be ${AUTHORITY_CLASS}`);
   }
-  if (![1, 2, 3].includes(grant.tier)) fail(id, "tier must be 1, 2, or 3");
-  if (typeof grant.expiresAt !== "number" || grant.expiresAt <= 0) {
-    fail(id, "expiresAt must be positive unix seconds");
+  if (grant.budget?.kind !== "experience_tier" && grant.budget?.kind !== "msats") {
+    fail(id, "budget.kind must be experience_tier or msats");
+  }
+  if (typeof grant.expiresAtUnix !== "number" || grant.expiresAtUnix <= 0) {
+    fail(id, "expiresAtUnix must be positive unix seconds");
   }
   if (!isNonEmptyString(grant.idempotencyId)) fail(id, "idempotencyId required");
 };
@@ -151,8 +170,8 @@ const assertAcceptLifecycle = (id, fixture) => {
   }
   const workUnitSteps = steps.filter((s) => s.actor === "community_agent");
   for (const step of workUnitSteps) {
-    if (step.authority !== "work_unit_narrow_grant") {
-      fail(id, `community agent step ${step.name} must use work_unit_narrow_grant`);
+    if (step.authority !== AUTHORITY_CLASS) {
+      fail(id, `community agent step ${step.name} must use ${AUTHORITY_CLASS}`);
     }
   }
   const relay = fixture.relay_authority;
@@ -367,17 +386,18 @@ const assertRejectHasDefect = (id, fixture) => {
   }
 
   if (rule === "work_unit_narrow_grant") {
-    const grant = fixture.grant;
+    const grant = getGrant(fixture);
     if (grant) {
-      if (grant.authorityClass !== "work_unit_narrow_grant") defectFound = true;
-      if (grant.sarahProfileGrant === true) defectFound = true;
-      if (grant.expiresAt === undefined) defectFound = true;
+      if (grant.authorityClass !== AUTHORITY_CLASS) defectFound = true;
+      if (fixture.claim?.sarahProfileGrant === true) defectFound = true;
+      if (fixture.claim?.sarahAuthorityMarker) defectFound = true;
+      if (grant.expiresAtUnix === undefined) defectFound = true;
       if (grant.idempotencyId === undefined) defectFound = true;
       if (
         fixture.claim?.acceptedAfterExpiry === true &&
-        typeof grant.expiresAt === "number" &&
+        typeof grant.expiresAtUnix === "number" &&
         typeof fixture.claim.nowUnix === "number" &&
-        grant.expiresAt < fixture.claim.nowUnix
+        grant.expiresAtUnix <= fixture.claim.nowUnix
       ) {
         defectFound = true;
       }

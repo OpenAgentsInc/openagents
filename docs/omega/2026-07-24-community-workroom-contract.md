@@ -66,7 +66,7 @@ Each field has exactly one writable authority.
 | Invitation | private invitation material plus membership admit | OpenAgents membership service |
 | Agent attestation | NIP-OA owner tag on NIP-42 AUTH | the human operator who owns the agent key |
 | Work unit request | NIP-LBR request (kind `5934` for agentic coding) | Sarah turn service under her admitted profile |
-| Work unit grant | grant object on the request (see §8) | Sarah turn service; grant is narrow and never her full profile |
+| Work unit grant | grant object on the unit (see §8) | Sarah turn service. Class is `community_unit_narrow` only |
 | Quote | NIP-90 feedback kind `7000` | the community agent key on operator compute |
 | Quote acceptance | NIP-90 feedback kind `7000` | Sarah under her admitted profile |
 | Result | NIP-LBR result (kind `6934` for agentic coding) | the community agent key on operator compute |
@@ -76,8 +76,8 @@ Each field has exactly one writable authority.
 | Experience award | NIP-32 kind `1985`, namespace `com.openagents.xp` | OpenAgents award publisher keys only |
 | Rank assertion | NIP-85 kind `30382` with `rank` tag | OpenAgents scorer keys only |
 | Badge definition and award | NIP-58 kinds `30009`, `8`, `10008` | OpenAgents badge publisher keys only |
-| Money settlement (deferred) | Cloud SQL credit and payout ledgers | platform ledger service; never Sarah and never the agent |
-| Room discovery | NIP-11 plus invitation | no global directory; OpenAgents invitation path only |
+| Money settlement (deferred) | Cloud SQL credit and payout ledgers | platform ledger service only. Never Sarah. Never the agent. |
+| Room discovery | NIP-11 plus invitation | invitation path only. No global directory. |
 
 ## 5. Two-room rule (oracle)
 
@@ -97,8 +97,9 @@ Each field has exactly one writable authority.
    as its group scope.
 4. A private turn record (kind `44300`) must not carry a community group tag
    as its conversation scope.
-5. A fact moves from the private room to the community room only as a
-   deliberate publication with its own audience gate and a new event id.
+5. A fact moves from the private room to the community room only through a
+   deliberate publication. That publication needs its own audience gate and a
+   new event id.
 6. Shared membership sets or shared history streams are contract defects.
 
 ### 5.3 Oracle
@@ -117,7 +118,7 @@ Fixtures encode the rule as structured checks:
 | --- | --- | --- |
 | Sarah tick | the OpenAgents turn service | Sarah's admitted profile |
 | Decomposition | the same tick | Sarah's profile, bounded |
-| Work unit | a community agent on its own compute | the unit's own narrow grant |
+| Work unit | a community agent on its own compute | `community_unit_narrow` grant |
 | Acceptance | Sarah | Sarah's profile |
 | Settlement | the platform ledger | neither of them |
 
@@ -126,7 +127,8 @@ Fixtures encode the rule as structured checks:
 1. A community agent must not receive `principal.sarah` grants, tools, or
    profile refs as its execution authority.
 2. Tick decomposition may publish many units. Each unit carries its own grant.
-3. No unit may carry a field that claims Sarah full-profile authority.
+3. No unit may carry a field that claims Sarah full-profile authority. The
+   grant class is exactly `community_unit_narrow`.
 4. Acceptance is a typed Sarah decision with a receipt. It does not settle
    money.
 5. Settlement is experience-only in v1. Money settlement, when admitted later,
@@ -204,25 +206,48 @@ settlement authority.
 
 ### 8.2 Grant schema
 
-Schema id: `openagents.sarah.community_work_unit_grant.v1`
+Grant schema id: `openagents.sarah.community_work_unit_grant.v1`
 
-| Field | Rule |
+Unit schema id: `openagents.sarah.community_work_unit.v1`
+
+Authority class (exact): `community_unit_narrow`
+
+| Grant field | Rule |
 | --- | --- |
-| `schema` | exact schema id above |
-| `unitRef` | public-safe unit ref |
-| `groupId` | community NIP-29 group id |
+| `schema` | exact grant schema id above |
+| `authorityClass` | must equal `community_unit_narrow` |
 | `targetRef` | exact repository or target ref |
-| `allowedActions` | non-empty closed list of named actions |
-| `budget` | public-safe budget object; v1 settlement ignores money |
-| `expiresAt` | Unix seconds; NIP-40 expiration bounds the wire form |
+| `allowedActions` | non-empty list from the closed action set |
+| `budget` | `{ kind, amount }`. v1 uses `kind: "experience_tier"` |
+| `expiresAtUnix` | Unix seconds. NIP-40 bounds the wire form |
 | `idempotencyId` | unique public-safe identity for this unit |
-| `tier` | `1`, `2`, or `3`; set before any quote |
-| `authorityClass` | must equal `work_unit_narrow_grant` |
-| `sarahProfileGrant` | must be absent or `false` |
+
+| Unit field | Rule |
+| --- | --- |
+| `schema` | exact unit schema id above |
+| `unitRef` | public-safe unit ref |
+| `tickRef` | public-safe tick ref that produced the unit |
+| `objective` | public-safe objective summary |
+| `grant` | grant object above |
+| `experienceTier` | `1`, `2`, or `3`. Set before any quote |
+| `createdAtUnix` | Unix seconds |
+
+Closed action set (v1):
+
+1. `quote_work_unit`
+2. `execute_public_objective`
+3. `return_evidence`
+4. `verify_peer_result`
+5. `review_peer_result`
 
 A unit whose grant expired is refused. It is not extended.
-A unit without `expiresAt` or `idempotencyId` is invalid.
-A unit with `authorityClass` other than `work_unit_narrow_grant` is invalid.
+A unit without `expiresAtUnix` or `idempotencyId` is invalid.
+A unit with `authorityClass` other than `community_unit_narrow` is invalid.
+A unit must not carry Sarah authority markers such as `principal.sarah` or
+`grant.sarah.`.
+
+`SARAH-CW-03` implements this grant shape in
+`packages/sarah/src/community/work-units.ts`.
 
 ### 8.3 Fixtures
 
@@ -298,11 +323,11 @@ Do not imply a future payment as an inducement.
 
 | Surface | v1 rule |
 | --- | --- |
-| Experience awards | permitted; OpenAgents award keys only |
-| Rank and badges | permitted; projection and milestone only |
+| Experience awards | permitted. OpenAgents award keys only. |
+| Rank and badges | permitted. Projection and milestone only. |
 | Platform money settlement | forbidden |
 | Relay as settlement authority | forbidden |
-| Counting payment once per relay observation | forbidden pattern; named falsifier |
+| Counting payment once per relay observation | forbidden pattern. Named falsifier. |
 | Spark / MDK payout | deferred until §11 gates hold |
 | NIP-57 zaps / NIP-61 nutzaps | not settlement records |
 
@@ -356,7 +381,7 @@ rule that appeal authority is the owner key and never Sarah.
 | Prompt injection | member content is quoted untrusted data |
 | Secret harvesting | units carry public-safe objectives and pinned refs only |
 | Double payment | settle once in the ledger by idempotency identity |
-| Score inflation | only scorer keys publish rank; rank recomputes from awards |
+| Score inflation | only scorer keys publish rank. Rank recomputes from awards. |
 
 ## 14. Fixtures and verification
 

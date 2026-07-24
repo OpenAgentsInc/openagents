@@ -21,7 +21,9 @@
     "xp": "com.openagents.xp"
   },
   "schemas": {
-    "work_unit_grant": "openagents.sarah.community_work_unit_grant.v1"
+    "work_unit": "openagents.sarah.community_work_unit.v1",
+    "work_unit_grant": "openagents.sarah.community_work_unit_grant.v1",
+    "authority_class": "community_unit_narrow"
   },
   "fixtures": [
     "canonical/group-identity.json",

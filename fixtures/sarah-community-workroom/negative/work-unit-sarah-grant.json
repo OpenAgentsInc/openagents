@@ -3,17 +3,28 @@
   "expect": "reject",
   "reason": "unit_carries_sarah_full_profile",
   "contract_rule": "work_unit_narrow_grant",
-  "grant": {
-    "schema": "openagents.sarah.community_work_unit_grant.v1",
+  "unit": {
+    "schema": "openagents.sarah.community_work_unit.v1",
     "unitRef": "unit.openagents.community.fixture.bad.1",
-    "groupId": "openagents.community.workroom.v1",
-    "targetRef": "repo.OpenAgentsInc.openagents:main",
-    "allowedActions": ["*"],
-    "budget": { "msats": 0 },
-    "expiresAt": 1893456000,
-    "idempotencyId": "idem.community.unit.fixture.bad.1",
-    "tier": 1,
-    "authorityClass": "sarah_admitted_profile",
-    "sarahProfileGrant": true
+    "tickRef": "tick.openagents.community.fixture.bad.1",
+    "objective": "Bad unit that claims Sarah authority.",
+    "experienceTier": 1,
+    "createdAtUnix": 1753387200,
+    "grant": {
+      "schema": "openagents.sarah.community_work_unit_grant.v1",
+      "authorityClass": "sarah_admitted_profile",
+      "targetRef": "repo.OpenAgentsInc.openagents:main",
+      "allowedActions": ["execute_public_objective"],
+      "budget": {
+        "kind": "experience_tier",
+        "amount": 1
+      },
+      "expiresAtUnix": 1893456000,
+      "idempotencyId": "idem.community.unit.fixture.bad.1"
+    }
+  },
+  "claim": {
+    "sarahProfileGrant": true,
+    "sarahAuthorityMarker": "principal.sarah"
   }
 }

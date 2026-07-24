@@ -1717,6 +1717,7 @@ It freezes:
 - group identity on NIP-29 kinds `39000` / `39001` / `39002`
 - invitation-only membership and NIP-OA agent attestation
 - work-unit grant schema `openagents.sarah.community_work_unit_grant.v1`
+  with authority class `community_unit_narrow`
 - experience namespace `com.openagents.xp` on NIP-32 kind `1985`
 - rank projection on NIP-85 kind `30382` and the fixed scoring table
 - settlement boundary: v1 experience only, money deferred

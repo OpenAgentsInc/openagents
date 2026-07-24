@@ -33726,7 +33726,7 @@
     },
     {
       "path": "docs/omega/2026-07-24-community-workroom-contract.md",
-      "sha256": "9a693b8c0f42165aaad7daed96cf06cfec84395a73de29d2ec084d16b2f82b6e",
+      "sha256": "650f0468a520af272c9607b6d5424f526889b9697fbab396665d52d915411f1b",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
@@ -33735,7 +33735,8 @@
         "replacement": null,
         "ste_audience": "human",
         "ste_accepted_screening_rules": [
-          "STE-2.4"
+          "STE-2.4",
+          "STE-3.6"
         ],
         "ste_status": "inspected",
         "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
@@ -34248,7 +34249,7 @@
     },
     {
       "path": "docs/omega/2026-07-24-sarah-workroom-mvp-spec.md",
-      "sha256": "7b9ec08a32c1a9bc838ca2bdfb1d9dc4e90ce902bf4d5def68bcdf7222922d3f",
+      "sha256": "397273331fdc7b4c98c66f7ffb36a90c5977895eaa01f99923819d8ea1d5dcd9",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

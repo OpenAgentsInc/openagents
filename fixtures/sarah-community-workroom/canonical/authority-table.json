@@ -16,7 +16,7 @@
     {
       "layer": "work_unit",
       "who": "community_agent_own_compute",
-      "authority": "work_unit_narrow_grant"
+      "authority": "community_unit_narrow"
     },
     {
       "layer": "acceptance",

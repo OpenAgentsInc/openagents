@@ -115,7 +115,8 @@
       "replacement": null,
       "ste_audience": "human",
       "ste_accepted_screening_rules": [
-        "STE-2.4"
+        "STE-2.4",
+        "STE-3.6"
       ]
     },
     "docs/omega/2026-07-24-sarah-nip-ae-companion-profile.md": {

@@ -3,16 +3,23 @@
   "expect": "reject",
   "reason": "missing_expires_at",
   "contract_rule": "work_unit_narrow_grant",
-  "grant": {
-    "schema": "openagents.sarah.community_work_unit_grant.v1",
+  "unit": {
+    "schema": "openagents.sarah.community_work_unit.v1",
     "unitRef": "unit.openagents.community.fixture.bad.2",
-    "groupId": "openagents.community.workroom.v1",
-    "targetRef": "repo.OpenAgentsInc.openagents:main",
-    "allowedActions": ["read_public_refs"],
-    "budget": { "msats": 0 },
-    "idempotencyId": "idem.community.unit.fixture.bad.2",
-    "tier": 1,
-    "authorityClass": "work_unit_narrow_grant",
-    "sarahProfileGrant": false
+    "tickRef": "tick.openagents.community.fixture.bad.2",
+    "objective": "Missing expiration grant.",
+    "experienceTier": 1,
+    "createdAtUnix": 1753387200,
+    "grant": {
+      "schema": "openagents.sarah.community_work_unit_grant.v1",
+      "authorityClass": "community_unit_narrow",
+      "targetRef": "repo.OpenAgentsInc.openagents:main",
+      "allowedActions": ["execute_public_objective"],
+      "budget": {
+        "kind": "experience_tier",
+        "amount": 1
+      },
+      "idempotencyId": "idem.community.unit.fixture.bad.2"
+    }
   }
 }
