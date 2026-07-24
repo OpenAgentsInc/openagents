@@ -498,8 +498,8 @@ Do not call live ElevenLabs from automated checks.
 
 ### Code and tooling improvements (tracked candidates)
 
-Items 1–3 shipped (#9233, #9234, #9235). The rest remain future fix work. Do
-not treat open items as done.
+Items 1–3 and 6 shipped (#9233, #9234, #9235, #9237). The rest remain future
+fix work. Do not treat open items as done.
 
 1. **`scripts/omega-screen-control` (shipped #9233):** Hard-stops recording
    before app teardown. Rejects Cmd+Q key quit. Optional
@@ -507,13 +507,14 @@ not treat open items as done.
    `record-motion`). Trims Finder/Desktop-like tails when the frame heuristic
    fires. Tests:
    `node --test scripts/omega-screen-control/recording-lifecycle.test.mjs`.
-2. **RC assemble helper (shipped #9234):**
+2. **RC assemble helper (shipped #9234, multi-beat #9237):**
    `scripts/sarah-avatar/assemble-rc.mjs`. One command that takes
-   sarah-master + screenshare + optional cutaway stills + T1/T2, writes the
-   no-music RC, derives T1 from the post-spoken silence window (not folklore
-   fractions alone), supports a second mid cutaway beat, checks Desktop paste
-   against `docs/transcripts/<episode>.md`, verifies frames at the cut
-   points, and exits non-zero if Finder-like pixels appear near T2. Tests:
+   sarah-master + screenshare + zero or more cutaway stills + T1/T2, writes
+   the no-music RC, derives T1 from the post-spoken silence window (not
+   folklore fractions alone), chains any number of mid cutaway beats (repeat
+   `--cutaway`/`--cutaway-seconds` per beat), checks Desktop paste against
+   `docs/transcripts/<episode>.md`, verifies frames at the cut points, and
+   exits non-zero if Finder-like pixels appear near T2. Tests:
    `node --test scripts/sarah-avatar/assemble-rc.test.mjs`.
 3. **ElevenLabs music bed (shipped #9235):**
    `scripts/sarah-avatar/elevenlabs-music-bed.mjs`. Reads
@@ -529,9 +530,15 @@ not treat open items as done.
    completion KVP blocks). Add matching command-palette strings. Document
    `⌘⇧P` vs `⌘P` in Omega help. Add a reset-onboarding action that clears
    completion KVPs for development builds.
-6. **Cutaway inventory:** Keep cutaway stills under the episode Desktop
-   folder or ignored `.artifacts/episode-N/cutaways/` with a manifest.
-   Do not rely on one screenshare duration alone. Tracked as #9237.
+6. **Cutaway inventory (shipped #9237):** `assemble-rc.mjs` archives every
+   cutaway still it uses under ignored `.artifacts/episode-<n>/cutaways/`
+   (pass `--episode <n>`) and always writes a
+   `openagents.sarah.cutaway_inventory.v1` manifest — one entry per cutaway
+   beat, populated for zero, one, or many beats, so a multi-beat RC no longer
+   loses the inventory for its second and later cutaways. Does not rely on
+   one screenshare duration alone: `planMidBeats` derives each beat's
+   duration from its own `--cutaway-seconds` and validates the total against
+   the mid section. Manifest also written to `<work-dir>/cutaway-inventory.json`.
 
 ## How it works (Segmind Async Inference V2)
 
@@ -591,8 +598,8 @@ standardizing a model for Sarah's comms.
 - Voice source: Segmind built-in TTS vs our own voice (the OAV/pipecat voice
   stack) fed in as `--audio`.
 - Cost and rate posture for routine comms generation.
-- Wire remaining Episode 262 tooling (Segmind paste lint, cutaway inventory).
-  Fix the Omega onboarding reopen bug. Keep publication gates for each episode
-  RC under `~/Desktop/Sarah/<episode>/`. Music generate/mix is
+- Wire remaining Episode 262 tooling (Segmind paste lint). Fix the Omega
+  onboarding reopen bug. Keep publication gates for each episode RC under
+  `~/Desktop/Sarah/<episode>/`. Music generate/mix is
   `scripts/sarah-avatar/elevenlabs-music-bed.mjs` (#9235). RC assemble is
   `scripts/sarah-avatar/assemble-rc.mjs` (#9234).

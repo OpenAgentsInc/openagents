@@ -41,3 +41,7 @@ packages/khala-sync-server/.artanis-backfill-state.json
 /target
 var/agent-computer/
 .sarah-data/
+
+# Local episode artifacts (e.g. archived Sarah RC cutaway stills + inventory
+# manifests under .artifacts/episode-N/cutaways/, #9237) — never tracked.
+.artifacts/

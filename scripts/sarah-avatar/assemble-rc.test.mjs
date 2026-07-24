@@ -5,6 +5,7 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import {
   buildAssembleFilterComplex,
+  buildCutawayInventory,
   checkTranscriptLock,
   DEFAULT_T2_FRACTION,
   deriveT1FromSilenceIntervals,
@@ -83,6 +84,32 @@ test('planMidBeats supports second mid cutaway still', () => {
 test('planMidBeats rejects cutaway that starves screenshare', () => {
   assert.throws(
     () => planMidBeats({ durB: 10, cutawaySeconds: 9.9 }),
+    /0\.25s/,
+  )
+})
+
+test('planMidBeats chains multiple cutaway beats for multi-beat RCs (#9237)', () => {
+  const plan = planMidBeats({
+    durB: 20,
+    cutaways: [3, 4, 2],
+    screenshareDurationSec: 30,
+  })
+  assert.equal(plan.beats.length, 4)
+  assert.deepEqual(
+    plan.beats.map((b) => b.kind),
+    ['screenshare', 'cutaway', 'cutaway', 'cutaway'],
+  )
+  assert.deepEqual(
+    plan.beats.slice(1).map((b) => b.durationSec),
+    [3, 4, 2],
+  )
+  assert.ok(Math.abs(plan.screenshareUseSec - 11) < 0.001)
+  assert.ok(Math.abs(plan.cutawayUseSec - 9) < 0.001)
+})
+
+test('planMidBeats rejects a multi-beat cutaway total that starves screenshare', () => {
+  assert.throws(
+    () => planMidBeats({ durB: 10, cutaways: [5, 4.9] }),
     /0\.25s/,
   )
 })
@@ -184,6 +211,60 @@ test('buildAssembleFilterComplex keeps continuous Sarah audio and cutaway concat
   assert.match(fc, /concat=n=3:v=1:a=0\[vout\]/)
 })
 
+test('buildAssembleFilterComplex chains N cutaway inputs for multi-beat RCs (#9237)', () => {
+  const midPlan = planMidBeats({ durB: 20, cutaways: [3, 4, 2] })
+  const fc = buildAssembleFilterComplex({
+    T1: 10,
+    T2: 30,
+    D: 40,
+    midPlan,
+    hasCutaway: true,
+    cutawayLabels: ['2', '3', '4'],
+  })
+  assert.match(fc, /\[1:v\]trim=0:11\.0000,setpts=PTS-STARTPTS\[vb1\]/)
+  assert.match(fc, /\[2:v\]trim=0:3\.0000,setpts=PTS-STARTPTS,fps=24,format=yuv420p\[vb2\]/)
+  assert.match(fc, /\[3:v\]trim=0:4\.0000,setpts=PTS-STARTPTS,fps=24,format=yuv420p\[vb3\]/)
+  assert.match(fc, /\[4:v\]trim=0:2\.0000,setpts=PTS-STARTPTS,fps=24,format=yuv420p\[vb4\]/)
+  assert.match(fc, /\[vb1\]\[vb2\]\[vb3\]\[vb4\]concat=n=4:v=1:a=0\[vb\]/)
+  assert.match(fc, /concat=n=3:v=1:a=0\[vout\]/)
+})
+
+test('buildCutawayInventory records one entry per cutaway beat, including multi-beat RCs (#9237)', () => {
+  const midPlan = planMidBeats({ durB: 20, cutaways: [3, 4, 2] })
+  const inventory = buildCutawayInventory({
+    episode: '262',
+    midPlan,
+    cutaways: [
+      { sourcePath: '/tmp/a.jpg', archivedPath: '/repo/.artifacts/episode-262/cutaways/1-a.jpg' },
+      { sourcePath: '/tmp/b.jpg', archivedPath: '/repo/.artifacts/episode-262/cutaways/2-b.jpg' },
+      { sourcePath: '/tmp/c.mp4', archivedPath: '/repo/.artifacts/episode-262/cutaways/3-c.mp4' },
+    ],
+  })
+  assert.equal(inventory.beatCount, 3)
+  assert.equal(inventory.cutaways.length, 3)
+  assert.deepEqual(
+    inventory.cutaways.map((c) => c.durationSec),
+    [3, 4, 2],
+  )
+  assert.equal(inventory.cutaways[1].sourcePath, '/tmp/b.jpg')
+  assert.equal(inventory.episode, '262')
+})
+
+test('buildCutawayInventory is populated (empty list, not missing) with zero cutaway beats', () => {
+  const midPlan = planMidBeats({ durB: 20 })
+  const inventory = buildCutawayInventory({ episode: null, midPlan, cutaways: [] })
+  assert.equal(inventory.beatCount, 0)
+  assert.deepEqual(inventory.cutaways, [])
+})
+
+test('buildCutawayInventory throws on a beat/source count mismatch', () => {
+  const midPlan = planMidBeats({ durB: 20, cutaways: [3, 4] })
+  assert.throws(
+    () => buildCutawayInventory({ midPlan, cutaways: [{ sourcePath: '/tmp/a.jpg' }] }),
+    /mismatch/,
+  )
+})
+
 test('buildAssembleFilterComplex without cutaway uses screenshare only for B', () => {
   const midPlan = planMidBeats({ durB: 10, cutawaySeconds: 0 })
   const fc = buildAssembleFilterComplex({
@@ -209,4 +290,10 @@ test('CLI documents one-command assemble + cut QC + silence T1', () => {
   assert.match(cliSource, /require-transcript-lock|transcript-lock/)
   assert.match(cliSource, /Finder\/Desktop/)
   assert.match(cliSource, /rc-no-music/)
+})
+
+test('CLI documents multi-beat cutaway inventory (#9237)', () => {
+  assert.match(cliSource, /buildCutawayInventory/)
+  assert.match(cliSource, /cutaway-inventory\.json/)
+  assert.match(cliSource, /flagAll/)
 })

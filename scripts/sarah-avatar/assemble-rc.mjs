@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 // Sarah episode RC assemble helper (#9234).
 //
-// One command: sarah-master + screenshare + optional cutaway + T1/T2 →
-// *-rc-no-music.mp4. Continuous Sarah audio. Picture cuts only (A/B/C).
-// Derives T1 from a post-spoken silence window (default after "zed").
+// One command: sarah-master + screenshare + zero or more cutaway beats +
+// T1/T2 → *-rc-no-music.mp4. Continuous Sarah audio. Picture cuts only
+// (A/B/C, with mid beat B chaining screenshare + N cutaways for multi-beat
+// RCs). Derives T1 from a post-spoken silence window (default after "zed").
 // Verifies frames at T2−1s / T2−0.5s / T2 and fails on Finder/Desktop-like
-// pixels. Optional Desktop ↔ docs/transcripts spoken-body lock.
+// pixels. Optional Desktop ↔ docs/transcripts spoken-body lock. Always
+// writes a cutaway inventory manifest so multi-beat RCs record every
+// cutaway still used, not just the first one (#9237).
 //
 // Usage:
 //   node scripts/sarah-avatar/assemble-rc.mjs \
@@ -13,12 +16,21 @@
 //     --screenshare ~/Desktop/Sarah/262/262-screenshare-omega-welcome.mp4 \
 //     --cutaway /path/to/omega2.jpg \
 //     --cutaway-seconds 6.3192 \
+//     --episode 262 \
 //     --desktop-transcript ~/Desktop/Sarah/262/262transcript.md \
 //     --repo-transcript docs/transcripts/262.md \
 //     --out ~/Desktop/Sarah/262/262-rc-no-music.mp4
+//
+// Multi-beat RC (more than one cutaway still in Part B): repeat --cutaway
+// and --cutaway-seconds once per beat, in order:
+//   node scripts/sarah-avatar/assemble-rc.mjs \
+//     --sarah-master … --screenshare … --episode 262 --out … \
+//     --cutaway /path/to/omega2.jpg --cutaway-seconds 3.5 \
+//     --cutaway /path/to/omega3.jpg --cutaway-seconds 2.8
 
 import { execFileSync, spawnSync } from 'node:child_process'
 import {
+  copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -27,10 +39,11 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   buildAssembleFilterComplex,
+  buildCutawayInventory,
   checkTranscriptLock,
   DEFAULT_T1_SEARCH,
   DEFAULT_T2_FRACTION,
@@ -54,6 +67,15 @@ const flag = (name, fallback = undefined) => {
   return i >= 0 && i + 1 < args.length ? args[i + 1] : fallback
 }
 const hasFlag = (name) => args.includes(`--${name}`)
+// Every occurrence of --name, in order — supports repeating --cutaway /
+// --cutaway-seconds for multi-beat RCs (more than one cutaway in Part B).
+const flagAll = (name) => {
+  const out = []
+  for (let i = 0; i < args.length; i += 1) {
+    if (args[i] === `--${name}` && i + 1 < args.length) out.push(args[i + 1])
+  }
+  return out
+}
 
 function printHelp() {
   console.log(`Sarah episode RC assemble (#9234)
@@ -61,7 +83,8 @@ function printHelp() {
 Usage:
   node scripts/sarah-avatar/assemble-rc.mjs \\
     --sarah-master <mp4> --screenshare <mp4> --out <mp4> \\
-    [--cutaway <image|mp4>] [--cutaway-seconds <n>] \\
+    [--cutaway <image|mp4> --cutaway-seconds <n>]... \\
+    [--episode <n>] \\
     [--t1 <sec>] [--t1-auto] [--t1-search-from 14] [--t1-search-to 20] \\
     [--t1-silence-db -35] [--t1-pad-after-silence 0.2] \\
     [--t2 <sec>] [--t2-fraction 0.78] \\
@@ -73,7 +96,11 @@ Behavior:
   - A/B/C picture cut; Sarah audio continuous 0→D
   - T1 defaults to silence-derived pause in the search window (after "zed")
   - T2 defaults to 0.78*D (override when audio disagrees)
-  - Optional second mid beat: still/video cutaway for the last N seconds of B
+  - Optional mid beats after the screenshare: repeat --cutaway/--cutaway-seconds
+    for each still/video cutaway (multi-beat RCs chain more than one)
+  - Always writes a cutaway inventory manifest (one entry per cutaway beat,
+    even with zero or several beats) to <episode-archive>/manifest.json and
+    <work-dir>/cutaway-inventory.json (#9237)
   - QC fails if Finder/Desktop-like pixels appear near T2
   - Transcript lock compares Desktop paste to docs/transcripts spoken body
 `)
@@ -277,19 +304,30 @@ function main() {
     }
   }
 
-  const cutaway = flag('cutaway')
-  if (cutaway && !existsSync(cutaway)) {
-    console.error(`error: --cutaway not found: ${cutaway}`)
+  // Multi-beat RCs repeat --cutaway/--cutaway-seconds once per mid beat
+  // after the screenshare; each pair is matched positionally (#9237).
+  const cutawayPaths = flagAll('cutaway')
+  const cutawaySecondsRaw = flagAll('cutaway-seconds')
+  if (cutawayPaths.length !== cutawaySecondsRaw.length) {
+    console.error(
+      `error: got ${cutawayPaths.length} --cutaway flag(s) but ${cutawaySecondsRaw.length} ` +
+        '--cutaway-seconds flag(s); pass one --cutaway-seconds per --cutaway',
+    )
     process.exit(2)
   }
-  const cutawaySeconds = parseNumberFlag(flag('cutaway-seconds'), '--cutaway-seconds') ?? 0
-  if (cutawaySeconds > 0 && !cutaway) {
-    console.error('error: --cutaway-seconds requires --cutaway')
-    process.exit(2)
-  }
-  if (cutaway && cutawaySeconds <= 0) {
-    console.error('error: --cutaway requires --cutaway-seconds > 0')
-    process.exit(2)
+  const cutaways = cutawayPaths.map((path, i) => ({
+    path,
+    seconds: parseNumberFlag(cutawaySecondsRaw[i], '--cutaway-seconds'),
+  }))
+  for (const c of cutaways) {
+    if (!existsSync(c.path)) {
+      console.error(`error: --cutaway not found: ${c.path}`)
+      process.exit(2)
+    }
+    if (!(c.seconds > 0)) {
+      console.error(`error: --cutaway-seconds must be > 0 for ${c.path}`)
+      process.exit(2)
+    }
   }
 
   const ffmpegBin = resolveFfmpegBin()
@@ -434,12 +472,14 @@ function main() {
 
   const midPlan = planMidBeats({
     durB: cuts.durB,
-    cutawaySeconds,
+    cutaways: cutaways.map((c) => c.seconds),
     screenshareDurationSec: screenshareDuration,
   })
   console.log(
     `mid: screenshare ${midPlan.screenshareUseSec}s` +
-      (midPlan.cutawayUseSec > 0 ? ` + cutaway ${midPlan.cutawayUseSec}s` : ' (no cutaway)'),
+      (midPlan.cutawayUseSec > 0
+        ? ` + ${cutaways.length} cutaway beat(s) totalling ${midPlan.cutawayUseSec}s`
+        : ' (no cutaway)'),
   )
 
   // --- Work dir / normalize product picture ------------------------------
@@ -468,20 +508,30 @@ function main() {
     { stdio: ['ignore', 'inherit', 'inherit'] },
   )
 
-  let cutawayNorm = null
-  if (cutaway) {
-    cutawayNorm = join(workDir, 'cutaway-norm.mp4')
-    const isImage = /\.(png|jpe?g|webp|gif)$/i.test(cutaway)
-    console.log(`prepare: normalize cutaway → ${cutawayNorm}`)
+  // Normalize every cutaway beat and archive its source still so the
+  // inventory never depends on a transient local Desktop path (#9237).
+  const cutawayBeats = midPlan.beats.filter((b) => b.kind === 'cutaway')
+  const episodeFlag = flag('episode')
+  const archiveDir = episodeFlag
+    ? join(repoRoot, '.artifacts', `episode-${episodeFlag}`, 'cutaways')
+    : join(workDir, 'cutaways')
+  if (cutaways.length > 0) mkdirSync(archiveDir, { recursive: true })
+  const cutawayNorms = []
+  const cutawayInventorySources = []
+  cutaways.forEach((c, i) => {
+    const beat = cutawayBeats[i]
+    const norm = join(workDir, `cutaway-norm-${i + 1}.mp4`)
+    const isImage = /\.(png|jpe?g|webp|gif)$/i.test(c.path)
+    console.log(`prepare: normalize cutaway ${i + 1}/${cutaways.length} → ${norm}`)
     const cutawayArgs = isImage
       ? [
           '-y',
           '-loop',
           '1',
           '-t',
-          String(midPlan.cutawayUseSec + 0.25),
+          String(beat.durationSec + 0.25),
           '-i',
-          cutaway,
+          c.path,
           '-vf',
           scaleVf,
           '-an',
@@ -489,12 +539,12 @@ function main() {
           'libx264',
           '-pix_fmt',
           'yuv420p',
-          cutawayNorm,
+          norm,
         ]
       : [
           '-y',
           '-i',
-          cutaway,
+          c.path,
           '-vf',
           scaleVf,
           '-an',
@@ -502,11 +552,41 @@ function main() {
           'libx264',
           '-pix_fmt',
           'yuv420p',
-          cutawayNorm,
+          norm,
         ]
     execFileSync(ffmpegBin, cutawayArgs, {
       stdio: ['ignore', 'inherit', 'inherit'],
     })
+    cutawayNorms.push(norm)
+
+    const archivedPath = join(archiveDir, `${i + 1}-${basename(c.path)}`)
+    copyFileSync(c.path, archivedPath)
+    cutawayInventorySources.push({
+      sourcePath: resolve(c.path),
+      archivedPath: resolve(archivedPath),
+    })
+  })
+
+  // Always write the inventory — zero, one, or many cutaway beats all get a
+  // populated manifest instead of one only existing for the single-cutaway
+  // case (the bug behind #9237).
+  const cutawayInventory = buildCutawayInventory({
+    episode: episodeFlag ?? null,
+    midPlan,
+    cutaways: cutawayInventorySources,
+  })
+  writeFileSync(
+    join(workDir, 'cutaway-inventory.json'),
+    JSON.stringify(cutawayInventory, null, 2),
+  )
+  if (cutaways.length > 0) {
+    const manifestPath = join(archiveDir, 'manifest.json')
+    writeFileSync(manifestPath, JSON.stringify(cutawayInventory, null, 2))
+    console.log(
+      `cutaway-inventory: ${cutawayInventory.beatCount} beat(s) → ${manifestPath}`,
+    )
+  } else {
+    console.log('cutaway-inventory: 0 beats (no cutaway)')
   }
 
   // --- Assemble ----------------------------------------------------------
@@ -515,7 +595,8 @@ function main() {
     T2: cuts.T2,
     D: cuts.D,
     midPlan,
-    hasCutaway: Boolean(cutawayNorm),
+    hasCutaway: cutawayNorms.length > 0,
+    cutawayLabels: cutawayNorms.map((_, i) => String(i + 2)),
   })
   writeFileSync(join(workDir, 'filter_complex.txt'), filter)
   writeFileSync(
@@ -537,7 +618,7 @@ function main() {
   )
 
   const ffArgs = ['-y', '-i', sarahMaster, '-i', ssNorm]
-  if (cutawayNorm) ffArgs.push('-i', cutawayNorm)
+  for (const norm of cutawayNorms) ffArgs.push('-i', norm)
   ffArgs.push(
     '-filter_complex',
     filter,

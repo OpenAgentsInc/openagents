@@ -147,28 +147,33 @@ export function resolveCutTimes({
 }
 
 /**
- * Plan Part B picture: motion screenshare then optional still cutaway.
- * cutawaySeconds is taken from the end of the mid section (Episode 262: ~6.3s).
+ * Plan Part B picture: motion screenshare then zero or more still/video
+ * cutaway beats, in order (Episode 262: one ~6.3s cutaway; multi-beat RCs
+ * chain several). Pass either the legacy single `cutawaySeconds` or a
+ * `cutaways` array — never rely on one screenshare duration alone (#9237).
  */
-export function planMidBeats({ durB, cutawaySeconds = 0, screenshareDurationSec }) {
+export function planMidBeats({ durB, cutawaySeconds = 0, cutaways, screenshareDurationSec }) {
   const mid = Number(durB)
   if (!Number.isFinite(mid) || mid <= 0) {
     throw new Error('durB must be a positive number')
   }
-  const cutaway = Math.max(0, Number(cutawaySeconds) || 0)
-  if (cutaway <= 0) {
+  const list = (Array.isArray(cutaways) && cutaways.length > 0 ? cutaways : [cutawaySeconds])
+    .map((c) => Math.max(0, Number(c) || 0))
+    .filter((n) => n > 0)
+  if (list.length === 0) {
     return {
       beats: [{ kind: 'screenshare', durationSec: mid }],
       screenshareUseSec: mid,
       cutawayUseSec: 0,
     }
   }
-  if (cutaway >= mid - 0.25) {
+  const totalCutaway = Number(list.reduce((a, b) => a + b, 0).toFixed(4))
+  if (totalCutaway >= mid - 0.25) {
     throw new Error(
-      `--cutaway-seconds (${cutaway}) must leave at least 0.25s of screenshare in mid (${mid}s)`,
+      `cutaway seconds (${totalCutaway}) must leave at least 0.25s of screenshare in mid (${mid}s)`,
     )
   }
-  const welcomeSec = Number((mid - cutaway).toFixed(4))
+  const welcomeSec = Number((mid - totalCutaway).toFixed(4))
   const ssDur = Number(screenshareDurationSec)
   if (Number.isFinite(ssDur) && ssDur > 0 && welcomeSec > ssDur + 0.05) {
     throw new Error(
@@ -179,10 +184,38 @@ export function planMidBeats({ durB, cutawaySeconds = 0, screenshareDurationSec 
   return {
     beats: [
       { kind: 'screenshare', durationSec: welcomeSec },
-      { kind: 'cutaway', durationSec: cutaway },
+      ...list.map((durationSec) => ({ kind: 'cutaway', durationSec })),
     ],
     screenshareUseSec: welcomeSec,
-    cutawayUseSec: cutaway,
+    cutawayUseSec: totalCutaway,
+  }
+}
+
+/**
+ * Inventory of every cutaway still/video used in an episode RC, in beat
+ * order. Always populated from the plan itself (not from a single flag), so
+ * a multi-beat RC (more than one cutaway) still records one entry per beat
+ * instead of silently dropping the rest (#9237).
+ */
+export function buildCutawayInventory({ episode, midPlan, cutaways }) {
+  const cutawayBeats = (midPlan?.beats || []).filter((b) => b.kind === 'cutaway')
+  const sources = cutaways || []
+  if (cutawayBeats.length !== sources.length) {
+    throw new Error(
+      `cutaway inventory mismatch: plan has ${cutawayBeats.length} cutaway beat(s) ` +
+        `but ${sources.length} source(s) were supplied`,
+    )
+  }
+  return {
+    schema: 'openagents.sarah.cutaway_inventory.v1',
+    episode: episode ?? null,
+    beatCount: cutawayBeats.length,
+    cutaways: cutawayBeats.map((beat, i) => ({
+      index: i,
+      durationSec: beat.durationSec,
+      sourcePath: sources[i]?.sourcePath ?? null,
+      archivedPath: sources[i]?.archivedPath ?? null,
+    })),
   }
 }
 
@@ -303,7 +336,7 @@ export function buildAssembleFilterComplex({
   midPlan,
   sarahLabel = '0',
   screenshareLabel = '1',
-  cutawayLabel = '2',
+  cutawayLabels = ['2'],
   hasCutaway = false,
 }) {
   const t1 = Number(T1).toFixed(4)
@@ -317,18 +350,29 @@ export function buildAssembleFilterComplex({
     `[${sarahLabel}:v]trim=0:${t1},setpts=PTS-STARTPTS[va]`,
   )
   const screenshareBeat = midPlan.beats.find((b) => b.kind === 'screenshare')
-  const cutawayBeat = midPlan.beats.find((b) => b.kind === 'cutaway')
+  const cutawayBeats = midPlan.beats.filter((b) => b.kind === 'cutaway')
   const ssDur = Number(screenshareBeat.durationSec).toFixed(4)
-  if (hasCutaway && cutawayBeat) {
+  if (hasCutaway && cutawayBeats.length > 0) {
     parts.push(
       `[${screenshareLabel}:v]trim=0:${ssDur},setpts=PTS-STARTPTS[vb1]`,
     )
-    const cDur = Number(cutawayBeat.durationSec).toFixed(4)
-    // Still image input is looped by the caller (-loop 1 -t); trim to duration.
+    const segLabels = ['vb1']
+    cutawayBeats.forEach((beat, i) => {
+      const inputLabel = cutawayLabels[i]
+      if (inputLabel == null) {
+        throw new Error(`missing filter input label for cutaway beat ${i}`)
+      }
+      const cDur = Number(beat.durationSec).toFixed(4)
+      const outLabel = `vb${i + 2}`
+      // Still image input is looped by the caller (-loop 1 -t); trim to duration.
+      parts.push(
+        `[${inputLabel}:v]trim=0:${cDur},setpts=PTS-STARTPTS,fps=24,format=yuv420p[${outLabel}]`,
+      )
+      segLabels.push(outLabel)
+    })
     parts.push(
-      `[${cutawayLabel}:v]trim=0:${cDur},setpts=PTS-STARTPTS,fps=24,format=yuv420p[vb2]`,
+      `${segLabels.map((l) => `[${l}]`).join('')}concat=n=${segLabels.length}:v=1:a=0[vb]`,
     )
-    parts.push('[vb1][vb2]concat=n=2:v=1:a=0[vb]')
   } else {
     parts.push(
       `[${screenshareLabel}:v]trim=0:${ssDur},setpts=PTS-STARTPTS[vb]`,
