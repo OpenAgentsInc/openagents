@@ -3,6 +3,9 @@
 This directory contains machine-generated transcripts for episodes `001`-`260`
 of the OpenAgents video corpus, plus clearly marked future-episode drafts.
 Episodes [`261`](261.md)-[`262`](262.md) are prepared scripts.
+Episode 262 also has a
+[`production request packet`](262-production-requests.md) for footage,
+attribution, and proof inputs that are not in the repository.
 Episode [`086`](086.md) transcribes only the OpenAgents MVP Launch
 presentation excerpt from the PlebLab Startup Day 2024 recording,
 `00:58:21`-`01:10:10`, not the full eight-hour event video. Episode
