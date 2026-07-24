@@ -58,6 +58,7 @@ import type {
 
 const testsDir = path.dirname(new URL(import.meta.url).pathname)
 const appDir = path.dirname(testsDir)
+const repoRoot = path.resolve(appDir, "../..")
 
 const cleanups: Array<() => void> = []
 afterAll(() => {
@@ -613,9 +614,14 @@ describe("openagents_desktop.workbench.turn_checkpoints.v1", () => {
     // dispatcher the checkpoint service, and that one engine captures both
     // boundaries for every local lane.
     const main = readFileSync(path.join(appDir, "src", "main.ts"), "utf8")
-    const providerLane = readFileSync(path.join(appDir, "src", "provider-lane.ts"), "utf8")
+    const providerLaneShim = readFileSync(path.join(appDir, "src", "provider-lane.ts"), "utf8")
+    const providerLane = readFileSync(
+      path.join(repoRoot, "packages", "omega-effectd", "src", "support", "provider-lane.ts"),
+      "utf8",
+    )
     expect(main).toContain("openTurnCheckpointService(")
     expect(main).toContain("captureTurnCheckpoint,")
+    expect(providerLaneShim).toContain("@openagentsinc/omega-effectd/support/provider-lane.ts")
     expect(providerLane).toContain('deps.captureTurnCheckpoint(request.threadRef, request.turnRef, "turn_start")')
     expect(providerLane).toContain('deps.captureTurnCheckpoint(request.threadRef, request.turnRef, "turn_completed")')
   })
