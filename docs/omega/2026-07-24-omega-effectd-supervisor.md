@@ -22,7 +22,7 @@
 - Mutation API remains `full-auto-run-actions`
 
 Omega crate `omega_effectd` can start, health-check, restart, and stop the
-service. Crash recovery re-reads disk truth; GPUI is not run authority.
+service. Crash recovery re-reads disk truth. GPUI is not run authority.
 
 ## Verification
 
