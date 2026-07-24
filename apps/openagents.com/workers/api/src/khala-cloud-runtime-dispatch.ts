@@ -68,6 +68,7 @@ import {
   buildCloudRuntimeWritebackConfig,
   encodeWorkContextB64,
   managedAgentComputerHarnessIdFromExecutionTargetId,
+  MANAGED_AGENT_COMPUTER_DEFAULT_HARNESS,
   selectManagedAgentComputerHarness,
   type AgentComputerHarnessId,
   type CloudRuntimeClaudeProviderAuthGrantRef,
@@ -259,7 +260,7 @@ type ManagedCloudProviderAvailability = Readonly<{
 
 const hasEligibleManagedCloudProvider = (
   accounts: ReadonlyArray<ManagedCloudProviderAvailability>,
-  provider: 'chatgpt_codex' | 'google_gemini',
+  provider: string,
 ): boolean =>
   accounts.some(
     account =>
@@ -268,6 +269,82 @@ const hasEligibleManagedCloudProvider = (
       account.health === 'healthy' &&
       account.hasSecretRef,
   )
+
+const managedAgentComputerHarnessProvider = (
+  harnessId: AgentComputerHarnessId,
+): string => selectManagedAgentComputerHarness(harnessId).provider
+
+export const MANAGED_AGENT_COMPUTER_RUNTIME_QUALIFIED_EXECUTION_STATE =
+  'runtime_secret_and_real_writeback_qualified' as const
+
+/** Admitted no-preference preference order for managed Agent Computer turns. */
+export const MANAGED_AGENT_COMPUTER_DEFAULT_HARNESS_PREFERENCE_ORDER = [
+  'codex',
+  'claude-code',
+  'opencode',
+  'pi',
+  'goose',
+  'cursor',
+  'grok',
+] as const satisfies ReadonlyArray<AgentComputerHarnessId>
+
+export type ManagedAgentComputerHarnessRuntimeReadiness = Readonly<
+  Partial<Record<AgentComputerHarnessId, string>>
+>
+
+/** Mirrors `agent-computer-image.manifest.json` until AC-01 qualifies Codex. */
+export const DEFAULT_MANAGED_AGENT_COMPUTER_HARNESS_RUNTIME_READINESS: ManagedAgentComputerHarnessRuntimeReadiness =
+  {
+    codex: 'owner_reauthentication_required',
+    'claude-code': MANAGED_AGENT_COMPUTER_RUNTIME_QUALIFIED_EXECUTION_STATE,
+    cursor: MANAGED_AGENT_COMPUTER_RUNTIME_QUALIFIED_EXECUTION_STATE,
+    goose: MANAGED_AGENT_COMPUTER_RUNTIME_QUALIFIED_EXECUTION_STATE,
+    grok: MANAGED_AGENT_COMPUTER_RUNTIME_QUALIFIED_EXECUTION_STATE,
+    opencode: MANAGED_AGENT_COMPUTER_RUNTIME_QUALIFIED_EXECUTION_STATE,
+    pi: MANAGED_AGENT_COMPUTER_RUNTIME_QUALIFIED_EXECUTION_STATE,
+  }
+
+export const isManagedAgentComputerHarnessRuntimeQualified = (
+  harnessId: AgentComputerHarnessId,
+  runtimeReadiness: ManagedAgentComputerHarnessRuntimeReadiness = DEFAULT_MANAGED_AGENT_COMPUTER_HARNESS_RUNTIME_READINESS,
+): boolean =>
+  runtimeReadiness[harnessId] ===
+  MANAGED_AGENT_COMPUTER_RUNTIME_QUALIFIED_EXECUTION_STATE
+
+export const hasEligibleManagedCloudProviderForHarness = (
+  accounts: ReadonlyArray<ManagedCloudProviderAvailability>,
+  harnessId: AgentComputerHarnessId,
+): boolean =>
+  hasEligibleManagedCloudProvider(
+    accounts,
+    managedAgentComputerHarnessProvider(harnessId),
+  )
+
+export type ManagedAgentComputerDefaultHarnessSelectionInput = Readonly<{
+  accounts: ReadonlyArray<ManagedCloudProviderAvailability>
+  preferenceOrder?: ReadonlyArray<AgentComputerHarnessId>
+  runtimeReadiness?: ManagedAgentComputerHarnessRuntimeReadiness
+}>
+
+/** First admitted harness that is runtime-qualified and has a healthy provider. */
+export const selectManagedAgentComputerDefaultHarnessId = (
+  input: ManagedAgentComputerDefaultHarnessSelectionInput,
+): AgentComputerHarnessId | undefined => {
+  const runtimeReadiness =
+    input.runtimeReadiness ??
+    DEFAULT_MANAGED_AGENT_COMPUTER_HARNESS_RUNTIME_READINESS
+  const preferenceOrder =
+    input.preferenceOrder ?? MANAGED_AGENT_COMPUTER_DEFAULT_HARNESS_PREFERENCE_ORDER
+  for (const harnessId of preferenceOrder) {
+    if (
+      isManagedAgentComputerHarnessRuntimeQualified(harnessId, runtimeReadiness) &&
+      hasEligibleManagedCloudProviderForHarness(input.accounts, harnessId)
+    ) {
+      return harnessId
+    }
+  }
+  return undefined
+}
 
 export const hasSarahManagedCloudProviderCapacity = (
   accounts: ReadonlyArray<ManagedCloudProviderAvailability>,
@@ -298,24 +375,49 @@ export const hasAvailableSarahManagedCloudProviderCapacity = (
   )
 
 /**
- * Keep Codex as Sarah's primary harness. Select the brokered Gemini-backed
- * OpenCode harness only when Codex has no usable account and Gemini does.
- * Selection occurs before the atomic turn claim, so the claimed harness cannot
- * change during preparation or execution.
+ * Resolve no-preference managed-cloud harness selection before claim.
+ * Codex wins when runtime-qualified and the owner has a healthy Codex account.
+ * Otherwise walk the admitted preference order across runtime-qualified harnesses.
+ * Explicit `harnessId` values remain authoritative.
+ */
+export const applyManagedCloudHarnessDefaultSelection = (
+  turn: CloudGcpAdmittedWorkContext,
+  accounts: ReadonlyArray<ManagedCloudProviderAvailability>,
+  runtimeReadiness: ManagedAgentComputerHarnessRuntimeReadiness = DEFAULT_MANAGED_AGENT_COMPUTER_HARNESS_RUNTIME_READINESS,
+): CloudGcpAdmittedWorkContext => {
+  if (turn.harnessId !== undefined) {
+    return turn
+  }
+  const selected = selectManagedAgentComputerDefaultHarnessId({
+    accounts,
+    runtimeReadiness,
+  })
+  if (
+    selected === undefined ||
+    selected === MANAGED_AGENT_COMPUTER_DEFAULT_HARNESS
+  ) {
+    return turn
+  }
+  return { ...turn, harnessId: selected }
+}
+
+/**
+ * Sarah managed-cloud enqueue path. Keeps the turn-id guard so only Sarah's
+ * autonomous lane applies default selection before claim.
  */
 export const applySarahManagedCloudHarnessFallback = (
   turn: CloudGcpAdmittedWorkContext,
   accounts: ReadonlyArray<ManagedCloudProviderAvailability>,
+  runtimeReadiness: ManagedAgentComputerHarnessRuntimeReadiness = DEFAULT_MANAGED_AGENT_COMPUTER_HARNESS_RUNTIME_READINESS,
 ): CloudGcpAdmittedWorkContext => {
-  if (
-    turn.harnessId !== undefined ||
-    !turn.turnId.startsWith('turn.sarah_cloud.') ||
-    hasEligibleManagedCloudProvider(accounts, 'chatgpt_codex') ||
-    !hasEligibleManagedCloudProvider(accounts, 'google_gemini')
-  ) {
+  if (!turn.turnId.startsWith('turn.sarah_cloud.')) {
     return turn
   }
-  return { ...turn, harnessId: 'opencode' }
+  return applyManagedCloudHarnessDefaultSelection(
+    turn,
+    accounts,
+    runtimeReadiness,
+  )
 }
 
 export type ManagedAgentComputerGrantIssueInput = Readonly<{

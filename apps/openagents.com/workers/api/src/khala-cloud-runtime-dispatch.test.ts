@@ -11,13 +11,16 @@ import {
 } from './cloud/cloud-coding-session-routes'
 import {
   CLOUD_GCP_RUNTIME_DISPATCH_CLIENT_GROUP_ID,
+  applyManagedCloudHarnessDefaultSelection,
   applySarahManagedCloudHarnessFallback,
+  DEFAULT_MANAGED_AGENT_COMPUTER_HARNESS_RUNTIME_READINESS,
   dispatchCloudGcpRuntimeTurn,
   finalizeManagedCloudProviderLease,
   hasAvailableSarahManagedCloudProviderCapacity,
   hasSarahManagedCloudProviderCapacity,
   makeCloudCodingAdapterLaunchSeam,
   managedAgentComputerGrantIssueInput,
+  MANAGED_AGENT_COMPUTER_RUNTIME_QUALIFIED_EXECUTION_STATE,
   planCloudGcpRuntimeAccountDispatch,
   providerFailoverFailureClassForGuestFailure,
   readQueuedManagedCloudTurns,
@@ -25,6 +28,7 @@ import {
   recoverStaleRunningManagedCloudTurns,
   runCloudGcpRuntimeDispatch,
   resolveManagedCloudRepositoryCommit,
+  selectManagedAgentComputerDefaultHarnessId,
   type CloudGcpAdmittedWorkContext,
   type CloudGcpMintFn,
   type CloudGcpPlacementLaunchFn,
@@ -96,6 +100,94 @@ describe('managed cloud queued turn projection', () => {
   })
 })
 
+describe('managed Agent Computer default harness selection', () => {
+  const turn: CloudGcpAdmittedWorkContext = {
+    commit: 'c'.repeat(40),
+    eventCount: 0,
+    ownerUserId: 'owner.fixture',
+    repo: 'OpenAgentsInc/openagents',
+    threadId: 'thread.sarah_cloud.fixture',
+    turnId: 'turn.sarah_cloud.fixture',
+    workContextRef: 'work_context.thread.sarah_cloud.fixture',
+  }
+  const account = (
+    provider: 'chatgpt_codex' | 'google_gemini' | 'anthropic_claude',
+    overrides: Partial<{
+      health: string
+      publicStatus: string
+      hasSecretRef: boolean
+    }> = {},
+  ) => ({
+    health: overrides.health ?? 'healthy',
+    hasSecretRef: overrides.hasSecretRef ?? true,
+    provider,
+    publicStatus: overrides.publicStatus ?? 'connected',
+  })
+  const allRuntimeQualified = Object.fromEntries(
+    (
+      [
+        'codex',
+        'claude-code',
+        'opencode',
+        'pi',
+        'goose',
+        'cursor',
+        'grok',
+      ] as const
+    ).map(harnessId => [
+      harnessId,
+      MANAGED_AGENT_COMPUTER_RUNTIME_QUALIFIED_EXECUTION_STATE,
+    ]),
+  )
+
+  test('selects Codex when runtime-qualified and the Codex provider is ready', () => {
+    expect(
+      selectManagedAgentComputerDefaultHarnessId({
+        accounts: [account('chatgpt_codex'), account('google_gemini')],
+        runtimeReadiness: allRuntimeQualified,
+      }),
+    ).toBe('codex')
+    expect(
+      applyManagedCloudHarnessDefaultSelection(
+        turn,
+        [account('chatgpt_codex'), account('google_gemini')],
+        allRuntimeQualified,
+      ),
+    ).toBe(turn)
+  })
+
+  test('falls back to OpenCode when Codex runtime is blocked but Gemini is ready', () => {
+    expect(
+      selectManagedAgentComputerDefaultHarnessId({
+        accounts: [account('chatgpt_codex'), account('google_gemini')],
+      }),
+    ).toBe('opencode')
+    expect(
+      applyManagedCloudHarnessDefaultSelection(turn, [
+        account('chatgpt_codex'),
+        account('google_gemini'),
+      ]),
+    ).toEqual({ ...turn, harnessId: 'opencode' })
+  })
+
+  test('falls back to Claude Code before Gemini harnesses when Codex is blocked', () => {
+    expect(
+      selectManagedAgentComputerDefaultHarnessId({
+        accounts: [account('chatgpt_codex'), account('anthropic_claude')],
+      }),
+    ).toBe('claude-code')
+  })
+
+  test('leaves explicit harnessId unchanged', () => {
+    expect(
+      applyManagedCloudHarnessDefaultSelection(
+        { ...turn, harnessId: 'claude-code' },
+        [account('google_gemini')],
+      ),
+    ).toEqual({ ...turn, harnessId: 'claude-code' })
+  })
+})
+
 describe('Sarah managed cloud harness fallback', () => {
   const turn: CloudGcpAdmittedWorkContext = {
     commit: 'c'.repeat(40),
@@ -119,13 +211,30 @@ describe('Sarah managed cloud harness fallback', () => {
     provider,
     publicStatus: overrides.publicStatus ?? 'connected',
   })
+  const allRuntimeQualified = Object.fromEntries(
+    (
+      [
+        'codex',
+        'claude-code',
+        'opencode',
+        'pi',
+        'goose',
+        'cursor',
+        'grok',
+      ] as const
+    ).map(harnessId => [
+      harnessId,
+      MANAGED_AGENT_COMPUTER_RUNTIME_QUALIFIED_EXECUTION_STATE,
+    ]),
+  )
 
-  test('keeps Codex primary when both providers are eligible', () => {
+  test('keeps Codex primary when both providers are eligible and Codex is runtime-qualified', () => {
     expect(
-      applySarahManagedCloudHarnessFallback(turn, [
-        account('chatgpt_codex'),
-        account('google_gemini'),
-      ]),
+      applySarahManagedCloudHarnessFallback(
+        turn,
+        [account('chatgpt_codex'), account('google_gemini')],
+        allRuntimeQualified,
+      ),
     ).toBe(turn)
   })
 
@@ -167,13 +276,25 @@ describe('Sarah managed cloud harness fallback', () => {
     ).toBe(false)
   })
 
-  test('selects OpenCode before claim when Codex is dead and Gemini is eligible', () => {
+  test('selects OpenCode before claim when Codex provider is dead and Gemini is eligible', () => {
     expect(
       applySarahManagedCloudHarnessFallback(turn, [
         account('chatgpt_codex', { health: 'requires_reauth' }),
         account('google_gemini'),
       ]),
     ).toEqual({ ...turn, harnessId: 'opencode' })
+  })
+
+  test('selects OpenCode before claim when Codex provider is ready but runtime is blocked', () => {
+    expect(
+      applySarahManagedCloudHarnessFallback(turn, [
+        account('chatgpt_codex'),
+        account('google_gemini'),
+      ]),
+    ).toEqual({ ...turn, harnessId: 'opencode' })
+    expect(DEFAULT_MANAGED_AGENT_COMPUTER_HARNESS_RUNTIME_READINESS.codex).toBe(
+      'owner_reauthentication_required',
+    )
   })
 
   test('does not change non-Sarah turns, explicit harnesses, or no-fallback state', () => {
