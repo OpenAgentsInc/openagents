@@ -2017,6 +2017,9 @@ importers:
       '@openagentsinc/agent-harness-contract':
         specifier: 0.2.1-rc.4
         version: 0.2.1-rc.4
+      '@openagentsinc/agent-runtime-schema':
+        specifier: 0.2.1-rc.4
+        version: 0.2.1-rc.4
       effect:
         specifier: 4.0.0-beta.94
         version: 4.0.0-beta.94

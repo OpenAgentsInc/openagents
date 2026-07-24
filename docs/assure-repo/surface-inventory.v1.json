@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:09b4c0becef45152f7f7ea6d160d98b171be148d2bb48e45d239ff316c3420e7",
+  "sourceDigest": "sha256:57a3469325d4cdb4a3fd584b82aba83fee3d069e3b86fa76b61350bb14f66563",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -1232,6 +1232,27 @@
       }
     },
     {
+      "id": "document:specs/omega/full-auto.product-spec.md",
+      "kind": "document",
+      "owningPath": "specs/omega/full-auto.product-spec.md",
+      "title": "full-auto.product-spec.md",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "product-spec",
+          "ref": "pnpm run test:product-spec"
+        },
+        {
+          "type": "assurance-obligation",
+          "ref": "specs/omega/full-auto.assurance-spec.md"
+        }
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: assurance-obligation; observation pending AR-3 sweep"
+      }
+    },
+    {
       "id": "document:specs/openagents/assure-repo-codebase-verification.product-spec.md",
       "kind": "document",
       "owningPath": "specs/openagents/assure-repo-codebase-verification.product-spec.md",
@@ -1626,7 +1647,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "packages/harness-environment (1 tracked test file)"
+          "ref": "packages/harness-environment (2 tracked test files)"
         }
       ],
       "obligation": {
@@ -3223,17 +3244,17 @@
     }
   ],
   "summary": {
-    "totalSurfaces": 168,
+    "totalSurfaces": 169,
     "byKind": {
       "app": 16,
       "crate": 6,
-      "document": 48,
+      "document": 49,
       "package": 86,
       "public-endpoint": 2,
       "release-pipeline": 9,
       "worker": 1
     },
-    "withOracle": 154,
+    "withOracle": 155,
     "unverified": 14,
     "byUnverifiedReason": {
       "config-only": 2,
@@ -3241,7 +3262,7 @@
       "reference-only": 2
     },
     "byObligationState": {
-      "designed": 120,
+      "designed": 121,
       "inconclusive": 9,
       "mapped": 34,
       "out-of-scope": 5

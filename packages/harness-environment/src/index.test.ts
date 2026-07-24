@@ -14,7 +14,7 @@ import {
   startHarnessInEnvironment,
   type HarnessEnvironmentRunner,
   type OpenAgentsCloudHarnessEnvironment,
-} from "./index.js";
+} from "./contract.js";
 
 const source = {
   lane: "ai_sdk_core",
