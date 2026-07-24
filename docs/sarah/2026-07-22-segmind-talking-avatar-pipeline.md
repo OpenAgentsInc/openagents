@@ -163,6 +163,91 @@ If a section is longer than 60 seconds, use the nearest full-screen cutaway as
 the preferred boundary. If there is no suitable cutaway, use the nearest
 natural change in the subject.
 
+## Product screenshare (second picture track)
+
+The Segmind runner makes the **Sarah talking-head** track. Many episode beats
+also need a **product screenshare** track: a live Omega (or other) window under
+the same short spoken lines.
+
+Rules:
+
+1. The spoken transcript remains the word authority. Do not lengthen Sarah's
+   lines to cover a long screenshare.
+2. Prefer a live product window over a still of the same frame.
+3. Burn an honest product-state label into the edit (for example
+   `OMEGA WELCOME - CURRENT`).
+4. Keep generated talking-head clips and recorded screenshares **local**. Do
+   not commit them.
+
+Control and shot scripts live in
+[`docs/transcripts/SARAH_VIDEO_SCREENSHARE.md`](../transcripts/SARAH_VIDEO_SCREENSHARE.md)
+and `scripts/omega-screen-control/`.
+
+### Capture into the episode folder
+
+Episode working media for Sarah lives on the owner Desktop:
+
+```text
+~/Desktop/Sarah/<episode>/
+```
+
+For Episode 262:
+
+```text
+~/Desktop/Sarah/262/
+```
+
+Record a Welcome hold (example):
+
+```sh
+export OMEGA_BIN="/path/to/Omega.app/Contents/MacOS/omega"
+OUT="$HOME/Desktop/Sarah/262/262-screenshare-omega-welcome.mp4"
+
+# Drive the window (Help → Editor Onboarding when custody is Ready).
+node scripts/omega-screen-control/omega-screen-control.mjs shot welcome-hold &
+CTRL_PID=$!
+sleep 4
+
+# Capture the main display. Device index comes from:
+#   ffmpeg -f avfoundation -list_devices true -i ""
+# Use the "Capture screen N" index (often 4 on this Mac). No mic.
+ffmpeg -y -f avfoundation -framerate 30 -i "4:none" \
+  -t 20 -c:v libx264 -pix_fmt yuv420p -an "$OUT"
+
+wait "$CTRL_PID" 2>/dev/null || true
+node scripts/omega-screen-control/omega-screen-control.mjs quit
+```
+
+Or use the bundled record helper (same destination contract):
+
+```sh
+export OMEGA_BIN="/path/to/Omega.app/Contents/MacOS/omega"
+node scripts/omega-screen-control/omega-screen-control.mjs record \
+  --shot welcome-hold \
+  --seconds 20 \
+  --out ~/Desktop/Sarah/262/262-screenshare-omega-welcome.mp4
+```
+
+Owner gates for capture:
+
+- Accessibility for the control host.
+- Screen Recording for the capture host. After a new grant, restart Cursor or
+  the terminal before `ffmpeg` / `screencapture` can read the display.
+- If Nostr custody is Ready, reset with Omega's `omega-identity` CLI before a
+  true first-run Welcome, or open `Help → Editor Onboarding`.
+
+### Interleave in the edit
+
+| Track | Source | Typical use |
+| --- | --- | --- |
+| Sarah picture | Segmind runner output under `~/Desktop/Sarah/<episode>/` | Opening and closing on-camera beats |
+| Product screenshare | `ffmpeg` capture of a controlled Omega window | Mid-episode product beats and fill over salvage gaps |
+| Still cutaway | Only when live capture is unavailable | Labeled honestly. Replace when a live shot exists |
+
+Join Sarah generations under a full-screen screenshare or cutaway. Do not invent
+extra spoken text only to fill the screenshare. Hold the screen under the
+existing short lines, or use silence with a lower-third label.
+
 ## How it works (Segmind Async Inference V2)
 
 Video models must use the async API for reliability. The runner:
@@ -197,10 +282,14 @@ standardizing a model for Sarah's comms.
 
 ## Output handling and secrets
 
-- The **video output stays local** (kept under `~/Downloads/sarah/`). Do not
-  commit generated clips.
+- The **talking-head video output stays local** (kept under
+  `~/Downloads/sarah/` or `~/Desktop/Sarah/<episode>/`). Do not commit
+  generated clips.
+- The **screenshare captures** stay under `~/Desktop/Sarah/<episode>/`. Do not
+  commit them.
 - The **API key** stays in `~/work/.secrets/segmind.env`. Never commit or print.
-- Only this runbook and `scripts/sarah-avatar/segmind-talking-avatar.mjs` are
+- Only this runbook, the screenshare control doc, and the committed scripts
+  under `scripts/sarah-avatar/` and `scripts/omega-screen-control/` are
   committed.
 
 ## What to decide next

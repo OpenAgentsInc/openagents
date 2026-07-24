@@ -16,6 +16,7 @@
 //   node scripts/omega-screen-control/omega-screen-control.mjs key --combo "cmd+enter"
 //   node scripts/omega-screen-control/omega-screen-control.mjs dump-ax
 //   node scripts/omega-screen-control/omega-screen-control.mjs shot welcome-setup
+//   node scripts/omega-screen-control/omega-screen-control.mjs record --shot welcome-hold --seconds 20 --out ~/Desktop/Sarah/262/welcome.mp4
 //   node scripts/omega-screen-control/omega-screen-control.mjs quit
 //
 // Env:
@@ -28,12 +29,13 @@
 import { spawn, execFileSync } from 'node:child_process'
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -59,6 +61,7 @@ function usage() {
   omega-screen-control.mjs wait --contains <text> [--timeout-ms 30000]
   omega-screen-control.mjs dump-ax [--out <path>]
   omega-screen-control.mjs shot <shot-id>
+  omega-screen-control.mjs record --shot <shot-id> --out <mp4> [--seconds 20] [--screen-device 4]
   omega-screen-control.mjs quit
 
 Shots live in scripts/omega-screen-control/shots/*.json
@@ -69,6 +72,7 @@ Notes:
     cargo run -p omega_identity --bin omega-identity -- --channel rc wipe --yes
   On a machine that already has a Ready identity, open Welcome with:
     Help → Editor Onboarding   (or Help → Show Welcome)
+  Screenshare MP4s stay local under ~/Desktop/Sarah/<episode>/ (do not commit).
 `)
 }
 
@@ -527,6 +531,81 @@ async function runShot(shotId) {
   console.log('shot complete')
 }
 
+function expandHome(path) {
+  if (path.startsWith('~/')) return join(homedir(), path.slice(2))
+  return path
+}
+
+function detectScreenDevice() {
+  const fromFlag = flag('screen-device') || process.env.OMEGA_SCREEN_DEVICE
+  if (fromFlag != null) return String(fromFlag)
+  try {
+    execFileSync('ffmpeg', ['-f', 'avfoundation', '-list_devices', 'true', '-i', ''], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+  } catch (err) {
+    const text = `${err.stderr || ''}${err.stdout || ''}`
+    const match = text.match(/\[(\d+)\] Capture screen 0/)
+    if (match) return match[1]
+  }
+  return '4'
+}
+
+function recordScreen(outPath, seconds, screenDevice) {
+  const absolute = resolve(expandHome(outPath))
+  mkdirSync(dirname(absolute), { recursive: true })
+  const ffmpegBin = commandExists('ffmpeg')
+    ? 'ffmpeg'
+    : existsSync('/opt/homebrew/bin/ffmpeg')
+      ? '/opt/homebrew/bin/ffmpeg'
+      : null
+  if (!ffmpegBin) throw new Error('ffmpeg not found on PATH')
+  console.log(`recording screen device ${screenDevice} for ${seconds}s → ${absolute}`)
+  activateOmega()
+  sleep(500)
+  execFileSync(
+    ffmpegBin,
+    [
+      '-y',
+      '-f',
+      'avfoundation',
+      '-framerate',
+      '30',
+      '-capture_cursor',
+      '1',
+      '-i',
+      `${screenDevice}:none`,
+      '-t',
+      String(seconds),
+      '-c:v',
+      'libx264',
+      '-pix_fmt',
+      'yuv420p',
+      '-an',
+      absolute,
+    ],
+    { stdio: ['ignore', 'inherit', 'inherit'] },
+  )
+  console.log(`wrote ${absolute}`)
+  return absolute
+}
+
+async function recordShot() {
+  const shotId = flag('shot') || args[1]
+  const out = flag('out')
+  const seconds = Number(flag('seconds', '20'))
+  if (!shotId) throw new Error('--shot <shot-id> is required')
+  if (!out) throw new Error('--out <mp4 path> is required')
+  if (!Number.isFinite(seconds) || seconds < 1) {
+    throw new Error('--seconds must be a positive number')
+  }
+  const screenDevice = detectScreenDevice()
+  await runShot(shotId)
+  recordScreen(out, seconds, screenDevice)
+  quit()
+}
+
 try {
   switch (command) {
     case 'launch':
@@ -582,6 +661,9 @@ try {
       await runShot(shotId)
       break
     }
+    case 'record':
+      await recordShot()
+      break
     case 'quit':
       quit()
       break

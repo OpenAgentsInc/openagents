@@ -84,6 +84,12 @@ Useful commands:
 # launch, open Editor Onboarding, hold
 node scripts/omega-screen-control/omega-screen-control.mjs shot welcome-hold
 
+# record a screenshare MP4 into the episode Desktop folder
+node scripts/omega-screen-control/omega-screen-control.mjs record \
+  --shot welcome-hold \
+  --seconds 20 \
+  --out ~/Desktop/Sarah/262/262-screenshare-omega-welcome.mp4
+
 # open Welcome on an already-running controlled instance
 node scripts/omega-screen-control/omega-screen-control.mjs menu \
   --bar Help --item "Editor Onboarding"
@@ -97,6 +103,9 @@ node scripts/omega-screen-control/omega-screen-control.mjs key --combo cmd+enter
 # stop the controlled instance
 node scripts/omega-screen-control/omega-screen-control.mjs quit
 ```
+
+Episode working media stays local under `~/Desktop/Sarah/<episode>/`. Do not
+commit those MP4s.
 
 Set the binary:
 
