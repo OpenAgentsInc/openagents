@@ -34122,6 +34122,24 @@
       }
     },
     {
+      "path": "docs/omega/2026-07-24-openagents-mobile-omega-adaptation-audit.md",
+      "sha256": "331cd8b8f3c80e110a49b22478005e11145a30e7adfe2fbb072590a3553966a1",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "mixed",
+        "risk": "high",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "human",
+        "ste_accepted_screening_rules": [
+          "STE-2.4"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/omega/2026-07-24-release-readiness-brand-audit.md",
       "sha256": "f07463d7e356ba1c80ed47efce9cacc5dd78dfc088a9a899a19e055085319a1a",
       "reason": "Final review of a converted document",
@@ -34311,7 +34329,7 @@
     },
     {
       "path": "docs/omega/README.md",
-      "sha256": "4f26deba14f7882f21bf0adcc3776affc002fcf79e7862d43cc6a25ad45e151a",
+      "sha256": "366f07172a3ecd78ecacebef25a96ab57261bef85ff885dd045a6257284154d8",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

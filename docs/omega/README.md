@@ -22,53 +22,55 @@ Read these documents in this order:
 6. Read the
    [Grok Build Rust harvest](./2026-07-24-grok-build-rust-harvest.md).
 7. Read the
-   [Full Auto port audit](./2026-07-24-full-auto-port-audit.md).
+   [OpenAgents Mobile adaptation audit for Omega](./2026-07-24-openagents-mobile-omega-adaptation-audit.md).
 8. Read the
+   [Full Auto port audit](./2026-07-24-full-auto-port-audit.md).
+9. Read the
    [Full Auto contract freeze](./2026-07-24-full-auto-contract-freeze.md)
    (`OMEGA-FA-00`).
-9. Read the
+10. Read the
    [omega-effectd extract](./2026-07-24-omega-effectd-extract.md)
    (`OMEGA-FA-01`).
-10. Read the
+11. Read the
    [omega-effectd supervisor](./2026-07-24-omega-effectd-supervisor.md)
    (`OMEGA-FA-02`).
-11. Read the
-    [omega-effectd host bridge](./2026-07-24-omega-effectd-host-bridge.md).
 12. Read the
-    [Agent Computer and Omega completion plan](./2026-07-24-agent-computer-omega-completion-plan.md).
+    [omega-effectd host bridge](./2026-07-24-omega-effectd-host-bridge.md).
 13. Read the
-    [HE-02 harness-environment release](./2026-07-24-he02-harness-environment-release.md).
+    [Agent Computer and Omega completion plan](./2026-07-24-agent-computer-omega-completion-plan.md).
 14. Read the
+    [HE-02 harness-environment release](./2026-07-24-he02-harness-environment-release.md).
+15. Read the
     [Sarah workroom MVP specification](./2026-07-24-sarah-workroom-mvp-spec.md)
     (`OMEGA-SW-00` through `OMEGA-SW-07`, `SARAH-NR-00` through `SARAH-NR-09`,
     `SARAH-CW-00` through `SARAH-CW-09`).
-15. Read the
+16. Read the
     [Sarah Nostr record contract](./2026-07-24-sarah-nostr-record-contract.md)
     (`SARAH-NR-00`).
-16. Read the
+17. Read the
     [Sarah Nostr identity contract](./2026-07-24-sarah-nostr-identity-contract.md)
     (`SARAH-NR-04`).
-17. Read the
+18. Read the
     [owned Nostr relay deploy runbook](../ops/2026-07-24-owned-nostr-relay-deploy.md)
     (`SARAH-NR-03`, Option A host in `nostr-effect`).
-18. Read the
+19. Read the
     [Sarah NIP-AE companion profile](./2026-07-24-sarah-nip-ae-companion-profile.md)
     (`SARAH-NR-07a`).
-19. Read the
+20. Read the
     [Sarah Nostr migration and cutover](./2026-07-24-sarah-nostr-cutover.md)
     (`SARAH-NR-08`).
-20. Read the
+21. Read the
     [Sarah Nostr journey proof](./2026-07-24-sarah-nostr-journey-proof.md)
     (`SARAH-NR-09`).
-21. Read the
+22. Read the
     [community workroom contract freeze](./2026-07-24-community-workroom-contract.md)
     (`SARAH-CW-00`).
-22. Read the
+23. Read the
     [Sarah community journey proof](./2026-07-24-sarah-community-journey-proof.md)
     (`SARAH-CW-09`).
-23. Read the [accepted Omega plan](../sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md).
-24. Read the [master roadmap](../sol/MASTER_ROADMAP.md).
-25. Read the [Desktop release contract](../deploy/openagents-desktop-cross-platform-release.md).
+24. Read the [accepted Omega plan](../sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md).
+25. Read the [master roadmap](../sol/MASTER_ROADMAP.md).
+26. Read the [Desktop release contract](../deploy/openagents-desktop-cross-platform-release.md).
 
 The Omega roadmap owns the implementation order.
 The release-readiness audit owns the current brand and package gap.
@@ -81,6 +83,11 @@ Omega Avatar Stage.
 
 The Grok Build Rust harvest owns the boundary between direct Rust candidates,
 behavior and test ports, and terminal or runtime systems that must not move.
+
+The OpenAgents Mobile adaptation audit owns the product recommendation for an
+Omega mobile controller. It keeps one OpenAgents store app, makes Omega a
+first-class host, and defines a Nostr-primary path to full controller parity.
+It also separates current surface parity from live Omega host integration.
 
 The Full Auto port audit owns the Desktop-to-Omega Full Auto port plan.
 The Full Auto contract freeze owns the admitted lifecycle, digests, redaction
