@@ -3,7 +3,9 @@
 Read-only architecture and product audit of the public `block/buzz` source
 tree at an exact commit in the local reference clone
 `~/work/projects/repos/buzz`. Nothing tracked was modified. The Git follow-up
-ran bounded protocol tests, but it did not run a live relay. Buzz is Block's
+ran bounded protocol tests, but it did not run a live relay. A second source
+review traced the shared-compute and usage paths at the same follow-up commit.
+It did not run a live MeshLLM node. Buzz is Block's
 open-source, self-hostable workspace where humans
 and AI agents are co-equal members of a Nostr-relay community. It is the
 closest whole-system analog to OpenAgents in the teardown catalog so far: one
@@ -67,7 +69,7 @@ shell, the Flutter mobile lane, and the non-streaming agent turn model.**
 | Public repository | `https://github.com/block/buzz` | Public source and history |
 | Local clone | `~/work/projects/repos/buzz` | The audited tree |
 | Audited commit | `e9188c03f6c2460983a3dac0fa7702b468838e62` | Exact snapshot used here |
-| Git follow-up commit | `5a3b8176aac5f4bced452ac8920477c5e059b828` | Source snapshot for the Git deep dive |
+| Git, MeshLLM, and usage follow-up commit | `5a3b8176aac5f4bced452ac8920477c5e059b828` | Source snapshot for the Git and shared-compute deep dives |
 | `nostr-effect` commit | `c1603780f754d445b3cb8203ea5602b54c145996` | Local implementation snapshot for standard and Buzz NIPs |
 | Secondary Git source | Soapbox, "What is Ngit?" (`2026-07-21`) | Ecosystem claims checked against Buzz source |
 | Commit time | `2026-07-21` | Freshness of the audited tip |
@@ -97,9 +99,10 @@ bounded checks. `nostr-effect` passed 69 NIP-34 and NIP-GS tests. Buzz passed
 NIP-GS library passed 55 of 56 tests. Its parser accepted an all-zero OA public
 key that the test and draft require it to reject. [source] [limitation]
 
-This audit did not run the relay, desktop app, live MinIO tests, TLA+ checker,
-or Tamarin checker. The live Git tests are ignored by default. All other
-behavior claims come from tracked source and docs. Only `block/buzz` is public.
+This audit did not run the relay, desktop app, a MeshLLM node, live MinIO
+tests, TLA+ checker, or Tamarin checker. The live Git and shared-compute tests
+are ignored by default. All other behavior claims come from tracked source and
+docs. Only `block/buzz` is public.
 Block-internal builds, deploy pipelines, and the hosted relay are out of scope.
 [limitation]
 
@@ -235,7 +238,318 @@ forwards the audio payloads opaquely. `desktop/src-tauri/src/mesh_llm/`
 implements community-pooled LLM compute discovery for the `VISION_MESH.md`
 "your community is your compute" story. [source]
 
-### 3.6 Clients, ops, and process
+### 3.6 Shared compute and usage accounting
+
+Buzz uses MeshLLM as a member-to-member inference data plane. Buzz adds the
+user interface, identity binding, relay discovery, and membership-derived
+admission policy. The implementation pins MeshLLM `v0.73.1` and Iroh `1.0.2`.
+The main code is under `desktop/src-tauri/src/mesh_llm/`. [source]
+
+This feature has four separate planes. They are easy to confuse because each
+plane uses the word "mesh." [source]
+
+```text
+Buzz member identity and NIP-43 roster
+        |
+        | signed kind 30003 status and discovery
+        v
+Buzz relay (control plane only)
+        |
+        | current member, model, and endpoint selection
+        v
+Buzz Desktop embedded MeshLLM node
+        |
+        | OpenAI-compatible localhost ingress on 127.0.0.1:9337
+        | direct QUIC or end-to-end encrypted Iroh relay transport
+        v
+Member GPU or multi-node MeshLLM route
+
+buzz-agent usage response -> buzz-acp delta tracker
+        -> encrypted kind 44200 NIP-AM metric -> owner
+```
+
+The last line is an accounting projection. It is not the MeshLLM admission
+plane. It also does not account for the machine that supplied the compute.
+[source]
+
+#### 3.6.1 Build and runtime shape
+
+The desktop `mesh-llm` Cargo feature enables six optional MeshLLM crates and
+Iroh. Normal local development does not enable it. Developers must use
+`just mesh=1 dev` or an equivalent feature flag. Non-mesh builds register
+Tauri stubs that return `mesh-llm feature not enabled`. The macOS release
+workflow builds the app with `--features mesh-llm`. Thus, the release lane is
+different from the default development lane. [source]
+
+Buzz embeds the MeshLLM serving and client SDKs in the Tauri process. It does
+not run a separate MeshLLM daemon. The embedded node owns these local ports:
+[source]
+
+- `9337` is an OpenAI-compatible API. Managed agents use
+  `http://127.0.0.1:9337/v1`.
+- `3131` is the MeshLLM console. Buzz exposes its URL only in the advanced
+  Compute settings.
+
+On first use, `mesh-llm-host-runtime` installs or loads its signed native
+runtime. Serve mode downloads the selected model before node startup. This
+ordering lets the Tauri progress sink show model bytes and preparation state.
+Buzz gives startup 180 seconds. It configures 8 MiB Tokio worker stacks for
+the deep MeshLLM futures. [source]
+
+Both serve and client modes set `publish(false)` and `auto_join(false)`.
+They do not publish MeshLLM presence to public Nostr relays. Buzz selects a
+peer from its own relay status events. It passes one validated join token to
+the SDK. The SDK then routes inference through direct QUIC or an encrypted
+Iroh relay. The Buzz relay does not carry prompts, completions, or token
+streams. [source]
+
+#### 3.6.2 What happens when a member shares a machine
+
+The Settings > Compute card has one consent toggle, one model field, and an
+optional maximum VRAM value. A member can type a model reference, select a
+cached model, or select a hardware-ranked catalog entry. Buzz surveys the GPU
+and usable AI memory. It rates model fit at 60, 90, and 110 percent of usable
+memory. The labels are `comfortable`, `tight`, `tradeoff`, and `too_large`.
+Models in the last class are visible but disabled. [source]
+
+Buzz puts two tested instruction models above the advanced catalog. Machines
+with at least 64 GB of rated memory get the larger curated recommendation.
+Smaller machines get the smaller recommendation. Draft-only speculative
+models do not appear as shareable models. The picker marks cached files, but
+the SDK can download a remote model after the member starts sharing. [source]
+
+The start command resolves the current trusted owner list before it creates
+the node. It starts in `serve` mode, loads the model, probes status, and stores
+the preference in `mesh-sharing.json` under the app data directory. Workspace
+startup restores an enabled share preference. A stop clears the runtime,
+writes a disabled preference, and publishes an empty serving status. [source]
+
+The serving runtime has one local OpenAI ingress. A serving member can also
+consume another member's model through that same runtime. If an agent requests
+a model that is not local, the MeshLLM router can select a remote or split
+target. Buzz does not start a second client runtime for that case. [source]
+
+The current Buzz status projection does not publish usable capacity data.
+`MeshTargetCapacity` has a `vramGb` field, but locally built serve targets set
+`capacity` to `None`. The shared-compute control does not set time windows,
+request quotas, peer priorities, concurrency, energy limits, or compensation.
+The maximum VRAM input limits local model use. It is not a community quota.
+[source]
+
+#### 3.6.3 Identity binding and relay discovery
+
+Each machine has two identities. The Buzz member uses a Nostr secp256k1 key.
+MeshLLM uses a separate Ed25519 owner key in its default
+`~/.mesh-llm/owner-keystore.json` file. The MeshLLM owner identifier is the
+SHA-256 digest of the Ed25519 verifying key. [source]
+
+The coordinator publishes a client-signed NIP-51 bookmark-set event. It uses
+kind `30003`, a `d` tag of `buzz-mesh-member-status:<ownerId>`, and a `k` tag
+of `buzz-mesh-status`. This use needs no mesh-specific relay handler. The
+status content contains the owner identifier, verifying key, ready models,
+serving targets, and endpoint tokens. It contains no owner secret or local
+model path. [source]
+
+Two Ed25519 signatures bind the two identity systems. `ownerBindingSig` signs
+the member Nostr public key. `ownerEndpointBindingSig` signs that member key
+and a length-framed SHA-256 digest of the sorted endpoint tokens. The outer
+Nostr signature proves which member published the status. The inner signatures
+prove that the member controls the MeshLLM owner key. They also prevent an
+unbound endpoint substitution. [source]
+
+The desktop publishes status at startup and every 45 seconds. It also
+publishes while stopped. A stopped event advertises the owner identity with
+empty model and target arrays. This behavior keeps a consumer-only member in
+the admission identity set. Routing ignores events older than 120 seconds.
+Admission does not use that freshness limit because an offline device does not
+end community membership. [source]
+
+Discovery first reads the latest relay-signed NIP-43 direct-member snapshot,
+kind `13534`. It then reads kind `30003` status events only from those member
+authors. Status pages have a limit of 100. They use a timestamp and event-id
+cursor. Routing accepts only a fresh event from a current member with valid
+owner and endpoint signatures. It then validates every endpoint token against
+local transport policy. [source]
+
+Model collection uses only ready model records. It deliberately ignores the
+MeshLLM `serving_models` field because that field can become visible before
+inference is ready. Buzz removes an `@main` qualifier when it compares model
+identifiers. It deduplicates by canonical model and endpoint. A saved agent
+stores the model reference, not the live endpoint token. It resolves a current
+bootstrap target each time it starts. [source]
+
+#### 3.6.4 Admission and membership changes
+
+Buzz derives the MeshLLM owner allowlist by intersecting two sets. The first
+set is the current NIP-43 member roster. The second set is the valid owner
+bindings in member-signed mesh status events. A status from a non-member does
+not add an owner. A leaked endpoint token does not add an owner. Each node also
+adds its own owner identifier to the allowlist. [source]
+
+The node starts with `owner_required(true)`, `TrustPolicy::Allowlist`, and the
+resolved owner identifiers. If the first roster query fails, startup uses a
+self-only allowlist. A missing kind `13534` snapshot is an error, not an empty
+community. This distinction prevents a temporary relay gap from creating an
+incorrect roster. [source]
+
+The coordinator polls the roster every 60 seconds. It restarts the embedded
+node when the allowlist changes because the SDK trust store is fixed at node
+start. Pure roster growth applies after one successful poll. A roster shrink
+must appear in two consecutive polls. A failed poll keeps the current
+allowlist. These rules reduce churn and prevent one short read from removing
+active members during inference. [source]
+
+The SDK performs the final owner check after the transport connection, during
+MeshLLM gossip. The Buzz runbook explicitly does not claim authentication
+before gossip. Buzz pins a MeshLLM release with the fix that prevents passive
+inference use by a caller that has only a leaked invite token. [source]
+
+#### 3.6.5 Endpoint and relay policy
+
+Buzz treats discovery data as untrusted network input. A join token can hold
+an unsigned Iroh endpoint or a MeshLLM signed bootstrap token. The validator
+applies these bounds and rules: [source]
+
+- The encoded token can contain at most 64 KiB.
+- A signed token can contain from one through eight endpoint records.
+- Each endpoint can contain from one through 16 transport addresses.
+- A signed bootstrap envelope must pass its MeshLLM signature check.
+- Direct addresses cannot use port zero, loopback, link-local, multicast,
+  broadcast, unspecified, or equivalent unsafe targets.
+- An unsigned endpoint keeps only locally permitted transports. It fails if no
+  permitted transport remains.
+- A signed endpoint cannot be rewritten without invalidating its signature.
+  Thus, one disallowed address rejects the signed token. Buzz accepts the
+  MeshLLM port-zero placeholder only when another address is usable.
+
+`BUZZ_MESH_IROH_RELAYS` selects the local relay policy. An unset value enables
+Iroh production relays and the two default MeshLLM public relays. `0` permits
+only direct QUIC. A comma-separated value is an explicit allowlist. Custom
+relays must be HTTPS origins without credentials, paths, queries, or fragments.
+Only loopback development relays can use HTTP. A remote status event cannot
+expand the local relay allowlist. [source]
+
+The Iroh relays forward encrypted QUIC traffic. They can observe transport
+metadata, but they cannot read the inference content. A direct endpoint on a
+private address is permitted. This permits local-network peers while the
+blocked-address rules prevent loopback and metadata-service targeting.
+[source]
+
+#### 3.6.6 How an agent consumes shared compute
+
+`relay-mesh` is a native Buzz provider identifier. It is available only for a
+local `buzz-agent` runtime. The model picker reads member status events from
+the Buzz relay. It does not query the local `9337` API because that API might
+not exist before the first peer selection. `auto` means that any live serving
+target can bootstrap the client. The MeshLLM router then selects a suitable
+model for each request. [source]
+
+When an agent starts, Buzz checks for an existing embedded runtime. If one
+exists, Buzz reuses its local ingress and dials a selected peer when necessary.
+If no runtime exists, Buzz resolves one live target for the saved model. It
+then starts an embedded MeshLLM client with that join token. Buzz distinguishes
+a relay query failure from a valid query that finds no serving peer. [source]
+
+Before it starts the agent subprocess, Buzz sends a real one-token chat request
+through `127.0.0.1:9337`. It retries for as long as 120 seconds. This probe
+closes the gap between an available HTTP port and a router that can perform
+inference. [source]
+
+At subprocess spawn, Buzz translates `relay-mesh` into the transport that
+`buzz-agent` already understands. It sets the provider to OpenAI Chat, the
+base URL to the local MeshLLM ingress, and a non-secret placeholder API key.
+It removes an ambient `OPENAI_API_KEY`. It also sets a 4,096 output-token limit
+and disables reasoning effort to fit smaller local model contexts. Thus, the
+full path is: [source]
+
+```text
+Buzz Desktop -> buzz-acp -> buzz-agent -> localhost MeshLLM API
+             -> selected member node
+```
+
+#### 3.6.7 What Buzz records about compute use
+
+Buzz does not have a MeshLLM-specific billing ledger. It reuses NIP-AM for
+agent-turn usage across all supported harnesses and providers. The accounting
+starts only when an ACP agent emits a Goose-compatible
+`_goose/unstable/session/update` notification with `usage_update`. Goose and
+`buzz-agent` use this shape. Other agents that do not emit it produce no turn
+metric. [source]
+
+`buzz-agent` reads token counts from provider responses. For the OpenAI Chat
+shape that MeshLLM exposes, it reads inclusive `prompt_tokens` and
+`completion_tokens`. It adds these values to session-cumulative input and
+output counters. It then emits a usage update before the ACP prompt response,
+so `buzz-acp` still considers the turn active. The update includes the
+effective model. It does not include a local cost estimate. [source]
+
+`buzz-acp` keeps a baseline for each session. It computes one turn delta from
+the final cumulative update and the prior published turn. Multiple updates in
+one turn do not advance the baseline. The final update wins. The first observed
+turn has no reliable delta. A counter decrease also makes the delta unreliable.
+In both cases, the metric keeps cumulative values and sets the turn values to
+null with `deltaReliable: false`. `turnSeq` advances only when ACP drains a
+completed turn for publication. [source]
+
+At turn completion, `buzz-acp` creates one regular kind `44200` event when it
+has usage and an owner key. The payload contains the harness, model, channel,
+session, turn identifier, turn sequence, timestamp, per-turn values,
+cumulative values, reliability flag, and stop reason. The current publisher
+sets `totalTokens`, cache-read tokens, and cache-write tokens to null. A cost
+can come from a harness that reports cumulative cost, but NIP-AM defines it as
+an estimate and not a billing record. [source]
+
+The agent encrypts the payload to its owner with NIP-44 v2. The public envelope
+has one `p` tag for the owner and one `agent` tag that must equal the event
+author. It has no channel tag. The relay verifies the Nostr signature, envelope
+shape, NIP-44 version prefix, and the stored agent-owner relation. It stores the
+event but excludes it from full-text search. Every read path requires NIP-42
+authentication and a matching owner `#p` filter. Knowing an event identifier
+does not grant read access. [source]
+
+Metric publication is fail-soft. Encryption, signing, or relay submission
+errors are warnings and do not fail the agent turn. Relay submission has a
+three-second timeout. Therefore, the record is useful for owner reporting, but
+it is not an exactly-once or settlement-grade receipt. [source] [inferred]
+
+The desktop can copy these records into its local SQLite archive. During
+archive ingest, it decrypts kind `44200` and stores the payload as plaintext so
+local calculators can read it. Decryption failures are dropped. OSS builds do
+not enable this local archive by default. The user can enable **Archive my
+agents' turn metrics**. An internal build flag can enable it once per identity
+until the user makes an explicit choice. [source]
+
+The live session transcript can show compatible ACP usage frames. It coalesces
+multiple frames for one turn. The durable metric archive has no complete
+fleet-cost or compute-contribution dashboard in the audited source. More
+importantly, kind `44200` identifies the requesting agent and model, but it does
+not identify the serving MeshLLM owner, endpoint, GPU time, queue time, energy,
+or bytes. Buzz can estimate agent token use. It cannot use this record to
+measure who supplied shared compute or how much value they supplied. [source]
+
+#### 3.6.8 Implemented boundary versus vision
+
+`VISION_MESH.md` says a community can split a model across several machines.
+Buzz delegates routing and split inference to MeshLLM. The code accepts remote
+or split targets through the same local ingress. However, the audited Buzz test
+suite does not prove the full claim by default. Mesh unit tests are
+deterministic. The two-node inference and split-model acceptance tests are
+ignored because they require native runtimes, models, and several live nodes.
+One live test remains a documented placeholder. This audit did not run the
+manual GUI proof in `docs/buzz-shared-compute-dev.md`. [source] [limitation]
+
+The separate `crates/buzz-relay-mesh` system is not the member GPU pool. It is
+an inter-relay Iroh transport for huddles and reliable streams. Its `BUZZ_MESH`
+configuration and relay startup code belong to horizontal relay operation.
+Some `buzz-relay` MeshLLM examples are local admission and inference smokes.
+The product shared-compute runtime remains in Buzz Desktop. [source]
+
+The implemented result is a private, opt-in inference pool for current relay
+members. It is not a compute market. It has no credits, payments, bidding,
+provider settlement, contribution score, or provider-side usage ledger. The
+NIP-AM path accounts for agent turns only. [source]
+
+### 3.7 Clients, ops, and process
 
 `web/` is a small browser repo-viewer that the relay itself serves, which
 funds the `VISION_SOVEREIGN.md` claim that one domain is both the rendered
@@ -318,6 +632,12 @@ truncation rules. [source]
   the AI SDK make live token streams to the UI a central contract (the
   STREAM program, `KhalaRuntimeEvent`). The Buzz model is honest for
   headless work but is the opposite of the OpenAgents UI thesis. [source]
+- **Shared compute has no provider accounting.** Buzz records requester-side
+  agent token estimates through NIP-AM. It does not bind a turn to the member,
+  endpoint, GPU, duration, or energy that supplied inference. Membership is an
+  admission rule, not a quota, contribution, settlement, or fairness system.
+  This design is sufficient for a trusted compute commons. It is not a compute
+  market or a billing substrate. [source] [inferred]
 - **Operational weight.** Adoption of any large piece means Postgres, Redis,
   object storage, 964 crate dependencies, and a 218,000-line Rust backend —
   outside the OpenAgents boundary that keeps Rust to the Cloud crates and
@@ -882,11 +1202,10 @@ owner-decryptable-memory lessons remain high-value supporting work.
 
 ## 10. Watch items
 
-- **Buzz Mesh.** Community-pooled GPU compute gated by relay membership
-  (`VISION_MESH.md`, `desktop/src-tauri/src/mesh_llm/`) overlaps directly
-  with the Pylon provider and NIP-90 compute-market thesis. If Block ships
-  it well, it is the closest competing story to "your community is your
-  compute provider."
+- **Buzz Mesh.** Section 3.6 traces the current community-pooled GPU path.
+  Track whether Buzz adds provider attribution, quotas, contribution receipts,
+  or settlement. Those additions would move it from a trusted compute commons
+  toward the Pylon provider and NIP-90 compute-market thesis.
 - **Custom NIP standardization.** Track changes to AA, AE, AM, AO, AP, and GS.
   The OpenAgents profile must remain versioned even if the drafts do not move
   into `nostr-protocol/nips`.
@@ -1319,6 +1638,10 @@ is validated and executed and never stored as a regular event, and **local** or
 | KIND_FOLLOW_SET | 30000 | NIP-51 named follow set (parameterized replaceable) | client |
 | KIND_BOOKMARK_SET | 30003 | NIP-51 named bookmark set (parameterized replaceable) | client |
 | KIND_EMOJI_SET | 30030 | NIP-51 and NIP-30 emoji set (parameterized replaceable) | client |
+
+Buzz shared compute uses `KIND_BOOKMARK_SET` with the reserved `d` prefix
+`buzz-mesh-member-status:` and the `k` value `buzz-mesh-status`. It is a
+client-signed discovery projection, not a new custom kind. [source]
 
 #### A.3.3 Author-owned global content
 
