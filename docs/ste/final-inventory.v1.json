@@ -33745,7 +33745,7 @@
     },
     {
       "path": "docs/omega/2026-07-24-full-auto-contract-freeze.md",
-      "sha256": "f2fa10b79392cde2d20a47bba1fab1edea894e26962a1b666138c9c05ac05156",
+      "sha256": "6ea5c9bee3176dc3a40c2c7fbc4b01041d424924f2f21cf98cd388c844ed1994",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
@@ -34075,7 +34075,7 @@
     },
     {
       "path": "docs/omega/2026-07-24-omega-full-auto-proof-matrix.md",
-      "sha256": "cbdefd8a466fba8cf706bc4e6737c32453a5f60a9628e9fdad9061f0f9d22b00",
+      "sha256": "13d9316f03680e1247dc778a28620f4f44ec18d35d51fb199c6bfba67292f3bc",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

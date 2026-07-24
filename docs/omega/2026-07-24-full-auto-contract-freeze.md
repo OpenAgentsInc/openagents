@@ -4,7 +4,10 @@
 - Class: contract freeze
 - Packet: `OMEGA-FA-00`
 - Omega issue: [OpenAgentsInc/omega#19](https://github.com/OpenAgentsInc/omega/issues/19)
-- OpenAgents pin: `99e10b4f2eaacff8d0d8a01828c0dae62c826cfe`
+- Original OpenAgents freeze pin: `99e10b4f2eaacff8d0d8a01828c0dae62c826cfe`
+- Assurance admission commit: `d6794b73b034ff90c0b221c6a383920680186ac6`
+- Current runtime input: `omega-effectd-v0.1.0-rc.6`
+- Omega runtime pin: `0ed675bcdf81973d946007d27188da7160d7e17a`
 - STE issue: 9
 - Glossary revision: `openagents-ste-glossary-v1`
 - Status: admitted for Omega Full Auto implementation packets
@@ -26,23 +29,26 @@ This freeze does not admit a release.
 | Desktop run intent | `specs/desktop/full-auto.product-spec.md` | rev 14 |
 | Desktop assurance | `specs/desktop/full-auto.assurance-spec.md` | rev 6 |
 | Omega host delta | `specs/omega/full-auto.product-spec.md` | rev 1 |
-| Omega assurance delta | `specs/omega/full-auto.assurance-spec.md` | rev 1 (proposed) |
+| Omega assurance delta | `specs/omega/full-auto.assurance-spec.md` | rev 5 (design admitted) |
+| Omega assurance admission | `docs/assurance/receipts/authority.decision.1954518244492185756509b3cfec6e3e.json` | succeeded, design only |
+| Current packaged runtime input | `omega-effectd-v0.1.0-rc.6` | source `5bb31ac857b917b14c6455a7df268825cfbf773f` |
 | Port plan | `docs/omega/2026-07-24-full-auto-port-audit.md` | 2026-07-24 |
 | Roadmap packet | `docs/omega/ROADMAP.md` §7.5 `OMEGA-OA-05` | current |
 
-## 3. Digests Omega must consume
+## 3. Frozen source digests
 
 All digests are SHA-256 of the exact bytes at OpenAgents pin
 `99e10b4f2eaacff8d0d8a01828c0dae62c826cfe` for the Desktop sources below.
-The Omega host delta digests are the bytes of those files in the same freeze
-commit that lands this document.
+The Omega host delta digests in this table are the original rev1 freeze bytes.
+They remain historical inputs. The admitted rev5 assurance binding and current
+runtime replacement follow in sections 3.1 and 3.2.
 
 | Path | SHA-256 |
 | --- | --- |
 | `specs/desktop/full-auto.product-spec.md` | `5da9eba0601be1b2fe849dce96260e8a785d16590a60298d8180faf9442dba47` |
 | `specs/desktop/full-auto.assurance-spec.md` | `be5b106c6bbe3bcdde503d1bcab6abaa559adb561528a1b68f28399f4caa9718` |
 | `specs/omega/full-auto.product-spec.md` | `09f8c2c2c14df6f5272737e26b85dbe3f20704ce66345a9377353710a8d6dddc` |
-| `specs/omega/full-auto.assurance-spec.md` | `531ff06bc62c29013f08d6f947ea862f6cf8b40d70a891c4a2f0a5505a107848` |
+| `specs/omega/full-auto.assurance-spec.md` (original rev1 proposal) | `531ff06bc62c29013f08d6f947ea862f6cf8b40d70a891c4a2f0a5505a107848` |
 | `apps/openagents-desktop/src/full-auto-run-registry.ts` | `a3450722d60a4925b46e73903cae95e270f9e0c37420051a93e9a4087fa8ea4a` |
 | `apps/openagents-desktop/src/full-auto-reconcile.ts` | `3db2b3950a28163809c3990731e97048fa8bb7fe2973d58a2b9b7cd628ab44ec` |
 | `apps/openagents-desktop/src/full-auto-run-report.ts` | `ed63b5cbf1807d2c7bf6e380a1e2b91acd03d6364fc60efb95890454736b54f0` |
@@ -50,8 +56,50 @@ commit that lands this document.
 | `apps/openagents-desktop/src/full-auto-capacity.ts` | `83495a3fd04c8963b9478512e576a0693dd50e67f21802127403038c1ba6d562` |
 | `apps/openagents-desktop/src/full-auto-run-actions.ts` | `cb7ea71c1c90913a97a72d0a481735a57041d3a46603b3f38d39e34c5d9ad7e2` |
 
-A later OpenAgents commit may replace these digests only with a new freeze
-revision and an explicit Omega issue note.
+A later OpenAgents commit may replace a frozen implementation input only with a
+new freeze revision and an explicit Omega issue note.
+
+### 3.1 Admitted AssuranceSpec revision 5
+
+The current Omega Full Auto AssuranceSpec is revision 5 with
+`lifecycle_state: admitted`. Euler, acting as the owner-designated independent
+reviewer, admitted the exact proposal digest below. The admission receipt
+reproduced four executable criteria (50 tests across four files). Four criteria
+remained unclassified and unobserved.
+
+| Field | Exact binding |
+| --- | --- |
+| AssuranceSpec path | `specs/omega/full-auto.assurance-spec.md` |
+| AssuranceSpec revision | `5` |
+| Original proposal digest admitted by the receipt | `sha256:b5b84098e820d0dd146b368f224ef7a10b107bf5b383ea2b6740c6d64b6bfc5f` |
+| Current admitted document digest | `sha256:a612e2fe875c30b5346e81bc0b897312e5a12690fe0e2e1b56d2fa35ea10b7ee` |
+| Admission receipt ref | `authority.decision.1954518244492185756509b3cfec6e3e` |
+| Admission receipt path | `docs/assurance/receipts/authority.decision.1954518244492185756509b3cfec6e3e.json` |
+| Admission receipt digest | `sha256:9e58770c258833904396f294e0824a1235bbb6181e5843066703be69cfc387a2` |
+| Admission commit | `d6794b73b034ff90c0b221c6a383920680186ac6` |
+
+This is design admission only. It is not an observation of an installed Omega
+candidate, an independent candidate-verification verdict, owner acceptance, a
+release decision, or authority for public claims.
+
+### 3.2 Current omega-effectd input
+
+The next Omega candidate must use the immutable rc.6 component. RC.6 replaces
+the original source pack and all earlier component prereleases.
+
+| Field | Exact binding |
+| --- | --- |
+| Release | `omega-effectd-v0.1.0-rc.6` |
+| Source commit | `5bb31ac857b917b14c6455a7df268825cfbf773f` |
+| Source tree | `ce9d37bb3a59ae7e2c807e2d524c196af17484ed` |
+| Archive SHA-256 | `b55f703229ff9299923a84b0843f9c926fbd75b08e787f5d6e79744fd114c836` |
+| Manifest SHA-256 | `13f0e094c5d120426f4ede3afedd24f04abec71e29abcd7700c0fd2e36037953` |
+| Release inventory commit | `18688475e4982eb9355c6d8744a88b1c10eab8d9` |
+| Omega consumer pin | `0ed675bcdf81973d946007d27188da7160d7e17a` |
+
+These hashes bind a component input. They do not prove that an installed,
+signed Omega candidate contains it or that the candidate passed the rev5
+AssuranceSpec.
 
 ## 4. Product laws
 
