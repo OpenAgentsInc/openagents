@@ -34121,6 +34121,24 @@
       }
     },
     {
+      "path": "docs/omega/2026-07-24-sarah-memory-runtime.md",
+      "sha256": "1cfe33ebb3d4326adc201245b787cdb18afd3ff4686e9abd0d3dc5c73efabc38",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "mixed",
+        "risk": "high",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "human",
+        "ste_accepted_screening_rules": [
+          "STE-2.4"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/omega/2026-07-24-sarah-nip-ae-companion-profile.md",
       "sha256": "077ae1047720a2d5b0e01f0f8317479368a943a4e5cbbdb044d151b198b4f9a3",
       "reason": "Final review of a converted document",
@@ -47953,7 +47971,7 @@
     },
     {
       "path": "packages/sarah/README.md",
-      "sha256": "019b22b38588c6120ea8ade613beb36bffa96fc0cf2a2aa3ae12263369149843",
+      "sha256": "6eb284b4a42c4ee61be1f9f9998d1af75f547d886bdb8ae01f31a0d6c78152d1",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

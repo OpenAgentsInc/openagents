@@ -442,6 +442,8 @@ export const decodeSarahPrincipalApiResponse = (value: unknown) =>
 export * from "./nostr-identity/index.ts";
 // SARAH-NR-05 — durable/live ladder publish path (turn service core)
 export * from "./nostr-turn/index.ts";
+// SARAH-NR-07 — NIP-AE engrams, NIP-RS read state, NIP-ER reminders
+export * from "./nostr-memory/index.ts";
 // SARAH-NR-08 — migration stage machine, mapping, drift, export/rollback
 export * from "./nostr-migration/index.ts";
 // SARAH-NR-09 — Nostr journey proof harness and public-safe receipt

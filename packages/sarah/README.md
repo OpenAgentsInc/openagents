@@ -34,6 +34,16 @@ Runbook: `docs/ops/2026-07-24-owned-nostr-relay-deploy.md`.
 Pin: `nostr-effect` `77073343c68f159f3dea80ddbe9e9896b1f052f2`
 (`nostr-effect/relay/node`, `…/postgres`).
 
+
+## Nostr memory (`SARAH-NR-07`)
+
+`@openagentsinc/sarah/nostr-memory` holds template builders for NIP-AE engrams
+(kind `30174`), NIP-RS read state (kind `30078`), and NIP-ER reminders (kind
+`30300`). Encryption uses an injectable cipher port. Production injects
+NIP-44. Tests use a reversible fixture cipher.
+
+Contract pointer: `docs/omega/2026-07-24-sarah-memory-runtime.md`.
+
 ## Nostr migration (`SARAH-NR-08`)
 
 `@openagentsinc/sarah/nostr-migration` holds the stage machine
