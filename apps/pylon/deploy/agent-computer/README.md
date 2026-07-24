@@ -166,6 +166,14 @@ default, and then verifies `/dev/kvm` over IAP SSH. It deliberately accepts no
 env file and no bearer token because secrets belong in Secret Manager and the
 private control-plane deployment.
 
+## Image update cadence
+
+Operators rebake, promote, and requalify the seven-harness guest rootfs with
+[Agent Computer image update cadence runbook](../../../docs/deploy/2026-07-24-agent-computer-image-update-cadence-runbook.md).
+That runbook owns `agent-computer-image.manifest.json` as the only checked-in
+image truth, harness qualification recording, and the Codex owner-reauth gate
+before `#9193` may close.
+
 ## Image Manifest
 
 `agent-computer-image.manifest.json` records the public image contract:

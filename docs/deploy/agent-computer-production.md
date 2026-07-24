@@ -5,6 +5,9 @@ OpenAgents monolith that advertises and dispatches the managed mobile runtime.
 It intentionally does not record host addresses or bearer values. Read live
 topology from Google Cloud and bearer material from Secret Manager.
 
+Guest rootfs rebake, harness requalification, and manifest updates are owned
+by [Agent Computer image update cadence runbook](./2026-07-24-agent-computer-image-update-cadence-runbook.md).
+
 ## Preconditions
 
 - Work from a clean `main` at the exact revision being released.

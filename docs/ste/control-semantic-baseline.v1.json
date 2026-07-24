@@ -7881,7 +7881,7 @@
       ]
     },
     "docs/deploy/README.md": {
-      "sourceSha256": "349d718559d66cdaf5a0de915435557ecf8af254da213ae821964eba8101a4fd",
+      "sourceSha256": "fb9f81f270f17dea7df248dd90369394bed5066e6d43a7699bc6e24d7846a722",
       "normativeKeywords": [],
       "inlineCode": [
         "/download",
@@ -7889,10 +7889,13 @@
       ],
       "urls": [],
       "issueRefs": [],
-      "numericValues": []
+      "numericValues": [
+        "2026-07",
+        "24"
+      ]
     },
     "docs/deploy/agent-computer-production.md": {
-      "sourceSha256": "777642587b6648795914867e98d614f08bb88b239b36865a5ca0bad058e496ff",
+      "sourceSha256": "dd6d4797132d613240c5e4b433d5fb858d0cd25cddd432d8ded6514f197b5508",
       "normativeKeywords": [],
       "inlineCode": [
         "/dev/kvm",
@@ -7932,6 +7935,8 @@
         "2",
         "2",
         "2026-07",
+        "2026-07",
+        "24",
         "294",
         "3",
         "3",

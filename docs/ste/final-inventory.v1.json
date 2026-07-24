@@ -11515,7 +11515,7 @@
     },
     {
       "path": "apps/pylon/deploy/agent-computer/README.md",
-      "sha256": "4caf2e9f986769ae523829cc9bfccca9e74e474a8cdb686e0c29fc3ec17dcedd",
+      "sha256": "ef0d775d9aba03be2d011e2ad8fc5bc7ecb14d8378a5774d8ce9ae9eee146e8f",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
@@ -21713,8 +21713,30 @@
       }
     },
     {
+      "path": "docs/deploy/2026-07-24-agent-computer-image-update-cadence-runbook.md",
+      "sha256": "c66d1515a60182f1e3dce03a1280b93915e888d2037ec7fbd51ec8acfde2c61e",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "mixed",
+        "risk": "high",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/deploy/README.md",
-      "sha256": "349d718559d66cdaf5a0de915435557ecf8af254da213ae821964eba8101a4fd",
+      "sha256": "fb9f81f270f17dea7df248dd90369394bed5066e6d43a7699bc6e24d7846a722",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
@@ -21732,7 +21754,7 @@
     },
     {
       "path": "docs/deploy/agent-computer-production.md",
-      "sha256": "777642587b6648795914867e98d614f08bb88b239b36865a5ca0bad058e496ff",
+      "sha256": "dd6d4797132d613240c5e4b433d5fb858d0cd25cddd432d8ded6514f197b5508",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
