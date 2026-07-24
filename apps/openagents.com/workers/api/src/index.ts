@@ -365,6 +365,7 @@ import {
   KHALA_AGENT_COMPUTER_WRITEBACK_INGEST_PATH,
   makeKhalaAgentComputerWritebackRoutes,
 } from './cloud/khala-agent-computer-writeback-routes'
+import { seedCloudCodingRuntimeTurn } from './cloud/cloud-coding-runtime-seed'
 import { makePublicCloudPrimitiveReceiptRoutes } from './cloud/public-cloud-primitive-receipt-routes'
 import {
   isSandboxComputeServiceEnabled,
@@ -7129,6 +7130,17 @@ const makeCloudCodingSessionPreparerForEnv = (
       const client = await defaultMakeKhalaSyncSqlClient(connectionString)
       let minted: Awaited<ReturnType<typeof mintCloudRuntimeExecutionToken>>
       try {
+        await seedCloudCodingRuntimeTurn({
+          branch,
+          objective: input.request.objective,
+          ownerUserId,
+          registry: khalaSyncMutatorRegistry,
+          repositoryFullName: input.request.repoRef,
+          sql: client.sql,
+          threadRef,
+          turnId: input.sessionId,
+          nowIso: now,
+        })
         minted = await mintCloudRuntimeExecutionToken(client.sql, {
           ownerUserId,
         })
