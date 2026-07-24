@@ -326,8 +326,10 @@ Prefer `record-motion` with `welcome-tour`. Keep the Omega window near
 fallback. Keep Omega frontmost. Hide or close unrelated side panels before
 capture. Do not click Create identity in unattended capture.
 
-Stop recording with `omega-screen-control quit` (SIGTERM). Do **not** use
-Cmd+Q during capture. Cmd+Q can quit the wrong app.
+Stop recording before app teardown. Prefer
+`record-motion --safe-tail-seconds 1` (default). Do **not** use Cmd+Q during
+capture. Cmd+Q can quit the wrong app. `omega-screen-control quit` is
+SIGTERM-only (#9233).
 
 Also prepare a **second mid picture** (cutaway still or second shot). One
 continuous screenshare alone looks flat and leaves no cover for a bad tail.
@@ -339,8 +341,8 @@ export OMEGA_BIN="/path/to/Omega.app/Contents/MacOS/omega"
 node scripts/omega-screen-control/omega-screen-control.mjs record-motion \
   --shot welcome-tour \
   --seconds 28 \
+  --safe-tail-seconds 1 \
   --out ~/Desktop/Sarah/262/262-screenshare-omega-welcome.mp4
-node scripts/omega-screen-control/omega-screen-control.mjs quit
 ```
 
 Burn an honest label (`OMEGA WELCOME - CURRENT`). If local FFmpeg has no
@@ -400,14 +402,17 @@ must not repeat, the proven music path, and tooling work that is still open.
 1. **Screenshare leak into Finder/Desktop.** Recording past Omega into Finder
    or Desktop at the end of Part B spoiled about the last 0.9 s of the mid on
    Episode 262. Always verify frames at `T2 − 1 s`, `T2 − 0.5 s`, and `T2`
-   before you declare the RC good.
+   before you declare the RC good. Mitigation shipped in #9233:
+   `omega-screen-control` hard-stops capture before quit, defaults
+   `--safe-tail-seconds 1` on `record-motion`, and trims Finder/Desktop-like
+   tails when the frame heuristic fires.
 2. **Maximized Omega / Retina crop / cover-fill zoom.** Maximized windows and
    cover-fill zoom crushed Welcome. The winning path: window about
    `1280×900` (not maximized), FIT decrease, dark pad `0x0E0E10`, crop the
    full window.
 3. **Never quit with Cmd+Q during capture.** Use SIGTERM only through
    `omega-screen-control quit`. Cmd+Q can quit the wrong app (Cursor or
-   another frontmost app).
+   another frontmost app). The tool refuses `key --combo cmd+q` (#9233).
 4. **One continuous mid looked like one still.** Need a second mid beat
    (cutaway still or second shot) for visual variety and to cover a bad
    tail. Episode 262: Welcome motion, then `omega2` README still for the
@@ -467,14 +472,17 @@ Mix (audible Episode 261 louder path):
 4. `amix` with Sarah voice, then `alimiter`.
 5. Write `*-rc-with-music.mp4`. Keep `*-rc-no-music.mp4` as the clean plate.
 
-### Code and tooling improvements (tracked candidates — not shipped)
+### Code and tooling improvements (tracked candidates)
 
-These items are future fix work. Do not treat them as done.
+Item 1 shipped in #9233. The rest remain future fix work. Do not treat open
+items as done.
 
-1. **`scripts/omega-screen-control`:** Hard-stop recording before app
-   teardown. Reject or trim frames that match desktop/Finder heuristics.
-   Optional `--safe-tail-seconds` that freezes the last clean frame. Never
-   document Cmd+Q as a quit path.
+1. **`scripts/omega-screen-control` (shipped #9233):** Hard-stops recording
+   before app teardown. Rejects Cmd+Q key quit. Optional
+   `--safe-tail-seconds` freezes the last clean frame (default `1` on
+   `record-motion`). Trims Finder/Desktop-like tails when the frame heuristic
+   fires. Tests:
+   `node --test scripts/omega-screen-control/recording-lifecycle.test.mjs`.
 2. **RC assemble helper:** One command that takes sarah-master +
    screenshare + optional cutaway stills + T1/T2, writes the no-music RC,
    verifies frames at the cut points, and exits non-zero if Finder-like

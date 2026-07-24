@@ -17,9 +17,14 @@
 //   node scripts/omega-screen-control/omega-screen-control.mjs dump-ax
 //   node scripts/omega-screen-control/omega-screen-control.mjs shot welcome-setup
 //   node scripts/omega-screen-control/omega-screen-control.mjs record --shot welcome-hold --seconds 20 --out ~/Desktop/Sarah/262/welcome.mp4
-//   node scripts/omega-screen-control/omega-screen-control.mjs record-motion --shot welcome-tour --seconds 28 --out ~/Desktop/Sarah/262/262-screenshare-omega-welcome.mp4
+//   node scripts/omega-screen-control/omega-screen-control.mjs record-motion --shot welcome-tour --seconds 28 --out ~/Desktop/Sarah/262/262-screenshare-omega-welcome.mp4 --safe-tail-seconds 1
 //   node scripts/omega-screen-control/omega-screen-control.mjs quit
 //     (SIGTERM/SIGKILL on tracked Omega pid — never Cmd+Q)
+//
+// Recording lifecycle (#9233):
+//   Hard-stop ffmpeg BEFORE quit/teardown. Optional --safe-tail-seconds freezes
+//   the last clean frame over a dirty quit tail. Finder/Desktop-like tails are
+//   trimmed when the heuristic fires.
 //
 // Env:
 //   OMEGA_BIN                 Absolute path to the omega binary
@@ -40,6 +45,13 @@ import {
 import { homedir, tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import {
+  assertNotCmdQQuit,
+  buildSafeTailVideoFilter,
+  computeSafeTailPlan,
+  estimateFinderTailSeconds,
+  parseSafeTailSeconds,
+} from './recording-lifecycle.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const STATE_PATH = join(tmpdir(), 'openagents-omega-screen-control.json')
@@ -63,12 +75,18 @@ function usage() {
   omega-screen-control.mjs wait --contains <text> [--timeout-ms 30000]
   omega-screen-control.mjs dump-ax [--out <path>]
   omega-screen-control.mjs shot <shot-id>
-  omega-screen-control.mjs record --shot <shot-id> --out <mp4> [--seconds 20] [--screen-device 4]
+  omega-screen-control.mjs record --shot <shot-id> --out <mp4> [--seconds 20] [--screen-device 4] [--safe-tail-seconds 0]
+  omega-screen-control.mjs record-motion --shot <shot-id> --out <mp4> [--seconds 28] [--safe-tail-seconds 1]
   omega-screen-control.mjs quit   # SIGTERM tracked pid; never Cmd+Q
 
 Shots live in scripts/omega-screen-control/shots/*.json
 
 Notes:
+  Recording always hard-stops before Omega quit/teardown (#9233).
+  Prefer --safe-tail-seconds 1 so a dirty post-UI tail is replaced with a
+  freeze of the last clean Omega frame. Finder/Desktop-like tails are trimmed
+  when the frame heuristic fires.
+  Quit is SIGTERM-only. Never Cmd+Q (refused by key --combo and quit).
   First-run Welcome opens only when Nostr custody is not Ready.
   Reset Ready custody with Omega's omega-identity CLI:
     cargo run -p omega_identity --bin omega-identity -- --channel rc wipe --yes
@@ -342,6 +360,8 @@ function commandExists(bin) {
 }
 
 function keyCombo(combo) {
+  // Never allow Cmd+Q through this tool — it can quit the wrong frontmost app.
+  assertNotCmdQQuit(combo)
   activateOmega()
   const parts = String(combo)
     .toLowerCase()
@@ -559,9 +579,17 @@ function launch() {
   console.log(`state: ${STATE_PATH}`)
 }
 
+/** Global guard so quit() cannot run while ffmpeg is still capturing. */
+let activeRecording = null
+
 function quit() {
-  // Never send Cmd+Q — that can quit Cursor if Omega is not frontmost.
-  // Prefer SIGTERM on the tracked Omega pid(s) from STATE_PATH.
+  // Hard rule (#9233): SIGTERM/SIGKILL on tracked Omega pid only.
+  // Never Cmd+Q — that can quit Cursor (or any other frontmost app).
+  if (activeRecording && !activeRecording.stopped) {
+    throw new Error(
+      'Refusing quit while screen recording is still active. Hard-stop capture first.',
+    )
+  }
   const state = loadState()
   const pids = []
   for (const key of ['pid', 'spawnPid']) {
@@ -602,7 +630,277 @@ function quit() {
     }
   }
   clearState()
-  console.log('quit requested')
+  console.log('quit requested (SIGTERM-only; never Cmd+Q)')
+}
+
+function resolveFfmpegBin() {
+  if (commandExists('ffmpeg')) return 'ffmpeg'
+  if (existsSync('/opt/homebrew/bin/ffmpeg')) return '/opt/homebrew/bin/ffmpeg'
+  throw new Error('ffmpeg not found on PATH')
+}
+
+function waitChildExit(child, timeoutMs) {
+  return new Promise((resolvePromise) => {
+    if (child.exitCode != null || child.signalCode != null) {
+      resolvePromise(child.exitCode ?? 0)
+      return
+    }
+    let settled = false
+    const done = (code) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      resolvePromise(code)
+    }
+    const timer = setTimeout(() => done(null), timeoutMs)
+    child.once('exit', (code) => done(code ?? 0))
+  })
+}
+
+/**
+ * Start an avfoundation screen capture. Caller MUST await stop() before quit().
+ * Prefer hard-stop (stdin 'q' / SIGINT) over waiting for teardown-adjacent frames.
+ */
+function startScreenRecording({ outPath, screenDevice, maxSeconds }) {
+  const ffmpegBin = resolveFfmpegBin()
+  const absolute = resolve(expandHome(outPath))
+  mkdirSync(dirname(absolute), { recursive: true })
+  const ffArgs = [
+    '-y',
+    '-f',
+    'avfoundation',
+    '-framerate',
+    '30',
+    '-capture_cursor',
+    '1',
+    '-i',
+    `${screenDevice}:none`,
+  ]
+  if (maxSeconds != null && Number.isFinite(Number(maxSeconds))) {
+    ffArgs.push('-t', String(maxSeconds))
+  }
+  ffArgs.push('-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-an', absolute)
+  console.log(
+    `recording screen device ${screenDevice}` +
+      (maxSeconds != null ? ` (max ${maxSeconds}s)` : '') +
+      ` → ${absolute}`,
+  )
+  const ff = spawn(ffmpegBin, ffArgs, { stdio: ['pipe', 'inherit', 'inherit'] })
+  const handle = {
+    path: absolute,
+    stopped: false,
+    process: ff,
+    async stop(reason = 'hard-stop') {
+      if (handle.stopped) return absolute
+      handle.stopped = true
+      if (activeRecording === handle) activeRecording = null
+      if (ff.exitCode != null || ff.signalCode != null) {
+        console.log(`recording already ended (${reason})`)
+        return absolute
+      }
+      console.log(`hard-stopping recording (${reason}) before any app teardown`)
+      try {
+        ff.stdin.write('q')
+        ff.stdin.end()
+      } catch {
+        // stdin may already be closed
+      }
+      let code = await waitChildExit(ff, 2500)
+      if (code == null && ff.exitCode == null && ff.signalCode == null) {
+        try {
+          ff.kill('SIGINT')
+        } catch {
+          // ignore
+        }
+        code = await waitChildExit(ff, 2000)
+      }
+      if (ff.exitCode == null && ff.signalCode == null) {
+        try {
+          ff.kill('SIGKILL')
+        } catch {
+          // ignore
+        }
+        await waitChildExit(ff, 1000)
+      }
+      console.log(`recording stopped → ${absolute}`)
+      return absolute
+    },
+    async waitNaturalEnd() {
+      const code = await new Promise((resolvePromise) => {
+        ff.on('exit', (exitCode) => resolvePromise(exitCode ?? 1))
+      })
+      handle.stopped = true
+      if (activeRecording === handle) activeRecording = null
+      if (code !== 0 && code !== null) {
+        throw new Error(`ffmpeg exited ${code}`)
+      }
+      return absolute
+    },
+  }
+  activeRecording = handle
+  return handle
+}
+
+function probeMediaDurationSec(ffmpegBin, mediaPath) {
+  try {
+    const out = execFileSync(
+      ffmpegBin,
+      ['-i', mediaPath, '-f', 'null', '-'],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+    )
+    void out
+  } catch (err) {
+    const text = `${err.stderr || ''}${err.stdout || ''}`
+    const match = text.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/)
+    if (!match) return null
+    const h = Number(match[1])
+    const m = Number(match[2])
+    const s = Number(match[3])
+    if (![h, m, s].every((n) => Number.isFinite(n))) return null
+    return h * 3600 + m * 60 + s
+  }
+  return null
+}
+
+/**
+ * Sample mean luma / variance / dark-ui ratio at time t via ffmpeg+python.
+ * Fail-soft: returns null when tools are unavailable.
+ */
+function sampleFrameStats(ffmpegBin, mediaPath, timeSec) {
+  const tmpDir = mkdtempSync(join(tmpdir(), 'omega-frame-stats-'))
+  const png = join(tmpDir, 'frame.png')
+  try {
+    execFileSync(
+      ffmpegBin,
+      [
+        '-y',
+        '-ss',
+        String(Math.max(0, timeSec)),
+        '-i',
+        mediaPath,
+        '-frames:v',
+        '1',
+        png,
+      ],
+      { stdio: 'ignore' },
+    )
+    const raw = execFileSync(
+      'python3',
+      [
+        '-c',
+        `
+from PIL import Image
+import statistics
+im = Image.open(${JSON.stringify(png)}).convert("RGB").resize((160, 90))
+px = list(im.getdata())
+lumas = [0.2126*r + 0.7152*g + 0.0722*b for r,g,b in px]
+mean = statistics.fmean(lumas)
+var = statistics.pvariance(lumas) if len(lumas) > 1 else 0.0
+dark = sum(1 for y in lumas if y < 40) / len(lumas)
+print(f"{mean:.4f},{var:.4f},{dark:.4f}")
+`,
+      ],
+      { encoding: 'utf8' },
+    ).trim()
+    const [meanLuma, variance, darkUiRatio] = raw.split(',').map(Number)
+    if (![meanLuma, variance, darkUiRatio].every((n) => Number.isFinite(n))) {
+      return null
+    }
+    return { t: timeSec, meanLuma, variance, darkUiRatio }
+  } catch {
+    return null
+  } finally {
+    try {
+      rmSync(tmpDir, { recursive: true, force: true })
+    } catch {
+      // ignore
+    }
+  }
+}
+
+function scanFinderTailSeconds(ffmpegBin, mediaPath, durationSec) {
+  if (!Number.isFinite(durationSec) || durationSec < 1) return 0
+  const midT = Math.max(0.2, durationSec * 0.45)
+  const referenceStats = sampleFrameStats(ffmpegBin, mediaPath, midT)
+  if (!referenceStats) {
+    console.log('finder-heuristic: skipped (could not sample reference frame)')
+    return 0
+  }
+  const step = 0.2
+  const maxScan = Math.min(1.5, durationSec * 0.4)
+  const sampleStats = []
+  for (let t = Math.max(0, durationSec - maxScan); t < durationSec - 0.05; t += step) {
+    const stats = sampleFrameStats(ffmpegBin, mediaPath, t)
+    if (stats) sampleStats.push(stats)
+  }
+  const trim = estimateFinderTailSeconds({
+    durationSec,
+    sampleStepSec: step,
+    sampleStats,
+    referenceStats,
+    maxScanSec: maxScan,
+  })
+  if (trim > 0) {
+    console.log(
+      `finder-heuristic: trimming ~${trim.toFixed(2)}s Desktop/Finder-like tail`,
+    )
+  } else {
+    console.log('finder-heuristic: tail looks clean')
+  }
+  return trim
+}
+
+/**
+ * Apply optional --safe-tail-seconds freeze and Finder/Desktop heuristic trim.
+ * Runs on an already-stopped recording (Omega may still be alive).
+ */
+function applyTailSafety(mediaPath, { safeTailSeconds = 0 } = {}) {
+  const ffmpegBin = resolveFfmpegBin()
+  const durationSec = probeMediaDurationSec(ffmpegBin, mediaPath)
+  if (!Number.isFinite(durationSec) || durationSec <= 0) {
+    console.warn('tail-safety: could not probe duration; leaving file unchanged')
+    return mediaPath
+  }
+  const finderTrimSeconds = scanFinderTailSeconds(ffmpegBin, mediaPath, durationSec)
+  const plan = computeSafeTailPlan({
+    durationSec,
+    safeTailSeconds,
+    finderTrimSeconds,
+  })
+  const vf = buildSafeTailVideoFilter(plan)
+  if (!vf) {
+    console.log('tail-safety: no trim/freeze needed')
+    return mediaPath
+  }
+  const tmpOut = mediaPath.replace(/\.mp4$/i, '') + '-tail-safe.mp4'
+  console.log(
+    `tail-safety: action=${plan.action} keepUntil=${plan.keepUntilSec.toFixed(3)}s` +
+      (plan.freezeDurationSec > 0
+        ? ` freeze=${plan.freezeDurationSec.toFixed(3)}s`
+        : ''),
+  )
+  execFileSync(
+    ffmpegBin,
+    [
+      '-y',
+      '-i',
+      mediaPath,
+      '-vf',
+      vf,
+      '-c:v',
+      'libx264',
+      '-pix_fmt',
+      'yuv420p',
+      '-an',
+      tmpOut,
+    ],
+    { stdio: ['ignore', 'inherit', 'inherit'] },
+  )
+  // Replace original in place.
+  rmSync(mediaPath, { force: true })
+  execFileSync('mv', [tmpOut, mediaPath])
+  console.log(`tail-safety: wrote ${mediaPath}`)
+  return mediaPath
 }
 
 async function runShot(shotId) {
@@ -679,49 +977,11 @@ function detectScreenDevice() {
   return '4'
 }
 
-function recordScreen(outPath, seconds, screenDevice) {
-  const absolute = resolve(expandHome(outPath))
-  mkdirSync(dirname(absolute), { recursive: true })
-  const ffmpegBin = commandExists('ffmpeg')
-    ? 'ffmpeg'
-    : existsSync('/opt/homebrew/bin/ffmpeg')
-      ? '/opt/homebrew/bin/ffmpeg'
-      : null
-  if (!ffmpegBin) throw new Error('ffmpeg not found on PATH')
-  console.log(`recording screen device ${screenDevice} for ${seconds}s → ${absolute}`)
-  activateOmega()
-  sleep(500)
-  execFileSync(
-    ffmpegBin,
-    [
-      '-y',
-      '-f',
-      'avfoundation',
-      '-framerate',
-      '30',
-      '-capture_cursor',
-      '1',
-      '-i',
-      `${screenDevice}:none`,
-      '-t',
-      String(seconds),
-      '-c:v',
-      'libx264',
-      '-pix_fmt',
-      'yuv420p',
-      '-an',
-      absolute,
-    ],
-    { stdio: ['ignore', 'inherit', 'inherit'] },
-  )
-  console.log(`wrote ${absolute}`)
-  return absolute
-}
-
 async function recordShot() {
   const shotId = flag('shot') || args[1]
   const out = flag('out')
   const seconds = Number(flag('seconds', '20'))
+  const safeTailSeconds = parseSafeTailSeconds(flag('safe-tail-seconds'), 0)
   if (!shotId) throw new Error('--shot <shot-id> is required')
   if (!out) throw new Error('--out <mp4 path> is required')
   if (!Number.isFinite(seconds) || seconds < 1) {
@@ -729,16 +989,31 @@ async function recordShot() {
   }
   const screenDevice = detectScreenDevice()
   await runShot(shotId)
-  recordScreen(out, seconds, screenDevice)
+  activateOmega()
+  sleep(500)
+  const recording = startScreenRecording({
+    outPath: out,
+    screenDevice,
+    maxSeconds: seconds,
+  })
+  try {
+    await recording.waitNaturalEnd()
+  } finally {
+    // Hard-stop before any Omega teardown (#9233).
+    await recording.stop('pre-quit')
+  }
+  applyTailSafety(recording.path, { safeTailSeconds })
   quit()
 }
 
 async function recordMotion() {
   // Setup Welcome, enlarge for legibility, then record WHILE running motion.
-  // Post-process crops/zooms to the Omega window region.
+  // Hard-stop capture before quit. Post-process crops/zooms to the Omega window.
   const shotId = flag('shot') || 'welcome-tour'
   const out = flag('out')
   const seconds = Number(flag('seconds', '28'))
+  // Default 1s safe-tail for motion captures: Ep262 leaked ~0.9s Finder.
+  const safeTailSeconds = parseSafeTailSeconds(flag('safe-tail-seconds'), 1)
   if (!out) throw new Error('--out <mp4 path> is required')
   if (!Number.isFinite(seconds) || seconds < 5) {
     throw new Error('--seconds must be >= 5')
@@ -796,79 +1071,57 @@ async function recordMotion() {
   mkdirSync(dirname(absolute), { recursive: true })
   const rawPath = absolute.replace(/\.mp4$/i, '') + '-raw-full.mp4'
   const screenDevice = detectScreenDevice()
-  const ffmpegBin = commandExists('ffmpeg')
-    ? 'ffmpeg'
-    : existsSync('/opt/homebrew/bin/ffmpeg')
-      ? '/opt/homebrew/bin/ffmpeg'
-      : null
-  if (!ffmpegBin) throw new Error('ffmpeg not found on PATH')
+  const ffmpegBin = resolveFfmpegBin()
 
   activateOmega()
   const boundsBefore = windowBounds()
   console.log(
     `recording motion ${seconds}s device=${screenDevice} window=${JSON.stringify(boundsBefore)}`,
   )
-  const ff = spawn(
-    ffmpegBin,
-    [
-      '-y',
-      '-f',
-      'avfoundation',
-      '-framerate',
-      '30',
-      '-capture_cursor',
-      '1',
-      '-i',
-      `${screenDevice}:none`,
-      '-t',
-      String(seconds),
-      '-c:v',
-      'libx264',
-      '-pix_fmt',
-      'yuv420p',
-      '-an',
-      rawPath,
-    ],
-    { stdio: ['ignore', 'inherit', 'inherit'] },
-  )
-
-  // Give ffmpeg a moment to start, then drive the UI.
-  sleep(900)
-  for (const [index, step] of motion.entries()) {
-    console.log(`[motion ${index + 1}/${motion.length}] ${step.op}`)
-    switch (step.op) {
-      case 'wait':
-        sleep(Number(step.ms || 0))
-        break
-      case 'click_at':
-        clickAt(step.x, step.y)
-        break
-      case 'click':
-        clickTitle(step.title)
-        break
-      case 'key':
-        keyCombo(step.combo)
-        break
-      case 'scroll_drag':
-        dragScroll(step.direction || 'down', Number(step.amount || 1))
-        break
-      case 'enlarge':
-        enlargeOmegaWindow()
-        break
-      case 'menu':
-        menuClick(step.bar, step.item)
-        break
-      default:
-        console.warn(`skipping unsupported motion op: ${step.op}`)
-    }
-    if (step.pauseMs) sleep(Number(step.pauseMs))
-  }
-
-  const exitCode = await new Promise((resolvePromise) => {
-    ff.on('exit', (code) => resolvePromise(code ?? 1))
+  // Cap with -t as a safety bound, but hard-stop as soon as motion ends so we
+  // never keep capturing through quit/teardown into Finder/Desktop.
+  const recording = startScreenRecording({
+    outPath: rawPath,
+    screenDevice,
+    maxSeconds: seconds,
   })
-  if (exitCode !== 0) {
-    throw new Error(`ffmpeg exited ${exitCode}`)
+
+  try {
+    // Give ffmpeg a moment to start, then drive the UI.
+    sleep(900)
+    for (const [index, step] of motion.entries()) {
+      console.log(`[motion ${index + 1}/${motion.length}] ${step.op}`)
+      switch (step.op) {
+        case 'wait':
+          sleep(Number(step.ms || 0))
+          break
+        case 'click_at':
+          clickAt(step.x, step.y)
+          break
+        case 'click':
+          clickTitle(step.title)
+          break
+        case 'key':
+          keyCombo(step.combo)
+          break
+        case 'scroll_drag':
+          dragScroll(step.direction || 'down', Number(step.amount || 1))
+          break
+        case 'enlarge':
+          enlargeOmegaWindow()
+          break
+        case 'menu':
+          menuClick(step.bar, step.item)
+          break
+        default:
+          console.warn(`skipping unsupported motion op: ${step.op}`)
+      }
+      if (step.pauseMs) sleep(Number(step.pauseMs))
+    }
+    // Brief settle on the last clean Omega frame, then hard-stop.
+    sleep(400)
+  } finally {
+    await recording.stop('motion-complete-pre-quit')
   }
 
   // Crop/zoom to the RIGHT onboarding content pane (legible Welcome copy).
@@ -895,6 +1148,8 @@ async function recordMotion() {
     { stdio: ['ignore', 'inherit', 'inherit'] },
   )
   console.log(`wrote zoomed motion capture ${absolute}`)
+  applyTailSafety(absolute, { safeTailSeconds })
+  // Teardown only after recording is fully stopped and tail-safe.
   quit()
 }
 

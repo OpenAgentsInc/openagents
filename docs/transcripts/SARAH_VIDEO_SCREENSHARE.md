@@ -91,9 +91,12 @@ node scripts/omega-screen-control/omega-screen-control.mjs record \
   --out ~/Desktop/Sarah/262/262-screenshare-omega-welcome.mp4
 
 # preferred for Episode 262 mid-section: zoomed window + live clicks/scroll
+# Hard-stops capture before quit. Default --safe-tail-seconds 1 freezes the
+# last clean Omega frame over a dirty Finder/Desktop tail (#9233).
 node scripts/omega-screen-control/omega-screen-control.mjs record-motion \
   --shot welcome-tour \
   --seconds 28 \
+  --safe-tail-seconds 1 \
   --out ~/Desktop/Sarah/262/262-screenshare-omega-welcome.mp4
 
 # open Welcome on an already-running controlled instance
@@ -106,10 +109,19 @@ node scripts/omega-screen-control/omega-screen-control.mjs click-at --x 0.22 --y
 # Finish Setup when identity is ready (cmd-enter)
 node scripts/omega-screen-control/omega-screen-control.mjs key --combo cmd+enter
 
-# stop the controlled instance (SIGTERM only — never Cmd+Q)
+# stop the controlled instance (SIGTERM only — never Cmd+Q; refused by the tool)
 node scripts/omega-screen-control/omega-screen-control.mjs quit
 ```
 
+Recording rules (#9233):
+
+1. Capture hard-stops **before** Omega quit or data-dir teardown.
+2. Quit is SIGTERM-only. Never Cmd+Q (`key --combo cmd+q` is refused).
+3. Prefer `--safe-tail-seconds 1` on `record-motion` (default). That freezes the
+   last clean frame over the final second so a post-UI Desktop leak cannot
+   remain in the file.
+4. The tool also trims Finder/Desktop-like tails when the frame heuristic
+   fires.
 Episode working media stays local under `~/Desktop/Sarah/<episode>/`. Do not
 commit those MP4s.
 
@@ -156,14 +168,15 @@ Full detail:
 [`../sarah/2026-07-22-segmind-talking-avatar-pipeline.md`](../sarah/2026-07-22-segmind-talking-avatar-pipeline.md)
 (**Episode 262 lessons (2026-07-24)**). Short form for screenshare agents:
 
-- **Finder leak.** Stop capture before teardown. Verify frames at
-  `T2 − 1 s`, `T2 − 0.5 s`, and `T2`. Reject Finder/Desktop pixels in the mid
-  tail.
+- **Finder leak.** Stop capture before teardown. The control script hard-stops
+  recording before quit (#9233). Prefer `--safe-tail-seconds 1`. Verify frames
+  at `T2 − 1 s`, `T2 − 0.5 s`, and `T2`. Reject Finder/Desktop pixels in the
+  mid tail.
 - **FIT pad and window size.** Window about `1280×900` (not maximized). FIT
   decrease + dark pad `0x0E0E10`. Crop the full window. Avoid cover-fill zoom
   that crushes Welcome.
 - **Quit with SIGTERM only.** Use `omega-screen-control quit`. Never Cmd+Q
-  during capture.
+  during capture. The tool refuses `key --combo cmd+q`.
 - **Second mid picture.** Welcome motion alone is not enough. Episode 262
   finder-fix v2 used Welcome motion, then an `omega2` README still for the
   last about 6 s of the mid.
@@ -194,8 +207,9 @@ export OMEGA_BIN="/path/to/Omega.app/Contents/MacOS/omega"
 node scripts/omega-screen-control/omega-screen-control.mjs record-motion \
   --shot welcome-tour \
   --seconds 28 \
+  --safe-tail-seconds 1 \
   --out ~/Desktop/Sarah/262/262-screenshare-omega-welcome.mp4
-node scripts/omega-screen-control/omega-screen-control.mjs quit
+# record-motion already hard-stops capture, applies tail safety, then SIGTERM quit
 ```
 
 Prefer a `1280×900` window, FIT pad, full-window crop to 1920x1088. Do not
