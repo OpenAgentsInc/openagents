@@ -48088,7 +48088,7 @@
     },
     {
       "path": "packages/sarah/README.md",
-      "sha256": "9b8f5ce26302538e7930332bbc0eecb005eaeea92d26dc2952b9e1fbfe59e2d2",
+      "sha256": "e6af533faf863861d066147af706961b5e45f1704c99aee72f52f34bf6ca2e23",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

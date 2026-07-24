@@ -119,7 +119,7 @@ rejection decisions, independent-verifier enforcement, member appeals, and
 owner-ruling validation. Sarah decides acceptance, never payment, and cannot
 author an owner ruling. The admitted owner appeal identity is resolved from
 `docs/omega/owner-appeal-identity.json` or a public-only local environment
-override; a missing identity keeps the room blocked.
+override. A missing identity keeps the room blocked.
 
 ```sh
 pnpm --dir packages/sarah test -- src/community-arbitration/community-arbitration.test.ts
