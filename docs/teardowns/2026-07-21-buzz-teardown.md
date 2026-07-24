@@ -70,7 +70,10 @@ shell, the Flutter mobile lane, and the non-streaming agent turn model.**
 | Local clone | `~/work/projects/repos/buzz` | The audited tree |
 | Audited commit | `e9188c03f6c2460983a3dac0fa7702b468838e62` | Exact snapshot used here |
 | Git, MeshLLM, and usage follow-up commit | `5a3b8176aac5f4bced452ac8920477c5e059b828` | Source snapshot for the Git and shared-compute deep dives |
+| Psionic comparison commit | `54201484bb8eb11b528f7038922db02724864523` | Current native inference-mesh, topology, receipt, and service-mode comparison |
 | `nostr-effect` commit | `c1603780f754d445b3cb8203ea5602b54c145996` | Local implementation snapshot for standard and Buzz NIPs |
+| OpenAgents historical sources | `docs/transcripts/README.md`, episodes 142, 147, 174, 178, 201, 203, 214, 215, 237, and 238 | Data-vending, compute-market, Pylon, Psionic, and accepted-outcome lineage |
+| NIP-90 status sources | `docs/nostr/2026-06-09-openagents-pylon-nostr-relay-audit.md` and `docs/fable/2026-07-21-nostr-native-pivot-analysis.md` | Current warning against making NIP-90 the market default |
 | Secondary Git source | Soapbox, "What is Ngit?" (`2026-07-21`) | Ecosystem claims checked against Buzz source |
 | Commit time | `2026-07-21` | Freshness of the audited tip |
 | Commit subject | `chore(release): release Buzz Desktop version 0.4.22 (#2220)` | Latest audited change |
@@ -549,6 +552,153 @@ members. It is not a compute market. It has no credits, payments, bidding,
 provider settlement, contribution score, or provider-side usage ledger. The
 NIP-AM path accounts for agent turns only. [source]
 
+#### 3.6.9 Comparison with OpenAgents history and current Psionic
+
+Buzz shared compute overlaps three OpenAgents ideas that appeared at different
+times. Those ideas must remain separate. The transcript guide in
+`docs/transcripts/README.md` gives the lineage. The individual transcripts
+provide the claim detail. The recent Nostr audits provide the current protocol
+disposition. [source]
+
+| Era | OpenAgents plan | Intended economic unit | Current reading |
+| --- | --- | --- | --- |
+| Episodes 142 and 147 | NIP-90 Data Vending Machines and a data marketplace | A request, result, or contributed data item | Useful history for permissionless discovery and composition. NIP-90 is no longer the preferred default protocol. |
+| Episodes 174 and 178 | GPUtopia 2.0 and swarm inference | A whole inference job served by an online provider | Closest historical match to Buzz. It added NIP-90 job pickup and Lightning payment. |
+| Episodes 201, 203, and 214 | Pylon, Nexus, and the Compute Market | Provider work with routing, receipts, budgets, and Bitcoin settlement | Broader than Buzz. The node was meant to compete for public jobs and earn money. |
+| Episode 215 | NIP-DS Data Market | A durable dataset listing, offer, access contract, and optional targeted delivery | Correctly separates durable goods from request transport. Its optional DS-DVM profile still inherits NIP-90 risk. |
+| Episodes 237 and 238 | Accepted outcomes and the Tassadar run | Scoped work that is executed, independently verified, receipted, and settled to contributors | Strongest current economic model. Payment follows accepted evidence, not reported token use. |
+
+The early DVM plan was request-first. Episode 142 demonstrated an inference
+request on a public relay. Any listening provider could answer it. Payment and
+competition were the intended next layer. Episode 147 extended the same model
+to data collection, curation, bounties, and agent-assisted verification. This
+was a market-discovery design. It was not a distributed model-execution design.
+[source]
+
+Episodes 174 and 178 moved the idea to whole-model compute. A user clicked
+**Go Online**. A local Ollama-backed provider listened for NIP-90 jobs. The
+demo sent an inference request from one machine to another and paid Lightning
+invoices. Episode 203 named the provider node Pylon and the relay Nexus. It
+described requests as signed JSON jobs that many providers could pick up. The
+same episode also admitted that routing and matchmaking across several
+providers still needed experimentation. [source]
+
+Episodes 201 and 214 made the missing market plumbing explicit. Discovery,
+packaging, verification, reputation, settlement, observability, replay, and
+receipts were all required to turn idle hardware into procurable supply.
+Episode 215 applied that lesson to data. NIP-DS created durable listings,
+offers, and access contracts. NIP-90 remained only an optional targeted
+request and delivery profile. [source]
+
+Episodes 237 and 238 moved the accounting unit higher. The accepted outcome
+became the economic atom. A task is scoped, executed, graded, receipted, and
+settled. The Tassadar loop adds a second participant that replays the work.
+Both worker and validator can receive payment. This model can pay inference,
+training, data, software, or human work under one evidence rule. It does not
+assume that tokens are a sufficient measure of value. [source]
+
+The current NIP-90 audit changes the protocol conclusion. The June Pylon
+Nostr audit records both NIP-90 product promises as red. It says the current
+Pylon path is not a live NIP-90 marketplace. It also notes that upstream marks
+NIP-90 unrecommended. The July Nostr-native pivot reaches the same result.
+Use-case-specific microstandards should replace the broad 5000-series DVM
+namespace. NIP-LBR is the candidate labor microstandard. A compute market
+needs its own narrow event family if Nostr interoperability is required.
+[source]
+
+##### Buzz versus the old compute-market plan
+
+Buzz implements a trusted compute commons. The old OpenAgents plan described
+a permissionless compute market. The two systems share a local provider
+on-ramp and an OpenAI-compatible consumption path. Their trust and accounting
+models differ. [source] [inferred]
+
+| Concern | Buzz shared compute | Historical OpenAgents market |
+| --- | --- | --- |
+| Who may serve | Current members of one NIP-43 community | Any admitted provider on one or more relays |
+| Discovery | Member-signed kind 30003 status events | Public job and provider discovery through NIP-90 and Nexus |
+| Selection | MeshLLM route selection after one Buzz bootstrap target | Providers compete for jobs. Routing and matchmaking choose supply. |
+| Transport | Direct QUIC or encrypted Iroh relay | Nostr carries job coordination. Provider transport varied by runtime. |
+| Work topology | Whole remote request or MeshLLM split route | Primarily independent whole jobs and large fan-outs |
+| Usage record | Owner-private NIP-AM requester token deltas | Provider receipts, budgets, invoices, and settlement were intended |
+| Payment | None | Lightning or Bitcoin payment was central |
+| Verification | No independent verifier in the shared-compute path | Replay, receipts, and later accepted-outcome grading |
+| Capacity policy | No published capacity, price, quota, or schedule | Sellable capacity, price, availability, and buyer budget were core goals |
+| Failure authority | Community admission and MeshLLM runtime state | Market admission, work acceptance, and settlement require separate authorities |
+
+Buzz therefore proves a narrower but useful fact. A social trust group can
+share inference without publishing prompts through its coordination relay.
+It does not prove that strangers can price, verify, attribute, and settle the
+same work. Adding sats to kind 44200 would not close that gap. [source]
+[inferred]
+
+##### Buzz versus Psionic
+
+Psionic already performed a direct MeshLLM harvest audit on 2026-04-02. That
+audit treated MeshLLM as a product-layer reference, not the long-term runtime
+owner. The recommended harvest included join flows, node roles, bootstrap
+proxying, management status, demand signals, and operator UX. It rejected a
+permanent `llama.cpp` sidecar boundary and retained Psionic ownership of
+runtime, backend, artifact, topology, evidence, and refusal truth. [source]
+
+That harvest is now represented in current Psionic contracts and code. The
+comparison below uses Psionic commit `54201484`. [source]
+
+| Concern | Buzz plus MeshLLM | Current Psionic |
+| --- | --- | --- |
+| Runtime owner | MeshLLM SDK and signed native `llama.cpp` runtime inside Tauri | Rust-native Psionic runtime and backend crates |
+| Product packaging | One toggle inside Buzz Desktop | Installable `psionic-mesh-lane` service with durable roots, `launchd`, and `systemd` artifacts |
+| Identity | Nostr member key bound to a MeshLLM Ed25519 owner key | Psionic node identity, admission material, durable join state, and session generation |
+| Admission | NIP-43 membership intersected with valid owner bindings | Typed admission, join bundles, ordered membership, and explicit refusal reasons |
+| Roles | Serve mode or client mode | Separate transport roles and served roles: host, worker, standby, and thin client |
+| Routing | MeshLLM router behind localhost port 9337 | Router-owned model inventory, demand windows, elections, warm state, and route provenance |
+| Bootstrap | Buzz selects one live status target before client startup | Thin-client and warming proxy modes publish local served truth separately from remote route truth |
+| Distributed topology | Delegated to MeshLLM. Default live tests are ignored. | Typed replicated, pipeline-sharded, layer-sharded, tensor-sharded, and sparse-expert contracts |
+| Current execution proof | No live proof from this audit | One real two-machine pipeline-sharded `gemma4:e4b` request is documented. Sparse placement remains bounded by model-family claims. |
+| Artifact truth | Ready model and serving target status | Artifact digests, shard manifests, placement digests, topology digests, and residency truth |
+| Receipts | Requester-side token metric only | Execution receipts, provider receipts, response provenance, and typed refusals |
+| Market authority | Absent | Explicitly outside Psionic. OpenAgents owns wallet, payout, procurement, and settlement. |
+
+Psionic is more demanding about claim shape. Its management API distinguishes
+`remote_whole_request`, `replicated`, `dense_split`, and `sparse_expert`.
+It publishes the realized topology and route provenance. Host elections carry
+a term, active host, standby set, promotion reason, and lease state. Sparse
+placements carry explicit expert ranges and a stable placement digest. An
+unsupported topology returns a typed refusal instead of a generic unavailable
+state. [source]
+
+Psionic also separates durable service state from application state. A mesh
+lane root keeps configuration, node identity, network state, logs, and model
+paths across restart. Reinstalling service artifacts does not rotate identity.
+Changing the namespace or admission token after durable state exists is
+refused. Buzz instead stores a desktop share preference and lets the MeshLLM
+keystore own the compute identity. [source]
+
+Buzz is ahead in one important product dimension. Its social roster directly
+controls who may use the pool. The member sees one consent toggle, one model
+choice, and model-fit guidance. Psionic has the stronger substrate and a small
+operator console, but OpenAgents still owns the work needed to turn its mesh
+status into a friendly provider and buyer experience. [source] [inferred]
+
+##### The missing bridge
+
+The combined OpenAgents design should keep four ledgers distinct. One event
+may reference the others, but no ledger can substitute for another. [inferred]
+
+1. **Membership and admission ledger.** Who may join, route, and serve.
+2. **Execution ledger.** What runtime, model, artifact, topology, route, and
+   machine performed the work.
+3. **Acceptance ledger.** What was requested, how it was graded, who verified
+   it, and whether it was accepted.
+4. **Settlement ledger.** What amount was authorized, paid, withheld,
+   refunded, or split among contributors.
+
+Buzz has the first ledger and a requester-oriented fragment of the second.
+Psionic has strong machine-facing execution truth. The historical Pylon and
+accepted-outcome plans define the third and fourth ledgers. A future market
+should bind them with stable identifiers and hashes. It should not collapse
+them into one relay event or one token counter. [source] [inferred]
+
 ### 3.7 Clients, ops, and process
 
 `web/` is a small browser repo-viewer that the relay itself serves, which
@@ -723,7 +873,69 @@ lane and `packages/audio-contract` — evidence that agent-audible voice
 rooms do not require a media server, at the cost of relay bandwidth.
 [source] [inferred]
 
-### 6.8 Counterfactual: a much more Nostr-centric OpenAgents
+### 6.8 Shared-compute lessons
+
+**6.8.1 Reuse the roster-to-admission bridge.** Buzz turns social membership
+into compute admission without trusting an endpoint token by itself. The
+outer Nostr signature binds the status to a member. Inner MeshLLM signatures
+bind the member to the compute owner and endpoints. The current roster then
+intersects with those bindings. OpenAgents should reuse this pattern for
+private organizations, teams, and trusted clusters above Psionic admission.
+The public market still needs a separate admission policy. [source] [inferred]
+
+**6.8.2 Reuse fail-safe membership reconciliation.** Buzz applies roster
+growth after one successful poll. It requires two consecutive observations
+for shrinkage. Query failure preserves the current allowlist. Missing initial
+truth starts self-only. Psionic already owns ordered membership and session
+generation. These hysteresis rules are useful policy inputs for a product
+that reconciles a Nostr group into that substrate. [source] [inferred]
+
+**6.8.3 Preserve Psionic as the execution owner.** Buzz validates MeshLLM as
+a strong product reference. It does not reverse the Psionic ownership split.
+Psionic should continue to own backend, model, artifact, topology, routing,
+execution receipt, and refusal truth. OpenAgents should own the consent UX,
+organization policy, market workflow, wallet, acceptance, and settlement.
+[source] [inferred]
+
+**6.8.4 Add a friendly layer above Psionic management truth.** Copy the user
+experience, not the hidden runtime boundary. A member should see one clear
+share toggle, model-fit guidance, current model, current role, who may use the
+machine, resource bounds, active work, and earnings. Every displayed state
+should come from the Psionic management API or the market ledgers. The app
+must not infer topology or provider work from logs. [source] [inferred]
+
+**6.8.5 Publish supply-side receipts.** A provider receipt should bind the
+request, accepted route, Psionic execution receipt, provider node, artifact,
+topology, wall time, token counts, queue time, resource class, and price
+commitment. Split execution requires one contribution record per participating
+node. The aggregate receipt must preserve every contributor reference. NIP-AM
+may remain owner-private telemetry. It must not become the payment basis.
+[inferred]
+
+**6.8.6 Settle accepted outcomes, not raw usage.** Tokens can price a quoted
+inference lane. They do not prove correctness or value. Payment release should
+bind to an explicit acceptance policy. Deterministic work can use independent
+replay. Subjective work needs a declared rubric or buyer acceptance. Failure,
+partial completion, duplicate work, and verifier disagreement need explicit
+withhold or refund states. [inferred]
+
+**6.8.7 Replace broad NIP-90 dependence with narrow event families.** Keep
+Nostr as a portable multi-party market record where it adds exit and audit
+rights. Define separate, bounded event families for compute offers, job terms,
+provider results, acceptance, and settlement references. Reuse standard NIPs
+for identity, encryption, handler discovery, payments, and reputation. Do not
+put new market identity inside the unrecommended NIP-90 namespace. [source]
+[inferred]
+
+**6.8.8 Require live proof before a distributed claim.** Buzz's default suite
+does not prove its live split-inference story. Psionic documents a real
+two-machine dense split but keeps wider topology claims bounded. An
+OpenAgents pooled-inference release should require a repeatable multi-host
+acceptance lane. It should capture topology, artifact, route, output,
+disconnect, retry, contribution, acceptance, and settlement evidence in one
+reviewable bundle. [source] [inferred]
+
+### 6.9 Counterfactual: a much more Nostr-centric OpenAgents
 
 The implementation state changes the original premise of this audit.
 `nostr-effect` now implements all 15 Buzz custom NIPs at commit `c160378`.
@@ -736,7 +948,7 @@ complete client services. Other modules are wire formats, readers, or relay
 stubs. OpenAgents must add product policy, custody, persistence, and evidence
 rules around each module. [source] [inferred]
 
-#### 6.8.1 Standard NIPs to use first
+#### 6.9.1 Standard NIPs to use first
 
 | Priority | NIPs | OpenAgents use |
 | --- | --- | --- |
@@ -753,7 +965,7 @@ to add because OpenAgents already has coding sessions, review, and Git
 workflows. Large checkpoints and repository packs must stay outside Nostr.
 Events should carry references and digests for those bytes. [inferred]
 
-#### 6.8.2 Buzz NIPs to use by product value
+#### 6.9.2 Buzz NIPs to use by product value
 
 | Order | NIPs | Value | Current `nostr-effect` depth |
 | --- | --- | --- | --- |
@@ -776,7 +988,7 @@ must not prove that a command ran or that an outcome was accepted. OpenAgents
 must keep command, outcome, assurance, settlement, and public-claim gates
 separate. [inferred]
 
-#### 6.8.3 Four possible product postures
+#### 6.9.3 Four possible product postures
 
 | Posture | Nostr role | Canonical authority | Assessment |
 | --- | --- | --- | --- |
@@ -797,7 +1009,7 @@ acceptance, release, payment, or a public claim. The handler must check the
 Effect Schema, scope, generation, idempotency key, and current policy before
 it changes canonical state. [inferred]
 
-#### 6.8.4 What the product could feel like
+#### 6.9.4 What the product could feel like
 
 - A person, agent, device, and workspace has an explicit public key role.
   The product never displays or exports a raw secret key.
@@ -818,7 +1030,7 @@ portable session name a repository with a NIP-34 address instead of a host
 account ID. Section 7 examines the limits of the Buzz implementation.
 [inferred]
 
-#### 6.8.5 Reconciliation with current OpenAgents specs
+#### 6.9.5 Reconciliation with current OpenAgents specs
 
 The current specs support the first three postures. They do not support the
 fourth posture without revision. The portable coding-session spec requires an
@@ -841,7 +1053,7 @@ proof gates. A Nostr signature can be one proof input under those specs. It is
 not an independent reviewer, an accepted outcome, or release authority.
 [source] [inferred]
 
-#### 6.8.6 Hard considerations
+#### 6.9.6 Hard considerations
 
 - **Key custody and recovery.** OpenAuth users, people, agents, devices, and
   workspaces need a clear key map. Rotation and revocation need durable policy.
@@ -865,7 +1077,7 @@ not an independent reviewer, an accepted outcome, or release authority.
 - **Schemas.** Effect Schema remains mandatory at OpenAgents boundaries.
   Direct NIP reuse supplies protocol mechanics, not product policy.
 
-#### 6.8.7 A staged path
+#### 6.9.7 A staged path
 
 1. Pin a reviewed `nostr-effect` revision and expose stable profile exports.
    Add cross-language vectors for each selected NIP.
@@ -1195,17 +1407,24 @@ OA, AA, AP, AE, AB, AM, AO, and GS from the current `nostr-effect`
 implementation. Keep every module behind OpenAgents schemas and authority.
 
 Start with three bounded candidates. First, define the signed projection-bus
-profile from §6.8. Second, connect OA, AP, AE, and AB to the sovereign signer.
+profile from §6.9. Second, connect OA, AP, AE, and AB to the sovereign signer.
 Third, design the NIP-34 and NIP-GS Git profile from §7.9. These candidates need
 the normal Fast Follow admission path. The earlier conformance-replay and
 owner-decryptable-memory lessons remain high-value supporting work.
+
+For shared compute, keep Psionic as the execution owner and use Buzz as a
+product and private-admission reference. Build the missing bridge as separate
+admission, execution, acceptance, and settlement ledgers. Start with a private
+organization lane before a public market. Do not revive NIP-90 as the default
+market protocol. Require provider attribution and a live multi-host evidence
+bundle before any earnings or distributed-inference promise turns green.
 
 ## 10. Watch items
 
 - **Buzz Mesh.** Section 3.6 traces the current community-pooled GPU path.
   Track whether Buzz adds provider attribution, quotas, contribution receipts,
   or settlement. Those additions would move it from a trusted compute commons
-  toward the Pylon provider and NIP-90 compute-market thesis.
+  toward the Pylon provider and accepted-outcome compute-market thesis.
 - **Custom NIP standardization.** Track changes to AA, AE, AM, AO, AP, and GS.
   The OpenAgents profile must remain versioned even if the drafts do not move
   into `nostr-protocol/nips`.

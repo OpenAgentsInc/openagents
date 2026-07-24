@@ -44545,7 +44545,7 @@
     },
     {
       "path": "docs/teardowns/2026-07-21-buzz-teardown.md",
-      "sha256": "c4744ebe40fdd4a64de79e639b12e2e94c0aa7a82cfb7798b682280fec3469c2",
+      "sha256": "d7e0b790251f9f185ac79b2a62d0f18bfa756d57670f750127d95e76d849d63d",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
