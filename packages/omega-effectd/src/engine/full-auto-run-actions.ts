@@ -560,15 +560,40 @@ export const handoffFullAutoRunAction = async (
     }
   }
   const reason = body.reason ?? `Provider handoff requested via ${callerLabel}.`
-  const thread = run.threadRef === undefined ? null : (capabilities.getThread?.(run.threadRef) ?? null)
+  const sourceThreadRef = run.threadRef
+  const thread = sourceThreadRef === undefined ? null : (capabilities.getThread?.(sourceThreadRef) ?? null)
+  settleAndSyncReport(capabilities, run, now)
+  let targetThreadRef = sourceThreadRef
+  if (sourceThreadRef !== undefined && capabilities.prepareHandoffThread !== undefined) {
+    try {
+      targetThreadRef = await capabilities.prepareHandoffThread({
+        runRef: run.runRef,
+        sourceThreadRef,
+        title: run.title,
+        workspaceRef: run.workspaceRef ?? capabilities.resolveWorkspaceRef(),
+        targetLaneRef,
+      })
+    } catch {
+      return {
+        ok: false,
+        status: 409,
+        error: {
+          error: "handoff_refused",
+          message: "The target provider thread could not be prepared.",
+        },
+      }
+    }
+  }
   // FA-AC-59: re-check target admission/auth/capability eligibility through
   // the exact same gate the existing interactive manual-switch path uses --
   // a refusal leaves the run's lane/profile untouched (rollback).
   const switchResult = capabilities.providerLaneRegistry.switchThread({
-    threadRef: run.threadRef ?? runRef,
+    threadRef: targetThreadRef ?? runRef,
     laneRef: targetLaneRef,
     lanes: await (capabilities.listLanes?.() ?? Promise.resolve([])),
-    thread,
+    thread: targetThreadRef === sourceThreadRef
+      ? thread
+      : (thread === null ? null : { ...thread, id: targetThreadRef ?? runRef }),
     requiredCapabilities: ["fullAuto"],
   })
   if (!switchResult.ok) {
@@ -610,9 +635,43 @@ export const handoffFullAutoRunAction = async (
     at,
   })
   const disposition = providerHandoffDispositionForEnvelope(envelope)
+  const { model: _sourceModel, ...sourceProfileWithoutModel } = run.profile ?? {}
+  const targetProfile = {
+    ...sourceProfileWithoutModel,
+    lane: targetLaneRef,
+    ...(body.model === undefined ? {} : { model: body.model }),
+  }
+  if (
+    sourceThreadRef !== undefined &&
+    targetThreadRef !== undefined &&
+    targetThreadRef !== sourceThreadRef &&
+    capabilities.registry.record(targetThreadRef) !== null
+  ) {
+    return {
+      ok: false,
+      status: 409,
+      error: { error: "handoff_refused", message: "The target provider thread is already bound." },
+    }
+  }
+  const rebound = targetThreadRef === undefined
+    ? capabilities.runRegistry.rebindProfile(runRef, targetProfile)
+    : capabilities.runRegistry.rebindExecution(runRef, { threadRef: targetThreadRef, profile: targetProfile })
+  if (rebound === null) return notFound()
+  if (sourceThreadRef !== undefined && targetThreadRef !== undefined && targetThreadRef !== sourceThreadRef) {
+    const transferred = capabilities.registry.transferThread(sourceThreadRef, targetThreadRef, targetProfile)
+    if (transferred === null) {
+      return {
+        ok: false,
+        status: 409,
+        error: { error: "handoff_refused", message: "The target provider thread migration is pending recovery." },
+      }
+    }
+  }
   const transitionRecord = capabilities.providerHandoffRegistry.record({
     runRef: run.runRef,
-    ...(run.threadRef === undefined ? {} : { threadRef: run.threadRef }),
+    ...(targetThreadRef === undefined ? {} : { threadRef: targetThreadRef }),
+    ...(sourceThreadRef === undefined ? {} : { sourceThreadRef }),
+    ...(targetThreadRef === undefined ? {} : { targetThreadRef }),
     from: sourceLaneRef,
     to: targetLaneRef,
     actor,
@@ -622,15 +681,8 @@ export const handoffFullAutoRunAction = async (
     truncated: envelope.contextTruncated,
     envelopeSchema: envelope.schema,
   })
-  const { model: _sourceModel, ...sourceProfileWithoutModel } = run.profile ?? {}
-  const rebound = capabilities.runRegistry.rebindProfile(runRef, {
-    ...sourceProfileWithoutModel,
-    lane: targetLaneRef,
-    ...(body.model === undefined ? {} : { model: body.model }),
-  })
-  if (rebound === null) return notFound()
   capabilities.appendSystemNote(
-    run.threadRef ?? runRef,
+    targetThreadRef ?? runRef,
     `Provider handoff: ${sourceLaneRef} → ${targetLaneRef} (${disposition}). Reason: ${reason} (caller: ${callerLabel}).`,
   )
   return {

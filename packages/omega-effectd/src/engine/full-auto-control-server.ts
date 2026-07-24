@@ -153,7 +153,7 @@ export type FullAutoControlCapabilities = Readonly<{
    * bindGuardrails into the atomic pre-reconciliation run start path. */
   registry: Pick<
     FullAutoRegistry,
-    "list" | "record" | "set" | "resume" | "recordDecision" | "bindRoutingPolicy" | "bindGuardrails"
+    "list" | "record" | "set" | "resume" | "recordDecision" | "bindRoutingPolicy" | "bindGuardrails" | "transferThread"
   >
   /** FA-H2: the SAME workspace resolution codex-local turns execute against. */
   resolveWorkspaceRef: () => string
@@ -169,6 +169,13 @@ export type FullAutoControlCapabilities = Readonly<{
   /** start bootstrap: mint a brand-new local thread in main's own thread
    * store (main mints the ref -- callers never name one) and return its ref. */
   createThread: (title: string | null, laneRef: string) => string
+  prepareHandoffThread?: (input: Readonly<{
+    runRef: string
+    sourceThreadRef: string
+    title: string
+    workspaceRef: string
+    targetLaneRef: string
+  }>) => Promise<string>
   /** L6: capability-gated ProviderLane selection. */
   isLaneEligible?: (laneRef: string) => boolean
   /** Optional exact model admission for run start/manual handoff. */

@@ -77,6 +77,10 @@ import type { FullAutoRotationReason } from "../engine/full-auto-registry.ts";
 import type { FullAutoRunState } from "../engine/full-auto-run-registry.ts";
 import { openProviderHandoffRegistry } from "../engine/full-auto-provider-handoff.ts";
 import type { DesktopThread } from "../support/chat-contract.ts";
+import {
+  compileFullAutoMissionPacket,
+  renderFullAutoMissionPrompt,
+} from "../engine/full-auto-mission.ts";
 import type { OmegaEffectdService } from "../service.ts";
 import { Schema } from "effect";
 import { LocalTurnRecordSchema, type LocalTurnRecord } from "../support/local-turn-journal.ts";
@@ -185,6 +189,12 @@ export const createOmegaEffectdFramedServer = (
 
   const runRegistry = openFullAutoRunRegistry(resolveFullAutoRunsPath(paths));
   const registry = openFullAutoRegistry(resolveFullAutoRegistryPath(paths));
+  for (const run of runRegistry.list()) {
+    if (run.threadRef === undefined || registry.record(run.threadRef) !== null) continue;
+    const binding = run.executionHistory?.at(-1);
+    if (binding === undefined || binding.targetThreadRef !== run.threadRef) continue;
+    registry.transferThread(binding.sourceThreadRef, binding.targetThreadRef, binding.targetProfile);
+  }
   const reportStore = openFullAutoRunReportStore(resolveFullAutoRunReportsPath(paths));
   const nativeBindings = openFullAutoNativeBindingStore(resolveFullAutoNativeBindingsPath(paths));
   const providerHandoffs = openProviderHandoffRegistry(resolveFullAutoProviderHandoffsPath(paths));
@@ -414,6 +424,28 @@ export const createOmegaEffectdFramedServer = (
             disposition: turn.disposition,
             updatedAt: turn.updatedAt,
           })),
+        compileDispatchMessage: (input) => {
+          const run = runRegistry.findByThreadRef(input.threadRef);
+          const priorAcceptedOutcome = [...(evidenceByThread.get(input.threadRef)?.turns ?? [])]
+            .reverse()
+            .find((turn) => turn.disposition === "completed") ?? null;
+          const previousHandoff = run === null
+            ? null
+            : [...providerHandoffs.list({ runRef: run.runRef })]
+                .reverse()
+                .find((handoff) => handoff.disposition !== "refused") ?? null;
+          return renderFullAutoMissionPrompt(
+            compileFullAutoMissionPacket({
+              run,
+              record: input.record,
+              threadRef: input.threadRef,
+              profile: input.profile,
+              turnCap: input.turnCap,
+              priorAcceptedOutcome,
+              previousHandoff,
+            }),
+          );
+        },
         dispatch: async (input) => {
           const run = runRegistry.findByThreadRef(input.threadRef);
           if (run === null)
@@ -465,13 +497,24 @@ export const createOmegaEffectdFramedServer = (
     },
     liveState: (threadRef) => evidenceByThread.get(threadRef)?.live ?? null,
     listTurns: (threadRef) => evidenceByThread.get(threadRef)?.turns ?? [],
-    appendSystemNote: (threadRef, text) => pendingNotes.push({ threadRef, text }),
+    appendSystemNote: () => {},
     createThread: () => {
       if (preparedThreadRef === null)
         throw new OmegaEffectdHostBridgeError("host_unavailable", "No host thread was prepared.");
       const threadRef = preparedThreadRef;
       preparedThreadRef = null;
       return threadRef;
+    },
+    prepareHandoffThread: async (input) => {
+      const result = objectResult(
+        await hostRequest("create_thread", {
+          title: `${input.title} — ${input.targetLaneRef}`,
+          lane: input.targetLaneRef,
+          workspaceRef: input.workspaceRef,
+          operationRef: `${input.runRef}.handoff.${input.targetLaneRef}`,
+        }),
+      );
+      return requiredString(result.threadRef, "threadRef");
     },
     isLaneEligible: (laneRef) => laneReadiness.get(laneRef) === true,
     listLanes: async () => [],
@@ -1340,10 +1383,6 @@ export const createOmegaEffectdFramedServer = (
             undefined,
             redactedError("invalid_request", outcome.error.message),
           );
-        }
-        const reboundRun = runRegistry.get(params.runRef);
-        if (reboundRun?.threadRef !== undefined && reboundRun.profile !== undefined) {
-          registry.bindProfile(reboundRun.threadRef, reboundRun.profile);
         }
         const detail = projectDetail(actionContext(), params.runRef);
         return respond(request.id, true, {

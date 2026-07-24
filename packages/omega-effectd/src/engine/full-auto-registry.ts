@@ -414,6 +414,11 @@ export type FullAutoRegistry = Readonly<{
   recordSuccess: (threadRef: string) => void
   bindWorkspace: (threadRef: string, workspaceRef: string) => FullAutoRecord | null
   bindProfile: (threadRef: string, profile: FullAutoProfile) => FullAutoRecord | null
+  transferThread: (
+    sourceThreadRef: string,
+    targetThreadRef: string,
+    profile: FullAutoProfile,
+  ) => FullAutoRecord | null
   /**
    * FA-RT-01 (#8987): bind (or, with null, clear) the ordered routing
    * policy. Bounds are enforced fail-closed here (1..FULL_AUTO_ROUTING_
@@ -692,6 +697,21 @@ export const openFullAutoRegistry = (file: string, now: () => Date = () => new D
     bindProfile: (threadRef, profile) => {
       const index = findIndex(threadRef)
       return index === -1 ? null : update(index, { profile })
+    },
+    transferThread: (sourceThreadRef, targetThreadRef, profile) => {
+      const sourceIndex = findIndex(sourceThreadRef)
+      if (sourceIndex === -1 || findIndex(targetThreadRef) !== -1) return null
+      const next = Schema.decodeUnknownSync(FullAutoRecordSchema)(compactRecordInput({
+        ...records[sourceIndex]!,
+        threadRef: targetThreadRef,
+        profile,
+        pendingTurnRef: undefined,
+        pendingStartedAt: undefined,
+        updatedAt: now().toISOString(),
+      }))
+      records.splice(sourceIndex, 1, next)
+      persist()
+      return next
     },
     bindRoutingPolicy: (threadRef, policy) => {
       const index = findIndex(threadRef)

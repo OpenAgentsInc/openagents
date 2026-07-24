@@ -1,8 +1,11 @@
 import type { OmegaEffectdHostRequest } from "./framed.ts";
 
-export const makeOmegaEffectdTestHost = () => {
+export const makeOmegaEffectdTestHost = (
+  onRequest?: (request: OmegaEffectdHostRequest) => void,
+) => {
   let threadCounter = 0;
   return async (request: OmegaEffectdHostRequest): Promise<unknown> => {
+    onRequest?.(request);
     const params = request.params as Record<string, unknown>;
     switch (request.method) {
       case "resolve_workspace":

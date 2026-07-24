@@ -241,6 +241,8 @@ export const ProviderHandoffTransitionRecordSchema = Schema.Struct({
   handoffRef: Ref,
   runRef: Schema.optional(Ref),
   threadRef: Schema.optional(Ref),
+  sourceThreadRef: Schema.optional(Ref),
+  targetThreadRef: Schema.optional(Ref),
   from: LaneRef,
   to: LaneRef,
   actor: FullAutoRunActorSchema,

@@ -84,10 +84,17 @@ describe("omega-effectd framed protocol", () => {
   test("start, get_run detail, pause, resume, and stop for FA-03 launcher", async () => {
     await withRoot(async (root) => {
       const service = createOmegaEffectdService({ paths: { dataRoot: root } });
+      const dispatchMessages: string[] = [];
       const server = createOmegaEffectdFramedServer(
         service,
         { dataRoot: root },
-        { hostRequestHandler: makeOmegaEffectdTestHost() },
+        {
+          hostRequestHandler: makeOmegaEffectdTestHost((hostRequest) => {
+            if (hostRequest.method !== "dispatch_turn") return;
+            const params = hostRequest.params as { message?: unknown };
+            if (typeof params.message === "string") dispatchMessages.push(params.message);
+          }),
+        },
       );
       await server.handleLine(request("1", 0, "initialize", { generation: 1 }));
 
@@ -131,6 +138,11 @@ describe("omega-effectd framed protocol", () => {
       );
       expect(refusedHandoff?.ok).toBe(false);
 
+      const sourceThreadRef = openFullAutoRunRegistry(
+        resolveFullAutoRunsPath({ dataRoot: root }),
+      ).get(run.runRef)?.threadRef;
+      expect(sourceThreadRef).toBeDefined();
+
       const handedOff = await server.handleLine(
         request("handoff-ok", 1, "handoff", {
           runRef: run.runRef,
@@ -142,7 +154,13 @@ describe("omega-effectd framed protocol", () => {
       expect(handedOff?.ok).toBe(true);
       const handoffResult = handedOff?.result as {
         run: { lane: string };
-        transition: { from: string; to: string; disposition: string };
+        transition: {
+          from: string;
+          to: string;
+          disposition: string;
+          sourceThreadRef?: string;
+          targetThreadRef?: string;
+        };
       };
       expect(handoffResult.run.lane).toBe("claude-local");
       expect(handoffResult.transition).toMatchObject({
@@ -161,16 +179,24 @@ describe("omega-effectd framed protocol", () => {
         run.runRef,
       )?.threadRef;
       expect(boundThread).toBeDefined();
+      expect(boundThread).not.toBe(sourceThreadRef);
+      expect(handoffResult.transition.sourceThreadRef).toBe(sourceThreadRef);
+      expect(handoffResult.transition.targetThreadRef).toBe(boundThread);
+      const threadRegistry = openFullAutoRegistry(
+        resolveFullAutoRegistryPath({ dataRoot: root }),
+      );
+      expect(sourceThreadRef === undefined ? null : threadRegistry.record(sourceThreadRef)).toBeNull();
       expect(
         boundThread === undefined
           ? undefined
-          : openFullAutoRegistry(resolveFullAutoRegistryPath({ dataRoot: root })).record(
-              boundThread,
-            )?.profile?.lane,
+          : threadRegistry.record(boundThread)?.profile?.lane,
       ).toBe("claude-local");
 
       const resumed = await server.handleLine(request("5", 1, "resume", { runRef: run.runRef }));
       expect(resumed?.ok).toBe(true);
+      expect(dispatchMessages.at(-1)).toContain('"from": "codex-local"');
+      expect(dispatchMessages.at(-1)).toContain('"to": "claude-local"');
+      expect(dispatchMessages.at(-1)).toContain("Start one run from the framed protocol.");
 
       const stopped = await server.handleLine(request("6", 1, "stop", { runRef: run.runRef }));
       expect(stopped?.ok).toBe(true);
@@ -179,6 +205,48 @@ describe("omega-effectd framed protocol", () => {
       // list_runs stays redacted (no objective text).
       const listed = await server.handleLine(request("7", 1, "list_runs"));
       expect(JSON.stringify(listed)).not.toContain("framed protocol");
+    });
+  });
+
+  test("repairs an interrupted provider-thread registry transfer before reconciliation", async () => {
+    await withRoot(async (root) => {
+      const runsPath = resolveFullAutoRunsPath({ dataRoot: root });
+      const threadsPath = resolveFullAutoRegistryPath({ dataRoot: root });
+      const runRegistry = openFullAutoRunRegistry(runsPath);
+      const threadRegistry = openFullAutoRegistry(threadsPath);
+      const sourceThreadRef = "thread.omega.source";
+      const targetThreadRef = "thread.omega.target";
+      threadRegistry.set(sourceThreadRef, true, {
+        workspaceRef: "workspace.omega.supervised",
+        profile: { lane: "codex-local" },
+      });
+      const started = runRegistry.startNew({
+        title: "Interrupted handoff",
+        objective: "Recover the execution binding.",
+        doneCondition: "The target provider thread owns the grant.",
+        objectiveSource: "user",
+        workspaceRef: "workspace.omega.supervised",
+        threadRef: sourceThreadRef,
+        profile: { lane: "codex-local" },
+        actor: "control_api",
+        reason: "test",
+      });
+      expect(started.ok).toBe(true);
+      if (!started.ok) return;
+      runRegistry.rebindExecution(started.run.runRef, {
+        threadRef: targetThreadRef,
+        profile: { lane: "claude-local" },
+      });
+
+      createOmegaEffectdFramedServer(
+        createOmegaEffectdService({ paths: { dataRoot: root } }),
+        { dataRoot: root },
+        { hostRequestHandler: makeOmegaEffectdTestHost() },
+      );
+
+      const recovered = openFullAutoRegistry(threadsPath);
+      expect(recovered.record(sourceThreadRef)).toBeNull();
+      expect(recovered.record(targetThreadRef)?.profile?.lane).toBe("claude-local");
     });
   });
 

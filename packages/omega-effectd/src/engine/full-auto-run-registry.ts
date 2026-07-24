@@ -54,6 +54,7 @@ export const FULL_AUTO_RUN_DONE_CONDITION_LIMIT = 2000
 export const FULL_AUTO_RUN_TURN_CAP_DEFAULT = FULL_AUTO_MAX_CONTINUATIONS
 export const FULL_AUTO_RUN_TRANSITION_HISTORY_LIMIT = 200
 export const FULL_AUTO_RUN_OBJECTIVE_HISTORY_LIMIT = 50
+export const FULL_AUTO_RUN_EXECUTION_HISTORY_LIMIT = 20
 /** Bounded local concurrency: enough for the documented five-worker Fast
  * Follow shape plus operator headroom, without unbounded provider fan-out. */
 export const FULL_AUTO_RUN_ACTIVE_LIMIT = 8
@@ -329,6 +330,15 @@ export const FullAutoRunAutonomySchema = Schema.Struct({
 })
 export type FullAutoRunAutonomy = typeof FullAutoRunAutonomySchema.Type
 
+export const FullAutoExecutionBindingSchema = Schema.Struct({
+  sourceThreadRef: Ref,
+  targetThreadRef: Ref,
+  sourceProfile: Schema.optional(FullAutoProfileSchema),
+  targetProfile: FullAutoProfileSchema,
+  at: Schema.String,
+})
+export type FullAutoExecutionBinding = typeof FullAutoExecutionBindingSchema.Type
+
 export const FullAutoRunSchema = Schema.Struct({
   runRef: Ref,
   /** FA-AC-38: independent of, and optional until bound to, a threadRef. */
@@ -340,6 +350,11 @@ export const FullAutoRunSchema = Schema.Struct({
   objectiveHistory: Schema.Array(FullAutoRunObjectiveRevisionSchema),
   workspaceRef: Schema.optional(WorkspaceRef),
   profile: Schema.optional(FullAutoProfileSchema),
+  executionHistory: Schema.optional(
+    Schema.Array(FullAutoExecutionBindingSchema).check(
+      Schema.isMaxLength(FULL_AUTO_RUN_EXECUTION_HISTORY_LIMIT),
+    ),
+  ),
   turnCap: TurnCap,
   successfulAttempts: Cursor,
   failedAttempts: Cursor,
@@ -573,6 +588,10 @@ export type FullAutoRunRegistry = Readonly<{
     input: Readonly<{ to: FullAutoRunState; actor: FullAutoRunActor; reason: string; correlationRef?: string }>,
   ) => FullAutoRunTransitionResult
   bindThread: (runRef: string, threadRef: string) => FullAutoRun | null
+  rebindExecution: (
+    runRef: string,
+    input: Readonly<{ threadRef: string; profile: FullAutoProfile }>,
+  ) => FullAutoRun | null
   /** FA-HO-01 (#8975): rebind the execution profile (provider lane) after a
    * caller-validated provider handoff. This function trusts the caller
    * already performed target admission/auth/capability re-validation and any
@@ -786,6 +805,30 @@ export const openFullAutoRunRegistry = (
     return runs[index]!
   }
 
+  const rebindExecution: FullAutoRunRegistry["rebindExecution"] = (runRef, input) => {
+    const index = findIndex(runRef)
+    if (index === -1) return null
+    const current = runs[index]!
+    const executionHistory = [
+      ...(current.executionHistory ?? []),
+      {
+        sourceThreadRef: current.threadRef ?? input.threadRef,
+        targetThreadRef: input.threadRef,
+        ...(current.profile === undefined ? {} : { sourceProfile: current.profile }),
+        targetProfile: input.profile,
+        at: now().toISOString(),
+      },
+    ].slice(-FULL_AUTO_RUN_EXECUTION_HISTORY_LIMIT)
+    runs[index] = Schema.decodeUnknownSync(FullAutoRunSchema)({
+      ...current,
+      threadRef: input.threadRef,
+      profile: input.profile,
+      executionHistory,
+    })
+    persist()
+    return runs[index]!
+  }
+
   const touchLiveness: FullAutoRunRegistry["touchLiveness"] = (runRef, timestamp) => {
     const index = findIndex(runRef)
     if (index === -1) return null
@@ -924,6 +967,7 @@ export const openFullAutoRunRegistry = (
     rerun,
     transition: transitionInternal,
     bindThread,
+    rebindExecution,
     rebindProfile,
     touchLiveness,
     recordAttempt,
