@@ -1,7 +1,7 @@
 ---
 assurance_spec_format_version: "0.1"
 assurance_spec_id: "assurance.omega.full.auto.host"
-assurance_revision: 4
+assurance_revision: 5
 title: "Omega Full Auto Host AssuranceSpec"
 artifact_type: "product_assurance"
 lifecycle_state: "proposed"
@@ -582,20 +582,28 @@ review. Packaged obligations also need the additional kinds named above.
 ## Authority Boundaries
 
 This proposal cannot admit itself, execute tests, verify its own producer,
-waive an obligation, release software, or change a public promise. The current
-repair adds no admitted, verifier, or release role. An owner-authorized role
-decision and a distinct independent review are still required before admission.
+waive an obligation, release software, or change a public promise. The owner
+has designated an independent reviewer role for admission, the OpenAgents
+assurance reviewer role for verification, and the OpenAgents owner role for
+release. Those designations do not admit this proposal or authorize its
+producer to review or admit the revision.
 
 ```assurancespec-authority
 {
-  "admitted_roles": [],
-  "policy_state": "needs_design",
+  "admitted_roles": [
+    "owner_designated_independent_reviewer"
+  ],
+  "policy_state": "designed",
   "proposal_may_change_public_promises": false,
   "proposal_may_execute": false,
   "proposal_may_release": false,
   "proposal_may_self_admit": false,
   "proposal_may_verify": false,
-  "release_roles": [],
-  "verifier_roles": []
+  "release_roles": [
+    "openagents.owner"
+  ],
+  "verifier_roles": [
+    "openagents.assurance_reviewer"
+  ]
 }
 ```

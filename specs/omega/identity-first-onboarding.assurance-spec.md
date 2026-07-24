@@ -1,7 +1,7 @@
 ---
 assurance_spec_format_version: "0.1"
 assurance_spec_id: "assurance.omega.identity.first.onboarding"
-assurance_revision: 1
+assurance_revision: 2
 title: "Omega Identity-First Onboarding AssuranceSpec"
 artifact_type: "product_assurance"
 lifecycle_state: "proposed"
@@ -481,11 +481,15 @@ time, method, oracle result, and falsifier result.
 This proposal cannot admit its proof design or candidate. The implementation
 producer cannot verify an obligation that they produced. Owner observation is
 required for the journey, but it is not independent verification. Candidate
-admission does not grant release or a public claim.
+admission does not grant release or a public claim. The owner has designated
+an independent reviewer role for admission. That designation does not admit
+this proposal and does not let its producer review or admit the revision.
 
 ```assurancespec-authority
 {
-  "admitted_roles": [],
+  "admitted_roles": [
+    "owner_designated_independent_reviewer"
+  ],
   "policy_state": "designed",
   "proposal_may_change_public_promises": false,
   "proposal_may_execute": false,
