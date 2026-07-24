@@ -4,7 +4,7 @@
 - Packet: `OMEGA-FA-01`
 - Omega issue: [OpenAgentsInc/omega#20](https://github.com/OpenAgentsInc/omega/issues/20)
 - Package: `@openagentsinc/omega-effectd` `0.1.0`
-- Pack SHA-256: `0717aa2fef95734773257ec702848e3d226631b7e298cc128cfc12e8de0d0847`
+- Pack SHA-256: `4cc1cb2e5d71ff8af6f730248871ee779488a991f21a848880e885331ef31831`
 - Freeze: [2026-07-24-full-auto-contract-freeze.md](./2026-07-24-full-auto-contract-freeze.md)
 
 ## Result
@@ -22,12 +22,14 @@ Durable files stay under `{dataRoot}/full-auto/`.
 
 ## Verification
 
-- `pnpm --dir packages/omega-effectd test` — 176 passed
+- `pnpm --dir packages/omega-effectd test` — 177 passed
 - `pnpm --dir packages/omega-effectd run pack:digest` — digest above
 
 ## Deferred to later FA packets
 
-- Rust supervisor and framed protocol (FA-02)
+- Rust supervisor and framed protocol — see
+  [2026-07-24-omega-effectd-supervisor.md](./2026-07-24-omega-effectd-supervisor.md)
+  (FA-02)
 - GPUI launcher (FA-03)
 - Full routing/liveness host wiring beyond the extracted engine (FA-04)
 - MemoHarness and initiative (FA-00 cut)

@@ -33722,7 +33722,25 @@
     },
     {
       "path": "docs/omega/2026-07-24-omega-effectd-extract.md",
-      "sha256": "6e021d3193dc74d74615ac7bdf6d4fdd74bae75e70623218b11aa58c23dede0e",
+      "sha256": "15c2bfa63d2b83404f9fe5a7adf08d41440a76191b078cebd90b6c2f60233a37",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "mixed",
+        "risk": "high",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "human",
+        "ste_accepted_screening_rules": [
+          "STE-2.4"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/omega/2026-07-24-omega-effectd-supervisor.md",
+      "sha256": "f261776c43dffcaf78c5b99b96706534ff2fddf4cf03ef7f549f2b638cfa2712",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
@@ -33758,7 +33776,7 @@
     },
     {
       "path": "docs/omega/README.md",
-      "sha256": "0a79cc2cbc92739da4ec34cec973229dedb5792752ada5b78384d803c10b733a",
+      "sha256": "ed780dd8e6ecc924cb74287382737f721037a6e9e97ff8131abc466e1121a4df",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -46124,7 +46142,7 @@
     },
     {
       "path": "packages/omega-effectd/README.md",
-      "sha256": "c149d80aa839db50554596c66baa72de95c1820ed6f3613a33dbe2151e42ca16",
+      "sha256": "5b64582d4a2eb457e0d1d41890fd6b2eb0c68be165809c128bcce9e435ebad44",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

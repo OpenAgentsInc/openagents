@@ -16,6 +16,7 @@
     "./service": "./src/service.ts",
     "./engine/*": "./src/engine/*",
     "./support/*": "./src/support/*",
+    "./protocol/*": "./src/protocol/*",
     "./scripts/*": "./scripts/*"
   },
   "bin": {

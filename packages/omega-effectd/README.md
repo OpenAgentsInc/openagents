@@ -25,6 +25,8 @@ pnpm --dir packages/omega-effectd run pack:digest
 Omega pins the printed `sha256`. It must not import this package through a
 relative monorepo path or an unpublished `workspace:*` edge.
 
+Framed protocol schema: `openagents.omega.effectd.v1` (stdio JSON lines).
+
 ## Deferred
 
 MemoHarness and initiative stay out of the first Omega port (FA-00 freeze).

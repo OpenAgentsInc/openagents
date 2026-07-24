@@ -37,3 +37,15 @@ export {
   type OmegaEffectdService,
   type OmegaEffectdServiceOptions,
 } from "./service.ts"
+
+export {
+  OMEGA_EFFECTD_PROTOCOL_SCHEMA,
+  OMEGA_EFFECTD_PROTOCOL_VERSION,
+  OMEGA_EFFECTD_SERVICE_VERSION,
+  type OmegaEffectdRunSnapshot,
+} from "./protocol/framed.ts"
+
+export {
+  createOmegaEffectdFramedServer,
+  type OmegaEffectdFramedServer,
+} from "./protocol/server.ts"

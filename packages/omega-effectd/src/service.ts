@@ -2,7 +2,7 @@
  * Minimal supervised service lifecycle for omega-effectd.
  *
  * FA-01 extracts the engine and proves start/stop outside Electron.
- * FA-02 wires Rust supervision and the framed protocol.
+ * FA-02 attaches the framed stdio protocol for Rust supervision.
  */
 
 import { mkdirSync } from "node:fs"
