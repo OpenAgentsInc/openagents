@@ -88,6 +88,12 @@ import {
   randomUuid,
 } from './runtime-primitives'
 import type { SarahAgentToolActivity } from './sarah-agent-runtime'
+import {
+  bridgeFailSoft,
+  isSarahOwnerThread,
+  tryCreateSarahNostrTurnBridgeFromEnv,
+  type SarahNostrTurnBridge,
+} from './sarah-nostr-turn-bridge'
 
 export type { HostedTurnUsage } from './khala-hosted-runtime-metering'
 
@@ -695,6 +701,32 @@ export const dispatchHostedRuntimeTurn = async (
   seq += 1
   let mutationId = 2
 
+  // SARAH-NR-05 shadow dual-publish: when this is a Sarah owner thread and
+  // SARAH_NOSTR_SHADOW_PUBLISH=1, mirror the ladder onto Nostr. Fail-soft —
+  // Khala Sync remains the record authority until NR-08 cutover.
+  let nostrBridge: SarahNostrTurnBridge | null = null
+  if (isSarahOwnerThread(turn.threadId)) {
+    nostrBridge = tryCreateSarahNostrTurnBridgeFromEnv({
+      threadId: turn.threadId,
+      log: resolved.log,
+    })
+    if (nostrBridge !== null) {
+      bridgeFailSoft(
+        resolved.log,
+        'sarah_nostr_bridge_start_failed',
+        { turnId: turn.turnId, threadId: turn.threadId },
+        () => {
+          const claimed = nostrBridge!.startTurn(turn.turnId)
+          if (claimed === null) {
+            resolved.log('sarah_nostr_bridge_start_duplicate', {
+              turnId: turn.turnId,
+            })
+          }
+        },
+      )
+    }
+  }
+
   const onToolActivity = async (
     activity: SarahAgentToolActivity,
   ): Promise<void> => {
@@ -742,6 +774,30 @@ export const dispatchHostedRuntimeTurn = async (
     }
     mutationId += 1
     seq += 1
+    if (nostrBridge !== null) {
+      const entry =
+        activity.phase === 'started'
+          ? ('tool.call' as const)
+          : activity.phase === 'succeeded'
+            ? ('tool.result' as const)
+            : ('tool.error' as const)
+      bridgeFailSoft(
+        resolved.log,
+        'sarah_nostr_bridge_tool_failed',
+        { turnId: turn.turnId, entry },
+        () => {
+          nostrBridge!.publishToolActivity({
+            turnRef: turn.turnId,
+            entry,
+            payload: {
+              toolName: activity.toolName,
+              toolCallId: activity.toolCallId,
+              summary: activity.summary.slice(0, 500),
+            },
+          })
+        },
+      )
+    }
   }
 
   // 2. Resolve the prompt and drive inference.
@@ -809,6 +865,20 @@ export const dispatchHostedRuntimeTurn = async (
       }),
     )
     if (failedResult.status !== 'applied') return 'skipped'
+    if (nostrBridge !== null) {
+      bridgeFailSoft(
+        resolved.log,
+        'sarah_nostr_bridge_finish_failed',
+        { turnId: turn.turnId, entry: 'turn.interrupted' },
+        () => {
+          nostrBridge!.finishTurn({
+            turnRef: turn.turnId,
+            entry: 'turn.interrupted',
+            payload: { reason: completion.detail },
+          })
+        },
+      )
+    }
     await notifyTurnOutcomeFailSoft(resolved, 'turn_failed', turn)
     return 'failed'
   }
@@ -914,6 +984,35 @@ export const dispatchHostedRuntimeTurn = async (
     }),
   )
   if (finishedResult.status !== 'applied') return 'skipped'
+  if (nostrBridge !== null) {
+    if (usage !== undefined) {
+      bridgeFailSoft(
+        resolved.log,
+        'sarah_nostr_bridge_usage_failed',
+        { turnId: turn.turnId },
+        () => {
+          nostrBridge!.publishUsageMetric({
+            turnRef: turn.turnId,
+            totalTokens: usage.totalTokens,
+            inputTokens: usage.inputTokens,
+            outputTokens: usage.outputTokens,
+          })
+        },
+      )
+    }
+    bridgeFailSoft(
+      resolved.log,
+      'sarah_nostr_bridge_finish_failed',
+      { turnId: turn.turnId, entry: 'turn.finished' },
+      () => {
+        nostrBridge!.finishTurn({
+          turnRef: turn.turnId,
+          entry: 'turn.finished',
+          payload: { finishReason: 'stop' },
+        })
+      },
+    )
+  }
   await notifyTurnOutcomeFailSoft(resolved, 'turn_completed', turn)
   // Fail-soft post-completion write-back (#9189). The answer is durable; a
   // write-back failure here never affects the committed turn. Only fires with a
