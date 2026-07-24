@@ -1693,27 +1693,38 @@ data with an explicit boundary, and it must never widen her authority.
 
 ## 38. Packets
 
-| Packet | Repository | Outcome |
-| --- | --- | --- |
-| `SARAH-CW-00` | openagents | freeze the community contract |
-| `SARAH-CW-01` | nostr-effect | NIP-29 group policy for the owned relay |
-| `SARAH-CW-02` | openagents | membership, attestation, and revocation |
-| `SARAH-CW-03` | openagents | tick decomposition into bounded units |
-| `SARAH-CW-04` | openagents | the `NIP-LBR` request and quote lane |
-| `SARAH-CW-05` | openagents | Sarah arbitration and the dispute path |
-| `SARAH-CW-06` | openagents | experience awards, rank, and badges |
-| `SARAH-CW-07` | openagents | deferred, the paid version's settlement lane |
-| `SARAH-CW-08` | omega | the community room pane |
-| `SARAH-CW-09` | openagents | prove the outside-developer journey |
+| Packet | Repository | Outcome | State |
+| --- | --- | --- | --- |
+| `SARAH-CW-00` | openagents | freeze the community contract | done, see `docs/omega/2026-07-24-community-workroom-contract.md` |
+| `SARAH-CW-01` | nostr-effect | NIP-29 group policy for the owned relay | planned |
+| `SARAH-CW-02` | openagents | membership, attestation, and revocation | planned |
+| `SARAH-CW-03` | openagents | tick decomposition into bounded units | planned |
+| `SARAH-CW-04` | openagents | the `NIP-LBR` request and quote lane | planned |
+| `SARAH-CW-05` | openagents | Sarah arbitration and the dispute path | planned |
+| `SARAH-CW-06` | openagents | experience awards, rank, and badges | planned |
+| `SARAH-CW-07` | openagents | deferred, the paid version's settlement lane | planned |
+| `SARAH-CW-08` | omega | the community room pane | planned |
+| `SARAH-CW-09` | openagents | prove the outside-developer journey | planned |
 
 ### 38.1 `SARAH-CW-00`: freeze the community contract
 
-Specify the group identity, the membership model, the work-unit grant, the
-award namespace, the rank algorithm, and the settlement boundary. Publish
-fixtures and negative vectors for each. Name one writable authority per field.
+**Done.** The freeze lives at
+`docs/omega/2026-07-24-community-workroom-contract.md`. Fixtures live at
+`fixtures/sarah-community-workroom/`.
 
-Record the two-room rule from §30 and the authority table from §33 as
-contracts with oracles, not as prose.
+It freezes:
+
+- group identity on NIP-29 kinds `39000` / `39001` / `39002`
+- invitation-only membership and NIP-OA agent attestation
+- work-unit grant schema `openagents.sarah.community_work_unit_grant.v1`
+- experience namespace `com.openagents.xp` on NIP-32 kind `1985`
+- rank projection on NIP-85 kind `30382` and the fixed scoring table
+- settlement boundary: v1 experience only, money deferred
+- the two-room rule and the authority table as oracles
+- one writable authority per field
+
+Exit: a second implementation can interoperate from the freeze and fixtures
+alone. Verify with `node fixtures/sarah-community-workroom/validate.mjs`.
 
 ### 38.2 `SARAH-CW-03`: tick decomposition
 

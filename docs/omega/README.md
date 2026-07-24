@@ -40,7 +40,8 @@ Read these documents in this order:
     [HE-02 harness-environment release](./2026-07-24-he02-harness-environment-release.md).
 14. Read the
     [Sarah workroom MVP specification](./2026-07-24-sarah-workroom-mvp-spec.md)
-    (`OMEGA-SW-00` through `OMEGA-SW-07`, `SARAH-NR-00` through `SARAH-NR-09`).
+    (`OMEGA-SW-00` through `OMEGA-SW-07`, `SARAH-NR-00` through `SARAH-NR-09`,
+    `SARAH-CW-00` through `SARAH-CW-09`).
 15. Read the
     [Sarah Nostr record contract](./2026-07-24-sarah-nostr-record-contract.md)
     (`SARAH-NR-00`).
@@ -59,9 +60,12 @@ Read these documents in this order:
 20. Read the
     [Sarah Nostr journey proof](./2026-07-24-sarah-nostr-journey-proof.md)
     (`SARAH-NR-09`).
-21. Read the [accepted Omega plan](../sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md).
-22. Read the [master roadmap](../sol/MASTER_ROADMAP.md).
-23. Read the [Desktop release contract](../deploy/openagents-desktop-cross-platform-release.md).
+21. Read the
+    [community workroom contract freeze](./2026-07-24-community-workroom-contract.md)
+    (`SARAH-CW-00`).
+22. Read the [accepted Omega plan](../sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md).
+23. Read the [master roadmap](../sol/MASTER_ROADMAP.md).
+24. Read the [Desktop release contract](../deploy/openagents-desktop-cross-platform-release.md).
 
 The Omega roadmap owns the implementation order.
 The release-readiness audit owns the current brand and package gap.
@@ -116,6 +120,11 @@ points, and Sarah arbitrates. The v2 room does not pay in its first version.
 The build order is Nostr first, so no client is built on the current record
 and then replaced. The specification is a proposal, not an admitted packet
 ledger.
+
+The community workroom contract freeze (`SARAH-CW-00`) locks the v2 room laws.
+It freezes group identity, membership, grants, experience, rank, and
+settlement. It freezes the two-room rule and the authority table. Canonical
+and negative fixtures live under `fixtures/sarah-community-workroom/`.
 
 The accepted plan owns the product and repository boundary.
 The master roadmap owns priority across OpenAgents programs.

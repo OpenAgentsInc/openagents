@@ -1,0 +1,13 @@
+{
+  "fixture_id": "v1-payment-settlement.invalid",
+  "expect": "reject",
+  "reason": "v1_must_not_pay",
+  "contract_rule": "settlement_v1_experience_only",
+  "claim": {
+    "paysMoney": true,
+    "reward": "bitcoin",
+    "revenueShare": false,
+    "bonus": false,
+    "platformMoneySettlement": true
+  }
+}

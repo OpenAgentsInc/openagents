@@ -1,0 +1,57 @@
+{
+  "fixture": "sarah-community-workroom.canonical.manifest.v1",
+  "contract": "docs/omega/2026-07-24-community-workroom-contract.md",
+  "packet": "SARAH-CW-00",
+  "kinds": {
+    "group_metadata": 39000,
+    "group_admins": 39001,
+    "group_members": 39002,
+    "lbr_agentic_coding_request": 5934,
+    "lbr_agentic_coding_result": 6934,
+    "lbr_feedback": 7000,
+    "xp_label": 1985,
+    "rank_assertion": 30382,
+    "badge_definition": 30009,
+    "badge_award": 8,
+    "badge_profile": 10008,
+    "sarah_turn_record": 44300,
+    "authority_receipt": 44301
+  },
+  "namespaces": {
+    "xp": "com.openagents.xp"
+  },
+  "schemas": {
+    "work_unit_grant": "openagents.sarah.community_work_unit_grant.v1"
+  },
+  "fixtures": [
+    "canonical/group-identity.json",
+    "canonical/membership-invited-member.json",
+    "canonical/membership-attested-agent.json",
+    "canonical/work-unit-grant.json",
+    "canonical/work-unit-lifecycle.json",
+    "canonical/xp-award.json",
+    "canonical/rank-projection.json",
+    "canonical/scoring-table.json",
+    "canonical/two-room-separation.json",
+    "canonical/authority-table.json",
+    "canonical/settlement-boundary-v1.json"
+  ],
+  "negatives": [
+    "negative/rooms-share-membership.json",
+    "negative/rooms-share-history.json",
+    "negative/community-agent-sarah-authority.json",
+    "negative/work-unit-sarah-grant.json",
+    "negative/work-unit-missing-expiration.json",
+    "negative/work-unit-missing-idempotency.json",
+    "negative/expired-grant-accepted.json",
+    "negative/self-dealing-verification.json",
+    "negative/anonymous-agent-admission.json",
+    "negative/open-membership-without-invitation.json",
+    "negative/self-authored-rank.json",
+    "negative/award-without-accepted-result.json",
+    "negative/rank-not-recomputable.json",
+    "negative/experience-as-earnings.json",
+    "negative/v1-payment-settlement.json",
+    "negative/relay-settles-payment.json"
+  ]
+}

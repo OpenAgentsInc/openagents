@@ -1,0 +1,12 @@
+{
+  "fixture_id": "experience-as-earnings.invalid",
+  "expect": "reject",
+  "reason": "experience_called_earnings",
+  "contract_rule": "settlement_v1_experience_only",
+  "claim": {
+    "reward": "experience_only",
+    "displayLabel": "earnings",
+    "calledEarnings": true,
+    "paysMoney": false
+  }
+}

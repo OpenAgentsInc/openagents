@@ -1,0 +1,21 @@
+{
+  "fixture_id": "rooms-share-membership.invalid",
+  "expect": "reject",
+  "reason": "shared_membership_sets",
+  "contract_rule": "two_room_rule",
+  "private_room": {
+    "conversationTag": "sarah.aaaaaaaaaaaaaaaaaaaaaaaa",
+    "members": [
+      "1111111111111111111111111111111111111111111111111111111111111111"
+    ]
+  },
+  "community_room": {
+    "groupId": "openagents.community.workroom.v1",
+    "members": [
+      "1111111111111111111111111111111111111111111111111111111111111111"
+    ]
+  },
+  "checks": {
+    "membershipSetsIntersect": true
+  }
+}

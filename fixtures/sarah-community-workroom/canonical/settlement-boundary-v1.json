@@ -1,0 +1,24 @@
+{
+  "fixture_id": "settlement-boundary-v1.valid",
+  "expect": "accept",
+  "contract_rule": "settlement_v1_experience_only",
+  "v1": {
+    "paysMoney": false,
+    "reward": "experience_only",
+    "revenueShare": false,
+    "bonus": false,
+    "bitcoinPayment": false,
+    "copyRequiresNoPayDisclosure": true,
+    "impliesFuturePayment": false,
+    "callsExperienceEarnings": false
+  },
+  "boundaries": {
+    "experienceAwardsPermitted": true,
+    "rankAndBadgesPermitted": true,
+    "platformMoneySettlement": false,
+    "relaySettlementAuthority": false,
+    "sparkMdkPayout": "deferred",
+    "zapsAreSettlement": false
+  },
+  "writable_authority_money": "platform_ledger_when_admitted_never_relay"
+}

@@ -1,0 +1,12 @@
+{
+  "fixture_id": "open-membership-without-invitation.invalid",
+  "expect": "reject",
+  "reason": "membership_not_invitation_only",
+  "contract_rule": "membership_invitation_only",
+  "member": {
+    "pubkey": "5555555555555555555555555555555555555555555555555555555555555555",
+    "groupId": "openagents.community.workroom.v1",
+    "invited": false,
+    "membershipGate": "open"
+  }
+}

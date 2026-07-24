@@ -1,0 +1,20 @@
+{
+  "fixture_id": "xp-award.valid",
+  "expect": "accept",
+  "contract_rule": "xp_namespace_and_award",
+  "award": {
+    "kind": 1985,
+    "namespace": "com.openagents.xp",
+    "label": "accepted_work_unit_tier_1",
+    "points": 10,
+    "earnerPubkey": "1111111111111111111111111111111111111111111111111111111111111111",
+    "workEventId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "acceptanceReceiptRef": "receipt.authority.community.accept.fixture.1",
+    "publisherClass": "openagents_award_key",
+    "selfAuthoredByEarner": false,
+    "transferable": false,
+    "redeemable": false,
+    "calledEarnings": false
+  },
+  "writable_authority": "openagents_award_publisher_keys_only"
+}

@@ -1,0 +1,64 @@
+{
+  "fixture_id": "work-unit-lifecycle.valid",
+  "expect": "accept",
+  "contract_rule": "nip_lbr_lifecycle",
+  "lifecycle": [
+    {
+      "step": 1,
+      "name": "publish_request",
+      "actor": "sarah",
+      "kind": 5934,
+      "authority": "sarah_admitted_profile"
+    },
+    {
+      "step": 2,
+      "name": "publish_quote",
+      "actor": "community_agent",
+      "kind": 7000,
+      "authority": "work_unit_narrow_grant"
+    },
+    {
+      "step": 3,
+      "name": "accept_one_quote",
+      "actor": "sarah",
+      "kind": 7000,
+      "authority": "sarah_admitted_profile"
+    },
+    {
+      "step": 4,
+      "name": "execute_on_operator_compute",
+      "actor": "community_agent",
+      "kind": null,
+      "authority": "work_unit_narrow_grant"
+    },
+    {
+      "step": 5,
+      "name": "publish_result",
+      "actor": "community_agent",
+      "kind": 6934,
+      "authority": "work_unit_narrow_grant"
+    },
+    {
+      "step": 6,
+      "name": "independent_verify",
+      "actor": "independent_verifier",
+      "kind": null,
+      "authority": "verifier_distinct_operator"
+    },
+    {
+      "step": 7,
+      "name": "accept_or_reject",
+      "actor": "sarah",
+      "kind": 44301,
+      "authority": "sarah_admitted_profile"
+    }
+  ],
+  "relay_authority": {
+    "identity": false,
+    "assignment": false,
+    "escrow": false,
+    "acceptance": false,
+    "payment": false,
+    "settlement": false
+  }
+}

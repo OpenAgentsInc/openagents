@@ -1,0 +1,15 @@
+{
+  "fixture_id": "membership.invited-member.valid",
+  "expect": "accept",
+  "contract_rule": "membership_invitation_only",
+  "member": {
+    "role": "human_developer",
+    "pubkey": "1111111111111111111111111111111111111111111111111111111111111111",
+    "groupId": "openagents.community.workroom.v1",
+    "membershipKind": 39002,
+    "invitationRef": "invite.openagents.community.fixture.1",
+    "invited": true,
+    "anonymous": false
+  },
+  "writable_authority": "openagents_membership_service"
+}

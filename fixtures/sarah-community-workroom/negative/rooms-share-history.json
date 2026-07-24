@@ -1,0 +1,12 @@
+{
+  "fixture_id": "rooms-share-history.invalid",
+  "expect": "reject",
+  "reason": "shared_history_stream",
+  "contract_rule": "two_room_rule",
+  "claim": {
+    "privateTurnCarriesCommunityGroupTag": true,
+    "turnKind": 44300,
+    "conversationTag": "sarah.aaaaaaaaaaaaaaaaaaaaaaaa",
+    "communityGroupTag": "openagents.community.workroom.v1"
+  }
+}

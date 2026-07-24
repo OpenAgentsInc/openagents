@@ -1,0 +1,14 @@
+{
+  "fixture_id": "self-dealing-verification.invalid",
+  "expect": "reject",
+  "reason": "producer_and_verifier_same_operator",
+  "contract_rule": "independent_verification",
+  "claim": {
+    "producerOperatorPubkey": "1111111111111111111111111111111111111111111111111111111111111111",
+    "verifierOperatorPubkey": "1111111111111111111111111111111111111111111111111111111111111111",
+    "producerAgentPubkey": "2222222222222222222222222222222222222222222222222222222222222222",
+    "verifierAgentPubkey": "3333333333333333333333333333333333333333333333333333333333333333",
+    "keysDistinct": true,
+    "operatorsDistinct": false
+  }
+}

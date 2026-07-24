@@ -1,0 +1,26 @@
+{
+  "fixture_id": "rank-projection.valid",
+  "expect": "accept",
+  "contract_rule": "rank_recomputable_from_awards",
+  "awards": [
+    {
+      "label": "accepted_work_unit_tier_1",
+      "points": 10,
+      "workEventId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "label": "accepted_independent_verification",
+      "points": 5,
+      "workEventId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  ],
+  "rank": {
+    "kind": 30382,
+    "publisherClass": "openagents_scorer_key",
+    "earnerPubkey": "1111111111111111111111111111111111111111111111111111111111111111",
+    "rankValue": 15,
+    "isProjection": true,
+    "onDisagreement": "awards_win"
+  },
+  "recomputedTotal": 15
+}

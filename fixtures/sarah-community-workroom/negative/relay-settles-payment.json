@@ -1,0 +1,11 @@
+{
+  "fixture_id": "relay-settles-payment.invalid",
+  "expect": "reject",
+  "reason": "relay_is_not_settlement_authority",
+  "contract_rule": "settlement_boundary",
+  "claim": {
+    "relaySettlementAuthority": true,
+    "settlementCountedPerRelayObservation": true,
+    "platformLedgerRequired": false
+  }
+}

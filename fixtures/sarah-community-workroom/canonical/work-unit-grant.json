@@ -1,0 +1,22 @@
+{
+  "fixture_id": "work-unit-grant.valid",
+  "expect": "accept",
+  "contract_rule": "work_unit_narrow_grant",
+  "grant": {
+    "schema": "openagents.sarah.community_work_unit_grant.v1",
+    "unitRef": "unit.openagents.community.fixture.1",
+    "groupId": "openagents.community.workroom.v1",
+    "targetRef": "repo.OpenAgentsInc.openagents:main",
+    "allowedActions": ["read_public_refs", "run_named_verify", "publish_result_refs"],
+    "budget": {
+      "msats": 0,
+      "note": "v1 ignores money settlement"
+    },
+    "expiresAt": 1893456000,
+    "idempotencyId": "idem.community.unit.fixture.1",
+    "tier": 1,
+    "authorityClass": "work_unit_narrow_grant",
+    "sarahProfileGrant": false
+  },
+  "writable_authority": "sarah_turn_service_narrow_grant_only"
+}

@@ -1,0 +1,32 @@
+{
+  "fixture_id": "two-room-separation.valid",
+  "expect": "accept",
+  "contract_rule": "two_room_rule",
+  "private_room": {
+    "kind": "owner_private_sarah_conversation",
+    "conversationTag": "sarah.aaaaaaaaaaaaaaaaaaaaaaaa",
+    "members": [
+      "0101010101010101010101010101010101010101010101010101010101010101",
+      "0202020202020202020202020202020202020202020202020202020202020202"
+    ],
+    "encrypted": true,
+    "turnRecordKind": 44300
+  },
+  "community_room": {
+    "kind": "nip29_community_group",
+    "groupId": "openagents.community.workroom.v1",
+    "members": [
+      "1111111111111111111111111111111111111111111111111111111111111111",
+      "2222222222222222222222222222222222222222222222222222222222222222"
+    ],
+    "membershipGate": "invitation_only"
+  },
+  "checks": {
+    "groupIdEqualsConversationTag": false,
+    "membershipSetsIntersect": false,
+    "sharedHistoryStream": false,
+    "privateTurnCarriesCommunityGroupTag": false,
+    "communityMembershipReferencesPrivateConversation": false,
+    "crossRoomPublicationRequiresNewEvent": true
+  }
+}

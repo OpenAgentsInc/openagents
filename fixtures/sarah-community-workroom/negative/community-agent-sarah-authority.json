@@ -1,0 +1,11 @@
+{
+  "fixture_id": "community-agent-sarah-authority.invalid",
+  "expect": "reject",
+  "reason": "authority_amplification",
+  "contract_rule": "authority_table",
+  "claim": {
+    "actor": "community_agent",
+    "runsSarahTick": true,
+    "authority": "sarah_admitted_profile"
+  }
+}

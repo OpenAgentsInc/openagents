@@ -33725,6 +33725,24 @@
       }
     },
     {
+      "path": "docs/omega/2026-07-24-community-workroom-contract.md",
+      "sha256": "9a693b8c0f42165aaad7daed96cf06cfec84395a73de29d2ec084d16b2f82b6e",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "mixed",
+        "risk": "high",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "human",
+        "ste_accepted_screening_rules": [
+          "STE-2.4"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/omega/2026-07-24-full-auto-contract-freeze.md",
       "sha256": "f2fa10b79392cde2d20a47bba1fab1edea894e26962a1b666138c9c05ac05156",
       "reason": "Final review of a converted document",
@@ -34230,7 +34248,7 @@
     },
     {
       "path": "docs/omega/2026-07-24-sarah-workroom-mvp-spec.md",
-      "sha256": "2e6b05d70a3d7f893e98e90a2c12dabf48bc1f02483d6356f984ae7e3ca6ad41",
+      "sha256": "7b9ec08a32c1a9bc838ca2bdfb1d9dc4e90ce902bf4d5def68bcdf7222922d3f",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -34248,7 +34266,7 @@
     },
     {
       "path": "docs/omega/README.md",
-      "sha256": "27750e82ab765c940ac944bd512756bd65f2b8a93e206b948252035cd0d38bd7",
+      "sha256": "02cfc5573a873662a30db5c9a92cfd868509fa191efa4066ba0999518f5a0245",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

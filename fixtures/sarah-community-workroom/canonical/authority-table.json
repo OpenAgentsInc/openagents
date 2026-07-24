@@ -1,0 +1,38 @@
+{
+  "fixture_id": "authority-table.valid",
+  "expect": "accept",
+  "contract_rule": "authority_table",
+  "layers": [
+    {
+      "layer": "sarah_tick",
+      "who": "openagents_turn_service",
+      "authority": "sarah_admitted_profile"
+    },
+    {
+      "layer": "decomposition",
+      "who": "openagents_turn_service",
+      "authority": "sarah_profile_bounded"
+    },
+    {
+      "layer": "work_unit",
+      "who": "community_agent_own_compute",
+      "authority": "work_unit_narrow_grant"
+    },
+    {
+      "layer": "acceptance",
+      "who": "sarah",
+      "authority": "sarah_admitted_profile"
+    },
+    {
+      "layer": "settlement",
+      "who": "platform_ledger",
+      "authority": "neither_sarah_nor_community_agent"
+    }
+  ],
+  "forbidden": {
+    "communityAgentRunsSarahTick": false,
+    "unitCarriesSarahFullProfile": false,
+    "acceptanceSettlesMoney": false,
+    "relaySettlesMoney": false
+  }
+}

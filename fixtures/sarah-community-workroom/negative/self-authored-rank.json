@@ -1,0 +1,13 @@
+{
+  "fixture_id": "self-authored-rank.invalid",
+  "expect": "reject",
+  "reason": "member_publishes_rank",
+  "contract_rule": "rank_scorer_keys_only",
+  "rank": {
+    "kind": 30382,
+    "publisherClass": "member_self_report",
+    "earnerPubkey": "1111111111111111111111111111111111111111111111111111111111111111",
+    "publisherPubkey": "1111111111111111111111111111111111111111111111111111111111111111",
+    "rankValue": 999
+  }
+}

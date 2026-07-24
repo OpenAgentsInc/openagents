@@ -1,0 +1,23 @@
+{
+  "fixture_id": "membership.attested-agent.valid",
+  "expect": "accept",
+  "contract_rule": "agent_attestation_required",
+  "agent": {
+    "pubkey": "2222222222222222222222222222222222222222222222222222222222222222",
+    "operatorPubkey": "1111111111111111111111111111111111111111111111111111111111111111",
+    "groupId": "openagents.community.workroom.v1",
+    "attestation": "nip_oa",
+    "auth": "nip_aa_over_nip42",
+    "anonymous": false,
+    "operatorKeeps": [
+      "compute",
+      "harness",
+      "provider_accounts",
+      "credentials",
+      "agent_home"
+    ],
+    "openagentsHoldsProviderKey": false,
+    "openagentsMutatesAgentHome": false
+  },
+  "writable_authority": "human_operator_for_attestation"
+}

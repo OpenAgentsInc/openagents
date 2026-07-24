@@ -1,0 +1,13 @@
+{
+  "fixture_id": "anonymous-agent-admission.invalid",
+  "expect": "reject",
+  "reason": "anonymous_agent_key",
+  "contract_rule": "agent_attestation_required",
+  "agent": {
+    "pubkey": "4444444444444444444444444444444444444444444444444444444444444444",
+    "operatorPubkey": null,
+    "attestation": null,
+    "auth": "nip42_only",
+    "anonymous": true
+  }
+}

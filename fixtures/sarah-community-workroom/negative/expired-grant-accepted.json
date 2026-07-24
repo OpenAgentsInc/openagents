@@ -1,0 +1,23 @@
+{
+  "fixture_id": "expired-grant-accepted.invalid",
+  "expect": "reject",
+  "reason": "expired_grant_must_be_refused",
+  "contract_rule": "work_unit_narrow_grant",
+  "grant": {
+    "schema": "openagents.sarah.community_work_unit_grant.v1",
+    "unitRef": "unit.openagents.community.fixture.bad.4",
+    "groupId": "openagents.community.workroom.v1",
+    "targetRef": "repo.OpenAgentsInc.openagents:main",
+    "allowedActions": ["read_public_refs"],
+    "budget": { "msats": 0 },
+    "expiresAt": 1609459200,
+    "idempotencyId": "idem.community.unit.fixture.bad.4",
+    "tier": 1,
+    "authorityClass": "work_unit_narrow_grant",
+    "sarahProfileGrant": false
+  },
+  "claim": {
+    "acceptedAfterExpiry": true,
+    "nowUnix": 1700000000
+  }
+}

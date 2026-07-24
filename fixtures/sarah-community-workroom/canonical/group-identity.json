@@ -1,0 +1,19 @@
+{
+  "fixture_id": "group-identity.valid",
+  "expect": "accept",
+  "contract_rule": "group_identity_nip29",
+  "group": {
+    "protocol": "nip29",
+    "groupId": "openagents.community.workroom.v1",
+    "metadataKind": 39000,
+    "adminsKind": 39001,
+    "membersKind": 39002,
+    "discovery": "nip11_plus_invitation",
+    "globalDirectory": false,
+    "membershipGate": "invitation_only",
+    "forbiddenProtocols": ["nip28", "nip72"],
+    "visibility": "semi_public_inside_membership",
+    "writeAccess": "closed"
+  },
+  "writable_authority": "owned_relay_policy_and_openagents_group_bootstrap"
+}

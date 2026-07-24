@@ -1,0 +1,22 @@
+{
+  "fixture_id": "scoring-table.valid",
+  "expect": "accept",
+  "contract_rule": "scoring_function_v1",
+  "table": {
+    "accepted_work_unit_tier_1": 10,
+    "accepted_work_unit_tier_2": 20,
+    "accepted_work_unit_tier_3": 40,
+    "accepted_independent_verification": 5,
+    "reproduced_defect": 8,
+    "accepted_review_of_member_result": 3,
+    "first_accepted_unit_new_job_type": 5
+  },
+  "rules": {
+    "hiddenWeights": false,
+    "modelInLoop": false,
+    "decayInV1": false,
+    "multipliesPayment": false,
+    "awardOnVolume": false,
+    "awardOnAcceptedOutcomesOnly": true
+  }
+}

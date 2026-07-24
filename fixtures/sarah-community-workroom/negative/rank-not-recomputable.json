@@ -1,0 +1,20 @@
+{
+  "fixture_id": "rank-not-recomputable.invalid",
+  "expect": "reject",
+  "reason": "rank_disagrees_with_awards",
+  "contract_rule": "rank_recomputable_from_awards",
+  "awards": [
+    {
+      "label": "accepted_work_unit_tier_1",
+      "points": 10
+    }
+  ],
+  "rank": {
+    "kind": 30382,
+    "publisherClass": "openagents_scorer_key",
+    "rankValue": 40,
+    "isProjection": true,
+    "onDisagreement": "rank_wins"
+  },
+  "recomputedTotal": 10
+}
