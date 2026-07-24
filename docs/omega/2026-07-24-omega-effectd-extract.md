@@ -4,7 +4,7 @@
 - Packet: `OMEGA-FA-01`
 - Omega issue: [OpenAgentsInc/omega#20](https://github.com/OpenAgentsInc/omega/issues/20)
 - Package: `@openagentsinc/omega-effectd` `0.1.0`
-- Pack SHA-256: `4cc1cb2e5d71ff8af6f730248871ee779488a991f21a848880e885331ef31831`
+- Pack SHA-256: `20e4e002202b6db640501301f134e0a9f0f8718fe1c1dc38bef4aa5ab2d69ffe`
 - Freeze: [2026-07-24-full-auto-contract-freeze.md](./2026-07-24-full-auto-contract-freeze.md)
 
 ## Result
@@ -30,6 +30,8 @@ Durable files stay under `{dataRoot}/full-auto/`.
 - Rust supervisor and framed protocol — see
   [2026-07-24-omega-effectd-supervisor.md](./2026-07-24-omega-effectd-supervisor.md)
   (FA-02)
-- GPUI launcher (FA-03)
+- GPUI launcher — see
+  [2026-07-24-omega-full-auto-gpui-launcher.md](./2026-07-24-omega-full-auto-gpui-launcher.md)
+  (FA-03)
 - Full routing/liveness host wiring beyond the extracted engine (FA-04)
 - MemoHarness and initiative (FA-00 cut)

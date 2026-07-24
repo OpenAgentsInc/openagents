@@ -34,18 +34,63 @@ export type OmegaEffectdInitializeResult = Readonly<{
   protocolVersion: typeof OMEGA_EFFECTD_PROTOCOL_VERSION
   serviceVersion: typeof OMEGA_EFFECTD_SERVICE_VERSION
   generation: number
-  capabilities: ReadonlyArray<"health" | "list_runs" | "get_run" | "pause" | "resume" | "stop">
+  capabilities: ReadonlyArray<
+    | "health"
+    | "list_runs"
+    | "get_run"
+    | "start"
+    | "pause"
+    | "resume"
+    | "stop"
+    | "retry"
+  >
   dataRoot: string
   activeRunLimit: number
 }>
 
-/** Redacted durable run projection for supervisor/UI (no objective/transcript). */
+/** Redacted durable run projection for list/monitor (no objective/transcript). */
 export type OmegaEffectdRunSnapshot = Readonly<{
   runRef: string
   threadRef: string | null
   state: string
   title: string
   updatedAt: string
+}>
+
+/** Owner-local run detail for the GPUI launcher/monitor (FA-03). */
+export type OmegaEffectdRunDetail = Readonly<{
+  runRef: string
+  threadRef: string | null
+  state: string
+  title: string
+  objective: string
+  doneCondition: string
+  workspaceRef: string | null
+  lane: string | null
+  turnCap: number
+  successfulAttempts: number
+  failedAttempts: number
+  stallCause: string | null
+  recoveryAction: string
+  terminalReason: string | null
+  updatedAt: string
+  turns: ReadonlyArray<{
+    turnRef: string
+    lane: string
+    outcomeSummary: string
+    createdAt: string
+  }>
+}>
+
+export type OmegaEffectdStartParams = Readonly<{
+  workspaceRef: string
+  title: string
+  objective: string
+  doneCondition: string
+  lane?: string
+  model?: string
+  turnCap?: number
+  autonomy?: boolean
 }>
 
 export type OmegaEffectdHealthResult = Readonly<{

@@ -33722,7 +33722,7 @@
     },
     {
       "path": "docs/omega/2026-07-24-omega-effectd-extract.md",
-      "sha256": "15c2bfa63d2b83404f9fe5a7adf08d41440a76191b078cebd90b6c2f60233a37",
+      "sha256": "a3d4fd5edfaca185bbab4554e99bae027b54fec2829ed48cf1ab2a23d2637a3a",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
@@ -33740,7 +33740,7 @@
     },
     {
       "path": "docs/omega/2026-07-24-omega-effectd-supervisor.md",
-      "sha256": "49ed71f4879803ddd1b5ea39cc22fc2d62f0ffbe5e4a5e7718a62c1216c886f9",
+      "sha256": "13fb09dce8aed0d370575834d6080a1bcb93697f48e84b357d51e06ab7bc3566",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
@@ -33754,6 +33754,24 @@
         "ste_status": "inspected",
         "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
         "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/omega/2026-07-24-omega-full-auto-gpui-launcher.md",
+      "sha256": "fa4ef708f38a8209fe95361daeed17032e6f353971aeaa9bd97b698db4a6c064",
+      "reason": "Final review of mutable first-party agent technical text",
+      "profile": {
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ]
       }
     },
     {

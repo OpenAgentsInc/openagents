@@ -17,19 +17,22 @@ import { openFullAutoRegistry } from "../engine/full-auto-registry.ts"
 import {
   FULL_AUTO_RUN_ACTIVE_LIMIT,
   openFullAutoRunRegistry,
-  type FullAutoRun,
 } from "../engine/full-auto-run-registry.ts"
 import { openFullAutoRunReportStore } from "../engine/full-auto-run-report.ts"
 import {
   FULL_AUTO_CONTROL_CALLER_LABEL,
   getFullAutoRunAction,
+  getFullAutoRunReportAction,
   listFullAutoRunsAction,
   pauseFullAutoRunAction,
   resumeFullAutoRunAction,
+  retryFullAutoRunNowAction,
+  startFullAutoRunAction,
   stopFullAutoRunAction,
   type FullAutoRunActionContext,
 } from "../engine/full-auto-run-actions.ts"
 import type { FullAutoControlCapabilities } from "../engine/full-auto-control-server.ts"
+import { decodeFullAutoControlRunStartRequest } from "../engine/full-auto-control-contract.ts"
 import { FULL_AUTO_DEFAULT_LANE } from "../engine/full-auto-lane.ts"
 import type { OmegaEffectdService } from "../service.ts"
 import {
@@ -42,16 +45,44 @@ import {
   type OmegaEffectdInitializeResult,
   type OmegaEffectdProtocolError,
   type OmegaEffectdResponse,
-  type OmegaEffectdRunSnapshot,
+  type OmegaEffectdRunDetail,
 } from "./framed.ts"
 
-const projectSnapshot = (run: FullAutoRun): OmegaEffectdRunSnapshot => ({
-  runRef: run.runRef,
-  threadRef: run.threadRef ?? null,
-  state: run.state,
-  title: run.title,
-  updatedAt: run.updatedAt,
-})
+const projectDetail = (
+  ctx: FullAutoRunActionContext,
+  runRef: string,
+): OmegaEffectdRunDetail | null => {
+  const outcome = getFullAutoRunAction(ctx, runRef)
+  if (!outcome.ok) return null
+  const run = outcome.value
+  const report = getFullAutoRunReportAction(ctx, runRef)
+  const turns = report.ok
+    ? report.value.turns.map(turn => ({
+        turnRef: turn.turnRef,
+        lane: turn.lane,
+        outcomeSummary: turn.outcomeSummary,
+        createdAt: turn.createdAt,
+      }))
+    : []
+  return {
+    runRef: run.runRef,
+    threadRef: run.threadRef ?? null,
+    state: run.state,
+    title: run.title,
+    objective: run.objective,
+    doneCondition: run.doneCondition,
+    workspaceRef: run.workspaceRef ?? null,
+    lane: run.lane ?? null,
+    turnCap: run.turnCap,
+    successfulAttempts: run.successfulAttempts,
+    failedAttempts: run.failedAttempts,
+    stallCause: run.stallCause ?? null,
+    recoveryAction: run.recoveryAction,
+    terminalReason: run.terminalReason ?? null,
+    updatedAt: run.lastProgressAt ?? run.createdAt,
+    turns,
+  }
+}
 
 const redactedError = (
   code: OmegaEffectdProtocolError["code"],
@@ -154,7 +185,16 @@ export const createOmegaEffectdFramedServer = (
         protocolVersion: OMEGA_EFFECTD_PROTOCOL_VERSION,
         serviceVersion: OMEGA_EFFECTD_SERVICE_VERSION,
         generation,
-        capabilities: ["health", "list_runs", "get_run", "pause", "resume", "stop"],
+        capabilities: [
+          "health",
+          "list_runs",
+          "get_run",
+          "start",
+          "pause",
+          "resume",
+          "stop",
+          "retry",
+        ],
         dataRoot: health.dataRoot,
         activeRunLimit: FULL_AUTO_RUN_ACTIVE_LIMIT,
       }
@@ -186,7 +226,7 @@ export const createOmegaEffectdFramedServer = (
           threadRef: run.threadRef,
           state: run.state,
           title: run.title,
-          updatedAt: run.updatedAt,
+          updatedAt: run.lastProgressAt ?? run.createdAt,
         }))
         return respond(request.id, true, { runs })
       }
@@ -195,24 +235,63 @@ export const createOmegaEffectdFramedServer = (
         if (typeof params.runRef !== "string" || params.runRef.length === 0) {
           return respond(request.id, false, undefined, redactedError("invalid_request", "get_run requires runRef."))
         }
-        const outcome = getFullAutoRunAction(actionContext(), params.runRef)
+        const detail = projectDetail(actionContext(), params.runRef)
+        if (detail === null) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError("run_not_found", "No Full Auto run exists for that runRef."),
+          )
+        }
+        return respond(request.id, true, { run: detail })
+      }
+      case "start": {
+        const body = decodeFullAutoControlRunStartRequest(request.params ?? {})
+        if (body === null) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError(
+              "invalid_request",
+              "start requires workspaceRef, title, objective, and doneCondition.",
+            ),
+          )
+        }
+        const outcome = startFullAutoRunAction(actionContext(), body)
         if (!outcome.ok) {
           return respond(
             request.id,
             false,
             undefined,
-            redactedError("run_not_found", outcome.error.message),
+            redactedError("invalid_request", outcome.error.message),
           )
         }
-        return respond(request.id, true, {
-          run: {
-            runRef: outcome.value.runRef,
-            threadRef: outcome.value.threadRef,
-            state: outcome.value.state,
-            title: outcome.value.title,
-            updatedAt: outcome.value.updatedAt,
-          },
-        })
+        const detail = projectDetail(actionContext(), outcome.value.runRef)
+        return respond(request.id, true, { run: detail })
+      }
+      case "retry": {
+        const params = (request.params ?? {}) as { runRef?: string }
+        if (typeof params.runRef !== "string" || params.runRef.length === 0) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError("invalid_request", "retry requires runRef."),
+          )
+        }
+        const outcome = retryFullAutoRunNowAction(actionContext(), params.runRef)
+        if (!outcome.ok) {
+          return respond(
+            request.id,
+            false,
+            undefined,
+            redactedError("invalid_request", outcome.error.message),
+          )
+        }
+        const detail = projectDetail(actionContext(), params.runRef)
+        return respond(request.id, true, { run: detail })
       }
       case "pause":
       case "resume":
@@ -240,9 +319,9 @@ export const createOmegaEffectdFramedServer = (
             redactedError("invalid_request", outcome.error.message),
           )
         }
-        const run = runRegistry.get(params.runRef)
+        const detail = projectDetail(actionContext(), params.runRef)
         return respond(request.id, true, {
-          run: run ? projectSnapshot(run) : null,
+          run: detail,
         })
       }
       default:
