@@ -31,6 +31,15 @@ handoff. The transition receipt names both source and target thread refs.
 RC.1 and RC.2 remain immutable historical inputs, but neither is eligible for
 the final Omega candidate.
 
+Independent clean-room verification used a strict host that permanently bound
+each created thread to its creation lane and rejected mismatched dispatch. The
+Codex thread and distinct Claude thread completed start, pause, handoff, resume,
+mission-context transfer, restart recovery, and secret redaction. A simulated
+crash after the run-registry rebind but before the continuation-registry move
+was repaired before reconciliation. Release tag, source tree, archive,
+sidecar, manifests, Node runtime, licenses, deterministic archive metadata,
+and private file modes all matched their pinned values.
+
 ## Result
 
 OpenAgents released a standalone macOS arm64 component for Omega. The component
