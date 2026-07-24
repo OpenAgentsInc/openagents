@@ -28,6 +28,25 @@ Omega Agent Computer code path is landed (AC-00…AC-02). Live AC-03 proof from
    Computer panel Start, then capture public-safe session/placement/artifact/
    usage/teardown refs matching the Sarah `#9191` proof class.
 
+
+## OPEN — AC-01 isolated ChatGPT reconnect for Agent Computer Codex (#9205, 2026-07-24)
+
+Six of seven Agent Computer harnesses are runtime-qualified. Codex remains
+`guestImage.codex.executionState: owner_reauthentication_required`. Image and
+GCE hosts are up. No reusable Agent Computer Codex auth secret exists in Secret
+Manager. Auth is brokered from provider-account custody into scratch
+`CODEX_HOME`.
+
+**Never** run `codex login` / `pylon auth codex` against default `~/.codex`.
+
+1. OpenAgents Desktop → Settings → Connections.
+2. Connect/Reconnect ChatGPT into a **new isolated** Agent Computer custody slot.
+3. Complete OpenAI device login (browser + short code).
+4. Confirm connected/healthy.
+5. Tell the agent: **"AC-01 isolated ChatGPT reconnect done"**.
+
+Also mirrored in workspace `NEEDS_OWNER.md`.
+
 ## RESOLVED — IDE-13 owner-managed environment authority (2026-07-22)
 
 IDE-13 requires an owner-managed execution target. The current target binding

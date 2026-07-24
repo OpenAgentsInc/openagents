@@ -450,7 +450,7 @@
     },
     {
       "path": "NEEDS_OWNER.md",
-      "sha256": "0cd195bf867495598e1379090b72aa470a7419320b730366fe607955e0ee4821",
+      "sha256": "9ee7443b762c4457581c1a38d40774b717e07099ceb27b9ae835978b3fcf2831",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -33658,6 +33658,24 @@
         "source": null,
         "replacement": null,
         "ste_audience": "human",
+        "ste_accepted_screening_rules": [
+          "STE-2.4"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/omega/2026-07-24-ac03-codex-first-harness-default.md",
+      "sha256": "bca8510ab2a464fcf2de7a1bb21fd125a8e65a117d4eb169d765599384a836e1",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
         "ste_accepted_screening_rules": [
           "STE-2.4"
         ],
