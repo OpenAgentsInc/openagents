@@ -6,8 +6,8 @@
 - Decision owner: owner
 - Buzz baseline: `v0.4.24` at `710ed9fff57878a1d69f809b80a6ee0416c53fc4`
 - Buzz main observed: `b78a684cfa997bbffbc86ac9c311f4f7af25d11a`
-- Omega main observed: `676392ed32e5ab33c14c651974c6682f2e32920f`
-- OpenAgents main observed: `ee1f919ab70772e14ff1aafb9437c92a2cb4fc54`
+- Omega main observed: `6abbd28aca7142292b0223f198fb89c1b81e2e52`
+- OpenAgents main observed: `192c54550d1d5d52e8ee3a932b9af5b1f882ae17`
 - Zed main observed: `2d692b4f2a0599d22d5c9c123e2ce6cad4d967fc`
 
 ## Recommendation
@@ -117,6 +117,31 @@ An Omega actor should remain a Nostr actor outside Omega.
 An authorized external agent should be able to receive work, report progress,
 and return a verifiable result through Nostr alone.
 
+### NIP-90 work and markets as a native path
+
+Omega should support work that is discovered, contracted, paid, returned, and
+verified through Nostr without requiring ACP or a cloud-owned job record.
+
+The historical Rust product already explored this path in depth.
+It contained standard NIP-90 request, feedback, and result types, a provider
+lane, provider races, payment facts, relay evidence, data vending, and native
+marketplace views.
+The
+[historical Rust and WGPUI harvest](../omega/2026-07-24-historical-rust-wgpui-gpui-harvest.md)
+records the reusable behavior and the framework code that must stay behind.
+
+The first Omega path should use standard kind 5050.
+It should show the signed request, relay acknowledgements, provider feedback,
+payable terms, bounded payment authority, result verification, and signed
+closeout or receipt references in one native GPUI Jobs and Markets surface.
+The same shell can later support OpenAgents labor kinds and the data-selling
+profile.
+
+This is not a side marketplace.
+It is the beyond-Buzz proof that a workroom can use portable Nostr identity and
+multi-relay causal history to work with an external provider on equal protocol
+terms.
+
 ### Open protocol evolution
 
 Buzz custom kinds are useful, but Omega should not repeat opaque extension
@@ -209,23 +234,24 @@ An outcome is at parity only when all these statements are true:
 
 ### Accepted parity ledger
 
-| Domain                  | Full-parity outcome                                                                                       | Omega implementation direction                                       | This week                           |
-| ----------------------- | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- | ----------------------------------- |
-| Home and attention      | Inbox, mentions, unread work, reminders, active runs, and failures                                        | Native projection from authorized Nostr events                       | Required                            |
-| Workrooms               | Rooms, channels, nested threads, replies, reactions, pins, bookmarks, and read state                      | Native GPUI panes over the Nostr workroom log                        | Required                            |
-| Direct messages         | Owner-private and group conversations with the same history rules                                         | Encrypted Nostr conversations with native Omega projection           | Required for owner-private use      |
-| People and agents       | Roster, roles, presence, status, profile, mention, and team membership                                    | Signed Nostr identity, profile, membership, and presence events      | Required                            |
-| Agent operation         | Existing agents, managed agents, streaming turns, interrupt, retry, handoff, queues, stalls, and receipts | Nostr requests and receipts plus ACP execution and Omega supervision | Required                            |
-| Code work               | Project, branch, worktree, editor, terminal, diff, review, test, approval, and delivery context           | Existing Zed substrate inside the workroom                           | Required                            |
-| Decisions and workflows | Typed decisions, blockers, approvals, schedules, reminders, and loop prevention                           | Signed Nostr events plus OpenAgents intent and Full Auto policy      | Required                            |
-| History and search      | Authorized full-text search across messages, decisions, runs, files, and code references                  | Relay indexes plus bounded local projection                          | Required                            |
-| Files and canvas        | Attachments, previews, annotations, and spatial work artifacts                                            | Nostr metadata, Blossom objects, native preview, then richer canvas  | Stretch                             |
-| Forum and stream        | Long-form topics, activity stream, and deliberate public projection                                       | Nostr events rendered through OpenAgents Forum and timeline          | Accepted, not a Week 1 release gate |
-| Governance              | Membership, role changes, moderation, tombstones, audit, and revocation                                   | Signed Nostr governance events and receipts                          | Stretch                             |
-| Cross-device use        | Web and mobile control with consistent history and read state                                             | OpenAgents clients over the same Nostr history and read-state events | Accepted, later proof milestone     |
-| Voice                   | Dictation, huddles, transcripts, and recording controls                                                   | Nostr control and transcript events with governed audio and Blossom  | Accepted, later proof milestone     |
-| Nostr core              | Identity, pairing, relay sync, remote signing, ingress, egress, and replay                                | Isolated signer, owned relay path, and `nostr-effect`                | Required                            |
-| Beyond-Buzz Nostr       | Multi-relay policy, offline outbox, causal graph, protocol negotiation, external agents, and export       | Native Omega plus `nostr-effect` specifications and conformance      | Required core slice                 |
+| Domain                    | Full-parity outcome                                                                                       | Omega implementation direction                                                  | This week                           |
+| ------------------------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- | ----------------------------------- |
+| Home and attention        | Inbox, mentions, unread work, reminders, active runs, and failures                                        | Native projection from authorized Nostr events                                  | Required                            |
+| Workrooms                 | Rooms, channels, nested threads, replies, reactions, pins, bookmarks, and read state                      | Native GPUI panes over the Nostr workroom log                                   | Required                            |
+| Direct messages           | Owner-private and group conversations with the same history rules                                         | Encrypted Nostr conversations with native Omega projection                      | Required for owner-private use      |
+| People and agents         | Roster, roles, presence, status, profile, mention, and team membership                                    | Signed Nostr identity, profile, membership, and presence events                 | Required                            |
+| Agent operation           | Existing agents, managed agents, streaming turns, interrupt, retry, handoff, queues, stalls, and receipts | Nostr requests and receipts plus ACP execution and Omega supervision            | Required                            |
+| Markets and external work | Discover, request, select, pay, verify, and retain evidence from a Nostr-native provider without ACP      | Native GPUI over standard NIP-90, `nostr-effect`, and bounded payment authority | Required core slice                 |
+| Code work                 | Project, branch, worktree, editor, terminal, diff, review, test, approval, and delivery context           | Existing Zed substrate inside the workroom                                      | Required                            |
+| Decisions and workflows   | Typed decisions, blockers, approvals, schedules, reminders, and loop prevention                           | Signed Nostr events plus OpenAgents intent and Full Auto policy                 | Required                            |
+| History and search        | Authorized full-text search across messages, decisions, runs, files, and code references                  | Relay indexes plus bounded local projection                                     | Required                            |
+| Files and canvas          | Attachments, previews, annotations, and spatial work artifacts                                            | Nostr metadata, Blossom objects, native preview, then richer canvas             | Stretch                             |
+| Forum and stream          | Long-form topics, activity stream, and deliberate public projection                                       | Nostr events rendered through OpenAgents Forum and timeline                     | Accepted, not a Week 1 release gate |
+| Governance                | Membership, role changes, moderation, tombstones, audit, and revocation                                   | Signed Nostr governance events and receipts                                     | Stretch                             |
+| Cross-device use          | Web and mobile control with consistent history and read state                                             | OpenAgents clients over the same Nostr history and read-state events            | Accepted, later proof milestone     |
+| Voice                     | Dictation, huddles, transcripts, and recording controls                                                   | Nostr control and transcript events with governed audio and Blossom             | Accepted, later proof milestone     |
+| Nostr core                | Identity, pairing, relay sync, remote signing, ingress, egress, and replay                                | Isolated signer, owned relay path, and `nostr-effect`                           | Required                            |
+| Beyond-Buzz Nostr         | Multi-relay policy, offline outbox, causal graph, protocol negotiation, external agents, and export       | Native Omega plus `nostr-effect` specifications and conformance                 | Required core slice                 |
 
 This ledger accepts the whole useful surface.
 The last column sets delivery order.
@@ -336,7 +362,11 @@ Complete `OMEGA-BZ-00` before broad UI work.
 - Freeze the relay, local store, query, subscription, and replay contracts.
 - Freeze multi-relay policy, the offline outbox, and event export.
 - Define the causal link and capability-version rules for every work event.
-- Select one beyond-Buzz extension to specify with fixtures this week.
+- Compare the historical Rust NIP-90 contract and flow snapshot with current
+  `nostr-effect` behavior.
+- Freeze one NIP-90 job projection, command set, and negative fixture suite.
+- Select one additional beyond-Buzz extension to specify with fixtures this
+  week.
 - Record the provisional cloud boundary above.
 - Name the one writable authority for each field.
 - Generate Rust and Effect protocol types from one schema.
@@ -413,7 +443,31 @@ Use bounded lazy capacity.
 Do not copy Buzz's eager default pool behavior.
 Agent requests, progress, handoffs, and receipts must have signed Nostr event
 forms.
-Prove one authorized Nostr-native external agent journey without ACP.
+Use a standard NIP-90 kind 5050 job as the required authorized Nostr-native
+external-agent journey without ACP.
+
+### Days 3 through 5: prove one NIP-90 market loop
+
+Build the first native Jobs and Markets slice beside the workroom.
+
+- compose and sign one bounded kind 5050 request
+- publish to more than one admitted relay and retain acknowledgements
+- accept feedback and results from an external provider without ACP
+- show provider selection, valid payable terms, and explicit loser reasons
+- admit at most one capped payment through the bounded payment bridge
+- use wallet or settlement evidence as payment authority
+- verify request, provider, result, payment, and content bindings
+- expose exact event, relay, receipt, and source-quality evidence
+- restart and replay without a duplicate job, payment, or completion
+
+Use native Zed GPUI pane, list, focus, action, modal, notification, Markdown,
+terminal, and permission components.
+Do not port the WGPUI framework.
+Do not put provider execution in the GPUI process.
+
+If no real payment rail is admitted this week, run a clearly labeled no-spend
+proof.
+Do not claim paid-market parity from a simulated settlement.
 
 ### Days 3 and 4: make code work part of the room
 
@@ -482,10 +536,15 @@ The proof must include:
 9. Omega restarts and restores the same state by replaying Nostr history.
 10. Omega fails over to a second relay and preserves the same work identity.
 11. Omega publishes one event that it signed while offline.
-12. A Nostr-native external agent completes one authorized request without ACP.
-13. An export verifies the causal event chain without reading a cloud database.
-14. A stale, duplicate, unsigned, and unauthorized input is rejected visibly.
-15. An independent reviewer checks the evidence.
+12. A Nostr-native external provider completes one standard NIP-90 request
+    without ACP.
+13. One capped payment has wallet-authoritative evidence, or the proof is
+    explicitly labeled no-spend.
+14. The same NIP-90 job survives restart and multi-relay replay without a
+    duplicate payment or completion.
+15. An export verifies the causal event chain without reading a cloud database.
+16. A stale, duplicate, unsigned, and unauthorized input is rejected visibly.
+17. An independent reviewer checks the evidence.
 
 The week succeeds when this path is in daily owner use.
 Call it **full-core parity beta**.
@@ -628,6 +687,20 @@ this port.
 21. Do not make one relay hostname part of permanent work or actor identity.
 22. Do not add an opaque custom kind without a specification and conformance
     fixtures.
+23. Do not recreate the WGPUI renderer, action, pane, editor, layout, text, or
+    component framework inside Omega.
+24. Do not copy the historical Autopilot app-state monolith or create a second
+    project, editor, Git, terminal, agent-thread, or permission model.
+25. Do not count the same payment once per relay observation.
+26. Do not treat a NIP-90 `p` tag as strict provider exclusivity.
+27. Do not select the first result without valid result and payable-term
+    checks.
+28. Do not treat static marketplace stories as proof of relay, provider,
+    payment, delivery, or settlement behavior.
+29. Do not reimplement the NIP-90 protocol inside Omega or another app package.
+    Keep `nostr-effect` and `packages/nip90` canonical.
+30. Do not recreate the retired OpenAgents relay application to support this
+    path.
 
 ## Main considerations
 
@@ -645,6 +718,23 @@ The current divergence is small enough to rehearse a rebase now.
 Keep workroom policy in owned crates and `omega-effectd`.
 Keep GPUI integration narrow.
 Avoid broad edits in inherited collaboration and project internals.
+
+### Historical Rust harvest
+
+OpenAgents has more reusable Rust product history than the current tree makes
+obvious.
+The historical WGPUI family contained more than 100,000 Rust lines, and the
+final Autopilot application contained more than 368,000.
+The useful center is OpenAgents-specific state and product behavior.
+The framework center is obsolete because Omega already has actual Zed GPUI.
+
+Use the
+[historical harvest](../omega/2026-07-24-historical-rust-wgpui-gpui-harvest.md)
+as the port boundary.
+Recover market, relay, payment, event, agent, trajectory, and receipt semantics.
+Map them to native workspace and agent components.
+Do not move WGPUI renderer code, its substitute GPUI contracts, or the Autopilot
+monolith.
 
 ### Authority clarity
 
@@ -732,6 +822,7 @@ The main sources were:
 - [canceled Buzz self-host runbook](2026-07-22-buzz-self-host-and-sarah-runbook.md)
 - [accepted Omega plan](../sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md)
 - [Omega roadmap](../omega/ROADMAP.md)
+- [historical Rust and WGPUI harvest](../omega/2026-07-24-historical-rust-wgpui-gpui-harvest.md)
 - [Zed adaptation analysis](../ide/2026-07-18-zed-agent-ide-adaptation-analysis.md)
 - [Zed and Effect Rust architecture](../ide/2026-07-18-zed-quality-ide-effect-rust-architecture.md)
 - [Zed port status](../ide/2026-07-19-porting-zed-to-effect-status.md)
@@ -758,7 +849,8 @@ provenance.
 
 For this week, require the full-core owner journey.
 Start with the Nostr event and relay contract, workroom frame, reliable text,
-existing agents, code context, decisions, and receipts.
+existing agents, one standard NIP-90 external-provider market loop, code
+context, decisions, and receipts.
 Run identity, package, and independent proof work beside it.
 
 This is ambitious and credible at the current pace.

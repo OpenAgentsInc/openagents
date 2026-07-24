@@ -16,29 +16,34 @@ Read these documents in this order:
 3. Read the
    [identity-first onboarding roadmap](./2026-07-23-identity-first-onboarding-roadmap.md).
 4. Read the
-   [Full Auto port audit](./2026-07-24-full-auto-port-audit.md).
+   [historical Rust and WGPUI harvest](./2026-07-24-historical-rust-wgpui-gpui-harvest.md).
 5. Read the
+   [Full Auto port audit](./2026-07-24-full-auto-port-audit.md).
+6. Read the
    [Full Auto contract freeze](./2026-07-24-full-auto-contract-freeze.md)
    (`OMEGA-FA-00`).
-6. Read the
+7. Read the
    [omega-effectd extract](./2026-07-24-omega-effectd-extract.md)
    (`OMEGA-FA-01`).
-7. Read the
+8. Read the
    [omega-effectd supervisor](./2026-07-24-omega-effectd-supervisor.md)
    (`OMEGA-FA-02`).
-8. Read the
-   [omega-effectd host bridge](./2026-07-24-omega-effectd-host-bridge.md).
 9. Read the
-   [Agent Computer and Omega completion plan](./2026-07-24-agent-computer-omega-completion-plan.md).
+   [omega-effectd host bridge](./2026-07-24-omega-effectd-host-bridge.md).
 10. Read the
-   [HE-02 harness-environment release](./2026-07-24-he02-harness-environment-release.md).
-11. Read the [accepted Omega plan](../sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md).
-12. Read the [master roadmap](../sol/MASTER_ROADMAP.md).
-13. Read the [Desktop release contract](../deploy/openagents-desktop-cross-platform-release.md).
+    [Agent Computer and Omega completion plan](./2026-07-24-agent-computer-omega-completion-plan.md).
+11. Read the
+    [HE-02 harness-environment release](./2026-07-24-he02-harness-environment-release.md).
+12. Read the [accepted Omega plan](../sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md).
+13. Read the [master roadmap](../sol/MASTER_ROADMAP.md).
+14. Read the [Desktop release contract](../deploy/openagents-desktop-cross-platform-release.md).
 
 The Omega roadmap owns the implementation order.
 The release-readiness audit owns the current brand and package gap.
 The identity-first roadmap owns the first native product journey.
+The historical Rust harvest owns the boundary between reusable OpenAgents
+product behavior and framework code that must not move into native GPUI.
+
 The Full Auto port audit owns the Desktop-to-Omega Full Auto port plan.
 The Full Auto contract freeze owns the admitted lifecycle, digests, redaction
 map, and first-port cuts for `OMEGA-FA-00`.

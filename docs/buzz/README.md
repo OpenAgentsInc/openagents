@@ -52,6 +52,10 @@ change the Omega plan.
   — the current recommendation to accept full Buzz product-outcome parity,
   rebuild it as a Nostr-primary Omega workroom, and deliver full-core owner
   dogfood this week.
+- [`../omega/2026-07-24-historical-rust-wgpui-gpui-harvest.md`](../omega/2026-07-24-historical-rust-wgpui-gpui-harvest.md)
+  — the historical WGPUI, Autopilot, marketplace, and NIP-90 audit. It defines
+  which product behavior to reimplement with native GPUI and makes one standard
+  NIP-90 market loop part of the current parity proof.
 - [`2026-07-22-buzz-self-host-and-sarah-runbook.md`](2026-07-22-buzz-self-host-and-sarah-runbook.md)
   — retained historical installation and Sarah-integration evidence.
   Its commands and checklist are inactive.

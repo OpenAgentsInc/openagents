@@ -19319,7 +19319,7 @@
     },
     {
       "path": "docs/buzz/2026-07-24-omega-buzz-full-parity-recommendation.md",
-      "sha256": "4be7e39de8d4063f5121f9230de744ccabefb4a10bcf3f7574282bec36d8b154",
+      "sha256": "960a5800ff1a96d7414bfb63eb78799d20691782561eed50106f66830e243627",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -19341,7 +19341,7 @@
     },
     {
       "path": "docs/buzz/README.md",
-      "sha256": "9968efdeac479af489c6941c700bbfb17157843f2137bdff81c2ac2fb7bdef68",
+      "sha256": "4e830aad20b16bb15e904efc5fe58b0a0ab6a924c260d93ca54ea101bc7daa8d",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -33779,6 +33779,28 @@
       }
     },
     {
+      "path": "docs/omega/2026-07-24-historical-rust-wgpui-gpui-harvest.md",
+      "sha256": "1dfa1ed8afed4b5bc704402fc87c06895e35e1b00071231c1205c9fcc81e67d2",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/omega/2026-07-24-omega-agent-computer-contract-freeze.md",
       "sha256": "1d620ca9daaa0625ef0a0732610ee977f9b7ef645c841ca91d4e0deb6315e5e3",
       "reason": "Final review of a converted document",
@@ -34064,7 +34086,7 @@
     },
     {
       "path": "docs/omega/README.md",
-      "sha256": "f0c097d9793ec955e899c89abcf9a79ab9bbc4dbeb3b00b9f60191b646f82c81",
+      "sha256": "d661cc4443f463c1670242c19662cd176c1adc13583485ac38ad3c646e5a8fdb",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
