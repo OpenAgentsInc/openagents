@@ -237,6 +237,7 @@ export type OmegaEffectdEvent = Readonly<{
 
 export type OmegaEffectdHostMethod =
   | "resolve_workspace"
+  | "resolve_sync_session"
   | "create_thread"
   | "lane_readiness"
   | "dispatch_turn"

@@ -36,6 +36,14 @@ update service state. Unanswered calls expire after 30 seconds with
 A host-confirmed missing thread settles its run to `stalled` with
 `host_thread_missing`.
 
+The private host method `resolve_sync_session` supplies an admitted
+OpenAgents HTTPS base URL and runtime-only bearer to the Sync publisher and
+mobile control-intent consumer. An unavailable or unsupported method keeps
+Sync unavailable and never blocks local Full Auto dispatch. The service has
+no environment-token or Pylon fallback. It persists only typed mobile intent
+outcomes, so a lost report response or restart cannot apply one control action
+twice. It never persists the bearer.
+
 `stop` is a local terminal control and never refreshes provider authentication,
 lane readiness, or host evidence. A provider becoming unavailable cannot strand
 a paused run. Cached live-turn evidence is used only to request interruption of

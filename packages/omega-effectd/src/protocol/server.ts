@@ -14,6 +14,7 @@ import {
   resolveFullAutoRegistryPath,
   resolveFullAutoRunReportsPath,
   resolveFullAutoRunsPath,
+  resolveFullAutoSyncOutcomesPath,
   type OmegaEffectdPaths,
 } from "../paths.ts";
 import { openFullAutoRegistry } from "../engine/full-auto-registry.ts";
@@ -53,6 +54,11 @@ import {
   applyFullAutoRunControlIntent,
   type FullAutoRunControlAction,
 } from "../engine/full-auto-run-control-intent.ts";
+import {
+  createOmegaFullAutoSync,
+  type OmegaFullAutoSyncSession,
+} from "../engine/full-auto-sync.ts";
+import type { FullAutoRunControlIntentFetch } from "@openagentsinc/khala-sync-client";
 import type { FullAutoControlCapabilities } from "../engine/full-auto-control-server.ts";
 import {
   decodeFullAutoControlRunHandoffRequest,
@@ -142,6 +148,12 @@ export type OmegaEffectdFramedServerOptions = Readonly<{
   hostRequestHandler?: (request: OmegaEffectdHostRequest) => Promise<unknown>;
   /** Test-only override for the bounded host response deadline. */
   hostRequestTimeoutMs?: number;
+  /** Test/in-process session source. Production resolves through the private host bridge. */
+  resolveSyncSession?: () => Promise<OmegaFullAutoSyncSession | null>;
+  /** Test-only Sync transport injection. */
+  syncFetch?: FullAutoRunControlIntentFetch;
+  /** Test-only switch for the production heartbeat. */
+  syncPollIntervalMs?: number;
 }>;
 
 type HostLiveState = Readonly<{
@@ -624,11 +636,41 @@ export const createOmegaEffectdFramedServer = (
     callerLabel: "mobile control intent",
   });
 
-  const syncStatus = (): OmegaEffectdSyncStatus => ({
-    available: false,
-    publishBlocksDispatch: false,
-    reason: "omega_khala_sync_session_unavailable",
+  const resolveSyncSession = async (): Promise<OmegaFullAutoSyncSession | null> => {
+    if (options.resolveSyncSession !== undefined) return options.resolveSyncSession();
+    try {
+      const result = objectResult(await hostRequest("resolve_sync_session", {}));
+      if (result.available !== true) return null;
+      if (
+        typeof result.baseUrl !== "string" ||
+        typeof result.accessToken !== "string" ||
+        result.accessToken.length === 0 ||
+        result.accessToken.length > 16_384
+      ) {
+        return null;
+      }
+      return { baseUrl: result.baseUrl, accessToken: result.accessToken };
+    } catch {
+      return null;
+    }
+  };
+  const fullAutoSync = createOmegaFullAutoSync({
+    resolveSession: resolveSyncSession,
+    actionContext: mobileActionContext,
+    outcomesPath: resolveFullAutoSyncOutcomesPath(paths),
+    ...(options.syncFetch === undefined ? {} : { fetchImpl: options.syncFetch }),
   });
+  const syncStatus = (): OmegaEffectdSyncStatus => fullAutoSync.status();
+  let syncPollTimer: ReturnType<typeof setInterval> | null = null;
+
+  const beginSyncPolling = (): void => {
+    if (syncPollTimer !== null) clearInterval(syncPollTimer);
+    const tick = (): void => {
+      void fullAutoSync.tick(runRegistry.list()).catch(() => undefined);
+    };
+    syncPollTimer = setInterval(tick, options.syncPollIntervalMs ?? 60_000);
+    syncPollTimer.unref?.();
+  };
 
   const projectCapacity = (): OmegaEffectdCapacityResult => {
     const active = runRegistry.activeRuns();
@@ -742,6 +784,7 @@ export const createOmegaEffectdFramedServer = (
       hostBridge.beginGeneration(generation);
       initialized = true;
       await service.start();
+      beginSyncPolling();
       const health = service.health();
       const result: OmegaEffectdInitializeResult = {
         schema: OMEGA_EFFECTD_PROTOCOL_SCHEMA,
@@ -1040,7 +1083,7 @@ export const createOmegaEffectdFramedServer = (
         return respond(request.id, true, { outcome });
       }
       case "get_sync_status": {
-        return respond(request.id, true, syncStatus());
+        return respond(request.id, true, await fullAutoSync.refreshStatus());
       }
       case "publish_projection": {
         const params = (request.params ?? {}) as { runRef?: string };
@@ -1052,8 +1095,8 @@ export const createOmegaEffectdFramedServer = (
             redactedError("invalid_request", "publish_projection requires runRef."),
           );
         }
-        const run = getFullAutoRunAction(actionContext(), params.runRef);
-        if (!run.ok) {
+        const run = runRegistry.get(params.runRef);
+        if (run === null) {
           const result: OmegaEffectdPublishProjectionResult = {
             ok: false,
             status: "run_not_found",
@@ -1061,12 +1104,15 @@ export const createOmegaEffectdFramedServer = (
           };
           return respond(request.id, true, result);
         }
-        // Honest stub: Sync publish never blocks local dispatch (exit criterion).
-        const result: OmegaEffectdPublishProjectionResult = {
-          ok: false,
-          status: "sync_unavailable",
-          reason: syncStatus().reason,
-        };
+        const status = await fullAutoSync.publish(run);
+        const result: OmegaEffectdPublishProjectionResult =
+          status === "published"
+            ? { ok: true, status: "published" }
+            : {
+                ok: false,
+                status: "sync_unavailable",
+                reason: syncStatus().reason,
+              };
         return respond(request.id, true, result);
       }
       case "get_native_binding": {

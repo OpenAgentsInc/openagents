@@ -34060,7 +34060,7 @@
     },
     {
       "path": "docs/omega/2026-07-24-omega-full-auto-reports-sync-mobile.md",
-      "sha256": "2c1157b60ed8c2eee1a86a0d4c75c94fcdcf8b29417dabeb01468971482a8e12",
+      "sha256": "759e3db652f011c4d9c14ba630af934b5150041929c92549201a28a4ee788885",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -46564,7 +46564,7 @@
     },
     {
       "path": "packages/omega-effectd/README.md",
-      "sha256": "035add870715aa4bbd5e7af4c1caee075e4308c18838e7065c7f5f6b78b374dd",
+      "sha256": "6eca9381e512f8053ddd257bec932ac788fbd8ea35dddb1e4601b3c5781e3e34",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

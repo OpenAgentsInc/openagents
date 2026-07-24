@@ -20,6 +20,7 @@ export const FULL_AUTO_CONTROL_FILE = "control.json" as const;
 export const FULL_AUTO_REGISTRY_FILE = "registry.json" as const;
 export const FULL_AUTO_NATIVE_BINDINGS_FILE = "native-bindings.json" as const;
 export const FULL_AUTO_PROVIDER_HANDOFFS_FILE = "provider-handoffs.json" as const;
+export const FULL_AUTO_SYNC_OUTCOMES_FILE = "sync-outcomes.json" as const;
 export const AGENT_COMPUTER_DIR_NAME = "agent-computer" as const;
 export const AGENT_COMPUTER_SESSIONS_FILE = "sessions.json" as const;
 
@@ -43,6 +44,9 @@ export const resolveFullAutoNativeBindingsPath = (paths: OmegaEffectdPaths): str
 
 export const resolveFullAutoProviderHandoffsPath = (paths: OmegaEffectdPaths): string =>
   path.join(resolveFullAutoDir(paths), FULL_AUTO_PROVIDER_HANDOFFS_FILE);
+
+export const resolveFullAutoSyncOutcomesPath = (paths: OmegaEffectdPaths): string =>
+  path.join(resolveFullAutoDir(paths), FULL_AUTO_SYNC_OUTCOMES_FILE);
 
 export const resolveAgentComputerDir = (paths: OmegaEffectdPaths): string =>
   path.join(paths.dataRoot, AGENT_COMPUTER_DIR_NAME);
