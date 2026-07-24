@@ -33627,6 +33627,42 @@
       }
     },
     {
+      "path": "docs/omega/README.md",
+      "sha256": "525fc6733bd12b5fbf52139a1e21e1fecc7d809d3a12d29f45d24449f2419c4c",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "active",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "human",
+        "ste_accepted_screening_rules": [
+          "STE-2.4"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/omega/ROADMAP.md",
+      "sha256": "adc8079e1bdef9768561f0d2754bbc67f1ee30f2298324a8666bec90124f1652",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "mixed",
+        "risk": "high",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "human",
+        "ste_accepted_screening_rules": [
+          "STE-2.4"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/opencode/README.md",
       "sha256": "f9b4b42e82d825706ab6255d7695d9d36f25b7e08b652b8a1472e551ac8c0df0",
       "reason": "Final review of a converted document",
@@ -41837,7 +41873,7 @@
     },
     {
       "path": "docs/sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md",
-      "sha256": "58bc984cf423112a0ee4ec035fcbbc9a20c846d9d2ae569146ef9834ee3dae13",
+      "sha256": "6c0a1b84f1c0f428220b2112b0e2a36585e92ec2c4570ef9cc9234d21af56ce1",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
@@ -41903,7 +41939,7 @@
     },
     {
       "path": "docs/sol/MASTER_ROADMAP.md",
-      "sha256": "bee511427d864aa6b458af40e9f141268a7d75aa16bbc598f91761b3080f4a39",
+      "sha256": "e6ace92d9145bdc7692e7362bf498866f8b24701c4f79f96ae307ad6978bdc91",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

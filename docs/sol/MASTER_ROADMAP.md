@@ -3,7 +3,7 @@
 - Class: authority
 - Date: 2026-07-10
 - Updated: 2026-07-23
-- Revision: 134
+- Revision: 135
 - Status: canonical OpenAgents implementation roadmap
 - Current queue: the
   [`open issue unified completion plan`](./2026-07-21-open-issue-unified-completion-plan.md)
@@ -32,7 +32,7 @@ proof, dated plans and analyses are evidence only.
 
 ## Active P0 — Omega primary-surface transition
 
-The owner selected [`Omega`](./2026-07-23-omega-zed-primary-surface-accepted-plan.md), a tracked Zed fork, as the primary Desktop, IDE, and company workroom destination. Omega Rust is the application core. Packaged Node 24 and Effect first carry the current product control plane. Bounded packets can move suitable domains to Rust through one-authority cutovers. Native GPUI panes will supply durable Buzz-style workrooms, agent supervision, reviews, approvals, and receipts. Existing configured agents, such as Hermes, attach through explicit adapters and keep their own homes, credentials, memory, skills, tools, and sessions. Standard Nostr support is an interoperability boundary, not relay authority. The separate Buzz deployment and the standalone Nostr relay and forge program are canceled. Issues #9185 and #9194 through #9204 closed as not planned on 2026-07-23. OMEGA-00 through OMEGA-12 and OMEGA-WR-00 through OMEGA-WR-08 own the dependency order. This update admits planning and contract work only. The current Electron application remains the supported evidence and rollback subject until all ProductSpec, AssuranceSpec, migration, license, accessibility, release, and owner gates pass. Omega does not reroute the pending Full Auto release closure.
+The owner selected [`Omega`](./2026-07-23-omega-zed-primary-surface-accepted-plan.md), a tracked Zed fork, as the primary Desktop, IDE, and company workroom destination. The new [`Omega roadmap`](../omega/ROADMAP.md) owns the accelerated implementation order. First, release the fully branded `v0.2.0-rc1` bootstrap candidate. Next, port current OpenAgents Desktop behavior. Then add the selected Buzz workroom and Nostr outcomes. The bootstrap release is not a feature-parity or primary-cutover claim. Omega Rust is the application core. Packaged Node 24 and Effect first carry the current product control plane. Bounded packets can move suitable domains to Rust through one-authority cutovers. Existing configured agents, such as Hermes, attach through explicit adapters. They keep their homes, credentials, memory, skills, tools, and sessions. Standard Nostr support is an interoperability boundary, not relay authority. The separate Buzz deployment and the standalone Nostr relay and forge program are canceled. Issues #9185 and #9194 through #9204 closed as not planned on 2026-07-23. The current Electron application remains the supported evidence and rollback subject until all cutover gates pass. Omega does not reroute the pending Full Auto release closure.
 
 ## Active P0 — Full Auto flagship and surface-vision reconciliation
 

@@ -4,7 +4,7 @@
 - Status: active
 - Date: 2026-07-23
 - Updated: 2026-07-23
-- Plan revision: 3
+- Plan revision: 4
 - Owner authority: current owner conversation
 - Base commit: `c348abb746f70d58f240e8f24a7f6f4ce802f239`
 - Dispatch: plan and contract admission only
@@ -18,6 +18,16 @@
   [`Buzz`](../teardowns/2026-07-21-buzz-teardown.md)
 
 ## Owner outcome
+
+The owner accelerated this plan on 2026-07-23.
+The [Omega roadmap](../omega/ROADMAP.md) now owns the implementation order.
+The first target is the branded `v0.2.0-rc1` bootstrap candidate.
+Current Desktop behavior comes next.
+Selected Buzz workroom and Nostr outcomes follow Desktop parity.
+
+The bootstrap candidate does not claim Desktop parity.
+It does not make Omega the primary release.
+All release, migration, and cutover gates in this plan still apply.
 
 OpenAgents will make Omega its primary Desktop and IDE destination.
 Omega will start as a tracked fork of Zed.
@@ -775,3 +785,23 @@ reconciled.
 This claim ends after the documentation commit lands on `main`.
 OMEGA-00 and later packets require new implementation claims in the repository
 that owns each packet.
+
+## Plan revision 4 claim
+
+- Actor: `codex-root-omega-roadmap-20260723`
+- Claimed at: `2026-07-23T23:45:00Z`
+- Base: `11816aa41c`
+- Branch: `codex/omega-roadmap`
+- Worktree:
+  `/Users/christopherdavid/work/openagents-worktrees/omega-roadmap`
+- Scope: define the accelerated Omega release, Desktop parity, Buzz port,
+  migration, and cutover order
+- Hot contracts: Sol master roadmap, Omega plan, Sol document manifest, and
+  STE inventory
+- Excluded contracts: ProductSpec, AssuranceSpec, `AGENTS.md`, `INVARIANTS.md`,
+  release specifications, package manifests, lockfile, and product code
+- Verification: source audits, Sol document checks, STE checks, internal-link
+  checks, and changed-file review
+
+This claim ends after the documentation commit lands on `main`.
+Each implementation packet needs a new claim in its owning repository.
