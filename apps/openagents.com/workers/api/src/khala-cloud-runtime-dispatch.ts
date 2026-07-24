@@ -294,10 +294,10 @@ export type ManagedAgentComputerHarnessRuntimeReadiness = Readonly<
   Partial<Record<AgentComputerHarnessId, string>>
 >
 
-/** Mirrors `agent-computer-image.manifest.json` until AC-01 qualifies Codex. */
+/** Mirrors the runtime-qualified states in `agent-computer-image.manifest.json`. */
 export const DEFAULT_MANAGED_AGENT_COMPUTER_HARNESS_RUNTIME_READINESS: ManagedAgentComputerHarnessRuntimeReadiness =
   {
-    codex: 'owner_reauthentication_required',
+    codex: MANAGED_AGENT_COMPUTER_RUNTIME_QUALIFIED_EXECUTION_STATE,
     'claude-code': MANAGED_AGENT_COMPUTER_RUNTIME_QUALIFIED_EXECUTION_STATE,
     cursor: MANAGED_AGENT_COMPUTER_RUNTIME_QUALIFIED_EXECUTION_STATE,
     goose: MANAGED_AGENT_COMPUTER_RUNTIME_QUALIFIED_EXECUTION_STATE,

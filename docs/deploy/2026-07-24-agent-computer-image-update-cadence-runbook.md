@@ -192,7 +192,7 @@ Update `agent-computer-image.manifest.json` for each qualified harness:
 Update summary fields:
 
 - `guestImage.harnesses.status` — human-readable roll-up (for example
-  `six_of_seven_runtime_qualified_owner_reauthentication_required_for_codex`)
+  `seven_of_seven_runtime_qualified`)
 - `guestImage.rootfsStatus` — one-line boot and qualification summary for the
   active digest
 
@@ -203,32 +203,28 @@ comment.
 
 ## 7. Codex native-auth qualification gate (AC-01)
 
-As of 2026-07-24, six harnesses are runtime-qualified on the live v24 image.
-Codex is **not** qualified.
+As of 2026-07-24, all seven harnesses are runtime-qualified on the live v24
+image. Codex completed its native-auth real-turn gate.
 
 The manifest records:
 
 ```json
-"guestImage.codex.executionState": "owner_reauthentication_required"
+"guestImage.codex.executionState": "runtime_secret_and_real_writeback_qualified"
 ```
 
-The baked Codex binary is present and boot-smoke proven. The owner Mac's
-ChatGPT-bundled Codex also has a working native ChatGPT session: both a real
-read-only turn and the Omega `codex-acp` account-read guard pass without an
-interactive login. The former Settings → Connections handoff was stale. There
-is no owner reauthentication task.
+The qualified turn was
+`turn.agent_computer_qualification.codex.20260724t134000z`. It used exact
+provider account and grant refs, exited zero, staged and verified one file,
+wrote commit `214df33dafaeb70f2d01e11ff15e5af3b8c85b88`, recorded exact Codex
+app-server usage, and produced scratch-wipe and microVM-destroy receipts.
 
-Default `~/.codex` is a read-only source of native Codex state for this proof.
-Never run login or logout against it. AC-01 must add a bounded, secret-safe path
-that materializes an explicitly selected native credential source into an
-isolated, per-turn scratch `CODEX_HOME` and removes it during teardown.
+Default `~/.codex` remained a read-only source. The implemented path imports an
+explicitly selected native credential into encrypted owner custody, redeems it
+into an isolated per-turn scratch `CODEX_HOME`, and removes it during teardown.
+Never run login or logout against the default home for qualification.
 
-AC-01 ([#9205](https://github.com/OpenAgentsInc/openagents/issues/9205)) owns
-that isolated materialization, one real Codex qualification turn, and flipping
-`guestImage.codex.executionState` to qualified.
-
-This runbook does not close `#9193` while Codex lacks a real-turn receipt.
-Do not mark Codex qualified in the manifest without AC-01 proof.
+AC-01 ([#9205](https://github.com/OpenAgentsInc/openagents/issues/9205)) records
+the implementation and full receipt chain. The manifest is the durable roll-up.
 
 ## 8. Close `#9193`
 
@@ -244,8 +240,7 @@ when all conditions below are true:
    runbook.
 5. This runbook and the manifest are on `main`.
 
-Until AC-01 completes, keep `#9193` open and cite the Codex gate honestly in
-the roll-up comment.
+The 2026-07-24 closeout satisfies these conditions for the v24 image.
 
 ## 9. Standing cadence
 

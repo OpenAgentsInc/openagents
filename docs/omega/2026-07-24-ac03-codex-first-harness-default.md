@@ -29,9 +29,9 @@ Explicit `harnessId` stays authoritative.
 
 Order: `codex`, `claude-code`, `opencode`, `pi`, `goose`, `cursor`, `grok`.
 
-Until AC-01 flips Codex readiness, the default mirror keeps
-`codex: owner_reauthentication_required`, so selection skips Codex and takes
-the next ready harness. That is correct fail-closed behavior.
+AC-01 has now qualified Codex with a real native-auth Firecracker turn. The
+runtime mirror can therefore admit Codex as the first no-preference choice.
+Typed unreadiness still advances to the next ready harness.
 
 ## Tests
 
@@ -41,8 +41,9 @@ the next ready harness. That is correct fail-closed behavior.
 - Falls back to OpenCode when Codex runtime is blocked but Gemini is ready
 - Falls back to Claude Code before Gemini harnesses when Codex is blocked
 
-## Non-claims
+## Scope
 
-- Does not qualify Codex (still `#9205`)
-- Does not close `#9193` or epic `#9190`
+- The selection-policy packet did not itself qualify Codex. AC-01 supplied the
+  separate real-turn receipt.
+- Seven-harness and epic closeout remain separate issue reconciliations.
 - Does not change live capacity probes

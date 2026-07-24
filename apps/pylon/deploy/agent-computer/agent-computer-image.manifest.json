@@ -85,17 +85,50 @@
       "workroomdSha256": "59d2623c6b5629b75be3889eb457a5957e7d3d6044f4b12dd0d45ddcc319d063"
     },
     "codex": {
-      "executionState": "owner_reauthentication_required",
-      "status": "baked_and_boot_smoke_proven_2026_07_10",
+      "executionState": "runtime_secret_and_real_writeback_qualified",
+      "status": "native_chatgpt_auth_real_writeback_qualified_2026_07_24",
       "version": "0.144.0",
       "source": "npm @openai/codex-0.144.0-linux-x64 (vendor x86_64-unknown-linux-musl static-pie build)",
       "npmTarballSha256": "391a3793d21feff08da2d9132f01107dd56fa5a48a158e23d15c6d56e34f7cb2",
       "binarySha256": "901923c1808a151f6926d41d703c17ad48815662cefb1c8d832a052c44271429",
       "guestInstallPath": "/usr/local/bin/codex",
-      "note": "The CX-3 in-VM codex_app_server lane (turn-runner `codexTurn` block: codex exec --json under the broker-redeemed scratch CODEX_HOME, exact usage receipt with tokenChargeMetered:false) is wired and fixture-proven in-repo; its live rung needs this binary baked + one real in-VM turn."
+      "note": "A real Firecracker turn used an explicitly selected native ChatGPT/Codex credential through owner custody and a broker-redeemed per-turn scratch CODEX_HOME. The turn staged and verified one file, wrote a commit to a real branch, recorded exact codex_app_server usage without double charging, and tore down the microVM and scratch credential material.",
+      "qualification": {
+        "provedAt": "2026-07-24",
+        "turnRef": "turn.agent_computer_qualification.codex.20260724t134000z",
+        "cloudSessionRef": "ccs.turn.agent_computer_qualification.codex.20260724t134000z",
+        "providerAccountRef": "provider-account_ref_7b41e0634ec743b6a4855379b3e0fb18",
+        "grantRef": "codex-auth-grant_grant_ref_50e706ca8036451c8442054ae943fda5",
+        "exitCode": 0,
+        "artifactRefs": [
+          "artifact.sha256.4e8c9c4da10136e69195e72016094d1e22141d212d82c23e32b16976e555e230",
+          "artifact.sha256.ca1dfe7521166e9db5e298226f887a1f0ab8571f9c577e5c61a23fc2cfe6f88d"
+        ],
+        "commit": "214df33dafaeb70f2d01e11ff15e5af3b8c85b88",
+        "parentCommit": "321cb61e69e68fa8d3fc35291e491184220b4533",
+        "changedFileCount": 1,
+        "verifierRef": "verify.agent-computer.git_diff_cached_check",
+        "writebackEventRef": "event.private.agent_computer.writeback.0ed7f0b2-e7cd-4b8e-8c96-397753c5ddad",
+        "cleanupReceipt": "sha256:d5fb4c420730054935cc26b6662443015316873fac344ea0671d4f808d4adab0",
+        "scratchWipeReceipt": "receipt.cloud.gce.scratch_wipe.019a3e076d7ce875",
+        "microvmDestroyReceipt": "receipt.cloud.gce.microvm_destroy.019a3e076d7ce875",
+        "leaseTerminalOutcome": "managed_cloud_turn_completed",
+        "usage": {
+          "truth": "exact",
+          "usageRef": "usage.codex_app_server.275639ad-9d7c-4614-986c-a1b8bec938e9",
+          "tokenUsageEventRef": "event.inference.served-tokens.khala-cloud-runtime.71eb438438a0334f945e7be7e03962c9",
+          "inputTokens": 125116,
+          "outputTokens": 657,
+          "reasoningTokens": 116,
+          "cacheReadTokens": 97024,
+          "totalTokens": 125889,
+          "insertedTokenUsage": true,
+          "tokenChargeMetered": false
+        }
+      }
     },
     "harnesses": {
-      "status": "six_of_seven_runtime_qualified_owner_reauthentication_required_for_codex",
+      "status": "seven_of_seven_runtime_qualified",
       "credentialPolicy": "Provider material is injected for one turn at runtime. No provider key, OAuth token, or subscription home is present in the image or bake receipt.",
       "credentialScanner": "The turn-runner scans the staged diff before writeback and emits typed finding refs only. Host closeout still requires its isolation scanner and cleanup receipt.",
       "pi": {

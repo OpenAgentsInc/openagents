@@ -43,26 +43,24 @@ Closed children that this plan reuses:
 - `agent-computer-gce-1` is running on Google Cloud.
 - Production arms `CLOUD_CODING_SESSIONS_ENABLED=true` and a live provisioner.
 - The Firecracker guest rootfs bake is reproducible and pinned.
-- Six harnesses are runtime-qualified with real turns and receipts:
-  Pi, OpenCode, Goose, Cursor, Grok, and Claude Code.
+- All seven harnesses are runtime-qualified with real turns and receipts,
+  including Codex through native ChatGPT authorization.
 - Pi, OpenCode, and Goose use Gemini through runtime-only broker grants.
 - Sarah's autonomous tick prefers the owned Agent Computer.
 - Live readiness probes replace stale Pylon slot advertisements.
 - Typed fallback exists across cloud and owner Pylon lanes.
 - Repeat capacity blockers no longer spin every fifteen minutes.
 
-### 3.2 What still blocks `#9193` and `#9190`
+### 3.2 Closeout state
 
-1. Codex on Agent Computer still reports
-   `executionState: "owner_reauthentication_required"`.
-   The isolated Codex credential needs a fresh owner device login.
-   That login must never touch the default `~/.codex` home.
-2. The image "kept updated" requirement has bake tooling, but no standing
-   update cadence or closeout runbook receipt.
-3. Keep Codex unqualified and do not close `#9190`.
-4. `@openagentsinc/agent-harness-environment` has no production caller yet.
+1. Codex reports `executionState:
+   "runtime_secret_and_real_writeback_qualified"` after a real native-auth
+   Firecracker turn. No owner login action remains.
+2. OpenAgents published the image update cadence and closeout runbook.
+3. Close `#9193` and `#9190` after reconciling their receipt checklists.
+4. `@openagentsinc/agent-harness-environment` has an Omega production caller.
    Sarah still uses a direct dispatch path.
-   Omega has no Agent Computer runner yet.
+5. Omega's own live AC-03 dispatch proof remains a separate open gate.
 
 ### 3.3 Authority and product laws
 

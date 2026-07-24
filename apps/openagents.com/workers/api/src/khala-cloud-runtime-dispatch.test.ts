@@ -139,6 +139,10 @@ describe('managed Agent Computer default harness selection', () => {
       MANAGED_AGENT_COMPUTER_RUNTIME_QUALIFIED_EXECUTION_STATE,
     ]),
   )
+  const codexRuntimeBlocked = {
+    ...allRuntimeQualified,
+    codex: 'temporarily_unavailable',
+  }
 
   test('selects Codex when runtime-qualified and the Codex provider is ready', () => {
     expect(
@@ -160,13 +164,15 @@ describe('managed Agent Computer default harness selection', () => {
     expect(
       selectManagedAgentComputerDefaultHarnessId({
         accounts: [account('chatgpt_codex'), account('google_gemini')],
+        runtimeReadiness: codexRuntimeBlocked,
       }),
     ).toBe('opencode')
     expect(
-      applyManagedCloudHarnessDefaultSelection(turn, [
-        account('chatgpt_codex'),
-        account('google_gemini'),
-      ]),
+      applyManagedCloudHarnessDefaultSelection(
+        turn,
+        [account('chatgpt_codex'), account('google_gemini')],
+        codexRuntimeBlocked,
+      ),
     ).toEqual({ ...turn, harnessId: 'opencode' })
   })
 
@@ -174,6 +180,7 @@ describe('managed Agent Computer default harness selection', () => {
     expect(
       selectManagedAgentComputerDefaultHarnessId({
         accounts: [account('chatgpt_codex'), account('anthropic_claude')],
+        runtimeReadiness: codexRuntimeBlocked,
       }),
     ).toBe('claude-code')
   })
@@ -285,15 +292,15 @@ describe('Sarah managed cloud harness fallback', () => {
     ).toEqual({ ...turn, harnessId: 'opencode' })
   })
 
-  test('selects OpenCode before claim when Codex provider is ready but runtime is blocked', () => {
+  test('selects Codex before claim when its provider and runtime are ready', () => {
     expect(
       applySarahManagedCloudHarnessFallback(turn, [
         account('chatgpt_codex'),
         account('google_gemini'),
       ]),
-    ).toEqual({ ...turn, harnessId: 'opencode' })
+    ).toBe(turn)
     expect(DEFAULT_MANAGED_AGENT_COMPUTER_HARNESS_RUNTIME_READINESS.codex).toBe(
-      'owner_reauthentication_required',
+      MANAGED_AGENT_COMPUTER_RUNTIME_QUALIFIED_EXECUTION_STATE,
     )
   })
 

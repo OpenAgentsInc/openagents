@@ -40,7 +40,7 @@ describe("Agent Computer seven-harness image pins (#9193)", () => {
       providerCredentialPolicy: "broker_only",
     });
     expect(manifest.guestImage.harnesses.status).toBe(
-      "six_of_seven_runtime_qualified_owner_reauthentication_required_for_codex",
+      "seven_of_seven_runtime_qualified",
     );
     for (const harnessId of ["cursor", "goose", "opencode", "pi", "grok"]) {
       expect(manifest.guestImage.harnesses[harnessId]).toMatchObject({
@@ -57,7 +57,21 @@ describe("Agent Computer seven-harness image pins (#9193)", () => {
       });
     }
     expect(manifest.guestImage.codex).toMatchObject({
-      executionState: "owner_reauthentication_required",
+      executionState: "runtime_secret_and_real_writeback_qualified",
+      qualification: {
+        changedFileCount: 1,
+        cleanupReceipt: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
+        commit: expect.stringMatching(/^[a-f0-9]{40}$/u),
+        exitCode: 0,
+        leaseTerminalOutcome: "managed_cloud_turn_completed",
+        parentCommit: expect.stringMatching(/^[a-f0-9]{40}$/u),
+        turnRef: expect.stringMatching(/^turn\./u),
+        usage: {
+          insertedTokenUsage: true,
+          tokenChargeMetered: false,
+          truth: "exact",
+        },
+      },
     });
     expect(manifest.guestImage.harnesses.claudeCode).toMatchObject({
       executionState: "runtime_secret_and_real_writeback_qualified",

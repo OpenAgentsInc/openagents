@@ -21714,7 +21714,7 @@
     },
     {
       "path": "docs/deploy/2026-07-24-agent-computer-image-update-cadence-runbook.md",
-      "sha256": "7db3faffbd94f7c25f5c19b4156b45c36c4cfb926f2fbb8b942674a0e9d772c7",
+      "sha256": "2eda30feb2e43ac94d89088419ce9300951298de961b6f539261238fcad237d2",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
@@ -33668,7 +33668,7 @@
     },
     {
       "path": "docs/omega/2026-07-24-ac03-codex-first-harness-default.md",
-      "sha256": "bca8510ab2a464fcf2de7a1bb21fd125a8e65a117d4eb169d765599384a836e1",
+      "sha256": "1ecd0b0bdb2c902b367b005a6411eb43b15282e65e2c55b69c9e6b09d660f771",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -33686,7 +33686,7 @@
     },
     {
       "path": "docs/omega/2026-07-24-agent-computer-omega-completion-plan.md",
-      "sha256": "8874c84475b89dbe6490d6cfc312c481fd3340fcb3cd4f9311a9faec869351b4",
+      "sha256": "a3bff0abfa1dad206b5f341c50be1b34c06132d04a343c7d27d82e54d1614857",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
