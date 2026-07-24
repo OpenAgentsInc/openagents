@@ -33851,8 +33851,30 @@
       }
     },
     {
+      "path": "docs/omega/2026-07-24-omega-effectd-host-bridge.md",
+      "sha256": "b9515c962b38a88d5ef25b0d9149d1c495fffe196e4c5066c0b637197c2390c2",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/omega/2026-07-24-omega-effectd-supervisor.md",
-      "sha256": "13fb09dce8aed0d370575834d6080a1bcb93697f48e84b357d51e06ab7bc3566",
+      "sha256": "b6adf364eff6035e0ffb1742fb40bafa67b7b58929999674f24499edae281a1b",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
@@ -33998,7 +34020,7 @@
     },
     {
       "path": "docs/omega/README.md",
-      "sha256": "d9bcdeda2224842296ac379392f13765e18c5f5898b424b6c6f705269a2c5e16",
+      "sha256": "f0c097d9793ec955e899c89abcf9a79ab9bbc4dbeb3b00b9f60191b646f82c81",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -46364,7 +46386,7 @@
     },
     {
       "path": "packages/omega-effectd/README.md",
-      "sha256": "5b64582d4a2eb457e0d1d41890fd6b2eb0c68be165809c128bcce9e435ebad44",
+      "sha256": "8ad72e8d8a6a89a099fab7047e2ee24299ffdeb5117c4010079825637a6ea9f4",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -48187,7 +48209,7 @@
     },
     {
       "path": "specs/omega/full-auto.assurance-spec.md",
-      "sha256": "2e6be63942e54c2ca4fb892e663aa54d784065d495b6c2a3d549c22296fdf383",
+      "sha256": "040ba8687d0ff27c83f61613a3f138174416280a12542656f1e26bf5ae99ea80",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",

@@ -1,7 +1,7 @@
 ---
 assurance_spec_format_version: "0.1"
 assurance_spec_id: "assurance.omega.full.auto.host"
-assurance_revision: 2
+assurance_revision: 3
 title: "Omega Full Auto Host AssuranceSpec"
 artifact_type: "product_assurance"
 lifecycle_state: "proposed"
@@ -54,6 +54,7 @@ It does not replace Desktop Full Auto AssuranceSpec rev 6.
 | Receipt leakage to Sync/mobile | Private mission text leaves the host | OMEGA-FA-AC-05 |
 | MemoHarness or initiative smuggled into first port | Expands authority without freeze | OMEGA-FA-AC-07 |
 | Composer-toggle regression | Ambiguous chat vs unattended run | OMEGA-FA-AC-08 |
+| Fabricated or stale host state | A run dispatches against a nonexistent thread, stale generation, or unready lane | OMEGA-FA-AC-01, OMEGA-FA-AC-03, OMEGA-FA-AC-06 |
 
 ## Obligations
 
@@ -64,7 +65,7 @@ It does not replace Desktop Full Auto AssuranceSpec rev 6.
 | OMEGA-FA-AC-03 | Non-overridable guardrail immunity tests | design + unit | needs_observation |
 | OMEGA-FA-AC-04 | Default routing order and admitted lane set tests | design + unit | needs_observation |
 | OMEGA-FA-AC-05 | Redaction tests for receipt, notification, and Sync projections | design + unit | needs_observation |
-| OMEGA-FA-AC-06 | Architecture review: GPUI has no durable run store. Mutations go through run-actions. | design + integration | needs_observation |
+| OMEGA-FA-AC-06 | Architecture review: GPUI has no durable run store. Mutations go through run-actions. Generation-fenced host calls prove workspace, thread, lane, turn, interruption, and evidence facts without a second lifecycle. | design + integration | needs_observation |
 | OMEGA-FA-AC-07 | Packet scope review for FA-01..07 excludes MemoHarness and initiative | design | needs_observation |
 | OMEGA-FA-AC-08 | No composer-toggle or ambient preference path starts Full Auto | design + UI proof | needs_observation |
 
@@ -83,6 +84,10 @@ It does not replace Desktop Full Auto AssuranceSpec rev 6.
 - A landed FA packet invents a second lifecycle enumeration or active-run limit.
 - A Sync or notification payload carries raw objective text or credentials.
 - A first-port FA packet implements MemoHarness or initiative without a new freeze.
+- The service parses an oversized frame, or a stale, duplicate, or late host
+  reply settles a pending operation or updates cached evidence.
+- `omega-effectd` fabricates a workspace, thread, lane admission, live turn,
+  interruption result, or evidence row when the Omega host is absent.
 
 ## Gates
 

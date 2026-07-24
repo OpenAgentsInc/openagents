@@ -20,18 +20,20 @@
 - Run projections omit objective and transcript (redacted for supervisor
   events)
 - Mutation API remains `full-auto-run-actions`
+- Generation-fenced reverse host calls replace fabricated workspace, thread,
+  lane, turn, interruption, and evidence state
+- The service limits frames to 64 KiB. Stale and late host replies fail closed.
 
 Omega crate `omega_effectd` can start, health-check, restart, and stop the
 service. Crash recovery re-reads disk truth. GPUI is not run authority.
 
 ## Verification
 
-- `pnpm --dir packages/omega-effectd test` — 177 passed
+- `pnpm --dir packages/omega-effectd test` — 197 passed
 - `cargo test -p omega_effectd` in Omega — supervisor start/health/restart/stop
   and disk recovery
 
 ## Deferred
 
-- Full host routing/liveness wiring (FA-04)
 - Packaged Node 24 + digest install into Omega release artifacts
 - GPUI launcher landed in [2026-07-24-omega-full-auto-gpui-launcher.md](./2026-07-24-omega-full-auto-gpui-launcher.md)
