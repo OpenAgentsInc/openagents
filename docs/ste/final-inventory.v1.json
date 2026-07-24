@@ -33645,6 +33645,24 @@
       }
     },
     {
+      "path": "docs/omega/2026-07-24-agent-computer-omega-completion-plan.md",
+      "sha256": "bd1bfbc303aad0357a7efce3aeb1a32328e2697081d4ebb9673c84be3f7be49c",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "mixed",
+        "risk": "high",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "human",
+        "ste_accepted_screening_rules": [
+          "STE-2.4"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/omega/2026-07-24-full-auto-port-audit.md",
       "sha256": "86368c90cb0a180f8e8b1e188906d4207cdd77c88e6d1c3d1aff8111c2451eed",
       "reason": "Final review of a converted document",
@@ -33682,7 +33700,7 @@
     },
     {
       "path": "docs/omega/README.md",
-      "sha256": "44fe49ddf9359057838feaf6869e4f9bbc18c83f66e76640d0d9c9631cccf891",
+      "sha256": "7048f95e69a49fe6d8a57fb02c3834f5c1279141c0518c907ea0b718e70c5583",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

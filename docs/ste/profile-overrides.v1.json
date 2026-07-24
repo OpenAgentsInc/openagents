@@ -34,6 +34,17 @@
       "ste_audience": "human",
       "ste_accepted_screening_rules": ["STE-2.4"]
     },
+    "docs/omega/2026-07-24-agent-computer-omega-completion-plan.md": {
+      "ste_mode": "mixed",
+      "ste_status": "checked",
+      "ste_reviewer": "cursor/omega-agent-computer-plan-20260724",
+      "ste_reviewed_at": "2026-07-24T07:10:00Z",
+      "risk": "high",
+      "source": null,
+      "replacement": null,
+      "ste_audience": "human",
+      "ste_accepted_screening_rules": ["STE-2.4"]
+    },
     "docs/omega/README.md": {
       "ste_mode": "descriptive",
       "ste_status": "checked",
