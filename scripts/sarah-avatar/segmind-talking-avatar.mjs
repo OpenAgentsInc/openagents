@@ -32,8 +32,11 @@
 //   --script "<text>"    text to speak (built-in TTS). p-video-avatar only.
 //   --audio <url>        public URL of a voice recording. Overrides --script.
 //   --voice <name>       TTS voice (p-video-avatar), default "Zephyr (Female)".
+//   --voice-language <l> TTS language or locale, default from Sarah direction.
 //   --voice-prompt "..." tone/pace/emotion hint.
 //   --video-prompt "..." framing/motion hint.
+//   --allow-tts-pronunciation-risk
+//                        override the spoken-paste pronunciation lint.
 //   --resolution <r>     "720p" or "1080p" (p-video-avatar), default "1080p".
 //   --seed <n>           integer seed, default 4242.
 //   --out <path>         output MP4 path, default ./sarah-avatar-<model>.mp4.
@@ -42,12 +45,14 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { lintTtsPaste } from './tts-paste-lint.mjs'
 
 const args = process.argv.slice(2)
 const flag = (name, fallback = undefined) => {
   const i = args.indexOf(`--${name}`)
   return i >= 0 && i + 1 < args.length ? args[i + 1] : fallback
 }
+const hasFlag = name => args.includes(`--${name}`)
 
 // Canonical Sarah direction. Applied to every generation so the owner's
 // director notes (voice register, expression, framing) stay consistent across
@@ -120,14 +125,20 @@ const buildBody = () => {
     direction.voice_prompt ||
       'Warm, confident, friendly, upbeat — speaking with a genuine smile.',
   )
+  const voice = flag('voice', direction.voice || 'Zephyr (Female)')
+  const voiceLanguage = flag(
+    'voice-language',
+    direction.voice_language || 'English (US)',
+  )
+  const voicePrompt =
+    anchor && !rawVoicePrompt.startsWith(anchor)
+      ? `${anchor} ${rawVoicePrompt}`
+      : rawVoicePrompt
   const body = {
     image,
-    voice: flag('voice', direction.voice || 'Zephyr (Female)'),
-    voice_language: flag('voice-language', direction.voice_language || 'English (US)'),
-    voice_prompt:
-      anchor && !rawVoicePrompt.startsWith(anchor)
-        ? `${anchor} ${rawVoicePrompt}`
-        : rawVoicePrompt,
+    voice,
+    voice_language: voiceLanguage,
+    voice_prompt: voicePrompt,
     video_prompt: flag(
       'video-prompt',
       direction.video_prompt ||
@@ -141,7 +152,24 @@ const buildBody = () => {
     seed: Number(flag('seed', '4242')),
   }
   if (audio) body.audio = audio
-  else body.voice_script = script || "Hi! I'm Sarah. Shall we begin?"
+  else {
+    body.voice_script = script || "Hi! I'm Sarah. Shall we begin?"
+    const lint = lintTtsPaste({
+      script: body.voice_script,
+      voice,
+      voiceLanguage,
+      voicePrompt,
+    })
+    if (!lint.ok && !hasFlag('allow-tts-pronunciation-risk')) {
+      throw new Error(
+        `${lint.risks[0].message} ` +
+          'Pass --allow-tts-pronunciation-risk only after you verify the intended pronunciation.',
+      )
+    }
+    if (!lint.ok) {
+      console.warn(`warning: ${lint.risks[0].message}`)
+    }
+  }
   return body
 }
 
