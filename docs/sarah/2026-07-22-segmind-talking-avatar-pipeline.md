@@ -133,6 +133,14 @@ node scripts/sarah-avatar/segmind-talking-avatar.mjs \
   --out ~/Downloads/sarah/sarah-intro.mp4
 ```
 
+Before a spendful text-to-speech submission, the runner checks the effective
+voice name and `--voice-language`. A British selection such as `English (UK)`,
+`en-GB`, or a voice name containing `British` blocks spoken paste containing
+the standalone uppercase product name `Zed`. Rewrite it as lowercase `zed` for
+the intended pronunciation. For a reviewed intentional exception, pass
+`--allow-pronunciation-risk`. The runner prints a warning before submitting.
+Audio-driven calls do not lint the already-recorded audio.
+
 Kling A/B (audio-driven — supply a hosted voice URL):
 
 ```sh
@@ -498,7 +506,7 @@ Do not call live ElevenLabs from automated checks.
 
 ### Code and tooling improvements (tracked candidates)
 
-Items 1–3 shipped (#9233, #9234, #9235). The rest remain future fix work. Do
+Items 1–4 shipped (#9233, #9234, #9235, #9236). The rest remain future fix work. Do
 not treat open items as done.
 
 1. **`scripts/omega-screen-control` (shipped #9233):** Hard-stops recording
@@ -521,8 +529,12 @@ not treat open items as done.
    optional `--mix` (Ep261 louder: loudnorm, `-3 dB`, fades, amix, alimiter).
    Keeps `*-rc-no-music.mp4` as the clean plate. Tests:
    `node --test scripts/sarah-avatar/elevenlabs-music-bed.test.mjs`.
-4. **Segmind/TTS paste lint:** Warn if uppercase `Zed` appears in the spoken
-   paste when the British voice is selected.
+4. **Segmind/TTS paste lint (shipped #9236):**
+   `scripts/sarah-avatar/segmind-talking-avatar.mjs` blocks standalone uppercase
+   `Zed` in spoken paste when a British voice or language is selected. Rewrite
+   it as lowercase `zed`, or use the explicit `--allow-pronunciation-risk`
+   override after review. Tests:
+   `node --test scripts/sarah-avatar/segmind-paste-lint.test.mjs`.
 5. **Omega product (`OpenAgentsInc/omega`):** Make Help → Editor Onboarding
    and Welcome "Return to Onboarding" reopen first-run/editor onboarding
    reliably (fix silent no-op when `with_local_workspace` fails or a

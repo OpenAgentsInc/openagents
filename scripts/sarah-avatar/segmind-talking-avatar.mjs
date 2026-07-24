@@ -38,16 +38,20 @@
 //   --seed <n>           integer seed, default 4242.
 //   --out <path>         output MP4 path, default ./sarah-avatar-<model>.mp4.
 //   --timeout-min <n>    max minutes to poll, default 15.
+//   --allow-pronunciation-risk
+//                        allow uppercase "Zed" with a British voice.
 
 import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { assertBritishZedPronunciationSafe } from './segmind-paste-lint-lib.mjs'
 
 const args = process.argv.slice(2)
 const flag = (name, fallback = undefined) => {
   const i = args.indexOf(`--${name}`)
   return i >= 0 && i + 1 < args.length ? args[i + 1] : fallback
 }
+const hasFlag = (name) => args.includes(`--${name}`)
 
 // Canonical Sarah direction. Applied to every generation so the owner's
 // director notes (voice register, expression, framing) stay consistent across
@@ -81,15 +85,6 @@ const resolveApiKey = () => {
   return undefined
 }
 
-const KEY = resolveApiKey()
-if (!KEY) {
-  console.error(
-    'error: no Segmind API key. Set SEGMIND_API_KEY or SEGMIND_ENV_FILE ' +
-      '(default ~/work/.secrets/segmind.env).',
-  )
-  process.exit(1)
-}
-
 const model = flag('model', 'p-video-avatar')
 const image = flag('image')
 if (!image || !/^https?:\/\//.test(image)) {
@@ -100,6 +95,40 @@ const script = flag('script')
 const audio = flag('audio')
 const out = resolve(flag('out', `./sarah-avatar-${model}.mp4`))
 const timeoutMin = Number(flag('timeout-min', '15'))
+
+const selectedVoice = flag('voice', direction.voice || 'Zephyr (Female)')
+const selectedVoiceLanguage = flag(
+  'voice-language',
+  direction.voice_language || 'English (US)',
+)
+
+if (!audio) {
+  try {
+    const risks = assertBritishZedPronunciationSafe({
+      script: script || "Hi! I'm Sarah. Shall we begin?",
+      voice: selectedVoice,
+      voiceLanguage: selectedVoiceLanguage,
+      allowPronunciationRisk: hasFlag('allow-pronunciation-risk'),
+    })
+    if (risks.length > 0) {
+      console.warn(
+        `warning: overriding ${risks.length} uppercase "Zed" pronunciation risk in British spoken paste.`,
+      )
+    }
+  } catch (error) {
+    console.error(`error: ${error.message}`)
+    process.exit(1)
+  }
+}
+
+const KEY = resolveApiKey()
+if (!KEY) {
+  console.error(
+    'error: no Segmind API key. Set SEGMIND_API_KEY or SEGMIND_ENV_FILE ' +
+      '(default ~/work/.secrets/segmind.env).',
+  )
+  process.exit(1)
+}
 
 // Model-specific input mapping. Each avatar model on Segmind names its inputs
 // differently; keep the caller-facing flags stable and translate here.
@@ -122,8 +151,8 @@ const buildBody = () => {
   )
   const body = {
     image,
-    voice: flag('voice', direction.voice || 'Zephyr (Female)'),
-    voice_language: flag('voice-language', direction.voice_language || 'English (US)'),
+    voice: selectedVoice,
+    voice_language: selectedVoiceLanguage,
     voice_prompt:
       anchor && !rawVoicePrompt.startsWith(anchor)
         ? `${anchor} ${rawVoicePrompt}`
