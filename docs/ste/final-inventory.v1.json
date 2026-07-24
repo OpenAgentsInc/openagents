@@ -34122,7 +34122,7 @@
     },
     {
       "path": "docs/omega/2026-07-24-sarah-workroom-mvp-spec.md",
-      "sha256": "f3b157e6af7d5cee80d1b47c70b890f3c342feb54a15531a15821698e7106a92",
+      "sha256": "7b60fd463df3dca32d65a4ec72f602098bd6fac7bbb4451e3f2a8c3719274de7",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -34140,7 +34140,7 @@
     },
     {
       "path": "docs/omega/README.md",
-      "sha256": "c0088ba16c55588cfe4351f9b574612dc5f09b71e0e107ddc325e6344b04bf38",
+      "sha256": "27dab30acab92b7a9a6c7ae53078b27b0b0dc4f76e354d3ea8e3dd5335015100",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

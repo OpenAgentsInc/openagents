@@ -2,7 +2,7 @@
 
 - Class: proposed implementation specification
 - Date: 2026-07-24
-- Revision: 3
+- Revision: 4
 - Status: proposed, not admitted
 - Product: Omega, the Zed-based OpenAgents Desktop application
 - Packets: `OMEGA-SW-00` through `OMEGA-SW-07`, `SARAH-NR-00` through
@@ -22,10 +22,14 @@ pane, the service seam, and the account session. Part 2 replaces the record and
 the transport under that pane.
 
 Revision 3 adds Part 3, the v2 roadmap. It opens a semi-public community
-workroom where outside developers point their own compute at bounded work,
-Sarah arbitrates, and members earn experience and Bitcoin. Part 3 depends on
-Part 2 and starts only after the §29 gates hold. Read the three parts in
-order.
+workroom where outside developers point their own compute at bounded work and
+Sarah arbitrates. Part 3 depends on Part 2 and starts only after the §29 gates
+hold.
+
+Revision 4 makes two owner-directed corrections. The v2 reward is experience
+only, with no payment in v1. The build order becomes Nostr first, so Omega
+never gets a Khala Sync client that the Nostr record would delete. Read the
+three parts in order, and read §17.5 before planning any work.
 
 ## 1. Outcome
 
@@ -180,22 +184,34 @@ These gaps are the real work. Each one has an owning packet.
 
 | Gap | Statement | Packet |
 | --- | --- | --- |
-| G1 | Omega has no OpenAgents human account session | `OMEGA-SW-01` |
-| G2 | Omega has no Khala Sync client | `OMEGA-SW-02` |
-| G3 | The framed protocol has no conversation methods | `OMEGA-SW-02` |
+| G1 | Omega has no link from its Nostr identity to an OpenAgents account | `OMEGA-SW-01` |
+| G2 | Omega has no Nostr conversation client | `SARAH-NR-06` |
+| G3 | The framed protocol has no conversation methods | `SARAH-NR-06` |
 | G4 | Omega has no workroom pane | `OMEGA-SW-03` |
 | G5 | Omega has no receipt inspector | `OMEGA-SW-05` |
 | G6 | Omega has no proof for this journey | `OMEGA-SW-07` |
 
-G1 is the blocking gap and it is easy to get wrong. The Agent Computer panel
-authenticates with the runtime `OPENAGENTS_AGENT_TOKEN` bearer. That bearer
-cannot reach Sarah. The Sarah principal route requires an actor of kind
-`human` whose identity matches an OpenAgents admin address. An agent bearer
-receives `401`. The MVP therefore needs a real account session in Omega.
+G2 and G3 moved to Part 2 in revision 4. Section 17.5 records why. Under the
+Nostr-first order there is no reason to build a Khala Sync client in Omega
+and then delete it.
 
-The Omega Nostr identity does not satisfy G1 either. It is a different
-identity with a different custody model. Keep both identities. Do not fuse
-them. Do not derive one from the other.
+G1 changed shape in revision 4 and it is still easy to get wrong. On the
+current record, the Sarah principal route requires an actor of kind `human`
+whose identity matches an OpenAgents admin address. The Agent Computer panel's
+`OPENAGENTS_AGENT_TOKEN` bearer therefore receives `401`.
+
+On the Nostr record, owner scope is the owner's Nostr public key, and NIP-42
+authenticates it. Omega already has that key in `omega_identity`. Omega
+therefore does not need an OpenAgents session to hold the conversation.
+
+One link still matters. Exact metering rows are attributed to an OpenAgents
+account, and the ledger identity is an account, not a public key. So G1
+becomes a one-time binding of the owner's Omega public key to their
+OpenAgents account, not a session that every request carries.
+
+Keep the two identities distinct. Do not fuse them, and do not derive one from
+the other. A binding is a recorded relation between two identities. It is not
+a merge.
 
 ## 5. Design laws
 
@@ -312,38 +328,46 @@ field. Record the paging, gap, duplicate, late event, and revocation rules.
 Exit: a reviewer can implement the pane and the service against one contract.
 No packet invents a second vocabulary.
 
-### 9.2 `OMEGA-SW-01`: OpenAgents account session in Omega
+### 9.2 `OMEGA-SW-01`: bind the Omega identity to an OpenAgents account
 
-Work: port the OpenAuth PKCE loopback flow from the Electron application.
-Keep the Omega client identity separate from the Electron client identity.
-Store credentials in Omega isolated custody under the Omega RC data root.
-Never write Zed data. Never read Electron secure storage. Never touch
-`~/.codex`.
+Revision 4 narrowed this packet. It is no longer a session that every request
+carries. The Nostr record authenticates the owner by public key through
+NIP-42, and Omega already holds that key in `omega_identity`.
 
-Add a visible sign-in state to the Omega interface. Show signed out, signed
-in, expired, and refused states. A refused admin gate must say that the Sarah
-workroom is owner-scoped today. It must not look like a network fault.
+What remains is one binding. Exact metering rows are attributed to an
+OpenAgents account, and the ledger identity is an account. Something must
+record that this public key belongs to that account.
 
-Exit: Omega holds a human session. `POST /api/mobile/sarah` returns a
-principal projection. No token appears in a log, a crash record, or the
-interface.
+Work: run the OpenAuth PKCE loopback flow once, at binding time, and record
+the relation. Keep the Omega client identity separate from the Electron client
+identity. Store any credential in Omega isolated custody under the Omega RC
+data root. Never write Zed data. Never read Electron secure storage. Never
+touch `~/.codex`.
 
-Falsifier: the workroom works with an agent bearer. That would mean the owner
-gate regressed on the server.
+Show a visible binding state: unbound, bound, and refused. A refused
+owner-scope gate must say that the Sarah workroom is owner-scoped today. It
+must not look like a network fault.
 
-### 9.3 `OMEGA-SW-02`: the sync client inside `omega-effectd`
+Exit: the owner's Omega public key resolves to an OpenAgents account for
+metering and ledger attribution. No token appears in a log, a crash record, or
+the interface. The conversation itself needs no session.
 
-Work: compose `@openagentsinc/khala-sync-client` inside the service. Reuse the
-Desktop composition as the reference. Bootstrap the scope, tail
-`/api/sync/connect`, and fall back to `/api/sync/log` after a disconnection.
-Handle the `must_refetch` path through bootstrap or the flagged diff pull.
+Falsifier: the binding becomes a per-request session, or the two identities
+are merged rather than related.
 
-Add the framed methods in §8. Keep one client group for one account. Do not
-reuse a client group across accounts.
+### 9.3 `OMEGA-SW-02`: CUT in revision 4
 
-Exit: the service answers snapshots and streams appended records. A restart
-reproduces the same state from the durable record. A duplicate delivery does
-not duplicate a row.
+This packet built a Khala Sync client inside `omega-effectd`. The Nostr record
+replaces every line of it, so building it first would be throwaway work on the
+critical path.
+
+Its real output, the framed conversation methods in §8, moves to
+`SARAH-NR-06`, where the same methods sit over a `nostr-effect` client. The
+method names and payload shapes in §8 do not change. Only their backing
+transport does.
+
+Do not implement this packet. If a future decision needs Omega to read the
+Khala Sync record directly, that is a new packet with its own justification.
 
 ### 9.4 `OMEGA-SW-03`: the workroom pane
 
@@ -360,17 +384,21 @@ roadmap §11 gates.
 
 ### 9.5 `OMEGA-SW-04`: send, stream, and interrupt
 
-Work: send a message as a chat message plus a `runtime.startTurn` mutation.
-Show the local pending state until the server confirms the row. Show
-`turn.started` as running. Render each `tool.call`, `tool.result`, and
-`tool.error` as it arrives. Render `text.delta` and `text.completed` as the
-answer. Render `turn.finished` with its exact reason.
+Revision 4 split this packet. The interaction states below are record-agnostic
+and stay here. The transport moved to `SARAH-NR-06`, because a send on the
+Nostr record is a signed publication and not a sync mutation.
+
+Work: show the local pending state until the record confirms the message. Show
+the turn as running once its claim lands. Render each tool call, tool result,
+and tool error as it arrives. Render the answer text and its completion.
+Render the terminal outcome with its exact reason.
 
 Interrupt sends a typed intent. The pane shows the intent as pending. The pane
-shows an applied state only after the server records the terminal event.
+shows an applied state only after the terminal event lands.
 
-Exit: the sender sees the same accepted record that the mobile client sees.
-A restart during a turn shows one honest terminal outcome, never two answers.
+Exit: the sender sees the same accepted record every other authorized reader
+sees. A restart during a turn shows one honest terminal outcome, never two
+answers.
 
 ### 9.6 `OMEGA-SW-05`: the receipt inspector
 
@@ -606,26 +634,75 @@ The monorepo already consumes the library. Three packages pin
 path is proven. The pin is 27 commits behind `main` and needs a deliberate
 bump.
 
-### 17.5 Sequence
+### 17.5 Sequence: Nostr first
 
-Two lanes can run beside each other. They must not merge.
+Revision 2 got this wrong and revision 4 corrects it.
 
-The Part 1 lane builds the client: the account session, the service seam, the
-pane, and the receipt inspector. None of that work is wasted, because the
-projections in §7 stay the same when the record source changes.
+Revision 2 said to run `OMEGA-SW-01` through `OMEGA-SW-05` against the current
+record, then swap the source at `SARAH-NR-06`. It also claimed that none of
+that work is wasted. That claim was false. `OMEGA-SW-02` builds a Khala Sync
+client inside `omega-effectd`, and the transport half of `OMEGA-SW-04` writes
+Khala Sync mutations. The Nostr record deletes both. That is throwaway work on
+the critical path, and the owner direction is to cut over as soon as possible.
 
-The Part 2 lane builds the record: the contract, the store, the host, the
-deployment, the identity, and the turn service. It is the longer lane and the
-relay proof gates it.
+The corrected order is Nostr first. Omega never gets a Khala Sync client.
 
-The recommended order is direct. Start `SARAH-NR-00` through `SARAH-NR-03`
-immediately, because the relay build has the longest lead time. Run
-`OMEGA-SW-01` through `OMEGA-SW-05` beside them, against the current record.
-Then run `SARAH-NR-06` to swap the source behind the pane.
+#### What is cut
 
-One rule protects the lanes from each other. Do not build a second pane, a
-second composer, or a second receipt inspector for the Nostr record. The
-Part 1 surfaces are the surfaces.
+| Packet | Disposition | Reason |
+| --- | --- | --- |
+| `OMEGA-SW-02` | cut | its only output is a Khala Sync client that the Nostr record replaces |
+| `OMEGA-SW-04` transport | folded into `SARAH-NR-06` | the send path is a Nostr publication, never a sync mutation |
+| `OMEGA-SW-01` | narrowed | a one-time identity binding, not a session on every request |
+| `OMEGA-SW-03`, `OMEGA-SW-05`, `OMEGA-SW-06` | kept | the pane, the inspector, and attention are record-agnostic |
+| `OMEGA-SW-07` | kept, retargeted | it proves the Nostr journey, so it merges into `SARAH-NR-09` |
+
+#### Why this does not stall the client
+
+The deployed relay is not on the critical path for building the client. The
+local relay is.
+
+`nostr-effect` already ships `startTestRelay`, and its 146 test files use it.
+Once `SARAH-NR-01b` lifts the relay core out of the Bun backend and
+`SARAH-NR-02` adds the Node host, a local Node relay runs on a developer
+machine immediately. The pane, the composer, the ladder, and the inspector all
+build against that local relay.
+
+Cloud Run, Cloud SQL, and the load proof gate production. They do not gate
+development.
+
+#### The order
+
+1. `SARAH-NR-00`, freeze the record contract. Nothing else can start cleanly
+   without it.
+2. `SARAH-NR-01b`, lift the relay core out of the Bun backend. This is the
+   single highest-leverage packet, because it unblocks every Node consumer.
+3. `SARAH-NR-02` plus the development half of `SARAH-NR-01d`. A local Node
+   relay now exists.
+4. `SARAH-NR-04` and `SARAH-NR-05`, the identity and the turn service, against
+   the local relay. Sarah now answers on Nostr.
+5. `OMEGA-SW-03`, `SARAH-NR-06`, and `OMEGA-SW-05`, the pane on Nostr. This is
+   the first user-visible Nostr slice.
+6. `SARAH-NR-01c`, the toolchain conversion, and `SARAH-NR-03`, the deploy and
+   load proof. Production now exists.
+7. `SARAH-NR-07`, `SARAH-NR-08`, and `SARAH-NR-09`.
+
+Steps 1 through 3 are the long pole and they are all in `nostr-effect`. Start
+them now and do not wait for a product decision to begin them.
+
+#### What keeps working meanwhile
+
+Do not break the current Sarah. Mobile keeps using the Khala Sync thread and
+the hosted runtime exactly as it does today, with no new work. That continues
+until `SARAH-NR-08` cuts the turn service over.
+
+That is the whole compatibility story. One live surface stays on the old
+record and receives no new investment. The new surface is born on Nostr.
+
+#### The one rule
+
+Do not build a second pane, a second composer, or a second receipt inspector.
+There is one set of surfaces, and it renders the Nostr record.
 
 ## 18. What `nostr-effect` already gives us
 
@@ -1113,17 +1190,34 @@ never instead.
 Exit: an owner message on the relay produces a signed answer and a signed
 ladder, with the same authority receipts as today.
 
-### 24.7 `SARAH-NR-06`: the pane on Nostr
+### 24.7 `SARAH-NR-06`: the Nostr conversation client
 
-Swap the record source behind the five projections in §7. The pane grammar,
-the composer, the activity ladder, and the receipt inspector do not change
-shape.
+Revision 4 grew this packet. It is no longer a swap behind an existing client.
+It is the only conversation client Omega gets, and it absorbs the cut
+`OMEGA-SW-02` and the transport half of `OMEGA-SW-04`.
+
+Work: compose a `nostr-effect` client inside `omega-effectd`. Authenticate to
+the relay with NIP-42 using the Omega identity key. Subscribe to the owner
+conversation, publish messages as signed events, and publish the interrupt as
+a control frame.
+
+Implement the framed methods in §8 over that client. The method names and
+payload shapes do not change from revision 1. Only the backing transport is
+Nostr.
+
+Handle disconnection, catch-up, and gaps through the relay's own facilities.
+Resume from the last acknowledged event. Reconcile by event identifier with
+NIP-77. Fail over to a second admitted relay without a change of identity.
+
+Develop against a local Node relay from `SARAH-NR-02`. Do not wait for the
+deployed relay.
 
 Add relay state to the room header area. Show the connected relay set, the
 freshness, the gap state, and the last acknowledged event.
 
-Exit: the Omega pane reads and writes the relay and shows no Khala Sync
-dependency for the Sarah lane.
+Exit: the Omega pane reads and writes the relay. Omega links no Khala Sync
+client for the Sarah lane, and a restart reproduces state from relay history
+alone.
 
 ### 24.8 `SARAH-NR-07`: memory, read state, and reminders
 
@@ -1235,20 +1329,24 @@ this document.
 ### 28.1 The owner direction
 
 Community developers can join a semi-public OpenAgents community workroom.
-Their agents do real work there. They earn experience points and Bitcoin
-revenue share or bonuses. Sarah arbitrates. The developers point their own
-compute at tasks.
+Their agents do real work there. Sarah arbitrates. The developers point their
+own compute at tasks.
+
+The owner narrowed the reward on 2026-07-24: **v1 awards experience points
+only**. No revenue share, no bonus, and no Bitcoin payment ships in v1.
+Section 36 keeps the money design on record for a later version and states
+exactly what has to become true before it can ship.
 
 ### 28.2 The outcome
 
 An outside developer joins one room, attaches an agent they already run, takes
-a bounded task, returns a verifiable result, and gets paid.
+a bounded task, returns a verifiable result, and earns experience for it.
 
 Every part of that sentence is already an owned primitive. The room is a Nostr
 group on the relay from Part 2. The agent attachment is the Part 1 pattern.
-The task contract is the existing `NIP-LBR` labor microstandard. The payment
-path is the existing labor earning ledger. The v2 work is composition and
-policy, not a new economy.
+The task contract is the existing `NIP-LBR` labor microstandard. Experience
+uses standard Nostr carriers. The v2 work is composition and policy, not a new
+economy.
 
 ### 28.3 What v2 is not
 
@@ -1256,6 +1354,10 @@ It is not a public bounty board. It is not an open relay. It is not a token.
 It is not a second identity system, a second payout rail, or a second
 authority model. It does not give an outside agent any part of Sarah's
 authority.
+
+In v1 it is also not paid. Experience is recognition, not currency. A member
+must understand that before they spend compute, so §35.4 makes it a copy
+requirement and not a footnote.
 
 ## 29. Gates from v1
 
@@ -1266,10 +1368,9 @@ Do not start v2 before these hold.
 | `SARAH-NR-03` relay live with load proof | v2 multiplies the write rate |
 | `SARAH-NR-05` turn service in daily use | Sarah must arbitrate from a working runtime |
 | `SARAH-NR-09` journey proof accepted | a private room must work before a shared one |
-| Labor payout settles real external Bitcoin | §36.3 records why this is not true today |
 
-The fourth gate is the hard one. Section 36.3 states the honest current
-position. Do not advertise revenue share before it holds.
+The payout gate that revision 3 listed here is gone, because v1 pays nothing.
+It returns as the first gate of the paid version in §36.5.
 
 ## 30. The room
 
@@ -1451,28 +1552,29 @@ defect. They also include an accepted review of another member's result, and a
 first accepted unit in a new job type. Decay is a later decision, not a
 first-version feature.
 
-## 36. Bitcoin revenue share and bonuses
+### 35.4 Say plainly that v1 does not pay
 
-### 36.1 The rails
+A member spends their own compute and their own provider budget. They must
+know before they start that v1 returns experience and not money.
 
-Spark is the primary rail for agent and machine-payable payments, and it
-supports offline receives. MDK stays the checkout and secondary path. Both
-already exist. v2 adds no third rail.
+The room description, the invitation, and the first-run copy must all say it.
+Do not imply a future payment as an inducement. Do not use the word earnings
+for an experience total.
 
-Nostr-native rails may carry visible acknowledgement. NIP-57 zaps and NIP-61
-nutzaps are admissible as public recognition and tips. They are never the
-settlement record.
+Experience is a durable, portable, signed record of accepted work under the
+member's own key. That is worth stating on its own terms, and it does not need
+a payment hint to be attractive.
 
-### 36.2 The boundary
+## 36. Money, deferred
 
-The Part 2 boundary applies without change. Exact metering rows, the credit
-ledger, and the payout ledger stay in Cloud SQL. The relay carries a signed
-claim and a signed receipt reference. It never carries settlement authority.
+### 36.1 The v1 position
 
-Counting a payment once per relay observation is a named falsifier in Part 2.
-It matters more here, because many members watch the same room.
+v1 pays nothing. Experience is the whole reward.
 
-### 36.3 The honest current position
+This section stays in the specification because the design is worth keeping,
+and because a member will ask. It describes a later version, not v1.
+
+### 36.2 Why deferral is the honest choice
 
 The self-serve labor earning payout path exists in
 `apps/openagents.com/workers/api/src/labor-self-serve-earning-payout.ts`. Its
@@ -1480,28 +1582,51 @@ own header is explicit. The plan is pure, it moves no money, and it debits no
 balance. It issues no Lightning payment, and the dispatch seam is inert by
 default. The matching product promise is yellow, not green.
 
-So today a contributor can earn a credit-ledger balance. Broad self-serve
-external Bitcoin payout is not proven. v2 must not advertise revenue share
-until that seam settles real external money with a receipt.
+So a contributor can earn a credit-ledger balance today, and broad self-serve
+external Bitcoin payout is not proven. Shipping a paid room on that seam would
+be a promise to strangers that the runtime cannot keep.
 
-Until then, describe the earning as credit-ledger earning, and say so in the
-room. An unpaid promise to strangers is worse than a smaller true one.
+### 36.3 The rails, when it ships
 
-### 36.4 The shape of the share
+Spark is the primary rail for agent and machine-payable payments, and it
+supports offline receives. MDK stays the checkout and secondary path. Both
+already exist. A paid version adds no third rail.
+
+NIP-57 zaps and NIP-61 nutzaps are admissible as public recognition and tips.
+They are never the settlement record.
+
+### 36.4 The boundary, when it ships
+
+The Part 2 boundary applies without change. Exact metering rows, the credit
+ledger, and the payout ledger stay in Cloud SQL. The relay carries a signed
+claim and a signed receipt reference. It never carries settlement authority.
+
+Counting a payment once per relay observation is a named falsifier in Part 2.
+It matters more in a shared room, because many members watch the same events.
+
+### 36.5 Gates for the paid version
+
+1. The self-serve payout seam settles real external Bitcoin with a receipt,
+   and its promise leaves yellow.
+2. The dispute and appeal path from §34 exists and has been used once.
+3. An attribution rule for any share exists that survives an audit.
+4. The owner sets the pool, the cap, and the funding source.
+
+### 36.6 The shape, when it ships
 
 Three payment forms, in increasing risk order.
 
 1. **Unit price.** The budget on an accepted `NIP-LBR` work unit. This is the
-   first form and the only one v2 needs at launch.
+   first form and the only one the first paid version needs.
 2. **Bonus.** A discretionary award from a bounded pool, for an outcome that
    exceeded its unit. It needs a named pool, a cap, and a receipt.
 3. **Revenue share.** A percentage of revenue attributable to a contribution.
    It needs an attribution rule that survives audit, and it is the form most
-   likely to produce a dispute. Do not ship it in the first version.
+   likely to produce a dispute.
 
-Experience may gate access to higher-value units. Experience must not
-multiply a payout automatically. That coupling turns a reputation number into
-money and invites exactly the gaming §37 tries to prevent.
+Experience may gate access to higher-value units. Experience must not multiply
+a payout automatically. That coupling turns a reputation number into money and
+invites exactly the gaming §37 tries to prevent.
 
 ## 37. Abuse and gaming
 
@@ -1534,7 +1659,7 @@ data with an explicit boundary, and it must never widen her authority.
 | `SARAH-CW-04` | openagents | the `NIP-LBR` request and quote lane |
 | `SARAH-CW-05` | openagents | Sarah arbitration and the dispute path |
 | `SARAH-CW-06` | openagents | experience awards, rank, and badges |
-| `SARAH-CW-07` | openagents | unit-price settlement to the ledger |
+| `SARAH-CW-07` | openagents | deferred, the paid version's settlement lane |
 | `SARAH-CW-08` | omega | the community room pane |
 | `SARAH-CW-09` | openagents | prove the outside-developer journey |
 
@@ -1567,7 +1692,7 @@ The proof uses a real outside developer, not an OpenAgents identity.
 6. The agent executes locally and returns a result with evidence.
 7. An independent verifier with a distinct operator checks it.
 8. Sarah accepts, and the award and rank events publish.
-9. The ledger credits the unit price exactly once.
+9. No payment occurs, and the room copy said so before the work started.
 10. A rejected result produces a typed reason and an appeal.
 11. A revoked member loses room and unit access immediately.
 12. A replayed result, a self-verified result, and an expired grant are all
@@ -1590,8 +1715,8 @@ outcome in their own words.
 7. OpenAgents holds a member's provider credential or mutates their agent
    home.
 8. The community room and the owner-private room share membership or history.
-9. Revenue share is advertised before external Bitcoin payout settles with a
-   receipt.
+9. v1 pays, or implies payment, or calls an experience total earnings.
+10. A paid version ships before the §36.5 gates hold.
 
 ## 40. Owner decisions for v2
 
@@ -1601,8 +1726,7 @@ outcome in their own words.
    open with a probation tier.
 3. Approve the dispute and appeal path. Sarah cannot be the only arbiter of a
    decision about Sarah's own work.
-4. Set the bonus pool, its cap, and its funding source, or defer bonuses.
-5. Decide whether revenue share is in scope at all before the external payout
-   seam settles real money.
-6. Approve the scoring function for publication. An unpublished reputation
+4. Approve the scoring function for publication. An unpublished reputation
    function is not auditable.
+5. Confirm the v1 copy that states plainly that the room does not pay.
+6. Decide when to reopen the paid version against the §36.5 gates.

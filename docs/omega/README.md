@@ -70,8 +70,10 @@ owner direction of 2026-07-24.
 
 Part 3 is the v2 roadmap for the semi-public community workroom. Outside
 developers point their own compute at bounded work there. They earn experience
-and Bitcoin, and Sarah arbitrates. The specification is a proposal, not an
-admitted packet ledger.
+points, and Sarah arbitrates. The v2 room does not pay in its first version.
+The build order is Nostr first, so no client is built on the current record
+and then replaced. The specification is a proposal, not an admitted packet
+ledger.
 
 The accepted plan owns the product and repository boundary.
 The master roadmap owns priority across OpenAgents programs.
