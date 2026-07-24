@@ -45,8 +45,8 @@ portrait, the recommended test order is:
    photorealistic humans and a "corporate" look. Not used for our first test.
 4. **Pruna P Video Avatar** (`p-video-avatar`) — image plus a **text script or
    audio**, with **built-in TTS** and 30 voices. Simplest single-call path
-   (no separate audio hosting). **This is the model used for the first test
-   below.**
+   (no separate audio hosting). **Default for Episode RC masters** (proven on
+   Episode 262, 2026-07-24). Also used for the first test below.
 
 Do not use the cinematic video generators (Seedance, Veo, Wan, Luma, PixVerse)
 for this — they animate a scene, they are not image-plus-voice avatar models.
@@ -248,6 +248,121 @@ Join Sarah generations under a full-screen screenshare or cutaway. Do not invent
 extra spoken text only to fill the screenshare. Hold the screen under the
 existing short lines, or use silence with a lower-third label.
 
+## Episode RC assembly (proven)
+
+Date proven: 2026-07-24. Episode: 262 (Project Omega). Result: local
+release-candidate MP4 with **no background music**.
+
+This is the default path for a short Sarah episode that needs one talking-head
+master and one live product screenshare. Music stays for a later owner pass.
+
+### Folder contract
+
+```text
+~/Desktop/Sarah/<episode>/
+  <episode>transcript.md          # spoken words only (paste into tools)
+  <episode>-sarah-master.mp4      # Segmind full take
+  <episode>-screenshare-….mp4     # controlled product capture
+  <episode>-rc-no-music.mp4       # assembled RC
+  <episode>-rc-notes.md           # local production notes (optional)
+  rc-work/                        # intermediates (optional)
+```
+
+Episode 262 used:
+
+```text
+~/Desktop/Sarah/262/
+  262transcript.md
+  262-sarah-master.mp4
+  262-screenshare-omega-welcome.mp4
+  262-rc-no-music.mp4
+  262-rc-notes.md
+```
+
+Do not commit those media files. Spoken authority stays in
+`docs/transcripts/<episode>.md`. The Desktop `*transcript.md` file is a
+copy-paste helper with no stage notes.
+
+### Step 1 — Lock spoken words
+
+1. Follow [`ACTING_AS_SARAH_RUNBOOK.md`](ACTING_AS_SARAH_RUNBOOK.md).
+2. Keep the repository script short. Do not restore stale clip-manifest lines.
+3. Write `~/Desktop/Sarah/<episode>/<episode>transcript.md` with spoken text
+   only (no speaker labels, no cut notes).
+
+### Step 2 — Generate one Sarah master
+
+Use Pruna P Video Avatar (`p-video-avatar`) with the direction profile. Host
+the portrait as a short-lived GCS V4 signed URL (see Setup above). Pass the
+full short script in one call:
+
+```sh
+node scripts/sarah-avatar/segmind-talking-avatar.mjs \
+  --model p-video-avatar \
+  --image "<signed portrait URL>" \
+  --script "$(cat ~/Desktop/Sarah/262/262transcript.md)" \
+  --resolution 1080p \
+  --out ~/Desktop/Sarah/262/262-sarah-master.mp4
+```
+
+Proven Episode 262 result: one continuous take, about 40.8 s, 1920x1088,
+24 fps, AAC mono 24 kHz. Inference about 283 s submit → COMPLETED. Direction
+file applied by default (`scripts/sarah-avatar/sarah-direction.json`). No
+fallback master was required.
+
+### Step 3 — Record a clean product screenshare
+
+Prefer `welcome-hold` (Help → Editor Onboarding). Keep Omega frontmost. Hide
+or close unrelated side panels before capture. Re-record if a foreign UI
+(for example a Gemini panel) is in frame.
+
+```sh
+export OMEGA_BIN="/path/to/Omega.app/Contents/MacOS/omega"
+node scripts/omega-screen-control/omega-screen-control.mjs record \
+  --shot welcome-hold \
+  --seconds 20 \
+  --out ~/Desktop/Sarah/262/262-screenshare-omega-welcome.mp4
+node scripts/omega-screen-control/omega-screen-control.mjs quit
+```
+
+Burn an honest label (`OMEGA WELCOME - CURRENT`). If local FFmpeg has no
+`drawtext`, render a PNG with Pillow and composite with `overlay`, or use:
+
+```sh
+pnpm --dir apps/qa-runner run overlay-text \
+  --input /path/to/screenshare.mp4 \
+  --cues /path/to/cues.json \
+  --out /path/to/screenshare-labeled.mp4
+```
+
+### Step 4 — Assemble A / B / C (audio continuous)
+
+Keep Sarah's spoken audio end to end. Cut **picture** only:
+
+| Part | Picture | Timing |
+| --- | --- | --- |
+| A | Sarah master | `0` → about `0.38 * D` |
+| B | Labeled screenshare (loop or trim) under Sarah audio | about `0.38 * D` → `0.85 * D` |
+| C | Sarah master | about `0.85 * D` → `D` |
+
+`D` is the Sarah master duration. Episode 262 used `D ≈ 40.76 s`,
+`T1 = 15.49 s`, `T2 = 34.65 s`. Concatenate to
+`~/Desktop/Sarah/<episode>/<episode>-rc-no-music.mp4`.
+
+Optional fork stills (`OMEGA SOURCE - CURRENT`) may sit ready as b-roll. The
+proven 262 RC did not need them when the Welcome screenshare filled Part B.
+
+### Step 5 — Verify and stop
+
+- Sample frames at opening, mid-screenshare, and close.
+- Confirm the product label and a clean product frame.
+- Confirm no music track on the RC.
+- Record local notes. Do not treat the RC as a public post until publication
+  gates in the episode production-requests file are green.
+
+Screenshare shot detail:
+[`../transcripts/SARAH_VIDEO_SCREENSHARE.md`](../transcripts/SARAH_VIDEO_SCREENSHARE.md).
+
 ## How it works (Segmind Async Inference V2)
 
 Video models must use the async API for reliability. The runner:
@@ -294,8 +409,8 @@ standardizing a model for Sarah's comms.
 
 ## What to decide next
 
-- Which model to standardize on for Sarah's comms after the A/B (Fabric vs Kling
-  vs Pruna).
+- Whether to keep `p-video-avatar` as the default after A/B with Fabric and
+  Kling Avatar V2 (RC default today: Pruna).
 - Where produced clips are stored and how they attach to a comm (the owner tweet
   queue `docs/sarah/SARAH_TWEET_QUEUE.md`, a blog post, or the timeline once the
   outward web-communications broker is admitted — see
@@ -303,3 +418,5 @@ standardizing a model for Sarah's comms.
 - Voice source: Segmind built-in TTS vs our own voice (the OAV/pipecat voice
   stack) fed in as `--audio`.
 - Cost and rate posture for routine comms generation.
+- Owner music pass and publication gates for each episode RC under
+  `~/Desktop/Sarah/<episode>/`.

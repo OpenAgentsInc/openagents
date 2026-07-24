@@ -54,7 +54,10 @@ engine of verifiable software and reconnects it to Nostr, Bitcoin, and the
 OpenAgents market. Episode 260 introduces Sarah. Episode 261 gives her a voice.
 Episode 262 reviews the product decision in a short Sarah script and introduces
 Project Omega as the Zed-based answer, with a live Welcome screenshare preferred
-over stills ([`SARAH_VIDEO_SCREENSHARE.md`](SARAH_VIDEO_SCREENSHARE.md)).
+over stills ([`SARAH_VIDEO_SCREENSHARE.md`](SARAH_VIDEO_SCREENSHARE.md)). A local
+no-music release candidate was assembled on 2026-07-24 under
+`~/Desktop/Sarah/262/` using the proven Segmind + screenshare path in
+[`../sarah/2026-07-22-segmind-talking-avatar-pipeline.md`](../sarah/2026-07-22-segmind-talking-avatar-pipeline.md).
 Episode 263 opens the fork and tours the Rust workspace, GPUI, native IDE
 substrate, branding work, Rust and Effect boundary, and migration order.
 

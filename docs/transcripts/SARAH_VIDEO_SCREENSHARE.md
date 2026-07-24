@@ -143,6 +143,53 @@ Drive the Welcome screenshare with `welcome-setup` or `welcome-hold`.
 Do not restore the longer stale clip-manifest wording into the spoken script.
 See [`262-production-requests.md`](262-production-requests.md).
 
+### Proven RC capture and edit (2026-07-24)
+
+This path produced the local release candidate
+`~/Desktop/Sarah/262/262-rc-no-music.mp4` (no background music).
+
+1. **Spoken authority.** Use the short script in [`262.md`](262.md). Keep a
+   paste-only copy at `~/Desktop/Sarah/262/262transcript.md` (spoken words
+   only; no stage notes).
+2. **Sarah master.** One continuous Segmind `p-video-avatar` take of the full
+   script with `scripts/sarah-avatar/sarah-direction.json`. Save as
+   `~/Desktop/Sarah/262/262-sarah-master.mp4`. Prefer one long take (target up
+   to 60 s). Do not split by sentence.
+3. **Screenshare.** Record with Omega frontmost and no unrelated side panels
+   (for example Gemini):
+
+```sh
+export OMEGA_BIN="/path/to/Omega.app/Contents/MacOS/omega"
+node scripts/omega-screen-control/omega-screen-control.mjs record \
+  --shot welcome-hold \
+  --seconds 20 \
+  --out ~/Desktop/Sarah/262/262-screenshare-omega-welcome.mp4
+node scripts/omega-screen-control/omega-screen-control.mjs quit
+```
+
+4. **Label.** Burn `OMEGA WELCOME - CURRENT` on the screenshare. If FFmpeg
+   lacks `drawtext`, render a PNG label (Pillow) and use the `overlay` filter,
+   or use `pnpm --dir apps/qa-runner run overlay-text`.
+5. **Assemble (A / B / C).** Keep Sarah audio continuous. Cut picture only:
+
+| Part | Picture | Timing (fraction of Sarah master duration D) |
+| --- | --- | --- |
+| A | Sarah | `0` to about `0.38 * D` |
+| B | Labeled Welcome screenshare (loop or trim to fill) | about `0.38 * D` to `0.85 * D` |
+| C | Sarah | about `0.85 * D` to `D` |
+
+For the 2026-07-24 master (`D ≈ 40.76 s`), that was `T1 = 15.49 s` and
+`T2 = 34.65 s`. Write the RC to `~/Desktop/Sarah/262/262-rc-no-music.mp4`.
+Leave music for a later owner pass.
+6. **Verify.** Sample frames near opening, mid-screenshare, and close. Confirm
+   the Welcome label and that no foreign side panel is in the product frame.
+7. **Notes.** Keep local production notes beside the MP4s (for example
+   `262-rc-notes.md`). Do not commit MP4s.
+
+Full Segmind, GCS portrait URL, and concat detail:
+[`../sarah/2026-07-22-segmind-talking-avatar-pipeline.md`](../sarah/2026-07-22-segmind-talking-avatar-pipeline.md)
+(**Episode RC assembly (proven)**).
+
 ## Acting as Sarah
 
 When a harness drafts Sarah's spoken words, follow

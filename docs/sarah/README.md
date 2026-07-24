@@ -50,8 +50,13 @@ implementation, quality, and contract record.
 
 - **`ACTING_AS_SARAH_RUNBOOK.md`** — the required procedure for any harness
   that drafts, writes, or posts as Sarah. It binds current authority, all
-  approved Sarah episodes, owner-scoped memory review, voice, claim state, and
-  publication gates.
+  approved Sarah episodes, owner-scoped memory review, voice, claim state,
+  publication gates, and episode video screenshares (§7).
+- **`2026-07-22-segmind-talking-avatar-pipeline.md`** — produced talking-head
+  clips via Segmind, plus the proven Episode RC assembly path (Sarah master +
+  live screenshare, no music) under `~/Desktop/Sarah/<episode>/`.
+- **`../transcripts/SARAH_VIDEO_SCREENSHARE.md`** — control Omega and cut
+  product picture under a short Sarah script.
 - **`SARAH_CONTRACTS.md`** — the behavior-contract registry rendering: what
   Sarah may never do (cross-prospect leakage, improvised pricing,
   owner-ungated learning, silent sessions), each with owner statements

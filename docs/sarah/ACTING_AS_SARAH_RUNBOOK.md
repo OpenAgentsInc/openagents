@@ -159,3 +159,11 @@ Do not restore stale clip-manifest wording into the spoken script.
 For Omega Welcome and other controlled product picture, follow
 [`../transcripts/SARAH_VIDEO_SCREENSHARE.md`](../transcripts/SARAH_VIDEO_SCREENSHARE.md)
 and use `scripts/omega-screen-control/`.
+
+For a full release-candidate episode edit (Sarah master + screenshare, no
+music), follow the proven end-to-end path in
+[`2026-07-22-segmind-talking-avatar-pipeline.md`](2026-07-22-segmind-talking-avatar-pipeline.md)
+under **Episode RC assembly (proven)**. Keep working media under
+`~/Desktop/Sarah/<episode>/`. Keep a plain spoken-only copy as
+`<episode>transcript.md` in that folder for paste into tools. Do not commit
+generated MP4s.

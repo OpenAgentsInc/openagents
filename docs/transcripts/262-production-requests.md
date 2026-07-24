@@ -1,11 +1,14 @@
 # Episode 262 Production Requests
 
-Status: production can start now. One final-narration gate and non-blocking
-asset replacements apply.
+Status: local release candidate assembled (2026-07-24). Owner music pass and
+publication gates remain. Non-blocking asset replacements still apply.
 Applies to: [`Project Omega`](262.md).
 Requested by: Episode 262 production packet.
 Screenshare control:
 [`Sarah video screenshare`](SARAH_VIDEO_SCREENSHARE.md).
+Produced-clip pipeline:
+[`Segmind talking-avatar pipeline`](../sarah/2026-07-22-segmind-talking-avatar-pipeline.md)
+(**Episode RC assembly (proven)**).
 
 Episode 262 is the nontechnical product introduction.
 Technical repository footage belongs in
@@ -14,6 +17,25 @@ Technical repository footage belongs in
 The short spoken script in [`262.md`](262.md) is the word authority.
 Local clip manifests and long-take manifests may be stale. Do not restore
 longer spoken wording from them.
+Paste-only spoken copy (local, not committed):
+`~/Desktop/Sarah/262/262transcript.md`.
+
+## Local RC deliverable (2026-07-24)
+
+Proven path completed for a no-music release candidate:
+
+| File | Role |
+| --- | --- |
+| `~/Desktop/Sarah/262/262transcript.md` | Spoken words only |
+| `~/Desktop/Sarah/262/262-sarah-master.mp4` | Segmind `p-video-avatar` full take |
+| `~/Desktop/Sarah/262/262-screenshare-omega-welcome.mp4` | Controlled Welcome hold |
+| `~/Desktop/Sarah/262/262-rc-no-music.mp4` | A/B/C edit, continuous Sarah audio |
+| `~/Desktop/Sarah/262/262-rc-notes.md` | Local production notes |
+
+Assembly: Sarah picture through the fork beat → labeled
+`OMEGA WELCOME - CURRENT` screenshare → return to Sarah for the close.
+Screenshare re-recorded with Omega frontmost so foreign side panels stay out
+of frame. Do not commit these MP4s.
 
 ## Recording and publication gate
 
@@ -29,7 +51,8 @@ These items are necessary before publication:
 - Show visible support for the public Omega fork claim.
   A current static repository capture is sufficient.
 - Prefer a live Omega Welcome screenshare over a still of the same frame
-  (Request 262-08).
+  (Request 262-08). The local RC already includes this capture.
+- Owner music pass on the RC (RC ships without music by design).
 
 The Sarah picture master is required for this release candidate.
 Generate it with the current Sarah direction and Segmind runner.
@@ -43,6 +66,10 @@ A current Omega Welcome screenshare is welcome now.
 ## Request 262-01: final Sarah narration
 
 Priority: required before final publication.
+Local RC status: Sarah master generated with Segmind `p-video-avatar` and
+`scripts/sarah-avatar/sarah-direction.json` (2026-07-24). File:
+`~/Desktop/Sarah/262/262-sarah-master.mp4`. Confirm rights before public
+release.
 
 Provide or generate the approved final Sarah voice track.
 Include its generation method and rights status.
@@ -136,6 +163,10 @@ Do not imply that the source is already a branded build.
 ## Request 262-08: live Omega Welcome screenshare
 
 Priority: recommended. Preferred over a Welcome still.
+Local RC status: captured and used in Part B of
+`~/Desktop/Sarah/262/262-rc-no-music.mp4` (2026-07-24). Prefer
+`record --shot welcome-hold` with Omega frontmost. Re-record if a foreign side
+panel appears in frame.
 
 Record a live Omega Welcome setup window during the short "out of the box /
 Omega" beat in [`262.md`](262.md).
@@ -144,7 +175,10 @@ Drive the window with:
 
 ```sh
 export OMEGA_BIN="/path/to/Omega.app/Contents/MacOS/omega"
-node scripts/omega-screen-control/omega-screen-control.mjs shot welcome-setup
+node scripts/omega-screen-control/omega-screen-control.mjs record \
+  --shot welcome-hold \
+  --seconds 20 \
+  --out ~/Desktop/Sarah/262/262-screenshare-omega-welcome.mp4
 ```
 
 Show real UI motion:
@@ -209,3 +243,16 @@ For each supplied asset, include:
 - private details that the editor must mask
 
 The editor can replace a placeholder only when the asset proves the same claim.
+
+## RC edit checklist (no music)
+
+Use after Requests 262-01 and 262-08 exist locally:
+
+1. Spoken paste file: `~/Desktop/Sarah/262/262transcript.md`
+2. Sarah master under `~/Desktop/Sarah/262/`
+3. Clean Welcome screenshare with burn-in `OMEGA WELCOME - CURRENT`
+4. A/B/C concat with continuous Sarah audio (see
+   [`SARAH_VIDEO_SCREENSHARE.md`](SARAH_VIDEO_SCREENSHARE.md)
+   **Proven RC capture and edit**)
+5. Output `262-rc-no-music.mp4` and sample three verification frames
+6. Leave music and public post for the owner publication pass
