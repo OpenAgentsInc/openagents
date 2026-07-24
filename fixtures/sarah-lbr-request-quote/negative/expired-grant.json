@@ -1,0 +1,9 @@
+{
+  "schema": "openagents.sarah.lbr_request_quote.v1",
+  "role": "negative",
+  "code": "grant_expired",
+  "reason": "A unit whose grant expired is refused, not extended.",
+  "expiresAtUnix": 1700000000,
+  "nowUnix": 1753387300,
+  "workUnitRef": "workunit.public.community.expired_1"
+}

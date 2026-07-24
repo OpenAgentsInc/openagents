@@ -1,0 +1,18 @@
+{
+  "schema": "openagents.sarah.lbr_request_quote.v1",
+  "role": "negative",
+  "code": "sarah_grant_forbidden",
+  "reason": "Community work units must not carry Sarah principal grants.",
+  "workUnit": {
+    "workUnitRef": "workunit.public.community.bad_1",
+    "grantRef": "grant.sarah.repository_delivery",
+    "repositoryRefs": ["repo.public.openagents"],
+    "allowedActionRefs": ["action.public.repository.patch"],
+    "budgetMsats": 1000,
+    "expiresAtUnix": 1900000000,
+    "idempotencyRef": "idempotency.public.community.bad_1"
+  },
+  "objectiveRef": "objective.public.community.bad",
+  "verificationCommandRef": "command.public.pnpm_test",
+  "requiredCapabilityRefs": ["capability.public.local_codex"]
+}

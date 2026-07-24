@@ -1,0 +1,8 @@
+{
+  "schema": "openagents.sarah.lbr_request_quote.v1",
+  "role": "negative",
+  "code": "work_unit_mismatch",
+  "reason": "Quote must bind to the same work unit as the request.",
+  "requestWorkUnitRef": "workunit.public.community.fix_docs_1",
+  "quoteWorkUnitRef": "workunit.public.community.other_unit"
+}

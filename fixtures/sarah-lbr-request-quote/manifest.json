@@ -1,0 +1,29 @@
+{
+  "fixture": "sarah-lbr-request-quote.manifest.v1",
+  "schema": "openagents.sarah.lbr_request_quote.v1",
+  "packet": "SARAH-CW-04",
+  "issue": "OpenAgentsInc/openagents#9228",
+  "contract": "docs/omega/2026-07-24-sarah-workroom-mvp-spec.md#32",
+  "protocol": "docs/nips/LBR.md",
+  "canonical_package": "@openagentsinc/nip90",
+  "kinds": {
+    "request": 5934,
+    "quote_feedback": 7000,
+    "result": 6934
+  },
+  "settlement_mode_v1": "no_spend",
+  "job_type": "code_task",
+  "fixtures": [
+    "canonical/work-request.json",
+    "canonical/quote.json"
+  ],
+  "negatives": [
+    "negative/sarah-grant.json",
+    "negative/private-path-objective.json",
+    "negative/paid-settlement-mode.json",
+    "negative/over-budget-quote.json",
+    "negative/work-unit-mismatch.json",
+    "negative/expired-grant.json",
+    "negative/raw-prompt-content.json"
+  ]
+}

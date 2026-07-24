@@ -1,0 +1,9 @@
+{
+  "schema": "openagents.sarah.lbr_request_quote.v1",
+  "role": "negative",
+  "code": "over_budget",
+  "reason": "Quote amount must not exceed the request budget bid.",
+  "requestBudgetMsats": 2000000,
+  "quoteAmountMsats": 3000000,
+  "workUnitRef": "workunit.public.community.fix_docs_1"
+}

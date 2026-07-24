@@ -1,0 +1,8 @@
+{
+  "schema": "openagents.sarah.lbr_request_quote.v1",
+  "role": "negative",
+  "code": "unsafe_content",
+  "reason": "LBR request content must be empty. Raw prompts are forbidden on the wire.",
+  "kind": 5934,
+  "content": "raw prompt: fix the failing test with ANTHROPIC_API_KEY=sk-test"
+}

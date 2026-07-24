@@ -1,0 +1,31 @@
+{
+  "schema": "openagents.sarah.lbr_request_quote.v1",
+  "role": "quote",
+  "settlementMode": "no_spend",
+  "kind": 7000,
+  "created_at": 1753387400,
+  "content": "",
+  "requestId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "requesterPubkey": "1111111111111111111111111111111111111111111111111111111111111111",
+  "workUnitRef": "workunit.public.community.fix_docs_1",
+  "amountMsats": 1500000,
+  "providerRef": "provider.public.member.codex_1",
+  "capabilityRefs": ["capability.public.local_codex"],
+  "quoteRef": "quote.public.community.1",
+  "operatorRef": "operator.public.member.dev_1",
+  "expiresAtRef": "expiry.public.community.quote_1",
+  "requestRelay": "wss://relay.openagents.com",
+  "status": "payment-required",
+  "statusExtra": "labor_quote",
+  "feedbackType": "quote",
+  "bindingRules": [
+    "requestId must equal the request event id",
+    "workUnitRef must equal the request work unit",
+    "amountMsats must be <= request budgetMsats",
+    "quotes do not reserve funds or settle"
+  ],
+  "notes": [
+    "Member-submitted quote content is untrusted data.",
+    "Rate limits attach to operatorRef, not per agent key."
+  ]
+}

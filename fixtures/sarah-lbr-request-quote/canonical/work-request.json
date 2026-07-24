@@ -1,0 +1,43 @@
+{
+  "schema": "openagents.sarah.lbr_request_quote.v1",
+  "role": "work_request",
+  "settlementMode": "no_spend",
+  "kind": 5934,
+  "jobType": "code_task",
+  "created_at": 1753387300,
+  "content": "",
+  "workUnit": {
+    "workUnitRef": "workunit.public.community.fix_docs_1",
+    "grantRef": "grant.public.community.code_task.narrow_1",
+    "repositoryRefs": ["repo.public.openagents"],
+    "allowedActionRefs": ["action.public.repository.patch"],
+    "budgetMsats": 2000000,
+    "expiresAtUnix": 1900000000,
+    "idempotencyRef": "idempotency.public.community.fix_docs_1"
+  },
+  "objectiveRef": "objective.public.community.fix_docs",
+  "verificationCommandRef": "command.public.pnpm_test_docs",
+  "requiredCapabilityRefs": ["capability.public.local_codex"],
+  "groupId": "community-workroom-v1",
+  "groupRef": "group.public.community.workroom",
+  "forumTopicRef": "topic.public.forum.community_1",
+  "deadlineRef": "deadline.public.community.20260724",
+  "relays": ["wss://relay.openagents.com"],
+  "requiredParams": [
+    "lbr_objective_ref",
+    "lbr_repository_ref",
+    "lbr_verification_command_ref",
+    "lbr_required_capability_ref",
+    "lbr_output_delivery",
+    "lbr_work_unit_ref",
+    "lbr_grant_ref",
+    "lbr_idempotency_ref",
+    "lbr_settlement_mode",
+    "lbr_allowed_action_ref"
+  ],
+  "notes": [
+    "Budget bid is recorded per NIP-LBR. v1 settles nothing.",
+    "Grant must not name principal.sarah or grant.sarah.*",
+    "Relay is transport only."
+  ]
+}

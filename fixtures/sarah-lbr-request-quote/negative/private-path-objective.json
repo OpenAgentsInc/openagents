@@ -1,0 +1,18 @@
+{
+  "schema": "openagents.sarah.lbr_request_quote.v1",
+  "role": "negative",
+  "code": "unsafe_material",
+  "reason": "Objectives must be public-safe refs. No private filesystem paths.",
+  "workUnit": {
+    "workUnitRef": "workunit.public.community.bad_path",
+    "grantRef": "grant.public.community.narrow",
+    "repositoryRefs": ["repo.public.openagents"],
+    "allowedActionRefs": ["action.public.repository.patch"],
+    "budgetMsats": 1000,
+    "expiresAtUnix": 1900000000,
+    "idempotencyRef": "idempotency.public.community.bad_path"
+  },
+  "objectiveRef": "objective.public./Users/alice/private",
+  "verificationCommandRef": "command.public.pnpm_test",
+  "requiredCapabilityRefs": ["capability.public.local_codex"]
+}
