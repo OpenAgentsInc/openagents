@@ -36,6 +36,11 @@ update service state. Unanswered calls expire after 30 seconds with
 A host-confirmed missing thread settles its run to `stalled` with
 `host_thread_missing`.
 
+`stop` is a local terminal control and never refreshes provider authentication,
+lane readiness, or host evidence. A provider becoming unavailable cannot strand
+a paused run. Cached live-turn evidence is used only to request interruption of
+an already-known active turn.
+
 ## Deferred
 
 MemoHarness and initiative stay out of the first Omega port (FA-00 freeze).

@@ -29,6 +29,11 @@ A missing host thread (vanished registry record while the run still names a
 
 Provider prose still cannot close a run. Only typed outcomes close a run.
 
+Stop remains legal from every non-terminal state even after the selected
+provider loses authentication or becomes unavailable. The framed Stop path does
+not refresh lane readiness or host evidence before committing the local terminal
+transition, so an unavailable provider cannot strand a paused run.
+
 ## Verification
 
 - `pnpm --filter @openagentsinc/omega-effectd test` — 181 passed

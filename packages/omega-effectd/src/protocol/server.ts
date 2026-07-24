@@ -1336,7 +1336,10 @@ export const createOmegaEffectdFramedServer = (
         }
         const targetRun = runRegistry.get(params.runRef);
         if (targetRun?.threadRef !== undefined) {
-          const evidence = await refreshThreadEvidence(targetRun.runRef, targetRun.threadRef);
+          const evidence =
+            request.method === "stop"
+              ? evidenceByThread.get(targetRun.threadRef)
+              : await refreshThreadEvidence(targetRun.runRef, targetRun.threadRef);
           if (request.method === "resume") {
             await resolveWorkspace(targetRun.workspaceRef);
             await refreshLane(
@@ -1344,7 +1347,7 @@ export const createOmegaEffectdFramedServer = (
               targetRun.threadRef,
             );
           }
-          if (request.method === "stop" && evidence.live?.state === "turn_running") {
+          if (request.method === "stop" && evidence?.live?.state === "turn_running") {
             const interrupted = objectResult(
               await hostRequest("interrupt_turn", {
                 threadRef: targetRun.threadRef,

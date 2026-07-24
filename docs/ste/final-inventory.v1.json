@@ -34082,7 +34082,7 @@
     },
     {
       "path": "docs/omega/2026-07-24-omega-full-auto-routing-liveness.md",
-      "sha256": "3da0a83dc55e413f149b00ea6cf4672868294172a7f4f996afab3b12b479236e",
+      "sha256": "d277d44e9556efe94257fc53fa6802ee184d534ad4393c9e7ed3546cfcab429f",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -46528,7 +46528,7 @@
     },
     {
       "path": "packages/omega-effectd/README.md",
-      "sha256": "8ad72e8d8a6a89a099fab7047e2ee24299ffdeb5117c4010079825637a6ea9f4",
+      "sha256": "035add870715aa4bbd5e7af4c1caee075e4308c18838e7065c7f5f6b78b374dd",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

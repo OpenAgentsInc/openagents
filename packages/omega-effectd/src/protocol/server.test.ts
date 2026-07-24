@@ -208,6 +208,55 @@ describe("omega-effectd framed protocol", () => {
     });
   });
 
+  test("stops a paused run without refreshing an unavailable provider lane", async () => {
+    await withRoot(async (root) => {
+      const baseHost = makeOmegaEffectdTestHost();
+      let providerAvailable = true;
+      const requestsAfterProviderLoss: string[] = [];
+      const service = createOmegaEffectdService({ paths: { dataRoot: root } });
+      const server = createOmegaEffectdFramedServer(
+        service,
+        { dataRoot: root },
+        {
+          hostRequestHandler: async (hostRequest) => {
+            if (!providerAvailable) requestsAfterProviderLoss.push(hostRequest.method);
+            if (hostRequest.method === "lane_readiness" && !providerAvailable) {
+              return { known: true, admitted: true, fullAuto: true, state: "unavailable" };
+            }
+            if (hostRequest.method === "refresh_evidence" && !providerAvailable) {
+              throw new Error("That provider lane has no verified authentication.");
+            }
+            return baseHost(hostRequest);
+          },
+        },
+      );
+      await server.handleLine(request("init-stop-unready", 0, "initialize", { generation: 1 }));
+
+      const started = await server.handleLine(
+        request("start-stop-unready", 1, "start", {
+          workspaceRef: "workspace.omega.supervised",
+          title: "Stop without provider auth",
+          objective: "Prove Stop remains a local owner control.",
+          doneCondition: "The paused run reaches stopped after provider authentication is lost.",
+        }),
+      );
+      expect(started?.ok).toBe(true);
+      const runRef = (started?.result as { run: { runRef: string } }).run.runRef;
+
+      const paused = await server.handleLine(request("pause-stop-unready", 1, "pause", { runRef }));
+      expect(paused?.ok).toBe(true);
+      expect((paused?.result as { run: { state: string } }).run.state).toMatch(/paus/);
+
+      providerAvailable = false;
+      const stopped = await server.handleLine(request("stop-stop-unready", 1, "stop", { runRef }));
+
+      expect(stopped?.ok).toBe(true);
+      expect((stopped?.result as { run: { state: string } }).run.state).toBe("stopped");
+      expect(requestsAfterProviderLoss).not.toContain("refresh_evidence");
+      expect(requestsAfterProviderLoss).not.toContain("lane_readiness");
+    });
+  });
+
   test("repairs an interrupted provider-thread registry transfer before reconciliation", async () => {
     await withRoot(async (root) => {
       const runsPath = resolveFullAutoRunsPath({ dataRoot: root });
