@@ -31,6 +31,7 @@ apps/openagents-desktop/out/
 
 # Local agent working files / tooling (never tracked)
 .codex/
+.artifacts/
 NEEDS_OWNER.md
 
 # GLM own-capacity continual-learning burn output (owner-private derived data)

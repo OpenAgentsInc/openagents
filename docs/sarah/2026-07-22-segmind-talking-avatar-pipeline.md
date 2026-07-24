@@ -24,6 +24,7 @@ complements the realtime OAV, it does not replace it.
 ## What it does
 
 Input:
+
 - one **portrait image** (as a public URL),
 - a **spoken line** — either a text script (built-in text-to-speech) or a
   pre-recorded audio URL.
@@ -93,7 +94,7 @@ node -e '
     const s=new Storage({keyFilename:process.env.HOME+"/work/.secrets/gcp-mvp-automation.json",projectId:"openagentsgemini"});
     const [url]=await s.bucket(process.env.B).file(process.env.O).getSignedUrl({version:"v4",action:"read",expires:Date.now()+6*3600*1000});
     console.log(url);
-  })' 
+  })'
 # with B=$BUCKET O=$OBJ in the environment
 ```
 
@@ -246,11 +247,11 @@ Owner gates for capture:
 
 ### Interleave in the edit
 
-| Track | Source | Typical use |
-| --- | --- | --- |
-| Sarah picture | Segmind runner output under `~/Desktop/Sarah/<episode>/` | Opening and closing on-camera beats |
-| Product screenshare | `ffmpeg` capture of a controlled Omega window | Mid-episode product beats and fill over salvage gaps |
-| Still cutaway | Only when live capture is unavailable | Labeled honestly. Replace when a live shot exists |
+| Track               | Source                                                   | Typical use                                          |
+| ------------------- | -------------------------------------------------------- | ---------------------------------------------------- |
+| Sarah picture       | Segmind runner output under `~/Desktop/Sarah/<episode>/` | Opening and closing on-camera beats                  |
+| Product screenshare | `ffmpeg` capture of a controlled Omega window            | Mid-episode product beats and fill over salvage gaps |
+| Still cutaway       | Only when live capture is unavailable                    | Labeled honestly. Replace when a live shot exists    |
 
 Join Sarah generations under a full-screen screenshare or cutaway. Do not invent
 extra spoken text only to fill the screenshare. Hold the screen under the
@@ -366,15 +367,64 @@ pnpm --dir apps/qa-runner run overlay-text \
 Keep cutaway stills under the episode Desktop folder or ignored
 `.artifacts/episode-N/cutaways/` with a manifest.
 
+Use `cutaways/manifest.json` in either location. Media and manifests are local
+production inventory and must not be committed. Paths are relative to the
+manifest. Each duration is the amount of Part B assigned to that beat:
+
+```json
+{
+  "version": 1,
+  "episode": "262",
+  "cutaways": [
+    {
+      "id": "omega-readme",
+      "file": "omega-readme.jpg",
+      "durationSec": 3.2,
+      "note": "Current README architecture still"
+    },
+    {
+      "id": "identity-detail",
+      "file": "identity-detail.png",
+      "durationSec": 3.1
+    }
+  ]
+}
+```
+
+The helper discovers `cutaways/manifest.json` beside `--sarah-master` first,
+then `.artifacts/episode-N/cutaways/manifest.json` when `--episode N` is set.
+List the inventory before assembly and select beats in playback order by
+repeating `--cutaway-id`:
+
+```sh
+node scripts/sarah-avatar/assemble-rc.mjs \
+  --sarah-master ~/Desktop/Sarah/262/262-sarah-master.mp4 \
+  --episode 262 \
+  --list-cutaways
+
+node scripts/sarah-avatar/assemble-rc.mjs \
+  --sarah-master ~/Desktop/Sarah/262/262-sarah-master.mp4 \
+  --screenshare ~/Desktop/Sarah/262/262-screenshare-omega-welcome.mp4 \
+  --episode 262 \
+  --cutaway-id omega-readme \
+  --cutaway-id identity-detail \
+  --out ~/Desktop/Sarah/262/262-rc-no-music.mp4
+```
+
+Use `--cutaway-manifest /path/to/manifest.json` to override discovery. The
+older `--cutaway` plus `--cutaway-seconds` form remains available for a single
+ad hoc beat. When discovery finds an inventory, assembly requires a selection.
+Pass `--skip-cutaways` only when omitting every inventoried beat is intentional.
+
 ### Step 4 — Assemble A / B / C (audio continuous)
 
 Keep Sarah's spoken audio end to end. Cut **picture** only:
 
-| Part | Picture | Timing |
-| --- | --- | --- |
-| A | Sarah master | `0` → T1 |
-| B | Mid product picture (motion, then second beat / cutaway) | T1 → T2 |
-| C | Sarah master | T2 → `D` |
+| Part | Picture                                                  | Timing   |
+| ---- | -------------------------------------------------------- | -------- |
+| A    | Sarah master                                             | `0` → T1 |
+| B    | Mid product picture (motion, then second beat / cutaway) | T1 → T2  |
+| C    | Sarah master                                             | T2 → `D` |
 
 `D` is the Sarah master duration. Do not copy old T1/T2 fractions blindly.
 Derive T1 from the silence after the spoken pause (for Episode 262, after
@@ -541,9 +591,11 @@ not treat open items as done.
    completion KVP blocks). Add matching command-palette strings. Document
    `⌘⇧P` vs `⌘P` in Omega help. Add a reset-onboarding action that clears
    completion KVPs for development builds.
-6. **Cutaway inventory:** Keep cutaway stills under the episode Desktop
-   folder or ignored `.artifacts/episode-N/cutaways/` with a manifest.
-   Do not rely on one screenshare duration alone. Tracked as #9237.
+6. **Cutaway inventory (shipped #9237):** Keep cutaway stills under the
+   episode Desktop folder or ignored `.artifacts/episode-N/cutaways/` with a
+   versioned manifest. `assemble-rc.mjs --list-cutaways` discovers the
+   inventory. Repeated `--cutaway-id` selections create multiple ordered mid
+   beats. Do not rely on one screenshare duration alone.
 
 ## How it works (Segmind Async Inference V2)
 
@@ -603,7 +655,7 @@ standardizing a model for Sarah's comms.
 - Voice source: Segmind built-in TTS vs our own voice (the OAV/pipecat voice
   stack) fed in as `--audio`.
 - Cost and rate posture for routine comms generation.
-- Wire remaining Episode 262 tooling (Segmind paste lint, cutaway inventory).
+- Wire remaining Episode 262 tooling (Segmind paste lint).
   Fix the Omega onboarding reopen bug. Keep publication gates for each episode
   RC under `~/Desktop/Sarah/<episode>/`. Music generate/mix is
   `scripts/sarah-avatar/elevenlabs-music-bed.mjs` (#9235). RC assemble is
