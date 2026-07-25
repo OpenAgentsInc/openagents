@@ -219,13 +219,20 @@ that issue lands.
   `dispatchCodexLocalTurn` calling `runFullAutoReconciliation()` after a
   successful Full-Auto turn (code-reviewed, main.ts has no direct unit-test
   harness, see Receipts for the isolated-module proof used instead).
-- **FA-AC-04:** Toggling Full Auto off persists to main immediately
-  (`CodexLocalFullAutoSetChannel`), independent of whether a turn is in
-  flight, so a toggle-off durably stops the loop even if the app quits before
-  the next turn would have started.
-  Proof: `shell.test.ts` "DesktopFullAutoToggled flips the flag and persists
-  it to main immediately". `full-auto-restart.e2e.test.ts` "toggling off
-  before restart durably stops it -- Runtime B never dispatches".
+- **FA-AC-04 (RETIRED 2026-07-25, omega#26):** The composer toggle and its
+  `CodexLocalFullAutoSetChannel` IPC are REMOVED. The channel granted Full
+  Auto authority to whatever renderer caller invoked it while main attributed
+  the call as the owner UI, without proving the call came from a control the
+  owner pressed. No rendered control had dispatched it since the dedicated
+  launcher landed (FA-UX-01 #8974). Stopping a run is the launcher's
+  Pause/Stop, the loopback control API, or a mobile control intent. None of
+  those can grant authority.
+  Proof: `shell.test.ts` "gate 8 (omega#26): the shell intent surface
+  registers no intent that grants Full Auto authority", plus
+  `full-auto-hydration.integration.test.ts` "a real control-server enable
+  survives registry-backed renderer attachment, and the renderer cannot write
+  it back". `full-auto-restart.e2e.test.ts` still proves a durable disable
+  stops the loop across a restart, now driven through the registry directly.
 - **FA-AC-05:** When Full Auto is off, an ordinary turn sends `fullAuto`
   undefined (not `false`) and never resubmits automatically.
   Proof: `shell.test.ts` "toggled off, an ordinary Codex turn sends fullAuto
@@ -296,9 +303,11 @@ that issue lands.
   Proof: `full-auto-restart.e2e.test.ts` "enable on workspace A, resolve
   workspace B at reconcile -> no dispatch, record disabled with
   workspace_mismatch, block reported". `main.ts` binds via
-  `resolveDesktopLocalWorkspaceRoot()` in the `CodexLocalFullAutoSetChannel`
-  handler and passes the same resolver into reconciliation (code-reviewed,
-  main.ts has no direct unit-test harness).
+  `resolveDesktopLocalWorkspaceRoot()` on every enable path -- the launcher
+  IPC and the loopback control API -- and passes the same resolver into
+  reconciliation (code-reviewed, main.ts has no direct unit-test harness).
+  The `CodexLocalFullAutoSetChannel` handler that used to be the third such
+  path was removed on 2026-07-25 (omega#26).
 - **FA-AC-14:** An enabled record with NO recorded workspace (a pre-upgrade v1
   row) fails CLOSED at dispatch: it is never silently adopted onto the current
   workspace -- the record is disabled with
@@ -487,18 +496,26 @@ that issue lands.
   bearer, call the HTTP API, and return the server's JSON verbatim -- no
   client-side policy and no second schema vocabulary. Both fail with a clear
   "server not enabled" message when the connection file is missing. The MCP
-  server exposes `full_auto_list` / `full_auto_status` / `full_auto_enable` /
-  `full_auto_disable` / `full_auto_continue_now` / `full_auto_turns` over the
-  repo's public MCP protocol revision (2025-06-18).
+  server exposes `full_auto_list` / `full_auto_status` / `full_auto_disable` /
+  `full_auto_resume` / `full_auto_continue_now` / `full_auto_turns` plus the
+  read-only run surface, over the repo's public MCP protocol revision
+  (2025-06-18). It exposes NO tool that grants Full Auto authority: an MCP
+  tool is callable by a language model, and the restated gate 8 (omega#26)
+  admits only human-initiated starts. `full_auto_start`, `full_auto_run_start`
+  and `full_auto_enable` were removed from the MCP surface on 2026-07-25. The
+  CLI, the launcher, and the loopback API keep them for humans.
   Proof: `scripts/full-auto-cli.ts` and `scripts/full-auto-mcp.ts`
   (pass-through by construction over the shared
-  `scripts/full-auto-control-client.ts`). Live end-to-end receipt in the
+  `scripts/full-auto-control-client.ts`). The registered MCP surface and its
+  reachable control operations are pinned by
+  `scripts/full-auto-mcp-tools.test.ts`. Live end-to-end receipt in the
   rev 6 entry under Receipts (`pnpm run smoke:full-auto-control` exercises
   the real CLI as a second OS process against the real running Electron
   main).
 - **FA-AC-28:** The control surface can BOOTSTRAP Full Auto with no existing
-  thread: `POST /v1/full-auto/start` (OpenAPI `startFullAuto`, MCP
-  `full_auto_start`, CLI `start --workspace <path> [--title <t>]`) mints a
+  thread: `POST /v1/full-auto/start` (OpenAPI `startFullAuto`, CLI
+  `start --workspace <path> [--title <t>]`, and NOT exposed as an MCP tool
+  since 2026-07-25, omega#26 -- a model may not start Full Auto) mints a
   brand-new local thread in main's own thread store (main names the ref --
   the caller never supplies one), binds the resolved workspace, enables the
   record through the same `registry.set` path as the composer toggle,

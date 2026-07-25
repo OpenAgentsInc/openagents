@@ -1088,7 +1088,6 @@ export const DesktopCodexReasoningSelected = defineIntent(
   "DesktopCodexReasoningSelected",
   CodexReasoningEffortSchema,
 );
-export const DesktopFullAutoToggled = defineIntent("DesktopFullAutoToggled", Schema.Null);
 export const DesktopModelSelected = defineIntent("DesktopModelSelected", LocalModelSchema);
 export const DesktopVoiceModeToggled = defineIntent("DesktopVoiceModeToggled", Schema.Null);
 export const DesktopVoiceMuteToggled = defineIntent("DesktopVoiceMuteToggled", Schema.Null);
@@ -1380,7 +1379,6 @@ export const desktopShellIntents = [
   DesktopHarnessSelected,
   DesktopProviderLaneSelected,
   DesktopCodexReasoningSelected,
-  DesktopFullAutoToggled,
   DesktopModelSelected,
   DesktopVoiceModeToggled,
   DesktopVoiceMuteToggled,
@@ -2680,15 +2678,20 @@ export type DesktopPresentationRendererHost = Readonly<{
   setGraphRecallEnabled?: (enabled: boolean) => Promise<void>;
 }>;
 /**
- * Full Auto (#8853, FA-H1 #8874): main-owned durable per-thread toggle. `set`
- * persists immediately (even mid-turn, even with no turn ever sent yet).
- * `get` reads the current durable truth and IS called: boot.ts seeds the
- * active thread's toggle from it at mount, and the thread-selection path
+ * Full Auto (#8853, FA-H1 #8874): READ-ONLY renderer view of main's durable
+ * per-thread Full Auto truth. `get` IS called: boot.ts seeds the active
+ * thread's state from it at mount, and the thread-selection path
  * (commitLocalSession / resume) re-hydrates it on every switch, so the
  * composer's stop control reflects reality instead of a hard-coded off.
+ *
+ * The authority-GRANTING `set` was removed on 2026-07-25 (omega#26, gate 8
+ * restated: "no model-initiated path can start Full Auto authority"). It
+ * granted Full Auto to whatever renderer caller invoked it while main
+ * attributed the call as the owner UI, and no rendered control had dispatched
+ * it since the dedicated launcher landed (FA-UX-01 #8974). A human starts
+ * Full Auto through `FullAutoRunRendererHost.start`.
  */
 export type DesktopFullAutoRendererHost = Readonly<{
-  set: (input: Readonly<{ threadRef: string; enabled: boolean }>) => Promise<unknown>;
   /** FA-H4 (#8877): `state`/`turnRef` are additive live-state fields — an
    * older preload that returns only `{ enabled }` keeps wave-1 hydration
    * working unchanged. */
@@ -2800,7 +2803,6 @@ export const makeDesktopShellHandlers = (
   harnessMaintenanceBridge: HarnessMaintenanceSettingsBridge = unavailableHarnessMaintenanceSettingsBridge,
   presentationHost: DesktopPresentationRendererHost = { setSidebarCollapsed: async () => {} },
   fullAutoHost: DesktopFullAutoRendererHost = {
-    set: async () => ({}),
     get: async () => ({ enabled: false }),
   },
   acpProviderBridge: AcpProviderSettingsBridge = unavailableAcpProviderSettingsBridge,
@@ -3606,17 +3608,6 @@ export const makeDesktopShellHandlers = (
       }
     });
   /**
-   * Full Auto (FA-H1 #8874): per-thread monotonic local-edit counters, keyed
-   * like fullAutoByThread. Hydration must never overwrite a NEWER local user
-   * toggle, so each hydrate snapshots the counter before its fetch and only
-   * applies the fetched value if no toggle landed for that thread while the
-   * get was in flight. Chosen as the simplest honest guard for this
-   * single-user renderer: the toggle itself persists via fullAutoHost.set the
-   * moment it happens, so preferring the local value never leaves durable
-   * state behind. Closure-local bookkeeping, not presentation state.
-   */
-  const fullAutoLocalEdits = new Map<string, number>();
-  /**
    * Fetch one thread's durable Full Auto truth and project it into the map.
    * Callers commit the thread selection FIRST and hydrate after, so switching
    * is never blocked on this IPC round trip; a failed get changes nothing.
@@ -3624,22 +3615,22 @@ export const makeDesktopShellHandlers = (
   const hydrateFullAuto = (threadRef: string) =>
     Effect.gen(function* () {
       if (threadRef === "") return;
-      const editsBefore = fullAutoLocalEdits.get(threadRef) ?? 0;
       const fetched = yield* Effect.promise(() =>
         fullAutoHost.get({ threadRef }).catch(() => null),
       );
       if (fetched === null) return;
       yield* SubscriptionRef.update(state, (current) => {
-        const next =
-          (fullAutoLocalEdits.get(threadRef) ?? 0) === editsBefore
-            ? {
-                ...current,
-                fullAutoByThread: {
-                  ...current.fullAutoByThread,
-                  [threadRef]: fetched.enabled === true,
-                },
-              }
-            : current;
+        // FA-H1's local-edit guard is gone with the composer toggle it
+        // protected (omega#26, 2026-07-25): the renderer no longer has a
+        // control that writes Full Auto state, so main's durable record is the
+        // only writer and hydration can apply it unconditionally.
+        const next = {
+          ...current,
+          fullAutoByThread: {
+            ...current.fullAutoByThread,
+            [threadRef]: fetched.enabled === true,
+          },
+        };
         // FA-H4 (#8877): the extended get also carries the coarse live state
         // (additive; an older host omits it), so switching onto a thread with
         // a background turn in flight shows the badge/Stop immediately instead
@@ -3660,8 +3651,8 @@ export const makeDesktopShellHandlers = (
    * re-evaluating it at both turn completion and app startup, so it survives
    * a renderer reload or a full app restart. This function's only Full Auto
    * responsibility is threading the active thread's toggle state into the
-   * turn payload and, for a brand new thread, promoting the pre-thread
-   * sentinel toggle onto the real thread id and telling main it is enabled.
+   * turn payload. It no longer writes Full Auto state: the composer toggle
+   * and its pre-thread sentinel were removed on 2026-07-25 (omega#26).
    */
   const runNoteSubmission = (explicitMessage?: string) =>
     Effect.gen(function* () {
@@ -3764,20 +3755,13 @@ export const makeDesktopShellHandlers = (
           composerTerminalContext: draftTerminalContext,
           composerPreviewContext: draftPreviewContext,
         };
-        // Full Auto (#8853, FA-H1 #8874): a toggle made before any thread
-        // existed lives under the "" sentinel key. Promote it onto this brand
-        // new thread's real id and clear the sentinel, so the next fresh
-        // composer starts honestly off; main only learns about an enabled
-        // toggle now, once a real threadRef exists to persist against.
-        const sentinelFullAuto = current.fullAutoByThread[""];
-        if (sentinelFullAuto !== undefined) {
-          const { "": _sentinel, ...settled } = current.fullAutoByThread;
-          current = { ...current, fullAutoByThread: { ...settled, [thread.id]: sentinelFullAuto } };
-        }
+        // Full Auto (#8853): the pre-thread "" sentinel toggle and its
+        // promotion onto a brand-new thread went with the composer toggle
+        // (omega#26, 2026-07-25). Enabling Full Auto on a freshly minted
+        // thread was exactly the model-reachable escalation shape the restated
+        // gate 8 forbids, and no rendered control produced the sentinel any
+        // more. A human starts Full Auto from the launcher.
         yield* SubscriptionRef.set(state, current);
-        if (sentinelFullAuto === true) {
-          yield* Effect.promise(() => fullAutoHost.set({ threadRef: thread.id, enabled: true }));
-        }
       }
       // OpenAgents authority (owner directive 2026-07-19, amended 2026-07-20;
       // AFS-03 #9081): new turns route to "OpenAgents" through the SHARED TURN
@@ -4772,30 +4756,6 @@ export const makeDesktopShellHandlers = (
       SubscriptionRef.update(state, (current) => ({ ...current, composerPreviewContext: null })),
     DesktopNoteSubmitted: (value) =>
       runNoteSubmission(typeof value === "string" ? value : undefined),
-    DesktopFullAutoToggled: () =>
-      Effect.gen(function* () {
-        const current = yield* SubscriptionRef.get(state);
-        // FA-H1 #8874: flip the ACTIVE thread's entry (or the "" sentinel while
-        // no thread exists yet), and record the local edit so an in-flight
-        // hydration get cannot overwrite this newer choice.
-        const key = current.activeThreadId ?? "";
-        const enabled = !(current.fullAutoByThread[key] ?? false);
-        fullAutoLocalEdits.set(key, (fullAutoLocalEdits.get(key) ?? 0) + 1);
-        yield* SubscriptionRef.update(state, (next) => ({
-          ...next,
-          fullAutoByThread: { ...next.fullAutoByThread, [key]: enabled },
-        }));
-        // Full Auto (#8853): persist immediately so main's durable loop reflects
-        // the toggle right away -- including a toggle-off actually stopping a
-        // background continuation, and a toggle-on surviving this session even
-        // if the app quits before the next send. A brand new thread (no id yet)
-        // is persisted lazily once runNoteSubmission creates it.
-        if (current.activeThreadId !== null) {
-          yield* Effect.promise(() =>
-            fullAutoHost.set({ threadRef: current.activeThreadId!, enabled }),
-          );
-        }
-      }),
     DesktopSteerCurrentRequested: (value) =>
       Effect.gen(function* () {
         const current = yield* SubscriptionRef.get(state);

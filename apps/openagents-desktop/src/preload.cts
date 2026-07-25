@@ -289,11 +289,9 @@ import {
   decodeCodexQueueMutation,
   CodexLocalStartChannel,
   CodexLocalSteerTurnChannel,
-  CodexLocalFullAutoSetChannel,
   CodexLocalFullAutoGetChannel,
   CodexLocalFullAutoInterruptChannel,
   CodexLocalFullAutoStateChannel,
-  decodeCodexLocalFullAutoSetRequest,
   decodeCodexLocalFullAutoGetRequest,
   decodeCodexLocalFullAutoInterruptRequest,
   decodeCodexLocalFullAutoState,
@@ -1250,18 +1248,17 @@ contextBridge.exposeInMainWorld("openagentsDesktop", {
       return () => ipcRenderer.removeListener(CodexLocalEventChannel, handler)
     },
     /**
-     * Full Auto (#8853): main-owned durable per-thread toggle. `set` persists
-     * immediately regardless of whether a turn is in flight; `get` reads the
-     * current durable truth so the renderer can reflect reality on boot
+     * Full Auto (#8853): main-owned durable per-thread truth. `get` reads the
+     * current durable state so the renderer can reflect reality on boot
      * instead of defaulting to off.
+     *
+     * The authority-GRANTING `set` was removed on 2026-07-25 (omega#26, gate
+     * 8 restated): it let any renderer caller enable Full Auto while main
+     * attributed the call as the owner UI, and no composer control had
+     * dispatched it since the dedicated launcher landed. A human starts Full
+     * Auto through `fullAutoRun.start` below.
      */
     fullAuto: {
-      set: (value: unknown) => {
-        const request = decodeCodexLocalFullAutoSetRequest(value)
-        return request === null
-          ? Promise.resolve({ ok: false })
-          : ipcRenderer.invoke(CodexLocalFullAutoSetChannel, request)
-      },
       get: (value: unknown) => {
         const request = decodeCodexLocalFullAutoGetRequest(value)
         return request === null

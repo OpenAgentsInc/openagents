@@ -8,10 +8,16 @@
  * newline-delimited JSON-RPC on stdio) is implemented by hand: the workspace
  * carries no direct `@modelcontextprotocol/sdk` dependency (it appears only
  * as a transitive peer of the Claude agent SDK, which pnpm's strict linker
- * does not expose to this package), and the protocol subset needed for six
+ * does not expose to this package), and the protocol subset needed for these
  * pass-through tools is deliberately small. The protocol revision matches the
  * repo's public MCP surface (PUBLIC_MCP_PROTOCOL_VERSION in
  * apps/openagents.com/workers/api/src/public-agent-mcp-discovery.ts).
+ *
+ * The tool surface itself and the name -> control-operation dispatcher live in
+ * `full-auto-mcp-tools.ts` so `full-auto-mcp-tools.test.ts` can assert the
+ * restated gate 8 property ("no model-initiated path can start Full Auto
+ * authority", omega#26) over the REGISTERED surface rather than over source
+ * text. This file owns only transport.
  *
  * Usage: node --import tsx scripts/full-auto-mcp.ts [--user-data <path>]
  * (or set OPENAGENTS_DESKTOP_USER_DATA).
@@ -24,201 +30,10 @@ import {
   readControlConnection,
   resolveUserDataDir,
 } from "./full-auto-control-client.ts"
+import { dispatchFullAutoMcpTool, FULL_AUTO_MCP_TOOLS } from "./full-auto-mcp-tools.ts"
 
 const MCP_PROTOCOL_VERSION = "2025-06-18"
 const SERVER_INFO = { name: "openagents-desktop-full-auto", version: "1.0.0" } as const
-
-const threadRefProperty = {
-  threadRef: { type: "string", minLength: 1, maxLength: 120, description: "Desktop thread ref." },
-} as const
-const runRefProperty = {
-  runRef: { type: "string", minLength: 1, maxLength: 180, description: "FullAutoRun ref (FA-RUN-01)." },
-} as const
-// FA-WIRE-01 (#8996): ordered routing policy + owner guardrails, passed
-// through verbatim to the control API (which validates them fail-closed).
-const routingPolicyProperty = {
-  routingPolicy: {
-    type: "array",
-    minItems: 1,
-    maxItems: 8,
-    description:
-      "Optional ordered multi-lane routing policy; order = rotation priority. Each candidate names " +
-      "an admitted Full-Auto-eligible ProviderLane ref plus an optional accountRef on that lane.",
-    items: {
-      type: "object",
-      additionalProperties: false,
-      required: ["lane"],
-      properties: {
-        lane: { type: "string", minLength: 1, maxLength: 80 },
-        accountRef: { type: "string", minLength: 1, maxLength: 80 },
-      },
-    },
-  },
-} as const
-const guardrailsProperty = {
-  guardrails: {
-    type: "object",
-    additionalProperties: false,
-    description:
-      "Optional owner-configured guardrails (FA-GD-01). Absent fields keep the built-in defaults.",
-    properties: {
-      maxWallClockMs: { type: "integer", minimum: 1 },
-      maxTurns: { type: "integer", minimum: 1 },
-      maxPerTurnFailures: { type: "integer", minimum: 1 },
-      tokenBudgetRef: { type: "string", minLength: 1, maxLength: 180 },
-    },
-  },
-} as const
-
-const TOOLS = [
-  {
-    name: "provider_lanes_list",
-    description: "List every configured provider lane with honest authentication, admission, and capability status.",
-    inputSchema: { type: "object", additionalProperties: false, properties: {} },
-  },
-  {
-    name: "full_auto_list",
-    description: "List every Full Auto registry record with its coarse live state (public-safe projection).",
-    inputSchema: { type: "object", additionalProperties: false, properties: {} },
-  },
-  {
-    name: "full_auto_status",
-    description: "One thread's Full Auto record plus coarse live state.",
-    inputSchema: { type: "object", additionalProperties: false, required: ["threadRef"], properties: threadRefProperty },
-  },
-  {
-    name: "full_auto_start",
-    description:
-      "Bootstrap Full Auto with no existing thread: mint a brand-new local thread, enable Full " +
-      "Auto on it, and schedule the first continuation in one call. You MUST name the workspace " +
-      "you expect (workspaceRef); on 409 workspace_mismatch NO thread is created. The new " +
-      "threadRef is returned inside the record.",
-    inputSchema: {
-      type: "object",
-      additionalProperties: false,
-      required: ["workspaceRef"],
-      properties: {
-        workspaceRef: { type: "string", minLength: 1, maxLength: 1024, description: "Expected absolute workspace path." },
-        title: { type: "string", minLength: 1, maxLength: 80, description: "Optional owner-visible thread title." },
-        lane: { type: "string", minLength: 1, maxLength: 80, description: "Optional ProviderLane ref; defaults to codex-local." },
-        ...routingPolicyProperty,
-        ...guardrailsProperty,
-      },
-    },
-  },
-  {
-    name: "full_auto_enable",
-    description:
-      "Enable Full Auto for a thread. You MUST name the workspace you expect (workspaceRef); the " +
-      "server refuses with 409 workspace_mismatch when it does not match the currently resolved " +
-      "workspace, and can never grant a new workspace.",
-    inputSchema: {
-      type: "object",
-      additionalProperties: false,
-      required: ["threadRef", "workspaceRef"],
-      properties: {
-        ...threadRefProperty,
-        workspaceRef: { type: "string", minLength: 1, maxLength: 1024, description: "Expected absolute workspace path." },
-        lane: { type: "string", minLength: 1, maxLength: 80, description: "Optional ProviderLane ref; defaults to codex-local." },
-        ...routingPolicyProperty,
-        ...guardrailsProperty,
-      },
-    },
-  },
-  {
-    name: "full_auto_resume",
-    description:
-      "Resume a Full Auto record the FA-GD-01 confidence gate durably paused (pausedReason set). " +
-      "Clears the pause and schedules the shared reconciliation pass; refused with 409 not_paused " +
-      "when the record is not currently paused -- resume never re-enables a disabled record.",
-    inputSchema: { type: "object", additionalProperties: false, required: ["threadRef"], properties: threadRefProperty },
-  },
-  {
-    name: "full_auto_disable",
-    description: "Durably disable Full Auto for a thread.",
-    inputSchema: { type: "object", additionalProperties: false, required: ["threadRef"], properties: threadRefProperty },
-  },
-  {
-    name: "full_auto_continue_now",
-    description:
-      "Schedule an immediate Full Auto reconciliation attempt through the same serialized path as " +
-      "every other trigger; returns { scheduled: true } immediately.",
-    inputSchema: { type: "object", additionalProperties: false, required: ["threadRef"], properties: threadRefProperty },
-  },
-  {
-    name: "full_auto_turns",
-    description: "Bounded recent Full Auto turn history (identity/phase/disposition/timestamps; never transcript text).",
-    inputSchema: { type: "object", additionalProperties: false, required: ["threadRef"], properties: threadRefProperty },
-  },
-  // FA-RUN-01 (#8969): the durable FullAutoRun lifecycle surface.
-  {
-    name: "full_auto_runs_list",
-    description: "List every durable FullAutoRun, settled against current thread-level truth.",
-    inputSchema: { type: "object", additionalProperties: false, properties: {} },
-  },
-  {
-    name: "full_auto_run_status",
-    description: "One run's settled current lifecycle state, objective, and transition history.",
-    inputSchema: { type: "object", additionalProperties: false, required: ["runRef"], properties: { runRef: runRefProperty.runRef } },
-  },
-  {
-    name: "full_auto_run_start",
-    description:
-      "Start a new FullAutoRun: title, objective, and done condition are REQUIRED. Refused with " +
-      "409 active_run_conflict when a Full Auto run is already active for this Desktop profile -- " +
-      "v1 allows at most one active run per profile.",
-    inputSchema: {
-      type: "object",
-      additionalProperties: false,
-      required: ["workspaceRef", "title", "objective", "doneCondition"],
-      properties: {
-        workspaceRef: { type: "string", minLength: 1, maxLength: 1024, description: "Expected absolute workspace path." },
-        title: { type: "string", minLength: 1, maxLength: 120, description: "Owner-visible run title." },
-        objective: { type: "string", minLength: 1, maxLength: 4000, description: "What this run should accomplish." },
-        doneCondition: { type: "string", minLength: 1, maxLength: 2000, description: "How to know the run is done." },
-        lane: { type: "string", minLength: 1, maxLength: 80, description: "Optional ProviderLane ref; defaults to codex-local." },
-        turnCap: { type: "integer", minimum: 1, maximum: 1000, description: "Optional turn cap; defaults to 20." },
-        ...routingPolicyProperty,
-        ...guardrailsProperty,
-      },
-    },
-  },
-  {
-    name: "full_auto_run_pause",
-    description:
-      "Pause a run. Prevents any new dispatch immediately. With an active turn, transitions to " +
-      "Pausing until that turn resolves, then Paused; with no turn in flight, transitions directly to Paused.",
-    inputSchema: { type: "object", additionalProperties: false, required: ["runRef"], properties: { runRef: runRefProperty.runRef } },
-  },
-  {
-    name: "full_auto_run_resume",
-    description: "Resume a run. Legal ONLY from Paused; re-validates workspace/lane admission before dispatching again.",
-    inputSchema: { type: "object", additionalProperties: false, required: ["runRef"], properties: { runRef: runRefProperty.runRef } },
-  },
-  {
-    name: "full_auto_run_stop",
-    description: "Stop a run. Terminal; legal from any non-terminal state; a stopped run is never resumed.",
-    inputSchema: { type: "object", additionalProperties: false, required: ["runRef"], properties: { runRef: runRefProperty.runRef } },
-  },
-  // FA-RUN-04 (#8972) / FA-RPT-01 (#8988): the run report/receipt surface.
-  {
-    name: "full_auto_run_report",
-    description:
-      "One run's bounded PRIVATE FullAutoRunReport, freshly synced on read: lifecycle transitions, " +
-      "liveness gaps, provider handoffs, per-turn dispositions with lane/account identity, typed " +
-      "thread failure history with disabledBy attribution, rotation history when present, typed " +
-      "stop attribution, claimed commit-SHA evidence refs, and local-only default-on metrics " +
-      "counters. Never raw transcript text.",
-    inputSchema: { type: "object", additionalProperties: false, required: ["runRef"], properties: { runRef: runRefProperty.runRef } },
-  },
-  {
-    name: "full_auto_run_receipt",
-    description:
-      "One run's derived PUBLIC-SAFE FullAutoRunReceipt: identities, digests, dispositions, and " +
-      "counts only -- structurally incapable of carrying objective/reason/path/transcript text.",
-    inputSchema: { type: "object", additionalProperties: false, required: ["runRef"], properties: { runRef: runRefProperty.runRef } },
-  },
-] as const
 
 type JsonRpcRequest = Readonly<{
   jsonrpc?: string
@@ -245,81 +60,8 @@ const callTool = async (name: string, args: Record<string, unknown>): Promise<{
   content: Array<{ type: "text"; text: string }>
   isError?: boolean
 }> => {
-  const connection = readControlConnection(userDataDir)
-  const operations = controlOperations(connection)
-  const threadRef = typeof args.threadRef === "string" ? args.threadRef : ""
-  const workspaceRef = typeof args.workspaceRef === "string" ? args.workspaceRef : ""
-  const runRef = typeof args.runRef === "string" ? args.runRef : ""
-  // FA-WIRE-01 (#8996): pass-through only -- the control API validates the
-  // policy/guardrail shapes fail-closed; this client never re-implements them.
-  const policyOptions = {
-    ...(Array.isArray(args.routingPolicy)
-      ? { routingPolicy: args.routingPolicy as ReadonlyArray<{ lane: string; accountRef?: string }> }
-      : {}),
-    ...(typeof args.guardrails === "object" && args.guardrails !== null
-      ? {
-          guardrails: args.guardrails as {
-            maxWallClockMs?: number
-            maxTurns?: number
-            maxPerTurnFailures?: number
-            tokenBudgetRef?: string
-          },
-        }
-      : {}),
-  }
-  const result = name === "provider_lanes_list"
-    ? await operations.lanes()
-    : name === "full_auto_list"
-    ? await operations.list()
-    : name === "full_auto_status"
-    ? await operations.status(threadRef)
-    : name === "full_auto_start"
-    ? await operations.start(
-        workspaceRef,
-        typeof args.title === "string" ? args.title : undefined,
-        typeof args.lane === "string" ? args.lane : undefined,
-        policyOptions,
-      )
-    : name === "full_auto_enable"
-    ? await operations.enable(
-        threadRef,
-        workspaceRef,
-        typeof args.lane === "string" ? args.lane : undefined,
-        policyOptions,
-      )
-    : name === "full_auto_resume"
-    ? await operations.resume(threadRef)
-    : name === "full_auto_disable"
-    ? await operations.disable(threadRef)
-    : name === "full_auto_continue_now"
-    ? await operations.continueNow(threadRef)
-    : name === "full_auto_turns"
-    ? await operations.turns(threadRef)
-    : name === "full_auto_runs_list"
-    ? await operations.runsList()
-    : name === "full_auto_run_status"
-    ? await operations.runStatus(runRef)
-    : name === "full_auto_run_start"
-    ? await operations.runsStart({
-        workspaceRef,
-        title: typeof args.title === "string" ? args.title : "",
-        objective: typeof args.objective === "string" ? args.objective : "",
-        doneCondition: typeof args.doneCondition === "string" ? args.doneCondition : "",
-        ...(typeof args.lane === "string" ? { lane: args.lane } : {}),
-        ...(typeof args.turnCap === "number" ? { turnCap: args.turnCap } : {}),
-        ...policyOptions,
-      })
-    : name === "full_auto_run_pause"
-    ? await operations.runPause(runRef)
-    : name === "full_auto_run_resume"
-    ? await operations.runResume(runRef)
-    : name === "full_auto_run_stop"
-    ? await operations.runStop(runRef)
-    : name === "full_auto_run_report"
-    ? await operations.runReport(runRef)
-    : name === "full_auto_run_receipt"
-    ? await operations.runReceipt(runRef)
-    : null
+  const operations = controlOperations(readControlConnection(userDataDir))
+  const result = await dispatchFullAutoMcpTool(operations, name, args)
   if (result === null) {
     return { content: [{ type: "text", text: `unknown tool: ${name}` }], isError: true }
   }
@@ -346,7 +88,7 @@ const handle = async (request: JsonRpcRequest): Promise<void> => {
       sendResult(id, {})
       return
     case "tools/list":
-      sendResult(id, { tools: TOOLS })
+      sendResult(id, { tools: FULL_AUTO_MCP_TOOLS })
       return
     case "tools/call": {
       const name = typeof request.params?.name === "string" ? request.params.name : ""

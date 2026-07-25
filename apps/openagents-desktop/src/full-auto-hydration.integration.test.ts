@@ -21,7 +21,7 @@ import {
 const { makeIntentRegistry } = await import("@effect-native/core")
 
 describe("Full Auto control enable -> later renderer hydration (#8928)", () => {
-  test("a real control-server enable survives registry-backed renderer attachment until an explicit toggle", async () => {
+  test("a real control-server enable survives registry-backed renderer attachment, and the renderer cannot write it back", async () => {
     const root = mkdtempSync(path.join(tmpdir(), "oa-full-auto-hydration-integration-"))
     const workspaceRef = path.join(root, "workspace")
     const thread = {
@@ -62,23 +62,14 @@ describe("Full Auto control enable -> later renderer hydration (#8928)", () => {
       expect(enabled.status).toBe(200)
       expect(registry.get(thread.id)).toBe(true)
 
-      const setCalls: Array<Readonly<{ threadRef: string; enabled: boolean }>> = []
+      // Same durable READ semantics main's IPC handler exposes. The
+      // authority-granting `set` companion was removed on 2026-07-25
+      // (omega#26, gate 8 restated), so the renderer surface is read-only and
+      // this composed test can no longer write through it. This test
+      // deliberately stops short of booting Electron/preload; the real-window
+      // attachment remains an explicit higher-rung gap.
       const fullAutoHost = {
-        // Same durable read/write semantics main's IPC handlers expose. This
-        // composed test deliberately stops short of booting Electron/preload;
-        // the real-window attachment remains an explicit higher-rung gap.
         get: async (input: { threadRef: string }) => ({ enabled: registry.get(input.threadRef) }),
-        set: async (input: { threadRef: string; enabled: boolean }) => {
-          setCalls.push(input)
-          registry.set(
-            input.threadRef,
-            input.enabled,
-            input.enabled
-              ? { workspaceRef }
-              : { disabledBy: "ui_toggle" },
-          )
-          return { ok: true }
-        },
       }
       const state = await Effect.runPromise(SubscriptionRef.make<DesktopShellState>({
         ...initialDesktopShellState("electron/darwin", "11:00"),
@@ -112,17 +103,12 @@ describe("Full Auto control enable -> later renderer hydration (#8928)", () => {
         IntentRef("DesktopChatSelected", StaticPayload(thread.id)),
       )))
       expect(activeFullAutoEnabled(await Effect.runPromise(SubscriptionRef.get(state)))).toBe(true)
-      expect(setCalls).toEqual([])
+      // Attachment is read-only: hydration never writes the renderer's initial
+      // false default over main's API-enabled row, and there is no renderer
+      // path that could.
       expect(registry.get(thread.id)).toBe(true)
-
-      await Effect.runPromise(intents.dispatch(resolveIntentRef(
-        IntentRef("DesktopFullAutoToggled", StaticPayload(null)),
-      )))
-      expect(setCalls).toEqual([{ threadRef: thread.id, enabled: false }])
-      expect(registry.record(thread.id)).toMatchObject({
-        enabled: false,
-        disabledBy: "ui_toggle",
-      })
+      expect(Object.keys(fullAutoHost)).toEqual(["get"])
+      expect(desktopShellIntents.map(intent => intent.name)).not.toContain("DesktopFullAutoToggled")
     } finally {
       await server.stop()
       rmSync(root, { recursive: true, force: true })

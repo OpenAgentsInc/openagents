@@ -34131,7 +34131,7 @@
     },
     {
       "path": "docs/omega/2026-07-24-omega-full-auto-proof-matrix.md",
-      "sha256": "13c4e54403dbc18e07995f5197d0f3709a0caf6fe3cd45b53376e8c46c02bb5e",
+      "sha256": "699214fac6e835d81a175cefa010a7372392507e70ca6857d1f88b293055e369",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -48656,7 +48656,7 @@
     },
     {
       "path": "specs/desktop/full-auto.product-spec.md",
-      "sha256": "5da9eba0601be1b2fe849dce96260e8a785d16590a60298d8180faf9442dba47",
+      "sha256": "b5d7502951fcac6ff99b073115ed8f51e96c1cde778e41c62220cc3a368acc4e",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

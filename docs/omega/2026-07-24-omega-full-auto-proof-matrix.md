@@ -81,11 +81,22 @@ and watched fail:
 
 Both regressions were reverted. The engine tree is unmodified.
 
-### Gate 8 — an escalation path exists on the other host
+### Gate 8 — restated 2026-07-25, and the Desktop escalation path removed
 
-The row 9 claim below ("green (code) — Dedicated panel only") is **correct for
-the Omega GPUI host and wrong as a general statement**, because the same
-engine is also embedded by OpenAgents Desktop.
+**The gate now reads:** "No model-initiated path can start Full Auto
+authority. Only an explicit human action can, wherever that action lives."
+
+The previous row 9 claim ("green (code) — Dedicated panel only") named the
+wrong variable. The surface a start comes from was never the safety-relevant
+thing. **Who decided** always was. Under the owner's direction to fold Full
+Auto into the Omega chat UI, the old wording would have forbidden the intended
+product while still permitting the actual defect. Row 9 above is replaced
+accordingly, and its test is caller identity.
+
+The finding recorded below was **correct for the Omega GPUI host and wrong as
+a general statement**, because the same engine is also embedded by OpenAgents
+Desktop. The Desktop half has since been fixed by removal (owner choice (a),
+2026-07-25), not by re-scoping:
 
 - On Omega, the launcher's Start button is the only path that reaches
   `supervisor.start_run`. The agent panel's Full Auto menu entry dispatches
@@ -93,20 +104,43 @@ engine is also embedded by OpenAgents Desktop.
   the relay action map fails closed on any action ref outside
   `full_auto.{pause,resume,stop}`.
 - On OpenAgents Desktop, `apps/openagents-desktop/scripts/full-auto-mcp.ts`
-  exposes `full_auto_start` and `full_auto_run_start` as **MCP tools a
+  exposed `full_auto_start` and `full_auto_run_start` as **MCP tools a
   language model can call**, with no owner confirmation step. The MCP server
   reads the loopback bearer from the mode-0600 connection file itself, so the
-  model never needs to hold a credential. This is gated by the
+  model never needed to hold a credential. This was gated by the
   `OPENAGENTS_DESKTOP_FULL_AUTO_CONTROL=1` opt-in and by the owner having
   registered the MCP server — but that combination is the documented dogfood
-  configuration.
+  configuration. **REMOVED 2026-07-25.** `full_auto_enable` went with them:
+  it grants Full Auto authority to a thread and schedules the first
+  continuation, which is a start in substance.
 - Separately, the retired composer toggle IPC (`CodexLocalFullAutoSetChannel`)
-  is still registered in the Desktop main process and still exposed through
-  the preload bridge, and main attributes every renderer caller as
-  `actor: "owner_ui"` without proving the call came from the launcher.
+  was still registered in the Desktop main process and still exposed through
+  the preload bridge, letting any renderer caller inherit owner authority
+  without proving the call came from a control the owner pressed.
+  **REMOVED 2026-07-25**, along with its preload bridge, its renderer intent,
+  and the pre-thread sentinel that promoted a toggle onto a brand-new thread.
 
-Gate 8 must not be recorded green on the strength of the Omega host alone.
-The tracked finding and its disposition belong on omega#26.
+What the Desktop dogfood workflow lost: a model can no longer start, bootstrap,
+or enable Full Auto, and can no longer choose the lane, account, turn cap, or
+wall-clock budget an unattended run executes under (routing policy and
+guardrails rode only on start/enable). A human still starts runs from the
+Desktop launcher, from `scripts/full-auto-cli.ts`, from the loopback OpenAPI
+route, and from the Omega chat surface.
+
+Residuals that removal does not close, and that remain open on omega#26:
+
+- Any process running as the user can read `full-auto/control.json` and POST
+  to `/v1/full-auto/start` directly. That is an OS-level authority boundary,
+  not an MCP one. A model with a shell tool is not stopped by this change.
+- `full_auto_continue_now` remains model-callable. It cannot create a grant —
+  reconciliation dispatches nothing for a record no human enabled — but it
+  does trigger an immediate turn inside an existing grant.
+
+The Desktop removal is pinned by
+`apps/openagents-desktop/scripts/full-auto-mcp-tools.test.ts`, which drives
+every registered tool through the real dispatcher against a recording control
+client and asserts the control operation each one actually reaches. It is a
+property over the registered surface, not a grep, so a renamed start fails it.
 
 The engine-side half of the property is now pinned by
 `packages/omega-effectd/src/protocol/server.fa07-chat-authority.test.ts`,
@@ -190,7 +224,7 @@ candidate, owner-observation, release, or public-claim gates.
 | 6 | Visible Codex to Claude handoff on Omega | partial | The framed service now exposes paused-only, live-lane-revalidated, durable handoff under #9215. Live sidebar proof is still required on the replacement packaged candidate. |
 | 7 | Packaged restart reconciliation | partial | Supervisor restart and native evidence survive in source tests. No current installed-candidate receipt binds that proof to rc.6 and the landed Omega capabilities below. |
 | 8 | Mobile pause/resume/stop typed outcomes | green (source/automated) | rc.6 carries the Sync/mobile transport and typed outcomes. Omega `6a8e287295b9d7dbd9cc7abe02685cfcaa3afbf8` supplies the native OpenAgents session boundary. The installed offline/Sync journey remains unobserved. |
-| 9 | No ordinary chat sets Full Auto authority | green (code) | Dedicated panel only. No composer Full Auto start path. |
+| 9 | No MODEL-INITIATED path can start Full Auto authority (restated 2026-07-25) | green (code, both hosts) | Test is caller identity, not surface. Omega: launcher Start is the only path to `supervisor.start_run`, and `apply_control_intent` is pause/resume/stop only (`server.fa07-chat-authority.test.ts`). Desktop: `full_auto_start` / `full_auto_run_start` / `full_auto_enable` removed from the MCP tool surface, and the composer-toggle IPC removed. The registered surface is pinned by `apps/openagents-desktop/scripts/full-auto-mcp-tools.test.ts` and the renderer intent surface by `shell.test.ts`. A human start from a chat surface is now the intended product and does not violate this gate. |
 | 10 | Independent assurance on exact candidate | blocked | Rev5 proof design is admitted, but `openagents.assurance_reviewer` has not verified an exact installed candidate and no release verdict exists. |
 
 ## Landed Omega demo capabilities

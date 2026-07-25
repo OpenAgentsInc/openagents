@@ -271,13 +271,11 @@ import {
   CODEX_LOCAL_RUNTIME_COMPATIBILITY_REF,
   CodexLocalFullAutoGetChannel,
   CodexLocalFullAutoInterruptChannel,
-  CodexLocalFullAutoSetChannel,
   CodexLocalFullAutoStateChannel,
   CODEX_LOCAL_FULL_AUTO_DETAIL_LIMIT,
   decodeCodexLocalContinuationProfile,
   decodeCodexLocalFullAutoGetRequest,
   decodeCodexLocalFullAutoInterruptRequest,
-  decodeCodexLocalFullAutoSetRequest,
   type CodexLocalFullAutoLiveState,
   type CodexLocalModelOption,
 } from "./codex-local-contract.ts"
@@ -352,7 +350,7 @@ import {
   reconcileLocalTurns,
 } from "./local-turn-recovery.ts"
 import { openFullAutoRegistry } from "./full-auto-registry.ts"
-import { applyFullAutoComposerToggle, classifyFullAutoDispatchFailure, FULL_AUTO_MAX_CONTINUATIONS, reconcileFullAutoThreads } from "./full-auto-reconcile.ts"
+import { classifyFullAutoDispatchFailure, FULL_AUTO_MAX_CONTINUATIONS, reconcileFullAutoThreads } from "./full-auto-reconcile.ts"
 import { FULL_AUTO_DEFAULT_LANE, fullAutoLanePolicy, fullAutoPrompt } from "./full-auto-lane.ts"
 import {
   appendFullAutoQueuedInstruction,
@@ -6171,38 +6169,23 @@ ipcMain.handle(CodexLocalStartChannel, async (event, value: unknown) => {
   return { ok: false, error: "This thread is assigned to a different provider lane." }
 })
 
-// Full Auto (#8853): the composer toggle persists here immediately, whether
-// or not a turn is in flight, so quitting the app right after a toggle-off
-// still stops the loop durably (no window round trip required to make the
-// stop real).
-ipcMain.handle(CodexLocalFullAutoSetChannel, async (_event, value: unknown) => {
-  const request = decodeCodexLocalFullAutoSetRequest(value)
-  if (request === null) return { ok: false }
-  // FA-H2 (#8875): enabling binds the CURRENTLY resolved workspace onto the
-  // durable record -- resolved by main from the same source of truth the
-  // codex-local runtime executes against, never a renderer-supplied path.
-  // Reconciliation later refuses to dispatch when this binding no longer
-  // matches. A pre-upgrade record with no binding is rebound here on its
-  // next enable; until then it fails closed at dispatch.
-  applyFullAutoComposerToggle({
-    registry: fullAutoRegistry,
-    threadRef: request.threadRef,
-    enabled: request.enabled,
-    workspaceRef: resolveDesktopLocalWorkspaceRoot(),
-    profile: { lane: FULL_AUTO_DEFAULT_LANE },
-    // Enabling is an immediate trigger. Reconciliation is fire-and-forget
-    // because it owns the whole background turn lifetime; the toggle IPC must
-    // acknowledge promptly while the serialized queue starts work now.
-    scheduleReconciliation: () => { void runFullAutoReconciliation() },
-  })
-  if (!request.enabled) {
-    appendFullAutoSystemNote(
-      request.threadRef,
-      "Full Auto disabled from the composer toggle (caller: ui-toggle).",
-    )
-  }
-  return { ok: true }
-})
+/**
+ * The retired composer-toggle IPC (`CodexLocalFullAutoSetChannel`) was REMOVED
+ * on 2026-07-25 under owner direction on omega#26. It granted Full Auto
+ * authority to whatever called it and attributed the caller as the owner UI
+ * without proving the call came from a control the owner actually pressed --
+ * an unattributed caller inheriting owner authority. No composer control had
+ * dispatched it since the dedicated launcher landed (FA-UX-01 #8974), so no
+ * human path was lost: a human starts Full Auto from the launcher's
+ * `FullAutoRunStartChannel` below, from the Omega chat surface, or from
+ * `scripts/full-auto-cli.ts`.
+ *
+ * Gate 8 (omega#26, restated): "No model-initiated path can start Full Auto
+ * authority. Only an explicit human action can, wherever that action lives."
+ *
+ * The read-only `get` and the authority-REDUCING `interrupt` remain: neither
+ * can bring a Full Auto grant into existence.
+ */
 ipcMain.handle(CodexLocalFullAutoGetChannel, async (_event, value: unknown) => {
   const request = decodeCodexLocalFullAutoGetRequest(value)
   if (request === null) return { enabled: false, state: "idle", turnRef: null }
