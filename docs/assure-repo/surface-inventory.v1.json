@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:a4624ed3392651a450463d5c102ddd1f7785f20fcf2748c6d684ff9e9faa6576",
+  "sourceDigest": "sha256:dfa2bcae5f7a11b0afb7274c2db1fdff185df83049c8a788a7efd1b6d3be1fd2",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -1804,7 +1804,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "packages/assurance-spec (18 tracked test files)"
+          "ref": "packages/assurance-spec (19 tracked test files)"
         }
       ],
       "obligation": {

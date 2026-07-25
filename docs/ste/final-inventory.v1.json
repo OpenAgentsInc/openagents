@@ -24655,6 +24655,18 @@
       }
     },
     {
+      "path": "docs/fable/2026-07-25-omega-agent-analysis.md",
+      "sha256": "c3d92ddcfec66749ac19d97e3d507b8dbf6bd34105cfa40dc56876626ef21b06",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null,
+        "ste_status": "source-data"
+      }
+    },
+    {
       "path": "docs/fable/EXECUTION.md",
       "sha256": "fcbc4954cb55d3d2185a95ae814d1656e542406feb748167031a2abfcab2a69c",
       "reason": "Final review of a converted document",

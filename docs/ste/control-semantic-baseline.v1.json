@@ -1479,17 +1479,25 @@
       ]
     },
     "AUTHORITY.md": {
-      "sourceSha256": "14013cd12d854ebfc4753461ce016314b95db1423abee086576104b6a7834648",
+      "sourceSha256": "4196ce8c44c249a4292d4c4233b24744467ac80c952bd3ff03ea7489c56c169b",
       "normativeKeywords": [],
       "inlineCode": [
         "/changelog",
         "AGENTS.md",
         "INVARIANTS.md",
+        "condition.independence",
+        "condition.redaction",
+        "condition.release_green",
+        "condition.stable_release_gate",
+        "condition.verification",
+        "docs/assurance/2026-07-25-sarah-as-independent-reviewer-spec.md",
         "docs/authority/AUTHORITY_DELEGATION_SPEC.md",
         "docs/authority/SARAH_AUTHORITY.md",
         "gcloud",
+        "grant.independent_assurance",
         "openagents.managed_sandbox.v1",
-        "owner_coding_capacity"
+        "owner_coding_capacity",
+        "role: independent_reviewer"
       ],
       "urls": [],
       "issueRefs": [],
@@ -1513,8 +1521,14 @@
         "2026-07",
         "2026-07",
         "2026-07",
+        "2026-07",
+        "2026-07",
+        "2026-07",
         "22",
         "22",
+        "25",
+        "25",
+        "25",
         "260",
         "260",
         "3",
@@ -1529,7 +1543,8 @@
         "6",
         "7",
         "8",
-        "8"
+        "9",
+        "9"
       ]
     },
     "docs/sol/README.md": {
