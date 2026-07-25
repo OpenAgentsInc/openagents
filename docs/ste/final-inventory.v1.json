@@ -24655,6 +24655,20 @@
       }
     },
     {
+      "path": "docs/fable/2026-07-25-nostr-git-forge-invite-only-analysis.md",
+      "sha256": "a48a5e5e9dbd534ac2adac8522b32072b14b1ad6be876b3f81f1f65b151f889e",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "ste_status": "source-data",
+        "ste_reviewer": null,
+        "ste_reviewed_at": null,
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null
+      }
+    },
+    {
       "path": "docs/fable/2026-07-25-omega-agent-analysis.md",
       "sha256": "c3d92ddcfec66749ac19d97e3d507b8dbf6bd34105cfa40dc56876626ef21b06",
       "reason": "Immutable historical or evidence source data",
