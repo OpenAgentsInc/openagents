@@ -1,26 +1,26 @@
 {
-  "distribution_proof_format_version": "0.1",
   "clean_checkout": "pass",
+  "distribution_proof_format_version": "0.1",
+  "github_hosted_ci": false,
+  "npm_publication": "owner_authentication_required",
   "owned_runner_verdict": "pass",
   "package_tarballs": [
     {
-      "name": "@openagentsinc/product-spec",
-      "version": "0.1.0",
       "filename": "openagentsinc-product-spec-0.1.0.tgz",
-      "sha256": "sha256:0ad5023b9c89c58f3df9c3447233c249440daad2876dd0e823de77003efede7a"
+      "name": "@openagentsinc/product-spec",
+      "sha256": "sha256:0ad5023b9c89c58f3df9c3447233c249440daad2876dd0e823de77003efede7a",
+      "version": "0.1.0"
     },
     {
-      "name": "@openagentsinc/assurance-spec",
-      "version": "0.1.1",
       "filename": "openagentsinc-assurance-spec-0.1.1.tgz",
-      "sha256": "sha256:96f74d99f95ba10e54e09cb2dbb9873ced648bb0fff18ed90ae9886479deb0db"
+      "name": "@openagentsinc/assurance-spec",
+      "sha256": "sha256:ea4487fdd7b01ba49545dec8ddc9c8b000f5a139851874734ca1a6cfbbecec90",
+      "version": "0.1.1"
     }
   ],
   "publish_order": [
     "@openagentsinc/product-spec",
     "@openagentsinc/assurance-spec"
   ],
-  "starter_kit": "one_commit_copy",
-  "github_hosted_ci": false,
-  "npm_publication": "owner_authentication_required"
+  "starter_kit": "one_commit_copy"
 }
