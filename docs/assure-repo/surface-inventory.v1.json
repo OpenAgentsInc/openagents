@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:9de3768347de60d70807083a83ba1a3890334e737d8009ae15886e18f52eca99",
+  "sourceDigest": "sha256:0635183eedf316508e69ba1bc7f0876a3689e32bf829cb3d68e445d095b9df04",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -200,7 +200,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "apps/openagents.com (1103 tracked test files)"
+          "ref": "apps/openagents.com (1105 tracked test files)"
         },
         {
           "type": "behavior-contract",
@@ -2553,7 +2553,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "apps/openagents.com/apps/start (68 tracked test files)"
+          "ref": "apps/openagents.com/apps/start (69 tracked test files)"
         },
         {
           "type": "behavior-contract",
@@ -2715,6 +2715,27 @@
       "obligation": {
         "state": "designed",
         "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
+    },
+    {
+      "id": "package:@openagentsinc/public-nostr-chat",
+      "kind": "package",
+      "owningPath": "packages/public-nostr-chat",
+      "title": "@openagentsinc/public-nostr-chat",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/public-nostr-chat (4 tracked test files)"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_web.public_nostr_chat.v1"
+        }
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: behavior-contract, test; observation pending AR-3 sweep"
       }
     },
     {
@@ -3250,7 +3271,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "apps/openagents.com/workers/api (996 tracked test files)"
+          "ref": "apps/openagents.com/workers/api (997 tracked test files)"
         },
         {
           "type": "behavior-contract",
@@ -3324,17 +3345,17 @@
     }
   ],
   "summary": {
-    "totalSurfaces": 173,
+    "totalSurfaces": 174,
     "byKind": {
       "app": 16,
       "crate": 6,
       "document": 51,
-      "package": 88,
+      "package": 89,
       "public-endpoint": 2,
       "release-pipeline": 9,
       "worker": 1
     },
-    "withOracle": 159,
+    "withOracle": 160,
     "unverified": 14,
     "byUnverifiedReason": {
       "config-only": 2,
@@ -3342,7 +3363,7 @@
       "reference-only": 2
     },
     "byObligationState": {
-      "designed": 124,
+      "designed": 125,
       "inconclusive": 9,
       "mapped": 35,
       "out-of-scope": 5
