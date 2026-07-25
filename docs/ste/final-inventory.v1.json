@@ -34402,6 +34402,24 @@
       }
     },
     {
+      "path": "docs/omega/2026-07-25-omega-agent-cloud-severability-trace.md",
+      "sha256": "1b89dffcab7e6fb15354506bde65e12139a1d8ba922a75d1c23733ab7039281a",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "high",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "human",
+        "ste_accepted_screening_rules": [
+          "STE-2.4"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/omega/2026-07-25-omega-agent-roadmap.md",
       "sha256": "11264678da7e14a093b0c3ff02598a48c4d1a031f3f4f3a0d818e66c8c75285f",
       "reason": "Final review of a converted document",
@@ -34424,6 +34442,24 @@
       }
     },
     {
+      "path": "docs/omega/2026-07-25-omega-agent-shape-record.md",
+      "sha256": "8cebe11f19cc7dcde8407d3566a4324f90bc6fa31a8d81801ad541ca8394a27a",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "high",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "human",
+        "ste_accepted_screening_rules": [
+          "STE-2.4"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/omega/2026-07-25-omega-bubblewrap-removal-audit.md",
       "sha256": "0c3d70d208bdb19c19a6ca5227f42910829761c1e77faf9d9d063f343bd01608",
       "reason": "Immutable historical or evidence source data",
@@ -34438,11 +34474,12 @@
     {
       "path": "docs/omega/2026-07-25-omega-master-delegation-plan.md",
       "sha256": "6013c0de7885b7e1d9c9e9673f308852a84c1ad224a1b190a33d78bafcab8902",
-      "reason": "Final review of mutable first-party agent technical text",
+      "reason": "Final review of a converted document",
       "profile": {
-        "ste_status": "inspected",
-        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
         "ste_audience": "agent",
         "ste_agent_compact_revision": "openagents-agent-compact-v1",
         "ste_accepted_screening_rules": [
@@ -34450,7 +34487,10 @@
           "STE-3.6",
           "STE-5.1",
           "STE-8.2"
-        ]
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {
@@ -34477,7 +34517,7 @@
     },
     {
       "path": "docs/omega/README.md",
-      "sha256": "3e608de7fb4c30dfcb5090f4dbfa084f2b687a86c2791a6f5e6cf7d84a9cfe5e",
+      "sha256": "cd7f60cd66278a90cd72b1209578d56914e26ddafd515961a458e86e462fc068",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -48818,6 +48858,24 @@
           "STE-3.6",
           "STE-5.1",
           "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "specs/omega/omega-agent.product-spec.md",
+      "sha256": "26f0ea6c41b5b026d109f9fb0c42e377022f905c6325c6dddcc72ebe27a40c4c",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "mixed",
+        "risk": "high",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "human",
+        "ste_accepted_screening_rules": [
+          "STE-2.4"
         ],
         "ste_status": "inspected",
         "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",

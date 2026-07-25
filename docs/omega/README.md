@@ -81,6 +81,12 @@ Read these documents in this order:
 30. Read the
     [Omega master delegation plan](./2026-07-25-omega-master-delegation-plan.md)
     (order and parallel lanes for all open omega issues).
+31. Read the
+    [Omega Agent shape record](./2026-07-25-omega-agent-shape-record.md)
+    (`OMEGA-AGENT-00`, omega#74).
+32. Read the
+    [Omega Agent cloud-coupling severability trace](./2026-07-25-omega-agent-cloud-severability-trace.md)
+    (`OMEGA-AGENT-00`, omega#74).
 
 
 The Omega roadmap owns the implementation order.
@@ -148,6 +154,12 @@ The community workroom contract freeze (`SARAH-CW-00`) locks the v2 room laws.
 It freezes group identity, membership, grants, experience, rank, and
 settlement. It freezes the two-room rule and the authority table. Canonical
 and negative fixtures live under `fixtures/sarah-community-workroom/`.
+
+The Omega Agent shape record owns the shape decision for the first-party
+agent. It also owns the rejected alternatives and the open owner question
+about the Omega Nostr identity. The severability trace owns the statement of
+what the agent is when no external service answers. The ProductSpec at
+`specs/omega/omega-agent.product-spec.md` owns the intent for both.
 
 The accepted plan owns the product and repository boundary.
 The master roadmap owns priority across OpenAgents programs.

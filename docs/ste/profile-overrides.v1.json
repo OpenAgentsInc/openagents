@@ -1435,6 +1435,45 @@
       "ste_accepted_screening_rules": [
         "STE-2.4"
       ]
+    },
+    "specs/omega/omega-agent.product-spec.md": {
+      "ste_mode": "mixed",
+      "ste_status": "checked",
+      "ste_reviewer": "claude/agent-74-omega-agent-00",
+      "ste_reviewed_at": "2026-07-25T18:00:00Z",
+      "risk": "high",
+      "source": null,
+      "replacement": null,
+      "ste_audience": "human",
+      "ste_accepted_screening_rules": [
+        "STE-2.4"
+      ]
+    },
+    "docs/omega/2026-07-25-omega-agent-shape-record.md": {
+      "ste_mode": "descriptive",
+      "ste_status": "checked",
+      "ste_reviewer": "claude/agent-74-omega-agent-00",
+      "ste_reviewed_at": "2026-07-25T18:00:00Z",
+      "risk": "high",
+      "source": null,
+      "replacement": null,
+      "ste_audience": "human",
+      "ste_accepted_screening_rules": [
+        "STE-2.4"
+      ]
+    },
+    "docs/omega/2026-07-25-omega-agent-cloud-severability-trace.md": {
+      "ste_mode": "descriptive",
+      "ste_status": "checked",
+      "ste_reviewer": "claude/agent-74-omega-agent-00",
+      "ste_reviewed_at": "2026-07-25T18:00:00Z",
+      "risk": "high",
+      "source": null,
+      "replacement": null,
+      "ste_audience": "human",
+      "ste_accepted_screening_rules": [
+        "STE-2.4"
+      ]
     }
   }
 }
