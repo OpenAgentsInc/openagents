@@ -326,7 +326,7 @@
     },
     {
       "path": "AUTHORITY.md",
-      "sha256": "14013cd12d854ebfc4753461ce016314b95db1423abee086576104b6a7834648",
+      "sha256": "4196ce8c44c249a4292d4c4233b24744467ac80c952bd3ff03ea7489c56c169b",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -16647,12 +16647,13 @@
     },
     {
       "path": "docs/assurance/2026-07-25-sarah-as-independent-reviewer-spec.md",
-      "sha256": "3dad7d00f12669dcdd07972fd22d87c9421c8ee7dc109d84d36a8b15bbe39e62",
-      "reason": "Final review of mutable first-party agent technical text",
+      "sha256": "b3d9137cd9e14c691687aef5c844e133ca7676b1e4fd7dc709daf1944368cad9",
+      "reason": "Final review of a converted document",
       "profile": {
-        "ste_status": "inspected",
-        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
         "ste_audience": "agent",
         "ste_agent_compact_revision": "openagents-agent-compact-v1",
         "ste_accepted_screening_rules": [
@@ -16660,7 +16661,10 @@
           "STE-3.6",
           "STE-5.1",
           "STE-8.2"
-        ]
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {
@@ -17001,7 +17005,7 @@
     },
     {
       "path": "docs/authority/SARAH_AUTHORITY.md",
-      "sha256": "5fa94486c1da8581fbae3864c2396758a531f9f453ae709a0562a6f9defda72a",
+      "sha256": "1732336438ff496fcb472471be02e8dda981c7f84d1ae0bf199cf98b3b462dab",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -19355,6 +19359,24 @@
         "ste_status": "inspected",
         "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
         "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/buzz/2026-07-25-collab-ui-harvest-before-retirement.md",
+      "sha256": "e451b158941fc49ce00dbd6382d1afb20199a8d2ab0692a2b81c906fab39a56e",
+      "reason": "Final review of mutable first-party agent technical text",
+      "profile": {
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ]
       }
     },
     {
