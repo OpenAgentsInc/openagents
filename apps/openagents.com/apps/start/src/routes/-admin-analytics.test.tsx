@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, test } from 'vitest'
 
+import { usesPersistentProductHeader } from '../lib/persistent-product-header'
 import { isKnownStartDocumentPath } from '../route-table'
 import { fetchAnalyticsSummary } from './-admin-analytics-fetch'
 import {
@@ -46,5 +47,9 @@ describe('admin analytics', () => {
 
   test('serves the protected dashboard through the Start document route', () => {
     expect(isKnownStartDocumentPath('/admin/analytics')).toBe(true)
+    expect(usesPersistentProductHeader('/')).toBe(true)
+    expect(usesPersistentProductHeader('/splash')).toBe(true)
+    expect(usesPersistentProductHeader('/admin/analytics')).toBe(true)
+    expect(usesPersistentProductHeader('/login')).toBe(false)
   })
 })

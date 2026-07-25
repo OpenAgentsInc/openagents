@@ -23,7 +23,7 @@ export function AnalyticsDashboard({
 }: Readonly<{ summary: AnalyticsSummary }>) {
   return (
     <main
-      className="grid min-h-dvh content-start gap-5 bg-khala-void px-4 py-6 text-khala-text sm:px-6"
+      className="grid min-h-[calc(100dvh-4.25rem)] content-start gap-5 bg-khala-void px-4 py-6 text-khala-text sm:px-6"
       data-route="admin-analytics"
     >
       <header className="flex flex-wrap items-end justify-between gap-3 border-b border-khala-border pb-4">
@@ -163,7 +163,7 @@ export function AdminAnalyticsPage() {
 
   return (
     <>
-      <div className="fixed right-4 top-4 z-10 flex gap-1 sm:right-6">
+      <div className="fixed right-4 top-[5.25rem] z-10 flex gap-1 sm:right-6">
         {windows.map(value => (
           <button
             aria-pressed={window === value}
@@ -184,7 +184,7 @@ export function AdminAnalyticsPage() {
 function AnalyticsStatus({ title }: Readonly<{ title: string }>) {
   return (
     <main
-      className="grid min-h-dvh place-items-center bg-khala-void px-4 text-khala-text"
+      className="grid min-h-[calc(100dvh-4.25rem)] place-items-center bg-khala-void px-4 text-khala-text"
       data-route="admin-analytics"
     >
       <div className="grid max-w-md gap-3 text-center">

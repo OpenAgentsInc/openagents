@@ -1,6 +1,5 @@
 import { InternalLink } from '@/components/internal-link'
 import { PublicFooter } from '@/components/public-footer'
-import { PublicHeader } from '@/components/public-header'
 import { DOCS_URL, OMEGA_REPOSITORY_URL } from '@/lib/public-site'
 import { trackNamedAnalyticsEvent } from '@/lib/web-analytics'
 import { makeKhalaTextSequenceFrames } from '@effect-native/khala-ui'
@@ -893,8 +892,6 @@ export function SplashPage() {
       data-route="splash"
       style={desktopThemeCssVariables(khalaTheme)}
     >
-      <PublicHeader />
-
       <section aria-labelledby="splash-heading" className="splash-hero">
         <SplashHeroCanvas />
         <span className="splash-development-status">

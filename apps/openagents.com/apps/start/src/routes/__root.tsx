@@ -1,12 +1,15 @@
+import { PublicHeader } from '@/components/public-header'
+import { WebAnalytics } from '@/components/web-analytics'
+import { usesPersistentProductHeader } from '@/lib/persistent-product-header'
+import type { QueryClient } from '@tanstack/react-query'
 import {
   HeadContent,
+  Outlet,
   Scripts,
   createRootRouteWithContext,
+  useRouterState,
 } from '@tanstack/react-router'
-import type { QueryClient } from '@tanstack/react-query'
 import type * as React from 'react'
-
-import { WebAnalytics } from '@/components/web-analytics'
 
 import '../styles.css'
 
@@ -28,8 +31,22 @@ export const Route = createRootRouteWithContext<{
       { rel: 'icon', type: 'image/svg+xml', sizes: 'any', href: '/icon.svg' },
     ],
   }),
+  component: RootLayout,
   shellComponent: RootDocument,
 })
+
+function RootLayout() {
+  const pathname = useRouterState({
+    select: state => state.location.pathname,
+  })
+
+  return (
+    <>
+      {usesPersistentProductHeader(pathname) ? <PublicHeader /> : null}
+      <Outlet />
+    </>
+  )
+}
 
 function RootDocument({ children }: { children: React.ReactNode }) {
   return (

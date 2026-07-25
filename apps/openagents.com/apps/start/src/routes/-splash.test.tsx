@@ -1,3 +1,4 @@
+import { PublicHeader } from '@/components/public-header'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
@@ -7,7 +8,12 @@ import { SplashPage, splashPageDescription } from './-splash-page'
 
 describe('Desktop splash', () => {
   test('server-renders the landing hero around the live workroom and its accessible controls', () => {
-    const html = renderToStaticMarkup(<SplashPage />)
+    const html = renderToStaticMarkup(
+      <>
+        <PublicHeader />
+        <SplashPage />
+      </>,
+    )
 
     expect(html).toContain('data-route="splash"')
     expect(html).toContain('Primary navigation')
