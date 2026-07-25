@@ -34346,6 +34346,20 @@
       }
     },
     {
+      "path": "docs/omega/2026-07-25-omega-bubblewrap-removal-audit.md",
+      "sha256": "22a888e417008576061e82c6f9749e1cecc83506332cf201d5b8e33d52c5e107",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "ste_status": "source-data",
+        "ste_reviewer": null,
+        "ste_reviewed_at": null,
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null
+      }
+    },
+    {
       "path": "docs/omega/2026-07-25-omega-open-issues-unified-completion-plan.md",
       "sha256": "84cf7e7f626a0593523864201f7b8a94f7b13ab0173d5bfbdd369515e308b47e",
       "reason": "Final review of a converted document",
