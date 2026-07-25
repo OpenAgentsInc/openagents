@@ -5,17 +5,18 @@
 // the row seam + flags).
 //
 // Domain tables (khala-sync migration `0021_forge_domain.sql`, ALL
-// SIXTEEN `forge_*` tables): coordination issues/PRs/status, dispatch
+// TWENTY-ONE `forge_*` tables): coordination issues/PRs/status, dispatch
 // leases, merge-queue ledger, packfile archives, tenants, git access
 // tokens (+scopes), verification receipts, promotion decisions,
 // receive-pack intakes, canonical refs, object tips, ref locks, GitHub
-// mirror receipts.
+// mirror receipts, actor/invite bindings, burned keys, NIP-98 replay
+// consumptions, and membership reconciliation state.
 //
 // THE SEAM: this domain's writes are already CLOSED behind five typed
 // store objects — `makeD1ForgeCoordinationStore`,
 // `makeD1ForgeGitCanonicalStore`, `makeD1R2ForgeGitPackfileArchiveStore`,
 // `makeD1ForgeTenantGitAuthStore`, `makeD1ForgeGitHubMirrorStore` — the
-// ONLY writers of the sixteen tables (grep-verified: no other module
+// ONLY writers of the twenty-one tables (grep-verified: no other module
 // issues `INSERT/UPDATE/DELETE … forge_*`). So the production wiring is
 // the KS-8.5 pattern, not a statement-classifying database proxy: five
 // `makeForge*StoreForEnv` drop-in factories wrap each store's WRITE
@@ -71,52 +72,55 @@
 // merge-queue replay digests, newest-N row hashes) → live `git ls-remote`
 // cross-check per tenant repo → compare reads → read/write cutover (real
 // FOR UPDATE ref locks) + D1 drop in the follow-up.
-
 import {
+  type CompareSoakMetrics,
   FORGE_DOMAIN_TABLE_SPECS,
+  type ForgeDomainRow,
+  type ForgeDomainTable,
+  type SyncSql,
   noopCompareSoakMetrics,
   normalizeForgeDomainValue,
   requireForgeDomainUnsafe,
   upsertForgeDomainRows,
-  type CompareSoakMetrics,
-  type ForgeDomainRow,
-  type ForgeDomainTable,
-  type SyncSql,
 } from '@openagentsinc/khala-sync-server'
 
 import {
-  makeD1ForgeCoordinationStore,
   type ForgeCoordinationStore,
+  makeD1ForgeCoordinationStore,
 } from './forge-coordination-store'
 import {
-  makeD1ForgeDomainWriteStore,
   type ForgeDomainWriteStore,
+  makeD1ForgeDomainWriteStore,
 } from './forge-domain-d1-write-store'
+import { makePostgresForgeGitCanonicalStore } from './forge-git-canonical-postgres-store'
 import {
-  makeD1ForgeGitCanonicalStore,
   type ForgeGitCanonicalRefRow,
   type ForgeGitCanonicalRefState,
   type ForgeGitCanonicalStore,
+  makeD1ForgeGitCanonicalStore,
 } from './forge-git-canonical-store'
-import { makePostgresForgeGitCanonicalStore } from './forge-git-canonical-postgres-store'
 import {
-  makeD1R2ForgeGitPackfileArchiveStore,
   type ForgeGitPackfileArchiveStore,
+  makeD1R2ForgeGitPackfileArchiveStore,
 } from './forge-git-packfile-archive-store'
 import {
-  makeD1ForgeGitHubMirrorStore,
   type ForgeGitHubMirrorStore,
+  makeD1ForgeGitHubMirrorStore,
 } from './forge-github-mirror-store'
 import {
+  type ForgeInviteMembershipStore,
+  makeD1ForgeInviteMembershipStore,
+} from './forge-invite-membership-store'
+import {
+  type ForgeTenantGitAuthStore,
   forgeGitAccessTokenHash,
   makeD1ForgeTenantGitAuthStore,
-  type ForgeTenantGitAuthStore,
 } from './forge-tenant-git-auth-store'
 import {
-  defaultMakeKhalaSyncSqlClient,
   type KhalaSyncHyperdriveBinding,
   type KhalaSyncPushSqlClient,
   type MakeKhalaSyncPushSqlClient,
+  defaultMakeKhalaSyncSqlClient,
 } from './khala-sync-push-routes'
 import { logWorkerRouteWarning } from './observability'
 import { openAgentsDatabase } from './runtime'
@@ -155,10 +159,8 @@ export const forgeDomainFlagsFromEnv = (
   const readsRaw = env.KHALA_SYNC_FORGE_READS?.trim().toLowerCase()
 
   return {
-    dualWrite:
-      dualWriteRaw === undefined || !FLAG_OFF_VALUES.has(dualWriteRaw),
-    reads:
-      readsRaw === 'postgres' || readsRaw === 'compare' ? readsRaw : 'd1',
+    dualWrite: dualWriteRaw === undefined || !FLAG_OFF_VALUES.has(dualWriteRaw),
+    reads: readsRaw === 'postgres' || readsRaw === 'compare' ? readsRaw : 'd1',
   }
 }
 
@@ -208,7 +210,7 @@ const safeMessage = (error: unknown): string => {
 
 /**
  * The typed row-level write seam: converge upserts (composite-PK arbiter,
- * D1 snapshot wins) for all sixteen tables. Returns how many rows were
+ * D1 snapshot wins) for all twenty-one tables. Returns how many rows were
  * touched. One behavioral contract suite runs against BOTH concrete
  * implementations (`forge-domain-repository.contract.test.ts`).
  *
@@ -424,22 +426,16 @@ export const makeForgeDomainMirror = (
           ),
 
     mirrorRowsWhere: (table, whereColumns, values, refs) =>
-      guarded(
-        `mirror:${table}:scan`,
-        refs ?? values.map(String),
-        async () => {
-          const where = whereColumns
-            .map(column => `${column} = ?`)
-            .join(' AND ')
-          const rows = await db
-            .prepare(
-              `SELECT * FROM ${table} WHERE ${where} LIMIT ${MIRROR_SCAN_LIMIT}`,
-            )
-            .bind(...values)
-            .all<ForgeDomainRow>()
-          await postgres.upsertRows(table, rows.results ?? [])
-        },
-      ),
+      guarded(`mirror:${table}:scan`, refs ?? values.map(String), async () => {
+        const where = whereColumns.map(column => `${column} = ?`).join(' AND ')
+        const rows = await db
+          .prepare(
+            `SELECT * FROM ${table} WHERE ${where} LIMIT ${MIRROR_SCAN_LIMIT}`,
+          )
+          .bind(...values)
+          .all<ForgeDomainRow>()
+        await postgres.upsertRows(table, rows.results ?? [])
+      }),
   }
 }
 
@@ -698,7 +694,10 @@ export const makeForgeGitCanonicalStoreForEnv = (
   // flag is on, D1 is no longer the lock authority, so silently falling
   // back to a D1 write would let two ref-lock protocols race the same ref;
   // a Postgres outage must fail the request loud, not silently diverge.
-  if (forgeGitCanonicalWritesFromEnv(env) === 'postgres' && acquireSql !== undefined) {
+  if (
+    forgeGitCanonicalWritesFromEnv(env) === 'postgres' &&
+    acquireSql !== undefined
+  ) {
     const withPostgresCanonicalStore = async <A>(
       run: (store: ForgeGitCanonicalStore) => Promise<A>,
     ): Promise<A> => {
@@ -810,9 +809,17 @@ export const makeForgeGitCanonicalStoreForEnv = (
                 op: 'listRefs',
                 refs: [tenantRef, repositoryRef],
               })
-              metrics.record({ domain: 'forge', outcome: 'mismatch', readKind: 'listRefs' })
+              metrics.record({
+                domain: 'forge',
+                outcome: 'mismatch',
+                readKind: 'listRefs',
+              })
             } else {
-              metrics.record({ domain: 'forge', outcome: 'match', readKind: 'listRefs' })
+              metrics.record({
+                domain: 'forge',
+                outcome: 'match',
+                readKind: 'listRefs',
+              })
             }
           } catch (error) {
             log('khala_sync_forge_read_compare_failed', {
@@ -820,7 +827,11 @@ export const makeForgeGitCanonicalStoreForEnv = (
               op: 'listRefs',
               refs: [tenantRef, repositoryRef],
             })
-            metrics.record({ domain: 'forge', outcome: 'error', readKind: 'listRefs' })
+            metrics.record({
+              domain: 'forge',
+              outcome: 'error',
+              readKind: 'listRefs',
+            })
           }
         }
 
@@ -992,6 +1003,91 @@ export const makeForgeTenantGitAuthStoreForEnv = (
   }
 }
 
+/** Drop-in for the invite membership and transport-policy store. */
+export const makeForgeInviteMembershipStoreForEnv = (
+  env: ForgeDomainStoreEnv,
+  options: MakeForgeDomainStoreOptions = {},
+): ForgeInviteMembershipStore => {
+  const runtime = runtimeForEnv(env, options)
+  const base = makeD1ForgeInviteMembershipStore(runtime.db)
+  const mirror = runtime.mirror
+  if (mirror === undefined) {
+    return base
+  }
+  return {
+    ...base,
+    bindHuman: async input => {
+      const actor = await base.bindHuman(input)
+      await mirror.mirrorRowsByKey('forge_actor_bindings', [[actor.bindingRef]])
+      await mirror.mirrorRowsByKey('forge_invite_bindings', [
+        [input.inviteBindingRef],
+      ])
+      return actor
+    },
+    attachAgent: async input => {
+      const actor = await base.attachAgent(input)
+      await mirror.mirrorRowsByKey('forge_actor_bindings', [[actor.bindingRef]])
+      return actor
+    },
+    consumeNip98Replay: async consumption => {
+      const consumed = await base.consumeNip98Replay(consumption)
+      if (consumed) {
+        await mirror.mirrorRowsByKey('forge_nip98_replay_consumptions', [
+          [consumption.consumptionRef],
+        ])
+      }
+      return consumed
+    },
+    tombstoneMember: async input => {
+      const bindings = await base.tombstoneMember(input)
+      await mirror.mirrorRowsByKey(
+        'forge_actor_bindings',
+        bindings.map(binding => [binding.bindingRef]),
+      )
+      await mirror.mirrorRowsWhere(
+        'forge_burned_key_facts',
+        ['tenant_ref', 'binding_ref'],
+        [input.tenantRef, input.bindingRef],
+      )
+      for (const binding of bindings) {
+        if (binding.bindingRef === input.bindingRef) continue
+        await mirror.mirrorRowsWhere(
+          'forge_burned_key_facts',
+          ['tenant_ref', 'binding_ref'],
+          [input.tenantRef, binding.bindingRef],
+        )
+      }
+      return bindings
+    },
+    reconcileMembership: async input => {
+      const state = await base.reconcileMembership(input)
+      if (state !== undefined) {
+        await mirror.mirrorRowsByKey('forge_membership_reconciliation_state', [
+          [state.reconciliationRef],
+        ])
+      }
+      if (state?.state === 'absence_confirmed') {
+        await mirror.mirrorRowsWhere(
+          'forge_actor_bindings',
+          ['tenant_ref', 'binding_ref'],
+          [input.tenantRef, input.bindingRef],
+        )
+        await mirror.mirrorRowsWhere(
+          'forge_actor_bindings',
+          ['tenant_ref', 'owner_binding_ref'],
+          [input.tenantRef, input.bindingRef],
+        )
+        await mirror.mirrorRowsWhere(
+          'forge_burned_key_facts',
+          ['tenant_ref'],
+          [input.tenantRef],
+        )
+      }
+      return state
+    },
+  }
+}
+
 /**
  * Drop-in for
  * `makeD1R2ForgeGitPackfileArchiveStore(openAgentsDatabase(env), bucket)`.
@@ -1016,10 +1112,7 @@ export const makeForgeGitPackfileArchiveStoreForEnv = (
       // Dedupe may return an existing row under a DIFFERENT packfile_ref
       // (digest match) — mirror the resolved record's key, not the input.
       await mirror.mirrorRowsByKey('forge_git_packfile_archives', [
-        [
-          String(result.record.tenant_ref),
-          String(result.record.packfile_ref),
-        ],
+        [String(result.record.tenant_ref), String(result.record.packfile_ref)],
       ])
       return result
     },

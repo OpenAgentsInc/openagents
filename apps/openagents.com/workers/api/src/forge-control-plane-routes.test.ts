@@ -1,7 +1,6 @@
+import { Effect } from 'effect'
 import { readFileSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
-
-import { Effect } from 'effect'
 import { describe, expect, test } from 'vitest'
 
 import {
@@ -9,17 +8,17 @@ import {
   makeForgeControlPlaneRoutes,
 } from './forge-control-plane-routes'
 import {
-  makeD1ForgeCoordinationStore,
   type ForgeCoordinationStore,
+  makeD1ForgeCoordinationStore,
 } from './forge-coordination-store'
 import {
-  makeD1ForgeGitHubMirrorStore,
-  type ForgeGitHubMirrorStore,
-} from './forge-github-mirror-store'
-import {
-  makeD1ForgeGitCanonicalStore,
   type ForgeGitCanonicalStore,
+  makeD1ForgeGitCanonicalStore,
 } from './forge-git-canonical-store'
+import {
+  type ForgeGitHubMirrorStore,
+  makeD1ForgeGitHubMirrorStore,
+} from './forge-github-mirror-store'
 
 class SqliteD1Statement {
   private bound: ReadonlyArray<unknown> = []
@@ -41,13 +40,23 @@ class SqliteD1Statement {
 
   async all<T = Record<string, unknown>>(): Promise<{ results: Array<T> }> {
     return {
-      results: this.db.prepare(this.sql).all(...(this.bound as never[])) as Array<T>,
+      results: this.db
+        .prepare(this.sql)
+        .all(...(this.bound as never[])) as Array<T>,
     }
   }
 
-  async run(): Promise<{ success: true; results: []; meta: { changes: number } }> {
+  async run(): Promise<{
+    success: true
+    results: []
+    meta: { changes: number }
+  }> {
     const result = this.db.prepare(this.sql).run(...(this.bound as never[]))
-    return { meta: { changes: Number(result.changes) }, results: [], success: true }
+    return {
+      meta: { changes: Number(result.changes) },
+      results: [],
+      success: true,
+    }
   }
 }
 
@@ -60,15 +69,24 @@ class SqliteD1 {
 }
 
 const coordinationMigration = readFileSync(
-  new URL('../migrations/0251_forge_coordination_source_of_truth.sql', import.meta.url),
+  new URL(
+    '../migrations/0251_forge_coordination_source_of_truth.sql',
+    import.meta.url,
+  ),
   'utf8',
 )
 const gitAccessTokensMigration = readFileSync(
-  new URL('../migrations/0253_forge_tenant_git_access_tokens.sql', import.meta.url),
+  new URL(
+    '../migrations/0253_forge_tenant_git_access_tokens.sql',
+    import.meta.url,
+  ),
   'utf8',
 )
 const controlPlaneReceiptsMigration = readFileSync(
-  new URL('../migrations/0254_forge_control_plane_receipts.sql', import.meta.url),
+  new URL(
+    '../migrations/0254_forge_control_plane_receipts.sql',
+    import.meta.url,
+  ),
   'utf8',
 )
 const promotionDecisionGateResultsMigration = readFileSync(
@@ -113,17 +131,17 @@ const makeStores = (): Readonly<{
   coordinationStore: ForgeCoordinationStore
   mirrorStore: ForgeGitHubMirrorStore
 }> => {
-	  const db = new DatabaseSync(':memory:')
-	  db.exec('PRAGMA foreign_keys = ON')
-	  db.exec(coordinationMigration)
-	  db.exec(gitAccessTokensMigration)
-	  db.exec(controlPlaneReceiptsMigration)
-	  db.exec(promotionDecisionGateResultsMigration)
-	  db.exec(githubMirrorReceiptsMigration)
-	  db.exec(canonicalGitMigration)
-	  db.exec(agentDefinitionRunsMigration)
-	  db.exec(agentDefinitionRunBudgetCreditsMigration)
-	  db.exec(agentDefinitionForgeGitTokensMigration)
+  const db = new DatabaseSync(':memory:')
+  db.exec('PRAGMA foreign_keys = ON')
+  db.exec(coordinationMigration)
+  db.exec(gitAccessTokensMigration)
+  db.exec(controlPlaneReceiptsMigration)
+  db.exec(promotionDecisionGateResultsMigration)
+  db.exec(githubMirrorReceiptsMigration)
+  db.exec(canonicalGitMigration)
+  db.exec(agentDefinitionRunsMigration)
+  db.exec(agentDefinitionRunBudgetCreditsMigration)
+  db.exec(agentDefinitionForgeGitTokensMigration)
   const d1 = new SqliteD1(db) as unknown as D1Database
   return {
     canonicalStore: makeD1ForgeGitCanonicalStore(d1),
@@ -161,8 +179,9 @@ const makeGitHubFetch = (sha: string = githubMainSha): typeof fetch =>
 const makeMirrorGitHubFetch = (
   input: Readonly<{ currentSha?: string; updateStatus?: number }> = {},
 ) => {
-  const calls: Array<Readonly<{ body: string | null; method: string; url: string }>> =
-    []
+  const calls: Array<
+    Readonly<{ body: string | null; method: string; url: string }>
+  > = []
   const fetchMock = (async (url: RequestInfo | URL, init?: RequestInit) => {
     const target = String(url)
     const method = init?.method ?? 'GET'
@@ -197,16 +216,15 @@ const makeMirrorGitHubFetch = (
 
 type JsonRequestInit = Omit<RequestInit, 'body'> & Readonly<{ json?: unknown }>
 
-const requestJson = (
-  path: string,
-  init: JsonRequestInit = {},
-): Request =>
+const requestJson = (path: string, init: JsonRequestInit = {}): Request =>
   new Request(`https://openagents.com${path}`, {
     ...init,
     ...(init.json === undefined ? {} : { body: JSON.stringify(init.json) }),
     headers: {
       ...(init.headers ?? {}),
-      ...(init.json === undefined ? {} : { 'content-type': 'application/json' }),
+      ...(init.json === undefined
+        ? {}
+        : { 'content-type': 'application/json' }),
     },
   })
 
@@ -377,7 +395,10 @@ const createPromotionDecision = async (
         gate_results: [
           {
             gate_ref: 'gate.tests',
-            verdict: (input.decision ?? 'approved') === 'approved' ? 'passed' : 'blocked',
+            verdict:
+              (input.decision ?? 'approved') === 'approved'
+                ? 'passed'
+                : 'blocked',
             evidence_refs: [`verification.forge.${input.issueNumber}`],
             blocker_refs:
               (input.decision ?? 'approved') === 'approved'
@@ -445,6 +466,28 @@ describe('Forge control-plane routes', () => {
     expect(body.error).toBe('forge_control_plane_git_token_rejected')
   })
 
+  test('rejects NIP-98 transport proofs on control-plane routes', async () => {
+    const { run } = makeHarness()
+    const response = await run(
+      requestJson('/api/forge/work-records', {
+        json: {
+          tenantRef: 'tenant.openagents',
+          issueRef: 'issue.forge.6770',
+          title: 'Control plane API',
+          state: 'open',
+        },
+        headers: {
+          authorization: 'Nostr dHJhbnNwb3J0LXByb29m',
+        },
+        method: 'POST',
+      }),
+    )
+    const body = (await response.json()) as { error: string }
+
+    expect(response.status).toBe(403)
+    expect(body.error).toBe('forge_control_plane_nip98_rejected')
+  })
+
   test('requires the dedicated Forge scope for the requested mutation', async () => {
     const { run } = makeHarness()
     const response = await run(
@@ -470,7 +513,9 @@ describe('Forge control-plane routes', () => {
     const response = await run(
       new Request(
         'https://openagents.com/api/forge/work-records?tenantRef=tenant.external',
-        { headers: authHeaders('forge:work:read') },
+        {
+          headers: authHeaders('forge:work:read'),
+        },
       ),
     )
     const body = (await response.json()) as { error: string; reason: string }
@@ -559,14 +604,22 @@ describe('Forge control-plane routes', () => {
     )
     expect(statusResponse.status).toBe(201)
 
-    await expect(store.listIssues('tenant.openagents', 10)).resolves.toHaveLength(1)
-    await expect(store.listChanges('tenant.openagents', 10)).resolves.toHaveLength(1)
-    await expect(store.listStatuses('tenant.openagents', 10)).resolves.toHaveLength(1)
+    await expect(
+      store.listIssues('tenant.openagents', 10),
+    ).resolves.toHaveLength(1)
+    await expect(
+      store.listChanges('tenant.openagents', 10),
+    ).resolves.toHaveLength(1)
+    await expect(
+      store.listStatuses('tenant.openagents', 10),
+    ).resolves.toHaveLength(1)
 
     const listResponse = await run(
       new Request(
         'https://openagents.com/api/forge/work-records?tenantRef=tenant.openagents',
-        { headers: authHeaders(scopes) },
+        {
+          headers: authHeaders(scopes),
+        },
       ),
     )
     const listBody = (await listResponse.json()) as {
@@ -787,7 +840,7 @@ describe('Forge control-plane routes', () => {
   // promotion's mirror attempt throwing (an uncaught D1 read inside
   // `mirrorPromotionToGitHub`) must not discard the already-computed mirror
   // receipt for every OTHER unrelated promotion in the same batch.
-  test('one promotion throwing during mirror does not discard a sibling promotion\'s successful receipt', async () => {
+  test("one promotion throwing during mirror does not discard a sibling promotion's successful receipt", async () => {
     const github = makeMirrorGitHubFetch({ currentSha: headA })
     const { canonicalStore, coordinationStore, mirrorStore } = makeStores()
     const failingPromotionRef = 'promotion.forge.6797'
@@ -908,10 +961,7 @@ describe('Forge control-plane routes', () => {
   test('refuses non-promoted changes without touching GitHub', async () => {
     const github = makeMirrorGitHubFetch()
     const { run } = makeHarness({ fetch: github.fetchMock })
-    const scopes = [
-      'forge:promotion:decide',
-      'forge:mirror:write',
-    ].join(' ')
+    const scopes = ['forge:promotion:decide', 'forge:mirror:write'].join(' ')
 
     await createPromotionDecision(run, {
       baseHead: headA,
@@ -1072,8 +1122,14 @@ describe('Forge control-plane routes', () => {
     )
     const deriveBody = (await deriveResponse.json()) as {
       derived: {
-        nextActualPromotion: { candidateRef: string; waitsForActualHead: string | null }
-        ready: ReadonlyArray<{ candidateRef: string; waitsForActualHead: string | null }>
+        nextActualPromotion: {
+          candidateRef: string
+          waitsForActualHead: string | null
+        }
+        ready: ReadonlyArray<{
+          candidateRef: string
+          waitsForActualHead: string | null
+        }>
         virtualHead: string
       }
       queueSnapshot: { next_promotion_ref: string | null; virtual_head: string }
@@ -1097,7 +1153,9 @@ describe('Forge control-plane routes', () => {
     )
     expect(deriveBody.queueSnapshot.virtual_head).toBe(headC)
 
-    await expect(store.readLatestMergeQueueLedger('tenant.openagents')).resolves.toMatchObject({
+    await expect(
+      store.readLatestMergeQueueLedger('tenant.openagents'),
+    ).resolves.toMatchObject({
       next_promotion_ref: deriveBody.queueSnapshot.next_promotion_ref,
       virtual_head: headC,
     })
@@ -1152,7 +1210,10 @@ describe('Forge control-plane routes', () => {
     )
     const body = (await response.json()) as {
       derived: {
-        blocked: ReadonlyArray<{ blockedReasonRef: string; candidateRef: string }>
+        blocked: ReadonlyArray<{
+          blockedReasonRef: string
+          candidateRef: string
+        }>
         nextActualPromotion: null
       }
     }
@@ -1166,7 +1227,8 @@ describe('Forge control-plane routes', () => {
           candidateRef: 'change.forge.6794',
         }),
         expect.objectContaining({
-          blockedReasonRef: 'virtual_merge_queue.blocked.protected_path_deleted',
+          blockedReasonRef:
+            'virtual_merge_queue.blocked.protected_path_deleted',
           candidateRef: 'change.forge.6796',
         }),
       ]),
@@ -1191,7 +1253,11 @@ describe('Forge control-plane routes', () => {
     const firstBody = (await firstResponse.json()) as {
       changed: boolean
       defaultBranch: { ref_name: string; object_id: string }
-      import: { tenantRef: string; repositoryRef: string; defaultBranchRef: string }
+      import: {
+        tenantRef: string
+        repositoryRef: string
+        defaultBranchRef: string
+      }
     }
 
     expect(firstResponse.status).toBe(201)
@@ -1218,7 +1284,10 @@ describe('Forge control-plane routes', () => {
     expect(secondBody.changed).toBe(false)
 
     await expect(
-      canonicalStore.listRefs('tenant.openagents', 'repo.openagents.openagents'),
+      canonicalStore.listRefs(
+        'tenant.openagents',
+        'repo.openagents.openagents',
+      ),
     ).resolves.toHaveLength(1)
 
     const refsResponse = await run(

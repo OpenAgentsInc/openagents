@@ -11,7 +11,7 @@
 //       Postgres (initdb/pg_ctl), schema from khala-sync-server migration
 //       0019. Skipped when no local Postgres binaries exist.
 //
-//  2. END-TO-END mirror fidelity — the REAL five forge stores run
+//  2. END-TO-END mirror fidelity — the REAL six Forge stores run
 //     UNCHANGED through the `makeForge*StoreForEnv` factories with SQLite
 //     as D1 authority and the real Postgres store as the mirror: tenant
 //     upsert, token mint/authenticate/revoke (custody discipline
@@ -20,7 +20,7 @@
 //     intake), external ref import, coordination issue/PR/status,
 //     dispatch lease double-fire idempotency, merge-queue ledger
 //     converge, verification receipt, promotion decision, GitHub mirror
-//     receipt attempt-count bump. Afterwards ALL SIXTEEN tables are
+//     receipt attempt-count bump. Afterwards ALL TWENTY-ONE tables are
 //     row-for-row IDENTICAL across both stores (registry-column
 //     projection, value-normalized) with ZERO drift diagnostics.
 //
@@ -32,13 +32,12 @@
 //     cutover) SERVES the ref advertisement from the Postgres twin and is
 //     fail-soft — a dead twin falls back to the D1 authority so the
 //     advertisement can never break.
-
 import {
-  FORGE_DOMAIN_TABLE_SPECS,
-  FORGE_DOMAIN_TABLES,
-  normalizeForgeDomainValue,
   type CompareSoakSample,
+  FORGE_DOMAIN_TABLES,
+  FORGE_DOMAIN_TABLE_SPECS,
   type ForgeDomainTable,
+  normalizeForgeDomainValue,
 } from '@openagentsinc/khala-sync-server'
 import {
   hasLocalPostgres,
@@ -49,20 +48,21 @@ import * as path from 'node:path'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 
 import {
-  forgeDomainFlagsFromEnv,
-  makeD1ForgeDomainWriteStore,
-  makeForgeCoordinationStoreForEnv,
-  makeForgeGitCanonicalStoreForEnv,
-  makeForgeGitHubMirrorStoreForEnv,
-  makeForgeGitPackfileArchiveStoreForEnv,
-  makeForgeTenantGitAuthStoreForEnv,
-  makePostgresForgeDomainStore,
   type ForgeDomainDiagnostic,
   type ForgeDomainDiagnosticEvent,
   type ForgeDomainRow,
   type ForgeDomainStoreEnv,
   type ForgeDomainWriteStore,
   type MakeForgeDomainStoreOptions,
+  forgeDomainFlagsFromEnv,
+  makeD1ForgeDomainWriteStore,
+  makeForgeCoordinationStoreForEnv,
+  makeForgeGitCanonicalStoreForEnv,
+  makeForgeGitHubMirrorStoreForEnv,
+  makeForgeGitPackfileArchiveStoreForEnv,
+  makeForgeInviteMembershipStoreForEnv,
+  makeForgeTenantGitAuthStoreForEnv,
+  makePostgresForgeDomainStore,
 } from './forge-domain-store'
 import { FORGE_DOMAIN_D1_SCHEMA, makeSqliteD1 } from './test/sqlite-d1'
 
@@ -217,6 +217,10 @@ const MIGRATION_0021 = path.resolve(
   __dirname,
   '../../../../../packages/khala-sync-server/migrations/0021_forge_domain.sql',
 )
+const MIGRATION_0098 = path.resolve(
+  __dirname,
+  '../../../../../packages/khala-sync-server/migrations/0098_forge_invite_membership.sql',
+)
 
 type PgClient = Readonly<{
   end: (options?: { timeout?: number }) => Promise<void>
@@ -245,6 +249,7 @@ describe.skipIf(!hasLocalPostgres())(
       })
       client = raw as unknown as PgClient
       await raw.unsafe(readFileSync(MIGRATION_0021, 'utf8'))
+      await raw.unsafe(readFileSync(MIGRATION_0098, 'utf8'))
       harness = {
         query: async sql => (client as PgClient).unsafe(sql),
         store: makePostgresForgeDomainStore({
@@ -325,6 +330,7 @@ describe.skipIf(!hasLocalPostgres())(
       })
       client = raw as unknown as PgClient
       await raw.unsafe(readFileSync(MIGRATION_0021, 'utf8'))
+      await raw.unsafe(readFileSync(MIGRATION_0098, 'utf8'))
 
       sqlite = makeSqliteD1()
       sqlite.exec(FORGE_DOMAIN_D1_SCHEMA)
@@ -362,12 +368,70 @@ describe.skipIf(!hasLocalPostgres())(
         options,
       )
       const githubMirror = makeForgeGitHubMirrorStoreForEnv(env, options)
+      const membership = makeForgeInviteMembershipStoreForEnv(env, options)
 
       // Tenant + token custody family.
       await auth.upsertTenant({
         displayName: 'Contract Tenant',
         nowIso: T0,
         state: 'active',
+        tenantRef: TENANT,
+      })
+      const member = await membership.bindHuman({
+        acceptedAt: T0,
+        accountRef: 'user.contract',
+        bindingEventCreatedAt: T0,
+        bindingEventId: 'event.contract.member',
+        bindingRef: 'forge_actor.contract',
+        displayName: 'Contract Member',
+        expiresAt: FUTURE,
+        inviteBindingRef: 'forge_invite_binding.contract',
+        inviteDigest: 'e'.repeat(64),
+        inviteRef: 'invite.contract',
+        invitedSubjectRef: 'user.contract',
+        inviterBindingRef: 'forge_actor.inviter',
+        issuedAt: T0,
+        nostrPubkey: 'f'.repeat(64),
+        provenanceSourceRefs: ['contract'],
+        roleRefs: ['forge:member'],
+        teamRef: 'team.contract',
+        tenantRef: TENANT,
+      })
+      expect(
+        await membership.consumeNip98Replay({
+          actorPubkey: 'f'.repeat(64),
+          authorityGeneration: member.bindingGeneration,
+          bodyDigest: '1'.repeat(64),
+          canonicalPath: `/git/${TENANT}/${REPO}.git/info/refs`,
+          consumedAt: T0,
+          consumptionRef: 'forge_nip98_consumption.contract',
+          eventCreatedAt: T0,
+          eventId: '2'.repeat(64),
+          expiresAt: T1,
+          httpMethod: 'GET',
+          requestDigest: '3'.repeat(64),
+          result: 'accepted',
+          tenantRef: TENANT,
+        }),
+      ).toBe(true)
+      await membership.reconcileMembership({
+        bindingRef: member.bindingRef,
+        nowIso: T1,
+        observedPresent: false,
+        querySucceeded: true,
+        sourceMembershipGeneration: 1,
+        sourceRefs: ['contract.absence.1'],
+        teamRef: 'team.contract',
+        tenantRef: TENANT,
+      })
+      await membership.reconcileMembership({
+        bindingRef: member.bindingRef,
+        nowIso: T2,
+        observedPresent: false,
+        querySucceeded: true,
+        sourceMembershipGeneration: 2,
+        sourceRefs: ['contract.absence.2'],
+        teamRef: 'team.contract',
         tenantRef: TENANT,
       })
       const minted = await auth.mintGitAccessToken(
@@ -377,7 +441,7 @@ describe.skipIf(!hasLocalPostgres())(
           repositoryRef: REPO,
           scopes: ['git:receive-pack', 'git:upload-pack'],
           sourceRefs: ['contract'],
-          subjectRef: 'agent.contract',
+          subjectRef: member.bindingRef,
           tenantRef: TENANT,
           tokenRef: 'token.contract.1',
         },
@@ -399,7 +463,7 @@ describe.skipIf(!hasLocalPostgres())(
           repositoryRef: REPO,
           scopes: ['git:upload-pack'],
           sourceRefs: [],
-          subjectRef: 'agent.contract',
+          subjectRef: member.bindingRef,
           tenantRef: TENANT,
           tokenRef: 'token.contract.2',
         },
@@ -659,7 +723,7 @@ describe.skipIf(!hasLocalPostgres())(
       // ZERO drift diagnostics across the whole surface.
       expect(diagnostics).toEqual([])
 
-      // Row-for-row equality across ALL SIXTEEN tables.
+      // Row-for-row equality across ALL TWENTY-ONE tables.
       for (const table of FORGE_DOMAIN_TABLES) {
         const spec = FORGE_DOMAIN_TABLE_SPECS[table]
         const order = spec.keyColumns.join(', ')
@@ -716,9 +780,9 @@ describe.skipIf(!hasLocalPostgres())(
       expect(
         served.find(ref => ref.ref_name === 'refs/heads/main')?.object_id,
       ).toBe(OID_A)
-      expect(
-        diagnostics.map(d => d.event),
-      ).toContain('khala_sync_forge_read_compare_mismatch')
+      expect(diagnostics.map(d => d.event)).toContain(
+        'khala_sync_forge_read_compare_mismatch',
+      )
       expect(soakSamples).toEqual([
         { domain: 'forge', outcome: 'mismatch', readKind: 'listRefs' },
       ])
@@ -761,8 +825,7 @@ describe.skipIf(!hasLocalPostgres())(
         state: 'active',
       })
       expect(
-        activeServed.find(ref => ref.ref_name === 'refs/heads/main')
-          ?.object_id,
+        activeServed.find(ref => ref.ref_name === 'refs/heads/main')?.object_id,
       ).toBe(sentinel)
 
       // Heal the twin back to the D1 value.

@@ -11,8 +11,8 @@
 // and no helper output prints a custody column value (token_hash /
 // token_prefix) — keys and sha256 hashes only, same as the CLI.
 
-import { SQL } from "@openagentsinc/postgres-runtime"
-import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test"
+import { SQL } from "@openagentsinc/postgres-runtime";
+import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test";
 import {
   buildForgeDomainVerifyReport,
   compareMergeQueueReplays,
@@ -33,20 +33,20 @@ import {
   refSetTallyFromRows,
   upsertForgeDomainRows,
   type D1ForgeSourceRow,
-} from "./forge-backfill.js"
-import { runMigrations } from "./migrate.js"
-import type { SyncSql } from "./sql.js"
-import { hasLocalPostgres, startLocalPostgres } from "./test/local-postgres.js"
-import type { LocalPostgres } from "./test/local-postgres.js"
+} from "./forge-backfill.js";
+import { runMigrations } from "./migrate.js";
+import type { SyncSql } from "./sql.js";
+import { hasLocalPostgres, startLocalPostgres } from "./test/local-postgres.js";
+import type { LocalPostgres } from "./test/local-postgres.js";
 // ---------------------------------------------------------------------------
 // Fixtures (snake_case rows exactly as `wrangler d1 execute --json` returns)
 // ---------------------------------------------------------------------------
 
-const T0 = "2026-07-04T00:00:00.000Z"
-const T1 = "2026-07-04T01:00:00.000Z"
+const T0 = "2026-07-04T00:00:00.000Z";
+const T1 = "2026-07-04T01:00:00.000Z";
 
-const TENANT = "tenant_alpha"
-const REPO = "repo_core"
+const TENANT = "tenant_alpha";
+const REPO = "repo_core";
 
 const refRow = (
   name: string,
@@ -66,7 +66,7 @@ const refRow = (
   updated_by_packfile_ref: "pack_1",
   updated_by_receive_pack_ref: "rp_1",
   ...overrides,
-})
+});
 
 const leaseRow = (
   n: number,
@@ -84,7 +84,7 @@ const leaseRow = (
   tenant_ref: TENANT,
   work_ref: `work_${n}`,
   ...overrides,
-})
+});
 
 const tokenRow = (
   n: number,
@@ -110,7 +110,7 @@ const tokenRow = (
   token_prefix: "oa_forge_git_ab",
   token_ref: `token_${n}`,
   ...overrides,
-})
+});
 
 const decisionRow = (
   n: number,
@@ -136,11 +136,9 @@ const decisionRow = (
   tenant_ref: TENANT,
   verification_ref: null,
   ...overrides,
-})
+});
 
-const ledgerRow = (
-  overrides: Partial<Record<string, unknown>> = {},
-): D1ForgeSourceRow => ({
+const ledgerRow = (overrides: Partial<Record<string, unknown>> = {}): D1ForgeSourceRow => ({
   actual_head: "b".repeat(40),
   base_head: "b".repeat(40),
   blocked_json: "[]",
@@ -154,75 +152,73 @@ const ledgerRow = (
   updated_at: T0,
   virtual_head: "d".repeat(40),
   ...overrides,
-})
+});
 
 // ---------------------------------------------------------------------------
 // Pure helpers
 // ---------------------------------------------------------------------------
 
 describe("registry (pure)", () => {
-  test("all sixteen forge tables are registered with composite keys inside columns", () => {
-    expect(FORGE_DOMAIN_TABLES.length).toBe(16)
+  test("all twenty-one forge tables are registered with composite keys inside columns", () => {
+    expect(FORGE_DOMAIN_TABLES.length).toBe(21);
     for (const table of FORGE_DOMAIN_TABLES) {
-      const spec = FORGE_DOMAIN_TABLE_SPECS[table]
-      expect(spec.keyColumns.length).toBeGreaterThan(0)
+      const spec = FORGE_DOMAIN_TABLE_SPECS[table];
+      expect(spec.keyColumns.length).toBeGreaterThan(0);
       for (const key of spec.keyColumns) {
-        expect(spec.columns).toContain(key)
+        expect(spec.columns).toContain(key);
       }
-      expect(spec.columns).toContain(spec.orderColumn)
+      expect(spec.columns).toContain(spec.orderColumn);
     }
-  })
+  });
 
   test("custody columns are declared for the token table only", () => {
     expect(FORGE_DOMAIN_TABLE_SPECS.forge_git_access_tokens.custodyColumns).toEqual([
       "token_hash",
       "token_prefix",
-    ])
+    ]);
     for (const table of FORGE_DOMAIN_TABLES) {
       if (table !== "forge_git_access_tokens") {
-        expect(FORGE_DOMAIN_TABLE_SPECS[table].custodyColumns).toBeUndefined()
+        expect(FORGE_DOMAIN_TABLE_SPECS[table].custodyColumns).toBeUndefined();
       }
     }
-  })
+  });
 
   test("no scalar tally selects a custody column value", () => {
     for (const table of FORGE_DOMAIN_TABLES) {
       for (const tally of FORGE_DOMAIN_SCALAR_TALLIES[table]) {
-        expect(tally.sql).not.toContain("token_hash")
-        expect(tally.sql).not.toContain("token_prefix")
+        expect(tally.sql).not.toContain("token_hash");
+        expect(tally.sql).not.toContain("token_prefix");
       }
     }
-  })
-})
+  });
+});
 
 describe("forgeDomainRowHash (pure)", () => {
   test("identical rows hash identically; any column drift changes the hash", () => {
-    const a = refRow("refs/heads/main")
-    const b = refRow("refs/heads/main")
-    expect(forgeDomainRowHash("forge_git_refs", a)).toBe(
-      forgeDomainRowHash("forge_git_refs", b),
-    )
-    const drifted = refRow("refs/heads/main", { object_id: "f".repeat(40) })
+    const a = refRow("refs/heads/main");
+    const b = refRow("refs/heads/main");
+    expect(forgeDomainRowHash("forge_git_refs", a)).toBe(forgeDomainRowHash("forge_git_refs", b));
+    const drifted = refRow("refs/heads/main", { object_id: "f".repeat(40) });
     expect(forgeDomainRowHash("forge_git_refs", drifted)).not.toBe(
       forgeDomainRowHash("forge_git_refs", a),
-    )
-  })
+    );
+  });
 
   test("D1 numbers and postgres.js bigint strings canonicalize equal", () => {
-    const d1Side = decisionRow(1, { queue_position: 7 })
-    const pgSide = decisionRow(1, { queue_position: "7" })
+    const d1Side = decisionRow(1, { queue_position: 7 });
+    const pgSide = decisionRow(1, { queue_position: "7" });
     expect(forgeDomainRowHash("forge_promotion_decisions", d1Side)).toBe(
       forgeDomainRowHash("forge_promotion_decisions", pgSide),
-    )
-  })
+    );
+  });
 
   test("row keys are the composite PK values, never custody values", () => {
-    const key = forgeDomainRowKey("forge_git_access_tokens", tokenRow(1))
-    expect(key).toBe(`${TENANT}/token_1`)
-    expect(key).not.toContain("e3e3")
-    expect(key).not.toContain("oa_forge_git_")
-  })
-})
+    const key = forgeDomainRowKey("forge_git_access_tokens", tokenRow(1));
+    expect(key).toBe(`${TENANT}/token_1`);
+    expect(key).not.toContain("e3e3");
+    expect(key).not.toContain("oa_forge_git_");
+  });
+});
 
 describe("ref-set digests (pure)", () => {
   const toScanRow = (row: D1ForgeSourceRow) => ({
@@ -231,35 +227,35 @@ describe("ref-set digests (pure)", () => {
     state: row["state"],
     tenant_ref: row["tenant_ref"],
     tip: row["object_id"] ?? "<deleted>",
-  })
+  });
 
   test("equal ref sets produce no mismatches; a single tip drift is caught", () => {
-    const rows = [refRow("refs/heads/main"), refRow("refs/heads/dev")]
-    const left = refSetTallyFromRows(rows.map(toScanRow))
-    const right = refSetTallyFromRows(rows.map(toScanRow))
-    expect(compareRefSets(left, right)).toEqual([])
+    const rows = [refRow("refs/heads/main"), refRow("refs/heads/dev")];
+    const left = refSetTallyFromRows(rows.map(toScanRow));
+    const right = refSetTallyFromRows(rows.map(toScanRow));
+    expect(compareRefSets(left, right)).toEqual([]);
 
     const drifted = refSetTallyFromRows(
       [refRow("refs/heads/main", { object_id: "f".repeat(40) }), refRow("refs/heads/dev")].map(
         toScanRow,
       ),
-    )
-    const mismatches = compareRefSets(left, drifted)
-    expect(mismatches.length).toBe(1)
-    expect(mismatches[0]?.repository).toBe(`${TENANT}/${REPO}`)
-  })
+    );
+    const mismatches = compareRefSets(left, drifted);
+    expect(mismatches.length).toBe(1);
+    expect(mismatches[0]?.repository).toBe(`${TENANT}/${REPO}`);
+  });
 
   test("a missing ref changes the count and the digest", () => {
     const full = refSetTallyFromRows(
       [refRow("refs/heads/main"), refRow("refs/heads/dev")].map(toScanRow),
-    )
-    const short = refSetTallyFromRows([refRow("refs/heads/main")].map(toScanRow))
-    const mismatches = compareRefSets(full, short)
-    expect(mismatches.length).toBe(1)
-    expect(mismatches[0]?.d1?.refs).toBe(2)
-    expect(mismatches[0]?.postgres?.refs).toBe(1)
-  })
-})
+    );
+    const short = refSetTallyFromRows([refRow("refs/heads/main")].map(toScanRow));
+    const mismatches = compareRefSets(full, short);
+    expect(mismatches.length).toBe(1);
+    expect(mismatches[0]?.d1?.refs).toBe(2);
+    expect(mismatches[0]?.postgres?.refs).toBe(1);
+  });
+});
 
 describe("merge-queue replay digests (pure)", () => {
   const toDecisionScan = (row: D1ForgeSourceRow) => ({
@@ -272,7 +268,7 @@ describe("merge-queue replay digests (pure)", () => {
     queue_position: row["queue_position"],
     queue_ref: row["queue_ref"],
     tenant_ref: row["tenant_ref"],
-  })
+  });
   const toLedgerScan = (row: D1ForgeSourceRow) => ({
     actual_head: row["actual_head"],
     base_head: row["base_head"],
@@ -281,36 +277,31 @@ describe("merge-queue replay digests (pure)", () => {
     state: row["state"],
     tenant_ref: row["tenant_ref"],
     virtual_head: row["virtual_head"],
-  })
+  });
 
   test("identical chains match; a reordered or altered decision is caught", () => {
-    const decisions = [decisionRow(1), decisionRow(2, { decided_at: T1 })]
-    const ledgers = [ledgerRow()]
-    const left = mergeQueueReplayFromRows(
-      decisions.map(toDecisionScan),
-      ledgers.map(toLedgerScan),
-    )
+    const decisions = [decisionRow(1), decisionRow(2, { decided_at: T1 })];
+    const ledgers = [ledgerRow()];
+    const left = mergeQueueReplayFromRows(decisions.map(toDecisionScan), ledgers.map(toLedgerScan));
     const right = mergeQueueReplayFromRows(
       decisions.map(toDecisionScan),
       ledgers.map(toLedgerScan),
-    )
-    expect(compareMergeQueueReplays(left, right)).toEqual([])
+    );
+    expect(compareMergeQueueReplays(left, right)).toEqual([]);
 
     const altered = mergeQueueReplayFromRows(
-      [decisionRow(1), decisionRow(2, { decided_at: T1, decision: "blocked" })].map(
-        toDecisionScan,
-      ),
+      [decisionRow(1), decisionRow(2, { decided_at: T1, decision: "blocked" })].map(toDecisionScan),
       ledgers.map(toLedgerScan),
-    )
-    const mismatches = compareMergeQueueReplays(left, altered)
-    expect(mismatches.length).toBe(1)
-    expect(mismatches[0]?.queue).toBe(`${TENANT}/queue_main`)
-  })
-})
+    );
+    const mismatches = compareMergeQueueReplays(left, altered);
+    expect(mismatches.length).toBe(1);
+    expect(mismatches[0]?.queue).toBe(`${TENANT}/queue_main`);
+  });
+});
 
 describe("verify report (pure)", () => {
   test("clean report on matching inputs; drift flips it", () => {
-    const rows = [leaseRow(1), leaseRow(2)]
+    const rows = [leaseRow(1), leaseRow(2)];
     const clean = buildForgeDomainVerifyReport({
       d1Newest: d1ForgeDomainNewestHashes("forge_dispatch_leases", rows),
       d1Total: 2,
@@ -318,8 +309,8 @@ describe("verify report (pure)", () => {
       postgresTotal: 2,
       scalars: [{ d1: 2, metric: "active_leases", postgres: 2 }],
       table: "forge_dispatch_leases",
-    })
-    expect(forgeDomainVerifyReportClean(clean)).toBe(true)
+    });
+    expect(forgeDomainVerifyReportClean(clean)).toBe(true);
 
     const drifted = buildForgeDomainVerifyReport({
       d1Newest: d1ForgeDomainNewestHashes("forge_dispatch_leases", rows),
@@ -331,45 +322,45 @@ describe("verify report (pure)", () => {
       postgresTotal: 2,
       scalars: [{ d1: 2, metric: "active_leases", postgres: 1 }],
       table: "forge_dispatch_leases",
-    })
-    expect(forgeDomainVerifyReportClean(drifted)).toBe(false)
-    expect(drifted.scalarMismatches.length).toBe(1)
-    expect(drifted.newestHashMismatches.length).toBe(1)
-  })
-})
+    });
+    expect(forgeDomainVerifyReportClean(drifted)).toBe(false);
+    expect(drifted.scalarMismatches.length).toBe(1);
+    expect(drifted.newestHashMismatches.length).toBe(1);
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Postgres integration (skipped without local server binaries)
 // ---------------------------------------------------------------------------
 
 describe.skipIf(!hasLocalPostgres())("forge backfill — Postgres", () => {
-  let pg: LocalPostgres
-  let rawSql: SQL
-  let sql: SyncSql
+  let pg: LocalPostgres;
+  let rawSql: SQL;
+  let sql: SyncSql;
 
   beforeAll(async () => {
-    pg = await startLocalPostgres()
-    const admin = SQL({ url: pg.url, max: 1 })
-    await admin.unsafe("CREATE DATABASE khala_forge_backfill")
-    await admin.end()
-    const url = pg.urlFor("khala_forge_backfill")
-    const result = await runMigrations({ databaseUrl: url })
-    expect(result.applied).toContain("0021_forge_domain.sql")
-    rawSql = SQL({ url, max: 4 })
-    sql = rawSql as unknown as SyncSql
-  })
+    pg = await startLocalPostgres();
+    const admin = SQL({ url: pg.url, max: 1 });
+    await admin.unsafe("CREATE DATABASE khala_forge_backfill");
+    await admin.end();
+    const url = pg.urlFor("khala_forge_backfill");
+    const result = await runMigrations({ databaseUrl: url });
+    expect(result.applied).toContain("0021_forge_domain.sql");
+    rawSql = SQL({ url, max: 4 });
+    sql = rawSql as unknown as SyncSql;
+  });
 
   afterAll(async () => {
-    await rawSql?.end()
-    await pg?.stop()
-  })
+    await rawSql?.end();
+    await pg?.stop();
+  });
 
   test("converge upsert is idempotent over composite PKs and converges to the latest D1 snapshot", async () => {
-    const first = [refRow("refs/heads/main"), refRow("refs/heads/dev")]
-    expect(await upsertForgeDomainRows(sql, "forge_git_refs", first)).toBe(2)
+    const first = [refRow("refs/heads/main"), refRow("refs/heads/dev")];
+    expect(await upsertForgeDomainRows(sql, "forge_git_refs", first)).toBe(2);
     // Re-running the SAME page converges without duplication.
-    expect(await upsertForgeDomainRows(sql, "forge_git_refs", first)).toBe(2)
-    expect(await postgresForgeDomainRowCount(sql, "forge_git_refs")).toBe(2)
+    expect(await upsertForgeDomainRows(sql, "forge_git_refs", first)).toBe(2);
+    expect(await postgresForgeDomainRowCount(sql, "forge_git_refs")).toBe(2);
 
     // A later D1 snapshot (fast-forward) converges the ref tip forward.
     await upsertForgeDomainRows(sql, "forge_git_refs", [
@@ -378,33 +369,33 @@ describe.skipIf(!hasLocalPostgres())("forge backfill — Postgres", () => {
         previous_object_id: "a".repeat(40),
         updated_at: T1,
       }),
-    ])
+    ]);
     const rows = await (
       sql as unknown as {
-        unsafe: (q: string, p: Array<unknown>) => Promise<Array<Record<string, unknown>>>
+        unsafe: (q: string, p: Array<unknown>) => Promise<Array<Record<string, unknown>>>;
       }
     ).unsafe(
       `SELECT object_id, previous_object_id FROM forge_git_refs WHERE tenant_ref = $1 AND repository_ref = $2 AND ref_name = $3`,
       [TENANT, REPO, "refs/heads/main"],
-    )
-    expect(rows[0]?.["object_id"]).toBe("f".repeat(40))
-    expect(rows[0]?.["previous_object_id"]).toBe("a".repeat(40))
-  })
+    );
+    expect(rows[0]?.["object_id"]).toBe("f".repeat(40));
+    expect(rows[0]?.["previous_object_id"]).toBe("a".repeat(40));
+  });
 
   test("scalar tallies, ref-set digests, replay digests, and newest hashes agree with the D1-side helpers", async () => {
     await upsertForgeDomainRows(sql, "forge_dispatch_leases", [
       leaseRow(1),
       leaseRow(2, { released_at: T1, state: "expired" }),
-    ])
+    ]);
     await upsertForgeDomainRows(sql, "forge_promotion_decisions", [
       decisionRow(1),
       decisionRow(2, { decided_at: T1 }),
-    ])
-    await upsertForgeDomainRows(sql, "forge_merge_queue_ledger", [ledgerRow()])
+    ]);
+    await upsertForgeDomainRows(sql, "forge_merge_queue_ledger", [ledgerRow()]);
     await upsertForgeDomainRows(sql, "forge_git_access_tokens", [
       tokenRow(1),
       tokenRow(2, { revoked_at: T1, state: "revoked" }),
-    ])
+    ]);
 
     // Scalars run the SAME SQL text on both engines.
     expect(
@@ -412,19 +403,19 @@ describe.skipIf(!hasLocalPostgres())("forge backfill — Postgres", () => {
         sql,
         FORGE_DOMAIN_SCALAR_TALLIES.forge_dispatch_leases[0]!.sql,
       ),
-    ).toBe(1)
+    ).toBe(1);
     expect(
       await postgresForgeDomainScalar(
         sql,
         FORGE_DOMAIN_SCALAR_TALLIES.forge_git_access_tokens[0]!.sql,
       ),
-    ).toBe(1)
+    ).toBe(1);
     expect(
       await postgresForgeDomainScalar(
         sql,
         FORGE_DOMAIN_SCALAR_TALLIES.forge_promotion_decisions[2]!.sql,
       ),
-    ).toBe(3)
+    ).toBe(3);
 
     // Ref-set digest: the Postgres tally equals the pure tally over the
     // same source rows.
@@ -443,36 +434,60 @@ describe.skipIf(!hasLocalPostgres())("forge backfill — Postgres", () => {
         tenant_ref: TENANT,
         tip: "f".repeat(40),
       },
-    ])
-    const pgTally = await postgresRefSetTally(sql)
-    expect(compareRefSets(pureTally, pgTally)).toEqual([])
+    ]);
+    const pgTally = await postgresRefSetTally(sql);
+    expect(compareRefSets(pureTally, pgTally)).toEqual([]);
 
     // Replay digest round-trips through Postgres.
-    const pgReplay = await postgresMergeQueueReplay(sql)
-    expect(pgReplay.get(`${TENANT}/queue_main`)?.decisions).toBe(2)
+    const pgReplay = await postgresMergeQueueReplay(sql);
+    expect(pgReplay.get(`${TENANT}/queue_main`)?.decisions).toBe(2);
 
     // Newest-N hashes: the Postgres rows hash identically to the D1
     // source rows (bigint canonicalization included), and keys carry no
     // custody values.
-    const newest = await postgresForgeDomainNewestHashes(
-      sql,
-      "forge_git_access_tokens",
-      10,
-    )
+    const newest = await postgresForgeDomainNewestHashes(sql, "forge_git_access_tokens", 10);
     const d1Newest = d1ForgeDomainNewestHashes("forge_git_access_tokens", [
       tokenRow(2, { revoked_at: T1, state: "revoked" }),
       tokenRow(1),
-    ])
-    expect(newest).toEqual(d1Newest)
+    ]);
+    expect(newest).toEqual(d1Newest);
     for (const entry of newest) {
-      expect(entry.key).not.toContain("e3e3")
-      expect(entry.key).not.toContain("oa_forge_git_")
+      expect(entry.key).not.toContain("e3e3");
+      expect(entry.key).not.toContain("oa_forge_git_");
     }
-  })
+  });
 
-  test("all sixteen twins accept a full-row converge (schema/registry alignment)", async () => {
-    const now = T0
+  test("all twenty-one twins accept a full-row converge (schema/registry alignment)", async () => {
+    const now = T0;
     const sample: Record<string, D1ForgeSourceRow> = {
+      forge_actor_bindings: {
+        account_ref: "user_1",
+        actor_kind: "human",
+        binding_generation: 1,
+        binding_ref: "forge_actor.human_1",
+        created_at: now,
+        display_name: "Human One",
+        membership_state: "active",
+        nostr_binding_created_at: now,
+        nostr_binding_event_id: "1".repeat(64),
+        nostr_binding_signature_valid: 1,
+        nostr_pubkey: "2".repeat(64),
+        owner_binding_ref: null,
+        revoked_at: null,
+        role_refs_json: '["forge:member"]',
+        tenant_ref: TENANT,
+      },
+      forge_burned_key_facts: {
+        binding_ref: "forge_actor.retired_1",
+        burn_reason_ref: "membership.revoked",
+        burn_sequence: 1,
+        burned_at: now,
+        burned_key_fact_ref: "forge_burned_key.retired_1",
+        key_kind: "agent",
+        public_key: "3".repeat(64),
+        source_refs_json: '["membership_1"]',
+        tenant_ref: TENANT,
+      },
       forge_coordination_issues: {
         created_at: now,
         git_token_refs_json: "[]",
@@ -601,6 +616,52 @@ describe.skipIf(!hasLocalPostgres())("forge backfill — Postgres", () => {
         tenant_ref: TENANT,
         updated_at: now,
       },
+      forge_invite_bindings: {
+        accepted_at: now,
+        accepted_binding_ref: "forge_actor.human_1",
+        expires_at: T1,
+        invite_binding_ref: "forge_invite_binding.invite_1",
+        invite_digest: "4".repeat(64),
+        invite_kind: "team_workspace",
+        invite_ref: "invite_1",
+        invited_subject_ref: "user_1",
+        inviter_binding_ref: "forge_actor.inviter",
+        issued_at: now,
+        provenance_source_refs_json: '["invite_1"]',
+        role_refs_json: '["forge:member"]',
+        team_ref: "team_1",
+        tenant_ref: TENANT,
+      },
+      forge_membership_reconciliation_state: {
+        absence_confirmed_at: null,
+        absence_first_observed_at: null,
+        binding_ref: "forge_actor.human_1",
+        hysteresis_deadline: null,
+        observed_present: 1,
+        reconciled_at: now,
+        reconciliation_generation: 1,
+        reconciliation_ref: "forge_reconciliation.human_1",
+        source_membership_generation: 1,
+        source_refs_json: '["membership_1"]',
+        state: "present",
+        team_ref: "team_1",
+        tenant_ref: TENANT,
+      },
+      forge_nip98_replay_consumptions: {
+        actor_pubkey: "2".repeat(64),
+        authority_generation: 1,
+        body_digest: "5".repeat(64),
+        canonical_path: "/forge/repo.git/git-receive-pack",
+        consumed_at: now,
+        consumption_ref: "forge_nip98_consumption.event_1",
+        event_created_at: now,
+        event_id: "6".repeat(64),
+        expires_at: T1,
+        http_method: "POST",
+        request_digest: "7".repeat(64),
+        result: "accepted",
+        tenant_ref: TENANT,
+      },
       forge_tenants: {
         attestation_ref: null,
         confidential_workspace_mode: null,
@@ -637,21 +698,15 @@ describe.skipIf(!hasLocalPostgres())("forge backfill — Postgres", () => {
         verdict: "passed",
         verification_ref: "verify_1",
       },
-    }
+    };
     for (const [table, row] of Object.entries(sample)) {
       expect(
-        await upsertForgeDomainRows(
-          sql,
-          table as (typeof FORGE_DOMAIN_TABLES)[number],
-          [row],
-        ),
-      ).toBe(1)
+        await upsertForgeDomainRows(sql, table as (typeof FORGE_DOMAIN_TABLES)[number], [row]),
+      ).toBe(1);
     }
     // The remaining five tables were exercised by the earlier tests.
     for (const table of FORGE_DOMAIN_TABLES) {
-      expect(
-        await postgresForgeDomainRowCount(sql, table),
-      ).toBeGreaterThanOrEqual(1)
+      expect(await postgresForgeDomainRowCount(sql, table)).toBeGreaterThanOrEqual(1);
     }
-  })
-})
+  });
+});

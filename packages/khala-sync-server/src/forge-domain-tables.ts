@@ -1,12 +1,12 @@
-import type { SyncSql, SyncTransactionSql } from "./sql.js"
+import type { SyncSql, SyncTransactionSql } from "./sql.js";
 
 /**
  * KS-8.16 (#8327): Forge (git intake + coordination) domain.
  *
  * Shared table metadata and Postgres converge/upsert helpers for ALL
- * SIXTEEN `forge_*` tables moving from D1 to Cloud SQL (khala-sync
+ * TWENTY-ONE `forge_*` tables moving from D1 to Cloud SQL (khala-sync
  * migration `0021_forge_domain.sql`, mirroring worker migrations
- * 0251/0252/0253/0254/0255/0256/0259/0260/0284). This file is imported by
+ * 0251/0252/0253/0254/0255/0256/0259/0260/0284/0316). This file is imported by
  * both the Worker dual-write mirror
  * (`apps/openagents.com/workers/api/src/forge-domain-store.ts`) and the
  * backfill/verify CLI (`scripts/backfill-forge.ts`) — one registry, so
@@ -40,25 +40,30 @@ export type ForgeDomainTable =
   | "forge_git_objects"
   | "forge_git_ref_locks"
   | "forge_github_mirror_receipts"
+  | "forge_actor_bindings"
+  | "forge_invite_bindings"
+  | "forge_burned_key_facts"
+  | "forge_nip98_replay_consumptions"
+  | "forge_membership_reconciliation_state";
 
 export type ForgeDomainTableSpec = Readonly<{
-  columns: ReadonlyArray<string>
+  columns: ReadonlyArray<string>;
   /**
    * The table's (composite) PRIMARY KEY — the converge key used by the
    * backfill, the mirror read-back, and ON CONFLICT.
    */
-  keyColumns: ReadonlyArray<string>
+  keyColumns: ReadonlyArray<string>;
   /** Newest-first ordering column for hash verification. */
-  orderColumn: string
+  orderColumn: string;
   /**
    * Secret-adjacent custody columns (token hashes/prefixes). Values from
    * these columns must never appear in diagnostics, logs, or
    * backfill/verify output — keys and sha256 row hashes only.
    */
-  custodyColumns?: ReadonlyArray<string>
-}>
+  custodyColumns?: ReadonlyArray<string>;
+}>;
 
-export type ForgeDomainRow = Readonly<Record<string, unknown>>
+export type ForgeDomainRow = Readonly<Record<string, unknown>>;
 
 /** Backfill/verify sweep order (parents-before-children is cosmetic —
  * there are no FKs on the Postgres side — but keeps output readable). */
@@ -79,11 +84,50 @@ export const FORGE_DOMAIN_TABLES: ReadonlyArray<ForgeDomainTable> = [
   "forge_verification_receipts",
   "forge_promotion_decisions",
   "forge_github_mirror_receipts",
-]
+  "forge_actor_bindings",
+  "forge_invite_bindings",
+  "forge_burned_key_facts",
+  "forge_nip98_replay_consumptions",
+  "forge_membership_reconciliation_state",
+];
 
-export const FORGE_DOMAIN_TABLE_SPECS: Readonly<
-  Record<ForgeDomainTable, ForgeDomainTableSpec>
-> = {
+export const FORGE_DOMAIN_TABLE_SPECS: Readonly<Record<ForgeDomainTable, ForgeDomainTableSpec>> = {
+  forge_actor_bindings: {
+    columns: [
+      "binding_ref",
+      "tenant_ref",
+      "account_ref",
+      "actor_kind",
+      "display_name",
+      "owner_binding_ref",
+      "role_refs_json",
+      "membership_state",
+      "binding_generation",
+      "created_at",
+      "revoked_at",
+      "nostr_pubkey",
+      "nostr_binding_event_id",
+      "nostr_binding_created_at",
+      "nostr_binding_signature_valid",
+    ],
+    keyColumns: ["binding_ref"],
+    orderColumn: "created_at",
+  },
+  forge_burned_key_facts: {
+    columns: [
+      "burned_key_fact_ref",
+      "tenant_ref",
+      "key_kind",
+      "public_key",
+      "binding_ref",
+      "burn_reason_ref",
+      "burned_at",
+      "burn_sequence",
+      "source_refs_json",
+    ],
+    keyColumns: ["burned_key_fact_ref"],
+    orderColumn: "burned_at",
+  },
   forge_coordination_issues: {
     columns: [
       "tenant_ref",
@@ -299,6 +343,26 @@ export const FORGE_DOMAIN_TABLE_SPECS: Readonly<
     keyColumns: ["tenant_ref", "mirror_ref"],
     orderColumn: "updated_at",
   },
+  forge_invite_bindings: {
+    columns: [
+      "invite_binding_ref",
+      "tenant_ref",
+      "team_ref",
+      "invite_ref",
+      "invite_digest",
+      "invite_kind",
+      "inviter_binding_ref",
+      "invited_subject_ref",
+      "role_refs_json",
+      "issued_at",
+      "expires_at",
+      "accepted_at",
+      "accepted_binding_ref",
+      "provenance_source_refs_json",
+    ],
+    keyColumns: ["invite_binding_ref"],
+    orderColumn: "issued_at",
+  },
   forge_merge_queue_ledger: {
     columns: [
       "tenant_ref",
@@ -316,6 +380,44 @@ export const FORGE_DOMAIN_TABLE_SPECS: Readonly<
     ],
     keyColumns: ["tenant_ref", "queue_ref"],
     orderColumn: "updated_at",
+  },
+  forge_membership_reconciliation_state: {
+    columns: [
+      "reconciliation_ref",
+      "tenant_ref",
+      "team_ref",
+      "binding_ref",
+      "source_membership_generation",
+      "reconciliation_generation",
+      "observed_present",
+      "absence_first_observed_at",
+      "absence_confirmed_at",
+      "hysteresis_deadline",
+      "state",
+      "reconciled_at",
+      "source_refs_json",
+    ],
+    keyColumns: ["reconciliation_ref"],
+    orderColumn: "reconciled_at",
+  },
+  forge_nip98_replay_consumptions: {
+    columns: [
+      "consumption_ref",
+      "tenant_ref",
+      "request_digest",
+      "event_id",
+      "actor_pubkey",
+      "http_method",
+      "canonical_path",
+      "body_digest",
+      "event_created_at",
+      "consumed_at",
+      "expires_at",
+      "authority_generation",
+      "result",
+    ],
+    keyColumns: ["consumption_ref"],
+    orderColumn: "consumed_at",
   },
   forge_promotion_decisions: {
     columns: [
@@ -386,27 +488,23 @@ export const FORGE_DOMAIN_TABLE_SPECS: Readonly<
     keyColumns: ["tenant_ref", "verification_ref"],
     orderColumn: "completed_at",
   },
-}
+};
 
-export const isForgeDomainTable = (
-  value: string,
-): value is ForgeDomainTable =>
-  Object.prototype.hasOwnProperty.call(FORGE_DOMAIN_TABLE_SPECS, value)
+export const isForgeDomainTable = (value: string): value is ForgeDomainTable =>
+  Object.prototype.hasOwnProperty.call(FORGE_DOMAIN_TABLE_SPECS, value);
 
-export const normalizeForgeDomainValue = (
-  value: unknown,
-): string | number | null => {
-  if (value === undefined || value === null) return null
-  if (typeof value === "number") return value
-  if (typeof value === "bigint") return value.toString()
-  if (typeof value === "boolean") return value ? 1 : 0
-  return String(value)
-}
+export const normalizeForgeDomainValue = (value: unknown): string | number | null => {
+  if (value === undefined || value === null) return null;
+  if (typeof value === "number") return value;
+  if (typeof value === "bigint") return value.toString();
+  if (typeof value === "boolean") return value ? 1 : 0;
+  return String(value);
+};
 
 export type ForgeDomainUnsafeQuery = (
   text: string,
   params: Array<unknown>,
-) => Promise<Array<Record<string, unknown>>>
+) => Promise<Array<Record<string, unknown>>>;
 
 /**
  * Both Bun SQL and postgres.js expose `unsafe(text, params)` for
@@ -417,17 +515,15 @@ export type ForgeDomainUnsafeQuery = (
  * comes only from compile-time table specs — Hyperdrive
  * transaction-mode safe.
  */
-export const requireForgeDomainUnsafe = (
-  sql: SyncSql,
-): ForgeDomainUnsafeQuery => {
-  const unsafe = (sql as SyncSql & { unsafe?: ForgeDomainUnsafeQuery }).unsafe
+export const requireForgeDomainUnsafe = (sql: SyncSql): ForgeDomainUnsafeQuery => {
+  const unsafe = (sql as SyncSql & { unsafe?: ForgeDomainUnsafeQuery }).unsafe;
   if (typeof unsafe !== "function") {
     throw new Error(
       "forge domain store requires a driver exposing unsafe(text, params) (Bun SQL or postgres.js)",
-    )
+    );
   }
-  return unsafe
-}
+  return unsafe;
+};
 
 /**
  * Converge Postgres to the given D1 snapshot rows: full-row
@@ -441,27 +537,24 @@ export const upsertForgeDomainRows = async (
   table: ForgeDomainTable,
   rows: ReadonlyArray<ForgeDomainRow>,
 ): Promise<number> => {
-  if (rows.length === 0) return 0
-  const unsafe = requireForgeDomainUnsafe(sql as SyncSql)
-  const spec = FORGE_DOMAIN_TABLE_SPECS[table]
+  if (rows.length === 0) return 0;
+  const unsafe = requireForgeDomainUnsafe(sql as SyncSql);
+  const spec = FORGE_DOMAIN_TABLE_SPECS[table];
   const setClauses = spec.columns
     .filter((column) => !spec.keyColumns.includes(column))
     .map((column) => `${column} = EXCLUDED.${column}`)
-    .join(", ")
-  const updateClause =
-    setClauses.length === 0 ? "DO NOTHING" : `DO UPDATE SET ${setClauses}`
+    .join(", ");
+  const updateClause = setClauses.length === 0 ? "DO NOTHING" : `DO UPDATE SET ${setClauses}`;
 
-  let touched = 0
+  let touched = 0;
   for (const row of rows) {
-    const values = spec.columns.map((column) =>
-      normalizeForgeDomainValue(row[column]),
-    )
-    const placeholders = values.map((_, index) => `$${index + 1}`).join(", ")
+    const values = spec.columns.map((column) => normalizeForgeDomainValue(row[column]));
+    const placeholders = values.map((_, index) => `$${index + 1}`).join(", ");
     const result = await unsafe(
       `INSERT INTO ${table} (${spec.columns.join(", ")}) VALUES (${placeholders}) ON CONFLICT (${spec.keyColumns.join(", ")}) ${updateClause} RETURNING 1 AS touched`,
       values as Array<unknown>,
-    )
-    touched += result.length
+    );
+    touched += result.length;
   }
-  return touched
-}
+  return touched;
+};

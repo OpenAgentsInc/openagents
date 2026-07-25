@@ -25,6 +25,7 @@ import {
 } from './binding-unavailable'
 import { buildCloudRunRuntime } from './env'
 import { makeBackgroundTasks, makeExecutionContext } from './execution-context'
+import { gateForgeDocumentRequest } from './forge-ui-gate'
 // #8634/#8635 scope 5: retained /forum* serves the Effect Native conversion.
 import { handleForumUiRequest } from './forum-ui'
 import {
@@ -194,10 +195,29 @@ const main = async (): Promise<void> => {
       // #8813: apps/start owns retained documents after the EN mounts above.
       // API/auth/unknown
       // paths continue into the application handler unchanged.
-      const startResponse = await handleStartUiRequest(
+      const startResponse = await gateForgeDocumentRequest(
         request,
-        runtime.env as unknown as Readonly<Record<string, unknown>>,
-        ctx,
+        async (documentRequest, tenantRef) => {
+          const membershipUrl = new URL(
+            '/api/forge/membership',
+            documentRequest.url,
+          )
+          membershipUrl.searchParams.set('tenantRef', tenantRef)
+          return worker.fetch!(
+            new Request(membershipUrl, {
+              headers: documentRequest.headers,
+              method: 'GET',
+            }),
+            runtime.env,
+            ctx,
+          )
+        },
+        () =>
+          handleStartUiRequest(
+            request,
+            runtime.env as unknown as Readonly<Record<string, unknown>>,
+            ctx,
+          ),
       )
       if (startResponse !== undefined) {
         return startResponse

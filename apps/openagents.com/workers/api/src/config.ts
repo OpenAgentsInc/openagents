@@ -494,6 +494,7 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   ARTANIS_GITHUB_ISSUE_TOKEN?: string | undefined
   OPENAGENTS_ADMIN_API_TOKEN?: string | undefined
   OPENAGENTS_FORGE_CONTROL_PLANE_TOKEN?: string | undefined
+  OPENAGENTS_FORGE_GIT_SERVICE_AUTH_TOKEN?: string | undefined
   OPENAGENTS_FORGE_GITHUB_MIRROR_TOKEN?: string | undefined
   OPENAGENTS_APP_URL?: string | undefined
   OPENAUTH_CLIENT_ID?: string | undefined
@@ -617,6 +618,7 @@ export type OpenAgentsWorkerConfigShape = Readonly<{
   }>
   exa: ExaConfig
   forgeControlPlaneToken?: Redacted.Redacted<WorkerSecret> | undefined
+  forgeGitServiceAuthToken?: Redacted.Redacted<WorkerSecret> | undefined
   forgeGithubMirrorToken?: Redacted.Redacted<WorkerSecret> | undefined
   github: Readonly<{
     clientId: GitHubClientId
@@ -1037,6 +1039,10 @@ export const decodeOpenAgentsWorkerConfig = (
       forgeControlPlaneToken: optionalRedacted(
         env,
         'OPENAGENTS_FORGE_CONTROL_PLANE_TOKEN',
+      ),
+      forgeGitServiceAuthToken: optionalRedacted(
+        env,
+        'OPENAGENTS_FORGE_GIT_SERVICE_AUTH_TOKEN',
       ),
       forgeGithubMirrorToken: optionalRedacted(
         env,

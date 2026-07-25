@@ -5,7 +5,6 @@
 // row fakes, so the D1 side of the contract exercises the store's actual
 // SQL. Only the D1Database surface the pylon store uses is implemented:
 // `prepare().bind().first/all/run` and sequential `batch`.
-
 import { DatabaseSync } from 'node:sqlite'
 
 type SqlParam = null | number | bigint | string | Uint8Array
@@ -1789,7 +1788,7 @@ CREATE TABLE site_commerce_revenue_share_links (
 
 /**
  * Condensed live D1 schema for the KS-8.16 forge domain contract suite
- * (worker migrations 0251/0252/0253/0254/0255/0256/0259/0260/0284,
+ * (worker migrations 0251/0252/0253/0254/0255/0256/0259/0260/0284/0316,
  * post-ALTER final shape). The D1-authority uniques/partials are KEPT
  * here — the contract suite exercises the real lease-conflict and
  * held-lock behavior of the authoritative engine.
@@ -2096,6 +2095,93 @@ CREATE TABLE forge_github_mirror_receipts (
     destination_github_repository,
     destination_github_ref
   )
+);
+
+CREATE TABLE forge_actor_bindings (
+  binding_ref TEXT PRIMARY KEY,
+  tenant_ref TEXT NOT NULL,
+  account_ref TEXT NOT NULL,
+  actor_kind TEXT NOT NULL,
+  display_name TEXT NOT NULL,
+  owner_binding_ref TEXT,
+  role_refs_json TEXT NOT NULL DEFAULT '[]',
+  membership_state TEXT NOT NULL,
+  binding_generation INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  revoked_at TEXT,
+  nostr_pubkey TEXT,
+  nostr_binding_event_id TEXT,
+  nostr_binding_created_at TEXT,
+  nostr_binding_signature_valid INTEGER NOT NULL DEFAULT 0
+);
+CREATE UNIQUE INDEX idx_forge_actor_bindings_account
+  ON forge_actor_bindings(tenant_ref, account_ref, actor_kind);
+CREATE UNIQUE INDEX idx_forge_actor_bindings_nostr_pubkey
+  ON forge_actor_bindings(tenant_ref, nostr_pubkey)
+  WHERE nostr_pubkey IS NOT NULL;
+
+CREATE TABLE forge_invite_bindings (
+  invite_binding_ref TEXT PRIMARY KEY,
+  tenant_ref TEXT NOT NULL,
+  team_ref TEXT NOT NULL,
+  invite_ref TEXT NOT NULL,
+  invite_digest TEXT NOT NULL,
+  invite_kind TEXT NOT NULL,
+  inviter_binding_ref TEXT NOT NULL,
+  invited_subject_ref TEXT NOT NULL,
+  role_refs_json TEXT NOT NULL DEFAULT '[]',
+  issued_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  accepted_at TEXT,
+  accepted_binding_ref TEXT,
+  provenance_source_refs_json TEXT NOT NULL DEFAULT '[]',
+  UNIQUE (tenant_ref, invite_ref)
+);
+
+CREATE TABLE forge_burned_key_facts (
+  burned_key_fact_ref TEXT PRIMARY KEY,
+  tenant_ref TEXT NOT NULL,
+  key_kind TEXT NOT NULL,
+  public_key TEXT NOT NULL,
+  binding_ref TEXT NOT NULL,
+  burn_reason_ref TEXT NOT NULL,
+  burned_at TEXT NOT NULL,
+  burn_sequence INTEGER NOT NULL,
+  source_refs_json TEXT NOT NULL DEFAULT '[]',
+  UNIQUE (tenant_ref, burn_sequence)
+);
+
+CREATE TABLE forge_nip98_replay_consumptions (
+  consumption_ref TEXT PRIMARY KEY,
+  tenant_ref TEXT NOT NULL,
+  request_digest TEXT NOT NULL UNIQUE,
+  event_id TEXT NOT NULL UNIQUE,
+  actor_pubkey TEXT NOT NULL,
+  http_method TEXT NOT NULL,
+  canonical_path TEXT NOT NULL,
+  body_digest TEXT NOT NULL,
+  event_created_at TEXT NOT NULL,
+  consumed_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  authority_generation INTEGER NOT NULL,
+  result TEXT NOT NULL
+);
+
+CREATE TABLE forge_membership_reconciliation_state (
+  reconciliation_ref TEXT PRIMARY KEY,
+  tenant_ref TEXT NOT NULL,
+  team_ref TEXT NOT NULL,
+  binding_ref TEXT NOT NULL,
+  source_membership_generation INTEGER NOT NULL DEFAULT 0,
+  reconciliation_generation INTEGER NOT NULL DEFAULT 1,
+  observed_present INTEGER NOT NULL,
+  absence_first_observed_at TEXT,
+  absence_confirmed_at TEXT,
+  hysteresis_deadline TEXT,
+  state TEXT NOT NULL,
+  reconciled_at TEXT NOT NULL,
+  source_refs_json TEXT NOT NULL DEFAULT '[]',
+  UNIQUE (tenant_ref, binding_ref)
 );
 `
 

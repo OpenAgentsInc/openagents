@@ -226,6 +226,40 @@ const membershipIdFor = (teamId: string, userId: string): string =>
     .replace(/[^A-Za-z0-9_]+/g, '_')
     .slice(0, 240)
 
+const upsertInviteMembership = async (
+  db: D1Database,
+  invite: TeamWorkspaceInviteRecord,
+  userId: string,
+  nowIso: string,
+): Promise<string> => {
+  const membershipId = membershipIdFor(invite.teamId, userId)
+  await db
+    .prepare(
+      `INSERT INTO team_memberships
+        (id, team_id, user_id, role, status, joined_at, created_at,
+         updated_at, removed_at)
+       VALUES (?, ?, ?, ?, 'active', ?, ?, ?, NULL)
+       ON CONFLICT(team_id, user_id) DO UPDATE SET
+         role = excluded.role,
+         status = 'active',
+         joined_at = COALESCE(team_memberships.joined_at, excluded.joined_at),
+         updated_at = excluded.updated_at,
+         removed_at = NULL`,
+    )
+    .bind(
+      membershipId,
+      invite.teamId,
+      userId,
+      invite.role,
+      nowIso,
+      nowIso,
+      nowIso,
+    )
+    .run()
+
+  return membershipId
+}
+
 const readActiveTeamExists = async (
   db: D1Database,
   teamId: string,
@@ -462,9 +496,11 @@ export const makeD1TeamWorkspaceInviteStore = (
     const membershipId = membershipIdFor(invite.teamId, input.userId)
 
     if (invite.status === 'accepted') {
-      return invite.acceptedByUserId === input.userId
-        ? { _tag: 'AlreadyAccepted', invite, membershipId }
-        : { _tag: 'InviteUnavailable', status: invite.status }
+      if (invite.acceptedByUserId !== input.userId) {
+        return { _tag: 'InviteUnavailable', status: invite.status }
+      }
+      await upsertInviteMembership(db, invite, input.userId, nowIso)
+      return { _tag: 'AlreadyAccepted', invite, membershipId }
     }
 
     if (invite.status !== 'pending') {
@@ -496,41 +532,37 @@ export const makeD1TeamWorkspaceInviteStore = (
       return { _tag: 'WrongUser' }
     }
 
-    await db.batch([
-      db
-        .prepare(
-          `INSERT INTO team_memberships
-            (id, team_id, user_id, role, status, joined_at, created_at,
-             updated_at, removed_at)
-           VALUES (?, ?, ?, ?, 'active', ?, ?, ?, NULL)
-           ON CONFLICT(team_id, user_id) DO UPDATE SET
-             role = excluded.role,
-             status = 'active',
-             joined_at = COALESCE(team_memberships.joined_at, excluded.joined_at),
-             updated_at = excluded.updated_at,
-             removed_at = NULL`,
-        )
-        .bind(
-          membershipId,
-          invite.teamId,
-          input.userId,
-          invite.role,
-          nowIso,
-          nowIso,
-          nowIso,
-        ),
-      db
-        .prepare(
-          `UPDATE team_workspace_invites
-              SET status = 'accepted',
-                  accepted_by_user_id = ?,
-                  accepted_at = ?,
-                  updated_at = ?
-            WHERE id = ?
-              AND status = 'pending'`,
-        )
-        .bind(input.userId, nowIso, nowIso, invite.id),
-    ])
+    // The invite row is the first-account binding authority. Claim it before
+    // creating membership so two authenticated accounts that share one email
+    // cannot both receive access from a stale pending read.
+    const claimed = await db
+      .prepare(
+        `UPDATE team_workspace_invites
+            SET status = 'accepted',
+                accepted_by_user_id = ?,
+                accepted_at = ?,
+                updated_at = ?
+          WHERE id = ?
+            AND status = 'pending'`,
+      )
+      .bind(input.userId, nowIso, nowIso, invite.id)
+      .run()
+
+    if ((claimed.meta?.changes ?? 0) === 0) {
+      const current = await readInviteById(db, invite.id)
+      if (
+        current.status === 'accepted' &&
+        current.acceptedByUserId === input.userId
+      ) {
+        await upsertInviteMembership(db, current, input.userId, nowIso)
+        return { _tag: 'AlreadyAccepted', invite: current, membershipId }
+      }
+      return { _tag: 'InviteUnavailable', status: current.status }
+    }
+
+    // Membership is recoverable after the authoritative invite claim. An
+    // idempotent retry by the same account repairs a transient write failure.
+    await upsertInviteMembership(db, invite, input.userId, nowIso)
 
     return {
       _tag: 'Accepted',
@@ -573,3 +605,26 @@ export const makeD1TeamWorkspaceInviteStore = (
     return row === null ? undefined : recordFromRow(row)
   },
 })
+
+export const readD1AcceptedTeamWorkspaceInviteForUser = async (
+  db: D1Database,
+  inviteId: string,
+  userId: string,
+): Promise<TeamWorkspaceInviteRecord | undefined> => {
+  const row = await db
+    .prepare(
+      `SELECT id, team_id, project_id, invitee_email, invitee_email_normalized,
+              role, status, token_hash, invited_by_actor_ref, accepted_by_user_id,
+              email_message_id, created_at, updated_at, expires_at, accepted_at,
+              revoked_at, last_sent_at, send_count, metadata_json
+         FROM team_workspace_invites
+        WHERE id = ?
+          AND status = 'accepted'
+          AND accepted_by_user_id = ?
+        LIMIT 1`,
+    )
+    .bind(inviteId, userId)
+    .first<TeamWorkspaceInviteRow>()
+
+  return row === null ? undefined : recordFromRow(row)
+}

@@ -474,9 +474,11 @@ import {
   makeForgeGitCanonicalStoreForEnv,
   makeForgeGitHubMirrorStoreForEnv,
   makeForgeGitPackfileArchiveStoreForEnv,
+  makeForgeInviteMembershipStoreForEnv,
   makeForgeTenantGitAuthStoreForEnv,
 } from './forge-domain-store'
 import { makeForgeGitIntakeRoutes } from './forge-git-intake-routes'
+import { makeForgeInviteMembershipRoutes } from './forge-invite-membership-routes'
 import { makeForumRoutes } from './forum-routes'
 import { forumWorkRequestRelayPublisherForEnv } from './forum-work-request-live-publisher'
 import { forumContentDatabaseForEnv } from './forum/forum-content-store'
@@ -1350,7 +1352,10 @@ import {
   readTeamsForUser,
 } from './team-repository'
 import { makeTeamWorkspaceInviteRoutes } from './team-workspace-invite-routes'
-import { makeD1TeamWorkspaceInviteStore } from './team-workspace-invites'
+import {
+  makeD1TeamWorkspaceInviteStore,
+  readD1AcceptedTeamWorkspaceInviteForUser,
+} from './team-workspace-invites'
 import { makeTenantClientRoutes } from './tenant-client-routes'
 import { makeTenantCustomHostnames } from './tenant-custom-hostnames'
 import {
@@ -1865,6 +1870,16 @@ const getForgeControlPlaneToken = (
   }
 
   return token
+}
+
+const getForgeGitServiceAuthToken = (
+  env: OpenAgentsWorkerConfigEnv,
+): string | undefined => {
+  const token = redactedValue(
+    getOpenAgentsWorkerConfig(env).forgeGitServiceAuthToken,
+  )
+
+  return token === undefined || token.trim() === '' ? undefined : token
 }
 
 const getForgeGitHubMirrorToken = (
@@ -3380,6 +3395,28 @@ const { appendRefreshedSessionCookies, requireBrowserSession } =
     persistUser: (env, user) => upsertUser(identityDbForEnv(env), user),
     verifySession,
   })
+
+const forgeInviteMembershipRoutes = makeForgeInviteMembershipRoutes<
+  Env,
+  VerifiedSession
+>({
+  appendRefreshedSessionCookies,
+  gitServiceAuthorizationToken: getForgeGitServiceAuthToken,
+  makeGitAuthStore: env => makeForgeTenantGitAuthStoreForEnv(env),
+  makeMembershipStore: env => makeForgeInviteMembershipStoreForEnv(env),
+  nowIso: currentIsoTimestamp,
+  readAcceptedInvite: (env, inviteId, userId) =>
+    readD1AcceptedTeamWorkspaceInviteForUser(
+      khalaCodeProductStateDatabaseForEnv(env),
+      inviteId,
+      userId,
+    ),
+  resolveTeamRefForTenant: (_env, tenantRef) =>
+    Promise.resolve(
+      tenantRef === 'tenant.openagents' ? 'team_openagents_core' : undefined,
+    ),
+  requireBrowserSession,
+})
 
 const { requireUserBearerSession } = makeUserBearerSessionBoundary<
   UserSubject,
@@ -16097,7 +16134,7 @@ const routeRequest = makeWorkerRouteRequest({
         makeForgeTenantGitAuthStoreForEnv(storeEnv),
       nowIso: currentIsoTimestamp,
     }).routeForgeGitIntakeRequest(request, env),
-  routeForgeControlPlaneRequest: (request, env) =>
+  routeForgeControlPlaneRequest: (request, env, ctx) =>
     makeForgeControlPlaneRoutes<Env>({
       authorizeControlPlaneBearer: (authRequest, authEnv, requiredScope) =>
         authorizeForgeControlPlaneBearer(
@@ -16112,9 +16149,15 @@ const routeRequest = makeWorkerRouteRequest({
       makeStore: storeEnv => makeForgeCoordinationStoreForEnv(storeEnv),
       mirrorGitHubToken: storeEnv => getForgeGitHubMirrorToken(storeEnv),
       nowIso: currentIsoTimestamp,
+      routeInviteMembershipRequest: (membershipRequest, membershipEnv) =>
+        forgeInviteMembershipRoutes.routeForgeInviteMembershipRequest(
+          membershipRequest,
+          membershipEnv,
+          ctx,
+        ),
       requireAdminApiToken: (authRequest, authEnv) =>
         requireAdminApiToken(authRequest, authEnv),
-    }).routeForgeControlPlaneRequest(request, env),
+    }).routeForgeControlPlaneRequest(request, env, ctx),
   routeOperatorAdjutantRequest:
     operatorAdjutantRoutes.routeOperatorAdjutantRequest,
   routeOperatorArtanisChatRequest:
