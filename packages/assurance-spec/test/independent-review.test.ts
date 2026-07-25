@@ -4,6 +4,7 @@ import {
   INDEPENDENT_REVIEW_SCHEMA_ID,
   decodeIndependentReviewReceipt,
   independentReviewAdmits,
+  verifyIndependentReviewSignature,
 } from "../src/independent-review.ts"
 
 const REVIEWER = "0326d8f9eb5abea63d9613ac90451dfce62ca2e9855144b5a71d8e8569932974"
@@ -29,6 +30,7 @@ const receipt = (overrides: Record<string, unknown> = {}) => ({
   reproductions: [reproduction("identity-matrix"), reproduction("tripwires")],
   disagreements: [],
   evidenceSha256: digest("e"),
+  reviewerSignature: "f".repeat(128),
   ...overrides,
 })
 
@@ -184,5 +186,30 @@ describe("no reviewer shopping", () => {
         receipt({ supersedes: digest("e"), supersedesReason: "loop" }),
       ),
     ).toThrow(/cannot supersede itself/)
+  })
+})
+
+describe("the reviewer identity is checkable, not asserted", () => {
+  test("verifies the signature over the evidence digest with the reviewer key", () => {
+    const decoded = decodeIndependentReviewReceipt(receipt())
+    const seen: Array<string> = []
+    const ok = verifyIndependentReviewSignature(decoded, (signature, message, pubkey) => {
+      seen.push(signature, message, pubkey)
+      return true
+    })
+    expect(ok).toBe(true)
+    // It must sign the evidence digest with the reviewer key, not something else.
+    expect(seen).toEqual(["f".repeat(128), digest("e"), REVIEWER])
+  })
+
+  test("reports a bad signature rather than trusting the stated pubkey", () => {
+    // Without this, a producer could write the reviewer's public key into a
+    // document it authored itself and the receipt would look independent.
+    const decoded = decodeIndependentReviewReceipt(receipt())
+    expect(verifyIndependentReviewSignature(decoded, () => false)).toBe(false)
+  })
+
+  test("refuses a receipt with a malformed signature", () => {
+    expect(() => decodeIndependentReviewReceipt(receipt({ reviewerSignature: "nope" }))).toThrow()
   })
 })

@@ -77,6 +77,14 @@ export const IndependentReviewReceipt = S.Struct({
   supersedes: S.optional(Digest),
   supersedesReason: S.optional(NonEmptyString),
   evidenceSha256: Digest,
+  /**
+   * Schnorr signature over `evidenceSha256` by `reviewerPubkey`.
+   *
+   * Without this the receipt only *claims* an identity, and any producer could
+   * write the reviewer's public key into a document it authored itself. The
+   * key is what makes independence checkable rather than asserted.
+   */
+  reviewerSignature: S.String.check(S.isPattern(/^[0-9a-f]{128}$/)),
 })
 export interface IndependentReviewReceipt extends S.Schema.Type<typeof IndependentReviewReceipt> {}
 
@@ -149,6 +157,19 @@ export const decodeIndependentReviewReceipt = (value: unknown): IndependentRevie
 
   return receipt
 }
+
+/**
+ * Verify the reviewer actually signed this receipt.
+ *
+ * Kept separate from decoding because it needs a verifier: decoding proves the
+ * shape and the laws, this proves the authorship. A caller that skips it is
+ * trusting a public key typed into a file.
+ */
+export const verifyIndependentReviewSignature = (
+  receipt: IndependentReviewReceipt,
+  verify: (signature: string, message: string, pubkey: string) => boolean,
+): boolean =>
+  verify(receipt.reviewerSignature, receipt.evidenceSha256, receipt.reviewerPubkey)
 
 /**
  * True when this receipt admits the obligation.
