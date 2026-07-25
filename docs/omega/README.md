@@ -73,6 +73,9 @@ Read these documents in this order:
 25. Read the [accepted Omega plan](../sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md).
 26. Read the [master roadmap](../sol/MASTER_ROADMAP.md).
 27. Read the [Desktop release contract](../deploy/openagents-desktop-cross-platform-release.md).
+28. Read the
+    [Omega open issues unified completion plan](./2026-07-25-omega-open-issues-unified-completion-plan.md).
+
 
 The Omega roadmap owns the implementation order.
 The release-readiness audit owns the current brand and package gap.

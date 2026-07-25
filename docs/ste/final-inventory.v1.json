@@ -34346,8 +34346,62 @@
       }
     },
     {
+      "path": "docs/omega/2026-07-25-omega-open-issues-unified-completion-plan.md",
+      "sha256": "84cf7e7f626a0593523864201f7b8a94f7b13ab0173d5bfbdd369515e308b47e",
+      "reason": "Final review of mutable first-party agent technical text",
+      "profile": {
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ]
+      }
+    },
+    {
       "path": "docs/omega/README.md",
-      "sha256": "fdd615855eda288b5a5fde2b8c3d8696429485f957df3b80a51671416ee4203d",
+      "sha256": "317ec9a8aa67378dba9ddb58222616cfb9f06f0030b9154563fd238a8c080b58",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "active",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "human",
+        "ste_accepted_screening_rules": [
+          "STE-2.4"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/omega/README.md",
+      "sha256": "317ec9a8aa67378dba9ddb58222616cfb9f06f0030b9154563fd238a8c080b58",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "active",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "human",
+        "ste_accepted_screening_rules": [
+          "STE-2.4"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/omega/README.md",
+      "sha256": "317ec9a8aa67378dba9ddb58222616cfb9f06f0030b9154563fd238a8c080b58",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

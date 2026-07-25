@@ -3141,7 +3141,7 @@
       ]
     },
     "specs/desktop/full-auto.assurance-spec.md": {
-      "sourceSha256": "be5b106c6bbe3bcdde503d1bcab6abaa559adb561528a1b68f28399f4caa9718",
+      "sourceSha256": "c207cfe09e7f562aeca233486521b0a152fd2fabcb48e725994bf9277869c6d0",
       "normativeKeywords": [
         "MUST",
         "ONLY",
