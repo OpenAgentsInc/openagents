@@ -1,6 +1,19 @@
 {
   "schema": "openagents-ste-profile-overrides-v1",
   "profiles": {
+    "docs/nostr/2026-07-25-nostr-native-authentication-architecture-proposal.md": {
+      "ste_mode": "descriptive",
+      "ste_status": "checked",
+      "ste_reviewer": "codex/nostr-native-auth-proposal-20260725",
+      "ste_reviewed_at": "2026-07-25T19:48:00Z",
+      "risk": "high",
+      "source": null,
+      "replacement": null,
+      "ste_audience": "human",
+      "ste_accepted_screening_rules": [
+        "STE-2.4"
+      ]
+    },
     "docs/omega/2026-07-23-identity-first-onboarding-roadmap.md": {
       "ste_mode": "mixed",
       "ste_status": "checked",
