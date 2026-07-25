@@ -62,6 +62,8 @@ describe('Start ⇄ Worker document route agreement (#8813)', () => {
 
   test.each([
     '/billing',
+    '/blog',
+    '/blog/introducing-openagents-desktop',
     '/checkout',
     '/sites',
     '/credits',

@@ -13,15 +13,19 @@ const routeBudgets = [
   { path: '/', marker: 'Launch UI v2 is out!' },
   { path: '/activity', marker: 'Live public activity' },
   { path: '/business', marker: 'Agents that work.' },
-  { path: '/business/kpi/engagement.public.vertical_pipeline_1', marker: 'Scorekeeper' },
+  {
+    path: '/business/kpi/engagement.public.vertical_pipeline_1',
+    marker: 'Scorekeeper',
+  },
   { path: '/docs', marker: 'OpenAgents docs' },
   { path: '/docs/api', marker: 'Developer API' },
-  { path: '/blog', marker: 'OpenAgents Blog' },
-  { path: '/blog/introducing-khala-code', marker: 'Introducing Khala Code' },
   { path: '/clients-preview', marker: 'Autopilot control surface' },
   { path: '/components', marker: 'Component library' },
   { path: '/code', marker: 'Code, on your own capacity' },
-  { path: '/code/download', marker: 'Install paths, with the Codex requirement kept visible' },
+  {
+    path: '/code/download',
+    marker: 'Install paths, with the Codex requirement kept visible',
+  },
   { path: '/download', marker: 'Download OpenAgents Desktop' },
   {
     path: '/pylon/codex/assignments/assignment.public.khala_coding.chatcmpl_example',
@@ -32,7 +36,10 @@ const routeBudgets = [
   { path: '/artanis/accounts', marker: 'Operator account observability' },
   { path: '/adjutant', marker: 'Loading public goal.' },
   { path: '/agents/artanis', marker: 'ARTANIS console' },
-  { path: '/workspaces/workspace.public.invite_example', marker: 'Open your project workspace' },
+  {
+    path: '/workspaces/workspace.public.invite_example',
+    marker: 'Open your project workspace',
+  },
   { path: '/autopilot/legal', marker: 'For legal teams' },
   { path: '/gym', marker: 'OpenAgents Gym' },
   { path: '/login', marker: 'Log in to OpenAgents' },
@@ -85,7 +92,10 @@ export async function main(): Promise<void> {
   const files = await readdir(assetDir)
   const jsFiles = files.filter(file => file.endsWith('.js'))
   const sizes = await Promise.all(
-    jsFiles.map(async file => ({ file, size: (await stat(join(assetDir, file))).size })),
+    jsFiles.map(async file => ({
+      file,
+      size: (await stat(join(assetDir, file))).size,
+    })),
   )
   const totalJs = sizes.reduce((sum, entry) => sum + entry.size, 0)
   const routeChunks = sizes.filter(entry => !isVendorChunk(entry.file))
@@ -107,7 +117,9 @@ export async function main(): Promise<void> {
       label: `route chunk ${entry.file}`,
     })),
   ]
-  const failures = checks.map(check).filter((message): message is string => message !== undefined)
+  const failures = checks
+    .map(check)
+    .filter((message): message is string => message !== undefined)
 
   if (failures.length > 0) {
     fail(failures)

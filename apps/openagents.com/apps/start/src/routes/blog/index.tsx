@@ -1,16 +1,7 @@
-import { createFileRoute } from '@tanstack/react-router'
-
-import { BlogIndexPage } from '../-funnel-components'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 
 export const Route = createFileRoute('/blog/')({
-  component: BlogIndexPage,
-  head: () => ({
-    meta: [
-      { title: 'Blog - OpenAgents' },
-      {
-        name: 'description',
-        content: 'Build notes and launch notes from the OpenAgents network.',
-      },
-    ],
-  }),
+  beforeLoad: () => {
+    throw redirect({ to: '/', replace: true })
+  },
 })

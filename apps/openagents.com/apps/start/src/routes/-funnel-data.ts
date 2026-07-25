@@ -30,7 +30,9 @@ export type DocPage = Readonly<{
   description: ReadonlyArray<string>
   links?: ReadonlyArray<NavLink>
   listed: boolean
-  sections?: ReadonlyArray<Readonly<{ heading: string; items: ReadonlyArray<string> }>>
+  sections?: ReadonlyArray<
+    Readonly<{ heading: string; items: ReadonlyArray<string> }>
+  >
   slug: string
   summary: string
   title: string
@@ -41,7 +43,9 @@ export type BlogPost = Readonly<{
   excerpt: string
   listed: boolean
   readTime: string
-  sections: ReadonlyArray<Readonly<{ title: string; paragraphs: ReadonlyArray<string> }>>
+  sections: ReadonlyArray<
+    Readonly<{ title: string; paragraphs: ReadonlyArray<string> }>
+  >
   slug: string
   title: string
 }>
@@ -229,7 +233,10 @@ export const docsPages: ReadonlyArray<DocPage> = [
     ],
     links: [
       { href: '/code', label: 'Khala Code surface' },
-      { href: '/api/public/khala-code/plans', label: 'Khala Code plan catalog' },
+      {
+        href: '/api/public/khala-code/plans',
+        label: 'Khala Code plan catalog',
+      },
       { href: '/api/public/product-promises', label: 'Product promises JSON' },
       { href: '/forum/f/product-promises', label: 'Product Promises Forum' },
     ],
@@ -370,7 +377,7 @@ export const docsPages: ReadonlyArray<DocPage> = [
 export const blogPosts: ReadonlyArray<BlogPost> = [
   {
     slug: 'introducing-openagents-desktop',
-    listed: true,
+    listed: false,
     title: 'Introducing Omega',
     excerpt:
       'A local-first workroom that turns your ordinary Codex session into one legible place to plan, delegate, review, and steer.',

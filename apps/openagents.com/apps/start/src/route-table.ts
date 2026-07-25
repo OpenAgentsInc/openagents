@@ -18,7 +18,6 @@ export const knownDocumentPathPatterns: ReadonlyArray<RegExp> = [
   /^\/artanis\/(?:accounts|traces)$/,
   /^\/autopilot\/?$/,
   /^\/autopilot\/legal$/,
-  /^\/blog(?:\/[^/]+)?\/?$/,
   /^\/business\/?$/,
   /^\/business\/kpi\/[^/]+$/,
   /^\/changelog$/,

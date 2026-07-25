@@ -24,9 +24,6 @@ export function PublicFooter() {
           <InternalLink href={DOCS_URL} preload="render">
             Docs
           </InternalLink>
-          <InternalLink href="/blog" preload="render">
-            Blog
-          </InternalLink>
         </nav>
         <nav aria-label="Community links">
           <strong>Community</strong>

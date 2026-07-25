@@ -110,6 +110,14 @@ describe('Worker document route fallback', () => {
     }
   })
 
+  test('redirects the disabled blog routes home', () => {
+    for (const path of ['/blog', '/blog/introducing-openagents-desktop']) {
+      expect(shouldRedirectUnknownDocumentToHome(requestFor(path), path)).toBe(
+        true,
+      )
+    }
+  })
+
   test('keeps the public Khala document route in the app shell when unauthed', () => {
     expect(
       shouldRedirectUnknownDocumentToHome(requestFor('/khala'), '/khala'),
@@ -129,9 +137,9 @@ describe('Worker document route fallback', () => {
   })
 
   test('keeps the public Terminal-Bench Gym document route in the app shell', () => {
-    expect(shouldRedirectUnknownDocumentToHome(requestFor('/gym'), '/gym')).toBe(
-      false,
-    )
+    expect(
+      shouldRedirectUnknownDocumentToHome(requestFor('/gym'), '/gym'),
+    ).toBe(false)
   })
 
   test('redirects unclaimed Gym document routes', () => {
@@ -354,8 +362,8 @@ describe('Worker route dual-serve resolution (#6148)', () => {
       routeMulletRequest: noRoute,
       routeOmniRequest: noRoute,
       routeOnboardingRequest: noRoute,
-  routePublicCloudPrimitiveReceiptRequest: noRoute,
-  routePublicInferenceReceiptRequest: noRoute,
+      routePublicCloudPrimitiveReceiptRequest: noRoute,
+      routePublicInferenceReceiptRequest: noRoute,
       routePublicKhalaCodeOutsideUserRunReceiptRequest: noRoute,
       routePublicKhalaCodeTracePluginRevenueShareRequest: noRoute,
       routePublicQaSwarmFirstEngagementRequest: noRoute,
@@ -447,9 +455,7 @@ describe('Worker route dual-serve resolution (#6148)', () => {
     )
 
     expect(canonical.response.status).toBe(200)
-    expect(canonical.observed.exactPath).toBe(
-      '/v1/gateway/glm-fleet/readiness',
-    )
+    expect(canonical.observed.exactPath).toBe('/v1/gateway/glm-fleet/readiness')
   })
 
   test('forum topic document routes reach the social preview document handler', async () => {

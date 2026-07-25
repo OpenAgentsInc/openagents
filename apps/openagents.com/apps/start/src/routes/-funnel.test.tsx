@@ -3,14 +3,12 @@ import { describe, expect, test } from 'vitest'
 
 import {
   AutopilotPage,
-  BlogIndexPage,
-  BlogPostPage,
   BusinessPage,
   DocPageView,
   DocsIndexPage,
   KhalaCodeDownloadPage,
 } from './-funnel-components'
-import { findBlogPost, findDocPage } from './-funnel-data'
+import { blogPosts, findBlogPost, findDocPage } from './-funnel-data'
 
 describe('Start funnel routes', () => {
   test('server-renders the business funnel copy and intake form', () => {
@@ -51,32 +49,12 @@ describe('Start funnel routes', () => {
     expect(apiHtml).toContain('/.well-known/openagents.json')
   })
 
-  test('server-renders the blog index and Omega post copy', () => {
-    const indexHtml = renderToStaticMarkup(<BlogIndexPage />)
+  test('retains the Omega blog draft without listing it publicly', () => {
     const post = findBlogPost('introducing-openagents-desktop')
 
     expect(post).toBeDefined()
-    expect(indexHtml).toContain('Notes from the workroom.')
-    expect(indexHtml).toContain('Introducing Omega')
-    expect(indexHtml).toContain('July 25, 2026')
-    expect(indexHtml).toContain('oa-blog-type-badge')
-    expect(indexHtml).toContain('>Blog<')
-    expect(indexHtml).toContain('OpenAgents on GitHub')
-    expect(indexHtml).not.toContain('Open app')
-    expect(indexHtml).not.toContain('Introducing Khala Code')
-    expect(indexHtml).not.toContain('>Business<')
-
-    const postHtml = renderToStaticMarkup(<BlogPostPage post={post!} />)
-    expect(postHtml).toContain('Introducing Omega')
-    expect(postHtml).toContain('July 25, 2026')
-    expect(postHtml).toContain('oa-blog-type-badge')
-    expect(postHtml).toContain('>Blog<')
-    expect(postHtml).toContain('One workroom for the whole turn')
-    expect(postHtml).toContain(
-      'OpenAgents Desktop is a local-first workroom around the Codex session you already use.',
-    )
-    expect(postHtml).toContain('App-server events, not flattened logs')
-    expect(postHtml).toContain('oa-blog-article')
+    expect(post?.listed).toBe(false)
+    expect(blogPosts.every(candidate => !candidate.listed)).toBe(true)
   })
 
   test('server-renders the Khala Code download page inside the promise gate', () => {

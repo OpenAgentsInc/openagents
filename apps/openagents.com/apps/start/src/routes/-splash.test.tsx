@@ -25,8 +25,10 @@ describe('Desktop splash', () => {
     expect(html).toContain('class="splash-hero-canvas"')
     expect(html).toContain('data-khala-canvas="server-static"')
     expect(html).toContain('aria-hidden="true"')
-    expect(html).toContain('Introducing Omega')
-    expect(html).toContain('href="/blog/introducing-openagents-desktop"')
+    expect(html).toContain('splash-development-status')
+    expect(html).toContain('In development')
+    expect(html).not.toContain('Introducing Omega')
+    expect(html).not.toContain('href="/blog')
     expect(html).toContain('OpenAgents on GitHub')
     expect(html).not.toContain('Open app')
     expect(html).not.toContain('href="#product"')
@@ -73,6 +75,7 @@ describe('Desktop splash', () => {
     expect(html).toContain('Is Omega available yet?')
     expect(html).toContain('Not yet. Omega is in active development')
     expect(html).toContain('aria-label="Product links"')
+    expect(html).not.toContain('>Blog</a>')
     expect(html).toContain('aria-label="Community links"')
     expect(html).toContain('aria-label="Legal links"')
     expect(html).toContain('href="https://x.com/OpenAgents"')
@@ -95,8 +98,8 @@ describe('Desktop splash', () => {
       path.resolve(import.meta.dirname, '../splash.css'),
       'utf8',
     )
-    const releaseLinkRule = css.match(
-      /\.splash-release-link \{([\s\S]*?)\n\}/,
+    const developmentStatusRule = css.match(
+      /\.splash-development-status \{([\s\S]*?)\n\}/,
     )?.[1]
     const heroHeadingRule = css.match(/\.splash-hero h1 \{([\s\S]*?)\n\}/)?.[1]
 
@@ -107,8 +110,7 @@ describe('Desktop splash', () => {
     expect(css).toContain('.splash-demo-activation')
     expect(css).toContain('position: absolute')
     expect(css).toContain('z-index: 5')
-    expect(releaseLinkRule).toContain('font-family: var(--font-sans)')
-    expect(releaseLinkRule).not.toContain('font-family: var(--font-mono)')
+    expect(developmentStatusRule).toContain('font-family: var(--font-mono)')
     expect(heroHeadingRule).toContain(
       'font-size: clamp(3.15rem, 6.1vw, 5.25rem)',
     )

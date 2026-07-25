@@ -897,14 +897,10 @@ export function SplashPage() {
 
       <section aria-labelledby="splash-heading" className="splash-hero">
         <SplashHeroCanvas />
-        <InternalLink
-          className="splash-release-link"
-          href="/blog/introducing-openagents-desktop"
-          preload="render"
-        >
-          Introducing Omega
-          <ArrowRight aria-hidden="true" />
-        </InternalLink>
+        <span className="splash-development-status">
+          <i aria-hidden="true" />
+          In development
+        </span>
         <h1 id="splash-heading">Your last agent IDE.</h1>
         <p>
           Omega brings your project, agents, code, review, and evidence into one
