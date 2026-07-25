@@ -72,7 +72,7 @@ const forbiddenPatterns = [
   ["workers.dev origin", /\.workers\.dev\b/i],
   ["Cloudflare credential", /\b(?:CLOUDFLARE_[A-Z0-9_]+|CF_AIG_TOKEN)\b/],
   ["Cloudflare service lane", /\b(?:cloudflare_email|cloudflare_vpc_service)\b/i],
-  ["retired owned service", /\b(?:relay|forge)\.openagents\.com\b/i],
+  ["retired owned service", /\bforge\.openagents\.com\b/i],
   ["retired world service", /apps\/openagents-world/],
   ["retired SHC lane", /(?:\bshc\b|cloud[-_]shc|oa-shc|SHC_)/i],
 ]
