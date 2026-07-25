@@ -9232,7 +9232,7 @@
       ]
     },
     "apps/openagents.com/INVARIANTS.md": {
-      "sourceSha256": "124f3d164e9a465f34c8057bc599444f0534babd7d50a8ee0a628e56f0273391",
+      "sourceSha256": "081d291eabcd77fa36497a81e3bab9e062f073eda2a97fce6d7051b8e8591786",
       "normativeKeywords": [
         "MAY",
         "MUST",
@@ -9292,6 +9292,8 @@
         "/",
         "/?github_write=connected",
         "/Users/christopherdavid/work/three-effect",
+        "/agentchat",
+        "/agentchat",
         "/aisdk",
         "/aisdk",
         "/aisdk/docs",
@@ -9488,6 +9490,7 @@
         "GET /api/public/markets/signature-monetization/metering",
         "GET /api/public/metrics/accepted-outcomes-per-kwh",
         "GET /api/public/nip90-market/receipts/{receiptRef}",
+        "GET /api/public/nostr-chat/manifest",
         "GET /api/public/omni/client-delivery-projection",
         "GET /api/public/partner-payout-receipts/{receiptRef}",
         "GET /api/public/payments/contributor-accrual-bundle?economicsId=<id>",
@@ -10639,6 +10642,7 @@
         "static_contract_exempt",
         "static_contract_exempt",
         "static_contract_exempt",
+        "static_contract_exempt",
         "status",
         "step_id",
         "stored_snapshot",
@@ -11361,6 +11365,8 @@
         "27",
         "27",
         "27",
+        "29",
+        "29",
         "3",
         "3",
         "3",
@@ -11578,9 +11584,11 @@
       ]
     },
     "apps/openagents.com/apps/start/public/AGENTS.md": {
-      "sourceSha256": "a3deb2e356f2cd979d0f24f98ab27e41b51e9f782ced088deb75d0652387aa29",
+      "sourceSha256": "d2f3aa7e6d4a26f710d45454afc75b9a92811f25bc4035897c8510fc363b5ac1",
       "normativeKeywords": [],
-      "inlineCode": [],
+      "inlineCode": [
+        "nsec"
+      ],
       "urls": [
         "https://github.com/OpenAgentsInc/openagents/issues/new?template=strict-bug.yml.",
         "https://github.com/OpenAgentsInc/openagents/releases/tag/openagents-desktop-v0.1.0-rc.25",
@@ -11588,26 +11596,31 @@
         "https://openagents.com/AGENTS-CORE.md",
         "https://openagents.com/AGENTS.md",
         "https://openagents.com/AGENTS.md",
+        "https://openagents.com/agentchat.",
         "https://openagents.com/api/openapi.json.",
+        "https://openagents.com/api/public/nostr-chat/manifest.",
         "https://openagents.com/forum/f/product-promises.",
         "https://raw.githubusercontent.com/OpenAgentsInc/openagents/refs/heads/main/docs/transcripts/230.md"
       ],
       "issueRefs": [],
       "numericValues": [
-        "0.2.1",
+        "0.3.0",
         "1",
         "1.0",
-        "19",
-        "19",
         "2",
         "2026",
         "2026-07",
         "230",
         "25",
         "25",
+        "25",
+        "25",
+        "29",
         "3",
         "4",
         "410",
+        "42",
+        "42",
         "5"
       ]
     },
@@ -11665,9 +11678,11 @@
       ]
     },
     "apps/openagents.com/docs/live/AGENTS.md": {
-      "sourceSha256": "a3deb2e356f2cd979d0f24f98ab27e41b51e9f782ced088deb75d0652387aa29",
+      "sourceSha256": "d2f3aa7e6d4a26f710d45454afc75b9a92811f25bc4035897c8510fc363b5ac1",
       "normativeKeywords": [],
-      "inlineCode": [],
+      "inlineCode": [
+        "nsec"
+      ],
       "urls": [
         "https://github.com/OpenAgentsInc/openagents/issues/new?template=strict-bug.yml.",
         "https://github.com/OpenAgentsInc/openagents/releases/tag/openagents-desktop-v0.1.0-rc.25",
@@ -11675,26 +11690,31 @@
         "https://openagents.com/AGENTS-CORE.md",
         "https://openagents.com/AGENTS.md",
         "https://openagents.com/AGENTS.md",
+        "https://openagents.com/agentchat.",
         "https://openagents.com/api/openapi.json.",
+        "https://openagents.com/api/public/nostr-chat/manifest.",
         "https://openagents.com/forum/f/product-promises.",
         "https://raw.githubusercontent.com/OpenAgentsInc/openagents/refs/heads/main/docs/transcripts/230.md"
       ],
       "issueRefs": [],
       "numericValues": [
-        "0.2.1",
+        "0.3.0",
         "1",
         "1.0",
-        "19",
-        "19",
         "2",
         "2026",
         "2026-07",
         "230",
         "25",
         "25",
+        "25",
+        "25",
+        "29",
         "3",
         "4",
         "410",
+        "42",
+        "42",
         "5"
       ]
     },
