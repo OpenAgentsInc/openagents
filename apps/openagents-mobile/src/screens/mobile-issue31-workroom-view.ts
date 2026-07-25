@@ -20,7 +20,22 @@ import {
   type Issue31WorkroomRoom,
 } from "../workroom/issue31-workroom-read-model";
 import type { Issue31MobileNostrControlState } from "../workroom/issue31-mobile-nostr-runtime";
-import { searchIssue31LocalMemory } from "../workroom/issue31-owner-private-read-model";
+import {
+  searchIssue31LocalMemory,
+  type Issue31OwnerCommandState,
+} from "../workroom/issue31-owner-private-read-model";
+import type {
+  Issue31EvidenceRow,
+  Issue31FullAutoReadModel,
+  Issue31FullAutoRunRow,
+  Issue31ProviderAccountRow,
+  Issue31ProviderHandoffRow,
+} from "../workroom/issue31-full-auto-read-model";
+import {
+  issue31FullAutoControlIsInFlight,
+  issue31FullAutoControlSettlementCopy,
+  settleIssue31FullAutoControl,
+} from "../workroom/issue31-full-auto-control-settlement";
 
 export interface Issue31OwnerPrivateViewState {
   readonly draft: string;
@@ -492,12 +507,363 @@ const ownerPrivateDetail = (
   ];
 };
 
+/**
+ * Exact duration copy from the host's own measurement (omega#47).
+ *
+ * The phone never reads a clock here. A run's unattended time is what the Omega
+ * host measured and sent, so it cannot drift with the device's own time or keep
+ * counting after the projection went stale.
+ */
+const unattendedCopy = (unattendedMs: number): string => {
+  const totalSeconds = Math.floor(unattendedMs / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const padded = (value: number): string => (value < 10 ? `0${value}` : `${value}`);
+  return `${padded(hours)}:${padded(minutes)}:${padded(seconds)} unattended`;
+};
+
+const evidenceUnavailableCopy: Readonly<Record<string, string>> = {
+  hop_missing: "a step of the chain is missing",
+  hop_mismatched: "two records disagree about this run",
+  hop_private: "a step cannot be shown on this device",
+  self_reported: "the run reported its own success",
+  host_unavailable: "the host could not be reached",
+};
+
+/**
+ * One finished unit from objective through authority receipt, or an explicit
+ * statement that it cannot be followed.
+ *
+ * There is no third rendering. A partial hop list would let the owner read a
+ * broken chain as partial proof, which is the exact failure omega#47 forbids.
+ */
+const evidenceBlock = (runRef: string, evidence: Issue31EvidenceRow): ReadonlyArray<View> => {
+  if (evidence.state === "unavailable") {
+    return [
+      Text({
+        key: `issue31-fa-${runRef}-evidence`,
+        content: `Evidence unavailable · ${evidenceUnavailableCopy[evidence.reasonClass] ?? evidence.reasonClass}${
+          evidence.brokenAt === null ? "" : ` · first broken at ${evidence.brokenAt}`
+        }`,
+        variant: "body",
+        color: "warning",
+      }),
+    ];
+  }
+  return [
+    Text({
+      key: `issue31-fa-${runRef}-evidence`,
+      content: `Evidence complete · host verified · authority ${
+        evidence.authorityAllowed ? "allowed" : "refused"
+      }`,
+      variant: "body",
+      color: evidence.authorityAllowed ? "textPrimary" : "warning",
+    }),
+    // The workroom receipt-inspector grammar: one label, one reference, in the
+    // order the work actually happened.
+    ...evidence.hops.map((hop) =>
+      Text({
+        key: `issue31-fa-${runRef}-hop-${hop.kind}`,
+        content: `${hop.kind} · ${hop.ref}${hop.detail === null ? "" : ` · ${hop.detail}`}`,
+        variant: "caption",
+        color: "textMuted",
+      }),
+    ),
+  ];
+};
+
+const runCard = (
+  run: Issue31FullAutoRunRow,
+  commands: ReadonlyArray<Issue31OwnerCommandState>,
+  accessibility: MobileAccessibilityProfile,
+): View =>
+  Stack(
+    {
+      key: `issue31-fa-run-${run.runRef}`,
+      direction: "column",
+      gap: "1",
+      padding: "3",
+      style: {
+        width: "full",
+        borderWidth: 1,
+        borderColor: "border",
+        borderRadius: "lg",
+        backgroundColor: "surface",
+      },
+    },
+    [
+      Stack(
+        {
+          key: `issue31-fa-run-${run.runRef}-header`,
+          direction: "row",
+          gap: "2",
+          align: "center",
+          style: { width: "full" },
+        },
+        [
+          Text({
+            key: `issue31-fa-run-${run.runRef}-objective`,
+            content: run.objective,
+            variant: "heading",
+            color: "textPrimary",
+            style: { flex: 1 },
+          }),
+          Badge({
+            key: `issue31-fa-run-${run.runRef}-lifecycle`,
+            label: run.lifecycle,
+            tone: run.isTerminal
+              ? run.lifecycle === "succeeded"
+                ? "success"
+                : "warn"
+              : run.lifecycle === "stalled" || run.lifecycle === "retrying"
+                ? "warn"
+                : "info",
+          }),
+        ],
+      ),
+      Text({
+        key: `issue31-fa-run-${run.runRef}-lane`,
+        content: `Lane · ${run.laneRef} · ${unattendedCopy(run.unattendedMs)}`,
+        variant: "caption",
+        color: "textMuted",
+      }),
+      Text({
+        key: `issue31-fa-run-${run.runRef}-work`,
+        content: run.isTerminal
+          ? `Ended · ${run.terminalReasonRef ?? "reason.issue31.unknown"}`
+          : `Working on · ${run.liveWorkRef ?? "no unit reported"}`,
+        variant: "body",
+        color: "textPrimary",
+      }),
+      ...(run.controls.length === 0
+        ? [
+            Text({
+              key: `issue31-fa-run-${run.runRef}-no-controls`,
+              content: run.isTerminal
+                ? "This run has finished. No control can change it."
+                : "Your host is not offering a control for this run.",
+              variant: "caption",
+              color: "textMuted",
+            }),
+          ]
+        : run.controls.flatMap((control) => {
+            const settlement = settleIssue31FullAutoControl(control, commands);
+            return [
+              Button({
+                key: `issue31-fa-control-${control.idempotencyRef}`,
+                label: `${control.kind} · generation ${control.runGeneration}`,
+                variant: "secondary",
+                // Disabled while the host holds it, so the owner cannot mint a
+                // second command against the same idempotency reference.
+                disabled: issue31FullAutoControlIsInFlight(settlement),
+                onPress: IntentRef(
+                  "Issue31FullAutoControlRequested",
+                  StaticPayload({
+                    runRef: run.runRef,
+                    actionRef: control.actionRef,
+                    kind: control.kind,
+                    runGeneration: control.runGeneration,
+                    idempotencyRef: control.idempotencyRef,
+                  }),
+                ),
+                a11y: {
+                  label: `${control.kind} Full Auto run, bound to generation ${control.runGeneration}`,
+                },
+                style: { width: "full", ...mobileInteractiveStyle(accessibility) },
+              }),
+              Text({
+                key: `issue31-fa-control-${control.idempotencyRef}-settlement`,
+                // Never "done" until an Omega-owned terminal result says so.
+                content: issue31FullAutoControlSettlementCopy(settlement),
+                variant: "caption",
+                color: settlement.state === "completed" ? "textPrimary" : "textMuted",
+              }),
+            ];
+          })),
+      ...evidenceBlock(run.runRef, run.evidence),
+    ],
+  );
+
+const handoffCopy = (handoff: Issue31ProviderHandoffRow): string => {
+  if (!handoff.isTerminal) {
+    return `Connection ${handoff.state} · your Omega host owns the login`;
+  }
+  return `Connection ${handoff.state} · ${handoff.outcomeRef ?? "no outcome"}${
+    handoff.reasonClass === null ? "" : ` · ${handoff.reasonClass}`
+  }`;
+};
+
+const accountCard = (account: Issue31ProviderAccountRow): View =>
+  Stack(
+    {
+      key: `issue31-fa-account-${account.accountRef}`,
+      direction: "column",
+      gap: "1",
+      padding: "3",
+      style: { width: "full", borderWidth: 1, borderColor: "border", borderRadius: "lg" },
+    },
+    [
+      Stack(
+        {
+          key: `issue31-fa-account-${account.accountRef}-header`,
+          direction: "row",
+          gap: "2",
+          align: "center",
+          style: { width: "full" },
+        },
+        [
+          Text({
+            key: `issue31-fa-account-${account.accountRef}-label`,
+            content: `${account.label} · ${account.provider}`,
+            variant: "body",
+            color: "textPrimary",
+            style: { flex: 1 },
+          }),
+          Badge({
+            key: `issue31-fa-account-${account.accountRef}-readiness`,
+            label: account.readiness,
+            tone:
+              account.readiness === "ready"
+                ? "success"
+                : account.readiness === "revoked" || account.readiness === "exhausted"
+                  ? "danger"
+                  : "warn",
+          }),
+        ],
+      ),
+      // A lane is not an account. The relation is stated, never implied by
+      // putting the two on the same row and hoping the owner infers it.
+      Text({
+        key: `issue31-fa-account-${account.accountRef}-lane`,
+        content: `Account ${account.accountRef} serves lane ${account.laneRef} · quota ${account.quota} · ${
+          account.runRefs.length === 0
+            ? "no runs on that lane"
+            : `runs ${account.runRefs.join(" · ")}`
+        }`,
+        variant: "caption",
+        color: "textMuted",
+      }),
+      ...(account.handoff === null
+        ? []
+        : [
+            Text({
+              key: `issue31-fa-account-${account.accountRef}-handoff`,
+              content: handoffCopy(account.handoff),
+              variant: "caption",
+              color: account.handoff.state === "completed" ? "textMuted" : "warning",
+            }),
+          ]),
+    ],
+  );
+
+const fullAutoUnavailableCopy: Readonly<Record<string, string>> = {
+  no_host_projection: "This device is not paired to an Omega host yet.",
+  host_projection_unreadable:
+    "Your Omega host sent a Full Auto projection this app refuses to read. Nothing is shown rather than part of it.",
+  snapshot_mismatch:
+    "The Full Auto detail belongs to a different host snapshot. It is withheld rather than shown as current.",
+};
+
+/**
+ * Full Auto work, the accounts behind it, and the evidence for it — in the
+ * Workroom, beside the conversation. The owner never leaves for another product
+ * surface to answer "what is my machine doing and did it really do it".
+ */
+const fullAutoSection = (
+  fullAuto: Issue31FullAutoReadModel,
+  commands: ReadonlyArray<Issue31OwnerCommandState>,
+  accessibility: MobileAccessibilityProfile,
+): ReadonlyArray<View> => {
+  const heading = Text({
+    key: "issue31-fa-title",
+    content: "Full Auto",
+    variant: "heading",
+    color: "textPrimary",
+  });
+  if (fullAuto.state === "unavailable") {
+    return [
+      heading,
+      Text({
+        key: "issue31-fa-unavailable",
+        content: fullAutoUnavailableCopy[fullAuto.reason] ?? fullAuto.reason,
+        variant: "body",
+        color: "warning",
+      }),
+    ];
+  }
+  return [
+    heading,
+    Text({
+      key: "issue31-fa-binding",
+      content: `Host ${fullAuto.hostRef} · snapshot ${fullAuto.snapshotRef}`,
+      variant: "caption",
+      color: "textMuted",
+    }),
+    ...(fullAuto.runs.length === 0
+      ? [
+          Text({
+            key: "issue31-fa-runs-empty",
+            content: "Your Omega host reports no Full Auto runs.",
+            variant: "body",
+            color: "textMuted",
+          }),
+        ]
+      : fullAuto.runs.map((run) => runCard(run, commands, accessibility))),
+    Text({
+      key: "issue31-fa-accounts-title",
+      content: "Provider accounts",
+      variant: "heading",
+      color: "textPrimary",
+    }),
+    Text({
+      key: "issue31-fa-accounts-boundary",
+      content:
+        "Your Omega host holds every provider login and token. This device asks for a connection and is told the outcome.",
+      variant: "caption",
+      color: "textMuted",
+    }),
+    ...(fullAuto.accounts.length === 0
+      ? [
+          Text({
+            key: "issue31-fa-accounts-empty",
+            content: "No provider accounts were reported. A capacity lane is not an account.",
+            variant: "body",
+            color: "textMuted",
+          }),
+        ]
+      : fullAuto.accounts.map(accountCard)),
+    Button({
+      key: "issue31-fa-connect-provider",
+      label: "Connect a provider account on my Omega host",
+      variant: "secondary",
+      onPress: IntentRef("Issue31ProviderHandoffRequested", StaticPayload({})),
+      a11y: {
+        label:
+          "Ask your Omega host to connect a provider account. The login happens on the host, in an isolated home.",
+      },
+      style: { width: "full", ...mobileInteractiveStyle(accessibility) },
+    }),
+    // A handoff the host has not bound to an account stays here rather than
+    // being attributed to a working account of the same provider.
+    ...fullAuto.unboundHandoffs.map((handoff) =>
+      Text({
+        key: `issue31-fa-unbound-handoff-${handoff.handoffRef}`,
+        content: `${handoff.provider} · ${handoffCopy(handoff)} · not bound to an account`,
+        variant: "caption",
+        color: "warning",
+      }),
+    ),
+  ];
+};
+
 export const renderMobileIssue31WorkroomView = (
   model: Issue31WorkroomReadModel,
   selectedRoom: Issue31WorkroomRoom,
   nostrControl: Issue31MobileNostrControlState,
   accessibility: MobileAccessibilityProfile,
   ownerState: Issue31OwnerPrivateViewState,
+  fullAuto: Issue31FullAutoReadModel,
 ): View => {
   const rows = issue31RowsForRoom(model, selectedRoom);
   return Stack(
@@ -612,7 +978,12 @@ export const renderMobileIssue31WorkroomView = (
         color: "textMuted",
       }),
       ...(selectedRoom === "owner_private"
-        ? ownerPrivateDetail(model, nostrControl, ownerState, accessibility)
+        ? [
+            ...ownerPrivateDetail(model, nostrControl, ownerState, accessibility),
+            // Conversation, run, provider, and evidence in one Workroom. The
+            // owner never opens an unrelated product surface to see the work.
+            ...fullAutoSection(fullAuto, model.ownerPrivate.commands, accessibility),
+          ]
         : []),
       ...rows.map(capabilityCard),
     ],

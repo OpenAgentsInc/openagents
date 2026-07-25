@@ -152,6 +152,10 @@ import { renderMobileTerminalView } from "./mobile-terminal-view"
 import { renderMobileSettingsView } from "./mobile-settings-view"
 import { renderMobileIssue31WorkroomView } from "./mobile-issue31-workroom-view"
 import {
+  readIssue31FullAutoProjection,
+  type Issue31FullAutoReadModel,
+} from "../workroom/issue31-full-auto-read-model"
+import {
   emptyIssue31WorkroomReadModel,
   type Issue31WorkroomReadModel,
   type Issue31WorkroomRoom,
@@ -254,6 +258,12 @@ export interface HomeState {
   readonly surfaceMode: SurfaceMode
   readonly workbenchRoute: "conversation" | "workroom" | "files" | "changes" | "git" | "terminal" | "settings"
   readonly issue31Workroom: Issue31WorkroomReadModel
+  /**
+   * The omega#47 Full Auto detail projection for the current host snapshot.
+   * Unavailable until an Omega host sends one, so the Workroom states its
+   * absence rather than rendering an empty run list.
+   */
+  readonly issue31FullAuto: Issue31FullAutoReadModel
   readonly issue31WorkroomRoom: Issue31WorkroomRoom
   readonly issue31NostrControl: Issue31MobileNostrControlState
   readonly issue31OwnerDraft: string
@@ -451,6 +461,7 @@ export const initialHomeState: HomeState = {
   surfaceMode: "khala",
   workbenchRoute: "conversation",
   issue31Workroom: emptyIssue31WorkroomReadModel(),
+  issue31FullAuto: readIssue31FullAutoProjection(null, null),
   issue31WorkroomRoom: "owner_private",
   issue31NostrControl: initialIssue31MobileNostrControlState(),
   issue31OwnerDraft: "",
@@ -1273,6 +1284,7 @@ export const renderContentView = (state: HomeState): View =>
             transcriptLimit: state.issue31TranscriptLimit,
             notice: state.issue31CommandNotice,
           },
+          state.issue31FullAuto,
         )]
       : state.workbenchRoute === "terminal"
       ? [renderMobileTerminalView(state.repositoryTerminal, state.accessibility)]
