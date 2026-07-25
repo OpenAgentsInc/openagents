@@ -89,7 +89,7 @@ describe("openagents.public_chat.v1", () => {
       events
         .slice(-3)
         .reverse()
-        .map((event) => event.id),
+        .map((event) => event.id.slice(0, 8)),
     )
     expect(previousReferences(events, events.at(-1)!.pubkey)).toEqual([])
   })
@@ -189,7 +189,7 @@ describe("openagents.public_chat.v1", () => {
       publicChatEventTemplate({
         content: "hello",
         nowSeconds: 1_000,
-        previous: ["a".repeat(64)],
+        previous: ["a".repeat(8)],
       }),
     ).toEqual({
       content: "hello",
@@ -197,7 +197,7 @@ describe("openagents.public_chat.v1", () => {
       kind: 9,
       tags: [
         ["h", PUBLIC_CHAT_GROUP_ID],
-        ["previous", "a".repeat(64)],
+        ["previous", "a".repeat(8)],
       ],
     })
     expect(groupNaddrFor("b".repeat(64))).toMatch(/^naddr1/)

@@ -57,7 +57,7 @@ export const PublicNostrChatManifest = S.Struct({
       "replay-from-one-second-overlap-until-eose-then-deduplicate",
     ),
     previous: S.Literal(
-      "up-to-three-from-last-fifty-seen-excluding-own-events",
+      "up-to-three-eight-character-prefixes-from-last-fifty-seen-excluding-own-events",
     ),
   }),
   limits: S.Struct({
@@ -117,7 +117,7 @@ export const publicNostrChatManifest = (
         'sign kind 22242 with relay and challenge tags, then send ["AUTH",event]',
       ],
       publish: [
-        'sign kind 9 with ["h","openagents-public"] and up to three previous IDs',
+        'sign kind 9 with ["h","openagents-public"] and up to three eight-character previous event ID prefixes',
         'send ["EVENT",event] and require ["OK",event.id,true,...]',
       ],
       read: [
@@ -154,7 +154,8 @@ export const publicNostrChatManifest = (
       },
       gapRecovery:
         "replay-from-one-second-overlap-until-eose-then-deduplicate",
-      previous: "up-to-three-from-last-fifty-seen-excluding-own-events",
+      previous:
+        "up-to-three-eight-character-prefixes-from-last-fifty-seen-excluding-own-events",
     },
     limits: { ...PUBLIC_CHAT_LIMITS },
     profileVersion: PUBLIC_CHAT_PROFILE,

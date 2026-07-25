@@ -178,14 +178,19 @@ export const validatePublicChatEvent = (
   }
 
   const previous = tagValues(event, "previous").flatMap((tag) =>
-    tag.slice(1).filter((value) => /^[0-9a-f]{64}$/.test(value)),
+    tag.slice(1).filter((value) => /^[0-9a-f]{8}$/.test(value)),
   )
   if (input.requirePrevious === true && previous.length === 0) {
     return { ok: false, reason: "missing-previous" }
   }
   if (
     input.knownPreviousIds !== undefined &&
-    previous.some((id) => !input.knownPreviousIds?.has(id))
+    previous.some(
+      (prefix) =>
+        ![...(input.knownPreviousIds ?? [])].some((id) =>
+          id.startsWith(prefix),
+        ),
+    )
   ) {
     return { ok: false, reason: "unknown-previous" }
   }
@@ -262,7 +267,7 @@ export const previousReferences = (
     )
     .slice(0, 50)
     .slice(0, 3)
-    .map((event) => event.id)
+    .map((event) => event.id.slice(0, 8))
 
 export const publicChatEventTemplate = (input: Readonly<{
   content: string
