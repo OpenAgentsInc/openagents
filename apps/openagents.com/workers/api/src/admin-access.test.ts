@@ -286,7 +286,7 @@ describe('OpenAgents admin access policy', () => {
     }
   })
 
-  test('does not store return targets for the retired app route', async () => {
+  test('uses the admin dashboard when a return target is unsafe', async () => {
     const appResponse = await worker.fetch(
       new Request(
         'https://openagents.com/login/github?returnTo=%2Fapp',
@@ -322,8 +322,10 @@ describe('OpenAgents admin access policy', () => {
       expect(
         response.headers
           .getSetCookie()
-          .some(cookie => /^oa_login_return_to=[^;]/.test(cookie)),
-      ).toBe(false)
+          .some(cookie =>
+            cookie.includes('oa_login_return_to=%2Fadmin%2Fanalytics'),
+          ),
+      ).toBe(true)
     }
   })
 
@@ -354,7 +356,7 @@ describe('OpenAgents admin access policy', () => {
     expect(cookies.join('\n')).not.toContain('utm')
   })
 
-  test('does not store invite accept return targets without a token', async () => {
+  test('uses the admin dashboard for an incomplete invite return target', async () => {
     const response = await worker.fetch(
       new Request(
         'https://openagents.com/login/email?returnTo=%2Fapi%2Fteam-workspace-invites%2Faccept',
@@ -371,11 +373,10 @@ describe('OpenAgents admin access policy', () => {
 
     expect(response.status).toBe(302)
     expect(
-      cookies.some(cookie => /^oa_login_return_to=[^;]/.test(cookie)),
-    ).toBe(false)
-    expect(cookies).toContain(
-      'oa_login_return_to=; Max-Age=0; Path=/auth; HttpOnly; Secure; SameSite=Lax',
-    )
+      cookies.some(cookie =>
+        cookie.includes('oa_login_return_to=%2Fadmin%2Fanalytics'),
+      ),
+    ).toBe(true)
   })
 
   test('stores a clean agent claim return target when starting GitHub login', async () => {
@@ -432,7 +433,7 @@ describe('OpenAgents admin access policy', () => {
     expect(cookies.join('\n')).not.toContain('ignored')
   })
 
-  test('does not store nested agent claim paths as login return targets', async () => {
+  test('uses the admin dashboard for a nested agent claim return target', async () => {
     const response = await worker.fetch(
       new Request(
         'https://openagents.com/login/github?returnTo=%2Fagents%2Fclaims%2Fagent_claim_claim-1%2Fextra',
@@ -449,14 +450,13 @@ describe('OpenAgents admin access policy', () => {
 
     expect(response.status).toBe(302)
     expect(
-      cookies.some(cookie => /^oa_login_return_to=[^;]/.test(cookie)),
-    ).toBe(false)
-    expect(cookies).toContain(
-      'oa_login_return_to=; Max-Age=0; Path=/auth; HttpOnly; Secure; SameSite=Lax',
-    )
+      cookies.some(cookie =>
+        cookie.includes('oa_login_return_to=%2Fadmin%2Fanalytics'),
+      ),
+    ).toBe(true)
   })
 
-  test('does not store nested Forum paths as login return targets', async () => {
+  test('uses the admin dashboard for a nested Forum return target', async () => {
     const response = await worker.fetch(
       new Request(
         'https://openagents.com/login/github?returnTo=%2Fforum%2Ft%2F55555555-5555-4555-8555-555555555555%2Fextra',
@@ -473,11 +473,10 @@ describe('OpenAgents admin access policy', () => {
 
     expect(response.status).toBe(302)
     expect(
-      cookies.some(cookie => /^oa_login_return_to=[^;]/.test(cookie)),
-    ).toBe(false)
-    expect(cookies).toContain(
-      'oa_login_return_to=; Max-Age=0; Path=/auth; HttpOnly; Secure; SameSite=Lax',
-    )
+      cookies.some(cookie =>
+        cookie.includes('oa_login_return_to=%2Fadmin%2Fanalytics'),
+      ),
+    ).toBe(true)
   })
 
   test('returns failed GitHub login attempts to the clean Forum target', async () => {

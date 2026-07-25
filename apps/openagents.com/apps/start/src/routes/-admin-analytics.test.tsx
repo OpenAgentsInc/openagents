@@ -1,8 +1,13 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, test } from 'vitest'
 
+import { isKnownStartDocumentPath } from '../route-table'
 import { fetchAnalyticsSummary } from './-admin-analytics-fetch'
-import { AnalyticsDashboard } from './-admin-analytics-page'
+import {
+  ADMIN_ANALYTICS_LOGIN_HREF,
+  AnalyticsDashboard,
+  analyticsAuthRedirect,
+} from './-admin-analytics-page'
 
 const summary = {
   ok: true as const,
@@ -35,5 +40,11 @@ describe('admin analytics', () => {
     )
     expect(unauthorized.tag).toBe('unauthorized')
     expect(forbidden.tag).toBe('forbidden')
+    expect(analyticsAuthRedirect(unauthorized)).toBe(ADMIN_ANALYTICS_LOGIN_HREF)
+    expect(analyticsAuthRedirect(forbidden)).toBeUndefined()
+  })
+
+  test('serves the protected dashboard through the Start document route', () => {
+    expect(isKnownStartDocumentPath('/admin/analytics')).toBe(true)
   })
 })

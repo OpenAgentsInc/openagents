@@ -1645,6 +1645,7 @@ const LOGIN_ORIGIN_COOKIE = 'oa_login_origin'
 const LOGIN_RETURN_TO_COOKIE = 'oa_login_return_to'
 const LOGIN_ERROR_COOKIE = 'oa_login_error'
 const LOGIN_ERROR_MAX_AGE_SECONDS = 60
+const DEFAULT_LOGIN_RETURN_PATH = '/admin/analytics'
 
 type GitHubUser = typeof GitHubUser.Type
 type GitHubEmail = typeof GitHubEmail.Type
@@ -3907,10 +3908,11 @@ const handleLoginStart = async (
     provider,
   })
   const requestUrl = new URL(request.url)
-  const maybeReturnTo = cleanLoginReturnPath(
-    requestUrl.searchParams.get('returnTo') ??
-      requestUrl.searchParams.get('return_to'),
-  )
+  const returnTo =
+    cleanLoginReturnPath(
+      requestUrl.searchParams.get('returnTo') ??
+        requestUrl.searchParams.get('return_to'),
+    ) ?? DEFAULT_LOGIN_RETURN_PATH
   const cookies = [
     serializeCookie(
       AUTH_STATE_COOKIE,
@@ -3924,14 +3926,12 @@ const handleLoginStart = async (
       AUTH_STATE_MAX_AGE_SECONDS,
       '/auth',
     ),
-    maybeReturnTo === undefined
-      ? expiredCookie(LOGIN_RETURN_TO_COOKIE, '/auth')
-      : serializeCookie(
-          LOGIN_RETURN_TO_COOKIE,
-          maybeReturnTo,
-          AUTH_STATE_MAX_AGE_SECONDS,
-          '/auth',
-        ),
+    serializeCookie(
+      LOGIN_RETURN_TO_COOKIE,
+      returnTo,
+      AUTH_STATE_MAX_AGE_SECONDS,
+      '/auth',
+    ),
   ]
 
   return redirectResponse(url, cookies)
@@ -4483,7 +4483,10 @@ const handleAuthCallback = async (
     return redirectResponse('/', cleanupCookies)
   }
 
-  const response = redirectResponse(maybeReturnTo ?? '/', cleanupCookies)
+  const response = redirectResponse(
+    maybeReturnTo ?? DEFAULT_LOGIN_RETURN_PATH,
+    cleanupCookies,
+  )
   appendSessionCookies(response.headers, exchanged.tokens)
 
   return response

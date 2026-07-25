@@ -1,21 +1,20 @@
-import { GitBranch, Mail } from 'lucide-react'
-
 import { PublicFooter } from '@/components/public-footer'
 import { PublicHeader } from '@/components/public-header'
+import { GitBranch, Mail } from 'lucide-react'
 
 import '../login.css'
+
+export const DEFAULT_LOGIN_RETURN_TO = '/admin/analytics'
 
 const providerHref = (
   provider: 'email' | 'github',
   returnTo?: string,
 ): string =>
-  returnTo === undefined
-    ? `/login/${provider}`
-    : `/login/${provider}?returnTo=${encodeURIComponent(returnTo)}`
+  `/login/${provider}?returnTo=${encodeURIComponent(
+    returnTo ?? DEFAULT_LOGIN_RETURN_TO,
+  )}`
 
-export function LoginPage({
-  returnTo,
-}: Readonly<{ returnTo?: string }> = {}) {
+export function LoginPage({ returnTo }: Readonly<{ returnTo?: string }> = {}) {
   return (
     <div
       className="oa-login-page"
@@ -23,17 +22,14 @@ export function LoginPage({
       data-route="login"
     >
       <PublicHeader showLogin={false} />
-      <main
-        aria-labelledby="login-heading"
-        className="oa-login-main"
-      >
+      <main aria-labelledby="login-heading" className="oa-login-main">
         <div aria-hidden="true" className="oa-login-ambient" />
         <section className="oa-login-intro">
           <p className="oa-login-eyebrow">Early access</p>
           <h1 id="login-heading">Log In to OpenAgents</h1>
           <p className="oa-login-lede">
-            If your account is approved for early access, continue with a
-            secure one-time email code or GitHub.
+            If your account is approved for early access, continue with a secure
+            one-time email code or GitHub.
           </p>
           <p className="oa-login-access-note">
             This is not open for public signup yet. Logging in verifies your

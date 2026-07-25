@@ -1,6 +1,11 @@
 import { InternalLink } from '@/components/internal-link'
+import {
+  type PublicAuthState,
+  publicAuthAction,
+  readPublicAuthState,
+} from '@/lib/public-auth'
 import { DOCS_URL, GITHUB_REPOSITORY_URL, X_URL } from '@/lib/public-site'
-import type { ReactNode } from 'react'
+import { type ReactNode, useEffect, useState } from 'react'
 
 import '../public-header.css'
 import GithubMark from './launch-ui/logos/github'
@@ -21,6 +26,24 @@ export function PublicHeader({
   utility,
   variant = 'default',
 }: PublicHeaderProps = {}) {
+  const [authState, setAuthState] = useState<PublicAuthState>({
+    tag: 'anonymous',
+  })
+
+  useEffect(() => {
+    if (!showLogin) return
+
+    let active = true
+    void readPublicAuthState().then(state => {
+      if (active) setAuthState(state)
+    })
+    return () => {
+      active = false
+    }
+  }, [showLogin])
+
+  const authAction = publicAuthAction(authState)
+
   return (
     <>
       <header
@@ -73,10 +96,10 @@ export function PublicHeader({
             {showLogin ? (
               <InternalLink
                 className="oa-unified-primary-link"
-                href="/login"
+                href={authAction.href}
                 preload="intent"
               >
-                Log In
+                {authAction.label}
               </InternalLink>
             ) : null}
           </div>

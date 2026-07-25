@@ -11,6 +11,12 @@ import {
 
 const numberFormat = new Intl.NumberFormat('en-US')
 const windows: ReadonlyArray<AnalyticsWindow> = ['24h', '7d', '30d']
+export const ADMIN_ANALYTICS_LOGIN_HREF = '/login?returnTo=%2Fadmin%2Fanalytics'
+
+export const analyticsAuthRedirect = (
+  result: AnalyticsResult | null,
+): string | undefined =>
+  result?.tag === 'unauthorized' ? ADMIN_ANALYTICS_LOGIN_HREF : undefined
 
 export function AnalyticsDashboard({
   summary,
@@ -137,11 +143,16 @@ export function AdminAnalyticsPage() {
     }
   }, [window])
 
+  useEffect(() => {
+    const redirect = analyticsAuthRedirect(result)
+    if (redirect !== undefined) globalThis.window.location.replace(redirect)
+  }, [result])
+
   if (result === null) {
     return <AnalyticsStatus title="Loading analytics…" />
   }
   if (result.tag === 'unauthorized') {
-    return <AnalyticsStatus title="Log in to view analytics." />
+    return <AnalyticsStatus title="Redirecting to Log In…" />
   }
   if (result.tag === 'forbidden') {
     return <AnalyticsStatus title="This account is not an approved admin." />
@@ -180,9 +191,9 @@ function AnalyticsStatus({ title }: Readonly<{ title: string }>) {
         <h1 className="m-0 text-xl font-semibold">{title}</h1>
         <InternalLink
           className="font-mono text-sm text-khala-energy-cyan underline underline-offset-4"
-          href="/login?returnTo=%2Fadmin%2Fanalytics"
+          href={ADMIN_ANALYTICS_LOGIN_HREF}
         >
-          Open login
+          Open Log In
         </InternalLink>
       </div>
     </main>
