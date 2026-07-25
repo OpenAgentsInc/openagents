@@ -103,6 +103,11 @@ export default defineConfig({
           include: ["**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}", "**/*.node-suite.ts"],
           exclude: [
             "**/.pylon-local/**",
+            // `var/` is gitignored scratch. QA smokes generate real test files
+            // under var/qa-pre-push-smoke/<run>/generated/, so a developer who
+            // has run those smokes collects dozens of stale generated suites
+            // into every later sweep and sees failures that no commit caused.
+            "var/**",
             "**/node_modules/**",
             "**/.claude/worktrees/**",
             "**/.worktrees/**",
