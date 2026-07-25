@@ -239,6 +239,15 @@ pnpm run test:openagents.com
 pnpm run check:fast
 ```
 
+Those are scoped, iterate-fast commands. The repository definition of done is
+the single completion gate, which runs format, lint, every policy guard,
+typecheck, and the full test suite (about 5 minutes warm, about 17 minutes on a
+cold checkout):
+
+```sh
+pnpm run check
+```
+
 Read [`AGENTS.md`](AGENTS.md) before working, and read
 [`INVARIANTS.md`](INVARIANTS.md) before changing authority, routing, payment,
 projection, or public-claim surfaces. Deployment and release procedures are

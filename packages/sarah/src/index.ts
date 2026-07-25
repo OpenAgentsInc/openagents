@@ -4,8 +4,6 @@ import { Schema as S } from "effect";
 
 import type { AuthorityRuntimeProfile } from "@openagentsinc/authority";
 import {
-  ROOT_AUTHORITY_PROFILE_REF,
-  ROOT_AUTHORITY_REVISION,
   SARAH_AUTHORITY_PROFILE_REF,
   SARAH_AUTHORITY_REVISION,
   SarahPrincipalApiResponseSchema,

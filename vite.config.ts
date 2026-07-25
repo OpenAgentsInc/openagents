@@ -3,7 +3,16 @@ import "vite-plus/test/config";
 import { resolve } from "node:path";
 import { defineConfig } from "vite-plus";
 
+import { nodeTestSuites } from "./scripts/node-test-suites.mjs";
+
 const setupFile = resolve(import.meta.dirname, "scripts/vp3-vitest-setup.ts");
+
+// Suites written against Node's built-in runner. Vitest cannot run them — it
+// reports "No test suite found" — so they are excluded here and handed to
+// `node --test` by the root `test` script instead. Both sides read the same
+// discovery, so a suite can never be dropped from one without the other
+// picking it up. See scripts/node-test-suites.mjs.
+const nodeRunnerSuites = nodeTestSuites();
 
 /**
  * Canonical OpenAgents Vite Plus configuration.
@@ -118,6 +127,7 @@ export default defineConfig({
             "apps/aiur/**",
             "apps/openagents.com/apps/start/**",
             "apps/openagents.com/workers/api/**",
+            ...nodeRunnerSuites,
           ],
           hookTimeout: 240_000,
           setupFiles: [setupFile],

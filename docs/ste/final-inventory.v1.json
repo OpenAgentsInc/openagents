@@ -304,7 +304,7 @@
     },
     {
       "path": "AGENTS.md",
-      "sha256": "d25ebf0c6af3fe1289b1d209d5419f719d7631dea34934d831bbbec9cf89a242",
+      "sha256": "cfdbc7c71ad548e9a88c0a2b28bc12ad01be108c956a2cdae6f48f804eec4616",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -340,7 +340,7 @@
     },
     {
       "path": "CLAUDE.md",
-      "sha256": "d25ebf0c6af3fe1289b1d209d5419f719d7631dea34934d831bbbec9cf89a242",
+      "sha256": "cfdbc7c71ad548e9a88c0a2b28bc12ad01be108c956a2cdae6f48f804eec4616",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -494,7 +494,7 @@
     },
     {
       "path": "README.md",
-      "sha256": "470a387dd9d727e440d5918965088b63e659cfb17ad8c669cbdafa2a2eaded5d",
+      "sha256": "adc38e3ce56ba268c70c3b8c88428501969050a2f016a9ccca109c275a975a7d",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

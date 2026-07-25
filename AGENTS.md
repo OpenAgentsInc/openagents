@@ -818,8 +818,8 @@ and deterministic Effect tests. Do not skip it merely because
 - **Docs-only changes push with `--no-verify` (owner mandate, 2026-07-20).**
   When a change touches ONLY documentation (Markdown and other docs, with no
   code, config, schema, or generated surface), commit and push to `main` with
-  `git push --no-verify` so the pre-commit/pre-push `check:fast` code gate does
-  not run on an unrelated code surface. This is a deliberate skip of the code
+  `git push --no-verify` so the pre-push `check:fast` code gate (`.githooks/pre-push`,
+  the only hook this repository installs) does not run on an unrelated code surface. This is a deliberate skip of the code
   checks ONLY — you must still run the documentation-relevant checks by hand
   first: above all the neutral-language guard and the STE inspection, plus the
   doc-coverage / AGENTS.md-drift and link/ref checks, and leave them green.
@@ -845,9 +845,25 @@ and deterministic Effect tests. Do not skip it merely because
   projection, or public-claim surfaces.
 - **One completion gate:** `pnpm run check` is the repository definition of
   green for humans, agents, and owned CI. Run it before considering a task
-  complete. Root `test`, `typecheck`, `lint`, and `fmt` commands are components
-  of the same workspace-discovered runner, the pre-push hook invokes its
-  `check:fast` profile rather than maintaining a separate policy list.
+  complete. It is exactly, in order,
+  `fmt:check` → `lint` → `check:fast` → `typecheck` → `test`, so "check green"
+  means the workspace formats, lints, passes every repository policy guard,
+  type-checks, and passes its tests. Measured on an owner machine it takes
+  about 5 minutes warm and about 17 minutes on a cold checkout. Format, lint,
+  and every policy guard together account for about 25 seconds of that, so
+  almost all of the cost is the two components that were missing. Do not
+  substitute a faster command and call the result green. Root `fmt:check`, `lint`, `check:fast`, `typecheck`, and `test` are its
+  components and are fine to run alone while iterating. When you run one alone,
+  name the component you ran and never describe it as the completion gate. `check` is a
+  strict superset of the `check:fast` profile the pre-push hook invokes, so a
+  green `check` is also a pushable tree, and the hook does not maintain a
+  separate policy list.
+  Corrected 2026-07-25 after `check` was found to run only `fmt:check` and
+  `lint`: an agent could truthfully report "the documented completion gate is
+  green" having proven neither that the code compiled nor that a single test
+  passed, which is how a red mobile typecheck reached `main` in `c873e6b9d3`.
+  If you ever shrink this gate, change this sentence in the same commit —
+  a gate that covers less than its contract says is the defect, not the cost.
 - For work under `apps/openagents.com/`, also read
   `apps/openagents.com/AGENTS.md` and `apps/openagents.com/INVARIANTS.md`.
 - **Leave it cleaner than you found it — clean up as you go, every phase.** When you
