@@ -3317,6 +3317,9 @@ check:architecture` inside `check:deploy`) discovers `/api/public/...`
   payloads make no current-state claim. Exempt payloads stay inventoried and
   must not fabricate a read-time generation timestamp to resemble freshness.
 - Projection inventory (staleness mode → compliance as of epic #4751):
+  - `GET /api/public/nostr-chat/manifest` — versioned public Nostr protocol,
+    relay, group, signer, and agent instruction contract. The payload does not
+    project mutable application state. `static_contract_exempt`.
   - `GET /api/public/forum-activity` — live at read over public forum topics/posts, rebuilt on forum topic/post writes — compliant (`generatedAt`, `live_at_read` contract). Public-safe forum→Verse reflection source (epic #5897, BF-1). `staleness_declared`.
   - `GET /api/public/labor-earnings` — live at read over labor escrow receipts — compliant (`generatedAt`, `live_at_read` contract). `staleness_declared`.
   - `GET /api/public/khala-tokens-served` — projection-first (KS-6.3 #8304): the primary path serves the Khala Sync `scope.public.tokens-served` counter projection (`khala_sync_public_counters` via the `KHALA_SYNC_DB` Hyperdrive binding, small in-isolate cache) with a declared `rebuilt_on_transition` contract (`maxStalenessSeconds: 2` over `token_usage_events`, the write path bumps the counter exact-once per ledger row and reconciliation proves projection == SUM(exact rows) — Khala Sync invariant 8 below). The fail-open fallback (binding absent, Postgres unreachable, or pre-backfill) serves the previous live-at-read D1 SUM with a `live_at_read` contract ("Tokens Served" homepage/stats counter, #6227/#7797). Aggregate only. No per-user/team/account/provider material. `staleness_declared`.

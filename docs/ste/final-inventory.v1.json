@@ -1129,7 +1129,7 @@
     },
     {
       "path": "apps/openagents.com/INVARIANTS.md",
-      "sha256": "ab7d230ebbdc997bb0e7d3363a10f47f57130b9a9f06ffc3bfc141c93d0c588c",
+      "sha256": "081d291eabcd77fa36497a81e3bab9e062f073eda2a97fce6d7051b8e8591786",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

@@ -1636,6 +1636,13 @@ const publicProjectionSurfaces = [
     status: 'static_contract_exempt',
   },
   {
+    // Public Nostr chat protocol and signer instructions are a versioned
+    // deployment contract. They do not project mutable application state.
+    module: 'workers/api/src/public-nostr-chat-routes.ts',
+    route: '/api/public/nostr-chat/manifest',
+    status: 'static_contract_exempt',
+  },
+  {
     // Free-tier data-sharing disclosure (#6296): a static terms/policy contract
     // (version + ordered terms + bounded policy facts), not a live state
     // projection, so it carries no generatedAt/staleness contract.
