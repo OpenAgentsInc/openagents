@@ -158,6 +158,45 @@ describe("omega-effectd host bridge", () => {
     });
   });
 
+  test("settles pausing to paused after the provider turn completes", async () => {
+    await withRoot(async (root) => {
+      const baseHost = makeOmegaEffectdTestHost();
+      let evidenceRefreshes = 0;
+      const service = createOmegaEffectdService({ paths: { dataRoot: root } });
+      const server = createOmegaEffectdFramedServer(
+        service,
+        { dataRoot: root },
+        {
+          hostRequestHandler: async (frame) => {
+            if (frame.method !== "refresh_evidence") return baseHost(frame);
+            evidenceRefreshes += 1;
+            return {
+              present: true,
+              revision: evidenceRefreshes,
+              live:
+                evidenceRefreshes === 2
+                  ? { state: "turn_running", turnRef: "turn.full-auto.fixture" }
+                  : evidenceRefreshes >= 3
+                    ? { state: "turn_completed", turnRef: "turn.full-auto.fixture" }
+                    : null,
+              turns: [],
+            };
+          },
+        },
+      );
+      await server.handleLine(request("init", 0, "initialize", { generation: 1 }));
+      const started = await server.handleLine(request("start", 1, "start", startParams));
+      const runRef = (started!.result as { run: { runRef: string } }).run.runRef;
+
+      const pausing = await server.handleLine(request("pause", 1, "pause", { runRef }));
+      expect((pausing!.result as { run: { state: string } }).run.state).toBe("pausing");
+
+      const settled = await server.handleLine(request("get", 1, "get_run", { runRef }));
+      expect((settled!.result as { run: { state: string } }).run.state).toBe("paused");
+      expect(evidenceRefreshes).toBe(3);
+    });
+  });
+
   test("fails closed with a typed error when the host is unavailable", async () => {
     await withRoot(async (root) => {
       const service = createOmegaEffectdService({ paths: { dataRoot: root } });

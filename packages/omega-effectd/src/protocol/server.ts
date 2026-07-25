@@ -322,6 +322,13 @@ export const createOmegaEffectdFramedServer = (
     return evidence;
   };
 
+  const refreshPausingRunEvidence = async (runRef: string): Promise<void> => {
+    const run = runRegistry.get(runRef);
+    if (run?.state === "pausing" && run.threadRef !== undefined) {
+      await refreshThreadEvidence(run.runRef, run.threadRef);
+    }
+  };
+
   const probeLane = async (lane: string, threadRef?: string): Promise<boolean> => {
     const result = objectResult(
       await hostRequest("lane_readiness", {
@@ -848,6 +855,12 @@ export const createOmegaEffectdFramedServer = (
         return respond(request.id, true, result);
       }
       case "list_runs": {
+        await Promise.all(
+          runRegistry
+            .list()
+            .filter((run) => run.state === "pausing")
+            .map((run) => refreshPausingRunEvidence(run.runRef)),
+        );
         const runs = listFullAutoRunsAction(actionContext()).map((run) => ({
           runRef: run.runRef,
           threadRef: run.threadRef,
@@ -867,6 +880,7 @@ export const createOmegaEffectdFramedServer = (
             redactedError("invalid_request", "get_run requires runRef."),
           );
         }
+        await refreshPausingRunEvidence(params.runRef);
         const detail = projectDetail(actionContext(), params.runRef);
         if (detail === null) {
           return respond(
