@@ -26577,6 +26577,18 @@
       }
     },
     {
+      "path": "docs/forge/2026-07-25-buzz-ngit-openagents-forge-strategy-audit.md",
+      "sha256": "3795951a1406332813946a28f7a559d3c2f5f6d611f3c686a179a47e44f950df",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null,
+        "ste_status": "source-data"
+      }
+    },
+    {
       "path": "docs/forge/linear.md",
       "sha256": "edd590ea05ffd25eb2340060e71072ced2d8178ae50a27007fe6c21f575f5353",
       "reason": "Final review of a converted document",
