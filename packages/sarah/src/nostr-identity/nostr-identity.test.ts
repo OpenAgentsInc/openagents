@@ -15,6 +15,7 @@ import {
   generateSarahNostrSigner,
   generateSecretKeyBytes,
   loadSarahNostrSignerFromSecretManagerMount,
+  loadSealedSarahNostrStackFromSecretManagerMount,
   publicKeyFromSecret,
   signOwnerAuthTag,
   toPublicSafeJson,
@@ -70,12 +71,69 @@ describe("SARAH-NR-04 Sarah Nostr identity", () => {
     expect(verifySignedEvent(signed)).toBe(true);
   });
 
+  it("loads one sealed signer and NIP-44 cipher and erases the mount", () => {
+    const sarahSecret = generateSecretKeyBytes();
+    const ownerSecret = generateSecretKeyBytes();
+    process.env[SARAH_NOSTR_IDENTITY_SECRET_ENV] = bytesToHex(sarahSecret);
+    const expectedSarahPubkeyHex = publicKeyFromSecret(sarahSecret);
+    const stack = loadSealedSarahNostrStackFromSecretManagerMount({
+      ownerPubkeyHex: publicKeyFromSecret(ownerSecret),
+      expectedSarahPubkeyHex,
+    });
+
+    expect(process.env[SARAH_NOSTR_IDENTITY_SECRET_ENV]).toBeUndefined();
+    expect(stack.signer.getPublicKey()).toBe(expectedSarahPubkeyHex);
+    expect(stack.signer.getPublicIdentity().pubkey).toBe(expectedSarahPubkeyHex);
+    expect(stack.cipher.encryptToOwner("owner private")).not.toContain("owner private");
+  });
+
+  it("fails closed for missing, malformed, or mismatched mounted identity", () => {
+    delete process.env[SARAH_NOSTR_IDENTITY_SECRET_ENV];
+    expect(() =>
+      loadSealedSarahNostrStackFromSecretManagerMount({
+        ownerPubkeyHex: publicKeyFromSecret(generateSecretKeyBytes()),
+      }),
+    ).toThrow(/missing Secret Manager mount/);
+
+    const secretMaterial = "not-a-secret-value";
+    process.env[SARAH_NOSTR_IDENTITY_SECRET_ENV] = secretMaterial;
+    let malformedDetail = "";
+    try {
+      loadSealedSarahNostrStackFromSecretManagerMount({
+        ownerPubkeyHex: publicKeyFromSecret(generateSecretKeyBytes()),
+      });
+    } catch (error) {
+      malformedDetail = error instanceof Error ? error.message : String(error);
+    }
+    expect(process.env[SARAH_NOSTR_IDENTITY_SECRET_ENV]).toBeUndefined();
+    expect(malformedDetail).not.toContain(secretMaterial);
+
+    process.env[SARAH_NOSTR_IDENTITY_SECRET_ENV] = bytesToHex(generateSecretKeyBytes());
+    expect(() =>
+      loadSealedSarahNostrStackFromSecretManagerMount({
+        ownerPubkeyHex: publicKeyFromSecret(generateSecretKeyBytes()),
+        expectedSarahPubkeyHex: "aa".repeat(32),
+      }),
+    ).toThrow(/does not match admitted Sarah/);
+    expect(process.env[SARAH_NOSTR_IDENTITY_SECRET_ENV]).toBeUndefined();
+
+    process.env[SARAH_NOSTR_IDENTITY_SECRET_ENV] = bytesToHex(generateSecretKeyBytes());
+    expect(() =>
+      loadSealedSarahNostrStackFromSecretManagerMount({
+        ownerPubkeyHex: "not-an-owner-key",
+      }),
+    ).toThrow();
+    expect(process.env[SARAH_NOSTR_IDENTITY_SECRET_ENV]).toBeUndefined();
+  });
+
   it("rejects secret-shaped public payloads", () => {
+    expect(() => assertSarahNostrPublicSafe({ pubkey: "a".repeat(64), privateKey: "x" })).toThrow(
+      SarahNostrSecretLeakError,
+    );
     expect(() =>
-      assertSarahNostrPublicSafe({ pubkey: "a".repeat(64), privateKey: "x" }),
-    ).toThrow(SarahNostrSecretLeakError);
-    expect(() =>
-      assertSarahNostrPublicSafe({ nsec: "nsec1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq" }),
+      assertSarahNostrPublicSafe({
+        nsec: "nsec1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq",
+      }),
     ).toThrow(SarahNostrSecretLeakError);
     expect(FORBIDDEN_SARAH_NOSTR_SECRET_FIELDS).toContain("SARAH_NOSTR_IDENTITY_SECRET");
   });
@@ -117,20 +175,14 @@ describe("SARAH-NR-04 Sarah Nostr identity", () => {
     });
     expect(archive.kind).toBe(9035);
     expect(archive.tags.some((t) => t[0] === "p" && t[1] === oldPubkey)).toBe(true);
-    expect(archive.tags.some((t) => t[0] === "reason" && t[1] === "rotated")).toBe(
-      true,
-    );
+    expect(archive.tags.some((t) => t[0] === "reason" && t[1] === "rotated")).toBe(true);
 
     assertLifecycleTransition("active", "rotating");
     assertLifecycleTransition("rotating", "archived");
     assertLifecycleTransition("active", "revoked");
     assertLifecycleTransition("revoked", "archived");
-    expect(() => assertLifecycleTransition("archived", "active")).toThrow(
-      /illegal lifecycle/,
-    );
-    expect(() => assertLifecycleTransition("revoked", "active")).toThrow(
-      /illegal lifecycle/,
-    );
+    expect(() => assertLifecycleTransition("archived", "active")).toThrow(/illegal lifecycle/);
+    expect(() => assertLifecycleTransition("revoked", "active")).toThrow(/illegal lifecycle/);
   });
 
   it("revoked signer refuses to sign", () => {

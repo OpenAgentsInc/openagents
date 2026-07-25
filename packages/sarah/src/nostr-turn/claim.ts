@@ -6,7 +6,8 @@ import type { SarahTurnClaim } from "./types.ts";
  * The production path will make the claim *be* the durable `turn.started`
  * write (SARAH-NR-00), serialized by storage uniqueness on
  * `(turn_id, sequence)`. This in-memory table models that rule for the
- * turn-service unit surface and local dogfood.
+ * turn-service unit surface. The relay consumer still waits for exact relay
+ * acceptance before it treats the claim as durable.
  */
 export class SarahTurnClaimStore {
   private readonly claims = new Map<string, SarahTurnClaim>();
@@ -26,9 +27,7 @@ export class SarahTurnClaimStore {
       turnRef: input.turnRef,
       conversation: input.conversation,
       claimedAtMs: input.nowMs ?? Date.now(),
-      ...(input.claimEventId !== undefined
-        ? { claimEventId: input.claimEventId }
-        : {}),
+      ...(input.claimEventId !== undefined ? { claimEventId: input.claimEventId } : {}),
     };
     this.claims.set(input.turnRef, claim);
     return claim;
@@ -42,6 +41,11 @@ export class SarahTurnClaimStore {
   complete(turnRef: string): void {
     this.claims.delete(turnRef);
     this.terminal.add(turnRef);
+  }
+
+  /** Drop an unconfirmed claim so the exact turn can be retried. */
+  abandon(turnRef: string): void {
+    this.claims.delete(turnRef);
   }
 
   /** @deprecated Prefer complete() so terminal turns stay unreclaimable. */

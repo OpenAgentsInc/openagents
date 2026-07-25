@@ -109,9 +109,7 @@ export const loadSarahNostrSignerFromSecretManagerMount = (
     const envName = source.envName ?? SARAH_NOSTR_IDENTITY_SECRET_ENV;
     material = process.env[envName];
     if (material === undefined || material.trim() === "") {
-      throw new Error(
-        `sarah_nostr_identity: missing Secret Manager mount at env ${envName}`,
-      );
+      throw new Error(`sarah_nostr_identity: missing Secret Manager mount at env ${envName}`);
     }
     // Clear the mount slot after read — process-local sealed copy only.
     delete process.env[envName];
@@ -123,11 +121,51 @@ export const loadSarahNostrSignerFromSecretManagerMount = (
   return createSealedSarahNostrSigner({ secretKey, lifecycle });
 };
 
+/**
+ * Load one Secret Manager mount into the sealed Sarah signing and owner-cipher
+ * closures. The parsed key is erased before this function returns.
+ */
+export const loadSealedSarahNostrStackFromSecretManagerMount = (params: {
+  readonly ownerPubkeyHex: string;
+  readonly expectedSarahPubkeyHex?: string;
+  readonly envName?: string;
+  readonly lifecycle?: SarahNostrLifecycleState;
+}): ReturnType<typeof createSealedSarahNostrStack> => {
+  const envName = params.envName ?? SARAH_NOSTR_IDENTITY_SECRET_ENV;
+  let material = process.env[envName];
+  if (material === undefined) {
+    throw new Error(`sarah_nostr_identity: missing Secret Manager mount at env ${envName}`);
+  }
+  delete process.env[envName];
+  if (material.trim() === "") {
+    material = undefined;
+    throw new Error(`sarah_nostr_identity: missing Secret Manager mount at env ${envName}`);
+  }
+
+  let secretKey: Uint8Array | undefined;
+  try {
+    secretKey = parseSecretMaterial(material);
+    material = undefined;
+    if (
+      params.expectedSarahPubkeyHex !== undefined &&
+      publicKeyFromSecret(secretKey) !== params.expectedSarahPubkeyHex
+    ) {
+      throw new Error("sarah_nostr_identity: mounted identity does not match admitted Sarah");
+    }
+    const stack = createSealedSarahNostrStack({
+      secretKey,
+      ownerPubkeyHex: params.ownerPubkeyHex,
+      ...(params.lifecycle !== undefined ? { lifecycle: params.lifecycle } : {}),
+    });
+    return stack;
+  } finally {
+    material = undefined;
+    secretKey?.fill(0);
+  }
+};
+
 /** Lifecycle transition table. */
-const ALLOWED: Record<
-  SarahNostrLifecycleState,
-  ReadonlyArray<SarahNostrLifecycleState>
-> = {
+const ALLOWED: Record<SarahNostrLifecycleState, ReadonlyArray<SarahNostrLifecycleState>> = {
   active: ["rotating", "revoked"],
   rotating: ["active", "archived"],
   revoked: ["archived"],

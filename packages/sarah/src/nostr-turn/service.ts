@@ -1,13 +1,7 @@
-import type {
-  SarahNostrSignedEvent,
-  SarahNostrSigner,
-} from "../nostr-identity/types.ts";
+import type { SarahNostrSignedEvent, SarahNostrSigner } from "../nostr-identity/types.ts";
 import { assertSarahNostrPublicSafe } from "../nostr-identity/redaction.ts";
 import { SarahTurnClaimStore } from "./claim.ts";
-import {
-  buildDurableTurnRecordTemplate,
-  buildLiveAoFrameTemplate,
-} from "./ladder.ts";
+import { buildDurableTurnRecordTemplate, buildLiveAoFrameTemplate } from "./ladder.ts";
 import type {
   SarahNostrCipher,
   SarahTurnConversation,
@@ -41,9 +35,7 @@ export class SarahNostrTurnService {
     private readonly conversation: SarahTurnConversation,
   ) {
     if (conversation.sarahPubkey !== signer.getPublicKey()) {
-      throw new Error(
-        "sarah_nostr_turn: conversation.sarahPubkey must match signer",
-      );
+      throw new Error("sarah_nostr_turn: conversation.sarahPubkey must match signer");
     }
   }
 
@@ -138,6 +130,12 @@ export class SarahNostrTurnService {
       entry: "cancel_turn",
       seq,
     };
+  }
+
+  /** Abandon only a start record that the relay did not confirm. */
+  abandonUnconfirmedTurn(turnRef: string): void {
+    this.claims.abandon(turnRef);
+    this.seqByTurn.delete(turnRef);
   }
 
   private requireClaim(turnRef: string): void {

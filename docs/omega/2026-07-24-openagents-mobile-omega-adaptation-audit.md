@@ -880,6 +880,19 @@ Implementation state on 2026-07-24:
   clear action deletes stored projections. It also suppresses received copies
   for the current relay session. It does not revoke relay records or the device
   grant.
+- The admitted Sarah service loads one identity from the Secret Manager mount.
+  It binds the signer and owner NIP-44 cipher to that key. Missing, malformed,
+  or mismatched production custody now fails closed.
+- Sarah publishes through an authenticated WebSocket relay session. The relay
+  contract requires a NIP-42 challenge on connection and an affirmative `OK`
+  for the exact event identifier. A timeout, negative receipt, or closed relay
+  becomes `service_unavailable` and never becomes a successful answer.
+- Sarah answers use a kind `14` rumor inside a Sarah-authored kind `13` seal and
+  an ephemeral kind `1059` gift wrap. The plaintext rumor is never published.
+- `turn.started` claims can retry only when the start event was not confirmed.
+  Once confirmed, later publication loss preserves the claim and the visible
+  gap. Interrupt remains pending until the relay confirms the signed terminal
+  record.
 
 Canonical contract fixture hashes:
 

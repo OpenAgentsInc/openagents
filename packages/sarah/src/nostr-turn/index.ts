@@ -25,6 +25,7 @@ export {
 } from "./service.ts";
 export {
   createWebSocketRelayPublisher,
+  type SarahRelaySubscription,
   type WsPublisherHandle,
 } from "./ws-publisher.ts";
 export {

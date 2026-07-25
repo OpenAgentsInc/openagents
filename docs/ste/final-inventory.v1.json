@@ -34141,7 +34141,7 @@
     },
     {
       "path": "docs/omega/2026-07-24-openagents-mobile-omega-adaptation-audit.md",
-      "sha256": "6612f965b2726c42e6a7e01de0891e262f64a1ca1dd2c1a3ac8507b4cb178e4c",
+      "sha256": "d9f51b1c4c9c536a1a94cab5fb461b78ab2d2f30cb22c175fb2b7cc1bcb4e98d",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
@@ -34348,11 +34348,12 @@
     {
       "path": "docs/omega/2026-07-25-omega-open-issues-unified-completion-plan.md",
       "sha256": "84cf7e7f626a0593523864201f7b8a94f7b13ab0173d5bfbdd369515e308b47e",
-      "reason": "Final review of mutable first-party agent technical text",
+      "reason": "Final review of a converted document",
       "profile": {
-        "ste_status": "inspected",
-        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
         "ste_audience": "agent",
         "ste_agent_compact_revision": "openagents-agent-compact-v1",
         "ste_accepted_screening_rules": [
@@ -34360,39 +34361,6 @@
           "STE-3.6",
           "STE-5.1",
           "STE-8.2"
-        ]
-      }
-    },
-    {
-      "path": "docs/omega/README.md",
-      "sha256": "317ec9a8aa67378dba9ddb58222616cfb9f06f0030b9154563fd238a8c080b58",
-      "reason": "Final review of a converted document",
-      "profile": {
-        "ste_mode": "descriptive",
-        "risk": "active",
-        "source": null,
-        "replacement": null,
-        "ste_audience": "human",
-        "ste_accepted_screening_rules": [
-          "STE-2.4"
-        ],
-        "ste_status": "inspected",
-        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-        "ste_reviewed_at": "2026-07-19T22:00:00Z"
-      }
-    },
-    {
-      "path": "docs/omega/README.md",
-      "sha256": "317ec9a8aa67378dba9ddb58222616cfb9f06f0030b9154563fd238a8c080b58",
-      "reason": "Final review of a converted document",
-      "profile": {
-        "ste_mode": "descriptive",
-        "risk": "active",
-        "source": null,
-        "replacement": null,
-        "ste_audience": "human",
-        "ste_accepted_screening_rules": [
-          "STE-2.4"
         ],
         "ste_status": "inspected",
         "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
