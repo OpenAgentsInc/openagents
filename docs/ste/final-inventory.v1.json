@@ -34600,6 +34600,24 @@
       }
     },
     {
+      "path": "docs/omega/2026-07-25-web-omega-mobile-workroom-and-sovereign-relay-audit.md",
+      "sha256": "3e71ad2a345cf757dc27567e055d6dbb12ab5478db5eecc6c82584d6f537dd1d",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "mixed",
+        "risk": "high",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "human",
+        "ste_accepted_screening_rules": [
+          "STE-2.4"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/omega/README.md",
       "sha256": "cd7f60cd66278a90cd72b1209578d56914e26ddafd515961a458e86e462fc068",
       "reason": "Final review of a converted document",
