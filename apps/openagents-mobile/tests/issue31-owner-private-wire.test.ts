@@ -29,6 +29,7 @@ import {
   decodeIssue31CommandRecordV2,
   decodeIssue31OwnerProjectionRecord,
   decodeIssue31PairingRecord,
+  decodeIssue31WithheldSourcesRecord,
 } from "@openagentsinc/sarah/issue31-nostr";
 import { LocalKeySigner } from "nostr-effect/identity";
 import { generateSecretKey, getPublicKey } from "nostr-effect/pure";
@@ -138,6 +139,17 @@ const hostFixture = (name: string): Record<string, unknown> =>
     readFileSync(
       new URL(
         `../../../packages/sarah/fixtures/issue31-nostr/openagents.omega.issue31.owner_projection.v1.${name}.json`,
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  ) as Record<string, unknown>;
+
+const coverageFixture = (name: string): Record<string, unknown> =>
+  JSON.parse(
+    readFileSync(
+      new URL(
+        `../../../packages/sarah/fixtures/issue31-nostr/openagents.omega.issue31.withheld_sources.v1.${name}.json`,
         import.meta.url,
       ),
       "utf8",
@@ -1081,6 +1093,200 @@ describe("owner-private read state, reminders, and receipts over a real relay", 
           modelWith(deviceAuthored.filter((event) => event !== dropped)).grantRef,
         ).toBeNull();
       }
+    } finally {
+      client.close();
+    }
+  }, 60_000);
+  /**
+   * omega#46 exit 4 over a real wire.
+   *
+   * The read-model test proves the fold. This proves delivery: the coverage
+   * statement is a real NIP-59 gift wrap that a real relay stores and serves,
+   * really unwrapped and NIP-44 decrypted on the device, from the byte-shared
+   * fixture the Omega host emits.
+   */
+  test("a withheld-source statement crosses the wire and the device reads it", async () => {
+    const hostSecret = generateSecretKey();
+    const hostPublicKey = getPublicKey(hostSecret);
+    const hostSigner = LocalKeySigner.fromPrivateKey(hostSecret);
+    const deviceSecret = generateSecretKey();
+    const devicePublicKey = getPublicKey(deviceSecret);
+    const deviceSigner = LocalKeySigner.fromPrivateKey(deviceSecret);
+    const sarahPublicKey = getPublicKey(generateSecretKey());
+    const now = Math.floor(Date.now() / 1000);
+    const grantRef = `grant.omega.wire_withheld_${now}`;
+    const hostRef = `omega.host.wire_withheld_${now}`;
+    const requestEventId = "d".repeat(64);
+    const challengeEventId = "e".repeat(64);
+    const responseEventId = "f".repeat(64);
+    const challenge = "c".repeat(64);
+
+    const announcement = await hostSigner.signEvent({
+      kind: ISSUE31_HOST_ANNOUNCEMENT_KIND,
+      created_at: now,
+      tags: [
+        ["t", "omega-issue31-host"],
+        ["d", hostRef],
+        ["k", "1059"],
+      ],
+      content: JSON.stringify({
+        schema: "openagents.omega.issue31.host_discovery.v2",
+        hostRef,
+        hostPublicKeyHex: hostPublicKey,
+        sarahPublicKeyHex: sarahPublicKey,
+        displayName: "Omega wire host",
+        conversation: "sarah.0123456789abcdef01234567",
+        protocols: [
+          "openagents.omega.issue31.pairing.v1",
+          "openagents.omega.issue31.command.v1",
+          "openagents.omega.issue31.command.v2",
+        ],
+        relayUrls: ["wss://relay.example.com"],
+        generation: 1,
+        issuedAt: now,
+        expiresAt: now + 86_400,
+      }),
+    });
+    await publish(announcement, announcement.id);
+
+    const wrapFor = async (
+      record: Parameters<typeof createIssue31PrivateGiftWrap>[0]["record"],
+    ) => {
+      const wrap = await createIssue31PrivateGiftWrap({
+        signer: hostSigner,
+        recipientPublicKeyHex: devicePublicKey,
+        record,
+        randomSecretKey: generateSecretKey,
+        createdAt: now,
+        sealCreatedAt: now,
+        wrapCreatedAt: now,
+      });
+      await publish(wrap, wrap.id);
+      return wrap;
+    };
+
+    await wrapFor(
+      decodeIssue31PairingRecord({
+        schema: ISSUE31_PAIRING_SCHEMA,
+        recordType: "scoped_grant",
+        hostRef,
+        hostPublicKeyHex: hostPublicKey,
+        sarahPublicKeyHex: sarahPublicKey,
+        devicePublicKeyHex: devicePublicKey,
+        issuedAt: now,
+        pairingResponseEventId: responseEventId,
+        grantRef,
+        generation: 1,
+        scopes: ["observe_issue31", "send_message"],
+        expiresAt: now + 86_400,
+      }),
+    );
+
+    const engramFixture = hostFixture("canonical-engram");
+    await wrapFor(
+      decodeIssue31OwnerProjectionRecord({
+        ...engramFixture,
+        hostRef,
+        hostPublicKeyHex: hostPublicKey,
+        devicePublicKeyHex: devicePublicKey,
+        grantRef,
+        expectedGeneration: 1,
+        sourceAuthorPublicKeyHex: sarahPublicKey,
+      }),
+    );
+
+    const rebind = (fixture: Record<string, unknown>, overrides: Record<string, unknown> = {}) =>
+      decodeIssue31WithheldSourcesRecord({
+        ...fixture,
+        hostRef,
+        hostPublicKeyHex: hostPublicKey,
+        devicePublicKeyHex: devicePublicKey,
+        grantRef,
+        expectedGeneration: 1,
+        ...overrides,
+      });
+
+    await wrapFor(rebind(coverageFixture("canonical-partial"), { observedAt: now }));
+
+    let snapshot: Issue31NostrClientSnapshot | null = null;
+    const client = createIssue31NostrClient({
+      relayUrls: [relayUrl],
+      signer: deviceSigner,
+      webSocket: NodeSocket,
+      admittedHostPublicKeys: [hostPublicKey],
+      selectedHostPublicKeys: [hostPublicKey],
+      ownerAuthors: [sarahPublicKey],
+      ownerRecipientPublicKeys: [devicePublicKey],
+      cursorStore: memoryCursorStore(),
+      onSnapshot: (next) => {
+        snapshot = next;
+      },
+    });
+
+    try {
+      await client.start();
+      await waitFor(
+        () =>
+          (snapshot?.confirmedEvents ?? []).some(
+            (row) => row.privateRecord?.schema === "openagents.omega.issue31.withheld_sources.v1",
+          ),
+        "the coverage statement to arrive over the wire",
+      );
+
+      const deviceAuthored = deviceAuthoredPairing(
+        hostRef,
+        hostPublicKey,
+        devicePublicKey,
+        now,
+        now + 86_400,
+        requestEventId,
+        challengeEventId,
+        responseEventId,
+        challenge,
+        ["observe_issue31", "send_message"],
+      );
+      const modelWith = (extra: ReadonlyArray<Issue31ConfirmedEvent> = []) =>
+        projectIssue31OwnerPrivateReadModel(
+          {
+            ...snapshot!,
+            confirmedEvents: [...snapshot!.confirmedEvents, ...deviceAuthored, ...extra],
+          },
+          { nowUnixSeconds: now },
+        );
+
+      const withheldModel = modelWith();
+      expect(withheldModel.grantRef).toBe(grantRef);
+      expect(withheldModel.coverage).toBe("partial");
+      expect(withheldModel.withheld.map((row) => row.cause)).toEqual(["quarantined", "scan_bound"]);
+      expect(withheldModel.withheld.every((row) => row.observedBy === "host")).toBe(true);
+      // Fail visible, not fail closed: the engram that did arrive still renders
+      // beside the statement that others did not.
+      expect(withheldModel.memory[0]?.body).toEqual({
+        slug: "mem/release_evidence",
+        value: "The release candidate is notarized.",
+      });
+      expect(withheldModel.status).toBe("gap");
+      expect(withheldModel.reasonRef).toBe("reason.issue31.owner_sources_withheld");
+
+      // Restore, over the same real wire. A newer statement of completeness
+      // must be able to clear the gap, or the signal could only get worse.
+      const completeWrap = await wrapFor(
+        rebind(coverageFixture("canonical-complete"), { observedAt: now + 5 }),
+      );
+      await waitFor(
+        () =>
+          (snapshot?.confirmedEvents ?? []).some(
+            (row) => row.privateRumorId !== null && row.event.id === completeWrap.id,
+          ) ||
+          (snapshot?.confirmedEvents ?? []).filter(
+            (row) => row.privateRecord?.schema === "openagents.omega.issue31.withheld_sources.v1",
+          ).length === 2,
+        "the restored coverage statement to arrive over the wire",
+      );
+      const restored = modelWith();
+      expect(restored.coverage).toBe("complete");
+      expect(restored.withheld).toEqual([]);
+      expect(restored.status).toBe("ready");
     } finally {
       client.close();
     }

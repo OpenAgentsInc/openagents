@@ -6,8 +6,10 @@ import {
   decodeIssue31CommandRecordV2,
   decodeIssue31OwnerProjectionRecord,
   decodeIssue31PairingRecord,
+  decodeIssue31WithheldSourcesRecord,
   type Issue31CommandArguments,
   type Issue31CommandIntentV2,
+  type Issue31OwnerProjectionRecord,
   type Issue31PrivateRecord,
 } from "@openagentsinc/sarah/issue31-nostr";
 import { describe, expect, test } from "vite-plus/test";
@@ -686,5 +688,245 @@ describe("Issue 31 owner-private read state, reminders, and receipts", () => {
     expect(model.status).toBe("gap");
     expect(model.reasonRef).toBe("reason.issue31.owner_projection_rejected");
     expect(model.rejectedProjectionCount).toBe(1);
+  });
+});
+
+/**
+ * omega#46 exit 4: "The owner can inspect every engram available to Sarah."
+ *
+ * Three paths removed a source from the owner's view with nothing the device
+ * could see — a host quarantine counted only in `BootstrapResult`, the bounded
+ * projection scan recorded only in the host's `last_gap_state`, and a
+ * device-side read failure with no counter at all. Each gets its own test with
+ * its own assertion, so no case is carried by a neighbour's evidence.
+ */
+describe("Issue 31 owner-private withheld sources", () => {
+  const engramFixture = (): Record<string, unknown> =>
+    JSON.parse(
+      readFileSync(
+        new URL(
+          "../../../packages/sarah/fixtures/issue31-nostr/openagents.omega.issue31.owner_projection.v1.canonical-engram.json",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    ) as Record<string, unknown>;
+
+  const engram = (): Issue31ConfirmedEvent => {
+    const record = decodeIssue31OwnerProjectionRecord({
+      ...engramFixture(),
+      expectedGeneration: 1,
+    });
+    return privateEvent(record.sourceEventId, record);
+  };
+
+  const coverageFixture = (name: string): Record<string, unknown> =>
+    JSON.parse(
+      readFileSync(
+        new URL(
+          `../../../packages/sarah/fixtures/issue31-nostr/openagents.omega.issue31.withheld_sources.v1.${name}.json`,
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    ) as Record<string, unknown>;
+
+  const coverage = (
+    canonicalRecordId: string,
+    overrides: Record<string, unknown> = {},
+    name = "canonical-complete",
+  ): Issue31ConfirmedEvent =>
+    privateEvent(
+      canonicalRecordId,
+      decodeIssue31WithheldSourcesRecord({
+        ...coverageFixture(name),
+        expectedGeneration: 1,
+        ...overrides,
+      }),
+    );
+
+  const quarantinedStatement = (canonicalRecordId: string, overrides = {}) =>
+    coverage(
+      canonicalRecordId,
+      {
+        withheld: [
+          {
+            cause: "quarantined",
+            count: 3,
+            exact: true,
+            reasonRef: "reason.omega.invalid_projection_source",
+          },
+        ],
+        coverage: "partial",
+        ...overrides,
+      },
+      "canonical-partial",
+    );
+
+  test("a device holding no coverage statement reads unknown, never complete", () => {
+    // The whole defect was that silence looked like completeness. A host that
+    // has said nothing has not said the list is whole.
+    const model = projectIssue31OwnerPrivateReadModel(snapshot([engram()]), {
+      nowUnixSeconds: 1_100,
+    });
+    expect(model.memory).toHaveLength(1);
+    expect(model.coverage).toBe("unknown");
+    expect(model.withheld).toEqual([]);
+  });
+
+  test("only a host statement of completeness makes the list complete", () => {
+    const model = projectIssue31OwnerPrivateReadModel(
+      snapshot([engram(), coverage("5".repeat(64))]),
+      {
+        nowUnixSeconds: 1_100,
+      },
+    );
+    expect(model.coverage).toBe("complete");
+    expect(model.withheld).toEqual([]);
+    expect(model.status).toBe("ready");
+  });
+
+  test("drop path one: a host quarantine reaches the device as an exact count with a reason", () => {
+    const model = projectIssue31OwnerPrivateReadModel(
+      snapshot([engram(), quarantinedStatement("5".repeat(64))]),
+      { nowUnixSeconds: 1_100 },
+    );
+    expect(model.coverage).toBe("partial");
+    expect(model.withheld).toEqual([
+      {
+        cause: "quarantined",
+        count: 3,
+        exact: true,
+        reasonRef: "reason.omega.invalid_projection_source",
+        observedBy: "host",
+        deepLink: "openagents://omega/workroom?room=owner_private&withheld=quarantined",
+      },
+    ]);
+    // Fail visible, not fail closed: the engram that did arrive still renders.
+    expect(model.memory).toHaveLength(1);
+    expect(model.status).toBe("gap");
+    expect(model.reasonRef).toBe("reason.issue31.owner_sources_withheld");
+    expect(model.attentionDeepLinks).toContain(
+      "openagents://omega/workroom?room=owner_private&withheld=quarantined",
+    );
+  });
+
+  test("drop path two: the projection scan bound reaches the device as a lower bound", () => {
+    const model = projectIssue31OwnerPrivateReadModel(
+      snapshot([
+        engram(),
+        coverage(
+          "5".repeat(64),
+          {
+            withheld: [
+              {
+                cause: "scan_bound",
+                count: 1,
+                exact: false,
+                reasonRef: "reason.omega.projection_scan_bound",
+              },
+            ],
+            coverage: "partial",
+          },
+          "canonical-partial",
+        ),
+      ]),
+      { nowUnixSeconds: 1_100 },
+    );
+    expect(model.coverage).toBe("partial");
+    expect(model.withheld).toHaveLength(1);
+    expect(model.withheld[0]).toMatchObject({ cause: "scan_bound", exact: false, count: 1 });
+    // A host that stopped reading cannot say how many it did not read, and the
+    // device must not render its lower bound as though it were exact.
+    expect(model.withheld[0]?.exact).toBe(false);
+    expect(model.memory).toHaveLength(1);
+  });
+
+  test("drop path three: an engram this device cannot read is counted, not dropped in silence", () => {
+    // This models decoder/read-model drift. `decodeIssue31OwnerProjectionRecord`
+    // refuses an unreadable engram body today, so the record is built directly:
+    // the point is that if the two ever disagree — a relaxed decoder, a version
+    // skew, a bound that moves on one side — the read model counts the drop
+    // instead of shortening the list in silence.
+    const drifted = {
+      ...engramFixture(),
+      expectedGeneration: 1,
+      projection: {
+        kind: "engram",
+        dTag: "f".repeat(64),
+        plaintext: JSON.stringify({ slug: "mem/unreadable", value: { not: "a string" } }),
+      },
+    } as unknown as Issue31OwnerProjectionRecord;
+    const model = projectIssue31OwnerPrivateReadModel(
+      snapshot([privateEvent("6".repeat(64), drifted), coverage("5".repeat(64))]),
+      { nowUnixSeconds: 1_100 },
+    );
+    expect(model.memory).toEqual([]);
+    expect(model.coverage).toBe("partial");
+    expect(model.withheld).toEqual([
+      {
+        cause: "unreadable",
+        count: 1,
+        exact: true,
+        reasonRef: "reason.issue31.owner_engram_unreadable",
+        observedBy: "device",
+        deepLink: "openagents://omega/workroom?room=owner_private&withheld=unreadable",
+      },
+    ]);
+    // The host said complete and the device knows better. A device-observed
+    // withholding must override a host statement, never be overridden by it.
+    expect(model.status).toBe("gap");
+  });
+
+  test("a coverage statement bound to another generation is refused, not read", () => {
+    const model = projectIssue31OwnerPrivateReadModel(
+      snapshot([engram(), coverage("5".repeat(64), { expectedGeneration: 2 })]),
+      { nowUnixSeconds: 1_100 },
+    );
+    expect(model.coverage).toBe("unknown");
+    expect(model.status).toBe("gap");
+    expect(model.reasonRef).toBe("reason.issue31.owner_projection_rejected");
+    expect(model.rejectedProjectionCount).toBe(1);
+  });
+
+  test("the newest statement wins, so coverage can be restored as well as lost", () => {
+    const withheldEarlier = quarantinedStatement("5".repeat(64), { observedAt: 1_784_937_651 });
+    const completeLater = coverage("6".repeat(64), { observedAt: 1_784_937_999 });
+    for (const records of [
+      [withheldEarlier, completeLater],
+      [completeLater, withheldEarlier],
+    ]) {
+      const model = projectIssue31OwnerPrivateReadModel(snapshot([engram(), ...records]), {
+        nowUnixSeconds: 1_100,
+      });
+      expect(model.coverage).toBe("complete");
+      expect(model.withheld).toEqual([]);
+    }
+
+    const stillWithheld = projectIssue31OwnerPrivateReadModel(
+      snapshot([
+        engram(),
+        coverage("6".repeat(64), { observedAt: 1_784_937_000 }),
+        quarantinedStatement("5".repeat(64), { observedAt: 1_784_937_651 }),
+      ]),
+      { nowUnixSeconds: 1_100 },
+    );
+    expect(stillWithheld.coverage).toBe("partial");
+  });
+
+  test("a tie on observation time never resolves toward claiming completeness", () => {
+    // Two contradictory statements at the same second. An identifier tie-break
+    // that could pick "complete" would hide a gap by accident.
+    const tiedComplete = coverage("6".repeat(64), { observedAt: 1_784_937_651 });
+    const tiedWithheld = quarantinedStatement("5".repeat(64), { observedAt: 1_784_937_651 });
+    for (const records of [
+      [tiedComplete, tiedWithheld],
+      [tiedWithheld, tiedComplete],
+    ]) {
+      const model = projectIssue31OwnerPrivateReadModel(snapshot([engram(), ...records]), {
+        nowUnixSeconds: 1_100,
+      });
+      expect(model.coverage).toBe("partial");
+    }
   });
 });

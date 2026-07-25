@@ -4,6 +4,7 @@ import {
   decodeIssue31CommandRecordV2,
   decodeIssue31OwnerProjectionRecord,
   decodeIssue31PairingRecord,
+  decodeIssue31WithheldSourcesRecord,
   type Issue31PrivateRecord,
   type Issue31PairingRecord,
 } from "@openagentsinc/sarah/issue31-nostr";
@@ -253,6 +254,9 @@ const decodePrivateRecord = (value: unknown): Issue31PrivateRecord => {
   if (schema === "openagents.omega.issue31.owner_projection.v1") {
     return decodeIssue31OwnerProjectionRecord(value);
   }
+  if (schema === "openagents.omega.issue31.withheld_sources.v1") {
+    return decodeIssue31WithheldSourcesRecord(value);
+  }
   throw new Error("Issue 31 persisted private record schema is unknown.");
 };
 
@@ -337,9 +341,12 @@ export const createIssue31LocalConfirmedRecordStore = (
       );
     },
     clearOwnerProjections: () => {
+      // The host's coverage statement is cleared with the projections it
+      // describes, so a wiped device reads "unknown" rather than "complete".
       database.runSync(
-        "DELETE FROM issue31_confirmed_private_records WHERE record_schema = ?",
+        "DELETE FROM issue31_confirmed_private_records WHERE record_schema IN (?, ?)",
         "openagents.omega.issue31.owner_projection.v1",
+        "openagents.omega.issue31.withheld_sources.v1",
       );
     },
     close: () => database.closeSync(),

@@ -149,7 +149,9 @@ describe("behavior contract registry", () => {
     // one enforced Full Auto autonomy contract (host-verified completion),
     // taking the total to 48. HANDS-6 (#9184) added one enforced Full Auto
     // autonomy contract (initiative without a GitHub claim), taking it to 49.
-    expect(decoded.contracts).toHaveLength(49)
+    // omega#46 exit 4 added one enforced owner-private contract (the room can
+    // distinguish a complete view from a short one), taking it to 50.
+    expect(decoded.contracts).toHaveLength(50)
     const hostVerifiedCompletion = decoded.contracts.find(
       contract => contract.contractId === "openagents_desktop.full_auto_host_verified_completion.v1",
     )

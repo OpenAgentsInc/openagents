@@ -8,11 +8,13 @@ import {
   type SarahReminderContent,
 } from "@openagentsinc/sarah/nostr-memory";
 import {
+  ISSUE31_WITHHELD_SOURCES_SCHEMA,
   foldIssue31Grant,
   type Issue31CommandIntentV2,
   type Issue31CommandResultV2,
   type Issue31GrantState,
   type Issue31OwnerProjectionRecord,
+  type Issue31WithheldSourcesRecord,
 } from "@openagentsinc/sarah/issue31-nostr";
 
 import type { Issue31NostrClientSnapshot } from "./issue31-nostr-client.ts";
@@ -69,6 +71,34 @@ export interface Issue31OwnerReminderRow {
   readonly deepLink: string;
 }
 
+/**
+ * How much of what Sarah can see reached this device.
+ *
+ * `complete` and `partial` are different states and must never render the same
+ * way: a list that is short and says so is honest, and a list that is short and
+ * looks whole is the failure omega#46 exit 4 exists to prevent. `unknown` is the
+ * third state and it is not a synonym for `complete` — it means no host has
+ * stated coverage for this grant, which is what a device sees when it is paired
+ * to a host that predates this record.
+ */
+export type Issue31OwnerCoverage = "complete" | "partial" | "unknown";
+
+export interface Issue31OwnerWithheldRow {
+  /**
+   * `quarantined` and `scan_bound` are host-observed and arrive on the wire.
+   * `unreadable` is device-observed: a record that passed admission and then
+   * could not be read here. Only the device can see that, so no host can assert
+   * it.
+   */
+  readonly cause: "quarantined" | "scan_bound" | "unreadable";
+  /** The number withheld when `exact`, otherwise a lower bound. */
+  readonly count: number;
+  readonly exact: boolean;
+  readonly reasonRef: string;
+  readonly observedBy: "host" | "device";
+  readonly deepLink: string;
+}
+
 export type Issue31OwnerCommandState =
   | Readonly<{
       state: "queued" | "accepted";
@@ -111,6 +141,8 @@ export interface Issue31OwnerPrivateReadModel {
   readonly commands: ReadonlyArray<Issue31OwnerCommandState>;
   readonly attentionDeepLinks: ReadonlyArray<string>;
   readonly rejectedProjectionCount: number;
+  readonly coverage: Issue31OwnerCoverage;
+  readonly withheld: ReadonlyArray<Issue31OwnerWithheldRow>;
 }
 
 export const emptyIssue31OwnerPrivateReadModel = (
@@ -131,10 +163,22 @@ export const emptyIssue31OwnerPrivateReadModel = (
   commands: [],
   attentionDeepLinks: [],
   rejectedProjectionCount: 0,
+  coverage: "unknown",
+  withheld: [],
 });
 
 const deepLinkFor = (sourceEventId: string): string =>
   `openagents://omega/workroom?room=owner_private&sourceEventId=${sourceEventId}`;
+
+const withheldDeepLinkFor = (cause: string): string =>
+  `openagents://omega/workroom?room=owner_private&withheld=${cause}`;
+
+export const ISSUE31_OWNER_ENGRAM_UNREADABLE_REASON =
+  "reason.issue31.owner_engram_unreadable" as const;
+export const ISSUE31_OWNER_READ_STATE_UNREADABLE_REASON =
+  "reason.issue31.owner_read_state_unreadable" as const;
+export const ISSUE31_OWNER_REMINDER_UNREADABLE_REASON =
+  "reason.issue31.owner_reminder_unreadable" as const;
 
 const activeGrantFor = (
   snapshot: Issue31NostrClientSnapshot,
@@ -228,6 +272,54 @@ const sourceProjections = (
     ),
     rejected,
   };
+};
+
+/**
+ * The newest coverage statement this device holds for its own live grant.
+ *
+ * Latest wins by the host's own observation time, because the NIP-59 wrap
+ * timestamp is deliberately randomised and cannot order two statements. A
+ * statement bound to another grant or generation is refused and counted, on the
+ * same rule the owner projections use — a relay is not an authority.
+ *
+ * A tie on observation time never resolves toward claiming completeness. Two
+ * contradictory statements at the same second are unlikely, and an event-id
+ * tie-break that can pick "complete" over "partial" would be a way to hide a
+ * gap by accident, so the one that withholds more wins first.
+ */
+const hostCoverageStatement = (
+  snapshot: Issue31NostrClientSnapshot,
+  grant: Issue31GrantState,
+): Readonly<{ statement: Issue31WithheldSourcesRecord | null; rejected: number }> => {
+  let statement: Issue31WithheldSourcesRecord | null = null;
+  let statementRecordId = "";
+  let rejected = 0;
+  for (const event of snapshot.confirmedEvents) {
+    const record = event.privateRecord;
+    if (record?.schema !== ISSUE31_WITHHELD_SOURCES_SCHEMA) continue;
+    if (
+      record.hostRef !== grant.hostRef ||
+      record.hostPublicKeyHex !== grant.hostPublicKeyHex ||
+      record.devicePublicKeyHex !== grant.devicePublicKeyHex ||
+      record.grantRef !== grant.grantRef ||
+      record.expectedGeneration !== grant.generation
+    ) {
+      rejected += 1;
+      continue;
+    }
+    const preferable =
+      statement === null ||
+      (record.observedAt !== statement.observedAt
+        ? record.observedAt > statement.observedAt
+        : record.withheld.length !== statement.withheld.length
+          ? record.withheld.length > statement.withheld.length
+          : event.canonicalRecordId > statementRecordId);
+    if (preferable) {
+      statement = record;
+      statementRecordId = event.canonicalRecordId;
+    }
+  }
+  return { statement, rejected };
 };
 
 const transcriptRows = (
@@ -432,39 +524,57 @@ export const projectIssue31OwnerPrivateReadModel = (
   if (grant === null) {
     return emptyIssue31OwnerPrivateReadModel();
   }
-  const { records, rejected } = sourceProjections(snapshot, grant);
+  const { records, rejected: admissionRejected } = sourceProjections(snapshot, grant);
+  const { statement, rejected: coverageRejected } = hostCoverageStatement(snapshot, grant);
+  const rejected = admissionRejected + coverageRejected;
   const projectionsBySourceId = new Map(records.map((record) => [record.sourceEventId, record]));
   const transcript = transcriptRows(records);
   const transcriptLimit = Math.max(
     1,
     Math.min(200, input.transcriptLimit ?? ISSUE31_OWNER_TRANSCRIPT_PAGE_SIZE),
   );
+  // Records that passed admission and then could not be read here. Dropping
+  // one silently is the worst of the three withholding paths: the host cannot
+  // know it happened and, without this counter, neither can the device.
+  const unreadable = new Map<string, number>();
+  const countUnreadable = (reasonRef: string): void => {
+    unreadable.set(reasonRef, (unreadable.get(reasonRef) ?? 0) + 1);
+  };
   const memory = records.flatMap((record) => {
     if (record.projection.kind !== "engram") return [];
     const body = parseEngramBody(record.projection.plaintext);
-    return body === null
-      ? []
-      : [
-          {
-            sourceEventId: record.sourceEventId,
-            sourceCreatedAt: record.sourceCreatedAt,
-            dTag: record.projection.dTag,
-            body,
-          },
-        ];
+    if (body === null) {
+      countUnreadable(ISSUE31_OWNER_ENGRAM_UNREADABLE_REASON);
+      return [];
+    }
+    return [
+      {
+        sourceEventId: record.sourceEventId,
+        sourceCreatedAt: record.sourceCreatedAt,
+        dTag: record.projection.dTag,
+        body,
+      },
+    ];
   });
   const readContexts = mergeReadContexts(
     ...records.flatMap((record) => {
       if (record.projection.kind !== "read_state") return [];
       const state = validateReadStateBlob(record.projection.plaintext);
-      return state === null ? [] : [state.contexts];
+      if (state === null) {
+        countUnreadable(ISSUE31_OWNER_READ_STATE_UNREADABLE_REASON);
+        return [];
+      }
+      return [state.contexts];
     }),
   );
   const remindersById = new Map<string, Issue31OwnerReminderRow>();
   for (const record of records) {
     if (record.projection.kind !== "reminder") continue;
     const content = parseReminderContent(record.projection.plaintext);
-    if (content === null) continue;
+    if (content === null) {
+      countUnreadable(ISSUE31_OWNER_REMINDER_UNREADABLE_REASON);
+      continue;
+    }
     const row = {
       sourceEventId: record.sourceEventId,
       sourceCreatedAt: record.sourceCreatedAt,
@@ -502,6 +612,31 @@ export const projectIssue31OwnerPrivateReadModel = (
       },
     ];
   });
+  const withheld: ReadonlyArray<Issue31OwnerWithheldRow> = [
+    ...(statement?.withheld ?? []).map((entry) => ({
+      cause: entry.cause,
+      count: entry.count,
+      exact: entry.exact,
+      reasonRef: entry.reasonRef,
+      observedBy: "host" as const,
+      deepLink: withheldDeepLinkFor(entry.cause),
+    })),
+    ...[...unreadable.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([reasonRef, count]) => ({
+        cause: "unreadable" as const,
+        count,
+        exact: true,
+        reasonRef,
+        observedBy: "device" as const,
+        deepLink: withheldDeepLinkFor("unreadable"),
+      })),
+  ];
+  // "Everything arrived" and "no host said" are different facts. Only a host
+  // statement of completeness, with nothing withheld on either side, makes the
+  // list complete.
+  const coverage: Issue31OwnerCoverage =
+    withheld.length > 0 ? "partial" : statement === null ? "unknown" : "complete";
   const attentionDeepLinks = [
     ...commands
       .filter((command) => command.state !== "terminal")
@@ -522,15 +657,21 @@ export const projectIssue31OwnerPrivateReadModel = (
           reminder.notBefore <= input.nowUnixSeconds,
       )
       .map((reminder) => reminder.deepLink),
+    ...withheld.map((row) => row.deepLink),
   ].slice(0, 64);
   return {
-    status: rejected === 0 && commandProjection.conflicts === 0 ? "ready" : "gap",
+    status:
+      rejected === 0 && commandProjection.conflicts === 0 && coverage !== "partial"
+        ? "ready"
+        : "gap",
     reasonRef:
       commandProjection.conflicts > 0
         ? "reason.issue31.command_idempotency_conflict"
-        : rejected === 0
-          ? null
-          : "reason.issue31.owner_projection_rejected",
+        : rejected > 0
+          ? "reason.issue31.owner_projection_rejected"
+          : coverage === "partial"
+            ? "reason.issue31.owner_sources_withheld"
+            : null,
     grantRef: grant.grantRef,
     generation: grant.generation,
     transcript: transcript.slice(-transcriptLimit),
@@ -564,6 +705,8 @@ export const projectIssue31OwnerPrivateReadModel = (
     commands,
     attentionDeepLinks,
     rejectedProjectionCount: rejected + commandProjection.conflicts,
+    coverage,
+    withheld,
   };
 };
 

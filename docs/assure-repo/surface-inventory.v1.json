@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:f61456fa6aa2e5c2e1ec2ef59c5256bcc7a6cedfb587b8772b9940101b524f2f",
+  "sourceDigest": "sha256:9de3768347de60d70807083a83ba1a3890334e737d8009ae15886e18f52eca99",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -382,7 +382,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "apps/openagents-mobile (77 tracked test files)"
+          "ref": "apps/openagents-mobile (79 tracked test files)"
         },
         {
           "type": "behavior-contract",
@@ -395,6 +395,10 @@
         {
           "type": "behavior-contract",
           "ref": "openagents_mobile.minerals_sheet_user_dismiss_only.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_mobile.owner_private_source_coverage.v1"
         },
         {
           "type": "behavior-contract",
@@ -2846,11 +2850,15 @@
         {
           "type": "test",
           "ref": "packages/sarah (24 tracked test files)"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_mobile.owner_private_source_coverage.v1"
         }
       ],
       "obligation": {
         "state": "designed",
-        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+        "note": "executable oracle(s) authored: behavior-contract, test; observation pending AR-3 sweep"
       }
     },
     {

@@ -1343,6 +1343,59 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
     },
     {
       authorityBoundary:
+        "This contract binds what the owner-private room may claim about its own completeness. It is a reporting obligation, not a delivery guarantee: it does not promise every source reaches the device, and a withheld count is not authority to hide a record. The host may only state causes it can observe, so a device-side read failure is counted on the device and can never be asserted by a host.",
+      blockerRefs: [],
+      contractId: "openagents_mobile.owner_private_source_coverage.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "packages/sarah/src/issue31-nostr/withheld-sources.ts",
+        "packages/sarah/fixtures/issue31-nostr/openagents.omega.issue31.withheld_sources.v1.canonical-partial.json",
+        "apps/openagents-mobile/src/workroom/issue31-owner-private-read-model.ts",
+        "omega:crates/omega_effectd/src/issue31_nostr.rs",
+        "omega:crates/omega_effectd/src/sarah_conversation.rs",
+        "github:OpenAgentsInc/omega#46",
+        "github:OpenAgentsInc/omega#49",
+      ],
+      oracles: [
+        {
+          description:
+            "Read-model proof of all three withholding paths, each with its own assertion: a host quarantine arrives as an exact count with a reason, the bounded projection scan arrives as a lower bound that is never rendered exact, an engram this device cannot read is counted rather than dropped in silence, a device holding no statement reads unknown rather than complete, and rows that did arrive still render beside the count that did not.",
+          id: "openagents_mobile.owner_private_source_coverage.read_model",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents-mobile/tests/issue31-owner-private-read-model.test.ts",
+        },
+        {
+          description:
+            "Delivery proof over a real relay: the coverage statement is a real NIP-59 gift wrap the relay stores and serves, unwrapped and NIP-44 decrypted on the device from the byte-shared fixture the Omega host emits, and a newer statement of completeness clears the gap. Green against the in-process startTestRelay and against the deployed OpenAgents relay.",
+          id: "openagents_mobile.owner_private_source_coverage.wire",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents-mobile/tests/issue31-owner-private-wire.test.ts",
+        },
+        {
+          description:
+            "Record-contract proof from the shared bytes: a complete statement and a partial statement are different records, a complete coverage over a non-empty count list is refused, an exact scan-bound count is refused, a zero count is refused, and a device-observed cause is not assertable by a host.",
+          id: "openagents_mobile.owner_private_source_coverage.record",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "packages/sarah/src/issue31-nostr/issue31-nostr.test.ts",
+        },
+      ],
+      productArea: "owner-private memory inspection",
+      source: {
+        channel: "issue",
+        statedBy: "owner",
+        statedOn: "2026-07-24",
+      },
+      state: "enforced",
+      statement: "The owner can inspect every engram available to Sarah.",
+      surface: "openagents-mobile",
+      verification:
+        "The read-model, wire, and record oracles above run in the normal sweep. The Omega host half is proven in OpenAgentsInc/omega by cargo test -p omega_effectd, which pins the same fixture digests, so a one-sided edit to what the phone is told fails in both repositories. A physical-device rendering of the coverage line is not claimed here and stays on omega#49.",
+    },
+    {
+      authorityBoundary:
         "Owner scoping binds the Worker portal API (/api/portal/*): engagement reads resolve only through the caller's verified session identity, and admin creation/binding/seeding stays behind the operator bearer token. This contract does not authorize any client-facing engagement-id lookup route.",
       blockerRefs: [],
       contractId: "openagents_web.portal_owner_scoped_engagement.v1",

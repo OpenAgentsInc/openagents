@@ -18,6 +18,7 @@ import {
   decodeIssue31HostAnnouncement,
   decodeIssue31OwnerProjectionRecord,
   decodeIssue31PairingRecord,
+  decodeIssue31WithheldSourcesRecord,
   foldIssue31Grant,
   reconcileIssue31Commands,
   unwrapIssue31PrivateGiftWrap,
@@ -658,5 +659,91 @@ describe("Issue 31 Nostr records", () => {
     } finally {
       ephemeral.dispose();
     }
+  });
+});
+
+/**
+ * omega#46 exit 4. The coverage statement is the only thing that lets a device
+ * tell "this is everything" from "this is what arrived, and N are withheld".
+ * The digests are pinned identically in the Omega peer test
+ * (`crates/omega_effectd/src/issue31_nostr.rs`), so a one-sided edit to what a
+ * phone is told fails in both repositories rather than drifting.
+ */
+describe("Issue 31 withheld sources", () => {
+  const WITHHELD_FIXTURES = [
+    [
+      "canonical-complete",
+      "c1339d6da3b99ca83c099cf87d3cf93a81fa1c90aac25ab54af8f886ce36c28a",
+      "complete",
+    ],
+    [
+      "canonical-partial",
+      "acb28484bf4d8722d774837abda0cc36edce0c74dc599edff820e4e70476bb01",
+      "partial",
+    ],
+  ] as const;
+
+  const withheldFixture = (name: string): string =>
+    `openagents.omega.issue31.withheld_sources.v1.${name}.json`;
+
+  test("decodes the shared coverage statements the Omega host emits", () => {
+    for (const [name, digest, coverage] of WITHHELD_FIXTURES) {
+      const fileName = withheldFixture(name);
+      expect(fixtureDigest(fileName), `${name} fixture bytes changed`).toBe(digest);
+      const record = decodeIssue31WithheldSourcesRecord(readFixture(fileName));
+      expect(record.coverage).toBe(coverage);
+      expect(record.schema).toBe("openagents.omega.issue31.withheld_sources.v1");
+    }
+  });
+
+  test("a complete statement and a partial statement are not the same record", () => {
+    const complete = decodeIssue31WithheldSourcesRecord(
+      readFixture(withheldFixture("canonical-complete")),
+    );
+    const partial = decodeIssue31WithheldSourcesRecord(
+      readFixture(withheldFixture("canonical-partial")),
+    );
+    expect(complete.withheld).toEqual([]);
+    expect(partial.coverage).not.toBe(complete.coverage);
+    // Every count names why. "3 missing" without a reason is nearly as
+    // unhelpful as silence.
+    for (const entry of partial.withheld) {
+      expect(entry.reasonRef.length).toBeGreaterThan(2);
+      expect(entry.count).toBeGreaterThan(0);
+    }
+    expect(partial.withheld.map((entry) => entry.cause)).toEqual(["quarantined", "scan_bound"]);
+  });
+
+  test("a complete coverage over a non-empty count list is refused", () => {
+    const fileName = withheldFixture("negative-complete-with-counts");
+    expect(fixtureDigest(fileName)).toBe(
+      "8d5e2b9a718a65b2c808343e0723707acb423928652d3b399c5ef3b396a506fa",
+    );
+    expect(() => decodeIssue31WithheldSourcesRecord(readFixture(fileName))).toThrow();
+  });
+
+  test("an exact scan-bound count is refused", () => {
+    const fileName = withheldFixture("negative-scan-bound-exact");
+    expect(fixtureDigest(fileName)).toBe(
+      "8ece8427b2d133bf13ace98a8eee7e1755a58a4dceccf45c507f15f3351a5b54",
+    );
+    // A host that stopped reading cannot say how many sources it did not read.
+    expect(() => decodeIssue31WithheldSourcesRecord(readFixture(fileName))).toThrow();
+  });
+
+  test("a withheld count of zero is refused", () => {
+    const fileName = withheldFixture("negative-zero-count");
+    expect(fixtureDigest(fileName)).toBe(
+      "02babd0fb35243371e977d3db394ed71b91de7df2ea60270bf5f19d08ed40c81",
+    );
+    expect(() => decodeIssue31WithheldSourcesRecord(readFixture(fileName))).toThrow();
+  });
+
+  test("a host cannot claim a cause only the device can observe", () => {
+    const fileName = withheldFixture("negative-unreadable-cause");
+    expect(fixtureDigest(fileName)).toBe(
+      "c8eca6e40d9555c329a537eb14e667e6191f71267ca09db5885f9820630e7033",
+    );
+    expect(() => decodeIssue31WithheldSourcesRecord(readFixture(fileName))).toThrow();
   });
 });

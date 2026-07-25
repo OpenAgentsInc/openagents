@@ -383,6 +383,38 @@ const ownerPrivateDetail = (
           }),
         )),
     Text({ key: "issue31-owner-memory-title", content: "Local memory", variant: "heading" }),
+    // A short list that looks whole is the failure omega#46 exit 4 names. The
+    // three coverage states render differently and one of them is "unknown",
+    // because a host that never stated coverage has not said the list is
+    // complete.
+    Text({
+      key: "issue31-owner-coverage",
+      content:
+        owner.coverage === "complete"
+          ? "Every source Sarah can use reached this device."
+          : owner.coverage === "unknown"
+            ? "This host has not stated how complete this view is."
+            : `Withheld from this device: ${owner.withheld
+                .map(
+                  (row) =>
+                    `${row.exact ? "" : "at least "}${row.count} · ${row.cause} · ${row.reasonRef}`,
+                )
+                .join(" · ")}`,
+      variant: "caption",
+      color: owner.coverage === "complete" ? "textMuted" : "warning",
+    }),
+    ...owner.withheld.map((row) =>
+      Button({
+        key: `issue31-owner-withheld-${row.cause}-${row.reasonRef}`,
+        label: `${row.exact ? "" : "at least "}${row.count} withheld · ${row.cause} · observed by ${row.observedBy}`,
+        variant: "ghost",
+        onPress: IntentRef("Issue31OwnerDeepLinkOpened", StaticPayload({ url: row.deepLink })),
+        a11y: {
+          label: `${row.count} sources withheld because ${row.reasonRef}, observed by the ${row.observedBy}`,
+        },
+        style: { width: "full", ...mobileInteractiveStyle(accessibility) },
+      }),
+    ),
     TextField({
       key: "issue31-owner-memory-search",
       value: state.memoryQuery,

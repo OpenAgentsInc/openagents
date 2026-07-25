@@ -2,6 +2,7 @@ import {
   ISSUE31_COMMAND_SCHEMA,
   ISSUE31_COMMAND_SCHEMA_V2,
   ISSUE31_OWNER_PROJECTION_SCHEMA,
+  ISSUE31_WITHHELD_SOURCES_SCHEMA,
   ISSUE31_PAIRING_SCHEMA,
   createIssue31PrivateEnvelope,
   decodeIssue31CommandRecord,
@@ -71,6 +72,18 @@ export const ISSUE31_MOBILE_REQUESTED_SCOPES = [
 
 declare const require: (id: string) => unknown;
 const ISSUE31_MAX_LOCAL_PRIVATE_EVENTS = 2_080;
+
+/**
+ * The owner-private records a local wipe removes.
+ *
+ * The host's coverage statement goes with the projections it describes. Leaving
+ * it behind would leave the device asserting "this is everything" over a list
+ * the owner had just emptied — the exact confident-but-short rendering that
+ * signal exists to prevent. After a wipe the room reads "unknown" until the
+ * host restates coverage.
+ */
+const isClearableOwnerPrivateSchema = (schema: string | undefined): boolean =>
+  schema === ISSUE31_OWNER_PROJECTION_SCHEMA || schema === ISSUE31_WITHHELD_SOURCES_SCHEMA;
 
 export interface Issue31DiscoveredHost {
   readonly hostRef: string;
@@ -575,7 +588,7 @@ export const openIssue31MobileNostrRuntime = async (
         ].filter((event) => {
           const record = event.privateRecord;
           if (
-            record?.schema === ISSUE31_OWNER_PROJECTION_SCHEMA &&
+            isClearableOwnerPrivateSchema(record?.schema) &&
             clearedOwnerProjectionIds.has(event.canonicalRecordId)
           ) {
             return false;
@@ -817,7 +830,7 @@ export const openIssue31MobileNostrRuntime = async (
       for (const event of snapshot.confirmedEvents) {
         const record = event.privateRecord;
         if (
-          record?.schema === ISSUE31_OWNER_PROJECTION_SCHEMA &&
+          isClearableOwnerPrivateSchema(record?.schema) &&
           clearedOwnerProjectionIds.has(event.canonicalRecordId)
         ) {
           continue;
@@ -1128,13 +1141,13 @@ export const openIssue31MobileNostrRuntime = async (
       },
       clearOwnerPrivateLocalData: () => {
         for (const event of client.snapshot().confirmedEvents) {
-          if (event.privateRecord?.schema === ISSUE31_OWNER_PROJECTION_SCHEMA) {
+          if (isClearableOwnerPrivateSchema(event.privateRecord?.schema)) {
             clearedOwnerProjectionIds.add(event.canonicalRecordId);
           }
         }
         openedConfirmedStore.clearOwnerProjections();
         for (let index = localEvents.length - 1; index >= 0; index -= 1) {
-          if (localEvents[index]?.privateRecord?.schema === ISSUE31_OWNER_PROJECTION_SCHEMA) {
+          if (isClearableOwnerPrivateSchema(localEvents[index]?.privateRecord?.schema)) {
             const removed = localEvents.splice(index, 1)[0];
             if (removed !== undefined) {
               clearedOwnerProjectionIds.add(removed.canonicalRecordId);

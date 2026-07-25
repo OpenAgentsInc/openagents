@@ -17,12 +17,18 @@ import {
   decodeIssue31OwnerProjectionRecord,
   type Issue31OwnerProjectionRecord,
 } from "./owner-projection.ts";
+import {
+  ISSUE31_WITHHELD_SOURCES_SCHEMA,
+  decodeIssue31WithheldSourcesRecord,
+  type Issue31WithheldSourcesRecord,
+} from "./withheld-sources.ts";
 
 export type Issue31PrivateRecord =
   | Issue31PairingRecord
   | Issue31CommandRecord
   | Issue31CommandRecordV2
-  | Issue31OwnerProjectionRecord;
+  | Issue31OwnerProjectionRecord
+  | Issue31WithheldSourcesRecord;
 
 const HEX_64 = /^[0-9a-f]{64}$/;
 const HEX_128 = /^[0-9a-f]{128}$/;
@@ -147,7 +153,9 @@ const validateRecord = (record: Issue31PrivateRecord): Issue31PrivateRecord =>
       ? decodeIssue31CommandRecord(record)
       : record.schema === "openagents.omega.issue31.command.v2"
         ? decodeIssue31CommandRecordV2(record)
-        : decodeIssue31OwnerProjectionRecord(record);
+        : record.schema === ISSUE31_WITHHELD_SOURCES_SCHEMA
+          ? decodeIssue31WithheldSourcesRecord(record)
+          : decodeIssue31OwnerProjectionRecord(record);
 
 export const createIssue31PrivateEnvelope = async (
   input: Readonly<{
@@ -301,6 +309,8 @@ export const unwrapIssue31PrivateGiftWrap = async (
       record = decodeIssue31CommandRecordV2(contentValue);
     } else if (schema === ISSUE31_OWNER_PROJECTION_SCHEMA) {
       record = decodeIssue31OwnerProjectionRecord(contentValue);
+    } else if (schema === ISSUE31_WITHHELD_SOURCES_SCHEMA) {
+      record = decodeIssue31WithheldSourcesRecord(contentValue);
     }
   }
   if (record === null && input.requireIssue31Record !== false) {
