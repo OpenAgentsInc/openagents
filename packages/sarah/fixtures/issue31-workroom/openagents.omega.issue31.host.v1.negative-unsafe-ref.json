@@ -1,0 +1,7 @@
+{
+  "schema": "openagents.omega.issue31.host.v1",
+  "hostRef": "/Users/owner/.config/omega/host.json",
+  "snapshotRef": "snapshot.omega.issue31.unsafe-ref",
+  "generatedAtMs": 1784894400000,
+  "projections": []
+}

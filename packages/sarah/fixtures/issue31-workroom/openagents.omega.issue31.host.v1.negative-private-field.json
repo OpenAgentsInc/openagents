@@ -1,0 +1,8 @@
+{
+  "schema": "openagents.omega.issue31.host.v1",
+  "hostRef": "host.omega.device-alpha",
+  "snapshotRef": "snapshot.omega.issue31.private-field",
+  "generatedAtMs": 1784894400000,
+  "prompt": "owner-private prompt that must never enter a public projection",
+  "projections": []
+}

@@ -1,0 +1,240 @@
+import { Schema as S } from "effect";
+
+export const ISSUE31_HOST_ADJUNCT_SCHEMA = "openagents.omega.issue31.host.v1" as const;
+export const MAX_ISSUE31_PROJECTION_REFS = 16 as const;
+export const MAX_ISSUE31_TIMESTAMP_MS = 8_640_000_000_000_000 as const;
+
+const PublicRef = S.String.check(
+  S.isMinLength(1),
+  S.isMaxLength(256),
+  S.isPattern(/^[A-Za-z0-9._:-]+$/),
+);
+const TimestampMs = S.Number.check(
+  S.isInt(),
+  S.isGreaterThanOrEqualTo(0),
+  S.isLessThanOrEqualTo(MAX_ISSUE31_TIMESTAMP_MS),
+);
+
+export const Issue31ProjectionCapabilitySchema = S.Literals([
+  "connection_identity",
+  "full_auto_runs",
+  "provider_accounts",
+  "evidence_chain",
+]);
+export type Issue31ProjectionCapability = S.Schema.Type<typeof Issue31ProjectionCapabilitySchema>;
+
+export const Issue31ProjectionSourceSchema = S.Struct({
+  kind: S.Literal("omega_host"),
+  sourceRef: PublicRef,
+  observedAtMs: TimestampMs,
+});
+export interface Issue31ProjectionSource extends S.Schema.Type<
+  typeof Issue31ProjectionSourceSchema
+> {}
+
+export const Issue31ProjectionFreshnessSchema = S.Literals(["current", "stale", "unknown"]);
+export type Issue31ProjectionFreshness = S.Schema.Type<typeof Issue31ProjectionFreshnessSchema>;
+
+export const Issue31GapSchema = S.Literals(["complete", "partial", "missing", "unavailable"]);
+export type Issue31Gap = S.Schema.Type<typeof Issue31GapSchema>;
+
+export const Issue31RoleSchema = S.Struct({
+  kind: S.Literals(["owner", "member", "verifier", "observer"]),
+  status: S.Literals(["active", "revoked", "unknown"]),
+  grantRef: S.optional(PublicRef),
+});
+export interface Issue31Role extends S.Schema.Type<typeof Issue31RoleSchema> {}
+
+export const Issue31CommandStateSchema = S.Union([
+  S.Struct({ kind: S.Literal("idle") }),
+  S.Struct({
+    kind: S.Literal("pending"),
+    intentRef: PublicRef,
+    actionRef: PublicRef,
+  }),
+  S.Struct({
+    kind: S.Literal("refused"),
+    intentRef: PublicRef,
+    actionRef: PublicRef,
+    reasonClass: PublicRef,
+    decisionRef: PublicRef,
+    receiptRef: S.optional(PublicRef),
+  }),
+  S.Struct({
+    kind: S.Literal("terminal"),
+    intentRef: PublicRef,
+    actionRef: PublicRef,
+    state: S.Literals(["succeeded", "failed", "stopped", "unavailable"]),
+    outcomeRef: PublicRef,
+    reasonRef: S.optional(PublicRef),
+    receiptRef: S.optional(PublicRef),
+  }),
+]);
+export type Issue31CommandState = S.Schema.Type<typeof Issue31CommandStateSchema>;
+
+export const Issue31HostProjectionSchema = S.Struct({
+  capability: Issue31ProjectionCapabilitySchema,
+  source: Issue31ProjectionSourceSchema,
+  freshness: Issue31ProjectionFreshnessSchema,
+  gap: Issue31GapSchema,
+  role: Issue31RoleSchema,
+  recordRefs: S.Array(PublicRef).check(S.isMaxLength(MAX_ISSUE31_PROJECTION_REFS)),
+  permittedActionRefs: S.Array(PublicRef).check(S.isMaxLength(MAX_ISSUE31_PROJECTION_REFS)),
+  commandState: Issue31CommandStateSchema,
+});
+export interface Issue31HostProjection extends S.Schema.Type<typeof Issue31HostProjectionSchema> {}
+
+export const Issue31HostAdjunctSchema = S.Struct({
+  schema: S.Literal(ISSUE31_HOST_ADJUNCT_SCHEMA),
+  hostRef: PublicRef,
+  snapshotRef: PublicRef,
+  generatedAtMs: TimestampMs,
+  projections: S.Array(Issue31HostProjectionSchema).check(S.isMinLength(4), S.isMaxLength(4)),
+});
+export interface Issue31HostAdjunct extends S.Schema.Type<typeof Issue31HostAdjunctSchema> {}
+
+const forbiddenRefFragments = [
+  "api_key",
+  "apikey",
+  "access_token",
+  "refresh_token",
+  "openagents_agent_token",
+  "client_secret",
+  "private_key",
+] as const;
+
+export const isIssue31PublicRef = (value: string): boolean => {
+  const trimmed = value.trim();
+  if (trimmed.length === 0 || trimmed.length > 256 || trimmed !== value) return false;
+  if (!/^[A-Za-z0-9._:-]+$/.test(trimmed)) return false;
+  const lower = trimmed.toLowerCase();
+  if (
+    lower.startsWith("sk-") ||
+    lower.startsWith("sk_") ||
+    lower.startsWith("ghp_") ||
+    lower.startsWith("gho_") ||
+    lower.startsWith("github_pat_") ||
+    lower.startsWith("xox") ||
+    lower.startsWith("nsec1") ||
+    lower.startsWith("ncryptsec1") ||
+    lower.includes("authorization:") ||
+    lower.endsWith(".pem") ||
+    lower.endsWith(".key") ||
+    lower.includes("id_rsa") ||
+    forbiddenRefFragments.some((fragment) => lower.includes(fragment))
+  )
+    return false;
+  if (
+    trimmed.length >= 40 &&
+    !trimmed.includes(".") &&
+    !trimmed.includes(":") &&
+    /^[A-Za-z0-9+/_=-]+$/.test(trimmed)
+  )
+    return false;
+  return (
+    trimmed.includes(".") || trimmed.includes(":") || trimmed.includes("_") || trimmed.length <= 64
+  );
+};
+
+const publicRefsForCommand = (command: Issue31CommandState): ReadonlyArray<string> => {
+  if (command.kind === "idle") return [];
+  if (command.kind === "pending") return [command.intentRef, command.actionRef];
+  if (command.kind === "refused") {
+    return [
+      command.intentRef,
+      command.actionRef,
+      command.reasonClass,
+      command.decisionRef,
+      ...(command.receiptRef === undefined ? [] : [command.receiptRef]),
+    ];
+  }
+  return [
+    command.intentRef,
+    command.actionRef,
+    command.outcomeRef,
+    ...(command.reasonRef === undefined ? [] : [command.reasonRef]),
+    ...(command.receiptRef === undefined ? [] : [command.receiptRef]),
+  ];
+};
+
+const assertUniqueRefs = (refs: ReadonlyArray<string>): void => {
+  if (new Set(refs).size !== refs.length) {
+    throw new Error("Issue 31 host adjunct repeats a projection reference.");
+  }
+};
+
+const assertProjectionLaws = (projection: Issue31HostProjection, generatedAtMs: number): void => {
+  if (projection.source.observedAtMs > generatedAtMs) {
+    throw new Error("Issue 31 host adjunct timestamp order is invalid.");
+  }
+  const refs = [
+    projection.source.sourceRef,
+    ...(projection.role.grantRef === undefined ? [] : [projection.role.grantRef]),
+    ...projection.recordRefs,
+    ...projection.permittedActionRefs,
+    ...publicRefsForCommand(projection.commandState),
+  ];
+  if (!refs.every(isIssue31PublicRef)) {
+    throw new Error("Issue 31 host adjunct contains an unsafe reference.");
+  }
+  assertUniqueRefs(projection.recordRefs);
+  assertUniqueRefs(projection.permittedActionRefs);
+
+  if (projection.gap === "complete" || projection.gap === "partial") {
+    if (projection.freshness === "unknown") {
+      throw new Error("Issue 31 host adjunct projection state is invalid.");
+    }
+  } else if (
+    projection.freshness !== "unknown" ||
+    projection.recordRefs.length !== 0 ||
+    projection.permittedActionRefs.length !== 0 ||
+    projection.commandState.kind !== "idle"
+  ) {
+    throw new Error("Issue 31 host adjunct projection state is invalid.");
+  }
+
+  if (projection.role.status === "active" && projection.role.grantRef === undefined) {
+    throw new Error("Issue 31 host adjunct role state is invalid.");
+  }
+  if (projection.role.status === "unknown" && projection.role.grantRef !== undefined) {
+    throw new Error("Issue 31 host adjunct role state is invalid.");
+  }
+  if (
+    projection.role.status !== "active" &&
+    (projection.permittedActionRefs.length !== 0 || projection.commandState.kind === "pending")
+  ) {
+    throw new Error("Issue 31 host adjunct role state is invalid.");
+  }
+  if (
+    projection.commandState.kind === "pending" &&
+    !projection.permittedActionRefs.includes(projection.commandState.actionRef)
+  ) {
+    throw new Error("Issue 31 host adjunct command state is invalid.");
+  }
+};
+
+const decodeHostAdjunct = S.decodeUnknownSync(Issue31HostAdjunctSchema);
+
+export const decodeIssue31HostAdjunct = (value: unknown): Issue31HostAdjunct => {
+  const adjunct = decodeHostAdjunct(value, { onExcessProperty: "error" });
+  if (!isIssue31PublicRef(adjunct.hostRef) || !isIssue31PublicRef(adjunct.snapshotRef)) {
+    throw new Error("Issue 31 host adjunct contains an unsafe reference.");
+  }
+  const capabilities = adjunct.projections.map((projection) => projection.capability);
+  const expected = [
+    "connection_identity",
+    "full_auto_runs",
+    "provider_accounts",
+    "evidence_chain",
+  ] as const;
+  if (
+    new Set(capabilities).size !== capabilities.length ||
+    expected.some((value) => !capabilities.includes(value))
+  ) {
+    throw new Error("Issue 31 host adjunct needs four unique capability projections.");
+  }
+  for (const projection of adjunct.projections) {
+    assertProjectionLaws(projection, adjunct.generatedAtMs);
+  }
+  return adjunct;
+};

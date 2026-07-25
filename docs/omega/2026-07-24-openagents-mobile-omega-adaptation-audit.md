@@ -639,6 +639,55 @@ Do not claim issue `#31` parity until every section 11.1 row passes with:
 - accessibility traversal
 - no private data in push, logs, public events, or receipts
 
+### 11.5 `OMEGA-MOB-31-00` coverage map
+
+Omega issue `#44` freezes the first mobile coverage map.
+The map has these eleven rows.
+
+| Capability | Durable authority | Host adjunct | First route state |
+| --- | --- | --- | --- |
+| Connection and identity | Signed Nostr device, host, binding, grant, and revocation records | `connection_identity` is a host observation only | unavailable until the signed Nostr source connects |
+| Owner-private Sarah | NIP-17, NIP-44, NIP-59, and the Sarah turn record | none | unavailable until the signed turn source connects |
+| Memory | NIP-AE and `openagents.sarah.nip_ae_companion.v1` | none | unavailable until the signed memory source connects |
+| Read state and reminders | NIP-RS and NIP-ER | none | unavailable until the signed state source connects |
+| Attention and receipts | Signed Sarah turn, read-state, and reminder targets | none | unavailable until the signed target source connects |
+| Full Auto | Omega run owner | `full_auto_runs` | unavailable until the Omega adjunct connects |
+| Provider accounts | Omega provider roster owner | `provider_accounts` | unavailable until the Omega adjunct connects |
+| Evidence chain | Omega evidence owner | `evidence_chain` | unavailable until the Omega adjunct connects |
+| Community membership | NIP-29, NIP-OA, NIP-AP, and the Sarah membership record | none | unavailable until the signed membership source connects |
+| Community work | NIP-29, NIP-LBR, and the Sarah work lifecycle | none | unavailable until the signed work source connects |
+| Experience | NIP-32, NIP-58, NIP-85, and the Sarah experience record | none | unavailable until the signed experience source connects |
+
+The local read model is `openagents.mobile.issue31_workroom_read_model.v1`.
+It is a projection and is not durable authority.
+Each row shows its source, freshness, gap, reason, and role state.
+Each row also shows an idle, pending, refused, or terminal action state.
+An absent source becomes an explicit `unavailable` row.
+
+The Workroom route has an owner-private selector and a community selector.
+The route is available before an OpenAuth session exists.
+The selectors do not share a history or a membership set.
+The shared host rows can appear in both route sections.
+
+The host adjunct is `openagents.omega.issue31.host.v1`.
+Rust and TypeScript use the same four fixture files.
+Their SHA-256 values are:
+
+| Fixture | SHA-256 |
+| --- | --- |
+| `openagents.omega.issue31.host.v1.canonical.json` | `c5ef757ef8787e7626cdad98ef50a83a763d90067c2b7bb4972783b032bb825d` |
+| `openagents.omega.issue31.host.v1.negative-invalid-state.json` | `b5c89c27529c76ea95c2dcd6549c5664f3f1c852e1c8ad98ff09b9e85c6bdba1` |
+| `openagents.omega.issue31.host.v1.negative-private-field.json` | `107654b87ef310c20f2431d3e020949f1322dee239bb43f0b4888e72a81c8b86` |
+| `openagents.omega.issue31.host.v1.negative-unsafe-ref.json` | `ec41e1b35c375270e2debc96125adc75ff0d773d764851b9005e2c7f6e0b5f4e` |
+
+The decoder rejects an unknown field, an unsafe reference, an invalid state,
+an unbounded list, a duplicate reference, and a duplicate capability.
+It also rejects a private path, a token, `nsec1`, and `ncryptsec1`.
+It limits a timestamp so that a mobile date conversion cannot fail.
+
+This packet does not claim issue `#31` parity.
+It makes all missing sources visible before the transport work starts.
+
 ## 12. Recommended next-seven-day plan
 
 This audit does not admit a packet in this section.

@@ -1,0 +1,111 @@
+{
+  "schema": "openagents.omega.issue31.host.v1",
+  "hostRef": "host.omega.device-alpha",
+  "snapshotRef": "snapshot.omega.issue31.000042",
+  "generatedAtMs": 1784894400000,
+  "projections": [
+    {
+      "capability": "connection_identity",
+      "source": {
+        "kind": "omega_host",
+        "sourceRef": "source.omega.identity-binding",
+        "observedAtMs": 1784894399000
+      },
+      "freshness": "current",
+      "gap": "complete",
+      "role": {
+        "kind": "owner",
+        "status": "active",
+        "grantRef": "grant.omega.mobile.owner-01"
+      },
+      "recordRefs": [
+        "record.omega.host-announcement.01",
+        "record.omega.owner-binding.01"
+      ],
+      "permittedActionRefs": [
+        "action.omega.device.pair",
+        "action.omega.device.renew",
+        "action.omega.device.revoke"
+      ],
+      "commandState": { "kind": "idle" }
+    },
+    {
+      "capability": "full_auto_runs",
+      "source": {
+        "kind": "omega_host",
+        "sourceRef": "source.omega.full-auto-registry",
+        "observedAtMs": 1784894340000
+      },
+      "freshness": "stale",
+      "gap": "partial",
+      "role": {
+        "kind": "owner",
+        "status": "active",
+        "grantRef": "grant.omega.mobile.owner-01"
+      },
+      "recordRefs": ["record.full-auto.run.run-01"],
+      "permittedActionRefs": [
+        "action.full-auto.pause",
+        "action.full-auto.resume",
+        "action.full-auto.stop",
+        "action.full-auto.ask-sarah"
+      ],
+      "commandState": {
+        "kind": "pending",
+        "intentRef": "intent.full-auto.pause.01",
+        "actionRef": "action.full-auto.pause"
+      }
+    },
+    {
+      "capability": "provider_accounts",
+      "source": {
+        "kind": "omega_host",
+        "sourceRef": "source.omega.provider-roster",
+        "observedAtMs": 1784894398000
+      },
+      "freshness": "current",
+      "gap": "complete",
+      "role": {
+        "kind": "owner",
+        "status": "active",
+        "grantRef": "grant.omega.mobile.owner-01"
+      },
+      "recordRefs": ["record.provider.roster.01"],
+      "permittedActionRefs": ["action.provider.request-connect-handoff"],
+      "commandState": {
+        "kind": "refused",
+        "intentRef": "intent.provider.connect.01",
+        "actionRef": "action.provider.request-connect-handoff",
+        "reasonClass": "provider_login_requires_host",
+        "decisionRef": "decision.provider.connect.01",
+        "receiptRef": "receipt.provider.connect.01"
+      }
+    },
+    {
+      "capability": "evidence_chain",
+      "source": {
+        "kind": "omega_host",
+        "sourceRef": "source.omega.evidence-inspector",
+        "observedAtMs": 1784894397000
+      },
+      "freshness": "current",
+      "gap": "complete",
+      "role": {
+        "kind": "verifier",
+        "status": "active",
+        "grantRef": "grant.omega.mobile.verifier-01"
+      },
+      "recordRefs": ["record.evidence.chain.run-01"],
+      "permittedActionRefs": [],
+      "commandState": {
+        "kind": "terminal",
+        "intentRef": "intent.evidence.verify.01",
+        "actionRef": "action.evidence.verify",
+        "state": "succeeded",
+        "outcomeRef": "outcome.evidence.verify.01",
+        "reasonRef": "reason.evidence.chain-valid",
+        "receiptRef": "receipt.evidence.verify.01"
+      }
+    }
+  ]
+}

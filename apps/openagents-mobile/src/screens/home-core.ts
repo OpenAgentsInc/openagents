@@ -150,6 +150,12 @@ import { renderMobileChangesView } from "./mobile-changes-view"
 import { renderMobileGitView } from "./mobile-git-view"
 import { renderMobileTerminalView } from "./mobile-terminal-view"
 import { renderMobileSettingsView } from "./mobile-settings-view"
+import { renderMobileIssue31WorkroomView } from "./mobile-issue31-workroom-view"
+import {
+  emptyIssue31WorkroomReadModel,
+  type Issue31WorkroomReadModel,
+  type Issue31WorkroomRoom,
+} from "../workroom/issue31-workroom-read-model"
 import {
   decodeMobileEnvironmentDirectory,
   decodeMobileEnvironmentReceipt,
@@ -241,7 +247,9 @@ export interface HomeState {
   readonly workspaceSidebarCollapsed: boolean
   readonly workspaceFocusTarget: MobileWorkspaceFocusTarget
   readonly surfaceMode: SurfaceMode
-  readonly workbenchRoute: "conversation" | "files" | "changes" | "git" | "terminal" | "settings"
+  readonly workbenchRoute: "conversation" | "workroom" | "files" | "changes" | "git" | "terminal" | "settings"
+  readonly issue31Workroom: Issue31WorkroomReadModel
+  readonly issue31WorkroomRoom: Issue31WorkroomRoom
   readonly repositoryBrowser: MobileRepositoryBrowserState
   readonly repositoryReview: MobileRepositoryReviewState
   readonly repositoryGit: MobileRepositoryGitState
@@ -431,6 +439,8 @@ export const initialHomeState: HomeState = {
   workspaceFocusTarget: "transcript",
   surfaceMode: "khala",
   workbenchRoute: "conversation",
+  issue31Workroom: emptyIssue31WorkroomReadModel(),
+  issue31WorkroomRoom: "owner_private",
   repositoryBrowser: initialMobileRepositoryBrowserState,
   repositoryReview: initialMobileRepositoryReviewState,
   repositoryGit: initialMobileRepositoryGitState,
@@ -670,6 +680,11 @@ export const CodingComposerPathSelected = defineIntent(
   "CodingComposerPathSelected",
   Schema.String,
 )
+export const Issue31WorkroomOpened = defineIntent("Issue31WorkroomOpened", EmptyPayload)
+export const Issue31WorkroomRoomSelected = defineIntent(
+  "Issue31WorkroomRoomSelected",
+  Schema.Struct({ room: Schema.Literals(["owner_private", "community"]) }),
+)
 export const ChangesRouteOpened = defineIntent("ChangesRouteOpened", EmptyPayload)
 export const WorkbenchConversationOpened = defineIntent("WorkbenchConversationOpened", EmptyPayload)
 export const RepositoryChangesRefreshed = defineIntent("RepositoryChangesRefreshed", EmptyPayload)
@@ -894,6 +909,8 @@ export const homeIntentDefinitions = [
   CodingComposerSlashCommandSelected,
   CodingComposerPathQueryChanged,
   CodingComposerPathSelected,
+  Issue31WorkroomOpened,
+  Issue31WorkroomRoomSelected,
   ChangesRouteOpened,
   WorkbenchConversationOpened,
   RepositoryChangesRefreshed,
@@ -974,6 +991,12 @@ export interface MobileHeaderProps {
  * authority of their own.
  */
 export const mobileHeaderProps = (state: HomeState): MobileHeaderProps => {
+  if (state.workbenchRoute === "workroom") {
+    return {
+      title: "Workroom",
+      subtitle: state.issue31WorkroomRoom === "owner_private" ? "Owner-private" : "Community",
+    }
+  }
   if (state.workbenchRoute === "settings") {
     return { title: "Settings", subtitle: state.settings.section === "root" ? "OpenAgents mobile" : state.settings.section }
   }
@@ -1103,7 +1126,8 @@ export const chromeProps = (state: HomeState): ChromeProps => ({
     ? "Message Sarah"
     : state.conversationAuthority === "sync" ? "Continue conversation" : "Message Khala",
   chromeVisible: !state.drawerOpen,
-  glassComposerVisible: !state.drawerOpen && state.surfaceMode === "khala",
+  glassComposerVisible:
+    !state.drawerOpen && state.surfaceMode === "khala" && state.workbenchRoute === "conversation",
   surfaceMode: state.surfaceMode,
   draft: state.khala.draft,
   sending: state.khala.pending,
@@ -1159,7 +1183,13 @@ export const renderContentView = (state: HomeState): View =>
       direction: "column",
       style: { width: "full", height: "full", backgroundColor: "background" },
     },
-    state.workbenchRoute === "terminal"
+    state.workbenchRoute === "workroom"
+      ? [renderMobileIssue31WorkroomView(
+          state.issue31Workroom,
+          state.issue31WorkroomRoom,
+          state.accessibility,
+        )]
+      : state.workbenchRoute === "terminal"
       ? [renderMobileTerminalView(state.repositoryTerminal, state.accessibility)]
       : state.workbenchRoute === "settings"
       ? [renderMobileSettingsView(state.settings, state.accessibility, {
@@ -2198,6 +2228,12 @@ export const renderDrawerView = (state: HomeState): View =>
         selected: state.sarah !== null && state.activeThreadRef === state.sarah.threadRef,
       }, state.accessibility),
       drawerRow({ key: "drawer-new-chat", label: "New chat", onPress: IntentRef("NewChatPressed", StaticPayload({})), selected: state.surfaceMode === "khala" && state.khala.entries.length === 0 }, state.accessibility),
+      drawerRow({
+        key: "drawer-issue31-workroom",
+        label: "Workroom",
+        onPress: IntentRef("Issue31WorkroomOpened", StaticPayload({})),
+        selected: state.workbenchRoute === "workroom",
+      }, state.accessibility),
       ...(sarahIsActive(state)
         ? sarahFocusedNavigationRows(state)
         : [
@@ -2251,6 +2287,7 @@ export interface HomeProgramOptions {
   readonly accessibility?: MobileAccessibilityProfile
   readonly sarah?: SarahPrincipalProjection
   readonly sarahSpeech?: SarahSpeechPlaybackPort
+  readonly issue31Workroom?: Issue31WorkroomReadModel
   /** Initial live `FullAutoRun` mobile projection, when already resolved at
    * selection time (openagents #8982). Later updates flow through
    * `program.fullAuto.setProjection`, not another `buildHomeProgram` call. */
@@ -4494,6 +4531,17 @@ export const makeHomeHandlers = (
         !before.khala.runtimeControlActionsAvailable || synced === undefined) return
       yield* synced.RuntimeTurnControlRequested({ action: "cancel", runRef: payload.runRef })
     }),
+    Issue31WorkroomOpened: () => SubscriptionRef.update(state, current => ({
+      ...current,
+      drawerOpen: false,
+      workspaceFocusTarget: "transcript" as const,
+      workbenchRoute: "workroom" as const,
+    })),
+    Issue31WorkroomRoomSelected: ({ room }: { readonly room: Issue31WorkroomRoom }) =>
+      SubscriptionRef.update(state, current => ({
+        ...current,
+        issue31WorkroomRoom: room,
+      })),
     SettingsPressed: () => Effect.gen(function* () {
       yield* SubscriptionRef.update(state, current => ({
         ...current,
@@ -5217,6 +5265,11 @@ export interface HomeProgramHandle {
   readonly sync: {
     readonly setPhase: (phase: MobileSyncPhase) => void
   }
+  readonly workroom: {
+    readonly open: () => void
+    readonly selectRoom: (room: Issue31WorkroomRoom) => void
+    readonly setReadModel: (model: Issue31WorkroomReadModel) => void
+  }
   readonly workspace: {
     readonly setWidth: (width: number) => void
     readonly dispatchKeyboardCommand: (command: MobileWorkspaceKeyboardCommand) => void
@@ -5315,6 +5368,7 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
       const programInitialState: HomeState = {
         ...baseInitialState,
         sarah: options.sarah ?? null,
+        issue31Workroom: options.issue31Workroom ?? baseInitialState.issue31Workroom,
         workspaceLayoutMode: mobileWorkspaceLayoutMode(options.workspaceWidth ?? 390),
         codingDirectory: options.coding?.directory ?? null,
         portableSnapshot: options.coding?.portableSnapshot ?? null,
@@ -5504,6 +5558,19 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
                     khala: initialKhalaState,
                   }
                 : { ...current, syncPhase: phase }))
+          },
+        },
+        workroom: {
+          open: fire("Issue31WorkroomOpened"),
+          selectRoom: room => fireRef(IntentRef(
+            "Issue31WorkroomRoomSelected",
+            StaticPayload({ room }),
+          )),
+          setReadModel: model => {
+            Effect.runFork(SubscriptionRef.update(state, current => ({
+              ...current,
+              issue31Workroom: model,
+            })))
           },
         },
         workspace: {
