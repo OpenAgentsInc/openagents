@@ -23,6 +23,7 @@ import {
   attachOwnerAttestation,
   createEmptyLedger,
   isAgentAdmitted,
+  isAgentKeyBurned,
   isMemberActive,
   issueInvitation,
   revokeAgent,
@@ -138,6 +139,154 @@ describe("revocation survives replay of the granting event", () => {
       }),
     ).toThrow();
     expect(isAgentAdmitted(ledger, first.agentPubkey)).toBe(false);
+  });
+
+  test("re-admitting the operator does not launder their burned agent key", () => {
+    // The scan over member rows closed the direct replay, but the burn was
+    // still *derived* from mutable state: `acceptInvitation` builds a fresh
+    // member row with an empty agent list, so re-inviting the operator deleted
+    // the only evidence the scan could see. Replaying the original attestation
+    // then worked again. Revocation is a statement about the key, not about
+    // the membership event that carried it.
+    const party = identities();
+    let ledger = admittedLedger(party);
+    ledger = revokeAgent(ledger, {
+      agentPubkey: party.agentPubkey,
+      reason: "test",
+    }).ledger;
+    expect(isAgentAdmitted(ledger, party.agentPubkey)).toBe(false);
+
+    // The owner re-admits the same operator through a fresh invitation. This
+    // is a supported path: revocation bars the burned key, not the person.
+    ledger = revokeMember(ledger, {
+      operatorPubkey: party.operatorPubkey,
+      reason: "test",
+    }).ledger;
+    ledger = issueInvitation(ledger, {
+      invitationId: "inv.readmit",
+      inviterPubkey: INVITER,
+      inviteePubkey: party.operatorPubkey,
+    }).ledger;
+    ledger = acceptInvitation(ledger, {
+      invitationId: "inv.readmit",
+      inviteePubkey: party.operatorPubkey,
+    }).ledger;
+    expect(isMemberActive(ledger, party.operatorPubkey)).toBe(true);
+
+    // The exact replay, against a member row that no longer remembers the burn.
+    expect(() =>
+      attachAgent(ledger, {
+        operatorPubkey: party.operatorPubkey,
+        agentPubkey: party.agentPubkey,
+        ownerAuthTag: [...party.ownerAuthTag],
+      }),
+    ).toThrow(/revoked agent key/);
+    expect(isAgentAdmitted(ledger, party.agentPubkey)).toBe(false);
+    expect(isAgentKeyBurned(ledger, party.agentPubkey)).toBe(true);
+  });
+
+  test("revoking the member burns their agent keys against re-admission", () => {
+    // revokeMember revokes the agents in the same step, so those keys must
+    // burn too. Otherwise a re-invited operator re-attaches everything they
+    // held before, and member revocation means nothing for their fleet.
+    const party = identities();
+    let ledger = admittedLedger(party);
+    ledger = revokeMember(ledger, {
+      operatorPubkey: party.operatorPubkey,
+      reason: "test",
+    }).ledger;
+    expect(isAgentKeyBurned(ledger, party.agentPubkey)).toBe(true);
+
+    ledger = issueInvitation(ledger, {
+      invitationId: "inv.readmit.2",
+      inviterPubkey: INVITER,
+      inviteePubkey: party.operatorPubkey,
+    }).ledger;
+    ledger = acceptInvitation(ledger, {
+      invitationId: "inv.readmit.2",
+      inviteePubkey: party.operatorPubkey,
+    }).ledger;
+
+    expect(() =>
+      attachAgent(ledger, {
+        operatorPubkey: party.operatorPubkey,
+        agentPubkey: party.agentPubkey,
+        ownerAuthTag: [...party.ownerAuthTag],
+      }),
+    ).toThrow(/revoked agent key/);
+  });
+
+  test("the burn survives a restart that replays the record in order", () => {
+    // A revocation a restart undoes is not a revocation. The ledger is pure
+    // in-memory state rebuilt from the event record, so the burn has to be
+    // reconstructible — it cannot live only in a row a later event replaces.
+    const party = identities();
+    const replay = (): ReturnType<typeof createEmptyLedger> => {
+      let ledger = createEmptyLedger({ groupId: "oa.community.v1" });
+      ledger = issueInvitation(ledger, {
+        invitationId: "inv.1",
+        inviterPubkey: INVITER,
+        inviteePubkey: party.operatorPubkey,
+      }).ledger;
+      ledger = acceptInvitation(ledger, {
+        invitationId: "inv.1",
+        inviteePubkey: party.operatorPubkey,
+      }).ledger;
+      ledger = attachAgent(ledger, {
+        operatorPubkey: party.operatorPubkey,
+        agentPubkey: party.agentPubkey,
+        ownerAuthTag: [...party.ownerAuthTag],
+      }).ledger;
+      ledger = revokeAgent(ledger, {
+        agentPubkey: party.agentPubkey,
+        reason: "test",
+      }).ledger;
+      ledger = revokeMember(ledger, {
+        operatorPubkey: party.operatorPubkey,
+        reason: "test",
+      }).ledger;
+      ledger = issueInvitation(ledger, {
+        invitationId: "inv.2",
+        inviterPubkey: INVITER,
+        inviteePubkey: party.operatorPubkey,
+      }).ledger;
+      return acceptInvitation(ledger, {
+        invitationId: "inv.2",
+        inviteePubkey: party.operatorPubkey,
+      }).ledger;
+    };
+
+    const restarted = replay();
+    expect(isAgentKeyBurned(restarted, party.agentPubkey)).toBe(true);
+    expect(() =>
+      attachAgent(restarted, {
+        operatorPubkey: party.operatorPubkey,
+        agentPubkey: party.agentPubkey,
+        ownerAuthTag: [...party.ownerAuthTag],
+      }),
+    ).toThrow(/revoked agent key/);
+  });
+
+  test("a ledger rebuilt from member rows alone still refuses a burned key", () => {
+    // Defence in depth for persistence that stores member rows but drops the
+    // burn set: the row scan still sees the revoked binding, so neither
+    // representation alone can erase the burn.
+    const party = identities();
+    let ledger = admittedLedger(party);
+    ledger = revokeAgent(ledger, {
+      agentPubkey: party.agentPubkey,
+      reason: "test",
+    }).ledger;
+
+    const withoutBurnSet = { ...ledger, burnedAgentKeys: new Set<string>() };
+    expect(isAgentKeyBurned(withoutBurnSet, party.agentPubkey)).toBe(true);
+    expect(() =>
+      attachAgent(withoutBurnSet, {
+        operatorPubkey: party.operatorPubkey,
+        agentPubkey: party.agentPubkey,
+        ownerAuthTag: [...party.ownerAuthTag],
+      }),
+    ).toThrow(/revoked agent key/);
   });
 
   test("an unrelated fresh agent key still attaches normally", () => {

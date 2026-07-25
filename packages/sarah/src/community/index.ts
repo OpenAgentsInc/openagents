@@ -26,6 +26,7 @@ export {
   checkRelayAdmission,
   createEmptyLedger,
   isAgentAdmitted,
+  isAgentKeyBurned,
   isMemberActive,
   issueInvitation,
   rateLimitUnitForAgent,

@@ -31,6 +31,21 @@ export type CommunityMembershipLedger = {
   readonly members: ReadonlyMap<string, CommunityMember>;
   readonly agentIndex: ReadonlyMap<string, string>; // agentPubkey -> operatorPubkey
   readonly rateLimits: ReadonlyMap<string, CommunityOperatorRateLimit>;
+  /**
+   * Agent keys that revocation burned, community-wide and forever.
+   *
+   * This set only ever grows. It exists because the burn cannot be *derived*
+   * from member rows: a member row is mutable state that re-admission replaces,
+   * and an earlier version of this module read the burn out of
+   * `member.agents`. Re-inviting the operator produced a fresh row with an
+   * empty agent list, the burn evidence vanished with the old row, and
+   * replaying the original owner attestation re-attached the revoked key.
+   *
+   * Revocation is a statement about the key, not about the membership event
+   * that happened to carry it. Persist and replay this set with the ledger —
+   * a revocation a restart undoes is not a revocation.
+   */
+  readonly burnedAgentKeys: ReadonlySet<string>;
 };
 
 export const createEmptyLedger = (params: {
@@ -51,6 +66,7 @@ export const createEmptyLedger = (params: {
     members: new Map(),
     agentIndex: new Map(),
     rateLimits: new Map(),
+    burnedAgentKeys: new Set(),
   };
 };
 
@@ -66,7 +82,43 @@ const cloneLedger = (
   members: patch.members ?? ledger.members,
   agentIndex: patch.agentIndex ?? ledger.agentIndex,
   rateLimits: patch.rateLimits ?? ledger.rateLimits,
+  burnedAgentKeys: patch.burnedAgentKeys ?? ledger.burnedAgentKeys ?? new Set(),
 });
+
+/**
+ * True when revocation burned this agent key.
+ *
+ * Reads the explicit burn set *and* every member row, so a ledger rebuilt from
+ * persisted member rows alone still refuses a burned key, and a ledger that
+ * replaced a member row still refuses one. Neither representation alone can
+ * erase the burn.
+ */
+export const isAgentKeyBurned = (
+  ledger: CommunityMembershipLedger,
+  agentPubkey: string,
+): boolean => {
+  const key = agentPubkey.toLowerCase();
+  if (ledger.burnedAgentKeys?.has(key) === true) return true;
+  for (const member of ledger.members.values()) {
+    if (
+      member.agents.some(
+        (agent) => agent.agentPubkey === key && agent.status === "revoked",
+      )
+    ) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const withBurnedKeys = (
+  ledger: CommunityMembershipLedger,
+  keys: ReadonlyArray<string>,
+): ReadonlySet<string> => {
+  const next = new Set(ledger.burnedAgentKeys ?? []);
+  for (const key of keys) next.add(key.toLowerCase());
+  return next;
+};
 
 /** Assert the ledger still uses the admitted invitation-only gate. */
 export const assertInvitationOnlyGate = (
@@ -272,20 +324,18 @@ export const attachAgent = (
   // replaced with a fresh active one, which silently erased the revocation.
   // Replaying the original attestation was enough to restore the agent.
   //
-  // The scan covers every member, not just this one, so a revoked key cannot
-  // be adopted by a second operator either. Re-admitting a revoked agent
-  // requires a new key, which is what makes revocation mean anything.
-  for (const existingMember of ledger.members.values()) {
-    if (
-      existingMember.agents.some(
-        (agent) => agent.agentPubkey === agentPubkey && agent.status === "revoked",
-      )
-    ) {
-      throw new CommunityMembershipError(
-        "agent_revoked",
-        "community: revoked agent key cannot be attached again",
-      );
-    }
+  // Scanning every member closed the direct replay and the hand-it-to-a-second-
+  // operator laundering. It did not close re-admission: `acceptInvitation`
+  // built a *fresh* member row with an empty agent list, so re-inviting the
+  // operator deleted the only evidence the scan could see and the same replay
+  // worked again. The burn is now an explicit monotonic fact on the ledger,
+  // checked alongside the row scan, because a revocation that any later write
+  // can erase is not a revocation.
+  if (isAgentKeyBurned(ledger, agentPubkey)) {
+    throw new CommunityMembershipError(
+      "agent_revoked",
+      "community: revoked agent key cannot be attached again",
+    );
   }
 
   if (ledger.agentIndex.has(agentPubkey)) {
@@ -406,7 +456,11 @@ export const revokeAgent = (
   agentIndex.delete(agentPubkey);
 
   return {
-    ledger: cloneLedger(ledger, { members, agentIndex }),
+    ledger: cloneLedger(ledger, {
+      members,
+      agentIndex,
+      burnedAgentKeys: withBurnedKeys(ledger, [agentPubkey]),
+    }),
     binding,
   };
 };
@@ -469,8 +523,17 @@ export const revokeMember = (
     agentIndex.delete(a.agentPubkey);
   }
 
+  // Revoking a member revokes their agents, so those keys burn too. Otherwise
+  // a re-invited operator could re-attach every key they had before.
   return {
-    ledger: cloneLedger(ledger, { members, agentIndex }),
+    ledger: cloneLedger(ledger, {
+      members,
+      agentIndex,
+      burnedAgentKeys: withBurnedKeys(
+        ledger,
+        member.agents.map((a) => a.agentPubkey),
+      ),
+    }),
     member: next,
   };
 };
