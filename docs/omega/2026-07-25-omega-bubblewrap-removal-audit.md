@@ -109,11 +109,39 @@ Required, in priority order:
    matrix already does this correctly — it runs in a disposable keychain — and
    that pattern is the standard.
 
+## Adversarial review, 2026-07-25
+
+A distinct agent reviewed the landed work with the job of falsifying it. It is
+worth recording what that caught, because none of it would have surfaced from
+the producing agent re-reading its own change.
+
+- **A false claim.** `OMEGA_DELTAS.md` stated that `ToggleWorktreeSecurity`
+  still opened the trust modal on demand, so `OMEGA-DELTA-0001` removed only
+  the automatic interruption. False: `can_trust`
+  (`crates/project/src/trusted_worktrees.rs:469`) returns early before
+  populating the `restricted` map, so `has_restricted_worktrees` is permanently
+  false and the action is a silent no-op.
+- **A real hole.** `handle_restrict_worktrees` called `restrict()`
+  unconditionally, so a remote server running upstream Zed could push
+  Restricted Mode onto the local machine regardless of the local default.
+- **A weaker check than its own documentation claimed.** The registry check
+  matched delta IDs as substrings and enforced only one direction.
+- **The biggest miss in the first pass:** the agent tool permission default,
+  now `OMEGA-DELTA-0002`.
+- **Newly inventoried surfaces:** three ambient suggestion nags, a trial-end
+  upsell that blocks mouse input, the dormant-but-compiled Restricted Mode UI,
+  and the observation that the unsaved-buffer prompt is frequent because
+  autosave is off — making autosave the better lever than deleting a prompt
+  that guards real data.
+
+All corrections landed in omega `00e16be1c9`. Tracked as omega#54 and children.
+
 ## Open, and not claimed
 
-- Item 2 is the highest-value change in this document and is **not yet made**.
-  It needs a decision on which tool patterns stay in `always_confirm`.
 - Items 3–8 are proposals. No code has been removed for them.
-- An adversarial review of `OMEGA-DELTA-0001` and of this inventory is running
-  separately; its findings are not folded in here yet, and this document should
-  not be read as having survived that review.
+- The remote restriction path was fixed by reading, not by running a remote
+  session. It is **not** verified end to end against an SSH or WSL host.
+- Block comments in `default.json` are unsupported by the delta checker. It
+  fails closed rather than mis-parsing, which is the right direction, but a
+  legal JSONC block comment would break `cargo test -p omega_deltas` with an
+  opaque message.
