@@ -2,6 +2,10 @@ import { Effect, Layer, Redacted, Schema as S } from 'effect'
 import * as Context from 'effect/Context'
 
 export type OpenAgentsWorkerConfigEnv = Readonly<{
+  // Public NIP-29 group state is trusted only when NIP-11 and this configured
+  // value agree. Missing configuration keeps the manifest in a typed
+  // relay-self-required state.
+  PUBLIC_NOSTR_CHAT_RELAY_SELF_PUBKEY?: string | undefined
   // Runtime-only Agent Computer harness credentials. Each value is mounted
   // from Secret Manager and leaves the worker only through an exact,
   // owner-scoped, one-use provider grant.

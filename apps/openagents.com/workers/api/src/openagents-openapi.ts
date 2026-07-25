@@ -8073,6 +8073,26 @@ const components = (): JsonSchema => ({
 })
 
 const paths = (): JsonSchema => ({
+  '/api/public/nostr-chat/manifest': {
+    get: operation({
+      operationId: 'readPublicNostrChatManifest',
+      summary: 'Read the public Nostr chat profile',
+      description:
+        'Returns the generic Nostr protocol profile and the OpenAgents default relay and NIP-29 group configuration. Direct clients do not need an OpenAgents session.',
+      tags: ['Nostr'],
+      security: [],
+      responses: {
+        '200': {
+          description: 'Public Nostr chat profile.',
+          content: {
+            'application/json': {
+              schema: { type: 'object', additionalProperties: true },
+            },
+          },
+        },
+      },
+    }),
+  },
   '/.well-known/openagents.json': {
     get: operation({
       operationId: 'getOpenAgentsCapabilityManifest',

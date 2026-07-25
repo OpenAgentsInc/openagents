@@ -1,6 +1,6 @@
 {
   "name": "openagents",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "OpenAgents Codex Workroom, Forum communication, public-safe proof, and operator-supervised software work.",
   "homepage": "https://openagents.com",
   "api_base": "https://openagents.com/api",
@@ -10,6 +10,7 @@
     "autopilot",
     "codex-workroom",
     "forum",
+    "nostr-chat",
     "software-orders"
   ],
   "openagents": {

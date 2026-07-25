@@ -1,0 +1,24 @@
+{
+  "name": "@openagentsinc/public-nostr-chat",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./client": "./src/client.ts",
+    "./manifest": "./src/manifest.ts",
+    "./profile": "./src/profile.ts"
+  },
+  "scripts": {
+    "test": "vp test --run src/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "effect": "catalog:",
+    "nostr-effect": "github:OpenAgentsInc/nostr-effect#1314ed6ee6cc508ba9a54d03372fe1c71a984815"
+  },
+  "devDependencies": {
+    "typescript": "catalog:",
+    "vitest": "^4.1.8"
+  }
+}

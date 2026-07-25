@@ -281,6 +281,28 @@
       }
     },
     {
+      "path": ".agents/skills/public-nostr-chat/SKILL.md",
+      "sha256": "c0dec0eb1925110a239a7ef76ed59031525f25458895b1def036525fe115598f",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": ".agents/skills/trace-ingest/SKILL.md",
       "sha256": "ec8345df53d1e5d336738ba19674758192994f88edef266d5db59223c6a83e08",
       "reason": "Final review of a converted document",
@@ -1107,7 +1129,7 @@
     },
     {
       "path": "apps/openagents.com/INVARIANTS.md",
-      "sha256": "124f3d164e9a465f34c8057bc599444f0534babd7d50a8ee0a628e56f0273391",
+      "sha256": "ab7d230ebbdc997bb0e7d3363a10f47f57130b9a9f06ffc3bfc141c93d0c588c",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -1394,7 +1416,7 @@
     },
     {
       "path": "apps/openagents.com/apps/start/public/AGENTS.md",
-      "sha256": "a3deb2e356f2cd979d0f24f98ab27e41b51e9f782ced088deb75d0652387aa29",
+      "sha256": "d2f3aa7e6d4a26f710d45454afc75b9a92811f25bc4035897c8510fc363b5ac1",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -6347,7 +6369,7 @@
     },
     {
       "path": "apps/openagents.com/docs/live/AGENTS.md",
-      "sha256": "a3deb2e356f2cd979d0f24f98ab27e41b51e9f782ced088deb75d0652387aa29",
+      "sha256": "d2f3aa7e6d4a26f710d45454afc75b9a92811f25bc4035897c8510fc363b5ac1",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -33762,6 +33784,28 @@
         "ste_audience": "human",
         "ste_accepted_screening_rules": [
           "STE-2.4"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/nostr/2026-07-25-public-nip29-chat-implementation.md",
+      "sha256": "6576ed959641651956adcc3ab76145e02d2b0215d292372992dfdf454ca5ebd3",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
         ],
         "ste_status": "inspected",
         "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
