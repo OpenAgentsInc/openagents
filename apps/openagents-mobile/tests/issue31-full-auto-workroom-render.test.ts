@@ -20,6 +20,7 @@ import {
 } from "../src/workroom/issue31-full-auto-read-model.ts";
 import type { Issue31OwnerCommandState } from "../src/workroom/issue31-owner-private-read-model.ts";
 import { renderMobileIssue31WorkroomView } from "../src/screens/mobile-issue31-workroom-view.ts";
+import { emptyIssue31CommunityReadModel } from "../src/workroom/issue31-community-read-model.ts";
 
 const FIXTURE_ROOT = "../../../packages/sarah/fixtures/issue31-workroom";
 
@@ -54,6 +55,8 @@ const render = (
       notice: null,
     },
     fullAuto,
+    emptyIssue31CommunityReadModel(),
+    { draft: "", subject: "", appealDraft: "", notice: null },
   );
   return JSON.stringify(view);
 };

@@ -393,8 +393,92 @@ export const attachAgent = (
 };
 
 /**
+ * Burn an agent key community-wide without requiring a current binding.
+ *
+ * `revokeAgent` reads `agentIndex` and throws `agent_not_found` when the key
+ * has no live binding. That is correct for an operator-driven revoke of an
+ * agent they can see, and wrong for anything that folds a signed record stream:
+ * a fold does not choose the order it is handed events in. A revocation can be
+ * admitted before the attestation it revokes — the relay returned them out of
+ * order, or the original attestation aged out of the replay window and the
+ * operator re-signed a fresh one with a later timestamp. In that order
+ * `revokeAgent` threw, burned nothing, and the later attestation attached
+ * cleanly:
+ *
+ *     revokeAgent before any binding threw: agent_not_found
+ *     isAgentKeyBurned after that revocation: false
+ *     PROBE RESULT: revoked-then-attested key is admitted = true
+ *
+ * This is the same law the two earlier fixes were reaching for and the third
+ * place it leaked. Revocation binds the *key*. It is not a statement about the
+ * binding row that happens to exist when the revocation is read, any more than
+ * it was a statement about the membership event that carried it. So this burns
+ * unconditionally and marks the binding revoked only if there is one to mark.
+ *
+ * Monotonic: the burn set only grows, and it is rebuilt from the same record
+ * stream on a restart.
+ */
+export const burnAgentKey = (
+  ledger: CommunityMembershipLedger,
+  params: {
+    readonly agentPubkey: string;
+    readonly reason?: string;
+    readonly revokedAt?: string;
+  },
+): {
+  readonly ledger: CommunityMembershipLedger;
+  readonly binding: CommunityAgentBinding | null;
+} => {
+  const agentPubkey = assertHexPubkey(params.agentPubkey, "agentPubkey");
+  const burnedAgentKeys = withBurnedKeys(ledger, [agentPubkey]);
+
+  const operatorPubkey = ledger.agentIndex.get(agentPubkey);
+  const member =
+    operatorPubkey === undefined ? undefined : ledger.members.get(operatorPubkey);
+  const existing = member?.agents.find((a) => a.agentPubkey === agentPubkey);
+
+  // No live binding: the key is burned and there is nothing else to mark. This
+  // is the case `revokeAgent` refused, and refusing it is what let the key back
+  // in.
+  if (member === undefined || existing === undefined || operatorPubkey === undefined) {
+    return { ledger: cloneLedger(ledger, { burnedAgentKeys }), binding: null };
+  }
+  if (existing.status === "revoked") {
+    return { ledger: cloneLedger(ledger, { burnedAgentKeys }), binding: existing };
+  }
+
+  const at = nowIso(params.revokedAt);
+  const binding: CommunityAgentBinding = {
+    ...existing,
+    status: "revoked",
+    capabilityGrant: "revoked",
+    revokedAt: at,
+    revokeReason: params.reason,
+  };
+  assertCommunityPublicSafe(binding);
+
+  const agents = member.agents.map((a) =>
+    a.agentPubkey === agentPubkey ? binding : a,
+  );
+  const members = new Map(ledger.members);
+  members.set(operatorPubkey, { ...member, agents });
+  const agentIndex = new Map(ledger.agentIndex);
+  agentIndex.delete(agentPubkey);
+
+  return {
+    ledger: cloneLedger(ledger, { members, agentIndex, burnedAgentKeys }),
+    binding,
+  };
+};
+
+/**
  * Revoke one agent. Immediate. Drops group membership and capability grant.
  * Never mutates the operator's machine, home, or credentials.
+ *
+ * Requires a live binding and reports `agent_not_found` without one, so an
+ * operator revoking an agent they cannot see is told rather than silently
+ * succeeding. Record folds must use {@link burnAgentKey} instead — see its
+ * note for why the strictness is a hole on that path.
  */
 export const revokeAgent = (
   ledger: CommunityMembershipLedger,

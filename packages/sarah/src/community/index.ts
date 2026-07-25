@@ -23,6 +23,7 @@ export {
   acceptInvitation,
   assertInvitationOnlyGate,
   attachAgent,
+  burnAgentKey,
   checkRelayAdmission,
   createEmptyLedger,
   isAgentAdmitted,
@@ -70,3 +71,5 @@ export {
 // SARAH-CW-03 — tick → work-unit decomposition
 export * from "./work-units.ts";
 export * from "./untrusted.ts";
+// omega#48 — membership as a fold over signed records, and role derivation
+export * from "./records.ts";

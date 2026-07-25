@@ -20,6 +20,18 @@ import {
 } from "@openagentsinc/sarah/issue31-nostr";
 
 import {
+  COMMUNITY_ARBITRATION_FEEDBACK_KIND,
+} from "@openagentsinc/sarah/community-arbitration";
+import {
+  NIP_29_GROUP_CHAT_KIND,
+  NIP_29_PUT_USER_KIND,
+  NIP_29_REMOVE_USER_KIND,
+  assertCommunityGroupIdIsNotPrivateConversation,
+  communityRoleFor,
+  foldCommunityLedgerFromEvents,
+} from "@openagentsinc/sarah/community";
+
+import {
   openExpoIssue31DeviceIdentity,
   type Issue31DeviceIdentity,
   type Issue31SecureStore,
@@ -92,6 +104,17 @@ export interface Issue31MobileNostrRuntime {
   readonly publishCommandIntent: (
     request: Issue31MobileCommandRequest,
   ) => Promise<Issue31MobileCommandPublishReceipt>;
+  /**
+   * Publish one operator-signed community action.
+   *
+   * Refuses before signing when the folded role does not permit the action.
+   * The read model already withholds the control, so this is the second gate:
+   * a control that never renders and an action that would still publish if it
+   * were called anyway are not the same guarantee.
+   */
+  readonly publishCommunityAction: (
+    request: Issue31CommunityActionRequest,
+  ) => Promise<Issue31PublishReceipt>;
   readonly clearOwnerPrivateLocalData: () => void;
   readonly close: () => void;
 }
@@ -216,6 +239,77 @@ export const issue31AdmittedHostPublicKeysFromEnvironment = (
   return publicKeys;
 };
 
+const publicKeyList = (value: string | undefined): ReadonlyArray<string> => {
+  if (value === undefined || value.trim() === "") return [];
+  const keys = [...new Set(value.split(",").map((entry) => entry.trim().toLowerCase()))];
+  if (keys.length > 16 || keys.some((key) => !HEX_64.test(key))) return [];
+  return keys;
+};
+
+export interface Issue31CommunityRoomConfig {
+  readonly groupId: string | null;
+  /** Group admin keys. Out of band — never learned from the relay. */
+  readonly adminPubkeys: ReadonlyArray<string>;
+  /** Keys admitted to publish XP awards, rank, and badges. */
+  readonly scorerPubkeys: ReadonlyArray<string>;
+  /** The registered owner appeal identity, when one exists. */
+  readonly ownerAppealPubkey: string | null;
+}
+
+/**
+ * The community room's out-of-band configuration.
+ *
+ * Every one of these is an authority the relay must not be able to assert for
+ * itself: who may admit a member, who may publish a score, and who may rule on
+ * an appeal. They are read from the app's own build configuration for the same
+ * reason the admitted Omega host keys are — a client that learns its
+ * authorities from the stream it is verifying has no authority at all.
+ *
+ * An unconfigured room projects as unavailable with a named reason rather than
+ * falling back to something permissive.
+ */
+export const issue31CommunityConfigFromEnvironment = (
+  env: Readonly<Record<string, string | undefined>> = process.env as unknown as Readonly<
+    Record<string, string | undefined>
+  >,
+): Issue31CommunityRoomConfig => {
+  const rawGroupId = env["EXPO_PUBLIC_OMEGA_COMMUNITY_GROUP_ID"]?.trim() ?? "";
+  const groupId =
+    rawGroupId === "" || rawGroupId.length > 128 || /\s/.test(rawGroupId) ? null : rawGroupId;
+  const ownerAppeal = env["EXPO_PUBLIC_OMEGA_COMMUNITY_OWNER_APPEAL_PUBKEY"]?.trim().toLowerCase();
+  return {
+    groupId,
+    adminPubkeys: publicKeyList(env["EXPO_PUBLIC_OMEGA_COMMUNITY_ADMIN_PUBKEYS"]),
+    scorerPubkeys: publicKeyList(env["EXPO_PUBLIC_OMEGA_COMMUNITY_SCORER_PUBKEYS"]),
+    ownerAppealPubkey:
+      ownerAppeal !== undefined && HEX_64.test(ownerAppeal) ? ownerAppeal : null,
+  };
+};
+
+/**
+ * A community action this device can actually sign.
+ *
+ * The phone holds the human operator's key and no agent key, so the closed set
+ * here is exactly the operator-signed half of the lifecycle. Quoting,
+ * executing, returning a result, verifying a peer, and publishing a persona
+ * attestation are signed by an agent key on the operator's own compute and are
+ * never minted here.
+ */
+export type Issue31CommunityActionRequest =
+  | Readonly<{ kind: "post_message"; text: string }>
+  | Readonly<{ kind: "invite_member"; subjectPubkey: string }>
+  | Readonly<{ kind: "revoke_member"; subjectPubkey: string }>
+  | Readonly<{ kind: "revoke_agent"; subjectPubkey: string }>
+  | Readonly<{
+      kind: "file_appeal";
+      decisionEventId: string;
+      requestEventId: string;
+      resultEventId: string;
+      appealRef: string;
+      grounds: string;
+      groundsSummary: string;
+    }>;
+
 const uint32 = (bytes: Uint8Array): number => {
   if (bytes.length !== 4) throw new Error("Issue 31 random timestamp bytes are invalid.");
   return (
@@ -233,6 +327,10 @@ export const openIssue31MobileNostrRuntime = async (
     admittedHostPublicKeys: ReadonlyArray<string>;
     communityAuthors?: ReadonlyArray<string>;
     communityGroupIds?: ReadonlyArray<string>;
+    /** Out-of-band community authorities. Absent means the room stays closed. */
+    community?: Issue31CommunityRoomConfig;
+    /** Owner-private conversation refs, checked against the group id. */
+    ownerPrivateConversationRefs?: ReadonlyArray<string>;
     onSnapshot?: (snapshot: Issue31NostrClientSnapshot) => void;
     onControlState?: (state: Issue31MobileNostrControlState) => void;
   }>,
@@ -246,6 +344,16 @@ export const openIssue31MobileNostrRuntime = async (
   ) => Issue31WebSocketLike;
   if (typeof WebSocketImpl !== "function") {
     throw new Error("The Omega Nostr WebSocket client is unavailable.");
+  }
+  // The community room's group id must never equal an owner-private
+  // conversation ref. Both rooms are event-sourced over the same relay by the
+  // same device, so an equal identifier is not cosmetic: each room's
+  // subscription would match the other's records.
+  if (input.community?.groupId != null) {
+    assertCommunityGroupIdIsNotPrivateConversation({
+      groupId: input.community.groupId,
+      privateConversationRefs: input.ownerPrivateConversationRefs ?? [],
+    });
   }
   const admittedHostPublicKeys = new Set(input.admittedHostPublicKeys);
   if (
@@ -320,6 +428,11 @@ export const openIssue31MobileNostrRuntime = async (
         : null;
     let closed = false;
     let client: Issue31NostrClient;
+    const communityGroupIds =
+      input.communityGroupIds ??
+      (input.community?.groupId == null ? [] : [input.community.groupId]);
+    const communityAuthors =
+      input.communityAuthors ?? input.community?.scorerPubkeys ?? [];
     const persistedRequest = localEvents.findLast(
       (event) => event.privateRecord?.recordType === "pairing_request",
     );
@@ -691,10 +804,10 @@ export const openIssue31MobileNostrRuntime = async (
       cursorStore: createIssue31SecureRelayCursorStore(store),
       outboundStore: openedOutboundStore,
       admittedHostPublicKeys: [...admittedHostPublicKeys],
-      ...(input.communityAuthors === undefined ? {} : { communityAuthors: input.communityAuthors }),
-      ...(input.communityGroupIds === undefined
-        ? {}
-        : { communityGroupIds: input.communityGroupIds }),
+      // Scorer keys are the only author-scoped community subscription; the rest
+      // of the room is addressed by its group id.
+      ...(communityAuthors.length === 0 ? {} : { communityAuthors }),
+      ...(communityGroupIds.length === 0 ? {} : { communityGroupIds }),
       onSnapshot: handleSnapshot,
     });
     for (const event of issue31PersistedPairingEventsForRequeue(storedPairingRecords, {
@@ -808,6 +921,126 @@ export const openIssue31MobileNostrRuntime = async (
           giftWrapEventId: envelope.giftWrap.id,
           publish,
         };
+      },
+      publishCommunityAction: async (request) => {
+        const community = input.community;
+        if (community === undefined || community.groupId === null) {
+          throw new Error("The community room is not configured on this build.");
+        }
+        if (community.adminPubkeys.length === 0) {
+          throw new Error("The community room has no admitted admin keys.");
+        }
+        const groupId = community.groupId;
+
+        // Fold the current record set and check this device's own role before
+        // signing anything. Roles come from records; nothing here assumes one.
+        const fold = foldCommunityLedgerFromEvents({
+          groupId,
+          adminPubkeys: community.adminPubkeys,
+          events: client
+            .snapshot()
+            .confirmedEvents.filter((event) => event.room === "community")
+            .map((event) => ({
+              id: event.event.id,
+              pubkey: event.event.pubkey,
+              created_at: event.event.created_at,
+              kind: event.event.kind,
+              tags: event.event.tags,
+              content: event.event.content,
+            })),
+        });
+        const role = communityRoleFor(fold, openedIdentity.publicKeyHex);
+        const isActiveMember =
+          role.status === "active" &&
+          (role.role === "member" || role.role === "agent_operator" || role.role === "owner");
+
+        const createdAt = Math.floor(Date.now() / 1_000);
+        let template: {
+          kind: number;
+          created_at: number;
+          tags: string[][];
+          content: string;
+        };
+
+        if (request.kind === "post_message") {
+          if (!isActiveMember) {
+            throw new Error("Only an active community member can post in this room.");
+          }
+          const text = request.text.trim();
+          if (text === "" || text.length > 4_096) {
+            throw new Error("A community message must be between 1 and 4096 characters.");
+          }
+          template = {
+            kind: NIP_29_GROUP_CHAT_KIND,
+            created_at: createdAt,
+            tags: [["h", groupId]],
+            content: text,
+          };
+        } else if (request.kind === "invite_member" || request.kind === "revoke_member" || request.kind === "revoke_agent") {
+          // Admitting and removing are group-admin acts. A member cannot invite
+          // themselves or revoke somebody else, and the refusal happens before
+          // a signature exists rather than after the relay stores one.
+          if (!role.isGroupAdmin) {
+            throw new Error("Only a group admin can admit or remove a community key.");
+          }
+          const subject = request.subjectPubkey.trim().toLowerCase();
+          if (!HEX_64.test(subject)) {
+            throw new Error("A community admin action needs a 64 character hex pubkey.");
+          }
+          template = {
+            kind:
+              request.kind === "invite_member"
+                ? NIP_29_PUT_USER_KIND
+                : NIP_29_REMOVE_USER_KIND,
+            created_at: createdAt,
+            tags: [
+              ["h", groupId],
+              ["p", subject],
+            ],
+            content: "",
+          };
+        } else {
+          if (!isActiveMember) {
+            throw new Error("Only an active community member can file an appeal.");
+          }
+          for (const [label, value] of [
+            ["decisionEventId", request.decisionEventId],
+            ["requestEventId", request.requestEventId],
+            ["resultEventId", request.resultEventId],
+          ] as const) {
+            if (!HEX_64.test(value)) {
+              throw new Error(`A community appeal needs a 32-byte hex ${label}.`);
+            }
+          }
+          const summary = request.groundsSummary.trim().slice(0, 500);
+          if (summary === "") {
+            throw new Error("A community appeal needs a stated reason.");
+          }
+          template = {
+            kind: COMMUNITY_ARBITRATION_FEEDBACK_KIND,
+            created_at: createdAt,
+            tags: [
+              ["h", groupId],
+              ["e", request.decisionEventId, "", "decision"],
+              ["e", request.requestEventId, "", "request"],
+              ["e", request.resultEventId, "", "result"],
+              ["p", openedIdentity.publicKeyHex],
+              ["status", "appeal_open"],
+              ["cw_feedback_type", "dispute_appeal"],
+              ["cw_appeal_ref", request.appealRef],
+              ["cw_grounds", request.grounds],
+              ["cw_grounds_summary", summary],
+              ["cw_arbiter", "owner"],
+              ["cw_filed_at", new Date(createdAt * 1_000).toISOString()],
+            ],
+            content: "",
+          };
+        }
+
+        const signed = await openedIdentity.signer.signEvent(template);
+        // Published into the community room's own outbound budget. A room that
+        // fills its queue never refuses the other room's next publish.
+        return client.publish(signed, "community");
       },
       clearOwnerPrivateLocalData: () => {
         for (const event of client.snapshot().confirmedEvents) {

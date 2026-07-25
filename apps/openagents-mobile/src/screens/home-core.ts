@@ -162,8 +162,13 @@ import {
 } from "../workroom/issue31-workroom-read-model"
 import {
   initialIssue31MobileNostrControlState,
+  type Issue31CommunityActionRequest,
   type Issue31MobileNostrControlState,
 } from "../workroom/issue31-mobile-nostr-runtime"
+import {
+  emptyIssue31CommunityReadModel,
+  type Issue31CommunityReadModel,
+} from "../workroom/issue31-community-read-model"
 import type { Issue31CommandArguments } from "@openagentsinc/sarah/issue31-nostr"
 import {
   decodeMobileEnvironmentDirectory,
@@ -271,6 +276,13 @@ export interface HomeState {
   readonly issue31ReminderDraft: string
   readonly issue31TranscriptLimit: number
   readonly issue31CommandNotice: string | null
+  /** The community room, projected from signed community records (omega#48). */
+  readonly issue31Community: Issue31CommunityReadModel
+  readonly issue31CommunityDraft: string
+  /** Pubkey an admin is about to admit or remove. */
+  readonly issue31CommunitySubject: string
+  readonly issue31CommunityAppealDraft: string
+  readonly issue31CommunityNotice: string | null
   readonly repositoryBrowser: MobileRepositoryBrowserState
   readonly repositoryReview: MobileRepositoryReviewState
   readonly repositoryGit: MobileRepositoryGitState
@@ -469,6 +481,11 @@ export const initialHomeState: HomeState = {
   issue31ReminderDraft: "",
   issue31TranscriptLimit: 40,
   issue31CommandNotice: null,
+  issue31Community: emptyIssue31CommunityReadModel(),
+  issue31CommunityDraft: "",
+  issue31CommunitySubject: "",
+  issue31CommunityAppealDraft: "",
+  issue31CommunityNotice: null,
   repositoryBrowser: initialMobileRepositoryBrowserState,
   repositoryReview: initialMobileRepositoryReviewState,
   repositoryGit: initialMobileRepositoryGitState,
@@ -754,6 +771,38 @@ export const Issue31OwnerReminderCancelled = defineIntent(
   "Issue31OwnerReminderCancelled",
   Schema.Struct({ reminderId: Schema.String }),
 )
+export const Issue31CommunityDraftChanged = defineIntent(
+  "Issue31CommunityDraftChanged",
+  Schema.String,
+)
+export const Issue31CommunitySubjectChanged = defineIntent(
+  "Issue31CommunitySubjectChanged",
+  Schema.String,
+)
+export const Issue31CommunityAppealDraftChanged = defineIntent(
+  "Issue31CommunityAppealDraftChanged",
+  Schema.String,
+)
+export const Issue31CommunityMessageSent = defineIntent(
+  "Issue31CommunityMessageSent",
+  EmptyPayload,
+)
+export const Issue31CommunityMemberInvited = defineIntent(
+  "Issue31CommunityMemberInvited",
+  EmptyPayload,
+)
+export const Issue31CommunityMemberRevoked = defineIntent(
+  "Issue31CommunityMemberRevoked",
+  EmptyPayload,
+)
+export const Issue31CommunityAgentRevoked = defineIntent(
+  "Issue31CommunityAgentRevoked",
+  Schema.Struct({ agentPubkey: Schema.String }),
+)
+export const Issue31CommunityAppealFiled = defineIntent(
+  "Issue31CommunityAppealFiled",
+  Schema.Struct({ unitRef: Schema.String }),
+)
 export const Issue31OwnerDeepLinkOpened = defineIntent(
   "Issue31OwnerDeepLinkOpened",
   Schema.Struct({ url: Schema.String }),
@@ -999,6 +1048,14 @@ export const homeIntentDefinitions = [
   Issue31OwnerReminderCompleted,
   Issue31OwnerReminderCancelled,
   Issue31OwnerDeepLinkOpened,
+  Issue31CommunityDraftChanged,
+  Issue31CommunitySubjectChanged,
+  Issue31CommunityAppealDraftChanged,
+  Issue31CommunityMessageSent,
+  Issue31CommunityMemberInvited,
+  Issue31CommunityMemberRevoked,
+  Issue31CommunityAgentRevoked,
+  Issue31CommunityAppealFiled,
   ChangesRouteOpened,
   WorkbenchConversationOpened,
   RepositoryChangesRefreshed,
@@ -1285,6 +1342,13 @@ export const renderContentView = (state: HomeState): View =>
             notice: state.issue31CommandNotice,
           },
           state.issue31FullAuto,
+          state.issue31Community,
+          {
+            draft: state.issue31CommunityDraft,
+            subject: state.issue31CommunitySubject,
+            appealDraft: state.issue31CommunityAppealDraft,
+            notice: state.issue31CommunityNotice,
+          },
         )]
       : state.workbenchRoute === "terminal"
       ? [renderMobileTerminalView(state.repositoryTerminal, state.accessibility)]
@@ -2393,6 +2457,7 @@ export interface HomeProgramOptions {
       arguments: Issue31CommandArguments
     }>) => Promise<unknown>
     clearOwnerPrivateLocalData?: () => void
+    publishCommunityAction?: (request: Issue31CommunityActionRequest) => Promise<unknown>
   }>
   /** Initial live `FullAutoRun` mobile projection, when already resolved at
    * selection time (openagents #8982). Later updates flow through
@@ -3588,6 +3653,45 @@ export const makeHomeHandlers = (
         yield* SubscriptionRef.update(state, current => ({
           ...current,
           issue31CommandNotice: "The signed command could not be published.",
+        }))
+        return false
+      }
+    })
+  /**
+   * Publish one operator-signed community action, or say why it did not go.
+   *
+   * A relay acknowledgement is not a completed command, so the notice says the
+   * record was published and stops there. What the room shows next comes from
+   * the confirmed record arriving back through the subscription, not from this
+   * call returning.
+   */
+  const publishIssue31CommunityAction = (request: Issue31CommunityActionRequest) =>
+    Effect.gen(function* () {
+      const nostr = options.issue31Nostr
+      if (nostr?.publishCommunityAction === undefined) {
+        yield* SubscriptionRef.update(state, current => ({
+          ...current,
+          issue31CommunityNotice: "The community room is unavailable on this build.",
+        }))
+        return false
+      }
+      yield* SubscriptionRef.update(state, current => ({
+        ...current,
+        issue31CommunityNotice: "Publishing a signed community record…",
+      }))
+      try {
+        yield* Effect.promise(() => nostr.publishCommunityAction!(request))
+        yield* SubscriptionRef.update(state, current => ({
+          ...current,
+          issue31CommunityNotice:
+            "Signed and sent. The room updates when the confirmed record returns.",
+        }))
+        return true
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : "It could not be published."
+        yield* SubscriptionRef.update(state, current => ({
+          ...current,
+          issue31CommunityNotice: detail.slice(0, 200),
         }))
         return false
       }
@@ -4789,6 +4893,83 @@ export const makeHomeHandlers = (
         ...current,
         issue31ReminderDraft: value.slice(0, 4_096),
       })),
+    Issue31CommunityDraftChanged: (value: string) =>
+      SubscriptionRef.update(state, current => ({
+        ...current,
+        issue31CommunityDraft: value.slice(0, 4_096),
+      })),
+    Issue31CommunitySubjectChanged: (value: string) =>
+      SubscriptionRef.update(state, current => ({
+        ...current,
+        issue31CommunitySubject: value.trim().slice(0, 64),
+      })),
+    Issue31CommunityAppealDraftChanged: (value: string) =>
+      SubscriptionRef.update(state, current => ({
+        ...current,
+        issue31CommunityAppealDraft: value.slice(0, 500),
+      })),
+    Issue31CommunityMessageSent: () => Effect.gen(function* () {
+      const before = yield* SubscriptionRef.get(state)
+      const text = before.issue31CommunityDraft.trim()
+      if (text === "") {
+        yield* SubscriptionRef.update(state, current => ({
+          ...current,
+          issue31CommunityNotice: "Write a message before posting to the community room.",
+        }))
+        return
+      }
+      const published = yield* publishIssue31CommunityAction({ kind: "post_message", text })
+      if (published) {
+        yield* SubscriptionRef.update(state, current => ({
+          ...current,
+          issue31CommunityDraft: "",
+        }))
+      }
+    }),
+    Issue31CommunityMemberInvited: () => Effect.gen(function* () {
+      const before = yield* SubscriptionRef.get(state)
+      yield* publishIssue31CommunityAction({
+        kind: "invite_member",
+        subjectPubkey: before.issue31CommunitySubject,
+      })
+    }),
+    Issue31CommunityMemberRevoked: () => Effect.gen(function* () {
+      const before = yield* SubscriptionRef.get(state)
+      yield* publishIssue31CommunityAction({
+        kind: "revoke_member",
+        subjectPubkey: before.issue31CommunitySubject,
+      })
+    }),
+    Issue31CommunityAgentRevoked: ({ agentPubkey }: { readonly agentPubkey: string }) =>
+      publishIssue31CommunityAction({ kind: "revoke_agent", subjectPubkey: agentPubkey }),
+    Issue31CommunityAppealFiled: ({ unitRef }: { readonly unitRef: string }) =>
+      Effect.gen(function* () {
+        const before = yield* SubscriptionRef.get(state)
+        const unit = before.issue31Community.workUnits.find(row => row.unitRef === unitRef)
+        // Every reference in an appeal comes from the record the appeal is
+        // about. A client-composed appeal that named its own decision would be
+        // an assertion rather than a dispute.
+        if (
+          unit === undefined
+          || unit.decision === null
+          || unit.result === null
+        ) {
+          yield* SubscriptionRef.update(state, current => ({
+            ...current,
+            issue31CommunityNotice: "That work unit has no decision to appeal.",
+          }))
+          return
+        }
+        yield* publishIssue31CommunityAction({
+          kind: "file_appeal",
+          decisionEventId: unit.decision.sourceEventId,
+          requestEventId: unit.requestEventId,
+          resultEventId: unit.result.sourceEventId,
+          appealRef: `appeal.${unit.idempotencyRef}`,
+          grounds: "reason_disputed",
+          groundsSummary: before.issue31CommunityAppealDraft,
+        })
+      }),
     Issue31OwnerLocalDataCleared: () => Effect.gen(function* () {
       const clearOwnerPrivateLocalData = options.issue31Nostr?.clearOwnerPrivateLocalData
       if (clearOwnerPrivateLocalData === undefined) return
@@ -5618,6 +5799,15 @@ export interface HomeProgramHandle {
     readonly clearOwnerLocalData: () => void
     readonly setReadModel: (model: Issue31WorkroomReadModel) => void
     readonly setNostrControl: (control: Issue31MobileNostrControlState) => void
+    readonly setCommunityReadModel: (model: Issue31CommunityReadModel) => void
+    readonly changeCommunityDraft: (value: string) => void
+    readonly postCommunityMessage: () => void
+    readonly changeCommunitySubject: (value: string) => void
+    readonly inviteCommunityMember: () => void
+    readonly revokeCommunityMember: () => void
+    readonly revokeCommunityAgent: (agentPubkey: string) => void
+    readonly changeCommunityAppealDraft: (value: string) => void
+    readonly fileCommunityAppeal: (unitRef: string) => void
   }
   readonly workspace: {
     readonly setWidth: (width: number) => void
@@ -5968,6 +6158,35 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
               issue31NostrControl: control,
             })))
           },
+          setCommunityReadModel: model => {
+            Effect.runFork(SubscriptionRef.update(state, current => ({
+              ...current,
+              issue31Community: model,
+            })))
+          },
+          changeCommunityDraft: value => fireText(
+            IntentRef("Issue31CommunityDraftChanged", ComponentValueBinding()),
+            value,
+          ),
+          postCommunityMessage: fire("Issue31CommunityMessageSent"),
+          changeCommunitySubject: value => fireText(
+            IntentRef("Issue31CommunitySubjectChanged", ComponentValueBinding()),
+            value,
+          ),
+          inviteCommunityMember: fire("Issue31CommunityMemberInvited"),
+          revokeCommunityMember: fire("Issue31CommunityMemberRevoked"),
+          revokeCommunityAgent: agentPubkey => fireRef(IntentRef(
+            "Issue31CommunityAgentRevoked",
+            StaticPayload({ agentPubkey }),
+          )),
+          changeCommunityAppealDraft: value => fireText(
+            IntentRef("Issue31CommunityAppealDraftChanged", ComponentValueBinding()),
+            value,
+          ),
+          fileCommunityAppeal: unitRef => fireRef(IntentRef(
+            "Issue31CommunityAppealFiled",
+            StaticPayload({ unitRef }),
+          )),
         },
         workspace: {
           setWidth: width => fireRef(IntentRef(

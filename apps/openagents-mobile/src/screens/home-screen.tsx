@@ -68,9 +68,14 @@ import {
   OPENAGENTS_ISSUE31_RELAY_URLS,
   initialIssue31MobileNostrControlState,
   issue31AdmittedHostPublicKeysFromEnvironment,
+  issue31CommunityConfigFromEnvironment,
   openIssue31MobileNostrRuntime,
   type Issue31MobileNostrRuntime,
 } from "../workroom/issue31-mobile-nostr-runtime"
+import {
+  emptyIssue31CommunityReadModel,
+  projectIssue31CommunityReadModel,
+} from "../workroom/issue31-community-read-model"
 import { issue31SourceSnapshotsFromNostr } from "../workroom/issue31-nostr-read-model"
 import { projectIssue31OwnerPrivateReadModel } from "../workroom/issue31-owner-private-read-model"
 import {
@@ -217,6 +222,14 @@ export const HomeScreen = ({
       if (runtime === null) throw new Error("The Omega Nostr runtime is unavailable.")
       runtime.clearOwnerPrivateLocalData()
     },
+    publishCommunityAction: (
+      request: Parameters<Issue31MobileNostrRuntime["publishCommunityAction"]>[0],
+    ) => {
+      const runtime = issue31RuntimeRef.current
+      return runtime === null
+        ? Promise.reject(new Error("The Omega Nostr runtime is unavailable."))
+        : runtime.publishCommunityAction(request)
+    },
   }), [])
   const releaseSarahPlayback = useCallback((outcome: "completed" | "stopped"): void => {
     const record = sarahPlaybackRef.current
@@ -339,9 +352,29 @@ export const HomeScreen = ({
   useEffect(() => {
     let active = true
     let runtime: Issue31MobileNostrRuntime | null = null
+    // Out-of-band community authorities: who may admit a member, who may score,
+    // and who may rule on an appeal. Read from the build, never from the relay.
+    const community = issue31CommunityConfigFromEnvironment()
     const projectSnapshot = (snapshot: Parameters<typeof issue31SourceSnapshotsFromNostr>[0]) => {
       if (!active) return
       const nowUnixSeconds = Math.floor(Date.now() / 1_000)
+      // The community room is projected from its own records, by its own
+      // function, into its own state. It shares no ledger, cursor, or row with
+      // the owner-private projection below.
+      try {
+        program.workroom.setCommunityReadModel(projectIssue31CommunityReadModel(snapshot, {
+          groupId: community.groupId,
+          adminPubkeys: community.adminPubkeys,
+          scorerPubkeys: community.scorerPubkeys,
+          ownerAppealPubkey: community.ownerAppealPubkey,
+          viewerPubkey: issue31RuntimeRef.current?.publicKeyHex ?? null,
+          nowUnixSeconds,
+        }))
+      } catch {
+        program.workroom.setCommunityReadModel(
+          emptyIssue31CommunityReadModel("reason.issue31.community.projection_failed"),
+        )
+      }
       try {
         program.workroom.setReadModel(projectIssue31WorkroomReadModel({
           projectedAt: new Date(nowUnixSeconds * 1_000).toISOString(),
@@ -362,6 +395,7 @@ export const HomeScreen = ({
     void openIssue31MobileNostrRuntime({
       relayUrls: OPENAGENTS_ISSUE31_RELAY_URLS,
       admittedHostPublicKeys: issue31AdmittedHostPublicKeysFromEnvironment(),
+      community,
       onSnapshot: projectSnapshot,
       onControlState: control => program.workroom.setNostrControl(control),
     }).then(opened => {

@@ -306,8 +306,12 @@ describe("mobile Issue 31 client on a real local relay", () => {
         () => (snapshot?.relays ?? []).some((row) => row.state === "live"),
         "the relay to reach live",
       );
+      // Read through a closure. `snapshot` is only ever assigned from the
+      // `onSnapshot` callback, so straight-line narrowing collapses it to
+      // `never` here and the assertion stops typechecking.
+      const settled = ((): Issue31NostrClientSnapshot | null => snapshot)();
       expect(
-        (snapshot?.confirmedEvents ?? []).some((row) => row.event.id === strangerId),
+        (settled?.confirmedEvents ?? []).some((row) => row.event.id === strangerId),
       ).toBe(false);
     } finally {
       client.close();

@@ -21,10 +21,16 @@ import {
   SARAH_REMINDER_KIND,
 } from "@openagentsinc/sarah/nostr-memory";
 import {
+  NIP_29_GROUP_ADMINS_KIND,
   NIP_29_GROUP_CHAT_KIND,
+  NIP_29_GROUP_MEMBERS_KIND,
+  NIP_29_GROUP_METADATA_KIND,
+  NIP_29_PUT_USER_KIND,
+  NIP_29_REMOVE_USER_KIND,
   NIP_AP_MANAGED_INSTANCE_KIND,
   NIP_AP_PERSONA_KIND,
 } from "@openagentsinc/sarah/community";
+import { COMMUNITY_ARBITRATION_FEEDBACK_KIND } from "@openagentsinc/sarah/community-arbitration";
 import {
   LBR_AGENTIC_CODING_REQUEST_KIND,
   LBR_AGENTIC_CODING_RESULT_KIND,
@@ -84,6 +90,7 @@ export interface Issue31NostrFilter {
   readonly "#p"?: ReadonlyArray<string>;
   readonly "#t"?: ReadonlyArray<string>;
   readonly "#h"?: ReadonlyArray<string>;
+  readonly "#d"?: ReadonlyArray<string>;
 }
 
 export interface Issue31ConfirmedEvent {
@@ -100,7 +107,16 @@ export interface Issue31RelaySnapshot {
   readonly relayUrl: string;
   readonly state: Issue31RelayState;
   readonly reconnectAttempt: number;
+  /**
+   * The oldest room's replay point, kept for compatibility.
+   *
+   * Do not read this as one room's freshness: it is `min` across rooms, so a
+   * community room that has never synced drags the owner-private number
+   * backwards and vice versa. Read {@link roomReplaySince} for a room.
+   */
   readonly replaySince: number;
+  /** Per-room replay point. The two rooms do not share a freshness number. */
+  readonly roomReplaySince: Readonly<Record<Issue31NostrRoom, number>>;
   readonly gapReason:
     | "awaiting_eose"
     | "disconnect_before_eose"
@@ -142,19 +158,54 @@ export const ISSUE31_OWNER_PRIVATE_KINDS = [
   SARAH_REMINDER_KIND,
 ] as const;
 
-export const ISSUE31_COMMUNITY_KINDS = [
+/**
+ * Kinds scoped by the group's `h` tag rather than by author.
+ *
+ * Membership admin records and room chat are addressed to the group, not to a
+ * key this device knows in advance — the whole point of the roster is to learn
+ * who the members are. Admission authority still comes from the out-of-band
+ * admin key set at fold time; subscribing to them is not admitting them.
+ */
+export const ISSUE31_COMMUNITY_GROUP_SCOPED_KINDS = [
   NIP_29_GROUP_CHAT_KIND,
+  NIP_29_PUT_USER_KIND,
+  NIP_29_REMOVE_USER_KIND,
+  NIP_29_GROUP_METADATA_KIND,
+  NIP_29_GROUP_ADMINS_KIND,
+  NIP_29_GROUP_MEMBERS_KIND,
+  // An agent's persona carries the attestation binding it to its operator. The
+  // author is the agent key, which is exactly what the roster is for.
   NIP_AP_PERSONA_KIND,
   NIP_AP_MANAGED_INSTANCE_KIND,
   LBR_AGENTIC_CODING_REQUEST_KIND,
   LBR_AGENTIC_CODING_RESULT_KIND,
   LBR_FEEDBACK_KIND,
+  // Arbitration decisions, dispute appeals, and owner rulings. Without this the
+  // client filtered out the very events that carry a typed rejection reason and
+  // its appeal destination.
+  COMMUNITY_ARBITRATION_FEEDBACK_KIND,
+] as const;
+
+/** Scorer-published only. Author-scoped, so a self-labelled score never lands. */
+export const ISSUE31_COMMUNITY_SCORER_KINDS = [
   XP_AWARD_KIND,
   XP_RANK_KIND,
   XP_BADGE_DEFINITION_KIND,
   XP_BADGE_AWARD_KIND,
   XP_PROFILE_BADGES_KIND,
 ] as const;
+
+export const ISSUE31_COMMUNITY_KINDS = [
+  ...ISSUE31_COMMUNITY_GROUP_SCOPED_KINDS,
+  ...ISSUE31_COMMUNITY_SCORER_KINDS,
+] as const;
+
+const COMMUNITY_GROUP_SCOPED_KIND_SET: ReadonlyArray<number> = [
+  ...ISSUE31_COMMUNITY_GROUP_SCOPED_KINDS,
+];
+
+const isCommunityGroupScopedKind = (kind: number): boolean =>
+  COMMUNITY_GROUP_SCOPED_KIND_SET.includes(kind);
 
 const HEX_64 = /^[0-9a-f]{64}$/;
 
@@ -285,12 +336,35 @@ interface RelayRuntime {
 interface OutboundPublish {
   readonly event: Issue31SignedNostrEvent;
   readonly serializedFrame: string;
+  /**
+   * Which room this pending publish belongs to.
+   *
+   * The queue bound used to be one number across both rooms, which is shared
+   * optimistic state: a community room that queues its bound worth of messages
+   * while offline would refuse the owner's next private message with a full
+   * queue. Each room now gets its own budget.
+   */
+  readonly room: Issue31NostrRoom;
 }
+
+/**
+ * The room an outbound event belongs to, from the event alone.
+ *
+ * Used when re-loading the persisted queue, which stores signed events rather
+ * than our own envelope, so there is no room field to read.
+ */
+const outboundRoomForKind = (kind: number): Issue31NostrRoom =>
+  (ISSUE31_COMMUNITY_KINDS as ReadonlyArray<number>).includes(kind)
+    ? "community"
+    : "owner_private";
 
 export interface Issue31NostrClient {
   readonly start: () => Promise<void>;
   readonly close: () => void;
-  readonly publish: (event: Issue31SignedNostrEvent) => Issue31PublishReceipt;
+  readonly publish: (
+    event: Issue31SignedNostrEvent,
+    room?: Issue31NostrRoom,
+  ) => Issue31PublishReceipt;
   readonly retryPublish: (eventId: string) => boolean;
   readonly discardPublish: (eventId: string) => boolean;
   readonly updateSubscriptionScope: (
@@ -383,10 +457,15 @@ export const createIssue31NostrClient = (
     outboundPublishes.set(event.id, {
       event,
       serializedFrame: JSON.stringify(["EVENT", event]),
+      room: outboundRoomForKind(event.kind),
     });
   }
-  if (outboundPublishes.size > maxQueuedEvents) {
-    throw new Error("Issue 31 persisted outbound queue exceeds its bound.");
+  const queuedInRoom = (room: Issue31NostrRoom): number =>
+    [...outboundPublishes.values()].filter((pending) => pending.room === room).length;
+  for (const room of ["owner_private", "community"] as const) {
+    if (queuedInRoom(room) > maxQueuedEvents) {
+      throw new Error("Issue 31 persisted outbound queue exceeds its bound.");
+    }
   }
   let closed = false;
   let localPublicKeyHex = "";
@@ -403,6 +482,11 @@ export const createIssue31NostrClient = (
         state: relay.state,
         reconnectAttempt: relay.reconnectAttempt,
         replaySince: relay.replaySince,
+        roomReplaySince: {
+          discovery: relay.roomReplaySince.get("discovery") ?? 0,
+          owner_private: relay.roomReplaySince.get("owner_private") ?? 0,
+          community: relay.roomReplaySince.get("community") ?? 0,
+        },
         gapReason: relay.gapReason,
         rejectedEventCount: relay.rejectedEventIds.size,
       }))
@@ -555,10 +639,20 @@ export const createIssue31NostrClient = (
       }
     } else if (room === "community") {
       const correctKind = (ISSUE31_COMMUNITY_KINDS as ReadonlyArray<number>).includes(event.kind);
-      const correctAuthority =
-        event.kind === NIP_29_GROUP_CHAT_KIND
-          ? event.tags.some((tag) => tag[0] === "h" && communityGroupIds.has(tag[1] ?? ""))
-          : communityAuthors.has(event.pubkey);
+      // Group-scoped kinds are admitted by the group they name, because the
+      // authors are exactly what the roster is for: a device cannot know every
+      // member key, agent key, or provider key in advance. Admission authority
+      // is still the out-of-band admin set, applied when the record is folded —
+      // reading a record is not admitting its claim.
+      const namesThisGroup = event.tags.some(
+        (tag) => (tag[0] === "h" || tag[0] === "d") && communityGroupIds.has(tag[1] ?? ""),
+      );
+      const correctAuthority = isCommunityGroupScopedKind(event.kind)
+        ? namesThisGroup
+        : // Scorer-published kinds stay author-scoped: only OpenAgents scorer
+          // keys publish awards and rank, and a member self-labelling their own
+          // score should not even be stored.
+          communityAuthors.has(event.pubkey);
       if (!correctKind || !correctAuthority) {
         rejectEvent(relay, event.id);
         return;
@@ -679,15 +773,28 @@ export const createIssue31NostrClient = (
     }
     const filters: Issue31NostrFilter[] = [];
     if (communityGroupIds.size > 0) {
+      // The transcript, the roster, the membership admin records, the work-unit
+      // lane, and the arbitration lane all address the group rather than a key
+      // this device already knows. One `#h` filter carries all of them.
       filters.push({
-        kinds: [NIP_29_GROUP_CHAT_KIND],
+        kinds: COMMUNITY_GROUP_SCOPED_KIND_SET,
         since,
         "#h": [...communityGroupIds],
+      });
+      // Relay-signed group state is addressable by `d`, not `h`.
+      filters.push({
+        kinds: [
+          NIP_29_GROUP_METADATA_KIND,
+          NIP_29_GROUP_ADMINS_KIND,
+          NIP_29_GROUP_MEMBERS_KIND,
+        ],
+        since,
+        "#d": [...communityGroupIds],
       });
     }
     if (communityAuthors.size > 0) {
       filters.push({
-        kinds: ISSUE31_COMMUNITY_KINDS.filter((kind) => kind !== NIP_29_GROUP_CHAT_KIND),
+        kinds: ISSUE31_COMMUNITY_KINDS.filter((kind) => !isCommunityGroupScopedKind(kind)),
         authors: [...communityAuthors],
         since,
       });
@@ -999,7 +1106,10 @@ export const createIssue31NostrClient = (
     notify();
   };
 
-  const publish = (event: Issue31SignedNostrEvent): Issue31PublishReceipt => {
+  const publish = (
+    event: Issue31SignedNostrEvent,
+    room: Issue31NostrRoom = outboundRoomForKind(event.kind),
+  ): Issue31PublishReceipt => {
     if (!eventShape(event) || !verifyEvent({ ...event, tags: event.tags.map((tag) => [...tag]) })) {
       throw new Error("Issue 31 publish event is invalid.");
     }
@@ -1009,11 +1119,13 @@ export const createIssue31NostrClient = (
       throw new Error("Issue 31 publish identifier has conflicting signed event bytes.");
     }
     if (existing === undefined) {
-      if (outboundPublishes.size >= maxQueuedEvents) {
+      // Per-room bound: one room filling its queue never refuses the other's
+      // next publish.
+      if (queuedInRoom(room) >= maxQueuedEvents) {
         throw new Error("Issue 31 outbound publish queue is full.");
       }
       input.outboundStore?.put(event);
-      outboundPublishes.set(event.id, { event, serializedFrame });
+      outboundPublishes.set(event.id, { event, serializedFrame, room });
     }
     const sentRelayUrls: string[] = [];
     for (const relay of relays.values()) {

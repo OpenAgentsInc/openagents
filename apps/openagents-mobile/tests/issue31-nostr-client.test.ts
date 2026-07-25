@@ -366,7 +366,12 @@ describe("Issue 31 mobile Nostr client", () => {
     const requests = socket.sent.filter(
       (frame): frame is unknown[] => Array.isArray(frame) && frame[0] === "REQ",
     );
-    expect(requests).toHaveLength(5);
+    // Six: discovery, two owner-private, and three community — the group-scoped
+    // `#h` filter that carries the transcript, membership admin records, the
+    // work-unit lane and the arbitration lane; the `#d` filter for relay-signed
+    // group state; and the author-scoped filter for scorer-published records.
+    expect(requests).toHaveLength(6);
+    expect(requests.filter((frame) => String(frame[1]).includes("community"))).toHaveLength(3);
     expect(requests.filter((frame) => String(frame[1]).includes("owner_private"))).toHaveLength(2);
     expect(
       requests.find((frame) => String(frame[1]).includes("owner_private-0"))?.[2],
@@ -381,10 +386,20 @@ describe("Issue 31 mobile Nostr client", () => {
       authors: [host.publicKey],
       "#p": [host.publicKey],
     });
-    expect(requests.find((frame) => String(frame[1]).includes("community-0"))?.[2]).toMatchObject({
-      kinds: [9],
-      since: 29,
-      "#h": ["omega-community"],
+    const communityGroupFilter = requests.find((frame) =>
+      String(frame[1]).includes("community-0"),
+    )?.[2] as Readonly<{ kinds: ReadonlyArray<number>; since: number; "#h": ReadonlyArray<string> }>;
+    expect(communityGroupFilter.since).toBe(29);
+    expect(communityGroupFilter["#h"]).toEqual(["omega-community"]);
+    // Chat alone was the bug: with only kind 9 the room could never learn who
+    // its members were, so no role could be derived from a signed record.
+    expect(communityGroupFilter.kinds).toContain(9);
+    expect(communityGroupFilter.kinds).toContain(9000);
+    expect(communityGroupFilter.kinds).toContain(9001);
+    expect(communityGroupFilter.kinds).toContain(30175);
+    expect(communityGroupFilter.kinds).toContain(7000);
+    expect(requests.find((frame) => String(frame[1]).includes("community-1"))?.[2]).toMatchObject({
+      "#d": ["omega-community"],
     });
     const discoveryRequest = requests.find((frame) => String(frame[1]).includes("discovery-0"));
     if (discoveryRequest === undefined) throw new Error("expected discovery request");
@@ -403,8 +418,9 @@ describe("Issue 31 mobile Nostr client", () => {
     const authId = (authFrame?.[1] as Readonly<{ id?: string }> | undefined)?.id;
     socket.message(["OK", authId, true, "authenticated"]);
     await settleCallbacks();
+    // The AUTH re-subscribes every room, so the six filters appear twice.
     expect(socket.sent.filter((frame) => Array.isArray(frame) && frame[0] === "REQ")).toHaveLength(
-      10,
+      12,
     );
     const closeFrames = socket.sent.filter(
       (frame): frame is unknown[] => Array.isArray(frame) && frame[0] === "CLOSE",

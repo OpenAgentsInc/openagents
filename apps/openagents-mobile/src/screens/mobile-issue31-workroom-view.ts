@@ -20,6 +20,11 @@ import {
   type Issue31WorkroomRoom,
 } from "../workroom/issue31-workroom-read-model";
 import type { Issue31MobileNostrControlState } from "../workroom/issue31-mobile-nostr-runtime";
+import type {
+  Issue31CommunityControlKind,
+  Issue31CommunityReadModel,
+  Issue31CommunityWorkUnitRow,
+} from "../workroom/issue31-community-read-model";
 import {
   searchIssue31LocalMemory,
   type Issue31OwnerCommandState,
@@ -36,6 +41,13 @@ import {
   issue31FullAutoControlSettlementCopy,
   settleIssue31FullAutoControl,
 } from "../workroom/issue31-full-auto-control-settlement";
+
+export interface Issue31CommunityViewState {
+  readonly draft: string
+  readonly subject: string
+  readonly appealDraft: string
+  readonly notice: string | null
+}
 
 export interface Issue31OwnerPrivateViewState {
   readonly draft: string;
@@ -857,6 +869,567 @@ const fullAutoSection = (
   ];
 };
 
+const controlLabel: Readonly<Record<Issue31CommunityControlKind, string>> = {
+  invite_member: "Invite a developer to this room",
+  revoke_member: "Remove a member from this room",
+  attach_agent: "Attach an agent",
+  revoke_agent: "Revoke this agent",
+  post_message: "Post to the room",
+  quote_work_unit: "Quote this work unit",
+  submit_result: "Return the result",
+  verify_result: "Verify this result",
+  file_appeal: "Appeal this rejection",
+};
+
+/**
+ * What an agent-signed action needs, said plainly.
+ *
+ * The operator's compute holds the agent key and this phone never does, so
+ * these are stated rather than offered. A button here would claim the phone can
+ * do something it cannot.
+ */
+const agentComputeCopy: Readonly<Record<Issue31CommunityControlKind, string>> = {
+  attach_agent: "Your agent attaches itself by publishing its persona with its own key, from your compute.",
+  quote_work_unit: "Your agent quotes this unit with its own key, from your compute.",
+  submit_result: "Your agent returns the result with its own key, from your compute.",
+  verify_result: "Your agent verifies this result with its own key, from your compute.",
+  invite_member: "",
+  revoke_member: "",
+  revoke_agent: "",
+  post_message: "",
+  file_appeal: "",
+};
+
+const lifecycleTone = (
+  lifecycle: Issue31CommunityWorkUnitRow["lifecycle"],
+): "neutral" | "info" | "success" | "warn" | "danger" => {
+  if (lifecycle === "expired") return "neutral";
+  if (lifecycle === "disputed") return "warn";
+  if (lifecycle === "decided" || lifecycle === "ruled") return "success";
+  return "info";
+};
+
+const communityUnitCard = (
+  unit: Issue31CommunityWorkUnitRow,
+  appealDraft: string,
+  accessibility: MobileAccessibilityProfile,
+): View =>
+  Stack(
+    {
+      key: `issue31-community-unit-${unit.unitRef}`,
+      direction: "column",
+      gap: "1",
+      padding: "3",
+      style: {
+        width: "full",
+        borderWidth: 1,
+        borderColor: "border",
+        borderRadius: "lg",
+        backgroundColor: "surface",
+      },
+    },
+    [
+      Stack(
+        {
+          key: `issue31-community-unit-${unit.unitRef}-header`,
+          direction: "row",
+          gap: "2",
+          align: "center",
+          style: { width: "full" },
+        },
+        [
+          Text({
+            key: `issue31-community-unit-${unit.unitRef}-ref`,
+            content: unit.unitRef,
+            variant: "heading",
+            color: "textPrimary",
+            style: { flex: 1 },
+          }),
+          Badge({
+            key: `issue31-community-unit-${unit.unitRef}-lifecycle`,
+            label: unit.lifecycle,
+            tone: lifecycleTone(unit.lifecycle),
+          }),
+        ],
+      ),
+      // Exact bounds, named. A unit whose target, actions, budget, expiry, or
+      // idempotency is vague is a unit nobody can hold to anything.
+      Text({
+        key: `issue31-community-unit-${unit.unitRef}-bounds`,
+        content: `Target ${unit.targetRefs.join(" · ") || "none"} · ${unit.allowedActionRefs.join(" · ") || "no permitted action"}`,
+        variant: "caption",
+        color: "textMuted",
+      }),
+      Text({
+        key: `issue31-community-unit-${unit.unitRef}-budget`,
+        content: `${unit.experienceTierCopy} · ${unit.expired ? "grant expired" : `grant expires at ${unit.expiresAtUnix}`} · idempotency ${unit.idempotencyRef}`,
+        variant: "caption",
+        color: unit.expired ? "warning" : "textMuted",
+      }),
+      Text({
+        key: `issue31-community-unit-${unit.unitRef}-quotes`,
+        content:
+          unit.quotes.length === 0
+            ? "No quotes yet."
+            : `${unit.quotes.length} ${unit.quotes.length === 1 ? "quote" : "quotes"}${
+                unit.acceptedProviderPubkey === null
+                  ? " · none accepted"
+                  : ` · accepted ${unit.acceptedProviderPubkey.slice(0, 12)}…`
+              }`,
+        variant: "body",
+        color: "textPrimary",
+      }),
+      ...(unit.result === null
+        ? []
+        : [
+            Text({
+              key: `issue31-community-unit-${unit.unitRef}-result`,
+              content: `Result from ${unit.result.providerPubkey.slice(0, 12)}… · ${unit.result.displaySummary.slice(0, 200) || "no summary"}`,
+              variant: "body",
+              color: "textPrimary",
+            }),
+          ]),
+      ...(unit.verification === null
+        ? []
+        : [
+            Text({
+              key: `issue31-community-unit-${unit.unitRef}-verification`,
+              // Producer and verifier must have distinct operators. A
+              // verification that fails that is shown as refused, not as proof.
+              content: unit.verification.operatorsAreIndependent
+                ? `Verified independently · verifier operator ${unit.verification.verifierOperatorPubkey?.slice(0, 12) ?? "unknown"}…`
+                : `Verification refused · ${unit.verification.refusalReason === "self_dealing_operators" ? "the producer and the verifier are the same operator" : "the verifier's operator is unknown"}`,
+              variant: "body",
+              color: unit.verification.operatorsAreIndependent ? "textPrimary" : "warning",
+            }),
+          ]),
+      ...(unit.decision === null
+        ? []
+        : [
+            Text({
+              key: `issue31-community-unit-${unit.unitRef}-decision`,
+              content:
+                unit.decision.outcome === "accepted"
+                  ? `Accepted · receipt ${unit.decision.authorityReceiptRef ?? "none"}`
+                  : `Rejected · ${unit.decision.reasonClass ?? "no reason class"} · ${unit.decision.displayReasonSummary ?? "no summary"}`,
+              variant: "body",
+              color: unit.decision.outcome === "accepted" ? "textPrimary" : "warning",
+            }),
+            // A rejection always names where it goes next.
+            ...(unit.decision.appealDestination === null
+              ? []
+              : [
+                  Text({
+                    key: `issue31-community-unit-${unit.unitRef}-appeal-destination`,
+                    content:
+                      unit.decision.appealDestination === "needs_owner.owner_appeal_npub"
+                        ? "Appeals go to the owner, but no owner appeal key is registered yet, so a ruling could not be verified."
+                        : `Appeal destination · the owner, as arbiter of last resort · ${unit.decision.appealDestination}`,
+                    variant: "caption",
+                    color: "textMuted",
+                  }),
+                ]),
+          ]),
+      ...(unit.appeal === null
+        ? []
+        : [
+            Text({
+              key: `issue31-community-unit-${unit.unitRef}-appeal`,
+              content: `Appeal open · ${unit.appeal.grounds} · ${unit.appeal.displayGroundsSummary.slice(0, 200)}`,
+              variant: "body",
+              color: "textPrimary",
+            }),
+          ]),
+      ...(unit.ruling === null
+        ? []
+        : [
+            Text({
+              key: `issue31-community-unit-${unit.unitRef}-ruling`,
+              content: unit.ruling.authoredByAdmittedOwnerKey
+                ? `Owner ruling · ${unit.ruling.outcome}`
+                : `A ruling was published by a key that is not the admitted owner appeal identity. It decides nothing.`,
+              variant: "body",
+              color: unit.ruling.authoredByAdmittedOwnerKey ? "textPrimary" : "warning",
+            }),
+          ]),
+      // Controls are exactly what the projection derived from the signed role,
+      // the grant, and the lifecycle state. The view adds none of its own.
+      ...unit.controls.flatMap((control): ReadonlyArray<View> =>
+        control.signedBy === "agent_compute"
+          ? [
+              Text({
+                key: `issue31-community-control-${control.idempotencyRef}`,
+                content: agentComputeCopy[control.kind],
+                variant: "caption",
+                color: "textMuted",
+              }),
+            ]
+          : control.kind === "file_appeal"
+            ? [
+                TextField({
+                  key: `issue31-community-appeal-draft-${unit.unitRef}`,
+                  value: appealDraft,
+                  placeholder: "Why this rejection is disputed",
+                  multiline: true,
+                  onChange: IntentRef(
+                    "Issue31CommunityAppealDraftChanged",
+                    ComponentValueBinding(),
+                  ),
+                  a11y: { label: "Appeal reason" },
+                  style: { width: "full", minHeight: 72 },
+                }),
+                Button({
+                  key: `issue31-community-control-${control.idempotencyRef}`,
+                  label: controlLabel[control.kind],
+                  variant: "secondary",
+                  disabled: appealDraft.trim() === "",
+                  onPress: IntentRef(
+                    "Issue31CommunityAppealFiled",
+                    StaticPayload({ unitRef: unit.unitRef }),
+                  ),
+                  style: { width: "full", ...mobileInteractiveStyle(accessibility) },
+                }),
+              ]
+            : [],
+      ),
+    ],
+  );
+
+/**
+ * The community room.
+ *
+ * Renders the transcript, the roster, the attested agents, the work-unit
+ * lifecycle, and the recomputed experience total — and offers exactly the
+ * controls the projection derived. There is no branch here that can invent a
+ * control: everything actionable comes out of `model.controls` or
+ * `unit.controls`, so an unauthorized role has nothing to render.
+ */
+const communityDetail = (
+  model: Issue31CommunityReadModel,
+  state: Issue31CommunityViewState,
+  accessibility: MobileAccessibilityProfile,
+): ReadonlyArray<View> => {
+  const has = (kind: Issue31CommunityControlKind): boolean =>
+    model.controls.some((control) => control.kind === kind);
+
+  if (model.status === "unavailable") {
+    return [
+      Text({
+        key: "issue31-community-unavailable",
+        content:
+          model.reasonRef === "reason.issue31.community.admin_keys_not_configured"
+            ? "This build has no admitted community admin keys, so membership cannot be checked. Nothing is shown rather than something unverified."
+            : "The community room is not configured on this build.",
+        variant: "body",
+        color: "warning",
+      }),
+    ];
+  }
+
+  return [
+    Text({
+      key: "issue31-community-header",
+      content: `${model.groupName ?? model.groupId ?? "Community"} · you are ${model.viewerRole.replace("_", " ")} (${model.viewerRoleStatus})`,
+      variant: "heading",
+      color: "textPrimary",
+    }),
+    ...(model.viewerRoleStatus === "revoked"
+      ? [
+          Text({
+            key: "issue31-community-revoked",
+            content:
+              "Your membership was revoked. You can read what is already on this device and take no further action in this room.",
+            variant: "body",
+            color: "warning",
+          }),
+        ]
+      : []),
+    ...(model.status === "gap"
+      ? [
+          Text({
+            key: "issue31-community-gap",
+            content: `Some community records were refused · ${model.reasonRef ?? "unknown"} · ${model.rejectedRecordCount} refused`,
+            variant: "caption",
+            color: "warning",
+          }),
+        ]
+      : []),
+
+    Text({ key: "issue31-community-transcript-title", content: "Room", variant: "heading" }),
+    ...(model.transcript.length === 0
+      ? [
+          Text({
+            key: "issue31-community-transcript-empty",
+            content: "No confirmed community messages have arrived on this device.",
+            variant: "body",
+            color: "textMuted",
+          }),
+        ]
+      : model.transcript.map((row) =>
+          Stack(
+            {
+              key: `issue31-community-message-${row.sourceEventId}`,
+              direction: "column",
+              gap: "1",
+              padding: "3",
+              style: { width: "full", borderWidth: 1, borderColor: "border", borderRadius: "lg" },
+            },
+            [
+              Text({
+                key: `issue31-community-message-${row.sourceEventId}-author`,
+                content: `${row.authorPubkey.slice(0, 12)}… · ${row.authorRole.replace("_", " ")} · ${row.sourceCreatedAt}`,
+                variant: "caption",
+                color: "textMuted",
+              }),
+              Text({
+                key: `issue31-community-message-${row.sourceEventId}-text`,
+                // Display only. The quoted form beside it is the only thing
+                // that may reach a model.
+                content: row.displayText,
+                variant: "body",
+                color: "textPrimary",
+              }),
+            ],
+          ),
+        )),
+    ...(has("post_message")
+      ? [
+          TextField({
+            key: "issue31-community-composer",
+            value: state.draft,
+            placeholder: "Post to the community room",
+            multiline: true,
+            onChange: IntentRef("Issue31CommunityDraftChanged", ComponentValueBinding()),
+            a11y: { label: "Community message" },
+            style: { width: "full", minHeight: 96 },
+          }),
+          Button({
+            key: "issue31-community-post",
+            label: controlLabel.post_message,
+            variant: "primary",
+            disabled: state.draft.trim() === "",
+            onPress: IntentRef("Issue31CommunityMessageSent", StaticPayload({})),
+            style: { width: "full", ...mobileInteractiveStyle(accessibility) },
+          }),
+        ]
+      : []),
+    ...(state.notice === null
+      ? []
+      : [
+          Text({
+            key: "issue31-community-notice",
+            content: state.notice,
+            variant: "caption",
+            color: state.notice.includes("Signed and sent") ? "textMuted" : "warning",
+          }),
+        ]),
+
+    Text({ key: "issue31-community-roster-title", content: "Members", variant: "heading" }),
+    ...(model.roster.length === 0
+      ? [
+          Text({
+            key: "issue31-community-roster-empty",
+            content: "No signed membership record has arrived for this group.",
+            variant: "body",
+            color: "textMuted",
+          }),
+        ]
+      : model.roster.map((row) =>
+          Text({
+            key: `issue31-community-member-${row.operatorPubkey}`,
+            content: `${row.operatorPubkey.slice(0, 12)}… · ${row.status} · ${row.role.replace("_", " ")} · ${row.admittedAgentCount}/${row.agentCount} agents admitted`,
+            variant: "caption",
+            color: row.status === "revoked" ? "textMuted" : "textPrimary",
+          }),
+        )),
+    ...(has("invite_member") || has("revoke_member")
+      ? [
+          TextField({
+            key: "issue31-community-subject",
+            value: state.subject,
+            placeholder: "Developer public key (64 hex)",
+            onChange: IntentRef("Issue31CommunitySubjectChanged", ComponentValueBinding()),
+            a11y: { label: "Community member public key" },
+            style: { width: "full", ...mobileInteractiveStyle(accessibility) },
+          }),
+          Stack(
+            { key: "issue31-community-admin-controls", direction: "row", gap: "2" },
+            [
+              ...(has("invite_member")
+                ? [
+                    Button({
+                      key: "issue31-community-invite",
+                      label: controlLabel.invite_member,
+                      variant: "secondary",
+                      disabled: state.subject.trim().length !== 64,
+                      onPress: IntentRef("Issue31CommunityMemberInvited", StaticPayload({})),
+                      style: mobileInteractiveStyle(accessibility),
+                    }),
+                  ]
+                : []),
+              ...(has("revoke_member")
+                ? [
+                    Button({
+                      key: "issue31-community-revoke-member",
+                      label: controlLabel.revoke_member,
+                      variant: "ghost",
+                      disabled: state.subject.trim().length !== 64,
+                      onPress: IntentRef("Issue31CommunityMemberRevoked", StaticPayload({})),
+                      style: mobileInteractiveStyle(accessibility),
+                    }),
+                  ]
+                : []),
+            ],
+          ),
+        ]
+      : []),
+
+    Text({ key: "issue31-community-agents-title", content: "Attested agents", variant: "heading" }),
+    Text({
+      key: "issue31-community-agents-boundary",
+      content:
+        "Each agent runs on its operator's own compute with its own credentials. OpenAgents never receives a provider key and never touches an agent home.",
+      variant: "caption",
+      color: "textMuted",
+    }),
+    ...(model.agents.length === 0
+      ? [
+          Text({
+            key: "issue31-community-agents-empty",
+            content: "No attested agent has been bound in this group.",
+            variant: "body",
+            color: "textMuted",
+          }),
+        ]
+      : model.agents.map((row) =>
+          Stack(
+            {
+              key: `issue31-community-agent-${row.agentPubkey}`,
+              direction: "column",
+              gap: "1",
+              padding: "3",
+              style: { width: "full", borderWidth: 1, borderColor: "border", borderRadius: "lg" },
+            },
+            [
+              Text({
+                key: `issue31-community-agent-${row.agentPubkey}-id`,
+                content: `${row.personaDisplayName ?? row.personaDTag ?? row.agentPubkey.slice(0, 12)} · ${row.agentPubkey.slice(0, 12)}…`,
+                variant: "body",
+                color: "textPrimary",
+              }),
+              Text({
+                key: `issue31-community-agent-${row.agentPubkey}-state`,
+                content: `Operator ${row.operatorPubkey.slice(0, 12)}… · attested · binding ${row.status} · grant ${row.capabilityGrant}${row.burned ? " · key burned by revocation" : ""}`,
+                variant: "caption",
+                color: row.status === "revoked" ? "warning" : "textMuted",
+              }),
+              ...(row.declaredCapabilities.length === 0
+                ? []
+                : [
+                    Text({
+                      key: `issue31-community-agent-${row.agentPubkey}-capabilities`,
+                      content: `Declares · ${row.declaredCapabilities.join(" · ")}`,
+                      variant: "caption",
+                      color: "textMuted",
+                    }),
+                  ]),
+              ...model.controls
+                .filter(
+                  (control) =>
+                    control.kind === "revoke_agent" && control.subjectRef === row.agentPubkey,
+                )
+                .map((control) =>
+                  Button({
+                    key: `issue31-community-control-${control.idempotencyRef}`,
+                    label: controlLabel.revoke_agent,
+                    variant: "ghost",
+                    onPress: IntentRef(
+                      "Issue31CommunityAgentRevoked",
+                      StaticPayload({ agentPubkey: row.agentPubkey }),
+                    ),
+                    a11y: {
+                      label:
+                        "Revoke this agent's group access and capability grant. Your machine is not touched.",
+                    },
+                    style: mobileInteractiveStyle(accessibility),
+                  }),
+                ),
+            ],
+          ),
+        )),
+    ...model.controls
+      .filter((control) => control.kind === "attach_agent")
+      .map((control) =>
+        Text({
+          key: `issue31-community-control-${control.idempotencyRef}`,
+          content: agentComputeCopy.attach_agent,
+          variant: "caption",
+          color: "textMuted",
+        }),
+      ),
+
+    Text({ key: "issue31-community-units-title", content: "Work units", variant: "heading" }),
+    ...(model.workUnits.length === 0
+      ? [
+          Text({
+            key: "issue31-community-units-empty",
+            content: "No community work unit has been published to this group.",
+            variant: "body",
+            color: "textMuted",
+          }),
+        ]
+      : model.workUnits.map((unit) =>
+          communityUnitCard(unit, state.appealDraft, accessibility),
+        )),
+
+    Text({ key: "issue31-community-xp-title", content: "Experience", variant: "heading" }),
+    Text({
+      key: "issue31-community-xp-total",
+      // Recomputed from the awards, every time. The published rank is shown
+      // beside it and never instead of it.
+      content: `${model.experience.recomputedTotalPoints} points · level ${model.experience.recomputedLevel} ${model.experience.recomputedLevelId} · ${model.experience.awardCount} accepted ${model.experience.awardCount === 1 ? "award" : "awards"}`,
+      variant: "body",
+      color: "textPrimary",
+    }),
+    ...(model.experience.publishedRankPoints === null
+      ? []
+      : [
+          Text({
+            key: "issue31-community-xp-rank",
+            content: model.experience.publishedRankDisagreed
+              ? `A published rank of ${model.experience.publishedRankPoints} disagrees with these awards. The awards win and the total above stands.`
+              : `Scorer rank agrees · ${model.experience.publishedRankPoints}`,
+            variant: "caption",
+            color: model.experience.publishedRankDisagreed ? "warning" : "textMuted",
+          }),
+        ]),
+    ...(model.experience.badgeIds.length === 0
+      ? []
+      : [
+          Text({
+            key: "issue31-community-xp-badges",
+            content: `Badges · ${model.experience.badgeIds.join(" · ")}`,
+            variant: "caption",
+            color: "textMuted",
+          }),
+        ]),
+    ...model.experience.awards.map((award) =>
+      Text({
+        key: `issue31-community-award-${award.sourceEventId ?? award.workEventId}`,
+        content: `${award.awardKind} · ${award.points} points · work ${award.workEventId.slice(0, 12)}… · receipt ${award.receiptRef}`,
+        variant: "caption",
+        color: "textMuted",
+      }),
+    ),
+    Text({
+      key: "issue31-community-xp-boundary",
+      content: model.experienceOnlyCopy,
+      variant: "caption",
+      color: "textMuted",
+    }),
+  ];
+};
+
 export const renderMobileIssue31WorkroomView = (
   model: Issue31WorkroomReadModel,
   selectedRoom: Issue31WorkroomRoom,
@@ -864,6 +1437,8 @@ export const renderMobileIssue31WorkroomView = (
   accessibility: MobileAccessibilityProfile,
   ownerState: Issue31OwnerPrivateViewState,
   fullAuto: Issue31FullAutoReadModel,
+  community: Issue31CommunityReadModel,
+  communityState: Issue31CommunityViewState,
 ): View => {
   const rows = issue31RowsForRoom(model, selectedRoom);
   return Stack(
@@ -984,7 +1559,7 @@ export const renderMobileIssue31WorkroomView = (
             // owner never opens an unrelated product surface to see the work.
             ...fullAutoSection(fullAuto, model.ownerPrivate.commands, accessibility),
           ]
-        : []),
+        : communityDetail(community, communityState, accessibility)),
       ...rows.map(capabilityCard),
     ],
   );

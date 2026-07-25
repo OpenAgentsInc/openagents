@@ -157,3 +157,35 @@ export const isUntrustedCommunityContent = (
 export const assembleUntrustedCommunityContext = (
   blocks: ReadonlyArray<UntrustedCommunityContent>,
 ): string => blocks.map((block) => block.quoted).join("\n\n");
+
+/**
+ * The single admitted door from the community room into Sarah's context.
+ *
+ * The compile-time brand above is the primary guard and it is a good one, but
+ * it is only as strong as the type information at the call site. This boundary
+ * receives values that were projected from records that crossed a relay, and
+ * a projection is exactly where a `string` gets widened to `any` or a plain
+ * object gets cast into shape. So this checks the brand at runtime too, per
+ * block, and refuses the whole context rather than dropping the bad block —
+ * silently omitting a member's message would let an attacker choose what Sarah
+ * does not see.
+ *
+ * Until the mobile community room subscribed, nothing could reach Sarah from
+ * this room and the fence had zero call sites. That is no longer true, which is
+ * why the check is here rather than in a comment.
+ */
+export const buildCommunitySarahContext = (
+  blocks: ReadonlyArray<unknown>,
+): string => {
+  const admitted: UntrustedCommunityContent[] = [];
+  for (const [index, block] of blocks.entries()) {
+    if (!isUntrustedCommunityContent(block)) {
+      throw new UntrustedCommunityContentError(
+        `community context block ${index} is not quoted untrusted content; ` +
+          "member-written text reaches Sarah only through quoteUntrustedCommunityContent",
+      );
+    }
+    admitted.push(block);
+  }
+  return assembleUntrustedCommunityContext(admitted);
+};
