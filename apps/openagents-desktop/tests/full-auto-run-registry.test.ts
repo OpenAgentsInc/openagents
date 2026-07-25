@@ -390,6 +390,119 @@ describe("FullAutoRun registry: concurrent runs, draft/start, rerun, eviction (F
   })
 })
 
+/**
+ * OMEGA-MOB-31-03 (omega#47). The mobile Full Auto contract projects the EXACT
+ * unattended duration of a run. It computes that as `generatedAtMs -
+ * startedAtMs`, both read from this host's clock, and it REFUSES a run whose
+ * start the host never recorded rather than reporting `unattendedMs: 0` --
+ * which on a phone reads as "just started". These tests hold the source end of
+ * that: the number is a measurement this host takes, once, with no way for a
+ * caller to supply it and no derivation from any formatted string.
+ */
+describe("Host-recorded numeric run start (omega#47)", () => {
+  test("a started run carries a numeric start taken from the same instant as its ISO start", () => {
+    withTempDir("oa-full-auto-run-startedatms-", root => {
+      const at = new Date("2026-07-25T14:03:07.512Z")
+      const registry = openFullAutoRunRegistry(path.join(root, "runs.json"), () => at)
+      const started = registry.startNew({ ...draftInput(), actor: "control_api", reason: "start" })
+      expect(started.ok).toBe(true)
+      if (!started.ok) return
+
+      expect(started.run.startedAtMs).toBe(at.getTime())
+      // One clock reading produced both encodings, so the run cannot hold two
+      // answers to when it began.
+      expect(started.run.startedAtMs).toBe(Date.parse(started.run.startedAt!))
+    })
+  })
+
+  test("a draft that never started has no numeric start rather than a zero", () => {
+    withTempDir("oa-full-auto-run-startedatms-draft-", root => {
+      const registry = openFullAutoRunRegistry(path.join(root, "runs.json"))
+      const draft = registry.createDraft(draftInput())
+      expect(draft.startedAtMs).toBeUndefined()
+      expect(draft.startedAtMs).not.toBe(0)
+    })
+  })
+
+  test("Resume after a Pause does not move the start, so paused hours are not erased", () => {
+    withTempDir("oa-full-auto-run-startedatms-resume-", root => {
+      let at = new Date("2026-07-25T00:00:00.000Z")
+      const registry = openFullAutoRunRegistry(path.join(root, "runs.json"), () => at)
+      const started = registry.startNew({ ...draftInput(), actor: "control_api", reason: "start" })
+      expect(started.ok).toBe(true)
+      if (!started.ok) return
+      const firstStart = started.run.startedAtMs
+      expect(firstStart).toBe(Date.parse("2026-07-25T00:00:00.000Z"))
+
+      at = new Date("2026-07-25T01:00:00.000Z")
+      expect(registry.transition(started.run.runRef, { to: "paused", actor: "owner_ui", reason: "pause" }).ok).toBe(true)
+      at = new Date("2026-07-25T06:00:00.000Z")
+      const resumed = registry.transition(started.run.runRef, { to: "running", actor: "owner_ui", reason: "resume" })
+      expect(resumed.ok).toBe(true)
+      if (!resumed.ok) return
+
+      expect(resumed.run.startedAtMs).toBe(firstStart)
+      expect(resumed.run.startedAt).toBe(started.run.startedAt)
+    })
+  })
+
+  test("the numeric start survives a restart, and is never invented for a record that predates it", () => {
+    withTempDir("oa-full-auto-run-startedatms-restart-", root => {
+      const file = path.join(root, "runs.json")
+      const at = new Date("2026-07-25T09:30:00.000Z")
+      const first = openFullAutoRunRegistry(file, () => at)
+      const started = first.startNew({ ...draftInput(), actor: "control_api", reason: "start" })
+      expect(started.ok).toBe(true)
+      if (!started.ok) return
+      expect(openFullAutoRunRegistry(file).get(started.run.runRef)?.startedAtMs).toBe(at.getTime())
+
+      // A durable record written before omega#47 added the field. It still
+      // decodes, and it honestly reports having no host-recorded numeric
+      // start. Backfilling it from `startedAt` would give the field two
+      // provenances that nothing on the wire distinguishes.
+      const raw = JSON.parse(readFileSync(file, "utf8"))
+      delete raw.runs[0].startedAtMs
+      writeFileSync(file, `${JSON.stringify(raw)}\n`, "utf8")
+      const legacy = openFullAutoRunRegistry(file).get(started.run.runRef)
+      expect(legacy?.state).toBe("running")
+      expect(legacy?.startedAt).toBe(started.run.startedAt)
+      expect(legacy?.startedAtMs).toBeUndefined()
+    })
+  })
+
+  test("a caller cannot supply the start: a client-supplied value is refused, and the host's own stands", () => {
+    withTempDir("oa-full-auto-run-startedatms-client-", root => {
+      const at = new Date("2026-07-25T12:00:00.000Z")
+      const registry = openFullAutoRunRegistry(path.join(root, "runs.json"), () => at)
+      // `startedAtMs` is not part of the create input at the type level; force
+      // one through anyway to watch it fail to become the run's start.
+      const started = registry.startNew({
+        ...draftInput(),
+        actor: "control_api",
+        reason: "start",
+        ...({ startedAtMs: 1 } as unknown as Record<string, never>),
+      })
+      expect(started.ok).toBe(true)
+      if (!started.ok) return
+      expect(started.run.startedAtMs).toBe(at.getTime())
+      expect(started.run.startedAtMs).not.toBe(1)
+    })
+  })
+
+  test("a start outside the shared JavaScript Date bound is refused rather than persisted", () => {
+    withTempDir("oa-full-auto-run-startedatms-bound-", root => {
+      const registry = openFullAutoRunRegistry(path.join(root, "runs.json"))
+      const draft = registry.createDraft(draftInput())
+      expect(() =>
+        applyFullAutoRunTransition(
+          { ...draft, startedAtMs: 8_640_000_000_000_001 } as FullAutoRun,
+          { to: "running", actor: "control_api", reason: "start" },
+        ),
+      ).toThrow()
+    })
+  })
+})
+
 describe("Legacy registry migration (FA-AC-41)", () => {
   const legacyRecord = (overrides: Partial<FullAutoRecord> = {}): FullAutoRecord => ({
     threadRef: "thread-legacy",

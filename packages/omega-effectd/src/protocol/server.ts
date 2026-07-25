@@ -438,6 +438,7 @@ export const createOmegaEffectdFramedServer = (
       recoveryAction: run.recoveryAction,
       terminalReason: run.terminalReason ?? null,
       updatedAt: run.lastProgressAt ?? run.createdAt,
+      startedAtMs: run.startedAtMs ?? null,
       nativeEvidence,
       turns,
     };
@@ -1012,6 +1013,7 @@ export const createOmegaEffectdFramedServer = (
           state: run.state,
           title: run.title,
           updatedAt: run.lastProgressAt ?? run.createdAt,
+          startedAtMs: run.startedAtMs ?? null,
         }));
         return respond(request.id, true, { runs });
       }

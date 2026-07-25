@@ -600,4 +600,82 @@ describe("omega-effectd framed protocol", () => {
       expect((assess?.result as { assessment: { ok: boolean } }).assessment.ok).toBe(true);
     });
   });
+
+  /**
+   * OMEGA-MOB-31-03 (omega#47). The mobile Full Auto adjunct projects the EXACT
+   * unattended duration of a run, and refuses a run whose start this host never
+   * recorded rather than reporting a zero. That refusal is only survivable if a
+   * live host actually emits a numeric start -- which, before this, it did not:
+   * `get_run` carried a formatted `updatedAt` and nothing else, so every live
+   * run was refused. These assertions hold the wire end of it.
+   */
+  test("a live run reports its host-recorded numeric start, not just a formatted timestamp", async () => {
+    await withRoot(async (root) => {
+      const service = createOmegaEffectdService({ paths: { dataRoot: root } });
+      const server = createOmegaEffectdFramedServer(
+        service,
+        { dataRoot: root },
+        { hostRequestHandler: makeOmegaEffectdTestHost() },
+      );
+      await server.handleLine(request("1", 0, "initialize", { generation: 1 }));
+
+      const before = Date.now();
+      const started = await server.handleLine(
+        request("2", 1, "start", {
+          workspaceRef: "workspace.omega.supervised",
+          title: "issue47 numeric start",
+          objective: "Project the exact unattended duration of a live run.",
+          doneCondition: "The phone measures the duration instead of parsing it.",
+        }),
+      );
+      expect(started?.ok).toBe(true);
+      const after = Date.now();
+      const runRef = (started?.result as { run: { runRef: string } }).run.runRef;
+
+      const detail = await server.handleLine(request("3", 1, "get_run", { runRef }));
+      const run = (detail?.result as {
+        run: { startedAtMs: number | null; updatedAt: string };
+      }).run;
+
+      // Numeric, and taken from THIS host's clock while the request was in
+      // flight -- not a client value and not a parse of anything.
+      expect(typeof run.startedAtMs).toBe("number");
+      expect(run.startedAtMs).toBeGreaterThanOrEqual(before);
+      expect(run.startedAtMs).toBeLessThanOrEqual(after);
+
+      // `updatedAt` remains display text. Nothing downstream needs to parse it
+      // to know how long the run has been unattended.
+      expect(typeof run.updatedAt).toBe("string");
+
+      // `list_runs` agrees with `get_run`, so the monitor and the phone cannot
+      // hold two opinions about when a run began.
+      const listed = await server.handleLine(request("4", 1, "list_runs"));
+      const snapshot = (listed?.result as {
+        runs: ReadonlyArray<{ runRef: string; startedAtMs: number | null }>;
+      }).runs.find((entry) => entry.runRef === runRef);
+      expect(snapshot?.startedAtMs).toBe(run.startedAtMs);
+
+      // A Pause and Resume is not a new start. Pausing a run overnight must not
+      // erase the unattended hours the owner is asking about.
+      await server.handleLine(request("5", 1, "pause", { runRef }));
+      await server.handleLine(request("6", 1, "resume", { runRef }));
+      const resumed = await server.handleLine(request("7", 1, "get_run", { runRef }));
+      expect((resumed?.result as { run: { startedAtMs: number | null } }).run.startedAtMs).toBe(
+        run.startedAtMs,
+      );
+
+      // And it survives a restart, because it is durable rather than derived.
+      const serviceB = createOmegaEffectdService({ paths: { dataRoot: root } });
+      const serverB = createOmegaEffectdFramedServer(
+        serviceB,
+        { dataRoot: root },
+        { hostRequestHandler: makeOmegaEffectdTestHost() },
+      );
+      await serverB.handleLine(request("20", 0, "initialize", { generation: 2 }));
+      const afterRestart = await serverB.handleLine(request("21", 2, "get_run", { runRef }));
+      expect(
+        (afterRestart?.result as { run: { startedAtMs: number | null } }).run.startedAtMs,
+      ).toBe(run.startedAtMs);
+    });
+  });
 });

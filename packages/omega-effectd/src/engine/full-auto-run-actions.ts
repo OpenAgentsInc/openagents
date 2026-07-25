@@ -91,6 +91,10 @@ const projectRun = (run: FullAutoRun, projection: FullAutoLivenessProjection): F
   migratedFrom: run.migratedFrom ?? null,
   createdAt: run.createdAt,
   startedAt: run.startedAt ?? null,
+  // omega#47: the host's numeric start, passed through unchanged. Never
+  // derived from `startedAt` -- a projection that manufactured this number
+  // would be reporting a parse as a measurement.
+  startedAtMs: run.startedAtMs ?? null,
   lastProgressAt: run.lastProgressAt ?? null,
   pausedAt: run.pausedAt ?? null,
   stoppedAt: run.stoppedAt ?? null,

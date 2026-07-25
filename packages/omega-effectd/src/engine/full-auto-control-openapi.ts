@@ -1065,6 +1065,9 @@ export const fullAutoControlOpenApiDocument = {
           "startedAt", "lastProgressAt", "pausedAt", "stoppedAt", "completedAt", "transitions",
           "stallCause", "nextRetryAt", "recoveryAction",
         ],
+        // `startedAtMs` is intentionally NOT required: a run recorded before
+        // omega#47 added the host's numeric start has none, and inventing one
+        // for it would be a fabricated measurement.
         additionalProperties: false,
         properties: {
           runRef: { type: "string", minLength: 1, maxLength: 180 },
@@ -1085,6 +1088,7 @@ export const fullAutoControlOpenApiDocument = {
           migratedFrom: { type: ["string", "null"], enum: ["legacy_registry", null] },
           createdAt: { type: "string" },
           startedAt: { type: ["string", "null"] },
+          startedAtMs: { type: ["integer", "null"], minimum: 0, maximum: 8_640_000_000_000_000 },
           lastProgressAt: { type: ["string", "null"] },
           pausedAt: { type: ["string", "null"] },
           stoppedAt: { type: ["string", "null"] },

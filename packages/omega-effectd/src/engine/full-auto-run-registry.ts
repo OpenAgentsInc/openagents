@@ -228,6 +228,18 @@ const TurnCap = Schema.Number.check(
   Schema.isGreaterThan(0),
   Schema.isLessThanOrEqualTo(1000),
 )
+/**
+ * The largest instant a JavaScript `Date` can represent, and the exact bound
+ * the omega#47 mobile contract enforces on both sides. Keeping the engine's
+ * own bound identical means a run start this host records can never be a
+ * timestamp the phone's decoder would refuse.
+ */
+export const FULL_AUTO_RUN_MAX_EPOCH_MS = 8_640_000_000_000_000
+const EpochMs = Schema.Number.check(
+  Schema.isInt(),
+  Schema.isGreaterThanOrEqualTo(0),
+  Schema.isLessThanOrEqualTo(FULL_AUTO_RUN_MAX_EPOCH_MS),
+)
 
 /** FA-AC-38: revision history -- every objective/done-condition edit is
  * append-only and attributed; nothing overwrites silently. */
@@ -374,6 +386,39 @@ export const FullAutoRunSchema = Schema.Struct({
   migratedFrom: Schema.optional(Schema.Literal("legacy_registry")),
   createdAt: Schema.String,
   startedAt: Schema.optional(Schema.String),
+  /**
+   * OMEGA-MOB-31-03 (omega#47): the host's own numeric record of when this run
+   * began, in epoch milliseconds.
+   *
+   * The mobile contract projects the EXACT unattended duration of a run as
+   * `generatedAtMs - startedAtMs`, where both endpoints are read from this
+   * host's clock. That is a measurement of the run. Re-deriving the same
+   * number downstream by parsing `startedAt`, or by parsing the formatted
+   * `updatedAt` string a run projection carries for display, would make the
+   * owner's unattended time a parse of Omega's UI instead -- the same class of
+   * false claim the contract exists to prevent. So the number is recorded here,
+   * at the source, or it does not exist and the projection refuses.
+   *
+   * Three properties make it a measurement rather than a report:
+   *
+   *  - It is stamped from THIS host's clock, in the same `now()` reading that
+   *    produces `startedAt`, so the two can never describe different instants.
+   *  - It is stamped exactly once, on the `-> running` transition, and no later
+   *    transition rewrites it. A run start does not move.
+   *  - There is no input path for it. No control-API body, CLI flag, MCP call,
+   *    or mobile intent can supply or influence it; a client clock therefore
+   *    cannot become the owner's unattended duration.
+   *
+   * Optional because it is additive: a run recorded before this field existed
+   * still decodes, and is honestly reported as having no host-recorded numeric
+   * start. Such a run is REFUSED by the mobile projection rather than shown as
+   * `unattendedMs: 0`, which on a phone reads as "just started". It is
+   * deliberately NOT backfilled from `startedAt`: a backfill would give this
+   * field two different provenances that nothing on the wire distinguishes,
+   * which is exactly the ambiguity the refusal protects against. Every run
+   * started after this field shipped carries it.
+   */
+  startedAtMs: Schema.optional(EpochMs),
   lastProgressAt: Schema.optional(Schema.String),
   /** FA-RUN-03 (#8971): stamped every time the liveness/stall classifier
    * evaluates this run (whether or not anything changed). A large gap here
@@ -499,7 +544,11 @@ export const applyFullAutoRunTransition = (
       input.to,
     )
   }
-  const timestamp = now().toISOString()
+  // ONE clock reading produces both encodings of this instant. Calling `now()`
+  // twice would let `startedAt` and `startedAtMs` describe two different
+  // moments, and the run would then have two answers to when it began.
+  const at = now()
+  const timestamp = at.toISOString()
   const reason = input.reason.slice(0, FULL_AUTO_RUN_REASON_LIMIT)
   const transitionRecord: FullAutoRunTransitionRecord = {
     from: run.state,
@@ -510,10 +559,15 @@ export const applyFullAutoRunTransition = (
     ...(input.correlationRef === undefined ? {} : { correlationRef: input.correlationRef }),
   }
   const transitions = [...run.transitions, transitionRecord].slice(-FULL_AUTO_RUN_TRANSITION_HISTORY_LIMIT)
-  const timestampPatch: Record<string, string> = {}
+  const timestampPatch: Record<string, string | number> = {}
   if (input.to === "running") {
     timestampPatch.lastProgressAt = timestamp
+    // Stamped once, on the first entry into Running, and never rewritten. A
+    // Resume after a Pause is not a new start, so it must not move either
+    // encoding of the start -- otherwise Pausing a run overnight would erase
+    // the unattended hours the owner is asking about.
     if (run.startedAt === undefined) timestampPatch.startedAt = timestamp
+    if (run.startedAtMs === undefined) timestampPatch.startedAtMs = at.getTime()
   }
   if (input.to === "paused") timestampPatch.pausedAt = timestamp
   if (input.to === "stopped") timestampPatch.stoppedAt = timestamp

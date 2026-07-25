@@ -138,7 +138,20 @@ export type OmegaEffectdRunSnapshot = Readonly<{
   threadRef: string | null;
   state: string;
   title: string;
+  /**
+   * Formatted for display. `HH:MM:SS`-style elapsed text and any other
+   * duration a viewer shows is derived from this at the surface, so it is NOT
+   * a measurement anything downstream may re-parse. Use `startedAtMs`.
+   */
   updatedAt: string;
+  /**
+   * OMEGA-MOB-31-03 (omega#47): this host's numeric record of when the run
+   * began, in epoch milliseconds, or `null` when the host never recorded one.
+   * Paired with a `generatedAtMs` read from the same host clock, it yields the
+   * exact unattended duration by measurement rather than by parsing
+   * `updatedAt`.
+   */
+  startedAtMs: number | null;
 }>;
 
 /** Owner-local run detail for the GPUI launcher/monitor (FA-03). */
@@ -157,7 +170,16 @@ export type OmegaEffectdRunDetail = Readonly<{
   stallCause: string | null;
   recoveryAction: string;
   terminalReason: string | null;
+  /** Formatted for display; see `OmegaEffectdRunSnapshot.updatedAt`. */
   updatedAt: string;
+  /**
+   * OMEGA-MOB-31-03 (omega#47): this host's numeric record of when the run
+   * began, in epoch milliseconds, or `null` when the host never recorded one.
+   * The mobile Full Auto adjunct REFUSES a run whose start is `null` rather
+   * than projecting `unattendedMs: 0`, which on a phone reads as "just
+   * started" -- a claim nothing supports.
+   */
+  startedAtMs: number | null;
   nativeEvidence: OmegaEffectdNativeEvidence | null;
   turns: ReadonlyArray<{
     turnRef: string;

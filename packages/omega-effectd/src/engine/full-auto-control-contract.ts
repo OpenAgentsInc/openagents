@@ -22,6 +22,7 @@ import {
 import {
   FULL_AUTO_RUN_DONE_CONDITION_LIMIT,
   FULL_AUTO_RUN_ACTIVE_LIMIT,
+  FULL_AUTO_RUN_MAX_EPOCH_MS,
   FULL_AUTO_RUN_OBJECTIVE_LIMIT,
   FULL_AUTO_RUN_REASON_LIMIT,
   FULL_AUTO_RUN_TITLE_LIMIT,
@@ -201,6 +202,22 @@ export const FullAutoControlRunSchema = Schema.Struct({
   migratedFrom: Schema.NullOr(Schema.Literal("legacy_registry")),
   createdAt: Schema.String,
   startedAt: Schema.NullOr(Schema.String),
+  /**
+   * OMEGA-MOB-31-03 (omega#47): the host's own numeric start instant in epoch
+   * milliseconds, projected straight from the durable run record. `null` means
+   * this host never recorded one -- a run that predates the field, or one that
+   * has not started. It is never derived from `startedAt` or from any formatted
+   * timestamp: a consumer computing an unattended duration must be measuring
+   * this host's record, not parsing this host's display text.
+   *
+   * `optional` only so a pre-existing run-projection literal that omits it
+   * still decodes; a produced projection always emits it.
+   */
+  startedAtMs: Schema.optional(Schema.NullOr(Schema.Number.check(
+    Schema.isInt(),
+    Schema.isGreaterThanOrEqualTo(0),
+    Schema.isLessThanOrEqualTo(FULL_AUTO_RUN_MAX_EPOCH_MS),
+  ))),
   lastProgressAt: Schema.NullOr(Schema.String),
   pausedAt: Schema.NullOr(Schema.String),
   stoppedAt: Schema.NullOr(Schema.String),
