@@ -265,6 +265,29 @@ export const attachAgent = (
     );
   }
 
+  // A revoked agent key is burned community-wide, and stays burned.
+  //
+  // `revokeAgent` clears `agentIndex`, so the duplicate check below never sees
+  // a revoked key: the binding was then filtered out of `member.agents` and
+  // replaced with a fresh active one, which silently erased the revocation.
+  // Replaying the original attestation was enough to restore the agent.
+  //
+  // The scan covers every member, not just this one, so a revoked key cannot
+  // be adopted by a second operator either. Re-admitting a revoked agent
+  // requires a new key, which is what makes revocation mean anything.
+  for (const existingMember of ledger.members.values()) {
+    if (
+      existingMember.agents.some(
+        (agent) => agent.agentPubkey === agentPubkey && agent.status === "revoked",
+      )
+    ) {
+      throw new CommunityMembershipError(
+        "agent_revoked",
+        "community: revoked agent key cannot be attached again",
+      );
+    }
+  }
+
   if (ledger.agentIndex.has(agentPubkey)) {
     const prior = ledger.agentIndex.get(agentPubkey)!;
     if (prior === operatorPubkey) {
