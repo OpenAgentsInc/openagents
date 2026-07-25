@@ -655,7 +655,19 @@ export const createOmegaEffectdFramedServer = (
     },
     liveState: (threadRef) => evidenceByThread.get(threadRef)?.live ?? null,
     listTurns: (threadRef) => evidenceByThread.get(threadRef)?.turns ?? [],
-    appendSystemNote: () => {},
+    // FA-07 gate 5 (omega#26): queue the note for the host instead of dropping
+    // it. This was `() => {}`, which silently discarded every note the action
+    // layer wrote — including the one artifact that makes a cross-provider
+    // handoff VISIBLE to the owner. `full-auto-run-actions.ts` emits
+    // "Provider handoff: <from> → <to> (<disposition>)" against the new target
+    // thread; on the Electron control-API path that reaches the transcript, and
+    // on the Omega framed path it reached nothing. A handoff that changes which
+    // model is spending the owner's budget, and leaves no trace in the thread
+    // the owner is reading, is exactly the silence this packet exists to
+    // forbid. `flushNotes` already redacts and bounds delivery.
+    appendSystemNote: (threadRef, text) => {
+      pendingNotes.push({ threadRef, text });
+    },
     createThread: () => {
       if (preparedThreadRef === null)
         throw new OmegaEffectdHostBridgeError("host_unavailable", "No host thread was prepared.");
@@ -1727,6 +1739,11 @@ export const createOmegaEffectdFramedServer = (
             redactedError("invalid_request", outcome.error.message),
           );
         }
+        // FA-07 gate 5 (omega#26): deliver the handoff note before answering.
+        // Every other note-producing path already flushes; the handoff case did
+        // not, so even with a working `appendSystemNote` the note would sit in
+        // the queue until some unrelated reconciliation happened to drain it.
+        await flushNotes();
         const detail = projectDetail(actionContext(), params.runRef);
         return respond(request.id, true, {
           run: detail,
