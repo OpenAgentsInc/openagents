@@ -6,6 +6,31 @@
 - Source commit: `be342ea7525ac50fbf836978dcd1ba6714345f42`
 - Status: complete
 
+## RC.8 replacement
+
+The next Omega candidate must use
+[`omega-effectd-v0.1.0-rc.8`](https://github.com/OpenAgentsInc/openagents/releases/tag/omega-effectd-v0.1.0-rc.8).
+RC.8 supersedes RC.7 because Stop could commit the durable terminal state while
+an ACP turn remained alive when the in-memory evidence cache was empty after a
+restart. Stop now always requests best-effort interruption of its bound host
+thread without refreshing evidence, provider authentication, or lane
+readiness. RC.8 also admits the additive `timed_out` local-turn disposition for
+Omega's bounded native provider turns.
+
+| Field | Value |
+| --- | --- |
+| Source commit | `509ae747f00f6f7ebb413809ff5bd6ea123e1c1c` |
+| Source tree | `063f456be4e196b5eb6eff18f9a14453a52599fc` |
+| Archive | `omega-effectd-v0.1.0-macos-arm64.tar.gz` |
+| Archive SHA-256 | `01d11597b054d009296d0381b6cd6ed3d31c83b93e75a58845f2ae47bf33226a` |
+| Manifest SHA-256 | `74f7eb1043de6662f490351d6587a4e85fb50d65e95aac792b4b32c315081f94` |
+
+Two clean builds produced identical archive, sidecar, and manifest bytes. The
+package type check and all 208 tests passed. The repository fast guard passed
+at the source commit. A clean GitHub prerelease download matched the local
+archive, sidecar, and manifest bytes, and the release tag resolves to the exact
+source commit.
+
 ## RC.7 replacement
 
 The next Omega candidate must use
