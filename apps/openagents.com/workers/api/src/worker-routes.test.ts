@@ -97,7 +97,6 @@ describe('Worker document route fallback', () => {
 
   test('redirects retired Wave 0 document paths home', () => {
     for (const path of [
-      '/forge',
       '/moksha',
       '/moksha2',
       '/landing',

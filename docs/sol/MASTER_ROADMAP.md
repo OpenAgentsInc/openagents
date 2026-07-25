@@ -2,11 +2,10 @@
 
 - Class: authority
 - Date: 2026-07-10
-- Updated: 2026-07-23
-- Revision: 135
+- Updated: 2026-07-25
+- Revision: 136
 - Status: canonical OpenAgents implementation roadmap
-- Current queue: the
-  [`open issue unified completion plan`](./2026-07-21-open-issue-unified-completion-plan.md)
+- Current queue: the [`open issue unified completion plan`](./2026-07-21-open-issue-unified-completion-plan.md)
   owns the terminal sequence for #8967, #8979, #9032, #9035, #9041, and
   #9144. #8978, #9023, and SBX-09 are complete. #9032 and #9041 share one
   managed checkpoint and movement proof. #9035 does not reopen IDE-14 through IDE-19. Managed RLM stays inside its separate cloud boundary. Distribution,
@@ -32,7 +31,9 @@ proof, dated plans and analyses are evidence only.
 
 ## Active P0 — Omega primary-surface transition
 
-The owner selected [`Omega`](./2026-07-23-omega-zed-primary-surface-accepted-plan.md), a tracked Zed fork, as the primary Desktop, IDE, and company workroom destination. The new [`Omega roadmap`](../omega/ROADMAP.md) owns the accelerated implementation order. First, release the fully branded `v0.2.0-rc1` bootstrap candidate. Next, port current OpenAgents Desktop behavior. Then add the selected Buzz workroom and Nostr outcomes. The bootstrap release is not a feature-parity or primary-cutover claim. Omega Rust is the application core. Packaged Node 24 and Effect first carry the current product control plane. Bounded packets can move suitable domains to Rust through one-authority cutovers. Existing configured agents, such as Hermes, attach through explicit adapters. They keep their homes, credentials, memory, skills, tools, and sessions. Standard Nostr support is an interoperability boundary, not relay authority. The separate Buzz deployment and the standalone Nostr relay and forge program are canceled. Issues #9185 and #9194 through #9204 closed as not planned on 2026-07-23. The current Electron application remains the supported evidence and rollback subject until all cutover gates pass. Omega does not reroute the pending Full Auto release closure.
+The owner selected [`Omega`](./2026-07-23-omega-zed-primary-surface-accepted-plan.md), a tracked Zed fork, as the primary Desktop, IDE, and company workroom destination. The new [`Omega roadmap`](../omega/ROADMAP.md) owns the accelerated implementation order. First, release the fully branded `v0.2.0-rc1` bootstrap candidate. Next, port current OpenAgents Desktop behavior. Then add the selected Buzz workroom and Nostr outcomes. The bootstrap release is not a feature-parity or primary-cutover claim. Omega Rust is the application core. Packaged Node 24 and Effect first carry the current product control plane. Bounded packets can move suitable domains to Rust through one-authority cutovers. Existing configured agents, such as Hermes, attach through explicit adapters. They keep their homes, credentials, memory, skills, tools, and sessions. Standard Nostr support is an interoperability boundary, not relay authority. The separate Buzz deployment and standalone relay program stay canceled. Issues #9185 and #9194 through #9204 closed as not planned on 2026-07-23. The current Electron application remains the supported evidence and rollback subject until all cutover gates pass. Omega does not reroute the pending Full Auto release closure.
+
+**2026-07-25 Forge web reconciliation.** The [`Forge ProductSpec`](../../specs/openagents/forge.product-spec.md) and epic #9242 admit the invite-only Nostr and ngit Forge in the single `openagents.com` app. For this web lane, they supersede the 2026-07-23 GitHub-authoritative posture. Invited and migrated repositories use `openagents_git_authoritative`, while unmigrated repositories keep `github_authoritative`. GitHub is a read-only mirror after migration. It remains the repository and claim authority for OpenAgents development until a later admitted claim-ledger cutover. The canceled standalone relay and Forge programs stay canceled. Issues #9243 through #9253 own delivery, and the [`invite-only Forge analysis`](../fable/2026-07-25-nostr-git-forge-invite-only-analysis.md) stays design evidence only.
 
 ## Active P0 — Full Auto flagship and surface-vision reconciliation
 
@@ -291,6 +292,7 @@ AssuranceSpec program queue remains.
     Apple FM stays advisory-only, routing stays inside the owner grant,
     concurrency needs its own spec revision (#9114), #8978/#8979 remain the
     only path to assurance and release claims.
+
 ## Product and authority model
 
 **Active product:** OpenAgents is a local-first, ProductSpec-native company workbench. Omega is the separate-repository primary Desktop and IDE. It consumes immutable monorepo artifacts. The current Electron app remains the migration host. Mobile remains the independent monorepo client, openagents.com remains the public trust/API surface, and named Full Auto runs remain the flagship short-term journey.
