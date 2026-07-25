@@ -42,7 +42,7 @@
     "@openagentsinc/nip90": "workspace:*",
     "@scure/base": "1.2.4",
     "effect": "catalog:",
-    "nostr-effect": "https://github.com/OpenAgentsInc/nostr-effect/archive/77073343c68f159f3dea80ddbe9e9896b1f052f2.tar.gz",
+    "nostr-effect": "https://github.com/OpenAgentsInc/nostr-effect/archive/1314ed6ee6cc508ba9a54d03372fe1c71a984815.tar.gz",
     "ws": "8.18.3"
   },
   "devDependencies": {

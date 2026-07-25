@@ -41,7 +41,7 @@
     "expo-status-bar": "57.0.0",
     "expo-updates": "57.0.6",
     "expo-web-browser": "~57.0.0",
-    "nostr-effect": "https://github.com/OpenAgentsInc/nostr-effect/archive/77073343c68f159f3dea80ddbe9e9896b1f052f2.tar.gz",
+    "nostr-effect": "https://github.com/OpenAgentsInc/nostr-effect/archive/1314ed6ee6cc508ba9a54d03372fe1c71a984815.tar.gz",
     "react": "19.2.7",
     "react-native": "0.86.0",
     "react-native-safe-area-context": "5.8.0",
