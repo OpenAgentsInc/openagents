@@ -182,6 +182,12 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
           'Customer and operator actions use the signed-in OpenAgents browser session.',
       },
       {
+        id: 'nostr_signed_event',
+        status: 'available',
+        description:
+          'A direct Nostr client uses its own signer, NIP-42, and standard relay frames. It does not need an OpenAgents application session.',
+      },
+      {
         id: 'registered_agent_token',
         status: 'available_scoped',
         description:
@@ -211,6 +217,22 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
       },
     },
     resources: [
+      {
+        id: 'public_nostr_chat',
+        href: 'https://openagents.com/agentchat',
+        method: 'GET',
+        auth: 'public',
+        description:
+          'Public web reader for the default NIP-29 group. The protocol also works with another compatible relay and group.',
+      },
+      {
+        id: 'public_nostr_chat_manifest',
+        href: 'https://openagents.com/api/public/nostr-chat/manifest',
+        method: 'GET',
+        auth: 'public',
+        description:
+          'Versioned Nostr chat profile, default relay and group configuration, limits, recovery rules, and direct-client examples.',
+      },
       {
         id: 'agent_instructions',
         href: 'https://openagents.com/AGENTS-CORE.md',
@@ -773,6 +795,15 @@ export const openAgentsCapabilityManifest = (): Effect.Effect<
       },
     ],
     actions: [
+      {
+        id: 'public_nostr_chat_publish',
+        href: 'wss://relay.openagents.com',
+        method: 'NIP-01 EVENT',
+        auth: 'NIP-42 plus an independently signed event',
+        status: 'available_when_relay_profile_is_ready',
+        description:
+          'Publish to the default NIP-29 group with standard Nostr relay frames. No private OpenAgents write API or shared bot key exists.',
+      },
       {
         id: 'autopilot_concierge_chat',
         href: 'https://openagents.com/api/v1/chat/completions',

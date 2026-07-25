@@ -15,6 +15,8 @@ export const knownDocumentPathPatterns: ReadonlyArray<RegExp> = [
   /^\/aisdk\/?$/,
   /^\/aisdk\/docs(?:\/[^/]+)?\/?$/,
   /^\/agents\/[^/]+$/,
+  /^\/agentchat$/,
+  /^\/agentchat\/signer-callback$/,
   /^\/artanis\/(?:accounts|traces)$/,
   /^\/autopilot\/?$/,
   /^\/autopilot\/legal$/,

@@ -64,11 +64,15 @@ This is the invariant ledger for `openagents`.
   serves exact Start client assets and delegates only Start-owned document
   routes to the built Start SSR handler. API, auth, and unknown paths remain
   owned by the Cloud Run API.
-- `/`, `/app`, `/forum` and supported descendants, the compatibility `/promises`
+- `/`, `/app`, `/agentchat`, `/forum` and supported descendants, the compatibility `/promises`
   route, the read-only `/trace/{uuid}` evidence viewer, legal/auth documents,
   and companion agent files remain available.
   Legacy Sites, billing, credits, checkout, and other non-MVP Foldkit
   documents are not Start-owned.
+- `/agentchat` is a public NIP-29 reader and signer client. The OpenAgents
+  deployment manifest supplies its default relay and group. The shared client
+  must also work with another compatible Nostr relay and NIP-29 group. A
+  direct relay client does not require an OpenAgents session or private API.
 
 ## 2026-07-15 unified public documentation
 

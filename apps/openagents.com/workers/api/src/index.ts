@@ -555,6 +555,7 @@ import {
   identityDbForEnv,
   readIdentityUserProfiles,
 } from './identity-db'
+import { handlePublicNostrChatManifest } from './public-nostr-chat-routes'
 import { makeImageGenerationRoutes } from './image-generation-routes'
 import {
   inferenceEntitlementsMirrorForEnv,
@@ -13366,6 +13367,16 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     path: '/login/github',
     handler: (request, env) =>
       Effect.promise(() => handleGitHubStart(request, env)),
+  },
+  {
+    path: '/api/public/nostr-chat/manifest',
+    handler: (request, env) =>
+      Effect.sync(() =>
+        handlePublicNostrChatManifest(
+          request,
+          env.PUBLIC_NOSTR_CHAT_RELAY_SELF_PUBKEY,
+        ),
+      ),
   },
   {
     path: '/auth/github/write/start',

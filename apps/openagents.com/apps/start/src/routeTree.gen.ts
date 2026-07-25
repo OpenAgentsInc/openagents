@@ -35,6 +35,7 @@ import { Route as ClientsPreviewRouteImport } from './routes/clients-preview'
 import { Route as ChangelogRouteImport } from './routes/changelog'
 import { Route as AstroRouteImport } from './routes/astro'
 import { Route as AppRouteImport } from './routes/app'
+import { Route as AgentchatRouteImport } from './routes/agentchat'
 import { Route as AdjutantRouteImport } from './routes/adjutant'
 import { Route as ActivityRouteImport } from './routes/activity'
 import { Route as IndexRouteImport } from './routes/index'
@@ -62,6 +63,7 @@ import { Route as AutopilotLegalRouteImport } from './routes/autopilot/legal'
 import { Route as ArtanisTracesRouteImport } from './routes/artanis/traces'
 import { Route as ArtanisAccountsRouteImport } from './routes/artanis/accounts'
 import { Route as AgentsAgentRefRouteImport } from './routes/agents/$agentRef'
+import { Route as AgentchatSignerCallbackRouteImport } from './routes/agentchat.signer-callback'
 import { Route as AdminOperatorRouteImport } from './routes/admin/operator'
 import { Route as AdminAnalyticsRouteImport } from './routes/admin/analytics'
 import { Route as TrainingRunsIndexRouteImport } from './routes/training/runs/index'
@@ -204,6 +206,11 @@ const AppRoute = AppRouteImport.update({
   path: '/app',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AgentchatRoute = AgentchatRouteImport.update({
+  id: '/agentchat',
+  path: '/agentchat',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdjutantRoute = AdjutantRouteImport.update({
   id: '/adjutant',
   path: '/adjutant',
@@ -339,6 +346,11 @@ const AgentsAgentRefRoute = AgentsAgentRefRouteImport.update({
   path: '/agents/$agentRef',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AgentchatSignerCallbackRoute = AgentchatSignerCallbackRouteImport.update({
+  id: '/signer-callback',
+  path: '/signer-callback',
+  getParentRoute: () => AgentchatRoute,
+} as any)
 const AdminOperatorRoute = AdminOperatorRouteImport.update({
   id: '/admin/operator',
   path: '/admin/operator',
@@ -401,6 +413,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/activity': typeof ActivityRoute
   '/adjutant': typeof AdjutantRoute
+  '/agentchat': typeof AgentchatRouteWithChildren
   '/app': typeof AppRoute
   '/astro': typeof AstroRoute
   '/changelog': typeof ChangelogRoute
@@ -429,6 +442,7 @@ export interface FileRoutesByFullPath {
   '/terms': typeof TermsRoute
   '/admin/analytics': typeof AdminAnalyticsRoute
   '/admin/operator': typeof AdminOperatorRoute
+  '/agentchat/signer-callback': typeof AgentchatSignerCallbackRoute
   '/agents/$agentRef': typeof AgentsAgentRefRoute
   '/artanis/accounts': typeof ArtanisAccountsRoute
   '/artanis/traces': typeof ArtanisTracesRoute
@@ -467,6 +481,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/activity': typeof ActivityRoute
   '/adjutant': typeof AdjutantRoute
+  '/agentchat': typeof AgentchatRouteWithChildren
   '/app': typeof AppRoute
   '/astro': typeof AstroRoute
   '/changelog': typeof ChangelogRoute
@@ -494,6 +509,7 @@ export interface FileRoutesByTo {
   '/terms': typeof TermsRoute
   '/admin/analytics': typeof AdminAnalyticsRoute
   '/admin/operator': typeof AdminOperatorRoute
+  '/agentchat/signer-callback': typeof AgentchatSignerCallbackRoute
   '/agents/$agentRef': typeof AgentsAgentRefRoute
   '/artanis/accounts': typeof ArtanisAccountsRoute
   '/artanis/traces': typeof ArtanisTracesRoute
@@ -533,6 +549,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/activity': typeof ActivityRoute
   '/adjutant': typeof AdjutantRoute
+  '/agentchat': typeof AgentchatRouteWithChildren
   '/app': typeof AppRoute
   '/astro': typeof AstroRoute
   '/changelog': typeof ChangelogRoute
@@ -561,6 +578,7 @@ export interface FileRoutesById {
   '/terms': typeof TermsRoute
   '/admin/analytics': typeof AdminAnalyticsRoute
   '/admin/operator': typeof AdminOperatorRoute
+  '/agentchat/signer-callback': typeof AgentchatSignerCallbackRoute
   '/agents/$agentRef': typeof AgentsAgentRefRoute
   '/artanis/accounts': typeof ArtanisAccountsRoute
   '/artanis/traces': typeof ArtanisTracesRoute
@@ -601,6 +619,7 @@ export interface FileRouteTypes {
     | '/'
     | '/activity'
     | '/adjutant'
+    | '/agentchat'
     | '/app'
     | '/astro'
     | '/changelog'
@@ -629,6 +648,7 @@ export interface FileRouteTypes {
     | '/terms'
     | '/admin/analytics'
     | '/admin/operator'
+    | '/agentchat/signer-callback'
     | '/agents/$agentRef'
     | '/artanis/accounts'
     | '/artanis/traces'
@@ -667,6 +687,7 @@ export interface FileRouteTypes {
     | '/'
     | '/activity'
     | '/adjutant'
+    | '/agentchat'
     | '/app'
     | '/astro'
     | '/changelog'
@@ -694,6 +715,7 @@ export interface FileRouteTypes {
     | '/terms'
     | '/admin/analytics'
     | '/admin/operator'
+    | '/agentchat/signer-callback'
     | '/agents/$agentRef'
     | '/artanis/accounts'
     | '/artanis/traces'
@@ -732,6 +754,7 @@ export interface FileRouteTypes {
     | '/'
     | '/activity'
     | '/adjutant'
+    | '/agentchat'
     | '/app'
     | '/astro'
     | '/changelog'
@@ -760,6 +783,7 @@ export interface FileRouteTypes {
     | '/terms'
     | '/admin/analytics'
     | '/admin/operator'
+    | '/agentchat/signer-callback'
     | '/agents/$agentRef'
     | '/artanis/accounts'
     | '/artanis/traces'
@@ -799,6 +823,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ActivityRoute: typeof ActivityRoute
   AdjutantRoute: typeof AdjutantRoute
+  AgentchatRoute: typeof AgentchatRouteWithChildren
   AppRoute: typeof AppRoute
   AstroRoute: typeof AstroRoute
   ChangelogRoute: typeof ChangelogRoute
@@ -1044,6 +1069,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/agentchat': {
+      id: '/agentchat'
+      path: '/agentchat'
+      fullPath: '/agentchat'
+      preLoaderRoute: typeof AgentchatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/adjutant': {
       id: '/adjutant'
       path: '/adjutant'
@@ -1233,6 +1265,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AgentsAgentRefRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/agentchat/signer-callback': {
+      id: '/agentchat/signer-callback'
+      path: '/signer-callback'
+      fullPath: '/agentchat/signer-callback'
+      preLoaderRoute: typeof AgentchatSignerCallbackRouteImport
+      parentRoute: typeof AgentchatRoute
+    }
     '/admin/operator': {
       id: '/admin/operator'
       path: '/admin/operator'
@@ -1313,6 +1352,18 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface AgentchatRouteChildren {
+  AgentchatSignerCallbackRoute: typeof AgentchatSignerCallbackRoute
+}
+
+const AgentchatRouteChildren: AgentchatRouteChildren = {
+  AgentchatSignerCallbackRoute: AgentchatSignerCallbackRoute,
+}
+
+const AgentchatRouteWithChildren = AgentchatRoute._addFileChildren(
+  AgentchatRouteChildren,
+)
+
 interface DocsRouteChildren {
   DocsSplatRoute: typeof DocsSplatRoute
   DocsIndexRoute: typeof DocsIndexRoute
@@ -1329,6 +1380,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ActivityRoute: ActivityRoute,
   AdjutantRoute: AdjutantRoute,
+  AgentchatRoute: AgentchatRouteWithChildren,
   AppRoute: AppRoute,
   AstroRoute: AstroRoute,
   ChangelogRoute: ChangelogRoute,
