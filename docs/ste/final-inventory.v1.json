@@ -26667,6 +26667,20 @@
       }
     },
     {
+      "path": "docs/forge/receipts/2026-07-25-forge-git-local-clone-push-restore.md",
+      "sha256": "9736db01dd461f5986a9a12d2ccaf9215a21f9507e93971bbfcfca4b2593fdfb",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "ste_status": "source-data",
+        "ste_reviewer": null,
+        "ste_reviewed_at": null,
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null
+      }
+    },
+    {
       "path": "docs/forum/2026-06-09-forum-mdk-webhook-reconciliation-audit.md",
       "sha256": "8166f852c4648573d0b2d9ed3fa648e7eca83b17266f7f4ca8e8fbe5b13fe3ae",
       "reason": "Immutable historical or evidence source data",
@@ -35305,6 +35319,24 @@
         "ste_status": "inspected",
         "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
         "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/ops/2026-07-25-owned-forge-git-deploy.md",
+      "sha256": "eb69e0c606d8fecb67f47d5a39b1af076fef9404f483dacd1f99e96df6d1685b",
+      "reason": "Final review of mutable first-party agent technical text",
+      "profile": {
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ]
       }
     },
     {
@@ -45615,7 +45647,7 @@
     },
     {
       "path": "infra/README.md",
-      "sha256": "909990f8ff5b4bfcdd68e9ec98c84183afeeae55c89b125d7fdd880732cb667c",
+      "sha256": "2ea702b5ac2baeeb5f134a1d26d7896854d03c34c77cac95f59ee9b94ec952bd",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

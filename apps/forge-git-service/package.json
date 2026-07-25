@@ -1,0 +1,24 @@
+{
+  "name": "@openagentsinc/forge-git-service",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Owned Smart HTTP Git service for invited OpenAgents Forge repositories.",
+  "type": "module",
+  "scripts": {
+    "build": "vp pack src/main.ts --format esm --platform node --target node24 --out-dir dist",
+    "deploy": "bash scripts/deploy-cloudrun.sh",
+    "serve": "node --import tsx src/main.ts",
+    "test": "vp test --run apps/forge-git-service/src",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@openagentsinc/oa-infra": "workspace:*",
+    "@openagentsinc/runtime-platform": "workspace:*",
+    "effect": "catalog:",
+    "postgres": "3.4.9"
+  },
+  "devDependencies": {
+    "typescript": "catalog:",
+    "vitest": "^4.1.8"
+  }
+}

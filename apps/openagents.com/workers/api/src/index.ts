@@ -16083,6 +16083,7 @@ const routeRequest = makeWorkerRouteRequest({
   routePylonApiRequest: pylonApiRoutes.routePylonApiRequest,
   routeForgeGitIntakeRequest: (request, env) =>
     makeForgeGitIntakeRoutes<Env>({
+      legacyIntakeEnabled: () => false,
       makeArchiveStore: storeEnv =>
         makeForgeGitPackfileArchiveStoreForEnv(
           storeEnv,

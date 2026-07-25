@@ -26045,6 +26045,19 @@
       ]
     },
     {
+      "path": "docs/forge/receipts/2026-07-25-forge-git-local-clone-push-restore.md",
+      "ste_issue": 9,
+      "ste_mode": "source-data",
+      "ste_glossary_revision": "openagents-ste-glossary-v1",
+      "ste_status": "source-data",
+      "ste_reviewer": null,
+      "ste_reviewed_at": null,
+      "owner": "OpenAgents documentation",
+      "risk": "source-data",
+      "source": "Immutable historical or evidence source data",
+      "replacement": null
+    },
+    {
       "path": "docs/forum/2026-06-09-forum-mdk-webhook-reconciliation-audit.md",
       "ste_issue": 9,
       "ste_mode": "source-data",
@@ -34447,6 +34460,27 @@
     },
     {
       "path": "docs/ops/2026-07-24-owned-nostr-relay-deploy.md",
+      "ste_issue": 9,
+      "ste_mode": "mixed",
+      "ste_glossary_revision": "openagents-ste-glossary-v1",
+      "ste_status": "inspected",
+      "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+      "ste_reviewed_at": "2026-07-19T22:00:00Z",
+      "owner": "OpenAgents documentation",
+      "risk": "high",
+      "source": null,
+      "replacement": null,
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": [
+        "STE-2.4",
+        "STE-3.6",
+        "STE-5.1",
+        "STE-8.2"
+      ]
+    },
+    {
+      "path": "docs/ops/2026-07-25-owned-forge-git-deploy.md",
       "ste_issue": 9,
       "ste_mode": "mixed",
       "ste_glossary_revision": "openagents-ste-glossary-v1",

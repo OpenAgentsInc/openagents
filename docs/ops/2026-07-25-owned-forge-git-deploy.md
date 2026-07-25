@@ -104,15 +104,20 @@ Review these planned resources:
 Stop if the plan changes the monolith default backend, DNS, or a certificate.
 Stop if the plan replaces or deletes a data resource.
 
-After the cost gate opens, apply the reviewed plan from `main`:
+Do not apply the load-balancer route before the Git image is ready.
+After the cost gate opens, create a separate bootstrap plan:
 
 ```sh
 cd infra/prod
-tofu apply "<reviewed-plan-file>"
+tofu plan -target=module.forge_git -out=forge-git-bootstrap.tfplan
+tofu apply "forge-git-bootstrap.tfplan"
 ```
 
 Terraform has `prevent_destroy` on the Filestore instance.
 It also has deletion protection on the Cloud Run service.
+The targeted bootstrap apply creates only the repository store and service
+shell.
+It does not move `/git` traffic from the monolith.
 
 ## 6. Deploy the service revision
 
@@ -164,14 +169,27 @@ credential.
 The `run.app` endpoint does not accept external traffic because the ingress
 setting restricts it.
 
-Confirm the stable controls:
+Confirm the stable service controls:
 
 ```sh
 gcloud run services describe "$SERVICE" \
   --project="$PROJECT" \
   --region="$REGION" \
   --format="yaml(spec.template.metadata.annotations,spec.template.spec.serviceAccountName,spec.template.spec.volumes,spec.template.spec.containerConcurrency,spec.template.spec.timeoutSeconds)"
+```
 
+Create and review a new full plan.
+This plan must add the Forge Git NEG, backend, and path rule:
+
+```sh
+cd infra/prod
+tofu plan -out=forge-git-cutover.tfplan
+tofu apply "forge-git-cutover.tfplan"
+```
+
+Confirm the route:
+
+```sh
 gcloud compute url-maps describe openagents-url-map \
   --project="$PROJECT" \
   --global \

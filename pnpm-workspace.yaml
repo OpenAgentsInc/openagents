@@ -8,6 +8,7 @@ packages:
   - apps/qa-runner
   - apps/aiur
   - apps/forum
+  - apps/forge-git-service
   - apps/khala-capture
   - apps/khala-live-hub
   - apps/oa-queue-worker

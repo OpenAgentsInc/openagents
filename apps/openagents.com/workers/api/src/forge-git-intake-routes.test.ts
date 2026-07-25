@@ -204,6 +204,7 @@ type Harness = Awaited<ReturnType<typeof makeHarness>>
 const makeHarness = async (
   scope: 'git:receive-pack' | 'git:upload-pack' = 'git:receive-pack',
   refRestrictions: ReadonlyArray<string> = [],
+  legacyIntakeEnabled = true,
 ) => {
   const sqlite = new DatabaseSync(':memory:')
   sqlite.exec('PRAGMA foreign_keys = ON')
@@ -242,6 +243,7 @@ const makeHarness = async (
   )
 
   const routes = makeForgeGitIntakeRoutes({
+    legacyIntakeEnabled: () => legacyIntakeEnabled,
     makeArchiveStore: () => archiveStore,
     makeCanonicalStore: () => canonicalStore,
     makeCoordinationStore: () => coordinationStore,
@@ -321,6 +323,24 @@ const requestFromIncoming = async (
 }
 
 describe('Forge smart-Git receive-pack intake routes', () => {
+  test('fails closed when production dispatch requires the stock Git service', async () => {
+    const { bucket, canonicalStore, run }: Harness = await makeHarness(
+      'git:receive-pack',
+      [],
+      false,
+    )
+    const response = await run(advertiseRequest())
+
+    expect(response.status).toBe(503)
+    await expect(response.json()).resolves.toMatchObject({
+      error: 'forge_git_stock_service_required',
+    })
+    expect(bucket.objects.size).toBe(0)
+    await expect(
+      canonicalStore.listRefs(tenantRef, repositoryRef),
+    ).resolves.toEqual([])
+  })
+
   test('advertises receive-pack and accepts a real parsed packfile into R2, canonical refs, and coordination rows', async () => {
     const {
       archiveStore,

@@ -336,6 +336,28 @@ importers:
         specifier: npm:@voidzero-dev/vite-plus-core@0.2.4
         version: '@voidzero-dev/vite-plus-core@0.2.4(@types/node@24.13.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.20.6)(typescript@6.0.3)(yaml@2.9.0)'
 
+  apps/forge-git-service:
+    dependencies:
+      '@openagentsinc/oa-infra':
+        specifier: workspace:*
+        version: link:../../packages/oa-infra
+      '@openagentsinc/runtime-platform':
+        specifier: workspace:*
+        version: link:../../packages/runtime-platform
+      effect:
+        specifier: 4.0.0-beta.94
+        version: 4.0.0-beta.94
+      postgres:
+        specifier: 3.4.9
+        version: 3.4.9
+    devDependencies:
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+      vitest:
+        specifier: ^4.1.8
+        version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.13.1)(@vitest/browser-preview@4.1.10)(happy-dom@20.10.6)(vite@8.1.4(@types/node@24.13.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.20.6)(yaml@2.9.0))
+
   apps/forum:
     dependencies:
       effect:

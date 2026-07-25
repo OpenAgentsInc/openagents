@@ -34,6 +34,7 @@ const textEncoder = new TextEncoder()
 const zeroSha1 = '0'.repeat(40)
 
 type ForgeGitIntakeRouteDependencies<Bindings> = Readonly<{
+  legacyIntakeEnabled?: () => boolean
   makeArchiveStore: (env: Bindings) => ForgeGitPackfileArchiveStore
   makeCanonicalStore: (env: Bindings) => ForgeGitCanonicalStore
   makeCoordinationStore: (env: Bindings) => ForgeCoordinationStore
@@ -389,6 +390,20 @@ export const makeForgeGitIntakeRoutes = <Bindings>(
     const match = matchForgeGitRoute(request)
     if (match === undefined) {
       return undefined
+    }
+
+    if (dependencies.legacyIntakeEnabled?.() === false) {
+      return Effect.succeed(
+        Response.json(
+          {
+            error: 'forge_git_stock_service_required',
+          },
+          {
+            headers: { 'cache-control': 'no-store' },
+            status: 503,
+          },
+        ),
+      )
     }
 
     if (match.kind === 'receive-pack' && request.method !== 'POST') {

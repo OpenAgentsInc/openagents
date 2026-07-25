@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "openagents.forge_git.local_drill_receipt.v1",
+  "generatedAt": "2026-07-25T20:51:37.961Z",
+  "sourceRevision": "working-tree-issue-9244",
+  "authority": {
+    "repository": "bare-repository",
+    "gcsMirror": false
+  },
+  "acceptanceLimits": {
+    "cloudRun": "not-tested",
+    "gceNfs": "not-tested",
+    "gcs": "memory-interface-only",
+    "liveActorBindings": "deferred-to-issue-9246",
+    "tombstoneRevocation": "deferred-to-issue-9246"
+  },
+  "checks": {
+    "backupBundleSha256": "e6acbf2bdcc5f5734c85d14219cbd5aedc1899662b14b1fdd14e255bfbd8cf16",
+    "backupBytes": 788,
+    "cloneCommitA": "84dbda2a980d3f0d93c4e70a7c66f1b32be3cf39",
+    "fetchAndCloneCommitB": "82c493e567e9126a775a9147cbac5e4aede5d779",
+    "partialClonePromisor": true,
+    "restoredPushCommitC": "fbd4ee1ac852587484827f1b7836573fb637fe79",
+    "sourceFsck": "passed",
+    "restoredFsck": "passed"
+  },
+  "evidenceKeys": [
+    "private/forge/git-backups/owner.openagents/roundtrip/2026-07-25T205136.624Z-e6acbf2bdcc5f5734c85d14219cbd5aedc1899662b14b1fdd14e255bfbd8cf16.bundle",
+    "private/forge/git-backups/owner.openagents/roundtrip/2026-07-25T205136.624Z-e6acbf2bdcc5f5734c85d14219cbd5aedc1899662b14b1fdd14e255bfbd8cf16.bundle.receipt.json",
+    "private/forge/git-mirror/owner.openagents/roundtrip/manifests/2026-07-25T205135.373Z-973dbf64-721c-45e3-9f58-78491fa269da.json",
+    "private/forge/git-mirror/owner.openagents/roundtrip/manifests/2026-07-25T205136.139Z-0b7e5906-1996-4258-a867-4019f2eb64a8.json",
+    "private/forge/git-mirror/owner.openagents/roundtrip/manifests/2026-07-25T205137.954Z-115a9747-db01-4d53-af11-5d967b68bb8e.json",
+    "private/forge/git-mirror/owner.openagents/roundtrip/packs/2844e0ff97c3ad2e2c25047ec0cdbca1b5a8bdf1beb10df00b9686afadc6ec7e.idx",
+    "private/forge/git-mirror/owner.openagents/roundtrip/packs/410bfe6fa361da9b8e95e102af997192126c4c9529c8b75579b990b552827b0a.idx",
+    "private/forge/git-mirror/owner.openagents/roundtrip/packs/4de2b2e434b1cd38eed3e552a33a769d961bd0394b4c9e18ffea7acdaf2405e4.pack",
+    "private/forge/git-mirror/owner.openagents/roundtrip/packs/7521c1d089b8b02b5e56c709c85fa14779969d5f5c38643df02edd3a359e3461.idx",
+    "private/forge/git-mirror/owner.openagents/roundtrip/packs/9dcd8a35638e258b994092d19671bba6250dc5974c25f44aa0fe5922bc8e182a.pack",
+    "private/forge/git-mirror/owner.openagents/roundtrip/packs/a606750713ee0e67246f60e04a6bb4a1c27f3e4074a538044fd3732f861868d0.pack"
+  ],
+  "refsAtBackup": [
+    {
+      "objectId": "82c493e567e9126a775a9147cbac5e4aede5d779",
+      "refName": "refs/heads/main"
+    }
+  ],
+  "result": "passed",
+  "scope": "local-real-stock-git"
+}
