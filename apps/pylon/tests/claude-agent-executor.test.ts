@@ -1,4 +1,3 @@
-import { setTimeout as sleep } from "node:timers/promises"
 import { describe, expect, test, vi } from "vite-plus/test"
 import { existsSync, realpathSync } from "node:fs"
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises"
@@ -441,6 +440,12 @@ describe("claude agent task recognition", () => {
         accountRefHash: account.accountRefHash,
         now,
       })
+      // Same race as the supervisor-cancellation test below: wait for the
+      // runner to be listening rather than for a fixed delay.
+      let runnerListening: () => void
+      const listening = new Promise<void>(resolve => {
+        runnerListening = resolve
+      })
       const runner: ClaudeAgentRunner = input => new Promise(resolve => {
         input.abortSignal?.addEventListener("abort", () => resolve({
           outcome: "cancelled",
@@ -450,6 +455,7 @@ describe("claude agent task recognition", () => {
           sessionRef: null,
           usage: null,
         }), { once: true })
+        runnerListening()
       })
       const pending = executeClaudeAgentAssignment(state, lease, now, {
         account,
@@ -457,7 +463,7 @@ describe("claude agent task recognition", () => {
         claudeAgentProbe: readyProbe,
         claudeOwnerLocalPermissionControl: { authority, signal: controller.signal },
       })
-      await sleep(5)
+      await listening
       controller.abort()
       const record = await pending
       expect(record?.status).toBe("rejected")
@@ -474,6 +480,13 @@ describe("claude agent task recognition", () => {
   test("bounded Claude execution inherits owning supervisor cancellation", async () => {
     await withState(async (state) => {
       const controller = new AbortController()
+      // Signal the exact moment the runner is listening. A fixed sleep here
+      // races under load: aborting before the listener attaches leaves the
+      // runner's promise unresolved and the test hangs.
+      let runnerListening: () => void
+      const listening = new Promise<void>(resolve => {
+        runnerListening = resolve
+      })
       const runner: ClaudeAgentRunner = input => new Promise(resolve => {
         input.abortSignal?.addEventListener("abort", () => resolve({
           outcome: "cancelled",
@@ -483,13 +496,14 @@ describe("claude agent task recognition", () => {
           sessionRef: null,
           usage: null,
         }), { once: true })
+        runnerListening()
       })
       const pending = executeClaudeAgentAssignment(state, lease, now, {
         abortSignal: controller.signal,
         claudeAgentRunner: runner,
         claudeAgentProbe: readyProbe,
       })
-      await sleep(5)
+      await listening
       controller.abort()
       const record = await pending
       expect(record?.status).toBe("rejected")
