@@ -34402,6 +34402,28 @@
       }
     },
     {
+      "path": "docs/omega/2026-07-25-omega-agent-roadmap.md",
+      "sha256": "11264678da7e14a093b0c3ff02598a48c4d1a031f3f4f3a0d818e66c8c75285f",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/omega/2026-07-25-omega-bubblewrap-removal-audit.md",
       "sha256": "0c3d70d208bdb19c19a6ca5227f42910829761c1e77faf9d9d063f343bd01608",
       "reason": "Immutable historical or evidence source data",
@@ -34437,7 +34459,7 @@
     },
     {
       "path": "docs/omega/README.md",
-      "sha256": "317ec9a8aa67378dba9ddb58222616cfb9f06f0030b9154563fd238a8c080b58",
+      "sha256": "f3f34d667a252d07f07434ddea48b743917db5cc7c0c00c30dc193ded0eb8f43",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

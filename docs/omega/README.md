@@ -75,6 +75,9 @@ Read these documents in this order:
 27. Read the [Desktop release contract](../deploy/openagents-desktop-cross-platform-release.md).
 28. Read the
     [Omega open issues unified completion plan](./2026-07-25-omega-open-issues-unified-completion-plan.md).
+29. Read the
+    [Omega Agent implementation roadmap](./2026-07-25-omega-agent-roadmap.md)
+    (`OMEGA-AGENT`, epic omega#73).
 
 
 The Omega roadmap owns the implementation order.
