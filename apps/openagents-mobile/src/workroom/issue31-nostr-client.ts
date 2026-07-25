@@ -229,6 +229,24 @@ const newerEvent = (
       ? left
       : right;
 
+const hostAnnouncementBindingFingerprint = (announcement: Issue31HostAnnouncement): string =>
+  JSON.stringify({
+    hostRef: announcement.hostRef,
+    hostPublicKeyHex: announcement.hostPublicKeyHex,
+    sarahPublicKeyHex: announcement.sarahPublicKeyHex,
+    displayName: announcement.displayName,
+    protocols: [...announcement.protocols].sort(),
+    relayUrls: [...announcement.relayUrls].sort(),
+  });
+
+const hostAnnouncementRecordFingerprint = (announcement: Issue31HostAnnouncement): string =>
+  JSON.stringify({
+    binding: hostAnnouncementBindingFingerprint(announcement),
+    generation: announcement.generation,
+    issuedAt: announcement.issuedAt,
+    expiresAt: announcement.expiresAt,
+  });
+
 const memoryCursorStore = (): Issue31RelayCursorStore => {
   const cursors = new Map<string, Issue31RelayCursor>();
   const key = (relayUrl: string, room: Issue31NostrRoom): string => `${relayUrl}\n${room}`;
@@ -563,12 +581,38 @@ export const createIssue31NostrClient = (
           return;
         }
         if (hostAnnouncement.generation === currentAnnouncement.generation) {
-          markGap(relay, "discovery_conflict");
-          await persistCursor(relay, room, event);
-          return;
+          const sameBinding =
+            hostAnnouncementBindingFingerprint(hostAnnouncement) ===
+            hostAnnouncementBindingFingerprint(currentAnnouncement);
+          if (!sameBinding) {
+            markGap(relay, "discovery_conflict");
+            await persistCursor(relay, room, event);
+            return;
+          }
+          if (hostAnnouncement.issuedAt < currentAnnouncement.issuedAt) {
+            await persistCursor(relay, room, event);
+            return;
+          }
+          if (hostAnnouncement.issuedAt === currentAnnouncement.issuedAt) {
+            if (
+              hostAnnouncementRecordFingerprint(hostAnnouncement) !==
+              hostAnnouncementRecordFingerprint(currentAnnouncement)
+            ) {
+              markGap(relay, "discovery_conflict");
+              await persistCursor(relay, room, event);
+              return;
+            }
+            if (newerEvent(current.event, event).id === current.event.id) {
+              await persistCursor(relay, room, event);
+              return;
+            }
+          }
         }
         eventsById.delete(current.event.id);
-        if (relay.stickyGapReason === "discovery_conflict") {
+        if (
+          hostAnnouncement.generation > currentAnnouncement.generation &&
+          relay.stickyGapReason === "discovery_conflict"
+        ) {
           relay.stickyGapReason = null;
           relay.gapReason = relay.pendingEose.size > 0 ? "awaiting_eose" : null;
         }

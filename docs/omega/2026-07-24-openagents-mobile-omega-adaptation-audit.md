@@ -758,6 +758,11 @@ Implementation state on 2026-07-24:
   Node-only relay load-proof barrel.
 - The mobile relay client supports NIP-42, bounded relay failover, separate
   room cursors, replay, duplicate removal, and replaceable event selection.
+- A host can renew an announcement without advancing its generation only when
+  the host, Sarah, display, protocol, and relay binding stays identical. The
+  renewal must advance `issuedAt`. Exact logical copies select the newer signed
+  event deterministically. A changed binding or same-time record fork creates
+  `discovery_conflict`, and only a higher generation clears that gap.
 - Relay URLs use `ws` or `wss` and have no credentials, query, or fragment.
 - The mobile client accepts generic device-addressed NIP-17 content only from
   the bound Sarah key. Both the selected host announcement and current active

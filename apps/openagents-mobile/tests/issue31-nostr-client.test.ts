@@ -588,7 +588,7 @@ describe("Issue 31 mobile Nostr client", () => {
     device.dispose();
   });
 
-  test("converges discovery by content generation and fails closed on same-generation forks", async () => {
+  test("renews an identical discovery generation and fails closed on same-generation forks", async () => {
     ScriptedWebSocket.instances = [];
     const device = LocalKeySigner.fromPrivateKey(deviceSecret);
     const host = LocalKeySigner.fromPrivateKey(hostSecret);
@@ -608,10 +608,20 @@ describe("Issue 31 mobile Nostr client", () => {
         Array.isArray(value) && value[0] === "REQ" && String(value[1]).includes("discovery-0"),
     );
     if (discoveryRequest === undefined) throw new Error("expected discovery request");
-    const discovery = async (generation: number, createdAt: number, displayName: string) =>
+    const discovery = async (
+      input: Readonly<{
+        generation: number;
+        createdAt: number;
+        issuedAt: number;
+        expiresAt: number;
+        displayName?: string;
+        sarahPublicKeyHex?: string;
+        relayUrls?: ReadonlyArray<string>;
+      }>,
+    ) =>
       host.signEvent({
         kind: ISSUE31_HOST_ANNOUNCEMENT_KIND,
-        created_at: createdAt,
+        created_at: input.createdAt,
         tags: [
           ["d", "omega.host.local"],
           ["k", "1059"],
@@ -622,22 +632,102 @@ describe("Issue 31 mobile Nostr client", () => {
           schema: ISSUE31_HOST_ANNOUNCEMENT_SCHEMA,
           hostRef: "omega.host.local",
           hostPublicKeyHex: host.publicKey,
-          sarahPublicKeyHex: "3".repeat(64),
-          displayName,
+          sarahPublicKeyHex: input.sarahPublicKeyHex ?? "3".repeat(64),
+          displayName: input.displayName ?? "Omega v2",
           protocols: [ISSUE31_PAIRING_SCHEMA, ISSUE31_COMMAND_SCHEMA],
-          relayUrls: ["wss://relay.example.com"],
-          generation,
-          issuedAt: 1,
-          expiresAt: 10_000,
+          relayUrls: input.relayUrls ?? ["wss://relay.example.com"],
+          generation: input.generation,
+          issuedAt: input.issuedAt,
+          expiresAt: input.expiresAt,
         }),
       });
-    socket.message(["EVENT", discoveryRequest[1], await discovery(2, 200, "Omega v2")]);
-    socket.message(["EVENT", discoveryRequest[1], await discovery(1, 300, "Omega stale")]);
+    const initial = await discovery({
+      generation: 2,
+      createdAt: 200,
+      issuedAt: 100,
+      expiresAt: 1_000,
+    });
+    socket.message(["EVENT", discoveryRequest[1], initial]);
+    socket.message([
+      "EVENT",
+      discoveryRequest[1],
+      await discovery({
+        generation: 1,
+        createdAt: 300,
+        issuedAt: 150,
+        expiresAt: 3_000,
+        displayName: "Omega stale generation",
+      }),
+    ]);
     await settleCallbacks();
     expect(client.snapshot().confirmedEvents[0]?.hostAnnouncement?.generation).toBe(2);
-    socket.message(["EVENT", discoveryRequest[1], await discovery(2, 400, "Omega fork")]);
+
+    const renewal = await discovery({
+      generation: 2,
+      createdAt: 250,
+      issuedAt: 200,
+      expiresAt: 2_000,
+    });
+    socket.message(["EVENT", discoveryRequest[1], renewal]);
+    await settleCallbacks();
+    expect(client.snapshot().confirmedEvents[0]).toMatchObject({
+      event: { id: renewal.id },
+      hostAnnouncement: { generation: 2, issuedAt: 200, expiresAt: 2_000 },
+    });
+    expect(client.snapshot().relays[0]?.gapReason).toBe("awaiting_eose");
+
+    const duplicateRenewal = await discovery({
+      generation: 2,
+      createdAt: 300,
+      issuedAt: 200,
+      expiresAt: 2_000,
+    });
+    socket.message(["EVENT", discoveryRequest[1], duplicateRenewal]);
+    await settleCallbacks();
+    expect(client.snapshot().confirmedEvents[0]?.event.id).toBe(duplicateRenewal.id);
+    expect(client.snapshot().relays[0]?.gapReason).toBe("awaiting_eose");
+
+    socket.message([
+      "EVENT",
+      discoveryRequest[1],
+      await discovery({
+        generation: 2,
+        createdAt: 350,
+        issuedAt: 150,
+        expiresAt: 3_000,
+      }),
+    ]);
+    await settleCallbacks();
+    expect(client.snapshot().confirmedEvents[0]?.event.id).toBe(duplicateRenewal.id);
+
+    socket.message([
+      "EVENT",
+      discoveryRequest[1],
+      await discovery({
+        generation: 2,
+        createdAt: 375,
+        issuedAt: 200,
+        expiresAt: 2_500,
+      }),
+    ]);
     await settleCallbacks();
     expect(client.snapshot().relays[0]?.gapReason).toBe("discovery_conflict");
+    expect(client.snapshot().confirmedEvents[0]?.event.id).toBe(duplicateRenewal.id);
+
+    socket.message([
+      "EVENT",
+      discoveryRequest[1],
+      await discovery({
+        generation: 2,
+        createdAt: 400,
+        issuedAt: 250,
+        expiresAt: 4_000,
+        sarahPublicKeyHex: "4".repeat(64),
+      }),
+    ]);
+    await settleCallbacks();
+    expect(client.snapshot().relays[0]?.gapReason).toBe("discovery_conflict");
+    expect(client.snapshot().confirmedEvents[0]?.event.id).toBe(duplicateRenewal.id);
     for (const request of socket.sent.filter(
       (value): value is unknown[] => Array.isArray(value) && value[0] === "REQ",
     )) {
@@ -645,7 +735,17 @@ describe("Issue 31 mobile Nostr client", () => {
     }
     await settleCallbacks();
     expect(client.snapshot().relays[0]?.gapReason).toBe("discovery_conflict");
-    socket.message(["EVENT", discoveryRequest[1], await discovery(3, 100, "Omega v3")]);
+    socket.message([
+      "EVENT",
+      discoveryRequest[1],
+      await discovery({
+        generation: 3,
+        createdAt: 100,
+        issuedAt: 300,
+        expiresAt: 5_000,
+        displayName: "Omega v3",
+      }),
+    ]);
     await settleCallbacks();
     expect(client.snapshot().confirmedEvents[0]?.hostAnnouncement?.generation).toBe(3);
     expect(client.snapshot().relays[0]?.gapReason).toBeNull();
