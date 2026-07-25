@@ -78,6 +78,9 @@ Read these documents in this order:
 29. Read the
     [Omega Agent implementation roadmap](./2026-07-25-omega-agent-roadmap.md)
     (`OMEGA-AGENT`, epic omega#73).
+30. Read the
+    [Omega master delegation plan](./2026-07-25-omega-master-delegation-plan.md)
+    (order and parallel lanes for all open omega issues).
 
 
 The Omega roadmap owns the implementation order.

@@ -34436,6 +34436,24 @@
       }
     },
     {
+      "path": "docs/omega/2026-07-25-omega-master-delegation-plan.md",
+      "sha256": "6013c0de7885b7e1d9c9e9673f308852a84c1ad224a1b190a33d78bafcab8902",
+      "reason": "Final review of mutable first-party agent technical text",
+      "profile": {
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ]
+      }
+    },
+    {
       "path": "docs/omega/2026-07-25-omega-open-issues-unified-completion-plan.md",
       "sha256": "84cf7e7f626a0593523864201f7b8a94f7b13ab0173d5bfbdd369515e308b47e",
       "reason": "Final review of a converted document",
@@ -34459,7 +34477,7 @@
     },
     {
       "path": "docs/omega/README.md",
-      "sha256": "f3f34d667a252d07f07434ddea48b743917db5cc7c0c00c30dc193ded0eb8f43",
+      "sha256": "3e608de7fb4c30dfcb5090f4dbfa084f2b687a86c2791a6f5e6cf7d84a9cfe5e",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
