@@ -33727,6 +33727,24 @@
       }
     },
     {
+      "path": "docs/nostr/2026-07-25-nostr-native-authentication-architecture-proposal.md",
+      "sha256": "36a1be7a93ab932a3f3b37da55ca785baab9c6eebc4dae2f72910ee52444ff92",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "high",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "human",
+        "ste_accepted_screening_rules": [
+          "STE-2.4"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/omega/2026-07-23-identity-first-onboarding-roadmap.md",
       "sha256": "1925bc638bfa099920f8283418cf69046db2a7a33ce31a577a790c7b8454efa6",
       "reason": "Final review of a converted document",
