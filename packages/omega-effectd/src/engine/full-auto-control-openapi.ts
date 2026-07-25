@@ -899,6 +899,7 @@ export const fullAutoControlOpenApiDocument = {
             enum: [
               "completed",
               "failed",
+              "timed_out",
               "owner_interrupted",
               "resumed_after_restart",
               "interrupted_by_restart",
@@ -1199,7 +1200,7 @@ export const fullAutoControlOpenApiDocument = {
           },
           disposition: {
             type: ["string", "null"],
-            enum: ["completed", "failed", "owner_interrupted", "resumed_after_restart", "interrupted_by_restart", null],
+            enum: ["completed", "failed", "timed_out", "owner_interrupted", "resumed_after_restart", "interrupted_by_restart", null],
           },
           createdAt: { type: "string" },
           updatedAt: { type: "string" },

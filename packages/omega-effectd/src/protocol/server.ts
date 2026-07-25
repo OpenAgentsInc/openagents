@@ -1408,11 +1408,13 @@ export const createOmegaEffectdFramedServer = (
               targetRun.threadRef,
             );
           }
-          if (request.method === "stop" && evidence?.live?.state === "turn_running") {
+          if (request.method === "stop") {
             const interrupted = objectResult(
               await hostRequest("interrupt_turn", {
                 threadRef: targetRun.threadRef,
-                ...(evidence.live.turnRef === null ? {} : { turnRef: evidence.live.turnRef }),
+                ...(evidence?.live?.turnRef === null || evidence?.live?.turnRef === undefined
+                  ? {}
+                  : { turnRef: evidence.live.turnRef }),
               }),
             );
             preparedInterruptResult = interrupted.interrupted === true;

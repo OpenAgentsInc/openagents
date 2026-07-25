@@ -43,6 +43,7 @@ export type LocalTurnPhase = typeof LocalTurnPhaseSchema.Type
 export const LocalTurnDispositionSchema = Schema.Literals([
   "completed",
   "failed",
+  "timed_out",
   "owner_interrupted",
   "resumed_after_restart",
   "interrupted_by_restart",

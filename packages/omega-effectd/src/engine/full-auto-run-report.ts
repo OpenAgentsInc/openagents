@@ -862,7 +862,7 @@ const deriveReportMetrics = (input: Readonly<{
       continue
     }
     if (turn.disposition !== null) streak = 0
-    if (turn.disposition === "failed") failed += 1
+    if (turn.disposition === "failed" || turn.disposition === "timed_out") failed += 1
     if (turn.disposition === "owner_interrupted" || turn.disposition === "interrupted_by_restart") {
       interrupted += 1
     }

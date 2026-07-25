@@ -875,6 +875,7 @@ describe("FA-RPT-01 metrics default-on (#8988 acceptance 3)", () => {
         makeTurn({ threadRef: started.run.threadRef!, turnRef: "turn.full-auto.3", phase: "failed", disposition: "failed", createdAt: at(3), updatedAt: at(3) }),
         makeTurn({ threadRef: started.run.threadRef!, turnRef: "turn.full-auto.4", phase: "completed", disposition: "completed", createdAt: at(4), updatedAt: at(4) }),
         makeTurn({ threadRef: started.run.threadRef!, turnRef: "turn.full-auto.5", phase: "interrupted", disposition: "owner_interrupted", createdAt: at(5), updatedAt: at(5) }),
+        makeTurn({ threadRef: started.run.threadRef!, turnRef: "turn.full-auto.6", phase: "failed", disposition: "timed_out", createdAt: at(6), updatedAt: at(6) }),
       ]
       harness.runRegistry.recordAttempt(started.run.runRef, "success", { turnRef: "turn.full-auto.1" })
       harness.runRegistry.recordAttempt(started.run.runRef, "success", { turnRef: "turn.full-auto.2" })
@@ -886,9 +887,9 @@ describe("FA-RPT-01 metrics default-on (#8988 acceptance 3)", () => {
         metricsEnabled: true,
       })
       expect(report.metrics).toEqual({
-        turnsObserved: 5,
+        turnsObserved: 6,
         turnsCompleted: 3,
-        turnsFailed: 1,
+        turnsFailed: 2,
         turnsInterrupted: 1,
         longestCompletedStreak: 2,
         continuationsDispatched: 2,

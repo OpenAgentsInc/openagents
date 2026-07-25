@@ -98,6 +98,7 @@ export const FULL_AUTO_NO_PROGRESS_TURN_THRESHOLD = 3
  */
 export const FULL_AUTO_NO_PROGRESS_DISPOSITIONS: ReadonlySet<string> = new Set([
   "failed",
+  "timed_out",
   "interrupted_by_restart",
 ])
 

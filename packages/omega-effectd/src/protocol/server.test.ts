@@ -294,6 +294,7 @@ describe("omega-effectd framed protocol", () => {
       expect((stopped?.result as { run: { state: string } }).run.state).toBe("stopped");
       expect(requestsAfterProviderLoss).not.toContain("refresh_evidence");
       expect(requestsAfterProviderLoss).not.toContain("lane_readiness");
+      expect(requestsAfterProviderLoss).toContain("interrupt_turn");
     });
   });
 
