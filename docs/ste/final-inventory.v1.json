@@ -24656,16 +24656,14 @@
     },
     {
       "path": "docs/fable/2026-07-25-nostr-git-forge-invite-only-analysis.md",
-      "sha256": "a48a5e5e9dbd534ac2adac8522b32072b14b1ad6be876b3f81f1f65b151f889e",
+      "sha256": "4d6ba36bed9c75460c15ad8439ff74d6939517135689919c4a8a4efdb8046791",
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
-        "ste_status": "source-data",
-        "ste_reviewer": null,
-        "ste_reviewed_at": null,
         "risk": "source-data",
         "source": "Immutable historical or evidence source data",
-        "replacement": null
+        "replacement": null,
+        "ste_status": "source-data"
       }
     },
     {

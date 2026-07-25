@@ -329,6 +329,38 @@ change — clone from openagents.com, work, propose over NIP-34, review under
 server-side gates, signed-state merge, receipt chain resolvable, GitHub
 mirror updated — with no GitHub coordination reads on the critical path.
 
+### The issue index (created 2026-07-25, after this analysis landed)
+
+The revision above is now executed: epic #9242 carries the revised body, and
+the eleven sub-issues exist. The visible finish line is the homepage: the
+splash page's primary action — `OMEGA_REPOSITORY_URL` pointing at
+`github.com/OpenAgentsInc/omega` from
+`apps/openagents.com/apps/start/src/lib/public-site.ts` — becomes "View on
+OpenAgents Forge," landing a signed-out visitor on our own repository viewer
+for omega (a per-repository public-web-read flag renders read-only views
+while the forge itself stays invite-only for membership and writes).
+
+| Packet | Issue | Scope |
+| --- | --- | --- |
+| FORGE-01 | #9243 | `/forge` route admission, ProductSpec, writable-owner matrix |
+| FORGE-02 | #9244 | Clone/fetch service — Smart HTTP upload-pack on Cloud Run |
+| FORGE-03 | #9245 | Admission front — admitted announcements, purgatory, signed-state pushes |
+| FORGE-04 | #9246 | Invite binding — accounts, npubs, scoped git credentials |
+| FORGE-05 | #9247 | Repository viewer — the codebase browser web components |
+| FORGE-06 | #9248 | Change, work, and attention surfaces |
+| FORGE-07 | #9249 | Conformance receipts — ngit, gitworkshop, dialect fixtures |
+| FORGE-08 | #9250 | Review gates and signed merge receipts |
+| FORGE-09 | #9251 | GitHub mirror worker and mirror health |
+| FORGE-10 | #9252 | Dogfood migration — omega on the Forge, end to end |
+| FORGE-11 | #9253 | Homepage cutover — View Omega on OpenAgents Forge |
+
+Order: #9243 admits, #9244→#9245 build the host with #9246 in parallel, the
+surface and receipt lanes (#9247–#9251) fan out, #9252 proves the invited
+journey on the real omega repository, and #9253 makes it the front page.
+The later, separately gated stages (claim-ledger cutover, verification
+receipts as a service, contributor intake, per-repo public git reads, the
+market composition) remain unminted by design.
+
 ---
 
 ## VI. Honest staging
