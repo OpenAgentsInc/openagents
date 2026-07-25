@@ -486,8 +486,10 @@ This proposal cannot admit its proof design or candidate. The implementation
 producer cannot verify an obligation that they produced. Owner observation is
 required for the journey, but it is not independent verification. Candidate
 admission does not grant release or a public claim. The owner has designated
-an independent reviewer role for admission. That designation does not admit
-this proposal and does not let its producer review or admit the revision.
+Euler to act in the `owner_designated_independent_reviewer` role for this
+AssuranceSpec. That designation makes Euler eligible to review and admit a
+revision, but does not itself admit this proposal and does not let its producer
+review or admit the revision.
 
 ```assurancespec-authority
 {

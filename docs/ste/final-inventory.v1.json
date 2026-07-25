@@ -48421,7 +48421,7 @@
     },
     {
       "path": "specs/desktop/full-auto.assurance-spec.md",
-      "sha256": "be5b106c6bbe3bcdde503d1bcab6abaa559adb561528a1b68f28399f4caa9718",
+      "sha256": "c207cfe09e7f562aeca233486521b0a152fd2fabcb48e725994bf9277869c6d0",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -48652,7 +48652,7 @@
     },
     {
       "path": "specs/omega/identity-first-onboarding.assurance-spec.md",
-      "sha256": "84dfc9daa7b3f6f92b1895b78854835ce58530c2b81f220f6ca3b62c799f72b1",
+      "sha256": "6de555bf2df469d1e6cea5cb1a989aa003fa1af302387075b7cb6a8ef5bfd96c",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

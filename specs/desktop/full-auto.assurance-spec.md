@@ -6679,7 +6679,7 @@ Links are pointers, never verdicts (Law 13): a `candidate_artifact_refs` entry o
 
 ## Authority Boundaries
 
-This document cannot admit itself (`proposal_may_self_admit: false`), execute (`proposal_may_execute: false`), verify (`proposal_may_verify: false`), release (`proposal_may_release: false`), or change a public promise (`proposal_may_change_public_promises: false`) -- all four are schema-literal `false` and cannot be flipped by editing this file. `admitted_roles` names who CAN admit this revision: the existing authorized review boundary named in #8978's own text -- concretely, the owner or an explicitly owner-designated independent reviewer distinct from the obligation's producer (this repo's agents, including the one authoring this revision, are producers, never admitters, of their own obligations). `verifier_roles` requires that an obligation's verifier differ from its evidence producer (mirrors `independence.producer_may_verify: false` set on every designed obligation below). `release_roles` stays the owner alone. This AssuranceSpec's existence, however complete, never itself authorizes a release or public claim -- the product-promise registry remains the sole authority for that. The same separation applies inside MemoHarness: candidate production, evaluation, verification, Blueprint release, and production activation are distinct roles, and neither an optimizer nor the run that supplied an experience may self-promote its output.
+This document cannot admit itself (`proposal_may_self_admit: false`), execute (`proposal_may_execute: false`), verify (`proposal_may_verify: false`), release (`proposal_may_release: false`), or change a public promise (`proposal_may_change_public_promises: false`) -- all four are schema-literal `false` and cannot be flipped by editing this file. `admitted_roles` names who CAN admit this revision: the existing authorized review boundary named in #8978's own text -- concretely, the owner or an explicitly owner-designated independent reviewer distinct from the obligation's producer. The owner has designated Euler for that independent reviewer role. This repo's agents, including the one authoring this revision, are producers, never admitters, of their own obligations. `verifier_roles` authorizes openagents.assurance_reviewer and requires that an obligation's verifier differ from its evidence producer (mirrors `independence.producer_may_verify: false` set on every designed obligation below). `release_roles` authorizes openagents.owner alone. These role designations do not constitute admission, verification, or release. This AssuranceSpec's existence, however complete, never itself authorizes a release or public claim -- the product-promise registry remains the sole authority for that. The same separation applies inside MemoHarness: candidate production, evaluation, verification, Blueprint release, and production activation are distinct roles, and neither an optimizer nor the run that supplied an experience may self-promote its output.
 
 ```assurancespec-authority
 {
@@ -6694,10 +6694,10 @@ This document cannot admit itself (`proposal_may_self_admit: false`), execute (`
   "proposal_may_self_admit": false,
   "proposal_may_verify": false,
   "release_roles": [
-    "owner"
+    "openagents.owner"
   ],
   "verifier_roles": [
-    "independent_reviewer_not_producer"
+    "openagents.assurance_reviewer"
   ]
 }
 ```
