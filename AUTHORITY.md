@@ -1,11 +1,11 @@
 ---
 authority_delegation_format_version: "0.1"
 authority_profile_id: "openagents.owner-delegated-autonomy"
-authority_revision: 8
+authority_revision: 9
 title: "OpenAgents Owner-Delegated Autonomous Delivery"
 lifecycle_state: "admitted"
-admitted_by: "current_owner_direction_2026-07-22_sarah_owned_agent_computer"
-effective_at: "2026-07-22T00:00:00Z"
+admitted_by: "current_owner_direction_2026-07-25_omega_independent_reviewer"
+effective_at: "2026-07-25T00:00:00Z"
 expires_when: "revoked_or_superseded_by_current_owner_direction"
 ---
 
@@ -117,6 +117,31 @@ and writeback receipts prove that the coding work ran.
 This revision does not give Sarah a cloud shell, a credential, a provider
 token, or a generic capacity selector. It does not permit stale Pylon capacity
 to count as live capacity.
+
+Revision 9 designates the Omega independent reviewer identity, on the owner's
+explicit confirmation of 2026-07-25.
+
+The reviewer is a distinct Sarah instance, not Sarah's orchestrator role and
+not an agent that produces an obligation. Its authoritative public key is:
+
+    0326d8f9eb5abea63d9613ac90451dfce62ca2e9855144b5a71d8e8569932974
+
+That key holds `role: independent_reviewer` under `grant.independent_assurance`
+and is subject to `condition.independence`, `condition.verification`, and
+`condition.redaction`.
+
+The producer of an obligation may never sign as this identity. Sarah remains
+the product owner of Omega, and a review signed by Sarah's orchestrator key is
+self-verification rather than independent review.
+
+This designation admits an obligation reviewer only. It does not promote a
+channel, publish an artifact, or transition a public promise, and
+`condition.stable_release_gate` and `condition.release_green` are unchanged.
+Owner observation stays a separate acceptance criterion wherever a source
+specification names it.
+
+The design and its falsifiers live in
+[`docs/assurance/2026-07-25-sarah-as-independent-reviewer-spec.md`](docs/assurance/2026-07-25-sarah-as-independent-reviewer-spec.md).
 
 It does not grant unlimited company authority. It grants the exact reversible,
 evidence-bound actions below, under conservative bootstrap budgets. Current

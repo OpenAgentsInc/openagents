@@ -28,9 +28,9 @@ type Grant = Readonly<{
 }>;
 
 describe("Sarah authority revision 4", () => {
-  test("composes with root revision 6 and preserves a closed sandbox grant", () => {
-    expect(readFrontmatter("authority_revision")).toBe("4");
-    expect(source).toContain("AUTHORITY.md_revision_6");
+  test("composes with root revision 9 and preserves a closed sandbox grant", () => {
+    expect(readFrontmatter("authority_revision")).toBe("7");
+    expect(source).toContain("AUTHORITY.md_revision_9");
 
     const grants = readBlock<ReadonlyArray<Grant>>("authority-delegation-grants");
     const grant = grants.find(({ id }) => id === "grant.sarah.managed_sandbox");

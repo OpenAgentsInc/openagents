@@ -1,6 +1,6 @@
 # Sarah as independent reviewer
 
-Date: 2026-07-25. Status: proposal. Not implemented.
+Date: 2026-07-25. Status: **designated by the owner. Not yet implemented.**
 
 ## The problem this solves
 
@@ -159,11 +159,36 @@ What is missing is one owner act: **designating the reviewer identity.** That
 is a reserved owner action — an agent cannot appoint its own reviewer, or R1
 collapses.
 
-Required from the owner, once:
+**Both steps are done, 2026-07-25.**
 
-1. Confirm that a distinct Sarah reviewer instance is acceptable as the
-   owner-designated independent reviewer.
-2. Register its pubkey as authoritative for `role: independent_reviewer`.
+1. The owner confirmed a distinct Sarah reviewer instance is acceptable.
+2. The identity is registered in `AUTHORITY.md` revision 9 as authoritative for
+   `role: independent_reviewer`:
+
+   ```
+   0326d8f9eb5abea63d9613ac90451dfce62ca2e9855144b5a71d8e8569932974
+   ```
+
+Custody: the secret half lives only in `~/work/.secrets/`
+(mode 600, gitignored) and in GCP Secret Manager as
+`omega-independent-reviewer-key`, project `openagentsgemini`. The public half
+is the only part that appears in any tracked file.
+
+### One honest residual on R1
+
+The producing agent generated this keypair, so the bootstrap moment was not
+itself independent. The secret was never printed, logged, or echoed, and it is
+stored outside any producer credential path — but "the producer never had the
+opportunity" is a stronger claim than what actually happened, and it would be
+wrong to assert it.
+
+What R1 guarantees from here is the property that matters at review time: a
+producer *run* cannot obtain the key, because reading it requires either the
+mode-600 file or the Secret Manager secret, and neither is in a producer's
+scope. The implementing agent must add the test that proves this.
+
+If a stronger bootstrap is wanted, the owner can rotate the key themselves and
+replace the pubkey in revision 9. Nothing else in the design changes.
 
 Everything else in this document is implementable without further owner input.
 
@@ -173,9 +198,9 @@ Read this whole file, `AUTHORITY.md` (`condition.independence`,
 `grant.independent_assurance`), `docs/assurance/ASSURANCE_SPEC.md` Law 10, and
 `docs/authority/SARAH_AUTHORITY.md` before starting.
 
-**Do not begin until the owner has completed the two designation steps above.**
-Implementing a reviewer that appoints itself is worse than having no reviewer,
-because it produces receipts that look like independence.
+The designation is complete, so implementation may begin. The reason it had to
+come first still holds: a reviewer that appoints itself is worse than no
+reviewer, because it produces receipts that look like independence.
 
 Suggested order:
 

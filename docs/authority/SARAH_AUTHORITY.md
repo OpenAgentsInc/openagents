@@ -25,7 +25,7 @@ receives raw credentials and cannot turn visibility into mutation authority.
   "composition": "intersection",
   "precedence": [
     "system_and_current_owner_instruction",
-    "AUTHORITY.md_revision_8",
+    "AUTHORITY.md_revision_9",
     "repository_agents_and_invariants",
     "resource_specific_policy_and_runtime_gates",
     "this_sarah_profile",
