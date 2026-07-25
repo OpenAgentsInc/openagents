@@ -259,14 +259,14 @@ module "openagents_monolith" {
   region  = var.region
 }
 
-# FORGE-02: one durable bare-repository store and one stock Git transport
-# service. GCS remains pack evidence and a mirror. It is not ref authority.
+# FORGE-02: one persistent-disk bare-repository store, one owned NFS host, and
+# one stock Git transport service. GCS is evidence and a mirror, not ref truth.
 module "forge_git" {
   source = "../modules/forge-git-service"
 
   project              = var.project_id
   region               = var.region
-  filestore_zone       = "${var.region}-a"
+  zone                 = "${var.region}-a"
   pack_evidence_bucket = module.oa_artifacts_bucket.name
 }
 

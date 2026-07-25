@@ -8,19 +8,24 @@ output "service_uri" {
   value       = google_cloud_run_v2_service.this.uri
 }
 
-output "filestore_instance_name" {
-  description = "Authoritative repository Filestore instance name"
-  value       = google_filestore_instance.repositories.name
+output "nfs_instance_name" {
+  description = "Dedicated GCE NFS host name"
+  value       = google_compute_instance.nfs.name
 }
 
-output "filestore_ip_address" {
-  description = "Private Filestore NFS address"
-  value       = google_filestore_instance.repositories.networks[0].ip_addresses[0]
+output "nfs_ip_address" {
+  description = "Private NFS address"
+  value       = google_compute_instance.nfs.network_interface[0].network_ip
 }
 
-output "file_share_name" {
-  description = "Authoritative repository NFS share name"
-  value       = var.file_share_name
+output "repository_disk_name" {
+  description = "Sole authoritative repository disk name"
+  value       = google_compute_disk.repositories.name
+}
+
+output "subnetwork_name" {
+  description = "Dedicated Cloud Run Direct VPC subnetwork"
+  value       = google_compute_subnetwork.forge_git.name
 }
 
 output "runtime_service_account_email" {

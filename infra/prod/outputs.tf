@@ -15,13 +15,18 @@ output "forge_git_service_name" {
   value       = module.forge_git.service_name
 }
 
-output "forge_git_filestore_instance_name" {
-  description = "Filestore instance that owns Forge bare repository refs"
-  value       = module.forge_git.filestore_instance_name
+output "forge_git_nfs_instance_name" {
+  description = "Dedicated GCE NFS host for Forge bare repositories"
+  value       = module.forge_git.nfs_instance_name
 }
 
-output "forge_git_filestore_ip_address" {
+output "forge_git_nfs_ip_address" {
   description = "Private NFS address for the Forge Git repository store"
-  value       = module.forge_git.filestore_ip_address
+  value       = module.forge_git.nfs_ip_address
   sensitive   = true
+}
+
+output "forge_git_repository_disk_name" {
+  description = "Persistent disk that owns Forge Git refs"
+  value       = module.forge_git.repository_disk_name
 }

@@ -26,7 +26,7 @@ infra/
   modules/
     cloud-sql-postgres/  instance + flags + backup/PITR + users (no passwords)
     cloud-run-service/   service SHELL only — revisions stay with gcloud/CI
-    forge-git-service/   one Cloud Run Git service + one Filestore ref authority
+    forge-git-service/   Cloud Run Git + owned GCE NFS disk authority
     gcs-bucket/          bucket with optional versioning + lifecycle rules
     scheduler-job/       HTTP-target Cloud Scheduler job (not yet instantiated)
     service-account/     SA + non-authoritative role grants (not yet instantiated)
@@ -63,10 +63,10 @@ was a **no-op** against live as of import day. There are no accepted diffs.
 ## Planned resources
 
 FORGE-02 (#9244) adds `module.forge_git`.
-The module defines one Cloud Run Git service and one Filestore repository
-authority. It also adds a `/git` backend to the current load balancer.
-The cost gate in the Forge Git runbook must open before an operator applies
-these resources.
+The module defines one Cloud Run Git service and one persistent-disk repository
+authority on a small owned GCE NFS host. It also adds a `/git` backend to the
+current load balancer. The estimated fixed cost stays below the standing cloud
+budget. The Forge Git runbook records the estimate and its limits.
 
 ## Deliberate design decisions
 

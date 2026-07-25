@@ -1,27 +1,224 @@
-# The Forge Git service keeps bare repositories on one Filestore share.
-# Cloud Run mounts NFS without network file locks. One service instance keeps
-# the stock Git ref-lock protocol inside one write authority.
+# FORGE-02 keeps all bare repositories on one persistent disk. One small GCE
+# host exports that disk to the one Cloud Run Git service over a dedicated
+# Direct VPC subnet. GCS keeps pack evidence and mirrors, never refs.
 
-resource "google_filestore_instance" "repositories" {
-  project  = var.project
-  name     = var.filestore_name
-  location = var.filestore_zone
-  tier     = "BASIC_HDD"
+resource "google_compute_subnetwork" "forge_git" {
+  project                  = var.project
+  name                     = var.subnetwork_name
+  region                   = var.region
+  network                  = var.network
+  ip_cidr_range            = var.subnetwork_cidr
+  private_ip_google_access = true
 
-  file_shares {
-    capacity_gb = var.capacity_gb
-    name        = var.file_share_name
+  lifecycle {
+    prevent_destroy = true
   }
+}
 
-  networks {
-    network = var.network
-    modes   = ["MODE_IPV4"]
+resource "google_compute_router" "forge_git" {
+  project = var.project
+  name    = "${var.service_name}-router"
+  region  = var.region
+  network = var.network
+}
+
+# The NFS VM has no external address. This NAT permits Debian security updates.
+resource "google_compute_router_nat" "forge_git" {
+  project                            = var.project
+  name                               = "${var.service_name}-nat"
+  router                             = google_compute_router.forge_git.name
+  region                             = var.region
+  nat_ip_allocate_option             = "AUTO_ONLY"
+  source_subnetwork_ip_ranges_to_nat = "LIST_OF_SUBNETWORKS"
+
+  subnetwork {
+    name                    = google_compute_subnetwork.forge_git.id
+    source_ip_ranges_to_nat = ["ALL_IP_RANGES"]
   }
+}
+
+resource "google_service_account" "nfs" {
+  project      = var.project
+  account_id   = var.nfs_service_account_id
+  display_name = "OpenAgents Forge Git NFS"
+  description  = "Service identity for the owned Forge Git NFS host."
+}
+
+data "google_compute_image" "nfs" {
+  project = "debian-cloud"
+  family  = "debian-12"
+}
+
+resource "google_compute_disk" "repositories" {
+  project = var.project
+  name    = var.repository_disk_name
+  zone    = var.zone
+  type    = "pd-balanced"
+  size    = var.repository_disk_size_gb
 
   labels = var.labels
 
   lifecycle {
     prevent_destroy = true
+  }
+}
+
+resource "google_compute_resource_policy" "repository_snapshots" {
+  project = var.project
+  name    = "${var.repository_disk_name}-daily"
+  region  = var.region
+
+  snapshot_schedule_policy {
+    schedule {
+      daily_schedule {
+        days_in_cycle = 1
+        start_time    = var.snapshot_start_time
+      }
+    }
+
+    retention_policy {
+      max_retention_days    = var.snapshot_retention_days
+      on_source_disk_delete = "KEEP_AUTO_SNAPSHOTS"
+    }
+
+    snapshot_properties {
+      storage_locations = [var.region]
+      labels            = var.labels
+    }
+  }
+}
+
+resource "google_compute_disk_resource_policy_attachment" "repository_snapshots" {
+  project = var.project
+  name    = google_compute_resource_policy.repository_snapshots.name
+  disk    = google_compute_disk.repositories.name
+  zone    = var.zone
+}
+
+resource "google_compute_instance" "nfs" {
+  project      = var.project
+  name         = var.nfs_instance_name
+  zone         = var.zone
+  machine_type = var.nfs_machine_type
+
+  allow_stopping_for_update = true
+  can_ip_forward            = false
+  deletion_protection       = true
+
+  tags = [var.nfs_network_tag]
+
+  boot_disk {
+    initialize_params {
+      image = data.google_compute_image.nfs.self_link
+      size  = 10
+      type  = "pd-balanced"
+    }
+  }
+
+  attached_disk {
+    source      = google_compute_disk.repositories.id
+    device_name = var.repository_disk_name
+    mode        = "READ_WRITE"
+  }
+
+  network_interface {
+    network    = var.network
+    subnetwork = google_compute_subnetwork.forge_git.id
+    network_ip = cidrhost(var.subnetwork_cidr, 2)
+  }
+
+  service_account {
+    email  = google_service_account.nfs.email
+    scopes = ["https://www.googleapis.com/auth/logging.write"]
+  }
+
+  metadata = {
+    block-project-ssh-keys = "TRUE"
+    enable-oslogin         = "TRUE"
+    repository-disk-name   = var.repository_disk_name
+    export-path            = var.nfs_export_path
+    allowed-cidr           = var.subnetwork_cidr
+  }
+
+  metadata_startup_script = file("${path.module}/nfs-startup.sh")
+
+  shielded_instance_config {
+    enable_secure_boot          = true
+    enable_vtpm                 = true
+    enable_integrity_monitoring = true
+  }
+
+  labels = var.labels
+
+  depends_on = [
+    google_compute_router_nat.forge_git,
+    google_compute_firewall.nfs,
+    google_compute_firewall.nfs_iap_ssh,
+    google_compute_firewall.nfs_deny_other_ingress,
+  ]
+}
+
+# Only clients in the dedicated Cloud Run Direct VPC range can mount NFS.
+resource "google_compute_firewall" "nfs" {
+  project   = var.project
+  name      = "${var.service_name}-nfs-ingress"
+  network   = var.network
+  direction = "INGRESS"
+  priority  = 900
+
+  source_ranges = [var.subnetwork_cidr]
+  target_tags   = [var.nfs_network_tag]
+
+  allow {
+    protocol = "tcp"
+    ports    = ["111", "2049", "20048", "32765", "32766"]
+  }
+
+  allow {
+    protocol = "udp"
+    ports    = ["111", "2049", "20048", "32765", "32766"]
+  }
+
+  log_config {
+    metadata = "INCLUDE_ALL_METADATA"
+  }
+}
+
+# IAP is the only SSH path. The VM has no external address.
+resource "google_compute_firewall" "nfs_iap_ssh" {
+  project   = var.project
+  name      = "${var.service_name}-nfs-iap-ssh"
+  network   = var.network
+  direction = "INGRESS"
+  priority  = 900
+
+  source_ranges = ["35.235.240.0/20"]
+  target_tags   = [var.nfs_network_tag]
+
+  allow {
+    protocol = "tcp"
+    ports    = ["22"]
+  }
+}
+
+# Override broad legacy VPC allow rules for this tagged host. The two priority
+# 900 rules above are the only admitted ingress paths.
+resource "google_compute_firewall" "nfs_deny_other_ingress" {
+  project   = var.project
+  name      = "${var.service_name}-nfs-deny-other-ingress"
+  network   = var.network
+  direction = "INGRESS"
+  priority  = 910
+
+  source_ranges = ["0.0.0.0/0"]
+  target_tags   = [var.nfs_network_tag]
+
+  deny {
+    protocol = "all"
+  }
+
+  log_config {
+    metadata = "INCLUDE_ALL_METADATA"
   }
 }
 
@@ -32,7 +229,6 @@ resource "google_service_account" "runtime" {
   description  = "Runtime identity for the owned Smart HTTP Git service."
 }
 
-# GCS keeps pack evidence and mirrors. It does not keep authoritative refs.
 resource "google_storage_bucket_iam_member" "pack_evidence_writer" {
   bucket = var.pack_evidence_bucket
   role   = "roles/storage.objectAdmin"
@@ -46,31 +242,11 @@ resource "google_secret_manager_secret_iam_member" "database_reader" {
   member    = "serviceAccount:${google_service_account.runtime.email}"
 }
 
-resource "google_compute_firewall" "filestore_egress" {
-  project   = var.project
-  name      = "${var.service_name}-filestore-egress"
-  network   = var.network
-  direction = "EGRESS"
-  priority  = 900
-
-  destination_ranges = [
-    "${google_filestore_instance.repositories.networks[0].ip_addresses[0]}/32",
-  ]
-  target_tags = [var.network_tag]
-
-  allow {
-    protocol = "tcp"
-    ports    = ["111", "2046", "2049", "2050", "4045"]
-  }
-}
-
 resource "google_cloud_run_v2_service" "this" {
   project  = var.project
   name     = var.service_name
   location = var.region
 
-  # The global external load balancer can reach the service. The direct
-  # run.app endpoint cannot accept external traffic.
   ingress             = "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
   deletion_protection = true
 
@@ -118,8 +294,8 @@ resource "google_cloud_run_v2_service" "this" {
 
       network_interfaces {
         network    = var.network
-        subnetwork = var.subnetwork
-        tags       = [var.network_tag]
+        subnetwork = google_compute_subnetwork.forge_git.id
+        tags       = [var.cloud_run_network_tag]
       }
     }
 
@@ -127,8 +303,8 @@ resource "google_cloud_run_v2_service" "this" {
       name = "forge-repositories"
 
       nfs {
-        server    = google_filestore_instance.repositories.networks[0].ip_addresses[0]
-        path      = "/${var.file_share_name}"
+        server    = google_compute_instance.nfs.network_interface[0].network_ip
+        path      = var.nfs_export_path
         read_only = false
       }
     }
@@ -136,9 +312,6 @@ resource "google_cloud_run_v2_service" "this" {
 
   labels = var.labels
 
-  # Terraform owns the store mount, Direct VPC egress, service identity, and
-  # single-instance limit. The deploy command owns runtime image and process
-  # configuration.
   lifecycle {
     ignore_changes = [
       template[0].containers[0].args,
@@ -155,11 +328,10 @@ resource "google_cloud_run_v2_service" "this" {
     ]
   }
 
-  depends_on = [google_compute_firewall.filestore_egress]
+  depends_on = [google_compute_firewall.nfs]
 }
 
-# Smart HTTP uses application bearer or NIP-98 authentication. The load
-# balancer must invoke the application before the Effect auth boundary runs.
+# Smart HTTP does membership authentication inside the Effect application.
 resource "google_cloud_run_v2_service_iam_member" "load_balancer_invoker" {
   project  = var.project
   location = var.region

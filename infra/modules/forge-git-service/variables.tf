@@ -4,12 +4,12 @@ variable "project" {
 }
 
 variable "region" {
-  description = "Cloud Run region"
+  description = "Cloud Run and network region"
   type        = string
 }
 
-variable "filestore_zone" {
-  description = "Zone for the repository Filestore instance"
+variable "zone" {
+  description = "GCE zone for the NFS host and repository disk"
   type        = string
 }
 
@@ -19,43 +19,78 @@ variable "service_name" {
   default     = "forge-git"
 }
 
-variable "filestore_name" {
-  description = "Filestore instance name"
+variable "nfs_instance_name" {
+  description = "Dedicated GCE NFS host name"
+  type        = string
+  default     = "forge-git-nfs"
+}
+
+variable "nfs_machine_type" {
+  description = "Machine type for the dedicated NFS host"
+  type        = string
+  default     = "e2-small"
+}
+
+variable "nfs_service_account_id" {
+  description = "Service account ID for the NFS host"
+  type        = string
+  default     = "forge-git-nfs"
+}
+
+variable "repository_disk_name" {
+  description = "Persistent disk that is the sole bare-repository authority"
   type        = string
   default     = "forge-git-repositories"
 }
 
-variable "file_share_name" {
-  description = "Filestore NFS share name"
-  type        = string
-  default     = "forge_repositories"
-}
-
-variable "capacity_gb" {
-  description = "Filestore BASIC_HDD capacity in GiB"
+variable "repository_disk_size_gb" {
+  description = "Balanced persistent disk capacity in GiB"
   type        = number
-  default     = 1024
+  default     = 100
 
   validation {
-    condition     = var.capacity_gb >= 1024
-    error_message = "A BASIC_HDD Filestore share must have at least 1024 GiB."
+    condition     = var.repository_disk_size_gb >= 50
+    error_message = "The repository disk must have at least 50 GiB."
   }
 }
 
+variable "nfs_export_path" {
+  description = "Authoritative repository export path on the NFS host"
+  type        = string
+  default     = "/srv/forge/repositories"
+}
+
 variable "network" {
-  description = "VPC network for Filestore and Direct VPC egress"
+  description = "Existing VPC network self-link or name"
   type        = string
   default     = "default"
 }
 
-variable "subnetwork" {
-  description = "VPC subnetwork for Direct VPC egress"
+variable "subnetwork_name" {
+  description = "Dedicated Direct VPC subnetwork name"
   type        = string
-  default     = "default"
+  default     = "forge-git"
 }
 
-variable "network_tag" {
-  description = "Direct VPC network tag for the Filestore egress rule"
+variable "subnetwork_cidr" {
+  description = "Dedicated Direct VPC and NFS client range"
+  type        = string
+  default     = "10.42.24.0/26"
+
+  validation {
+    condition     = can(cidrhost(var.subnetwork_cidr, 62))
+    error_message = "The Forge Git subnet must be /26 or larger."
+  }
+}
+
+variable "nfs_network_tag" {
+  description = "Network tag for the NFS host"
+  type        = string
+  default     = "forge-git-nfs"
+}
+
+variable "cloud_run_network_tag" {
+  description = "Direct VPC tag for the Forge Git service"
   type        = string
   default     = "forge-git"
 }
@@ -87,6 +122,18 @@ variable "repository_mount_path" {
   description = "Container path for authoritative bare repositories"
   type        = string
   default     = "/var/lib/forge/repositories"
+}
+
+variable "snapshot_start_time" {
+  description = "UTC start time for the daily repository snapshot"
+  type        = string
+  default     = "08:00"
+}
+
+variable "snapshot_retention_days" {
+  description = "Days to keep automatic repository snapshots"
+  type        = number
+  default     = 3
 }
 
 variable "request_timeout" {
