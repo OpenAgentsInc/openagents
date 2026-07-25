@@ -856,6 +856,9 @@ importers:
       expo-web-browser:
         specifier: ~57.0.0
         version: 57.0.0(expo@57.0.2)(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))
+      nostr-effect:
+        specifier: https://github.com/OpenAgentsInc/nostr-effect/archive/77073343c68f159f3dea80ddbe9e9896b1f052f2.tar.gz
+        version: https://github.com/OpenAgentsInc/nostr-effect/archive/77073343c68f159f3dea80ddbe9e9896b1f052f2.tar.gz
       react:
         specifier: 19.2.7
         version: 19.2.7

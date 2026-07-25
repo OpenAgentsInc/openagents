@@ -43,7 +43,7 @@ import type { MobileConversationThread } from "../conversation/mobile-conversati
 import type { FullAutoRunProjectionResult } from "../full-auto/full-auto-run-projection"
 import type { FullAutoRunControlDispatchOutcome } from "../full-auto/full-auto-run-control-intent"
 import type { FullAutoRunControlAction } from "@openagentsinc/khala-sync"
-import type { SarahPrincipalProjection } from "@openagentsinc/sarah"
+import type { SarahPrincipalProjection } from "@openagentsinc/sarah/mobile-principal"
 import type { ManagedSandboxSupervisionProjection } from "@openagentsinc/managed-sandbox-contract"
 import type {
   MobileManagedSandboxControlAction,
@@ -64,6 +64,19 @@ import {
   type MobileSyncPhase,
   type SarahSpeechPlaybackPort,
 } from "./home-core"
+import {
+  OPENAGENTS_ISSUE31_RELAY_URLS,
+  initialIssue31MobileNostrControlState,
+  issue31AdmittedHostPublicKeysFromEnvironment,
+  openIssue31MobileNostrRuntime,
+  type Issue31MobileNostrRuntime,
+} from "../workroom/issue31-mobile-nostr-runtime"
+import { issue31SourceSnapshotsFromNostr } from "../workroom/issue31-nostr-read-model"
+import {
+  emptyIssue31WorkroomReadModel,
+  projectIssue31WorkroomReadModel,
+  unavailableIssue31NostrWorkroomReadModel,
+} from "../workroom/issue31-workroom-read-model"
 
 type SarahPlaybackRecord = Readonly<{
   player: import("expo-audio").AudioPlayer
@@ -178,6 +191,21 @@ export const HomeScreen = ({
   const [reduceMotion, setReduceMotion] = useState(false)
   const attentionDispatchRef = useRef<string | null>(null)
   const sarahPlaybackRef = useRef<SarahPlaybackRecord | null>(null)
+  const issue31RuntimeRef = useRef<Issue31MobileNostrRuntime | null>(null)
+  const issue31Nostr = useMemo(() => ({
+    selectHost: (hostPublicKeyHex: string): Promise<void> => {
+      const runtime = issue31RuntimeRef.current
+      return runtime === null
+        ? Promise.reject(new Error("The Omega Nostr runtime is unavailable."))
+        : runtime.selectHost(hostPublicKeyHex)
+    },
+    requestPairing: (): Promise<void> => {
+      const runtime = issue31RuntimeRef.current
+      return runtime === null
+        ? Promise.reject(new Error("The Omega Nostr runtime is unavailable."))
+        : runtime.requestPairing()
+    },
+  }), [])
   const releaseSarahPlayback = useCallback((outcome: "completed" | "stopped"): void => {
     const record = sarahPlaybackRef.current
     if (record === null) return
@@ -260,6 +288,7 @@ export const HomeScreen = ({
       ...(managedSandboxControl === undefined ? {} : { managedSandboxControl }),
       ...(sarah === null || sarah === undefined ? {} : { sarah }),
       ...(sarahSpeechPlayback === undefined ? {} : { sarahSpeech: sarahSpeechPlayback }),
+      issue31Nostr,
     }),
     // fullAutoRun deliberately excluded: its initial value seeds the program
     // once at mount; later changes flow through `program.fullAuto.setProjection`
@@ -268,7 +297,7 @@ export const HomeScreen = ({
     // fullAutoControl is stable across the component's lifetime (a plain
     // capability closure over the sync host, not per-render state) the same
     // way `sessionActions` and `coding` are already treated below.
-    [sessionActions, conversation, coding, notificationSettings, onShareConsumed, initialWorkspaceWidth, fullAutoControl, managedSandboxControl, sarah, sarahSpeechPlayback],
+    [sessionActions, conversation, coding, notificationSettings, onShareConsumed, initialWorkspaceWidth, fullAutoControl, managedSandboxControl, sarah, sarahSpeechPlayback, issue31Nostr],
   )
   const report = useMemo<IntentReporter>(() => (ref, runtimeValue) => {
     prepareMobileNativeIntentFeedback(ref.name, accessibility.reduceMotion)
@@ -295,6 +324,56 @@ export const HomeScreen = ({
   useEffect(() => {
     program.workspace.setWidth(width)
   }, [program, width])
+  useEffect(() => {
+    let active = true
+    let runtime: Issue31MobileNostrRuntime | null = null
+    const projectSnapshot = (snapshot: Parameters<typeof issue31SourceSnapshotsFromNostr>[0]) => {
+      if (!active) return
+      const nowUnixSeconds = Math.floor(Date.now() / 1_000)
+      try {
+        program.workroom.setReadModel(projectIssue31WorkroomReadModel({
+          projectedAt: new Date(nowUnixSeconds * 1_000).toISOString(),
+          sources: issue31SourceSnapshotsFromNostr(snapshot, nowUnixSeconds),
+        }))
+      } catch {
+        program.workroom.setReadModel(unavailableIssue31NostrWorkroomReadModel(
+          new Date(nowUnixSeconds * 1_000).toISOString(),
+          "reason.issue31.nostr_projection_failed",
+        ))
+      }
+    }
+    program.workroom.setReadModel(emptyIssue31WorkroomReadModel(new Date().toISOString()))
+    void openIssue31MobileNostrRuntime({
+      relayUrls: OPENAGENTS_ISSUE31_RELAY_URLS,
+      admittedHostPublicKeys: issue31AdmittedHostPublicKeysFromEnvironment(),
+      onSnapshot: projectSnapshot,
+      onControlState: control => program.workroom.setNostrControl(control),
+    }).then(opened => {
+      if (!active) {
+        opened.close()
+        return
+      }
+      runtime = opened
+      issue31RuntimeRef.current = opened
+    }).catch(() => {
+      if (active) {
+        program.workroom.setNostrControl({
+          ...initialIssue31MobileNostrControlState(),
+          phase: "failed",
+          notice: "The Omega Nostr runtime is unavailable on this device.",
+        })
+        program.workroom.setReadModel(unavailableIssue31NostrWorkroomReadModel(
+          new Date().toISOString(),
+          "reason.issue31.nostr_runtime_unavailable",
+        ))
+      }
+    })
+    return () => {
+      active = false
+      if (issue31RuntimeRef.current === runtime) issue31RuntimeRef.current = null
+      runtime?.close()
+    }
+  }, [program])
   useEffect(() => () => {
     releaseSarahPlayback("stopped")
     void program.close()

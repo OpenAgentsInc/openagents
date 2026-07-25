@@ -8,7 +8,7 @@ import {
   type MarkdownInline,
   type View,
 } from "@effect-native/core"
-import { sanitizeSarahConversationResponse } from "@openagentsinc/sarah"
+import { sanitizeSarahConversationResponse } from "@openagentsinc/sarah/mobile-principal"
 
 /** Conversation presentation boundary for owner-scoped assistants. The shared
  * transcript shell stays persona-agnostic while private provenance remains out

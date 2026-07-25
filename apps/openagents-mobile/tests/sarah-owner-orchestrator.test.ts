@@ -5,7 +5,7 @@ import {
   decodeCodingComposerDraftSnapshot,
   emptyComposerState,
 } from "@openagentsinc/khala-sync-client";
-import type { SarahPrincipalProjection } from "@openagentsinc/sarah";
+import type { SarahPrincipalProjection } from "@openagentsinc/sarah/mobile-principal";
 import { describe, expect, test } from "vite-plus/test";
 
 import type {
@@ -60,9 +60,9 @@ const principal: SarahPrincipalProjection = {
   role: "Owner orchestrator",
   threadRef: thread.threadRef,
   authorityProfileRef: "openagents.sarah-owner-orchestrator",
-  authorityRevision: 4,
+  authorityRevision: 6,
   rootAuthorityProfileRef: "openagents.owner-delegated-autonomy",
-  rootAuthorityRevision: 6,
+  rootAuthorityRevision: 8,
   memory: "durable_cited",
   capabilities: [],
 };

@@ -63,6 +63,13 @@ export type OmegaEffectdInitializeResult = Readonly<{
     | "run_agent_computer_turn"
     | "get_agent_computer_session"
     | "list_agent_computer_sessions"
+    | "sarah_session_status"
+    | "sarah_bootstrap"
+    | "sarah_room_snapshot"
+    | "sarah_send_message"
+    | "sarah_interrupt_turn"
+    | "sarah_renew_device_grant"
+    | "sarah_revoke_device_grant"
     | "host_bridge"
   >;
   dataRoot: string;
@@ -243,7 +250,8 @@ export type OmegaEffectdHostMethod =
   | "dispatch_turn"
   | "refresh_evidence"
   | "interrupt_turn"
-  | "append_system_note";
+  | "append_system_note"
+  | import("./sarah-host-contract.ts").OmegaEffectdSarahHostMethod;
 
 export type OmegaEffectdHostRequest = Readonly<{
   schema: typeof OMEGA_EFFECTD_PROTOCOL_SCHEMA;

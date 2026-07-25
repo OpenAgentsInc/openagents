@@ -16,6 +16,10 @@ export class OmegaEffectdHostBridgeError extends Error {
     readonly reason:
       | "host_unavailable"
       | "stale_generation"
+      | "invalid_request"
+      | "unsupported"
+      | "unavailable"
+      | "internal"
       | "invalid_response"
       | "request_limit"
       | "frame_too_large"
@@ -168,9 +172,21 @@ export class OmegaEffectdHostBridge {
     if (response.ok) {
       pending.resolve(response.result);
     } else {
+      const reason = (() => {
+        switch (response.error?.code) {
+          case "stale_generation":
+          case "invalid_request":
+          case "unsupported":
+          case "unavailable":
+          case "internal":
+            return response.error.code;
+          default:
+            return "invalid_response";
+        }
+      })();
       pending.reject(
         new OmegaEffectdHostBridgeError(
-          response.error?.code === "stale_generation" ? "stale_generation" : "invalid_response",
+          reason,
           response.error?.message ?? "The Omega host rejected the operation.",
         ),
       );

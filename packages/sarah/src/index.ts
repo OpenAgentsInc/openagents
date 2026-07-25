@@ -1,16 +1,22 @@
 import { Schema as S } from "effect";
 
 import type { AuthorityRuntimeProfile } from "@openagentsinc/authority";
+import {
+  ROOT_AUTHORITY_PROFILE_REF,
+  ROOT_AUTHORITY_REVISION,
+  SARAH_AUTHORITY_PROFILE_REF,
+  SARAH_AUTHORITY_REVISION,
+  SarahPrincipalApiResponseSchema,
+  SarahRefSchema,
+  type SarahCapability,
+} from "./mobile-principal.ts";
 
-export const SARAH_PRINCIPAL_SCHEMA = "openagents.sarah.principal.v1" as const;
+export * from "./mobile-principal.ts";
+
 export const SARAH_CONTEXT_SCHEMA = "openagents.sarah.business_context.v1" as const;
 export const SARAH_HARNESS_POLICY_SCHEMA = "openagents.sarah.harness_policy.v1" as const;
-export const SARAH_AUTHORITY_PROFILE_REF = "openagents.sarah-owner-orchestrator" as const;
-export const SARAH_AUTHORITY_REVISION = 6 as const;
-export const ROOT_AUTHORITY_PROFILE_REF = "openagents.owner-delegated-autonomy" as const;
-export const ROOT_AUTHORITY_REVISION = 8 as const;
 
-const Ref = S.Trim.check(S.isMinLength(1), S.isMaxLength(256));
+const Ref = SarahRefSchema;
 const Summary = S.String.check(S.isMaxLength(4_000));
 const HarnessInstruction = S.Trim.check(S.isMinLength(1), S.isMaxLength(500));
 
@@ -61,14 +67,6 @@ export const DEFAULT_SARAH_HARNESS_POLICY: SarahHarnessPolicy = S.decodeUnknownS
   ],
   maxReplyWords: 120,
 });
-
-export const SarahCapabilitySchema = S.Struct({
-  capabilityRef: Ref,
-  label: S.String.check(S.isMinLength(1), S.isMaxLength(80)),
-  mode: S.Literals(["live", "brokered", "reserved"]),
-  access: S.Literals(["read", "propose", "act", "none"]),
-});
-export interface SarahCapability extends S.Schema.Type<typeof SarahCapabilitySchema> {}
 
 export const SARAH_CAPABILITIES: ReadonlyArray<SarahCapability> = [
   {
@@ -175,32 +173,6 @@ export const SARAH_CAPABILITIES: ReadonlyArray<SarahCapability> = [
   },
 ];
 
-export const SarahPrincipalProjectionSchema = S.Struct({
-  schema: S.Literal(SARAH_PRINCIPAL_SCHEMA),
-  principalRef: S.Literal("principal.sarah"),
-  displayName: S.Literal("Sarah"),
-  role: S.Literal("Owner orchestrator"),
-  threadRef: Ref,
-  authorityProfileRef: S.Literal(SARAH_AUTHORITY_PROFILE_REF),
-  authorityRevision: S.Literal(SARAH_AUTHORITY_REVISION),
-  rootAuthorityProfileRef: S.Literal(ROOT_AUTHORITY_PROFILE_REF),
-  rootAuthorityRevision: S.Literal(ROOT_AUTHORITY_REVISION),
-  memory: S.Literals(["durable_cited", "unavailable"]),
-  capabilities: S.Array(SarahCapabilitySchema),
-});
-export interface SarahPrincipalProjection extends S.Schema.Type<
-  typeof SarahPrincipalProjectionSchema
-> {}
-
-export const SarahPrincipalApiResponseSchema = S.Struct({
-  ok: S.Literal(true),
-  routeRef: S.Literal("route.mobile.sarah.principal.v1"),
-  principal: SarahPrincipalProjectionSchema,
-});
-export interface SarahPrincipalApiResponse extends S.Schema.Type<
-  typeof SarahPrincipalApiResponseSchema
-> {}
-
 export const SarahContextSourceSchema = S.Struct({
   sourceRef: Ref,
   kind: S.Literals([
@@ -240,15 +212,6 @@ export interface SarahRuntimeIdentity {
  * conversational transcript. This is a final presentation fence in addition
  * to the model instruction, so a provider cannot leak bracketed internal refs
  * into ordinary Sarah replies. */
-export const sanitizeSarahConversationResponse = (value: string): string =>
-  value
-    .replace(/\s*\[source\.[^\]\n]{1,512}\]/gi, "")
-    .replace(/[ \t]+([.,;:!?])/g, "$1")
-    .replace(/[ \t]{2,}/g, " ")
-    .replace(/\n[ \t]+/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-
 export const SARAH_RUNTIME_AUTHORITY_PROFILE: AuthorityRuntimeProfile = {
   profileRef: SARAH_AUTHORITY_PROFILE_REF,
   revision: SARAH_AUTHORITY_REVISION,

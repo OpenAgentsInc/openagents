@@ -142,10 +142,6 @@ export const paramValues = (
 export const requiredParam = (
   tags: ReadonlyArray<readonly string[]>,
   key: string,
-): string => {
-  const value = paramValues(tags, key)[0];
-  if (value === undefined || value === "") {
-    failLane("missing_param", `missing LBR param ${key}`);
-  }
-  return value;
-};
+): string =>
+  paramValues(tags, key)[0] ??
+  failLane("missing_param", `missing LBR param ${key}`);

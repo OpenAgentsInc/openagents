@@ -157,6 +157,10 @@ import {
   type Issue31WorkroomRoom,
 } from "../workroom/issue31-workroom-read-model"
 import {
+  initialIssue31MobileNostrControlState,
+  type Issue31MobileNostrControlState,
+} from "../workroom/issue31-mobile-nostr-runtime"
+import {
   decodeMobileEnvironmentDirectory,
   decodeMobileEnvironmentReceipt,
   initialMobileSettingsState,
@@ -195,7 +199,7 @@ import {
   type MobileAccessibilityProfile,
   type AssistantSpeechControlView,
 } from "./khala-core"
-import type { SarahPrincipalProjection } from "@openagentsinc/sarah"
+import type { SarahPrincipalProjection } from "@openagentsinc/sarah/mobile-principal"
 import { mobileAttachmentRef } from "./mobile-transcript-attachment"
 import { sanitizeOwnerConversationResponse } from "./mobile-transcript-content"
 import {
@@ -250,6 +254,7 @@ export interface HomeState {
   readonly workbenchRoute: "conversation" | "workroom" | "files" | "changes" | "git" | "terminal" | "settings"
   readonly issue31Workroom: Issue31WorkroomReadModel
   readonly issue31WorkroomRoom: Issue31WorkroomRoom
+  readonly issue31NostrControl: Issue31MobileNostrControlState
   readonly repositoryBrowser: MobileRepositoryBrowserState
   readonly repositoryReview: MobileRepositoryReviewState
   readonly repositoryGit: MobileRepositoryGitState
@@ -441,6 +446,7 @@ export const initialHomeState: HomeState = {
   workbenchRoute: "conversation",
   issue31Workroom: emptyIssue31WorkroomReadModel(),
   issue31WorkroomRoom: "owner_private",
+  issue31NostrControl: initialIssue31MobileNostrControlState(),
   repositoryBrowser: initialMobileRepositoryBrowserState,
   repositoryReview: initialMobileRepositoryReviewState,
   repositoryGit: initialMobileRepositoryGitState,
@@ -685,6 +691,11 @@ export const Issue31WorkroomRoomSelected = defineIntent(
   "Issue31WorkroomRoomSelected",
   Schema.Struct({ room: Schema.Literals(["owner_private", "community"]) }),
 )
+export const Issue31HostSelected = defineIntent(
+  "Issue31HostSelected",
+  Schema.Struct({ hostPublicKeyHex: Schema.String }),
+)
+export const Issue31PairingRequested = defineIntent("Issue31PairingRequested", EmptyPayload)
 export const ChangesRouteOpened = defineIntent("ChangesRouteOpened", EmptyPayload)
 export const WorkbenchConversationOpened = defineIntent("WorkbenchConversationOpened", EmptyPayload)
 export const RepositoryChangesRefreshed = defineIntent("RepositoryChangesRefreshed", EmptyPayload)
@@ -911,6 +922,8 @@ export const homeIntentDefinitions = [
   CodingComposerPathSelected,
   Issue31WorkroomOpened,
   Issue31WorkroomRoomSelected,
+  Issue31HostSelected,
+  Issue31PairingRequested,
   ChangesRouteOpened,
   WorkbenchConversationOpened,
   RepositoryChangesRefreshed,
@@ -1187,6 +1200,7 @@ export const renderContentView = (state: HomeState): View =>
       ? [renderMobileIssue31WorkroomView(
           state.issue31Workroom,
           state.issue31WorkroomRoom,
+          state.issue31NostrControl,
           state.accessibility,
         )]
       : state.workbenchRoute === "terminal"
@@ -2288,6 +2302,10 @@ export interface HomeProgramOptions {
   readonly sarah?: SarahPrincipalProjection
   readonly sarahSpeech?: SarahSpeechPlaybackPort
   readonly issue31Workroom?: Issue31WorkroomReadModel
+  readonly issue31Nostr?: Readonly<{
+    selectHost: (hostPublicKeyHex: string) => Promise<void>
+    requestPairing: () => Promise<void>
+  }>
   /** Initial live `FullAutoRun` mobile projection, when already resolved at
    * selection time (openagents #8982). Later updates flow through
    * `program.fullAuto.setProjection`, not another `buildHomeProgram` call. */
@@ -4542,6 +4560,56 @@ export const makeHomeHandlers = (
         ...current,
         issue31WorkroomRoom: room,
       })),
+    Issue31HostSelected: ({ hostPublicKeyHex }: { readonly hostPublicKeyHex: string }) =>
+      Effect.gen(function* () {
+        const nostr = options.issue31Nostr
+        if (nostr === undefined) return
+        yield* SubscriptionRef.update(state, current => ({
+          ...current,
+          issue31NostrControl: {
+            ...current.issue31NostrControl,
+            phase: "ready" as const,
+            selectedHostPublicKeyHex: hostPublicKeyHex,
+            notice: "Updating admitted host subscriptions.",
+          },
+        }))
+        try {
+          yield* Effect.promise(() => nostr.selectHost(hostPublicKeyHex))
+        } catch {
+          yield* SubscriptionRef.update(state, current => ({
+            ...current,
+            issue31NostrControl: {
+              ...current.issue31NostrControl,
+              phase: "failed" as const,
+              notice: "The signed Omega host could not be selected.",
+            },
+          }))
+        }
+      }),
+    Issue31PairingRequested: () => Effect.gen(function* () {
+      const nostr = options.issue31Nostr
+      if (nostr === undefined) return
+      yield* SubscriptionRef.update(state, current => ({
+        ...current,
+        issue31NostrControl: {
+          ...current.issue31NostrControl,
+          phase: "pairing" as const,
+          notice: "Publishing the signed pairing request.",
+        },
+      }))
+      try {
+        yield* Effect.promise(() => nostr.requestPairing())
+      } catch {
+        yield* SubscriptionRef.update(state, current => ({
+          ...current,
+          issue31NostrControl: {
+            ...current.issue31NostrControl,
+            phase: "failed" as const,
+            notice: "The signed pairing request could not be published.",
+          },
+        }))
+      }
+    }),
     SettingsPressed: () => Effect.gen(function* () {
       yield* SubscriptionRef.update(state, current => ({
         ...current,
@@ -5268,7 +5336,10 @@ export interface HomeProgramHandle {
   readonly workroom: {
     readonly open: () => void
     readonly selectRoom: (room: Issue31WorkroomRoom) => void
+    readonly selectHost: (hostPublicKeyHex: string) => void
+    readonly requestPairing: () => void
     readonly setReadModel: (model: Issue31WorkroomReadModel) => void
+    readonly setNostrControl: (control: Issue31MobileNostrControlState) => void
   }
   readonly workspace: {
     readonly setWidth: (width: number) => void
@@ -5566,10 +5637,21 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
             "Issue31WorkroomRoomSelected",
             StaticPayload({ room }),
           )),
+          selectHost: hostPublicKeyHex => fireRef(IntentRef(
+            "Issue31HostSelected",
+            StaticPayload({ hostPublicKeyHex }),
+          )),
+          requestPairing: fire("Issue31PairingRequested"),
           setReadModel: model => {
             Effect.runFork(SubscriptionRef.update(state, current => ({
               ...current,
               issue31Workroom: model,
+            })))
+          },
+          setNostrControl: control => {
+            Effect.runFork(SubscriptionRef.update(state, current => ({
+              ...current,
+              issue31NostrControl: control,
             })))
           },
         },

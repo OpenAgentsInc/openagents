@@ -1,7 +1,7 @@
 import {
   SarahPrincipalApiResponseSchema,
   type SarahPrincipalProjection,
-} from "@openagentsinc/sarah";
+} from "@openagentsinc/sarah/mobile-principal";
 import { Effect, Schema as S } from "effect";
 
 export const SARAH_OWNER_MOBILE_PATH = "/api/mobile/sarah";

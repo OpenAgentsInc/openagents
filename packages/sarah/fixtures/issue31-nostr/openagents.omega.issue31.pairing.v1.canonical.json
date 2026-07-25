@@ -1,0 +1,18 @@
+{
+  "schema": "openagents.omega.issue31.pairing.v1",
+  "recordType": "scoped_grant",
+  "hostRef": "omega.host.local",
+  "hostPublicKeyHex": "1111111111111111111111111111111111111111111111111111111111111111",
+  "sarahPublicKeyHex": "3333333333333333333333333333333333333333333333333333333333333333",
+  "devicePublicKeyHex": "2222222222222222222222222222222222222222222222222222222222222222",
+  "issuedAt": 1784937600,
+  "pairingResponseEventId": "3333333333333333333333333333333333333333333333333333333333333333",
+  "grantRef": "grant.omega.device_1",
+  "generation": 1,
+  "scopes": [
+    "observe_issue31",
+    "send_message",
+    "interrupt_turn"
+  ],
+  "expiresAt": 1785024000
+}

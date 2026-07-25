@@ -78,7 +78,7 @@ import {
 } from "./full-auto/full-auto-run-projection"
 import type { FullAutoRunControlDispatchOutcome } from "./full-auto/full-auto-run-control-intent"
 import type { FullAutoRunControlAction } from "@openagentsinc/khala-sync"
-import type { SarahPrincipalProjection } from "@openagentsinc/sarah"
+import type { SarahPrincipalProjection } from "@openagentsinc/sarah/mobile-principal"
 import type { ManagedSandboxSupervisionProjection } from "@openagentsinc/managed-sandbox-contract"
 import type {
   MobileManagedSandboxControlAction,

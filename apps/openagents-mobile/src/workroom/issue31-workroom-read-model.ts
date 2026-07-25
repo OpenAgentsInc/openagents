@@ -243,10 +243,7 @@ export const decodeIssue31SourceSnapshot = (value: unknown): Issue31SourceSnapsh
   if (source.status === "ready" && source.recordRefs.length === 0) {
     throw new Error(`Issue 31 source ${source.capabilityId} needs an authority record.`);
   }
-  if (
-    (source.status === "unavailable" || source.status === "gap") &&
-    source.reasonRef === null
-  ) {
+  if ((source.status === "unavailable" || source.status === "gap") && source.reasonRef === null) {
     throw new Error(`Issue 31 source ${source.capabilityId} needs a reason reference.`);
   }
   if (source.status === "ready" && (source.freshness === "unknown" || source.observedAt === null)) {
@@ -400,6 +397,29 @@ export const projectIssue31WorkroomReadModel = (
 export const emptyIssue31WorkroomReadModel = (
   projectedAt: string = "1970-01-01T00:00:00.000Z",
 ): Issue31WorkroomReadModel => projectIssue31WorkroomReadModel({ projectedAt });
+
+export const unavailableIssue31NostrWorkroomReadModel = (
+  projectedAt: string,
+  reasonRef: "reason.issue31.nostr_projection_failed" | "reason.issue31.nostr_runtime_unavailable",
+): Issue31WorkroomReadModel =>
+  projectIssue31WorkroomReadModel({
+    projectedAt,
+    sources: [
+      decodeIssue31SourceSnapshot({
+        capabilityId: "connection_and_identity",
+        authority: "signed_nostr_record",
+        sourceRef: "source.issue31.nostr.host_pairing",
+        status: "unavailable",
+        freshness: "unknown",
+        observedAt: null,
+        recordRefs: [],
+        reasonRef,
+        role: "none",
+        roleStatus: "unknown",
+        actionState: { kind: "idle" },
+      }),
+    ],
+  });
 
 export const issue31RowsForRoom = (
   model: Issue31WorkroomReadModel,

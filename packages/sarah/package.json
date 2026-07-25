@@ -9,6 +9,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./mobile-principal": "./src/mobile-principal.ts",
     "./nostr-identity": "./src/nostr-identity/index.ts",
     "./nostr-turn": "./src/nostr-turn/index.ts",
     "./nostr-migration": "./src/nostr-migration/index.ts",
@@ -20,13 +21,14 @@
     "./community-arbitration": "./src/community-arbitration/index.ts",
     "./lbr-request-quote": "./src/lbr-request-quote/index.ts",
     "./issue31-workroom": "./src/issue31-workroom/index.ts",
+    "./issue31-nostr": "./src/issue31-nostr/index.ts",
     "./xp": "./src/xp/index.ts"
   },
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
-    "test": "vp test --run src/index.test.ts src/nostr-identity/nostr-identity.test.ts src/nostr-identity/nip44-cipher.test.ts src/nostr-turn/nostr-turn.test.ts src/nostr-turn/consumer.test.ts src/nostr-memory/nostr-memory.test.ts src/nostr-migration/nostr-migration.test.ts src/nostr-journey/nostr-journey.test.ts src/community-journey/community-journey.test.ts src/relay-load-proof/relay-load-proof.test.ts src/community/work-units.test.ts src/community/community.test.ts src/lbr-request-quote/lbr-request-quote.test.ts src/community-arbitration/community-arbitration.test.ts src/issue31-workroom/host-adjunct.test.ts src/xp/xp.test.ts",
+    "test": "vp test --run src/index.test.ts src/mobile-principal.test.ts src/nostr-identity/nostr-identity.test.ts src/nostr-identity/nip44-cipher.test.ts src/nostr-turn/nostr-turn.test.ts src/nostr-turn/consumer.test.ts src/nostr-memory/nostr-memory.test.ts src/nostr-migration/nostr-migration.test.ts src/nostr-journey/nostr-journey.test.ts src/community-journey/community-journey.test.ts src/relay-load-proof/relay-load-proof.test.ts src/community/work-units.test.ts src/community/community.test.ts src/lbr-request-quote/lbr-request-quote.test.ts src/community-arbitration/community-arbitration.test.ts src/issue31-workroom/host-adjunct.test.ts src/issue31-nostr/issue31-nostr.test.ts src/xp/xp.test.ts",
     "generate:journey-receipt": "node --import tsx src/nostr-journey/generate-receipt.ts",
     "generate:community-journey-receipt": "node --import tsx src/community-journey/generate-receipt.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",

@@ -17,6 +17,7 @@ import {
   type Issue31WorkroomReadModel,
   type Issue31WorkroomRoom,
 } from "../workroom/issue31-workroom-read-model";
+import type { Issue31MobileNostrControlState } from "../workroom/issue31-mobile-nostr-runtime";
 
 const statusLabel: Readonly<Record<Issue31SourceStatus, string>> = {
   ready: "Ready",
@@ -46,6 +47,12 @@ const actionCopy = (row: Issue31CapabilityProjection): string => {
   if (action.kind === "pending") return `Action · pending · ${action.intentRef}`;
   if (action.kind === "refused") return `Action · refused · ${action.decisionRef}`;
   return `Action · ${action.state} · ${action.outcomeRef}`;
+};
+
+const recordRefsCopy = (recordRefs: ReadonlyArray<string>): string => {
+  const displayed = recordRefs.slice(0, 8);
+  const hiddenCount = recordRefs.length - displayed.length;
+  return `Records · ${displayed.join(" · ")}${hiddenCount === 0 ? "" : ` · +${hiddenCount} more`}`;
 };
 
 const capabilityCard = (row: Issue31CapabilityProjection): View =>
@@ -93,6 +100,16 @@ const capabilityCard = (row: Issue31CapabilityProjection): View =>
         variant: "caption",
         color: "textMuted",
       }),
+      ...(row.source.recordRefs.length === 0
+        ? []
+        : [
+            Text({
+              key: `issue31-capability-${row.id}-record-refs`,
+              content: recordRefsCopy(row.source.recordRefs),
+              variant: "caption",
+              color: "textMuted",
+            }),
+          ]),
       Text({
         key: `issue31-capability-${row.id}-action`,
         content: actionCopy(row),
@@ -157,6 +174,7 @@ const roomButton = (
 export const renderMobileIssue31WorkroomView = (
   model: Issue31WorkroomReadModel,
   selectedRoom: Issue31WorkroomRoom,
+  nostrControl: Issue31MobileNostrControlState,
   accessibility: MobileAccessibilityProfile,
 ): View => {
   const rows = issue31RowsForRoom(model, selectedRoom);
@@ -185,6 +203,71 @@ export const renderMobileIssue31WorkroomView = (
         variant: "body",
         color: model.coverage.ready === model.coverage.total ? "textPrimary" : "textMuted",
       }),
+      Text({
+        key: "issue31-device-identity",
+        content:
+          nostrControl.deviceNpub === null
+            ? "Device identity · unavailable"
+            : `Device identity · ${nostrControl.deviceNpub}`,
+        variant: "caption",
+        color: "textMuted",
+      }),
+      ...(nostrControl.hosts.length === 0
+        ? [
+            Text({
+              key: "issue31-host-discovery-empty",
+              content:
+                "No unexpired announcement from an out-of-band admitted Omega host has arrived yet.",
+              variant: "body",
+              color: "textMuted",
+            }),
+          ]
+        : nostrControl.hosts.map((host) =>
+            Button({
+              key: `issue31-host-${host.hostPublicKeyHex}`,
+              label: `${host.displayName} · ${host.hostFingerprint} · generation ${host.generation} · Sarah ${host.sarahFingerprint}`,
+              variant:
+                nostrControl.selectedHostPublicKeyHex === host.hostPublicKeyHex
+                  ? "primary"
+                  : "secondary",
+              onPress: IntentRef(
+                "Issue31HostSelected",
+                StaticPayload({ hostPublicKeyHex: host.hostPublicKeyHex }),
+              ),
+              a11y: {
+                label: `Confirm admitted Omega host ${host.displayName}, fingerprint ${host.hostFingerprint}, bound Sarah fingerprint ${host.sarahFingerprint}`,
+              },
+              style: mobileInteractiveStyle(accessibility),
+            }),
+          )),
+      Button({
+        key: "issue31-pair-device",
+        label:
+          nostrControl.phase === "paired"
+            ? "Device paired"
+            : nostrControl.phase === "pairing" || nostrControl.phase === "awaiting_grant"
+              ? "Pairing in progress"
+              : "Pair this device",
+        variant: "primary",
+        disabled:
+          nostrControl.selectedHostPublicKeyHex === null ||
+          nostrControl.phase === "pairing" ||
+          nostrControl.phase === "awaiting_grant" ||
+          nostrControl.phase === "paired",
+        onPress: IntentRef("Issue31PairingRequested", StaticPayload({})),
+        a11y: { label: "Pair this device with the selected signed Omega host" },
+        style: mobileInteractiveStyle(accessibility),
+      }),
+      ...(nostrControl.notice === null
+        ? []
+        : [
+            Text({
+              key: "issue31-pairing-notice",
+              content: nostrControl.notice,
+              variant: "caption",
+              color: nostrControl.phase === "failed" ? "warning" : "textMuted",
+            }),
+          ]),
       Stack(
         {
           key: "issue31-room-selector",

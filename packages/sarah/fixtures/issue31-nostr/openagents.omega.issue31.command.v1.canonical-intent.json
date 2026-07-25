@@ -1,0 +1,14 @@
+{
+  "schema": "openagents.omega.issue31.command.v1",
+  "recordType": "command_intent",
+  "hostRef": "omega.host.local",
+  "hostPublicKeyHex": "1111111111111111111111111111111111111111111111111111111111111111",
+  "devicePublicKeyHex": "2222222222222222222222222222222222222222222222222222222222222222",
+  "grantRef": "grant.omega.device_1",
+  "actionRef": "action.omega.full_auto.stop",
+  "idempotencyRef": "idempotency.omega.stop_1",
+  "expectedGeneration": 3,
+  "argumentsRef": "arguments.omega.none",
+  "issuedAt": 1784937600,
+  "expiresAt": 1784937900
+}

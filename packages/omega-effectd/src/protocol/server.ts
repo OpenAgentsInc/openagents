@@ -116,6 +116,19 @@ import {
   OmegaEffectdHostBridgeError,
   type OmegaEffectdHostFrameEmitter,
 } from "./host-bridge.ts";
+import {
+  decodeSarahBootstrapParams,
+  decodeSarahInterruptTurnParams,
+  decodeSarahRenewDeviceGrantParams,
+  decodeSarahRevokeDeviceGrantParams,
+  decodeSarahRoomSnapshotParams,
+  decodeSarahSendMessageParams,
+  decodeSarahSessionStatusParams,
+  hasBoundedUtf8Fields,
+  hasUniqueGrantScopes,
+  type OmegaEffectdSarahHostMethod,
+  type OmegaEffectdSarahHostParams,
+} from "./sarah-host-contract.ts";
 
 const OWNER_CONFIGURABLE_GUARDRAILS = Object.freeze([
   "maxWallClockMs",
@@ -205,7 +218,11 @@ export const createOmegaEffectdFramedServer = (
     if (run.threadRef === undefined || registry.record(run.threadRef) !== null) continue;
     const binding = run.executionHistory?.at(-1);
     if (binding === undefined || binding.targetThreadRef !== run.threadRef) continue;
-    registry.transferThread(binding.sourceThreadRef, binding.targetThreadRef, binding.targetProfile);
+    registry.transferThread(
+      binding.sourceThreadRef,
+      binding.targetThreadRef,
+      binding.targetProfile,
+    );
   }
   const reportStore = openFullAutoRunReportStore(resolveFullAutoRunReportsPath(paths));
   const nativeBindings = openFullAutoNativeBindingStore(resolveFullAutoNativeBindingsPath(paths));
@@ -473,14 +490,16 @@ export const createOmegaEffectdFramedServer = (
         continuationCap: (threadRef) => runRegistry.findByThreadRef(threadRef)?.turnCap ?? null,
         compileDispatchMessage: (input) => {
           const run = runRegistry.findByThreadRef(input.threadRef);
-          const priorAcceptedOutcome = [...(evidenceByThread.get(input.threadRef)?.turns ?? [])]
-            .reverse()
-            .find((turn) => turn.disposition === "completed") ?? null;
-          const previousHandoff = run === null
-            ? null
-            : [...providerHandoffs.list({ runRef: run.runRef })]
-                .reverse()
-                .find((handoff) => handoff.disposition !== "refused") ?? null;
+          const priorAcceptedOutcome =
+            [...(evidenceByThread.get(input.threadRef)?.turns ?? [])]
+              .reverse()
+              .find((turn) => turn.disposition === "completed") ?? null;
+          const previousHandoff =
+            run === null
+              ? null
+              : ([...providerHandoffs.list({ runRef: run.runRef })]
+                  .reverse()
+                  .find((handoff) => handoff.disposition !== "refused") ?? null);
           return renderFullAutoMissionPrompt(
             compileFullAutoMissionPacket({
               run,
@@ -756,6 +775,30 @@ export const createOmegaEffectdFramedServer = (
     return null;
   };
 
+  const proxySarahHostRequest = async <Method extends OmegaEffectdSarahHostMethod>(
+    id: string,
+    method: Method,
+    params: OmegaEffectdSarahHostParams[Method],
+  ): Promise<OmegaEffectdResponse> => {
+    const result = objectResult(await hostRequest(method, params));
+    const response = respond(id, true, result);
+    if (Buffer.byteLength(JSON.stringify(response), "utf8") > OMEGA_EFFECTD_MAX_FRAME_BYTES) {
+      throw new OmegaEffectdHostBridgeError(
+        "frame_too_large",
+        "The Omega Sarah host result exceeded the frame-size limit.",
+      );
+    }
+    return response;
+  };
+
+  const invalidSarahParams = (id: string, method: OmegaEffectdSarahHostMethod) =>
+    respond(
+      id,
+      false,
+      undefined,
+      redactedError("invalid_request", `${method} received invalid params.`),
+    );
+
   const handle = async (request: {
     id: string;
     generation: number;
@@ -822,6 +865,13 @@ export const createOmegaEffectdFramedServer = (
           "run_agent_computer_turn",
           "get_agent_computer_session",
           "list_agent_computer_sessions",
+          "sarah_session_status",
+          "sarah_bootstrap",
+          "sarah_room_snapshot",
+          "sarah_send_message",
+          "sarah_interrupt_turn",
+          "sarah_renew_device_grant",
+          "sarah_revoke_device_grant",
           "host_bridge",
         ],
         dataRoot: health.dataRoot,
@@ -843,6 +893,101 @@ export const createOmegaEffectdFramedServer = (
     }
 
     switch (request.method) {
+      case "sarah_session_status": {
+        const input = request.params === undefined ? {} : request.params;
+        try {
+          return await proxySarahHostRequest(
+            request.id,
+            request.method,
+            decodeSarahSessionStatusParams(input),
+          );
+        } catch (error) {
+          if (error instanceof OmegaEffectdHostBridgeError) throw error;
+          return invalidSarahParams(request.id, request.method);
+        }
+      }
+      case "sarah_bootstrap": {
+        const input = request.params === undefined ? {} : request.params;
+        try {
+          return await proxySarahHostRequest(
+            request.id,
+            request.method,
+            decodeSarahBootstrapParams(input),
+          );
+        } catch (error) {
+          if (error instanceof OmegaEffectdHostBridgeError) throw error;
+          return invalidSarahParams(request.id, request.method);
+        }
+      }
+      case "sarah_room_snapshot": {
+        const input = request.params === undefined ? {} : request.params;
+        try {
+          const params = decodeSarahRoomSnapshotParams(input);
+          if (!hasBoundedUtf8Fields(params)) {
+            return invalidSarahParams(request.id, request.method);
+          }
+          return await proxySarahHostRequest(request.id, request.method, params);
+        } catch (error) {
+          if (error instanceof OmegaEffectdHostBridgeError) throw error;
+          return invalidSarahParams(request.id, request.method);
+        }
+      }
+      case "sarah_send_message": {
+        const input = request.params === undefined ? {} : request.params;
+        try {
+          const params = decodeSarahSendMessageParams(input);
+          if (!hasBoundedUtf8Fields(params) || params.expectedGeneration !== request.generation) {
+            return invalidSarahParams(request.id, request.method);
+          }
+          return await proxySarahHostRequest(request.id, request.method, params);
+        } catch (error) {
+          if (error instanceof OmegaEffectdHostBridgeError) throw error;
+          return invalidSarahParams(request.id, request.method);
+        }
+      }
+      case "sarah_interrupt_turn": {
+        const input = request.params === undefined ? {} : request.params;
+        try {
+          const params = decodeSarahInterruptTurnParams(input);
+          if (!hasBoundedUtf8Fields(params) || params.expectedGeneration !== request.generation) {
+            return invalidSarahParams(request.id, request.method);
+          }
+          return await proxySarahHostRequest(request.id, request.method, params);
+        } catch (error) {
+          if (error instanceof OmegaEffectdHostBridgeError) throw error;
+          return invalidSarahParams(request.id, request.method);
+        }
+      }
+      case "sarah_renew_device_grant": {
+        const input = request.params === undefined ? {} : request.params;
+        try {
+          const params = decodeSarahRenewDeviceGrantParams(input);
+          if (
+            !hasBoundedUtf8Fields(params) ||
+            !hasUniqueGrantScopes(params) ||
+            params.expectedGeneration !== request.generation
+          ) {
+            return invalidSarahParams(request.id, request.method);
+          }
+          return await proxySarahHostRequest(request.id, request.method, params);
+        } catch (error) {
+          if (error instanceof OmegaEffectdHostBridgeError) throw error;
+          return invalidSarahParams(request.id, request.method);
+        }
+      }
+      case "sarah_revoke_device_grant": {
+        const input = request.params === undefined ? {} : request.params;
+        try {
+          const params = decodeSarahRevokeDeviceGrantParams(input);
+          if (!hasBoundedUtf8Fields(params) || params.expectedGeneration !== request.generation) {
+            return invalidSarahParams(request.id, request.method);
+          }
+          return await proxySarahHostRequest(request.id, request.method, params);
+        } catch (error) {
+          if (error instanceof OmegaEffectdHostBridgeError) throw error;
+          return invalidSarahParams(request.id, request.method);
+        }
+      }
       case "health": {
         const health = service.health();
         const result: OmegaEffectdHealthResult = {
@@ -1541,11 +1686,15 @@ export const createOmegaEffectdFramedServer = (
         const code =
           error.reason === "stale_generation"
             ? "stale_generation"
-            : error.reason === "timeout"
-              ? "host_timeout"
-              : error.reason === "frame_too_large"
-                ? "frame_too_large"
-                : "host_unavailable";
+            : error.reason === "invalid_request"
+              ? "invalid_request"
+              : error.reason === "timeout"
+                ? "host_timeout"
+                : error.reason === "frame_too_large"
+                  ? "frame_too_large"
+                  : error.reason === "internal" || error.reason === "invalid_response"
+                    ? "internal"
+                    : "host_unavailable";
         return respond(parsed.id, false, undefined, redactedError(code, error.message));
       }
       const message = error instanceof Error ? error.message : "internal error";

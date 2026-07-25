@@ -23,7 +23,7 @@ import {
   createAuthenticatedMobileRepositoryEnvironment,
   type MobileRepositoryEnvironmentPort,
 } from "../coding/mobile-repository-environment-client"
-import type { SarahPrincipalProjection } from "@openagentsinc/sarah"
+import type { SarahPrincipalProjection } from "@openagentsinc/sarah/mobile-principal"
 import { fetchSarahPrincipal } from "../sarah/sarah-client"
 import { fetchSarahSpeech } from "../sarah/sarah-speech-client"
 import {
