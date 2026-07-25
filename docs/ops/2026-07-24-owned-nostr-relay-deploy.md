@@ -306,6 +306,47 @@ Do not place Sarah private keys in the relay service.
 4. Shared durability is the Postgres store. Do not run multi-replica with only
    memory stores.
 
+## 9.5 Measured results, 2026-07-25
+
+The first live load proof ran against revision `openagents-nostr-relay-00002-cc7`
+from `nostr-effect` `12812e6`.
+
+| Conns | Events | Accepted | Rate | ev/s | connect p50/p99 | publish p50/p99 | REQ to EOSE p50/p99 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 10 | 200 | 200 | 100% | 79.0 | 250 / 326 | 92 / 230 | 60 / 133 |
+| 25 | 500 | 500 | 100% | 131.9 | 182 / 646 | 152 / 294 | 86 / 166 |
+| 60 | 1200 | 1200 | 100% | 158.1 | 296 / 837 | 317 / 557 | 161 / 405 |
+| 120 | 1800 | 1800 | 100% | 924 / 7065 | 334 / 637 | 245 / 521 |
+
+Times are milliseconds. In total 3710 events published with zero rejections and
+no error class at any step.
+
+**Failure mode.** The relay degrades on connection admission, not on writes. At
+120 concurrent sockets against `concurrency=100` and `max-instances=3`, connect
+p99 rose to 7065 ms while publish p99 stayed near 637 ms and the accept rate
+held at 100 percent. The relay queues admission rather than shedding writes, so
+the scaling lever is instances and concurrency. Throughput was still rising at
+120 connections, so 184.8 events per second is a floor and not a ceiling.
+
+**Durability.** A marker event published to revision `00002-cc7` was read back
+by author from revision `00003-tgr` after a forced restart.
+
+## 9.6 Operational gotchas found during the proof
+
+1. **NIP-42 requires the canonical URL.** The service binds `RELAY_PUBLIC_URL`
+   to `wss://relay.openagents.com`, and an auth event whose `relay` tag names
+   the `.run.app` host is refused with `invalid: relay URL mismatch`. Every
+   client must tag the canonical URL no matter which host it connects to. This
+   couples authentication to the custom domain before its certificate exists.
+2. **A synchronous store hides an async defect.** Revision `00001` crashed on
+   every publish with `AsyncFiberError`, because the host used `Effect.runSync`
+   while the Cloud SQL store is asynchronous. The in-memory store used by local
+   tests is synchronous, so the local suite passed. Any future host change must
+   be exercised against an asynchronous store, which
+   `src/relay/NodeServerAsyncStore.test.ts` now does.
+3. **NIP-11 can disagree with enforcement.** The relay enforces NIP-42 but does
+   not advertise it. Track `OpenAgentsInc/nostr-effect#169`.
+
 ## 10. Exit criteria
 
 Local exit (this packet, without production secrets):

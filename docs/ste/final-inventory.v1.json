@@ -34907,7 +34907,7 @@
     },
     {
       "path": "docs/ops/2026-07-24-owned-nostr-relay-deploy.md",
-      "sha256": "a54a0089901aca8dcaf99fc2a56b89119ba3390fd94d76d154632bf9c70d9f0a",
+      "sha256": "1912a0c0ecdb1042d6ba9f8cd8b127499ab56b5a7c3c1193b699a09af01fc2b7",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
