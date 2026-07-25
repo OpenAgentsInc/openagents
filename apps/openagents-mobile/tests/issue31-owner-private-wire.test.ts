@@ -26,6 +26,7 @@ import {
   ISSUE31_HOST_ANNOUNCEMENT_KIND,
   ISSUE31_PAIRING_SCHEMA,
   createIssue31PrivateGiftWrap,
+  decodeIssue31CommandRecordV2,
   decodeIssue31OwnerProjectionRecord,
   decodeIssue31PairingRecord,
 } from "@openagentsinc/sarah/issue31-nostr";
@@ -149,12 +150,22 @@ const hostFixture = (name: string): Record<string, unknown> =>
  *
  * `foldIssue31Grant` requires the whole chain — request, challenge, response,
  * grant — and the device's request and response are NIP-44 sealed to the host,
- * so the relay can never serve them back to the device that wrote them. The
- * client has no durable store for its own authored records either, so a device
- * cannot rebuild its own grant chain from the wire alone. That is a real gap
- * and it is reported on omega#46. Here the two device-authored records are
- * supplied as device-local state, which is where they would have to live. Every
- * other record in these tests crossed a real relay.
+ * so the relay can never serve them back to the device that wrote them. A
+ * device therefore cannot rebuild its own grant chain from the wire alone, and
+ * these records are supplied here as device-local state.
+ *
+ * That is not an open gap. `openIssue31MobileNostrRuntime` already persists
+ * every pairing record it authors before publishing it
+ * (`publishPairingRecord` -> `Issue31LocalPairingRecordStore.put`), keyed by the
+ * NIP-59 rumor id, and reloads them at start as `local://issue31-device-outbox`
+ * confirmed events. The rumor id is the same identifier the Omega host folds
+ * the chain under, so the two halves join.
+ * "the device-local half of the grant chain is load bearing" below proves the
+ * join and proves the device-local half is required rather than decorative.
+ *
+ * `createIssue31NostrClient` itself has no such store — the retention lives one
+ * layer up, in the runtime. Every other record in these tests crossed a real
+ * relay.
  */
 const deviceAuthoredPairing = (
   hostRef: string,
@@ -573,6 +584,503 @@ describe("owner-private read state, reminders, and receipts over a real relay", 
       expect(model.readContexts).toEqual({});
       expect(model.status).toBe("gap");
       expect(model.reasonRef).toBe("reason.issue31.owner_projection_rejected");
+    } finally {
+      client.close();
+    }
+  }, 60_000);
+  /**
+   * omega#46 exit 2: "Interrupt stays pending until the terminal record
+   * arrives." Proven on a real wire rather than over hand-stapled objects.
+   *
+   * Three interrupts are issued at once and the host accepts all three. Each
+   * accepted result names the source event that will settle it, and none of
+   * those source events exists yet. All three must read as pending, because
+   * host acceptance is not completion.
+   *
+   * Then the settling projections arrive over the relay and only ONE of the
+   * three is allowed to go terminal:
+   *
+   *  - A's named source carries `turn.started` — a real turn record at exactly
+   *    the source the host named, and still not the terminal one.
+   *  - B's named source carries `turn.interrupted` for a DIFFERENT turn — the
+   *    terminal entry, on the wrong turn.
+   *  - C's named source carries `turn.interrupted` for C's own turn.
+   *
+   * A and B are the falsification of C: if the fold settled on "a projection
+   * arrived" or on "the entry says interrupted", they would go terminal too.
+   */
+  test("an interrupt stays pending over the wire until its own terminal turn record arrives", async () => {
+    const hostSecret = generateSecretKey();
+    const hostPublicKey = getPublicKey(hostSecret);
+    const hostSigner = LocalKeySigner.fromPrivateKey(hostSecret);
+    const deviceSecret = generateSecretKey();
+    const devicePublicKey = getPublicKey(deviceSecret);
+    const deviceSigner = LocalKeySigner.fromPrivateKey(deviceSecret);
+    const sarahSecret = generateSecretKey();
+    const sarahPublicKey = getPublicKey(sarahSecret);
+    const now = Math.floor(Date.now() / 1000);
+    const grantRef = `grant.omega.wire_interrupt_${now}`;
+    const hostRef = `omega.host.wire_interrupt_${now}`;
+    const conversation = "sarah.0123456789abcdef01234567";
+    const requestEventId = "d".repeat(64);
+    const challengeEventId = "e".repeat(64);
+    const responseEventId = "f".repeat(64);
+    const challenge = "0".repeat(64);
+    const scopes = ["observe_issue31", "interrupt_turn"] as const;
+
+    const announcement = await hostSigner.signEvent({
+      kind: ISSUE31_HOST_ANNOUNCEMENT_KIND,
+      created_at: now,
+      tags: [
+        ["t", "omega-issue31-host"],
+        ["d", hostRef],
+        ["k", "1059"],
+      ],
+      content: JSON.stringify({
+        schema: "openagents.omega.issue31.host_discovery.v2",
+        hostRef,
+        hostPublicKeyHex: hostPublicKey,
+        sarahPublicKeyHex: sarahPublicKey,
+        displayName: "Omega wire host",
+        conversation,
+        protocols: [
+          "openagents.omega.issue31.pairing.v1",
+          "openagents.omega.issue31.command.v1",
+          "openagents.omega.issue31.command.v2",
+        ],
+        relayUrls: ["wss://relay.example.com"],
+        generation: 1,
+        issuedAt: now,
+        expiresAt: now + 86_400,
+      }),
+    });
+    await publish(announcement, announcement.id);
+
+    /** Gift wrap one host-authored record to the device and require its OK. */
+    const publishToDevice = async (record: Parameters<
+      typeof createIssue31PrivateGiftWrap
+    >[0]["record"]): Promise<void> => {
+      const wrap = await createIssue31PrivateGiftWrap({
+        signer: hostSigner,
+        recipientPublicKeyHex: devicePublicKey,
+        record,
+        randomSecretKey: generateSecretKey,
+        createdAt: now,
+        sealCreatedAt: now,
+        wrapCreatedAt: now,
+      });
+      await publish(wrap, wrap.id);
+    };
+
+    await publishToDevice(
+      decodeIssue31PairingRecord({
+        schema: ISSUE31_PAIRING_SCHEMA,
+        recordType: "scoped_grant",
+        hostRef,
+        hostPublicKeyHex: hostPublicKey,
+        sarahPublicKeyHex: sarahPublicKey,
+        devicePublicKeyHex: devicePublicKey,
+        issuedAt: now,
+        pairingResponseEventId: responseEventId,
+        grantRef,
+        generation: 1,
+        scopes: [...scopes],
+        expiresAt: now + 86_400,
+      }),
+    );
+
+    const cases = [
+      { label: "a", turnRef: "turn.issue31.wire_a", settledTurnRef: "turn.issue31.wire_a", entry: "turn.started" },
+      { label: "b", turnRef: "turn.issue31.wire_b", settledTurnRef: "turn.issue31.wire_other", entry: "turn.interrupted" },
+      { label: "c", turnRef: "turn.issue31.wire_c", settledTurnRef: "turn.issue31.wire_c", entry: "turn.interrupted" },
+    ] as const;
+    const sourceEventIdFor = (label: string): string => label.repeat(64).slice(0, 64);
+    // Each intent is authored by the DEVICE and sealed to the host, so the relay
+    // can never serve it back. It is device-local state, as it is on a phone.
+    const deviceIntents = cases.map(({ label, turnRef }, index): Issue31ConfirmedEvent => {
+      const intentEventId = String(index + 1).repeat(64);
+      return {
+        relayUrl: "device://local",
+        room: "owner_private",
+        canonicalRecordId: intentEventId,
+        privateRumorId: intentEventId,
+        privateRecord: decodeIssue31CommandRecordV2({
+          schema: "openagents.omega.issue31.command.v2",
+          recordType: "command_intent",
+          hostRef,
+          hostPublicKeyHex: hostPublicKey,
+          devicePublicKeyHex: devicePublicKey,
+          grantRef,
+          idempotencyRef: `idempotency.issue31.interrupt_${label}`,
+          expectedGeneration: 1,
+          arguments: {
+            kind: "interrupt_turn",
+            actionRef: "action.issue31.sarah.interrupt",
+            conversation,
+            turnRef,
+          },
+          issuedAt: now,
+          expiresAt: now + 300,
+        }),
+        hostAnnouncement: null,
+        event: {
+          id: intentEventId,
+          pubkey: devicePublicKey,
+          created_at: now,
+          kind: 1_059,
+          tags: [["p", devicePublicKey]],
+          content: "device-local",
+          sig: "0".repeat(128),
+        },
+      };
+    });
+
+    // The host accepts every intent and names the source event that will settle
+    // it. None of those sources has been published yet.
+    for (const [index, { label }] of cases.entries()) {
+      await publishToDevice(
+        decodeIssue31CommandRecordV2({
+          schema: "openagents.omega.issue31.command.v2",
+          recordType: "command_result",
+          hostRef,
+          hostPublicKeyHex: hostPublicKey,
+          devicePublicKeyHex: devicePublicKey,
+          grantRef,
+          intentEventId: String(index + 1).repeat(64),
+          actionRef: "action.issue31.sarah.interrupt",
+          idempotencyRef: `idempotency.issue31.interrupt_${label}`,
+          expectedGeneration: 1,
+          status: "accepted",
+          handlingRef: `handling.issue31.interrupt_${label}`,
+          sourceEventId: sourceEventIdFor(label),
+          handledAt: now,
+        }),
+      );
+    }
+
+    let snapshot: Issue31NostrClientSnapshot | null = null;
+    const client = createIssue31NostrClient({
+      relayUrls: [relayUrl],
+      signer: deviceSigner,
+      webSocket: NodeSocket,
+      admittedHostPublicKeys: [hostPublicKey],
+      selectedHostPublicKeys: [hostPublicKey],
+      ownerAuthors: [sarahPublicKey],
+      ownerRecipientPublicKeys: [devicePublicKey],
+      cursorStore: memoryCursorStore(),
+      onSnapshot: (next) => {
+        snapshot = next;
+      },
+    });
+
+    const readModel = () =>
+      projectIssue31OwnerPrivateReadModel(
+        {
+          ...snapshot!,
+          confirmedEvents: [
+            ...snapshot!.confirmedEvents,
+            ...deviceIntents,
+            ...deviceAuthoredPairing(
+              hostRef,
+              hostPublicKey,
+              devicePublicKey,
+              now,
+              now + 86_400,
+              requestEventId,
+              challengeEventId,
+              responseEventId,
+              challenge,
+              [...scopes],
+            ),
+          ],
+        },
+        { nowUnixSeconds: now },
+      );
+    const stateOf = (label: string): string | undefined =>
+      readModel().commands.find(
+        (command) => command.idempotencyRef === `idempotency.issue31.interrupt_${label}`,
+      )?.state;
+
+    try {
+      await client.start();
+      const countPrivate = (recordType: string): number =>
+        (snapshot?.confirmedEvents ?? []).filter(
+          (row) =>
+            row.privateRecord?.schema === "openagents.omega.issue31.command.v2" &&
+            row.privateRecord.recordType === recordType,
+        ).length;
+      await waitFor(() => countPrivate("command_result") === cases.length, "every accepted result");
+
+      // Accepted by the host, terminal record absent: pending, all three.
+      expect(readModel().grantRef).toBe(grantRef);
+      for (const { label } of cases) expect(stateOf(label)).toBe("accepted");
+
+      // Now the settling projections cross the relay.
+      for (const { label, settledTurnRef, entry } of cases) {
+        await publishToDevice(
+          decodeIssue31OwnerProjectionRecord({
+            schema: "openagents.omega.issue31.owner_projection.v1",
+            recordType: "owner_projection",
+            hostRef,
+            hostPublicKeyHex: hostPublicKey,
+            devicePublicKeyHex: devicePublicKey,
+            grantRef,
+            expectedGeneration: 1,
+            sourceEventId: sourceEventIdFor(label),
+            sourceAuthorPublicKeyHex: sarahPublicKey,
+            sourceRole: "sarah",
+            sourceKind: 44_300,
+            sourceCreatedAt: now,
+            projectedAt: now,
+            projection: {
+              kind: "turn",
+              payload: {
+                schema: "openagents.sarah.turn_record.v1",
+                entry,
+                conversation,
+                turnRef: settledTurnRef,
+                seq: 2,
+                timestamp: "2026-07-25T00:00:00.000Z",
+                parents: [],
+                payload: {},
+              },
+            },
+          }),
+        );
+      }
+      await waitFor(
+        () =>
+          (snapshot?.confirmedEvents ?? []).filter(
+            (row) =>
+              row.privateRecord?.schema === "openagents.omega.issue31.owner_projection.v1",
+          ).length === cases.length,
+        "every settling projection to arrive over the wire",
+      );
+
+      // Only C's own terminal record settles C.
+      expect(stateOf("c")).toBe("terminal");
+      // A: a real turn record arrived at exactly the source the host named, and
+      // it is not the terminal entry. Still pending.
+      expect(stateOf("a")).toBe("accepted");
+      // B: the terminal entry arrived at exactly the source the host named, for
+      // another turn. Still pending.
+      expect(stateOf("b")).toBe("accepted");
+
+      // The activity ladder agrees about which rows are terminal.
+      const activity = readModel().activity;
+      expect(
+        activity.filter((row) => row.terminal).map((row) => row.turnRef).sort(),
+      ).toEqual(["turn.issue31.wire_c", "turn.issue31.wire_other"]);
+      expect(activity.find((row) => row.turnRef === "turn.issue31.wire_a")?.terminal).toBe(false);
+    } finally {
+      client.close();
+    }
+  }, 60_000);
+
+  /**
+   * The device-local half of the grant chain is load bearing.
+   *
+   * `foldIssue31Grant` needs request, challenge, response and grant. The host
+   * authors the challenge and the grant and they cross the relay here. The
+   * device authors the request and the response and seals them to the host, so
+   * the relay can never serve them back — they come from device-local
+   * retention, which `openIssue31MobileNostrRuntime` implements by persisting
+   * every record `publishPairingRecord` authors under its NIP-59 rumor id.
+   *
+   * Dropping either device-authored record must collapse the grant, or the
+   * retention would be decorative and #49 would discover that on a phone.
+   */
+  test("the device-local half of the grant chain is load bearing", async () => {
+    const hostSecret = generateSecretKey();
+    const hostPublicKey = getPublicKey(hostSecret);
+    const hostSigner = LocalKeySigner.fromPrivateKey(hostSecret);
+    const deviceSecret = generateSecretKey();
+    const devicePublicKey = getPublicKey(deviceSecret);
+    const deviceSigner = LocalKeySigner.fromPrivateKey(deviceSecret);
+    const sarahPublicKey = getPublicKey(generateSecretKey());
+    const now = Math.floor(Date.now() / 1000);
+    const grantRef = `grant.omega.wire_chain_${now}`;
+    const hostRef = `omega.host.wire_chain_${now}`;
+    // The device chooses these two: it authors both records, so on a phone they
+    // are the NIP-59 rumor ids `publishPairingRecord` stores them under.
+    const requestEventId = "7".repeat(64);
+    const responseEventId = "9".repeat(64);
+    const challenge = "8".repeat(64);
+    const scopes = ["observe_issue31"] as const;
+
+    const announcement = await hostSigner.signEvent({
+      kind: ISSUE31_HOST_ANNOUNCEMENT_KIND,
+      created_at: now,
+      tags: [
+        ["t", "omega-issue31-host"],
+        ["d", hostRef],
+        ["k", "1059"],
+      ],
+      content: JSON.stringify({
+        schema: "openagents.omega.issue31.host_discovery.v2",
+        hostRef,
+        hostPublicKeyHex: hostPublicKey,
+        sarahPublicKeyHex: sarahPublicKey,
+        displayName: "Omega wire host",
+        conversation: "sarah.0123456789abcdef01234567",
+        protocols: [
+          "openagents.omega.issue31.pairing.v1",
+          "openagents.omega.issue31.command.v1",
+          "openagents.omega.issue31.command.v2",
+        ],
+        relayUrls: ["wss://relay.example.com"],
+        generation: 1,
+        issuedAt: now,
+        expiresAt: now + 86_400,
+      }),
+    });
+    await publish(announcement, announcement.id);
+
+    // Both HOST-authored halves of the chain cross the relay for real.
+    for (const record of [
+      decodeIssue31PairingRecord({
+        schema: ISSUE31_PAIRING_SCHEMA,
+        recordType: "pairing_challenge",
+        hostRef,
+        hostPublicKeyHex: hostPublicKey,
+        devicePublicKeyHex: devicePublicKey,
+        issuedAt: now - 2,
+        pairingChallengeRef: "pairing.challenge.chain",
+        pairingRequestEventId: requestEventId,
+        challenge,
+        expiresAt: now + 86_400,
+      }),
+      decodeIssue31PairingRecord({
+        schema: ISSUE31_PAIRING_SCHEMA,
+        recordType: "scoped_grant",
+        hostRef,
+        hostPublicKeyHex: hostPublicKey,
+        sarahPublicKeyHex: sarahPublicKey,
+        devicePublicKeyHex: devicePublicKey,
+        issuedAt: now,
+        pairingResponseEventId: responseEventId,
+        grantRef,
+        generation: 1,
+        scopes: [...scopes],
+        expiresAt: now + 86_400,
+      }),
+    ]) {
+      const wrap = await createIssue31PrivateGiftWrap({
+        signer: hostSigner,
+        recipientPublicKeyHex: devicePublicKey,
+        record,
+        randomSecretKey: generateSecretKey,
+        createdAt: now,
+        sealCreatedAt: now,
+        wrapCreatedAt: now,
+      });
+      await publish(wrap, wrap.id);
+    }
+
+    let snapshot: Issue31NostrClientSnapshot | null = null;
+    const client = createIssue31NostrClient({
+      relayUrls: [relayUrl],
+      signer: deviceSigner,
+      webSocket: NodeSocket,
+      admittedHostPublicKeys: [hostPublicKey],
+      selectedHostPublicKeys: [hostPublicKey],
+      ownerAuthors: [sarahPublicKey],
+      ownerRecipientPublicKeys: [devicePublicKey],
+      cursorStore: memoryCursorStore(),
+      onSnapshot: (next) => {
+        snapshot = next;
+      },
+    });
+
+    try {
+      await client.start();
+      await waitFor(
+        () =>
+          (snapshot?.confirmedEvents ?? []).filter(
+            (row) => row.privateRecord?.schema === "openagents.omega.issue31.pairing.v1",
+          ).length === 2,
+        "the host-authored challenge and grant to arrive over the wire",
+      );
+
+      // The response must answer the challenge under the identifier the WIRE
+      // gave it, not a fabricated one. That is the join between the two halves:
+      // the client's canonical record id is the NIP-59 rumor id, which is the
+      // same identifier the Omega host folds the chain under.
+      const wireChallengeEventId = (snapshot!.confirmedEvents.find(
+        (row) => row.privateRecord?.recordType === "pairing_challenge",
+      ) ?? null)?.canonicalRecordId;
+      expect(wireChallengeEventId).toBeTypeOf("string");
+
+      const deviceLocal = (
+        canonicalRecordId: string,
+        record: ReturnType<typeof decodeIssue31PairingRecord>,
+      ): Issue31ConfirmedEvent => ({
+        relayUrl: "local://issue31-device-outbox",
+        room: "owner_private",
+        canonicalRecordId,
+        privateRumorId: canonicalRecordId,
+        privateRecord: record,
+        hostAnnouncement: null,
+        event: {
+          id: canonicalRecordId,
+          pubkey: devicePublicKey,
+          created_at: now,
+          kind: 1_059,
+          tags: [["p", devicePublicKey]],
+          content: "device-local",
+          sig: "0".repeat(128),
+        },
+      });
+      const deviceAuthored = [
+        deviceLocal(
+          requestEventId,
+          decodeIssue31PairingRecord({
+            schema: ISSUE31_PAIRING_SCHEMA,
+            recordType: "pairing_request",
+            hostRef,
+            hostPublicKeyHex: hostPublicKey,
+            devicePublicKeyHex: devicePublicKey,
+            issuedAt: now - 3,
+            pairingRequestRef: "pairing.request.chain",
+            requestedScopes: [...scopes],
+            expiresAt: now + 86_400,
+          }),
+        ),
+        deviceLocal(
+          responseEventId,
+          decodeIssue31PairingRecord({
+            schema: ISSUE31_PAIRING_SCHEMA,
+            recordType: "pairing_response",
+            hostRef,
+            hostPublicKeyHex: hostPublicKey,
+            devicePublicKeyHex: devicePublicKey,
+            issuedAt: now - 1,
+            pairingResponseRef: "pairing.response.chain",
+            pairingChallengeEventId: wireChallengeEventId!,
+            challenge,
+            expiresAt: now + 86_400,
+          }),
+        ),
+      ];
+
+      const modelWith = (events: ReadonlyArray<Issue31ConfirmedEvent>) =>
+        projectIssue31OwnerPrivateReadModel(
+          { ...snapshot!, confirmedEvents: [...snapshot!.confirmedEvents, ...events] },
+          { nowUnixSeconds: now },
+        );
+
+      // Wire half plus device-local half: the chain resolves.
+      expect(modelWith(deviceAuthored).grantRef).toBe(grantRef);
+      expect(modelWith(deviceAuthored).generation).toBe(1);
+
+      // The wire alone cannot rebuild it, and neither device-authored record is
+      // redundant. Without device-local retention a phone loses its own grant.
+      expect(modelWith([]).grantRef).toBeNull();
+      for (const dropped of deviceAuthored) {
+        expect(
+          modelWith(deviceAuthored.filter((event) => event !== dropped)).grantRef,
+        ).toBeNull();
+      }
     } finally {
       client.close();
     }
