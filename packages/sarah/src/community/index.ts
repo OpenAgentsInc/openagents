@@ -68,3 +68,4 @@ export {
 
 // SARAH-CW-03 — tick → work-unit decomposition
 export * from "./work-units.ts";
+export * from "./untrusted.ts";
