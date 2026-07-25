@@ -13,13 +13,15 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
     {
       authorityBoundary:
         "This contract covers public chat transport and external signer use only. It creates no OpenAgents application session. A chat identity grants no Pylon, task, payment, settlement, moderation, or release authority. OpenAgents configuration is one deployment profile and is not a private protocol.",
-      blockerRefs: ["github:OpenAgentsInc/openagents#9258:relay-self"],
+      blockerRefs: [],
       contractId: "openagents_web.public_nostr_chat.v1",
       enforcementTier: "test-sweep",
       evidenceRefs: [
         "packages/public-nostr-chat/src/profile.test.ts",
         "packages/public-nostr-chat/src/client.test.ts",
         "github:OpenAgentsInc/openagents#9258",
+        "github:OpenAgentsInc/openagents#9258:issuecomment-5081084346",
+        "github:OpenAgentsInc/nostr-effect#171:issuecomment-5081084500",
       ],
       oracles: [
         {
@@ -37,12 +39,12 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
         statedBy: "owner",
         statedOn: "2026-07-25",
       },
-      state: "pending",
+      state: "enforced",
       statement:
         "A signed-out reader and an independently signed human or agent client use the same standard NIP-29 event stream. The reusable client accepts configurable relay and group values. OpenAgents supplies only the default deployment profile.",
       surface: "openagents.com/agentchat",
       verification:
-        "The shared package and web test sweeps enforce the standard Nostr protocol and external signer boundary. Live deployment proof remains blocked until the relay publishes its NIP-11 self key and matching relay-signed group state.",
+        "The shared package and web test sweeps enforce the standard Nostr protocol and external signer boundary. The production receipts verify the relay self key, relay-signed group state, authenticated writes, restart durability, and desktop and mobile browser behavior.",
     },
     {
       authorityBoundary:

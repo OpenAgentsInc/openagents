@@ -151,7 +151,7 @@ describe("behavior contract registry", () => {
     // autonomy contract (initiative without a GitHub claim), taking it to 49.
     // omega#46 exit 4 added one enforced owner-private contract (the room can
     // distinguish a complete view from a short one), taking it to 50.
-    // Public Nostr chat (#9258) adds one pending deployment contract, taking
+    // Public Nostr chat (#9258) adds one enforced deployment contract, taking
     // the total to 51.
     expect(decoded.contracts).toHaveLength(51)
     const hostVerifiedCompletion = decoded.contracts.find(
@@ -172,9 +172,8 @@ describe("behavior contract registry", () => {
     // FA-UX-01 (#8974) flipped 3 Full Auto contracts from pending to
     // enforced: openagents_desktop.full_auto_dedicated_launcher.v1,
     // full_auto_read_only_run_view.v1, full_auto_play_pause_stop_lifecycle.v1.
-    // Public Nostr chat remains pending until the live relay publishes its
-    // NIP-11 self key and matching relay-signed NIP-29 group state.
-    expect(pending).toHaveLength(10)
+    // Public Nostr chat is enforced after the live relay and browser proofs.
+    expect(pending).toHaveLength(9)
     const ideProjectGraph = decoded.contracts.find(
       contract => contract.contractId === "openagents_desktop.ide_project_generation_fencing.v1",
     )
