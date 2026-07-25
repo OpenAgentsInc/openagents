@@ -1906,7 +1906,7 @@
       ]
     },
     "docs/sol/MASTER_ROADMAP.md": {
-      "sourceSha256": "e6ace92d9145bdc7692e7362bf498866f8b24701c4f79f96ae307ad6978bdc91",
+      "sourceSha256": "0ee3dc365ddeba7263b086c540a2e68be116e126f7abb6340d05c5a58e592523",
       "normativeKeywords": [],
       "inlineCode": [
         "/",
@@ -1945,6 +1945,7 @@
         "Effect vs Rust audio architecture decision",
         "Evidence Index",
         "FA-*",
+        "Forge ProductSpec",
         "Full Auto ProductSpec rev 10",
         "FullAutoRun",
         "FullAutoRun",
@@ -1995,11 +1996,13 @@
         "docs/fable/2026-07-20-verifiable-software-engine-gap-analysis-and-roadmap.md",
         "docs/fable/MASTER_ROADMAP.md",
         "evaluation receipt",
+        "github_authoritative",
         "greenfield clients and Sarah-removal decision",
         "historical CUT-27 readiness audit",
         "historical Desktop parity baseline",
         "hybrid client acceptance receipt",
         "implemented",
+        "invite-only Forge analysis",
         "issues/README.md",
         "khala.identity_sync_contract.v1",
         "latest",
@@ -2016,8 +2019,10 @@
         "not planned",
         "not planned",
         "open issue unified completion plan",
+        "openagents.com",
         "openagents.com trust surface",
         "openagents.mutation.v1",
+        "openagents_git_authoritative",
         "partial",
         "persistent Desktop voice/audio plan",
         "planned",
@@ -2211,7 +2216,10 @@
         "#9166",
         "#9185",
         "#9194",
-        "#9204"
+        "#9204",
+        "#9242",
+        "#9243",
+        "#9253"
       ],
       "numericValues": [
         "0",
@@ -2296,7 +2304,7 @@
         "13",
         "13",
         "13",
-        "135",
+        "136",
         "14",
         "14",
         "14",
@@ -2404,6 +2412,9 @@
         "2026-07",
         "2026-07",
         "2026-07",
+        "2026-07",
+        "2026-07",
+        "2026-07",
         "21",
         "21",
         "21",
@@ -2420,6 +2431,9 @@
         "24",
         "24",
         "24",
+        "25",
+        "25",
+        "25",
         "25",
         "25",
         "26",
@@ -2651,7 +2665,10 @@
         "9166",
         "9185",
         "9194",
-        "9204"
+        "9204",
+        "9242",
+        "9243",
+        "9253"
       ]
     },
     "specs/desktop/desktop-trust-complete-workbench.assurance-spec.md": {

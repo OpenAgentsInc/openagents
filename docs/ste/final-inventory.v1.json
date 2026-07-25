@@ -43162,7 +43162,7 @@
     },
     {
       "path": "docs/sol/MASTER_ROADMAP.md",
-      "sha256": "e6ace92d9145bdc7692e7362bf498866f8b24701c4f79f96ae307ad6978bdc91",
+      "sha256": "0ee3dc365ddeba7263b086c540a2e68be116e126f7abb6340d05c5a58e592523",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -49300,6 +49300,28 @@
         "ste_agent_compact_revision": "openagents-agent-compact-v1",
         "ste_accepted_screening_rules": [
           "STE-2.4",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "specs/openagents/forge.product-spec.md",
+      "sha256": "b136b25adf2abcd3a3b545107bd73808145e1680c5cf75b8e757a6258f5798c8",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
           "STE-5.1",
           "STE-8.2"
         ],

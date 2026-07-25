@@ -29,6 +29,9 @@ export const knownDocumentPathPatterns: ReadonlyArray<RegExp> = [
   /^\/components(?:\/[^/]+)?\/?$/,
   /^\/download$/,
   /^\/docs(?:\/.*)?$/,
+  // #9243: the invite-only Forge and its descendant document routes. The
+  // Worker imports this table as its document-route mirror.
+  /^\/forge(?:\/.*)?$/,
   /^\/forum(?:\/(?:f|t|receipts)\/[^/]+)?\/?$/,
   /^\/gym$/,
   /^\/khala\/?$/,
