@@ -6,7 +6,7 @@ import {
   type SarahEngramBody,
   type SarahReadContexts,
   type SarahReminderContent,
-} from "@openagentsinc/sarah";
+} from "@openagentsinc/sarah/nostr-memory";
 import {
   foldIssue31Grant,
   type Issue31CommandIntentV2,

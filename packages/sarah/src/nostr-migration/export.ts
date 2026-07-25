@@ -1,4 +1,5 @@
-import { createHash } from "node:crypto";
+import { sha256 } from "@noble/hashes/sha256";
+import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils";
 import { Schema as S } from "effect";
 
 import { assertSarahNostrPublicSafe } from "../nostr-identity/redaction.ts";
@@ -23,7 +24,10 @@ export const computeEventIdDigestChain = (
       );
     }
   }
-  return createHash("sha256").update(eventIds.join("\n"), "utf8").digest("hex");
+  // @noble/hashes rather than node:crypto: this module is reachable from the
+  // OpenAgents mobile bundle through the package barrel, and a node: import
+  // there fails at runtime on device while passing every Node-hosted test.
+  return bytesToHex(sha256(utf8ToBytes(eventIds.join("\n"))));
 };
 
 /**
