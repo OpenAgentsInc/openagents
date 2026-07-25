@@ -901,7 +901,7 @@ Canonical contract fixture hashes:
 | `openagents.omega.issue31.host_discovery.v2.canonical.json` | `a5604d4c792a5ed556f023e150f01b371c5cf702b95b72786e0c7a9adbbdcb1c` |
 | `openagents.omega.issue31.command.v2.canonical-intent.json` | `7bb7b23680be10756184668ae7722c09c634a1941b086f66d0425da4e8371bbe` |
 | `openagents.omega.issue31.command.v2.canonical-result.json` | `51bca57e14c3d45518c342c2d1f848972281de848f809c34566ed183c7e4e387` |
-| `openagents.omega.issue31.owner_projection.v1.canonical.json` | `8515d1108617807aca2692ba5faca4b4adcc155e8e42197c1d0b4ce89ef5d79c` |
+| `openagents.omega.issue31.owner_projection.v1.canonical.json` | `2a8bec5fa23f27d20db35f3d76bd59817672431328f191bc4302dfa37e7f804d` |
 
 The physical-device exit remains open until Omega implements and signs the
 matching v2 host records and a real phone completes the relay journey.

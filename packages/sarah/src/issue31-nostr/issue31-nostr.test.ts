@@ -48,7 +48,11 @@ describe("Issue 31 command v2 and owner projection", () => {
     ]);
     expect(intent.recordType).toBe("command_intent");
     expect(result).toMatchObject({ status: "accepted", handledAt: 1_784_937_610 });
-    expect(projection).toMatchObject({ sourceEventId: "b".repeat(64), sourceRole: "owner" });
+    expect(projection).toMatchObject({
+      sourceEventId: "b".repeat(64),
+      sourceRole: "owner",
+      sourceAuthorPublicKeyHex: projection.hostPublicKeyHex,
+    });
   });
 
   test("keeps discovery v1 exact and rejects v2 action or projection excess fields", () => {
@@ -124,6 +128,7 @@ describe("Issue 31 command v2 and owner projection", () => {
       ...(readFixture("openagents.omega.issue31.owner_projection.v1.canonical.json") as object),
       hostPublicKeyHex,
       devicePublicKeyHex,
+      sourceAuthorPublicKeyHex: hostPublicKeyHex,
     });
     const wrapped = await createIssue31PrivateGiftWrap({
       signer: hostSigner,

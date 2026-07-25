@@ -7,7 +7,7 @@
   "grantRef": "grant.omega.device_1",
   "expectedGeneration": 3,
   "sourceEventId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-  "sourceAuthorPublicKeyHex": "4444444444444444444444444444444444444444444444444444444444444444",
+  "sourceAuthorPublicKeyHex": "1111111111111111111111111111111111111111111111111111111111111111",
   "sourceRole": "owner",
   "sourceKind": 14,
   "sourceCreatedAt": 1784937608,
