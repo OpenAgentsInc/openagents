@@ -6,6 +6,29 @@
 - Source commit: `be342ea7525ac50fbf836978dcd1ba6714345f42`
 - Status: complete
 
+## RC.7 replacement
+
+The next Omega candidate must use
+[`omega-effectd-v0.1.0-rc.7`](https://github.com/OpenAgentsInc/openagents/releases/tag/omega-effectd-v0.1.0-rc.7).
+RC.7 supersedes RC.6 because a provider turn that finished after Pause could
+leave the durable run in `pausing`. The framed read paths now refresh host
+evidence for pausing runs before projecting them, allowing the existing state
+machine to settle the run to `paused` without cancelling a healthy turn.
+
+| Field | Value |
+| --- | --- |
+| Source commit | `fb3b17a873d2c09823a7292e8af3b853096f48ab` |
+| Source tree | `68bc6dc7f79880a8a95da28e0f070890380c9818` |
+| Archive | `omega-effectd-v0.1.0-macos-arm64.tar.gz` |
+| Archive SHA-256 | `51725a10e969dfefdcc35b29bc5ae4bacb69b9770ee1a1ae67e79daaebf9d6a1` |
+| Manifest SHA-256 | `d9668118af540879a3e8d451922004137af6fe821bade9b50487d22902d44d2a` |
+
+Two clean builds produced identical archive, sidecar, and manifest bytes. The
+package type check and all 208 tests passed. The repository fast guard passed
+at the source commit. A clean GitHub prerelease download matched the local
+archive, sidecar, and manifest bytes, and the release tag resolves to the exact
+source commit.
+
 ## RC.6 replacement
 
 The next Omega candidate must use
