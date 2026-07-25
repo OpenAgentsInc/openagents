@@ -1,0 +1,157 @@
+{
+  "format": "openagents.forge.interop-fixture-bundle.v1",
+  "fixtures": [
+    {
+      "fixtureVersion": "openagents.forge.interop-fixture.v1",
+      "id": "ngit-repository-announcement",
+      "profile": "nip34-repository-30617",
+      "source": {
+        "peer": "ngit-cli",
+        "revision": "6d806d5e93babe01b2b0053821d15afbbff406f6",
+        "sourcePaths": ["src/lib/repo_ref.rs:1462-1581"]
+      },
+      "event": {
+        "id": "1010101010101010101010101010101010101010101010101010101010101010",
+        "pubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "created_at": 1785000000,
+        "kind": 30617,
+        "tags": [
+          ["d", "openagents"],
+          ["name", "OpenAgents"],
+          ["clone", "https://openagents.com/git/openagents/openagents.git", "https://mirror.example/openagents.git"],
+          ["relays", "wss://openagents.com"],
+          ["r", "1111111111111111111111111111111111111111", "euc"],
+          ["maintainers", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
+          ["future-capability", "v1", "preserve-me"],
+          ["future-capability", "v2"]
+        ],
+        "content": ""
+      },
+      "objectRefs": [
+        {
+          "ref": "refs/heads/main",
+          "oid": "1111111111111111111111111111111111111111"
+        }
+      ]
+    },
+    {
+      "fixtureVersion": "openagents.forge.interop-fixture.v1",
+      "id": "ngit-repository-state",
+      "profile": "nip34-state-30618",
+      "source": {
+        "peer": "ngit-cli",
+        "revision": "6d806d5e93babe01b2b0053821d15afbbff406f6",
+        "sourcePaths": ["src/lib/repo_ref.rs", "src/bin/git_remote_nostr/fetch.rs"]
+      },
+      "event": {
+        "id": "2020202020202020202020202020202020202020202020202020202020202020",
+        "pubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "created_at": 1785000001,
+        "kind": 30618,
+        "tags": [
+          ["d", "openagents"],
+          ["refs/heads/main", "2222222222222222222222222222222222222222"],
+          ["refs/tags/v1", "3333333333333333333333333333333333333333"],
+          ["refs/tags/v1^{}", "4444444444444444444444444444444444444444"],
+          ["HEAD", "ref: refs/heads/main"]
+        ],
+        "content": ""
+      },
+      "objectRefs": [
+        {"ref": "refs/heads/main", "oid": "2222222222222222222222222222222222222222"},
+        {"ref": "refs/tags/v1", "oid": "3333333333333333333333333333333333333333"},
+        {"ref": "refs/tags/v1^{}", "oid": "4444444444444444444444444444444444444444"}
+      ]
+    },
+    {
+      "fixtureVersion": "openagents.forge.interop-fixture.v1",
+      "id": "ngit-standard-patch",
+      "profile": "nip34-patch-1617",
+      "source": {
+        "peer": "ngit-cli",
+        "revision": "6d806d5e93babe01b2b0053821d15afbbff406f6",
+        "sourcePaths": ["tests/send_patch_no_cover_letter.rs"]
+      },
+      "event": {
+        "id": "3030303030303030303030303030303030303030303030303030303030303030",
+        "pubkey": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "created_at": 1785000002,
+        "kind": 1617,
+        "tags": [
+          ["a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents"],
+          ["p", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
+          ["commit", "5555555555555555555555555555555555555555"],
+          ["parent-commit", "2222222222222222222222222222222222222222"]
+        ],
+        "content": "From 5555555555555555555555555555555555555555 Mon Sep 17 00:00:00 2001\nSubject: [PATCH] Add fixture\n\ndiff --git a/a.txt b/a.txt\nnew file mode 100644\n--- /dev/null\n+++ b/a.txt\n@@ -0,0 +1 @@\n+fixture\n"
+      },
+      "objectRefs": []
+    },
+    {
+      "fixtureVersion": "openagents.forge.interop-fixture.v1",
+      "id": "ngit-pointer-pr",
+      "profile": "ngit-pointer-pr-1618",
+      "source": {
+        "peer": "ngit-cli",
+        "revision": "6d806d5e93babe01b2b0053821d15afbbff406f6",
+        "sourcePaths": ["src/lib/git_events.rs:500-612", "tests/send_pr.rs"]
+      },
+      "event": {
+        "id": "4040404040404040404040404040404040404040404040404040404040404040",
+        "pubkey": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "created_at": 1785000003,
+        "kind": 1618,
+        "tags": [
+          ["a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents"],
+          ["p", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
+          ["subject", "Pointer fixture"],
+          ["alt", "Git pull request: Pointer fixture"],
+          ["r", "1111111111111111111111111111111111111111"],
+          ["c", "6666666666666666666666666666666666666666"],
+          ["clone", "https://openagents.com/git/openagents/openagents.git", "https://mirror.example/openagents.git"],
+          ["branch-name", "fixture/pointer"],
+          ["merge-base", "2222222222222222222222222222222222222222"]
+        ],
+        "content": "Pointer profile fixture."
+      },
+      "objectRefs": [
+        {
+          "ref": "refs/nostr/4040404040404040404040404040404040404040404040404040404040404040",
+          "oid": "6666666666666666666666666666666666666666"
+        }
+      ]
+    },
+    {
+      "fixtureVersion": "openagents.forge.interop-fixture.v1",
+      "id": "ngit-pointer-update",
+      "profile": "ngit-pointer-update-1619",
+      "source": {
+        "peer": "ngit-cli",
+        "revision": "6d806d5e93babe01b2b0053821d15afbbff406f6",
+        "sourcePaths": ["src/lib/git_events.rs:500-612", "tests/send_pr_update.rs"]
+      },
+      "event": {
+        "id": "5050505050505050505050505050505050505050505050505050505050505050",
+        "pubkey": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "created_at": 1785000004,
+        "kind": 1619,
+        "tags": [
+          ["a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents"],
+          ["p", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
+          ["E", "4040404040404040404040404040404040404040404040404040404040404040"],
+          ["P", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],
+          ["c", "7777777777777777777777777777777777777777"],
+          ["clone", "https://openagents.com/git/openagents/openagents.git", "https://mirror.example/openagents.git"],
+          ["merge-base", "2222222222222222222222222222222222222222"]
+        ],
+        "content": "Updated pointer."
+      },
+      "objectRefs": [
+        {
+          "ref": "refs/nostr/5050505050505050505050505050505050505050505050505050505050505050",
+          "oid": "7777777777777777777777777777777777777777"
+        }
+      ]
+    }
+  ]
+}

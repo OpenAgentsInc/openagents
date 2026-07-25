@@ -1,0 +1,246 @@
+{
+  "format": "openagents.forge.conformance-matrix.v1",
+  "openAgentsRevision": "16402fa1879cd3a89bad1b6b4c0bd421042fe112",
+  "nostrEffectRevision": "1314ed6ee6cc508ba9a54d03372fe1c71a984815",
+  "peers": [
+    {
+      "id": "ngit-cli",
+      "revision": "6d806d5e93babe01b2b0053821d15afbbff406f6"
+    },
+    {
+      "id": "gitworkshop",
+      "revision": "b049b163ba22774e918cdb7fffb3dc0662567238"
+    },
+    {
+      "id": "ngit-grasp",
+      "revision": "cbf6f1d82fa7d5813e6f0dcdd5c7f6a9d3c7dc5d"
+    },
+    {
+      "id": "buzz",
+      "revision": "5a3b8176aac5f4bced452ac8920477c5e059b828"
+    }
+  ],
+  "receipts": [
+    {
+      "path": "packages/forge-protocol/conformance/receipts/hermetic-fixture-suite.json",
+      "sha256": "8f8cb7b5e73109a1dfb1bf013979a1d0205ec3fe7d89ee2bd2508364983e631b"
+    }
+  ],
+  "rows": [
+    {
+      "id": "ngit-repository-announcement-30617",
+      "profile": "nip34-repository-30617",
+      "peer": "ngit-cli",
+      "peerRevision": "6d806d5e93babe01b2b0053821d15afbbff406f6",
+      "proof": "fixture",
+      "result": "fixture-pass",
+      "claim": "fixture-reader",
+      "evidence": [
+        {
+          "path": "packages/forge-protocol/conformance/fixtures/ngit/6d806d5e93babe01b2b0053821d15afbbff406f6/events.json",
+          "sha256": "879eb92abd852ed904330c92446c9487886e8f2a9e4f0a3230a45deef90a454b"
+        }
+      ],
+      "blockerRefs": []
+    },
+    {
+      "id": "ngit-repository-state-30618",
+      "profile": "nip34-state-30618",
+      "peer": "ngit-cli",
+      "peerRevision": "6d806d5e93babe01b2b0053821d15afbbff406f6",
+      "proof": "fixture",
+      "result": "fixture-pass",
+      "claim": "fixture-reader",
+      "evidence": [
+        {
+          "path": "packages/forge-protocol/conformance/fixtures/ngit/6d806d5e93babe01b2b0053821d15afbbff406f6/events.json",
+          "sha256": "879eb92abd852ed904330c92446c9487886e8f2a9e4f0a3230a45deef90a454b"
+        }
+      ],
+      "blockerRefs": []
+    },
+    {
+      "id": "ngit-standard-patch-1617",
+      "profile": "nip34-patch-1617",
+      "peer": "ngit-cli",
+      "peerRevision": "6d806d5e93babe01b2b0053821d15afbbff406f6",
+      "proof": "fixture",
+      "result": "fixture-pass",
+      "claim": "fixture-reader",
+      "evidence": [
+        {
+          "path": "packages/forge-protocol/conformance/fixtures/ngit/6d806d5e93babe01b2b0053821d15afbbff406f6/events.json",
+          "sha256": "879eb92abd852ed904330c92446c9487886e8f2a9e4f0a3230a45deef90a454b"
+        }
+      ],
+      "blockerRefs": []
+    },
+    {
+      "id": "ngit-pointer-pr-1618",
+      "profile": "ngit-pointer-pr-1618",
+      "peer": "ngit-cli",
+      "peerRevision": "6d806d5e93babe01b2b0053821d15afbbff406f6",
+      "proof": "fixture",
+      "result": "fixture-pass",
+      "claim": "fixture-reader",
+      "evidence": [
+        {
+          "path": "packages/forge-protocol/conformance/fixtures/ngit/6d806d5e93babe01b2b0053821d15afbbff406f6/events.json",
+          "sha256": "879eb92abd852ed904330c92446c9487886e8f2a9e4f0a3230a45deef90a454b"
+        }
+      ],
+      "blockerRefs": []
+    },
+    {
+      "id": "ngit-pointer-update-1619",
+      "profile": "ngit-pointer-update-1619",
+      "peer": "ngit-cli",
+      "peerRevision": "6d806d5e93babe01b2b0053821d15afbbff406f6",
+      "proof": "fixture",
+      "result": "fixture-pass",
+      "claim": "fixture-reader",
+      "evidence": [
+        {
+          "path": "packages/forge-protocol/conformance/fixtures/ngit/6d806d5e93babe01b2b0053821d15afbbff406f6/events.json",
+          "sha256": "879eb92abd852ed904330c92446c9487886e8f2a9e4f0a3230a45deef90a454b"
+        }
+      ],
+      "blockerRefs": []
+    },
+    {
+      "id": "ngit-unknown-tag-round-trip",
+      "profile": "nip34-repository-30617",
+      "peer": "ngit-cli",
+      "peerRevision": "6d806d5e93babe01b2b0053821d15afbbff406f6",
+      "proof": "fixture",
+      "result": "fixture-pass",
+      "claim": "fixture-reader",
+      "evidence": [
+        {
+          "path": "packages/forge-protocol/conformance/fixtures/ngit/6d806d5e93babe01b2b0053821d15afbbff406f6/events.json",
+          "sha256": "879eb92abd852ed904330c92446c9487886e8f2a9e4f0a3230a45deef90a454b"
+        }
+      ],
+      "blockerRefs": []
+    },
+    {
+      "id": "gitworkshop-nip22-comment-1111",
+      "profile": "nip22-comment-1111",
+      "peer": "gitworkshop",
+      "peerRevision": "b049b163ba22774e918cdb7fffb3dc0662567238",
+      "proof": "fixture",
+      "result": "fixture-pass",
+      "claim": "fixture-reader",
+      "evidence": [
+        {
+          "path": "packages/forge-protocol/conformance/fixtures/gitworkshop/b049b163ba22774e918cdb7fffb3dc0662567238/events.json",
+          "sha256": "289310a4832dbc95ce7147619f0083ef7f45a7b3669e727b6b56117f2bcaccb5"
+        }
+      ],
+      "blockerRefs": []
+    },
+    {
+      "id": "buzz-sdk-pointer-pr-1618",
+      "profile": "buzz-sdk-pointer-pr-1618",
+      "peer": "buzz",
+      "peerRevision": "5a3b8176aac5f4bced452ac8920477c5e059b828",
+      "proof": "fixture",
+      "result": "fixture-pass",
+      "claim": "fixture-reader",
+      "evidence": [
+        {
+          "path": "packages/forge-protocol/conformance/fixtures/buzz/5a3b8176aac5f4bced452ac8920477c5e059b828/events.json",
+          "sha256": "360270f98a046f795c73b0640b908ee659d3ae08ed48bad366c2945e961a0a4c"
+        }
+      ],
+      "blockerRefs": []
+    },
+    {
+      "id": "buzz-sdk-pointer-update-1619",
+      "profile": "buzz-sdk-pointer-update-1619",
+      "peer": "buzz",
+      "peerRevision": "5a3b8176aac5f4bced452ac8920477c5e059b828",
+      "proof": "fixture",
+      "result": "fixture-pass",
+      "claim": "fixture-reader",
+      "evidence": [
+        {
+          "path": "packages/forge-protocol/conformance/fixtures/buzz/5a3b8176aac5f4bced452ac8920477c5e059b828/events.json",
+          "sha256": "360270f98a046f795c73b0640b908ee659d3ae08ed48bad366c2945e961a0a4c"
+        }
+      ],
+      "blockerRefs": []
+    },
+    {
+      "id": "buzz-desktop-target-branch-read-only",
+      "profile": "buzz-desktop-target-branch-1618",
+      "peer": "buzz",
+      "peerRevision": "5a3b8176aac5f4bced452ac8920477c5e059b828",
+      "proof": "fixture",
+      "result": "fixture-pass",
+      "claim": "fixture-reader",
+      "evidence": [
+        {
+          "path": "packages/forge-protocol/conformance/fixtures/buzz/5a3b8176aac5f4bced452ac8920477c5e059b828/events.json",
+          "sha256": "360270f98a046f795c73b0640b908ee659d3ae08ed48bad366c2945e961a0a4c"
+        }
+      ],
+      "blockerRefs": []
+    },
+    {
+      "id": "fixture-object-projection-race",
+      "profile": "event-first and object-first purgatory oracle",
+      "peer": "ngit-grasp",
+      "peerRevision": "cbf6f1d82fa7d5813e6f0dcdd5c7f6a9d3c7dc5d",
+      "proof": "fixture",
+      "result": "fixture-pass",
+      "claim": "fixture-reader",
+      "evidence": [
+        {
+          "path": "packages/forge-protocol/conformance/fixtures/ngit-grasp/cbf6f1d82fa7d5813e6f0dcdd5c7f6a9d3c7dc5d/races.json",
+          "sha256": "4df6799a1c590dc5137dff1de8a1a1bc37fdc2b3f2c6b8ced9524f8082d63d6b"
+        }
+      ],
+      "blockerRefs": []
+    },
+    {
+      "id": "ngit-live-clone-fetch",
+      "profile": "ngit-cli clone and fetch from OpenAgents",
+      "peer": "ngit-cli",
+      "peerRevision": "6d806d5e93babe01b2b0053821d15afbbff406f6",
+      "proof": "live-peer",
+      "result": "blocked",
+      "claim": "none",
+      "evidence": [],
+      "blockerRefs": [
+        "github:OpenAgentsInc/openagents#9244",
+        "github:OpenAgentsInc/openagents#9245"
+      ]
+    },
+    {
+      "id": "gitworkshop-live-discovery-read",
+      "profile": "gitworkshop reads OpenAgents 30617 and 30618",
+      "peer": "gitworkshop",
+      "peerRevision": "b049b163ba22774e918cdb7fffb3dc0662567238",
+      "proof": "live-peer",
+      "result": "blocked",
+      "claim": "none",
+      "evidence": [],
+      "blockerRefs": [
+        "github:OpenAgentsInc/openagents#9244",
+        "github:OpenAgentsInc/openagents#9245"
+      ]
+    },
+    {
+      "id": "owned-service-object-projection-race",
+      "profile": "event and object purgatory",
+      "peer": "ngit-grasp",
+      "peerRevision": "cbf6f1d82fa7d5813e6f0dcdd5c7f6a9d3c7dc5d",
+      "proof": "owned-service",
+      "result": "blocked",
+      "claim": "none",
+      "evidence": [],
+      "blockerRefs": ["github:OpenAgentsInc/openagents#9245"]
+    }
+  ]
+}

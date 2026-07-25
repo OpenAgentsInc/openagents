@@ -1,0 +1,29 @@
+{
+  "format": "openagents.forge.object-race-fixture.v1",
+  "source": {
+    "peer": "ngit-grasp",
+    "revision": "cbf6f1d82fa7d5813e6f0dcdd5c7f6a9d3c7dc5d",
+    "sourcePaths": [
+      "src/purgatory/types.rs",
+      "tests/purgatory.rs",
+      "tests/purgatory_sync.rs"
+    ]
+  },
+  "cases": [
+    {
+      "id": "event-before-object-held",
+      "steps": ["event", "object"],
+      "expectedStates": ["ProjectionBlocked", "ProjectionReady"]
+    },
+    {
+      "id": "object-before-event-projects",
+      "steps": ["object", "event"],
+      "expectedStates": ["ObjectAvailable", "ProjectionReady"]
+    },
+    {
+      "id": "wrong-ref-tip-rejected",
+      "steps": ["mismatched-ref", "event"],
+      "expectedStates": ["InvalidPointer", "ProjectionBlocked"]
+    }
+  ]
+}

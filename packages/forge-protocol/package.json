@@ -4,6 +4,7 @@
   "private": false,
   "files": [
     "src",
+    "conformance",
     "README.md"
   ],
   "type": "module",
@@ -15,7 +16,8 @@
     "access": "public"
   },
   "scripts": {
-    "test": "vp test --run",
+    "check:conformance": "node scripts/check-conformance.mjs",
+    "test": "vp test --run packages/forge-protocol/src",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

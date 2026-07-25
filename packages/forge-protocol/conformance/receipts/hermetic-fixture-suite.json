@@ -1,0 +1,21 @@
+{
+  "format": "openagents.forge.conformance-receipt.v1",
+  "receiptId": "forge-07-hermetic-fixture-suite-2026-07-25",
+  "sourceBaseRevision": "16402fa1879cd3a89bad1b6b4c0bd421042fe112",
+  "recordedAt": "2026-07-25T20:45:00.000Z",
+  "commands": [
+    "pnpm --dir packages/forge-protocol run check:conformance",
+    "pnpm --dir packages/forge-protocol run typecheck",
+    "pnpm --dir packages/forge-protocol run test"
+  ],
+  "result": "pass",
+  "testFilesPassed": 3,
+  "testsPassed": 33,
+  "fixtureEventsChecked": 9,
+  "raceCasesChecked": 3,
+  "limitations": [
+    "This receipt does not prove a live peer binary.",
+    "This receipt does not prove the owned Forge service.",
+    "Issues #9244 and #9245 block the live rows."
+  ]
+}

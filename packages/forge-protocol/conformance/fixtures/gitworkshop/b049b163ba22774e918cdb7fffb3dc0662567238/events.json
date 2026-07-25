@@ -1,0 +1,32 @@
+{
+  "format": "openagents.forge.interop-fixture-bundle.v1",
+  "fixtures": [
+    {
+      "fixtureVersion": "openagents.forge.interop-fixture.v1",
+      "id": "gitworkshop-nip22-nested-comment",
+      "profile": "nip22-comment-1111",
+      "source": {
+        "peer": "gitworkshop",
+        "revision": "b049b163ba22774e918cdb7fffb3dc0662567238",
+        "sourcePaths": ["src/actions/nip34.ts:286-353", "src/lib/threadTree.ts"]
+      },
+      "event": {
+        "id": "6060606060606060606060606060606060606060606060606060606060606060",
+        "pubkey": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "created_at": 1785000005,
+        "kind": 1111,
+        "tags": [
+          ["E", "4040404040404040404040404040404040404040404040404040404040404040"],
+          ["K", "1618"],
+          ["P", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],
+          ["e", "6161616161616161616161616161616161616161616161616161616161616161"],
+          ["k", "1111"],
+          ["p", "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"],
+          ["a", "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:openagents"]
+        ],
+        "content": "A nested NIP-22 comment."
+      },
+      "objectRefs": []
+    }
+  ]
+}
