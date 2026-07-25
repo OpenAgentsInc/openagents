@@ -1,0 +1,126 @@
+{
+  "schema": "openagents.omega.issue31.fullauto.v1",
+  "hostRef": "host.omega.device-alpha",
+  "snapshotRef": "snapshot.omega.issue31.000042",
+  "generatedAtMs": 1784894400000,
+  "runs": [
+    {
+      "runRef": "run.full-auto.run-01",
+      "objective": "Finish the issue 31 mobile workroom and keep the gates green.",
+      "laneRef": "lane.codex-local",
+      "lifecycle": "running",
+      "generation": 7,
+      "unattendedMs": 5400000,
+      "liveWorkRef": "work.full-auto.run-01.unit-14",
+      "controls": [
+        {
+          "actionRef": "action.full-auto.pause",
+          "kind": "pause",
+          "runGeneration": 7,
+          "idempotencyRef": "idem.full-auto.run-01.pause.7"
+        },
+        {
+          "actionRef": "action.full-auto.stop",
+          "kind": "stop",
+          "runGeneration": 7,
+          "idempotencyRef": "idem.full-auto.run-01.stop.7"
+        }
+      ]
+    },
+    {
+      "runRef": "run.full-auto.run-00",
+      "objective": "Land the relay load proof.",
+      "laneRef": "lane.claude-local",
+      "lifecycle": "succeeded",
+      "generation": 3,
+      "unattendedMs": 1980000,
+      "terminalReasonRef": "reason.full-auto.objective-met",
+      "controls": []
+    }
+  ],
+  "accounts": [
+    {
+      "accountRef": "account.codex.1",
+      "provider": "openai",
+      "label": "ChatGPT Personal",
+      "readiness": "busy",
+      "quota": "available",
+      "laneRef": "lane.codex-local"
+    },
+    {
+      "accountRef": "account.codex.2",
+      "provider": "openai",
+      "label": "ChatGPT Work",
+      "readiness": "rate_limited",
+      "quota": "cooling",
+      "laneRef": "lane.codex-local-2"
+    },
+    {
+      "accountRef": "account.claude.1",
+      "provider": "anthropic",
+      "label": "Claude",
+      "readiness": "ready",
+      "quota": "available",
+      "laneRef": "lane.claude-local"
+    }
+  ],
+  "handoffs": [
+    {
+      "handoffRef": "handoff.provider.grok.01",
+      "provider": "xai",
+      "state": "requested",
+      "requestedAtMs": 1784894380000
+    },
+    {
+      "handoffRef": "handoff.provider.claude.01",
+      "provider": "anthropic",
+      "state": "completed",
+      "requestedAtMs": 1784894100000,
+      "accountRef": "account.claude.1",
+      "outcomeRef": "outcome.provider.claude.01",
+      "receiptRef": "receipt.provider.claude.01"
+    },
+    {
+      "handoffRef": "handoff.provider.codex.03",
+      "provider": "openai",
+      "state": "refused",
+      "requestedAtMs": 1784894200000,
+      "reasonClass": "provider_login_requires_host",
+      "outcomeRef": "outcome.provider.codex.03",
+      "receiptRef": "receipt.provider.codex.03"
+    }
+  ],
+  "evidence": [
+    {
+      "completeness": "complete",
+      "runRef": "run.full-auto.run-00",
+      "hostExecuted": true,
+      "authorityAllowed": true,
+      "hops": [
+        { "kind": "objective", "ref": "objective.full-auto.run-00" },
+        { "kind": "turn", "ref": "turn.full-auto.run-00.11" },
+        {
+          "kind": "change",
+          "ref": "change.full-auto.run-00.11",
+          "detail": "3 files changed, 214 insertions, 6 deletions"
+        },
+        { "kind": "project_generation", "ref": "generation.project.00219" },
+        {
+          "kind": "test",
+          "ref": "test.full-auto.run-00.11",
+          "detail": "pnpm --dir packages/sarah exec vp test --run src/relay-load-proof"
+        },
+        { "kind": "typed_outcome", "ref": "outcome.test.passed" },
+        { "kind": "host_verification", "ref": "verification.omega.run-00.11" },
+        { "kind": "authority_decision", "ref": "decision.authority.run-00.11" },
+        { "kind": "receipt", "ref": "receipt.authority.run-00.11" }
+      ]
+    },
+    {
+      "completeness": "unavailable",
+      "runRef": "run.full-auto.run-01",
+      "reasonClass": "hop_missing",
+      "brokenAt": "host_verification"
+    }
+  ]
+}
