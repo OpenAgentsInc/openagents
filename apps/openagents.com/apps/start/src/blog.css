@@ -91,6 +91,30 @@ a.oa-blog-label:hover svg {
   text-wrap: balance;
 }
 
+.oa-blog-title-line {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45em;
+}
+
+.oa-blog-type-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.75rem;
+  padding: 0.28rem 0.62rem;
+  border: 1px solid var(--blog-border-strong);
+  border-radius: 999px;
+  color: var(--blog-muted);
+  background: rgb(8 17 35 / 0.86);
+  font-family: var(--oa-font-mono);
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1;
+}
+
 .oa-blog-hero-inner > p {
   max-width: 44rem;
   margin: 1.5rem 0 0;
@@ -223,6 +247,10 @@ a.oa-blog-label:hover svg {
     max-width: 11ch;
     font-size: clamp(3rem, 14vw, 4.4rem);
     letter-spacing: -0.035em;
+  }
+
+  .oa-blog-title-line {
+    justify-content: flex-start;
   }
 
   .oa-blog-index {

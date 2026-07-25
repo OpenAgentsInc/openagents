@@ -1,6 +1,8 @@
 export const GITHUB_REPOSITORY_URL =
   'https://github.com/OpenAgentsInc/openagents'
 
+export const OMEGA_REPOSITORY_URL = 'https://github.com/OpenAgentsInc/omega'
+
 export const X_URL = 'https://x.com/OpenAgents'
 
 export const DISCORD_URL = 'https://openagents.com/discord'

@@ -13,6 +13,10 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // authorization (isOpenAgentsAdminEmail is used far beyond Sarah), so this
   // is set only under explicit owner direction, never inferred.
   OPENAGENTS_ADMIN_EMAILS?: string | undefined
+  // Default-off first-party analytics V1 gate. The route accepts only the
+  // closed portable event contract and stores no IP, user-agent, cookie,
+  // account, referrer, query, or arbitrary property data.
+  WEB_ANALYTICS_ENABLED?: string | undefined
   // Default-off rollout gate for authenticated, pre-admitted Desktop Codex
   // exact-token usage. Consent remains independently default-off in Desktop.
   DESKTOP_CODEX_USAGE_INGEST_ENABLED?: string | undefined

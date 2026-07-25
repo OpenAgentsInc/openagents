@@ -12,9 +12,9 @@ describe('Start /pylons route', () => {
     expect(html).toContain('Run a Pylon node')
     expect(html).toContain('Paste this to your coding agent')
     expect(html).toContain('npx @openagentsinc/pylon')
-    expect(html).toContain('data-cta="download-autopilot-link"')
-    expect(html).toContain('Or download the Mac app')
-    expect(html).toContain('href="/download"')
+    expect(html).not.toContain('data-cta="download-autopilot-link"')
+    expect(html).not.toContain('Or download the Mac app')
+    expect(html).not.toContain('href="/download"')
   })
 
   test('renders the honest pre-fetch idle state for the live stats overlay', () => {

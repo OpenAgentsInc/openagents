@@ -10,6 +10,7 @@
 // release set. When the resolver reports `unavailable` there is NO URL to
 // render — show an honest unavailable state, never a fallback link.
 
+import { createIsomorphicFn } from '@tanstack/react-start'
 import { Exit, Schema } from 'effect'
 
 export type {
@@ -289,10 +290,16 @@ export const fetchDesktopDownloadResolution = async (
  * Both paths fail soft: a resolver/feed failure renders the honest
  * unavailable state with zero download URLs, never a fake-available page.
  */
-export const loadDesktopDownloadResolution = async (
-  overrides: DownloadSearch = {},
-): Promise<Loadable<DesktopDownloadResolution>> => {
-  if (import.meta.env.SSR) {
+export const loadDesktopDownloadResolution = createIsomorphicFn()
+  .client(
+    (
+      overrides: DownloadSearch = {},
+    ): Promise<Loadable<DesktopDownloadResolution>> =>
+      fetchDesktopDownloadResolution(overrides),
+  )
+  .server(async (
+    overrides: DownloadSearch = {},
+  ): Promise<Loadable<DesktopDownloadResolution>> => {
     try {
       const [{ getStartRequestContext }, server] = await Promise.all([
         import('@openagentsinc/effect-start'),
@@ -313,6 +320,4 @@ export const loadDesktopDownloadResolution = async (
             : 'Download resolver failed during server rendering.',
       }
     }
-  }
-  return fetchDesktopDownloadResolution(overrides)
-}
+  })

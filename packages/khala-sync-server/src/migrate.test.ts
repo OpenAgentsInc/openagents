@@ -51,6 +51,9 @@ describe("readMigrationFiles", () => {
   test("the checked-in migrations directory parses", async () => {
     const files = await readMigrationFiles(defaultMigrationsDir)
     expect(files.map((f) => f.filename)).toContain("0001_khala_sync_core.sql")
+    expect(files.map((f) => f.filename)).toContain(
+      "0097_web_analytics_events.sql",
+    )
   })
 })
 
@@ -132,6 +135,7 @@ describe.skipIf(!hasLocalPostgres())("migration runner against local Postgres", 
         "khala_sync_changelog",
         "khala_sync_mutations",
         "khala_sync_client_state",
+        "web_analytics_events",
       ]) {
         const [{ exists }] = await sql`
           SELECT to_regclass(${table}) IS NOT NULL AS exists

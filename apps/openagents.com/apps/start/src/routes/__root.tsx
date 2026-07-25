@@ -6,6 +6,8 @@ import {
 import type { QueryClient } from '@tanstack/react-query'
 import type * as React from 'react'
 
+import { WebAnalytics } from '@/components/web-analytics'
+
 import '../styles.css'
 
 export const Route = createRootRouteWithContext<{
@@ -37,6 +39,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         <main className="isolate">{children}</main>
+        <WebAnalytics />
         <Scripts />
       </body>
     </html>

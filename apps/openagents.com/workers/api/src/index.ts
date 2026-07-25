@@ -1,12 +1,12 @@
 import {
   FleetRunAuthorityError,
+  type FleetRunAuthorityRepositoryShape,
+  type FleetSteeringExchangeRepositoryShape,
   PostgresOwnerManagedEnvironmentEnrollmentStore,
   PostgresPortableOwnerLocalCapabilityOperationStore,
   PostgresPortablePhaseOperationStore,
   PostgresPortableTargetPylonBindingStore,
   RUNTIME_START_TURN_MUTATOR_NAME,
-  type FleetRunAuthorityRepositoryShape,
-  type FleetSteeringExchangeRepositoryShape,
   makeFleetRunAuthorityRepository,
   makeFleetSteeringExchangeRepository,
 } from '@openagentsinc/khala-sync-server'
@@ -38,15 +38,15 @@ import {
   isOpenAgentsAdminEmail,
 } from './admin-identity'
 import {
+  ADMIN_OPERATOR_OVERVIEW_PATH,
+  makeAdminOperatorOverviewHandler,
+} from './admin-operator-routes'
+import {
   ADMIN_OPS_HEALTH_PATH,
   ADMIN_OPS_RUNS_PATH,
   makeAdminOpsRoutes,
 } from './admin-ops-routes'
 import { makeAdminOverviewHandlers } from './admin-overview-routes'
-import {
-  ADMIN_OPERATOR_OVERVIEW_PATH,
-  makeAdminOperatorOverviewHandler,
-} from './admin-operator-routes'
 import {
   handleAgentBalanceApi,
   handleAgentBalancePreferencesApi,
@@ -334,6 +334,7 @@ import { makeOperatorBusinessOutreachRoutes } from './business-outreach-routes'
 import { makeD1BusinessPipelineStore } from './business-pipeline-queue'
 import { makeOperatorBusinessPipelineRoutes } from './business-pipeline-routes'
 import { handleBusinessSignupApi } from './business-signup-routes'
+import { seedCloudCodingRuntimeTurn } from './cloud/cloud-coding-runtime-seed'
 // Cloud coding-session surface (autopilot.cloud_coding_sessions.v1, red) — the
 // "our cloud" autonomous-execution lane. INERT behind CLOUD_CODING_SESSIONS_ENABLED
 // (default off). When enabled, launch defaults to the real cloud control-plane
@@ -365,7 +366,6 @@ import {
   KHALA_AGENT_COMPUTER_WRITEBACK_INGEST_PATH,
   makeKhalaAgentComputerWritebackRoutes,
 } from './cloud/khala-agent-computer-writeback-routes'
-import { seedCloudCodingRuntimeTurn } from './cloud/cloud-coding-runtime-seed'
 import { makePublicCloudPrimitiveReceiptRoutes } from './cloud/public-cloud-primitive-receipt-routes'
 import {
   isSandboxComputeServiceEnabled,
@@ -754,16 +754,15 @@ import {
   applySarahManagedCloudHarnessFallback,
   dispatchCloudGcpRuntimeTurn,
   finalizeManagedCloudProviderLease,
-  reconcileTerminalManagedCloudProviderLeases,
   hasAvailableSarahManagedCloudProviderCapacity,
-  managedAgentComputerGrantIssueInput,
   makeCloudCodingAdapterLaunchSeam,
+  managedAgentComputerGrantIssueInput,
   readQueuedManagedCloudTurns,
+  reconcileTerminalManagedCloudProviderLeases,
   recoverStaleRunningManagedCloudTurns,
   resolveManagedCloudRepositoryCommit,
   runCloudGcpRuntimeDispatch,
 } from './khala-cloud-runtime-dispatch'
-import { makeProviderAccountLeaseService } from './provider-account-lease-service'
 import {
   type CloudGcpRuntimeDispatchContext,
   KHALA_CLOUD_RUNTIME_DISPATCH_ADMIN_PATH,
@@ -889,8 +888,8 @@ import { handleLander3Page } from './lander3-routes'
 import { handleLander4Page } from './lander4-routes'
 import { handleLander5Page } from './lander5-routes'
 import {
-  isManagedSandboxBrokerEnabled,
   isManagedSandboxBoxV1Enabled,
+  isManagedSandboxBrokerEnabled,
   isManagedSandboxRuntimeConfigured,
   makeBoxV1Principal,
   managedSandboxBoxV1PolicyForEnv,
@@ -907,7 +906,6 @@ import {
   MANAGED_SANDBOX_DESKTOP_COMMANDS_PATH,
   makeManagedSandboxDesktopRoutes,
 } from './managed-sandbox-desktop-routes'
-import { makeManagedSandboxProviderBrokerRoutes } from './managed-sandbox-provider-broker'
 import {
   executeManagedSandboxPhase2ForEnv,
   isManagedSandboxPhase2Configured,
@@ -922,6 +920,7 @@ import {
   useManagedSandboxPrivatePreview,
 } from './managed-sandbox-private-preview-adapter'
 import { makeManagedSandboxPrivatePreviewRoutes } from './managed-sandbox-private-preview-routes'
+import { makeManagedSandboxProviderBrokerRoutes } from './managed-sandbox-provider-broker'
 import {
   MANAGED_SANDBOX_MOBILE_SUPERVISION_PATH,
   MANAGED_SANDBOX_WEB_SUPERVISION_PATH,
@@ -1032,10 +1031,37 @@ import {
   type OperatorTargetUser,
   readOperatorTargetUser,
 } from './operator-targets'
+import { makeOwnerManagedEnvironmentEnrollmentRoutes } from './owner-managed-environment-enrollment-routes'
 import { makePartnerAgreementRoutes } from './partner-agreement-routes'
 import { handlePartnerPayoutsPublicApi } from './partner-payout-public-routes'
 import { makeD1PartnerPayoutReceiptStore } from './partner-payout-receipts'
 import { paymentsLedgerDbForEnv } from './payments-ledger-db'
+import { resolvePortableCapabilityGrantFacts } from './portable-capability-grant-facts'
+import {
+  makePortableCheckpointArtifactRoutes,
+  portableCheckpointArtifactBucketForEnv,
+  readPortableCheckpointArtifactAuthority,
+} from './portable-checkpoint-artifact-routes'
+import {
+  makePortableCheckpointDekRoutes,
+  readPortableCheckpointDekWrapBinding,
+} from './portable-checkpoint-dek-routes'
+import { makePortableOwnerLocalCapabilityMaterialAuthority } from './portable-owner-local-capability-material-authority'
+import {
+  type PortableOwnerLocalCapabilityMaterialAuthority,
+  makePortableOwnerLocalCapabilityOperationRoutes,
+  portableOwnerLocalCapabilityMaterialAuthorityMatchesRecord,
+} from './portable-owner-local-capability-operation-routes'
+import {
+  makePortablePhaseOperationRoutes,
+  resolvePortablePhaseTarget,
+} from './portable-phase-operation-routes'
+import {
+  PORTABLE_SESSION_COMMAND_DISPATCH_FLAG,
+  makePortableSessionCommandDispatchScheduled,
+} from './portable-session-command-dispatch-scheduled'
+import { makePortableSessionCommandRuntimeAdapters } from './portable-session-command-runtime-adapters'
+import { makePortableTargetPylonBindingRoutes } from './portable-target-pylon-binding-routes'
 import { makePortalRoutes } from './portal-routes'
 import { makePrefilledWorkspaceService } from './prefilled-workspace'
 import { makePrefilledWorkspaceRoutes } from './prefilled-workspace-routes'
@@ -1056,6 +1082,7 @@ import {
 import { probeProviderApiKey } from './provider-account-api-key'
 import { makeProviderAccountBrowserHandlers } from './provider-account-browser-routes'
 import { ProviderAccountStorageFailed } from './provider-account-errors'
+import { makeProviderAccountLeaseService } from './provider-account-lease-service'
 import {
   MOBILE_CLAUDE_ACCOUNTS_PATH,
   MOBILE_CLAUDE_LOCAL_AUTH_IMPORT_PATH,
@@ -1065,12 +1092,6 @@ import {
 } from './provider-account-mobile-routes'
 import { makeProviderAccountPoolRoutes } from './provider-account-pool-routes'
 import { makeAuthoritativePostgresProviderGrantRepository } from './provider-account-postgres-grant-repository'
-import { resolvePortableCapabilityGrantFacts } from './portable-capability-grant-facts'
-import {
-  PORTABLE_SESSION_COMMAND_DISPATCH_FLAG,
-  makePortableSessionCommandDispatchScheduled,
-} from './portable-session-command-dispatch-scheduled'
-import { makePortableSessionCommandRuntimeAdapters } from './portable-session-command-runtime-adapters'
 import { makeProviderAccountPylonHandlers } from './provider-account-pylon-routes'
 import { makeProviderAccountRoutes } from './provider-account-routes'
 import { makeProviderAccountServiceHandlers } from './provider-account-service-routes'
@@ -1139,27 +1160,6 @@ import {
 } from './pylon-agent-runner-status-store'
 import { type PylonApiStore } from './pylon-api'
 import { makePylonApiRoutes } from './pylon-api-routes'
-import {
-  makePortableCheckpointArtifactRoutes,
-  portableCheckpointArtifactBucketForEnv,
-  readPortableCheckpointArtifactAuthority,
-} from './portable-checkpoint-artifact-routes'
-import {
-  makePortableCheckpointDekRoutes,
-  readPortableCheckpointDekWrapBinding,
-} from './portable-checkpoint-dek-routes'
-import {
-  makePortablePhaseOperationRoutes,
-  resolvePortablePhaseTarget,
-} from './portable-phase-operation-routes'
-import {
-  makePortableOwnerLocalCapabilityOperationRoutes,
-  portableOwnerLocalCapabilityMaterialAuthorityMatchesRecord,
-  type PortableOwnerLocalCapabilityMaterialAuthority,
-} from './portable-owner-local-capability-operation-routes'
-import { makePortableOwnerLocalCapabilityMaterialAuthority } from './portable-owner-local-capability-material-authority'
-import { makePortableTargetPylonBindingRoutes } from './portable-target-pylon-binding-routes'
-import { makeOwnerManagedEnvironmentEnrollmentRoutes } from './owner-managed-environment-enrollment-routes'
 import {
   type PylonCapacityFunnelSnapshotStore,
   handlePylonCapacityFunnelApi,
@@ -1246,40 +1246,37 @@ import {
   SarahAgentRuntimeError,
   runSarahAgentTurn,
 } from './sarah-agent-runtime'
-import { collectSarahBusinessContext } from './sarah-business-context'
-import { sarahGraphMemoryRecallEnabled } from './sarah-graph-memory'
-import { sarahGraphMemoryStoreLayer } from './sarah-graph-memory-store'
-import { persistSarahGraphMemoryTurn } from './sarah-graph-memory-writeback'
-import {
-  FLEET_RUNS_PATH,
-  SARAH_FLEET_RUNS_PATH,
-  makeSarahFleetRunRoutes,
-} from './sarah-fleet-run-routes'
-import {
-  SarahHarnessError,
-  bindSarahHarnessForTurnPromise,
-  readSarahHarnessStatus,
-  reviewSarahHarnessHistory,
-} from './sarah-harness-service'
-import {
-  SARAH_OWNER_PATH,
-  authorizeSarahOperation,
-  hasSarahThreadAuthority,
-  makeSarahOwnerRoutes,
-} from './sarah-owner-routes'
 import {
   appendSarahAutonomousUpdateToThread,
   isSarahAutonomousTickEnabled,
   resolveSarahAutonomousTickIntervalMinutes,
   runSarahAutonomousTickDispatch,
 } from './sarah-autonomous-tick'
-import {
-  SARAH_SPEECH_PATH,
-  makeSarahSpeechRoutes,
-} from './sarah-speech-routes'
+import { collectSarahBusinessContext } from './sarah-business-context'
 import { makeSarahCloudCodingDispatch } from './sarah-cloud-coding-dispatch'
-import { makeSarahRuntimeTools } from './sarah-runtime-tools'
+import {
+  FLEET_RUNS_PATH,
+  SARAH_FLEET_RUNS_PATH,
+  makeSarahFleetRunRoutes,
+} from './sarah-fleet-run-routes'
+import { sarahGraphMemoryRecallEnabled } from './sarah-graph-memory'
+import { sarahGraphMemoryStoreLayer } from './sarah-graph-memory-store'
+import { persistSarahGraphMemoryTurn } from './sarah-graph-memory-writeback'
+import {
+  SarahHarnessError,
+  bindSarahHarnessForTurnPromise,
+  readSarahHarnessStatus,
+  reviewSarahHarnessHistory,
+} from './sarah-harness-service'
 import { makeSarahManagedSandboxTools } from './sarah-managed-sandbox'
+import {
+  SARAH_OWNER_PATH,
+  authorizeSarahOperation,
+  hasSarahThreadAuthority,
+  makeSarahOwnerRoutes,
+} from './sarah-owner-routes'
+import { makeSarahRuntimeTools } from './sarah-runtime-tools'
+import { SARAH_SPEECH_PATH, makeSarahSpeechRoutes } from './sarah-speech-routes'
 import { notifySarahWorkerCloseout as notifySarahWorkerCloseoutImpl } from './sarah-worker-closeout-notify'
 import {
   SelfServeFanoutEndpoint,
@@ -1457,6 +1454,11 @@ import {
   WasmPluginMarketplaceEndpoint,
   handleWasmPluginMarketplaceApi,
 } from './wasm-plugin-marketplace-routes'
+import {
+  WEB_ANALYTICS_ADMIN_PATH,
+  WEB_ANALYTICS_INGEST_PATH,
+  makeWebAnalyticsRoutes,
+} from './web-analytics'
 import { routeWellKnownAgentSurfaceRequest } from './well-known-agent-surfaces-routes'
 import { makeWorkerRouteRequest } from './worker-routes'
 
@@ -3875,6 +3877,8 @@ const cleanLoginReturnPath = (value: string | null): string | undefined => {
       url.pathname === '/billing' ||
       url.pathname === '/onboarding' ||
       url.pathname === '/order' ||
+      url.pathname === '/admin/analytics' ||
+      url.pathname === '/admin/operator' ||
       isForumReturnPath(url.pathname) ||
       isAgentClaimReturn ||
       url.pathname.startsWith('/orders/') ||
@@ -4316,14 +4320,25 @@ const handlePortableCapabilityGrantAuthorityApi = async (
   const isReissue = path.endsWith('/reissue')
   if (isFacts) {
     const grantRefs = Array.isArray(body.grantRefs)
-      ? body.grantRefs.filter((value): value is string => typeof value === 'string')
+      ? body.grantRefs.filter(
+          (value): value is string => typeof value === 'string',
+        )
       : []
-    if (grantRefs.length !== (Array.isArray(body.grantRefs) ? body.grantRefs.length : -1)) {
-      return noStoreJsonResponse({ error: 'bad_request', reason: 'grantRefs are invalid' }, { status: 400 })
+    if (
+      grantRefs.length !==
+      (Array.isArray(body.grantRefs) ? body.grantRefs.length : -1)
+    ) {
+      return noStoreJsonResponse(
+        { error: 'bad_request', reason: 'grantRefs are invalid' },
+        { status: 400 },
+      )
     }
     const postgres = postgresIdentityAuthStoreForEnv(env)
     if (postgres === undefined) {
-      return noStoreJsonResponse({ error: 'provider_grant_authority_unavailable' }, { status: 503 })
+      return noStoreJsonResponse(
+        { error: 'provider_grant_authority_unavailable' },
+        { status: 503 },
+      )
     }
     try {
       const facts = await resolvePortableCapabilityGrantFacts({
@@ -4337,7 +4352,10 @@ const handlePortableCapabilityGrantAuthorityApi = async (
       })
       return noStoreJsonResponse({ facts, material: 'excluded' })
     } catch {
-      return noStoreJsonResponse({ error: 'portable_capability_grant_facts_refused' }, { status: 409 })
+      return noStoreJsonResponse(
+        { error: 'portable_capability_grant_facts_refused' },
+        { status: 409 },
+      )
     }
   }
   if (
@@ -6932,8 +6950,7 @@ const probeSarahAgentComputerCapacity = async (
     return {
       available: false,
       availableSlots: 0,
-      capacityRef:
-        'capacity.agent_computer.owner_identity_store.unavailable',
+      capacityRef: 'capacity.agent_computer.owner_identity_store.unavailable',
     }
   }
   const accountRepository = makeAuthoritativePostgresProviderGrantRepository(
@@ -6974,7 +6991,9 @@ const releaseCloudCodingAdmissionReservation = async (
   sessionId: string,
 ): Promise<void> => {
   await openAgentsDatabase(env)
-    .prepare('DELETE FROM cloud_coding_admission_reservations WHERE session_id = ?')
+    .prepare(
+      'DELETE FROM cloud_coding_admission_reservations WHERE session_id = ?',
+    )
     .bind(sessionId)
     .run()
 }
@@ -7019,16 +7038,17 @@ const makeCloudCodingSessionPreparerForEnv = (
     })
     let credentialId: string | undefined
     let leaseRef: string | undefined
-    const releasePreparedAuthorities = async (cleanup: Readonly<{
-      failureClass: string | null
-      status: 'failed' | 'succeeded'
-      terminalOutcome: string
-    }>): Promise<void> => {
+    const releasePreparedAuthorities = async (
+      cleanup: Readonly<{
+        failureClass: string | null
+        status: 'failed' | 'succeeded'
+        terminalOutcome: string
+      }>,
+    ): Promise<void> => {
       try {
         if (credentialId !== undefined) {
-          const cleanupClient = await defaultMakeKhalaSyncSqlClient(
-            connectionString,
-          )
+          const cleanupClient =
+            await defaultMakeKhalaSyncSqlClient(connectionString)
           try {
             await revokeCloudRuntimeExecutionToken(cleanupClient.sql, {
               credentialId,
@@ -7197,8 +7217,7 @@ const makeCloudCodingSessionPreparerForEnv = (
               releasePreparedAuthorities({
                 failureClass:
                   outcome.status === 'completed' ? null : 'runtime_failed',
-                status:
-                  outcome.status === 'completed' ? 'succeeded' : 'failed',
+                status: outcome.status === 'completed' ? 'succeeded' : 'failed',
                 terminalOutcome:
                   outcome.status === 'completed'
                     ? 'cloud_coding_session_completed'
@@ -7559,7 +7578,12 @@ const runHostedRuntimeTurnDispatchForEnv = async (
         dispatchNotifyEventForOwner(
           paymentsLedgerDbForEnv(env),
           authKvStoreForEnv(env),
-          { kind, ownerUserId, threadId, turnId },
+          {
+            kind,
+            ownerUserId,
+            threadId,
+            turnId,
+          },
         ),
       // #9189: after an owner-thread Sarah turn commits, persist bounded,
       // redacted experience facts to the durable graph-memory store so future
@@ -7673,7 +7697,9 @@ const runSarahAutonomousTickDispatchForEnv = async (
     const runTurn: Parameters<
       typeof runSarahAutonomousTickDispatch
     >[0]['runTurn'] = async ({ ownerUserId, threadRef, tickRef, prompt }) => {
-      if (!(await hasSarahThreadAuthority(client.sql, ownerUserId, threadRef))) {
+      if (
+        !(await hasSarahThreadAuthority(client.sql, ownerUserId, threadRef))
+      ) {
         return { detail: 'sarah_autonomous_tick_authority_absent', ok: false }
       }
       const turnId = `${tickRef}.turn`
@@ -7865,7 +7891,11 @@ const runSarahAutonomousTickDispatchForEnv = async (
         dispatchNotifyEventForOwner(
           paymentsLedgerDbForEnv(env),
           authKvStoreForEnv(env),
-          { kind: 'turn_completed', ownerUserId, threadId: threadRef },
+          {
+            kind: 'turn_completed',
+            ownerUserId,
+            threadId: threadRef,
+          },
         ),
       runTurn,
       sql: client.sql,
@@ -7978,8 +8008,7 @@ const runManagedCloudRuntimeTurnDispatchForEnv = async (
           now,
           orderId: null,
           requestedAction: harnessSelection.requestedAction,
-          requiredProviderAccountRef:
-            turn.requiredProviderAccountRef ?? null,
+          requiredProviderAccountRef: turn.requiredProviderAccountRef ?? null,
           requiredProvider: harnessSelection.provider,
           runId: turn.threadId,
           selectedByActor: 'sarah_managed_cloud_dispatch',
@@ -8231,7 +8260,9 @@ const resolveCloudGcpRuntimeDispatchContext = async (
         const existingTurn = existingTurns[0]
         if (existingTurn === undefined) {
           if (admitted.eventCount !== 0) {
-            throw new Error('cloud_gcp_runtime_new_turn_event_count_must_be_zero')
+            throw new Error(
+              'cloud_gcp_runtime_new_turn_event_count_must_be_zero',
+            )
           }
           const now = currentIsoTimestamp()
           const [repositoryOwner, repositoryName] = admitted.repo.split('/')
@@ -8518,6 +8549,13 @@ const adminOverviewHandlers = makeAdminOverviewHandlers({
 // the live agent chains, token rollup, traces, and fleet (composes existing
 // exact D1 readers).
 const adminOperatorOverviewHandler = makeAdminOperatorOverviewHandler({
+  appendRefreshedSessionCookies,
+  db: openAgentsDatabase,
+  isOpenAgentsAdminEmail,
+  requireBrowserSession,
+})
+
+const webAnalyticsRoutes = makeWebAnalyticsRoutes({
   appendRefreshedSessionCookies,
   db: openAgentsDatabase,
   isOpenAgentsAdminEmail,
@@ -10786,7 +10824,8 @@ const portableTargetPylonBindingRoutes =
         token,
       )
       if (session === undefined) return undefined
-      const registration = await makePylonApiStoreForEnv(env).readRegistration(pylonRef)
+      const registration =
+        await makePylonApiStoreForEnv(env).readRegistration(pylonRef)
       if (registration?.ownerAgentUserId !== session.user.id) return undefined
       const linkedOwner = session.credential.openauthUserId?.trim()
       return {
@@ -10804,7 +10843,9 @@ const portableTargetPylonBindingRoutes =
       }
       const client = await defaultMakeKhalaSyncSqlClient(connectionString)
       try {
-        return await use(new PostgresPortableTargetPylonBindingStore(client.sql))
+        return await use(
+          new PostgresPortableTargetPylonBindingStore(client.sql),
+        )
       } finally {
         await client.end().catch(() => undefined)
       }
@@ -10821,7 +10862,8 @@ const ownerManagedEnvironmentEnrollmentRoutes =
         token,
       )
       if (session === undefined) return undefined
-      const registration = await makePylonApiStoreForEnv(env).readRegistration(pylonRef)
+      const registration =
+        await makePylonApiStoreForEnv(env).readRegistration(pylonRef)
       if (registration?.ownerAgentUserId !== session.user.id) return undefined
       const linkedOwner = session.credential.openauthUserId?.trim()
       return {
@@ -10835,11 +10877,15 @@ const ownerManagedEnvironmentEnrollmentRoutes =
     withStore: async (env, use) => {
       const connectionString = env.KHALA_SYNC_DB?.connectionString
       if (connectionString === undefined || connectionString.trim() === '') {
-        throw new Error('owner-managed environment enrollment storage is unavailable')
+        throw new Error(
+          'owner-managed environment enrollment storage is unavailable',
+        )
       }
       const client = await defaultMakeKhalaSyncSqlClient(connectionString)
       try {
-        return await use(new PostgresOwnerManagedEnvironmentEnrollmentStore(client.sql))
+        return await use(
+          new PostgresOwnerManagedEnvironmentEnrollmentStore(client.sql),
+        )
       } finally {
         await client.end().catch(() => undefined)
       }
@@ -10894,7 +10940,8 @@ const recheckPortableOwnerLocalCapabilityMaterialAuthority = async (
         AND expires_at > NOW()
       LIMIT 1
     `
-    const runnerRef = runnerRows[0]?.result_destination_runner_session_reservation_ref
+    const runnerRef =
+      runnerRows[0]?.result_destination_runner_session_reservation_ref
     if (
       runnerRef === null ||
       runnerRef === undefined ||
@@ -10961,9 +11008,7 @@ const resolvePortableOwnerLocalCapabilityMaterial = async (
       const material = await authKvStoreForEnv(workerEnv).get(
         githubWriteSecretKey(connectionRef),
       )
-      return material === null
-        ? undefined
-        : new TextEncoder().encode(material)
+      return material === null ? undefined : new TextEncoder().encode(material)
     },
     githubScopesSatisfy: hasRequiredGitHubWriteScopes,
     providerKind: CHATGPT_CODEX_PROVIDER,
@@ -11007,8 +11052,7 @@ const portableOwnerLocalCapabilityOperationRoutes =
         await client.end().catch(() => undefined)
       }
     },
-    redeemDestinationGrantMaterial:
-      resolvePortableOwnerLocalCapabilityMaterial,
+    redeemDestinationGrantMaterial: resolvePortableOwnerLocalCapabilityMaterial,
   })
 
 const portableSessionCommandDispatchScheduled =
@@ -12171,28 +12215,29 @@ const managedSandboxPrivatePreviewRoutes =
     usePreview: useManagedSandboxPrivatePreview,
   })
 
-const managedSandboxSupervisionRoutes = makeManagedSandboxSupervisionRoutes<Env>({
-  authenticateOwner: async (request, env, ctx) => {
-    const actor = await authenticateRequestActor(request, env, ctx)
-    if (actor === undefined || actor.kind !== 'human') return undefined
-    return {
-      userId: actor.user.userId,
-      ...(actor.tokens === undefined
-        ? {}
-        : {
-            decorateResponseHeaders: (headers: Headers) => {
-              appendSessionCookies(headers, actor.tokens!)
-            },
-          }),
-    }
-  },
-  enabled: env =>
-    isManagedSandboxBrokerEnabled(env.MANAGED_SANDBOX_BROKER_ENABLED) &&
-    isManagedSandboxRuntimeConfigured(env),
-  policy: managedSandboxBoxV1PolicyForEnv,
-  store: managedSandboxBoxV1StoreForEnv,
-  runtime: managedSandboxBoxV1RuntimeForEnv,
-})
+const managedSandboxSupervisionRoutes =
+  makeManagedSandboxSupervisionRoutes<Env>({
+    authenticateOwner: async (request, env, ctx) => {
+      const actor = await authenticateRequestActor(request, env, ctx)
+      if (actor === undefined || actor.kind !== 'human') return undefined
+      return {
+        userId: actor.user.userId,
+        ...(actor.tokens === undefined
+          ? {}
+          : {
+              decorateResponseHeaders: (headers: Headers) => {
+                appendSessionCookies(headers, actor.tokens!)
+              },
+            }),
+      }
+    },
+    enabled: env =>
+      isManagedSandboxBrokerEnabled(env.MANAGED_SANDBOX_BROKER_ENABLED) &&
+      isManagedSandboxRuntimeConfigured(env),
+    policy: managedSandboxBoxV1PolicyForEnv,
+    store: managedSandboxBoxV1StoreForEnv,
+    runtime: managedSandboxBoxV1RuntimeForEnv,
+  })
 
 const sarahSpeechRoutes = makeSarahSpeechRoutes<Env>({
   authenticateOwner: async (request, env, ctx) => {
@@ -13632,6 +13677,18 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
       ),
   },
   {
+    path: WEB_ANALYTICS_INGEST_PATH,
+    handler: (request, env) =>
+      Effect.promise(() => webAnalyticsRoutes.handleIngest(request, env)),
+  },
+  {
+    path: WEB_ANALYTICS_ADMIN_PATH,
+    handler: (request, env, ctx) =>
+      Effect.promise(() =>
+        webAnalyticsRoutes.handleAdminSummary(request, env, ctx),
+      ),
+  },
+  {
     // AIUR-3 (#8501): recent org-cloud coding turns with exact usage
     // receipts (reads token_usage_events directly — see admin-ops-routes.ts
     // for the honest scope pin on live cross-user Khala Sync feeds).
@@ -13799,7 +13856,12 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
           dispatchNotifyEventForOwner(
             paymentsLedgerDbForEnv(env),
             authKvStoreForEnv(env),
-            { kind: 'turn_needs_input', ownerUserId, threadId, turnId },
+            {
+              kind: 'turn_needs_input',
+              ownerUserId,
+              threadId,
+              turnId,
+            },
           ),
       }),
   },
@@ -13871,16 +13933,22 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // 4xx (SPEC §2.4).
     path: '/api/sync/push',
     handler: (request, env, ctx) => {
-      const pushDependencies = khalaSyncRouteWiring.makePushDeps(request, env, ctx)
+      const pushDependencies = khalaSyncRouteWiring.makePushDeps(
+        request,
+        env,
+        ctx,
+      )
       return handleKhalaSyncPush(request, {
         ...pushDependencies,
         onPushAccepted: ({ request: pushRequest, response }) => {
-          const admittedStartTurn = response.results.some(result =>
-            result.status === 'applied' &&
-            pushRequest.mutations.some(mutation =>
-              mutation.mutationId === result.mutationId &&
-              mutation.name === RUNTIME_START_TURN_MUTATOR_NAME,
-            ),
+          const admittedStartTurn = response.results.some(
+            result =>
+              result.status === 'applied' &&
+              pushRequest.mutations.some(
+                mutation =>
+                  mutation.mutationId === result.mutationId &&
+                  mutation.name === RUNTIME_START_TURN_MUTATOR_NAME,
+              ),
           )
           if (admittedStartTurn) {
             ctx.waitUntil(runHostedRuntimeTurnDispatchForEnv(env))
@@ -16396,7 +16464,12 @@ export default {
           env,
           enabled: (
             env as OpenAgentsWorkerEnv &
-              Readonly<Record<typeof PORTABLE_SESSION_COMMAND_DISPATCH_FLAG, string | undefined>>
+              Readonly<
+                Record<
+                  typeof PORTABLE_SESSION_COMMAND_DISPATCH_FLAG,
+                  string | undefined
+                >
+              >
           )[PORTABLE_SESSION_COMMAND_DISPATCH_FLAG],
           scheduledTimeMs: event.scheduledTime,
         }).pipe(Effect.asVoid),

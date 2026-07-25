@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:7849edb36302b0e4364732b01b1162f6724e42d83024c6668766544d6972ac24",
+  "sourceDigest": "sha256:464a9c7c25f5592fd42cb900a7097eaa544eda7b402c7953fbf816f639882ab0",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -200,7 +200,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "apps/openagents.com (1099 tracked test files)"
+          "ref": "apps/openagents.com (1102 tracked test files)"
         },
         {
           "type": "behavior-contract",
@@ -1779,6 +1779,23 @@
       }
     },
     {
+      "id": "package:@openagentsinc/analytics",
+      "kind": "package",
+      "owningPath": "packages/analytics",
+      "title": "@openagentsinc/analytics",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "packages/analytics (1 tracked test file)"
+        }
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
+      }
+    },
+    {
       "id": "package:@openagentsinc/apple-fm-runtime",
       "kind": "package",
       "owningPath": "packages/apple-fm-runtime",
@@ -2532,7 +2549,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "apps/openagents.com/apps/start (65 tracked test files)"
+          "ref": "apps/openagents.com/apps/start (67 tracked test files)"
         },
         {
           "type": "behavior-contract",
@@ -3225,7 +3242,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "apps/openagents.com/workers/api (995 tracked test files)"
+          "ref": "apps/openagents.com/workers/api (996 tracked test files)"
         },
         {
           "type": "behavior-contract",
@@ -3299,17 +3316,17 @@
     }
   ],
   "summary": {
-    "totalSurfaces": 172,
+    "totalSurfaces": 173,
     "byKind": {
       "app": 16,
       "crate": 6,
       "document": 51,
-      "package": 87,
+      "package": 88,
       "public-endpoint": 2,
       "release-pipeline": 9,
       "worker": 1
     },
-    "withOracle": 158,
+    "withOracle": 159,
     "unverified": 14,
     "byUnverifiedReason": {
       "config-only": 2,
@@ -3317,7 +3334,7 @@
       "reference-only": 2
     },
     "byObligationState": {
-      "designed": 123,
+      "designed": 124,
       "inconclusive": 9,
       "mapped": 35,
       "out-of-scope": 5

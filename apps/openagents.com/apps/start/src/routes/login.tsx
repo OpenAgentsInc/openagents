@@ -2,16 +2,26 @@ import { createFileRoute } from '@tanstack/react-router'
 
 import { LoginPage } from './-login-page'
 
+type LoginSearch = Readonly<{ returnTo?: string }>
+
 export const Route = createFileRoute('/login')({
-  component: LoginPage,
+  validateSearch: (search): LoginSearch =>
+    typeof search.returnTo === 'string'
+      ? { returnTo: search.returnTo }
+      : {},
+  component: LoginRoute,
   head: () => ({
     meta: [
-      { title: 'Log in - OpenAgents' },
+      { title: 'Early access - OpenAgents' },
       {
         name: 'description',
-        content:
-          'OpenAgents login screen rendered through the TanStack Start staging app.',
+        content: 'Log in with an approved OpenAgents early-access account.',
       },
     ],
   }),
 })
+
+function LoginRoute() {
+  const { returnTo } = Route.useSearch()
+  return <LoginPage {...(returnTo === undefined ? {} : { returnTo })} />
+}

@@ -29,6 +29,9 @@ export default defineConfig({
     ],
   },
   server: {
+    fs: {
+      allow: [path.resolve(__dirname, '../../../..')],
+    },
     port: Number(process.env.PORT) || 3010,
   },
   environments: {

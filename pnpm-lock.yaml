@@ -951,6 +951,9 @@ importers:
       '@openagentsinc/agent-surface':
         specifier: workspace:*
         version: link:../../../../packages/agent-surface
+      '@openagentsinc/analytics':
+        specifier: workspace:*
+        version: link:../../../../packages/analytics
       '@openagentsinc/atif':
         specifier: workspace:*
         version: link:../../../../packages/atif
@@ -1249,6 +1252,9 @@ importers:
       '@openagentsinc/agent-runtime-schema':
         specifier: 0.2.1-rc.4
         version: 0.2.1-rc.4
+      '@openagentsinc/analytics':
+        specifier: workspace:*
+        version: link:../../../../packages/analytics
       '@openagentsinc/atif':
         specifier: workspace:*
         version: link:../../../../packages/atif
@@ -1709,6 +1715,19 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 6.0.3
+
+  packages/analytics:
+    dependencies:
+      effect:
+        specifier: 4.0.0-beta.94
+        version: 4.0.0-beta.94
+    devDependencies:
+      typescript:
+        specifier: 'catalog:'
+        version: 6.0.3
+      vitest:
+        specifier: ^4.1.8
+        version: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@24.13.1)(@vitest/browser-preview@4.1.10)(happy-dom@20.10.6)(vite@8.1.4(@types/node@24.13.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.49.0)(tsx@4.20.6)(yaml@2.9.0))
 
   packages/apple-fm-runtime:
     dependencies:

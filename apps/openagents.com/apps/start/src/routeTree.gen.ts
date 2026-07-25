@@ -63,6 +63,7 @@ import { Route as ArtanisTracesRouteImport } from './routes/artanis/traces'
 import { Route as ArtanisAccountsRouteImport } from './routes/artanis/accounts'
 import { Route as AgentsAgentRefRouteImport } from './routes/agents/$agentRef'
 import { Route as AdminOperatorRouteImport } from './routes/admin/operator'
+import { Route as AdminAnalyticsRouteImport } from './routes/admin/analytics'
 import { Route as TrainingRunsIndexRouteImport } from './routes/training/runs/index'
 import { Route as AisdkDocsIndexRouteImport } from './routes/aisdk/docs/index'
 import { Route as TrainingRunsRunIdRouteImport } from './routes/training/runs/$runId'
@@ -343,6 +344,11 @@ const AdminOperatorRoute = AdminOperatorRouteImport.update({
   path: '/admin/operator',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminAnalyticsRoute = AdminAnalyticsRouteImport.update({
+  id: '/admin/analytics',
+  path: '/admin/analytics',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TrainingRunsIndexRoute = TrainingRunsIndexRouteImport.update({
   id: '/training/runs/',
   path: '/training/runs/',
@@ -421,6 +427,7 @@ export interface FileRoutesByFullPath {
   '/tanstack': typeof TanstackRoute
   '/tassadar': typeof TassadarRoute
   '/terms': typeof TermsRoute
+  '/admin/analytics': typeof AdminAnalyticsRoute
   '/admin/operator': typeof AdminOperatorRoute
   '/agents/$agentRef': typeof AgentsAgentRefRoute
   '/artanis/accounts': typeof ArtanisAccountsRoute
@@ -485,6 +492,7 @@ export interface FileRoutesByTo {
   '/tanstack': typeof TanstackRoute
   '/tassadar': typeof TassadarRoute
   '/terms': typeof TermsRoute
+  '/admin/analytics': typeof AdminAnalyticsRoute
   '/admin/operator': typeof AdminOperatorRoute
   '/agents/$agentRef': typeof AgentsAgentRefRoute
   '/artanis/accounts': typeof ArtanisAccountsRoute
@@ -551,6 +559,7 @@ export interface FileRoutesById {
   '/tanstack': typeof TanstackRoute
   '/tassadar': typeof TassadarRoute
   '/terms': typeof TermsRoute
+  '/admin/analytics': typeof AdminAnalyticsRoute
   '/admin/operator': typeof AdminOperatorRoute
   '/agents/$agentRef': typeof AgentsAgentRefRoute
   '/artanis/accounts': typeof ArtanisAccountsRoute
@@ -618,6 +627,7 @@ export interface FileRouteTypes {
     | '/tanstack'
     | '/tassadar'
     | '/terms'
+    | '/admin/analytics'
     | '/admin/operator'
     | '/agents/$agentRef'
     | '/artanis/accounts'
@@ -682,6 +692,7 @@ export interface FileRouteTypes {
     | '/tanstack'
     | '/tassadar'
     | '/terms'
+    | '/admin/analytics'
     | '/admin/operator'
     | '/agents/$agentRef'
     | '/artanis/accounts'
@@ -747,6 +758,7 @@ export interface FileRouteTypes {
     | '/tanstack'
     | '/tassadar'
     | '/terms'
+    | '/admin/analytics'
     | '/admin/operator'
     | '/agents/$agentRef'
     | '/artanis/accounts'
@@ -813,6 +825,7 @@ export interface RootRouteChildren {
   TanstackRoute: typeof TanstackRoute
   TassadarRoute: typeof TassadarRoute
   TermsRoute: typeof TermsRoute
+  AdminAnalyticsRoute: typeof AdminAnalyticsRoute
   AdminOperatorRoute: typeof AdminOperatorRoute
   AgentsAgentRefRoute: typeof AgentsAgentRefRoute
   ArtanisAccountsRoute: typeof ArtanisAccountsRoute
@@ -1227,6 +1240,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminOperatorRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/analytics': {
+      id: '/admin/analytics'
+      path: '/admin/analytics'
+      fullPath: '/admin/analytics'
+      preLoaderRoute: typeof AdminAnalyticsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/training/runs/': {
       id: '/training/runs/'
       path: '/training/runs'
@@ -1335,6 +1355,7 @@ const rootRouteChildren: RootRouteChildren = {
   TanstackRoute: TanstackRoute,
   TassadarRoute: TassadarRoute,
   TermsRoute: TermsRoute,
+  AdminAnalyticsRoute: AdminAnalyticsRoute,
   AdminOperatorRoute: AdminOperatorRoute,
   AgentsAgentRefRoute: AgentsAgentRefRoute,
   ArtanisAccountsRoute: ArtanisAccountsRoute,

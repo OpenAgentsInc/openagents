@@ -371,10 +371,10 @@ export const blogPosts: ReadonlyArray<BlogPost> = [
   {
     slug: 'introducing-openagents-desktop',
     listed: true,
-    title: 'Introducing OpenAgents Desktop',
+    title: 'Introducing Omega',
     excerpt:
       'A local-first workroom that turns your ordinary Codex session into one legible place to plan, delegate, review, and steer.',
-    date: 'July 16, 2026',
+    date: 'July 25, 2026',
     readTime: '3 min read',
     sections: [
       {

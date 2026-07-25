@@ -2,7 +2,6 @@ import { InternalLink } from '@/components/internal-link'
 import {
   DISCORD_URL,
   DOCS_URL,
-  DOWNLOAD_URL,
   GITHUB_REPOSITORY_URL,
   STACKER_NEWS_URL,
   X_URL,
@@ -18,7 +17,7 @@ export function PublicFooter() {
           <InternalLink href="/" preload="render">
             OpenAgents
           </InternalLink>
-          <p>A local-first workroom for durable, reviewable Codex work.</p>
+          <p>Building Omega for durable, verifiable agent work.</p>
         </div>
         <nav aria-label="Product links">
           <strong>Product</strong>
@@ -28,9 +27,6 @@ export function PublicFooter() {
           <InternalLink href="/blog" preload="render">
             Blog
           </InternalLink>
-          <InternalLink href={DOWNLOAD_URL} preload="intent">
-            Download
-          </InternalLink>
         </nav>
         <nav aria-label="Community links">
           <strong>Community</strong>
@@ -38,7 +34,7 @@ export function PublicFooter() {
             GitHub
           </a>
           <a href={X_URL} rel="noreferrer" target="_blank">
-            X
+            X (Twitter)
           </a>
           <a href={DISCORD_URL}>Discord</a>
           <a href={STACKER_NEWS_URL} rel="noreferrer" target="_blank">
@@ -47,11 +43,11 @@ export function PublicFooter() {
         </nav>
         <nav aria-label="Legal links">
           <strong>Legal</strong>
-          <InternalLink href="/privacy" preload="render">
-            Privacy
-          </InternalLink>
           <InternalLink href="/terms" preload="render">
             Terms
+          </InternalLink>
+          <InternalLink href="/privacy" preload="render">
+            Privacy
           </InternalLink>
         </nav>
       </div>

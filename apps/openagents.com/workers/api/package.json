@@ -43,6 +43,7 @@
     "@openagentsinc/agent-experience-memory": "workspace:*",
     "@openagentsinc/agent-readiness": "workspace:*",
     "@openagentsinc/agent-runtime-schema": "0.2.1-rc.4",
+    "@openagentsinc/analytics": "workspace:*",
     "@openagentsinc/atif": "workspace:*",
     "@openagentsinc/authority": "workspace:*",
     "@openagentsinc/behavior-contracts": "workspace:*",

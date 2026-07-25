@@ -1,10 +1,5 @@
 import { InternalLink } from '@/components/internal-link'
-import {
-  DOCS_URL,
-  DOWNLOAD_URL,
-  GITHUB_REPOSITORY_URL,
-  X_URL,
-} from '@/lib/public-site'
+import { DOCS_URL, GITHUB_REPOSITORY_URL, X_URL } from '@/lib/public-site'
 import type { ReactNode } from 'react'
 
 import '../public-header.css'
@@ -14,6 +9,7 @@ import { XMark } from './x-mark'
 type PublicHeaderProps = Readonly<{
   docsActive?: boolean
   leading?: ReactNode
+  showLogin?: boolean
   utility?: ReactNode
   variant?: 'default' | 'docs'
 }>
@@ -21,6 +17,7 @@ type PublicHeaderProps = Readonly<{
 export function PublicHeader({
   docsActive = false,
   leading,
+  showLogin = true,
   utility,
   variant = 'default',
 }: PublicHeaderProps = {}) {
@@ -73,13 +70,15 @@ export function PublicHeader({
             >
               <GithubMark aria-hidden="true" />
             </a>
-            <InternalLink
-              className="oa-unified-download-link"
-              href={DOWNLOAD_URL}
-              preload="intent"
-            >
-              Download
-            </InternalLink>
+            {showLogin ? (
+              <InternalLink
+                className="oa-unified-primary-link"
+                href="/login"
+                preload="intent"
+              >
+                Log In
+              </InternalLink>
+            ) : null}
           </div>
         </nav>
       </header>

@@ -446,7 +446,7 @@ export function BlogIndexPage() {
           <h1 id="oa-blog-index-title">Notes from the workroom.</h1>
           <p>
             Product decisions, release notes, and the reasoning behind
-            OpenAgents Desktop.
+            Omega.
           </p>
         </div>
       </section>
@@ -460,7 +460,10 @@ export function BlogIndexPage() {
           >
             <time>{post.date}</time>
             <div>
-              <h2>{post.title}</h2>
+              <h2 className="oa-blog-title-line">
+                <BlogBadge post={post} />
+                <span>{post.title}</span>
+              </h2>
               <p>{post.excerpt}</p>
             </div>
             <ArrowRight aria-hidden="true" />
@@ -483,7 +486,10 @@ export function BlogPostPage({ post }: Readonly<{ post: BlogPost }>) {
             OpenAgents journal
             <ArrowRight aria-hidden="true" />
           </InternalLink>
-          <h1 id="oa-blog-post-title">{post.title}</h1>
+          <h1 className="oa-blog-title-line" id="oa-blog-post-title">
+            <BlogBadge post={post} />
+            <span>{post.title}</span>
+          </h1>
           <p>{post.excerpt}</p>
           <div className="oa-blog-meta">
             <time>{post.date}</time>
@@ -505,6 +511,12 @@ export function BlogPostPage({ post }: Readonly<{ post: BlogPost }>) {
       </main>
     </PageShell>
   )
+}
+
+function BlogBadge({ post }: Readonly<{ post: BlogPost }>) {
+  return post.slug === 'introducing-openagents-desktop' ? (
+    <span className="oa-blog-type-badge">Blog</span>
+  ) : null
 }
 
 export function KhalaCodeDownloadPage() {

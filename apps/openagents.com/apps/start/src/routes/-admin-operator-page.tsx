@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { InternalLink } from '@/components/internal-link'
 
 import {
   fetchFleetRuns,
@@ -173,6 +174,12 @@ export function OverviewDashboard({
           </h1>
         </div>
         <div className="flex items-center gap-2 text-[0.6875rem] text-khala-text-faint">
+          <InternalLink
+            className="font-mono text-xs text-khala-energy-cyan underline underline-offset-4"
+            href="/admin/analytics"
+          >
+            Website analytics
+          </InternalLink>
           <span
             aria-hidden
             className={`inline-block h-2 w-2 rounded-full ${

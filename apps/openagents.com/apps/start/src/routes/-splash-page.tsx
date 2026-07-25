@@ -1,12 +1,8 @@
 import { InternalLink } from '@/components/internal-link'
-import GithubMark from '@/components/launch-ui/logos/github'
 import { PublicFooter } from '@/components/public-footer'
 import { PublicHeader } from '@/components/public-header'
-import {
-  DOCS_URL,
-  DOWNLOAD_URL,
-  GITHUB_REPOSITORY_URL,
-} from '@/lib/public-site'
+import { DOCS_URL, OMEGA_REPOSITORY_URL } from '@/lib/public-site'
+import { trackNamedAnalyticsEvent } from '@/lib/web-analytics'
 import { makeKhalaTextSequenceFrames } from '@effect-native/khala-ui'
 import { khalaTheme } from '@effect-native/tokens'
 import {
@@ -61,6 +57,9 @@ import {
 
 import '../splash.css'
 import { SplashHeroCanvas } from './-splash-khala-canvas'
+
+export const splashPageDescription =
+  'Omega is the native, Zed-based OpenAgents IDE now in active development.'
 
 type DemoMessageItem = Readonly<{
   id: string
@@ -177,40 +176,40 @@ type Playback = Readonly<{ id: number; text: string }>
 type PlaybackPhase = 'complete' | 'idle' | 'preparing' | 'stopped' | 'streaming'
 
 const initialReply =
-  'The full app-server turn is now projected as a coherent workroom instead of a pile of logs. Three delegated agents completed in parallel—including a nested accessibility child—while the parent streamed plans, commands, patches, approvals, tool progress, context events, and token-aware completion. The final checks are green: 62 focused tests, all shared UI typechecks, and a clean production build.'
+  'The onboarding change is ready for review. Three agents handled the interface, accessibility, and verification in parallel. The workroom connects the request to exact files, tests, approvals, and receipts, so the result can be inspected before it is accepted.'
 
 const appServerItems: ReadonlyArray<DemoItem> = [
   {
     id: 'brief',
     kind: 'user',
-    text: 'Show the whole Codex app-server workflow in the product: plans, tool progress, approvals, patches, subagents, steering, and a real streaming result. Make it feel like one coherent workroom.',
+    text: 'Prepare identity-first onboarding for Omega. Keep the editor, project, and agent setup intact. Split implementation from verification, then show me the exact changes and evidence.',
   },
   {
     id: 'acknowledge',
     kind: 'assistant',
-    text: 'I’ll trace the generated protocol and the Desktop projections first, then split the implementation into independent lanes. I’ll keep the parent turn responsive while the child threads work.',
+    text: 'I’ll inspect the project and current onboarding flow first, then split the interface and verification work into independent lanes. You can review or steer the work while they run.',
   },
   {
     id: 'plan-start',
     kind: 'plan',
     entries: [
       {
-        step: 'Trace the current ThreadItem and notification unions',
+        step: 'Inspect the current identity and onboarding flow',
         status: 'completed',
       },
       {
-        step: 'Audit Desktop plan, tool, approval, and child projections',
+        step: 'Map the change onto native project and editor state',
         status: 'completed',
       },
       {
-        step: 'Build shared app-server presentation components',
+        step: 'Implement the identity-first onboarding slice',
         status: 'in_progress',
       },
       {
-        step: 'Run renderer, accessibility, and route verification',
+        step: 'Run accessibility and journey verification',
         status: 'pending',
       },
-      { step: 'Review the finished workroom end to end', status: 'pending' },
+      { step: 'Review the evidence and accept the result', status: 'pending' },
     ],
   },
   {
@@ -219,16 +218,16 @@ const appServerItems: ReadonlyArray<DemoItem> = [
     label: 'Reasoning summary',
     status: 'completed',
     detail:
-      'The current source exposes plan, reasoning, commandExecution, fileChange, mcpToolCall, dynamicToolCall, collabAgentToolCall, subAgentActivity, webSearch, imageView, approval, and contextCompaction events. The UI should preserve those distinctions without exposing raw protocol envelopes.',
+      'The editor already owns project, buffer, task, terminal, and Git truth. The onboarding change should add identity without creating a second project graph or copying an external agent’s configuration.',
   },
   {
     id: 'inspect-protocol',
     kind: 'command',
     command:
-      'rg -n "collabAgentToolCall|contextCompaction|requestApproval" packages apps/openagents-desktop',
-    cwd: '/work/openagents',
+      'rg -n "Identity|Agent Setup|onboarding" crates/onboarding crates/agent_ui',
+    cwd: '/work/omega',
     output:
-      'current-source-thread-items.json:62  collabAgentToolCall\ncodex-app-server-turn.ts:396       registerChild(receiver, threadId, prompt)\nmeta.gen.ts:2140                   item/commandExecution/requestApproval\nmeta.gen.ts:2684                   item/reasoning/textDelta\n18 protocol projections matched',
+      'crates/onboarding/src/identity.rs       identity-first step\ncrates/onboarding/src/agent_setup.rs    external-agent setup\ncrates/agent_ui/src/agent_panel.rs      native agent thread\n3 product seams matched',
     status: 'completed',
   },
   {
@@ -250,20 +249,20 @@ const appServerItems: ReadonlyArray<DemoItem> = [
         agentKey: 'protocol-scout',
         name: 'protocol-scout',
         role: 'Explorer',
-        detail: 'Inventory app-server items and lifecycle notifications',
+        detail: 'Trace identity, project, and agent ownership boundaries',
         status: 'completed',
         transcript: [
           {
             label: 'spawnAgent',
-            text: 'Trace the current generated protocol and report every UI-relevant item.',
+            text: 'Trace the current onboarding flow and report each authority boundary.',
           },
           {
             label: 'Update',
-            text: 'Mapped 18 ThreadItem variants and the corresponding delta/progress notifications.',
+            text: 'Mapped identity, project, agent setup, and application-state owners.',
           },
           {
             label: 'Result',
-            text: 'Command, patch, MCP, collaboration, search, image, approval, and compaction are all first-class.',
+            text: 'Identity can enter the existing flow without replacing editor or agent state.',
           },
         ],
       },
@@ -271,20 +270,20 @@ const appServerItems: ReadonlyArray<DemoItem> = [
         agentKey: 'timeline-builder',
         name: 'timeline-builder',
         role: 'Frontend',
-        detail: 'Build dense Khala timeline cards in the shared package',
+        detail: 'Build the native identity-first onboarding step',
         status: 'running',
         transcript: [
           {
             label: 'spawnAgent',
-            text: 'Own the shared workbench components and preserve Desktop geometry.',
+            text: 'Own the onboarding interface and preserve the native application structure.',
           },
           {
             label: 'FileChange',
-            text: 'Added plan, command, patch, tool, approval, queue, and delegated-agent cards.',
+            text: 'Added identity creation and recovery states before theme and agent setup.',
           },
           {
             label: 'Result',
-            text: 'Web and Desktop can now consume one controlled component vocabulary.',
+            text: 'The first-run journey now keeps identity, project, and agent setup distinct.',
           },
         ],
       },
@@ -352,27 +351,27 @@ const appServerItems: ReadonlyArray<DemoItem> = [
     changes: [
       {
         kind: 'modified',
-        path: 'packages/ui/src/desktop-workbench.tsx',
-        additions: 284,
-        deletions: 12,
-      },
-      {
-        kind: 'modified',
-        path: 'packages/ui/src/desktop-workbench.css',
-        additions: 191,
+        path: 'crates/onboarding/src/identity.rs',
+        additions: 96,
         deletions: 8,
       },
       {
         kind: 'modified',
-        path: 'apps/openagents.com/apps/start/src/routes/-splash-page.tsx',
-        additions: 326,
-        deletions: 48,
+        path: 'crates/onboarding/src/onboarding.rs',
+        additions: 42,
+        deletions: 12,
       },
       {
         kind: 'modified',
-        path: 'apps/openagents-desktop/src/renderer/react-timeline.tsx',
+        path: 'crates/omega_deltas/src/omega_deltas.rs',
         additions: 18,
-        deletions: 13,
+        deletions: 2,
+      },
+      {
+        kind: 'modified',
+        path: 'crates/onboarding/src/onboarding_tests.rs',
+        additions: 74,
+        deletions: 4,
       },
     ],
     status: 'completed',
@@ -380,10 +379,10 @@ const appServerItems: ReadonlyArray<DemoItem> = [
   {
     id: 'focused-tests',
     kind: 'command',
-    command: 'pnpm exec vitest run src/routes/-splash.test.tsx',
-    cwd: '/work/openagents/apps/openagents.com/apps/start',
+    command: 'cargo test -p onboarding -p omega_deltas',
+    cwd: '/work/omega',
     output:
-      '✓ src/routes/-splash.test.tsx (2 tests) 41ms\n\nTest Files  1 passed (1)\nTests       2 passed (2)',
+      'test onboarding::identity_first ... ok\ntest onboarding::recovery_path ... ok\ntest omega_deltas::identity_boundary ... ok\n\n3 focused tests passed',
     status: 'completed',
   },
   {
@@ -392,16 +391,16 @@ const appServerItems: ReadonlyArray<DemoItem> = [
     decision: 'approved',
     title: 'Command approval',
     description:
-      'Run the bounded production build to verify the shared UI package in both hosts.',
-    resource: 'pnpm --dir apps/openagents-desktop run build',
+      'Run the bounded native build to verify the onboarding journey.',
+    resource: 'cargo build -p omega',
   },
   {
     id: 'desktop-build',
     kind: 'command',
-    command: 'pnpm --dir apps/openagents-desktop run build',
-    cwd: '/work/openagents',
+    command: 'cargo build -p omega',
+    cwd: '/work/omega',
     output:
-      'renderer bundle     412.7 kB │ gzip: 121.9 kB\nmain process         188.4 kB │ gzip:  52.1 kB\n✓ built in 2.14s',
+      'Compiling onboarding\nCompiling omega\nFinished release profile\n✓ native build passed',
     status: 'completed',
   },
   {
@@ -409,37 +408,37 @@ const appServerItems: ReadonlyArray<DemoItem> = [
     kind: 'tool',
     toolKind: 'mcp',
     label: 'browser · inspect',
-    summary: 'Checked the live /splash workroom',
+    summary: 'Checked the onboarding journey',
     meta: 'mcpToolCall',
     status: 'completed',
-    body: 'Conversation timeline: 17 items\nDelegated agents: 3 rows, 3 expandable transcripts\nComposer actions: 24 × 24 px\nHorizontal overflow: none',
+    body: 'Identity appears before theme and agent setup\nRecovery remains explicit\nKeyboard traversal completes\nHorizontal overflow: none',
   },
   {
     id: 'web-search',
     kind: 'tool',
     toolKind: 'web',
     label: 'Web search',
-    summary: 'TanStack Start route preloading and navigation',
+    summary: 'Reviewed identity and recovery guidance',
     meta: 'webSearch',
     status: 'completed',
-    body: '2 primary documentation results inspected. The route remains client-navigated and preloaded.',
+    body: '2 primary references inspected. Recovery language matches the product contract.',
   },
   {
     id: 'image-view',
     kind: 'tool',
     toolKind: 'image',
     label: 'Image view',
-    summary: 'Compared Desktop and web workroom geometry',
+    summary: 'Compared default and large-text layouts',
     meta: 'imageView',
     status: 'completed',
-    body: 'Desktop reference: 1920 × 1280\nLocal /splash: 1512 × 982\nRail, timeline, and composer density remain proportional.',
+    body: 'Default: 1512 × 982\nCompact: 360 × 780\nLarge text: 24 px\nNo clipped controls.',
   },
   {
     id: 'compaction',
     kind: 'notice',
     label: 'Context compacted',
     noticeKind: 'contextCompaction',
-    body: 'Preserved the active plan, child topology, approval decision, changed files, and verification receipts.',
+    body: 'Preserved the objective, plan, child work, approval, changed files, and verification receipts.',
   },
   {
     id: 'promoted-followup',
@@ -449,10 +448,10 @@ const appServerItems: ReadonlyArray<DemoItem> = [
   {
     id: 'bundle-analysis',
     kind: 'command',
-    command: 'pnpm run build && pnpm run typecheck',
-    cwd: '/work/openagents/apps/openagents.com/apps/start',
+    command: './script/clippy && cargo test -p omega_deltas',
+    cwd: '/work/omega',
     output:
-      'client route chunk    31.8 kB │ gzip: 9.7 kB\nshared workbench      18.6 kB │ gzip: 5.4 kB\n✓ typecheck passed\n✓ production build passed',
+      '✓ clippy passed\n✓ divergence checks passed\n✓ onboarding journey passed',
     status: 'completed',
   },
   {
@@ -464,14 +463,14 @@ const appServerItems: ReadonlyArray<DemoItem> = [
         agentKey: 'protocol-scout-final',
         name: 'protocol-scout',
         role: 'Explorer',
-        detail: '18 protocol projections inventoried',
+        detail: 'Identity and agent ownership boundaries verified',
         status: 'completed',
       },
       {
         agentKey: 'timeline-builder-final',
         name: 'timeline-builder',
         role: 'Frontend',
-        detail: 'Shared workbench components and host adapters complete',
+        detail: 'Identity-first onboarding journey complete',
         status: 'completed',
       },
       {
@@ -491,22 +490,25 @@ const appServerItems: ReadonlyArray<DemoItem> = [
     title: 'Plan updated',
     entries: [
       {
-        step: 'Trace the current ThreadItem and notification unions',
+        step: 'Inspect the current identity and onboarding flow',
         status: 'completed',
       },
       {
-        step: 'Audit Desktop plan, tool, approval, and child projections',
+        step: 'Map the change onto native project and editor state',
         status: 'completed',
       },
       {
-        step: 'Build shared app-server presentation components',
+        step: 'Implement the identity-first onboarding slice',
         status: 'completed',
       },
       {
-        step: 'Run renderer, accessibility, and route verification',
+        step: 'Run accessibility and journey verification',
         status: 'completed',
       },
-      { step: 'Review the finished workroom end to end', status: 'completed' },
+      {
+        step: 'Review the evidence and accept the result',
+        status: 'completed',
+      },
     ],
   },
 ]
@@ -514,20 +516,20 @@ const appServerItems: ReadonlyArray<DemoItem> = [
 const sessions: ReadonlyArray<DemoSession> = [
   {
     id: 'appserver',
-    title: 'APPSERVER',
+    title: 'IDENTITY ONBOARDING',
     meta: '⌘1',
     items: appServerItems,
     reply: initialReply,
   },
   {
     id: 't3code-yoink',
-    title: 'T3CODE YOINK',
+    title: 'PROJECT REVIEW',
     meta: '⌘2',
     items: [
       {
         id: 'extract-user',
         kind: 'user',
-        text: 'Use the actual Desktop components on web so the two surfaces cannot drift.',
+        text: 'Connect this agent run to the exact project files, diff, and review.',
       },
       {
         id: 'extract-work',
@@ -538,66 +540,66 @@ const sessions: ReadonlyArray<DemoSession> = [
       {
         id: 'extract-assistant',
         kind: 'assistant',
-        text: 'The controlled primitives now live in packages/ui and both hosts consume the same geometry.',
+        text: 'The workroom now opens the native project diff without creating a second file or Git record.',
       },
     ],
   },
   {
     id: 'arwes',
-    title: 'ARWES',
+    title: 'FULL AUTO',
     meta: '⌘3',
     items: [
       {
         id: 'arwes-user',
         kind: 'user',
-        text: 'Keep the Khala color and motion language restrained.',
+        text: 'Keep this run moving under hard limits, then bring me the evidence.',
       },
       { id: 'arwes-work', kind: 'work-group', text: 'Token audit', count: 2 },
       {
         id: 'arwes-assistant',
         kind: 'assistant',
-        text: 'The shared workbench consumes the same Effect Native token sheet in both hosts.',
+        text: 'The run is bounded by its objective, turn cap, workspace, and typed stop conditions.',
       },
     ],
   },
   {
     id: 'website',
-    title: 'WEBSITE',
+    title: 'AGENT HANDOFF',
     meta: '⌘4',
     items: [
       {
         id: 'website-user',
         kind: 'user',
-        text: 'Make public navigation instant and keep the landing page focused.',
+        text: 'Use the best available agent for this task without moving its credentials.',
       },
       {
         id: 'website-assistant',
         kind: 'assistant',
-        text: 'The public surface stays in TanStack Start; this route embeds the shared Desktop workbench presentation.',
+        text: 'The selected agent keeps its own account, configuration, and runtime. This thread records which executor produced the result.',
       },
     ],
   },
   {
     id: 'docs',
-    title: 'DOCS',
+    title: 'RELEASE CHECK',
     meta: '⌘5',
     items: [
       {
         id: 'docs-user',
         kind: 'user',
-        text: 'Keep the documentation inside the same fast application shell.',
+        text: 'Tell me what is proven before we describe this build as ready.',
       },
       {
         id: 'docs-assistant',
         kind: 'assistant',
-        text: 'Docs, blog, website, and app routes share the TanStack application authority.',
+        text: 'The build stays in development until its installed journey, brand, accessibility, and independent review gates all pass.',
       },
     ],
   },
-  { id: 'untitled-6', title: 'Untitled Codex chat', meta: '⌘6', items: [] },
-  { id: 'grokcli', title: 'GrokCLI', meta: '⌘7', items: [] },
-  { id: 'reposync', title: 'reposync', meta: '⌘8', items: [] },
-  { id: 'untitled-9', title: 'Untitled Codex chat', meta: '⌘9', items: [] },
+  { id: 'untitled-6', title: 'Untitled work thread', meta: '⌘6', items: [] },
+  { id: 'agent-computer', title: 'AGENT COMPUTER', meta: '⌘7', items: [] },
+  { id: 'community', title: 'COMMUNITY WORKROOM', meta: '⌘8', items: [] },
+  { id: 'untitled-9', title: 'Untitled work thread', meta: '⌘9', items: [] },
 ]
 
 const destinations: ReadonlyArray<DesktopRailDestination> = [
@@ -612,30 +614,30 @@ const settingsDestination: DesktopRailDestination = {
 }
 
 const followupReplies = [
-  'Steering landed in the active turn without replacing the parent context. The fixture can now add a queued follow-up, update a child transcript, or interrupt a running delegate while the main response continues.',
-  'The event stays capability-truthful: app-server owns lifecycle and identity, while the shared workbench only projects typed state into plan, tool, approval, patch, and agent components.',
+  'The new direction is queued without replacing the original objective. The active agent can finish its bounded step while the next instruction waits visibly.',
+  'The work record stays honest: the native editor owns files and project state, while OpenAgents records the objective, executor, policy, evidence, and receipt.',
 ] as const
 
 const splashQuestions = [
   [
-    'Does OpenAgents replace Codex?',
-    'No. Codex remains the engine and source of truth. OpenAgents Desktop adds a durable workroom around the session you already use.',
+    'What is Omega?',
+    'Omega is the Zed-based OpenAgents IDE now in active development. It brings projects, editing, terminals, agents, review, and work records into one native application.',
   ],
   [
-    'Do I need an OpenAgents account?',
-    'Not for the Desktop MVP. It uses your ordinary logged-in Codex session and keeps the core workroom local-first.',
+    'Which agents will Omega work with?',
+    'Omega is designed to work with native and external agents, including agents you already use. Each external agent keeps its own account, credentials, configuration, and runtime.',
   ],
   [
-    'Can the review UI change my files?',
-    'No. Repository status and diff views are deliberately read-only. Changes still happen through the active agent turn, where cause and result remain visible.',
+    'What makes the work verifiable?',
+    'Omega is being built to connect an objective to the agents, changes, tests, approvals, and receipts behind the result. You can inspect the evidence instead of trusting a confident summary.',
   ],
   [
-    'What happens after a restart or interrupted turn?',
-    'OpenAgents restores stable session identity, then reconciles the latest known turn state. It does not silently replay tools or pretend interrupted work completed.',
+    'What stays local?',
+    'The native editor, project, and direct agent paths are designed to keep working without an OpenAgents cloud connection. Hosted routing, community workrooms, and cross-device features need services and must stop clearly when those services are unavailable.',
   ],
   [
-    'What is available today?',
-    'The current release candidate is available for Apple silicon Macs; the download page shows the exact version and platform availability from the signed release feed. OpenAgents Desktop is still an MVP, so the download and documentation describe the supported boundary precisely.',
+    'Is Omega available yet?',
+    'Not yet. Omega is in active development, and the latest candidate has not passed every release-readiness gate. The current Electron-based OpenAgents Desktop remains the supported application until Omega earns the cutover.',
   ],
 ] as const
 
@@ -900,30 +902,24 @@ export function SplashPage() {
           href="/blog/introducing-openagents-desktop"
           preload="render"
         >
-          Introducing OpenAgents Desktop
+          Introducing Omega
           <ArrowRight aria-hidden="true" />
         </InternalLink>
         <h1 id="splash-heading">Your last agent IDE.</h1>
         <p>
-          Plan, delegate, review, and steer coding work from one local-first
-          desktop workroom.
+          Omega brings your project, agents, code, review, and evidence into one
+          fast, native workspace.
         </p>
-        <InternalLink
-          className="splash-primary-action"
-          href={DOWNLOAD_URL}
-          preload="intent"
-        >
-          Download for Mac
-          <ArrowRight aria-hidden="true" />
-        </InternalLink>
         <a
-          className="splash-source-link"
-          href={GITHUB_REPOSITORY_URL}
+          className="splash-primary-action"
+          href={OMEGA_REPOSITORY_URL}
+          onClick={() =>
+            trackNamedAnalyticsEvent('github_view', window.location.pathname)
+          }
           rel="noreferrer"
           target="_blank"
         >
-          <GithubMark aria-hidden="true" />
-          Or build from source
+          View on GitHub
           <ArrowUpRight aria-hidden="true" />
         </a>
       </section>
@@ -935,10 +931,10 @@ export function SplashPage() {
             <i />
             <i />
           </span>
-          <span>OpenAgents Desktop</span>
+          <span>Omega</span>
           <span className="splash-window-status">
             <i />
-            Codex connected
+            In active development
           </span>
         </div>
         <div
@@ -948,7 +944,7 @@ export function SplashPage() {
         >
           {demoInteractive ? null : (
             <button
-              aria-label="Activate the OpenAgents Desktop demo"
+              aria-label="Activate the Omega product direction demo"
               className="splash-demo-activation"
               onClick={() => setDemoInteractive(true)}
               type="button"
@@ -956,7 +952,7 @@ export function SplashPage() {
               <span>Click to interact</span>
             </button>
           )}
-          <DesktopWorkbench aria-label="OpenAgents Desktop live product preview">
+          <DesktopWorkbench aria-label="Omega interactive product direction">
             <DesktopSidebarExpand
               aria-expanded={railOpen}
               aria-label="Expand sidebar"
@@ -986,7 +982,7 @@ export function SplashPage() {
                 selected: session.id === activeId,
               }))}
               settingsDestination={settingsDestination}
-              stageLabel="ALPHA"
+              stageLabel="IN DEV"
             />
             {railOpen ? (
               <DesktopRailScrim
@@ -1000,7 +996,7 @@ export function SplashPage() {
                   <DesktopComposerInput>
                     <textarea
                       aria-label={
-                        active ? 'Steer a Codex message' : 'Message Codex'
+                        active ? 'Steer the current work' : 'Describe the work'
                       }
                       id="splash-composer-input"
                       onChange={event => setDraft(event.currentTarget.value)}
@@ -1015,7 +1011,9 @@ export function SplashPage() {
                         submitMessage()
                       }}
                       placeholder={
-                        active ? 'Steer the current turn…' : 'Message Codex…'
+                        active
+                          ? 'Steer the current work…'
+                          : 'What should happen?'
                       }
                       rows={2}
                       value={draft}
@@ -1069,7 +1067,7 @@ export function SplashPage() {
               header={
                 <DesktopConversationHeader
                   lifecycle={active ? 'Running' : 'Ready'}
-                  secondary="openagents / main · gpt-5.6-sol"
+                  secondary="product direction · interactive preview"
                   title={title}
                 />
               }
@@ -1080,8 +1078,8 @@ export function SplashPage() {
                 >
                   {items.length === 0 ? (
                     <div className="splash-empty">
-                      <h2>Start a conversation with Codex</h2>
-                      <p>Choose a workspace, then send a message.</p>
+                      <h2>Start a work thread</h2>
+                      <p>Choose a project, then describe the outcome.</p>
                     </div>
                   ) : (
                     items.map((item, index) => (
@@ -1109,15 +1107,15 @@ export function SplashPage() {
           </DesktopWorkbench>
         </div>
         <figcaption className="oa-react-sr-only">
-          A live, interactive OpenAgents Desktop workroom rendered with the
-          shared production components.
+          An interactive preview of Omega product direction, rendered with
+          shared workroom components.
         </figcaption>
       </figure>
 
       <section aria-labelledby="splash-faq-title" className="splash-faq">
         <div className="splash-faq-intro">
           <p>Questions and answers</p>
-          <h2 id="splash-faq-title">The important boundaries, plainly.</h2>
+          <h2 id="splash-faq-title">What Omega is—and where it’s going.</h2>
           <InternalLink href={DOCS_URL} preload="render">
             Read the full documentation <ArrowRight aria-hidden="true" />
           </InternalLink>

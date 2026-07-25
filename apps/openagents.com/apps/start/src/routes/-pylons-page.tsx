@@ -87,16 +87,6 @@ function PylonInstallCta() {
         >
           <code>{PYLON_INSTALL_COMMAND}</code>
         </pre>
-        {/* AO-5 (#5446): a single discoverable link to the Mac app download
-            page. The homepage stays Pylon-CLI-first; this is a link only, not
-            a marketing-copy rewrite. */}
-        <a
-          className="text-[0.6rem] uppercase leading-none tracking-[0.08em] text-white/55 underline underline-offset-2 hover:text-white"
-          data-cta="download-autopilot-link"
-          href="/download"
-        >
-          Or download the Mac app
-        </a>
       </div>
     </div>
   )

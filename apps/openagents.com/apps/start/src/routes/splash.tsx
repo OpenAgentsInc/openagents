@@ -1,19 +1,16 @@
 import { createFileRoute } from '@tanstack/react-router'
 
-import { SplashPage } from './-splash-page'
-
-const description =
-  'Plan, delegate, review, and steer coding work in one local-first OpenAgents Desktop workroom.'
+import { SplashPage, splashPageDescription } from './-splash-page'
 
 export const Route = createFileRoute('/splash')({
   component: SplashPage,
   head: () => ({
     meta: [
-      { title: 'OpenAgents Desktop — Build with agents' },
-      { name: 'description', content: description },
+      { title: 'Omega — OpenAgents' },
+      { name: 'description', content: splashPageDescription },
       { name: 'theme-color', content: '#05070d' },
-      { property: 'og:title', content: 'OpenAgents Desktop — Build with agents' },
-      { property: 'og:description', content: description },
+      { property: 'og:title', content: 'Omega — OpenAgents' },
+      { property: 'og:description', content: splashPageDescription },
       { property: 'og:url', content: 'https://openagents.com/splash' },
     ],
     links: [{ rel: 'canonical', href: 'https://openagents.com/splash' }],

@@ -258,6 +258,34 @@ describe('OpenAgents admin access policy', () => {
     ).toBe(true)
   })
 
+  test('stores exact admin return targets when starting login', async () => {
+    for (const returnTo of ['/admin/analytics', '/admin/operator']) {
+      const response = await worker.fetch(
+        new Request(
+          `https://openagents.com/login/github?returnTo=${encodeURIComponent(returnTo)}`,
+        ) as never,
+        {
+          ASSETS: {
+            fetch: () => Response.json({ unused: true }),
+          },
+          ...requiredWorkerConfig,
+        } as never,
+        executionContext,
+      )
+
+      expect(response.status).toBe(302)
+      expect(
+        response.headers
+          .getSetCookie()
+          .some(cookie =>
+            cookie.includes(
+              `oa_login_return_to=${encodeURIComponent(returnTo)}`,
+            ),
+          ),
+      ).toBe(true)
+    }
+  })
+
   test('does not store return targets for the retired app route', async () => {
     const appResponse = await worker.fetch(
       new Request(
