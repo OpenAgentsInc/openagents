@@ -75,7 +75,15 @@ describe("oa-updates additive Cloud Run deploy command", () => {
     expect(deploy).toContain("--update-env-vars");
     const env = deploy[deploy.indexOf("--update-env-vars") + 1];
     expect(env).toContain("OA_SEED_DIST=/app/dist");
-    expect(env).not.toContain("OA_RELEASE_SET_BUCKET=");
+    // REL-FEED-01 (#8993, 0f3f25419f) changed HOW the Desktop v2 feed is
+    // preserved: the deploy no longer omits the ReleaseSet vars and relies on
+    // --update-env-vars leaving them alone, it re-asserts the production
+    // defaults on every deploy. A mobile-only publish must therefore still
+    // carry them, so it cannot drop the signed stable/rc Desktop channels.
+    expect(env).toContain("OA_RELEASE_SET_BUCKET=openagentsgemini-oa-updates-release-set");
+    expect(env).toContain(
+      "OA_RELEASE_SET_PINS_PATH=/app/openagents-desktop-dist/release-set-pins.json",
+    );
   });
 
   test("legacy Desktop v1 seed update (OA_DESKTOP_RELEASES_DIST) also does a full --source rebuild", () => {

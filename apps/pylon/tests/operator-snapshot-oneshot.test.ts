@@ -6,7 +6,18 @@ import { join } from "node:path"
 
 const INDEX = join(import.meta.dirname, "..", "src", "index.ts")
 const CWD = join(import.meta.dirname, "..")
-const OPERATOR_SNAPSHOT_ONESHOT_TIMEOUT_MS = 10_000
+/**
+ * Hang detector for a pylon CLI subprocess, NOT a latency assertion. The child
+ * boots `node --import tsx` and compiles the CLI entrypoint before doing any
+ * work, so its cost tracks host load and the previous budget sat below a
+ * healthy boot under a full repository sweep (#9240). A CLI that genuinely
+ * fails to exit never exits at all, so a generous bound still catches it while
+ * a saturated host does not manufacture a false `timedOut`.
+ */
+const OPERATOR_SNAPSHOT_ONESHOT_TIMEOUT_MS = 120_000
+
+/** Per-test budget; must exceed the watchdog so a hang reports as a hang. */
+const OPERATOR_SNAPSHOT_TEST_TIMEOUT_MS = 180_000
 
 async function runOperatorSnapshot(env: Record<string, string>): Promise<{
   elapsedMs: number
@@ -76,5 +87,5 @@ describe("#5401 operator snapshot one-shot clean exit", () => {
     } finally {
       await rm(home, { recursive: true, force: true })
     }
-  }, 15_000)
+  }, OPERATOR_SNAPSHOT_TEST_TIMEOUT_MS)
 })

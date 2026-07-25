@@ -215,6 +215,26 @@ function fakeAppleFmStatus(overrides: Partial<PylonAppleFmStatusProjection> = {}
   } as PylonAppleFmStatusProjection
 }
 
+/**
+ * Upper bound on a pylon CLI subprocess in this suite. It is a HANG detector,
+ * not a latency assertion: the CLI boots `node --import tsx` and compiles the
+ * entrypoint, so its cost tracks host load, and the previous budgets sat below
+ * a healthy boot under a full repository sweep (#9240). A CLI that genuinely
+ * fails to exit -- the #8712 regression this suite guards -- never exits at
+ * all, so a generous bound still catches it while a saturated host does not
+ * manufacture a false `timedOut`.
+ */
+const PRESENCE_CLI_WATCHDOG_MS = 120_000
+
+/**
+ * Budget for a test that spawns the CLI. It must sit ABOVE
+ * PRESENCE_CLI_WATCHDOG_MS so a wedged CLI is reported as a wedged CLI rather
+ * than as an opaque vitest timeout. The previous per-test values (15s, 30s)
+ * opted DOWN from the suite default and sat below the cost of booting
+ * `node --import tsx` on a saturated host (#9240).
+ */
+const PRESENCE_CLI_TEST_TIMEOUT_MS = 180_000
+
 async function runPresenceCli(input: {
   args: string[]
   env: Record<string, string>
@@ -242,7 +262,7 @@ async function runPresenceCli(input: {
       timeout = setTimeout(() => {
         proc.kill()
         resolve({ exitCode: null, timedOut: true })
-      }, input.timeoutMs ?? 10_000)
+      }, input.timeoutMs ?? PRESENCE_CLI_WATCHDOG_MS)
     }),
   ])
   if (timeout !== undefined) clearTimeout(timeout)
@@ -276,7 +296,7 @@ async function runProviderCli(input: {
       timeout = setTimeout(() => {
         proc.kill()
         resolve({ exitCode: null, timedOut: true })
-      }, input.timeoutMs ?? 10_000)
+      }, input.timeoutMs ?? PRESENCE_CLI_WATCHDOG_MS)
     }),
   ])
   if (timeout !== undefined) clearTimeout(timeout)
@@ -733,7 +753,7 @@ describe("Pylon presence registration and heartbeat", () => {
         "/api/pylon-links/refresh",
       ])
     })
-  }, 30_000)
+  }, PRESENCE_CLI_TEST_TIMEOUT_MS)
 
   test("CLI one-shot presence heartbeat exits after JSON even when a runtime handle is left open (#8712)", async () => {
     await withTempHome(async (home) => {
@@ -747,7 +767,7 @@ describe("Pylon presence registration and heartbeat", () => {
           // must publish complete JSON and exit without waiting for loop drain.
           PYLON_PRESENCE_ONESHOT_TEST_HOLD_HANDLE: "1",
         },
-        timeoutMs: 5_000,
+        timeoutMs: PRESENCE_CLI_WATCHDOG_MS,
       })
 
       expect(result.timedOut).toBe(false)
@@ -759,7 +779,7 @@ describe("Pylon presence registration and heartbeat", () => {
         `/api/pylons/${encodeURIComponent(body.pylonRef)}/heartbeat`,
       ])
     })
-  }, 15_000)
+  }, PRESENCE_CLI_TEST_TIMEOUT_MS)
 
   test("retries transient heartbeat failure and records fresh state after success", async () => {
     await withTempHome(async (home) => {
@@ -866,7 +886,7 @@ describe("Pylon presence registration and heartbeat", () => {
       const result = await runProviderCli({
         args: ["go-online", "--json"],
         env: { PYLON_HOME: home },
-        timeoutMs: 20_000,
+        timeoutMs: PRESENCE_CLI_WATCHDOG_MS,
       })
 
       expect(result.timedOut).toBe(false)
@@ -897,7 +917,7 @@ describe("Pylon presence registration and heartbeat", () => {
           PYLON_ACCOUNT_HOME_ROOT: join(home, "no-sibling-scan"),
           PYLON_HOME: home,
         },
-        timeoutMs: 20_000,
+        timeoutMs: PRESENCE_CLI_WATCHDOG_MS,
       })
 
       expect(result.timedOut).toBe(false)
@@ -969,7 +989,7 @@ describe("Pylon presence registration and heartbeat", () => {
           PYLON_ACCOUNT_HOME_ROOT: join(home, "no-sibling-scan"),
           PYLON_HOME: home,
         },
-        timeoutMs: 20_000,
+        timeoutMs: PRESENCE_CLI_WATCHDOG_MS,
       })
 
       expect(result.timedOut).toBe(false)
@@ -1031,7 +1051,7 @@ describe("Pylon presence registration and heartbeat", () => {
           PYLON_ACCOUNT_HOME_ROOT: join(home, "no-sibling-scan"),
           PYLON_HOME: home,
         },
-        timeoutMs: 20_000,
+        timeoutMs: PRESENCE_CLI_WATCHDOG_MS,
       })
 
       expect(result.timedOut).toBe(false)
@@ -1111,7 +1131,7 @@ describe("Pylon presence registration and heartbeat", () => {
           PYLON_ACCOUNT_HOME_ROOT: join(home, "no-sibling-scan"),
           PYLON_HOME: home,
         },
-        timeoutMs: 20_000,
+        timeoutMs: PRESENCE_CLI_WATCHDOG_MS,
       })
 
       expect(result.timedOut).toBe(false)

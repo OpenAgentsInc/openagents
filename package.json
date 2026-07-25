@@ -23,7 +23,7 @@
     "check:afs-apple-fm-version-drift": "node --import tsx scripts/check-afs-apple-fm-version-drift.ts",
     "check:google-cloud-authority": "node scripts/google-cloud-authority-guard.mjs",
     "check:zero-supported-bun": "node scripts/zero-supported-bun-guard.mjs .",
-    "test": "vp test --run && pnpm run test:node-suites",
+    "test": "vp test --run; vp_status=$?; pnpm run test:node-suites; node_status=$?; exit $((vp_status | node_status))",
     "test:node-suites": "node scripts/node-test-suites.mjs",
     "test:openagents.com": "pnpm --dir apps/openagents.com run test",
     "test:aiur": "pnpm --dir apps/aiur run test",

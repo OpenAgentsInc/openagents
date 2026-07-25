@@ -42,3 +42,10 @@ packages/khala-sync-server/.artanis-backfill-state.json
 /target
 var/agent-computer/
 .sarah-data/
+
+# qa-runner session artifacts (video / trace / screenshots / result.json).
+# Scratch, not source: a sweep rewrites whatever lives here, so tracking it
+# makes unrelated read-only assertions fail depending on test order (#9240).
+# Suites now default to an OS temp directory; ARTIFACT_DIR still points a
+# deliberate evidence run back here.
+/runs/

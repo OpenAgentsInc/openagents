@@ -45,6 +45,12 @@ async function withHome<T>(fn: (home: string) => Promise<T>) {
   }
 }
 
+/**
+ * Upper bound on a single pylon CLI subprocess. Only a genuinely wedged child
+ * can reach it; see the note in runPylonCli.
+ */
+const PYLON_CLI_WATCHDOG_MS = 120_000
+
 async function runPylonCli(args: string[], env: Record<string, string | undefined>) {
   const proc = Runtime.spawn([process.execPath, "--import", "tsx", INDEX, ...args], {
     cwd: CWD,
@@ -52,13 +58,31 @@ async function runPylonCli(args: string[], env: Record<string, string | undefine
     stderr: "pipe",
     stdout: "pipe",
   })
-  const timeout = setTimeout(() => proc.kill(), 5_000)
+  // Watchdog, NOT a latency assertion. This child boots `node --import tsx`
+  // and compiles the pylon CLI entrypoint, so its cost tracks host load: the
+  // previous budget sat below a healthy boot under a full repository sweep,
+  // so the child was killed mid-run and the test failed on truncated output
+  // instead of on anything it asserts (#9240). It is now set far above any
+  // healthy boot and still well under the suite's own test timeout, and a
+  // firing watchdog reports itself rather than surfacing as an unrelated
+  // parse or equality failure.
+  let wedged = false
+  const timeout = setTimeout(() => {
+    wedged = true
+    proc.kill()
+  }, PYLON_CLI_WATCHDOG_MS)
   try {
     const [exitCode, stdout, stderr] = await Promise.all([
       proc.exited,
       new Response(proc.stdout).text(),
       new Response(proc.stderr).text(),
     ])
+    if (wedged) {
+      throw new Error(
+        `pylon CLI \`${args.join(" ")}\` never exited within ` +
+          `${String(PYLON_CLI_WATCHDOG_MS)}ms and was killed`,
+      )
+    }
     return { exitCode, stdout, stderr }
   } finally {
     clearTimeout(timeout)

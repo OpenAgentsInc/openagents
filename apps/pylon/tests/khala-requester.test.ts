@@ -48,6 +48,19 @@ async function withTempHome<T>(fn: (home: string) => Promise<T>) {
   }
 }
 
+/**
+ * Hang detector for a pylon CLI subprocess, NOT a latency assertion. The child
+ * boots `node --import tsx` and compiles the CLI entrypoint before doing any
+ * work, so its cost tracks host load and the previous budget sat below a
+ * healthy boot under a full repository sweep (#9240). A CLI that genuinely
+ * fails to exit never exits at all, so a generous bound still catches it while
+ * a saturated host does not manufacture a false `timedOut`.
+ */
+const PYLON_CLI_WATCHDOG_MS = 120_000
+
+/** Per-test budget for a CLI-spawning test; must exceed the watchdog. */
+const PYLON_CLI_TEST_TIMEOUT_MS = 180_000
+
 async function runPylonCli(args: string[], env: Record<string, string>) {
   const proc = Runtime.spawn([process.execPath, "--import", "tsx", INDEX, ...args], {
     cwd: CWD,
@@ -72,7 +85,7 @@ async function runPylonCli(args: string[], env: Record<string, string>) {
       timeout = setTimeout(() => {
         proc.kill()
         resolve({ exitCode: null, timedOut: true })
-      }, 10_000)
+      }, PYLON_CLI_WATCHDOG_MS)
     }),
   ])
   if (timeout !== undefined) clearTimeout(timeout)
@@ -568,7 +581,7 @@ describe("pylon khala requester API", () => {
       expect(proc.stderr)
         .toContain('"event":"assignment_run.completed"')
     })
-  }, 15_000)
+  }, PYLON_CLI_TEST_TIMEOUT_MS)
 
   test("CLI request can leave the lease un-run for diagnostics with --no-run", async () => {
     await withTempHome(async (home) => {
@@ -1644,7 +1657,7 @@ describe("pylon khala requester API", () => {
       schema: "openagents.pylon.khala_request.v1",
       text: "cli delegated",
     })
-  }, 15_000)
+  }, PYLON_CLI_TEST_TIMEOUT_MS)
 
   test("local CLI reads Khala assignment proof as JSON", async () => {
     const requests: Array<{ headers: Headers; path: string; search: string }> = []
@@ -1730,7 +1743,7 @@ describe("pylon khala requester API", () => {
     expect(JSON.stringify(body)).not.toMatch(
       /rawEventsJson|trajectory_json|safe_metadata_json|r2_key|prompt|shell|\/Users|secret|access[_-]?token|bearer/i,
     )
-  }, 15_000)
+  }, PYLON_CLI_TEST_TIMEOUT_MS)
 
   test("local CLI reads Khala closeout checklist as JSON", async () => {
     const requests: Array<{ headers: Headers; path: string; search: string }> = []
@@ -1791,7 +1804,7 @@ describe("pylon khala requester API", () => {
     expect(JSON.stringify(body)).not.toMatch(
       /rawEventsJson|trajectory_json|safe_metadata_json|r2_key|prompt|shell|\/Users|secret|access[_-]?token|bearer/i,
     )
-  }, 15_000)
+  }, PYLON_CLI_TEST_TIMEOUT_MS)
 
   test("local CLI reads Khala assignment trace status as JSON", async () => {
     const requests: Array<{ headers: Headers; path: string; search: string }> = []
@@ -1911,7 +1924,7 @@ describe("pylon khala requester API", () => {
     expect(JSON.stringify(body)).not.toMatch(
       /rawEventsJson|trajectory_json|safe_metadata_json|r2_key|prompt|shell|\/Users|secret|access[_-]?token|bearer/i,
     )
-  }, 15_000)
+  }, PYLON_CLI_TEST_TIMEOUT_MS)
 
   test("local CLI refuses codex_agent_task without fixture intent or complete workspace pins before gateway calls", async () => {
     const requests: string[] = []
@@ -1952,7 +1965,7 @@ describe("pylon khala requester API", () => {
     expect(output).toContain("requires explicit fixture intent")
     expect(output).toContain("--commit")
     expect(output).toContain("--verify")
-  }, 15_000)
+  }, PYLON_CLI_TEST_TIMEOUT_MS)
 
   test("local CLI preserves an explicit codex fixture smoke request without workspace pins", async () => {
     const requests: Array<{ body: Record<string, unknown>; path: string }> = []
@@ -2009,5 +2022,5 @@ describe("pylon khala requester API", () => {
       ok: true,
       text: "fixture delegated",
     })
-  }, 15_000)
+  }, PYLON_CLI_TEST_TIMEOUT_MS)
 })

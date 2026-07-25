@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process"
-import { accessSync, constants } from "node:fs"
+import { accessSync, constants, readFileSync } from "node:fs"
 import { mkdtemp, rm } from "node:fs/promises"
 import * as net from "node:net"
 import { tmpdir } from "node:os"
@@ -99,11 +99,49 @@ const run = (cmd: ReadonlyArray<string>): void => {
   const result = spawnSync(binary, args, { encoding: "utf8" })
   if (result.error !== undefined) throw result.error
   if (result.status !== 0) {
-    throw new Error(
-      `${binary} failed (exit ${String(result.status)}):\n` +
-        `${result.stdout}\n${result.stderr}`,
-    )
+    const output = `${result.stdout}\n${result.stderr}`
+    // Every postmaster holds one System V shared-memory segment, and macOS
+    // caps the whole machine at `kern.sysv.shmmni` (32 by default). Under a
+    // parallel sweep this suite's clusters compete for those 32 slots with
+    // every segment leaked by a previously killed postmaster, so the same
+    // commit starts or fails depending on machine history rather than code
+    // (#9240). Name the real limit instead of surfacing a bare ENOSPC.
+    if (/shared memory segment|No space left on device/i.test(output)) {
+      throw new Error(
+        `${binary} could not obtain a System V shared-memory segment.\n` +
+          "This is host capacity, not a defect in the code under test: macOS " +
+          "caps segments machine-wide at kern.sysv.shmmni (see `sysctl " +
+          "kern.sysv.shmmni`), and leaked segments from killed postmasters " +
+          "occupy slots permanently. Inspect with `ipcs -mba` (NATTCH 0 rows " +
+          "are orphans) and reclaim with `ipcrm -m <id>`.\n" +
+          output,
+      )
+    }
+    throw new Error(`${binary} failed (exit ${String(result.status)}):\n${output}`)
   }
+}
+
+/**
+ * The postmaster records its System V shared-memory key and id on line 7 of
+ * `postmaster.pid`. Reading it before shutdown lets `stop()` verify the
+ * segment is actually gone rather than assume it, so a cluster this suite
+ * started can never permanently consume one of the machine's few slots.
+ */
+const readShmemId = (dataDir: string): string | null => {
+  try {
+    const line = readFileSync(path.join(dataDir, "postmaster.pid"), "utf8").split("\n")[6]
+    const id = line?.trim().split(/\s+/)[1]
+    return id !== undefined && /^\d+$/.test(id) ? id : null
+  } catch {
+    return null
+  }
+}
+
+/** Best-effort reclaim of a segment the postmaster failed to remove. */
+const reclaimShmemSegment = (id: string | null): void => {
+  if (id === null) return
+  // Exits non-zero when the segment is already gone, which is the good case.
+  spawnSync("ipcrm", ["-m", id], { encoding: "utf8" })
 }
 
 export const startLocalPostgres = async (): Promise<LocalPostgres> => {
@@ -148,6 +186,7 @@ export const startLocalPostgres = async (): Promise<LocalPostgres> => {
       "start",
     ])
   } catch (error) {
+    reclaimShmemSegment(readShmemId(dataDir))
     await rm(dataDir, { recursive: true, force: true })
     throw error
   }
@@ -156,6 +195,7 @@ export const startLocalPostgres = async (): Promise<LocalPostgres> => {
   const stop = async (): Promise<void> => {
     if (stopped) return
     stopped = true
+    const shmemId = readShmemId(dataDir)
     try {
       run([
         path.join(binDir, "pg_ctl"),
@@ -167,6 +207,7 @@ export const startLocalPostgres = async (): Promise<LocalPostgres> => {
         "stop",
       ])
     } finally {
+      reclaimShmemSegment(shmemId)
       await rm(dataDir, { recursive: true, force: true })
     }
   }

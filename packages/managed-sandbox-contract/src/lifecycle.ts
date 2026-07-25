@@ -397,7 +397,16 @@ export const enumerateSandboxModel = (depth: number): ReadonlyArray<SandboxModel
     const nextFrontier: Array<SandboxModelState> = [];
     for (const state of frontier) {
       const key = JSON.stringify(state);
-      if (!seen.has(key)) seen.set(key, state);
+      // Skip states already expanded. Without this the frontier grows as
+      // ~|kinds|^step while the reachable set converges to a few hundred
+      // states, so the search re-expanded identical states exponentially:
+      // depth 7 took ~1s and depth 10 took ~654s, blowing the test budget on
+      // an idle machine (#9240). Anything reachable from a state within the
+      // remaining budget is already reachable from the earlier, shallower
+      // visit, so skipping cannot lose a state -- measured identical result
+      // sets at depths 3-7, and depth 10 now completes in ~17ms.
+      if (seen.has(key)) continue;
+      seen.set(key, state);
 
       for (const kind of kinds) {
         try {

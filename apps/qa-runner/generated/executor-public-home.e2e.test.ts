@@ -12,6 +12,9 @@
 
 import { describe, expect, test } from "vite-plus/test";
 import { Effect } from "effect";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { localBackend } from "../src/backend";
 import { scriptedBrain, type BrainStep } from "../src/brain";
 import { runQaSession } from "../src/runner";
@@ -19,6 +22,15 @@ import { executorPublicHomeCommitments } from "../src/scenarios";
 import { makeTarget } from "../src/target";
 
 const TARGET_URL = process.env.TARGET_URL ?? "https://executor.sh";
+
+// Session artifacts (video, trace, screenshots, result.json) default to a
+// FRESH OS TEMP DIRECTORY, never the checkout. Writing them into `./runs/`
+// dirtied tracked files on every sweep, which made unrelated read-only
+// assertions fail depending on test order (#9240). Set ARTIFACT_DIR to keep a
+// deliberate evidence run's artifacts somewhere durable.
+const ARTIFACT_DIR =
+  process.env.ARTIFACT_DIR ?? mkdtempSync(join(tmpdir(), "qa-executor-public-home-"));
+
 
 const steps: ReadonlyArray<BrainStep> = [
   { kind: "navigate", url: "/", label: "open executor landing page" },
@@ -65,7 +77,7 @@ describe("QS7 executor public-home audit", () => {
           }),
           brain: scriptedBrain(steps),
           backend: localBackend(),
-          artifactDir: process.env.ARTIFACT_DIR ?? "./runs/executor-public-home",
+          artifactDir: ARTIFACT_DIR,
           commitments: executorPublicHomeCommitments(),
         }),
       );

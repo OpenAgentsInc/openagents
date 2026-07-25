@@ -52,7 +52,24 @@ afterEach(async () => {
   restores.splice(0).reverse().forEach(restore => restore())
 })
 
-const settle = (): Promise<void> => new Promise(resolve => setTimeout(resolve, 20))
+/**
+ * Wait for React to commit by CONDITION, never by clock.
+ *
+ * This was a flat `setTimeout(20)`. Twenty milliseconds is ample on an idle
+ * machine and not enough when the full repository sweep saturates the host, so
+ * the same commit passed or failed depending on load -- the assertions then
+ * reported `expected '' to contain ...` against a container React had not
+ * rendered into yet (#9240). The deadline below only bounds a render that is
+ * genuinely stuck; it is never what the assertions actually wait on.
+ */
+const settleUntil = async (ready: () => boolean, description: string): Promise<void> => {
+  const deadline = Date.now() + 30_000
+  for (;;) {
+    await new Promise(resolve => setTimeout(resolve, 1))
+    if (ready()) return
+    if (Date.now() > deadline) throw new Error(`render never settled: ${description}`)
+  }
+}
 const recorder = () => {
   const received: Array<{ name: string; payload: unknown }> = []
   const report: IntentReporter = (ref, payload) => Effect.sync(() => received.push(resolveIntentRef(ref, payload)))
@@ -148,7 +165,10 @@ describe("IDE-08 rendered agent-code surfaces", () => {
     }
     const root = createRoot(container)
     root.render(<AgentContextTray state={state} report={recorder().report} />)
-    await settle()
+    await settleUntil(
+      () => container.textContent?.includes("Context 1 included · 1 omitted") === true,
+      "AgentContextTray inventory",
+    )
     expect(container.textContent).toContain("Context 1 included · 1 omitted")
     expect(container.textContent).toContain("explicit user selection")
     expect(container.textContent).toContain("retrieval disabled")
@@ -169,7 +189,10 @@ describe("IDE-08 rendered agent-code surfaces", () => {
     }
     const root = createRoot(container)
     root.render(<AgentProposalReviewPanel state={state} report={report} />)
-    await settle()
+    await settleUntil(
+      () => container.textContent?.includes("Reviewing") === true,
+      "AgentProposalReviewPanel review surface",
+    )
     expect(container.textContent).toContain("Reviewing")
     expect(container.textContent).toContain("Exact proposal base")
     expect(container.textContent).toContain("Post-apply evidence")
@@ -179,7 +202,10 @@ describe("IDE-08 rendered agent-code surfaces", () => {
     creatingConversation?.click()
     const accept = [...container.querySelectorAll("button")].find(button => button.textContent?.includes("Accept selected"))
     accept?.click()
-    await settle()
+    await settleUntil(
+      () => received.length >= 2,
+      "creating-turn and proposal-decision intents",
+    )
     expect(received).toContainEqual({
       name: "DesktopAgentCreatingTurnOpened",
       payload: proposal.proposalRef,
