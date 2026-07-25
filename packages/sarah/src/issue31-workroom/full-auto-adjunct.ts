@@ -121,6 +121,10 @@ export const Issue31FullAutoLifecycleSchema = S.Literals([
   "pausing",
   "paused",
   "stopping",
+  // Omega's Full Auto panel distinguishes these from a healthy run. Collapsing
+  // them into "running" would show a stalled run as making progress.
+  "retrying",
+  "stalled",
   "succeeded",
   "failed",
   "stopped",
