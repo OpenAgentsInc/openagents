@@ -25,6 +25,7 @@ import {
 } from "./full-auto-run-report.ts"
 import {
   FULL_AUTO_RUN_ACTIVE_LIMIT,
+  fullAutoRunTerminalReasonRef,
   isFullAutoRunAutonomyEnabled,
   type FullAutoRun,
   type FullAutoRunActor,
@@ -95,6 +96,10 @@ const projectRun = (run: FullAutoRun, projection: FullAutoLivenessProjection): F
   // derived from `startedAt` -- a projection that manufactured this number
   // would be reporting a parse as a measurement.
   startedAtMs: run.startedAtMs ?? null,
+  // omega#47: the typed reason the run is over, built from its own typed state
+  // and the actor that ended it. Never read out of `terminalReason` above --
+  // that sentence is written for a human, not for a classifier.
+  terminalReasonRef: fullAutoRunTerminalReasonRef(run),
   lastProgressAt: run.lastProgressAt ?? null,
   pausedAt: run.pausedAt ?? null,
   stoppedAt: run.stoppedAt ?? null,

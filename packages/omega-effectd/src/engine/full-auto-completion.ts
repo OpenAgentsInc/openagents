@@ -9,6 +9,12 @@ import {
   type FullAutoVerificationSpec,
 } from "./full-auto-verification.ts"
 import {
+  asHostExecutedVerification,
+  buildFullAutoRunEvidence,
+  type FullAutoRunEvidence,
+  type FullAutoWorkspaceProbe,
+} from "./full-auto-evidence.ts"
+import {
   isFullAutoRunAutonomyEnabled,
   type FullAutoRun,
   type FullAutoRunRegistry,
@@ -43,6 +49,14 @@ export type FullAutoCompletionAdmission =
       outcome: "admitted"
       result: FullAutoVerificationResult
       run: FullAutoRun
+      /**
+       * OMEGA-MOB-31-03 (omega#47): the chain the host stamped for this finished
+       * unit, or null when it could not measure one honestly (no turn ref, no
+       * workspace probe, an unmeasurable workspace, or a hop that failed the
+       * public-safety bound). Null is an honest absence: the projection reports
+       * the chain as unavailable rather than showing an invented hop.
+       */
+      evidence: FullAutoRunEvidence | null
     }>
   | Readonly<{
       /** The host ran (or attempted) verification, recorded the verdict, and
@@ -89,6 +103,20 @@ export type AdmitFullAutoRunCompletionInput = Readonly<{
   now?: () => Date
   /** Reason recorded on the completion transition. */
   reason?: string
+  /**
+   * OMEGA-MOB-31-03 (omega#47): the HOST's own journal ref for the turn whose
+   * self-reported completion triggered this verification. The caller reads it
+   * from the turn journal it already owns -- it is host state, and there is no
+   * path from a control-API body, CLI flag, MCP call, or mobile intent to it.
+   * Absent means no evidence chain is stamped rather than a guessed turn.
+   */
+  turnRef?: string
+  /**
+   * OMEGA-MOB-31-03 (omega#47): the host's own workspace reader. Production
+   * binds `makeNodeWorkspaceProbe()`; tests inject a deterministic stub.
+   * Absent means no evidence chain is stamped.
+   */
+  workspaceProbe?: FullAutoWorkspaceProbe
 }>
 
 /**
@@ -147,5 +175,70 @@ export const admitFullAutoRunCompletion = async (
     // the verdict is still recorded; do not force completion.
     return { outcome: "skipped", reason: "transition_refused", run: recorded }
   }
-  return { outcome: "admitted", result, run: transition.run }
+
+  // OMEGA-MOB-31-03 (omega#47): the finished unit exists exactly here, and only
+  // here does the host hold every hop at once -- the objective it verified
+  // against, the turn that triggered it, the verdict its own child process
+  // produced, and the workspace it produced that verdict in. Stamping anywhere
+  // else would mean reconstructing at least one hop after the fact.
+  const evidence = await stampFullAutoRunEvidence({
+    registry,
+    run: transition.run,
+    result,
+    ...(workspaceRef === undefined ? {} : { workspaceRef }),
+    ...(input.turnRef === undefined ? {} : { turnRef: input.turnRef }),
+    ...(input.workspaceProbe === undefined ? {} : { workspaceProbe: input.workspaceProbe }),
+    ...(input.now === undefined ? {} : { now: input.now }),
+  })
+  return {
+    outcome: "admitted",
+    result,
+    run: registry.get(transition.run.runRef) ?? transition.run,
+    evidence,
+  }
+}
+
+/**
+ * Build and durably stamp the finished unit's chain, or record nothing.
+ *
+ * Every early return is an honest absence rather than a fabricated hop:
+ * `asHostExecutedVerification` refuses a verdict the host did not itself
+ * execute, a missing turn ref or workspace probe means the host cannot name
+ * which turn or measure which tree, and `buildFullAutoRunEvidence` returns null
+ * when any hop fails the public-safety bound the phone-side reader applies.
+ */
+const stampFullAutoRunEvidence = async (
+  input: Readonly<{
+    registry: FullAutoRunRegistry
+    run: FullAutoRun
+    result: FullAutoVerificationResult
+    workspaceRef?: string
+    turnRef?: string
+    workspaceProbe?: FullAutoWorkspaceProbe
+    now?: () => Date
+  }>,
+): Promise<FullAutoRunEvidence | null> => {
+  const executed = asHostExecutedVerification(input.result)
+  if (executed === null) return null
+  if (input.turnRef === undefined || input.workspaceProbe === undefined) return null
+  const workspaceRef = input.workspaceRef ?? input.run.workspaceRef
+  if (workspaceRef === undefined) return null
+  const baseline = input.run.workspaceBaseline ?? null
+  const measurement = await input.workspaceProbe({
+    workspaceRef,
+    ...(baseline === null ? {} : { baselineRef: baseline.headRef }),
+  })
+  if (measurement === null) return null
+  const evidence = buildFullAutoRunEvidence({
+    runRef: input.run.runRef,
+    objective: input.run.objective,
+    turnRef: input.turnRef,
+    measurement,
+    baseline,
+    verification: executed,
+    recordedAtMs: (input.now ?? (() => new Date()))().getTime(),
+  })
+  if (evidence === null) return null
+  input.registry.recordEvidence(input.run.runRef, evidence)
+  return evidence
 }

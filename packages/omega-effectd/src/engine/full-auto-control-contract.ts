@@ -218,6 +218,21 @@ export const FullAutoControlRunSchema = Schema.Struct({
     Schema.isGreaterThanOrEqualTo(0),
     Schema.isLessThanOrEqualTo(FULL_AUTO_RUN_MAX_EPOCH_MS),
   ))),
+  /**
+   * OMEGA-MOB-31-03 (omega#47): the TYPED reason this run is over, built from
+   * the run's terminal state and the actor of the transition that ended it --
+   * e.g. `terminal.full_auto.completed.control_api`. `null` while the run is
+   * live, and `null` for a terminal run whose history does not name that edge.
+   *
+   * It is never derived from `terminalReason` above. That field is a sentence
+   * written for a human; reading it as a classification would give a run's
+   * ending a meaning nobody recorded, which is the same class of false claim as
+   * parsing a formatted timestamp for a duration.
+   *
+   * `optional` only so a pre-existing run-projection literal that omits it
+   * still decodes; a produced projection always emits it.
+   */
+  terminalReasonRef: Schema.optional(Schema.NullOr(RunRef)),
   lastProgressAt: Schema.NullOr(Schema.String),
   pausedAt: Schema.NullOr(Schema.String),
   stoppedAt: Schema.NullOr(Schema.String),

@@ -1067,7 +1067,10 @@ export const fullAutoControlOpenApiDocument = {
         ],
         // `startedAtMs` is intentionally NOT required: a run recorded before
         // omega#47 added the host's numeric start has none, and inventing one
-        // for it would be a fabricated measurement.
+        // for it would be a fabricated measurement. `terminalReasonRef` is not
+        // required for the same reason -- a run that ended before omega#47
+        // added the typed reason has none, and reading one out of the
+        // free-text `terminalReason` would fabricate a classification.
         additionalProperties: false,
         properties: {
           runRef: { type: "string", minLength: 1, maxLength: 180 },
@@ -1089,6 +1092,7 @@ export const fullAutoControlOpenApiDocument = {
           createdAt: { type: "string" },
           startedAt: { type: ["string", "null"] },
           startedAtMs: { type: ["integer", "null"], minimum: 0, maximum: 8_640_000_000_000_000 },
+          terminalReasonRef: { type: ["string", "null"], minLength: 1, maxLength: 180 },
           lastProgressAt: { type: ["string", "null"] },
           pausedAt: { type: ["string", "null"] },
           stoppedAt: { type: ["string", "null"] },

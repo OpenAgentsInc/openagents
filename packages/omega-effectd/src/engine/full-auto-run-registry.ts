@@ -12,6 +12,12 @@ import path from "node:path"
 import { Schema } from "effect"
 
 import { FullAutoTurnActionSchema, type FullAutoTurnAction } from "./full-auto-churn.ts"
+import {
+  FullAutoRunEvidenceSchema,
+  FullAutoWorkspaceBaselineSchema,
+  type FullAutoRunEvidence,
+  type FullAutoWorkspaceBaseline,
+} from "./full-auto-evidence.ts"
 import { FullAutoPlanSchema, type FullAutoPlan } from "./full-auto-plan.ts"
 import { FULL_AUTO_MAX_CONTINUATIONS } from "./full-auto-reconcile.ts"
 import { FullAutoProfileSchema, type FullAutoProfile, type FullAutoRecord } from "./full-auto-registry.ts"
@@ -432,6 +438,34 @@ export const FullAutoRunSchema = Schema.Struct({
   /** HANDS-1..4 (#9172-#9175): opt-in autonomy state; absent = pre-autonomy
    * behavior, byte-for-byte. */
   autonomy: Schema.optional(FullAutoRunAutonomySchema),
+  /**
+   * OMEGA-MOB-31-03 (omega#47): the host's own measurement of the bound
+   * workspace as this run found it, taken once after the run entered Running.
+   * The evidence chain's change hop is measured AGAINST this, so the diff a
+   * viewer follows is the change this run made rather than whatever happened to
+   * be uncommitted when someone looked. Write-once (`recordWorkspaceBaseline`
+   * refuses to overwrite) and never supplied by a caller. Absent when the host
+   * could not measure the workspace, or on a run that predates the field.
+   */
+  workspaceBaseline: Schema.optional(FullAutoWorkspaceBaselineSchema),
+  /**
+   * OMEGA-MOB-31-03 (omega#47) / OMEGA-FA-10 (omega#43): the host-stamped
+   * evidence chain for this run's one finished unit -- objective, turn, change,
+   * project generation, test, typed outcome, host verification, authority
+   * decision, and receipt.
+   *
+   * Written exactly once, by `recordEvidence`, at the moment the host's own
+   * executed done-condition verification PASSED and the completion-admission
+   * authority allowed the run to complete. A later pass never rewrites it: the
+   * finished unit it describes does not change afterwards, and a chain that
+   * could be re-pointed is not evidence.
+   *
+   * Deliberately NOT backfilled. A run that completed before this field existed
+   * still decodes, honestly carries none, and is projected as an unavailable
+   * chain rather than shown with an invented hop -- the same discipline as
+   * `startedAtMs`.
+   */
+  evidence: Schema.optional(FullAutoRunEvidenceSchema),
   transitions: Schema.Array(FullAutoRunTransitionRecordSchema),
 })
 export type FullAutoRun = typeof FullAutoRunSchema.Type
@@ -439,6 +473,27 @@ export type FullAutoRun = typeof FullAutoRunSchema.Type
 /** Whether autonomy (objective selection / verification / plan / churn) is
  * active for this run. Pure and total -- an absent block is not enabled. */
 export const isFullAutoRunAutonomyEnabled = (run: FullAutoRun): boolean => run.autonomy?.enabled === true
+
+/**
+ * OMEGA-MOB-31-03 (omega#47): the TYPED reason a run is over, as a bounded
+ * public-safe ref.
+ *
+ * Built from two typed enums the run already carries -- its terminal state, and
+ * the actor of the transition that put it there -- and from nothing else. It is
+ * deliberately NOT derived from the free-text `terminalReason`: classifying a
+ * run's ending by matching words in a sentence would make the reason a reading
+ * of prose rather than a fact about the lifecycle, and the sentence is written
+ * for a human, not for a parser.
+ *
+ * Null for a non-terminal run, and for a terminal run whose own history does
+ * not name the edge that ended it. A run that cannot say why it ended is
+ * projected as refused rather than shown with an invented reason.
+ */
+export const fullAutoRunTerminalReasonRef = (run: FullAutoRun): string | null => {
+  if (!isFullAutoRunTerminal(run.state)) return null
+  const actor = run.transitions.findLast((transition) => transition.to === run.state)?.actor
+  return actor === undefined ? null : `terminal.full_auto.${run.state}.${actor}`
+}
 
 const FullAutoRunRegistryFileSchema = Schema.Struct({
   schema: Schema.Literal(FULL_AUTO_RUN_REGISTRY_SCHEMA),
@@ -693,6 +748,23 @@ export type FullAutoRunRegistry = Readonly<{
    * SEPARATE from the provider self-report. Null no-op when missing/no
    * autonomy. */
   recordVerification: (runRef: string, result: FullAutoVerificationResult) => FullAutoRun | null
+  /**
+   * OMEGA-MOB-31-03 (omega#47): record the host's own baseline reading of the
+   * bound workspace. WRITE-ONCE -- a run that already carries one is returned
+   * unchanged, so the change hop can never be re-based against a later tree.
+   * Null no-op only when the record is missing.
+   */
+  recordWorkspaceBaseline: (
+    runRef: string,
+    baseline: FullAutoWorkspaceBaseline,
+  ) => FullAutoRun | null
+  /**
+   * OMEGA-MOB-31-03 (omega#47) / OMEGA-FA-10 (omega#43): stamp the finished
+   * unit's evidence chain. WRITE-ONCE -- a run that already carries a chain is
+   * returned unchanged, because the finished unit it describes does not change.
+   * Null no-op only when the record is missing.
+   */
+  recordEvidence: (runRef: string, evidence: FullAutoRunEvidence) => FullAutoRun | null
   /** HANDS-4 (#9175): append one durable per-turn action taxonomy row (bounded,
    * most-recent-last). Null no-op when the record is missing or autonomy is not
    * present. A row whose turnRef already exists is replaced in place so a replay
@@ -976,6 +1048,40 @@ export const openFullAutoRunRegistry = (
     return next
   }
 
+  const recordWorkspaceBaseline: FullAutoRunRegistry["recordWorkspaceBaseline"] = (
+    runRef,
+    baseline,
+  ) => {
+    const index = findIndex(runRef)
+    if (index === -1) return null
+    const current = runs[index]!
+    // Write-once: the tree this run started from is a fact about its start, and
+    // a start does not move.
+    if (current.workspaceBaseline !== undefined) return current
+    const next = Schema.decodeUnknownSync(FullAutoRunSchema)(compactRunInput({
+      ...current,
+      workspaceBaseline: baseline,
+    }))
+    runs[index] = next
+    persist()
+    return next
+  }
+
+  const recordEvidence: FullAutoRunRegistry["recordEvidence"] = (runRef, evidence) => {
+    const index = findIndex(runRef)
+    if (index === -1) return null
+    const current = runs[index]!
+    // Write-once: a chain that a second pass could re-point is not evidence.
+    if (current.evidence !== undefined) return current
+    const next = Schema.decodeUnknownSync(FullAutoRunSchema)(compactRunInput({
+      ...current,
+      evidence,
+    }))
+    runs[index] = next
+    persist()
+    return next
+  }
+
   const recordTurnAction: FullAutoRunRegistry["recordTurnAction"] = (runRef, action) => {
     const index = findIndex(runRef)
     if (index === -1) return null
@@ -1029,6 +1135,8 @@ export const openFullAutoRunRegistry = (
     setAutonomy,
     updatePlan,
     recordVerification,
+    recordWorkspaceBaseline,
+    recordEvidence,
     recordTurnAction,
     recordSelfClaim,
   }

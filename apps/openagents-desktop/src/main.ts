@@ -377,6 +377,7 @@ import { buildFullAutoTurnAction, detectFullAutoChurn, parseFullAutoChangedPaths
 import { advanceFullAutoPlanFromTurn, parseFullAutoStepMarkers } from "./full-auto-plan.ts"
 import { detectFullAutoSelfReportedCompletion, makeNodeVerificationExec } from "./full-auto-verification.ts"
 import { admitFullAutoRunCompletion } from "./full-auto-completion.ts"
+import { makeNodeWorkspaceProbe } from "./full-auto-evidence.ts"
 import { buildProviderHandoffEnvelope, openProviderHandoffRegistry, providerHandoffDispositionForEnvelope } from "./full-auto-provider-handoff.ts"
 import { deriveFullAutoRunReceipt, openFullAutoRunReportStore } from "./full-auto-run-report.ts"
 import { decideFullAutoLivenessNotification, settleFullAutoRunLiveness } from "./full-auto-liveness.ts"
@@ -5734,6 +5735,12 @@ const processFullAutoAutonomyTurnCompletion = async (threadRef: string): Promise
     run: fullAutoRunRegistry.get(run.runRef) ?? run,
     workspaceRef: resolveDesktopLocalWorkspaceRoot(),
     exec: makeNodeVerificationExec(),
+    // OMEGA-MOB-31-03 (omega#47): the turn ref is the one this host just read
+    // out of its OWN journal above, and the workspace probe is the host's own
+    // Git reader. Neither is reachable from a request body, so the evidence
+    // chain stamped on an admitted completion is measurement, not assertion.
+    turnRef: latest.turnRef,
+    workspaceProbe: makeNodeWorkspaceProbe(),
   })
   if (admission.outcome === "admitted") {
     // Stop dispatch: the thread-level registry is the dispatch gate, so a

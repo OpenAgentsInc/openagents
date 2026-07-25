@@ -13,6 +13,11 @@ import path from "node:path"
 import { Exit, Schema } from "effect"
 
 import {
+  FullAutoEvidenceReceiptBlockSchema,
+  FullAutoRunEvidenceSchema,
+  projectFullAutoEvidenceReceiptBlock,
+} from "./full-auto-evidence.ts"
+import {
   FullAutoDisabledBySchema,
   FullAutoProfileSchema,
   type FullAutoRecord,
@@ -496,6 +501,16 @@ export const FullAutoRunReportSchema = Schema.Struct({
    * same lane truth the BOOT SEQUENCE renders. Absent on pre-#9111 rows and
    * whenever a run was bound without a recorded snapshot. */
   readinessSnapshot: Schema.optional(FullAutoReadinessSnapshotSchema),
+  /**
+   * OMEGA-MOB-31-03 (omega#47) / OMEGA-FA-10 (omega#43): the omega#43 chain for
+   * this run's one finished unit. Copied verbatim from the run's own
+   * write-once, host-stamped `evidence` record -- this aggregator derives no
+   * hop of its own, exactly as it copies rather than re-derives lifecycle
+   * history. Absent until the host verifies a completion, and on every run that
+   * finished before the record existed; such a run is projected as an
+   * unavailable chain rather than shown with an invented hop.
+   */
+  evidence: Schema.optional(FullAutoRunEvidenceSchema),
   usage: FullAutoRunReportUsageSchema,
   /** Never embedded raw content -- a pointer into Desktop's own existing
    * thread/provider-session stores for deeper (still-private) inspection.
@@ -544,6 +559,25 @@ export const FullAutoRunReceiptSchema = Schema.Struct({
   claimedRefCount: Count,
   progressDisposition: Schema.Literal("unknown"),
   usageKnown: Schema.Boolean,
+  /**
+   * OMEGA-MOB-31-03 (omega#47): the receipt's share of the omega#43 chain --
+   * the four hops it must agree with the report on, plus the authority that
+   * allowed the completion, its decision, and its receipt. Spread flat rather
+   * than nested because that is the shape the phone-side reader walks. Every
+   * value is a bounded, opaque, system-minted ref, so this receipt stays
+   * structurally incapable of carrying free text. Absent exactly when the
+   * report carries no chain, because both are projected from the same record.
+   */
+  objectiveRef: Schema.optional(FullAutoEvidenceReceiptBlockSchema.fields.objectiveRef),
+  turnRef: Schema.optional(FullAutoEvidenceReceiptBlockSchema.fields.turnRef),
+  changeRef: Schema.optional(FullAutoEvidenceReceiptBlockSchema.fields.changeRef),
+  verificationRef: Schema.optional(FullAutoEvidenceReceiptBlockSchema.fields.verificationRef),
+  authorityRef: Schema.optional(FullAutoEvidenceReceiptBlockSchema.fields.authorityRef),
+  decisionRef: Schema.optional(FullAutoEvidenceReceiptBlockSchema.fields.decisionRef),
+  authorityReceiptRef: Schema.optional(
+    FullAutoEvidenceReceiptBlockSchema.fields.authorityReceiptRef,
+  ),
+  allowed: Schema.optional(FullAutoEvidenceReceiptBlockSchema.fields.allowed),
   /** Ties this receipt to the exact private report state it was derived
    * from, without embedding that report's content. */
   reportRevision: Count,
@@ -604,6 +638,13 @@ export const deriveFullAutoRunReceipt = (
     claimedRefCount,
     progressDisposition: report.progressDisposition,
     usageKnown: report.usage.totalTokensKnown,
+    // Both published views of the chain read the SAME stored record, so the
+    // four hops they share cannot disagree -- there is no code path that could
+    // give the report one objective/turn/change/verification and the receipt
+    // another. A report without a chain produces a receipt without one.
+    ...(report.evidence === undefined
+      ? {}
+      : projectFullAutoEvidenceReceiptBlock(report.evidence)),
     reportRevision: report.reportRevision,
     createdAt: now().toISOString(),
   })
@@ -1022,6 +1063,15 @@ export const openFullAutoRunReportStore = (
           }
         : {}),
       progressDisposition: "unknown",
+      // Copied, never derived: the chain is the run's own write-once record, so
+      // this aggregator has nothing to decide about it. Once captured it also
+      // survives here, the same never-drop-a-captured-fact discipline the merged
+      // turn and handoff sections already use.
+      ...(run.evidence === undefined
+        ? existing?.evidence === undefined
+          ? {}
+          : { evidence: existing.evidence }
+        : { evidence: run.evidence }),
       usage: existing?.usage ?? UNKNOWN_USAGE,
       rawEvidenceRef: run.threadRef === undefined ? null : `thread:${run.threadRef}`,
       reportRevision: (existing?.reportRevision ?? 0) + 1,

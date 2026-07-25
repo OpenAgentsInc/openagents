@@ -170,6 +170,16 @@ export type OmegaEffectdRunDetail = Readonly<{
   stallCause: string | null;
   recoveryAction: string;
   terminalReason: string | null;
+  /**
+   * OMEGA-MOB-31-03 (omega#47): the TYPED reason this run is over, as a bounded
+   * public-safe ref built from the run's terminal state and the actor of the
+   * transition that ended it -- e.g. `terminal.full_auto.completed.control_api`.
+   * Null while the run is live, and null for a terminal run whose history does
+   * not name that edge; the mobile projection REFUSES such a run rather than
+   * showing an invented reason. `terminalReason` beside it stays free text for
+   * a human to read, and nothing downstream parses it to classify the ending.
+   */
+  terminalReasonRef: string | null;
   /** Formatted for display; see `OmegaEffectdRunSnapshot.updatedAt`. */
   updatedAt: string;
   /**

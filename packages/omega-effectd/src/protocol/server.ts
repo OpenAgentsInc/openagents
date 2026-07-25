@@ -23,6 +23,17 @@ import {
   openFullAutoRunRegistry,
 } from "../engine/full-auto-run-registry.ts";
 import { openFullAutoRunReportStore } from "../engine/full-auto-run-report.ts";
+import { admitFullAutoRunCompletion } from "../engine/full-auto-completion.ts";
+import {
+  makeNodeWorkspaceProbe,
+  measureFullAutoWorkspaceBaseline,
+  type FullAutoWorkspaceProbe,
+} from "../engine/full-auto-evidence.ts";
+import {
+  detectFullAutoSelfReportedCompletion,
+  makeNodeVerificationExec,
+  type FullAutoVerificationExec,
+} from "../engine/full-auto-verification.ts";
 import {
   assessFullAutoNativeBoundary,
   buildFullAutoNativeBinding,
@@ -167,6 +178,21 @@ export type OmegaEffectdFramedServerOptions = Readonly<{
   syncFetch?: FullAutoRunControlIntentFetch;
   /** Test-only switch for the production heartbeat. */
   syncPollIntervalMs?: number;
+  /**
+   * OMEGA-MOB-31-03 (omega#47): test-only injection for the host-executed
+   * done-condition verification. Production spawns a real child process
+   * (`makeNodeVerificationExec`), which is what makes `hostExecuted` mean it.
+   */
+  verificationExec?: FullAutoVerificationExec;
+  /**
+   * OMEGA-MOB-31-03 (omega#47): test-only injection for the host's own Git
+   * reading of a bound workspace. Production reads the real repository
+   * (`makeNodeWorkspaceProbe`). Neither this nor `verificationExec` is
+   * reachable from the wire: no request body, CLI flag, MCP call, or mobile
+   * intent can supply or influence either, so a client can never assert its own
+   * evidence.
+   */
+  workspaceProbe?: FullAutoWorkspaceProbe;
 }>;
 
 type HostLiveState = Readonly<{
@@ -437,12 +463,76 @@ export const createOmegaEffectdFramedServer = (
       stallCause: run.stallCause ?? null,
       recoveryAction: run.recoveryAction,
       terminalReason: run.terminalReason ?? null,
+      // Passed through from the same run projection the local control API
+      // returns, so the framed host and the control API cannot disagree about
+      // why a run ended.
+      terminalReasonRef: run.terminalReasonRef ?? null,
       updatedAt: run.lastProgressAt ?? run.createdAt,
       startedAtMs: run.startedAtMs ?? null,
       nativeEvidence,
       turns,
     };
   };
+  const verificationExec = options.verificationExec ?? makeNodeVerificationExec();
+  const workspaceProbe = options.workspaceProbe ?? makeNodeWorkspaceProbe();
+  /** Idempotence per turn: a self-reported completion is verified at most once,
+   * so a reconciliation pass that re-reads the same journal row never runs the
+   * owner's check twice. */
+  const verifiedTurnRefs = new Set<string>();
+
+  /**
+   * OMEGA-MOB-31-03 (omega#47) / HANDS-2 (#9173): the completion gate for an
+   * autonomy-enabled run, on the framed host.
+   *
+   * A provider turn that emits FULL-AUTO-COMPLETE has SELF-REPORTED, which is
+   * evidence that the host should look, never a completion. The host then runs
+   * the run's own done-condition verification as a real child process in the
+   * bound workspace and admits completion ONLY on a passed verdict -- and, on
+   * that same pass, stamps the omega#43 chain for the finished unit from its
+   * own measurements. A failed, absent, or errored verdict leaves the run
+   * active and stamps nothing.
+   */
+  const settleAutonomyCompletions = async (workspaceRef: string): Promise<void> => {
+    for (const [threadRef, evidence] of evidenceByThread.entries()) {
+      const run = runRegistry.findByThreadRef(threadRef);
+      if (run === null || run.autonomy?.enabled !== true) continue;
+      if (run.state !== "running" && run.state !== "retrying" && run.state !== "stalled") continue;
+      const latest = evidence.turns
+        .filter((turn) => turn.disposition === "completed")
+        .toSorted((left, right) => left.updatedAt.localeCompare(right.updatedAt))
+        .at(-1);
+      if (latest === undefined || verifiedTurnRefs.has(latest.turnRef)) continue;
+      if (!detectFullAutoSelfReportedCompletion(latest.assistantText)) continue;
+      verifiedTurnRefs.add(latest.turnRef);
+      const admission = await admitFullAutoRunCompletion({
+        registry: runRegistry,
+        run,
+        workspaceRef,
+        exec: verificationExec,
+        // The turn ref comes from the host's OWN journal read above, never from
+        // a request body -- the same discipline that keeps `startedAtMs` a
+        // measurement rather than a client claim.
+        turnRef: latest.turnRef,
+        workspaceProbe,
+      });
+      if (admission.outcome === "admitted") {
+        registry.set(threadRef, false, {
+          disabledBy: "control_api",
+          blockedReason: "host_verified_completion",
+        });
+        pendingNotes.push({
+          threadRef,
+          text: "Full Auto complete: the host executed the done-condition verification and it PASSED. The run is marked completed.",
+        });
+      } else if (admission.outcome === "blocked") {
+        pendingNotes.push({
+          threadRef,
+          text: `Full Auto completion NOT admitted (${admission.blockReason}): the host verification did not pass, so the run stays active. Provider self-report is evidence only.`,
+        });
+      }
+    }
+  };
+
   const runReconciliation = (): Promise<void> =>
     serializeReconciliation(async () => {
       const workspaceRef = await resolveWorkspace();
@@ -550,6 +640,7 @@ export const createOmegaEffectdFramedServer = (
             runRegistry.recordAttempt(run.runRef, "failure", { reason: failure.reason });
         },
       });
+      await settleAutonomyCompletions(workspaceRef);
       await flushNotes();
     });
 
@@ -1100,6 +1191,14 @@ export const createOmegaEffectdFramedServer = (
           }),
         );
         preparedThreadRef = requiredString(created.threadRef, "threadRef");
+        // OMEGA-MOB-31-03 (omega#47): read the bound workspace BEFORE the run
+        // can dispatch its first turn, so the evidence chain's change hop is
+        // later measured against the tree this run actually started from. Host
+        // measurement only -- no field of the start request reaches it.
+        const workspaceBaseline = await measureFullAutoWorkspaceBaseline({
+          probe: workspaceProbe,
+          workspaceRef,
+        });
         const outcome = startFullAutoRunAction(actionContext(), body);
         if (!outcome.ok) {
           return respond(
@@ -1108,6 +1207,9 @@ export const createOmegaEffectdFramedServer = (
             undefined,
             redactedError("invalid_request", outcome.error.message),
           );
+        }
+        if (workspaceBaseline !== null) {
+          runRegistry.recordWorkspaceBaseline(outcome.value.runRef, workspaceBaseline);
         }
         await lastReconciliation;
         await flushNotes();

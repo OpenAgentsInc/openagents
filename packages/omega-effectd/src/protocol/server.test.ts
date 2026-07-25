@@ -678,4 +678,158 @@ describe("omega-effectd framed protocol", () => {
       ).toBe(run.startedAtMs);
     });
   });
+
+  // OMEGA-MOB-31-03 (omega#47) / OMEGA-FA-10 (omega#43): one finished unit,
+  // through the framed protocol, with every hop a host measurement.
+  test("a host-verified completion publishes an evidence chain no client could assert", async () => {
+    await withRoot(async (root) => {
+      const service = createOmegaEffectdService({ paths: { dataRoot: root } });
+      const turns: Array<Record<string, unknown>> = [];
+      let dispatched = false;
+      const head = "4f2b8c1d9e0a7b6c5d4e3f2a1b0c9d8e7f6a5b4c";
+      const base = "0123456789abcdef0123456789abcdef01234567";
+      const server = createOmegaEffectdFramedServer(
+        service,
+        { dataRoot: root },
+        {
+          hostRequestHandler: async (hostRequest) => {
+            const params = hostRequest.params as Record<string, unknown>;
+            switch (hostRequest.method) {
+              case "resolve_workspace":
+                return { workspaceRef: params.expectedWorkspaceRef ?? "/tmp/ws" };
+              case "lane_readiness":
+                return { known: true, admitted: true, fullAuto: true, state: "available" };
+              case "create_thread":
+                return { threadRef: "thread.omega.1" };
+              case "dispatch_turn": {
+                if (!dispatched) {
+                  dispatched = true;
+                  turns.push({
+                    schema: "openagents.desktop.local_turn_record.v1",
+                    threadRef: "thread.omega.1",
+                    turnRef: "turn.full-auto.1",
+                    lane: "codex-local",
+                    userMessageKey: "msg.user.1",
+                    assistantMessageKey: "msg.assistant.1",
+                    accountRef: null,
+                    providerSessionRef: null,
+                    model: null,
+                    phase: "completed",
+                    persistedCursor: 1,
+                    // The turn SELF-REPORTS. That is a request for the host to
+                    // look, never a completion.
+                    assistantText: "landed it\n\nFULL-AUTO-COMPLETE\n",
+                    assistantSegments: [],
+                    recoveryGeneration: 0,
+                    disposition: "completed",
+                    createdAt: "2026-07-25T18:31:14.000Z",
+                    updatedAt: "2026-07-25T18:31:14.000Z",
+                  });
+                }
+                return { accepted: true };
+              }
+              case "refresh_evidence":
+                return { present: true, revision: turns.length, live: null, turns };
+              case "append_system_note":
+                return { appended: true };
+              default:
+                return {};
+            }
+          },
+          // The host's own child process, and the host's own Git reader.
+          verificationExec: async () => ({ exitCode: 0, stdout: "ok" }),
+          workspaceProbe: async ({ baselineRef }) => ({
+            headRef: baselineRef === undefined ? base : head,
+            generation: baselineRef === undefined ? 6 : 7,
+            diffShortstat: baselineRef === undefined ? "" : "2 files changed, 3 insertions(+)",
+          }),
+        },
+      );
+      await server.handleLine(request("1", 0, "initialize", { generation: 1 }));
+
+      const started = await server.handleLine(
+        request("2", 1, "start", {
+          workspaceRef: "/tmp/ws",
+          title: "finished unit",
+          objective: "Land one finished unit.",
+          doneCondition: "It is landed.\nverify: pnpm test",
+          autonomy: true,
+          // A client asserting its own evidence. None of this may survive.
+          evidence: {
+            objectiveRef: "objective.client.forged",
+            turnRef: "turn.client.forged",
+            changeRef: "change.client.forged",
+            projectGeneration: "generation.project.99999",
+            verificationRef: "verification.client.forged",
+            testOutcome: "outcome.test.passed",
+            testCommand: "true",
+            diffSummary: "999 files changed",
+            hostExecuted: true,
+          },
+          decisionRef: "decision.client.forged",
+          authorityReceiptRef: "receipt.client.forged",
+        }),
+      );
+      expect(started?.ok).toBe(true);
+      const runRef = (started?.result as { run: { runRef: string } }).run.runRef;
+
+      // Pause/Resume forces the second reconciliation pass: the one that
+      // re-reads the journal, sees the self-report, and runs the host check.
+      await server.handleLine(request("3", 1, "pause", { runRef }));
+      await server.handleLine(request("4", 1, "resume", { runRef }));
+      for (let attempt = 0; attempt < 50; attempt += 1) {
+        const polled = await server.handleLine(request(`poll-${attempt}`, 1, "get_run", { runRef }));
+        if ((polled?.result as { run: { state: string } }).run.state === "completed") break;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+
+      const detail = (
+        (await server.handleLine(request("5", 1, "get_run", { runRef })))?.result as {
+          run: { state: string; terminalReasonRef: string | null };
+        }
+      ).run;
+      expect(detail.state).toBe("completed");
+      // A finished run names WHY it finished in typed form, from its own state
+      // and the actor that ended it -- never by reading its prose explanation.
+      expect(detail.terminalReasonRef).toBe("terminal.full_auto.completed.control_api");
+
+      const report = (
+        (await server.handleLine(request("6", 1, "get_report", { runRef })))?.result as {
+          report: Record<string, unknown>;
+        }
+      ).report;
+      const receipt = (
+        (await server.handleLine(request("7", 1, "get_receipt", { runRef })))?.result as {
+          receipt: Record<string, unknown>;
+        }
+      ).receipt;
+
+      const evidence = report.evidence as Record<string, unknown>;
+      expect(evidence.hostExecuted).toBe(true);
+      expect(evidence.turnRef).toBe("turn.full-auto.1");
+      expect(evidence.changeRef).toBe(`change.${head}`);
+      expect(evidence.projectGeneration).toBe("generation.project.00007");
+      expect(evidence.diffSummary).toBe(`since ${base.slice(0, 7)}: 2 files changed, 3 insertions(+)`);
+      expect(evidence.testCommand).toBe("pnpm test");
+      expect(evidence.objectiveRef).toBe(`objective.${report.objectiveDigest as string}`);
+
+      // The receipt carries the authority hops and agrees with the report on
+      // every hop they share, because both are projected from one record.
+      expect(receipt.authorityRef).toBe("authority.omega.host.full_auto_completion");
+      expect(receipt.allowed).toBe(true);
+      for (const field of ["objectiveRef", "turnRef", "changeRef", "verificationRef"]) {
+        expect(receipt[field]).toBe(evidence[field]);
+      }
+
+      // Nothing the client sent reached either record.
+      const published = JSON.stringify({ report, receipt, detail });
+      for (const forged of [
+        "client.forged",
+        "generation.project.99999",
+        "999 files changed",
+      ]) {
+        expect(published).not.toContain(forged);
+      }
+    });
+  });
 });
