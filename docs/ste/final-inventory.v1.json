@@ -34347,7 +34347,7 @@
     },
     {
       "path": "docs/omega/2026-07-25-omega-bubblewrap-removal-audit.md",
-      "sha256": "6517720deedd4aef86414d8e9fee7a2724d08a574ae75e58cba69176e09d35ce",
+      "sha256": "0c3d70d208bdb19c19a6ca5227f42910829761c1e77faf9d9d063f343bd01608",
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",

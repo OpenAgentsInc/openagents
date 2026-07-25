@@ -136,6 +136,28 @@ the producing agent re-reading its own change.
 
 All corrections landed in omega `00e16be1c9`. Tracked as omega#54 and children.
 
+## Release discipline: freeze the tree during an RC build
+
+Learned twice in one day, both times costing a full rebuild.
+
+`script/bundle-omega-rc` compiles the binary with the `HEAD` it started from,
+then writes the release record at the end with whatever `HEAD` is *then*. Any
+commit landed while the build runs makes those disagree, and candidate evidence
+correctly refuses to bind:
+
+```
+error: embedded omega binary does not contain the release source commit marker
+```
+
+The refusal is right — evidence that binds a binary to source it was not built
+from is worthless. The rule is simply: **do not commit to the omega repository
+while an RC build is running.** Work in another repository, or wait.
+
+A cheaper fix exists and is worth doing: capture `HEAD` once at build start and
+write the release record from that captured value, so the build is internally
+consistent regardless of what else lands. That would turn a 40-minute rebuild
+into an error at the right moment, or no error at all.
+
 ## Open, and not claimed
 
 - Items 3–8 are proposals. No code has been removed for them.
