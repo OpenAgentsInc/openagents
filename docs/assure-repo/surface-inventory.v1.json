@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:dfa2bcae5f7a11b0afb7274c2db1fdff185df83049c8a788a7efd1b6d3be1fd2",
+  "sourceDigest": "sha256:40d478fddf6756e629825a8d3080e39fc439dfe72d9a004601dddebf9eb993cd",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -382,7 +382,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "apps/openagents-mobile (69 tracked test files)"
+          "ref": "apps/openagents-mobile (71 tracked test files)"
         },
         {
           "type": "behavior-contract",
@@ -1271,6 +1271,23 @@
       "obligation": {
         "state": "designed",
         "note": "executable oracle(s) authored: assurance-obligation; observation pending AR-3 sweep"
+      }
+    },
+    {
+      "id": "document:specs/omega/omega-agent.product-spec.md",
+      "kind": "document",
+      "owningPath": "specs/omega/omega-agent.product-spec.md",
+      "title": "omega-agent.product-spec.md",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "product-spec",
+          "ref": "pnpm run test:product-spec"
+        }
+      ],
+      "obligation": {
+        "state": "mapped",
+        "note": "mapped to intent/validation only; behavior oracle not yet designed"
       }
     },
     {
@@ -2498,7 +2515,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "packages/omega-effectd (24 tracked test files)"
+          "ref": "packages/omega-effectd (27 tracked test files)"
         }
       ],
       "obligation": {
@@ -3282,17 +3299,17 @@
     }
   ],
   "summary": {
-    "totalSurfaces": 171,
+    "totalSurfaces": 172,
     "byKind": {
       "app": 16,
       "crate": 6,
-      "document": 50,
+      "document": 51,
       "package": 87,
       "public-endpoint": 2,
       "release-pipeline": 9,
       "worker": 1
     },
-    "withOracle": 157,
+    "withOracle": 158,
     "unverified": 14,
     "byUnverifiedReason": {
       "config-only": 2,
@@ -3302,7 +3319,7 @@
     "byObligationState": {
       "designed": 123,
       "inconclusive": 9,
-      "mapped": 34,
+      "mapped": 35,
       "out-of-scope": 5
     },
     "coverageNotes": [

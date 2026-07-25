@@ -12,6 +12,144 @@
 - Assurance: `specs/omega/full-auto.assurance-spec.md` revision 5 is admitted
 - Admission receipt: `authority.decision.1954518244492185756509b3cfec6e3e`
 
+## 2026-07-25 rc.8 preparation pass (lane B1)
+
+Wave 0 lane B1 of the
+[master delegation plan](./2026-07-25-omega-master-delegation-plan.md) is
+preparation only: keep the proofs current against
+`omega-effectd-v0.1.0-rc.8`, and do **not** claim the owner-real run. This
+section records what that pass drove to green and what it deliberately left
+unperformed. Nothing below is an installed-candidate observation, an owner
+observation, or a release verdict.
+
+### Engine identity under test
+
+The gates below were driven against the real supervised engine, not fixtures.
+The Full Auto engine core is byte-identical to the rc.8 release:
+
+| Check | Result |
+| --- | --- |
+| rc.8 tag `omega-effectd-v0.1.0-rc.8` resolves to | `509ae747f00f6f7ebb413809ff5bd6ea123e1c1c` |
+| `git diff rc.8..main -- packages/omega-effectd/src/engine/` | empty |
+| Reconciliation / host-evidence path in `src/protocol/server.ts` | unchanged from rc.8 |
+| rc.8 archive SHA-256 pinned by `script/bundle-omega-rc` | `01d11597b054d009296d0381b6cd6ed3d31c83b93e75a58845f2ae47bf33226a` |
+
+Drift from rc.8 on `main` is confined to the Sarah host-contract surfaces
+(`sarah-host-contract.ts`, `framed.ts`, `host-bridge.ts`, and the Sarah
+branches of `server.ts`) landed by the workroom lane. No FA-07 gate below
+depends on those.
+
+The collector and installed-proof scripts were re-checked and are already
+current against rc.8. They required no change:
+
+- `script/generate-omega-full-auto-candidate-evidence --self-test` — passed
+- `script/collect-omega-full-auto-installed-evidence --self-test` — passed
+- `script/prove-omega-rc-install --harness-check` — harness OK
+- `script/bundle-omega-rc` and `script/prove-omega-rc-install` already pin the
+  rc.8 tag and archive digest
+
+### Gate 1 — incident replay, and its falsification
+
+Gate 1 previously rested on a test that reproduced the incident by truncating
+the Full Auto registry file. That asserts the classifier can label an
+already-broken state. It does not exercise the composition that failed. The
+2026-07-17 audit §2.3 is explicit that "a dedicated replay must recreate
+thread pressure while a real Full Auto run advances through multiple turns".
+
+`packages/omega-effectd/src/protocol/server.fa07-incident-replay.test.ts`
+now does that. It drives the real framed protocol against a host that models
+Omega's bounded five-slot mutable thread cache **including its eviction
+policy**, and runs two arms over the same engine:
+
+| Arm | Host eviction policy | Meaning | Required outcome | Observed |
+| --- | --- | --- | --- | --- |
+| A | `creation_time` | the 2026-07-17 defect | typed stall | `stalled` / `host_thread_missing` / `stop_only` |
+| B | `last_access_lru` | the `8cb900bbf9` fix | continued autonomy | further continuation dispatched, no stall |
+
+Both arms assert one property — **never silent death** — defined as: the run
+must never remain `running` while nothing was dispatched, nothing failed, and
+no stall cause is set. That conjunction is exactly what the owner experienced
+for six hours. A typed stall passes. Continued autonomy passes. Silence fails.
+
+The replay was then deliberately falsified twice against a regressed engine,
+and watched fail:
+
+| Experiment | Regression | Replay result |
+| --- | --- | --- |
+| 1 | delete the `!evidence.present` typed-stall guard in `server.ts` | Arm A red: `expected 'retrying' to be 'stalled'` — the failure is still budgeted, but the typed cause and the `stop_only` affordance are lost |
+| 2 | additionally swallow host dispatch refusals | Arm A red on `assertNeverSilentDeath` itself, reporting a `running` run with `failedAttempts: 0` and `stallCause: null` |
+
+Both regressions were reverted. The engine tree is unmodified.
+
+### Gate 8 — an escalation path exists on the other host
+
+The row 9 claim below ("green (code) — Dedicated panel only") is **correct for
+the Omega GPUI host and wrong as a general statement**, because the same
+engine is also embedded by OpenAgents Desktop.
+
+- On Omega, the launcher's Start button is the only path that reaches
+  `supervisor.start_run`. The agent panel's Full Auto menu entry dispatches
+  `OpenLauncher` (navigation only), the workroom projection is read-only, and
+  the relay action map fails closed on any action ref outside
+  `full_auto.{pause,resume,stop}`.
+- On OpenAgents Desktop, `apps/openagents-desktop/scripts/full-auto-mcp.ts`
+  exposes `full_auto_start` and `full_auto_run_start` as **MCP tools a
+  language model can call**, with no owner confirmation step. The MCP server
+  reads the loopback bearer from the mode-0600 connection file itself, so the
+  model never needs to hold a credential. This is gated by the
+  `OPENAGENTS_DESKTOP_FULL_AUTO_CONTROL=1` opt-in and by the owner having
+  registered the MCP server — but that combination is the documented dogfood
+  configuration.
+- Separately, the retired composer toggle IPC (`CodexLocalFullAutoSetChannel`)
+  is still registered in the Desktop main process and still exposed through
+  the preload bridge, and main attributes every renderer caller as
+  `actor: "owner_ui"` without proving the call came from the launcher.
+
+Gate 8 must not be recorded green on the strength of the Omega host alone.
+The tracked finding and its disposition belong on omega#26.
+
+The engine-side half of the property is now pinned by
+`packages/omega-effectd/src/protocol/server.fa07-chat-authority.test.ts`,
+which asserts that `apply_control_intent` — the surface every mobile, relay,
+cloud, and model-facing control path funnels into — refuses `start`,
+`create`, `enable`, and casing/whitespace variants, cannot bring a run into
+existence, and does not honour smuggled launcher arguments. Widening that
+allowlist to admit `start` turns the test red.
+
+### Gate 3 — restart
+
+`packages/omega-effectd/src/protocol/server.fa07-restart.test.ts` drives a
+real supervisor restart (a second service and framed server over the same
+data root at a new generation) and asserts the run, its objective and done
+condition, its native workspace binding, and its captured turn history all
+survive with nothing dropped and nothing duplicated, that reconciliation
+resumes afterwards, and that a stale-generation frame cannot mutate the
+restored run.
+
+### Verification run for this pass
+
+- `packages/omega-effectd`: 221 tests across 27 files, green
+- `pnpm typecheck` in that package: clean
+- `pnpm run check` at the repository root: exit 0
+- `pnpm run check:ste:all`: OK
+
+### What this pass did NOT do
+
+- **Gate 2 (owner-real multi-turn unattended run)** — reserved owner act, not
+  performed and not simulated.
+- **Gate 10 (independent assurance on the exact installed candidate)** —
+  requires the designated reviewer identity. The producing lane cannot supply
+  it.
+- Gates 5, 6, and 7 remain source/automated only. No installed-candidate
+  observation was produced, and no candidate was built or installed.
+- The omega-side Rust restart test
+  (`fa07_control_matrix_and_native_join_survive_restart`) was **not** re-run.
+  A full Omega build was not started: another lane held an active `cargo`
+  build on this host and the volume had reached 100% capacity during the
+  session. Recorded as unperformed rather than substituted.
+
+Every gate not driven to green above stays `pending_required_gates`.
+
 ## Result
 
 This packet records the FA-07 proof matrix for Omega Full Auto.
