@@ -66,6 +66,47 @@ import type { Issue31ConfirmedEvent, Issue31NostrClientSnapshot } from "./issue3
 export const ISSUE31_COMMUNITY_EXPERIENCE_ONLY_COPY =
   "This room awards experience points only. v1 pays no money." as const;
 
+/**
+ * What somebody who has never joined is told.
+ *
+ * The room is invitation-only, so the honest first-run state is not an empty
+ * transcript with a join button: it is an explanation of why there is nothing
+ * to see and what would change that. It states the experience-only rule up
+ * front rather than after somebody has done work, because the exit that says
+ * "the room, invitation, and first-run copy say that v1 awards experience only"
+ * is about what a person is told *before* they decide to take part.
+ */
+export const ISSUE31_COMMUNITY_FIRST_RUN_COPY =
+  "This community room is invitation-only. A group admin admits your public key with a signed record before you can read the transcript or take any action here. Nothing about joining is automatic and no relay can admit you. Work completed here is recognised with experience points only. v1 pays no money." as const;
+
+/**
+ * What an admin is told before they admit somebody.
+ *
+ * The person doing the inviting is the person who has to be accurate about what
+ * they are offering, so the promise is stated at the moment of the invitation
+ * rather than only inside the room the invitee has not seen yet.
+ */
+export const ISSUE31_COMMUNITY_INVITATION_COPY =
+  "Admitting a public key publishes a signed group record that lets that developer read this room and take part in community work units. Tell them what they are joining: contributions here are recognised with experience points only, and v1 pays no money." as const;
+
+/** The room's own standing line, shown whether or not anybody has joined. */
+export const ISSUE31_COMMUNITY_ROOM_COPY =
+  "Community history and membership stay separate from the owner-private room. v1 awards experience and pays no money." as const;
+
+/**
+ * Every experience-only statement the room makes, for a copy audit.
+ *
+ * A test asserts against this list rather than against whichever string somebody
+ * remembered to check, so a new surface that forgets the rule is a failing test
+ * rather than an omission nobody notices.
+ */
+export const ISSUE31_COMMUNITY_EXPERIENCE_COPY_SURFACES = [
+  ISSUE31_COMMUNITY_EXPERIENCE_ONLY_COPY,
+  ISSUE31_COMMUNITY_FIRST_RUN_COPY,
+  ISSUE31_COMMUNITY_INVITATION_COPY,
+  ISSUE31_COMMUNITY_ROOM_COPY,
+] as const;
+
 export type Issue31CommunityRole =
   | "owner"
   | "member"
@@ -109,6 +150,92 @@ export type Issue31CommunityControlKind =
  * they are marked and rendered as state rather than as controls.
  */
 export type Issue31CommunitySigner = "operator_device" | "agent_compute";
+
+export interface Issue31CommunityLifecycleAuthority {
+  readonly signer: Issue31CommunitySigner;
+  /** Where the key that signs this action actually lives. */
+  readonly signingKeyHome: "this_phone" | "operator_compute";
+  readonly reason: string;
+}
+
+/**
+ * Where each lifecycle action is signed — a stated boundary, not a shortfall.
+ *
+ * The community lifecycle has two halves, and they are split by which key can
+ * honestly sign them rather than by what was convenient to build:
+ *
+ * - **The operator's own decisions** — joining a conversation, admitting or
+ *   removing a key, appealing a ruling about work they are accountable for.
+ *   These are the human's, signed by the human's key, which this phone holds.
+ * - **An agent's own claims about itself and its work** — that it exists and is
+ *   bound to an operator, that it will do a unit for a stated bound, that here
+ *   is the result, that it checked a peer's result. These are assertions about
+ *   execution that happened on the operator's compute, made by the key that did
+ *   the executing.
+ *
+ * The phone deliberately holds no agent key. Putting one there would mean the
+ * device could assert that work was done without having done it, which is the
+ * one claim in this system that must stay attached to the machine that ran the
+ * work. So the agent-signed half renders as observed state and never as a
+ * button. This is a permanent design boundary of the mobile room, not a gap to
+ * be closed later: every lifecycle action is completable by an authorized role,
+ * and for four of them that role is the operator's agent rather than their
+ * phone.
+ */
+export const ISSUE31_COMMUNITY_LIFECYCLE_AUTHORITY: Readonly<
+  Record<Issue31CommunityControlKind, Issue31CommunityLifecycleAuthority>
+> = {
+  invite_member: {
+    signer: "operator_device",
+    signingKeyHome: "this_phone",
+    reason: "Admitting a key is a group admin's own decision.",
+  },
+  revoke_member: {
+    signer: "operator_device",
+    signingKeyHome: "this_phone",
+    reason: "Removing a key is a group admin's own decision.",
+  },
+  revoke_agent: {
+    signer: "operator_device",
+    signingKeyHome: "this_phone",
+    reason:
+      "Revoking an agent's access is an act against the agent, so it cannot need the agent's cooperation.",
+  },
+  post_message: {
+    signer: "operator_device",
+    signingKeyHome: "this_phone",
+    reason: "A member speaks in the room as themselves.",
+  },
+  file_appeal: {
+    signer: "operator_device",
+    signingKeyHome: "this_phone",
+    reason:
+      "The operator is accountable for the work that was rejected, so the operator appeals it.",
+  },
+  attach_agent: {
+    signer: "agent_compute",
+    signingKeyHome: "operator_compute",
+    reason:
+      "An agent attests to its own existence and its binding to an operator with its own key.",
+  },
+  quote_work_unit: {
+    signer: "agent_compute",
+    signingKeyHome: "operator_compute",
+    reason: "A quote is the agent committing its own compute to a bound.",
+  },
+  submit_result: {
+    signer: "agent_compute",
+    signingKeyHome: "operator_compute",
+    reason:
+      "A result is a claim that this agent did the work, and must be signed by the key that did it.",
+  },
+  verify_result: {
+    signer: "agent_compute",
+    signingKeyHome: "operator_compute",
+    reason:
+      "Verification is independent execution, so the verifying agent signs what it actually ran.",
+  },
+};
 
 export interface Issue31CommunityControl {
   readonly kind: Issue31CommunityControlKind;
@@ -186,7 +313,18 @@ export interface Issue31CommunityVerificationRow {
    * agent keys is self-dealing, and comparing the keys would not see it.
    */
   readonly operatorsAreIndependent: boolean;
-  readonly refusalReason: "self_dealing_operators" | "unknown_operator" | null;
+  /**
+   * Why the independence claim was not admitted.
+   *
+   * `verifier_binding_unconfirmed` means the deciding key named a verifier the
+   * signed record does not support — an unbound key, a burned key, or an agent
+   * the fold binds to a different operator than the decision claimed.
+   */
+  readonly refusalReason:
+    | "self_dealing_operators"
+    | "unknown_operator"
+    | "verifier_binding_unconfirmed"
+    | null;
 }
 
 export interface Issue31CommunityDecisionRow {
@@ -566,19 +704,37 @@ const readArbitrationLane = (
       });
 
       if (verifierAgentPubkey !== null && verifierOperatorRef !== null) {
+        // The decision names who verified. It does not get to *be* the proof of
+        // who verified: the deciding key could otherwise assert any operator it
+        // liked for the verifier and self-dealing would render as independence.
+        // Both sides are re-resolved from the folded record, and a claim the
+        // record does not confirm is refused rather than shown.
+        const recordedVerifierOperator = communityOperatorForAgent(fold, verifierAgentPubkey);
+        const verifierKeyIsBurned = fold.burnedAgentKeys.includes(
+          verifierAgentPubkey.trim().toLowerCase(),
+        );
+        const verifierConfirmed =
+          !verifierKeyIsBurned &&
+          recordedVerifierOperator !== null &&
+          recordedVerifierOperator === verifierOperatorRef.trim().toLowerCase();
         const independent =
-          producerOperatorRef !== null && producerOperatorRef !== verifierOperatorRef;
+          verifierConfirmed &&
+          producerOperatorRef !== null &&
+          producerOperatorRef !== verifierOperatorRef;
         verificationsByResultEventId.set(resultEventId, {
           sourceEventId: event.id,
           verifierPubkey: verifierAgentPubkey,
-          verifierOperatorPubkey: verifierOperatorRef,
+          // Report what the record says, not what the decision claimed.
+          verifierOperatorPubkey: recordedVerifierOperator ?? verifierOperatorRef,
           producerOperatorPubkey: producerOperatorRef,
           operatorsAreIndependent: independent,
           refusalReason: independent
             ? null
-            : producerOperatorRef === null
-              ? "unknown_operator"
-              : "self_dealing_operators",
+            : !verifierConfirmed
+              ? "verifier_binding_unconfirmed"
+              : producerOperatorRef === null
+                ? "unknown_operator"
+                : "self_dealing_operators",
         });
       }
       continue;

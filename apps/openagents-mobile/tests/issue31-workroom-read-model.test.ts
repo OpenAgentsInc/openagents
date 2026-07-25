@@ -464,6 +464,7 @@ describe("Issue31WorkroomReadModel", () => {
       ],
       selectedHostPublicKeyHex: null,
       notice: null,
+      communityHistoryNotice: null,
     });
     await Effect.runPromise(settle);
     let state = await Effect.runPromise(lastState(program));
@@ -516,6 +517,7 @@ describe("Issue31WorkroomReadModel", () => {
       ],
       selectedHostPublicKeyHex: hostPublicKeyHex,
       notice: null,
+      communityHistoryNotice: null,
     });
     program.workroom.changeOwnerDraft("hello from mobile");
     program.workroom.sendOwnerMessage();

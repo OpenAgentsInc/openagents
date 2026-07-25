@@ -51,6 +51,12 @@ import {
   openExpoIssue31LocalPairingRecordStore,
   openExpoIssue31OutboundEventStore,
 } from "./issue31-outbound-event-store.ts";
+import {
+  issue31CommunityConfirmedEventsFrom,
+  issue31MergeCommunityHistory,
+  openExpoIssue31CommunityRecordStore,
+  type Issue31CommunityRecordStore,
+} from "./issue31-community-record-store.ts";
 
 export const OPENAGENTS_ISSUE31_RELAY_URLS = ["wss://nos.lol", "wss://relay.damus.io"] as const;
 
@@ -85,6 +91,14 @@ export interface Issue31MobileNostrControlState {
   readonly hosts: ReadonlyArray<Issue31DiscoveredHost>;
   readonly selectedHostPublicKeyHex: string | null;
   readonly notice: string | null;
+  /**
+   * Why a community record was not written to durable history, if one was not.
+   *
+   * A record the room shows but cannot persist is a record that disappears at
+   * the next launch, and the burn set is carried in exactly those records. So
+   * the failure is surfaced rather than swallowed.
+   */
+  readonly communityHistoryNotice: string | null;
 }
 
 export const initialIssue31MobileNostrControlState = (): Issue31MobileNostrControlState => ({
@@ -93,6 +107,7 @@ export const initialIssue31MobileNostrControlState = (): Issue31MobileNostrContr
   hosts: [],
   selectedHostPublicKeyHex: null,
   notice: "Looking for signed Omega host announcements.",
+  communityHistoryNotice: null,
 });
 
 export interface Issue31MobileNostrRuntime {
@@ -367,11 +382,19 @@ export const openIssue31MobileNostrRuntime = async (
   let outboundStore: ReturnType<typeof openExpoIssue31OutboundEventStore> | null = null;
   let pairingStore: ReturnType<typeof openExpoIssue31LocalPairingRecordStore> | null = null;
   let confirmedStore: ReturnType<typeof openExpoIssue31LocalConfirmedRecordStore> | null = null;
+  let communityStore: Issue31CommunityRecordStore | null = null;
   try {
     identity = await openExpoIssue31DeviceIdentity();
     outboundStore = openExpoIssue31OutboundEventStore();
     pairingStore = openExpoIssue31LocalPairingRecordStore();
     confirmedStore = openExpoIssue31LocalConfirmedRecordStore();
+    // A separate database file, opened only when a group is configured. The
+    // owner-private stores above never learn that this one exists.
+    communityStore =
+      input.community?.groupId == null
+        ? null
+        : openExpoIssue31CommunityRecordStore(input.community.groupId);
+    const openedCommunityStore = communityStore;
     const openedIdentity = identity;
     const openedOutboundStore = outboundStore;
     const openedPairingStore = pairingStore;
@@ -406,6 +429,53 @@ export const openIssue31MobileNostrRuntime = async (
         if (removed !== undefined) localEventIds.delete(removed.canonicalRecordId);
       }
     };
+    // Community history from earlier launches. The per-room replay cursor is
+    // already past these records, so the relay will not serve them again: if
+    // they are not restored from disk the ledger starts empty every launch, and
+    // a re-invitation after a restart re-admits a key an earlier revocation
+    // burned. The fold is order-independent, so restoring them anywhere in the
+    // merged sequence is enough.
+    let communityHistory: ReadonlyArray<Issue31ConfirmedEvent> = [];
+    let communityHistoryNotice: string | null = null;
+    // Unreadable history closes the room rather than opening it without its
+    // revocations. A room folded from an admission stream with the burn set
+    // missing is worse than a room that shows nothing and says why.
+    let communityHistoryReadable = true;
+    if (openedCommunityStore !== null) {
+      try {
+        communityHistory = issue31CommunityConfirmedEventsFrom(openedCommunityStore.load());
+      } catch (error) {
+        communityHistoryReadable = false;
+        communityHistoryNotice = `Stored community history could not be read, so this room stays closed until it can be: ${
+          error instanceof Error ? error.message : "unknown reason"
+        }`;
+      }
+    }
+    const persistedCommunityIds = new Set(communityHistory.map((row) => row.event.id));
+    const persistCommunityEvents = (
+      snapshot: Issue31NostrClientSnapshot,
+    ): void => {
+      if (openedCommunityStore === null) return;
+      for (const row of snapshot.confirmedEvents) {
+        if (row.room !== "community" || persistedCommunityIds.has(row.event.id)) continue;
+        try {
+          openedCommunityStore.put(row.event);
+          persistedCommunityIds.add(row.event.id);
+        } catch (error) {
+          // Never silence. A revocation-preserving bound refuses rather than
+          // discarding a `9001`, and that refusal has to be visible.
+          communityHistoryNotice =
+            error instanceof Error
+              ? `A community record was not persisted: ${error.message}`
+              : "A community record was not persisted.";
+        }
+      }
+    };
+    /** Live community records plus everything restored from durable history. */
+    const communityRecordsForFold = (): ReadonlyArray<Issue31ConfirmedEvent> =>
+      issue31MergeCommunityHistory(client.snapshot(), communityHistory).confirmedEvents.filter(
+        (event) => event.room === "community",
+      );
     const answeredChallenges = new Set(
       localEvents.flatMap((event) =>
         event.privateRecord?.recordType === "pairing_response"
@@ -428,9 +498,10 @@ export const openIssue31MobileNostrRuntime = async (
         : null;
     let closed = false;
     let client: Issue31NostrClient;
-    const communityGroupIds =
-      input.communityGroupIds ??
-      (input.community?.groupId == null ? [] : [input.community.groupId]);
+    const communityGroupIds = !communityHistoryReadable
+      ? []
+      : (input.communityGroupIds ??
+        (input.community?.groupId == null ? [] : [input.community.groupId]));
     const communityAuthors =
       input.communityAuthors ?? input.community?.scorerPubkeys ?? [];
     const persistedRequest = localEvents.findLast(
@@ -484,36 +555,47 @@ export const openIssue31MobileNostrRuntime = async (
       hosts: discoveredHosts,
       selectedHostPublicKeyHex,
       notice,
+      communityHistoryNotice,
     });
     const emitControl = (): void => input.onControlState?.(controlState());
     const augmentedSnapshot = (
-      snapshot: Issue31NostrClientSnapshot,
-    ): Issue31NostrClientSnapshot => ({
-      ...snapshot,
-      confirmedEvents: [
-        ...localEvents,
-        ...snapshot.confirmedEvents.filter((event) => !localEventIds.has(event.canonicalRecordId)),
-      ].filter((event) => {
-        const record = event.privateRecord;
-        if (
-          record?.schema === ISSUE31_OWNER_PROJECTION_SCHEMA &&
-          clearedOwnerProjectionIds.has(event.canonicalRecordId)
-        ) {
-          return false;
-        }
-        return (
-          record === null ||
-          (selectedHostDiscoveryActive &&
-            selectedHostPublicKeyHex !== null &&
-            admittedHostPublicKeys.has(selectedHostPublicKeyHex) &&
-            record.hostPublicKeyHex === selectedHostPublicKeyHex &&
-            record.devicePublicKeyHex === openedIdentity.publicKeyHex)
-        );
-      }),
-    });
+      rawSnapshot: Issue31NostrClientSnapshot,
+    ): Issue31NostrClientSnapshot => {
+      // Persist first, then merge, so a record that arrived this launch is in
+      // durable history before it is ever rendered.
+      persistCommunityEvents(rawSnapshot);
+      const snapshot = issue31MergeCommunityHistory(rawSnapshot, communityHistory);
+      return {
+        ...snapshot,
+        confirmedEvents: [
+          ...localEvents,
+          ...snapshot.confirmedEvents.filter(
+            (event) => !localEventIds.has(event.canonicalRecordId),
+          ),
+        ].filter((event) => {
+          const record = event.privateRecord;
+          if (
+            record?.schema === ISSUE31_OWNER_PROJECTION_SCHEMA &&
+            clearedOwnerProjectionIds.has(event.canonicalRecordId)
+          ) {
+            return false;
+          }
+          return (
+            record === null ||
+            (selectedHostDiscoveryActive &&
+              selectedHostPublicKeyHex !== null &&
+              admittedHostPublicKeys.has(selectedHostPublicKeyHex) &&
+              record.hostPublicKeyHex === selectedHostPublicKeyHex &&
+              record.devicePublicKeyHex === openedIdentity.publicKeyHex)
+          );
+        }),
+      };
+    };
     const emitSnapshot = (snapshot: Issue31NostrClientSnapshot): void => {
+      const priorCommunityNotice = communityHistoryNotice;
       latestSnapshot = augmentedSnapshot(snapshot);
       input.onSnapshot?.(latestSnapshot);
+      if (communityHistoryNotice !== priorCommunityNotice) emitControl();
     };
     const createEnvelope = async (
       record: Issue31PairingRecord | Issue31CommandRecord | Issue31CommandRecordV2,
@@ -937,9 +1019,11 @@ export const openIssue31MobileNostrRuntime = async (
         const fold = foldCommunityLedgerFromEvents({
           groupId,
           adminPubkeys: community.adminPubkeys,
-          events: client
-            .snapshot()
-            .confirmedEvents.filter((event) => event.room === "community")
+          // Durable history included. Folding only this launch's records would
+          // let a restart hand a revoked member their controls back, and would
+          // refuse a genuine member their own room until the relay happened to
+          // re-serve their admission.
+          events: communityRecordsForFold()
             .map((event) => ({
               id: event.event.id,
               pubkey: event.event.pubkey,
@@ -1068,6 +1152,7 @@ export const openIssue31MobileNostrRuntime = async (
         openedOutboundStore.close();
         openedPairingStore.close();
         openedConfirmedStore.close();
+        openedCommunityStore?.close();
         openedIdentity.close();
       },
     };
@@ -1075,6 +1160,7 @@ export const openIssue31MobileNostrRuntime = async (
     outboundStore?.close();
     pairingStore?.close();
     confirmedStore?.close();
+    communityStore?.close();
     identity?.close();
     throw error;
   }

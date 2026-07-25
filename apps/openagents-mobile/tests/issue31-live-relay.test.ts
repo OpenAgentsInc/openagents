@@ -17,11 +17,38 @@
  * a host other than its configured public URL, so this drives the real
  * challenge/response rather than assuming an open relay.
  */
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { openNodeSqliteDatabase } from "@openagentsinc/sqlite-runtime";
 import { LocalKeySigner } from "nostr-effect/identity";
-import { generateSecretKey } from "nostr-effect/pure";
+import { finalizeEvent, generateSecretKey, getPublicKey } from "nostr-effect/pure";
 import { describe, expect, test } from "vite-plus/test";
 
-import type { Issue31WebSocketLike } from "../src/workroom/issue31-nostr-client.ts";
+import {
+  NIP_29_GROUP_CHAT_KIND,
+  NIP_29_PUT_USER_KIND,
+  NIP_29_REMOVE_USER_KIND,
+  NIP_AP_PERSONA_KIND,
+  attachOwnerAttestation,
+} from "@openagentsinc/sarah/community";
+import type { Issue31SignedNostrEvent } from "@openagentsinc/sarah/issue31-nostr";
+
+import {
+  createIssue31NostrClient,
+  type Issue31NostrClientSnapshot,
+  type Issue31RelayCursor,
+  type Issue31RelayCursorStore,
+  type Issue31WebSocketLike,
+} from "../src/workroom/issue31-nostr-client.ts";
+import {
+  createIssue31CommunityRecordStore,
+  issue31CommunityConfirmedEventsFrom,
+  issue31MergeCommunityHistory,
+  type Issue31CommunityDatabase,
+} from "../src/workroom/issue31-community-record-store.ts";
+import { projectIssue31CommunityReadModel } from "../src/workroom/issue31-community-read-model.ts";
 
 const LIVE_RELAY_URL = process.env.MOBILE_LIVE_RELAY_URL?.trim();
 
@@ -161,5 +188,274 @@ describe.skipIf(LIVE_RELAY_URL === undefined || LIVE_RELAY_URL === "")(
         expect(seen).toContain(marker);
       });
     }, 40_000);
+
+    /**
+     * The community restart property, on the deployed relay (omega#48).
+     *
+     * The in-process `startTestRelay` proof of this lives in
+     * `issue31-community-persistence.test.ts`. Both relays are real; this one is
+     * the one the app actually talks to, with NIP-42 in front of it, so the
+     * claim "a revocation survives a restart the relay will not replay" is made
+     * about the deployment rather than only about a relay we start ourselves.
+     *
+     * Still not a phone. The omega#49 exits stand.
+     */
+    test("a revocation survives a restart the deployed relay will not replay", async () => {
+      const url = LIVE_RELAY_URL as string;
+      const group = `oa.omega.issue31.community.${Math.random().toString(16).slice(2, 10)}`;
+      const admin = liveParty();
+      const operator = liveParty();
+      const agent = liveParty();
+      const directory = mkdtempSync(join(tmpdir(), "issue31-live-community-"));
+      const databasePath = join(directory, "community.db");
+      const cursorStore = makeSharedCursorStore();
+      const base = Math.floor(Date.now() / 1_000) - 3_600;
+
+      const attestation = attachOwnerAttestation({
+        agentPubkey: agent.pubkey,
+        operatorSeckeyHex: operator.secretKeyHex,
+      });
+      const admitted = liveSign(admin.secretKey, {
+        kind: NIP_29_PUT_USER_KIND,
+        created_at: base,
+        tags: [["h", group], ["p", operator.pubkey]],
+      });
+      const persona = liveSign(agent.secretKey, {
+        kind: NIP_AP_PERSONA_KIND,
+        created_at: base + 1,
+        tags: [["d", "worker"], ["h", group], [...attestation]],
+      });
+      const revocation = liveSign(admin.secretKey, {
+        kind: NIP_29_REMOVE_USER_KIND,
+        created_at: base + 2,
+        tags: [["h", group], ["p", operator.pubkey]],
+      });
+      // Traffic after the removal, so the replay cursor advances past it.
+      const laterChatter = liveSign(admin.secretKey, {
+        kind: NIP_29_GROUP_CHAT_KIND,
+        created_at: base + 600,
+        tags: [["h", group]],
+        content: "room carries on after the removal",
+      });
+
+      const config = {
+        groupId: group,
+        adminPubkeys: [admin.pubkey],
+        scorerPubkeys: [] as ReadonlyArray<string>,
+        ownerAppealPubkey: null,
+        viewerPubkey: operator.pubkey,
+        nowUnixSeconds: Math.floor(Date.now() / 1_000),
+      };
+
+      try {
+        await publishLive(url, [admitted, persona, revocation, laterChatter]);
+
+        let first: Issue31NostrClientSnapshot | null = null;
+        const firstClient = liveClient(url, cursorStore, group, (next) => {
+          first = next;
+        });
+        const firstStore = createIssue31CommunityRecordStore({
+          database: openLiveDatabase(databasePath),
+          groupId: group,
+        });
+        try {
+          await firstClient.start();
+          await liveWaitFor(() => {
+            const ids = new Set(
+              (((): Issue31NostrClientSnapshot | null => first)()?.confirmedEvents ?? []).map(
+                (row) => row.event.id,
+              ),
+            );
+            return [admitted, persona, revocation, laterChatter].every((event) => ids.has(event.id));
+          }, "the deployed relay to return the four community records");
+          for (const row of (
+            ((): Issue31NostrClientSnapshot | null => first)()?.confirmedEvents ?? []
+          ).filter((row) => row.room === "community")) {
+            firstStore.put(row.event);
+          }
+          const live = projectIssue31CommunityReadModel(
+            ((): Issue31NostrClientSnapshot => first!)(),
+            config,
+          );
+          expect(live.viewerRoleStatus).toBe("revoked");
+        } finally {
+          firstClient.close();
+          firstStore.close();
+        }
+
+        const secondStore = createIssue31CommunityRecordStore({
+          database: openLiveDatabase(databasePath),
+          groupId: group,
+        });
+        const restored = secondStore.load();
+        expect(restored).toHaveLength(4);
+
+        const now = Math.floor(Date.now() / 1_000);
+        const readmitted = liveSign(admin.secretKey, {
+          kind: NIP_29_PUT_USER_KIND,
+          created_at: now,
+          tags: [["h", group], ["p", operator.pubkey]],
+        });
+        const personaAgain = liveSign(agent.secretKey, {
+          kind: NIP_AP_PERSONA_KIND,
+          created_at: now + 1,
+          tags: [["d", "worker"], ["h", group], [...attestation]],
+        });
+        await publishLive(url, [readmitted, personaAgain]);
+
+        let second: Issue31NostrClientSnapshot | null = null;
+        const secondClient = liveClient(url, cursorStore, group, (next) => {
+          second = next;
+        });
+        try {
+          await secondClient.start();
+          await liveWaitFor(() => {
+            const ids = new Set(
+              (((): Issue31NostrClientSnapshot | null => second)()?.confirmedEvents ?? []).map(
+                (row) => row.event.id,
+              ),
+            );
+            return ids.has(readmitted.id) && ids.has(personaAgain.id);
+          }, "the deployed relay to return the re-invitation");
+
+          const fresh = ((): Issue31NostrClientSnapshot => second!)();
+          const freshIds = new Set(fresh.confirmedEvents.map((row) => row.event.id));
+          expect(freshIds.has(revocation.id)).toBe(false);
+
+          // The shipped behaviour before this change, on the deployed relay.
+          const withoutHistory = projectIssue31CommunityReadModel(fresh, config);
+          expect(withoutHistory.viewerRole).toBe("agent_operator");
+
+          const merged = projectIssue31CommunityReadModel(
+            issue31MergeCommunityHistory(fresh, issue31CommunityConfirmedEventsFrom(restored)),
+            config,
+          );
+          expect(merged.agents.map((row) => row.agentPubkey)).not.toContain(agent.pubkey);
+          expect(merged.viewerRole).toBe("member");
+        } finally {
+          secondClient.close();
+          secondStore.close();
+        }
+      } finally {
+        rmSync(directory, { recursive: true, force: true });
+      }
+    }, 120_000);
   },
 );
+
+const liveParty = () => {
+  const secretKey = generateSecretKey();
+  return {
+    secretKey,
+    secretKeyHex: [...secretKey].map((b) => b.toString(16).padStart(2, "0")).join(""),
+    pubkey: getPublicKey(secretKey),
+  };
+};
+
+const liveSign = (
+  secretKey: Uint8Array,
+  input: Readonly<{
+    kind: number;
+    created_at: number;
+    tags: ReadonlyArray<ReadonlyArray<string>>;
+    content?: string;
+  }>,
+): Issue31SignedNostrEvent =>
+  finalizeEvent(
+    {
+      kind: input.kind,
+      created_at: input.created_at,
+      tags: input.tags.map((tag) => [...tag]),
+      content: input.content ?? "",
+    },
+    secretKey,
+  ) as unknown as Issue31SignedNostrEvent;
+
+/** One cursor store across both launches, because the device has one. */
+const makeSharedCursorStore = (): Issue31RelayCursorStore => {
+  const rows = new Map<string, Issue31RelayCursor>();
+  const key = (relayUrl: string, room: string) => `${relayUrl}::${room}`;
+  return {
+    load: async (relayUrl, room) => rows.get(key(relayUrl, room)) ?? null,
+    save: async (relayUrl, room, cursor) => {
+      rows.set(key(relayUrl, room), cursor);
+    },
+  };
+};
+
+const openLiveDatabase = (path: string): Issue31CommunityDatabase => {
+  const database = openNodeSqliteDatabase(path);
+  return {
+    execSync: (sql) => database.exec(sql),
+    runSync: (sql, ...params) => database.run(sql, [...params]),
+    getAllSync: <Row,>(sql: string, ...params: ReadonlyArray<string | number>) =>
+      database.all<Row>(sql, [...params]),
+    closeSync: () => database.close(),
+  };
+};
+
+const liveWaitFor = async (
+  predicate: () => boolean,
+  label: string,
+  timeoutMs = 40_000,
+): Promise<void> => {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(`timed out waiting for ${label}`);
+};
+
+/** Publish through one NIP-42-authenticated socket and wait for each OK. */
+const publishLive = async (
+  url: string,
+  events: ReadonlyArray<Issue31SignedNostrEvent>,
+): Promise<void> => {
+  const publisher = LocalKeySigner.fromPrivateKey(generateSecretKey());
+  await withSocket(url, async (socket, next) => {
+    const challengeFrame = await next();
+    if (challengeFrame[0] !== "AUTH") throw new Error("expected an AUTH challenge");
+    const auth = await publisher.signEvent({
+      kind: 22242,
+      created_at: Math.floor(Date.now() / 1_000),
+      tags: [
+        ["relay", url],
+        ["challenge", challengeFrame[1] as string],
+      ],
+      content: "",
+    });
+    socket.send(JSON.stringify(["AUTH", auth]));
+    const authOk = await next();
+    if (authOk[0] !== "OK" || authOk[2] !== true) {
+      throw new Error(`relay refused AUTH: ${JSON.stringify(authOk)}`);
+    }
+    for (const event of events) {
+      socket.send(JSON.stringify(["EVENT", event]));
+      const ok = await next();
+      if (ok[0] !== "OK" || ok[1] !== event.id || ok[2] !== true) {
+        throw new Error(`relay refused kind ${event.kind}: ${JSON.stringify(ok)}`);
+      }
+    }
+  });
+};
+
+const liveClient = (
+  url: string,
+  cursorStore: Issue31RelayCursorStore,
+  groupId: string,
+  onSnapshot: (snapshot: Issue31NostrClientSnapshot) => void,
+) =>
+  createIssue31NostrClient({
+    relayUrls: [url],
+    signer: LocalKeySigner.fromPrivateKey(generateSecretKey()),
+    webSocket: (class {
+      constructor(socketUrl: string) {
+        return openLiveSocket(socketUrl) as never;
+      }
+    } as unknown) as new (url: string) => Issue31WebSocketLike,
+    admittedHostPublicKeys: [],
+    communityGroupIds: [groupId],
+    cursorStore,
+    onSnapshot,
+  });

@@ -20,10 +20,13 @@ import {
   type Issue31WorkroomRoom,
 } from "../workroom/issue31-workroom-read-model";
 import type { Issue31MobileNostrControlState } from "../workroom/issue31-mobile-nostr-runtime";
-import type {
-  Issue31CommunityControlKind,
-  Issue31CommunityReadModel,
-  Issue31CommunityWorkUnitRow,
+import {
+  ISSUE31_COMMUNITY_FIRST_RUN_COPY,
+  ISSUE31_COMMUNITY_INVITATION_COPY,
+  ISSUE31_COMMUNITY_ROOM_COPY,
+  type Issue31CommunityControlKind,
+  type Issue31CommunityReadModel,
+  type Issue31CommunityWorkUnitRow,
 } from "../workroom/issue31-community-read-model";
 import {
   searchIssue31LocalMemory,
@@ -1108,6 +1111,7 @@ const communityDetail = (
   model: Issue31CommunityReadModel,
   state: Issue31CommunityViewState,
   accessibility: MobileAccessibilityProfile,
+  historyNotice: string | null,
 ): ReadonlyArray<View> => {
   const has = (kind: Issue31CommunityControlKind): boolean =>
     model.controls.some((control) => control.kind === kind);
@@ -1133,6 +1137,19 @@ const communityDetail = (
       variant: "heading",
       color: "textPrimary",
     }),
+    // First run. Somebody who has never been admitted gets the reason there is
+    // nothing here and the experience-only rule before they do anything, rather
+    // than an empty transcript that reads like a bug.
+    ...(model.viewerRole === "none"
+      ? [
+          Text({
+            key: "issue31-community-first-run",
+            content: ISSUE31_COMMUNITY_FIRST_RUN_COPY,
+            variant: "body",
+            color: "textMuted",
+          }),
+        ]
+      : []),
     ...(model.viewerRoleStatus === "revoked"
       ? [
           Text({
@@ -1144,6 +1161,19 @@ const communityDetail = (
           }),
         ]
       : []),
+    // Durable history is what carries the burn set across a restart, so a
+    // record the room could not persist is said out loud rather than quietly
+    // dropped at the next launch.
+    ...(historyNotice === null
+      ? []
+      : [
+          Text({
+            key: "issue31-community-history-notice",
+            content: historyNotice,
+            variant: "caption",
+            color: "warning",
+          }),
+        ]),
     ...(model.status === "gap"
       ? [
           Text({
@@ -1244,6 +1274,18 @@ const communityDetail = (
         )),
     ...(has("invite_member") || has("revoke_member")
       ? [
+          ...(has("invite_member")
+            ? [
+                // The admin is told what they are offering before they offer
+                // it, in the same place they offer it.
+                Text({
+                  key: "issue31-community-invitation-copy",
+                  content: ISSUE31_COMMUNITY_INVITATION_COPY,
+                  variant: "caption",
+                  color: "textMuted",
+                }),
+              ]
+            : []),
           TextField({
             key: "issue31-community-subject",
             value: state.subject,
@@ -1548,7 +1590,7 @@ export const renderMobileIssue31WorkroomView = (
         content:
           selectedRoom === "owner_private"
             ? "Owner-private history, memory, and attention stay separate from community membership and work."
-            : "Community history and membership stay separate from the owner-private room. v1 awards experience and pays no money.",
+            : ISSUE31_COMMUNITY_ROOM_COPY,
         variant: "caption",
         color: "textMuted",
       }),
@@ -1559,7 +1601,12 @@ export const renderMobileIssue31WorkroomView = (
             // owner never opens an unrelated product surface to see the work.
             ...fullAutoSection(fullAuto, model.ownerPrivate.commands, accessibility),
           ]
-        : communityDetail(community, communityState, accessibility)),
+        : communityDetail(
+            community,
+            communityState,
+            accessibility,
+            nostrControl.communityHistoryNotice,
+          )),
       ...rows.map(capabilityCard),
     ],
   );

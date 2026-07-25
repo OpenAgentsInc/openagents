@@ -13,7 +13,7 @@ import type { Issue31OutboundEventStore } from "./issue31-nostr-client.ts";
 
 declare const require: (id: string) => unknown;
 
-interface Issue31SQLiteDatabase {
+export interface Issue31SQLiteDatabase {
   readonly execSync: (sql: string) => void;
   readonly runSync: (sql: string, ...params: ReadonlyArray<string | number>) => unknown;
   readonly getAllSync: <Row>(
@@ -256,16 +256,21 @@ const decodePrivateRecord = (value: unknown): Issue31PrivateRecord => {
   throw new Error("Issue 31 persisted private record schema is unknown.");
 };
 
-export const openExpoIssue31LocalConfirmedRecordStore = (
+/**
+ * The owner-private confirmed-record store over an already-open database.
+ *
+ * Split out from the Expo wrapper so the two rooms' stores can be opened side
+ * by side against real SQLite files in a test and shown to share nothing — the
+ * exit that says owner-private and community history do not mix is not
+ * checkable while one of the two can only be constructed inside Expo.
+ */
+export const createIssue31LocalConfirmedRecordStore = (
+  database: Issue31SQLiteDatabase,
   maximumRecords = 2_048,
 ): Issue31LocalConfirmedRecordStore => {
   if (!Number.isSafeInteger(maximumRecords) || maximumRecords < 64 || maximumRecords > 4_096) {
     throw new Error("Issue 31 confirmed record bound is invalid.");
   }
-  const sqlite = require("expo-sqlite") as Readonly<{
-    openDatabaseSync: (name: string) => Issue31SQLiteDatabase;
-  }>;
-  const database = sqlite.openDatabaseSync("openagents-omega-issue31.db");
   database.execSync(`
     PRAGMA journal_mode = WAL;
     CREATE TABLE IF NOT EXISTS issue31_confirmed_private_records (
@@ -339,4 +344,16 @@ export const openExpoIssue31LocalConfirmedRecordStore = (
     },
     close: () => database.closeSync(),
   };
+};
+
+export const openExpoIssue31LocalConfirmedRecordStore = (
+  maximumRecords = 2_048,
+): Issue31LocalConfirmedRecordStore => {
+  const sqlite = require("expo-sqlite") as Readonly<{
+    openDatabaseSync: (name: string) => Issue31SQLiteDatabase;
+  }>;
+  return createIssue31LocalConfirmedRecordStore(
+    sqlite.openDatabaseSync("openagents-omega-issue31.db"),
+    maximumRecords,
+  );
 };

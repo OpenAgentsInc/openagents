@@ -496,6 +496,106 @@ describe("the work-unit lifecycle is rendered from signed records", () => {
     expect(verification?.refusalReason).toBe("self_dealing_operators");
   });
 
+  test("a decision cannot mint an independent verifier the record does not support", () => {
+    const operator = party();
+    const producerAgent = party();
+    const siblingAgent = party();
+    const stranger = party();
+    const request = workRequest();
+    const resultEvent = result(request.event.id, producerAgent);
+
+    // The deciding key claims the verification was done by the producer's own
+    // sibling agent but labels it with somebody else's operator. Reading the
+    // decision's own tags would render that as independence; the fold binds
+    // that agent to `operator`, so the claim is refused.
+    const model = projectIssue31CommunityReadModel(
+      snapshotOf([
+        putUser(operator.pubkey),
+        personaFor(producerAgent, operator),
+        personaFor(siblingAgent, operator, NOW - 3_900),
+        request,
+        quoteFor(request.event.id, producerAgent),
+        acceptance(request.event.id),
+        resultEvent,
+        decision(request.event.id, resultEvent.event.id, producerAgent.pubkey, "accepted", [
+          ["cw_producer_operator_ref", operator.pubkey],
+          ["cw_verifier_operator_ref", stranger.pubkey],
+          ["cw_verifier_agent_pubkey", siblingAgent.pubkey],
+        ]),
+      ]),
+      configFor(null),
+    );
+    const verification = model.workUnits[0]?.verification;
+    expect(verification?.operatorsAreIndependent).toBe(false);
+    expect(verification?.refusalReason).toBe("verifier_binding_unconfirmed");
+    // The record's answer, not the decision's claim.
+    expect(verification?.verifierOperatorPubkey).toBe(operator.pubkey);
+  });
+
+  test("a verifier whose key a revocation burned does not count as independent", () => {
+    const producerOperator = party();
+    const verifierOperator = party();
+    const producerAgent = party();
+    const verifierAgent = party();
+    const request = workRequest();
+    const resultEvent = result(request.event.id, producerAgent);
+
+    const model = projectIssue31CommunityReadModel(
+      snapshotOf([
+        putUser(producerOperator.pubkey),
+        putUser(verifierOperator.pubkey, NOW - 5_000),
+        personaFor(producerAgent, producerOperator),
+        personaFor(verifierAgent, verifierOperator, NOW - 3_900),
+        // Genuinely a different operator — and then revoked.
+        removeUser(verifierAgent.pubkey, NOW - 3_500),
+        request,
+        quoteFor(request.event.id, producerAgent),
+        acceptance(request.event.id),
+        resultEvent,
+        decision(request.event.id, resultEvent.event.id, producerAgent.pubkey, "accepted", [
+          ["cw_producer_operator_ref", producerOperator.pubkey],
+          ["cw_verifier_operator_ref", verifierOperator.pubkey],
+          ["cw_verifier_agent_pubkey", verifierAgent.pubkey],
+        ]),
+      ]),
+      configFor(null),
+    );
+    const verification = model.workUnits[0]?.verification;
+    expect(verification?.operatorsAreIndependent).toBe(false);
+    expect(verification?.refusalReason).toBe("verifier_binding_unconfirmed");
+  });
+
+  test("an independent verifier the record does confirm still counts", () => {
+    const producerOperator = party();
+    const verifierOperator = party();
+    const producerAgent = party();
+    const verifierAgent = party();
+    const request = workRequest();
+    const resultEvent = result(request.event.id, producerAgent);
+
+    const model = projectIssue31CommunityReadModel(
+      snapshotOf([
+        putUser(producerOperator.pubkey),
+        putUser(verifierOperator.pubkey, NOW - 5_000),
+        personaFor(producerAgent, producerOperator),
+        personaFor(verifierAgent, verifierOperator, NOW - 3_900),
+        request,
+        quoteFor(request.event.id, producerAgent),
+        acceptance(request.event.id),
+        resultEvent,
+        decision(request.event.id, resultEvent.event.id, producerAgent.pubkey, "accepted", [
+          ["cw_producer_operator_ref", producerOperator.pubkey],
+          ["cw_verifier_operator_ref", verifierOperator.pubkey],
+          ["cw_verifier_agent_pubkey", verifierAgent.pubkey],
+        ]),
+      ]),
+      configFor(null),
+    );
+    const verification = model.workUnits[0]?.verification;
+    expect(verification?.operatorsAreIndependent).toBe(true);
+    expect(verification?.refusalReason).toBeNull();
+  });
+
   test("a rejected result carries a typed reason and an appeal destination", () => {
     const provider = party();
     const request = workRequest();
