@@ -25,8 +25,12 @@
 import {
   COMMUNITY_ARBITRATION_FEEDBACK_KIND,
   ARBITRATION_REASON_CLASSES,
+  INDEPENDENT_VERIFICATION_FEEDBACK_TYPE,
+  admitIndependentVerification,
   type ArbitrationOutcome,
   type ArbitrationReasonClass,
+  type CommunityBindingResolver,
+  type IndependentVerificationVerdict,
 } from "@openagentsinc/sarah/community-arbitration";
 import {
   NIP_29_GROUP_CHAT_KIND,
@@ -51,6 +55,9 @@ import {
 } from "@openagentsinc/sarah/lbr-request-quote";
 import {
   XP_AWARD_KIND,
+  XP_BADGE_AWARD_KIND,
+  XP_BADGE_DEFINITION_KIND,
+  XP_BADGE_IDS,
   XP_RANK_KIND,
   earnedBadgeIds,
   parseXpAwardEvent,
@@ -316,15 +323,30 @@ export interface Issue31CommunityVerificationRow {
   /**
    * Why the independence claim was not admitted.
    *
-   * `verifier_binding_unconfirmed` means the deciding key named a verifier the
-   * signed record does not support — an unbound key, a burned key, or an agent
-   * the fold binds to a different operator than the decision claimed.
+   * `verifier_binding_unconfirmed` means the record does not support the
+   * verifier's own claim about who operates it — an unbound key, a burned key,
+   * or an agent the fold binds to a different operator.
+   *
+   * `verification_event_absent` means a decision claimed independence and the
+   * verifier never signed anything. Before contract amendment `SARAH-CW-00-A1`
+   * that was the only state there was, and it rendered as verified.
    */
   readonly refusalReason:
     | "self_dealing_operators"
     | "unknown_operator"
     | "verifier_binding_unconfirmed"
+    | "verification_event_absent"
     | null;
+  /**
+   * What the verifier reported running. `null` only when no verification event
+   * exists, which is also the `verification_event_absent` case.
+   */
+  readonly verdict: IndependentVerificationVerdict | null;
+  /**
+   * True when this row came from an event the verifier signed, rather than
+   * from a decision asserting on the verifier's behalf.
+   */
+  readonly verifierSigned: boolean;
 }
 
 export interface Issue31CommunityDecisionRow {
@@ -390,6 +412,24 @@ export interface Issue31CommunityWorkUnitRow {
   readonly deepLink: string;
 }
 
+export interface Issue31CommunityBadgeRow {
+  readonly badgeId: string;
+  /** Where this badge is attested. */
+  readonly source: "awards_and_wire" | "awards_only" | "wire_only";
+  /** The kind-8 award event, when a publisher signed one. */
+  readonly awardEventId: string | null;
+  /** The kind-30009 definition's issuer, when the definition was retrieved. */
+  readonly issuerPubkey: string | null;
+  /** From the retrieved definition. Publisher-authored, so public-safe copy. */
+  readonly name: string | null;
+  /**
+   * True when the award stream alone supports this badge. `false` with a
+   * present `awardEventId` is the case a reader must not mistake for earned
+   * work.
+   */
+  readonly supportedByAwards: boolean;
+}
+
 export interface Issue31CommunityExperienceModel {
   /** Recomputed from the award stream alone. Never read off a rank event. */
   readonly recomputedTotalPoints: number;
@@ -400,7 +440,23 @@ export interface Issue31CommunityExperienceModel {
   readonly publishedRankPoints: number | null;
   /** Awards win. True when the published rank disagreed and was discarded. */
   readonly publishedRankDisagreed: boolean;
+  /**
+   * Badges the award stream supports. Unchanged: awards are the authority and
+   * awards win, so this stays the derived set.
+   */
   readonly badgeIds: ReadonlyArray<string>;
+  /**
+   * NIP-58 badges as they actually are — read off the wire and reconciled with
+   * the award stream, rather than only derived from it.
+   *
+   * A badge is `awards_and_wire` when both agree, `awards_only` when the award
+   * stream supports it and the publisher has not published the kind-8 award
+   * yet, and `wire_only` when a badge publisher awarded something the award
+   * stream does not support. The last one is shown and labelled rather than
+   * folded into the total, because §9.2 rule 5 says awards win — a badge must
+   * not become a second scoring authority by arriving on a different kind.
+   */
+  readonly badges: ReadonlyArray<Issue31CommunityBadgeRow>;
   readonly awards: ReadonlyArray<
     Readonly<{
       sourceEventId: string | null;
@@ -489,6 +545,7 @@ export const emptyIssue31CommunityReadModel = (
     publishedRankPoints: null,
     publishedRankDisagreed: false,
     badgeIds: [],
+    badges: [],
     awards: [],
   },
   controls: [],
@@ -647,6 +704,32 @@ const readArbitrationLane = (
   const appealsByDecisionEventId = new Map<string, Issue31CommunityAppealRow>();
   const rulingsByAppealEventId = new Map<string, Issue31CommunityRulingRow>();
   const verificationsByResultEventId = new Map<string, Issue31CommunityVerificationRow>();
+  const refusedVerificationsByResultEventId = new Map<
+    string,
+    Issue31CommunityVerificationRow
+  >();
+  const independenceClaimsByResultEventId = new Map<
+    string,
+    {
+      readonly decisionEventId: string;
+      readonly verifierAgentPubkey: string;
+      readonly verifierOperatorRef: string;
+      readonly producerOperatorRef: string | null;
+    }
+  >();
+
+  /**
+   * The folded record, exposed as the two questions the verification law asks.
+   *
+   * A resolver rather than the ledger itself, so the admission code cannot be
+   * talked into reading anything else: an event can supply tags, and tags are
+   * not what answers either of these.
+   */
+  const binding: CommunityBindingResolver = {
+    operatorForAgent: (agentPubkey) => communityOperatorForAgent(fold, agentPubkey),
+    isAgentKeyBurned: (agentPubkey) =>
+      fold.burnedAgentKeys.includes(agentPubkey.trim().toLowerCase()),
+  };
 
   for (const confirmed of events) {
     const event = confirmed.event;
@@ -704,39 +787,58 @@ const readArbitrationLane = (
       });
 
       if (verifierAgentPubkey !== null && verifierOperatorRef !== null) {
-        // The decision names who verified. It does not get to *be* the proof of
-        // who verified: the deciding key could otherwise assert any operator it
-        // liked for the verifier and self-dealing would render as independence.
-        // Both sides are re-resolved from the folded record, and a claim the
-        // record does not confirm is refused rather than shown.
-        const recordedVerifierOperator = communityOperatorForAgent(fold, verifierAgentPubkey);
-        const verifierKeyIsBurned = fold.burnedAgentKeys.includes(
-          verifierAgentPubkey.trim().toLowerCase(),
-        );
-        const verifierConfirmed =
-          !verifierKeyIsBurned &&
-          recordedVerifierOperator !== null &&
-          recordedVerifierOperator === verifierOperatorRef.trim().toLowerCase();
-        const independent =
-          verifierConfirmed &&
-          producerOperatorRef !== null &&
-          producerOperatorRef !== verifierOperatorRef;
-        verificationsByResultEventId.set(resultEventId, {
-          sourceEventId: event.id,
-          verifierPubkey: verifierAgentPubkey,
-          // Report what the record says, not what the decision claimed.
-          verifierOperatorPubkey: recordedVerifierOperator ?? verifierOperatorRef,
-          producerOperatorPubkey: producerOperatorRef,
-          operatorsAreIndependent: independent,
-          refusalReason: independent
-            ? null
-            : !verifierConfirmed
-              ? "verifier_binding_unconfirmed"
-              : producerOperatorRef === null
-                ? "unknown_operator"
-                : "self_dealing_operators",
+        // The decision names who verified. Since contract amendment
+        // `SARAH-CW-00-A1` that is a *claim*, checked against an event the
+        // named verifier signed. It is kept here and resolved after the whole
+        // lane has been read, because the verification event may arrive in any
+        // order relative to the decision citing it.
+        independenceClaimsByResultEventId.set(resultEventId, {
+          decisionEventId: event.id,
+          verifierAgentPubkey,
+          verifierOperatorRef,
+          producerOperatorRef,
         });
       }
+      continue;
+    }
+
+    if (feedbackType === INDEPENDENT_VERIFICATION_FEEDBACK_TYPE) {
+      // Contract §8.4. The verifying agent signs this itself; nothing else in
+      // the lane can produce an admitted verification. Both operators come out
+      // of the fold, never off the event's own tags.
+      const admission = admitIndependentVerification(event, binding);
+      if (!admission.admitted) {
+        if (admission.resultEventId !== null) {
+          refusedVerificationsByResultEventId.set(admission.resultEventId, {
+            sourceEventId: admission.sourceEventId,
+            verifierPubkey: admission.verifierAgentPubkey,
+            verifierOperatorPubkey: null,
+            producerOperatorPubkey: null,
+            operatorsAreIndependent: false,
+            refusalReason:
+              admission.code === "self_dealing_operators"
+                ? "self_dealing_operators"
+                : admission.code === "verifier_key_burned" ||
+                    admission.code === "verifier_binding_unconfirmed" ||
+                    admission.code === "verifier_not_author"
+                  ? "verifier_binding_unconfirmed"
+                  : "unknown_operator",
+            verdict: null,
+            verifierSigned: true,
+          });
+        }
+        continue;
+      }
+      verificationsByResultEventId.set(admission.resultEventId, {
+        sourceEventId: admission.sourceEventId,
+        verifierPubkey: admission.verifierAgentPubkey,
+        verifierOperatorPubkey: admission.verifierOperatorPubkey,
+        producerOperatorPubkey: admission.producerOperatorPubkey,
+        operatorsAreIndependent: true,
+        refusalReason: null,
+        verdict: admission.verdict,
+        verifierSigned: true,
+      });
       continue;
     }
 
@@ -779,7 +881,39 @@ const readArbitrationLane = (
     }
   }
 
-  void fold;
+  // A decision that claimed independence with nothing signed behind it is the
+  // state amendment `SARAH-CW-00-A1` exists to end. It is shown refused rather
+  // than rendered as verified, and rather than dropped: a claim that disappears
+  // is indistinguishable from one that was never made.
+  for (const [resultEventId, claim] of independenceClaimsByResultEventId) {
+    if (verificationsByResultEventId.has(resultEventId)) continue;
+    const refused = refusedVerificationsByResultEventId.get(resultEventId);
+    if (refused !== undefined) {
+      verificationsByResultEventId.set(resultEventId, refused);
+      continue;
+    }
+    verificationsByResultEventId.set(resultEventId, {
+      sourceEventId: claim.decisionEventId,
+      verifierPubkey: claim.verifierAgentPubkey,
+      verifierOperatorPubkey:
+        communityOperatorForAgent(fold, claim.verifierAgentPubkey) ??
+        claim.verifierOperatorRef,
+      producerOperatorPubkey: claim.producerOperatorRef,
+      operatorsAreIndependent: false,
+      refusalReason: "verification_event_absent",
+      verdict: null,
+      verifierSigned: false,
+    });
+  }
+  // A verification the verifier signed stands on its own; it does not need a
+  // decision to have cited it. Refusals with no claim behind them are surfaced
+  // for the same reason.
+  for (const [resultEventId, refused] of refusedVerificationsByResultEventId) {
+    if (!verificationsByResultEventId.has(resultEventId)) {
+      verificationsByResultEventId.set(resultEventId, refused);
+    }
+  }
+
   return {
     decisionsByResultEventId,
     acceptedQuoteRefsByRequestId,
@@ -804,11 +938,58 @@ const experienceModel = (
   let publishedRankDisagreed = false;
   let publishedRank: ReturnType<typeof parseXpRankEvent> = null;
 
+  /**
+   * NIP-58 badge awards read off the wire, keyed by badge id.
+   *
+   * The contract (§4) names badge publisher keys as the only writable authority
+   * for kinds 30009 / 8 / 10008, and the client already stores them
+   * author-scoped to the admitted scorer set, so a member cannot award
+   * themselves a badge. Nothing here reads a badge from an unadmitted key.
+   */
+  const wireBadgeAwards = new Map<
+    string,
+    { readonly awardEventId: string; readonly issuerPubkey: string }
+  >();
+  const wireBadgeNames = new Map<string, string>();
+  const knownBadgeIds = new Set<string>(XP_BADGE_IDS as ReadonlyArray<string>);
+
   for (const confirmed of events) {
     const event = confirmed.event;
     if (event.kind === XP_AWARD_KIND) {
       const award = parseXpAwardEvent(event);
       if (award !== null && award.earnerPubkey === earner) awards.push(award);
+      continue;
+    }
+    if (event.kind === XP_BADGE_DEFINITION_KIND) {
+      if (!scorerPubkeys.includes(event.pubkey)) continue;
+      const badgeId = tagValue(event.tags, "d");
+      const name = tagValue(event.tags, "name");
+      if (badgeId !== undefined && name !== undefined && knownBadgeIds.has(badgeId)) {
+        wireBadgeNames.set(badgeId, name);
+      }
+      continue;
+    }
+    if (event.kind === XP_BADGE_AWARD_KIND) {
+      // A badge award names its earner with `p` and its definition with the
+      // NIP-33 `a` coordinate `30009:<issuer>:<badge id>`. The issuer inside
+      // that coordinate must be the same key that signed the award, or a
+      // publisher could award another publisher's badge.
+      if (!scorerPubkeys.includes(event.pubkey)) continue;
+      const earnerTag = event.tags.find((tag) => tag[0] === "p")?.[1];
+      if (earnerTag !== earner) continue;
+      const address = tagValue(event.tags, "a");
+      if (address === undefined) continue;
+      const parts = address.split(":");
+      if (parts.length !== 3) continue;
+      const [addressKind, issuerPubkey, badgeId] = parts as [string, string, string];
+      if (
+        addressKind !== String(XP_BADGE_DEFINITION_KIND) ||
+        issuerPubkey !== event.pubkey ||
+        !knownBadgeIds.has(badgeId)
+      ) {
+        continue;
+      }
+      wireBadgeAwards.set(badgeId, { awardEventId: event.id, issuerPubkey });
       continue;
     }
     if (event.kind === XP_RANK_KIND) {
@@ -831,6 +1012,34 @@ const experienceModel = (
     publishedRankDisagreed = !rankAgreesWithAwards(publishedRank, awards, scorerPubkeys);
   }
 
+  // Badges: derived and published, reconciled rather than one replacing the
+  // other. The derived set stays the authority for `badgeIds`; the wire adds
+  // the event ids and definition names that make them renderable, and shows a
+  // published badge the award stream does not support as exactly that.
+  const derivedBadgeIds = new Set<string>(
+    earnedBadgeIds(awards, { earnerPubkey: earner, scorerPubkeys }),
+  );
+  const badges: Issue31CommunityBadgeRow[] = [];
+  for (const badgeId of [
+    ...derivedBadgeIds,
+    ...[...wireBadgeAwards.keys()].filter((id) => !derivedBadgeIds.has(id)),
+  ]) {
+    const wire = wireBadgeAwards.get(badgeId) ?? null;
+    const supportedByAwards = derivedBadgeIds.has(badgeId);
+    badges.push({
+      badgeId,
+      source: supportedByAwards
+        ? wire === null
+          ? "awards_only"
+          : "awards_and_wire"
+        : "wire_only",
+      awardEventId: wire?.awardEventId ?? null,
+      issuerPubkey: wire?.issuerPubkey ?? null,
+      name: wireBadgeNames.get(badgeId) ?? null,
+      supportedByAwards,
+    });
+  }
+
   return {
     recomputedTotalPoints: recomputed.totalPoints,
     recomputedLevel: recomputed.level,
@@ -838,7 +1047,8 @@ const experienceModel = (
     awardCount: recomputed.awardCount,
     publishedRankPoints,
     publishedRankDisagreed,
-    badgeIds: [...earnedBadgeIds(awards, { earnerPubkey: earner, scorerPubkeys })],
+    badgeIds: [...derivedBadgeIds],
+    badges,
     awards: awards.map((award) => ({
       sourceEventId: award.awardEventId ?? null,
       awardKind: award.awardKind,
@@ -963,7 +1173,14 @@ const lifecycleFor = (input: {
   if (input.ruling !== null) return "ruled";
   if (input.appeal !== null) return "disputed";
   if (input.decision !== null) return "decided";
-  if (input.verification !== null) return "verified";
+  // Only an admitted verification moves the unit. A refused one — a decision
+  // that claimed independence with nothing signed behind it, or a verifier the
+  // record does not confirm — leaves the unit `delivered` and shows why. The
+  // previous shape treated any verification row as proof and would have
+  // rendered `verified` for a claim nobody signed.
+  if (input.verification !== null && input.verification.operatorsAreIndependent) {
+    return "verified";
+  }
   if (input.result !== null) return "delivered";
   // Expiry is checked after the terminal states: a unit that was decided before
   // its grant lapsed did not "expire", and showing it that way would erase the

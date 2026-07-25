@@ -49,6 +49,10 @@ export const COMMUNITY_FEEDBACK_TYPES = [
   "arbitration_decision",
   "dispute_appeal",
   "owner_ruling",
+  // Contract amendment SARAH-CW-00-A1 (§8.4): the verifier signs its own
+  // verification. See ./verification.ts for why this is a fourth value in an
+  // existing discriminator rather than a new carrier.
+  "independent_verification",
 ] as const;
 export type CommunityFeedbackType = (typeof COMMUNITY_FEEDBACK_TYPES)[number];
 

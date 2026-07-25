@@ -13,3 +13,4 @@ export * from "./types.ts";
 export * from "./rules.ts";
 export * from "./templates.ts";
 export * from "./identity.ts";
+export * from "./verification.ts";

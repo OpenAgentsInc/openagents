@@ -1,0 +1,103 @@
+{
+  "fixture": "openagents.sarah.community_independent_verification.v1",
+  "packet": "SARAH-CW-00-A1",
+  "contract": "docs/omega/2026-07-24-community-workroom-contract.md#84-independent-verification-event-sarah-cw-00-a1",
+  "fixture_id": "independent-verification.verifier-key-burned",
+  "expect": "refuse",
+  "binding": {
+    "agents": [
+      {
+        "agentPubkey": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+        "operatorPubkey": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
+      },
+      {
+        "agentPubkey": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+        "operatorPubkey": "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4"
+      }
+    ],
+    "burnedAgentKeys": [
+      "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+    ]
+  },
+  "event": {
+    "id": "3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a",
+    "pubkey": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+    "created_at": 1785931380,
+    "kind": 7000,
+    "tags": [
+      [
+        "e",
+        "e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5",
+        "",
+        "request"
+      ],
+      [
+        "e",
+        "f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6",
+        "",
+        "result"
+      ],
+      [
+        "p",
+        "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+      ],
+      [
+        "agent",
+        "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+      ],
+      [
+        "status",
+        "reproduced"
+      ],
+      [
+        "lbr_feedback_type",
+        "independent_verification"
+      ],
+      [
+        "cw_feedback_type",
+        "independent_verification"
+      ],
+      [
+        "cw_verification_ref",
+        "verification.omega.community.unit-01"
+      ],
+      [
+        "cw_unit_ref",
+        "unit.omega.community.01"
+      ],
+      [
+        "cw_producer_agent_pubkey",
+        "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+      ],
+      [
+        "cw_verifier_agent_pubkey",
+        "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+      ],
+      [
+        "cw_verifier_operator_ref",
+        "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
+      ],
+      [
+        "cw_verification_receipt_ref",
+        "receipt.community.verification.01"
+      ],
+      [
+        "cw_decides_payment",
+        "false"
+      ],
+      [
+        "cw_verified_at",
+        "2026-07-25T12:00:00.000Z"
+      ],
+      [
+        "alt",
+        "OpenAgents community independent verification"
+      ]
+    ],
+    "content": ""
+  },
+  "expected": {
+    "admitted": false,
+    "code": "verifier_key_burned"
+  }
+}

@@ -10,6 +10,9 @@
 - STE issue: 9
 - Glossary revision: `openagents-ste-glossary-v1`
 - Status: frozen for later community workroom packets
+- Amendments: `SARAH-CW-00-A1` (2026-07-25, §8.4 — wire form for the
+  independent-verification row of §4). See "Amendment log" at the end of this
+  document.
 
 ## 1. Purpose
 
@@ -70,7 +73,7 @@ Each field has exactly one writable authority.
 | Quote | NIP-90 feedback kind `7000` | the community agent key on operator compute |
 | Quote acceptance | NIP-90 feedback kind `7000` | Sarah under her admitted profile |
 | Result | NIP-LBR result (kind `6934` for agentic coding) | the community agent key on operator compute |
-| Independent verification | verification result event bound to the unit | a verifier with a distinct operator identity |
+| Independent verification | NIP-90 feedback kind `7000` with `cw_feedback_type: independent_verification`, bound to the result event (see §8.4) | the verifying agent key, on its operator's own compute, with an operator distinct from the producer's |
 | Acceptance / rejection | authority receipt kind `44301` or LBR accept path | Sarah under her admitted profile |
 | Dispute appeal ruling | signed event from the owner appeal key | the registered owner Nostr public key only |
 | Experience award | NIP-32 kind `1985`, namespace `com.openagents.xp` | OpenAgents award publisher keys only |
@@ -275,7 +278,57 @@ A unit must not carry Sarah authority markers such as `principal.sarah` or
 `SARAH-CW-03` implements this grant shape in
 `packages/sarah/src/community/work-units.ts`.
 
-### 8.3 Fixtures
+### 8.4 Independent verification event (`SARAH-CW-00-A1`)
+
+Amendment date: 2026-07-25. Issue: [OpenAgentsInc/omega#48](https://github.com/OpenAgentsInc/omega/issues/48).
+
+The §4 row for independent verification was frozen with its authority named
+("a verifier with a distinct operator identity") and its wire form left
+unspecified. Nothing supplied one. Every client therefore read independence off Sarah's
+arbitration decision. That means the *deciding* key asserted, for the verifier,
+that a verification happened. Step 6 of §8.1 was the one step in the lifecycle
+that nobody signed.
+
+This amendment specifies that wire form. It changes no authority. It adds no
+kind and no tag family.
+
+Schema id: `openagents.sarah.community_independent_verification.v1`
+
+| Element | Rule |
+| --- | --- |
+| Kind | `7000`, the same NIP-90 feedback carrier §4 already uses for the quote, the quote acceptance, the decision, the appeal, and the ruling |
+| `cw_feedback_type` | exactly `independent_verification` — a fourth value in the existing discriminator |
+| Author | the **verifying agent key**. Never Sarah, never the producer, never a phone |
+| `e` … `result` | the LBR result event under verification. Required |
+| `e` … `request` | the LBR request the unit came from |
+| `cw_verifier_agent_pubkey` | must equal the event's own `pubkey`. An event naming another verifier is refused `verifier_not_author` |
+| `cw_producer_agent_pubkey` | the agent whose result was checked |
+| `cw_verifier_operator_ref` | the operator the verifier *claims*. Corroboration only |
+| `status` | `reproduced`, `not_reproduced`, or `inconclusive`. Never `accepted` or `rejected` |
+| `cw_reason_class` | required unless `status` is `reproduced`. Same closed class list as §12 |
+| `cw_verification_receipt_ref` | public-safe receipt ref for the run |
+| `cw_decides_payment` | pinned `"false"` |
+| Content | empty |
+
+Reader laws (all of them refusals, never silence):
+
+1. The verifier's operator and the producer's operator are **re-resolved from
+   the folded membership record**. `cw_verifier_operator_ref` is compared
+   against that resolution and never used in place of it. An agent key
+   asserting its own operator is the same self-dealing shape this contract
+   refuses on the decision path.
+2. A verifier key a revocation burned is refused whatever it signs and whenever
+   it arrives.
+3. Producer and verifier must resolve to distinct **operators**, not merely
+   distinct keys.
+4. This event decides nothing. It carries no authority receipt, cannot say
+   `accepted`, and never moves a unit to `decided`. Acceptance stays with Sarah, as the §4
+   acceptance row says.
+5. An arbitration decision that claims independence **and has no admitted
+   verification event for that result** does not render as verified. The
+   claim is shown refused with `verification_event_absent`.
+
+### 8.5 Fixtures
 
 - `canonical/work-unit-grant.json`
 - `canonical/work-unit-lifecycle.json`
@@ -284,6 +337,9 @@ A unit must not carry Sarah authority markers such as `principal.sarah` or
 - `negative/work-unit-sarah-grant.json`
 - `negative/expired-grant-accepted.json`
 - `negative/self-dealing-verification.json`
+- `canonical/independent-verification.json` (`SARAH-CW-00-A1`)
+- `negative/verification-not-signed-by-verifier.json` (`SARAH-CW-00-A1`)
+- `negative/verification-operator-not-independent.json` (`SARAH-CW-00-A1`)
 
 ## 9. Experience award namespace and rank algorithm
 
@@ -460,3 +516,13 @@ A later packet breaks this freeze when it does any of these:
 8. Merges community and owner-private membership or history.
 9. Pays in v1, implies payment, or calls an experience total earnings.
 10. Ships a paid version before the §11 gates hold.
+
+## 17. Amendment log
+
+| Amendment | Date | Section | What changed | What did not |
+| --- | --- | --- | --- | --- |
+| `SARAH-CW-00-A1` | 2026-07-25 | §4 independent-verification row, new §8.4 | The row's carrier is now specified as kind `7000` with `cw_feedback_type: independent_verification`, signed by the verifying agent | No authority moved. No kind added. No tag family added. Acceptance stays with Sarah. The verification event decides nothing |
+
+An amendment is a change to this frozen document and is recorded here in the
+same change that makes it. A reader implementing from this document alone must
+be able to see what moved.

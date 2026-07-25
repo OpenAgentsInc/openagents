@@ -25,7 +25,13 @@ import {
   LBR_AGENTIC_CODING_RESULT_KIND,
 } from "@openagentsinc/sarah/lbr-request-quote";
 import { COMMUNITY_ARBITRATION_FEEDBACK_KIND } from "@openagentsinc/sarah/community-arbitration";
-import { buildXpAwardTemplate, XP_RANK_KIND, XP_NAMESPACE } from "@openagentsinc/sarah/xp";
+import {
+  buildXpAwardTemplate,
+  buildXpBadgeAwardTemplate,
+  buildXpBadgeDefinitionTemplate,
+  XP_RANK_KIND,
+  XP_NAMESPACE,
+} from "@openagentsinc/sarah/xp";
 
 import type {
   Issue31ConfirmedEvent,
@@ -214,6 +220,50 @@ const result = (requestEventId: string, provider: ReturnType<typeof party>, summ
     tags: [["h", GROUP], ["e", requestEventId, "", "request"]],
     content: summary,
   });
+
+/**
+ * A verification the verifying agent signs itself (contract §8.4, amendment
+ * `SARAH-CW-00-A1`).
+ *
+ * Signed by `verifier`, not by Sarah and not by the producer. That is the whole
+ * amendment: before it, the deciding key asserted on the verifier's behalf that
+ * a verification had happened, and nothing in the room could tell that apart
+ * from the verifier having said so.
+ */
+const verification = (
+  requestEventId: string,
+  resultEventId: string,
+  producerAgent: ReturnType<typeof party>,
+  verifier: ReturnType<typeof party>,
+  verifierOperator: ReturnType<typeof party>,
+  overrides: ReadonlyArray<ReadonlyArray<string>> = [],
+) => {
+  const base: string[][] = [
+    ["h", GROUP],
+    ["e", requestEventId, "", "request"],
+    ["e", resultEventId, "", "result"],
+    ["p", producerAgent.pubkey],
+    ["agent", verifier.pubkey],
+    ["status", "reproduced"],
+    ["cw_feedback_type", "independent_verification"],
+    ["cw_unit_ref", "unit.community.demo"],
+    ["cw_verification_ref", "verification.community.demo"],
+    ["cw_producer_agent_pubkey", producerAgent.pubkey],
+    ["cw_verifier_agent_pubkey", verifier.pubkey],
+    ["cw_verifier_operator_ref", verifierOperator.pubkey],
+    ["cw_verification_receipt_ref", "receipt.community.verification"],
+    ["cw_decides_payment", "false"],
+  ];
+  const tags = base.map((tag) => {
+    const override = overrides.find((candidate) => candidate[0] === tag[0]);
+    return override === undefined ? tag : [...override];
+  });
+  return sign(verifier.secretKey, {
+    kind: COMMUNITY_ARBITRATION_FEEDBACK_KIND,
+    created_at: NOW - 1_600,
+    tags,
+  });
+};
 
 const decision = (
   requestEventId: string,
@@ -491,9 +541,13 @@ describe("the work-unit lifecycle is rendered from signed records", () => {
       ]),
       configFor(null),
     );
-    const verification = model.workUnits[0]?.verification;
-    expect(verification?.operatorsAreIndependent).toBe(false);
-    expect(verification?.refusalReason).toBe("self_dealing_operators");
+    const verified = model.workUnits[0]?.verification;
+    expect(verified?.operatorsAreIndependent).toBe(false);
+    // Since `SARAH-CW-00-A1` the decision's independence block is a claim, and
+    // the first thing missing here is the verifier's signature. The outcome is
+    // unchanged and the reason is now the honest one.
+    expect(verified?.refusalReason).toBe("verification_event_absent");
+    expect(verified?.verifierSigned).toBe(false);
   });
 
   test("a decision cannot mint an independent verifier the record does not support", () => {
@@ -525,11 +579,11 @@ describe("the work-unit lifecycle is rendered from signed records", () => {
       ]),
       configFor(null),
     );
-    const verification = model.workUnits[0]?.verification;
-    expect(verification?.operatorsAreIndependent).toBe(false);
-    expect(verification?.refusalReason).toBe("verifier_binding_unconfirmed");
+    const verified = model.workUnits[0]?.verification;
+    expect(verified?.operatorsAreIndependent).toBe(false);
+    expect(verified?.refusalReason).toBe("verification_event_absent");
     // The record's answer, not the decision's claim.
-    expect(verification?.verifierOperatorPubkey).toBe(operator.pubkey);
+    expect(verified?.verifierOperatorPubkey).toBe(operator.pubkey);
   });
 
   test("a verifier whose key a revocation burned does not count as independent", () => {
@@ -560,40 +614,199 @@ describe("the work-unit lifecycle is rendered from signed records", () => {
       ]),
       configFor(null),
     );
-    const verification = model.workUnits[0]?.verification;
-    expect(verification?.operatorsAreIndependent).toBe(false);
-    expect(verification?.refusalReason).toBe("verifier_binding_unconfirmed");
+    const verified = model.workUnits[0]?.verification;
+    expect(verified?.operatorsAreIndependent).toBe(false);
+    expect(verified?.refusalReason).toBe("verification_event_absent");
   });
 
-  test("an independent verifier the record does confirm still counts", () => {
+  const independentParties = () => {
     const producerOperator = party();
     const verifierOperator = party();
     const producerAgent = party();
     const verifierAgent = party();
     const request = workRequest();
-    const resultEvent = result(request.event.id, producerAgent);
-
-    const model = projectIssue31CommunityReadModel(
-      snapshotOf([
+    return {
+      producerOperator,
+      verifierOperator,
+      producerAgent,
+      verifierAgent,
+      request,
+      resultEvent: result(request.event.id, producerAgent),
+      admitted: [
         putUser(producerOperator.pubkey),
         putUser(verifierOperator.pubkey, NOW - 5_000),
         personaFor(producerAgent, producerOperator),
         personaFor(verifierAgent, verifierOperator, NOW - 3_900),
+      ],
+    };
+  };
+
+  /**
+   * The gap `SARAH-CW-00-A1` closes. Everything about this scenario is
+   * genuinely independent — two operators, two keys, both bound by signed
+   * records — and it still does not render as verified, because nobody signed
+   * "I ran this". Before the amendment this case was indistinguishable from a
+   * verification that actually happened.
+   */
+  test("a decision claiming independence with no verifier signature is refused", () => {
+    const scenario = independentParties();
+    const model = projectIssue31CommunityReadModel(
+      snapshotOf([
+        ...scenario.admitted,
+        scenario.request,
+        quoteFor(scenario.request.event.id, scenario.producerAgent),
+        acceptance(scenario.request.event.id),
+        scenario.resultEvent,
+        decision(
+          scenario.request.event.id,
+          scenario.resultEvent.event.id,
+          scenario.producerAgent.pubkey,
+          "accepted",
+          [
+            ["cw_producer_operator_ref", scenario.producerOperator.pubkey],
+            ["cw_verifier_operator_ref", scenario.verifierOperator.pubkey],
+            ["cw_verifier_agent_pubkey", scenario.verifierAgent.pubkey],
+          ],
+        ),
+      ]),
+      configFor(null),
+    );
+    const verified = model.workUnits[0]?.verification;
+    expect(verified?.operatorsAreIndependent).toBe(false);
+    expect(verified?.refusalReason).toBe("verification_event_absent");
+    expect(verified?.verifierSigned).toBe(false);
+    expect(model.workUnits[0]?.lifecycle).not.toBe("verified");
+  });
+
+  test("a verification the verifier signed itself counts, and says what it ran", () => {
+    const scenario = independentParties();
+    const model = projectIssue31CommunityReadModel(
+      snapshotOf([
+        ...scenario.admitted,
+        scenario.request,
+        quoteFor(scenario.request.event.id, scenario.producerAgent),
+        acceptance(scenario.request.event.id),
+        scenario.resultEvent,
+        verification(
+          scenario.request.event.id,
+          scenario.resultEvent.event.id,
+          scenario.producerAgent,
+          scenario.verifierAgent,
+          scenario.verifierOperator,
+        ),
+      ]),
+      configFor(null),
+    );
+    const verified = model.workUnits[0]?.verification;
+    expect(verified?.operatorsAreIndependent).toBe(true);
+    expect(verified?.refusalReason).toBeNull();
+    expect(verified?.verifierSigned).toBe(true);
+    expect(verified?.verdict).toBe("reproduced");
+    expect(verified?.verifierOperatorPubkey).toBe(scenario.verifierOperator.pubkey);
+    expect(verified?.producerOperatorPubkey).toBe(scenario.producerOperator.pubkey);
+  });
+
+  /**
+   * The self-dealing law, on the new carrier. The verifier signs, but it names
+   * an operator the record does not bind it to — an agent key asserting its own
+   * operator. Believing that tag would rebuild the exact hole the decision path
+   * had.
+   */
+  test("a verifier signing a claim about its own operator is refused", () => {
+    const scenario = independentParties();
+    const stranger = party();
+    const model = projectIssue31CommunityReadModel(
+      snapshotOf([
+        ...scenario.admitted,
+        scenario.request,
+        quoteFor(scenario.request.event.id, scenario.producerAgent),
+        acceptance(scenario.request.event.id),
+        scenario.resultEvent,
+        verification(
+          scenario.request.event.id,
+          scenario.resultEvent.event.id,
+          scenario.producerAgent,
+          scenario.verifierAgent,
+          scenario.verifierOperator,
+          [["cw_verifier_operator_ref", stranger.pubkey]],
+        ),
+      ]),
+      configFor(null),
+    );
+    const verified = model.workUnits[0]?.verification;
+    expect(verified?.operatorsAreIndependent).toBe(false);
+    expect(verified?.refusalReason).toBe("verifier_binding_unconfirmed");
+    expect(model.workUnits[0]?.lifecycle).not.toBe("verified");
+  });
+
+  /**
+   * Two keys, one operator, and the verifier signed it in its own hand. A
+   * signature is not independence.
+   */
+  test("a signed verification by a sibling of the producer is still self-dealing", () => {
+    const operator = party();
+    const producerAgent = party();
+    const siblingAgent = party();
+    const request = workRequest();
+    const resultEvent = result(request.event.id, producerAgent);
+    const model = projectIssue31CommunityReadModel(
+      snapshotOf([
+        putUser(operator.pubkey),
+        personaFor(producerAgent, operator),
+        personaFor(siblingAgent, operator, NOW - 3_900),
         request,
         quoteFor(request.event.id, producerAgent),
         acceptance(request.event.id),
         resultEvent,
-        decision(request.event.id, resultEvent.event.id, producerAgent.pubkey, "accepted", [
-          ["cw_producer_operator_ref", producerOperator.pubkey],
-          ["cw_verifier_operator_ref", verifierOperator.pubkey],
-          ["cw_verifier_agent_pubkey", verifierAgent.pubkey],
-        ]),
+        verification(
+          request.event.id,
+          resultEvent.event.id,
+          producerAgent,
+          siblingAgent,
+          operator,
+        ),
       ]),
       configFor(null),
     );
-    const verification = model.workUnits[0]?.verification;
-    expect(verification?.operatorsAreIndependent).toBe(true);
-    expect(verification?.refusalReason).toBeNull();
+    const verified = model.workUnits[0]?.verification;
+    expect(verified?.operatorsAreIndependent).toBe(false);
+    expect(verified?.refusalReason).toBe("self_dealing_operators");
+  });
+
+  /**
+   * Revocation binds the subject whatever it signs.
+   *
+   * What refuses this at *this* layer is the fold: `burnAgentKey` deletes the
+   * agent index entry, so a revoked key has no operator and the verification is
+   * `verifier_binding_unconfirmed`. Falsified by making the resolver answer with
+   * the key itself — the burn check in `admitIndependentVerification` is
+   * defence in depth for a caller that supplies a burn beside a live binding,
+   * and it is falsified directly at that layer in
+   * `packages/sarah/src/community-arbitration/verification.test.ts`.
+   */
+  test("a signed verification from a revoked verifier key is refused", () => {
+    const scenario = independentParties();
+    const model = projectIssue31CommunityReadModel(
+      snapshotOf([
+        ...scenario.admitted,
+        removeUser(scenario.verifierAgent.pubkey, NOW - 3_500),
+        scenario.request,
+        quoteFor(scenario.request.event.id, scenario.producerAgent),
+        acceptance(scenario.request.event.id),
+        scenario.resultEvent,
+        verification(
+          scenario.request.event.id,
+          scenario.resultEvent.event.id,
+          scenario.producerAgent,
+          scenario.verifierAgent,
+          scenario.verifierOperator,
+        ),
+      ]),
+      configFor(null),
+    );
+    const verified = model.workUnits[0]?.verification;
+    expect(verified?.operatorsAreIndependent).toBe(false);
+    expect(verified?.refusalReason).toBe("verifier_binding_unconfirmed");
   });
 
   test("a rejected result carries a typed reason and an appeal destination", () => {
@@ -728,6 +941,145 @@ describe("awards recompute the total, and awards win", () => {
       content: built.template.content,
     });
   };
+
+  const badgeDefinition = (issuer: ReturnType<typeof party>, badgeId: string, at: number) => {
+    const built = buildXpBadgeDefinitionTemplate({ badgeId: badgeId as never, createdAt: at });
+    return sign(issuer.secretKey, {
+      kind: built.kind,
+      created_at: at,
+      tags: built.tags,
+      content: built.content,
+    });
+  };
+
+  const badgeAward = (
+    issuer: ReturnType<typeof party>,
+    badgeId: string,
+    earner: string,
+    at: number,
+  ) => {
+    const built = buildXpBadgeAwardTemplate({
+      badgeId: badgeId as never,
+      issuerPubkey: issuer.pubkey,
+      earnerPubkey: earner,
+      createdAt: at,
+    });
+    return sign(issuer.secretKey, {
+      kind: built.kind,
+      created_at: at,
+      tags: built.tags,
+      content: built.content,
+    });
+  };
+
+  /**
+   * omega#48 named this gap: badges were derived from the award stream and the
+   * NIP-58 events, though subscribed and stored, were never projected. A badge
+   * a publisher actually signed did not exist as far as the room was concerned.
+   */
+  test("a NIP-58 badge award is read off the wire, with its definition name", () => {
+    const earner = party();
+    const request = workRequest();
+    const model = projectIssue31CommunityReadModel(
+      snapshotOf([
+        request,
+        awardEvent(earner.pubkey, request.event.id, NOW - 800),
+        badgeDefinition(SCORER, "first-accepted-unit", NOW - 790),
+        badgeAward(SCORER, "first-accepted-unit", earner.pubkey, NOW - 780),
+      ]),
+      configFor(earner.pubkey),
+    );
+    const badge = model.experience.badges.find(
+      (row) => row.badgeId === "first-accepted-unit",
+    );
+    expect(badge?.source).toBe("awards_and_wire");
+    expect(badge?.awardEventId).not.toBeNull();
+    expect(badge?.issuerPubkey).toBe(SCORER.pubkey);
+    expect(badge?.name).toBe("First accepted unit");
+    expect(badge?.supportedByAwards).toBe(true);
+  });
+
+  /**
+   * Awards win (§9.2 rule 5). A published badge the award stream does not
+   * support is rendered — it is a real signed record — but marked, and it never
+   * joins the derived set. A badge that could silently join `badgeIds` would be
+   * a second scoring authority arriving on a different kind.
+   */
+  test("a published badge the awards do not support is shown as wire-only", () => {
+    const earner = party();
+    const model = projectIssue31CommunityReadModel(
+      snapshotOf([
+        badgeDefinition(SCORER, "level-5", NOW - 790),
+        badgeAward(SCORER, "level-5", earner.pubkey, NOW - 780),
+      ]),
+      configFor(earner.pubkey),
+    );
+    const badge = model.experience.badges.find((row) => row.badgeId === "level-5");
+    expect(badge?.source).toBe("wire_only");
+    expect(badge?.supportedByAwards).toBe(false);
+    expect(model.experience.badgeIds).not.toContain("level-5");
+  });
+
+  /** A badge award from a key that is not an admitted publisher is not read. */
+  test("a badge a member awarded themselves is not read at all", () => {
+    const earner = party();
+    const model = projectIssue31CommunityReadModel(
+      snapshotOf([
+        badgeDefinition(SCORER, "level-5", NOW - 790),
+        badgeAward(earner, "level-5", earner.pubkey, NOW - 780),
+      ]),
+      configFor(earner.pubkey),
+    );
+    expect(model.experience.badges).toHaveLength(0);
+  });
+
+  /**
+   * The `a` coordinate names the issuer. A publisher awarding *another*
+   * publisher's badge definition would otherwise be indistinguishable from the
+   * definition's own issuer awarding it.
+   */
+  test("a badge award naming another issuer's definition is not read", () => {
+    const earner = party();
+    const otherIssuer = party();
+    const built = buildXpBadgeAwardTemplate({
+      badgeId: "level-5" as never,
+      issuerPubkey: otherIssuer.pubkey,
+      earnerPubkey: earner.pubkey,
+      createdAt: NOW - 780,
+    });
+    const model = projectIssue31CommunityReadModel(
+      snapshotOf([
+        sign(SCORER.secretKey, {
+          kind: built.kind,
+          created_at: NOW - 780,
+          tags: built.tags,
+          content: built.content,
+        }),
+      ]),
+      configFor(earner.pubkey),
+    );
+    expect(model.experience.badges).toHaveLength(0);
+  });
+
+  /**
+   * A badge the awards support that the publisher has not signed yet is still
+   * shown, and says so. Dropping it would make the room disagree with the
+   * award stream it is supposed to project.
+   */
+  test("a derived badge with no published award is shown as awards-only", () => {
+    const earner = party();
+    const request = workRequest();
+    const model = projectIssue31CommunityReadModel(
+      snapshotOf([request, awardEvent(earner.pubkey, request.event.id, NOW - 800)]),
+      configFor(earner.pubkey),
+    );
+    const badge = model.experience.badges.find(
+      (row) => row.badgeId === "first-accepted-unit",
+    );
+    expect(badge?.source).toBe("awards_only");
+    expect(badge?.awardEventId).toBeNull();
+    expect(model.experience.badgeIds).toContain("first-accepted-unit");
+  });
 
   test("the total is recomputed from the award stream", () => {
     const earner = party();
