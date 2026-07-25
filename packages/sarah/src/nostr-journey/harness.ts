@@ -156,6 +156,11 @@ export const runSarahNostrJourney = async (
   const byId = Object.fromEntries(
     SARAH_NOSTR_JOURNEY_STEPS.map((s) => [s.id, s]),
   ) as Record<string, (typeof SARAH_NOSTR_JOURNEY_STEPS)[number]>;
+  const stepDef = (id: string): (typeof SARAH_NOSTR_JOURNEY_STEPS)[number] => {
+    const definition = byId[id];
+    if (definition === undefined) throw new Error(`Missing Nostr journey step ${id}.`);
+    return definition;
+  };
 
   // Human residual steps first (explicit, no mock of install/bind UI).
   for (const def of SARAH_NOSTR_JOURNEY_STEPS) {
@@ -166,7 +171,7 @@ export const runSarahNostrJourney = async (
 
   // J04 — principal / conversation / authority refs (projection mock)
   {
-    const def = byId.J04_confirm_principal_refs;
+    const def = stepDef("J04_confirm_principal_refs");
     const projection = {
       principalRef: "principal.sarah",
       conversation: CONVERSATION,
@@ -191,7 +196,7 @@ export const runSarahNostrJourney = async (
 
   // J05 — attested AUTH
   {
-    const def = byId.J05_sarah_attested_auth;
+    const def = stepDef("J05_sarah_attested_auth");
     const ownerAuthTag = signOwnerAuthTag({
       agentPubkey: sarahPubkey,
       conditions: "",
@@ -224,8 +229,8 @@ export const runSarahNostrJourney = async (
 
   // J06 + J07 — encrypted owner message and operator blindness
   {
-    const def6 = byId.J06_owner_encrypted_message;
-    const def7 = byId.J07_relay_operator_blind;
+    const def6 = stepDef("J06_owner_encrypted_message");
+    const def7 = stepDef("J07_relay_operator_blind");
     const plaintext = "owner secret journey message";
     const wireContent = cipher.encryptToOwner(
       JSON.stringify({ schema: "openagents.sarah.owner_message.v1", text: plaintext }),
@@ -261,7 +266,7 @@ export const runSarahNostrJourney = async (
 
   // J09 — coding capacity live ladder (gap-free seq)
   {
-    const def = byId.J09_coding_capacity_ladder;
+    const def = stepDef("J09_coding_capacity_ladder");
     const consumer = new SarahRelayTurnConsumer(
       signer,
       cipher,
@@ -298,7 +303,7 @@ export const runSarahNostrJourney = async (
 
   // J11 — refusal receipt with reserved category
   {
-    const def = byId.J11_refusal_receipt;
+    const def = stepDef("J11_refusal_receipt");
     const service = new SarahNostrTurnService(signer, cipher, conversation);
     const started = service.startTurn({ turnRef: "turn.journey.refusal" });
     if (!started?.durable) {
@@ -345,7 +350,7 @@ export const runSarahNostrJourney = async (
 
   // J12 — interrupt terminal
   {
-    const def = byId.J12_interrupt_terminal;
+    const def = stepDef("J12_interrupt_terminal");
     const service = new SarahNostrTurnService(signer, cipher, conversation);
     service.startTurn({ turnRef: "turn.journey.interrupt" });
     const cancel = service.publishCancelTurn("turn.journey.interrupt");
@@ -371,7 +376,7 @@ export const runSarahNostrJourney = async (
 
   // J13 — restart mid-turn: one honest outcome (claim unreclaimable)
   {
-    const def = byId.J13_restart_mid_turn;
+    const def = stepDef("J13_restart_mid_turn");
     const storeService = new SarahNostrTurnService(signer, cipher, conversation);
     storeService.startTurn({ turnRef: "turn.journey.one_answer" });
     storeService.finishTurn({
@@ -403,7 +408,7 @@ export const runSarahNostrJourney = async (
 
   // J14 — replay durable ladder from relay history alone
   {
-    const def = byId.J14_replay_from_relay;
+    const def = stepDef("J14_replay_from_relay");
     const history = relayEvents()
       .filter((e) => e.kind === SARAH_TURN_RECORD_KIND)
       .filter((e) =>
@@ -425,7 +430,7 @@ export const runSarahNostrJourney = async (
 
   // J16 — usage metric agrees with exact usage totals
   {
-    const def = byId.J16_usage_metric_agree;
+    const def = stepDef("J16_usage_metric_agree");
     const exactRow = {
       provider: "pylon-codex-own-capacity",
       model: "openagents/pylon-codex",
@@ -472,7 +477,7 @@ export const runSarahNostrJourney = async (
 
   // J17 — second admitted relay serves same history
   {
-    const def = byId.J17_second_relay;
+    const def = stepDef("J17_second_relay");
     const relayA = relayEvents()
       .map((e) => e.id)
       .sort();
@@ -490,7 +495,7 @@ export const runSarahNostrJourney = async (
 
   // J18 — offline sign then publish after reconnect
   {
-    const def = byId.J18_offline_publish;
+    const def = stepDef("J18_offline_publish");
     const offline = signer.signEvent({
       kind: SARAH_TURN_RECORD_KIND,
       created_at: 1_700_000_200,
@@ -526,7 +531,7 @@ export const runSarahNostrJourney = async (
 
   // J19 — bad inputs rejected, no turn started
   {
-    const def = byId.J19_reject_bad_inputs;
+    const def = stepDef("J19_reject_bad_inputs");
     const service = new SarahNostrTurnService(signer, cipher, conversation);
     const rejections: string[] = [];
 
@@ -590,7 +595,7 @@ export const runSarahNostrJourney = async (
 
   // J20 — export causal chain without Cloud SQL
   {
-    const def = byId.J20_export_causal_chain;
+    const def = stepDef("J20_export_causal_chain");
     const durable = relayEvents().filter((e) => e.kind === SARAH_TURN_RECORD_KIND);
     let linked = 0;
     for (const ev of durable) {
@@ -610,7 +615,7 @@ export const runSarahNostrJourney = async (
 
   // J22 — no secrets in receipt / mock logs
   {
-    const def = byId.J22_no_secret_in_logs;
+    const def = stepDef("J22_no_secret_in_logs");
     const mockLog = {
       events: relayEvents().map((e) => ({
         id: e.id,

@@ -1,10 +1,12 @@
 import {
   Badge,
   Button,
+  ComponentValueBinding,
   IntentRef,
   Stack,
   StaticPayload,
   Text,
+  TextField,
   type View,
 } from "@effect-native/core";
 
@@ -18,6 +20,15 @@ import {
   type Issue31WorkroomRoom,
 } from "../workroom/issue31-workroom-read-model";
 import type { Issue31MobileNostrControlState } from "../workroom/issue31-mobile-nostr-runtime";
+import { searchIssue31LocalMemory } from "../workroom/issue31-owner-private-read-model";
+
+export interface Issue31OwnerPrivateViewState {
+  readonly draft: string;
+  readonly memoryQuery: string;
+  readonly reminderDraft: string;
+  readonly transcriptLimit: number;
+  readonly notice: string | null;
+}
 
 const statusLabel: Readonly<Record<Issue31SourceStatus, string>> = {
   ready: "Ready",
@@ -171,11 +182,322 @@ const roomButton = (
     style: { flex: 1, ...mobileInteractiveStyle(accessibility) },
   });
 
+const ownerPrivateDetail = (
+  model: Issue31WorkroomReadModel,
+  control: Issue31MobileNostrControlState,
+  state: Issue31OwnerPrivateViewState,
+  accessibility: MobileAccessibilityProfile,
+): ReadonlyArray<View> => {
+  const owner = model.ownerPrivate;
+  const transcript = owner.transcript.slice(-state.transcriptLimit);
+  const memory = searchIssue31LocalMemory(owner.memory, state.memoryQuery);
+  const activeTurn = [...owner.activity].reverse().find((row) => !row.terminal);
+  const pairedToV2 =
+    control.phase === "paired" &&
+    control.hosts.some(
+      (host) =>
+        host.hostPublicKeyHex === control.selectedHostPublicKeyHex &&
+        host.supportsCommandV2 === true &&
+        host.conversation !== null,
+    );
+  return [
+    Text({
+      key: "issue31-owner-status",
+      content:
+        owner.status === "ready"
+          ? `Owner-private source ready · generation ${owner.generation ?? "unknown"}`
+          : `${owner.status === "gap" ? "Owner-private gap" : "Owner-private unavailable"} · ${owner.reasonRef ?? "reason.issue31.unknown"}`,
+      variant: "body",
+      color: owner.status === "ready" ? "textPrimary" : "warning",
+    }),
+    Text({ key: "issue31-owner-transcript-title", content: "Conversation", variant: "heading" }),
+    ...(transcript.length === 0
+      ? [
+          Text({
+            key: "issue31-owner-transcript-empty",
+            content: "No confirmed owner-private messages are stored on this device.",
+            variant: "body",
+            color: "textMuted",
+          }),
+        ]
+      : transcript.flatMap((row) => [
+          Stack(
+            {
+              key: `issue31-owner-message-${row.sourceEventId}`,
+              direction: "column",
+              gap: "1",
+              padding: "3",
+              style: { width: "full", borderWidth: 1, borderColor: "border", borderRadius: "lg" },
+            },
+            [
+              Text({
+                key: `issue31-owner-message-${row.sourceEventId}-role`,
+                content: `${row.role === "owner" ? "You" : "Sarah"} · ${row.sourceCreatedAt}`,
+                variant: "caption",
+                color: "textMuted",
+              }),
+              Text({
+                key: `issue31-owner-message-${row.sourceEventId}-text`,
+                content: row.text,
+                variant: "body",
+                color: "textPrimary",
+              }),
+              Button({
+                key: `issue31-owner-message-${row.sourceEventId}-read`,
+                label: "Mark read here",
+                variant: "ghost",
+                disabled: !pairedToV2,
+                onPress: IntentRef(
+                  "Issue31OwnerMarkReadRequested",
+                  StaticPayload({ sourceEventId: row.sourceEventId }),
+                ),
+                style: mobileInteractiveStyle(accessibility),
+              }),
+            ],
+          ),
+        ])),
+    ...(owner.transcriptTotal <= transcript.length
+      ? []
+      : [
+          Button({
+            key: "issue31-owner-transcript-earlier",
+            label: `Load earlier (${owner.transcriptTotal - transcript.length} remaining)`,
+            variant: "secondary",
+            onPress: IntentRef("Issue31OwnerTranscriptEarlierRequested", StaticPayload({})),
+            style: mobileInteractiveStyle(accessibility),
+          }),
+        ]),
+    TextField({
+      key: "issue31-owner-composer",
+      value: state.draft,
+      placeholder: "Message Sarah through your Omega host",
+      multiline: true,
+      disabled: !pairedToV2,
+      onChange: IntentRef("Issue31OwnerDraftChanged", ComponentValueBinding()),
+      a11y: { label: "Owner-private message" },
+      style: { width: "full", minHeight: 96 },
+    }),
+    Button({
+      key: "issue31-owner-send",
+      label: "Send signed message",
+      variant: "primary",
+      disabled: !pairedToV2 || state.draft.trim() === "",
+      onPress: IntentRef("Issue31OwnerSendRequested", StaticPayload({})),
+      style: { width: "full", ...mobileInteractiveStyle(accessibility) },
+    }),
+    ...(state.notice === null
+      ? []
+      : [
+          Text({
+            key: "issue31-owner-command-notice",
+            content: state.notice,
+            variant: "caption",
+            color:
+              state.notice.includes("could not") || state.notice.includes("unavailable")
+                ? "warning"
+                : "textMuted",
+          }),
+        ]),
+    Text({ key: "issue31-owner-activity-title", content: "Live activity", variant: "heading" }),
+    ...owner.activity.slice(-20).map((row) =>
+      Text({
+        key: `issue31-owner-activity-${row.sourceEventId}`,
+        content: `${row.sequence} · ${row.label}`,
+        variant: "caption",
+        color: row.terminal ? "textMuted" : "textPrimary",
+      }),
+    ),
+    ...(activeTurn === undefined
+      ? []
+      : [
+          Button({
+            key: `issue31-owner-interrupt-${activeTurn.turnRef}`,
+            label: `Interrupt ${activeTurn.turnRef}`,
+            variant: "secondary",
+            disabled: !pairedToV2,
+            onPress: IntentRef(
+              "Issue31OwnerInterruptRequested",
+              StaticPayload({
+                turnRef: activeTurn.turnRef,
+                conversation:
+                  control.hosts.find(
+                    (host) => host.hostPublicKeyHex === control.selectedHostPublicKeyHex,
+                  )?.conversation ?? "",
+              }),
+            ),
+            style: mobileInteractiveStyle(accessibility),
+          }),
+        ]),
+    Text({
+      key: "issue31-owner-receipts-title",
+      content: "Authority receipts",
+      variant: "heading",
+    }),
+    ...(owner.receipts.length === 0
+      ? [
+          Text({
+            key: "issue31-owner-receipts-empty",
+            content: "No confirmed authority receipts.",
+            variant: "body",
+            color: "textMuted",
+          }),
+        ]
+      : owner.receipts.map((row) =>
+          Button({
+            key: `issue31-owner-receipt-${row.sourceEventId}`,
+            label: `${row.authorityState} · ${row.targetState} · ${row.receiptRef}`,
+            variant: "ghost",
+            onPress: IntentRef("Issue31OwnerDeepLinkOpened", StaticPayload({ url: row.deepLink })),
+            a11y: { label: `Authority ${row.authorityState}, target ${row.targetState}` },
+            style: { width: "full", ...mobileInteractiveStyle(accessibility) },
+          }),
+        )),
+    Text({ key: "issue31-owner-memory-title", content: "Local memory", variant: "heading" }),
+    TextField({
+      key: "issue31-owner-memory-search",
+      value: state.memoryQuery,
+      placeholder: "Search decrypted memory on this device",
+      onChange: IntentRef("Issue31OwnerMemoryQueryChanged", ComponentValueBinding()),
+      a11y: { label: "Search local owner-private memory" },
+      style: { width: "full", ...mobileInteractiveStyle(accessibility) },
+    }),
+    ...memory.map((row) =>
+      Text({
+        key: `issue31-owner-memory-${row.sourceEventId}`,
+        content: JSON.stringify(row.body),
+        variant: "caption",
+        color: "textPrimary",
+      }),
+    ),
+    Text({ key: "issue31-owner-read-title", content: "Read state", variant: "heading" }),
+    ...Object.entries(owner.readContexts)
+      .slice(0, 32)
+      .map(([contextRef, readAt]) =>
+        Text({
+          key: `issue31-owner-read-${contextRef}`,
+          content: `${contextRef} · ${readAt}`,
+          variant: "caption",
+          color: "textMuted",
+        }),
+      ),
+    Text({ key: "issue31-owner-reminders-title", content: "Reminders", variant: "heading" }),
+    TextField({
+      key: "issue31-owner-reminder-draft",
+      value: state.reminderDraft,
+      placeholder: "Reminder note or replacement note",
+      disabled: !pairedToV2,
+      onChange: IntentRef("Issue31OwnerReminderDraftChanged", ComponentValueBinding()),
+      a11y: { label: "Reminder note" },
+      style: { width: "full", ...mobileInteractiveStyle(accessibility) },
+    }),
+    Button({
+      key: "issue31-owner-reminder-create",
+      label: "Create reminder now",
+      variant: "secondary",
+      disabled: !pairedToV2 || state.reminderDraft.trim() === "",
+      onPress: IntentRef("Issue31OwnerReminderCreated", StaticPayload({})),
+      style: mobileInteractiveStyle(accessibility),
+    }),
+    ...owner.reminders.map((row) =>
+      Stack(
+        {
+          key: `issue31-owner-reminder-${row.reminderId}`,
+          direction: "column",
+          gap: "1",
+          padding: "3",
+          style: { width: "full", borderWidth: 1, borderColor: "border", borderRadius: "lg" },
+        },
+        [
+          Text({
+            key: `issue31-owner-reminder-${row.reminderId}-copy`,
+            content: `${row.content.status} · ${row.content.note ?? "No note"} · ${row.notBefore ?? "no schedule"}`,
+            variant: "body",
+            color: "textPrimary",
+          }),
+          Stack(
+            {
+              key: `issue31-owner-reminder-${row.reminderId}-controls`,
+              direction: "row",
+              gap: "2",
+            },
+            [
+              Button({
+                key: `issue31-owner-reminder-${row.reminderId}-change`,
+                label: "Change",
+                variant: "ghost",
+                disabled:
+                  !pairedToV2 ||
+                  row.content.status !== "pending" ||
+                  row.notBefore === null ||
+                  state.reminderDraft.trim() === "",
+                onPress: IntentRef(
+                  "Issue31OwnerReminderChanged",
+                  StaticPayload({ reminderId: row.reminderId }),
+                ),
+                style: mobileInteractiveStyle(accessibility),
+              }),
+              Button({
+                key: `issue31-owner-reminder-${row.reminderId}-complete`,
+                label: "Complete",
+                variant: "ghost",
+                disabled: !pairedToV2 || row.content.status !== "pending",
+                onPress: IntentRef(
+                  "Issue31OwnerReminderCompleted",
+                  StaticPayload({ reminderId: row.reminderId }),
+                ),
+                style: mobileInteractiveStyle(accessibility),
+              }),
+              Button({
+                key: `issue31-owner-reminder-${row.reminderId}-cancel`,
+                label: "Cancel",
+                variant: "ghost",
+                disabled: !pairedToV2 || row.content.status !== "pending",
+                onPress: IntentRef(
+                  "Issue31OwnerReminderCancelled",
+                  StaticPayload({ reminderId: row.reminderId }),
+                ),
+                style: mobileInteractiveStyle(accessibility),
+              }),
+            ],
+          ),
+        ],
+      ),
+    ),
+    Text({
+      key: "issue31-owner-commands-title",
+      content: "Command reconciliation",
+      variant: "heading",
+    }),
+    ...owner.commands.map((command) =>
+      Text({
+        key: `issue31-owner-command-${command.intentEventId}`,
+        content: `${command.state} · ${command.actionRef} · ${command.idempotencyRef}`,
+        variant: "caption",
+        color:
+          command.state === "failed" ||
+          command.state === "refused" ||
+          command.state === "unavailable"
+            ? "warning"
+            : "textMuted",
+      }),
+    ),
+    Button({
+      key: "issue31-owner-clear-local",
+      label: "Clear local owner-private data",
+      variant: "ghost",
+      onPress: IntentRef("Issue31OwnerLocalDataCleared", StaticPayload({})),
+      a11y: { label: "Clear decrypted owner-private projections stored on this device" },
+      style: mobileInteractiveStyle(accessibility),
+    }),
+  ];
+};
+
 export const renderMobileIssue31WorkroomView = (
   model: Issue31WorkroomReadModel,
   selectedRoom: Issue31WorkroomRoom,
   nostrControl: Issue31MobileNostrControlState,
   accessibility: MobileAccessibilityProfile,
+  ownerState: Issue31OwnerPrivateViewState,
 ): View => {
   const rows = issue31RowsForRoom(model, selectedRoom);
   return Stack(
@@ -289,6 +611,9 @@ export const renderMobileIssue31WorkroomView = (
         variant: "caption",
         color: "textMuted",
       }),
+      ...(selectedRoom === "owner_private"
+        ? ownerPrivateDetail(model, nostrControl, ownerState, accessibility)
+        : []),
       ...rows.map(capabilityCard),
     ],
   );

@@ -6,11 +6,16 @@ import { describe, expect, test } from "vite-plus/test";
 
 import {
   ISSUE31_COMMAND_SCHEMA,
+  ISSUE31_COMMAND_SCHEMA_V2,
   ISSUE31_HOST_ANNOUNCEMENT_SCHEMA,
+  ISSUE31_HOST_ANNOUNCEMENT_SCHEMA_V2,
   ISSUE31_PAIRING_SCHEMA,
   createIssue31PrivateGiftWrap,
   decodeIssue31CommandRecord,
+  decodeIssue31CommandRecordV2,
+  decodeIssue31HostAnnouncementV2,
   decodeIssue31HostAnnouncement,
+  decodeIssue31OwnerProjectionRecord,
   decodeIssue31PairingRecord,
   foldIssue31Grant,
   reconcileIssue31Commands,
@@ -20,6 +25,125 @@ import {
   type Issue31PairingEvent,
   type Issue31PairingRecord,
 } from "./index.ts";
+
+describe("Issue 31 command v2 and owner projection", () => {
+  test("decodes canonical discovery, command, handling, and source projection fixtures", () => {
+    const discovery = decodeIssue31HostAnnouncementV2(
+      readFixture("openagents.omega.issue31.host_discovery.v2.canonical.json"),
+    );
+    const intent = decodeIssue31CommandRecordV2(
+      readFixture("openagents.omega.issue31.command.v2.canonical-intent.json"),
+    );
+    const result = decodeIssue31CommandRecordV2(
+      readFixture("openagents.omega.issue31.command.v2.canonical-result.json"),
+    );
+    const projection = decodeIssue31OwnerProjectionRecord(
+      readFixture("openagents.omega.issue31.owner_projection.v1.canonical.json"),
+    );
+    expect(discovery.schema).toBe(ISSUE31_HOST_ANNOUNCEMENT_SCHEMA_V2);
+    expect(discovery.protocols).toEqual([
+      ISSUE31_PAIRING_SCHEMA,
+      ISSUE31_COMMAND_SCHEMA,
+      ISSUE31_COMMAND_SCHEMA_V2,
+    ]);
+    expect(intent.recordType).toBe("command_intent");
+    expect(result).toMatchObject({ status: "accepted", handledAt: 1_784_937_610 });
+    expect(projection).toMatchObject({ sourceEventId: "b".repeat(64), sourceRole: "owner" });
+  });
+
+  test("keeps discovery v1 exact and rejects v2 action or projection excess fields", () => {
+    expect(
+      decodeIssue31HostAnnouncement(
+        readFixture("openagents.omega.issue31.host_discovery.v1.canonical.json"),
+      ).schema,
+    ).toBe(ISSUE31_HOST_ANNOUNCEMENT_SCHEMA);
+    const intent = readFixture(
+      "openagents.omega.issue31.command.v2.canonical-intent.json",
+    ) as Record<string, unknown>;
+    expect(() =>
+      decodeIssue31CommandRecordV2({
+        ...intent,
+        arguments: {
+          ...(intent["arguments"] as object),
+          actionRef: "action.issue31.sarah.interrupt",
+        },
+      }),
+    ).toThrow();
+    const projection = readFixture(
+      "openagents.omega.issue31.owner_projection.v1.canonical.json",
+    ) as Record<string, unknown>;
+    expect(() =>
+      decodeIssue31OwnerProjectionRecord({ ...projection, ownerSecret: "no" }),
+    ).toThrow();
+  });
+
+  test("rejects invalid reminder time and read context byte/control bounds", () => {
+    const common = {
+      schema: ISSUE31_COMMAND_SCHEMA_V2,
+      recordType: "command_intent",
+      hostRef: "omega.host.local",
+      hostPublicKeyHex: "1".repeat(64),
+      devicePublicKeyHex: "2".repeat(64),
+      grantRef: "grant.omega.device_1",
+      idempotencyRef: "idempotency.issue31.test_1",
+      expectedGeneration: 1,
+      issuedAt: 100,
+      expiresAt: 200,
+    } as const;
+    expect(() =>
+      decodeIssue31CommandRecordV2({
+        ...common,
+        arguments: {
+          kind: "reminder_create",
+          actionRef: "action.issue31.reminder.create",
+          reminderId: "a".repeat(32),
+          notBefore: 150,
+          expiration: 150,
+        },
+      }),
+    ).toThrow(/expiration/);
+    for (const contextRef of ["bad\ncontext", "é".repeat(129)]) {
+      expect(() =>
+        decodeIssue31CommandRecordV2({
+          ...common,
+          arguments: {
+            kind: "read_state_patch",
+            actionRef: "action.issue31.read_state.advance",
+            slotId: "owner-mobile",
+            clientId: "openagents-mobile",
+            contextRef,
+            readAt: 150,
+          },
+        }),
+      ).toThrow();
+    }
+  });
+
+  test("unwraps a host-authored per-record projection only for the admitted device", async () => {
+    const projection = decodeIssue31OwnerProjectionRecord({
+      ...(readFixture("openagents.omega.issue31.owner_projection.v1.canonical.json") as object),
+      hostPublicKeyHex,
+      devicePublicKeyHex,
+    });
+    const wrapped = await createIssue31PrivateGiftWrap({
+      signer: hostSigner,
+      recipientPublicKeyHex: devicePublicKeyHex,
+      record: projection,
+      randomSecretKey: () => new Uint8Array(ephemeralOne),
+      createdAt: 1_784_937_610,
+      sealCreatedAt: 1_784_937_600,
+      wrapCreatedAt: 1_784_937_590,
+    });
+    const unwrapped = await unwrapIssue31PrivateGiftWrap({
+      signer: deviceSigner,
+      giftWrap: wrapped,
+    });
+    expect(unwrapped.record?.schema).toBe("openagents.omega.issue31.owner_projection.v1");
+    await expect(
+      unwrapIssue31PrivateGiftWrap({ signer: hostSigner, giftWrap: wrapped }),
+    ).rejects.toThrow(/not addressed/);
+  });
+});
 
 const deviceSecret = Uint8Array.from({ length: 32 }, (_, index) => index + 1);
 const hostSecret = Uint8Array.from({ length: 32 }, (_, index) => index + 33);

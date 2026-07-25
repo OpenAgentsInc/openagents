@@ -4,12 +4,11 @@ import { verifyEvent } from "nostr-effect/pure";
 import {
   ISSUE31_HOST_ANNOUNCEMENT_KIND,
   ISSUE31_PRIVATE_GIFT_WRAP_KIND,
-  decodeIssue31HostAnnouncement,
+  decodeIssue31AnyHostAnnouncement,
   unwrapIssue31PrivateGiftWrap,
-  type Issue31CommandRecord,
-  type Issue31HostAnnouncement,
+  type Issue31AnyHostAnnouncement,
   type Issue31NostrSigner,
-  type Issue31PairingRecord,
+  type Issue31PrivateRecord,
   type Issue31SignedNostrEvent,
 } from "@openagentsinc/sarah/issue31-nostr";
 import {
@@ -93,8 +92,8 @@ export interface Issue31ConfirmedEvent {
   readonly event: Issue31SignedNostrEvent;
   readonly canonicalRecordId: string;
   readonly privateRumorId: string | null;
-  readonly privateRecord: Issue31PairingRecord | Issue31CommandRecord | null;
-  readonly hostAnnouncement: Issue31HostAnnouncement | null;
+  readonly privateRecord: Issue31PrivateRecord | null;
+  readonly hostAnnouncement: Issue31AnyHostAnnouncement | null;
 }
 
 export interface Issue31RelaySnapshot {
@@ -229,7 +228,7 @@ const newerEvent = (
       ? left
       : right;
 
-const hostAnnouncementBindingFingerprint = (announcement: Issue31HostAnnouncement): string =>
+const hostAnnouncementBindingFingerprint = (announcement: Issue31AnyHostAnnouncement): string =>
   JSON.stringify({
     hostRef: announcement.hostRef,
     hostPublicKeyHex: announcement.hostPublicKeyHex,
@@ -237,9 +236,13 @@ const hostAnnouncementBindingFingerprint = (announcement: Issue31HostAnnouncemen
     displayName: announcement.displayName,
     protocols: [...announcement.protocols].sort(),
     relayUrls: [...announcement.relayUrls].sort(),
+    conversation:
+      announcement.schema === "openagents.omega.issue31.host_discovery.v2"
+        ? announcement.conversation
+        : null,
   });
 
-const hostAnnouncementRecordFingerprint = (announcement: Issue31HostAnnouncement): string =>
+const hostAnnouncementRecordFingerprint = (announcement: Issue31AnyHostAnnouncement): string =>
   JSON.stringify({
     binding: hostAnnouncementBindingFingerprint(announcement),
     generation: announcement.generation,
@@ -489,8 +492,8 @@ export const createIssue31NostrClient = (
       rejectEvent(relay, event.id);
       return;
     }
-    let hostAnnouncement: Issue31HostAnnouncement | null = null;
-    let privateRecord: Issue31PairingRecord | Issue31CommandRecord | null = null;
+    let hostAnnouncement: Issue31AnyHostAnnouncement | null = null;
+    let privateRecord: Issue31PrivateRecord | null = null;
     let privateRumorId: string | null = null;
     if (room === "discovery") {
       if (event.kind !== ISSUE31_HOST_ANNOUNCEMENT_KIND) throw new Error("wrong discovery kind");
@@ -498,7 +501,7 @@ export const createIssue31NostrClient = (
         rejectEvent(relay, event.id);
         return;
       }
-      hostAnnouncement = decodeIssue31HostAnnouncement(JSON.parse(event.content) as unknown);
+      hostAnnouncement = decodeIssue31AnyHostAnnouncement(JSON.parse(event.content) as unknown);
       if (
         event.pubkey !== hostAnnouncement.hostPublicKeyHex ||
         tagValue(event, "d") !== hostAnnouncement.hostRef ||

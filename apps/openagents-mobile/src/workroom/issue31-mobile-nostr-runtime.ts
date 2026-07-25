@@ -1,13 +1,19 @@
 import {
   ISSUE31_COMMAND_SCHEMA,
+  ISSUE31_COMMAND_SCHEMA_V2,
+  ISSUE31_OWNER_PROJECTION_SCHEMA,
   ISSUE31_PAIRING_SCHEMA,
   createIssue31PrivateEnvelope,
   decodeIssue31CommandRecord,
+  decodeIssue31CommandRecordV2,
   decodeIssue31PairingRecord,
   foldIssue31Grant,
   issue31PrivateEnvelopeTimestamps,
   type Issue31CommandIntent,
+  type Issue31CommandArguments,
+  type Issue31CommandIntentV2,
   type Issue31CommandRecord,
+  type Issue31CommandRecordV2,
   type Issue31GrantState,
   type Issue31PairingRecord,
   type Issue31PairingScope,
@@ -29,6 +35,7 @@ import {
 import { createIssue31SecureRelayCursorStore } from "./issue31-relay-cursor-store.ts";
 import {
   issue31PersistedPairingEventsForRequeue,
+  openExpoIssue31LocalConfirmedRecordStore,
   openExpoIssue31LocalPairingRecordStore,
   openExpoIssue31OutboundEventStore,
 } from "./issue31-outbound-event-store.ts";
@@ -45,6 +52,7 @@ export const ISSUE31_MOBILE_REQUESTED_SCOPES = [
 ] as const;
 
 declare const require: (id: string) => unknown;
+const ISSUE31_MAX_LOCAL_PRIVATE_EVENTS = 2_080;
 
 export interface Issue31DiscoveredHost {
   readonly hostRef: string;
@@ -55,6 +63,8 @@ export interface Issue31DiscoveredHost {
   readonly sarahFingerprint: string;
   readonly generation: number;
   readonly expiresAt: number;
+  readonly supportsCommandV2?: boolean;
+  readonly conversation?: string | null;
 }
 
 export interface Issue31MobileNostrControlState {
@@ -82,14 +92,13 @@ export interface Issue31MobileNostrRuntime {
   readonly publishCommandIntent: (
     request: Issue31MobileCommandRequest,
   ) => Promise<Issue31MobileCommandPublishReceipt>;
+  readonly clearOwnerPrivateLocalData: () => void;
   readonly close: () => void;
 }
 
 export interface Issue31MobileCommandRequest {
-  readonly requiredScope: Issue31PairingScope;
-  readonly actionRef: string;
   readonly idempotencyRef: string;
-  readonly argumentsRef: string;
+  readonly arguments: Issue31CommandArguments;
 }
 
 export interface Issue31MobileCommandPublishReceipt {
@@ -163,6 +172,36 @@ export const issue31MobileCommandIntentForGrant = (
     expiresAt: input.expiresAt,
   }) as Issue31CommandIntent;
 
+export const issue31MobileCommandIntentV2ForGrant = (
+  input: Readonly<{
+    grant: Issue31GrantState;
+    devicePublicKeyHex: string;
+    idempotencyRef: string;
+    arguments: Issue31CommandArguments;
+    issuedAt: number;
+    expiresAt: number;
+  }>,
+): Issue31CommandIntentV2 =>
+  decodeIssue31CommandRecordV2({
+    schema: ISSUE31_COMMAND_SCHEMA_V2,
+    recordType: "command_intent",
+    hostRef: input.grant.hostRef,
+    hostPublicKeyHex: input.grant.hostPublicKeyHex,
+    devicePublicKeyHex: input.devicePublicKeyHex,
+    grantRef: input.grant.grantRef,
+    idempotencyRef: input.idempotencyRef,
+    expectedGeneration: input.grant.generation,
+    arguments: input.arguments,
+    issuedAt: input.issuedAt,
+    expiresAt: input.expiresAt,
+  }) as Issue31CommandIntentV2;
+
+const requiredScopeForCommand = (argumentsValue: Issue31CommandArguments): Issue31PairingScope => {
+  if (argumentsValue.kind === "interrupt_turn") return "interrupt_turn";
+  if (argumentsValue.kind === "read_state_patch") return "observe_issue31";
+  return "send_message";
+};
+
 const bytesToHex = (bytes: Uint8Array): string =>
   [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 
@@ -219,15 +258,27 @@ export const openIssue31MobileNostrRuntime = async (
   let identity: Issue31DeviceIdentity | null = null;
   let outboundStore: ReturnType<typeof openExpoIssue31OutboundEventStore> | null = null;
   let pairingStore: ReturnType<typeof openExpoIssue31LocalPairingRecordStore> | null = null;
+  let confirmedStore: ReturnType<typeof openExpoIssue31LocalConfirmedRecordStore> | null = null;
   try {
     identity = await openExpoIssue31DeviceIdentity();
     outboundStore = openExpoIssue31OutboundEventStore();
     pairingStore = openExpoIssue31LocalPairingRecordStore();
+    confirmedStore = openExpoIssue31LocalConfirmedRecordStore();
     const openedIdentity = identity;
     const openedOutboundStore = outboundStore;
     const openedPairingStore = pairingStore;
+    const openedConfirmedStore = confirmedStore;
     const storedPairingRecords = openedPairingStore.load();
-    const localEvents: Issue31ConfirmedEvent[] = storedPairingRecords.map((stored) => ({
+    const storedConfirmedRecords = openedConfirmedStore.load();
+    const localEvents: Issue31ConfirmedEvent[] = [
+      ...storedPairingRecords,
+      ...storedConfirmedRecords.filter(
+        (stored) =>
+          !storedPairingRecords.some(
+            (pairing) => pairing.canonicalRecordId === stored.canonicalRecordId,
+          ),
+      ),
+    ].map((stored) => ({
       relayUrl: "local://issue31-device-outbox",
       room: "owner_private",
       event: stored.event,
@@ -237,11 +288,12 @@ export const openIssue31MobileNostrRuntime = async (
       hostAnnouncement: null,
     }));
     const localEventIds = new Set(localEvents.map((event) => event.canonicalRecordId));
+    const clearedOwnerProjectionIds = new Set<string>();
     const rememberLocalEvent = (event: Issue31ConfirmedEvent): void => {
       if (localEventIds.has(event.canonicalRecordId)) return;
       localEventIds.add(event.canonicalRecordId);
       localEvents.push(event);
-      while (localEvents.length > 32) {
+      while (localEvents.length > ISSUE31_MAX_LOCAL_PRIVATE_EVENTS) {
         const removed = localEvents.shift();
         if (removed !== undefined) localEventIds.delete(removed.canonicalRecordId);
       }
@@ -330,6 +382,12 @@ export const openIssue31MobileNostrRuntime = async (
         ...snapshot.confirmedEvents.filter((event) => !localEventIds.has(event.canonicalRecordId)),
       ].filter((event) => {
         const record = event.privateRecord;
+        if (
+          record?.schema === ISSUE31_OWNER_PROJECTION_SCHEMA &&
+          clearedOwnerProjectionIds.has(event.canonicalRecordId)
+        ) {
+          return false;
+        }
         return (
           record === null ||
           (selectedHostDiscoveryActive &&
@@ -345,7 +403,7 @@ export const openIssue31MobileNostrRuntime = async (
       input.onSnapshot?.(latestSnapshot);
     };
     const createEnvelope = async (
-      record: Issue31PairingRecord | Issue31CommandRecord,
+      record: Issue31PairingRecord | Issue31CommandRecord | Issue31CommandRecordV2,
       secretKey: Uint8Array,
     ) => {
       const createdAt = Math.floor(Date.now() / 1_000);
@@ -428,6 +486,13 @@ export const openIssue31MobileNostrRuntime = async (
                 sarahFingerprint: `${host.sarahPublicKeyHex.slice(0, 12)}…${host.sarahPublicKeyHex.slice(-8)}`,
                 generation: host.generation,
                 expiresAt: host.expiresAt,
+                supportsCommandV2: host.protocols.some(
+                  (protocol: string) => protocol === ISSUE31_COMMAND_SCHEMA_V2,
+                ),
+                conversation:
+                  host.schema === "openagents.omega.issue31.host_discovery.v2"
+                    ? host.conversation
+                    : null,
               },
             ];
       });
@@ -557,6 +622,33 @@ export const openIssue31MobileNostrRuntime = async (
       for (const event of snapshot.confirmedEvents) {
         const record = event.privateRecord;
         if (
+          record?.schema === ISSUE31_OWNER_PROJECTION_SCHEMA &&
+          clearedOwnerProjectionIds.has(event.canonicalRecordId)
+        ) {
+          continue;
+        }
+        if (
+          record !== null &&
+          record.schema !== ISSUE31_PAIRING_SCHEMA &&
+          selectedHostDiscoveryActive &&
+          selectedHostPublicKeyHex !== null &&
+          record.hostPublicKeyHex === selectedHostPublicKeyHex &&
+          record.devicePublicKeyHex === openedIdentity.publicKeyHex &&
+          !localEventIds.has(event.canonicalRecordId)
+        ) {
+          try {
+            openedConfirmedStore.put({
+              canonicalRecordId: event.canonicalRecordId,
+              event: event.event,
+              record,
+            });
+            rememberLocalEvent({ ...event, relayUrl: "local://issue31-confirmed-history" });
+          } catch {
+            phase = "failed";
+            notice = "Confirmed owner-private history could not be stored without truncation.";
+          }
+        }
+        if (
           record?.schema !== ISSUE31_PAIRING_SCHEMA ||
           !selectedHostDiscoveryActive ||
           selectedHostPublicKeyHex === null ||
@@ -667,21 +759,26 @@ export const openIssue31MobileNostrRuntime = async (
       publishCommandIntent: async (request) => {
         const grant = activeGrant;
         const issuedAt = Math.floor(Date.now() / 1_000);
+        const host = discoveredHosts.find(
+          (candidate) => candidate.hostPublicKeyHex === grant?.hostPublicKeyHex,
+        );
         if (
           grant === null ||
           grant.status !== "active" ||
           grant.expiresAt === null ||
           grant.expiresAt <= issuedAt ||
-          !grant.scopes.includes(request.requiredScope)
+          !grant.scopes.includes(requiredScopeForCommand(request.arguments))
         ) {
           throw new Error("No active Issue 31 grant permits this command.");
         }
-        const intent = issue31MobileCommandIntentForGrant({
+        if (host?.supportsCommandV2 !== true) {
+          throw new Error("The selected Omega host does not advertise Issue 31 command v2.");
+        }
+        const intent = issue31MobileCommandIntentV2ForGrant({
           grant,
           devicePublicKeyHex: openedIdentity.publicKeyHex,
-          actionRef: request.actionRef,
           idempotencyRef: request.idempotencyRef,
-          argumentsRef: request.argumentsRef,
+          arguments: request.arguments,
           issuedAt,
           expiresAt: Math.min(grant.expiresAt, issuedAt + 300),
         });
@@ -690,12 +787,45 @@ export const openIssue31MobileNostrRuntime = async (
         if (activeGrant !== grant || grant.expiresAt <= Math.floor(Date.now() / 1_000)) {
           throw new Error("The Issue 31 grant changed before the command was queued.");
         }
+        openedConfirmedStore.put({
+          canonicalRecordId: envelope.rumor.id,
+          event: envelope.giftWrap,
+          record: intent,
+        });
+        rememberLocalEvent({
+          relayUrl: "local://issue31-command-outbox",
+          room: "owner_private",
+          event: envelope.giftWrap,
+          canonicalRecordId: envelope.rumor.id,
+          privateRumorId: envelope.rumor.id,
+          privateRecord: intent,
+          hostAnnouncement: null,
+        });
         const publish = client.publish(envelope.giftWrap);
+        if (latestSnapshot !== null) emitSnapshot(client.snapshot());
         return {
           intentEventId: envelope.rumor.id,
           giftWrapEventId: envelope.giftWrap.id,
           publish,
         };
+      },
+      clearOwnerPrivateLocalData: () => {
+        for (const event of client.snapshot().confirmedEvents) {
+          if (event.privateRecord?.schema === ISSUE31_OWNER_PROJECTION_SCHEMA) {
+            clearedOwnerProjectionIds.add(event.canonicalRecordId);
+          }
+        }
+        openedConfirmedStore.clearOwnerProjections();
+        for (let index = localEvents.length - 1; index >= 0; index -= 1) {
+          if (localEvents[index]?.privateRecord?.schema === ISSUE31_OWNER_PROJECTION_SCHEMA) {
+            const removed = localEvents.splice(index, 1)[0];
+            if (removed !== undefined) {
+              clearedOwnerProjectionIds.add(removed.canonicalRecordId);
+              localEventIds.delete(removed.canonicalRecordId);
+            }
+          }
+        }
+        if (latestSnapshot !== null) emitSnapshot(client.snapshot());
       },
       close: () => {
         closed = true;
@@ -704,12 +834,14 @@ export const openIssue31MobileNostrRuntime = async (
         client.close();
         openedOutboundStore.close();
         openedPairingStore.close();
+        openedConfirmedStore.close();
         openedIdentity.close();
       },
     };
   } catch (error) {
     outboundStore?.close();
     pairingStore?.close();
+    confirmedStore?.close();
     identity?.close();
     throw error;
   }

@@ -7,6 +7,7 @@ import {
   ISSUE31_PAIRING_SCHEMA,
   decodeIssue31HostAnnouncement,
   decodeIssue31PairingRecord,
+  type Issue31CommandArguments,
 } from "@openagentsinc/sarah/issue31-nostr";
 import { describe, expect, test } from "vite-plus/test";
 
@@ -478,5 +479,75 @@ describe("Issue31WorkroomReadModel", () => {
     state = await Effect.runPromise(lastState(program));
     expect(pairingRequests).toBe(1);
     expect(state.issue31NostrControl.phase).toBe("pairing");
+  });
+
+  test("publishes owner-private v2 actions without treating host handling as completion", async () => {
+    const hostPublicKeyHex = "d".repeat(64);
+    const commands: Issue31CommandArguments[] = [];
+    let clears = 0;
+    const program = buildHomeProgram({
+      issue31Nostr: {
+        selectHost: async () => undefined,
+        requestPairing: async () => undefined,
+        publishCommandIntent: async (request) => {
+          commands.push(request.arguments);
+        },
+        clearOwnerPrivateLocalData: () => {
+          clears += 1;
+        },
+      },
+    });
+    program.workroom.setNostrControl({
+      phase: "paired",
+      deviceNpub: `npub1${"q".repeat(58)}`,
+      hosts: [
+        {
+          hostRef: "omega.host.local",
+          hostPublicKeyHex,
+          sarahPublicKeyHex: "3".repeat(64),
+          displayName: "Local Omega",
+          hostFingerprint: "dddddddddddd…dddddddd",
+          sarahFingerprint: "333333333333…33333333",
+          generation: 3,
+          expiresAt: 1_800_000_000,
+          supportsCommandV2: true,
+          conversation: "sarah.0123456789abcdef01234567",
+        },
+      ],
+      selectedHostPublicKeyHex: hostPublicKeyHex,
+      notice: null,
+    });
+    program.workroom.changeOwnerDraft("hello from mobile");
+    program.workroom.sendOwnerMessage();
+    await Effect.runPromise(settle);
+    let state = await Effect.runPromise(lastState(program));
+    expect(commands[0]).toMatchObject({
+      kind: "send_message",
+      text: "hello from mobile",
+      conversation: "sarah.0123456789abcdef01234567",
+    });
+    expect(state.issue31OwnerDraft).toBe("");
+    expect(state.issue31CommandNotice).toContain("handling is pending");
+    expect(state.issue31CommandNotice).not.toContain("completed");
+
+    program.workroom.changeOwnerReminderDraft("check the release");
+    program.workroom.createOwnerReminder();
+    await Effect.runPromise(settle);
+    expect(commands[1]).toMatchObject({
+      kind: "reminder_create",
+      note: "check the release",
+    });
+    program.workroom.clearOwnerLocalData();
+    await Effect.runPromise(settle);
+    state = await Effect.runPromise(lastState(program));
+    expect(clears).toBe(1);
+    expect(state.issue31CommandNotice).toContain("cleared");
+
+    program.workroom.open();
+    await Effect.runPromise(settle);
+    const view = JSON.stringify(renderContentView(await Effect.runPromise(lastState(program))));
+    expect(view).toContain("Message Sarah through your Omega host");
+    expect(view).toContain("Authority receipts");
+    expect(view).toContain("Reminders");
   });
 });

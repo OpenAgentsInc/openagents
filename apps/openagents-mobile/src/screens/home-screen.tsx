@@ -72,6 +72,7 @@ import {
   type Issue31MobileNostrRuntime,
 } from "../workroom/issue31-mobile-nostr-runtime"
 import { issue31SourceSnapshotsFromNostr } from "../workroom/issue31-nostr-read-model"
+import { projectIssue31OwnerPrivateReadModel } from "../workroom/issue31-owner-private-read-model"
 import {
   emptyIssue31WorkroomReadModel,
   projectIssue31WorkroomReadModel,
@@ -205,6 +206,17 @@ export const HomeScreen = ({
         ? Promise.reject(new Error("The Omega Nostr runtime is unavailable."))
         : runtime.requestPairing()
     },
+    publishCommandIntent: (request: Parameters<Issue31MobileNostrRuntime["publishCommandIntent"]>[0]) => {
+      const runtime = issue31RuntimeRef.current
+      return runtime === null
+        ? Promise.reject(new Error("The Omega Nostr runtime is unavailable."))
+        : runtime.publishCommandIntent(request)
+    },
+    clearOwnerPrivateLocalData: (): void => {
+      const runtime = issue31RuntimeRef.current
+      if (runtime === null) throw new Error("The Omega Nostr runtime is unavailable.")
+      runtime.clearOwnerPrivateLocalData()
+    },
   }), [])
   const releaseSarahPlayback = useCallback((outcome: "completed" | "stopped"): void => {
     const record = sarahPlaybackRef.current
@@ -334,6 +346,10 @@ export const HomeScreen = ({
         program.workroom.setReadModel(projectIssue31WorkroomReadModel({
           projectedAt: new Date(nowUnixSeconds * 1_000).toISOString(),
           sources: issue31SourceSnapshotsFromNostr(snapshot, nowUnixSeconds),
+          ownerPrivate: projectIssue31OwnerPrivateReadModel(snapshot, {
+            nowUnixSeconds,
+            transcriptLimit: 200,
+          }),
         }))
       } catch {
         program.workroom.setReadModel(unavailableIssue31NostrWorkroomReadModel(

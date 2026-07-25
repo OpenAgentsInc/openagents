@@ -160,6 +160,7 @@ import {
   initialIssue31MobileNostrControlState,
   type Issue31MobileNostrControlState,
 } from "../workroom/issue31-mobile-nostr-runtime"
+import type { Issue31CommandArguments } from "@openagentsinc/sarah/issue31-nostr"
 import {
   decodeMobileEnvironmentDirectory,
   decodeMobileEnvironmentReceipt,
@@ -255,6 +256,11 @@ export interface HomeState {
   readonly issue31Workroom: Issue31WorkroomReadModel
   readonly issue31WorkroomRoom: Issue31WorkroomRoom
   readonly issue31NostrControl: Issue31MobileNostrControlState
+  readonly issue31OwnerDraft: string
+  readonly issue31MemoryQuery: string
+  readonly issue31ReminderDraft: string
+  readonly issue31TranscriptLimit: number
+  readonly issue31CommandNotice: string | null
   readonly repositoryBrowser: MobileRepositoryBrowserState
   readonly repositoryReview: MobileRepositoryReviewState
   readonly repositoryGit: MobileRepositoryGitState
@@ -447,6 +453,11 @@ export const initialHomeState: HomeState = {
   issue31Workroom: emptyIssue31WorkroomReadModel(),
   issue31WorkroomRoom: "owner_private",
   issue31NostrControl: initialIssue31MobileNostrControlState(),
+  issue31OwnerDraft: "",
+  issue31MemoryQuery: "",
+  issue31ReminderDraft: "",
+  issue31TranscriptLimit: 40,
+  issue31CommandNotice: null,
   repositoryBrowser: initialMobileRepositoryBrowserState,
   repositoryReview: initialMobileRepositoryReviewState,
   repositoryGit: initialMobileRepositoryGitState,
@@ -696,6 +707,46 @@ export const Issue31HostSelected = defineIntent(
   Schema.Struct({ hostPublicKeyHex: Schema.String }),
 )
 export const Issue31PairingRequested = defineIntent("Issue31PairingRequested", EmptyPayload)
+export const Issue31OwnerDraftChanged = defineIntent("Issue31OwnerDraftChanged", Schema.String)
+export const Issue31OwnerSendRequested = defineIntent("Issue31OwnerSendRequested", EmptyPayload)
+export const Issue31OwnerInterruptRequested = defineIntent(
+  "Issue31OwnerInterruptRequested",
+  Schema.Struct({ turnRef: Schema.String, conversation: Schema.String }),
+)
+export const Issue31OwnerTranscriptEarlierRequested = defineIntent(
+  "Issue31OwnerTranscriptEarlierRequested",
+  EmptyPayload,
+)
+export const Issue31OwnerMemoryQueryChanged = defineIntent(
+  "Issue31OwnerMemoryQueryChanged",
+  Schema.String,
+)
+export const Issue31OwnerReminderDraftChanged = defineIntent(
+  "Issue31OwnerReminderDraftChanged",
+  Schema.String,
+)
+export const Issue31OwnerLocalDataCleared = defineIntent("Issue31OwnerLocalDataCleared", EmptyPayload)
+export const Issue31OwnerMarkReadRequested = defineIntent(
+  "Issue31OwnerMarkReadRequested",
+  Schema.Struct({ sourceEventId: Schema.String }),
+)
+export const Issue31OwnerReminderCreated = defineIntent("Issue31OwnerReminderCreated", EmptyPayload)
+export const Issue31OwnerReminderChanged = defineIntent(
+  "Issue31OwnerReminderChanged",
+  Schema.Struct({ reminderId: Schema.String }),
+)
+export const Issue31OwnerReminderCompleted = defineIntent(
+  "Issue31OwnerReminderCompleted",
+  Schema.Struct({ reminderId: Schema.String }),
+)
+export const Issue31OwnerReminderCancelled = defineIntent(
+  "Issue31OwnerReminderCancelled",
+  Schema.Struct({ reminderId: Schema.String }),
+)
+export const Issue31OwnerDeepLinkOpened = defineIntent(
+  "Issue31OwnerDeepLinkOpened",
+  Schema.Struct({ url: Schema.String }),
+)
 export const ChangesRouteOpened = defineIntent("ChangesRouteOpened", EmptyPayload)
 export const WorkbenchConversationOpened = defineIntent("WorkbenchConversationOpened", EmptyPayload)
 export const RepositoryChangesRefreshed = defineIntent("RepositoryChangesRefreshed", EmptyPayload)
@@ -924,6 +975,19 @@ export const homeIntentDefinitions = [
   Issue31WorkroomRoomSelected,
   Issue31HostSelected,
   Issue31PairingRequested,
+  Issue31OwnerDraftChanged,
+  Issue31OwnerSendRequested,
+  Issue31OwnerInterruptRequested,
+  Issue31OwnerTranscriptEarlierRequested,
+  Issue31OwnerMemoryQueryChanged,
+  Issue31OwnerReminderDraftChanged,
+  Issue31OwnerLocalDataCleared,
+  Issue31OwnerMarkReadRequested,
+  Issue31OwnerReminderCreated,
+  Issue31OwnerReminderChanged,
+  Issue31OwnerReminderCompleted,
+  Issue31OwnerReminderCancelled,
+  Issue31OwnerDeepLinkOpened,
   ChangesRouteOpened,
   WorkbenchConversationOpened,
   RepositoryChangesRefreshed,
@@ -1202,6 +1266,13 @@ export const renderContentView = (state: HomeState): View =>
           state.issue31WorkroomRoom,
           state.issue31NostrControl,
           state.accessibility,
+          {
+            draft: state.issue31OwnerDraft,
+            memoryQuery: state.issue31MemoryQuery,
+            reminderDraft: state.issue31ReminderDraft,
+            transcriptLimit: state.issue31TranscriptLimit,
+            notice: state.issue31CommandNotice,
+          },
         )]
       : state.workbenchRoute === "terminal"
       ? [renderMobileTerminalView(state.repositoryTerminal, state.accessibility)]
@@ -2305,6 +2376,11 @@ export interface HomeProgramOptions {
   readonly issue31Nostr?: Readonly<{
     selectHost: (hostPublicKeyHex: string) => Promise<void>
     requestPairing: () => Promise<void>
+    publishCommandIntent?: (request: Readonly<{
+      idempotencyRef: string
+      arguments: Issue31CommandArguments
+    }>) => Promise<unknown>
+    clearOwnerPrivateLocalData?: () => void
   }>
   /** Initial live `FullAutoRun` mobile projection, when already resolved at
    * selection time (openagents #8982). Later updates flow through
@@ -3469,6 +3545,41 @@ export const makeHomeHandlers = (
         options.coding,
         selectedThreadLease,
       )
+  const publishIssue31Command = (argumentsValue: Issue31CommandArguments) =>
+    Effect.gen(function* () {
+      const nostr = options.issue31Nostr
+      if (nostr?.publishCommandIntent === undefined) {
+        yield* SubscriptionRef.update(state, current => ({
+          ...current,
+          issue31CommandNotice: "The Omega Nostr runtime is unavailable.",
+        }))
+        return false
+      }
+      const idempotencyRef =
+        `idempotency.issue31.${argumentsValue.kind}:${globalThis.crypto.randomUUID().replaceAll("-", "")}`
+      yield* SubscriptionRef.update(state, current => ({
+        ...current,
+        issue31CommandNotice: "Publishing a signed command to the Omega host…",
+      }))
+      try {
+        yield* Effect.promise(() => nostr.publishCommandIntent!({
+          idempotencyRef,
+          arguments: argumentsValue,
+        }))
+        yield* SubscriptionRef.update(state, current => ({
+          ...current,
+          issue31CommandNotice:
+            "Omega host handling is pending. Completion requires the matching signed source record.",
+        }))
+        return true
+      } catch {
+        yield* SubscriptionRef.update(state, current => ({
+          ...current,
+          issue31CommandNotice: "The signed command could not be published.",
+        }))
+        return false
+      }
+    })
   const repositoryScope = (composer: MobileCodingComposerSession | null): MobileRepositoryScope | null => {
     if (composer === null) return null
     const repository = composer.draft.context.find(item => item.kind === "repository")
@@ -4610,6 +4721,149 @@ export const makeHomeHandlers = (
         }))
       }
     }),
+    Issue31OwnerDraftChanged: (value: string) =>
+      SubscriptionRef.update(state, current => ({
+        ...current,
+        issue31OwnerDraft: value.slice(0, 12_000),
+      })),
+    Issue31OwnerSendRequested: () => Effect.gen(function* () {
+      const before = yield* SubscriptionRef.get(state)
+      const text = before.issue31OwnerDraft
+      const host = before.issue31NostrControl.hosts.find(candidate =>
+        candidate.hostPublicKeyHex === before.issue31NostrControl.selectedHostPublicKeyHex)
+      if (text.trim() === "" || host?.conversation === null || host?.conversation === undefined) {
+        yield* SubscriptionRef.update(state, current => ({
+          ...current,
+          issue31CommandNotice: text.trim() === ""
+            ? "Write a message before sending."
+            : "The selected Omega host does not advertise an owner-private conversation.",
+        }))
+        return
+      }
+      const published = yield* publishIssue31Command({
+        kind: "send_message",
+        actionRef: "action.issue31.sarah.send",
+        conversation: host.conversation,
+        text,
+      })
+      if (published) {
+        yield* SubscriptionRef.update(state, current => ({
+          ...current,
+          issue31OwnerDraft: "",
+        }))
+      }
+    }),
+    Issue31OwnerInterruptRequested: ({ turnRef, conversation }: {
+      readonly turnRef: string
+      readonly conversation: string
+    }) => publishIssue31Command({
+      kind: "interrupt_turn",
+      actionRef: "action.issue31.sarah.interrupt",
+      conversation,
+      turnRef,
+    }),
+    Issue31OwnerTranscriptEarlierRequested: () =>
+      SubscriptionRef.update(state, current => ({
+        ...current,
+        issue31TranscriptLimit: Math.min(200, current.issue31TranscriptLimit + 40),
+      })),
+    Issue31OwnerMemoryQueryChanged: (value: string) =>
+      SubscriptionRef.update(state, current => ({
+        ...current,
+        issue31MemoryQuery: value.slice(0, 256),
+      })),
+    Issue31OwnerReminderDraftChanged: (value: string) =>
+      SubscriptionRef.update(state, current => ({
+        ...current,
+        issue31ReminderDraft: value.slice(0, 4_096),
+      })),
+    Issue31OwnerLocalDataCleared: () => Effect.gen(function* () {
+      const clearOwnerPrivateLocalData = options.issue31Nostr?.clearOwnerPrivateLocalData
+      if (clearOwnerPrivateLocalData === undefined) return
+      try {
+        clearOwnerPrivateLocalData()
+        yield* SubscriptionRef.update(state, current => ({
+          ...current,
+          issue31CommandNotice: "Local owner-private projections were cleared from this device.",
+        }))
+      } catch {
+        yield* SubscriptionRef.update(state, current => ({
+          ...current,
+          issue31CommandNotice: "Local owner-private data could not be cleared.",
+        }))
+      }
+    }),
+    Issue31OwnerMarkReadRequested: ({ sourceEventId }: { readonly sourceEventId: string }) =>
+      publishIssue31Command({
+        kind: "read_state_patch",
+        actionRef: "action.issue31.read_state.advance",
+        slotId: "owner-mobile",
+        clientId: "openagents-mobile",
+        contextRef: `source:${sourceEventId}`,
+        readAt: Math.floor(Date.now() / 1_000),
+      }),
+    Issue31OwnerReminderCreated: () => Effect.gen(function* () {
+      const before = yield* SubscriptionRef.get(state)
+      const note = before.issue31ReminderDraft.trim()
+      if (note === "") return
+      const published = yield* publishIssue31Command({
+        kind: "reminder_create",
+        actionRef: "action.issue31.reminder.create",
+        reminderId: globalThis.crypto.randomUUID().replaceAll("-", ""),
+        note,
+        notBefore: Math.floor(Date.now() / 1_000),
+      })
+      if (published) {
+        yield* SubscriptionRef.update(state, current => ({
+          ...current,
+          issue31ReminderDraft: "",
+        }))
+      }
+    }),
+    Issue31OwnerReminderChanged: ({ reminderId }: { readonly reminderId: string }) =>
+      Effect.gen(function* () {
+        const before = yield* SubscriptionRef.get(state)
+        const reminder = before.issue31Workroom.ownerPrivate.reminders.find(row =>
+          row.reminderId === reminderId)
+        const note = before.issue31ReminderDraft.trim()
+        if (reminder?.notBefore === null || reminder === undefined || note === "") return
+        const published = yield* publishIssue31Command({
+          kind: "reminder_change",
+          actionRef: "action.issue31.reminder.change",
+          reminderId,
+          note,
+          ...(reminder.content.target?.id === undefined
+            ? {}
+            : { targetEventId: reminder.content.target.id }),
+          notBefore: reminder.notBefore,
+          ...(reminder.expiration === null ? {} : { expiration: reminder.expiration }),
+        })
+        if (published) {
+          yield* SubscriptionRef.update(state, current => ({
+            ...current,
+            issue31ReminderDraft: "",
+          }))
+        }
+      }),
+    Issue31OwnerReminderCompleted: ({ reminderId }: { readonly reminderId: string }) =>
+      publishIssue31Command({
+        kind: "reminder_complete",
+        actionRef: "action.issue31.reminder.complete",
+        reminderId,
+      }),
+    Issue31OwnerReminderCancelled: ({ reminderId }: { readonly reminderId: string }) =>
+      publishIssue31Command({
+        kind: "reminder_cancel",
+        actionRef: "action.issue31.reminder.cancel",
+        reminderId,
+      }),
+    Issue31OwnerDeepLinkOpened: ({ url }: { readonly url: string }) =>
+      SubscriptionRef.update(state, current => ({
+        ...current,
+        issue31CommandNotice: url.startsWith("openagents://omega/workroom?")
+          ? `Selected signed source · ${url.slice(url.indexOf("?") + 1)}`
+          : "The owner-private reference is invalid.",
+      })),
     SettingsPressed: () => Effect.gen(function* () {
       yield* SubscriptionRef.update(state, current => ({
         ...current,
@@ -5338,6 +5592,18 @@ export interface HomeProgramHandle {
     readonly selectRoom: (room: Issue31WorkroomRoom) => void
     readonly selectHost: (hostPublicKeyHex: string) => void
     readonly requestPairing: () => void
+    readonly changeOwnerDraft: (value: string) => void
+    readonly sendOwnerMessage: () => void
+    readonly interruptOwnerTurn: (turnRef: string, conversation: string) => void
+    readonly loadEarlierOwnerTranscript: () => void
+    readonly changeOwnerMemoryQuery: (value: string) => void
+    readonly changeOwnerReminderDraft: (value: string) => void
+    readonly createOwnerReminder: () => void
+    readonly changeOwnerReminder: (reminderId: string) => void
+    readonly completeOwnerReminder: (reminderId: string) => void
+    readonly cancelOwnerReminder: (reminderId: string) => void
+    readonly markOwnerRead: (sourceEventId: string) => void
+    readonly clearOwnerLocalData: () => void
     readonly setReadModel: (model: Issue31WorkroomReadModel) => void
     readonly setNostrControl: (control: Issue31MobileNostrControlState) => void
   }
@@ -5642,6 +5908,42 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
             StaticPayload({ hostPublicKeyHex }),
           )),
           requestPairing: fire("Issue31PairingRequested"),
+          changeOwnerDraft: value => fireText(
+            IntentRef("Issue31OwnerDraftChanged", ComponentValueBinding()),
+            value,
+          ),
+          sendOwnerMessage: fire("Issue31OwnerSendRequested"),
+          interruptOwnerTurn: (turnRef, conversation) => fireRef(IntentRef(
+            "Issue31OwnerInterruptRequested",
+            StaticPayload({ turnRef, conversation }),
+          )),
+          loadEarlierOwnerTranscript: fire("Issue31OwnerTranscriptEarlierRequested"),
+          changeOwnerMemoryQuery: value => fireText(
+            IntentRef("Issue31OwnerMemoryQueryChanged", ComponentValueBinding()),
+            value,
+          ),
+          changeOwnerReminderDraft: value => fireText(
+            IntentRef("Issue31OwnerReminderDraftChanged", ComponentValueBinding()),
+            value,
+          ),
+          createOwnerReminder: fire("Issue31OwnerReminderCreated"),
+          changeOwnerReminder: reminderId => fireRef(IntentRef(
+            "Issue31OwnerReminderChanged",
+            StaticPayload({ reminderId }),
+          )),
+          completeOwnerReminder: reminderId => fireRef(IntentRef(
+            "Issue31OwnerReminderCompleted",
+            StaticPayload({ reminderId }),
+          )),
+          cancelOwnerReminder: reminderId => fireRef(IntentRef(
+            "Issue31OwnerReminderCancelled",
+            StaticPayload({ reminderId }),
+          )),
+          markOwnerRead: sourceEventId => fireRef(IntentRef(
+            "Issue31OwnerMarkReadRequested",
+            StaticPayload({ sourceEventId }),
+          )),
+          clearOwnerLocalData: fire("Issue31OwnerLocalDataCleared"),
           setReadModel: model => {
             Effect.runFork(SubscriptionRef.update(state, current => ({
               ...current,

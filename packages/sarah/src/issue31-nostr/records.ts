@@ -2,8 +2,11 @@ import { Schema as S } from "effect";
 
 export const ISSUE31_HOST_ANNOUNCEMENT_SCHEMA =
   "openagents.omega.issue31.host_discovery.v1" as const;
+export const ISSUE31_HOST_ANNOUNCEMENT_SCHEMA_V2 =
+  "openagents.omega.issue31.host_discovery.v2" as const;
 export const ISSUE31_PAIRING_SCHEMA = "openagents.omega.issue31.pairing.v1" as const;
 export const ISSUE31_COMMAND_SCHEMA = "openagents.omega.issue31.command.v1" as const;
+export const ISSUE31_COMMAND_SCHEMA_V2 = "openagents.omega.issue31.command.v2" as const;
 
 export const ISSUE31_HOST_ANNOUNCEMENT_KIND = 31_990 as const;
 export const ISSUE31_PRIVATE_RUMOR_KIND = 14 as const;
@@ -31,6 +34,7 @@ const Generation = S.Number.check(
   S.isGreaterThanOrEqualTo(1),
   S.isLessThanOrEqualTo(Number.MAX_SAFE_INTEGER),
 );
+const ConversationTag = S.String.check(S.isPattern(/^sarah\.[0-9a-f]{24}$/));
 
 export const Issue31HostAnnouncementSchema = S.Struct({
   schema: S.Literal(ISSUE31_HOST_ANNOUNCEMENT_SCHEMA),
@@ -50,6 +54,19 @@ export const Issue31HostAnnouncementSchema = S.Struct({
 export interface Issue31HostAnnouncement extends S.Schema.Type<
   typeof Issue31HostAnnouncementSchema
 > {}
+
+export const Issue31HostAnnouncementV2Schema = S.Struct({
+  ...Issue31HostAnnouncementSchema.fields,
+  schema: S.Literal(ISSUE31_HOST_ANNOUNCEMENT_SCHEMA_V2),
+  conversation: ConversationTag,
+  protocols: S.Array(
+    S.Literals([ISSUE31_PAIRING_SCHEMA, ISSUE31_COMMAND_SCHEMA, ISSUE31_COMMAND_SCHEMA_V2]),
+  ).check(S.isMinLength(3), S.isMaxLength(3)),
+});
+export interface Issue31HostAnnouncementV2 extends S.Schema.Type<
+  typeof Issue31HostAnnouncementV2Schema
+> {}
+export type Issue31AnyHostAnnouncement = Issue31HostAnnouncement | Issue31HostAnnouncementV2;
 
 const PairingBase = {
   schema: S.Literal(ISSUE31_PAIRING_SCHEMA),
@@ -171,6 +188,131 @@ export const Issue31CommandResultSchema = S.Struct({
 });
 export interface Issue31CommandResult extends S.Schema.Type<typeof Issue31CommandResultSchema> {}
 
+const BoundedMessage = S.String.check(S.isMinLength(1), S.isMaxLength(12_000));
+const BoundedNote = S.String.check(S.isMaxLength(4_096));
+const ReminderId = S.String.check(S.isPattern(/^[0-9a-f]{32}$/));
+const ReadStateSlotId = S.String.check(
+  S.isMinLength(1),
+  S.isMaxLength(64),
+  S.isPattern(/^[A-Za-z0-9._:-]+$/),
+);
+const ReadStateClientId = S.String.check(
+  S.isMinLength(1),
+  S.isMaxLength(64),
+  S.isPattern(/^[A-Za-z0-9._:-]+$/),
+);
+const ReadStateContextRef = S.String.check(
+  S.isMinLength(1),
+  S.isMaxLength(256),
+  S.isPattern(/^[^\u0000-\u001f\u007f]+$/),
+);
+
+export const ISSUE31_COMMAND_V2_ACTION_REFS = {
+  sendMessage: "action.issue31.sarah.send",
+  interruptTurn: "action.issue31.sarah.interrupt",
+  advanceReadState: "action.issue31.read_state.advance",
+  createReminder: "action.issue31.reminder.create",
+  changeReminder: "action.issue31.reminder.change",
+  completeReminder: "action.issue31.reminder.complete",
+  cancelReminder: "action.issue31.reminder.cancel",
+} as const;
+
+const Issue31ReminderPendingPostImageSchema = {
+  reminderId: ReminderId,
+  note: S.optionalKey(BoundedNote),
+  targetEventId: S.optionalKey(Hex64),
+  notBefore: UnixSeconds,
+  expiration: S.optionalKey(UnixSeconds),
+};
+
+export const Issue31CommandArgumentsSchema = S.Union([
+  S.Struct({
+    kind: S.Literal("send_message"),
+    actionRef: S.Literal(ISSUE31_COMMAND_V2_ACTION_REFS.sendMessage),
+    conversation: ConversationTag,
+    text: BoundedMessage,
+  }),
+  S.Struct({
+    kind: S.Literal("interrupt_turn"),
+    actionRef: S.Literal(ISSUE31_COMMAND_V2_ACTION_REFS.interruptTurn),
+    conversation: ConversationTag,
+    turnRef: PublicRef,
+  }),
+  S.Struct({
+    kind: S.Literal("read_state_patch"),
+    actionRef: S.Literal(ISSUE31_COMMAND_V2_ACTION_REFS.advanceReadState),
+    slotId: ReadStateSlotId,
+    clientId: ReadStateClientId,
+    contextRef: ReadStateContextRef,
+    readAt: UnixSeconds,
+  }),
+  S.Struct({
+    kind: S.Literal("reminder_create"),
+    actionRef: S.Literal(ISSUE31_COMMAND_V2_ACTION_REFS.createReminder),
+    ...Issue31ReminderPendingPostImageSchema,
+  }),
+  S.Struct({
+    kind: S.Literal("reminder_change"),
+    actionRef: S.Literal(ISSUE31_COMMAND_V2_ACTION_REFS.changeReminder),
+    ...Issue31ReminderPendingPostImageSchema,
+  }),
+  S.Struct({
+    kind: S.Literal("reminder_complete"),
+    actionRef: S.Literal(ISSUE31_COMMAND_V2_ACTION_REFS.completeReminder),
+    reminderId: ReminderId,
+  }),
+  S.Struct({
+    kind: S.Literal("reminder_cancel"),
+    actionRef: S.Literal(ISSUE31_COMMAND_V2_ACTION_REFS.cancelReminder),
+    reminderId: ReminderId,
+  }),
+]);
+export type Issue31CommandArguments = S.Schema.Type<typeof Issue31CommandArgumentsSchema>;
+
+export const Issue31CommandIntentV2Schema = S.Struct({
+  schema: S.Literal(ISSUE31_COMMAND_SCHEMA_V2),
+  recordType: S.Literal("command_intent"),
+  hostRef: PublicRef,
+  hostPublicKeyHex: Hex64,
+  devicePublicKeyHex: Hex64,
+  grantRef: PublicRef,
+  idempotencyRef: PublicRef,
+  expectedGeneration: Generation,
+  arguments: Issue31CommandArgumentsSchema,
+  issuedAt: UnixSeconds,
+  expiresAt: UnixSeconds,
+});
+export interface Issue31CommandIntentV2 extends S.Schema.Type<
+  typeof Issue31CommandIntentV2Schema
+> {}
+
+export const Issue31CommandResultV2Schema = S.Struct({
+  schema: S.Literal(ISSUE31_COMMAND_SCHEMA_V2),
+  recordType: S.Literal("command_result"),
+  hostRef: PublicRef,
+  hostPublicKeyHex: Hex64,
+  devicePublicKeyHex: Hex64,
+  grantRef: PublicRef,
+  intentEventId: Hex64,
+  actionRef: PublicRef,
+  idempotencyRef: PublicRef,
+  expectedGeneration: Generation,
+  status: S.Literals(["accepted", "failed", "refused", "unavailable"]),
+  handlingRef: PublicRef,
+  reasonRef: S.optionalKey(PublicRef),
+  sourceEventId: S.optionalKey(Hex64),
+  handledAt: UnixSeconds,
+});
+export interface Issue31CommandResultV2 extends S.Schema.Type<
+  typeof Issue31CommandResultV2Schema
+> {}
+
+export const Issue31CommandRecordV2Schema = S.Union([
+  Issue31CommandIntentV2Schema,
+  Issue31CommandResultV2Schema,
+]);
+export type Issue31CommandRecordV2 = S.Schema.Type<typeof Issue31CommandRecordV2Schema>;
+
 export const Issue31CommandRecordSchema = S.Union([
   Issue31CommandIntentSchema,
   Issue31CommandResultSchema,
@@ -178,8 +320,10 @@ export const Issue31CommandRecordSchema = S.Union([
 export type Issue31CommandRecord = S.Schema.Type<typeof Issue31CommandRecordSchema>;
 
 const decodeHostAnnouncement = S.decodeUnknownSync(Issue31HostAnnouncementSchema);
+const decodeHostAnnouncementV2 = S.decodeUnknownSync(Issue31HostAnnouncementV2Schema);
 const decodePairingRecord = S.decodeUnknownSync(Issue31PairingRecordSchema);
 const decodeCommandRecord = S.decodeUnknownSync(Issue31CommandRecordSchema);
+const decodeCommandRecordV2 = S.decodeUnknownSync(Issue31CommandRecordV2Schema);
 
 const assertTimes = (issuedAt: number, expiresAt: number, label: string): void => {
   if (expiresAt <= issuedAt) throw new Error(`${label} expiration must follow issue time.`);
@@ -189,8 +333,9 @@ const assertUnique = (values: ReadonlyArray<string>, label: string): void => {
   if (new Set(values).size !== values.length) throw new Error(`${label} repeats a value.`);
 };
 
-export const decodeIssue31HostAnnouncement = (value: unknown): Issue31HostAnnouncement => {
-  const record = decodeHostAnnouncement(value, { onExcessProperty: "error" });
+const validateIssue31HostAnnouncement = <Announcement extends Issue31AnyHostAnnouncement>(
+  record: Announcement,
+): Announcement => {
   if (record.sarahPublicKeyHex === record.hostPublicKeyHex) {
     throw new Error("Issue 31 host and Sarah signing keys must be distinct.");
   }
@@ -202,6 +347,12 @@ export const decodeIssue31HostAnnouncement = (value: unknown): Issue31HostAnnoun
     !record.protocols.includes(ISSUE31_COMMAND_SCHEMA)
   ) {
     throw new Error("Issue 31 host announcement must declare pairing and command protocols.");
+  }
+  if (
+    record.schema === ISSUE31_HOST_ANNOUNCEMENT_SCHEMA_V2 &&
+    !record.protocols.includes(ISSUE31_COMMAND_SCHEMA_V2)
+  ) {
+    throw new Error("Issue 31 v2 host announcement must declare command v2.");
   }
   for (const relayUrl of record.relayUrls) {
     const parsed = new URL(relayUrl);
@@ -217,6 +368,22 @@ export const decodeIssue31HostAnnouncement = (value: unknown): Issue31HostAnnoun
     }
   }
   return record;
+};
+
+export const decodeIssue31HostAnnouncement = (value: unknown): Issue31HostAnnouncement =>
+  validateIssue31HostAnnouncement(decodeHostAnnouncement(value, { onExcessProperty: "error" }));
+
+export const decodeIssue31HostAnnouncementV2 = (value: unknown): Issue31HostAnnouncementV2 =>
+  validateIssue31HostAnnouncement(decodeHostAnnouncementV2(value, { onExcessProperty: "error" }));
+
+export const decodeIssue31AnyHostAnnouncement = (value: unknown): Issue31AnyHostAnnouncement => {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Issue 31 host announcement is not a record.");
+  }
+  return (value as Readonly<Record<string, unknown>>)["schema"] ===
+    ISSUE31_HOST_ANNOUNCEMENT_SCHEMA_V2
+    ? decodeIssue31HostAnnouncementV2(value)
+    : decodeIssue31HostAnnouncement(value);
 };
 
 export const decodeIssue31PairingRecord = (value: unknown): Issue31PairingRecord => {
@@ -254,9 +421,33 @@ export const decodeIssue31CommandRecord = (value: unknown): Issue31CommandRecord
   return record;
 };
 
+export const decodeIssue31CommandRecordV2 = (value: unknown): Issue31CommandRecordV2 => {
+  const record = decodeCommandRecordV2(value, { onExcessProperty: "error" });
+  if (record.recordType === "command_intent") {
+    assertTimes(record.issuedAt, record.expiresAt, "Issue 31 command v2 intent");
+    if (
+      (record.arguments.kind === "reminder_create" ||
+        record.arguments.kind === "reminder_change") &&
+      record.arguments.expiration !== undefined &&
+      record.arguments.expiration <= record.arguments.notBefore
+    ) {
+      throw new Error("Issue 31 reminder expiration must follow not-before time.");
+    }
+    if (
+      record.arguments.kind === "read_state_patch" &&
+      new TextEncoder().encode(record.arguments.contextRef).length > 256
+    ) {
+      throw new Error("Issue 31 read-state context reference exceeds 256 UTF-8 bytes.");
+    }
+  } else if (record.status === "accepted" && record.reasonRef !== undefined) {
+    throw new Error("Issue 31 accepted command handling cannot carry a failure reason.");
+  }
+  return record;
+};
+
 export const parseIssue31PrivateRumorContent = (
   content: string,
-): Issue31PairingRecord | Issue31CommandRecord => {
+): Issue31PairingRecord | Issue31CommandRecord | Issue31CommandRecordV2 => {
   let value: unknown;
   try {
     value = JSON.parse(content);
@@ -269,6 +460,7 @@ export const parseIssue31PrivateRumorContent = (
   const schema = (value as Readonly<Record<string, unknown>>)["schema"];
   if (schema === ISSUE31_PAIRING_SCHEMA) return decodeIssue31PairingRecord(value);
   if (schema === ISSUE31_COMMAND_SCHEMA) return decodeIssue31CommandRecord(value);
+  if (schema === ISSUE31_COMMAND_SCHEMA_V2) return decodeIssue31CommandRecordV2(value);
   throw new Error("Issue 31 private rumor has an unknown schema.");
 };
 

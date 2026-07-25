@@ -1,0 +1,19 @@
+{
+  "schema": "openagents.omega.issue31.host_discovery.v2",
+  "hostRef": "omega.host.local",
+  "hostPublicKeyHex": "1111111111111111111111111111111111111111111111111111111111111111",
+  "sarahPublicKeyHex": "3333333333333333333333333333333333333333333333333333333333333333",
+  "displayName": "Local Omega",
+  "conversation": "sarah.0123456789abcdef01234567",
+  "protocols": [
+    "openagents.omega.issue31.pairing.v1",
+    "openagents.omega.issue31.command.v1",
+    "openagents.omega.issue31.command.v2"
+  ],
+  "relayUrls": [
+    "wss://relay.example.com"
+  ],
+  "generation": 5,
+  "issuedAt": 1784937600,
+  "expiresAt": 1785024000
+}

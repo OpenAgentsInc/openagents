@@ -6,10 +6,23 @@ import {
   ISSUE31_PRIVATE_RUMOR_KIND,
   ISSUE31_PRIVATE_SEAL_KIND,
   decodeIssue31CommandRecord,
+  decodeIssue31CommandRecordV2,
   decodeIssue31PairingRecord,
   type Issue31CommandRecord,
+  type Issue31CommandRecordV2,
   type Issue31PairingRecord,
 } from "./records.ts";
+import {
+  ISSUE31_OWNER_PROJECTION_SCHEMA,
+  decodeIssue31OwnerProjectionRecord,
+  type Issue31OwnerProjectionRecord,
+} from "./owner-projection.ts";
+
+export type Issue31PrivateRecord =
+  | Issue31PairingRecord
+  | Issue31CommandRecord
+  | Issue31CommandRecordV2
+  | Issue31OwnerProjectionRecord;
 
 const HEX_64 = /^[0-9a-f]{64}$/;
 const HEX_128 = /^[0-9a-f]{128}$/;
@@ -104,7 +117,7 @@ const assertSignedEvent = (
 };
 
 const assertRecordIdentity = (
-  record: Issue31PairingRecord | Issue31CommandRecord,
+  record: Issue31PrivateRecord,
   senderPublicKeyHex: string,
   recipientPublicKeyHex: string,
 ): void => {
@@ -127,18 +140,20 @@ const assertRecordIdentity = (
   }
 };
 
-const validateRecord = (
-  record: Issue31PairingRecord | Issue31CommandRecord,
-): Issue31PairingRecord | Issue31CommandRecord =>
+const validateRecord = (record: Issue31PrivateRecord): Issue31PrivateRecord =>
   record.schema === "openagents.omega.issue31.pairing.v1"
     ? decodeIssue31PairingRecord(record)
-    : decodeIssue31CommandRecord(record);
+    : record.schema === "openagents.omega.issue31.command.v1"
+      ? decodeIssue31CommandRecord(record)
+      : record.schema === "openagents.omega.issue31.command.v2"
+        ? decodeIssue31CommandRecordV2(record)
+        : decodeIssue31OwnerProjectionRecord(record);
 
 export const createIssue31PrivateEnvelope = async (
   input: Readonly<{
     signer: Issue31NostrSigner;
     recipientPublicKeyHex: string;
-    record: Issue31PairingRecord | Issue31CommandRecord;
+    record: Issue31PrivateRecord;
     randomSecretKey: () => Uint8Array;
     createdAt: number;
     sealCreatedAt: number;
@@ -222,7 +237,7 @@ export const unwrapIssue31PrivateGiftWrap = async (
 ): Promise<
   Readonly<{
     rumor: Issue31PrivateRumor;
-    record: Issue31PairingRecord | Issue31CommandRecord | null;
+    record: Issue31PrivateRecord | null;
   }>
 > => {
   const giftWrap = assertSignedEvent(
@@ -269,7 +284,7 @@ export const unwrapIssue31PrivateGiftWrap = async (
   if (!privateRumor.tags.some((tag) => tag[0] === "p" && tag[1] === recipientPublicKeyHex)) {
     throw new Error("Issue 31 rumor is not addressed to the local signer.");
   }
-  let record: Issue31PairingRecord | Issue31CommandRecord | null = null;
+  let record: Issue31PrivateRecord | null = null;
   let contentValue: unknown;
   try {
     contentValue = JSON.parse(privateRumor.content) as unknown;
@@ -282,6 +297,10 @@ export const unwrapIssue31PrivateGiftWrap = async (
       record = decodeIssue31PairingRecord(contentValue);
     } else if (schema === "openagents.omega.issue31.command.v1") {
       record = decodeIssue31CommandRecord(contentValue);
+    } else if (schema === "openagents.omega.issue31.command.v2") {
+      record = decodeIssue31CommandRecordV2(contentValue);
+    } else if (schema === ISSUE31_OWNER_PROJECTION_SCHEMA) {
+      record = decodeIssue31OwnerProjectionRecord(contentValue);
     }
   }
   if (record === null && input.requireIssue31Record !== false) {

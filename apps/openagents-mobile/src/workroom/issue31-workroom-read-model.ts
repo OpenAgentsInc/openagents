@@ -8,6 +8,10 @@ import type {
   Issue31HostAdjunct,
   Issue31HostProjection,
 } from "@openagentsinc/sarah/issue31-workroom";
+import {
+  emptyIssue31OwnerPrivateReadModel,
+  type Issue31OwnerPrivateReadModel,
+} from "./issue31-owner-private-read-model.ts";
 
 export const ISSUE31_WORKROOM_READ_MODEL_SCHEMA =
   "openagents.mobile.issue31_workroom_read_model.v1" as const;
@@ -99,6 +103,7 @@ export interface Issue31WorkroomReadModel {
   readonly schema: typeof ISSUE31_WORKROOM_READ_MODEL_SCHEMA;
   readonly projectedAt: string;
   readonly rows: ReadonlyArray<Issue31CapabilityProjection>;
+  readonly ownerPrivate: Issue31OwnerPrivateReadModel;
   readonly coverage: Readonly<{
     total: number;
     ready: number;
@@ -339,6 +344,7 @@ export const projectIssue31WorkroomReadModel = (
     projectedAt: string;
     sources?: ReadonlyArray<unknown>;
     hostAdjunct?: unknown;
+    ownerPrivate?: Issue31OwnerPrivateReadModel;
   }>,
 ): Issue31WorkroomReadModel => {
   const projectedAt = Schema.decodeUnknownSync(IsoTime)(input.projectedAt);
@@ -382,6 +388,7 @@ export const projectIssue31WorkroomReadModel = (
     schema: ISSUE31_WORKROOM_READ_MODEL_SCHEMA,
     projectedAt,
     rows,
+    ownerPrivate: input.ownerPrivate ?? emptyIssue31OwnerPrivateReadModel(),
     coverage: {
       total: rows.length,
       ready: count("ready"),

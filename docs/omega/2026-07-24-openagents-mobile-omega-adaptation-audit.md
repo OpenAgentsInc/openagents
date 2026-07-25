@@ -857,6 +857,42 @@ Exit:
 - Omega and mobile agree on read state after restart and replay
 - the owner can inspect every memory item that Sarah can use
 
+Implementation state on 2026-07-24:
+
+- Discovery v2 adds the exact owner-private Sarah conversation reference and
+  advertises command v2 while preserving the v1 pairing and command protocols.
+- Command v2 carries typed arguments for send, interrupt, read-state advance,
+  and reminder create, change, complete, and cancel. Its signed result reports
+  host handling only. An accepted result is not target completion. Mobile waits
+  for the exact matching projected source record.
+- `openagents.omega.issue31.owner_projection.v1` binds each device-addressed
+  projection to the active grant generation, original source event identifier,
+  source author, source role, source kind, and source timestamp. The projection
+  transports a bounded owner-private view and never becomes source authority.
+- Mobile admits owner-authored source records only from the selected Omega host
+  identity and Sarah-authored records only from the Sarah key bound by the
+  active grant. Conflicting copies poison the source or idempotency reference
+  instead of selecting one by arrival order.
+- The Workroom renders bounded transcript paging, live turn activity, authority
+  receipts, local memory search, merged read state, reminder lifecycle controls,
+  and command reconciliation. Exact source identifiers back its deep links.
+- Confirmed decrypted records use the bounded local SQLite store. The local
+  clear action deletes stored projections. It also suppresses received copies
+  for the current relay session. It does not revoke relay records or the device
+  grant.
+
+Canonical contract fixture hashes:
+
+| Fixture | SHA-256 |
+| --- | --- |
+| `openagents.omega.issue31.host_discovery.v2.canonical.json` | `a5604d4c792a5ed556f023e150f01b371c5cf702b95b72786e0c7a9adbbdcb1c` |
+| `openagents.omega.issue31.command.v2.canonical-intent.json` | `7bb7b23680be10756184668ae7722c09c634a1941b086f66d0425da4e8371bbe` |
+| `openagents.omega.issue31.command.v2.canonical-result.json` | `51bca57e14c3d45518c342c2d1f848972281de848f809c34566ed183c7e4e387` |
+| `openagents.omega.issue31.owner_projection.v1.canonical.json` | `8515d1108617807aca2692ba5faca4b4adcc155e8e42197c1d0b4ce89ef5d79c` |
+
+The physical-device exit remains open until Omega implements and signs the
+matching v2 host records and a real phone completes the relay journey.
+
 ### `OMEGA-MOB-31-03` — Join Full Auto, accounts, and evidence
 
 Deliver:

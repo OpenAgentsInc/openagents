@@ -1,0 +1,16 @@
+{
+  "schema": "openagents.omega.issue31.command.v2",
+  "recordType": "command_result",
+  "hostRef": "omega.host.local",
+  "hostPublicKeyHex": "1111111111111111111111111111111111111111111111111111111111111111",
+  "devicePublicKeyHex": "2222222222222222222222222222222222222222222222222222222222222222",
+  "grantRef": "grant.omega.device_1",
+  "intentEventId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "actionRef": "action.issue31.sarah.send",
+  "idempotencyRef": "idempotency.issue31.send_1",
+  "expectedGeneration": 3,
+  "status": "accepted",
+  "handlingRef": "handling.issue31.send_1",
+  "sourceEventId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "handledAt": 1784937610
+}

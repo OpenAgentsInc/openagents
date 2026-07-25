@@ -1,6 +1,10 @@
 import type { Issue31SignedNostrEvent } from "@openagentsinc/sarah/issue31-nostr";
 import {
+  decodeIssue31CommandRecord,
+  decodeIssue31CommandRecordV2,
+  decodeIssue31OwnerProjectionRecord,
   decodeIssue31PairingRecord,
+  type Issue31PrivateRecord,
   type Issue31PairingRecord,
 } from "@openagentsinc/sarah/issue31-nostr";
 import { verifyEvent } from "nostr-effect/pure";
@@ -28,6 +32,19 @@ export interface Issue31LocalPairingRecord {
 export interface Issue31LocalPairingRecordStore {
   readonly load: () => ReadonlyArray<Issue31LocalPairingRecord>;
   readonly put: (record: Issue31LocalPairingRecord) => void;
+  readonly close: () => void;
+}
+
+export interface Issue31LocalConfirmedRecord {
+  readonly canonicalRecordId: string;
+  readonly event: Issue31SignedNostrEvent;
+  readonly record: Issue31PrivateRecord;
+}
+
+export interface Issue31LocalConfirmedRecordStore {
+  readonly load: () => ReadonlyArray<Issue31LocalConfirmedRecord>;
+  readonly put: (record: Issue31LocalConfirmedRecord) => void;
+  readonly clearOwnerProjections: () => void;
   readonly close: () => void;
 }
 
@@ -213,6 +230,111 @@ export const openExpoIssue31LocalPairingRecordStore = (
       database.runSync(
         "DELETE FROM issue31_local_pairing_records WHERE sequence NOT IN (SELECT sequence FROM issue31_local_pairing_records ORDER BY sequence DESC LIMIT ?)",
         maximumRecords,
+      );
+    },
+    close: () => database.closeSync(),
+  };
+};
+
+const decodePrivateRecord = (value: unknown): Issue31PrivateRecord => {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Issue 31 persisted private record is invalid.");
+  }
+  const schema = (value as Readonly<Record<string, unknown>>)["schema"];
+  if (schema === "openagents.omega.issue31.pairing.v1") {
+    return decodeIssue31PairingRecord(value);
+  }
+  if (schema === "openagents.omega.issue31.command.v1") {
+    return decodeIssue31CommandRecord(value);
+  }
+  if (schema === "openagents.omega.issue31.command.v2") {
+    return decodeIssue31CommandRecordV2(value);
+  }
+  if (schema === "openagents.omega.issue31.owner_projection.v1") {
+    return decodeIssue31OwnerProjectionRecord(value);
+  }
+  throw new Error("Issue 31 persisted private record schema is unknown.");
+};
+
+export const openExpoIssue31LocalConfirmedRecordStore = (
+  maximumRecords = 2_048,
+): Issue31LocalConfirmedRecordStore => {
+  if (!Number.isSafeInteger(maximumRecords) || maximumRecords < 64 || maximumRecords > 4_096) {
+    throw new Error("Issue 31 confirmed record bound is invalid.");
+  }
+  const sqlite = require("expo-sqlite") as Readonly<{
+    openDatabaseSync: (name: string) => Issue31SQLiteDatabase;
+  }>;
+  const database = sqlite.openDatabaseSync("openagents-omega-issue31.db");
+  database.execSync(`
+    PRAGMA journal_mode = WAL;
+    CREATE TABLE IF NOT EXISTS issue31_confirmed_private_records (
+      sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+      canonical_record_id TEXT NOT NULL UNIQUE,
+      event_json TEXT NOT NULL,
+      record_json TEXT NOT NULL,
+      record_schema TEXT NOT NULL
+    );
+  `);
+  return {
+    load: () =>
+      database
+        .getAllSync<
+          Readonly<{
+            canonical_record_id: string;
+            event_json: string;
+            record_json: string;
+          }>
+        >(
+          "SELECT canonical_record_id, event_json, record_json FROM issue31_confirmed_private_records ORDER BY sequence ASC LIMIT ?",
+          maximumRecords,
+        )
+        .map((row) => {
+          if (!HEX_64.test(row.canonical_record_id)) {
+            throw new Error("Issue 31 persisted canonical record identifier is invalid.");
+          }
+          return {
+            canonicalRecordId: row.canonical_record_id,
+            event: decodeStoredSignedEvent(JSON.parse(row.event_json) as unknown),
+            record: decodePrivateRecord(JSON.parse(row.record_json) as unknown),
+          };
+        }),
+    put: (record) => {
+      const eventJson = JSON.stringify(record.event);
+      const recordJson = JSON.stringify(record.record);
+      if (eventJson.length > 524_288 || recordJson.length > 524_288) {
+        throw new Error("Issue 31 confirmed private record exceeds its storage bound.");
+      }
+      const existing = database.getAllSync<Readonly<{ event_json: string; record_json: string }>>(
+        "SELECT event_json, record_json FROM issue31_confirmed_private_records WHERE canonical_record_id = ? LIMIT 1",
+        record.canonicalRecordId,
+      )[0];
+      if (existing !== undefined) {
+        if (existing.event_json !== eventJson || existing.record_json !== recordJson) {
+          throw new Error("Issue 31 confirmed private record identifier conflicts.");
+        }
+        return;
+      }
+      const count = database.getAllSync<Readonly<{ count: number }>>(
+        "SELECT COUNT(*) AS count FROM issue31_confirmed_private_records",
+      )[0]?.count;
+      if (count === undefined || count >= maximumRecords) {
+        throw new Error(
+          "Issue 31 confirmed private history is full; older history was not discarded.",
+        );
+      }
+      database.runSync(
+        "INSERT INTO issue31_confirmed_private_records (canonical_record_id, event_json, record_json, record_schema) VALUES (?, ?, ?, ?)",
+        record.canonicalRecordId,
+        eventJson,
+        recordJson,
+        record.record.schema,
+      );
+    },
+    clearOwnerProjections: () => {
+      database.runSync(
+        "DELETE FROM issue31_confirmed_private_records WHERE record_schema = ?",
+        "openagents.omega.issue31.owner_projection.v1",
       );
     },
     close: () => database.closeSync(),
