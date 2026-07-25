@@ -13,6 +13,7 @@ import {
   backgroundAgentsContractRegistry,
 } from "./background-agents"
 import { khalaSyncContractRegistry } from "./khala-sync"
+import { omegaAgentContractRegistry } from "./omega-agent"
 import { sarahRetiredContractRegistry } from "./sarah-retired"
 import { openAgentsAppsContractRegistry } from "./openagents-apps"
 import {
@@ -1209,6 +1210,55 @@ describe("retired sarah contract registry (owner removal 2026-07-10, #8610)", ()
       // Owner statements survive verbatim; the retirement note is explicit.
       expect(contract.statement.length).toBeGreaterThan(10)
       expect(contract.verification).toContain("RETIRED 2026-07-10")
+    }
+  })
+})
+
+describe("omega agent contract registry (OMEGA-AGENT-02, omega#76)", () => {
+  test("records both owner statements verbatim, with cross-repo oracles and honest state", () => {
+    const decoded = decodeBehaviorContractRegistryDocument(omegaAgentContractRegistry)
+    const validation = validateBehaviorContractRegistry(decoded)
+    expect(validation.issues).toEqual([])
+    expect(validation.ok).toBe(true)
+
+    expect(decoded.contracts.map(contract => contract.contractId)).toEqual([
+      "omega_agent.chat_first_front_door.v1",
+      "omega_agent.full_auto_folded_into_chat.v1",
+    ])
+
+    // The owner statements are recorded verbatim. A paraphrase here would
+    // defeat the point of the registry, so they are pinned exactly.
+    const [frontDoor, fullAuto] = decoded.contracts
+    expect(frontDoor!.statement).toBe(
+      "`cmd-shift-a` opens the main New Agent Thread screen, and the app defaults to showing that screen — welcome as new agent chat, standard chat input, typing immediately.",
+    )
+    expect(fullAuto!.statement).toBe(
+      "I don't actually want a Full Auto panel, it should be folded into whatever the chat UI for Omega is - you can decide how to handle this.",
+    )
+
+    // The front door is only half delivered: a window with nothing to restore
+    // lands on the agent, but a thread cannot start before a project opens, so
+    // "typing immediately" does not yet hold. Pending, with the blocker named.
+    expect(frontDoor!.state).toBe("pending")
+    expect(frontDoor!.enforcementTier).toBe("unenforced")
+    expect(frontDoor!.blockerRefs).toEqual(["github:OpenAgentsInc/omega#76"])
+    expect(frontDoor!.oracles.some(oracle => oracle.kind === "planned")).toBe(true)
+
+    expect(fullAuto!.state).toBe("enforced")
+    expect(fullAuto!.enforcementTier).toBe("test-sweep")
+    expect(fullAuto!.blockerRefs).toEqual([])
+
+    // Every oracle runs in the Omega repository, not this one. The coverage
+    // checker skips `script`, so a green sweep here says nothing about them
+    // and each contract has to say where they actually run.
+    for (const contract of decoded.contracts) {
+      for (const oracle of contract.oracles.filter(oracle => oracle.kind !== "planned")) {
+        expect(oracle.kind).toBe("script")
+        expect(oracle.ref).toStartWith("omega:cargo test")
+      }
+      expect(contract.surface).toBe("omega")
+      expect(contract.verification).toContain("OpenAgentsInc/omega")
+      expect(contract.authorityBoundary).toContain("rendered pixels")
     }
   })
 })

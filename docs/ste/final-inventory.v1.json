@@ -34472,6 +34472,28 @@
       }
     },
     {
+      "path": "docs/omega/2026-07-25-omega-full-auto-chat-fold.md",
+      "sha256": "06d15ce05080d30b49f4a140f20473737b1beec876fd6efe27cec05e30b44186",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/omega/2026-07-25-omega-master-delegation-plan.md",
       "sha256": "6013c0de7885b7e1d9c9e9673f308852a84c1ad224a1b190a33d78bafcab8902",
       "reason": "Final review of a converted document",
