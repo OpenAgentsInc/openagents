@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:9e6e6817bb2d76fd029d9a7a8eb6a597ca3f8482e2a6361a3f94ac0dfdb5342d",
+  "sourceDigest": "sha256:078567c2d7cb6aa42f3c812dc1083683dade9a73990c568104c36fac65fa00ab",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -1371,6 +1371,23 @@
       "kind": "document",
       "owningPath": "specs/openagents/fast-follow.product-spec.md",
       "title": "fast-follow.product-spec.md",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "product-spec",
+          "ref": "pnpm run test:product-spec"
+        }
+      ],
+      "obligation": {
+        "state": "mapped",
+        "note": "mapped to intent/validation only; behavior oracle not yet designed"
+      }
+    },
+    {
+      "id": "document:specs/openagents/forge.product-spec.md",
+      "kind": "document",
+      "owningPath": "specs/openagents/forge.product-spec.md",
+      "title": "forge.product-spec.md",
       "derivation": "derived",
       "oracles": [
         {
@@ -3345,17 +3362,17 @@
     }
   ],
   "summary": {
-    "totalSurfaces": 174,
+    "totalSurfaces": 175,
     "byKind": {
       "app": 16,
       "crate": 6,
-      "document": 51,
+      "document": 52,
       "package": 89,
       "public-endpoint": 2,
       "release-pipeline": 9,
       "worker": 1
     },
-    "withOracle": 160,
+    "withOracle": 161,
     "unverified": 14,
     "byUnverifiedReason": {
       "config-only": 2,
@@ -3365,7 +3382,7 @@
     "byObligationState": {
       "designed": 125,
       "inconclusive": 9,
-      "mapped": 35,
+      "mapped": 36,
       "out-of-scope": 5
     },
     "coverageNotes": [
