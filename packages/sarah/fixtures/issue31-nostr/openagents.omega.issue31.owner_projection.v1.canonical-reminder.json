@@ -1,0 +1,22 @@
+{
+  "schema": "openagents.omega.issue31.owner_projection.v1",
+  "recordType": "owner_projection",
+  "hostRef": "omega.host.local",
+  "hostPublicKeyHex": "1111111111111111111111111111111111111111111111111111111111111111",
+  "devicePublicKeyHex": "2222222222222222222222222222222222222222222222222222222222222222",
+  "grantRef": "grant.omega.device_1",
+  "expectedGeneration": 3,
+  "sourceEventId": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "sourceAuthorPublicKeyHex": "1111111111111111111111111111111111111111111111111111111111111111",
+  "sourceRole": "owner",
+  "sourceKind": 30300,
+  "sourceCreatedAt": 1784937630,
+  "projectedAt": 1784937631,
+  "projection": {
+    "kind": "reminder",
+    "reminderId": "0123456789abcdef0123456789abcdef",
+    "plaintext": "{\"status\":\"pending\",\"note\":\"Check the release evidence.\",\"target\":null}",
+    "notBefore": 1784938000,
+    "expiration": 1785024000
+  }
+}

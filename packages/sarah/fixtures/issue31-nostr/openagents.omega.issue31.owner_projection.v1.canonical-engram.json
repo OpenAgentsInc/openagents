@@ -1,0 +1,20 @@
+{
+  "schema": "openagents.omega.issue31.owner_projection.v1",
+  "recordType": "owner_projection",
+  "hostRef": "omega.host.local",
+  "hostPublicKeyHex": "1111111111111111111111111111111111111111111111111111111111111111",
+  "devicePublicKeyHex": "2222222222222222222222222222222222222222222222222222222222222222",
+  "grantRef": "grant.omega.device_1",
+  "expectedGeneration": 3,
+  "sourceEventId": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+  "sourceAuthorPublicKeyHex": "3333333333333333333333333333333333333333333333333333333333333333",
+  "sourceRole": "sarah",
+  "sourceKind": 30174,
+  "sourceCreatedAt": 1784937650,
+  "projectedAt": 1784937651,
+  "projection": {
+    "kind": "engram",
+    "dTag": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "plaintext": "{\"slug\":\"mem/release_evidence\",\"value\":\"The release candidate is notarized.\"}"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "schema": "openagents.omega.issue31.owner_projection.v1",
+  "recordType": "owner_projection",
+  "hostRef": "omega.host.local",
+  "hostPublicKeyHex": "1111111111111111111111111111111111111111111111111111111111111111",
+  "devicePublicKeyHex": "2222222222222222222222222222222222222222222222222222222222222222",
+  "grantRef": "grant.omega.device_1",
+  "expectedGeneration": 3,
+  "sourceEventId": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "sourceAuthorPublicKeyHex": "1111111111111111111111111111111111111111111111111111111111111111",
+  "sourceRole": "owner",
+  "sourceKind": 30078,
+  "sourceCreatedAt": 1784937620,
+  "projectedAt": 1784937621,
+  "projection": {
+    "kind": "read_state",
+    "dTag": "read-state:owner-private",
+    "plaintext": "{\"v\":1,\"client_id\":\"omega-host\",\"contexts\":{\"sarah.0123456789abcdef01234567\":1784937608}}"
+  }
+}

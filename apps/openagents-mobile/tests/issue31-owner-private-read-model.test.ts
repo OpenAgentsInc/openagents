@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import {
   ISSUE31_COMMAND_SCHEMA_V2,
   ISSUE31_PAIRING_SCHEMA,
@@ -482,5 +484,207 @@ describe("Issue 31 owner-private mobile read model", () => {
     expect(
       searchIssue31LocalMemory(model.memory, "launch").map((row) => row.sourceEventId),
     ).toEqual([memoryId]);
+  });
+});
+
+/**
+ * omega#46 exits 3, 5, and 6 — read state, reminders, and authority receipts.
+ *
+ * These fields had no coverage at all, and the reason was structural: the
+ * Omega host emits these projection bodies but the shape it emits was written
+ * down nowhere both sides could check. The bodies below are read from the
+ * fixtures the Omega producer emits and pins by digest
+ * (`crates/omega_effectd/fixtures/`, asserted in
+ * `crates/omega_effectd/src/issue31_nostr.rs`), so this is coverage of what the
+ * host actually sends, not of a shape invented here.
+ *
+ * `expectedGeneration` is the one field adapted: the fixtures carry generation
+ * 3 and the grant in this file is generation 1. Nothing inside `projection` is
+ * touched.
+ */
+describe("Issue 31 owner-private read state, reminders, and receipts", () => {
+  const hostFixture = (name: string): Record<string, unknown> =>
+    JSON.parse(
+      readFileSync(
+        new URL(
+          `../../../packages/sarah/fixtures/issue31-nostr/openagents.omega.issue31.owner_projection.v1.${name}.json`,
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    ) as Record<string, unknown>;
+
+  const hostProjection = (
+    name: string,
+    overrides: Record<string, unknown> = {},
+  ): Issue31ConfirmedEvent => {
+    const fixture = hostFixture(name);
+    const record = decodeIssue31OwnerProjectionRecord({
+      ...fixture,
+      expectedGeneration: 1,
+      ...overrides,
+    });
+    return privateEvent(record.sourceEventId, record);
+  };
+
+  test("projects the exact read state, reminder, receipt, and engram the host emits", () => {
+    const model = projectIssue31OwnerPrivateReadModel(
+      snapshot([
+        hostProjection("canonical-read-state"),
+        hostProjection("canonical-reminder"),
+        hostProjection("canonical-authority-receipt"),
+        hostProjection("canonical-engram"),
+      ]),
+      { nowUnixSeconds: 1_100 },
+    );
+
+    expect(model.status).toBe("ready");
+    expect(model.readContexts).toEqual({ [conversation]: 1_784_937_608 });
+
+    expect(model.reminders).toHaveLength(1);
+    expect(model.reminders[0]).toMatchObject({
+      reminderId: "0123456789abcdef0123456789abcdef",
+      notBefore: 1_784_938_000,
+      expiration: 1_785_024_000,
+      content: { status: "pending", note: "Check the release evidence." },
+      deepLink: `openagents://omega/workroom?room=owner_private&sourceEventId=${"d".repeat(64)}`,
+    });
+
+    expect(model.receipts).toHaveLength(1);
+    expect(model.receipts[0]).toEqual({
+      sourceEventId: "a".repeat(24) + "b".repeat(40),
+      receiptRef: `receipt.issue31.${"a".repeat(24)}`,
+      turnRef: "turn.issue31.release_evidence",
+      authorityState: "refused",
+      decisionRef: `decision.issue31.${"a".repeat(24)}`,
+      authorityReasonRef: "reason.openagents.reserved_custody",
+      // A refused decision says nothing about the target. It stays pending.
+      targetState: "pending",
+      outcomeRef: null,
+      outcomeReasonRef: null,
+      deepLink: `openagents://omega/workroom?room=owner_private&sourceEventId=${"a".repeat(24) + "b".repeat(40)}`,
+    });
+    expect(model.attentionDeepLinks).toContain(model.receipts[0]!.deepLink);
+    // The reminder is not due at this clock, so it is not attention.
+    expect(model.attentionDeepLinks).not.toContain(model.reminders[0]!.deepLink);
+
+    expect(model.memory).toHaveLength(1);
+    expect(model.memory[0]?.body).toEqual({
+      slug: "mem/release_evidence",
+      value: "The release candidate is notarized.",
+    });
+  });
+
+  test("two clients agree on read state after replay in either order", () => {
+    // Two read-state records from two clients, each ahead on one context.
+    const first = hostProjection("canonical-read-state");
+    const second = hostProjection("canonical-read-state", {
+      sourceEventId: "1".repeat(64),
+      sourceCreatedAt: 1_784_937_700,
+      projectedAt: 1_784_937_701,
+      projection: {
+        kind: "read_state",
+        dTag: "read-state:owner-private",
+        plaintext: JSON.stringify({
+          v: 1,
+          client_id: "owner-phone",
+          contexts: { [conversation]: 1_784_937_500, "sarah.feedcafefeedcafefeedcafe": 1_784_937_900 },
+        }),
+      },
+    });
+
+    const forward = projectIssue31OwnerPrivateReadModel(snapshot([first, second]), {
+      nowUnixSeconds: 1_100,
+    });
+    const reverse = projectIssue31OwnerPrivateReadModel(snapshot([second, first]), {
+      nowUnixSeconds: 1_100,
+    });
+    // A duplicate delivery is a replay, not a second opinion.
+    const replayed = projectIssue31OwnerPrivateReadModel(
+      snapshot([second, first, second, first]),
+      { nowUnixSeconds: 1_100 },
+    );
+
+    const converged = {
+      [conversation]: 1_784_937_608,
+      "sarah.feedcafefeedcafefeedcafe": 1_784_937_900,
+    };
+    expect(forward.readContexts).toEqual(converged);
+    expect(reverse.readContexts).toEqual(converged);
+    expect(replayed.readContexts).toEqual(converged);
+    // The merge never lowers a frontier: the second record's older value for
+    // the shared context did not win.
+    expect(forward.readContexts[conversation]).toBe(1_784_937_608);
+  });
+
+  test("reminder changes converge across clients in either delivery order", () => {
+    const created = hostProjection("canonical-reminder");
+    const completed = hostProjection("canonical-reminder", {
+      sourceEventId: "2".repeat(64),
+      sourceCreatedAt: 1_784_937_800,
+      projectedAt: 1_784_937_801,
+      projection: {
+        kind: "reminder",
+        reminderId: "0123456789abcdef0123456789abcdef",
+        plaintext: JSON.stringify({ status: "done" }),
+      },
+    });
+
+    const forward = projectIssue31OwnerPrivateReadModel(snapshot([created, completed]), {
+      nowUnixSeconds: 1_100,
+    });
+    const reverse = projectIssue31OwnerPrivateReadModel(snapshot([completed, created]), {
+      nowUnixSeconds: 1_100,
+    });
+    for (const model of [forward, reverse]) {
+      expect(model.reminders).toHaveLength(1);
+      expect(model.reminders[0]?.content.status).toBe("done");
+      expect(model.reminders[0]?.sourceEventId).toBe("2".repeat(64));
+      expect(model.reminders[0]?.notBefore).toBeNull();
+    }
+  });
+
+  test("a reminder tie is broken the same way on every client", () => {
+    // Same instant, two records. Without a total order the two clients would
+    // show different reminders and "converge" would be a coin flip.
+    const lower = hostProjection("canonical-reminder", {
+      sourceEventId: "3".repeat(64),
+      projection: {
+        kind: "reminder",
+        reminderId: "0123456789abcdef0123456789abcdef",
+        plaintext: JSON.stringify({ status: "cancelled" }),
+      },
+    });
+    const higher = hostProjection("canonical-reminder", {
+      sourceEventId: "4".repeat(64),
+      projection: {
+        kind: "reminder",
+        reminderId: "0123456789abcdef0123456789abcdef",
+        plaintext: JSON.stringify({ status: "done" }),
+      },
+    });
+    for (const records of [
+      [lower, higher],
+      [higher, lower],
+    ]) {
+      const model = projectIssue31OwnerPrivateReadModel(snapshot(records), {
+        nowUnixSeconds: 1_100,
+      });
+      expect(model.reminders[0]?.sourceEventId).toBe("4".repeat(64));
+      expect(model.reminders[0]?.content.status).toBe("done");
+    }
+  });
+
+  test("an authority receipt bound to another grant is refused, not read", () => {
+    // A receipt is authority evidence. One addressed to a different generation
+    // is not this device's evidence, and it must not silently become a row.
+    const foreign = hostProjection("canonical-authority-receipt", { expectedGeneration: 2 });
+    const model = projectIssue31OwnerPrivateReadModel(snapshot([foreign]), {
+      nowUnixSeconds: 1_100,
+    });
+    expect(model.receipts).toEqual([]);
+    expect(model.status).toBe("gap");
+    expect(model.reasonRef).toBe("reason.issue31.owner_projection_rejected");
+    expect(model.rejectedProjectionCount).toBe(1);
   });
 });

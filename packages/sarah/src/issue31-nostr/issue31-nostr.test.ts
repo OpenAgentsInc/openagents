@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 
 import { LocalKeySigner } from "nostr-effect/identity";
@@ -53,6 +54,72 @@ describe("Issue 31 command v2 and owner projection", () => {
       sourceRole: "owner",
       sourceAuthorPublicKeyHex: projection.hostPublicKeyHex,
     });
+  });
+
+  // The read-state, reminder, authority-receipt, and engram projection bodies
+  // are the omega#46 exits that had no shared fixture. The digests are pinned
+  // identically in the Omega peer test
+  // (`crates/omega_effectd/src/issue31_nostr.rs`), so a one-sided edit to the
+  // shared bytes fails in both repositories rather than drifting silently.
+  const OWNER_PROJECTION_BODY_FIXTURES = [
+    [
+      "canonical-read-state",
+      "efd96dbe997e021c8e77300a802ab929b8c05981a1029c509b94d47410afc264",
+      "read_state",
+    ],
+    [
+      "canonical-reminder",
+      "d21b2168d32d3c8e76294502b9a30a75a6f5f4f15c5195ac0c160fad15539fe3",
+      "reminder",
+    ],
+    [
+      "canonical-authority-receipt",
+      "50d97118aec8931e624856246ae5e187bb6944f750052383f89472c4e9e27733",
+      "authority_receipt",
+    ],
+    [
+      "canonical-engram",
+      "d499644feb77cb7d61b35fda9a4fbafe0b06fcc86e33a61985fbe36c1a819dae",
+      "engram",
+    ],
+  ] as const;
+
+  const OWNER_PROJECTION_NEGATIVE_FIXTURES = [
+    ["negative-read-state-role", "1073644580d2c8d8768866c81a26cb8b044b13da4297383d54962ff949982baa"],
+    [
+      "negative-read-state-version",
+      "9b134615eb992b2395c59dfc72abe8be3d472dd69c8dff73b7ec670757ebcfba",
+    ],
+    [
+      "negative-reminder-pending-without-not-before",
+      "e0f8a8c6a6f22c4b53326dbeb193eeda0832b8b8cbe0c2aae02ca7e1b70a1cec",
+    ],
+    [
+      "negative-authority-receipt-terminal-without-outcome",
+      "737bbaa8fece20bf9b898f4f76f5bf6d4369a1b0a487984302f0cf9a8bd9cc3b",
+    ],
+    ["negative-engram-slug", "3997fb6d470f20e4796f4765d2406e6e3f4a629f090b3c4ef26e77274cf7b6ed"],
+  ] as const;
+
+  test("decodes every shared owner projection body the Omega host emits", () => {
+    for (const [name, digest, kind] of OWNER_PROJECTION_BODY_FIXTURES) {
+      const fileName = `openagents.omega.issue31.owner_projection.v1.${name}.json`;
+      expect(fixtureDigest(fileName), `${name} fixture bytes changed`).toBe(digest);
+      const record = decodeIssue31OwnerProjectionRecord(readFixture(fileName));
+      expect(record.projection.kind).toBe(kind);
+      expect(record.schema).toBe("openagents.omega.issue31.owner_projection.v1");
+    }
+  });
+
+  test("refuses every shared owner projection body the Omega host must not emit", () => {
+    for (const [name, digest] of OWNER_PROJECTION_NEGATIVE_FIXTURES) {
+      const fileName = `openagents.omega.issue31.owner_projection.v1.${name}.json`;
+      expect(fixtureDigest(fileName), `${name} fixture bytes changed`).toBe(digest);
+      expect(
+        () => decodeIssue31OwnerProjectionRecord(readFixture(fileName)),
+        `${name} must be refused`,
+      ).toThrow();
+    }
   });
 
   test("keeps discovery v1 exact and rejects v2 action or projection excess fields", () => {
@@ -159,6 +226,12 @@ const hostSigner = LocalKeySigner.fromPrivateKey(hostSecret);
 const devicePublicKeyHex = deviceSigner.publicKey;
 const hostPublicKeyHex = hostSigner.publicKey;
 const sarahPublicKeyHex = "3".repeat(64);
+
+const fixturePath = (name: string): URL =>
+  new URL(`../../fixtures/issue31-nostr/${name}`, import.meta.url);
+
+const fixtureDigest = (name: string): string =>
+  createHash("sha256").update(readFileSync(fixturePath(name))).digest("hex");
 
 const readFixture = (name: string): unknown =>
   JSON.parse(

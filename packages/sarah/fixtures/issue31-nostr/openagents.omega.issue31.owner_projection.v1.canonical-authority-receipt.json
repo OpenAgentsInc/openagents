@@ -1,0 +1,28 @@
+{
+  "schema": "openagents.omega.issue31.owner_projection.v1",
+  "recordType": "owner_projection",
+  "hostRef": "omega.host.local",
+  "hostPublicKeyHex": "1111111111111111111111111111111111111111111111111111111111111111",
+  "devicePublicKeyHex": "2222222222222222222222222222222222222222222222222222222222222222",
+  "grantRef": "grant.omega.device_1",
+  "expectedGeneration": 3,
+  "sourceEventId": "aaaaaaaaaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "sourceAuthorPublicKeyHex": "3333333333333333333333333333333333333333333333333333333333333333",
+  "sourceRole": "sarah",
+  "sourceKind": 44301,
+  "sourceCreatedAt": 1784937640,
+  "projectedAt": 1784937641,
+  "projection": {
+    "kind": "authority_receipt",
+    "receiptRef": "receipt.issue31.aaaaaaaaaaaaaaaaaaaaaaaa",
+    "turnRef": "turn.issue31.release_evidence",
+    "authorityDecision": {
+      "state": "refused",
+      "decisionRef": "decision.issue31.aaaaaaaaaaaaaaaaaaaaaaaa",
+      "reasonRef": "reason.openagents.reserved_custody"
+    },
+    "targetOutcome": {
+      "state": "pending"
+    }
+  }
+}

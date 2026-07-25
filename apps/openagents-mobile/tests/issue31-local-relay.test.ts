@@ -286,7 +286,10 @@ describe("mobile Issue 31 client on a real local relay", () => {
     const createdAt = Math.floor(Date.now() / 1000);
     const strangerId = await publishHostAnnouncement(strangerSigner, strangerPublicKey, sarahPublicKey, createdAt, "stranger");
 
-    let snapshot: Issue31NostrClientSnapshot | null = null;
+    // Declared through an assertion so the compiler does not narrow the
+    // initialiser to `null` and then to `never`: the assignment happens in a
+    // callback it cannot see.
+    let snapshot = null as Issue31NostrClientSnapshot | null;
     const client = createIssue31NostrClient({
       relayUrls: [relayUrl],
       signer: LocalKeySigner.fromPrivateKey(generateSecretKey()),
