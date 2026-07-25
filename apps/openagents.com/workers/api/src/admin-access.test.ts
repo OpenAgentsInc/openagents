@@ -576,6 +576,25 @@ describe('OpenAgents admin access policy', () => {
     expect(cookies).toHaveLength(12)
   })
 
+  test('logout rejects an external return path', async () => {
+    const response = await worker.fetch(
+      new Request(
+        'https://openagents.com/logout?returnTo=https%3A%2F%2Fevil.example%2Fphish',
+      ) as never,
+      {
+        ASSETS: {
+          fetch: () => Response.json({ unused: true }),
+        },
+        ...requiredWorkerConfig,
+      } as never,
+      executionContext,
+    )
+
+    expect(response.status).toBe(302)
+    expect(response.headers.get('location')).toBe('/')
+    expect(response.headers.getSetCookie()).toHaveLength(12)
+  })
+
   test('session API clears a surviving refresh cookie and returns logged out', async () => {
     const response = await worker.fetch(
       new Request('https://openagents.com/api/auth/session', {

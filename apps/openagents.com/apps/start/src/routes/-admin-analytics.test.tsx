@@ -1,7 +1,10 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, test } from 'vitest'
 
-import { usesPersistentProductHeader } from '../lib/persistent-product-header'
+import {
+  showsProductLogout,
+  usesPersistentProductHeader,
+} from '../lib/persistent-product-header'
 import { isKnownStartDocumentPath } from '../route-table'
 import { fetchAnalyticsSummary } from './-admin-analytics-fetch'
 import {
@@ -51,5 +54,8 @@ describe('admin analytics', () => {
     expect(usesPersistentProductHeader('/splash')).toBe(true)
     expect(usesPersistentProductHeader('/admin/analytics')).toBe(true)
     expect(usesPersistentProductHeader('/login')).toBe(false)
+    expect(showsProductLogout('/admin/analytics')).toBe(true)
+    expect(showsProductLogout('/')).toBe(false)
+    expect(showsProductLogout('/splash')).toBe(false)
   })
 })

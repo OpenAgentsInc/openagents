@@ -1,6 +1,9 @@
 import { PublicHeader } from '@/components/public-header'
 import { WebAnalytics } from '@/components/web-analytics'
-import { usesPersistentProductHeader } from '@/lib/persistent-product-header'
+import {
+  showsProductLogout,
+  usesPersistentProductHeader,
+} from '@/lib/persistent-product-header'
 import type { QueryClient } from '@tanstack/react-query'
 import {
   HeadContent,
@@ -42,7 +45,9 @@ function RootLayout() {
 
   return (
     <>
-      {usesPersistentProductHeader(pathname) ? <PublicHeader /> : null}
+      {usesPersistentProductHeader(pathname) ? (
+        <PublicHeader showLogout={showsProductLogout(pathname)} />
+      ) : null}
       <Outlet />
     </>
   )

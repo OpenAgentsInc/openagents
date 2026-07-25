@@ -50,3 +50,11 @@ export const publicAuthAction = (
       ? { href: '/admin/analytics', label: 'Analytics' }
       : { href: '/portal', label: 'Portal' }
     : { href: '/login', label: 'Log In' }
+
+export const publicLogoutAction = (
+  state: PublicAuthState,
+  showLogout: boolean,
+): Readonly<{ href: string; label: string }> | null =>
+  showLogout && state.tag === 'authenticated'
+    ? { href: '/logout?returnTo=%2F', label: 'Log Out' }
+    : null

@@ -1,6 +1,10 @@
 import { describe, expect, test, vi } from 'vitest'
 
-import { publicAuthAction, readPublicAuthState } from './public-auth'
+import {
+  publicAuthAction,
+  publicLogoutAction,
+  readPublicAuthState,
+} from './public-auth'
 
 describe('public auth state', () => {
   test('shows the admin analytics action for an authenticated admin', async () => {
@@ -22,6 +26,10 @@ describe('public auth state', () => {
       href: '/admin/analytics',
       label: 'Analytics',
     })
+    expect(publicLogoutAction(state, true)).toEqual({
+      href: '/logout?returnTo=%2F',
+      label: 'Log Out',
+    })
   })
 
   test('fails soft to the anonymous login action', async () => {
@@ -33,5 +41,12 @@ describe('public auth state', () => {
       href: '/login',
       label: 'Log In',
     })
+    expect(publicLogoutAction(state, true)).toBeNull()
+  })
+
+  test('does not offer logout outside an enabled authenticated surface', () => {
+    expect(
+      publicLogoutAction({ isAdmin: true, tag: 'authenticated' }, false),
+    ).toBeNull()
   })
 })

@@ -2,6 +2,7 @@ import { InternalLink } from '@/components/internal-link'
 import {
   type PublicAuthState,
   publicAuthAction,
+  publicLogoutAction,
   readPublicAuthState,
 } from '@/lib/public-auth'
 import { DOCS_URL, GITHUB_REPOSITORY_URL, X_URL } from '@/lib/public-site'
@@ -15,6 +16,7 @@ type PublicHeaderProps = Readonly<{
   docsActive?: boolean
   leading?: ReactNode
   showLogin?: boolean
+  showLogout?: boolean
   utility?: ReactNode
   variant?: 'default' | 'docs'
 }>
@@ -23,6 +25,7 @@ export function PublicHeader({
   docsActive = false,
   leading,
   showLogin = true,
+  showLogout = false,
   utility,
   variant = 'default',
 }: PublicHeaderProps = {}) {
@@ -43,6 +46,7 @@ export function PublicHeader({
   }, [showLogin])
 
   const authAction = publicAuthAction(authState)
+  const logoutAction = publicLogoutAction(authState, showLogout)
 
   return (
     <>
@@ -101,6 +105,15 @@ export function PublicHeader({
               >
                 {authAction.label}
               </InternalLink>
+            ) : null}
+            {logoutAction ? (
+              <a
+                aria-label="Log Out of OpenAgents"
+                className="oa-unified-logout-link"
+                href={logoutAction.href}
+              >
+                {logoutAction.label}
+              </a>
             ) : null}
           </div>
         </nav>

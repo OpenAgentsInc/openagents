@@ -67,6 +67,7 @@
 .oa-unified-docs-link,
 .oa-unified-icon-link,
 .oa-unified-github-link,
+.oa-unified-logout-link,
 .oa-unified-primary-link {
   transition:
     color 160ms ease-out,
@@ -108,6 +109,22 @@
 
 .oa-unified-primary-link:hover {
   background: rgb(58 123 255 / 0.24);
+}
+
+.oa-unified-logout-link {
+  display: inline-flex;
+  min-height: 2rem;
+  align-items: center;
+  padding: 0.4rem 0.78rem;
+  border: 1px solid rgb(170 181 200 / 0.28);
+  border-radius: 999px;
+  color: #d9dfeb !important;
+}
+
+.oa-unified-logout-link:hover {
+  border-color: rgb(170 181 200 / 0.48);
+  color: #f4f6fb !important;
+  background: rgb(170 181 200 / 0.08);
 }
 
 /* Documentation is an application shell, not a centered marketing page.
@@ -167,6 +184,7 @@
     gap: 1rem;
   }
 
+  .oa-unified-logout-link,
   .oa-unified-primary-link {
     min-height: 2.25rem;
   }
