@@ -19363,12 +19363,13 @@
     },
     {
       "path": "docs/buzz/2026-07-25-collab-ui-harvest-before-retirement.md",
-      "sha256": "e451b158941fc49ce00dbd6382d1afb20199a8d2ab0692a2b81c906fab39a56e",
-      "reason": "Final review of mutable first-party agent technical text",
+      "sha256": "c14da1874f99b642da12cbd09b26e8525120477a973f0ddcd2219d40be23c3f7",
+      "reason": "Final review of a converted document",
       "profile": {
-        "ste_status": "inspected",
-        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
         "ste_audience": "agent",
         "ste_agent_compact_revision": "openagents-agent-compact-v1",
         "ste_accepted_screening_rules": [
@@ -19376,7 +19377,10 @@
           "STE-3.6",
           "STE-5.1",
           "STE-8.2"
-        ]
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {
@@ -44683,7 +44687,7 @@
     },
     {
       "path": "docs/teardowns/2026-07-18-zed-teardown.md",
-      "sha256": "aeda4d02866bff2f8d287c9e76053ea5f680b52ca19026d2475411327130c4e6",
+      "sha256": "623b802aecbaabf60fe64c08e9900c46e51338eed8997cedfe6176ee8988ebfc",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

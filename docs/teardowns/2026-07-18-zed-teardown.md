@@ -12,6 +12,12 @@ how an editor, worktree scanner, language layer, Git model, remote environment,
 collaboration system, local database, extension host, and agent workbench fit
 together without becoming unrelated panels.
 
+The “Zed Agent” name does not identify a model or an external agent process.
+It identifies Zed's in-process agent runtime. That runtime selects a configured
+model, builds project context, runs the model/tool loop, persists threads, and
+projects native events through the same thread UI abstractions used for ACP
+agents.
+
 The central design is a typed vertical stack:
 
 ```text
@@ -527,42 +533,381 @@ intersection. It should strengthen them with:
 Do not claim “sandboxed” from Wasmtime alone, and do not use Zed's permissive
 defaults as parity requirements.
 
-## 14. Native agent, ACP agents, and terminal threads
+## 14. Zed Agent, ACP agents, and terminal threads
+
+### 14.1 Product and runtime boundary
 
 Zed exposes three agent experiences:
 
-1. a native Zed Agent integrated with Project, tools, context servers, skills,
-   model providers, and a local thread store.
-2. external agents through Agent Client Protocol, where the external runtime
-   retains its own authentication, model, configuration, tools, and session
-   semantics.
-3. terminal threads for interactive terminal-native agents.
+1. Zed Agent is Zed's native, in-process agent runtime.
+2. An external agent runs through Agent Client Protocol (ACP).
+3. A terminal thread hosts an interactive terminal-native agent.
 
-The Threads Sidebar groups parallel threads by project/worktree and the agent
-UI uses the workbench's files, diagnostics, terminal, and diff context.
-`crates/agent/src/agent.rs` tracks sessions and per-project context, watches
-global and project skills, respects worktree trust for project skills, and
-supports parent session IDs for subagents. **[source]**
+The source gives the native runtime the exact product ID `Zed Agent` and the
+telemetry ID `zed`. `NativeAgentServer::connect` creates templates, creates a
+GPUI `NativeAgent` entity, and returns a `NativeAgentConnection`. It does not
+start an agent child process or an ACP transport. The connection implements the
+same `AgentConnection` interface that the shared thread UI uses for external
+agents. **[source]** See `crates/agent/src/native_agent_server.rs:23`,
+`crates/agent/src/agent.rs:404`, and `crates/agent/src/agent.rs:2562`.
 
-This taxonomy is valuable confirmation for OpenAgents' harness architecture:
-a model provider, an owned native loop, a real external runtime adapter, an
-in-process emulation policy, and a terminal projection are different things.
-They may share portable UI parts without sharing authority or state semantics.
+Thus, Zed Agent is not a model. It is the orchestration layer above a selected
+`LanguageModel`. It owns the native loop, project context, tools, native
+permissions, thread state, and persistence. A model provider owns model access
+and completion behavior. An external ACP runtime usually owns its own
+authentication, models, tools, and native configuration. A terminal thread
+leaves those duties with its CLI or TUI. **[source]**
 
-Zed's native tool set covers file reads/writes/edits/moves, search, terminal,
-LSP definitions/references/diagnostics/code actions, web, skills, and child
-threads. Its local sandboxing uses macOS Seatbelt, Linux Bubblewrap, and Windows
-WSL Bubblewrap, protects Git directories, and supports persistent/thread/once
-grants plus requested network/path/unsandboxed escalation. Shell command
-permissions use precedence rules and fail-closed parsing for dangerous
-substitution/interpolation cases. **[source]**
+This distinction explains why shared UI does not imply shared runtime
+semantics. Zed adapts its native runtime to ACP-shaped thread interfaces. It
+does not implement the native loop by starting itself as an external ACP
+agent. **[inferred]**
 
-OpenAgents should adapt project/worktree grouping, capability-aware context,
-native-versus-external runtime visibility, child topology, and inline workbench
-evidence. It should preserve its stricter canonical tool authority, WorkContext
+### 14.2 Model and provider selection
+
+`LanguageModels` reads visible providers from `LanguageModelRegistry`. It keeps
+only authenticated providers, groups recommended models, and groups the other
+models by provider. The UI-facing model ID is `provider/model`, not only the
+model name. Zed tries provider authentication in the background so the selector
+can populate. Missing credentials and selected noisy local-provider failures
+have explicit handling. **[source]** See
+`crates/agent/src/agent.rs:229` and `crates/agent/src/agent.rs:303`.
+
+A new native thread receives the registry's default model. It separately
+receives the configured thread-summary model. A model change resolves the
+selected ID back to an `Arc<dyn LanguageModel>`. The change also applies
+thinking, effort, and speed settings and writes the default selection to user
+settings. The thread therefore owns one selected model state, while the
+registry owns provider discovery and configured model objects. **[source]**
+See `crates/agent/src/agent.rs:724` and
+`crates/agent/src/agent.rs:2385`.
+
+The model interface supplies streaming completions, tool-format support,
+context size, token use, image support, and provider identity. The native agent
+does not erase these differences. It filters tools for provider compatibility
+and exposes the selected provider in the UI. **[source]**
+
+### 14.3 Session and thread lifecycle
+
+`NativeAgent` owns these principal states:
+
+- active sessions and shared pending session loads.
+- one project state for each live Project entity.
+- a local `ThreadStore`.
+- templates and the model catalog.
+- project and global skill state.
+- filesystem and application subscriptions.
+
+Each active session holds two entities. `Thread` is the native execution and
+message state. `AcpThread` is the UI-facing thread projection. The session also
+holds its project ID, save task, subscriptions, and a reference count.
+**[source]** See `crates/agent/src/agent.rs:191`,
+`crates/agent/src/agent.rs:203`, and `crates/agent/src/agent.rs:404`.
+
+A new session creates `Thread` with the exact Project, ProjectContext, context
+server registry, templates, and default model. Registration then:
+
+1. creates the UI-facing `AcpThread`.
+2. restores title, draft prompt, scroll position, and token use.
+3. installs built-in tools and the live skill resolver.
+4. subscribes to title and token changes.
+5. observes thread changes and schedules persistence.
+6. publishes native commands and skills to the UI.
+
+**[source]** See `crates/agent/src/agent.rs:724` and
+`crates/agent/src/agent.rs:754`.
+
+Load is reference-counted. Concurrent requests for one stored session share one
+pending task. A loaded thread replays stored native events through the same
+native-to-UI bridge before the UI marks its snapshot complete. Close decrements
+the count. The last close saves and removes the session. It also removes project
+state after the last project session closes. **[source]** See
+`crates/agent/src/agent.rs:1567` and `crates/agent/src/agent.rs:1706`.
+
+The connection supports new, load, close, retry, cancel, truncate, title
+change, session listing, deletion, and telemetry. Cancel reaches the native
+running turn. Retry resumes the same native thread. Truncate updates both
+native history and the UI token state. **[source]** See
+`crates/agent/src/agent.rs:2564`,
+`crates/agent/src/agent.rs:2898`, and
+`crates/agent/src/agent.rs:2974`.
+
+### 14.4 Project context and the system prompt
+
+Each live project state owns a `ProjectContext`, a context-server registry, a
+skill catalog, load issues, and a refresh task. Project, context-server, and
+worktree-trust changes request a refresh. The refresh only replaces
+ProjectContext when the model-visible value changes. This preserves prompt
+cache stability for irrelevant filesystem events. **[source]** See
+`crates/agent/src/agent.rs:846` and `crates/agent/src/agent.rs:930`.
+
+The context builder reads all visible worktrees. For each worktree, it records
+root information and reads the first supported project instruction file.
+Supported compatibility names include `.rules`, `AGENTS.md`, `CLAUDE.md`, and
+other agent instruction files. Zed also watches the user's personal
+`~/.config/zed/AGENTS.md` or the platform equivalent. Blank, absent, or failed
+personal instruction reads do not enter the prompt. **[source]** See
+`crates/agent/src/agent.rs:1019`,
+`crates/agent/src/agent.rs:1214`, and
+`crates/agent_settings/src/user_agents_md.rs:23`.
+
+Each model request rebuilds the system prompt from:
+
+- current ProjectContext and worktree instructions.
+- personal `AGENTS.md`.
+- the selected model name.
+- the current date and platform.
+- the exact enabled tool names.
+- the current sandbox state.
+
+The request then appends saved conversation history and any pending assistant
+message. It marks the last request message for provider caching. The request
+also carries thread ID, prompt ID, completion intent, function schemas,
+temperature, thinking settings, and speed. **[source]** See
+`crates/agent/src/templates.rs:8` and
+`crates/agent/src/thread.rs:3963`.
+
+User-provided context is not only the system prompt. The Agent Panel can add
+files, directories, symbols, diagnostics, branch diffs, URLs, images,
+selections, skills, and earlier threads. The message editor converts these
+items into ACP content blocks and native message content. The selected model
+then receives those blocks in the request history. **[source]** See
+`docs/src/ai/agent-panel.md` and `crates/agent/src/agent.rs:2862`.
+
+This architecture binds context assembly to the current project and thread. It
+does not prove a least-disclosure provider policy. Rich explicit mentions,
+project instructions, tool results, and thread history can all reach the
+selected provider. **[limitation]**
+
+### 14.5 The native model and tool loop
+
+`Thread::send` appends one user message and starts a running turn. A turn owns
+the enabled tool map, an event stream, cancellation state, streaming tool input
+channels, and its foreground task. **[source]** See
+`crates/agent/src/thread.rs:2470` and
+`crates/agent/src/thread.rs:2638`.
+
+The loop performs these steps:
+
+1. compact context if the configured threshold requires it.
+2. read the current model and current enabled tools.
+3. build a model request with history and function schemas.
+4. call `LanguageModel::stream_completion`.
+5. race model events, tool completion futures, and cancellation.
+6. append tool results to the native assistant message.
+7. call the model again until the turn stops or fails.
+
+The loop reads the model, profile, and tools again between tool rounds.
+Mid-turn changes can therefore affect the next completion request. Independent
+tool futures can run in parallel. A tool that supports streamed input can start
+before its complete JSON input arrives. Unknown tools and invalid JSON become
+structured tool results rather than implicit success. **[source]** See
+`crates/agent/src/thread.rs:2702`,
+`crates/agent/src/thread.rs:2817`, and
+`crates/agent/src/thread.rs:3434`.
+
+Completion events include text, thinking, redacted thinking, reasoning detail,
+tool input, token use, refusal, maximum-token stops, and normal stops. Native
+`ThreadEvent` adds tool authorization, subagent, retry, compaction, and
+user-message events. `NativeAgentConnection::handle_thread_events` maps that
+stream into `AcpThread` mutations, tool cards, approval prompts, token updates,
+and stop reasons. This function is the main boundary between the native core
+and the shared agent UI. **[source]** See
+`crates/agent/src/thread.rs:868`,
+`crates/agent/src/thread.rs:3311`, and
+`crates/agent/src/agent.rs:2163`.
+
+Stop cancels the foreground task and active child work. A queued message
+normally waits for turn completion. Native steering can request a stop at the
+next message boundary, usually between a tool result and the next model
+response. Zed does not offer this guarantee for external agents because it
+does not own their turn loop. **[source]**
+
+### 14.6 Built-in tools, profiles, and context servers
+
+The registered built-in set covers:
+
+- file and directory read, list, find, grep, copy, create, move, delete, edit,
+  and write operations.
+- terminal, URL fetch, and hosted web search.
+- project diagnostics, definitions, references, rename, and code actions.
+- skill load, nested subagent spawn, sibling-thread creation, and agent/model
+  listing.
+
+The exact enabled set is smaller than the registered set. The active profile
+must enable a tool. The selected provider must support its schema. Feature
+flags can remove it. Restricted workspaces remove disallowed tools. The runtime
+selects either the sandboxed or plain terminal implementation but exposes the
+canonical name `terminal`. **[source]** See
+`crates/agent/src/thread.rs:2091` and
+`crates/agent/src/thread.rs:4030`.
+
+Profiles control availability, not approval. The shipped Write, Ask, and
+Minimal profiles select different built-in and context-server tools. A profile
+can also select a default model. Tool permission settings separately decide
+allow, deny, or confirm for an available permission-gated call. **[source]**
+See `crates/agent_settings/src/agent_profile.rs:104` and
+`assets/settings/default.json`.
+
+Context-server tools enter the same enabled-tool map. Per-profile MCP settings
+can enable all server tools or named tools. If two servers or a built-in tool
+use the same name, Zed prefixes duplicate server tool names when the provider's
+tool-name limit permits it. MCP tools then use the same model request and tool
+result loop. **[source]**
+
+### 14.7 Permission and sandbox layers
+
+Native tool authorization has more than one layer:
+
+1. the profile decides whether the model can see the tool.
+2. workspace trust can remove dangerous tools.
+3. hardcoded rules reject selected catastrophic terminal commands.
+4. tool rules apply deny, confirm, allow, and regex input matches.
+5. the UI resolves a pending approval.
+6. terminal sandbox policy limits the resulting process.
+
+Terminal rules parse supported command chains so an allowed prefix cannot hide
+a denied later command. When protected terminal input uses unsafe or
+unsupported substitution, interpolation, or chaining, the parser fails closed.
+Some dangerous recursive deletions have hardcoded denial and cannot be allowed
+by settings. **[source]** See
+`crates/agent/src/tool_permissions.rs:14`.
+
+The approval UI can grant one call, the rest of the thread, or a persistent
+setting where the permission type supports that scope. A settings change can
+resolve a pending request. Third-party MCP tools receive their per-tool default
+decision. They do not receive the full built-in input-regex policy. **[source]**
+See `crates/agent/src/thread.rs:5539` and
+`crates/agent/src/thread.rs:6173`.
+
+At the audited pin, terminal sandboxing applies to local projects on macOS,
+Linux, and Windows unless the user persistently allows unsandboxed execution.
+macOS uses Seatbelt. Linux uses non-setuid Bubblewrap. Windows uses Bubblewrap
+inside WSL. The baseline grants writes to project worktrees, isolates temporary
+storage, and protects discovered Git metadata from writes. **[source]** See
+`crates/agent/src/sandboxing.rs:1`,
+`crates/agent/src/sandboxing.rs:34`, and
+`crates/sandbox/README.md`.
+
+A terminal call can request exact network hosts, any network host, exact write
+paths, all filesystem writes, or fully unsandboxed execution. Persistent
+settings and per-thread grants merge as allowlists. The UI can grant an
+escalation once, for the thread, or persistently. Git metadata remains
+protected while the command stays sandboxed. **[source]**
+
+This sandbox is not a complete agent sandbox. It limits the native terminal
+path. The `fetch` tool is permission-gated but does not use the terminal OS
+sandbox or its network grants. Native file tools use separate path and
+permission checks. Language servers, build hooks, Git actions outside the agent
+terminal, and later user commands can execute content outside this sandbox.
+Zed's own documentation makes this limit explicit.
+**[limitation]**
+
+### 14.8 Skills, instructions, and slash commands
+
+Skills and always-on instructions are different inputs. Personal and project
+instruction files enter every relevant system prompt. A skill is a named,
+on-demand instruction package with frontmatter and a body. **[source]**
+
+Zed loads global skills from `~/.agents/skills`. It loads project skills from
+`.agents/skills` only for trusted worktrees. Skill bodies stay on disk until
+invocation. The catalog and load issues refresh when relevant files or trust
+change. The agent installs a dynamic `skill` tool, so the model can request a
+skill by name. The user can invoke the same skill with a slash command.
+**[source]** See `crates/agent/src/agent.rs:596`,
+`crates/agent/src/agent.rs:1019`, and
+`crates/agent/src/agent.rs:1967`.
+
+A skill invocation reads the body, wraps it in a visible `<skill_content>`
+envelope, appends the user's remaining content, and runs the normal native
+loop. The UI shows the injected skill content. This makes model-driven and
+user-driven invocation use one conversation representation. **[source]**
+
+Native slash commands also include `/compact` and context-server prompts.
+Ambiguous MCP prompt names receive server prefixes. Prompts that need multiple
+arguments do not enter the simple slash-command list. An MCP prompt is fetched,
+its user and assistant messages are converted into thread messages, and the
+same native loop continues. **[source]** See
+`crates/agent/src/agent.rs:1502` and
+`crates/agent/src/agent.rs:1826`.
+
+### 14.9 Child agents and sibling threads
+
+`spawn_agent` creates a native child `Thread`. The child receives a parent
+session ID and a depth. It shares the Project, ProjectContext, context-server
+registry, and linked action log. It initially inherits model behavior, profile,
+thinking, speed, and summarization settings. A configured subagent model can
+override its model. **[source]** See
+`crates/agent/src/thread.rs:1286` and
+`crates/agent/src/agent.rs:3028`.
+
+Child depth is bounded. The parent keeps weak handles to running children so
+cancellation can propagate. Child sessions use the same persistence and event
+pipeline. The database keeps the parent ID and child context. Recursive parent
+deletion removes child threads and their sandbox temporary directories.
+**[source]**
+
+Sibling-thread tools are different from nested subagents. They ask a UI-owned
+host to create another panel thread or list available agents and models. That
+new thread can use a different agent runtime. This preserves the difference
+between delegated child context and independent parallel work. **[source]**
+See `crates/agent/src/agent.rs:369` and
+`crates/agent/src/agent.rs:3237`.
+
+### 14.10 UI, review, and persistence projection
+
+The Agent Panel and Threads Sidebar are projections over shared agent thread
+interfaces. The native connection supplies extra capabilities through checked
+downcasts, such as native skills and exact native thread control. The panel
+groups parallel threads by project and worktree. Each thread has its own model
+context, history, running turn, and action log. **[source]**
+
+The native event bridge drives streamed text, thinking blocks, tool cards,
+terminal output, diffs, permission choices, retries, compaction markers, and
+stop state. The action log connects file edits to inline and multi-buffer
+review. The UI can follow file reads and edits. It can restore checkpoints and
+accept or reject agent changes. **[source]** See
+`crates/agent_ui/src/agent_panel.rs`,
+`crates/agent_ui/src/conversation_view.rs`,
+`crates/agent_ui/src/conversation_view/thread_view.rs`, and
+`crates/agent_ui/src/agent_diff.rs`.
+
+Every non-empty native thread change schedules a local save. Close saves again,
+and application quit flushes all live non-empty threads concurrently. Stored
+state includes native messages, title, summary, token use, model/profile,
+thinking settings, draft, scroll position, parent context, and sandbox state.
+Section 16 gives the database and retention details. **[source]**
+
+The source includes shared agent-server end-to-end tests and focused tests for
+model selection, project context, skill trust, slash commands, permissions,
+compaction, tool replay, thread save/load, close, quit flush, reference counts,
+and child deletion. This audit did not execute those tests or a provider-backed
+turn. It proves encoded design and test intent, not installed runtime behavior.
+**[test] [limitation]**
+
+### 14.11 OpenAgents implication
+
+This taxonomy confirms OpenAgents' harness architecture. A provider, native
+loop, external runtime adapter, terminal projection, and UI thread are separate
+components. Portable UI can be shared without sharing authority or private
+state semantics.
+
+OpenAgents should adapt:
+
+- explicit native-versus-external runtime identity.
+- one project-bound context and event plane.
+- model/provider identity that remains visible.
+- a stable turn state machine with cancellation and steering boundaries.
+- tool availability separate from tool approval and containment.
+- child topology separate from independent sibling work.
+- local persistence with visible retention and deletion semantics.
+- inline workbench evidence and review tied to exact file revisions.
+
+OpenAgents should preserve its stricter canonical tool authority, WorkContext
 grants, provider-private event envelope, loss-accounted portable projection,
-and effective-containment receipts. An external ACP agent's native config or
-MCP server must not become host authority by inheritance.
+and effective-containment receipts. It must not inherit host authority from an
+external ACP agent, MCP server, selected model, profile, skill, or shared UI
+type.
 
 ## 15. Edit prediction and context assembly
 
@@ -638,8 +983,15 @@ contents and substantial project/workspace history, not only preferences.
 
 Agent thread content uses a separate `threads/threads.db`. Thread rows contain
 IDs, parent IDs, folder paths, titles, timestamps, type, and data. Full thread
-JSON is compressed with zstd level 3. Recursive deletion also removes child
-threads and associated sandbox temp directories. **[source]**
+JSON is versioned and compressed with zstd level 3. The stored native data
+includes messages, summaries, token use, model/profile selection, thinking
+state, parent context, draft prompt, scroll position, and sandbox state.
+Top-level history excludes child sessions but retains their parent links.
+Thread changes schedule a save. Last close saves again, and application quit
+flushes all live non-empty threads. Recursive deletion also removes child
+threads and associated sandbox temp directories. **[source]** See
+`crates/agent/src/db.rs:29`, `crates/agent/src/thread_store.rs:12`, and
+`crates/agent/src/agent.rs:1706`.
 
 `paths.rs` defines an `embeddings_dir` described as semantic-search embedding
 storage. A repository-wide call-site search at this exact tree found no use
@@ -871,7 +1223,14 @@ The most consequential evidence paths at the pinned tree are:
 | themes | `crates/theme/src/registry.rs`. `crates/theme/src/theme.rs`. `crates/theme/src/schema.rs`. `docs/src/themes.md`. `docs/src/extensions/themes.md` |
 | extensions | `crates/extension_host/src/wasm_host.rs`. `crates/extension`. `crates/extension_api`. `assets/settings/default.json` |
 | remote/collaboration | `crates/remote/src/protocol.rs`. `crates/remote_server`. `crates/collab`. `docs/src/remote-development.md`. `docs/src/collaboration` |
-| agents | `crates/agent/src/agent.rs`. `crates/agent/src/db.rs`. `crates/agent/src/sandboxing.rs`. `crates/agent/src/tool_permissions.rs`. `crates/agent_ui`. `crates/acp_thread` |
+| agent identity and lifecycle | `crates/agent/src/native_agent_server.rs`. `crates/agent/src/agent.rs`. `crates/acp_thread` |
+| native model/tool loop | `crates/agent/src/thread.rs`. `crates/agent/src/templates.rs`. `crates/language_model` |
+| agent context | `crates/agent_settings/src/user_agents_md.rs`. `crates/prompt_store`. `crates/context_server`. `crates/agent/src/tools/context_server_registry.rs` |
+| native tools and children | `crates/agent/src/tools.rs`. `crates/agent/src/tools`. `crates/agent/src/outline.rs` |
+| agent permissions and sandbox | `crates/agent/src/tool_permissions.rs`. `crates/agent/src/sandboxing.rs`. `crates/sandbox`. `crates/settings_ui/src/pages/tool_permissions_setup.rs` |
+| native thread persistence | `crates/agent/src/db.rs`. `crates/agent/src/thread_store.rs`. `crates/paths/src/paths.rs` |
+| agent UI and review | `crates/agent_ui/src/agent_panel.rs`. `crates/agent_ui/src/conversation_view.rs`. `crates/agent_ui/src/conversation_view/thread_view.rs`. `crates/agent_ui/src/agent_diff.rs` |
+| agent tests | `crates/agent/src/tests`. `crates/agent/src/native_agent_server.rs`. `crates/agent/src/thread_store.rs` |
 | edit context | `crates/edit_prediction_context/src/edit_prediction_context.rs`. `crates/edit_prediction_context/src/bm25_context.rs`. `crates/edit_prediction_context/src/git_log_context.rs`. `crates/edit_prediction` |
 
 ## Final recommendation
