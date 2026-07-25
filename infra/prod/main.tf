@@ -259,6 +259,17 @@ module "openagents_monolith" {
   region  = var.region
 }
 
+# FORGE-02: one durable bare-repository store and one stock Git transport
+# service. GCS remains pack evidence and a mirror. It is not ref authority.
+module "forge_git" {
+  source = "../modules/forge-git-service"
+
+  project              = var.project_id
+  region               = var.region
+  filestore_zone       = "${var.region}-a"
+  pack_evidence_bucket = module.oa_artifacts_bucket.name
+}
+
 # Global External Application LB fronting the monolith for openagents.com +
 # auth.openagents.com. Pre-staged: the static IP receives no traffic until
 # the DNS flip described in
@@ -266,12 +277,13 @@ module "openagents_monolith" {
 module "openagents_lb" {
   source = "../modules/global-external-lb"
 
-  project                    = var.project_id
-  name                       = "openagents"
-  region                     = var.region
-  domains                    = ["openagents.com", "auth.openagents.com"]
-  cloud_run_service          = module.openagents_monolith.service_name
-  monolith_hosts             = ["openagents.com", "auth.openagents.com"]
-  components_host            = "components.openagents.com"
-  components_backend_service = "effect-native-gallery-backend"
+  project                     = var.project_id
+  name                        = "openagents"
+  region                      = var.region
+  domains                     = ["openagents.com", "auth.openagents.com"]
+  cloud_run_service           = module.openagents_monolith.service_name
+  forge_git_cloud_run_service = module.forge_git.service_name
+  monolith_hosts              = ["openagents.com", "auth.openagents.com"]
+  components_host             = "components.openagents.com"
+  components_backend_service  = "effect-native-gallery-backend"
 }

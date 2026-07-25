@@ -26,6 +26,7 @@ infra/
   modules/
     cloud-sql-postgres/  instance + flags + backup/PITR + users (no passwords)
     cloud-run-service/   service SHELL only — revisions stay with gcloud/CI
+    forge-git-service/   one Cloud Run Git service + one Filestore ref authority
     gcs-bucket/          bucket with optional versioning + lifecycle rules
     scheduler-job/       HTTP-target Cloud Scheduler job (not yet instantiated)
     service-account/     SA + non-authoritative role grants (not yet instantiated)
@@ -58,6 +59,14 @@ its own copies with a different state prefix.
 (CFG-10 LB pre-stage, the LB IP receives no traffic until the DNS flip in
 `docs/cloud/2026-07-06-openagents-domain-cutover-runbook.md`). `tofu plan`
 was a **no-op** against live as of import day. There are no accepted diffs.
+
+## Planned resources
+
+FORGE-02 (#9244) adds `module.forge_git`.
+The module defines one Cloud Run Git service and one Filestore repository
+authority. It also adds a `/git` backend to the current load balancer.
+The cost gate in the Forge Git runbook must open before an operator applies
+these resources.
 
 ## Deliberate design decisions
 

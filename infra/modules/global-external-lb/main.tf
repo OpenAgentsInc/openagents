@@ -100,6 +100,33 @@ resource "google_compute_backend_service" "this" {
   }
 }
 
+resource "google_compute_region_network_endpoint_group" "forge_git" {
+  project               = var.project
+  name                  = "${var.name}-forge-git-neg"
+  region                = var.region
+  network_endpoint_type = "SERVERLESS"
+
+  cloud_run {
+    service = var.forge_git_cloud_run_service
+  }
+}
+
+resource "google_compute_backend_service" "forge_git" {
+  project               = var.project
+  name                  = "${var.name}-forge-git-backend"
+  load_balancing_scheme = "EXTERNAL_MANAGED"
+  protocol              = "HTTPS"
+
+  backend {
+    group = google_compute_region_network_endpoint_group.forge_git.id
+  }
+
+  log_config {
+    enable      = true
+    sample_rate = 1.0
+  }
+}
+
 # ---------------------------------------------------------------------------
 # URL map, proxies, forwarding rules
 # ---------------------------------------------------------------------------
@@ -127,6 +154,11 @@ resource "google_compute_url_map" "this" {
   path_matcher {
     name            = "monolith"
     default_service = google_compute_backend_service.this.id
+
+    path_rule {
+      paths   = ["/git", "/git/*"]
+      service = google_compute_backend_service.forge_git.id
+    }
   }
 
   path_matcher {

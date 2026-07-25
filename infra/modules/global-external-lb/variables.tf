@@ -23,6 +23,11 @@ variable "cloud_run_service" {
   type        = string
 }
 
+variable "forge_git_cloud_run_service" {
+  description = "Cloud Run service name for authenticated Smart HTTP Git routes"
+  type        = string
+}
+
 variable "monolith_hosts" {
   description = "Hostnames that route every path to the monolith"
   type        = list(string)
