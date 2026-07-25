@@ -5,7 +5,9 @@ tree at an exact commit in the local reference clone
 `~/work/projects/repos/buzz`. Nothing tracked was modified. The Git follow-up
 ran bounded protocol tests, but it did not run a live relay. A second source
 review traced the shared-compute and usage paths at the same follow-up commit.
-It did not run a live MeshLLM node. Buzz is Block's
+A third source review traced identity, authentication, and device pairing at
+that commit. It did not run a live MeshLLM node or complete a real device
+transfer. Buzz is Block's
 open-source, self-hostable workspace where humans
 and AI agents are co-equal members of a Nostr-relay community. It is the
 closest whole-system analog to OpenAgents in the teardown catalog so far: one
@@ -69,7 +71,7 @@ shell, the Flutter mobile lane, and the non-streaming agent turn model.**
 | Public repository | `https://github.com/block/buzz` | Public source and history |
 | Local clone | `~/work/projects/repos/buzz` | The audited tree |
 | Audited commit | `e9188c03f6c2460983a3dac0fa7702b468838e62` | Exact snapshot used here |
-| Git, MeshLLM, and usage follow-up commit | `5a3b8176aac5f4bced452ac8920477c5e059b828` | Source snapshot for the Git and shared-compute deep dives |
+| Git, MeshLLM, usage, and device-auth follow-up commit | `5a3b8176aac5f4bced452ac8920477c5e059b828` | Source snapshot for the Git, shared-compute, identity, authentication, and pairing deep dives |
 | Psionic comparison commit | `54201484bb8eb11b528f7038922db02724864523` | Current native inference-mesh, topology, receipt, and service-mode comparison |
 | `nostr-effect` commit | `c1603780f754d445b3cb8203ea5602b54c145996` | Local implementation snapshot for standard and Buzz NIPs |
 | OpenAgents historical sources | `docs/transcripts/README.md`, episodes 142, 147, 174, 178, 201, 203, 214, 215, 237, and 238 | Data-vending, compute-market, Pylon, Psionic, and accepted-outcome lineage |
@@ -102,10 +104,10 @@ bounded checks. `nostr-effect` passed 69 NIP-34 and NIP-GS tests. Buzz passed
 NIP-GS library passed 55 of 56 tests. Its parser accepted an all-zero OA public
 key that the test and draft require it to reject. [source] [limitation]
 
-This audit did not run the relay, desktop app, a MeshLLM node, live MinIO
-tests, TLA+ checker, or Tamarin checker. The live Git and shared-compute tests
-are ignored by default. All other behavior claims come from tracked source and
-docs. Only `block/buzz` is public.
+This audit did not run the relay, desktop app, mobile app, a MeshLLM node,
+live MinIO tests, TLA+ checker, or Tamarin checker. It did not complete a live
+NIP-AB transfer. The live Git and shared-compute tests are ignored by default.
+All other behavior claims come from tracked source and docs. Only `block/buzz` is public.
 Block-internal builds, deploy pipelines, and the hosted relay are out of scope.
 [limitation]
 
@@ -1363,7 +1365,291 @@ and a verifiable merge receipt across hosts. The large Git objects remain in
 Git and object storage. Nostr carries the identities, proposals, projections,
 and proofs that are good at replication. [inferred]
 
-## 8. What OpenAgents should reject
+## 8. Nostr identity, login, and desktop-to-mobile handoff
+
+### 8.1 Correction: the phone scans a Desktop QR, but no session moves
+
+The user hypothesis is substantially correct. Buzz Desktop displays a QR code,
+and Buzz mobile scans it. The QR starts a two-device approval flow. However,
+Buzz does not move an authenticated server session, an OAuth token, or a
+short-lived access token. After approval, Desktop sends its long-lived Nostr
+secret key (`nsec`) to the phone. Both devices then hold the same identity and
+can sign independently. This operation is a key copy, not a session handoff.
+[source]
+
+The product path is implemented and connected to both user interfaces at the
+follow-up commit. Desktop Settings contains `MobilePairingCard` in
+`desktop/src/features/settings/ui/MobilePairingCard.tsx`. It calls the Tauri
+commands `start_pairing`, `confirm_pairing_sas`, and `cancel_pairing` from
+`desktop/src-tauri/src/commands/pairing.rs`. Mobile starts unauthenticated users
+on `PairingPage` through `mobile/lib/app.dart`. That page uses
+`mobile_scanner` or accepts a pasted pairing URI. Git history first connects
+the NIP-AB Desktop and mobile user interfaces in commit `fc67dac4` on
+2026-04-16. The audited release contains later relay-selection and optional-auth
+fixes. [source] [history]
+
+The NIP-AB document labels the protocol `draft` and `optional`. Those labels
+describe protocol status. They do not mean the product flow is only planned.
+The dedicated `buzz-pair-relay` deployment is optional, but the application
+flow is shipping source behavior. In contrast, the NIP-AB `nsec`, `bunker`,
+and `connect` payload types describe a wider protocol. The Desktop product
+always sends `PayloadType::Custom` with `{relayUrl, pubkey, nsec}`. It does not
+use NIP-46 remote signing in this flow. [source]
+
+### 8.2 Identity custody and the meaning of login
+
+Buzz uses a Nostr keypair as the human account. A public key identifies the
+user. The corresponding secret key authorizes signed actions. There is no
+separate Buzz password login in the audited clients. [source]
+
+Desktop resolves the identity in this order:
+
+1. A valid `BUZZ_PRIVATE_KEY` development or harness override wins.
+2. A release build reads the `identity` item from the OS keyring service
+   `buzz-desktop`.
+3. A build without system-keyring support uses an `identity.key` file with
+   mode `0600`.
+4. A first launch with no identity generates a new keypair and makes it
+   durable.
+
+`resolve_persisted_identity`, `load_or_create_identity`, and
+`persist_imported_identity` in `desktop/src-tauri/src/app_state.rs` implement
+this order. `import_identity` in
+`desktop/src-tauri/src/commands/identity.rs` parses an imported `nsec`, writes
+it to the keyring, reads it back, writes a migration marker, and only then
+removes a legacy file. `AppState::signing_keys` blocks all signing when the
+identity is lost or the keyring is locked. The Desktop onboarding backup step
+can reveal the generated `nsec` and tells the user to store it safely.
+[source]
+
+Mobile treats possession of a syntactically valid stored `nsec` as its local
+authenticated state. `AuthNotifier.build` in
+`mobile/lib/shared/auth/auth_provider.dart` loads communities and removes each
+entry whose `nsec` is invalid. `CommunityStorage` stores the complete community
+records, including each `nsec`, as one JSON value through
+`flutter_secure_storage`. A successful pairing adds and selects one such
+record. Sign-out removes the active record. It does not revoke the copied key
+on Desktop or at the relay. [source]
+
+After local identity restoration, each client authenticates to the relay with
+NIP-42. The relay sends a random 32-byte challenge. The client returns a signed
+kind `22242` event with `challenge` and `relay` tags.
+`verify_nip42_event` in `crates/buzz-auth/src/nip42.rs` verifies the signature,
+exact challenge, normalized relay URL, and a timestamp within 60 seconds. The
+relay then applies ban, allowlist, and community-membership gates in
+`crates/buzz-relay/src/handlers/auth.rs`. The AUTH event is not stored.
+[source]
+
+Desktop REST calls use new NIP-98 signed HTTP-auth events rather than a durable
+bearer session. `build_nip98_auth_header_for_keys` in
+`desktop/src-tauri/src/relay.rs` adds a UUID nonce for event uniqueness. Thus,
+normal Desktop and mobile access has a long-lived signing key and short-lived
+signed proofs. It has no server-issued login session lifetime to transfer.
+[source]
+
+### 8.3 Exact NIP-AB product flow
+
+The following sequence is the implemented preferred mobile login flow.
+[source]
+
+```text
+Buzz Desktop (source)        pairing relay          Buzz mobile (target)
+        |                           |                         |
+start_pairing()                                            scan QR
+ephemeral key + secret                                     parse nostrpair://
+subscribe kind 24134 ------------- REQ ------------------> subscribe
+        |<---------------- encrypted, signed offer ---------|
+show SAS                                                show SAS
+        |             user compares both screens             |
+Desktop confirms                                      mobile confirms
+        |------ sas-confirm + encrypted custom payload ------>|
+        |                 {relayUrl,pubkey,nsec}               |
+        |<----------- complete(success=true) -----------------|
+                                                             |
+                                             store nsec securely
+                                             NIP-42 to main relay
+```
+
+1. `start_pairing` reads the active Desktop signing key. It derives the main
+   WebSocket and HTTP relay URLs.
+2. Desktop requests the relay root with
+   `Accept: application/nostr+json`. It prefers the NIP-11
+   `pairing_relay_url`. A NIP-43 relay without that field uses the legacy
+   same-host `/pair` path. An open relay uses its main WebSocket.
+3. `PairingSession::new_source` creates one ephemeral secp256k1 keypair and one
+   random 32-byte session secret. `encode_qr` emits
+   `nostrpair://<ephemeral-pubkey>?secret=<hex>&relay=<url>&v=1`.
+4. Desktop subscribes to kind `24134` events addressed to its ephemeral key.
+   It waits for `EOSE` before it accepts the peer exchange.
+5. Mobile scans or pastes the URI. `parseNostrpairUri` limits it to 2,048
+   characters. It validates lowercase key and secret values, version `1`, and
+   at least one `ws` or `wss` relay.
+6. Mobile creates another ephemeral keypair. It can answer a NIP-42 challenge
+   with that key, but it also accepts an open pairing relay after a three-second
+   challenge grace period.
+7. Mobile subscribes to kind `24134`, then sends an encrypted `offer`. The
+   offer contains version `1` and an HKDF-derived session ID. Desktop accepts
+   only the first valid offer and locks the session to that ephemeral peer.
+8. Both devices use ephemeral ECDH and HKDF-SHA256 to derive the same six-digit
+   Short Authentication String (SAS). Both screens require a user decision.
+9. Desktop approval sends an encrypted `sas-confirm` with a transcript hash.
+   It then sends the encrypted custom payload. Mobile verifies the transcript
+   hash and waits for its own user approval before it imports the payload.
+10. Mobile checks the relay URL and attempts a NIP-42 connection with the
+    received `nsec`. It sends `complete(success=true)` before it stores and
+    selects the community record.
+
+The source and target use NIP-44 v2 ciphertext in signed kind `24134` events.
+Each event has one `p` tag for the peer's ephemeral public key. The mobile
+implementation also subtracts a random 0-30 seconds from event timestamps to
+reduce timing precision. [source]
+
+### 8.4 Endpoints, values, and lifetimes
+
+| Item | Implemented value | Meaning |
+| --- | --- | --- |
+| Relay discovery | `GET <main-relay-root>` with NIP-11 media type | Finds `pairing_relay_url` and NIP-43 support |
+| Pairing transport | Advertised WebSocket, `<main>/pair`, or main WebSocket | Routes only ephemeral pairing events |
+| Pairing event | Kind `24134` | Encrypted offer, confirmation, payload, completion, or abort |
+| Normal relay auth | Kind `22242` | NIP-42 connection challenge proof |
+| Desktop HTTP auth | NIP-98 `Authorization: Nostr ...` | Per-request signed HTTP proof |
+| QR session secret | 32 random bytes | HKDF input and QR-possession proof, not the user `nsec` |
+| SAS | Six decimal digits | User-visible peer check with about 20 bits of comparison space |
+| Core session timeout | 120 seconds | Maximum NIP-AB state-machine life |
+| Desktop task timeout | 130 seconds | Outer WebSocket-task stop |
+| Pair sidecar connection | 120 seconds | Hard sidecar connection cap |
+| Pair sidecar freshness | ±120 seconds | Accepted event timestamp window |
+| Pair sidecar dedupe state | 300 seconds | Bounded replay and delivery records |
+| Normal NIP-42 freshness | ±60 seconds | Accepted AUTH event timestamp window |
+| Imported identity | No protocol expiry | The copied `nsec` remains valid until custody or policy changes |
+
+There is no refresh token, mobile session token, one-time redemption token,
+device certificate, or server-side paired-device record in this flow. The
+session ID and QR secret expire with local pairing state. They do not revoke
+the transferred identity. [source]
+
+### 8.5 Security boundaries and threat model
+
+The design protects the secret in transit from a passive or malicious relay.
+The QR contains an ephemeral public key, a pairing relay URL, and the session
+secret. It does not contain the user's `nsec`. The relay sees IP addresses,
+timing, ciphertext sizes, and throwaway public keys. It cannot decrypt the
+payload without an endpoint secret. The six-digit SAS lets the user detect an
+active peer substitution when both screens are trustworthy and the user
+compares them. [source] [inferred]
+
+The optional `buzz-pair-relay` narrows the relay boundary. It has no event
+storage and no application login. It permits only one live subscriber for a
+recipient key. It verifies NIP-01 IDs and Schnorr signatures. It accepts only
+kind `24134`, exact `p` tags, NIP-44 v2-shaped content, and fresh timestamps.
+It caps connections, frames, rates, events, deliveries, and in-memory replay
+state. Its deployment binds loopback and depends on a TLS reverse proxy.
+[source]
+
+The important residual risks are these:
+
+- A screenshot, clipboard reader, camera compromise, or shoulder surfer can
+  obtain the QR session secret during the 120-second window. The SAS remains
+  the active substitution check.
+- A compromised Desktop can send any key. A compromised phone can steal the
+  received key. NIP-AB does not repair endpoint compromise.
+- Success creates two equal signers with one `nsec`. Buzz has no per-device
+  revocation, device inventory, key generation fence, or device-specific
+  audit identity for that shared key.
+- Mobile stores the reusable `nsec` in platform secure storage. The Desktop
+  can also expose the same `nsec` for backup. A backup leak compromises all
+  devices that use the identity.
+- The relay still learns that two network endpoints paired at a given time.
+  Timestamp jitter reduces precision but does not hide the network metadata.
+- The UI still accepts the legacy `buzz://` or raw base64 credential bundle.
+  That path can contain the `nsec` directly. It has no ephemeral exchange,
+  transcript binding, or SAS. It depends on the delivery channel for secrecy
+  and authenticity.
+- A timeout or disconnect discards the ephemeral session. There is no resume.
+  The user must create and scan a new code.
+
+The source also leaves three implementation gaps or questions before reuse.
+First, the received `pubkey` field is stored separately from the
+`nsec`, but `_processPayload` does not explicitly prove that they match.
+Second, `_validateCredentials` awaits `RelaySocket.connect`, while that method
+reports several connection and AUTH failures through callbacks instead of
+rethrowing them. At the audited commit, this path does not provide a reliable
+credential-validation fence. Third, `_validateRelayUrl` blocks literal private
+IPv4 addresses, but it does not resolve DNS before the connection. A security
+review must cover DNS rebinding, IPv6 private ranges, and redirect policy.
+[source] [inferred] [limitation]
+
+Two state-ordering gaps also need correction. Mobile parses the complete
+decrypted payload object before the mobile user confirms the SAS. It buffers
+the parsed map instead of opaque ciphertext. This behavior is weaker than the
+NIP-AB rule in `NIP-AB.md`, which permits early type classification but not
+early payload extraction. Mobile also sends `complete(success=true)` before
+`authenticateWithCommunity` writes secure storage. Desktop can therefore show
+success before mobile persistence finishes. [source]
+
+Recovery is asymmetric. Desktop distinguishes a locked keyring from a missing
+or corrupt identity. It disables signing and offers relaunch or explicit
+`nsec` import. Mobile removes malformed stored identities during startup and
+returns to pairing when none remain. A user can restore mobile by pairing
+again or by the legacy credential path. Buzz does not provide social recovery,
+threshold recovery, or revocation after a lost phone. [source]
+
+### 8.6 Recommended OpenAgents and Omega variant
+
+OpenAgents should adapt the out-of-band introduction, ephemeral encryption,
+two-screen SAS, typed state machine, strict expiry, and bounded relay. It
+should not copy the root signing key to a new device. Omega and mobile should
+use device enrollment, not identity duplication. [inferred]
+
+A safer target-native sequence is:
+
+1. Omega displays a single-use QR with an ephemeral public key, a random
+   secret, an exact enrollment endpoint, a protocol version, and an expiry.
+2. Mobile generates its own permanent device key in platform hardware-backed
+   storage. It never receives Omega's private identity key or Desktop token.
+3. The devices complete an ephemeral ECDH exchange and show the same SAS.
+   Both users must approve before enrollment can continue.
+4. Omega signs a narrow enrollment grant for the mobile device public key.
+   The grant binds owner, tenant, device, capabilities, endpoint, generation,
+   nonce, issuer, issue time, expiry, and protocol version.
+5. Mobile redeems the grant once through an OpenAgents typed API. Cloud SQL
+   records the device, redemption, generation, and revocation state. Khala
+   Sync projects the admitted result.
+6. Mobile receives only a device-scoped credential or capability set that is
+   encrypted to its device key. It signs requests as that device.
+7. Settings show every enrolled device, its last use, capabilities, and
+   generation. The owner can revoke one device without rotating all others.
+8. Each approval, redemption, denial, timeout, replay, revocation, and recovery
+   result emits a public-safe receipt and a private audit record.
+
+Nostr can supply the portable signature and encryption profile. A signed Nostr
+event can also project device enrollment or prove a peer key. It must not
+become OpenAgents command, session, acceptance, or receipt authority. The
+OpenAgents API, ProductSpec, AssuranceSpec, and current owner controls keep
+those roles. [inferred]
+
+This variant needs a shared enrollment schema, a one-time redemption service,
+mobile and Omega secure-key adapters, a device registry, generation fences,
+replay storage, revocation, and recovery policy. It also needs negative tests
+for a leaked QR, wrong SAS, relay substitution, DNS rebinding, clock skew,
+duplicate delivery, crash after redemption, lost completion, and concurrent
+enrollment. [inferred]
+
+Before implementation, the product owner must answer five questions:
+
+- Does one human have one root Nostr identity with device attestations, or a
+  separate OpenAgents account key above all device keys?
+- Which actions can mobile sign offline, and which actions require a current
+  owner or server approval?
+- What recovery proof replaces a lost final device without creating an account
+  takeover path?
+- Which enrollment metadata can a relay or Sync projection expose?
+- When does a device credential expire, and which evidence permits renewal?
+
+This is the careful form of the Buzz lesson: use QR and SAS to establish a new
+device, but transfer bounded authority instead of the sovereign secret.
+
+## 9. What OpenAgents should reject
 
 - **The relay-as-workspace substrate.** OpenAgents' conversation, receipt,
   and projection authority is Khala Sync plus Cloud SQL on Google Cloud, and
@@ -1389,7 +1675,7 @@ and proofs that are good at replication. [inferred]
   Keycloak, and a 218,000-line relay for any single wanted feature is the
   wrong trade at every point in the OpenAgents stack. [source]
 
-## 9. Recommendation
+## 10. Recommendation
 
 Buzz is the most complete external instantiation of the "humans and agents
 in one auditable workspace" thesis that OpenAgents also holds, built by a
@@ -1419,7 +1705,7 @@ organization lane before a public market. Do not revive NIP-90 as the default
 market protocol. Require provider attribution and a live multi-host evidence
 bundle before any earnings or distributed-inference promise turns green.
 
-## 10. Watch items
+## 11. Watch items
 
 - **Buzz Mesh.** Section 3.6 traces the current community-pooled GPU path.
   Track whether Buzz adds provider attribution, quotas, contribution receipts,
@@ -1817,8 +2103,8 @@ display a 6-digit Short Authentication String for the user to compare, and only
 after that visual confirmation does the source send the NIP-44 v2 encrypted
 payload. Every event uses throwaway ephemeral keypairs that are discarded after
 the session. Submission and authority. Client-submitted and ephemeral-key
-signed. The relay sees only opaque ciphertext addressed to throwaway keys and
-learns nothing about the payload. Trust model. Man-in-the-middle resistance
+signed. The relay sees opaque ciphertext addressed to throwaway keys. It also
+sees network endpoints, time, and payload size. Trust model. Man-in-the-middle resistance
 comes from the user-verified SAS, not from the relay. The design ships a Tamarin
 symbolic-security proof (`NIP-AB.spthy`) alongside the specification, which is
 the same formal-verification posture the body of this teardown highlights for
