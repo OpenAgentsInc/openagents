@@ -16734,6 +16734,28 @@
       }
     },
     {
+      "path": "docs/assurance/2026-07-26-full-auto-assurance-re-admission-packet.md",
+      "sha256": "bbaa38e0151406716e62b008b0dabaf3f67a1b8a4094ed8d8c0dcaf783f55280",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/assurance/AGENT_TOOLING.md",
       "sha256": "ad55eaa002435085fb000b0ffa8be37c43f202ac0b2d0ac883db719dede76493",
       "reason": "Final review of a converted document",
@@ -26728,12 +26750,10 @@
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
-        "ste_status": "source-data",
-        "ste_reviewer": null,
-        "ste_reviewed_at": null,
         "risk": "source-data",
         "source": "Immutable historical or evidence source data",
-        "replacement": null
+        "replacement": null,
+        "ste_status": "source-data"
       }
     },
     {
@@ -44105,7 +44125,7 @@
     },
     {
       "path": "docs/sol/receipts/README.md",
-      "sha256": "8b360770c1fb76349c1d8183c9b1c326e6bcd0de6b925797fa8b1f7ba5b6fa3e",
+      "sha256": "59342467346496a560134fde294184d2aa0f313970cc622859446dca55804ff8",
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
@@ -49007,7 +49027,7 @@
     },
     {
       "path": "specs/desktop/full-auto.assurance-spec.md",
-      "sha256": "c207cfe09e7f562aeca233486521b0a152fd2fabcb48e725994bf9277869c6d0",
+      "sha256": "d8dc7d1d6e02f6e01d137b034d7e5b51d2e09a4041ce61ae3c556c104bba6430",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

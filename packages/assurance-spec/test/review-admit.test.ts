@@ -47,11 +47,18 @@ describe("independent-admission verifier", () => {
     expect(designedOnly).toEqual(["FA-AC-69", "FA-AC-70", "FA-AC-71", "FA-AC-72", "FA-AC-73", "FA-AC-74", "FA-AC-75", "FA-AC-76"])
   })
 
-  test("plans reproduction as the documented desktop plus assurance-self-check batches", () => {
+  test("plans reproduction as the documented Desktop, Omega engine, and assurance batches", () => {
     const batches = planOracleReproduction(classifyReviewTiers(document, fileExists))
     expect(batches.map((batch) => batch.batch_id).sort()).toEqual(["desktop-oracles", "repo-oracles"])
     const repo = batches.find((batch) => batch.batch_id === "repo-oracles")
-    expect(repo?.file_args).toEqual(["packages/assurance-spec/test/assurance-spec.test.ts"])
+    expect(repo?.file_args).toEqual([
+      "packages/assurance-spec/test/assurance-spec.test.ts",
+      "packages/omega-effectd/src/engine/full-auto-control-server.test.ts",
+      "packages/omega-effectd/src/engine/full-auto-lane.test.ts",
+      "packages/omega-effectd/src/engine/full-auto-liveness.test.ts",
+      "packages/omega-effectd/src/engine/full-auto-provider-handoff.test.ts",
+      "packages/omega-effectd/src/engine/full-auto-run-report.test.ts",
+    ])
     const desktop = batches.find((batch) => batch.batch_id === "desktop-oracles")
     expect(desktop?.file_args.every((path) => !path.startsWith("apps/openagents-desktop/"))).toBe(true)
     expect(desktop?.file_args).toContain("tests/full-auto-restart.e2e.test.ts")

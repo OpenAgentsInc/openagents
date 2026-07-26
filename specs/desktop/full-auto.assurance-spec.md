@@ -1,15 +1,11 @@
 ---
 assurance_spec_format_version: "0.1"
 assurance_spec_id: "assurance.full.auto.codex.composer.loop"
-assurance_revision: 6
+assurance_revision: 7
 title: "Full Auto Autonomous-Run AssuranceSpec"
 artifact_type: "product_assurance"
-lifecycle_state: "admitted"
+lifecycle_state: "proposed"
 author: "OpenAgents"
-admitted_by: "authority_delegated_independent_reviewer_grok_2026_07_21"
-admitted_at: "2026-07-21T22:40:42Z"
-admitted_receipt_ref: "authority.decision.de1e10314822b99f8d96dc46bb5302cd"
-admitted_receipt_path: "docs/assurance/receipts/authority.decision.de1e10314822b99f8d96dc46bb5302cd.json"
 ---
 
 ## Assurance Objective
@@ -349,25 +345,25 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
       "apps/openagents-desktop/src/desktop-runtime-workspace.test.ts",
       "apps/openagents-desktop/src/desktop-worker-location.test.ts",
       "apps/openagents-desktop/src/extension-lifecycle-contract.test.ts",
-      "apps/openagents-desktop/src/fable-local-runtime-caps.test.ts",
-      "apps/openagents-desktop/src/fable-local-runtime.test.ts",
+      "apps/openagents-desktop/src/claude-local-runtime-caps.test.ts",
+      "apps/openagents-desktop/src/claude-local-runtime.test.ts",
       "apps/openagents-desktop/src/full-auto-acceptance-driver.test.ts",
       "apps/openagents-desktop/src/full-auto-acceptance.test.ts",
-      "apps/openagents-desktop/src/full-auto-control-server.test.ts",
+      "packages/omega-effectd/src/engine/full-auto-control-server.test.ts",
       "apps/openagents-desktop/src/full-auto-followup.test.ts",
       "apps/openagents-desktop/src/full-auto-hydration.integration.test.ts",
-      "apps/openagents-desktop/src/full-auto-lane.test.ts",
-      "apps/openagents-desktop/src/full-auto-liveness.test.ts",
-      "apps/openagents-desktop/src/full-auto-mission.test.ts",
-      "apps/openagents-desktop/src/full-auto-provider-handoff.test.ts",
+      "packages/omega-effectd/src/engine/full-auto-lane.test.ts",
+      "packages/omega-effectd/src/engine/full-auto-liveness.test.ts",
+      "packages/omega-effectd/src/engine/full-auto-mission.test.ts",
+      "packages/omega-effectd/src/engine/full-auto-provider-handoff.test.ts",
       "apps/openagents-desktop/src/full-auto-retry-rotation-model.test.ts",
-      "apps/openagents-desktop/src/full-auto-routing.test.ts",
+      "packages/omega-effectd/src/engine/full-auto-routing.test.ts",
       "apps/openagents-desktop/src/full-auto-run-analyzer.test.ts",
       "apps/openagents-desktop/src/full-auto-run-control-server.test.ts",
       "apps/openagents-desktop/src/full-auto-run-handoff-control-server.test.ts",
       "apps/openagents-desktop/src/full-auto-run-liveness-control-server.test.ts",
       "apps/openagents-desktop/src/full-auto-run-report-control-server.test.ts",
-      "apps/openagents-desktop/src/full-auto-run-report.test.ts",
+      "packages/omega-effectd/src/engine/full-auto-run-report.test.ts",
       "apps/openagents-desktop/src/git-github-contract.test.ts",
       "apps/openagents-desktop/src/git-github-host.test.ts",
       "apps/openagents-desktop/src/git-review-corpus.node.test.ts",
@@ -532,7 +528,7 @@ Four Environment Profiles are declared below, matching the real evidence tiers t
       "apps/openagents-desktop/tests/fixtures/working-indicator-motion-probe.cjs",
       "apps/openagents-desktop/tests/fleet-control.test.ts",
       "apps/openagents-desktop/tests/full-auto-guardrails.test.ts",
-      "apps/openagents-desktop/tests/full-auto-liveness.test.ts",
+      "packages/omega-effectd/src/engine/full-auto-liveness.test.ts",
       "apps/openagents-desktop/tests/full-auto-registry.test.ts",
       "apps/openagents-desktop/tests/full-auto-restart.e2e.test.ts",
       "apps/openagents-desktop/tests/full-auto-run-control-intent-consumer.test.ts",
@@ -3878,7 +3874,7 @@ All 76 criteria carry a fully DESIGNED obligation in this revision (domains, tec
   },
   {
     "candidate_artifact_refs": [
-      "apps/openagents-desktop/src/full-auto-lane.test.ts"
+      "packages/omega-effectd/src/engine/full-auto-lane.test.ts"
     ],
     "criterion_refs": [
       "FA-AC-10"
@@ -3906,13 +3902,13 @@ All 76 criteria carry a fully DESIGNED obligation in this revision (domains, tec
     "falsifier": {
       "expected_verdict": "REFUTED",
       "kind": "fa_ac_10_negative_control",
-      "ref": "apps/openagents-desktop/src/full-auto-lane.test.ts"
+      "ref": "packages/omega-effectd/src/engine/full-auto-lane.test.ts"
     },
     "independence": {
       "producer_may_verify": false
     },
     "oracle": {
-      "evaluator_ref": "apps/openagents-desktop/src/full-auto-lane.test.ts",
+      "evaluator_ref": "packages/omega-effectd/src/engine/full-auto-lane.test.ts",
       "statement": "The exact FA-AC-10 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
     },
     "technique": "deterministic_test"
@@ -4369,7 +4365,7 @@ All 76 criteria carry a fully DESIGNED obligation in this revision (domains, tec
   },
   {
     "candidate_artifact_refs": [
-      "apps/openagents-desktop/src/full-auto-control-server.test.ts"
+      "packages/omega-effectd/src/engine/full-auto-control-server.test.ts"
     ],
     "criterion_refs": [
       "FA-AC-22"
@@ -4397,20 +4393,20 @@ All 76 criteria carry a fully DESIGNED obligation in this revision (domains, tec
     "falsifier": {
       "expected_verdict": "REFUTED",
       "kind": "fa_ac_22_negative_control",
-      "ref": "apps/openagents-desktop/src/full-auto-control-server.test.ts"
+      "ref": "packages/omega-effectd/src/engine/full-auto-control-server.test.ts"
     },
     "independence": {
       "producer_may_verify": false
     },
     "oracle": {
-      "evaluator_ref": "apps/openagents-desktop/src/full-auto-control-server.test.ts",
+      "evaluator_ref": "packages/omega-effectd/src/engine/full-auto-control-server.test.ts",
       "statement": "The exact FA-AC-22 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
     },
     "technique": "deterministic_test"
   },
   {
     "candidate_artifact_refs": [
-      "apps/openagents-desktop/src/full-auto-control-server.test.ts"
+      "packages/omega-effectd/src/engine/full-auto-control-server.test.ts"
     ],
     "criterion_refs": [
       "FA-AC-23"
@@ -4438,20 +4434,20 @@ All 76 criteria carry a fully DESIGNED obligation in this revision (domains, tec
     "falsifier": {
       "expected_verdict": "REFUTED",
       "kind": "fa_ac_23_negative_control",
-      "ref": "apps/openagents-desktop/src/full-auto-control-server.test.ts"
+      "ref": "packages/omega-effectd/src/engine/full-auto-control-server.test.ts"
     },
     "independence": {
       "producer_may_verify": false
     },
     "oracle": {
-      "evaluator_ref": "apps/openagents-desktop/src/full-auto-control-server.test.ts",
+      "evaluator_ref": "packages/omega-effectd/src/engine/full-auto-control-server.test.ts",
       "statement": "The exact FA-AC-23 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
     },
     "technique": "deterministic_test"
   },
   {
     "candidate_artifact_refs": [
-      "apps/openagents-desktop/src/full-auto-control-server.test.ts"
+      "packages/omega-effectd/src/engine/full-auto-control-server.test.ts"
     ],
     "criterion_refs": [
       "FA-AC-24"
@@ -4479,20 +4475,20 @@ All 76 criteria carry a fully DESIGNED obligation in this revision (domains, tec
     "falsifier": {
       "expected_verdict": "REFUTED",
       "kind": "fa_ac_24_negative_control",
-      "ref": "apps/openagents-desktop/src/full-auto-control-server.test.ts"
+      "ref": "packages/omega-effectd/src/engine/full-auto-control-server.test.ts"
     },
     "independence": {
       "producer_may_verify": false
     },
     "oracle": {
-      "evaluator_ref": "apps/openagents-desktop/src/full-auto-control-server.test.ts",
+      "evaluator_ref": "packages/omega-effectd/src/engine/full-auto-control-server.test.ts",
       "statement": "The exact FA-AC-24 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
     },
     "technique": "deterministic_test"
   },
   {
     "candidate_artifact_refs": [
-      "apps/openagents-desktop/src/full-auto-control-server.test.ts"
+      "packages/omega-effectd/src/engine/full-auto-control-server.test.ts"
     ],
     "criterion_refs": [
       "FA-AC-25"
@@ -4520,20 +4516,20 @@ All 76 criteria carry a fully DESIGNED obligation in this revision (domains, tec
     "falsifier": {
       "expected_verdict": "REFUTED",
       "kind": "fa_ac_25_negative_control",
-      "ref": "apps/openagents-desktop/src/full-auto-control-server.test.ts"
+      "ref": "packages/omega-effectd/src/engine/full-auto-control-server.test.ts"
     },
     "independence": {
       "producer_may_verify": false
     },
     "oracle": {
-      "evaluator_ref": "apps/openagents-desktop/src/full-auto-control-server.test.ts",
+      "evaluator_ref": "packages/omega-effectd/src/engine/full-auto-control-server.test.ts",
       "statement": "The exact FA-AC-25 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
     },
     "technique": "deterministic_test"
   },
   {
     "candidate_artifact_refs": [
-      "apps/openagents-desktop/src/full-auto-control-server.test.ts"
+      "packages/omega-effectd/src/engine/full-auto-control-server.test.ts"
     ],
     "criterion_refs": [
       "FA-AC-26"
@@ -4561,20 +4557,20 @@ All 76 criteria carry a fully DESIGNED obligation in this revision (domains, tec
     "falsifier": {
       "expected_verdict": "REFUTED",
       "kind": "fa_ac_26_negative_control",
-      "ref": "apps/openagents-desktop/src/full-auto-control-server.test.ts"
+      "ref": "packages/omega-effectd/src/engine/full-auto-control-server.test.ts"
     },
     "independence": {
       "producer_may_verify": false
     },
     "oracle": {
-      "evaluator_ref": "apps/openagents-desktop/src/full-auto-control-server.test.ts",
+      "evaluator_ref": "packages/omega-effectd/src/engine/full-auto-control-server.test.ts",
       "statement": "The exact FA-AC-26 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
     },
     "technique": "deterministic_test"
   },
   {
     "candidate_artifact_refs": [
-      "apps/openagents-desktop/src/full-auto-control-server.test.ts"
+      "packages/omega-effectd/src/engine/full-auto-control-server.test.ts"
     ],
     "criterion_refs": [
       "FA-AC-27"
@@ -4602,20 +4598,20 @@ All 76 criteria carry a fully DESIGNED obligation in this revision (domains, tec
     "falsifier": {
       "expected_verdict": "REFUTED",
       "kind": "fa_ac_27_negative_control",
-      "ref": "apps/openagents-desktop/src/full-auto-control-server.test.ts"
+      "ref": "packages/omega-effectd/src/engine/full-auto-control-server.test.ts"
     },
     "independence": {
       "producer_may_verify": false
     },
     "oracle": {
-      "evaluator_ref": "apps/openagents-desktop/src/full-auto-control-server.test.ts",
+      "evaluator_ref": "packages/omega-effectd/src/engine/full-auto-control-server.test.ts",
       "statement": "The exact FA-AC-27 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
     },
     "technique": "deterministic_test"
   },
   {
     "candidate_artifact_refs": [
-      "apps/openagents-desktop/src/full-auto-control-server.test.ts"
+      "packages/omega-effectd/src/engine/full-auto-control-server.test.ts"
     ],
     "criterion_refs": [
       "FA-AC-28"
@@ -4643,13 +4639,13 @@ All 76 criteria carry a fully DESIGNED obligation in this revision (domains, tec
     "falsifier": {
       "expected_verdict": "REFUTED",
       "kind": "fa_ac_28_negative_control",
-      "ref": "apps/openagents-desktop/src/full-auto-control-server.test.ts"
+      "ref": "packages/omega-effectd/src/engine/full-auto-control-server.test.ts"
     },
     "independence": {
       "producer_may_verify": false
     },
     "oracle": {
-      "evaluator_ref": "apps/openagents-desktop/src/full-auto-control-server.test.ts",
+      "evaluator_ref": "packages/omega-effectd/src/engine/full-auto-control-server.test.ts",
       "statement": "The exact FA-AC-28 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
     },
     "technique": "deterministic_test"
@@ -4740,7 +4736,7 @@ All 76 criteria carry a fully DESIGNED obligation in this revision (domains, tec
   },
   {
     "candidate_artifact_refs": [
-      "apps/openagents-desktop/src/full-auto-lane.test.ts"
+      "packages/omega-effectd/src/engine/full-auto-lane.test.ts"
     ],
     "criterion_refs": [
       "FA-AC-31"
@@ -4768,20 +4764,20 @@ All 76 criteria carry a fully DESIGNED obligation in this revision (domains, tec
     "falsifier": {
       "expected_verdict": "REFUTED",
       "kind": "fa_ac_31_negative_control",
-      "ref": "apps/openagents-desktop/src/full-auto-lane.test.ts"
+      "ref": "packages/omega-effectd/src/engine/full-auto-lane.test.ts"
     },
     "independence": {
       "producer_may_verify": false
     },
     "oracle": {
-      "evaluator_ref": "apps/openagents-desktop/src/full-auto-lane.test.ts",
+      "evaluator_ref": "packages/omega-effectd/src/engine/full-auto-lane.test.ts",
       "statement": "The exact FA-AC-31 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
     },
     "technique": "deterministic_test"
   },
   {
     "candidate_artifact_refs": [
-      "apps/openagents-desktop/src/full-auto-control-server.test.ts"
+      "packages/omega-effectd/src/engine/full-auto-control-server.test.ts"
     ],
     "criterion_refs": [
       "FA-AC-32"
@@ -4809,13 +4805,13 @@ All 76 criteria carry a fully DESIGNED obligation in this revision (domains, tec
     "falsifier": {
       "expected_verdict": "REFUTED",
       "kind": "fa_ac_32_negative_control",
-      "ref": "apps/openagents-desktop/src/full-auto-control-server.test.ts"
+      "ref": "packages/omega-effectd/src/engine/full-auto-control-server.test.ts"
     },
     "independence": {
       "producer_may_verify": false
     },
     "oracle": {
-      "evaluator_ref": "apps/openagents-desktop/src/full-auto-control-server.test.ts",
+      "evaluator_ref": "packages/omega-effectd/src/engine/full-auto-control-server.test.ts",
       "statement": "The exact FA-AC-32 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
     },
     "technique": "deterministic_test"
@@ -4904,7 +4900,7 @@ All 76 criteria carry a fully DESIGNED obligation in this revision (domains, tec
   },
   {
     "candidate_artifact_refs": [
-      "apps/openagents-desktop/src/full-auto-lane.test.ts"
+      "packages/omega-effectd/src/engine/full-auto-lane.test.ts"
     ],
     "criterion_refs": [
       "FA-AC-35"
@@ -4932,13 +4928,13 @@ All 76 criteria carry a fully DESIGNED obligation in this revision (domains, tec
     "falsifier": {
       "expected_verdict": "REFUTED",
       "kind": "fa_ac_35_negative_control",
-      "ref": "apps/openagents-desktop/src/full-auto-lane.test.ts"
+      "ref": "packages/omega-effectd/src/engine/full-auto-lane.test.ts"
     },
     "independence": {
       "producer_may_verify": false
     },
     "oracle": {
-      "evaluator_ref": "apps/openagents-desktop/src/full-auto-lane.test.ts",
+      "evaluator_ref": "packages/omega-effectd/src/engine/full-auto-lane.test.ts",
       "statement": "The exact FA-AC-35 source claim must be observed at the declared proof rung, and its named negative control must be rejected without weakening runtime policy."
     },
     "technique": "deterministic_test"
@@ -5355,7 +5351,7 @@ All 76 criteria carry a fully DESIGNED obligation in this revision (domains, tec
   {
     "activation_gate": "GATE-LOCAL-UNIT",
     "candidate_artifact_refs": [
-      "apps/openagents-desktop/src/full-auto-run-report.test.ts"
+      "packages/omega-effectd/src/engine/full-auto-run-report.test.ts"
     ],
     "criterion_refs": [
       "FA-AC-46"
@@ -5376,14 +5372,14 @@ All 76 criteria carry a fully DESIGNED obligation in this revision (domains, tec
     "falsifier": {
       "expected_verdict": "REFUTED",
       "kind": "auto_verified_completion_fixture",
-      "ref": "apps/openagents-desktop/src/full-auto-run-report.test.ts"
+      "ref": "packages/omega-effectd/src/engine/full-auto-run-report.test.ts"
     },
     "id": "AO-FA-AC-46-01",
     "independence": {
       "producer_may_verify": false
     },
     "oracle": {
-      "evaluator_ref": "apps/openagents-desktop/src/full-auto-run-report.test.ts",
+      "evaluator_ref": "packages/omega-effectd/src/engine/full-auto-run-report.test.ts",
       "statement": "Completed is self-reported and owner-reviewable, backed by the bounded FullAutoRunReport; every terminal disposition renders with typed stop attribution -- never automatically-verified truth."
     },
     "source_claim_digest": "sha256:090c81128f575f59befe1288e55ac55f97b9694059cb1a75af5e7f3837b56da9",
@@ -5394,7 +5390,7 @@ All 76 criteria carry a fully DESIGNED obligation in this revision (domains, tec
   {
     "activation_gate": "GATE-LOCAL-UNIT",
     "candidate_artifact_refs": [
-      "apps/openagents-desktop/tests/full-auto-liveness.test.ts"
+      "packages/omega-effectd/src/engine/full-auto-liveness.test.ts"
     ],
     "criterion_refs": [
       "FA-AC-47"
@@ -5417,14 +5413,14 @@ All 76 criteria carry a fully DESIGNED obligation in this revision (domains, tec
     "falsifier": {
       "expected_verdict": "REFUTED",
       "kind": "auto_unstall_fixture",
-      "ref": "apps/openagents-desktop/tests/full-auto-liveness.test.ts"
+      "ref": "packages/omega-effectd/src/engine/full-auto-liveness.test.ts"
     },
     "id": "AO-FA-AC-47-01",
     "independence": {
       "producer_may_verify": false
     },
     "oracle": {
-      "evaluator_ref": "apps/openagents-desktop/tests/full-auto-liveness.test.ts",
+      "evaluator_ref": "packages/omega-effectd/src/engine/full-auto-liveness.test.ts",
       "statement": "Run-level liveness is distinct from single-turn duration: a run stays live while a turn executes or within the backoff-derived SLO window of last dispatch; otherwise Stalled with a typed cause and ETA. Stalled is sticky and never auto-reclassifies to Running."
     },
     "source_claim_digest": "sha256:41571473c6af933ae616457f9812297a3554cf079bc533a2c455a7503a64f7fb",
@@ -5558,7 +5554,7 @@ All 76 criteria carry a fully DESIGNED obligation in this revision (domains, tec
   {
     "activation_gate": "GATE-LOCAL-UNIT",
     "candidate_artifact_refs": [
-      "apps/openagents-desktop/src/full-auto-run-report.test.ts"
+      "packages/omega-effectd/src/engine/full-auto-run-report.test.ts"
     ],
     "criterion_refs": [
       "FA-AC-51"
@@ -5580,14 +5576,14 @@ All 76 criteria carry a fully DESIGNED obligation in this revision (domains, tec
     "falsifier": {
       "expected_verdict": "REFUTED",
       "kind": "dropped_or_duplicated_turn_fixture",
-      "ref": "apps/openagents-desktop/src/full-auto-run-report.test.ts"
+      "ref": "packages/omega-effectd/src/engine/full-auto-run-report.test.ts"
     },
     "id": "AO-FA-AC-51-01",
     "independence": {
       "producer_may_verify": false
     },
     "oracle": {
-      "evaluator_ref": "apps/openagents-desktop/src/full-auto-run-report.test.ts",
+      "evaluator_ref": "packages/omega-effectd/src/engine/full-auto-run-report.test.ts",
       "statement": "Every run produces a bounded private FullAutoRunReport (turns, provider transitions, claimed commits, failures, liveness gaps, progress, transcript findings, raw-evidence pointer); claimed commit SHAs are extracted from the local turn journal and deduplicated/turn-attributed, but NOT independently re-verified against live git state -- this obligation does not claim stronger verification than the code performs (RISK-FA-14)."
     },
     "source_claim_digest": "sha256:c799b959326a2d0a01780f9eff41ed6fb7aeb92cf855291a4584aa7872785e1c",
@@ -5598,7 +5594,7 @@ All 76 criteria carry a fully DESIGNED obligation in this revision (domains, tec
   {
     "activation_gate": "GATE-LOCAL-UNIT",
     "candidate_artifact_refs": [
-      "apps/openagents-desktop/src/full-auto-run-report.test.ts"
+      "packages/omega-effectd/src/engine/full-auto-run-report.test.ts"
     ],
     "criterion_refs": [
       "FA-AC-52"
@@ -5621,14 +5617,14 @@ All 76 criteria carry a fully DESIGNED obligation in this revision (domains, tec
     "falsifier": {
       "expected_verdict": "REFUTED",
       "kind": "adversarial_redaction_walk_fixture",
-      "ref": "apps/openagents-desktop/src/full-auto-run-report.test.ts"
+      "ref": "packages/omega-effectd/src/engine/full-auto-run-report.test.ts"
     },
     "id": "AO-FA-AC-52-01",
     "independence": {
       "producer_may_verify": false
     },
     "oracle": {
-      "evaluator_ref": "apps/openagents-desktop/src/full-auto-run-report.test.ts",
+      "evaluator_ref": "packages/omega-effectd/src/engine/full-auto-run-report.test.ts",
       "statement": "The public-safe control/receipt projection exposes only bounded non-transcript fields; an adversarial walk of the entire derived receipt tree asserts no secret-bearing field (reasons/objective/doneCondition/workspace path/title/account/session refs/assistant text) ever leaks, and the schema structurally has no unbounded free-text field."
     },
     "source_claim_digest": "sha256:f2498af24ce8448f5e697d9dbd952b36e93b1c7bcf76063bd733fcfcbb98ecc7",
@@ -5844,7 +5840,7 @@ All 76 criteria carry a fully DESIGNED obligation in this revision (domains, tec
   {
     "activation_gate": "GATE-LOCAL-UNIT",
     "candidate_artifact_refs": [
-      "apps/openagents-desktop/src/full-auto-provider-handoff.test.ts"
+      "packages/omega-effectd/src/engine/full-auto-provider-handoff.test.ts"
     ],
     "criterion_refs": [
       "FA-AC-58"
@@ -5867,14 +5863,14 @@ All 76 criteria carry a fully DESIGNED obligation in this revision (domains, tec
     "falsifier": {
       "expected_verdict": "REFUTED",
       "kind": "silent_truncation_fixture",
-      "ref": "apps/openagents-desktop/src/full-auto-provider-handoff.test.ts"
+      "ref": "packages/omega-effectd/src/engine/full-auto-provider-handoff.test.ts"
     },
     "id": "AO-FA-AC-58-01",
     "independence": {
       "producer_may_verify": false
     },
     "oracle": {
-      "evaluator_ref": "apps/openagents-desktop/src/full-auto-provider-handoff.test.ts",
+      "evaluator_ref": "packages/omega-effectd/src/engine/full-auto-provider-handoff.test.ts",
       "statement": "A manual or Pause->switch->Resume provider switch projects a host-owned bounded history (never raw session state) and appends a visible transition receipt (from/to/actor/time/reason/truncation flag); exceeding the shared message bound sets contextTruncated while the objective survives regardless."
     },
     "source_claim_digest": "sha256:489548c43875c0443257176e48f727abf6e30fa9c1bbda27252f422c51959a70",
@@ -5926,7 +5922,7 @@ All 76 criteria carry a fully DESIGNED obligation in this revision (domains, tec
   {
     "activation_gate": "GATE-LOCAL-UNIT",
     "candidate_artifact_refs": [
-      "apps/openagents-desktop/src/full-auto-provider-handoff.test.ts"
+      "packages/omega-effectd/src/engine/full-auto-provider-handoff.test.ts"
     ],
     "criterion_refs": [
       "FA-AC-60"
@@ -5948,14 +5944,14 @@ All 76 criteria carry a fully DESIGNED obligation in this revision (domains, tec
     "falsifier": {
       "expected_verdict": "REFUTED",
       "kind": "implied_session_transfer_fixture",
-      "ref": "apps/openagents-desktop/src/full-auto-provider-handoff.test.ts"
+      "ref": "packages/omega-effectd/src/engine/full-auto-provider-handoff.test.ts"
     },
     "id": "AO-FA-AC-60-01",
     "independence": {
       "producer_may_verify": false
     },
     "oracle": {
-      "evaluator_ref": "apps/openagents-desktop/src/full-auto-provider-handoff.test.ts",
+      "evaluator_ref": "packages/omega-effectd/src/engine/full-auto-provider-handoff.test.ts",
       "statement": "The handoff envelope always carries an explicit provider_private_never_transferred omission marker; no copy states or implies that provider-private session state itself transfers on switch."
     },
     "source_claim_digest": "sha256:a192e0189eaa81a1895b1816559db66780274f4afb87d2f423a1c41445eff1d0",
@@ -6805,10 +6801,10 @@ Evidence-tier honesty table for every DESIGNED obligation, so no reader has to i
 | FA-AC-43       | apps/openagents-desktop/tests/full-auto-run-registry.test.ts                                                             | local_unit (exhaustive 10x10 enumeration)                                                                              | Not independently re-run in this authoring pass.                                                                                                                                                                                                      |
 | FA-AC-44/45    | apps/openagents-desktop/src/full-auto-run-control-server.test.ts                                                         | local_contract_http (real Effect HTTP server in-process)                                                               | Not independently re-run in this authoring pass.                                                                                                                                                                                                      |
 | FA-AC-59       | apps/openagents-desktop/src/full-auto-run-handoff-control-server.test.ts                                                 | local_contract_http                                                                                                    | Not independently re-run in this authoring pass.                                                                                                                                                                                                      |
-| FA-AC-47       | apps/openagents-desktop/tests/full-auto-liveness.test.ts                                                                 | local_unit                                                                                                             | Not independently re-run in this authoring pass.                                                                                                                                                                                                      |
+| FA-AC-47       | packages/omega-effectd/src/engine/full-auto-liveness.test.ts                                                                 | local_unit                                                                                                             | Not independently re-run in this authoring pass.                                                                                                                                                                                                      |
 | FA-AC-48       | apps/openagents-desktop/src/full-auto-run-liveness-control-server.test.ts                                                | local_contract_http                                                                                                    | Not independently re-run in this authoring pass.                                                                                                                                                                                                      |
-| FA-AC-46/51/52 | apps/openagents-desktop/src/full-auto-run-report.test.ts                                                                 | local_unit (52's redaction test is adversarial)                                                                        | Not independently re-run in this authoring pass.                                                                                                                                                                                                      |
-| FA-AC-58/60    | apps/openagents-desktop/src/full-auto-provider-handoff.test.ts                                                           | local_unit                                                                                                             | Not independently re-run in this authoring pass.                                                                                                                                                                                                      |
+| FA-AC-46/51/52 | packages/omega-effectd/src/engine/full-auto-run-report.test.ts                                                                 | local_unit (52's redaction test is adversarial)                                                                        | Not independently re-run in this authoring pass.                                                                                                                                                                                                      |
+| FA-AC-58/60    | packages/omega-effectd/src/engine/full-auto-provider-handoff.test.ts                                                           | local_unit                                                                                                             | Not independently re-run in this authoring pass.                                                                                                                                                                                                      |
 | FA-AC-07/29    | apps/openagents-desktop/scripts/full-auto-restart-smoke.ts + apps/openagents-desktop/tests/full-auto-restart.e2e.test.ts | local_dev_two_process_unsigned (conditionally falls back to unsigned dev-mode electron ., NOT proven signed/notarized) | Not executed in this authoring pass (would require a live two-process Electron launch on owned infrastructure).                                                                                                                                       |
 | FA-AC-08       | apps/openagents-desktop/tests/full-auto-restart.e2e.test.ts                                                              | local_unit                                                                                                             | Not independently re-run in this authoring pass.                                                                                                                                                                                                      |
 | FA-AC-61       | apps/openagents-desktop/src/renderer/react-composer.test.tsx                                                             | local_unit (React Testing Library component tier)                                                                      | Not independently re-run in this authoring pass.                                                                                                                                                                                                      |
