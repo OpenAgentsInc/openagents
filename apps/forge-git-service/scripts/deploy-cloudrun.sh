@@ -72,11 +72,9 @@ gcloud run deploy "$SERVICE" \
   --network-tags forge-git \
   --add-cloudsql-instances "$DATABASE_INSTANCE" \
   --add-volume "name=forge-repositories,type=nfs,location=${NFS_IP}:${NFS_EXPORT}" \
-  --add-volume "name=forge-github-mirror,type=secret,secret=${GITHUB_MIRROR_SSH_SECRET}" \
   --add-volume-mount "volume=forge-repositories,mount-path=/var/lib/forge/repositories" \
-  --add-volume-mount "volume=forge-github-mirror,mount-path=/var/run/secrets/forge-github-mirror" \
-  --set-env-vars "FORGE_GIT_REPOSITORY_ROOT=/var/lib/forge/repositories,FORGE_GIT_GCS_MIRROR_ENABLED=true,FORGE_GIT_POLICY_AUTHORITY_URL=${POLICY_AUTHORITY_URL},FORGE_GIT_GITHUB_MIRROR_ALLOWED_REPOSITORIES=${GITHUB_MIRROR_REPOSITORIES},FORGE_GIT_GITHUB_MIRROR_SSH_KEY_PATH=/var/run/secrets/forge-github-mirror/latest,OA_INFRA_GCS_BUCKET=${ARTIFACTS_BUCKET},OA_INFRA_GCS_PREFIX=${ARTIFACTS_PREFIX},PGHOST=/cloudsql/${DATABASE_INSTANCE},PGUSER=khala_app" \
-  --set-secrets "FORGE_GIT_DATABASE_URL=${DATABASE_SECRET}:latest,FORGE_GIT_POLICY_AUTHORITY_TOKEN=${POLICY_AUTHORITY_SECRET}:latest,FORGE_GIT_INTERNAL_SERVICE_AUTH_TOKEN=${INTERNAL_SERVICE_AUTH_SECRET}:latest,PGPASSWORD=${DATABASE_PASSWORD_SECRET}:latest"
+  --set-env-vars "FORGE_GIT_REPOSITORY_ROOT=/var/lib/forge/repositories,FORGE_GIT_GCS_MIRROR_ENABLED=true,FORGE_GIT_POLICY_AUTHORITY_URL=${POLICY_AUTHORITY_URL},FORGE_GIT_GITHUB_MIRROR_ALLOWED_REPOSITORIES=${GITHUB_MIRROR_REPOSITORIES},FORGE_GIT_GITHUB_MIRROR_SSH_KEY_PATH=/tmp/forge-github-mirror-id_ed25519,OA_INFRA_GCS_BUCKET=${ARTIFACTS_BUCKET},OA_INFRA_GCS_PREFIX=${ARTIFACTS_PREFIX},PGHOST=/cloudsql/${DATABASE_INSTANCE},PGUSER=khala_app" \
+  --set-secrets "FORGE_GIT_DATABASE_URL=${DATABASE_SECRET}:latest,FORGE_GIT_POLICY_AUTHORITY_TOKEN=${POLICY_AUTHORITY_SECRET}:latest,FORGE_GIT_INTERNAL_SERVICE_AUTH_TOKEN=${INTERNAL_SERVICE_AUTH_SECRET}:latest,FORGE_GIT_GITHUB_MIRROR_SSH_PRIVATE_KEY=${GITHUB_MIRROR_SSH_SECRET}:latest,PGPASSWORD=${DATABASE_PASSWORD_SECRET}:latest"
 
 SERVICE_URL="$(
   gcloud run services describe "$SERVICE" \

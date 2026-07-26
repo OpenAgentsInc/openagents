@@ -154,7 +154,11 @@ const mirrorEnvironment = (
 ): NodeJS.ProcessEnv => {
   const environment = gitEnvironment(undefined);
   if (sshKeyPath !== undefined) {
-    if (!/^\/var\/run\/secrets\/forge-github-mirror\/[A-Za-z0-9._-]+$/u.test(sshKeyPath)) {
+    if (
+      !/^\/(?:var\/run\/secrets\/forge-github-mirror|tmp)\/[A-Za-z0-9._-]+$/u.test(
+        sshKeyPath,
+      )
+    ) {
       throw repositoryError("ForgeGitRepository.mirrorEnvironment", "forge_git_mirror_ssh_key_path_invalid", 500);
     }
     return {

@@ -1,8 +1,8 @@
-import { mkdir, stat } from "node:fs/promises";
+import { chmod, mkdir, stat, writeFile } from "node:fs/promises";
 
 import { Runtime } from "@openagentsinc/runtime-platform";
 import { layerGcs } from "@openagentsinc/oa-infra/blob-store-gcs";
-import { Config, Effect, Layer, ManagedRuntime } from "effect";
+import { Config, Effect, Layer, ManagedRuntime, Redacted } from "effect";
 
 import { ForgeGitAdmission, layerDistributedAdmission } from "./admission.js";
 import { layerAuth } from "./auth.js";
@@ -91,6 +91,17 @@ const startup = Effect.gen(function* () {
     const details = await stat(configuration.repositoryRoot);
     if (!details.isDirectory()) {
       throw new Error("Forge Git repository root is not a directory.");
+    }
+    if (
+      configuration.githubMirrorSshPrivateKey !== undefined &&
+      configuration.githubMirrorSshKeyPath !== undefined
+    ) {
+      await writeFile(
+        configuration.githubMirrorSshKeyPath,
+        Redacted.value(configuration.githubMirrorSshPrivateKey),
+        { mode: 0o600 },
+      );
+      await chmod(configuration.githubMirrorSshKeyPath, 0o600);
     }
   });
 
