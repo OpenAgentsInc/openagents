@@ -2155,7 +2155,7 @@ CREATE TABLE forge_nip98_replay_consumptions (
   consumption_ref TEXT PRIMARY KEY,
   tenant_ref TEXT NOT NULL,
   request_digest TEXT NOT NULL UNIQUE,
-  event_id TEXT NOT NULL UNIQUE,
+  event_id TEXT NOT NULL,
   actor_pubkey TEXT NOT NULL,
   http_method TEXT NOT NULL,
   canonical_path TEXT NOT NULL,
@@ -2205,6 +2205,7 @@ CREATE TABLE forge_git_signed_ref_states (
   author_pubkey TEXT NOT NULL,
   old_object_id TEXT NOT NULL,
   new_object_id TEXT NOT NULL,
+  event_json TEXT NOT NULL,
   state TEXT NOT NULL CHECK (state IN ('authorized', 'refused')),
   authorized_at TEXT NOT NULL,
   applied_at TEXT,
@@ -2220,10 +2221,12 @@ CREATE TABLE forge_git_purgatory_events (
   repository_ref TEXT NOT NULL,
   event_id TEXT NOT NULL,
   kind INTEGER NOT NULL CHECK (kind IN (30617, 30618, 1617, 1618, 1619)),
+  actor_binding_ref TEXT NOT NULL,
   required_object_ids_json TEXT NOT NULL DEFAULT '[]',
   event_json TEXT NOT NULL,
   state TEXT NOT NULL CHECK (state IN ('pending', 'resolved', 'expired')),
   expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
   resolved_at TEXT,
   PRIMARY KEY (tenant_ref, event_id)
 );
@@ -2239,6 +2242,18 @@ CREATE TABLE forge_git_relay_outbox (
   created_at TEXT NOT NULL,
   published_at TEXT,
   UNIQUE (tenant_ref, event_id)
+);
+
+CREATE TABLE forge_git_unclaimed_nostr_refs (
+  tenant_ref TEXT NOT NULL,
+  repository_ref TEXT NOT NULL,
+  event_id TEXT NOT NULL,
+  ref_name TEXT NOT NULL,
+  first_seen_at TEXT NOT NULL,
+  gc_after TEXT NOT NULL,
+  claimed_at TEXT,
+  deleted_at TEXT,
+  PRIMARY KEY (tenant_ref, repository_ref, ref_name)
 );
 `
 

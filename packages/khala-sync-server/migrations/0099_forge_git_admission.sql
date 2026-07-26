@@ -19,10 +19,11 @@ CREATE TABLE IF NOT EXISTS forge_git_signed_ref_states (
   tenant_ref TEXT NOT NULL,
   repository_ref TEXT NOT NULL,
   ref_name TEXT NOT NULL,
-  event_id TEXT NOT NULL UNIQUE,
+  event_id TEXT NOT NULL,
   author_pubkey TEXT NOT NULL,
   old_object_id TEXT NOT NULL,
   new_object_id TEXT NOT NULL,
+  event_json TEXT NOT NULL,
   state TEXT NOT NULL CHECK (state IN ('authorized', 'refused')),
   authorized_at TEXT NOT NULL,
   applied_at TIMESTAMPTZ,
@@ -38,10 +39,12 @@ CREATE TABLE IF NOT EXISTS forge_git_purgatory_events (
   repository_ref TEXT NOT NULL,
   event_id TEXT NOT NULL,
   kind INTEGER NOT NULL CHECK (kind IN (30617, 30618, 1617, 1618, 1619)),
+  actor_binding_ref TEXT NOT NULL,
   required_object_ids_json TEXT NOT NULL DEFAULT '[]',
   event_json TEXT NOT NULL,
   state TEXT NOT NULL CHECK (state IN ('pending', 'resolved', 'expired')),
   expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL,
   resolved_at TIMESTAMPTZ,
   PRIMARY KEY (tenant_ref, event_id)
 );
@@ -62,3 +65,18 @@ CREATE TABLE IF NOT EXISTS forge_git_relay_outbox (
 );
 CREATE INDEX IF NOT EXISTS idx_forge_git_relay_outbox_pending_pg
   ON forge_git_relay_outbox(state, available_at);
+
+CREATE TABLE IF NOT EXISTS forge_git_unclaimed_nostr_refs (
+  tenant_ref TEXT NOT NULL,
+  repository_ref TEXT NOT NULL,
+  event_id TEXT NOT NULL,
+  ref_name TEXT NOT NULL,
+  first_seen_at TIMESTAMPTZ NOT NULL,
+  gc_after TIMESTAMPTZ NOT NULL,
+  claimed_at TIMESTAMPTZ,
+  deleted_at TIMESTAMPTZ,
+  PRIMARY KEY (tenant_ref, repository_ref, ref_name)
+);
+CREATE INDEX IF NOT EXISTS idx_forge_git_unclaimed_nostr_refs_due_pg
+  ON forge_git_unclaimed_nostr_refs(gc_after)
+  WHERE claimed_at IS NULL AND deleted_at IS NULL;

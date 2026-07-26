@@ -70,6 +70,16 @@ export interface ForgeGitRepositoryShape {
     readonly repositoryRef: string;
     readonly tenantRef: string;
   }) => Effect.Effect<ReadonlyArray<ForgeGitRef>, ForgeGitRepositoryError>;
+  readonly hasObjects: (input: {
+    readonly objectIds: ReadonlyArray<string>;
+    readonly repositoryRef: string;
+    readonly tenantRef: string;
+  }) => Effect.Effect<ReadonlySet<string>, ForgeGitRepositoryError>;
+  readonly deleteRefs: (input: {
+    readonly refNames: ReadonlyArray<string>;
+    readonly repositoryRef: string;
+    readonly tenantRef: string;
+  }) => Effect.Effect<void, ForgeGitRepositoryError>;
   readonly observeMirror: (
     input: ForgeGitMirrorInput,
   ) => Effect.Effect<ForgeGitMirrorObservation, ForgeGitRepositoryError>;
@@ -649,6 +659,64 @@ const makeRepositoryService = (
     });
   });
 
+  const hasObjects = Effect.fn("ForgeGitRepository.hasObjects")(function* (
+    input: Parameters<ForgeGitRepositoryShape["hasObjects"]>[0],
+  ) {
+    const path = yield* Effect.tryPromise({
+      try: () => requireRepository(input.tenantRef, input.repositoryRef),
+      catch: (cause) =>
+        cause instanceof ForgeGitRepositoryError
+          ? cause
+          : repositoryError("ForgeGitRepository.hasObjects.repository", "forge_git_repository_unavailable", 500, cause),
+    });
+    const objects = [...new Set(input.objectIds.map((objectId) => objectId.toLowerCase()))];
+    const present = yield* Effect.tryPromise({
+      try: async () => {
+        const values = await Promise.all(
+          objects.map(async (objectId) => {
+            if (!/^[0-9a-f]{40,64}$/u.test(objectId)) return undefined;
+            try {
+              await git(["--git-dir", path, "cat-file", "-e", `${objectId}^{object}`]);
+              return objectId;
+            } catch {
+              return undefined;
+            }
+          }),
+        );
+        return new Set(values.filter((value): value is string => value !== undefined));
+      },
+      catch: (cause) => repositoryError("ForgeGitRepository.hasObjects", "forge_git_object_lookup_failed", 500, cause),
+    });
+    return present;
+  });
+
+  const deleteRefs = Effect.fn("ForgeGitRepository.deleteRefs")(function* (
+    input: Parameters<ForgeGitRepositoryShape["deleteRefs"]>[0],
+  ) {
+    if (input.refNames.length === 0) return;
+    if (input.refNames.some((refName) => !/^refs\/nostr\/[0-9a-f]{64}$/u.test(refName))) {
+      return yield* repositoryError("ForgeGitRepository.deleteRefs", "forge_git_nostr_ref_invalid", 400);
+    }
+    const path = yield* Effect.tryPromise({
+      try: () => requireRepository(input.tenantRef, input.repositoryRef),
+      catch: (cause) =>
+        cause instanceof ForgeGitRepositoryError
+          ? cause
+          : repositoryError("ForgeGitRepository.deleteRefs.repository", "forge_git_repository_unavailable", 500, cause),
+    });
+    yield* Effect.tryPromise({
+      try: () => git(["--git-dir", path, "update-ref", "--stdin"], {
+        body: new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(textEncoder.encode(input.refNames.map((refName) => `delete ${refName}\n`).join("")));
+            controller.close();
+          },
+        }),
+      }),
+      catch: (cause) => repositoryError("ForgeGitRepository.deleteRefs", "forge_git_nostr_ref_gc_failed", 500, cause),
+    });
+  });
+
   const observeMirror = Effect.fn("ForgeGitRepository.observeMirror")(function* (
     input: Parameters<ForgeGitRepositoryShape["observeMirror"]>[0],
   ) {
@@ -1114,6 +1182,8 @@ const makeRepositoryService = (
     provision,
     backup,
     listRefs,
+    hasObjects,
+    deleteRefs,
     observeMirror,
     projectMirror,
     receivePack,

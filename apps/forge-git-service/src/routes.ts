@@ -1,7 +1,9 @@
-import { Effect, Option, Schema } from "effect";
+import { Effect, Option, Redacted, Schema } from "effect";
+import type { Event as NostrEvent } from "nostr-effect/pure";
 
 import { ForgeGitAdmission } from "./admission.js";
 import { ForgeGitAuth } from "./auth.js";
+import { ForgeGitConfiguration } from "./config.js";
 import {
   ForgeGitAuthError,
   ForgeGitAdmissionError,
@@ -12,6 +14,7 @@ import {
   type ForgeGitScope,
 } from "./model.js";
 import { ForgeGitProjection } from "./projection.js";
+import { ForgeGitProjector } from "./projector.js";
 import { ForgeGitRepository } from "./repository.js";
 
 const noStoreHeaders = {
@@ -240,6 +243,14 @@ export const forgeGitHandler = Effect.fn("ForgeGitRoutes.handle")(function* (req
         .map((policy) => policy.eventId),
       tenantRef: route.tenantRef,
     });
+    yield* admission.recordUnclaimedNostrRefs({
+      refNames: result.refsAfter
+        .filter((ref) => ref.refName.startsWith("refs/nostr/"))
+        .filter((ref) => result.refsBefore.find((before) => before.refName === ref.refName)?.objectId !== ref.objectId)
+        .map((ref) => ref.refName),
+      repositoryRef: route.repositoryRef,
+      tenantRef: route.tenantRef,
+    });
   }
   const projectionReceipt = result.changed
     ? yield* projection
@@ -277,10 +288,99 @@ export const forgeGitHandler = Effect.fn("ForgeGitRoutes.handle")(function* (req
   });
 });
 
+const internalAdmissionPath = "/internal/forge/admission/events";
+
+const resolveActiveNostrBinding = async (
+  configuration: { readonly policyAuthorityToken: import("effect").Redacted.Redacted<string>; readonly policyAuthorityUrl: string },
+  tenantRef: string,
+  pubkey: string,
+): Promise<string | undefined> => {
+  const url = new URL(configuration.policyAuthorityUrl);
+  url.pathname = "/internal/forge/relay-admit";
+  url.search = "";
+  try {
+    const response = await fetch(url, {
+      body: JSON.stringify({ pubkey, tenantRef }),
+      headers: {
+        authorization: `Bearer ${Redacted.value(configuration.policyAuthorityToken)}`,
+        "content-type": "application/json",
+      },
+      method: "POST",
+    });
+    if (!response.ok) return undefined;
+    const body = (await response.json()) as { bindingRef?: unknown; tenantRef?: unknown };
+    return body.tenantRef === tenantRef && typeof body.bindingRef === "string" ? body.bindingRef : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+const internalAdmissionHandler = Effect.fn("ForgeGitRoutes.internalAdmission")(function* (
+  request: Request,
+) {
+  if (new URL(request.url).pathname !== internalAdmissionPath) return undefined;
+  if (request.method !== "POST") {
+    return Response.json({ error: "method_not_allowed" }, { headers: noStoreHeaders, status: 405 });
+  }
+  const configuration = yield* ForgeGitConfiguration;
+  const presented = request.headers.get("authorization")?.replace(/^Bearer\s+/iu, "");
+  if (presented === undefined || presented !== Redacted.value(configuration.policyAuthorityToken)) {
+    return Response.json({ error: "forge_git_admission_unauthorized" }, { headers: noStoreHeaders, status: 401 });
+  }
+  const body = yield* Effect.tryPromise({
+    try: () => request.json() as Promise<unknown>,
+    catch: () => new ForgeGitRouteError({ code: "forge_git_admission_body_invalid", status: 400 }),
+  });
+  if (typeof body !== "object" || body === null) {
+    return Response.json({ error: "forge_git_admission_body_invalid" }, { headers: noStoreHeaders, status: 400 });
+  }
+  const record = body as Record<string, unknown>;
+  if (
+    typeof record.repositoryRef !== "string" ||
+    typeof record.tenantRef !== "string" ||
+    typeof record.event !== "object" ||
+    record.event === null ||
+    typeof (record.event as { pubkey?: unknown }).pubkey !== "string"
+  ) {
+    return Response.json({ error: "forge_git_admission_body_invalid" }, { headers: noStoreHeaders, status: 400 });
+  }
+  const tenantRef = record.tenantRef as string;
+  const repositoryRef = record.repositoryRef as string;
+  const event = record.event as NostrEvent;
+  const actorBindingRef = yield* Effect.tryPromise({
+    try: () => resolveActiveNostrBinding(
+      configuration,
+      tenantRef,
+      event.pubkey,
+    ),
+    catch: () => new ForgeGitRouteError({ code: "forge_git_membership_unavailable", status: 503 }),
+  });
+  if (actorBindingRef === undefined) {
+    return Response.json({ error: "forge_git_membership_forbidden" }, { headers: noStoreHeaders, status: 403 });
+  }
+  const projector = yield* ForgeGitProjector;
+  const disposition = yield* projector.project({
+    actorBindingRef,
+    event,
+    repositoryRef,
+    tenantRef,
+  });
+  return Response.json({ disposition }, { headers: noStoreHeaders, status: 202 });
+});
+
 export const routeRequest = (
   request: Request,
 ): Effect.Effect<
   Response,
   never,
-  ForgeGitAdmission | ForgeGitAuth | ForgeGitProjection | ForgeGitRepository
-> => forgeGitHandler(request).pipe(Effect.catch((error) => Effect.succeed(errorResponse(error))));
+  | ForgeGitAdmission
+  | ForgeGitAuth
+  | ForgeGitConfiguration
+  | ForgeGitProjection
+  | ForgeGitProjector
+  | ForgeGitRepository
+> =>
+  internalAdmissionHandler(request).pipe(
+    Effect.flatMap((internal) => internal === undefined ? forgeGitHandler(request) : Effect.succeed(internal)),
+    Effect.catch((error) => Effect.succeed(errorResponse(error))),
+  );

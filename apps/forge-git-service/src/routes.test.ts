@@ -12,9 +12,10 @@ import { afterEach, describe, expect, test } from "vitest";
 
 import { ForgeGitAdmission, makeMemoryAdmissionLayer } from "./admission.js";
 import { ForgeGitAuth, makePolicyAuthorityAuthLayer, makeStaticAuthLayer } from "./auth.js";
-import { makeTestConfiguration } from "./config.js";
+import { ForgeGitConfiguration, makeTestConfiguration } from "./config.js";
 import { ForgeGitSession } from "./model.js";
 import { ForgeGitProjection, layerNoopProjection } from "./projection.js";
+import { layerNoopProjector } from "./projector.js";
 import { ForgeGitRepository, makeRepositoryLayer } from "./repository.js";
 import { routeRequest } from "./routes.js";
 
@@ -87,7 +88,12 @@ const requestFromIncoming = (incoming: IncomingMessage): Request => {
 
 const listen = async (
   runtime: ManagedRuntime.ManagedRuntime<
-    ForgeGitAdmission | ForgeGitAuth | ForgeGitProjection | ForgeGitRepository,
+    | ForgeGitAdmission
+    | ForgeGitAuth
+    | ForgeGitConfiguration
+    | ForgeGitProjection
+    | import("./projector.js").ForgeGitProjector
+    | ForgeGitRepository,
     never
   >,
 ): Promise<Readonly<{ origin: string; server: Server }>> => {
@@ -159,7 +165,9 @@ const makeRuntime = (
       signedRefPolicies: admissionPolicies,
     }),
     authLayer,
+    Layer.succeed(ForgeGitConfiguration, configuration),
     layerNoopProjection,
+    layerNoopProjector,
     repositoryLayer,
   );
   return {
@@ -222,7 +230,9 @@ describe("owned Forge Smart HTTP service", () => {
       Layer.mergeAll(
         makeMemoryAdmissionLayer({ admittedRepositories: [] }),
         makeStaticAuthLayer(token, makeSession()),
+        Layer.succeed(ForgeGitConfiguration, configuration),
         layerNoopProjection,
+        layerNoopProjector,
         repositoryLayer,
       ),
     );

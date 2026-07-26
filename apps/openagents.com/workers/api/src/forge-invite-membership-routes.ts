@@ -60,6 +60,7 @@ const bindHumanPath = '/api/forge/membership/bind'
 const attachAgentPath = '/api/forge/membership/agents'
 const gitCredentialsPath = '/api/forge/membership/git-credentials'
 const gitAuthorizeInternalPath = '/internal/forge/git-authorize'
+const relayAdmitInternalPath = '/internal/forge/relay-admit'
 
 const errorResponse = (error: unknown): Response => {
   if (error instanceof ForgeInvitePolicyError) {
@@ -216,7 +217,8 @@ export const makeForgeInviteMembershipRoutes = <
       path !== bindHumanPath &&
       path !== attachAgentPath &&
       path !== gitCredentialsPath &&
-      path !== gitAuthorizeInternalPath
+      path !== gitAuthorizeInternalPath &&
+      path !== relayAdmitInternalPath
     ) {
       return undefined
     }
@@ -225,6 +227,51 @@ export const makeForgeInviteMembershipRoutes = <
     return routeEffect(async () => {
       const store = dependencies.makeMembershipStore(env)
       const nowIso = dependencies.nowIso()
+      if (path === relayAdmitInternalPath) {
+        if (request.method !== 'POST') return methodNotAllowed(['POST'])
+        const configuredToken = dependencies.gitServiceAuthorizationToken?.(env)
+        const presentedToken = bearerToken(request)
+        if (
+          configuredToken === undefined ||
+          presentedToken === undefined ||
+          !(await timingSafeEqual(presentedToken, configuredToken))
+        ) {
+          return unauthorized()
+        }
+        const { value } = await readJsonBytes(request)
+        if (!isRecord(value)) {
+          return noStoreJsonResponse(
+            { error: 'forge_relay_admission_body_invalid' },
+            { status: 400 },
+          )
+        }
+        const tenantRef = requiredText(value, 'tenantRef')
+        const pubkey = requiredText(value, 'pubkey')
+        if (
+          tenantRef === undefined ||
+          pubkey === undefined ||
+          !/^[0-9a-f]{64}$/u.test(pubkey)
+        ) {
+          return noStoreJsonResponse(
+            { error: 'forge_relay_admission_body_invalid' },
+            { status: 400 },
+          )
+        }
+        const binding = await store.readActorBindingByNostrPubkey(tenantRef, pubkey)
+        if (
+          binding === undefined ||
+          binding.membershipState !== 'active' ||
+          !binding.roleRefs.some(
+            role => role === 'forge:member' || role === 'forge:admin',
+          )
+        ) {
+          return forbidden()
+        }
+        return noStoreJsonResponse({
+          bindingRef: binding.bindingRef,
+          tenantRef,
+        })
+      }
       if (path === gitAuthorizeInternalPath) {
         if (request.method !== 'POST') {
           return methodNotAllowed(['POST'])

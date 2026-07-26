@@ -9,10 +9,14 @@ export interface ForgeGitConfigurationShape {
   readonly databaseUrl: Redacted.Redacted<string>;
   readonly gitBinary: string;
   readonly maxReceivePackBytes: number;
+  /** Bound repository creation by one admitted owner; admission never becomes an open registry. */
+  readonly maxRepositoriesPerOwner: number;
   readonly mirrorEnabled: boolean;
   readonly policyAuthorityToken: Redacted.Redacted<string>;
   readonly policyAuthorityUrl: string;
   readonly repositoryRoot: string;
+  /** Optional owned relay. Without it, outbox rows remain pending and no visibility claim is made. */
+  readonly relayUrl: string | undefined;
 }
 
 export class ForgeGitConfiguration extends Context.Service<
@@ -29,6 +33,10 @@ export const layerConfiguration = Layer.effect(
       PositiveIntegerFromString,
       "FORGE_GIT_MAX_RECEIVE_PACK_BYTES",
     ).pipe(Config.withDefault(512 * 1024 * 1024));
+    const maxRepositoriesPerOwner = yield* Config.schema(
+      PositiveIntegerFromString,
+      "FORGE_GIT_MAX_REPOSITORIES_PER_OWNER",
+    ).pipe(Config.withDefault(20));
     const mirrorEnabled = yield* Config.boolean("FORGE_GIT_GCS_MIRROR_ENABLED").pipe(
       Config.withDefault(true),
     );
@@ -37,15 +45,20 @@ export const layerConfiguration = Layer.effect(
     const repositoryRoot = yield* Config.string("FORGE_GIT_REPOSITORY_ROOT").pipe(
       Config.withDefault("/var/lib/forge/repositories"),
     );
+    const relayUrl = yield* Config.option(Config.string("FORGE_GIT_RELAY_URL")).pipe(
+      Effect.map((value) => (Option.isSome(value) ? value.value : undefined)),
+    );
 
     return ForgeGitConfiguration.of({
       databaseUrl,
       gitBinary,
       maxReceivePackBytes,
+      maxRepositoriesPerOwner,
       mirrorEnabled,
       policyAuthorityToken,
       policyAuthorityUrl,
       repositoryRoot,
+      relayUrl,
     });
   }),
 );
@@ -53,11 +66,13 @@ export const layerConfiguration = Layer.effect(
 export const makeTestConfiguration = (
   input: Omit<
     ForgeGitConfigurationShape,
-    "databaseUrl" | "policyAuthorityToken" | "policyAuthorityUrl"
+    "databaseUrl" | "policyAuthorityToken" | "policyAuthorityUrl" | "relayUrl" | "maxRepositoriesPerOwner"
   > & {
     readonly databaseUrl?: string;
     readonly policyAuthorityToken?: Redacted.Redacted<string>;
     readonly policyAuthorityUrl?: string;
+    readonly relayUrl?: string | undefined;
+    readonly maxRepositoriesPerOwner?: number;
   },
 ): ForgeGitConfigurationShape => ({
   ...input,
@@ -66,6 +81,8 @@ export const makeTestConfiguration = (
     input.policyAuthorityToken ?? Redacted.make("forge-git-service-test-secret"),
   policyAuthorityUrl:
     input.policyAuthorityUrl ?? "https://openagents.test/internal/forge/git-authorize",
+  relayUrl: input.relayUrl,
+  maxRepositoriesPerOwner: input.maxRepositoriesPerOwner ?? 20,
 });
 
 export const optionalString = (value: Option.Option<string>): string | undefined =>
