@@ -241,6 +241,9 @@ const mirrorProjectionReason = (cause: unknown): string => {
   return "forge_git_mirror_projection_rejected";
 };
 
+const mirrorStageError = (operation: string, stage: string, cause: unknown) =>
+  repositoryError(operation, `forge_git_mirror_${stage}_failed`, 409, cause);
+
 const collect = async (
   stream: NodeJS.ReadableStream,
   maximumBytes: number,
@@ -882,7 +885,11 @@ const makeRepositoryService = (
           "--refs",
           observationDestination(input.destinationUrl),
           input.destinationRef,
-        ]);
+        ]).catch((cause) =>
+          Promise.reject(
+            mirrorStageError("ForgeGitRepository.observeMirror", "destination_ls_remote", cause),
+          ),
+        );
         const destinationLine = textDecoder.decode(destination.stdout).trim();
         const destinationObjectId =
           destinationLine === "" ? null : (destinationLine.split(/\s+/u)[0]?.toLowerCase() ?? null);
@@ -922,7 +929,11 @@ const makeRepositoryService = (
             "--no-tags",
             observationDestination(input.destinationUrl),
             `${input.destinationRef}:refs/openagents/destination`,
-          ]);
+          ]).catch((cause) =>
+            Promise.reject(
+              mirrorStageError("ForgeGitRepository.observeMirror", "destination_fetch", cause),
+            ),
+          );
           const isAncestor = async (ancestor: string, descendant: string): Promise<boolean> => {
             try {
               await git([
