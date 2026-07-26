@@ -22663,6 +22663,28 @@
       }
     },
     {
+      "path": "docs/exo/2026-07-26-exoharness-steelman.md",
+      "sha256": "7b026c507a37ba98eb660703d60ea2e907d69b3b92c5ce3b59f63567706c3254",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/fable/2026-07-01-artanis-fleet-administrator-audit.md",
       "sha256": "f95b8b91800828df90f09dc650718b6191b012b9d1a009434279bd7534b0d3ae",
       "reason": "Immutable historical or evidence source data",
