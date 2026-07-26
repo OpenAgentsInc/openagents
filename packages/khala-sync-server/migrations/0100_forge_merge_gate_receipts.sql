@@ -1,0 +1,37 @@
+-- FORGE-08 (#9250): durable, exact-tip merge gate receipts.
+-- A row is prepared before a NIP-46 signer receives the requested 30618
+-- state.  The admission projector finalizes it only when the signed event
+-- repeats the exact tenant/repository/ref/old/new tuple.  The row is therefore
+-- not a second ref authority; it is the receipt chain required to admit one.
+
+CREATE TABLE IF NOT EXISTS forge_git_merge_outcome_receipts (
+  receipt_ref TEXT PRIMARY KEY,
+  tenant_ref TEXT NOT NULL,
+  repository_ref TEXT NOT NULL,
+  change_ref TEXT NOT NULL,
+  maintainer_binding_ref TEXT NOT NULL,
+  target_ref TEXT NOT NULL,
+  old_object_id TEXT NOT NULL,
+  new_object_id TEXT NOT NULL,
+  authority_generation INTEGER NOT NULL,
+  policy_version TEXT NOT NULL,
+  proposal_event_ids_json TEXT NOT NULL DEFAULT '[]',
+  gate_results_json TEXT NOT NULL DEFAULT '[]',
+  state TEXT NOT NULL CHECK (state IN ('prepared', 'finalized', 'refused')),
+  decided_at TIMESTAMPTZ NOT NULL,
+  state_event_id TEXT UNIQUE,
+  state_author_pubkey TEXT,
+  state_signature TEXT,
+  finalized_at TIMESTAMPTZ,
+  refused_at TIMESTAMPTZ,
+  refusal_code TEXT,
+  CHECK (
+    (state = 'prepared' AND state_event_id IS NULL AND finalized_at IS NULL)
+    OR (state = 'finalized' AND state_event_id IS NOT NULL AND finalized_at IS NOT NULL)
+    OR state = 'refused'
+  ),
+  UNIQUE (tenant_ref, repository_ref, target_ref, old_object_id, new_object_id, authority_generation)
+);
+CREATE INDEX IF NOT EXISTS idx_forge_git_merge_receipts_prepared_pg
+  ON forge_git_merge_outcome_receipts(tenant_ref, repository_ref, target_ref)
+  WHERE state = 'prepared';

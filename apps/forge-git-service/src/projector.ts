@@ -1,10 +1,7 @@
 import { Context, Effect, Layer, Schema } from "effect";
 import { verifyEvent, type Event as NostrEvent } from "nostr-effect/pure";
 
-import {
-  ForgeGitAdmission,
-  type ForgeGitAdmissionEvent,
-} from "./admission.js";
+import { ForgeGitAdmission, type ForgeGitAdmissionEvent } from "./admission.js";
 import { ForgeGitRepository } from "./repository.js";
 
 export class ForgeGitProjectorError extends Schema.TaggedErrorClass<ForgeGitProjectorError>()(
@@ -54,6 +51,9 @@ const repoTag = (event: NostrEvent): string | undefined => {
 };
 const tagValues = (event: NostrEvent, name: string): ReadonlyArray<string> =>
   event.tags.filter((tag) => tag[0] === name).flatMap((tag) => tag.slice(1));
+/** One receipt is consumed for each protected ref in a state event. */
+const receiptForRef = (event: NostrEvent, refName: string): string | undefined =>
+  event.tags.find((tag) => tag[0] === "forge-merge-receipt" && tag[1] === refName)?.[2];
 const objectIds = (event: NostrEvent): ReadonlyArray<string> => {
   if (event.kind === 30617) {
     return event.tags
@@ -76,7 +76,9 @@ const objectIds = (event: NostrEvent): ReadonlyArray<string> => {
 
 const eventJson = (event: NostrEvent): string => JSON.stringify(event);
 const purgeDeadline = (event: NostrEvent): string =>
-  new Date((event.created_at + (event.kind === 1618 || event.kind === 1619 ? 20 * 60 : 30 * 60)) * 1000).toISOString();
+  new Date(
+    (event.created_at + (event.kind === 1618 || event.kind === 1619 ? 20 * 60 : 30 * 60)) * 1000,
+  ).toISOString();
 
 const asAdmissionEvent = (
   event: NostrEvent,
@@ -113,86 +115,126 @@ export const layerProjector = Layer.effect(
       const fact = asAdmissionEvent(event, input.repositoryRef, input.tenantRef);
       if (event.kind === 30617) {
         const maintainers = tagValues(event, "maintainers");
-        if (!maintainers.includes(event.pubkey) || maintainers.some((value) => !/^[0-9a-f]{64}$/u.test(value))) {
+        if (
+          !maintainers.includes(event.pubkey) ||
+          maintainers.some((value) => !/^[0-9a-f]{64}$/u.test(value))
+        ) {
           return yield* projectorError("forge_git_announcement_maintainers_invalid");
         }
-        yield* admission.admitRepository({
-          admittedBindingRef: input.actorBindingRef,
-          announcementAuthorPubkey: event.pubkey,
-          announcementEventId: event.id,
-          maintainerPubkeys: maintainers,
-          repositoryRef: input.repositoryRef,
-          tenantRef: input.tenantRef,
-        }).pipe(Effect.mapError(() => projectorError("forge_git_admission_write_failed")));
-        yield* repository.provision(input).pipe(Effect.mapError(() => projectorError("forge_git_repository_provision_failed")));
+        yield* admission
+          .admitRepository({
+            admittedBindingRef: input.actorBindingRef,
+            announcementAuthorPubkey: event.pubkey,
+            announcementEventId: event.id,
+            maintainerPubkeys: maintainers,
+            repositoryRef: input.repositoryRef,
+            tenantRef: input.tenantRef,
+          })
+          .pipe(Effect.mapError(() => projectorError("forge_git_admission_write_failed")));
+        yield* repository
+          .provision(input)
+          .pipe(Effect.mapError(() => projectorError("forge_git_repository_provision_failed")));
       } else {
-        yield* admission.requireRepository(input).pipe(Effect.mapError(() => projectorError("forge_git_repository_not_admitted")));
+        yield* admission
+          .requireRepository(input)
+          .pipe(Effect.mapError(() => projectorError("forge_git_repository_not_admitted")));
       }
-      const present = yield* repository.hasObjects({ ...input, objectIds: fact.objectIds }).pipe(
-        Effect.mapError(() => projectorError("forge_git_object_lookup_failed")),
-      );
+      const present = yield* repository
+        .hasObjects({ ...input, objectIds: fact.objectIds })
+        .pipe(Effect.mapError(() => projectorError("forge_git_object_lookup_failed")));
       if (present.size !== fact.objectIds.length) {
-        yield* admission.holdPurgatory({
-          ...fact,
-          actorBindingRef: input.actorBindingRef,
-          eventJson: eventJson(event),
-          expiresAt: purgeDeadline(event),
-        }).pipe(
-          Effect.mapError(() => projectorError("forge_git_purgatory_write_failed")),
-        );
-        yield* admission.claimNostrEvent({
-          eventId: event.id,
-          repositoryRef: input.repositoryRef,
-          tenantRef: input.tenantRef,
-        }).pipe(
-          Effect.mapError(() => projectorError("forge_git_nostr_claim_write_failed")),
-        );
+        yield* admission
+          .holdPurgatory({
+            ...fact,
+            actorBindingRef: input.actorBindingRef,
+            eventJson: eventJson(event),
+            expiresAt: purgeDeadline(event),
+          })
+          .pipe(Effect.mapError(() => projectorError("forge_git_purgatory_write_failed")));
+        yield* admission
+          .claimNostrEvent({
+            eventId: event.id,
+            repositoryRef: input.repositoryRef,
+            tenantRef: input.tenantRef,
+          })
+          .pipe(Effect.mapError(() => projectorError("forge_git_nostr_claim_write_failed")));
         return "purgatory" as const;
       }
       if (event.kind === 30618) {
-        const current = yield* admission.signedRefPolicies(input).pipe(
-          Effect.mapError(() => projectorError("forge_git_state_lookup_failed")),
-        );
-        for (const tag of event.tags.filter((candidate) => candidate[0] !== undefined && candidate[0].startsWith("refs/"))) {
+        const current = yield* admission
+          .signedRefPolicies(input)
+          .pipe(Effect.mapError(() => projectorError("forge_git_state_lookup_failed")));
+        for (const tag of event.tags.filter(
+          (candidate) => candidate[0] !== undefined && candidate[0].startsWith("refs/"),
+        )) {
           const [refName, newObjectId] = tag;
-          if (refName === undefined || newObjectId === undefined || !safeRef.test(refName) || !oid.test(newObjectId)) {
+          if (
+            refName === undefined ||
+            newObjectId === undefined ||
+            !safeRef.test(refName) ||
+            !oid.test(newObjectId)
+          ) {
             return yield* projectorError("forge_git_state_ref_invalid");
           }
-          const oldObjectId = current.find((policy) => policy.refName === refName)?.newObjectId ?? zeroObjectId;
-          yield* admission.authorizeSignedRefState({
-            authorPubkey: event.pubkey,
-            eventId: event.id,
-            eventJson: eventJson(event),
-            newObjectId,
-            oldObjectId,
-            refName,
-            repositoryRef: input.repositoryRef,
-            tenantRef: input.tenantRef,
-          }).pipe(Effect.mapError(() => projectorError("forge_git_signed_state_refused")));
+          const oldObjectId =
+            current.find((policy) => policy.refName === refName)?.newObjectId ?? zeroObjectId;
+          const receiptRef = receiptForRef(event, refName);
+          if (receiptRef === undefined || receiptRef.length === 0) {
+            return yield* projectorError("forge_git_merge_receipt_required");
+          }
+          // The receipt was prepared by the server gate before the signer saw
+          // this state request. Consume it before exposing a usable ref policy.
+          yield* admission
+            .finalizeMergeReceipt({
+              eventId: event.id,
+              newObjectId,
+              oldObjectId,
+              receiptRef,
+              repositoryRef: input.repositoryRef,
+              signature: event.sig,
+              signerPubkey: event.pubkey,
+              targetRef: refName,
+              tenantRef: input.tenantRef,
+            })
+            .pipe(Effect.mapError(() => projectorError("forge_git_merge_receipt_refused")));
+          yield* admission
+            .authorizeSignedRefState({
+              authorPubkey: event.pubkey,
+              eventId: event.id,
+              eventJson: eventJson(event),
+              newObjectId,
+              oldObjectId,
+              refName,
+              repositoryRef: input.repositoryRef,
+              tenantRef: input.tenantRef,
+            })
+            .pipe(Effect.mapError(() => projectorError("forge_git_signed_state_refused")));
         }
       }
-      yield* admission.claimNostrEvent({
-        eventId: event.id,
-        repositoryRef: input.repositoryRef,
-        tenantRef: input.tenantRef,
-      }).pipe(Effect.mapError(() => projectorError("forge_git_nostr_claim_write_failed")));
+      yield* admission
+        .claimNostrEvent({
+          eventId: event.id,
+          repositoryRef: input.repositoryRef,
+          tenantRef: input.tenantRef,
+        })
+        .pipe(Effect.mapError(() => projectorError("forge_git_nostr_claim_write_failed")));
       return "authorized" as const;
     });
 
     return ForgeGitProjector.of({
       project,
       reconcile: Effect.fn("ForgeGitProjector.reconcile")(function* (input) {
-        const expired = yield* admission.expirePurgatory(input).pipe(
-          Effect.mapError(() => projectorError("forge_git_purgatory_expiry_failed")),
-        );
-        const pending = yield* admission.listPurgatory(input).pipe(
-          Effect.mapError(() => projectorError("forge_git_purgatory_read_failed")),
-        );
+        const expired = yield* admission
+          .expirePurgatory(input)
+          .pipe(Effect.mapError(() => projectorError("forge_git_purgatory_expiry_failed")));
+        const pending = yield* admission
+          .listPurgatory(input)
+          .pipe(Effect.mapError(() => projectorError("forge_git_purgatory_read_failed")));
         let resolved = 0;
         for (const entry of pending) {
-          const present = yield* repository.hasObjects({ ...input, objectIds: entry.objectIds }).pipe(
-            Effect.mapError(() => projectorError("forge_git_object_lookup_failed")),
-          );
+          const present = yield* repository
+            .hasObjects({ ...input, objectIds: entry.objectIds })
+            .pipe(Effect.mapError(() => projectorError("forge_git_object_lookup_failed")));
           if (present.size !== entry.objectIds.length) continue;
           const event = JSON.parse(entry.eventJson) as NostrEvent;
           yield* project({
@@ -204,9 +246,9 @@ export const layerProjector = Layer.effect(
           // Resolution is the durable acknowledgement of successful projection,
           // never a precondition. A transient policy/signature failure must leave
           // the event pending for a safe retry instead of making it disappear.
-          yield* admission.resolvePurgatory(entry).pipe(
-            Effect.mapError(() => projectorError("forge_git_purgatory_resolve_failed")),
-          );
+          yield* admission
+            .resolvePurgatory(entry)
+            .pipe(Effect.mapError(() => projectorError("forge_git_purgatory_resolve_failed")));
           resolved += 1;
         }
         return { expired, resolved };

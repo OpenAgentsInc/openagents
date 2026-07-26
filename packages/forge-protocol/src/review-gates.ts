@@ -308,14 +308,17 @@ export interface ForgeSignedStatePublisher {
   readonly publish: (state: ForgeNip46SignedState) => Effect.Effect<void, ForgeMergeGateError>;
 }
 
-export const authorizeSignAndPublishForgeMerge = Effect.fn(
-  "ForgeReviewGates.authorizeSignAndPublish",
-)(function* (
+/**
+ * Evaluate a merge and durably record the exact state that a remote signer may
+ * sign.  The split is intentional: a service can prepare this authorization
+ * without holding a Nostr key, then hand the resulting receipt reference to a
+ * NIP-46 signer.  A later finalization must bind the signed 30618 to this
+ * draft before it can authorize a Git ref move.
+ */
+export const prepareForgeMergeOutcome = Effect.fn("ForgeReviewGates.prepare")(function* (
   input: ForgeMergeGateInput,
   receiptRef: string,
-  signer: ForgeNip46MergeSigner,
   receipts: ForgeMergeReceiptStore,
-  publisher: ForgeSignedStatePublisher,
 ) {
   const decision = yield* evaluateForgeMergeGates(input);
   if (!decision.allowed) {
@@ -342,6 +345,19 @@ export const authorizeSignAndPublishForgeMerge = Effect.fn(
     tenantRef: input.tenantRef,
   });
   yield* receipts.prepare(draft);
+  return draft;
+});
+
+export const authorizeSignAndPublishForgeMerge = Effect.fn(
+  "ForgeReviewGates.authorizeSignAndPublish",
+)(function* (
+  input: ForgeMergeGateInput,
+  receiptRef: string,
+  signer: ForgeNip46MergeSigner,
+  receipts: ForgeMergeReceiptStore,
+  publisher: ForgeSignedStatePublisher,
+) {
+  const draft = yield* prepareForgeMergeOutcome(input, receiptRef, receipts);
   const signedState = yield* signer.signState(
     ForgeNip46MergeSigningRequest.make({
       authorityGeneration: input.authorityGeneration,

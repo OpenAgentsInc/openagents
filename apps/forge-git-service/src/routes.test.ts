@@ -215,6 +215,102 @@ const provisionAdmittedRepository = async (fixture: ReturnType<typeof makeRuntim
 };
 
 describe("owned Forge Smart HTTP service", () => {
+  test("persists a passed gate receipt and refuses an unresolved change request", async () => {
+    const root = await mkdtemp(join(tmpdir(), "oa-forge-gate-receipt-"));
+    temporaryPaths.push(root);
+    const fixture = makeRuntime(root);
+    const service = await listen(fixture.runtime);
+    disposers.push(
+      () => closeServer(service.server),
+      () => fixture.runtime.dispose(),
+    );
+    const oid = "a".repeat(40);
+    const nextOid = "b".repeat(40);
+    const gateInput = {
+      authorityGeneration: 1,
+      changeRef: "change.forge.route-test",
+      checks: [
+        {
+          checkName: "test",
+          checkRef: "check.test",
+          completedAt: "2026-07-26T00:00:00.000Z",
+          evidenceReceiptRef: "receipt.check",
+          revisionObjectId: nextOid,
+          state: "completed",
+          verdict: "passed",
+        },
+      ],
+      evaluatedAt: "2026-07-26T00:00:00.000Z",
+      maintainerBindingRef: "binding.maintainer",
+      newObjectId: nextOid,
+      oldObjectId: oid,
+      policyVersion: "policy.forge.v1",
+      proposalEventIds: ["proposal.forge.1"],
+      repositoryRef,
+      requiredCheckNames: ["test"],
+      requiredReviewCount: 1,
+      requiredVerificationRungs: ["tests"],
+      reviews: [
+        {
+          reviewerBindingRef: "binding.reviewer",
+          reviewRef: "review.approved",
+          revisionObjectId: nextOid,
+          submittedAt: "2026-07-26T00:00:00.000Z",
+          supersedesReviewRef: null,
+          verdict: "approved",
+        },
+      ],
+      targetRef: "refs/heads/main",
+      tenantRef,
+      verificationReceipts: [
+        {
+          attempt: 1,
+          humanTagRef: null,
+          maxAttempts: 1,
+          receiptRef: "receipt.tests",
+          revisionObjectId: nextOid,
+          rung: "tests",
+          state: "passed",
+        },
+      ],
+    };
+    const prepared = await fetch(`${service.origin}/internal/forge/merge-receipts`, {
+      body: JSON.stringify({ gateInput, receiptRef: "receipt.forge.route-test" }),
+      headers: {
+        authorization: "Bearer forge-git-service-test-secret",
+        "content-type": "application/json",
+      },
+      method: "POST",
+    });
+    expect(prepared.status).toBe(201);
+    const resolved = await fetch(
+      `${service.origin}/internal/forge/merge-receipts/receipt.forge.route-test?tenantRef=${tenantRef}&repositoryRef=${repositoryRef}`,
+      {
+        headers: { authorization: "Bearer forge-git-service-test-secret" },
+      },
+    );
+    expect(resolved.status).toBe(200);
+    expect(((await resolved.json()) as { state: string }).state).toBe("prepared");
+    const blocked = await fetch(`${service.origin}/internal/forge/merge-receipts`, {
+      body: JSON.stringify({
+        gateInput: {
+          ...gateInput,
+          reviews: [
+            { ...gateInput.reviews[0], reviewRef: "review.change", verdict: "change_requested" },
+          ],
+        },
+        receiptRef: "receipt.forge.blocked",
+      }),
+      headers: {
+        authorization: "Bearer forge-git-service-test-secret",
+        "content-type": "application/json",
+      },
+      method: "POST",
+    });
+    expect(blocked.status).toBe(409);
+    expect(await blocked.json()).toMatchObject({ error: "forge_merge_gate_blocked" });
+  });
+
   test("does not create an unadmitted repository and refuses an unsigned head move", async () => {
     const root = await mkdtemp(join(tmpdir(), "oa-forge-admission-root-"));
     const source = await mkdtemp(join(tmpdir(), "oa-forge-admission-source-"));
