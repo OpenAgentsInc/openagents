@@ -14,7 +14,7 @@ import { routeRequest } from "./routes.js";
 
 const configurationLayer = layerConfiguration;
 const databaseLayer = layerDatabase.pipe(Layer.provide(configurationLayer));
-const authLayer = layerAuth.pipe(Layer.provide(databaseLayer));
+const authLayer = layerAuth.pipe(Layer.provide(configurationLayer));
 const admissionLayer = layerDistributedAdmission.pipe(Layer.provide(databaseLayer));
 const projectionLayer = layerProjection.pipe(Layer.provide(databaseLayer));
 const repositoryLayer = layerRepository.pipe(

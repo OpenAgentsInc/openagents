@@ -118,6 +118,12 @@ variable "database_secret_id" {
   default     = "openagents-monolith-database-url-prod"
 }
 
+variable "policy_authority_secret_id" {
+  description = "Secret Manager container for the Forge Git to worker policy bearer"
+  type        = string
+  default     = "openagents-forge-git-policy-authority-token"
+}
+
 variable "database_instance_connection_name" {
   description = "Cloud SQL instance connection name for Forge Git authentication"
   type        = string

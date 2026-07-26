@@ -11,7 +11,7 @@ import { Effect, Layer, ManagedRuntime } from "effect";
 import { afterEach, describe, expect, test } from "vitest";
 
 import { ForgeGitAdmission, layerAdmission } from "./admission.js";
-import { ForgeGitAuth, makeStaticAuthLayer } from "./auth.js";
+import { ForgeGitAuth, makePolicyAuthorityAuthLayer, makeStaticAuthLayer } from "./auth.js";
 import { makeTestConfiguration } from "./config.js";
 import { ForgeGitSession } from "./model.js";
 import { ForgeGitProjection, layerNoopProjection } from "./projection.js";
@@ -136,6 +136,7 @@ const makeRuntime = (
     "git:receive-pack",
     "git:upload-pack",
   ],
+  authLayer: Layer.Layer<ForgeGitAuth> = makeStaticAuthLayer(token, session, allowedScopes),
 ) => {
   const configuration = makeTestConfiguration({
     gitBinary: "git",
@@ -146,7 +147,7 @@ const makeRuntime = (
   const repositoryLayer = makeRepositoryLayer(configuration, blobStore);
   const applicationLayer = Layer.mergeAll(
     layerAdmission,
-    makeStaticAuthLayer(token, session, allowedScopes),
+    authLayer,
     layerNoopProjection,
     repositoryLayer,
   );
@@ -329,6 +330,92 @@ describe("owned Forge Smart HTTP service", () => {
     });
     expect(receive.status).toBe(401);
   });
+
+  test("admits invited humans and agents, then refuses a revoked agent replay", async () => {
+    const root = await mkdtemp(join(tmpdir(), "oa-forge-policy-root-"));
+    const source = await mkdtemp(join(tmpdir(), "oa-forge-policy-source-"));
+    const humanClone = await mkdtemp(join(tmpdir(), "oa-forge-policy-human-"));
+    const agentClone = await mkdtemp(join(tmpdir(), "oa-forge-policy-agent-"));
+    temporaryPaths.push(root, source, humanClone, agentClone);
+    const humanToken = "oa_forge_git_human_000000000000000000000";
+    const agentToken = "oa_forge_git_agent_000000000000000000000";
+    const revoked = new Set<string>();
+    const configuration = makeTestConfiguration({
+      gitBinary: "git",
+      maxReceivePackBytes: 64 * 1024 * 1024,
+      mirrorEnabled: true,
+      repositoryRoot: root,
+    });
+    const authLayer = makePolicyAuthorityAuthLayer(configuration, async (_input, init) => {
+      const body = JSON.parse(String(init?.body)) as {
+        repositoryRef: string;
+        tenantRef: string;
+        transportAuthorization: string;
+      };
+      const presented = body.transportAuthorization.replace(/^Bearer\s+/, "");
+      if (revoked.has(presented) || (presented !== humanToken && presented !== agentToken)) {
+        return Response.json({ error: "forge_membership_tombstoned" }, { status: 403 });
+      }
+      return Response.json({
+        session: {
+          authenticatedAt: "2026-07-25T20:00:00.000Z",
+          refRestrictions: [],
+          repositoryRef: body.repositoryRef,
+          subjectRef:
+            presented === humanToken
+              ? "forge_actor.human.invited"
+              : "forge_actor.agent.owner_attested",
+          tenantRef: body.tenantRef,
+          tokenRef: presented === humanToken ? "forge_git_token.human" : "forge_git_token.agent",
+        },
+      });
+    });
+    const fixture = makeRuntime(
+      root,
+      makeMemoryBlobStore(),
+      makeSession(),
+      ["git:receive-pack", "git:upload-pack"],
+      authLayer,
+    );
+    const service = await listen(fixture.runtime);
+    disposers.push(
+      () => closeServer(service.server),
+      () => fixture.runtime.dispose(),
+    );
+    const remote = `${service.origin}/git/${tenantRef}/${repositoryRef}.git`;
+    const authArgs = (credential: string) => [
+      "-c",
+      `http.extraHeader=Authorization: Bearer ${credential}`,
+    ];
+
+    await git(source, ["init", "--initial-branch=main"]);
+    await git(source, ["config", "user.email", "forge-test@openagents.com"]);
+    await git(source, ["config", "user.name", "Forge Test"]);
+    await writeFile(join(source, "README.md"), "invite policy\n");
+    await git(source, ["add", "README.md"]);
+    await git(source, ["commit", "-m", "Seed invited repository"]);
+    await git(source, [...authArgs(humanToken), "push", remote, "HEAD:refs/heads/main"]);
+
+    await git(humanClone, [...authArgs(humanToken), "clone", remote, "."]);
+    await git(humanClone, ["config", "user.email", "human@openagents.com"]);
+    await git(humanClone, ["config", "user.name", "Invited human"]);
+    await writeFile(join(humanClone, "HUMAN.md"), "human push\n");
+    await git(humanClone, ["add", "HUMAN.md"]);
+    await git(humanClone, ["commit", "-m", "Human push"]);
+    await git(humanClone, [...authArgs(humanToken), "push", "origin", "main"]);
+
+    await git(agentClone, [...authArgs(agentToken), "clone", remote, "."]);
+    expect(await readFile(join(agentClone, "README.md"), "utf8")).toBe("invite policy\n");
+    await git(agentClone, ["config", "user.email", "agent@openagents.com"]);
+    await git(agentClone, ["config", "user.name", "Owner-attested agent"]);
+    await writeFile(join(agentClone, "AGENT.md"), "agent push\n");
+    await git(agentClone, ["add", "AGENT.md"]);
+    await git(agentClone, ["commit", "-m", "Agent push"]);
+    await git(agentClone, [...authArgs(agentToken), "push", "origin", "main"]);
+
+    revoked.add(agentToken);
+    await expect(git(agentClone, [...authArgs(agentToken), "fetch", "origin"])).rejects.toThrow();
+  }, 120_000);
 
   test("enforces exact ref restrictions inside stock receive-pack", async () => {
     const root = await mkdtemp(join(tmpdir(), "oa-forge-ref-root-"));

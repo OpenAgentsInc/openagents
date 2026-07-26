@@ -19,6 +19,8 @@ set -euo pipefail
 #                                            (khala_app; kills Hyperdrive)
 #   openagents-monolith-cron-token-<env>     bearer for POST /internal/cron
 #   openagents-monolith-admin-token-<env>    OPENAGENTS_ADMIN_API_TOKEN
+#   openagents-forge-git-policy-authority-token
+#                                            Forge Git service policy bearer
 #   openagents-audio-token-secret            shared AUDIO-2 grant HMAC
 #   khala-live-hub-token                     shared LiveHub service bearer
 #   openagents-gemini-api-key / openagents-openrouter-api-key /
@@ -136,6 +138,7 @@ SET_SECRETS=(
   "KHALA_SYNC_DATABASE_URL=openagents-monolith-database-url-${ENV_SUFFIX}:latest"
   "CLOUD_RUN_CRON_TOKEN=openagents-monolith-cron-token-${ENV_SUFFIX}:latest"
   "OPENAGENTS_ADMIN_API_TOKEN=openagents-monolith-admin-token-${ENV_SUFFIX}:latest"
+  "OPENAGENTS_FORGE_GIT_SERVICE_AUTH_TOKEN=openagents-forge-git-policy-authority-token:latest"
   "KHALA_SYNC_LIVE_HUB_TOKEN=khala-live-hub-token:latest"
   "GEMINI_API_KEY=openagents-gemini-api-key:latest"
   "CURSOR_API_KEY=openagents-cursor-api-key:latest"

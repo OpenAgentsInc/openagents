@@ -10,6 +10,8 @@ export interface ForgeGitConfigurationShape {
   readonly gitBinary: string;
   readonly maxReceivePackBytes: number;
   readonly mirrorEnabled: boolean;
+  readonly policyAuthorityToken: Redacted.Redacted<string>;
+  readonly policyAuthorityUrl: string;
   readonly repositoryRoot: string;
 }
 
@@ -30,6 +32,8 @@ export const layerConfiguration = Layer.effect(
     const mirrorEnabled = yield* Config.boolean("FORGE_GIT_GCS_MIRROR_ENABLED").pipe(
       Config.withDefault(true),
     );
+    const policyAuthorityToken = yield* Config.redacted("FORGE_GIT_POLICY_AUTHORITY_TOKEN");
+    const policyAuthorityUrl = yield* Config.string("FORGE_GIT_POLICY_AUTHORITY_URL");
     const repositoryRoot = yield* Config.string("FORGE_GIT_REPOSITORY_ROOT").pipe(
       Config.withDefault("/var/lib/forge/repositories"),
     );
@@ -39,18 +43,29 @@ export const layerConfiguration = Layer.effect(
       gitBinary,
       maxReceivePackBytes,
       mirrorEnabled,
+      policyAuthorityToken,
+      policyAuthorityUrl,
       repositoryRoot,
     });
   }),
 );
 
 export const makeTestConfiguration = (
-  input: Omit<ForgeGitConfigurationShape, "databaseUrl"> & {
+  input: Omit<
+    ForgeGitConfigurationShape,
+    "databaseUrl" | "policyAuthorityToken" | "policyAuthorityUrl"
+  > & {
     readonly databaseUrl?: string;
+    readonly policyAuthorityToken?: Redacted.Redacted<string>;
+    readonly policyAuthorityUrl?: string;
   },
 ): ForgeGitConfigurationShape => ({
   ...input,
   databaseUrl: Redacted.make(input.databaseUrl ?? "postgres://unused"),
+  policyAuthorityToken:
+    input.policyAuthorityToken ?? Redacted.make("forge-git-service-test-secret"),
+  policyAuthorityUrl:
+    input.policyAuthorityUrl ?? "https://openagents.test/internal/forge/git-authorize",
 });
 
 export const optionalString = (value: Option.Option<string>): string | undefined =>
