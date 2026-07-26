@@ -1,4 +1,4 @@
-import { Effect, Redacted, Schema } from 'effect'
+import { Effect, Schema } from 'effect'
 
 import {
   ForgeOwnedCanonicalMirrorError,
