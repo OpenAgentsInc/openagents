@@ -1,0 +1,39 @@
+{
+  "schemaVersion": "openagents.forge.owner_bootstrap_production_receipt.v1",
+  "generatedAt": "2026-07-26T14:45:00Z",
+  "scope": "production-cloud-sql-migration-and-owner-bootstrap",
+  "dataMutation": "none",
+  "ownershipRepair": {
+    "reason": "Pre-existing Forge projection tables were owned by the runtime role before their ordered migration was recorded.",
+    "tables": [
+      "forge_git_repository_admissions",
+      "forge_git_signed_ref_states",
+      "forge_git_purgatory_events",
+      "forge_git_relay_outbox",
+      "forge_git_unclaimed_nostr_refs"
+    ],
+    "ownerAfter": "khala_migrate",
+    "runtimeDmlGrantAfter": "khala_app",
+    "preservedRows": true
+  },
+  "migrations": {
+    "applied": [
+      "0099_forge_git_admission.sql",
+      "0100_forge_merge_gate_receipts.sql",
+      "0101_forge_collaboration_projection.sql"
+    ],
+    "runner": "packages/khala-sync-server/scripts/migrate.ts",
+    "result": "passed"
+  },
+  "deployment": {
+    "service": "openagents-monolith",
+    "revision": "openagents-monolith-00258-f8v",
+    "trafficPercent": 100
+  },
+  "ownerBootstrap": {
+    "tenantRef": "tenant.openagents",
+    "proof": "strict-nip98",
+    "result": "already_completed",
+    "httpStatus": 409
+  }
+}
