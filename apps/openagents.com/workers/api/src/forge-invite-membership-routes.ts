@@ -81,6 +81,7 @@ const gitCredentialsPath = '/api/forge/membership/git-credentials'
 const bootstrapOwnerPath = '/api/forge/bootstrap-owner'
 const bootstrapOwnerGitCredentialsPath =
   '/api/forge/bootstrap-owner/git-credentials'
+const bootstrapOwnerAgentPath = '/api/forge/bootstrap-owner/agent'
 const gitAuthorizeInternalPath = '/internal/forge/git-authorize'
 const relayAdmitInternalPath = '/internal/forge/relay-admit'
 const collaborationReadAuthorizeInternalPath =
@@ -276,6 +277,7 @@ export const makeForgeInviteMembershipRoutes = <
       path !== gitCredentialsPath &&
       path !== bootstrapOwnerPath &&
       path !== bootstrapOwnerGitCredentialsPath &&
+      path !== bootstrapOwnerAgentPath &&
       path !== gitAuthorizeInternalPath &&
       path !== relayAdmitInternalPath &&
       path !== collaborationReadAuthorizeInternalPath &&
@@ -288,6 +290,47 @@ export const makeForgeInviteMembershipRoutes = <
     return routeEffect(async () => {
       const store = dependencies.makeMembershipStore(env)
       const nowIso = dependencies.nowIso()
+      if (path === bootstrapOwnerAgentPath) {
+        if (request.method !== 'POST') return methodNotAllowed(['POST'])
+        if (
+          dependencies.requireAdminApiToken === undefined ||
+          !(await dependencies.requireAdminApiToken(
+            requestWithBootstrapAdminAuthorization(request),
+            env,
+          ))
+        ) return unauthorized()
+        const { bytes, value } = await readJsonBytes(request)
+        const record = isRecord(value) ? value : undefined
+        const tenantRef = requiredText(record ?? {}, 'tenantRef')
+        const repositoryRef = requiredText(record ?? {}, 'repositoryRef')
+        const agentAccountRef = requiredText(record ?? {}, 'agentAccountRef')
+        const displayName = requiredText(record ?? {}, 'displayName')
+        const agentPubkey = requiredText(record ?? {}, 'agentPubkey')
+        const ownerAuthTag = record?.ownerAuthTag
+        if (
+          tenantRef !== bootstrapTeamTenantRef ||
+          repositoryRef !== bootstrapRepositoryRef ||
+          agentAccountRef === undefined ||
+          displayName === undefined ||
+          agentPubkey === undefined ||
+          !/^[0-9a-f]{64}$/iu.test(agentPubkey) ||
+          !Array.isArray(ownerAuthTag) ||
+          !ownerAuthTag.every(item => typeof item === 'string')
+        ) return noStoreJsonResponse({ error: 'forge_owner_bootstrap_agent_body_invalid' }, { status: 400 })
+        const authorization = request.headers.get('authorization')
+        if (authorization?.startsWith('Nostr ') !== true) {
+          throw new ForgeInvitePolicyError({ code: 'credential_missing', reason: 'A fresh owner NIP-98 proof is required.' })
+        }
+        const proof = await verifyForgeNip98Proof({ authorization, body: bytes, method: request.method, nowIso, url: request.url })
+        const owner = await store.readActorBindingByNostrPubkey(tenantRef, proof.actorPubkey)
+        if (owner?.membershipState !== 'active' || owner.actorKind !== 'human' || owner.nostrPubkey !== proof.actorPubkey || !owner.roleRefs.includes('forge:admin')) return forbidden()
+        const bindingRef = await bindingRefFor('agent', tenantRef, agentAccountRef, agentPubkey.toLowerCase())
+        if (!(await store.consumeNip98Replay({ actorPubkey: proof.actorPubkey, authorityGeneration: owner.bindingGeneration, bodyDigest: proof.bodyDigest, canonicalPath: path, consumedAt: nowIso, consumptionRef: `forge_nip98_consumption.${proof.eventId}`, eventCreatedAt: proof.eventCreatedAt, eventId: proof.eventId, expiresAt: new Date(Date.parse(proof.eventCreatedAt) + 60_000).toISOString(), httpMethod: request.method, requestDigest: proof.requestDigest, result: 'accepted', tenantRef }))) {
+          throw new ForgeInvitePolicyError({ code: 'nip98_replayed', reason: 'The NIP-98 event was already consumed.' })
+        }
+        const binding = await store.attachAgent({ accountRef: agentAccountRef, bindingEventCreatedAt: proof.eventCreatedAt, bindingEventId: proof.eventId, bindingRef, displayName, nostrPubkey: agentPubkey.toLowerCase(), nowIso, ownerAuthTag, ownerBindingRef: owner.bindingRef, sourceRefs: [`nip98:${proof.eventId}`, 'forge_owner_bootstrap_agent:v1'], tenantRef })
+        return noStoreJsonResponse({ binding: { actorKind: binding.actorKind, bindingRef: binding.bindingRef, membershipState: binding.membershipState, ownerBindingRef: binding.ownerBindingRef, roleRefs: binding.roleRefs, tenantRef: binding.tenantRef } }, { status: 201 })
+      }
       if (path === bootstrapOwnerGitCredentialsPath) {
         if (request.method !== 'POST') return methodNotAllowed(['POST'])
         if (
