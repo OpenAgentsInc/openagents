@@ -26723,6 +26723,20 @@
       }
     },
     {
+      "path": "docs/forge/receipts/2026-07-26-forge-nip34-admission-projection.md",
+      "sha256": "1a706766c1d7119471ae1b69d89423c65db9bcb6ecb51de1cf83935302a29316",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "ste_status": "source-data",
+        "ste_reviewer": null,
+        "ste_reviewed_at": null,
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null
+      }
+    },
+    {
       "path": "docs/forum/2026-06-09-forum-mdk-webhook-reconciliation-audit.md",
       "sha256": "8166f852c4648573d0b2d9ed3fa648e7eca83b17266f7f4ca8e8fbe5b13fe3ae",
       "reason": "Immutable historical or evidence source data",
