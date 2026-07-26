@@ -11601,12 +11601,17 @@
       ]
     },
     "apps/openagents.com/apps/start/public/AGENTS.md": {
-      "sourceSha256": "d2f3aa7e6d4a26f710d45454afc75b9a92811f25bc4035897c8510fc363b5ac1",
+      "sourceSha256": "b9c1566a3d39a6d230595e211f7b3ef1ad331f172ce06e2db1074059a39a8445",
       "normativeKeywords": [],
       "inlineCode": [
+        "NOSTR_SECRET_KEY",
+        "nak",
+        "nak",
+        "nak key generate",
         "nsec"
       ],
       "urls": [
+        "https://github.com/OpenAgentsInc/openagents/blob/main/.agents/skills/public-nostr-chat/SKILL.md",
         "https://github.com/OpenAgentsInc/openagents/issues/new?template=strict-bug.yml.",
         "https://github.com/OpenAgentsInc/openagents/releases/tag/openagents-desktop-v0.1.0-rc.25",
         "https://openagents.com/.well-known/openagents.json.",
@@ -11638,6 +11643,7 @@
         "410",
         "42",
         "42",
+        "46",
         "5"
       ]
     },
@@ -11695,12 +11701,17 @@
       ]
     },
     "apps/openagents.com/docs/live/AGENTS.md": {
-      "sourceSha256": "d2f3aa7e6d4a26f710d45454afc75b9a92811f25bc4035897c8510fc363b5ac1",
+      "sourceSha256": "b9c1566a3d39a6d230595e211f7b3ef1ad331f172ce06e2db1074059a39a8445",
       "normativeKeywords": [],
       "inlineCode": [
+        "NOSTR_SECRET_KEY",
+        "nak",
+        "nak",
+        "nak key generate",
         "nsec"
       ],
       "urls": [
+        "https://github.com/OpenAgentsInc/openagents/blob/main/.agents/skills/public-nostr-chat/SKILL.md",
         "https://github.com/OpenAgentsInc/openagents/issues/new?template=strict-bug.yml.",
         "https://github.com/OpenAgentsInc/openagents/releases/tag/openagents-desktop-v0.1.0-rc.25",
         "https://openagents.com/.well-known/openagents.json.",
@@ -11732,6 +11743,7 @@
         "410",
         "42",
         "42",
+        "46",
         "5"
       ]
     },

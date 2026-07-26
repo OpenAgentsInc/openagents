@@ -282,7 +282,7 @@
     },
     {
       "path": ".agents/skills/public-nostr-chat/SKILL.md",
-      "sha256": "c0dec0eb1925110a239a7ef76ed59031525f25458895b1def036525fe115598f",
+      "sha256": "a2f91ba4eb379a5c3cddb35b1fa5518e8154a502902b763eba6c8593e81ca580",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -1416,7 +1416,7 @@
     },
     {
       "path": "apps/openagents.com/apps/start/public/AGENTS.md",
-      "sha256": "d2f3aa7e6d4a26f710d45454afc75b9a92811f25bc4035897c8510fc363b5ac1",
+      "sha256": "b9c1566a3d39a6d230595e211f7b3ef1ad331f172ce06e2db1074059a39a8445",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -6369,7 +6369,7 @@
     },
     {
       "path": "apps/openagents.com/docs/live/AGENTS.md",
-      "sha256": "d2f3aa7e6d4a26f710d45454afc75b9a92811f25bc4035897c8510fc363b5ac1",
+      "sha256": "b9c1566a3d39a6d230595e211f7b3ef1ad331f172ce06e2db1074059a39a8445",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
