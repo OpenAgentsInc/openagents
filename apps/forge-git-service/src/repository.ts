@@ -154,12 +154,12 @@ const mirrorEnvironment = (
 ): NodeJS.ProcessEnv => {
   const environment = gitEnvironment(undefined);
   if (sshKeyPath !== undefined) {
-    if (
-      !/^\/(?:var\/run\/secrets\/forge-github-mirror|tmp)\/[A-Za-z0-9._-]+$/u.test(
-        sshKeyPath,
-      )
-    ) {
-      throw repositoryError("ForgeGitRepository.mirrorEnvironment", "forge_git_mirror_ssh_key_path_invalid", 500);
+    if (!/^\/(?:var\/run\/secrets\/forge-github-mirror|tmp)\/[A-Za-z0-9._-]+$/u.test(sshKeyPath)) {
+      throw repositoryError(
+        "ForgeGitRepository.mirrorEnvironment",
+        "forge_git_mirror_ssh_key_path_invalid",
+        500,
+      );
     }
     return {
       ...environment,
@@ -202,6 +202,32 @@ const assertMirrorDestination = (destinationUrl: string): void => {
       );
     }
   }
+};
+
+/**
+ * Preserve a small, non-sensitive operational reason for a rejected downstream
+ * GitHub projection. Git's raw stderr can contain remote details, so it must
+ * never cross the service boundary or enter a receipt.
+ */
+const mirrorProjectionReason = (cause: unknown): string => {
+  const diagnostic =
+    typeof cause === "object" &&
+    cause !== null &&
+    "cause" in cause &&
+    typeof cause.cause === "string"
+      ? cause.cause.toLowerCase()
+      : "";
+  if (diagnostic.includes("non-fast-forward")) return "forge_git_mirror_non_fast_forward";
+  if (diagnostic.includes("permission denied") || diagnostic.includes("write access")) {
+    return "forge_git_mirror_destination_unauthorized";
+  }
+  if (diagnostic.includes("protected branch") || diagnostic.includes("protected ref")) {
+    return "forge_git_mirror_destination_protected";
+  }
+  if (diagnostic.includes("could not resolve hostname") || diagnostic.includes("connection")) {
+    return "forge_git_mirror_destination_unavailable";
+  }
+  return "forge_git_mirror_projection_rejected";
 };
 
 const collect = async (
@@ -468,13 +494,7 @@ const makeRepositoryService = (
 
   const configureRepository = async (path: string): Promise<void> => {
     await git(
-      repositoryGitArguments(path, [
-        "--git-dir",
-        path,
-        "config",
-        "uploadpack.allowFilter",
-        "true",
-      ]),
+      repositoryGitArguments(path, ["--git-dir", path, "config", "uploadpack.allowFilter", "true"]),
     );
     await git(
       repositoryGitArguments(path, [
@@ -725,7 +745,12 @@ const makeRepositoryService = (
       catch: (cause) =>
         cause instanceof ForgeGitRepositoryError
           ? cause
-          : repositoryError("ForgeGitRepository.hasObjects.repository", "forge_git_repository_unavailable", 500, cause),
+          : repositoryError(
+              "ForgeGitRepository.hasObjects.repository",
+              "forge_git_repository_unavailable",
+              500,
+              cause,
+            ),
     });
     const objects = [...new Set(input.objectIds.map((objectId) => objectId.toLowerCase()))];
     const present = yield* Effect.tryPromise({
@@ -751,7 +776,13 @@ const makeRepositoryService = (
         );
         return new Set(values.filter((value): value is string => value !== undefined));
       },
-      catch: (cause) => repositoryError("ForgeGitRepository.hasObjects", "forge_git_object_lookup_failed", 500, cause),
+      catch: (cause) =>
+        repositoryError(
+          "ForgeGitRepository.hasObjects",
+          "forge_git_object_lookup_failed",
+          500,
+          cause,
+        ),
     });
     return present;
   });
@@ -761,14 +792,23 @@ const makeRepositoryService = (
   ) {
     if (input.refNames.length === 0) return;
     if (input.refNames.some((refName) => !/^refs\/nostr\/[0-9a-f]{64}$/u.test(refName))) {
-      return yield* repositoryError("ForgeGitRepository.deleteRefs", "forge_git_nostr_ref_invalid", 400);
+      return yield* repositoryError(
+        "ForgeGitRepository.deleteRefs",
+        "forge_git_nostr_ref_invalid",
+        400,
+      );
     }
     const path = yield* Effect.tryPromise({
       try: () => requireRepository(input.tenantRef, input.repositoryRef),
       catch: (cause) =>
         cause instanceof ForgeGitRepositoryError
           ? cause
-          : repositoryError("ForgeGitRepository.deleteRefs.repository", "forge_git_repository_unavailable", 500, cause),
+          : repositoryError(
+              "ForgeGitRepository.deleteRefs.repository",
+              "forge_git_repository_unavailable",
+              500,
+              cause,
+            ),
     });
     yield* Effect.tryPromise({
       try: () =>
@@ -782,7 +822,13 @@ const makeRepositoryService = (
             },
           }),
         }),
-      catch: (cause) => repositoryError("ForgeGitRepository.deleteRefs", "forge_git_nostr_ref_gc_failed", 500, cause),
+      catch: (cause) =>
+        repositoryError(
+          "ForgeGitRepository.deleteRefs",
+          "forge_git_nostr_ref_gc_failed",
+          500,
+          cause,
+        ),
     });
   });
 
@@ -944,7 +990,7 @@ const makeRepositoryService = (
         cause instanceof ForgeGitRepositoryError
           ? repositoryError(
               "ForgeGitRepository.projectMirror",
-              "forge_git_mirror_projection_rejected",
+              mirrorProjectionReason(cause),
               409,
               cause,
             )
