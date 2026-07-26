@@ -94,42 +94,41 @@ describe("Forge NIP-34 conformance fixtures", () => {
     ]);
   });
 
-  test("compiles fixture claims but no peer compatibility claim", () => {
+  test("compiles fixture and live peer compatibility claims", () => {
     const result = compileForgeConformanceMatrix(matrix);
     expect(result.state).toBe("ConformanceReady");
     if (result.state === "ConformanceUnavailable") return;
     expect(result.fixtureClaims.length).toBeGreaterThan(0);
-    expect(result.liveClaims).toEqual([]);
-    expect(result.blockedRows).toEqual([
+    expect(result.liveClaims).toEqual([
       "ngit-live-clone-fetch",
       "gitworkshop-live-discovery-read",
-      "owned-service-object-projection-race",
     ]);
+    expect(result.blockedRows).toEqual([]);
   });
 
-  test("keeps the restore receipt as partial evidence without a live ngit claim", () => {
+  test("records durable live interoperability evidence", () => {
     const row = matrix.rows.find((candidate) => candidate.id === "ngit-live-clone-fetch");
     expect(row).toMatchObject({
-      blockerRefs: ["github:OpenAgentsInc/openagents#9244"],
-      claim: "none",
-      result: "blocked",
+      blockerRefs: [],
+      claim: "works-with-peer",
+      result: "live-pass",
     });
     expect(row?.evidence).toEqual([
       {
-        path: "docs/forge/receipts/2026-07-26-forge-git-live-disk-restore.json",
-        sha256: "a1be07fff0e872febd5715af02787be9875a9a72e3d68cba8212a409e0c966ed",
+        path: "docs/forge/receipts/2026-07-26-forge-nip34-live-interoperability.json",
+        sha256: "17d1e0f3a76ead9f7aea430c4f67f22687ff16429bfe0ce1ebaecb71f8a3ac79",
       },
     ]);
     expect(
       matrix.rows.find(
         (candidate) => candidate.id === "gitworkshop-live-discovery-read",
       )?.blockerRefs,
-    ).toEqual(["github:OpenAgentsInc/openagents#9244"]);
+    ).toEqual([]);
     expect(
       matrix.rows.find(
         (candidate) => candidate.id === "owned-service-object-projection-race",
       )?.blockerRefs,
-    ).toEqual(["github:OpenAgentsInc/openagents#9249"]);
+    ).toEqual([]);
   });
 
   test("fails closed when a blocked row claims peer compatibility", () => {
@@ -137,6 +136,7 @@ describe("Forge NIP-34 conformance fixtures", () => {
     const row = invalid.rows.find((candidate) => candidate.id === "ngit-live-clone-fetch");
     expect(row).toBeDefined();
     if (row === undefined) return;
+    row.result = "blocked";
     row.claim = "works-with-peer";
     const result = compileForgeConformanceMatrix(invalid);
     expect(result.state).toBe("ConformanceUnavailable");

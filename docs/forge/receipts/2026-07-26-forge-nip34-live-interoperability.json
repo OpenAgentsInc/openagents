@@ -1,0 +1,30 @@
+{
+  "schema": "openagents.forge.nip34-live-interoperability.v1",
+  "recorded_at": "2026-07-26",
+  "repository": {
+    "tenant": "tenant.openagents",
+    "name": "omega",
+    "coordinate": "30617:7649603503856e5148d571eac2766b288a8ff1e9e35d380337a1d2b0015b4f92:omega",
+    "relay": "wss://relay.openagents.com",
+    "clone_url": "https://openagents.com/git/tenant.openagents/omega.git",
+    "head": "ae32ebd9194672e08419a3d7f5923604b3d206ab"
+  },
+  "events": {
+    "announcement_30617": "0b92a6a0dac68632f3ba16d91923a5866cadf10db4bf4349f2fd0917dba8eaef",
+    "state_30618": "bee9e25993e2b6a903e9fa397b401061657d4618641868dc15342728f99f78bd",
+    "promotion_receipt": "receipt.forge.omega.import.608098019716c202"
+  },
+  "ngit_cli": {
+    "revision": "6d806d5e93babe01b2b0053821d15afbbff406f6",
+    "remote": "nostr://npub1weykqdgrs4h9zjx4w84vyant9z9glu0fudwnsqeh58ftqq2mf7fqzcj570/omega",
+    "result": "clone and subsequent fetch both resolved refs/heads/main to the stated head"
+  },
+  "gitworkshop": {
+    "revision": "b049b163ba22774e918cdb7fffb3dc0662567238",
+    "result": "the pinned source dependency's Nostr query retrieved the exact 30617 announcement and 30618 state from the stated relay; the state main tag equals the cloned Git head"
+  },
+  "owned_service": {
+    "command": "pnpm --dir apps/forge-git-service exec vitest run src/projector.test.ts",
+    "result": "3 passed; includes the event-before-object pull-request state held in purgatory without projection"
+  }
+}

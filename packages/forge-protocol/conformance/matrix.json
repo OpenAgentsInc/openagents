@@ -209,15 +209,15 @@
       "peer": "ngit-cli",
       "peerRevision": "6d806d5e93babe01b2b0053821d15afbbff406f6",
       "proof": "live-peer",
-      "result": "blocked",
-      "claim": "none",
+      "result": "live-pass",
+      "claim": "works-with-peer",
       "evidence": [
         {
-          "path": "docs/forge/receipts/2026-07-26-forge-git-live-disk-restore.json",
-          "sha256": "a1be07fff0e872febd5715af02787be9875a9a72e3d68cba8212a409e0c966ed"
+          "path": "docs/forge/receipts/2026-07-26-forge-nip34-live-interoperability.json",
+          "sha256": "17d1e0f3a76ead9f7aea430c4f67f22687ff16429bfe0ce1ebaecb71f8a3ac79"
         }
       ],
-      "blockerRefs": ["github:OpenAgentsInc/openagents#9244"]
+      "blockerRefs": []
     },
     {
       "id": "gitworkshop-live-discovery-read",
@@ -225,10 +225,15 @@
       "peer": "gitworkshop",
       "peerRevision": "b049b163ba22774e918cdb7fffb3dc0662567238",
       "proof": "live-peer",
-      "result": "blocked",
-      "claim": "none",
-      "evidence": [],
-      "blockerRefs": ["github:OpenAgentsInc/openagents#9244"]
+      "result": "live-pass",
+      "claim": "works-with-peer",
+      "evidence": [
+        {
+          "path": "docs/forge/receipts/2026-07-26-forge-nip34-live-interoperability.json",
+          "sha256": "17d1e0f3a76ead9f7aea430c4f67f22687ff16429bfe0ce1ebaecb71f8a3ac79"
+        }
+      ],
+      "blockerRefs": []
     },
     {
       "id": "owned-service-object-projection-race",
@@ -236,10 +241,15 @@
       "peer": "ngit-grasp",
       "peerRevision": "cbf6f1d82fa7d5813e6f0dcdd5c7f6a9d3c7dc5d",
       "proof": "owned-service",
-      "result": "blocked",
+      "result": "live-pass",
       "claim": "none",
-      "evidence": [],
-      "blockerRefs": ["github:OpenAgentsInc/openagents#9249"]
+      "evidence": [
+        {
+          "path": "docs/forge/receipts/2026-07-26-forge-nip34-live-interoperability.json",
+          "sha256": "17d1e0f3a76ead9f7aea430c4f67f22687ff16429bfe0ce1ebaecb71f8a3ac79"
+        }
+      ],
+      "blockerRefs": []
     }
   ]
 }
