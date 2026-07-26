@@ -138,3 +138,29 @@ describe("issue 31 relay cursor store isolation", () => {
     expect((await store.load("wss://relay", "community"))?.since).toBe(200);
   });
 });
+
+/**
+ * omega#49. The community cursor is a high-water mark over one group's records.
+ * A build that changes the configured group inherited the previous group's mark
+ * and asked the relay only for records above it, so a device whose admission
+ * was already on the relay read an empty room with no gap and no refusal.
+ */
+describe("Issue31 community cursors are scoped to their group", () => {
+  test("does not serve one group's cursor to another, and leaves the other rooms alone", async () => {
+    const backing = memoryStore();
+    const groupA = createIssue31SecureRelayCursorStore(backing, "group.a");
+    const groupB = createIssue31SecureRelayCursorStore(backing, "group.b");
+    const cursor = { since: 1_700_000_000, eventIdsAtSince: ["a".repeat(64)] };
+    await groupA.save("wss://relay.example.com", "community", cursor);
+
+    expect(await groupA.load("wss://relay.example.com", "community")).toEqual(cursor);
+    // The whole point: group B replays from scratch rather than starting above
+    // group A's history.
+    expect(await groupB.load("wss://relay.example.com", "community")).toBeNull();
+
+    // The owner-private room never carries a group, so its key is unchanged and
+    // two differently-configured stores still share it.
+    await groupA.save("wss://relay.example.com", "owner_private", cursor);
+    expect(await groupB.load("wss://relay.example.com", "owner_private")).toEqual(cursor);
+  });
+});

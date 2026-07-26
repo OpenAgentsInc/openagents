@@ -405,9 +405,18 @@ export const emptyIssue31WorkroomReadModel = (
   projectedAt: string = "1970-01-01T00:00:00.000Z",
 ): Issue31WorkroomReadModel => projectIssue31WorkroomReadModel({ projectedAt });
 
+/**
+ * A workroom that could not be projected, and why.
+ *
+ * The reason ref is open rather than a two-value union because the runtime-open
+ * path fails for six separately fixable reasons (`reason.issue31.runtime_open.*`)
+ * and omega#49 lost an Android investigation to all six arriving as one string.
+ * It is still constrained to the `reason.issue31.` namespace, so a caller cannot
+ * put arbitrary prose where an operator expects a reference.
+ */
 export const unavailableIssue31NostrWorkroomReadModel = (
   projectedAt: string,
-  reasonRef: "reason.issue31.nostr_projection_failed" | "reason.issue31.nostr_runtime_unavailable",
+  reasonRef: `reason.issue31.${string}`,
 ): Issue31WorkroomReadModel =>
   projectIssue31WorkroomReadModel({
     projectedAt,

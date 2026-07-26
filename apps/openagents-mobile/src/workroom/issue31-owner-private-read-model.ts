@@ -143,7 +143,35 @@ export interface Issue31OwnerPrivateReadModel {
   readonly rejectedProjectionCount: number;
   readonly coverage: Issue31OwnerCoverage;
   readonly withheld: ReadonlyArray<Issue31OwnerWithheldRow>;
+  /**
+   * The source events this device actually read, by capability.
+   *
+   * The capability rows above the room used to state memory and read state as
+   * `device_projection_missing` on any device that had ever seen the raw
+   * source event, whether or not the host's projection had arrived and been
+   * decrypted. omega#49 recorded that as "the host admits the engram and never
+   * projects it"; the host had projected it, the device had it in hand, and the
+   * row said otherwise. A row about projection has to be computed from
+   * projections.
+   */
+  readonly projected: Issue31OwnerProjectedSourceIds;
 }
+
+export interface Issue31OwnerProjectedSource {
+  readonly sourceEventId: string;
+  readonly sourceCreatedAt: number;
+}
+
+export interface Issue31OwnerProjectedSourceIds {
+  readonly memory: ReadonlyArray<Issue31OwnerProjectedSource>;
+  readonly readStateAndReminders: ReadonlyArray<Issue31OwnerProjectedSource>;
+}
+
+export const EMPTY_ISSUE31_OWNER_PROJECTED_SOURCE_IDS: Issue31OwnerProjectedSourceIds =
+  Object.freeze({
+    memory: [],
+    readStateAndReminders: [],
+  });
 
 export const emptyIssue31OwnerPrivateReadModel = (
   reasonRef = "reason.issue31.owner_private.active_grant_missing",
@@ -165,6 +193,7 @@ export const emptyIssue31OwnerPrivateReadModel = (
   rejectedProjectionCount: 0,
   coverage: "unknown",
   withheld: [],
+  projected: EMPTY_ISSUE31_OWNER_PROJECTED_SOURCE_IDS,
 });
 
 const deepLinkFor = (sourceEventId: string): string =>
@@ -602,6 +631,10 @@ export const projectIssue31OwnerPrivateReadModel = (
       },
     ];
   });
+  // Only the read-state records this device could actually read. A record that
+  // failed its blob check is counted unreadable, and must not also be reported
+  // as one this device projected.
+  const readStateSourceEventIds: Array<{ sourceEventId: string; sourceCreatedAt: number }> = [];
   const readContexts = mergeReadContexts(
     ...records.flatMap((record) => {
       if (record.projection.kind !== "read_state") return [];
@@ -610,6 +643,10 @@ export const projectIssue31OwnerPrivateReadModel = (
         countUnreadable(ISSUE31_OWNER_READ_STATE_UNREADABLE_REASON);
         return [];
       }
+      readStateSourceEventIds.push({
+        sourceEventId: record.sourceEventId,
+        sourceCreatedAt: record.sourceCreatedAt,
+      });
       return [state.contexts];
     }),
   );
@@ -753,6 +790,19 @@ export const projectIssue31OwnerPrivateReadModel = (
     rejectedProjectionCount: rejected + commandProjection.conflicts,
     coverage,
     withheld,
+    projected: {
+      memory: memory.map((row) => ({
+        sourceEventId: row.sourceEventId,
+        sourceCreatedAt: row.sourceCreatedAt,
+      })),
+      readStateAndReminders: [
+        ...readStateSourceEventIds,
+        ...[...remindersById.values()].map((row) => ({
+          sourceEventId: row.sourceEventId,
+          sourceCreatedAt: row.sourceCreatedAt,
+        })),
+      ],
+    },
   };
 };
 

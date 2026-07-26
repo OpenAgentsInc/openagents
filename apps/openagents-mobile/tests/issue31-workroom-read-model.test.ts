@@ -19,6 +19,7 @@ import {
   type Issue31SourceSnapshot,
 } from "../src/workroom/issue31-workroom-read-model";
 import { issue31SourceSnapshotsFromNostr } from "../src/workroom/issue31-nostr-read-model";
+import { emptyIssue31OwnerPrivateReadModel } from "../src/workroom/issue31-owner-private-read-model";
 import {
   buildHomeProgram,
   chromeProps,
@@ -191,6 +192,124 @@ describe("Issue31WorkroomReadModel", () => {
       reasonRef: "reason.issue31.device_projection_missing:memory",
     });
     expect(sources.some((source) => source.capabilityId === "owner_private_sarah")).toBe(false);
+  });
+
+  /**
+   * omega#49. The memory row was a fixed `gap` emitted on the mere presence of a
+   * raw engram event, so a device whose projection had arrived, decrypted, and
+   * was rendering the engram in the room below still read
+   * `device_projection_missing:memory`. The row is about projection, so it is
+   * computed from projections.
+   */
+  test("reads memory as ready once the host projection for every visible engram has been read", () => {
+    const projectedId = "c".repeat(64);
+    const unprojectedId = "f".repeat(64);
+    const engramEvent = (id: string) => ({
+      relayUrl: "wss://relay.example.com",
+      room: "owner_private" as const,
+      canonicalRecordId: id,
+      privateRumorId: null,
+      privateRecord: null,
+      hostAnnouncement: null,
+      event: {
+        id,
+        pubkey: "3".repeat(64),
+        created_at: 1_700_000_000,
+        kind: 30_174,
+        tags: [["d", "memory-slot"], ["p", "d".repeat(64)]],
+        content: "nip44-ciphertext",
+        sig: "e".repeat(128),
+      },
+    });
+    const snapshot = (ids: ReadonlyArray<string>) => ({
+      devicePublicKeyHex: "b".repeat(64),
+      admittedHostPublicKeys: ["d".repeat(64)],
+      selectedHostPublicKeys: ["d".repeat(64)],
+      ownerPrivateAuthors: ["3".repeat(64)],
+      ownerRecipientPublicKeys: ["d".repeat(64)],
+      relays: [],
+      storedEventIds: {},
+      publishRefusals: {},
+      confirmedEvents: ids.map(engramEvent),
+    });
+    const readFor = (
+      ids: ReadonlyArray<string>,
+      projected: ReadonlyArray<string>,
+    ) =>
+      issue31SourceSnapshotsFromNostr(snapshot(ids), 1_700_000_100, {
+        memory: projected.map((sourceEventId) => ({
+          sourceEventId,
+          sourceCreatedAt: 1_700_000_000,
+        })),
+        readStateAndReminders: [],
+      }).find((source) => source.capabilityId === "memory");
+
+    expect(readFor([projectedId], [projectedId])).toMatchObject({
+      status: "ready",
+      reasonRef: null,
+      recordRefs: [projectedId],
+    });
+    // One engram on the wire with no projection keeps the whole row a gap: a
+    // partially projected set must not read as a complete one.
+    expect(readFor([projectedId, unprojectedId], [projectedId])).toMatchObject({
+      status: "gap",
+      reasonRef: "reason.issue31.device_projection_missing:memory",
+    });
+    // A projection with no raw source event is still evidence. The relay serves
+    // the owner-addressed wrap; the raw record need never reach this device.
+    expect(readFor([], [projectedId])).toMatchObject({
+      status: "ready",
+      recordRefs: [projectedId],
+    });
+    // And a device that has read nothing states no memory row at all, rather
+    // than a ready one over an empty set.
+    expect(readFor([], [])).toBeUndefined();
+  });
+
+  /**
+   * A revoked device must never claim a ready source. The owner-private
+   * projection returns the empty model for a revoked grant, whose `projected`
+   * set is empty, so the row falls back to the gap it can prove.
+   */
+  test("stops reading memory as ready once the grant is gone", () => {
+    const projectedId = "c".repeat(64);
+    const sources = issue31SourceSnapshotsFromNostr(
+      {
+        devicePublicKeyHex: "b".repeat(64),
+        admittedHostPublicKeys: ["d".repeat(64)],
+        selectedHostPublicKeys: ["d".repeat(64)],
+        ownerPrivateAuthors: ["3".repeat(64)],
+        ownerRecipientPublicKeys: ["d".repeat(64)],
+        relays: [],
+        storedEventIds: {},
+        publishRefusals: {},
+        confirmedEvents: [
+          {
+            relayUrl: "wss://relay.example.com",
+            room: "owner_private",
+            canonicalRecordId: projectedId,
+            privateRumorId: null,
+            privateRecord: null,
+            hostAnnouncement: null,
+            event: {
+              id: projectedId,
+              pubkey: "3".repeat(64),
+              created_at: 1_700_000_000,
+              kind: 30_174,
+              tags: [["d", "memory-slot"], ["p", "d".repeat(64)]],
+              content: "nip44-ciphertext",
+              sig: "e".repeat(128),
+            },
+          },
+        ],
+      },
+      1_700_000_100,
+      emptyIssue31OwnerPrivateReadModel().projected,
+    );
+    expect(sources.find((source) => source.capabilityId === "memory")).toMatchObject({
+      status: "gap",
+      reasonRef: "reason.issue31.device_projection_missing:memory",
+    });
   });
 
   test("requires one nonexpired discovery identity matching the active device grant", () => {

@@ -444,6 +444,22 @@ const ownerPrivateDetail = (
       a11y: { label: "Search local owner-private memory" },
       style: { width: "full", ...mobileInteractiveStyle(accessibility) },
     }),
+    // The list is search-only, so with no query it renders nothing — which on a
+    // device is indistinguishable from holding no memory at all. omega#49 read
+    // an empty section on a device whose engram had arrived and was readable.
+    // The coverage line above says how complete the set is; this says how large
+    // the set here is, and they are different facts.
+    Text({
+      key: "issue31-owner-memory-count",
+      content:
+        owner.memory.length === 0
+          ? "No decrypted engrams are stored on this device."
+          : state.memoryQuery.trim() === ""
+            ? `${owner.memory.length} decrypted ${owner.memory.length === 1 ? "engram is" : "engrams are"} stored on this device. Search to read them.`
+            : `${memory.length} of ${owner.memory.length} decrypted ${owner.memory.length === 1 ? "engram" : "engrams"} match.`,
+      variant: "caption",
+      color: "textMuted",
+    }),
     ...memory.map((row) =>
       Text({
         key: `issue31-owner-memory-${row.sourceEventId}`,

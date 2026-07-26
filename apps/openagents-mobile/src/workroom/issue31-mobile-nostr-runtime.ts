@@ -33,6 +33,7 @@ import {
 } from "@openagentsinc/sarah/community";
 
 import {
+  Issue31DeviceKeyVaultError,
   openExpoIssue31DeviceIdentity,
   type Issue31DeviceIdentity,
   type Issue31SecureStore,
@@ -386,6 +387,88 @@ export type Issue31CommunityActionRequest =
       groundsSummary: string;
     }>;
 
+/**
+ * Why the Omega Nostr runtime could not open on this device.
+ *
+ * The runtime open path already fails for six distinct, separately fixable
+ * reasons — a missing native key store, an unusable CSPRNG, a corrupt stored
+ * key, an absent WebSocket, a malformed admitted-host list, and a community
+ * group id that collides with the owner-private conversation. The surface
+ * collapsed all six into one sentence with no reason attached, and an Android
+ * run of this issue's device proof stalled on exactly that: the app said "The
+ * Omega Nostr runtime is unavailable on this device", nothing reached logcat,
+ * and the cause could not be told apart from the other five without a debugger.
+ */
+export type Issue31RuntimeOpenFailureReason =
+  | "device_key_store_unavailable"
+  | "device_key_invalid"
+  | "device_key_random_unavailable"
+  | "websocket_unavailable"
+  | "admitted_host_keys_invalid"
+  | "community_group_id_collides_with_conversation"
+  | "unknown";
+
+export class Issue31RuntimeOpenError extends Error {
+  readonly _tag = "Issue31RuntimeOpenError";
+  override readonly name = "Issue31RuntimeOpenError";
+
+  constructor(
+    readonly reason: Issue31RuntimeOpenFailureReason,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+const ISSUE31_RUNTIME_OPEN_NOTICES: Readonly<
+  Record<Issue31RuntimeOpenFailureReason, string>
+> = Object.freeze({
+  device_key_store_unavailable:
+    "This device's secure key store is not available to Omega, so no device key can be held here.",
+  device_key_invalid:
+    "The Omega device key stored on this device is unreadable. Pair again to mint a new one.",
+  device_key_random_unavailable:
+    "This device gave Omega no secure random bytes, so no device key could be minted.",
+  websocket_unavailable: "This device has no WebSocket client, so no relay can be reached.",
+  admitted_host_keys_invalid:
+    "This build's admitted Omega host key list is invalid, so no host can be trusted.",
+  community_group_id_collides_with_conversation:
+    "This build's community group id collides with an owner-private conversation, so both rooms stay closed.",
+  unknown: "The Omega Nostr runtime is unavailable on this device.",
+});
+
+/**
+ * Name the runtime-open failure rather than restating that it happened.
+ *
+ * The reason ref is what an operator reads on the issue; the notice is what the
+ * owner reads on the device. `unknown` keeps the original sentence, so an
+ * unclassified throw is still visibly unclassified rather than mislabelled as
+ * one of the known five.
+ */
+export const classifyIssue31RuntimeOpenFailure = (
+  error: unknown,
+): Readonly<{
+  reason: Issue31RuntimeOpenFailureReason;
+  reasonRef: `reason.issue31.${string}`;
+  notice: string;
+}> => {
+  const reason: Issue31RuntimeOpenFailureReason =
+    error instanceof Issue31RuntimeOpenError
+      ? error.reason
+      : error instanceof Issue31DeviceKeyVaultError
+        ? error.reason === "secure_store_unavailable"
+          ? "device_key_store_unavailable"
+          : error.reason === "invalid_device_key"
+            ? "device_key_invalid"
+            : "device_key_random_unavailable"
+        : "unknown";
+  return {
+    reason,
+    reasonRef: `reason.issue31.runtime_open.${reason}` as const,
+    notice: ISSUE31_RUNTIME_OPEN_NOTICES[reason],
+  };
+};
+
 const uint32 = (bytes: Uint8Array): number => {
   if (bytes.length !== 4) throw new Error("Issue 31 random timestamp bytes are invalid.");
   return (
@@ -419,17 +502,27 @@ export const openIssue31MobileNostrRuntime = async (
     url: string,
   ) => Issue31WebSocketLike;
   if (typeof WebSocketImpl !== "function") {
-    throw new Error("The Omega Nostr WebSocket client is unavailable.");
+    throw new Issue31RuntimeOpenError(
+      "websocket_unavailable",
+      "The Omega Nostr WebSocket client is unavailable.",
+    );
   }
   // The community room's group id must never equal an owner-private
   // conversation ref. Both rooms are event-sourced over the same relay by the
   // same device, so an equal identifier is not cosmetic: each room's
   // subscription would match the other's records.
   if (input.community?.groupId != null) {
-    assertCommunityGroupIdIsNotPrivateConversation({
-      groupId: input.community.groupId,
-      privateConversationRefs: input.ownerPrivateConversationRefs ?? [],
-    });
+    try {
+      assertCommunityGroupIdIsNotPrivateConversation({
+        groupId: input.community.groupId,
+        privateConversationRefs: input.ownerPrivateConversationRefs ?? [],
+      });
+    } catch (error) {
+      throw new Issue31RuntimeOpenError(
+        "community_group_id_collides_with_conversation",
+        error instanceof Error ? error.message : "The community group id is invalid.",
+      );
+    }
   }
   const admittedHostPublicKeys = new Set(input.admittedHostPublicKeys);
   if (
@@ -437,7 +530,10 @@ export const openIssue31MobileNostrRuntime = async (
     admittedHostPublicKeys.size > 16 ||
     [...admittedHostPublicKeys].some((publicKey) => !HEX_64.test(publicKey))
   ) {
-    throw new Error("The admitted Omega host key list is invalid.");
+    throw new Issue31RuntimeOpenError(
+      "admitted_host_keys_invalid",
+      "The admitted Omega host key list is invalid.",
+    );
   }
   let identity: Issue31DeviceIdentity | null = null;
   let outboundStore: ReturnType<typeof openExpoIssue31OutboundEventStore> | null = null;
@@ -981,7 +1077,7 @@ export const openIssue31MobileNostrRuntime = async (
       relayUrls: input.relayUrls,
       signer: openedIdentity.signer,
       webSocket: WebSocketImpl,
-      cursorStore: createIssue31SecureRelayCursorStore(store),
+      cursorStore: createIssue31SecureRelayCursorStore(store, input.community?.groupId ?? null),
       outboundStore: openedOutboundStore,
       admittedHostPublicKeys: [...admittedHostPublicKeys],
       // Scorer keys are the only author-scoped community subscription; the rest

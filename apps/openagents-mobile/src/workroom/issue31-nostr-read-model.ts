@@ -28,6 +28,11 @@ import {
 
 import type { Issue31ConfirmedEvent, Issue31NostrClientSnapshot } from "./issue31-nostr-client.ts";
 import {
+  EMPTY_ISSUE31_OWNER_PROJECTED_SOURCE_IDS,
+  type Issue31OwnerProjectedSource,
+  type Issue31OwnerProjectedSourceIds,
+} from "./issue31-owner-private-read-model.ts";
+import {
   ISSUE31_CAPABILITY_DESCRIPTORS,
   decodeIssue31SourceSnapshot,
   type Issue31CapabilityId,
@@ -80,9 +85,72 @@ const eventsWithKinds = (
 ): ReadonlyArray<Issue31ConfirmedEvent> =>
   events.filter((event) => kinds.includes(event.event.kind));
 
+/**
+ * A capability the device reads only through the host's owner projections.
+ *
+ * The raw engram, read-state, and reminder events are addressed to the owner
+ * and encrypted to the owner–Sarah pair, so seeing one on the wire tells this
+ * device nothing about whether it can read it. Status therefore comes from the
+ * projections that arrived and decrypted, and the gap names the sources that
+ * are visible on the relay and not yet readable here.
+ *
+ * Before this, both rows were a fixed `gap` emitted on the mere presence of a
+ * source event. omega#49 read that on a paired device whose engram had been
+ * projected, decrypted, and was renderable in the room directly below the row.
+ */
+const projectedSource = (
+  input: Readonly<{
+    capabilityId: Issue31CapabilityId;
+    events: ReadonlyArray<Issue31ConfirmedEvent>;
+    projected: ReadonlyArray<Issue31OwnerProjectedSource>;
+    reasonRef: string;
+  }>,
+): Issue31SourceSnapshot | null => {
+  const projectedIds = new Set(input.projected.map((row) => row.sourceEventId));
+  if (projectedIds.size === 0 && input.events.length === 0) return null;
+  const unprojected = input.events.filter(
+    (event) => !projectedIds.has(event.canonicalRecordId),
+  );
+  const ready = projectedIds.size > 0 && unprojected.length === 0;
+  const descriptor = descriptorFor(input.capabilityId);
+  // A projection this device holds is evidence on its own: the relay serves
+  // the owner-addressed wrap, so the raw source event need never arrive here.
+  const observedAtUnix = Math.max(
+    ...input.events.map((event) => event.event.created_at),
+    ...input.projected.map((row) => row.sourceCreatedAt),
+    -1,
+  );
+  const observedAt = observedAtUnix < 0 ? null : new Date(observedAtUnix * 1_000).toISOString();
+  return decodeIssue31SourceSnapshot({
+    capabilityId: input.capabilityId,
+    authority: "signed_nostr_record",
+    sourceRef: descriptor.sourceRef,
+    status: ready ? "ready" : "gap",
+    freshness: observedAt === null ? "unknown" : "live",
+    observedAt,
+    recordRefs: [
+      ...new Set([
+        ...input.events.map((event) => event.canonicalRecordId),
+        ...projectedIds,
+      ]),
+    ],
+    reasonRef: ready ? null : input.reasonRef,
+    role: "owner",
+    roleStatus: "active",
+    actionState: { kind: "idle" },
+  });
+};
+
 export const issue31SourceSnapshotsFromNostr = (
   snapshot: Issue31NostrClientSnapshot,
   nowUnixSeconds: number,
+  /**
+   * What the owner-private projection actually read on this device.
+   *
+   * Omitted means nothing was projected, which is the honest default for a
+   * caller that has not run the owner-private projection.
+   */
+  projected: Issue31OwnerProjectedSourceIds = EMPTY_ISSUE31_OWNER_PROJECTED_SOURCE_IDS,
 ): ReadonlyArray<Issue31SourceSnapshot> => {
   const admittedHostPublicKeys = new Set(snapshot.admittedHostPublicKeys);
   const selectedHostPublicKeys = new Set(snapshot.selectedHostPublicKeys);
@@ -231,29 +299,21 @@ export const issue31SourceSnapshotsFromNostr = (
   }
 
   const memoryEvents = eventsWithKinds(events, [SARAH_ENGRAM_KIND]);
-  if (memoryEvents.length > 0) {
-    sources.push(
-      signedSource({
-        capabilityId: "memory",
-        events: memoryEvents,
-        status: "gap",
-        reasonRef: "reason.issue31.device_projection_missing:memory",
-        role: "owner",
-      }),
-    );
-  }
+  const memory = projectedSource({
+    capabilityId: "memory",
+    events: memoryEvents,
+    projected: projected.memory,
+    reasonRef: "reason.issue31.device_projection_missing:memory",
+  });
+  if (memory !== null) sources.push(memory);
   const stateEvents = eventsWithKinds(events, [SARAH_READ_STATE_KIND, SARAH_REMINDER_KIND]);
-  if (stateEvents.length > 0) {
-    sources.push(
-      signedSource({
-        capabilityId: "read_state_and_reminders",
-        events: stateEvents,
-        status: "gap",
-        reasonRef: "reason.issue31.device_projection_missing:read_state_and_reminders",
-        role: "owner",
-      }),
-    );
-  }
+  const readStateAndReminders = projectedSource({
+    capabilityId: "read_state_and_reminders",
+    events: stateEvents,
+    projected: projected.readStateAndReminders,
+    reasonRef: "reason.issue31.device_projection_missing:read_state_and_reminders",
+  });
+  if (readStateAndReminders !== null) sources.push(readStateAndReminders);
 
   const membershipEvents = eventsWithKinds(events, [
     NIP_29_GROUP_CHAT_KIND,

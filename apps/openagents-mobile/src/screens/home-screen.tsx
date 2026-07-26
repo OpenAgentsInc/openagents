@@ -69,6 +69,7 @@ import {
   initialIssue31MobileNostrControlState,
   issue31AdmittedHostPublicKeysFromEnvironment,
   issue31CommunityConfigFromEnvironment,
+  classifyIssue31RuntimeOpenFailure,
   openIssue31MobileNostrRuntime,
   type Issue31MobileNostrRuntime,
 } from "../workroom/issue31-mobile-nostr-runtime"
@@ -380,13 +381,19 @@ export const HomeScreen = ({
         )
       }
       try {
+        // The owner-private projection runs first because the capability rows
+        // state what this device *read*, not what it saw addressed to someone
+        // else. Computing the rows from wire presence alone is how omega#49
+        // came to show `device_projection_missing:memory` above a room that was
+        // rendering the projected engram (openagents `ba28b6fa24` lineage).
+        const ownerPrivate = projectIssue31OwnerPrivateReadModel(snapshot, {
+          nowUnixSeconds,
+          transcriptLimit: 200,
+        })
         program.workroom.setReadModel(projectIssue31WorkroomReadModel({
           projectedAt: new Date(nowUnixSeconds * 1_000).toISOString(),
-          sources: issue31SourceSnapshotsFromNostr(snapshot, nowUnixSeconds),
-          ownerPrivate: projectIssue31OwnerPrivateReadModel(snapshot, {
-            nowUnixSeconds,
-            transcriptLimit: 200,
-          }),
+          sources: issue31SourceSnapshotsFromNostr(snapshot, nowUnixSeconds, ownerPrivate.projected),
+          ownerPrivate,
         }))
       } catch {
         program.workroom.setReadModel(unavailableIssue31NostrWorkroomReadModel(
@@ -422,16 +429,21 @@ export const HomeScreen = ({
       }
       runtime = opened
       issue31RuntimeRef.current = opened
-    }).catch(() => {
+    }).catch((error: unknown) => {
       if (active) {
+        // Six separately fixable causes used to arrive here as one sentence
+        // with one reason ref. An Android run of omega#49 stalled on exactly
+        // that: the surface said the runtime was unavailable and could not say
+        // which of the six it was, and nothing reached logcat either.
+        const failure = classifyIssue31RuntimeOpenFailure(error)
         program.workroom.setNostrControl({
           ...initialIssue31MobileNostrControlState(),
           phase: "failed",
-          notice: "The Omega Nostr runtime is unavailable on this device.",
+          notice: failure.notice,
         })
         program.workroom.setReadModel(unavailableIssue31NostrWorkroomReadModel(
           new Date().toISOString(),
-          "reason.issue31.nostr_runtime_unavailable",
+          failure.reasonRef,
         ))
       }
     })

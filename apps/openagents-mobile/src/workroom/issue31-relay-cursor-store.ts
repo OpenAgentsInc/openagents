@@ -56,7 +56,31 @@ interface CursorRecord extends Schema.Schema.Type<typeof CursorRecordSchema> {}
 
 const emptyRecord = (): CursorRecord => ({ schemaVersion: 1, entries: {} });
 
-const cursorKey = (relayUrl: string): string => encodeURIComponent(relayUrl);
+/**
+ * One cursor per relay — and, in the community room, per group.
+ *
+ * The community cursor is a high-water mark over records addressed to one
+ * group's `h` tag. The group id is build-time configuration, so an upgrade that
+ * points the app at a different group inherits the previous group's cursor and
+ * asks the relay only for records newer than it. The new group's history is
+ * older than that mark, so the relay correctly returns nothing and the room
+ * renders "No signed membership record has arrived for this group" **forever**,
+ * on a device whose admission is sitting on the relay. It fails invisibly: no
+ * gap, no refusal, nothing to quarantine — the same shape as omega#49's NIP-59
+ * backdating defect, one layer up.
+ *
+ * Scoping the entry by group makes a group change replay that group from
+ * scratch, which is the only correct answer for a room this device has never
+ * followed.
+ */
+const cursorKey = (
+  relayUrl: string,
+  room: Issue31NostrRoom,
+  communityGroupId: string | null,
+): string =>
+  room === "community" && communityGroupId !== null
+    ? `${encodeURIComponent(relayUrl)}#${encodeURIComponent(communityGroupId)}`
+    : encodeURIComponent(relayUrl);
 
 /** The combined-record entry key this room used before the partition. */
 const legacyCursorKey = (relayUrl: string, room: Issue31NostrRoom): string =>
@@ -77,6 +101,12 @@ const decodeRecord = (value: string): CursorRecord => {
 
 export const createIssue31SecureRelayCursorStore = (
   store: Issue31SecureStore,
+  /**
+   * The community group this device is configured for, when it has one.
+   * Absent keeps the pre-scoping key, so a build with no community room reads
+   * and writes exactly what it did before.
+   */
+  communityGroupId: string | null = null,
 ): Issue31RelayCursorStore => {
   let writes: Promise<void> = Promise.resolve();
   const migrated = new Set<Issue31NostrRoom>();
@@ -124,7 +154,7 @@ export const createIssue31SecureRelayCursorStore = (
   };
 
   return {
-    load: async (relayUrl, room) => (await read(room)).entries[cursorKey(relayUrl)] ?? null,
+    load: async (relayUrl, room) => (await read(room)).entries[cursorKey(relayUrl, room, communityGroupId)] ?? null,
     save: async (relayUrl, room, cursor: Issue31RelayCursor) => {
       const write = writes.then(async () => {
         const current = await read(room);
@@ -133,7 +163,7 @@ export const createIssue31SecureRelayCursorStore = (
             schemaVersion: 1,
             entries: {
               ...current.entries,
-              [cursorKey(relayUrl)]: {
+              [cursorKey(relayUrl, room, communityGroupId)]: {
                 since: cursor.since,
                 eventIdsAtSince: [...new Set(cursor.eventIdsAtSince)].sort().slice(-4),
               },

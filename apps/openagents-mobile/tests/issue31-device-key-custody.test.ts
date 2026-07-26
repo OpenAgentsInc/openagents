@@ -10,6 +10,10 @@ import {
   type Issue31SecureStore,
   type Issue31SecureStoreOptions,
 } from "../src/workroom/issue31-device-key-vault";
+import {
+  Issue31RuntimeOpenError,
+  classifyIssue31RuntimeOpenFailure,
+} from "../src/workroom/issue31-mobile-nostr-runtime";
 
 const deviceSecret = new Uint8Array(32).fill(7);
 
@@ -197,5 +201,45 @@ describe("Issue 31 device key custody across platforms", () => {
     ).rejects.toMatchObject({
       reason: "secure_store_unavailable",
     } satisfies Partial<Issue31DeviceKeyVaultError>);
+  });
+});
+
+/**
+ * omega#49. Android's device-proof run stalled on `The Omega Nostr runtime is
+ * unavailable on this device.` — one sentence and one reason ref covering six
+ * separately fixable causes, with nothing in logcat to tell them apart. The
+ * surface has to name which one it was.
+ */
+describe("Issue31 runtime open failure", () => {
+  test("names each cause distinctly and keeps unclassified throws visibly unclassified", () => {
+    const cases = [
+      [new Issue31DeviceKeyVaultError("secure_store_unavailable", "x"), "device_key_store_unavailable"],
+      [new Issue31DeviceKeyVaultError("invalid_device_key", "x"), "device_key_invalid"],
+      [new Issue31DeviceKeyVaultError("random_unavailable", "x"), "device_key_random_unavailable"],
+      [new Issue31RuntimeOpenError("websocket_unavailable", "x"), "websocket_unavailable"],
+      [new Issue31RuntimeOpenError("admitted_host_keys_invalid", "x"), "admitted_host_keys_invalid"],
+      [
+        new Issue31RuntimeOpenError("community_group_id_collides_with_conversation", "x"),
+        "community_group_id_collides_with_conversation",
+      ],
+      [new Error("something else entirely"), "unknown"],
+    ] as const;
+    const seen = new Set<string>();
+    for (const [error, reason] of cases) {
+      const failure = classifyIssue31RuntimeOpenFailure(error);
+      expect(failure.reason).toBe(reason);
+      expect(failure.reasonRef).toBe(`reason.issue31.runtime_open.${reason}`);
+      expect(failure.notice.length).toBeGreaterThan(0);
+      seen.add(failure.notice);
+    }
+    // Seven causes, seven sentences. Two causes sharing a sentence is the
+    // defect, not a tidy-up.
+    expect(seen.size).toBe(cases.length);
+    // The unclassified case keeps the sentence the surface used to show for
+    // everything, so an unmapped throw reads as unmapped rather than as one of
+    // the six named causes.
+    expect(classifyIssue31RuntimeOpenFailure(new Error("x")).notice).toBe(
+      "The Omega Nostr runtime is unavailable on this device.",
+    );
   });
 });
