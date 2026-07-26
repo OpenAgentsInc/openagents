@@ -245,7 +245,27 @@ export const decodeIssue31SourceSnapshot = (value: unknown): Issue31SourceSnapsh
   ) {
     throw new Error(`Issue 31 source identity does not match ${source.capabilityId}.`);
   }
-  if (source.status === "ready" && source.recordRefs.length === 0) {
+  // A signed-Nostr row claiming `ready` without a signed event is an
+  // unverifiable claim, and that stays refused.
+  //
+  // A host-adjunct row is different, and omega#97 found out the hard way: a
+  // real Omega host that has looked and found nothing emits `gap: complete`
+  // with no record refs — there is no run to cite — and this guard refused the
+  // whole snapshot with "needs an authority record". Every idle host was
+  // therefore unreadable, and the phone reported the host as broken rather than
+  // as idle. That is the same class of lie as reporting a wiring gap as a
+  // pairing fact.
+  //
+  // The row is not unsourced. Its authority is the `host.v1` snapshot itself —
+  // signed, delivery-bound, and carried on the row as `hostObservation` — and a
+  // host that could not look publishes silence instead, which never reaches
+  // here. An empty citation from a complete reading states that the set is
+  // empty, which is exactly what the owner needs to be told.
+  if (
+    source.status === "ready" &&
+    source.recordRefs.length === 0 &&
+    source.authority === "signed_nostr_record"
+  ) {
     throw new Error(`Issue 31 source ${source.capabilityId} needs an authority record.`);
   }
   if ((source.status === "unavailable" || source.status === "gap") && source.reasonRef === null) {
@@ -266,7 +286,25 @@ export const decodeIssue31SourceSnapshot = (value: unknown): Issue31SourceSnapsh
   return source;
 };
 
-const unavailableSource = (descriptor: Issue31CapabilityDescriptor): Issue31SourceSnapshot => ({
+/**
+ * Why a host-authority row has no host snapshot behind it (omega#97).
+ *
+ * `source_not_connected` — the default below — means nothing arrived. It is a
+ * true statement about an unpaired device and a false one about a device whose
+ * host published a record this app refuses to read, or published none at all
+ * under a live grant. Those two get their own names so the row reports the
+ * host's state rather than the device's wiring.
+ *
+ * The vocabulary is deliberately the same as `Issue31FullAutoUnavailableReason`
+ * so the capability row and the Full Auto section below it cannot describe one
+ * host in two languages.
+ */
+export type Issue31HostAdjunctGap = "no_host_snapshot" | "host_projection_unreadable";
+
+const unavailableSource = (
+  descriptor: Issue31CapabilityDescriptor,
+  hostGap: Issue31HostAdjunctGap | undefined,
+): Issue31SourceSnapshot => ({
   capabilityId: descriptor.id,
   authority: descriptor.expectedAuthority,
   sourceRef: descriptor.sourceRef,
@@ -274,7 +312,12 @@ const unavailableSource = (descriptor: Issue31CapabilityDescriptor): Issue31Sour
   freshness: "unknown",
   observedAt: null,
   recordRefs: [],
-  reasonRef: `reason.issue31.source_not_connected:${descriptor.id}`,
+  reasonRef:
+    // Only a row that expects a host may wear a host's reason. A signed-Nostr
+    // row is not made unavailable by the state of the Omega host.
+    hostGap !== undefined && descriptor.expectedAuthority === "omega_host_adjunct"
+      ? `reason.issue31.${hostGap}:${descriptor.id}`
+      : `reason.issue31.source_not_connected:${descriptor.id}`,
   role: "none",
   roleStatus: "unknown",
   actionState: { kind: "idle" },
@@ -344,6 +387,7 @@ export const projectIssue31WorkroomReadModel = (
     projectedAt: string;
     sources?: ReadonlyArray<unknown>;
     hostAdjunct?: unknown;
+    hostAdjunctGap?: Issue31HostAdjunctGap;
     ownerPrivate?: Issue31OwnerPrivateReadModel;
   }>,
 ): Issue31WorkroomReadModel => {
@@ -351,12 +395,34 @@ export const projectIssue31WorkroomReadModel = (
   if (!Number.isFinite(Date.parse(projectedAt))) {
     throw new Error("Issue 31 workroom projection time is invalid.");
   }
-  const hostAdjunct =
-    input.hostAdjunct === undefined ? undefined : decodeIssue31HostAdjunct(input.hostAdjunct);
-  const decoded = [
-    ...(input.sources ?? []).map(decodeIssue31SourceSnapshot),
-    ...(hostAdjunct === undefined ? [] : issue31SourceSnapshotsFromHostAdjunct(hostAdjunct)),
-  ];
+  // A host record this app cannot read is a fact about one host, and it is
+  // reported on the three rows that expect that host. It is not allowed to
+  // throw, because a throw here takes the whole Workroom down with it — the
+  // owner-private transcript, memory, read state, and both community rooms all
+  // stop rendering because one machine sent one bad record. That is the shape
+  // of defect this contract exists to prevent, so the refusal is bounded to the
+  // rows it is actually about.
+  //
+  // Refused rather than shortened: a host snapshot whose rows cannot all be
+  // built contributes none of them and keeps no `hostObservation`. Half a host
+  // reading rendered beside a reason is a reading the owner could mistake for
+  // the whole one.
+  let hostAdjunct: Issue31HostAdjunct | undefined;
+  let hostSources: ReadonlyArray<Issue31SourceSnapshot> = [];
+  let hostGap = input.hostAdjunctGap;
+  if (input.hostAdjunct !== undefined) {
+    try {
+      const decodedAdjunct = decodeIssue31HostAdjunct(input.hostAdjunct);
+      hostSources = issue31SourceSnapshotsFromHostAdjunct(decodedAdjunct);
+      hostAdjunct = decodedAdjunct;
+      hostGap = undefined;
+    } catch {
+      hostAdjunct = undefined;
+      hostSources = [];
+      hostGap = "host_projection_unreadable";
+    }
+  }
+  const decoded = [...(input.sources ?? []).map(decodeIssue31SourceSnapshot), ...hostSources];
   const byCapability = new Map<Issue31CapabilityId, Issue31SourceSnapshot>();
   for (const source of decoded) {
     if (byCapability.has(source.capabilityId)) {
@@ -370,7 +436,7 @@ export const projectIssue31WorkroomReadModel = (
     );
     return {
       ...descriptor,
-      source: byCapability.get(descriptor.id) ?? unavailableSource(descriptor),
+      source: byCapability.get(descriptor.id) ?? unavailableSource(descriptor, hostGap),
       hostObservation:
         hostAdjunct === undefined || hostProjection === undefined
           ? null

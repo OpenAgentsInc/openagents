@@ -26,9 +26,11 @@ import {
 import {
   activeIssue31GrantForDevice,
   issue31FullAutoProjectionFromSnapshot,
+  issue31HostAdjunctForDevice,
   type Issue31FullAutoSourceEvent,
   type Issue31FullAutoSourceSnapshot,
 } from "../src/workroom/issue31-full-auto-projection-source";
+import { projectIssue31WorkroomReadModel } from "../src/workroom/issue31-workroom-read-model";
 
 const FIXTURE_ROOT = "../../../packages/sarah/fixtures/issue31-workroom";
 
@@ -309,6 +311,94 @@ const lastState = (program: ReturnType<typeof buildHomeProgram>) =>
     if (option._tag !== "Some") throw new Error("expected state");
     return option.value;
   });
+
+/**
+ * The capability rows and the Full Auto section, from one binding (omega#97).
+ *
+ * `issue31-full-auto-delivery.test.ts` proves this over a real relay for every
+ * state the shipped client can actually produce. `unreadable` is not one of
+ * them: `host.v1` bodies are decoded inside the gift-wrap unwrap, so a
+ * malformed one is refused at the envelope and never becomes a confirmed
+ * record. The gap is kept anyway — a reader handed a snapshot from any other
+ * source must still name that state rather than mistake it for silence — and
+ * this is where it is reachable, so this is where it is proven.
+ */
+describe("one host, one language", () => {
+  const rowsFor = (snapshot: Issue31FullAutoSourceSnapshot) => {
+    const binding = issue31HostAdjunctForDevice(snapshot, NOW);
+    const workroom = projectIssue31WorkroomReadModel({
+      projectedAt: "2023-11-14T22:21:40.000Z",
+      ...(binding.state === "bound" ? { hostAdjunct: binding.host } : {}),
+      ...(binding.state === "absent" ? { hostAdjunctGap: "no_host_snapshot" as const } : {}),
+      ...(binding.state === "unreadable"
+        ? { hostAdjunctGap: "host_projection_unreadable" as const }
+        : {}),
+    });
+    return {
+      binding,
+      hostRows: workroom.rows.filter((row) => row.expectedAuthority === "omega_host_adjunct"),
+      otherRows: workroom.rows.filter((row) => row.expectedAuthority !== "omega_host_adjunct"),
+      section: issue31FullAutoProjectionFromSnapshot(snapshot, NOW),
+    };
+  };
+
+  test("a host record the device refuses to read is named, not reported as silence", () => {
+    const { binding, hostRows, otherRows, section } = rowsFor(
+      paired({ ...hostAdjunct(), projections: [] }),
+    );
+    expect(binding.state).toBe("unreadable");
+    for (const row of hostRows) {
+      expect(row.source.reasonRef).toBe(`reason.issue31.host_projection_unreadable:${row.id}`);
+      expect(row.source.status).toBe("unavailable");
+      expect(row.hostObservation).toBeNull();
+    }
+    // Bounded: a signed-Nostr row does not wear the host's reason.
+    for (const row of otherRows) {
+      expect(row.source.reasonRef).toBe(`reason.issue31.source_not_connected:${row.id}`);
+    }
+    // And the section below says the same thing in the same words.
+    expect(section).toMatchObject({ reason: "host_projection_unreadable" });
+  });
+
+  test("the row and the section never describe one host in two languages", () => {
+    const cases = [
+      { snapshot: snapshotWith([]), state: "unpaired", section: "no_host_projection" },
+      { snapshot: snapshotWith(pairingChain()), state: "absent", section: "no_host_snapshot" },
+      {
+        snapshot: paired({ ...hostAdjunct(), projections: [] }),
+        state: "unreadable",
+        section: "host_projection_unreadable",
+      },
+    ] as const;
+    for (const expected of cases) {
+      const { binding, hostRows, section } = rowsFor(expected.snapshot);
+      expect(binding.state).toBe(expected.state);
+      if (section.state !== "unavailable") throw new Error("expected unavailable");
+      expect(section.reason).toBe(expected.section);
+      // Either the rows quote the section's reason, or — for the unpaired case
+      // only — they say the one thing the section is also saying: nothing
+      // arrived. What they may never do is name a different host state.
+      const rowReasons = new Set(hostRows.map((row) => row.source.reasonRef?.split(":")[0]));
+      expect(rowReasons.size).toBe(1);
+      expect([...rowReasons][0]).toBe(
+        expected.state === "unpaired"
+          ? "reason.issue31.source_not_connected"
+          : `reason.issue31.${section.reason}`,
+      );
+    }
+  });
+
+  test("a bound host puts its own reading on the rows and under them", () => {
+    const { binding, hostRows, section } = rowsFor(paired());
+    expect(binding.state).toBe("bound");
+    if (section.state !== "ready") throw new Error(`expected ready, got ${section.reason}`);
+    for (const row of hostRows) {
+      expect(row.hostObservation?.hostRef).toBe(section.hostRef);
+      expect(row.hostObservation?.snapshotRef).toBe(section.snapshotRef);
+      expect(row.hostObservation?.generatedAtMs).toBe(section.generatedAtMs);
+    }
+  });
+});
 
 describe("Workroom Full Auto state", () => {
   test("starts unavailable and reaches the screen once a host projection is set", async () => {

@@ -22,6 +22,8 @@
  */
 import { readFileSync } from "node:fs";
 
+import { Effect, Stream } from "@effect-native/core/effect";
+
 import {
   ISSUE31_HOST_ANNOUNCEMENT_KIND,
   ISSUE31_PAIRING_SCHEMA,
@@ -43,6 +45,9 @@ import {
   type Issue31WebSocketLike,
 } from "../src/workroom/issue31-nostr-client.ts";
 import { issue31FullAutoProjectionFromSnapshot } from "../src/workroom/issue31-full-auto-projection-source.ts";
+import { projectIssue31Workroom } from "../src/workroom/issue31-workroom-projection.ts";
+import { ISSUE31_CAPABILITY_DESCRIPTORS } from "../src/workroom/issue31-workroom-read-model.ts";
+import { buildHomeProgram, renderContentView } from "../src/screens/home-core.ts";
 
 const NodeSocket = class implements Issue31WebSocketLike {
   onopen: ((event: unknown) => void) | null = null;
@@ -669,6 +674,303 @@ describe("omega#47 adjuncts delivered to a paired device over a real relay", () 
       );
       const snapshot = device.snapshot();
       expect(recordsWithSchema(snapshot, "openagents.omega.issue31.host.v1")).toEqual([]);
+    } finally {
+      device.close();
+    }
+  });
+});
+
+/**
+ * The wire-up, over the same real relay (omega#97).
+ *
+ * The tests above prove the *reader*: hand it a delivered adjunct and it
+ * decides correctly. That was never the gap. `readIssue31FullAutoProjection`
+ * was called once in `src/`, with `(null, null)`; there was no setter for
+ * `issue31FullAuto`; and `projectIssue31WorkroomReadModel` accepted a
+ * `hostAdjunct` that `home-screen.tsx` passed zero times. A real host could
+ * publish a real reading to a real relay and the phone still rendered
+ * `reason.issue31.source_not_connected` on all three host-authority rows.
+ *
+ * These drive `projectIssue31Workroom` — the exact function the screen calls —
+ * on records that crossed the relay, and then push its output through the
+ * shipped program into `renderContentView`. Nothing here re-implements the
+ * screen; a test that did would prove the test.
+ */
+const clientSnapshotFor = (
+  harness: Harness,
+  snapshot: Issue31NostrClientSnapshot,
+): Issue31NostrClientSnapshot => ({
+  ...snapshot,
+  confirmedEvents: [...harness.deviceLocalPairing, ...snapshot.confirmedEvents],
+});
+
+const hostRowsOf = (workroom: ReturnType<typeof projectIssue31Workroom>["workroom"]) =>
+  workroom.rows.filter((row) => row.expectedAuthority === "omega_host_adjunct");
+
+const settle = Effect.gen(function* () {
+  yield* Effect.yieldNow;
+  yield* Effect.yieldNow;
+});
+
+/** The Workroom exactly as a device would draw it from this projection. */
+const renderWorkroom = async (
+  projection: ReturnType<typeof projectIssue31Workroom>,
+): Promise<string> => {
+  const program = buildHomeProgram();
+  program.workroom.open();
+  program.workroom.setReadModel(projection.workroom);
+  program.workroom.setFullAutoReadModel(projection.fullAuto);
+  await Effect.runPromise(settle);
+  const state = await Effect.runPromise(
+    Effect.map(Stream.runHead(program.stateChanges), (option) => {
+      if (option._tag !== "Some") throw new Error("expected state");
+      return option.value;
+    }),
+  );
+  return JSON.stringify(renderContentView(state));
+};
+
+describe("the Workroom the owner sees, from what the host published", () => {
+  test("the three host rows carry the host's own state instead of source_not_connected", async () => {
+    const harness = await pairedHarness(`rows-${Date.now()}`);
+    await publishHostRumor(harness, deliveredHostAdjunct(harness));
+    await publishHostRumor(harness, deliveredFullAutoAdjunct(harness));
+    const device = await startDeviceClient(harness);
+    try {
+      await device.awaitSnapshot(
+        (snapshot) =>
+          recordsWithSchema(snapshot, "openagents.omega.issue31.host.v1").length === 1 &&
+          recordsWithSchema(snapshot, "openagents.omega.issue31.fullauto.v1").length === 1,
+        "both adjuncts to arrive over the wire",
+      );
+      const projection = projectIssue31Workroom(
+        clientSnapshotFor(harness, device.snapshot()),
+        harness.now,
+      );
+
+      // The defect, stated as an assertion: not one of the three may still be
+      // reporting that nothing is connected.
+      for (const row of hostRowsOf(projection.workroom)) {
+        expect(row.source.reasonRef ?? "").not.toContain("source_not_connected");
+        expect(row.hostObservation?.hostRef).toBe(harness.hostRef);
+        expect(row.hostObservation?.snapshotRef).toBe(harness.snapshotRef);
+      }
+      // And each carries the state THIS host published, not a uniform "ready".
+      // The host's own `full_auto_runs` projection is a partial, stale gap with
+      // a pause still pending; reporting it as ready would be the same class of
+      // lie the row used to tell.
+      const byId = (id: string) => projection.workroom.rows.find((row) => row.id === id);
+      expect(byId("full_auto")?.source).toMatchObject({
+        authority: "omega_host_adjunct",
+        status: "gap",
+        freshness: "stale",
+        // The host's own capability name, not the device's row id: the reason
+        // states what the host said about `full_auto_runs`.
+        reasonRef: "reason.issue31.host_gap:full_auto_runs",
+      });
+      expect(byId("full_auto")?.source.actionState.kind).toBe("pending");
+      expect(byId("provider_accounts")?.source.status).toBe("ready");
+      expect(byId("evidence_chain")?.source.status).toBe("ready");
+
+      // The section below the rows, from the same binding.
+      expect(projection.hostBinding.state).toBe("bound");
+      if (projection.fullAuto.state !== "ready") {
+        throw new Error(`expected ready, got ${projection.fullAuto.reason}`);
+      }
+      const run = projection.fullAuto.runs.find((row) => row.runRef === "run.full-auto.run-01");
+      if (run === undefined) throw new Error("the host's run must reach the read model");
+
+      const view = await renderWorkroom(projection);
+      // Objective, lane, lifecycle, live work, the host's exact measured
+      // unattended duration, and the account-to-lane relation — the whole of
+      // what omega#97 asks a paired device to render.
+      expect(view).toContain(run.objective);
+      expect(view).toContain(run.laneRef);
+      expect(view).toContain(run.lifecycle);
+      expect(view).toContain(run.liveWorkRef ?? "no unit reported");
+      const seconds = Math.floor(run.unattendedMs / 1000);
+      const exact = `${String(Math.floor(seconds / 3600)).padStart(2, "0")}:${String(
+        Math.floor((seconds % 3600) / 60),
+      ).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")} unattended`;
+      expect(view).toContain(exact);
+      // A lane is not an account, so the relation is stated rather than implied
+      // by putting the two on one row.
+      const account = projection.fullAuto.accounts[0];
+      if (account === undefined) throw new Error("the host published a provider account");
+      expect(view).toContain(
+        `Account ${account.accountRef} serves lane ${account.laneRef}`,
+      );
+      expect(view).not.toContain("This device is paired, but your Omega host has not published");
+    } finally {
+      device.close();
+    }
+  });
+
+  test("a paired host that has published nothing says so, and does not say nothing arrived", async () => {
+    // `source_not_connected` means no host reached this device. Under a live
+    // grant with a silent host that is false, and it is the sentence the rows
+    // used to show for every state at once.
+    const harness = await pairedHarness(`silent-${Date.now()}`);
+    const device = await startDeviceClient(harness);
+    try {
+      // The grant itself is host-authored and crosses the relay, so a device
+      // that has not received it yet is honestly unpaired. Wait for the grant
+      // and publish no snapshot: that is the state under test.
+      await device.awaitSnapshot(
+        (snapshot) =>
+          projectIssue31Workroom(clientSnapshotFor(harness, snapshot), harness.now).hostBinding
+            .state !== "unpaired",
+        "the host-authored grant to arrive over the wire",
+      );
+      const projection = projectIssue31Workroom(
+        clientSnapshotFor(harness, device.snapshot()),
+        harness.now,
+      );
+      expect(projection.hostBinding.state).toBe("absent");
+      for (const row of hostRowsOf(projection.workroom)) {
+        expect(row.source.reasonRef).toBe(`reason.issue31.no_host_snapshot:${row.id}`);
+        expect(row.source.status).toBe("unavailable");
+      }
+      expect(projection.fullAuto).toMatchObject({ reason: "no_host_snapshot" });
+    } finally {
+      device.close();
+    }
+  });
+
+  test("a malformed host record is refused at the envelope and takes nothing else down", async () => {
+    // One malformed record blanking every surface on the device is a defect
+    // this contract has already paid for once, so this asserts the blast radius
+    // rather than only the refusal.
+    //
+    // Where the refusal happens is worth stating plainly: `host.v1` bodies are
+    // decoded inside `unwrapIssue31PrivateGiftWrap`, so a malformed one never
+    // becomes a confirmed record at all. On the shipped client path the device
+    // therefore reads `no_host_snapshot` — "this host has published nothing I
+    // can read" — and not `host_projection_unreadable`. The read model keeps a
+    // distinct gap for the unreadable case (proven against a snapshot that
+    // carries such a record directly, in
+    // `issue31-full-auto-projection-source.test.ts`); it is defence in depth
+    // behind an envelope that already refuses, not the wire behaviour.
+    const harness = await pairedHarness(`unreadable-${Date.now()}`);
+    await publishHostRumor(harness, deliveredFullAutoAdjunct(harness));
+    await publishRawHostRumor(harness, {
+      ...deliveredHostAdjunct(harness),
+      projections: "not an array of projections",
+    });
+    const device = await startDeviceClient(harness);
+    try {
+      await device.awaitSnapshot(
+        (snapshot) =>
+          snapshot.relays.some((row) => row.rejectedEventCount > 0) &&
+          recordsWithSchema(snapshot, "openagents.omega.issue31.fullauto.v1").length === 1,
+        "the relay to serve both the refused snapshot and the readable detail",
+      );
+      const snapshot = device.snapshot();
+      // Refused at the envelope: it is not a confirmed record in any form.
+      expect(recordsWithSchema(snapshot, "openagents.omega.issue31.host.v1")).toEqual([]);
+
+      const projection = projectIssue31Workroom(clientSnapshotFor(harness, snapshot), harness.now);
+      // The rest of the room is still projected: every row, a coverage summary,
+      // and an owner-private model — not one blanket refusal.
+      expect(projection.workroom.rows).toHaveLength(ISSUE31_CAPABILITY_DESCRIPTORS.length);
+      expect(projection.workroom.coverage.total).toBe(ISSUE31_CAPABILITY_DESCRIPTORS.length);
+      expect(projection.workroom.ownerPrivate).not.toBeUndefined();
+      // The three host rows say the host published nothing readable. They do
+      // not say nothing arrived, and they do not claim a reading.
+      for (const row of hostRowsOf(projection.workroom)) {
+        expect(row.source.reasonRef).toBe(`reason.issue31.no_host_snapshot:${row.id}`);
+        expect(row.source.status).toBe("unavailable");
+      }
+      // A signed-Nostr row is not made unavailable by the state of the host.
+      for (const row of projection.workroom.rows) {
+        if (row.expectedAuthority === "omega_host_adjunct") continue;
+        expect(row.source.reasonRef ?? "").not.toContain("no_host_snapshot");
+      }
+      // A detail with no snapshot to bind to is withheld rather than drawn on
+      // its own authority — the payload does not get to select itself into view.
+      expect(projection.fullAuto).toMatchObject({ reason: "no_host_snapshot" });
+    } finally {
+      device.close();
+    }
+  });
+
+  test("an unpaired device says nothing arrived, and never claims a host went silent", async () => {
+    const harness = await pairedHarness(`unpaired-${Date.now()}`);
+    await publishHostRumor(harness, deliveredHostAdjunct(harness));
+    const device = await startDeviceClient(harness);
+    try {
+      await device.awaitSnapshot(
+        (snapshot) => recordsWithSchema(snapshot, "openagents.omega.issue31.host.v1").length === 1,
+        "the host snapshot to arrive",
+      );
+      // Same wire, same records — only the device's own pairing half withheld,
+      // which is what an unpaired device actually holds.
+      const projection = projectIssue31Workroom(device.snapshot(), harness.now);
+      expect(projection.hostBinding.state).toBe("unpaired");
+      for (const row of hostRowsOf(projection.workroom)) {
+        expect(row.source.reasonRef).toBe(`reason.issue31.source_not_connected:${row.id}`);
+      }
+      expect(projection.fullAuto).toMatchObject({ reason: "no_host_projection" });
+    } finally {
+      device.close();
+    }
+  });
+
+  test("a broken hop renders as unavailable with its reason, never as proof", async () => {
+    // omega#43's chain is refused hop by hop. `hop_missing`, `hop_mismatched`,
+    // `hop_private` and `self_reported` are four different facts, and the one
+    // thing none of them may become is a chain the owner reads as complete.
+    const harness = await pairedHarness(`hops-${Date.now()}`);
+    const canonical = workroomFixture("fullauto.v1.canonical");
+    const runs = canonical["runs"] as ReadonlyArray<Record<string, unknown>>;
+    const broken = ["hop_mismatched", "hop_private", "self_reported"] as const;
+    await publishHostRumor(harness, deliveredHostAdjunct(harness));
+    await publishHostRumor(
+      harness,
+      deliveredFullAutoAdjunct(harness, {
+        evidence: runs.map((run, index) => ({
+          completeness: "unavailable",
+          runRef: run["runRef"],
+          reasonClass: broken[index % broken.length],
+          brokenAt: "host_verification",
+        })),
+      }),
+    );
+    const device = await startDeviceClient(harness);
+    try {
+      await device.awaitSnapshot(
+        (snapshot) =>
+          recordsWithSchema(snapshot, "openagents.omega.issue31.fullauto.v1").length === 1,
+        "the detail with refused chains to arrive",
+      );
+      const projection = projectIssue31Workroom(
+        clientSnapshotFor(harness, device.snapshot()),
+        harness.now,
+      );
+      if (projection.fullAuto.state !== "ready") {
+        throw new Error(`expected ready, got ${projection.fullAuto.reason}`);
+      }
+      const classes = projection.fullAuto.runs.map((run) =>
+        run.evidence.state === "unavailable" ? run.evidence.reasonClass : "complete",
+      );
+      expect(classes).not.toContain("complete");
+      expect(new Set(classes).size).toBeGreaterThan(1);
+
+      const view = await renderWorkroom(projection);
+      // The refusal is legible, names which hop broke, and the run beside it is
+      // still rendered — a refused chain does not delete its own run.
+      expect(view).toContain("Evidence unavailable");
+      expect(view).toContain("first broken at host_verification");
+      expect(view).not.toContain("Evidence complete");
+      for (const reasonClass of new Set(classes)) {
+        expect(view).toContain(
+          {
+            hop_mismatched: "two records disagree about this run",
+            hop_private: "a step cannot be shown on this device",
+            self_reported: "the run reported its own success",
+          }[reasonClass as "hop_mismatched" | "hop_private" | "self_reported"],
+        );
+      }
     } finally {
       device.close();
     }

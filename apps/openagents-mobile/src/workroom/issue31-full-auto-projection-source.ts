@@ -23,13 +23,13 @@
  *   holding a detail for another host or another snapshot reads
  *   `snapshot_mismatch`. None of the three is allowed to wear another's copy.
  *
- * Wire note: `Issue31PrivateRecord` in `@openagentsinc/sarah/issue31-nostr`
- * does not yet admit the `host.v1` and `fullauto.v1` schemas, so the nostr
- * client drops them today. This reader is deliberately written against the
- * confirmed-event shape rather than that union — it reads whatever owner-private
- * record the client hands it and refuses everything it cannot bind — so the
- * projection lights up the moment the delivery record is admitted, without any
- * further change to the screen or the state.
+ * Wire note: `Issue31PrivateRecord` once admitted five schemas and neither
+ * `host.v1` nor `fullauto.v1` was one of them, so the client dropped both
+ * before any reader saw them. Both are admitted now, delivery-bound, and proven
+ * across a real relay by `issue31-full-auto-delivery.test.ts`. This reader is
+ * still deliberately written against the confirmed-event shape rather than that
+ * union — it reads whatever owner-private record the client hands it and
+ * refuses everything it cannot bind.
  */
 import {
   ISSUE31_PAIRING_SCHEMA,
@@ -173,6 +173,21 @@ export const activeIssue31GrantForDevice = (
 };
 
 /**
+ * Which `host.v1` snapshot this device is entitled to read, or why none.
+ *
+ * The four states are kept apart because they are four different facts and only
+ * one of them is "no Omega host here". `unpaired` is the absence of a grant;
+ * `absent` is a live grant whose host has published nothing; `unreadable` is a
+ * host that published something this device refuses to read; `bound` is the
+ * snapshot itself.
+ */
+export type Issue31HostAdjunctBinding =
+  | { readonly state: "bound"; readonly host: Issue31HostAdjunct }
+  | { readonly state: "unpaired" }
+  | { readonly state: "absent" }
+  | { readonly state: "unreadable" };
+
+/**
  * The `host.v1` snapshot this device may bind detail payloads to.
  *
  * Returns the host adjunct itself when one is readable and belongs to the
@@ -204,6 +219,29 @@ const hostBindingFor = (
 };
 
 /**
+ * The host snapshot this device is entitled to read, from a confirmed snapshot.
+ *
+ * This is the single binding both Workroom surfaces use: the capability rows
+ * (`projectIssue31WorkroomReadModel`'s `hostAdjunct`) and the Full Auto section
+ * below them. omega#97's host half found the mirror-image defect on the desktop
+ * — one reading of a daemon inlined in a view, so a second surface would have
+ * read a second reading of one machine. A row that said one thing about a host
+ * above a section that said another would be the same defect on the phone.
+ *
+ * Total by construction: an unreadable host record is a named state, never a
+ * throw into the render.
+ */
+export const issue31HostAdjunctForDevice = (
+  snapshot: Issue31FullAutoSourceSnapshot,
+  nowUnixSeconds: number,
+): Issue31HostAdjunctBinding => {
+  const grant = activeIssue31GrantForDevice(snapshot, nowUnixSeconds);
+  // No grant is the one case that really is "not paired to an Omega host yet".
+  if (grant === null) return { state: "unpaired" };
+  return hostBindingFor(snapshot, grant);
+};
+
+/**
  * Project the Full Auto section from a confirmed Nostr snapshot.
  *
  * Total by construction: every refusal path returns an explicit unavailable
@@ -213,11 +251,10 @@ export const issue31FullAutoProjectionFromSnapshot = (
   snapshot: Issue31FullAutoSourceSnapshot,
   nowUnixSeconds: number,
 ): Issue31FullAutoReadModel => {
-  const grant = activeIssue31GrantForDevice(snapshot, nowUnixSeconds);
-  // No grant is the one case that really is "not paired to an Omega host yet".
-  if (grant === null) return issue31FullAutoProjectionUnavailable("no_host_projection");
-
-  const binding = hostBindingFor(snapshot, grant);
+  const binding = issue31HostAdjunctForDevice(snapshot, nowUnixSeconds);
+  if (binding.state === "unpaired") {
+    return issue31FullAutoProjectionUnavailable("no_host_projection");
+  }
   if (binding.state === "unreadable") {
     return issue31FullAutoProjectionUnavailable("host_projection_unreadable");
   }

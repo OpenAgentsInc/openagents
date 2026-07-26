@@ -526,6 +526,121 @@ describe("Issue31WorkroomReadModel", () => {
     expect(model.coverage).toMatchObject({ pending: 1, refused: 1, terminal: 1 });
   });
 
+  test("reads a host that looked and found nothing as idle, not as broken", () => {
+    // omega#97, found by running the packaged omega-effectd against this
+    // device: a real host with an empty run registry emits `gap: complete` with
+    // no record refs, because there is no run to cite. `decodeIssue31SourceSnapshot`
+    // refused that with "needs an authority record" — so EVERY idle host was
+    // unreadable, and the phone told its owner the host was broken when the
+    // host was fine and merely idle.
+    //
+    // The row's authority is the `host.v1` snapshot itself, which is signed,
+    // delivery-bound, and carried on the row. A host that could not look
+    // publishes silence instead, and silence never reaches here.
+    const canonical = JSON.parse(
+      readFileSync(
+        new URL(
+          "../../../packages/sarah/fixtures/issue31-workroom/openagents.omega.issue31.host.v1.canonical.json",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    ) as Readonly<{ projections: ReadonlyArray<Record<string, unknown>> }>;
+    const idle = decodeIssue31HostAdjunct({
+      ...canonical,
+      projections: canonical.projections.map((projection) => ({
+        ...projection,
+        freshness: "current",
+        gap: "complete",
+        recordRefs: projection["capability"] === "connection_identity" ? projection["recordRefs"] : [],
+        commandState: { kind: "idle" },
+      })),
+    });
+    const model = projectIssue31WorkroomReadModel({
+      projectedAt: observedAt,
+      hostAdjunct: idle,
+    });
+    for (const row of model.rows.filter((entry) => entry.expectedAuthority === "omega_host_adjunct")) {
+      expect(row.source.status).toBe("ready");
+      expect(row.source.recordRefs).toEqual([]);
+      expect(row.source.reasonRef).toBeNull();
+      // Sourced, not unsourced: the snapshot that said "this is all of them".
+      expect(row.hostObservation?.snapshotRef).toBe(idle.snapshotRef);
+    }
+    // And a signed-Nostr row still may not claim `ready` with nothing to cite.
+    expect(() =>
+      decodeIssue31SourceSnapshot({
+        capabilityId: "memory",
+        authority: "signed_nostr_record",
+        sourceRef: "source.issue31.sarah.nostr_memory",
+        status: "ready",
+        freshness: "live",
+        observedAt,
+        recordRefs: [],
+        reasonRef: null,
+        role: "owner",
+        roleStatus: "active",
+        actionState: { kind: "idle" },
+      }),
+    ).toThrow("needs an authority record");
+  });
+
+  test("refuses a host reading it can only partly build, rather than shortening it", () => {
+    // A host snapshot the contract admits and this read model cannot build a
+    // row from. The two are separate validators with separate reference
+    // grammars — `@openagentsinc/sarah` admits `^[A-Za-z0-9._:-]+$`, and the
+    // row schema here demands a lowercase dotted ref — so `RECORD-1` is a
+    // record reference a conforming host may publish and this device may not
+    // render. That divergence is a live seam between two codebases, not a
+    // hypothetical.
+    //
+    // Half a host reading rendered beside a reason is a reading the owner could
+    // mistake for the whole one, so none of it is kept — including
+    // `hostObservation`, which would otherwise leave the row quoting a snapshot
+    // whose contents were refused.
+    //
+    // And it may not throw: a throw here takes the owner-private transcript,
+    // memory, read state and both community rooms down with it, because one
+    // machine sent one bad record.
+    const canonical = JSON.parse(
+      readFileSync(
+        new URL(
+          "../../../packages/sarah/fixtures/issue31-workroom/openagents.omega.issue31.host.v1.canonical.json",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+    ) as Readonly<{ projections: ReadonlyArray<Record<string, unknown>> }>;
+    const contradictory = decodeIssue31HostAdjunct({
+      ...canonical,
+      projections: canonical.projections.map((projection) =>
+        projection["capability"] === "evidence_chain"
+          ? { ...projection, recordRefs: ["RECORD-1"] }
+          : projection,
+      ),
+    });
+    const model = projectIssue31WorkroomReadModel({
+      projectedAt: observedAt,
+      sources: readySources().filter(
+        (source) => source.authority === "signed_nostr_record",
+      ),
+      hostAdjunct: contradictory,
+    });
+    expect(model.rows).toHaveLength(ISSUE31_CAPABILITY_DESCRIPTORS.length);
+    for (const row of model.rows) {
+      if (row.expectedAuthority === "omega_host_adjunct") {
+        expect(row.source.status).toBe("unavailable");
+        expect(row.source.reasonRef).toBe(
+          `reason.issue31.host_projection_unreadable:${row.id}`,
+        );
+        expect(row.hostObservation).toBeNull();
+        continue;
+      }
+      // Bounded: every signed-Nostr row is still exactly what it was.
+      expect(row.source.status).toBe("ready");
+    }
+  });
+
   test("opens the Workroom route, exposes all missing sources, and switches isolated rooms", async () => {
     const program = buildHomeProgram();
     expect(program.initialState.syncPhase).toBe("unconfigured");

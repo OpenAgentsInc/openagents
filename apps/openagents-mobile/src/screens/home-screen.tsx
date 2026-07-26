@@ -78,14 +78,9 @@ import {
   projectIssue31CommunityReadModel,
 } from "../workroom/issue31-community-read-model"
 import { issue31SourceSnapshotsFromNostr } from "../workroom/issue31-nostr-read-model"
-import {
-  issue31FullAutoProjectionFromSnapshot,
-  issue31FullAutoProjectionUnavailable,
-} from "../workroom/issue31-full-auto-projection-source"
-import { projectIssue31OwnerPrivateReadModel } from "../workroom/issue31-owner-private-read-model"
+import { projectIssue31Workroom } from "../workroom/issue31-workroom-projection"
 import {
   emptyIssue31WorkroomReadModel,
-  projectIssue31WorkroomReadModel,
   unavailableIssue31NostrWorkroomReadModel,
 } from "../workroom/issue31-workroom-read-model"
 
@@ -380,40 +375,13 @@ export const HomeScreen = ({
           emptyIssue31CommunityReadModel("reason.issue31.community.projection_failed"),
         )
       }
-      try {
-        // The owner-private projection runs first because the capability rows
-        // state what this device *read*, not what it saw addressed to someone
-        // else. Computing the rows from wire presence alone is how omega#49
-        // came to show `device_projection_missing:memory` above a room that was
-        // rendering the projected engram (openagents `ba28b6fa24` lineage).
-        const ownerPrivate = projectIssue31OwnerPrivateReadModel(snapshot, {
-          nowUnixSeconds,
-          transcriptLimit: 200,
-        })
-        program.workroom.setReadModel(projectIssue31WorkroomReadModel({
-          projectedAt: new Date(nowUnixSeconds * 1_000).toISOString(),
-          sources: issue31SourceSnapshotsFromNostr(snapshot, nowUnixSeconds, ownerPrivate.projected),
-          ownerPrivate,
-        }))
-      } catch {
-        program.workroom.setReadModel(unavailableIssue31NostrWorkroomReadModel(
-          new Date(nowUnixSeconds * 1_000).toISOString(),
-          "reason.issue31.nostr_projection_failed",
-        ))
-      }
-      // Full Auto is bound to the host the device's signed grant names, and to
-      // that host's own snapshot reference — never to the detail payload's own
-      // claims. Its absence, unreadability, and mismatch stay three distinct
-      // states rather than collapsing into "not paired" (omega#49).
-      try {
-        program.workroom.setFullAutoReadModel(
-          issue31FullAutoProjectionFromSnapshot(snapshot, nowUnixSeconds),
-        )
-      } catch {
-        program.workroom.setFullAutoReadModel(
-          issue31FullAutoProjectionUnavailable("host_projection_unreadable"),
-        )
-      }
+      // The capability rows and the Full Auto section below them, from one
+      // reading of one host (omega#97). The composition lives in
+      // `projectIssue31Workroom` so the proofs drive the same function this
+      // screen does, rather than a test's re-implementation of it.
+      const projection = projectIssue31Workroom(snapshot, nowUnixSeconds)
+      program.workroom.setReadModel(projection.workroom)
+      program.workroom.setFullAutoReadModel(projection.fullAuto)
     }
     program.workroom.setReadModel(emptyIssue31WorkroomReadModel(new Date().toISOString()))
     void openIssue31MobileNostrRuntime({
