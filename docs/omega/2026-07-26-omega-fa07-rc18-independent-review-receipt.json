@@ -1,0 +1,228 @@
+{
+  "canCloseIssue26": false,
+  "candidate": "0.2.0-rc18",
+  "candidateBinding": {
+    "dmgSha256": "83e79f68ede7cafa8262082f6c746bb5915e2fa086cde64336189db648ee0a37",
+    "engineBundleByteIdenticalAcross": [
+      "rc15",
+      "rc16",
+      "rc17",
+      "rc18"
+    ],
+    "engineBundleSha256": "6922c83e05c89bc7a6ef44cc0f752a895a70b0cb1964d9c20613c538facd089c",
+    "engineIdentityNote": "Reviewer extends the producer's rc15/rc17/rc18 claim to rc16 as well; all four mount to the same engine bundle digest.",
+    "fromDmg": {
+      "cdHash": "bb404eb3d71759e48762f68574a9ba2f0363da8e",
+      "cfBundleVersion": "20260726.091602",
+      "cliBinarySha256": "f240095133d092dc0465b45df4dd63a85811bccacaecce610d5ff7453e9eac53",
+      "hostBinarySha256": "4b2a5e9a845233edda18664cb72a1c236db76772a123ddd730b9a50b05ce50e9"
+    },
+    "fromInstalledApp": {
+      "cdHash": "bb404eb3d71759e48762f68574a9ba2f0363da8e",
+      "cfBundleVersion": "20260726.091602",
+      "hostBinarySha256": "4b2a5e9a845233edda18664cb72a1c236db76772a123ddd730b9a50b05ce50e9"
+    },
+    "note": "The rc15 review found /Applications/Omega.app was rc16 at review time. That check was repeated, not assumed.",
+    "verdict": "No substitution. The installed application IS the rc18 candidate, on all three independent identifiers."
+  },
+  "candidateDigest": "sha256:83e79f68ede7cafa8262082f6c746bb5915e2fa086cde64336189db648ee0a37",
+  "closureBasis": "Gate 10 can be recorded GREEN on this receipt, bound for the first time to the rc18 candidate, and gate 5 -- the one substantive question -- is GREEN on the shipped bytes and independently reproduced. omega#26 still cannot close: gate 2 is NOT established on this candidate. Its only evidence is host-level and bound to the rc15 host binary, the host binary changed, and the change touches the Full Auto host surfaces gate 2 exercises; the producer's own carry rule forbids inheriting it. Separately, gate 2's own record says no person watched the run, so the 'owner-real' half is unmet regardless of candidate. Closure is the coordinator's act, and this reviewer does not close the obligation it has just admitted.",
+  "declinedRenderObservationAssessment": {
+    "producerReason": "rc18 was live with the owner's Codex session attached; every route to a real handoff would have written into the owner's transcript or restarted their session.",
+    "recommendation": "Add an omega_system_note scene to the existing visual_test_runner harness. That closes the residual headlessly, on any future candidate, with no owner involvement and no live session at risk.",
+    "residual": "Exactly one property remains unobserved: that GPUI actually paints the note on screen. Everything upstream of the paint is proven -- the engine emits the note addressed to the target thread, the host no longer refuses it, the renderer and its element id are compiled into the shipped binary, and the renderer is guarded against being hidden behind an expander, tooltip or hover.",
+    "reviewerCorroboration": [
+      "The reviewer independently confirmed Omega is running against the owner's session (host pid 50537, engine pid 50658) and did not disturb it.",
+      "The reviewer checked whether a SAFE headless route existed and found none: crates/zed/src/visual_test_runner.rs at rc18 registers nine visual scenes (front door, executor disclosure, route pin) and none covers a system note. git grep for system_note/SystemNote in visual_test_runner.rs returns nothing. So the render observation could not have been taken headlessly at rc18 without writing a new scene -- it was not an easy safe check that was skipped."
+    ],
+    "verdict": "ACCEPTABLE, and correctly recorded as not-done rather than glossed.",
+    "whatWasDeclined": "Photographing the system note rendering inside the running Omega."
+  },
+  "disagreements": [],
+  "evidenceSha256": "sha256:75129234894ad6868f1d0a41bf0fcfdc475682a7d5b587c9a9b124bb50acdeef",
+  "gate5Assessment": {
+    "driverCannotProveIt": {
+      "producerClaim": "No driver run can go red or green on the host half, because the driver's host stand-in answers append_system_note itself.",
+      "reviewerVerdict": "CONFIRMED, and it matters. packages/omega-effectd/scripts/fa07-installed-gates.ts line 379: case \"append_system_note\": policy.systemNotes.push(...); return reply(request, {appended: true}). It answers in TypeScript and never reaches crates/agent_ui/src/omega_host_bridge.rs. A driver run against rc15, whose host refused unconditionally, would still have reported systemNoteEmitted: true. A driver-only green for gate 5 would therefore be FALSE EVIDENCE, and the producer was right to refuse to claim it from one and to prove it from the shipped bytes instead."
+    },
+    "question": "Is the host half of the cross-provider handoff green on the shipped rc18 bytes?",
+    "refusalDifferential": {
+      "bothMethodsAgree": true,
+      "interpretation": "Reproduces the producer's 1/1/1/0 exactly. The differential is a real control: the same needle is found in all three prior candidates and in neither reading of rc18.",
+      "method": "strings -a <candidate>/Omega.app/Contents/MacOS/omega | grep -c -F, each binary extracted from its own DMG mounted read-only; cross-checked with a raw grep -a on the binary so the result does not depend on strings(1).",
+      "needle": "Agent threads do not expose an owner-visible system-note authority",
+      "rc15": 1,
+      "rc16": 1,
+      "rc17": 1,
+      "rc18": 0
+    },
+    "rendererPresent": {
+      "needle": "system-note",
+      "rc17_insideRefusalSentence": 1,
+      "rc17_standalone": 0,
+      "rc17_totalOccurrences": 1,
+      "rc18_insideRefusalSentence": 0,
+      "rc18_neighboursInElementIdBlob": [
+        "send-message",
+        "stop-generation",
+        "loading-message-content",
+        "circular_progress_tokens"
+      ],
+      "rc18_standalone": 1,
+      "rc18_totalOccurrences": 1,
+      "verdict": "CONFIRMED, and this is the load-bearing half. In rc17 the sole occurrence of the literal is inside the refusal sentence. In rc18 the refusal is gone and the literal stands alone inside the GPUI element-id string blob, adjacent to loading-message-content. That is the renderer compiled in, not the refusal merely deleted."
+    },
+    "sourceDifferential": {
+      "cuts": {
+        "rc15": "ecbde21e43",
+        "rc16": "79a63f1f15",
+        "rc17": "8d2ad851fb",
+        "rc18": "96306681f0"
+      },
+      "fixAncestry": "a6f8285bdb is an ancestor of the rc18 cut and of NO earlier cut. Verified with git merge-base --is-ancestor against all four.",
+      "method": "git grep at the four cut commits, which the reviewer identified itself rather than taking from the claim.",
+      "rc15_rc16_rc17": "crates/agent_ui/src/omega_host_bridge.rs carries the refusal; no render_system_note; no element id.",
+      "rc18": "the refusal is gone from omega_host_bridge.rs; crates/agent_ui/src/conversation_view/thread_view.rs:3955 defines render_system_note and line 3957 draws .id((\"system-note\", entry_ix))."
+    },
+    "sourceGuardsRunByReviewer": {
+      "acp_thread": "122 passed, 0 failed -- includes test_system_note_is_appended_once_per_note_id, confirmed present in the run output by name.",
+      "boundToCandidate": "All six gate-5-relevant source files are byte-identical between the rc18 cut and origin/main, verified per file, so tests run on the worktree bind to the candidate's source.",
+      "omega_deltas": "103 passed, 0 failed -- includes the_thread_surface_draws_a_host_authored_note_unconditionally, which asserts render_system_note exists, is dispatched from the entry match, draws Label::new(note.text.clone()), and is NOT behind is_expanded/expansion/toggle/tooltip/hover."
+    },
+    "survivingLiteralExplained": {
+      "observation": "The refusal sentence still exists in the rc18 SOURCE tree, at crates/omega_deltas/src/omega_deltas.rs:219. The producer did not mention this; a reader could mistake it for the fix being incomplete.",
+      "resolution": "omega_deltas is a checker crate that NOTHING depends on (no Cargo.toml in the tree lists it), so it is not linked into the shipped host binary -- which is exactly what the 0/669k byte scan independently shows. The surviving literal is the regression guard naming the exact bytes to stay absent. This is correct design, not a leak."
+    },
+    "verdict": "GREEN. Independently reproduced in both directions, from bytes and from source, and the producer's reasoning is sound."
+  },
+  "gates1And2InheritanceAssessment": {
+    "gate1": {
+      "basis": "Gate 1's property (incident replay -> typed stall or continued autonomy, never silent death) lives in the engine run loop; its evidence is the engine's own packages/omega-effectd/src/protocol/server.fa07-incident-replay.test.ts. The engine bundle is byte-identical across all four candidates, verified by the reviewer from four separately mounted images. Carrying it is legitimate.",
+      "verdict": "INHERITANCE SOUND."
+    },
+    "gate2": {
+      "andTheDeltaIsNotIncidental": "The rc15->rc18 host delta touches precisely the Full Auto host surfaces gate 2 exercises: crates/full_auto_ui/src/issue31_delivery.rs +829, crates/agent_ui/src/omega_router.rs +489, crates/agent_ui/src/agent_panel.rs +277, crates/acp_thread/src/acp_thread.rs +159, crates/agent_ui/src/omega_host_bridge.rs +163. 82 files, +13808/-460 across crates/.",
+      "conclusion": "By the producer's own correctly-stated rule, engine byte-identity does not carry gate 2. Gate 2 is NOT established on this candidate.",
+      "secondDefect": "The same file records ownerObservation: false with the reason 'no person watched this run'. So gate 2 is not an owner observation on rc15 either, whatever candidate it is carried to. Issue 26 scope item 2 asks for an 'Owner-real multi-turn unattended run'.",
+      "verdict": "INHERITANCE NOT SOUND. This is the reviewer's principal disagreement.",
+      "why": "Gate 2 is a HOST-level observation, by the producer's own evidence file. docs/omega/2026-07-25-omega-fa07-rc15-gate2-unattended.json records appPath /Applications/Omega.app, engineOverridden false, providersExercised true, and hostBinaryDigest cca81f5dff127f790e289aa8a400e72765dcefac8704a74fd852c757871b2858 -- which the reviewer independently confirmed is the rc15 host binary by mounting the rc15 DMG. It also counts framedCallsDuringSilentWindow, i.e. traffic across the real host bridge. The host binary changed to 4b2a5e9a845233ed... in rc18."
+    },
+    "gates3To9": {
+      "basis": "The rc18 driver receipt records hostBinaryDigest 4b2a5e9a845233ed... and bundleVersion 20260726.091602, and carries runSurvivedRestart true, stateAfterRestart paused, reportSurvivedRestart true, controlMatrixComplete true, capReachedObserved true, everyOutcomeTyped true, redactionLeaks []. Gate 8's source checks (no_model_callable_crate_can_dispatch_full_auto, only_a_click_listener_starts_a_full_auto_run) were re-run by the reviewer and pass.",
+      "caveat": "Because the driver uses a TypeScript host stand-in, these re-observations are engine-level in character; re-running them on rc18 confirms nothing the byte-identical engine did not already imply. That is not an error, but it is not additional host-level assurance either.",
+      "verdict": "Genuinely re-observed on rc18, not inherited."
+    },
+    "producerRule": "Byte-identical engine is a real basis for carrying an engine-level observation and is NOT a basis for carrying a host-level one.",
+    "reviewerOnTheRule": "The rule is correct, and correctly stated. It is applied correctly to gate 1 and incorrectly to gate 2."
+  },
+  "independence": {
+    "everyValueBelowRecomputed": "No digest, count or verdict below was copied from a producer document. Each was recomputed from the artifact or the source tree, then compared.",
+    "producedNoneOfThisEvidence": true,
+    "ranFromIsolatedWorktree": "omega origin/main a2cf201000, worktree scratchpad/rev18; signing-package fallback resolved, so an isolated tree can now sign.",
+    "reviewerKeyNotInProducerPubkeys": true
+  },
+  "issue16Assessment": {
+    "correctionToACarryInference": "The cli binary is NOT byte-reproducible across the two cuts even though crates/cli is untouched: rc17 cli is 811c788add030aa5..., rc18 cli is f240095133d092dc.... Any argument that carries a cli result from rc17 to rc18 on 'the crate did not change' is unsound. The rc18 value is recorded here so a future lane need not re-derive it.",
+    "engineArgumentDoesNotHelpHere": "The rc17 record contains essentially no engine-level observations -- it is a host-binary and package record end to end. So the byte-identical-engine carry buys #16 nothing.",
+    "openItemsAreHonestlyStated": {
+      "terminalChord": "HONEST IN SUBSTANCE, BUT MISFILED. The finding itself is exemplary: it names the binding at assets/keymaps/default-macos.json:711, states that synthesized keystrokes do not reach the action, and supplies the two controls that make the negative meaningful (other chords work in the same session; no enabled macOS symbolic hotkey claims keycode 50). It concludes 'Whether a person pressing the physical key succeeds is not settled by this lane, and it needs one owner keypress.' However it does NOT appear in the record's own 'What still blocks a close' list, which names only three gaps, and the Scope table marks the terminal row 'covered' with no caveat. A reader of the summary tables alone would not learn that chord delivery is unresolved. It is properly surfaced to the owner in NEEDS_OWNER.md item 3. Recommendation: add it to the record's gap list so the two summary tables stop over-reporting.",
+      "tripwireCanary": "STATED HONESTLY AND PROMINENTLY. Disclosed three times, and the section leads with its own inadequacy: 'It does not carry the load omega#8 asks for'. The substantive admission is explicit -- 'My canary travelled the editor-content path, not the custody path, because the custody path is owner-gated and I would not touch the owner's key. So this receipt answers a weaker question than the one omega#8 asks.' The refusal to touch owner identity material was correct and the reviewer endorses it."
+    },
+    "question": "Does this receipt satisfy omega#16 acceptance criterion 10, 'An independent reviewer accepts the evidence'?",
+    "verdict": "NO -- not for rc18. Scoped acceptance only, and the scope does not reach this candidate.",
+    "whatDoesNotCarryToRc18": [
+      "The clean-profile editor journey (open, edit, save, Git status, terminal, restart restoration).",
+      "The performed uninstall and its decoy-Zed isolation result.",
+      "The 60-second network capture and the lsof file-descriptor result -- rc18 adds a new Exo lane and connection code that could open destinations rc17 never had.",
+      "Offline first start and the identity-first onboarding ordering.",
+      "The Zed data/credential isolation path-set comparison."
+    ],
+    "whatTheReviewerDidRecomputeOnRc18": {
+      "/Applications/Zed.app": 0,
+      "You are the Zed coding agent": 0,
+      "Zed Editor": 0,
+      "Zed has been uninstalled": 0,
+      "Zed in signed Info.plist": 0,
+      "controlsNote": "The controls are live, so the zeros are results and not a broken scan. Omega moved 388 -> 389 from rc17, consistent with new code.",
+      "in Zed": 0,
+      "note": "Rather than leave rc18 simply unreviewed for #16, the reviewer re-ran #16's brand classes against the rc18 candidate binaries from the read-only mount.",
+      "positiveControls": {
+        "Omega (cli)": 19,
+        "Omega (omega)": 389,
+        "Omega Agent": 11
+      },
+      "verdict": "#16's binary brand criteria HOLD on rc18. This narrows the gap but does not close criterion 10.",
+      "zed --help / --version / --foreground": 0
+    },
+    "why": "The producer record for #16 is docs/omega/2026-07-26-omega-rc17-installed-observation-proof.md. It covers rc17 and binds itself explicitly: 'Every statement below applies to that package digest' -- package cddf1891..., host binary 99c3e41ef16f8fe6.... rc18 is a different host binary (4b2a5e9a...) carrying roughly 2000 lines of new code in the string-generating crates. No rc18 installed-observation proof exists; the series stops at rc17. Nothing on #16 mentions rc18."
+  },
+  "obligationRef": "omega#26 (OMEGA-FA-07) gate 10; and omega#16 acceptance criterion 10",
+  "outcome": "accepted",
+  "outcomeScope": "SCOPED. ACCEPTS: (a) omega#26 gate 10 against the rc18 candidate -- artifact digest, notarization, stapled ticket and forbidden-strings, each recomputed from the disk image and re-verified by hand, with the installed application confirmed to be the candidate on CFBundleVersion, host binary digest and CDHash; (b) omega#26 gate 5, host half and engine half, on the shipped rc18 bytes, reproduced in both directions plus source plus re-run guards; (c) the inheritance of gate 1 as engine-level. DOES NOT ACCEPT: gate 2, whose inheritance from rc15 is unsound because the observation is host-level and the host binary changed. DOES NOT ASSERT: that the FA-07 matrix is complete, that Omega is release-ready, or that the note has been seen to paint on screen. NOT AUTHORITY TO CLOSE omega#26. DOES NOT SATISFY omega#16's independent-review line for rc18: the #16 producer record binds to rc17 and no rc18 installed-observation proof exists; #16's binary brand classes were nonetheless recomputed on rc18 by this reviewer and hold.",
+  "producerPubkeys": [
+    "producer.omega.fa07.lane.claude-26-rc18.2026-07-26"
+  ],
+  "profile": "reviewer-extended.v1",
+  "recommendations": [
+    "Re-drive gate 2 against the rc18 host binary, or have the owner perform it, before #26 closes. It is the only gate this receipt leaves unestablished.",
+    "Add an omega_system_note scene to crates/zed/src/visual_test_runner.rs so the in-product render can be observed headlessly on future candidates without the owner's session.",
+    "Produce an rc18 installed-observation proof for #16, or scope #16's acceptance explicitly to rc17. The brand classes already reproduce on rc18; the journey, uninstall, network and lsof results do not carry.",
+    "Move the terminal-chord delivery item into the #16 record's 'What still blocks a close' list and caveat the two summary tables, which currently mark the terminal row covered.",
+    "Correct the standing producer note that the reviewer tool defect is unfixed; it was fixed in 40e567f187 and the workaround it advises is no longer needed."
+  ],
+  "reproductions": [
+    {
+      "agreesWithProducer": true,
+      "check": "artifact_digest",
+      "command": "shasum -a 256 Omega-v0.2.0-rc18-macos-arm64.dmg",
+      "observedDigest": "sha256:50027bbac92084396a858a6f1e04f9bf7f1e6eb6e794f3eb71ef9e357a72f4ed"
+    },
+    {
+      "agreesWithProducer": true,
+      "check": "notarization",
+      "command": "spctl -a -vvv -t exec <candidate>/Omega.app",
+      "observedDigest": "sha256:aac2c3492f3c8005c2b0a02aa19d10186a816045449571c293497a9a44bbfb94"
+    },
+    {
+      "agreesWithProducer": true,
+      "check": "stapled_ticket",
+      "command": "xcrun stapler validate Omega-v0.2.0-rc18-macos-arm64.dmg",
+      "observedDigest": "sha256:727f68621cd584a5e42bc60a80f12d1f51c2aecd469da90e32a3f0bae8ebf7f5"
+    },
+    {
+      "agreesWithProducer": true,
+      "check": "forbidden_strings",
+      "command": "strings <candidate>/Omega.app/Contents/MacOS/omega | grep -F <forbidden>",
+      "observedDigest": "sha256:140bedbf9c3f6d56a9846d2ba7088798683f4da0c248231336e6a05679e4fdfe"
+    }
+  ],
+  "reviewedAt": "2026-07-26T09:59:45Z",
+  "reviewerPubkey": "0326d8f9eb5abea63d9613ac90451dfce62ca2e9855144b5a71d8e8569932974",
+  "reviewerSignature": "5ee4a374be132c26a8b8aabd804353649575c420c6064deaffd310f0151d7b5cb3d55e93dd7447b65a30dcf7e107fb7430e5331954a16d6ed695c0f3c9b84d6b",
+  "safety": {
+    "allDmgsDetached": true,
+    "allDmgsMountedReadOnly": true,
+    "codexAuthJsonSha256After": "d9d38c2cad564f472f8d481b3056fbfd0d2372849aae888683eaa9a5aa9e1ab5",
+    "codexAuthJsonSha256Before": "d9d38c2cad564f472f8d481b3056fbfd0d2372849aae888683eaa9a5aa9e1ab5",
+    "codexConfigTomlSha256After": "b0bc2e00bdba80188b9678cb56743f9ab0b715e0ba749d81f176e56ed404b3a1",
+    "codexConfigTomlSha256Before": "b0bc2e00bdba80188b9678cb56743f9ab0b715e0ba749d81f176e56ed404b3a1",
+    "codexHomeUnchanged": true,
+    "codexLoginRun": false,
+    "omegaUninstallRun": false,
+    "ownerCheckoutsModified": false,
+    "ownerTranscriptWrittenTo": false,
+    "runningOmegaPidUnchanged": "50537 before and after",
+    "runningOmegaRestarted": false,
+    "workedFromIsolatedWorktree": true,
+    "zedStillInstalled": true
+  },
+  "satisfiesIssue16IndependentReviewLine": false,
+  "schema": "openagents.assurance.independent-review.v1",
+  "toolReceiptEvidenceSha256": "sha256:4189ae7a2b7383cd13fea3efff06d6c345c3b8c4f02edac2648fb1d450ddae85",
+  "toolStatus": {
+    "producerIdentityGap": "Acknowledged and correctly disclosed by the producer: producerPubkeys holds a descriptive string, not a key, because no producer keypair is registered in AUTHORITY.md. The independence check therefore only proves the reviewer key is not self-named. Independence here rests on the reviewer key being held apart, which is structural, plus the reviewer having produced none of this evidence.",
+    "producerWarning": "The rc18 producer claim and the issue comment both warn that script/review-omega-candidate's defect is unfixed -- that only 2 of 4 checks bind to the DMG and the other two read --app.",
+    "residualToolLimitation": "FORBIDDEN_STRINGS in the harness is six needles. That is not the eight-class brand scan #16 requires, and the harness's clean result must not be read as satisfying #16's brand criteria. The reviewer ran #16's classes separately, above.",
+    "reviewerFinding": "THAT WARNING IS STALE. It was fixed in omega 40e567f187 ('Bind every reviewer check to the candidate, not to whatever is installed'), committed 2026-07-26 00:46:31 -0500, which is an ancestor of the rc18 cut 96306681f0 and predates the producer's own comment. The --app argument no longer exists; all four checks now bind to the application inside the candidate disk image, mounted read-only. The signing-package lookup also gained fallbacks, and this review was in fact signed from an isolated worktree. No workaround was needed and none was used."
+  }
+}
