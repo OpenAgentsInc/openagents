@@ -236,6 +236,11 @@ export const enforceForgePublicWebRead = (
   if (result._tag === "failed") return result;
   const { projection } = result;
 
+  if (projection.access.mode === "public_web_read") {
+    return ForgeRepositoryReadResult.cases.loaded.make({
+      projection: publicProjection(projection),
+    });
+  }
   if (hadAuthorizationCookie) return result;
   if (!projection.repository.publicWebRead) {
     return ForgeRepositoryReadResult.cases.failed.make({

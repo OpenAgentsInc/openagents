@@ -54,6 +54,31 @@ describe("Forge repository read boundary", () => {
     expect(JSON.stringify(result)).not.toContain("Private member");
   });
 
+  test("removes member fields from public-mode reads when unrelated cookies exist", () => {
+    const projection = forgeProjection();
+    const result = enforceForgePublicWebRead(
+      ForgeRepositoryReadResult.cases.loaded.make({
+        projection: {
+          ...projection,
+          access: {
+            mode: "public_web_read",
+            canWrite: true,
+          },
+        },
+      }),
+      true,
+    );
+
+    expect(result._tag).toBe("loaded");
+    if (result._tag === "failed") throw new Error("Expected loaded result");
+    expect(result.projection.access).toEqual({
+      mode: "public_web_read",
+      canWrite: false,
+    });
+    expect(result.projection.repository.maintainers).toEqual([]);
+    expect(JSON.stringify(result)).not.toContain("Private member");
+  });
+
   test("fails closed when an anonymous repository does not enable public web read", () => {
     const result = enforceForgePublicWebRead(
       ForgeRepositoryReadResult.cases.loaded.make({
