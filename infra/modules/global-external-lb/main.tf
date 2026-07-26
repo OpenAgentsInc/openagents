@@ -159,6 +159,16 @@ resource "google_compute_url_map" "this" {
       paths   = ["/git", "/git/*"]
       service = google_compute_backend_service.forge_git.id
     }
+
+    # The monolith invokes only the bearer-gated canonical mirror source,
+    # observation, and projection endpoints through this backend. Keep this
+    # route narrower than the Forge service's general internal surface: every
+    # request is still rejected by the service without its separate policy
+    # authority bearer.
+    path_rule {
+      paths   = ["/internal/v1/github-mirror", "/internal/v1/github-mirror/*"]
+      service = google_compute_backend_service.forge_git.id
+    }
   }
 
   path_matcher {
