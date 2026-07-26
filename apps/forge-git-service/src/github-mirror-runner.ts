@@ -11,6 +11,7 @@ import { type ForgeGitRepositoryShape, ForgeGitRepository } from "./repository.j
 export type ForgeGitHubMirrorDestination = Readonly<{
   authorizationHeader?: Redacted.Redacted<string> | undefined;
   destinationUrl: string;
+  sshKeyPath?: string | undefined;
 }>;
 
 export type ForgeGitHubMirrorDestinationResolver = (
@@ -42,6 +43,28 @@ export const makeGitHubHttpsMirrorDestinationResolver = (input: {
         `Authorization: Bearer ${Redacted.value(input.githubToken)}`,
       ),
       destinationUrl: `https://github.com/${repository}.git`,
+    };
+  });
+
+export const makeGitHubSshMirrorDestinationResolver = (input: {
+  readonly allowedRepositories: ReadonlySet<string>;
+  readonly sshKeyPath: string;
+}): ForgeGitHubMirrorDestinationResolver =>
+  Effect.fn("ForgeGitHubMirrorDestination.resolveSsh")(function* (request) {
+    const repository = request.destinationGithubRepository;
+    if (
+      !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(repository) ||
+      !input.allowedRepositories.has(repository)
+    ) {
+      return yield* new ForgeGitHubMirrorRunnerError({
+        operation: "ForgeGitHubMirrorDestination.resolveSsh",
+        reason: "forge_github_mirror_destination_not_allowed",
+        retryable: false,
+      });
+    }
+    return {
+      destinationUrl: `git@github.com:${repository}.git`,
+      sshKeyPath: input.sshKeyPath,
     };
   });
 
@@ -128,6 +151,7 @@ export const makeForgeGitHubMirrorRunner = (
         ...(destination.authorizationHeader === undefined
           ? {}
           : { authorizationHeader: destination.authorizationHeader }),
+        ...(destination.sshKeyPath === undefined ? {} : { sshKeyPath: destination.sshKeyPath }),
         destinationRef: intent.destination_github_ref,
         destinationUrl: destination.destinationUrl,
         expectedSourceObjectId: intent.source_object_id,

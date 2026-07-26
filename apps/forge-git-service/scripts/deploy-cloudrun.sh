@@ -13,6 +13,11 @@ SERVICE="${FORGE_GIT_SERVICE:-forge-git}"
 DATABASE_SECRET="${FORGE_GIT_DATABASE_SECRET:-openagents-monolith-database-url-prod}"
 DATABASE_PASSWORD_SECRET="${FORGE_GIT_DATABASE_PASSWORD_SECRET:-openagents-monolith-pgpassword}"
 POLICY_AUTHORITY_SECRET="${FORGE_GIT_POLICY_AUTHORITY_SECRET:-openagents-forge-git-policy-authority-token}"
+# The deployed monolith already uses this separately scoped internal bearer for
+# Forge service calls. The route accepts it only on the private mirror paths.
+INTERNAL_SERVICE_AUTH_SECRET="${FORGE_GIT_INTERNAL_SERVICE_AUTH_SECRET:-openagents-forge-git-policy-authority-token}"
+GITHUB_MIRROR_SSH_SECRET="${FORGE_GIT_GITHUB_MIRROR_SSH_SECRET:-openagents-forge-github-mirror-deploy-key}"
+GITHUB_MIRROR_REPOSITORIES="${FORGE_GIT_GITHUB_MIRROR_ALLOWED_REPOSITORIES:-OpenAgentsInc/omega}"
 POLICY_AUTHORITY_URL="${FORGE_GIT_POLICY_AUTHORITY_URL:-https://openagents.com/internal/forge/git-authorize}"
 DATABASE_INSTANCE="${FORGE_GIT_DATABASE_INSTANCE:-openagentsgemini:us-central1:khala-sync-pg}"
 ARTIFACTS_BUCKET="${FORGE_GIT_ARTIFACTS_BUCKET:-openagentsgemini-oa-artifacts}"
@@ -67,9 +72,11 @@ gcloud run deploy "$SERVICE" \
   --network-tags forge-git \
   --add-cloudsql-instances "$DATABASE_INSTANCE" \
   --add-volume "name=forge-repositories,type=nfs,location=${NFS_IP}:${NFS_EXPORT}" \
+  --add-volume "name=forge-github-mirror,type=secret,secret=${GITHUB_MIRROR_SSH_SECRET}" \
   --add-volume-mount "volume=forge-repositories,mount-path=/var/lib/forge/repositories" \
-  --set-env-vars "FORGE_GIT_REPOSITORY_ROOT=/var/lib/forge/repositories,FORGE_GIT_GCS_MIRROR_ENABLED=true,FORGE_GIT_POLICY_AUTHORITY_URL=${POLICY_AUTHORITY_URL},OA_INFRA_GCS_BUCKET=${ARTIFACTS_BUCKET},OA_INFRA_GCS_PREFIX=${ARTIFACTS_PREFIX},PGHOST=/cloudsql/${DATABASE_INSTANCE},PGUSER=khala_app" \
-  --set-secrets "FORGE_GIT_DATABASE_URL=${DATABASE_SECRET}:latest,FORGE_GIT_POLICY_AUTHORITY_TOKEN=${POLICY_AUTHORITY_SECRET}:latest,PGPASSWORD=${DATABASE_PASSWORD_SECRET}:latest"
+  --add-volume-mount "volume=forge-github-mirror,mount-path=/var/run/secrets/forge-github-mirror" \
+  --set-env-vars "FORGE_GIT_REPOSITORY_ROOT=/var/lib/forge/repositories,FORGE_GIT_GCS_MIRROR_ENABLED=true,FORGE_GIT_POLICY_AUTHORITY_URL=${POLICY_AUTHORITY_URL},FORGE_GIT_GITHUB_MIRROR_ALLOWED_REPOSITORIES=${GITHUB_MIRROR_REPOSITORIES},FORGE_GIT_GITHUB_MIRROR_SSH_KEY_PATH=/var/run/secrets/forge-github-mirror/latest,OA_INFRA_GCS_BUCKET=${ARTIFACTS_BUCKET},OA_INFRA_GCS_PREFIX=${ARTIFACTS_PREFIX},PGHOST=/cloudsql/${DATABASE_INSTANCE},PGUSER=khala_app" \
+  --set-secrets "FORGE_GIT_DATABASE_URL=${DATABASE_SECRET}:latest,FORGE_GIT_POLICY_AUTHORITY_TOKEN=${POLICY_AUTHORITY_SECRET}:latest,FORGE_GIT_INTERNAL_SERVICE_AUTH_TOKEN=${INTERNAL_SERVICE_AUTH_SECRET}:latest,PGPASSWORD=${DATABASE_PASSWORD_SECRET}:latest"
 
 SERVICE_URL="$(
   gcloud run services describe "$SERVICE" \

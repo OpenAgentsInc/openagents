@@ -17,6 +17,7 @@ import {
   ForgeGitHubMirrorRunnerError,
   makeForgeGitHubMirrorRunner,
   makeGitHubHttpsMirrorDestinationResolver,
+  makeGitHubSshMirrorDestinationResolver,
 } from "./github-mirror-runner.js";
 import { ForgeGitRelayOutbox, layerRelayOutbox } from "./outbox.js";
 import { routeRequest } from "./routes.js";
@@ -40,7 +41,7 @@ const githubMirrorRunnerLayer = Layer.effect(
     const configuration = yield* ForgeGitConfiguration;
     const repository = yield* ForgeGitRepository;
     const token = configuration.githubMirrorToken;
-    if (token === undefined) {
+    if (token === undefined && configuration.githubMirrorSshKeyPath === undefined) {
       // The route still returns a typed unavailable response. Do not start an
       // external GitHub request or silently fall back to another credential.
       return makeForgeGitHubMirrorRunner(repository, () =>
@@ -53,10 +54,15 @@ const githubMirrorRunnerLayer = Layer.effect(
     }
     return makeForgeGitHubMirrorRunner(
       repository,
-      makeGitHubHttpsMirrorDestinationResolver({
-        allowedRepositories: configuration.githubMirrorAllowedRepositories,
-        githubToken: token,
-      }),
+      token === undefined
+        ? makeGitHubSshMirrorDestinationResolver({
+            allowedRepositories: configuration.githubMirrorAllowedRepositories,
+            sshKeyPath: configuration.githubMirrorSshKeyPath!,
+          })
+        : makeGitHubHttpsMirrorDestinationResolver({
+            allowedRepositories: configuration.githubMirrorAllowedRepositories,
+            githubToken: token,
+          }),
     );
   }),
 ).pipe(Layer.provide(Layer.mergeAll(configurationLayer, repositoryLayer)));

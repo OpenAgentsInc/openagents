@@ -11,6 +11,7 @@ export interface ForgeGitConfigurationShape {
   /** Separate GitHub projection credential. It is never a policy or browser credential. */
   readonly githubMirrorToken: Redacted.Redacted<string> | undefined;
   readonly githubMirrorAllowedRepositories: ReadonlySet<string>;
+  readonly githubMirrorSshKeyPath: string | undefined;
   /** Monolith-to-Forge service credential for internal mirror commands only. */
   readonly internalServiceAuthToken: Redacted.Redacted<string> | undefined;
   readonly maxReceivePackBytes: number;
@@ -49,6 +50,9 @@ export const layerConfiguration = Layer.effect(
         ),
       ),
     );
+    const githubMirrorSshKeyPath = yield* Config.option(
+      Config.string("FORGE_GIT_GITHUB_MIRROR_SSH_KEY_PATH"),
+    ).pipe(Effect.map((value) => (Option.isSome(value) ? value.value : undefined)));
     const internalServiceAuthToken = yield* Config.option(
       Config.redacted("FORGE_GIT_INTERNAL_SERVICE_AUTH_TOKEN"),
     ).pipe(Effect.map((value) => (Option.isSome(value) ? value.value : undefined)));
@@ -81,6 +85,7 @@ export const layerConfiguration = Layer.effect(
       databaseUrl,
       gitBinary,
       githubMirrorAllowedRepositories,
+      githubMirrorSshKeyPath,
       githubMirrorToken,
       internalServiceAuthToken,
       maxReceivePackBytes,
@@ -101,6 +106,7 @@ export const makeTestConfiguration = (
     | "databaseUrl"
     | "githubMirrorToken"
     | "githubMirrorAllowedRepositories"
+    | "githubMirrorSshKeyPath"
     | "internalServiceAuthToken"
     | "policyAuthorityToken"
     | "policyAuthorityUrl"
@@ -111,6 +117,7 @@ export const makeTestConfiguration = (
     readonly databaseUrl?: string;
     readonly githubMirrorToken?: Redacted.Redacted<string> | undefined;
     readonly githubMirrorAllowedRepositories?: ReadonlySet<string>;
+    readonly githubMirrorSshKeyPath?: string | undefined;
     readonly internalServiceAuthToken?: Redacted.Redacted<string> | undefined;
     readonly policyAuthorityToken?: Redacted.Redacted<string>;
     readonly policyAuthorityUrl?: string;
@@ -122,6 +129,7 @@ export const makeTestConfiguration = (
   ...input,
   databaseUrl: Redacted.make(input.databaseUrl ?? "postgres://unused"),
   githubMirrorAllowedRepositories: input.githubMirrorAllowedRepositories ?? new Set(),
+  githubMirrorSshKeyPath: input.githubMirrorSshKeyPath,
   githubMirrorToken: input.githubMirrorToken,
   internalServiceAuthToken: input.internalServiceAuthToken,
   policyAuthorityToken:

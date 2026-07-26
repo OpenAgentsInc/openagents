@@ -112,6 +112,8 @@ export interface ForgeGitRepositoryShape {
 
 export type ForgeGitMirrorInput = Readonly<{
   authorizationHeader?: Redacted.Redacted<string> | undefined;
+  /** Absolute Cloud Run secret-volume path. Never accepted from an HTTP caller. */
+  sshKeyPath?: string | undefined;
   destinationRef: string;
   destinationUrl: string;
   expectedSourceObjectId: string;
@@ -148,8 +150,18 @@ const gitEnvironment = (
 
 const mirrorEnvironment = (
   authorizationHeader: Redacted.Redacted<string> | undefined,
+  sshKeyPath: string | undefined = undefined,
 ): NodeJS.ProcessEnv => {
   const environment = gitEnvironment(undefined);
+  if (sshKeyPath !== undefined) {
+    if (!/^\/var\/run\/secrets\/forge-github-mirror\/[A-Za-z0-9._-]+$/u.test(sshKeyPath)) {
+      throw repositoryError("ForgeGitRepository.mirrorEnvironment", "forge_git_mirror_ssh_key_path_invalid", 500);
+    }
+    return {
+      ...environment,
+      GIT_SSH_COMMAND: `ssh -i ${sshKeyPath} -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes`,
+    };
+  }
   if (authorizationHeader === undefined) return environment;
   return {
     ...environment,
@@ -796,7 +808,7 @@ const makeRepositoryService = (
 
         const destination = await git(
           ["ls-remote", "--refs", input.destinationUrl, input.destinationRef],
-          { env: mirrorEnvironment(input.authorizationHeader) },
+          { env: mirrorEnvironment(input.authorizationHeader, input.sshKeyPath) },
         );
         const destinationLine = textDecoder.decode(destination.stdout).trim();
         const destinationObjectId =
@@ -839,7 +851,7 @@ const makeRepositoryService = (
               input.destinationUrl,
               `${input.destinationRef}:refs/openagents/destination`,
             ],
-            { env: mirrorEnvironment(input.authorizationHeader) },
+            { env: mirrorEnvironment(input.authorizationHeader, input.sshKeyPath) },
           );
           const isAncestor = async (ancestor: string, descendant: string): Promise<boolean> => {
             try {
@@ -919,7 +931,7 @@ const makeRepositoryService = (
             input.destinationUrl,
             `${input.sourceRef}:${input.destinationRef}`,
           ],
-          { env: mirrorEnvironment(input.authorizationHeader) },
+          { env: mirrorEnvironment(input.authorizationHeader, input.sshKeyPath) },
         ),
       catch: (cause) =>
         cause instanceof ForgeGitRepositoryError
