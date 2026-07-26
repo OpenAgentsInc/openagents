@@ -1,6 +1,6 @@
 import { InternalLink } from '@/components/internal-link'
 import { PublicFooter } from '@/components/public-footer'
-import { DOCS_URL, OMEGA_REPOSITORY_URL } from '@/lib/public-site'
+import { DOCS_URL, OMEGA_FORGE_URL } from '@/lib/public-site'
 import { trackNamedAnalyticsEvent } from '@/lib/web-analytics'
 import { makeKhalaTextSequenceFrames } from '@effect-native/khala-ui'
 import { khalaTheme } from '@effect-native/tokens'
@@ -903,18 +903,17 @@ export function SplashPage() {
           Omega brings your project, agents, code, review, and evidence into one
           fast, native workspace.
         </p>
-        <a
+        <InternalLink
           className="splash-primary-action"
-          href={OMEGA_REPOSITORY_URL}
+          href={OMEGA_FORGE_URL}
           onClick={() =>
-            trackNamedAnalyticsEvent('github_view', window.location.pathname)
+            trackNamedAnalyticsEvent('forge_view', window.location.pathname)
           }
-          rel="noreferrer"
-          target="_blank"
+          preload="intent"
         >
-          View on GitHub
+          View on OpenAgents Forge
           <ArrowUpRight aria-hidden="true" />
-        </a>
+        </InternalLink>
       </section>
 
       <figure className="splash-product" id="product">

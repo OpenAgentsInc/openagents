@@ -21,8 +21,8 @@ describe('Desktop splash', () => {
     expect(html).toContain(
       'Omega brings your project, agents, code, review, and evidence',
     )
-    expect(html).toContain('View on GitHub')
-    expect(html).toContain('href="https://github.com/OpenAgentsInc/omega"')
+    expect(html).toContain('View on OpenAgents Forge')
+    expect(html).toContain('href="/forge/tenant.openagents/omega"')
     expect(html).not.toContain('Explore OpenAgents')
     expect(html).not.toContain('href="/download"')
     expect(html).toContain('href="/login"')

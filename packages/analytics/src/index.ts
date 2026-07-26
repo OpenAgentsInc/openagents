@@ -3,7 +3,7 @@ import { Context, Effect, Layer, Ref, Schema as S } from "effect";
 export const ANALYTICS_SCHEMA_VERSION = "openagents.analytics.events.v1";
 export const ANALYTICS_BATCH_MAX_EVENTS = 20;
 
-export const AnalyticsEventName = S.Literals(["page_view", "github_view"]);
+export const AnalyticsEventName = S.Literals(["page_view", "github_view", "forge_view"]);
 export type AnalyticsEventName = typeof AnalyticsEventName.Type;
 
 export const AnalyticsClientKind = S.Literals(["web", "mobile", "desktop"]);
