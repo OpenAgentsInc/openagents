@@ -166,7 +166,10 @@ const mirrorEnvironment = (
       // Cloud Run starts from an empty filesystem. Keep GitHub host state in
       // the container's temporary directory and accept only its initial key;
       // a changed key is still refused for the lifetime of that revision.
-      GIT_SSH_COMMAND: `ssh -i ${sshKeyPath} -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/tmp/forge-github-mirror-known_hosts`,
+      // Cloud Run egress reliably permits HTTPS. GitHub publishes the same
+      // SSH service on ssh.github.com:443, so use that endpoint rather than
+      // depending on outbound port 22.
+      GIT_SSH_COMMAND: `ssh -i ${sshKeyPath} -o Hostname=ssh.github.com -p 443 -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/tmp/forge-github-mirror-known_hosts`,
     };
   }
   if (authorizationHeader === undefined) return environment;
