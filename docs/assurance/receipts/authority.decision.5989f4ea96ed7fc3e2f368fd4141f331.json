@@ -1,0 +1,82 @@
+{
+  "action": "admit_assurance_revision_when_source_spec_allows_owner_designated_independent_reviewer",
+  "actor_role": "independent_reviewer",
+  "condition_results": [
+    {
+      "condition_ref": "condition.independence",
+      "result": "satisfied",
+      "statement": "Reviewer identity euler_owner_designated_independent_reviewer_2026_07_24 is a fresh clean session distinct from the obligation producer assurance_re_admission_packet_producer_2026_07_26; evidence was reproduced independently."
+    },
+    {
+      "condition_ref": "condition.verification",
+      "result": "satisfied",
+      "statement": "Reproduced 61 executable oracle criteria GREEN; every armed local-unit oracle passed and no criterion claims a tier above what reproduces. Smoke-gated, receipt-backed, and designed-only criteria stay unobserved and are not claimed observed."
+    },
+    {
+      "condition_ref": "condition.redaction",
+      "result": "satisfied",
+      "statement": "Receipt carries only public-safe counts, refs, and digests; no raw oracle output, secrets, or private prompts."
+    }
+  ],
+  "evidence_refs": [
+    "specs/desktop/full-auto.assurance-spec.md",
+    "docs/assurance/2026-07-26-full-auto-assurance-re-admission-packet.md"
+  ],
+  "grant_ref": "grant.independent_assurance",
+  "independence": {
+    "distinct": true,
+    "producer_ref": "assurance_re_admission_packet_producer_2026_07_26",
+    "reviewer_ref": "euler_owner_designated_independent_reviewer_2026_07_24",
+    "statement": "Independent reviewer session distinct from the packet producer; the executable evidence was reproduced, not trusted."
+  },
+  "outcome": "succeeded",
+  "profile_id": "openagents.owner-delegated-autonomy",
+  "profile_revision": 6,
+  "program_ref": "program.full_auto_release",
+  "public_safety": {
+    "classification": "reviewed_public_safe",
+    "contains_raw_output": false
+  },
+  "receipt_ref": "authority.decision.5989f4ea96ed7fc3e2f368fd4141f331",
+  "reproduction_summary": {
+    "batches": [
+      {
+        "batch_id": "desktop-oracles",
+        "command": "./node_modules/.bin/vp test --run --root ../.. src/codex-local-runtime.test.ts src/full-auto-retry-rotation-model.test.ts src/full-auto-run-analyzer.test.ts src/full-auto-run-control-server.test.ts src/full-auto-run-handoff-control-server.test.ts src/full-auto-run-liveness-control-server.test.ts src/provider-lane.test.ts src/renderer/react-composer.test.tsx src/renderer/react-full-auto-surface.test.tsx src/renderer/shell.test.ts src/spec-lane-workflow.test.ts tests/full-auto-guardrails.test.ts tests/full-auto-registry.test.ts tests/full-auto-restart.e2e.test.ts tests/full-auto-run-registry.test.ts tests/full-auto-thread-pressure.e2e.test.ts",
+        "cwd": "apps/openagents-desktop",
+        "exit_code": 0,
+        "files": 16,
+        "ok": true,
+        "tests_passed": 437
+      },
+      {
+        "batch_id": "repo-oracles",
+        "command": "./apps/openagents-desktop/node_modules/.bin/vp test --run --root . packages/assurance-spec/test/assurance-spec.test.ts packages/omega-effectd/src/engine/full-auto-control-server.test.ts packages/omega-effectd/src/engine/full-auto-lane.test.ts packages/omega-effectd/src/engine/full-auto-liveness.test.ts packages/omega-effectd/src/engine/full-auto-provider-handoff.test.ts packages/omega-effectd/src/engine/full-auto-run-report.test.ts",
+        "cwd": ".",
+        "exit_code": 0,
+        "files": 6,
+        "ok": true,
+        "tests_passed": 77
+      }
+    ],
+    "designed_only": 8,
+    "executable_criteria": 61,
+    "executable_failed": 0,
+    "executable_green": 61,
+    "receipt_backed": 5,
+    "smoke_gated": 2,
+    "total_criteria": 76
+  },
+  "schema_id": "openagents.authority_decision_receipt.v1",
+  "scope_notes": [
+    "Admission means this revision overclaims no evidence tier. It is not a claim that all criteria pass.",
+    "Smoke-gated, receipt-backed, and designed-only criteria stay unobserved and are not claimed observed.",
+    "This admission grants no release, public-claim, or promise-transition authority (AuthorityDelegationSpec Law 6).",
+    "Target: specs/desktop/full-auto.assurance-spec.md."
+  ],
+  "settled_at": "2026-07-26T08:12:49Z",
+  "started_at": "2026-07-26T08:12:44Z",
+  "target_digest": "sha256:d8dc7d1d6e02f6e01d137b034d7e5b51d2e09a4041ce61ae3c556c104bba6430",
+  "target_ref": "specs/desktop/full-auto.assurance-spec.md",
+  "trigger_ref": "issue.9254.omega_effectd_oracle_binding_re_admission"
+}

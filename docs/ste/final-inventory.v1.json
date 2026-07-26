@@ -49027,7 +49027,7 @@
     },
     {
       "path": "specs/desktop/full-auto.assurance-spec.md",
-      "sha256": "d8dc7d1d6e02f6e01d137b034d7e5b51d2e09a4041ce61ae3c556c104bba6430",
+      "sha256": "e259a5d2cd8a0668c1344fa1b569e9c101c43f1d55f90f3d38bc953776a51631",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

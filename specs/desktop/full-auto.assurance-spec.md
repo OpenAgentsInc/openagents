@@ -4,8 +4,12 @@ assurance_spec_id: "assurance.full.auto.codex.composer.loop"
 assurance_revision: 7
 title: "Full Auto Autonomous-Run AssuranceSpec"
 artifact_type: "product_assurance"
-lifecycle_state: "proposed"
+lifecycle_state: "admitted"
 author: "OpenAgents"
+admitted_by: "euler_owner_designated_independent_reviewer_2026_07_24"
+admitted_at: "2026-07-26T08:12:49Z"
+admitted_receipt_ref: "authority.decision.5989f4ea96ed7fc3e2f368fd4141f331"
+admitted_receipt_path: "docs/assurance/receipts/authority.decision.5989f4ea96ed7fc3e2f368fd4141f331.json"
 ---
 
 ## Assurance Objective
