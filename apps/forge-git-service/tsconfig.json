@@ -4,5 +4,6 @@
     "noEmit": true,
     "types": ["node", "vite-plus-matchers"]
   },
-  "include": ["src/**/*", "scripts/**/*"]
+  "include": ["src/**/*", "scripts/**/*"],
+  "exclude": ["src/live-acceptance.ts"]
 }

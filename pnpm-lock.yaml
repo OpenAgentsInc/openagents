@@ -347,6 +347,9 @@ importers:
       '@openagentsinc/runtime-platform':
         specifier: workspace:*
         version: link:../../packages/runtime-platform
+      '@openagentsinc/sarah':
+        specifier: workspace:*
+        version: link:../../packages/sarah
       effect:
         specifier: 4.0.0-beta.94
         version: 4.0.0-beta.94

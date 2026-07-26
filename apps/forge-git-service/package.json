@@ -5,16 +5,17 @@
   "description": "Owned Smart HTTP Git service for invited OpenAgents Forge repositories.",
   "type": "module",
   "scripts": {
-    "build": "vp pack src/main.ts --format esm --platform node --target node24 --out-dir dist",
+    "build": "vp pack src/main.ts src/live-acceptance.ts --format esm --platform node --target node24 --out-dir dist",
     "deploy": "bash scripts/deploy-cloudrun.sh",
     "serve": "node --import tsx src/main.ts",
     "test": "vp test --run apps/forge-git-service/src",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.live-acceptance.json --noEmit"
   },
   "dependencies": {
     "@openagentsinc/forge-protocol": "workspace:*",
     "@openagentsinc/oa-infra": "workspace:*",
     "@openagentsinc/runtime-platform": "workspace:*",
+    "@openagentsinc/sarah": "workspace:*",
     "effect": "catalog:",
     "nostr-effect": "https://github.com/OpenAgentsInc/nostr-effect/archive/1314ed6ee6cc508ba9a54d03372fe1c71a984815.tar.gz",
     "postgres": "3.4.9"

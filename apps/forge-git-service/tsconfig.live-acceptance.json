@@ -1,0 +1,10 @@
+{
+  "extends": "../openagents.com/tsconfig.base.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "lib": ["ES2022", "WebWorker"],
+    "noEmit": true,
+    "types": ["node", "openagents-platform"]
+  },
+  "files": ["src/live-acceptance.ts"]
+}
