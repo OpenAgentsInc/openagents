@@ -3,7 +3,7 @@ import type { DocsPage } from './content-schema'
 export const docsHead = (page: DocsPage | undefined) => {
   const title = page === undefined ? 'OpenAgents Docs' : `${page.title} — OpenAgents Docs`
   const description = page?.description ??
-    'Use, understand, and verify the local-first OpenAgents Desktop Codex workroom.'
+    'Understand Omega, the native OpenAgents workspace for projects, agents, code, review, and evidence.'
   const canonical = `https://openagents.com${page?.path ?? '/docs'}`
   const structuredData = page?.slug === ''
     ? {

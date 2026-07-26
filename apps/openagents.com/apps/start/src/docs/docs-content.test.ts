@@ -106,4 +106,12 @@ describe('unified TanStack Start docs content', () => {
     })
     expect(JSON.stringify(head.scripts)).toContain('TechArticle')
   })
+
+  test('uses Omega metadata for the parent docs route', () => {
+    const head = docsHead(undefined)
+    const serialized = JSON.stringify(head)
+
+    expect(serialized).toContain('Understand Omega')
+    expect(serialized).not.toContain('OpenAgents Desktop')
+  })
 })
