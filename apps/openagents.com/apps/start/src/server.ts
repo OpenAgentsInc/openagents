@@ -9,6 +9,7 @@ import {
 } from '../../../workers/api/src/inference/discovery-surfaces'
 import { routeWellKnownAgentSurfaceRequest } from '../../../workers/api/src/well-known-agent-surfaces-routes'
 import { routeDesktopDownloadRequest } from './desktop-download-resolver.server'
+import { routeForgeRepositoryAssetRequest } from './forge-repository-asset-proxy'
 import { routeKhalaSyncProxyRequest } from './khala-sync-proxy'
 import { routeManagedSandboxProxyRequest } from './managed-sandbox-proxy'
 import { routeQaBoardRequest } from './qa-board-projection.server'
@@ -98,6 +99,11 @@ const server = createServerEntry({
     const managedSandboxProxyResponse = await routeManagedSandboxProxyRequest(request)
     if (managedSandboxProxyResponse !== undefined) {
       return applySecurityHeaders(managedSandboxProxyResponse)
+    }
+
+    const forgeAssetResponse = await routeForgeRepositoryAssetRequest(request)
+    if (forgeAssetResponse !== undefined) {
+      return applySecurityHeaders(forgeAssetResponse)
     }
 
     const response = await handler.fetch(request, {

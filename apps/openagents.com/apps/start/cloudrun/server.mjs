@@ -146,6 +146,10 @@ Runtime.serve({
     return startWorker.fetch(
       request,
       {
+        OPENAGENTS_FORGE_GIT_SERVICE_AUTH_TOKEN:
+          process.env.OPENAGENTS_FORGE_GIT_SERVICE_AUTH_TOKEN,
+        OPENAGENTS_FORGE_READ_BASE_URL:
+          process.env.OPENAGENTS_FORGE_READ_BASE_URL,
         KHALA_SYNC_UPSTREAM_BASE_URL:
           process.env.KHALA_SYNC_UPSTREAM_BASE_URL ?? PUBLIC_API_ORIGIN,
         OPENAGENTS_FORGE_GIT_SERVICE_AUTH_TOKEN:
