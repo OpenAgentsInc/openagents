@@ -18,6 +18,11 @@
   flex: 0 0 4.25rem;
 }
 
+/* Forge is a browsable document surface, not a persistent app shell. */
+.oa-unified-header--static {
+  position: static;
+}
+
 .oa-unified-header,
 .oa-unified-header * {
   box-sizing: border-box;

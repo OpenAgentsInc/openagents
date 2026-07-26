@@ -15,6 +15,7 @@ import { XMark } from './x-mark'
 type PublicHeaderProps = Readonly<{
   docsActive?: boolean
   leading?: ReactNode
+  position?: 'fixed' | 'static'
   showLogin?: boolean
   showLogout?: boolean
   utility?: ReactNode
@@ -24,6 +25,7 @@ type PublicHeaderProps = Readonly<{
 export function PublicHeader({
   docsActive = false,
   leading,
+  position = 'fixed',
   showLogin = true,
   showLogout = false,
   utility,
@@ -51,11 +53,13 @@ export function PublicHeader({
   return (
     <>
       <header
-        className={
-          variant === 'docs'
-            ? 'oa-unified-header oa-unified-header--docs'
-            : 'oa-unified-header'
-        }
+        className={[
+          'oa-unified-header',
+          variant === 'docs' ? 'oa-unified-header--docs' : '',
+          position === 'static' ? 'oa-unified-header--static' : '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
       >
         <nav aria-label="Primary navigation" className="oa-unified-nav">
           <div className="oa-unified-nav-left">
@@ -118,7 +122,9 @@ export function PublicHeader({
           </div>
         </nav>
       </header>
-      <div aria-hidden="true" className="oa-unified-header-spacer" />
+      {position === 'fixed' ? (
+        <div aria-hidden="true" className="oa-unified-header-spacer" />
+      ) : null}
     </>
   )
 }
