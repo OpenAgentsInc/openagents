@@ -359,6 +359,9 @@ importers:
       postgres:
         specifier: 3.4.9
         version: 3.4.9
+      tsx:
+        specifier: 4.20.6
+        version: 4.20.6
     devDependencies:
       typescript:
         specifier: 'catalog:'
