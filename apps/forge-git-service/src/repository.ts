@@ -163,7 +163,10 @@ const mirrorEnvironment = (
     }
     return {
       ...environment,
-      GIT_SSH_COMMAND: `ssh -i ${sshKeyPath} -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes`,
+      // Cloud Run starts from an empty filesystem. Keep GitHub host state in
+      // the container's temporary directory and accept only its initial key;
+      // a changed key is still refused for the lifetime of that revision.
+      GIT_SSH_COMMAND: `ssh -i ${sshKeyPath} -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/tmp/forge-github-mirror-known_hosts`,
     };
   }
   if (authorizationHeader === undefined) return environment;
