@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { generateSecretKey, getPublicKey } from "nostr-effect/pure";
 import { Cause, Config, Effect, Exit, Redacted } from "effect";
+import postgres from "postgres";
 
 import { makeD1ForgeInviteMembershipStore } from "../../openagents.com/workers/api/src/forge-invite-membership-store.js";
 import { makeD1ForgeTenantGitAuthStore } from "../../openagents.com/workers/api/src/forge-tenant-git-auth-store.js";
@@ -55,6 +56,24 @@ const bytesToHex = (bytes: Uint8Array): string =>
 
 const sha256 = (value: string): string => createHash("sha256").update(value).digest("hex");
 
+const applyForgeMembershipMigration = async (databaseUrl: string): Promise<void> => {
+  const migrationSql = await readFile(
+    join(import.meta.dirname, "0316_forge_invite_membership.sql"),
+    "utf8",
+  );
+  const sql = postgres(databaseUrl, {
+    max: 1,
+    prepare: false,
+  });
+  try {
+    await sql.begin(async (transaction) => {
+      await transaction.unsafe(migrationSql);
+    });
+  } finally {
+    await sql.end({ timeout: 5 });
+  }
+};
+
 interface AcceptanceOptions {
   readonly baseUrl: string;
   readonly databaseUrl: string;
@@ -67,6 +86,7 @@ const runAcceptance = async ({
   sourceRevision,
 }: AcceptanceOptions): Promise<void> => {
   const baseUrl = configuredBaseUrl.replace(/\/+$/, "");
+  await applyForgeMembershipMigration(databaseUrl);
   const now = new Date();
   const nowIso = now.toISOString();
   const expiresAt = new Date(now.getTime() + 8 * 60 * 60 * 1_000).toISOString();
