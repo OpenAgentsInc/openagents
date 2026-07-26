@@ -56,7 +56,15 @@ const bytesToHex = (bytes: Uint8Array): string =>
 
 const sha256 = (value: string): string => createHash("sha256").update(value).digest("hex");
 
-const applyForgeMembershipMigration = async (databaseUrl: string): Promise<void> => {
+const applyForgeMembershipMigration = async (
+  databaseUrl: string,
+): Promise<
+  Readonly<{
+    databaseName: string;
+    forgeTenantReadWrite: boolean;
+    userName: string;
+  }>
+> => {
   const migrationSql = await readFile(
     join(import.meta.dirname, "0316_forge_invite_membership.sql"),
     "utf8",
@@ -69,6 +77,29 @@ const applyForgeMembershipMigration = async (databaseUrl: string): Promise<void>
     await sql.begin(async (transaction) => {
       await transaction.unsafe(migrationSql);
     });
+    const [authority] = await sql<
+      ReadonlyArray<{
+        database_name: string;
+        forge_tenant_read_write: boolean;
+        user_name: string;
+      }>
+    >`
+      SELECT current_database() AS database_name,
+             current_user AS user_name,
+             has_table_privilege(
+               current_user,
+               'public.forge_tenants',
+               'SELECT,INSERT,UPDATE,DELETE'
+             ) AS forge_tenant_read_write
+    `;
+    if (authority === undefined) {
+      throw new Error("Acceptance database authority query returned no row");
+    }
+    return {
+      databaseName: authority.database_name,
+      forgeTenantReadWrite: authority.forge_tenant_read_write,
+      userName: authority.user_name,
+    };
   } finally {
     await sql.end({ timeout: 5 });
   }
@@ -86,7 +117,12 @@ const runAcceptance = async ({
   sourceRevision,
 }: AcceptanceOptions): Promise<void> => {
   const baseUrl = configuredBaseUrl.replace(/\/+$/, "");
-  await applyForgeMembershipMigration(databaseUrl);
+  const databaseAuthority = await applyForgeMembershipMigration(databaseUrl);
+  if (databaseAuthority.userName !== "khala_app" || !databaseAuthority.forgeTenantReadWrite) {
+    throw new Error(
+      `Acceptance database authority mismatch: user=${databaseAuthority.userName}, database=${databaseAuthority.databaseName}, forgeTenantReadWrite=${databaseAuthority.forgeTenantReadWrite}`,
+    );
+  }
   const now = new Date();
   const nowIso = now.toISOString();
   const expiresAt = new Date(now.getTime() + 8 * 60 * 60 * 1_000).toISOString();
