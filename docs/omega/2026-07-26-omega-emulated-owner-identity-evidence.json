@@ -1,0 +1,257 @@
+{
+  "schema": "openagents.omega.emulated-owner-identity-evidence.v1",
+  "producedAt": "2026-07-26T14:30:00Z",
+  "lane": "claude/emulated-owner",
+  "issues": ["omega#16", "omega#9", "omega#8"],
+  "status": "producer record. not signed. no issue closed.",
+  "authority": {
+    "delegation": "Owner standing delegation, 2026-07-26, to emulate the user because the owner is not available to act by hand.",
+    "performedBy": "agent",
+    "ownerObservation": false,
+    "ownerObservationAttestation": "none. This lane does not write an owner-observation attestation. The record states who acted."
+  },
+  "candidate": {
+    "version": "0.2.0-rc18",
+    "sourceCommit": "96306681f0",
+    "packageSha256": "83e79f68ede7cafa8262082f6c746bb5915e2fa086cde64336189db648ee0a37",
+    "installedAt": "/Applications/Omega.app",
+    "recomputedByThisLane": {
+      "hostBinarySha256": "4b2a5e9a845233edda18664cb72a1c236db76772a123ddd730b9a50b05ce50e9",
+      "cliBinarySha256": "f240095133d092dc0465b45df4dd63a85811bccacaecce610d5ff7453e9eac53",
+      "identityProofBinarySha256": "dee3d046c44eecc9e26a94d7521679b5147858ab7f03f140ddbd3a71b286b098",
+      "cdHash": "bb404eb3d71759e48762f68574a9ba2f0363da8e",
+      "cfBundleVersion": "20260726.091602",
+      "bundleIdentifier": "com.openagents.omega.rc",
+      "teamIdentifier": "HQWSG26L43",
+      "dmgSha256": "83e79f68ede7cafa8262082f6c746bb5915e2fa086cde64336189db648ee0a37",
+      "note": "The installed application is the candidate on all three executables plus the code directory hash and the bundle version."
+    }
+  },
+  "isolation": {
+    "problem": "The identity data root comes from paths::data_dir(). The keychain search list comes from the home directory. A fresh --user-data-dir moves the data root only, so the owner's keychain secret still resolves and custody reads Incomplete. That is the wall three earlier lanes hit.",
+    "method": "This lane ran under an isolated HOME with a keychain this lane created. macOS resolves the keychain search list from HOME when no security preference file exists, so the owner's login keychain is not in the search list of the emulated process.",
+    "controls": {
+      "emulatedSearchList": [
+        "<isolated home>/Library/Keychains/login.keychain-db",
+        "/Library/Keychains/System.keychain"
+      ],
+      "ownerSearchListBeforeAndAfter": [
+        "/Users/<owner>/Library/Keychains/login.keychain-db",
+        "/Library/Keychains/System.keychain"
+      ],
+      "ownerLoginKeychainMtime": "2026-07-26T04:12:55-05:00, which is before this lane started at 08:40",
+      "emulatedKeychainMtime": "2026-07-26T08:46:52-05:00",
+      "emulatedKeychainHoldsCredentialNamespace": "com.openagents.omega.credentials.rc appears 7 times in the emulated keychain file",
+      "securityPreferenceFileWritten": "none. No com.apple.security.plist was written in either home."
+    },
+    "secondInstance": {
+      "lock": "127.0.0.1:45338 = 44737 + 100 (preview channel) + uid 501. The owner's instance holds it.",
+      "method": "A seatbelt profile of (allow default) plus one (deny network-outbound (remote ip \"localhost:45338\")). ensure_only_instance then fails the handshake, fails the bind, retries the handshake, and continues without a handshake, which is its documented path.",
+      "controlA": "unsandboxed connect to 127.0.0.1:45338 succeeds",
+      "controlB": "sandboxed connect to 127.0.0.1:45338 fails",
+      "controlC": "sandboxed https request to github.com in the same second returns 200",
+      "ownerInstance": "pid 50537 ran for the whole window. Elapsed time was 04:20:24 at the start and 05:09:31 at the end. This lane never restarted it and never wrote into it."
+    }
+  },
+  "emulatedIdentityA": {
+    "name": "emulated owner, custody driver",
+    "producedBy": "/Applications/Omega.app/Contents/MacOS/omega-identity-proof, the candidate's own shipped binary",
+    "keyringLocator": {
+      "service": "com.openagents.omega.identity-proof.v1",
+      "account": "disposable-proof-only"
+    },
+    "npub": "npub1ty09zdmufr5x47djht927jkt72q75p60vl3ntye09sfvsv3ks5yq9pmxc4",
+    "publicKeyHex": "591e51377c48e86af9b2bacaaf4acbf281ea074f67e335932f2c12c832368508",
+    "fingerprint": "b242bacc2daf66ac8b5dc5e4cb33be3aaf795ab8b7dd93f79510e54f4e489327",
+    "transitions": [
+      {"step": "inspect", "custody": "absent", "note": "pristine. No owner secret is reachable."},
+      {"step": "create", "custody": "ready", "receipt": "omega-emulated-owner-create-2026-07-26"},
+      {"step": "protect-recovery", "recoveryProtection": "protected", "artifactSha256": "6af5b852165e169b4012509d9597c3ff8c8a37bd3fce8bb680ab1a827d9d6723", "byteLength": 163},
+      {"step": "probe-wrong-recovery", "outcome": "wrong-recovery-password-rejected"},
+      {"step": "probe-corrupt-recovery", "outcome": "corrupt-recovery-artifact-rejected"},
+      {"step": "reset", "custody": "relaunch-required"},
+      {"step": "resume-reset", "custody": "relaunch-required"},
+      {"step": "process-start", "custody": "absent", "note": "the secret is gone from the keychain and the public documents are gone"},
+      {"step": "recover", "custody": "ready", "receipt": "omega-emulated-owner-recover-2026-07-26", "note": "the same public identity returns from the recovery file this lane owns"},
+      {"step": "process-start", "custody": "ready", "note": "this is the read identity_ready performs"}
+    ]
+  },
+  "emulatedIdentityB": {
+    "name": "emulated owner, first-run product journey",
+    "producedBy": "the installed candidate, through the identity-first onboarding screen",
+    "keyringLocator": {
+      "service": "com.openagents.omega.credentials.rc",
+      "account": "omega-sovereign-identity-v1",
+      "note": "The locator names are the product's own. The keychain file is the emulated one, which the owner's session does not search."
+    },
+    "npub": "npub19n347p2qqqhn333mcs5js5zs4clae54062h3f8jwp97wmcyk7duqy4wnk6",
+    "publicKeyHex": "2ce35f0540002f38c63bc429285050ae3fdcd2afd2af149e4e097cede096f378",
+    "fingerprint": "2966857e59548c77afb62de3d1db615c7802d0c401f53f5d700d06e3110069d2",
+    "createReceipt": "omega-onboarding-create-a1c5b6b278d240959fd3eb8ca7691bc8",
+    "recoveryArtifactSha256": "e98ac6088429b56aae1cf2d94a254b1be576a48ee9543999325ee9e233a0ada3",
+    "recoveryArtifactBytes": 163,
+    "recoveryArtifactMode": "0600",
+    "productStatementAfterProtection": "Your public identity is ready and an encrypted recovery file has been verified."
+  },
+  "pristineFirstStart": {
+    "readFromRenderedPixels": true,
+    "headings": {"Your identity": 0.167, "Theme": 0.325, "Base Keymap": 0.500, "Agent Setup": 0.604},
+    "identityAction": "Create identity and Recover identity are both offered. Create identity is offered because custody is Absent.",
+    "note": "This is the state no earlier lane reached. Earlier lanes saw Recover identity alone, because the owner's keychain secret was still in the search list."
+  },
+  "cleanUserEditorJourney": {
+    "profile": "pristine. The identity data root, the configuration root, the database and the logs were all created by this run under the isolated home. No owner record was copied in.",
+    "steps": [
+      {"step": "create identity", "result": "Identity ready, with the public identity and fingerprint rendered"},
+      {"step": "protect recovery", "result": "an encrypted NIP-49 file is written and the product verifies it"},
+      {"step": "open one local project", "result": "window title becomes proj-emul"},
+      {"step": "edit and save one file", "result": "src/main.rs digest cc0f721d... before, cc0f721d... after typing, e7f131a2... after save"},
+      {"step": "git status", "result": "the panel shows Changes (1), main.rs, +1 -0, Tracked, Stage All, and the diff"},
+      {"step": "terminal by the command palette", "result": "proj-emul - zsh, a live shell, and echo OMEGA-EMULATED-OWNER-TERMINAL-LIVE renders its output"},
+      {"step": "restart with no path argument", "result": "the project, the edited file, the Git panel and the terminal all return from the profile alone"}
+    ],
+    "gitOracle": "git status reports M src/main.rs and 1 file changed, 1 insertion",
+    "restartOracle": "The relaunch passed no path. The restored window title is proj-emul - main.rs."
+  },
+  "terminalChord": {
+    "state": "open",
+    "binding": "\"ctrl-`\": \"terminal_panel::Toggle\" at assets/keymaps/default-macos.json line 711 at the rc18 cut",
+    "paletteRoute": "works. The palette entry renders its own control-modified binding hint beside the action name.",
+    "chordAttempts": [
+      "System Events key code 50 with control down: no effect",
+      "cliclick kd:ctrl t:backtick ku:ctrl: no effect",
+      "System Events keystroke backtick with control down: no effect",
+      "System Events key code 50 with control down, with the terminal panel open and focused: the panel does not close"
+    ],
+    "newControlThisLane": "ctrl-shift-g delivered by the SAME mechanism, in the SAME session, to the SAME window toggles the Git panel. The markers Changes (1) and Stage All appear. So a control-modified chord from this source does reach the product, and ctrl-` still does not fire.",
+    "confoundCleared": "The first palette attempt failed with /usr/bin/login: Operation not permitted. A seatbelt-confined process cannot run a set-user-identity program. This lane set the terminal program to /bin/zsh in its own configuration root, and the terminal then opened and ran. The owner's configuration file was not read and not changed.",
+    "whatRemains": "A physical keypress is not a synthesized one. This row stays open and the omega#16 Scope table must not mark it covered."
+  },
+  "custodyPathTripwire": {
+    "why": "omega#8 asks whether the identity secret escapes into logs, telemetry, the clipboard, diagnostics or crash output. Earlier lanes could not answer it, because delivering a canary through the custody path needed a recovery, and a recovery needed the owner's material. The emulated identity has its own recovery material, so the canary is deliverable.",
+    "canaries": [
+      "a 39-character high-entropy recovery password typed into the product's own recovery password field, which encrypted the recovery file the product then verified",
+      "a 32-byte high-entropy recovery password delivered to the shipped proof driver on a protected file descriptor",
+      "the two emulated public keys and npubs",
+      "the bech32 shapes nsec1 and ncryptsec1"
+    ],
+    "selfTest": "A planted needle in a scanned directory is found by the same expression that returns zero below. So a zero is a result and not a broken scan.",
+    "results": [
+      {"root": "emulated journey database", "files": 6, "guiPassword": 0, "proofPassword": 0, "nsec1": 0, "ncryptsec1": 0},
+      {"root": "emulated journey whole tree", "files": 57, "guiPassword": 0, "proofPassword": 0, "nsec1": 0, "ncryptsec1": 0, "npub": 2, "publicKeyHex": 3, "note": "the npub and hex hits are the public identity records, which are public facts by design"},
+      {"root": "emulated journey logs and telemetry", "files": 2, "guiPassword": 0, "proofPassword": 0, "nsec1": 0},
+      {"root": "emulated configuration root", "files": 3, "guiPassword": 0, "proofPassword": 0, "nsec1": 0, "ncryptsec1": 0},
+      {"root": "owner database", "files": 6, "guiPassword": 0, "proofPassword": 0, "npub": 0, "publicKeyHex": 0, "nsec1": 0, "ncryptsec1": 0},
+      {"root": "owner hang traces", "files": 4, "guiPassword": 0, "proofPassword": 0, "nsec1": 0, "ncryptsec1": 0},
+      {"root": "crash reports", "files": 25, "guiPassword": 0, "proofPassword": 0, "nsec1": 0, "ncryptsec1": 0},
+      {"root": "clipboard", "guiPassword": 0, "nsec1": 0},
+      {"root": "disposable proof root", "files": 5, "proofPassword": 0, "nsec1": 0, "ncryptsec1": 1, "note": "the one ncryptsec1 hit is the encrypted recovery file itself, which is what that file is"}
+    ],
+    "verdict": "No tripwire fires. The canary reached the custody path and did not reach any observed surface."
+  },
+  "zedIsolation": {
+    "candidateDescriptors": {"zedMatching": 0, "omegaMatchingControl": 160},
+    "childDescriptors": [
+      {"pid": "engine child 1", "zedMatching": 0, "omegaMatchingControl": 5},
+      {"pid": "engine child 2", "zedMatching": 0, "omegaMatchingControl": 3},
+      {"pid": "engine child 3", "zedMatching": 0, "omegaMatchingControl": 1}
+    ],
+    "zedDataRoot": {"files": 57, "modifiedDuringTheWindow": 0},
+    "weakness": "Zed.app is installed but was not running during this window, so the file-drift oracle samples a quiet tree. The descriptor oracle does not depend on that.",
+    "brandGate": {
+      "candidate": "script/verify-omega-brand --app /Applications/Omega.app exits 0",
+      "negativeControl": "the same gate against the host's real /Applications/Zed.app exits 1 with 87 lines of findings"
+    }
+  },
+  "criterion9AndTheReleaseRecord": {
+    "question": "Does rc18 still bind its bytes to its commit?",
+    "answer": "No. A fresh cut is needed, for two reasons.",
+    "reason1": "rc18 was cut before 8ab85f0df8. Its record carried source.dirty true on the strength of the build's own untracked output, assets/licenses.md. An independent reviewer correctly read that as weakening criterion 9's source binding.",
+    "reason2": "The rc18 release record on this host no longer exists. The file at target/omega-rc/omega-v0.2.0-rc18-macos-arm64.release.json was overwritten at 06:14 by a dry-run record from a different commit.",
+    "performedProof": {
+      "recordOnDiskNow": {
+        "sourceCommit": "c086403aeba61103877fc98ebef73ad986227b1c",
+        "executionDryRun": true,
+        "packageSha256": null,
+        "notarizationAttempted": false,
+        "cargoLockSha256": "32e7df5b258e31757af9c8d361703cde1a91897a1431b5ede0f2cb25ce714b3d",
+        "fileMtime": "2026-07-26T06:14 local"
+      },
+      "recordTheReviewerRead": {
+        "sourceCommit": "96306681f0ba7b61efa752241f0a2659170648a6",
+        "packageSha256": "83e79f68...",
+        "cargoLockSha256": "ee2d742d...",
+        "notarization": "submitted_and_stapled"
+      },
+      "artifactsThatSurvive": {
+        "dmgSha256": "83e79f68ede7cafa8262082f6c746bb5915e2fa086cde64336189db648ee0a37",
+        "dmgMtime": "2026-07-26T04:22 local",
+        "cargoLockSnapshotSha256": "ee2d742d2ae427481994e4d84984fc93778e3a3f688b9154c98778cb38b656c8",
+        "note": "The surviving Cargo.lock snapshot digest matches the record the reviewer read, and not the record now on disk. That is what identifies the overwrite."
+      },
+      "generatorVerdict": "script/generate-omega-identity-candidate-evidence refuses: release record commit 'c086403aeb...' does not match checkout. Exit 2."
+    },
+    "consequence": "The reviewer's criterion 6 and 9 binding was performed and is honest for the moment it ran. It is no longer reproducible on this host. rc19 must be cut from origin/main, which carries 8ab85f0df8, and its record must be kept."
+  },
+  "issueState": {
+    "omega#16": {
+      "close": false,
+      "criterion8": "MET by this lane. The journey ran on a genuinely pristine profile with an emulated identity created in the product.",
+      "criterion9": "NOT MET on rc18. See criterion9AndTheReleaseRecord.",
+      "criterion10": "NOT MET for this evidence set. The rc18 receipt accepted rc18's evidence. It has not seen this lane's evidence, and this lane is the producer and may not sign.",
+      "terminalChordRow": "open",
+      "falsifier": "does not fire. No claim here rests on a unit test, a source scan or a screenshot alone. The evidence is the signed installed candidate and the running application. No unclassified Zed product, service, package or state dependency was found."
+    },
+    "omega#8": {
+      "close": false,
+      "recovery_scenarios": "PRODUCED by this lane, against the candidate's own shipped binary.",
+      "owner_observation": "RECORDED as performedBy agent, ownerObservation false, emulated identity named. No owner-observation attestation is written. This follows the owner ruling applied to omega#26 gate 2 on the same day.",
+      "independent_verification": "OPEN. This lane is the producer. The reviewer packet is prepared.",
+      "installed_secret_tripwires": "PRODUCED, with a canary that reached the custody path.",
+      "identityReadyRead": "reachable. Custody moved Absent to Ready twice: once by create and once by recovery.",
+      "blocker": "script/prove-omega-rc-install cannot bind, because the rc18 release record no longer binds the rc18 artifact."
+    },
+    "omega#9": {
+      "close": false,
+      "reason": "The epic closes only when omega#8 passes against the exact packaged candidate."
+    }
+  },
+  "reviewerPacket": {
+    "obligation": "omega#16 acceptance criterion 10, and omega#8 independent_verification",
+    "producerLane": "producer.omega.emulated-owner.lane.claude.2026-07-26",
+    "producerMayNotSign": true,
+    "reproduce": [
+      "shasum -a 256 /Applications/Omega.app/Contents/MacOS/omega   # 4b2a5e9a...",
+      "shasum -a 256 /Applications/Omega.app/Contents/MacOS/omega-identity-proof   # dee3d046...",
+      "codesign -dv --verbose=4 /Applications/Omega.app 2>&1 | grep CDHash=   # bb404eb3...",
+      "ISO=$(mktemp -d); mkdir -p \"$ISO/Library/Keychains\"",
+      "env HOME=\"$ISO\" security create-keychain -p <disposable> \"$ISO/Library/Keychains/login.keychain-db\"",
+      "env HOME=\"$ISO\" security list-keychains    # must NOT list the owner's login keychain",
+      "security list-keychains                     # control: the owner's list is unchanged",
+      "R=$(mktemp -d)/omega-identity-proof-review; env HOME=\"$ISO\" /Applications/Omega.app/Contents/MacOS/omega-identity-proof --root \"$R\" initialize --confirm-disposable",
+      "env HOME=\"$ISO\" ... inspect     # custody must read absent, which proves nothing of the owner's is reachable",
+      "env HOME=\"$ISO\" ... create --receipt <ref>            # absent to ready",
+      "env HOME=\"$ISO\" ... protect-recovery --identity-ref <ref> --password-fd 3",
+      "env HOME=\"$ISO\" ... probe-wrong-recovery --password-fd 3     # must reject",
+      "env HOME=\"$ISO\" ... probe-corrupt-recovery --password-fd 3   # must reject",
+      "env HOME=\"$ISO\" ... reset / resume-reset / process-start     # custody must return to absent",
+      "env HOME=\"$ISO\" ... recover --receipt <ref> --password-fd 3  # absent to ready, same public identity",
+      "grep -rlF <the recovery password> <both profiles>            # must be 0, with a planted needle as the self-test",
+      "script/verify-omega-brand --app /Applications/Omega.app      # exits 0; the same gate on /Applications/Zed.app exits 1"
+    ],
+    "reviewerMustAlsoJudge": [
+      "Whether an isolated HOME with its own keychain is a sound substitute for a second macOS user account for the clean-user criterion.",
+      "Whether the seatbelt port denial is a sound substitute for quitting the owner's instance.",
+      "Whether a synthesized control-modified chord that delivers ctrl-shift-g but not ctrl-` settles the terminal chord row. This lane says it does not.",
+      "Whether the release-record overwrite makes rc18 unusable for criteria 6 and 9. This lane says it does."
+    ]
+  },
+  "safety": {
+    "ownerKeyNeverTouched": "This lane never read, copied, moved or used the owner's key or the owner's recovery file. The owner's keychain was never in the search list of any process this lane started.",
+    "uninstallNeverRunAgainstApplications": true,
+    "ownerInstanceNeverRestarted": true,
+    "ownerConfigurationNeverWritten": true,
+    "screenReaderOutput": "waived, not passed. Not widened.",
+    "highContrastAndReducedMotion": "blocked. Both owner flags read 0. The owner was not asked again."
+  }
+}
