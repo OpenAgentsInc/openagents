@@ -915,6 +915,52 @@ const makeRepositoryService = (
           });
         }
 
+        // The canonical repository already contains the previous downstream
+        // head for ordinary fast-forward promotion. Avoid fetching the same
+        // NFS-backed authority through a second temporary repository.
+        const destinationExistsInCanonical = await git(
+          repositoryGitArguments(path, [
+            "--git-dir",
+            path,
+            "cat-file",
+            "-e",
+            `${destinationObjectId}^{commit}`,
+          ]),
+        )
+          .then(() => true)
+          .catch(() => false);
+        if (destinationExistsInCanonical) {
+          const isAncestor = async (ancestor: string, descendant: string): Promise<boolean> => {
+            try {
+              await git(
+                repositoryGitArguments(path, [
+                  "--git-dir",
+                  path,
+                  "merge-base",
+                  "--is-ancestor",
+                  ancestor,
+                  descendant,
+                ]),
+              );
+              return true;
+            } catch {
+              return false;
+            }
+          };
+          const destinationIsAncestor = await isAncestor(destinationObjectId, sourceObjectId);
+          const sourceIsAncestor = await isAncestor(sourceObjectId, destinationObjectId);
+          return ForgeGitMirrorObservation.make({
+            destinationObjectId,
+            divergence: destinationIsAncestor
+              ? "source_ahead"
+              : sourceIsAncestor
+                ? "destination_ahead"
+                : "diverged",
+            observedAt,
+            sourceObjectId,
+          });
+        }
+
         const comparison = await mkdtemp(join(tmpdir(), "oa-forge-mirror-observation-"));
         try {
           await git(["init", "--bare", comparison]);
