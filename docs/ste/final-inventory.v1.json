@@ -44235,7 +44235,7 @@
     },
     {
       "path": "docs/sol/receipts/README.md",
-      "sha256": "59342467346496a560134fde294184d2aa0f313970cc622859446dca55804ff8",
+      "sha256": "6e0f903104356a6759a086d7fb743ae71080a3dd935b3153b876ac0c5f025e97",
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
