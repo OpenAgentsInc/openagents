@@ -14,7 +14,10 @@ import { describe, expect, test } from 'vitest'
 import { makeForgeInviteMembershipRoutes } from './forge-invite-membership-routes'
 import { makeD1ForgeInviteMembershipStore } from './forge-invite-membership-store'
 import { makeD1ForgeTenantGitAuthStore } from './forge-tenant-git-auth-store'
-import type { TeamWorkspaceInviteRecord } from './team-workspace-invites'
+import type {
+  TeamWorkspaceInviteRecord,
+  TeamWorkspaceInviteStore,
+} from './team-workspace-invites'
 
 class SqliteD1Statement {
   private bound: ReadonlyArray<unknown> = []
@@ -151,6 +154,54 @@ const makeHarness = async () => {
     tenantRef,
   })
   const membership = makeD1ForgeInviteMembershipStore(db)
+  const bootstrapInvites = new Map<string, TeamWorkspaceInviteRecord>()
+  const bootstrapInviteStore: TeamWorkspaceInviteStore = {
+    acceptInvite: async ({ token, userId }) => {
+      const invite = [...bootstrapInvites.values()].find(
+        candidate => candidate.tokenHash === token,
+      )
+      if (invite === undefined) return { _tag: 'NotFound' }
+      const accepted = {
+        ...invite,
+        acceptedAt: nowIso,
+        acceptedByUserId: userId,
+        status: 'accepted' as const,
+        updatedAt: nowIso,
+      }
+      bootstrapInvites.set(accepted.id, accepted)
+      return {
+        _tag: 'Accepted' as const,
+        invite: accepted,
+        membershipId: `team_member.${userId}`,
+      }
+    },
+    createOrRefreshInvite: async input => {
+      const invite: TeamWorkspaceInviteRecord = {
+        acceptedAt: null,
+        acceptedByUserId: null,
+        createdAt: nowIso,
+        emailMessageId: null,
+        expiresAt: '2026-07-25T21:00:30.000Z',
+        id: input.id ?? 'missing-id',
+        inviteeEmail: input.email,
+        inviteeEmailNormalized: input.email,
+        invitedByActorRef: input.invitedByActorRef,
+        lastSentAt: null,
+        metadataJson: input.metadataJson ?? '{}',
+        projectId: null,
+        revokedAt: null,
+        role: input.role ?? 'member',
+        sendCount: 0,
+        status: 'pending',
+        teamId: input.teamId,
+        tokenHash: 'bootstrap-token',
+        updatedAt: nowIso,
+      }
+      bootstrapInvites.set(invite.id, invite)
+      return { _tag: 'Created' as const, invite, token: 'bootstrap-token' }
+    },
+    recordEmailAttempt: async () => undefined,
+  }
   const routes = makeForgeInviteMembershipRoutes({
     appendRefreshedSessionCookies: response => {
       response.headers.append(
@@ -162,6 +213,7 @@ const makeHarness = async () => {
     gitServiceAuthorizationToken: () => 'forge-git-service-secret',
     makeGitAuthStore: () => gitAuth,
     makeMembershipStore: () => membership,
+    makeTeamWorkspaceInviteStore: () => bootstrapInviteStore,
     nowIso: () => nowIso,
     readAcceptedInvite: (_env, inviteId, userId) =>
       Promise.resolve(
@@ -175,6 +227,10 @@ const makeHarness = async () => {
         requestedTenantRef === tenantRef ? acceptedInvite.teamId : undefined,
       ),
     requireBrowserSession: () => Promise.resolve(session),
+    requireAdminApiToken: request =>
+      Promise.resolve(
+        request.headers.get('authorization') === 'Bearer operator-secret',
+      ),
   })
   const run = (request: Request): Promise<Response> => {
     const effect = routes.routeForgeInviteMembershipRequest(
@@ -191,6 +247,57 @@ const makeHarness = async () => {
 }
 
 describe('Forge invite membership routes', () => {
+  test('bootstraps one approved Nostr owner through invite and replay provenance', async () => {
+    const { membership, run } = await makeHarness()
+    const secret = generateSecretKey()
+    const npub = nip19.npubEncode(getPublicKey(secret))
+    const url = 'https://openagents.com/api/forge/bootstrap-owner'
+    const request = signedJsonRequest(url, { npub, tenantRef }, secret)
+    request.headers.set(
+      'x-openagents-admin-authorization',
+      'Bearer operator-secret',
+    )
+    const response = await run(request)
+    expect(response.status).toBe(201)
+    expect(await response.json()).toMatchObject({
+      receipt: {
+        npub,
+        schema: 'openagents.forge.owner-bootstrap-receipt.v1',
+        tenantRef,
+      },
+    })
+    expect(
+      await membership.readActorBindingByNostrPubkey(
+        tenantRef,
+        getPublicKey(secret),
+      ),
+    ).toMatchObject({ membershipState: 'active', roleRefs: ['forge:admin'] })
+    const replayRequest = signedJsonRequest(url, { npub, tenantRef }, secret)
+    replayRequest.headers.set(
+      'x-openagents-admin-authorization',
+      'Bearer operator-secret',
+    )
+    const replay = await run(replayRequest)
+    expect(replay.status).toBe(409)
+    expect(await replay.json()).toMatchObject({
+      error: 'forge_owner_bootstrap_already_completed',
+    })
+  })
+
+  test('rejects owner bootstrap without the separate admin bearer', async () => {
+    const { run } = await makeHarness()
+    const secret = generateSecretKey()
+    const url = 'https://openagents.com/api/forge/bootstrap-owner'
+    const response = await run(
+      signedJsonRequest(
+        url,
+        { npub: nip19.npubEncode(getPublicKey(secret)), tenantRef },
+        secret,
+      ),
+    )
+    expect(response.status).toBe(401)
+  })
+
   test('binds an accepted account to its signed npub and gates membership reads', async () => {
     const { run } = await makeHarness()
     const secret = generateSecretKey()

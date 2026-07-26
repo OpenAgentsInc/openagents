@@ -3405,6 +3405,8 @@ const forgeInviteMembershipRoutes = makeForgeInviteMembershipRoutes<
   isPublicWebReadRepository: isPublicForgeWebReadRepository,
   makeGitAuthStore: env => makeForgeTenantGitAuthStoreForEnv(env),
   makeMembershipStore: env => makeForgeInviteMembershipStoreForEnv(env),
+  makeTeamWorkspaceInviteStore: env =>
+    makeD1TeamWorkspaceInviteStore(khalaCodeProductStateDatabaseForEnv(env)),
   nowIso: currentIsoTimestamp,
   readAcceptedInvite: (env, inviteId, userId) =>
     readD1AcceptedTeamWorkspaceInviteForUser(
@@ -3417,6 +3419,7 @@ const forgeInviteMembershipRoutes = makeForgeInviteMembershipRoutes<
       tenantRef === 'tenant.openagents' ? 'team_openagents_core' : undefined,
     ),
   requireBrowserSession,
+  requireAdminApiToken: (request, env) => requireAdminApiToken(request, env),
 })
 
 const { requireUserBearerSession } = makeUserBearerSessionBoundary<

@@ -17,7 +17,10 @@ import type { ForgeTenantGitAuthStore } from './forge-tenant-git-auth-store'
 import { methodNotAllowed, noStoreJsonResponse } from './http/responses'
 import { isRecord } from './json-boundary'
 import { randomUuid } from './runtime-primitives'
-import type { TeamWorkspaceInviteRecord } from './team-workspace-invites'
+import type {
+  TeamWorkspaceInviteRecord,
+  TeamWorkspaceInviteStore,
+} from './team-workspace-invites'
 
 export type ForgeBrowserSession = Readonly<{
   user: Readonly<{
@@ -43,6 +46,7 @@ export type ForgeInviteMembershipRouteDependencies<
   ) => boolean | Promise<boolean>
   makeGitAuthStore: (env: Bindings) => ForgeTenantGitAuthStore
   makeMembershipStore: (env: Bindings) => ForgeInviteMembershipStore
+  makeTeamWorkspaceInviteStore?: (env: Bindings) => TeamWorkspaceInviteStore
   nowIso: () => string
   readAcceptedInvite: (
     env: Bindings,
@@ -58,17 +62,22 @@ export type ForgeInviteMembershipRouteDependencies<
     env: Bindings,
     ctx: ExecutionContext,
   ) => Promise<Session | undefined>
+  requireAdminApiToken?: (request: Request, env: Bindings) => Promise<boolean>
 }>
 
 const membershipPath = '/api/forge/membership'
 const bindHumanPath = '/api/forge/membership/bind'
 const attachAgentPath = '/api/forge/membership/agents'
 const gitCredentialsPath = '/api/forge/membership/git-credentials'
+const bootstrapOwnerPath = '/api/forge/bootstrap-owner'
 const gitAuthorizeInternalPath = '/internal/forge/git-authorize'
 const relayAdmitInternalPath = '/internal/forge/relay-admit'
 const collaborationReadAuthorizeInternalPath =
   '/internal/forge/collaboration-read-authorize'
 const webReadAuthorizeInternalPath = '/internal/forge/web-read-authorize'
+const bootstrapTenantRef = 'tenant.openagents'
+const bootstrapTeamRef = 'team_openagents_core'
+const bootstrapAdminAuthorizationHeader = 'x-openagents-admin-authorization'
 
 const errorResponse = (error: unknown): Response => {
   if (error instanceof ForgeInvitePolicyError) {
@@ -178,6 +187,26 @@ const bearerToken = (request: Request): string | undefined => {
     : undefined
 }
 
+const bootstrapBody = (
+  value: unknown,
+): Readonly<{ npub: string; tenantRef: string }> | undefined => {
+  if (!isRecord(value)) return undefined
+  const keys = Object.keys(value).sort()
+  if (keys.length !== 2 || keys[0] !== 'npub' || keys[1] !== 'tenantRef') {
+    return undefined
+  }
+  const npub = requiredText(value, 'npub')
+  const tenantRef = requiredText(value, 'tenantRef')
+  return npub === undefined || tenantRef === undefined ? undefined : { npub, tenantRef }
+}
+
+const requestWithBootstrapAdminAuthorization = (request: Request): Request => {
+  const authorization = request.headers.get(bootstrapAdminAuthorizationHeader)
+  const headers = new Headers()
+  if (authorization !== null) headers.set('authorization', authorization)
+  return new Request(request.url, { headers, method: request.method })
+}
+
 export const requireForgeBrowserMember = async <
   Bindings,
   Session extends ForgeBrowserSession,
@@ -225,6 +254,7 @@ export const makeForgeInviteMembershipRoutes = <
       path !== bindHumanPath &&
       path !== attachAgentPath &&
       path !== gitCredentialsPath &&
+      path !== bootstrapOwnerPath &&
       path !== gitAuthorizeInternalPath &&
       path !== relayAdmitInternalPath &&
       path !== collaborationReadAuthorizeInternalPath &&
@@ -237,6 +267,173 @@ export const makeForgeInviteMembershipRoutes = <
     return routeEffect(async () => {
       const store = dependencies.makeMembershipStore(env)
       const nowIso = dependencies.nowIso()
+      if (path === bootstrapOwnerPath) {
+        if (request.method !== 'POST') return methodNotAllowed(['POST'])
+        if (
+          dependencies.requireAdminApiToken === undefined ||
+          dependencies.makeTeamWorkspaceInviteStore === undefined ||
+          !(await dependencies.requireAdminApiToken(
+            requestWithBootstrapAdminAuthorization(request),
+            env,
+          ))
+        ) {
+          return unauthorized()
+        }
+        const { bytes, value } = await readJsonBytes(request)
+        const body = bootstrapBody(value)
+        if (body === undefined || body.tenantRef !== bootstrapTenantRef) {
+          return noStoreJsonResponse(
+            { error: 'forge_owner_bootstrap_body_invalid' },
+            { status: 400 },
+          )
+        }
+        const authorization = request.headers.get('authorization')
+        if (authorization?.startsWith('Nostr ') !== true) {
+          throw new ForgeInvitePolicyError({
+            code: 'credential_missing',
+            reason: 'A signed NIP-98 owner proof is required.',
+          })
+        }
+        const proof = await verifyForgeNip98Proof({
+          authorization,
+          body: bytes,
+          method: request.method,
+          nowIso,
+          url: request.url,
+        })
+        const pubkey = decodeForgeNpub(body.npub)
+        if (pubkey !== proof.actorPubkey) {
+          throw new ForgeInvitePolicyError({
+            code: 'credential_invalid',
+            reason: 'The signed NIP-98 key does not match the submitted npub.',
+          })
+        }
+        if (
+          (await dependencies.resolveTeamRefForTenant(env, body.tenantRef)) !==
+          bootstrapTeamRef
+        ) {
+          return forbidden()
+        }
+        if (
+          (await store.readActorBindingByNostrPubkey(body.tenantRef, pubkey)) !==
+          undefined
+        ) {
+          return noStoreJsonResponse(
+            { error: 'forge_owner_bootstrap_already_completed' },
+            { status: 409 },
+          )
+        }
+        const identityDigest = await sha256Hex(
+          `${body.tenantRef}\n${pubkey}\nforge-owner-bootstrap-v1`,
+        )
+        const accountRef = `forge_owner.${identityDigest.slice(0, 32)}`
+        const inviteRef = `forge_owner_bootstrap.${identityDigest.slice(0, 32)}`
+        const bindingRef = await bindingRefFor(
+          'human',
+          body.tenantRef,
+          accountRef,
+          pubkey,
+        )
+        const inviteResult = await dependencies
+          .makeTeamWorkspaceInviteStore(env)
+          .createOrRefreshInvite({
+            email: `forge-owner-${identityDigest.slice(0, 24)}@bootstrap.openagents.invalid`,
+            expiresInHours: 1,
+            id: inviteRef,
+            invitedByActorRef: 'operator:forge-owner-bootstrap',
+            metadataJson: JSON.stringify({
+              npub: body.npub,
+              schema: 'openagents.forge.owner-bootstrap.v1',
+              source: `nip98:${proof.eventId}`,
+            }),
+            role: 'admin',
+            teamId: bootstrapTeamRef,
+          })
+        if (
+          inviteResult._tag !== 'Created' &&
+          inviteResult._tag !== 'Refreshed'
+        ) {
+          return noStoreJsonResponse(
+            { error: 'forge_owner_bootstrap_invite_unavailable' },
+            { status: 503 },
+          )
+        }
+        const accepted = await dependencies
+          .makeTeamWorkspaceInviteStore(env)
+          .acceptInvite({
+            sessionEmail: inviteResult.invite.inviteeEmail,
+            token: inviteResult.token,
+            userId: accountRef,
+          })
+        if (accepted._tag !== 'Accepted' && accepted._tag !== 'AlreadyAccepted') {
+          return noStoreJsonResponse(
+            { error: 'forge_owner_bootstrap_invite_acceptance_failed' },
+            { status: 503 },
+          )
+        }
+        if (
+          !(await store.consumeNip98Replay({
+            actorPubkey: proof.actorPubkey,
+            authorityGeneration: 1,
+            bodyDigest: proof.bodyDigest,
+            canonicalPath: path,
+            consumedAt: nowIso,
+            consumptionRef: `forge_nip98_consumption.${proof.eventId}`,
+            eventCreatedAt: proof.eventCreatedAt,
+            eventId: proof.eventId,
+            expiresAt: new Date(
+              Date.parse(proof.eventCreatedAt) + 60_000,
+            ).toISOString(),
+            httpMethod: request.method,
+            requestDigest: proof.requestDigest,
+            result: 'accepted',
+            tenantRef: body.tenantRef,
+          }))
+        ) {
+          throw new ForgeInvitePolicyError({
+            code: 'nip98_replayed',
+            reason: 'This NIP-98 event was already consumed.',
+          })
+        }
+        const binding = await store.bindHuman({
+          acceptedAt: accepted.invite.acceptedAt ?? nowIso,
+          accountRef,
+          bindingEventCreatedAt: proof.eventCreatedAt,
+          bindingEventId: proof.eventId,
+          bindingRef,
+          displayName: 'Forge owner',
+          expiresAt: accepted.invite.expiresAt,
+          inviteBindingRef: `forge_invite_binding.${accepted.invite.id}`,
+          inviteDigest: accepted.invite.tokenHash,
+          inviteRef: accepted.invite.id,
+          invitedSubjectRef: accountRef,
+          inviterBindingRef: accepted.invite.invitedByActorRef,
+          issuedAt: accepted.invite.createdAt,
+          nostrPubkey: pubkey,
+          provenanceSourceRefs: [
+            `team_workspace_invite:${accepted.invite.id}`,
+            `nip98:${proof.eventId}`,
+            'forge_owner_bootstrap:v1',
+          ],
+          roleRefs: forgeRoleRefsForTeamInvite(accepted.invite.role),
+          teamRef: accepted.invite.teamId,
+          tenantRef: body.tenantRef,
+        })
+        return noStoreJsonResponse(
+          {
+            receipt: {
+              bindingRef: binding.bindingRef,
+              inviteBindingRef: `forge_invite_binding.${accepted.invite.id}`,
+              inviteRef: accepted.invite.id,
+              npub: body.npub,
+              replayConsumptionRef: `forge_nip98_consumption.${proof.eventId}`,
+              schema: 'openagents.forge.owner-bootstrap-receipt.v1',
+              tenantRef: body.tenantRef,
+            },
+          },
+          { status: 201 },
+        )
+      }
       if (path === collaborationReadAuthorizeInternalPath) {
         if (request.method !== 'POST') return methodNotAllowed(['POST'])
         const configuredToken = dependencies.gitServiceAuthorizationToken?.(env)
