@@ -34685,8 +34685,30 @@
           "STE-8.2"
         ],
         "ste_status": "inspected",
-        "ste_reviewer": "claude/installed-rc13",
-        "ste_reviewed_at": "2026-07-25T23:59:00Z"
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/omega/2026-07-25-omega-rc14-installed-observation-proof.md",
+      "sha256": "6e9a6582ea0c591a445b9726d74184e0c41c3ebc35bd2c7f6e4f647db0256a42",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {
