@@ -107,6 +107,31 @@ describe("Forge NIP-34 conformance fixtures", () => {
     ]);
   });
 
+  test("keeps the restore receipt as partial evidence without a live ngit claim", () => {
+    const row = matrix.rows.find((candidate) => candidate.id === "ngit-live-clone-fetch");
+    expect(row).toMatchObject({
+      blockerRefs: ["github:OpenAgentsInc/openagents#9244"],
+      claim: "none",
+      result: "blocked",
+    });
+    expect(row?.evidence).toEqual([
+      {
+        path: "docs/forge/receipts/2026-07-26-forge-git-live-disk-restore.json",
+        sha256: "a1be07fff0e872febd5715af02787be9875a9a72e3d68cba8212a409e0c966ed",
+      },
+    ]);
+    expect(
+      matrix.rows.find(
+        (candidate) => candidate.id === "gitworkshop-live-discovery-read",
+      )?.blockerRefs,
+    ).toEqual(["github:OpenAgentsInc/openagents#9244"]);
+    expect(
+      matrix.rows.find(
+        (candidate) => candidate.id === "owned-service-object-projection-race",
+      )?.blockerRefs,
+    ).toEqual(["github:OpenAgentsInc/openagents#9249"]);
+  });
+
   test("fails closed when a blocked row claims peer compatibility", () => {
     const invalid = structuredClone(matrix);
     const row = invalid.rows.find((candidate) => candidate.id === "ngit-live-clone-fetch");

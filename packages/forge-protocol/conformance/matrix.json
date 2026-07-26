@@ -211,11 +211,13 @@
       "proof": "live-peer",
       "result": "blocked",
       "claim": "none",
-      "evidence": [],
-      "blockerRefs": [
-        "github:OpenAgentsInc/openagents#9244",
-        "github:OpenAgentsInc/openagents#9245"
-      ]
+      "evidence": [
+        {
+          "path": "docs/forge/receipts/2026-07-26-forge-git-live-disk-restore.json",
+          "sha256": "a1be07fff0e872febd5715af02787be9875a9a72e3d68cba8212a409e0c966ed"
+        }
+      ],
+      "blockerRefs": ["github:OpenAgentsInc/openagents#9244"]
     },
     {
       "id": "gitworkshop-live-discovery-read",
@@ -226,10 +228,7 @@
       "result": "blocked",
       "claim": "none",
       "evidence": [],
-      "blockerRefs": [
-        "github:OpenAgentsInc/openagents#9244",
-        "github:OpenAgentsInc/openagents#9245"
-      ]
+      "blockerRefs": ["github:OpenAgentsInc/openagents#9244"]
     },
     {
       "id": "owned-service-object-projection-race",
@@ -240,7 +239,7 @@
       "result": "blocked",
       "claim": "none",
       "evidence": [],
-      "blockerRefs": ["github:OpenAgentsInc/openagents#9245"]
+      "blockerRefs": ["github:OpenAgentsInc/openagents#9249"]
     }
   ]
 }
