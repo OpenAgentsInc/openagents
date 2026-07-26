@@ -9,6 +9,7 @@ import {
 
 import { ForgeGitAdmission } from "./admission.js";
 import { ForgeGitAuth } from "./auth.js";
+import { projectForgeCollaboration } from "./collaboration.js";
 import { ForgeGitConfiguration } from "./config.js";
 import {
   ForgeGitAuthError,
@@ -301,6 +302,135 @@ export const forgeGitHandler = Effect.fn("ForgeGitRoutes.handle")(function* (req
 
 const internalAdmissionPath = "/internal/forge/admission/events";
 const internalMergeReceiptsPath = "/internal/forge/merge-receipts";
+const collaborationReadPrefix = "/internal/v1/repositories/";
+
+const matchCollaborationRead = (
+  request: Request,
+):
+  | Readonly<{
+      request: import("@openagentsinc/forge-protocol").ForgeCollaborationRequest;
+      repositoryRef: string;
+      tenantRef: string;
+    }>
+  | undefined => {
+  const parts = new URL(request.url).pathname.split("/").filter((part) => part !== "");
+  if (
+    parts.length < 7 ||
+    parts[0] !== "internal" ||
+    parts[1] !== "v1" ||
+    parts[2] !== "repositories" ||
+    parts[5] !== "collaboration"
+  ) {
+    return undefined;
+  }
+  const tenantRef = parts[3] === undefined ? undefined : decodeSegment(parts[3]);
+  const repositoryRef = parts[4] === undefined ? undefined : decodeSegment(parts[4]);
+  if (tenantRef === undefined || repositoryRef === undefined) return undefined;
+  if (parts[6] === "attention" && parts.length === 7) {
+    return {
+      repositoryRef,
+      request: { owner: tenantRef, repo: repositoryRef, view: "attention" },
+      tenantRef,
+    };
+  }
+  const recordRef = parts[7] === undefined ? undefined : decodeSegment(parts[7]);
+  if (recordRef === undefined || parts.length !== 8) return undefined;
+  if (parts[6] === "changes") {
+    return {
+      repositoryRef,
+      request: { changeRef: recordRef, owner: tenantRef, repo: repositoryRef, view: "change" },
+      tenantRef,
+    };
+  }
+  if (parts[6] === "work") {
+    return {
+      repositoryRef,
+      request: { owner: tenantRef, repo: repositoryRef, view: "work", workRef: recordRef },
+      tenantRef,
+    };
+  }
+  return undefined;
+};
+
+/** The web app is a private reader. Membership remains in the policy service;
+ * the service bearer only authorizes this internal hop. */
+const internalCollaborationReadHandler = Effect.fn("ForgeGitRoutes.internalCollaborationRead")(
+  function* (request: Request) {
+    if (!new URL(request.url).pathname.startsWith(collaborationReadPrefix)) return undefined;
+    const route = matchCollaborationRead(request);
+    if (route === undefined) return undefined;
+    if (request.method !== "GET") {
+      return Response.json(
+        { error: "method_not_allowed" },
+        { headers: noStoreHeaders, status: 405 },
+      );
+    }
+    const configuration = yield* ForgeGitConfiguration;
+    const presented = request.headers.get("authorization")?.replace(/^Bearer\s+/iu, "");
+    if (
+      presented === undefined ||
+      presented !== Redacted.value(configuration.policyAuthorityToken)
+    ) {
+      return Response.json(
+        { error: "forge_collaboration_read_unauthorized" },
+        { headers: noStoreHeaders, status: 401 },
+      );
+    }
+    const policyUrl = new URL(configuration.policyAuthorityUrl);
+    policyUrl.pathname = "/internal/forge/collaboration-read-authorize";
+    policyUrl.search = "";
+    const policy = yield* Effect.tryPromise({
+      try: () =>
+        fetch(policyUrl, {
+          body: JSON.stringify({ repositoryRef: route.repositoryRef, tenantRef: route.tenantRef }),
+          headers: {
+            authorization: `Bearer ${Redacted.value(configuration.policyAuthorityToken)}`,
+            "content-type": "application/json",
+            ...(request.headers.get("cookie") === null
+              ? {}
+              : { cookie: request.headers.get("cookie") ?? "" }),
+          },
+          method: "POST",
+        }),
+      catch: () =>
+        new ForgeGitRouteError({ code: "forge_collaboration_policy_unavailable", status: 503 }),
+    });
+    if (!policy.ok) {
+      return Response.json(
+        {
+          error:
+            policy.status === 401 || policy.status === 403
+              ? "forge_collaboration_membership_required"
+              : "forge_collaboration_policy_unavailable",
+        },
+        {
+          headers: noStoreHeaders,
+          status: policy.status === 401 || policy.status === 403 ? policy.status : 503,
+        },
+      );
+    }
+    const admission = yield* ForgeGitAdmission;
+    yield* admission.requireRepository({
+      repositoryRef: route.repositoryRef,
+      tenantRef: route.tenantRef,
+    });
+    const events = yield* admission.listProjectedEvents({
+      repositoryRef: route.repositoryRef,
+      tenantRef: route.tenantRef,
+    });
+    const projection = projectForgeCollaboration(route.request, events);
+    if (
+      (route.request.view === "change" && projection.change === null) ||
+      (route.request.view === "work" && projection.work === null)
+    ) {
+      return Response.json(
+        { error: "forge_collaboration_record_not_found" },
+        { headers: noStoreHeaders, status: 404 },
+      );
+    }
+    return Response.json(projection, { headers: noStoreHeaders });
+  },
+);
 
 const resolveActiveNostrBinding = async (
   configuration: {
@@ -491,7 +621,12 @@ export const routeRequest = (
   | ForgeGitProjector
   | ForgeGitRepository
 > =>
-  internalAdmissionHandler(request).pipe(
+  internalCollaborationReadHandler(request).pipe(
+    Effect.flatMap((collaboration) =>
+      collaboration === undefined
+        ? internalAdmissionHandler(request)
+        : Effect.succeed(collaboration),
+    ),
     Effect.flatMap((internal) =>
       internal === undefined ? forgeGitHandler(request) : Effect.succeed(internal),
     ),

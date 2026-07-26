@@ -47,7 +47,15 @@ const repoTag = (event: NostrEvent): string | undefined => {
   const coordinate = event.tags.find((tag) => tag[0] === "a")?.[1];
   if (coordinate === undefined) return undefined;
   const [kind, _pubkey, repositoryRef] = coordinate.split(":", 3);
-  return kind === "30617" ? repositoryRef : undefined;
+  return kind === "30617" ? repositoryRef : coordinate;
+};
+const repositoryMatches = (
+  event: NostrEvent,
+  repositoryRef: string,
+  tenantRef: string,
+): boolean => {
+  const tagged = repoTag(event);
+  return tagged === repositoryRef || tagged === `${tenantRef}/${repositoryRef}`;
 };
 const tagValues = (event: NostrEvent, name: string): ReadonlyArray<string> =>
   event.tags.filter((tag) => tag[0] === name).flatMap((tag) => tag.slice(1));
@@ -67,6 +75,7 @@ const objectIds = (event: NostrEvent): ReadonlyArray<string> => {
       .map((tag) => tag[1])
       .filter((value): value is string => value !== undefined && oid.test(value));
   }
+  if (event.kind !== 1617 && event.kind !== 1618 && event.kind !== 1619) return [];
   const commits = tagValues(event, "c").filter((value) => oid.test(value));
   const emailPatchCommit = /^From ([0-9a-f]{40,64}) /mu.exec(event.content)?.[1];
   return emailPatchCommit !== undefined && oid.test(emailPatchCommit)
@@ -87,7 +96,7 @@ const asAdmissionEvent = (
 ): ForgeGitAdmissionEvent => ({
   createdAt: new Date(event.created_at * 1000).toISOString(),
   eventId: event.id,
-  kind: event.kind as 30617 | 30618 | 1617 | 1618 | 1619,
+  kind: event.kind as 1111 | 1617 | 1618 | 1619 | 1621 | 1630 | 1631 | 1632 | 1633 | 30617 | 30618,
   objectIds: objectIds(event),
   repositoryRef,
   tenantRef,
@@ -106,10 +115,12 @@ export const layerProjector = Layer.effect(
     ) {
       const { event } = input;
       if (!verifyEvent(event)) return yield* projectorError("forge_git_nostr_signature_invalid");
-      if (![30617, 30618, 1617, 1618, 1619].includes(event.kind)) {
+      if (
+        ![1111, 1617, 1618, 1619, 1621, 1630, 1631, 1632, 1633, 30617, 30618].includes(event.kind)
+      ) {
         return yield* projectorError("forge_git_nip34_kind_unsupported");
       }
-      if (repoTag(event) !== input.repositoryRef) {
+      if (!repositoryMatches(event, input.repositoryRef, input.tenantRef)) {
         return yield* projectorError("forge_git_nip34_repository_mismatch");
       }
       const fact = asAdmissionEvent(event, input.repositoryRef, input.tenantRef);
@@ -211,6 +222,14 @@ export const layerProjector = Layer.effect(
             .pipe(Effect.mapError(() => projectorError("forge_git_signed_state_refused")));
         }
       }
+      yield* admission
+        .recordProjectedEvent({
+          ...fact,
+          actorBindingRef: input.actorBindingRef,
+          authorPubkey: event.pubkey,
+          eventJson: eventJson(event),
+        })
+        .pipe(Effect.mapError(() => projectorError("forge_git_projection_write_failed")));
       yield* admission
         .claimNostrEvent({
           eventId: event.id,

@@ -13,11 +13,20 @@ import { ForgeGitAdmissionError, type ForgeGitSignedRefPolicy } from "./model.js
 export type ForgeGitAdmissionEvent = Readonly<{
   readonly createdAt: string;
   readonly eventId: string;
-  readonly kind: 30617 | 30618 | 1617 | 1618 | 1619;
+  readonly kind: 1111 | 1617 | 1618 | 1619 | 1621 | 1630 | 1631 | 1632 | 1633 | 30617 | 30618;
   readonly objectIds: ReadonlyArray<string>;
   readonly repositoryRef: string;
   readonly tenantRef: string;
 }>;
+
+/** An admitted event is the only collaboration input. This is a projection,
+ * never a second collaboration authority. */
+export type ForgeGitProjectedEvent = ForgeGitAdmissionEvent &
+  Readonly<{
+    readonly actorBindingRef: string;
+    readonly authorPubkey: string;
+    readonly eventJson: string;
+  }>;
 
 export type ForgeGitAdmittedRepository = Readonly<{
   readonly admittedBindingRef: string;
@@ -124,6 +133,14 @@ export interface ForgeGitAdmissionShape {
     readonly repositoryRef: string;
     readonly tenantRef: string;
   }) => Effect.Effect<number, ForgeGitAdmissionError>;
+  /** Stores an already-admitted event for the read-only collaboration projection. */
+  readonly recordProjectedEvent: (
+    input: ForgeGitProjectedEvent,
+  ) => Effect.Effect<void, ForgeGitAdmissionError>;
+  readonly listProjectedEvents: (input: {
+    readonly repositoryRef: string;
+    readonly tenantRef: string;
+  }) => Effect.Effect<ReadonlyArray<ForgeGitProjectedEvent>, ForgeGitAdmissionError>;
   readonly listAdmittedRepositories: () => Effect.Effect<
     ReadonlyArray<Readonly<{ repositoryRef: string; tenantRef: string }>>,
     ForgeGitAdmissionError
@@ -198,6 +215,7 @@ export const makeMemoryAdmissionLayer = (input: {
     ForgeGitSignedRefPolicy & Readonly<{ repositoryRef: string; tenantRef: string }>
   >;
   readonly preparedMergeReceipts?: ReadonlyArray<ForgeMergeOutcomeReceiptDraft>;
+  readonly projectedEvents?: ReadonlyArray<ForgeGitProjectedEvent>;
 }): Layer.Layer<ForgeGitAdmission> => {
   const withReceiveLease = serialLease();
   const admitted = new Set(
@@ -212,6 +230,7 @@ export const makeMemoryAdmissionLayer = (input: {
       { ...receipt, finalizedAt: null, signedState: null, state: "prepared" as const },
     ]),
   );
+  const projectedEvents: Array<ForgeGitProjectedEvent> = [...(input.projectedEvents ?? [])];
   return Layer.succeed(
     ForgeGitAdmission,
     ForgeGitAdmission.of({
@@ -311,6 +330,21 @@ export const makeMemoryAdmissionLayer = (input: {
       expirePurgatory: Effect.fn("ForgeGitAdmission.memory.expirePurgatory")(function* () {
         return 0;
       }),
+      recordProjectedEvent: Effect.fn("ForgeGitAdmission.memory.recordProjectedEvent")(
+        function* (event) {
+          if (!projectedEvents.some((candidate) => candidate.eventId === event.eventId)) {
+            projectedEvents.push(event);
+          }
+        },
+      ),
+      listProjectedEvents: Effect.fn("ForgeGitAdmission.memory.listProjectedEvents")(
+        function* (value) {
+          return projectedEvents.filter(
+            (event) =>
+              event.tenantRef === value.tenantRef && event.repositoryRef === value.repositoryRef,
+          );
+        },
+      ),
       listAdmittedRepositories: Effect.fn("ForgeGitAdmission.memory.listAdmittedRepositories")(
         function* () {
           return [...admitted].map((key) => {
@@ -715,6 +749,51 @@ export const layerDistributedAdmission = Layer.effect(
           catch: admissionUnavailable,
         });
         return result.count;
+      }),
+      recordProjectedEvent: Effect.fn("ForgeGitAdmission.recordProjectedEvent")(function* (input) {
+        yield* Effect.tryPromise({
+          try: () => database.sql`
+            INSERT INTO forge_git_projected_events (
+              tenant_ref, repository_ref, event_id, kind, author_pubkey,
+              actor_binding_ref, event_json, observed_at, projected_at
+            ) VALUES (
+              ${input.tenantRef}, ${input.repositoryRef}, ${input.eventId}, ${input.kind},
+              ${input.authorPubkey}, ${input.actorBindingRef}, ${input.eventJson},
+              ${input.createdAt}, now()
+            ) ON CONFLICT (tenant_ref, event_id) DO NOTHING`,
+          catch: admissionUnavailable,
+        });
+      }),
+      listProjectedEvents: Effect.fn("ForgeGitAdmission.listProjectedEvents")(function* (input) {
+        const rows = yield* Effect.tryPromise({
+          try: () =>
+            database.sql<
+              Readonly<{
+                actor_binding_ref: string;
+                author_pubkey: string;
+                event_id: string;
+                event_json: string;
+                kind: ForgeGitAdmissionEvent["kind"];
+                observed_at: string;
+              }>[]
+            >`SELECT event_id, kind, author_pubkey, actor_binding_ref, event_json, observed_at
+                FROM forge_git_projected_events
+               WHERE tenant_ref = ${input.tenantRef}
+                 AND repository_ref = ${input.repositoryRef}
+               ORDER BY observed_at ASC, event_id ASC`,
+          catch: admissionUnavailable,
+        });
+        return rows.map((row) => ({
+          actorBindingRef: row.actor_binding_ref,
+          authorPubkey: row.author_pubkey,
+          createdAt: row.observed_at,
+          eventId: row.event_id,
+          eventJson: row.event_json,
+          kind: row.kind,
+          objectIds: [],
+          repositoryRef: input.repositoryRef,
+          tenantRef: input.tenantRef,
+        }));
       }),
       listAdmittedRepositories: Effect.fn("ForgeGitAdmission.listAdmittedRepositories")(
         function* () {

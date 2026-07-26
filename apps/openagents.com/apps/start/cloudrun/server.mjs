@@ -1,7 +1,8 @@
-import { Runtime } from "@openagentsinc/runtime-platform"
+import { Runtime } from '@openagentsinc/runtime-platform'
 import { existsSync } from 'node:fs'
 import { readFile, stat } from 'node:fs/promises'
 import path from 'node:path'
+
 import startWorker from '../dist/server/server.js'
 
 const CLIENT_DIR = path.resolve(
@@ -30,11 +31,11 @@ const CONTENT_TYPES = {
   '.woff2': 'font/woff2',
 }
 
-const contentTypeFor = (filePath) =>
+const contentTypeFor = filePath =>
   CONTENT_TYPES[path.extname(filePath).toLowerCase()] ??
   'application/octet-stream'
 
-const resolveClientPath = (pathname) => {
+const resolveClientPath = pathname => {
   let decoded
   try {
     decoded = decodeURIComponent(pathname)
@@ -112,7 +113,7 @@ const proxyPublicApi = async (request, url) => {
 
 const executionCtx = {
   waitUntil(promise) {
-    void Promise.resolve(promise).catch((error) => {
+    void Promise.resolve(promise).catch(error => {
       console.error(
         JSON.stringify({
           at: new Date().toISOString(),
@@ -129,7 +130,7 @@ if (!existsSync(CLIENT_DIR)) {
 }
 
 Runtime.serve({
-  fetch: async (request) => {
+  fetch: async request => {
     const url = new URL(request.url)
 
     if (url.pathname === '/internal/healthz') {
@@ -147,6 +148,10 @@ Runtime.serve({
       {
         KHALA_SYNC_UPSTREAM_BASE_URL:
           process.env.KHALA_SYNC_UPSTREAM_BASE_URL ?? PUBLIC_API_ORIGIN,
+        OPENAGENTS_FORGE_GIT_SERVICE_AUTH_TOKEN:
+          process.env.OPENAGENTS_FORGE_GIT_SERVICE_AUTH_TOKEN,
+        OPENAGENTS_FORGE_READ_BASE_URL:
+          process.env.OPENAGENTS_FORGE_READ_BASE_URL,
       },
       executionCtx,
     )

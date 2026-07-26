@@ -10,7 +10,11 @@ import { makeMemoryBlobStore } from "@openagentsinc/oa-infra/blob-store-memory";
 import { Effect, Layer, ManagedRuntime } from "effect";
 import { afterEach, describe, expect, test } from "vitest";
 
-import { ForgeGitAdmission, makeMemoryAdmissionLayer } from "./admission.js";
+import {
+  ForgeGitAdmission,
+  type ForgeGitProjectedEvent,
+  makeMemoryAdmissionLayer,
+} from "./admission.js";
 import { ForgeGitAuth, makePolicyAuthorityAuthLayer, makeStaticAuthLayer } from "./auth.js";
 import { ForgeGitConfiguration, makeTestConfiguration } from "./config.js";
 import { ForgeGitSession } from "./model.js";
@@ -151,17 +155,21 @@ const makeRuntime = (
     repositoryRef: string;
     tenantRef: string;
   }> = [],
+  projectedEvents: ReadonlyArray<ForgeGitProjectedEvent> = [],
+  policyAuthorityUrl = "https://openagents.test",
 ) => {
   const configuration = makeTestConfiguration({
     gitBinary: "git",
     maxReceivePackBytes: 64 * 1024 * 1024,
     mirrorEnabled: true,
+    policyAuthorityUrl,
     repositoryRoot,
   });
   const repositoryLayer = makeRepositoryLayer(configuration, blobStore);
   const applicationLayer = Layer.mergeAll(
     makeMemoryAdmissionLayer({
       admittedRepositories: [{ repositoryRef, tenantRef }],
+      projectedEvents,
       signedRefPolicies: admissionPolicies,
     }),
     authLayer,
@@ -215,6 +223,98 @@ const provisionAdmittedRepository = async (fixture: ReturnType<typeof makeRuntim
 };
 
 describe("owned Forge Smart HTTP service", () => {
+  test("serves admitted collaboration events only after service and member authorization", async () => {
+    const root = await mkdtemp(join(tmpdir(), "oa-forge-collaboration-"));
+    temporaryPaths.push(root);
+    const changeRef = "1".repeat(64);
+    const head = "2".repeat(40);
+    const base = "3".repeat(40);
+    const projectedEvent: ForgeGitProjectedEvent = {
+      actorBindingRef: "binding.forge.member",
+      authorPubkey: "a".repeat(64),
+      createdAt: "2026-07-26T08:00:00.000Z",
+      eventId: changeRef,
+      eventJson: JSON.stringify({
+        content: "Owned collaboration projection",
+        created_at: 1_785_000_000,
+        id: changeRef,
+        kind: 1617,
+        pubkey: "a".repeat(64),
+        sig: "b".repeat(128),
+        tags: [
+          ["a", `30617:${"a".repeat(64)}:${repositoryRef}`],
+          ["commit", head],
+          ["parent-commit", base],
+        ],
+      }),
+      kind: 1617,
+      objectIds: [base, head],
+      repositoryRef,
+      tenantRef,
+    };
+    const policyRequests: Array<
+      Readonly<{ authorization: string | undefined; cookie: string | undefined }>
+    > = [];
+    const policyServer = createServer((incoming, outgoing) => {
+      policyRequests.push({
+        authorization: incoming.headers.authorization,
+        cookie: incoming.headers.cookie,
+      });
+      outgoing.setHeader("content-type", "application/json");
+      outgoing.end(JSON.stringify({ access: { canWrite: false, mode: "member" } }));
+    });
+    await new Promise<void>((resolve, reject) => {
+      policyServer.once("error", reject);
+      policyServer.listen(0, "127.0.0.1", resolve);
+    });
+    disposers.push(() => closeServer(policyServer));
+    const address = policyServer.address();
+    if (address === null || typeof address === "string") {
+      throw new Error("policy server unavailable");
+    }
+    const fixture = makeRuntime(
+      root,
+      makeMemoryBlobStore(),
+      makeSession(),
+      ["git:receive-pack", "git:upload-pack"],
+      makeStaticAuthLayer(token, makeSession(), ["git:receive-pack", "git:upload-pack"]),
+      [],
+      [projectedEvent],
+      `http://127.0.0.1:${address.port}`,
+    );
+    const service = await listen(fixture.runtime);
+    disposers.push(async () => {
+      await closeServer(service.server);
+      await fixture.runtime.dispose();
+    });
+    const endpoint = `${service.origin}/internal/v1/repositories/${tenantRef}/${repositoryRef}/collaboration/changes/${changeRef}`;
+
+    expect((await fetch(endpoint)).status).toBe(401);
+    const response = await fetch(endpoint, {
+      headers: {
+        authorization: "Bearer forge-git-service-test-secret",
+        cookie: "oa_session=private",
+      },
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(await response.json()).toMatchObject({
+      change: {
+        base: { value: base },
+        changeRef,
+        head: { value: head },
+        proposalResolution: "resolved",
+      },
+      schema: "openagents.forge.collaboration_read.v1",
+    });
+    expect(policyRequests).toEqual([
+      {
+        authorization: "Bearer forge-git-service-test-secret",
+        cookie: "oa_session=private",
+      },
+    ]);
+  });
+
   test("persists a passed gate receipt and refuses an unresolved change request", async () => {
     const root = await mkdtemp(join(tmpdir(), "oa-forge-gate-receipt-"));
     temporaryPaths.push(root);

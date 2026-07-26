@@ -216,6 +216,28 @@ describe('Forge invite membership routes', () => {
     expect(bind.headers.get('cache-control')).toContain('no-store')
     expect(bind.headers.get('set-cookie')).toContain('oa_session=refreshed')
 
+    const collaborationRead = await run(
+      new Request(
+        'https://openagents.com/internal/forge/collaboration-read-authorize',
+        {
+          body: JSON.stringify({
+            repositoryRef: 'repo.openagents.openagents',
+            tenantRef,
+          }),
+          headers: {
+            authorization: 'Bearer forge-git-service-secret',
+            'content-type': 'application/json',
+          },
+          method: 'POST',
+        },
+      ),
+    )
+    expect(collaborationRead.status).toBe(200)
+    expect(await collaborationRead.json()).toMatchObject({
+      access: { canWrite: false, mode: 'member' },
+      tenantRef,
+    })
+
     const replay = await run(
       signedJsonRequest(
         bindUrl,

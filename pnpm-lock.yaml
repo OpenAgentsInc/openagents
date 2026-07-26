@@ -988,6 +988,9 @@ importers:
       '@openagentsinc/effect-start':
         specifier: workspace:*
         version: link:../../../../packages/effect-start
+      '@openagentsinc/forge-protocol':
+        specifier: workspace:*
+        version: link:../../../../packages/forge-protocol
       '@openagentsinc/khala-sync':
         specifier: workspace:*
         version: link:../../../../packages/khala-sync

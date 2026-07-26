@@ -36,6 +36,7 @@ export type ForgeInviteMembershipRouteDependencies<
     session: Session,
   ) => Response
   gitServiceAuthorizationToken?: (env: Bindings) => string | undefined
+  gitServiceAuthorizationToken?: (env: Bindings) => string | undefined
   makeGitAuthStore: (env: Bindings) => ForgeTenantGitAuthStore
   makeMembershipStore: (env: Bindings) => ForgeInviteMembershipStore
   nowIso: () => string
@@ -61,6 +62,8 @@ const attachAgentPath = '/api/forge/membership/agents'
 const gitCredentialsPath = '/api/forge/membership/git-credentials'
 const gitAuthorizeInternalPath = '/internal/forge/git-authorize'
 const relayAdmitInternalPath = '/internal/forge/relay-admit'
+const collaborationReadAuthorizeInternalPath =
+  '/internal/forge/collaboration-read-authorize'
 
 const errorResponse = (error: unknown): Response => {
   if (error instanceof ForgeInvitePolicyError) {
@@ -218,7 +221,8 @@ export const makeForgeInviteMembershipRoutes = <
       path !== attachAgentPath &&
       path !== gitCredentialsPath &&
       path !== gitAuthorizeInternalPath &&
-      path !== relayAdmitInternalPath
+      path !== relayAdmitInternalPath &&
+      path !== collaborationReadAuthorizeInternalPath
     ) {
       return undefined
     }
@@ -227,6 +231,63 @@ export const makeForgeInviteMembershipRoutes = <
     return routeEffect(async () => {
       const store = dependencies.makeMembershipStore(env)
       const nowIso = dependencies.nowIso()
+      if (path === collaborationReadAuthorizeInternalPath) {
+        if (request.method !== 'POST') return methodNotAllowed(['POST'])
+        const configuredToken = dependencies.gitServiceAuthorizationToken?.(env)
+        const presentedToken = bearerToken(request)
+        if (
+          configuredToken === undefined ||
+          presentedToken === undefined ||
+          !(await timingSafeEqual(presentedToken, configuredToken))
+        ) {
+          return unauthorized()
+        }
+        const { value } = await readJsonBytes(request.clone())
+        if (!isRecord(value)) {
+          return noStoreJsonResponse(
+            { error: 'forge_collaboration_authorization_body_invalid' },
+            { status: 400 },
+          )
+        }
+        const tenantRef = requiredText(value, 'tenantRef')
+        const repositoryRef = requiredText(value, 'repositoryRef')
+        if (tenantRef === undefined || repositoryRef === undefined) {
+          return noStoreJsonResponse(
+            { error: 'forge_collaboration_authorization_body_invalid' },
+            { status: 400 },
+          )
+        }
+        const member = await requireForgeBrowserMember(
+          dependencies,
+          request,
+          env,
+          ctx,
+          tenantRef,
+        )
+        if (member._tag === 'Unauthorized') return unauthorized()
+        if (member._tag === 'Forbidden') return forbidden()
+        const binding = await store.readActorBindingByAccount(
+          tenantRef,
+          member.session.user.userId,
+          'human',
+        )
+        if (
+          binding === undefined ||
+          !binding.roleRefs.some(
+            role =>
+              role === 'forge:viewer' ||
+              role === 'forge:member' ||
+              role === 'forge:admin',
+          )
+        ) {
+          return forbidden()
+        }
+        return noStoreJsonResponse({
+          access: { mode: 'member', canWrite: false },
+          repositoryRef,
+          tenantRef,
+        })
+      }
       if (path === relayAdmitInternalPath) {
         if (request.method !== 'POST') return methodNotAllowed(['POST'])
         const configuredToken = dependencies.gitServiceAuthorizationToken?.(env)

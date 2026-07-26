@@ -1,16 +1,15 @@
-import "@tanstack/react-start/server-only";
-
 import {
   ForgeCollaborationFailure,
   ForgeCollaborationProjection,
   ForgeCollaborationReader,
-  ForgeCollaborationResult,
-  ForgeCollaborationTransportError,
   type ForgeCollaborationRequest,
+  ForgeCollaborationResult,
   type ForgeCollaborationResult as ForgeCollaborationResultType,
+  ForgeCollaborationTransportError,
 } from "@/features/forge/collaboration-read";
 import { getRequestHeader } from "@tanstack/react-start/server";
-import { Config, Effect, Exit, Layer, Schema as S } from "effect";
+import "@tanstack/react-start/server-only";
+import { Config, Effect, Exit, Layer, Redacted, Schema as S } from "effect";
 
 type Fetch = typeof fetch;
 
@@ -38,15 +37,26 @@ const failed = (
   ForgeCollaborationResult.cases.failed.make({
     failure:
       tag === "unavailable"
-        ? ForgeCollaborationFailure.cases.unavailable.make({ detail, retryable })
+        ? ForgeCollaborationFailure.cases.unavailable.make({
+            detail,
+            retryable,
+          })
         : tag === "not_found"
           ? ForgeCollaborationFailure.cases.not_found.make({ detail })
           : tag === "authentication_required"
-            ? ForgeCollaborationFailure.cases.authentication_required.make({ detail })
-            : ForgeCollaborationFailure.cases.malformed_response.make({ detail }),
+            ? ForgeCollaborationFailure.cases.authentication_required.make({
+                detail,
+              })
+            : ForgeCollaborationFailure.cases.malformed_response.make({
+                detail,
+              }),
   });
 
-export const makeForgeCollaborationReaderLayer = (baseUrl: string, fetchFn: Fetch = fetch) =>
+export const makeForgeCollaborationReaderLayer = (
+  baseUrl: string,
+  serviceAuthToken: Redacted.Redacted<string>,
+  fetchFn: Fetch = fetch,
+) =>
   Layer.succeed(
     ForgeCollaborationReader,
     ForgeCollaborationReader.of({
@@ -58,6 +68,7 @@ export const makeForgeCollaborationReaderLayer = (baseUrl: string, fetchFn: Fetc
               cache: "no-store",
               headers: {
                 accept: "application/json",
+                authorization: `Bearer ${Redacted.value(serviceAuthToken)}`,
                 ...(authorizationCookie === undefined ? {} : { cookie: authorizationCookie }),
               },
             }),
@@ -68,18 +79,36 @@ export const makeForgeCollaborationReaderLayer = (baseUrl: string, fetchFn: Fetc
             }),
         });
         if (response.status === 401 || response.status === 403) {
-          return failed("authentication_required", "This Forge collaboration view requires an invitation.");
+          return failed(
+            "authentication_required",
+            "This Forge collaboration view requires an invitation.",
+          );
         }
-        if (response.status === 404) return failed("not_found", "The requested Forge record was not found.");
+        if (response.status === 404)
+          return failed("not_found", "The requested Forge record was not found.");
         if (!response.ok) {
-          return failed("unavailable", `The owned Forge collaboration service returned HTTP ${response.status}.`, response.status >= 500);
+          return failed(
+            "unavailable",
+            `The owned Forge collaboration service returned HTTP ${response.status}.`,
+            response.status >= 500,
+          );
         }
         const payload = yield* Effect.tryPromise({
           try: () => response.json(),
-          catch: (cause) => new ForgeCollaborationTransportError({ operation: "ForgeCollaborationReader.responseJson", cause }),
+          catch: (cause) =>
+            new ForgeCollaborationTransportError({
+              operation: "ForgeCollaborationReader.responseJson",
+              cause,
+            }),
         });
         const projection = yield* S.decodeUnknownEffect(ForgeCollaborationProjection)(payload).pipe(
-          Effect.mapError((cause) => new ForgeCollaborationTransportError({ operation: "ForgeCollaborationReader.decode", cause })),
+          Effect.mapError(
+            (cause) =>
+              new ForgeCollaborationTransportError({
+                operation: "ForgeCollaborationReader.decode",
+                cause,
+              }),
+          ),
         );
         return ForgeCollaborationResult.cases.loaded.make({ projection });
       }),
@@ -93,8 +122,11 @@ const runRead = (request: ForgeCollaborationRequest, authorizationCookie: string
   }).pipe(
     Effect.provide(
       Layer.unwrap(
-        Config.string("OPENAGENTS_FORGE_READ_BASE_URL").pipe(
-          Effect.map((baseUrl) => makeForgeCollaborationReaderLayer(baseUrl)),
+        Effect.all({
+          baseUrl: Config.string("OPENAGENTS_FORGE_READ_BASE_URL"),
+          token: Config.redacted("OPENAGENTS_FORGE_GIT_SERVICE_AUTH_TOKEN"),
+        }).pipe(
+          Effect.map(({ baseUrl, token }) => makeForgeCollaborationReaderLayer(baseUrl, token)),
         ),
       ),
     ),
@@ -106,5 +138,9 @@ export const readForgeCollaborationFromOwnedService = async (
   const exit = await Effect.runPromiseExit(runRead(request, getRequestHeader("cookie")));
   return Exit.isSuccess(exit)
     ? exit.value
-    : failed("unavailable", "The owned Forge collaboration service is not configured or did not return a valid projection.", true);
+    : failed(
+        "unavailable",
+        "The owned Forge collaboration service is not configured or did not return a valid projection.",
+        true,
+      );
 };

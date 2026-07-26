@@ -28,6 +28,7 @@
     "@openagentsinc/analytics": "workspace:*",
     "@openagentsinc/atif": "workspace:*",
     "@openagentsinc/effect-start": "workspace:*",
+    "@openagentsinc/forge-protocol": "workspace:*",
     "@openagentsinc/khala-sync": "workspace:*",
     "@openagentsinc/khala-sync-client": "workspace:*",
     "@openagentsinc/khala-sync-db-collection": "workspace:*",

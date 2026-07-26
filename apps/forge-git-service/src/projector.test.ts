@@ -11,7 +11,7 @@ import { Effect, Layer, ManagedRuntime } from "effect";
 import { finalizeEvent, generateSecretKey } from "nostr-effect/pure";
 import { afterEach, describe, expect, test } from "vitest";
 
-import { makeMemoryAdmissionLayer } from "./admission.js";
+import { ForgeGitAdmission, makeMemoryAdmissionLayer } from "./admission.js";
 import { makeTestConfiguration } from "./config.js";
 import { ForgeGitProjector, layerProjector } from "./projector.js";
 import { makeRepositoryLayer } from "./repository.js";
@@ -33,48 +33,95 @@ describe("Forge NIP-34 admission projector", () => {
       mirrorEnabled: false,
       repositoryRoot: root,
     });
-    const runtime = ManagedRuntime.make(
-      layerProjector.pipe(
-        Layer.provide(
-          Layer.mergeAll(
-            makeMemoryAdmissionLayer({ admittedRepositories: [] }),
-            makeRepositoryLayer(configuration, makeMemoryBlobStore()),
-          ),
-        ),
-      ),
+    const admissionLayer = makeMemoryAdmissionLayer({
+      admittedRepositories: [],
+    });
+    const projectorLayer = layerProjector.pipe(
+      Layer.provide(Layer.mergeAll(admissionLayer, makeRepositoryLayer(configuration, makeMemoryBlobStore()))),
     );
+    const runtime = ManagedRuntime.make(Layer.merge(admissionLayer, projectorLayer));
     const secret = generateSecretKey();
     const event = finalizeEvent(
       {
         content: "",
         created_at: 1_785_000_000,
         kind: 30617,
-        tags: [
-          ["d", "demo"],
-          ["clone", "https://openagents.test/git/tenant/demo.git"],
-          ["maintainers"],
-        ],
+        tags: [["d", "demo"], ["clone", "https://openagents.test/git/tenant/demo.git"], ["maintainers"]],
       },
       secret,
     );
     event.tags[2]?.push(event.pubkey);
     // finalize again after adding the signer key to the event's maintainer set.
     const signed = finalizeEvent(
-      { content: "", created_at: event.created_at, kind: 30617, tags: event.tags },
+      {
+        content: "",
+        created_at: event.created_at,
+        kind: 30617,
+        tags: event.tags,
+      },
       secret,
     );
     const result = await runtime.runPromise(
       Effect.gen(function* () {
         const projector = yield* ForgeGitProjector;
-        return yield* projector.project({
+        const disposition = yield* projector.project({
           actorBindingRef: "forge_actor.human.invited",
           event: signed,
           repositoryRef: "demo",
           tenantRef: "tenant",
         });
+        const admission = yield* ForgeGitAdmission;
+        const projected = yield* admission.listProjectedEvents({
+          repositoryRef: "demo",
+          tenantRef: "tenant",
+        });
+        return { disposition, projected };
       }),
     );
-    expect(result).toBe("authorized");
+    expect(result.disposition).toBe("authorized");
+    expect(result.projected).toHaveLength(1);
+    expect(result.projected[0]).toMatchObject({
+      actorBindingRef: "forge_actor.human.invited",
+      authorPubkey: signed.pubkey,
+      eventId: signed.id,
+      kind: 30617,
+    });
+    const comment = finalizeEvent(
+      {
+        content: "Admitted NIP-22 review conversation.",
+        created_at: signed.created_at + 1,
+        kind: 1111,
+        tags: [
+          ["a", `30617:${signed.pubkey}:demo`],
+          ["E", signed.id],
+        ],
+      },
+      generateSecretKey(),
+    );
+    const commentResult = await runtime.runPromise(
+      Effect.gen(function* () {
+        const projector = yield* ForgeGitProjector;
+        const disposition = yield* projector.project({
+          actorBindingRef: "forge_actor.human.invited",
+          event: comment,
+          repositoryRef: "demo",
+          tenantRef: "tenant",
+        });
+        const admission = yield* ForgeGitAdmission;
+        return {
+          disposition,
+          projected: yield* admission.listProjectedEvents({
+            repositoryRef: "demo",
+            tenantRef: "tenant",
+          }),
+        };
+      }),
+    );
+    expect(commentResult.disposition).toBe("authorized");
+    expect(commentResult.projected.at(-1)).toMatchObject({
+      eventId: comment.id,
+      kind: 1111,
+    });
 
     await expect(
       runtime.runPromise(
@@ -139,7 +186,12 @@ describe("Forge NIP-34 admission projector", () => {
     );
     announcement.tags[1]?.push(announcement.pubkey);
     const signedAnnouncement = finalizeEvent(
-      { content: "", created_at: announcement.created_at, kind: 30617, tags: announcement.tags },
+      {
+        content: "",
+        created_at: announcement.created_at,
+        kind: 30617,
+        tags: announcement.tags,
+      },
       announcementSecret,
     );
     const result = await runtime.runPromise(
