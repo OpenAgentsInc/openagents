@@ -479,6 +479,7 @@ import {
 } from './forge-domain-store'
 import { makeForgeGitIntakeRoutes } from './forge-git-intake-routes'
 import { makeForgeInviteMembershipRoutes } from './forge-invite-membership-routes'
+import { makeForgeOwnedCanonicalMirrorHttpService } from './forge-github-mirror-canonical-service'
 import {
   makeForgeGitHubMirrorWorker,
   makeUnavailableForgeOwnedCanonicalMirrorService,
@@ -16172,7 +16173,17 @@ const routeRequest = makeWorkerRouteRequest({
         makeForgeGitCanonicalStoreForEnv(storeEnv),
       makeGitHubMirrorWorker: storeEnv =>
         makeForgeGitHubMirrorWorker({
-          canonical: makeUnavailableForgeOwnedCanonicalMirrorService(),
+          canonical:
+            storeEnv.OPENAGENTS_FORGE_GIT_SERVICE_BASE_URL !== undefined &&
+            storeEnv.OPENAGENTS_FORGE_GIT_SERVICE_AUTH_TOKEN !== undefined &&
+            storeEnv.OPENAGENTS_FORGE_GITHUB_MIRROR_REGISTRY !== undefined
+              ? makeForgeOwnedCanonicalMirrorHttpService({
+                  baseUrl: storeEnv.OPENAGENTS_FORGE_GIT_SERVICE_BASE_URL,
+                  registryJson: storeEnv.OPENAGENTS_FORGE_GITHUB_MIRROR_REGISTRY,
+                  serviceAuthToken:
+                    storeEnv.OPENAGENTS_FORGE_GIT_SERVICE_AUTH_TOKEN,
+                })
+              : makeUnavailableForgeOwnedCanonicalMirrorService(),
           nowIso: currentIsoTimestamp,
           store: makeForgeGitHubMirrorStoreForEnv(storeEnv),
         }),

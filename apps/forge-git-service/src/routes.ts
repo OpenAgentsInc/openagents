@@ -3,6 +3,7 @@ import type { Event as NostrEvent } from "nostr-effect/pure";
 import {
   ForgeMergeGateError,
   ForgeMergeGateInput,
+  ForgeGitHubMirrorIntent,
   prepareForgeMergeOutcome,
   type ForgeMergeReceiptStore,
 } from "@openagentsinc/forge-protocol";
@@ -24,6 +25,7 @@ import {
 import { ForgeGitProjection } from "./projection.js";
 import { ForgeGitProjector } from "./projector.js";
 import { ForgeGitRepository } from "./repository.js";
+import { ForgeGitHubMirrorRunner } from "./github-mirror-runner.js";
 import { ForgeWebRead } from "./web-read.js";
 import { ForgeWebReadRequest } from "./web-read-model.js";
 import { ForgeWebReadPolicy } from "./web-read-policy.js";
@@ -552,6 +554,70 @@ export const forgeGitHandler = Effect.fn("ForgeGitRoutes.handle")(function* (req
 });
 
 const internalAdmissionPath = "/internal/forge/admission/events";
+const internalMirrorObservePath = "/internal/v1/github-mirror/observe";
+const internalMirrorProjectPath = "/internal/v1/github-mirror/project";
+const internalMirrorSourcePath = "/internal/v1/github-mirror/source";
+
+const internalMirrorHandler = Effect.fn("ForgeGitRoutes.internalMirror")(function* (
+  request: Request,
+) {
+  const path = new URL(request.url).pathname;
+  if (
+    path !== internalMirrorObservePath &&
+    path !== internalMirrorProjectPath &&
+    path !== internalMirrorSourcePath
+  ) {
+    return undefined;
+  }
+  const configuration = yield* ForgeGitConfiguration;
+  const expected = configuration.internalServiceAuthToken;
+  const presented = request.headers.get("authorization")?.replace(/^Bearer\s+/iu, "");
+  if (expected === undefined || presented === undefined || presented !== Redacted.value(expected)) {
+    return Response.json(
+      { error: "forge_github_mirror_service_unauthorized" },
+      { headers: noStoreHeaders, status: 401 },
+    );
+  }
+  if (path === internalMirrorSourcePath) {
+    if (request.method !== "GET") {
+      return Response.json({ error: "method_not_allowed" }, { headers: noStoreHeaders, status: 405 });
+    }
+    const url = new URL(request.url);
+    const tenantRef = url.searchParams.get("tenantRef");
+    const repositoryRef = url.searchParams.get("repositoryRef");
+    const sourceRef = url.searchParams.get("sourceRef");
+    if (tenantRef === null || repositoryRef === null || sourceRef === null || !sourceRef.startsWith("refs/")) {
+      return Response.json({ error: "forge_github_mirror_source_request_invalid" }, { headers: noStoreHeaders, status: 400 });
+    }
+    const repository = yield* ForgeGitRepository;
+    const ref = (yield* repository.listRefs({ repositoryRef, tenantRef })).find(
+      (item) => item.refName === sourceRef,
+    );
+    return ref === undefined
+      ? Response.json({ error: "not_found" }, { headers: noStoreHeaders, status: 404 })
+      : Response.json(
+          { objectId: ref.objectId.toLowerCase(), repositoryRef, sourceRef, tenantRef },
+          { headers: noStoreHeaders, status: 200 },
+        );
+  }
+  if (request.method !== "POST") {
+    return Response.json({ error: "method_not_allowed" }, { headers: noStoreHeaders, status: 405 });
+  }
+  const raw = yield* Effect.tryPromise({
+    try: () => request.json() as Promise<unknown>,
+    catch: () => new ForgeGitRouteError({ code: "forge_github_mirror_body_invalid", status: 400 }),
+  });
+  const intent = yield* Schema.decodeUnknownEffect(ForgeGitHubMirrorIntent)(raw).pipe(
+    Effect.mapError(() => new ForgeGitRouteError({ code: "forge_github_mirror_body_invalid", status: 400 })),
+  );
+  const runner = yield* ForgeGitHubMirrorRunner;
+  const observed = yield* (path === internalMirrorObservePath
+    ? runner.observe(intent)
+    : runner.project(intent)).pipe(
+      Effect.mapError(() => new ForgeGitRouteError({ code: "forge_github_mirror_unavailable", status: 503 })),
+    );
+  return Response.json(observed, { headers: noStoreHeaders, status: 200 });
+});
 const internalMergeReceiptsPath = "/internal/forge/merge-receipts";
 const collaborationReadPrefix = "/internal/v1/repositories/";
 
@@ -868,6 +934,7 @@ export const routeRequest = (
   | ForgeGitAdmission
   | ForgeGitAuth
   | ForgeGitConfiguration
+  | ForgeGitHubMirrorRunner
   | ForgeGitProjection
   | ForgeGitProjector
   | ForgeGitRepository
@@ -885,7 +952,11 @@ export const routeRequest = (
   return internalCollaborationReadHandler(request).pipe(
     Effect.flatMap((collaboration) =>
       collaboration === undefined
-        ? internalAdmissionHandler(request)
+        ? internalMirrorHandler(request).pipe(
+            Effect.flatMap((mirror) =>
+              mirror === undefined ? internalAdmissionHandler(request) : Effect.succeed(mirror),
+            ),
+          )
         : Effect.succeed(collaboration),
     ),
     Effect.flatMap((internal) =>

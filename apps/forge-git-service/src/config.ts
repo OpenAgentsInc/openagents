@@ -8,6 +8,11 @@ const PositiveIntegerFromString = Schema.NumberFromString.pipe(
 export interface ForgeGitConfigurationShape {
   readonly databaseUrl: Redacted.Redacted<string>;
   readonly gitBinary: string;
+  /** Separate GitHub projection credential. It is never a policy or browser credential. */
+  readonly githubMirrorToken: Redacted.Redacted<string> | undefined;
+  readonly githubMirrorAllowedRepositories: ReadonlySet<string>;
+  /** Monolith-to-Forge service credential for internal mirror commands only. */
+  readonly internalServiceAuthToken: Redacted.Redacted<string> | undefined;
   readonly maxReceivePackBytes: number;
   /** Bound repository creation by one admitted owner; admission never becomes an open registry. */
   readonly maxRepositoriesPerOwner: number;
@@ -30,6 +35,23 @@ export const layerConfiguration = Layer.effect(
   Effect.gen(function* () {
     const databaseUrl = yield* Config.redacted("FORGE_GIT_DATABASE_URL");
     const gitBinary = yield* Config.string("FORGE_GIT_BINARY").pipe(Config.withDefault("git"));
+    const githubMirrorToken = yield* Config.option(Config.redacted("FORGE_GIT_GITHUB_MIRROR_TOKEN")).pipe(
+      Effect.map((value) => (Option.isSome(value) ? value.value : undefined)),
+    );
+    const githubMirrorAllowedRepositories = yield* Config.option(
+      Config.string("FORGE_GIT_GITHUB_MIRROR_ALLOWED_REPOSITORIES"),
+    ).pipe(
+      Effect.map((value) =>
+        new Set(
+          Option.isSome(value)
+            ? value.value.split(",").map((item) => item.trim()).filter((item) => item.length > 0)
+            : [],
+        ),
+      ),
+    );
+    const internalServiceAuthToken = yield* Config.option(
+      Config.redacted("FORGE_GIT_INTERNAL_SERVICE_AUTH_TOKEN"),
+    ).pipe(Effect.map((value) => (Option.isSome(value) ? value.value : undefined)));
     const maxReceivePackBytes = yield* Config.schema(
       PositiveIntegerFromString,
       "FORGE_GIT_MAX_RECEIVE_PACK_BYTES",
@@ -58,6 +80,9 @@ export const layerConfiguration = Layer.effect(
     return ForgeGitConfiguration.of({
       databaseUrl,
       gitBinary,
+      githubMirrorAllowedRepositories,
+      githubMirrorToken,
+      internalServiceAuthToken,
       maxReceivePackBytes,
       maxRepositoriesPerOwner,
       mirrorEnabled,
@@ -74,6 +99,9 @@ export const makeTestConfiguration = (
   input: Omit<
     ForgeGitConfigurationShape,
     | "databaseUrl"
+    | "githubMirrorToken"
+    | "githubMirrorAllowedRepositories"
+    | "internalServiceAuthToken"
     | "policyAuthorityToken"
     | "policyAuthorityUrl"
     | "relayUrl"
@@ -81,6 +109,9 @@ export const makeTestConfiguration = (
     | "webReadPolicyUrl"
   > & {
     readonly databaseUrl?: string;
+    readonly githubMirrorToken?: Redacted.Redacted<string> | undefined;
+    readonly githubMirrorAllowedRepositories?: ReadonlySet<string>;
+    readonly internalServiceAuthToken?: Redacted.Redacted<string> | undefined;
     readonly policyAuthorityToken?: Redacted.Redacted<string>;
     readonly policyAuthorityUrl?: string;
     readonly relayUrl?: string | undefined;
@@ -90,6 +121,9 @@ export const makeTestConfiguration = (
 ): ForgeGitConfigurationShape => ({
   ...input,
   databaseUrl: Redacted.make(input.databaseUrl ?? "postgres://unused"),
+  githubMirrorAllowedRepositories: input.githubMirrorAllowedRepositories ?? new Set(),
+  githubMirrorToken: input.githubMirrorToken,
+  internalServiceAuthToken: input.internalServiceAuthToken,
   policyAuthorityToken:
     input.policyAuthorityToken ?? Redacted.make("forge-git-service-test-secret"),
   policyAuthorityUrl:

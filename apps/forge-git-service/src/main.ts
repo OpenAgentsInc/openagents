@@ -12,6 +12,12 @@ import { layerProjection } from "./projection.js";
 import { ForgeGitProjector, layerProjector } from "./projector.js";
 import { layerRepository } from "./repository.js";
 import { ForgeGitRepository } from "./repository.js";
+import {
+  ForgeGitHubMirrorRunner,
+  ForgeGitHubMirrorRunnerError,
+  makeForgeGitHubMirrorRunner,
+  makeGitHubHttpsMirrorDestinationResolver,
+} from "./github-mirror-runner.js";
 import { ForgeGitRelayOutbox, layerRelayOutbox } from "./outbox.js";
 import { routeRequest } from "./routes.js";
 import { layerForgeWebRead } from "./web-read.js";
@@ -28,6 +34,32 @@ const outboxLayer = layerRelayOutbox.pipe(Layer.provide(Layer.mergeAll(configura
 const repositoryLayer = layerRepository.pipe(
   Layer.provide(Layer.mergeAll(configurationLayer, layerGcs)),
 );
+const githubMirrorRunnerLayer = Layer.effect(
+  ForgeGitHubMirrorRunner,
+  Effect.gen(function* () {
+    const configuration = yield* ForgeGitConfiguration;
+    const repository = yield* ForgeGitRepository;
+    const token = configuration.githubMirrorToken;
+    if (token === undefined) {
+      // The route still returns a typed unavailable response. Do not start an
+      // external GitHub request or silently fall back to another credential.
+      return makeForgeGitHubMirrorRunner(repository, () =>
+        Effect.fail(new ForgeGitHubMirrorRunnerError({
+          operation: "ForgeGitHubMirrorDestination.resolve",
+          reason: "forge_github_mirror_credential_unavailable",
+          retryable: false,
+        })),
+      );
+    }
+    return makeForgeGitHubMirrorRunner(
+      repository,
+      makeGitHubHttpsMirrorDestinationResolver({
+        allowedRepositories: configuration.githubMirrorAllowedRepositories,
+        githubToken: token,
+      }),
+    );
+  }),
+).pipe(Layer.provide(Layer.mergeAll(configurationLayer, repositoryLayer)));
 const projectorLayer = layerProjector.pipe(Layer.provide(Layer.mergeAll(admissionLayer, repositoryLayer)));
 const webReadLayer = layerForgeWebRead.pipe(Layer.provide(configurationLayer));
 const webReadPolicyLayer = layerForgeWebReadPolicy.pipe(Layer.provide(configurationLayer));
@@ -39,6 +71,7 @@ const applicationLayer = Layer.mergeAll(
   outboxLayer,
   projectorLayer,
   repositoryLayer,
+  githubMirrorRunnerLayer,
   webReadLayer,
   webReadPolicyLayer,
 );

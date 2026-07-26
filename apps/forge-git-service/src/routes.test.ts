@@ -21,6 +21,7 @@ import { ForgeGitSession } from "./model.js";
 import { ForgeGitProjection, layerNoopProjection } from "./projection.js";
 import { layerNoopProjector } from "./projector.js";
 import { ForgeGitRepository, makeRepositoryLayer } from "./repository.js";
+import { ForgeGitHubMirrorRunner } from "./github-mirror-runner.js";
 import { routeRequest } from "./routes.js";
 import { ForgeWebRead, makeForgeWebReadLayer } from "./web-read.js";
 import {
@@ -104,6 +105,7 @@ const listen = async (
     | ForgeGitProjection
     | import("./projector.js").ForgeGitProjector
     | ForgeGitRepository
+    | ForgeGitHubMirrorRunner
     | ForgeWebRead
     | ForgeWebReadPolicy,
     never
@@ -192,6 +194,13 @@ const makeRuntime = (
   const repositoryLayer = makeRepositoryLayer(configuration, blobStore);
   const webReadLayer = makeForgeWebReadLayer(configuration);
   const webReadPolicyLayer = makeForgeWebReadPolicyLayer(configuration, webReadPolicyFetch);
+  const mirrorRunnerLayer = Layer.succeed(
+    ForgeGitHubMirrorRunner,
+    ForgeGitHubMirrorRunner.of({
+      observe: () => Effect.die("mirror route not configured in this fixture"),
+      project: () => Effect.die("mirror route not configured in this fixture"),
+    }),
+  );
   const applicationLayer = Layer.mergeAll(
     makeMemoryAdmissionLayer({
       admittedRepositories: [{ repositoryRef, tenantRef }],
@@ -205,6 +214,7 @@ const makeRuntime = (
     repositoryLayer,
     webReadLayer,
     webReadPolicyLayer,
+    mirrorRunnerLayer,
   );
   return {
     blobStore,
@@ -461,6 +471,13 @@ describe("owned Forge Smart HTTP service", () => {
         makeForgeWebReadLayer(configuration),
         makeForgeWebReadPolicyLayer(configuration, async () =>
           Response.json({ error: "forge_membership_required" }, { status: 403 }),
+        ),
+        Layer.succeed(
+          ForgeGitHubMirrorRunner,
+          ForgeGitHubMirrorRunner.of({
+            observe: () => Effect.die("mirror route not configured in this fixture"),
+            project: () => Effect.die("mirror route not configured in this fixture"),
+          }),
         ),
       ),
     );
