@@ -3,34 +3,29 @@
 import type { DocsPage } from '../../content-schema'
 
 const page: DocsPage = {
-  "description": "Diagnose common development and workroom states without widening authority.",
+  "description": "Diagnose an Omega prerelease without widening authority or hiding an open gate.",
   "editUrl": "https://github.com/OpenAgentsInc/openagents/edit/main/apps/openagents.com/apps/start/content/docs/troubleshooting.md",
-  "group": "Docs",
+  "group": "Omega",
   "headings": [
     {
       "depth": 2,
-      "id": "the-development-app-does-not-open",
-      "text": "The development app does not open"
+      "id": "a-candidate-does-not-start",
+      "text": "A candidate does not start"
     },
     {
       "depth": 2,
-      "id": "codex-is-unavailable-or-incompatible",
-      "text": "Codex is unavailable or incompatible"
+      "id": "the-product-shows-zed-as-the-product",
+      "text": "The product shows Zed as the product"
     },
     {
       "depth": 2,
-      "id": "a-turn-appears-interrupted",
-      "text": "A turn appears interrupted"
+      "id": "an-agent-or-full-auto-is-unavailable",
+      "text": "An agent or Full Auto is unavailable"
     },
     {
       "depth": 2,
-      "id": "review-is-unavailable",
-      "text": "Review is unavailable"
-    },
-    {
-      "depth": 2,
-      "id": "the-sidebar-or-review-drawer-covers-the-conversation",
-      "text": "The sidebar or review drawer covers the conversation"
+      "id": "review-or-evidence-is-incomplete",
+      "text": "Review or evidence is incomplete"
     },
     {
       "depth": 2,
@@ -38,8 +33,8 @@ const page: DocsPage = {
       "text": "Report a reproducible issue"
     }
   ],
-  "html": "<h2 id=\"the-development-app-does-not-open\"><a class=\"docs-heading-anchor\" href=\"#the-development-app-does-not-open\">The development app does not open</a></h2>\n<p>Confirm that the repository&#39;s pinned Node and pnpm versions are active, dependencies are installed, and port <code>5734</code> is free. Run the package verification gate before changing runtime policy:</p>\n<div class=\"docs-code\"><div class=\"docs-code-toolbar\"><span>bash</span><button aria-label=\"Copy code\" class=\"docs-code-copy\" data-docs-copy-code type=\"button\">Copy</button></div><pre class=\"shiki vesper\" style=\"background-color:#101010;color:#FFF\" tabindex=\"0\"><code><span class=\"line\"><span style=\"color:#FFC799\">pnpm</span><span style=\"color:#99FFE4\"> --dir</span><span style=\"color:#99FFE4\"> apps/openagents-desktop</span><span style=\"color:#99FFE4\"> run</span><span style=\"color:#99FFE4\"> verify</span></span></code></pre></div>\n<h2 id=\"codex-is-unavailable-or-incompatible\"><a class=\"docs-heading-anchor\" href=\"#codex-is-unavailable-or-incompatible\">Codex is unavailable or incompatible</a></h2>\n<p>Open <strong>Settings</strong> and use the Codex-specific maintenance action. Desktop checks the app-owned bundled runtime. Installing another global binary does not repair that authority. A failed update or re-probe remains failed until the exact bundled runtime passes.</p>\n<h2 id=\"a-turn-appears-interrupted\"><a class=\"docs-heading-anchor\" href=\"#a-turn-appears-interrupted\">A turn appears interrupted</a></h2>\n<p>Do not create a replacement session immediately. Read the interruption or connection row, confirm the selected session, and use the visible resume or retry action. Reloading the renderer must not cause duplicate execution.</p>\n<h2 id=\"review-is-unavailable\"><a class=\"docs-heading-anchor\" href=\"#review-is-unavailable\">Review is unavailable</a></h2>\n<p>The repository may have changed, the work context may be stale, or the requested output may have crossed a privacy or size bound. Refresh the active repository context and request a new bounded review rather than reaching around the host boundary.</p>\n<h2 id=\"the-sidebar-or-review-drawer-covers-the-conversation\"><a class=\"docs-heading-anchor\" href=\"#the-sidebar-or-review-drawer-covers-the-conversation\">The sidebar or review drawer covers the conversation</a></h2>\n<p>At narrow widths the session rail and review drawer intentionally become overlays. Close the overlay with its control or Escape. The conversation and composer should remain usable at the supported minimum window.</p>\n<h2 id=\"report-a-reproducible-issue\"><a class=\"docs-heading-anchor\" href=\"#report-a-reproducible-issue\">Report a reproducible issue</a></h2>\n<p>Open a <a href=\"https://github.com/OpenAgentsInc/openagents/issues\" rel=\"noreferrer\" target=\"_blank\">GitHub issue</a> with the application version, operating system, visible state, and reproduction steps. Remove credentials, absolute private paths, repository secrets, and private transcript content before attaching evidence.</p>\n",
-  "lastModified": "2026-07-19",
+  "html": "<h2 id=\"a-candidate-does-not-start\"><a class=\"docs-heading-anchor\" href=\"#a-candidate-does-not-start\">A candidate does not start</a></h2>\n<p>Confirm the exact Omega version, artifact digest, operating system, and architecture. Read the candidate release notes before you change system policy.</p>\n<p>Do not disable signing, quarantine, or security controls to make an unknown artifact run. Report a package or notarization failure against the exact artifact.</p>\n<h2 id=\"the-product-shows-zed-as-the-product\"><a class=\"docs-heading-anchor\" href=\"#the-product-shows-zed-as-the-product\">The product shows Zed as the product</a></h2>\n<p>Record the Omega version, visible surface, and exact text or image. A retained internal compatibility identifier can be valid. User-facing Zed product, service, package, or data text can still be a release blocker.</p>\n<p>Do not run an uninstall or migration command when its target is unclear.</p>\n<h2 id=\"an-agent-or-full-auto-is-unavailable\"><a class=\"docs-heading-anchor\" href=\"#an-agent-or-full-auto-is-unavailable\">An agent or Full Auto is unavailable</a></h2>\n<p>Confirm the selected project, agent, provider, and execution environment. Read the visible failure before you retry.</p>\n<p>Do not replace a failed provider with another provider unless you intend to change the route. Do not treat a source test or fixture as proof that an installed candidate completed the same journey.</p>\n<h2 id=\"review-or-evidence-is-incomplete\"><a class=\"docs-heading-anchor\" href=\"#review-or-evidence-is-incomplete\">Review or evidence is incomplete</a></h2>\n<p>Confirm the worktree and candidate identity. Then inspect the exact changes, commands, tests, and open gates.</p>\n<p>Do not convert an unknown, waived, or unperformed check into a pass.</p>\n<h2 id=\"report-a-reproducible-issue\"><a class=\"docs-heading-anchor\" href=\"#report-a-reproducible-issue\">Report a reproducible issue</a></h2>\n<p>Open an issue in the <a href=\"https://github.com/OpenAgentsInc/omega/issues\" rel=\"noreferrer\" target=\"_blank\">Omega repository</a>. Include:</p>\n<ul>\n<li>Omega version and source commit</li>\n<li>Artifact name and digest, when applicable</li>\n<li>Operating system and architecture</li>\n<li>Reproduction steps</li>\n<li>The result that you expected</li>\n<li>The result that you observed</li>\n</ul>\n<p>Remove credentials, private repository data, local paths, and private agent content before you attach evidence.</p>\n",
+  "lastModified": "2026-07-25",
   "next": {
     "path": "/docs/agent-readable",
     "title": "Agent-readable docs"

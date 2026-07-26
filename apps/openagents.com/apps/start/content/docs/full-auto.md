@@ -1,42 +1,46 @@
 ---
 title: Full Auto
-description: Let Codex continue bounded local work, turn after turn.
-lastModified: 2026-07-19
+description: Understand the bounded automation direction that Omega is developing.
+lastModified: 2026-07-25
 sidebar:
   order: 4
 ---
 
-Full Auto lets Codex keep choosing and completing the next useful task in the current repository. It is a per-session mode in the composer, not a separate agent, account, or cloud service.
+Full Auto is the Omega direction for sustained agent work in a project. It is designed to continue useful work while the user can inspect, steer, or stop the run.
 
-## Turn it on
+Full Auto is in active development. Current engine and interface evidence does not prove general release availability.
 
-1. Open the Codex session and workspace you want to use.
-2. Select **Full Auto** in the composer. It is off by default.
+## Intended experience
 
-Full Auto starts immediately. On a new empty session, select the toggle. Codex then inspects the README, documentation, and open issues. It selects one useful action, completes it, and stops. If Full Auto is still enabled, the next continuation begins automatically.
+Full Auto should:
 
-The setting belongs to the session. OpenAgents stores it locally. OpenAgents binds it to the selected workspace and execution profile. The loop can continue after a renderer reload or application restart.
+- Use the project and execution context that the user selected.
+- Keep agent work visible in the same workspace.
+- Show plans, tools, changes, blockers, and delegated work.
+- Preserve one causal record across continuations.
+- Stop when a safety, authority, or evidence gate requires a decision.
+- Make interruption and recovery explicit.
 
-## Stop or steer the loop
+It must not create a hidden workroom or convert a UI control into deployment, payment, repository, or release authority.
 
-Select **Full Auto** again to turn it off. Turning it off prevents the next automatic continuation. It does not cancel the turn already in progress. Use the normal stop control when you need to interrupt the active turn.
+## Agent routing
 
-You can still review the conversation, plans, tools, subagents, file changes, and outcomes in the same causal timeline. Full Auto does not create a hidden background workroom.
+Omega is not limited to one agent provider. The current direction supports a first-party Omega agent and external agents through explicit routing boundaries.
+
+Each agent keeps its own configuration and credential custody. Omega records the route and result without claiming that one provider owns the project.
 
 ## Safety boundary
 
-Full Auto is high-trust local automation for the Codex lane:
+Automation can act only within the authority that the selected environment already grants. A running agent does not gain more authority because Full Auto is on.
 
-- It uses the repository and Codex environment already granted to OpenAgents Desktop.
-- It forces Codex's approval policy to `never` for automated turns so an unattended continuation does not wait forever for approval.
-- Native questions and stray approval requests from unattended turns are declined instead of silently hanging the loop.
-- A continuation runs only in the workspace that was bound when Full Auto was enabled. A missing or changed workspace disables the loop visibly.
-- Dispatch is serialized and durably leased so overlapping reconciliation cannot intentionally start the same continuation twice.
-- Failed dispatches are shown, retried with bounded backoff, and disable Full Auto after five consecutive failures.
-- The loop stops after 20 automatic continuations. Turn it on again only after reviewing the result.
+The product must keep these states visible:
 
-Full Auto does not add a second sandbox or a more restrictive permission model. Use it only in a repository where you are comfortable allowing the existing local Codex runtime to act without mid-turn approval prompts.
+- Running work
+- A pending question or approval
+- A failed or interrupted continuation
+- An unavailable provider or engine
+- A completed result that still needs review
 
-## Current scope
+## Proof status
 
-Full Auto is available for local Codex sessions in OpenAgents Desktop. It is not an agent-facing API, remote-control service, deployment authority, payment authority, or guarantee that a task is correct. Keep the workroom open when practical, review changes, and use repository tests and review evidence before accepting the result.
+OpenAgents has current Full Auto contracts, engine work, and proof tooling. Installed replay, sustained owner use, and independent release evidence still have open gates. Treat Full Auto as a development capability until one exact candidate passes those gates.

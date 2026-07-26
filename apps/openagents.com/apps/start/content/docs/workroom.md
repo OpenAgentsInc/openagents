@@ -1,36 +1,38 @@
 ---
-title: Workroom
-description: Understand sessions, the causal timeline, and composer actions.
-lastModified: 2026-07-19
+title: Native workspace
+description: Understand how Omega joins editor truth with agent work and evidence.
+lastModified: 2026-07-25
 sidebar:
   order: 3
 ---
 
-## Sessions
+Omega is an IDE, not a wrapper around one agent or one command-line tool. The native workspace is where project work, agents, code, review, and evidence meet.
 
-The session rail paints bounded metadata before a selected transcript finishes hydrating. Search, selection, archive, delete, and paging preserve stable identity and ordering. Switching away and back must return to the same session rather than creating an imitation of it.
+## Editor and project truth
 
-## Timeline
+The Zed foundation owns editor, project, buffer, language, terminal, and worktree state. Omega must not create a second project graph for agent work.
 
-The center column is a causal timeline, not a loose activity feed.
+An agent works against the project that the user opened. File changes, terminal work, and review stay connected to that project context.
 
-- User and assistant messages are the primary transcript.
-- Plans, reasoning summaries, tools, approvals, changes, and usage appear as compact work rows.
-- Active streams update in place without moving a reader who has scrolled away from the live edge.
-- Gaps, interruption, failure, and unavailable state remain visible and named.
-- Finished adjacent work may fold into a bounded summary without hiding the authored conversation.
+## Agent work
 
-## Composer actions
+Omega is being built to show human and agent work in one inspectable timeline. The target surface includes:
 
-The composer exposes the command that is valid for the current turn:
+- User and agent messages
+- Plans and current work
+- Tool and command outcomes
+- Questions, approvals, and interruptions
+- File changes and review evidence
+- Delegated agent activity
 
-- **Send** starts a turn while idle.
-- **Stop** interrupts the active turn.
-- **Steer** updates the active turn where the runtime supports it.
-- **Queue** records the next instruction without pretending it changed the current turn.
+External agents keep their own configuration and credential custody. Omega must not become a second home for those credentials.
 
-Keyboard and pointer entry points dispatch the same registered command. Optimistic UI never records a question, approval, or plan decision before the runtime accepts it.
+## Review and evidence
 
-## Decisions and blockers
+The workspace should connect a result to the code, tools, tests, and evidence that produced it. A status label or generated summary is not proof by itself.
 
-Questions, approvals, and plan reviews open as focused surfaces with complete choices and explicit pending, stale, failed, and resolved states. Escape and close behavior return focus predictably. A blocker stays a blocker until a real response resolves it.
+Omega keeps release, payment, deployment, and repository authority outside a UI projection. A view can explain an action without gaining authority to perform it.
+
+## Current status
+
+Native workspace work is active in the Omega repository. Prerelease candidates and component proofs show parts of this direction. They do not prove that every workspace capability is complete or supported.

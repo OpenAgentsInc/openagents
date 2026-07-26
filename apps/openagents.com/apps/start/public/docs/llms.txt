@@ -1,14 +1,14 @@
 # OpenAgents Docs
 
-> Use, understand, and verify the local-first OpenAgents Desktop Codex workroom.
+> Understand Omega, the native OpenAgents workspace for projects, agents, code, review, and evidence.
 
-## Docs
+## Omega
 
-- [OpenAgents Desktop](https://openagents.com/docs): A local-first workroom for durable, reviewable Codex work.
-- [Getting started](https://openagents.com/docs/getting-started): Run the current OpenAgents Desktop candidate from source.
-- [Workroom](https://openagents.com/docs/workroom): Understand sessions, the causal timeline, and composer actions.
-- [Full Auto](https://openagents.com/docs/full-auto): Let Codex continue bounded local work, turn after turn.
-- [Review and recovery](https://openagents.com/docs/review-and-recovery): Review exact changes and understand restart behavior.
-- [Security and privacy](https://openagents.com/docs/security-and-privacy): The local authority, credential, and renderer boundaries of OpenAgents Desktop.
-- [Troubleshooting](https://openagents.com/docs/troubleshooting): Diagnose common development and workroom states without widening authority.
-- [Agent-readable docs](https://openagents.com/docs/agent-readable): Static Markdown and discovery artifacts for tools and coding agents.
+- [Omega](https://openagents.com/docs): The native OpenAgents workspace for projects, agents, code, review, and evidence.
+- [Availability and setup](https://openagents.com/docs/getting-started): Evaluate Omega without turning prerelease evidence into a support claim.
+- [Native workspace](https://openagents.com/docs/workroom): Understand how Omega joins editor truth with agent work and evidence.
+- [Full Auto](https://openagents.com/docs/full-auto): Understand the bounded automation direction that Omega is developing.
+- [Review and evidence](https://openagents.com/docs/review-and-recovery): Connect Omega work to exact changes, tests, and recovery state.
+- [Security and privacy](https://openagents.com/docs/security-and-privacy): The authority, data, credential, and service boundaries for Omega.
+- [Troubleshooting](https://openagents.com/docs/troubleshooting): Diagnose an Omega prerelease without widening authority or hiding an open gate.
+- [Agent-readable docs](https://openagents.com/docs/agent-readable): Static Omega documentation and discovery artifacts for tools and coding agents.

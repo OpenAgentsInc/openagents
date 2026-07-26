@@ -3,28 +3,33 @@
 import type { DocsPage } from '../../content-schema'
 
 const page: DocsPage = {
-  "description": "Review exact changes and understand restart behavior.",
+  "description": "Connect Omega work to exact changes, tests, and recovery state.",
   "editUrl": "https://github.com/OpenAgentsInc/openagents/edit/main/apps/openagents.com/apps/start/content/docs/review-and-recovery.md",
-  "group": "Docs",
+  "group": "Omega",
   "headings": [
     {
       "depth": 2,
-      "id": "repository-review",
-      "text": "Repository review"
+      "id": "review-in-project-context",
+      "text": "Review in project context"
     },
     {
       "depth": 2,
-      "id": "reload-and-restart",
-      "text": "Reload and restart"
+      "id": "authority-boundary",
+      "text": "Authority boundary"
     },
     {
       "depth": 2,
-      "id": "recovery-checklist",
-      "text": "Recovery checklist"
+      "id": "recovery",
+      "text": "Recovery"
+    },
+    {
+      "depth": 2,
+      "id": "current-status",
+      "text": "Current status"
     }
   ],
-  "html": "<h2 id=\"repository-review\"><a class=\"docs-heading-anchor\" href=\"#repository-review\">Repository review</a></h2>\n<p>OpenAgents Desktop keeps repository context adjacent to the conversation. The review surface may show bounded status and an exact correlated diff for the active work context.</p>\n<p>The MVP review boundary is intentionally read-only. It does not expose discard, commit, branch, push, pull-request, merge, or arbitrary command execution controls.</p>\n<p>Review fails visibly when output is stale, revoked, secret-shaped, binary, oversized, or unavailable. Absolute filesystem paths and host credentials do not enter the renderer projection.</p>\n<h2 id=\"reload-and-restart\"><a class=\"docs-heading-anchor\" href=\"#reload-and-restart\">Reload and restart</a></h2>\n<p>Renderer reload and application restart reconcile against durable session and run identity.</p>\n<ul>\n<li>The application restores confirmed work from its authoritative record.</li>\n<li>An incomplete stream remains interrupted or pending reconciliation.</li>\n<li>A proven history gap triggers an authoritative refetch.</li>\n<li>No restart silently reruns provider work.</li>\n<li>No stale response may overwrite a newer selection or subscription generation.</li>\n</ul>\n<p>If the app cannot prove the current state, it should say so. <code>Unknown pending reconciliation</code> is safer and more truthful than optimistic completion.</p>\n<h2 id=\"recovery-checklist\"><a class=\"docs-heading-anchor\" href=\"#recovery-checklist\">Recovery checklist</a></h2>\n<ol>\n<li>Confirm the selected session and repository context.</li>\n<li>Read the latest interruption, gap, or connection row.</li>\n<li>Reopen the exact change review if repository state is still available.</li>\n<li>Resume only through the visible runtime action.</li>\n<li>Start a new session only when you intend to create new work identity.</li>\n</ol>\n",
-  "lastModified": "2026-07-19",
+  "html": "<h2 id=\"review-in-project-context\"><a class=\"docs-heading-anchor\" href=\"#review-in-project-context\">Review in project context</a></h2>\n<p>Omega should keep review next to the editor and the agent work that produced a change. The review surface must identify the project, files, and current worktree state.</p>\n<p>Review can show:</p>\n<ul>\n<li>Exact file changes</li>\n<li>Commands and test outcomes</li>\n<li>Agent decisions and delegated work</li>\n<li>Evidence references</li>\n<li>Known gaps and failed checks</li>\n</ul>\n<p>A generated summary is not a substitute for the underlying change or result.</p>\n<h2 id=\"authority-boundary\"><a class=\"docs-heading-anchor\" href=\"#authority-boundary\">Authority boundary</a></h2>\n<p>A review view does not gain Git, deployment, payment, or release authority. Each action still uses its owning system and its current authorization check.</p>\n<p>Stale, secret-shaped, oversized, binary, or unavailable content must fail visibly. The product must not copy private credentials or unrestricted host data into an agent timeline.</p>\n<h2 id=\"recovery\"><a class=\"docs-heading-anchor\" href=\"#recovery\">Recovery</a></h2>\n<p>Omega should reconcile an interrupted run against its durable identity and evidence. It must not silently rerun provider work after a restart.</p>\n<p>Use this recovery sequence:</p>\n<ol>\n<li>Confirm the project and worktree.</li>\n<li>Confirm the selected run or conversation.</li>\n<li>Read the latest interruption or failure.</li>\n<li>Check the exact file and test state.</li>\n<li>Resume only through a visible action.</li>\n<li>Start new work only when you intend to create a new run identity.</li>\n</ol>\n<p>If Omega cannot prove the current state, it must show that the state is unknown or needs reconciliation.</p>\n<h2 id=\"current-status\"><a class=\"docs-heading-anchor\" href=\"#current-status\">Current status</a></h2>\n<p>Review and recovery are active product areas. Current prerelease evidence does not prove every review, restart, and recovery path on a supported release.</p>\n",
+  "lastModified": "2026-07-25",
   "next": {
     "path": "/docs/security-and-privacy",
     "title": "Security and privacy"
@@ -35,9 +40,9 @@ const page: DocsPage = {
     "title": "Full Auto"
   },
   "rawMarkdownUrl": "/docs/review-and-recovery.md",
-  "sidebarLabel": "Review and recovery",
+  "sidebarLabel": "Review and evidence",
   "slug": "review-and-recovery",
-  "title": "Review and recovery"
+  "title": "Review and evidence"
 }
 
 export default page

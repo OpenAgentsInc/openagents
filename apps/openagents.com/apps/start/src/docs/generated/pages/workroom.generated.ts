@@ -3,33 +3,33 @@
 import type { DocsPage } from '../../content-schema'
 
 const page: DocsPage = {
-  "description": "Understand sessions, the causal timeline, and composer actions.",
+  "description": "Understand how Omega joins editor truth with agent work and evidence.",
   "editUrl": "https://github.com/OpenAgentsInc/openagents/edit/main/apps/openagents.com/apps/start/content/docs/workroom.md",
-  "group": "Docs",
+  "group": "Omega",
   "headings": [
     {
       "depth": 2,
-      "id": "sessions",
-      "text": "Sessions"
+      "id": "editor-and-project-truth",
+      "text": "Editor and project truth"
     },
     {
       "depth": 2,
-      "id": "timeline",
-      "text": "Timeline"
+      "id": "agent-work",
+      "text": "Agent work"
     },
     {
       "depth": 2,
-      "id": "composer-actions",
-      "text": "Composer actions"
+      "id": "review-and-evidence",
+      "text": "Review and evidence"
     },
     {
       "depth": 2,
-      "id": "decisions-and-blockers",
-      "text": "Decisions and blockers"
+      "id": "current-status",
+      "text": "Current status"
     }
   ],
-  "html": "<h2 id=\"sessions\"><a class=\"docs-heading-anchor\" href=\"#sessions\">Sessions</a></h2>\n<p>The session rail paints bounded metadata before a selected transcript finishes hydrating. Search, selection, archive, delete, and paging preserve stable identity and ordering. Switching away and back must return to the same session rather than creating an imitation of it.</p>\n<h2 id=\"timeline\"><a class=\"docs-heading-anchor\" href=\"#timeline\">Timeline</a></h2>\n<p>The center column is a causal timeline, not a loose activity feed.</p>\n<ul>\n<li>User and assistant messages are the primary transcript.</li>\n<li>Plans, reasoning summaries, tools, approvals, changes, and usage appear as compact work rows.</li>\n<li>Active streams update in place without moving a reader who has scrolled away from the live edge.</li>\n<li>Gaps, interruption, failure, and unavailable state remain visible and named.</li>\n<li>Finished adjacent work may fold into a bounded summary without hiding the authored conversation.</li>\n</ul>\n<h2 id=\"composer-actions\"><a class=\"docs-heading-anchor\" href=\"#composer-actions\">Composer actions</a></h2>\n<p>The composer exposes the command that is valid for the current turn:</p>\n<ul>\n<li><strong>Send</strong> starts a turn while idle.</li>\n<li><strong>Stop</strong> interrupts the active turn.</li>\n<li><strong>Steer</strong> updates the active turn where the runtime supports it.</li>\n<li><strong>Queue</strong> records the next instruction without pretending it changed the current turn.</li>\n</ul>\n<p>Keyboard and pointer entry points dispatch the same registered command. Optimistic UI never records a question, approval, or plan decision before the runtime accepts it.</p>\n<h2 id=\"decisions-and-blockers\"><a class=\"docs-heading-anchor\" href=\"#decisions-and-blockers\">Decisions and blockers</a></h2>\n<p>Questions, approvals, and plan reviews open as focused surfaces with complete choices and explicit pending, stale, failed, and resolved states. Escape and close behavior return focus predictably. A blocker stays a blocker until a real response resolves it.</p>\n",
-  "lastModified": "2026-07-19",
+  "html": "<p>Omega is an IDE, not a wrapper around one agent or one command-line tool. The native workspace is where project work, agents, code, review, and evidence meet.</p>\n<h2 id=\"editor-and-project-truth\"><a class=\"docs-heading-anchor\" href=\"#editor-and-project-truth\">Editor and project truth</a></h2>\n<p>The Zed foundation owns editor, project, buffer, language, terminal, and worktree state. Omega must not create a second project graph for agent work.</p>\n<p>An agent works against the project that the user opened. File changes, terminal work, and review stay connected to that project context.</p>\n<h2 id=\"agent-work\"><a class=\"docs-heading-anchor\" href=\"#agent-work\">Agent work</a></h2>\n<p>Omega is being built to show human and agent work in one inspectable timeline. The target surface includes:</p>\n<ul>\n<li>User and agent messages</li>\n<li>Plans and current work</li>\n<li>Tool and command outcomes</li>\n<li>Questions, approvals, and interruptions</li>\n<li>File changes and review evidence</li>\n<li>Delegated agent activity</li>\n</ul>\n<p>External agents keep their own configuration and credential custody. Omega must not become a second home for those credentials.</p>\n<h2 id=\"review-and-evidence\"><a class=\"docs-heading-anchor\" href=\"#review-and-evidence\">Review and evidence</a></h2>\n<p>The workspace should connect a result to the code, tools, tests, and evidence that produced it. A status label or generated summary is not proof by itself.</p>\n<p>Omega keeps release, payment, deployment, and repository authority outside a UI projection. A view can explain an action without gaining authority to perform it.</p>\n<h2 id=\"current-status\"><a class=\"docs-heading-anchor\" href=\"#current-status\">Current status</a></h2>\n<p>Native workspace work is active in the Omega repository. Prerelease candidates and component proofs show parts of this direction. They do not prove that every workspace capability is complete or supported.</p>\n",
+  "lastModified": "2026-07-25",
   "next": {
     "path": "/docs/full-auto",
     "title": "Full Auto"
@@ -37,12 +37,12 @@ const page: DocsPage = {
   "path": "/docs/workroom",
   "previous": {
     "path": "/docs/getting-started",
-    "title": "Getting started"
+    "title": "Availability and setup"
   },
   "rawMarkdownUrl": "/docs/workroom.md",
-  "sidebarLabel": "Workroom",
+  "sidebarLabel": "Native workspace",
   "slug": "workroom",
-  "title": "Workroom"
+  "title": "Native workspace"
 }
 
 export default page

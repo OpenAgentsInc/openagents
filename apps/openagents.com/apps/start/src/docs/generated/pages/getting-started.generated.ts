@@ -3,46 +3,46 @@
 import type { DocsPage } from '../../content-schema'
 
 const page: DocsPage = {
-  "description": "Run the current OpenAgents Desktop candidate from source.",
+  "description": "Evaluate Omega without turning prerelease evidence into a support claim.",
   "editUrl": "https://github.com/OpenAgentsInc/openagents/edit/main/apps/openagents.com/apps/start/content/docs/getting-started.md",
-  "group": "Docs",
+  "group": "Omega",
   "headings": [
     {
       "depth": 2,
-      "id": "availability",
-      "text": "Availability"
+      "id": "current-availability",
+      "text": "Current availability"
     },
     {
       "depth": 2,
-      "id": "run-from-source",
-      "text": "Run from source"
+      "id": "evaluate-a-candidate",
+      "text": "Evaluate a candidate"
     },
     {
       "depth": 2,
-      "id": "verify-the-package",
-      "text": "Verify the package"
+      "id": "work-from-source",
+      "text": "Work from source"
     },
     {
       "depth": 2,
-      "id": "start-a-conversation",
-      "text": "Start a conversation"
+      "id": "before-you-report-a-result",
+      "text": "Before you report a result"
     }
   ],
-  "html": "<h2 id=\"availability\"><a class=\"docs-heading-anchor\" href=\"#availability\">Availability</a></h2>\n<p>The accepted build is a signed and notarized macOS ARM64 release candidate. It is not a public release yet, so there is no supported public installer link in these docs.</p>\n<h2 id=\"run-from-source\"><a class=\"docs-heading-anchor\" href=\"#run-from-source\">Run from source</a></h2>\n<p>The repository pins Node <code>24.13.1</code> and pnpm <code>11.10.0</code>. From a clean clone:</p>\n<div class=\"docs-code\"><div class=\"docs-code-toolbar\"><span>bash</span><button aria-label=\"Copy code\" class=\"docs-code-copy\" data-docs-copy-code type=\"button\">Copy</button></div><pre class=\"shiki vesper\" style=\"background-color:#101010;color:#FFF\" tabindex=\"0\"><code><span class=\"line\"><span style=\"color:#FFC799\">pnpm</span><span style=\"color:#99FFE4\"> install</span></span>\n<span class=\"line\"><span style=\"color:#FFC799\">pnpm</span><span style=\"color:#99FFE4\"> run</span><span style=\"color:#99FFE4\"> dev:openagents-desktop</span></span></code></pre></div>\n<p>Development uses the isolated <strong>OpenAgents Dev</strong> profile and can run beside an installed production application. Stop the development process with <strong>Control-C</strong> so both Electron and the local Vite server shut down.</p>\n<h2 id=\"verify-the-package\"><a class=\"docs-heading-anchor\" href=\"#verify-the-package\">Verify the package</a></h2>\n<p>The canonical package gate runs typechecking, tests, the production build, and Electron smoke coverage:</p>\n<div class=\"docs-code\"><div class=\"docs-code-toolbar\"><span>bash</span><button aria-label=\"Copy code\" class=\"docs-code-copy\" data-docs-copy-code type=\"button\">Copy</button></div><pre class=\"shiki vesper\" style=\"background-color:#101010;color:#FFF\" tabindex=\"0\"><code><span class=\"line\"><span style=\"color:#FFC799\">pnpm</span><span style=\"color:#99FFE4\"> --dir</span><span style=\"color:#99FFE4\"> apps/openagents-desktop</span><span style=\"color:#99FFE4\"> run</span><span style=\"color:#99FFE4\"> verify</span></span></code></pre></div>\n<p>That gate uses privacy-safe fixtures rather than ambient Codex history. A successful test run is engineering evidence. It is not release publication.</p>\n<h2 id=\"start-a-conversation\"><a class=\"docs-heading-anchor\" href=\"#start-a-conversation\">Start a conversation</a></h2>\n<ol>\n<li>Open <strong>New session</strong>.</li>\n<li>Choose or confirm the repository context.</li>\n<li>Write the objective in the composer.</li>\n<li>Send the turn and follow the timeline.</li>\n<li>Resolve any question or approval in the focused decision surface.</li>\n<li>Open <strong>Review changes</strong> when the turn produces repository changes.</li>\n</ol>\n<p>OpenAgents uses the app-owned Codex runtime and ordinary logged-in Codex session. The initial local workflow does not require an OpenAgents account.</p>\n",
-  "lastModified": "2026-07-19",
+  "html": "<h2 id=\"current-availability\"><a class=\"docs-heading-anchor\" href=\"#current-availability\">Current availability</a></h2>\n<p>Omega is in active development. OpenAgents has produced signed and notarized macOS ARM64 prerelease candidates. The current evidence does not prove a generally available or supported release.</p>\n<p>The latest public observation record still identifies open brand, safety, and installed-journey gates. Do not use a prerelease tag as proof that these gates passed.</p>\n<h2 id=\"evaluate-a-candidate\"><a class=\"docs-heading-anchor\" href=\"#evaluate-a-candidate\">Evaluate a candidate</a></h2>\n<ol>\n<li>Open the <a href=\"https://github.com/OpenAgentsInc/omega/releases\" rel=\"noreferrer\" target=\"_blank\">Omega releases</a> page.</li>\n<li>Read the notes for the exact candidate.</li>\n<li>Confirm that the artifact matches your operating system and architecture.</li>\n<li>Confirm the recorded digest and signing status before you run the artifact.</li>\n<li>Keep Omega data separate from any Zed installation.</li>\n<li>Report a result against the exact Omega version and artifact digest.</li>\n</ol>\n<p>A candidate can be useful for evaluation when a release gate is still open. Do not present that candidate as a stable installer.</p>\n<h2 id=\"work-from-source\"><a class=\"docs-heading-anchor\" href=\"#work-from-source\">Work from source</a></h2>\n<p>The <a href=\"https://github.com/OpenAgentsInc/omega\" rel=\"noreferrer\" target=\"_blank\">Omega repository</a> owns the current source build, test, and package commands. Use the instructions at the exact source commit that you test. This website does not copy changing repository commands into a second authority.</p>\n<p>Omega is a fork of Zed. The fork keeps native Rust and GPUI editor foundations. Omega must use its own application identity, data roots, credentials, service boundaries, package records, and release process.</p>\n<h2 id=\"before-you-report-a-result\"><a class=\"docs-heading-anchor\" href=\"#before-you-report-a-result\">Before you report a result</a></h2>\n<p>Include these values:</p>\n<ul>\n<li>Omega version and source commit</li>\n<li>Artifact name and digest, when applicable</li>\n<li>Operating system and architecture</li>\n<li>The action that you performed</li>\n<li>The result that you observed</li>\n<li>Any open gate or limitation that affected the result</li>\n</ul>\n<p>Remove credentials, private repository data, local paths, and private agent content from public evidence.</p>\n",
+  "lastModified": "2026-07-25",
   "next": {
     "path": "/docs/workroom",
-    "title": "Workroom"
+    "title": "Native workspace"
   },
   "path": "/docs/getting-started",
   "previous": {
     "path": "/docs",
-    "title": "OpenAgents Desktop"
+    "title": "Omega"
   },
   "rawMarkdownUrl": "/docs/getting-started.md",
-  "sidebarLabel": "Getting started",
+  "sidebarLabel": "Availability and setup",
   "slug": "getting-started",
-  "title": "Getting started"
+  "title": "Availability and setup"
 }
 
 export default page

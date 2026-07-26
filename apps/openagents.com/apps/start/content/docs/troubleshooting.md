@@ -1,35 +1,44 @@
 ---
 title: Troubleshooting
-description: Diagnose common development and workroom states without widening authority.
-lastModified: 2026-07-19
+description: Diagnose an Omega prerelease without widening authority or hiding an open gate.
+lastModified: 2026-07-25
 sidebar:
-  order: 6
+  order: 7
 ---
 
-## The development app does not open
+## A candidate does not start
 
-Confirm that the repository's pinned Node and pnpm versions are active, dependencies are installed, and port `5734` is free. Run the package verification gate before changing runtime policy:
+Confirm the exact Omega version, artifact digest, operating system, and architecture. Read the candidate release notes before you change system policy.
 
-```bash
-pnpm --dir apps/openagents-desktop run verify
-```
+Do not disable signing, quarantine, or security controls to make an unknown artifact run. Report a package or notarization failure against the exact artifact.
 
-## Codex is unavailable or incompatible
+## The product shows Zed as the product
 
-Open **Settings** and use the Codex-specific maintenance action. Desktop checks the app-owned bundled runtime. Installing another global binary does not repair that authority. A failed update or re-probe remains failed until the exact bundled runtime passes.
+Record the Omega version, visible surface, and exact text or image. A retained internal compatibility identifier can be valid. User-facing Zed product, service, package, or data text can still be a release blocker.
 
-## A turn appears interrupted
+Do not run an uninstall or migration command when its target is unclear.
 
-Do not create a replacement session immediately. Read the interruption or connection row, confirm the selected session, and use the visible resume or retry action. Reloading the renderer must not cause duplicate execution.
+## An agent or Full Auto is unavailable
 
-## Review is unavailable
+Confirm the selected project, agent, provider, and execution environment. Read the visible failure before you retry.
 
-The repository may have changed, the work context may be stale, or the requested output may have crossed a privacy or size bound. Refresh the active repository context and request a new bounded review rather than reaching around the host boundary.
+Do not replace a failed provider with another provider unless you intend to change the route. Do not treat a source test or fixture as proof that an installed candidate completed the same journey.
 
-## The sidebar or review drawer covers the conversation
+## Review or evidence is incomplete
 
-At narrow widths the session rail and review drawer intentionally become overlays. Close the overlay with its control or Escape. The conversation and composer should remain usable at the supported minimum window.
+Confirm the worktree and candidate identity. Then inspect the exact changes, commands, tests, and open gates.
+
+Do not convert an unknown, waived, or unperformed check into a pass.
 
 ## Report a reproducible issue
 
-Open a [GitHub issue](https://github.com/OpenAgentsInc/openagents/issues) with the application version, operating system, visible state, and reproduction steps. Remove credentials, absolute private paths, repository secrets, and private transcript content before attaching evidence.
+Open an issue in the [Omega repository](https://github.com/OpenAgentsInc/omega/issues). Include:
+
+- Omega version and source commit
+- Artifact name and digest, when applicable
+- Operating system and architecture
+- Reproduction steps
+- The result that you expected
+- The result that you observed
+
+Remove credentials, private repository data, local paths, and private agent content before you attach evidence.

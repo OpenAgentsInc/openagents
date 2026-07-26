@@ -1251,7 +1251,7 @@
     },
     {
       "path": "apps/openagents.com/apps/start/content/docs/agent-readable.md",
-      "sha256": "5c696864d898bc63a51c5bdb4b47dbeb3cd66f42bcda0a53f6d230d7f8c360fc",
+      "sha256": "f0bc30d13e585e93cbf17d85b49863313d5bf73455be13dddb4b55eca867e529",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -1269,7 +1269,7 @@
     },
     {
       "path": "apps/openagents.com/apps/start/content/docs/full-auto.md",
-      "sha256": "c47356ca33d8dd03aaecbc9c993412b1834c0c05f1307cdd0e23b292efc759e7",
+      "sha256": "446f25f90f80fb6297a6fa9be77123c8d32420b9542ea23530b942117144681b",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -1287,7 +1287,7 @@
     },
     {
       "path": "apps/openagents.com/apps/start/content/docs/getting-started.md",
-      "sha256": "2b1a9f9876612baf64438e7ef0fe5690533255293a6552863423a18b430426fa",
+      "sha256": "5d579fbb69370b85567e1a7a925ba8831114ec5be88ef97394d697806800b00b",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -1305,7 +1305,7 @@
     },
     {
       "path": "apps/openagents.com/apps/start/content/docs/index.md",
-      "sha256": "6c84c2b57bc738b0dc3bbf548e4c548a29e4bd7dd8c0b9af0dac04f00b05ec08",
+      "sha256": "f4887b9a78b69963b7eef1688aa02d7ad67360c5392bf1e08c1794b377a09205",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -1323,7 +1323,7 @@
     },
     {
       "path": "apps/openagents.com/apps/start/content/docs/review-and-recovery.md",
-      "sha256": "4385b108d6f2f97b98152655f1f734107903bd85fcd0644fded298a8ed542a3b",
+      "sha256": "67878bec1620579ac2ad8b5ece2a085cdf877de3f749dd2b1ff1982b6619c058",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
@@ -1341,7 +1341,7 @@
     },
     {
       "path": "apps/openagents.com/apps/start/content/docs/security-and-privacy.md",
-      "sha256": "7fad6d574a31ec07ded303518c7914ea971b90655cf37459985a41762bd95a42",
+      "sha256": "14c62954811e62f90d91c2d4db698aa679d1cb704027db9c94f7f6630ba48015",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -1359,7 +1359,7 @@
     },
     {
       "path": "apps/openagents.com/apps/start/content/docs/troubleshooting.md",
-      "sha256": "c6eaeab21d8e34c1822c9e409fd6d57d50bcf8bc82798f8a857fa7eaf8cd1b29",
+      "sha256": "400d326ff91b3f9e298d3f8f427f4fa8043a7762633da7f8ea2be5bbea805903",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -1377,7 +1377,7 @@
     },
     {
       "path": "apps/openagents.com/apps/start/content/docs/workroom.md",
-      "sha256": "041f2313ddbf535a729a2779dd4d427182dc0e0e0f3e75915072d5160d6c0a4b",
+      "sha256": "534b99c117bb9427c18c6c3fb2d754e7ddbc3fa529e02c0158d76b9a2130c84d",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -1579,7 +1579,7 @@
     },
     {
       "path": "apps/openagents.com/apps/start/public/docs/agent-readable.md",
-      "sha256": "5c696864d898bc63a51c5bdb4b47dbeb3cd66f42bcda0a53f6d230d7f8c360fc",
+      "sha256": "f0bc30d13e585e93cbf17d85b49863313d5bf73455be13dddb4b55eca867e529",
       "reason": "Generated from apps/openagents.com/apps/start/content/docs",
       "profile": {
         "ste_mode": "source-data",
@@ -1591,7 +1591,7 @@
     },
     {
       "path": "apps/openagents.com/apps/start/public/docs/full-auto.md",
-      "sha256": "c47356ca33d8dd03aaecbc9c993412b1834c0c05f1307cdd0e23b292efc759e7",
+      "sha256": "446f25f90f80fb6297a6fa9be77123c8d32420b9542ea23530b942117144681b",
       "reason": "Generated from apps/openagents.com/apps/start/content/docs",
       "profile": {
         "ste_mode": "source-data",
@@ -1603,7 +1603,7 @@
     },
     {
       "path": "apps/openagents.com/apps/start/public/docs/getting-started.md",
-      "sha256": "2b1a9f9876612baf64438e7ef0fe5690533255293a6552863423a18b430426fa",
+      "sha256": "5d579fbb69370b85567e1a7a925ba8831114ec5be88ef97394d697806800b00b",
       "reason": "Generated from apps/openagents.com/apps/start/content/docs",
       "profile": {
         "ste_mode": "source-data",
@@ -1615,7 +1615,7 @@
     },
     {
       "path": "apps/openagents.com/apps/start/public/docs/index.md",
-      "sha256": "6c84c2b57bc738b0dc3bbf548e4c548a29e4bd7dd8c0b9af0dac04f00b05ec08",
+      "sha256": "f4887b9a78b69963b7eef1688aa02d7ad67360c5392bf1e08c1794b377a09205",
       "reason": "Generated from apps/openagents.com/apps/start/content/docs",
       "profile": {
         "ste_mode": "source-data",
@@ -1627,7 +1627,7 @@
     },
     {
       "path": "apps/openagents.com/apps/start/public/docs/llms-full.txt",
-      "sha256": "ea86d7525aff3307ab48493a34a737cab9518d8787ebdbc689269eac61500909",
+      "sha256": "8b89be7aef8fb911fb4ab3b19deb84de7edfbebef592b0f7a8533844bc1cf6b4",
       "reason": "Generated from apps/openagents.com/apps/start/content/docs",
       "profile": {
         "ste_mode": "source-data",
@@ -1639,7 +1639,7 @@
     },
     {
       "path": "apps/openagents.com/apps/start/public/docs/llms.txt",
-      "sha256": "d9999a8187bae27fd6898f40dfb09aa8ce6d4883db2e199854c4c50280417cf6",
+      "sha256": "9e32480e140020235e1b049e59b951416acee49ca4433ba13bf248e5e3d0c92b",
       "reason": "Generated from apps/openagents.com/apps/start/content/docs",
       "profile": {
         "ste_mode": "source-data",
@@ -1651,7 +1651,7 @@
     },
     {
       "path": "apps/openagents.com/apps/start/public/docs/review-and-recovery.md",
-      "sha256": "4385b108d6f2f97b98152655f1f734107903bd85fcd0644fded298a8ed542a3b",
+      "sha256": "67878bec1620579ac2ad8b5ece2a085cdf877de3f749dd2b1ff1982b6619c058",
       "reason": "Generated from apps/openagents.com/apps/start/content/docs",
       "profile": {
         "ste_mode": "source-data",
@@ -1663,7 +1663,7 @@
     },
     {
       "path": "apps/openagents.com/apps/start/public/docs/security-and-privacy.md",
-      "sha256": "7fad6d574a31ec07ded303518c7914ea971b90655cf37459985a41762bd95a42",
+      "sha256": "14c62954811e62f90d91c2d4db698aa679d1cb704027db9c94f7f6630ba48015",
       "reason": "Generated from apps/openagents.com/apps/start/content/docs",
       "profile": {
         "ste_mode": "source-data",
@@ -1675,7 +1675,7 @@
     },
     {
       "path": "apps/openagents.com/apps/start/public/docs/troubleshooting.md",
-      "sha256": "c6eaeab21d8e34c1822c9e409fd6d57d50bcf8bc82798f8a857fa7eaf8cd1b29",
+      "sha256": "400d326ff91b3f9e298d3f8f427f4fa8043a7762633da7f8ea2be5bbea805903",
       "reason": "Generated from apps/openagents.com/apps/start/content/docs",
       "profile": {
         "ste_mode": "source-data",
@@ -1687,7 +1687,7 @@
     },
     {
       "path": "apps/openagents.com/apps/start/public/docs/workroom.md",
-      "sha256": "041f2313ddbf535a729a2779dd4d427182dc0e0e0f3e75915072d5160d6c0a4b",
+      "sha256": "534b99c117bb9427c18c6c3fb2d754e7ddbc3fa529e02c0158d76b9a2130c84d",
       "reason": "Generated from apps/openagents.com/apps/start/content/docs",
       "profile": {
         "ste_mode": "source-data",

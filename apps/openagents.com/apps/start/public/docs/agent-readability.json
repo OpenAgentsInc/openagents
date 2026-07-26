@@ -8,7 +8,7 @@
     "llmsTxt": "https://openagents.com/docs/llms.txt",
     "sitemap": "https://openagents.com/docs/sitemap.xml"
   },
-  "description": "Use, understand, and verify the local-first OpenAgents Desktop Codex workroom.",
+  "description": "Understand Omega, the native OpenAgents workspace for projects, agents, code, review, and evidence.",
   "generator": "openagents-tanstack-start",
   "name": "OpenAgents Docs",
   "site": "https://openagents.com",

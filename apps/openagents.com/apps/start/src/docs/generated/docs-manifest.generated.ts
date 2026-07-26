@@ -12,42 +12,15 @@ import docsPage7 from './pages/agent-readable.generated'
 
 export const docsManifest: ReadonlyArray<DocsPageManifestEntry> = [
   {
-    "description": "A local-first workroom for durable, reviewable Codex work.",
+    "description": "The native OpenAgents workspace for projects, agents, code, review, and evidence.",
     "editUrl": "https://github.com/OpenAgentsInc/openagents/edit/main/apps/openagents.com/apps/start/content/docs/index.md",
-    "group": "Docs",
+    "group": "Omega",
     "headings": [
       {
         "depth": 2,
-        "id": "what-the-workroom-does",
-        "text": "What the workroom does"
+        "id": "product-direction",
+        "text": "Product direction"
       },
-      {
-        "depth": 2,
-        "id": "what-stays-outside-the-mvp",
-        "text": "What stays outside the MVP"
-      },
-      {
-        "depth": 2,
-        "id": "where-to-go-next",
-        "text": "Where to go next"
-      }
-    ],
-    "lastModified": "2026-07-19",
-    "next": {
-      "path": "/docs/getting-started",
-      "title": "Getting started"
-    },
-    "path": "/docs",
-    "rawMarkdownUrl": "/docs/index.md",
-    "sidebarLabel": "OpenAgents Desktop",
-    "slug": "",
-    "title": "OpenAgents Desktop"
-  },
-  {
-    "description": "Run the current OpenAgents Desktop candidate from source.",
-    "editUrl": "https://github.com/OpenAgentsInc/openagents/edit/main/apps/openagents.com/apps/start/content/docs/getting-started.md",
-    "group": "Docs",
-    "headings": [
       {
         "depth": 2,
         "id": "availability",
@@ -55,62 +28,94 @@ export const docsManifest: ReadonlyArray<DocsPageManifestEntry> = [
       },
       {
         "depth": 2,
-        "id": "run-from-source",
-        "text": "Run from source"
+        "id": "documentation-map",
+        "text": "Documentation map"
       },
       {
         "depth": 2,
-        "id": "verify-the-package",
-        "text": "Verify the package"
-      },
-      {
-        "depth": 2,
-        "id": "start-a-conversation",
-        "text": "Start a conversation"
+        "id": "legacy-documentation",
+        "text": "Legacy documentation"
       }
     ],
-    "lastModified": "2026-07-19",
+    "lastModified": "2026-07-25",
+    "next": {
+      "path": "/docs/getting-started",
+      "title": "Availability and setup"
+    },
+    "path": "/docs",
+    "rawMarkdownUrl": "/docs/index.md",
+    "sidebarLabel": "Omega",
+    "slug": "",
+    "title": "Omega"
+  },
+  {
+    "description": "Evaluate Omega without turning prerelease evidence into a support claim.",
+    "editUrl": "https://github.com/OpenAgentsInc/openagents/edit/main/apps/openagents.com/apps/start/content/docs/getting-started.md",
+    "group": "Omega",
+    "headings": [
+      {
+        "depth": 2,
+        "id": "current-availability",
+        "text": "Current availability"
+      },
+      {
+        "depth": 2,
+        "id": "evaluate-a-candidate",
+        "text": "Evaluate a candidate"
+      },
+      {
+        "depth": 2,
+        "id": "work-from-source",
+        "text": "Work from source"
+      },
+      {
+        "depth": 2,
+        "id": "before-you-report-a-result",
+        "text": "Before you report a result"
+      }
+    ],
+    "lastModified": "2026-07-25",
     "next": {
       "path": "/docs/workroom",
-      "title": "Workroom"
+      "title": "Native workspace"
     },
     "path": "/docs/getting-started",
     "previous": {
       "path": "/docs",
-      "title": "OpenAgents Desktop"
+      "title": "Omega"
     },
     "rawMarkdownUrl": "/docs/getting-started.md",
-    "sidebarLabel": "Getting started",
+    "sidebarLabel": "Availability and setup",
     "slug": "getting-started",
-    "title": "Getting started"
+    "title": "Availability and setup"
   },
   {
-    "description": "Understand sessions, the causal timeline, and composer actions.",
+    "description": "Understand how Omega joins editor truth with agent work and evidence.",
     "editUrl": "https://github.com/OpenAgentsInc/openagents/edit/main/apps/openagents.com/apps/start/content/docs/workroom.md",
-    "group": "Docs",
+    "group": "Omega",
     "headings": [
       {
         "depth": 2,
-        "id": "sessions",
-        "text": "Sessions"
+        "id": "editor-and-project-truth",
+        "text": "Editor and project truth"
       },
       {
         "depth": 2,
-        "id": "timeline",
-        "text": "Timeline"
+        "id": "agent-work",
+        "text": "Agent work"
       },
       {
         "depth": 2,
-        "id": "composer-actions",
-        "text": "Composer actions"
+        "id": "review-and-evidence",
+        "text": "Review and evidence"
       },
       {
         "depth": 2,
-        "id": "decisions-and-blockers",
-        "text": "Decisions and blockers"
+        "id": "current-status",
+        "text": "Current status"
       }
     ],
-    "lastModified": "2026-07-19",
+    "lastModified": "2026-07-25",
     "next": {
       "path": "/docs/full-auto",
       "title": "Full Auto"
@@ -118,27 +123,27 @@ export const docsManifest: ReadonlyArray<DocsPageManifestEntry> = [
     "path": "/docs/workroom",
     "previous": {
       "path": "/docs/getting-started",
-      "title": "Getting started"
+      "title": "Availability and setup"
     },
     "rawMarkdownUrl": "/docs/workroom.md",
-    "sidebarLabel": "Workroom",
+    "sidebarLabel": "Native workspace",
     "slug": "workroom",
-    "title": "Workroom"
+    "title": "Native workspace"
   },
   {
-    "description": "Let Codex continue bounded local work, turn after turn.",
+    "description": "Understand the bounded automation direction that Omega is developing.",
     "editUrl": "https://github.com/OpenAgentsInc/openagents/edit/main/apps/openagents.com/apps/start/content/docs/full-auto.md",
-    "group": "Docs",
+    "group": "Omega",
     "headings": [
       {
         "depth": 2,
-        "id": "turn-it-on",
-        "text": "Turn it on"
+        "id": "intended-experience",
+        "text": "Intended experience"
       },
       {
         "depth": 2,
-        "id": "stop-or-steer-the-loop",
-        "text": "Stop or steer the loop"
+        "id": "agent-routing",
+        "text": "Agent routing"
       },
       {
         "depth": 2,
@@ -147,19 +152,19 @@ export const docsManifest: ReadonlyArray<DocsPageManifestEntry> = [
       },
       {
         "depth": 2,
-        "id": "current-scope",
-        "text": "Current scope"
+        "id": "proof-status",
+        "text": "Proof status"
       }
     ],
-    "lastModified": "2026-07-19",
+    "lastModified": "2026-07-25",
     "next": {
       "path": "/docs/review-and-recovery",
-      "title": "Review and recovery"
+      "title": "Review and evidence"
     },
     "path": "/docs/full-auto",
     "previous": {
       "path": "/docs/workroom",
-      "title": "Workroom"
+      "title": "Native workspace"
     },
     "rawMarkdownUrl": "/docs/full-auto.md",
     "sidebarLabel": "Full Auto",
@@ -167,27 +172,32 @@ export const docsManifest: ReadonlyArray<DocsPageManifestEntry> = [
     "title": "Full Auto"
   },
   {
-    "description": "Review exact changes and understand restart behavior.",
+    "description": "Connect Omega work to exact changes, tests, and recovery state.",
     "editUrl": "https://github.com/OpenAgentsInc/openagents/edit/main/apps/openagents.com/apps/start/content/docs/review-and-recovery.md",
-    "group": "Docs",
+    "group": "Omega",
     "headings": [
       {
         "depth": 2,
-        "id": "repository-review",
-        "text": "Repository review"
+        "id": "review-in-project-context",
+        "text": "Review in project context"
       },
       {
         "depth": 2,
-        "id": "reload-and-restart",
-        "text": "Reload and restart"
+        "id": "authority-boundary",
+        "text": "Authority boundary"
       },
       {
         "depth": 2,
-        "id": "recovery-checklist",
-        "text": "Recovery checklist"
+        "id": "recovery",
+        "text": "Recovery"
+      },
+      {
+        "depth": 2,
+        "id": "current-status",
+        "text": "Current status"
       }
     ],
-    "lastModified": "2026-07-19",
+    "lastModified": "2026-07-25",
     "next": {
       "path": "/docs/security-and-privacy",
       "title": "Security and privacy"
@@ -198,42 +208,42 @@ export const docsManifest: ReadonlyArray<DocsPageManifestEntry> = [
       "title": "Full Auto"
     },
     "rawMarkdownUrl": "/docs/review-and-recovery.md",
-    "sidebarLabel": "Review and recovery",
+    "sidebarLabel": "Review and evidence",
     "slug": "review-and-recovery",
-    "title": "Review and recovery"
+    "title": "Review and evidence"
   },
   {
-    "description": "The local authority, credential, and renderer boundaries of OpenAgents Desktop.",
+    "description": "The authority, data, credential, and service boundaries for Omega.",
     "editUrl": "https://github.com/OpenAgentsInc/openagents/edit/main/apps/openagents.com/apps/start/content/docs/security-and-privacy.md",
-    "group": "Docs",
+    "group": "Omega",
     "headings": [
       {
         "depth": 2,
-        "id": "local-first-operation",
-        "text": "Local-first operation"
+        "id": "native-authority",
+        "text": "Native authority"
       },
       {
         "depth": 2,
-        "id": "renderer-boundary",
-        "text": "Renderer boundary"
+        "id": "application-identity-and-data",
+        "text": "Application identity and data"
       },
       {
         "depth": 2,
-        "id": "codex-custody",
-        "text": "Codex custody"
+        "id": "credentials",
+        "text": "Credentials"
       },
       {
         "depth": 2,
-        "id": "repository-data",
-        "text": "Repository data"
+        "id": "inherited-services",
+        "text": "Inherited services"
       },
       {
         "depth": 2,
-        "id": "account-linking",
-        "text": "Account linking"
+        "id": "release-boundary",
+        "text": "Release boundary"
       }
     ],
-    "lastModified": "2026-07-19",
+    "lastModified": "2026-07-25",
     "next": {
       "path": "/docs/troubleshooting",
       "title": "Troubleshooting"
@@ -241,7 +251,7 @@ export const docsManifest: ReadonlyArray<DocsPageManifestEntry> = [
     "path": "/docs/security-and-privacy",
     "previous": {
       "path": "/docs/review-and-recovery",
-      "title": "Review and recovery"
+      "title": "Review and evidence"
     },
     "rawMarkdownUrl": "/docs/security-and-privacy.md",
     "sidebarLabel": "Security and privacy",
@@ -249,34 +259,29 @@ export const docsManifest: ReadonlyArray<DocsPageManifestEntry> = [
     "title": "Security and privacy"
   },
   {
-    "description": "Diagnose common development and workroom states without widening authority.",
+    "description": "Diagnose an Omega prerelease without widening authority or hiding an open gate.",
     "editUrl": "https://github.com/OpenAgentsInc/openagents/edit/main/apps/openagents.com/apps/start/content/docs/troubleshooting.md",
-    "group": "Docs",
+    "group": "Omega",
     "headings": [
       {
         "depth": 2,
-        "id": "the-development-app-does-not-open",
-        "text": "The development app does not open"
+        "id": "a-candidate-does-not-start",
+        "text": "A candidate does not start"
       },
       {
         "depth": 2,
-        "id": "codex-is-unavailable-or-incompatible",
-        "text": "Codex is unavailable or incompatible"
+        "id": "the-product-shows-zed-as-the-product",
+        "text": "The product shows Zed as the product"
       },
       {
         "depth": 2,
-        "id": "a-turn-appears-interrupted",
-        "text": "A turn appears interrupted"
+        "id": "an-agent-or-full-auto-is-unavailable",
+        "text": "An agent or Full Auto is unavailable"
       },
       {
         "depth": 2,
-        "id": "review-is-unavailable",
-        "text": "Review is unavailable"
-      },
-      {
-        "depth": 2,
-        "id": "the-sidebar-or-review-drawer-covers-the-conversation",
-        "text": "The sidebar or review drawer covers the conversation"
+        "id": "review-or-evidence-is-incomplete",
+        "text": "Review or evidence is incomplete"
       },
       {
         "depth": 2,
@@ -284,7 +289,7 @@ export const docsManifest: ReadonlyArray<DocsPageManifestEntry> = [
         "text": "Report a reproducible issue"
       }
     ],
-    "lastModified": "2026-07-19",
+    "lastModified": "2026-07-25",
     "next": {
       "path": "/docs/agent-readable",
       "title": "Agent-readable docs"
@@ -300,9 +305,9 @@ export const docsManifest: ReadonlyArray<DocsPageManifestEntry> = [
     "title": "Troubleshooting"
   },
   {
-    "description": "Static Markdown and discovery artifacts for tools and coding agents.",
+    "description": "Static Omega documentation and discovery artifacts for tools and coding agents.",
     "editUrl": "https://github.com/OpenAgentsInc/openagents/edit/main/apps/openagents.com/apps/start/content/docs/agent-readable.md",
-    "group": "Docs",
+    "group": "Omega",
     "headings": [
       {
         "depth": 2,
@@ -316,8 +321,8 @@ export const docsManifest: ReadonlyArray<DocsPageManifestEntry> = [
       },
       {
         "depth": 2,
-        "id": "human-and-agent-language",
-        "text": "Human and agent language"
+        "id": "availability-language",
+        "text": "Availability language"
       },
       {
         "depth": 2,
@@ -325,7 +330,7 @@ export const docsManifest: ReadonlyArray<DocsPageManifestEntry> = [
         "text": "Product claim authority"
       }
     ],
-    "lastModified": "2026-07-19",
+    "lastModified": "2026-07-25",
     "path": "/docs/agent-readable",
     "previous": {
       "path": "/docs/troubleshooting",

@@ -3,37 +3,42 @@
 import type { DocsPage } from '../../content-schema'
 
 const page: DocsPage = {
-  "description": "A local-first workroom for durable, reviewable Codex work.",
+  "description": "The native OpenAgents workspace for projects, agents, code, review, and evidence.",
   "editUrl": "https://github.com/OpenAgentsInc/openagents/edit/main/apps/openagents.com/apps/start/content/docs/index.md",
-  "group": "Docs",
+  "group": "Omega",
   "headings": [
     {
       "depth": 2,
-      "id": "what-the-workroom-does",
-      "text": "What the workroom does"
+      "id": "product-direction",
+      "text": "Product direction"
     },
     {
       "depth": 2,
-      "id": "what-stays-outside-the-mvp",
-      "text": "What stays outside the MVP"
+      "id": "availability",
+      "text": "Availability"
     },
     {
       "depth": 2,
-      "id": "where-to-go-next",
-      "text": "Where to go next"
+      "id": "documentation-map",
+      "text": "Documentation map"
+    },
+    {
+      "depth": 2,
+      "id": "legacy-documentation",
+      "text": "Legacy documentation"
     }
   ],
-  "html": "<p>OpenAgents Desktop is a local-first workroom around your ordinary Codex session. It keeps the active conversation central while session navigation, tools, decisions, and repository review remain close and legible.</p>\n<p>The current macOS ARM64 build is a release candidate. A public download will follow release approval. This documentation does not turn candidate evidence into a release claim.</p>\n<h2 id=\"what-the-workroom-does\"><a class=\"docs-heading-anchor\" href=\"#what-the-workroom-does\">What the workroom does</a></h2>\n<ul>\n<li>Starts a new Codex conversation or resumes durable local history.</li>\n<li>Renders authored messages, plans, tools, decisions, changes, interruptions, and terminal outcomes in one causal timeline.</li>\n<li>Supports send, stop, steer, queue, questions, approvals, and plan review through typed commands.</li>\n<li>Shows bounded repository status and exact diffs without adding Git mutation controls.</li>\n<li>Restores interrupted work explicitly instead of silently rerunning it or substituting another session.</li>\n</ul>\n<h2 id=\"what-stays-outside-the-mvp\"><a class=\"docs-heading-anchor\" href=\"#what-stays-outside-the-mvp\">What stays outside the MVP</a></h2>\n<p>OpenAgents Desktop is not a full editor, interactive terminal, browser, payment product, or autonomous deployment system. ProductSpec, Fleet, and an OpenAgents account are not prerequisites for an ordinary local Codex conversation.</p>\n<h2 id=\"where-to-go-next\"><a class=\"docs-heading-anchor\" href=\"#where-to-go-next\">Where to go next</a></h2>\n<ul>\n<li><a href=\"/docs/getting-started\">Run from source</a> for the current developer path.</li>\n<li><a href=\"/docs/workroom\">Use the workroom</a> for sessions, timeline, and composer behavior.</li>\n<li><a href=\"/docs/review-and-recovery\">Review changes</a> for read-only repository review and recovery semantics.</li>\n<li><a href=\"/docs/security-and-privacy\">Understand the boundary</a> for credential, renderer, and local-authority rules.</li>\n</ul>\n",
-  "lastModified": "2026-07-19",
+  "html": "<p>Omega is a native, Zed-based IDE from OpenAgents. It brings project work, agents, code, review, and evidence into one workspace.</p>\n<p>Omega is in active development. Signed and notarized macOS ARM64 prerelease candidates exist for evaluation. The latest recorded candidate still has open installed-release gates. Omega is not a generally available or supported release.</p>\n<h2 id=\"product-direction\"><a class=\"docs-heading-anchor\" href=\"#product-direction\">Product direction</a></h2>\n<p>Omega starts with the editor, project, buffer, terminal, and worktree model from Zed. OpenAgents adds agent work, review, policy, evidence, and run history without creating a second project authority.</p>\n<p>The target experience keeps these parts together:</p>\n<ul>\n<li>Native project and editor work</li>\n<li>First-party and external agents</li>\n<li>Visible plans, tools, decisions, and file changes</li>\n<li>Code review and evidence for completed work</li>\n<li>Bounded automation that a user can inspect and stop</li>\n</ul>\n<p>Not every target capability is complete in a prerelease candidate. These docs identify a direction or an open gate when current evidence does not prove availability.</p>\n<h2 id=\"availability\"><a class=\"docs-heading-anchor\" href=\"#availability\">Availability</a></h2>\n<p>There is no supported public installer in these docs. A prerelease artifact is test evidence, not a stable release.</p>\n<p>Use the <a href=\"https://github.com/OpenAgentsInc/omega\" rel=\"noreferrer\" target=\"_blank\">Omega repository</a> for source, release records, open issues, and candidate notes. Read the exact candidate status before you install or evaluate an artifact.</p>\n<h2 id=\"documentation-map\"><a class=\"docs-heading-anchor\" href=\"#documentation-map\">Documentation map</a></h2>\n<ul>\n<li><a href=\"/docs/getting-started\">Availability and setup</a> explains the current prerelease boundary.</li>\n<li><a href=\"/docs/workroom\">Native workspace</a> explains how editor and agent work fit together.</li>\n<li><a href=\"/docs/full-auto\">Full Auto</a> explains the current automation direction and its proof limits.</li>\n<li><a href=\"/docs/review-and-recovery\">Review and evidence</a> explains review and recovery principles.</li>\n<li><a href=\"/docs/security-and-privacy\">Security and privacy</a> explains authority, data, and service boundaries.</li>\n<li><a href=\"/docs/troubleshooting\">Troubleshooting</a> gives safe checks for current candidates.</li>\n</ul>\n<h2 id=\"legacy-documentation\"><a class=\"docs-heading-anchor\" href=\"#legacy-documentation\">Legacy documentation</a></h2>\n<p>Earlier public docs described a separate Electron application. That product content is retired from this documentation set. The current public product documentation is for Omega.</p>\n",
+  "lastModified": "2026-07-25",
   "next": {
     "path": "/docs/getting-started",
-    "title": "Getting started"
+    "title": "Availability and setup"
   },
   "path": "/docs",
   "rawMarkdownUrl": "/docs/index.md",
-  "sidebarLabel": "OpenAgents Desktop",
+  "sidebarLabel": "Omega",
   "slug": "",
-  "title": "OpenAgents Desktop"
+  "title": "Omega"
 }
 
 export default page

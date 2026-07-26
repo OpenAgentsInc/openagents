@@ -26,7 +26,7 @@ const generatedPagesRoot = path.join(generatedRoot, 'pages')
 const publicDocsRoot = path.join(appRoot, 'public', 'docs')
 const siteUrl = 'https://openagents.com'
 const docsDescription =
-  'Use, understand, and verify the local-first OpenAgents Desktop Codex workroom.'
+  'Understand Omega, the native OpenAgents workspace for projects, agents, code, review, and evidence.'
 
 type SourceDocument = Readonly<{
   body: string

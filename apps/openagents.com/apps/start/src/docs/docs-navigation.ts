@@ -3,7 +3,7 @@ import type { DocsNavigationGroupDefinition } from './content-schema'
 export const docsNavigationDefinition: ReadonlyArray<DocsNavigationGroupDefinition> = [
   {
     collapsed: false,
-    label: 'Docs',
+    label: 'Omega',
     slugs: [
       '',
       'getting-started',
@@ -20,6 +20,8 @@ export const docsNavigationDefinition: ReadonlyArray<DocsNavigationGroupDefiniti
 export const docsCompatibilityRedirects: Readonly<Record<string, string>> = {
   api: '/docs/agent-readable',
   'connect-codex-fleet': '/docs/getting-started',
+  desktop: '/docs',
   openagents: '/',
+  'openagents-desktop': '/docs',
   'product-promises': '/docs/agent-readable',
 }

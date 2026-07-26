@@ -3,19 +3,19 @@
 import type { DocsPage } from '../../content-schema'
 
 const page: DocsPage = {
-  "description": "Let Codex continue bounded local work, turn after turn.",
+  "description": "Understand the bounded automation direction that Omega is developing.",
   "editUrl": "https://github.com/OpenAgentsInc/openagents/edit/main/apps/openagents.com/apps/start/content/docs/full-auto.md",
-  "group": "Docs",
+  "group": "Omega",
   "headings": [
     {
       "depth": 2,
-      "id": "turn-it-on",
-      "text": "Turn it on"
+      "id": "intended-experience",
+      "text": "Intended experience"
     },
     {
       "depth": 2,
-      "id": "stop-or-steer-the-loop",
-      "text": "Stop or steer the loop"
+      "id": "agent-routing",
+      "text": "Agent routing"
     },
     {
       "depth": 2,
@@ -24,20 +24,20 @@ const page: DocsPage = {
     },
     {
       "depth": 2,
-      "id": "current-scope",
-      "text": "Current scope"
+      "id": "proof-status",
+      "text": "Proof status"
     }
   ],
-  "html": "<p>Full Auto lets Codex keep choosing and completing the next useful task in the current repository. It is a per-session mode in the composer, not a separate agent, account, or cloud service.</p>\n<h2 id=\"turn-it-on\"><a class=\"docs-heading-anchor\" href=\"#turn-it-on\">Turn it on</a></h2>\n<ol>\n<li>Open the Codex session and workspace you want to use.</li>\n<li>Select <strong>Full Auto</strong> in the composer. It is off by default.</li>\n</ol>\n<p>Full Auto starts immediately. On a new empty session, select the toggle. Codex then inspects the README, documentation, and open issues. It selects one useful action, completes it, and stops. If Full Auto is still enabled, the next continuation begins automatically.</p>\n<p>The setting belongs to the session. OpenAgents stores it locally. OpenAgents binds it to the selected workspace and execution profile. The loop can continue after a renderer reload or application restart.</p>\n<h2 id=\"stop-or-steer-the-loop\"><a class=\"docs-heading-anchor\" href=\"#stop-or-steer-the-loop\">Stop or steer the loop</a></h2>\n<p>Select <strong>Full Auto</strong> again to turn it off. Turning it off prevents the next automatic continuation. It does not cancel the turn already in progress. Use the normal stop control when you need to interrupt the active turn.</p>\n<p>You can still review the conversation, plans, tools, subagents, file changes, and outcomes in the same causal timeline. Full Auto does not create a hidden background workroom.</p>\n<h2 id=\"safety-boundary\"><a class=\"docs-heading-anchor\" href=\"#safety-boundary\">Safety boundary</a></h2>\n<p>Full Auto is high-trust local automation for the Codex lane:</p>\n<ul>\n<li>It uses the repository and Codex environment already granted to OpenAgents Desktop.</li>\n<li>It forces Codex&#39;s approval policy to <code>never</code> for automated turns so an unattended continuation does not wait forever for approval.</li>\n<li>Native questions and stray approval requests from unattended turns are declined instead of silently hanging the loop.</li>\n<li>A continuation runs only in the workspace that was bound when Full Auto was enabled. A missing or changed workspace disables the loop visibly.</li>\n<li>Dispatch is serialized and durably leased so overlapping reconciliation cannot intentionally start the same continuation twice.</li>\n<li>Failed dispatches are shown, retried with bounded backoff, and disable Full Auto after five consecutive failures.</li>\n<li>The loop stops after 20 automatic continuations. Turn it on again only after reviewing the result.</li>\n</ul>\n<p>Full Auto does not add a second sandbox or a more restrictive permission model. Use it only in a repository where you are comfortable allowing the existing local Codex runtime to act without mid-turn approval prompts.</p>\n<h2 id=\"current-scope\"><a class=\"docs-heading-anchor\" href=\"#current-scope\">Current scope</a></h2>\n<p>Full Auto is available for local Codex sessions in OpenAgents Desktop. It is not an agent-facing API, remote-control service, deployment authority, payment authority, or guarantee that a task is correct. Keep the workroom open when practical, review changes, and use repository tests and review evidence before accepting the result.</p>\n",
-  "lastModified": "2026-07-19",
+  "html": "<p>Full Auto is the Omega direction for sustained agent work in a project. It is designed to continue useful work while the user can inspect, steer, or stop the run.</p>\n<p>Full Auto is in active development. Current engine and interface evidence does not prove general release availability.</p>\n<h2 id=\"intended-experience\"><a class=\"docs-heading-anchor\" href=\"#intended-experience\">Intended experience</a></h2>\n<p>Full Auto should:</p>\n<ul>\n<li>Use the project and execution context that the user selected.</li>\n<li>Keep agent work visible in the same workspace.</li>\n<li>Show plans, tools, changes, blockers, and delegated work.</li>\n<li>Preserve one causal record across continuations.</li>\n<li>Stop when a safety, authority, or evidence gate requires a decision.</li>\n<li>Make interruption and recovery explicit.</li>\n</ul>\n<p>It must not create a hidden workroom or convert a UI control into deployment, payment, repository, or release authority.</p>\n<h2 id=\"agent-routing\"><a class=\"docs-heading-anchor\" href=\"#agent-routing\">Agent routing</a></h2>\n<p>Omega is not limited to one agent provider. The current direction supports a first-party Omega agent and external agents through explicit routing boundaries.</p>\n<p>Each agent keeps its own configuration and credential custody. Omega records the route and result without claiming that one provider owns the project.</p>\n<h2 id=\"safety-boundary\"><a class=\"docs-heading-anchor\" href=\"#safety-boundary\">Safety boundary</a></h2>\n<p>Automation can act only within the authority that the selected environment already grants. A running agent does not gain more authority because Full Auto is on.</p>\n<p>The product must keep these states visible:</p>\n<ul>\n<li>Running work</li>\n<li>A pending question or approval</li>\n<li>A failed or interrupted continuation</li>\n<li>An unavailable provider or engine</li>\n<li>A completed result that still needs review</li>\n</ul>\n<h2 id=\"proof-status\"><a class=\"docs-heading-anchor\" href=\"#proof-status\">Proof status</a></h2>\n<p>OpenAgents has current Full Auto contracts, engine work, and proof tooling. Installed replay, sustained owner use, and independent release evidence still have open gates. Treat Full Auto as a development capability until one exact candidate passes those gates.</p>\n",
+  "lastModified": "2026-07-25",
   "next": {
     "path": "/docs/review-and-recovery",
-    "title": "Review and recovery"
+    "title": "Review and evidence"
   },
   "path": "/docs/full-auto",
   "previous": {
     "path": "/docs/workroom",
-    "title": "Workroom"
+    "title": "Native workspace"
   },
   "rawMarkdownUrl": "/docs/full-auto.md",
   "sidebarLabel": "Full Auto",

@@ -37,35 +37,58 @@ describe('unified TanStack Start docs content', () => {
     expect(generatedManifest).not.toContain('docsPageLoaders')
   })
 
-  test('publishes the bounded Full Auto contract', async () => {
+  test('publishes the bounded Omega Full Auto status', async () => {
     const page = await loadDocsPage('full-auto')
 
     expect(page?.title).toBe('Full Auto')
-    expect(page?.html).toContain('20 automatic continuations')
-    expect(page?.html).toContain('does not cancel the turn already in progress')
-    expect(page?.html).toContain('approval policy to <code>never</code>')
+    expect(page?.html).toContain('Full Auto is in active development')
+    expect(page?.html).toContain('does not prove general release availability')
+    expect(page?.html).toContain('must not create a hidden workroom')
+  })
+
+  test('publishes Omega without the legacy Desktop product frame', async () => {
+    const pages = await Promise.all(
+      docsNavigationDefinition.flatMap(group => group.slugs).map(loadDocsPage),
+    )
+    const published = JSON.stringify(pages)
+
+    expect(pages[0]?.title).toBe('Omega')
+    expect(published).toContain('Omega is in active development')
+    expect(published).not.toContain('OpenAgents Desktop')
+    expect(published).not.toContain('Electron runs')
+    expect(published).not.toContain('apps/openagents-desktop')
   })
 
   test('preserves the corrected legacy redirects', () => {
     expect(docsCompatibilityRedirects).toEqual({
       api: '/docs/agent-readable',
       'connect-codex-fleet': '/docs/getting-started',
+      desktop: '/docs',
       openagents: '/',
+      'openagents-desktop': '/docs',
       'product-promises': '/docs/agent-readable',
     })
   })
 
   test.each([
-    ['index.md', 'OpenAgents Desktop'],
-    ['search.json', 'OpenAgents Desktop'],
-    ['llms.txt', 'https://openagents.com/docs/getting-started'],
-    ['llms-full.txt', '# OpenAgents Desktop'],
+    ['index.md', 'title: Omega'],
+    ['search.json', 'Omega is in active development'],
+    ['llms.txt', 'The native OpenAgents workspace'],
+    ['llms-full.txt', '# Omega'],
     ['agent-readability.json', 'openagents-tanstack-start'],
     ['sitemap.xml', 'https://openagents.com/docs/getting-started'],
   ])('generates the agent-readable artifact %s', (relativePath, marker) => {
     const artifact = readFileSync(path.join(publicDocsDirectory, relativePath), 'utf8')
     expect(artifact).toContain(marker)
   })
+
+  test.each(['index.md', 'search.json', 'llms.txt', 'llms-full.txt'])(
+    'removes the legacy Desktop product from %s',
+    relativePath => {
+      const artifact = readFileSync(path.join(publicDocsDirectory, relativePath), 'utf8')
+      expect(artifact).not.toContain('OpenAgents Desktop')
+    },
+  )
 
   test('keeps archived documentation out of public artifacts', () => {
     expect(existsSync(path.join(publicDocsDirectory, 'future.md'))).toBe(false)

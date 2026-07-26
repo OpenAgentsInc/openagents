@@ -1,35 +1,46 @@
 ---
-title: Review and recovery
-description: Review exact changes and understand restart behavior.
-lastModified: 2026-07-19
+title: Review and evidence
+description: Connect Omega work to exact changes, tests, and recovery state.
+lastModified: 2026-07-25
 sidebar:
-  order: 4
+  order: 5
 ---
 
-## Repository review
+## Review in project context
 
-OpenAgents Desktop keeps repository context adjacent to the conversation. The review surface may show bounded status and an exact correlated diff for the active work context.
+Omega should keep review next to the editor and the agent work that produced a change. The review surface must identify the project, files, and current worktree state.
 
-The MVP review boundary is intentionally read-only. It does not expose discard, commit, branch, push, pull-request, merge, or arbitrary command execution controls.
+Review can show:
 
-Review fails visibly when output is stale, revoked, secret-shaped, binary, oversized, or unavailable. Absolute filesystem paths and host credentials do not enter the renderer projection.
+- Exact file changes
+- Commands and test outcomes
+- Agent decisions and delegated work
+- Evidence references
+- Known gaps and failed checks
 
-## Reload and restart
+A generated summary is not a substitute for the underlying change or result.
 
-Renderer reload and application restart reconcile against durable session and run identity.
+## Authority boundary
 
-- The application restores confirmed work from its authoritative record.
-- An incomplete stream remains interrupted or pending reconciliation.
-- A proven history gap triggers an authoritative refetch.
-- No restart silently reruns provider work.
-- No stale response may overwrite a newer selection or subscription generation.
+A review view does not gain Git, deployment, payment, or release authority. Each action still uses its owning system and its current authorization check.
 
-If the app cannot prove the current state, it should say so. `Unknown pending reconciliation` is safer and more truthful than optimistic completion.
+Stale, secret-shaped, oversized, binary, or unavailable content must fail visibly. The product must not copy private credentials or unrestricted host data into an agent timeline.
 
-## Recovery checklist
+## Recovery
 
-1. Confirm the selected session and repository context.
-2. Read the latest interruption, gap, or connection row.
-3. Reopen the exact change review if repository state is still available.
-4. Resume only through the visible runtime action.
-5. Start a new session only when you intend to create new work identity.
+Omega should reconcile an interrupted run against its durable identity and evidence. It must not silently rerun provider work after a restart.
+
+Use this recovery sequence:
+
+1. Confirm the project and worktree.
+2. Confirm the selected run or conversation.
+3. Read the latest interruption or failure.
+4. Check the exact file and test state.
+5. Resume only through a visible action.
+6. Start new work only when you intend to create a new run identity.
+
+If Omega cannot prove the current state, it must show that the state is unknown or needs reconciliation.
+
+## Current status
+
+Review and recovery are active product areas. Current prerelease evidence does not prove every review, restart, and recovery path on a supported release.

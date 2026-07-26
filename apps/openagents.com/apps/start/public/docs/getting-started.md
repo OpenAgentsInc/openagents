@@ -1,43 +1,43 @@
 ---
-title: Getting started
-description: Run the current OpenAgents Desktop candidate from source.
-lastModified: 2026-07-19
+title: Availability and setup
+description: Evaluate Omega without turning prerelease evidence into a support claim.
+lastModified: 2026-07-25
 sidebar:
   order: 2
 ---
 
-## Availability
+## Current availability
 
-The accepted build is a signed and notarized macOS ARM64 release candidate. It is not a public release yet, so there is no supported public installer link in these docs.
+Omega is in active development. OpenAgents has produced signed and notarized macOS ARM64 prerelease candidates. The current evidence does not prove a generally available or supported release.
 
-## Run from source
+The latest public observation record still identifies open brand, safety, and installed-journey gates. Do not use a prerelease tag as proof that these gates passed.
 
-The repository pins Node `24.13.1` and pnpm `11.10.0`. From a clean clone:
+## Evaluate a candidate
 
-```bash
-pnpm install
-pnpm run dev:openagents-desktop
-```
+1. Open the [Omega releases](https://github.com/OpenAgentsInc/omega/releases) page.
+2. Read the notes for the exact candidate.
+3. Confirm that the artifact matches your operating system and architecture.
+4. Confirm the recorded digest and signing status before you run the artifact.
+5. Keep Omega data separate from any Zed installation.
+6. Report a result against the exact Omega version and artifact digest.
 
-Development uses the isolated **OpenAgents Dev** profile and can run beside an installed production application. Stop the development process with **Control-C** so both Electron and the local Vite server shut down.
+A candidate can be useful for evaluation when a release gate is still open. Do not present that candidate as a stable installer.
 
-## Verify the package
+## Work from source
 
-The canonical package gate runs typechecking, tests, the production build, and Electron smoke coverage:
+The [Omega repository](https://github.com/OpenAgentsInc/omega) owns the current source build, test, and package commands. Use the instructions at the exact source commit that you test. This website does not copy changing repository commands into a second authority.
 
-```bash
-pnpm --dir apps/openagents-desktop run verify
-```
+Omega is a fork of Zed. The fork keeps native Rust and GPUI editor foundations. Omega must use its own application identity, data roots, credentials, service boundaries, package records, and release process.
 
-That gate uses privacy-safe fixtures rather than ambient Codex history. A successful test run is engineering evidence. It is not release publication.
+## Before you report a result
 
-## Start a conversation
+Include these values:
 
-1. Open **New session**.
-2. Choose or confirm the repository context.
-3. Write the objective in the composer.
-4. Send the turn and follow the timeline.
-5. Resolve any question or approval in the focused decision surface.
-6. Open **Review changes** when the turn produces repository changes.
+- Omega version and source commit
+- Artifact name and digest, when applicable
+- Operating system and architecture
+- The action that you performed
+- The result that you observed
+- Any open gate or limitation that affected the result
 
-OpenAgents uses the app-owned Codex runtime and ordinary logged-in Codex session. The initial local workflow does not require an OpenAgents account.
+Remove credentials, private repository data, local paths, and private agent content from public evidence.

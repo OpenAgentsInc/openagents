@@ -3,38 +3,38 @@
 import type { DocsPage } from '../../content-schema'
 
 const page: DocsPage = {
-  "description": "The local authority, credential, and renderer boundaries of OpenAgents Desktop.",
+  "description": "The authority, data, credential, and service boundaries for Omega.",
   "editUrl": "https://github.com/OpenAgentsInc/openagents/edit/main/apps/openagents.com/apps/start/content/docs/security-and-privacy.md",
-  "group": "Docs",
+  "group": "Omega",
   "headings": [
     {
       "depth": 2,
-      "id": "local-first-operation",
-      "text": "Local-first operation"
+      "id": "native-authority",
+      "text": "Native authority"
     },
     {
       "depth": 2,
-      "id": "renderer-boundary",
-      "text": "Renderer boundary"
+      "id": "application-identity-and-data",
+      "text": "Application identity and data"
     },
     {
       "depth": 2,
-      "id": "codex-custody",
-      "text": "Codex custody"
+      "id": "credentials",
+      "text": "Credentials"
     },
     {
       "depth": 2,
-      "id": "repository-data",
-      "text": "Repository data"
+      "id": "inherited-services",
+      "text": "Inherited services"
     },
     {
       "depth": 2,
-      "id": "account-linking",
-      "text": "Account linking"
+      "id": "release-boundary",
+      "text": "Release boundary"
     }
   ],
-  "html": "<h2 id=\"local-first-operation\"><a class=\"docs-heading-anchor\" href=\"#local-first-operation\">Local-first operation</a></h2>\n<p>The ordinary Desktop workroom remains useful without an OpenAgents account. Repository access and Codex execution are held by the desktop host, not by browser-style renderer code.</p>\n<h2 id=\"renderer-boundary\"><a class=\"docs-heading-anchor\" href=\"#renderer-boundary\">Renderer boundary</a></h2>\n<p>The renderer receives schema-checked projections and typed intent keys. It does not receive raw bearer tokens or provider credentials. It also does not receive control tokens, process handles, or unrestricted filesystem access.</p>\n<p>Electron runs with context isolation, no renderer Node integration, sandboxing, deny-by-default permissions, restricted navigation, and a closed preload bridge.</p>\n<h2 id=\"codex-custody\"><a class=\"docs-heading-anchor\" href=\"#codex-custody\">Codex custody</a></h2>\n<p>The application uses its exact bundled Codex runtime rather than falling back to an arbitrary binary on <code>PATH</code>. Account details are bounded and obscured by default in settings. Sensitive values do not belong in logs, screenshots, public receipts, or docs.</p>\n<h2 id=\"repository-data\"><a class=\"docs-heading-anchor\" href=\"#repository-data\">Repository data</a></h2>\n<p>Repository status and diffs are scoped to the active work context. Secret-shaped, oversized, binary, stale, or revoked material fails closed. Review does not grant mutation authority.</p>\n<h2 id=\"account-linking\"><a class=\"docs-heading-anchor\" href=\"#account-linking\">Account linking</a></h2>\n<p>OpenAgents account linking is optional for the initial local workflow. When linked features are used, the host owns encrypted native-session custody. Credentials do not cross into the renderer or become part of the Codex transcript.</p>\n",
-  "lastModified": "2026-07-19",
+  "html": "<h2 id=\"native-authority\"><a class=\"docs-heading-anchor\" href=\"#native-authority\">Native authority</a></h2>\n<p>Omega is a native application. The host process owns project and local execution access. UI projections must receive bounded data and typed actions, not unrestricted credentials or host authority.</p>\n<p>An agent action uses the authority of its selected environment. Omega does not grant repository, deployment, payment, or release authority by displaying that action.</p>\n<h2 id=\"application-identity-and-data\"><a class=\"docs-heading-anchor\" href=\"#application-identity-and-data\">Application identity and data</a></h2>\n<p>Omega must use its own application identity, data directories, logs, cache, credentials, protocol handlers, and update state. It must not read or change Zed user data as part of normal Omega operation.</p>\n<p>Prerelease evaluation should use the candidate-specific Omega identity. Do not point an Omega candidate at a Zed data directory.</p>\n<h2 id=\"credentials\"><a class=\"docs-heading-anchor\" href=\"#credentials\">Credentials</a></h2>\n<p>Provider and account credentials stay with their owning system. External agents keep their own configuration and credential custody.</p>\n<p>Do not put credentials, private prompts, repository secrets, private transcripts, or unrestricted local paths in logs, screenshots, documentation, or public evidence.</p>\n<h2 id=\"inherited-services\"><a class=\"docs-heading-anchor\" href=\"#inherited-services\">Inherited services</a></h2>\n<p>Omega is a fork of Zed, but it is not authorized to present Zed services as Omega services. A release candidate must disable inherited production endpoints by default or identify an approved compatibility use.</p>\n<p>An unavailable Omega service must have an honest state. It must not silently call an inherited account, telemetry, crash, update, or hosted-model endpoint.</p>\n<h2 id=\"release-boundary\"><a class=\"docs-heading-anchor\" href=\"#release-boundary\">Release boundary</a></h2>\n<p>Signed and notarized bytes are necessary release evidence. They do not prove that privacy, network, data isolation, accessibility, or installed-journey gates passed.</p>\n<p>The current public Omega evidence still has open release gates. Do not infer stable support from a prerelease artifact.</p>\n",
+  "lastModified": "2026-07-25",
   "next": {
     "path": "/docs/troubleshooting",
     "title": "Troubleshooting"
@@ -42,7 +42,7 @@ const page: DocsPage = {
   "path": "/docs/security-and-privacy",
   "previous": {
     "path": "/docs/review-and-recovery",
-    "title": "Review and recovery"
+    "title": "Review and evidence"
   },
   "rawMarkdownUrl": "/docs/security-and-privacy.md",
   "sidebarLabel": "Security and privacy",
