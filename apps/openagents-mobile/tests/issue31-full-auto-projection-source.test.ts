@@ -253,7 +253,8 @@ describe("issue31FullAutoProjectionFromSnapshot", () => {
       ),
       NOW,
     );
-    expect(foreignHost).toMatchObject({ state: "unavailable", reason: "no_host_projection" });
+    // Paired, but nothing bound to this grant — not "never paired".
+    expect(foreignHost).toMatchObject({ state: "unavailable", reason: "no_host_snapshot" });
   });
 
   test("a paired host that has published no Full Auto detail reports absence", () => {
@@ -261,9 +262,11 @@ describe("issue31FullAutoProjectionFromSnapshot", () => {
       ...pairingChain(),
       sourceEvent(HOST_ADJUNCT_ID, hostAdjunct(), 1_700_000_100),
     ]);
+    // Connected and silent about Full Auto. Reporting this as "not paired"
+    // contradicted the grant and the host snapshot the device was holding.
     expect(issue31FullAutoProjectionFromSnapshot(snapshot, NOW)).toMatchObject({
       state: "unavailable",
-      reason: "no_host_projection",
+      reason: "no_full_auto_detail",
     });
   });
 

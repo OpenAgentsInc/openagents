@@ -20,6 +20,7 @@ import {
 } from "../src/workroom/issue31-full-auto-read-model.ts";
 import type { Issue31OwnerCommandState } from "../src/workroom/issue31-owner-private-read-model.ts";
 import { renderMobileIssue31WorkroomView } from "../src/screens/mobile-issue31-workroom-view.ts";
+import { issue31FullAutoProjectionUnavailable } from "../src/workroom/issue31-full-auto-projection-source.ts";
 import { emptyIssue31CommunityReadModel } from "../src/workroom/issue31-community-read-model.ts";
 
 const FIXTURE_ROOT = "../../../packages/sarah/fixtures/issue31-workroom";
@@ -70,6 +71,47 @@ const ready = (
 };
 
 describe("issue 31 Workroom Full Auto rendering", () => {
+  /**
+   * Observed on `ios-simulator (iPhone 17 Pro, iOS 26.5)` against the deployed
+   * relay: a device holding a confirmed grant, that had just sent two messages
+   * and had them projected back, rendered
+   * `This device is not paired to an Omega host yet.` directly above
+   * `Connection and identity / Ready / Signed Nostr authority · live`.
+   *
+   * Three different facts — no grant, no host snapshot, no Full Auto detail —
+   * were all reported with the copy for the first. Only one of them is the
+   * device being unpaired, and the surface could disprove that claim from state
+   * it was already holding and displaying inches away.
+   */
+  test("a paired device never tells its owner it is not paired", () => {
+    for (const reason of ["no_host_snapshot", "no_full_auto_detail"] as const) {
+      const serialized = render(issue31FullAutoProjectionUnavailable(reason));
+      expect(serialized).not.toContain("not paired to an Omega host");
+    }
+    // The genuinely unpaired case keeps saying so — this is about accuracy,
+    // not about deleting the sentence.
+    expect(render(issue31FullAutoProjectionUnavailable("no_host_projection"))).toContain(
+      "not paired to an Omega host",
+    );
+  });
+
+  test("each unavailable reason renders its own sentence", () => {
+    const sentences = new Set(
+      (
+        [
+          "no_host_projection",
+          "no_host_snapshot",
+          "no_full_auto_detail",
+          "host_projection_unreadable",
+          "snapshot_mismatch",
+        ] as const
+      ).map((reason) => render(issue31FullAutoProjectionUnavailable(reason))),
+    );
+    // Five reasons, five distinct renders. A shared sentence is how the wrong
+    // one got shown for two years' worth of states at once.
+    expect(sentences.size).toBe(5);
+  });
+
   test("shows conversation, run, provider, and evidence in one Workroom", () => {
     const serialized = render(ready());
     // The conversation is already here; these three join it rather than living

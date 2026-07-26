@@ -585,7 +585,7 @@ describe("omega#47 adjuncts delivered to a paired device over a real relay", () 
       expect(snapshot.relays.some((row) => row.rejectedEventCount > 0)).toBe(true);
       expect(
         issue31FullAutoProjectionFromSnapshot(readerSnapshot(harness, snapshot), harness.now),
-      ).toMatchObject({ state: "unavailable", reason: "no_host_projection" });
+      ).toMatchObject({ state: "unavailable", reason: "no_host_snapshot" });
     } finally {
       device.close();
     }
@@ -613,7 +613,7 @@ describe("omega#47 adjuncts delivered to a paired device over a real relay", () 
       expect(snapshot.confirmedEvents.some((row) => row.event.id === wrapId)).toBe(false);
       expect(
         issue31FullAutoProjectionFromSnapshot(readerSnapshot(harness, snapshot), harness.now),
-      ).toMatchObject({ state: "unavailable", reason: "no_host_projection" });
+      ).toMatchObject({ state: "unavailable", reason: "no_host_snapshot" });
     } finally {
       device.close();
     }
@@ -644,7 +644,7 @@ describe("omega#47 adjuncts delivered to a paired device over a real relay", () 
       // is reported as absence rather than drawn on its own authority.
       expect(
         issue31FullAutoProjectionFromSnapshot(readerSnapshot(harness, snapshot), harness.now),
-      ).toMatchObject({ state: "unavailable", reason: "no_host_projection" });
+      ).toMatchObject({ state: "unavailable", reason: "no_host_snapshot" });
     } finally {
       device.close();
     }

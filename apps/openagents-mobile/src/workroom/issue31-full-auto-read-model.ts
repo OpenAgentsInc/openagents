@@ -26,9 +26,21 @@ import {
 export const ISSUE31_FULL_AUTO_READ_MODEL_SCHEMA =
   "openagents.mobile.issue31.fullauto.read-model.v1" as const;
 
-/** Why the Full Auto section has nothing to show. Never a silent empty state. */
+/**
+ * Why the Full Auto section has nothing to show. Never a silent empty state.
+ *
+ * The three "nothing to show" cases are kept apart because they are different
+ * facts about the world and only one of them is the device's fault. Collapsing
+ * them made a paired device holding a confirmed grant tell its owner it was not
+ * paired — a claim the surface could disprove from state it already held.
+ */
 export type Issue31FullAutoUnavailableReason =
+  /** No active grant. The only case that really is "not paired yet". */
   | "no_host_projection"
+  /** Paired, but the host has published no snapshot for this grant. */
+  | "no_host_snapshot"
+  /** Paired and snapshotted, but the host has said nothing about Full Auto. */
+  | "no_full_auto_detail"
   | "host_projection_unreadable"
   | "snapshot_mismatch";
 

@@ -222,13 +222,15 @@ export const issue31FullAutoProjectionFromSnapshot = (
     return issue31FullAutoProjectionUnavailable("host_projection_unreadable");
   }
   if (binding.state === "absent") {
-    return issue31FullAutoProjectionUnavailable("no_host_projection");
+    // Paired, and the host has published nothing for this grant. Saying "not
+    // paired" here would contradict the grant this very function just read.
+    return issue31FullAutoProjectionUnavailable("no_host_snapshot");
   }
 
   const detail = recordsWithSchema(snapshot, ISSUE31_FULL_AUTO_ADJUNCT_SCHEMA)[0];
   // The host is paired and has published a snapshot, but has said nothing about
   // Full Auto. Silence is reported as absence, never as an empty run list.
-  if (detail === undefined) return issue31FullAutoProjectionUnavailable("no_host_projection");
+  if (detail === undefined) return issue31FullAutoProjectionUnavailable("no_full_auto_detail");
 
   // Only here does the payload get a say, and only against the host's own
   // independently published snapshot reference.

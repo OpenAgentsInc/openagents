@@ -828,6 +828,10 @@ const accountCard = (account: Issue31ProviderAccountRow): View =>
 
 const fullAutoUnavailableCopy: Readonly<Record<string, string>> = {
   no_host_projection: "This device is not paired to an Omega host yet.",
+  no_host_snapshot:
+    "This device is paired, but your Omega host has not published a reading yet.",
+  no_full_auto_detail:
+    "Your Omega host is connected and has said nothing about Full Auto yet.",
   host_projection_unreadable:
     "Your Omega host sent a Full Auto projection this app refuses to read. Nothing is shown rather than part of it.",
   snapshot_mismatch:
