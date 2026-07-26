@@ -327,6 +327,23 @@ export const makeForgeInviteMembershipRoutes = <
           )
         }
         const ownerBody = body as Readonly<{ npub: string; tenantRef: string }>
+        const requestedRefRestrictions = record?.refRestrictions
+        const permittedBootstrapRefs = [
+          'refs/heads/main',
+          'refs/tags/forge-omega-import-2026-07-26',
+        ]
+        if (
+          requestedRefRestrictions !== undefined &&
+          (!Array.isArray(requestedRefRestrictions) ||
+            requestedRefRestrictions.length !== 1 ||
+            typeof requestedRefRestrictions[0] !== 'string' ||
+            !permittedBootstrapRefs.includes(requestedRefRestrictions[0]))
+        ) {
+          return noStoreJsonResponse(
+            { error: 'forge_owner_bootstrap_git_credential_ref_invalid' },
+            { status: 400 },
+          )
+        }
         const authorization = request.headers.get('authorization')
         if (authorization?.startsWith('Nostr ') !== true) {
           throw new ForgeInvitePolicyError({
@@ -360,7 +377,10 @@ export const makeForgeInviteMembershipRoutes = <
         const credential = await dependencies.makeGitAuthStore(env).mintGitAccessToken({
           expiresAt: new Date(Date.parse(nowIso) + 30 * 60 * 1_000).toISOString(),
           nowIso,
-          refRestrictions: ['refs/heads/main'],
+          refRestrictions:
+            requestedRefRestrictions === undefined
+              ? ['refs/heads/main']
+              : (requestedRefRestrictions as Array<string>),
           repositoryRef: bootstrapRepositoryRef,
           scopes: ['git:upload-pack', 'git:receive-pack'],
           sourceRefs: [
