@@ -336,7 +336,34 @@ describe('ForgeGitHubMirrorWorker', () => {
     ).toBe(1)
   })
 
-  test('re-observes a successful receipt and reports later GitHub divergence', async () => {
+  test('bounds retryable projection failures and records the exhausted attempt', async () => {
+    const canonical = makeCanonical({ transientProjectFailures: 99 })
+    const result = await runWith(
+      canonical.canonical,
+      makeMemoryStore(),
+      Effect.gen(function* () {
+        const worker = yield* ForgeGitHubMirrorWorker
+        return yield* worker.run({
+          promotion: promotion(),
+          repositoryRef,
+        })
+      }),
+    )
+
+    expect(result.disposition).toBe('completed')
+    if (result.disposition !== 'completed') return
+    expect(result.receipt).toMatchObject({
+      attempt_count: 1,
+      error_reason: 'canonical_service_temporarily_unavailable',
+      status: 'failed',
+    })
+    expect(canonical.projectedIntents).toHaveLength(3)
+    expect(
+      new Set(canonical.projectedIntents.map(intent => intent.intent_ref)).size,
+    ).toBe(1)
+  })
+
+  test('re-observes and repairs GitHub drift after a successful receipt', async () => {
     const canonical = makeCanonical()
     const store = makeMemoryStore()
     const workerRun = () =>
@@ -358,11 +385,12 @@ describe('ForgeGitHubMirrorWorker', () => {
     expect(second.disposition).toBe('completed')
     if (second.disposition !== 'completed') return
     expect(second.observedState).toMatchObject({
-      destination_object_id: headA,
-      divergence: 'source_ahead',
+      destination_object_id: headB,
+      divergence: 'in_sync',
     })
     expect(second.receipt.status).toBe('mirrored')
-    expect(canonical.projectedIntents).toHaveLength(1)
+    expect(second.receipt.attempt_count).toBe(2)
+    expect(canonical.projectedIntents).toHaveLength(2)
   })
 
   test('reports current divergence and stale observation without granting coordination authority', async () => {

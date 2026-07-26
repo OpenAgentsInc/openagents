@@ -338,6 +338,9 @@ importers:
 
   apps/forge-git-service:
     dependencies:
+      '@openagentsinc/forge-protocol':
+        specifier: workspace:*
+        version: link:../../packages/forge-protocol
       '@openagentsinc/oa-infra':
         specifier: workspace:*
         version: link:../../packages/oa-infra

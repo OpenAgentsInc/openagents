@@ -12,6 +12,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@openagentsinc/forge-protocol": "workspace:*",
     "@openagentsinc/oa-infra": "workspace:*",
     "@openagentsinc/runtime-platform": "workspace:*",
     "effect": "catalog:",

@@ -162,7 +162,7 @@ const uniqueRefs = (
 ]
 
 const retrySchedule = Schedule.exponential('50 millis').pipe(
-  Schedule.either(Schedule.recurs(2)),
+  Schedule.both(Schedule.recurs(2)),
 )
 
 const retryCanonical = <A>(
@@ -425,25 +425,6 @@ export const makeForgeGitHubMirrorWorker = (
       promotionRef: intent.promotion_ref,
       tenantRef: intent.tenant_ref,
     })
-    if (
-      existing?.status === 'mirrored' &&
-      existing.commit_id.toLowerCase() === intent.source_object_id.toLowerCase()
-    ) {
-      const observed = yield* retryCanonical(
-        dependencies.canonical.observe(intent),
-      ).pipe(
-        Effect.catch(error =>
-          failureObservation(intent, error, dependencies.nowIso()),
-        ),
-      )
-      return {
-        disposition: 'completed',
-        intent,
-        observedState: observed,
-        receipt: existing,
-      } satisfies ForgeGitHubMirrorRunResult
-    }
-
     const before = yield* retryCanonical(
       dependencies.canonical.observe(intent),
     ).pipe(
@@ -451,6 +432,22 @@ export const makeForgeGitHubMirrorWorker = (
         failureObservation(intent, error, dependencies.nowIso()),
       ),
     )
+    if (
+      existing?.status === 'mirrored' &&
+      existing.commit_id.toLowerCase() ===
+        intent.source_object_id.toLowerCase() &&
+      before.divergence === 'in_sync' &&
+      before.destination_object_id?.toLowerCase() ===
+        intent.source_object_id.toLowerCase()
+    ) {
+      return {
+        disposition: 'completed',
+        intent,
+        observedState: before,
+        receipt: existing,
+      } satisfies ForgeGitHubMirrorRunResult
+    }
+
     const observed =
       before.divergence === 'in_sync' &&
       before.destination_object_id?.toLowerCase() ===

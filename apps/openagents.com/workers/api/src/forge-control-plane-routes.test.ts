@@ -192,6 +192,7 @@ const makeMirrorGitHubFetch = (
   const calls: Array<
     Readonly<{ body: string | null; method: string; url: string }>
   > = []
+  let currentSha = input.currentSha ?? headA
   const fetchMock = (async (url: RequestInfo | URL, init?: RequestInit) => {
     const target = String(url)
     const method = init?.method ?? 'GET'
@@ -202,21 +203,26 @@ const makeMirrorGitHubFetch = (
     })
 
     if (method === 'PATCH') {
+      const status = input.updateStatus ?? 200
+      if (status >= 200 && status < 300 && typeof init?.body === 'string') {
+        const body = JSON.parse(init.body) as { sha?: unknown }
+        if (typeof body.sha === 'string') currentSha = body.sha
+      }
       return Response.json(
         {
           ref: 'refs/heads/main',
-          object: { sha: headB, type: 'commit' },
+          object: { sha: currentSha, type: 'commit' },
         },
-        { status: input.updateStatus ?? 200 },
+        { status },
       )
     }
 
     return Response.json({
       ref: 'refs/heads/main',
       object: {
-        sha: input.currentSha ?? headA,
+        sha: currentSha,
         type: 'commit',
-        url: `https://api.github.com/repos/OpenAgentsInc/openagents/git/commits/${input.currentSha ?? headA}`,
+        url: `https://api.github.com/repos/OpenAgentsInc/openagents/git/commits/${currentSha}`,
       },
     })
   }) as typeof fetch
