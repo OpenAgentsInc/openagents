@@ -26668,16 +26668,14 @@
     },
     {
       "path": "docs/forge/receipts/2026-07-25-forge-git-local-clone-push-restore.md",
-      "sha256": "9736db01dd461f5986a9a12d2ccaf9215a21f9507e93971bbfcfca4b2593fdfb",
+      "sha256": "923be59041585de5e1e30539aa7b37805daf336a84c89499ddeb25ad80d7b3f3",
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
-        "ste_status": "source-data",
-        "ste_reviewer": null,
-        "ste_reviewed_at": null,
         "risk": "source-data",
         "source": "Immutable historical or evidence source data",
-        "replacement": null
+        "replacement": null,
+        "ste_status": "source-data"
       }
     },
     {
@@ -34728,11 +34726,12 @@
     {
       "path": "docs/omega/2026-07-25-omega-rc14-installed-observation-proof.md",
       "sha256": "6e9a6582ea0c591a445b9726d74184e0c41c3ebc35bd2c7f6e4f647db0256a42",
-      "reason": "Final review of mutable first-party agent technical text",
+      "reason": "Final review of a converted document",
       "profile": {
-        "ste_status": "inspected",
-        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
         "ste_audience": "agent",
         "ste_agent_compact_revision": "openagents-agent-compact-v1",
         "ste_accepted_screening_rules": [
@@ -34740,7 +34739,10 @@
           "STE-3.6",
           "STE-5.1",
           "STE-8.2"
-        ]
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {
@@ -35323,12 +35325,13 @@
     },
     {
       "path": "docs/ops/2026-07-25-owned-forge-git-deploy.md",
-      "sha256": "eb69e0c606d8fecb67f47d5a39b1af076fef9404f483dacd1f99e96df6d1685b",
-      "reason": "Final review of mutable first-party agent technical text",
+      "sha256": "b5bf740786514ed184837f59916b95412df1fc9c3d29e48351bcd758801c6bc3",
+      "reason": "Final review of a converted document",
       "profile": {
-        "ste_status": "inspected",
-        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_mode": "mixed",
+        "risk": "high",
+        "source": null,
+        "replacement": null,
         "ste_audience": "agent",
         "ste_agent_compact_revision": "openagents-agent-compact-v1",
         "ste_accepted_screening_rules": [
@@ -35336,7 +35339,10 @@
           "STE-3.6",
           "STE-5.1",
           "STE-8.2"
-        ]
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {
@@ -45647,7 +45653,7 @@
     },
     {
       "path": "infra/README.md",
-      "sha256": "2ea702b5ac2baeeb5f134a1d26d7896854d03c34c77cac95f59ee9b94ec952bd",
+      "sha256": "f1997b259bd83bfef18ccd0a5f2b067345f5f12b21934e213bb65d1008d80540",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

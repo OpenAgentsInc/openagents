@@ -242,6 +242,12 @@ resource "google_secret_manager_secret_iam_member" "database_reader" {
   member    = "serviceAccount:${google_service_account.runtime.email}"
 }
 
+resource "google_project_iam_member" "database_client" {
+  project = var.project
+  role    = "roles/cloudsql.client"
+  member  = "serviceAccount:${google_service_account.runtime.email}"
+}
+
 resource "google_cloud_run_v2_service" "this" {
   project  = var.project
   name     = var.service_name
@@ -287,6 +293,11 @@ resource "google_cloud_run_v2_service" "this" {
         name       = "forge-repositories"
         mount_path = var.repository_mount_path
       }
+
+      volume_mounts {
+        name       = "cloudsql"
+        mount_path = "/cloudsql"
+      }
     }
 
     vpc_access {
@@ -306,6 +317,14 @@ resource "google_cloud_run_v2_service" "this" {
         server    = google_compute_instance.nfs.network_interface[0].network_ip
         path      = var.nfs_export_path
         read_only = false
+      }
+    }
+
+    volumes {
+      name = "cloudsql"
+
+      cloud_sql_instance {
+        instances = [var.database_instance_connection_name]
       }
     }
   }

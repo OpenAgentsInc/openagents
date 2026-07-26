@@ -264,10 +264,11 @@ module "openagents_monolith" {
 module "forge_git" {
   source = "../modules/forge-git-service"
 
-  project              = var.project_id
-  region               = var.region
-  zone                 = "${var.region}-a"
-  pack_evidence_bucket = module.oa_artifacts_bucket.name
+  project                           = var.project_id
+  region                            = var.region
+  zone                              = "${var.region}-a"
+  pack_evidence_bucket              = module.oa_artifacts_bucket.name
+  database_instance_connection_name = "${var.project_id}:${var.region}:khala-sync-pg"
 }
 
 # Global External Application LB fronting the monolith for openagents.com +

@@ -1,3 +1,4 @@
+/* oxlint-disable openagents/no-manual-effect-runtime-in-tests -- @effect/vitest does not support the repository Effect 4 line. */
 import { execFile } from "node:child_process";
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";

@@ -11,12 +11,14 @@ PROJECT="${OPENAGENTS_GCP_PROJECT:-openagentsgemini}"
 REGION="${OPENAGENTS_GCP_REGION:-us-central1}"
 SERVICE="${FORGE_GIT_SERVICE:-forge-git}"
 DATABASE_SECRET="${FORGE_GIT_DATABASE_SECRET:-openagents-monolith-database-url-prod}"
+DATABASE_INSTANCE="${FORGE_GIT_DATABASE_INSTANCE:-openagentsgemini:us-central1:khala-sync-pg}"
 ARTIFACTS_BUCKET="${FORGE_GIT_ARTIFACTS_BUCKET:-openagentsgemini-oa-artifacts}"
 ARTIFACTS_PREFIX="${FORGE_GIT_ARTIFACTS_PREFIX:-forge/git-packs}"
-FILESTORE="${FORGE_GIT_FILESTORE:-forge-git-repositories}"
-SHARE="${FORGE_GIT_FILESTORE_SHARE:-forge_repositories}"
+NFS_INSTANCE="${FORGE_GIT_NFS_INSTANCE:-forge-git-nfs}"
+NFS_EXPORT="${FORGE_GIT_NFS_EXPORT:-/srv/forge/repositories}"
+ZONE="${OPENAGENTS_GCP_ZONE:-us-central1-a}"
 NETWORK="${FORGE_GIT_NETWORK:-default}"
-SUBNETWORK="${FORGE_GIT_SUBNETWORK:-default}"
+SUBNETWORK="${FORGE_GIT_SUBNETWORK:-forge-git}"
 RUNTIME_SERVICE_ACCOUNT="${FORGE_GIT_RUNTIME_SERVICE_ACCOUNT:-forge-git-runtime@openagentsgemini.iam.gserviceaccount.com}"
 
 node "$REPO_ROOT/scripts/google-cloud-authority-guard.mjs"
@@ -24,11 +26,11 @@ node "$REPO_ROOT/scripts/google-cloud-authority-guard.mjs"
 cd "$APP_DIR"
 pnpm run build
 
-FILESTORE_IP="$(
-  gcloud filestore instances describe "$FILESTORE" \
+NFS_IP="$(
+  gcloud compute instances describe "$NFS_INSTANCE" \
     --project "$PROJECT" \
-    --zone "${FORGE_GIT_FILESTORE_ZONE:-us-central1-a}" \
-    --format='value(networks.ipAddresses[0])'
+    --zone "$ZONE" \
+    --format='value(networkInterfaces[0].networkIP)'
 )"
 
 gcloud run deploy "$SERVICE" \
@@ -50,7 +52,8 @@ gcloud run deploy "$SERVICE" \
   --subnet "$SUBNETWORK" \
   --vpc-egress private-ranges-only \
   --network-tags forge-git \
-  --add-volume "name=forge-repositories,type=nfs,location=${FILESTORE_IP}:/${SHARE}" \
+  --add-cloudsql-instances "$DATABASE_INSTANCE" \
+  --add-volume "name=forge-repositories,type=nfs,location=${NFS_IP}:${NFS_EXPORT}" \
   --add-volume-mount "volume=forge-repositories,mount-path=/var/lib/forge/repositories" \
   --set-env-vars "FORGE_GIT_REPOSITORY_ROOT=/var/lib/forge/repositories,FORGE_GIT_GCS_MIRROR_ENABLED=true,OA_INFRA_GCS_BUCKET=${ARTIFACTS_BUCKET},OA_INFRA_GCS_PREFIX=${ARTIFACTS_PREFIX}" \
   --set-secrets "FORGE_GIT_DATABASE_URL=${DATABASE_SECRET}:latest"

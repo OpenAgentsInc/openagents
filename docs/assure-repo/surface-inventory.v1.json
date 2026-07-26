@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:078567c2d7cb6aa42f3c812dc1083683dade9a73990c568104c36fac65fa00ab",
+  "sourceDigest": "sha256:650f0b0a788fa2cfbc413e1e2e653cd5672a109a19ac3f74b961872defaab1ca",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -67,6 +67,23 @@
       "obligation": {
         "state": "out-of-scope",
         "note": "unverified: reference-only"
+      }
+    },
+    {
+      "id": "app:@openagentsinc/forge-git-service",
+      "kind": "app",
+      "owningPath": "apps/forge-git-service",
+      "title": "@openagentsinc/forge-git-service",
+      "derivation": "derived",
+      "oracles": [
+        {
+          "type": "test",
+          "ref": "apps/forge-git-service (1 tracked test file)"
+        }
+      ],
+      "obligation": {
+        "state": "designed",
+        "note": "executable oracle(s) authored: test; observation pending AR-3 sweep"
       }
     },
     {
@@ -3362,9 +3379,9 @@
     }
   ],
   "summary": {
-    "totalSurfaces": 175,
+    "totalSurfaces": 176,
     "byKind": {
-      "app": 16,
+      "app": 17,
       "crate": 6,
       "document": 52,
       "package": 89,
@@ -3372,7 +3389,7 @@
       "release-pipeline": 9,
       "worker": 1
     },
-    "withOracle": 161,
+    "withOracle": 162,
     "unverified": 14,
     "byUnverifiedReason": {
       "config-only": 2,
@@ -3380,7 +3397,7 @@
       "reference-only": 2
     },
     "byObligationState": {
-      "designed": 125,
+      "designed": 126,
       "inconclusive": 9,
       "mapped": 36,
       "out-of-scope": 5

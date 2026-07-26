@@ -92,6 +92,7 @@ export SUBNETWORK_CIDR="10.42.24.0/26"
 export NFS_SA="forge-git-nfs@openagentsgemini.iam.gserviceaccount.com"
 export RUNTIME_SA="forge-git-runtime@openagentsgemini.iam.gserviceaccount.com"
 export DATABASE_SECRET="openagents-monolith-database-url-prod"
+export DATABASE_INSTANCE="openagentsgemini:us-central1:khala-sync-pg"
 export EVIDENCE_BUCKET="openagentsgemini-oa-artifacts"
 export EVIDENCE_PREFIX="forge/git-packs"
 export OPENAGENTS_CHECKOUT="$(git rev-parse --show-toplevel)"
@@ -121,7 +122,8 @@ Review these planned resources:
 6. One Public NAT gateway for NFS host security updates.
 7. One Cloud Run service with one maximum instance.
 8. One writable NFS mount and stable service identities.
-9. One serverless NEG, backend, and `/git` path rule.
+9. One Cloud SQL socket mount and client role.
+10. One serverless NEG, backend, and `/git` path rule.
 
 Stop if the plan changes the monolith default backend, DNS, or a certificate.
 Stop if the plan replaces or deletes a data resource.
@@ -189,6 +191,7 @@ gcloud run deploy "$SERVICE" \
   --subnet="$SUBNETWORK" \
   --vpc-egress=private-ranges-only \
   --network-tags=forge-git \
+  --add-cloudsql-instances="$DATABASE_INSTANCE" \
   --add-volume="name=forge-repositories,type=nfs,location=${NFS_IP}:${NFS_EXPORT}" \
   --add-volume-mount="volume=forge-repositories,mount-path=${MOUNT}" \
   --update-env-vars="FORGE_GIT_REPOSITORY_ROOT=${MOUNT},OA_INFRA_GCS_BUCKET=${EVIDENCE_BUCKET},OA_INFRA_GCS_PREFIX=${EVIDENCE_PREFIX}" \
@@ -261,6 +264,11 @@ Unset the Git variables when the test ends:
 ```sh
 unset GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0
 ```
+
+FORGE-02 validates the token hash, tenant, repository, expiry, and Git scope.
+It does not validate live `forge_actor_bindings` membership or tombstones.
+Issue #9246 owns that FORGE-04 integration and its revoked-member tests.
+Do not use a FORGE-02 drill as full identity or revocation acceptance.
 
 ## 8. Verify clone, push, fetch, and partial clone
 
@@ -455,6 +463,7 @@ gcloud run deploy "$RESTORE_SERVICE" \
   --subnet="$SUBNETWORK" \
   --vpc-egress=private-ranges-only \
   --network-tags=forge-git \
+  --add-cloudsql-instances="$DATABASE_INSTANCE" \
   --add-volume="name=forge-repositories,type=nfs,location=${RESTORE_IP}:${NFS_EXPORT}" \
   --add-volume-mount="volume=forge-repositories,mount-path=${MOUNT}" \
   --update-env-vars="FORGE_GIT_REPOSITORY_ROOT=${MOUNT},OA_INFRA_GCS_BUCKET=${EVIDENCE_BUCKET},OA_INFRA_GCS_PREFIX=${EVIDENCE_PREFIX}" \
@@ -499,6 +508,7 @@ The receipt must contain:
 6. The clone, fetch, partial-clone, and `git fsck` results.
 7. The start and finish times.
 8. The cleanup result.
+9. The FORGE-04 identity and revocation limitation.
 
 Put public-safe evidence in the FORGE-02 receipt.
 Do not put a token, database URL, private IP address, or request header in the

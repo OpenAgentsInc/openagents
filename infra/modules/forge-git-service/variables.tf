@@ -118,6 +118,12 @@ variable "database_secret_id" {
   default     = "openagents-monolith-database-url-prod"
 }
 
+variable "database_instance_connection_name" {
+  description = "Cloud SQL instance connection name for Forge Git authentication"
+  type        = string
+  default     = "openagentsgemini:us-central1:khala-sync-pg"
+}
+
 variable "repository_mount_path" {
   description = "Container path for authoritative bare repositories"
   type        = string
