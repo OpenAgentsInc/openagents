@@ -74,12 +74,7 @@ declare global {
   }
 }
 
-type ComposerState =
-  | 'idle'
-  | 'signing'
-  | 'publishing'
-  | 'accepted'
-  | 'rejected'
+type ComposerState = 'idle' | 'signing' | 'publishing' | 'accepted' | 'rejected'
 
 const emptySnapshot: PublicChatRelaySnapshot = {
   events: [],
@@ -89,12 +84,11 @@ const emptySnapshot: PublicChatRelaySnapshot = {
 }
 
 const shellButton =
-  'inline-flex min-h-11 items-center justify-center gap-2 border border-white/15 bg-white/[0.04] px-3 font-mono text-xs text-white transition hover:border-white/30 hover:bg-white/[0.07] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300 disabled:cursor-not-allowed disabled:opacity-45'
+  'inline-flex min-h-11 items-center justify-center gap-2 rounded-md border border-white/12 bg-white/[0.025] px-3 font-mono text-xs text-white/80 transition-[border-color,background-color,color] duration-200 ease-out hover:border-white/25 hover:bg-white/[0.06] hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300 active:bg-white/[0.09] disabled:cursor-not-allowed disabled:border-white/[0.06] disabled:bg-transparent disabled:text-white/25 motion-reduce:transition-none'
 const primaryButton =
-  'inline-flex min-h-11 items-center justify-center gap-2 border border-cyan-300/50 bg-cyan-300 px-4 font-mono text-xs font-semibold text-black transition hover:bg-cyan-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:cursor-not-allowed disabled:opacity-45'
+  'inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-cyan-300 px-4 font-mono text-xs font-semibold text-[#041014] transition-[background-color,transform] duration-200 ease-out hover:bg-cyan-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white active:translate-y-px disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-white/35 motion-reduce:transform-none motion-reduce:transition-none'
 
-const shortKey = (pubkey: string): string =>
-  `${pubkey.slice(0, 8)}…${pubkey.slice(-8)}`
+const shortKey = (pubkey: string): string => `${pubkey.slice(0, 8)}…${pubkey.slice(-8)}`
 
 const formatTime = (seconds: number): string =>
   new Intl.DateTimeFormat(undefined, {
@@ -108,7 +102,7 @@ const browserSigner = (): PublicChatSigner | undefined => {
   if (typeof window === 'undefined' || window.nostr === undefined) return undefined
   return {
     getPublicKey: () => window.nostr!.getPublicKey(),
-    signEvent: async template =>
+    signEvent: async (template) =>
       S.decodeUnknownSync(NostrEvent)(await window.nostr!.signEvent(template)),
   }
 }
@@ -169,13 +163,15 @@ function MediaAttachment({
       if (!response.ok) throw new Error('unavailable')
       const bytes = await response.arrayBuffer()
       const digest = [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))]
-        .map(value => value.toString(16).padStart(2, '0'))
+        .map((value) => value.toString(16).padStart(2, '0'))
         .join('')
       if (attachment.digest !== undefined && digest !== attachment.digest) {
         setState('mismatch')
         return
       }
-      setObjectUrl(URL.createObjectURL(new Blob([bytes], { type: attachment.mimeType })))
+      setObjectUrl(
+        URL.createObjectURL(new Blob([bytes], { type: attachment.mimeType })),
+      )
       setState('verified')
     } catch {
       setState('unavailable')
@@ -193,7 +189,8 @@ function MediaAttachment({
         <span>
           {attachment.alt ?? attachment.mimeType}
           <small className="mt-1 block text-white/35">
-            Reader action required · digest {attachment.digest?.slice(0, 12) ?? 'not supplied'}
+            Reader action required · digest{' '}
+            {attachment.digest?.slice(0, 12) ?? 'not supplied'}
           </small>
         </span>
         {state === 'loading' ? (
@@ -230,16 +227,17 @@ function MediaAttachment({
   }
   if (attachment.mimeType.startsWith('video/')) {
     return (
-      <video className="mt-3 max-h-96 max-w-full" controls muted preload="none" src={objectUrl} />
+      <video
+        className="mt-3 max-h-96 max-w-full"
+        controls
+        muted
+        preload="none"
+        src={objectUrl}
+      />
     )
   }
   return (
-    <a
-      className={`${shellButton} mt-3`}
-      download
-      href={objectUrl}
-      rel="noopener"
-    >
+    <a className={`${shellButton} mt-3`} download href={objectUrl} rel="noopener">
       Download verified file
     </a>
   )
@@ -277,11 +275,11 @@ function MessageBody({ event }: Readonly<{ event: NostrEvent }>) {
           </button>
         </div>
       ) : (
-        <p className="mt-2 whitespace-pre-wrap break-words text-sm/6 text-white/80">
+        <p className="mt-1.5 max-w-[72ch] whitespace-pre-wrap break-words text-[15px]/6 text-white/85">
           {textNodes(event.content)}
         </p>
       )}
-      {attachments.map(attachment => (
+      {attachments.map((attachment) => (
         <MediaAttachment attachment={attachment} key={attachment.url} />
       ))}
     </>
@@ -293,7 +291,7 @@ function RelayStatus({ snapshot }: Readonly<{ snapshot: PublicChatRelaySnapshot 
   return (
     <div
       aria-live="polite"
-      className="flex min-h-8 items-center gap-2 font-mono text-[11px] uppercase tracking-[0.12em]"
+      className="flex min-h-8 flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[11px]"
       data-state={snapshot.state}
     >
       {current ? (
@@ -303,7 +301,11 @@ function RelayStatus({ snapshot }: Readonly<{ snapshot: PublicChatRelaySnapshot 
       ) : (
         <RefreshCw className="size-3.5 animate-spin text-cyan-200 motion-reduce:animate-none" />
       )}
-      <span className={current ? 'text-emerald-200' : 'text-amber-100'}>
+      <span
+        className={
+          current ? 'font-medium text-emerald-200' : 'font-medium text-amber-100'
+        }
+      >
         {current
           ? 'Current'
           : snapshot.state === 'stale'
@@ -311,8 +313,12 @@ function RelayStatus({ snapshot }: Readonly<{ snapshot: PublicChatRelaySnapshot 
             : 'Reconnecting · repairing history'}
       </span>
       {snapshot.lastCurrentAt === null ? null : (
-        <span className="normal-case tracking-normal text-white/35">
-          last current {new Date(snapshot.lastCurrentAt).toLocaleTimeString()}
+        <span className="text-white/40">
+          Synced{' '}
+          {new Date(snapshot.lastCurrentAt).toLocaleTimeString([], {
+            hour: 'numeric',
+            minute: '2-digit',
+          })}
         </span>
       )}
     </div>
@@ -344,8 +350,8 @@ export function AgentChatPage() {
 
   useEffect(() => {
     void fetch('/api/public/nostr-chat/manifest')
-      .then(response => response.json())
-      .then(value => setManifest(S.decodeUnknownSync(PublicNostrChatManifest)(value)))
+      .then((response) => response.json())
+      .then((value) => setManifest(S.decodeUnknownSync(PublicNostrChatManifest)(value)))
       .catch(() => setManifest(null))
   }, [])
 
@@ -380,7 +386,7 @@ export function AgentChatPage() {
     if (selectedSigner === undefined) return
     void selectedSigner
       .getPublicKey()
-      .then(identity => {
+      .then((identity) => {
         setSigner(selectedSigner)
         setPubkey(identity)
         setAuthState('ready')
@@ -391,13 +397,10 @@ export function AgentChatPage() {
   const timeline = useMemo(() => {
     const events = stableChronological(snapshot.events)
     const administrators = relayGroupAdministrators(events)
-    const profiles = new Map<
-      string,
-      { bot: boolean; displayName: string | null }
-    >()
+    const profiles = new Map<string, { bot: boolean; displayName: string | null }>()
     for (const profileEvent of events
-      .filter(event => event.kind === 0)
-      .sort((left, right) => left.created_at - right.created_at)) {
+      .filter((event) => event.kind === 0)
+      .toSorted((left, right) => left.created_at - right.created_at)) {
       try {
         const profile: unknown = JSON.parse(profileEvent.content)
         if (typeof profile !== 'object' || profile === null) continue
@@ -416,35 +419,39 @@ export function AgentChatPage() {
       }
     }
     const deleted = new Map<string, 'author' | 'moderator'>()
-    for (const deletion of events.filter(event => event.kind === 5)) {
+    for (const deletion of events.filter((event) => event.kind === 5)) {
       for (const target of events) {
         if (isAuthorDeletion(deletion, target)) deleted.set(target.id, 'author')
       }
     }
     for (const deletion of events.filter(
-      event => event.kind === 9005 && administrators.has(event.pubkey),
+      (event) => event.kind === 9005 && administrators.has(event.pubkey),
     )) {
       for (const targetId of deletion.tags
-        .filter(tag => tag[0] === 'e')
-        .map(tag => tag[1])
+        .filter((tag) => tag[0] === 'e')
+        .map((tag) => tag[1])
         .filter((value): value is string => value !== undefined)) {
         deleted.set(targetId, 'moderator')
       }
     }
     const reactions = new Map<string, Map<string, number>>()
-    for (const reaction of events.filter(event => event.kind === 7 && verifyEvent({
-      ...event,
-      tags: event.tags.map(tag => [...tag]),
-    }))) {
-      const target = reaction.tags.find(tag => tag[0] === 'e')?.[1]
-      if (target === undefined || !events.some(event => event.id === target)) continue
+    for (const reaction of events.filter(
+      (event) =>
+        event.kind === 7 &&
+        verifyEvent({
+          ...event,
+          tags: Array.from(event.tags, (tag) => Array.from(tag)),
+        }),
+    )) {
+      const target = reaction.tags.find((tag) => tag[0] === 'e')?.[1]
+      if (target === undefined || !events.some((event) => event.id === target)) continue
       const values = reactions.get(target) ?? new Map<string, number>()
       values.set(reaction.content, (values.get(reaction.content) ?? 0) + 1)
       reactions.set(target, values)
     }
     return events
-      .filter(event => event.kind === 9 || event.kind === 1337)
-      .map(event => ({
+      .filter((event) => event.kind === 9 || event.kind === 1337)
+      .map((event) => ({
         deletion: deleted.get(event.id),
         event,
         profile: profiles.get(event.pubkey),
@@ -458,15 +465,15 @@ export function AgentChatPage() {
   )
   const pinnedIds = useMemo(() => {
     const state = snapshot.events
-      .filter(event => event.kind === 39005)
-      .sort(
+      .filter((event) => event.kind === 39005)
+      .toSorted(
         (left, right) =>
           right.created_at - left.created_at || right.id.localeCompare(left.id),
       )[0]
     return new Set(
       state?.tags
-        .filter(tag => tag[0] === 'e')
-        .map(tag => tag[1])
+        .filter((tag) => tag[0] === 'e')
+        .map((tag) => tag[1])
         .filter((value): value is string => value !== undefined) ?? [],
     )
   }, [snapshot.events])
@@ -549,9 +556,7 @@ export function AgentChatPage() {
         tags: [
           ...reply.tags,
           ...attachmentTags,
-          ...(warning.trim() === ''
-            ? []
-            : [['content-warning', warning.trim()]]),
+          ...(warning.trim() === '' ? [] : [['content-warning', warning.trim()]]),
         ],
       })
       const signed = await signer.signEvent(template)
@@ -604,14 +609,17 @@ export function AgentChatPage() {
             tags: string[][]
           }) => {
             const event = await signer.signEvent(template)
-            return { ...event, tags: event.tags.map(tag => [...tag]) }
+            return {
+              ...event,
+              tags: Array.from(event.tags, (tag) => Array.from(tag)),
+            }
           },
         }
         const descriptor = await new BlossomClient(
           server.toString(),
           blossomSigner,
         ).uploadFile(file)
-        setAttachmentTags(tags => [
+        setAttachmentTags((tags) => [
           ...tags,
           [
             'imeta',
@@ -622,7 +630,7 @@ export function AgentChatPage() {
             `alt ${file.name}`,
           ],
         ])
-        setContent(value =>
+        setContent((value) =>
           value.includes(descriptor.url)
             ? value
             : `${value}${value.trim() === '' ? '' : '\n'}${descriptor.url}`,
@@ -721,13 +729,13 @@ export function AgentChatPage() {
       return
     }
     const next = pinnedIds.has(target.id)
-      ? [...pinnedIds].filter(id => id !== target.id)
+      ? [...pinnedIds].filter((id) => id !== target.id)
       : [...pinnedIds, target.id]
     const event = await signer.signEvent(
       publicChatEventTemplate({
         content: '',
         kind: 9010,
-        tags: next.map(id => ['e', id]),
+        tags: next.map((id) => ['e', id]),
       }),
     )
     const result = await relayRef.current.publish(event)
@@ -739,56 +747,47 @@ export function AgentChatPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#050608] text-[#f2f0e9]">
+    <div className="min-h-screen bg-black text-[#f2f0e9]">
       <PublicHeader />
-      <main className="mx-auto grid min-h-screen max-w-[1500px] border-x border-white/10 pt-20 lg:grid-cols-[280px_minmax(0,1fr)_300px]">
-        <aside className="hidden border-r border-white/10 bg-black/20 p-5 lg:block">
-          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-cyan-200">
-            Public channel
-          </p>
-          <h1 className="mt-3 text-2xl font-semibold tracking-tight">Agent chat</h1>
-          <p className="mt-3 text-sm/6 text-white/55">
-            One signed NIP-29 stream for people and agents. Everything here is public.
-          </p>
-          <dl className="mt-8 grid gap-5 font-mono text-xs">
-            <div>
-              <dt className="text-white/35">Group</dt>
-              <dd className="mt-1 break-all text-white/75">{PUBLIC_CHAT_GROUP_ID}</dd>
-            </div>
-            <div>
-              <dt className="text-white/35">Relay</dt>
-              <dd className="mt-1 break-all text-white/75">{PUBLIC_CHAT_RELAY_URL}</dd>
-            </div>
-            <div>
-              <dt className="text-white/35">Protocol</dt>
-              <dd className="mt-1 text-white/75">NIP-29 · kind 9</dd>
-            </div>
-          </dl>
-          <a
-            className={`${shellButton} mt-8 w-full`}
-            href="/api/public/nostr-chat/manifest"
-          >
-            <Link2 className="size-4" />
-            Agent manifest
-          </a>
-        </aside>
-
-        <section className="flex min-h-[calc(100vh-5rem)] min-w-0 flex-col">
-          <header className="border-b border-white/10 bg-[#07090c]/95 px-4 py-3 backdrop-blur sm:px-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/35 lg:hidden">
-                  OpenAgents · public
-                </p>
-                <h2 className="text-base font-semibold"># agentchat</h2>
+      <main className="mx-auto grid min-h-[calc(100dvh-4.25rem)] max-w-[1280px] border-x border-white/[0.08] 2xl:grid-cols-[minmax(0,1fr)_280px]">
+        <section className="flex min-h-[calc(100dvh-4.25rem)] min-w-0 flex-col bg-[#030405]">
+          <header className="border-b border-white/[0.08] bg-[#060708] px-4 py-4 sm:px-6 lg:px-8">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2.5">
+                  <span
+                    aria-hidden="true"
+                    className="grid size-9 shrink-0 place-items-center rounded-md bg-white text-lg font-semibold text-black"
+                  >
+                    #
+                  </span>
+                  <div className="min-w-0">
+                    <h1 className="text-base font-semibold text-white">Agent chat</h1>
+                    <p className="truncate text-xs text-white/50">
+                      NIP-29 for people and agents. Everything here is public.
+                    </p>
+                  </div>
+                </div>
               </div>
               <RelayStatus snapshot={snapshot} />
             </div>
+            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 pl-11 font-mono text-[11px] text-white/45">
+              <span>{timeline.length} messages</span>
+              <span>{PUBLIC_CHAT_GROUP_ID}</span>
+              <a
+                className="inline-flex min-h-8 items-center gap-1.5 text-white/55 transition-colors hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-300"
+                href="/api/public/nostr-chat/manifest"
+              >
+                <Link2 className="size-3.5" />
+                Agent manifest
+              </a>
+            </div>
             {manifest?.readiness === 'relay-self-required' ? (
-              <p className="mt-3 flex items-start gap-2 border border-amber-200/20 bg-amber-200/5 p-2.5 font-mono text-xs/5 text-amber-100">
+              <p className="mt-3 flex items-start gap-2 rounded-md border border-amber-200/20 bg-amber-200/5 p-2.5 font-mono text-xs/5 text-amber-100">
                 <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                Relay group-state verification is paused because NIP-11 does not publish its
-                self key. Signed messages remain readable; group metadata is not trusted.
+                Relay group-state verification is paused because NIP-11 does not publish
+                its self key. Signed messages remain readable; group metadata is not
+                trusted.
               </p>
             ) : null}
           </header>
@@ -796,190 +795,223 @@ export function AgentChatPage() {
           <div
             aria-label="Public Nostr chat messages"
             aria-live="polite"
-            className="flex-1 overflow-y-auto px-4 py-5 sm:px-6"
+            className="flex flex-1 flex-col overflow-y-auto px-4 py-5 sm:px-6 lg:px-8"
             role="log"
           >
-            {timeline.length >= PUBLIC_CHAT_LIMITS.historyPageSize ? (
-              <button
-                className={`${shellButton} mx-auto mb-4 flex`}
-                onClick={() => relayRef.current?.loadOlder()}
-                type="button"
-              >
-                Load older messages
-              </button>
-            ) : null}
-            {snapshot.state === 'connecting' && timeline.length === 0 ? (
-              <div className="grid min-h-72 place-items-center text-center">
-                <div>
-                  <LoaderCircle className="mx-auto size-6 animate-spin text-cyan-200 motion-reduce:animate-none" />
-                  <p className="mt-3 font-mono text-xs text-white/45">Loading public history…</p>
-                </div>
-              </div>
-            ) : timeline.length === 0 ? (
-              <div className="grid min-h-72 place-items-center border border-dashed border-white/10 text-center">
-                <div className="max-w-sm p-6">
-                  <Radio className="mx-auto size-6 text-cyan-200" />
-                  <h3 className="mt-4 font-semibold">The channel is quiet.</h3>
-                  <p className="mt-2 text-sm/6 text-white/50">
-                    Public history returned no kind 9 messages. Connect a signer to publish
-                    the first independently signed event.
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <ol className="grid gap-1">
-                {timeline.map(({ deletion, event, profile, reactions }) => (
-                  <li
-                    className="group grid grid-cols-[40px_minmax(0,1fr)] gap-3 border-b border-white/[0.06] py-4"
-                    id={`event-${event.id}`}
-                    key={event.id}
-                  >
+            <div className="my-auto">
+              {timeline.length >= PUBLIC_CHAT_LIMITS.historyPageSize ? (
+                <button
+                  className={`${shellButton} mx-auto mb-4 flex`}
+                  onClick={() => relayRef.current?.loadOlder()}
+                  type="button"
+                >
+                  Load older messages
+                </button>
+              ) : null}
+              {snapshot.state === 'connecting' && timeline.length === 0 ? (
+                <div
+                  className="mx-auto grid min-h-72 w-full max-w-4xl content-end gap-5"
+                  aria-label="Loading public history"
+                >
+                  {[0, 1].map((item) => (
                     <div
-                      aria-hidden="true"
-                      className="grid size-9 place-items-center border border-white/10 bg-white/[0.04] font-mono text-[10px] text-cyan-100"
+                      className="grid grid-cols-[44px_minmax(0,1fr)] gap-4"
+                      key={item}
                     >
-                      {event.kind === 1337 ? <Code2 className="size-4" /> : event.pubkey.slice(0, 2)}
+                      <span className="size-11 animate-pulse rounded-md bg-white/[0.06] motion-reduce:animate-none" />
+                      <span className="grid gap-2">
+                        <span className="h-3 w-40 animate-pulse rounded bg-white/[0.08] motion-reduce:animate-none" />
+                        <span className="h-4 w-3/4 animate-pulse rounded bg-white/[0.06] motion-reduce:animate-none" />
+                      </span>
                     </div>
-                    <article className="min-w-0">
-                      <header className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                        <strong className="font-mono text-xs text-white">
-                          {profile?.displayName ?? shortKey(event.pubkey)}
-                        </strong>
-                        {profile?.bot === true ? (
-                          <span className="border border-violet-300/25 px-1 font-mono text-[9px] uppercase text-violet-200">
-                            bot
-                          </span>
-                        ) : null}
-                        <time className="font-mono text-[10px] text-white/35">
-                          {formatTime(event.created_at)}
-                        </time>
-                        <span className="font-mono text-[9px] uppercase tracking-wider text-white/25">
-                          kind {event.kind}
-                        </span>
-                        <button
-                          aria-label={`Copy full Nostr identity ${npubFor(event.pubkey)}`}
-                          className="text-white/25 hover:text-white"
-                          onClick={() => void navigator.clipboard.writeText(npubFor(event.pubkey))}
-                          title={npubFor(event.pubkey)}
-                          type="button"
-                        >
-                          <Clipboard className="size-3" />
-                        </button>
-                        {pinnedIds.has(event.id) ? (
-                          <span className="font-mono text-[9px] uppercase tracking-wider text-amber-200">
-                            pinned
-                          </span>
-                        ) : null}
-                      </header>
-                      {deletion === undefined ? (
-                        <MessageBody event={event} />
-                      ) : (
-                        <p className="mt-2 flex items-center gap-2 font-mono text-xs text-white/40">
-                          <Trash2 className="size-3.5" />
-                          {deletion === 'author'
-                            ? 'Author deletion request · copies may remain elsewhere'
-                            : 'Removed from the group projection by a moderator'}
-                        </p>
-                      )}
-                      {reactions.length === 0 ? null : (
-                        <div className="mt-3 flex flex-wrap gap-1.5">
-                          {reactions.map(([value, count]) => (
-                            <span
-                              className="border border-white/10 bg-white/[0.03] px-2 py-1 font-mono text-[10px]"
-                              key={value}
-                            >
-                              {value} {count}
+                  ))}
+                  <div className="flex items-center gap-2 font-mono text-xs text-white/50">
+                    <RefreshCw className="size-3.5 animate-spin text-cyan-200 motion-reduce:animate-none" />
+                    Loading signed history
+                  </div>
+                </div>
+              ) : timeline.length === 0 ? (
+                <div className="grid min-h-72 place-items-center border border-dashed border-white/10 text-center">
+                  <div className="max-w-sm p-6">
+                    <Radio className="mx-auto size-6 text-cyan-200" />
+                    <h3 className="mt-4 font-semibold">The channel is quiet.</h3>
+                    <p className="mt-2 text-sm/6 text-white/50">
+                      Public history returned no kind 9 messages. Connect a signer to
+                      publish the first independently signed event.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <ol className="mx-auto w-full max-w-4xl">
+                  {timeline.map(({ deletion, event, profile, reactions }) => (
+                    <li
+                      className="group grid grid-cols-[40px_minmax(0,1fr)] gap-3 border-b border-white/[0.06] py-5 sm:grid-cols-[44px_minmax(0,1fr)] sm:gap-4"
+                      id={`event-${event.id}`}
+                      key={event.id}
+                    >
+                      <div
+                        aria-hidden="true"
+                        className="grid size-10 place-items-center rounded-md bg-white/[0.06] font-mono text-[11px] font-medium text-cyan-100 ring-1 ring-inset ring-white/10 sm:size-11"
+                      >
+                        {event.kind === 1337 ? (
+                          <Code2 className="size-4" />
+                        ) : (
+                          event.pubkey.slice(0, 2)
+                        )}
+                      </div>
+                      <article className="min-w-0">
+                        <header className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <strong className="font-mono text-[13px] font-semibold text-white">
+                            {profile?.displayName ?? shortKey(event.pubkey)}
+                          </strong>
+                          {profile?.bot === true ? (
+                            <span className="border border-violet-300/25 px-1 font-mono text-[9px] uppercase text-violet-200">
+                              bot
                             </span>
-                          ))}
-                        </div>
-                      )}
-                      <div className="mt-3 flex flex-wrap gap-1 opacity-100 transition sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100">
-                        <button
-                          className={shellButton}
-                          onClick={() => setReplyTo(event)}
-                          type="button"
-                        >
-                          <MessageSquareReply className="size-3.5" />
-                          Reply
-                        </button>
-                        <button
-                          className={shellButton}
-                          disabled={signer === undefined}
-                          onClick={() => void react(event)}
-                          type="button"
-                        >
-                          <SmilePlus className="size-3.5" />
-                          React
-                        </button>
-                        <button
-                          className={shellButton}
-                          disabled={signer === undefined}
-                          onClick={() => void report(event)}
-                          type="button"
-                        >
-                          <Flag className="size-3.5" />
-                          Report
-                        </button>
-                        {pubkey === event.pubkey ? (
+                          ) : null}
+                          <time className="font-mono text-[11px] text-white/45">
+                            {formatTime(event.created_at)}
+                          </time>
+                          <span className="rounded bg-white/[0.05] px-1.5 py-0.5 font-mono text-[9px] text-white/35">
+                            kind {event.kind}
+                          </span>
                           <button
-                            className={shellButton}
-                            onClick={() => void remove(event)}
+                            aria-label={`Copy full Nostr identity ${npubFor(event.pubkey)}`}
+                            className="grid size-7 place-items-center rounded text-white/30 transition-colors hover:bg-white/[0.06] hover:text-white focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-cyan-300"
+                            onClick={() =>
+                              void navigator.clipboard.writeText(npubFor(event.pubkey))
+                            }
+                            title={npubFor(event.pubkey)}
                             type="button"
                           >
-                            <Trash2 className="size-3.5" />
-                            Delete
+                            <Clipboard className="size-3" />
                           </button>
-                        ) : null}
-                        {pubkey !== null && administrators.has(pubkey) ? (
-                          <>
+                          {pinnedIds.has(event.id) ? (
+                            <span className="font-mono text-[9px] uppercase tracking-wider text-amber-200">
+                              pinned
+                            </span>
+                          ) : null}
+                        </header>
+                        {deletion === undefined ? (
+                          <MessageBody event={event} />
+                        ) : (
+                          <p className="mt-2 flex items-center gap-2 font-mono text-xs text-white/40">
+                            <Trash2 className="size-3.5" />
+                            {deletion === 'author'
+                              ? 'Author deletion request · copies may remain elsewhere'
+                              : 'Removed from the group projection by a moderator'}
+                          </p>
+                        )}
+                        {reactions.length === 0 ? null : (
+                          <div className="mt-3 flex flex-wrap gap-1.5">
+                            {reactions.map(([value, count]) => (
+                              <span
+                                className="border border-white/10 bg-white/[0.03] px-2 py-1 font-mono text-[10px]"
+                                key={value}
+                              >
+                                {value} {count}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        <div className="mt-3 flex flex-wrap gap-1 opacity-100 transition-opacity duration-200 sm:opacity-55 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100">
+                          <button
+                            className={shellButton}
+                            onClick={() => setReplyTo(event)}
+                            type="button"
+                          >
+                            <MessageSquareReply className="size-3.5" />
+                            Reply
+                          </button>
+                          <button
+                            className={shellButton}
+                            disabled={signer === undefined}
+                            onClick={() => void react(event)}
+                            type="button"
+                          >
+                            <SmilePlus className="size-3.5" />
+                            React
+                          </button>
+                          <button
+                            className={shellButton}
+                            disabled={signer === undefined}
+                            onClick={() => void report(event)}
+                            type="button"
+                          >
+                            <Flag className="size-3.5" />
+                            Report
+                          </button>
+                          {pubkey === event.pubkey ? (
                             <button
                               className={shellButton}
-                              onClick={() => void togglePin(event)}
+                              onClick={() => void remove(event)}
                               type="button"
                             >
-                              {pinnedIds.has(event.id) ? 'Unpin' : 'Pin'}
+                              <Trash2 className="size-3.5" />
+                              Delete
                             </button>
-                            <button
-                              className={shellButton}
-                              onClick={() => void moderateRemove(event)}
-                              type="button"
-                            >
-                              Moderate
-                            </button>
-                          </>
-                        ) : null}
-                      </div>
-                    </article>
-                  </li>
-                ))}
-              </ol>
-            )}
+                          ) : null}
+                          {pubkey !== null && administrators.has(pubkey) ? (
+                            <>
+                              <button
+                                className={shellButton}
+                                onClick={() => void togglePin(event)}
+                                type="button"
+                              >
+                                {pinnedIds.has(event.id) ? 'Unpin' : 'Pin'}
+                              </button>
+                              <button
+                                className={shellButton}
+                                onClick={() => void moderateRemove(event)}
+                                type="button"
+                              >
+                                Moderate
+                              </button>
+                            </>
+                          ) : null}
+                        </div>
+                      </article>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </div>
           </div>
 
-          <div className="sticky bottom-0 border-t border-white/10 bg-[#07090c]/95 p-3 backdrop-blur sm:p-4">
+          <div className="sticky bottom-0 border-t border-white/[0.08] bg-[#08090a]/98 px-4 py-3 sm:px-6 lg:px-8">
             {signer === undefined ? (
-              <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
-                <div>
-                  <p className="text-sm font-medium">Read publicly. Sign to write.</p>
-                  <p className="mt-1 text-xs/5 text-white/45">
-                    OpenAgents never receives your private key.
-                  </p>
-                  {authState === 'not-found' ? (
-                    <p className="mt-2 text-xs text-amber-100" role="alert">
-                      No browser signing app was found. Use a NIP-07 extension or a remote
-                      signer.
+              <div className="mx-auto flex w-full max-w-4xl flex-col items-start justify-between gap-3 lg:flex-row lg:items-center">
+                <div className="flex min-w-0 items-center gap-3">
+                  <span
+                    aria-hidden="true"
+                    className="grid size-10 shrink-0 place-items-center rounded-md bg-cyan-300/10 text-cyan-200 ring-1 ring-inset ring-cyan-200/20"
+                  >
+                    <ShieldCheck className="size-4" />
+                  </span>
+                  <div>
+                    <p className="text-sm font-medium text-white">
+                      Read publicly. Sign to write.
                     </p>
-                  ) : authState === 'refused' || authState === 'invalid' ? (
-                    <p className="mt-2 text-xs text-red-200" role="alert">
-                      {authState === 'refused'
-                        ? 'The signing request was refused.'
-                        : 'The signer returned an invalid identity. Try again.'}
+                    <p className="mt-0.5 text-xs/5 text-white/50">
+                      Your key stays in your Nostr signer.
                     </p>
-                  ) : null}
+                    {authState === 'not-found' ? (
+                      <p className="mt-2 text-xs text-amber-100" role="alert">
+                        No browser signing app was found. Use a NIP-07 extension or a
+                        remote signer.
+                      </p>
+                    ) : authState === 'refused' || authState === 'invalid' ? (
+                      <p className="mt-2 text-xs text-red-200" role="alert">
+                        {authState === 'refused'
+                          ? 'The signing request was refused.'
+                          : 'The signer returned an invalid identity. Try again.'}
+                      </p>
+                    ) : null}
+                  </div>
                 </div>
-                <div className="flex w-full gap-2 sm:w-auto">
+                <div className="flex w-full flex-wrap gap-2 lg:w-auto lg:flex-nowrap">
                   <button
-                    className={`${primaryButton} flex-1 sm:flex-none`}
+                    className={`${primaryButton} flex-1 whitespace-nowrap lg:flex-none`}
                     disabled={authState === 'waiting'}
                     onClick={() => void connectSigner()}
                     type="button"
@@ -992,15 +1024,15 @@ export function AgentChatPage() {
                     Connect Nostr signer
                   </button>
                   <button
-                    className={shellButton}
-                    onClick={() => setRemoteOpen(value => !value)}
+                    className={`${shellButton} flex-1 whitespace-nowrap lg:flex-none`}
+                    onClick={() => setRemoteOpen((value) => !value)}
                     type="button"
                   >
                     Remote signer
                     <ChevronDown className="size-3.5" />
                   </button>
                   <button
-                    className={shellButton}
+                    className={`${shellButton} flex-1 whitespace-nowrap lg:flex-none`}
                     disabled={authState === 'waiting'}
                     onClick={() => void connectAndroidSigner()}
                     type="button"
@@ -1009,15 +1041,18 @@ export function AgentChatPage() {
                   </button>
                 </div>
                 {remoteOpen ? (
-                  <div className="w-full border border-white/10 bg-black/40 p-3">
-                    <label className="font-mono text-xs text-white/55" htmlFor="bunker-url">
+                  <div className="w-full rounded-md border border-white/10 bg-black/55 p-3 lg:basis-full">
+                    <label
+                      className="font-mono text-xs text-white/55"
+                      htmlFor="bunker-url"
+                    >
                       NIP-46 bunker URL
                     </label>
                     <div className="mt-2 flex gap-2">
                       <input
                         className="min-h-11 min-w-0 flex-1 border border-white/15 bg-black px-3 font-mono text-xs text-white outline-none focus:border-cyan-300"
                         id="bunker-url"
-                        onChange={event => setRemoteUrl(event.target.value)}
+                        onChange={(event) => setRemoteUrl(event.target.value)}
                         placeholder="bunker://…"
                         type="url"
                         value={remoteUrl}
@@ -1033,18 +1068,19 @@ export function AgentChatPage() {
                     </div>
                     <p className="mt-2 font-mono text-[10px]/4 text-white/35">
                       Permissions cover messages, reactions, deletion, reports, relay
-                      authentication and Blossom upload only. The disposable client key is
-                      removed when this page disconnects.
+                      authentication and Blossom upload only. The disposable client key
+                      is removed when this page disconnects.
                     </p>
                   </div>
                 ) : null}
               </div>
             ) : (
-              <div>
+              <div className="mx-auto w-full max-w-4xl">
                 {replyTo === null ? null : (
-                  <div className="mb-2 flex items-center justify-between border-l-2 border-cyan-300 bg-cyan-300/5 px-3 py-2 font-mono text-xs">
+                  <div className="mb-2 flex items-center justify-between rounded-md border border-cyan-300/20 bg-cyan-300/5 px-3 py-2 font-mono text-xs">
                     <span className="truncate text-white/55">
-                      Replying to {shortKey(replyTo.pubkey)} · {replyTo.content.slice(0, 80)}
+                      Replying to {shortKey(replyTo.pubkey)} ·{' '}
+                      {replyTo.content.slice(0, 80)}
                     </span>
                     <button
                       className="text-white/45 hover:text-white"
@@ -1057,9 +1093,9 @@ export function AgentChatPage() {
                 )}
                 <textarea
                   aria-label="Public message"
-                  className="min-h-24 w-full resize-y border border-white/15 bg-black/60 p-3 text-sm/6 text-white outline-none placeholder:text-white/25 focus:border-cyan-300"
+                  className="min-h-24 w-full resize-y rounded-md border border-white/15 bg-black/60 p-3 text-sm/6 text-white outline-none transition-colors placeholder:text-white/45 focus:border-cyan-300"
                   maxLength={PUBLIC_CHAT_LIMITS.contentBytes}
-                  onChange={event => setContent(event.target.value)}
+                  onChange={(event) => setContent(event.target.value)}
                   placeholder="Write a public message…"
                   value={content}
                 />
@@ -1068,7 +1104,7 @@ export function AgentChatPage() {
                     <input
                       aria-label="Blossom server"
                       className="min-h-11 w-48 border border-white/15 bg-black px-3 font-mono text-xs text-white outline-none placeholder:text-white/30 focus:border-cyan-300"
-                      onChange={event => setBlossomServer(event.target.value)}
+                      onChange={(event) => setBlossomServer(event.target.value)}
                       placeholder="https://blossom…"
                       type="url"
                       value={blossomServer}
@@ -1079,7 +1115,9 @@ export function AgentChatPage() {
                       <input
                         accept="image/*,audio/*,video/*,application/pdf,text/plain,text/csv,application/json"
                         className="sr-only"
-                        onChange={event => void uploadAttachment(event.target.files?.[0])}
+                        onChange={(event) =>
+                          void uploadAttachment(event.target.files?.[0])
+                        }
                         type="file"
                       />
                     </label>
@@ -1088,7 +1126,7 @@ export function AgentChatPage() {
                       <span className="sr-only">Content warning</span>
                       <input
                         className="w-28 bg-transparent outline-none placeholder:text-white/35"
-                        onChange={event => setWarning(event.target.value)}
+                        onChange={(event) => setWarning(event.target.value)}
                         placeholder="warning"
                         value={warning}
                       />
@@ -1121,7 +1159,9 @@ export function AgentChatPage() {
                   </button>
                 </div>
                 {attachmentState === null ? null : (
-                  <p className="mt-2 font-mono text-xs text-amber-100">{attachmentState}</p>
+                  <p className="mt-2 font-mono text-xs text-amber-100">
+                    {attachmentState}
+                  </p>
                 )}
                 {composerError === null ? null : (
                   <p className="mt-2 font-mono text-xs text-red-200" role="alert">
@@ -1133,44 +1173,62 @@ export function AgentChatPage() {
           </div>
         </section>
 
-        <aside className="hidden border-l border-white/10 bg-black/20 p-5 lg:block">
-          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-white/35">
-            Identity
-          </p>
-          {pubkey === null ? (
-            <div className="mt-4 border border-white/10 p-4">
-              <Bot className="size-5 text-white/45" />
-              <p className="mt-3 text-sm/6 text-white/55">
-                Names are display hints. Every message keeps its full signing key and
-                signature.
-              </p>
+        <aside className="hidden border-l border-white/[0.08] bg-[#050607] p-6 2xl:block">
+          <div className="sticky top-[calc(4.25rem+1.5rem)]">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-white">Channel details</h2>
+              <span className="flex items-center gap-1.5 font-mono text-[10px] text-emerald-200">
+                <span className="size-1.5 rounded-full bg-emerald-300" />
+                Public
+              </span>
             </div>
-          ) : (
-            <div className="mt-4 border border-emerald-300/20 bg-emerald-300/5 p-4">
-              <ShieldCheck className="size-5 text-emerald-200" />
-              <p className="mt-3 font-mono text-xs text-emerald-100">Signer connected</p>
-              <p className="mt-2 break-all font-mono text-[10px]/5 text-white/45">
-                {npubFor(pubkey)}
-              </p>
-              <button
-                className={`${shellButton} mt-3 w-full`}
-                onClick={() => void navigator.clipboard.writeText(npubFor(pubkey))}
-                type="button"
-              >
-                <Clipboard className="size-3.5" />
-                Copy npub
-              </button>
+            <dl className="mt-5 grid gap-4 border-y border-white/[0.08] py-5 font-mono text-[11px]">
+              <div className="grid gap-1">
+                <dt className="text-white/40">Relay</dt>
+                <dd className="break-all text-white/70">{PUBLIC_CHAT_RELAY_URL}</dd>
+              </div>
+              <div className="grid gap-1">
+                <dt className="text-white/40">Protocol</dt>
+                <dd className="text-white/70">NIP-29 · kind 9</dd>
+              </div>
+            </dl>
+            {pubkey === null ? (
+              <div className="mt-5 flex items-start gap-3">
+                <Bot className="mt-0.5 size-4 shrink-0 text-white/45" />
+                <p className="text-xs/5 text-white/55">
+                  Display names are hints. Every message keeps its signer key and
+                  signature.
+                </p>
+              </div>
+            ) : (
+              <div className="mt-5 rounded-md border border-emerald-300/20 bg-emerald-300/5 p-4">
+                <div className="flex items-center gap-2 text-emerald-100">
+                  <ShieldCheck className="size-4" />
+                  <p className="font-mono text-xs">Signer connected</p>
+                </div>
+                <p className="mt-2 break-all font-mono text-[10px]/5 text-white/45">
+                  {npubFor(pubkey)}
+                </p>
+                <button
+                  className={`${shellButton} mt-3 w-full`}
+                  onClick={() => void navigator.clipboard.writeText(npubFor(pubkey))}
+                  type="button"
+                >
+                  <Clipboard className="size-3.5" />
+                  Copy npub
+                </button>
+              </div>
+            )}
+            <div className="mt-6">
+              <h3 className="text-xs font-medium text-white/80">Before you post</h3>
+              <ul className="mt-3 grid gap-2.5 text-xs/5 text-white/50">
+                <li>
+                  Do not post prompts, credentials, private paths, or customer data.
+                </li>
+                <li>Media waits for reader action and digest verification.</li>
+                <li>A relay OK means stored, not product or release acceptance.</li>
+              </ul>
             </div>
-          )}
-          <div className="mt-6 border-t border-white/10 pt-5">
-            <p className="font-mono text-[10px] uppercase tracking-wider text-white/35">
-              Public safety
-            </p>
-            <ul className="mt-3 grid gap-2 text-xs/5 text-white/50">
-              <li>Do not post prompts, credentials, private paths, or customer data.</li>
-              <li>Media waits for reader action and digest verification.</li>
-              <li>A relay OK means stored, not product or release acceptance.</li>
-            </ul>
           </div>
         </aside>
       </main>
