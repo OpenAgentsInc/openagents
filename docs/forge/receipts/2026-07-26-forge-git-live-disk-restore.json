@@ -1,0 +1,54 @@
+{
+  "schemaVersion": "openagents.forge_git.live_disk_restore_receipt.v1",
+  "generatedAt": "2026-07-26T07:50:37Z",
+  "sourceRevision": "81abf14736",
+  "issueRef": "github:OpenAgentsInc/openagents#9244",
+  "scope": "production-disk-isolated-marker-new-disk-restore",
+  "authority": {
+    "repository": "forge-git-repositories",
+    "gcsMirrorRefAuthority": false,
+    "snapshot": "forge-git-drill-20260726-074518"
+  },
+  "productionService": {
+    "revision": "forge-git-00017-d6g",
+    "imageDigest": "us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/forge-git@sha256:bd7a34241177e376b7f79a8fe66be7278c7af63fb1e73ec1c740176707488463"
+  },
+  "snapshot": {
+    "name": "forge-git-drill-20260726-074518",
+    "status": "READY",
+    "creationTimestamp": "2026-07-26T00:46:41.873-07:00",
+    "diskSizeGb": 100,
+    "storageLocation": "us-central1",
+    "sourceDisk": "forge-git-repositories"
+  },
+  "restore": {
+    "disk": "forge-git-restore-20260726-074518",
+    "verifier": "forge-git-restore-20260726-074518-nfs",
+    "repository": "acceptance.restore/restore-drill-20260726-074518",
+    "sourceCommit": "c34780315bce37521400bd49bf801ca4e1c12a03",
+    "restoredCommit": "c34780315bce37521400bd49bf801ca4e1c12a03"
+  },
+  "checks": {
+    "sourceStrictFsck": "passed",
+    "filesystemFreeze": "passed",
+    "filesystemThaw": "passed",
+    "snapshotReady": "passed",
+    "restoredDiskMounted": "passed",
+    "markerRepositoryPresent": "passed",
+    "restoredStrictFsck": "passed",
+    "restoredStockUploadPackClone": "passed",
+    "restoredCommitMatched": "passed"
+  },
+  "cleanup": {
+    "temporaryVerifierDeleted": true,
+    "temporaryRestoreDiskDeleted": true,
+    "productionMarkerRepositoryDeleted": true,
+    "snapshotRetainedByBackupPolicy": true
+  },
+  "acceptanceLimits": {
+    "publicGitRoute": "paused-pending-explicit-user-authorization",
+    "liveSmartHttpTransport": "not-claimed-by-this-disk-restore-receipt",
+    "identityAndRevocation": "accepted-by-issue-9246-separate-receipt"
+  },
+  "result": "passed"
+}

@@ -1,11 +1,13 @@
 import { attachOwnerAttestation } from "@openagentsinc/sarah/community";
+import { BlobStore } from "@openagentsinc/oa-infra/blob-store";
+import { layerGcs } from "@openagentsinc/oa-infra/blob-store-gcs";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { generateSecretKey, getPublicKey } from "nostr-effect/pure";
-import { Cause, Config, Effect, Exit, Redacted } from "effect";
+import { Cause, Config, Effect, Exit, ManagedRuntime, Redacted } from "effect";
 import postgres from "postgres";
 
 import { makeD1ForgeInviteMembershipStore } from "../../openagents.com/workers/api/src/forge-invite-membership-store.js";
@@ -13,6 +15,8 @@ import { makeD1ForgeTenantGitAuthStore } from "../../openagents.com/workers/api/
 import { makeKhalaSyncWritesDatabase } from "../../openagents.com/workers/api/src/khala-sync-domain-writes-database.js";
 import type { PostgresD1Client } from "../../openagents.com/workers/api/src/postgres-d1-adapter.js";
 import { makeD1TeamWorkspaceInviteStore } from "../../openagents.com/workers/api/src/team-workspace-invites.js";
+import { makeTestConfiguration } from "./config.js";
+import { ForgeGitRepository, makeRepositoryLayer } from "./repository.js";
 
 const git = (
   cwd: string,
@@ -112,7 +116,20 @@ const inspectDatabaseAuthority = async (
 interface AcceptanceOptions {
   readonly baseUrl: string;
   readonly databaseUrl: string;
+  readonly repositoryRoot: string;
   readonly sourceRevision: string;
+}
+
+interface LiveRestoreReceipt {
+  readonly backupBundleBytes: number;
+  readonly backupBundleKey: string;
+  readonly backupBundleSha256: string;
+  readonly backupReceiptKey: string;
+  readonly durableRestoreReceiptKey: string;
+  readonly durableRestoreReceiptSha256: string;
+  readonly restoredCommit: string;
+  readonly restoredFsck: "passed";
+  readonly restoredSmartHttpClone: "passed";
 }
 
 const postgresParameter = (
@@ -192,9 +209,153 @@ const runStage = async <A>(stage: string, operation: () => Promise<A>): Promise<
   }
 };
 
+const runLiveRestoreDrill = async (input: {
+  readonly acceptanceRef: string;
+  readonly baseUrl: string;
+  readonly expectedCommit: string;
+  readonly repositoryRef: string;
+  readonly repositoryRoot: string;
+  readonly root: string;
+  readonly runRef: string;
+  readonly sourceRevision: string;
+  readonly tenantRef: string;
+  readonly token: string;
+}): Promise<LiveRestoreReceipt> => {
+  const blobRuntime = ManagedRuntime.make(layerGcs);
+  const blobStore = await blobRuntime.runPromise(BlobStore);
+  const configuration = makeTestConfiguration({
+    gitBinary: "git",
+    maxReceivePackBytes: 512 * 1024 * 1024,
+    mirrorEnabled: true,
+    repositoryRoot: input.repositoryRoot,
+  });
+  const repositoryRuntime = ManagedRuntime.make(
+    makeRepositoryLayer(configuration, blobStore),
+  );
+  const canonicalPath = join(
+    input.repositoryRoot,
+    input.tenantRef,
+    `${input.repositoryRef}.git`,
+  );
+  const retainedPath = join(
+    input.repositoryRoot,
+    input.tenantRef,
+    `.${input.repositoryRef}.pre-restore-${input.runRef}`,
+  );
+  const restoredClone = join(input.root, "restored");
+  let retained = false;
+  try {
+    const backup = await repositoryRuntime.runPromise(
+      Effect.gen(function* () {
+        const repository = yield* ForgeGitRepository;
+        return yield* repository.backup({
+          repositoryRef: input.repositoryRef,
+          tenantRef: input.tenantRef,
+        });
+      }),
+    );
+    await rename(canonicalPath, retainedPath);
+    retained = true;
+    try {
+      await repositoryRuntime.runPromise(
+        Effect.gen(function* () {
+          const repository = yield* ForgeGitRepository;
+          yield* repository.restore({ receipt: backup });
+          yield* repository.verify({
+            repositoryRef: input.repositoryRef,
+            tenantRef: input.tenantRef,
+          });
+        }),
+      );
+      await git(
+        input.root,
+        [
+          "clone",
+          `${input.baseUrl}/git/${encodeURIComponent(input.tenantRef)}/${encodeURIComponent(input.repositoryRef)}.git`,
+          restoredClone,
+        ],
+        input.token,
+      );
+      const restoredCommit = (
+        await git(restoredClone, ["rev-parse", "refs/remotes/origin/main"])
+      ).stdout.trim();
+      if (restoredCommit !== input.expectedCommit) {
+        throw new Error(
+          `Restored repository head mismatch: expected=${input.expectedCommit}, actual=${restoredCommit}`,
+        );
+      }
+      const generatedAt = new Date().toISOString();
+      const durableRestoreReceiptKey =
+        `private/forge/git-restore-receipts/${input.tenantRef}/${input.repositoryRef}/` +
+        `${generatedAt.replaceAll(":", "")}-${input.runRef}.json`;
+      const durableReceipt = {
+        schemaVersion: "openagents.forge_git.live_restore_receipt.v1",
+        acceptanceRef: input.acceptanceRef,
+        generatedAt,
+        sourceRevision: input.sourceRevision,
+        authority: {
+          repository: "bare-repository",
+          gcsBundleRefAuthority: false,
+        },
+        repositoryRef: input.repositoryRef,
+        backup: {
+          bundleBytes: backup.bundleBytes,
+          bundleKey: backup.bundleKey,
+          bundleSha256: backup.bundleSha256,
+          receiptKey: backup.receiptKey,
+          refs: backup.refs,
+        },
+        checks: {
+          expectedCommit: input.expectedCommit,
+          restoredCommit,
+          restoredFsck: "passed",
+          restoredSmartHttpClone: "passed",
+        },
+        result: "passed",
+      } as const;
+      const durableReceiptJson = JSON.stringify(durableReceipt);
+      await blobRuntime.runPromise(
+        blobStore.put(
+          durableRestoreReceiptKey,
+          new TextEncoder().encode(durableReceiptJson),
+          { contentType: "application/json" },
+        ),
+      );
+      await rm(retainedPath, { force: true, recursive: true });
+      retained = false;
+      return {
+        backupBundleBytes: backup.bundleBytes,
+        backupBundleKey: backup.bundleKey,
+        backupBundleSha256: backup.bundleSha256,
+        backupReceiptKey: backup.receiptKey,
+        durableRestoreReceiptKey,
+        durableRestoreReceiptSha256: sha256(durableReceiptJson),
+        restoredCommit,
+        restoredFsck: "passed",
+        restoredSmartHttpClone: "passed",
+      };
+    } catch (cause) {
+      await rm(canonicalPath, { force: true, recursive: true });
+      if (retained) {
+        await rename(retainedPath, canonicalPath);
+        retained = false;
+      }
+      throw cause;
+    }
+  } finally {
+    if (retained) {
+      await rm(canonicalPath, { force: true, recursive: true });
+      await rename(retainedPath, canonicalPath);
+    }
+    await repositoryRuntime.dispose();
+    await blobRuntime.dispose();
+  }
+};
+
 const runAcceptance = async ({
   baseUrl: configuredBaseUrl,
   databaseUrl,
+  repositoryRoot,
   sourceRevision,
 }: AcceptanceOptions): Promise<void> => {
   const baseUrl = configuredBaseUrl.replace(/\/+$/, "");
@@ -388,6 +549,21 @@ const runAcceptance = async ({
     await git(agentClone, ["push", "origin", "main"], agentCredential.token);
     const agentCommit = (await git(agentClone, ["rev-parse", "HEAD"])).stdout.trim();
 
+    const restore = await runStage("live-backup-restore", () =>
+      runLiveRestoreDrill({
+        acceptanceRef,
+        baseUrl,
+        expectedCommit: agentCommit,
+        repositoryRef,
+        repositoryRoot,
+        root,
+        runRef,
+        sourceRevision,
+        tenantRef,
+        token: humanCredential.token,
+      }),
+    );
+
     await git(
       root,
       ["clone", "--filter=blob:none", "--no-checkout", remote, partialClone],
@@ -460,6 +636,7 @@ const runAcceptance = async ({
         seedCommit,
         humanCommit,
         agentCommit,
+        restore,
       },
       result: "passed",
     };
@@ -512,6 +689,9 @@ const runAcceptance = async ({
 const program = Effect.gen(function* () {
   const databaseUrl = yield* Config.redacted("FORGE_ACCEPTANCE_DATABASE_URL");
   const baseUrl = yield* Config.nonEmptyString("FORGE_ACCEPTANCE_BASE_URL");
+  const repositoryRoot = yield* Config.nonEmptyString(
+    "FORGE_ACCEPTANCE_REPOSITORY_ROOT",
+  ).pipe(Config.withDefault("/var/lib/forge/repositories"));
   const sourceRevision = yield* Config.nonEmptyString("FORGE_ACCEPTANCE_SOURCE_REVISION").pipe(
     Config.withDefault("unknown"),
   );
@@ -520,6 +700,7 @@ const program = Effect.gen(function* () {
     runAcceptance({
       baseUrl,
       databaseUrl: Redacted.value(databaseUrl),
+      repositoryRoot,
       sourceRevision,
     }),
   );
