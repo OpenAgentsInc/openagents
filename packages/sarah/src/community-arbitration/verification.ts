@@ -54,7 +54,6 @@ import {
   ARBITRATION_REASON_CLASSES,
   ArbitrationReasonClassSchema,
   COMMUNITY_ARBITRATION_FEEDBACK_KIND,
-  SARAH_CW_05_PACKET,
   type ArbitrationReasonClass,
 } from "./types.ts";
 
