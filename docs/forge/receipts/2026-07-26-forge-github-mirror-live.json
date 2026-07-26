@@ -1,0 +1,60 @@
+{
+  "schemaVersion": "openagents.forge.github_mirror.live_receipt.v1",
+  "generatedAt": "2026-07-26T16:51:45.599824Z",
+  "result": "passed",
+  "scope": "production-forge-authoritative-github-downstream-mirror",
+  "repository": {
+    "tenantRef": "tenant.openagents",
+    "repositoryRef": "omega",
+    "coordinate": "30617:7649603503856e5148d571eac2766b288a8ff1e9e35d380337a1d2b0015b4f92:omega",
+    "githubRepository": "OpenAgentsInc/omega"
+  },
+  "authority": {
+    "mode": "openagents_git_authoritative",
+    "canonicalRepository": "Forge bare repository",
+    "promotion": "signed Forge promotion decisions",
+    "github": "downstream mirror only",
+    "coordinationAuthority": false,
+    "forcePush": false
+  },
+  "branch": {
+    "sourceRef": "refs/heads/main",
+    "sourceObjectId": "ae32ebd9194672e08419a3d7f5923604b3d206ab",
+    "githubDestinationRef": "refs/heads/forge/main",
+    "mirrorReceiptRef": "mirror.github.cdad9c3dedee891fcb6c00a94a8699cb",
+    "independentLsRemoteObjectId": "ae32ebd9194672e08419a3d7f5923604b3d206ab",
+    "result": "in_sync"
+  },
+  "tag": {
+    "sourceRef": "refs/tags/forge-omega-import-2026-07-26",
+    "tagObjectId": "ff024956b9c1450b238aba3299d56af6f9db9e19",
+    "peeledCommitId": "ae32ebd9194672e08419a3d7f5923604b3d206ab",
+    "signedEventRef": "nostr:63ebe52e9aeed9436c8bc766c285f5fef570448aa1ca6f3dc67066f644d2fcb2",
+    "verificationRef": "verification.forge.omega.import-tag.608098019716c202",
+    "promotionRef": "promotion.forge.omega.tag.63ebe52e9aeed9436c8bc766c285f5fef570448aa1ca6f3dc67066f644d2fcb2",
+    "preMirrorHealth": {
+      "observedAt": "2026-07-26T16:49:47.778Z",
+      "divergence": "destination_missing",
+      "destinationObjectId": null,
+      "sourceObjectId": "ff024956b9c1450b238aba3299d56af6f9db9e19",
+      "intentRef": "intent.forge.github-mirror.830b6ee339b9e42e0968685892e0a284"
+    },
+    "mirror": {
+      "receiptRef": "mirror.github.a02763952ff9aea09d3c6737cedd558b",
+      "intentRef": "intent.forge.github-mirror.dcbb501df5a8017035b15d71ef1968ef",
+      "observationRef": "observation.forge.github-mirror.72cf52f2a5b29bd9fef8a1147a01d99c",
+      "completedAt": "2026-07-26T16:51:39.389Z",
+      "status": "mirrored",
+      "postMirrorDivergence": "in_sync"
+    },
+    "independentLsRemote": {
+      "tagObjectId": "ff024956b9c1450b238aba3299d56af6f9db9e19",
+      "peeledCommitId": "ae32ebd9194672e08419a3d7f5923604b3d206ab"
+    }
+  },
+  "notes": [
+    "The tag was deliberately withheld until the destination_missing observation was recorded.",
+    "GitHub main was not overwritten; the branch mirror destination is refs/heads/forge/main.",
+    "No credential material, request authorization, or GitHub private key is included in this receipt."
+  ]
+}
