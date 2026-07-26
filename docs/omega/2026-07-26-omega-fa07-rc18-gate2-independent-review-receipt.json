@@ -1,0 +1,247 @@
+{
+  "beginAutonomyPollingAssessment": {
+    "dmgCopyOccurrences": 2,
+    "engineBundleSha256": "6922c83e05c89bc7a6ef44cc0f752a895a70b0cb1964d9c20613c538facd089c",
+    "installedAppOccurrences": 2,
+    "method": "grep -a over dist/omega-effectd.mjs in the installed app and in the read-only DMG mount, then read the surrounding bytes rather than trusting the count.",
+    "question": "Is the multi-turn fix in the shipped product, not only in the source?",
+    "verdict": "CONFIRMED IN THE SHIPPED BYTES, from two independent copies of the candidate.",
+    "whatTheBytesActuallyShow": "Both occurrences are the definition and its call site, and the definition is the real loop, not a stub: beginAutonomyPolling = () => { if (autonomyPollTimer !== null) clearInterval(autonomyPollTimer); const tick = () => { if (runRegistry.activeRuns().length === 0) return; lastReconciliation = runReconciliation(); ... }; autonomyPollTimer = setInterval(tick, options.autonomyPollIntervalMs ?? 5e3); autonomyPollTimer.unref?.(); }. A five-second reconciliation tick over active runs is the mechanism that carries a run forward with nobody participating, which is the thing gate 2 is about. Counting the literal alone would have been a weaker check; reading it makes the presence load-bearing."
+  },
+  "canCloseIssue26": true,
+  "canCloseIssue26Basis": "YES, as far as independent assurance goes. The rc18 receipt named exactly one thing blocking closure -- 'Re-drive gate 2 against the rc18 host binary, or have the owner perform it, before #26 closes. It is the only gate this receipt leaves unestablished' -- and a second objection, the owner-real half, which the owner has since withdrawn. The re-drive was done, it binds to rc18 on every identifier this reviewer recomputed, and it is accepted above. This reviewer records no remaining objection that blocks closure, and this receipt together with the rc18 receipt satisfies issue 26's 'Independent reviewer accepts the evidence packet'. TWO THINGS THE COORDINATOR STILL OWNS, which this receipt does not decide: whether the audit's stronger-gate list is complete, and how to read the packet's own falsifier, 'Fixture-only proof without an installed Omega journey' -- no gate in this packet has been observed through the Rust host, and this reviewer states that plainly rather than letting closure imply otherwise. Closure is the coordinator's act; this receipt does not perform it.",
+  "candidate": "0.2.0-rc18",
+  "candidateBinding": {
+    "claimedInEvidence": {
+      "bundleVersion": "20260726.091602",
+      "componentManifestDigest": "d797f749f57d2ab88cdad74f5ff81e882bc6052951a026c028a84fb7b022b5eb",
+      "engineBundleDigest": "6922c83e05c89bc7a6ef44cc0f752a895a70b0cb1964d9c20613c538facd089c",
+      "hostBinaryDigest": "4b2a5e9a845233edda18664cb72a1c236db76772a123ddd730b9a50b05ce50e9"
+    },
+    "rc15Contrast": "The rc15 gate-2 record binds hostBinaryDigest cca81f5dff127f790e289aa8a400e72765dcefac8704a74fd852c757871b2858. All four new gate-2 receipts bind 4b2a5e9a845233ed..., which this reviewer recomputed from two independent copies of rc18. The digest the rc18 receipt asked for is the digest present.",
+    "recomputedFromDmg": {
+      "authority": "Developer ID Application: OpenAgents, Inc. (HQWSG26L43)",
+      "cdHash": "bb404eb3d71759e48762f68574a9ba2f0363da8e",
+      "cfBundleVersion": "20260726.091602",
+      "componentManifestSha256": "d797f749f57d2ab88cdad74f5ff81e882bc6052951a026c028a84fb7b022b5eb",
+      "dmg": "Omega-v0.2.0-rc18-macos-arm64.dmg",
+      "dmgSha256": "83e79f68ede7cafa8262082f6c746bb5915e2fa086cde64336189db648ee0a37",
+      "engineBundleSha256": "6922c83e05c89bc7a6ef44cc0f752a895a70b0cb1964d9c20613c538facd089c",
+      "hostBinarySha256": "4b2a5e9a845233edda18664cb72a1c236db76772a123ddd730b9a50b05ce50e9",
+      "mountedReadOnly": true,
+      "signingIdentifier": "com.openagents.omega.rc"
+    },
+    "recomputedFromInstalledApp": {
+      "cfBundleShortVersionString": "0.2.0",
+      "cfBundleVersion": "20260726.091602",
+      "engineBundleSha256": "6922c83e05c89bc7a6ef44cc0f752a895a70b0cb1964d9c20613c538facd089c",
+      "hostBinarySha256": "4b2a5e9a845233edda18664cb72a1c236db76772a123ddd730b9a50b05ce50e9",
+      "path": "/Applications/Omega.app"
+    },
+    "substitutionCheck": "The installed application and the disk-image copy agree on host binary sha256, CFBundleVersion and engine bundle sha256. No substitution.",
+    "verdict": "CONFIRMED, and this is precisely what the rc18 receipt found missing. The new gate-2 evidence binds to the rc18 candidate on every identifier, and the installed application is that candidate."
+  },
+  "candidateDigest": "sha256:83e79f68ede7cafa8262082f6c746bb5915e2fa086cde64336189db648ee0a37",
+  "deliberatelyAttendedAssessment": {
+    "question": "Is deliberatelyAttended sufficient to keep a falsification receipt from reading as a genuine failure?",
+    "theDeeperGap": "Four receipts were produced inside fifteen minutes by at least three different versions of the driver: 10:16 without deliberatelyAttended, 10:25 and 10:27 with it but before the timestamp fix, 10:31 after both. Nothing in any receipt says which driver produced it. bindCandidate recomputes the candidate so a receipt cannot be reattributed by being moved, but the same standard is not applied to the instrument: there is no driver source digest, no script version, no git revision in the receipt. That is the one structural gap this reviewer would close next, and it subsumes the deliberatelyAttended gap.",
+    "theGapItExposes": "It is absent from docs/omega/2026-07-26-omega-fa07-rc18-gate2-unattended-first-observation.json, generated at 10:16:24Z, because that run predates the field. So one of the four receipts is still distinguishable only by its filename -- the exact condition the field was added to end -- and it is one of the two greens the packet leans on. A reader today infers its intent from field ABSENCE, which is the weakest possible signal and indistinguishable from an older or a truncated writer.",
+    "verdict": "SUFFICIENT FOR THE ARTIFACTS THAT CARRY IT, AND CORRECTLY MOTIVATED. Not yet sufficient across the packet, for a reason the field itself exposes.",
+    "whatItGetsRight": "The principle is the one the packet already applies with bindCandidate: an artifact must not depend on where it is filed to be read correctly. Two fields rather than one (deliberatelyAttended and isFalsificationControl), emitted before the attribution block, sourced directly from options.falsifyAttended so they cannot disagree with what the run did. On the four receipts it is present in, a reader who saw only the JSON would classify each correctly."
+  },
+  "disagreements": [
+    {
+      "criterion": "characterisation of gate 2's evidence in the rc18 receipt",
+      "materialToThisOutcome": true,
+      "priorClaim": "Gate 2 is a HOST-level observation ... It also counts framedCallsDuringSilentWindow, i.e. traffic across the real host bridge.",
+      "reviewerObservation": "The framed calls are the driver's own stdio requests to the engine process; the host side is a TypeScript stand-in in the driver, and crates/agent_ui/src/omega_host_bridge.rs is never loaded. Gate 2's evidence was engine-level on rc15 and remains engine-level on rc18. The prior receipt's refusal was therefore right in its conclusion for rc15 -- the observation should not have been carried on an argument -- but wrong in its stated reason.",
+      "with": "the prior independent-review receipt, 2026-07-26T09:59:45Z (same reviewer key)"
+    },
+    {
+      "criterion": "'bound to the rc18 host'",
+      "materialToThisOutcome": false,
+      "producerClaim": "Re-driven against the installed rc18 (4b2a5e9a..., 20260726.091602)",
+      "reviewerObservation": "True as provenance and false as exercise. The run came out of the rc18 candidate, which is what the rc18 receipt asked for and what this receipt confirms. It did not run the rc18 host binary, and the rc18 host delta the prior receipt was worried about is still unexercised. The producer's own gate-observations file is candid about the equivalent point for gate 5; the same candour is owed here.",
+      "with": "openagents cd13009216 commit message and the producer's issue comment"
+    }
+  ],
+  "evidenceSha256": "sha256:ad237d06ec8440837cc1ce19b1e9f48c2cb509963462b65cf9a04eb6fd8ad8d8",
+  "gate2Assessment": {
+    "falsificationControl": {
+      "assessment": "REAL AND IT WORKS. One deliberate resume inside the window and the gate flips exactly where it should: framedCallsDuringSilentWindow 1 naming 'resume', silentWindowWasSilent false, writeCallsAfterStart 1, unattendedAfterStart false. The negative result is produced by the same code path that produces the positive, so the silent window is measured rather than assumed.",
+      "oneNit": "The driver's comment says of the falsify branch 'Everything else about the run is identical'. It is not quite: the control ran a 125004 ms window against the observation's 240004 ms, because the nudge delay is added before the full window rather than inside it. Nothing about the control's validity depends on the window length, but the comment overstates the pairing and should be corrected.",
+      "receipt": "docs/omega/2026-07-26-omega-fa07-rc18-gate2-attended-falsification.json"
+    },
+    "question": "Is gate 2 -- a multi-turn run that continues with nobody participating -- established on the rc18 candidate?",
+    "repeatObservation": {
+      "assessment": "A second independent green at 7 projected turns with the same 240004 ms silent window, 0 framed calls, 12 provider invocations and cap_reached. Two greens is materially better than one for a gate whose subject is an absence, and the producer was right to keep it.",
+      "receipt": "docs/omega/2026-07-26-omega-fa07-rc18-gate2-unattended-first-observation.json",
+      "runRef": "run.full-auto.ms1n2sni.o8fqcz6h"
+    },
+    "theArchitecturalFindingTheReviewerIsObligedToState": {
+      "consequenceForTheNewEvidence": "Cuts both ways, and the producer should not be credited with more than it earned. Because the engine bundle is byte-identical across rc15, rc16, rc17 and rc18 (6922c83e05c89bc7..., recomputed here from the installed app and from the read-only mount), re-driving gate 2 on rc18 exercises the same engine bytes rc15 did. What it genuinely adds is that the run provably came out of the rc18 candidate rather than being carried on an argument. What it does not add -- and what no run of this driver can add -- is any observation of the +829/+489/+277-line rc18 Full Auto host surfaces (issue31_delivery.rs, omega_router.rs, agent_panel.rs) that the rc18 receipt was worried about. Those remain unexercised on every candidate.",
+      "consequenceForTheRc18Receipt": "The rc18 receipt's stated reason for refusing gate 2 was that framedCallsDuringSilentWindow counts 'traffic across the real host bridge', making the observation host-level. That premise is incorrect: those are the driver's own stdio calls to the engine, and the 'host' is a stand-in in the same Node process. The rc18 receipt itself established the correct characterisation twice elsewhere -- for gate 5 ('its host stand-in answers append_system_note itself and never reaches crates/agent_ui/src/omega_host_bridge.rs') and for gates 3 to 9 ('Because the driver uses a TypeScript host stand-in, these re-observations are engine-level in character'). It applied that rule correctly to gates 1, 3-9 and incorrectly to gate 2. Gate 2's evidence was engine-level all along; the rc15 hostBinaryDigest was provenance for which bundle the engine came out of, not a claim that the host ran.",
+      "finding": "This driver never executes the rc18 host binary. bindCandidate() hashes Contents/MacOS/omega for provenance and then startEngine() spawns Contents/Resources/omega-effectd/bin/omega-effectd, a four-line /bin/sh shim that execs the bundled node against dist/omega-effectd.mjs. Everything on the host side of the protocol -- resolve_workspace, create_thread, dispatch_turn, refresh_evidence, append_system_note -- is answered by a TypeScript stand-in inside the driver process (fa07-installed-gates.ts onHostRequest). The Rust bridge in crates/agent_ui/src/omega_host_bridge.rs is not in the path.",
+      "whyThisIsNeverthelessAcceptance": "Applied consistently, the rc18 receipt's own standard admits this. It accepted gates 3, 4, 6, 7 and 9 as 'genuinely re-observed on rc18, not inherited' while recording that they are engine-level in character because of the same stand-in. Gate 2 now meets exactly that bar, with more behind it than most of them: live providers, twelve real Codex executions, a 240-second window, a repeat observation and a falsification control. Accepting gates 3-9 on that basis and refusing gate 2 alone would be the same inconsistency in reverse. The residual -- that no gate in this packet has been observed through the Rust host -- is a packet-wide residual, not a gate-2 blocker, and it is recorded below as such."
+    },
+    "theRecordedRun": {
+      "engineDispatchesAcrossTheWindow": "1 -> 12",
+      "finalState": "cap_reached",
+      "framedCallMethodsDuringSilentWindow": [],
+      "framedCallsDuringSilentWindow": 0,
+      "generatedAt": "2026-07-26T10:31:36.842Z",
+      "internalConsistency": "CHECKED ACROSS FILES AND AGREES. turnCount 9 == turnCountAfterReturn 9 == reportTurnCount 9 == everyTurnListedAfterReturn true. successfulAttempts 12 == turnCap 12 == providerInvocationCount 12 == attemptsAfterSilence 12 == engineDispatchesAfterSilence 12, with failedAttempts 0 and every listed invocation ok/exit 0. The same shape holds in the other three receipts with only the turn projection differing (7, 8, 9, 9), which is the lag assessed below and not an inconsistency.",
+      "providerInvocations": 12,
+      "providerInvocationsWithNonZeroExit": 0,
+      "receipt": "docs/omega/2026-07-26-omega-fa07-rc18-gate2-unattended.json",
+      "runRef": "run.full-auto.ms1nmct6.iqvbunyf",
+      "silentWindowMs": 240004,
+      "turnCap": 12,
+      "turnsAcrossTheWindow": "0 -> 9",
+      "writeCallsAfterStart": 0
+    },
+    "theRestartClaim": {
+      "verdict": "SUPPORTED, and it is a real process restart, not a reconnect.",
+      "why": "The driver's 'return' calls client.stop(), which sends SIGTERM and then SIGKILL if the child has not exited (fa07-installed-gates.ts, stop()), then calls startEngine(binding.enginePath, dataRoot, policyB, 2), which spawns a fresh engine process at generation 2 over the same data root and re-issues initialize. Everything asserted afterwards is read from that new process: runSurvivedReturn true, stateAfterReturn 'cap_reached' equal to the pre-restart state, turnCountAfterReturn 9 equal to the pre-restart 9, reportSurvivedReturn true with 9 turns, receiptObjectiveDigestMatches true against sha256 of the objective, durableStateOnDisk true. The claim 'all 9 turns, report, receipt and objective intact' is what the fields say."
+    },
+    "verdict": "GREEN AT THE ENGINE LEVEL, on the rc18 candidate's own bytes. NOT OBSERVED at the GPUI host level, and cannot be by this driver."
+  },
+  "inconclusiveChecks": [
+    {
+      "check": "re-drive of gate 2 with live providers on rc18",
+      "status": "inconclusive",
+      "why": "A re-drive requires provider credentials. This reviewer read no credential file of any kind and did not authenticate to any provider, so the run was not reproduced. This is the honest outcome for the check, not a failure of it: the candidate binding, the driver logic, the fix, the shipped engine bytes and the internal consistency of all four receipts were verifiable from primary artifacts without provider access, and they are what this receipt accepts."
+    },
+    {
+      "check": "that the twelve Codex executions did substantive work",
+      "status": "inconclusive",
+      "why": "The receipts record lane, ok, exitCode, outputLength and elapsedMs per invocation -- 382 to 628 characters over 9 to 19 seconds each, all exit 0 -- and deliberately carry no output text. The ProviderInvocation type carries an outputDigest, but the gate-2 receipt's mapping drops it, so there is nothing in the artifact that binds the output to anything at all. Exit 0 and a plausible length are consistent with real work and also with trivial work. Recommend including outputDigest, which leaks nothing and makes the invocation record checkable."
+    },
+    {
+      "check": "which driver revision produced which receipt",
+      "status": "inconclusive",
+      "why": "No receipt records the driver source it came from. The ordering is inferable from generatedAt and from which fields are present, and that inference is consistent with the commit message, but it is inference. See deliberatelyAttendedAssessment.theDeeperGap."
+    },
+    {
+      "check": "gate 2 through the rc18 GPUI host",
+      "status": "not attempted",
+      "why": "Structurally impossible for this driver, per gate2Assessment.theArchitecturalFindingTheReviewerIsObligedToState. Not attempted through the running product either: Omega rc18 is live with the owner's Codex session attached, and this reviewer will not write into the owner's transcript or restart their session to take an observation."
+    }
+  ],
+  "independence": {
+    "everyValueRecomputedOrRead": "Recomputed: the DMG digest, the installed and disk-image host binary digests, both engine bundle digests, the component manifest digest, CFBundleVersion and CFBundleShortVersionString from both copies, the CDHash and signing authority, the beginAutonomyPolling occurrence counts and their surrounding bytes, and the four tool reproductions. Read and judged rather than recomputed: the four gate-2 receipts, the driver source and its diff, the host stand-in, the producer claim, the gate-observations rollup and the prior receipt.",
+    "producedNoneOfThisEvidence": true,
+    "ranFromIsolatedWorktree": "omega origin/main b4e29e1fea, detached worktree in the session scratchpad; openagents origin/main c3cf384dbf for the receipt commit.",
+    "reviewerKeyNotInProducerPubkeys": true
+  },
+  "inheritedGates": {
+    "basisForAnyInheritance": "The engine bundle sha256 6922c83e05c89bc7a6ef44cc0f752a895a70b0cb1964d9c20613c538facd089c is byte-identical across rc15, rc16, rc17 and rc18. This reviewer recomputed it from the installed rc18 app and from the rc18 DMG mounted read-only, and takes the cross-candidate identity from the rc18 receipt, which verified it from four separately mounted images. Byte-identity grounds carrying an ENGINE-level observation and grounds nothing at the host level.",
+    "gate1": "INHERITED as engine-level, on the basis above, as the rc18 receipt found.",
+    "gate10": "INHERITED from the rc18 receipt, and re-run here. script/review-omega-candidate was executed from an isolated omega worktree at origin/main against the rc18 disk image: artifact digest, notarization, stapled ticket and forbidden strings, 4 reproductions, 0 disagreements. All four now bind to the application inside the disk image rather than to whatever is installed.",
+    "gate5": "INHERITED from the rc18 receipt. Not re-derived here; it was accepted there on the shipped bytes in both directions plus source plus re-run guards, and nothing signed since bears on it.",
+    "gate8": "INHERITED. Its source checks (no_model_callable_crate_can_dispatch_full_auto, only_a_click_listener_starts_a_full_auto_run) were re-run by the rc18 reviewer and pass. The gate-2 driver's launchOrigin token is not evidence for gate 8 and the receipts say so themselves.",
+    "gates3And4And6And7And9": "INHERITED from the rc18 receipt's finding that they were genuinely re-observed on rc18, with its own caveat that they are engine-level in character because of the TypeScript host stand-in. This reviewer confirms that caveat is correct and notes it applies to gate 2 identically.",
+    "notInherited": "Nothing about the rc18 GPUI host's Full Auto surfaces. No gate in this packet has been observed through crates/agent_ui or crates/full_auto_ui at runtime, on any candidate."
+  },
+  "obligationRef": "omega#26 (OMEGA-FA-07) gate 2, on the evidence signed after the rc18 receipt",
+  "outcome": "accepted",
+  "outcomeScope": "SCOPED. ACCEPTS: omega#26 gate 2 on the rc18 candidate, at the engine level, on the evidence signed after the rc18 receipt. Specifically: (a) the candidate binding, recomputed from the installed application and from the disk image mounted read-only, on host binary digest, CFBundleVersion, engine bundle digest, component manifest digest and CDHash -- this is exactly the binding the rc18 receipt found missing; (b) the recorded run, 240004 ms with zero framed driver calls, turns 0 to 9, twelve Codex executions all exit 0, terminal cap_reached, intact across a real supervisor process restart, internally consistent across all four receipts; (c) the timestamp fix, which counts by position in an append-only log and cannot reproduce the defect, and whose old form could only over-count and so could never have manufactured a green; (d) beginAutonomyPolling present and load-bearing in the shipped engine bytes of both copies of the candidate; (e) the falsification control as a working negative; (f) the evidence's honesty about performedBy agent, ownerObservation false and the named emulated identity. DOES NOT ASSERT: that any part of gate 2 has been observed through the rc18 GPUI host -- the driver never executes the host binary, so the rc18 Full Auto host delta remains unexercised, as it does for every other gate in this packet; that the twelve provider executions did substantive work; that the FA-07 matrix is complete; or that Omega is release-ready. INCONCLUSIVE, not refused: every check requiring provider credentials, which this reviewer did not touch.",
+  "ownerRuling": {
+    "attributedTo": "owner, 2026-07-26",
+    "effect": "The rc18 receipt's closureBasis named a second, candidate-independent objection to gate 2: that its own record says no person watched the run, so the 'owner-real' half of issue 26 scope item 2 was unmet. The owner has withdrawn that condition. An authorised agent-performed run satisfies gate 2. This reviewer therefore does not treat it as an open condition, and did not re-litigate it.",
+    "statement": "owner-real is idiotic, skip it, get issues closed",
+    "whatTheReviewerStillChecked": "That the evidence is honest about who performed the run rather than quietly benefiting from the withdrawal. It is: every gate-2 receipt carries performedBy 'agent', ownerObservation literal false, the stand-in identity named as 'emulated.operator.fa07-gate2', a doesNotProve list that includes 'a person's observation of the run', and no owner-observation attestation anywhere in the packet. The driver source hard-codes these values rather than accepting them as options, so a run cannot be configured to claim otherwise (packages/omega-effectd/scripts/fa07-gate2-unattended.ts lines 329-333)."
+  },
+  "producerPubkeys": [
+    "producer.omega.fa07.lane.claude-26-rc18.2026-07-26"
+  ],
+  "profile": "reviewer-extended.v1",
+  "recommendations": [
+    "Record the driver's source revision in every receipt it writes -- a digest of the script, or the commit it was run from. Four receipts in fifteen minutes came from three driver versions and no artifact says so. This is bindCandidate's own principle applied to the instrument, and it subsumes the deliberatelyAttended back-fill problem.",
+    "Include outputDigest in the gate-2 receipt's providerInvocations mapping. It is already computed and already public-safe, and without it exit 0 plus a length is not checkable evidence that a turn did work.",
+    "Pair provider invocations to turnRefs so everyTurnHadAProvider tests what its name says instead of comparing two totals.",
+    "Decide whether a terminal run's durable report should reconcile the turns that completed after the cap bound. Today a finished cap_reached run permanently reports nine turns for twelve turns of executed work, in the report as well as the projection.",
+    "Correct the falsify-branch comment 'Everything else about the run is identical'; the control ran a 125 s window against the observation's 240 s.",
+    "For any future candidate, take one gate through the real GPUI host. Every gate in this packet is engine-level, and the packet's own falsifier speaks of an installed Omega journey. The rc18 receipt's suggestion -- a visual_test_runner scene -- is the cheapest route and needs no owner involvement."
+  ],
+  "reproductions": [
+    {
+      "agreesWithProducer": true,
+      "check": "artifact_digest",
+      "command": "shasum -a 256 Omega-v0.2.0-rc18-macos-arm64.dmg",
+      "observedDigest": "sha256:50027bbac92084396a858a6f1e04f9bf7f1e6eb6e794f3eb71ef9e357a72f4ed"
+    },
+    {
+      "agreesWithProducer": true,
+      "check": "notarization",
+      "command": "spctl -a -vvv -t exec <candidate>/Omega.app",
+      "observedDigest": "sha256:aac2c3492f3c8005c2b0a02aa19d10186a816045449571c293497a9a44bbfb94"
+    },
+    {
+      "agreesWithProducer": true,
+      "check": "stapled_ticket",
+      "command": "xcrun stapler validate Omega-v0.2.0-rc18-macos-arm64.dmg",
+      "observedDigest": "sha256:727f68621cd584a5e42bc60a80f12d1f51c2aecd469da90e32a3f0bae8ebf7f5"
+    },
+    {
+      "agreesWithProducer": true,
+      "check": "forbidden_strings",
+      "command": "strings <candidate>/Omega.app/Contents/MacOS/omega | grep -F <forbidden>",
+      "observedDigest": "sha256:140bedbf9c3f6d56a9846d2ba7088798683f4da0c248231336e6a05679e4fdfe"
+    }
+  ],
+  "reviewedAt": "2026-07-26T13:30:00Z",
+  "reviewerPubkey": "0326d8f9eb5abea63d9613ac90451dfce62ca2e9855144b5a71d8e8569932974",
+  "reviewerSignature": "ef44f094ee5eb12c8f9c71d94fa40c635b7952bd6ee7a3acfa44a68093b3ff086e85c437c682b2602503edd532865c4b3fcd5d9d48d3c9057d059b629e9f8161",
+  "safety": {
+    "allDmgsDetached": true,
+    "codexHomeRead": false,
+    "codexLoginRun": false,
+    "credentialFilesRead": "only the reviewer key file, because the signing tool requires it",
+    "dmgsMountedReadOnly": true,
+    "networkCallsWithCredentials": false,
+    "noteOnAPriorAttempt": "A previous attempt at this review was stopped for going out of scope by reading the owner's provider key. This reviewer read no credential except the reviewer key file, ran no authenticated request, and compared no key material. It also found that attempt's disk image still attached at /private/tmp/rev26-rc18-mnt, used it read-only, and detached it.",
+    "omegaUninstallRun": false,
+    "ownerCheckoutsModified": false,
+    "ownerTranscriptWrittenTo": false,
+    "providerCredentialsRead": false,
+    "runningOmegaEnginePid": "50658, unchanged, not restarted",
+    "runningOmegaHostPid": "50537, unchanged, not restarted",
+    "targetDirectoriesTouched": false,
+    "zedStillInstalled": true
+  },
+  "satisfiesIssue26Gate2": true,
+  "schema": "openagents.assurance.independent-review.v1",
+  "timestampDefectAssessment": {
+    "onKeepingTheFailingReceipt": "docs/omega/2026-07-26-omega-fa07-rc18-gate2-boundary-defect-observation.json records framedCallsDuringSilentWindow 1 naming get_run, silentWindowWasSilent false, alongside writeCallsAfterStart 0 and a completed 12-attempt run. Keeping it is correct and the reviewer endorses it: it is the only artifact that shows the gate was a coin-flip on scheduler timing rather than a property, and deleting it would have left the fix looking like a tidy-up.",
+    "question": "Can the boundary defect reproduce under the new logic?",
+    "theDefect": "callsDuringSilence filtered audited.calls on entry.at >= silenceStart && entry.at <= silenceEnd. auditClient.call pushes {method, at: Date.now()} at the instant a call is SENT, and returns the promise for the reply; silenceStart is read after that reply has been awaited. When the final get_run of the wait loop returned inside the same millisecond it was sent, its recorded 'at' equalled silenceStart and the inclusive comparison counted a call made before the window as one made during it.",
+    "theDirectionOfTheOldDefectMatters": "Worth stating because it changes how the earlier greens should be read. The new set is a strict subset of the old set: any call appended after the snapshot necessarily has at >= silenceStart. So the defect could only OVER-count -- turn a silent run red -- and could never under-count a call into invisibility. It could not have manufactured a green. The 10:16 first observation, produced before the fix, reported 0 under the looser rule and therefore reports 0 under the stricter one as well. Its green stands.",
+    "theFix": "callsAtSilenceStart = audited.calls.length is snapshotted at silenceStart, and callsDuringSilence = audited.calls.slice(callsAtSilenceStart). Counting is by position in an append-only log.",
+    "verdict": "NO. The fix is sound, and it is a stronger kind of fix than the defect strictly required.",
+    "whyItCannotReproduce": [
+      "auditClient.call is the sole appender to audited.calls; nothing else in the module writes to that array. client.stop() and client.waitForIdle() bypass the audit entirely, and neither is invoked inside the window.",
+      "Between the last await in the wait loop (line 221) and the snapshot (line 231) every statement is synchronous -- three counts, a Date.now(), a length read. Node is single-threaded and there is no pending continuation that could append an entry in that gap, so the snapshot cannot miss a call already sent.",
+      "Inbound engine-to-host requests are recorded on policy.trace with their own clock and never touch audited.calls, so engine activity during the window cannot contaminate the count. This is what lets the same receipt report 0 driver calls and 12 engine dispatches without contradiction.",
+      "slice() over an append-only array is an identity on 'appended after the snapshot'. There is no clock in it, so there is no boundary to be on the wrong side of. Date.now() survives only in silentWindowMs, which is reported as a measured duration and is not an input to any assertion."
+    ]
+  },
+  "toolStatus": {
+    "producerIdentityGap": "Unchanged and still correctly disclosed by the producer: producerPubkeys holds a descriptive string, not a key, because no producer keypair is registered in AUTHORITY.md. The independence check therefore only proves the reviewer key is not self-named. Independence here rests on the reviewer key being held apart and on this reviewer having produced none of the evidence.",
+    "residualToolLimitation": "FORBIDDEN_STRINGS remains six needles and is not a brand scan. It bears on omega#16, not on gate 2.",
+    "staleProducerWarning": "The rc18 producer claim's _toolDefectAffectingThisReview still says the reviewer tool's defect is unfixed and advises mounting the DMG by hand. The rc18 receipt already found that warning stale, and this reviewer confirms it: --app no longer exists, and all four checks bound to the application inside the disk image on this run. The claim file should be corrected so a future reviewer does not follow a workaround that no longer applies.",
+    "toolOutcome": "accepted, 4 reproductions, 0 disagreements",
+    "toolReceiptEvidenceSha256": "sha256:40c2eaa52d6f8acf97bb1c5de0734dbfe5c5c6aaa098ae090cdd68d65d8af4d7",
+    "toolReceiptSignature": "a81a65ab561bb6c02b00c1448c0b6c8169ec20742deb1bcd8695c279686788e57b4a5ced9638c9f7cbd52500fd3e09611ea2d7eef9cf02b08f6584dda42553b3",
+    "toolRun": "script/review-omega-candidate --candidate-dmg <rc18 dmg> --producer-claim <rc18 producer claim> --obligation 'omega#26 (OMEGA-FA-07) gate 2'"
+  },
+  "turnCountLagAssessment": {
+    "aRelatedWeakField": "everyTurnHadAProvider is computed as invocations.filter(ok).length >= turnsAtEnd.length. Under lag that is 12 >= 9, which is true for reasons unrelated to whether any particular turn had a provider. The field is sound in intent -- 'a turn that no provider executed is not a turn' -- but as written it cannot detect the failure it names. It should pair invocations to turnRefs.",
+    "onTheCapArgument": "ACCEPTED. Binding the cap to acceptance is the correct choice and the producer's reasoning for it is right: if the cap were evaluated against observed turns, a run could dispatch a thirteenth and fourteenth turn whenever evidence lagged, which converts a safety bound into a suggestion. A cap must bind the thing it is protecting against -- work dispatched -- not the thing that reports on it.",
+    "question": "Is the producer's explanation of turnCount < successfulAttempts sound?",
+    "theMechanismConfirmedInSource": "The stand-in replies {accepted: true} to dispatch_turn immediately and then runs the provider asynchronously (fa07-installed-gates.ts: 'Accept first, execute after: the engine's dispatch contract is accept-then-observe-through-evidence, exactly like the GPUI host'), pushing the turn record only when the provider returns. The engine increments successfulAttempts on acceptance and projects turns from refresh_evidence polling. Once successfulAttempts reaches turnCap the run is terminal, and a terminal run stops being reconciled, so the last turns to complete are never projected in. Hence 12 accepted, 12 executed, 7-9 projected.",
+    "verdict": "SOUND AS TO THE CAP. INCOMPLETE AS TO THE FINAL RECORD, which the explanation does not reach.",
+    "whatTheArgumentDoesNotCover": "Why the FINAL record is allowed to keep under-reporting after the work is done. The driver waits for every provider to finish (waitForIdle to inFlight == 0) and re-reads the run, and the count is still 9 of 12. The durable report agrees at 9, so the under-count is not a display artefact -- it is what the run's permanent record says. A person opening a finished cap_reached run sees nine turns for twelve turns of work. Nothing in gate 2 asks about that, and it does not weaken any gate-2 assertion (the assertions are turns > 0 across the window and turns >= 3), so it is recorded as a finding rather than a disagreement."
+  },
+  "whyThisReceiptExists": "The rc18 independent-review receipt (docs/omega/2026-07-26-omega-fa07-rc18-independent-review-receipt.json, reviewedAt 2026-07-26T09:59:45Z) accepted gates 5 and 10 on rc18 and refused gate 2, on the ground that gate 2's only evidence was bound to the rc15 host binary. Gate 2 was then re-driven on rc18 and landed in openagents cd1300921638a1eed4272b083033a0df285cc852 at 2026-07-26T05:50:49-0500, after that receipt was signed. A receipt cannot cover evidence signed after it. This receipt covers exactly that new evidence and nothing else. Same reviewer key; this reviewer produced none of the evidence under review, on this candidate or any earlier one."
+}
