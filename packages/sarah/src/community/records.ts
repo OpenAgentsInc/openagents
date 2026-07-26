@@ -70,6 +70,15 @@ import {
 } from "./membership.ts";
 import { extractAuthTagFromAuthEvent, verifyAgentOwnerAttestation } from "./attestation.ts";
 
+/**
+ * NIP-29 admin event: create the group.
+ *
+ * Moderation is scoped to a group that exists, so this is the precondition for
+ * every other NIP-29 kind. A relay answering `restricted: group not found` to a
+ * `put-user` is reporting a missing precondition, not a missing capability.
+ */
+export const NIP_29_CREATE_GROUP_KIND = 9007 as const;
+
 /** NIP-29 admin event: admit a pubkey to the group. */
 export const NIP_29_PUT_USER_KIND = 9000 as const;
 

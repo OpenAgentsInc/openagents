@@ -11,7 +11,16 @@ export const ISSUE31_DEVICE_KEYCHAIN_SERVICE = "com.openagents.mobile.omega-devi
 export interface Issue31SecureStoreOptions {
   readonly keychainService?: string;
   readonly keychainAccessible?: unknown;
+  readonly requireAuthentication?: boolean;
 }
+
+/**
+ * The platform whose key-custody contract we are holding the native store to.
+ *
+ * Anything we cannot positively identify as `ios` or `android` is `unknown` and
+ * fails closed: custody rules are stated per platform, never guessed.
+ */
+export type Issue31DeviceKeyPlatform = "ios" | "android" | "unknown";
 
 export interface Issue31SecureStore {
   readonly AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY?: unknown;
@@ -56,17 +65,87 @@ const DeviceKeyRecordSchema = Schema.Struct({
   privateKeyHex: Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/)),
 });
 
-const storeOptions = (store: Issue31SecureStore): Issue31SecureStoreOptions => {
-  if (store.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY === undefined) {
+/**
+ * Android custody options for the Omega device key.
+ *
+ * `expo-secure-store`'s Android module declares no accessibility constants at
+ * all — `AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY` and its siblings are exported
+ * only by the iOS module, so on Android the JS re-export is `undefined`. The
+ * Android record accepts `keychainService`, `requireAuthentication`, and
+ * `authenticationPrompt` and nothing else. These are the options that get us
+ * closest to the iOS accessibility class, stated exactly:
+ *
+ * Preserved versus iOS `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`:
+ *   - Non-exportability off the device. The value is AES-GCM encrypted under a
+ *     key generated inside `AndroidKeyStore` under an alias derived from
+ *     `keychainService`; that key is non-extractable and cannot be transferred.
+ *     A copy of the ciphertext restored onto another device is undecryptable.
+ *     Android reaches "this device only" through key non-transferability where
+ *     iOS reaches it through a backup-exclusion attribute.
+ *   - App scoping. The ciphertext lives in `MODE_PRIVATE` SharedPreferences and
+ *     the keystore entry is scoped to this app's uid.
+ *   - A key alias dedicated to Omega, distinct from other vaults in this app,
+ *     because we pass our own `keychainService`.
+ *   - No user-interaction gate, matching iOS: `AFTER_FIRST_UNLOCK_*` is not
+ *     biometry/passcode gated either. `requireAuthentication: true` would be
+ *     *stricter* than the iOS class, would prompt on every silent runtime open,
+ *     and would hard-fail on a device with no lock screen, so it is not parity.
+ *
+ * NOT preserved versus iOS:
+ *   - Backup exclusion of the stored blob. iOS `ThisDeviceOnly` keeps the item
+ *     out of iCloud Keychain and encrypted backups entirely. On Android the
+ *     encrypted blob is an ordinary SharedPreferences entry and is eligible for
+ *     Android Auto Backup / device transfer. It leaves the device as
+ *     ciphertext that no other device can decrypt, but it does leave.
+ *   - An API-requested at-rest unlock gate. The keystore key is generated with
+ *     `setUserAuthenticationRequired(false)`, so it is usable whenever this app
+ *     runs. Pre-first-unlock protection comes only from Android's default
+ *     credential-encrypted app storage, which we neither request nor can
+ *     verify from JS, rather than from the requested accessibility class.
+ *   - Hardware backing is not requested (no StrongBox), and on an emulator the
+ *     AndroidKeyStore implementation is software-only, so emulator custody is
+ *     weaker than a TEE-backed physical device.
+ */
+export const ISSUE31_ANDROID_DEVICE_KEY_OPTIONS: Issue31SecureStoreOptions = Object.freeze({
+  keychainService: ISSUE31_DEVICE_KEYCHAIN_SERVICE,
+  requireAuthentication: false,
+});
+
+/**
+ * The native store must actually be linked. On iOS the presence of
+ * `AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY` doubled as a liveness canary for the
+ * native module; Android never had that canary, so we check the call surface
+ * directly instead of inferring liveness from a constant.
+ */
+const hasStoreCallSurface = (store: Issue31SecureStore): boolean =>
+  typeof store?.getItemAsync === "function" &&
+  typeof store?.setItemAsync === "function" &&
+  typeof store?.deleteItemAsync === "function";
+
+const storeOptions = (
+  store: Issue31SecureStore,
+  platform: Issue31DeviceKeyPlatform,
+): Issue31SecureStoreOptions => {
+  if (!hasStoreCallSurface(store)) {
     throw new Issue31DeviceKeyVaultError(
       "secure_store_unavailable",
-      "This-device-only Omega key custody is unavailable.",
+      "The Omega device key store is not linked on this device.",
     );
   }
-  return {
-    keychainService: ISSUE31_DEVICE_KEYCHAIN_SERVICE,
-    keychainAccessible: store.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
-  };
+  if (store.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY !== undefined) {
+    return {
+      keychainService: ISSUE31_DEVICE_KEYCHAIN_SERVICE,
+      keychainAccessible: store.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
+    };
+  }
+  // Android is the only platform where the constant is absent by design. On
+  // iOS an absent constant means the native module did not export its
+  // accessibility classes, and we fail closed rather than downgrade custody.
+  if (platform === "android") return ISSUE31_ANDROID_DEVICE_KEY_OPTIONS;
+  throw new Issue31DeviceKeyVaultError(
+    "secure_store_unavailable",
+    "This-device-only Omega key custody is unavailable.",
+  );
 };
 
 const bytesToHex = (bytes: Uint8Array): string =>
@@ -115,9 +194,11 @@ export const openIssue31DeviceIdentity = async (
   input: Readonly<{
     store: Issue31SecureStore;
     randomBytes: (length: number) => Promise<Uint8Array>;
+    /** Required: custody rules are per platform and are never defaulted. */
+    platform: Issue31DeviceKeyPlatform;
   }>,
 ): Promise<Issue31DeviceIdentity> => {
-  const options = storeOptions(input.store);
+  const options = storeOptions(input.store, input.platform);
   let stored: string | null;
   try {
     stored = await input.store.getItemAsync(ISSUE31_DEVICE_KEY_STORE_KEY, options);
@@ -177,15 +258,35 @@ export const openIssue31DeviceIdentity = async (
   return publicIdentity(localSigner);
 };
 
-export const clearIssue31DeviceIdentity = async (store: Issue31SecureStore): Promise<void> => {
+export const clearIssue31DeviceIdentity = async (
+  store: Issue31SecureStore,
+  platform: Issue31DeviceKeyPlatform,
+): Promise<void> => {
   try {
-    await store.deleteItemAsync(ISSUE31_DEVICE_KEY_STORE_KEY, storeOptions(store));
+    await store.deleteItemAsync(ISSUE31_DEVICE_KEY_STORE_KEY, storeOptions(store, platform));
   } catch {
     throw new Issue31DeviceKeyVaultError(
       "secure_store_unavailable",
       "The Omega device key could not be removed.",
     );
   }
+};
+
+/**
+ * Resolve the running platform, failing closed to `unknown` for anything we do
+ * not have a written custody rule for (web, or a broken react-native surface).
+ */
+export const expoIssue31DeviceKeyPlatform = (): Issue31DeviceKeyPlatform => {
+  let os: unknown;
+  try {
+    os = (require("react-native") as Readonly<{ Platform?: Readonly<{ OS?: unknown }> }>)?.Platform
+      ?.OS;
+  } catch {
+    return "unknown";
+  }
+  if (os === "ios") return "ios";
+  if (os === "android") return "android";
+  return "unknown";
 };
 
 export const openExpoIssue31DeviceIdentity = async (): Promise<Issue31DeviceIdentity> => {
@@ -196,5 +297,6 @@ export const openExpoIssue31DeviceIdentity = async (): Promise<Issue31DeviceIden
   return openIssue31DeviceIdentity({
     store,
     randomBytes: (length) => crypto.getRandomBytesAsync(length),
+    platform: expoIssue31DeviceKeyPlatform(),
   });
 };

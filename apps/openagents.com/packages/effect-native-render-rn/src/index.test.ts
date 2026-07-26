@@ -1242,3 +1242,138 @@ describe("React Native renderer host boundaries", () => {
     )
   })
 })
+
+// Stack scroll-region lowering (omega#49).
+//
+// The Workroom rendered its whole section column and the phone clipped
+// everything below "Authority receipts", because a Stack lowers to a plain
+// View that has no overflow of its own. These tests hold both halves: a Stack
+// that declares `scroll` becomes a real host scroll container with its
+// arrangement moved into the content container, and a Stack that does not
+// declare it renders exactly the View it rendered before — the shared
+// `reactNative` stub above deliberately has no ScrollView, so every other test
+// in this file is already proof that the default path never reaches for one.
+describe("Stack scroll regions", () => {
+  const scrollingReactNative = { ...reactNative, ScrollView: "ScrollView" }
+  const sections = [
+    Text({ key: "receipts", content: "Authority receipts", variant: "heading" }),
+    Text({ key: "memory", content: "Local memory", variant: "heading" }),
+    Text({ key: "reminders", content: "Reminders", variant: "heading" })
+  ]
+  const stackProps = {
+    key: "issue31-workroom",
+    direction: "column",
+    gap: "3",
+    padding: "4",
+    style: { width: "full", height: "full", backgroundColor: "background" }
+  } as const
+
+  test("lowers a scrolling Stack to the host ScrollView without changing what it draws", () => {
+    const scrolling = renderReactNativeView(
+      Stack({ ...stackProps, scroll: true }, sections),
+      { React: { createElement }, ReactNative: scrollingReactNative },
+      () => Effect.succeed(undefined)
+    )
+    const plain = renderReactNativeView(
+      Stack(stackProps, sections),
+      { React: { createElement }, ReactNative: scrollingReactNative },
+      () => Effect.succeed(undefined)
+    )
+
+    expect(scrolling.type).toBe("ScrollView")
+    expect(plain.type).toBe("View")
+    // ScrollView lays children out in an inner content view and ignores
+    // flexDirection/gap/padding on its own frame, so the arrangement has to
+    // move — but nothing may be added, dropped, or retuned in the move.
+    expect({
+      ...(scrolling.props.contentContainerStyle as Record<string, unknown>),
+      ...(scrolling.props.style as Record<string, unknown>)
+    }).toEqual(plain.props.style)
+    // The frame keeps the size the content scrolls inside.
+    expect(scrolling.props.style).toMatchObject({ width: "100%", height: "100%" })
+    expect(scrolling.props.contentContainerStyle).toMatchObject({ flexDirection: "column" })
+    // Same structural-container a11y as the plain Stack: the region must not
+    // swallow its descendants into one VoiceOver target.
+    expect(scrolling.props.accessible).toBe(false)
+    expect(scrolling.props.horizontal).toBeUndefined()
+    const children = scrolling.props.children as ReadonlyArray<ReactElementLike>
+    expect(children.map((child) => child.props.children)).toEqual([
+      "Authority receipts",
+      "Local memory",
+      "Reminders"
+    ])
+  })
+
+  test("leaves a Stack that declares no scroll region exactly as it was", () => {
+    const plain = renderReactNativeView(
+      Stack(stackProps, sections),
+      { React: { createElement }, ReactNative: scrollingReactNative },
+      () => Effect.succeed(undefined)
+    )
+
+    expect(plain.type).toBe("View")
+    expect(plain.props.style).toMatchObject({
+      display: "flex",
+      flexDirection: "column",
+      width: "100%",
+      height: "100%"
+    })
+    expect(plain.props.contentContainerStyle).toBeUndefined()
+    expect(plain.props.horizontal).toBeUndefined()
+    expect(plain.props.onContentSizeChange).toBeUndefined()
+    expect(plain.props.maintainVisibleContentPosition).toBeUndefined()
+  })
+
+  test("scrolls a row-direction region horizontally", () => {
+    const scrolling = renderReactNativeView(
+      Stack({ key: "filters", direction: "row", gap: "2", scroll: true }, sections),
+      { React: { createElement }, ReactNative: scrollingReactNative },
+      () => Effect.succeed(undefined)
+    )
+
+    expect(scrolling.type).toBe("ScrollView")
+    expect(scrolling.props.horizontal).toBe(true)
+    expect(scrolling.props.contentContainerStyle).toMatchObject({ flexDirection: "row" })
+  })
+
+  test("fails loudly instead of drawing an unreachable region when the host has no ScrollView", () => {
+    expect(() =>
+      renderReactNativeView(
+        Stack({ ...stackProps, scroll: true }, sections),
+        { React: { createElement }, ReactNative: reactNative },
+        () => Effect.succeed(undefined)
+      )
+    ).toThrow(/ScrollView/)
+  })
+
+  test("keeps a pinned scroll region at its end and reports when the reader leaves it", async () => {
+    const reported: Array<unknown> = []
+    const scrolling = renderReactNativeView(
+      Stack(
+        { ...stackProps, scroll: true, pinToEnd: true, onPinnedChange: IntentRef("WorkroomPinnedChanged") },
+        sections
+      ),
+      { React: { createElement }, ReactNative: scrollingReactNative },
+      (_ref, runtimeValue) => Effect.sync(() => { reported.push(runtimeValue) })
+    )
+
+    expect(scrolling.props.maintainVisibleContentPosition).toEqual({ minIndexForVisible: 0 })
+    let scrolledToEnd = 0
+    const ref = scrolling.props.ref as (handle: unknown) => void
+    ref({ scrollToEnd: () => { scrolledToEnd += 1 } })
+    const onContentSizeChange = scrolling.props.onContentSizeChange as () => void
+    onContentSizeChange()
+    expect(scrolledToEnd).toBe(1)
+
+    const onScroll = scrolling.props.onScroll as (event: unknown) => void
+    onScroll({
+      nativeEvent: {
+        contentOffset: { y: 0 },
+        contentSize: { height: 2400 },
+        layoutMeasurement: { height: 874 }
+      }
+    })
+    await Effect.runPromise(nextTask)
+    expect(reported).toEqual([false])
+  })
+})

@@ -77,6 +77,10 @@ import {
   projectIssue31CommunityReadModel,
 } from "../workroom/issue31-community-read-model"
 import { issue31SourceSnapshotsFromNostr } from "../workroom/issue31-nostr-read-model"
+import {
+  issue31FullAutoProjectionFromSnapshot,
+  issue31FullAutoProjectionUnavailable,
+} from "../workroom/issue31-full-auto-projection-source"
 import { projectIssue31OwnerPrivateReadModel } from "../workroom/issue31-owner-private-read-model"
 import {
   emptyIssue31WorkroomReadModel,
@@ -389,6 +393,19 @@ export const HomeScreen = ({
           new Date(nowUnixSeconds * 1_000).toISOString(),
           "reason.issue31.nostr_projection_failed",
         ))
+      }
+      // Full Auto is bound to the host the device's signed grant names, and to
+      // that host's own snapshot reference — never to the detail payload's own
+      // claims. Its absence, unreadability, and mismatch stay three distinct
+      // states rather than collapsing into "not paired" (omega#49).
+      try {
+        program.workroom.setFullAutoReadModel(
+          issue31FullAutoProjectionFromSnapshot(snapshot, nowUnixSeconds),
+        )
+      } catch {
+        program.workroom.setFullAutoReadModel(
+          issue31FullAutoProjectionUnavailable("host_projection_unreadable"),
+        )
       }
     }
     program.workroom.setReadModel(emptyIssue31WorkroomReadModel(new Date().toISOString()))

@@ -19,7 +19,11 @@ import {
   type Issue31WorkroomReadModel,
   type Issue31WorkroomRoom,
 } from "../workroom/issue31-workroom-read-model";
-import type { Issue31MobileNostrControlState } from "../workroom/issue31-mobile-nostr-runtime";
+import {
+  ISSUE31_GRANT_INACTIVE_NOTICE,
+  ISSUE31_GRANT_REVOKED_NOTICE,
+  type Issue31MobileNostrControlState,
+} from "../workroom/issue31-mobile-nostr-runtime";
 import {
   ISSUE31_COMMUNITY_FIRST_RUN_COPY,
   ISSUE31_COMMUNITY_INVITATION_COPY,
@@ -196,6 +200,22 @@ const capabilityCard = (row: Issue31CapabilityProjection): View =>
     ],
   );
 
+/**
+ * Whether a control notice is a statement about the owner's access rather than
+ * routine progress chatter.
+ *
+ * A failed runtime is one such statement; a grant the owner revoked, or one
+ * that stopped being active, are two more — and both arrive with a perfectly
+ * healthy phase.
+ */
+const issue31NoticeIsWarning = (
+  phase: Issue31MobileNostrControlState["phase"],
+  notice: string,
+): boolean =>
+  phase === "failed" ||
+  notice === ISSUE31_GRANT_REVOKED_NOTICE ||
+  notice === ISSUE31_GRANT_INACTIVE_NOTICE;
+
 const roomButton = (
   room: Issue31WorkroomRoom,
   selectedRoom: Issue31WorkroomRoom,
@@ -240,7 +260,7 @@ const ownerPrivateDetail = (
       variant: "body",
       color: owner.status === "ready" ? "textPrimary" : "warning",
     }),
-    Text({ key: "issue31-owner-transcript-title", content: "Conversation", variant: "heading" }),
+    Text({ key: "issue31-owner-transcript-title", content: "Conversation", variant: "heading", color: "textPrimary" }),
     ...(transcript.length === 0
       ? [
           Text({
@@ -328,7 +348,7 @@ const ownerPrivateDetail = (
                 : "textMuted",
           }),
         ]),
-    Text({ key: "issue31-owner-activity-title", content: "Live activity", variant: "heading" }),
+    Text({ key: "issue31-owner-activity-title", content: "Live activity", variant: "heading", color: "textPrimary" }),
     ...owner.activity.slice(-20).map((row) =>
       Text({
         key: `issue31-owner-activity-${row.sourceEventId}`,
@@ -362,6 +382,7 @@ const ownerPrivateDetail = (
       key: "issue31-owner-receipts-title",
       content: "Authority receipts",
       variant: "heading",
+      color: "textPrimary",
     }),
     ...(owner.receipts.length === 0
       ? [
@@ -382,7 +403,7 @@ const ownerPrivateDetail = (
             style: { width: "full", ...mobileInteractiveStyle(accessibility) },
           }),
         )),
-    Text({ key: "issue31-owner-memory-title", content: "Local memory", variant: "heading" }),
+    Text({ key: "issue31-owner-memory-title", content: "Local memory", variant: "heading", color: "textPrimary" }),
     // A short list that looks whole is the failure omega#46 exit 4 names. The
     // three coverage states render differently and one of them is "unknown",
     // because a host that never stated coverage has not said the list is
@@ -431,7 +452,7 @@ const ownerPrivateDetail = (
         color: "textPrimary",
       }),
     ),
-    Text({ key: "issue31-owner-read-title", content: "Read state", variant: "heading" }),
+    Text({ key: "issue31-owner-read-title", content: "Read state", variant: "heading", color: "textPrimary" }),
     ...Object.entries(owner.readContexts)
       .slice(0, 32)
       .map(([contextRef, readAt]) =>
@@ -442,7 +463,7 @@ const ownerPrivateDetail = (
           color: "textMuted",
         }),
       ),
-    Text({ key: "issue31-owner-reminders-title", content: "Reminders", variant: "heading" }),
+    Text({ key: "issue31-owner-reminders-title", content: "Reminders", variant: "heading", color: "textPrimary" }),
     TextField({
       key: "issue31-owner-reminder-draft",
       value: state.reminderDraft,
@@ -529,6 +550,7 @@ const ownerPrivateDetail = (
       key: "issue31-owner-commands-title",
       content: "Command reconciliation",
       variant: "heading",
+      color: "textPrimary",
     }),
     ...owner.commands.map((command) =>
       Text({
@@ -1217,7 +1239,7 @@ const communityDetail = (
         ]
       : []),
 
-    Text({ key: "issue31-community-transcript-title", content: "Room", variant: "heading" }),
+    Text({ key: "issue31-community-transcript-title", content: "Room", variant: "heading", color: "textPrimary" }),
     ...(model.transcript.length === 0
       ? [
           Text({
@@ -1286,7 +1308,7 @@ const communityDetail = (
           }),
         ]),
 
-    Text({ key: "issue31-community-roster-title", content: "Members", variant: "heading" }),
+    Text({ key: "issue31-community-roster-title", content: "Members", variant: "heading", color: "textPrimary" }),
     ...(model.roster.length === 0
       ? [
           Text({
@@ -1358,7 +1380,7 @@ const communityDetail = (
         ]
       : []),
 
-    Text({ key: "issue31-community-agents-title", content: "Attested agents", variant: "heading" }),
+    Text({ key: "issue31-community-agents-title", content: "Attested agents", variant: "heading", color: "textPrimary" }),
     Text({
       key: "issue31-community-agents-boundary",
       content:
@@ -1442,7 +1464,7 @@ const communityDetail = (
         }),
       ),
 
-    Text({ key: "issue31-community-units-title", content: "Work units", variant: "heading" }),
+    Text({ key: "issue31-community-units-title", content: "Work units", variant: "heading", color: "textPrimary" }),
     ...(model.workUnits.length === 0
       ? [
           Text({
@@ -1456,7 +1478,7 @@ const communityDetail = (
           communityUnitCard(unit, state.appealDraft, accessibility),
         )),
 
-    Text({ key: "issue31-community-xp-title", content: "Experience", variant: "heading" }),
+    Text({ key: "issue31-community-xp-title", content: "Experience", variant: "heading", color: "textPrimary" }),
     Text({
       key: "issue31-community-xp-total",
       // Recomputed from the awards, every time. The published rank is shown
@@ -1521,6 +1543,16 @@ export const renderMobileIssue31WorkroomView = (
       direction: "column",
       gap: "3",
       padding: "4",
+      // The Workroom is one column of sections that is always taller than a
+      // phone: conversation, Full Auto, authority receipts, local memory and
+      // its withheld-source coverage, read state, reminders, then a capability
+      // card per source. Without an owned scroll region the host frame clipped
+      // everything below "Authority receipts" and no swipe could reach it
+      // (omega#49) — the withheld-source coverage omega#46 exit 4 asks to be
+      // photographed, and the omega#48 community states, were rendered and
+      // unreachable. A finite heterogeneous section run scrolls; it does not
+      // virtualize.
+      scroll: true,
       a11y: {
         role: "region",
         label: `Omega issue 31 Workroom. ${model.coverage.ready} of ${model.coverage.total} sources ready.`,
@@ -1602,7 +1634,16 @@ export const renderMobileIssue31WorkroomView = (
               key: "issue31-pairing-notice",
               content: nostrControl.notice,
               variant: "caption",
-              color: nostrControl.phase === "failed" ? "warning" : "textMuted",
+              // Emphasis follows what the notice tells the owner, not only
+              // whether the runtime failed. A revoked or inactive grant leaves
+              // the phase perfectly healthy, so keying on `failed` alone drew
+              // the most consequential sentence this room can say in the same
+              // muted grey as routine status chatter. Matched on the exported
+              // constants, never the copy, so rewording cannot silently drop
+              // the emphasis.
+              color: issue31NoticeIsWarning(nostrControl.phase, nostrControl.notice)
+                ? "warning"
+                : "textMuted",
             }),
           ]),
       Stack(

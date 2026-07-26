@@ -5800,6 +5800,12 @@ export interface HomeProgramHandle {
     readonly setReadModel: (model: Issue31WorkroomReadModel) => void
     readonly setNostrControl: (control: Issue31MobileNostrControlState) => void
     readonly setCommunityReadModel: (model: Issue31CommunityReadModel) => void
+    /**
+     * The omega#47 Full Auto detail projection for the host this device is
+     * paired to. Without this setter the section could only ever hold the
+     * `no_host_projection` state it starts in (omega#49).
+     */
+    readonly setFullAutoReadModel: (model: Issue31FullAutoReadModel) => void
     readonly changeCommunityDraft: (value: string) => void
     readonly postCommunityMessage: () => void
     readonly changeCommunitySubject: (value: string) => void
@@ -6162,6 +6168,12 @@ export const buildHomeProgram = (options: HomeProgramOptions = {}): HomeProgramH
             Effect.runFork(SubscriptionRef.update(state, current => ({
               ...current,
               issue31Community: model,
+            })))
+          },
+          setFullAutoReadModel: model => {
+            Effect.runFork(SubscriptionRef.update(state, current => ({
+              ...current,
+              issue31FullAuto: model,
             })))
           },
           changeCommunityDraft: value => fireText(

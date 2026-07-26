@@ -140,8 +140,7 @@ export const ISSUE31_COMMUNITY_CONTROL_KINDS = [
   "verify_result",
   "file_appeal",
 ] as const;
-export type Issue31CommunityControlKind =
-  (typeof ISSUE31_COMMUNITY_CONTROL_KINDS)[number];
+export type Issue31CommunityControlKind = (typeof ISSUE31_COMMUNITY_CONTROL_KINDS)[number];
 
 /**
  * Which key signs this action — and therefore whether the phone can take it.
@@ -306,8 +305,49 @@ export interface Issue31CommunityResultRow {
   readonly providerPubkey: string;
   readonly providerOperatorPubkey: string | null;
   readonly createdAt: number;
+  /**
+   * The delivery's `lbr_idempotency_ref`, when it names one.
+   *
+   * `null` for a result that carries no ref. That is not itself a refusal — a
+   * provider may deliver without one — but it is what makes two deliveries
+   * distinguishable, so a unit whose results omit it is compared on author and
+   * summary alone.
+   */
+  readonly idempotencyRef: string | null;
   readonly untrustedSummary: UntrustedCommunityContent;
   readonly displaySummary: string;
+}
+
+/**
+ * The contract's own name for this failure (`ARBITRATION_REASON_CLASSES`), used
+ * rather than a fresh code so a refusal the room shows and a rejection Sarah
+ * writes are the same word.
+ */
+export const ISSUE31_COMMUNITY_RESULT_REPLAY_CODE = "result_replay" as const;
+
+/**
+ * A result the room read, and would not let stand.
+ *
+ * Before this existed, results were keyed by request id with last-write-wins:
+ * a second, different result for one unit quietly replaced the first, and the
+ * room rendered the substitution as the delivery. Nothing distinguished that
+ * from an ordinary update, which is exactly what makes it worth doing — a
+ * substituted result is verified, decided and awarded as if it were the work
+ * that was actually accepted.
+ *
+ * Refusing it silently would be its own defect, so each refused delivery is
+ * carried here with the delivery that stands beside it.
+ */
+export interface Issue31CommunityResultRefusal {
+  readonly sourceEventId: string;
+  readonly requestEventId: string;
+  readonly unitRef: string;
+  readonly providerPubkey: string;
+  readonly idempotencyRef: string | null;
+  readonly code: typeof ISSUE31_COMMUNITY_RESULT_REPLAY_CODE;
+  readonly detail: string;
+  /** The delivery this one tried to replace, when there was one. */
+  readonly admittedResultEventId: string | null;
 }
 
 export interface Issue31CommunityVerificationRow {
@@ -404,6 +444,11 @@ export interface Issue31CommunityWorkUnitRow {
   readonly quotes: ReadonlyArray<Issue31CommunityQuoteRow>;
   readonly acceptedProviderPubkey: string | null;
   readonly result: Issue31CommunityResultRow | null;
+  /**
+   * Deliveries the room read for this unit and refused. Non-empty means somebody
+   * tried to replace an accepted delivery; `result` is the one that stands.
+   */
+  readonly refusedResults: ReadonlyArray<Issue31CommunityResultRefusal>;
   readonly verification: Issue31CommunityVerificationRow | null;
   readonly decision: Issue31CommunityDecisionRow | null;
   readonly appeal: Issue31CommunityAppealRow | null;
@@ -486,6 +531,8 @@ export interface Issue31CommunityReadModel {
   /** Room-level controls. Unit-level controls hang off each unit row. */
   readonly controls: ReadonlyArray<Issue31CommunityControl>;
   readonly refusals: ReadonlyArray<CommunityRecordRefusal>;
+  /** Every refused result delivery in the room, across all units. */
+  readonly resultRefusals: ReadonlyArray<Issue31CommunityResultRefusal>;
   readonly rejectedRecordCount: number;
 }
 
@@ -508,10 +555,14 @@ const HEX_64 = /^[0-9a-f]{64}$/;
 const deepLinkFor = (sourceEventId: string): string =>
   `openagents://omega/workroom?room=community&sourceEventId=${sourceEventId}`;
 
-const tagValue = (
-  tags: ReadonlyArray<ReadonlyArray<string>>,
-  name: string,
-): string | undefined => tags.find((tag) => tag[0] === name)?.[1];
+const tagValue = (tags: ReadonlyArray<ReadonlyArray<string>>, name: string): string | undefined =>
+  tags.find((tag) => tag[0] === name)?.[1];
+
+/** NIP-LBR carries the delivery's idempotency ref as a `param` tag. */
+const LBR_IDEMPOTENCY_PARAM = "lbr_idempotency_ref";
+
+const paramValue = (tags: ReadonlyArray<ReadonlyArray<string>>, key: string): string | null =>
+  tags.find((tag) => tag[0] === "param" && tag[1] === key)?.[2] ?? null;
 
 const taggedEventId = (
   tags: ReadonlyArray<ReadonlyArray<string>>,
@@ -550,6 +601,7 @@ export const emptyIssue31CommunityReadModel = (
   },
   controls: [],
   refusals: [],
+  resultRefusals: [],
   rejectedRecordCount: 0,
 });
 
@@ -593,14 +645,10 @@ const asSignedRecord = (event: Issue31ConfirmedEvent): CommunitySignedEvent => (
   content: event.event.content,
 });
 
-const roleLabel = (
-  fold: CommunityLedgerFold,
-  pubkey: string,
-): Issue31CommunityRole => communityRoleFor(fold, pubkey).role;
+const roleLabel = (fold: CommunityLedgerFold, pubkey: string): Issue31CommunityRole =>
+  communityRoleFor(fold, pubkey).role;
 
-const agentRows = (
-  fold: CommunityLedgerFold,
-): ReadonlyArray<Issue31CommunityAgentRow> =>
+const agentRows = (fold: CommunityLedgerFold): ReadonlyArray<Issue31CommunityAgentRow> =>
   fold.agents.map((agent: CommunityAgentBinding) => ({
     agentPubkey: agent.agentPubkey,
     operatorPubkey: agent.operatorPubkey,
@@ -617,9 +665,7 @@ const agentRows = (
     burned: fold.burnedAgentKeys.includes(agent.agentPubkey),
   }));
 
-const rosterRows = (
-  fold: CommunityLedgerFold,
-): ReadonlyArray<Issue31CommunityMemberRow> =>
+const rosterRows = (fold: CommunityLedgerFold): ReadonlyArray<Issue31CommunityMemberRow> =>
   fold.members
     .map((member) => {
       const role = communityRoleFor(fold, member.operatorPubkey);
@@ -704,10 +750,7 @@ const readArbitrationLane = (
   const appealsByDecisionEventId = new Map<string, Issue31CommunityAppealRow>();
   const rulingsByAppealEventId = new Map<string, Issue31CommunityRulingRow>();
   const verificationsByResultEventId = new Map<string, Issue31CommunityVerificationRow>();
-  const refusedVerificationsByResultEventId = new Map<
-    string,
-    Issue31CommunityVerificationRow
-  >();
+  const refusedVerificationsByResultEventId = new Map<string, Issue31CommunityVerificationRow>();
   const independenceClaimsByResultEventId = new Map<
     string,
     {
@@ -739,8 +782,12 @@ const readArbitrationLane = (
     const feedbackType =
       tagValue(event.tags, "cw_feedback_type") ?? tagValue(event.tags, "lbr_feedback_type");
 
-    if (feedbackType === "quote_acceptance" || tagValue(event.tags, "status") === "accepted_quote") {
-      const requestEventId = taggedEventId(event.tags, "request") ?? tagValue(event.tags, "e") ?? null;
+    if (
+      feedbackType === "quote_acceptance" ||
+      tagValue(event.tags, "status") === "accepted_quote"
+    ) {
+      const requestEventId =
+        taggedEventId(event.tags, "request") ?? tagValue(event.tags, "e") ?? null;
       const quoteRef = tagValue(event.tags, "cw_quote_ref");
       if (requestEventId === null || quoteRef === undefined) continue;
       // Exactly one authority accepts a quote: the key that requested the work.
@@ -896,8 +943,7 @@ const readArbitrationLane = (
       sourceEventId: claim.decisionEventId,
       verifierPubkey: claim.verifierAgentPubkey,
       verifierOperatorPubkey:
-        communityOperatorForAgent(fold, claim.verifierAgentPubkey) ??
-        claim.verifierOperatorRef,
+        communityOperatorForAgent(fold, claim.verifierAgentPubkey) ?? claim.verifierOperatorRef,
       producerOperatorPubkey: claim.producerOperatorRef,
       operatorsAreIndependent: false,
       refusalReason: "verification_event_absent",
@@ -1028,11 +1074,7 @@ const experienceModel = (
     const supportedByAwards = derivedBadgeIds.has(badgeId);
     badges.push({
       badgeId,
-      source: supportedByAwards
-        ? wire === null
-          ? "awards_only"
-          : "awards_and_wire"
-        : "wire_only",
+      source: supportedByAwards ? (wire === null ? "awards_only" : "awards_and_wire") : "wire_only",
       awardEventId: wire?.awardEventId ?? null,
       issuerPubkey: wire?.issuerPubkey ?? null,
       name: wireBadgeNames.get(badgeId) ?? null,
@@ -1093,10 +1135,7 @@ const unitControls = (input: {
 
   // Quoting needs an admitted agent to do the work, and the requester cannot
   // quote their own unit.
-  if (
-    unit.lifecycle === "open" ||
-    (unit.lifecycle === "quoted" && !isRequester)
-  ) {
+  if (unit.lifecycle === "open" || (unit.lifecycle === "quoted" && !isRequester)) {
     if (input.viewerAgentPubkeys.length > 0 && !isRequester) {
       controls.push({
         kind: "quote_work_unit",
@@ -1141,11 +1180,7 @@ const unitControls = (input: {
   }
 
   // A rejected result can be appealed by the operator behind it, once.
-  if (
-    unit.decision?.outcome === "rejected" &&
-    unit.appeal === null &&
-    viewerIsAcceptedProvider
-  ) {
+  if (unit.decision?.outcome === "rejected" && unit.appeal === null && viewerIsAcceptedProvider) {
     controls.push({
       kind: "file_appeal",
       subjectRef: unit.unitRef,
@@ -1220,13 +1255,8 @@ export const projectIssue31CommunityReadModel = (
   });
 
   const viewerPubkey =
-    config.viewerPubkey !== null && HEX_64.test(config.viewerPubkey)
-      ? config.viewerPubkey
-      : null;
-  const viewerRoleState =
-    viewerPubkey === null
-      ? null
-      : communityRoleFor(fold, viewerPubkey);
+    config.viewerPubkey !== null && HEX_64.test(config.viewerPubkey) ? config.viewerPubkey : null;
+  const viewerRoleState = viewerPubkey === null ? null : communityRoleFor(fold, viewerPubkey);
   const viewerRole: Issue31CommunityRole = viewerRoleState?.role ?? "none";
   const viewerAgentPubkeys = viewerRoleState?.admittedAgentPubkeys ?? [];
 
@@ -1287,21 +1317,79 @@ export const projectIssue31CommunityReadModel = (
   }
 
   const resultsByRequestId = new Map<string, Issue31CommunityResultRow & { eventId: string }>();
-  for (const confirmed of events) {
-    if (confirmed.event.kind !== LBR_AGENTIC_CODING_RESULT_KIND) continue;
+  const refusedResultsByRequestId = new Map<string, Issue31CommunityResultRefusal[]>();
+  // A result set is folded in record order, not in whatever order the relay
+  // happened to return. Which delivery *stands* is a security answer here, not
+  // a cosmetic one, so it cannot depend on arrival order.
+  const resultEvents = events
+    .filter((confirmed) => confirmed.event.kind === LBR_AGENTIC_CODING_RESULT_KIND)
+    .sort(
+      (left, right) =>
+        left.event.created_at - right.event.created_at ||
+        left.event.id.localeCompare(right.event.id),
+    );
+  for (const confirmed of resultEvents) {
     const requestEventId =
       taggedEventId(confirmed.event.tags, "request") ?? tagValue(confirmed.event.tags, "e") ?? null;
-    if (requestEventId === null || !requests.has(requestEventId)) {
+    const request = requestEventId === null ? undefined : requests.get(requestEventId);
+    if (requestEventId === null || request === undefined) {
       rejectedRecordCount += 1;
       continue;
     }
     const summary = confirmed.event.content.slice(0, 4_096);
+    const idempotencyRef = paramValue(confirmed.event.tags, LBR_IDEMPOTENCY_PARAM);
+    const refuse = (detail: string): void => {
+      const rows = refusedResultsByRequestId.get(requestEventId) ?? [];
+      rows.push({
+        sourceEventId: confirmed.event.id,
+        requestEventId,
+        unitRef: request.workUnit.workUnitRef,
+        providerPubkey: confirmed.event.pubkey,
+        idempotencyRef,
+        code: ISSUE31_COMMUNITY_RESULT_REPLAY_CODE,
+        detail,
+        admittedResultEventId: resultsByRequestId.get(requestEventId)?.eventId ?? null,
+      });
+      refusedResultsByRequestId.set(requestEventId, rows);
+      rejectedRecordCount += 1;
+    };
+
+    // A result that names an idempotency ref the unit never granted is a
+    // delivery lifted from somewhere else and re-bound to this unit. The grant
+    // names its own ref, so this is checkable without trusting the result.
+    if (idempotencyRef !== null && idempotencyRef !== request.workUnit.idempotencyRef) {
+      refuse(`result names idempotency ref ${idempotencyRef}, which this unit did not grant`);
+      continue;
+    }
+
+    const standing = resultsByRequestId.get(requestEventId);
+    if (standing !== undefined) {
+      // A relay legitimately redelivers, and an operator legitimately re-signs
+      // the same delivery when a publish is not acknowledged. Redelivery of the
+      // *same* result is therefore idempotent and silent: the first one stands
+      // and nothing is refused. What must not pass is a *different* result
+      // arriving under a delivery that was already made — a substitution
+      // wearing the shape of an update.
+      const sameDelivery =
+        standing.providerPubkey === confirmed.event.pubkey &&
+        standing.displaySummary === summary &&
+        standing.idempotencyRef === idempotencyRef;
+      if (sameDelivery) continue;
+      refuse(
+        standing.providerPubkey === confirmed.event.pubkey
+          ? "a different result was already delivered for this unit"
+          : "another provider already delivered a result for this unit",
+      );
+      continue;
+    }
+
     resultsByRequestId.set(requestEventId, {
       eventId: confirmed.event.id,
       sourceEventId: confirmed.event.id,
       providerPubkey: confirmed.event.pubkey,
       providerOperatorPubkey: communityOperatorForAgent(fold, confirmed.event.pubkey),
       createdAt: confirmed.event.created_at,
+      idempotencyRef,
       untrustedSummary: quoteOrMarker({
         content: summary === "" ? " " : summary,
         authorPubkey: confirmed.event.pubkey,
@@ -1317,9 +1405,7 @@ export const projectIssue31CommunityReadModel = (
       const acceptedQuote = quotes.find((quote) => quote.accepted) ?? null;
       const result = resultsByRequestId.get(requestEventId) ?? null;
       const decision =
-        result === null
-          ? null
-          : (arbitration.decisionsByResultEventId.get(result.eventId) ?? null);
+        result === null ? null : (arbitration.decisionsByResultEventId.get(result.eventId) ?? null);
       const verification =
         result === null
           ? null
@@ -1358,6 +1444,7 @@ export const projectIssue31CommunityReadModel = (
         quotes,
         acceptedProviderPubkey: acceptedQuote?.providerPubkey ?? null,
         result,
+        refusedResults: refusedResultsByRequestId.get(requestEventId) ?? [],
         verification,
         decision,
         appeal,
@@ -1377,7 +1464,8 @@ export const projectIssue31CommunityReadModel = (
     },
   );
   workUnits.sort(
-    (left, right) => right.expiresAtUnix - left.expiresAtUnix || left.unitRef.localeCompare(right.unitRef),
+    (left, right) =>
+      right.expiresAtUnix - left.expiresAtUnix || left.unitRef.localeCompare(right.unitRef),
   );
 
   // ---- room-level controls ---------------------------------------------
@@ -1468,6 +1556,7 @@ export const projectIssue31CommunityReadModel = (
     experience: experienceModel(events, config),
     controls: roomControls,
     refusals: fold.refusals,
+    resultRefusals: [...refusedResultsByRequestId.values()].flat(),
     rejectedRecordCount: rejectedRecordCount + hardRefusals.length,
   };
 };

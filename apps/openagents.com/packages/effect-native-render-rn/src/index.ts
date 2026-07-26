@@ -180,6 +180,13 @@ export interface ReactNativeRuntime {
   readonly TextInput: unknown
   readonly FlatList: unknown
   readonly SectionList: unknown
+  /**
+   * Host scroll container for `Stack({ scroll: true })`. Optional so an
+   * existing headless host stub keeps type-checking; when a scrolling Stack is
+   * rendered without it the renderer throws instead of silently drawing a
+   * clipped, unscrollable View (the omega#49 failure).
+   */
+  readonly ScrollView?: unknown
   readonly Image: unknown
   readonly Modal: unknown
   readonly PanResponder?: {
@@ -780,6 +787,94 @@ const readReactNativeViewport = (dependencies: ReactNativeDependencies): Viewpor
   }
 }
 
+// `Stack({ scroll: true })` lowering (omega#49).
+//
+// A Stack is a layout container, so React Native lays its children out and
+// then clips whatever overflows the parent frame — with no way to reach it.
+// On a 402x874pt phone that silently truncated the Workroom at "Authority
+// receipts": Local memory, the withheld-source coverage line and Reminders
+// were rendered and unreachable. `scroll: true` says the region owns its
+// overflow, and the honest RN host for a finite heterogeneous run of sections
+// is ScrollView (List/Transcript stay the answer for long homogeneous data
+// that must virtualize).
+//
+// The arrangement (flexDirection/gap/align/justify/padding) moves to
+// `contentContainerStyle`, because ScrollView lays its children out in an
+// inner content view and ignores those properties on its own frame style. The
+// app's `style` stays on the frame, where width/height/flex size the viewport
+// the content scrolls inside.
+//
+// `scrollToKey` is still unsupported for a Stack here (it needs per-child
+// layout measurement, unlike the indexed FlatList in renderTranscript); it was
+// ignored before this change too, so nothing regresses.
+const renderScrollingStack = (
+  view: StackView,
+  arrangement: ReactNativeStyle,
+  direction: string,
+  dependencies: ReactNativeDependencies,
+  report: IntentReporter,
+  options: ReactNativeRenderOptions
+): ReactElementLike => {
+  const ScrollView = dependencies.ReactNative.ScrollView
+  if (ScrollView === undefined) {
+    // Never fall back to a plain View: that is exactly the clipped,
+    // unreachable region this lowering exists to prevent, and it would fail
+    // silently on screen instead of loudly in the host wiring.
+    throw new Error("Stack({ scroll: true }) requires ReactNative.ScrollView from the host app")
+  }
+  type NativeScrollHandle = Readonly<{
+    scrollToEnd?: (options?: Readonly<{ animated?: boolean }>) => void
+  }>
+  let scrollHandle: NativeScrollHandle | null = null
+  let lastPinned = view.pinToEnd === true
+  const reportPinned = (pinned: boolean): void => {
+    if (view.onPinnedChange === undefined || pinned === lastPinned) return
+    lastPinned = pinned
+    runReportedIntent(report, view.onPinnedChange, pinned)
+  }
+  return createElement(
+    dependencies,
+    ScrollView,
+    {
+      ...baseProps(view, viewStyle(view, options)),
+      contentContainerStyle: arrangement,
+      ...(direction === "row" ? { horizontal: true } : {}),
+      // Same rule as the non-scrolling Stack: a labelled structural container
+      // must not become one giant VoiceOver focus target that hides every
+      // interactive descendant.
+      accessible: false,
+      importantForAccessibility: "no",
+      ...(view.pinToEnd === true || view.preserveScrollAnchor === true
+        ? { maintainVisibleContentPosition: { minIndexForVisible: 0 } }
+        : {}),
+      ref: (value: NativeScrollHandle | null) => {
+        scrollHandle = value
+      },
+      onContentSizeChange: () => {
+        if (view.pinToEnd !== true) return
+        scrollHandle?.scrollToEnd?.({ animated: false })
+        reportPinned(true)
+      },
+      ...(view.onPinnedChange === undefined ? {} : {
+        scrollEventThrottle: 16,
+        onScroll: (event: Readonly<{ nativeEvent?: Readonly<{
+          contentOffset?: Readonly<{ y?: number }>
+          contentSize?: Readonly<{ height?: number }>
+          layoutMeasurement?: Readonly<{ height?: number }>
+        }> }>) => {
+          const native = event.nativeEvent
+          const offset = native?.contentOffset?.y
+          const content = native?.contentSize?.height
+          const viewport = native?.layoutMeasurement?.height
+          if (typeof offset !== "number" || typeof content !== "number" || typeof viewport !== "number") return
+          reportPinned(content - viewport - offset <= 48)
+        }
+      })
+    },
+    ...view.children.map((child) => renderResolvedReactNativeView(child, dependencies, report, options))
+  )
+}
+
 const renderStack = (
   view: StackView,
   dependencies: ReactNativeDependencies,
@@ -799,14 +894,19 @@ const renderStack = (
   const direction = resolveResponsiveValue(view.direction)
   const gap = view.gap === undefined ? undefined : resolveResponsiveValue(view.gap)
   const padding = view.padding === undefined ? undefined : resolveResponsiveValue(view.padding)
-  const style = mergeNativeStyles({
+  const arrangement: ReactNativeStyle = {
     display: "flex",
     flexDirection: direction,
     ...(gap === undefined ? {} : { gap: spacingValue(options.theme ?? defaultTheme, gap) }),
     ...(view.align === undefined ? {} : { alignItems: flexKeyword(view.align) }),
     ...(view.justify === undefined ? {} : { justifyContent: flexKeyword(view.justify) }),
     ...(padding === undefined ? {} : { padding: spacingValue(options.theme ?? defaultTheme, padding) })
-  }, viewStyle(view, options))
+  }
+  const style = mergeNativeStyles(arrangement, viewStyle(view, options))
+
+  if (view.scroll === true) {
+    return renderScrollingStack(view, arrangement, direction, dependencies, report, options)
+  }
 
   return createElement(
     dependencies,

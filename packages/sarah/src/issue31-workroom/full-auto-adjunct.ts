@@ -25,7 +25,12 @@
  */
 import { Schema as S } from "effect";
 
-import { MAX_ISSUE31_TIMESTAMP_MS, isIssue31PublicRef } from "./host-adjunct.ts";
+import {
+  MAX_ISSUE31_TIMESTAMP_MS,
+  assertIssue31AdjunctDeliveryLaw,
+  isIssue31PublicRef,
+  issue31AdjunctDeliveryFields,
+} from "./host-adjunct.ts";
 
 export const ISSUE31_FULL_AUTO_ADJUNCT_SCHEMA =
   "openagents.omega.issue31.fullauto.v1" as const;
@@ -305,12 +310,15 @@ export type Issue31EvidenceChain = S.Schema.Type<typeof Issue31EvidenceChainSche
 // Envelope
 // ---------------------------------------------------------------------------
 
+export const ISSUE31_FULL_AUTO_ADJUNCT_RECORD_TYPE = "full_auto_detail" as const;
+
 export const Issue31FullAutoAdjunctSchema = S.Struct({
   schema: S.Literal(ISSUE31_FULL_AUTO_ADJUNCT_SCHEMA),
   hostRef: PublicRef,
   /** Must equal the `host.v1` snapshot that advertised these capabilities. */
   snapshotRef: PublicRef,
   generatedAtMs: TimestampMs,
+  ...issue31AdjunctDeliveryFields(ISSUE31_FULL_AUTO_ADJUNCT_RECORD_TYPE),
   runs: S.Array(Issue31FullAutoRunSchema).check(S.isMaxLength(MAX_ISSUE31_FULL_AUTO_RUNS)),
   accounts: S.Array(Issue31ProviderAccountSchema).check(
     S.isMaxLength(MAX_ISSUE31_FULL_AUTO_ACCOUNTS),
@@ -453,7 +461,12 @@ const decodeAdjunct = S.decodeUnknownSync(Issue31FullAutoAdjunctSchema);
 
 export const decodeIssue31FullAutoAdjunct = (value: unknown): Issue31FullAutoAdjunct => {
   const adjunct = decodeAdjunct(value, { onExcessProperty: "error" });
-  assertSafeRefs([adjunct.hostRef, adjunct.snapshotRef]);
+  assertIssue31AdjunctDeliveryLaw(adjunct);
+  assertSafeRefs([
+    adjunct.hostRef,
+    adjunct.snapshotRef,
+    ...(adjunct.grantRef === undefined ? [] : [adjunct.grantRef]),
+  ]);
 
   const runRefs = adjunct.runs.map((run) => run.runRef);
   assertUnique(runRefs, "Issue 31 Full Auto adjunct repeats a run reference.");

@@ -2030,6 +2030,21 @@ export interface StackView extends NodeBase {
   readonly justify?: StackJustify
   readonly padding?: ResponsiveValue<SpacingToken>
   readonly style?: StackStyle
+  /**
+   * Declare this Stack a scroll region along its own `direction` axis.
+   *
+   * A Stack is a layout container, so by default its content is laid out and
+   * whatever overflows the parent frame is simply unreachable — on a phone that
+   * silently truncates a long section stack at the bottom of the screen
+   * (omega#49). `scroll: true` says the region owns its overflow: the renderer
+   * lowers it to the host's scroll container (React Native `ScrollView`) so a
+   * finite, heterogeneous run of sections stays reachable by swipe. Long
+   * homogeneous data still belongs in `List`/`Transcript`, which virtualize.
+   *
+   * Omitted (the default) keeps the plain non-scrolling container every
+   * existing Stack renders today.
+   */
+  readonly scroll?: boolean
   // Scroll-region auto-pin (imperative view effect as data): when true the
   // renderer keeps the region scrolled to its end as content grows; the
   // renderer reports `onPinnedChange` with a boolean when the user scrolls
@@ -3870,6 +3885,7 @@ export const StackSchema: Schema.Codec<StackView, StackView> = Schema.TaggedStru
   justify: StackJustifySchema.pipe(Schema.optionalKey),
   padding: ResponsiveSpacingTokenSchema.pipe(Schema.optionalKey),
   style: StackStyleSchema.pipe(Schema.optionalKey),
+  scroll: Schema.Boolean.pipe(Schema.optionalKey),
   pinToEnd: Schema.Boolean.pipe(Schema.optionalKey),
   onPinnedChange: IntentRefSchema.pipe(Schema.optionalKey),
   preserveScrollAnchor: Schema.Boolean.pipe(Schema.optionalKey),

@@ -167,16 +167,75 @@ export const openExpoIssue31OutboundEventStore = (
   };
 };
 
-export const openExpoIssue31LocalPairingRecordStore = (
+/**
+ * The record type of one persisted pairing row, or `null` when it cannot be
+ * read.
+ *
+ * Unreadable is deliberately not "evictable". A row whose type this cannot
+ * establish might be the revocation, and a bound that discards what it cannot
+ * classify launders exactly the record it must never lose.
+ */
+const persistedPairingRecordType = (recordJson: string): string | null => {
+  try {
+    const value = JSON.parse(recordJson) as unknown;
+    if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
+    const recordType = (value as Readonly<Record<string, unknown>>)["recordType"];
+    return typeof recordType === "string" ? recordType : null;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Which rows to discard to make room for one more pairing record, or a refusal.
+ *
+ * The old rule here was `DELETE ... WHERE sequence NOT IN (newest N)` — plain
+ * FIFO. That is a revocation hole with a slow fuse (omega#49): a device that
+ * pairs, is revoked, and then accumulates pairing traffic pushes the
+ * `grant_revocation` row out of the window while the `scoped_grant` it revokes
+ * is still in it, and the next launch folds an active grant from history the
+ * owner had already cut off. A silent un-revocation across a restart is exactly
+ * the shape of the failure the device surface showed.
+ *
+ * So eviction is revocation-preserving, as it already is for the community
+ * room: `grant_revocation` rows are never discarded, and when only revocations
+ * remain the store refuses the write and says so. Refusing to store one more
+ * pairing record is visible and recoverable. Forgetting a revocation is not.
+ *
+ * Pure, so the rule can be falsified directly rather than only through SQLite.
+ */
+export const issue31PairingEvictionPlan = (input: {
+  readonly rows: ReadonlyArray<Readonly<{ sequence: number; recordType: string | null }>>;
+  readonly maximumRecords: number;
+}): ReadonlyArray<number> => {
+  const overflow = input.rows.length + 1 - input.maximumRecords;
+  if (overflow <= 0) return [];
+  const evictable = [...input.rows]
+    .sort((left, right) => left.sequence - right.sequence)
+    .filter((row) => row.recordType !== null && row.recordType !== "grant_revocation");
+  if (evictable.length < overflow) {
+    throw new Error(
+      "Issue 31 local pairing history is full of revocations; none was discarded. A revocation a bound forgets is not a revocation.",
+    );
+  }
+  return evictable.slice(0, overflow).map((row) => row.sequence);
+};
+
+/**
+ * The pairing-record store over an already-open database.
+ *
+ * Split out from the Expo wrapper for the same reason the confirmed-record
+ * store is: the bound that must not launder a revocation has to be provable
+ * against a real SQLite file, including a genuine close-and-reopen, and that is
+ * not checkable while the store can only be constructed inside Expo.
+ */
+export const createIssue31LocalPairingRecordStore = (
+  database: Issue31SQLiteDatabase,
   maximumRecords = 32,
 ): Issue31LocalPairingRecordStore => {
   if (!Number.isSafeInteger(maximumRecords) || maximumRecords < 4 || maximumRecords > 128) {
     throw new Error("Issue 31 local pairing record bound is invalid.");
   }
-  const sqlite = require("expo-sqlite") as Readonly<{
-    openDatabaseSync: (name: string) => Issue31SQLiteDatabase;
-  }>;
-  const database = sqlite.openDatabaseSync("openagents-omega-issue31.db");
   database.execSync(`
     PRAGMA journal_mode = WAL;
     CREATE TABLE IF NOT EXISTS issue31_local_pairing_records (
@@ -222,19 +281,40 @@ export const openExpoIssue31LocalPairingRecordStore = (
         }
         return;
       }
+      const rows = database
+        .getAllSync<Readonly<{ sequence: number; record_json: string }>>(
+          "SELECT sequence, record_json FROM issue31_local_pairing_records",
+        )
+        .map((row) => ({
+          sequence: row.sequence,
+          recordType: persistedPairingRecordType(row.record_json),
+        }));
+      // Throws rather than evicting when only revocations are left. The caller
+      // sees a refusal; nothing is silently forgotten.
+      for (const sequence of issue31PairingEvictionPlan({ rows, maximumRecords })) {
+        database.runSync("DELETE FROM issue31_local_pairing_records WHERE sequence = ?", sequence);
+      }
       database.runSync(
         "INSERT INTO issue31_local_pairing_records (canonical_record_id, event_json, record_json) VALUES (?, ?, ?)",
         record.canonicalRecordId,
         eventJson,
         recordJson,
       );
-      database.runSync(
-        "DELETE FROM issue31_local_pairing_records WHERE sequence NOT IN (SELECT sequence FROM issue31_local_pairing_records ORDER BY sequence DESC LIMIT ?)",
-        maximumRecords,
-      );
     },
     close: () => database.closeSync(),
   };
+};
+
+export const openExpoIssue31LocalPairingRecordStore = (
+  maximumRecords = 32,
+): Issue31LocalPairingRecordStore => {
+  const sqlite = require("expo-sqlite") as Readonly<{
+    openDatabaseSync: (name: string) => Issue31SQLiteDatabase;
+  }>;
+  return createIssue31LocalPairingRecordStore(
+    sqlite.openDatabaseSync("openagents-omega-issue31.db"),
+    maximumRecords,
+  );
 };
 
 const decodePrivateRecord = (value: unknown): Issue31PrivateRecord => {

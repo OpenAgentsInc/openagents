@@ -930,3 +930,70 @@ describe("Issue 31 owner-private withheld sources", () => {
     }
   });
 });
+
+describe("issue 31 owner-private revocation reason", () => {
+  const revocation = (): Issue31ConfirmedEvent =>
+    privateEvent(
+      "f".repeat(64),
+      decodeIssue31PairingRecord({
+        schema: ISSUE31_PAIRING_SCHEMA,
+        recordType: "grant_revocation",
+        hostRef: "omega.host.local",
+        hostPublicKeyHex,
+        sarahPublicKeyHex,
+        devicePublicKeyHex,
+        issuedAt: 1_000,
+        grantRef,
+        generation: 1,
+        reasonRef: "reason.omega.owner_revoked",
+      }),
+    );
+
+  test("a revoked grant is reported as revoked, not as missing", () => {
+    // omega#49: the room stopping at "ready" was the first defect and is fixed
+    // in the runtime. This is the second half — falling through to the default
+    // `active_grant_missing` describes a deliberate owner decision as an
+    // absence, which is the same mistake as reporting an authentication
+    // failure as a discovery one.
+    const model = projectIssue31OwnerPrivateReadModel(snapshot([revocation()]), {
+      nowUnixSeconds: 1_100,
+    });
+    expect(model.status).toBe("unavailable");
+    expect(model.reasonRef).toBe("reason.issue31.owner_private.grant_revoked");
+  });
+
+  test("a device with no grant at all still reports the grant as missing", () => {
+    // The revoked reason must not swallow the genuinely-absent case.
+    const noGrant: Issue31NostrClientSnapshot = {
+      ...snapshot([]),
+      confirmedEvents: [],
+    };
+    const model = projectIssue31OwnerPrivateReadModel(noGrant, { nowUnixSeconds: 1_100 });
+    expect(model.status).toBe("unavailable");
+    expect(model.reasonRef).toBe("reason.issue31.owner_private.active_grant_missing");
+  });
+
+  test("another device's revocation does not revoke this one", () => {
+    const otherDevice = "9".repeat(64);
+    const strayRevocation = privateEvent(
+      "e".repeat(64),
+      decodeIssue31PairingRecord({
+        schema: ISSUE31_PAIRING_SCHEMA,
+        recordType: "grant_revocation",
+        hostRef: "omega.host.local",
+        hostPublicKeyHex,
+        sarahPublicKeyHex,
+        devicePublicKeyHex: otherDevice,
+        issuedAt: 1_000,
+        grantRef: "grant.omega.device_2",
+        generation: 1,
+        reasonRef: "reason.omega.owner_revoked",
+      }),
+    );
+    const model = projectIssue31OwnerPrivateReadModel(snapshot([strayRevocation]), {
+      nowUnixSeconds: 1_100,
+    });
+    // This device's own grant is untouched, so the room stays available.
+    expect(model.status).toBe("ready");
+  });
+});

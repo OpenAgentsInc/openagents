@@ -86,6 +86,29 @@ export const issue31RelayUrlsFromEnvironment = (
   return urls;
 };
 
+/**
+ * What the device says when the owner has revoked its grant (omega#49).
+ *
+ * Named revocation, because that is what happened. The nearby notices are about
+ * discovery — "the selected Omega host announcement is absent or expired" — and
+ * reaching for one of those here would report a lookup failure for an authority
+ * decision the owner deliberately made. A revoked device is not a device that
+ * cannot find its host; it is a device the owner cut off, and it says so.
+ */
+export const ISSUE31_GRANT_REVOKED_NOTICE =
+  "The owner revoked this device's Omega grant. Pair again to restore access." as const;
+
+/**
+ * What the device says when a confirmed grant is simply no longer active.
+ *
+ * Expiry is not revocation and does not borrow its words. Both must stop the
+ * surface claiming a confirmed grant, which is the failure omega#49 found: the
+ * only branch that wrote `phase` and `notice` here was the one that succeeded,
+ * so a grant that stopped being active left the previous success on screen.
+ */
+export const ISSUE31_GRANT_INACTIVE_NOTICE =
+  "This device's Omega grant is no longer active. Pair again to restore access." as const;
+
 export const ISSUE31_MOBILE_REQUESTED_SCOPES = [
   "observe_issue31",
   "send_message",
@@ -526,6 +549,23 @@ export const openIssue31MobileNostrRuntime = async (
     let selectedHostPublicKeyHex: string | null = null;
     let pendingRequestEventId: string | null = null;
     let pendingResponseEventId: string | null = null;
+    /** Every grant reference this launch has folded to a revoked state. */
+    let revokedGrantRefs: ReadonlySet<string> = new Set<string>();
+    /**
+     * Revoked grants the owner has already answered by asking to pair again.
+     *
+     * A revoked grant stays in device history forever, so without this the
+     * revocation notice would overwrite the progress of the very re-pairing it
+     * asked for. Asking to pair again acknowledges the revocations the device
+     * knows about at that moment — and only those, so a revocation that arrives
+     * afterwards still surfaces.
+     *
+     * Deliberately by grant reference rather than by timestamp: two records
+     * issued in the same second must not decide whether a device believes it is
+     * revoked. It is also deliberately not restored from disk — a relaunch has
+     * not asked for anything, so it starts by telling the owner the truth.
+     */
+    let acknowledgedRevokedGrantRefs: ReadonlySet<string> = new Set<string>();
     let activeGrant: Issue31GrantState | null = null;
     let selectedHostDiscoveryActive = false;
     let discoveryExpiryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -684,6 +724,7 @@ export const openIssue31MobileNostrRuntime = async (
     };
     const reconcileControl = (snapshot: Issue31NostrClientSnapshot): void => {
       const now = Math.floor(Date.now() / 1_000);
+      const priorPhase = phase;
       if (discoveryExpiryTimer !== null) clearTimeout(discoveryExpiryTimer);
       discoveryExpiryTimer = null;
       const nextDiscoveryExpiry = snapshot.confirmedEvents
@@ -766,29 +807,40 @@ export const openIssue31MobileNostrRuntime = async (
             : [],
         ),
       );
+      // Every grant this device can fold for the selected host, in both
+      // terminal states. Folding only the active ones — as this did — throws
+      // away the record that says the owner cut the device off, and then there
+      // is nothing left to distinguish "revoked" from "not folded yet".
+      const foldedGrants = [...matchingGrantRefs].flatMap((grantRef) => {
+        try {
+          const grant = foldIssue31Grant(pairingEvents, grantRef);
+          return grant === null ||
+            selectedHost === undefined ||
+            grant.hostRef !== selectedHost.hostRef ||
+            grant.sarahPublicKeyHex !== selectedHost.sarahPublicKeyHex
+            ? []
+            : [grant];
+        } catch {
+          return [];
+        }
+      });
+      const byGrantPrecedence = (left: Issue31GrantState, right: Issue31GrantState): number =>
+        right.generation - left.generation ||
+        right.issuedAt - left.issuedAt ||
+        right.sourceEventId.localeCompare(left.sourceEventId);
       activeGrant =
-        [...matchingGrantRefs]
-          .flatMap((grantRef) => {
-            try {
-              const grant = foldIssue31Grant(pairingEvents, grantRef);
-              return grant?.status === "active" &&
-                grant.expiresAt !== null &&
-                grant.expiresAt > now &&
-                selectedHost !== undefined &&
-                grant.hostRef === selectedHost.hostRef &&
-                grant.sarahPublicKeyHex === selectedHost.sarahPublicKeyHex
-                ? [grant]
-                : [];
-            } catch {
-              return [];
-            }
-          })
-          .sort(
-            (left, right) =>
-              right.generation - left.generation ||
-              right.issuedAt - left.issuedAt ||
-              right.sourceEventId.localeCompare(left.sourceEventId),
-          )[0] ?? null;
+        foldedGrants
+          .filter(
+            (grant) =>
+              grant.status === "active" && grant.expiresAt !== null && grant.expiresAt > now,
+          )
+          .sort(byGrantPrecedence)[0] ?? null;
+      const revokedGrants = foldedGrants
+        .filter((grant) => grant.status === "revoked")
+        .sort(byGrantPrecedence);
+      revokedGrantRefs = new Set(revokedGrants.map((grant) => grant.grantRef));
+      const revokedGrant =
+        revokedGrants.find((grant) => !acknowledgedRevokedGrantRefs.has(grant.grantRef)) ?? null;
       const ownerPrivateScope = issue31MobileOwnerPrivateScope(selectedHost, activeGrant, now);
       const nextOwnerAuthorScopeRef =
         selectedHost === undefined
@@ -805,6 +857,14 @@ export const openIssue31MobileNostrRuntime = async (
       if (activeGrant !== null) {
         phase = "paired";
         notice = "Device grant confirmed by signed Nostr records.";
+      } else if (selectedHostDiscoveryActive && revokedGrant !== null) {
+        phase = discoveredHosts.length === 0 ? "discovering" : "ready";
+        notice = ISSUE31_GRANT_REVOKED_NOTICE;
+      } else if (selectedHostDiscoveryActive && priorPhase === "paired") {
+        // Confirmed a moment ago and not confirmable now, with no revocation to
+        // explain it: expired, or the chain fell out of the record set.
+        phase = discoveredHosts.length === 0 ? "discovering" : "ready";
+        notice = ISSUE31_GRANT_INACTIVE_NOTICE;
       } else if (phase === "discovering" && discoveredHosts.length > 0) {
         phase = "ready";
         notice = "Confirm the admitted host fingerprint before pairing.";
@@ -985,6 +1045,9 @@ export const openIssue31MobileNostrRuntime = async (
         });
         pendingRequestEventId = await publishPairingRecord(request);
         pendingResponseEventId = null;
+        // Asking to pair again answers the revocations already known. One that
+        // arrives after this still stops the surface.
+        acknowledgedRevokedGrantRefs = new Set(revokedGrantRefs);
         phase = "pairing";
         notice = "Pairing request signed and queued; waiting for the host challenge.";
         emitControl();

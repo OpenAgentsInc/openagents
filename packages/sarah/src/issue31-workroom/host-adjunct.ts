@@ -14,6 +14,70 @@ const TimestampMs = S.Number.check(
   S.isGreaterThanOrEqualTo(0),
   S.isLessThanOrEqualTo(MAX_ISSUE31_TIMESTAMP_MS),
 );
+const Hex64 = S.String.check(S.isPattern(/^[0-9a-f]{64}$/));
+const Generation = S.Number.check(
+  S.isInt(),
+  S.isGreaterThanOrEqualTo(1),
+  S.isLessThanOrEqualTo(Number.MAX_SAFE_INTEGER),
+);
+
+/**
+ * How an adjunct names the host and the device it was delivered to (omega#49).
+ *
+ * An adjunct is a *statement about a host*, so on its own it names neither the
+ * key that authored it nor the device it is for. Every other owner-private
+ * Issue 31 record does, and `assertRecordIdentity` in the private envelope
+ * refuses one whose claims disagree with the signed seal author and the gift
+ * wrap recipient. An adjunct that could not make those claims would have to be
+ * waived through that check — which is exactly the binding that stops one host
+ * addressing another host's device.
+ *
+ * So the adjunct states them itself. These fields are optional at the type
+ * level because an adjunct that has not been delivered anywhere — one built by
+ * the host for its own panels — has no device to name; the law below is
+ * all-or-nothing, so a *partial* delivery claim is never representable.
+ */
+export const issue31AdjunctDeliveryFields = <RecordType extends string>(
+  recordType: RecordType,
+) =>
+  ({
+    /** Present exactly when this adjunct was delivered to a device. */
+    recordType: S.optional(S.Literal(recordType)),
+    /** The host key that must equal the signed seal author. */
+    hostPublicKeyHex: S.optional(Hex64),
+    /** The device key that must equal the gift wrap recipient. */
+    devicePublicKeyHex: S.optional(Hex64),
+    /** The scoped grant this delivery was made under. */
+    grantRef: S.optional(PublicRef),
+    /** The grant generation the host believed was current. */
+    expectedGeneration: S.optional(Generation),
+  }) as const;
+
+export const ISSUE31_ADJUNCT_DELIVERY_KEYS = [
+  "recordType",
+  "hostPublicKeyHex",
+  "devicePublicKeyHex",
+  "grantRef",
+  "expectedGeneration",
+] as const;
+
+/**
+ * Refuse a half-stated delivery claim.
+ *
+ * A record carrying a device key but no host key, or a grant reference but no
+ * device, would let a reader believe it had checked a binding that was never
+ * made. Either every delivery field is present or none is.
+ */
+export const assertIssue31AdjunctDeliveryLaw = (
+  adjunct: Readonly<Record<string, unknown>>,
+): void => {
+  const stated = ISSUE31_ADJUNCT_DELIVERY_KEYS.filter(
+    (key) => adjunct[key] !== undefined,
+  );
+  if (stated.length !== 0 && stated.length !== ISSUE31_ADJUNCT_DELIVERY_KEYS.length) {
+    throw new Error("Issue 31 adjunct states a partial delivery binding.");
+  }
+};
 
 export const Issue31ProjectionCapabilitySchema = S.Literals([
   "connection_identity",
@@ -84,12 +148,15 @@ export const Issue31HostProjectionSchema = S.Struct({
 });
 export interface Issue31HostProjection extends S.Schema.Type<typeof Issue31HostProjectionSchema> {}
 
+export const ISSUE31_HOST_ADJUNCT_RECORD_TYPE = "host_snapshot" as const;
+
 export const Issue31HostAdjunctSchema = S.Struct({
   schema: S.Literal(ISSUE31_HOST_ADJUNCT_SCHEMA),
   hostRef: PublicRef,
   snapshotRef: PublicRef,
   generatedAtMs: TimestampMs,
   projections: S.Array(Issue31HostProjectionSchema).check(S.isMinLength(4), S.isMaxLength(4)),
+  ...issue31AdjunctDeliveryFields(ISSUE31_HOST_ADJUNCT_RECORD_TYPE),
 });
 export interface Issue31HostAdjunct extends S.Schema.Type<typeof Issue31HostAdjunctSchema> {}
 
@@ -217,7 +284,11 @@ const decodeHostAdjunct = S.decodeUnknownSync(Issue31HostAdjunctSchema);
 
 export const decodeIssue31HostAdjunct = (value: unknown): Issue31HostAdjunct => {
   const adjunct = decodeHostAdjunct(value, { onExcessProperty: "error" });
+  assertIssue31AdjunctDeliveryLaw(adjunct);
   if (!isIssue31PublicRef(adjunct.hostRef) || !isIssue31PublicRef(adjunct.snapshotRef)) {
+    throw new Error("Issue 31 host adjunct contains an unsafe reference.");
+  }
+  if (adjunct.grantRef !== undefined && !isIssue31PublicRef(adjunct.grantRef)) {
     throw new Error("Issue 31 host adjunct contains an unsafe reference.");
   }
   const capabilities = adjunct.projections.map((projection) => projection.capability);

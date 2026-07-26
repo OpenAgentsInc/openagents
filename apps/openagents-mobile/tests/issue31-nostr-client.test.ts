@@ -156,12 +156,14 @@ describe("Issue 31 mobile device key vault", () => {
     const first = await openIssue31DeviceIdentity({
       store: firstStore.store,
       randomBytes: async () => new Uint8Array(deviceSecret),
+      platform: "ios",
     });
     const second = await openIssue31DeviceIdentity({
       store: firstStore.store,
       randomBytes: async () => {
         throw new Error("must not regenerate");
       },
+      platform: "ios",
     });
     expect(first.publicKeyHex).toBe(second.publicKeyHex);
     expect(Object.keys(first)).toEqual(["publicKeyHex", "npub", "signer", "close"]);
@@ -182,15 +184,16 @@ describe("Issue 31 mobile device key vault", () => {
     );
     first.close();
     second.close();
-    await clearIssue31DeviceIdentity(firstStore.store);
+    await clearIssue31DeviceIdentity(firstStore.store, "ios");
     expect(firstStore.values.size).toBe(0);
   });
 
-  test("fails closed when the native store cannot guarantee this-device-only custody", async () => {
+  test("fails closed when an iOS store cannot guarantee this-device-only custody", async () => {
     await expect(
       openIssue31DeviceIdentity({
         store: fakeStore(false).store,
         randomBytes: async () => new Uint8Array(deviceSecret),
+        platform: "ios",
       }),
     ).rejects.toMatchObject({
       reason: "secure_store_unavailable",

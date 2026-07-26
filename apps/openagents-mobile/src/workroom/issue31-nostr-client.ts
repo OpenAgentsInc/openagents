@@ -3,8 +3,10 @@ import { verifyEvent } from "nostr-effect/pure";
 
 import {
   ISSUE31_HOST_ANNOUNCEMENT_KIND,
+  ISSUE31_PAIRING_SCHEMA,
   ISSUE31_PRIVATE_GIFT_WRAP_KIND,
   decodeIssue31AnyHostAnnouncement,
+  isIssue31DeliveredAdjunct,
   unwrapIssue31PrivateGiftWrap,
   type Issue31AnyHostAnnouncement,
   type Issue31NostrSigner,
@@ -448,6 +450,53 @@ export const createIssue31NostrClient = (
   const eventsById = new Map<string, Issue31ConfirmedEvent>();
   const replaceableByCoordinate = new Map<string, string>();
   const privateEventByRumorId = new Map<string, string>();
+  /**
+   * Which `(grantRef, hostRef)` pairs each host key has actually granted to
+   * THIS device, learned from the confirmed pairing chain (omega#49).
+   *
+   * The envelope binds a delivered omega#47 adjunct to the host key that
+   * signed the seal and to the device that unwrapped it. It cannot bind the
+   * `hostRef` *inside* the body: a seal proves who signed, not which host the
+   * body describes. So an admitted host could otherwise deliver a snapshot
+   * labelled with a second host's `hostRef`, and a device paired to both would
+   * bind it to the wrong grant.
+   *
+   * Only the pairing chain states that relation, so it is the authority here.
+   */
+  const grantedRefsByHostKey = new Map<string, Set<string>>();
+  const grantBindingKey = (grantRef: string, hostRef: string): string =>
+    `${grantRef} ${hostRef}`;
+  /**
+   * True when a delivered adjunct does not contradict the pairing chain.
+   *
+   * Absence of evidence is deliberately not a refusal. A relay replay resumes
+   * from a cursor already past the grant records, so after a restart a device
+   * legitimately holds a live grant it will not be served again; refusing every
+   * adjunct in that state would turn a working pairing into a permanently blank
+   * Full Auto section. What is refused is a *contradiction*: this host has
+   * granted this device something, and the adjunct names a different grant or
+   * labels itself with a different host.
+   */
+  const adjunctDeliveryContradictsGrant = (record: Issue31PrivateRecord): boolean => {
+    if (!isIssue31DeliveredAdjunct(record)) return false;
+    const granted = grantedRefsByHostKey.get(record.hostPublicKeyHex);
+    if (granted === undefined || granted.size === 0) return false;
+    return !granted.has(grantBindingKey(record.grantRef, record.hostRef));
+  };
+  const rememberGrantBinding = (record: Issue31PrivateRecord): void => {
+    if (
+      record.schema !== ISSUE31_PAIRING_SCHEMA ||
+      record.devicePublicKeyHex !== localPublicKeyHex ||
+      (record.recordType !== "scoped_grant" &&
+        record.recordType !== "grant_renewal" &&
+        record.recordType !== "grant_revocation")
+    ) {
+      return;
+    }
+    const granted = grantedRefsByHostKey.get(record.hostPublicKeyHex) ?? new Set<string>();
+    granted.add(grantBindingKey(record.grantRef, record.hostRef));
+    grantedRefsByHostKey.set(record.hostPublicKeyHex, granted);
+  };
   const storedByRelay = new Map<string, Set<string>>();
   const outboundPublishes = new Map<string, OutboundPublish>();
   for (const event of input.outboundStore?.load() ?? []) {
@@ -491,11 +540,21 @@ export const createIssue31NostrClient = (
         rejectedEventCount: relay.rejectedEventIds.size,
       }))
       .sort((left, right) => left.relayUrl.localeCompare(right.relayUrl)),
-    confirmedEvents: [...eventsById.values()].sort(
-      (left, right) =>
-        left.event.created_at - right.event.created_at ||
-        left.event.id.localeCompare(right.event.id),
-    ),
+    // Filtered here rather than at admission on purpose: a relay may serve the
+    // adjunct before the grant that entitles it, so the judgement has to be
+    // re-made against everything the device knows *now* instead of frozen at
+    // the moment one event happened to arrive.
+    confirmedEvents: [...eventsById.values()]
+      .filter(
+        (confirmed) =>
+          confirmed.privateRecord === null ||
+          !adjunctDeliveryContradictsGrant(confirmed.privateRecord),
+      )
+      .sort(
+        (left, right) =>
+          left.event.created_at - right.event.created_at ||
+          left.event.id.localeCompare(right.event.id),
+      ),
     storedEventIds: Object.fromEntries(
       [...storedByRelay]
         .sort(([left], [right]) => left.localeCompare(right))
@@ -725,6 +784,7 @@ export const createIssue31NostrClient = (
       if (currentId !== undefined) eventsById.delete(currentId);
       replaceableByCoordinate.set(coordinate, event.id);
     }
+    if (privateRecord !== null) rememberGrantBinding(privateRecord);
     eventsById.set(event.id, {
       relayUrl: relay.relayUrl,
       room,

@@ -180,6 +180,50 @@ export const ISSUE31_OWNER_READ_STATE_UNREADABLE_REASON =
 export const ISSUE31_OWNER_REMINDER_UNREADABLE_REASON =
   "reason.issue31.owner_reminder_unreadable" as const;
 
+export const ISSUE31_OWNER_GRANT_REVOKED_REASON =
+  "reason.issue31.owner_private.grant_revoked" as const;
+
+/**
+ * Fold every grant this device can see for a selected host, keeping the
+ * terminal ones rather than only the active one.
+ *
+ * The active grant is what the room needs to render. The revoked grant is what
+ * it needs to explain itself: falling through to the default
+ * `active_grant_missing` reason describes a deliberate owner decision as an
+ * absence, which is the same mistake as this room reporting an authentication
+ * failure as a discovery one (omega#49).
+ */
+const foldedGrantsFor = (
+  snapshot: Issue31NostrClientSnapshot,
+  nowUnixSeconds: number,
+): { readonly active: Issue31GrantState | null; readonly revoked: boolean } => {
+  const active = activeGrantFor(snapshot, nowUnixSeconds);
+  if (active !== null) {
+    return { active, revoked: false };
+  }
+  const pairingEvents = snapshot.confirmedEvents.flatMap((event) =>
+    event.privateRecord?.schema === "openagents.omega.issue31.pairing.v1"
+      ? [{ eventId: event.canonicalRecordId, record: event.privateRecord }]
+      : [],
+  );
+  const grantRefs = new Set(
+    pairingEvents.flatMap(({ record }) => ("grantRef" in record ? [record.grantRef] : [])),
+  );
+  const revoked = [...grantRefs].some((grantRef) => {
+    try {
+      const grant = foldIssue31Grant(pairingEvents, grantRef);
+      return (
+        grant?.status === "revoked" &&
+        grant.devicePublicKeyHex === snapshot.devicePublicKeyHex &&
+        snapshot.selectedHostPublicKeys.includes(grant.hostPublicKeyHex)
+      );
+    } catch {
+      return false;
+    }
+  });
+  return { active: null, revoked };
+};
+
 const activeGrantFor = (
   snapshot: Issue31NostrClientSnapshot,
   nowUnixSeconds: number,
@@ -520,9 +564,11 @@ export const projectIssue31OwnerPrivateReadModel = (
   snapshot: Issue31NostrClientSnapshot,
   input: Readonly<{ nowUnixSeconds: number; transcriptLimit?: number }>,
 ): Issue31OwnerPrivateReadModel => {
-  const grant = activeGrantFor(snapshot, input.nowUnixSeconds);
+  const { active: grant, revoked } = foldedGrantsFor(snapshot, input.nowUnixSeconds);
   if (grant === null) {
-    return emptyIssue31OwnerPrivateReadModel();
+    return emptyIssue31OwnerPrivateReadModel(
+      revoked ? ISSUE31_OWNER_GRANT_REVOKED_REASON : undefined,
+    );
   }
   const { records, rejected: admissionRejected } = sourceProjections(snapshot, grant);
   const { statement, rejected: coverageRejected } = hostCoverageStatement(snapshot, grant);

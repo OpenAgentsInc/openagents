@@ -22,13 +22,101 @@ import {
   decodeIssue31WithheldSourcesRecord,
   type Issue31WithheldSourcesRecord,
 } from "./withheld-sources.ts";
+import {
+  ISSUE31_ADJUNCT_DELIVERY_KEYS,
+  ISSUE31_FULL_AUTO_ADJUNCT_RECORD_TYPE,
+  ISSUE31_FULL_AUTO_ADJUNCT_SCHEMA,
+  ISSUE31_HOST_ADJUNCT_RECORD_TYPE,
+  ISSUE31_HOST_ADJUNCT_SCHEMA,
+  decodeIssue31FullAutoAdjunct,
+  decodeIssue31HostAdjunct,
+  type Issue31FullAutoAdjunct,
+  type Issue31HostAdjunct,
+} from "../issue31-workroom/index.ts";
+
+/**
+ * The identity every delivered owner-private record must state (omega#49).
+ *
+ * `assertRecordIdentity` below is the reason this exists: a record that names
+ * neither the host that signed it nor the device it was sent to cannot be
+ * checked against the signed seal author and the gift wrap recipient, and a
+ * record that skips that check is one a paired device would accept from a host
+ * it never paired with.
+ */
+export type Issue31AdjunctDelivery<RecordType extends string> = Readonly<{
+  recordType: RecordType;
+  hostPublicKeyHex: string;
+  devicePublicKeyHex: string;
+  grantRef: string;
+  expectedGeneration: number;
+}>;
+
+/** An omega#47 `host.v1` snapshot delivered to one admitted device. */
+export type Issue31DeliveredHostAdjunct = Issue31HostAdjunct &
+  Issue31AdjunctDelivery<typeof ISSUE31_HOST_ADJUNCT_RECORD_TYPE>;
+
+/** An omega#47 `fullauto.v1` detail projection delivered to one device. */
+export type Issue31DeliveredFullAutoAdjunct = Issue31FullAutoAdjunct &
+  Issue31AdjunctDelivery<typeof ISSUE31_FULL_AUTO_ADJUNCT_RECORD_TYPE>;
 
 export type Issue31PrivateRecord =
   | Issue31PairingRecord
   | Issue31CommandRecord
   | Issue31CommandRecordV2
   | Issue31OwnerProjectionRecord
-  | Issue31WithheldSourcesRecord;
+  | Issue31WithheldSourcesRecord
+  | Issue31DeliveredHostAdjunct
+  | Issue31DeliveredFullAutoAdjunct;
+
+const assertDeliveryStated = (
+  adjunct: Readonly<Record<string, unknown>>,
+  label: string,
+): void => {
+  for (const key of ISSUE31_ADJUNCT_DELIVERY_KEYS) {
+    if (adjunct[key] === undefined) {
+      throw new Error(`Issue 31 ${label} was delivered without stating its ${key}.`);
+    }
+  }
+  // Delivering a snapshot of some *other* host under this host's signature is
+  // the one substitution the seal author cannot rule out on its own, because
+  // the seal proves who signed, not which host the body describes. The two
+  // statements are made in one record so a reader can compare them.
+  if (adjunct["hostPublicKeyHex"] === adjunct["devicePublicKeyHex"]) {
+    throw new Error(`Issue 31 ${label} names one key as both host and device.`);
+  }
+};
+
+/**
+ * An omega#47 `host.v1` snapshot that has been addressed to a device.
+ *
+ * The undelivered form — the same snapshot with no delivery binding — stays
+ * decodable by `decodeIssue31HostAdjunct` for the host's own panels. Only the
+ * delivered form is admitted as an owner-private record, because only the
+ * delivered form can be checked against the envelope that carried it.
+ */
+export const decodeIssue31DeliveredHostAdjunct = (
+  value: unknown,
+): Issue31DeliveredHostAdjunct => {
+  const adjunct = decodeIssue31HostAdjunct(value);
+  assertDeliveryStated(adjunct, "host adjunct");
+  return adjunct as Issue31DeliveredHostAdjunct;
+};
+
+/** An omega#47 `fullauto.v1` detail projection addressed to a device. */
+export const decodeIssue31DeliveredFullAutoAdjunct = (
+  value: unknown,
+): Issue31DeliveredFullAutoAdjunct => {
+  const adjunct = decodeIssue31FullAutoAdjunct(value);
+  assertDeliveryStated(adjunct, "Full Auto adjunct");
+  return adjunct as Issue31DeliveredFullAutoAdjunct;
+};
+
+/** True when a private record is one of the two delivered omega#47 adjuncts. */
+export const isIssue31DeliveredAdjunct = (
+  record: Issue31PrivateRecord,
+): record is Issue31DeliveredHostAdjunct | Issue31DeliveredFullAutoAdjunct =>
+  record.schema === ISSUE31_HOST_ADJUNCT_SCHEMA ||
+  record.schema === ISSUE31_FULL_AUTO_ADJUNCT_SCHEMA;
 
 const HEX_64 = /^[0-9a-f]{64}$/;
 const HEX_128 = /^[0-9a-f]{128}$/;
@@ -155,7 +243,11 @@ const validateRecord = (record: Issue31PrivateRecord): Issue31PrivateRecord =>
         ? decodeIssue31CommandRecordV2(record)
         : record.schema === ISSUE31_WITHHELD_SOURCES_SCHEMA
           ? decodeIssue31WithheldSourcesRecord(record)
-          : decodeIssue31OwnerProjectionRecord(record);
+          : record.schema === ISSUE31_HOST_ADJUNCT_SCHEMA
+            ? decodeIssue31DeliveredHostAdjunct(record)
+            : record.schema === ISSUE31_FULL_AUTO_ADJUNCT_SCHEMA
+              ? decodeIssue31DeliveredFullAutoAdjunct(record)
+              : decodeIssue31OwnerProjectionRecord(record);
 
 export const createIssue31PrivateEnvelope = async (
   input: Readonly<{
@@ -311,6 +403,10 @@ export const unwrapIssue31PrivateGiftWrap = async (
       record = decodeIssue31OwnerProjectionRecord(contentValue);
     } else if (schema === ISSUE31_WITHHELD_SOURCES_SCHEMA) {
       record = decodeIssue31WithheldSourcesRecord(contentValue);
+    } else if (schema === ISSUE31_HOST_ADJUNCT_SCHEMA) {
+      record = decodeIssue31DeliveredHostAdjunct(contentValue);
+    } else if (schema === ISSUE31_FULL_AUTO_ADJUNCT_SCHEMA) {
+      record = decodeIssue31DeliveredFullAutoAdjunct(contentValue);
     }
   }
   if (record === null && input.requireIssue31Record !== false) {

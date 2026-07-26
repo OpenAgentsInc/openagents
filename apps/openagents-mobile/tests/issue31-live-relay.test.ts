@@ -27,6 +27,7 @@ import { finalizeEvent, generateSecretKey, getPublicKey } from "nostr-effect/pur
 import { describe, expect, test } from "vite-plus/test";
 
 import {
+  NIP_29_CREATE_GROUP_KIND,
   NIP_29_GROUP_CHAT_KIND,
   NIP_29_PUT_USER_KIND,
   NIP_29_REMOVE_USER_KIND,
@@ -215,6 +216,16 @@ describe.skipIf(LIVE_RELAY_URL === undefined || LIVE_RELAY_URL === "")(
         agentPubkey: agent.pubkey,
         operatorSeckeyHex: operator.secretKeyHex,
       });
+      // NIP-29 moderation is scoped to a group that exists. A relay answering
+      // `kind 9000` for an id it has never seen with
+      // `restricted: group not found` is stating a missing precondition, not a
+      // missing capability — omega#49 recorded that refusal as the deployed
+      // relay being unable to host a community room, and it is not.
+      const created = liveSign(admin.secretKey, {
+        kind: NIP_29_CREATE_GROUP_KIND,
+        created_at: base - 1,
+        tags: [["h", group]],
+      });
       const admitted = liveSign(admin.secretKey, {
         kind: NIP_29_PUT_USER_KIND,
         created_at: base,
@@ -248,7 +259,9 @@ describe.skipIf(LIVE_RELAY_URL === undefined || LIVE_RELAY_URL === "")(
       };
 
       try {
-        await publishLive(url, [admitted, persona, revocation, laterChatter]);
+        // The group writes are the admin's, so the session must be the admin's.
+        await publishLive(url, [created, admitted, revocation, laterChatter], admin.secretKey);
+        await publishLive(url, [persona], agent.secretKey);
 
         let first: Issue31NostrClientSnapshot | null = null;
         const firstClient = liveClient(url, cursorStore, group, (next) => {
@@ -288,7 +301,18 @@ describe.skipIf(LIVE_RELAY_URL === undefined || LIVE_RELAY_URL === "")(
           groupId: group,
         });
         const restored = secondStore.load();
-        expect(restored).toHaveLength(4);
+        // The four records this test authored must all survive the restart.
+        // The total is deliberately not asserted: now that the group genuinely
+        // exists on the relay, the relay also serves its own NIP-29 `39xxx`
+        // group-state events, which the fold reads as corroboration and never
+        // as authority. Pinning an exact count would make a correct relay look
+        // like drift.
+        // `created` is the group's precondition, not a community record the
+        // client admits, so it is deliberately not in this set.
+        for (const authored of [admitted, persona, revocation, laterChatter]) {
+          expect(restored.some((row) => row.id === authored.id)).toBe(true);
+        }
+        expect(restored.length).toBeGreaterThanOrEqual(4);
 
         const now = Math.floor(Date.now() / 1_000);
         const readmitted = liveSign(admin.secretKey, {
@@ -301,7 +325,8 @@ describe.skipIf(LIVE_RELAY_URL === undefined || LIVE_RELAY_URL === "")(
           created_at: now + 1,
           tags: [["d", "worker"], ["h", group], [...attestation]],
         });
-        await publishLive(url, [readmitted, personaAgain]);
+        await publishLive(url, [readmitted], admin.secretKey);
+        await publishLive(url, [personaAgain], agent.secretKey);
 
         let second: Issue31NostrClientSnapshot | null = null;
         const secondClient = liveClient(url, cursorStore, group, (next) => {
@@ -407,12 +432,21 @@ const liveWaitFor = async (
   throw new Error(`timed out waiting for ${label}`);
 };
 
-/** Publish through one NIP-42-authenticated socket and wait for each OK. */
+/**
+ * Publish through one NIP-42-authenticated socket and wait for each OK.
+ *
+ * `authAs` matters for NIP-29. The relay authorises a group write against the
+ * *authenticated* pubkey, not the event author, so publishing an admin's
+ * moderation event over a session authenticated as a throwaway key is refused
+ * with `auth-required: NIP-29 group write`. Records outside a group are
+ * unaffected, which is why the default stays a fresh key.
+ */
 const publishLive = async (
   url: string,
   events: ReadonlyArray<Issue31SignedNostrEvent>,
+  authAs?: Uint8Array,
 ): Promise<void> => {
-  const publisher = LocalKeySigner.fromPrivateKey(generateSecretKey());
+  const publisher = LocalKeySigner.fromPrivateKey(authAs ?? generateSecretKey());
   await withSocket(url, async (socket, next) => {
     const challengeFrame = await next();
     if (challengeFrame[0] !== "AUTH") throw new Error("expected an AUTH challenge");
