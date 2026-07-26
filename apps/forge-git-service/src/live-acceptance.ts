@@ -47,7 +47,17 @@ const git = (
       if (code === 0) {
         resolve(result);
       } else {
-        reject(new Error(`git exited with code ${code ?? "unknown"}`));
+        const detail = result.stderr
+          .replace(/oa_forge_git_[A-Za-z0-9_-]+/g, "<redacted>")
+          .slice(0, 500)
+          .trim();
+        reject(
+          new Error(
+            `git ${args[0] ?? "command"} exited with code ${code ?? "unknown"}${
+              detail === "" ? "" : `: ${detail}`
+            }`,
+          ),
+        );
       }
     });
   });
