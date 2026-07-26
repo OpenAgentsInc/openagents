@@ -104,6 +104,12 @@ const errorResponse = (error: unknown): Response => {
   // Cloud Run to repair an unexpected bootstrap dependency failure. Do not log
   // the request, NIP-98 proof, token, or exception message here.
   console.warn('forge_membership_unexpected_error', {
+    errorCode:
+      typeof error === 'object' &&
+      error !== null &&
+      typeof (error as { code?: unknown }).code === 'string'
+        ? (error as { code: string }).code
+        : undefined,
     errorName: error instanceof Error ? error.name : typeof error,
   })
   return noStoreJsonResponse(
