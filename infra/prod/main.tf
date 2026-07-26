@@ -163,6 +163,16 @@ module "oa_updates_codesign_key" {
   ]
 }
 
+# The Forge Git service and the monolith policy endpoint use one private
+# service bearer. Terraform owns only the secret container. An operator adds
+# the same random value as a secret version outside Terraform state.
+module "forge_git_policy_authority_token" {
+  source = "../modules/secret-manager-secret"
+
+  project   = var.project_id
+  secret_id = "openagents-forge-git-policy-authority-token"
+}
+
 # IDE-13 KMS authority. This grant does not create a key. It applies only when
 # the operator supplies an existing full CryptoKey resource. The Cloud Run
 # revision must also receive these non-secret values through the normal deploy:
