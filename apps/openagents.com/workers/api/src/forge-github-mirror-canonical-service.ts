@@ -17,6 +17,8 @@ const RegistryEntry = Schema.Struct({
   destinationGithubRef: Schema.String,
   destinationGithubRepository: Schema.String,
   repositoryRef: Schema.String,
+  /** One registry entry per projected source ref when branches and tags differ. */
+  sourceRef: Schema.optionalKey(Schema.String),
   sourceRefs: Schema.Array(Schema.String),
   tenantRef: Schema.String,
 })
@@ -68,8 +70,13 @@ export const makeForgeOwnedCanonicalMirrorHttpService = (input: Readonly<{
   }
   const base = input.baseUrl.replace(/\/$/u, '')
   const request = input.fetch ?? fetch
-  const entryFor = (tenantRef: string, repositoryRef: string) =>
-    registry.find(entry => entry.tenantRef === tenantRef && entry.repositoryRef === repositoryRef)
+  const entryFor = (tenantRef: string, repositoryRef: string, sourceRef: string) =>
+    registry.find(
+      entry =>
+        entry.tenantRef === tenantRef &&
+        entry.repositoryRef === repositoryRef &&
+        (entry.sourceRef === undefined || entry.sourceRef === sourceRef),
+    )
 
   const source = (entry: RegistryEntry, sourceRef: string) =>
     Effect.tryPromise({
@@ -97,7 +104,11 @@ export const makeForgeOwnedCanonicalMirrorHttpService = (input: Readonly<{
 
   const describe = (requestInput: Readonly<{ tenantRef: string; repositoryRef: string; sourceRef: string }>) =>
     Effect.gen(function* () {
-      const entry = entryFor(requestInput.tenantRef, requestInput.repositoryRef)
+      const entry = entryFor(
+        requestInput.tenantRef,
+        requestInput.repositoryRef,
+        requestInput.sourceRef,
+      )
       if (entry === undefined) {
         return yield* error('ForgeOwnedCanonicalMirror.describe', 'forge_github_mirror_repository_not_admitted')
       }
