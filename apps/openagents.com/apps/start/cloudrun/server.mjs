@@ -1,4 +1,4 @@
-import { Runtime } from '@openagentsinc/runtime-platform'
+import { Runtime } from '../../../../../packages/runtime-platform/src/index.ts'
 import { existsSync } from 'node:fs'
 import { readFile, stat } from 'node:fs/promises'
 import path from 'node:path'
@@ -152,10 +152,6 @@ Runtime.serve({
           process.env.OPENAGENTS_FORGE_READ_BASE_URL,
         KHALA_SYNC_UPSTREAM_BASE_URL:
           process.env.KHALA_SYNC_UPSTREAM_BASE_URL ?? PUBLIC_API_ORIGIN,
-        OPENAGENTS_FORGE_GIT_SERVICE_AUTH_TOKEN:
-          process.env.OPENAGENTS_FORGE_GIT_SERVICE_AUTH_TOKEN,
-        OPENAGENTS_FORGE_READ_BASE_URL:
-          process.env.OPENAGENTS_FORGE_READ_BASE_URL,
       },
       executionCtx,
     )

@@ -15,6 +15,20 @@ const routerSsrPackages = [
   '@tanstack/router-core',
 ]
 
+const cloudRunRuntimePackages = [
+  '@openagentsinc/runtime-platform',
+  '@radix-ui/react-slot',
+  'class-variance-authority',
+  'clsx',
+  'effect',
+  'lucide-react',
+  'marked',
+  'react',
+  'react-dom',
+  'shiki',
+  'tailwind-merge',
+]
+
 export default defineConfig({
   resolve: {
     alias: [
@@ -37,12 +51,12 @@ export default defineConfig({
   environments: {
     ssr: {
       resolve: {
-        noExternal: [...routerSsrPackages],
+        noExternal: [...routerSsrPackages, ...cloudRunRuntimePackages],
       },
     },
   },
   ssr: {
-    noExternal: [...routerSsrPackages],
+    noExternal: [...routerSsrPackages, ...cloudRunRuntimePackages],
   },
   build: {
     minify: 'esbuild',
