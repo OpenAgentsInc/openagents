@@ -5,6 +5,8 @@ the editor around it. This document proposes a surface. It changes no runtime
 authority, it allocates no delta number, and it grants nothing. `OMEGA_DELTAS.md`,
 owner gate 8, and the Exo boundary in `OMEGA-DELTA-0042` keep their precedence.
 
+The work packet that cites this document is omega#99.
+
 Sources: Omega at `origin/main` (`b4e29e1fea`), the `OMEGA_DELTAS.md` entries
 0009, 0012, 0020, 0021, 0026, 0031, 0042 and 0046, omega#76, omega#87,
 omega#95, and the two Exo documents in
