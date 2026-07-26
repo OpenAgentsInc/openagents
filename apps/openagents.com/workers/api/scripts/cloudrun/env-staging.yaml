@@ -36,6 +36,7 @@ OA_MANAGED_SANDBOX_CONTROL_URL: "https://oa-managed-sandbox-bridge-staging-15743
 OA_MANAGED_SANDBOX_IMAGE_DIGEST: "sha256:87f99230b1723c0793ecb3e2097c9de612f0a53a8197a4bc27de3f9baa4c0314"
 OA_MANAGED_SANDBOX_PROFILE_DIGEST: "sha256:c568f3f3d4cfbad0fda55b533531b5609dd9f45091eed74165b89a6dd3239ccf"
 OPENAGENTS_APP_URL: "https://openagents-monolith-staging-ezxz4mgdsq-uc.a.run.app"
+OPENAGENTS_FORGE_READ_BASE_URL: "https://forge-git-ezxz4mgdsq-uc.a.run.app"
 OPENAGENTS_FORGE_PUBLIC_WEB_READ_REPOSITORIES: "tenant.openagents/omega"
 OPENAGENTS_AUDIO_GATEWAY_URL: "wss://openagents-audio-edge-staging-ezxz4mgdsq-uc.a.run.app/v1/stream"
 OPENAGENTS_RUNTIME: "cloudrun-monolith"
