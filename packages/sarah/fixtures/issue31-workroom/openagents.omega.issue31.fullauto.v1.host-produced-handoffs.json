@@ -1,0 +1,82 @@
+{
+  "schema": "openagents.omega.issue31.fullauto.v1",
+  "hostRef": "omega.host.local",
+  "snapshotRef": "snapshot.omega.issue31.handoff-lifecycle",
+  "generatedAtMs": 1785000600000,
+  "runs": [],
+  "accounts": [
+    {
+      "accountRef": "account.claude.1",
+      "provider": "anthropic",
+      "label": "Claude",
+      "readiness": "busy",
+      "quota": "cooling",
+      "laneRef": "lane.claude-local"
+    },
+    {
+      "accountRef": "account.codex.1",
+      "provider": "openai",
+      "label": "ChatGPT Personal",
+      "readiness": "ready",
+      "quota": "available",
+      "laneRef": "lane.codex-local"
+    },
+    {
+      "accountRef": "account.grok.1",
+      "provider": "xai",
+      "label": "Grok",
+      "readiness": "revoked",
+      "quota": "cooling",
+      "laneRef": "lane.grok-local"
+    }
+  ],
+  "handoffs": [
+    {
+      "handoffRef": "handoff.omega.317c67eb3869577e6e6711f8",
+      "provider": "google",
+      "state": "expired",
+      "requestedAtMs": 1785000000000,
+      "reasonClass": "reason.omega.handoff_deadline_passed",
+      "outcomeRef": "outcome.omega.handoff_expired"
+    },
+    {
+      "handoffRef": "handoff.omega.42f628c7cfc05fcbfb955e7a",
+      "provider": "anthropic",
+      "state": "active",
+      "requestedAtMs": 1785000000000,
+      "accountRef": "account.claude.1"
+    },
+    {
+      "handoffRef": "handoff.omega.46a5da3a3bbb4e6c972a3c4f",
+      "provider": "cohere",
+      "state": "requested",
+      "requestedAtMs": 1785000000000
+    },
+    {
+      "handoffRef": "handoff.omega.4ba4b89bf0b57def937595bb",
+      "provider": "xai",
+      "state": "refused",
+      "requestedAtMs": 1785000000000,
+      "accountRef": "account.grok.1",
+      "reasonClass": "reason.omega.handoff_account_revoked",
+      "outcomeRef": "outcome.omega.handoff_refused"
+    },
+    {
+      "handoffRef": "handoff.omega.83c4bd38a1589869bc6ef0eb",
+      "provider": "mistral",
+      "state": "failed",
+      "requestedAtMs": 1785000000000,
+      "reasonClass": "reason.omega.handoff_host_restarted",
+      "outcomeRef": "outcome.omega.handoff_interrupted"
+    },
+    {
+      "handoffRef": "handoff.omega.f34f1f6d3af807f145446d78",
+      "provider": "openai",
+      "state": "completed",
+      "requestedAtMs": 1785000000000,
+      "accountRef": "account.codex.1",
+      "outcomeRef": "outcome.omega.handoff_connected"
+    }
+  ],
+  "evidence": []
+}
