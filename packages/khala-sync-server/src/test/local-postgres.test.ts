@@ -43,4 +43,14 @@ describe.skipIf(!hasLocalPostgres())("shared local Postgres", () => {
       await stoppedSql.end();
     }
   });
+
+  test("handles a burst of callers without splitting the lock", async () => {
+    const callers = await Promise.all(
+      Array.from({ length: 12 }, () => startLocalPostgres()),
+    );
+    clusters.push(...callers);
+
+    expect(new Set(callers.map((caller) => caller.port)).size).toBe(1);
+    expect(new Set(callers.map((caller) => caller.user)).size).toBe(callers.length);
+  });
 });

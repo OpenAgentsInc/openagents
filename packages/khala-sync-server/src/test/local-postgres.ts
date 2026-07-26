@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { accessSync, constants, readFileSync } from "node:fs";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import * as net from "node:net";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
@@ -227,7 +227,17 @@ const lockIsStale = async (): Promise<boolean> => {
     const startedAt = typeof owner.startedAt === "number" ? owner.startedAt : 0;
     return (pid === null || !processIsLive(pid)) && Date.now() - startedAt > SHARED_LOCK_STALE_MS;
   } catch {
-    return true;
+    // A competing process creates the directory before it can write its
+    // owner record. Treat that short handoff as live: deleting the directory
+    // here would let two callers enter the critical section at once.
+    try {
+      const lockMetadata = await stat(SHARED_LOCK);
+      return Date.now() - lockMetadata.mtimeMs > SHARED_LOCK_STALE_MS;
+    } catch {
+      // The lock disappeared while we inspected it. The caller will retry
+      // mkdir and either acquire the replacement lock or observe its owner.
+      return false;
+    }
   }
 };
 
