@@ -1,4 +1,16 @@
-# Exo Teardown — 2026-07-25
+# Exo Labs (exo-explore) Teardown — 2026-07-25 — the Swift/Mac cluster one
+
+**Naming correction (owner, 2026-07-25).** Two unrelated projects are named
+"exo." This document covers **exo labs' `exo-explore/exo`** — the Apple
+Silicon cluster-inference appliance with the Swift menu-bar app. It is NOT
+the Exo that OpenAgents integrates. The integration target named in
+openagents #9258 and the Omega direct-support direction is
+**`exoharness/exo`, the agent harness**, covered in
+[the exoharness/exo teardown](2026-07-25-exoharness-exo-teardown.md).
+Section 7 of this document (the "direct Omega support" integration shape)
+was written under the wrong-target assumption and is superseded — omega#86
+was closed as not planned for the same reason. The rest of the document
+stands as reference material on exo-explore itself.
 
 Read-only architecture and product audit of the public `exo-explore/exo`
 source tree at an exact commit in the local reference clone

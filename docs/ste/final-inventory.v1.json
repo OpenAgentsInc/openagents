@@ -45071,7 +45071,29 @@
     },
     {
       "path": "docs/teardowns/2026-07-25-exo-teardown.md",
-      "sha256": "e9633f0b8e238f03b1b2a1ae9435e2675d3bb87b2c7136951150e8b074b78fe5",
+      "sha256": "3da2e918bbf45cb2aa1e086e2e012756511e7ade7255709360f9b0abfd08fc1b",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/teardowns/2026-07-25-exoharness-exo-teardown.md",
+      "sha256": "0a2d60f192b89bb4f83ddd311845826ac782c8327c07415c83b1ff1e4df0a032",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
