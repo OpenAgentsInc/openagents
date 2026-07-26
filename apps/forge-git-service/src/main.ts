@@ -14,6 +14,8 @@ import { layerRepository } from "./repository.js";
 import { ForgeGitRepository } from "./repository.js";
 import { ForgeGitRelayOutbox, layerRelayOutbox } from "./outbox.js";
 import { routeRequest } from "./routes.js";
+import { layerForgeWebRead } from "./web-read.js";
+import { layerForgeWebReadPolicy } from "./web-read-policy.js";
 
 const configurationLayer = layerConfiguration;
 const databaseLayer = layerDatabase.pipe(Layer.provide(configurationLayer));
@@ -27,6 +29,8 @@ const repositoryLayer = layerRepository.pipe(
   Layer.provide(Layer.mergeAll(configurationLayer, layerGcs)),
 );
 const projectorLayer = layerProjector.pipe(Layer.provide(Layer.mergeAll(admissionLayer, repositoryLayer)));
+const webReadLayer = layerForgeWebRead.pipe(Layer.provide(configurationLayer));
+const webReadPolicyLayer = layerForgeWebReadPolicy.pipe(Layer.provide(configurationLayer));
 const applicationLayer = Layer.mergeAll(
   configurationLayer,
   admissionLayer,
@@ -35,6 +39,8 @@ const applicationLayer = Layer.mergeAll(
   outboxLayer,
   projectorLayer,
   repositoryLayer,
+  webReadLayer,
+  webReadPolicyLayer,
 );
 const applicationRuntime = ManagedRuntime.make(applicationLayer);
 

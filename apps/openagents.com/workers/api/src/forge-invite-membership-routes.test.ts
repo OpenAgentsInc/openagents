@@ -468,6 +468,93 @@ describe('Forge invite membership routes', () => {
       },
     })
 
+    const webReadAuthorize = () =>
+      run(
+        new Request(
+          'https://openagents.com/internal/forge/web-read-authorize',
+          {
+            body: JSON.stringify({
+              repositoryRef: 'repo.openagents.openagents',
+              tenantRef,
+            }),
+            headers: {
+              authorization: 'Bearer forge-git-service-secret',
+              'content-type': 'application/json',
+              cookie: 'oa_session=browser-member',
+            },
+            method: 'POST',
+          },
+        ),
+      )
+    const webReadAuthorized = await webReadAuthorize()
+    expect(webReadAuthorized.status).toBe(200)
+    expect(await webReadAuthorized.json()).toMatchObject({
+      access: {
+        canWrite: true,
+        mode: 'member',
+      },
+      repository: {
+        maintainers: [
+          {
+            displayName: session.user.name,
+          },
+        ],
+        publicWebRead: false,
+      },
+    })
+    const publicWebReadRoutes = makeForgeInviteMembershipRoutes({
+      gitServiceAuthorizationToken: () => 'forge-git-service-secret',
+      isPublicWebReadRepository: (
+        _env,
+        requestedTenantRef,
+        repositoryRef,
+      ) =>
+        requestedTenantRef === tenantRef &&
+        repositoryRef === 'repo.openagents.openagents',
+      makeGitAuthStore: () => gitAuth,
+      makeMembershipStore: () => membership,
+      nowIso: () => nowIso,
+      readAcceptedInvite: () => Promise.resolve(undefined),
+      resolveTeamRefForTenant: () =>
+        Promise.resolve(acceptedInvite.teamId),
+      requireBrowserSession: () => Promise.resolve(undefined),
+    })
+    const publicWebReadRequest = new Request(
+      'https://openagents.com/internal/forge/web-read-authorize',
+      {
+        body: JSON.stringify({
+          repositoryRef: 'repo.openagents.openagents',
+          tenantRef,
+        }),
+        headers: {
+          authorization: 'Bearer forge-git-service-secret',
+          'content-type': 'application/json',
+        },
+        method: 'POST',
+      },
+    )
+    const publicWebReadEffect =
+      publicWebReadRoutes.routeForgeInviteMembershipRequest(
+        publicWebReadRequest,
+        {},
+        {} as ExecutionContext,
+      )
+    if (publicWebReadEffect === undefined) {
+      throw new Error('public web-read authorization route did not match')
+    }
+    const publicWebRead = await Effect.runPromise(publicWebReadEffect)
+    expect(publicWebRead.status).toBe(200)
+    expect(await publicWebRead.json()).toEqual({
+      access: {
+        canWrite: false,
+        mode: 'public_web_read',
+      },
+      repository: {
+        maintainers: [],
+        publicWebRead: true,
+      },
+    })
+
     await membership.tombstoneMember({
       bindingRef: bindBody.binding.bindingRef,
       burnReasonRef: 'forge.member.revoked',
@@ -491,6 +578,11 @@ describe('Forge invite membership routes', () => {
     expect(revokedReplay.status).toBe(403)
     expect(await revokedReplay.json()).toMatchObject({
       error: 'forge_membership_tombstoned',
+    })
+    const revokedWebRead = await webReadAuthorize()
+    expect(revokedWebRead.status).toBe(403)
+    expect(await revokedWebRead.json()).toMatchObject({
+      error: 'forge_membership_required',
     })
   })
 })

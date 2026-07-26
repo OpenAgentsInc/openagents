@@ -495,6 +495,7 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   OPENAGENTS_ADMIN_API_TOKEN?: string | undefined
   OPENAGENTS_FORGE_CONTROL_PLANE_TOKEN?: string | undefined
   OPENAGENTS_FORGE_GIT_SERVICE_AUTH_TOKEN?: string | undefined
+  OPENAGENTS_FORGE_PUBLIC_WEB_READ_REPOSITORIES?: string | undefined
   OPENAGENTS_FORGE_GITHUB_MIRROR_TOKEN?: string | undefined
   OPENAGENTS_APP_URL?: string | undefined
   OPENAUTH_CLIENT_ID?: string | undefined

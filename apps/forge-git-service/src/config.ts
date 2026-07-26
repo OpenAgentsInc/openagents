@@ -17,6 +17,7 @@ export interface ForgeGitConfigurationShape {
   readonly repositoryRoot: string;
   /** Optional owned relay. Without it, outbox rows remain pending and no visibility claim is made. */
   readonly relayUrl: string | undefined;
+  readonly webReadPolicyUrl: string;
 }
 
 export class ForgeGitConfiguration extends Context.Service<
@@ -48,6 +49,11 @@ export const layerConfiguration = Layer.effect(
     const relayUrl = yield* Config.option(Config.string("FORGE_GIT_RELAY_URL")).pipe(
       Effect.map((value) => (Option.isSome(value) ? value.value : undefined)),
     );
+    const webReadPolicyUrl = yield* Config.string("FORGE_GIT_WEB_READ_POLICY_URL").pipe(
+      Config.withDefault(
+        new URL("/internal/forge/web-read-authorize", policyAuthorityUrl).toString(),
+      ),
+    );
 
     return ForgeGitConfiguration.of({
       databaseUrl,
@@ -59,6 +65,7 @@ export const layerConfiguration = Layer.effect(
       policyAuthorityUrl,
       repositoryRoot,
       relayUrl,
+      webReadPolicyUrl,
     });
   }),
 );
@@ -66,13 +73,19 @@ export const layerConfiguration = Layer.effect(
 export const makeTestConfiguration = (
   input: Omit<
     ForgeGitConfigurationShape,
-    "databaseUrl" | "policyAuthorityToken" | "policyAuthorityUrl" | "relayUrl" | "maxRepositoriesPerOwner"
+    | "databaseUrl"
+    | "policyAuthorityToken"
+    | "policyAuthorityUrl"
+    | "relayUrl"
+    | "maxRepositoriesPerOwner"
+    | "webReadPolicyUrl"
   > & {
     readonly databaseUrl?: string;
     readonly policyAuthorityToken?: Redacted.Redacted<string>;
     readonly policyAuthorityUrl?: string;
     readonly relayUrl?: string | undefined;
     readonly maxRepositoriesPerOwner?: number;
+    readonly webReadPolicyUrl?: string;
   },
 ): ForgeGitConfigurationShape => ({
   ...input,
@@ -83,6 +96,8 @@ export const makeTestConfiguration = (
     input.policyAuthorityUrl ?? "https://openagents.test/internal/forge/git-authorize",
   relayUrl: input.relayUrl,
   maxRepositoriesPerOwner: input.maxRepositoriesPerOwner ?? 20,
+  webReadPolicyUrl:
+    input.webReadPolicyUrl ?? "https://openagents.test/internal/forge/web-read-authorize",
 });
 
 export const optionalString = (value: Option.Option<string>): string | undefined =>

@@ -1885,6 +1885,17 @@ const getForgeGitServiceAuthToken = (
 
   return token === undefined || token.trim() === '' ? undefined : token
 }
+
+const isPublicForgeWebReadRepository = (
+  env: OpenAgentsWorkerConfigEnv,
+  tenantRef: string,
+  repositoryRef: string,
+): boolean =>
+  (env.OPENAGENTS_FORGE_PUBLIC_WEB_READ_REPOSITORIES ?? '')
+    .split(',')
+    .map(value => value.trim())
+    .filter(value => value !== '')
+    .includes(`${tenantRef}/${repositoryRef}`)
 const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
 
@@ -3391,6 +3402,7 @@ const forgeInviteMembershipRoutes = makeForgeInviteMembershipRoutes<
 >({
   appendRefreshedSessionCookies,
   gitServiceAuthorizationToken: getForgeGitServiceAuthToken,
+  isPublicWebReadRepository: isPublicForgeWebReadRepository,
   makeGitAuthStore: env => makeForgeTenantGitAuthStoreForEnv(env),
   makeMembershipStore: env => makeForgeInviteMembershipStoreForEnv(env),
   nowIso: currentIsoTimestamp,

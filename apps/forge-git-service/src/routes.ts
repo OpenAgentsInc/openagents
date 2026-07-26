@@ -19,15 +19,23 @@ import {
   ForgeGitRoute,
   ForgeGitRouteError,
   type ForgeGitScope,
+  ForgeGitWebReadError,
 } from "./model.js";
 import { ForgeGitProjection } from "./projection.js";
 import { ForgeGitProjector } from "./projector.js";
 import { ForgeGitRepository } from "./repository.js";
+import { ForgeWebRead } from "./web-read.js";
+import { ForgeWebReadRequest } from "./web-read-model.js";
+import { ForgeWebReadPolicy } from "./web-read-policy.js";
 
 const noStoreHeaders = {
   "cache-control": "no-store",
 };
 const isForgeMergeGateInput = Schema.is(ForgeMergeGateInput);
+
+const maximumTextBytes = 512_000;
+const maximumImageBytes = 2_000_000;
+const maximumDiffBytes = 1_000_000;
 
 const responseBody = (bytes: Uint8Array): ArrayBuffer => {
   const copy = new Uint8Array(bytes.byteLength);
@@ -42,6 +50,152 @@ const decodeSegment = (value: string): string | undefined => {
   } catch {
     return undefined;
   }
+};
+
+const boundedByteLimit = (
+  value: string | null,
+  defaultValue: number,
+  maximumValue: number,
+): number | undefined => {
+  if (value === null) return defaultValue;
+  if (!/^[1-9][0-9]*$/u.test(value)) return undefined;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) ? Math.min(parsed, maximumValue) : undefined;
+};
+
+export const matchForgeWebReadRoute = (request: Request): ForgeWebReadRequest | undefined => {
+  const url = new URL(request.url);
+  const parts = url.pathname.split("/").filter((part) => part !== "");
+  if (
+    parts.length !== 6 ||
+    parts[0] !== "internal" ||
+    parts[1] !== "v1" ||
+    parts[2] !== "repositories" ||
+    parts[5] !== "web-read"
+  ) {
+    return undefined;
+  }
+  const owner = parts[3] === undefined ? undefined : decodeSegment(parts[3]);
+  const repo = parts[4] === undefined ? undefined : decodeSegment(parts[4]);
+  const view = url.searchParams.get("view");
+  const maxTextBytes = boundedByteLimit(
+    url.searchParams.get("max_text_bytes"),
+    maximumTextBytes,
+    maximumTextBytes,
+  );
+  const maxImageBytes = boundedByteLimit(
+    url.searchParams.get("max_image_bytes"),
+    maximumImageBytes,
+    maximumImageBytes,
+  );
+  const maxDiffBytes = boundedByteLimit(
+    url.searchParams.get("max_diff_bytes"),
+    maximumDiffBytes,
+    maximumDiffBytes,
+  );
+  if (
+    owner === undefined ||
+    repo === undefined ||
+    (view !== "code" && view !== "commits" && view !== "commit" && view !== "diff") ||
+    maxTextBytes === undefined ||
+    maxImageBytes === undefined ||
+    maxDiffBytes === undefined
+  ) {
+    return undefined;
+  }
+  const optional = (name: string): string | undefined => {
+    const value = url.searchParams.get(name);
+    return value === null || value === "" ? undefined : value;
+  };
+  const base = optional("base");
+  const commit = optional("commit");
+  const ref = optional("ref");
+  const encodedPath = url.searchParams.get("path");
+  let path: string | undefined;
+  try {
+    path =
+      encodedPath === null
+        ? undefined
+        : encodedPath
+            .split("/")
+            .map((segment) => decodeURIComponent(segment))
+            .join("/");
+  } catch {
+    return undefined;
+  }
+  return ForgeWebReadRequest.make({
+    ...(base === undefined ? {} : { base }),
+    ...(commit === undefined ? {} : { commit }),
+    maxDiffBytes,
+    maxImageBytes,
+    maxTextBytes,
+    owner,
+    ...(path === undefined ? {} : { path }),
+    ...(ref === undefined ? {} : { ref }),
+    repo,
+    view,
+  });
+};
+
+type ForgeWebReadAssetRoute = Readonly<{
+  commitId: string;
+  maxImageBytes: number;
+  objectId: string;
+  owner: string;
+  path: string;
+  repo: string;
+}>;
+
+export const matchForgeWebReadAssetRoute = (
+  request: Request,
+): ForgeWebReadAssetRoute | undefined => {
+  const url = new URL(request.url);
+  const parts = url.pathname.split("/").filter((part) => part !== "");
+  if (
+    parts.length < 7 ||
+    parts[0] !== "internal" ||
+    parts[1] !== "v1" ||
+    parts[2] !== "repositories" ||
+    parts[5] !== "web-read-asset"
+  ) {
+    return undefined;
+  }
+  const owner = parts[3] === undefined ? undefined : decodeSegment(parts[3]);
+  const repo = parts[4] === undefined ? undefined : decodeSegment(parts[4]);
+  const pathParts = parts.slice(6).map((part) => {
+    try {
+      return decodeURIComponent(part);
+    } catch {
+      return undefined;
+    }
+  });
+  const objectId = url.searchParams.get("object");
+  const commitId = url.searchParams.get("commit");
+  const maxImageBytes = boundedByteLimit(
+    url.searchParams.get("max_image_bytes"),
+    maximumImageBytes,
+    maximumImageBytes,
+  );
+  if (
+    owner === undefined ||
+    repo === undefined ||
+    objectId === null ||
+    objectId === "" ||
+    commitId === null ||
+    commitId === "" ||
+    maxImageBytes === undefined ||
+    pathParts.some((part) => part === undefined)
+  ) {
+    return undefined;
+  }
+  return {
+    commitId,
+    maxImageBytes,
+    objectId,
+    owner,
+    path: pathParts.join("/"),
+    repo,
+  };
 };
 
 export const matchForgeGitRoute = (request: Request): ForgeGitRoute | undefined => {
@@ -126,7 +280,8 @@ const errorResponse = (error: unknown): Response => {
     error instanceof ForgeGitRouteError ||
     error instanceof ForgeGitAuthError ||
     error instanceof ForgeGitAdmissionError ||
-    error instanceof ForgeGitRepositoryError;
+    error instanceof ForgeGitRepositoryError ||
+    error instanceof ForgeGitWebReadError;
   const status = known ? error.status : 500;
   const code = known ? error.code : "forge_git_internal_error";
   return Response.json(
@@ -140,6 +295,54 @@ const errorResponse = (error: unknown): Response => {
     },
   );
 };
+
+export const forgeWebReadHandler = Effect.fn("ForgeWebReadRoutes.handle")(function* (
+  request: Request,
+) {
+  const assetRoute = matchForgeWebReadAssetRoute(request);
+  if (assetRoute !== undefined) {
+    if (request.method !== "GET") return yield* methodError();
+    const policy = yield* ForgeWebReadPolicy;
+    yield* policy.authorize({
+      authorization: request.headers.get("authorization"),
+      cookie: request.headers.get("cookie"),
+      owner: assetRoute.owner,
+      repo: assetRoute.repo,
+    });
+    const reader = yield* ForgeWebRead;
+    const asset = yield* reader.readAsset(assetRoute);
+    return new Response(responseBody(asset.bytes), {
+      headers: {
+        ...noStoreHeaders,
+        "content-security-policy": "default-src 'none'; sandbox",
+        "content-type": asset.contentType,
+        "x-content-type-options": "nosniff",
+      },
+      status: 200,
+    });
+  }
+  const webReadRequest = matchForgeWebReadRoute(request);
+  if (webReadRequest === undefined) {
+    return Response.json({ error: "not_found" }, { headers: noStoreHeaders, status: 404 });
+  }
+  if (request.method !== "GET") return yield* methodError();
+  const policy = yield* ForgeWebReadPolicy;
+  const decision = yield* policy.authorize({
+    authorization: request.headers.get("authorization"),
+    cookie: request.headers.get("cookie"),
+    owner: webReadRequest.owner,
+    repo: webReadRequest.repo,
+  });
+  const reader = yield* ForgeWebRead;
+  const projection = yield* reader.read({
+    policy: decision,
+    request: webReadRequest,
+  });
+  return Response.json(projection, {
+    headers: noStoreHeaders,
+    status: 200,
+  });
+});
 
 export const forgeGitHandler = Effect.fn("ForgeGitRoutes.handle")(function* (request: Request) {
   const route = matchForgeGitRoute(request);
@@ -620,8 +823,18 @@ export const routeRequest = (
   | ForgeGitProjection
   | ForgeGitProjector
   | ForgeGitRepository
-> =>
-  internalCollaborationReadHandler(request).pipe(
+  | ForgeWebRead
+  | ForgeWebReadPolicy
+> => {
+  if (
+    matchForgeWebReadRoute(request) !== undefined ||
+    matchForgeWebReadAssetRoute(request) !== undefined
+  ) {
+    return forgeWebReadHandler(request).pipe(
+      Effect.catch((error) => Effect.succeed(errorResponse(error))),
+    );
+  }
+  return internalCollaborationReadHandler(request).pipe(
     Effect.flatMap((collaboration) =>
       collaboration === undefined
         ? internalAdmissionHandler(request)
@@ -632,3 +845,4 @@ export const routeRequest = (
     ),
     Effect.catch((error) => Effect.succeed(errorResponse(error))),
   );
+};

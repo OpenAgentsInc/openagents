@@ -22,6 +22,12 @@ import { ForgeGitProjection, layerNoopProjection } from "./projection.js";
 import { layerNoopProjector } from "./projector.js";
 import { ForgeGitRepository, makeRepositoryLayer } from "./repository.js";
 import { routeRequest } from "./routes.js";
+import { ForgeWebRead, makeForgeWebReadLayer } from "./web-read.js";
+import {
+  ForgeWebReadPolicy,
+  makeForgeWebReadPolicyLayer,
+  type ForgeWebReadPolicyFetch,
+} from "./web-read-policy.js";
 
 const execFileAsync = promisify(execFile);
 const token = "oa_forge_git_0123456789abcdef0123456789abcdef";
@@ -97,7 +103,9 @@ const listen = async (
     | ForgeGitConfiguration
     | ForgeGitProjection
     | import("./projector.js").ForgeGitProjector
-    | ForgeGitRepository,
+    | ForgeGitRepository
+    | ForgeWebRead
+    | ForgeWebReadPolicy,
     never
   >,
 ): Promise<Readonly<{ origin: string; server: Server }>> => {
@@ -157,6 +165,22 @@ const makeRuntime = (
   }> = [],
   projectedEvents: ReadonlyArray<ForgeGitProjectedEvent> = [],
   policyAuthorityUrl = "https://openagents.test",
+  webReadPolicyFetch: ForgeWebReadPolicyFetch = async (_input, init) => {
+    const headers = new Headers(init?.headers);
+    if (headers.get("authorization") !== "Bearer forge-git-service-test-secret") {
+      return Response.json({ error: "forge_session_required" }, { status: 401 });
+    }
+    return Response.json({
+      access: {
+        canWrite: true,
+        mode: "member",
+      },
+      repository: {
+        maintainers: [{ displayName: "Forge Test" }],
+        publicWebRead: false,
+      },
+    });
+  },
 ) => {
   const configuration = makeTestConfiguration({
     gitBinary: "git",
@@ -166,6 +190,8 @@ const makeRuntime = (
     repositoryRoot,
   });
   const repositoryLayer = makeRepositoryLayer(configuration, blobStore);
+  const webReadLayer = makeForgeWebReadLayer(configuration);
+  const webReadPolicyLayer = makeForgeWebReadPolicyLayer(configuration, webReadPolicyFetch);
   const applicationLayer = Layer.mergeAll(
     makeMemoryAdmissionLayer({
       admittedRepositories: [{ repositoryRef, tenantRef }],
@@ -177,6 +203,8 @@ const makeRuntime = (
     layerNoopProjection,
     layerNoopProjector,
     repositoryLayer,
+    webReadLayer,
+    webReadPolicyLayer,
   );
   return {
     blobStore,
@@ -430,6 +458,10 @@ describe("owned Forge Smart HTTP service", () => {
         layerNoopProjection,
         layerNoopProjector,
         repositoryLayer,
+        makeForgeWebReadLayer(configuration),
+        makeForgeWebReadPolicyLayer(configuration, async () =>
+          Response.json({ error: "forge_membership_required" }, { status: 403 }),
+        ),
       ),
     );
     const deniedService = await listen(deniedRuntime);
@@ -677,6 +709,214 @@ describe("owned Forge Smart HTTP service", () => {
       headers: { authorization: `Bearer ${token}` },
     });
     expect(receive.status).toBe(401);
+  });
+
+  test("serves bounded canonical web reads only after service and read-policy authorization", async () => {
+    const root = await mkdtemp(join(tmpdir(), "oa-forge-web-read-root-"));
+    const source = await mkdtemp(join(tmpdir(), "oa-forge-web-read-source-"));
+    temporaryPaths.push(root, source);
+    let policyCalls = 0;
+    const policies: Array<{
+      eventId: string;
+      newObjectId: string;
+      oldObjectId: string;
+      refName: string;
+      repositoryRef: string;
+      tenantRef: string;
+    }> = [];
+    const fixture = makeRuntime(
+      root,
+      makeMemoryBlobStore(),
+      makeSession(),
+      ["git:receive-pack", "git:upload-pack"],
+      undefined,
+      policies,
+      [],
+      "https://openagents.test",
+      async (_input, init) => {
+        policyCalls += 1;
+        const headers = new Headers(init?.headers);
+        expect(headers.get("authorization")).toBe("Bearer forge-git-service-test-secret");
+        expect(headers.get("cookie")).toBe("oa_session=member");
+        return Response.json({
+          access: {
+            canWrite: true,
+            mode: "member",
+          },
+          repository: {
+            maintainers: [{ displayName: "Invited maintainer" }],
+            publicWebRead: false,
+          },
+        });
+      },
+    );
+    await provisionAdmittedRepository(fixture);
+    const service = await listen(fixture.runtime);
+    disposers.push(
+      () => closeServer(service.server),
+      () => fixture.runtime.dispose(),
+    );
+    const remote = `${service.origin}/git/${tenantRef}/${repositoryRef}.git`;
+    await git(source, ["init", "--initial-branch=main"]);
+    await git(source, ["config", "user.email", "forge-test@openagents.com"]);
+    await git(source, ["config", "user.name", "Forge Test"]);
+    await writeFile(
+      join(source, "README.md"),
+      "# Owned Forge\n\n![Owned logo](logo.png)\n![External](https://example.com/logo.png)\n![Escape](../secret.png)\n",
+    );
+    await writeFile(join(source, "source.ts"), "export const authority = 'bare-repository';\n");
+    const imageBytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+    await writeFile(join(source, "logo.png"), imageBytes);
+    await git(source, ["add", "."]);
+    await git(source, ["commit", "-m", "Seed owned web read"]);
+    const commit = (await git(source, ["rev-parse", "HEAD"])).stdout.trim();
+    authorizeHead(policies, "0".repeat(40), commit);
+    await git(source, [...bearerArguments, "push", remote, "HEAD:refs/heads/main"]);
+    await git(source, [
+      "--git-dir",
+      join(root, tenantRef, `${repositoryRef}.git`),
+      "config",
+      "openagents.nip34Coordinate",
+      `30617:${"a".repeat(64)}:${repositoryRef}`,
+    ]);
+
+    const endpoint = new URL(
+      `${service.origin}/internal/v1/repositories/${tenantRef}/${repositoryRef}/web-read`,
+    );
+    endpoint.searchParams.set("view", "code");
+    endpoint.searchParams.set("path", "source.ts");
+    endpoint.searchParams.set("max_text_bytes", "512000");
+    endpoint.searchParams.set("max_image_bytes", "2000000");
+    endpoint.searchParams.set("max_diff_bytes", "1000000");
+
+    const anonymous = await fetch(endpoint);
+    expect(anonymous.status).toBe(401);
+    expect(policyCalls).toBe(0);
+    const wrongService = await fetch(endpoint, {
+      headers: { authorization: `Bearer ${token}`, cookie: "oa_session=member" },
+    });
+    expect(wrongService.status).toBe(401);
+    expect(policyCalls).toBe(0);
+
+    const response = await fetch(endpoint, {
+      headers: {
+        authorization: "Bearer forge-git-service-test-secret",
+        cookie: "oa_session=member",
+      },
+    });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(policyCalls).toBe(1);
+    const projection = (await response.json()) as {
+      access: { canWrite: boolean; mode: string };
+      file: { _tag: string; content: string };
+      readme: {
+        assets: ReadonlyArray<{ path: string; sourceUrl: string }>;
+      };
+      repository: {
+        canonicalCloneUrl: string;
+        maintainers: ReadonlyArray<{ displayName: string }>;
+        nip34Coordinate: string;
+      };
+      schema: string;
+    };
+    expect(projection.schema).toBe("openagents.forge.repository_web_read.v1");
+    expect(projection.access).toEqual({ canWrite: true, mode: "member" });
+    expect(projection.file).toMatchObject({
+      _tag: "text",
+      content: "export const authority = 'bare-repository';\n",
+    });
+    expect(projection.repository.canonicalCloneUrl).toBe(
+      `https://openagents.com/git/${tenantRef}/${repositoryRef}.git`,
+    );
+    expect(projection.repository.maintainers).toEqual([{ displayName: "Invited maintainer" }]);
+    expect(projection.repository.nip34Coordinate).toBe(`30617:${"a".repeat(64)}:${repositoryRef}`);
+    expect(projection.readme.assets).toHaveLength(1);
+    expect(projection.readme.assets[0]?.path).toBe("logo.png");
+    expect(projection.readme.assets[0]?.sourceUrl).toContain("/web-read-asset/logo.png?");
+
+    endpoint.searchParams.set("path", "logo.png");
+    const imageProjectionResponse = await fetch(endpoint, {
+      headers: {
+        authorization: "Bearer forge-git-service-test-secret",
+        cookie: "oa_session=member",
+      },
+    });
+    const imageProjection = (await imageProjectionResponse.json()) as {
+      file: { _tag: string; sourceUrl: string };
+    };
+    expect(imageProjection.file).toMatchObject({ _tag: "image" });
+    const assetUrl = new URL(imageProjection.file.sourceUrl, service.origin);
+    const refusedAsset = await fetch(assetUrl, {
+      headers: { authorization: `Bearer ${token}`, cookie: "oa_session=member" },
+    });
+    expect(refusedAsset.status).toBe(401);
+    const asset = await fetch(assetUrl, {
+      headers: {
+        authorization: "Bearer forge-git-service-test-secret",
+        cookie: "oa_session=member",
+      },
+    });
+    expect(asset.status).toBe(200);
+    expect(asset.headers.get("cache-control")).toBe("no-store");
+    expect(asset.headers.get("content-type")).toBe("image/png");
+    expect(new Uint8Array(await asset.arrayBuffer())).toEqual(imageBytes);
+    assetUrl.searchParams.set("object", "0".repeat(40));
+    const substitutedAsset = await fetch(assetUrl, {
+      headers: {
+        authorization: "Bearer forge-git-service-test-secret",
+        cookie: "oa_session=member",
+      },
+    });
+    expect(substitutedAsset.status).toBe(404);
+
+    await git(source, [
+      "--git-dir",
+      join(root, tenantRef, `${repositoryRef}.git`),
+      "config",
+      "openagents.nip34Coordinate",
+      "30617:OpenAgentsInc:invalid",
+    ]);
+    const invalidMetadata = await fetch(endpoint, {
+      headers: {
+        authorization: "Bearer forge-git-service-test-secret",
+        cookie: "oa_session=member",
+      },
+    });
+    expect(invalidMetadata.status).toBe(503);
+    expect(await invalidMetadata.json()).toEqual({
+      error: "forge_web_read_metadata_unavailable",
+    });
+  }, 120_000);
+
+  test("fails closed when web-read policy refuses membership", async () => {
+    const root = await mkdtemp(join(tmpdir(), "oa-forge-web-policy-root-"));
+    temporaryPaths.push(root);
+    const fixture = makeRuntime(
+      root,
+      makeMemoryBlobStore(),
+      makeSession(),
+      ["git:receive-pack", "git:upload-pack"],
+      undefined,
+      [],
+      [],
+      "https://openagents.test",
+      async () => Response.json({ error: "forge_membership_required" }, { status: 403 }),
+    );
+    const service = await listen(fixture.runtime);
+    disposers.push(
+      () => closeServer(service.server),
+      () => fixture.runtime.dispose(),
+    );
+    const endpoint = `${service.origin}/internal/v1/repositories/${tenantRef}/${repositoryRef}/web-read?view=code`;
+    const response = await fetch(endpoint, {
+      headers: {
+        authorization: "Bearer forge-git-service-test-secret",
+        cookie: "oa_session=revoked",
+      },
+    });
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: "forge_web_read_membership_required" });
   });
 
   test("admits invited humans and agents, then refuses a revoked agent replay", async () => {

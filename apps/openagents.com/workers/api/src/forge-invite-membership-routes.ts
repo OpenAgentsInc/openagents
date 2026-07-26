@@ -36,7 +36,11 @@ export type ForgeInviteMembershipRouteDependencies<
     session: Session,
   ) => Response
   gitServiceAuthorizationToken?: (env: Bindings) => string | undefined
-  gitServiceAuthorizationToken?: (env: Bindings) => string | undefined
+  isPublicWebReadRepository?: (
+    env: Bindings,
+    tenantRef: string,
+    repositoryRef: string,
+  ) => boolean | Promise<boolean>
   makeGitAuthStore: (env: Bindings) => ForgeTenantGitAuthStore
   makeMembershipStore: (env: Bindings) => ForgeInviteMembershipStore
   nowIso: () => string
@@ -64,6 +68,7 @@ const gitAuthorizeInternalPath = '/internal/forge/git-authorize'
 const relayAdmitInternalPath = '/internal/forge/relay-admit'
 const collaborationReadAuthorizeInternalPath =
   '/internal/forge/collaboration-read-authorize'
+const webReadAuthorizeInternalPath = '/internal/forge/web-read-authorize'
 
 const errorResponse = (error: unknown): Response => {
   if (error instanceof ForgeInvitePolicyError) {
@@ -222,7 +227,8 @@ export const makeForgeInviteMembershipRoutes = <
       path !== gitCredentialsPath &&
       path !== gitAuthorizeInternalPath &&
       path !== relayAdmitInternalPath &&
-      path !== collaborationReadAuthorizeInternalPath
+      path !== collaborationReadAuthorizeInternalPath &&
+      path !== webReadAuthorizeInternalPath
     ) {
       return undefined
     }
@@ -333,7 +339,10 @@ export const makeForgeInviteMembershipRoutes = <
           tenantRef,
         })
       }
-      if (path === gitAuthorizeInternalPath) {
+      if (
+        path === gitAuthorizeInternalPath ||
+        path === webReadAuthorizeInternalPath
+      ) {
         if (request.method !== 'POST') {
           return methodNotAllowed(['POST'])
         }
@@ -355,6 +364,74 @@ export const makeForgeInviteMembershipRoutes = <
         }
         const tenantRef = requiredText(value, 'tenantRef')
         const repositoryRef = requiredText(value, 'repositoryRef')
+        if (path === webReadAuthorizeInternalPath) {
+          if (tenantRef === undefined || repositoryRef === undefined) {
+            return noStoreJsonResponse(
+              { error: 'forge_web_read_authorization_body_invalid' },
+              { status: 400 },
+            )
+          }
+          const session = await dependencies.requireBrowserSession(
+            request,
+            env,
+            ctx,
+          )
+          const binding =
+            session === undefined
+              ? undefined
+              : await store.readActorBindingByAccount(
+                  tenantRef,
+                  session.user.userId,
+                  'human',
+                )
+          if (binding?.membershipState === 'active') {
+            return noStoreJsonResponse({
+              access: {
+                canWrite:
+                  binding.roleRefs.includes('forge:admin') ||
+                  binding.roleRefs.includes('forge:member'),
+                mode: 'member',
+              },
+              repository: {
+                maintainers: [
+                  {
+                    displayName: binding.displayName,
+                    ...(binding.nostrPubkey === null
+                      ? {}
+                      : { nostrPubkey: binding.nostrPubkey }),
+                  },
+                ],
+                publicWebRead: await Promise.resolve(
+                  dependencies.isPublicWebReadRepository?.(
+                    env,
+                    tenantRef,
+                    repositoryRef,
+                  ) ?? false,
+                ),
+              },
+            })
+          }
+          const publicWebRead = await Promise.resolve(
+            dependencies.isPublicWebReadRepository?.(
+              env,
+              tenantRef,
+              repositoryRef,
+            ) ?? false,
+          )
+          if (publicWebRead) {
+            return noStoreJsonResponse({
+              access: {
+                canWrite: false,
+                mode: 'public_web_read',
+              },
+              repository: {
+                maintainers: [],
+                publicWebRead: true,
+              },
+            })
+          }
+          return session === undefined ? unauthorized() : forbidden()
+        }
         const transportAuthorization = requiredText(
           value,
           'transportAuthorization',

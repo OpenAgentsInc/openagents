@@ -132,3 +132,13 @@ export class ForgeGitRepositoryError extends Schema.TaggedErrorClass<ForgeGitRep
     cause: Schema.optionalKey(Schema.Defect()),
   },
 ) {}
+
+export class ForgeGitWebReadError extends Schema.TaggedErrorClass<ForgeGitWebReadError>()(
+  "ForgeGitWebReadError",
+  {
+    code: Schema.String,
+    operation: Schema.String,
+    status: Schema.Number,
+    cause: Schema.optionalKey(Schema.Defect()),
+  },
+) {}
