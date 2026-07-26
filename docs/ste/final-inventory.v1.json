@@ -34952,6 +34952,28 @@
       }
     },
     {
+      "path": "docs/omega/2026-07-26-omega-zero-base-mode.md",
+      "sha256": "b2fc78f6a6dedf8ba4d3a71f7eb780ae1ea92fa2aa68018e2c854f5ad1be69a7",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/omega/README.md",
       "sha256": "cd7f60cd66278a90cd72b1209578d56914e26ddafd515961a458e86e462fc068",
       "reason": "Final review of a converted document",
