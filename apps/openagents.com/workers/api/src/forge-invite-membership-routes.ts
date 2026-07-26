@@ -39,6 +39,15 @@ export type ForgeInviteMembershipRouteDependencies<
     session: Session,
   ) => Response
   gitServiceAuthorizationToken?: (env: Bindings) => string | undefined
+  /**
+   * Provision the one canonical OpenAgents team before first Forge-owner
+   * bootstrap. This is an idempotent adapter operation, not a general team
+   * creation capability.
+   */
+  ensureBootstrapTeam?: (
+    env: Bindings,
+    input: Readonly<{ nowIso: string; teamRef: string }>,
+  ) => Promise<void>
   isPublicWebReadRepository?: (
     env: Bindings,
     tenantRef: string,
@@ -334,6 +343,10 @@ export const makeForgeInviteMembershipRoutes = <
         ) {
           return forbidden()
         }
+        await dependencies.ensureBootstrapTeam?.(env, {
+          nowIso,
+          teamRef: bootstrapTeamRef,
+        })
         // The public Forge namespace is distinct from the established product
         // tenant. Create its normal tenant record before its first owner
         // binding; do not rely on an out-of-band database seed.

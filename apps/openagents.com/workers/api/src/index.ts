@@ -3402,6 +3402,18 @@ const forgeInviteMembershipRoutes = makeForgeInviteMembershipRoutes<
   VerifiedSession
 >({
   appendRefreshedSessionCookies,
+  ensureBootstrapTeam: async (env, { nowIso, teamRef }) => {
+    await khalaCodeProductStateDatabaseForEnv(env)
+      .prepare(
+        `INSERT INTO teams
+          (id, name, slug, kind, plan, owner_user_id, status, created_at, updated_at)
+         VALUES (?, 'OpenAgents Core Team', 'openagents-core-team', 'organization',
+                 'team', NULL, 'active', ?, ?)
+         ON CONFLICT(id) DO NOTHING`,
+      )
+      .bind(teamRef, nowIso, nowIso)
+      .run()
+  },
   gitServiceAuthorizationToken: getForgeGitServiceAuthToken,
   isPublicWebReadRepository: isPublicForgeWebReadRepository,
   makeGitAuthStore: env => makeForgeTenantGitAuthStoreForEnv(env),
