@@ -83,6 +83,7 @@ const webReadAuthorizeInternalPath = '/internal/forge/web-read-authorize'
  * tenant bootstrap mechanism.
  */
 const bootstrapTenantRefs = new Set(['tenant.openagents', 'openagents'])
+const bootstrapTeamTenantRef = 'tenant.openagents'
 const bootstrapTeamRef = 'team_openagents_core'
 const bootstrapAdminAuthorizationHeader = 'x-openagents-admin-authorization'
 
@@ -316,7 +317,7 @@ export const makeForgeInviteMembershipRoutes = <
           })
         }
         if (
-          (await dependencies.resolveTeamRefForTenant(env, body.tenantRef)) !==
+          (await dependencies.resolveTeamRefForTenant(env, bootstrapTeamTenantRef)) !==
           bootstrapTeamRef
         ) {
           return forbidden()

@@ -229,9 +229,7 @@ const makeHarness = async () => {
       ),
     resolveTeamRefForTenant: (_env, requestedTenantRef) =>
       Promise.resolve(
-        requestedTenantRef === tenantRef || requestedTenantRef === 'openagents'
-          ? acceptedInvite.teamId
-          : undefined,
+        requestedTenantRef === tenantRef ? acceptedInvite.teamId : undefined,
       ),
     requireBrowserSession: () => Promise.resolve(session),
     requireAdminApiToken: request =>
