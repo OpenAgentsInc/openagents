@@ -70,7 +70,9 @@ export const ForgeMergeGateInput = S.Struct({
   repositoryRef: PublicRef,
   changeRef: PublicRef,
   maintainerBindingRef: PublicRef,
-  targetRef: S.String.check(S.isPattern(/^refs\/heads\/[A-Za-z0-9._/-]+$/)),
+  // A Forge promotion may advance a reviewed branch or publish an immutable
+  // annotated release/import tag. Other namespaces remain out of scope.
+  targetRef: S.String.check(S.isPattern(/^refs\/(?:heads|tags)\/[A-Za-z0-9._/-]+$/)),
   oldObjectId: GitObjectId,
   newObjectId: GitObjectId,
   authorityGeneration: S.Number.check(S.isInt(), S.isGreaterThan(0)),

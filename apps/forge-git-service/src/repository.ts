@@ -393,7 +393,7 @@ process.stdin.on("end", () => {
       process.stderr.write("Forge token does not permit this ref.\\n")
       process.exit(1)
     }
-    if (refName.startsWith("refs/heads/")) {
+    if (/^refs\/(?:heads|tags)\//u.test(refName)) {
       const policy = policyByRef.get(refName)
       if (policy === undefined || policy.oldObjectId !== oldObjectId || policy.newObjectId !== newObjectId) {
         process.stderr.write("forge_git_signed_state_required\\n")
