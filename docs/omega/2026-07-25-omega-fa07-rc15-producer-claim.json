@@ -1,0 +1,26 @@
+{
+  "_comment": "FA-07 gate 10 (omega#26) producer claim for 0.2.0-rc15. Input to omega script/review-omega-candidate. The reviewer recomputes every value below from the artifact and the installed application; it never reads the producer's evidence. A gap is stated in _producerIdentityGap rather than papered over.",
+  "_candidate": {
+    "version": "0.2.0-rc15",
+    "tag": "v0.2.0-rc15",
+    "omegaSourceCommit": "b70ce721b2309672c66acc51d55d4bcdbbcad0d9",
+    "installedApp": "/Applications/Omega.app",
+    "installedHostBinarySha256": "cca81f5dff127f790e289aa8a400e72765dcefac8704a74fd852c757871b2858",
+    "cdHash": "4260f65a15f021fcf6226735b9c7a55cdfe8edcb",
+    "bundleVersion": "20260726.013712",
+    "engineReleaseTag": "omega-effectd-v0.1.0-rc.10",
+    "engineSourceCommit": "e3280b4795efe189474e12b4c6cd06123cfda359",
+    "engineArchiveSha256": "e3ab92ffe0baa0cb3082ea4bc83720d1677b633f3f0725b7c7571930ae19f7ac",
+    "engineBundleSha256": "6922c83e05c89bc7a6ef44cc0f752a895a70b0cb1964d9c20613c538facd089c",
+    "componentManifestSha256": "d797f749f57d2ab88cdad74f5ff81e882bc6052951a026c028a84fb7b022b5eb"
+  },
+  "_whyThisCandidateExists": "0.2.0-rc13 shipped, and 0.2.0-rc14 was cut, on omega-effectd rc.9 -- an engine in which a Full Auto run nobody is watching never reaches its second turn. rc14 is a one-line version bump that leaves the engine pin on rc.9, whose source commit predates the fix, so installing rc14 and re-driving gate 2 would have reproduced rc13's red exactly. rc15 is the first candidate carrying openagents 5d260cbc00.",
+  "_producerIdentityGap": "No producer keypair is registered anywhere in AUTHORITY.md; producers hold role operating_agent, not a key. script/review-omega-candidate only refuses when the reviewer key appears in producerPubkeys, so a producer that named itself dishonestly would pass that check. The identifier below is descriptive, not cryptographic. Naming this rather than minting a plausible-looking hex string, because a fake pubkey here would make the independence check look stronger than it is.",
+  "producerPubkeys": [
+    "producer.omega.fa07.lane.claude-fa07-final.2026-07-25"
+  ],
+  "artifactSha256": "6ac6f0007a1cc35be3112ad36a5f4d3b5477540a1f868f31b5aef798e7f84cd5",
+  "notarization": "notarized",
+  "stapled": "stapled",
+  "forbiddenStrings": "none"
+}
