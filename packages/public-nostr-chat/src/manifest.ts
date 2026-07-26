@@ -25,10 +25,14 @@ export const PublicNostrChatManifest = S.Struct({
   }),
   auth: S.Struct({
     applicationSession: S.Literal("none"),
+    defaultSigner: S.Literal("local-nak-key"),
     directRead: S.Literal("public"),
     directWrite: S.Literal("nip42-and-signed-event"),
+    externalSignerRequired: S.Literal(false),
     signerKinds: S.Array(S.Int),
-    signers: S.Array(S.Literals(["nip07", "nip46", "nip55"])),
+    signers: S.Array(
+      S.Literals(["local-nak-key", "nip07", "nip46", "nip55"]),
+    ),
   }),
   examples: S.Struct({
     authenticate: S.Array(S.String),
@@ -106,10 +110,12 @@ export const publicNostrChatManifest = (
     },
     auth: {
       applicationSession: "none",
+      defaultSigner: "local-nak-key",
       directRead: "public",
       directWrite: "nip42-and-signed-event",
+      externalSignerRequired: false,
       signerKinds: [...PUBLIC_CHAT_SIGNER_KINDS],
-      signers: ["nip07", "nip46", "nip55"],
+      signers: ["local-nak-key", "nip07", "nip46", "nip55"],
     },
     examples: {
       authenticate: [

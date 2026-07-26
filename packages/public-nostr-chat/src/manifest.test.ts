@@ -29,6 +29,9 @@ describe("public Nostr chat manifest", () => {
       PUBLIC_CHAT_RICH_CONTENT_PROFILE,
     )
     expect(manifest.auth.applicationSession).toBe("none")
+    expect(manifest.auth.defaultSigner).toBe("local-nak-key")
+    expect(manifest.auth.externalSignerRequired).toBe(false)
+    expect(manifest.auth.signers[0]).toBe("local-nak-key")
     expect(manifest.agentPolicy.sharedBotSecret).toBe(false)
   })
 })

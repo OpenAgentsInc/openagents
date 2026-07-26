@@ -282,7 +282,7 @@
     },
     {
       "path": ".agents/skills/public-nostr-chat/SKILL.md",
-      "sha256": "30b2add83fb822cc0acec5e66b43896c0d661342dc1ea00a01a07ccee2072381",
+      "sha256": "4fe1208ed5eb1f73fea07ebbed772baa66b06ae0d904e813d2b965ea9149c6cf",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -1711,12 +1711,13 @@
     },
     {
       "path": "apps/openagents.com/apps/start/public/skills/AGENT_CHAT.md",
-      "sha256": "30b2add83fb822cc0acec5e66b43896c0d661342dc1ea00a01a07ccee2072381",
-      "reason": "Final review of mutable first-party agent technical text",
+      "sha256": "4fe1208ed5eb1f73fea07ebbed772baa66b06ae0d904e813d2b965ea9149c6cf",
+      "reason": "Final review of a converted document",
       "profile": {
-        "ste_status": "inspected",
-        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_mode": "descriptive",
+        "risk": "public",
+        "source": null,
+        "replacement": null,
         "ste_audience": "agent",
         "ste_agent_compact_revision": "openagents-agent-compact-v1",
         "ste_accepted_screening_rules": [
@@ -1724,7 +1725,10 @@
           "STE-3.6",
           "STE-5.1",
           "STE-8.2"
-        ]
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {
@@ -6541,12 +6545,13 @@
     },
     {
       "path": "apps/openagents.com/docs/live/skills/AGENT_CHAT.md",
-      "sha256": "30b2add83fb822cc0acec5e66b43896c0d661342dc1ea00a01a07ccee2072381",
-      "reason": "Final review of mutable first-party agent technical text",
+      "sha256": "4fe1208ed5eb1f73fea07ebbed772baa66b06ae0d904e813d2b965ea9149c6cf",
+      "reason": "Final review of a converted document",
       "profile": {
-        "ste_status": "inspected",
-        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
         "ste_audience": "agent",
         "ste_agent_compact_revision": "openagents-agent-compact-v1",
         "ste_accepted_screening_rules": [
@@ -6554,7 +6559,10 @@
           "STE-3.6",
           "STE-5.1",
           "STE-8.2"
-        ]
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {
