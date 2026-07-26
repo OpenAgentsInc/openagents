@@ -55,6 +55,7 @@ import { Route as ShareShareIdRouteImport } from './routes/share/$shareId'
 import { Route as PreviewSalesLandingRouteImport } from './routes/preview/sales-landing'
 import { Route as PreviewLandingRouteImport } from './routes/preview/landing'
 import { Route as KhalaChatSyncRouteImport } from './routes/khala/chat-sync'
+import { Route as ForgeAttentionRouteImport } from './routes/forge/attention'
 import { Route as DocsSplatRouteImport } from './routes/docs/$'
 import { Route as ComponentsFamilyRouteImport } from './routes/components/$family'
 import { Route as CodeDownloadRouteImport } from './routes/code/download'
@@ -76,6 +77,8 @@ import { Route as ForgeOwnerRepoRouteImport } from './routes/forge/$owner/$repo'
 import { Route as BusinessKpiEngagementRefRouteImport } from './routes/business/kpi/$engagementRef'
 import { Route as AisdkDocsSlugRouteImport } from './routes/aisdk/docs/$slug'
 import { Route as PylonCodexAssignmentsAssignmentRefRouteImport } from './routes/pylon/codex/assignments/$assignmentRef'
+import { Route as ForgeOwnerRepoWorkWorkRefRouteImport } from './routes/forge/$owner/$repo/work/$workRef'
+import { Route as ForgeOwnerRepoChangesChangeRefRouteImport } from './routes/forge/$owner/$repo/changes/$changeRef'
 
 const TermsRoute = TermsRouteImport.update({
   id: '/terms',
@@ -307,6 +310,11 @@ const KhalaChatSyncRoute = KhalaChatSyncRouteImport.update({
   path: '/khala/chat-sync',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ForgeAttentionRoute = ForgeAttentionRouteImport.update({
+  id: '/forge/attention',
+  path: '/forge/attention',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DocsSplatRoute = DocsSplatRouteImport.update({
   id: '/$',
   path: '/$',
@@ -414,6 +422,18 @@ const PylonCodexAssignmentsAssignmentRefRoute =
     path: '/pylon/codex/assignments/$assignmentRef',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ForgeOwnerRepoWorkWorkRefRoute =
+  ForgeOwnerRepoWorkWorkRefRouteImport.update({
+    id: '/work/$workRef',
+    path: '/work/$workRef',
+    getParentRoute: () => ForgeOwnerRepoRoute,
+  } as any)
+const ForgeOwnerRepoChangesChangeRefRoute =
+  ForgeOwnerRepoChangesChangeRefRouteImport.update({
+    id: '/changes/$changeRef',
+    path: '/changes/$changeRef',
+    getParentRoute: () => ForgeOwnerRepoRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -457,6 +477,7 @@ export interface FileRoutesByFullPath {
   '/code/download': typeof CodeDownloadRoute
   '/components/$family': typeof ComponentsFamilyRoute
   '/docs/$': typeof DocsSplatRoute
+  '/forge/attention': typeof ForgeAttentionRoute
   '/khala/chat-sync': typeof KhalaChatSyncRoute
   '/preview/landing': typeof PreviewLandingRoute
   '/preview/sales-landing': typeof PreviewSalesLandingRoute
@@ -475,7 +496,7 @@ export interface FileRoutesByFullPath {
   '/khala/': typeof KhalaIndexRoute
   '/aisdk/docs/$slug': typeof AisdkDocsSlugRoute
   '/business/kpi/$engagementRef': typeof BusinessKpiEngagementRefRoute
-  '/forge/$owner/$repo': typeof ForgeOwnerRepoRoute
+  '/forge/$owner/$repo': typeof ForgeOwnerRepoRouteWithChildren
   '/forum/f/$forumRef': typeof ForumFForumRefRoute
   '/forum/receipts/$receiptRef': typeof ForumReceiptsReceiptRefRoute
   '/forum/t/$topicId': typeof ForumTTopicIdRoute
@@ -483,6 +504,8 @@ export interface FileRoutesByFullPath {
   '/aisdk/docs/': typeof AisdkDocsIndexRoute
   '/training/runs/': typeof TrainingRunsIndexRoute
   '/pylon/codex/assignments/$assignmentRef': typeof PylonCodexAssignmentsAssignmentRefRoute
+  '/forge/$owner/$repo/changes/$changeRef': typeof ForgeOwnerRepoChangesChangeRefRoute
+  '/forge/$owner/$repo/work/$workRef': typeof ForgeOwnerRepoWorkWorkRefRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -525,6 +548,7 @@ export interface FileRoutesByTo {
   '/code/download': typeof CodeDownloadRoute
   '/components/$family': typeof ComponentsFamilyRoute
   '/docs/$': typeof DocsSplatRoute
+  '/forge/attention': typeof ForgeAttentionRoute
   '/khala/chat-sync': typeof KhalaChatSyncRoute
   '/preview/landing': typeof PreviewLandingRoute
   '/preview/sales-landing': typeof PreviewSalesLandingRoute
@@ -543,7 +567,7 @@ export interface FileRoutesByTo {
   '/khala': typeof KhalaIndexRoute
   '/aisdk/docs/$slug': typeof AisdkDocsSlugRoute
   '/business/kpi/$engagementRef': typeof BusinessKpiEngagementRefRoute
-  '/forge/$owner/$repo': typeof ForgeOwnerRepoRoute
+  '/forge/$owner/$repo': typeof ForgeOwnerRepoRouteWithChildren
   '/forum/f/$forumRef': typeof ForumFForumRefRoute
   '/forum/receipts/$receiptRef': typeof ForumReceiptsReceiptRefRoute
   '/forum/t/$topicId': typeof ForumTTopicIdRoute
@@ -551,6 +575,8 @@ export interface FileRoutesByTo {
   '/aisdk/docs': typeof AisdkDocsIndexRoute
   '/training/runs': typeof TrainingRunsIndexRoute
   '/pylon/codex/assignments/$assignmentRef': typeof PylonCodexAssignmentsAssignmentRefRoute
+  '/forge/$owner/$repo/changes/$changeRef': typeof ForgeOwnerRepoChangesChangeRefRoute
+  '/forge/$owner/$repo/work/$workRef': typeof ForgeOwnerRepoWorkWorkRefRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -595,6 +621,7 @@ export interface FileRoutesById {
   '/code/download': typeof CodeDownloadRoute
   '/components/$family': typeof ComponentsFamilyRoute
   '/docs/$': typeof DocsSplatRoute
+  '/forge/attention': typeof ForgeAttentionRoute
   '/khala/chat-sync': typeof KhalaChatSyncRoute
   '/preview/landing': typeof PreviewLandingRoute
   '/preview/sales-landing': typeof PreviewSalesLandingRoute
@@ -613,7 +640,7 @@ export interface FileRoutesById {
   '/khala/': typeof KhalaIndexRoute
   '/aisdk/docs/$slug': typeof AisdkDocsSlugRoute
   '/business/kpi/$engagementRef': typeof BusinessKpiEngagementRefRoute
-  '/forge/$owner/$repo': typeof ForgeOwnerRepoRoute
+  '/forge/$owner/$repo': typeof ForgeOwnerRepoRouteWithChildren
   '/forum/f/$forumRef': typeof ForumFForumRefRoute
   '/forum/receipts/$receiptRef': typeof ForumReceiptsReceiptRefRoute
   '/forum/t/$topicId': typeof ForumTTopicIdRoute
@@ -621,6 +648,8 @@ export interface FileRoutesById {
   '/aisdk/docs/': typeof AisdkDocsIndexRoute
   '/training/runs/': typeof TrainingRunsIndexRoute
   '/pylon/codex/assignments/$assignmentRef': typeof PylonCodexAssignmentsAssignmentRefRoute
+  '/forge/$owner/$repo/changes/$changeRef': typeof ForgeOwnerRepoChangesChangeRefRoute
+  '/forge/$owner/$repo/work/$workRef': typeof ForgeOwnerRepoWorkWorkRefRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -666,6 +695,7 @@ export interface FileRouteTypes {
     | '/code/download'
     | '/components/$family'
     | '/docs/$'
+    | '/forge/attention'
     | '/khala/chat-sync'
     | '/preview/landing'
     | '/preview/sales-landing'
@@ -692,6 +722,8 @@ export interface FileRouteTypes {
     | '/aisdk/docs/'
     | '/training/runs/'
     | '/pylon/codex/assignments/$assignmentRef'
+    | '/forge/$owner/$repo/changes/$changeRef'
+    | '/forge/$owner/$repo/work/$workRef'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -734,6 +766,7 @@ export interface FileRouteTypes {
     | '/code/download'
     | '/components/$family'
     | '/docs/$'
+    | '/forge/attention'
     | '/khala/chat-sync'
     | '/preview/landing'
     | '/preview/sales-landing'
@@ -760,6 +793,8 @@ export interface FileRouteTypes {
     | '/aisdk/docs'
     | '/training/runs'
     | '/pylon/codex/assignments/$assignmentRef'
+    | '/forge/$owner/$repo/changes/$changeRef'
+    | '/forge/$owner/$repo/work/$workRef'
   id:
     | '__root__'
     | '/'
@@ -803,6 +838,7 @@ export interface FileRouteTypes {
     | '/code/download'
     | '/components/$family'
     | '/docs/$'
+    | '/forge/attention'
     | '/khala/chat-sync'
     | '/preview/landing'
     | '/preview/sales-landing'
@@ -829,6 +865,8 @@ export interface FileRouteTypes {
     | '/aisdk/docs/'
     | '/training/runs/'
     | '/pylon/codex/assignments/$assignmentRef'
+    | '/forge/$owner/$repo/changes/$changeRef'
+    | '/forge/$owner/$repo/work/$workRef'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -871,6 +909,7 @@ export interface RootRouteChildren {
   BlogSlugRoute: typeof BlogSlugRoute
   CodeDownloadRoute: typeof CodeDownloadRoute
   ComponentsFamilyRoute: typeof ComponentsFamilyRoute
+  ForgeAttentionRoute: typeof ForgeAttentionRoute
   KhalaChatSyncRoute: typeof KhalaChatSyncRoute
   PreviewLandingRoute: typeof PreviewLandingRoute
   PreviewSalesLandingRoute: typeof PreviewSalesLandingRoute
@@ -888,7 +927,7 @@ export interface RootRouteChildren {
   KhalaIndexRoute: typeof KhalaIndexRoute
   AisdkDocsSlugRoute: typeof AisdkDocsSlugRoute
   BusinessKpiEngagementRefRoute: typeof BusinessKpiEngagementRefRoute
-  ForgeOwnerRepoRoute: typeof ForgeOwnerRepoRoute
+  ForgeOwnerRepoRoute: typeof ForgeOwnerRepoRouteWithChildren
   ForumFForumRefRoute: typeof ForumFForumRefRoute
   ForumReceiptsReceiptRefRoute: typeof ForumReceiptsReceiptRefRoute
   ForumTTopicIdRoute: typeof ForumTTopicIdRoute
@@ -1222,6 +1261,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof KhalaChatSyncRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/forge/attention': {
+      id: '/forge/attention'
+      path: '/forge/attention'
+      fullPath: '/forge/attention'
+      preLoaderRoute: typeof ForgeAttentionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/docs/$': {
       id: '/docs/$'
       path: '/$'
@@ -1369,6 +1415,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PylonCodexAssignmentsAssignmentRefRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/forge/$owner/$repo/work/$workRef': {
+      id: '/forge/$owner/$repo/work/$workRef'
+      path: '/work/$workRef'
+      fullPath: '/forge/$owner/$repo/work/$workRef'
+      preLoaderRoute: typeof ForgeOwnerRepoWorkWorkRefRouteImport
+      parentRoute: typeof ForgeOwnerRepoRoute
+    }
+    '/forge/$owner/$repo/changes/$changeRef': {
+      id: '/forge/$owner/$repo/changes/$changeRef'
+      path: '/changes/$changeRef'
+      fullPath: '/forge/$owner/$repo/changes/$changeRef'
+      preLoaderRoute: typeof ForgeOwnerRepoChangesChangeRefRouteImport
+      parentRoute: typeof ForgeOwnerRepoRoute
+    }
   }
 }
 
@@ -1395,6 +1455,20 @@ const DocsRouteChildren: DocsRouteChildren = {
 }
 
 const DocsRouteWithChildren = DocsRoute._addFileChildren(DocsRouteChildren)
+
+interface ForgeOwnerRepoRouteChildren {
+  ForgeOwnerRepoChangesChangeRefRoute: typeof ForgeOwnerRepoChangesChangeRefRoute
+  ForgeOwnerRepoWorkWorkRefRoute: typeof ForgeOwnerRepoWorkWorkRefRoute
+}
+
+const ForgeOwnerRepoRouteChildren: ForgeOwnerRepoRouteChildren = {
+  ForgeOwnerRepoChangesChangeRefRoute: ForgeOwnerRepoChangesChangeRefRoute,
+  ForgeOwnerRepoWorkWorkRefRoute: ForgeOwnerRepoWorkWorkRefRoute,
+}
+
+const ForgeOwnerRepoRouteWithChildren = ForgeOwnerRepoRoute._addFileChildren(
+  ForgeOwnerRepoRouteChildren,
+)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
@@ -1436,6 +1510,7 @@ const rootRouteChildren: RootRouteChildren = {
   BlogSlugRoute: BlogSlugRoute,
   CodeDownloadRoute: CodeDownloadRoute,
   ComponentsFamilyRoute: ComponentsFamilyRoute,
+  ForgeAttentionRoute: ForgeAttentionRoute,
   KhalaChatSyncRoute: KhalaChatSyncRoute,
   PreviewLandingRoute: PreviewLandingRoute,
   PreviewSalesLandingRoute: PreviewSalesLandingRoute,
@@ -1453,7 +1528,7 @@ const rootRouteChildren: RootRouteChildren = {
   KhalaIndexRoute: KhalaIndexRoute,
   AisdkDocsSlugRoute: AisdkDocsSlugRoute,
   BusinessKpiEngagementRefRoute: BusinessKpiEngagementRefRoute,
-  ForgeOwnerRepoRoute: ForgeOwnerRepoRoute,
+  ForgeOwnerRepoRoute: ForgeOwnerRepoRouteWithChildren,
   ForumFForumRefRoute: ForumFForumRefRoute,
   ForumReceiptsReceiptRefRoute: ForumReceiptsReceiptRefRoute,
   ForumTTopicIdRoute: ForumTTopicIdRoute,
