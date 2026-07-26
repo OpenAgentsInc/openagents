@@ -45469,7 +45469,7 @@
     },
     {
       "path": "docs/teardowns/2026-07-25-exoharness-exo-teardown.md",
-      "sha256": "0a2d60f192b89bb4f83ddd311845826ac782c8327c07415c83b1ff1e4df0a032",
+      "sha256": "db88cd899e7d7124417bac79024ad697665ee03b1cccc59091f514af0d3d0b80",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

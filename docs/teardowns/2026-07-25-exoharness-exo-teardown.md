@@ -5,7 +5,9 @@ source tree at an exact commit in the local reference clone
 `~/work/projects/repos/exoharness-exo`. Nothing tracked was modified and
 nothing was executed: no harness ran, no sandbox started, no model was
 called. Two source passes covered the substrate and executor architecture,
-and the integration surfaces plus quality and governance. This is **the Exo
+and the integration surfaces plus quality and governance. A third pass on
+2026-07-26 read every documentation file and extracted the data model from
+code — see §11. This is **the Exo
 that OpenAgents integrates** — a recursive-self-improvement agent harness,
 distinct from exo labs' `exo-explore/exo` cluster-inference appliance
 covered in [the exo labs teardown](2026-07-25-exo-teardown.md). Owner
@@ -385,3 +387,255 @@ the chat adapter is Exo joining a Nostr room as one more client. [inferred]
   pin an exact commit for any integration and expect breaking changes.
 - Name collision: keep this Exo and exo labs' `exo-explore/exo` distinct in
   every issue, doc, and provider label.
+
+## 11. Addendum — the deep read (2026-07-26)
+
+A third pass, after the Omega lane shipped (omega#87, PR #94): every
+documentation file in the tree — the `website/docs-src` site (the source of
+`exoharness.ai/docs`), all of `docs/`, all eight `docs/design/` documents,
+`examples/exo/adapter-architecture.md`, `SELF.md`, `AGENTS.md` — plus a
+code-level extraction of the data model from `crates/exoharness`,
+`crates/executor`, `crates/cost`, and `typescript/`. Read at the fork pin
+`cd7c0d29` (upstream base `baa07f6`). The strategy companions live in
+`docs/exo/`. This addendum records the model exactly, compares it to the
+OpenAgents estate, names the pieces worth adopting, and shapes the deeper
+integration. [source]
+
+### 11.1 The data model, as the code defines it
+
+**Identity.** Every core id is a UUIDv7 newtype (`Uuid7`), so ids are also
+creation timestamps and sort keys (`crates/exoharness/src/uuid7.rs`). The
+alias set: `AgentId, ConversationId, SessionId, TurnId, EventId,
+ResponseId, ArtifactId, SnapshotId, BindingId, SecretId`. Executor-side
+scheduler and adapter stores use plain `String` ids instead — two id
+regimes in one codebase. [source]
+
+**The handle hierarchy** (`types.rs`): `ExoHarness` (root — agents,
+root bindings/secrets) → `AgentHandle` (conversations, agent artifacts/
+bindings/secrets) → `ConversationHandle` (events, fork, sandboxes,
+`begin_turn`) → `TurnHandle` (turn-scoped writes, idempotent `finish`),
+with `SandboxHandle`/`SnapshotHandle` mixed in. Sessions have no record —
+a session is only an id plus `session_started`/`session_ended` events.
+[source]
+
+**Events.** `EventData` is a 22-variant tagged union: conversation
+lifecycle (created/updated/deleted/forked), session/turn lifecycle, LLM
+traffic as Lingua messages (`messages` carries an optional `UsageRecord`
+with tokens, cost, ttft, duration), `tool_requested`/`tool_result`,
+`artifact_written`, seven sandbox lifecycle variants, `error`, and
+`custom { event_type, payload }`. The custom namespace already carries
+real weight: per-conversation model config lives as a custom event
+(config-as-event, newest wins), host lifecycle (`host_reboot`,
+`adapter_runner_started`) enables crash detection by absence, and the
+fork-side ACP work appends `turn_cancelled` durably. [source]
+
+**Append rules.** One primitive appends events: it takes a process-wide
+async write lock, optionally compares an `expected_head` against the
+conversation record's `latest_event_id`, and refuses with a typed
+head-mismatch error — "turn is stale and cannot be resumed" — when a turn
+writer lost the race. `begin_turn` is genuinely atomic: session start,
+turn start, and the user's input land in one durable batch before the
+model is called. `fork` copies bindings, secrets, artifacts, and sandbox
+records, then replays events up to the chosen point while re-minting
+every event id fresh. [source]
+
+**The protocol.** A 52-variant `Request` enum spanning five scopes (root
+10, agent 13, sandbox 10, conversation 16, turn 3) with a 26-variant
+`Response` enum, served identically over JSONL and over the loopback-only
+HTTP `POST /request`. `watch_events` has no wire variant — event
+streaming is in-process only, and the HTTP client hard-errors on it. The
+TS harness runner tunnels the same enum verbatim over stdio as
+`exo_request` frames. [source]
+
+**Storage.** JSON file per record on an `object_store` abstraction
+(local filesystem today, S3/GCS-shaped by construction): agents,
+conversations, one file per event, artifact versions as
+`<version>.json` plus `<version>.bin`, encrypted secrets, snapshot
+manifests plus payload blobs. Ordering is UUIDv7 file-name order.
+Concurrency is one in-process mutex — the code itself warns that
+multiple processes on one root are not the design. [source]
+
+**Sandboxes.** Nine provider variants (Docker, Apple container,
+local-process, Daytona, E2B, Sprites, Vercel, AWS AgentCore, External)
+behind one backend trait, warm-reuse keyed by spec hash and labels,
+snapshot payloads as opaque tagged bytes, and a real cross-provider
+teleport: a Docker image tar restored into Daytona, make-before-break.
+Request/response-only backends fake process streaming through an embedded
+Python bridge script inside the sandbox. [source]
+
+**Secrets, the honest picture.** AES-256-GCM at rest, file-backed or
+Apple Keychain master key. But the documented phrase "securely mounted
+within sandboxes" has no mount implementation — secrets reach work only
+as environment variables on host-controlled paths (adapter workers, model
+calls, provider credentials), and the master key and nonces are generated
+from UUIDv4 bytes rather than a dedicated CSPRNG call. [source]
+
+### 11.2 Docs against code — the drift catalog
+
+The corpus is honest but layered by vintage, and the diff matters for any
+integrator:
+
+- **Documented, not in code:** MCP is a stored-config placeholder (one
+  binding variant, no client, no transport, no tool import). Cloning,
+  lineage, and migration — the README's third act — have zero code beyond
+  conversation `fork` and sandbox teleport. Computer use: none. The
+  prompt-surface doc references a Fal image tool directory that does not
+  exist. The email adapter is a proposal only.
+- **In code, not documented:** the ACP stdio server (the fork's transport
+  work — upstream's own tree at the base pin has no doc for transports
+  beyond unary HTTP), a fully shipped skills system (agentskills.io-format
+  `SKILL.md` stored as versioned agent artifacts with progressive
+  disclosure), a complete Slack adapter, `/cost` and `/usage` REPL
+  commands, web-search/web-fetch/todo tools, and deep Braintrust tracing.
+- **Plans contradicted by shipping:** the server design doc prescribes a
+  Unix-socket JSON-RPC server and the deletion of the TypeScript stdio
+  bridge as "temporary scaffolding" — the shipped system is the opposite
+  (HTTP transport, bridge still the live path, tutorials teach it). A
+  parallel design doc (`local-sandbox-design.md`) carries a whole
+  alternative vocabulary (workstreams, branches, checkpoints) that never
+  became the data model.
+- **The safety asymmetry, confirmed at code level:** append-only is
+  policy, not physics. The head CAS protects turn writers, and everything
+  else is convention — `RSI.md` footnote 2 admits the substrate is
+  modifiable and merely "disallowed on the default configuration."
+  Likewise the cost design doc states plainly that usage is
+  "agent-reported telemetry, not an attested ledger," a direct
+  consequence of the substrate never making the model call. [source]
+
+### 11.3 Their model against ours
+
+| Dimension | exoharness (code truth) | OpenAgents |
+| --- | --- | --- |
+| Truth store | One JSON-file event log per conversation, single-process lock, head CAS for turn writers | Event-sourced engine (`omega-effectd`), Cloud SQL authority, Khala Sync projections, multi-client |
+| Claim discipline | Usage self-reported, prose wakeup routing, config in three substrates (artifacts, custom events, store files) | Exact token rows, typed routing/receipts, "prose is never authority" |
+| Integrity | Append-only by policy, CAS on one path | Gates, receipts, digest binding, delta tests — and still short of hash-chained logs |
+| Replay | Native: fork re-mints history, snapshots anchor filesystem state to events | Receipts reference history, replay is per-surface work |
+| Multi-writer | Explicitly out of design (one coordinated local runtime) | The entire Khala/Sync problem, solved with authority separation |
+| Extension seam | Custom namespaced events, executor swap, adapter workers | Typed schemas, behavior contracts, capability manifests |
+
+The comparison sharpens the original §7: they built the cleanest
+single-writer replayable substrate in the field and deliberately deferred
+every multi-party question — attestation, authority, verification,
+synchronization — that the OpenAgents estate is organized around. The two
+systems still compose rather than compete, and now the seam is visible at
+type level. [inferred]
+
+### 11.4 Pieces of their model worth adopting
+
+Adoption candidates, each bounded, none granted here — these are design
+inputs for the owning surfaces, filed as FastFollow-style lessons rather
+than code to copy:
+
+1. **Atomic turn acceptance with a head-CAS handle.** `begin_turn`
+   durably accepts input, and every later turn write carries
+   `expected_head` — a stale writer refuses with a typed error instead of
+   interleaving. This is the same law as Omega's stale-proposal refusal,
+   applied to the transcript itself. Engine lanes and thread fabric
+   should hold this property explicitly.
+2. **UUIDv7 ids as id, timestamp, and sort key in one.** Cheap, uniform,
+   and it makes cursor pagination and recency keys trivial. Worth making
+   the default for new event-shaped stores.
+3. **Log-is-not-prompt, compaction as derived custom events.** The
+   durable record stays complete while the prompt is a view, and a failed
+   compaction is inspectable because the raw history remains queryable.
+   Directly relevant to thread-fabric compaction design.
+4. **Artifact-backed tool results with inline previews.** Full results
+   become versioned artifacts, the event carries a compact preview with
+   truncation flags. We already split raw Codex event chunks from public
+   traces — this is the same discipline generalized to every tool result.
+5. **Snapshot ids in the event log.** Filesystem state anchored to
+   transcript position is what makes environment time travel composable.
+   Agent Computer and workroom lanes should record checkpoint identity in
+   the run's event stream the same way.
+6. **The adapter laws.** Inbound wakes a normal turn, outbound happens
+   only through an explicit tool call, subsystem state stays in subsystem
+   stores, and the outbox claims work by atomic rename for at-least-once
+   delivery. Our agent-presence work (the public chat lane included)
+   should keep all four laws.
+7. **Progressive-disclosure skills on versioned storage.** Name and
+   description per turn, body on demand, index written after content so a
+   listed skill always resolves. The format is already the one our
+   `.agents/skills` tree speaks — interop is nearly free.
+8. **Per-round tool registration.** A tool installed mid-turn is usable
+   in the next round because the registry is rebuilt every round —
+   freshness by construction, no cache invalidation protocol.
+
+And the explicit non-adoptions, because they collide with our laws:
+prompt-text reply routing (routing context belongs in typed fields, not
+prose the model must preserve), self-reported usage as accounting truth,
+configuration split across three last-write-wins substrates, and
+append-only-by-convention without tamper evidence. [inferred]
+
+### 11.5 What deeper integration looks like
+
+The shipped lane (§8 tiers, delivered through omega PR #94) drives Exo as
+a disclosed ACP executor. The deep read supports four further steps, in
+cost order:
+
+1. **Read the log, not just the stream.** `exo serve` exposes the full
+   52-variant protocol on loopback. A read-only engine client in
+   `omega-effectd` — typed to exactly the query variants
+   (`conversation_get_events`, artifact reads, agent/conversation show) —
+   would let the omega#95 workspace render Exo's durable history,
+   artifacts, and sandbox records directly, instead of only what ACP
+   metadata carries. Loopback only, query variants only, never the
+   write or secret families. [inferred]
+2. **Fork and snapshot as verification primitives.** `conversation_fork`
+   plus `start_sandbox { snapshot_id }` is a complete episode-reset
+   mechanism: recreate the agent and its filesystem at a chosen event,
+   run a candidate against an oracle, discard or promote. This is the
+   concrete API surface under the workbench direction in
+   `docs/exo/2026-07-26-exo-verifiable-software-gym-vision.md`, and it
+   needs no upstream changes at all. [inferred]
+3. **The virtualization seam, disclosed end to end.** Exo hosts Codex,
+   Claude Code, and Cursor as executors inside its sandboxes, and its
+   spec's ambition is to virtualize their config state. If Omega ever
+   routes to an Exo-hosted vendor executor, the disclosure line must name
+   the full chain — Omega Agent to Exo to the hosted runtime and model —
+   or the lane misattributes. Worth deciding before anyone wires it, not
+   after. [inferred]
+4. **Upstream contributions matched to their admitted gaps.** Streaming
+   endpoints for event watch and process output (their HTTP doc names
+   both as future work — the fork's ACP transport is the working
+   template), turn lease tokens (their architecture doc admits turns have
+   no lease), and event hash-chaining (their most-engaged open issue,
+   #154, and the prerequisite for treating an Exo history as evidence).
+   Each is small, additive, and directly in their own stated direction.
+   Owner-gated as always. [inferred]
+
+Boundaries that the deep read reconfirms rather than relaxes: never point
+two processes at one `.exo` root (single-writer storage), never treat the
+MCP binding as MCP support, never trust self-reported usage numbers into
+our accounting (receipts must mark them as harness-reported), and secrets
+stay Exo-owned — the env-var injection paths are theirs to run, not ours
+to reach through. [source]
+
+### 11.6 Relation to Omega Agent, restated after the deep read
+
+The Omega Agent program holds unchanged: the router owns routing,
+disclosure, and receipts, and Exo remains one `ExternalAcp` executor
+beneath it. The deep read strengthens three specific decisions already
+taken — refusing `exo serve` as a turn API (it truly has none), pinning
+bytes rather than commits (no releases, single-writer local builds), and
+labeling the provider as not disclosed (their LLM binding genuinely does
+not carry one). It adds two forward obligations: any engine-side log
+reader stays a read-only capability probe consistent with the engine
+owning readiness truth, and any future use of Exo-reported usage or cost
+in OpenAgents metering must be typed as unattested harness telemetry,
+never merged with exact provider rows. [inferred]
+
+### 11.7 Watch items added by the deep read
+
+- The server-plan divergence: whether upstream doubles down on HTTP or
+  returns to the socket-and-client plan decides what a long-lived engine
+  client should bind to.
+- JavaScript isolation: agent-authored tools run in the host Node
+  process today, and upstream's own plan names QuickJS as the candidate
+  fix — a material boundary change for any host embedding Exo.
+- The UUIDv4-sourced master key and nonce generation — small, fixable,
+  and worth an upstream report.
+- The TS bridge `listConversations` mismatch (request field omitted,
+  response shape misread) — a live bridge bug and a cheap first
+  upstream fix.
+- The skills system: shipped, undocumented, and format-compatible with
+  our skill tree — the quietest interop surface in the codebase.
