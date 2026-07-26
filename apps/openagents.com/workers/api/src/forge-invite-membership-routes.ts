@@ -75,7 +75,14 @@ const relayAdmitInternalPath = '/internal/forge/relay-admit'
 const collaborationReadAuthorizeInternalPath =
   '/internal/forge/collaboration-read-authorize'
 const webReadAuthorizeInternalPath = '/internal/forge/web-read-authorize'
-const bootstrapTenantRef = 'tenant.openagents'
+/**
+ * The established tenant uses `tenant.openagents`. Forge's public Git namespace
+ * is intentionally `openagents`, so the same core team can bootstrap its one
+ * owner through the normal invite/proof path before it admits the real Omega
+ * repository. Keep this an exact allowlist; this endpoint is never a general
+ * tenant bootstrap mechanism.
+ */
+const bootstrapTenantRefs = new Set(['tenant.openagents', 'openagents'])
 const bootstrapTeamRef = 'team_openagents_core'
 const bootstrapAdminAuthorizationHeader = 'x-openagents-admin-authorization'
 
@@ -281,7 +288,7 @@ export const makeForgeInviteMembershipRoutes = <
         }
         const { bytes, value } = await readJsonBytes(request)
         const body = bootstrapBody(value)
-        if (body === undefined || body.tenantRef !== bootstrapTenantRef) {
+        if (body === undefined || !bootstrapTenantRefs.has(body.tenantRef)) {
           return noStoreJsonResponse(
             { error: 'forge_owner_bootstrap_body_invalid' },
             { status: 400 },

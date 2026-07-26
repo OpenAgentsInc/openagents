@@ -153,6 +153,11 @@ const makeHarness = async () => {
     nowIso,
     tenantRef,
   })
+  await gitAuth.upsertTenant({
+    displayName: 'OpenAgents Forge',
+    nowIso,
+    tenantRef: 'openagents',
+  })
   const membership = makeD1ForgeInviteMembershipStore(db)
   const bootstrapInvites = new Map<string, TeamWorkspaceInviteRecord>()
   const bootstrapInviteStore: TeamWorkspaceInviteStore = {
@@ -224,7 +229,9 @@ const makeHarness = async () => {
       ),
     resolveTeamRefForTenant: (_env, requestedTenantRef) =>
       Promise.resolve(
-        requestedTenantRef === tenantRef ? acceptedInvite.teamId : undefined,
+        requestedTenantRef === tenantRef || requestedTenantRef === 'openagents'
+          ? acceptedInvite.teamId
+          : undefined,
       ),
     requireBrowserSession: () => Promise.resolve(session),
     requireAdminApiToken: request =>
@@ -282,6 +289,27 @@ describe('Forge invite membership routes', () => {
     expect(await replay.json()).toMatchObject({
       error: 'forge_owner_bootstrap_already_completed',
     })
+  })
+
+  test('bootstraps the public Forge namespace through the same core team', async () => {
+    const { membership, run } = await makeHarness()
+    const secret = generateSecretKey()
+    const npub = nip19.npubEncode(getPublicKey(secret))
+    const url = 'https://openagents.com/api/forge/bootstrap-owner'
+    const request = signedJsonRequest(url, { npub, tenantRef: 'openagents' }, secret)
+    request.headers.set(
+      'x-openagents-admin-authorization',
+      'Bearer operator-secret',
+    )
+
+    const response = await run(request)
+    expect(response.status).toBe(201)
+    expect(
+      await membership.readActorBindingByNostrPubkey(
+        'openagents',
+        getPublicKey(secret),
+      ),
+    ).toMatchObject({ membershipState: 'active', roleRefs: ['forge:admin'] })
   })
 
   test('rejects owner bootstrap without the separate admin bearer', async () => {
