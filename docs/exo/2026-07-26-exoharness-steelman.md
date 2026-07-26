@@ -1,8 +1,9 @@
 # The Exoharness Steelman — the Project's Own Case for Its Trajectory — 2026-07-26
 
 Agent-facing steelman of `exoharness/exo` on its own terms. The exercise rule
-for this document: **ignore every OpenAgents contribution, fork, adapter,
-and integration.** No ACP transport, no Nostr adapter, no Omega lane, no
+for the body of this document: **ignore every OpenAgents contribution,
+fork, adapter, and integration.** The rule ends at the addendum, which
+answers the body point by point. No ACP transport, no Nostr adapter, no Omega lane, no
 OpenAgents room appears in the argument below — this is the strongest honest
 case the exoharness project itself would make for its design and its future,
 reconstructed from its own published words: the landing page and README, the
@@ -234,8 +235,103 @@ If those five land, the project's own sentence becomes hard to argue with:
 the harness was never the product. The history was, and exoharness got
 there first.
 
+## Addendum — how OpenAgents strengthens and extends the thesis (2026-07-26)
+
+The body argued exoharness's case without us. This addendum drops the
+exclusion rule and answers each pillar with what OpenAgents adds — not as
+charity, but because every extension below makes *their* sentence truer.
+Shipped items cite evidence. Directional items are `[SPECULATION]` and are
+argued at length in the companion documents in this folder.
+
+**Records outlast behaviors — but only proven records earn the outlasting.**
+The steelman's first pillar makes the record the durable asset. OpenAgents
+adds the discipline that makes a record worth keeping: a claim is a typed
+edge to evidence, status is receipt-gated, and history that cannot be
+checked is just old data. Concretely, shipped: the ACP transport makes the
+record streamable to any host while every turn closes durably, including
+cancellation (`turn_cancelled` appended before `Cancelled` is reported).
+Directional: hash-chaining the log and signing checkpoints — the direction
+upstream's own #154 proposal reaches for — upgrades append-only from a
+convention into a verifiable property, and turns an agent's history into a
+portable attestation a stranger can check without trusting the machine it
+came from. Records outlast behaviors. Signed, digest-bound records outlast
+machines.
+
+**Recursion needs runtime support — and safe recursion needs a type
+system.** The essay's own analogy carries the extension: languages did not
+stop at the call stack, they added types, scopes, and access control so
+recursion could be composed by people who did not write the runtime.
+Exoharness protects the log by default configuration and calls the rest "a
+policy consideration." OpenAgents built that policy layer and proved it
+runs: observed-capability refusal by default, a one-turn human-minted
+self-modification grant fenced to one draft, one configuration, and one
+connection generation, consumed exactly once, with every outcome receipted
+(omega#87, PR #94, `OMEGA-DELTA-0042`). Their footnote 2 is where our
+authority model plugs in — the substrate keeps the history, the host types
+the consent.
+
+**Behaviors evolve above the substrate — and selection needs a grader the
+evolving thing cannot reach.** The Bitter Lesson pillar says maximize the
+space of behaviors that can evolve. Evolution without external selection
+is drift. The retired OpenAgents Gym contributed the reward rule — the
+executed verification verdict plus cost per accepted outcome, "never a
+self-grade, never a grader the policy can reach" — and Exo contributes the
+primitive the Gym lacked, fork as reset. `[SPECULATION]` The composed
+workbench (fork the history, run candidate self-modifications against
+external oracles, promote through gated consent) is what turns "the agent
+can evolve" into "the agent measurably improved," with the
+accepted-outcomes-per-kilowatt-hour metric grounding even their horizon
+footnote about compute and power.
+
+**Aggregation composes both ways — and the wire that proves it is ours.**
+Exoharness aggregates vendor executors beneath a durable agent. Omega
+aggregates harnesses beneath one disclosed identity with routing and
+receipts. These are not rivals — they are the two halves of a supply
+chain, and the shipped ACP transport is the first wire on which both
+aggregations hold at once: an Exo agent, durable in its own substrate,
+attached as a disclosed lane in an IDE, with neither side absorbing the
+other's authority. Omega is also, on current evidence, Exo's first IDE
+host — distribution the terminal REPL cannot reach.
+
+**Security by construction — completed from above.** The steelman's
+defense is that approvals are executor semantics, so the substrate rightly
+refuses to own them. OpenAgents is the worked answer to the question that
+defense leaves open: then who owns them, and how, without freezing
+behavior? Answer, shipped: typed authority above the substrate — loopback
+endpoint types for the no-auth server, a commit-plus-tree-plus-measured-
+bytes pin that answers the no-releases posture, fail-closed capability
+observation before every turn, and delta tests that make the boundary
+executable. Nothing in it constrains how the agent thinks. All of it
+constrains what an unreviewed agent can silently become.
+
+**Time travel — extended into verification and into the network.** Fork
+and rewind recover an agent. The extension is that forked histories are
+evidence: a claim bundled with its history is checkable by replay, which
+is the cheapest independent verification primitive any agent system has
+proposed. And identity extends the same way outward: the Nostr chat
+adapter (upstream PR #162) gives the durable agent a portable signed
+presence in any NIP-29 room, so the thing that outlives executors also
+outlives platforms — and can share what it learned. `[SPECULATION]` The
+lesson commons argued in the companion network document is Act 3 of their
+roadmap grown past one machine: lineage is vertical inheritance, a
+cross-owner commons is horizontal transfer, and families of agents that
+teach each other beat families that only clone.
+
+**The falsifiable bets get their instruments.** Bet 1 (executor swap) is
+easiest to run honestly under a host that disclosures which executor ran
+each turn. Bet 5 (the log survives its agent) needs an adversarial
+self-modification campaign under someone's consent gate — the Tier C
+machinery is that gate, already tested live. A steelman's bets are only as
+good as the experiments someone builds, and most of the experiments now
+exist.
+
+One sentence for the whole addendum: exoharness bet that the history is
+the asset, and OpenAgents is what makes the bet pay — proof machinery so
+the history is believable, authority so growing it is safe, selection so
+it compounds, and a network so it is not alone.
+
 ---
 
-*Series note: this steelman deliberately excludes all OpenAgents material.
-The integration state, the verification counter-argument, and the network
-case live in the companion documents in this folder.*
+*Series note: the body of this steelman deliberately excludes all
+OpenAgents material. The integration state, the verification argument, and
+the network case live in the companion documents in this folder.*
