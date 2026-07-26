@@ -1,0 +1,177 @@
+{
+  "schema": "openagents.omega.fa07-installed-gate-observation.v1",
+  "generatedAt": "2026-07-25T23:42:21.319Z",
+  "issue": "omega#26 (OMEGA-FA-07)",
+  "candidate": {
+    "appPath": "/Applications/Omega.app",
+    "enginePath": "/Applications/Omega.app/Contents/Resources/omega-effectd/bin/omega-effectd",
+    "engineOverridden": false,
+    "hostBinaryDigest": "8ccca2e4d477d7d2669605ba99e1dd10e677cd035bdb6d6b9c12ac37fdb16a60",
+    "engineBundleDigest": "2411750dd11fc666e35ed4f79f55dc87e02cc903a42f20e9abb5d540eb41d41c",
+    "engineBundleDigestMatchesManifest": true,
+    "componentManifestDigest": "ed1c60e1d697c60ef1f48f7d121db67584f8c7f524bbf2e1ff5dfc31a440a937",
+    "engineSourceCommit": "28c877d0b85b57d8f3162488b27ecf77c20278e2",
+    "serviceVersion": "0.1.0",
+    "shortVersion": "0.2.0",
+    "bundleVersion": "20260725.220749"
+  },
+  "providersExercised": true,
+  "observations": {
+    "gate5": {
+      "gate": "visible_cross_provider_handoff",
+      "runRef": "run.full-auto.ms1038xj.okslo9rc",
+      "providersExercised": true,
+      "refusedWhileRunning": true,
+      "refusedWhileRunningCode": "invalid_request",
+      "refusedUnknownLane": true,
+      "pausedBeforeHandoff": true,
+      "laneBefore": "codex-local",
+      "laneAfter": "claude-local",
+      "laneRebound": true,
+      "transition": {
+        "handoffRefShape": true,
+        "from": "codex-local",
+        "to": "claude-local",
+        "actor": "control_api",
+        "disposition": "complete_within_bounds",
+        "truncated": false,
+        "envelopeSchema": "openagents.desktop.provider_handoff_envelope.v1",
+        "envelopeSchemaExpected": true,
+        "threadSplit": true
+      },
+      "durableTransitionCount": 2,
+      "durableAcceptedCount": 1,
+      "durableSchema": "openagents.desktop.provider_handoff_transition.v1",
+      "reportAgreesWithRegistry": true,
+      "resumedAfterHandoff": true,
+      "turnLanes": [
+        "codex-local"
+      ],
+      "turnCount": 1,
+      "turnThreadRefsDigest": [
+        "eb045d78d273"
+      ],
+      "runStateAfterResume": "stalled",
+      "runStallCauseAfterResume": "dispatch_overdue",
+      "runRecoveryActionAfterResume": "retry_now",
+      "runSuccessfulAttempts": 2,
+      "runFailedAttempts": 0,
+      "runThreadIsHandoffTarget": true,
+      "hostMethodsAfterHandoff": [
+        "refresh_evidence",
+        "lane_readiness",
+        "create_thread",
+        "append_system_note",
+        "resolve_workspace",
+        "dispatch_turn",
+        "resolve_sync_session"
+      ],
+      "dispatchCountAfterHandoff": 1,
+      "bothLanesExecuted": false,
+      "providerInvocations": [
+        {
+          "lane": "codex-local",
+          "ok": true,
+          "exitCode": 0,
+          "outputLength": 675,
+          "elapsedMs": 30080
+        },
+        {
+          "lane": "claude-local",
+          "ok": true,
+          "exitCode": 0,
+          "outputLength": 2602,
+          "elapsedMs": 155693
+        }
+      ],
+      "lanesInvoked": [
+        "codex-local",
+        "claude-local"
+      ],
+      "bothLanesInvoked": true,
+      "systemNoteEmitted": true,
+      "systemNoteAddressedToTargetThread": true,
+      "systemNoteNamesBothLanes": true,
+      "objectiveTextAbsentFromDurableHandoff": true
+    },
+    "gate6": {
+      "gate": "offline_and_sync_gap",
+      "runRef": "run.full-auto.ms10gsqq.gfx8b54t",
+      "providersExercised": true,
+      "syncAvailable": false,
+      "syncReason": "omega_khala_sync_session_unavailable",
+      "publishBlocksDispatch": false,
+      "publishBlocksDispatchIsFalse": true,
+      "startedWhileOffline": true,
+      "dispatchedWhileOffline": true,
+      "stateWhileOffline": "running",
+      "publishRefused": true,
+      "publishStatus": "sync_unavailable",
+      "publishReason": "omega_khala_sync_session_unavailable",
+      "publishReasonIsTyped": true,
+      "unknownRunPublishStatus": "run_not_found",
+      "publishDistinguishesMissingRunFromOfflineSync": true,
+      "offlineControlIntentStatus": "applied",
+      "offlineOutcomeLedgerWritten": false,
+      "offlineOutcomeLedgerExpected": false,
+      "turnCountAfterWork": 0,
+      "runSurvivedRestart": true,
+      "stateAfterRestart": "paused",
+      "reportSurvivedRestart": true,
+      "syncStillHonestAfterRestart": true,
+      "objectiveTextAbsentFromSyncSurfaces": true,
+      "objectivePresentInOwnerLocalDetail": true
+    },
+    "gate7": {
+      "gate": "mobile_control_outcomes",
+      "runRef": "run.full-auto.ms10ih5m.sycwiusc",
+      "providersExercised": true,
+      "pauseStatus": "applied",
+      "pauseLifecycle": "paused",
+      "resumeStatus": "applied",
+      "resumeLifecycle": "running",
+      "stopStatus": "applied",
+      "stopLifecycle": "stopped",
+      "unknownRunStatus": "rejected",
+      "unknownRunRejectionReason": "run_not_found",
+      "escalationRefused": true,
+      "escalationErrorCode": "invalid_request",
+      "afterTerminalStatus": "rejected",
+      "afterTerminalRejectionReason": "illegal_transition",
+      "terminalState": "stopped",
+      "terminalReasonRef": "terminal.full_auto.stopped.mobile",
+      "terminalReasonRefIsTyped": true,
+      "startedAtMsRecorded": true,
+      "everyOutcomeTyped": true,
+      "objectiveTextAbsentFromOutcomes": true
+    },
+    "gates4And9": {
+      "gates": [
+        "control_matrix",
+        "redaction"
+      ],
+      "runRef": "run.full-auto.ms10kk4j.3k5vzbrw",
+      "states": {
+        "start": "running",
+        "pause": "pausing",
+        "resume": "undefined",
+        "retry": "refused:invalid_request",
+        "stop": "stopped"
+      },
+      "controlMatrixComplete": false,
+      "capReachedObserved": true,
+      "capReachedState": "cap_reached",
+      "redactionSurfacesChecked": [
+        "list_runs",
+        "get_receipt",
+        "get_report",
+        "get_capacity",
+        "decide_attention"
+      ],
+      "redactionLeaks": [],
+      "redactionClean": true,
+      "receiptCarriesObjectiveDigest": true,
+      "receiptObjectiveDigestMatches": true
+    }
+  }
+}

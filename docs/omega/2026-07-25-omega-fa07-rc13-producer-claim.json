@@ -1,0 +1,25 @@
+{
+  "_comment": "FA-07 gate 10 (omega#26) producer claim for 0.2.0-rc13. Input to omega script/review-omega-candidate. The reviewer recomputes every value below from the artifact and the installed application; it never reads the producer's evidence. A gap is stated in _producerIdentityGap rather than papered over.",
+  "_candidate": {
+    "version": "0.2.0-rc13",
+    "tag": "v0.2.0-rc13",
+    "release": "https://github.com/OpenAgentsInc/omega/releases/tag/v0.2.0-rc13",
+    "omegaSourceCommit": "abfc70db89e59739b7fd000e228f7bae7d5ab9a5",
+    "installedApp": "/Applications/Omega.app",
+    "installedHostBinarySha256": "8ccca2e4d477d7d2669605ba99e1dd10e677cd035bdb6d6b9c12ac37fdb16a60",
+    "cdHash": "91f6c0d610ace832dd7c4377f864b34a52af4fae",
+    "bundleVersion": "20260725.220749",
+    "engineReleaseTag": "omega-effectd-v0.1.0-rc.9",
+    "engineSourceCommit": "28c877d0b85b57d8f3162488b27ecf77c20278e2",
+    "engineBundleSha256": "2411750dd11fc666e35ed4f79f55dc87e02cc903a42f20e9abb5d540eb41d41c",
+    "componentManifestSha256": "ed1c60e1d697c60ef1f48f7d121db67584f8c7f524bbf2e1ff5dfc31a440a937"
+  },
+  "_producerIdentityGap": "No producer keypair is registered anywhere in AUTHORITY.md; producers hold role operating_agent, not a key. script/review-omega-candidate only refuses when the reviewer key appears in producerPubkeys, so a producer that named itself dishonestly would pass that check. The identifier below is descriptive, not cryptographic. Naming this rather than minting a plausible-looking hex string, because a fake pubkey here would make the independence check look stronger than it is.",
+  "producerPubkeys": [
+    "producer.omega.fa07.lane.claude-fa07-close.2026-07-25"
+  ],
+  "artifactSha256": "bd5e0ec75b1e8d910d77e4c226e60d431cb061f46fa41bf7c3e3f4019027ffec",
+  "notarization": "notarized",
+  "stapled": "stapled",
+  "forbiddenStrings": "none"
+}

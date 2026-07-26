@@ -184,6 +184,193 @@ restored run.
 
 Every gate not driven to green above stays `pending_required_gates`.
 
+## 2026-07-25 rc13 installed-candidate pass (lane `claude/fa07-close`)
+
+Everything in this section was driven against **`0.2.0-rc13` and nothing else**.
+`origin/main` in the omega repository has since moved to `8b2cee71bf`
+("Cut 0.2.0-rc14"). **rc14 is neither released nor installed**, and no
+observation here transfers to it.
+
+### Candidate binding
+
+| Binding | Value |
+| --- | --- |
+| `CFBundleShortVersionString` / `CFBundleVersion` | `0.2.0` / `20260725.220749` |
+| Installed host binary | `sha256:8ccca2e4d477d7d2669605ba99e1dd10e677cd035bdb6d6b9c12ac37fdb16a60` |
+| CDHash | `91f6c0d610ace832dd7c4377f864b34a52af4fae` |
+| Gatekeeper | `accepted`, `source=Notarized Developer ID` |
+| `xcrun stapler validate /Applications/Omega.app` | "The validate action worked!" — the **app** is stapled on rc13, which rc11 was not |
+| DMG | `sha256:bd5e0ec75b1e8d910d77e4c226e60d431cb061f46fa41bf7c3e3f4019027ffec` |
+| omega source | `abfc70db89` |
+| Engine | `omega-effectd-v0.1.0-rc.9`, source `28c877d0b85b57d8f3162488b27ecf77c20278e2` |
+| Engine files vs. `component-manifest.json` | all four recomputed and equal |
+
+`git diff 28c877d0b8..origin/main -- packages/omega-effectd/src/` is **empty**
+before this pass, so every source-tier test in that package was testing exactly
+the engine bytes rc13 ships. The engine change below is the first divergence.
+
+### Receipts
+
+Each receipt records the recomputed candidate binding it was driven against, so
+a receipt cannot be reattributed to a different candidate by being moved.
+
+| File | Contents |
+| --- | --- |
+| `2026-07-25-omega-fa07-rc13-gate2-unattended.json` | gate 2 |
+| `2026-07-25-omega-fa07-rc13-gates-5-6-7.json` | gates 5, 6, 7 — and a **superseded** gates 4/9 block, kept rather than deleted because it is the reading that exposed the measurement defect below |
+| `2026-07-25-omega-fa07-rc13-gates-4-9.json` | gates 4 and 9, re-driven after that fix. This is the one that counts |
+| `2026-07-25-omega-fa07-rc13-producer-claim.json` | gate 10 input for `script/review-omega-candidate` |
+
+### Gate 7 — flipped red → green
+
+The rc.9 repin carried. `startedAtMs` is recorded, `terminalReasonRef` is
+`terminal.full_auto.stopped.mobile` and typed, every control outcome is
+`applied` or `rejected` with a named reason (`run_not_found`,
+`illegal_transition`, `invalid_request` for an attempted `start` escalation),
+and no objective text reaches an outcome. Every run rc11 could produce was
+refused by the phone. The runs rc13 produces are not.
+
+### Gates 4 and 9 — green, after a measurement defect was fixed
+
+The control matrix on rc13 first read `pause → pausing`, `resume → undefined`,
+where rc11 had read `pause → paused`, `resume → running` — same driver, same
+engine contract. The engine was right both times: `pause` answers `pausing`
+while a provider turn is in flight, and `resume` from `pausing` is correctly
+refused. The driver was reading the immediate answer and calling it the matrix,
+which made the gate a coin flip on provider timing. It now settles the pause and
+records both readings. Re-driven: `start → running`, `pausing → paused`,
+`resume → running`, `retry` refused `invalid_request` (correct — retry is a
+stalled-run affordance), `stop → stopped`, and `cap_reached` observed by driving
+a run into it. Redaction clean across `list_runs`, `get_receipt`, `get_report`,
+`get_capacity`, `decide_attention` with a deliberately credential-shaped
+objective. The receipt's `objectiveDigest` matches.
+
+### Gate 6 — green
+
+Offline start dispatches, `publishBlocksDispatch` is `false`, the publish
+refusal is typed (`omega_khala_sync_session_unavailable`) and distinguishable
+from `run_not_found`, a control intent applied offline settles `applied`, and
+the run and report survive a real supervisor restart with Sync still honestly
+unavailable.
+
+### Gate 2 — performed by an agent, red on rc13, and the reason is in this repository
+
+**Who performed it.** The owner lifted the reservation that made gate 2 an
+owner-only act (2026-07-25: "stop waiting on me, i already gave you an authority
+grant to set up emulated users etc"). `AUTHORITY.md` places current owner
+instruction above its own clauses, so the reservation is lifted. That permits an
+agent to *perform* the run. It does not convert an agent-performed run into a
+person's observation, and the receipt does not pretend otherwise:
+`performedBy: "agent"`, `performedByIdentity: "emulated.operator.fa07-gate2"`,
+`ownerObservation: false`. No `owner_observation` attestation was written.
+
+**How it was performed.** `packages/omega-effectd/scripts/fa07-gate2-unattended.ts`
+sends one start request in the wire form the human launcher produces — the exact
+nine keys of `full_auto_ui::FullAutoDispatch::params()`, including the
+`launchOrigin` token `new_thread_menu_item`. No new start path was created
+(owner gate 8). The receipt also records `launchOriginReadByEngine: false`: the
+engine ignores that key, and gate 8 is enforced by the type of
+`FullAutoDispatch::from_validated`'s first argument, not by a wire check. Saying
+so, because a reader could otherwise take the token for an authority check.
+
+**What happened.** Nothing, for eighteen minutes.
+
+| Observation | Value |
+| --- | --- |
+| Start accepted, state | `true`, `running` |
+| Real provider turn | `codex-local`, exit 0, 164.0 s, 1,466 bytes |
+| Unattended wall clock | 1,081,083 ms |
+| Write calls after the start | **0** |
+| Silent window | 180,003 ms with **0** framed calls of any kind |
+| Engine dispatches before / after that window | 1 / 1 |
+| Turns advanced during the window | **false** |
+| `successfulAttempts` / `turnCount` | 1 / 0 |
+| `multiTurn` (≥ 3 turns) | **false** |
+| Final state | `stalled`, `stallCause: dispatch_overdue`, `recoveryAction: retry_now` |
+
+The return leg is green: across a full supervisor restart at a new generation
+over the same data root, the run survived, the state read the same, the
+objective is present in the owner-local detail and absent from every public
+surface, the report survived, and the receipt's `objectiveDigest` matches.
+
+Driving it found that **an Omega Full Auto run does not reach a second turn on
+its own.**
+
+Reconciliation is the only thing that dispatches a continuation, and on the
+framed path every trigger for it was a control *mutation* — `start`, `pause`,
+`resume`, `stop`, `retry`, `handoff`, `apply_control_intent`. The Electron
+control-API host additionally reconciles when a turn completes. This transport
+has no turn-completion signal, because the host answers `dispatch_turn` with
+`{accepted: true}` and is never asked again. The three methods
+`full_auto_ui::panel::refresh_runs` polls every three seconds — `list_runs`,
+`get_run`, `decide_attention` — deliberately do not mutate, which is right of
+them and is exactly why none of them reconciles. `panel.rs` is also the only
+place in the GPUI tree that calls a mutating supervisor method, and it calls
+them from clicks.
+
+The gap was visible in this suite the whole time:
+`server.fa07-incident-replay.test.ts` starts a **second run** to make a
+reconciliation sweep happen, and says so in a comment. It read as a harness
+detail. It was the product.
+
+This was never a silent death — the run projected `stalled` /
+`dispatch_overdue` with a `retry_now` affordance, which is gate 1's property
+holding underneath. It was simply not autonomous.
+
+**Fixed at source**: `beginAutonomyPolling` in
+`packages/omega-effectd/src/protocol/server.ts` enters the same serialized
+reconciliation path every other trigger already uses, on a clock instead of on a
+person, and only while a non-terminal run exists.
+
+`server.fa07-unattended.test.ts` pins it over wall-clock time with no control
+call in between — the only formulation gate 2 accepts. Falsified:
+
+| Experiment | Result |
+| --- | --- |
+| Remove `beginAutonomyPolling()` from `initialize` | **red** — "a run nobody touched must still reach turn two", 2 tests |
+| Keep the clock, push its interval out of reach (the shipped rc13 behavior) | kept as a passing test asserting the run does **not** advance |
+| Remove the idle guard | idle-host test goes red: an Omega with no run must not wake the host on a timer |
+
+The turn cap still bounds an unattended run, asserted separately, because a
+clock that ignored the cap would spend the owner's budget forever.
+
+**Gate 2 stays red on rc13.** The fix is not in the installed bytes.
+
+### Gate 5 — still red on rc13, and now precisely located
+
+The rc.9 engine fix carried: on installed rc13 a real Codex → real Claude
+handoff ran (both CLIs, exit 0), the lane rebound, the thread split, the durable
+registry and `report.providerTransitions` agree, both falsifiers fire (a handoff
+while running is refused, and an unknown target lane is refused), the objective
+never enters the durable handoff, and `systemNoteEmitted`,
+`systemNoteAddressedToTargetThread` and `systemNoteNamesBothLanes` are all
+**true** where rc11 had all three false.
+
+The note now reaches the host. **The host refuses it.**
+`agent_ui::omega_host_bridge::append_system_note` decodes the parameters and
+returns `unavailable("Agent threads do not expose an owner-visible system-note
+authority.")`. So gate 5's *visibility* half is still absent on the installed
+candidate: an owner reading the thread still cannot tell that a different model
+took over. The refusal is typed rather than silent, which is better than rc11's
+`() => {}`, and it is not evidence.
+
+That file is `crates/agent_ui`, held by the wire-up lane (omega#76/#77/#78).
+Not touched here.
+
+### What this pass did NOT do
+
+- **Gate 10** — the designated reviewer identity signs it or nobody does. This
+  lane produced the evidence and may not review it. The producer claim for
+  `script/review-omega-candidate` is
+  `docs/omega/2026-07-25-omega-fa07-rc13-producer-claim.json`.
+- **omega `./script/clippy`** — not run. This lane made no omega change, so it
+  would prove nothing about this work, and a concurrent lane held an active
+  `cargo build --release --package remote_server` on the shared 15 GB target
+  directory. Recorded as deliberately unperformed rather than substituted.
+- No candidate was built, signed, or installed. Gates 2 and 5 both now wait on a
+  candidate cut after this engine change and after the `agent_ui` note authority
+  lands.
+
 ## Result
 
 This packet records the FA-07 proof matrix for Omega Full Auto.
@@ -220,12 +407,12 @@ candidate, owner-observation, release, or public-claim gates.
 | 2 | Non-overridable guardrail immunity | green (automated) | FA-04 framed capacity and guardrail decode tests |
 | 3 | Redaction by explicit field lists | green (automated) | FA-05/FA-07 receipt, attention, and `list_runs` redaction tests |
 | 4 | 2026-07-17 eviction incident shape | green (automated) | Drop host thread registry yields `stalled` / `host_thread_missing` / `stop_only` in FA-04 and FA-07 matrix |
-| 5 | Owner-real multi-turn unattended run on Omega | blocked | No evidence packet binds an owner-observed run to an exact signed rc.6 candidate. |
-| 6 | Visible Codex to Claude handoff on Omega | partial | The framed service now exposes paused-only, live-lane-revalidated, durable handoff under #9215. Live sidebar proof is still required on the replacement packaged candidate. |
-| 7 | Packaged restart reconciliation | partial | Supervisor restart and native evidence survive in source tests. No current installed-candidate receipt binds that proof to rc.6 and the landed Omega capabilities below. |
-| 8 | Mobile pause/resume/stop typed outcomes | green (source/automated) | rc.6 carries the Sync/mobile transport and typed outcomes. Omega `6a8e287295b9d7dbd9cc7abe02685cfcaa3afbf8` supplies the native OpenAgents session boundary. The installed offline/Sync journey remains unobserved. |
+| 5 | Owner-real multi-turn unattended run on Omega | red on rc13 | Performed on installed rc13 by an agent under the emulated identity `emulated.operator.fa07-gate2`, recorded `performed_by: agent` — **not** an owner observation. The run did not reach a second turn: the framed transport had no continuation trigger, so a started run dispatched turn one and waited. Fixed at source (`beginAutonomyPolling`, `server.fa07-unattended.test.ts`, falsified twice). The fix is not in rc13's bytes. |
+| 6 | Visible Codex to Claude handoff on Omega | red on rc13 | A real Codex → real Claude handoff ran on installed rc13 (both CLIs, exit 0). The rc.9 note fix carried, so the engine now emits a transcript note addressed to the target thread naming both lanes. `agent_ui::omega_host_bridge::append_system_note` then returns `unavailable("Agent threads do not expose an owner-visible system-note authority.")`, so the owner still sees nothing. Typed refusal, not silence — and not evidence. Owned by omega#76. |
+| 7 | Packaged restart reconciliation | green on rc13 | Driven on the installed candidate twice: gate 6's offline restart (run and report intact at a new generation, Sync still honestly unavailable) and the gate 2 driver's return leg (run, turns, objective and report intact after a full supervisor restart over the same data root). |
+| 8 | Mobile pause/resume/stop typed outcomes | green on rc13 | Driven on the installed candidate: `startedAtMs` recorded, `terminalReasonRef` = `terminal.full_auto.stopped.mobile` and typed, pause/resume/stop `applied` with the resulting lifecycle, unknown run `rejected/run_not_found`, control against a terminal run `rejected/illegal_transition`, `action: "start"` refused `invalid_request`. Every run rc11 could produce was refused by the phone. The runs rc13 produces are not. |
 | 9 | No MODEL-INITIATED path can start Full Auto authority (restated 2026-07-25) | green (code, both hosts) | Test is caller identity, not surface. Omega: launcher Start is the only path to `supervisor.start_run`, and `apply_control_intent` is pause/resume/stop only (`server.fa07-chat-authority.test.ts`). Desktop: `full_auto_start` / `full_auto_run_start` / `full_auto_enable` removed from the MCP tool surface, and the composer-toggle IPC removed. The registered surface is pinned by `apps/openagents-desktop/scripts/full-auto-mcp-tools.test.ts` and the renderer intent surface by `shell.test.ts`. A human start from a chat surface is now the intended product and does not violate this gate. |
-| 10 | Independent assurance on exact candidate | blocked | Rev5 proof design is admitted, but `openagents.assurance_reviewer` has not verified an exact installed candidate and no release verdict exists. |
+| 10 | Independent assurance on exact candidate | blocked | The reviewer identity (`0326d8f9…`) exists and its harness works, but no review of rc13 exists. The lane that produced this evidence may not sign it. Producer claim prepared at `docs/omega/2026-07-25-omega-fa07-rc13-producer-claim.json`. |
 
 ## Landed Omega demo capabilities
 
@@ -258,6 +445,13 @@ Omega commit `31efeaffbc` briefly implemented a token-copying import and was rej
 
 ## Owner blockers (smallest irreducible)
 
+**Reduced 2026-07-25 by the rc13 pass.** Items 2 and 4 below no longer need the
+owner. The owner lifted the reservation on the unattended run, so item 2 was
+performed by an agent and recorded as such. It is red for a product reason, not
+a missing-owner reason. Item 4 is green on rc13 apart from the handoff's visible
+half. The list is kept in full for continuity, with the current state noted per
+item.
+
 1. Produce and install a signed Omega RC candidate that binds rc.6, the current
    admitted rev5 AssuranceSpec, and the landed #41–#43 Omega commits.
 2. Run one owner-real multi-turn unattended Full Auto journey on that exact
@@ -272,6 +466,15 @@ Omega commit `31efeaffbc` briefly implemented a token-copying import and was rej
 6. Record owner observation and acceptance. Then obtain an explicit
    `openagents.owner` release decision. Neither design admission nor source
    tests grant release or public-claim authority.
+
+State after the rc13 pass: item 1 done (rc13, digests above). Item 2
+**performed by an agent, red** — the run does not advance unattended, fixed at
+source, needs a candidate cut after that fix. Item 3 **red** — the handoff runs
+and the engine now emits the note, but `agent_ui` refuses to render it. Item 4
+**green on rc13** for restart, offline/Sync and mobile typed outcomes. Item 5
+**open** — needs the reviewer identity, which this lane may not hold. Item 6
+**open** — owner observation and release decision are unchanged and remain
+reserved.
 
 Until those gates land, `OMEGA-OA-05` stays open and Electron Full Auto remains
 the rollback surface.

@@ -860,7 +860,24 @@ export const gate4And9ControlMatrixAndRedaction = async (
 
     const states: Record<string, string> = {}
     states.start = String(runOf(started).state)
-    states.pause = String(runOf(await client.call("pause", { runRef })).state)
+
+    // `pause` answers `pausing` while a provider turn is still in flight, and
+    // settles to `paused` once that turn lands. Reading the immediate answer and
+    // calling it the matrix made this gate a coin flip: it reported
+    // `pause → paused, resume → running` on rc11 and
+    // `pause → pausing, resume → undefined` on rc13, from the same driver and
+    // the same engine contract, purely on provider timing. `resume` from
+    // `pausing` is CORRECTLY refused -- the engine is right and the measurement
+    // was wrong -- so settle the pause first and record both readings.
+    const pauseImmediate = String(runOf(await client.call("pause", { runRef })).state)
+    let pauseSettled = pauseImmediate
+    for (let attempt = 0; attempt < 120 && pauseSettled !== "paused"; attempt += 1) {
+      await new Promise((r) => setTimeout(r, 1_000))
+      pauseSettled = String(runOf(await client.call("get_run", { runRef })).state)
+      if (["stopped", "failed", "completed", "cap_reached"].includes(pauseSettled)) break
+    }
+    states.pauseImmediate = pauseImmediate
+    states.pause = pauseSettled
     states.resume = String(runOf(await client.call("resume", { runRef })).state)
     const retry = await client.call("retry", { runRef })
     states.retry = ok(retry) ? String(runOf(retry).state) : `refused:${errorCode(retry)}`
@@ -914,6 +931,10 @@ export const gate4And9ControlMatrixAndRedaction = async (
         states.pause === "paused" &&
         states.resume === "running" &&
         states.stop === "stopped",
+      // Recorded rather than hidden: `pausing` is a real state on the way to
+      // `paused`, and a matrix that could not name it would be describing an
+      // engine simpler than the one that shipped.
+      pauseSettledFromPausing: pauseImmediate === "pausing" && states.pause === "paused",
       capReachedObserved: cappedState === "cap_reached",
       capReachedState: cappedState,
       redactionSurfacesChecked: Object.keys(surfaces),

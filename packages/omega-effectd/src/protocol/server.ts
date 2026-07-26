@@ -165,6 +165,14 @@ export type OmegaEffectdFramedServer = Readonly<{
 export type OmegaEffectdFramedServerOptions = Readonly<{
   /** Test-only fetch injection for Agent Computer Worker calls. */
   agentComputerFetch?: FetchLike;
+  /**
+   * FA-07 gate 2 (omega#26): how often an unattended run is carried forward.
+   *
+   * Test-only in the same sense as `syncPollIntervalMs`: production takes the
+   * default. Tests shorten it to observe autonomy quickly, and lengthen it to
+   * watch the property fail.
+   */
+  autonomyPollIntervalMs?: number;
   /** Test-only sleep injection for Agent Computer turn polling. */
   agentComputerSleep?: (durationMs: number) => import("effect").Effect.Effect<void>;
   emitHostRequest?: OmegaEffectdHostFrameEmitter;
@@ -802,6 +810,46 @@ export const createOmegaEffectdFramedServer = (
     syncPollTimer.unref?.();
   };
 
+  let autonomyPollTimer: ReturnType<typeof setInterval> | null = null;
+
+  /**
+   * FA-07 gate 2 (omega#26): the only thing that carries an unattended run to
+   * its next turn on this transport.
+   *
+   * Reconciliation is what dispatches a continuation, and on the framed path
+   * every trigger for it was a control MUTATION — `start`, `pause`, `resume`,
+   * `stop`, `retry`, `handoff`, `apply_control_intent`. The Electron control-API
+   * host also reconciles when a turn completes; this transport has no
+   * turn-completion signal, because the host answers `dispatch_turn` with
+   * `{accepted: true}` and never speaks again. And the three methods the Omega
+   * run monitor polls every three seconds — `list_runs`, `get_run`,
+   * `decide_attention` — all deliberately avoid mutating, which is correct of
+   * them and is why none of them reconciles.
+   *
+   * So an unattended run dispatched turn one and then waited forever. It was not
+   * a silent death: the detail projected `stalled` / `dispatch_overdue` with a
+   * `retry_now` affordance, which is gate 1's property holding. It simply was
+   * not autonomous, and gate 2 asks for exactly the thing that was missing.
+   * `server.fa07-incident-replay.test.ts` had to START A SECOND RUN to make a
+   * reconciliation sweep happen, and says so in a comment — the gap was visible
+   * in the test suite and read as a test-harness detail.
+   *
+   * This adds no new dispatch mechanism and no new authority. It enters the same
+   * serialized reconciliation path every other trigger already uses, on a clock
+   * instead of on a person, and only while a non-terminal run exists — so an
+   * idle Omega does no work and a stopped run is never resumed by a timer.
+   */
+  const beginAutonomyPolling = (): void => {
+    if (autonomyPollTimer !== null) clearInterval(autonomyPollTimer);
+    const tick = (): void => {
+      if (runRegistry.activeRuns().length === 0) return;
+      lastReconciliation = runReconciliation();
+      void lastReconciliation.catch(() => undefined);
+    };
+    autonomyPollTimer = setInterval(tick, options.autonomyPollIntervalMs ?? 5_000);
+    autonomyPollTimer.unref?.();
+  };
+
   const projectCapacity = (): OmegaEffectdCapacityResult => {
     const active = runRegistry.activeRuns();
     const coolingByLane = new Map<string, FullAutoRotationReason>();
@@ -939,6 +987,7 @@ export const createOmegaEffectdFramedServer = (
       initialized = true;
       await service.start();
       beginSyncPolling();
+      beginAutonomyPolling();
       const health = service.health();
       const result: OmegaEffectdInitializeResult = {
         schema: OMEGA_EFFECTD_PROTOCOL_SCHEMA,
