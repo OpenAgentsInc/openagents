@@ -61,6 +61,31 @@ import {
 
 export const OPENAGENTS_ISSUE31_RELAY_URLS = ["wss://nos.lol", "wss://relay.damus.io"] as const;
 
+/**
+ * The relays this build reads issue #31 records from.
+ *
+ * The default is the pair above. It is overridable at build time because a
+ * device proof has to put the phone and the Omega host on the same relay, and
+ * with a compile-time constant the only way to do that was to edit this file —
+ * which means the binary that was proven is not the binary that ships. An
+ * override is refused wholesale rather than partially: a malformed entry falls
+ * back to the default set, because a client silently reading half the relays it
+ * was told to read is worse than one reading the ones it shipped with.
+ *
+ * This is deliberately *not* a runtime setting. A relay the user can retarget
+ * from inside the app is a relay an attacker can retarget, and the client's
+ * whole admission model assumes its relay list came from out of band.
+ */
+export const issue31RelayUrlsFromEnvironment = (
+  value: string | undefined = process.env.EXPO_PUBLIC_OMEGA_RELAY_URLS,
+): ReadonlyArray<string> => {
+  if (value === undefined || value.trim() === "") return OPENAGENTS_ISSUE31_RELAY_URLS;
+  const urls = [...new Set(value.split(",").map((entry) => entry.trim()))];
+  if (urls.length === 0 || urls.length > 8) return OPENAGENTS_ISSUE31_RELAY_URLS;
+  if (urls.some((url) => !/^wss?:\/\/[^\s@?#]+$/.test(url))) return OPENAGENTS_ISSUE31_RELAY_URLS;
+  return urls;
+};
+
 export const ISSUE31_MOBILE_REQUESTED_SCOPES = [
   "observe_issue31",
   "send_message",

@@ -65,7 +65,7 @@ import {
   type SarahSpeechPlaybackPort,
 } from "./home-core"
 import {
-  OPENAGENTS_ISSUE31_RELAY_URLS,
+  issue31RelayUrlsFromEnvironment,
   initialIssue31MobileNostrControlState,
   issue31AdmittedHostPublicKeysFromEnvironment,
   issue31CommunityConfigFromEnvironment,
@@ -393,7 +393,7 @@ export const HomeScreen = ({
     }
     program.workroom.setReadModel(emptyIssue31WorkroomReadModel(new Date().toISOString()))
     void openIssue31MobileNostrRuntime({
-      relayUrls: OPENAGENTS_ISSUE31_RELAY_URLS,
+      relayUrls: issue31RelayUrlsFromEnvironment(),
       admittedHostPublicKeys: issue31AdmittedHostPublicKeysFromEnvironment(),
       community,
       onSnapshot: projectSnapshot,
