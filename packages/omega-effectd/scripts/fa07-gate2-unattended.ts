@@ -238,9 +238,27 @@ export const gate2UnattendedRun = async (options: Gate2Options): Promise<Record<
   }
   await new Promise((resolve) => setTimeout(resolve, options.silentWindowMs))
   const silenceEnd = Date.now()
-  const callsDuringSilence = audited.calls.filter(
-    (entry) => entry.at >= silenceStart && entry.at <= silenceEnd,
-  )
+  // Counted by POSITION in the audit log, not by wall-clock comparison.
+  //
+  // This used to filter on `entry.at >= silenceStart`, and that is wrong at the
+  // boundary: a call is recorded at the instant it is *made*, while
+  // `silenceStart` is read after its reply has been awaited. When the last
+  // `get_run` of the wait loop above returned inside the same millisecond it
+  // was sent, its timestamp equalled `silenceStart` and the inclusive
+  // comparison counted a call made BEFORE the window as a call made during it.
+  //
+  // That is not a cosmetic difference. It is the difference between a receipt
+  // that reads `framedCallsDuringSilentWindow: 0` and one that reads `1` with
+  // `get_run` named — a reader would see a driver that nudged a run it claimed
+  // to leave alone, and gate 2 would look red for a run in which nothing was
+  // touched. It reproduced on the second of two otherwise identical rc18 runs,
+  // so the gate was a coin-flip on scheduler timing.
+  //
+  // The audit log is append-only and this is the only place that reads it, so
+  // the calls made during the window are exactly those appended after the
+  // snapshot — an identity, with no clock in it. `silenceEnd` stays because the
+  // receipt reports the window's measured duration.
+  const callsDuringSilence = audited.calls.slice(callsAtSilenceStart)
 
   detail = runOf(await audited.call("get_run", { runRef }))
   const turnsAfterSilence = ((detail.turns ?? []) as ReadonlyArray<unknown>).length
@@ -295,7 +313,19 @@ export const gate2UnattendedRun = async (options: Gate2Options): Promise<Record<
   return {
     gate: "owner_real_multi_turn",
     runRef,
-    // Attribution, first, because it changes how everything below reads.
+    // Whether this run was DESIGNED to fail, stated before anything else.
+    //
+    // `--falsify-attended` produces a receipt whose `silentWindowWasSilent` is
+    // `false` on purpose — the control that shows the silent window is measured
+    // rather than assumed. Without this field the only thing separating that
+    // receipt from a genuine gate-2 failure is its filename, and a receipt that
+    // has to be read alongside its filename is exactly the kind of evidence
+    // this packet refuses elsewhere: `bindCandidate` recomputes the candidate
+    // so a receipt cannot be reattributed by being moved, and the same standard
+    // applies to a receipt's own intent.
+    deliberatelyAttended: options.falsifyAttended,
+    isFalsificationControl: options.falsifyAttended,
+    // Attribution, next, because it changes how everything below reads.
     performedBy: "agent",
     performedByIdentity: EMULATED_IDENTITY,
     ownerObservation: false,

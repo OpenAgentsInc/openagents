@@ -1,0 +1,182 @@
+{
+  "schema": "openagents.omega.fa07-gate2-unattended-observation.v1",
+  "generatedAt": "2026-07-26T10:27:32.917Z",
+  "issue": "omega#26 (OMEGA-FA-07) gate 2",
+  "candidate": {
+    "appPath": "/Applications/Omega.app",
+    "enginePath": "/Applications/Omega.app/Contents/Resources/omega-effectd/bin/omega-effectd",
+    "engineOverridden": false,
+    "hostBinaryDigest": "4b2a5e9a845233edda18664cb72a1c236db76772a123ddd730b9a50b05ce50e9",
+    "engineBundleDigest": "6922c83e05c89bc7a6ef44cc0f752a895a70b0cb1964d9c20613c538facd089c",
+    "engineBundleDigestMatchesManifest": true,
+    "componentManifestDigest": "d797f749f57d2ab88cdad74f5ff81e882bc6052951a026c028a84fb7b022b5eb",
+    "engineSourceCommit": "e3280b4795efe189474e12b4c6cd06123cfda359",
+    "serviceVersion": "0.1.0",
+    "shortVersion": "0.2.0",
+    "bundleVersion": "20260726.091602"
+  },
+  "providersExercised": true,
+  "dataRoot": null,
+  "observation": {
+    "gate": "owner_real_multi_turn",
+    "runRef": "run.full-auto.ms1njlc0.6hpjyu0m",
+    "deliberatelyAttended": true,
+    "isFalsificationControl": true,
+    "performedBy": "agent",
+    "performedByIdentity": "emulated.operator.fa07-gate2",
+    "ownerObservation": false,
+    "ownerObservationReason": "The owner lifted the reservation on performing this run (2026-07-25). Performing it does not make it a person's observation, and no person watched this run.",
+    "launchOrigin": "new_thread_menu_item",
+    "launchOriginIsAnAdmittedHumanGesture": true,
+    "launchOriginReadByEngine": false,
+    "launchOriginNote": "The token is the launcher's wire form. The engine ignores it; gate 8 is enforced by the Rust type of FullAutoDispatch::from_validated, not by a wire check.",
+    "startRequestKeys": [
+      "doneCondition",
+      "lane",
+      "launchOrigin",
+      "objective",
+      "projectRef",
+      "title",
+      "turnCap",
+      "workspaceRef",
+      "worktreeRef"
+    ],
+    "providersExercised": true,
+    "startAccepted": true,
+    "stateAtStart": "running",
+    "unattendedMs": 125277,
+    "silentWindowMs": 125004,
+    "framedCallsDuringSilentWindow": 1,
+    "framedCallMethodsDuringSilentWindow": [
+      "resume"
+    ],
+    "silentWindowWasSilent": false,
+    "callsAtSilenceStart": 2,
+    "writeCallsAfterStart": 1,
+    "unattendedAfterStart": false,
+    "turnsBeforeSilence": 0,
+    "turnsAfterSilence": 9,
+    "turnsAdvancedDuringSilentWindow": true,
+    "attemptsBeforeSilence": 1,
+    "attemptsAfterSilence": 12,
+    "engineDispatchesBeforeSilence": 1,
+    "engineDispatchesAfterSilence": 12,
+    "engineDispatchedDuringSilentWindow": true,
+    "turnCount": 9,
+    "successfulAttempts": 12,
+    "failedAttempts": 0,
+    "turnCap": 12,
+    "minimumTurns": 3,
+    "multiTurn": true,
+    "turnRefsDistinct": true,
+    "finalState": "cap_reached",
+    "finalStateIsTerminal": true,
+    "stallCause": null,
+    "recoveryAction": "none",
+    "providerInvocations": [
+      {
+        "lane": "codex-local",
+        "ok": true,
+        "exitCode": 0,
+        "outputLength": 465,
+        "elapsedMs": 13824
+      },
+      {
+        "lane": "codex-local",
+        "ok": true,
+        "exitCode": 0,
+        "outputLength": 669,
+        "elapsedMs": 10645
+      },
+      {
+        "lane": "codex-local",
+        "ok": true,
+        "exitCode": 0,
+        "outputLength": 604,
+        "elapsedMs": 9965
+      },
+      {
+        "lane": "codex-local",
+        "ok": true,
+        "exitCode": 0,
+        "outputLength": 488,
+        "elapsedMs": 10232
+      },
+      {
+        "lane": "codex-local",
+        "ok": true,
+        "exitCode": 0,
+        "outputLength": 410,
+        "elapsedMs": 14894
+      },
+      {
+        "lane": "codex-local",
+        "ok": true,
+        "exitCode": 0,
+        "outputLength": 591,
+        "elapsedMs": 11203
+      },
+      {
+        "lane": "codex-local",
+        "ok": true,
+        "exitCode": 0,
+        "outputLength": 655,
+        "elapsedMs": 13812
+      },
+      {
+        "lane": "codex-local",
+        "ok": true,
+        "exitCode": 0,
+        "outputLength": 482,
+        "elapsedMs": 10429
+      },
+      {
+        "lane": "codex-local",
+        "ok": true,
+        "exitCode": 0,
+        "outputLength": 575,
+        "elapsedMs": 13078
+      },
+      {
+        "lane": "codex-local",
+        "ok": true,
+        "exitCode": 0,
+        "outputLength": 562,
+        "elapsedMs": 10870
+      },
+      {
+        "lane": "codex-local",
+        "ok": true,
+        "exitCode": 0,
+        "outputLength": 473,
+        "elapsedMs": 13541
+      },
+      {
+        "lane": "codex-local",
+        "ok": true,
+        "exitCode": 0,
+        "outputLength": 562,
+        "elapsedMs": 9374
+      }
+    ],
+    "providerInvocationCount": 12,
+    "everyTurnHadAProvider": true,
+    "runSurvivedReturn": true,
+    "stateAfterReturn": "cap_reached",
+    "stateHonestAfterReturn": true,
+    "turnCountAfterReturn": 9,
+    "everyTurnListedAfterReturn": true,
+    "objectivePresentInOwnerLocalDetailAfterReturn": true,
+    "reportSurvivedReturn": true,
+    "reportTurnCount": 9,
+    "receiptCarriesObjectiveDigest": true,
+    "receiptObjectiveDigestMatches": true,
+    "durableStateOnDisk": true,
+    "objectiveTextAbsentFromPublicSurfaces": true,
+    "rendersObserved": [],
+    "doesNotProve": [
+      "a rendered GPUI launcher, run monitor, or transcript",
+      "a person's observation of the run"
+    ]
+  }
+}
