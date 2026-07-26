@@ -133,12 +133,16 @@ const EVENT_FAULT_SCENARIOS = new Set<Ide13OwnerLocalEventFaultScenario>([
 
 const loadCheckpointStoreCrashProof = async (
   input: Readonly<{
-    baseCommitSha: string;
     candidateCommitSha: string;
     recoveryReceiptPath: string;
     repositoryRoot: string;
   }>,
-): Promise<Ide13OwnerLocalRecoveryFaultReceipt["cases"][number]> => {
+): Promise<
+  Readonly<{
+    baseCommitSha: string;
+    proof: Ide13OwnerLocalRecoveryFaultReceipt["cases"][number];
+  }>
+> => {
   const recoveryReceipt = decodeRecoveryReceipt(
     JSON.parse(await readFile(input.recoveryReceiptPath, "utf8")),
     { onExcessProperty: "error" },
@@ -152,9 +156,15 @@ const loadCheckpointStoreCrashProof = async (
   ).catch(() => {
     throw new Error("checkpoint store crash proof candidate is not an ancestor");
   });
-  if (recoveryReceipt.baseCommitSha !== input.baseCommitSha) {
-    throw new Error("checkpoint store crash proof base does not match the fault matrix");
-  }
+  await git(
+    input.repositoryRoot,
+    "merge-base",
+    "--is-ancestor",
+    recoveryReceipt.baseCommitSha,
+    recoveryReceipt.candidateCommitSha,
+  ).catch(() => {
+    throw new Error("checkpoint store crash proof base is not an ancestor of recovery candidate");
+  });
   if (recoveryReceipt.cohortRef !== "cohort.ide13.owner-local.real.1") {
     throw new Error("checkpoint store crash proof cohort does not match the fault matrix");
   }
@@ -182,7 +192,7 @@ const loadCheckpointStoreCrashProof = async (
   ) {
     throw new Error("checkpoint store crash proof residue binding is unsafe");
   }
-  return proof;
+  return { baseCommitSha: recoveryReceipt.baseCommitSha, proof };
 };
 
 export const runIde13OwnerLocalRealFaultMatrix = async (
@@ -207,15 +217,18 @@ export const runIde13OwnerLocalRealFaultMatrix = async (
   if (laterPaths.some((path) => path !== RECEIPT_REPOSITORY_PATH)) {
     throw new Error("fault matrix candidate omits an implementation change");
   }
-  const baseCommitSha = await git(repositoryRoot, "merge-base", candidateCommitSha, "origin/main");
-  const checkpointStoreCrashProof = await loadCheckpointStoreCrashProof({
-    baseCommitSha,
+  const checkpointStoreCrashReceipt = await loadCheckpointStoreCrashProof({
     candidateCommitSha,
     recoveryReceiptPath: resolve(
       input.recoveryReceiptPath ?? join(repositoryRoot, RECOVERY_RECEIPT_REPOSITORY_PATH),
     ),
     repositoryRoot,
   });
+  // The recovery proof is immutable provenance. Its base must be an ancestor of
+  // its own candidate, and that candidate must be contained by this matrix.
+  // Do not bind it to the mutable origin/main ref of the verifier.
+  const baseCommitSha = checkpointStoreCrashReceipt.baseCommitSha;
+  const checkpointStoreCrashProof = checkpointStoreCrashReceipt.proof;
 
   const safetyProofRefs = new Set<string>();
   const cases = await Promise.all(
