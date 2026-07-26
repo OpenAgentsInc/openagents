@@ -952,7 +952,14 @@ const makeRepositoryService = (
       },
       catch: (cause) =>
         cause instanceof ForgeGitRepositoryError
-          ? cause
+          ? cause.code === "forge_git_process_failed"
+            ? repositoryError(
+                "ForgeGitRepository.observeMirror",
+                mirrorProjectionReason(cause),
+                409,
+                cause,
+              )
+            : cause
           : repositoryError(
               "ForgeGitRepository.observeMirror",
               "forge_git_mirror_observation_failed",
