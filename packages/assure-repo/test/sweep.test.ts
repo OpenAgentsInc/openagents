@@ -13,6 +13,13 @@ import {
 
 const root = repositoryRoot();
 const at = new Date(1_700_000_000_000).toISOString();
+const transientTestFixture = /^(?:\?\? )?(?:packages\/probe\/packages\/runtime\/src\/__drift_guard_(?:probe|blueprint)__\/|packages\/oxlint-plugin-openagents\/test-tmp\/)/m;
+
+const sourceStatus = () =>
+  execFileSync("git", ["-C", root, "status", "--porcelain"], { encoding: "utf8" })
+    .split("\n")
+    .filter((line) => line && !transientTestFixture.test(line))
+    .join("\n");
 
 describe("runSweep against the real repository", () => {
   test("produces a decodable receipt with the ASSURE-REPO oracles and honest evidence class", () => {
@@ -30,9 +37,9 @@ describe("runSweep against the real repository", () => {
   });
 
   test("is read-only: running it mutates no tracked source (cannot alter guardrails)", () => {
-    const before = execFileSync("git", ["-C", root, "status", "--porcelain"], { encoding: "utf8" });
+    const before = sourceStatus();
     runSweep(root, at);
-    const after = execFileSync("git", ["-C", root, "status", "--porcelain"], { encoding: "utf8" });
+    const after = sourceStatus();
     expect(after).toBe(before);
   });
 
