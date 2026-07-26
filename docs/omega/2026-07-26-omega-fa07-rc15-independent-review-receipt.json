@@ -1,0 +1,182 @@
+{
+  "canCloseIssue26": false,
+  "candidate": "0.2.0-rc15",
+  "candidateBinding": {
+    "installedAppAtReviewTime": {
+      "cdHash": "0897c75618d567eccf482bee383384383b04f34f",
+      "cfBundleVersion": "20260726.050144",
+      "hostBinarySha256": "13a24c9f9ad4c96a6ceba7df5c00627da893b8c7e3f4d43364d9c0184e7b951e",
+      "isCandidate": false
+    },
+    "note": "The installed /Applications/Omega.app was rc16 at review time, NOT the candidate. Every candidate-bound observation below was taken from the rc15 DMG mounted read-only. No observation was silently substituted from the installed app.",
+    "rc15FromDmg": {
+      "allThreeMatchProducerClaim": true,
+      "cdHash": "4260f65a15f021fcf6226735b9c7a55cdfe8edcb",
+      "cfBundleVersion": "20260726.013712",
+      "engineBundleDigestMatchesManifest": true,
+      "engineSourceCommit": "e3280b4795efe189474e12b4c6cd06123cfda359",
+      "hostBinarySha256": "cca81f5dff127f790e289aa8a400e72765dcefac8704a74fd852c757871b2858"
+    }
+  },
+  "candidateDigest": "sha256:6ac6f0007a1cc35be3112ad36a5f4d3b5477540a1f868f31b5aef798e7f84cd5",
+  "closureBasis": "Gate 10 can be recorded green on this receipt. omega#26 still cannot close: gate 5 is red on the rc15 candidate bytes, and the packet's own exit criteria require all stronger gates green. Closure is the coordinator's act; this reviewer does not close the obligation it just admitted.",
+  "disagreements": [],
+  "disclosedGapAssessment": {
+    "bothLanesExecutedFalse": {
+      "evidenceAgainstADefect": "laneAfter=claude-local proves the '?? CODEX_LANE' fallback did NOT fire for the target thread - the engine labelled it explicitly. laneRebound=true and lanesInvoked=[codex-local, claude-local] are positive evidence the engine did route across providers.",
+      "producerPosition": "Recorded without attribution; could not separate engine routing from the harness's '?? CODEX_LANE' default.",
+      "residual": "A live-provider run would be needed to make this field informative. Not driven here.",
+      "reviewerFinding": "The producer was right not to attribute it, but the dominant cause is a different one and it is benign. In a run without --live-providers the post-handoff wait loop is gated behind 'if (live)', so run detail is read immediately after resume, before the engine dispatches the claude turn. bothLanesExecuted is therefore FALSE BY CONSTRUCTION in a non-live run and carries no information about engine routing. The driver's own comment says as much."
+    },
+    "noProducerKeypair": {
+      "producerPosition": "Disclosed by the producer itself: no producer keypair exists in AUTHORITY.md; producerPubkeys holds a descriptive string.",
+      "reviewerFinding": "Confirmed. AUTHORITY.md registers no producer key. script/review-omega-candidate only refuses when the REVIEWER key appears in producerPubkeys, so a dishonest producer naming itself falsely would pass that check unchanged.",
+      "whatThisSignatureAttests": "That the holder of 0326d8f9... independently recomputed the values recorded here from the rc15 DMG, the mounted rc15 application, the engine shipped inside it, and repository source - and that they agree with the producer's claim.",
+      "whatThisSignatureDoesNotAttest": "It does NOT attest the identity of the producer, that the named producer is who it says it is, or that no other party contributed evidence. Producer identity in this packet is descriptive, not cryptographic. Independence here rests on the reviewer key being read from a path a producer run does not set, plus this session having taken no part in producing the evidence - not on any producer-side cryptographic binding."
+    },
+    "turnCountLagsSuccessfulAttempts": {
+      "mechanism": "They count different things at different pipeline stages. successfulAttempts is engine-side accounting incremented at outcome-recording time (full-auto-run-registry.ts:974, outcome==='success' ? +1). turnCount counts turn records the engine has ingested from host-supplied evidence via refresh_evidence, under an explicitly accept-then-observe dispatch contract. A lag is the expected behaviour of that pipeline.",
+      "producerPosition": "Open question, recorded rather than resolved (gate 2: turnCount 5 vs successfulAttempts 12).",
+      "residual": "Explained and low-risk, but not fully closed: this reasoning does not by itself prove no turn was dropped. Recorded as explained-not-resolved.",
+      "reviewerFinding": "Independently reproduced the same shape on a run the producer did not perform: this reviewer's gate 5 shows successfulAttempts=2 against turnCount=1. The lag is structural, not gate-2-specific."
+    }
+  },
+  "evidenceSha256": "sha256:e85435737dc27107092d9178acc793b787c0fd2921cfe06f8f959e464799899c",
+  "gate5Assessment": {
+    "boundToCandidate": "That exact refusal string is present in the rc15 shipped binary (1 occurrence) and also in rc16, so rc16 does not fix it either.",
+    "engineHalfIsGreen": "The engine emits the handoff note, addresses it to the target thread, names both lanes, rebinds the lane codex-local -> claude-local, and refuses an unknown lane. All reproduced.",
+    "notObservableByThisHarness": "The gate driver's own host stand-in always answers append_system_note with {appended:true}, so this driver cannot exercise the refusal. The red lives in the GPUI host and no reproduction available to this reviewer exercises it.",
+    "refusalSite": "crates/agent_ui/src/omega_host_bridge.rs append_system_note() returns unavailable('Agent threads do not expose an owner-visible system-note authority.') unconditionally.",
+    "verdict": "Red is real, correctly located, and bound to the shipped candidate bytes - not merely to source."
+  },
+  "gateReproductions": {
+    "driver": "packages/omega-effectd/scripts/fa07-installed-gates.ts at openagents origin/main 2177ffc2dd, sha256:7f4b19c615830627829a9b14a0ee4f0845f6007d7c28a0ab10a055766809ff1d",
+    "gate5_crossProviderHandoff": {
+      "bothLanesExecuted": false,
+      "laneAfter": "claude-local",
+      "laneBefore": "codex-local",
+      "laneRebound": true,
+      "refusedUnknownLane": true,
+      "reviewerStatus": "red - agrees with producer",
+      "systemNoteAddressedToTargetThread": true,
+      "systemNoteEmitted": true,
+      "systemNoteNamesBothLanes": true
+    },
+    "gate6_offlineAndSyncGap": {
+      "objectiveTextAbsentFromSyncSurfaces": true,
+      "publishReasonIsTyped": true,
+      "publishRefused": true,
+      "reviewerStatus": "green",
+      "runSurvivedRestart": true,
+      "startedWhileOffline": true
+    },
+    "gate7_mobileTypedOutcomes": {
+      "afterTerminalRejectionReason": "illegal_transition",
+      "escalationRefused": true,
+      "everyOutcomeTyped": true,
+      "objectiveTextAbsentFromOutcomes": true,
+      "reviewerStatus": "green"
+    },
+    "gates4And9_controlMatrixAndRedaction": {
+      "capReachedObserved": true,
+      "controlMatrixComplete": true,
+      "redactionClean": true,
+      "redactionLeaks": [],
+      "reviewerStatus": "green",
+      "states": {
+        "pause": "paused",
+        "pauseImmediate": "paused",
+        "resume": "running",
+        "retry": "refused:invalid_request",
+        "start": "running",
+        "stop": "stopped"
+      }
+    },
+    "gatesNotReproducedByThisReviewer": {
+      "gate1_incidentReplay": "inconclusive - source-tier vitest, not re-run",
+      "gate2_multiTurnUnattended": "inconclusive - requires a live multi-turn unattended Codex run; outside the re-run scope given and not driven",
+      "gate3_restartReconciliation": "partially covered - gate 6 restart leg reproduced green",
+      "gate8_noModelInitiatedStart": "inconclusive - not independently driven"
+    },
+    "invocation": "--only 5,6,7,49 --app <rc15 DMG mount>/Omega.app  (explicit --app; the documented command omits it and would have bound to rc16)",
+    "providersExercised": false
+  },
+  "obligationRef": "omega#26 (OMEGA-FA-07) gate 10",
+  "outcome": "accepted",
+  "outcomeScope": "SCOPED. Accepts gate 10 for what this reviewer could bind to the rc15 candidate and reproduce. Does NOT assert the FA-07 matrix is complete: gate 5 is red (accurately disclosed by the producer and independently confirmed in the rc15 shipped bytes) and gate 2 was not re-driven by this reviewer. Gate 10 acceptance is not authority to close omega#26.",
+  "producerPubkeys": [
+    "producer.omega.fa07.lane.claude-fa07-final.2026-07-25"
+  ],
+  "profile": "reviewer-extended.v1",
+  "refusalConditions": {
+    "rc13_multiTurn_true": "not triggered - rc13 was not driven by this reviewer",
+    "rc15_multiTurn_false_with_cap_above_budget": "not triggered - gate 2 was not re-driven by this reviewer"
+  },
+  "reproductions": [
+    {
+      "agreesWithProducer": true,
+      "check": "artifact_digest",
+      "command": "shasum -a 256 Omega-v0.2.0-rc15-macos-arm64.dmg",
+      "observed": "6ac6f0007a1cc35be3112ad36a5f4d3b5477540a1f868f31b5aef798e7f84cd5",
+      "source": "rc15 DMG"
+    },
+    {
+      "agreesWithProducer": true,
+      "check": "notarization",
+      "command": "spctl -a -vvv -t exec <mnt>/Omega.app",
+      "observed": "accepted; source=Notarized Developer ID; Developer ID Application: OpenAgents, Inc. (HQWSG26L43)",
+      "source": "rc15 app from DMG"
+    },
+    {
+      "agreesWithProducer": true,
+      "check": "stapled_ticket",
+      "command": "xcrun stapler validate <rc15.dmg>",
+      "observed": "The validate action worked!",
+      "source": "rc15 DMG"
+    },
+    {
+      "agreesWithProducer": true,
+      "check": "forbidden_strings",
+      "command": "strings <mnt>/Omega.app/Contents/MacOS/omega | grep -F <6 forbidden>",
+      "observed": "none (0 hits for all six needles; 215225 strings scanned)",
+      "source": "rc15 binary from DMG"
+    },
+    {
+      "agreesWithProducer": true,
+      "check": "provenance_b70ce721b2_not_ancestor",
+      "command": "git merge-base --is-ancestor b70ce721b2 origin/main",
+      "observed": "NO (object exists, not an ancestor) - producer disclosure reproduces",
+      "source": "omega git"
+    },
+    {
+      "agreesWithProducer": true,
+      "check": "provenance_ecbde21e43_is_ancestor",
+      "command": "git merge-base --is-ancestor ecbde21e43 origin/main",
+      "observed": "YES",
+      "source": "omega git"
+    }
+  ],
+  "reviewedAt": "2026-07-26T05:39:36Z",
+  "reviewerPubkey": "0326d8f9eb5abea63d9613ac90451dfce62ca2e9855144b5a71d8e8569932974",
+  "reviewerSignature": "e44b39dff83f86ad8dab08d5b87edf082952df97e610dab61569ff6f72ebd27822dd747c471c53e81473f838a73be16f68791e95e79095c9c486ba8fdb42943f",
+  "safety": {
+    "codexAuthJsonSha256After": "d9d38c2cad564f472f8d481b3056fbfd0d2372849aae888683eaa9a5aa9e1ab5",
+    "codexAuthJsonSha256Before": "d9d38c2cad564f472f8d481b3056fbfd0d2372849aae888683eaa9a5aa9e1ab5",
+    "codexConfigTomlSha256After": "b0bc2e00bdba80188b9678cb56743f9ab0b715e0ba749d81f176e56ed404b3a1",
+    "codexConfigTomlSha256Before": "b0bc2e00bdba80188b9678cb56743f9ab0b715e0ba749d81f176e56ed404b3a1",
+    "codexHomeUnchanged": true,
+    "codexLoginRun": false,
+    "dmgMountedReadOnly": true,
+    "omegaUninstallRun": false,
+    "ownerCheckoutsModified": false,
+    "zedStillInstalled": true
+  },
+  "schema": "openagents.assurance.independent-review.v1",
+  "toolDefectFound": {
+    "demonstration": "Run against the rc15 DMG with the default --app (rc16 installed) this reviewer obtained outcome=accepted, 4 reproductions, 0 disagreements - while two of the four checks were reading a different build entirely.",
+    "finding": "script/review-omega-candidate binds only 2 of its 4 checks to the candidate. artifact_digest and stapled_ticket read the DMG; notarization and forbidden_strings read --app, which DEFAULTS to /Applications/Omega.app with no cross-check that the installed app is the candidate.",
+    "recommendation": "The tool should verify the app's CFBundleVersion/CDHash against the DMG's, or mount the DMG itself, before recording agreement.",
+    "severity": "material"
+  },
+  "toolReceiptEvidenceSha256": "sha256:aac3af450159266028d7046d77ebb646a505609d176849d961c1e7998b645169"
+}
