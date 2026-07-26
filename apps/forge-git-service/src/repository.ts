@@ -659,7 +659,14 @@ const makeRepositoryService = (
       try: () => requireRepository(input.tenantRef, input.repositoryRef),
       catch: (cause) =>
         cause instanceof ForgeGitRepositoryError
-          ? cause
+          ? cause.code === "forge_git_process_failed"
+            ? repositoryError(
+                "ForgeGitRepository.observeMirror",
+                mirrorProjectionReason(cause),
+                409,
+                cause,
+              )
+            : cause
           : repositoryError(
               "ForgeGitRepository.advertise.repository",
               "forge_git_repository_unavailable",
