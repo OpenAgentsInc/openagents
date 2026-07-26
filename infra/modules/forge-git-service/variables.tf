@@ -118,6 +118,12 @@ variable "database_secret_id" {
   default     = "openagents-monolith-database-url-prod"
 }
 
+variable "database_password_secret_id" {
+  description = "Password-only Secret Manager container for the Forge Git Postgres role"
+  type        = string
+  default     = "openagents-monolith-pgpassword"
+}
+
 variable "policy_authority_secret_id" {
   description = "Secret Manager container for the Forge Git to worker policy bearer"
   type        = string

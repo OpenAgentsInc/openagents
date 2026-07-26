@@ -244,6 +244,13 @@ resource "google_secret_manager_secret_iam_member" "database_reader" {
   member    = "serviceAccount:${google_service_account.runtime.email}"
 }
 
+resource "google_secret_manager_secret_iam_member" "database_password_reader" {
+  project   = var.project
+  secret_id = var.database_password_secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.runtime.email}"
+}
+
 resource "google_secret_manager_secret_iam_member" "policy_authority_reader" {
   project   = var.project
   secret_id = var.policy_authority_secret_id

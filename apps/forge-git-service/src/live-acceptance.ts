@@ -11,6 +11,7 @@ import postgres from "postgres";
 import { makeD1ForgeInviteMembershipStore } from "../../openagents.com/workers/api/src/forge-invite-membership-store.js";
 import { makeD1ForgeTenantGitAuthStore } from "../../openagents.com/workers/api/src/forge-tenant-git-auth-store.js";
 import { makeKhalaSyncWritesDatabase } from "../../openagents.com/workers/api/src/khala-sync-domain-writes-database.js";
+import type { PostgresD1Client } from "../../openagents.com/workers/api/src/postgres-d1-adapter.js";
 import { makeD1TeamWorkspaceInviteStore } from "../../openagents.com/workers/api/src/team-workspace-invites.js";
 
 const git = (
@@ -111,6 +112,75 @@ interface AcceptanceOptions {
   readonly sourceRevision: string;
 }
 
+const postgresParameter = (
+  value: unknown,
+): string | number | boolean | Date | Uint8Array | null => {
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    value instanceof Date ||
+    value instanceof Uint8Array
+  ) {
+    return value;
+  }
+  if (typeof value === "bigint") {
+    return value.toString();
+  }
+  throw new Error("Acceptance database received an unsupported parameter");
+};
+
+const makeAcceptanceD1Client = async (databaseUrl: string): Promise<PostgresD1Client> => {
+  const sql = postgres(databaseUrl, {
+    max: 1,
+    prepare: false,
+    types: {
+      bigint: {
+        from: [20],
+        parse: (value: string) => Number(value),
+        serialize: (value: number | bigint) => value.toString(),
+        to: 20,
+      },
+    },
+  });
+  const unsafe = async (text: string, params: Array<unknown>) => {
+    const rows = await sql.unsafe(text, params.map(postgresParameter));
+    return Object.assign(
+      rows.map((row) => ({ ...row })),
+      { count: rows.count },
+    );
+  };
+
+  return {
+    end: async () => {
+      await sql.end({ timeout: 5 });
+    },
+    sql: {
+      begin: async <A>(fn: (transaction: { unsafe: typeof unsafe }) => Promise<A>): Promise<A> => {
+        const [wrapped] = await sql.begin(async (transaction) => [
+          {
+            value: await fn({
+              unsafe: async (text, params) => {
+                const rows = await transaction.unsafe(text, params.map(postgresParameter));
+                return Object.assign(
+                  rows.map((row) => ({ ...row })),
+                  { count: rows.count },
+                );
+              },
+            }),
+          },
+        ]);
+        if (wrapped === undefined) {
+          throw new Error("Acceptance database transaction returned no value");
+        }
+        return wrapped.value;
+      },
+      unsafe,
+    },
+  };
+};
+
 const runAcceptance = async ({
   baseUrl: configuredBaseUrl,
   databaseUrl,
@@ -140,9 +210,14 @@ const runAcceptance = async ({
   const inviteRef = `team_workspace_invite_forge02_${runRef}`;
   const acceptanceEmail = `forge-02-${runRef}@acceptance.openagents.com`;
 
-  const database = makeKhalaSyncWritesDatabase({
-    KHALA_SYNC_DB: { connectionString: databaseUrl },
-  });
+  const database = makeKhalaSyncWritesDatabase(
+    {
+      KHALA_SYNC_DB: { connectionString: databaseUrl },
+    },
+    {
+      makeD1Client: makeAcceptanceD1Client,
+    },
+  );
   if (database === undefined) {
     throw new Error("The Cloud SQL compatibility database is unavailable");
   }

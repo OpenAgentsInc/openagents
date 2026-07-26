@@ -11,6 +11,7 @@ PROJECT="${OPENAGENTS_GCP_PROJECT:-openagentsgemini}"
 REGION="${OPENAGENTS_GCP_REGION:-us-central1}"
 SERVICE="${FORGE_GIT_SERVICE:-forge-git}"
 DATABASE_SECRET="${FORGE_GIT_DATABASE_SECRET:-openagents-monolith-database-url-prod}"
+DATABASE_PASSWORD_SECRET="${FORGE_GIT_DATABASE_PASSWORD_SECRET:-openagents-monolith-pgpassword}"
 POLICY_AUTHORITY_SECRET="${FORGE_GIT_POLICY_AUTHORITY_SECRET:-openagents-forge-git-policy-authority-token}"
 POLICY_AUTHORITY_URL="${FORGE_GIT_POLICY_AUTHORITY_URL:-https://openagents.com/internal/forge/git-authorize}"
 DATABASE_INSTANCE="${FORGE_GIT_DATABASE_INSTANCE:-openagentsgemini:us-central1:khala-sync-pg}"
@@ -67,8 +68,8 @@ gcloud run deploy "$SERVICE" \
   --add-cloudsql-instances "$DATABASE_INSTANCE" \
   --add-volume "name=forge-repositories,type=nfs,location=${NFS_IP}:${NFS_EXPORT}" \
   --add-volume-mount "volume=forge-repositories,mount-path=/var/lib/forge/repositories" \
-  --set-env-vars "FORGE_GIT_REPOSITORY_ROOT=/var/lib/forge/repositories,FORGE_GIT_GCS_MIRROR_ENABLED=true,FORGE_GIT_POLICY_AUTHORITY_URL=${POLICY_AUTHORITY_URL},OA_INFRA_GCS_BUCKET=${ARTIFACTS_BUCKET},OA_INFRA_GCS_PREFIX=${ARTIFACTS_PREFIX}" \
-  --set-secrets "FORGE_GIT_DATABASE_URL=${DATABASE_SECRET}:latest,FORGE_GIT_POLICY_AUTHORITY_TOKEN=${POLICY_AUTHORITY_SECRET}:latest"
+  --set-env-vars "FORGE_GIT_REPOSITORY_ROOT=/var/lib/forge/repositories,FORGE_GIT_GCS_MIRROR_ENABLED=true,FORGE_GIT_POLICY_AUTHORITY_URL=${POLICY_AUTHORITY_URL},OA_INFRA_GCS_BUCKET=${ARTIFACTS_BUCKET},OA_INFRA_GCS_PREFIX=${ARTIFACTS_PREFIX},PGHOST=/cloudsql/${DATABASE_INSTANCE},PGUSER=khala_app" \
+  --set-secrets "FORGE_GIT_DATABASE_URL=${DATABASE_SECRET}:latest,FORGE_GIT_POLICY_AUTHORITY_TOKEN=${POLICY_AUTHORITY_SECRET}:latest,PGPASSWORD=${DATABASE_PASSWORD_SECRET}:latest"
 
 SERVICE_URL="$(
   gcloud run services describe "$SERVICE" \
