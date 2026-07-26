@@ -21,6 +21,8 @@ export interface ForgeGitConfigurationShape {
   readonly mirrorEnabled: boolean;
   readonly policyAuthorityToken: Redacted.Redacted<string>;
   readonly policyAuthorityUrl: string;
+  /** Explicit anonymous clone/fetch allowlist. This never permits receive-pack. */
+  readonly publicReadRepositories: ReadonlySet<string>;
   readonly repositoryRoot: string;
   /** Optional owned relay. Without it, outbox rows remain pending and no visibility claim is made. */
   readonly relayUrl: string | undefined;
@@ -73,6 +75,17 @@ export const layerConfiguration = Layer.effect(
     );
     const policyAuthorityToken = yield* Config.redacted("FORGE_GIT_POLICY_AUTHORITY_TOKEN");
     const policyAuthorityUrl = yield* Config.string("FORGE_GIT_POLICY_AUTHORITY_URL");
+    const publicReadRepositories = yield* Config.option(
+      Config.string("FORGE_GIT_PUBLIC_READ_REPOSITORIES"),
+    ).pipe(
+      Effect.map((value) =>
+        new Set(
+          Option.isSome(value)
+            ? value.value.split(",").map((item) => item.trim()).filter((item) => item.length > 0)
+            : [],
+        ),
+      ),
+    );
     const repositoryRoot = yield* Config.string("FORGE_GIT_REPOSITORY_ROOT").pipe(
       Config.withDefault("/var/lib/forge/repositories"),
     );
@@ -98,6 +111,7 @@ export const layerConfiguration = Layer.effect(
       mirrorEnabled,
       policyAuthorityToken,
       policyAuthorityUrl,
+      publicReadRepositories,
       repositoryRoot,
       relayUrl,
       webReadPolicyUrl,
@@ -116,6 +130,7 @@ export const makeTestConfiguration = (
     | "internalServiceAuthToken"
     | "policyAuthorityToken"
     | "policyAuthorityUrl"
+    | "publicReadRepositories"
     | "relayUrl"
     | "maxRepositoriesPerOwner"
     | "webReadPolicyUrl"
@@ -144,6 +159,7 @@ export const makeTestConfiguration = (
     input.policyAuthorityToken ?? Redacted.make("forge-git-service-test-secret"),
   policyAuthorityUrl:
     input.policyAuthorityUrl ?? "https://openagents.test/internal/forge/git-authorize",
+  publicReadRepositories: new Set(),
   relayUrl: input.relayUrl,
   maxRepositoriesPerOwner: input.maxRepositoriesPerOwner ?? 20,
   webReadPolicyUrl:

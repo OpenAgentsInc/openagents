@@ -386,14 +386,27 @@ export const forgeGitHandler = Effect.fn("ForgeGitRoutes.handle")(function* (req
   }
 
   const gitProtocol = yield* validateGitProtocol(request);
-  const auth = yield* ForgeGitAuth;
-  const session = yield* auth.authenticate({
-    authorization: request.headers.get("authorization"),
-    nowIso: new Date().toISOString(),
-    repositoryRef: route.repositoryRef,
-    requiredScope: scopeForOperation(route.operation),
-    tenantRef: route.tenantRef,
-  });
+  const configuration = yield* ForgeGitConfiguration;
+  const publicRead =
+    route.operation === "git-upload-pack" &&
+    configuration.publicReadRepositories.has(`${route.tenantRef}/${route.repositoryRef}`);
+  const session = publicRead
+    ? {
+        actorBindingRef: "public_read",
+        authenticatedAt: new Date().toISOString(),
+        refRestrictions: [],
+        repositoryRef: route.repositoryRef,
+        subjectRef: "public_read",
+        tenantRef: route.tenantRef,
+        tokenRef: "public_read",
+      }
+    : yield* (yield* ForgeGitAuth).authenticate({
+        authorization: request.headers.get("authorization"),
+        nowIso: new Date().toISOString(),
+        repositoryRef: route.repositoryRef,
+        requiredScope: scopeForOperation(route.operation),
+        tenantRef: route.tenantRef,
+      });
   const repository = yield* ForgeGitRepository;
   const admission = yield* ForgeGitAdmission;
 
