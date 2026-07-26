@@ -41,6 +41,8 @@ WITH_SCHEDULER="${2:-}"
 
 PROJECT="${OPENAGENTS_GCP_PROJECT:-openagentsgemini}"
 REGION="${OPENAGENTS_GCP_REGION:-us-central1}"
+NETWORK="${OPENAGENTS_MONOLITH_NETWORK:-default}"
+SUBNETWORK="${OPENAGENTS_MONOLITH_SUBNETWORK:-forge-git}"
 
 if [[ "$TARGET" == "production" ]]; then
   SERVICE="openagents-monolith"
@@ -260,6 +262,9 @@ gcloud run deploy "$SERVICE" \
   --memory 2Gi \
   --timeout 3600 \
   --concurrency 80 \
+  --network "$NETWORK" \
+  --subnet "$SUBNETWORK" \
+  --vpc-egress all-traffic \
   --env-vars-file "$ENV_FILE" \
   --set-secrets "$SECRET_FLAG" \
   --add-cloudsql-instances "openagentsgemini:us-central1:khala-sync-pg"

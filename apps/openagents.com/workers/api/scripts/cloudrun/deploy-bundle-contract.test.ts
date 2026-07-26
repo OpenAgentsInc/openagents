@@ -69,6 +69,27 @@ describe('Cloud Run Vite Plus bundle contract', () => {
     expect(deployScript).not.toContain('--deps.never-bundle')
   })
 
+  test('keeps the owned Forge read route on the monolith network', () => {
+    const deployScript = readFileSync(
+      fileURLToPath(new URL('../deploy-cloudrun.sh', import.meta.url)),
+      'utf8',
+    )
+    const productionEnvironment = readFileSync(
+      fileURLToPath(new URL('env-production.yaml', import.meta.url)),
+      'utf8',
+    )
+
+    expect(deployScript).toContain('--network "$NETWORK"')
+    expect(deployScript).toContain('--subnet "$SUBNETWORK"')
+    expect(deployScript).toContain('--vpc-egress all-traffic')
+    expect(productionEnvironment).toContain(
+      'OPENAGENTS_FORGE_READ_BASE_URL: "https://forge-git-ezxz4mgdsq-uc.a.run.app"',
+    )
+    expect(productionEnvironment).toContain(
+      'OPENAGENTS_FORGE_PUBLIC_WEB_READ_REPOSITORIES: "tenant.openagents/omega"',
+    )
+  })
+
   test('ships Vite Plus split chunks beside the server entry', () => {
     const dockerfile = readFileSync(
       fileURLToPath(new URL('../../Dockerfile', import.meta.url)),

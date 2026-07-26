@@ -1,9 +1,14 @@
 const FORGE_DOCUMENT_PREFIX = '/forge'
+const PUBLIC_FORGE_REPOSITORY_DOCUMENT =
+  '/forge/tenant.openagents/omega'
 const FORGE_TENANT_REF = 'tenant.openagents'
 
 const isForgeDocumentPath = (pathname: string): boolean =>
   pathname === FORGE_DOCUMENT_PREFIX ||
   pathname.startsWith(`${FORGE_DOCUMENT_PREFIX}/`)
+
+const isPublicForgeRepositoryDocument = (pathname: string): boolean =>
+  pathname === PUBLIC_FORGE_REPOSITORY_DOCUMENT
 
 const copySetCookies = (from: Headers, to: Headers): void => {
   const getSetCookie = (
@@ -44,6 +49,10 @@ export const gateForgeDocumentRequest = async (
   serveDocument: () => Promise<Response | undefined>,
 ): Promise<Response | undefined> => {
   if (!isForgeDocumentPath(new URL(request.url).pathname)) {
+    return serveDocument()
+  }
+
+  if (isPublicForgeRepositoryDocument(new URL(request.url).pathname)) {
     return serveDocument()
   }
 

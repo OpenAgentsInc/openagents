@@ -10,6 +10,41 @@ const serve = () =>
   )
 
 describe('Forge document membership gate', () => {
+  test('serves the admitted public repository without a member check', async () => {
+    const checkMembership = vi.fn(
+      async () => new Response(null, { status: 401 }),
+    )
+    const response = await gateForgeDocumentRequest(
+      new Request(
+        'https://openagents.com/forge/tenant.openagents/omega?view=tree&ref=refs%2Fheads%2Fmain',
+      ),
+      checkMembership,
+      serve,
+    )
+
+    expect(response?.status).toBe(200)
+    expect(await response?.text()).toContain('Forge')
+    expect(checkMembership).not.toHaveBeenCalled()
+  })
+
+  test.each([
+    '/forge/tenant.openagents/omega-private',
+    '/forge/tenant.openagents/omega/settings',
+    '/forge/tenant.openagents/other',
+  ])('keeps the member gate for %s', async (pathname) => {
+    const checkMembership = vi.fn(
+      async () => new Response(null, { status: 401 }),
+    )
+    const response = await gateForgeDocumentRequest(
+      new Request(`https://openagents.com${pathname}`),
+      checkMembership,
+      serve,
+    )
+
+    expect(response?.status).toBe(302)
+    expect(checkMembership).toHaveBeenCalledOnce()
+  })
+
   test('redirects a signed-out Forge visitor and preserves the return path', async () => {
     const response = await gateForgeDocumentRequest(
       new Request('https://openagents.com/forge/repositories?tab=mine'),
