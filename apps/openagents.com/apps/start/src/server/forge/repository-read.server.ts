@@ -14,7 +14,7 @@ import {
   type ForgeRepositoryReadResult as ForgeRepositoryReadResultType,
 } from "@/features/forge/repository-read";
 import { getRequestHeader } from "@tanstack/react-start/server";
-import { Config, Effect, Exit, Layer, Schema as S } from "effect";
+import { Config, Effect, Exit, Layer, Redacted, Schema as S } from "effect";
 
 type Fetch = typeof fetch;
 
@@ -98,7 +98,11 @@ const ownedProjectionViolation = (
   return undefined;
 };
 
-export const makeForgeRepositoryReaderLayer = (baseUrl: string, fetchFn: Fetch = fetch) =>
+export const makeForgeRepositoryReaderLayer = (
+  baseUrl: string,
+  serviceAuthToken: string,
+  fetchFn: Fetch = fetch,
+) =>
   Layer.succeed(
     ForgeRepositoryReader,
     ForgeRepositoryReader.of({
@@ -110,6 +114,7 @@ export const makeForgeRepositoryReaderLayer = (baseUrl: string, fetchFn: Fetch =
               cache: "no-store",
               headers: {
                 accept: "application/json",
+                authorization: `Bearer ${serviceAuthToken}`,
                 ...(authorizationCookie === undefined ? {} : { cookie: authorizationCookie }),
               },
             }),
@@ -172,9 +177,13 @@ const runOwnedForgeRead = (
   }).pipe(
     Effect.provide(
       Layer.unwrap(
-        Config.string("OPENAGENTS_FORGE_READ_BASE_URL").pipe(
-          Effect.map((baseUrl) => makeForgeRepositoryReaderLayer(baseUrl)),
-        ),
+        Effect.gen(function* () {
+          const baseUrl = yield* Config.string("OPENAGENTS_FORGE_READ_BASE_URL");
+          const serviceAuthToken = yield* Config.redacted(
+            "OPENAGENTS_FORGE_GIT_SERVICE_AUTH_TOKEN",
+          );
+          return makeForgeRepositoryReaderLayer(baseUrl, Redacted.value(serviceAuthToken));
+        }),
       ),
     ),
   );

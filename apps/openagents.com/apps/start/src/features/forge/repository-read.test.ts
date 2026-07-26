@@ -98,11 +98,13 @@ describe("Forge repository read boundary", () => {
   });
 
   test("forwards membership cookies server-side and decodes the typed projection", async () => {
-    const observed: Array<{ url: string; cookie: string | null }> = [];
+    const observed: Array<{ url: string; authorization: string | null; cookie: string | null }> =
+      [];
     const fetchFn = (async (input, init) => {
       const headers = new Headers(init?.headers);
       observed.push({
         url: String(input),
+        authorization: headers.get("authorization"),
         cookie: headers.get("cookie"),
       });
       return new Response(JSON.stringify(forgeProjection()), {
@@ -116,7 +118,13 @@ describe("Forge repository read boundary", () => {
         const reader = yield* ForgeRepositoryReader;
         return yield* reader.read(request, "oa_session=private");
       }).pipe(
-        Effect.provide(makeForgeRepositoryReaderLayer("https://forge-read.internal", fetchFn)),
+        Effect.provide(
+          makeForgeRepositoryReaderLayer(
+            "https://forge-read.internal",
+            "private-service-token",
+            fetchFn,
+          ),
+        ),
       ),
     );
 
@@ -124,6 +132,7 @@ describe("Forge repository read boundary", () => {
     expect(observed).toEqual([
       {
         url: expect.stringContaining("/internal/v1/repositories/"),
+        authorization: "Bearer private-service-token",
         cookie: "oa_session=private",
       },
     ]);
@@ -155,7 +164,13 @@ describe("Forge repository read boundary", () => {
         const reader = yield* ForgeRepositoryReader;
         return yield* reader.read(request, undefined);
       }).pipe(
-        Effect.provide(makeForgeRepositoryReaderLayer("https://forge-read.internal", fetchFn)),
+        Effect.provide(
+          makeForgeRepositoryReaderLayer(
+            "https://forge-read.internal",
+            "private-service-token",
+            fetchFn,
+          ),
+        ),
       ),
     );
 
