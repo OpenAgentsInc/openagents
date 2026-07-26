@@ -158,7 +158,7 @@ describe("bounded bidirectional agent stdio transport", () => {
 
   it.each(["malformed", "binary"])("fails closed on %s protocol output", async (mode) => {
     const transport = await start(mode);
-    await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+    await waitFor(() => transport.state === "failed");
     expect(transport.state).toBe("failed");
     expect(transport.getReceipt()).toMatchObject({
       terminalOutcome: "protocol_violation",
@@ -174,7 +174,7 @@ describe("bounded bidirectional agent stdio transport", () => {
       invoked = true;
       return { content: "must not run" };
     });
-    await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+    await waitFor(() => transport.state === "failed");
     expect(transport.state).toBe("failed");
     expect(invoked).toBe(false);
     await transport.dispose();
@@ -185,7 +185,7 @@ describe("bounded bidirectional agent stdio transport", () => {
       limits: { shutdownGraceMs: 10, terminateGraceMs: 10 },
     });
     const pid = transport.pid;
-    await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+    await waitFor(() => transport.state === "failed");
     expect(transport.state).toBe("failed");
     await transport.dispose();
     expect(transport.state).toBe("disposed");
@@ -205,7 +205,7 @@ describe("bounded bidirectional agent stdio transport", () => {
       args: [fixture, "sized", "128"],
       limits: { maxLineBytes: 127, maxBufferedBytes: 129 },
     });
-    await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+    await waitFor(() => overLine.state === "failed");
     expect(overLine.state).toBe("failed");
     await overLine.dispose();
 
@@ -221,7 +221,7 @@ describe("bounded bidirectional agent stdio transport", () => {
       args: [fixture, "partial", "128"],
       limits: { maxLineBytes: 256, maxBufferedBytes: 127 },
     });
-    await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+    await waitFor(() => overBuffer.state === "failed");
     expect(overBuffer.state).toBe("failed");
     await overBuffer.dispose();
 
@@ -237,7 +237,7 @@ describe("bounded bidirectional agent stdio transport", () => {
       args: [fixture, "burst", "4"],
       limits: { maxInboundQueue: 3 },
     });
-    await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+    await waitFor(() => overQueue.state === "failed");
     expect(overQueue.state).toBe("failed");
     await overQueue.dispose();
 
