@@ -76,12 +76,20 @@ export const routeForgeRepositoryAssetRequestWithDeps = async (
   }
 
   const objectId = requestUrl.searchParams.get("object");
-  if (objectId === null || !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u.test(objectId)) {
+  const commitId = requestUrl.searchParams.get("commit");
+  const objectIdPattern = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u;
+  if (
+    objectId === null ||
+    commitId === null ||
+    !objectIdPattern.test(objectId) ||
+    !objectIdPattern.test(commitId)
+  ) {
     return noStoreJson({ error: "not_found" }, 404);
   }
 
   const upstreamUrl = new URL(assetPath, deps.upstreamBaseUrl);
   upstreamUrl.searchParams.set("object", objectId);
+  upstreamUrl.searchParams.set("commit", commitId);
   upstreamUrl.searchParams.set("max_image_bytes", String(FORGE_MAX_IMAGE_BYTES));
 
   let upstream: Response;

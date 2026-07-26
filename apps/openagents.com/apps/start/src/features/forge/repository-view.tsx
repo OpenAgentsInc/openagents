@@ -49,6 +49,7 @@ const dateTime = (value: string): string => {
     : new Intl.DateTimeFormat("en", {
         dateStyle: "medium",
         timeStyle: "short",
+        timeZone: "UTC",
       }).format(parsed);
 };
 
@@ -507,7 +508,7 @@ function Commits({ projection }: { projection: ForgeRepositoryProjection }) {
                 <p>
                   {commit.authorName} committed{" "}
                   <time dateTime={commit.authoredAt} title={dateTime(commit.authoredAt)}>
-                    {relativeTime(commit.authoredAt)}
+                    {relativeTime(commit.authoredAt, Date.parse(projection.servedAt))}
                   </time>
                 </p>
               </div>

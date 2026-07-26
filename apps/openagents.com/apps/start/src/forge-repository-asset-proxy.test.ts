@@ -7,7 +7,7 @@ import {
 import { FORGE_MAX_IMAGE_BYTES } from "./features/forge/repository-read";
 
 const assetUrl =
-  "https://openagents.test/internal/v1/repositories/OpenAgentsInc/omega/web-read-asset/assets/logo.png?object=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  "https://openagents.test/internal/v1/repositories/OpenAgentsInc/omega/web-read-asset/assets/logo.png?commit=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&object=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
 const fakeRequest = (
   url: string,
@@ -67,6 +67,7 @@ describe("Forge repository asset proxy", () => {
     const parsed = new URL(String(forwardedUrl));
     expect(parsed.origin).toBe("https://forge-git.internal");
     expect(parsed.pathname).toContain("/web-read-asset/assets/logo.png");
+    expect(parsed.searchParams.get("commit")).toBe("b".repeat(40));
     expect(parsed.searchParams.get("object")).toBe("a".repeat(40));
     expect(parsed.searchParams.get("max_image_bytes")).toBe(String(FORGE_MAX_IMAGE_BYTES));
     expect(new Headers(forwardedInit?.headers).get("authorization")).toBe(
@@ -87,6 +88,22 @@ describe("Forge repository asset proxy", () => {
     );
 
     expect(response?.status).toBe(404);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  test("rejects missing or invalid commit ids without calling the private service", async () => {
+    const fetch = vi.fn();
+    const missing = await routeForgeRepositoryAssetRequestWithDeps(
+      new Request(assetUrl.replace(`commit=${"b".repeat(40)}&`, "")),
+      deps(fetch),
+    );
+    const invalid = await routeForgeRepositoryAssetRequestWithDeps(
+      new Request(assetUrl.replace("b".repeat(40), "../private")),
+      deps(fetch),
+    );
+
+    expect(missing?.status).toBe(404);
+    expect(invalid?.status).toBe(404);
     expect(fetch).not.toHaveBeenCalled();
   });
 
