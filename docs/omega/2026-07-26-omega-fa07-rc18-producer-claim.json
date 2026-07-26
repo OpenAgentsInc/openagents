@@ -1,0 +1,27 @@
+{
+  "_comment": "FA-07 gate 10 (omega#26) producer claim for 0.2.0-rc18. Input to omega script/review-omega-candidate. The reviewer recomputes every value below from the artifact itself; it never reads the producer's evidence. Gaps are stated rather than papered over.",
+  "_candidate": {
+    "version": "0.2.0-rc18",
+    "omegaSourceCommit": "96306681f0ba7b61efa752241f0a2659170648a6",
+    "installedApp": "/Applications/Omega.app",
+    "installedHostBinarySha256": "4b2a5e9a845233edda18664cb72a1c236db76772a123ddd730b9a50b05ce50e9",
+    "cdHash": "bb404eb3d71759e48762f68574a9ba2f0363da8e",
+    "cdHashFull": "bb404eb3d71759e48762f68574a9ba2f0363da8ece6592378131ac298e75b25f",
+    "bundleVersion": "20260726.091602",
+    "engineReleaseTag": "omega-effectd-v0.1.0-rc.10",
+    "engineSourceCommit": "e3280b4795efe189474e12b4c6cd06123cfda359",
+    "engineBundleSha256": "6922c83e05c89bc7a6ef44cc0f752a895a70b0cb1964d9c20613c538facd089c",
+    "componentManifestSha256": "d797f749f57d2ab88cdad74f5ff81e882bc6052951a026c028a84fb7b022b5eb"
+  },
+  "_whyThisCandidateExists": "0.2.0-rc15, rc16 and rc17 all shipped a host that refused the engine's provider-handoff note: omega_host_bridge::append_system_note returned unavailable(\"Agent threads do not expose an owner-visible system-note authority.\") unconditionally. An independent reviewer bound that exact string to the rc15 shipped bytes and confirmed it in rc16; the rc17 lane confirmed it in rc17. omega a6f8285bdb (PR #96) added the missing seam -- AgentThreadEntry::SystemNote, AcpThread::push_system_note idempotent on the engine-supplied id, and ThreadView::render_system_note drawn unconditionally -- and is an ancestor of this candidate's source commit. rc18 is the first candidate carrying both the engine half (green since omega-effectd rc.9) and the host half.",
+  "_engineIsUnchangedFromRc15": "The engine bundle omega-effectd.mjs is byte-identical across rc15, rc17 and rc18 (sha256 6922c83e05c89bc7...). Only the host binary differs between these candidates. This is stated because it is the entire basis on which any engine-level gate observation may be carried across candidates; it is not a basis for carrying host-level observations, and gate 5's host half was re-proven against these bytes rather than inherited.",
+  "_producerIdentityGap": "No producer keypair is registered anywhere in AUTHORITY.md; producers hold role operating_agent, not a key. script/review-omega-candidate only refuses when the reviewer key appears in producerPubkeys, so a producer that named itself dishonestly would pass that check. The identifier below is descriptive, not cryptographic. Naming this rather than minting a plausible-looking hex string, because a fake pubkey here would make the independence check look stronger than it is.",
+  "_toolDefectAffectingThisReview": "The rc15 reviewer recorded a material defect in script/review-omega-candidate: only 2 of its 4 checks bind to the DMG. notarization and forbidden_strings read whatever is at --app (default /Applications/Omega.app) with no cross-check against the DMG's CDHash, so a substituted install passes silently. That defect is unfixed. A reviewer of this candidate should mount the DMG read-only and point --app at the mounted Omega.app, or independently verify that the installed app's CDHash equals the DMG's before trusting those two checks. For this claim the producer verified that equality: the installed app and the DMG copy agree on CFBundleVersion, host binary sha256 and CDHash.",
+  "producerPubkeys": [
+    "producer.omega.fa07.lane.claude-26-rc18.2026-07-26"
+  ],
+  "artifactSha256": "83e79f68ede7cafa8262082f6c746bb5915e2fa086cde64336189db648ee0a37",
+  "notarization": "notarized",
+  "stapled": "stapled",
+  "forbiddenStrings": "none"
+}

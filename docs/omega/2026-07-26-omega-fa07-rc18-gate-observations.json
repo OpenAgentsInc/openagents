@@ -1,0 +1,258 @@
+{
+  "_comment": "FA-07 (omega#26) gate observations for the installed 0.2.0-rc18 candidate. Two kinds of evidence, kept separate on purpose. driverReceipt is the verbatim output of packages/omega-effectd/scripts/fa07-installed-gates.ts run against the engine that shipped inside the signed, notarized candidate. shippedBytesGate5 is the half that driver CANNOT see: its host stand-in answers append_system_note itself and never reaches the Rust bridge, so no driver run can go red or green on gate 5's host half.",
+  "candidate": {
+    "version": "0.2.0-rc18",
+    "artifactSha256": "83e79f68ede7cafa8262082f6c746bb5915e2fa086cde64336189db648ee0a37",
+    "installedHostBinarySha256": "4b2a5e9a845233edda18664cb72a1c236db76772a123ddd730b9a50b05ce50e9",
+    "cdHash": "bb404eb3d71759e48762f68574a9ba2f0363da8e",
+    "bundleVersion": "20260726.091602",
+    "omegaSourceCommit": "96306681f0ba7b61efa752241f0a2659170648a6"
+  },
+  "substitutionCheck": {
+    "_why": "The rc15 reviewer found /Applications/Omega.app was rc16 at review time. That check is repeated here rather than assumed.",
+    "method": "hdiutil attach -readonly, then compare the DMG's Omega.app against the installed one",
+    "cfBundleVersionAgrees": true,
+    "hostBinarySha256Agrees": true,
+    "cdHashAgrees": true,
+    "verdict": "no substitution; the installed application IS the rc18 candidate"
+  },
+  "shippedBytesGate5": {
+    "_why": "Gate 5's host half is falsifiable only in the packaged bytes. Both directions are measured, because absence of the refusal alone is also consistent with the whole path having been deleted.",
+    "refusalStringAbsent": {
+      "needle": "Agent threads do not expose an owner-visible system-note authority",
+      "rc15": 1,
+      "rc16": 1,
+      "rc17": 1,
+      "rc18_installed": 0,
+      "rc18_dmgCopy": 0,
+      "interpretation": "The differential is the control: the same grep finds the string in all three prior candidates and finds it in neither copy of rc18."
+    },
+    "rendererPresent": {
+      "needle": "system-note",
+      "_source": "ThreadView::render_system_note draws .id((\"system-note\", entry_ix)), so the literal is compiled into the GPUI element-id string blob",
+      "rc17_totalOccurrences": 1,
+      "rc17_occurrencesInsideRefusalSentence": 1,
+      "rc17_standaloneOccurrences": 0,
+      "rc17_presentInElementIdBlob": false,
+      "rc18_totalOccurrences": 1,
+      "rc18_occurrencesInsideRefusalSentence": 0,
+      "rc18_standaloneOccurrences": 1,
+      "rc18_presentInElementIdBlob": true,
+      "interpretation": "In rc17 the only occurrence of the literal is inside the refusal sentence. In rc18 the refusal is gone and the literal appears in the element-id blob adjacent to loading-message-content, which is the renderer being compiled in rather than the refusal merely being deleted."
+    },
+    "forbiddenStringsScan": {
+      "scannedFrom": "the DMG copy, not the installed app, to sidestep the reviewer-recorded tool defect",
+      "totalStringsScanned": 669296,
+      "hits": []
+    }
+  },
+  "sourceChecksAtCandidateSource": {
+    "_why": "OMEGA-DELTA-0045's three checks are the falsifiable artifact for gate 5. They are run at origin/main, which is byte-identical to the rc18 cut for every gate-5-relevant file, so they bind to the candidate.",
+    "filesIdenticalBetweenRc18CutAndOriginMain": [
+      "crates/agent_ui/src/omega_host_bridge.rs",
+      "crates/acp_thread/src/acp_thread.rs",
+      "crates/agent_ui/src/conversation_view/thread_view.rs",
+      "crates/omega_deltas/src/omega_deltas.rs",
+      "OMEGA_DELTAS.md"
+    ],
+    "omega_deltas": {
+      "passed": 103,
+      "failed": 0,
+      "gate5Checks": [
+        "a_host_authored_note_is_a_thread_entry_kind",
+        "the_host_appends_a_provider_handoff_note_rather_than_refusing_it",
+        "the_thread_surface_draws_a_host_authored_note_unconditionally"
+      ],
+      "gate8Checks": [
+        "no_model_callable_crate_can_dispatch_full_auto",
+        "only_a_click_listener_starts_a_full_auto_run"
+      ]
+    },
+    "acp_thread": {
+      "passed": 122,
+      "failed": 0,
+      "gate5BehaviouralCheck": "test_system_note_is_appended_once_per_note_id"
+    }
+  },
+  "notObserved": {
+    "inProductRender": "This lane did NOT photograph the note rendering inside the running Omega. Omega rc18 was live with the owner's own Codex session attached, and the only ways to drive a real handoff through the real GPUI bridge would have written into the owner's live transcript or restarted their session. The gate does not require it and the shipped-bytes differential is falsifiable without it, so the observation was declined rather than taken at the owner's expense.",
+    "gate1": "not re-driven on rc18; inherited from rc15",
+    "gate2": "not re-driven on rc18; owner-reserved, inherited from rc15"
+  },
+  "driverReceipt": {
+    "schema": "openagents.omega.fa07-installed-gate-observation.v1",
+    "generatedAt": "2026-07-26T09:29:49.560Z",
+    "issue": "omega#26 (OMEGA-FA-07)",
+    "candidate": {
+      "appPath": "/Applications/Omega.app",
+      "enginePath": "/Applications/Omega.app/Contents/Resources/omega-effectd/bin/omega-effectd",
+      "engineOverridden": false,
+      "hostBinaryDigest": "4b2a5e9a845233edda18664cb72a1c236db76772a123ddd730b9a50b05ce50e9",
+      "engineBundleDigest": "6922c83e05c89bc7a6ef44cc0f752a895a70b0cb1964d9c20613c538facd089c",
+      "engineBundleDigestMatchesManifest": true,
+      "componentManifestDigest": "d797f749f57d2ab88cdad74f5ff81e882bc6052951a026c028a84fb7b022b5eb",
+      "engineSourceCommit": "e3280b4795efe189474e12b4c6cd06123cfda359",
+      "serviceVersion": "0.1.0",
+      "shortVersion": "0.2.0",
+      "bundleVersion": "20260726.091602"
+    },
+    "providersExercised": false,
+    "observations": {
+      "gate5": {
+        "gate": "visible_cross_provider_handoff",
+        "runRef": "run.full-auto.ms1lk0o1.jqaj9jd3",
+        "providersExercised": false,
+        "refusedWhileRunning": true,
+        "refusedWhileRunningCode": "invalid_request",
+        "refusedUnknownLane": true,
+        "pausedBeforeHandoff": true,
+        "laneBefore": "codex-local",
+        "laneAfter": "claude-local",
+        "laneRebound": true,
+        "transition": {
+          "handoffRefShape": true,
+          "from": "codex-local",
+          "to": "claude-local",
+          "actor": "control_api",
+          "disposition": "complete_within_bounds",
+          "truncated": false,
+          "envelopeSchema": "openagents.desktop.provider_handoff_envelope.v1",
+          "envelopeSchemaExpected": true,
+          "threadSplit": true
+        },
+        "durableTransitionCount": 2,
+        "durableAcceptedCount": 1,
+        "durableSchema": "openagents.desktop.provider_handoff_transition.v1",
+        "reportAgreesWithRegistry": true,
+        "resumedAfterHandoff": true,
+        "turnLanes": [
+          "codex-local"
+        ],
+        "turnCount": 1,
+        "turnThreadRefsDigest": [
+          "eb045d78d273"
+        ],
+        "runStateAfterResume": "running",
+        "runStallCauseAfterResume": null,
+        "runRecoveryActionAfterResume": "none",
+        "runSuccessfulAttempts": 2,
+        "runFailedAttempts": 0,
+        "runThreadIsHandoffTarget": true,
+        "hostMethodsAfterHandoff": [
+          "refresh_evidence",
+          "lane_readiness",
+          "create_thread",
+          "append_system_note",
+          "resolve_workspace",
+          "dispatch_turn"
+        ],
+        "dispatchCountAfterHandoff": 1,
+        "bothLanesExecuted": false,
+        "providerInvocations": [
+          {
+            "lane": "codex-local",
+            "ok": false,
+            "exitCode": null,
+            "outputLength": 0,
+            "elapsedMs": 0
+          },
+          {
+            "lane": "claude-local",
+            "ok": false,
+            "exitCode": null,
+            "outputLength": 0,
+            "elapsedMs": 0
+          }
+        ],
+        "lanesInvoked": [
+          "codex-local",
+          "claude-local"
+        ],
+        "bothLanesInvoked": false,
+        "systemNoteEmitted": true,
+        "systemNoteAddressedToTargetThread": true,
+        "systemNoteNamesBothLanes": true,
+        "objectiveTextAbsentFromDurableHandoff": true
+      },
+      "gate6": {
+        "gate": "offline_and_sync_gap",
+        "runRef": "run.full-auto.ms1lk0zj.1woprxb4",
+        "providersExercised": false,
+        "syncAvailable": false,
+        "syncReason": "omega_khala_sync_session_unavailable",
+        "publishBlocksDispatch": false,
+        "publishBlocksDispatchIsFalse": true,
+        "startedWhileOffline": true,
+        "dispatchedWhileOffline": true,
+        "stateWhileOffline": "running",
+        "publishRefused": true,
+        "publishStatus": "sync_unavailable",
+        "publishReason": "omega_khala_sync_session_unavailable",
+        "publishReasonIsTyped": true,
+        "unknownRunPublishStatus": "run_not_found",
+        "publishDistinguishesMissingRunFromOfflineSync": true,
+        "offlineControlIntentStatus": "applied",
+        "offlineOutcomeLedgerWritten": false,
+        "offlineOutcomeLedgerExpected": false,
+        "turnCountAfterWork": 0,
+        "runSurvivedRestart": true,
+        "stateAfterRestart": "paused",
+        "reportSurvivedRestart": true,
+        "syncStillHonestAfterRestart": true,
+        "objectiveTextAbsentFromSyncSurfaces": true,
+        "objectivePresentInOwnerLocalDetail": true
+      },
+      "gate7": {
+        "gate": "mobile_control_outcomes",
+        "runRef": "run.full-auto.ms1lk1l9.h4naysbq",
+        "providersExercised": false,
+        "pauseStatus": "applied",
+        "pauseLifecycle": "paused",
+        "resumeStatus": "applied",
+        "resumeLifecycle": "running",
+        "stopStatus": "applied",
+        "stopLifecycle": "stopped",
+        "unknownRunStatus": "rejected",
+        "unknownRunRejectionReason": "run_not_found",
+        "escalationRefused": true,
+        "escalationErrorCode": "invalid_request",
+        "afterTerminalStatus": "rejected",
+        "afterTerminalRejectionReason": "illegal_transition",
+        "terminalState": "stopped",
+        "terminalReasonRef": "terminal.full_auto.stopped.mobile",
+        "terminalReasonRefIsTyped": true,
+        "startedAtMsRecorded": true,
+        "everyOutcomeTyped": true,
+        "objectiveTextAbsentFromOutcomes": true
+      },
+      "gates4And9": {
+        "gates": [
+          "control_matrix",
+          "redaction"
+        ],
+        "runRef": "run.full-auto.ms1lk1wj.ufkovml2",
+        "states": {
+          "start": "running",
+          "pause": "paused",
+          "resume": "running",
+          "retry": "refused:invalid_request",
+          "stop": "stopped"
+        },
+        "controlMatrixComplete": true,
+        "capReachedObserved": true,
+        "capReachedState": "cap_reached",
+        "redactionSurfacesChecked": [
+          "list_runs",
+          "get_receipt",
+          "get_report",
+          "get_capacity",
+          "decide_attention"
+        ],
+        "redactionLeaks": [],
+        "redactionClean": true,
+        "receiptCarriesObjectiveDigest": true,
+        "receiptObjectiveDigestMatches": true
+      }
+    }
+  }
+}
