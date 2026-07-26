@@ -92,7 +92,7 @@ describe('Cloud Run Vite Plus bundle contract', () => {
       'OPENAGENTS_FORGE_GITHUB_MIRROR_REGISTRY:',
     )
     expect(productionEnvironment).toContain(
-      '"destinationGithubRef":"refs/heads/main"',
+      '"destinationGithubRef":"refs/heads/forge/main"',
     )
     expect(productionEnvironment).toContain(
       '"destinationGithubRef":"refs/tags/forge-omega-import-2026-07-26"',
