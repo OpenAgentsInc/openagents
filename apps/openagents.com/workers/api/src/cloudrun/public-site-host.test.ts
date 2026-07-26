@@ -36,6 +36,21 @@ describe('public Start homepage host boundary', () => {
     expect(isStartServerRequestPath('/api/public/desktop-download/artifact')).toBe(true)
     expect(isStartServerRequestPath('/api/public/desktop-download/')).toBe(false)
     expect(isStartServerRequestPath('/api/public/desktop-download/other')).toBe(false)
+    expect(
+      isStartServerRequestPath(
+        '/internal/v1/repositories/tenant.openagents/omega/web-read-asset/crates/zed/icon.png',
+      ),
+    ).toBe(true)
+    expect(
+      isStartServerRequestPath(
+        '/internal/v1/repositories/tenant.openagents/omega/web-read',
+      ),
+    ).toBe(false)
+    expect(
+      isStartServerRequestPath(
+        '/internal/v1/repositories/tenant.openagents/omega/web-read-asset',
+      ),
+    ).toBe(false)
     expect(isStartServerRequestPath('/api/auth/session')).toBe(false)
     expect(isStartServerRequestPath('/api/portal/session')).toBe(false)
   })
