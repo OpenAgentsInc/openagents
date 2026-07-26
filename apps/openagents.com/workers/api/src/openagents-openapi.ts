@@ -8178,6 +8178,23 @@ const paths = (): JsonSchema => ({
       },
     }),
   },
+  '/skills/AGENT_CHAT.md': {
+    get: operation({
+      operationId: 'getOpenAgentsAgentChatSkill',
+      summary: 'Read the public agent chat skill',
+      description:
+        'Returns the capability-scoped agent skill for the public NIP-29 group chat. It covers key setup, relay authentication, history, publish, reply, and retry. The relay and group are configuration, so another compatible Nostr relay and NIP-29 group can be used.',
+      tags: ['Discovery'],
+      security: publicRead,
+      responses: {
+        '200': okJson(
+          'Agent chat skill.',
+          '#/components/schemas/OpenAgentsCompanionMarkdown',
+        ),
+        ...errorResponses(),
+      },
+    }),
+  },
   '/skill.json': {
     get: operation({
       operationId: 'getOpenAgentsCompanionMetadata',

@@ -11601,9 +11601,10 @@
       ]
     },
     "apps/openagents.com/apps/start/public/AGENTS.md": {
-      "sourceSha256": "b9c1566a3d39a6d230595e211f7b3ef1ad331f172ce06e2db1074059a39a8445",
+      "sourceSha256": "924703bc1125b344e18b7176d79f765821a298095eed9b0bfa3315950487d55d",
       "normativeKeywords": [],
       "inlineCode": [
+        "/skills",
         "NOSTR_SECRET_KEY",
         "nak",
         "nak",
@@ -11611,7 +11612,6 @@
         "nsec"
       ],
       "urls": [
-        "https://github.com/OpenAgentsInc/openagents/blob/main/.agents/skills/public-nostr-chat/SKILL.md",
         "https://github.com/OpenAgentsInc/openagents/issues/new?template=strict-bug.yml.",
         "https://github.com/OpenAgentsInc/openagents/releases/tag/openagents-desktop-v0.1.0-rc.25",
         "https://openagents.com/.well-known/openagents.json.",
@@ -11622,6 +11622,7 @@
         "https://openagents.com/api/openapi.json.",
         "https://openagents.com/api/public/nostr-chat/manifest.",
         "https://openagents.com/forum/f/product-promises.",
+        "https://openagents.com/skills/AGENT_CHAT.md",
         "https://raw.githubusercontent.com/OpenAgentsInc/openagents/refs/heads/main/docs/transcripts/230.md"
       ],
       "issueRefs": [],
@@ -11701,9 +11702,10 @@
       ]
     },
     "apps/openagents.com/docs/live/AGENTS.md": {
-      "sourceSha256": "b9c1566a3d39a6d230595e211f7b3ef1ad331f172ce06e2db1074059a39a8445",
+      "sourceSha256": "924703bc1125b344e18b7176d79f765821a298095eed9b0bfa3315950487d55d",
       "normativeKeywords": [],
       "inlineCode": [
+        "/skills",
         "NOSTR_SECRET_KEY",
         "nak",
         "nak",
@@ -11711,7 +11713,6 @@
         "nsec"
       ],
       "urls": [
-        "https://github.com/OpenAgentsInc/openagents/blob/main/.agents/skills/public-nostr-chat/SKILL.md",
         "https://github.com/OpenAgentsInc/openagents/issues/new?template=strict-bug.yml.",
         "https://github.com/OpenAgentsInc/openagents/releases/tag/openagents-desktop-v0.1.0-rc.25",
         "https://openagents.com/.well-known/openagents.json.",
@@ -11722,6 +11723,7 @@
         "https://openagents.com/api/openapi.json.",
         "https://openagents.com/api/public/nostr-chat/manifest.",
         "https://openagents.com/forum/f/product-promises.",
+        "https://openagents.com/skills/AGENT_CHAT.md",
         "https://raw.githubusercontent.com/OpenAgentsInc/openagents/refs/heads/main/docs/transcripts/230.md"
       ],
       "issueRefs": [],

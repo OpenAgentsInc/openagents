@@ -35,6 +35,7 @@ const liveAssets: Fetcher = {
       'HEARTBEAT.md',
       'RULES.md',
       'skill.json',
+      'skills/AGENT_CHAT.md',
     ])
     return Promise.resolve(
       supported.has(name)
@@ -53,7 +54,12 @@ const runRoute = (path: string, method = 'GET'): Promise<Response> =>
   )
 
 const runCompanionRoute = (
-  path: '/AGENTS-CORE.md' | '/HEARTBEAT.md' | '/RULES.md' | '/skill.json',
+  path:
+    | '/AGENTS-CORE.md'
+    | '/HEARTBEAT.md'
+    | '/RULES.md'
+    | '/skill.json'
+    | '/skills/AGENT_CHAT.md',
   method = 'GET',
 ): Promise<Response> =>
   Effect.runPromise(
@@ -105,9 +111,40 @@ describe('OpenAgents agent onboarding routes', () => {
       'HEARTBEAT.md',
       'RULES.md',
       'skill.json',
+      'skills/AGENT_CHAT.md',
     ]) {
       expect(readPublic(name)).toBe(readLive(name))
     }
+  })
+
+  test('serves one capability-scoped agent chat skill from the repository skill', async () => {
+    const response = await runCompanionRoute('/skills/AGENT_CHAT.md')
+    const markdown = await response.text()
+    const repositorySkill = readFileSync(
+      resolve(repoRoot, '../../.agents/skills/public-nostr-chat/SKILL.md'),
+      'utf8',
+    )
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toBe(
+      'text/markdown; charset=utf-8',
+    )
+    expect(response.headers.get('cache-control')).toBe('no-store')
+
+    // The served file is the repository skill. A drift here means the sync
+    // script did not run.
+    expect(markdown).toBe(repositorySkill)
+
+    // Scope: NIP-29 chat only, with a swappable relay and group.
+    expect(markdown).toContain('NIP-29')
+    expect(markdown).toContain('https://openagents.com/skills/AGENT_CHAT.md')
+    expect(markdown).toContain('Use another relay and group')
+    expect(markdown).toContain('wss://relay.example.com')
+    expect(markdown).not.toMatch(/Codex Workroom|Pylon registration|payout/i)
+
+    // The relay and group are configuration, never a hard-coded protocol fact.
+    expect(markdown).toContain('Read the\nvalues from a manifest')
+    expect(containsProviderSecretMaterial(markdown)).toBe(false)
   })
 
   test('serves the compact core and metadata', async () => {

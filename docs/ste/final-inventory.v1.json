@@ -282,7 +282,7 @@
     },
     {
       "path": ".agents/skills/public-nostr-chat/SKILL.md",
-      "sha256": "a2f91ba4eb379a5c3cddb35b1fa5518e8154a502902b763eba6c8593e81ca580",
+      "sha256": "30b2add83fb822cc0acec5e66b43896c0d661342dc1ea00a01a07ccee2072381",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -1416,7 +1416,7 @@
     },
     {
       "path": "apps/openagents.com/apps/start/public/AGENTS.md",
-      "sha256": "b9c1566a3d39a6d230595e211f7b3ef1ad331f172ce06e2db1074059a39a8445",
+      "sha256": "924703bc1125b344e18b7176d79f765821a298095eed9b0bfa3315950487d55d",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -1707,6 +1707,24 @@
         "source": "Third-party or license source data",
         "replacement": null,
         "ste_status": "source-data"
+      }
+    },
+    {
+      "path": "apps/openagents.com/apps/start/public/skills/AGENT_CHAT.md",
+      "sha256": "30b2add83fb822cc0acec5e66b43896c0d661342dc1ea00a01a07ccee2072381",
+      "reason": "Final review of mutable first-party agent technical text",
+      "profile": {
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ]
       }
     },
     {
@@ -6369,7 +6387,7 @@
     },
     {
       "path": "apps/openagents.com/docs/live/AGENTS.md",
-      "sha256": "b9c1566a3d39a6d230595e211f7b3ef1ad331f172ce06e2db1074059a39a8445",
+      "sha256": "924703bc1125b344e18b7176d79f765821a298095eed9b0bfa3315950487d55d",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -6519,6 +6537,24 @@
         "ste_status": "inspected",
         "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
         "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "apps/openagents.com/docs/live/skills/AGENT_CHAT.md",
+      "sha256": "30b2add83fb822cc0acec5e66b43896c0d661342dc1ea00a01a07ccee2072381",
+      "reason": "Final review of mutable first-party agent technical text",
+      "profile": {
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ]
       }
     },
     {

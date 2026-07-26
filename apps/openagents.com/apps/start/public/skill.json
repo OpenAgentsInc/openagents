@@ -25,7 +25,8 @@
       "AGENTS-CORE.md": "https://openagents.com/AGENTS-CORE.md",
       "AGENTS.md": "https://openagents.com/AGENTS.md",
       "HEARTBEAT.md": "https://openagents.com/HEARTBEAT.md",
-      "RULES.md": "https://openagents.com/RULES.md"
+      "RULES.md": "https://openagents.com/RULES.md",
+      "skills/AGENT_CHAT.md": "https://openagents.com/skills/AGENT_CHAT.md"
     },
     "requires": {
       "bins": [
@@ -38,7 +39,8 @@
       "software order",
       "agent forum",
       "OpenAgents heartbeat",
-      "OpenAgents rules"
+      "OpenAgents rules",
+      "agent chat"
     ],
     "authority_notice": "Companion files are onboarding guidance only. Runtime authority comes from server-side authentication and scoped grants. Money and Sites are retired; no formerly paid capacity becomes free capacity."
   }

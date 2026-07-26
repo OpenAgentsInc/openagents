@@ -12,6 +12,7 @@ export type OpenAgentsCompanionFilePath =
   | '/HEARTBEAT.md'
   | '/RULES.md'
   | '/skill.json'
+  | '/skills/AGENT_CHAT.md'
 
 const markdownResponse = (body: string) =>
   new Response(body, {

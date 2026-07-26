@@ -14484,6 +14484,27 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     handler: (request, env) =>
       handleOpenAgentsCompanionFile(request, env.ASSETS, '/skill.json'),
   },
+  // One capability-scoped agent skill per file under /skills. AGENT_CHAT.md
+  // covers the public NIP-29 group chat only. Its relay and group are
+  // configuration, so another compatible relay can be swapped in.
+  {
+    path: '/skills/AGENT_CHAT.md',
+    handler: (request, env, ctx) => {
+      recordPublicAgentFunnelRead(
+        request,
+        businessDomainDatabaseForEnv(env),
+        ctx,
+        'agent_doc_read',
+        '/skills/AGENT_CHAT.md',
+      )
+
+      return handleOpenAgentsCompanionFile(
+        request,
+        env.ASSETS,
+        '/skills/AGENT_CHAT.md',
+      )
+    },
+  },
   // React + Tailwind landing pair. These exact document routes intentionally
   // intercept before the legacy app-shell fallback.
   {
@@ -14553,6 +14574,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
       ['/heartbeat.md', '/HEARTBEAT.md'],
       ['/agents-core.md', '/AGENTS-CORE.md'],
       ['/qa-runner.md', '/QA-RUNNER.md'],
+      ['/skills/agent_chat.md', '/skills/AGENT_CHAT.md'],
     ] as const
   ).map(([aliasPath, canonicalPath]) => ({
     handler: (request: Request) =>
