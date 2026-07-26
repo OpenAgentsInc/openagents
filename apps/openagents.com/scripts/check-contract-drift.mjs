@@ -40,13 +40,21 @@ const CANONICAL_FILES = new Set(
 const SKIP_DIR = /(^|\/)(node_modules|\.git|\.claude|\.pylon-local|\.worktrees|dist|build|target|\.wrangler|\.turbo|coverage|\.next)(\/|$)/
 const isSkippedPath = path => SKIP_DIR.test(relative(repoRoot, path))
 
-const listFiles = dir =>
-  readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
+const listFiles = dir => {
+  let entries
+  try {
+    entries = readdirSync(dir, { withFileTypes: true })
+  } catch (error) {
+    if (error && typeof error === 'object' && error.code === 'ENOENT') return []
+    throw error
+  }
+  return entries.flatMap(entry => {
     const path = join(dir, entry.name)
     if (isSkippedPath(path)) return []
     if (entry.isDirectory()) return listFiles(path)
     return /\.tsx?$/.test(path) && !/\.test\.tsx?$/.test(path) ? [path] : []
   })
+}
 
 // A symbol is "defined" (an authority) when a file DECLARES it, not merely
 // imports/re-exports it. These patterns match top-level declarations.
@@ -87,7 +95,16 @@ const FORMER_COPY_FILES = [
   'apps/openagents.com/workers/api/src/blueprint/exports/contract-export.ts',
 ].map(p => join(repoRoot, p))
 
-const read = path => readFileSync(path, 'utf8')
+const read = path => {
+  try {
+    return readFileSync(path, 'utf8')
+  } catch (error) {
+    // Test fixtures can be removed by a sibling worker after this guard lists
+    // them. A vanished path cannot define an authority, so skip it.
+    if (error && typeof error === 'object' && error.code === 'ENOENT') return null
+    throw error
+  }
+}
 
 const definesSymbol = (text, symbol) =>
   definitionPatterns(symbol).some(re => re.test(text))
@@ -110,6 +127,7 @@ const allFiles = listFiles(repoRoot)
 for (const file of allFiles) {
   if (CANONICAL_FILES.has(file)) continue
   const text = read(file)
+  if (text === null) continue
   for (const symbol of GUARDED_SYMBOLS) {
     if (definesSymbol(text, symbol)) {
       problems.push(
@@ -134,6 +152,7 @@ for (const file of FORMER_COPY_FILES) {
     continue
   }
   const text = read(file)
+  if (text === null) continue
   for (const symbol of GUARDED_SYMBOLS) {
     if (definesSymbol(text, symbol)) {
       problems.push(

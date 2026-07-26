@@ -10,7 +10,7 @@ describe('Start login route', () => {
     expect(html).toContain('data-route="login"')
     expect(html).toContain('data-persistent-scene-overlay="login"')
     expect(html).toContain('Early access')
-    expect(html).toContain('Log In to OpenAgents')
+    expect(html).toContain('Log in to OpenAgents')
     expect(html).toContain('aria-label="Login options"')
     expect(html).toContain('If your account is approved for early access')
     expect(html).toContain('href="/login/email?returnTo=%2Fadmin%2Fanalytics"')

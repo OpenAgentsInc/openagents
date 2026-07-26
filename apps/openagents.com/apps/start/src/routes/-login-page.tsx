@@ -26,7 +26,7 @@ export function LoginPage({ returnTo }: Readonly<{ returnTo?: string }> = {}) {
         <div aria-hidden="true" className="oa-login-ambient" />
         <section className="oa-login-intro">
           <p className="oa-login-eyebrow">Early access</p>
-          <h1 id="login-heading">Log In to OpenAgents</h1>
+          <h1 id="login-heading">Log in to OpenAgents</h1>
           <p className="oa-login-lede">
             If your account is approved for early access, continue with a secure
             one-time email code or GitHub.
