@@ -322,6 +322,14 @@ export const makeForgeInviteMembershipRoutes = <
         ) {
           return forbidden()
         }
+        // The public Forge namespace is distinct from the established product
+        // tenant. Create its normal tenant record before its first owner
+        // binding; do not rely on an out-of-band database seed.
+        await dependencies.makeGitAuthStore(env).upsertTenant({
+          displayName: 'OpenAgents Forge',
+          nowIso,
+          tenantRef: body.tenantRef,
+        })
         if (
           (await store.readActorBindingByNostrPubkey(body.tenantRef, pubkey)) !==
           undefined
