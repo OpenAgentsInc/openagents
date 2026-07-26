@@ -115,6 +115,16 @@ export interface ForgeGitAdmissionShape {
     readonly repositoryRef: string;
     readonly tenantRef: string;
   }) => Effect.Effect<ForgeGitMergeReceipt | undefined, ForgeGitAdmissionError>;
+  /**
+   * Returns a receipt only after stock Git applied its exact signed ref state.
+   * A finalized signer receipt by itself is not canonical promotion success.
+   */
+  readonly readAppliedMergeReceiptRef: (input: {
+    readonly newObjectId: string;
+    readonly repositoryRef: string;
+    readonly targetRef: string;
+    readonly tenantRef: string;
+  }) => Effect.Effect<string | undefined, ForgeGitAdmissionError>;
   readonly holdPurgatory: (
     input: ForgeGitPurgatoryEvent,
   ) => Effect.Effect<void, ForgeGitAdmissionError>;
@@ -231,6 +241,7 @@ export const makeMemoryAdmissionLayer = (input: {
     ]),
   );
   const projectedEvents: Array<ForgeGitProjectedEvent> = [...(input.projectedEvents ?? [])];
+  const appliedStateEventIds = new Set<string>();
   return Layer.succeed(
     ForgeGitAdmission,
     ForgeGitAdmission.of({
@@ -247,7 +258,9 @@ export const makeMemoryAdmissionLayer = (input: {
           .map(({ repositoryRef: _repositoryRef, tenantRef: _tenantRef, ...policy }) => policy);
       }),
       recordCommittedReceive: Effect.fn("ForgeGitAdmission.memory.recordCommittedReceive")(
-        function* () {},
+        function* (value) {
+          for (const eventId of value.stateEventIds) appliedStateEventIds.add(eventId);
+        },
       ),
       admitRepository: Effect.fn("ForgeGitAdmission.memory.admitRepository")(function* (value) {
         admitted.add(`${value.tenantRef}/${value.repositoryRef}`);
@@ -322,6 +335,20 @@ export const makeMemoryAdmissionLayer = (input: {
           ? receipt
           : undefined;
       }),
+      readAppliedMergeReceiptRef: Effect.fn("ForgeGitAdmission.memory.readAppliedMergeReceiptRef")(
+        function* (value) {
+          return [...mergeReceipts.values()].find(
+            (receipt) =>
+              receipt.tenantRef === value.tenantRef &&
+              receipt.repositoryRef === value.repositoryRef &&
+              receipt.targetRef === value.targetRef &&
+              receipt.newObjectId === value.newObjectId &&
+              receipt.state === "finalized" &&
+              receipt.signedState !== null &&
+              appliedStateEventIds.has(receipt.signedState.eventId),
+          )?.receiptRef;
+        },
+      ),
       holdPurgatory: Effect.fn("ForgeGitAdmission.memory.holdPurgatory")(function* () {}),
       listPurgatory: Effect.fn("ForgeGitAdmission.memory.listPurgatory")(function* () {
         return [];
@@ -683,6 +710,31 @@ export const layerDistributedAdmission = Layer.effect(
           tenantRef: row.tenant_ref,
         } as ForgeGitMergeReceipt;
       }),
+      readAppliedMergeReceiptRef: Effect.fn("ForgeGitAdmission.readAppliedMergeReceiptRef")(
+        function* (input) {
+          const rows = yield* Effect.tryPromise({
+            try: () => database.sql<Readonly<{ receipt_ref: string }>[]>`
+            SELECT receipt.receipt_ref
+              FROM forge_git_merge_outcome_receipts AS receipt
+              JOIN forge_git_signed_ref_states AS state
+                ON state.tenant_ref = receipt.tenant_ref
+               AND state.repository_ref = receipt.repository_ref
+               AND state.ref_name = receipt.target_ref
+               AND state.event_id = receipt.state_event_id
+               AND state.new_object_id = receipt.new_object_id
+             WHERE receipt.tenant_ref = ${input.tenantRef}
+               AND receipt.repository_ref = ${input.repositoryRef}
+               AND receipt.target_ref = ${input.targetRef}
+               AND receipt.new_object_id = ${input.newObjectId}
+               AND receipt.state = 'finalized'
+               AND state.applied_at IS NOT NULL
+             ORDER BY receipt.finalized_at DESC
+             LIMIT 1`,
+            catch: admissionUnavailable,
+          });
+          return rows[0]?.receipt_ref;
+        },
+      ),
       holdPurgatory: Effect.fn("ForgeGitAdmission.holdPurgatory")(function* (input) {
         yield* Effect.tryPromise({
           try: () => database.sql`

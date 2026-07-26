@@ -113,6 +113,13 @@ const githubMirrorReceiptsMigration = readFileSync(
   ),
   'utf8',
 )
+const githubMirrorObservationsMigration = readFileSync(
+  new URL(
+    '../migrations/0320_forge_github_mirror_observations.sql',
+    import.meta.url,
+  ),
+  'utf8',
+)
 const canonicalGitMigration = readFileSync(
   new URL('../migrations/0255_forge_git_canonical_store.sql', import.meta.url),
   'utf8',
@@ -148,6 +155,7 @@ const makeStores = (): Readonly<{
   db.exec(controlPlaneReceiptsMigration)
   db.exec(promotionDecisionGateResultsMigration)
   db.exec(githubMirrorReceiptsMigration)
+  db.exec(githubMirrorObservationsMigration)
   db.exec(canonicalGitMigration)
   db.exec(agentDefinitionRunsMigration)
   db.exec(agentDefinitionRunBudgetCreditsMigration)
@@ -896,7 +904,9 @@ describe('Forge control-plane routes', () => {
 
   test('mirrors only a Forge-approved canonical promotion to GitHub and reruns idempotently', async () => {
     const github = makeMirrorGitHubFetch({ currentSha: headA })
-    const { canonicalStore, run } = makeHarness({ fetch: github.fetchMock })
+    const { canonicalStore, mirrorStore, run } = makeHarness({
+      fetch: github.fetchMock,
+    })
     const scopes = [
       'forge:work:write',
       'forge:change:write',
@@ -947,6 +957,8 @@ describe('Forge control-plane routes', () => {
         destination_github_ref: string
         status: string
       }>
+      mirrorIntents: ReadonlyArray<{ intent_ref: string }>
+      mirrorObservedStates: ReadonlyArray<{ observation_ref: string }>
       mirroredCount: number
     }
 
@@ -959,6 +971,36 @@ describe('Forge control-plane routes', () => {
       destination_github_ref: 'refs/heads/main',
       status: 'mirrored',
     })
+    const storedObservations = await mirrorStore.listObservationsForIntent(
+      'tenant.openagents',
+      body.mirrorIntents[0]?.intent_ref ?? '',
+    )
+    expect(storedObservations.map(item => item.observation_ref)).toEqual(
+      expect.arrayContaining(
+        body.mirrorObservedStates.map(item => item.observation_ref),
+      ),
+    )
+    await expect(
+      mirrorStore.readObservation(
+        'tenant.openagents',
+        body.mirrorObservedStates[0]?.observation_ref ?? '',
+      ),
+    ).resolves.toBeDefined()
+    const observationResponse = await run(
+      new Request(
+        `https://openagents.com/api/forge/github-mirror/observations?tenantRef=tenant.openagents&observationRef=${encodeURIComponent(
+          body.mirrorObservedStates[0]?.observation_ref ?? '',
+        )}`,
+        { headers: authHeaders(scopes) },
+      ),
+    )
+    const observationBody = (await observationResponse.json()) as {
+      observation: { observation_ref: string }
+    }
+    expect(observationResponse.status).toBe(200)
+    expect(observationBody.observation.observation_ref).toBe(
+      body.mirrorObservedStates[0]?.observation_ref,
+    )
     expect(github.calls.map(call => call.method)).toEqual([
       'GET',
       'PATCH',

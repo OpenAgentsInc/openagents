@@ -37,7 +37,9 @@ describe("Forge NIP-34 admission projector", () => {
       admittedRepositories: [],
     });
     const projectorLayer = layerProjector.pipe(
-      Layer.provide(Layer.mergeAll(admissionLayer, makeRepositoryLayer(configuration, makeMemoryBlobStore()))),
+      Layer.provide(
+        Layer.mergeAll(admissionLayer, makeRepositoryLayer(configuration, makeMemoryBlobStore())),
+      ),
     );
     const runtime = ManagedRuntime.make(Layer.merge(admissionLayer, projectorLayer));
     const secret = generateSecretKey();
@@ -46,7 +48,11 @@ describe("Forge NIP-34 admission projector", () => {
         content: "",
         created_at: 1_785_000_000,
         kind: 30617,
-        tags: [["d", "demo"], ["clone", "https://openagents.test/git/tenant/demo.git"], ["maintainers"]],
+        tags: [
+          ["d", "demo"],
+          ["clone", "https://openagents.test/git/tenant/demo.git"],
+          ["maintainers"],
+        ],
       },
       secret,
     );
@@ -316,13 +322,16 @@ describe("Forge NIP-34 admission projector", () => {
       targetRef: "refs/heads/main",
       tenantRef: "tenant",
     });
+    const authorizedAdmissionLayer = makeMemoryAdmissionLayer({
+      admittedRepositories: [],
+      preparedMergeReceipts: [draft],
+    });
+    const authorizedRepositoryLayer = makeRepositoryLayer(configuration, makeMemoryBlobStore());
     const authorizedRuntime = ManagedRuntime.make(
-      layerProjector.pipe(
-        Layer.provide(
-          Layer.mergeAll(
-            makeMemoryAdmissionLayer({ admittedRepositories: [], preparedMergeReceipts: [draft] }),
-            makeRepositoryLayer(configuration, makeMemoryBlobStore()),
-          ),
+      Layer.mergeAll(
+        authorizedAdmissionLayer,
+        layerProjector.pipe(
+          Layer.provide(Layer.mergeAll(authorizedAdmissionLayer, authorizedRepositoryLayer)),
         ),
       ),
     );
@@ -345,6 +354,24 @@ describe("Forge NIP-34 admission projector", () => {
         }),
       )
       .then((result) => expect(result).toBe("authorized"));
+    await authorizedRuntime.runPromise(
+      Effect.gen(function* () {
+        const admission = yield* ForgeGitAdmission;
+        const input = {
+          newObjectId: object,
+          repositoryRef: "demo",
+          targetRef: "refs/heads/main",
+          tenantRef: "tenant",
+        };
+        expect(yield* admission.readAppliedMergeReceiptRef(input)).toBeUndefined();
+        yield* admission.recordCommittedReceive({
+          repositoryRef: "demo",
+          stateEventIds: [state.id],
+          tenantRef: "tenant",
+        });
+        expect(yield* admission.readAppliedMergeReceiptRef(input)).toBe(receiptRef);
+      }),
+    );
     await expect(
       authorizedRuntime.runPromise(
         Effect.gen(function* () {

@@ -211,6 +211,27 @@ const recordReceipt = (
     catch: cause => storeError('ForgeGitHubMirrorWorker.recordReceipt', cause),
   })
 
+const recordObservation = (
+  store: ForgeGitHubMirrorStore,
+  observation: ForgeGitHubMirrorObservedState,
+) =>
+  Effect.tryPromise({
+    try: () => store.recordObservation(observation),
+    catch: cause =>
+      storeError('ForgeGitHubMirrorWorker.recordObservation', cause),
+  })
+
+const listObservationsForIntent = (
+  store: ForgeGitHubMirrorStore,
+  tenantRef: string,
+  intentRef: string,
+) =>
+  Effect.tryPromise({
+    try: () => store.listObservationsForIntent(tenantRef, intentRef),
+    catch: cause =>
+      storeError('ForgeGitHubMirrorWorker.listObservationsForIntent', cause),
+  })
+
 const listReceipts = (store: ForgeGitHubMirrorStore, tenantRef: string) =>
   Effect.tryPromise({
     try: () => store.listReceipts(tenantRef, { limit: 100 }),
@@ -327,6 +348,11 @@ const finalReceipt = (
       input.observed.destination_object_id?.toLowerCase() ===
         input.intent.source_object_id.toLowerCase()
     const mirrorRef = yield* stableRef('mirror.github', input.intent.intent_ref)
+    const observations = yield* listObservationsForIntent(
+      dependencies.store,
+      input.intent.tenant_ref,
+      input.intent.intent_ref,
+    )
 
     return yield* recordReceipt(dependencies.store, {
       change_ref: input.promotion.change_ref,
@@ -349,6 +375,7 @@ const finalReceipt = (
       source_refs: uniqueRefs([
         ...input.intent.source_refs,
         ...input.observed.source_refs,
+        ...observations.map(observation => observation.observation_ref),
         input.intent.intent_ref,
         input.observed.observation_ref,
       ]),
@@ -432,6 +459,7 @@ export const makeForgeGitHubMirrorWorker = (
         failureObservation(intent, error, dependencies.nowIso()),
       ),
     )
+    yield* recordObservation(dependencies.store, before)
     if (
       existing?.status === 'mirrored' &&
       existing.commit_id.toLowerCase() ===
@@ -469,6 +497,7 @@ export const makeForgeGitHubMirrorWorker = (
           }),
           dependencies.nowIso(),
         )
+    yield* recordObservation(dependencies.store, normalizedObserved)
     const receipt = yield* finalReceipt(dependencies, {
       intent,
       observed: normalizedObserved,
@@ -498,12 +527,16 @@ export const makeForgeGitHubMirrorWorker = (
       ),
     )
     const receipts = yield* listReceipts(dependencies.store, input.tenantRef)
-    const latestReceipt = receipts.find(
+    const relevantReceipts = receipts.filter(
       receipt =>
         receipt.repository_ref === descriptor.repositoryRef &&
         receipt.destination_github_repository ===
           descriptor.destinationGithubRepository &&
         receipt.destination_github_ref === descriptor.destinationGithubRef,
+    )
+    const latestAttempt = relevantReceipts[0]
+    const latestMirrored = relevantReceipts.find(
+      receipt => receipt.status === 'mirrored',
     )
     if (descriptor.authorityMode === 'github_authoritative') {
       return ForgeGitHubMirrorHealth.make({
@@ -563,6 +596,7 @@ export const makeForgeGitHubMirrorWorker = (
         failureObservation(intent, error, dependencies.nowIso()),
       ),
     )
+    yield* recordObservation(dependencies.store, observed)
     const nowMs = Date.parse(dependencies.nowIso())
     const observedMs = Date.parse(observed.observed_at)
     const stale =
@@ -571,8 +605,8 @@ export const makeForgeGitHubMirrorWorker = (
       nowMs - observedMs > staleAfterSeconds * 1_000
     const freshness =
       observed.error_reason !== null
-        ? latestReceipt?.completed_at === null ||
-          latestReceipt?.completed_at === undefined
+        ? latestMirrored?.completed_at === null ||
+          latestMirrored?.completed_at === undefined
           ? 'never_observed'
           : 'stale'
         : stale
@@ -589,13 +623,13 @@ export const makeForgeGitHubMirrorWorker = (
       destination_object_id: observed.destination_object_id,
       divergence: observed.divergence,
       error_reason:
-        observed.error_reason ?? latestReceipt?.error_reason ?? null,
+        observed.error_reason ?? latestAttempt?.error_reason ?? null,
       freshness,
-      last_mirrored_at: latestReceipt?.completed_at ?? null,
-      last_mirrored_object_id: latestReceipt?.commit_id ?? null,
-      last_mirrored_ref: latestReceipt?.destination_github_ref ?? null,
+      last_mirrored_at: latestMirrored?.completed_at ?? null,
+      last_mirrored_object_id: latestMirrored?.commit_id ?? null,
+      last_mirrored_ref: latestMirrored?.destination_github_ref ?? null,
       observed_at: observed.observed_at,
-      receipt_ref: latestReceipt?.mirror_ref ?? null,
+      receipt_ref: latestMirrored?.mirror_ref ?? null,
       redacted: true,
       repository_ref: descriptor.repositoryRef,
       source_object_id: descriptor.sourceObjectId,
@@ -603,7 +637,8 @@ export const makeForgeGitHubMirrorWorker = (
       source_refs: uniqueRefs([
         ...descriptor.sourceRefs,
         ...observed.source_refs,
-        latestReceipt?.mirror_ref,
+        latestAttempt?.mirror_ref,
+        latestMirrored?.mirror_ref,
       ]),
       stale_after_seconds: staleAfterSeconds,
       tenant_ref: descriptor.tenantRef,

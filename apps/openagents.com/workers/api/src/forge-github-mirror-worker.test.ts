@@ -20,6 +20,7 @@ import {
 
 const headA = 'a'.repeat(40)
 const headB = 'b'.repeat(40)
+const headC = 'c'.repeat(40)
 const tenantRef = 'tenant.openagents'
 const repositoryRef = 'repo.openagents.openagents'
 const destinationRepository = 'OpenAgentsInc/openagents'
@@ -50,20 +51,34 @@ const promotion = (
 
 const makeMemoryStore = (): ForgeGitHubMirrorStore => {
   const receipts = new Map<string, ForgeGitHubMirrorReceipt>()
+  const observations = new Map<string, ForgeGitHubMirrorObservedState>()
   return {
+    async listObservationsForIntent(requestTenantRef, intentRef) {
+      return [...observations.values()].filter(
+        observation =>
+          observation.tenant_ref === requestTenantRef &&
+          observation.intent_ref === intentRef,
+      )
+    },
     async listReceipts(requestTenantRef, input) {
-      return [...receipts.values()]
-        .filter(receipt => receipt.tenant_ref === requestTenantRef)
-        .filter(
-          receipt =>
-            input.promotionRef === undefined ||
-            receipt.promotion_ref === input.promotionRef,
-        )
-        .filter(
-          receipt =>
-            input.status === undefined || receipt.status === input.status,
-        )
-        .slice(0, input.limit)
+      return (
+        [...receipts.values()]
+          .filter(receipt => receipt.tenant_ref === requestTenantRef)
+          .filter(
+            receipt =>
+              input.promotionRef === undefined ||
+              receipt.promotion_ref === input.promotionRef,
+          )
+          .filter(
+            receipt =>
+              input.status === undefined || receipt.status === input.status,
+          )
+          // oxlint-disable-next-line unicorn/no-array-sort -- this is a new array.
+          .sort((left, right) =>
+            right.last_attempted_at.localeCompare(left.last_attempted_at),
+          )
+          .slice(0, input.limit)
+      )
     },
     async readReceiptForPromotion(
       requestTenantRef,
@@ -80,6 +95,16 @@ const makeMemoryStore = (): ForgeGitHubMirrorStore => {
           receipt.destination_github_ref === destinationRef,
       )
     },
+    async readObservation(requestTenantRef, observationRef) {
+      const observation = observations.get(observationRef)
+      return observation?.tenant_ref === requestTenantRef
+        ? observation
+        : undefined
+    },
+    async recordObservation(observation) {
+      observations.set(observation.observation_ref, observation)
+      return observation
+    },
     async recordReceipt(input) {
       const previous = receipts.get(input.mirror_ref)
       const receipt: ForgeGitHubMirrorReceipt = {
@@ -88,6 +113,9 @@ const makeMemoryStore = (): ForgeGitHubMirrorStore => {
         attempt_count: (previous?.attempt_count ?? 0) + 1,
         first_attempted_at:
           previous?.first_attempted_at ?? input.first_attempted_at,
+        source_refs: [
+          ...new Set([...(previous?.source_refs ?? []), ...input.source_refs]),
+        ],
       }
       receipts.set(receipt.mirror_ref, receipt)
       return receipt
@@ -98,13 +126,14 @@ const makeMemoryStore = (): ForgeGitHubMirrorStore => {
 const descriptor = (
   sourceRef: string,
   authorityMode: ForgeRepositoryAuthorityMode = 'openagents_git_authoritative',
+  sourceObjectId: string = headB,
 ): ForgeOwnedCanonicalMirrorDescriptor => ({
   authorityGeneration: 7,
   authorityMode,
   destinationGithubRef: sourceRef,
   destinationGithubRepository: destinationRepository,
   repositoryRef,
-  sourceObjectId: headB,
+  sourceObjectId,
   sourceRef,
   sourceRefs: ['canonical-owned-service:repository'],
   tenantRef,
@@ -121,12 +150,16 @@ const makeCanonical = (
   input: Readonly<{
     authorityMode?: ForgeRepositoryAuthorityMode
     observedAt?: string
+    destinationObjectId?: string | null
+    sourceObjectId?: string
     sourceRef?: string
     transientProjectFailures?: number
   }> = {},
 ): CanonicalHarness => {
   const sourceRef = input.sourceRef ?? 'refs/heads/main'
-  let destinationObjectId: string | null = headA
+  const sourceObjectId = input.sourceObjectId ?? headB
+  let destinationObjectId: string | null =
+    input.destinationObjectId === undefined ? headA : input.destinationObjectId
   let transientProjectFailures = input.transientProjectFailures ?? 0
   const observedIntents: Array<ForgeGitHubMirrorIntent> = []
   const projectedIntents: Array<ForgeGitHubMirrorIntent> = []
@@ -167,6 +200,7 @@ const makeCanonical = (
           descriptor(
             sourceRef,
             input.authorityMode ?? 'openagents_git_authoritative',
+            sourceObjectId,
           ),
         ),
       observe: intent =>
@@ -252,6 +286,17 @@ describe('ForgeGitHubMirrorWorker', () => {
       expect(result.receipt.source_refs).toContain(
         result.observedState.observation_ref,
       )
+      const observations = await store.listObservationsForIntent(
+        tenantRef,
+        result.intent.intent_ref,
+      )
+      expect(observations.map(item => item.observation_ref)).toEqual([
+        'observation.1',
+        'observation.2',
+      ])
+      await expect(
+        store.readObservation(tenantRef, result.observedState.observation_ref),
+      ).resolves.toEqual(result.observedState)
       expect(canonical.projectedIntents).toHaveLength(1)
     },
   )
@@ -435,5 +480,77 @@ describe('ForgeGitHubMirrorWorker', () => {
       last_mirrored_ref: 'refs/heads/main',
       source_object_id: headB,
     })
+  })
+
+  test('keeps the last successful mirror when a newer promotion fails', async () => {
+    const store = makeMemoryStore()
+    const firstCanonical = makeCanonical()
+    await runWith(
+      firstCanonical.canonical,
+      store,
+      Effect.gen(function* () {
+        const worker = yield* ForgeGitHubMirrorWorker
+        return yield* worker.run({
+          promotion: promotion(),
+          repositoryRef,
+        })
+      }),
+      () => '2026-07-26T03:00:00.000Z',
+    )
+
+    const failingCanonical = makeCanonical({
+      destinationObjectId: headB,
+      observedAt: '2026-07-26T04:00:10.000Z',
+      sourceObjectId: headC,
+      transientProjectFailures: 99,
+    })
+    const failedPromotion: ForgePromotionDecisionReceipt = {
+      ...promotion(),
+      candidate_head: headC,
+      change_ref: 'change.forge.9251.follow-up',
+      decided_at: '2026-07-26T04:00:00.000Z',
+      promoted_head: headC,
+      promotion_ref: 'promotion.forge.9251.follow-up',
+    }
+    const failed = await runWith(
+      failingCanonical.canonical,
+      store,
+      Effect.gen(function* () {
+        const worker = yield* ForgeGitHubMirrorWorker
+        return yield* worker.run({
+          promotion: failedPromotion,
+          repositoryRef,
+        })
+      }),
+      () => '2026-07-26T04:00:00.000Z',
+    )
+    expect(failed.disposition).toBe('completed')
+    if (failed.disposition !== 'completed') return
+    expect(failed.receipt).toMatchObject({
+      commit_id: headC,
+      status: 'failed',
+    })
+
+    const health = await runWith(
+      failingCanonical.canonical,
+      store,
+      Effect.gen(function* () {
+        const worker = yield* ForgeGitHubMirrorWorker
+        return yield* worker.health({
+          repositoryRef,
+          sourceRef: 'refs/heads/main',
+          tenantRef,
+        })
+      }),
+      () => '2026-07-26T04:01:00.000Z',
+    )
+
+    expect(health).toMatchObject({
+      error_reason: 'canonical_service_temporarily_unavailable',
+      last_mirrored_object_id: headB,
+      last_mirrored_ref: 'refs/heads/main',
+      source_object_id: headC,
+    })
+    expect(health.receipt_ref).not.toBe(failed.receipt.mirror_ref)
   })
 })

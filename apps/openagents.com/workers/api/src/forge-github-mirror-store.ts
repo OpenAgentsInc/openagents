@@ -1,6 +1,8 @@
 import {
-  decodeForgeGitHubMirrorReceipt,
+  type ForgeGitHubMirrorObservedState,
   type ForgeGitHubMirrorReceipt,
+  decodeForgeGitHubMirrorObservedState,
+  decodeForgeGitHubMirrorReceipt,
 } from '@openagentsinc/forge-protocol'
 
 import { parseJsonStringArray } from './json-boundary'
@@ -17,6 +19,10 @@ export type ForgeGitHubMirrorListInput = Readonly<{
 }>
 
 export type ForgeGitHubMirrorStore = Readonly<{
+  listObservationsForIntent: (
+    tenantRef: string,
+    intentRef: string,
+  ) => Promise<ReadonlyArray<ForgeGitHubMirrorObservedState>>
   listReceipts: (
     tenantRef: string,
     input: ForgeGitHubMirrorListInput,
@@ -27,9 +33,35 @@ export type ForgeGitHubMirrorStore = Readonly<{
     destinationGithubRepository: string,
     destinationGithubRef: string,
   ) => Promise<ForgeGitHubMirrorReceipt | undefined>
+  readObservation: (
+    tenantRef: string,
+    observationRef: string,
+  ) => Promise<ForgeGitHubMirrorObservedState | undefined>
+  recordObservation: (
+    observation: ForgeGitHubMirrorObservedState,
+  ) => Promise<ForgeGitHubMirrorObservedState>
   recordReceipt: (
     input: ForgeGitHubMirrorReceiptInput,
   ) => Promise<ForgeGitHubMirrorReceipt>
+}>
+
+type ForgeGitHubMirrorObservationRow = Readonly<{
+  authority_generation: number
+  authority_mode: string
+  destination_github_ref: string
+  destination_github_repository: string
+  destination_object_id: string | null
+  divergence: string
+  error_reason: string | null
+  intent_ref: string
+  observation_ref: string
+  observed_at: string
+  redacted: number | boolean
+  repository_ref: string
+  source_object_id: string | null
+  source_ref: string
+  source_refs_json: string
+  tenant_ref: string
 }>
 
 type ForgeGitHubMirrorReceiptRow = Readonly<{
@@ -91,6 +123,29 @@ const receiptFromRow = (
     redacted: row.redacted === true || row.redacted === 1,
   })
 
+const observationFromRow = (
+  row: ForgeGitHubMirrorObservationRow,
+): ForgeGitHubMirrorObservedState =>
+  decodeForgeGitHubMirrorObservedState({
+    schema: 'openagents.forge.github_mirror.observed_state.v0.1',
+    authority_generation: row.authority_generation,
+    authority_mode: row.authority_mode,
+    destination_github_ref: row.destination_github_ref,
+    destination_github_repository: row.destination_github_repository,
+    destination_object_id: row.destination_object_id,
+    divergence: row.divergence,
+    error_reason: row.error_reason,
+    intent_ref: row.intent_ref,
+    observation_ref: row.observation_ref,
+    observed_at: row.observed_at,
+    redacted: row.redacted === true || row.redacted === 1,
+    repository_ref: row.repository_ref,
+    source_object_id: row.source_object_id,
+    source_ref: row.source_ref,
+    source_refs: parseJsonStringArray(row.source_refs_json),
+    tenant_ref: row.tenant_ref,
+  })
+
 const readByMirrorRef = async (
   db: D1Database,
   tenantRef: string,
@@ -116,9 +171,42 @@ const readByMirrorRef = async (
   return receiptFromRow(row)
 }
 
+const readObservationByRef = async (
+  db: D1Database,
+  tenantRef: string,
+  observationRef: string,
+): Promise<ForgeGitHubMirrorObservedState | undefined> => {
+  const row = await db
+    .prepare(
+      `
+        SELECT *
+        FROM forge_github_mirror_observations
+        WHERE tenant_ref = ? AND observation_ref = ?
+      `,
+    )
+    .bind(tenantRef, observationRef)
+    .first<ForgeGitHubMirrorObservationRow>()
+  return row === null ? undefined : observationFromRow(row)
+}
+
 export const makeD1ForgeGitHubMirrorStore = (
   db: D1Database,
 ): ForgeGitHubMirrorStore => ({
+  async listObservationsForIntent(tenantRef, intentRef) {
+    const rows = await db
+      .prepare(
+        `
+          SELECT *
+          FROM forge_github_mirror_observations
+          WHERE tenant_ref = ? AND intent_ref = ?
+          ORDER BY observed_at ASC, observation_ref ASC
+        `,
+      )
+      .bind(tenantRef, intentRef)
+      .all<ForgeGitHubMirrorObservationRow>()
+    return rows.results.map(observationFromRow)
+  },
+
   async listReceipts(tenantRef, input) {
     const limit = limitRows(input.limit)
     const rows =
@@ -194,12 +282,79 @@ export const makeD1ForgeGitHubMirrorStore = (
     return row === null ? undefined : receiptFromRow(row)
   },
 
+  async readObservation(tenantRef, observationRef) {
+    return readObservationByRef(db, tenantRef, observationRef)
+  },
+
+  async recordObservation(observation) {
+    const decoded = decodeForgeGitHubMirrorObservedState(observation)
+    await db
+      .prepare(
+        `
+          INSERT INTO forge_github_mirror_observations (
+            tenant_ref, observation_ref, intent_ref, repository_ref,
+            authority_mode, authority_generation, source_ref, source_object_id,
+            destination_github_repository, destination_github_ref,
+            destination_object_id, divergence, observed_at, error_reason,
+            source_refs_json, redacted, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+          ON CONFLICT (tenant_ref, observation_ref) DO NOTHING
+        `,
+      )
+      .bind(
+        decoded.tenant_ref,
+        decoded.observation_ref,
+        decoded.intent_ref,
+        decoded.repository_ref,
+        decoded.authority_mode,
+        decoded.authority_generation,
+        decoded.source_ref,
+        decoded.source_object_id,
+        decoded.destination_github_repository,
+        decoded.destination_github_ref,
+        decoded.destination_object_id,
+        decoded.divergence,
+        decoded.observed_at,
+        decoded.error_reason,
+        jsonArray(decoded.source_refs),
+        decoded.observed_at,
+      )
+      .run()
+    const stored = await readObservationByRef(
+      db,
+      decoded.tenant_ref,
+      decoded.observation_ref,
+    )
+    if (stored === undefined) {
+      throw new ForgeGitHubMirrorStoreInvariantError(
+        'forge GitHub mirror observation was not persisted',
+      )
+    }
+    return stored
+  },
+
   async recordReceipt(input) {
     const decoded = decodeForgeGitHubMirrorReceipt({
       schema: 'openagents.forge.github_mirror.receipt.v0.1',
       ...input,
       attempt_count: 1,
     })
+
+    const previous = await db
+      .prepare(
+        `SELECT * FROM forge_github_mirror_receipts
+         WHERE tenant_ref = ? AND mirror_ref = ?`,
+      )
+      .bind(decoded.tenant_ref, decoded.mirror_ref)
+      .first<ForgeGitHubMirrorReceiptRow>()
+    const sourceRefs = [
+      ...new Set([
+        ...(previous === null
+          ? []
+          : parseJsonStringArray(previous.source_refs_json)),
+        ...decoded.source_refs,
+      ]),
+    ]
 
     await db
       .prepare(
@@ -259,7 +414,7 @@ export const makeD1ForgeGitHubMirrorStore = (
         decoded.completed_at,
         decoded.refusal_reason,
         decoded.error_reason,
-        jsonArray(decoded.source_refs),
+        jsonArray(sourceRefs),
         decoded.first_attempted_at,
         decoded.last_attempted_at,
       )

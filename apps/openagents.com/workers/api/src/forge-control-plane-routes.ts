@@ -1112,6 +1112,36 @@ const routeGitHubMirrorReceipts = async <Bindings>(
   })
 }
 
+const routeGitHubMirrorObservation = async <Bindings>(
+  dependencies: ForgeControlPlaneRouteDependencies<Bindings>,
+  request: Request,
+  env: Bindings,
+  url: URL,
+) => {
+  if (request.method !== 'GET') {
+    return methodNotAllowed(['GET'])
+  }
+  const tenantRef = tenantRefFromQuery(url)
+  await requireScope(dependencies, request, env, 'forge:mirror:read', tenantRef)
+  const observationRef = optionalQuery(url, 'observationRef')
+  if (observationRef === undefined) {
+    throw new ForgeControlPlaneHttpError(
+      400,
+      'forge_github_mirror_observation_ref_required',
+    )
+  }
+  const observation = await dependencies
+    .makeGitHubMirrorStore(env)
+    .readObservation(tenantRef, observationRef)
+  if (observation === undefined) {
+    throw new ForgeControlPlaneHttpError(
+      404,
+      'forge_github_mirror_observation_not_found',
+    )
+  }
+  return noStoreJsonResponse({ observation, tenantRef })
+}
+
 const routeGitHubMirrorHealth = <Bindings>(
   dependencies: ForgeControlPlaneRouteDependencies<Bindings>,
   request: Request,
@@ -1570,6 +1600,16 @@ export const makeForgeControlPlaneRoutes = <Bindings>(
     if (route.length === 1 && route[0] === 'github-mirror') {
       return routeEffect(() =>
         routeGitHubMirrorReceipts(dependencies, request, env, url),
+      )
+    }
+
+    if (
+      route.length === 2 &&
+      route[0] === 'github-mirror' &&
+      route[1] === 'observations'
+    ) {
+      return routeEffect(() =>
+        routeGitHubMirrorObservation(dependencies, request, env, url),
       )
     }
 
