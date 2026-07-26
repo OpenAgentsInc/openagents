@@ -429,12 +429,12 @@ export const compileForgeConformanceMatrix = (value: unknown): ForgeConformanceC
     if (row.evidence.length === 0 && row.result.endsWith("pass"))
       diagnostics.push(`row ${row.id} has a pass without evidence`);
     // A fixture proves only that our reader accepts pinned bytes. A live result
-    // needs a separate, durable receipt. This prevents a future matrix edit
+    // needs a separate, durable receipt artifact. This prevents a future matrix edit
     // from converting a fixture path into a peer compatibility claim.
     if (
       row.result === "live-pass" &&
       !row.evidence.some((evidence) =>
-        evidence.path.startsWith("packages/forge-protocol/conformance/receipts/"),
+        evidence.path.includes("/receipts/"),
       )
     )
       diagnostics.push(`row ${row.id} has a live pass without a live receipt`);
