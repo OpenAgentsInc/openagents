@@ -627,7 +627,15 @@ const internalMirrorHandler = Effect.fn("ForgeGitRoutes.internalMirror")(functio
   const observed = yield* (path === internalMirrorObservePath
     ? runner.observe(intent)
     : runner.project(intent)).pipe(
-      Effect.mapError(() => new ForgeGitRouteError({ code: "forge_github_mirror_unavailable", status: 503 })),
+      // The runner reason is a closed, credential-free operational code. Keep
+      // it intact so the caller can distinguish a refused projection from a
+      // transient transport failure without exposing Git stderr or secrets.
+      Effect.mapError((error) =>
+        new ForgeGitRouteError({
+          code: error.reason,
+          status: error.retryable ? 503 : 409,
+        }),
+      ),
     );
   return Response.json(observed, { headers: noStoreHeaders, status: 200 });
 });
