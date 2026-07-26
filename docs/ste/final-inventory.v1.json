@@ -35325,7 +35325,7 @@
     },
     {
       "path": "docs/ops/2026-07-25-owned-forge-git-deploy.md",
-      "sha256": "b5bf740786514ed184837f59916b95412df1fc9c3d29e48351bcd758801c6bc3",
+      "sha256": "72434fb4c894e22a3a72af55f1268843630be781de13e6333529e8db8e2acb2d",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",

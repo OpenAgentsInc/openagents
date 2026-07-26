@@ -63,8 +63,10 @@ Use 730 hours for this conservative estimate:
 | 100 GiB balanced data disk | USD 0.000136986 per GiB-hour | USD 10.00 |
 | 10 GiB balanced boot disk | USD 0.000136986 per GiB-hour | USD 1.00 |
 | Four full 100 GiB regional snapshots | USD 0.000068493 per GiB-hour | USD 20.00 |
-| Public NAT, one VM and one address | USD 0.0014 + USD 0.005 each hour | USD 4.67 |
-| Fixed subtotal | | USD 47.90 |
+| Existing shared NAT incremental cost | default-VPC subnets are covered | USD 0.00 |
+| Fixed subtotal | | USD 43.23 |
+| Conservative network contingency | budget reserve, not planned spend | USD 4.67 |
+| Budgeted subtotal | | USD 47.90 |
 
 Cloud Run use, logs, NAT data, and network egress are variable.
 The fixed subtotal leaves USD 52.10 for these variable costs.
@@ -119,7 +121,7 @@ Review these planned resources:
 3. One 100 GiB balanced persistent disk with `prevent_destroy`.
 4. One daily snapshot schedule with three-day retention.
 5. One restricted NFS ingress rule and one IAP SSH rule.
-6. One Public NAT gateway for NFS host security updates.
+6. The existing default-VPC NAT path for NFS host security updates.
 7. One Cloud Run service with one maximum instance.
 8. One writable NFS mount and stable service identities.
 9. One Cloud SQL socket mount and client role.
@@ -150,7 +152,8 @@ tofu apply "forge-git-service-bootstrap.tfplan"
 
 Terraform has `prevent_destroy` on the repository disk and subnet.
 It also has deletion protection on the Cloud Run service.
-The first bootstrap creates the network, disk, NAT, and NFS host.
+The first bootstrap creates the network, disk, and NFS host.
+The existing regional NAT covers the new subnet.
 The second bootstrap creates the service shell after NFS is ready.
 It does not move `/git` traffic from the monolith.
 

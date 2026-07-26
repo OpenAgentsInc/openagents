@@ -15,26 +15,14 @@ resource "google_compute_subnetwork" "forge_git" {
   }
 }
 
+# The first bootstrap created this empty router before Google Cloud reported
+# that one existing regional NAT already covers all default-VPC subnets.
+# The empty router has no NAT or recurring cost.
 resource "google_compute_router" "forge_git" {
   project = var.project
   name    = "${var.service_name}-router"
   region  = var.region
   network = var.network
-}
-
-# The NFS VM has no external address. This NAT permits Debian security updates.
-resource "google_compute_router_nat" "forge_git" {
-  project                            = var.project
-  name                               = "${var.service_name}-nat"
-  router                             = google_compute_router.forge_git.name
-  region                             = var.region
-  nat_ip_allocate_option             = "AUTO_ONLY"
-  source_subnetwork_ip_ranges_to_nat = "LIST_OF_SUBNETWORKS"
-
-  subnetwork {
-    name                    = google_compute_subnetwork.forge_git.id
-    source_ip_ranges_to_nat = ["ALL_IP_RANGES"]
-  }
 }
 
 resource "google_service_account" "nfs" {
@@ -151,7 +139,7 @@ resource "google_compute_instance" "nfs" {
   labels = var.labels
 
   depends_on = [
-    google_compute_router_nat.forge_git,
+    google_compute_subnetwork.forge_git,
     google_compute_firewall.nfs,
     google_compute_firewall.nfs_iap_ssh,
     google_compute_firewall.nfs_deny_other_ingress,
