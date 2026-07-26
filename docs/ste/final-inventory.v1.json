@@ -34668,6 +34668,28 @@
       }
     },
     {
+      "path": "docs/omega/2026-07-25-omega-rc13-installed-observation-proof.md",
+      "sha256": "f2f5ce0fea09a28daf8b656336173b0a6c7cad4326c4551707e81dd835325148",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "claude/installed-rc13",
+        "ste_reviewed_at": "2026-07-25T23:59:00Z"
+      }
+    },
+    {
       "path": "docs/omega/2026-07-25-web-omega-mobile-workroom-and-sovereign-relay-audit.md",
       "sha256": "3e71ad2a345cf757dc27567e055d6dbb12ab5478db5eecc6c82584d6f537dd1d",
       "reason": "Final review of a converted document",

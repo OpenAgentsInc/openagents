@@ -33853,6 +33853,27 @@
       ]
     },
     {
+      "path": "docs/omega/2026-07-25-omega-rc13-installed-observation-proof.md",
+      "ste_issue": 9,
+      "ste_mode": "descriptive",
+      "ste_glossary_revision": "openagents-ste-glossary-v1",
+      "ste_status": "inspected",
+      "ste_reviewer": "claude/installed-rc13",
+      "ste_reviewed_at": "2026-07-25T23:59:00Z",
+      "owner": "OpenAgents documentation",
+      "risk": "legacy",
+      "source": null,
+      "replacement": null,
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": [
+        "STE-2.4",
+        "STE-3.6",
+        "STE-5.1",
+        "STE-8.2"
+      ]
+    },
+    {
       "path": "docs/omega/2026-07-25-web-omega-mobile-workroom-and-sovereign-relay-audit.md",
       "ste_issue": 9,
       "ste_mode": "mixed",
