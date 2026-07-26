@@ -141,6 +141,21 @@ export const isStartServerRequestPath = (
   FORGE_REPOSITORY_ASSET_REQUEST_PATH.test(pathname) ||
   START_SERVER_FUNCTION_REQUEST_PATH.test(pathname)
 
+export const isStartServerRequest = (
+  request: Request,
+  allowPublicRoot = false,
+): boolean => {
+  const pathname = new URL(request.url).pathname
+  const isReadRequest = request.method === 'GET' || request.method === 'HEAD'
+  const isServerFunctionRequest =
+    request.method === 'POST' &&
+    START_SERVER_FUNCTION_REQUEST_PATH.test(pathname)
+  return (
+    (isReadRequest || isServerFunctionRequest) &&
+    isStartServerRequestPath(pathname, allowPublicRoot)
+  )
+}
+
 export const handleStartUiRequest = async (
   request: Request,
   env: Readonly<Record<string, unknown>>,
@@ -150,11 +165,7 @@ export const handleStartUiRequest = async (
   const asset = await serveExactClientAsset(request)
   if (asset !== undefined) return asset
 
-  const pathname = new URL(request.url).pathname
-  if (
-    (request.method !== 'GET' && request.method !== 'HEAD') ||
-    !isStartServerRequestPath(pathname, allowPublicRoot)
-  ) return undefined
+  if (!isStartServerRequest(request, allowPublicRoot)) return undefined
 
   return (await loadStartWorker()).fetch(request, env, ctx)
 }

@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest'
 import { isPublicSiteRootRequest } from './public-site-host'
 import {
   isStartDocumentRequestPath,
+  isStartServerRequest,
   isStartServerRequestPath,
 } from './start-ui'
 
@@ -60,5 +61,31 @@ describe('public Start homepage host boundary', () => {
     ).toBe(false)
     expect(isStartServerRequestPath('/api/auth/session')).toBe(false)
     expect(isStartServerRequestPath('/api/portal/session')).toBe(false)
+  })
+
+  test('admits POST only for exact Start server-function paths', () => {
+    expect(
+      isStartServerRequest(
+        new Request(
+          'https://openagents.com/_serverFn/forge-repository-read',
+          { method: 'POST' },
+        ),
+      ),
+    ).toBe(true)
+    expect(
+      isStartServerRequest(
+        new Request(
+          'https://openagents.com/_serverFn/forge-repository-read',
+          { method: 'PUT' },
+        ),
+      ),
+    ).toBe(false)
+    expect(
+      isStartServerRequest(
+        new Request('https://openagents.com/forge/tenant.openagents/omega', {
+          method: 'POST',
+        }),
+      ),
+    ).toBe(false)
   })
 })
