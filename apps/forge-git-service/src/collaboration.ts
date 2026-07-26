@@ -57,6 +57,16 @@ const proposalHead = (event: NostrEvent): string | undefined => tag(event, "comm
 const proposalBase = (event: NostrEvent): string | undefined =>
   tag(event, "parent-commit", "merge-base");
 
+const reviewState = (verdict: string): "blocked" | "open" | "passed" =>
+  verdict === "approved" ? "passed" : verdict === "change_requested" ? "blocked" : "open";
+
+const checkState = (
+  value: string | undefined,
+): "failed" | "passed" | "running" | "stale" | "unknown" =>
+  value === "passed" || value === "failed" || value === "running" || value === "stale"
+    ? value
+    : "unknown";
+
 const mergeReceiptRef = (event: NostrEvent, targetRef: string | undefined): string | undefined =>
   event.tags.find(
     (candidate) =>
@@ -92,6 +102,59 @@ const changeProjection = (
       createdAt: comment.row.createdAt,
       source: { ...source(comment, servedAt), kind: 1111 as const },
     }));
+  const reviews = rows
+    .filter(
+      ({ event, row }) =>
+        row.kind === 1111 &&
+        refersTo(event, proposal.row.eventId) &&
+        ["approved", "change_requested", "commented"].includes(tag(event, "forge.review") ?? "") &&
+        tag(event, "forge.revision") === head,
+    )
+    .map((review) => {
+      const verdict = tag(review.event, "forge.review") ?? "commented";
+      return {
+        detail: review.event.content || `Review verdict: ${verdict}.`,
+        label:
+          verdict === "approved"
+            ? "Approved"
+            : verdict === "change_requested"
+              ? "Changes requested"
+              : "Commented",
+        source: source(review, servedAt),
+        state: reviewState(verdict),
+      };
+    });
+  const recordedChecks = rows
+    .filter(
+      ({ event, row }) =>
+        [1630, 1631, 1632, 1633].includes(row.kind) &&
+        tag(event, "forge.change") === proposal.row.eventId &&
+        tag(event, "forge.check") !== undefined,
+    )
+    .map((check) => {
+      const receiptRef = tag(check.event, "forge.receipt");
+      return {
+        ...(receiptRef === undefined ? {} : { receiptRef }),
+        checkRef: check.row.eventId,
+        completedAt: check.row.createdAt,
+        name: tag(check.event, "forge.check") ?? "Verification",
+        source: source(check, servedAt),
+        state: checkState(tag(check.event, "forge.check_state")),
+      };
+    });
+  const verificationReceipts = recordedChecks.flatMap((check) =>
+    check.receiptRef === undefined
+      ? []
+      : [
+          {
+            createdAt: check.completedAt,
+            kind: "verification" as const,
+            receiptRef: check.receiptRef,
+            source: check.source,
+            summary: `${check.name}: ${check.state}.`,
+          },
+        ],
+  );
   const merge = rows.find(({ event, row }) => {
     if (row.kind !== 30618 || head === undefined) return false;
     return event.tags.some(
@@ -117,8 +180,9 @@ const changeProjection = (
   return {
     base: { sources: [proposalSource] as const, value: base ?? "Unavailable" },
     changeRef: proposal.row.eventId,
-    checks:
-      mergeReceipt === undefined
+    checks: [
+      ...recordedChecks,
+      ...(mergeReceipt === undefined
         ? []
         : [
             {
@@ -129,7 +193,8 @@ const changeProjection = (
               source: mergeReceipt.source,
               state: "passed" as const,
             },
-          ],
+          ]),
+    ],
     comments,
     head: { sources: [currentSource] as const, value: head ?? "Unavailable" },
     merge:
@@ -147,8 +212,8 @@ const changeProjection = (
           ? ("pointer_pr_legacy" as const)
           : ("pointer_pr" as const),
     proposalResolution: resolved ? ("resolved" as const) : ("unresolved" as const),
-    receipts: mergeReceipt === undefined ? [] : [mergeReceipt],
-    reviews: [],
+    receipts: [...verificationReceipts, ...(mergeReceipt === undefined ? [] : [mergeReceipt])],
+    reviews,
     state: {
       detail: resolved
         ? "The admitted event resolves to exact base and head objects."
