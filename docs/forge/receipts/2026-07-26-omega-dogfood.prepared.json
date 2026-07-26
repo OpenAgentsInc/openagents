@@ -1,20 +1,20 @@
 {
   "schema": "openagents.forge.omega_dogfood.v1",
-  "status": "prepared",
+  "status": "passed",
   "repository": {
     "githubRepository": "OpenAgentsInc/omega",
     "githubCloneUrl": "https://github.com/OpenAgentsInc/omega.git",
-    "githubHeadObjectId": "b23a5d155b40ff6d690f44b6789447c68e8fcb4a",
-    "forgeTenantRef": "openagents",
+    "githubHeadObjectId": "585af0d8c0c7b595f830b976caf7456d93156a73",
+    "forgeTenantRef": "tenant.openagents",
     "forgeRepositoryRef": "omega",
-    "forgeCloneUrl": "https://openagents.com/git/openagents/omega.git",
+    "forgeCloneUrl": "https://openagents.com/git/tenant.openagents/omega.git",
     "sourceRef": "refs/heads/main"
   },
   "safeguards": {
     "realRepositoryOnly": true,
     "githubCriticalPathReads": false,
     "containsCredentials": false,
-    "publicCutoverApplied": false
+    "publicCutoverApplied": true
   },
   "issueRefs": [
     "OpenAgentsInc/openagents#9244",
@@ -27,12 +27,29 @@
     "OpenAgentsInc/openagents#9251"
   ],
   "stages": {
-    "admission": { "state": "not_started", "receiptRefs": [] },
-    "object_hosting": { "state": "not_started", "receiptRefs": [] },
-    "signed_state": { "state": "not_started", "receiptRefs": [] },
-    "journey": { "state": "not_started", "receiptRefs": [] },
-    "mirror": { "state": "not_started", "receiptRefs": [] },
-    "backup_restore": { "state": "not_started", "receiptRefs": [] },
-    "divergence": { "state": "not_started", "receiptRefs": [] }
-  }
+    "admission": { "state": "passed", "receiptRefs": ["forge_actor.human.7e921936b0fabb102e39383971789420", "forge_actor.agent.21b94df27b5d35cce8222ee7c467e86c"] },
+    "object_hosting": { "state": "passed", "receiptRefs": ["refs/heads/main:585af0d8c0c7b595f830b976caf7456d93156a73", "refs/heads/forge/omega-journey:585af0d8c0c7b595f830b976caf7456d93156a73"] },
+    "signed_state": { "state": "passed", "receiptRefs": ["nostr:9f507e6a430f103af1155549ea658ab03a5aa1fcec17df5f1e24900ee81744fa", "nostr:17a2851061b3ae11d30f3a849ed9517b37bac3487cc91df417f63096ea0b8f59"] },
+    "journey": { "state": "passed", "receiptRefs": ["verification.forge.omega.journey.main.omega", "promotion.forge.omega.journey.17a2851061b3ae11d30f3a849ed9517b37bac3487cc91df417f63096ea0b8f59.mirror"] },
+    "mirror": { "state": "passed", "receiptRefs": ["mirror.github.dec514b47b3cf1b6786014edb8df3ced", "observation.forge.github-mirror.37c84f2b6a2915b20b750a98d0ddfeba", "refs/heads/forge/main:585af0d8c0c7b595f830b976caf7456d93156a73"] },
+    "backup_restore": { "state": "passed", "receiptRefs": ["snapshot:forge-git-omega-journey-20260726-1758", "restored-ref:585af0d8c0c7b595f830b976caf7456d93156a73", "restored-bare-fsck:strict", "restored-stock-upload-pack-clone:passed", "restored-clone-fsck:strict"] },
+    "divergence": { "state": "passed", "receiptRefs": ["GitHub downstream refs/heads/forge/main is in_sync at 585af0d8c0c7b595f830b976caf7456d93156a73"] }
+  },
+  "restore": {
+    "snapshot": "forge-git-omega-journey-20260726-1758",
+    "snapshotRetained": true,
+    "restoredRepository": "tenant.openagents/omega.git",
+    "restoredMain": "585af0d8c0c7b595f830b976caf7456d93156a73",
+    "integrity": ["bare git fsck --strict --no-dangling --no-reflogs", "cloned git fsck --strict"],
+    "transport": "stock git upload-pack over an isolated restored verifier"
+  },
+  "authority": {
+    "canonical": "Forge bare repository plus signed Forge promotion",
+    "github": "downstream mirror only",
+    "githubCoordinationAuthority": false
+  },
+  "notes": [
+    "The real Omega source change is forge-receipts/2026-07-26-owned-forge-journey.md at 585af0d8c0c7b595f830b976caf7456d93156a73.",
+    "No credentials or secret values are included in this receipt."
+  ]
 }
