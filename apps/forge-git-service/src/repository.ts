@@ -870,6 +870,10 @@ const makeRepositoryService = (
             "--verify",
             input.sourceRef,
           ]),
+        ).catch((cause) =>
+          Promise.reject(
+            mirrorStageError("ForgeGitRepository.observeMirror", "source_rev_parse", cause),
+          ),
         );
         const sourceObjectId = textDecoder.decode(source.stdout).trim().toLowerCase();
         if (sourceObjectId !== input.expectedSourceObjectId.toLowerCase()) {
