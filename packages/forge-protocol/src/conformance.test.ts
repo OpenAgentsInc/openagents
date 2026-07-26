@@ -116,4 +116,21 @@ describe("Forge NIP-34 conformance fixtures", () => {
     const result = compileForgeConformanceMatrix(invalid);
     expect(result.state).toBe("ConformanceUnavailable");
   });
+
+  test("fails closed when a live claim cites only fixture evidence", () => {
+    const invalid = structuredClone(matrix);
+    const row = invalid.rows.find((candidate) => candidate.id === "ngit-live-clone-fetch");
+    expect(row).toBeDefined();
+    if (row === undefined) return;
+    row.result = "live-pass";
+    row.claim = "works-with-peer";
+    row.evidence = [structuredClone(matrix.rows[0]!.evidence[0]!)];
+    row.blockerRefs = [];
+    const result = compileForgeConformanceMatrix(invalid);
+    expect(result.state).toBe("ConformanceUnavailable");
+    if (result.state === "ConformanceUnavailable")
+      expect(result.diagnostics).toContain(
+        "row ngit-live-clone-fetch has a live pass without a live receipt",
+      );
+  });
 });
