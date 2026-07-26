@@ -799,6 +799,41 @@ export const createIssue31NostrClient = (
     notify();
   };
 
+  /**
+   * How far below the cursor a gift wrap may legitimately land.
+   *
+   * NIP-59 *requires* the wrap's `created_at` to be randomized into the past —
+   * that is the point of it, so a relay operator cannot use timestamps to infer
+   * who is talking to whom and when. The relay filters on the wrap's timestamp,
+   * not the sealed rumor's, so a strictly monotonic `since` silently drops any
+   * wrap whose randomized time falls below the newest one already admitted.
+   *
+   * That failure is invisible on both sides. The host publishes and gets an
+   * `OK`; the device's subscription simply never mentions the event; there is no
+   * gap to report and nothing to quarantine. It is also nondeterministic — the
+   * same code pairs successfully whenever the roll happens to land above the
+   * cursor — so it presents as a flaky device rather than a protocol error, and
+   * it gets *worse* the longer a device runs, because the cursor only rises.
+   *
+   * Asking for the full backdating window and relying on id-level idempotence
+   * is the standard NIP-59 subscription shape. It costs a bounded replay on
+   * reconnect and buys delivery that does not depend on a dice roll.
+   */
+  const NIP59_MAX_BACKDATE_SECONDS = 2 * 24 * 60 * 60;
+
+  /**
+   * Widen any gift-wrap-bearing filter to cover the backdating window.
+   *
+   * Applied by kind rather than by room so a future private lane inherits it
+   * instead of reintroducing the same silent hole.
+   */
+  const allowGiftWrapBackdating = (
+    filter: Issue31NostrFilter,
+  ): Issue31NostrFilter =>
+    (filter.kinds ?? []).includes(ISSUE31_PRIVATE_GIFT_WRAP_KIND)
+      ? { ...filter, since: Math.max(0, (filter.since ?? 0) - NIP59_MAX_BACKDATE_SECONDS) }
+      : filter;
+
   const filtersFor = (room: Issue31NostrRoom, since: number): ReadonlyArray<Issue31NostrFilter> => {
     if (room === "discovery") {
       return [
@@ -885,8 +920,16 @@ export const createIssue31NostrClient = (
       const cursor = await cursorStore.load(relay.relayUrl, room);
       if (relay.socket !== socket || relay.subscriptionEpoch !== subscriptionEpoch) return;
       const replaySince = Math.max(0, (cursor?.since ?? 0) - 1);
-      relay.roomReplaySince.set(room, replaySince);
-      const filters = filtersFor(room, replaySince);
+      const filters = filtersFor(room, replaySince).map(allowGiftWrapBackdating);
+      // Report the point actually asked for, not the cursor. A room carrying
+      // gift wraps genuinely replays from further back, and saying otherwise
+      // would make the widened window invisible to anyone reading freshness.
+      relay.roomReplaySince.set(
+        room,
+        filters.length === 0
+          ? replaySince
+          : Math.min(...filters.map((filter) => filter.since ?? 0)),
+      );
       filters.forEach((filter, index) => {
         const subscriptionId = `issue31-${subscriptionEpoch}-${room}-${index}`;
         relay.subscriptionRooms.set(subscriptionId, room);

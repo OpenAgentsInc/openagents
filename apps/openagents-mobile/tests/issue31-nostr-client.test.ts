@@ -380,9 +380,22 @@ describe("Issue 31 mobile Nostr client", () => {
       requests.find((frame) => String(frame[1]).includes("owner_private-0"))?.[2],
     ).toMatchObject({
       kinds: [1059],
-      since: 19,
+      // Not the cursor. NIP-59 randomizes a wrap's `created_at` into the past,
+      // and the relay filters on that, so asking from the cursor drops any wrap
+      // whose roll landed below it — silently, and permanently, because the
+      // cursor only rises. The gift-wrap filter reaches a full backdating
+      // window below the cursor; `max(0, 19 - 172800)` floors at 0 here.
+      since: 0,
       "#p": [device.publicKey],
     });
+    // The widening is scoped to wraps: the non-wrap owner-private filter and
+    // the community filters still ask from the cursor, so this does not become
+    // a blanket refetch of everything on every reconnect.
+    expect(
+      (requests.find((frame) => String(frame[1]).includes("owner_private-1"))?.[2] as
+        | Readonly<{ since: number }>
+        | undefined)?.since,
+    ).toBe(19);
     expect(
       requests.find((frame) => String(frame[1]).includes("owner_private-1"))?.[2],
     ).toMatchObject({
