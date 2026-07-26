@@ -95,13 +95,20 @@
   color: var(--forge-accent);
 }
 .forge-repo-title h1 {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 0.2em;
   margin: 0.45rem 0 0.35rem;
   font: 650 1.7rem/1.15 var(--oa-font-mono);
-  overflow-wrap: anywhere;
 }
-.forge-repo-title h1 span {
+.forge-repo-title h1 .forge-repo-separator {
   color: var(--forge-faint);
   font-weight: 400;
+}
+.forge-repo-owner,
+.forge-repo-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .forge-repo-title p {
   max-width: 68ch;
@@ -509,8 +516,12 @@
   background: rgb(255 180 0 / 0.13);
 }
 .forge-line-number {
+  display: inline-flex;
   width: 4.2rem;
+  min-height: 1.5rem;
   flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
   padding-right: 1rem;
   color: var(--forge-faint) !important;
   text-align: right;

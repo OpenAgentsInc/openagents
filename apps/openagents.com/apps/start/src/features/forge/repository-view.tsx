@@ -746,9 +746,9 @@ function Repository({
               <strong>{projection.repository.name}</strong>
             </nav>
             <h1>
-              {projection.repository.owner}
-              <span>/</span>
-              {projection.repository.name}
+              <span className="forge-repo-owner">{projection.repository.owner}</span>
+              <span className="forge-repo-separator">/</span>
+              <span className="forge-repo-name">{projection.repository.name}</span>
             </h1>
             <p>{projection.repository.description || "No repository description is available."}</p>
           </div>

@@ -26,7 +26,9 @@ describe("Forge repository viewer", () => {
   test("renders identity, refs, tree, highlighted code, and line permalinks", () => {
     const html = renderToStaticMarkup(<ForgeRepositoryPage request={request} result={loaded()} />);
 
-    expect(html).toContain("OpenAgentsInc<span>/</span>omega");
+    expect(html).toContain(
+      '<span class="forge-repo-owner">OpenAgentsInc</span><span class="forge-repo-separator">/</span><span class="forge-repo-name">omega</span>',
+    );
     expect(html).toContain("OpenAgents Git authority");
     expect(html).toContain("NIP-34 coordinate");
     expect(html).toContain("1 branch · 1 tag");
