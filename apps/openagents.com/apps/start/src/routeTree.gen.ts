@@ -72,6 +72,7 @@ import { Route as TrainingRunsRunIdRouteImport } from './routes/training/runs/$r
 import { Route as ForumTTopicIdRouteImport } from './routes/forum/t.$topicId'
 import { Route as ForumReceiptsReceiptRefRouteImport } from './routes/forum/receipts.$receiptRef'
 import { Route as ForumFForumRefRouteImport } from './routes/forum/f.$forumRef'
+import { Route as ForgeOwnerRepoRouteImport } from './routes/forge/$owner/$repo'
 import { Route as BusinessKpiEngagementRefRouteImport } from './routes/business/kpi/$engagementRef'
 import { Route as AisdkDocsSlugRouteImport } from './routes/aisdk/docs/$slug'
 import { Route as PylonCodexAssignmentsAssignmentRefRouteImport } from './routes/pylon/codex/assignments/$assignmentRef'
@@ -391,6 +392,11 @@ const ForumFForumRefRoute = ForumFForumRefRouteImport.update({
   path: '/forum/f/$forumRef',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ForgeOwnerRepoRoute = ForgeOwnerRepoRouteImport.update({
+  id: '/forge/$owner/$repo',
+  path: '/forge/$owner/$repo',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const BusinessKpiEngagementRefRoute =
   BusinessKpiEngagementRefRouteImport.update({
     id: '/business/kpi/$engagementRef',
@@ -469,6 +475,7 @@ export interface FileRoutesByFullPath {
   '/khala/': typeof KhalaIndexRoute
   '/aisdk/docs/$slug': typeof AisdkDocsSlugRoute
   '/business/kpi/$engagementRef': typeof BusinessKpiEngagementRefRoute
+  '/forge/$owner/$repo': typeof ForgeOwnerRepoRoute
   '/forum/f/$forumRef': typeof ForumFForumRefRoute
   '/forum/receipts/$receiptRef': typeof ForumReceiptsReceiptRefRoute
   '/forum/t/$topicId': typeof ForumTTopicIdRoute
@@ -536,6 +543,7 @@ export interface FileRoutesByTo {
   '/khala': typeof KhalaIndexRoute
   '/aisdk/docs/$slug': typeof AisdkDocsSlugRoute
   '/business/kpi/$engagementRef': typeof BusinessKpiEngagementRefRoute
+  '/forge/$owner/$repo': typeof ForgeOwnerRepoRoute
   '/forum/f/$forumRef': typeof ForumFForumRefRoute
   '/forum/receipts/$receiptRef': typeof ForumReceiptsReceiptRefRoute
   '/forum/t/$topicId': typeof ForumTTopicIdRoute
@@ -605,6 +613,7 @@ export interface FileRoutesById {
   '/khala/': typeof KhalaIndexRoute
   '/aisdk/docs/$slug': typeof AisdkDocsSlugRoute
   '/business/kpi/$engagementRef': typeof BusinessKpiEngagementRefRoute
+  '/forge/$owner/$repo': typeof ForgeOwnerRepoRoute
   '/forum/f/$forumRef': typeof ForumFForumRefRoute
   '/forum/receipts/$receiptRef': typeof ForumReceiptsReceiptRefRoute
   '/forum/t/$topicId': typeof ForumTTopicIdRoute
@@ -675,6 +684,7 @@ export interface FileRouteTypes {
     | '/khala/'
     | '/aisdk/docs/$slug'
     | '/business/kpi/$engagementRef'
+    | '/forge/$owner/$repo'
     | '/forum/f/$forumRef'
     | '/forum/receipts/$receiptRef'
     | '/forum/t/$topicId'
@@ -742,6 +752,7 @@ export interface FileRouteTypes {
     | '/khala'
     | '/aisdk/docs/$slug'
     | '/business/kpi/$engagementRef'
+    | '/forge/$owner/$repo'
     | '/forum/f/$forumRef'
     | '/forum/receipts/$receiptRef'
     | '/forum/t/$topicId'
@@ -810,6 +821,7 @@ export interface FileRouteTypes {
     | '/khala/'
     | '/aisdk/docs/$slug'
     | '/business/kpi/$engagementRef'
+    | '/forge/$owner/$repo'
     | '/forum/f/$forumRef'
     | '/forum/receipts/$receiptRef'
     | '/forum/t/$topicId'
@@ -876,6 +888,7 @@ export interface RootRouteChildren {
   KhalaIndexRoute: typeof KhalaIndexRoute
   AisdkDocsSlugRoute: typeof AisdkDocsSlugRoute
   BusinessKpiEngagementRefRoute: typeof BusinessKpiEngagementRefRoute
+  ForgeOwnerRepoRoute: typeof ForgeOwnerRepoRoute
   ForumFForumRefRoute: typeof ForumFForumRefRoute
   ForumReceiptsReceiptRefRoute: typeof ForumReceiptsReceiptRefRoute
   ForumTTopicIdRoute: typeof ForumTTopicIdRoute
@@ -1328,6 +1341,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ForumFForumRefRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/forge/$owner/$repo': {
+      id: '/forge/$owner/$repo'
+      path: '/forge/$owner/$repo'
+      fullPath: '/forge/$owner/$repo'
+      preLoaderRoute: typeof ForgeOwnerRepoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/business/kpi/$engagementRef': {
       id: '/business/kpi/$engagementRef'
       path: '/business/kpi/$engagementRef'
@@ -1433,6 +1453,7 @@ const rootRouteChildren: RootRouteChildren = {
   KhalaIndexRoute: KhalaIndexRoute,
   AisdkDocsSlugRoute: AisdkDocsSlugRoute,
   BusinessKpiEngagementRefRoute: BusinessKpiEngagementRefRoute,
+  ForgeOwnerRepoRoute: ForgeOwnerRepoRoute,
   ForumFForumRefRoute: ForumFForumRefRoute,
   ForumReceiptsReceiptRefRoute: ForumReceiptsReceiptRefRoute,
   ForumTTopicIdRoute: ForumTTopicIdRoute,
