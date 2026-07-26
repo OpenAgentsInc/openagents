@@ -4,6 +4,7 @@ import { ForgeGitAdmission } from "./admission.js";
 import { ForgeGitAuth } from "./auth.js";
 import {
   ForgeGitAuthError,
+  ForgeGitAdmissionError,
   type ForgeGitOperation,
   ForgeGitRepositoryError,
   ForgeGitRoute,
@@ -113,6 +114,7 @@ const errorResponse = (error: unknown): Response => {
   const known =
     error instanceof ForgeGitRouteError ||
     error instanceof ForgeGitAuthError ||
+    error instanceof ForgeGitAdmissionError ||
     error instanceof ForgeGitRepositoryError;
   const status = known ? error.status : 500;
   const code = known ? error.code : "forge_git_internal_error";
@@ -157,6 +159,14 @@ export const forgeGitHandler = Effect.fn("ForgeGitRoutes.handle")(function* (req
     tenantRef: route.tenantRef,
   });
   const repository = yield* ForgeGitRepository;
+  const admission = yield* ForgeGitAdmission;
+
+  // Auth answers who may use transport. Admission answers whether this
+  // repository exists at all. Keep both checks before invoking stock Git.
+  yield* admission.requireRepository({
+    repositoryRef: route.repositoryRef,
+    tenantRef: route.tenantRef,
+  });
 
   if (route.kind === "advertisement") {
     const body = yield* repository.advertise({
@@ -190,18 +200,47 @@ export const forgeGitHandler = Effect.fn("ForgeGitRoutes.handle")(function* (req
     });
   }
 
-  const admission = yield* ForgeGitAdmission;
   const projection = yield* ForgeGitProjection;
-  const result = yield* admission.withReceiveLease(
+  const admittedReceive = yield* admission.withReceiveLease(
     `${route.tenantRef}/${route.repositoryRef}`,
-    repository.receivePack({
-      body: request.body,
-      ...(gitProtocol === undefined ? {} : { gitProtocol }),
-      repositoryRef: route.repositoryRef,
-      session,
-      tenantRef: route.tenantRef,
+    Effect.gen(function* () {
+      const signedRefPolicies = yield* admission.signedRefPolicies({
+        repositoryRef: route.repositoryRef,
+        tenantRef: route.tenantRef,
+      });
+      const result = yield* repository.receivePack({
+        body: request.body,
+        ...(gitProtocol === undefined ? {} : { gitProtocol }),
+        repositoryRef: route.repositoryRef,
+        session,
+        signedRefPolicies,
+        tenantRef: route.tenantRef,
+      });
+      return { result, signedRefPolicies };
     }),
   );
+  const { result, signedRefPolicies } = admittedReceive;
+  if (result.changed) {
+    const changedRefNames = new Set([
+      ...result.refsAfter
+        .filter(
+          (ref) =>
+            result.refsBefore.find((before) => before.refName === ref.refName)?.objectId !==
+            ref.objectId,
+        )
+        .map((ref) => ref.refName),
+      ...result.refsBefore
+        .filter((ref) => !result.refsAfter.some((after) => after.refName === ref.refName))
+        .map((ref) => ref.refName),
+    ]);
+    yield* admission.recordCommittedReceive({
+      repositoryRef: route.repositoryRef,
+      stateEventIds: signedRefPolicies
+        .filter((policy) => changedRefNames.has(policy.refName))
+        .map((policy) => policy.eventId),
+      tenantRef: route.tenantRef,
+    });
+  }
   const projectionReceipt = result.changed
     ? yield* projection
         .projectReceive({

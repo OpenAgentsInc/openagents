@@ -28,6 +28,7 @@ import {
   ForgeGitRef,
   ForgeGitRepositoryError,
   type ForgeGitSession,
+  type ForgeGitSignedRefPolicy,
 } from "./model.js";
 
 const textEncoder = new TextEncoder();
@@ -50,6 +51,11 @@ export type ForgeGitReceiveResult = Readonly<{
 }>;
 
 export interface ForgeGitRepositoryShape {
+  /** Only the admission projector calls this after persisting a 30617 fact. */
+  readonly provision: (input: {
+    readonly repositoryRef: string;
+    readonly tenantRef: string;
+  }) => Effect.Effect<void, ForgeGitRepositoryError>;
   readonly advertise: (input: {
     readonly gitProtocol?: string;
     readonly operation: "git-upload-pack" | "git-receive-pack";
@@ -75,6 +81,8 @@ export interface ForgeGitRepositoryShape {
     readonly gitProtocol?: string;
     readonly repositoryRef: string;
     readonly session: ForgeGitSession;
+    /** Exact, verified 30618 triples consumed by the pre-receive hook. */
+    readonly signedRefPolicies: ReadonlyArray<ForgeGitSignedRefPolicy>;
     readonly tenantRef: string;
   }) => Effect.Effect<ForgeGitReceiveResult, ForgeGitRepositoryError>;
   readonly restore: (input: {
@@ -118,12 +126,14 @@ const repositoryError = (operation: string, code: string, status: number, cause?
 const gitEnvironment = (
   gitProtocol: string | undefined,
   refRestrictions: ReadonlyArray<string> = [],
+  signedRefPolicies: ReadonlyArray<ForgeGitSignedRefPolicy> = [],
 ): NodeJS.ProcessEnv => ({
   PATH: process.env["PATH"],
   HOME: process.env["HOME"],
   GIT_CONFIG_NOSYSTEM: "1",
   ...(gitProtocol === undefined ? {} : { GIT_PROTOCOL: gitProtocol }),
   OPENAGENTS_FORGE_ALLOWED_REFS_JSON: JSON.stringify(refRestrictions),
+  OPENAGENTS_FORGE_SIGNED_REF_POLICIES_JSON: JSON.stringify(signedRefPolicies),
 });
 
 const mirrorEnvironment = (
@@ -338,19 +348,38 @@ const serviceAdvertisement = (
 const hookSource = `#!/usr/bin/env node
 const restrictions = JSON.parse(process.env.OPENAGENTS_FORGE_ALLOWED_REFS_JSON ?? "[]")
 const allowed = new Set(restrictions)
+const policies = JSON.parse(process.env.OPENAGENTS_FORGE_SIGNED_REF_POLICIES_JSON ?? "[]")
+const policyByRef = new Map(policies.map(policy => [policy.refName, policy]))
+const zero = /^[0]+$/
 let input = ""
 process.stdin.setEncoding("utf8")
 process.stdin.on("data", chunk => { input += chunk })
 process.stdin.on("end", () => {
-  if (allowed.size === 0) process.exit(0)
   for (const line of input.trim().split("\\n")) {
     if (line === "") continue
     const fields = line.trim().split(/\\s+/)
-    const refName = fields[2]
-    if (refName === undefined || !allowed.has(refName)) {
+    const [oldObjectId, newObjectId, refName] = fields
+    if (oldObjectId === undefined || newObjectId === undefined || refName === undefined) {
+      process.stderr.write("forge_git_receive_update_malformed\\n")
+      process.exit(1)
+    }
+    if (allowed.size > 0 && !allowed.has(refName)) {
       process.stderr.write("Forge token does not permit this ref.\\n")
       process.exit(1)
     }
+    if (refName.startsWith("refs/heads/")) {
+      const policy = policyByRef.get(refName)
+      if (policy === undefined || policy.oldObjectId !== oldObjectId || policy.newObjectId !== newObjectId) {
+        process.stderr.write("forge_git_signed_state_required\\n")
+        process.exit(1)
+      }
+      continue
+    }
+    // NIP-34 pointer refs are deliberately object-staging-only. They are
+    // never projected until the matching event resolves out of purgatory.
+    if (/^refs\\/nostr\\/[0-9a-f]{64}$/u.test(refName) && !zero.test(newObjectId)) continue
+    process.stderr.write("forge_git_ref_not_admitted\\n")
+    process.exit(1)
   }
 })
 `;
@@ -539,10 +568,7 @@ const makeRepositoryService = (
     input: Parameters<ForgeGitRepositoryShape["advertise"]>[0],
   ) {
     const path = yield* Effect.tryPromise({
-      try: () =>
-        input.operation === "git-receive-pack"
-          ? ensureRepository(input.tenantRef, input.repositoryRef)
-          : requireRepository(input.tenantRef, input.repositoryRef),
+      try: () => requireRepository(input.tenantRef, input.repositoryRef),
       catch: (cause) =>
         cause instanceof ForgeGitRepositoryError
           ? cause
@@ -575,6 +601,23 @@ const makeRepositoryService = (
             ),
     });
     return serviceAdvertisement(input.operation, result.stdout);
+  });
+
+  const provision = Effect.fn("ForgeGitRepository.provision")(function* (
+    input: Parameters<ForgeGitRepositoryShape["provision"]>[0],
+  ) {
+    yield* Effect.tryPromise({
+      try: () => ensureRepository(input.tenantRef, input.repositoryRef),
+      catch: (cause) =>
+        cause instanceof ForgeGitRepositoryError
+          ? cause
+          : repositoryError(
+              "ForgeGitRepository.provision",
+              "forge_git_repository_provision_failed",
+              500,
+              cause,
+            ),
+    });
   });
 
   const listRefs = Effect.fn("ForgeGitRepository.listRefs")(function* (
@@ -785,7 +828,7 @@ const makeRepositoryService = (
     input: Parameters<ForgeGitRepositoryShape["receivePack"]>[0],
   ) {
     const path = yield* Effect.tryPromise({
-      try: () => ensureRepository(input.tenantRef, input.repositoryRef),
+      try: () => requireRepository(input.tenantRef, input.repositoryRef),
       catch: (cause) =>
         cause instanceof ForgeGitRepositoryError
           ? cause
@@ -810,7 +853,11 @@ const makeRepositoryService = (
       try: () =>
         git(["receive-pack", "--stateless-rpc", path], {
           body: input.body,
-          env: gitEnvironment(input.gitProtocol, input.session.refRestrictions),
+          env: gitEnvironment(
+            input.gitProtocol,
+            input.session.refRestrictions,
+            input.signedRefPolicies,
+          ),
           maxInputBytes: configuration.maxReceivePackBytes,
         }),
       catch: (cause) =>
@@ -1064,6 +1111,7 @@ const makeRepositoryService = (
 
   return ForgeGitRepository.of({
     advertise,
+    provision,
     backup,
     listRefs,
     observeMirror,

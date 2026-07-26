@@ -28,6 +28,22 @@ export const ForgeGitSession = Schema.Struct({
 });
 export interface ForgeGitSession extends Schema.Schema.Type<typeof ForgeGitSession> {}
 
+/**
+ * A verified, current NIP-34 kind 30618 update that authorizes exactly one
+ * stock-Git reference move. The bare repository remains the object/ref
+ * authority; this is the admission credential consumed by its pre-receive
+ * hook, never a second ref store.
+ */
+export const ForgeGitSignedRefPolicy = Schema.Struct({
+  eventId: Schema.String,
+  newObjectId: Schema.String,
+  oldObjectId: Schema.String,
+  refName: Schema.String,
+});
+export interface ForgeGitSignedRefPolicy extends Schema.Schema.Type<
+  typeof ForgeGitSignedRefPolicy
+> {}
+
 export const ForgeGitRef = Schema.Struct({
   objectId: Schema.String,
   refName: Schema.String,
@@ -93,6 +109,14 @@ export class ForgeGitRouteError extends Schema.TaggedErrorClass<ForgeGitRouteErr
 
 export class ForgeGitAuthError extends Schema.TaggedErrorClass<ForgeGitAuthError>()(
   "ForgeGitAuthError",
+  {
+    code: Schema.String,
+    status: Schema.Number,
+  },
+) {}
+
+export class ForgeGitAdmissionError extends Schema.TaggedErrorClass<ForgeGitAdmissionError>()(
+  "ForgeGitAdmissionError",
   {
     code: Schema.String,
     status: Schema.Number,

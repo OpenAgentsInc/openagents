@@ -10,7 +10,7 @@ import { makeMemoryBlobStore } from "@openagentsinc/oa-infra/blob-store-memory";
 import { Effect, Layer, ManagedRuntime } from "effect";
 import { afterEach, describe, expect, test } from "vitest";
 
-import { ForgeGitAdmission, layerAdmission } from "./admission.js";
+import { ForgeGitAdmission, makeMemoryAdmissionLayer } from "./admission.js";
 import { ForgeGitAuth, makePolicyAuthorityAuthLayer, makeStaticAuthLayer } from "./auth.js";
 import { makeTestConfiguration } from "./config.js";
 import { ForgeGitSession } from "./model.js";
@@ -137,6 +137,14 @@ const makeRuntime = (
     "git:upload-pack",
   ],
   authLayer: Layer.Layer<ForgeGitAuth> = makeStaticAuthLayer(token, session, allowedScopes),
+  admissionPolicies: Array<{
+    eventId: string;
+    newObjectId: string;
+    oldObjectId: string;
+    refName: string;
+    repositoryRef: string;
+    tenantRef: string;
+  }> = [],
 ) => {
   const configuration = makeTestConfiguration({
     gitBinary: "git",
@@ -146,7 +154,10 @@ const makeRuntime = (
   });
   const repositoryLayer = makeRepositoryLayer(configuration, blobStore);
   const applicationLayer = Layer.mergeAll(
-    layerAdmission,
+    makeMemoryAdmissionLayer({
+      admittedRepositories: [{ repositoryRef, tenantRef }],
+      signedRefPolicies: admissionPolicies,
+    }),
     authLayer,
     layerNoopProjection,
     repositoryLayer,
@@ -159,7 +170,111 @@ const makeRuntime = (
   };
 };
 
+const authorizeHead = (
+  policies: Array<{
+    eventId: string;
+    newObjectId: string;
+    oldObjectId: string;
+    refName: string;
+    repositoryRef: string;
+    tenantRef: string;
+  }>,
+  oldObjectId: string,
+  newObjectId: string,
+) => {
+  policies.push({
+    eventId: `state-${newObjectId}`,
+    newObjectId,
+    oldObjectId,
+    refName: "refs/heads/main",
+    repositoryRef,
+    tenantRef,
+  });
+};
+
+const provisionAdmittedRepository = async (fixture: ReturnType<typeof makeRuntime>) => {
+  const runtime = ManagedRuntime.make(fixture.repositoryLayer);
+  try {
+    await runtime.runPromise(
+      Effect.gen(function* () {
+        const repository = yield* ForgeGitRepository;
+        yield* repository.provision({ repositoryRef, tenantRef });
+      }),
+    );
+  } finally {
+    await runtime.dispose();
+  }
+};
+
 describe("owned Forge Smart HTTP service", () => {
+  test("does not create an unadmitted repository and refuses an unsigned head move", async () => {
+    const root = await mkdtemp(join(tmpdir(), "oa-forge-admission-root-"));
+    const source = await mkdtemp(join(tmpdir(), "oa-forge-admission-source-"));
+    temporaryPaths.push(root, source);
+    const configuration = makeTestConfiguration({
+      gitBinary: "git",
+      maxReceivePackBytes: 64 * 1024 * 1024,
+      mirrorEnabled: false,
+      repositoryRoot: root,
+    });
+    const repositoryLayer = makeRepositoryLayer(configuration, makeMemoryBlobStore());
+    const deniedRuntime = ManagedRuntime.make(
+      Layer.mergeAll(
+        makeMemoryAdmissionLayer({ admittedRepositories: [] }),
+        makeStaticAuthLayer(token, makeSession()),
+        layerNoopProjection,
+        repositoryLayer,
+      ),
+    );
+    const deniedService = await listen(deniedRuntime);
+    disposers.push(
+      () => closeServer(deniedService.server),
+      () => deniedRuntime.dispose(),
+    );
+    const remote = `${deniedService.origin}/git/${tenantRef}/${repositoryRef}.git`;
+    const denied = await fetch(`${remote}/info/refs?service=git-receive-pack`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(denied.status).toBe(403);
+
+    const policies: Array<{
+      eventId: string;
+      newObjectId: string;
+      oldObjectId: string;
+      refName: string;
+      repositoryRef: string;
+      tenantRef: string;
+    }> = [];
+    const admitted = makeRuntime(
+      root,
+      makeMemoryBlobStore(),
+      makeSession(),
+      undefined,
+      undefined,
+      policies,
+    );
+    await provisionAdmittedRepository(admitted);
+    const service = await listen(admitted.runtime);
+    disposers.push(
+      () => closeServer(service.server),
+      () => admitted.runtime.dispose(),
+    );
+    await git(source, ["init", "--initial-branch=main"]);
+    await git(source, ["config", "user.email", "forge-test@openagents.com"]);
+    await git(source, ["config", "user.name", "Forge Test"]);
+    await writeFile(join(source, "README.md"), "signed state required\n");
+    await git(source, ["add", "README.md"]);
+    await git(source, ["commit", "-m", "Unsigned state"]);
+    await expect(
+      git(source, [
+        ...bearerArguments,
+        "push",
+        `${service.origin}/git/${tenantRef}/${repositoryRef}.git`,
+        "HEAD:refs/heads/main",
+      ]),
+    ).rejects.toThrow(/remote rejected|failed to push/i);
+  }, 120_000);
+
   test("uses stock receive-pack and upload-pack for push, clone, fetch, partial clone, backup, and restore", async () => {
     const root = await mkdtemp(join(tmpdir(), "oa-forge-git-root-"));
     const source = await mkdtemp(join(tmpdir(), "oa-forge-source-"));
@@ -178,7 +293,23 @@ describe("owned Forge Smart HTTP service", () => {
       restoredClone,
     );
 
-    const fixture = makeRuntime(root);
+    const policies: Array<{
+      eventId: string;
+      newObjectId: string;
+      oldObjectId: string;
+      refName: string;
+      repositoryRef: string;
+      tenantRef: string;
+    }> = [];
+    const fixture = makeRuntime(
+      root,
+      makeMemoryBlobStore(),
+      makeSession(),
+      undefined,
+      undefined,
+      policies,
+    );
+    await provisionAdmittedRepository(fixture);
     const service = await listen(fixture.runtime);
     disposers.push(
       () => closeServer(service.server),
@@ -193,6 +324,7 @@ describe("owned Forge Smart HTTP service", () => {
     await git(source, ["add", "README.md"]);
     await git(source, ["commit", "-m", "Seed Forge repository"]);
     const commitA = (await git(source, ["rev-parse", "HEAD"])).stdout.trim();
+    authorizeHead(policies, "0".repeat(40), commitA);
     await git(source, [...bearerArguments, "push", remote, "HEAD:refs/heads/main"]);
 
     const advertisement = await fetch(`${remote}/info/refs?service=git-upload-pack`, {
@@ -214,6 +346,7 @@ describe("owned Forge Smart HTTP service", () => {
     await git(firstClone, ["add", "README.md"]);
     await git(firstClone, ["commit", "-m", "Update Forge repository"]);
     const commitB = (await git(firstClone, ["rev-parse", "HEAD"])).stdout.trim();
+    authorizeHead(policies, commitA, commitB);
     await git(firstClone, [...bearerArguments, "push", "origin", "main"]);
 
     await git(secondClone, [...bearerArguments, "clone", remote, "."]);
@@ -246,7 +379,15 @@ describe("owned Forge Smart HTTP service", () => {
       refName: "refs/heads/main",
     });
 
-    const restored = makeRuntime(restoredRoot, fixture.blobStore, makeSession());
+    const restoredPolicies: typeof policies = [];
+    const restored = makeRuntime(
+      restoredRoot,
+      fixture.blobStore,
+      makeSession(),
+      undefined,
+      undefined,
+      restoredPolicies,
+    );
     const restoreRuntime = ManagedRuntime.make(restored.repositoryLayer);
     await restoreRuntime.runPromise(
       Effect.gen(function* () {
@@ -272,6 +413,7 @@ describe("owned Forge Smart HTTP service", () => {
     await git(restoredClone, ["add", "RESTORED.md"]);
     await git(restoredClone, ["commit", "-m", "Prove restored repository writes"]);
     const commitC = (await git(restoredClone, ["rev-parse", "HEAD"])).stdout.trim();
+    authorizeHead(restoredPolicies, commitB, commitC);
     await git(restoredClone, [...bearerArguments, "push", "origin", "main"]);
 
     const receiptOutput = process.env["FORGE_GIT_RECEIPT_OUT"];
@@ -370,13 +512,23 @@ describe("owned Forge Smart HTTP service", () => {
         },
       });
     });
+    const policies: Array<{
+      eventId: string;
+      newObjectId: string;
+      oldObjectId: string;
+      refName: string;
+      repositoryRef: string;
+      tenantRef: string;
+    }> = [];
     const fixture = makeRuntime(
       root,
       makeMemoryBlobStore(),
       makeSession(),
       ["git:receive-pack", "git:upload-pack"],
       authLayer,
+      policies,
     );
+    await provisionAdmittedRepository(fixture);
     const service = await listen(fixture.runtime);
     disposers.push(
       () => closeServer(service.server),
@@ -394,6 +546,8 @@ describe("owned Forge Smart HTTP service", () => {
     await writeFile(join(source, "README.md"), "invite policy\n");
     await git(source, ["add", "README.md"]);
     await git(source, ["commit", "-m", "Seed invited repository"]);
+    const commitA = (await git(source, ["rev-parse", "HEAD"])).stdout.trim();
+    authorizeHead(policies, "0".repeat(40), commitA);
     await git(source, [...authArgs(humanToken), "push", remote, "HEAD:refs/heads/main"]);
 
     await git(humanClone, [...authArgs(humanToken), "clone", remote, "."]);
@@ -402,6 +556,8 @@ describe("owned Forge Smart HTTP service", () => {
     await writeFile(join(humanClone, "HUMAN.md"), "human push\n");
     await git(humanClone, ["add", "HUMAN.md"]);
     await git(humanClone, ["commit", "-m", "Human push"]);
+    const commitB = (await git(humanClone, ["rev-parse", "HEAD"])).stdout.trim();
+    authorizeHead(policies, commitA, commitB);
     await git(humanClone, [...authArgs(humanToken), "push", "origin", "main"]);
 
     await git(agentClone, [...authArgs(agentToken), "clone", remote, "."]);
@@ -411,6 +567,8 @@ describe("owned Forge Smart HTTP service", () => {
     await writeFile(join(agentClone, "AGENT.md"), "agent push\n");
     await git(agentClone, ["add", "AGENT.md"]);
     await git(agentClone, ["commit", "-m", "Agent push"]);
+    const commitC = (await git(agentClone, ["rev-parse", "HEAD"])).stdout.trim();
+    authorizeHead(policies, commitB, commitC);
     await git(agentClone, [...authArgs(agentToken), "push", "origin", "main"]);
 
     revoked.add(agentToken);
@@ -421,7 +579,23 @@ describe("owned Forge Smart HTTP service", () => {
     const root = await mkdtemp(join(tmpdir(), "oa-forge-ref-root-"));
     const source = await mkdtemp(join(tmpdir(), "oa-forge-ref-source-"));
     temporaryPaths.push(root, source);
-    const fixture = makeRuntime(root, makeMemoryBlobStore(), makeSession(["refs/heads/main"]));
+    const policies: Array<{
+      eventId: string;
+      newObjectId: string;
+      oldObjectId: string;
+      refName: string;
+      repositoryRef: string;
+      tenantRef: string;
+    }> = [];
+    const fixture = makeRuntime(
+      root,
+      makeMemoryBlobStore(),
+      makeSession(["refs/heads/main"]),
+      undefined,
+      undefined,
+      policies,
+    );
+    await provisionAdmittedRepository(fixture);
     const service = await listen(fixture.runtime);
     disposers.push(
       () => closeServer(service.server),
@@ -435,6 +609,11 @@ describe("owned Forge Smart HTTP service", () => {
     await writeFile(join(source, "README.md"), "restricted\n");
     await git(source, ["add", "README.md"]);
     await git(source, ["commit", "-m", "Restricted ref seed"]);
+    authorizeHead(
+      policies,
+      "0".repeat(40),
+      (await git(source, ["rev-parse", "HEAD"])).stdout.trim(),
+    );
     await git(source, [...bearerArguments, "push", remote, "HEAD:refs/heads/main"]);
 
     await expect(
