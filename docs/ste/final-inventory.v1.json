@@ -22598,7 +22598,29 @@
     },
     {
       "path": "docs/exo/2026-07-26-exo-openagents-integration-analysis.md",
-      "sha256": "8842003c963cd30debb1a679c70fda091a45236f57124143bb7c11d5ff3ceef4",
+      "sha256": "46246518d4bc4e19a114fa1442a56ecb61bcfe5fdb45e2e61ec380ada9304618",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/exo/2026-07-26-exo-verifiable-software-gym-vision.md",
+      "sha256": "ca7d117ab63d857ef43a855e4990c68bcb514b8d646610dc0354502f9ca841fc",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

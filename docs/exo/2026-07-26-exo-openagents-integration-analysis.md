@@ -4,7 +4,10 @@ Agent-facing analysis of the full Exo (`exoharness/exo`) integration estate:
 what OpenAgents and Omega have built, what upstream Exo is and wants, how the
 two projects can help each other, and where the bounded opportunities are.
 This document is strategic evidence and a candidate-work source. It is not
-dispatch, deploy, release, spend, or public-claim authority. The teardown
+dispatch, deploy, release, spend, or public-claim authority. The
+forward-looking companion is
+[the verifiable-software and Gym vision](./2026-07-26-exo-verifiable-software-gym-vision.md),
+which speculates past the current PR mechanics. The teardown
 refuse lists, `AUTHORITY.md`, `FASTFOLLOW.md` discipline, and the Sol roadmap
 keep their existing precedence.
 
