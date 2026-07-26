@@ -6,8 +6,8 @@ import { mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
-import { generateSecretKey, getPublicKey } from "nostr-effect/pure";
-import { Cause, Config, Effect, Exit, ManagedRuntime, Redacted } from "effect";
+import { finalizeEvent, generateSecretKey, getPublicKey } from "nostr-effect/pure";
+import { Cause, Config, Effect, Exit, Layer, ManagedRuntime, Redacted } from "effect";
 import postgres from "postgres";
 
 import { makeD1ForgeInviteMembershipStore } from "../../openagents.com/workers/api/src/forge-invite-membership-store.js";
@@ -15,7 +15,9 @@ import { makeD1ForgeTenantGitAuthStore } from "../../openagents.com/workers/api/
 import { makeKhalaSyncWritesDatabase } from "../../openagents.com/workers/api/src/khala-sync-domain-writes-database.js";
 import type { PostgresD1Client } from "../../openagents.com/workers/api/src/postgres-d1-adapter.js";
 import { makeD1TeamWorkspaceInviteStore } from "../../openagents.com/workers/api/src/team-workspace-invites.js";
-import { makeTestConfiguration } from "./config.js";
+import { ForgeGitAdmission, layerDistributedAdmission } from "./admission.js";
+import { ForgeGitConfiguration, makeTestConfiguration } from "./config.js";
+import { layerDatabase } from "./database.js";
 import { ForgeGitRepository, makeRepositoryLayer } from "./repository.js";
 
 const git = (
@@ -76,6 +78,8 @@ const inspectDatabaseAuthority = async (
 ): Promise<
   Readonly<{
     databaseName: string;
+    forgeAdmissionReadWrite: boolean;
+    forgeAdmissionTablePresent: boolean;
     forgeTenantReadWrite: boolean;
     userName: string;
   }>
@@ -88,12 +92,24 @@ const inspectDatabaseAuthority = async (
     const [authority] = await sql<
       ReadonlyArray<{
         database_name: string;
+        forge_admission_read_write: boolean;
+        forge_admission_table_present: boolean;
         forge_tenant_read_write: boolean;
         user_name: string;
       }>
     >`
       SELECT current_database() AS database_name,
              current_user AS user_name,
+             to_regclass('public.forge_git_repository_admissions') IS NOT NULL
+               AS forge_admission_table_present,
+             COALESCE(
+               has_table_privilege(
+                 current_user,
+                 to_regclass('public.forge_git_repository_admissions'),
+                 'SELECT,INSERT,UPDATE,DELETE'
+               ),
+               false
+             ) AS forge_admission_read_write,
              has_table_privilege(
                current_user,
                'public.forge_tenants',
@@ -105,6 +121,8 @@ const inspectDatabaseAuthority = async (
     }
     return {
       databaseName: authority.database_name,
+      forgeAdmissionReadWrite: authority.forge_admission_read_write,
+      forgeAdmissionTablePresent: authority.forge_admission_table_present,
       forgeTenantReadWrite: authority.forge_tenant_read_write,
       userName: authority.user_name,
     };
@@ -206,6 +224,40 @@ const runStage = async <A>(stage: string, operation: () => Promise<A>): Promise<
     return await operation();
   } catch (cause) {
     throw new Error(`Acceptance stage failed: ${stage}`, { cause });
+  }
+};
+
+const provisionAcceptanceRepository = async (input: {
+  readonly databaseUrl: string;
+  readonly repositoryRef: string;
+  readonly repositoryRoot: string;
+  readonly tenantRef: string;
+}): Promise<void> => {
+  const blobRuntime = ManagedRuntime.make(layerGcs);
+  const blobStore = await blobRuntime.runPromise(BlobStore);
+  const configuration = makeTestConfiguration({
+    databaseUrl: input.databaseUrl,
+    gitBinary: "git",
+    maxReceivePackBytes: 512 * 1024 * 1024,
+    mirrorEnabled: true,
+    repositoryRoot: input.repositoryRoot,
+  });
+  const repositoryRuntime = ManagedRuntime.make(
+    makeRepositoryLayer(configuration, blobStore),
+  );
+  try {
+    await repositoryRuntime.runPromise(
+      Effect.gen(function* () {
+        const repository = yield* ForgeGitRepository;
+        yield* repository.provision({
+          repositoryRef: input.repositoryRef,
+          tenantRef: input.tenantRef,
+        });
+      }),
+    );
+  } finally {
+    await repositoryRuntime.dispose();
+    await blobRuntime.dispose();
   }
 };
 
@@ -360,9 +412,18 @@ const runAcceptance = async ({
 }: AcceptanceOptions): Promise<void> => {
   const baseUrl = configuredBaseUrl.replace(/\/+$/, "");
   const databaseAuthority = await inspectDatabaseAuthority(databaseUrl);
-  if (databaseAuthority.userName !== "khala_app" || !databaseAuthority.forgeTenantReadWrite) {
+  if (
+    databaseAuthority.userName !== "khala_app" ||
+    !databaseAuthority.forgeTenantReadWrite ||
+    !databaseAuthority.forgeAdmissionTablePresent ||
+    !databaseAuthority.forgeAdmissionReadWrite
+  ) {
     throw new Error(
-      `Acceptance database authority mismatch: user=${databaseAuthority.userName}, database=${databaseAuthority.databaseName}, forgeTenantReadWrite=${databaseAuthority.forgeTenantReadWrite}`,
+      `Acceptance database authority mismatch: user=${databaseAuthority.userName}, ` +
+        `database=${databaseAuthority.databaseName}, ` +
+        `forgeTenantReadWrite=${databaseAuthority.forgeTenantReadWrite}, ` +
+        `forgeAdmissionTablePresent=${databaseAuthority.forgeAdmissionTablePresent}, ` +
+        `forgeAdmissionReadWrite=${databaseAuthority.forgeAdmissionReadWrite}`,
     );
   }
   const now = new Date();
@@ -398,6 +459,22 @@ const runAcceptance = async ({
   const invites = makeD1TeamWorkspaceInviteStore(database, {
     nowIso: () => nowIso,
   });
+  const admissionConfiguration = Layer.succeed(
+    ForgeGitConfiguration,
+    makeTestConfiguration({
+      databaseUrl,
+      gitBinary: "git",
+      maxReceivePackBytes: 512 * 1024 * 1024,
+      mirrorEnabled: true,
+      repositoryRoot,
+    }),
+  );
+  const admissionDatabase = layerDatabase.pipe(Layer.provide(admissionConfiguration));
+  const admissionRuntime = ManagedRuntime.make(
+    layerDistributedAdmission.pipe(
+      Layer.provide(Layer.mergeAll(admissionConfiguration, admissionDatabase)),
+    ),
+  );
 
   await runStage("tenant-upsert", () =>
     tokens.upsertTenant({
@@ -476,6 +553,64 @@ const runAcceptance = async ({
     tenantRef,
   });
 
+  await runStage("repository-admission", () =>
+    admissionRuntime.runPromise(
+      Effect.gen(function* () {
+        const admission = yield* ForgeGitAdmission;
+        yield* admission.admitRepository({
+          admittedBindingRef: human.bindingRef,
+          announcementAuthorPubkey: humanPubkey,
+          announcementEventId: `forge_repository_announcement.${runRef}`,
+          maintainerPubkeys: [humanPubkey, agentPubkey],
+          repositoryRef,
+          tenantRef,
+        });
+      }),
+    ),
+  );
+  await runStage("repository-provision", () =>
+    provisionAcceptanceRepository({
+      databaseUrl,
+      repositoryRef,
+      repositoryRoot,
+      tenantRef,
+    }),
+  );
+  const authorizeMainRef = async (input: {
+    readonly authorPubkey: string;
+    readonly authorSecret: Uint8Array;
+    readonly newObjectId: string;
+    readonly oldObjectId: string;
+  }): Promise<void> => {
+    const event = finalizeEvent(
+      {
+        content: "",
+        created_at: Math.floor(Date.now() / 1_000),
+        kind: 30618,
+        tags: [
+          ["d", repositoryRef],
+          ["refs/heads/main", input.newObjectId],
+        ],
+      },
+      input.authorSecret,
+    );
+    await admissionRuntime.runPromise(
+      Effect.gen(function* () {
+        const admission = yield* ForgeGitAdmission;
+        yield* admission.authorizeSignedRefState({
+          authorPubkey: input.authorPubkey,
+          eventId: event.id,
+          eventJson: JSON.stringify(event),
+          newObjectId: input.newObjectId,
+          oldObjectId: input.oldObjectId,
+          refName: "refs/heads/main",
+          repositoryRef,
+          tenantRef,
+        });
+      }),
+    );
+  };
+
   const requestedScopes = ["git:upload-pack", "git:receive-pack"] as const;
   const humanCredential = await tokens.mintGitAccessToken({
     expiresAt,
@@ -516,6 +651,14 @@ const runAcceptance = async ({
     await git(source, ["add", "README.md"]);
     await git(source, ["commit", "-m", "Seed FORGE-02 live acceptance"]);
     const seedCommit = (await git(source, ["rev-parse", "HEAD"])).stdout.trim();
+    await runStage("human-seed-signed-ref", () =>
+      authorizeMainRef({
+        authorPubkey: humanPubkey,
+        authorSecret: humanSecret,
+        newObjectId: seedCommit,
+        oldObjectId: "0".repeat(40),
+      }),
+    );
     await git(source, ["push", remote, "HEAD:refs/heads/main"], humanCredential.token);
 
     const advertisement = await fetch(`${remote}/info/refs?service=git-upload-pack`, {
@@ -537,8 +680,16 @@ const runAcceptance = async ({
     await writeFile(join(humanClone, "HUMAN.md"), "Invited human push passed\n");
     await git(humanClone, ["add", "HUMAN.md"]);
     await git(humanClone, ["commit", "-m", "Prove invited human push"]);
-    await git(humanClone, ["push", "origin", "main"], humanCredential.token);
     const humanCommit = (await git(humanClone, ["rev-parse", "HEAD"])).stdout.trim();
+    await runStage("human-update-signed-ref", () =>
+      authorizeMainRef({
+        authorPubkey: humanPubkey,
+        authorSecret: humanSecret,
+        newObjectId: humanCommit,
+        oldObjectId: seedCommit,
+      }),
+    );
+    await git(humanClone, ["push", "origin", "main"], humanCredential.token);
 
     await git(root, ["clone", remote, agentClone], agentCredential.token);
     await git(agentClone, ["config", "user.email", "forge-02-agent@acceptance.openagents.com"]);
@@ -546,8 +697,16 @@ const runAcceptance = async ({
     await writeFile(join(agentClone, "AGENT.md"), "Owner-attested agent push passed\n");
     await git(agentClone, ["add", "AGENT.md"]);
     await git(agentClone, ["commit", "-m", "Prove owner-attested agent push"]);
-    await git(agentClone, ["push", "origin", "main"], agentCredential.token);
     const agentCommit = (await git(agentClone, ["rev-parse", "HEAD"])).stdout.trim();
+    await runStage("agent-update-signed-ref", () =>
+      authorizeMainRef({
+        authorPubkey: agentPubkey,
+        authorSecret: agentSecret,
+        newObjectId: agentCommit,
+        oldObjectId: humanCommit,
+      }),
+    );
+    await git(agentClone, ["push", "origin", "main"], agentCredential.token);
 
     const restore = await runStage("live-backup-restore", () =>
       runLiveRestoreDrill({
@@ -667,6 +826,7 @@ const runAcceptance = async ({
     agentSecret.fill(0);
     await rm(root, { force: true, recursive: true });
     const cleanupFailure = cleanupResults.find((result) => result.status === "rejected");
+    await admissionRuntime.dispose();
     if (cleanupFailure?.status === "rejected") {
       throw new Error("Acceptance actor cleanup failed", {
         cause: cleanupFailure.reason,

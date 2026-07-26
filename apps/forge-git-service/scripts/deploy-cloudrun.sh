@@ -16,7 +16,7 @@ POLICY_AUTHORITY_SECRET="${FORGE_GIT_POLICY_AUTHORITY_SECRET:-openagents-forge-g
 POLICY_AUTHORITY_URL="${FORGE_GIT_POLICY_AUTHORITY_URL:-https://openagents.com/internal/forge/git-authorize}"
 DATABASE_INSTANCE="${FORGE_GIT_DATABASE_INSTANCE:-openagentsgemini:us-central1:khala-sync-pg}"
 ARTIFACTS_BUCKET="${FORGE_GIT_ARTIFACTS_BUCKET:-openagentsgemini-oa-artifacts}"
-ARTIFACTS_PREFIX="${FORGE_GIT_ARTIFACTS_PREFIX:-forge/git-packs}"
+ARTIFACTS_PREFIX="${FORGE_GIT_ARTIFACTS_PREFIX:-forge/git-packs/}"
 NFS_INSTANCE="${FORGE_GIT_NFS_INSTANCE:-forge-git-nfs}"
 NFS_EXPORT="${FORGE_GIT_NFS_EXPORT:-/srv/forge/repositories}"
 ZONE="${OPENAGENTS_GCP_ZONE:-us-central1-a}"
@@ -59,7 +59,7 @@ gcloud run deploy "$SERVICE" \
   --max 1 \
   --cpu 2 \
   --memory 2Gi \
-  --concurrency 40 \
+  --concurrency 80 \
   --timeout 3600 \
   --network "$NETWORK" \
   --subnet "$SUBNETWORK" \

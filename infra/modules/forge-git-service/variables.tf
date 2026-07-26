@@ -109,7 +109,7 @@ variable "pack_evidence_bucket" {
 variable "pack_evidence_prefix" {
   description = "Object prefix for Forge Git pack evidence and mirrors"
   type        = string
-  default     = "forge/git-packs"
+  default     = "forge/git-packs/"
 }
 
 variable "database_secret_id" {

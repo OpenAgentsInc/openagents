@@ -296,6 +296,26 @@ const errorResponse = (error: unknown): Response => {
   );
 };
 
+const recoverRouteError = (error: unknown): Effect.Effect<Response> => {
+  const response = errorResponse(error);
+  const code =
+    error instanceof ForgeGitRouteError ||
+    error instanceof ForgeGitAuthError ||
+    error instanceof ForgeGitAdmissionError ||
+    error instanceof ForgeGitRepositoryError ||
+    error instanceof ForgeGitWebReadError
+      ? error.code
+      : "forge_git_internal_error";
+  return Effect.logWarning("Forge Git request failed.", {
+    code,
+    operation:
+      error instanceof ForgeGitRepositoryError || error instanceof ForgeGitWebReadError
+        ? error.operation
+        : "route",
+    status: response.status,
+  }).pipe(Effect.as(response));
+};
+
 export const forgeWebReadHandler = Effect.fn("ForgeWebReadRoutes.handle")(function* (
   request: Request,
 ) {
@@ -418,10 +438,19 @@ export const forgeGitHandler = Effect.fn("ForgeGitRoutes.handle")(function* (req
   const admittedReceive = yield* admission.withReceiveLease(
     `${route.tenantRef}/${route.repositoryRef}`,
     Effect.gen(function* () {
-      const signedRefPolicies = yield* admission.signedRefPolicies({
-        repositoryRef: route.repositoryRef,
-        tenantRef: route.tenantRef,
-      });
+      const signedRefPolicies = yield* admission
+        .signedRefPolicies({
+          repositoryRef: route.repositoryRef,
+          tenantRef: route.tenantRef,
+        })
+        .pipe(
+          Effect.tapError((error) =>
+            Effect.logWarning("Forge Git receive stage failed.", {
+              code: error.code,
+              operation: "signed-ref-policies",
+            }),
+          ),
+        );
       const result = yield* repository.receivePack({
         body: request.body,
         ...(gitProtocol === undefined ? {} : { gitProtocol }),
@@ -432,6 +461,16 @@ export const forgeGitHandler = Effect.fn("ForgeGitRoutes.handle")(function* (req
       });
       return { result, signedRefPolicies };
     }),
+  ).pipe(
+    Effect.tapError((error) =>
+      Effect.logWarning("Forge Git receive stage failed.", {
+        code:
+          error instanceof ForgeGitAdmissionError || error instanceof ForgeGitRepositoryError
+            ? error.code
+            : "forge_git_internal_error",
+        operation: "receive-lease",
+      }),
+    ),
   );
   const { result, signedRefPolicies } = admittedReceive;
   if (result.changed) {
@@ -447,13 +486,22 @@ export const forgeGitHandler = Effect.fn("ForgeGitRoutes.handle")(function* (req
         .filter((ref) => !result.refsAfter.some((after) => after.refName === ref.refName))
         .map((ref) => ref.refName),
     ]);
-    yield* admission.recordCommittedReceive({
-      repositoryRef: route.repositoryRef,
-      stateEventIds: signedRefPolicies
-        .filter((policy) => changedRefNames.has(policy.refName))
-        .map((policy) => policy.eventId),
-      tenantRef: route.tenantRef,
-    });
+    yield* admission
+      .recordCommittedReceive({
+        repositoryRef: route.repositoryRef,
+        stateEventIds: signedRefPolicies
+          .filter((policy) => changedRefNames.has(policy.refName))
+          .map((policy) => policy.eventId),
+        tenantRef: route.tenantRef,
+      })
+      .pipe(
+        Effect.tapError((error) =>
+          Effect.logWarning("Forge Git receive stage failed.", {
+            code: error.code,
+            operation: "record-committed-receive",
+          }),
+        ),
+      );
     yield* admission.recordUnclaimedNostrRefs({
       refNames: result.refsAfter
         .filter((ref) => ref.refName.startsWith("refs/nostr/"))
@@ -831,7 +879,7 @@ export const routeRequest = (
     matchForgeWebReadAssetRoute(request) !== undefined
   ) {
     return forgeWebReadHandler(request).pipe(
-      Effect.catch((error) => Effect.succeed(errorResponse(error))),
+      Effect.catch(recoverRouteError),
     );
   }
   return internalCollaborationReadHandler(request).pipe(
@@ -843,6 +891,6 @@ export const routeRequest = (
     Effect.flatMap((internal) =>
       internal === undefined ? forgeGitHandler(request) : Effect.succeed(internal),
     ),
-    Effect.catch((error) => Effect.succeed(errorResponse(error))),
+    Effect.catch(recoverRouteError),
   );
 };

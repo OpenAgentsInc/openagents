@@ -483,7 +483,7 @@ export const layerDistributedAdmission = Layer.effect(
                 for (const eventId of input.stateEventIds) {
                   await sql`
                   UPDATE forge_git_signed_ref_states
-                     SET applied_at = COALESCE(applied_at, now())
+                     SET applied_at = COALESCE(applied_at, now()::text)
                    WHERE tenant_ref = ${input.tenantRef}
                      AND repository_ref = ${input.repositoryRef}
                      AND event_id = ${eventId}
@@ -887,7 +887,7 @@ export const layerDistributedAdmission = Layer.effect(
         yield* Effect.tryPromise({
           try: () => database.sql`
             UPDATE forge_git_unclaimed_nostr_refs
-               SET claimed_at = COALESCE(claimed_at, now())
+               SET claimed_at = COALESCE(claimed_at, now()::text)
              WHERE tenant_ref = ${input.tenantRef} AND repository_ref = ${input.repositoryRef}
                AND event_id = ${input.eventId}`,
           catch: admissionUnavailable,

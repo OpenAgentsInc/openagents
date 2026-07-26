@@ -442,11 +442,48 @@ const makeRepositoryService = (
       gitBinary: configuration.gitBinary,
     });
 
+  const repositoryGitArguments = (
+    path: string,
+    args: ReadonlyArray<string>,
+  ): ReadonlyArray<string> => ["-c", `safe.directory=${path}`, ...args];
+
   const configureRepository = async (path: string): Promise<void> => {
-    await git(["--git-dir", path, "config", "uploadpack.allowFilter", "true"]);
-    await git(["--git-dir", path, "config", "uploadpack.allowReachableSHA1InWant", "true"]);
-    await git(["--git-dir", path, "config", "uploadpack.allowTipSHA1InWant", "true"]);
-    await git(["--git-dir", path, "config", "receive.advertisePushOptions", "true"]);
+    await git(
+      repositoryGitArguments(path, [
+        "--git-dir",
+        path,
+        "config",
+        "uploadpack.allowFilter",
+        "true",
+      ]),
+    );
+    await git(
+      repositoryGitArguments(path, [
+        "--git-dir",
+        path,
+        "config",
+        "uploadpack.allowReachableSHA1InWant",
+        "true",
+      ]),
+    );
+    await git(
+      repositoryGitArguments(path, [
+        "--git-dir",
+        path,
+        "config",
+        "uploadpack.allowTipSHA1InWant",
+        "true",
+      ]),
+    );
+    await git(
+      repositoryGitArguments(path, [
+        "--git-dir",
+        path,
+        "config",
+        "receive.advertisePushOptions",
+        "true",
+      ]),
+    );
     const hookPath = join(path, "hooks", "pre-receive");
     await writeFile(hookPath, hookSource, { encoding: "utf8", mode: 0o755 });
     await chmod(hookPath, 0o755);
@@ -482,12 +519,14 @@ const makeRepositoryService = (
   };
 
   const listRefsAtPath = async (path: string): Promise<ReadonlyArray<ForgeGitRef>> => {
-    const result = await git([
-      "--git-dir",
-      path,
-      "for-each-ref",
-      "--format=%(objectname)%00%(refname)",
-    ]);
+    const result = await git(
+      repositoryGitArguments(path, [
+        "--git-dir",
+        path,
+        "for-each-ref",
+        "--format=%(objectname)%00%(refname)",
+      ]),
+    );
     const output = textDecoder.decode(result.stdout).trim();
     if (output === "") return [];
     return output.split("\n").map((line) => {
@@ -509,7 +548,7 @@ const makeRepositoryService = (
     path: string,
   ) {
     yield* Effect.tryPromise({
-      try: () => git(["--git-dir", path, "repack", "-Ad"]),
+      try: () => git(repositoryGitArguments(path, ["--git-dir", path, "repack", "-Ad"])),
       catch: (cause) =>
         repositoryError(
           "ForgeGitRepository.mirrorPacks.repack",
@@ -592,12 +631,12 @@ const makeRepositoryService = (
     const result = yield* Effect.tryPromise({
       try: () =>
         git(
-          [
+          repositoryGitArguments(path, [
             input.operation === "git-upload-pack" ? "upload-pack" : "receive-pack",
             "--stateless-rpc",
             "--advertise-refs",
             path,
-          ],
+          ]),
           { env: gitEnvironment(input.gitProtocol) },
         ),
       catch: (cause) =>
@@ -676,7 +715,15 @@ const makeRepositoryService = (
           objects.map(async (objectId) => {
             if (!/^[0-9a-f]{40,64}$/u.test(objectId)) return undefined;
             try {
-              await git(["--git-dir", path, "cat-file", "-e", `${objectId}^{object}`]);
+              await git(
+                repositoryGitArguments(path, [
+                  "--git-dir",
+                  path,
+                  "cat-file",
+                  "-e",
+                  `${objectId}^{object}`,
+                ]),
+              );
               return objectId;
             } catch {
               return undefined;
@@ -705,14 +752,17 @@ const makeRepositoryService = (
           : repositoryError("ForgeGitRepository.deleteRefs.repository", "forge_git_repository_unavailable", 500, cause),
     });
     yield* Effect.tryPromise({
-      try: () => git(["--git-dir", path, "update-ref", "--stdin"], {
-        body: new ReadableStream<Uint8Array>({
-          start(controller) {
-            controller.enqueue(textEncoder.encode(input.refNames.map((refName) => `delete ${refName}\n`).join("")));
-            controller.close();
-          },
+      try: () =>
+        git(repositoryGitArguments(path, ["--git-dir", path, "update-ref", "--stdin"]), {
+          body: new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(
+                textEncoder.encode(input.refNames.map((refName) => `delete ${refName}\n`).join("")),
+              );
+              controller.close();
+            },
+          }),
         }),
-      }),
       catch: (cause) => repositoryError("ForgeGitRepository.deleteRefs", "forge_git_nostr_ref_gc_failed", 500, cause),
     });
   });
@@ -726,7 +776,15 @@ const makeRepositoryService = (
         assertMirrorRef(input.destinationRef, "ForgeGitRepository.observeMirror.destinationRef");
         assertMirrorDestination(input.destinationUrl);
         const path = await requireRepository(input.tenantRef, input.repositoryRef);
-        const source = await git(["--git-dir", path, "rev-parse", "--verify", input.sourceRef]);
+        const source = await git(
+          repositoryGitArguments(path, [
+            "--git-dir",
+            path,
+            "rev-parse",
+            "--verify",
+            input.sourceRef,
+          ]),
+        );
         const sourceObjectId = textDecoder.decode(source.stdout).trim().toLowerCase();
         if (sourceObjectId !== input.expectedSourceObjectId.toLowerCase()) {
           throw repositoryError(
@@ -919,7 +977,7 @@ const makeRepositoryService = (
     });
     const result = yield* Effect.tryPromise({
       try: () =>
-        git(["receive-pack", "--stateless-rpc", path], {
+        git(repositoryGitArguments(path, ["receive-pack", "--stateless-rpc", path]), {
           body: input.body,
           env: gitEnvironment(
             input.gitProtocol,
@@ -990,7 +1048,7 @@ const makeRepositoryService = (
             ),
     });
     return runGitStreaming({
-      args: ["upload-pack", "--stateless-rpc", path],
+      args: repositoryGitArguments(path, ["upload-pack", "--stateless-rpc", path]),
       body: input.body,
       env: gitEnvironment(input.gitProtocol),
       gitBinary: configuration.gitBinary,
@@ -1014,7 +1072,8 @@ const makeRepositoryService = (
             ),
     });
     yield* Effect.tryPromise({
-      try: () => git(["--git-dir", path, "fsck", "--full", "--strict"]),
+      try: () =>
+        git(repositoryGitArguments(path, ["--git-dir", path, "fsck", "--full", "--strict"])),
       catch: (cause) =>
         cause instanceof ForgeGitRepositoryError
           ? cause
@@ -1049,7 +1108,17 @@ const makeRepositoryService = (
     });
     const temporaryBundle = join(dirname(path), `.${input.repositoryRef}.${randomUUID()}.bundle`);
     yield* Effect.tryPromise({
-      try: () => git(["--git-dir", path, "bundle", "create", temporaryBundle, "--all"]),
+      try: () =>
+        git(
+          repositoryGitArguments(path, [
+            "--git-dir",
+            path,
+            "bundle",
+            "create",
+            temporaryBundle,
+            "--all",
+          ]),
+        ),
       catch: (cause) =>
         repositoryError("ForgeGitRepository.backup.bundle", "forge_git_backup_failed", 500, cause),
     });
@@ -1068,7 +1137,9 @@ const makeRepositoryService = (
     const receiptKey = `${bundleKey}.receipt.json`;
     const head = yield* Effect.tryPromise({
       try: () =>
-        git(["--git-dir", path, "rev-parse", "--verify", "HEAD"]).catch(() => ({
+        git(
+          repositoryGitArguments(path, ["--git-dir", path, "rev-parse", "--verify", "HEAD"]),
+        ).catch(() => ({
           stderr: "",
           stdout: new Uint8Array(),
         })),
