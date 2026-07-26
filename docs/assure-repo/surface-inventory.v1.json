@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:93989c44fc361e8069f695f6c18236fbc29bb167a8364e78d882f1dd8fbd89d8",
+  "sourceDigest": "sha256:b720b6908402d17e8e207107a80562f15528d9a88e15d0d33dbb28b250dd9ace",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -2219,7 +2219,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "packages/forge-protocol (3 tracked test files)"
+          "ref": "packages/forge-protocol (4 tracked test files)"
         }
       ],
       "obligation": {

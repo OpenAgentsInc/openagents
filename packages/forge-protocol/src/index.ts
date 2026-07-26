@@ -2,6 +2,7 @@ import { Schema as S } from "effect";
 
 export * from "./sol-claim-ledger.js";
 export * from "./conformance.js";
+export * from "./review-gates.js";
 
 export const ForgeProtocolSchemaVersion = S.Literal(
   "openagents.forge.protocol.v0.1",

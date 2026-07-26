@@ -48,3 +48,13 @@ Tenant rows also define optional external-fleet posture refs:
 `retention_policy_ref`. These are safe read-model fields for onboarding and
 policy display only. They do not grant API, Git, promotion, mirror, or artifact
 authority.
+
+FORGE-08 adds review gates and merge outcome receipts. `review-gates.ts`
+evaluates reviews, checks, verification ladder receipts, authority generation,
+and policy version for one exact proposed object ID. A new object ID makes prior
+review and check decisions historical. An unresolved change request blocks the
+signer call. The coordinator only receives a NIP-46 signer interface. It does
+not accept a private key. It stores a redacted receipt draft, signs the kind
+30618 state through that interface, finalizes the receipt, and only then lets a
+publisher make the signed state visible. A flaky result is never retried
+without bound. It must be human-tagged and record its final permitted attempt.
