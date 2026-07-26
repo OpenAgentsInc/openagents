@@ -79,6 +79,8 @@ const bindHumanPath = '/api/forge/membership/bind'
 const attachAgentPath = '/api/forge/membership/agents'
 const gitCredentialsPath = '/api/forge/membership/git-credentials'
 const bootstrapOwnerPath = '/api/forge/bootstrap-owner'
+const bootstrapOwnerGitCredentialsPath =
+  '/api/forge/bootstrap-owner/git-credentials'
 const gitAuthorizeInternalPath = '/internal/forge/git-authorize'
 const relayAdmitInternalPath = '/internal/forge/relay-admit'
 const collaborationReadAuthorizeInternalPath =
@@ -95,6 +97,7 @@ const bootstrapTenantRefs = new Set(['tenant.openagents', 'openagents'])
 const bootstrapTeamTenantRef = 'tenant.openagents'
 const bootstrapTeamRef = 'team_openagents_core'
 const bootstrapAdminAuthorizationHeader = 'x-openagents-admin-authorization'
+const bootstrapRepositoryRef = 'omega'
 
 const errorResponse = (error: unknown): Response => {
   if (error instanceof ForgeInvitePolicyError) {
@@ -272,6 +275,7 @@ export const makeForgeInviteMembershipRoutes = <
       path !== attachAgentPath &&
       path !== gitCredentialsPath &&
       path !== bootstrapOwnerPath &&
+      path !== bootstrapOwnerGitCredentialsPath &&
       path !== gitAuthorizeInternalPath &&
       path !== relayAdmitInternalPath &&
       path !== collaborationReadAuthorizeInternalPath &&
@@ -284,6 +288,104 @@ export const makeForgeInviteMembershipRoutes = <
     return routeEffect(async () => {
       const store = dependencies.makeMembershipStore(env)
       const nowIso = dependencies.nowIso()
+      if (path === bootstrapOwnerGitCredentialsPath) {
+        if (request.method !== 'POST') return methodNotAllowed(['POST'])
+        if (
+          dependencies.requireAdminApiToken === undefined ||
+          !(await dependencies.requireAdminApiToken(
+            requestWithBootstrapAdminAuthorization(request),
+            env,
+          ))
+        ) {
+          return unauthorized()
+        }
+        const { bytes, value } = await readJsonBytes(request)
+        const record = isRecord(value) ? value : undefined
+        const body =
+          record === undefined
+            ? undefined
+            : {
+                npub: requiredText(record, 'npub'),
+                tenantRef: requiredText(record, 'tenantRef'),
+              }
+        if (
+          body === undefined ||
+          body.npub === undefined ||
+          body.tenantRef === undefined ||
+          body.tenantRef !== bootstrapTeamTenantRef ||
+          requiredText(record ?? {}, 'repositoryRef') !==
+            bootstrapRepositoryRef ||
+          !Array.isArray(record?.scopes) ||
+          record.scopes.length !== 2 ||
+          !(record.scopes as unknown[]).every(
+            scope => scope === 'git:upload-pack' || scope === 'git:receive-pack',
+          )
+        ) {
+          return noStoreJsonResponse(
+            { error: 'forge_owner_bootstrap_git_credential_body_invalid' },
+            { status: 400 },
+          )
+        }
+        const ownerBody = body as Readonly<{ npub: string; tenantRef: string }>
+        const authorization = request.headers.get('authorization')
+        if (authorization?.startsWith('Nostr ') !== true) {
+          throw new ForgeInvitePolicyError({
+            code: 'credential_missing',
+            reason: 'A signed NIP-98 owner proof is required.',
+          })
+        }
+        const proof = await verifyForgeNip98Proof({
+          authorization,
+          body: bytes,
+          method: request.method,
+          nowIso,
+          url: request.url,
+        })
+        const pubkey = decodeForgeNpub(ownerBody.npub)
+        if (pubkey !== proof.actorPubkey) {
+          throw new ForgeInvitePolicyError({
+            code: 'credential_invalid',
+            reason: 'The signed NIP-98 key does not match the submitted npub.',
+          })
+        }
+        const owner = await store.readActorBindingByNostrPubkey(
+          ownerBody.tenantRef,
+          pubkey,
+        )
+        if (
+          owner?.membershipState !== 'active' ||
+          !owner.roleRefs.includes('forge:admin')
+        ) return forbidden()
+        const tokenRef = `forge_git_token.bootstrap.${randomUuid()}`
+        const credential = await dependencies.makeGitAuthStore(env).mintGitAccessToken({
+          expiresAt: new Date(Date.parse(nowIso) + 30 * 60 * 1_000).toISOString(),
+          nowIso,
+          refRestrictions: ['refs/heads/main'],
+          repositoryRef: bootstrapRepositoryRef,
+          scopes: ['git:upload-pack', 'git:receive-pack'],
+          sourceRefs: [
+            `forge_actor_binding:${owner.bindingRef}`,
+            `nip98:${proof.eventId}`,
+            'forge_owner_bootstrap_git_credentials:v1',
+          ],
+          subjectRef: owner.bindingRef,
+          tenantRef: ownerBody.tenantRef,
+          tokenRef,
+        })
+        return noStoreJsonResponse(
+          {
+            credential: {
+              expiresAt: credential.record.expires_at,
+              repositoryRef: bootstrapRepositoryRef,
+              scopes: credential.scopes.map(scope => scope.scope),
+              subjectBindingRef: owner.bindingRef,
+              token: credential.token,
+              tokenRef,
+            },
+          },
+          { status: 201 },
+        )
+      }
       if (path === bootstrapOwnerPath) {
         if (request.method !== 'POST') return methodNotAllowed(['POST'])
         if (
