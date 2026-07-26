@@ -1,0 +1,304 @@
+{
+  "canCloseIssue16": false,
+  "canCloseIssue16Basis": "This receipt satisfies omega#16 acceptance criterion 10 for 0.2.0-rc18. It is NOT sufficient basis to close omega#16, and the producer's framing that 'only criterion 10 remains' does not survive review. Criterion 8 is not met as literally worded: the editor journey ran on a profile seeded with the owner's public identity records, so it is an existing-identity result rather than the clean-user journey the criterion names -- the producer disclosed this plainly, but the Scope table still marks that row covered. The coordinator should either obtain a genuine pristine-profile journey, or scope criterion 8 explicitly, before closing. Closure is the coordinator's act and this reviewer does not perform it.",
+  "candidate": "0.2.0-rc18",
+  "candidateDigest": "sha256:83e79f68ede7cafa8262082f6c746bb5915e2fa086cde64336189db648ee0a37",
+  "disagreements": [
+    {
+      "criterion": "omega#16 -- where the .zed/settings.json classification is recorded",
+      "effectOnOutcome": "None. Editorial correction, recorded because it sits on the sentence omega#16's Falsifier names most directly.",
+      "producerClaim": "'the classification is recorded in script/omega-brand-gate.json rather than asserted here'",
+      "reviewerObservation": "script/omega-brand-gate.json does not contain it and structurally cannot. The classification exists in crates/app_identity/fixtures/compatibility_allowlist.json as '.zed project folders'. The substance of the producer's claim is correct; the citation is wrong."
+    },
+    {
+      "criterion": "omega#16 -- how prominent the Zed base keymap is",
+      "effectOnOutcome": "None on the Falsifier, which asks about classification and not prominence. Recorded so the record matches its own registry.",
+      "producerClaim": "'Zed in the Base Keymap list ... beside VS Code, JetBrains, Sublime Text and five others'",
+      "reviewerObservation": "Zed is the #[default] BaseKeymap and ships labelled 'Zed (Default)'. It is the default, not one of eight peers. The allow-list already names the exact string; the record understates it."
+    }
+  ],
+  "evidenceSha256": "sha256:0e59b765aaf84cec77f00363bc74e924b909f17a16cebfabccb105d51bdb0519",
+  "falsifierAssessment": {
+    "firstHalf": {
+      "verdict": "DOES NOT FIRE.",
+      "why": "This reviewer's own acceptance rests on none of those three. It rests on a notarized and stapled package assessment, a ticket that travels with a copy taken out of the image, byte digests of three shipped executables computed on both the image and the installed application, an uninstall the shipped cli binary actually PERFORMED, file descriptors of live processes, a validated 60-second socket capture bound to the shipped binary digest, and a negative control of the brand gate against a real Zed.app. Not one of those is a unit test, a source scan, or a screenshot."
+    },
+    "secondHalf": {
+      "verdict": "DOES NOT FIRE.",
+      "why": "Both disclosed state dependencies are classified, with owner, disposition and expiry, in the reviewed compatibility allow-list -- see the two findings below. No Zed service received a request. The data, cache, log, state and config roots are Omega's throughout, and the candidate holds zero Zed file descriptors against a live control of 52."
+    },
+    "text": "Unit tests, source scans, or screenshots are the only evidence, or the installed candidate exposes any unclassified Zed product, service, package, or state dependency."
+  },
+  "harnessRun": {
+    "disagreements": 0,
+    "outcome": "accepted",
+    "producerIdentityGap": "As in the earlier receipt: producerPubkeys holds a descriptive lane string, not a key, because no producer keypair is registered in AUTHORITY.md. The independence check therefore proves only that the reviewer key is not self-named. Real independence here rests on the reviewer key being held apart and on this reviewer having produced none of the evidence.",
+    "reproductions": "4 of 4 agree: artifact_digest, notarization, stapled_ticket, forbidden_strings",
+    "tool": "script/review-omega-candidate at the rc18 cut, from an isolated worktree"
+  },
+  "independence": {
+    "everyValueBelowRecomputed": "No digest, count or verdict in the 'recomputed' block was copied from a producer document. Each was computed from the disk image, the installed application, the running processes, or the source tree at the rc18 cut, and only then compared with the producer's claim.",
+    "producedNoneOfThisEvidence": true,
+    "ranFromIsolatedWorktree": "omega detached worktree at the rc18 cut 96306681f0, created outside the owner's dirty checkout",
+    "reviewerKeyNotInProducerPubkeys": true,
+    "staleCheckoutNote": "The owner's omega checkout is on a divergent local branch (0277d1f1ff) that does NOT contain the reviewer-harness fix 40e567f187 and still carries the --app argument. origin/main (a2cf201000) and the rc18 cut both contain the fix. This reviewer therefore ran every script from the rc18 cut, not from the working tree, and did not modify the owner's checkout."
+  },
+  "issue16CriteriaLedger": {
+    "10_independentReviewerAccepts": "SATISFIED BY THIS RECEIPT.",
+    "1_iconAndName": "HOLDS. CFBundleIconFile openagents-icon.icns (digest matches the release record), CFBundleName Omega.",
+    "2_noSurfacePresentsZed": "HOLDS. Eight classes 0 across three executables with live controls; brand gate exits 0 with a live negative control that exits 1 on real Zed.app.",
+    "3_noUnexpectedZedService": "HOLDS for the observed 60-second journey. Ten forbidden Zed hosts, none contacted; receipt validates and binds to the rc18 host binary. Scoped to that window and that journey.",
+    "4_separateRoots": "HOLDS. Verified on disk and from live file descriptors.",
+    "5_signingAndLegal": "HOLDS. Developer ID, HQWSG26L43, hardened runtime, notarized, stapled on image and on an extracted copy, three notices present with digests matching the release record.",
+    "6_matchesReleaseRecord": "HOLDS. Bound by this reviewer against omega-v0.2.0-rc18-macos-arm64.release.json; version, channel, artifact name, volume name and bundle identifier all match, and package_sha256 matches the digest computed from the DMG.",
+    "7_retainedIdentifiersAllowListed": "HOLDS. Both disclosed state dependencies are present in crates/app_identity/fixtures/compatibility_allowlist.json (28 entries, each with owner, disposition and expiry). The producer's citation of the wrong file is an editorial defect, not a gap in the allow-list.",
+    "8_cleanUserEditorJourney": "NOT ESTABLISHED ON THIS REVIEWER'S EVIDENCE, and only PARTLY established on the producer's. The journey ran on a profile SEEDED with the owner's three public identity records to get past the recovery gate, so by the producer's own disclosure it is an EXISTING-IDENTITY result, not the pristine clean-user journey the criterion names. This is disclosed in the record and is not concealed.",
+    "9_evidenceBindsDigests": "HOLDS on package, icon, notices and candidate. WEAKENED on source -- see the reproducibility finding below."
+  },
+  "obligationRef": "omega#16 acceptance criterion 10 -- 'An independent reviewer accepts the evidence.'",
+  "offlineFirstStartSubstitution": {
+    "loadBearingAssumptionVerified": "The substitution only holds if the denial is inherited by the candidate's children -- notably the omega-effectd engine. This reviewer verified inheritance empirically to two levels: sandboxed sh -> curl and sandboxed sh -> sh -> curl are both denied, while the same shell unsandboxed returns 200.",
+    "onTheDecision": "Declining to take the host network down while another lane was driving an unattended run was the correct call. Damaging a concurrent run to obtain a marginally broader control would have been the wrong trade.",
+    "question": "Is per-process network denial equivalent to an offline first start, or is it weaker?",
+    "reviewerReproduction": "Reproduced independently and strengthened. Under a (deny network*) sandbox profile, curl to zed.dev and to github.com both fail; unsandboxed, BOTH github.com and zed.dev return 200 inside the same two-second window.",
+    "strongerThanTheProducersOwnControl": "The producer showed only github.com reachable unsandboxed. This reviewer also showed ZED.DEV reachable unsandboxed (200). That is the control that matters: it proves zed.dev was reachable from this host at review time, so 'no request reached zed.dev' is a property of the product and not an artifact of an unreachable host.",
+    "theOneResidual": "Per-process denial does not exclude an UNSANDBOXED helper already running on the host relaying network-derived data to the candidate over IPC. A host outage would exclude that. The residual is small -- the engine child is spawned by the sandboxed parent and inherits the denial -- but it is the one respect in which the substitution is genuinely weaker, and it should be stated rather than glossed.",
+    "verdict": "MATERIALLY EQUIVALENT for the property under test, and STRONGER in one respect, with one named residual. This reviewer accepts it.",
+    "whyStronger": "It proves the property for the process under test rather than for the machine, and it isolates the result from anything else running on the host."
+  },
+  "outcome": "accepted",
+  "outcomeScope": "SCOPED. ACCEPTS omega#16 acceptance criterion 10 against the 0.2.0-rc18 candidate. Every package, brand, removal, isolation and network value in the producer record that can be recomputed on this host WAS recomputed from the artifact and the source tree, and all of them agree. The omega#16 Falsifier does not fire in either half. DOES NOT ACCEPT ON THIS REVIEWER'S OWN EVIDENCE: the clean-profile editor journey (criterion 8), which is a GUI observation this reviewer declined to reproduce because the owner's Omega was live with their Codex session attached; it is recorded as producer-reported, and it is an EXISTING-IDENTITY result by the producer's own disclosure, not a pristine clean-user one. DOES NOT ASSERT: that Omega is release-ready, that omega#8 or omega#9 are advanced, or that the custody state has moved. NOT AUTHORITY TO CLOSE omega#16.",
+  "producerPubkeys": [
+    "producer.omega.brand06.lane.claude-rc18-proof.2026-07-26"
+  ],
+  "producerRecord": "openagents docs/omega/2026-07-26-omega-rc18-installed-observation-proof.md (d461c93b66)",
+  "producerStandingNotes": {
+    "note1_sixNeedlesIsNotTheBrandScan": "CONFIRMED. FORBIDDEN_STRINGS is exactly six needles at the rc18 cut. The eight classes were run separately, with controls.",
+    "note2_reviewerToolWarningIsStale": "CONFIRMED, and independently traced. 40e567f187 IS an ancestor of the rc18 cut; at 96306681f0 the --app argument no longer exists and all four checks run inside `with mounted_candidate(args.candidate_dmg)`. The --app this reviewer first saw was an artifact of the owner's stale local branch, not of the candidate.",
+    "note3_phrasesRunAutomatically": "CONFIRMED. check_packaged_first_party_agent is called from the --app path."
+  },
+  "profile": "reviewer-extended.v1",
+  "readNotRecomputed": {
+    "items": [
+      "The clean-profile editor journey: open a project, edit and save a file, Git status, terminal, and restart restoration. This is a GUI observation on a second instance. The owner's Omega was live with their Codex session attached for the whole window, and this reviewer would not risk it.",
+      "The identity-first onboarding ordering read from rendered pixels (Your identity 0.167, Theme 0.385, Agent Setup 0.662).",
+      "The 57/57 path-set comparison and the 90-second zero-drift control window.",
+      "The secret-tripwire scans across the journey and owner profiles."
+    ],
+    "note": "Stated so a reader can see exactly where this receipt rests on the producer rather than on the reviewer."
+  },
+  "recommendations": [
+    "Correct the .zed/settings.json citation in the rc18 record to crates/app_identity/fixtures/compatibility_allowlist.json.",
+    "State in the record that Zed is the DEFAULT base keymap and ships labelled 'Zed (Default)', matching what the allow-list already says.",
+    "Split the omega#16 Scope row for the editor journey the way the terminal row was split: pristine-profile journey OPEN, existing-identity journey COVERED.",
+    "Cut release candidates from a clean tree, or record a digest of the working-tree delta, so source.dirty = true stops undermining the source binding.",
+    "Commit the network-capture receipt, or record its digest in the producer record, so it is durably bound rather than living in a shared scratchpad.",
+    "Add the dry-run pre-flight gate (abort unless every planned path is inside the isolated root) to the removal reproduction instructions, given that a lane destroyed the owner's Zed today by omitting the HOME override.",
+    "Rebase or reset the owner's omega checkout onto origin/main so script/review-omega-candidate is not run from a branch that predates 40e567f187.",
+    "Consider relabelling the default keymap preset 'Default' while keeping a distinct 'Zed' preset -- an owner product judgement, not a review blocker."
+  ],
+  "recomputedFromTheArtifact": {
+    "brandGate": {
+      "candidate": "script/verify-omega-brand --app <candidate> exits 0",
+      "negativeControl": "THE SAME GATE, run read-only against the host's real /Applications/Zed.app, exits 1 with 19+ findings (CFBundleDisplayName 'Zed', CFBundleIdentifier 'dev.zed.Zed', and so on). The gate is live and discriminating, so the candidate's exit 0 is a result rather than a no-op.",
+      "phrasesRunAutomatically": "Confirms the producer's third standing note: check_packaged_first_party_agent is invoked inside --app at line 1427. No hand-run is needed."
+    },
+    "eightBrandClasses": {
+      "/Applications/Zed.app": "0 / 0 / 0",
+      "You are the Zed coding agent": "0 / 0 / 0",
+      "Zed Editor request header": "0 / 0 / 0",
+      "Zed has been uninstalled": "0 / 0 / 0",
+      "Zed in the signed Info.plist": "0",
+      "embedded zed_* image assets": "0",
+      "in Zed": "0 / 0 / 0",
+      "note": "Run against ALL THREE shipped executables from the read-only mount, not only the host binary.",
+      "positiveControls": {
+        "Omega (cli)": 19,
+        "Omega (omega)": 389,
+        "Omega (omega-identity-proof)": 4,
+        "Omega Agent (omega)": 11
+      },
+      "verdict": "Reproduces the producer's counts exactly, including the 389/11/19 controls. The controls are live, so the eight zeros are results and not a broken scan.",
+      "zed launcher invocations (--existing / --classic / zed <path>)": "0 / 0 / 0"
+    },
+    "harnessNeedles": {
+      "note": "Confirms the producer's first standing note: six needles is NOT omega#16's eight-class scan, and a clean harness result must not be read as satisfying omega#16's brand criteria. This reviewer ran the eight classes separately, above.",
+      "result": "Each of the six FORBIDDEN_STRINGS gives 0 against the candidate omega binary; the control 'Omega Agent' gives 11."
+    },
+    "installedIsTheCandidate": {
+      "cdHash": "bb404eb3d71759e48762f68574a9ba2f0363da8e (image == installed)",
+      "cfBundleVersion": "20260726.091602 (image == installed)",
+      "cliBinarySha256": "f240095133d092dc0465b45df4dd63a85811bccacaecce610d5ff7453e9eac53 (image == installed)",
+      "engineBundleSha256": "6922c83e05c89bc7a6ef44cc0f752a895a70b0cb1964d9c20613c538facd089c (image == installed)",
+      "hostBinarySha256": "4b2a5e9a845233edda18664cb72a1c236db76772a123ddd730b9a50b05ce50e9 (image == installed)",
+      "identityProofBinarySha256": "dee3d046c44eecc9e26a94d7521679b5147858ab7f03f140ddbd3a71b286b098 (image == installed)",
+      "method": "Three independent identifiers, each computed on BOTH the read-only mount and /Applications.",
+      "verdict": "No substitution. The installed application IS the rc18 candidate on all three identifiers, and on all three executables plus the engine bundle."
+    },
+    "networkCapture": {
+      "allowlistFixtureDigest": "734b53f107a364168fb2ae10856dfdb57311f3405dfe494979ed25cd7aaee0e7, which matches crates/app_identity/fixtures/endpoint_allowlist.json at the rc18 cut.",
+      "bindsToCandidate": "The receipt records installed_binary.sha256 and root_process.binary_sha256 as 4b2a5e9a845233ed..., which this reviewer independently confirmed is the rc18 host binary.",
+      "destinations": "3 -- an IPv6 Cloudflare address for cdn.agentclientprotocol.com:443, lb-140-82-114-6-iad.github.com:443, and localhost:11434. forbidden_hosts_detected, unreviewed_hosts and unresolved_destinations are all empty.",
+      "forbiddenZedHosts": "10 -- zed.dev, www, api, api-staging, cloud, collab, staging, staging-collab, status and merch. All blocked-by-default with a named override (OMEGA_ALLOW_ZED_SERVICES=1). NONE received a request.",
+      "residual": "The receipt is an uncommitted file in a shared scratchpad, so it is not durably bound to the record. It validates today; it should be committed or its digest recorded in the producer record.",
+      "validate": "script/omega-network-capture-journey validate --candidate-digest 83e79f68... exits 0. Validation re-derives the classification rather than trusting the receipt.",
+      "window": "60 s (2026-07-26T10:30:05Z -> 10:31:05Z)"
+    },
+    "package": {
+      "bundleMetadata": "com.openagents.omega.rc / Omega / 0.2.0 / openagents-icon.icns",
+      "codesignVerifyDeepStrict": "valid on disk; satisfies its Designated Requirement",
+      "dmgSha256": "83e79f68ede7cafa8262082f6c746bb5915e2fa086cde64336189db648ee0a37",
+      "hardenedRuntime": "flags=0x10000(runtime)",
+      "licensesOnImage": "LICENSE-APACHE, LICENSE-GPL, licenses.md all present",
+      "spctlExec": "accepted, source=Notarized Developer ID",
+      "spctlInstall": "accepted, source=Notarized Developer ID, origin=Developer ID Application: OpenAgents, Inc. (HQWSG26L43)",
+      "stapleDmg": "valid -- 'The validate action worked!'",
+      "stapleExtractedCopy": "valid -- the ticket travels with a copy taken out of the read-only mount",
+      "teamIdentifier": "HQWSG26L43"
+    },
+    "releaseRecordBinding": {
+      "matches": {
+        "artifact_name": "Omega-v0.2.0-rc18-macos-arm64.dmg",
+        "bundle_identifier": "com.openagents.omega.rc",
+        "cargo_lock_sha256": "ee2d742d... -- matches Cargo.lock.omega-v0.2.0-rc18 byte for byte",
+        "legal notices": "All three digests (LICENSE-APACHE 752daf2f..., LICENSE-GPL 0aa0322e..., licenses.md c7139500...) match the files on the image exactly.",
+        "notarization": "submitted_and_stapled -- agrees with this reviewer's stapler and spctl results",
+        "package_sha256": "83e79f68... -- matches the digest this reviewer computed from the DMG",
+        "pinned_icns_sha256": "f6d748c1... -- matches Contents/Resources/openagents-icon.icns in the image",
+        "product/channel/version": "Omega / rc / 0.2.0-rc18",
+        "source.commit": "96306681f0ba7b61efa752241f0a2659170648a6 -- matches the rc18 cut",
+        "team_id + signing_identity": "HQWSG26L43, Developer ID Application: OpenAgents, Inc. (HQWSG26L43)",
+        "volume_name": "Omega RC"
+      },
+      "note": "NEITHER the producer record NOR the earlier rc18 receipt bound the candidate to a release record; the producer states it read no value from one. This reviewer located the generated record and performed that binding, which is omega#16 criteria 6 and 9.",
+      "record": "target/omega-rc/omega-v0.2.0-rc18-macos-arm64.release.json",
+      "verdict": "Criteria 6 and 9 bind end to end: source commit, package, icon, notices and candidate digests all agree with the artifact."
+    },
+    "removalPerformedByReviewer": {
+      "afterBundle": "gone -- 0 files, 0 bytes",
+      "afterRoots": "all 8 unconditional roots gone; the held-back .config/omega-rc correctly KEPT",
+      "decoyDigestNote": "This reviewer's decoy digest differs from the producer's 852706930985a2ff... because the planted file CONTENTS differ. The invariant under test is before == after, not the literal value.",
+      "decoyZed": "7 sibling shapes, 14 files. 14/14 survive. Digest 43b56c10608360c28c612ea5e7ac4a2ed3c88d5191e3e312bd64b160d6ea6f87 identical before and after.",
+      "hostUntouched": "/Applications/Zed.app present, /Applications/Omega.app present and byte-identical, owner pid 50537 still running.",
+      "method": "Performed, not read. A copy extracted from the read-only mount was placed at <ISO>/Applications/Omega.app under an isolated HOME. It never pointed at /Applications.",
+      "plan": "9 removal paths, every one an Omega path; the application bundle is the FIRST entry; 1 held-back path (.config/omega-rc); 0 Zed paths; 0 entries naming Contents/MacOS.",
+      "safetyGateFirst": "OMEGA_UNINSTALL_DRY_RUN=1 was run FIRST and its plan was checked programmatically: the run aborts if any planned path falls outside the isolated root. This empirically established that the HOME override is honoured BEFORE anything was deleted -- the check whose absence destroyed the owner's Zed earlier today.",
+      "verdict": "REPRODUCED IN FULL."
+    },
+    "renderedHelp": {
+      "brokenScanCaught": "The first attempt at this check used timeout(1), which does not exist on this host. Every command failed and every grep returned 0 -- a false clean. It was caught by the missing control and re-run. Recorded because it is exactly the failure mode the control discipline exists to catch.",
+      "cli --help": "0 zed hits",
+      "cliVersion": "`cli --version` reports 'Omega 0.2.0' -- correct product, no Zed",
+      "controls": "'Omega' appears 6 times in omega --help and 20 times in cli --help, so both scans read real output",
+      "omega --help": "1 zed hit -- the legacy `zed://` scheme, which is allow-listed"
+    },
+    "terminalChord": {
+      "binding": "\"ctrl-`\": \"terminal_panel::Toggle\" at assets/keymaps/default-macos.json line 711 at cut 96306681f0 -- exactly as cited.",
+      "compiledIn": "terminal_panel::Toggle appears 8 times in the shipped host binary, against a control of 22 for workspace::Save.",
+      "verdict": "The producer's substance is accurate: the binding ships and the action exists. Only DELIVERY -- a physical keypress reaching the action -- is unresolved, and it genuinely needs one owner keypress."
+    },
+    "zedIsolationDescriptors": {
+      "engineChild_pid50658": "0 zed-matching, control 4 omega-matching",
+      "liveControlAddedByReviewer": "The owner's RUNNING Zed (pid 77676) holds 52 zed-matching open paths. The same lsof expression that returns 0 on the candidate returns 52 on a process that really does open Zed paths. This control is the reviewer's addition and it is what converts the zero from 'the scan found nothing' into 'the scan works, and found nothing'.",
+      "ownerRunningRc18_pid50537": "0 zed-matching open paths, against a control of 14 omega-matching paths out of 123 total",
+      "separateRootsOnDisk": "Application Support: 'Omega RC' vs 'Zed'. Logs, Caches and .config: 'omega-rc' vs 'Zed'/'zed'. Distinct in every root.",
+      "zedConfigRoots": "0 descriptors under Application Support/Zed, Caches/Zed, dev.zed.*, Logs/Zed or /.zed/"
+    }
+  },
+  "removalProofAssessment": {
+    "reviewerAddition": "This reviewer added a programmatic pre-flight gate that aborts unless every planned path lies inside the isolated root, and confirmed from the dry-run plan that the HOME override is honoured BEFORE deleting anything. Given that a lane destroyed the owner's Zed today by omitting exactly that override, this gate belongs in the reproduction instructions.",
+    "verdict": "ACCEPTED, and reproduced in full by this reviewer rather than read.",
+    "why": "The decoy design is the right one: seven sibling Zed shapes, fourteen files, digested before and after, so a removal that was merely too narrow and a removal that was correctly scoped are distinguishable. Holding back the config root and prompting for it is correct behaviour, and the plan naming the bundle FIRST is the specific defect from rc16 (omega#92) staying fixed."
+  },
+  "reviewedAt": "2026-07-26T11:08:02Z",
+  "reviewerOriginatedFindings": [
+    {
+      "detail": "omega-v0.2.0-rc18-macos-arm64.release.json records source.commit 96306681f0ba7b61... together with \"dirty\": true, and carries no digest of the uncommitted delta. So the recorded commit does NOT fully determine the bytes that were built, and the candidate cannot be rebuilt from the record.",
+      "finding": "The rc18 release record declares source.dirty = true.",
+      "recommendation": "Cut release candidates from a clean tree, or record a digest of the working-tree delta in the release record.",
+      "relatedTo": "This is a plausible contributing explanation for the cli non-reproducibility the producer flagged (811c788a... -> f2400951... with crates/cli untouched). A dirty tree can change output without the crate changing. This reviewer did not isolate the cause and does not claim to have.",
+      "severity": "Does not fire omega#16's Falsifier and does not affect any brand conclusion, all of which were computed from the shipped bytes rather than from source. It does weaken criterion 9's 'binds source', and it undercuts any future argument that carries a result between cuts on the ground that a crate did not change."
+    },
+    {
+      "detail": "gh release list stops at v0.2.0-rc17; v0.2.0-rc18 is not found. The binding above is to the locally generated release record, which is the correct artifact, but there is no published release to point a third party at.",
+      "finding": "No published GitHub release exists for rc18.",
+      "severity": "Informational. Criterion 6 is satisfied by the generated record; a coordinator closing omega#16 should know the candidate is an unpublished cut."
+    },
+    {
+      "detail": "Local HEAD 0277d1f1ff does not contain 40e567f187 and still carries the --app argument defaulting to /Applications/Omega.app. origin/main and the rc18 cut both contain the fix. A future reviewer running script/review-omega-candidate from that working tree would silently get the OLD, unbound harness.",
+      "finding": "The owner's omega checkout is on a divergent branch missing the reviewer-harness fix.",
+      "severity": "Operational. It does not affect this review, which ran everything from the rc18 cut, but it is a live trap."
+    },
+    {
+      "detail": "The earlier rc18 receipt records allDmgsDetached: true. That mount is still present. Both of this reviewer's own mounts were detached. It was left in place because it belongs to another lane.",
+      "finding": "A read-only DMG mount from a previous review lane is still attached at /private/tmp/rev26-rc18-mnt.",
+      "severity": "Housekeeping only."
+    }
+  ],
+  "reviewerPubkey": "0326d8f9eb5abea63d9613ac90451dfce62ca2e9855144b5a71d8e8569932974",
+  "reviewerSignature": "2c8ebcde3b7ee9090e1cdd80d7d69d40aca87b8addf5fc930bce9a6735ee129a287b13376fa9393a5828dfb79e8d6e60a20b20da021206f79a449bc10a5d09b9",
+  "safety": {
+    "allReviewerDmgMountsDetached": true,
+    "allReviewerDmgMountsReadOnly": true,
+    "codexAuthJsonSha256After": "d9d38c2cad564f472f8d481b3056fbfd0d2372849aae888683eaa9a5aa9e1ab5",
+    "codexAuthJsonSha256Before": "d9d38c2cad564f472f8d481b3056fbfd0d2372849aae888683eaa9a5aa9e1ab5",
+    "codexConfigTomlSha256After": "b0bc2e00bdba80188b9678cb56743f9ab0b715e0ba749d81f176e56ed404b3a1",
+    "codexConfigTomlSha256Before": "b0bc2e00bdba80188b9678cb56743f9ab0b715e0ba749d81f176e56ed404b3a1",
+    "codexHomeUnchanged": true,
+    "codexLoginRun": false,
+    "foreignMountLeftInPlace": "/private/tmp/rev26-rc18-mnt, from a prior lane, not this reviewer's to detach",
+    "installedOmegaUnchanged": "4b2a5e9a845233ed... before and after",
+    "ownerCheckoutsModified": false,
+    "ownerTranscriptWrittenTo": false,
+    "runningOmegaPid": "50537 before and after; uptime advanced continuously 01:21 -> 01:40, never restarted",
+    "runningOmegaRestarted": false,
+    "uninstallPreFlightGateUsed": true,
+    "uninstallRunAgainstRealApplications": false,
+    "uninstallRunUnderIsolatedHomeOnly": true,
+    "zedStillInstalled": true
+  },
+  "satisfiesIssue16IndependentReviewLine": true,
+  "schema": "openagents.assurance.independent-review.v1",
+  "terminalChordPresentationAssessment": {
+    "confirmed": "The Scope table now splits the row -- 'Open a terminal, by the palette' covered, 'Open a terminal, by the shipped chord' OPEN with 'delivery unresolved' -- and chord delivery is gap 4 of 4 in 'What still blocks a close'. A reader of the summary tables alone now learns that chord delivery is unresolved. The substance was independently re-verified: the binding is at line 711 exactly as cited, and the action is compiled in.",
+    "priorFinding": "The earlier rc18 receipt found the chord item HONEST IN SUBSTANCE BUT MISFILED: absent from the gap list, and the Scope table marked the terminal row 'covered' with no caveat.",
+    "verdict": "CORRECTED. The tables no longer over-report."
+  },
+  "theTwoDisclosedStateDependencies": {
+    "dotZedSettingsJson": {
+      "butTheCitationIsWrong": {
+        "finding": "THAT CITATION IS FALSE. script/omega-brand-gate.json contains no .zed/settings.json entry; the string 'settings.json' does not appear in that file at all. It also could not appear: brand.words deliberately excludes lowercase 'zed', and the prose inventory admits only literals with at least three whitespace-separated tokens and two alphabetic words, which a bare path fails by construction.",
+        "fix": "Change the citation in the record to crates/app_identity/fixtures/compatibility_allowlist.json.",
+        "producerSentence": "'It is classified, and the classification is recorded in script/omega-brand-gate.json rather than asserted here.'",
+        "severity": "EDITORIAL, NOT SUBSTANTIVE -- but on the single sentence the Falsifier names most directly. The classification genuinely exists, in crates/app_identity/fixtures/compatibility_allowlist.json. A reader who followed the producer's citation to check the load-bearing claim would find nothing and could reasonably conclude the dependency was unclassified. This reviewer nearly recorded exactly that before finding the correct file, which is the argument for recomputation over proofreading."
+      },
+      "isItClassified": "YES. crates/app_identity/fixtures/compatibility_allowlist.json carries the entry '.zed project folders', disposition approved_compatibility, expiry until-omega-project-dir, reason 'Project-local .zed directories remain for settings and extension compatibility with upstream projects.' That file's stated policy is verbatim omega#16 criterion 7: 'Every remaining intentional Zed identifier in Omega must appear here with owner, disposition, and expiry.'",
+      "isItReal": "YES, and it is live, not a test artifact. crates/paths/src/paths.rs at the rc18 cut defines local_settings_folder_name() -> \".zed\" and local_settings_file_relative_path() -> \".zed/settings.json\", and crates/project and crates/settings read project-local settings through them.",
+      "verdict": "The Falsifier does NOT fire. The dependency is a lookup path, not a claim: a user meets it only as a folder name inside their own repository, and renaming it would silently stop matching existing project settings for no brand benefit. It is classified in the correct registry, with an expiry that keeps it from becoming permanent by default."
+    },
+    "reviewerNoteOnMethod": "This is the judgement omega#16 turns on, so it was not taken from the producer's table. This reviewer swept the shipped host binary independently and found 1009 case-insensitive zed hits and 47 distinct capital-Z 'Zed' word contexts -- far more than the eight classes probe. Each was then chased to a classification or to a disabled-service surface.",
+    "zedBaseKeymap": {
+      "isItClassified": "YES, and more precisely than the producer stated. The same allow-list carries the entry \"base_keymap values 'Zed' and 'Zed (Default)'\", disposition required_attribution, expiry none, reason: 'Names Zed's own keymap preset, sitting beside VS Code, JetBrains, Sublime Text and Atom. The value is what a user writes in keymap settings and what ai_zed.svg labels; substituting Omega would claim a preset that is not Omega's.' script/omega-brand-gate.json independently carries the matching icon allowance for assets/icons/ai_zed.svg.",
+      "recommendationNotABlocker": "Consider relabelling the preset 'Default' (or 'Omega (Default)') while keeping a distinct 'Zed' preset for users who want Zed's bindings. That would remove the last prominent Zed string from first run without breaking any keymap value. This is a product judgement for the owner, not a review blocker.",
+      "verdict": "The Falsifier does NOT fire: the allow-list entry names the exact 'Zed (Default)' string, so the default is classified, not overlooked, and required_attribution is the honest disposition -- Omega inherited Zed's keybinding scheme and naming that scheme after its author is attribution, not a publisher claim. But the producer's record should say 'the default', not 'beside five others'. The registry is more candid than the record that cites it.",
+      "whatTheProducerUnderstated": "The record presents it as one option 'beside VS Code, JetBrains, Sublime Text and five others'. That is true but incomplete. This reviewer read the source: BaseKeymap::Zed carries #[default], and the shipped picker label is literally 'Zed (Default)' (OPTIONS[0], compiled into the host binary, 3 occurrences). So it is not merely one of eight -- it is THE default, and '(Default)' is rendered next to the word Zed on the first-run screen. That makes it the most prominent Zed string a new user meets."
+    }
+  },
+  "whatRemainsRegardless": {
+    "issue16OpenItems": [
+      "The custody-path tripwire is unproduced. It requires an identity recovery with the owner's material, which no agent should touch.",
+      "Terminal chord delivery needs one owner keypress.",
+      "The clean-user editor journey is an existing-identity result, not a pristine one.",
+      "screen-reader-output remains WAIVED, not passed. high-contrast and reduced-motion remain BLOCKED."
+    ],
+    "issues8And9": "omega#8 and omega#9 remain blocked on ONE OWNER ACT: a single identity recovery performed in the product, which moves custody from Incomplete to Ready. That act is not this reviewer's to judge or to perform, and NOTHING in this receipt advances, satisfies or implies resolution of it. This receipt concerns omega#16 criterion 10 only.",
+    "note": "Stated so this receipt cannot be read as resolving more than it does."
+  },
+  "zedIsolationMethodAssessment": {
+    "question": "Is the replacement for the unsound whole-tree digest adequate?",
+    "rankingTheThreeOracles": "The descriptor oracle is the strongest of the three, because it is a capability observation rather than a sampling one: a process that never opened a Zed path cannot have modified one. The path-set and per-file oracles are sampling observations and cannot exclude a write made and reverted inside the window. That residual is worth naming, and the descriptor result covers it.",
+    "reviewerContribution": "Reproduced the descriptor oracle on the owner's live rc18 (0 zed / 14 omega / 123 total; engine child 0 zed / 4 omega) and added the missing live positive control (running Zed pid 77676 holds 52 zed paths).",
+    "verdict": "SOUND, and materially better than what it replaces.",
+    "why": "The whole-tree digest failed for a stated and correct reason -- Zed writes its own database log while running, so the tree drifts independently of the candidate. The replacement attacks exactly that: a used-path set, a controlled per-file diff, and a 90-second zero-drift control window that makes 'zero changed' a result rather than a too-short sample. Recording the control window is the part that makes it honest."
+  }
+}
