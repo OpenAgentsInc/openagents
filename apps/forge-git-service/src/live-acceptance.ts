@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { generateSecretKey, getPublicKey } from "nostr-effect/pure";
-import { Config, Effect, Redacted } from "effect";
+import { Cause, Config, Effect, Exit, Redacted } from "effect";
 
 import { makeD1ForgeInviteMembershipStore } from "../../openagents.com/workers/api/src/forge-invite-membership-store.js";
 import { makeD1ForgeTenantGitAuthStore } from "../../openagents.com/workers/api/src/forge-tenant-git-auth-store.js";
@@ -381,15 +381,20 @@ const program = Effect.gen(function* () {
   );
 });
 
-Effect.runPromise(program).catch((error: unknown) => {
+const redactFailure = (value: string): string =>
+  value
+    .replace(/oa_forge_git_[A-Za-z0-9_-]+/g, "<redacted>")
+    .replace(/(postgres(?:ql)?:\/\/[^:\s/]+:)[^@\s/]+(@)/gi, "$1<redacted>$2");
+
+Effect.runPromiseExit(program).then((exit) => {
+  if (Exit.isSuccess(exit)) {
+    return;
+  }
   console.error(
     JSON.stringify({
       schemaVersion: "openagents.forge_git.live_transport_receipt.v1",
       result: "failed",
-      error:
-        error instanceof Error
-          ? error.message.replace(/oa_forge_git_[A-Za-z0-9_-]+/g, "<redacted>")
-          : "unknown",
+      error: redactFailure(Cause.pretty(exit.cause)),
     }),
   );
   process.exitCode = 1;
