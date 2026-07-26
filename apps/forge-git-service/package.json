@@ -5,7 +5,7 @@
   "description": "Owned Smart HTTP Git service for invited OpenAgents Forge repositories.",
   "type": "module",
   "scripts": {
-    "build": "vp pack src/main.ts src/live-acceptance.ts --format esm --platform node --target node24 --out-dir dist && cp ../openagents.com/workers/api/migrations/0316_forge_invite_membership.sql dist/0316_forge_invite_membership.sql",
+    "build": "vp pack src/main.ts src/live-acceptance.ts --format esm --platform node --target node24 --out-dir dist",
     "deploy": "bash scripts/deploy-cloudrun.sh",
     "serve": "node --import tsx src/main.ts",
     "test": "vp test --run apps/forge-git-service/src",

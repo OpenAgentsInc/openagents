@@ -57,7 +57,7 @@ const bytesToHex = (bytes: Uint8Array): string =>
 
 const sha256 = (value: string): string => createHash("sha256").update(value).digest("hex");
 
-const applyForgeMembershipMigration = async (
+const inspectDatabaseAuthority = async (
   databaseUrl: string,
 ): Promise<
   Readonly<{
@@ -66,18 +66,11 @@ const applyForgeMembershipMigration = async (
     userName: string;
   }>
 > => {
-  const migrationSql = await readFile(
-    join(import.meta.dirname, "0316_forge_invite_membership.sql"),
-    "utf8",
-  );
   const sql = postgres(databaseUrl, {
     max: 1,
     prepare: false,
   });
   try {
-    await sql.begin(async (transaction) => {
-      await transaction.unsafe(migrationSql);
-    });
     const [authority] = await sql<
       ReadonlyArray<{
         database_name: string;
@@ -195,7 +188,7 @@ const runAcceptance = async ({
   sourceRevision,
 }: AcceptanceOptions): Promise<void> => {
   const baseUrl = configuredBaseUrl.replace(/\/+$/, "");
-  const databaseAuthority = await applyForgeMembershipMigration(databaseUrl);
+  const databaseAuthority = await inspectDatabaseAuthority(databaseUrl);
   if (databaseAuthority.userName !== "khala_app" || !databaseAuthority.forgeTenantReadWrite) {
     throw new Error(
       `Acceptance database authority mismatch: user=${databaseAuthority.userName}, database=${databaseAuthority.databaseName}, forgeTenantReadWrite=${databaseAuthority.forgeTenantReadWrite}`,
