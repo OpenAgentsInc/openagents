@@ -86,6 +86,18 @@ describe('Cloud Run Vite Plus bundle contract', () => {
       'OPENAGENTS_FORGE_READ_BASE_URL: "https://forge-git-ezxz4mgdsq-uc.a.run.app"',
     )
     expect(productionEnvironment).toContain(
+      'OPENAGENTS_FORGE_GIT_SERVICE_BASE_URL: "https://forge-git-ezxz4mgdsq-uc.a.run.app"',
+    )
+    expect(productionEnvironment).toContain(
+      'OPENAGENTS_FORGE_GITHUB_MIRROR_REGISTRY:',
+    )
+    expect(productionEnvironment).toContain(
+      '"destinationGithubRef":"refs/heads/main"',
+    )
+    expect(productionEnvironment).toContain(
+      '"destinationGithubRef":"refs/tags/forge-omega-import-2026-07-26"',
+    )
+    expect(productionEnvironment).toContain(
       'OPENAGENTS_FORGE_PUBLIC_WEB_READ_REPOSITORIES: "tenant.openagents/omega"',
     )
   })
