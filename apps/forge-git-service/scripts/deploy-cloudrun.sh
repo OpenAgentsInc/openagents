@@ -28,6 +28,16 @@ node "$REPO_ROOT/scripts/google-cloud-authority-guard.mjs"
 cd "$APP_DIR"
 pnpm run build
 
+RUNTIME_DEPLOY_DIR="$(mktemp -d)"
+trap 'rm -rf "$RUNTIME_DEPLOY_DIR" "$APP_DIR/dist/node_modules"' EXIT
+(cd "$REPO_ROOT" && CI=true pnpm --config.ignore-scripts=true \
+  --config.node-linker=hoisted \
+  --config.allow-unused-patches=true \
+  --filter @openagentsinc/forge-git-service deploy "$RUNTIME_DEPLOY_DIR" \
+  --prod --legacy)
+mv "$RUNTIME_DEPLOY_DIR/node_modules" "$APP_DIR/dist/node_modules"
+(cd "$REPO_ROOT" && CI=true pnpm install --frozen-lockfile --ignore-scripts >/dev/null)
+
 NFS_IP="$(
   gcloud compute instances describe "$NFS_INSTANCE" \
     --project "$PROJECT" \
@@ -67,5 +77,9 @@ SERVICE_URL="$(
     --format='value(status.url)'
 )"
 
-curl -fsS "${SERVICE_URL}/internal/healthz"
+gcloud compute ssh "$NFS_INSTANCE" \
+  --project "$PROJECT" \
+  --zone "$ZONE" \
+  --tunnel-through-iap \
+  --command "curl -fsS '${SERVICE_URL}/internal/healthz'"
 echo
