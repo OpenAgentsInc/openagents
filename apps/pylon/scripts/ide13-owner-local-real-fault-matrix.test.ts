@@ -129,12 +129,12 @@ test.each([
     message: "checkpoint store crash proof candidate is not an ancestor",
   },
   {
-    name: "base",
+    name: "base ancestry",
     mutate: (receipt: Record<string, unknown>) => ({
       ...receipt,
-      baseCommitSha: "f6c4c669d032ad5c06518c7cbe6e7a6788ab540d",
+      baseCommitSha: "0000000000000000000000000000000000000000",
     }),
-    message: "checkpoint store crash proof base does not match the fault matrix",
+    message: "checkpoint store crash proof base is not an ancestor of recovery candidate",
   },
   {
     name: "identity",
@@ -173,6 +173,32 @@ test.each([
     await expect(
       runIde13OwnerLocalRealFaultMatrix({ recoveryReceiptPath, repositoryRoot }),
     ).rejects.toThrow(message);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("uses the recovery proof's stable ancestor base instead of the verifier branch base", async () => {
+  const root = await mkdtemp(join(tmpdir(), "ide13-owner-local-stable-base-test-"));
+  const repositoryRoot = resolve(import.meta.dirname, "../../..");
+  const sourcePath = join(
+    repositoryRoot,
+    "apps/openagents-desktop/benchmarks/ide/2026-07-20-ide-13-owner-local-recovery-faults.json",
+  );
+  const recoveryReceiptPath = join(root, "recovery.json");
+  const stableAncestorBase = "f6c4c669d032ad5c06518c7cbe6e7a6788ab540d";
+  try {
+    const source = JSON.parse(await readFile(sourcePath, "utf8")) as Record<string, unknown>;
+    await writeFile(
+      recoveryReceiptPath,
+      `${JSON.stringify({ ...source, baseCommitSha: stableAncestorBase })}\n`,
+      "utf8",
+    );
+    const receipt = await runIde13OwnerLocalRealFaultMatrix({
+      recoveryReceiptPath,
+      repositoryRoot,
+    });
+    expect(receipt.baseCommitSha).toBe(stableAncestorBase);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
