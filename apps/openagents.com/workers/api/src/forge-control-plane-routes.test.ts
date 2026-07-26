@@ -1,3 +1,8 @@
+/* oxlint-disable openagents/no-manual-effect-runtime-in-tests -- @effect/vitest does not support the repository Effect 4 line. */
+import {
+  type ForgeGitHubMirrorIntent,
+  ForgeGitHubMirrorObservedState,
+} from '@openagentsinc/forge-protocol'
 import { Effect } from 'effect'
 import { readFileSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
@@ -19,6 +24,11 @@ import {
   type ForgeGitHubMirrorStore,
   makeD1ForgeGitHubMirrorStore,
 } from './forge-github-mirror-store'
+import {
+  ForgeOwnedCanonicalMirrorError,
+  type ForgeOwnedCanonicalMirrorService,
+  makeForgeGitHubMirrorWorker,
+} from './forge-github-mirror-worker'
 
 class SqliteD1Statement {
   private bound: ReadonlyArray<unknown> = []
@@ -214,6 +224,148 @@ const makeMirrorGitHubFetch = (
   return { calls, fetchMock }
 }
 
+const makeRouteMirrorWorker = (
+  input: Readonly<{
+    canonicalStore: ForgeGitCanonicalStore
+    fetch: typeof fetch
+    mirrorStore: ForgeGitHubMirrorStore
+    token?: string | undefined
+  }>,
+) => {
+  const observe = async (intent: ForgeGitHubMirrorIntent) => {
+    if (input.token === undefined || input.token === '') {
+      throw new ForgeOwnedCanonicalMirrorError({
+        operation: 'RouteTestMirror.observe',
+        reason: 'forge_github_mirror_token_missing',
+        retryable: false,
+      })
+    }
+    const response = await input.fetch(
+      `https://api.github.com/repos/${intent.destination_github_repository}/git/ref/${intent.destination_github_ref.replace('refs/', '')}`,
+    )
+    if (!response.ok) {
+      throw new ForgeOwnedCanonicalMirrorError({
+        operation: 'RouteTestMirror.observe',
+        reason: `forge_github_mirror_destination_lookup_http_${response.status}`,
+        retryable: response.status >= 500,
+      })
+    }
+    const body = (await response.json()) as { object?: { sha?: unknown } }
+    const destinationObjectId =
+      typeof body.object?.sha === 'string' ? body.object.sha : null
+    return ForgeGitHubMirrorObservedState.make({
+      schema: 'openagents.forge.github_mirror.observed_state.v0.1',
+      authority_generation: intent.authority_generation,
+      authority_mode: intent.authority_mode,
+      destination_github_ref: intent.destination_github_ref,
+      destination_github_repository: intent.destination_github_repository,
+      destination_object_id: destinationObjectId,
+      divergence:
+        destinationObjectId === intent.source_object_id
+          ? 'in_sync'
+          : 'source_ahead',
+      error_reason: null,
+      intent_ref: intent.intent_ref,
+      observation_ref: `observation.route-test.${intent.intent_ref}`,
+      observed_at: now,
+      redacted: true,
+      repository_ref: intent.repository_ref,
+      source_object_id: intent.source_object_id,
+      source_ref: intent.source_ref,
+      source_refs: [intent.intent_ref],
+      tenant_ref: intent.tenant_ref,
+    })
+  }
+  const canonical: ForgeOwnedCanonicalMirrorService = {
+    describe: request =>
+      Effect.tryPromise({
+        try: async () => {
+          const ref = await input.canonicalStore.readRef(
+            request.tenantRef,
+            request.repositoryRef,
+            request.sourceRef,
+          )
+          return {
+            authorityGeneration: 1,
+            authorityMode: 'openagents_git_authoritative' as const,
+            destinationGithubRef: request.sourceRef,
+            destinationGithubRepository: 'OpenAgentsInc/openagents',
+            repositoryRef: request.repositoryRef,
+            sourceObjectId: ref?.object_id ?? null,
+            sourceRef: request.sourceRef,
+            sourceRefs: ['canonical-owned-service:route-test'],
+            tenantRef: request.tenantRef,
+          }
+        },
+        catch: () =>
+          new ForgeOwnedCanonicalMirrorError({
+            operation: 'RouteTestMirror.describe',
+            reason: 'forge_owned_canonical_read_failed',
+            retryable: false,
+          }),
+      }),
+    observe: intent =>
+      Effect.tryPromise({
+        try: () => observe(intent),
+        catch: error =>
+          error instanceof ForgeOwnedCanonicalMirrorError
+            ? error
+            : new ForgeOwnedCanonicalMirrorError({
+                operation: 'RouteTestMirror.observe',
+                reason: 'forge_github_mirror_observe_failed',
+                retryable: false,
+              }),
+      }),
+    project: intent =>
+      Effect.tryPromise({
+        try: async () => {
+          if (input.token === undefined || input.token === '') {
+            throw new ForgeOwnedCanonicalMirrorError({
+              operation: 'RouteTestMirror.project',
+              reason: 'forge_github_mirror_token_missing',
+              retryable: false,
+            })
+          }
+          const response = await input.fetch(
+            `https://api.github.com/repos/${intent.destination_github_repository}/git/refs/${intent.destination_github_ref.replace('refs/', '')}`,
+            {
+              body: JSON.stringify({
+                force: false,
+                sha: intent.source_object_id,
+              }),
+              method: 'PATCH',
+            },
+          )
+          if (!response.ok) {
+            throw new ForgeOwnedCanonicalMirrorError({
+              operation: 'RouteTestMirror.project',
+              reason: `forge_github_mirror_ref_update_http_${response.status}`,
+              retryable: response.status >= 500,
+            })
+          }
+          return ForgeGitHubMirrorObservedState.make({
+            ...(await observe(intent)),
+            destination_object_id: intent.source_object_id,
+            divergence: 'in_sync',
+          })
+        },
+        catch: error =>
+          error instanceof ForgeOwnedCanonicalMirrorError
+            ? error
+            : new ForgeOwnedCanonicalMirrorError({
+                operation: 'RouteTestMirror.project',
+                reason: 'forge_github_mirror_project_failed',
+                retryable: false,
+              }),
+      }),
+  }
+  return makeForgeGitHubMirrorWorker({
+    canonical,
+    nowIso: () => now,
+    store: input.mirrorStore,
+  })
+}
+
 type JsonRequestInit = Omit<RequestInit, 'body'> & Readonly<{ json?: unknown }>
 
 const requestJson = (path: string, init: JsonRequestInit = {}): Request =>
@@ -240,12 +392,17 @@ const makeHarness = (
       authorizeForgeControlPlaneBearer(request, controlPlaneToken, scope),
     fetch: input.fetch ?? makeGitHubFetch(),
     makeCanonicalStore: () => canonicalStore,
+    makeGitHubMirrorWorker: () =>
+      makeRouteMirrorWorker({
+        canonicalStore,
+        fetch: input.fetch ?? makeGitHubFetch(),
+        mirrorStore,
+        token: Object.prototype.hasOwnProperty.call(input, 'mirrorGitHubToken')
+          ? input.mirrorGitHubToken
+          : 'github-mirror-token',
+      }),
     makeGitHubMirrorStore: () => mirrorStore,
     makeStore: () => coordinationStore,
-    mirrorGitHubToken: () =>
-      Object.prototype.hasOwnProperty.call(input, 'mirrorGitHubToken')
-        ? input.mirrorGitHubToken
-        : 'github-mirror-token',
     nowIso: () => now,
     requireAdminApiToken: () => Promise.resolve(false),
   })
@@ -796,7 +953,11 @@ describe('Forge control-plane routes', () => {
       destination_github_ref: 'refs/heads/main',
       status: 'mirrored',
     })
-    expect(github.calls.map(call => call.method)).toEqual(['GET', 'PATCH'])
+    expect(github.calls.map(call => call.method)).toEqual([
+      'GET',
+      'PATCH',
+      'GET',
+    ])
     expect(github.calls.find(call => call.method === 'PATCH')?.body).toBe(
       JSON.stringify({ force: false, sha: headB }),
     )
@@ -820,7 +981,12 @@ describe('Forge control-plane routes', () => {
       attempt_count: 1,
       status: 'mirrored',
     })
-    expect(github.calls.map(call => call.method)).toEqual(['GET', 'PATCH'])
+    expect(github.calls.map(call => call.method)).toEqual([
+      'GET',
+      'PATCH',
+      'GET',
+      'GET',
+    ])
 
     const listResponse = await run(
       new Request(
@@ -833,6 +999,39 @@ describe('Forge control-plane routes', () => {
     }
     expect(listResponse.status).toBe(200)
     expect(listBody.mirrorReceipts).toHaveLength(1)
+  })
+
+  test('exposes honest mirror health without coordination authority', async () => {
+    const github = makeMirrorGitHubFetch({ currentSha: headA })
+    const { canonicalStore, run } = makeHarness({ fetch: github.fetchMock })
+    await importCanonicalMain(canonicalStore, headB)
+
+    const response = await run(
+      new Request(
+        'https://openagents.com/api/forge/github-mirror/health?tenantRef=tenant.openagents&repositoryRef=repo.openagents.openagents&sourceRef=refs%2Fheads%2Fmain',
+        { headers: authHeaders('forge:mirror:read') },
+      ),
+    )
+    const body = (await response.json()) as {
+      mirrorAffectsCoordination: boolean
+      mirrorHealth: {
+        coordination_authority: boolean
+        destination_object_id: string
+        divergence: string
+        freshness: string
+        source_object_id: string
+      }
+    }
+
+    expect(response.status).toBe(200)
+    expect(body.mirrorAffectsCoordination).toBe(false)
+    expect(body.mirrorHealth).toMatchObject({
+      coordination_authority: false,
+      destination_object_id: headA,
+      divergence: 'source_ahead',
+      freshness: 'fresh',
+      source_object_id: headB,
+    })
   })
 
   // Regression coverage for the #8282 Promise.all landmine audit
@@ -859,9 +1058,15 @@ describe('Forge control-plane routes', () => {
         authorizeForgeControlPlaneBearer(request, controlPlaneToken, scope),
       fetch: github.fetchMock,
       makeCanonicalStore: () => canonicalStore,
+      makeGitHubMirrorWorker: () =>
+        makeRouteMirrorWorker({
+          canonicalStore,
+          fetch: github.fetchMock,
+          mirrorStore: guardedMirrorStore,
+          token: 'github-mirror-token',
+        }),
       makeGitHubMirrorStore: () => guardedMirrorStore,
       makeStore: () => coordinationStore,
-      mirrorGitHubToken: () => 'github-mirror-token',
       nowIso: () => now,
       requireAdminApiToken: () => Promise.resolve(false),
     })
@@ -984,20 +1189,16 @@ describe('Forge control-plane routes', () => {
     )
     const body = (await response.json()) as {
       attention: { reasonRefs: ReadonlyArray<string>; state: string }
-      mirrorReceipts: ReadonlyArray<{ refusal_reason: string; status: string }>
+      erroredCount: number
+      erroredPromotionRefs: ReadonlyArray<string>
       refusedCount: number
     }
 
     expect(response.status).toBe(200)
-    expect(body.refusedCount).toBe(1)
-    expect(body.attention.state).toBe('needs_attention')
-    expect(body.attention.reasonRefs).toContain(
-      'forge_github_mirror_requires_approved_promotion',
-    )
-    expect(body.mirrorReceipts[0]).toMatchObject({
-      refusal_reason: 'forge_github_mirror_requires_approved_promotion',
-      status: 'refused',
-    })
+    expect(body.refusedCount).toBe(0)
+    expect(body.erroredCount).toBe(1)
+    expect(body.erroredPromotionRefs).toEqual(['promotion.forge.6796'])
+    expect(body.attention.state).toBe('clear')
     expect(github.calls).toHaveLength(0)
   })
 

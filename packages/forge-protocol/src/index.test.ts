@@ -9,6 +9,9 @@ import {
   decodeForgeDispatchLeaseRow,
   decodeForgeGitAccessTokenRow,
   decodeForgeGitAccessTokenScopeRow,
+  decodeForgeGitHubMirrorHealth,
+  decodeForgeGitHubMirrorIntent,
+  decodeForgeGitHubMirrorObservedState,
   decodeForgeGitHubMirrorReceipt,
   decodeForgeGitPackfileArchiveRow,
   decodeForgeDispatchCloseout,
@@ -356,7 +359,7 @@ describe("@openagentsinc/forge-protocol", () => {
     expect(promotion.decision).toBe("approved");
     expect(promotion.promoted_head).toBe(verification.head_head);
     expect(promotion.queue_position).toBe(0);
-    expect(promotion.gate_results.map(result => result.gate_ref)).toEqual([
+    expect(promotion.gate_results.map((result) => result.gate_ref)).toEqual([
       "gate.merge-deploy",
       "gate.issue-close-safe",
     ]);
@@ -365,6 +368,41 @@ describe("@openagentsinc/forge-protocol", () => {
       throw new Error("expected approved promotion to carry promoted_head");
     }
 
+    const intent = decodeForgeGitHubMirrorIntent({
+      schema: "openagents.forge.github_mirror.intent.v0.1",
+      tenant_ref: "tenant.openagents",
+      intent_ref: "intent.forge.github-mirror.6768",
+      promotion_ref: promotion.promotion_ref,
+      repository_ref: "repo.openagents.openagents",
+      authority_mode: "openagents_git_authoritative",
+      authority_generation: 2,
+      source_ref: promotion.target_ref,
+      source_object_id: promotedHead,
+      destination_github_repository: "OpenAgentsInc/openagents",
+      destination_github_ref: "refs/heads/main",
+      requested_at: "2026-06-28T16:03:00.000Z",
+      source_refs: [promotion.promotion_ref],
+      redacted: true,
+    });
+    const observed = decodeForgeGitHubMirrorObservedState({
+      schema: "openagents.forge.github_mirror.observed_state.v0.1",
+      tenant_ref: intent.tenant_ref,
+      observation_ref: "observation.forge.github-mirror.6768",
+      intent_ref: intent.intent_ref,
+      repository_ref: intent.repository_ref,
+      authority_mode: intent.authority_mode,
+      authority_generation: intent.authority_generation,
+      source_ref: intent.source_ref,
+      source_object_id: intent.source_object_id,
+      destination_github_repository: intent.destination_github_repository,
+      destination_github_ref: intent.destination_github_ref,
+      destination_object_id: promotedHead,
+      divergence: "in_sync",
+      observed_at: "2026-06-28T16:03:02.000Z",
+      error_reason: null,
+      source_refs: [intent.intent_ref],
+      redacted: true,
+    });
     const mirror = decodeForgeGitHubMirrorReceipt({
       schema: "openagents.forge.github_mirror.receipt.v0.1",
       tenant_ref: "tenant.openagents",
@@ -388,5 +426,32 @@ describe("@openagentsinc/forge-protocol", () => {
     });
     expect(mirror.commit_id).toBe(promotedHead);
     expect(mirror.status).toBe("mirrored");
+
+    const health = decodeForgeGitHubMirrorHealth({
+      schema: "openagents.forge.github_mirror.health.v0.1",
+      tenant_ref: intent.tenant_ref,
+      repository_ref: intent.repository_ref,
+      authority_mode: intent.authority_mode,
+      authority_generation: intent.authority_generation,
+      source_ref: intent.source_ref,
+      source_object_id: intent.source_object_id,
+      destination_github_repository: intent.destination_github_repository,
+      destination_github_ref: intent.destination_github_ref,
+      destination_object_id: observed.destination_object_id,
+      last_mirrored_ref: intent.destination_github_ref,
+      last_mirrored_object_id: promotedHead,
+      last_mirrored_at: mirror.completed_at,
+      divergence: observed.divergence,
+      freshness: "fresh",
+      stale_after_seconds: 300,
+      observed_at: observed.observed_at,
+      error_reason: null,
+      receipt_ref: mirror.mirror_ref,
+      source_refs: [intent.intent_ref, observed.observation_ref],
+      coordination_authority: false,
+      redacted: true,
+    });
+    expect(health.coordination_authority).toBe(false);
+    expect(health.divergence).toBe("in_sync");
   });
 });

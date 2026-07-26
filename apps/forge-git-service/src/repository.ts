@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import {
   chmod,
   lstat,
+  mkdtemp,
   mkdir,
   readFile,
   readdir,
@@ -12,15 +13,17 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { tmpdir } from "node:os";
 
 import { BlobStore } from "@openagentsinc/oa-infra/blob-store";
 import type { BlobStoreShape } from "@openagentsinc/oa-infra/blob-store";
-import { Context, Effect, Layer, Option } from "effect";
+import { Context, Effect, Layer, Option, Redacted } from "effect";
 
 import { ForgeGitConfiguration, type ForgeGitConfigurationShape } from "./config.js";
 import {
   ForgeGitBackupReceipt,
   ForgeGitMirrorReceipt,
+  ForgeGitMirrorObservation,
   ForgeGitPackEvidence,
   ForgeGitRef,
   ForgeGitRepositoryError,
@@ -61,6 +64,12 @@ export interface ForgeGitRepositoryShape {
     readonly repositoryRef: string;
     readonly tenantRef: string;
   }) => Effect.Effect<ReadonlyArray<ForgeGitRef>, ForgeGitRepositoryError>;
+  readonly observeMirror: (
+    input: ForgeGitMirrorInput,
+  ) => Effect.Effect<ForgeGitMirrorObservation, ForgeGitRepositoryError>;
+  readonly projectMirror: (
+    input: ForgeGitMirrorInput,
+  ) => Effect.Effect<ForgeGitMirrorObservation, ForgeGitRepositoryError>;
   readonly receivePack: (input: {
     readonly body: ReadableStream<Uint8Array> | null;
     readonly gitProtocol?: string;
@@ -82,6 +91,16 @@ export interface ForgeGitRepositoryShape {
     readonly tenantRef: string;
   }) => Effect.Effect<void, ForgeGitRepositoryError>;
 }
+
+export type ForgeGitMirrorInput = Readonly<{
+  authorizationHeader?: Redacted.Redacted<string> | undefined;
+  destinationRef: string;
+  destinationUrl: string;
+  expectedSourceObjectId: string;
+  repositoryRef: string;
+  sourceRef: string;
+  tenantRef: string;
+}>;
 
 export class ForgeGitRepository extends Context.Service<
   ForgeGitRepository,
@@ -106,6 +125,45 @@ const gitEnvironment = (
   ...(gitProtocol === undefined ? {} : { GIT_PROTOCOL: gitProtocol }),
   OPENAGENTS_FORGE_ALLOWED_REFS_JSON: JSON.stringify(refRestrictions),
 });
+
+const mirrorEnvironment = (
+  authorizationHeader: Redacted.Redacted<string> | undefined,
+): NodeJS.ProcessEnv => {
+  const environment = gitEnvironment(undefined);
+  if (authorizationHeader === undefined) return environment;
+  return {
+    ...environment,
+    GIT_CONFIG_COUNT: "1",
+    GIT_CONFIG_KEY_0: "http.extraHeader",
+    GIT_CONFIG_VALUE_0: Redacted.value(authorizationHeader),
+  };
+};
+
+const assertMirrorRef = (ref: string, operation: string): void => {
+  if (!/^refs\/(?:heads|tags)\/[^\s~^:?*\\[]+$/u.test(ref) || ref.includes("..")) {
+    throw repositoryError(operation, "forge_git_mirror_ref_invalid", 400);
+  }
+};
+
+const assertMirrorDestination = (destinationUrl: string): void => {
+  if (destinationUrl.includes("\n") || destinationUrl.includes("\r")) {
+    throw repositoryError(
+      "ForgeGitRepository.assertMirrorDestination",
+      "forge_git_mirror_destination_invalid",
+      400,
+    );
+  }
+  if (/^https?:\/\//iu.test(destinationUrl)) {
+    const parsed = new URL(destinationUrl);
+    if (parsed.username !== "" || parsed.password !== "") {
+      throw repositoryError(
+        "ForgeGitRepository.assertMirrorDestination",
+        "forge_git_mirror_destination_contains_credentials",
+        400,
+      );
+    }
+  }
+};
 
 const collect = async (
   stream: NodeJS.ReadableStream,
@@ -548,6 +606,181 @@ const makeRepositoryService = (
     });
   });
 
+  const observeMirror = Effect.fn("ForgeGitRepository.observeMirror")(function* (
+    input: Parameters<ForgeGitRepositoryShape["observeMirror"]>[0],
+  ) {
+    const observation = yield* Effect.tryPromise({
+      try: async () => {
+        assertMirrorRef(input.sourceRef, "ForgeGitRepository.observeMirror.sourceRef");
+        assertMirrorRef(input.destinationRef, "ForgeGitRepository.observeMirror.destinationRef");
+        assertMirrorDestination(input.destinationUrl);
+        const path = await requireRepository(input.tenantRef, input.repositoryRef);
+        const source = await git(["--git-dir", path, "rev-parse", "--verify", input.sourceRef]);
+        const sourceObjectId = textDecoder.decode(source.stdout).trim().toLowerCase();
+        if (sourceObjectId !== input.expectedSourceObjectId.toLowerCase()) {
+          throw repositoryError(
+            "ForgeGitRepository.observeMirror",
+            "forge_git_mirror_source_object_mismatch",
+            409,
+          );
+        }
+
+        const destination = await git(
+          ["ls-remote", "--refs", input.destinationUrl, input.destinationRef],
+          { env: mirrorEnvironment(input.authorizationHeader) },
+        );
+        const destinationLine = textDecoder.decode(destination.stdout).trim();
+        const destinationObjectId =
+          destinationLine === "" ? null : (destinationLine.split(/\s+/u)[0]?.toLowerCase() ?? null);
+        const observedAt = new Date().toISOString();
+        if (destinationObjectId === null) {
+          return ForgeGitMirrorObservation.make({
+            destinationObjectId: null,
+            divergence: "destination_missing",
+            observedAt,
+            sourceObjectId,
+          });
+        }
+        if (destinationObjectId === sourceObjectId) {
+          return ForgeGitMirrorObservation.make({
+            destinationObjectId,
+            divergence: "in_sync",
+            observedAt,
+            sourceObjectId,
+          });
+        }
+
+        const comparison = await mkdtemp(join(tmpdir(), "oa-forge-mirror-observation-"));
+        try {
+          await git(["init", "--bare", comparison]);
+          await git([
+            "--git-dir",
+            comparison,
+            "fetch",
+            "--no-tags",
+            path,
+            `${input.sourceRef}:refs/openagents/source`,
+          ]);
+          await git(
+            [
+              "--git-dir",
+              comparison,
+              "fetch",
+              "--no-tags",
+              input.destinationUrl,
+              `${input.destinationRef}:refs/openagents/destination`,
+            ],
+            { env: mirrorEnvironment(input.authorizationHeader) },
+          );
+          const isAncestor = async (ancestor: string, descendant: string): Promise<boolean> => {
+            try {
+              await git([
+                "--git-dir",
+                comparison,
+                "merge-base",
+                "--is-ancestor",
+                ancestor,
+                descendant,
+              ]);
+              return true;
+            } catch {
+              return false;
+            }
+          };
+          const destinationIsAncestor = await isAncestor(
+            "refs/openagents/destination",
+            "refs/openagents/source",
+          );
+          const sourceIsAncestor = await isAncestor(
+            "refs/openagents/source",
+            "refs/openagents/destination",
+          );
+          return ForgeGitMirrorObservation.make({
+            destinationObjectId,
+            divergence: destinationIsAncestor
+              ? "source_ahead"
+              : sourceIsAncestor
+                ? "destination_ahead"
+                : "diverged",
+            observedAt,
+            sourceObjectId,
+          });
+        } finally {
+          await rm(comparison, { force: true, recursive: true });
+        }
+      },
+      catch: (cause) =>
+        cause instanceof ForgeGitRepositoryError
+          ? cause
+          : repositoryError(
+              "ForgeGitRepository.observeMirror",
+              "forge_git_mirror_observation_failed",
+              502,
+              cause,
+            ),
+    });
+    return observation;
+  });
+
+  const projectMirror = Effect.fn("ForgeGitRepository.projectMirror")(function* (
+    input: Parameters<ForgeGitRepositoryShape["projectMirror"]>[0],
+  ) {
+    const before = yield* observeMirror(input);
+    if (before.divergence === "in_sync") return before;
+    const path = yield* Effect.tryPromise({
+      try: () => requireRepository(input.tenantRef, input.repositoryRef),
+      catch: (cause) =>
+        cause instanceof ForgeGitRepositoryError
+          ? cause
+          : repositoryError(
+              "ForgeGitRepository.projectMirror.repository",
+              "forge_git_repository_unavailable",
+              500,
+              cause,
+            ),
+    });
+    yield* Effect.tryPromise({
+      try: () =>
+        git(
+          [
+            "--git-dir",
+            path,
+            "push",
+            "--porcelain",
+            input.destinationUrl,
+            `${input.sourceRef}:${input.destinationRef}`,
+          ],
+          { env: mirrorEnvironment(input.authorizationHeader) },
+        ),
+      catch: (cause) =>
+        cause instanceof ForgeGitRepositoryError
+          ? repositoryError(
+              "ForgeGitRepository.projectMirror",
+              "forge_git_mirror_projection_rejected",
+              409,
+              cause,
+            )
+          : repositoryError(
+              "ForgeGitRepository.projectMirror",
+              "forge_git_mirror_projection_failed",
+              502,
+              cause,
+            ),
+    });
+    const after = yield* observeMirror(input);
+    if (
+      after.divergence !== "in_sync" ||
+      after.destinationObjectId?.toLowerCase() !== input.expectedSourceObjectId.toLowerCase()
+    ) {
+      return yield* repositoryError(
+        "ForgeGitRepository.projectMirror",
+        "forge_git_mirror_post_projection_mismatch",
+        502,
+      );
+    }
+    return after;
+  });
+
   const receivePack = Effect.fn("ForgeGitRepository.receivePack")(function* (
     input: Parameters<ForgeGitRepositoryShape["receivePack"]>[0],
   ) {
@@ -833,6 +1066,8 @@ const makeRepositoryService = (
     advertise,
     backup,
     listRefs,
+    observeMirror,
+    projectMirror,
     receivePack,
     restore,
     uploadPack,

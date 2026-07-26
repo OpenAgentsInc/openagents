@@ -181,6 +181,33 @@ export const ForgeGitHubMirrorStatus = S.Literals([
 ]);
 export type ForgeGitHubMirrorStatus = typeof ForgeGitHubMirrorStatus.Type;
 
+export const ForgeRepositoryAuthorityMode = S.Literals([
+  "github_authoritative",
+  "openagents_git_authoritative",
+]);
+export type ForgeRepositoryAuthorityMode =
+  typeof ForgeRepositoryAuthorityMode.Type;
+
+export const ForgeGitHubMirrorDivergence = S.Literals([
+  "in_sync",
+  "source_ahead",
+  "destination_ahead",
+  "diverged",
+  "destination_missing",
+  "unknown",
+  "not_applicable",
+]);
+export type ForgeGitHubMirrorDivergence =
+  typeof ForgeGitHubMirrorDivergence.Type;
+
+export const ForgeGitHubMirrorFreshness = S.Literals([
+  "fresh",
+  "stale",
+  "never_observed",
+  "not_applicable",
+]);
+export type ForgeGitHubMirrorFreshness = typeof ForgeGitHubMirrorFreshness.Type;
+
 export const ForgePromotionGateVerdict = S.Literals([
   "passed",
   "blocked",
@@ -500,6 +527,72 @@ export const ForgePromotionDecisionReceipt = S.Struct({
 export type ForgePromotionDecisionReceipt =
   typeof ForgePromotionDecisionReceipt.Type;
 
+export const ForgeGitHubMirrorIntent = S.Struct({
+  schema: S.Literal("openagents.forge.github_mirror.intent.v0.1"),
+  tenant_ref: S.String,
+  intent_ref: S.String,
+  promotion_ref: S.String,
+  repository_ref: S.String,
+  authority_mode: ForgeRepositoryAuthorityMode,
+  authority_generation: S.Number,
+  source_ref: S.String,
+  source_object_id: S.String,
+  destination_github_repository: S.String,
+  destination_github_ref: S.String,
+  requested_at: S.String,
+  source_refs: S.Array(S.String),
+  redacted: S.Literal(true),
+});
+export type ForgeGitHubMirrorIntent = typeof ForgeGitHubMirrorIntent.Type;
+
+export const ForgeGitHubMirrorObservedState = S.Struct({
+  schema: S.Literal("openagents.forge.github_mirror.observed_state.v0.1"),
+  tenant_ref: S.String,
+  observation_ref: S.String,
+  intent_ref: S.String,
+  repository_ref: S.String,
+  authority_mode: ForgeRepositoryAuthorityMode,
+  authority_generation: S.Number,
+  source_ref: S.String,
+  source_object_id: S.NullOr(S.String),
+  destination_github_repository: S.String,
+  destination_github_ref: S.String,
+  destination_object_id: S.NullOr(S.String),
+  divergence: ForgeGitHubMirrorDivergence,
+  observed_at: S.String,
+  error_reason: S.NullOr(S.String),
+  source_refs: S.Array(S.String),
+  redacted: S.Literal(true),
+});
+export type ForgeGitHubMirrorObservedState =
+  typeof ForgeGitHubMirrorObservedState.Type;
+
+export const ForgeGitHubMirrorHealth = S.Struct({
+  schema: S.Literal("openagents.forge.github_mirror.health.v0.1"),
+  tenant_ref: S.String,
+  repository_ref: S.String,
+  authority_mode: ForgeRepositoryAuthorityMode,
+  authority_generation: S.Number,
+  source_ref: S.String,
+  source_object_id: S.NullOr(S.String),
+  destination_github_repository: S.String,
+  destination_github_ref: S.String,
+  destination_object_id: S.NullOr(S.String),
+  last_mirrored_ref: S.NullOr(S.String),
+  last_mirrored_object_id: S.NullOr(S.String),
+  last_mirrored_at: S.NullOr(S.String),
+  divergence: ForgeGitHubMirrorDivergence,
+  freshness: ForgeGitHubMirrorFreshness,
+  stale_after_seconds: S.Number,
+  observed_at: S.NullOr(S.String),
+  error_reason: S.NullOr(S.String),
+  receipt_ref: S.NullOr(S.String),
+  source_refs: S.Array(S.String),
+  coordination_authority: S.Literal(false),
+  redacted: S.Literal(true),
+});
+export type ForgeGitHubMirrorHealth = typeof ForgeGitHubMirrorHealth.Type;
+
 export const ForgeGitHubMirrorReceipt = S.Struct({
   schema: S.Literal("openagents.forge.github_mirror.receipt.v0.1"),
   tenant_ref: S.String,
@@ -521,8 +614,7 @@ export const ForgeGitHubMirrorReceipt = S.Struct({
   source_refs: S.Array(S.String),
   redacted: S.Literal(true),
 });
-export type ForgeGitHubMirrorReceipt =
-  typeof ForgeGitHubMirrorReceipt.Type;
+export type ForgeGitHubMirrorReceipt = typeof ForgeGitHubMirrorReceipt.Type;
 
 export const ForgeDispatchMessage = S.Union([
   ForgeDispatchWorkItem,
@@ -589,6 +681,15 @@ export const decodeForgeVerificationReceipt = S.decodeUnknownSync(
 );
 export const decodeForgePromotionDecisionReceipt = S.decodeUnknownSync(
   ForgePromotionDecisionReceipt,
+);
+export const decodeForgeGitHubMirrorIntent = S.decodeUnknownSync(
+  ForgeGitHubMirrorIntent,
+);
+export const decodeForgeGitHubMirrorObservedState = S.decodeUnknownSync(
+  ForgeGitHubMirrorObservedState,
+);
+export const decodeForgeGitHubMirrorHealth = S.decodeUnknownSync(
+  ForgeGitHubMirrorHealth,
 );
 export const decodeForgeGitHubMirrorReceipt = S.decodeUnknownSync(
   ForgeGitHubMirrorReceipt,

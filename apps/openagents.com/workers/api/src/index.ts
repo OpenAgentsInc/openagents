@@ -479,6 +479,10 @@ import {
 } from './forge-domain-store'
 import { makeForgeGitIntakeRoutes } from './forge-git-intake-routes'
 import { makeForgeInviteMembershipRoutes } from './forge-invite-membership-routes'
+import {
+  makeForgeGitHubMirrorWorker,
+  makeUnavailableForgeOwnedCanonicalMirrorService,
+} from './forge-github-mirror-worker'
 import { makeForumRoutes } from './forum-routes'
 import { forumWorkRequestRelayPublisherForEnv } from './forum-work-request-live-publisher'
 import { forumContentDatabaseForEnv } from './forum/forum-content-store'
@@ -1881,21 +1885,6 @@ const getForgeGitServiceAuthToken = (
 
   return token === undefined || token.trim() === '' ? undefined : token
 }
-
-const getForgeGitHubMirrorToken = (
-  env: OpenAgentsWorkerConfigEnv,
-): string | undefined => {
-  const token = redactedValue(
-    getOpenAgentsWorkerConfig(env).forgeGithubMirrorToken,
-  )
-
-  if (token === undefined || token.trim() === '') {
-    return undefined
-  }
-
-  return token
-}
-
 const errorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
 
@@ -16144,10 +16133,15 @@ const routeRequest = makeWorkerRouteRequest({
         ),
       makeCanonicalStore: storeEnv =>
         makeForgeGitCanonicalStoreForEnv(storeEnv),
+      makeGitHubMirrorWorker: storeEnv =>
+        makeForgeGitHubMirrorWorker({
+          canonical: makeUnavailableForgeOwnedCanonicalMirrorService(),
+          nowIso: currentIsoTimestamp,
+          store: makeForgeGitHubMirrorStoreForEnv(storeEnv),
+        }),
       makeGitHubMirrorStore: storeEnv =>
         makeForgeGitHubMirrorStoreForEnv(storeEnv),
       makeStore: storeEnv => makeForgeCoordinationStoreForEnv(storeEnv),
-      mirrorGitHubToken: storeEnv => getForgeGitHubMirrorToken(storeEnv),
       nowIso: currentIsoTimestamp,
       routeInviteMembershipRequest: (membershipRequest, membershipEnv) =>
         forgeInviteMembershipRoutes.routeForgeInviteMembershipRequest(

@@ -34,6 +34,26 @@ export const ForgeGitRef = Schema.Struct({
 });
 export interface ForgeGitRef extends Schema.Schema.Type<typeof ForgeGitRef> {}
 
+export const ForgeGitMirrorDivergence = Schema.Literals([
+  "in_sync",
+  "source_ahead",
+  "destination_ahead",
+  "diverged",
+  "destination_missing",
+  "unknown",
+]);
+export type ForgeGitMirrorDivergence = typeof ForgeGitMirrorDivergence.Type;
+
+export const ForgeGitMirrorObservation = Schema.Struct({
+  destinationObjectId: Schema.NullOr(Schema.String),
+  divergence: ForgeGitMirrorDivergence,
+  observedAt: Schema.String,
+  sourceObjectId: Schema.String,
+});
+export interface ForgeGitMirrorObservation extends Schema.Schema.Type<
+  typeof ForgeGitMirrorObservation
+> {}
+
 export const ForgeGitPackEvidence = Schema.Struct({
   bytes: Schema.Number,
   objectKey: Schema.String,
