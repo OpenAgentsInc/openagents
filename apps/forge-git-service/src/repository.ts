@@ -925,7 +925,11 @@ const makeRepositoryService = (
             "--no-tags",
             path,
             `${input.sourceRef}:refs/openagents/source`,
-          ]);
+          ]).catch((cause) =>
+            Promise.reject(
+              mirrorStageError("ForgeGitRepository.observeMirror", "source_fetch", cause),
+            ),
+          );
           await git([
             "--git-dir",
             comparison,
