@@ -181,6 +181,14 @@ const makeAcceptanceD1Client = async (databaseUrl: string): Promise<PostgresD1Cl
   };
 };
 
+const runStage = async <A>(stage: string, operation: () => Promise<A>): Promise<A> => {
+  try {
+    return await operation();
+  } catch (cause) {
+    throw new Error(`Acceptance stage failed: ${stage}`, { cause });
+  }
+};
+
 const runAcceptance = async ({
   baseUrl: configuredBaseUrl,
   databaseUrl,
@@ -227,11 +235,13 @@ const runAcceptance = async ({
     nowIso: () => nowIso,
   });
 
-  await tokens.upsertTenant({
-    displayName: "OpenAgents",
-    nowIso,
-    tenantRef,
-  });
+  await runStage("tenant-upsert", () =>
+    tokens.upsertTenant({
+      displayName: "OpenAgents",
+      nowIso,
+      tenantRef,
+    }),
+  );
 
   const inviteCreated = await invites.createOrRefreshInvite({
     email: acceptanceEmail,
