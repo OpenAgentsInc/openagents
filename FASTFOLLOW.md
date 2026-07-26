@@ -1,14 +1,14 @@
 ---
 fast_follow_spec_format_version: "0.1"
 fast_follow_spec_id: "openagents.fast_follow"
-fast_follow_revision: 6
+fast_follow_revision: 7
 title: "OpenAgents Fast Follow"
 artifact_type: "learning_intent"
 lifecycle_state: "admitted"
 author: "OpenAgents"
 linked_target_repo: "OpenAgentsInc/openagents"
 created_at: "2026-07-16T00:00:00Z"
-updated_at: "2026-07-23T23:31:00Z"
+updated_at: "2026-07-26T00:00:00Z"
 ---
 
 # OpenAgents Fast Follow
@@ -1239,6 +1239,44 @@ sequence. The ordered Amp `initial_program` stays unchanged.
         "kind": "architecture",
         "summary": "Reject the Nostr relay event log as chat or receipt authority, the Tauri and Flutter shells, the non-streaming turn model, and adoption of the single-vendor custom kind and NIP registry.",
         "stance": "reject"
+      }
+    ]
+  },
+  {
+    "id": "exo_labs.exo",
+    "title": "Exo Labs Exo",
+    "role": "upstream",
+    "access": "public_source",
+    "canonical_ref": "https://github.com/exo-explore/exo",
+    "tracking_policy": "pinned_each_run",
+    "teardown_refs": [
+      "docs/teardowns/2026-07-25-exo-teardown.md"
+    ],
+    "lessons": [
+      {
+        "id": "local_cluster_provider_boundary",
+        "kind": "architecture",
+        "summary": "Study a local cluster provider that keeps model placement and lifecycle in its own system while OpenAgents retains user identity, authority, receipts, and public product state.",
+        "stance": "adapt_with_stronger_boundaries"
+      }
+    ]
+  },
+  {
+    "id": "exoharness.exo",
+    "title": "Exoharness Exo",
+    "role": "upstream",
+    "access": "public_source",
+    "canonical_ref": "https://github.com/exoharness/exo",
+    "tracking_policy": "pinned_each_run",
+    "teardown_refs": [
+      "docs/teardowns/2026-07-25-exoharness-exo-teardown.md"
+    ],
+    "lessons": [
+      {
+        "id": "durable_harness_and_executor_boundary",
+        "kind": "architecture",
+        "summary": "Study a durable harness and executor split while keeping OpenAgents policy, approval, containment, identity, and receipt authority outside the external harness.",
+        "stance": "adapt_with_stronger_boundaries"
       }
     ]
   },
