@@ -1,0 +1,53 @@
+{
+  "acceptanceRef": "forge02-live:3885254dda2745188d412d592a155ced",
+  "actors": {
+    "agentBindingRef": "forge_actor.agent.3885254dda2745188d412d592a155ced",
+    "agentMembershipState": "tombstoned",
+    "humanBindingRef": "forge_actor.human.3885254dda2745188d412d592a155ced"
+  },
+  "authority": {
+    "gcsMirrorRefAuthority": false,
+    "membership": "live-forge-policy",
+    "repository": "bare-repository"
+  },
+  "checks": {
+    "advertisedCapabilities": [
+      "filter",
+      "allow-tip-sha1-in-want",
+      "allow-reachable-sha1-in-want"
+    ],
+    "agentClone": "passed",
+    "agentCommit": "f01394098a217cb2ad421c990dfed40fff2992e3",
+    "agentPush": "passed",
+    "humanClone": "passed",
+    "humanCommit": "e9bc3baa52338edc3c6ba44e78b0ea63eb5b4bb2",
+    "humanFetchAfterAgentRevocation": "passed",
+    "humanPush": "passed",
+    "partialClonePromisor": true,
+    "restore": {
+      "backupBundleBytes": 987,
+      "backupBundleKey": "private/forge/git-backups/tenant.openagents/repo.openagents.forge02-live-3885254dda2745188d412d592a155ced/2026-07-26T094331.684Z-fd84aaca8ae558ba1970c5fc847097fe38417c0429b99fbd12c176e9051a4ba5.bundle",
+      "backupBundleSha256": "fd84aaca8ae558ba1970c5fc847097fe38417c0429b99fbd12c176e9051a4ba5",
+      "backupReceiptKey": "private/forge/git-backups/tenant.openagents/repo.openagents.forge02-live-3885254dda2745188d412d592a155ced/2026-07-26T094331.684Z-fd84aaca8ae558ba1970c5fc847097fe38417c0429b99fbd12c176e9051a4ba5.bundle.receipt.json",
+      "durableRestoreReceiptKey": "private/forge/git-restore-receipts/tenant.openagents/repo.openagents.forge02-live-3885254dda2745188d412d592a155ced/2026-07-26T094334.080Z-3885254dda2745188d412d592a155ced.json",
+      "durableRestoreReceiptSha256": "a944172c6114364c3edf4ace335121493c7699522bacba8a49fe2d00f270ae3b",
+      "restoredCommit": "f01394098a217cb2ad421c990dfed40fff2992e3",
+      "restoredFsck": "passed",
+      "restoredSmartHttpClone": "passed"
+    },
+    "revokedAgentFetchRefused": true,
+    "seedCommit": "2e0ec430e45b1d3bcae0d6ec3bc497b340535857"
+  },
+  "cleanup": "tokens-revoked-and-bindings-tombstoned",
+  "generatedAt": "2026-07-26T09:43:35.454Z",
+  "receiptSha256": "99041fd333c3021d8821dd37000d87417627dee4265fb4b2ab2b908feeb599f1",
+  "repositoryRef": "repo.openagents.forge02-live-3885254dda2745188d412d592a155ced",
+  "result": "passed",
+  "schemaVersion": "openagents.forge_git.live_transport_receipt.v1",
+  "scope": "private-cloud-run-real-stock-git",
+  "sourceRevision": "aa6694122e51aa8c1f28479679c4ac3941b339b0",
+  "tokenRefs": {
+    "agent": "forge_git_token.agent.3885254dda2745188d412d592a155ced",
+    "human": "forge_git_token.human.3885254dda2745188d412d592a155ced"
+  }
+}
