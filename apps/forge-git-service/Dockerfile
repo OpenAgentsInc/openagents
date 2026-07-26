@@ -12,4 +12,4 @@ ENV FORGE_GIT_REPOSITORY_ROOT=/var/lib/forge/repositories
 
 EXPOSE 8080
 
-CMD ["node", "dist/main.mjs"]
+CMD ["node", "--import", "tsx", "dist/main.mjs"]
