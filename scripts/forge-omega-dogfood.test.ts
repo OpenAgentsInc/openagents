@@ -14,8 +14,8 @@ const prepared = () =>
   ) as Record<string, unknown>;
 
 describe("Forge Omega dogfood receipt", () => {
-  test("accepts the real Omega prepared record without calling it complete", () => {
-    expect(validateForgeOmegaDogfoodEvidence(prepared()).status).toBe("prepared");
+  test("accepts the real Omega passed record", () => {
+    expect(validateForgeOmegaDogfoodEvidence(prepared()).status).toBe("passed");
   });
 
   test("rejects a fixture in place of the real Omega repository", () => {
@@ -26,12 +26,13 @@ describe("Forge Omega dogfood receipt", () => {
     );
   });
 
-  test("requires every live journey stage and receipt before completion", () => {
+  test("requires every live journey stage and receipt before it passes", () => {
     const receipt = prepared();
-    receipt.status = "completed";
+    receipt.status = "passed";
     (receipt.safeguards as Record<string, unknown>).publicCutoverApplied = true;
+    (receipt.stages as Record<string, Record<string, unknown>>).admission.state = "not_started";
     expect(() => validateForgeOmegaDogfoodEvidence(receipt)).toThrow(
-      "$.stages.admission.state must be completed",
+      "$.stages.admission.state must be passed",
     );
   });
 

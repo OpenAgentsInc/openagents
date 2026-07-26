@@ -3,9 +3,9 @@ import { readFileSync } from "node:fs";
 
 const schema = "openagents.forge.omega_dogfood.v1";
 const expectedRepository = {
-  forgeCloneUrl: "https://openagents.com/git/openagents/omega.git",
+  forgeCloneUrl: "https://openagents.com/git/tenant.openagents/omega.git",
   forgeRepositoryRef: "omega",
-  forgeTenantRef: "openagents",
+  forgeTenantRef: "tenant.openagents",
   githubCloneUrl: "https://github.com/OpenAgentsInc/omega.git",
   githubRepository: "OpenAgentsInc/omega",
   sourceRef: "refs/heads/main",
@@ -76,7 +76,7 @@ const assertNoFixture = (value: unknown, label: string): void => {
   }
 };
 
-const validateStage = (value: unknown, stage: Stage, status: "prepared" | "completed"): void => {
+const validateStage = (value: unknown, stage: Stage, status: "prepared" | "passed"): void => {
   const entry = record(value, `$.stages.${stage}`);
   const state = string(entry.state, `$.stages.${stage}.state`);
   const receiptRefs = stringArray(entry.receiptRefs, `$.stages.${stage}.receiptRefs`);
@@ -85,8 +85,8 @@ const validateStage = (value: unknown, stage: Stage, status: "prepared" | "compl
     if (receiptRefs.length !== 0) fail(`$.stages.${stage}.receiptRefs must be empty when prepared`);
     return;
   }
-  if (state !== "completed") fail(`$.stages.${stage}.state must be completed`);
-  if (receiptRefs.length === 0) fail(`$.stages.${stage}.receiptRefs must not be empty`);
+  if (state !== "passed") fail(`$.stages.${stage}.state must be passed`);
+  if (receiptRefs.length === 0) fail(`$.stages.${stage}.receiptRefs must not be empty when passed`);
 };
 
 /**
@@ -97,8 +97,8 @@ export const validateForgeOmegaDogfoodEvidence = (value: unknown) => {
   const root = record(value, "$");
   exact(root.schema, schema, "$.schema");
   const status = string(root.status, "$.status");
-  if (status !== "prepared" && status !== "completed") {
-    fail("$.status must be prepared or completed");
+  if (status !== "prepared" && status !== "passed") {
+    fail("$.status must be prepared or passed");
   }
   const repository = record(root.repository, "$.repository");
   exact(
@@ -139,7 +139,7 @@ export const validateForgeOmegaDogfoodEvidence = (value: unknown) => {
   }
   if (
     boolean(safeguards.publicCutoverApplied, "$.safeguards.publicCutoverApplied") !==
-    (status === "completed")
+    (status === "passed")
   ) {
     fail("$.safeguards.publicCutoverApplied must match completion status");
   }

@@ -99,6 +99,10 @@ export default defineConfig({
     },
   },
   test: {
+    // The completion gate runs integration suites with real local services,
+    // production builds, and package installs. Eight forks keep those tests
+    // concurrent without turning host scheduling into the thing under test.
+    maxWorkers: 8,
     projects: [
       {
         resolve: {
