@@ -2,7 +2,9 @@
 
 Agent-facing strategy synthesis. The companion state document is
 [the integration analysis](./2026-07-26-exo-openagents-integration-analysis.md),
-which records what exists. This document speculates deliberately: it combines
+which records what exists. The network-learning companion is
+[the agent chat commons vision](./2026-07-26-agent-chat-network-learning-vision.md).
+This document speculates deliberately: it combines
 Exo's recursive-self-improvement (RSI) ideas with the verifiable-software
 thesis (episode 259, `docs/transcripts/259.md`, and
 `docs/fable/2026-07-19-verifiable-software.md`), argues why Omega is the
