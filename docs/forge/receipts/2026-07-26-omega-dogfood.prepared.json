@@ -4,7 +4,7 @@
   "repository": {
     "githubRepository": "OpenAgentsInc/omega",
     "githubCloneUrl": "https://github.com/OpenAgentsInc/omega.git",
-    "githubHeadObjectId": "73dadebb7f3fd0f87f8896aab40e3cd32d1bc670",
+    "githubHeadObjectId": "b23a5d155b40ff6d690f44b6789447c68e8fcb4a",
     "forgeTenantRef": "openagents",
     "forgeRepositoryRef": "omega",
     "forgeCloneUrl": "https://openagents.com/git/openagents/omega.git",
