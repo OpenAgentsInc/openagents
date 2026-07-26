@@ -33,6 +33,7 @@ chown 1000:1000 "$mount_path"
 chmod 0770 "$mount_path"
 
 install -d -m 0755 /etc/nfs.conf.d
+install -d -m 0755 /etc/exports.d
 printf '%s\n' \
   '[mountd]' \
   'port=20048' \

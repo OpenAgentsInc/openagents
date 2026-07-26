@@ -32,6 +32,12 @@ resource "google_service_account" "nfs" {
   description  = "Service identity for the owned Forge Git NFS host."
 }
 
+resource "google_project_iam_member" "nfs_log_writer" {
+  project = var.project
+  role    = "roles/logging.logWriter"
+  member  = "serviceAccount:${google_service_account.nfs.email}"
+}
+
 data "google_compute_image" "nfs" {
   project = "debian-cloud"
   family  = "debian-12"
@@ -138,11 +144,19 @@ resource "google_compute_instance" "nfs" {
 
   labels = var.labels
 
+  # Startup-script changes apply to replacement hosts. Apply an idempotent
+  # script repair directly to a live host. Do not replace the NFS host only
+  # because the bootstrap script changed.
+  lifecycle {
+    ignore_changes = [metadata_startup_script]
+  }
+
   depends_on = [
     google_compute_subnetwork.forge_git,
     google_compute_firewall.nfs,
     google_compute_firewall.nfs_iap_ssh,
     google_compute_firewall.nfs_deny_other_ingress,
+    google_project_iam_member.nfs_log_writer,
   ]
 }
 
