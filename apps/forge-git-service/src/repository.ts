@@ -207,6 +207,14 @@ const assertMirrorDestination = (destinationUrl: string): void => {
   }
 };
 
+// The admitted Omega mirror is public. Read its current downstream ref over
+// ordinary HTTPS, retaining the deploy-key SSH transport exclusively for the
+// authenticated write projection below.
+const observationDestination = (destinationUrl: string): string => {
+  const match = /^git@github\.com:([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\.git)$/u.exec(destinationUrl);
+  return match === null ? destinationUrl : `https://github.com/${match[1]}`;
+};
+
 /**
  * Preserve a small, non-sensitive operational reason for a rejected downstream
  * GitHub projection. Git's raw stderr can contain remote details, so it must
@@ -869,10 +877,12 @@ const makeRepositoryService = (
           );
         }
 
-        const destination = await git(
-          ["ls-remote", "--refs", input.destinationUrl, input.destinationRef],
-          { env: mirrorEnvironment(input.authorizationHeader, input.sshKeyPath) },
-        );
+        const destination = await git([
+          "ls-remote",
+          "--refs",
+          observationDestination(input.destinationUrl),
+          input.destinationRef,
+        ]);
         const destinationLine = textDecoder.decode(destination.stdout).trim();
         const destinationObjectId =
           destinationLine === "" ? null : (destinationLine.split(/\s+/u)[0]?.toLowerCase() ?? null);
@@ -905,17 +915,14 @@ const makeRepositoryService = (
             path,
             `${input.sourceRef}:refs/openagents/source`,
           ]);
-          await git(
-            [
-              "--git-dir",
-              comparison,
-              "fetch",
-              "--no-tags",
-              input.destinationUrl,
-              `${input.destinationRef}:refs/openagents/destination`,
-            ],
-            { env: mirrorEnvironment(input.authorizationHeader, input.sshKeyPath) },
-          );
+          await git([
+            "--git-dir",
+            comparison,
+            "fetch",
+            "--no-tags",
+            observationDestination(input.destinationUrl),
+            `${input.destinationRef}:refs/openagents/destination`,
+          ]);
           const isAncestor = async (ancestor: string, descendant: string): Promise<boolean> => {
             try {
               await git([
