@@ -34,6 +34,7 @@ const START_SERVER_REQUEST_PATHS = new Set([
 ])
 const FORGE_REPOSITORY_ASSET_REQUEST_PATH =
   /^\/internal\/v1\/repositories\/[^/]+\/[^/]+\/web-read-asset\/.+$/u
+const START_SERVER_FUNCTION_REQUEST_PATH = /^\/_serverFn\/[^/]+$/u
 
 type StartWorker = Readonly<{
   fetch: (
@@ -137,7 +138,8 @@ export const isStartServerRequestPath = (
 ): boolean =>
   isStartDocumentRequestPath(pathname, allowPublicRoot) ||
   START_SERVER_REQUEST_PATHS.has(pathname) ||
-  FORGE_REPOSITORY_ASSET_REQUEST_PATH.test(pathname)
+  FORGE_REPOSITORY_ASSET_REQUEST_PATH.test(pathname) ||
+  START_SERVER_FUNCTION_REQUEST_PATH.test(pathname)
 
 export const handleStartUiRequest = async (
   request: Request,

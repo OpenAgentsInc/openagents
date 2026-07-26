@@ -51,6 +51,13 @@ describe('public Start homepage host boundary', () => {
         '/internal/v1/repositories/tenant.openagents/omega/web-read-asset',
       ),
     ).toBe(false)
+    expect(isStartServerRequestPath('/_serverFn/forge-repository-read')).toBe(
+      true,
+    )
+    expect(isStartServerRequestPath('/_serverFn/')).toBe(false)
+    expect(
+      isStartServerRequestPath('/_serverFn/forge-repository-read/other'),
+    ).toBe(false)
     expect(isStartServerRequestPath('/api/auth/session')).toBe(false)
     expect(isStartServerRequestPath('/api/portal/session')).toBe(false)
   })
