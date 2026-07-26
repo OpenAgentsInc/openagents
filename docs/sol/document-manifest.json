@@ -2447,6 +2447,7 @@
         "docs/buzz/2026-07-22-buzz-self-host-and-sarah-runbook.md",
         "docs/buzz/2026-07-24-omega-buzz-full-parity-recommendation.md",
         "docs/buzz/README.md",
+        "docs/forge/2026-07-25-buzz-ngit-openagents-forge-strategy-audit.md",
         "docs/ide/2026-07-18-vscode-typescript-reuse-analysis.md",
         "docs/ide/2026-07-18-zed-agent-ide-adaptation-analysis.md",
         "docs/ide/2026-07-18-zed-quality-ide-effect-rust-architecture.md",
@@ -2456,6 +2457,7 @@
         "docs/nostr/2026-07-22-full-auto-cross-app-agent-delegation-over-nostr.md",
         "docs/omega/2026-07-23-identity-first-onboarding-roadmap.md",
         "docs/omega/2026-07-24-full-auto-port-audit.md",
+        "docs/omega/2026-07-25-web-omega-mobile-workroom-and-sovereign-relay-audit.md",
         "docs/omega/README.md",
         "docs/omega/ROADMAP.md",
         "docs/refactor/2026-06-09-bun-effect-monorepo.md",
@@ -2467,7 +2469,7 @@
         "docs/teardowns/README.md",
         "docs/transcripts/26X-forkingzed.md"
       ],
-      "inboundSourceCount": 22,
+      "inboundSourceCount": 24,
       "issueLinks": [
         9185,
         9194,
@@ -2610,11 +2612,13 @@
         "docs/fable/MASTER_ROADMAP.md",
         "docs/fable/README.md",
         "docs/fable/ROADMAP_QA.md",
+        "docs/forge/2026-07-25-buzz-ngit-openagents-forge-strategy-audit.md",
         "docs/governance/2026-07-14-governance-native-architecture-review.md",
         "docs/grok/README.md",
         "docs/mvp/2026-07-13-openagents-codex-workroom-mvp-audit.md",
         "docs/mvp/README.md",
         "docs/omega/2026-07-23-identity-first-onboarding-roadmap.md",
+        "docs/omega/2026-07-25-web-omega-mobile-workroom-and-sovereign-relay-audit.md",
         "docs/omega/README.md",
         "docs/omega/ROADMAP.md",
         "docs/qa/README.md",
@@ -2659,7 +2663,7 @@
         "docs/terra/NEXT.md",
         "docs/terra/README.md"
       ],
-      "inboundSourceCount": 56,
+      "inboundSourceCount": 58,
       "issueLinks": [
         8547,
         8566,
