@@ -82,6 +82,8 @@ const bootstrapOwnerPath = '/api/forge/bootstrap-owner'
 const bootstrapOwnerGitCredentialsPath =
   '/api/forge/bootstrap-owner/git-credentials'
 const bootstrapOwnerAgentPath = '/api/forge/bootstrap-owner/agent'
+const bootstrapOwnerAgentGitCredentialsPath =
+  '/api/forge/bootstrap-owner/agent/git-credentials'
 const gitAuthorizeInternalPath = '/internal/forge/git-authorize'
 const relayAdmitInternalPath = '/internal/forge/relay-admit'
 const collaborationReadAuthorizeInternalPath =
@@ -278,6 +280,7 @@ export const makeForgeInviteMembershipRoutes = <
       path !== bootstrapOwnerPath &&
       path !== bootstrapOwnerGitCredentialsPath &&
       path !== bootstrapOwnerAgentPath &&
+      path !== bootstrapOwnerAgentGitCredentialsPath &&
       path !== gitAuthorizeInternalPath &&
       path !== relayAdmitInternalPath &&
       path !== collaborationReadAuthorizeInternalPath &&
@@ -290,6 +293,25 @@ export const makeForgeInviteMembershipRoutes = <
     return routeEffect(async () => {
       const store = dependencies.makeMembershipStore(env)
       const nowIso = dependencies.nowIso()
+      if (path === bootstrapOwnerAgentGitCredentialsPath) {
+        if (request.method !== 'POST') return methodNotAllowed(['POST'])
+        if (dependencies.requireAdminApiToken === undefined || !(await dependencies.requireAdminApiToken(requestWithBootstrapAdminAuthorization(request), env))) return unauthorized()
+        const { bytes, value } = await readJsonBytes(request)
+        const record = isRecord(value) ? value : undefined
+        const tenantRef = requiredText(record ?? {}, 'tenantRef')
+        const repositoryRef = requiredText(record ?? {}, 'repositoryRef')
+        const agentBindingRef = requiredText(record ?? {}, 'agentBindingRef')
+        if (tenantRef !== bootstrapTeamTenantRef || repositoryRef !== bootstrapRepositoryRef || agentBindingRef === undefined) return noStoreJsonResponse({ error: 'forge_owner_bootstrap_agent_credential_body_invalid' }, { status: 400 })
+        const authorization = request.headers.get('authorization')
+        if (authorization?.startsWith('Nostr ') !== true) throw new ForgeInvitePolicyError({ code: 'credential_missing', reason: 'A fresh owner NIP-98 proof is required.' })
+        const proof = await verifyForgeNip98Proof({ authorization, body: bytes, method: request.method, nowIso, url: request.url })
+        const owner = await store.readActorBindingByNostrPubkey(tenantRef, proof.actorPubkey)
+        const agent = await store.readActorBindingByRef(tenantRef, agentBindingRef)
+        if (owner?.membershipState !== 'active' || owner.actorKind !== 'human' || !owner.roleRefs.includes('forge:admin') || agent?.membershipState !== 'active' || agent.actorKind !== 'agent' || agent.ownerBindingRef !== owner.bindingRef) return forbidden()
+        if (!(await store.consumeNip98Replay({ actorPubkey: proof.actorPubkey, authorityGeneration: owner.bindingGeneration, bodyDigest: proof.bodyDigest, canonicalPath: path, consumedAt: nowIso, consumptionRef: `forge_nip98_consumption.${proof.eventId}`, eventCreatedAt: proof.eventCreatedAt, eventId: proof.eventId, expiresAt: new Date(Date.parse(proof.eventCreatedAt) + 60_000).toISOString(), httpMethod: request.method, requestDigest: proof.requestDigest, result: 'accepted', tenantRef }))) throw new ForgeInvitePolicyError({ code: 'nip98_replayed', reason: 'The NIP-98 event was already consumed.' })
+        const credential = await dependencies.makeGitAuthStore(env).mintGitAccessToken({ expiresAt: new Date(Date.parse(nowIso) + 30 * 60 * 1_000).toISOString(), nowIso, refRestrictions: ['refs/heads/forge/omega-journey'], repositoryRef, scopes: ['git:upload-pack', 'git:receive-pack'], sourceRefs: [`forge_actor_binding:${agent.bindingRef}`, `owner:${owner.bindingRef}`, `nip98:${proof.eventId}`, 'forge_owner_bootstrap_agent_git_credentials:v1'], subjectRef: agent.bindingRef, tenantRef, tokenRef: `forge_git_token.bootstrap.agent.${randomUuid()}` })
+        return noStoreJsonResponse({ credential: { expiresAt: credential.record.expires_at, repositoryRef, scopes: credential.scopes.map(scope => scope.scope), token: credential.token } }, { status: 201 })
+      }
       if (path === bootstrapOwnerAgentPath) {
         if (request.method !== 'POST') return methodNotAllowed(['POST'])
         if (
