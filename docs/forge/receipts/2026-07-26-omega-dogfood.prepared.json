@@ -1,0 +1,38 @@
+{
+  "schema": "openagents.forge.omega_dogfood.v1",
+  "status": "prepared",
+  "repository": {
+    "githubRepository": "OpenAgentsInc/omega",
+    "githubCloneUrl": "https://github.com/OpenAgentsInc/omega.git",
+    "githubHeadObjectId": "73dadebb7f3fd0f87f8896aab40e3cd32d1bc670",
+    "forgeTenantRef": "openagents",
+    "forgeRepositoryRef": "omega",
+    "forgeCloneUrl": "https://openagents.com/git/openagents/omega.git",
+    "sourceRef": "refs/heads/main"
+  },
+  "safeguards": {
+    "realRepositoryOnly": true,
+    "githubCriticalPathReads": false,
+    "containsCredentials": false,
+    "publicCutoverApplied": false
+  },
+  "issueRefs": [
+    "OpenAgentsInc/openagents#9244",
+    "OpenAgentsInc/openagents#9245",
+    "OpenAgentsInc/openagents#9246",
+    "OpenAgentsInc/openagents#9247",
+    "OpenAgentsInc/openagents#9248",
+    "OpenAgentsInc/openagents#9249",
+    "OpenAgentsInc/openagents#9250",
+    "OpenAgentsInc/openagents#9251"
+  ],
+  "stages": {
+    "admission": { "state": "not_started", "receiptRefs": [] },
+    "object_hosting": { "state": "not_started", "receiptRefs": [] },
+    "signed_state": { "state": "not_started", "receiptRefs": [] },
+    "journey": { "state": "not_started", "receiptRefs": [] },
+    "mirror": { "state": "not_started", "receiptRefs": [] },
+    "backup_restore": { "state": "not_started", "receiptRefs": [] },
+    "divergence": { "state": "not_started", "receiptRefs": [] }
+  }
+}
