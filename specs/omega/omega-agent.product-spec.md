@@ -2,10 +2,10 @@
 spec_format_version: "0.1"
 title: "Omega Agent Product Contract"
 artifact_type: "prd"
-spec_revision: 2
+spec_revision: 3
 author: "OpenAgents"
 created_at: "2026-07-25T18:00:00.000Z"
-updated_at: "2026-07-27T10:20:00.000Z"
+updated_at: "2026-07-27T18:30:00.000Z"
 linked_github_repo: "OpenAgentsInc/openagents"
 applies_to:
   - path: "docs/omega/"
@@ -29,13 +29,15 @@ tool_metadata:
   openagents_severability_trace: "docs/omega/2026-07-25-omega-agent-cloud-severability-trace.md"
   openagents_design_analysis: "docs/fable/2026-07-25-omega-agent-analysis.md"
   openagents_omega_source_pin: "OpenAgentsInc/omega b768854c56 (0.2.0-rc10)"
-  openagents_assurance_companion: "none at revision 2"
+  openagents_assurance_companion: "none at revision 3"
   openagents_revision_1_note: "Rev 1 admits the Omega Agent identity and the router-over-executors shape at the AgentConnection seam. It admits no rename, no router code, and no public claim. The Omega Nostr identity signing question stays open and owner-reserved."
   openagents_revision_2_note: "Rev 2, on the owner direction of 2026-07-27, admits the basic agent: a slim five-tool first-party executor (read, write, edit, bash, delegate) that completes work reliably on the default google/gemini-3.6-flash direct provider with no harness installed, delegates to installed harnesses with typed disclosure, names Exo (exoharness/exo) as an external ACP delegate target, and binds the work-loss law. The router shape, the three executor classes, and the open Nostr identity question from revision 1 stand."
   openagents_revision_2_reconciliation: "Implementation receipts indexed 2026-07-27: OpenAgentsInc/omega c46980f6c4 and OpenAgentsInc/openagents 4c2db79b70. The installed candidate journey and live basic-versus-wide comparison remain pending; these commits authorize no release or public reliability claim."
   openagents_slim_audit: "docs/omega-agent/2026-07-27-slim-agent-audit.md"
   openagents_slim_spec: "docs/omega-agent/2026-07-27-slim-agent-spec.md"
   openagents_exoharness_teardown: "docs/teardowns/2026-07-25-exoharness-exo-teardown.md"
+  openagents_revision_3_note: "Rev 3, on the owner direction of 2026-07-27, admits the sixth tool: plugin. The six-tool surface is read, write, edit, bash, delegate, plugin. A plugin is a typed, versioned, content-addressed, sandboxed, deterministic function with a receipt for every run, and the marketplace unit through which contributors earn revenue share for extending the agent. Phase one is local-only; registry distribution and paid revenue sharing stay behind their own owner admissions. The router shape, the three executor classes, and the open Nostr identity question stand."
+  openagents_plugin_spec: "docs/omega-agent/2026-07-27-plugin-tool-spec.md"
 ---
 
 ## Problem
@@ -66,6 +68,16 @@ which the incident record at
 `docs/oopsiewoopsies/2026-07-27-git-checkout-destroyed-uncommitted-work-twice.md`
 documents.
 
+Revision 3 adds the determinism problem.
+The agent has no typed, verifiable way to run packaged deterministic
+functionality.
+Deterministic work routes through `bash`, which is untyped, unbounded,
+host-specific, and unreceipted beyond the transcript.
+The product also has no contribution unit: no bounded thing a community
+member can build, publish, and earn revenue share from, although the
+2024 plugin economy and Agent Store proved that loop and Episode 262
+names markets and revenue-sharing as layers Omega adds.
+
 ## Hypothesis
 
 Omega can present one named agent with disclosed routing when these
@@ -92,6 +104,15 @@ work to them, and it discloses every handoff.
 The agent cannot destroy uncommitted work through its own tools without
 a typed confirm.
 
+Revision 3 adds the plugin hypothesis.
+A sixth tool, `plugin`, runs deterministic functionality: a typed,
+versioned, content-addressed, sandboxed function whose every run
+produces a replayable receipt.
+`delegate` hands work to judgment. `plugin` calls a fact.
+The plugin is also the contribution unit of the marketplace: a person
+who publishes one contributes a capability to the super agent and can
+earn a share of the revenue it produces, under the phase admissions.
+
 ## Scope
 
 ```productspec-scope
@@ -106,7 +127,10 @@ in:
   - the record boundary that agent history projects onto the workroom record and never takes command authority
   - the Khala boundary that Omega is a producer into the Khala ledger and never a second accountant
   - the severability statement of what Omega Agent does when no OpenAgents cloud service answers
-  - the basic agent as the default executor, with exactly five model-visible tools read, write, edit, bash, and delegate
+  - the basic agent as the default executor, with exactly six model-visible tools read, write, edit, bash, delegate, and plugin
+  - the plugin tool contract typed input and output schemas, exact version and content-digest identity, sandboxed execution, and a typed replayable receipt per run
+  - the plugin determinism law no model call inside a plugin run, and declared capabilities with recorded results
+  - phase-one local plugin installation as the visible trust act, including the explicit installation of agent-authored plugins
   - out-of-box reliability on the default google/gemini-3.6-flash direct provider with no harness installed
   - delegation to installed harnesses as a first-class delegate tool with a typed disclosure record per handoff
   - Exo (exoharness/exo) as a named delegate target in the external ACP executor class
@@ -121,6 +145,8 @@ out:
   - Khala outbound routing, inbound presentation, and receipt corpus routing
   - release admission, packaged-journey claims, and public product claims
   - a decision on whether Omega Agent signs with the Omega Nostr identity
+  - the plugin registry, signed listings, and install-from-registry, which the phase-two admission owns
+  - plugin prices, payment acceptance, and revenue-share payout, which the phase-three admission owns
 cut:
   - a fork of AcpThread or a second thread projection
   - a GPUI-owned durable run store or a second run lifecycle enumeration
@@ -128,7 +154,11 @@ cut:
   - a second home, credential copy, or provider-configuration copy for an external agent
   - keyword matching or a silent model guess in route selection
   - presentation of the inherited telemetry identifier as an OpenAgents service identity
-  - a sixth model-visible tool in the basic profile without a new spec revision
+  - a seventh model-visible tool in the basic profile without a new spec revision
+  - a model call inside the plugin runtime
+  - an unpinned or silent-latest plugin resolution
+  - unsandboxed plugin execution or an undeclared capability grant
+  - a second treasury, ledger, or payout path for plugin payments
   - a delegation dependency in the baseline journey, where baseline work fails because no harness is installed
   - runtime tool self-injection into the host process, the Exo pattern the estate refuses
   - silent executor substitution in a delegate call
@@ -168,6 +198,14 @@ The handoff names its target, and the result carries the executor
 disclosure.
 When the named harness is absent or refuses, the agent says so and
 completes the work itself.
+
+The plugin journey packages determinism.
+The person installs a plugin in one visible act that shows its name,
+author, digest, and declared capabilities.
+The agent calls it through the `plugin` tool, and every run returns a
+typed output and a receipt the person can replay.
+The agent can author a plugin with its ordinary tools and propose it,
+and installation stays an explicit act in the transcript.
 
 The agent protects the person's work.
 A command that would discard uncommitted changes gets a typed confirm
@@ -222,11 +260,12 @@ The agent's own undo restores a snapshot it took.
 - **OMEGA-AGENT-AC-14:** Every default change, removal, and keymap change in
   this program lands as a numbered delta in `OMEGA_DELTAS.md` with a
   mechanical check in `crates/omega_deltas`.
-- **OMEGA-AGENT-AC-15:** The basic agent exposes exactly five tools to the
-  model: `read`, `write`, `edit`, `bash`, and `delegate`. A sixth
-  model-visible tool in the basic profile needs a new spec revision.
+- **OMEGA-AGENT-AC-15:** The basic agent exposes exactly six tools to the
+  model: `read`, `write`, `edit`, `bash`, `delegate`, and `plugin`. A
+  seventh model-visible tool in the basic profile needs a new spec
+  revision.
 - **OMEGA-AGENT-AC-16:** On a fresh install with no external harness, the
-  basic agent completes a coding turn with only its five tools. The turn
+  basic agent completes a coding turn with only its own tools. The turn
   runs on the default `google/gemini-3.6-flash` direct provider. The
   baseline journey never depends on a harness.
 - **OMEGA-AGENT-AC-17:** A `delegate` call with no installed executor
@@ -248,6 +287,24 @@ The agent's own undo restores a snapshot it took.
 - **OMEGA-AGENT-AC-21:** The basic agent has a measured system prompt. A
   mechanical check asserts the rendered template's byte ceiling, and a
   ceiling change is a deliberate delta.
+- **OMEGA-AGENT-AC-22:** A plugin declares typed input and output
+  schemas, and the tool boundary validates both. Every reference to a
+  plugin resolves to an exact version and content digest. There is no
+  silent latest.
+- **OMEGA-AGENT-AC-23:** A plugin run makes no model call. A plugin
+  executes in a deny-by-default sandbox with fuel, memory, and
+  wall-clock bounds, and an undeclared capability fails with a typed
+  result.
+- **OMEGA-AGENT-AC-24:** Every plugin run produces a typed receipt
+  with the exact version, content digest, input digest, output digest,
+  and capability log digest. A replay with the recorded capability
+  results reproduces the output digest.
+- **OMEGA-AGENT-AC-25:** A plugin result is evidence, never authority,
+  and installation is the visible trust act. An unknown plugin name
+  returns a typed no-plugin result and the tool never substitutes. No
+  registry, price, payment, or payout surface lands before its own
+  phase admission, and plugin payments never mint a second treasury,
+  ledger, or payout path.
 
 ## Success Metrics
 
@@ -267,8 +324,11 @@ The agent's own undo restores a snapshot it took.
 - **OMEGA-AGENT-SM-07:** After the delegate packet lands, every delegate
   result in the proof corpus carries its disclosure record. Zero
   undisclosed handoffs.
-- **OMEGA-AGENT-SM-08:** The basic profile stays at five tools across
+- **OMEGA-AGENT-SM-08:** The basic profile stays at six tools across
   rebases. The delta check that asserts the tool set stays green.
+- **OMEGA-AGENT-SM-09:** After the plugin packets land, every plugin
+  run in the proof corpus carries a replayable receipt. Zero
+  unreceipted runs.
 
 ## Owner Gates
 
@@ -276,7 +336,14 @@ The agent's own undo restores a snapshot it took.
   admission opened omega#75 through omega#82. Revision 2 records the
   owner direction of 2026-07-27 for the basic agent, and opens the
   slim-agent packets in `docs/omega-agent/2026-07-27-slim-agent-spec.md`
-  section 10. Nothing in this revision is a release or public claim.
+  section 10. Revision 3 records the same day's owner direction for the
+  six-tool surface, and opens the phase-one plugin packets in
+  `docs/omega-agent/2026-07-27-plugin-tool-spec.md` section 10.
+  Nothing in this revision is a release or public claim.
+- **Reserved plugin phases.** The phase-two registry admission and the
+  phase-three paid-market admission are owner-reserved. Revision 3
+  admits neither. Revenue-share payout rails are decided at the
+  phase-three admission under the standing payment policies.
 - **Nostr identity signing, open.** The owner has not answered whether the
   first-party agent signs with the Omega Nostr identity. This revision does
   not answer it. The two branches and their costs are in
@@ -297,6 +364,8 @@ The agent's own undo restores a snapshot it took.
 - Slim-agent audit: `docs/omega-agent/2026-07-27-slim-agent-audit.md`
 - Slim-agent specification:
   `docs/omega-agent/2026-07-27-slim-agent-spec.md`
+- Plugin tool specification:
+  `docs/omega-agent/2026-07-27-plugin-tool-spec.md`
 - Exoharness teardown, delegate-target evidence:
   `docs/teardowns/2026-07-25-exoharness-exo-teardown.md`
 - Work-loss incident record:

@@ -9,6 +9,12 @@
 - Admission state: the owner direction of 2026-07-27 set the basic-agent
   product shape, and revision 2 of the ProductSpec records it. Section 12
   records what the revision contains.
+- Revision 3 amendment, 2026-07-27: a later owner direction on the same
+  day admits a sixth tool, `plugin`, and ProductSpec revision 3 records
+  the six-tool surface. The five-tool law in section 2 reads as the
+  six-tool law under that revision. The
+  [plugin tool specification](./2026-07-27-plugin-tool-spec.md) owns the
+  sixth tool. Everything else in this specification stands.
 
 This specification defines the slim first-party Omega Agent.
 The agent has five tools: `read`, `write`, `edit`, `bash`, and `delegate`.
@@ -54,6 +60,8 @@ This specification adds two laws:
 7. **The five-tool law.** The model-visible tool set of the slim profile
    is exactly `read`, `write`, `edit`, `bash`, and `delegate`.
    A sixth model-visible tool in the slim profile needs a new admission.
+   ProductSpec revision 3 is that admission: it adds `plugin`, and the
+   law continues as the six-tool law with the same rigidity.
 8. **The work-loss law.** No tool of the slim agent discards uncommitted
    changes without a typed confirm, and every mutating tool call is
    preceded by a snapshot the agent itself can restore.

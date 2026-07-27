@@ -15,15 +15,17 @@ Audience: developers and operators first. The demo beats stay readable for
 nontechnical viewers.
 Supersedes: the 2026-07-25 harness draft in this file, which was written before
 the slim agent, executor-explicit delegation, the Exo lane, and zero base
-landed in the fork.
+landed in the fork. Revised the same day for the owner direction that sets the
+six-tool surface and the `plugin` tool.
 Product contract:
 [`Omega Agent product contract`](../../specs/omega/omega-agent.product-spec.md)
-at `spec_revision: 2`.
+at `spec_revision: 3`.
 Product direction:
 [`Omega Agent analysis`](../fable/2026-07-25-omega-agent-analysis.md),
 [`Omega Agent roadmap`](../omega/2026-07-25-omega-agent-roadmap.md),
 [`Omega Agent shape record`](../omega/2026-07-25-omega-agent-shape-record.md),
 [`Omega zero-base mode`](../omega/2026-07-26-omega-zero-base-mode.md),
+[`Plugin tool specification`](../omega-agent/2026-07-27-plugin-tool-spec.md),
 [`Episode 262 - Project Omega`](262.md).
 Production conventions:
 [`Sarah video screenshare`](SARAH_VIDEO_SCREENSHARE.md),
@@ -36,11 +38,12 @@ episode makes the second promise, and it is a larger one. It says Omega Agent
 is the last agent you talk to.
 
 The claim is not that our agent is better than every other agent. The claim is
-that it is the last one you have to choose, because it routes to the others and
-because it improves from the record of what it routed. The first half runs in
-the fork today, with the person naming the executor. The second half is
-accepted direction and is not running. This script keeps those two apart in
-every line.
+that it is the last one you have to choose, because it routes to the others,
+because it improves from the record of what it routed, and because anyone can
+extend it — and earn a share of the revenue their extension produces. The
+routing runs in the fork today, with the person naming the executor. The
+learning, the sixth tool, and the market are admitted direction and are not
+running. This script keeps those states apart in every line.
 
 ## Technical truth notes
 
@@ -49,9 +52,10 @@ release candidates; `v0.2.0-rc19` is the latest tag at drafting):
 
 - Zero base: a launch mode that shows one agent thread and hides the editor
   around it. The same binary is still the full editor when the flag is absent.
-- The basic agent as the default profile. Its whole model-visible surface is
+- The basic agent as the default profile. Its model-visible surface today is
   five tools: `read`, `write`, `edit`, `bash`, and `delegate`
-  (OMEGA-DELTA-0133). Context-server tools are off, so an installation cannot
+  (OMEGA-DELTA-0133). The admitted product surface is six; see the plugin
+  note below. Context-server tools are off, so an installation cannot
   make a sixth tool appear. The measured slim prompt is a separate template
   with a byte ceiling (OMEGA-DELTA-0135).
 - `delegate` is executor-explicit (OMEGA-DELTA-0137). Admitted spellings are
@@ -83,6 +87,14 @@ release candidates; `v0.2.0-rc19` is the latest tag at drafting):
 basic-versus-wide comparison. The installed-candidate journey and the live
 comparison are pending. Until they pass, no reliability claim may be spoken.
 
+**Admitted, spec'd, not running.** The sixth tool, `plugin`: deterministic
+functionality — typed, versioned, content-addressed, sandboxed, with a
+replayable receipt per run. ProductSpec revision 3 admits it and the
+[plugin tool specification](../omega-agent/2026-07-27-plugin-tool-spec.md)
+owns it. Its registry and its paid market with revenue sharing are phased
+behind separate owner admissions. Sarah speaks of `plugin` and the market in
+the future tense only.
+
 **Accepted direction, not running.** The rename of the inherited native tile
 (the reachable label is still `Zed Agent`; issue omega#75 owns it), the router
 that chooses the executor for you, the learning loop over routed receipts, the
@@ -102,7 +114,11 @@ Use these labels:
 - **INHERITED AGENT TILE - CURRENT** for the native tile wherever its label is
   visible. Do not brand that tile as Omega Agent. The rename has not landed.
 - **ACCEPTED DIRECTION - NOT RUNNING** for the automatic router, the learning
-  loop, the welcome mock, and any Khala routing diagram.
+  loop, the welcome mock, the `plugin` tool, the plugin market, and any Khala
+  routing diagram.
+- **ARCHIVE - 2024** for any clip or still from the 2024 plugin and Agent
+  Store arc (Episodes 048-098). Date-stamp it on screen so history is never
+  mistaken for the current product.
 - **RECEIPT - CURRENT** for real Full Auto, Agent Computer, or Git-guard
   receipt captures. Redact objectives, paths, and account identity.
 - **LIVE SERVICE - CURRENT** for the public Khala counter or stats page.
@@ -121,13 +137,14 @@ as ours, and do not imply it is on by default. It is opt-in for each launch.
 | --- | --- | --- |
 | 1 | The last IDE, and the next promise | Episode 262 close |
 | 2 | One thread, nothing else | Zero base launch, live typing |
-| 3 | Five tools | The tool list, a real edit, a passing test |
-| 4 | The fifth tool is the product | `delegate` with a named executor |
+| 3 | Six tools | The tool list, a real edit, a passing test |
+| 4 | Delegate: hands | `delegate` with a named executor |
 | 5 | An agent that is not ours | Exo lane, inspector, disclosure chain |
-| 6 | What it will not do to your work | Git guard prompt and its receipt |
-| 7 | Why it can improve | Receipt capture, then the router diagram |
-| 8 | The collective it belongs to | Khala stats counter, live |
-| 9 | Close | Return to Sarah |
+| 6 | Plugin: facts, and the market | 2024 archive clips, then the plugin spec card |
+| 7 | What it will not do to your work | Git guard prompt and its receipt |
+| 8 | Why it can improve | Receipt capture, then the router diagram |
+| 9 | The collective it belongs to | Khala stats counter, live |
+| 10 | Close | Return to Sarah |
 
 ---
 
@@ -166,19 +183,24 @@ see what is actually doing the work.
 
 **Sarah:** Here is the boundary before the detail.
 
-Omega Agent has five tools. Read. Write. Edit. Bash. Delegate.
+Omega Agent has six tools. Read. Write. Edit. Bash. Delegate. Plugin.
 
-That is the whole surface the model can see. Not a menu of forty. Five.
+That is the whole surface. Not a menu of forty. Six, and you can hold all six
+in your head while you watch it work.
+
+Five of them run today. The sixth is admitted and being built, and I will
+label it honestly when we get there.
 
 [SCREEN: the tool list, then a real edit to a real file and a passing
-verification command.]
+verification command.
+Label: `OMEGA FORK BUILD - UNSIGNED DEVELOPMENT BUILD`.]
 
-**Sarah:** We made it small on purpose. An agent with a smaller surface fails
-in fewer ways, and you can hold all five in your head while you watch it work.
+**Sarah:** The first four are the hands. They read, write, and edit your
+files, and they run your commands, here, on your machine.
 
-Four of those tools do the work here, on your machine.
+The last two are the product. Delegate is for judgment. Plugin is for facts.
 
-The fifth one is the product.
+Delegate first.
 
 [SCREEN: a `delegate` call with a named executor, and the result carrying its
 disclosure.]
@@ -216,6 +238,53 @@ Omega Agent. Then Exo. Then the runtime and the model behind Exo.
 That last part matters. When an agent is a wrapper over somebody's hosted
 model, the answer is not really from the wrapper. You should be able to see all
 the way down, and here you can.
+
+[SCREEN: archive clips: the 2024 WASM plugin registry, the Agent Store launch,
+the payout screens. Date-stamp each. Label: `ARCHIVE - 2024`.]
+
+**Sarah:** Now the sixth tool. Plugin.
+
+Delegate hands work to another agent, and an agent's answer is judgment.
+Plugin calls a function, and a function's answer is a fact. Same input, same
+version, same result, every time — with a receipt you can replay.
+
+A plugin is a small, typed, sandboxed piece of deterministic functionality.
+It declares what it takes in, what it returns, and what it is allowed to
+touch. It cannot call a model. It cannot reach anything it did not declare.
+And every run ends in a receipt that binds exact code to exact input to exact
+output, so a stranger can check the work without trusting anyone's prose.
+
+**Sarah:** We have built this before.
+
+In 2024 we ran plugins in WebAssembly, put them in a registry, and launched
+the Agent Store — a marketplace with revenue sharing paid in Bitcoin, metered
+on usage, down to the minute. Community members built plugins, and we paid
+them. Then the architecture underneath it was reset, more than once, and the
+market went away. The idea was never wrong. The foundation was.
+
+Omega is the foundation that can hold it. The plugin tool is that market
+coming back, in phases, with receipts this time.
+
+[SCREEN: the plugin specification card: the six tools, the receipt fields,
+the three phases. Label: `ACCEPTED DIRECTION - NOT RUNNING`.]
+
+**Sarah:** And here is why it matters beyond this app.
+
+Omega Agent is one face of a super agent. Khala — our collective
+intelligence — is, in our founder's words, one collective mind built up of
+little programs that compose into a response. A plugin you publish does not
+just extend the agent on your machine. It contributes a capability to that
+collective. And when your capability is used, you earn a share of the
+revenue it produces.
+
+We have said from episode one: pay the people. Anyone who contributes
+something valuable to an AI workflow should be paid for it, proportionally,
+automatically. The plugin is the unit that makes that structural: small
+enough for one person to build, typed enough to verify, and metered enough
+to pay.
+
+That market is not live today. It returns in phases, each one gated, and
+when the payments turn on you will see the receipts, not a press release.
 
 [SCREEN: a destructive Git command intercepted with the dirty-file prompt, then
 its retained receipt. Use a scratch repository.
@@ -261,8 +330,8 @@ protocol.
 
 **Sarah:** So that is the promise, and the honest state of it.
 
-One agent. Five tools. Every hand it uses, named out loud. Nothing chosen for
-you that you were not told about.
+One agent. Six tools. Every hand it uses, named out loud. Nothing chosen for
+you that you were not told about. And when you make it better, you get paid.
 
 Omega is the last IDE. Omega Agent is meant to be the last agent you talk to.
 
@@ -280,8 +349,8 @@ change the wording of a planned capability until it sounds shipped.
 | --- | --- | --- |
 | "Omega with the editor taken away" | zero base launches to one agent thread on the candidate being captured | runs in fork builds |
 | "the same program" | the same build is a full editor without the flag | runs; zero base removes nothing |
-| "Read. Write. Edit. Bash. Delegate." | the basic profile is the default and its request surface is exactly those five | runs (OMEGA-DELTA-0133) |
-| "an agent with a smaller surface fails in fewer ways" | the basic-versus-wide comparison has run on the same model, source commit, and task set | **not proven.** OMEGA-DELTA-0138 requires it and it is pending. Cut this line until the comparison runs. |
+| "Six tools. Read. Write. Edit. Bash. Delegate. Plugin." | the six-tool surface is admitted in ProductSpec revision 3, and the spoken line separates the five that run from the one being built | admitted; five run (OMEGA-DELTA-0133), `plugin` is direction |
+| "Five of them run today. The sixth is admitted and being built." | the fork's basic profile carries the five, and the plugin packets are open but unlanded | true at drafting; re-verify on recording day, and flip the line if `plugin` has landed |
 | "There is no automatic option" | `auto` stays unadmitted in `delegate` | runs (OMEGA-DELTA-0137) |
 | "it tells you and stops" | an unavailable executor returns `no_executor` on the captured build | runs |
 | "We attached it this week" | the Exo lane completes a live delegated turn on the captured build | runs; the capture must be a live turn, not a fixture |
@@ -291,6 +360,12 @@ change the wording of a planned capability until it sounds shipped.
 | "names the files that are about to go" | the Git guard prompts with the affected file names on a dirty scope | runs (OMEGA-DELTA-0134) |
 | "kept as a receipt" | the versioned guard metadata stays on the tool call | runs |
 | "twice in one afternoon" | the incident is documented | documented in the openagents oopsiewoopsies audit, 2026-07-27 |
+| "Same input, same version, same result ... with a receipt you can replay" | describes the admitted plugin contract. Present tense about the design is acceptable only over the spec card with its label; a live demo needs the landed tool | direction; spec'd in the plugin tool specification |
+| "In 2024 we ran plugins ... revenue sharing paid in Bitcoin ... down to the minute" | the archive supports it: Episodes 048-098, the Agent Store launch, and the per-minute payout episode | documented history; show only date-stamped archive material |
+| "Community members built plugins, and we paid them" | community plugin submissions and payouts are in the archive (Episodes 066, 088, 093) | documented history |
+| "you earn a share of the revenue it produces" | spoken in the future tense over the phase card. No payment, registry, or payout surface exists for plugins today | direction; phase three is owner-reserved |
+| "pay the people" from "episode one" | Episode 1 and Episode 223 record the commitment | documented history |
+| "one collective mind built up of little programs that compose into a response" | quoted from Episode 242's Khala launch, attributed to the founder | documented; keep the attribution |
 | "it will choose from that record" | nothing. The line is in the future tense and must stay there. | accepted direction |
 | "Khala ... is live today and serving" | the public counter and the endpoint are live at recording | live service |
 | any use of the product name on the native tile | the rename lands (omega#75) | **not landed.** Do not show that tile branded as Omega Agent. |
@@ -298,7 +373,9 @@ change the wording of a planned capability until it sounds shipped.
 ## Recording gates
 
 1. The truth ledger is green for every line that stays in the script. The
-   smaller-surface line is the one most likely to need cutting.
+   script makes no small-surface reliability claim; if one is added back, it
+   waits on the basic-versus-wide comparison that OMEGA-DELTA-0138 requires,
+   which is still pending.
 2. Every product capture is a live build. It is not a still and not a second
    performance of an earlier run. The Exo turn in beat 5 is a real turn.
 3. The build shown is labeled honestly. It is unsigned or a development
@@ -308,11 +385,15 @@ change the wording of a planned capability until it sounds shipped.
    the window-size traps in the Episode 262 lessons.
 5. The Git-guard beat uses a scratch repository. Do not demonstrate a
    destructive command against real work, even with the guard in front of it.
-6. Nothing implies the Electron application is retired. It stays the rollback
+6. Every 2024 archive clip in the plugin beat carries the `ARCHIVE - 2024`
+   label and an on-screen date. No archive frame may read as the current
+   product, and no revenue-share sentence may be spoken over current-product
+   footage.
+7. Nothing implies the Electron application is retired. It stays the rollback
    source.
-7. The Sarah master follows the Episode RC assembly path. Spoken words go to
+8. The Sarah master follows the Episode RC assembly path. Spoken words go to
    `~/Desktop/Sarah/263/263transcript.md`.
-8. This file is updated to the final spoken text when the script locks.
+9. This file is updated to the final spoken text when the script locks.
 
 ## Open production questions
 
@@ -327,6 +408,14 @@ change the wording of a planned capability until it sounds shipped.
    hold on Sarah.
 4. The founder is on leave. Does this episode say so, as the Full Auto draft
    does, or stay on the product only?
+5. The plugin beat is the longest direction segment in the script. If the
+   episode runs long, the cut that preserves the argument is: keep the
+   fact-versus-judgment definition and the pay-the-people close, drop the
+   2024 archive montage to a single still.
+6. Does the revenue-share promise deserve its own future episode at
+   phase three, when the first plugin payout receipt exists? The
+   recommendation is yes, and this episode plants the promise it will pay
+   off.
 
 ## Drafting record
 
@@ -342,10 +431,17 @@ change the wording of a planned capability until it sounds shipped.
   `docs/fable/2026-07-25-omega-agent-analysis.md`,
   `docs/omega/2026-07-25-omega-agent-shape-record.md`,
   `docs/omega/2026-07-26-omega-zero-base-mode.md`,
-  `specs/omega/omega-agent.product-spec.md` at `spec_revision: 2`,
+  `specs/omega/omega-agent.product-spec.md` at `spec_revision: 3`,
   `docs/omega/ROADMAP.md`, and the `OMEGA_DELTAS.md` entries for
   OMEGA-DELTA-0021, 0046, and 0133 through 0144 in the `OpenAgentsInc/omega`
-  checkout at `265a43878e`.
+  checkout at `265a43878e`. For the six-tool revision: the plugin-economy
+  and marketplace arc in the transcript archive (Episodes 048-098 sampled,
+  062, 066, 070, 088, 092, 093, and 098 directly), Episode 223 Pay the
+  People, the Khala arc (Episodes 241-245, 242 and 244 directly), the Pi
+  teardown `docs/teardowns/2026-07-21-pi-agent-teardown.md`, the DSE history
+  audit `docs/dspy/2026-07-20-dspy-in-effect-git-history-audit.md`,
+  everything in `docs/omega-agent/`, and the plugin tool specification
+  written alongside this revision.
 - Memory review: Sarah's live owner-scoped runtime memory was not queried from
   this harness. That limit is recorded here per section 3 of the runbook, and
   this draft does not claim a memory review. The harness-local project memory
@@ -353,11 +449,14 @@ change the wording of a planned capability until it sounds shipped.
   and they agree with current repository sources. No memory is used as evidence
   for a product-state claim.
 - Product-state discipline: running, implemented-but-unproven,
-  accepted-direction, live-service, and owner-reserved claims stay separate in
-  the truth notes, are bound to the production labels, and are examined again
-  line by line in the truth ledger. The one line that names a reliability
-  benefit is marked unproven, because the comparison that would support it has
-  not run.
+  admitted-direction, archive-history, live-service, and owner-reserved
+  claims stay separate in the truth notes, are bound to the production
+  labels, and are examined again line by line in the truth ledger. The one
+  line that names a reliability benefit is marked unproven, because the
+  comparison that would support it has not run. Every plugin-market and
+  revenue-share sentence is future tense or date-stamped 2024 archive, and
+  the phase admissions that would make them present tense are recorded as
+  owner-reserved.
 - Authority: the Omega Agent product contract admits the identity and the basic
   agent. It admits no rename, no router code, and no public claim. Recording
   and publication therefore need the owner's separate authorization. The Nostr
