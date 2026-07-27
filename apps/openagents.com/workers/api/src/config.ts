@@ -6,6 +6,10 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // value agree. Missing configuration keeps the manifest in a typed
   // relay-self-required state.
   PUBLIC_NOSTR_CHAT_RELAY_SELF_PUBKEY?: string | undefined
+  // Exact 64-hex Nostr identity allowed to mint Omega's short-lived,
+  // browser-free owner session. Missing or malformed configuration fails
+  // closed; this key grants no authority beyond the existing owner account.
+  SARAH_NOSTR_OWNER_PUBKEY?: string | undefined
   // Runtime-only Agent Computer harness credentials. Each value is mounted
   // from Secret Manager and leaves the worker only through an exact,
   // owner-scoped, one-use provider grant.

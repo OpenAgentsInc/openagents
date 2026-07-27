@@ -4,6 +4,10 @@ import type { StorageAdapter } from '@openauthjs/openauth/storage/storage'
 import { parseBase64UrlJsonRecord } from '../json-boundary'
 import { currentEpochSeconds } from '../runtime-primitives'
 import { readBearerToken } from './bearer-token'
+import {
+  OMEGA_NOSTR_SESSION_TOKEN_PREFIX,
+  OMEGA_NOSTR_SESSION_TTL_SECONDS,
+} from './omega-nostr-session'
 import type { VerifiedSession } from './session'
 
 // Stable registration used by the supported OpenAgents mobile app. The
@@ -157,7 +161,9 @@ export const authIssuerAllowsRedirect = (
  * CFG-3 (#8518): the backing store is the Postgres KvStore
  * (`auth/auth-kv.ts`), never Cloudflare KV; the key format is unchanged.
  */
-export const mobileRevokedAccessKey = async (accessToken: string): Promise<string> => {
+export const mobileRevokedAccessKey = async (
+  accessToken: string,
+): Promise<string> => {
   const bytes = new TextEncoder().encode(accessToken)
   const digest = await crypto.subtle.digest('SHA-256', bytes)
   const hash = Array.from(new Uint8Array(digest))
@@ -176,6 +182,9 @@ export const mobileAccountDeletedKey = async (
   )
 
 const accessTokenTtlSeconds = (accessToken: string): number => {
+  if (accessToken.startsWith(OMEGA_NOSTR_SESSION_TOKEN_PREFIX)) {
+    return OMEGA_NOSTR_SESSION_TTL_SECONDS
+  }
   const [, claims] = accessToken.split('.')
   const exp =
     claims === undefined ? undefined : parseBase64UrlJsonRecord(claims)?.exp
@@ -282,6 +291,12 @@ export const makeUserBearerSessionBoundary = <User, Bindings>(
       accessToken: string,
     ) => Promise<boolean>
     persistUser: (env: Bindings, user: User) => Promise<void>
+    verifyNativeToken?: (
+      accessToken: string,
+      request: Request,
+      env: Bindings,
+      ctx: ExecutionContext,
+    ) => Promise<VerifiedSession<User> | undefined>
     verifyTokens: (
       accessToken: string,
       refreshToken: string | undefined,
@@ -302,13 +317,21 @@ export const makeUserBearerSessionBoundary = <User, Bindings>(
       return undefined
     }
 
-    const session = await dependencies.verifyTokens(
+    const nativeSession = await dependencies.verifyNativeToken?.(
       accessToken,
-      readMobileOpenAuthRefreshToken(request),
       request,
       env,
       ctx,
     )
+    const session =
+      nativeSession ??
+      (await dependencies.verifyTokens(
+        accessToken,
+        readMobileOpenAuthRefreshToken(request),
+        request,
+        env,
+        ctx,
+      ))
 
     if (session === undefined) {
       return undefined

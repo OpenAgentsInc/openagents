@@ -246,6 +246,11 @@ import {
   revokeMobileAccessToken,
   revokeOpenAuthRefreshToken,
 } from './auth/mobile-session'
+import {
+  OMEGA_NOSTR_SESSION_PATH,
+  makeOmegaNostrSessionHandler,
+  readOmegaNostrSession,
+} from './auth/omega-nostr-session'
 import { makeOpenAuthStorageForEnv } from './auth/openauth-storage'
 import {
   type VerifiedSession as VerifiedAuthSession,
@@ -1622,6 +1627,9 @@ const UserSubject = S.Struct({
 
 type UserSubject = typeof UserSubject.Type
 
+const decodeUserSubject = (value: unknown): UserSubject | undefined =>
+  Option.getOrUndefined(S.decodeUnknownOption(UserSubject)(value))
+
 const subjects = createSubjects({
   user: S.toStandardSchemaV1(UserSubject),
 })
@@ -2180,6 +2188,72 @@ const upsertEmailUser = async (
       ],
     },
   ])
+}
+
+const resolveOmegaNostrOwner = async (
+  env: Env,
+): Promise<UserSubject | undefined> => {
+  const adminEmail = normalizeEmail(getPrimaryOpenAgentsAdminEmail())
+  const rows = await identityDbForEnv(env).query(
+    `SELECT
+       users.id,
+       users.display_name,
+       users.primary_email,
+       users.avatar_url,
+       github.provider_subject AS github_id,
+       github.provider_username AS github_login
+     FROM users
+     LEFT JOIN auth_identities AS github
+       ON github.user_id = users.id
+      AND github.provider = 'github'
+      AND github.deleted_at IS NULL
+     WHERE users.status = 'active'
+       AND users.deleted_at IS NULL
+       AND (
+         LOWER(users.primary_email) = ?
+         OR EXISTS (
+           SELECT 1
+           FROM auth_identities AS owner_identity
+           WHERE owner_identity.user_id = users.id
+             AND owner_identity.deleted_at IS NULL
+             AND LOWER(owner_identity.email) = ?
+         )
+       )
+     ORDER BY CASE WHEN github.provider_subject IS NULL THEN 1 ELSE 0 END
+     LIMIT 1`,
+    [adminEmail, adminEmail],
+  )
+  const row = rows[0]
+  if (row === undefined) return undefined
+
+  const userId = String(row.id ?? '').trim()
+  const email = String(row.primary_email ?? adminEmail)
+    .trim()
+    .toLowerCase()
+  const name = String(row.display_name ?? email.split('@')[0] ?? '').trim()
+  const avatarUrl = String(row.avatar_url ?? '')
+  const githubId = String(row.github_id ?? '').trim()
+  const login = String(row.github_login ?? '').trim()
+
+  return decodeUserSubject(
+    githubId !== '' && login !== ''
+      ? {
+          userId,
+          provider: 'github',
+          githubId,
+          login,
+          email,
+          name,
+          avatarUrl,
+        }
+      : {
+          userId,
+          provider: 'email',
+          email,
+          name,
+          avatarUrl,
+        },
+  )
 }
 
 // Persist a session subject regardless of provider (session refresh paths can
@@ -3452,8 +3526,30 @@ const { requireUserBearerSession } = makeUserBearerSessionBoundary<
     }
   },
   persistUser: (env, user) => upsertUser(identityDbForEnv(env), user),
+  verifyNativeToken: async (accessToken, _request, env) => {
+    try {
+      const storedUser = await readOmegaNostrSession<unknown>(
+        authKvStoreForEnv(env),
+        accessToken,
+      )
+      const user = decodeUserSubject(storedUser)
+      return user === undefined ? undefined : { user }
+    } catch (error) {
+      logWorkerRouteError('omega_nostr_session_check_failed', error)
+      return undefined
+    }
+  },
   verifyTokens: (accessToken, refreshToken, _request, env, ctx) =>
     verifyOpenAuthUserTokens(accessToken, refreshToken, env, ctx),
+})
+
+const handleOmegaNostrSessionApi = makeOmegaNostrSessionHandler<
+  UserSubject,
+  Env
+>({
+  authStore: authKvStoreForEnv,
+  expectedOwnerPubkey: env => env.SARAH_NOSTR_OWNER_PUBKEY,
+  resolveOwner: resolveOmegaNostrOwner,
 })
 
 // AIUR-3 (#8501): the ops views (users/runs/executor health) reuse the
@@ -13546,6 +13642,11 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     path: '/api/mobile/auth/session',
     handler: (request, env, ctx) =>
       Effect.promise(() => handleMobileAuthSessionApi(request, env, ctx)),
+  },
+  {
+    path: OMEGA_NOSTR_SESSION_PATH,
+    handler: (request, env) =>
+      Effect.promise(() => handleOmegaNostrSessionApi(request, env)),
   },
   {
     path: AUDIO_GRANT_ISSUE_PATH,

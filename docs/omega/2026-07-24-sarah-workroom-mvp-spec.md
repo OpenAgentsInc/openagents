@@ -55,17 +55,17 @@ the relay, and the migration.
 
 ## 2. Authority chain
 
-| Role | Artifact | Note |
-| --- | --- | --- |
-| Product intent | `specs/openagents/sarah-owner-orchestrator.product-spec.md` | revision 5 |
-| Sarah authority | `docs/authority/SARAH_AUTHORITY.md` | revision 6 |
-| Root authority | `AUTHORITY.md` | revision 8 |
-| Omega packet order | `docs/omega/ROADMAP.md` | §8, Phase 2 |
-| Workroom direction | `docs/buzz/2026-07-24-omega-buzz-full-parity-recommendation.md` | current owner direction |
-| Product boundary | `docs/sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md` | accepted plan |
-| Buzz evidence | `docs/teardowns/2026-07-21-buzz-teardown.md` | source audit |
-| Runtime seam | `docs/omega/2026-07-24-omega-effectd-supervisor.md` | `OMEGA-FA-02` |
-| Cloud seam | `docs/omega/2026-07-24-omega-agent-computer-contract-freeze.md` | `OMEGA-AC-00` |
+| Role               | Artifact                                                         | Note                    |
+| ------------------ | ---------------------------------------------------------------- | ----------------------- |
+| Product intent     | `specs/openagents/sarah-owner-orchestrator.product-spec.md`      | revision 5              |
+| Sarah authority    | `docs/authority/SARAH_AUTHORITY.md`                              | revision 6              |
+| Root authority     | `AUTHORITY.md`                                                   | revision 8              |
+| Omega packet order | `docs/omega/ROADMAP.md`                                          | §8, Phase 2             |
+| Workroom direction | `docs/buzz/2026-07-24-omega-buzz-full-parity-recommendation.md`  | current owner direction |
+| Product boundary   | `docs/sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md` | accepted plan           |
+| Buzz evidence      | `docs/teardowns/2026-07-21-buzz-teardown.md`                     | source audit            |
+| Runtime seam       | `docs/omega/2026-07-24-omega-effectd-supervisor.md`              | `OMEGA-FA-02`           |
+| Cloud seam         | `docs/omega/2026-07-24-omega-agent-computer-contract-freeze.md`  | `OMEGA-AC-00`           |
 
 This specification specializes roadmap §8. It does not replace ProductSpec or
 AssuranceSpec authority. It does not change the Sarah authority profile. An
@@ -118,17 +118,17 @@ tools join the set only when the broker is admitted and healthy.
 
 The consumer writes these Khala Sync runtime events in order.
 
-| Event kind | Meaning |
-| --- | --- |
-| `turn.started` | the durable claim, one per turn |
-| `tool.call` | Sarah selected a tool, with its authority block |
-| `tool.result` | the tool returned a bounded result |
-| `tool.error` | the tool refused or failed, with a safe message |
-| `text.delta` | the answer text |
-| `text.completed` | the answer is final |
-| `usage.recorded` | exact provider usage, owner attributed |
-| `turn.finished` | `stop` or `error` |
-| `turn.interrupted` | a stale claim that the sweep settled |
+| Event kind         | Meaning                                         |
+| ------------------ | ----------------------------------------------- |
+| `turn.started`     | the durable claim, one per turn                 |
+| `tool.call`        | Sarah selected a tool, with its authority block |
+| `tool.result`      | the tool returned a bounded result              |
+| `tool.error`       | the tool refused or failed, with a safe message |
+| `text.delta`       | the answer text                                 |
+| `text.completed`   | the answer is final                             |
+| `usage.recorded`   | exact provider usage, owner attributed          |
+| `turn.finished`    | `stop` or `error`                               |
+| `turn.interrupted` | a stale claim that the sweep settled            |
 
 Each tool event carries an authority block. The block names the allowed flag,
 the authority receipt reference, the decision reference, and the tool
@@ -142,14 +142,14 @@ signal for a client is therefore the ordered tool ladder, not token motion.
 
 ### 3.4 The transports already exist
 
-| Path | Role |
-| --- | --- |
-| `/api/mobile/sarah` | principal bootstrap and thread resolution |
-| `/api/sync/bootstrap` | consistent snapshot pages for one scope |
-| `/api/sync/log` | offset-resumable catch-up pages |
-| `/api/sync/push` | transactional mutations, in-band per-mutation results |
-| `/api/sync/connect` | authenticated live tail over WebSocket |
-| `/api/sync/cvr-pull` | flagged recovery diff after a must-refetch |
+| Path                  | Role                                                  |
+| --------------------- | ----------------------------------------------------- |
+| `/api/mobile/sarah`   | principal bootstrap and thread resolution             |
+| `/api/sync/bootstrap` | consistent snapshot pages for one scope               |
+| `/api/sync/log`       | offset-resumable catch-up pages                       |
+| `/api/sync/push`      | transactional mutations, in-band per-mutation results |
+| `/api/sync/connect`   | authenticated live tail over WebSocket                |
+| `/api/sync/cvr-pull`  | flagged recovery diff after a must-refetch            |
 
 ### 3.5 A working client already exists
 
@@ -182,14 +182,14 @@ panel plus an Agent menu entry plus two actions. It sends framed requests to
 
 These gaps are the real work. Each one has an owning packet.
 
-| Gap | Statement | Packet |
-| --- | --- | --- |
-| G1 | Omega has no link from its Nostr identity to an OpenAgents account | `OMEGA-SW-01` |
-| G2 | Omega has no Nostr conversation client | `SARAH-NR-06` |
-| G3 | The framed protocol has no conversation methods | `SARAH-NR-06` |
-| G4 | Omega has no workroom pane | `OMEGA-SW-03` |
-| G5 | Omega has no receipt inspector | `OMEGA-SW-05` |
-| G6 | Omega has no proof for this journey | `OMEGA-SW-07` |
+| Gap | Statement                                                          | Packet        |
+| --- | ------------------------------------------------------------------ | ------------- |
+| G1  | Omega has no link from its Nostr identity to an OpenAgents account | `OMEGA-SW-01` |
+| G2  | Omega has no Nostr conversation client                             | `SARAH-NR-06` |
+| G3  | The framed protocol has no conversation methods                    | `SARAH-NR-06` |
+| G4  | Omega has no workroom pane                                         | `OMEGA-SW-03` |
+| G5  | Omega has no receipt inspector                                     | `OMEGA-SW-05` |
+| G6  | Omega has no proof for this journey                                | `OMEGA-SW-07` |
 
 G2 and G3 moved to Part 2 in revision 4. Section 17.5 records why. Under the
 Nostr-first order there is no reason to build a Khala Sync client in Omega
@@ -201,8 +201,9 @@ whose identity matches an OpenAgents admin address. The Agent Computer panel's
 `OPENAGENTS_AGENT_TOKEN` bearer therefore receives `401`.
 
 On the Nostr record, owner scope is the owner's Nostr public key, and NIP-42
-authenticates it. Omega already has that key in `omega_identity`. Omega
-therefore does not need an OpenAgents session to hold the conversation.
+authenticates it to the relay. Omega already has that key in `omega_identity`.
+Omega therefore does not need an OpenAgents session to hold the conversation.
+NIP-42 is not an HTTP session protocol.
 
 One link still matters. Exact metering rows are attributed to an OpenAgents
 account, and the ledger identity is an account, not a public key. So G1
@@ -272,13 +273,13 @@ restart of Omega rebuilds the pane from the service.
 
 The pane renders five projections. Each projection has one source of truth.
 
-| Projection | Source | Content |
-| --- | --- | --- |
-| Room | `/api/mobile/sarah` | principal reference, display name, role, thread reference, authority profile and revision |
-| Transcript | Khala Sync chat messages | owner messages and Sarah answers in order, with confirmed and pending states |
-| Activity | Khala Sync runtime events | ordered tool ladder for the active and recent turns |
-| Receipts | tool event authority blocks | allowed flag, authority receipt reference, decision reference, tool reference |
-| Run state | `turn.*` events | queued, running, interrupted, finished with reason |
+| Projection | Source                      | Content                                                                                   |
+| ---------- | --------------------------- | ----------------------------------------------------------------------------------------- |
+| Room       | `/api/mobile/sarah`         | principal reference, display name, role, thread reference, authority profile and revision |
+| Transcript | Khala Sync chat messages    | owner messages and Sarah answers in order, with confirmed and pending states              |
+| Activity   | Khala Sync runtime events   | ordered tool ladder for the active and recent turns                                       |
+| Receipts   | tool event authority blocks | allowed flag, authority receipt reference, decision reference, tool reference             |
+| Run state  | `turn.*` events             | queued, running, interrupted, finished with reason                                        |
 
 Every row carries a source label, a freshness label, and a gap label. An
 unavailable source stays visible and stays honest. A missing source never
@@ -292,15 +293,15 @@ attachments, voice, and reactions are out of scope.
 `OMEGA-SW-02` adds these methods to `openagents.omega.effectd.v1`. Names are
 proposed and freeze in `OMEGA-SW-00`.
 
-| Method | Direction | Result |
-| --- | --- | --- |
-| `sarah_session_status` | request | signed-in state, account label, expiry state, no token |
-| `sarah_bootstrap` | request | principal projection and thread reference |
-| `sarah_room_snapshot` | request | bounded transcript page, activity page, run state, cursors |
-| `sarah_send_message` | request | accepted message reference and turn reference |
-| `sarah_interrupt_turn` | request | typed intent result, pending until the server settles it |
-| `sarah_room_event` | event | one appended record with its cursor |
-| `sarah_room_state` | event | connection, freshness, and gap state |
+| Method                 | Direction | Result                                                     |
+| ---------------------- | --------- | ---------------------------------------------------------- |
+| `sarah_session_status` | request   | signed-in state, account label, expiry state, no token     |
+| `sarah_bootstrap`      | request   | principal projection and thread reference                  |
+| `sarah_room_snapshot`  | request   | bounded transcript page, activity page, run state, cursors |
+| `sarah_send_message`   | request   | accepted message reference and turn reference              |
+| `sarah_interrupt_turn` | request   | typed intent result, pending until the server settles it   |
+| `sarah_room_event`     | event     | one appended record with its cursor                        |
+| `sarah_room_state`     | event     | connection, freshness, and gap state                       |
 
 Rules for the additions:
 
@@ -330,19 +331,27 @@ No packet invents a second vocabulary.
 
 ### 9.2 `OMEGA-SW-01`: bind the Omega identity to an OpenAgents account
 
-Revision 4 narrowed this packet. It is no longer a session that every request
-carries. The Nostr record authenticates the owner by public key through
-NIP-42, and Omega already holds that key in `omega_identity`.
+Revision 4 narrowed this packet. It is no longer a session that every
+conversation request carries. The Nostr record authenticates the owner to the
+relay by public key through NIP-42, and Omega already holds that key in
+`omega_identity`.
 
 What remains is one binding. Exact metering rows are attributed to an
 OpenAgents account, and the ledger identity is an account. Something must
 record that this public key belongs to that account.
 
-Work: run the OpenAuth PKCE loopback flow once, at binding time, and record
-the relation. Keep the Omega client identity separate from the Electron client
-identity. Store any credential in Omega isolated custody under the Omega RC
-data root. Never write Zed data. Never read Electron secure storage. Never
-touch `~/.codex`.
+Revision 6 removes the browser flow. At binding time, Omega signs a fresh
+NIP-98 HTTP-auth event with its built-in identity. The event binds the exact
+HTTPS session URL, POST method, empty payload, and timestamp. The API admits
+only the configured owner public key, rejects proofs older than 60 seconds,
+and consumes each event id once. It resolves the already existing OpenAgents
+owner account and returns a 15-minute opaque bearer session. No browser,
+loopback listener, authorization code, or refresh token is involved.
+
+Record the relation. Keep the Omega client identity separate from the Electron
+client identity. Store the short-lived credential in Omega isolated custody
+under the Omega RC data root. Never write Zed data. Never read Electron secure
+storage. Never touch `~/.codex`.
 
 Show a visible binding state: unbound, bound, and refused. A refused
 owner-scope gate must say that the Sarah workroom is owner-scoped today. It
@@ -436,7 +445,8 @@ identity to check it.
 The proof journey:
 
 1. Install the candidate from a clean profile.
-2. Sign in to the OpenAgents account through the loopback flow.
+2. Connect the OpenAgents account and confirm no browser or loopback callback
+   appears.
 3. Open the workroom pane.
 4. Confirm the principal reference, the thread reference, and the authority
    revision.
@@ -476,15 +486,15 @@ The MVP does not add:
 The Buzz issue set names the failures that a workroom fakes most easily. Each
 one becomes an acceptance test here.
 
-| Risk | Required Omega behavior |
-| --- | --- |
-| A probe waits forever | every probe has a deadline and a visible degraded state |
-| A reply disappears | one typed and acknowledged result channel, no best-effort write |
-| An agent looks healthy but does nothing | run state comes from typed events, never from prose |
-| A duplicate installation duplicates an actor | one client group for one account, idempotent bootstrap |
-| Replay is structurally present but false | a restart test proves one terminal outcome per turn |
-| An approval lacks checkable evidence | every action row links its authority receipt |
-| A pending intent looks applied | pending renders as pending until the terminal event |
+| Risk                                         | Required Omega behavior                                         |
+| -------------------------------------------- | --------------------------------------------------------------- |
+| A probe waits forever                        | every probe has a deadline and a visible degraded state         |
+| A reply disappears                           | one typed and acknowledged result channel, no best-effort write |
+| An agent looks healthy but does nothing      | run state comes from typed events, never from prose             |
+| A duplicate installation duplicates an actor | one client group for one account, idempotent bootstrap          |
+| Replay is structurally present but false     | a restart test proves one terminal outcome per turn             |
+| An approval lacks checkable evidence         | every action row links its authority receipt                    |
+| A pending intent looks applied               | pending renders as pending until the terminal event             |
 
 Additional Sarah-specific rules:
 
@@ -522,13 +532,13 @@ Nostr-primary work then changes the source, not the product.
 
 ## 14. Verification commands
 
-| Scope | Command |
-| --- | --- |
-| Service | `pnpm --dir packages/omega-effectd test` |
-| API runtime | `pnpm --dir apps/openagents.com/workers/api test -- src/khala-hosted-runtime-dispatch.test.ts` |
-| API Sarah routes | `pnpm --dir apps/openagents.com/workers/api test -- src/sarah-owner-routes.test.ts` |
-| Omega crates | `cargo test -p workroom_ui --lib` and `cargo test -p omega_effectd` |
-| Repository gate | `pnpm run check` |
+| Scope            | Command                                                                                        |
+| ---------------- | ---------------------------------------------------------------------------------------------- |
+| Service          | `pnpm --dir packages/omega-effectd test`                                                       |
+| API runtime      | `pnpm --dir apps/openagents.com/workers/api test -- src/khala-hosted-runtime-dispatch.test.ts` |
+| API Sarah routes | `pnpm --dir apps/openagents.com/workers/api test -- src/sarah-owner-routes.test.ts`            |
+| Omega crates     | `cargo test -p workroom_ui --lib` and `cargo test -p omega_effectd`                            |
+| Repository gate  | `pnpm run check`                                                                               |
 
 A packaged journey receipt is required in addition to these commands. A test
 pass is not a product claim.
@@ -537,13 +547,13 @@ pass is not a product claim.
 
 All Part 1 and Part 2 decisions are answered as of 2026-07-24.
 
-| Decision | Answer |
-| --- | --- |
-| Omega OpenAuth client identity | `openagents-omega`, distinct from the Electron `openagents-desktop` identity |
-| Owner-scoped admin gate for the MVP | stays, and the release text says so |
-| Autonomous tick during dogfood | stays default off. Omega must not enable it |
-| Relay hosting | Option A, the `nostr-effect` repository. See §23.3 |
-| Secret Manager entries for Sarah signing | approved, in project `openagentsgemini` |
+| Decision                                 | Answer                                                                                                                  |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Omega account-binding identity           | built-in Omega Nostr key, proved with NIP-98. The legacy `openagents-omega` record label remains distinct from Electron |
+| Owner-scoped admin gate for the MVP      | stays, and the release text says so                                                                                     |
+| Autonomous tick during dogfood           | stays default off. Omega must not enable it                                                                             |
+| Relay hosting                            | Option A, the `nostr-effect` repository. See §23.3                                                                      |
+| Secret Manager entries for Sarah signing | approved, in project `openagentsgemini`                                                                                 |
 
 Record any later irreducible owner action in `NEEDS_OWNER.md` as a named
 screen or action, and continue every unaffected packet while it waits.
@@ -588,13 +598,13 @@ revision 1 held back. The owner has now closed that exception.
 
 ### 17.2 What this supersedes
 
-| Superseded text | Source | Replacement |
-| --- | --- | --- |
-| Khala Sync owns shared conversation and timeline truth | Omega roadmap §5 law 3 | Nostr owns the Sarah conversation record |
-| Nostr is an interoperability boundary, not command authority | Omega roadmap §5 law 4 | Nostr carries the record. Admission still gates every effect |
-| Sarah's conversation does not go on Nostr in this MVP | this document, revision 1 law 6 | Part 2 |
-| Private NIP-17 and NIP-44 data comes later | Omega roadmap §8.9 | encrypted owner conversation is in the first Nostr slice |
-| The separate Google Cloud relay deployment is not planned | openagents `#9201` closing note, 2026-07-23 | an owned relay is required again |
+| Superseded text                                              | Source                                      | Replacement                                                  |
+| ------------------------------------------------------------ | ------------------------------------------- | ------------------------------------------------------------ |
+| Khala Sync owns shared conversation and timeline truth       | Omega roadmap §5 law 3                      | Nostr owns the Sarah conversation record                     |
+| Nostr is an interoperability boundary, not command authority | Omega roadmap §5 law 4                      | Nostr carries the record. Admission still gates every effect |
+| Sarah's conversation does not go on Nostr in this MVP        | this document, revision 1 law 6             | Part 2                                                       |
+| Private NIP-17 and NIP-44 data comes later                   | Omega roadmap §8.9                          | encrypted owner conversation is in the first Nostr slice     |
+| The separate Google Cloud relay deployment is not planned    | openagents `#9201` closing note, 2026-07-23 | an owned relay is required again                             |
 
 Law 4 needs care. The replacement does not make a signature into permission.
 A valid signed event is proof that a key signed exact bytes. It is not proof of
@@ -605,14 +615,14 @@ OpenAgents action. That rule survives the supersession without change.
 
 This document cannot make these changes by itself.
 
-| Artifact | Required change |
-| --- | --- |
+| Artifact                                                    | Required change                                                                                                 |
+| ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | `specs/openagents/sarah-owner-orchestrator.product-spec.md` | revision 6. `SARAH-AC-01` through `SARAH-AC-03` name the Khala Sync thread and the hosted runtime as the record |
-| `docs/authority/SARAH_AUTHORITY.md` | revision 7. Add relay custody, remote signing, and publication conditions |
-| `docs/omega/ROADMAP.md` | revision 5. Replace design laws 3 and 4 |
-| `INVARIANTS.md` and `apps/openagents.com/INVARIANTS.md` | record the conversation-authority move |
-| openagents `#9201` | reopen or replace. The owned relay is required again |
-| `packages/behavior-contracts` | the owner statement in §17.1 lands as a contract with an oracle |
+| `docs/authority/SARAH_AUTHORITY.md`                         | revision 7. Add relay custody, remote signing, and publication conditions                                       |
+| `docs/omega/ROADMAP.md`                                     | revision 5. Replace design laws 3 and 4                                                                         |
+| `INVARIANTS.md` and `apps/openagents.com/INVARIANTS.md`     | record the conversation-authority move                                                                          |
+| openagents `#9201`                                          | reopen or replace. The owned relay is required again                                                            |
+| `packages/behavior-contracts`                               | the owner statement in §17.1 lands as a contract with an oracle                                                 |
 
 Start `SARAH-NR-00` only after the ProductSpec and authority revisions exist.
 A packet that writes a Sarah record to a relay before that admission is a
@@ -646,13 +656,13 @@ The corrected order is Nostr first. Omega never gets a Khala Sync client.
 
 #### What is cut
 
-| Packet | Disposition | Reason |
-| --- | --- | --- |
-| `OMEGA-SW-02` | cut | its only output is a Khala Sync client that the Nostr record replaces |
-| `OMEGA-SW-04` transport | folded into `SARAH-NR-06` | the send path is a Nostr publication, never a sync mutation |
-| `OMEGA-SW-01` | narrowed | a one-time identity binding, not a session on every request |
-| `OMEGA-SW-03`, `OMEGA-SW-05`, `OMEGA-SW-06` | kept | the pane, the inspector, and attention are record-agnostic |
-| `OMEGA-SW-07` | kept, retargeted | it proves the Nostr journey, so it merges into `SARAH-NR-09` |
+| Packet                                      | Disposition               | Reason                                                                |
+| ------------------------------------------- | ------------------------- | --------------------------------------------------------------------- |
+| `OMEGA-SW-02`                               | cut                       | its only output is a Khala Sync client that the Nostr record replaces |
+| `OMEGA-SW-04` transport                     | folded into `SARAH-NR-06` | the send path is a Nostr publication, never a sync mutation           |
+| `OMEGA-SW-01`                               | narrowed                  | a one-time identity binding, not a session on every request           |
+| `OMEGA-SW-03`, `OMEGA-SW-05`, `OMEGA-SW-06` | kept                      | the pane, the inspector, and attention are record-agnostic            |
+| `OMEGA-SW-07`                               | kept, retargeted          | it proves the Nostr journey, so it merges into `SARAH-NR-09`          |
 
 #### Why this does not stall the client
 
@@ -707,26 +717,26 @@ Every row below was read at pin `c160378`.
 
 ### 18.1 Modules this runtime uses directly
 
-| Need | Module | Kind or role |
-| --- | --- | --- |
-| Owner-private conversation | `src/client/Nip17Service.ts` | kind 14 sealed and gift-wrapped |
-| Encryption | `src/services/Nip44Service.ts` | versioned encryption with vectors |
-| Gift wrap | `src/wrappers/nip59.ts` | metadata protection |
-| Live turn telemetry and control | `src/core/NipAO.ts` | ephemeral kind 24200, both directions |
-| Durable turn usage | `src/core/NipAM.ts` | append-only kind 44200, encrypted to owner |
-| Agent identity attestation | `src/services/OwnerAttestationService.ts` | NIP-OA `auth` tag, condition clauses |
-| Agent authentication | `src/client/AgentAuthService.ts` | kind 22242 with the NIP-OA tag |
-| Agent persona and state | `src/client/NipAPService.ts` | addressable kinds 30175 and 30177 |
-| Owner-decryptable memory | `src/client/EngramService.ts` | addressable kind 30174, blinded identifier |
-| Read state | `src/client/ReadStateService.ts` | kind 30078, max-register merge |
-| Reminders | `src/client/EventReminderService.ts` | addressable kind 30300 with expiration |
-| Remote signing | `src/client/Nip46Service.ts` | Nostr Connect |
-| Relay policy | `src/client/RelayListService.ts` | NIP-65 relay lists |
-| Gap recovery | `src/client/Nip77Service.ts` | negentropy set reconciliation |
-| Relay authentication | `src/relay/core/nip/modules/Nip42Module.ts` | challenge and verify |
-| Relay management | `src/relay/core/nip/modules/Nip86Module.ts` | operator API |
-| Relay information | `src/relay/core/nip/modules/Nip11Module.ts` | capability advertisement |
-| Job market | `src/client/DVMService.ts` and `src/core/Nip90.ts` | NIP-90 request and result |
+| Need                            | Module                                             | Kind or role                               |
+| ------------------------------- | -------------------------------------------------- | ------------------------------------------ |
+| Owner-private conversation      | `src/client/Nip17Service.ts`                       | kind 14 sealed and gift-wrapped            |
+| Encryption                      | `src/services/Nip44Service.ts`                     | versioned encryption with vectors          |
+| Gift wrap                       | `src/wrappers/nip59.ts`                            | metadata protection                        |
+| Live turn telemetry and control | `src/core/NipAO.ts`                                | ephemeral kind 24200, both directions      |
+| Durable turn usage              | `src/core/NipAM.ts`                                | append-only kind 44200, encrypted to owner |
+| Agent identity attestation      | `src/services/OwnerAttestationService.ts`          | NIP-OA `auth` tag, condition clauses       |
+| Agent authentication            | `src/client/AgentAuthService.ts`                   | kind 22242 with the NIP-OA tag             |
+| Agent persona and state         | `src/client/NipAPService.ts`                       | addressable kinds 30175 and 30177          |
+| Owner-decryptable memory        | `src/client/EngramService.ts`                      | addressable kind 30174, blinded identifier |
+| Read state                      | `src/client/ReadStateService.ts`                   | kind 30078, max-register merge             |
+| Reminders                       | `src/client/EventReminderService.ts`               | addressable kind 30300 with expiration     |
+| Remote signing                  | `src/client/Nip46Service.ts`                       | Nostr Connect                              |
+| Relay policy                    | `src/client/RelayListService.ts`                   | NIP-65 relay lists                         |
+| Gap recovery                    | `src/client/Nip77Service.ts`                       | negentropy set reconciliation              |
+| Relay authentication            | `src/relay/core/nip/modules/Nip42Module.ts`        | challenge and verify                       |
+| Relay management                | `src/relay/core/nip/modules/Nip86Module.ts`        | operator API                               |
+| Relay information               | `src/relay/core/nip/modules/Nip11Module.ts`        | capability advertisement                   |
+| Job market                      | `src/client/DVMService.ts` and `src/core/Nip90.ts` | NIP-90 request and result                  |
 
 The relay core is also present. It has a connection manager, a message
 handler, a filter matcher, and a subscription manager. It also has a policy
@@ -858,15 +868,15 @@ same history from the relay without the turn service.
 
 Nostr becomes the record. It does not become everything.
 
-| Stays where it is | Reason |
-| --- | --- |
-| Exact `token_usage_events` rows in Cloud SQL | metering is billing authority. A relay is not a ledger |
-| The public served-token counter projection | it reconciles to exact rows, never to relay observations |
-| Admission and authority resolution | `resolveAuthorityDecision` decides. A signed event never decides |
-| Target broker execution and its receipts | Full Auto, coding capacity, releases, and sandboxes keep their own systems |
-| Raw secrets, credentials, and mnemonics | no secret enters an event, a tag, or a log |
-| Git objects and refs | Git keeps object safety. NIP-34 carries coordination |
-| Provider credentials and model access | runtime only, never in an event |
+| Stays where it is                            | Reason                                                                     |
+| -------------------------------------------- | -------------------------------------------------------------------------- |
+| Exact `token_usage_events` rows in Cloud SQL | metering is billing authority. A relay is not a ledger                     |
+| The public served-token counter projection   | it reconciles to exact rows, never to relay observations                   |
+| Admission and authority resolution           | `resolveAuthorityDecision` decides. A signed event never decides           |
+| Target broker execution and its receipts     | Full Auto, coding capacity, releases, and sandboxes keep their own systems |
+| Raw secrets, credentials, and mnemonics      | no secret enters an event, a tag, or a log                                 |
+| Git objects and refs                         | Git keeps object safety. NIP-34 carries coordination                       |
+| Provider credentials and model access        | runtime only, never in an event                                            |
 
 The metering rule needs one more sentence. A turn may publish a signed
 reference to its usage record, and it may publish an encrypted NIP-AM turn
@@ -925,14 +935,14 @@ detection, session and turn correlation, and a `cancel_turn` control message.
 A durable replay needs stored events. The current ladder must therefore have a
 durable form.
 
-| Current event | Nostr carrier | Storage |
-| --- | --- | --- |
-| `turn.started` | durable OpenAgents turn record, encrypted to owner | stored |
+| Current event                                  | Nostr carrier                                           | Storage          |
+| ---------------------------------------------- | ------------------------------------------------------- | ---------------- |
+| `turn.started`                                 | durable OpenAgents turn record, encrypted to owner      | stored           |
 | `tool.call` and `tool.result` and `tool.error` | NIP-AO telemetry frame plus a durable turn-record entry | live plus stored |
-| `text.delta` and `text.completed` | NIP-17 kind 14 answer from Sarah | stored |
-| `usage.recorded` | NIP-AM kind 44200 metric encrypted to owner | stored |
-| `turn.finished` and `turn.interrupted` | durable turn record terminal entry | stored |
-| interrupt intent | NIP-AO control frame with `cancel_turn` | live |
+| `text.delta` and `text.completed`              | NIP-17 kind 14 answer from Sarah                        | stored           |
+| `usage.recorded`                               | NIP-AM kind 44200 metric encrypted to owner             | stored           |
+| `turn.finished` and `turn.interrupted`         | durable turn record terminal entry                      | stored           |
+| interrupt intent                               | NIP-AO control frame with `cancel_turn`                 | live             |
 
 The durable turn record is a new kind. `SARAH-NR-00` must specify it before
 any code writes it. The parity recommendation already sets the rule: no opaque
@@ -1034,16 +1044,16 @@ this as permanent architecture.
 
 ### 23.4 Required relay behavior
 
-| Requirement | Carrier |
-| --- | --- |
-| Capability advertisement | NIP-11 information document |
-| Client authentication | NIP-42 challenge and verify |
-| Closed membership | policy pipeline plus attested agent keys |
-| Protected events | NIP-70 |
-| Expiration | NIP-40 |
-| Gap reconciliation | NIP-77 negentropy |
-| Operator control | NIP-86 management API |
-| Ephemeral routing | kinds 20000 to 29999 broadcast without storage |
+| Requirement              | Carrier                                        |
+| ------------------------ | ---------------------------------------------- |
+| Capability advertisement | NIP-11 information document                    |
+| Client authentication    | NIP-42 challenge and verify                    |
+| Closed membership        | policy pipeline plus attested agent keys       |
+| Protected events         | NIP-70                                         |
+| Expiration               | NIP-40                                         |
+| Gap reconciliation       | NIP-77 negentropy                              |
+| Operator control         | NIP-86 management API                          |
+| Ephemeral routing        | kinds 20000 to 29999 broadcast without storage |
 
 Custom kinds advertise through `supported_extensions`, never through
 `supported_nips`. That rule is already the convention in the library.
@@ -1066,21 +1076,21 @@ An unproven relay is not admitted as the Sarah record.
 
 Each packet names its owning repository.
 
-| Packet | Repository | Outcome | State |
-| --- | --- | --- | --- |
-| `SARAH-NR-00` | openagents | freeze the Nostr record contract | done, see `docs/omega/2026-07-24-sarah-nostr-record-contract.md` |
-| `SARAH-NR-01a` | nostr-effect | remove Cloudflare, set the Node target | done, `787f7b5` |
-| `SARAH-NR-01b` | nostr-effect | extract the relay core out of the Bun backend | done, `6e91cad` + `9813d31` |
-| `SARAH-NR-01c` | nostr-effect | replace the Bun toolchain with pnpm and Vite Plus | planned |
-| `SARAH-NR-01d` | nostr-effect | Node and Cloud SQL `EventStore` implementations | done, `76df424` |
-| `SARAH-NR-02` | nostr-effect | Node WebSocket relay host | done, `776fc2b` |
-| `SARAH-NR-03` | openagents | deploy the owned relay with load proof | local exit green (runbook + harness). Production Cloud Run and DNS remain owner-gated |
-| `SARAH-NR-04` | openagents | Sarah identity, Secret Manager custody, signing | done, see `docs/omega/2026-07-24-sarah-nostr-identity-contract.md` |
-| `SARAH-NR-05` | openagents | the Sarah turn service on the relay | planned |
-| `SARAH-NR-06` | omega | the pane reads and writes Nostr | planned |
-| `SARAH-NR-07` | openagents | memory, read state, and reminders | planned |
-| `SARAH-NR-08` | openagents | migration and cutover | planned |
-| `SARAH-NR-09` | openagents | prove the Nostr journey | automated harness done (`docs/omega/2026-07-24-sarah-nostr-journey-proof.md`), live install residual |
+| Packet         | Repository   | Outcome                                           | State                                                                                                |
+| -------------- | ------------ | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `SARAH-NR-00`  | openagents   | freeze the Nostr record contract                  | done, see `docs/omega/2026-07-24-sarah-nostr-record-contract.md`                                     |
+| `SARAH-NR-01a` | nostr-effect | remove Cloudflare, set the Node target            | done, `787f7b5`                                                                                      |
+| `SARAH-NR-01b` | nostr-effect | extract the relay core out of the Bun backend     | done, `6e91cad` + `9813d31`                                                                          |
+| `SARAH-NR-01c` | nostr-effect | replace the Bun toolchain with pnpm and Vite Plus | planned                                                                                              |
+| `SARAH-NR-01d` | nostr-effect | Node and Cloud SQL `EventStore` implementations   | done, `76df424`                                                                                      |
+| `SARAH-NR-02`  | nostr-effect | Node WebSocket relay host                         | done, `776fc2b`                                                                                      |
+| `SARAH-NR-03`  | openagents   | deploy the owned relay with load proof            | local exit green (runbook + harness). Production Cloud Run and DNS remain owner-gated                |
+| `SARAH-NR-04`  | openagents   | Sarah identity, Secret Manager custody, signing   | done, see `docs/omega/2026-07-24-sarah-nostr-identity-contract.md`                                   |
+| `SARAH-NR-05`  | openagents   | the Sarah turn service on the relay               | planned                                                                                              |
+| `SARAH-NR-06`  | omega        | the pane reads and writes Nostr                   | planned                                                                                              |
+| `SARAH-NR-07`  | openagents   | memory, read state, and reminders                 | planned                                                                                              |
+| `SARAH-NR-08`  | openagents   | migration and cutover                             | planned                                                                                              |
+| `SARAH-NR-09`  | openagents   | prove the Nostr journey                           | automated harness done (`docs/omega/2026-07-24-sarah-nostr-journey-proof.md`), live install residual |
 
 The `SARAH-NR-01` lane is the Node and Google Cloud migration in the protocol
 repository. Its plan is
@@ -1370,11 +1380,11 @@ requirement and not a footnote.
 
 Do not start v2 before these hold.
 
-| Gate | Reason |
-| --- | --- |
-| `SARAH-NR-03` relay live with load proof | v2 multiplies the write rate |
-| `SARAH-NR-05` turn service in daily use | Sarah must arbitrate from a working runtime |
-| `SARAH-NR-09` journey proof accepted | a private room must work before a shared one |
+| Gate                                     | Reason                                       |
+| ---------------------------------------- | -------------------------------------------- |
+| `SARAH-NR-03` relay live with load proof | v2 multiplies the write rate                 |
+| `SARAH-NR-05` turn service in daily use  | Sarah must arbitrate from a working runtime  |
+| `SARAH-NR-09` journey proof accepted     | a private room must work before a shared one |
 
 The payout gate that revision 3 listed here is gone, because v1 pays nothing.
 It returns as the first gate of the paid version in §36.5.
@@ -1389,13 +1399,13 @@ and NIP-72 moderated communities as unrecommended and points to NIP-29
 instead. `nostr-effect` implements NIP-29 with the moderation matrix, and the
 Part 2 relay already carries the group state.
 
-| Room property | Carrier |
-| --- | --- |
-| Group identity and metadata | NIP-29 addressable group state |
-| Membership and roles | NIP-29 admin events, relay-signed |
-| Messages and threads | NIP-29 group messages with the required group tag |
-| Moderation and tombstones | NIP-29 moderation events |
-| Room discovery | NIP-11 plus an explicit invitation, never a global directory |
+| Room property               | Carrier                                                      |
+| --------------------------- | ------------------------------------------------------------ |
+| Group identity and metadata | NIP-29 addressable group state                               |
+| Membership and roles        | NIP-29 admin events, relay-signed                            |
+| Messages and threads        | NIP-29 group messages with the required group tag            |
+| Moderation and tombstones   | NIP-29 moderation events                                     |
+| Room discovery              | NIP-11 plus an explicit invitation, never a global directory |
 
 Two rooms exist, and they must not merge. Sarah's owner-private conversation
 from Part 2 stays owner-private and encrypted. The community room is a
@@ -1466,13 +1476,13 @@ it.
 So a community agent never runs a Sarah tick. It runs a work unit that a Sarah
 tick produced.
 
-| Layer | Who runs it | Authority |
-| --- | --- | --- |
-| Sarah tick | the OpenAgents turn service | Sarah's admitted profile |
-| Decomposition | the same tick | Sarah's profile, bounded |
-| Work unit | a community agent on its own compute | the unit's own narrow grant |
-| Acceptance | Sarah | Sarah's profile |
-| Settlement | the platform ledger | neither of them |
+| Layer         | Who runs it                          | Authority                   |
+| ------------- | ------------------------------------ | --------------------------- |
+| Sarah tick    | the OpenAgents turn service          | Sarah's admitted profile    |
+| Decomposition | the same tick                        | Sarah's profile, bounded    |
+| Work unit     | a community agent on its own compute | the unit's own narrow grant |
+| Acceptance    | Sarah                                | Sarah's profile             |
+| Settlement    | the platform ledger                  | neither of them             |
 
 The useful part of the idea survives completely. A tick becomes a fan-out
 point. Instead of one turn doing one action, a tick can decompose into many
@@ -1523,11 +1533,11 @@ number that any author can inflate.
 
 Use three carriers together.
 
-| Layer | Carrier | Why |
-| --- | --- | --- |
-| One award | NIP-32 kind `1985` label, namespace `com.openagents.xp` | immutable, targets the work event and the earner, auditable |
-| Running score and level | NIP-85 kind `30382` trusted assertion with a `rank` tag | addressable, recomputable, published by a named scorer key |
-| Milestones | NIP-58 badge definition `30009`, award kind `8`, profile `10008` | immutable, non-transferable, displayable |
+| Layer                   | Carrier                                                          | Why                                                         |
+| ----------------------- | ---------------------------------------------------------------- | ----------------------------------------------------------- |
+| One award               | NIP-32 kind `1985` label, namespace `com.openagents.xp`          | immutable, targets the work event and the earner, auditable |
+| Running score and level | NIP-85 kind `30382` trusted assertion with a `rank` tag          | addressable, recomputable, published by a named scorer key  |
+| Milestones              | NIP-58 badge definition `30009`, award kind `8`, profile `10008` | immutable, non-transferable, displayable                    |
 
 NIP-85 is a close fit and it is worth naming why. It exists for calculations
 that clients cannot perform, published by a declared service key, with one key
@@ -1566,15 +1576,15 @@ The owner asked for a draft. This is it, and it is deliberately boring.
 Fixed integer points per accepted outcome. No hidden weights, no multipliers,
 and no model in the loop.
 
-| Award | Points |
-| --- | --- |
-| Accepted work unit, tier 1 | 10 |
-| Accepted work unit, tier 2 | 20 |
-| Accepted work unit, tier 3 | 40 |
-| Accepted independent verification | 5 |
-| Reproduced defect | 8 |
-| Accepted review of another member's result | 3 |
-| First accepted unit in a new job type | 5, once per job type |
+| Award                                      | Points               |
+| ------------------------------------------ | -------------------- |
+| Accepted work unit, tier 1                 | 10                   |
+| Accepted work unit, tier 2                 | 20                   |
+| Accepted work unit, tier 3                 | 40                   |
+| Accepted independent verification          | 5                    |
+| Reproduced defect                          | 8                    |
+| Accepted review of another member's result | 3                    |
+| First accepted unit in a new job type      | 5, once per job type |
 
 Total experience is the sum of a member's award points. Nothing else
 contributes.
@@ -1676,16 +1686,16 @@ invites exactly the gaming §37 tries to prevent.
 A semi-public room with money attached attracts specific attacks. Each one
 needs an acceptance test before launch.
 
-| Attack | Countermeasure |
-| --- | --- |
-| Sybil members farming units | attested identity, explicit membership, per-operator rate limits |
-| Self-dealing verification | producer and verifier must have distinct operators, not only distinct keys |
-| Result replay from another member | bind the result to the request, the provider key, and a fresh nonce |
-| Low-effort volume | award on accepted outcomes only, never on submissions |
-| Prompt injection through work content | treat member content as untrusted data, never as instructions to Sarah |
-| Secret harvesting through unit payloads | units carry public-safe objectives and pinned refs only |
-| Double payment across relays | settle once in the ledger, keyed by idempotency identity |
-| Score inflation | only scorer keys publish rank, and rank recomputes from awards |
+| Attack                                  | Countermeasure                                                             |
+| --------------------------------------- | -------------------------------------------------------------------------- |
+| Sybil members farming units             | attested identity, explicit membership, per-operator rate limits           |
+| Self-dealing verification               | producer and verifier must have distinct operators, not only distinct keys |
+| Result replay from another member       | bind the result to the request, the provider key, and a fresh nonce        |
+| Low-effort volume                       | award on accepted outcomes only, never on submissions                      |
+| Prompt injection through work content   | treat member content as untrusted data, never as instructions to Sarah     |
+| Secret harvesting through unit payloads | units carry public-safe objectives and pinned refs only                    |
+| Double payment across relays            | settle once in the ledger, keyed by idempotency identity                   |
+| Score inflation                         | only scorer keys publish rank, and rank recomputes from awards             |
 
 The prompt-injection row deserves emphasis. Sarah reads the room. Room content
 is written by strangers. Member text must enter her context as quoted untrusted
@@ -1693,18 +1703,18 @@ data with an explicit boundary, and it must never widen her authority.
 
 ## 38. Packets
 
-| Packet | Repository | Outcome | State |
-| --- | --- | --- | --- |
-| `SARAH-CW-00` | openagents | freeze the community contract | done, see `docs/omega/2026-07-24-community-workroom-contract.md` |
-| `SARAH-CW-01` | nostr-effect | NIP-29 group policy for the owned relay | planned |
-| `SARAH-CW-02` | openagents | membership, attestation, and revocation | planned |
-| `SARAH-CW-03` | openagents | tick decomposition into bounded units | planned |
-| `SARAH-CW-04` | openagents | the `NIP-LBR` request and quote lane | planned |
-| `SARAH-CW-05` | openagents | Sarah arbitration and the dispute path | planned |
-| `SARAH-CW-06` | openagents | experience awards, rank, and badges | planned |
-| `SARAH-CW-07` | openagents | deferred, the paid version's settlement lane | planned |
-| `SARAH-CW-08` | omega | the community room pane | planned |
-| `SARAH-CW-09` | openagents | prove the outside-developer journey | planned |
+| Packet        | Repository   | Outcome                                      | State                                                            |
+| ------------- | ------------ | -------------------------------------------- | ---------------------------------------------------------------- |
+| `SARAH-CW-00` | openagents   | freeze the community contract                | done, see `docs/omega/2026-07-24-community-workroom-contract.md` |
+| `SARAH-CW-01` | nostr-effect | NIP-29 group policy for the owned relay      | planned                                                          |
+| `SARAH-CW-02` | openagents   | membership, attestation, and revocation      | planned                                                          |
+| `SARAH-CW-03` | openagents   | tick decomposition into bounded units        | planned                                                          |
+| `SARAH-CW-04` | openagents   | the `NIP-LBR` request and quote lane         | planned                                                          |
+| `SARAH-CW-05` | openagents   | Sarah arbitration and the dispute path       | planned                                                          |
+| `SARAH-CW-06` | openagents   | experience awards, rank, and badges          | planned                                                          |
+| `SARAH-CW-07` | openagents   | deferred, the paid version's settlement lane | planned                                                          |
+| `SARAH-CW-08` | omega        | the community room pane                      | planned                                                          |
+| `SARAH-CW-09` | openagents   | prove the outside-developer journey          | planned                                                          |
 
 ### 38.1 `SARAH-CW-00`: freeze the community contract
 
@@ -1777,14 +1787,14 @@ outcome in their own words.
 
 Answered on 2026-07-24.
 
-| Decision | Answer |
-| --- | --- |
-| The two-room split | approved. A private fact reaches the community room only through a deliberate publication |
-| Membership gate | **invitation only** for now |
-| Dispute and appeal path | **the owner is the arbiter of last resort.** See §40.1 |
-| Scoring function | draft in §35.4, published in the room, open to revision |
-| v1 copy that the room does not pay | approved, and required by §35.5 |
-| When to reopen the paid version | against the §36.5 gates, not before |
+| Decision                           | Answer                                                                                    |
+| ---------------------------------- | ----------------------------------------------------------------------------------------- |
+| The two-room split                 | approved. A private fact reaches the community room only through a deliberate publication |
+| Membership gate                    | **invitation only** for now                                                               |
+| Dispute and appeal path            | **the owner is the arbiter of last resort.** See §40.1                                    |
+| Scoring function                   | draft in §35.4, published in the room, open to revision                                   |
+| v1 copy that the room does not pay | approved, and required by §35.5                                                           |
+| When to reopen the paid version    | against the §36.5 gates, not before                                                       |
 
 ### 40.1 The owner as arbiter
 

@@ -1,18 +1,20 @@
 /* eslint-disable @typescript-eslint/consistent-type-assertions */
-import { paymentsLedgerDbFromD1 } from '../test/payments-ledger-sqlite'
-import { generatePKCE } from '@openauthjs/openauth/pkce'
-import { describe, expect, test } from 'vitest'
-
 import {
   KHALA_SYNC_PROTOCOL_VERSION,
   personalScope,
 } from '@openagentsinc/khala-sync'
+import { generatePKCE } from '@openauthjs/openauth/pkce'
+import { describe, expect, test } from 'vitest'
 
+import worker from '../index'
+import { paymentsLedgerDbFromD1 } from '../test/payments-ledger-sqlite'
+import { IDENTITY_AUTH_DOMAIN_D1_SCHEMA, makeSqliteD1 } from '../test/sqlite-d1'
+import { makeMemoryAuthKvStore } from './auth-kv'
 import {
-  DEFAULT_OPENAGENTS_MOBILE_OPENAUTH_CLIENT_ID,
   DEFAULT_OPENAGENTS_DESKTOP_OPENAUTH_CLIENT_ID,
-  OPENAGENTS_MOBILE_OPENAUTH_REDIRECT_URI,
+  DEFAULT_OPENAGENTS_MOBILE_OPENAUTH_CLIENT_ID,
   OPENAGENTS_DESKTOP_OPENAUTH_LOOPBACK_PATH,
+  OPENAGENTS_MOBILE_OPENAUTH_REDIRECT_URI,
   authIssuerAllowsRedirect,
   isMobileAccessTokenRevoked,
   makeUserBearerSessionBoundary,
@@ -20,13 +22,7 @@ import {
   readMobileOpenAuthSignOutRefreshToken,
   revokeMobileAccessToken,
 } from './mobile-session'
-import { makeMemoryAuthKvStore } from './auth-kv'
 import { makeKvOpenAuthStorage } from './openauth-storage'
-import worker from '../index'
-import {
-  IDENTITY_AUTH_DOMAIN_D1_SCHEMA,
-  makeSqliteD1,
-} from '../test/sqlite-d1'
 
 type StoredValue = Readonly<{
   expirationTtl?: number
@@ -39,10 +35,43 @@ const executionContext = {
 } as never
 
 describe('contract openagents_mobile.session.recovered_validation_rotation.v1 â€” server boundary', () => {
+  test('accepts a server-issued native session without sending it to OpenAuth', async () => {
+    let openAuthCalls = 0
+    const boundary = makeUserBearerSessionBoundary<
+      string,
+      Record<string, never>
+    >({
+      isAccessTokenRevoked: async () => false,
+      persistUser: async () => undefined,
+      verifyNativeToken: async access =>
+        access.startsWith('oa_omega_') ? { user: 'omega-owner' } : undefined,
+      verifyTokens: async () => {
+        openAuthCalls += 1
+        return undefined
+      },
+    })
+
+    await expect(
+      boundary.requireUserBearerSession(
+        new Request('https://openagents.com/api/mobile/auth/session', {
+          headers: { authorization: 'Bearer oa_omega_fixture' },
+        }),
+        {},
+        executionContext,
+      ),
+    ).resolves.toEqual({ user: 'omega-owner' })
+    expect(openAuthCalls).toBe(0)
+  })
+
   test('passes only a bounded native refresh header to the existing verifier', async () => {
-    const calls: Array<Readonly<{ access: string; refresh: string | undefined }>> = []
+    const calls: Array<
+      Readonly<{ access: string; refresh: string | undefined }>
+    > = []
     const persisted: Array<string> = []
-    const boundary = makeUserBearerSessionBoundary<string, Record<string, never>>({
+    const boundary = makeUserBearerSessionBoundary<
+      string,
+      Record<string, never>
+    >({
       isAccessTokenRevoked: async () => false,
       persistUser: async (_env, user) => {
         persisted.push(user)
@@ -66,9 +95,13 @@ describe('contract openagents_mobile.session.recovered_validation_rotation.v1 â€
         executionContext,
       )
 
-    await expect(run('refresh-fixture')).resolves.toEqual({ user: 'owner.fixture' })
+    await expect(run('refresh-fixture')).resolves.toEqual({
+      user: 'owner.fixture',
+    })
     await expect(run('short')).resolves.toEqual({ user: 'owner.fixture' })
-    await expect(run('x'.repeat(2001))).resolves.toEqual({ user: 'owner.fixture' })
+    await expect(run('x'.repeat(2001))).resolves.toEqual({
+      user: 'owner.fixture',
+    })
     await boundary.requireUserBearerSession(
       new Request('https://openagents.com/api/mobile/credits/balance', {
         headers: {
@@ -91,12 +124,14 @@ describe('contract openagents_mobile.session.recovered_validation_rotation.v1 â€
       'owner.fixture',
       'owner.fixture',
     ])
-    expect(readMobileOpenAuthSignOutRefreshToken(
-      new Request('https://openagents.com/api/mobile/auth/session', {
-        method: 'DELETE',
-        headers: { 'x-openagents-refresh-token': 'refresh-for-sign-out' },
-      }),
-    )).toBe('refresh-for-sign-out')
+    expect(
+      readMobileOpenAuthSignOutRefreshToken(
+        new Request('https://openagents.com/api/mobile/auth/session', {
+          method: 'DELETE',
+          headers: { 'x-openagents-refresh-token': 'refresh-for-sign-out' },
+        }),
+      ),
+    ).toBe('refresh-for-sign-out')
   })
 })
 
@@ -114,11 +149,7 @@ const makeMemoryKv = (): KVNamespace => {
 
   return {
     get: (key: string) => Promise.resolve(values.get(key)?.value ?? null),
-    put: (
-      key: string,
-      value: string,
-      options?: { expirationTtl?: number },
-    ) => {
+    put: (key: string, value: string, options?: { expirationTtl?: number }) => {
       const expirationTtl = options?.expirationTtl
 
       values.set(
@@ -202,10 +233,7 @@ const seedAuthorizationCode = async (
   )
 }
 
-const postToken = (
-  env: unknown,
-  body: URLSearchParams,
-): Promise<Response> =>
+const postToken = (env: unknown, body: URLSearchParams): Promise<Response> =>
   worker.fetch(
     new Request('https://auth.openagents.com/token', {
       body,
@@ -276,12 +304,14 @@ describe('Khala mobile OpenAuth session policy', () => {
     const allowedRequest = new Request(
       'https://auth.openagents.com/authorize?provider=github&response_type=code&code_challenge_method=S256&code_challenge=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ',
     )
-    const allowed = (redirectURI: string, request: Request = allowedRequest, clientID = DEFAULT_OPENAGENTS_DESKTOP_OPENAUTH_CLIENT_ID) =>
-      authIssuerAllowsRedirect(
-        { clientID, redirectURI },
-        request,
-        { webClientId: 'openagents-web' },
-      )
+    const allowed = (
+      redirectURI: string,
+      request: Request = allowedRequest,
+      clientID = DEFAULT_OPENAGENTS_DESKTOP_OPENAUTH_CLIENT_ID,
+    ) =>
+      authIssuerAllowsRedirect({ clientID, redirectURI }, request, {
+        webClientId: 'openagents-web',
+      })
 
     expect(OPENAGENTS_DESKTOP_OPENAUTH_LOOPBACK_PATH).toBe('/auth/callback')
     expect(allowed('http://127.0.0.1:49152/auth/callback')).toBe(true)
@@ -301,19 +331,29 @@ describe('Khala mobile OpenAuth session policy', () => {
       expect(allowed(rejected)).toBe(false)
     }
 
-    expect(allowed(
-      'http://127.0.0.1:49152/auth/callback',
-      new Request('https://auth.openagents.com/authorize?provider=github&response_type=code&code_challenge_method=plain&code_challenge=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ'),
-    )).toBe(false)
-    expect(allowed(
-      'http://127.0.0.1:49152/auth/callback',
-      new Request('https://auth.openagents.com/authorize?provider=code&response_type=code&code_challenge_method=S256&code_challenge=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ'),
-    )).toBe(false)
-    expect(allowed(
-      'http://127.0.0.1:49152/auth/callback',
-      allowedRequest,
-      DEFAULT_OPENAGENTS_MOBILE_OPENAUTH_CLIENT_ID,
-    )).toBe(false)
+    expect(
+      allowed(
+        'http://127.0.0.1:49152/auth/callback',
+        new Request(
+          'https://auth.openagents.com/authorize?provider=github&response_type=code&code_challenge_method=plain&code_challenge=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ',
+        ),
+      ),
+    ).toBe(false)
+    expect(
+      allowed(
+        'http://127.0.0.1:49152/auth/callback',
+        new Request(
+          'https://auth.openagents.com/authorize?provider=code&response_type=code&code_challenge_method=S256&code_challenge=abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ',
+        ),
+      ),
+    ).toBe(false)
+    expect(
+      allowed(
+        'http://127.0.0.1:49152/auth/callback',
+        allowedRequest,
+        DEFAULT_OPENAGENTS_MOBILE_OPENAUTH_CLIENT_ID,
+      ),
+    ).toBe(false)
   })
 
   test('allows only exact mobile public-client native redirects with GitHub code + S256 PKCE', () => {
@@ -405,9 +445,9 @@ describe('Khala mobile OpenAuth session policy', () => {
   })
 
   test('derives the OpenAuth refresh storage key without exposing token material', () => {
-    expect(openAuthRefreshStorageKeyFromToken('github:12345:refresh-id')).toEqual(
-      ['oauth:refresh', 'github:12345', 'refresh-id'],
-    )
+    expect(
+      openAuthRefreshStorageKeyFromToken('github:12345:refresh-id'),
+    ).toEqual(['oauth:refresh', 'github:12345', 'refresh-id'])
     expect(openAuthRefreshStorageKeyFromToken('malformed')).toBeUndefined()
   })
 
@@ -419,6 +459,25 @@ describe('Khala mobile OpenAuth session policy', () => {
     await expect(isMobileAccessTokenRevoked(kv, token)).resolves.toBe(false)
     await revokeMobileAccessToken(kv, token)
     await expect(isMobileAccessTokenRevoked(kv, token)).resolves.toBe(true)
+  })
+
+  test('revokes an opaque Omega session for its full lifetime', async () => {
+    let expirationTtl: number | undefined
+    const store = {
+      get: () => Promise.resolve(null),
+      put: (
+        _key: string,
+        _value: string,
+        options?: Readonly<{ expirationTtl?: number }>,
+      ) => {
+        expirationTtl = options?.expirationTtl
+        return Promise.resolve()
+      },
+    }
+
+    await revokeMobileAccessToken(store, `oa_omega_${'a'.repeat(43)}`)
+
+    expect(expirationTtl).toBe(15 * 60)
   })
 
   test('exchanges a seeded OpenAuth code with S256 PKCE, refreshes, verifies bearer auth, and signs out', async () => {
@@ -646,5 +705,4 @@ describe('Khala mobile OpenAuth session policy', () => {
       close()
     }
   })
-
 })
