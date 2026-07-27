@@ -1,0 +1,79 @@
+{
+  "schema": "openagents.omega.mobile_mirror_journey_receipt.v1",
+  "issue": "OpenAgentsInc/openagents#9262",
+  "mode": "simulator",
+  "generatedAt": "2026-07-27T20:00:00.000Z",
+  "source": {
+    "openagentsCommit": "51953c9591828cc85c25ac23f16b14aa4e6f6f28",
+    "omegaCommit": "dcb71aea6845289d73139f631c0becf596c0ad1f"
+  },
+  "simulator": {
+    "platform": "ios",
+    "appIdentifier": "com.openagents.app",
+    "protocol": "openagents.omega.device_bridge.v1"
+  },
+  "stages": [
+    {
+      "stage": "M0",
+      "status": "passed_simulator",
+      "evidenceRefs": [
+        "apps/openagents-mobile/tests/omega-mobile-mirror-journey.test.ts#M0"
+      ],
+      "summary": "The simulator pairs from the exact QR bootstrap, admits the device grant, and projects the desktop thread list on the zero-based home without a selection intent."
+    },
+    {
+      "stage": "M1",
+      "status": "passed_simulator",
+      "evidenceRefs": [
+        "apps/openagents-mobile/tests/omega-mobile-mirror-journey.test.ts#M1"
+      ],
+      "summary": "The simulator reopens with the persisted resume cursor, rejects an unreachable cached tailnet endpoint, dials the signed announcement endpoint next, and catches up from the returned snapshot."
+    },
+    {
+      "stage": "M2",
+      "status": "passed_simulator",
+      "evidenceRefs": [
+        "apps/openagents-mobile/tests/omega-mobile-mirror-journey.test.ts#M2"
+      ],
+      "summary": "The simulator observes host shutdown, renders relay and exact staleness evidence, then reconnects to a new engine snapshot and returns honestly to direct."
+    }
+  ],
+  "residual": [
+    {
+      "stage": "revocation",
+      "status": "blocked_dependency",
+      "blockerRefs": [
+        "github:OpenAgentsInc/omega#121",
+        "github:OpenAgentsInc/omega#123"
+      ],
+      "summary": "The mobile client clears a revoked grant and refuses reuse in the simulator. Proof that both the direct host and relay lane enforce one live revocation state requires the still-unimplemented Omega host."
+    },
+    {
+      "stage": "live_host",
+      "status": "blocked_dependency",
+      "blockerRefs": [
+        "github:OpenAgentsInc/omega#121",
+        "github:OpenAgentsInc/omega#122",
+        "github:OpenAgentsInc/omega#123"
+      ],
+      "summary": "Omega origin/main at the recorded commit has no device bridge server, discovery V3 or QR issuer, or mirror projection feed. No live end-to-end host claim is made."
+    },
+    {
+      "stage": "physical_device",
+      "status": "not_run",
+      "blockerRefs": [
+        "github:OpenAgentsInc/omega#49"
+      ],
+      "summary": "No owner phone was admitted for this run. Simulator evidence is not presented as physical-device or packaged evidence."
+    }
+  ],
+  "redaction": {
+    "publicSafe": true,
+    "mirrorEphemeral": true,
+    "forbiddenMaterialScanned": true
+  },
+  "summary": {
+    "simulatorStagesPassed": 3,
+    "overall": "blocked_live_host"
+  }
+}
