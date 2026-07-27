@@ -49608,7 +49608,7 @@
     },
     {
       "path": "specs/omega/omega-agent.product-spec.md",
-      "sha256": "3c3018b8c87523f6ed807bac268a48d3cc2c6fde30c5d374b28b764d2860ada4",
+      "sha256": "a1782a225468aa871938937d2b15ca4246b7996cfcc7c312b896aa73d22f461e",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",

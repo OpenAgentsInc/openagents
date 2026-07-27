@@ -5,7 +5,7 @@ artifact_type: "prd"
 spec_revision: 2
 author: "OpenAgents"
 created_at: "2026-07-25T18:00:00.000Z"
-updated_at: "2026-07-27T00:00:00.000Z"
+updated_at: "2026-07-27T10:20:00.000Z"
 linked_github_repo: "OpenAgentsInc/openagents"
 applies_to:
   - path: "docs/omega/"
@@ -32,6 +32,7 @@ tool_metadata:
   openagents_assurance_companion: "none at revision 2"
   openagents_revision_1_note: "Rev 1 admits the Omega Agent identity and the router-over-executors shape at the AgentConnection seam. It admits no rename, no router code, and no public claim. The Omega Nostr identity signing question stays open and owner-reserved."
   openagents_revision_2_note: "Rev 2, on the owner direction of 2026-07-27, admits the basic agent: a slim five-tool first-party executor (read, write, edit, bash, delegate) that completes work reliably on the default google/gemini-3.6-flash direct provider with no harness installed, delegates to installed harnesses with typed disclosure, names Exo (exoharness/exo) as an external ACP delegate target, and binds the work-loss law. The router shape, the three executor classes, and the open Nostr identity question from revision 1 stand."
+  openagents_revision_2_reconciliation: "Implementation receipts indexed 2026-07-27: OpenAgentsInc/omega c46980f6c4 and OpenAgentsInc/openagents 4c2db79b70. The installed candidate journey and live basic-versus-wide comparison remain pending; these commits authorize no release or public reliability claim."
   openagents_slim_audit: "docs/omega-agent/2026-07-27-slim-agent-audit.md"
   openagents_slim_spec: "docs/omega-agent/2026-07-27-slim-agent-spec.md"
   openagents_exoharness_teardown: "docs/teardowns/2026-07-25-exoharness-exo-teardown.md"
@@ -300,10 +301,23 @@ The agent's own undo restores a snapshot it took.
   `docs/teardowns/2026-07-25-exoharness-exo-teardown.md`
 - Work-loss incident record:
   `docs/oopsiewoopsies/2026-07-27-git-checkout-destroyed-uncommitted-work-twice.md`
-- Behavior contracts: `pending`. No Omega behavior-contract registry exists in
-  `packages/behavior-contracts`. `OMEGA-AGENT-02` (omega#76) owns the two
-  front-door contracts and the registry entry.
-- Eval Suites: `pending`. This program has no Eval Suite at this revision.
+- Behavior contracts:
+  `packages/behavior-contracts/src/omega-agent.ts`, registry version
+  `2026-07-27.1`. Five slim-agent contracts are mechanically enforced in the
+  Omega repository. The out-of-box completion contract stays `pending` until
+  an observer records the candidate-bound installed journey. OpenAgents
+  validates the registry but does not execute its cross-repository Rust
+  oracles.
+- Slim-agent proof protocol:
+  `OpenAgentsInc/omega` `c46980f6c4`,
+  `docs/src/development/omega-slim-agent-proof.md`, and
+  `script/prove-omega-slim-agent`. The protocol validates installed and
+  harness journeys, the same-task basic-versus-wide comparison, and
+  OMEGA-DELTA-0133 through OMEGA-DELTA-0138. Fixture evidence is not packaged
+  evidence.
+- Eval Suites: `pending`. `eval-cli` and `zed-eval` now expose explicit
+  `basic` and `wide` profiles for the same-task comparison, but no live
+  comparison receipt was available for this reconciliation.
 - AssuranceSpec companion: `pending`. This revision authors none.
 
 ## Promise Links
