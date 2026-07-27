@@ -3,6 +3,7 @@ import {
   Badge,
   Button,
   Card,
+  ComponentValueBinding,
   defineIntent,
   Divider,
   IntentRef,
@@ -13,11 +14,13 @@ import {
   Stack,
   StaticPayload,
   Text,
+  TextField,
   type IntentHandlers,
   type IntentReporter,
   type KeyedView,
   type View,
 } from "@effect-native/core";
+import type { Issue31CommandArguments } from "@openagentsinc/sarah/issue31-nostr";
 
 import type {
   OmegaBridgeAnnouncement,
@@ -36,11 +39,17 @@ export const OmegaActivitySelected = defineIntent(
   Schema.Struct({ threadRef: Schema.String }),
 );
 export const OmegaThreadClosed = defineIntent("OmegaThreadClosed", EmptyPayload);
+export const OmegaThreadDraftChanged = defineIntent("OmegaThreadDraftChanged", Schema.String);
+export const OmegaThreadEnqueuePressed = defineIntent("OmegaThreadEnqueuePressed", EmptyPayload);
+export const OmegaThreadSteerPressed = defineIntent("OmegaThreadSteerPressed", EmptyPayload);
 
 export const omegaMobileHomeIntentDefinitions = [
   OmegaPairDesktopPressed,
   OmegaActivitySelected,
   OmegaThreadClosed,
+  OmegaThreadDraftChanged,
+  OmegaThreadEnqueuePressed,
+  OmegaThreadSteerPressed,
 ] as const;
 
 export type OmegaMobileHomeState = Readonly<{
@@ -48,6 +57,9 @@ export type OmegaMobileHomeState = Readonly<{
   selectedThreadRef: string | null;
   observedAt: number;
   notice: string | null;
+  threadDraft: string;
+  commandLaneAvailable: boolean;
+  commandNotice: string | null;
 }>;
 
 export type OmegaMobileHomeConnectRequest = Readonly<{
@@ -347,7 +359,12 @@ const threadView = (state: OmegaMobileHomeState, thread: OmegaMirrorThread): Vie
       gap: "3",
       padding: "4",
       style: { width: "full", height: "full", maxWidth: "xl", alignSelf: "center" },
-      a11y: { role: "region", label: `${thread.title}, read-only desktop thread` },
+      a11y: {
+        role: "region",
+        label: `${thread.title}, ${
+          state.commandLaneAvailable ? "signed command composer" : "read-only desktop thread"
+        }`,
+      },
     },
     [
       Button({
@@ -366,7 +383,9 @@ const threadView = (state: OmegaMobileHomeState, thread: OmegaMirrorThread): Vie
       }),
       Text({
         key: "omega-thread-disclosure",
-        content: `${executorLabel(thread)} · ${thread.state} · Read only`,
+        content: `${executorLabel(thread)} · ${thread.state} · ${
+          state.commandLaneAvailable ? "Signed owner commands" : "Read only"
+        }`,
         variant: "caption",
         color: "textMuted",
       }),
@@ -419,6 +438,62 @@ const threadView = (state: OmegaMobileHomeState, thread: OmegaMirrorThread): Vie
               ),
             ),
           ]),
+      ...(state.commandLaneAvailable
+        ? [
+            Divider({ key: "omega-thread-composer-divider", orientation: "horizontal" }),
+            TextField({
+              key: "omega-thread-composer",
+              value: state.threadDraft,
+              label: "Message Omega",
+              placeholder: "Send work to this desktop thread",
+              multiline: true,
+              onChange: IntentRef("OmegaThreadDraftChanged", ComponentValueBinding()),
+              variant: "outline",
+              size: "md",
+              style: { width: "full" },
+            }),
+            Stack(
+              {
+                key: "omega-thread-command-actions",
+                direction: "row",
+                gap: "2",
+                style: { width: "full" },
+              },
+              [
+                Button({
+                  key: "omega-thread-enqueue",
+                  label: "Send / enqueue",
+                  variant: "primary",
+                  onPress: IntentRef("OmegaThreadEnqueuePressed", StaticPayload({})),
+                  style: { flex: 1, minHeight: "md" },
+                  a11y: {
+                    label: "Send now if idle, or enqueue after the current desktop turn completes",
+                  },
+                }),
+                Button({
+                  key: "omega-thread-steer",
+                  label: "Steer at boundary",
+                  variant: "secondary",
+                  onPress: IntentRef("OmegaThreadSteerPressed", StaticPayload({})),
+                  style: { flex: 1, minHeight: "md" },
+                  a11y: {
+                    label: "Request delivery at the current executor's declared steer boundary",
+                  },
+                }),
+              ],
+            ),
+            ...(state.commandNotice === null
+              ? []
+              : [
+                  Text({
+                    key: "omega-thread-command-notice",
+                    content: state.commandNotice,
+                    variant: "caption",
+                    color: "textMuted",
+                  }),
+                ]),
+          ]
+        : []),
     ],
   );
 
@@ -452,11 +527,82 @@ export type OmegaMobileHomeProgram = Readonly<{
   close: () => Promise<void>;
 }>;
 
+type PublishCommandIntent = (
+  request: Readonly<{
+    idempotencyRef: string;
+    arguments: Issue31CommandArguments;
+  }>,
+) => Promise<unknown>;
+
+const publishThreadCommand = (
+  disposition: "enqueue" | "steer",
+  state: SubscriptionRef.SubscriptionRef<OmegaMobileHomeState>,
+  publishCommandIntent: PublishCommandIntent | undefined,
+) =>
+  Effect.gen(function* () {
+    const current = yield* SubscriptionRef.get(state);
+    const text = current.threadDraft.trim();
+    const threadRef = current.selectedThreadRef;
+    if (publishCommandIntent === undefined || threadRef === null) {
+      yield* SubscriptionRef.update(state, (value) => ({
+        ...value,
+        commandNotice: "The signed Omega command lane is unavailable.",
+      }));
+      return;
+    }
+    if (text.length === 0) {
+      yield* SubscriptionRef.update(state, (value) => ({
+        ...value,
+        commandNotice: "Write a message before sending.",
+      }));
+      return;
+    }
+    yield* SubscriptionRef.update(state, (value) => ({
+      ...value,
+      commandNotice: `Publishing a signed ${disposition} command…`,
+    }));
+    const idempotencyRef = `idempotency.issue31.agent_thread_message:${globalThis.crypto.randomUUID().replaceAll("-", "")}`;
+    const published = yield* Effect.tryPromise({
+      try: () =>
+        publishCommandIntent({
+          idempotencyRef,
+          arguments: {
+            kind: "agent_thread_message",
+            actionRef: "action.issue31.omega.agent_thread_message",
+            threadRef,
+            text,
+            disposition,
+          },
+        }),
+      catch: (error) =>
+        error instanceof Error ? error : new Error("The signed command could not be published."),
+    }).pipe(
+      Effect.as(true),
+      Effect.catch(() => Effect.succeed(false)),
+    );
+    if (!published) {
+      yield* SubscriptionRef.update(state, (value) => ({
+        ...value,
+        commandNotice: "The signed command could not be published.",
+      }));
+      return;
+    }
+    yield* SubscriptionRef.update(state, (value) => ({
+      ...value,
+      threadDraft: "",
+      commandNotice:
+        disposition === "steer"
+          ? "Signed steer published. Omega will report the executor's declared boundary outcome."
+          : "Signed send published. Omega will send now or enqueue behind the running turn.",
+    }));
+  });
+
 export const buildOmegaMobileHomeProgram = (
   input: Readonly<{
     bridge: OmegaDeviceBridgeClient;
     connectRequest: OmegaMobileHomeConnectRequest;
     scanPairing: () => Promise<OmegaBridgePairingBootstrap | null>;
+    publishCommandIntent?: PublishCommandIntent;
     now?: () => number;
   }>,
 ): OmegaMobileHomeProgram =>
@@ -468,6 +614,9 @@ export const buildOmegaMobileHomeProgram = (
         selectedThreadRef: null,
         observedAt: now(),
         notice: null,
+        threadDraft: "",
+        commandLaneAvailable: input.publishCommandIntent !== undefined,
+        commandNotice: null,
       };
       const state = yield* SubscriptionRef.make(initialState);
       const handlers: IntentHandlers<typeof omegaMobileHomeIntentDefinitions> = {
@@ -505,12 +654,25 @@ export const buildOmegaMobileHomeProgram = (
             )
               ? threadRef
               : null,
+            threadDraft: "",
+            commandNotice: null,
           })),
         OmegaThreadClosed: () =>
           SubscriptionRef.update(state, (current) => ({
             ...current,
             selectedThreadRef: null,
+            threadDraft: "",
+            commandNotice: null,
           })),
+        OmegaThreadDraftChanged: (value: string) =>
+          SubscriptionRef.update(state, (current) => ({
+            ...current,
+            threadDraft: value.slice(0, 12_000),
+          })),
+        OmegaThreadEnqueuePressed: () =>
+          publishThreadCommand("enqueue", state, input.publishCommandIntent),
+        OmegaThreadSteerPressed: () =>
+          publishThreadCommand("steer", state, input.publishCommandIntent),
       };
       const registry = yield* makeIntentRegistry(omegaMobileHomeIntentDefinitions, handlers);
       const report: IntentReporter = (ref, runtimeValue) =>

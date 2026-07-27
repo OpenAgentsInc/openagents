@@ -35,6 +35,10 @@ const Generation = S.Number.check(
   S.isLessThanOrEqualTo(Number.MAX_SAFE_INTEGER),
 );
 const ConversationTag = S.String.check(S.isPattern(/^sarah\.[0-9a-f]{24}$/));
+const AgentThreadRef = S.Union([
+  PublicRef,
+  S.String.check(S.isPattern(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)),
+]);
 
 export const Issue31HostAnnouncementSchema = S.Struct({
   schema: S.Literal(ISSUE31_HOST_ANNOUNCEMENT_SCHEMA),
@@ -210,6 +214,7 @@ const ReadStateContextRef = S.String.check(
 export const ISSUE31_COMMAND_V2_ACTION_REFS = {
   sendMessage: "action.issue31.sarah.send",
   interruptTurn: "action.issue31.sarah.interrupt",
+  agentThreadMessage: "action.issue31.omega.agent_thread_message",
   advanceReadState: "action.issue31.read_state.advance",
   createReminder: "action.issue31.reminder.create",
   changeReminder: "action.issue31.reminder.change",
@@ -237,6 +242,13 @@ export const Issue31CommandArgumentsSchema = S.Union([
     actionRef: S.Literal(ISSUE31_COMMAND_V2_ACTION_REFS.interruptTurn),
     conversation: ConversationTag,
     turnRef: PublicRef,
+  }),
+  S.Struct({
+    kind: S.Literal("agent_thread_message"),
+    actionRef: S.Literal(ISSUE31_COMMAND_V2_ACTION_REFS.agentThreadMessage),
+    threadRef: AgentThreadRef,
+    text: BoundedMessage,
+    disposition: S.Literals(["enqueue", "steer"]),
   }),
   S.Struct({
     kind: S.Literal("read_state_patch"),

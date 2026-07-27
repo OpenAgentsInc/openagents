@@ -1,7 +1,7 @@
 /* oxlint-disable openagents/no-manual-effect-runtime-in-tests -- @effect/vitest does not support the repository Effect 4 line. */
 import { Effect, Option, Stream } from "effect";
 import { describe, expect, test } from "vite-plus/test";
-import { IntentRef, StaticPayload } from "@effect-native/core";
+import { ComponentValueBinding, IntentRef, StaticPayload } from "@effect-native/core";
 
 import {
   buildOmegaMobileHomeProgram,
@@ -31,7 +31,7 @@ const bridgeState = (connection: "direct" | "relay" | "offline"): OmegaDeviceBri
     sequence: 8,
     threads: [
       {
-        threadRef: "thread-recent",
+        threadRef: "63f9e587-cc09-4ba7-9b22-70a2ce026ead",
         title: "Ship the mobile mirror",
         executor: {
           executorId: "claude-acp",
@@ -91,6 +91,9 @@ const homeState = (bridge: OmegaDeviceBridgeState): OmegaMobileHomeState => ({
   selectedThreadRef: null,
   observedAt: 2_000,
   notice: null,
+  threadDraft: "",
+  commandLaneAvailable: false,
+  commandNotice: null,
 });
 
 const fakeBridge = (initial: OmegaDeviceBridgeState) => {
@@ -205,7 +208,7 @@ describe("Omega zero-based mobile home", () => {
     }
   });
 
-  test("opens only a read-only thread view behind the activity tap", async () => {
+  test("keeps a thread read-only when the signed command lane is absent", async () => {
     const bridge = fakeBridge(bridgeState("direct"));
     const program = buildOmegaMobileHomeProgram({
       bridge: bridge.client,
@@ -220,7 +223,10 @@ describe("Omega zero-based mobile home", () => {
 
     await Effect.runPromise(
       program.report(
-        IntentRef("OmegaActivitySelected", StaticPayload({ threadRef: "thread-recent" })),
+        IntentRef(
+          "OmegaActivitySelected",
+          StaticPayload({ threadRef: "63f9e587-cc09-4ba7-9b22-70a2ce026ead" }),
+        ),
       ) as Effect.Effect<void>,
     );
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -232,6 +238,87 @@ describe("Omega zero-based mobile home", () => {
     expect(serialized).toContain("Back to activity");
     expect(serialized).not.toContain("TextField");
     expect(serialized).not.toContain("Composer");
+    await program.close();
+  });
+
+  test("publishes distinct signed enqueue and steer commands for the selected thread", async () => {
+    const bridge = fakeBridge(bridgeState("direct"));
+    const published: Array<{
+      idempotencyRef: string;
+      arguments: unknown;
+    }> = [];
+    const program = buildOmegaMobileHomeProgram({
+      bridge: bridge.client,
+      connectRequest: {
+        announcements: [],
+        pairing: null,
+        manualMagicDns: null,
+      },
+      scanPairing: async () => null,
+      publishCommandIntent: async (request) => {
+        published.push(request);
+      },
+      now: () => 2_000,
+    });
+
+    await Effect.runPromise(
+      program.report(
+        IntentRef(
+          "OmegaActivitySelected",
+          StaticPayload({ threadRef: "63f9e587-cc09-4ba7-9b22-70a2ce026ead" }),
+        ),
+      ) as Effect.Effect<void>,
+    );
+    await Effect.runPromise(
+      program.report(
+        IntentRef("OmegaThreadDraftChanged", ComponentValueBinding()),
+        "Queue this after the turn",
+      ) as Effect.Effect<void>,
+    );
+    await Effect.runPromise(
+      program.report(
+        IntentRef("OmegaThreadEnqueuePressed", StaticPayload({})),
+      ) as Effect.Effect<void>,
+    );
+    await Effect.runPromise(
+      program.report(
+        IntentRef("OmegaThreadDraftChanged", ComponentValueBinding()),
+        "Steer with this context",
+      ) as Effect.Effect<void>,
+    );
+    await Effect.runPromise(
+      program.report(
+        IntentRef("OmegaThreadSteerPressed", StaticPayload({})),
+      ) as Effect.Effect<void>,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(published.map((entry) => entry.arguments)).toEqual([
+      {
+        kind: "agent_thread_message",
+        actionRef: "action.issue31.omega.agent_thread_message",
+        threadRef: "63f9e587-cc09-4ba7-9b22-70a2ce026ead",
+        text: "Queue this after the turn",
+        disposition: "enqueue",
+      },
+      {
+        kind: "agent_thread_message",
+        actionRef: "action.issue31.omega.agent_thread_message",
+        threadRef: "63f9e587-cc09-4ba7-9b22-70a2ce026ead",
+        text: "Steer with this context",
+        disposition: "steer",
+      },
+    ]);
+    expect(
+      published.every((entry) =>
+        entry.idempotencyRef.startsWith("idempotency.issue31.agent_thread_message:"),
+      ),
+    ).toBe(true);
+    const serialized = JSON.stringify(await currentView(program));
+    expect(serialized).toContain("Message Omega");
+    expect(serialized).toContain("Send / enqueue");
+    expect(serialized).toContain("Steer at boundary");
+    expect(serialized).toContain("declared boundary outcome");
     await program.close();
   });
 });

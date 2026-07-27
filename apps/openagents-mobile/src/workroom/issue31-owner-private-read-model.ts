@@ -458,6 +458,9 @@ const projectionSettlesCommand = (
       projection.projection.payload.entry === "turn.interrupted"
     );
   }
+  if (argumentsValue.kind === "agent_thread_message") {
+    return false;
+  }
   if (argumentsValue.kind === "read_state_patch") {
     if (
       projection.projection.kind !== "read_state" ||

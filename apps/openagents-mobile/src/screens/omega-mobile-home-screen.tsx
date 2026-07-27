@@ -18,6 +18,12 @@ import {
 } from "../workroom/omega-device-bridge-client";
 import { openExpoIssue31DeviceIdentity } from "../workroom/issue31-device-key-vault";
 import {
+  issue31AdmittedHostPublicKeysFromEnvironment,
+  issue31RelayUrlsFromEnvironment,
+  openIssue31MobileNostrRuntime,
+  type Issue31MobileNostrRuntime,
+} from "../workroom/issue31-mobile-nostr-runtime";
+import {
   buildOmegaMobileHomeProgram,
   renderOmegaMobileHome,
   type OmegaMobileHomeConnectRequest,
@@ -120,6 +126,9 @@ const bootState = (): OmegaMobileHomeState => ({
   selectedThreadRef: null,
   observedAt: Date.now(),
   notice: null,
+  threadDraft: "",
+  commandLaneAvailable: false,
+  commandNotice: null,
 });
 
 export const OmegaMobileHomeScreen = ({
@@ -143,14 +152,27 @@ export const OmegaMobileHomeScreen = ({
   useEffect(() => {
     let active = true;
     let mountedProgram: OmegaMobileHomeProgram | null = null;
-    void (bridge === undefined ? openDefaultBridge() : Promise.resolve(bridge))
-      .then((client) => {
+    let commandRuntime: Issue31MobileNostrRuntime | null = null;
+    void Promise.all([
+      bridge === undefined ? openDefaultBridge() : Promise.resolve(bridge),
+      openIssue31MobileNostrRuntime({
+        relayUrls: issue31RelayUrlsFromEnvironment(),
+        admittedHostPublicKeys: issue31AdmittedHostPublicKeysFromEnvironment(),
+      }).catch((error: unknown) => {
+        console.error("The signed Omega command lane is unavailable", error);
+        return null;
+      }),
+    ])
+      .then(([client, runtime]) => {
+        commandRuntime = runtime;
         const nextProgram = buildOmegaMobileHomeProgram({
           bridge: client,
           connectRequest: resolvedConnectRequest,
           scanPairing,
+          ...(runtime === null ? {} : { publishCommandIntent: runtime.publishCommandIntent }),
         });
         if (!active) {
+          runtime?.close();
           return nextProgram.close();
         }
         mountedProgram = nextProgram;
@@ -172,6 +194,7 @@ export const OmegaMobileHomeScreen = ({
           console.error("Failed to close the Omega mobile home program", error);
         });
       }
+      commandRuntime?.close();
     };
   }, [bridge, resolvedConnectRequest, scanPairing]);
 

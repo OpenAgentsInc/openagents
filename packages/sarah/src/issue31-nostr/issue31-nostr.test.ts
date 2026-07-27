@@ -86,7 +86,10 @@ describe("Issue 31 command v2 and owner projection", () => {
   ] as const;
 
   const OWNER_PROJECTION_NEGATIVE_FIXTURES = [
-    ["negative-read-state-role", "1073644580d2c8d8768866c81a26cb8b044b13da4297383d54962ff949982baa"],
+    [
+      "negative-read-state-role",
+      "1073644580d2c8d8768866c81a26cb8b044b13da4297383d54962ff949982baa",
+    ],
     [
       "negative-read-state-version",
       "9b134615eb992b2395c59dfc72abe8be3d472dd69c8dff73b7ec670757ebcfba",
@@ -191,6 +194,37 @@ describe("Issue 31 command v2 and owner projection", () => {
     }
   });
 
+  test("keeps agent thread enqueue and steer distinct in command v2", () => {
+    const common = {
+      schema: ISSUE31_COMMAND_SCHEMA_V2,
+      recordType: "command_intent",
+      hostRef: "omega.host.local",
+      hostPublicKeyHex: "1".repeat(64),
+      devicePublicKeyHex: "2".repeat(64),
+      grantRef: "grant.omega.device_1",
+      expectedGeneration: 1,
+      issuedAt: 100,
+      expiresAt: 200,
+    } as const;
+    for (const disposition of ["enqueue", "steer"] as const) {
+      const record = decodeIssue31CommandRecordV2({
+        ...common,
+        idempotencyRef: `idempotency.issue31.agent_thread_message:${disposition}`,
+        arguments: {
+          kind: "agent_thread_message",
+          actionRef: "action.issue31.omega.agent_thread_message",
+          threadRef: "63f9e587-cc09-4ba7-9b22-70a2ce026ead",
+          text: `Mobile ${disposition}`,
+          disposition,
+        },
+      });
+      expect(record).toMatchObject({
+        recordType: "command_intent",
+        arguments: { kind: "agent_thread_message", disposition },
+      });
+    }
+  });
+
   test("unwraps a host-authored per-record projection only for the admitted device", async () => {
     const projection = decodeIssue31OwnerProjectionRecord({
       ...(readFixture("openagents.omega.issue31.owner_projection.v1.canonical.json") as object),
@@ -232,7 +266,9 @@ const fixturePath = (name: string): URL =>
   new URL(`../../fixtures/issue31-nostr/${name}`, import.meta.url);
 
 const fixtureDigest = (name: string): string =>
-  createHash("sha256").update(readFileSync(fixturePath(name))).digest("hex");
+  createHash("sha256")
+    .update(readFileSync(fixturePath(name)))
+    .digest("hex");
 
 const readFixture = (name: string): unknown =>
   JSON.parse(

@@ -319,6 +319,9 @@ describe("TM-06 Omega mobile mirror simulator journeys", () => {
         selectedThreadRef: null,
         observedAt: 12_000,
         notice: null,
+        threadDraft: "",
+        commandLaneAvailable: false,
+        commandNotice: null,
       }),
     );
     expect(relayView).toContain("Relay");

@@ -141,14 +141,14 @@ reconnects without any tap.
 
 Frames, all typed:
 
-| Frame | Direction | Content |
-| --- | --- | --- |
-| `hello` | phone to host | protocol version, device key proof, resume cursor |
-| `grant` | host to phone | session admission, snapshot generation, or a typed refusal |
-| `snapshot` | host to phone | the active mirror state: thread list and run list |
-| `delta` | host to phone | one mirror change: a thread entry, a streaming text delta, a disclosure record, a turn state change, a run state change, a receipt ref |
-| `heartbeat` | both | liveness and generation |
-| `bye` | both | typed close reason |
+| Frame       | Direction     | Content                                                                                                                                |
+| ----------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `hello`     | phone to host | protocol version, device key proof, resume cursor                                                                                      |
+| `grant`     | host to phone | session admission, snapshot generation, or a typed refusal                                                                             |
+| `snapshot`  | host to phone | the active mirror state: thread list and run list                                                                                      |
+| `delta`     | host to phone | one mirror change: a thread entry, a streaming text delta, a disclosure record, a turn state change, a run state change, a receipt ref |
+| `heartbeat` | both          | liveness and generation                                                                                                                |
+| `bye`       | both          | typed close reason                                                                                                                     |
 
 Rules:
 
@@ -245,18 +245,29 @@ This mirrors the Omega zero-base law: hide by filter, not by deletion.
 
 ## 6. Staging
 
-| Stage | Delivers | Proof |
-| --- | --- | --- |
-| M0 | The device bridge server, QR pairing, and the thread-list snapshot on the zero-based home | Simulator journey: pair, see the thread list appear with no tap |
-| M1 | Live deltas: streaming transcript, disclosure, turn state. Reconnect with resume cursor. Relay endpoint announcement and auto-redial | Kill the app, reopen, feed catches up. Change tailnet networks, feed recovers |
-| M2 | Runs and receipts in the feed. The three-state connection header. Staleness labels | Engine restart shows honest states end to end |
-| M3 | The composer: send and steer from the phone as typed commands. Owner-gated | Physical-device proof per the omega#49 protocol |
+| Stage | Delivers                                                                                                                             | Proof                                                                         |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------- |
+| M0    | The device bridge server, QR pairing, and the thread-list snapshot on the zero-based home                                            | Simulator journey: pair, see the thread list appear with no tap               |
+| M1    | Live deltas: streaming transcript, disclosure, turn state. Reconnect with resume cursor. Relay endpoint announcement and auto-redial | Kill the app, reopen, feed catches up. Change tailnet networks, feed recovers |
+| M2    | Runs and receipts in the feed. The three-state connection header. Staleness labels                                                   | Engine restart shows honest states end to end                                 |
+| M3    | The composer: send and steer from the phone as typed commands. Owner-gated                                                           | Physical-device proof per the omega#49 protocol                               |
 
 M0 through M2 are read-only and need no new owner gate beyond normal
 packet admission.
 M3 changes authority reach and waits for its own admission.
 Physical-phone evidence follows the D-track evidence protocol, and a
 simulator pass is never a packaged claim.
+
+On 2026-07-27 the owner explicitly admitted TM-07 after TM-04 through
+TM-06 were green. The implementation uses a new typed argument on the
+signed Issue31 command-v2 relay lane. Device bridge v1 remains read-only.
+`enqueue` and `steer` are distinct record values, use the existing
+`send_message` grant scope and revocation checks, and are admitted by the
+desktop at Omega `17a6c62756` through OMEGA-DELTA-0032 rather than
+through a second send path.
+The automated mobile and host tests are simulator evidence only. A
+physical-phone run remains part of the omega#49 evidence packet and is
+not implied by the implementation merge.
 
 ## 7. Risks, stated plainly
 
@@ -298,13 +309,13 @@ The owner directed issue creation on 2026-07-27, after this
 specification landed.
 The live claim ledger:
 
-| Packet | Issue | Repository |
-| --- | --- | --- |
-| Epic | omega#120 | omega |
-| TM-01 device bridge server | omega#121 | omega |
-| TM-02 discovery V3 and QR pairing | omega#122 | omega |
-| TM-03 mirror projection feed | omega#123 | omega |
-| TM-04 mobile bridge client | openagents#9260 | openagents |
-| TM-05 zero-based home screen | openagents#9261 | openagents |
+| Packet                             | Issue           | Repository |
+| ---------------------------------- | --------------- | ---------- |
+| Epic                               | omega#120       | omega      |
+| TM-01 device bridge server         | omega#121       | omega      |
+| TM-02 discovery V3 and QR pairing  | omega#122       | omega      |
+| TM-03 mirror projection feed       | omega#123       | omega      |
+| TM-04 mobile bridge client         | openagents#9260 | openagents |
+| TM-05 zero-based home screen       | openagents#9261 | openagents |
 | TM-06 journey proofs M0 through M2 | openagents#9262 | openagents |
-| TM-07 composer, owner-gated | openagents#9263 | openagents |
+| TM-07 composer, owner-gated        | openagents#9263 | openagents |
