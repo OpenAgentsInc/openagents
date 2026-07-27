@@ -1219,8 +1219,8 @@ describe("retired sarah contract registry (owner removal 2026-07-10, #8610)", ()
   })
 })
 
-describe("omega agent contract registry (OMEGA-AGENT-02, omega#76)", () => {
-  test("records both owner statements verbatim, with cross-repo oracles and honest state", () => {
+describe("omega agent contract registry (OMEGA-AGENT-02 and OMEGA-SLIM-06)", () => {
+  test("records owner statements with cross-repo oracles and honest state", () => {
     const decoded = decodeBehaviorContractRegistryDocument(omegaAgentContractRegistry)
     const validation = validateBehaviorContractRegistry(decoded)
     expect(validation.issues).toEqual([])
@@ -1229,6 +1229,12 @@ describe("omega agent contract registry (OMEGA-AGENT-02, omega#76)", () => {
     expect(decoded.contracts.map(contract => contract.contractId)).toEqual([
       "omega_agent.chat_first_front_door.v1",
       "omega_agent.full_auto_folded_into_chat.v1",
+      "omega_agent.basic_five_tool_surface.v1",
+      "omega_agent.basic_out_of_box_completion.v1",
+      "omega_agent.delegate_optional_no_executor.v1",
+      "omega_agent.delegate_named_and_disclosed.v1",
+      "omega_agent.basic_dirty_tree_confirm.v1",
+      "omega_agent.basic_measured_prompt.v1",
     ])
 
     // The owner statements are recorded verbatim. A paraphrase here would
@@ -1253,17 +1259,67 @@ describe("omega agent contract registry (OMEGA-AGENT-02, omega#76)", () => {
     expect(fullAuto!.enforcementTier).toBe("test-sweep")
     expect(fullAuto!.blockerRefs).toEqual([])
 
-    // Every oracle runs in the Omega repository, not this one. The coverage
-    // checker skips `script`, so a green sweep here says nothing about them
-    // and each contract has to say where they actually run.
+    const outOfBox = decoded.contracts.find(
+      contract =>
+        contract.contractId === "omega_agent.basic_out_of_box_completion.v1",
+    )
+    expect(outOfBox?.state).toBe("pending")
+    expect(outOfBox?.enforcementTier).toBe("unenforced")
+    expect(outOfBox?.blockerRefs).toEqual([
+      "github:OpenAgentsInc/omega#118:installed-journey-observation",
+    ])
+    expect(outOfBox?.verification).toContain(
+      "fixture is not that observation",
+    )
+
+    const slimContracts = decoded.contracts.slice(2)
+    expect(
+      slimContracts.filter(contract => contract.state === "enforced"),
+    ).toHaveLength(5)
+    expect(
+      Object.fromEntries(
+        slimContracts.map(contract => [contract.contractId, contract.statement]),
+      ),
+    ).toEqual({
+      "omega_agent.basic_dirty_tree_confirm.v1":
+        "No basic-agent tool discards uncommitted work without a typed confirm.",
+      "omega_agent.basic_five_tool_surface.v1":
+        "Exactly five model-visible tools: `read`, `write`, `edit`, `bash`, `delegate`.",
+      "omega_agent.basic_measured_prompt.v1":
+        "The basic agent has a measured system prompt.",
+      "omega_agent.basic_out_of_box_completion.v1":
+        "Out of the box it completes coding turns on the default `google/gemini-3.6-flash` direct provider with no harness installed.",
+      "omega_agent.delegate_named_and_disclosed.v1":
+        "When harnesses are installed (`codex-acp`, `claude-acp`, Exo, engine lanes) it knows when to delegate, and every handoff carries a typed disclosure record.",
+      "omega_agent.delegate_optional_no_executor.v1":
+        "A `delegate` call with no installed executor returns a typed no-executor result, and the agent completes the work itself.",
+    })
+    expect(
+      slimContracts.flatMap(contract => contract.evidenceRefs),
+    ).toEqual(
+      expect.arrayContaining([
+        "specs/omega/omega-agent.product-spec.md#omega-agent-ac-15",
+        "specs/omega/omega-agent.product-spec.md#omega-agent-ac-16",
+        "specs/omega/omega-agent.product-spec.md#omega-agent-ac-17",
+        "specs/omega/omega-agent.product-spec.md#omega-agent-ac-18",
+        "specs/omega/omega-agent.product-spec.md#omega-agent-ac-19",
+        "specs/omega/omega-agent.product-spec.md#omega-agent-ac-20",
+        "specs/omega/omega-agent.product-spec.md#omega-agent-ac-21",
+      ]),
+    )
+
     for (const contract of decoded.contracts) {
-      for (const oracle of contract.oracles.filter(oracle => oracle.kind !== "planned")) {
+      for (const oracle of contract.oracles.filter(
+        oracle => oracle.kind !== "planned",
+      )) {
         expect(oracle.kind).toBe("script")
         expect(oracle.ref).toStartWith("omega:cargo test")
       }
       expect(contract.surface).toBe("omega")
       expect(contract.verification).toContain("OpenAgentsInc/omega")
-      expect(contract.authorityBoundary).toContain("rendered pixels")
+      expect(contract.authorityBoundary).not.toBe("")
     }
+    expect(frontDoor!.authorityBoundary).toContain("rendered pixels")
+    expect(fullAuto!.authorityBoundary).toContain("rendered pixels")
   })
 })
