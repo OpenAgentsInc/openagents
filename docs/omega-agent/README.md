@@ -25,8 +25,11 @@ Read these documents in this order:
 
 The wider Omega Agent program corpus lives elsewhere:
 
-- The admitted product contract is
-  `specs/omega/omega-agent.product-spec.md` at `spec_revision: 1`.
+- The product contract is
+  `specs/omega/omega-agent.product-spec.md` at `spec_revision: 2`.
+  Revision 2 records the basic agent: five tools, out-of-box reliability
+  on the default Google provider, delegation to installed harnesses, and
+  Exo as a named delegate target.
 - The router-program roadmap is
   [`docs/omega/2026-07-25-omega-agent-roadmap.md`](../omega/2026-07-25-omega-agent-roadmap.md).
 - The shape record is
@@ -36,7 +39,6 @@ The wider Omega Agent program corpus lives elsewhere:
 - The design analysis is
   [`docs/fable/2026-07-25-omega-agent-analysis.md`](../fable/2026-07-25-omega-agent-analysis.md).
 
-The specification in this directory is a proposal.
-It needs a ProductSpec revision and an owner admission before any packet
-lands.
+The specification in this directory operates under ProductSpec
+revision 2, which the owner direction of 2026-07-27 set.
 Current code, tests, and receipts own implementation truth.

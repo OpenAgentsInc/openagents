@@ -34026,7 +34026,7 @@
     },
     {
       "path": "docs/omega-agent/2026-07-27-slim-agent-spec.md",
-      "sha256": "e4e0cf04906e73f63e2bbc1b10846c5289f8a8396971fc1df9e4b081c6650702",
+      "sha256": "750f733d91695e5dfd33ac64ed87e10116185ee1ab6116fd71f94ce1e9fa89c9",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -34048,7 +34048,7 @@
     },
     {
       "path": "docs/omega-agent/README.md",
-      "sha256": "1603ae24cf67f001359f6501503c60314f4b4f4c3369d1ccda8aaf61d4f3b772",
+      "sha256": "4a9d66b8c4b8149d6919a57f3c8337aa1438528fa8babb15780950e47d4306c8",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -49608,7 +49608,7 @@
     },
     {
       "path": "specs/omega/omega-agent.product-spec.md",
-      "sha256": "26f0ea6c41b5b026d109f9fb0c42e377022f905c6325c6dddcc72ebe27a40c4c",
+      "sha256": "3c3018b8c87523f6ed807bac268a48d3cc2c6fde30c5d374b28b764d2860ada4",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",

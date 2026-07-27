@@ -1,14 +1,14 @@
 # Omega Agent slim-agent specification
 
-- Status: proposed specification, 2026-07-27. Not admitted.
+- Status: specification under ProductSpec revision 2, 2026-07-27
 - Owner: OpenAgents
 - Companion: [slim-agent audit](./2026-07-27-slim-agent-audit.md)
 - Omega source pin: `OpenAgentsInc/omega` `beb0e870b2`
 - ProductSpec of record: `specs/omega/omega-agent.product-spec.md` at
-  `spec_revision: 1`
-- Admission gate: this specification needs a ProductSpec revision and an
-  owner admission before any packet lands. Section 12 records the exact
-  revision content.
+  `spec_revision: 2`
+- Admission state: the owner direction of 2026-07-27 set the basic-agent
+  product shape, and revision 2 of the ProductSpec records it. Section 12
+  records what the revision contains.
 
 This specification defines the slim first-party Omega Agent.
 The agent has five tools: `read`, `write`, `edit`, `bash`, and `delegate`.
@@ -28,6 +28,8 @@ Every result names the executor that produced it.
 The agent never destroys work the person did not ask it to destroy.
 
 The slim agent is the native executor of Omega Agent.
+ProductSpec revision 2 names it **the basic agent**: the one first-party
+agent that works reliably for all people with no delegation at all.
 It is not a new runtime.
 It is the existing native loop in `crates/agent` with a five-tool
 model-visible surface, a short prompt, a work-loss guard, and delegation
@@ -215,6 +217,11 @@ Laws, all already mechanical in the fork:
     engine lanes at this revision.
     Khala lanes arrive only through the reserved `OMEGA-AGENT-K1`
     packets with their own owner admission.
+11. **Exo chains disclose fully.** Exo is an admitted delegate target,
+    and Exo can itself host a vendor executor inside its sandboxes.
+    A delegated Exo turn that hosts a vendor executor names the full
+    chain in its disclosure record: Omega Agent, then Exo, then the
+    hosted runtime and model (`OMEGA-AGENT-AC-19`).
 
 `delegate` supersedes the model-facing `spawn_agent` name.
 The implementation reuses `SpawnAgentTool`, `subagent_executor`, and
@@ -449,23 +456,24 @@ Falsifiers, stated so the program can be caught:
 ## 12. The ProductSpec revision
 
 Revision 1 admits Omega Agent as a router that owns no execution.
-This program needs a revision 2 that:
+Revision 2 landed on 2026-07-27, on the owner direction of that day, and
+does exactly this:
 
-1. Keeps the router shape and every routing acceptance criterion.
-2. Names the slim native executor as the default executor of Omega
-   Agent, with the five-tool law and the work-loss law as new acceptance
-   criteria.
-3. Restates `OMEGA-AGENT-AC-04` unchanged: the executor-class set stays
-   exactly three.
-4. Adds the `delegate` disclosure obligation as a record obligation, in
-   line with the shape record's condition that disclosure is typed data
-   a label renders, never a label.
-5. Leaves the Omega Nostr identity signing question open and
+1. It keeps the router shape and every routing acceptance criterion.
+2. It names the basic agent — the slim five-tool native executor — as
+   the default executor of Omega Agent, with the five-tool law
+   (`OMEGA-AGENT-AC-15`) and the work-loss law (`OMEGA-AGENT-AC-20`) as
+   acceptance criteria.
+3. It adds out-of-box reliability as a criterion: the baseline journey
+   completes on the default `google/gemini-3.6-flash` direct provider
+   with no harness installed (`OMEGA-AGENT-AC-16`, `AC-17`).
+4. It restates `OMEGA-AGENT-AC-04` unchanged: the executor-class set
+   stays exactly three.
+5. It adds the `delegate` disclosure obligation as a record obligation
+   (`OMEGA-AGENT-AC-18`), and names Exo as an admitted delegate target
+   with the full-chain disclosure rule (`OMEGA-AGENT-AC-19`).
+6. It leaves the Omega Nostr identity signing question open and
    owner-reserved, unchanged from revision 1.
-
-The revision is an edit to `specs/omega/omega-agent.product-spec.md` with
-a `spec_revision` bump and an owner admission, per the repository law
-that a spec never silently matches implementation.
 
 ## 13. Considerations and risks
 
@@ -533,8 +541,9 @@ that a spec never silently matches implementation.
 
 ## 14. Open owner questions
 
-1. **Admission.** Does the owner admit ProductSpec revision 2 with the
-   five-tool law and the work-loss law?
+1. **Admission.** Answered. The owner direction of 2026-07-27 set the
+   basic-agent shape, and ProductSpec revision 2 records it with the
+   five-tool law and the work-loss law.
 2. **Compose versus collapse.** This specification recommends keeping
    the router beside the slim executor. Does the owner accept the
    compose reading?
