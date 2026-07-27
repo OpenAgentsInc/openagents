@@ -281,8 +281,8 @@ simulator pass is never a packaged claim.
 
 ## 8. What this specification does not decide
 
-1. It mints no issues and claims no lane. The owner asked for the
-   specification first.
+1. It claims no lane. The issue set in section 9 is the claim ledger,
+   and one agent claims one issue before mutation.
 2. It does not choose the exact V3 discovery-record shape. The
    implementing packet freezes it with fixtures, like every issue31
    record before it.
@@ -291,3 +291,20 @@ simulator pass is never a packaged claim.
    The zero-based home consumes the same lane and does not replace its
    physical-proof obligations.
 5. It does not touch Khala routing, metering, or any cloud lane.
+
+## 9. The issue ledger
+
+The owner directed issue creation on 2026-07-27, after this
+specification landed.
+The live claim ledger:
+
+| Packet | Issue | Repository |
+| --- | --- | --- |
+| Epic | omega#120 | omega |
+| TM-01 device bridge server | omega#121 | omega |
+| TM-02 discovery V3 and QR pairing | omega#122 | omega |
+| TM-03 mirror projection feed | omega#123 | omega |
+| TM-04 mobile bridge client | openagents#9260 | openagents |
+| TM-05 zero-based home screen | openagents#9261 | openagents |
+| TM-06 journey proofs M0 through M2 | openagents#9262 | openagents |
+| TM-07 composer, owner-gated | openagents#9263 | openagents |
