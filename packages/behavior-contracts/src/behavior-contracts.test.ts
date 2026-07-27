@@ -151,9 +151,19 @@ describe("behavior contract registry", () => {
     // autonomy contract (initiative without a GitHub claim), taking it to 49.
     // omega#46 exit 4 added one enforced owner-private contract (the room can
     // distinguish a complete view from a short one), taking it to 50.
-    // Public Nostr chat (#9258) adds one enforced deployment contract, taking
-    // the total to 51.
-    expect(decoded.contracts).toHaveLength(51)
+    // Public Nostr chat (#9258) adds one enforced deployment contract. The
+    // Omega mobile zero base (#9261) adds two enforced home contracts.
+    expect(decoded.contracts).toHaveLength(53)
+    const mobileAutomaticActivity = decoded.contracts.find(
+      entry => entry.contractId === "openagents_mobile.home_automatic_desktop_activity.v1",
+    )
+    expect(mobileAutomaticActivity?.state).toBe("enforced")
+    expect(mobileAutomaticActivity?.oracles).toHaveLength(1)
+    const mobileHonestConnection = decoded.contracts.find(
+      entry => entry.contractId === "openagents_mobile.home_honest_connection_state.v1",
+    )
+    expect(mobileHonestConnection?.state).toBe("enforced")
+    expect(mobileHonestConnection?.oracles).toHaveLength(1)
     const hostVerifiedCompletion = decoded.contracts.find(
       contract => contract.contractId === "openagents_desktop.full_auto_host_verified_completion.v1",
     )

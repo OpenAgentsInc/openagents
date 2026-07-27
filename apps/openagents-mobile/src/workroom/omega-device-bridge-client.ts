@@ -236,6 +236,13 @@ export type OmegaBridgePairingBootstrap = Schema.Schema.Type<
   typeof OmegaBridgePairingBootstrapSchema
 >;
 
+const decodePairingBootstrap = Schema.decodeUnknownSync(OmegaBridgePairingBootstrapSchema);
+
+export const decodeOmegaBridgePairingBootstrap = (input: unknown): OmegaBridgePairingBootstrap =>
+  decodePairingBootstrap(input, {
+    onExcessProperty: "error",
+  });
+
 export const OmegaDeviceBridgeStoredStateSchema = Schema.Struct({
   schemaVersion: Schema.Literal(1),
   endpoint: Schema.NullOr(
@@ -285,6 +292,7 @@ export type OmegaDeviceBridgeConnection = Readonly<{
 }>;
 
 export type OmegaDeviceBridgeState = Readonly<{
+  paired: boolean;
   connection: OmegaDeviceBridgeConnection;
   mirror: OmegaMirrorSnapshot | null;
   recovery: "none" | "resnapshot_requested";
@@ -450,6 +458,7 @@ const applyMirrorChange = (
 };
 
 const initialState = (): OmegaDeviceBridgeState => ({
+  paired: false,
   connection: {
     state: "offline",
     endpoint: null,
@@ -652,7 +661,14 @@ export const createOmegaDeviceBridgeClient = (
             }
             if (frame.type === "grant") {
               if (!frame.admitted) {
-                publish({ ...state, refusal: frame.reason });
+                publish({
+                  ...state,
+                  paired:
+                    frame.reason === "grant_revoked" || frame.reason === "grant_expired"
+                      ? false
+                      : state.paired,
+                  refusal: frame.reason,
+                });
                 if (frame.reason === "grant_revoked" || frame.reason === "grant_expired") {
                   persist(input.store.clearGrant());
                 }
@@ -679,6 +695,7 @@ export const createOmegaDeviceBridgeClient = (
                 },
                 cursor: currentStored?.cursor ?? null,
               };
+              publish({ ...state, paired: true, refusal: null });
               persist(input.store.save(currentStored));
               finishSuccess();
               return;
@@ -698,6 +715,7 @@ export const createOmegaDeviceBridgeClient = (
               };
               persist(input.store.save(currentStored));
               publish({
+                paired: currentStored.grant !== null,
                 connection: {
                   state: "direct",
                   endpoint: endpoint.url,
@@ -778,6 +796,10 @@ export const createOmegaDeviceBridgeClient = (
               }
               publish({
                 ...state,
+                paired:
+                  frame.reason === "grant_revoked" || frame.reason === "grant_expired"
+                    ? false
+                    : state.paired,
                 connection: connectionWithoutDirect(),
                 refusal: frame.reason,
               });
@@ -846,6 +868,13 @@ export const createOmegaDeviceBridgeClient = (
           );
         }
         const stored = yield* input.store.load();
+        publish({
+          ...state,
+          paired:
+            stored?.grant !== null &&
+            stored?.grant !== undefined &&
+            stored.grant.expiresAt > input.now(),
+        });
         const endpoints = omegaBridgeDialLadder({
           stored,
           announcements: request.announcements,

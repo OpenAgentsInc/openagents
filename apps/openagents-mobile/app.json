@@ -42,6 +42,14 @@
       "expo-updates",
       "expo-secure-store",
       [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow OpenAgents to scan an Omega desktop pairing code",
+          "recordAudioAndroid": false,
+          "barcodeScannerEnabled": true
+        }
+      ],
+      [
         "expo-audio",
         {
           "microphonePermission": false,

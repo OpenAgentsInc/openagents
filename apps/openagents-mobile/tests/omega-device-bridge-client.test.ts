@@ -7,6 +7,7 @@ import {
   OMEGA_DEVICE_BRIDGE_PROTOCOL,
   createMemoryOmegaDeviceBridgeStore,
   createOmegaDeviceBridgeClient,
+  decodeOmegaBridgePairingBootstrap,
   omegaBridgeDialLadder,
   type OmegaDeviceBridgeWebSocket,
   type OmegaMirrorSnapshot,
@@ -101,6 +102,22 @@ const snapshotFixture = (sequence = 0): OmegaMirrorSnapshot => ({
 const tick = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe("openagents.omega.device_bridge.v1 mobile client", () => {
+  test("decodes the exact desktop pairing QR payload", () => {
+    expect(
+      decodeOmegaBridgePairingBootstrap({
+        endpoint: "wss://owner-mac.tail:4317",
+        hostPublicKeyHex,
+        pairingSecret: "one-time-secret",
+        expiresAt: 20_000,
+      }),
+    ).toEqual({
+      endpoint: "wss://owner-mac.tail:4317",
+      hostPublicKeyHex,
+      pairingSecret: "one-time-secret",
+      expiresAt: 20_000,
+    });
+  });
+
   test("uses the required cached, announcement, QR, and manual dial order", () => {
     const ladder = omegaBridgeDialLadder({
       stored: {
@@ -200,6 +217,7 @@ describe("openagents.omega.device_bridge.v1 mobile client", () => {
       endpoint: "wss://cached.tail:4317",
       heartbeatAt: 10_000,
     });
+    expect(client.state().paired).toBe(true);
     expect(client.state().mirror?.threads[0]?.title).toBe("Mobile bridge");
     expect(store.inspect()?.cursor).toEqual({ generation: 7, sequence: 4 });
     expect(JSON.stringify(store.inspect())).not.toContain("threads");
@@ -344,6 +362,7 @@ describe("openagents.omega.device_bridge.v1 mobile client", () => {
     await tick();
     expect(client.state().connection.state).toBe("relay");
     expect(client.state().connection.staleSince).toBe(1_000);
+    expect(client.state().paired).toBe(false);
     expect(store.inspect()?.grant).toBeNull();
 
     await Effect.runPromise(client.close());

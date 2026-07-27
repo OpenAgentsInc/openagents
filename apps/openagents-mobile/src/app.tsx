@@ -58,6 +58,7 @@ import {
 import type { MobileSyncPhase } from "./screens/home-core"
 import type { FleetRunClientProjection } from "@openagentsinc/khala-sync"
 import { HomeScreen } from "./screens/home-screen"
+import { OmegaMobileHomeScreen } from "./screens/omega-mobile-home-screen"
 import { openMobileSyncHost, type MobileNativeSyncHost } from "./sync/mobile-sync-host"
 import { startOtaPolling } from "./updates/ota-polling"
 import {
@@ -411,7 +412,7 @@ const selectAuthenticatedMobileExperience = async (
  * vocabulary (the Protoss-blue `khalaTheme`). No NativeWind, no Tailwind class
  * strings — see docs/effect-native/2026-07-08-styling-tailwind-stylex-effect-native.md.
  */
-export const App = () => {
+export const LegacyApp = () => {
   const [syncPhase, setSyncPhase] = useState<MobileSyncPhase>("unconfigured")
   const [conversationSelection, setConversationSelection] = useState<MobileConversationSelection | null>(null)
   const [codingBinding, setCodingBinding] = useState<MobileCodingHomeBinding | undefined>()
@@ -872,3 +873,10 @@ export const App = () => {
     </SafeAreaProvider>
   )
 }
+
+export const App = () => (
+  <SafeAreaProvider style={{ backgroundColor: khalaTheme.color.background }}>
+    <StatusBar style="light" />
+    <OmegaMobileHomeScreen />
+  </SafeAreaProvider>
+)

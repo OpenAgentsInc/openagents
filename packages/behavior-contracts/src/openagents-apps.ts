@@ -48,6 +48,74 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
     },
     {
       authorityBoundary:
+        "This contract covers automatic projection into the read-only mobile home after the paired device bridge emits a mirror state. It grants no thread, run, file, terminal, git, sandbox, account, or release mutation authority. The live host-to-phone seam remains owned by the recorded cross-repository journey.",
+      blockerRefs: [],
+      contractId: "openagents_mobile.home_automatic_desktop_activity.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "apps/openagents-mobile/src/screens/omega-mobile-home.ts",
+        "apps/openagents-mobile/tests/omega-mobile-home.test.ts",
+        "docs/fable/2026-07-27-omega-mobile-tailnet-mirror-spec.md",
+        "github:OpenAgentsInc/openagents#9261",
+      ],
+      oracles: [
+        {
+          description:
+            "The mobile home program subscribes to the bridge client. The test emits a paired direct mirror after startup and verifies that the desktop name, newest thread, executor and model disclosure, run, and older thread appear in descending activity order without a selection intent.",
+          id: "openagents_mobile.home_automatic_desktop_activity.projection",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents-mobile/tests/omega-mobile-home.test.ts",
+        },
+      ],
+      productArea: "Omega mobile desktop mirror",
+      source: {
+        channel: "github-issue",
+        statedBy: "owner",
+        statedOn: "2026-07-27",
+      },
+      state: "enforced",
+      statement: "The home screen shows desktop activity automatically when paired.",
+      surface: "openagents-mobile",
+      verification:
+        "The OpenAgents mobile test sweep runs the Effect Native projection oracle. The cross-repository live pairing and transport journey is tracked separately in openagents#9262 and omega#121 through omega#123.",
+    },
+    {
+      authorityBoundary:
+        "This contract covers the visible mobile connection label and its evidence-derived staleness copy. It does not claim that a direct, relay, or offline transport exists when the bridge client has no matching evidence.",
+      blockerRefs: [],
+      contractId: "openagents_mobile.home_honest_connection_state.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "apps/openagents-mobile/src/screens/omega-mobile-home.ts",
+        "apps/openagents-mobile/tests/omega-mobile-home.test.ts",
+        "docs/fable/2026-07-27-omega-mobile-tailnet-mirror-spec.md",
+        "github:OpenAgentsInc/openagents#9261",
+      ],
+      oracles: [
+        {
+          description:
+            "The Effect Native view oracle renders direct, relay, and offline bridge evidence. Each result keeps the matching state in the desktop header and shows either a live label or an age for the last desktop update.",
+          id: "openagents_mobile.home_honest_connection_state.header",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents-mobile/tests/omega-mobile-home.test.ts",
+        },
+      ],
+      productArea: "Omega mobile desktop mirror",
+      source: {
+        channel: "github-issue",
+        statedBy: "owner",
+        statedOn: "2026-07-27",
+      },
+      state: "enforced",
+      statement: "The connection state is always visible and honest.",
+      surface: "openagents-mobile",
+      verification:
+        "The OpenAgents mobile test sweep runs the direct, relay, and offline header oracle.",
+    },
+    {
+      authorityBoundary:
         "This freezes the IDE-00 project, worktree, file, document, capability, navigation, and generation identities plus their executable fencing and shipped Files regressions. It does not claim Monaco, LSP, debugging, collaboration, Zed quality, Cursor parity, or packaged release acceptance; widgets, helpers, Git, terminals, and future native code remain projections or bounded capabilities beneath the Effect-owned graph.",
       blockerRefs: [],
       contractId: "openagents_desktop.ide_project_generation_fencing.v1",
@@ -1936,5 +2004,5 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
     },
   ],
   schemaVersion: BehaviorContractSchemaVersion,
-  version: "2026-07-25.1",
+  version: "2026-07-27.1",
 };

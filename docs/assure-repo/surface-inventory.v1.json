@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:9674f4fdab22f1c2c773357ac9f32fa1860fbb186bccb3e24db8eef8bb1419eb",
+  "sourceDigest": "sha256:7523a34e2a3180fb72ab3d9f716c7781eda5fc41d54c3bb578be3e9eac1f5fb2",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -399,7 +399,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "apps/openagents-mobile (90 tracked test files)"
+          "ref": "apps/openagents-mobile (91 tracked test files)"
         },
         {
           "type": "behavior-contract",
@@ -408,6 +408,14 @@
         {
           "type": "behavior-contract",
           "ref": "openagents_mobile.chat.post_auth_live_upgrade.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_mobile.home_automatic_desktop_activity.v1"
+        },
+        {
+          "type": "behavior-contract",
+          "ref": "openagents_mobile.home_honest_connection_state.v1"
         },
         {
           "type": "behavior-contract",
