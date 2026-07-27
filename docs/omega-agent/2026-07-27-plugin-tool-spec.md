@@ -436,7 +436,7 @@ Falsifiers, stated so the program can be caught:
 5. **Marketplace timing.** Phases two and three repeat a loop that ran
    in 2024 and was torn down in resets. The phase gates exist so the
    market returns on proven receipts, not on nostalgia.
-6. **Relationship to DSE.** DSE programs optimize model behavior;
+6. **Relationship to DSE.** DSE programs optimize model behavior, and
    plugins package deterministic behavior. The seam is explicit: a DSE
    artifact's deterministic parts can compile into a plugin, and the
    `plugin` runtime never grows a model path to absorb the rest.

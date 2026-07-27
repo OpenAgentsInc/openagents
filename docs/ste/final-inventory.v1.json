@@ -34013,6 +34013,28 @@
       }
     },
     {
+      "path": "docs/omega-agent/2026-07-27-plugin-tool-spec.md",
+      "sha256": "b40797700c19ded6b8af218a60c024a303a0ab766e7b7b85398c3421de99df31",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/omega-agent/2026-07-27-slim-agent-audit.md",
       "sha256": "c9711724004df1aa8771653c118fbf3eaba37a8eb6abe935e2b796e4e1ce1cfc",
       "reason": "Immutable historical or evidence source data",
@@ -34026,7 +34048,7 @@
     },
     {
       "path": "docs/omega-agent/2026-07-27-slim-agent-spec.md",
-      "sha256": "3ffc37ef8ca89b090f631c46044332bdd81abb9cf5f2e3d9b81d60856d6e1b4a",
+      "sha256": "72e68ad3ad2942563aad572e2ded4506642cfa3ff943d7974e8b7eb99f053358",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -34048,7 +34070,7 @@
     },
     {
       "path": "docs/omega-agent/README.md",
-      "sha256": "4a9d66b8c4b8149d6919a57f3c8337aa1438528fa8babb15780950e47d4306c8",
+      "sha256": "c053ff0e224b27f3023ab682f485815ede426f4f2f6cfd047c740b4065446fbb",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -49620,7 +49642,7 @@
     },
     {
       "path": "specs/omega/omega-agent.product-spec.md",
-      "sha256": "a1782a225468aa871938937d2b15ca4246b7996cfcc7c312b896aa73d22f461e",
+      "sha256": "7aebeb23c0532f13a85222df64f037c9e4c2f3916552b748920d10066f4d331e",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",

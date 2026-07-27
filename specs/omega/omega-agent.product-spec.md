@@ -71,12 +71,15 @@ documents.
 Revision 3 adds the determinism problem.
 The agent has no typed, verifiable way to run packaged deterministic
 functionality.
-Deterministic work routes through `bash`, which is untyped, unbounded,
-host-specific, and unreceipted beyond the transcript.
-The product also has no contribution unit: no bounded thing a community
-member can build, publish, and earn revenue share from, although the
-2024 plugin economy and Agent Store proved that loop and Episode 262
-names markets and revenue-sharing as layers Omega adds.
+Deterministic work runs through `bash`.
+That path has no types, no bounds, no portability, and no receipt
+beyond the transcript.
+
+The product also has no contribution unit.
+A community member has no bounded thing to build, publish, and earn
+revenue share from.
+The 2024 plugin economy and the Agent Store proved that loop.
+Episode 262 names markets and revenue-sharing as layers Omega adds.
 
 ## Hypothesis
 
@@ -108,10 +111,11 @@ Revision 3 adds the plugin hypothesis.
 A sixth tool, `plugin`, runs deterministic functionality: a typed,
 versioned, content-addressed, sandboxed function whose every run
 produces a replayable receipt.
-`delegate` hands work to judgment. `plugin` calls a fact.
-The plugin is also the contribution unit of the marketplace: a person
-who publishes one contributes a capability to the super agent and can
-earn a share of the revenue it produces, under the phase admissions.
+`delegate` hands work to judgment, and `plugin` calls a fact.
+The plugin is also the contribution unit of the marketplace.
+A person who publishes one contributes a capability to the super agent.
+Under the phase admissions, that person can earn a share of the revenue
+the capability produces.
 
 ## Scope
 
@@ -341,9 +345,9 @@ The agent's own undo restores a snapshot it took.
   `docs/omega-agent/2026-07-27-plugin-tool-spec.md` section 10.
   Nothing in this revision is a release or public claim.
 - **Reserved plugin phases.** The phase-two registry admission and the
-  phase-three paid-market admission are owner-reserved. Revision 3
-  admits neither. Revenue-share payout rails are decided at the
-  phase-three admission under the standing payment policies.
+  phase-three paid-market admission stay with the owner. Revision 3
+  admits neither. The owner decides the revenue-share payout rails at
+  the phase-three admission under the standing payment policies.
 - **Nostr identity signing, open.** The owner has not answered whether the
   first-party agent signs with the Omega Nostr identity. This revision does
   not answer it. The two branches and their costs are in
