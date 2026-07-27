@@ -1,21 +1,21 @@
 import { Schema } from "effect";
 
 export const OMEGA_MOBILE_MIRROR_JOURNEY_SCHEMA =
-  "openagents.omega.mobile_mirror_journey_receipt.v1" as const;
+  "openagents.omega.mobile_mirror_journey_receipt.v2" as const;
 
 const CommitSha = Schema.String.check(Schema.isPattern(/^[0-9a-f]{40}$/));
 const EvidenceRef = Schema.String.check(Schema.isMinLength(1));
 
 const SimulatedStageSchema = Schema.Struct({
-  stage: Schema.Literals(["M0", "M1", "M2"]),
+  stage: Schema.Literals(["M0", "M1", "M2", "revocation"]),
   status: Schema.Literal("passed_simulator"),
   evidenceRefs: Schema.Array(EvidenceRef),
   summary: EvidenceRef,
 });
 
 const BlockedStageSchema = Schema.Struct({
-  stage: Schema.Literals(["revocation", "live_host", "physical_device"]),
-  status: Schema.Literals(["blocked_dependency", "not_run"]),
+  stage: Schema.Literal("physical_device"),
+  status: Schema.Literal("not_run"),
   blockerRefs: Schema.Array(EvidenceRef),
   summary: EvidenceRef,
 });
@@ -34,6 +34,12 @@ export const OmegaMobileMirrorJourneyReceiptSchema = Schema.Struct({
     appIdentifier: Schema.Literal("com.openagents.app"),
     protocol: Schema.Literal("openagents.omega.device_bridge.v1"),
   }),
+  host: Schema.Struct({
+    dependenciesLanded: Schema.Literal(true),
+    liveJourneyRun: Schema.Literal(false),
+    evidenceRefs: Schema.Array(EvidenceRef),
+    summary: EvidenceRef,
+  }),
   stages: Schema.Array(SimulatedStageSchema),
   residual: Schema.Array(BlockedStageSchema),
   redaction: Schema.Struct({
@@ -42,8 +48,8 @@ export const OmegaMobileMirrorJourneyReceiptSchema = Schema.Struct({
     forbiddenMaterialScanned: Schema.Literal(true),
   }),
   summary: Schema.Struct({
-    simulatorStagesPassed: Schema.Literal(3),
-    overall: Schema.Literal("blocked_live_host"),
+    simulatorStagesPassed: Schema.Literal(4),
+    overall: Schema.Literal("passed_simulator"),
   }),
 });
 

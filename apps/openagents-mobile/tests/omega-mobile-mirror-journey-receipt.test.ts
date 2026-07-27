@@ -22,14 +22,14 @@ describe("TM-06 mirror journey receipt", () => {
     const receipt = decodeOmegaMobileMirrorJourneyReceipt(fixture);
 
     expect(receipt.schema).toBe(OMEGA_MOBILE_MIRROR_JOURNEY_SCHEMA);
-    expect(receipt.stages.map((stage) => stage.stage)).toEqual(["M0", "M1", "M2"]);
+    expect(receipt.stages.map((stage) => stage.stage)).toEqual(["M0", "M1", "M2", "revocation"]);
     expect(receipt.stages.every((stage) => stage.status === "passed_simulator")).toBe(true);
-    expect(receipt.residual.map((stage) => stage.status)).toEqual([
-      "blocked_dependency",
-      "blocked_dependency",
-      "not_run",
-    ]);
-    expect(receipt.summary.overall).toBe("blocked_live_host");
+    expect(receipt.host).toMatchObject({
+      dependenciesLanded: true,
+      liveJourneyRun: false,
+    });
+    expect(receipt.residual.map((stage) => stage.status)).toEqual(["not_run"]);
+    expect(receipt.summary.overall).toBe("passed_simulator");
   });
 
   test("rejects secret-shaped evidence", async () => {
@@ -48,8 +48,6 @@ describe("TM-06 mirror journey receipt", () => {
     if (residual === undefined) throw new Error("The receipt has no residual row.");
     residual.summary = "pairingSecret must never be recorded";
 
-    expect(() =>
-      decodeOmegaMobileMirrorJourneyReceipt(fixture),
-    ).toThrow();
+    expect(() => decodeOmegaMobileMirrorJourneyReceipt(fixture)).toThrow();
   });
 });
