@@ -35116,6 +35116,18 @@
       }
     },
     {
+      "path": "docs/oopsiewoopsies/2026-07-27-git-checkout-destroyed-uncommitted-work-twice.md",
+      "sha256": "67c34e1b855767f9dbda51062642cc5f7ac6680ffa1f074733c0680acfd2d4c1",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null,
+        "ste_status": "source-data"
+      }
+    },
+    {
       "path": "docs/opencode/README.md",
       "sha256": "f9b4b42e82d825706ab6255d7695d9d36f25b7e08b652b8a1472e551ac8c0df0",
       "reason": "Final review of a converted document",
