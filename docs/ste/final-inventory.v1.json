@@ -34161,7 +34161,7 @@
     },
     {
       "path": "docs/omega/2026-07-24-full-auto-port-audit.md",
-      "sha256": "525ddd895989bd52249d5acad4fcdbc12a9b09f772a1415e103b97f1f3c03ddf",
+      "sha256": "62cc97ff316619f12270b3446466ca785cf68d7943cd086e28ab2952be0716d5",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
