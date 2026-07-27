@@ -4,7 +4,7 @@
   "mode": "simulator",
   "generatedAt": "2026-07-27T20:00:00.000Z",
   "source": {
-    "openagentsCommit": "51953c9591828cc85c25ac23f16b14aa4e6f6f28",
+    "openagentsCommit": "ff1db0af2d4e69606d6abe833e809a83bd3557a0",
     "omegaCommit": "dcb71aea6845289d73139f631c0becf596c0ad1f"
   },
   "simulator": {
