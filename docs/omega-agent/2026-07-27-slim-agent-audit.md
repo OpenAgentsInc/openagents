@@ -266,6 +266,11 @@ the public essay by a Pi maintainer (lucumr.pocoo.org, 2026-01-31).
    Read-only `grep`, `find`, and `ls` exist but are not the identity.
    The essay is direct: "it has the shortest system prompt of any agent
    that I'm aware of and it only has four tools."
+   Pi's `read` (source: `packages/coding-agent/src/core/tools/read.ts`
+   in the pinned `pi` clone) reads text files and images, truncates at
+   2,000 lines or 50 KiB with "Use offset=N to continue" markers, and
+   does not read directories.
+   Listing belongs to `ls` and the shell.
 2. **The shell is the capability surface.** Search, listing, browsing, and
    most integrations run as commands through `bash`, not as
    context-loaded tools.

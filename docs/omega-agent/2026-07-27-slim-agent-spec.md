@@ -66,9 +66,34 @@ checkpoints, tool-result artifacts, and the permission ladder all stay.
 
 One tool reads every address the agent can hold.
 
+The name and the ground contract come from the Pi source at
+`packages/coding-agent/src/core/tools/read.ts` in the pinned `pi` clone.
+Pi's `read` is not `read_file` under a shorter name, and it is not a
+directory reader.
+The exact Pi contract:
+
+1. It reads text files and images (jpg, png, gif, webp, bmp), and it
+   sends an image as an attachment, with a text note when the model has
+   no image support.
+2. It does not read a directory. A directory path fails, and listing
+   belongs to `ls` and the shell.
+3. Output truncates at the head to 2,000 lines or 50 KiB, the first
+   limit that fires.
+4. `offset` and `limit` select a 1-indexed line range, and every
+   truncation marker names the exact next step: "Use offset=N to
+   continue."
+5. A single line above the byte limit gets a marker that names a `bash`
+   fallback command for that line.
+6. The tool prompt tells the model: use `read` to examine files instead
+   of `cat` or `sed`.
+
+The Omega `read` adopts that contract and widens the address space, not
+the file semantics:
+
 | Address form | Behavior | Replaces |
 | --- | --- | --- |
-| A file path | Line-numbered content, targeted ranges, outline fallback for large files, image support | `read_file` |
+| A file path | Line-numbered content, `offset` and `limit` ranges, continuation markers, image support, outline fallback for large files | `read_file` |
+| A directory path | A typed refusal that names `bash` (`ls`) as the path | nothing. Listing is shell work |
 | `tool:<tool_call_id>` | The full artifact behind a bounded tool-result preview | `read_tool_result_artifact` |
 | A delegate session address | The bounded transcript of a subagent this thread spawned | `read_subagent_transcript` |
 | A skill location from the prompt catalog | The skill body | `skill` |
@@ -83,6 +108,11 @@ Contract points:
 3. Bounds and truncation markers follow `OMEGA-DELTA-0111` and
    `OMEGA-DELTA-0121`: every bound that fires says so, and every printed
    address is one the model can spend.
+   Pi's "Use offset=N to continue" marker satisfies the same law, and
+   the Omega `read` emits the same continuation form on a truncated
+   file read.
+4. The directory refusal is a structured tool error with the `ls`
+   pointer in its text, not a silent empty result.
 
 ### 3.2 `write`
 
