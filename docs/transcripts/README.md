@@ -62,11 +62,10 @@ release candidates (no-music clean plate and optional with-music sibling)
 were assembled on 2026-07-24 under `~/Desktop/Sarah/262/` using the proven
 Segmind + screenshare path and Episode 262 lessons in
 [`../sarah/2026-07-22-segmind-talking-avatar-pipeline.md`](../sarah/2026-07-22-segmind-talking-avatar-pipeline.md).
-Episode 263 takes the second product promise: Omega Agent as the last agent you
-talk to, because it routes to other agents and harnesses, can improve from
-the record of what it routed, and can be extended by anyone through the
-admitted `plugin` tool — with revenue sharing for contributors as its
-phased, owner-gated market. The unscheduled Forking Zed draft opens the fork
+Episode 263 introduces Omega Agent in plain language: the last agent you talk
+to — it does your work, always says who did it, and through the admitted
+`plugin` tool will pay anyone who builds a tool it uses, reviving the 2024
+Agent Store revenue-share loop as a phased, owner-gated market. The unscheduled Forking Zed draft opens the fork
 and tours the Rust workspace, GPUI, native IDE substrate, branding work, Rust
 and Effect boundary, and migration order. The unscheduled Full Auto draft moved
 off slot 263 on 2026-07-27 when Omega Agent took it.
@@ -458,7 +457,7 @@ Use this file as a navigation map. The transcripts are good enough for theme dis
 | [`260` Spawning Sarah](260.md) | Introduces Sarah as the agent who can run internal work, sales, and service while the founder steps away for paternity leave. |
 | [`261` Hello World](261.md) | Gives Sarah her own voice: calm, direct, committed to serving and empowering humanity, and ready to begin. |
 | [`262` Project Omega](262.md) | Sarah reviews the many real OpenAgents product arcs, identifies the missing durable shared product foundation, applies Cursor's mature-editor lesson to Zed, and introduces Omega as the open home for code, agents, decisions, and proof. |
-| [`263` Omega Agent](263-omega-agent.md) | Harness draft as Sarah, pending owner review and not scheduled for recording. Takes the second Omega promise after 262's last IDE: Omega Agent is meant to be the last agent you talk to, because it routes to other agents and harnesses, improves from the record of every route, and lets anyone extend it and earn revenue share. Shows what runs in the fork today — zero base, the six-tool surface (five landed: read, write, edit, bash, delegate), executor-explicit delegation that refuses to substitute, the outside Exo harness over ACP with its full disclosure chain, and the Git work-loss guard — and labels the sixth tool `plugin` (deterministic, typed, receipted functionality reviving the 2024 plugin-economy and Agent Store revshare arc, feeding the Khala collective) plus the automatic router and learning loop as admitted direction that does not run. A truth ledger gates every spoken line. |
+| [`263` Omega Agent](263-omega-agent.md) | Harness draft as Sarah, pending owner review and not scheduled for recording. A plain-language introduction of Omega Agent, the one agent you talk to inside Omega: it does your work with six simple tools, hands jobs to agents you already pay for and always says who did the work, and — through the admitted `plugin` tool — will let anyone build a small tool, share it, and get paid revenue share in Bitcoin when people use it, reviving the 2024 Agent Store loop on receipts. A truth ledger gates every spoken line; payment claims stay future tense. |
 | [`26X` Forking Zed, unscheduled](26X-forkingzed.md) | Opens the public Omega fork and tours its current Zed-derived Rust workspace, GPUI, editor and project graph, Git, terminal, remote and agent foundations, then maps the branding, release, Rust-and-Effect, Desktop-port, and native-workroom insertion points without claiming those future features are already implemented. |
 | [`26X` Making Full Auto Agents Reliable, unscheduled](26X-fullauto.md) | Two-part draft, not scheduled for recording, moved off slot 263 on 2026-07-27. Part one is the recorded 2026-07-17 session where the founder starts a Full Auto repair, describes the failures that make unattended agents unreliable, and steps away unfinished. Part two is an aspirational Sarah script for the demonstration we want once the capability works: the Omega workroom with Full Auto running unattended, multi-account handoff, real OpenAgents objectives, and end-to-end receipts, while the founder is away. A truth ledger gates every spoken line against shipped capability, and recording waits on the ledger. |
 
