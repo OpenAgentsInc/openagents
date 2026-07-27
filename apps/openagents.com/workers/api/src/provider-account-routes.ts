@@ -40,6 +40,7 @@ type ProviderAccountRouteDependencies<Bindings = OpenAgentsEnv> = Readonly<{
   handleGoogleGeminiBuiltinGrantApi: (
     request: Request,
     env: Bindings,
+    ctx: ExecutionContext,
   ) => RouteEffect
   handleGoogleGeminiGenerateContentApi: (
     request: Request,
@@ -260,7 +261,10 @@ export const makeProviderAccountRoutes = <Bindings = OpenAgentsEnv>(
       '/api/pylon/provider-accounts/google-gemini/auth-material'
     ) {
       return routeEffectOrResponse(
-        dependencies.handlePylonProviderGoogleGeminiAuthMaterialApi(request, env),
+        dependencies.handlePylonProviderGoogleGeminiAuthMaterialApi(
+          request,
+          env,
+        ),
       )
     }
 
@@ -274,7 +278,9 @@ export const makeProviderAccountRoutes = <Bindings = OpenAgentsEnv>(
       )
     }
 
-    if (url.pathname === '/api/pylon/provider-accounts/xai-grok/auth-material') {
+    if (
+      url.pathname === '/api/pylon/provider-accounts/xai-grok/auth-material'
+    ) {
       return routeEffectOrResponse(
         dependencies.handlePylonProviderHarnessAuthMaterialApi(
           request,
@@ -328,7 +334,7 @@ export const makeProviderAccountRoutes = <Bindings = OpenAgentsEnv>(
       url.pathname === '/api/provider-accounts/google-gemini/grants/builtin'
     ) {
       return routeEffectOrResponse(
-        dependencies.handleGoogleGeminiBuiltinGrantApi(request, env),
+        dependencies.handleGoogleGeminiBuiltinGrantApi(request, env, ctx),
       )
     }
 
@@ -506,9 +512,7 @@ export const makeProviderAccountRoutes = <Bindings = OpenAgentsEnv>(
     }
 
     const mobileCodexAccountDisconnectMatch =
-      /^\/api\/mobile\/codex-accounts\/([^/]+)\/disconnect$/.exec(
-        url.pathname,
-      )
+      /^\/api\/mobile\/codex-accounts\/([^/]+)\/disconnect$/.exec(url.pathname)
 
     if (mobileCodexAccountDisconnectMatch !== null) {
       const providerAccountRef = mobileCodexAccountDisconnectMatch[1]
@@ -526,9 +530,7 @@ export const makeProviderAccountRoutes = <Bindings = OpenAgentsEnv>(
     }
 
     const mobileClaudeAccountDisconnectMatch =
-      /^\/api\/mobile\/claude-accounts\/([^/]+)\/disconnect$/.exec(
-        url.pathname,
-      )
+      /^\/api\/mobile\/claude-accounts\/([^/]+)\/disconnect$/.exec(url.pathname)
 
     if (mobileClaudeAccountDisconnectMatch !== null) {
       const providerAccountRef = mobileClaudeAccountDisconnectMatch[1]

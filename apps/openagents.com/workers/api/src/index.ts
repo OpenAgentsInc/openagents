@@ -478,12 +478,12 @@ import {
   makeForgeTenantGitAuthStoreForEnv,
 } from './forge-domain-store'
 import { makeForgeGitIntakeRoutes } from './forge-git-intake-routes'
-import { makeForgeInviteMembershipRoutes } from './forge-invite-membership-routes'
 import { makeForgeOwnedCanonicalMirrorHttpService } from './forge-github-mirror-canonical-service'
 import {
   makeForgeGitHubMirrorWorker,
   makeUnavailableForgeOwnedCanonicalMirrorService,
 } from './forge-github-mirror-worker'
+import { makeForgeInviteMembershipRoutes } from './forge-invite-membership-routes'
 import { makeForumRoutes } from './forum-routes'
 import { forumWorkRequestRelayPublisherForEnv } from './forum-work-request-live-publisher'
 import { forumContentDatabaseForEnv } from './forum/forum-content-store'
@@ -562,7 +562,6 @@ import {
   identityDbForEnv,
   readIdentityUserProfiles,
 } from './identity-db'
-import { handlePublicNostrChatManifest } from './public-nostr-chat-routes'
 import { makeImageGenerationRoutes } from './image-generation-routes'
 import {
   inferenceEntitlementsMirrorForEnv,
@@ -1144,6 +1143,7 @@ import { handlePublicKhalaTokensServedModelMixApi } from './public-khala-tokens-
 import { handlePublicKhalaTokensServedApi } from './public-khala-tokens-served-routes'
 import { handlePublicLaunchDashboardApi } from './public-launch-dashboard-routes'
 import { makePublicNip90MarketReceiptRoutes } from './public-nip90-market-receipt-routes'
+import { handlePublicNostrChatManifest } from './public-nostr-chat-routes'
 import { makePublicPartnerPayoutReceiptRoutes } from './public-partner-payout-receipt-routes'
 import { handlePublicProofReplayBundleRequest } from './public-proof-replay-routes'
 import { handlePublicPylonStatsApi } from './public-pylon-stats-routes'
@@ -8572,6 +8572,19 @@ const khalaCodeOpenAgentsAuthHandlers = makeKhalaCodeOpenAgentsAuthHandlers({
 
 const providerAccountServiceHandlers = makeProviderAccountServiceHandlers({
   readConnectedCodexAuthMaterial: readConnectedCodexAuthMaterialForWorkerEnv,
+  requireHostedComputeActor: async (request, env, ctx) => {
+    const agent = await requireProviderServiceActor(request, env)
+
+    if (agent !== undefined) {
+      return agent
+    }
+
+    const session = await requireUserBearerSession(request, env, ctx)
+
+    return session === undefined
+      ? undefined
+      : { user: { id: session.user.userId } }
+  },
   requireProviderServiceActor,
 })
 
@@ -8687,10 +8700,10 @@ const providerAccountRoutes = makeProviderAccountRoutes({
         .handleGoogleGeminiGrantResolveApi(request, env)
         .then(materializeHttpResult),
     ),
-  handleGoogleGeminiBuiltinGrantApi: (request, env) =>
+  handleGoogleGeminiBuiltinGrantApi: (request, env, ctx) =>
     routeEffect('handle_google_gemini_builtin_grant_api', () =>
       providerAccountServiceHandlers
-        .handleGoogleGeminiBuiltinGrantApi(request, env)
+        .handleGoogleGeminiBuiltinGrantApi(request, env, ctx)
         .then(materializeHttpResult),
     ),
   handleGoogleGeminiGenerateContentApi: (request, env, ctx, model) =>
@@ -16191,7 +16204,8 @@ const routeRequest = makeWorkerRouteRequest({
             storeEnv.OPENAGENTS_FORGE_GITHUB_MIRROR_REGISTRY !== undefined
               ? makeForgeOwnedCanonicalMirrorHttpService({
                   baseUrl: storeEnv.OPENAGENTS_FORGE_GIT_SERVICE_BASE_URL,
-                  registryJson: storeEnv.OPENAGENTS_FORGE_GITHUB_MIRROR_REGISTRY,
+                  registryJson:
+                    storeEnv.OPENAGENTS_FORGE_GITHUB_MIRROR_REGISTRY,
                   serviceAuthToken:
                     storeEnv.OPENAGENTS_FORGE_GIT_SERVICE_AUTH_TOKEN,
                 })

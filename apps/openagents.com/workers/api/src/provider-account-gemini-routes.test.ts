@@ -153,6 +153,19 @@ const makeTokenUsageDb = (): Readonly<{
 
 const typedHandlers = makeProviderAccountServiceHandlers({
   readConnectedCodexAuthMaterial: () => Promise.resolve(undefined),
+  requireHostedComputeActor: request => {
+    const authorization = request.headers.get('authorization')
+
+    if (authorization === 'Bearer oa_agent_test') {
+      return Promise.resolve({ user: { id: 'agent:test' } })
+    }
+
+    if (authorization === 'Bearer oauth_desktop_test') {
+      return Promise.resolve({ user: { id: 'user:desktop' } })
+    }
+
+    return Promise.resolve(undefined)
+  },
   requireProviderServiceActor: request =>
     request.headers.get('authorization') === 'Bearer oa_agent_test'
       ? Promise.resolve({ user: { id: 'agent:test' } })
@@ -160,6 +173,12 @@ const typedHandlers = makeProviderAccountServiceHandlers({
 })
 
 const handlers = {
+  handleGoogleGeminiBuiltinGrantApi: async (
+    ...args: Parameters<typeof typedHandlers.handleGoogleGeminiBuiltinGrantApi>
+  ): Promise<Response> =>
+    materializeHttpResult(
+      await typedHandlers.handleGoogleGeminiBuiltinGrantApi(...args),
+    ),
   handleGoogleGeminiGrantResolveApi: async (
     ...args: Parameters<typeof typedHandlers.handleGoogleGeminiGrantResolveApi>
   ): Promise<Response> =>
@@ -177,6 +196,42 @@ const handlers = {
 }
 
 describe('google gemini provider account routes', () => {
+  test('issues a keyless hosted grant to an authenticated desktop session', async () => {
+    const store = makeTokenUsageDb()
+    const { ctx } = makeExecutionContext()
+    const response = await handlers.handleGoogleGeminiBuiltinGrantApi(
+      new Request(
+        'https://openagents.com/api/provider-accounts/google-gemini/grants/builtin',
+        {
+          headers: {
+            authorization: 'Bearer oauth_desktop_test',
+            'content-type': 'application/json',
+          },
+          method: 'POST',
+        },
+      ),
+      {
+        ...env,
+        OPENAGENTS_DB: store.db,
+      },
+      ctx,
+    )
+    const body = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(body).toMatchObject({
+      grant: {
+        budgetClass: 'free_tier',
+        provider: 'google_gemini',
+        providerSecretRef:
+          'provider-account://google-gemini/worker-secret/GEMINI_API_KEY',
+        status: 'issued',
+      },
+      status: 'issued',
+    })
+    expect(JSON.stringify(body)).not.toContain('test-gemini-key')
+  })
+
   test('rejects Gemini grant resolution without service bearer auth', async () => {
     const response = await handlers.handleGoogleGeminiGrantResolveApi(
       new Request(
@@ -284,6 +339,44 @@ describe('google gemini provider account routes', () => {
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:streamGenerateContent?alt=sse',
       )
       expect(upstreamHeaders.get('x-goog-api-key')).toBe('test-gemini-key')
+    } finally {
+      upstream.mockRestore()
+    }
+  })
+
+  test('brokers Gemini inference for an authenticated desktop session', async () => {
+    const upstream = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        'data: {"candidates":[{"content":{"role":"model","parts":[{"text":"ok"}]},"finishReason":"STOP"}]}\n\n',
+        {
+          headers: { 'content-type': 'text/event-stream' },
+          status: 200,
+        },
+      ),
+    )
+
+    try {
+      const { ctx, promises } = makeExecutionContext()
+      const response = await handlers.handleGoogleGeminiGenerateContentApi(
+        new Request(
+          'https://openagents.com/api/provider-accounts/google-gemini/models/gemini-3.5-flash:streamGenerateContent?alt=sse',
+          {
+            body: JSON.stringify({ contents: [] }),
+            headers: {
+              authorization: 'Bearer oauth_desktop_test',
+              'content-type': 'application/json',
+            },
+            method: 'POST',
+          },
+        ),
+        env,
+        ctx,
+        'gemini-3.5-flash',
+      )
+
+      expect(response.status).toBe(200)
+      expect(await response.text()).toContain('"ok"')
+      await Promise.all(promises)
     } finally {
       upstream.mockRestore()
     }

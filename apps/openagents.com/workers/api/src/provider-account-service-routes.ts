@@ -13,6 +13,7 @@ import {
   noStoreJsonResult,
   streamHttpResult,
 } from './http/responses'
+import { postgresIdentityAuthStoreForEnv } from './identity-auth-domain-store'
 import { inferenceEntitlementsMirrorForEnv } from './inference-entitlements-store'
 import {
   optionalBoolean,
@@ -21,7 +22,6 @@ import {
   readJsonObject,
 } from './json-boundary'
 import { logWorkerRouteError, observedPromise } from './observability'
-import { postgresIdentityAuthStoreForEnv } from './identity-auth-domain-store'
 import { ProviderAccountStorageFailed } from './provider-account-errors'
 import { makeAuthoritativePostgresProviderGrantRepository } from './provider-account-postgres-grant-repository'
 import {
@@ -81,6 +81,11 @@ type ProviderAccountServiceDependencies<
   requireProviderServiceActor: (
     request: Request,
     env: RouteEnv,
+  ) => Promise<ProviderServiceActor | undefined>
+  requireHostedComputeActor: (
+    request: Request,
+    env: RouteEnv,
+    ctx: ExecutionContext,
   ) => Promise<ProviderServiceActor | undefined>
   providerGrantRepository?: (
     env: RouteEnv,
@@ -746,9 +751,9 @@ export const makeProviderAccountServiceHandlers = <
   },
 
   // Keyless, quota-gated hosted-compute grant for a no-key user's built-in
-  // agent. Unlike handleGoogleGeminiGrantResolveApi (which resolves an existing
+  // desktop session or agent. Unlike handleGoogleGeminiGrantResolveApi (which resolves an existing
   // provider-account grantRef), this route mints a free-tier grant for the
-  // authenticated agent's user WITHOUT requiring a prior grant. It is
+  // authenticated user's account WITHOUT requiring a prior grant. It is
   // COST/SECURITY-SENSITIVE: it gates access to the shared hosted Gemini key.
   //
   // - Inert by default: if GEMINI_API_KEY is not configured, it grants nothing
@@ -760,12 +765,17 @@ export const makeProviderAccountServiceHandlers = <
   handleGoogleGeminiBuiltinGrantApi: async (
     request: Request,
     env: RouteEnv,
+    ctx: ExecutionContext,
   ): Promise<JsonHttpResult> => {
     if (request.method !== 'POST') {
       return methodNotAllowedResult(['POST'])
     }
 
-    const actor = await dependencies.requireProviderServiceActor(request, env)
+    const actor = await dependencies.requireHostedComputeActor(
+      request,
+      env,
+      ctx,
+    )
 
     if (actor === undefined) {
       return noStoreJsonResult({ error: 'unauthorized' }, { status: 401 })
@@ -831,7 +841,11 @@ export const makeProviderAccountServiceHandlers = <
       return methodNotAllowedResult(['POST'])
     }
 
-    const actor = await dependencies.requireProviderServiceActor(request, env)
+    const actor = await dependencies.requireHostedComputeActor(
+      request,
+      env,
+      ctx,
+    )
 
     if (actor === undefined) {
       return noStoreJsonResult({ error: 'unauthorized' }, { status: 401 })

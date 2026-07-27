@@ -9249,7 +9249,7 @@
       ]
     },
     "apps/openagents.com/INVARIANTS.md": {
-      "sourceSha256": "081d291eabcd77fa36497a81e3bab9e062f073eda2a97fce6d7051b8e8591786",
+      "sourceSha256": "86bf575d7422178fa24fc813bbe0bd78be43744ab48947ca58f1a2ce96b38870",
       "normativeKeywords": [
         "MAY",
         "MUST",
@@ -10979,6 +10979,7 @@
         "workers/api/src/provider-account-api-key.test.ts",
         "workers/api/src/provider-account-credential-boundary.test.ts",
         "workers/api/src/provider-account-effective-config.test.ts",
+        "workers/api/src/provider-account-gemini-routes.test.ts",
         "workers/api/src/provider-account-lease-policy.test.ts",
         "workers/api/src/provider-account-managed-policy.test.ts",
         "workers/api/src/provider-account-pylon-routes.test.ts",

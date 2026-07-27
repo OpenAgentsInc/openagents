@@ -591,6 +591,13 @@ This is the invariant ledger for `openagents`.
 
 ## Khala Backing Model Precedence
 
+- The built-in Omega model uses the hosted Gemini broker by default. A person
+  does not need a Google API key. The broker accepts a verified OpenAgents
+  desktop bearer session or a registered-agent bearer token. It keeps the
+  hosted Google credential on the server. The client must first request the
+  quota-limited built-in grant and must not receive the raw credential.
+  Regression coverage is in
+  `workers/api/src/provider-account-gemini-routes.test.ts`.
 - Conversational `openagents/khala` turns are latency-first. They must prefer
   fast lanes for normal back-and-forth chat, ordered Vertex Gemini -> Fireworks
   -> GLM-5.2-REAP-504B -> OpenRouter `openrouter/free`, so the first public
