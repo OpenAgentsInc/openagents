@@ -404,16 +404,17 @@ The program extends the `OMEGA-AGENT` ledger.
 Every packet cites the revised ProductSpec.
 Wave numbering follows the master delegation plan's style: packets in one
 wave can run in parallel when they do not share hot files.
+The live claim ledger is the omega issue set under epic omega#112.
 
-| Packet | Goal | Depends on |
-| --- | --- | --- |
-| SLIM-00 | ProductSpec revision and owner admission. No code | none |
-| SLIM-01 | The slim profile, the five-tool registration, and the tool-name surface | SLIM-00 |
-| SLIM-02 | The slim system prompt template with the byte-ceiling check | SLIM-01 |
-| SLIM-03 | The `read` fold: files, artifacts, transcripts, skill bodies under one tool | SLIM-01 |
-| SLIM-04 | The dirty-tree guard and the typed guard transcript | SLIM-00, parallel to SLIM-01 |
-| SLIM-05 | The `delegate` surface: rename, disclosure record in the result, session addresses, engine-lane command path | SLIM-01 |
-| SLIM-06 | Behavior contracts and the delta ledger sweep for the program | SLIM-01 through SLIM-05 |
+| Packet | Issue | Goal | Depends on |
+| --- | --- | --- | --- |
+| SLIM-00 | complete | ProductSpec revision 2, landed | none |
+| SLIM-01 | omega#113 | The slim profile, the five-tool registration, and the tool-name surface | SLIM-00 |
+| SLIM-02 | omega#114 | The slim system prompt template with the byte-ceiling check | SLIM-01 |
+| SLIM-03 | omega#115 | The `read` fold: files, artifacts, transcripts, skill bodies under one tool | SLIM-01 |
+| SLIM-04 | omega#116 | The dirty-tree guard and the typed guard transcript | SLIM-00, parallel to SLIM-01 |
+| SLIM-05 | omega#117 | The `delegate` surface: rename, disclosure record in the result, session addresses, engine-lane command path | SLIM-01 |
+| SLIM-06 | omega#118 | Behavior contracts and the delta ledger sweep for the program | SLIM-01 through SLIM-05 |
 
 Hot files: `assets/settings/default.json` (SLIM-01), the prompt templates
 (SLIM-02), `crates/agent/src/tools.rs` (SLIM-01, SLIM-03, SLIM-05).

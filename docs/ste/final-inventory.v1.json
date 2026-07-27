@@ -34026,7 +34026,7 @@
     },
     {
       "path": "docs/omega-agent/2026-07-27-slim-agent-spec.md",
-      "sha256": "750f733d91695e5dfd33ac64ed87e10116185ee1ab6116fd71f94ce1e9fa89c9",
+      "sha256": "3ffc37ef8ca89b090f631c46044332bdd81abb9cf5f2e3d9b81d60856d6e1b4a",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
