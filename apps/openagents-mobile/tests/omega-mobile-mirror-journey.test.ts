@@ -22,6 +22,7 @@ const hostPublicKeyHex = "b".repeat(64);
 class JourneySocket implements OmegaDeviceBridgeWebSocket {
   readyState = 0;
   readonly sent: Array<Record<string, unknown>> = [];
+  readonly closes: Array<Readonly<{ code?: number; reason?: string }>> = [];
   readonly listeners = new Map<string, Array<(event: { readonly data?: unknown }) => void>>();
 
   addEventListener(
@@ -37,7 +38,11 @@ class JourneySocket implements OmegaDeviceBridgeWebSocket {
     this.sent.push(JSON.parse(data) as Record<string, unknown>);
   }
 
-  close(): void {
+  close(code?: number, reason?: string): void {
+    this.closes.push({
+      ...(code === undefined ? {} : { code }),
+      ...(reason === undefined ? {} : { reason }),
+    });
     this.readyState = 3;
   }
 
@@ -202,6 +207,7 @@ describe("TM-06 Omega mobile mirror simulator journeys", () => {
     const cachedSocket = new JourneySocket();
     const announcedSocket = new JourneySocket();
     const dialed: Array<string> = [];
+    const admissionDeadlines: Array<() => void> = [];
     const bridge = createOmegaDeviceBridgeClient({
       identity: identityFixture(),
       store,
@@ -212,6 +218,15 @@ describe("TM-06 Omega mobile mirror simulator journeys", () => {
       now: () => 10_000,
       randomNonce: () => "nonce-m1",
       defaultPort: 4_317,
+      scheduleAdmissionDeadline: (onDeadline) => {
+        let active = true;
+        admissionDeadlines.push(() => {
+          if (active) onDeadline();
+        });
+        return () => {
+          active = false;
+        };
+      },
     });
     const connecting = Effect.runPromise(
       bridge.connect({
@@ -233,14 +248,24 @@ describe("TM-06 Omega mobile mirror simulator journeys", () => {
       }),
     );
 
-    cachedSocket.emit("error");
+    cachedSocket.emit("open");
     await tick();
+    expect(cachedSocket.sent[0]).toMatchObject({
+      type: "hello",
+      resumeCursor: { generation: 7, sequence: 4 },
+    });
+    admissionDeadlines[0]?.();
+    await tick();
+    expect(cachedSocket.closes).toContainEqual({
+      code: 1008,
+      reason: "admission timeout",
+    });
+    admit(cachedSocket, 99);
+    expect(bridge.state().mirror).toBeNull();
+
     announcedSocket.emit("open");
     await tick();
-    expect(dialed).toEqual([
-      "wss://old-network.tail:4317",
-      "wss://new-network.tail:4317",
-    ]);
+    expect(dialed).toEqual(["wss://old-network.tail:4317", "wss://new-network.tail:4317"]);
     expect(announcedSocket.sent[0]).toMatchObject({
       type: "hello",
       grantRef: "grant-journey",

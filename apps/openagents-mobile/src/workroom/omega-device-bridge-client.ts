@@ -11,6 +11,7 @@ export const OMEGA_DEVICE_BRIDGE_STORE_KEY = "openagents.omega.device-bridge.v1"
 export const OMEGA_DEVICE_BRIDGE_KEYCHAIN_SERVICE =
   "com.openagents.mobile.omega-device-bridge" as const;
 export const OMEGA_DEVICE_BRIDGE_MAX_FRAME_BYTES = 64 * 1024;
+export const OMEGA_DEVICE_BRIDGE_ADMISSION_TIMEOUT_MS = 5_000;
 
 const NonNegativeInteger = Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0));
 const PositiveInteger = Schema.Number.check(Schema.isInt(), Schema.isGreaterThan(0));
@@ -509,12 +510,20 @@ export const createOmegaDeviceBridgeClient = (
     now: () => number;
     randomNonce: () => string;
     defaultPort: number;
+    admissionTimeoutMs?: number;
+    scheduleAdmissionDeadline?: (onDeadline: () => void, delayMs: number) => () => void;
   }>,
 ): OmegaDeviceBridgeClient => {
   let state = initialState();
   let closed = false;
   let socket: OmegaDeviceBridgeWebSocket | null = null;
   const listeners = new Set<(state: OmegaDeviceBridgeState) => void>();
+  const scheduleAdmissionDeadline =
+    input.scheduleAdmissionDeadline ??
+    ((onDeadline: () => void, delayMs: number): (() => void) => {
+      const timer = setTimeout(onDeadline, delayMs);
+      return () => clearTimeout(timer);
+    });
 
   const publish = (next: OmegaDeviceBridgeState): void => {
     state = next;
@@ -549,9 +558,10 @@ export const createOmegaDeviceBridgeClient = (
             reject(new OmegaDeviceBridgeError("closed", "The Omega bridge is closed."));
             return;
           }
-          let opened = false;
           let settled = false;
+          let abandoned = false;
           let currentStored = stored;
+          let cancelAdmissionDeadline: (() => void) | null = null;
           let candidateSocket: OmegaDeviceBridgeWebSocket;
           try {
             candidateSocket = input.createSocket(endpoint.url);
@@ -568,14 +578,32 @@ export const createOmegaDeviceBridgeClient = (
 
           const finishSuccess = (): void => {
             if (settled) return;
+            cancelAdmissionDeadline?.();
             settled = true;
             resolve();
           };
-          const finishFailure = (error: OmegaDeviceBridgeError): void => {
+          const finishFailure = (
+            error: OmegaDeviceBridgeError,
+            closeCode: number | null = 1000,
+            closeReason = "admission failed",
+          ): void => {
             if (settled) return;
+            cancelAdmissionDeadline?.();
             settled = true;
+            abandoned = true;
+            if (closeCode !== null) candidateSocket.close(closeCode, closeReason);
             reject(error);
           };
+          cancelAdmissionDeadline = scheduleAdmissionDeadline(() => {
+            finishFailure(
+              new OmegaDeviceBridgeError(
+                "connection_failed",
+                `The connection to ${endpoint.url} did not admit this device before the deadline.`,
+              ),
+              1008,
+              "admission timeout",
+            );
+          }, input.admissionTimeoutMs ?? OMEGA_DEVICE_BRIDGE_ADMISSION_TIMEOUT_MS);
 
           const sendHello = (resumeCursor: OmegaDeviceBridgeCursor | null): void => {
             const grant =
@@ -602,6 +630,7 @@ export const createOmegaDeviceBridgeClient = (
               })
               .then(
                 (proof) => {
+                  if (abandoned || closed || socket !== candidateSocket) return;
                   candidateSocket.send(
                     encodeFrame({
                       type: "hello",
@@ -621,20 +650,24 @@ export const createOmegaDeviceBridgeClient = (
                       "connection_failed",
                       error instanceof Error ? error.message : "The device proof failed.",
                     ),
+                    1011,
+                    "device proof failed",
                   ),
               );
           };
 
           candidateSocket.addEventListener("open", () => {
-            opened = true;
+            if (abandoned || socket !== candidateSocket) return;
             sendHello(currentStored?.cursor ?? null);
           });
           candidateSocket.addEventListener("message", (event) => {
+            if (abandoned || socket !== candidateSocket) return;
             if (typeof event.data !== "string") {
               finishFailure(
                 new OmegaDeviceBridgeError("invalid_frame", "The Omega bridge frame is not text."),
+                1002,
+                "text frames required",
               );
-              candidateSocket.close(1002, "text frames required");
               return;
             }
             if (
@@ -645,8 +678,9 @@ export const createOmegaDeviceBridgeClient = (
                   "frame_too_large",
                   "The Omega bridge frame is too large.",
                 ),
+                1009,
+                "frame too large",
               );
-              candidateSocket.close(1009, "frame too large");
               return;
             }
             let frame: OmegaDeviceBridgeServerFrame;
@@ -655,8 +689,9 @@ export const createOmegaDeviceBridgeClient = (
             } catch {
               finishFailure(
                 new OmegaDeviceBridgeError("invalid_frame", "The Omega bridge frame is invalid."),
+                1002,
+                "invalid frame",
               );
-              candidateSocket.close(1002, "invalid frame");
               return;
             }
             if (frame.type === "grant") {
@@ -677,8 +712,9 @@ export const createOmegaDeviceBridgeClient = (
                     "connection_failed",
                     `The Omega bridge refused this device: ${frame.reason}.`,
                   ),
+                  1008,
+                  frame.reason,
                 );
-                candidateSocket.close(1008, frame.reason);
                 return;
               }
               currentStored = {
@@ -807,24 +843,29 @@ export const createOmegaDeviceBridgeClient = (
             }
           });
           candidateSocket.addEventListener("error", () => {
-            if (!opened) {
+            if (!settled) {
               finishFailure(
                 new OmegaDeviceBridgeError(
                   "connection_failed",
                   `Could not connect to ${endpoint.url}.`,
                 ),
+                1001,
+                "connection failed",
               );
             }
           });
           candidateSocket.addEventListener("close", () => {
-            if (socket === candidateSocket) socket = null;
-            publish({ ...state, connection: connectionWithoutDirect() });
+            const wasCurrent = socket === candidateSocket;
+            if (wasCurrent) socket = null;
+            if (abandoned) return;
+            if (wasCurrent) publish({ ...state, connection: connectionWithoutDirect() });
             if (!settled) {
               finishFailure(
                 new OmegaDeviceBridgeError(
                   "connection_failed",
                   `The connection to ${endpoint.url} closed before admission.`,
                 ),
+                null,
               );
             }
           });
