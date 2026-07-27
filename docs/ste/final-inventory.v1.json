@@ -35041,7 +35041,7 @@
     },
     {
       "path": "docs/omega/README.md",
-      "sha256": "b0e492e95ccb1725824497fe7dc38d80a45dd80ccfd23935aba9776ba6f4db80",
+      "sha256": "04cc551c5227d9f43e076f1ce0370289660ffa1499e0d2c14c141d16c98d8816",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -35077,7 +35077,7 @@
     },
     {
       "path": "docs/omega/sniffer/README.md",
-      "sha256": "a59301d0f6abcf443ac9bab3d75c86baed04f669afb4d32e8deb6fb22d4468ce",
+      "sha256": "9ebbeae6d8ea97b750be5fed50b51bb768d8f729dd1277a81b9d85955d31c794",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",

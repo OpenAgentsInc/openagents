@@ -8,20 +8,30 @@
 
 ## 1. Purpose
 
-Omega must let a user run a third-party external agent and record its network
-traffic for local analysis. The record must show which remote systems the
-process used. It must also preserve the bytes that moved in each direction.
+Omega must let a user select any local application and record its network
+traffic for local analysis. The application does not connect to Omega. It does
+not need an Omega plugin, ACP support, a proxy setting, or an environment
+variable.
 
-The first use case is an ACP external agent. Omega starts this agent as a child
-process. The agent can then start its own tools. The sniffer must cover the
-external agent and its child process tree.
+The selected application can already be open before Omega starts capture. Omega
+must attach to the verified running process and follow its child process tree.
+Omega must also support a launch-under-capture action when the user needs the
+first process byte.
+
+The record must show which remote systems the application used. It must also
+preserve the bytes that moved in each direction. The operating-system capture
+boundary must provide the traffic to Omega.
+
+An ACP external agent that Omega starts is an additional use case. It is not the
+required integration boundary.
 
 Omega Agent must have a safe tool that can inspect the capture. A user must also
 be able to open the capture with normal local data tools.
 
 ## 2. Current Omega state
 
-Omega has most of the control path that this feature needs.
+Omega has part of the control and inspection pattern that this feature needs.
+It does not have the operating-system capture boundary.
 
 1. `crates/agent_servers/src/acp.rs` starts each local external agent as a child
    process. Omega connects to the process through ACP on standard input and
@@ -42,17 +52,27 @@ Omega has most of the control path that this feature needs.
    tools with restricted network access. The external ACP agent launch path does
    not use the same network wrapper.
 
-These facts give Omega a short first path. Omega can reuse the proxy, the
-sandbox, the external-agent process owner, and the ACP log view. Omega needs a
-durable capture store, a capture lifecycle, and an agent inspection tool.
+These facts give Omega a short path for an application that Omega starts. They
+do not capture an independent application that ignores proxy settings.
+
+The independent-application requirement needs an operating-system capture
+component. Omega also needs a durable capture store, a target identity model, a
+capture lifecycle, and an agent inspection tool.
 
 ## 3. Terms
 
-**Capture session** means one durable traffic record for one external-agent
-connection generation.
+**Capture session** means one durable traffic record for one verified
+application target.
 
-**Connection generation** means one external-agent child process from start
-until exit or restart. One process can serve more than one ACP thread.
+**Application identity** means the stable platform identity, signer identity,
+and executable identity that Omega verifies before capture.
+
+**Process instance** means a process ID plus an operating-system process-start
+identity. The operating system can reuse a process ID, so the ID is not
+sufficient.
+
+**Target process tree** means the selected process, its existing children at
+attachment time, and the new children that it creates during capture.
 
 **Flow** means one client connection through the capture boundary.
 
@@ -68,81 +88,153 @@ credentials, prompts, source code, and tool results.
 
 ## 4. Product behavior
 
-The user starts sniffer mode for a selected external agent. Omega must restart
-that agent connection before capture starts. This rule makes the first child
-process byte part of the capture.
+The sniffer starts with an application picker. The picker lists running
+applications and processes. It can show a friendly name and an icon, but Omega
+must bind capture to a verified identity.
 
-The user interface must show all of these facts before restart:
+The user can select one of these actions:
 
-- the selected external agent
-- the local project
+- **Attach now** starts capture for an application that is already open.
+- **Launch under capture** starts the application after the capture boundary is
+  ready.
+
+Attach mode cannot recover traffic that occurred before attachment. Omega must
+show the attachment time in the interface and in the capture file.
+
+The user interface must show all of these facts before capture:
+
+- the application name
+- the stable application identity
+- the signer and executable identity
+- the current process instances
+- whether Omega will include child processes
 - the capture scope
 - the capture file location
 - the size limit
 - whether protocol inspection is off or on
-- that one external-agent connection can serve more than one thread
 
 Omega must show a persistent red capture indicator while capture is active. The
 indicator must show the current file size. The user can stop capture without
-stopping the external agent. Omega must write a final state to the file when
+stopping the application. Omega must write a final state to the file when
 capture stops.
 
-The default mode is `proxy_stream_v1`. It captures HTTP and HTTPS stream bytes
-for a local external-agent process tree. HTTPS payload bytes stay encrypted
-unless the user separately enables inspection mode.
+The required mode is `os_app_flow_v1`. It captures TCP stream bytes and UDP
+datagrams that the operating system attributes to the selected application.
+This includes QUIC traffic as UDP datagrams. HTTPS and QUIC payload bytes stay
+encrypted unless the user separately enables inspection mode.
 
-The capture includes all supported traffic in that process tree. This traffic
-can include agent authentication, update checks, model-provider calls, MCP
-calls, and external tool calls. Omega cannot isolate external-tool traffic by
-name when the external agent does not expose a process identifier. In that
-case, the inspection tool uses the ACP tool-call time range and labels the
-result as a temporal correlation.
+The capture includes the supported traffic of the target process tree. This can
+include application authentication, update checks, model-provider calls, MCP
+calls, and external tool calls. The application does not need to identify these
+operations to Omega.
 
-Omega must not label `proxy_stream_v1` as a capture of all packets. The user
-interface and the file manifest must use the exact fidelity name.
+Omega can keep `proxy_stream_v1` as a narrower mode for an external agent that
+Omega starts. This mode is not completion of the independent-application
+requirement. The user interface and file manifest must always show the exact
+fidelity name.
+
+### 4.1 Application selection and identity
+
+A display name is not a capture identity. Omega must use the platform identity
+and bind it to the current process instance.
+
+The picker can search by display name, platform application identifier,
+executable path, or process ID. Search produces candidates only. The user must
+confirm the resolved identity before capture.
+
+On macOS, use these values when they are available:
+
+- bundle identifier
+- Team ID and designated code requirement
+- canonical executable path and code-directory hash
+- process ID and audit token
+
+For an unsigned macOS command, use the canonical executable identity and the
+process instance. Do not invent a bundle identifier.
+
+On Windows, use these values when they are available:
+
+- package family name and AppUserModelID
+- canonical executable path and Authenticode signer
+- executable hash
+- process ID and creation time
+
+On Linux, use these values when they are available:
+
+- desktop file identifier as a display and selection hint
+- canonical `/proc/<pid>/exe` device and inode identity
+- executable hash
+- process ID, boot identifier, and process start time
+
+Omega must show all matching process instances when an identity has more than
+one running instance. The user can capture all matching instances or select
+specific instances. Omega must not guess from the process name.
+
+A saved application target is a convenience, not permanent authority. Omega
+must verify the signer and executable identity each time. If the identity
+changed, Omega must ask the user to select the target again.
+
+The target process tree includes children that existed before attachment and
+children that start later. A shared helper outside that ancestry is not part of
+the target. The user can add a helper only as another explicit verified target.
 
 ## 5. Scope and non-goals
 
-### 5.1 First release scope
+### 5.1 Required independent-application scope
 
-The first release has this scope:
+The product requirement has this scope:
 
-- local ACP external agents
-- the external-agent process and child processes that inherit its environment
-- HTTP proxy traffic
-- HTTPS `CONNECT` traffic
-- WebSocket traffic that uses HTTP or HTTPS proxy setup
-- destination DNS resolution that the Omega proxy performs
-- allowed and denied connection attempts that reach the proxy
-- correlation with ACP sessions and ACP tool-call time ranges
-- macOS and Linux enforcement through the existing sandbox
+- an independent local application with no Omega integration
+- attach to a running process
+- launch under capture
+- verified application and process identity
+- existing and new child processes
+- TCP, UDP, QUIC, and DNS traffic that the operating system can attribute to the
+  target
+- stream bytes and datagram bytes in both directions
+- destination addresses, ports, byte totals, and time
+- macOS as the first supported platform
+- Linux and Windows backends with the same capture contract
 
-The first release does not claim support for these cases:
+The product requirement does not claim support for these cases:
 
-- a remote ACP agent on an SSH host or in a remote container
-- native Windows external agents
-- UDP, QUIC, ICMP, or arbitrary non-proxy TCP protocols
-- traffic from a process that escapes the external-agent process tree
-- registry package download traffic that occurs before the agent process starts
-- exact causal proof that a specific ACP tool call caused a flow
+- traffic that occurred before attach mode started
+- a remote application on an SSH host or in a remote container
+- traffic from a process outside the verified target process tree
+- a shared system service when the operating system cannot attribute its work
+  to the target
+- exact application attribution when flow data has no verified process or
+  socket relation
 
-Omega must refuse an enforcing capture when it cannot create the required
-sandbox. It must not silently run an uncaptured external agent.
+Omega must record an attribution level for each flow. Use `verified_process`
+when the platform proves the process or socket relation. Use `inferred` only
+when a documented platform relation supports the result. Do not include
+unattributed flow data in an application-specific result as if attribution were
+verified.
 
-### 5.2 Later packet backend
+### 5.2 Platform capture backends
 
-A later `os_packet_v1` backend can make the full packet claim. It needs a
-platform capture boundary that follows the process tree.
+`os_app_flow_v1` needs a platform capture boundary that follows process
+identity without cooperation from the application.
 
-- Linux can use a network namespace, a virtual Ethernet pair, and a capture on
-  the host side.
-- macOS needs an approved Network Extension or another signed system capture
-  component that can attribute traffic to the process tree.
-- Windows needs a Windows Filtering Platform component. WSL capture only covers
-  agents that run inside WSL.
+- macOS needs an approved Network Extension or signed system capture component.
+  It must use the source application audit identity for flow attribution.
+- Linux can use eBPF socket and process attribution with flow capture at the
+  applicable network hooks. A launch-under-capture path can also use a network
+  namespace.
+- Windows needs Windows Filtering Platform filters and a signed capture
+  component that binds traffic to the verified application identity.
 
-This later backend must write packet bytes to the same capture service. It can
-also export PCAPNG. It must keep the fidelity name `os_packet_v1`.
+These components can require one operating-system authorization or component
+installation. Omega must explain the request before the system prompt. A
+capture component must not broaden capture beyond the selected targets.
+
+The backend must write TCP stream bytes and UDP datagrams to the capture
+service. It must keep the fidelity name `os_app_flow_v1`.
+
+A platform can also add `os_packet_v1` when it can preserve network headers and
+packet boundaries. That stronger mode can support PCAPNG export. Omega must not
+label application flow bytes as packets.
 
 ## 6. Architecture
 
@@ -152,20 +244,42 @@ Add a new `network_capture` crate. Use
 The crate owns these components:
 
 - `CaptureManager` creates, lists, opens, stops, and deletes capture sessions.
+- `TargetResolver` lists candidates and verifies application identities.
+- `ProcessTreeTracker` follows existing and new target process instances.
+- `PlatformCapture` provides the macOS, Linux, or Windows capture backend.
 - `CaptureWriter` writes flow and byte records to the capture file.
 - `CaptureReader` performs bounded queries without loading the full file.
-- `CaptureCorrelation` records ACP session and tool-call time ranges.
+- `CaptureCorrelation` records process, socket, protocol, and optional ACP time
+  relations.
 - `CapturePolicy` holds fidelity, size, retention, and inspection settings.
+
+`TargetResolver` must return an opaque verified target. Other components must
+not repeat a name or path lookup after verification. `ProcessTreeTracker` must
+protect against process ID reuse.
+
+`PlatformCapture` must start before attach or launch completes. It must filter
+on verified target identities in the operating-system component. Filtering only
+after unrelated flow data reaches the Omega process can expose other
+applications and is not acceptable.
+
+The macOS backend is the first delivery target. It must use application audit
+identity from the selected Network Extension or system capture API. The
+implementation must prove that a same-name application with a different signer
+does not enter the capture.
 
 Extend `http_proxy::ProxyConfig` with an optional capture sink. Each accepted
 client connection gets a stable `flow_id`. The proxy sends each byte chunk to
 the sink before it forwards that chunk. The record includes direction, time,
 stream offset, length, and SHA-256 digest.
 
+This proxy extension supports `proxy_stream_v1` for an Omega-launched external
+agent. It is a secondary backend. An independent application can ignore proxy
+settings, so the proxy cannot satisfy `os_app_flow_v1`.
+
 The capture sink must not block a proxy connection on the GPUI foreground
 thread. It can use a bounded writer channel and a dedicated file thread. A full
-channel is a capture failure. Omega must stop the external-agent connection and
-finalize the capture as incomplete. It must not drop byte records and continue.
+channel is a capture failure. Omega must stop capture and finalize the file as
+incomplete. It must not drop byte records and continue.
 
 Extend `sandbox::Sandbox` with a capture configuration for restricted network
 mode. Keep filesystem access independent from the network rule. The external
@@ -178,8 +292,8 @@ child. Clear `NO_PROXY` for this process tree. The proxy must reject a request
 that targets its own listener. The proxy can permit explicit loopback targets
 so local MCP traffic is visible.
 
-The process owner must retain the capture handle until the external agent exits.
-It must finalize the file after process exit, restart, capture stop, write
+The capture manager must retain the capture handle until capture stops. It must
+finalize the file after target exit, capture stop, write failure, component
 failure, or app shutdown.
 
 ## 7. Capture file
@@ -199,8 +313,9 @@ CREATE TABLE capture (
   schema_version INTEGER NOT NULL,
   fidelity TEXT NOT NULL,
   state TEXT NOT NULL,
-  agent_id TEXT NOT NULL,
-  connection_generation TEXT NOT NULL,
+  attach_mode TEXT NOT NULL,
+  target_kind TEXT NOT NULL,
+  target_identity_json TEXT NOT NULL,
   omega_version TEXT NOT NULL,
   started_at TEXT NOT NULL,
   ended_at TEXT,
@@ -208,13 +323,28 @@ CREATE TABLE capture (
   incomplete_reason TEXT
 );
 
+CREATE TABLE process_instance (
+  process_instance_id TEXT PRIMARY KEY,
+  capture_id TEXT NOT NULL,
+  parent_process_instance_id TEXT,
+  platform_process_id INTEGER NOT NULL,
+  process_start_identity TEXT NOT NULL,
+  executable_identity_json TEXT NOT NULL,
+  first_seen_at TEXT NOT NULL,
+  last_seen_at TEXT,
+  relation TEXT NOT NULL
+);
+
 CREATE TABLE flow (
   flow_id TEXT PRIMARY KEY,
+  process_instance_id TEXT,
   opened_at TEXT NOT NULL,
   closed_at TEXT,
   host TEXT,
   port INTEGER,
+  transport TEXT NOT NULL,
   proxy_method TEXT,
+  attribution TEXT NOT NULL,
   outcome TEXT NOT NULL,
   deny_reason TEXT,
   bytes_to_remote INTEGER NOT NULL,
@@ -227,17 +357,34 @@ CREATE TABLE byte_chunk (
   observed_at TEXT NOT NULL,
   monotonic_ns INTEGER NOT NULL,
   direction TEXT NOT NULL,
+  unit_kind TEXT NOT NULL,
+  datagram_id TEXT,
   stream_offset INTEGER NOT NULL,
   byte_length INTEGER NOT NULL,
   sha256 TEXT NOT NULL,
   bytes BLOB NOT NULL
 );
 
+CREATE TABLE packet (
+  sequence INTEGER PRIMARY KEY,
+  flow_id TEXT,
+  process_instance_id TEXT,
+  observed_at TEXT NOT NULL,
+  monotonic_ns INTEGER NOT NULL,
+  interface_identity TEXT NOT NULL,
+  link_type INTEGER NOT NULL,
+  direction TEXT NOT NULL,
+  packet_length INTEGER NOT NULL,
+  captured_length INTEGER NOT NULL,
+  attribution TEXT NOT NULL,
+  bytes BLOB NOT NULL
+);
+
 CREATE TABLE correlation (
   correlation_id TEXT PRIMARY KEY,
   flow_id TEXT,
-  acp_session_id TEXT,
-  tool_call_id TEXT,
+  source_kind TEXT NOT NULL,
+  source_id TEXT NOT NULL,
   started_at TEXT NOT NULL,
   ended_at TEXT,
   confidence TEXT NOT NULL
@@ -254,30 +401,45 @@ CREATE TABLE protocol_record (
 ```
 
 The real schema must use foreign keys and indexes. It must index host, time,
-flow, direction, and ACP identifiers.
+flow, direction, process identity, application identity, and optional ACP
+identifiers.
 
-`byte_chunk` is the exact stream record for `proxy_stream_v1`. Chunk boundaries
-are observation boundaries. They are not packet boundaries. The digest lets a
-reader verify each stored chunk.
+`byte_chunk` is the exact flow record for `os_app_flow_v1` and
+`proxy_stream_v1`. Stream chunk boundaries are observation boundaries. UDP
+datagram boundaries are protocol boundaries and must stay intact. Neither kind
+is an IP packet boundary. The digest lets a reader verify each stored unit.
+
+For `os_packet_v1`, the packet table stores the captured packet bytes, interface
+identity, link type, packet length, captured length, direction, flow relation,
+process relation, and attribution. The PCAPNG export must preserve the stored
+packet order and interface metadata.
 
 The writer must use UTC wall time and a monotonic time for each record. Ordering
 between the two directions is an observation order. It is not a remote network
 clock order.
 
 The default size limit is 1 GiB. The user can change it before capture starts.
-At the limit, Omega must stop the external-agent connection. It must set
-`state = 'incomplete'` and `incomplete_reason = 'size_limit'`. It must not keep
-the agent online after it stops byte capture.
+At the limit, Omega must stop capture. It must set `state = 'incomplete'` and
+`incomplete_reason = 'size_limit'`. It does not stop an independently owned
+application.
 
 ## 8. HTTPS and sensitive data
 
+Raw HTTPS and QUIC flow capture in `os_app_flow_v1` contains encrypted protocol
+records. It does not show decrypted HTTP requests or responses.
+
 Raw HTTPS capture in `proxy_stream_v1` contains the TLS records that cross the
-proxy tunnel. It does not show decrypted HTTP requests or responses.
+proxy tunnel. It has the same decryption limit.
 
 Inspection mode is off by default. It is a separate user grant for one capture
-session. A first inspection implementation can use an ephemeral local
-certificate authority and a TLS proxy. Omega must give trust only to the child
-process environment. It must not add the authority to a system trust store.
+session. Omega cannot add an ephemeral certificate authority to an independent
+application without changing that application or its system trust. Therefore,
+TLS interception is not part of attach mode by default.
+
+Launch-under-capture can offer a child-only trust path for applications that
+support one. Omega must not add the authority to a system trust store. Attach
+mode can also import supported TLS key-log data when the application already
+produces it. Packet capture must remain useful when no decryption path exists.
 
 Omega must state that some clients use certificate pinning or a private trust
 store. These clients can fail or remain opaque in inspection mode. Omega must
@@ -310,7 +472,8 @@ The input has these fields:
 ```json
 {
   "capture_id": "optional, defaults to the active or latest capture",
-  "operation": "summary | list_flows | timeline | search_text | read_bytes",
+  "operation": "summary | list_targets | list_processes | list_flows | timeline | search_text | read_bytes",
+  "process_instance_id": "optional",
   "flow_id": "optional",
   "host": "optional",
   "direction": "to_remote | from_remote | optional",
@@ -332,20 +495,25 @@ cursors for more data.
 
 The tool must make these analyses easy:
 
+- show the verified application and process identities
+- show which child process owns a flow
 - list every destination and byte total
 - find traffic during one ACP tool-call time range
+- find traffic during any selected time range
 - show new destinations after a selected time
 - compare sent and received byte totals
 - search decoded plain-text traffic
 - read a bounded byte range as hexadecimal or Base64
 - identify denied requests and incomplete captures
 
-Temporal correlation is not causal proof. The output must show
-`confidence = 'temporal'` unless Omega has a verified process or protocol
-identifier that proves the link.
+Temporal correlation is not causal proof. The output must distinguish
+`verified_process`, `verified_socket`, `inferred`, and `temporal`. It must not
+upgrade a temporal relation because the host name looks related to the
+application.
 
-The ACP log view can add a **Network** tab. It can use the same reader service.
-It must not maintain a second capture store.
+Omega must add a top-level **Network Captures** view for independent
+applications. The ACP log view can also link to a related capture. Both views
+must use the same reader service and capture store.
 
 ## 10. Settings
 
@@ -371,13 +539,20 @@ captures that are older than the limit. It must not delete an active capture.
 
 ## 11. Failure behavior
 
-The feature is fail-closed for capture completeness.
+The feature is fail-closed for capture completeness. It is not the owner of an
+independent application.
 
-Omega must stop the external-agent connection when any of these events occurs:
+Omega must refuse to start capture when any of these events occurs:
 
-- the capture proxy cannot start
-- the sandbox cannot enforce the proxy boundary
+- Omega cannot verify the selected application identity
+- the operating-system capture component is absent or unauthorized
+- the platform cannot install the target filter
 - Omega cannot create the capture file
+
+Omega must stop capture when any of these events occurs:
+
+- the target filter reports an identity mismatch
+- the operating-system capture component fails
 - the writer channel is full
 - a byte write or database commit fails
 - the file reaches its size limit
@@ -385,6 +560,10 @@ Omega must stop the external-agent connection when any of these events occurs:
 Omega must preserve an incomplete file when possible. The manifest row must
 give the exact reason. The user interface and the inspection tool must show the
 same reason.
+
+Omega must not stop or modify an application that it attached to. If the user
+selected launch-under-capture, Omega must not launch the application when the
+capture boundary fails to start.
 
 An app crash can lose the current uncommitted writer batch. On the next start,
 Omega must run SQLite recovery and set `state = 'incomplete'` with
@@ -394,74 +573,89 @@ Omega must run SQLite recovery and set `state = 'incomplete'` with
 
 ### OMEGA-SNIFF-01: Capture store
 
-Add the `network_capture` crate, the SQLite schema, bounded reader APIs, file
-permissions, recovery, and size enforcement.
+Add the `network_capture` crate, the generalized SQLite schema, bounded reader
+APIs, file permissions, recovery, and size enforcement.
 
-### OMEGA-SNIFF-02: Proxy byte events
+### OMEGA-SNIFF-02: Target resolver
 
-Add stable flow identifiers and exact bidirectional chunk events to
-`http_proxy`. Keep the current policy events.
+Add the application picker, platform identity records, signer and executable
+verification, process-start identity, and saved-target revalidation.
 
-### OMEGA-SNIFF-03: External-agent launch boundary
+### OMEGA-SNIFF-03: macOS application capture
 
-Apply the network-only sandbox and capture proxy before
-`AcpConnection::stdio` starts a local child process. Cover process exit and
-restart.
+Add the signed macOS capture component, audit-identity target filters, TCP and
+UDP flow capture, and same-name negative tests.
 
-### OMEGA-SNIFF-04: User controls
+### OMEGA-SNIFF-04: Process tree and user controls
 
-Add start, stop, status, file location, file size, restart notice, incomplete
-state, and retention controls.
+Add attach, launch-under-capture, existing-child discovery, new-child tracking,
+start, stop, status, file location, file size, incomplete state, and retention
+controls.
 
 ### OMEGA-SNIFF-05: Agent inspection
 
-Add `inspect_network_capture` and the Network tab in the ACP log view. Add
+Add `inspect_network_capture`, a Network view, process and flow filters, and
 sensitive-payload permission checks.
 
-### OMEGA-SNIFF-06: Optional TLS inspection
+### OMEGA-SNIFF-06: Omega-launched proxy backend
 
-Add the ephemeral child-only trust path and decoded protocol records. Keep this
-work separate from raw stream capture.
+Add stable flow identifiers and exact bidirectional chunk events to
+`http_proxy`. Apply this optional backend to Omega-launched ACP agents.
 
-### OMEGA-SNIFF-07: OS packet backends
+### OMEGA-SNIFF-07: Optional TLS inspection
 
-Add platform process-tree capture and PCAPNG export. Do not change the fidelity
-claim of older files.
+Add supported launch-only trust paths, TLS key-log import, and decoded protocol
+records. Keep this work separate from raw flow capture.
+
+### OMEGA-SNIFF-08: Linux and Windows application capture
+
+Add the eBPF and Windows Filtering Platform backends. Keep the application
+identity, attribution, capture file, and inspection contracts equal across
+platforms.
 
 ## 13. Acceptance tests
 
 The first release is complete when all of these tests pass:
 
-1. A local fixture ACP agent makes one plain HTTP request and one HTTPS request.
-   The capture has both destinations and both directions.
-2. The stored plain HTTP bytes match the fixture bytes exactly.
-3. The stored HTTPS tunnel bytes match the bytes that the proxy moved. The
-   capture does not claim decrypted HTTP content.
-4. A child process of the fixture agent makes a request. The same capture has
-   that flow.
-5. A direct network attempt cannot bypass the proxy on macOS and Linux.
-6. A proxy or writer failure stops the external-agent connection and marks the
-   capture incomplete.
-7. A size-limit event stops the connection without a silent byte gap.
-8. An app restart recovers an unclean file and marks it incomplete.
-9. `inspect_network_capture` can list destinations and read a bounded byte
-   range.
-10. The tool cannot read sensitive payload data without the required user
+1. A fixture application has no Omega integration and is open before capture.
+   Attach mode captures new TCP and UDP traffic from that application.
+2. Attach mode does not claim traffic from before its recorded attachment time.
+3. Launch-under-capture records the first network flow of the fixture
+   application.
+4. A second application has the same display name and a different signer. Its
+   traffic does not enter the capture.
+5. A child that existed before attachment and a child that starts later both
+   enter the verified target process tree.
+6. Process ID reuse does not add an unrelated process to the capture.
+7. The stream and datagram bytes match the bytes from the platform capture
+   boundary.
+8. TCP, UDP, QUIC, and DNS tests show their supported flows and attribution.
+9. An unrelated system and application flow does not enter the capture file.
+10. A capture component or writer failure marks the capture incomplete and does
+    not stop the attached application.
+11. A size-limit event stops capture without a silent byte gap.
+12. An app restart recovers an unclean file and marks it incomplete.
+13. `inspect_network_capture` can list targets, processes, destinations, and
+    attribution. It can also read a bounded byte range.
+14. The tool cannot read sensitive payload data without the required user
     grant.
-11. No capture file enters Sync, telemetry, or the project worktree.
-12. The capture indicator stays visible for the complete active interval.
-13. A remote external agent gets a clear unsupported result. Omega does not
+15. No capture file enters Sync, telemetry, or the project worktree.
+16. The capture indicator stays visible for the complete active interval.
+17. A remote application gets a clear unsupported result. Omega does not
     create an empty file and call it complete.
 
 ## 14. Open decisions
 
-These decisions need implementation research before `OMEGA-SNIFF-06` or
-`OMEGA-SNIFF-07` starts:
+These decisions need implementation research before the applicable delivery
+item starts:
 
 - the signed macOS Network Extension type and entitlement path
 - the Windows Filtering Platform distribution and update path
+- the Linux eBPF privilege and distribution path
 - whether decrypted protocol records store full bodies or selected fields
 - whether an inspected capture can use a separate encryption key
-- the PCAPNG interface model for a process-tree capture
+- whether a platform can also provide `os_packet_v1` and PCAPNG
 
-They do not block `proxy_stream_v1`.
+The macOS capture component decision blocks `os_app_flow_v1`. The proxy work
+does not remove that block because an independent application can ignore the
+proxy.

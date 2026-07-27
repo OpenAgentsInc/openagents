@@ -89,7 +89,7 @@ Read these documents in this order:
     (`OMEGA-AGENT-00`, omega#74).
 33. Read the
     [Omega network sniffer specification](./sniffer/README.md)
-    (`OMEGA-SNIFF-01` through `OMEGA-SNIFF-07`).
+    (`OMEGA-SNIFF-01` through `OMEGA-SNIFF-08`).
 
 The Omega roadmap owns the implementation order.
 The release-readiness audit owns the current brand and package gap.
@@ -163,9 +163,10 @@ about the Omega Nostr identity. The severability trace owns the statement of
 what the agent is when no external service answers. The ProductSpec at
 `specs/omega/omega-agent.product-spec.md` owns the intent for both.
 
-The network sniffer specification owns the proposed capture boundary for local
-external agents. It defines the durable file, exact fidelity labels, sensitive
-data rules, and the Omega Agent inspection tool.
+The network sniffer specification owns the proposed capture boundary for any
+independent local application. It defines verified application identity, the
+durable file, exact fidelity labels, sensitive data rules, and the Omega Agent
+inspection tool.
 
 The accepted plan owns the product and repository boundary.
 The master roadmap owns priority across OpenAgents programs.
