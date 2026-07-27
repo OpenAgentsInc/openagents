@@ -35118,8 +35118,20 @@
       }
     },
     {
+      "path": "docs/omega/2026-07-27-omega-cloud-build-and-update-audit.md",
+      "sha256": "f0196e1c0269f5d1acd8cd0ebc49fe1b857a40d4e1d366c31d28d9f49116a6b8",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null,
+        "ste_status": "source-data"
+      }
+    },
+    {
       "path": "docs/omega/README.md",
-      "sha256": "c0bfb2cba4062eb3a30225b08bf4729e163ca492bb19fc8c29d897ab429985cb",
+      "sha256": "37adb1f22955a70e696bff3d4140e599cbf5879a1dffcd0b894363093e20a480",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

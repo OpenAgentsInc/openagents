@@ -92,7 +92,9 @@ Read these documents in this order:
 34. Read the
     [Omega Agent slim-agent specification](../omega-agent/2026-07-27-slim-agent-spec.md)
     (proposed, not admitted).
-33. Read the
+35. Read the
+    [Omega cloud build and application update audit](./2026-07-27-omega-cloud-build-and-update-audit.md).
+36. Read the
     [Omega network sniffer specification](./sniffer/README.md)
     (`OMEGA-SNIFF-01` through `OMEGA-SNIFF-08`).
 
@@ -167,6 +169,10 @@ agent. It also owns the rejected alternatives and the open owner question
 about the Omega Nostr identity. The severability trace owns the statement of
 what the agent is when no external service answers. The ProductSpec at
 `specs/omega/omega-agent.product-spec.md` owns the intent for both.
+
+The cloud build and application update audit owns the recommendation to move
+Omega production builds off the active workstation. It also owns the remote
+macOS runner decision, disk controls, and the proposed owned update path.
 
 The network sniffer specification owns the proposed capture boundary for any
 independent local application. It defines verified application identity, the
