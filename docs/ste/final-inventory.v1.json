@@ -34014,7 +34014,7 @@
     },
     {
       "path": "docs/omega-agent/2026-07-27-slim-agent-audit.md",
-      "sha256": "c0d76147a6762f4cdb78c317e2e5d512f043d86bce54172a638e1174e51ab92c",
+      "sha256": "c9711724004df1aa8771653c118fbf3eaba37a8eb6abe935e2b796e4e1ce1cfc",
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",

@@ -32,7 +32,7 @@ The direction changes the center of gravity of the `OMEGA-AGENT` program.
 ProductSpec revision 1 admits Omega Agent as a router that owns no
 execution.
 The slim agent is an executor with its own tool set.
-Section 7 records that tension.
+Section 8 records that tension.
 The companion specification proposes the reconciliation.
 
 ## 2. What "Zed Agent" is
@@ -144,7 +144,7 @@ the permission parser, and shrink what the model sees.
 ### 2.6 The work-safety machinery already present
 
 The upstream runtime already carries four mechanisms that bear on the
-work-destruction requirement in section 6:
+work-destruction requirement in section 7:
 
 1. **Git checkpoints per user message.** On send, the thread snapshots the
    working tree, untracked files included, and attaches the checkpoint to
@@ -175,7 +175,7 @@ These mechanisms protect against the agent's *editor-path* mutations.
 None of them protects against a *shell-path* restore: `git checkout --
 <path>` through the terminal tool bypasses all four.
 That is exactly the hole the oopsiewoopsies incident fell through, and
-section 6 turns it into a requirement.
+section 7 turns it into a requirement.
 
 ## 3. What the fork already landed
 
@@ -294,7 +294,7 @@ answer per executor with durable queue admission.
 Principle 7 is the one Omega must not adopt blindly.
 Omega already chose allow-by-default (`OMEGA-DELTA-0002`), and the standing
 law is: confirm on irreversible data loss, never on capability.
-The slim agent keeps that law and section 6 makes it mechanical.
+The slim agent keeps that law and section 7 makes it mechanical.
 
 ## 5. The gap, measured
 
@@ -307,9 +307,111 @@ The slim agent keeps that law and section 6 makes it mechanical.
 | No MCP in core | `context_server` (MCP client) exists and feeds the same tool map | Default off in the slim profile. Keep the crate. |
 | Skills on demand | `.agents/skills` discovery plus a dynamic `skill` tool | Keep discovery. Fold invocation into `read` plus the prompt catalog, or keep `skill` as prompt-level machinery. The specification decides. |
 | Bounded results | Stronger than Pi: artifacts plus previews | Keep. Fold artifact reading into `read`. |
-| Work-loss safety | Checkpoints and diff review exist. `bash` can still destroy uncommitted work with one git command. | New. Section 6. |
+| Work-loss safety | Checkpoints and diff review exist. `bash` can still destroy uncommitted work with one git command. | New. Section 7. |
 
-## 6. The work-destruction audit
+## 6. The exoharness Exo agent, compared
+
+Omega already runs the exoharness Exo agent as a pinned external lane
+(`OMEGA-DELTA-0042` and the `omega_exo_*` crates).
+Exo is also the nearest living relative of the slim design: a
+minimal-tool agent over a durable substrate, from the same design family
+as Pi.
+The comparison sharpens what the slim Omega Agent takes and what it
+refuses.
+Sources:
+[the exoharness teardown](../teardowns/2026-07-25-exoharness-exo-teardown.md)
+and the clone at `~/work/projects/repos/exoharness-exo`.
+This is `exoharness/exo`, the agent harness.
+It is not `exo-explore/exo`, the cluster-inference appliance.
+
+### 6.1 The three tool philosophies
+
+| Agent | Model-visible tools | File work | Self-extension |
+| --- | --- | --- | --- |
+| Pi | `read`, `write`, `edit`, `bash` | First-class file tools | Skills and extensions the agent writes |
+| Exo | `shell`, `install_agent_tool`, `uninstall_agent_tool` (`typescript/harness/built-in-tools.ts`) | No file tools at all. Every file act is `shell` inside a sandbox | The agent writes TypeScript tools into its own registry at runtime, usable in the next model round |
+| Slim Omega Agent | `read`, `write`, `edit`, `bash`, `delegate` | First-class file tools | Skills the agent writes with `write`, through the existing budgeted skill system |
+
+Exo is the more radical minimalist: it went below Pi's four tools to
+one working tool plus a self-extension pair.
+The slim design deliberately does not follow it there.
+The first-class `read`, `write`, and `edit` tools are what feed the
+action log, the staleness check, diff review, checkpoints, and the
+work-loss guard.
+An agent whose only hand is `shell` cannot give the person a reviewable
+diff or a mechanical work-loss boundary, because the substrate cannot
+see the intent of a shell mutation.
+
+### 6.2 The delegation inversion
+
+Exo **hosts** vendor agents: it spawns Codex, Claude Code, or Cursor as
+executors inside its own sandboxes and maps their native events into its
+event log.
+Omega **attaches** them: external agents keep their own homes and arrive
+over ACP, and the slim agent hands work out through `delegate`.
+
+The two shapes compose rather than compete, because Exo itself is one of
+Omega's attached executors.
+One obligation follows for `delegate`: if a delegated Exo turn is itself
+hosting a vendor executor, the disclosure record must name the full
+chain — Omega Agent, then Exo, then the hosted runtime and model —
+or the lane misattributes.
+The teardown states this obligation, and the `delegate` contract in the
+companion specification carries the disclosure record that makes it
+possible.
+
+### 6.3 Work safety: prevention against replay
+
+Exo has no permission gate and no confirm anywhere, by design.
+Its whole safety answer is isolation plus **replay**: an append-only
+event log, conversation fork, and sandbox snapshot and rewind.
+When something goes wrong, Exo recreates the world at an earlier event.
+
+The slim Omega Agent answers the same risk with **prevention**: the
+dirty-tree guard, confirm on data loss, staleness refusals, and
+checkpoints.
+The two answers protect different things.
+Exo's replay protects the agent's own history and its sandbox
+filesystem.
+It does nothing for the person's uncommitted working tree on the host,
+which is exactly the asset the oopsiewoopsies incident destroyed and
+section 7 protects.
+A slim agent that ran with Exo's posture on a person's real checkout
+would repeat that incident freely.
+
+One Exo mechanism is worth taking in spirit: snapshot identifiers
+written into the event log, so state restoration is an addressable act.
+The slim design's rule that undo restores an agent-taken snapshot is the
+same law on the host worktree.
+
+### 6.4 Convergent bounding
+
+Exo backs every tool result with an immutable artifact and shows the
+model a bounded preview.
+The fork landed the same discipline independently (`OMEGA-DELTA-0103`,
+`0111`, `0121`), and the slim `read` spends `tool:` addresses the same
+way Exo reads its artifacts.
+This convergence is evidence the pattern is right, and the slim design
+keeps it.
+
+### 6.5 What the slim design refuses from Exo
+
+1. **Runtime tool self-injection.** Exo's agent writes TypeScript tools
+   into the live registry, and those tools run unsandboxed in the host
+   process today.
+   The slim agent's tool set is closed at five, and self-extension goes
+   through skills, which are prompt material, not host code.
+2. **The zero-permission shell.** Exo's flagship agent runs unrestricted
+   networked `shell` with its own source mounted read-write and a
+   rebuild tool.
+   The slim agent keeps the fail-closed parser, the hardcoded denials,
+   and the section 7 guard even under Omega's allow-by-default posture.
+3. **Self-reported usage as truth.** Exo's cost rows are agent-reported
+   telemetry.
+   Any Exo-lane usage that reaches OpenAgents accounting stays typed as
+   unattested harness telemetry, per the teardown's standing boundary.
+
+## 7. The work-destruction audit
 
 [The oopsiewoopsies record](../oopsiewoopsies/2026-07-27-git-checkout-destroyed-uncommitted-work-twice.md)
 documents an agent session in this program that destroyed its own
@@ -347,7 +449,7 @@ denial for selected catastrophic commands.
 The gap is one policy layer: a dirty-tree guard for file-scoped git
 restore commands, plus checkpoint-before-mutation as a default.
 
-## 7. The tension with ProductSpec revision 1
+## 8. The tension with ProductSpec revision 1
 
 Revision 1 admits Omega Agent as a router.
 The admitted hypothesis is: "Omega Agent implements the existing
@@ -388,7 +490,7 @@ Either reading requires a `spec_revision` bump.
 Revision 1 admits no executor-shape change, and the repository law is
 that a spec is never edited to match implementation without a revision.
 
-## 8. What the audit does not decide
+## 9. What the audit does not decide
 
 1. It does not choose compose versus collapse. The owner decides on the
    specification.
