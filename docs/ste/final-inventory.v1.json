@@ -22619,6 +22619,28 @@
       }
     },
     {
+      "path": "docs/exo/2026-07-26-exo-as-an-omega-executor-what-works.md",
+      "sha256": "b51787a360f7d147758e9e036ac394f4f6ea66b37a96793836a981196042a04a",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "claude/omega-delta-0123-exo-executor",
+        "ste_reviewed_at": "2026-07-26T00:00:00Z"
+      }
+    },
+    {
       "path": "docs/exo/2026-07-26-exo-openagents-integration-analysis.md",
       "sha256": "46246518d4bc4e19a114fa1442a56ecb61bcfe5fdb45e2e61ec380ada9304618",
       "reason": "Final review of a converted document",
