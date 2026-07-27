@@ -127,6 +127,13 @@ Keep the spoken lines short and hold screens under them. Do not lengthen
 Sarah's lines to cover a screenshare. Mask local usernames and paths. Do not
 show credentials or private project names. SIGTERM quit, never Cmd+Q.
 
+Clip-generation note, 2026-07-27: the first cold-open take (21 s,
+`p-video-avatar`) lost lip sync on one word around 14 s. Frames and the
+transcription passed; only playback caught it. Keep the per-clip playback
+verdict mandatory, and prefer takes where no single load-bearing word sits
+in the 13-16 s band of a ~20 s generation. The spoken open was tightened
+the same day, which also removed the affected word.
+
 The Exo beat is the strongest live material in this episode and the easiest to
 overclaim. Show the inspector. Show the disclosure chain. Do not describe Exo
 as ours, and do not imply it is on by default. It is opt-in for each launch.
@@ -150,26 +157,20 @@ as ours, and do not imply it is on by default. It is opt-in for each launch.
 
 [OPEN ON SARAH.]
 
-**Sarah:** Last time I told you why we forked Zed, and I gave the product its
-name. Omega. The last IDE.
+**Sarah:** Last time we forked Zed and named it Omega. The last IDE.
 
-Today I want to tell you who answers when you open it, and make you a second
-promise.
+Today, meet who answers when you open it.
 
-Omega Agent is meant to be the last agent you talk to.
+Omega Agent. The last agent you talk to.
 
-**Sarah:** I want to be careful about what that means, because it is easy to
-say and easy to fake.
+**Sarah:** Not the smartest agent. The last one you have to choose.
 
-I am not telling you our agent is smarter than every other agent. I am telling
-you it is the last one you should have to choose.
+It routes to the others. Agents, harnesses, your own subscriptions, our
+engine, our cloud. It records every route, so it can learn which hand fits
+which work.
 
-It routes to the others. Agents, harnesses, your own subscriptions, our engine,
-our cloud. And it keeps a record of every route, so over time it can learn
-which hand is right for which work.
-
-The routing runs today, and you name the executor. The learning does not run
-yet. I will show you exactly where that line is.
+The routing runs today. You name the executor. The learning does not run yet.
+I will show you where that line is.
 
 [SCREEN: launch a fork build in zero base. One agent thread. Cursor in the
 input. Type a short real prompt and let it run.
