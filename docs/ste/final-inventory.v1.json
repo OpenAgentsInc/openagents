@@ -24877,6 +24877,24 @@
       }
     },
     {
+      "path": "docs/fable/2026-07-27-omega-mobile-tailnet-mirror-spec.md",
+      "sha256": "41678b2bf9ff5418cb040e3b49fa7522f64aea46880a7ec7f5df41f70eab6b33",
+      "reason": "Final review of mutable first-party agent technical text",
+      "profile": {
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ]
+      }
+    },
+    {
       "path": "docs/fable/EXECUTION.md",
       "sha256": "fcbc4954cb55d3d2185a95ae814d1656e542406feb748167031a2abfcab2a69c",
       "reason": "Final review of a converted document",
