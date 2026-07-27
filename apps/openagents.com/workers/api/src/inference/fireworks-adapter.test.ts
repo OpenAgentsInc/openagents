@@ -9,7 +9,12 @@ import {
   KHALA_FIREWORKS_BACKING_MODEL_ID,
   makeFireworksAdapter,
 } from './fireworks-adapter'
-import { KHALA_CODE_MODEL_ID, KHALA_MODEL_ID } from './pricing'
+import {
+  KHALA_CODE_MODEL_ID,
+  KHALA_MODEL_ID,
+  KIMI_K3_FIREWORKS_MODEL_ID,
+  KIMI_K3_MODEL_ID,
+} from './pricing'
 import {
   InferenceAdapterError,
   type InferenceRequest,
@@ -133,7 +138,14 @@ describe('fireworks adapter request mapping', () => {
     await runResult(
       adapter.complete(
         request({
-          passthroughParams: { max_tokens: 256, temperature: 0.7, top_p: 0.9 },
+          passthroughParams: {
+            frequency_penalty: 0,
+            max_tokens: 131_072,
+            presence_penalty: 0,
+            temperature: 0.7,
+            top_k: 40,
+            top_p: 0.9,
+          },
         }),
       ),
     )
@@ -141,7 +153,49 @@ describe('fireworks adapter request mapping', () => {
     const body = JSON.parse(calls[0]?.init.body ?? '{}')
     expect(body.temperature).toBe(0.7)
     expect(body.top_p).toBe(0.9)
-    expect(body.max_tokens).toBe(256)
+    expect(body.max_tokens).toBe(131_072)
+    expect(body.top_k).toBe(40)
+    expect(body.presence_penalty).toBe(0)
+    expect(body.frequency_penalty).toBe(0)
+  })
+
+  test('maps Kimi K3 and preserves OpenAI vision content', async () => {
+    const { calls, fetchImpl } = recordingFetch(jsonResponse(completionBody()))
+    const adapter = makeFireworksAdapter(baseConfig({ fetchImpl }))
+    const imageUrl = 'https://images.example.test/photo.jpg'
+
+    await runResult(
+      adapter.complete(
+        request({
+          messages: [
+            {
+              content: 'Can you describe this image?',
+              contentParts: [
+                { text: 'Can you describe this image?', type: 'text' },
+                {
+                  image_url: { url: imageUrl },
+                  type: 'image_url',
+                },
+              ],
+              role: 'user',
+            },
+          ],
+          model: KIMI_K3_MODEL_ID,
+        }),
+      ),
+    )
+
+    const body = JSON.parse(calls[0]?.init.body ?? '{}')
+    expect(body.model).toBe(KIMI_K3_FIREWORKS_MODEL_ID)
+    expect(body.messages).toEqual([
+      {
+        content: [
+          { text: 'Can you describe this image?', type: 'text' },
+          { image_url: { url: imageUrl }, type: 'image_url' },
+        ],
+        role: 'user',
+      },
+    ])
   })
 
   test('preserves OpenAI tool metadata in outbound messages and params', async () => {

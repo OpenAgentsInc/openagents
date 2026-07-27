@@ -13,6 +13,7 @@ import {
   khalaBackingPriceModel,
   khalaBackingSupplyLane,
   projectKhalaCatalogForArming,
+  resolveHostedLaneModelServability,
   resolveHydraliskGlm52Reap504bArming,
   resolveHydraliskGptOss20bArming,
   resolveHydraliskGptOss120bArming,
@@ -22,10 +23,13 @@ import {
   resolveSupplyLaneArming,
 } from './model-serving-policy'
 import {
+  GEMINI_FLASH_MODEL_ID,
   HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
   HYDRALISK_GPT_OSS_20B_MODEL_ID,
   HYDRALISK_GPT_OSS_120B_MODEL_ID,
   KHALA_MODEL_ID,
+  KIMI_K3_FIREWORKS_MODEL_ID,
+  KIMI_K3_MODEL_ID,
   type SupplyLane,
 } from './pricing'
 
@@ -461,19 +465,21 @@ describe('isLaneArmed / isModelServable', () => {
     }
   })
 
-  it('only the single public Khala model is servable when its backing lane is armed', () => {
+  it('keeps the public catalog limited to Khala', () => {
     const catalog = buildModelCatalog()
     const khala = catalog.find(e => e.id === KHALA_MODEL_ID)!
-    const gemini = catalog.find(e => e.id === 'gemini-3.5-flash')!
+    const gemini = catalog.find(e => e.id === GEMINI_FLASH_MODEL_ID)!
+    const kimi = catalog.find(e => e.id === KIMI_K3_MODEL_ID)!
     expect(isModelServable(khala, ALL_ARMED)).toBe(true)
     expect(isModelServable(khala, ALL_LANES_UNARMED)).toBe(false)
     expect(isModelServable(gemini, ALL_ARMED)).toBe(false)
+    expect(isModelServable(kimi, ALL_ARMED)).toBe(false)
     expect(
       isModelServable(gemini, resolveSupplyLaneArming({ VERTEX_SA_KEY: 'sa' })),
     ).toBe(false)
     expect(
       isModelServable(
-        gemini,
+        kimi,
         resolveSupplyLaneArming({ FIREWORKS_API_KEY: 'fw' }),
       ),
     ).toBe(false)
@@ -505,7 +511,7 @@ describe('isLaneArmed / isModelServable', () => {
 describe('filterServableCatalog', () => {
   const catalog = buildModelCatalog()
 
-  it('keeps only the single public model when every backing lane is armed', () => {
+  it('keeps only Khala when every backing lane is armed', () => {
     expect(
       filterServableCatalog(catalog, ALL_ARMED).map(entry => entry.id),
     ).toEqual([KHALA_MODEL_ID])
@@ -572,6 +578,38 @@ describe('resolveNamedModelServability', () => {
     expect(resolveNamedModelServability('not-a-real-model', ALL_ARMED)).toBe(
       false,
     )
+  })
+
+  it('keeps hosted lane ids out of public named-model servability', () => {
+    expect(
+      resolveNamedModelServability(
+        GEMINI_FLASH_MODEL_ID,
+        resolveSupplyLaneArming({ VERTEX_SA_KEY: 'sa' }),
+      ),
+    ).toBe(false)
+    const fireworks = resolveSupplyLaneArming({ FIREWORKS_API_KEY: 'fw' })
+    expect(resolveNamedModelServability(KIMI_K3_MODEL_ID, fireworks)).toBe(
+      false,
+    )
+    expect(
+      resolveNamedModelServability(KIMI_K3_FIREWORKS_MODEL_ID, fireworks),
+    ).toBe(false)
+  })
+
+  it('resolves internal hosted Gemini Flash and Kimi K3 lane servability', () => {
+    expect(
+      resolveHostedLaneModelServability(
+        GEMINI_FLASH_MODEL_ID,
+        resolveSupplyLaneArming({ VERTEX_SA_KEY: 'sa' }),
+      ),
+    ).toBe(true)
+    const fireworks = resolveSupplyLaneArming({ FIREWORKS_API_KEY: 'fw' })
+    expect(resolveHostedLaneModelServability(KIMI_K3_MODEL_ID, fireworks)).toBe(
+      true,
+    )
+    expect(
+      resolveHostedLaneModelServability(KIMI_K3_FIREWORKS_MODEL_ID, fireworks),
+    ).toBe(true)
   })
 
   it('resolves the public id case-insensitively', () => {

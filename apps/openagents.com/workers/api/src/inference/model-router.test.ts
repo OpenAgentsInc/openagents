@@ -49,6 +49,8 @@ import {
   KHALA_MODEL_ID,
   KHALA_MODEL_SLUG,
   KHALA_PYLON_MINI_MODEL_ID,
+  KIMI_K3_FIREWORKS_MODEL_ID,
+  KIMI_K3_MODEL_ID,
 } from './pricing'
 import {
   InferenceAdapterError,
@@ -183,6 +185,8 @@ describe('model classification', () => {
     for (const model of [
       'deepseek-v4-pro',
       'kimi-k2p6',
+      KIMI_K3_MODEL_ID,
+      KIMI_K3_FIREWORKS_MODEL_ID,
       'glm-5p2',
       'qwen-3p7-plus',
       'minimax',
@@ -448,9 +452,9 @@ describe('lane plan ordering (cheapest viable first, then overflow)', () => {
   })
 
   test('open models are ordered cheapest-first by blended cost', () => {
-    // gpt-oss-20b is the cheapest priced open model; deepseek-v4-pro the dearest.
+    // gpt-oss-20b is the cheapest priced open model; Kimi K3 is the dearest.
     expect(openModelsByCost[0]).toBe('gpt-oss-20b')
-    expect(openModelsByCost.at(-1)).toBe('deepseek-v4-pro')
+    expect(openModelsByCost.at(-1)).toBe(KIMI_K3_MODEL_ID)
     // Monotonic non-decreasing ordering is preserved end-to-end.
     expect(openModelsByCost.length).toBeGreaterThan(2)
   })

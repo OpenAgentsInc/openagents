@@ -217,6 +217,11 @@ const FIREWORKS_OPEN_COST: Readonly<Record<string, ModelCostPerMtok>> = {
     cachedInputUsdPerMtok: 0.19,
     outputUsdPerMtok: 4.0,
   },
+  'kimi-k3': {
+    inputUsdPerMtok: 3.0,
+    cachedInputUsdPerMtok: 0.3,
+    outputUsdPerMtok: 15.0,
+  },
   'glm-5p2': {
     inputUsdPerMtok: 1.4,
     cachedInputUsdPerMtok: 0.26,
@@ -268,6 +273,9 @@ const VERTEX_GEMINI_COST: Readonly<Record<string, ModelCostPerMtok>> = {
 // implementation details and must not be exposed as public choices.
 export const KHALA_MODEL_SLUG = 'khala'
 export const KHALA_MODEL_ID = 'openagents/khala'
+export const GEMINI_FLASH_MODEL_ID = 'gemini-3.6-flash'
+export const KIMI_K3_MODEL_ID = 'kimi-k3'
+export const KIMI_K3_FIREWORKS_MODEL_ID = 'accounts/fireworks/models/kimi-k3'
 export const KHALA_MINI_MODEL_ID = 'openagents/khala-mini'
 export const KHALA_CODE_MODEL_ID = 'openagents/khala-code'
 export const HYDRALISK_GLM_52_REAP_504B_MODEL_ID =
@@ -489,6 +497,7 @@ export const MODEL_PRICING_TABLE: ReadonlyArray<ModelPricingEntry> = [
     FIREWORKS_OPEN_COST['kimi-k2p7-code']!,
     false,
   ),
+  entry(KIMI_K3_MODEL_ID, 'fireworks', FIREWORKS_OPEN_COST['kimi-k3']!, false),
   entry('glm-5p2', 'fireworks', FIREWORKS_OPEN_COST['glm-5p2']!, false),
   entry('glm-5p1', 'fireworks', FIREWORKS_OPEN_COST['glm-5p1']!, false),
   entry(

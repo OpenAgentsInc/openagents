@@ -48,7 +48,11 @@
 import { Effect } from 'effect'
 
 import { parseJsonRecord } from '../json-boundary'
-import { AUTOPILOT_CONCIERGE_MODEL_ID, KHALA_MINI_MODEL_ID } from './pricing'
+import {
+  AUTOPILOT_CONCIERGE_MODEL_ID,
+  GEMINI_FLASH_MODEL_ID,
+  KHALA_MINI_MODEL_ID,
+} from './pricing'
 import {
   InferenceAdapterError,
   type InferenceMessage,
@@ -70,7 +74,7 @@ export const VERTEX_GEMINI_ADAPTER_ID = 'vertex-gemini'
 
 // The default Gemini model id the free tier serves. The gateway's default model
 // when a caller specifies none (gateway free-tier enablement §3).
-export const DEFAULT_GEMINI_MODEL_ID = 'gemini-3.6-flash'
+export const DEFAULT_GEMINI_MODEL_ID = GEMINI_FLASH_MODEL_ID
 
 // Default Vertex location — `global` uses the bare `aiplatform.googleapis.com`
 // host (no region subdomain prefix). Same default as the Anthropic lane.
@@ -293,10 +297,7 @@ const buildGeminiTools = (
       if (typeof fn?.description === 'string') {
         declaration['description'] = fn.description
       }
-      if (
-        typeof fn?.parameters === 'object' &&
-        fn.parameters !== null
-      ) {
+      if (typeof fn?.parameters === 'object' && fn.parameters !== null) {
         declaration['parameters'] = sanitizeGeminiSchema(fn.parameters)
       }
       return declaration
@@ -659,9 +660,7 @@ export const makeVertexGeminiAdapter = (
       if (!ok) {
         return yield* Effect.fail(
           adapterError(
-            `Vertex Gemini returned HTTP ${status}${
-              text === '' ? '' : `: ${text.slice(0, 500)}`
-            }`,
+            `Vertex Gemini returned HTTP ${status}${text === '' ? '' : `: ${text.slice(0, 500)}`}`,
             isRetryableStatus(status),
           ),
         )
@@ -756,19 +755,19 @@ const foldGeminiUsage = (
     return prior
   }
   const u = usage as Record<string, unknown>
-  const promptTokens =
-    num(u['promptTokenCount']) ?? prior?.promptTokens ?? 0
+  const promptTokens = num(u['promptTokenCount']) ?? prior?.promptTokens ?? 0
   const completionTokens =
     num(u['candidatesTokenCount']) ?? prior?.completionTokens ?? 0
   const reportedTotal = num(u['totalTokenCount']) ?? prior?.totalTokens ?? 0
-  const cached =
-    num(u['cachedContentTokenCount']) ?? prior?.cachedPromptTokens
+  const cached = num(u['cachedContentTokenCount']) ?? prior?.cachedPromptTokens
   return {
     completionTokens,
     promptTokens,
     totalTokens:
       reportedTotal > 0 ? reportedTotal : promptTokens + completionTokens,
-    ...(cached === undefined || cached <= 0 ? {} : { cachedPromptTokens: cached }),
+    ...(cached === undefined || cached <= 0
+      ? {}
+      : { cachedPromptTokens: cached }),
   }
 }
 

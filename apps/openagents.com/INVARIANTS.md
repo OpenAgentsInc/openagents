@@ -646,20 +646,20 @@ This is the invariant ledger for `openagents`.
   `resolveAvailableModelIds` (the pricing table filtered to lanes actually
   armed by `resolveSupplyLaneArming(env)` in THIS deployment — never a static
   list a deployment cannot actually serve).
-- This module is DELIBERATELY separate from, and must not be used to relax,
-  `chat-completions-routes.ts`'s existing "public model selection intentionally
-  collapses to [the single Khala virtual model id]... must not be exposed as
-  public choices" enforcement (`DEFAULT_CHAT_MODEL`/`isKhalaModel` gate on
-  `/v1/chat/completions`). That gate protects the general OpenAI-compatible
-  gateway from arbitrary API callers picking arbitrary backing models/pricing.
-  it stays untouched. Per-user model choice among Gemini/Claude/etc. is a
-  NEW, intentionally more expansive mobile capability that must be threaded
-  through a privileged, mobile/coding-turn-specific dispatch path (the
-  Agent Computer executor path, #8473/#8474/#8503), which is the intended consumer of
-  the READ side. If a future change wires per-user preference into the public
-  gateway's model resolution directly, that is itself an invariant relaxation
-  requiring its own explicit owner sign-off and INVARIANTS.md update — do not
-  fold it into this store silently.
+- This module is separate from the general public model gate in
+  `chat-completions-routes.ts`. External API accounts can select only the Khala
+  virtual model. Accounts in `INFERENCE_INTERNAL_ACCOUNT_REFS` can also select
+  the exact `gemini-3.6-flash`, `kimi-k3`, or
+  `accounts/fireworks/models/kimi-k3` hosted lane. The internal selection uses
+  the same lane-arming checks as the provider registry. It does not publish
+  these backing models in `/v1/models`, and it does not grant an external
+  account access to platform capacity. Owner direction on 2026-07-27 approved
+  this bounded internal gateway selection.
+- Per-user model choice outside those exact internal hosted lanes remains a
+  privileged mobile or coding-turn capability. Thread it through the Agent
+  Computer executor path (#8473/#8474/#8503). A future change that adds more
+  general gateway models or permits external platform capacity requires
+  separate owner sign-off and an update to this invariant.
 - The resolution (`resolveModelPreference`) is typed and never silently
   substitutes: it reports `none` / `no_preference_set` /
   `preference_unavailable` / `default_unavailable` alongside both the

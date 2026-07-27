@@ -148,6 +148,9 @@ import {
 } from './model-router'
 import {
   type SupplyLaneArming,
+  isHostedLaneModelId,
+  isPublicModelId,
+  resolveHostedLaneModelServability,
   resolveNamedModelServability,
 } from './model-serving-policy'
 import { inferenceToolCallsFromUnknown } from './openai-chat-compat'
@@ -175,6 +178,7 @@ import {
 import {
   InferenceAdapterError,
   type InferenceAdapterRouteMetadata,
+  type InferenceContentPart,
   type InferenceMessage,
   type InferenceProviderRegistry,
   type InferenceRequest,
@@ -883,25 +887,55 @@ export const resolveRequestedModel = (model: string | undefined): string => {
     : normalizeKhalaModelId(trimmed)
 }
 
-const decodeOpenAiContent = (value: unknown): string | undefined => {
+const decodeOpenAiContent = (
+  value: unknown,
+):
+  | Readonly<{
+      text: string
+      parts?: ReadonlyArray<InferenceContentPart> | undefined
+    }>
+  | undefined => {
   if (typeof value === 'string') {
-    return value
+    return { text: value }
   }
   if (value === null) {
-    return ''
+    return { text: '' }
   }
   if (!Array.isArray(value)) {
     return undefined
   }
-  const parts: Array<string> = []
+  const textParts: Array<string> = []
+  const parts: Array<InferenceContentPart> = []
   for (const item of value) {
     const record = recordFromUnknown(item)
-    if (record?.['type'] !== 'text' || typeof record['text'] !== 'string') {
+    if (record?.['type'] === 'text' && typeof record['text'] === 'string') {
+      textParts.push(record['text'])
+      parts.push({ text: record['text'], type: 'text' })
+      continue
+    }
+    const imageUrl = recordFromUnknown(record?.['image_url'])
+    const url = imageUrl?.['url']
+    const detail = imageUrl?.['detail']
+    if (
+      record?.['type'] !== 'image_url' ||
+      typeof url !== 'string' ||
+      url === '' ||
+      (detail !== undefined &&
+        detail !== 'auto' &&
+        detail !== 'high' &&
+        detail !== 'low')
+    ) {
       return undefined
     }
-    parts.push(record['text'])
+    parts.push({
+      image_url: {
+        url,
+        ...(detail === undefined ? {} : { detail }),
+      },
+      type: 'image_url',
+    })
   }
-  return parts.join('\n\n')
+  return { parts, text: textParts.join('\n\n') }
 }
 
 const nonEmptyString = (value: unknown): string | undefined =>
@@ -921,17 +955,20 @@ const decodeMessage = (value: unknown): InferenceMessage | undefined => {
   if (rawToolCalls !== undefined && toolCalls === undefined) {
     return undefined
   }
-  const content =
+  const decodedContent =
     record['content'] === undefined && toolCalls !== undefined
-      ? ''
+      ? { text: '' }
       : decodeOpenAiContent(record['content'])
-  if (content === undefined) {
+  if (decodedContent === undefined) {
     return undefined
   }
   const toolCallId = nonEmptyString(record['tool_call_id'])
   const name = nonEmptyString(record['name'])
   return {
-    content,
+    content: decodedContent.text,
+    ...(decodedContent.parts === undefined
+      ? {}
+      : { contentParts: decodedContent.parts }),
     ...(name === undefined ? {} : { name }),
     role,
     ...(toolCallId === undefined ? {} : { toolCallId }),
@@ -2565,6 +2602,9 @@ export const handleChatCompletions = (
     // indistinguishable from a nonexistent model to external callers, and it is
     // never listed in `/v1/models`).
     const internalNeutralRequest = isInternalNeutralModel(requestedModel)
+    const internalPlatformCapacity = (
+      deps.internalAccountRefs ?? new Set()
+    ).has(session.accountRef)
     if (
       internalNeutralRequest &&
       !(deps.internalAccountRefs ?? new Set<string>()).has(session.accountRef)
@@ -2575,8 +2615,9 @@ export const handleChatCompletions = (
       )
     }
     if (
-      !isKhalaModel(requestedModel) &&
+      !isPublicModelId(requestedModel) &&
       !internalNeutralRequest &&
+      !(internalPlatformCapacity && isHostedLaneModelId(requestedModel)) &&
       fineTunedModelResolution === undefined
     ) {
       return noStoreJsonResponse(
@@ -2828,10 +2869,12 @@ export const handleChatCompletions = (
       // The internal-neutral lane serves over the SAME khala backing, so its
       // servability IS khala's; the id itself stays non-public (never
       // advertised/quoted), which is why it is mapped rather than listed.
-      resolveNamedModelServability(
-        internalNeutralRequest ? KHALA_MODEL_ID : requestedModel,
-        deps.laneArming,
-      ) === false
+      (internalNeutralRequest
+        ? resolveNamedModelServability(KHALA_MODEL_ID, deps.laneArming)
+        : isHostedLaneModelId(requestedModel)
+          ? resolveHostedLaneModelServability(requestedModel, deps.laneArming)
+          : resolveNamedModelServability(requestedModel, deps.laneArming)) ===
+        false
     ) {
       return noStoreJsonResponse(
         { error: 'model_unavailable', model: requestedModel },
@@ -2845,7 +2888,11 @@ export const handleChatCompletions = (
     // the upstream capacity. This removes credit/free-tier accounting without
     // silently converting paid platform capacity into a free public service.
     const callerPaidByok = byok._tag === 'accepted'
-    if (!callerPaidByok && !orgCloudRuntimeNoMeter) {
+    if (
+      !callerPaidByok &&
+      !orgCloudRuntimeNoMeter &&
+      !internalPlatformCapacity
+    ) {
       return noStoreJsonResponse(
         {
           error: 'platform_funding_unavailable',

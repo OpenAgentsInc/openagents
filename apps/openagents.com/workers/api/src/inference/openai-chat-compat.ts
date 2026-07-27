@@ -55,11 +55,7 @@ export const inferenceToolCallDeltasFromUnknown = (
       return undefined
     }
     const index = record['index']
-    if (
-      typeof index !== 'number' ||
-      !Number.isInteger(index) ||
-      index < 0
-    ) {
+    if (typeof index !== 'number' || !Number.isInteger(index) || index < 0) {
       return undefined
     }
     const fn = recordFromUnknown(record['function'])
@@ -95,7 +91,7 @@ export const inferenceToolCallDeltasFromUnknown = (
 export const openAiWireMessageFromInferenceMessage = (
   message: InferenceMessage,
 ): Record<string, unknown> => ({
-  content: message.content,
+  content: message.contentParts ?? message.content,
   role: message.role,
   ...(message.name === undefined ? {} : { name: message.name }),
   ...(message.toolCallId === undefined

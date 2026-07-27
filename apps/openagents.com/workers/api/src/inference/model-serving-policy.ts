@@ -22,12 +22,15 @@
 import type { ModelCatalogEntry } from './model-catalog'
 import { DEFAULT_GLM_52_REAP_504B_OWNED_COST_PROFILE_REF } from './owned-inference-cost'
 import {
+  GEMINI_FLASH_MODEL_ID,
   HYDRALISK_GLM_52_REAP_504B_MODEL_ID,
   HYDRALISK_GPT_OSS_20B_MODEL_ID,
   HYDRALISK_GPT_OSS_120B_MODEL_ID,
   KHALA_MODEL_ID,
+  KIMI_K3_MODEL_ID,
   lookupModel,
   normalizeKhalaModelId,
+  normalizePricingModelId,
 } from './pricing'
 import type { SupplyLane } from './pricing'
 
@@ -92,6 +95,11 @@ export const isRawGptOssModelId = (modelId: string): boolean =>
 
 export const isPublicModelId = (modelId: string): boolean =>
   normalizeKhalaModelId(modelId) === KHALA_MODEL_ID
+
+export const isHostedLaneModelId = (modelId: string): boolean =>
+  [GEMINI_FLASH_MODEL_ID, KIMI_K3_MODEL_ID].includes(
+    normalizePricingModelId(modelId),
+  )
 
 // The presence-only env shape the arming is derived from. Every field is the
 // SAME worker secret/flag name the corresponding adapter already reads; we only
@@ -789,6 +797,17 @@ export const resolveNamedModelServability = (
   return entry.lane === 'hydralisk'
     ? hydraliskModelArmed(arming, entry.model)
     : isLaneArmed(arming, entry.lane)
+}
+
+export const resolveHostedLaneModelServability = (
+  modelId: string,
+  arming: SupplyLaneArming,
+): boolean => {
+  if (!isHostedLaneModelId(modelId)) {
+    return false
+  }
+  const entry = lookupModel(modelId)
+  return entry !== undefined && isLaneArmed(arming, entry.lane)
 }
 
 export const filterPublicCatalog = (

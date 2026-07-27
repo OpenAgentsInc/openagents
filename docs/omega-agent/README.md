@@ -30,6 +30,11 @@ Read these documents in this order:
    functionality with a receipt per run, its plugin-economy, DSE,
    Blueprint, and Khala lineage, and the phased path to the registry
    and the paid market with revenue sharing for contributors.
+4. Use the
+   [hosted inference lanes runbook](./2026-07-27-hosted-inference-lanes-runbook.md)
+   to operate Omega Agent's explicitly selectable Gemini Flash and
+   Fireworks Kimi K3 lanes, including access controls, request shapes,
+   testing, Cloud Run deployment, smoke checks, diagnosis, and rollback.
 
 The wider Omega Agent program corpus lives elsewhere:
 

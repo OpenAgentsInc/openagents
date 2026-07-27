@@ -19,9 +19,22 @@ import { Effect, Redacted } from 'effect'
 // A single chat message in the normalized request. `role`/`content` mirror the
 // OpenAI Chat Completions shape so adapters can pass through with minimal
 // translation.
+export type InferenceContentPart =
+  | Readonly<{ type: 'text'; text: string }>
+  | Readonly<{
+      type: 'image_url'
+      image_url: Readonly<{
+        url: string
+        detail?: 'auto' | 'high' | 'low' | undefined
+      }>
+    }>
+
 export type InferenceMessage = Readonly<{
   role: string
   content: string
+  // Preserved OpenAI multimodal content. `content` remains the text-only
+  // projection used by routing, trace redaction, and prompt classification.
+  contentParts?: ReadonlyArray<InferenceContentPart> | undefined
   // OpenAI-compatible tool-call replay metadata. Tool-using clients (OpenCode,
   // AI SDK, etc.) send prior assistant tool calls and tool results back through
   // the next request; adapters that speak OpenAI-compatible chat must preserve
@@ -52,10 +65,7 @@ export type InferenceRequest = Readonly<{
 }>
 
 export type InferenceRequestPriority =
-  | 'batch'
-  | 'external'
-  | 'internal_stress'
-  | 'keep_warm'
+  'batch' | 'external' | 'internal_stress' | 'keep_warm'
 
 // Provider `usage` object — the receipt-first source of truth for metering.
 // Adapters MUST populate this from the provider response, never an estimate

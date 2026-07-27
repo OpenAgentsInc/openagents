@@ -1129,7 +1129,7 @@
     },
     {
       "path": "apps/openagents.com/INVARIANTS.md",
-      "sha256": "86bf575d7422178fa24fc813bbe0bd78be43744ab48947ca58f1a2ce96b38870",
+      "sha256": "021e378397488a49af7224bb1523368716e3084d1f1ac13e9f6472e1cecc4987",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -34013,6 +34013,28 @@
       }
     },
     {
+      "path": "docs/omega-agent/2026-07-27-hosted-inference-lanes-runbook.md",
+      "sha256": "095f61cb034ff0fb8adf8869880af27106fe18613ba7e5d82e79a692533447b1",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "mixed",
+        "risk": "high",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/omega-agent/2026-07-27-plugin-tool-spec.md",
       "sha256": "b40797700c19ded6b8af218a60c024a303a0ab766e7b7b85398c3421de99df31",
       "reason": "Final review of a converted document",
@@ -34070,7 +34092,7 @@
     },
     {
       "path": "docs/omega-agent/README.md",
-      "sha256": "c053ff0e224b27f3023ab682f485815ede426f4f2f6cfd047c740b4065446fbb",
+      "sha256": "542e3df32819722d49ff23f823a0935d7d75814b04618542b6e350ab1648c63f",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
