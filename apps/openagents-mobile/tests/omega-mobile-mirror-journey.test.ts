@@ -383,6 +383,10 @@ describe("TM-06 Omega mobile mirror simulator journeys", () => {
     expect(store.inspect()?.grant).toBeNull();
     expect(bridge.state().paired).toBe(false);
     expect(bridge.state().refusal).toBe("grant_revoked");
+    await Effect.runPromise(bridge.observeRelay(10_100));
+    expect(bridge.state().connection.state).toBe("relay");
+    expect(bridge.state().paired).toBe(false);
+    expect(store.inspect()?.grant).toBeNull();
     await Effect.runPromise(bridge.close());
   });
 });
