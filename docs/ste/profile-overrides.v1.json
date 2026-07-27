@@ -1,6 +1,20 @@
 {
   "schema": "openagents-ste-profile-overrides-v1",
   "profiles": {
+    "docs/omega/sniffer/README.md": {
+      "ste_mode": "mixed",
+      "ste_status": "checked",
+      "ste_reviewer": "codex/omega-network-sniffer-spec-20260726",
+      "ste_reviewed_at": "2026-07-27T03:14:40Z",
+      "risk": "high",
+      "source": null,
+      "replacement": null,
+      "ste_audience": "human",
+      "ste_agent_compact_revision": null,
+      "ste_accepted_screening_rules": [
+        "STE-2.4"
+      ]
+    },
     "docs/nostr/2026-07-25-nostr-native-authentication-architecture-proposal.md": {
       "ste_mode": "descriptive",
       "ste_status": "checked",

@@ -29,11 +29,11 @@ Read these documents in this order:
    [Full Auto contract freeze](./2026-07-24-full-auto-contract-freeze.md)
    (`OMEGA-FA-00`).
 10. Read the
-   [omega-effectd extract](./2026-07-24-omega-effectd-extract.md)
-   (`OMEGA-FA-01`).
+    [omega-effectd extract](./2026-07-24-omega-effectd-extract.md)
+    (`OMEGA-FA-01`).
 11. Read the
-   [omega-effectd supervisor](./2026-07-24-omega-effectd-supervisor.md)
-   (`OMEGA-FA-02`).
+    [omega-effectd supervisor](./2026-07-24-omega-effectd-supervisor.md)
+    (`OMEGA-FA-02`).
 12. Read the
     [omega-effectd host bridge](./2026-07-24-omega-effectd-host-bridge.md).
 13. Read the
@@ -87,7 +87,9 @@ Read these documents in this order:
 32. Read the
     [Omega Agent cloud-coupling severability trace](./2026-07-25-omega-agent-cloud-severability-trace.md)
     (`OMEGA-AGENT-00`, omega#74).
-
+33. Read the
+    [Omega network sniffer specification](./sniffer/README.md)
+    (`OMEGA-SNIFF-01` through `OMEGA-SNIFF-07`).
 
 The Omega roadmap owns the implementation order.
 The release-readiness audit owns the current brand and package gap.
@@ -160,6 +162,10 @@ agent. It also owns the rejected alternatives and the open owner question
 about the Omega Nostr identity. The severability trace owns the statement of
 what the agent is when no external service answers. The ProductSpec at
 `specs/omega/omega-agent.product-spec.md` owns the intent for both.
+
+The network sniffer specification owns the proposed capture boundary for local
+external agents. It defines the durable file, exact fidelity labels, sensitive
+data rules, and the Omega Agent inspection tool.
 
 The accepted plan owns the product and repository boundary.
 The master roadmap owns priority across OpenAgents programs.

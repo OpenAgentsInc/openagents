@@ -35041,7 +35041,7 @@
     },
     {
       "path": "docs/omega/README.md",
-      "sha256": "cd7f60cd66278a90cd72b1209578d56914e26ddafd515961a458e86e462fc068",
+      "sha256": "b0e492e95ccb1725824497fe7dc38d80a45dd80ccfd23935aba9776ba6f4db80",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -35060,6 +35060,24 @@
     {
       "path": "docs/omega/ROADMAP.md",
       "sha256": "f9025f6ccf9ade4043262af99fa5e27d1aebca1582d30d10f120b60427ed64cb",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "mixed",
+        "risk": "high",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "human",
+        "ste_accepted_screening_rules": [
+          "STE-2.4"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/omega/sniffer/README.md",
+      "sha256": "a59301d0f6abcf443ac9bab3d75c86baed04f669afb4d32e8deb6fb22d4468ce",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
