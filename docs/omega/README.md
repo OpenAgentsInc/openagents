@@ -88,6 +88,11 @@ Read these documents in this order:
     [Omega Agent cloud-coupling severability trace](./2026-07-25-omega-agent-cloud-severability-trace.md)
     (`OMEGA-AGENT-00`, omega#74).
 33. Read the
+    [Omega Agent slim-agent audit](../omega-agent/2026-07-27-slim-agent-audit.md).
+34. Read the
+    [Omega Agent slim-agent specification](../omega-agent/2026-07-27-slim-agent-spec.md)
+    (proposed, not admitted).
+33. Read the
     [Omega network sniffer specification](./sniffer/README.md)
     (`OMEGA-SNIFF-01` through `OMEGA-SNIFF-08`).
 

@@ -22636,8 +22636,8 @@
           "STE-8.2"
         ],
         "ste_status": "inspected",
-        "ste_reviewer": "claude/omega-delta-0123-exo-executor",
-        "ste_reviewed_at": "2026-07-26T00:00:00Z"
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {
@@ -34013,6 +34013,62 @@
       }
     },
     {
+      "path": "docs/omega-agent/2026-07-27-slim-agent-audit.md",
+      "sha256": "afbce36c386ffc01deeeb1729ac7938b4d434203f216a5a28a8a6be3e8660199",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null,
+        "ste_status": "source-data"
+      }
+    },
+    {
+      "path": "docs/omega-agent/2026-07-27-slim-agent-spec.md",
+      "sha256": "fbd4255353748b8bb6317f1f54e85d5e9cb78125526d65fcc475b43673b67b94",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/omega-agent/README.md",
+      "sha256": "1603ae24cf67f001359f6501503c60314f4b4f4c3369d1ccda8aaf61d4f3b772",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/omega/2026-07-23-identity-first-onboarding-roadmap.md",
       "sha256": "1925bc638bfa099920f8283418cf69046db2a7a33ce31a577a790c7b8454efa6",
       "reason": "Final review of a converted document",
@@ -35063,7 +35119,7 @@
     },
     {
       "path": "docs/omega/README.md",
-      "sha256": "04cc551c5227d9f43e076f1ce0370289660ffa1499e0d2c14c141d16c98d8816",
+      "sha256": "c0bfb2cba4062eb3a30225b08bf4729e163ca492bb19fc8c29d897ab429985cb",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -45544,11 +45600,12 @@
     {
       "path": "docs/teardowns/2026-07-27-tokenrelay-teardown.md",
       "sha256": "73788ab07d599a6cf9890f4eaba1f4f5331296f717b3ea250e23a3bf18791974",
-      "reason": "Final review of mutable first-party agent technical text",
+      "reason": "Final review of a converted document",
       "profile": {
-        "ste_status": "inspected",
-        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
         "ste_audience": "agent",
         "ste_agent_compact_revision": "openagents-agent-compact-v1",
         "ste_accepted_screening_rules": [
@@ -45556,7 +45613,10 @@
           "STE-3.6",
           "STE-5.1",
           "STE-8.2"
-        ]
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {
