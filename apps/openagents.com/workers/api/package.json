@@ -45,6 +45,7 @@
     "@openagentsinc/agent-runtime-schema": "0.2.1-rc.4",
     "@openagentsinc/analytics": "workspace:*",
     "@openagentsinc/atif": "workspace:*",
+    "@openagentsinc/audio-contract": "workspace:*",
     "@openagentsinc/authority": "workspace:*",
     "@openagentsinc/behavior-contracts": "workspace:*",
     "@openagentsinc/blueprint-contracts": "workspace:*",
@@ -79,7 +80,8 @@
     "nostr-effect": "https://github.com/OpenAgentsInc/nostr-effect/archive/1314ed6ee6cc508ba9a54d03372fe1c71a984815.tar.gz",
     "postgres": "3.4.9",
     "react": "19.2.7",
-    "react-dom": "19.2.7"
+    "react-dom": "19.2.7",
+    "ws": "8.21.1"
   },
   "devDependencies": {
     "@asciidev/box-sdk": "0.0.24",
@@ -87,6 +89,7 @@
     "@openagentsinc/khala-sync-client": "workspace:*",
     "@types/react": "^19.2.14",
     "@types/react-dom": "19.2.3",
+    "@types/ws": "8.18.1",
     "playwright": "^1.61.0",
     "vitest": "^4.1.8"
   }

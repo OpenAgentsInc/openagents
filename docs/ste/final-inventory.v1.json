@@ -2,7 +2,7 @@
   "schema": "openagents-ste-final-inventory-v1",
   "steIssue": 9,
   "glossaryRevision": "openagents-ste-glossary-v1",
-  "reviewedAt": "2026-07-19T22:00:00Z",
+  "reviewedAt": "2026-07-28T20:03:30Z",
   "entries": [
     {
       "path": ".agents/THIRD_PARTY_NOTICES.md",
@@ -35289,6 +35289,21 @@
         "source": "Immutable historical or evidence source data",
         "replacement": null,
         "ste_status": "source-data"
+      }
+    },
+    {
+      "path": "docs/omega/2026-07-28-managed-sarah-realtime-voice-gateway.md",
+      "sha256": "2f2a2c654e3c98e30e5fdc57cbae755275f424393081712fff12fd85b83ba0f8",
+      "reason": "Final review of a current technical document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "active",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "human",
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/issue-9272-sarah-voice-doc-review",
+        "ste_reviewed_at": "2026-07-28T20:03:30Z"
       }
     },
     {

@@ -1,4 +1,7 @@
 import { Schema as S } from "effect"
+import { VoiceIdentitySchema } from "./voice-identity.js"
+
+export { VoiceIdentitySchema, type VoiceIdentity } from "./voice-identity.js"
 
 export const AUDIO_PROTOCOL_VERSION = "openagents.audio.v1" as const
 export const AUDIO_MEDIA_MAGIC = "OAA1" as const
@@ -7,14 +10,7 @@ export const MAX_AUDIO_PAYLOAD_BYTES = 24_000
 const Ref = S.Trim.check(S.isMinLength(1), S.isMaxLength(256))
 const Text = S.String.check(S.isMaxLength(16_384))
 const Seq = S.Int.check(S.isGreaterThanOrEqualTo(0), S.isLessThanOrEqualTo(9_007_199_254_740_991))
-const Generation = S.Int.check(S.isGreaterThanOrEqualTo(1), S.isLessThanOrEqualTo(2_147_483_647))
 const BoundedBytes = S.Int.check(S.isGreaterThanOrEqualTo(0), S.isLessThanOrEqualTo(MAX_AUDIO_PAYLOAD_BYTES))
-
-export const VoiceIdentitySchema = S.Struct({
-  ownerRef: Ref, deviceRef: Ref, threadRef: Ref, sessionRef: Ref,
-  generation: Generation,
-})
-export type VoiceIdentity = typeof VoiceIdentitySchema.Type
 
 export const VoiceSessionSchema = S.Struct({
   schema: S.Literal(AUDIO_PROTOCOL_VERSION),
@@ -87,3 +83,5 @@ export const MediaHeaderSchema = S.Union([ClientAudioMediaHeaderSchema, ServerTt
 export const decodeClientFrame = (value: unknown) => S.decodeUnknownSync(ClientFrameSchema)(value, { onExcessProperty: "error" })
 export const decodeServerControl = (value: unknown) => S.decodeUnknownSync(ServerControlSchema)(value, { onExcessProperty: "error" })
 export const decodeMediaHeader = (value: unknown) => S.decodeUnknownSync(MediaHeaderSchema)(value, { onExcessProperty: "error" })
+
+export * from "./sarah-realtime.js"

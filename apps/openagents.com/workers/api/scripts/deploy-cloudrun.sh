@@ -145,6 +145,8 @@ SET_SECRETS=(
   "GEMINI_API_KEY=openagents-gemini-api-key:latest"
   "CURSOR_API_KEY=openagents-cursor-api-key:latest"
   "XAI_API_KEY=openagents-xai-api-key:latest"
+  # Sarah Realtime (#9272) and owner-private speech use this server-only key.
+  # The managed voice gateway never returns it to Omega.
   "OPENAI_API_KEY=autopilot-voice-openai-api-key:latest"
   # Sarah removed 2026-07-10 (epic #8610). The following Secret Manager
   # entries are retained in GCP as history but are no longer mounted:

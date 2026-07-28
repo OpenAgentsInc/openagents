@@ -9,6 +9,7 @@ import {
   RUNTIME_START_TURN_MUTATOR_NAME,
   makeFleetRunAuthorityRepository,
   makeFleetSteeringExchangeRepository,
+  makeSarahRealtimeVoiceStore,
 } from '@openagentsinc/khala-sync-server'
 import { buildSarahSystemPrompt } from '@openagentsinc/sarah'
 import {
@@ -1298,6 +1299,11 @@ import {
   hasSarahThreadAuthority,
   makeSarahOwnerRoutes,
 } from './sarah-owner-routes'
+import {
+  SARAH_REALTIME_VOICE_SESSION_PATH,
+  handleSarahRealtimeVoiceSessionRequest,
+  parseSarahRealtimeVoiceRouteConfig,
+} from './sarah-realtime-voice-routes'
 import { makeSarahRuntimeTools } from './sarah-runtime-tools'
 import { SARAH_SPEECH_PATH, makeSarahSpeechRoutes } from './sarah-speech-routes'
 import { notifySarahWorkerCloseout as notifySarahWorkerCloseoutImpl } from './sarah-worker-closeout-notify'
@@ -13774,6 +13780,43 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
             gatewayUrl: workerEnv => workerEnv.OPENAGENTS_AUDIO_GATEWAY_URL,
             requireUserBearerSession,
             signingSecret: workerEnv => workerEnv.OPENAGENTS_AUDIO_TOKEN_SECRET,
+            userIdFromSession: session => session.user.userId,
+          },
+          request,
+          env,
+          ctx,
+        ),
+      ),
+  },
+  {
+    path: SARAH_REALTIME_VOICE_SESSION_PATH,
+    handler: (request, env, ctx) =>
+      Effect.promise(() =>
+        handleSarahRealtimeVoiceSessionRequest(
+          {
+            config: workerEnv => {
+              if (
+                workerEnv.OPENAI_API_KEY?.trim() === '' ||
+                workerEnv.OPENAI_API_KEY === undefined ||
+                workerEnv.KHALA_SYNC_DB?.connectionString === undefined
+              ) {
+                return undefined
+              }
+              return parseSarahRealtimeVoiceRouteConfig(workerEnv)
+            },
+            openStore: async workerEnv => {
+              const connectionString = workerEnv.KHALA_SYNC_DB?.connectionString
+              if (connectionString === undefined) {
+                throw new Error('Sarah voice storage is not configured')
+              }
+              const client =
+                await defaultMakeKhalaSyncSqlClient(connectionString)
+              return {
+                store: makeSarahRealtimeVoiceStore(client.sql),
+                close: client.end,
+              }
+            },
+            requireUserBearerSession,
             userIdFromSession: session => session.user.userId,
           },
           request,

@@ -1,0 +1,205 @@
+# Managed Sarah Realtime voice gateway
+
+Date: 2026-07-28
+
+Status: Implemented and off by default
+
+Issue: [#9272](https://github.com/OpenAgentsInc/openagents/issues/9272)
+
+## Purpose
+
+This service gives Omega a live Sarah voice session.
+OpenAgents owns the provider connection.
+Omega does not receive an OpenAI API key.
+
+The service uses `gpt-realtime-2.1`.
+The service sends a stable hash of the OpenAgents user ID as the OpenAI safety identifier.
+
+## Service flow
+
+1. Omega sends an authenticated session request.
+2. The API checks the user, device, feature configuration, and available credit.
+3. The API holds a bounded credit amount.
+4. The API returns a one-use gateway ticket.
+5. Omega opens the gateway WebSocket with the ticket.
+6. The gateway consumes the ticket and opens the OpenAI WebSocket.
+7. The gateway relays only approved audio and control frames.
+8. The gateway records each provider usage event.
+9. The gateway debits the recorded charge and releases the full hold.
+
+The database permits one active Sarah voice session for each user.
+The default maximum session time is 600 seconds.
+The configured maximum cannot be more than 900 seconds.
+
+## Session request
+
+Use this path:
+
+```text
+POST /api/omega/sarah/voice/session
+```
+
+Use the normal Omega bearer token.
+Also send this header:
+
+```text
+x-openagents-omega-device-ref: <deviceRef>
+```
+
+The request uses `openagents.sarah.voice.v1`.
+The `identity.ownerRef` value must be the authenticated user ID.
+The header device value must equal `identity.deviceRef`.
+
+Example request:
+
+```json
+{
+  "schema": "openagents.sarah.voice.v1",
+  "identity": {
+    "ownerRef": "user_123",
+    "deviceRef": "omega_install_123",
+    "threadRef": "thread_123",
+    "sessionRef": "voice_123",
+    "generation": 1
+  },
+  "disclosureRef": "omega.voice.disclosure.v1"
+}
+```
+
+The success response contains the gateway URL, one-use ticket, expiry values, held credit, model, and fixed audio formats.
+The API returns `402` when available credit is too low.
+The API returns `409` when the user has an active session.
+The response always has `Cache-Control: no-store`.
+
+## WebSocket connection
+
+Open the `gatewayUrl` from the session response.
+Send these headers:
+
+```text
+x-openagents-sarah-voice-session: <sessionRef>
+x-openagents-sarah-voice-ticket: <ticket>
+```
+
+Do not put the ticket in a URL.
+The ticket expires after 60 seconds or less.
+The server consumes the ticket before it attempts the upgrade.
+A failed upgrade cannot reuse the ticket.
+
+The first client control frame must be `session_hello`.
+Its disclosure reference must equal the session request value.
+Control sequences and audio sequences each start at `0`.
+
+Client audio uses the `OAA1` media envelope.
+It must contain mono `pcm_s16le` audio at 24 kHz.
+The server checks the identity, sequence, payload size, and SHA-256 digest.
+
+The full client and server schemas are in:
+
+```text
+packages/audio-contract/src/sarah-realtime.ts
+```
+
+## Editor tools
+
+The server gives the model this allowlist:
+
+- `context_read`
+- `open_path`
+- `reveal_range`
+- `replace_selection`
+- `save_document`
+
+The server decodes each command with the shared Effect Schema.
+The server rejects all other tool names.
+The server rejects absolute paths, parent path traversal, and large line ranges.
+Version 1 does not permit shell, Git, cloud, network, delete, rename, move, payment, or account commands.
+
+`replace_selection` and `save_document` need user confirmation.
+The server sends a proposal with an expiry and a SHA-256 digest.
+The digest binds the user, device, session, generation, proposal, command, target, and expiry.
+Omega must return the exact proposal reference and digest.
+Transcript text cannot confirm a command.
+
+Omega sends a bounded `tool_outcome` after local execution.
+The gateway sends only that bounded outcome to the model.
+
+## Credit control
+
+The session route increases `agent_balances.held_msat` in the reservation transaction.
+The transaction fails if available credit is less than the configured hold.
+A database constraint keeps `balance_msat` greater than or equal to `held_msat`.
+
+The gateway records Realtime response usage and input transcription usage.
+The charge uses exact provider token counts and the configured OpenAgents credit rate.
+The rate is an OpenAgents credit rate.
+It is not a provider price statement.
+
+Each Realtime response ID is an idempotency key for response usage.
+The transcription key contains the item ID and content index.
+The stored session charge cannot be more than the held amount.
+The gateway stops the session when the charge reaches the hold.
+
+Settlement releases the full hold and debits the recorded charge in one transaction.
+For a nonzero charge, the transaction writes a paid `pay_ins` adjustment and its balance leg.
+Settlement is idempotent for one session.
+
+## Cleanup
+
+Normal close, provider close, and session expiry start settlement.
+Usage writes run in order before settlement.
+Socket close callbacks add settlement to the Cloud Run task drain.
+
+The minute scheduler finds expired active sessions.
+It settles them after a process stop or a lost socket close event.
+
+## Configuration
+
+The service is off unless this value is true:
+
+```text
+SARAH_REALTIME_VOICE_ENABLED
+```
+
+Set these positive whole-number values before you enable the service:
+
+```text
+SARAH_REALTIME_RESERVATION_MSAT
+SARAH_REALTIME_CREDIT_MSAT_PER_MILLION_TOKENS
+```
+
+This optional value sets the session time:
+
+```text
+SARAH_REALTIME_MAX_SESSION_SECONDS
+```
+
+The permitted range is 60 through 900 seconds.
+The default is 600 seconds.
+
+The Cloud Run deployment already mounts `OPENAI_API_KEY` from Secret Manager.
+Do not put that key in an environment file, response, log, trace, or client package.
+Apply database migration `0103_sarah_realtime_voice.sql` before you enable the feature.
+
+## Logs and private data
+
+Sarah gateway logs can contain event names, counts, and bounded error messages.
+They do not contain audio, transcripts, provider frames, tickets, API keys, editor text, or tool results.
+Session rows contain account, device, thread, session, state, credit, time, close, and settlement data.
+The ticket digest remains in the row until connection or settlement.
+Usage rows contain token totals, a response reference, a charge, and a time.
+The database does not store audio or transcript text.
+
+## Verification
+
+Run these commands:
+
+```sh
+pnpm --filter @openagentsinc/audio-contract test
+pnpm --filter @openagentsinc/audio-contract typecheck
+pnpm --filter @openagentsinc/khala-sync-server test -- sarah-realtime-voice-store.test.ts
+pnpm --filter @openagentsinc/khala-sync-server typecheck
+pnpm --dir apps/openagents.com/workers/api test -- src/sarah-realtime-voice-routes.test.ts src/cloudrun/sarah-realtime-bridge.test.ts
+pnpm --dir apps/openagents.com/workers/api typecheck:cloudrun
+pnpm run check:ste
+```

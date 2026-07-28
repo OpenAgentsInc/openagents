@@ -1,4 +1,6 @@
+import { makeSarahRealtimeVoiceStore } from '@openagentsinc/khala-sync-server'
 import { Runtime } from '@openagentsinc/runtime-platform'
+import { createHash } from 'node:crypto'
 
 /**
  * CFG-9 (#8524): the openagents.com monolith on Google Cloud Run.
@@ -18,6 +20,13 @@ import { Runtime } from '@openagentsinc/runtime-platform'
  */
 
 import worker from '../index'
+import { defaultMakeKhalaSyncSqlClient } from '../khala-sync-push-routes'
+import {
+  SARAH_REALTIME_VOICE_SESSION_HEADER,
+  SARAH_REALTIME_VOICE_TICKET_HEADER,
+  parseSarahRealtimeVoiceRouteConfig,
+  sha256Hex,
+} from '../sarah-realtime-voice-routes'
 import { assertAssetsDirExists } from './assets'
 import {
   isBindingUnavailableError,
@@ -37,6 +46,13 @@ import {
 import { handlePortalUiRequest } from './portal-ui'
 import { isPublicSiteRootRequest } from './public-site-host'
 import {
+  type SarahRealtimeBridgeData,
+  isSarahRealtimeVoiceUpgrade,
+  makeSarahRealtimeBridgeData,
+  makeSarahRealtimeWebSocketHandlers,
+  parseSarahRealtimeBridgeCreditRate,
+} from './sarah-realtime-bridge'
+import {
   assertStartUiArtifactsExist,
   handleStartUiRequest,
   isStartDocumentRequestPath,
@@ -49,6 +65,8 @@ import {
   makeSyncBridgeWebSocketHandlers,
   withoutUpgradeHeaders,
 } from './sync-connect-bridge'
+
+type CloudRunWebSocketData = SyncBridgeData | SarahRealtimeBridgeData
 
 const log = (event: string, detail: Record<string, unknown> = {}): void => {
   console.log(
@@ -80,6 +98,28 @@ const main = async (): Promise<void> => {
   // (CFG-7): it leases oa_infra_jobs and POSTs to this app's
   // /api/internal/queue/deliver route — no in-process consumer here.
 
+  const sweepExpiredSarahVoiceSessions = async (): Promise<void> => {
+    const voiceConfig = parseSarahRealtimeVoiceRouteConfig(runtime.env)
+    const connectionString = runtime.env.KHALA_SYNC_DB?.connectionString?.trim()
+    if (
+      voiceConfig === undefined ||
+      !voiceConfig.enabled ||
+      connectionString === undefined ||
+      connectionString === ''
+    ) {
+      return
+    }
+    const client = await defaultMakeKhalaSyncSqlClient(connectionString)
+    try {
+      const swept = await makeSarahRealtimeVoiceStore(client.sql).sweepExpired(
+        new Date().toISOString(),
+      )
+      if (swept > 0) log('sarah_voice_expired_sessions_settled', { swept })
+    } finally {
+      await client.end()
+    }
+  }
+
   const runScheduled = async (source: string): Promise<void> => {
     const scheduledTime = Date.now()
     const controller = {
@@ -88,6 +128,13 @@ const main = async (): Promise<void> => {
       scheduledTime,
     } as ScheduledController
     log('scheduled_tick_start', { source })
+    try {
+      await sweepExpiredSarahVoiceSessions()
+    } catch (error) {
+      log('sarah_voice_expiry_sweep_failed', {
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
     await worker.scheduled!(controller, runtime.env, ctx)
     log('scheduled_tick_done', {
       elapsedMs: Date.now() - scheduledTime,
@@ -106,7 +153,10 @@ const main = async (): Promise<void> => {
       : undefined
   })()
 
-  const server = Runtime.serve<SyncBridgeData>({
+  const syncWebSocketHandlers = makeSyncBridgeWebSocketHandlers()
+  const sarahWebSocketHandlers = makeSarahRealtimeWebSocketHandlers()
+
+  const server = Runtime.serve<CloudRunWebSocketData>({
     fetch: async (incoming, bunServer): Promise<Response | undefined> => {
       const request = withForwardedHost(
         withForwardedProto(incoming),
@@ -223,6 +273,79 @@ const main = async (): Promise<void> => {
         return startResponse
       }
 
+      if (isSarahRealtimeVoiceUpgrade(request)) {
+        const routeConfig = parseSarahRealtimeVoiceRouteConfig(runtime.env)
+        const creditRate = parseSarahRealtimeBridgeCreditRate(
+          runtime.env.SARAH_REALTIME_CREDIT_MSAT_PER_MILLION_TOKENS,
+        )
+        const apiKey = runtime.env.OPENAI_API_KEY?.trim()
+        const connectionString =
+          runtime.env.KHALA_SYNC_DB?.connectionString?.trim()
+        const sessionRef = request.headers
+          .get(SARAH_REALTIME_VOICE_SESSION_HEADER)
+          ?.trim()
+        const ticket = request.headers
+          .get(SARAH_REALTIME_VOICE_TICKET_HEADER)
+          ?.trim()
+        if (
+          routeConfig === undefined ||
+          !routeConfig.enabled ||
+          creditRate === undefined ||
+          apiKey === undefined ||
+          apiKey === '' ||
+          connectionString === undefined ||
+          connectionString === '' ||
+          sessionRef === undefined ||
+          ticket === undefined
+        ) {
+          return Response.json(
+            { error: 'sarah_voice_upgrade_rejected' },
+            { status: 401, headers: { 'cache-control': 'no-store' } },
+          )
+        }
+
+        const client = await defaultMakeKhalaSyncSqlClient(connectionString)
+        const store = makeSarahRealtimeVoiceStore(client.sql)
+        try {
+          const session = await store.connect({
+            sessionRef,
+            ticketDigest: await sha256Hex(ticket),
+            nowIso: new Date().toISOString(),
+          })
+          const safetyIdentifier = createHash('sha256')
+            .update(`openagents:user:${session.ownerUserId}`)
+            .digest('hex')
+          const upgraded = bunServer.upgrade(incoming, {
+            data: makeSarahRealtimeBridgeData({
+              session,
+              apiKey,
+              safetyIdentifier,
+              creditMsatPerMillionTokens: creditRate,
+              store,
+              closeStore: client.end,
+              tasks,
+            }),
+          })
+          if (upgraded) return undefined
+          await store.settle({
+            sessionRef,
+            closeReason: 'upgrade_failed',
+            nowIso: new Date().toISOString(),
+          })
+          await client.end()
+          return Response.json(
+            { error: 'sarah_voice_upgrade_failed' },
+            { status: 500, headers: { 'cache-control': 'no-store' } },
+          )
+        } catch {
+          await client.end()
+          return Response.json(
+            { error: 'sarah_voice_upgrade_rejected' },
+            { status: 401, headers: { 'cache-control': 'no-store' } },
+          )
+        }
+      }
+
       // CFG-5 LiveHub WS bridge: Bun fetch cannot carry a WebSocket upgrade,
       // so run the route's full pre-upgrade pipeline (upgrade headers
       // stripped) and bridge the socket only on its documented 426 success
@@ -240,6 +363,7 @@ const main = async (): Promise<void> => {
         const target = liveHubConnectTarget(request, liveHub)
         const upgraded = bunServer.upgrade(incoming, {
           data: {
+            _tag: 'sync',
             bearer: target.bearer,
             clientClosed: false,
             pending: [],
@@ -297,9 +421,23 @@ const main = async (): Promise<void> => {
       }
     },
     hostname: '0.0.0.0',
-    idleTimeout: 240,
+    idleTimeout: 960,
     port,
-    websocket: makeSyncBridgeWebSocketHandlers(),
+    websocket: {
+      idleTimeout: 960,
+      open: ws =>
+        ws.data._tag === 'sync'
+          ? syncWebSocketHandlers.open(ws as never)
+          : sarahWebSocketHandlers.open(ws as never),
+      message: (ws, message) =>
+        ws.data._tag === 'sync'
+          ? syncWebSocketHandlers.message(ws as never, message)
+          : sarahWebSocketHandlers.message(ws as never, message),
+      close: (ws, code, reason) =>
+        ws.data._tag === 'sync'
+          ? syncWebSocketHandlers.close(ws as never, code, reason)
+          : sarahWebSocketHandlers.close(ws as never, code, reason),
+    },
   })
 
   // Optional in-process cron fallback (Cloud Scheduler is the primary driver).
@@ -326,7 +464,7 @@ const main = async (): Promise<void> => {
     shuttingDown = true
     log('shutdown_start', { pendingBackgroundTasks: tasks.size(), signal })
     if (cronTimer !== undefined) clearInterval(cronTimer)
-    server.stop()
+    await server.stop(true)
     await tasks.drain()
     await runtime.close()
     log('shutdown_done', {})

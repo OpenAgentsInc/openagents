@@ -1301,6 +1301,9 @@ importers:
       '@openagentsinc/atif':
         specifier: workspace:*
         version: link:../../../../packages/atif
+      '@openagentsinc/audio-contract':
+        specifier: workspace:*
+        version: link:../../../../packages/audio-contract
       '@openagentsinc/authority':
         specifier: workspace:*
         version: link:../../../../packages/authority
@@ -1406,6 +1409,9 @@ importers:
       react-dom:
         specifier: 19.2.7
         version: 19.2.7(react@19.2.7)
+      ws:
+        specifier: 8.21.1
+        version: 8.21.1
     devDependencies:
       '@asciidev/box-sdk':
         specifier: 0.0.24
@@ -1422,6 +1428,9 @@ importers:
       '@types/react-dom':
         specifier: 19.2.3
         version: 19.2.3(@types/react@19.2.17)
+      '@types/ws':
+        specifier: 8.18.1
+        version: 8.18.1
       playwright:
         specifier: ^1.61.0
         version: 1.61.1

@@ -34456,6 +34456,20 @@
       "replacement": null
     },
     {
+      "path": "docs/omega/2026-07-28-managed-sarah-realtime-voice-gateway.md",
+      "ste_issue": 9,
+      "ste_mode": "descriptive",
+      "ste_glossary_revision": "openagents-ste-glossary-v1",
+      "ste_status": "inspected",
+      "ste_reviewer": "codex/issue-9272-sarah-voice-doc-review",
+      "ste_reviewed_at": "2026-07-28T20:03:30Z",
+      "owner": "OpenAgents documentation",
+      "risk": "active",
+      "source": null,
+      "replacement": null,
+      "ste_audience": "human"
+    },
+    {
       "path": "docs/omega/README.md",
       "ste_issue": 9,
       "ste_mode": "descriptive",

@@ -81,6 +81,18 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // auth. Must be the exact wss:// service origin plus /v1/stream, with no
   // credentials, query, or fragment; malformed/missing values fail closed.
   OPENAGENTS_AUDIO_GATEWAY_URL?: string | undefined
+  // #9272: Managed Sarah Realtime voice is default-off. The service uses the
+  // platform OpenAI key only in the Cloud Run monolith. Clients receive a
+  // one-use OpenAgents ticket and never receive provider credentials.
+  SARAH_REALTIME_VOICE_ENABLED?: string | undefined
+  // Credit held before the provider socket opens. Required and positive when
+  // the feature is enabled.
+  SARAH_REALTIME_RESERVATION_MSAT?: string | undefined
+  // OpenAgents credit rate for exact provider token usage. This is an operator
+  // rate, not a claim about the provider's public price.
+  SARAH_REALTIME_CREDIT_MSAT_PER_MILLION_TOKENS?: string | undefined
+  // Whole seconds. Values outside 60..900 fail configuration validation.
+  SARAH_REALTIME_MAX_SESSION_SECONDS?: string | undefined
   ARTANIS_FLEET_OVERSEER_ENABLED?: string | undefined
   ARTANIS_SCHEDULED_RUNNER_ENABLED?: string | undefined
   // Compose-and-list marketplace MVP flag (EPIC #5510, #5515). Default OFF: the

@@ -23,6 +23,7 @@
 export const SYNC_CONNECT_PATH = '/api/sync/connect'
 
 export type SyncBridgeData = {
+  readonly _tag: 'sync'
   targetUrl: string
   bearer: string
   upstream: WebSocket | undefined
