@@ -4,6 +4,10 @@ import { describe, expect, test } from "vite-plus/test";
 import {
   AUDIO_MEDIA_MAGIC,
   AUDIO_PROTOCOL_VERSION,
+  OMEGA_NOSTR_DEVICE_LINK_CHALLENGE_PATH,
+  OMEGA_NOSTR_DEVICE_LINK_CHALLENGE_PROTOCOL_VERSION,
+  OMEGA_NOSTR_DEVICE_LINK_PATH,
+  OMEGA_NOSTR_DEVICE_LINK_PROTOCOL_VERSION,
   SARAH_VOICE_NOSTR_CHALLENGE_PROTOCOL_VERSION,
   SARAH_VOICE_PROTOCOL_VERSION,
   type VoiceIdentity,
@@ -11,10 +15,7 @@ import {
 import type { Issue31NostrSigner } from "@openagentsinc/sarah/issue31-nostr";
 
 import { SarahVoiceClient, type SarahVoiceSocket } from "../src/sarah-voice/client.ts";
-import {
-  OPENAGENTS_MOBILE_DEVICE_LINK_SCHEMA,
-  makeSarahVoiceDeviceLinkRecovery,
-} from "../src/sarah-voice/device-link.ts";
+import { makeSarahVoiceDeviceLinkRecovery } from "../src/sarah-voice/device-link.ts";
 import {
   OPENAGENTS_NATIVE_SESSION_EPOCH,
   OPENAGENTS_NATIVE_SESSION_KEY,
@@ -28,6 +29,7 @@ import type {
 const publicKeyHex = "a".repeat(64);
 const ownerRef = "user-1";
 const challenge = `challenge_${"c".repeat(32)}`;
+const deviceLinkChallenge = `device_link_${"f".repeat(32)}`;
 const accessToken = `oa_omega_${"b".repeat(43)}`;
 const canonicalAccessToken = `oa_access_${"c".repeat(32)}`;
 const canonicalRefreshToken = `oa_refresh_${"d".repeat(32)}`;
@@ -446,10 +448,18 @@ describe("managed Sarah mobile voice client", () => {
             },
           });
         }
-        if (url.endsWith("/api/mobile/auth/device-link")) {
+        if (url.endsWith(OMEGA_NOSTR_DEVICE_LINK_CHALLENGE_PATH)) {
           return Response.json({
-            schema: OPENAGENTS_MOBILE_DEVICE_LINK_SCHEMA,
-            state: "linked",
+            schema: OMEGA_NOSTR_DEVICE_LINK_CHALLENGE_PROTOCOL_VERSION,
+            challenge: deviceLinkChallenge,
+            expiresAtMs: 20_000,
+            ownerRef,
+          });
+        }
+        if (url.endsWith(OMEGA_NOSTR_DEVICE_LINK_PATH)) {
+          return Response.json({
+            schema: OMEGA_NOSTR_DEVICE_LINK_PROTOCOL_VERSION,
+            linked: true,
             ownerRef,
           });
         }
@@ -470,10 +480,15 @@ describe("managed Sarah mobile voice client", () => {
 
     await client.start();
 
+    expect(client.snapshot()).toMatchObject({
+      phase: "connecting",
+      message: null,
+    });
     expect(requests.map(({ url }) => url)).toEqual([
       "https://openagents.com/api/omega/auth/session",
       "https://openagents.com/api/mobile/auth/session",
-      "https://openagents.com/api/mobile/auth/device-link",
+      `https://openagents.com${OMEGA_NOSTR_DEVICE_LINK_CHALLENGE_PATH}`,
+      `https://openagents.com${OMEGA_NOSTR_DEVICE_LINK_PATH}`,
       "https://openagents.com/api/omega/auth/session",
       "https://openagents.com/api/omega/sarah/voice/session",
     ]);
@@ -481,23 +496,35 @@ describe("managed Sarah mobile voice client", () => {
       authorization: `Bearer ${canonicalAccessToken}`,
       "x-openagents-refresh-token": canonicalRefreshToken,
     });
-    const linkBody = String(requests[2]?.init?.body);
-    expect(JSON.parse(linkBody)).toEqual({
-      schema: OPENAGENTS_MOBILE_DEVICE_LINK_SCHEMA,
+    const challengeBody = String(requests[2]?.init?.body);
+    expect(JSON.parse(challengeBody)).toEqual({
+      schema: OMEGA_NOSTR_DEVICE_LINK_CHALLENGE_PROTOCOL_VERSION,
       pubkey: publicKeyHex,
       deviceRef: `omega-mobile-${publicKeyHex.slice(0, 24)}`,
     });
-    expect(requests[2]?.init?.headers).toMatchObject({
+    expect(requests[2]?.init?.headers).toEqual({
       authorization: `Bearer ${rotatedAccessToken}`,
       "content-type": "application/json",
-      "x-openagents-nostr-authorization": expect.stringMatching(/^Nostr /u),
+      "x-openagents-refresh-token": rotatedRefreshToken,
     });
-    const linkHeaders = requests[2]?.init?.headers as Record<string, string>;
-    const proof = JSON.parse(
-      atob(linkHeaders["x-openagents-nostr-authorization"]!.slice(6)),
-    ) as Readonly<{ tags: ReadonlyArray<ReadonlyArray<string>> }>;
+    const linkBody = String(requests[3]?.init?.body);
+    expect(JSON.parse(linkBody)).toEqual({
+      schema: OMEGA_NOSTR_DEVICE_LINK_PROTOCOL_VERSION,
+      challenge: deviceLinkChallenge,
+      ownerRef,
+      deviceRef: `omega-mobile-${publicKeyHex.slice(0, 24)}`,
+    });
+    expect(requests[3]?.init?.headers).toEqual({
+      authorization: expect.stringMatching(/^Nostr /u),
+      "content-type": "application/json",
+      "x-openagents-omega-device-ref": `omega-mobile-${publicKeyHex.slice(0, 24)}`,
+    });
+    const linkHeaders = requests[3]?.init?.headers as Record<string, string>;
+    const proof = JSON.parse(atob(linkHeaders.authorization!.slice(6))) as Readonly<{
+      tags: ReadonlyArray<ReadonlyArray<string>>;
+    }>;
     expect(proof.tags).toEqual([
-      ["u", "https://openagents.com/api/mobile/auth/device-link"],
+      ["u", `https://openagents.com${OMEGA_NOSTR_DEVICE_LINK_PATH}`],
       ["method", "POST"],
       ["payload", createHash("sha256").update(linkBody).digest("hex")],
     ]);
@@ -593,13 +620,13 @@ describe("managed Sarah mobile voice client", () => {
   test.each([
     {
       status: 403,
-      error: "device_proof_rejected",
+      error: "invalid_nostr_device_link_proof",
       message: "Sarah could not verify this device. Try again.",
       retryable: true,
     },
     {
       status: 409,
-      error: "device_link_conflict",
+      error: "nostr_identity_link_conflict",
       message: "This device is linked to another OpenAgents account.",
       retryable: false,
     },
@@ -626,6 +653,14 @@ describe("managed Sarah mobile voice client", () => {
               user: { userId: ownerRef },
             });
           }
+          if (url.endsWith(OMEGA_NOSTR_DEVICE_LINK_CHALLENGE_PATH)) {
+            return Response.json({
+              schema: OMEGA_NOSTR_DEVICE_LINK_CHALLENGE_PROTOCOL_VERSION,
+              challenge: deviceLinkChallenge,
+              expiresAtMs: 20_000,
+              ownerRef,
+            });
+          }
           return Response.json({ error }, { status });
         }) as typeof globalThis.fetch,
         createSocket: () => {
@@ -644,7 +679,8 @@ describe("managed Sarah mobile voice client", () => {
       expect(requests).toEqual([
         "https://openagents.com/api/omega/auth/session",
         "https://openagents.com/api/mobile/auth/session",
-        "https://openagents.com/api/mobile/auth/device-link",
+        `https://openagents.com${OMEGA_NOSTR_DEVICE_LINK_CHALLENGE_PATH}`,
+        `https://openagents.com${OMEGA_NOSTR_DEVICE_LINK_PATH}`,
       ]);
       expect(client.snapshot()).toMatchObject({
         phase: "error",

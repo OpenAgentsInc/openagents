@@ -1,4 +1,12 @@
 import type { Issue31NostrSigner } from "@openagentsinc/sarah/issue31-nostr";
+import {
+  OMEGA_NOSTR_DEVICE_LINK_CHALLENGE_PATH,
+  OMEGA_NOSTR_DEVICE_LINK_CHALLENGE_PROTOCOL_VERSION,
+  OMEGA_NOSTR_DEVICE_LINK_PATH,
+  OMEGA_NOSTR_DEVICE_LINK_PROTOCOL_VERSION,
+  OmegaNostrDeviceLinkChallengeResponseSchema,
+  OmegaNostrDeviceLinkResponseSchema,
+} from "@openagentsinc/audio-contract";
 import { Schema } from "effect";
 
 import {
@@ -11,10 +19,8 @@ import {
 import { encodeNip98Authorization, sha256Hex, type Sha256 } from "./protocol";
 
 export const OPENAGENTS_MOBILE_AUTH_SESSION_PATH = "/api/mobile/auth/session";
-export const OPENAGENTS_MOBILE_DEVICE_LINK_PATH = "/api/mobile/auth/device-link";
-export const OPENAGENTS_MOBILE_DEVICE_LINK_SCHEMA = "openagents.mobile.device-link.v1";
 export const OPENAGENTS_NATIVE_REFRESH_HEADER = "x-openagents-refresh-token";
-export const OPENAGENTS_NOSTR_AUTHORIZATION_HEADER = "x-openagents-nostr-authorization";
+export const OPENAGENTS_OMEGA_DEVICE_REF_HEADER = "x-openagents-omega-device-ref";
 
 const RotatedTokensSchema = Schema.Struct({
   access: Schema.String,
@@ -26,12 +32,6 @@ const VerifiedNativeSessionSchema = Schema.Struct({
   authenticated: Schema.Literal(true),
   user: Schema.Struct({ userId: Schema.String }),
   tokens: Schema.optional(RotatedTokensSchema),
-});
-
-const DeviceLinkResponseSchema = Schema.Struct({
-  schema: Schema.Literal(OPENAGENTS_MOBILE_DEVICE_LINK_SCHEMA),
-  state: Schema.Union([Schema.Literal("linked"), Schema.Literal("already_linked")]),
-  ownerRef: Schema.String,
 });
 
 export type SarahVoiceDeviceLinkFailure = Readonly<{
@@ -178,12 +178,69 @@ export const makeSarahVoiceDeviceLinkRecovery =
       credential = rotated;
     }
 
-    const body = JSON.stringify({
-      schema: OPENAGENTS_MOBILE_DEVICE_LINK_SCHEMA,
+    const challengeBody = JSON.stringify({
+      schema: OMEGA_NOSTR_DEVICE_LINK_CHALLENGE_PROTOCOL_VERSION,
       pubkey: input.publicKeyHex,
       deviceRef: input.deviceRef,
     });
-    const url = `${input.baseUrl}${OPENAGENTS_MOBILE_DEVICE_LINK_PATH}`;
+    const challengeUrl = `${input.baseUrl}${OMEGA_NOSTR_DEVICE_LINK_CHALLENGE_PATH}`;
+    let challengeResponse: Response;
+    try {
+      challengeResponse = await input.fetch(challengeUrl, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${credential.accessToken}`,
+          "content-type": "application/json",
+          [OPENAGENTS_NATIVE_REFRESH_HEADER]: credential.refreshToken,
+        },
+        body: challengeBody,
+      });
+    } catch {
+      return failure(unavailable());
+    }
+
+    if (!challengeResponse.ok) {
+      const error = await readError(challengeResponse);
+      if (challengeResponse.status === 401 || error === "unauthorized") {
+        try {
+          await clearNativeSessionCredential(store);
+        } catch {
+          return failure(unavailable());
+        }
+        return failure(signedOut());
+      }
+      if (challengeResponse.status === 429 || error === "nostr_device_link_rate_limited") {
+        return failure({
+          message: "Sarah sign-in is busy. Wait a moment, then try again.",
+          retryable: true,
+        });
+      }
+      return failure(unavailable());
+    }
+
+    let challenge: typeof OmegaNostrDeviceLinkChallengeResponseSchema.Type;
+    try {
+      challenge = Schema.decodeUnknownSync(OmegaNostrDeviceLinkChallengeResponseSchema)(
+        await challengeResponse.json(),
+      );
+      if (
+        challenge.ownerRef !== ownerRef ||
+        challenge.challenge.trim() === "" ||
+        challenge.expiresAtMs <= input.now()
+      ) {
+        return failure(unavailable());
+      }
+    } catch {
+      return failure(unavailable());
+    }
+
+    const body = JSON.stringify({
+      schema: OMEGA_NOSTR_DEVICE_LINK_PROTOCOL_VERSION,
+      challenge: challenge.challenge,
+      ownerRef,
+      deviceRef: input.deviceRef,
+    });
+    const url = `${input.baseUrl}${OMEGA_NOSTR_DEVICE_LINK_PATH}`;
     let nostrAuthorization: string;
     try {
       const signed = await input.signer.signEvent({
@@ -206,9 +263,9 @@ export const makeSarahVoiceDeviceLinkRecovery =
       linkResponse = await input.fetch(url, {
         method: "POST",
         headers: {
-          authorization: `Bearer ${credential.accessToken}`,
+          authorization: nostrAuthorization,
           "content-type": "application/json",
-          [OPENAGENTS_NOSTR_AUTHORIZATION_HEADER]: nostrAuthorization,
+          [OPENAGENTS_OMEGA_DEVICE_REF_HEADER]: input.deviceRef,
         },
         body,
       });
@@ -218,24 +275,20 @@ export const makeSarahVoiceDeviceLinkRecovery =
 
     if (!linkResponse.ok) {
       const error = await readError(linkResponse);
-      if (linkResponse.status === 401 || error === "mobile_session_required") {
-        try {
-          await clearNativeSessionCredential(store);
-        } catch {
-          return failure(unavailable());
-        }
-        return failure(signedOut());
-      }
-      if (linkResponse.status === 403 || error === "device_proof_rejected") {
+      if (linkResponse.status === 401 || linkResponse.status === 403) {
         return failure(invalidProof());
       }
-      if (error === "device_link_conflict") return failure(conflict());
-      if (error === "device_proof_replayed") return failure(invalidProof());
+      if (error === "nostr_identity_link_conflict") return failure(conflict());
+      if (error === "nostr_device_link_replayed" || error === "omega_nostr_proof_replayed") {
+        return failure(invalidProof());
+      }
       return failure(unavailable());
     }
 
     try {
-      const linked = Schema.decodeUnknownSync(DeviceLinkResponseSchema)(await linkResponse.json());
+      const linked = Schema.decodeUnknownSync(OmegaNostrDeviceLinkResponseSchema)(
+        await linkResponse.json(),
+      );
       return linked.ownerRef === ownerRef ? { _tag: "Success", ownerRef } : failure(unavailable());
     } catch {
       return failure(unavailable());
