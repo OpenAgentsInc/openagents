@@ -406,7 +406,7 @@
     },
     {
       "path": "FASTFOLLOW.md",
-      "sha256": "ba1f8967c4ae48a03ae9ca51651fe779731e880e1c43448dc92d8b16607882cd",
+      "sha256": "ae883d664aaab097f225bce73245f92b06759253d65f9adab1bee582deff15b6",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -45720,6 +45720,28 @@
       }
     },
     {
+      "path": "docs/teardowns/2026-07-27-mesh-llm-buzz-omega-teardown.md",
+      "sha256": "eebc9ffed1c97a0cc031c75b416413c05be36fd1f1e7eb9c0dc5dfa8a4ee1ecb",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/teardowns/2026-07-27-omega-t3-code-desktop-mobile-gap-analysis.md",
       "sha256": "0bf518f2b956d1e17544ee22e12e573b5babc472d22d09a194de3c2a847c2d59",
       "reason": "Immutable historical or evidence source data",
@@ -45767,7 +45789,7 @@
     },
     {
       "path": "docs/teardowns/README.md",
-      "sha256": "1901302c21b65534372d5f1afdcfec6f32323acbf53bee02d941c6194a40bcec",
+      "sha256": "3b079e2b1b2fe0396dfdc6e5d962605227b5a035929cb694a0f864235fd96468",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

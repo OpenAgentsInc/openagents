@@ -676,6 +676,43 @@ sequence. The ordered Amp `initial_program` stays unchanged.
     ]
   },
   {
+    "id": "mesh_llm.mesh_llm",
+    "title": "Mesh LLM",
+    "role": "upstream",
+    "access": "public_source",
+    "canonical_ref": "https://github.com/Mesh-LLM/mesh-llm",
+    "tracking_policy": "pinned_each_run",
+    "teardown_refs": [
+      "docs/teardowns/2026-07-27-mesh-llm-buzz-omega-teardown.md"
+    ],
+    "lessons": [
+      {
+        "id": "openai_inference_boundary",
+        "kind": "architecture",
+        "summary": "Treat a distributed model mesh as one exact OpenAI-compatible provider while the target keeps agent, tool, authority, containment, and receipt ownership.",
+        "stance": "adapt_with_stronger_boundaries"
+      },
+      {
+        "id": "identity_bound_private_mesh",
+        "kind": "security",
+        "summary": "Bind private peer admission and signed endpoint material to target-owned enrolled identity, and keep discovery, admission, routing, and workload authority separate.",
+        "stance": "adapt_with_stronger_boundaries"
+      },
+      {
+        "id": "embedded_sdk_lifecycle",
+        "kind": "reliability",
+        "summary": "Prefer an external generation-fenced provider process until the embedded SDK proves deterministic startup, shutdown, port release, native runtime compatibility, and replacement.",
+        "stance": "adapt_with_stronger_boundaries"
+      },
+      {
+        "id": "compute_contribution_truth",
+        "kind": "economics",
+        "summary": "Reject session counters, release provenance, endpoint reachability, and routed output as compute contribution, accepted outcome, or settlement receipts.",
+        "stance": "reject"
+      }
+    ]
+  },
+  {
     "id": "getpaseo.paseo",
     "title": "Paseo",
     "role": "upstream",
