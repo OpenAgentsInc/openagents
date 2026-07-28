@@ -45698,6 +45698,18 @@
       }
     },
     {
+      "path": "docs/teardowns/2026-07-27-omega-t3-code-desktop-mobile-gap-analysis.md",
+      "sha256": "0e56b63001253a37d28f6eef3d972b604436d632d1a3e8aca5c8d8a847551777",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null,
+        "ste_status": "source-data"
+      }
+    },
+    {
       "path": "docs/teardowns/2026-07-27-tokenrelay-teardown.md",
       "sha256": "73788ab07d599a6cf9890f4eaba1f4f5331296f717b3ea250e23a3bf18791974",
       "reason": "Final review of a converted document",
