@@ -396,14 +396,16 @@ const runVoiceSocket = async (
     }
 
     const maybeInterrupt = (): void => {
-      if (
-        !interruptSent &&
-        userTranscriptFinal &&
-        assistantTranscriptFinal &&
-        audioBytes > 0
-      ) {
+      if (!interruptSent && userTranscriptFinal && audioBytes > 0) {
         interruptSent = true
         sendControl({ _tag: 'interrupt' })
+      }
+    }
+
+    const maybeClose = (): void => {
+      if (!closeSent && interruptAck && assistantTranscriptFinal) {
+        closeSent = true
+        sendControl({ _tag: 'close', reason: 'user_stop' })
       }
     }
 
@@ -456,12 +458,10 @@ const runVoiceSocket = async (
             assistantTranscriptFinal = true
           }
           maybeInterrupt()
+          maybeClose()
         } else if (control._tag === 'interrupt_ack') {
           interruptAck = true
-          if (!closeSent) {
-            closeSent = true
-            sendControl({ _tag: 'close', reason: 'user_stop' })
-          }
+          maybeClose()
         } else if (control._tag === 'error') {
           throw new Error(`The gateway returned ${control.code}`)
         }
