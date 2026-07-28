@@ -133,7 +133,12 @@ OPENAUTH_CLIENT_ID: "openagents-web"
 OPENAUTH_ISSUER_URL: "https://auth.openagents.com"
 PUBLIC_NOSTR_CHAT_RELAY_SELF_PUBKEY: "e841147f262799821bbaa2930fcca982a575458f0e043e064a26ed8aba2046ed"
 SARAH_NOSTR_OWNER_PUBKEY: "bcf86577b45042c960c99fe4ac1380a3ef0565ccbdd5c81e3f20f0919fe4fd14"
-SARAH_REALTIME_VOICE_ENABLED: "false"
+# Managed Sarah Realtime voice (#9272). Matches staging credit hold + rate so
+# mobile/desktop clients can reserve sessions; off-by-default until this flip.
+SARAH_REALTIME_CREDIT_MSAT_PER_MILLION_TOKENS: "64000000"
+SARAH_REALTIME_MAX_SESSION_SECONDS: "300"
+SARAH_REALTIME_RESERVATION_MSAT: "256000"
+SARAH_REALTIME_VOICE_ENABLED: "true"
 WEB_ANALYTICS_ENABLED: "true"
 PGHOST: "/cloudsql/openagentsgemini:us-central1:khala-sync-pg"
 PGUSER: "khala_app"
