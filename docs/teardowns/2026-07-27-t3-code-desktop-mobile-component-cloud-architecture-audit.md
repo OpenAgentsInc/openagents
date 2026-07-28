@@ -4,6 +4,9 @@ Status: Read-only source audit and Omega replication reference
 
 T3 Code source commit: `a148e08197fc38b24e59c10c7cd5ba06dd182dab`
 
+Git/worktree and reconnect addendum source commit:
+`476d69cd1d5d89b4aad77df8fc01c71e34af930c`
+
 OpenAgents source commit at study start: `dedc1e85682e8648f6207a630b64fc052f913b35`
 
 ## Purpose
@@ -950,6 +953,45 @@ They do not all have durable cursors or replay after a restart. The focused
 traces the exact commit, snapshot, replay, buffering, deduplication, outbox,
 reactor, and recovery boundaries.
 
+### Git, worktree, and reconnect component boundaries
+
+**Observed**
+
+The visible Git components sit above several independently consistent
+subsystems:
+
+| Component or service                     | Responsibility                                         | Safety boundary                                   |
+| ---------------------------------------- | ------------------------------------------------------ | ------------------------------------------------- |
+| `GitVcsDriverCore`                       | Raw branch, worktree, pull, and push commands          | Git process result, not orchestration transaction |
+| `GitManager` and `GitWorkflowService`    | Pull-request setup and stacked Git workflows           | Sequential steps with partial outcomes            |
+| bootstrap path in `ws.ts`                | Thread, worktree, setup, and first turn                | Imperative saga without durable saga state        |
+| `CheckpointStore` and checkpoint reactor | Hidden refs, capture, restore, conversation rewind     | Git and SQLite cannot commit together             |
+| desktop `useThreadActions`               | Thread delete and optional worktree cleanup            | Deletes thread before best-effort forced cleanup  |
+| mobile Git action hooks                  | Typed remote Git mutations and progress                | Live-only, no offline queue                       |
+| `EnvironmentSupervisor`                  | Session retry, generation, foreground liveness         | Transport recovery                                |
+| shell and thread state atoms             | Cache, replay cursor, completion marker                | Projection recovery                               |
+| mobile thread outbox                     | Durable message admission                              | Only message and task creation                    |
+| terminal attachment                      | Persisted snapshot, buffered overlap, then live output | Output recovers, control remains live-only        |
+
+The connection supervisor retries transient failures indefinitely with
+one-to-16-second backoff, 15-second setup and probe timeouts, and a 30-second
+stable-period reset. Web visibility and React Native `AppState` both trigger
+foreground repair. Shell and detail subscriptions resubscribe independently
+from the socket probe. [source] [test]
+
+Mobile always writes an existing-thread message to its file outbox before the
+composer clears. Desktop instead sends directly and restores a persisted draft
+after known failure. Therefore “shared runtime” does not mean identical command
+durability. Approval, interrupt, Git, terminal, and preview commands are
+live-only on both clients. [source]
+
+The most important implementation warning is that command receipts cover the
+final orchestration dispatch, not every Git side effect that precedes it.
+A retry can therefore be duplicate-safe at the database layer while still
+leaving an orphan branch, worktree, setup process, or partial remote Git
+workflow. The focused consistency audit defines the proposed durable worktree
+registry, Git operation receipt, rewind saga, and offline operation classes.
+
 ## T3 Connect product boundary
 
 ### What T3 Connect is
@@ -1724,25 +1766,32 @@ typed command. Async work should remain in an entity-owned task.
 
 Desktop implementation order:
 
-1. Build one lifecycle-aware `AgentInboxPanel`.
-2. Add stable active, snoozed, and settled ordering.
-3. Build a semantic transcript row model.
-4. Add compact and expanded tool-call rows.
-5. Add structured composer context.
-6. Attach native editor, terminal, diff, file, and preview items.
-7. Add branch and worktree placement controls.
-8. Add connection settings and remote environments.
+1. Define command fingerprint, reconnect, offline, and worktree lifecycle laws.
+2. Build one lifecycle-aware `AgentInboxPanel`.
+3. Add stable active, snoozed, and settled ordering.
+4. Build a semantic transcript row model.
+5. Add compact and expanded tool-call rows.
+6. Add structured composer context.
+7. Attach native editor, terminal, diff, file, and preview items.
+8. Add branch and worktree placement controls backed by the managed-worktree
+   registry.
+9. Add connection settings and remote environments.
 
 Mobile parity order:
 
 1. Keep the existing React Native application.
-2. Share environment and thread semantics with desktop.
-3. Implement adaptive sidebar and detail panes.
-4. Use a virtual bottom-anchored feed.
-5. Implement semantic work-log rows.
-6. Implement collapsed and expanded composer states.
-7. Add native terminal and diff modules only when measurements require them.
-8. Add complete accessibility metadata before visual polish.
+2. Share connection, cache-age, environment, and thread semantics with desktop.
+3. Add a signed durable intent outbox with stable full-payload fingerprints.
+4. Implement adaptive sidebar and detail panes.
+5. Use a virtual bottom-anchored feed.
+6. Implement semantic work-log rows.
+7. Implement collapsed and expanded composer states.
+8. Add native terminal and diff modules only when measurements require them.
+9. Add complete accessibility metadata before visual polish.
+
+Do not expose force worktree cleanup, checkpoint restore, or another
+destructive Git action on mobile until the server owns provenance checks,
+impact preview, a durable operation record, and restart recovery.
 
 ### Cloud recommendation
 

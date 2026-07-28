@@ -29,8 +29,10 @@ The report answers these questions:
 4. How does a client move from a snapshot to live data?
 5. Which duplicate and gap controls exist?
 6. Which side effects can be lost?
-7. Which parts should Omega use?
-8. Which parts must OpenAgents Cloud make stronger?
+7. How safe are worktree creation, Git actions, checkpoint restore, and cleanup?
+8. What survives offline use, connection loss, foreground wakeup, and restart?
+9. Which parts should Omega use?
+10. Which parts must OpenAgents Cloud make stronger?
 
 ## Evidence rules
 
@@ -71,13 +73,18 @@ Most reactor failures log the error and drop the work item.
 
 This creates two different consistency classes.
 
-| Class                     | Current T3 result                    |
-| ------------------------- | ------------------------------------ |
-| Database state            | Strong single-server atomic commit   |
-| Client snapshot handoff   | Gap-resistant and duplicate-tolerant |
-| Provider execution        | Best-effort hot delivery             |
-| Git and file side effects | Outside the database transaction     |
-| Multi-node writes         | Not supported by the current design  |
+| Class                     | Current T3 result                                      |
+| ------------------------- | ------------------------------------------------------ |
+| Database state            | Strong single-server atomic commit                     |
+| Client snapshot handoff   | Gap-resistant and duplicate-tolerant                   |
+| Connection recovery       | Generation-switched and indefinitely retried           |
+| Mobile message admission  | Durable client outbox with stable command IDs          |
+| Desktop message admission | Direct unary RPC with draft restoration, not an outbox |
+| Provider execution        | Best-effort hot delivery                               |
+| Git and file side effects | Outside the database transaction                       |
+| Worktree lifecycle        | Multi-step saga without a durable lifecycle record     |
+| Checkpoint restore        | Destructive cross-store saga without atomic completion |
+| Multi-node writes         | Not supported by the current design                    |
 
 Omega should use the projection protocol and direct environment authority.
 Omega should not copy the best-effort reactor model.
@@ -913,6 +920,118 @@ The thread reducer:
 Forward-unknown behavior returns unchanged state.
 The strict wire schema still rejects unknown event union members first.
 
+## Offline and reconnect architecture
+
+### Environment connection supervisor
+
+**Observed**
+
+Each environment has a connection supervisor that owns desired connectivity,
+network state, the current prepared connection, the current RPC session, and a
+monotonic session generation.
+
+Its normal transient retry delays are:
+
+```text
+1 s → 2 s → 4 s → 8 s → 16 s → 16 s …
+```
+
+Transient failures retry indefinitely.
+Connection establishment and foreground liveness probes each have a 15-second
+timeout.
+The failure count resets only after a connection remains stable for 30
+seconds.
+This prevents a flapping connection from repeatedly returning to a one-second
+retry loop.
+
+The supervisor treats network-offline state differently from a server failure.
+Going offline releases the active session and waits for an online signal.
+Going online creates a new session generation.
+Authentication, configuration, permission, and unsupported-client failures
+remain blocked until an explicit retry or relevant credential change.
+
+### Foreground recovery
+
+**Observed and tested**
+
+The web client watches document visibility.
+The React Native client watches `AppState`.
+When the application becomes active, it probes the current connection.
+A failed or timed-out probe replaces the session.
+
+Foreground activation also asks shell and thread subscriptions to resubscribe
+from their latest applied sequence even when the socket probe succeeds.
+This repairs a stale domain subscription that still sits on a healthy transport.
+
+Connection generation and domain sequence solve different problems:
+
+| Control                | Prevents or repairs                                      |
+| ---------------------- | -------------------------------------------------------- |
+| Session generation     | A stale socket continuing as the active transport        |
+| Shell sequence         | Duplicate or missing shell projection events             |
+| Thread sequence        | Duplicate or missing detail projection events            |
+| Completion marker      | Claiming live state before replay has caught up          |
+| Foreground resubscribe | A silently stale subscription on a reachable RPC session |
+
+### RPC retry boundary
+
+**Observed**
+
+The connection supervisor retries sessions.
+Individual unary RPC commands do not automatically retry.
+The RPC session sets transient command retry to false and gives a command no
+additional schedule recurrence.
+
+This is an important safety choice.
+The runtime does not blindly replay Git, terminal, approval, or thread
+mutations after an ambiguous transport failure.
+It also means each product surface needs an explicit command-delivery policy.
+
+### Subscription replacement
+
+**Observed**
+
+Environment subscriptions switch to the newest RPC session generation.
+A transport failure waits for the next session.
+An expected domain-stream failure can retry the same healthy session after a
+short delay.
+
+Terminal attachment follows the same replacement model.
+Every attachment begins with a server snapshot containing persisted terminal
+history and an event sequence.
+The server subscribes first, buffers concurrent events, reads the snapshot,
+drops events already covered by that snapshot, and then releases live output.
+The client bounds its displayed terminal buffer to 512 KiB.
+Terminal input, resize, clear, restart, and close remain live-only commands.
+
+### Offline cache matrix
+
+**Observed**
+
+T3 keeps enough state to orient the user offline, but it does not claim that
+every work surface is usable.
+
+| Data or action                   | Offline behavior                                                     |
+| -------------------------------- | -------------------------------------------------------------------- |
+| Shell projects and thread rows   | Persisted snapshot renders as `cached`                               |
+| Settled thread detail            | Persisted snapshot renders as `cached`                               |
+| Running partial transcript       | Kept in memory during a disconnect, not persisted across app restart |
+| Provider and model configuration | Cached so a mobile queued task can retain its requested settings     |
+| Git branch list                  | Only the complete unfiltered first 100 rows can be cached            |
+| Git status, diffs, and files     | Live authority is required                                           |
+| Terminal history                 | Recovered from the environment on attach, not owned by the phone     |
+| Terminal input and lifecycle     | Live authority is required                                           |
+| Preview and browser control      | Live authority is required                                           |
+| Existing-thread mobile message   | Written to the durable mobile outbox                                 |
+| Desktop message                  | Sent directly and restored to the draft on a known failure           |
+| Approval, interrupt, and Git     | Live-only mutation                                                   |
+
+The branch cache deliberately excludes filtered or paginated results.
+Presenting a partial filtered list as a complete offline branch set would be
+unsafe.
+When a connection exists, the live query suppresses the cached answer and
+revalidates every five seconds.
+
 ## Mobile offline outbox
 
 ### Durable queue
@@ -940,6 +1059,17 @@ Each queued item contains:
 The manager serializes all storage mutations.
 It writes the file before it changes atom state.
 An update cannot restore an item that delivery removed.
+
+Existing-thread messages always use the outbox, including while online.
+The composer clears only after the queue write succeeds.
+This gives the common send path one admission rule instead of a separate
+online fast path.
+
+New-task creation is different.
+An offline new task queues.
+An online new task sends directly and retains the draft when the request fails.
+That split creates a different ambiguous-response behavior for online task
+creation.
 
 ### Delivery gate
 
@@ -969,6 +1099,14 @@ It derives stable setting command IDs:
 This combines client at-least-once delivery with server command receipts.
 An uncertain response does not create a second accepted command.
 
+The guarantee covers only payload parts that are actually persisted.
+A queued worktree task does not persist its generated temporary worktree
+branch.
+The drain can generate a new `t3code/<random>` branch for each delivery
+attempt while reusing the same final command ID.
+The server receipt has no payload fingerprint, so it cannot reject that
+semantic mismatch.
+
 ### Retry policy
 
 Transport failures retry with exponential delay.
@@ -989,6 +1127,37 @@ The queued command itself remains durable.
 
 The outbox provides durable command delivery.
 It does not make provider execution durable after command admission.
+
+The storage file is written directly.
+The inspected implementation does not use a temporary file, atomic rename, or
+an explicit filesystem sync.
+A corrupt queue file is logged and ignored rather than quarantined or removed.
+That item is therefore unavailable for delivery and can produce the same
+warning on later loads.
+
+Only message and task creation use this durable queue.
+Approval decisions, interrupts, Git actions, terminal input, and most settings
+mutations remain live-only.
+
+### Desktop send and uncertain outcomes
+
+**Observed**
+
+Desktop persists composer drafts in local storage and flushes them on a short
+debounce and before unload.
+It sends turn commands directly.
+If a request fails, it restores the submitted text and attachments only when
+the user has not already typed replacement content.
+
+Draft restoration protects user text.
+It is not command idempotency.
+A manual retry creates new message and command IDs.
+A lost response after server commit can therefore create a second user message
+or a second new task.
+
+Thread setting updates, title updates, worktree bootstrap, and turn start are
+also separate calls.
+An earlier call can succeed before a later call fails.
 
 ## Provider and side-effect architecture
 
@@ -1179,56 +1348,277 @@ The current attachment materializer only preserves attachment references.
 
 ### Hidden Git refs
 
-Checkpoint refs live in the repository.
+Checkpoint refs use this namespace:
+
+```text
+refs/t3/checkpoints/<base64url-thread-id>/turn/<turn-number>
+```
+
+The refs live in the repository common Git directory.
+They do not appear in normal branch history.
 Checkpoint metadata lives in SQLite projections.
-These two stores cannot commit atomically.
+The two stores cannot commit atomically.
 
 The code detects missing checkpoints.
 It can project a `missing` or `error` status.
 This is honest state.
 It is not transactional consistency.
 
-### Bootstrap worktree flow
+### Checkpoint capture
+
+**Observed**
+
+Capture uses a temporary Git index in the common Git directory.
+It reads `HEAD` when one exists, stages tracked and untracked nonignored files
+into the temporary index, writes a tree, creates a parentless checkpoint
+commit, and updates the hidden ref.
+The temporary index is deleted afterward.
+
+This is safer than staging into the user's index.
+Ignored files are not captured.
+The operation has no workspace write lock, so concurrent agent or user writes
+can produce a snapshot assembled across more than one filesystem instant.
+
+The hidden-ref update and the SQLite checkpoint result are separate.
+A process stop can leave a ref without projected metadata or metadata whose ref
+never committed.
+
+### Checkpoint restore
+
+**Observed**
+
+Restore performs this destructive sequence:
+
+1. Restore checkpoint content into the worktree and index.
+2. Run `git clean -fd -- .`.
+3. Reset the index to `HEAD` when a head exists.
+4. Refresh workspace state.
+5. Roll the provider conversation back.
+6. Delete newer checkpoint refs.
+7. Dispatch the orchestration completion command.
+
+The clean removes untracked nonignored files.
+Ignored files remain.
+The final reset means the restored content is present but the prior staged
+selection is not restored.
+
+The desktop confirmation warns that newer messages and turn diffs will be
+discarded.
+It does not explicitly say that untracked worktree files can be deleted.
+The UI blocks revert while a turn is active, connecting, or offline.
+That guard is not a server invariant.
+Another client can still submit the typed command.
+
+The restore reactor is hot-only.
+A process stop after the intent event can lose the action.
+A process stop after filesystem restore but before provider rollback or the
+completion event leaves split truth.
+Deleting later refs before durable completion also reduces recovery options.
+
+### Worktree naming and placement
+
+**Observed**
+
+The default linked-worktree path is derived from:
+
+```text
+<configured-worktrees-directory>/<repository-basename>/<branch-with-slashes-replaced>
+```
+
+New feature names are sanitized and limited.
+Temporary task branches use `t3code/<eight-random-hex>`.
+Git itself rejects a branch already checked out in another worktree and rejects
+an occupied conflicting path.
+
+The server RPC also accepts a caller-supplied worktree path.
+The inspected validation requires only a nonempty string.
+It does not prove that the path is below the configured worktree directory.
+The removal RPC similarly accepts a path and an optional force flag.
+Git verifies that the target is a registered worktree, but an authorized
+client can ask to force-remove any registered linked worktree in that
+repository.
+
+Default placement can collide when different repositories share the same
+basename and sanitized branch.
+Git normally fails the second creation instead of overwriting the first.
+The user still receives a placement failure from a naming scheme that lacks a
+repository identity component.
+
+### Bootstrap worktree saga
 
 **Observed**
 
 A bootstrapped turn start can perform this sequence:
 
 1. Create a thread command.
-2. Fetch Git state.
-3. Create a worktree.
-4. Update thread metadata.
-5. Start a setup script.
-6. Dispatch the final turn-start command.
+2. Optionally fetch `origin`.
+3. Optionally resolve the chosen remote-tracking ref to the exact fetched
+   commit.
+4. Create a branch and worktree.
+5. Update thread metadata with branch and path.
+6. Refresh Git status.
+7. Run the project setup script in a terminal.
+8. Dispatch the final turn-start command.
 
-This workflow is outside one orchestration transaction.
-On failure, it can delete a newly created thread.
-The cleanup is best effort.
+The `startFromOrigin` path is a useful stale-base protection.
+It fetches first and creates the branch from the resolved remote commit rather
+than assuming the local tracking ref is current.
 
-The workflow can leave a created worktree or setup process.
-It is a saga without a durable saga record.
+The broader workflow remains outside one orchestration transaction.
+The worktree exists before thread metadata records it.
+A process stop at that point leaves an orphan worktree and branch.
+The server has no durable provisioning record to discover and resume.
+
+On a non-interrupt failure, bootstrap best-effort deletes a newly created
+thread.
+It does not remove a worktree that was already created.
+It does not durably track a setup process for later compensation.
+An interrupted bootstrap skips even that thread cleanup.
+
+```mermaid
+flowchart LR
+    A["Create thread event"] --> B["Fetch and resolve base"]
+    B --> C["git worktree add"]
+    C --> D["Persist branch and path metadata"]
+    D --> E["Run setup terminal"]
+    E --> F["Start provider turn"]
+    C -. "process stop" .-> G["Unowned branch and worktree"]
+    E -. "failure" .-> H["Best-effort thread delete"]
+    H -. "no compensation" .-> G
+```
+
+### Pull-request worktrees
+
+**Observed and tested**
+
+Pull-request preparation is more defensive than ordinary task bootstrap.
+In worktree mode it:
+
+- canonicalizes the repository root and candidate path
+- reuses an existing dedicated worktree for the pull-request branch
+- refuses when the pull-request branch is checked out in the main repository
+- distinguishes fork and main-repository branch collisions
+- configures upstream tracking
+- runs setup only for a newly created worktree
+
+Tests cover main-repository protection, existing-worktree reuse, fork
+upstreams, and setup failure.
+A setup failure is logged and does not fail preparation.
+
+Local checkout mode invokes the provider checkout path with force enabled.
+The exact consequences depend on the provider implementation.
+The source-level contract is destructive and does not offer the same dedicated
+worktree isolation.
+
+### Thread deletion and worktree cleanup
+
+**Observed**
+
+Desktop checks whether another visible thread uses the exact same worktree path.
+When it finds only one, it can ask whether to remove the worktree too.
+It then:
+
+1. stops the provider session
+2. closes the thread terminal
+3. deletes the thread
+4. clears local UI and draft state
+5. optionally force-removes the worktree
+6. refreshes Git state
+
+The thread deletion commits before the worktree removal.
+If removal fails, the thread remains deleted and the user gets a cleanup
+failure notice.
+There is no durable cleanup job or retry record.
+
+The shared-path check uses exact path strings rather than canonical repository
+identity and canonical filesystem paths.
+Archived or non-main-store deletion paths can bypass this prompt.
+The server-side thread deletion reactor stops sessions and terminals but does
+not own worktree cleanup.
+Mobile does not expose the same worktree cleanup decision.
+
+### Git commit and branch action safety
+
+**Observed**
+
+Pull and push defaults are conservative:
+
+- pull requires a branch and upstream
+- pull uses `--ff-only`
+- push does not force
+- push names an explicit refspec
+- a missing upstream is set explicitly
+- detached-head and missing-remote states are rejected
+
+The selected-file commit path is less safe.
+It runs a plain `git reset` before staging the selected path set.
+That clears the user's existing staged selection.
+The reset failure is swallowed.
+The action then stages selected literal paths with `git add -A`.
+
+There is no index snapshot and restore around commit-message generation,
+hooks, interruption, or commit failure.
+A failed action can therefore leave a changed index.
+Creating a feature branch switches branches before the commit.
+A later failure does not switch back.
+
+The combined branch, commit, push, and pull-request action is sequential rather
+than atomic:
+
+```text
+create or switch branch → stage and commit → push → open pull request
+```
+
+Each successful step remains after a later failure.
+A push followed by pull-request API failure leaves the remote branch.
+Many manual retries converge naturally, but the action has no durable receipt,
+payload fingerprint, or resumable step record.
+
+### Git safety matrix
+
+| Operation                     | Present protection                              | Residual failure or loss mode                                  |
+| ----------------------------- | ----------------------------------------------- | -------------------------------------------------------------- |
+| Create task worktree          | Git path and branch collision checks            | Caller path is not confined, crash can orphan branch/worktree  |
+| Start from remote             | Fetch plus exact remote commit resolution       | Later saga steps are not durable                               |
+| Prepare pull-request worktree | Canonicalization, reuse, branch-location checks | Setup failure is nonfatal, local force checkout is destructive |
+| Delete linked worktree        | Git registration check and user prompt          | Force is allowed, cleanup follows thread deletion              |
+| Pull                          | Upstream required and fast-forward only         | Working-tree race remains                                      |
+| Push                          | Explicit nonforce refspec                       | Remote branch remains if later pull-request creation fails     |
+| Selected-file commit          | Literal pathspec and explicit selected set      | Existing staged selection is reset and not restored            |
+| Checkpoint capture            | Temporary index and hidden ref                  | No write lock, ref and database are not atomic                 |
+| Checkpoint restore            | UI confirmation and active-turn UI guard        | Deletes untracked files, cross-store partial completion        |
+| Terminal setup script         | Scoped to the new worktree terminal             | No durable setup lease or compensation record                  |
 
 ## Exact guarantee matrix
 
-| Boundary                   | Delivery or consistency class | Main control                  | Important limit                   |
-| -------------------------- | ----------------------------- | ----------------------------- | --------------------------------- |
-| One command in one process | Serial                        | Single worker queue           | Queue is unbounded and volatile   |
-| Events in one command      | Atomic                        | Outer SQLite transaction      | Single writer only                |
-| Events and SQL projections | Atomic                        | Same transaction              | File effects stay outside         |
-| Accepted command retry     | Duplicate-safe                | Receipt primary key           | No payload fingerprint            |
-| Rejected command retry     | Best effort                   | Rejected receipt              | Receipt write can fail silently   |
-| Projection restart         | Replayable                    | Per-projector cursor          | Strict old-event decode can block |
-| Shell snapshot read        | Transactional                 | One SQL read transaction      | Required cursor set is incomplete |
-| Snapshot-to-live handoff   | Gap-resistant                 | Attach first, then snapshot   | Buffers are unbounded             |
-| Replay overlap             | Duplicate-tolerant            | Client sequence check         | Assumes ordered sequence          |
-| Shell resume               | Bounded                       | 1,000-event threshold         | Dropped refetch can strand state  |
-| Thread resume              | Unbounded replay              | Global event scan             | No captured upper head            |
-| Mobile command delivery    | At least once                 | Durable outbox and stable IDs | Provider effect still best effort |
-| Provider intent handling   | Best effort                   | Hot reactor                   | No durable cursor or outbox       |
-| Provider runtime ingestion | Best effort                   | Hot provider stream           | Randomized derived command IDs    |
-| Checkpoint files           | Eventual                      | Hidden refs and status events | No database atomicity             |
-| Terminal cleanup           | Best effort                   | Reactor                       | No restart replay                 |
-| T3 Connect awareness       | Snapshot plus hot updates     | Startup snapshot              | No durable publish outbox         |
+| Boundary                   | Delivery or consistency class | Main control                   | Important limit                     |
+| -------------------------- | ----------------------------- | ------------------------------ | ----------------------------------- |
+| One command in one process | Serial                        | Single worker queue            | Queue is unbounded and volatile     |
+| Events in one command      | Atomic                        | Outer SQLite transaction       | Single writer only                  |
+| Events and SQL projections | Atomic                        | Same transaction               | File effects stay outside           |
+| Accepted command retry     | Duplicate-safe                | Receipt primary key            | No payload fingerprint              |
+| Rejected command retry     | Best effort                   | Rejected receipt               | Receipt write can fail silently     |
+| Projection restart         | Replayable                    | Per-projector cursor           | Strict old-event decode can block   |
+| Shell snapshot read        | Transactional                 | One SQL read transaction       | Required cursor set is incomplete   |
+| Snapshot-to-live handoff   | Gap-resistant                 | Attach first, then snapshot    | Buffers are unbounded               |
+| Replay overlap             | Duplicate-tolerant            | Client sequence check          | Assumes ordered sequence            |
+| Shell resume               | Bounded                       | 1,000-event threshold          | Dropped refetch can strand state    |
+| Thread resume              | Unbounded replay              | Global event scan              | No captured upper head              |
+| Connection recovery        | Indefinite transient retry    | Supervisor generation          | Blocked failures need wakeup        |
+| Foreground recovery        | Probe plus resubscribe        | App visibility lifecycle       | No offline mutation expansion       |
+| Terminal reconnect         | Snapshot plus buffered live   | Attach-first stream            | Input and lifecycle stay live-only  |
+| Mobile command delivery    | At least once                 | Durable outbox and stable IDs  | Provider effect still best effort   |
+| Mobile worktree task retry | Payload-unstable              | Stable final command ID        | Temporary branch can change         |
+| Desktop command delivery   | At most one automatic attempt | Direct unary RPC               | Manual retry mints new IDs          |
+| Provider intent handling   | Best effort                   | Hot reactor                    | No durable cursor or outbox         |
+| Provider runtime ingestion | Best effort                   | Hot provider stream            | Randomized derived command IDs      |
+| Worktree bootstrap         | Best-effort saga              | Ordered imperative steps       | No durable record or compensation   |
+| Worktree cleanup           | Best-effort after delete      | UI prompt and Git force        | No retry record, path not confined  |
+| Git selected-file commit   | Sequential                    | Reset, stage, commit           | Existing index selection is lost    |
+| Checkpoint capture         | Eventual                      | Temporary index and hidden ref | No database atomicity or write lock |
+| Checkpoint restore         | Destructive best-effort saga  | Hot checkpoint reactor         | Cross-store partial completion      |
+| Terminal cleanup           | Best effort                   | Reactor                        | No restart replay                   |
+| T3 Connect awareness       | Snapshot plus hot updates     | Startup snapshot               | No durable publish outbox           |
 
 ## Failure sequences
 
@@ -1303,6 +1693,81 @@ Result: that shell aggregate can remain stale until a full snapshot.
 
 Result: no expected gap.
 
+### Failure H: process stops after worktree creation
+
+1. Bootstrap commits the new thread.
+2. Git creates the branch and linked worktree.
+3. The process stops before thread metadata records the path.
+4. Restart replays orchestration state.
+5. No durable provisioning record names the worktree.
+
+Result: the branch and worktree can remain orphaned.
+The orchestration replay cannot discover intent from its own log.
+
+### Failure I: thread delete commits before worktree cleanup
+
+1. Desktop stops the session and terminal.
+2. The thread deletion commits.
+3. The UI clears its thread state.
+4. Forced worktree removal fails.
+
+Result: durable thread truth says deleted while the worktree remains.
+The notice is transient and no durable cleanup job retries.
+
+### Failure J: checkpoint restore stops halfway
+
+1. The revert intent commits.
+2. Git restores checkpoint content and cleans untracked files.
+3. The process stops before provider rollback.
+4. The hot reactor subscription disappears.
+
+Result: worktree content changed, later conversation remains authoritative, and
+the revert intent has no durable worker cursor to resume it.
+
+### Failure K: selected-file commit fails after reset
+
+1. The user has a deliberate staged selection.
+2. The action runs `git reset`.
+3. It stages the requested file set.
+4. Commit-message generation, a hook, or commit fails.
+
+Result: the original staged selection is lost and the replacement staging can
+remain.
+The action has no index snapshot to restore.
+
+### Failure L: desktop response is lost
+
+1. The server commits the message command.
+2. The response is lost before desktop observes success.
+3. Desktop restores the draft.
+4. The user retries.
+5. The retry uses a new command ID and message ID.
+
+Result: both messages can commit.
+Server command receipts cannot relate the second command to the first.
+
+### Failure M: queued task retries with a new branch
+
+1. Mobile persists a task with stable thread and command IDs.
+2. Delivery generates temporary branch A and creates a worktree.
+3. The response is lost before the final thread state becomes visible.
+4. A later attempt generates temporary branch B with the same command ID.
+
+Result: the receipt does not bind the command ID to one normalized bootstrap
+payload.
+The shell-live and thread-exists gates reduce exposure but do not compensate a
+worktree created before final command commit.
+
+### Failure N: queue file is corrupt
+
+1. A queue file is truncated or otherwise fails schema decode.
+2. Load logs the corrupt item and excludes it from memory.
+3. The file remains on disk.
+
+Result: the user intent is not delivered and the same file can fail again on a
+later load.
+There is no quarantine, repair, or explicit terminal queue state.
+
 ## Test evidence
 
 The pinned source has focused tests for:
@@ -1325,11 +1790,18 @@ The pinned source has focused tests for:
 - replacement-session resume
 - foreground resubscription
 - completion-marker synchronization
+- transient connection backoff and stable-period reset
+- offline connection release and online replacement
+- failed and timed-out foreground liveness probes
+- terminal snapshot plus concurrent-output buffering
 - mobile outbox persistence
 - mobile outbox storage serialization
 - mobile retry delay
 - missing-thread live-state gate
 - queued creation duplicate cleanup
+- pull-request worktree reuse and main-checkout protection
+- pull-request fork upstream configuration
+- pull-request setup-script failure handling
 
 The audit did not find focused tests for:
 
@@ -1341,6 +1813,14 @@ The audit did not find focused tests for:
 - multiple orchestration writer processes
 - event upcasting across incompatible schema versions
 - outer transaction failure after filesystem cleanup
+- bootstrap crash after Git worktree creation
+- durable retry of failed worktree cleanup
+- caller-supplied worktree path confinement
+- selected-file commit index restoration after failure
+- checkpoint restore crash between filesystem and provider rollback
+- mobile outbox corrupt-file quarantine or repair
+- one queued worktree payload remaining identical across attempts
+- desktop ambiguous-response retry with stable identifiers
 
 These absent tests match the main architecture limits.
 
@@ -1414,6 +1894,63 @@ This stream is not one durable cross-lane domain log.
 ACP threads, native threads, terminal lanes, Full Auto, and device state
 do not share one event sequence.
 
+### Omega Git and worktree safety
+
+**Observed**
+
+Omega inherits a deeper native Git substrate than T3.
+Its configured worktree directory must be relative and must resolve inside the
+repository or its parent.
+The default path includes the repository name.
+Creation passes paths after `--`, and multi-worktree creation rolls back
+successful siblings if another creation fails.
+
+The thread-worktree archive path adds protections that T3 does not have:
+
+- only linked worktrees are eligible
+- the worktree must be inside Omega's managed base directory
+- a durable registry must say Omega created it
+- recorded Git metadata creation time must still match
+- every open project releases the worktree before removal
+- failed removal reattaches the worktree to affected projects
+- archive commits and hidden refs preserve staged, unstaged, and untracked
+  content before forced removal
+
+Generic force removal is still destructive.
+The archive flow narrows that authority with provenance, path, identity, and
+recreation checks.
+These checks are a better baseline for automatic agent cleanup than T3's exact
+thread-path comparison.
+
+Omega's ordinary Agent checkpoint capture also uses a temporary index.
+Its current restore applies checkpoint content to the worktree but deliberately
+does not run `git clean`, because large and binary files are no longer fully
+tracked by that checkpoint.
+That avoids T3's untracked-file deletion risk, but it also means extra files can
+survive restore.
+
+Omega archive checkpoints separately preserve the staged tree and full
+unstaged tree, then restore the worktree and index in two explicit steps.
+That staged-state model is the stronger foundation for an agent rewind.
+
+### Omega mobile reconnect boundary
+
+**Observed**
+
+The current OpenAgents React Native bridge persists the paired endpoint, grant,
+and `{generation, sequence}` cursor in secure storage.
+It resumes from that cursor.
+A wrong generation or noncontiguous delta clears the cursor and requests a
+snapshot.
+Frames are capped at 64 KiB.
+
+The current screen keeps a stale mirror visible when direct connectivity drops.
+It distinguishes direct, relay-observed, and offline states.
+The bridge does not yet run T3's indefinite connection supervisor.
+The visible mobile command lane is explicitly disabled.
+There is no current phone-side durable command outbox to compare with T3's
+message queue.
+
 ### Omega consistency gap
 
 Omega has several good consistency components:
@@ -1425,6 +1962,7 @@ Omega has several good consistency components:
 - generation-fenced host commands
 - durable Nostr outbox
 - bounded device snapshot and deltas
+- managed-worktree provenance and archive restore records
 
 The components do not form one command and projection system.
 The mobile mirror polls and derives a bounded view.
@@ -1567,6 +2105,126 @@ Omega should move these parts into a shared client contract:
 The canonical sequence must come from durable environment events.
 An in-memory projection sequence can remain a derived local cursor.
 
+### Add a durable worktree registry
+
+Omega should make worktree lifecycle part of environment authority rather than
+an incidental thread metadata field.
+
+A worktree record should contain:
+
+- worktree ID
+- environment and repository identity
+- canonical main-repository common directory
+- canonical managed path
+- branch and base commit
+- owning thread or explicit shared references
+- creation command ID and payload digest
+- recorded Git metadata creation identity
+- lifecycle state
+- setup state
+- dirty and staged-state summary
+- cleanup lease and last error
+
+Recommended lifecycle states are:
+
+```text
+requested → creating → created → setting_up → ready
+                                      ↓
+                         cleanup_requested → removing → removed
+                                      ↓
+                                  cleanup_failed
+```
+
+The state transition and a durable effect item must commit together.
+After restart, a reconciler should compare the registry with `git worktree
+list --porcelain`.
+It should adopt only records with matching repository, path, and creation
+identity.
+Everything else should become an explicit orphan requiring user review.
+
+Automatic removal should require all of:
+
+- canonical path under the managed root
+- linked-worktree proof from Git
+- matching repository identity
+- Omega-created provenance
+- unchanged creation identity
+- zero other worktree references
+- explicit policy for dirty and untracked content
+
+Force removal should never be the first automatic attempt.
+Omega's existing thread archive protections already implement much of this
+law and should be reused rather than weakened.
+
+### Make Git actions recoverable
+
+Before a Git action mutates the index or branch, Omega should record a
+short-lived operation receipt containing:
+
+- repository identity
+- original branch and head
+- staged-tree checkpoint
+- full worktree checkpoint when required
+- requested file set
+- normalized action payload digest
+- current step and completed remote effects
+
+Selected-file commit must not begin by clearing the user's index without a
+restorable checkpoint.
+Branch, commit, push, and pull-request creation should report partial outcome
+instead of one generic failure.
+A retry with the same operation ID should resume or return the previous step
+result.
+
+### Make rewind an explicit destructive transaction
+
+Rewind cannot be one SQLite transaction because it crosses Git, provider, and
+conversation stores.
+It can still be a durable saga.
+
+The server should:
+
+1. reject rewind while a turn or Git mutation lease is active
+2. capture a pre-rewind safety checkpoint
+3. calculate and present tracked, staged, untracked, and ignored impact
+4. commit a durable rewind operation and effect item
+5. restore Git content and index with a workspace lock
+6. roll back provider conversation state
+7. commit the new conversation projection
+8. retain superseded refs until the operation reaches terminal success
+9. expose resume, retry, and manual-recovery state after restart
+
+The confirmation must name untracked-file deletion when deletion is part of
+the selected policy.
+
+### Define offline operation classes
+
+Omega should classify every mobile and desktop command.
+
+| Class             | Examples                                | Offline rule                                         |
+| ----------------- | --------------------------------------- | ---------------------------------------------------- |
+| Durable intent    | send message, create task, enqueue work | Persist full signed payload and retry with stable ID |
+| Expiring decision | approval, answer, attention response    | Persist only with request revision and expiry        |
+| Live control      | terminal input, resize, browser pointer | Refuse offline and never replay automatically        |
+| Destructive Git   | rewind, force cleanup, branch rewrite   | Require live preflight and a new confirmation        |
+| Observation       | shell, thread, terminal snapshot        | Show cache with age and synchronization state        |
+
+Every durable intent must persist the complete normalized payload.
+That includes branch, base commit, worktree mode, model and runtime settings,
+attachments, target generation, grant, expiry, and payload digest.
+Retry must never generate a new branch or other semantic input behind the same
+idempotency key.
+
+Queue storage should use write-to-temporary, filesystem sync where supported,
+and atomic rename.
+Corrupt items should move to a quarantine state visible to the user.
+Terminal failures should remain as inspectable queue receipts rather than
+silently disappearing.
+
+Desktop and mobile should share the same durable command envelope.
+An online fast path can drain immediately, but it should not mint a second
+identity model.
+
 ## Recommended OpenAgents Cloud target
 
 ### Two authority modes
@@ -1645,6 +2303,36 @@ The command must include:
 
 The receipt key should include environment ID and command ID.
 The row must also store the fingerprint.
+
+### Managed workspace and worktree leases
+
+Cloud-managed worktrees need a durable control-plane object separate from the
+runtime container.
+The object should bind environment, repository identity, workspace volume,
+branch, base commit, runtime generation, and owner references.
+
+Provisioning should use these ordered durable states:
+
+```text
+requested → volume_ready → repository_ready → worktree_ready → setup_ready
+```
+
+Each state transition should be driven by an idempotent effect with a fencing
+token.
+A restarted runtime can then continue from the last observed state.
+An orphan scanner can compare durable registry rows with volumes, Git
+worktrees, runtime leases, and active threads.
+
+Cleanup should first revoke the runtime lease, capture a recovery artifact when
+policy requires it, and mark the workspace unavailable to new commands.
+Only then should it remove Git metadata and volume data.
+Cloud cleanup must not infer ownership from a path string supplied by a client.
+
+For owner-hosted environments, the cloud control plane can store only the
+signed worktree record, operation receipts, and encrypted recovery metadata.
+The owner host still performs the filesystem operation.
+For managed environments, the workspace volume and Git common directory stay
+in the same regional authority boundary as the environment writer.
 
 ### Cloud event envelope
 
@@ -1771,25 +2459,33 @@ Retention and export rules must be explicit.
 
 ## Adoption decisions
 
-| T3 mechanism                             | Omega decision               | Reason                                      |
-| ---------------------------------------- | ---------------------------- | ------------------------------------------- |
-| One environment authority                | Adapt                        | It gives all clients one truth              |
-| Typed commands and events                | Adapt                        | It separates intent from presentation       |
-| Same-transaction core projections        | Adapt                        | It gives read-your-command state            |
-| Per-projector cursor                     | Adapt with revision          | Required projector sets need full coverage  |
-| Attach-live-before-snapshot              | Adapt                        | It prevents snapshot race loss              |
-| Replay plus overlap removal              | Adapt                        | It prefers duplicates over gaps             |
-| Shell coalescing                         | Adapt with fail-closed error | It controls token update cost               |
-| HTTP snapshot plus WebSocket tail        | Adapt                        | It uses compression and live transport well |
-| Completion marker                        | Adapt                        | It makes synchronization explicit           |
-| Mobile durable outbox                    | Adapt                        | It gives useful offline control             |
-| Command ID without fingerprint           | Reject                       | It hides conflicting retries                |
-| Hot-only provider reactors               | Reject                       | They can lose committed work                |
-| Random derived provider command IDs      | Reject                       | They weaken duplicate control               |
-| Unbounded queues                         | Reject                       | They turn overload into memory failure      |
-| In-place event JSON mutation             | Reject                       | It weakens replay audit                     |
-| Local SQLite as cloud writer             | Reject for cloud             | It has no multi-node authority              |
-| Best-effort file cleanup in command path | Replace                      | Use durable cleanup work                    |
+| T3 mechanism                             | Omega decision               | Reason                                       |
+| ---------------------------------------- | ---------------------------- | -------------------------------------------- |
+| One environment authority                | Adapt                        | It gives all clients one truth               |
+| Typed commands and events                | Adapt                        | It separates intent from presentation        |
+| Same-transaction core projections        | Adapt                        | It gives read-your-command state             |
+| Per-projector cursor                     | Adapt with revision          | Required projector sets need full coverage   |
+| Attach-live-before-snapshot              | Adapt                        | It prevents snapshot race loss               |
+| Replay plus overlap removal              | Adapt                        | It prefers duplicates over gaps              |
+| Shell coalescing                         | Adapt with fail-closed error | It controls token update cost                |
+| HTTP snapshot plus WebSocket tail        | Adapt                        | It uses compression and live transport well  |
+| Completion marker                        | Adapt                        | It makes synchronization explicit            |
+| Mobile durable outbox                    | Adapt with full payload      | It gives useful offline control              |
+| Connection supervisor                    | Adapt                        | It separates transport and data recovery     |
+| Terminal snapshot plus live buffer       | Adapt                        | It restores bounded terminal context         |
+| `startFromOrigin` exact base             | Adapt                        | It avoids stale local branch assumptions     |
+| Hidden-ref temporary-index checkpoints   | Adapt                        | Capture does not mutate the user index       |
+| Caller-supplied arbitrary worktree paths | Reject                       | Cleanup authority must be path-confined      |
+| Thread-delete then force-cleanup         | Reject                       | Cleanup needs provenance and durable retry   |
+| Checkpoint `git clean -fd` default       | Reject                       | Rewind must disclose or avoid untracked loss |
+| Selected commit starts with `git reset`  | Reject                       | User staging must survive failed actions     |
+| Command ID without fingerprint           | Reject                       | It hides conflicting retries                 |
+| Hot-only provider reactors               | Reject                       | They can lose committed work                 |
+| Random derived provider command IDs      | Reject                       | They weaken duplicate control                |
+| Unbounded queues                         | Reject                       | They turn overload into memory failure       |
+| In-place event JSON mutation             | Reject                       | It weakens replay audit                      |
+| Local SQLite as cloud writer             | Reject for cloud             | It has no multi-node authority               |
+| Best-effort file cleanup in command path | Replace                      | Use durable cleanup work                     |
 
 ## Implementation sequence for Omega
 
@@ -1807,6 +2503,10 @@ Write executable laws for:
 - resnapshot
 - generation change
 - bounded overload
+- worktree provenance and path confinement
+- Git index preservation
+- rewind partial-failure recovery
+- offline operation classification
 
 Do this before a broad UI migration.
 
@@ -1824,6 +2524,8 @@ Compare both projections in tests.
 Move the current command fingerprint law into the shared authority.
 Add the durable effect outbox.
 Route native agent start and interrupt through it.
+Add worktree lifecycle and rewind operation records before routing destructive
+Git work through the same authority.
 
 ### Phase 3: GPUI client projection
 
@@ -1835,7 +2537,8 @@ Do not make them durable authority.
 
 Replace polling-only mirror updates with canonical projection events.
 Keep the current bounded frame and privacy filters.
-Add a durable mobile outbox with stable command IDs.
+Add a durable mobile outbox with stable command IDs, complete payload
+fingerprints, atomic queue storage, expiry, and visible terminal receipts.
 
 ### Phase 5: External lanes
 
@@ -1908,9 +2611,45 @@ Restart tests must stop the service:
 - before result event
 - after result event
 - before effect completion mark
+- after worktree creation but before metadata commit
+- after rewind filesystem restore but before conversation rollback
+- after thread deletion but before worktree cleanup
 
 Each test must reach one declared terminal state.
 No committed effect can disappear.
+
+### Git and worktree tests
+
+Tests must prove:
+
+- caller paths cannot escape the managed root
+- repository identity prevents same-basename collisions
+- only an Omega-created linked worktree can be automatically removed
+- recreated worktrees fail the provenance check
+- shared references prevent cleanup
+- dirty cleanup requires declared policy
+- failed cleanup leaves a durable retry record
+- selected-file commit restores the original staged tree on every failure edge
+- branch, push, and pull-request partial outcomes are inspectable and resumable
+- checkpoint restore reports tracked, staged, untracked, and ignored impact
+- a restart resumes or safely refuses every rewind step
+
+### Offline and reconnect tests
+
+Tests must cover:
+
+- offline to online generation replacement
+- foreground liveness timeout
+- a healthy socket with a stale shell or detail subscription
+- connection flap backoff that does not reset early
+- persisted cached state with an explicit age
+- running partial transcript loss across process restart
+- queued task replay with byte-identical normalized payload
+- same command ID with a changed branch or attachment digest
+- corrupt queue-file quarantine
+- expired approval and stale-revision refusal
+- terminal reconnect snapshot overlap
+- refusal to replay terminal input and destructive Git commands
 
 ### Model checks
 
@@ -1967,6 +2706,14 @@ This target can prove the architecture without a broad rewrite.
 - `apps/server/src/orchestration/Layers/CheckpointReactor.ts`
 - `apps/server/src/orchestration/Layers/ThreadDeletionReactor.ts`
 - `apps/server/src/orchestration/Layers/RuntimeReceiptBus.ts`
+- `apps/server/src/checkpointing/CheckpointStore.ts`
+- `apps/server/src/checkpointing/Utils.ts`
+- `apps/server/src/git/GitManager.ts`
+- `apps/server/src/git/GitWorkflowService.ts`
+- `apps/server/src/vcs/GitVcsDriver.ts`
+- `apps/server/src/vcs/GitVcsDriverCore.ts`
+- `apps/server/src/project/ProjectSetupScriptRunner.ts`
+- `apps/server/src/terminal/Manager.ts`
 - `apps/server/src/persistence/Layers/OrchestrationEventStore.ts`
 - `apps/server/src/persistence/Layers/OrchestrationCommandReceipts.ts`
 - `apps/server/src/persistence/Layers/Sqlite.ts`
@@ -1977,8 +2724,12 @@ This target can prove the architecture without a broad rewrite.
 - `apps/server/src/relay/AgentAwarenessRelay.ts`
 - `packages/contracts/src/orchestration.ts`
 - `packages/client-runtime/src/connection`
+- `packages/client-runtime/src/connection/supervisor.ts`
+- `packages/client-runtime/src/rpc/session.ts`
 - `packages/client-runtime/src/state/shell.ts`
 - `packages/client-runtime/src/state/threads.ts`
+- `packages/client-runtime/src/state/terminal.ts`
+- `packages/client-runtime/src/state/terminalSession.ts`
 - `packages/client-runtime/src/state/shellReducer.ts`
 - `packages/client-runtime/src/state/threadReducer.ts`
 - `packages/client-runtime/src/state/shellSnapshotHttp.ts`
@@ -1987,6 +2738,12 @@ This target can prove the architecture without a broad rewrite.
 - `apps/mobile/src/state/thread-outbox-manager.ts`
 - `apps/mobile/src/state/thread-outbox-storage.ts`
 - `apps/mobile/src/state/use-thread-outbox-drain.ts`
+- `apps/mobile/src/lib/projectThreadStartTurn.ts`
+- `apps/mobile/src/features/threads/use-project-actions.ts`
+- `apps/mobile/src/state/use-selected-thread-git-actions.ts`
+- `apps/web/src/hooks/useHandleNewThread.ts`
+- `apps/web/src/hooks/useThreadActions.ts`
+- `apps/web/src/worktreeCleanup.ts`
 - `docs/architecture/connection-runtime.md`
 - `docs/reference/encyclopedia.md`
 
@@ -1995,9 +2752,15 @@ This target can prove the architecture without a broad rewrite.
 - `crates/agent/src/db.rs`
 - `crates/agent/src/thread.rs`
 - `crates/agent_ui/src/omega_host_bridge.rs`
+- `crates/agent_ui/src/thread_worktree_archive.rs`
+- `crates/acp_thread/src/acp_thread.rs`
+- `crates/git/src/repository.rs`
+- `crates/project/src/git_store.rs`
 - `crates/omega_device_bridge/src/omega_device_bridge.rs`
 - `crates/omega_effectd/src/sarah_conversation.rs`
 - `crates/omega_effectd/src/supervisor.rs`
+- `apps/openagents-mobile/src/screens/omega-home-screen.tsx`
+- `apps/openagents-mobile/src/workroom/omega-device-bridge-client.ts`
 
 ## Final finding
 

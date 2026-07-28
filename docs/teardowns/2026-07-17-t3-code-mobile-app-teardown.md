@@ -9,6 +9,11 @@ commit
 2026-07-17). The local clone at `projects/repos/t3code` was fast-forwarded and
 read as external reference material only.
 
+The Git/worktree safety and offline/reconnect sections were extended on
+2026-07-27 against T3 Code
+`476d69cd1d5d89b4aad77df8fc01c71e34af930c`.
+That later pin is the authority for those two addenda.
+
 This is the mobile-specific successor to the broad
 [T3 Code teardown](./2026-07-13-t3-code-teardown.md). That earlier document
 remains the authority for the provider adapters, event-sourced server core,
@@ -94,17 +99,17 @@ all clients consume the same server projections. [source] [schema]
 
 Primary source surfaces:
 
-| Concern | Pinned source |
-| --- | --- |
-| Mobile bootstrap and variants | [`apps/mobile/README.md`](https://github.com/pingdotgg/t3code/blob/8b5469863ae1dd696e696de30240ec3da607962d/apps/mobile/README.md), [`app.config.ts`](https://github.com/pingdotgg/t3code/blob/8b5469863ae1dd696e696de30240ec3da607962d/apps/mobile/app.config.ts) |
-| Application composition and routes | [`src/App.tsx`](https://github.com/pingdotgg/t3code/blob/8b5469863ae1dd696e696de30240ec3da607962d/apps/mobile/src/App.tsx), [`src/Stack.tsx`](https://github.com/pingdotgg/t3code/blob/8b5469863ae1dd696e696de30240ec3da607962d/apps/mobile/src/Stack.tsx) |
-| Shared connection/projection runtime | [`packages/client-runtime/src`](https://github.com/pingdotgg/t3code/tree/8b5469863ae1dd696e696de30240ec3da607962d/packages/client-runtime/src) |
-| Pairing and environment registry | [`features/connection`](https://github.com/pingdotgg/t3code/tree/8b5469863ae1dd696e696de30240ec3da607962d/apps/mobile/src/features/connection), [`connection`](https://github.com/pingdotgg/t3code/tree/8b5469863ae1dd696e696de30240ec3da607962d/apps/mobile/src/connection) |
-| Thread workbench | [`features/threads`](https://github.com/pingdotgg/t3code/tree/8b5469863ae1dd696e696de30240ec3da607962d/apps/mobile/src/features/threads) |
-| Files, review, terminal | [`features/files`](https://github.com/pingdotgg/t3code/tree/8b5469863ae1dd696e696de30240ec3da607962d/apps/mobile/src/features/files), [`features/review`](https://github.com/pingdotgg/t3code/tree/8b5469863ae1dd696e696de30240ec3da607962d/apps/mobile/src/features/review), [`features/terminal`](https://github.com/pingdotgg/t3code/tree/8b5469863ae1dd696e696de30240ec3da607962d/apps/mobile/src/features/terminal) |
-| Native hosts | [`apps/mobile/modules`](https://github.com/pingdotgg/t3code/tree/8b5469863ae1dd696e696de30240ec3da607962d/apps/mobile/modules) |
-| Cloud/relay setup | [`docs/cloud/t3-connect-clerk.md`](https://github.com/pingdotgg/t3code/blob/8b5469863ae1dd696e696de30240ec3da607962d/docs/cloud/t3-connect-clerk.md) |
-| Store screenshot proof harness | [`docs/operations/mobile-app-store-screenshots.md`](https://github.com/pingdotgg/t3code/blob/8b5469863ae1dd696e696de30240ec3da607962d/docs/operations/mobile-app-store-screenshots.md) |
+| Concern                              | Pinned source                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Mobile bootstrap and variants        | [`apps/mobile/README.md`](https://github.com/pingdotgg/t3code/blob/8b5469863ae1dd696e696de30240ec3da607962d/apps/mobile/README.md), [`app.config.ts`](https://github.com/pingdotgg/t3code/blob/8b5469863ae1dd696e696de30240ec3da607962d/apps/mobile/app.config.ts)                                                                                                                                                       |
+| Application composition and routes   | [`src/App.tsx`](https://github.com/pingdotgg/t3code/blob/8b5469863ae1dd696e696de30240ec3da607962d/apps/mobile/src/App.tsx), [`src/Stack.tsx`](https://github.com/pingdotgg/t3code/blob/8b5469863ae1dd696e696de30240ec3da607962d/apps/mobile/src/Stack.tsx)                                                                                                                                                               |
+| Shared connection/projection runtime | [`packages/client-runtime/src`](https://github.com/pingdotgg/t3code/tree/8b5469863ae1dd696e696de30240ec3da607962d/packages/client-runtime/src)                                                                                                                                                                                                                                                                           |
+| Pairing and environment registry     | [`features/connection`](https://github.com/pingdotgg/t3code/tree/8b5469863ae1dd696e696de30240ec3da607962d/apps/mobile/src/features/connection), [`connection`](https://github.com/pingdotgg/t3code/tree/8b5469863ae1dd696e696de30240ec3da607962d/apps/mobile/src/connection)                                                                                                                                             |
+| Thread workbench                     | [`features/threads`](https://github.com/pingdotgg/t3code/tree/8b5469863ae1dd696e696de30240ec3da607962d/apps/mobile/src/features/threads)                                                                                                                                                                                                                                                                                 |
+| Files, review, terminal              | [`features/files`](https://github.com/pingdotgg/t3code/tree/8b5469863ae1dd696e696de30240ec3da607962d/apps/mobile/src/features/files), [`features/review`](https://github.com/pingdotgg/t3code/tree/8b5469863ae1dd696e696de30240ec3da607962d/apps/mobile/src/features/review), [`features/terminal`](https://github.com/pingdotgg/t3code/tree/8b5469863ae1dd696e696de30240ec3da607962d/apps/mobile/src/features/terminal) |
+| Native hosts                         | [`apps/mobile/modules`](https://github.com/pingdotgg/t3code/tree/8b5469863ae1dd696e696de30240ec3da607962d/apps/mobile/modules)                                                                                                                                                                                                                                                                                           |
+| Cloud/relay setup                    | [`docs/cloud/t3-connect-clerk.md`](https://github.com/pingdotgg/t3code/blob/8b5469863ae1dd696e696de30240ec3da607962d/docs/cloud/t3-connect-clerk.md)                                                                                                                                                                                                                                                                     |
+| Store screenshot proof harness       | [`docs/operations/mobile-app-store-screenshots.md`](https://github.com/pingdotgg/t3code/blob/8b5469863ae1dd696e696de30240ec3da607962d/docs/operations/mobile-app-store-screenshots.md)                                                                                                                                                                                                                                   |
 
 ## 2. It is a native application, not the web renderer on a phone
 
@@ -297,6 +302,32 @@ The phone still trusts server-side repository authority. It does not receive a
 raw host root and independently run Git. It sends typed actions scoped to the
 selected environment/project/thread/worktree. [source] [inferred]
 
+That server boundary does not make every Git action transactional. Pull
+requires an upstream and uses fast-forward-only. Push is nonforce with an
+explicit refspec. The multi-step feature-branch, commit, push, and
+pull-request action can still stop after any successful step. The selected-file
+commit path resets the current index before staging the requested paths and
+does not restore the user's prior staged selection after a later failure.
+[source]
+
+Worktree and checkpoint safety is also uneven:
+
+- task bootstrap creates Git state before thread metadata records it, so a
+  process stop can orphan a branch and worktree
+- worktree removal accepts force on the environment and is not a durable
+  cleanup operation
+- checkpoint capture correctly uses a temporary index
+- checkpoint restore runs `git clean -fd`, which removes untracked nonignored
+  files
+- the UI confirmation does not explicitly describe that untracked-file loss
+- the mobile client does not offer the desktop's optional linked-worktree
+  cleanup decision when deleting a thread [source] [inferred]
+
+Omega should copy the remote authority and conservative pull/push defaults.
+It should retain its stronger managed-worktree provenance checks, staged and
+unstaged archive checkpoints, and refusal to clean unknown files by default.
+[recommendation]
+
 ## 8. A real interactive terminal
 
 The terminal is a first-class route and optional thread overlay. Opening it
@@ -318,19 +349,85 @@ handoff to Desktop. [inferred]
 
 Mobile persistence uses Expo SQLite for schema-versioned client data and Expo
 SecureStore for credentials. Cached shell/thread projections allow the app to
-paint retained state before live synchronization. Connection generations and
-ordered sequences prevent an old stream from silently becoming current.
-[source]
+paint retained state before live synchronization. The UI distinguishes
+`cached`, `synchronizing`, and `live` domain state from the socket connection.
+Connection generation prevents an old session from becoming current. Ordered
+shell and detail sequences remove replay overlap. A completion marker prevents
+the UI from claiming that replay has caught up early. [source]
+
+The connection supervisor treats offline network state, transient transport
+failure, and blocked authorization/configuration as different states.
+Transient connection delays grow from one to 16 seconds and retry
+indefinitely. Establishment and foreground probes time out after 15 seconds.
+The backoff resets only after 30 stable seconds. Returning to the foreground
+probes the socket and independently resubscribes shell and thread data from
+their latest cursors. [source] [test]
+
+This means a healthy WebSocket is not enough to claim healthy data. It also
+means a dead domain stream can be repaired without waiting for the underlying
+socket to fail. [inferred]
 
 The thread outbox persists queued messages before exposing them in the in-memory
 atom. Mutations are serialized. Updates cannot resurrect an item removed by a
-concurrent successful drain. Clearing one environment is scoped. And the drain
-waits for the corresponding environment connection. [source] [test]
+concurrent successful drain. Clearing one environment is scoped. The drain
+waits for the corresponding environment connection. Existing-thread messages
+always take this path, even while online, and the composer clears only after
+the disk write succeeds. [source] [test]
+
+The queue stores one schema-v3 JSON file per message. The item retains stable
+thread, message, and command IDs, attachments, model, runtime, interaction
+mode, and optional new-task data. It derives stable IDs for the three setting
+updates that precede turn start. Transport and interruption failures retry
+with one-to-16-second backoff. Deterministic turn failures remove the item,
+while setting synchronization failures remain retryable. [source]
+
+The delivery gate is state-aware:
+
+| Item                    | Authoritative state                          | Result                            |
+| ----------------------- | -------------------------------------------- | --------------------------------- |
+| New task                | shell not live                               | wait                              |
+| New task                | thread now exists                            | remove duplicate local intent     |
+| Existing-thread message | target absent and shell not live             | wait                              |
+| Existing-thread message | target absent and shell live                 | remove because the target is gone |
+| Existing-thread message | target exists but is busy                    | wait                              |
+| Existing-thread message | connected, target exists, and target is idle | synchronize settings, then send   |
+
+Only the queueing phone is durable here. The environment still owns command
+acceptance and all execution. Most other mutations remain live-only, including
+approval, interrupt, Git actions, and terminal input. [source] [inferred]
+
+There are four important limits:
+
+1. Running partial thread detail is not persisted. An app process restart
+   offline returns to the last settled transcript, while a temporary
+   disconnect in the same process can keep the in-memory partial stream.
+2. A queued worktree task does not persist its generated temporary branch.
+   Retries can generate different `t3code/<random>` branches behind the same
+   final command ID.
+3. Queue files are written directly rather than through a visible
+   temporary-file and atomic-rename protocol. A corrupt file is logged and
+   ignored, not quarantined or repaired.
+4. Online new-task creation uses a direct path rather than the durable outbox.
+   An ambiguous response retains the draft, but a manual retry creates new
+   identifiers and can duplicate work. [source] [inferred]
 
 This is durable offline submission intent, not offline agent execution. The
 message remains pending until the authoritative environment accepts it. The
 app does not pretend cached state is current when reconnect/authorization is
 unavailable. [source] [inferred]
+
+Terminal recovery is snapshot-based rather than phone-owned. Every attach
+receives persisted environment history, then buffered concurrent events, then
+live output. The client bounds the displayed buffer to 512 KiB. Input, resize,
+clear, restart, and close never enter the outbox and must not be replayed after
+an offline interval. [source]
+
+For Omega, the pattern to copy is the separation among transport health,
+projection health, and command delivery. The pattern to strengthen is the
+command envelope. Omega should persist the complete normalized payload,
+including worktree branch and base commit, bind it to a payload digest and
+target generation, use atomic queue storage, quarantine corruption, and keep a
+visible terminal receipt for deterministic failures. [recommendation]
 
 ## 10. Ambient and system-level controller surfaces
 
@@ -354,13 +451,13 @@ catalog and navigation state. [source] [inferred]
 
 ## 11. The five native host islands
 
-| Module | Responsibility | Boundary |
-| --- | --- | --- |
-| `t3-composer-editor` | Native multiline composer/input behavior | Native text system emits controlled editor revisions to React Native |
-| `t3-markdown-text` | Selectable rich Markdown/code text and file icons | JavaScript prepares content. Native iOS text layout handles selection/rendering |
-| `t3-native-controls` | Native header buttons and keyboard commands | Platform chrome/commands only. Domain actions remain typed callbacks |
-| `t3-review-diff` | High-performance native diff drawing and interaction | Review model/selection stay in application state |
-| `t3-terminal` | Ghostty-derived VT parsing/rendering/input on iOS/Android | PTY/process remain server-side |
+| Module               | Responsibility                                            | Boundary                                                                        |
+| -------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `t3-composer-editor` | Native multiline composer/input behavior                  | Native text system emits controlled editor revisions to React Native            |
+| `t3-markdown-text`   | Selectable rich Markdown/code text and file icons         | JavaScript prepares content. Native iOS text layout handles selection/rendering |
+| `t3-native-controls` | Native header buttons and keyboard commands               | Platform chrome/commands only. Domain actions remain typed callbacks            |
+| `t3-review-diff`     | High-performance native diff drawing and interaction      | Review model/selection stay in application state                                |
+| `t3-terminal`        | Ghostty-derived VT parsing/rendering/input on iOS/Android | PTY/process remain server-side                                                  |
 
 This is a pragmatic architecture: keep application and remote-runtime state in
 Effect/React Native, but move interactions that materially benefit from native
@@ -423,6 +520,16 @@ users” must therefore remain separate status claims. [docs]
 - The phone can invoke consequential Git/process/approval operations, but T3
   still lacks OpenAgents-style authority manifests and durable execution/
   delivery receipts.
+- Worktree bootstrap, forced cleanup, stacked Git actions, and checkpoint
+  restore are not one durable transaction. A command can fail after a branch,
+  worktree, index, filesystem, or remote push already changed.
+- The server accepts caller-selected worktree paths without a visible
+  managed-root confinement check. Mobile should not be treated as a safe
+  cleanup authority merely because it uses typed RPC.
+- Checkpoint restore can delete untracked nonignored files, while the current
+  confirmation does not state that consequence explicitly.
+- The mobile queue does not atomically quarantine corrupt entries and does not
+  persist the generated temporary worktree branch.
 - Server execution remains environment-local and inherits T3's broader
   containment weakness: mobile reachability is well protected while the
   wrapped agent may still run with unrestricted host authority.

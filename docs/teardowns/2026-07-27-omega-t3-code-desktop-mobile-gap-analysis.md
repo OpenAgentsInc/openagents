@@ -49,6 +49,9 @@ This report compares these source revisions:
 | T3 Code broad teardown          | `c1ec1915`                                 |
 | T3 Code mobile teardown         | `8b546986`                                 |
 | T3 Code mobile deep dive        | `a148e08197fc38b24e59c10c7cd5ba06dd182dab` |
+| T3 Git and reconnect addendum   | `476d69cd1d5d89b4aad77df8fc01c71e34af930c` |
+| Omega Git and projection review | `b8f960c4f4a2efcabb8e9a773b2105f935072eb6` |
+| Omega mobile reconnect review   | `e664440078a5e2198b1257dee9b81a122686cd1a` |
 | T3 Code ACP teardown            | `bde0a4`                                   |
 | T3 Code OpenCode release update | `fdca154`                                  |
 
@@ -256,6 +259,14 @@ directories. Threads can resolve mentions across visible worktrees. Agent
 metadata can restore folders. The agent panel can create a sibling worktree for
 some new-thread flows.
 
+Omega's managed worktree safety is stronger than T3's thread cleanup path.
+The configured directory must resolve within the repository or its parent.
+Thread archival removes only linked worktrees inside that managed root, with a
+durable Omega-created record and a matching Git metadata creation time.
+It releases every open project reference, preserves staged, unstaged, and
+untracked state in archive commits, and rolls project attachment back when
+removal fails.
+
 The default path still treats the current folder as the main unit. It does not
 show a T3-style project catalog. It does not show a worktree as a normal thread
 property. It does not make concurrent branch isolation obvious.
@@ -270,12 +281,21 @@ can create and remove worktrees from the agent flow.
 - Worktree creation is not a standard new-thread choice.
 - Worktree cleanup is not part of thread lifecycle in the default UI.
 - Mobile cannot select a project or worktree.
+- The archive safety record is not yet the shared lifecycle authority for
+  every agent-created worktree.
+- There is no cross-device provisioning, setup, cleanup, or orphaned state.
 
 #### Required closure
 
 Make the execution root explicit on every thread. Add a new-thread choice for
 the current worktree, a new worktree, or no project. Show the cleanup result
 when a thread owns a temporary worktree.
+
+Promote Omega's existing archive safeguards into a durable worktree registry.
+The record must use canonical repository identity, canonical managed path,
+branch and base commit, owner references, creation identity, lifecycle state,
+setup state, and cleanup retry state. A restart reconciler should compare that
+registry with Git rather than infer ownership from a thread path.
 
 ### 4. Agent engines and provider control
 
@@ -433,18 +453,34 @@ This is one of Omega's strongest areas. It combines an agent transcript with a
 real editor buffer model. T3 Code uses a specialized diff renderer and makes
 review a visible workbench tab.
 
+The two checkpoint implementations have different safety tradeoffs.
+Both capture through a temporary index. T3 restore then runs `git clean -fd`
+and resets staging, so it can delete untracked nonignored files and lose the
+staged selection. Omega's ordinary Agent restore currently applies checkpoint
+content without cleaning extra files because large and binary files are not
+fully represented. Omega's worktree archive path goes further by storing
+separate staged and full trees and restoring both explicitly.
+
 #### Gap
 
 - Review is not a persistent default activity in zero base.
 - Mobile receives no diff hunks or review state.
 - The device mirror omits tool calls and artifacts that explain a change.
 - A cross-device accept or reject receipt does not exist in the current app.
+- Rewind is not one durable cross-store saga with restart recovery and an
+  exact impact preview.
 
 #### Required closure
 
 Expose the existing Agent Diff pane as a standard zero-base activity. Add a
 portable read-only diff contract first. Add mobile review commands only after
 the authority and receipt model is complete.
+
+Use the archive checkpoint's staged and unstaged model for safe rewind.
+Before restore, acquire a workspace mutation lease, create a safety checkpoint,
+and show tracked, staged, untracked, and ignored impact. Retain superseded
+checkpoint refs until Git restore, conversation rollback, projection commit,
+and cleanup all reach a durable terminal state.
 
 ### 10. Git and forge workflows
 
@@ -460,17 +496,28 @@ must not erase a dirty worktree without a record and an allowed path.
 T3 Code places common Git actions in the agent workbench. It also integrates
 four forge providers for pull requests and related review work.
 
+T3's pull and push defaults are worth adopting. Pull requires an upstream and
+uses fast-forward-only. Push is nonforce with an explicit refspec.
+Its selected-file commit and stacked action are not a safety model to copy.
+Selected commit clears the existing index before staging, and branch, commit,
+push, and pull-request creation remain partial when a later step fails.
+
 #### Gap
 
 - Zero base has no compact Git status or branch control.
 - The primary agent view has no pull-request surface.
 - Mobile has no Git status, stage, commit, push, or pull-request flow.
 - Forge results do not have one portable event model across Omega lanes.
+- There is no durable Git operation receipt that preserves original branch,
+  head, index tree, requested file set, and completed remote effects.
 
 #### Required closure
 
 Add a small Git activity to zero base. Reuse the native Git store. Add forge
 actions after local Git state has one cross-device projection.
+Wrap mutating action stacks in a durable operation record.
+A retry must resume or report the prior partial outcome rather than rerun
+branch and remote effects under a new identity.
 
 ### 11. Terminal
 
@@ -579,11 +626,25 @@ projections. That model gives every client one recovery story.
 Omega has several good recovery stories. It does not have one end-to-end story.
 A user cannot ask one surface which work is pending across all lanes.
 
+Current mobile recovery is narrower than T3's.
+The secure bridge store persists endpoint, grant, and generation/sequence
+cursor.
+The phone can resume projection, detect a gap, clear the cursor, and request a
+snapshot.
+It keeps a stale mirror visible across a disconnect.
+It does not yet have T3's indefinite environment supervisor or foreground
+probe-and-resubscribe loop.
+The visible command lane is disabled, so there is no phone-side command outbox
+yet.
+
 #### Required closure
 
 Create a read-only aggregate projection first. It can index native threads, ACP
 sessions, terminal threads, and Full Auto runs without moving their authority.
 Use stable source references and generation fences.
+Then add a shared desktop/mobile connection supervisor, explicit cache age, a
+durable signed command envelope, and one pending-operation view spanning
+provider effects, worktree setup, Git actions, rewind, and cleanup.
 
 ### 16. Settings and account surfaces
 
@@ -1671,6 +1732,21 @@ T3 treats three different problems separately:
 3. **Outbox delivery** stores commands accepted by the phone but not yet by the
    environment.
 
+The connection supervisor retries transient failures indefinitely with
+one-to-16-second backoff. Setup and foreground probes time out after 15
+seconds. A connection must stay healthy for 30 seconds before the failure
+counter resets. Going offline releases the current session. Returning online
+creates a new generation.
+
+Foreground activation does two things:
+
+- probes the active RPC session and replaces it when liveness fails
+- resubscribes shell and detail projections from their latest applied sequence
+  even if the transport remains healthy
+
+The second step matters because a socket and its domain streams can fail
+independently.
+
 The outbox stores one JSON file per queued message. Messages are grouped by
 environment/thread and ordered by creation time. Only the first message for a
 thread drains. Only one message globally is marked dispatching at once in the
@@ -1692,20 +1768,61 @@ Before a queued existing-thread message sends, T3 synchronizes model, runtime,
 and interaction settings. A queued creation must have a prompt, model, and a
 branch when worktree mode requires one. Transport failures and interruptions
 retry with 1–16 second exponential backoff. Terminal command failures can be
-discarded rather than retried forever. Delivered items are removed only after
+discarded rather than retried forever. Existing-thread messages always write
+to the outbox, including while online. Delivered items are removed only after
 the start-turn command reaches a terminal result.
 
-Omega's resume cursor solves a different problem: replaying server-to-phone
-state. It does not accept offline user intent. Omega needs both:
+The exact offline surface is intentionally limited:
 
-- bridge resume for observations;
-- a signed intent outbox for commands.
+| Surface                         | Offline and reconnect behavior                                   |
+| ------------------------------- | ---------------------------------------------------------------- |
+| Shell and settled thread detail | Persisted and shown as cached                                    |
+| Running partial transcript      | Survives temporary disconnect in memory, not app process restart |
+| Provider and model catalog      | Cached for queued task settings                                  |
+| Complete branch list            | First unfiltered 100 entries can be cached                       |
+| Git status, diffs, and files    | Live authority required                                          |
+| Terminal output                 | Reattaches from an environment-owned history snapshot            |
+| Terminal input and lifecycle    | Live-only and never queued                                       |
+| Approval and interrupt          | Live-only                                                        |
+| Git and checkpoint mutations    | Live-only                                                        |
+
+T3's outbox has three gaps Omega should close:
+
+1. It does not persist the generated temporary worktree branch, so retries can
+   change the semantic bootstrap payload behind one final command ID.
+2. Direct queue-file writes do not visibly use temporary-file plus atomic
+   rename. Corrupt items are ignored rather than quarantined.
+3. Online new-task creation bypasses the outbox. A lost response followed by a
+   manual retry uses new IDs and can duplicate the task.
+
+Omega's resume cursor solves a different problem: replaying server-to-phone
+state. A wrong generation or gap already forces a bounded resnapshot. The
+current React Native bridge does not continuously supervise reconnection, and
+it does not accept offline user intent. Omega needs both:
+
+- bridge resume and foreground repair for observations
+- a signed intent outbox for commands
 
 An Omega outbox entry should include command ID, host and work-item identity,
-target generation, grant reference, payload digest, expiry, creation time,
-delivery state, and terminal receipt. Reconnect must revalidate grant,
-generation, target existence, lane capability, and current request state before
+target generation, grant reference, full normalized payload, payload digest,
+expiry, creation time, delivery state, and terminal receipt. The payload must
+include branch, base commit, worktree mode, settings, and attachment digests.
+Retry must be byte-identical at the normalized command boundary.
+
+Storage should use temporary write, sync where supported, atomic rename, and a
+user-visible quarantine state. Reconnect must revalidate grant, generation,
+target existence, lane capability, current request revision, and expiry before
 delivery.
+
+Every operation should have one offline class:
+
+| Class             | Omega rule                                                     |
+| ----------------- | -------------------------------------------------------------- |
+| Durable intent    | Persist and retry an exact fingerprint                         |
+| Expiring decision | Persist only with request revision and deadline                |
+| Live control      | Refuse offline and never replay terminal or pointer input      |
+| Destructive Git   | Require live preflight, impact preview, and fresh confirmation |
+| Observation       | Show cached data with explicit age and synchronization state   |
 
 ### State ownership and component boundaries
 
@@ -2257,6 +2374,9 @@ should carry the design.
 | O-T3-P0-05 | Queue restore is incomplete                 | Desktop and mobile rebuild durable queue rows after restart.                              |
 | O-T3-P0-06 | Direct bridge and command path are separate | One host projection explains both read and command transport without merging authority.   |
 | O-T3-P0-07 | Mobile architecture documents are stale     | The README describes the mounted plain React Native app and its real capability boundary. |
+| O-T3-P0-08 | Worktree lifecycle is fragmented            | One durable registry owns creation, setup, sharing, cleanup, and orphan recovery.         |
+| O-T3-P0-09 | Rewind crosses stores without one receipt   | Rewind has impact preview, safety checkpoint, durable steps, and restart recovery.        |
+| O-T3-P0-10 | Reconnect is observation-only and manual    | One supervisor repairs transport and projection streams without losing cache age.         |
 
 ### P1: Complete the desktop workbench
 
@@ -2268,6 +2388,7 @@ should carry the design.
 | O-T3-P1-04 | Git and forge are outside the primary flow | Zero base shows status and common actions. Pull-request work has typed results.       |
 | O-T3-P1-05 | Preview has no common artifact model       | A preview session has identity, owner, URL, lifecycle, and automation scope.          |
 | O-T3-P1-06 | Settings do not show total authority       | Authority and Devices settings support inspection and revocation.                     |
+| O-T3-P1-07 | Git mutations have no resumable receipt    | Index, branch, push, and forge partial outcomes are preserved and inspectable.        |
 
 ### P1: Build the minimum mobile controller
 
@@ -2284,7 +2405,7 @@ should carry the design.
 
 | ID         | Gap                                 | Required outcome                                                      |
 | ---------- | ----------------------------------- | --------------------------------------------------------------------- |
-| O-T3-P2-01 | No offline outbox                   | Signed intents survive disconnect and revalidate before delivery.     |
+| O-T3-P2-01 | No offline outbox                   | Atomic signed full-payload intents survive disconnect and revalidate. |
 | O-T3-P2-02 | No exact mobile notifications       | Requests and completions open by stable deep link.                    |
 | O-T3-P2-03 | No mobile Git controls              | Typed status, commit, push, and pull-request actions exist.           |
 | O-T3-P2-04 | No mobile terminal                  | Bounded task output ships first. A full terminal follows proof.       |
@@ -2296,19 +2417,25 @@ should carry the design.
 
 ### Wave 0: Freeze the portable truth model
 
-Define the host, work item, event, interaction, authority, command, and receipt
-contracts. Do not move execution authority into a new service.
+Define the host, work item, event, interaction, authority, command, receipt,
+worktree lifecycle, Git operation, rewind operation, reconnect, and offline
+operation contracts. Do not move execution authority into a new service.
 
 Acceptance result:
 
 - One read-only index can list every current work item.
 - Each row names its source lane and generation.
 - No row claims a control that the source lane does not support.
+- Every automatic worktree cleanup proves managed path, repository identity,
+  Omega creation provenance, and zero shared references.
+- Every queued command binds one ID to one full-payload digest.
 
 ### Wave 1: Expose the existing desktop workbench
 
 Add zero-base activities for Files, Search, Review, Git, Terminal, and Plan.
 Reuse native Zed entities.
+Promote the current worktree archive protections into the shared lifecycle
+record before making cleanup a normal thread action.
 
 Acceptance result:
 
@@ -2320,6 +2447,8 @@ Acceptance result:
 
 Add host selection, an attention inbox, send, and interrupt. Do not start with a
 full mobile IDE.
+Route online and offline durable intents through one atomic outbox envelope.
+Keep terminal input and destructive Git live-only.
 
 Acceptance result:
 
@@ -2327,6 +2456,8 @@ Acceptance result:
 - The owner can answer the exact request.
 - The desktop records the mobile command and terminal receipt.
 - Reconnect does not duplicate the answer.
+- A stale request revision, expired grant, or changed generation refuses
+  delivery visibly.
 
 ### Wave 3: Add mobile evidence
 

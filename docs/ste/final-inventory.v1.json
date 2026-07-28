@@ -45387,7 +45387,7 @@
     },
     {
       "path": "docs/teardowns/2026-07-17-t3-code-mobile-app-teardown.md",
-      "sha256": "f572b18c26a22547d34e0edcb138cb164e78bcbb80010cf57c6ba7e27d93e4bb",
+      "sha256": "3d2ba25d61f0d325428b815146001cf7f88b1a16dac305658198a001dd672d8b",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -45743,7 +45743,7 @@
     },
     {
       "path": "docs/teardowns/2026-07-27-omega-t3-code-desktop-mobile-gap-analysis.md",
-      "sha256": "8ee62ab63ff1428fb2e5f774c072d9b08d120da4f0542a50dbc9f5725a1dcdad",
+      "sha256": "7ecd83aeee28928e7282fa3b5fc4a6aac478e7cb401855a0d66fe20b65895c51",
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
@@ -45755,7 +45755,7 @@
     },
     {
       "path": "docs/teardowns/2026-07-27-t3-code-desktop-mobile-component-cloud-architecture-audit.md",
-      "sha256": "eaca7e8a8a757757586c4c5b1aeef5b1065c47f43006f6c31ac909969f8b7500",
+      "sha256": "116ae24aded8965b352714c69ece64cb6a1fa207330445e57656957572301f03",
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
@@ -45767,12 +45767,13 @@
     },
     {
       "path": "docs/teardowns/2026-07-27-t3-code-server-projection-consistency-architecture.md",
-      "sha256": "1edd308d15670ad8c9bc240d5adabff1345d2154473aeeaf1af6e081fb34ef41",
-      "reason": "Final review of mutable first-party agent technical text",
+      "sha256": "9fe41afe441edf833fc53714551bba3a5a367e7351cb37dae2f4a37c584189ad",
+      "reason": "Final review of a converted document",
       "profile": {
-        "ste_status": "inspected",
-        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
         "ste_audience": "agent",
         "ste_agent_compact_revision": "openagents-agent-compact-v1",
         "ste_accepted_screening_rules": [
@@ -45780,7 +45781,10 @@
           "STE-3.6",
           "STE-5.1",
           "STE-8.2"
-        ]
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {
