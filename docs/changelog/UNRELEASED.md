@@ -5,6 +5,22 @@ lands on `main` is part of the CLAIM-RELEASE protocol — see `README.md` in
 this directory for the required format. `pnpm changelog roll` moves these
 entries into the next dated release file.
 
+## Mobile source prepares managed Sarah voice (#9273)
+
+- issues: #9273
+- commits: this change
+- contracts-specs: `openagents.sarah.voice.v1`, `mobile_voice_only`, native PCM audio module
+- invariants: protected mobile identity only, no provider key in the app, foreground capture only, no mobile tools, normal credit
+- evidence: docs/mobile/2026-07-28-openagents-mobile-build-127-sarah-voice-preflight-receipt.md
+- lane: codex/9273-sarah-mobile-voice
+
+The mobile source adds a Sarah voice screen with transcripts and clear mute,
+interrupt, end, and retry controls. The app stops capture outside the
+foreground and keeps provider credentials off the device.
+
+The managed service and physical-device gates are still open. Build 127 is not
+uploaded to TestFlight.
+
 ## High-risk operator procedures complete their STE conversion (#9051)
 
 - issues: #9051

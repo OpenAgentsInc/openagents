@@ -55,6 +55,7 @@ export type OmegaHomeActions = Readonly<{
   onDraftChanged: (next: string) => void;
   onEnqueuePressed: () => void;
   onSteerPressed: () => void;
+  onSarahVoicePressed: () => void;
 }>;
 
 export const connectionToneOf = (state: OmegaDeviceBridgeState): BadgeTone => {
@@ -333,7 +334,17 @@ export const OmegaHomeView = ({
   if (!model.paired) {
     return (
       <Screen>
-        <ConnectionHeader model={model} />
+        <ConnectionHeader
+          model={model}
+          leading={
+            <Button
+              label="Talk to Sarah"
+              preset="ghost"
+              onPress={actions.onSarahVoicePressed}
+              style={$headerButton}
+            />
+          }
+        />
         <View style={$pairing}>
           <Text preset="display">Mirror your desktop</Text>
           <Text preset="body" color={colors.textDim} style={$pairingBody}>
@@ -341,6 +352,11 @@ export const OmegaHomeView = ({
             only the connection grant and resume cursor.
           </Text>
           <Button label="Scan desktop QR" onPress={actions.onPairPressed} preset="primary" />
+          <Button
+            label="Talk to Sarah"
+            onPress={actions.onSarahVoicePressed}
+            preset="secondary"
+          />
         </View>
       </Screen>
     );
@@ -353,12 +369,20 @@ export const OmegaHomeView = ({
         <ConnectionHeader
           model={model}
           leading={
-            <Button
-              label="← Activity"
-              preset="ghost"
-              onPress={actions.onThreadClosed}
-              style={$backButton}
-            />
+            <View style={$headerActions}>
+              <Button
+                label="← Activity"
+                preset="ghost"
+                onPress={actions.onThreadClosed}
+                style={$backButton}
+              />
+              <Button
+                label="Sarah voice"
+                preset="ghost"
+                onPress={actions.onSarahVoicePressed}
+                style={$headerButton}
+              />
+            </View>
           }
         />
         <View style={$threadHead}>
@@ -428,9 +452,17 @@ export const OmegaHomeView = ({
       <ConnectionHeader
         model={model}
         leading={
-          <Text preset="label" color={colors.textDim} style={$headerLabel}>
-            OMEGA SYNC
-          </Text>
+          <View style={$headerActions}>
+            <Text preset="label" color={colors.textDim} style={$headerLabel}>
+              OMEGA SYNC
+            </Text>
+            <Button
+              label="Sarah voice"
+              preset="ghost"
+              onPress={actions.onSarahVoicePressed}
+              style={$headerButton}
+            />
+          </View>
         }
       />
       <FlatList
@@ -469,6 +501,13 @@ const $headerRow: ViewStyle = {
 const $headerLeading: ViewStyle = { flex: 1, justifyContent: "center" };
 
 const $headerLabel: TextStyle = { letterSpacing: 1 };
+const $headerActions: ViewStyle = {
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: spacing.small,
+};
+const $headerButton: ViewStyle = { minHeight: 0, paddingVertical: 0, paddingHorizontal: 0 };
 
 // The back control sits in the header strip, so it drops the button's own
 // vertical padding and keeps its label on one line.

@@ -8,6 +8,7 @@ export const SARAH_VOICE_NOSTR_CHALLENGE_PATH = "/api/omega/sarah/voice/auth/cha
 export const SARAH_VOICE_MODEL = "gpt-realtime-2.1" as const;
 export const SARAH_VOICE_NOSTR_AUTH_METHOD = "nostr_nip98" as const;
 export const SARAH_VOICE_NOSTR_CHALLENGE_PROTOCOL_VERSION = "openagents.sarah.voice.auth-challenge.v1" as const;
+export const SARAH_VOICE_CLIENT_PROFILES = ["omega_editor", "mobile_voice_only"] as const;
 
 const Ref = S.Trim.check(S.isMinLength(1), S.isMaxLength(256));
 const Text = S.String.check(S.isMaxLength(16_384));
@@ -18,6 +19,7 @@ export const SarahVoiceSessionRequestSchema = S.Struct({
   schema: S.Literal(SARAH_VOICE_PROTOCOL_VERSION),
   identity: VoiceIdentitySchema,
   disclosureRef: Ref,
+  clientProfile: S.optional(S.Literals(SARAH_VOICE_CLIENT_PROFILES)),
   auth: S.optional(
     S.Struct({
       method: S.Literal(SARAH_VOICE_NOSTR_AUTH_METHOD),
@@ -52,6 +54,7 @@ export const SarahVoiceSessionResponseSchema = S.Struct({
   sessionExpiresAtMs: Seq,
   reservedCreditMsat: Seq,
   maxDurationSeconds: S.Int.check(S.isGreaterThanOrEqualTo(1), S.isLessThanOrEqualTo(3_600)),
+  clientProfile: S.Literals(SARAH_VOICE_CLIENT_PROFILES),
   inputAudio: S.Struct({
     codec: S.Literal("pcm_s16le"),
     sampleRateHz: S.Literal(24_000),
@@ -278,5 +281,20 @@ export const decodeSarahVoiceClientControl = (value: unknown) =>
 
 export const decodeSarahEditorCommand = (value: unknown) =>
   S.decodeUnknownSync(SarahEditorCommandSchema)(value, {
+    onExcessProperty: "error",
+  });
+
+export const decodeSarahVoiceNostrChallengeResponse = (value: unknown) =>
+  S.decodeUnknownSync(SarahVoiceNostrChallengeResponseSchema)(value, {
+    onExcessProperty: "error",
+  });
+
+export const decodeSarahVoiceSessionResponse = (value: unknown) =>
+  S.decodeUnknownSync(SarahVoiceSessionResponseSchema)(value, {
+    onExcessProperty: "error",
+  });
+
+export const decodeSarahVoiceServerControl = (value: unknown) =>
+  S.decodeUnknownSync(SarahVoiceServerControlSchema)(value, {
     onExcessProperty: "error",
   });

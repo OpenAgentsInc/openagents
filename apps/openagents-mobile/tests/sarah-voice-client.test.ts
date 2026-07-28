@@ -1,0 +1,471 @@
+import { createHash } from "node:crypto";
+import { describe, expect, test } from "vite-plus/test";
+
+import {
+  AUDIO_MEDIA_MAGIC,
+  AUDIO_PROTOCOL_VERSION,
+  SARAH_VOICE_NOSTR_CHALLENGE_PROTOCOL_VERSION,
+  SARAH_VOICE_PROTOCOL_VERSION,
+  type VoiceIdentity,
+} from "@openagentsinc/audio-contract";
+import type { Issue31NostrSigner } from "@openagentsinc/sarah/issue31-nostr";
+
+import {
+  SarahVoiceClient,
+  type SarahVoiceSocket,
+} from "../src/sarah-voice/client.ts";
+import type {
+  SarahVoiceSessionVault,
+  SarahVoiceStoredSession,
+} from "../src/sarah-voice/session-vault.ts";
+
+const publicKeyHex = "a".repeat(64);
+const ownerRef = "user-1";
+const challenge = `challenge_${"c".repeat(32)}`;
+const accessToken = `oa_omega_${"b".repeat(43)}`;
+const sha256 = async (bytes: Uint8Array): Promise<Uint8Array> =>
+  new Uint8Array(createHash("sha256").update(bytes).digest());
+const tick = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+
+class FixtureSocket implements SarahVoiceSocket {
+  binaryType = "";
+  readyState = 0;
+  onopen: (() => void) | null = null;
+  onmessage: ((event: Readonly<{ data: unknown }>) => void) | null = null;
+  onerror: (() => void) | null = null;
+  onclose: ((event: Readonly<{ code: number; reason: string }>) => void) | null = null;
+  readonly sent: Array<string | ArrayBuffer> = [];
+  readonly closes: Array<Readonly<{ code?: number; reason?: string }>> = [];
+
+  constructor(
+    readonly url: string,
+    readonly headers: Readonly<Record<string, string>>,
+  ) {}
+
+  send(data: string | ArrayBuffer): void {
+    this.sent.push(data);
+  }
+
+  close(code?: number, reason?: string): void {
+    this.readyState = 3;
+    this.closes.push({ code, reason });
+  }
+
+  open(): void {
+    this.readyState = 1;
+    this.onopen?.();
+  }
+
+  serverControl(frame: unknown): void {
+    this.onmessage?.({ data: JSON.stringify(frame) });
+  }
+
+  serverClose(code = 1011, reason = "transport_error"): void {
+    this.readyState = 3;
+    this.onclose?.({ code, reason });
+  }
+}
+
+const signer: Issue31NostrSigner = {
+  getPublicKey: async () => publicKeyHex,
+  signEvent: async (event) => ({
+    id: "d".repeat(64),
+    pubkey: publicKeyHex,
+    created_at: event.created_at ?? 0,
+    kind: event.kind,
+    tags: event.tags,
+    content: event.content,
+    sig: "e".repeat(128),
+  }),
+  nip44Encrypt: async () => "unused",
+  nip44Decrypt: async () => "unused",
+};
+
+const makeVault = (initial: SarahVoiceStoredSession | null = null) => {
+  let record = initial;
+  let clearCount = 0;
+  const vault: SarahVoiceSessionVault = {
+    read: async () => record,
+    write: async (next) => {
+      record = next;
+    },
+    clear: async () => {
+      clearCount += 1;
+      record = null;
+    },
+  };
+  return { clearCount: () => clearCount, read: () => record, vault };
+};
+
+const sessionResponse = (
+  identity: VoiceIdentity,
+  ticket: string,
+  withAuth: boolean,
+): Record<string, unknown> => ({
+  schema: SARAH_VOICE_PROTOCOL_VERSION,
+  sessionRef: identity.sessionRef,
+  model: "gpt-realtime-2.1",
+  gatewayUrl: "wss://openagents.com/api/omega/sarah/voice/connect",
+  ticket,
+  ticketExpiresAtMs: 20_000,
+  sessionExpiresAtMs: 600_000,
+  reservedCreditMsat: 25_000,
+  maxDurationSeconds: 600,
+  clientProfile: "mobile_voice_only",
+  inputAudio: { codec: "pcm_s16le", sampleRateHz: 24_000, channels: 1 },
+  outputAudio: { codec: "pcm_s16le", sampleRateHz: 24_000, channels: 1 },
+  ...(withAuth
+    ? {
+        auth: {
+          method: "nostr_nip98",
+          accessToken,
+          expiresIn: 900,
+        },
+      }
+    : {}),
+});
+
+const control = (
+  identity: VoiceIdentity,
+  sequence: number,
+  value: Record<string, unknown>,
+): Record<string, unknown> => ({
+  schema: SARAH_VOICE_PROTOCOL_VERSION,
+  identity,
+  sequence,
+  ...value,
+});
+
+const serverAudioFrame = (
+  identity: VoiceIdentity,
+  sequence: number,
+  itemRef: string,
+): ArrayBuffer => {
+  const pcm = Uint8Array.from([sequence + 1, 0]);
+  const header = new TextEncoder().encode(
+    JSON.stringify({
+      schema: AUDIO_PROTOCOL_VERSION,
+      kind: "server_tts",
+      identity,
+      sequence,
+      turnRef: itemRef,
+      speechRef: itemRef,
+      codec: "pcm_s16le",
+      sampleRateHz: 24_000,
+      channels: 1,
+      payloadLength: pcm.byteLength,
+      sha256: createHash("sha256").update(pcm).digest("hex"),
+    }),
+  );
+  const frame = new Uint8Array(8 + header.byteLength + pcm.byteLength);
+  frame.set(new TextEncoder().encode(AUDIO_MEDIA_MAGIC), 0);
+  new DataView(frame.buffer).setUint32(4, header.byteLength);
+  frame.set(header, 8);
+  frame.set(pcm, 8 + header.byteLength);
+  return frame.buffer;
+};
+
+describe("managed Sarah mobile voice client", () => {
+  test("authenticates with protected NIP-98 identity and refuses mobile device tools", async () => {
+    const sockets: FixtureSocket[] = [];
+    const vault = makeVault();
+    let sessionIdentity: VoiceIdentity | null = null;
+    let sessionBody: Record<string, unknown> | null = null;
+    const requests: Array<Readonly<{ url: string; init?: RequestInit }>> = [];
+    const fetch = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+      const url = String(input);
+      requests.push({ url, init });
+      if (url.endsWith("/auth/challenge")) {
+        return Response.json({
+          schema: SARAH_VOICE_NOSTR_CHALLENGE_PROTOCOL_VERSION,
+          challenge,
+          expiresAtMs: 20_000,
+          ownerRef,
+        });
+      }
+      sessionBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      sessionIdentity = sessionBody.identity as VoiceIdentity;
+      return Response.json(sessionResponse(sessionIdentity, "t".repeat(43), true), {
+        status: 201,
+      });
+    };
+    const client = new SarahVoiceClient({
+      baseUrl: "https://openagents.com",
+      publicKeyHex,
+      signer,
+      vault: vault.vault,
+      fetch: fetch as typeof globalThis.fetch,
+      createSocket: (url, headers) => {
+        const socket = new FixtureSocket(url, headers);
+        sockets.push(socket);
+        return socket;
+      },
+      sha256,
+      randomUuid: () => "voice-1",
+      now: () => 10_000,
+      setTimeout,
+      clearTimeout,
+    });
+    const audioItems: string[] = [];
+    client.onAudio(({ itemRef }) => audioItems.push(itemRef));
+
+    await client.start();
+    expect(requests).toHaveLength(2);
+    expect(sessionBody).toMatchObject({
+      schema: SARAH_VOICE_PROTOCOL_VERSION,
+      disclosureRef: "openagents.mobile.sarah.voice.v1",
+      clientProfile: "mobile_voice_only",
+      auth: {
+        method: "nostr_nip98",
+        challenge,
+      },
+    });
+    expect(requests[1]?.init?.headers).toMatchObject({
+      authorization: expect.stringMatching(/^Nostr /u),
+      "x-openagents-omega-device-ref": `omega-mobile-${publicKeyHex.slice(0, 24)}`,
+    });
+    expect(vault.read()).toMatchObject({ publicKeyHex, ownerRef, accessToken });
+
+    const socket = sockets[0]!;
+    expect(socket.binaryType).toBe("arraybuffer");
+    expect(socket.url).not.toContain("ticket");
+    expect(socket.url).not.toContain("t".repeat(43));
+    expect(socket.headers).toEqual({
+      "x-openagents-sarah-voice-session": "sarah.voice.voice-1",
+      "x-openagents-sarah-voice-ticket": "t".repeat(43),
+    });
+    socket.open();
+    expect(JSON.parse(socket.sent[0] as string)).toMatchObject({
+      _tag: "session_hello",
+      disclosureRef: "openagents.mobile.sarah.voice.v1",
+      sequence: 0,
+    });
+
+    const identity = sessionIdentity!;
+    socket.serverControl(control(identity, 0, { _tag: "lifecycle", state: "listening" }));
+    await tick();
+    client.sendAudio(Uint8Array.from([1, 0, 2, 0]), 24_000, 1);
+    await tick();
+    expect(socket.sent.some((entry) => entry instanceof ArrayBuffer)).toBe(true);
+
+    socket.onmessage?.({ data: serverAudioFrame(identity, 0, "provider-item-1") });
+    socket.onmessage?.({ data: serverAudioFrame(identity, 1, "provider-item-1") });
+    await tick();
+    await tick();
+    expect(audioItems).toEqual(["provider-item-1", "provider-item-1"]);
+
+    socket.serverControl(control(identity, 1, {
+      _tag: "transcript_delta",
+      source: "user",
+      utteranceRef: "utterance-1",
+      text: "Hello",
+    }));
+    socket.serverControl(control(identity, 2, {
+      _tag: "transcript_final",
+      source: "user",
+      utteranceRef: "utterance-1",
+      text: "Hello Sarah.",
+    }));
+    await tick();
+    expect(client.snapshot().transcripts).toEqual([
+      {
+        utteranceRef: "utterance-1",
+        source: "user",
+        text: "Hello Sarah.",
+        final: true,
+      },
+    ]);
+
+    socket.serverControl(control(identity, 3, {
+      _tag: "tool_execute",
+      proposalRef: "proposal-1",
+      proposalDigest: "f".repeat(64),
+      command: {
+        _tag: "open_path",
+        target: { workspaceRef: "workspace-1", path: "secret.txt" },
+      },
+    }));
+    await tick();
+    expect(client.snapshot()).toMatchObject({
+      phase: "error",
+      message: "Mobile Sarah voice refused an unsupported device action.",
+    });
+    expect(socket.closes.at(-1)).toEqual({ code: 1011, reason: "transport_error" });
+  });
+
+  test("maps normal-session credit denial without falling back to a second identity flow", async () => {
+    const stored: SarahVoiceStoredSession = {
+      schemaVersion: 1,
+      publicKeyHex,
+      ownerRef,
+      accessToken,
+      expiresAtMs: 100_000,
+    };
+    const vault = makeVault(stored);
+    const requests: string[] = [];
+    const client = new SarahVoiceClient({
+      baseUrl: "https://openagents.com",
+      publicKeyHex,
+      signer,
+      vault: vault.vault,
+      fetch: (async (input) => {
+        requests.push(String(input));
+        return Response.json({ error: "insufficient_credit" }, { status: 402 });
+      }) as typeof globalThis.fetch,
+      createSocket: () => {
+        throw new Error("A denied session must not open a socket.");
+      },
+      sha256,
+      randomUuid: () => "voice-credit",
+      now: () => 10_000,
+      setTimeout,
+      clearTimeout,
+    });
+
+    await client.start();
+    expect(requests).toEqual([
+      "https://openagents.com/api/omega/sarah/voice/session",
+    ]);
+    expect(vault.clearCount()).toBe(0);
+    expect(client.snapshot()).toMatchObject({
+      phase: "error",
+      message: "This account needs more OpenAgents credits for voice.",
+      retryable: false,
+    });
+  });
+
+  test("reconnects with a new one-use session and ticket", async () => {
+    const sockets: FixtureSocket[] = [];
+    const vault = makeVault();
+    const sessionRequests: Array<Record<string, unknown>> = [];
+    const timers: Array<() => void> = [];
+    const uuids = ["voice-1", "voice-2"];
+    const fetch = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+      const url = String(input);
+      if (url.endsWith("/auth/challenge")) {
+        return Response.json({
+          schema: SARAH_VOICE_NOSTR_CHALLENGE_PROTOCOL_VERSION,
+          challenge,
+          expiresAtMs: 20_000,
+          ownerRef,
+        });
+      }
+      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      sessionRequests.push(body);
+      const identity = body.identity as VoiceIdentity;
+      return Response.json(
+        sessionResponse(identity, `${sessionRequests.length}`.repeat(43), sessionRequests.length === 1),
+        { status: 201 },
+      );
+    };
+    const client = new SarahVoiceClient({
+      baseUrl: "https://openagents.com",
+      publicKeyHex,
+      signer,
+      vault: vault.vault,
+      fetch: fetch as typeof globalThis.fetch,
+      createSocket: (url, headers) => {
+        const socket = new FixtureSocket(url, headers);
+        sockets.push(socket);
+        return socket;
+      },
+      sha256,
+      randomUuid: () => uuids.shift() ?? "unexpected",
+      now: () => 10_000,
+      setTimeout: ((callback: () => void) => {
+        timers.push(callback);
+        return 1 as unknown as ReturnType<typeof setTimeout>;
+      }) as typeof setTimeout,
+      clearTimeout: () => undefined,
+    });
+
+    await client.start();
+    sockets[0]!.serverClose();
+    expect(client.snapshot().phase).toBe("reconnecting");
+    expect(timers).toHaveLength(1);
+    timers[0]!();
+    await tick();
+
+    expect(sessionRequests).toHaveLength(2);
+    expect(
+      (sessionRequests[0]!.identity as VoiceIdentity).sessionRef,
+    ).not.toBe((sessionRequests[1]!.identity as VoiceIdentity).sessionRef);
+    expect(sockets).toHaveLength(2);
+    expect(sockets[0]!.headers["x-openagents-sarah-voice-ticket"]).not.toBe(
+      sockets[1]!.headers["x-openagents-sarah-voice-ticket"],
+    );
+    expect(sockets[1]!.url).not.toContain("ticket");
+  });
+
+  test("drops decoded audio when the app leaves the foreground during digest validation", async () => {
+    const sockets: FixtureSocket[] = [];
+    const vault = makeVault();
+    let sessionIdentity: VoiceIdentity | null = null;
+    let deferDigest = false;
+    const digestGate: { release?: () => void } = {};
+    const deferredSha256 = async (bytes: Uint8Array): Promise<Uint8Array> => {
+      if (deferDigest) {
+        await new Promise<void>((resolve) => {
+          digestGate.release = resolve;
+        });
+      }
+      return sha256(bytes);
+    };
+    const fetch = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+      if (String(input).endsWith("/auth/challenge")) {
+        return Response.json({
+          schema: SARAH_VOICE_NOSTR_CHALLENGE_PROTOCOL_VERSION,
+          challenge,
+          expiresAtMs: 20_000,
+          ownerRef,
+        });
+      }
+      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      sessionIdentity = body.identity as VoiceIdentity;
+      return Response.json(sessionResponse(sessionIdentity, "t".repeat(43), true), {
+        status: 201,
+      });
+    };
+    const client = new SarahVoiceClient({
+      baseUrl: "https://openagents.com",
+      publicKeyHex,
+      signer,
+      vault: vault.vault,
+      fetch: fetch as typeof globalThis.fetch,
+      createSocket: (url, headers) => {
+        const socket = new FixtureSocket(url, headers);
+        sockets.push(socket);
+        return socket;
+      },
+      sha256: deferredSha256,
+      randomUuid: () => "voice-background",
+      now: () => 10_000,
+      setTimeout,
+      clearTimeout,
+    });
+    const audioItems: string[] = [];
+    client.onAudio(({ itemRef }) => audioItems.push(itemRef));
+
+    await client.start();
+    const socket = sockets[0]!;
+    socket.open();
+    socket.serverControl(control(sessionIdentity!, 0, {
+      _tag: "lifecycle",
+      state: "listening",
+    }));
+    await tick();
+
+    deferDigest = true;
+    socket.onmessage?.({
+      data: serverAudioFrame(sessionIdentity!, 0, "provider-item-background"),
+    });
+    await tick();
+    client.setForeground(false);
+    digestGate.release?.();
+    await tick();
+
+    expect(audioItems).toEqual([]);
+    expect(client.snapshot().phase).toBe("ended");
+    expect(socket.closes.at(-1)).toEqual({ code: 1000, reason: "app_backgrounded" });
+  });
+});

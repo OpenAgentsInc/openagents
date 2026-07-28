@@ -157,9 +157,11 @@ const activityOf = (state: OmegaDeviceBridgeState): ReadonlyArray<OmegaHomeActiv
 export const OmegaHomeScreen = ({
   bridge,
   scanPairing = scanOmegaDesktopPairingQr,
+  onSarahVoicePressed = () => undefined,
 }: {
   readonly bridge?: OmegaDeviceBridgeClient;
   readonly scanPairing?: () => Promise<OmegaBridgePairingBootstrap | null>;
+  readonly onSarahVoicePressed?: () => void;
 }) => {
   const [client, setClient] = useState<OmegaDeviceBridgeClient | null>(bridge ?? null);
   const [state, setState] = useState<OmegaDeviceBridgeState>(bridge?.state() ?? offlineState);
@@ -264,6 +266,7 @@ export const OmegaHomeScreen = ({
         onDraftChanged: setDraft,
         onEnqueuePressed: () => undefined,
         onSteerPressed: () => undefined,
+        onSarahVoicePressed,
       }}
     />
   );

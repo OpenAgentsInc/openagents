@@ -1,20 +1,26 @@
 # OpenAgents mobile
 
-The current OpenAgents iOS/Android app is one plain React Native surface for
-mirroring an admitted Omega desktop. Expo provides the native host, local build
-tooling, camera access, secure storage, and the owned OTA feed. Effect Native is
-not part of the mounted UI.
+The current OpenAgents iOS and Android source has two plain React Native
+surfaces. The released app can mirror an admitted Omega desktop. The source
+also implements a managed Sarah voice session with the protected mobile device
+identity. The live service and physical-device release proof are pending. Expo
+provides the native host, local build tools, camera access, microphone access,
+secure storage, and the owned OTA feed. Effect Native is not part of the
+mounted UI.
 
 - Display name: `OpenAgents`
 - iOS bundle identifier / Android application ID: `com.openagents.app`
 - App entry: `src/app.tsx`
-- Mounted screen: `src/screens/omega-home-screen.tsx`
+- Mounted screens: `src/screens/omega-home-screen.tsx` and
+  `src/screens/sarah-voice-screen.tsx`
 - Device bridge protocol: `openagents.omega.device_bridge.v1`
+- Sarah voice protocol: `openagents.sarah.voice.v1`
 
-The owner-directed reset on 2026-07-27 removed the previous conversation,
-Effect Native, auth, Sync, managed-sandbox, Full Auto, notification, settings,
-and mobile command surfaces. Historical receipts remain evidence only for the
-commits they pin.
+The owner-directed reset on 2026-07-27 removed the previous general
+conversation, Effect Native, Sync, managed-sandbox, Full Auto, notification,
+settings, and mobile command surfaces. The managed Sarah voice surface uses
+only the protected device identity and a normal OpenAgents session. Historical
+receipts remain evidence only for the commits that they identify.
 
 ## What exists today
 
@@ -52,31 +58,59 @@ can provide a bootstrap through either:
 - `EXPO_PUBLIC_OMEGA_PAIRING_BOOTSTRAP` for inline JSON
 - `EXPO_PUBLIC_OMEGA_PAIRING_BOOTSTRAP_URL` for a JSON endpoint.
 
+## Sarah voice
+
+The home screen has a `Talk to Sarah` action. The Sarah screen opens the
+protected Nostr device signer from SecureStore. It uses a NIP-98 challenge to
+get a short OpenAgents bearer session when a current bearer session is not
+available. The app does not contain an OpenAI API key.
+
+The API reserves normal OpenAgents credit and returns a one-use gateway ticket.
+The ticket stays in WebSocket headers. It does not enter the URL.
+
+Expo Audio captures mono 24 kHz PCM. The local native audio module plays the
+managed gateway PCM stream. The screen shows live user and Sarah transcripts.
+It also has mute, interrupt, end, and retry controls.
+
+The microphone is active only when the app is in the foreground and the screen
+shows `Listening`. Capture stops while Sarah speaks. Capture and playback stop
+when the app leaves the foreground or the screen closes. The screen does not
+persist audio or transcript text.
+
+The mobile profile is `mobile_voice_only`. This profile has no tools. Sarah
+cannot use this surface to control files, an editor, a shell, Git, URLs,
+payments, accounts, or device actions. The mobile client also rejects an
+unexpected tool frame and closes the session.
+
 ## Capability boundary
 
-This app is a read-only desktop mirror. The transcript composer is not rendered
-at all, because the mounted surface does not open the signed relay command
-lane. A disabled control still offers to do something, and this one cannot, so
-the owner directed on 2026-07-27 that the surface show nothing rather than an
-affordance that refuses. The app does not currently:
+The Omega surface is a read-only desktop mirror. It does not render a transcript
+composer because the mounted surface does not open the signed relay command
+lane. The Sarah surface is voice-only and has no device command authority. The
+app does not currently:
 
 - create, append to, steer, interrupt, or approve desktop work
-- authenticate an OpenAgents account or synchronize account conversations
+- synchronize general account conversations
 - control managed sandboxes, terminals, files, diffs, Git, or Full Auto
 - register or consume push notifications
-- run an agent, model, shell, cloud SDK, or desktop authority on the phone.
+- run a model, shell, cloud SDK, or desktop authority on the phone.
 
-The bridge client contains transport support beyond what the screen currently
-wires. That code is not a product claim. Signed commands, live-host journeys,
-and physical-device reliability require separate implementation and
-candidate-bound evidence.
+The managed gateway runs Sarah outside the phone. The phone has no provider
+credential. A live service journey and physical-device reliability require
+candidate-bound evidence before a TestFlight upload.
 
 ## Architecture
 
-- `src/app.tsx` loads the bundled faces, then mounts one `OmegaHomeScreen`
-  inside the safe-area provider.
+- `src/app.tsx` loads the bundled faces. It then mounts `OmegaHomeScreen` or
+  `SarahVoiceScreen` inside the safe-area provider.
 - `src/screens/omega-home-screen.tsx` owns QR scanning, connection notices,
   activity ordering, selection, and the clock the relative stamps read against.
+- `src/screens/sarah-voice-screen.tsx` owns the foreground voice lifecycle,
+  microphone permission, capture, playback, transcripts, and user controls.
+- `src/sarah-voice/` owns strict protocol frames, managed session
+  authentication, reconnect limits, and the protected bearer-session vault.
+- `modules/expo-realtime-audio/` owns native PCM playback for iOS and Android.
+  Expo Audio owns capture. Neither path has a background mode.
 - `src/screens/omega-bridge-session.ts` owns the bridge mount lifecycle alone,
   so its ownership race has a seam a test can reach (#9264). The screen module
   cannot be imported under the test environment, because `expo-camera` needs a
@@ -124,12 +158,17 @@ pnpm --dir apps/openagents-mobile run test
 The current focused suite covers:
 
 - the exact app identity, owned OTA origin, channel, and runtime policy
+- the exact microphone permission and the absence of background audio modes
 - the Hermes Web Crypto fallback
 - the Metro-reachable source graph staying free of Node built-ins
 - bridge framing, admission, mirror updates, revocation, storage, and signer
-  cleanup.
+  cleanup
+- Sarah session authentication, ticket handling, credit errors, reconnect,
+  sequence checks, transcript updates, unsupported-tool refusal, audio bounds,
+  and background cleanup.
 
-These tests do not replace a signed Omega host run or a physical-device run.
+These tests do not replace a signed Omega host run, a live managed Sarah
+gateway run, or a physical-device run.
 
 ## Device builds
 
@@ -147,6 +186,9 @@ apps/openagents-mobile/android/gradlew \
 
 Use Apple Team `HQWSG26L43` for iOS signing. Follow the mobile release entry in
 `docs/DEPLOYMENT.md` before producing or uploading a release artifact.
+
+Sarah voice changes the native permission and native audio module. Do not ship
+this change as an OTA update. Use a new store build.
 
 ## OTA updates
 

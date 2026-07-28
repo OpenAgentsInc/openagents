@@ -4,24 +4,28 @@ Date: 2026-07-28
 
 Status: Implemented and off by default
 
-Issue: [#9272](https://github.com/OpenAgentsInc/openagents/issues/9272)
+Issues:
+[OpenAgentsInc/openagents#9272](https://github.com/OpenAgentsInc/openagents/issues/9272)
+and
+[OpenAgentsInc/openagents#9273](https://github.com/OpenAgentsInc/openagents/issues/9273)
 
 ## Purpose
 
-This service gives Omega a live Sarah voice session.
+This service gives an approved Omega or OpenAgents mobile client a live Sarah
+voice session.
 OpenAgents owns the provider connection.
-Omega does not receive an OpenAI API key.
+The client does not receive an OpenAI API key.
 
 The service uses `gpt-realtime-2.1`.
 The service sends a stable hash of the OpenAgents user ID as the OpenAI safety identifier.
 
 ## Service flow
 
-1. Omega sends an authenticated session request.
+1. The approved client sends an authenticated session request.
 2. The API checks the user, device, feature configuration, and available credit.
 3. The API holds a bounded credit amount.
 4. The API returns a one-use gateway ticket.
-5. Omega opens the gateway WebSocket with the ticket.
+5. The client opens the gateway WebSocket with the ticket.
 6. The gateway consumes the ticket and opens the OpenAI WebSocket.
 7. The gateway relays only approved audio and control frames.
 8. The gateway records each provider usage event.
@@ -39,7 +43,7 @@ Use this path:
 POST /api/omega/sarah/voice/session
 ```
 
-Use the normal Omega bearer token.
+Use the normal OpenAgents bearer token.
 Also send this header:
 
 ```text
@@ -62,23 +66,25 @@ Example request:
     "sessionRef": "voice_123",
     "generation": 1
   },
-  "disclosureRef": "omega.voice.disclosure.v1"
+  "disclosureRef": "omega.voice.disclosure.v1",
+  "clientProfile": "omega_editor"
 }
 ```
 
 The success response contains the gateway URL, one-use ticket, expiry values, held credit, model, and fixed audio formats.
+It also contains the selected `clientProfile`.
 The API returns `402` when available credit is too low.
 The API returns `409` when the user has an active session.
 The response always has `Cache-Control: no-store`.
 
 ## Automatic Nostr authentication
 
-Omega can use its current local Nostr signer.
-Omega does not create a second identity for this flow.
+Omega and OpenAgents mobile can use their current local Nostr signer.
+The client does not create a second identity for this flow.
 This flow uses NIP-98.
 It does not use NIP-42.
 
-First, Omega requests a challenge:
+First, the client requests a challenge:
 
 ```text
 POST /api/omega/sarah/voice/auth/challenge
@@ -115,11 +121,11 @@ The response has this form:
 }
 ```
 
-Omega must copy the returned `ownerRef`.
-Omega must not calculate or guess this value.
+The client must copy the returned `ownerRef`.
+The client must not calculate or guess this value.
 This rule supports an owner key that maps to a current account.
 
-Next, Omega adds this object to the normal voice session request:
+Next, the client adds this object to the normal voice session request:
 
 ```json
 {
@@ -130,7 +136,7 @@ Next, Omega adds this object to the normal voice session request:
 }
 ```
 
-Omega sends these headers:
+The client sends these headers:
 
 ```text
 Authorization: Nostr <base64 encoded NIP-98 event>
@@ -138,7 +144,7 @@ x-openagents-omega-device-ref: <deviceRef>
 Content-Type: application/json
 ```
 
-Omega serializes the complete request body one time.
+The client serializes the complete request body one time.
 It gives the same bytes to the signer and to the HTTP client.
 The NIP-98 event has kind `27235` and empty content.
 It has exactly one `u` tag, one `method` tag, and one `payload` tag.
@@ -169,7 +175,7 @@ It includes this additional object:
 ```
 
 The `expiresIn` value is in seconds.
-Omega stores this token in its current secure session store.
+The client stores this token in its current secure session store.
 The current bearer session flow stays available.
 It does not use a challenge.
 
@@ -202,9 +208,31 @@ The full client and server schemas are in:
 packages/audio-contract/src/sarah-realtime.ts
 ```
 
-## Editor tools
+## Client profiles
 
-The server gives the model this allowlist:
+The pre-release version 1 schema has two client profiles:
+
+- `omega_editor`
+- `mobile_voice_only`
+
+An omitted profile selects `omega_editor`.
+The server stores the selected profile with the session.
+The server also returns the profile in the session response.
+A client must stop if the response does not contain its requested profile.
+
+The `mobile_voice_only` profile has no tools.
+The provider receives `tools: []` and `tool_choice: "none"`.
+The instructions prohibit editor, file, URL, shell, Git, payment, account, and
+device actions.
+The gateway closes the session if the provider sends a tool call.
+
+This profile is a voice safety profile.
+It is not an unmetered entitlement.
+Mobile voice continues to use normal OpenAgents credit.
+
+## Omega editor tools
+
+The `omega_editor` profile gives the model this allowlist:
 
 - `context_read`
 - `open_path`
@@ -288,7 +316,8 @@ The default is 600 seconds.
 
 The Cloud Run deployment already mounts `OPENAI_API_KEY` from Secret Manager.
 Do not put that key in an environment file, response, log, trace, or client package.
-Apply database migration `0103_sarah_realtime_voice.sql` before you enable the feature.
+Apply database migrations `0103_sarah_realtime_voice.sql` and
+`0104_sarah_voice_client_profile.sql` before you enable the feature.
 
 ## Logs and private data
 
@@ -310,5 +339,7 @@ pnpm --filter @openagentsinc/khala-sync-server test -- sarah-realtime-voice-stor
 pnpm --filter @openagentsinc/khala-sync-server typecheck
 pnpm --dir apps/openagents.com/workers/api test -- src/sarah-realtime-voice-routes.test.ts src/cloudrun/sarah-realtime-bridge.test.ts
 pnpm --dir apps/openagents.com/workers/api typecheck:cloudrun
+pnpm --dir apps/openagents-mobile run test
+pnpm --dir apps/openagents-mobile run typecheck
 pnpm run check:ste
 ```

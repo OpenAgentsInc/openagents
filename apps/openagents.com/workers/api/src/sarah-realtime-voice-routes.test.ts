@@ -49,6 +49,7 @@ const makeDependencies = (
     threadRef: input.threadRef,
     generation: input.generation,
     disclosureRef: input.disclosureRef,
+    clientProfile: input.clientProfile,
     state: 'reserved' as const,
     reservedMsat: input.reservedMsat,
     chargedMsat: 0,
@@ -102,6 +103,7 @@ describe('managed Sarah Realtime voice session route', () => {
     const body = (await response.json()) as {
       readonly gatewayUrl: string
       readonly ticket: string
+      readonly clientProfile: string
     }
     expect(body).toMatchObject({
       schema: SARAH_VOICE_PROTOCOL_VERSION,
@@ -109,6 +111,7 @@ describe('managed Sarah Realtime voice session route', () => {
       model: 'gpt-realtime-2.1',
       reservedCreditMsat: 25_000,
       maxDurationSeconds: 600,
+      clientProfile: 'omega_editor',
     })
     expect(body.gatewayUrl).toBe(
       'wss://openagents.com/api/omega/sarah/voice/connect',
@@ -117,11 +120,55 @@ describe('managed Sarah Realtime voice session route', () => {
     expect(fixture.reserve).toHaveBeenCalledWith(
       expect.objectContaining({
         ownerActorRef: 'agent:user-1',
+        clientProfile: 'omega_editor',
         reservedMsat: 25_000,
         ticketDigest: expect.stringMatching(/^[a-f0-9]{64}$/u),
       }),
     )
     expect(fixture.close).toHaveBeenCalledOnce()
+  })
+
+  test('persists and echoes the voice-only mobile profile', async () => {
+    const fixture = makeDependencies()
+    const response = await handleSarahRealtimeVoiceSessionRequest(
+      fixture.dependencies,
+      request({
+        schema: SARAH_VOICE_PROTOCOL_VERSION,
+        identity,
+        disclosureRef: 'openagents.mobile.sarah.voice.v1',
+        clientProfile: 'mobile_voice_only',
+      }),
+      {},
+      ctx,
+    )
+
+    expect(response.status).toBe(201)
+    expect(await response.json()).toMatchObject({
+      clientProfile: 'mobile_voice_only',
+    })
+    expect(fixture.reserve).toHaveBeenCalledWith(
+      expect.objectContaining({
+        clientProfile: 'mobile_voice_only',
+      }),
+    )
+  })
+
+  test('rejects an unknown client profile before credit reservation', async () => {
+    const fixture = makeDependencies()
+    const response = await handleSarahRealtimeVoiceSessionRequest(
+      fixture.dependencies,
+      request({
+        schema: SARAH_VOICE_PROTOCOL_VERSION,
+        identity,
+        disclosureRef: 'disclosure-1',
+        clientProfile: 'arbitrary_device_commands',
+      }),
+      {},
+      ctx,
+    )
+
+    expect(response.status).toBe(400)
+    expect(fixture.reserve).not.toHaveBeenCalled()
   })
 
   test('rejects an Omega device mismatch before storage access', async () => {

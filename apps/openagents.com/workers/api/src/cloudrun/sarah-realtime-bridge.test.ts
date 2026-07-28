@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest'
 import {
   parseSarahRealtimeBridgeCreditRate,
   sarahEditorCommandRequiresConfirmation,
+  sessionUpdateForSarahClientProfile,
   usageFromInputTranscription,
   usageFromProviderResponse,
   validateSarahEditorCommandTarget,
@@ -137,5 +138,21 @@ describe('Sarah Realtime bridge metering', () => {
         presentation: 'foreground',
       }),
     ).toThrow('agent_thread_message_not_allowed')
+  })
+
+  test('gives the mobile voice profile no provider tools or device authority', () => {
+    const update = sessionUpdateForSarahClientProfile('mobile_voice_only')
+    expect(update.session.tools).toEqual([])
+    expect(update.session.tool_choice).toBe('none')
+    expect(update.session.instructions).toContain('voice conversation only')
+    expect(update.session.instructions).toContain('Do not request, perform, or claim')
+    expect(update.session.instructions).toContain('device action')
+  })
+
+  test('keeps the bounded editor profile separate from mobile voice', () => {
+    const update = sessionUpdateForSarahClientProfile('omega_editor')
+    expect(update.session.tools.length).toBeGreaterThan(0)
+    expect(update.session.tool_choice).toBe('auto')
+    expect(update.session.instructions).toContain('supplied editor tools')
   })
 })

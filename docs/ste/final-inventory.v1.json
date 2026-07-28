@@ -2,7 +2,7 @@
   "schema": "openagents-ste-final-inventory-v1",
   "steIssue": 9,
   "glossaryRevision": "openagents-ste-glossary-v1",
-  "reviewedAt": "2026-07-28T20:40:57Z",
+  "reviewedAt": "2026-07-28T22:06:26Z",
   "entries": [
     {
       "path": ".agents/THIRD_PARTY_NOTICES.md",
@@ -1063,7 +1063,7 @@
     },
     {
       "path": "apps/openagents-mobile/README.md",
-      "sha256": "0257a424d5a6b412bd33ba017fc5e7597eb1a0aef031e4dca0bf697492b543a1",
+      "sha256": "d7bce475773c685f0094e2d7e2670ce9b779526f6568ff4dd85f5413bb0cfc27",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -1079,8 +1079,8 @@
           "STE-8.2"
         ],
         "ste_status": "inspected",
-        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+        "ste_reviewer": "/root/testflight_audit",
+        "ste_reviewed_at": "2026-07-28T22:06:26Z"
       }
     },
     {
@@ -19675,7 +19675,7 @@
     },
     {
       "path": "docs/changelog/UNRELEASED.md",
-      "sha256": "28f629dd387166d6f24f7f60a0fe2e1e6037445a712c9c2ad8e1f8d6fa1cbf3f",
+      "sha256": "e90db6d02c2b7c44b590f58d8d109622179a8ef464107176b4550494142edcf3",
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
@@ -33393,6 +33393,18 @@
       }
     },
     {
+      "path": "docs/mobile/2026-07-28-openagents-mobile-build-127-sarah-voice-preflight-receipt.md",
+      "sha256": "f5476b93db22271b57da9746c7b4f06f23ed5010c3d7473a351f90b13c24bf65",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null,
+        "ste_status": "source-data"
+      }
+    },
+    {
       "path": "docs/mpp/2026-06-23-mpp-launch-and-badge-runbook.md",
       "sha256": "e41c6a4c0ca2ce21dae91baa043b7ca210034980c0087aafb8538c0d7055360a",
       "reason": "Final review of a converted document",
@@ -35293,7 +35305,7 @@
     },
     {
       "path": "docs/omega/2026-07-28-managed-sarah-realtime-voice-gateway.md",
-      "sha256": "ecbd3b93cf8a114568dab214ebb6eacf5ff1851fa76d16be368281889af557bb",
+      "sha256": "a595b3b2921a1ba5c159f16f50598dadd4dc462525fa9a5739b0d5e5b033b3e9",
       "reason": "Final review of a current technical document",
       "profile": {
         "ste_mode": "descriptive",
@@ -35302,8 +35314,8 @@
         "replacement": null,
         "ste_audience": "human",
         "ste_status": "inspected",
-        "ste_reviewer": "codex/review-followup-docs-sarah-voice-20260728",
-        "ste_reviewed_at": "2026-07-28T20:40:57Z"
+        "ste_reviewer": "/root/testflight_audit",
+        "ste_reviewed_at": "2026-07-28T22:06:26Z"
       }
     },
     {

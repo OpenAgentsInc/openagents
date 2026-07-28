@@ -3,6 +3,9 @@ import {
   SARAH_VOICE_PROTOCOL_VERSION,
   decodeSarahEditorCommand,
   decodeSarahVoiceClientControl,
+  decodeSarahVoiceSessionRequest,
+  decodeSarahVoiceSessionResponse,
+  decodeSarahVoiceServerControl,
 } from "./sarah-realtime.js";
 
 const identity = {
@@ -61,6 +64,63 @@ describe("Sarah Realtime voice contract", () => {
         proposalRef: "proposal-1",
         proposalDigest: "not-a-digest",
         decision: "confirm",
+      }),
+    ).toThrow();
+  });
+
+  test("admits a voice-only mobile profile without editor capability", () => {
+    expect(
+      decodeSarahVoiceSessionRequest({
+        schema: SARAH_VOICE_PROTOCOL_VERSION,
+        identity,
+        disclosureRef: "openagents.mobile.sarah.voice.v1",
+        clientProfile: "mobile_voice_only",
+      }).clientProfile,
+    ).toBe("mobile_voice_only");
+  });
+
+  test("decodes server controls at the client boundary", () => {
+    expect(
+      decodeSarahVoiceServerControl({
+        schema: SARAH_VOICE_PROTOCOL_VERSION,
+        identity,
+        sequence: 0,
+        _tag: "lifecycle",
+        state: "listening",
+      })._tag,
+    ).toBe("lifecycle");
+  });
+
+  test("requires an exact client profile in the pre-release session response", () => {
+    const response = {
+      schema: SARAH_VOICE_PROTOCOL_VERSION,
+      sessionRef: identity.sessionRef,
+      model: "gpt-realtime-2.1",
+      gatewayUrl: "wss://openagents.com/api/omega/sarah/voice/connect",
+      ticket: "t".repeat(43),
+      ticketExpiresAtMs: 1_000,
+      sessionExpiresAtMs: 2_000,
+      reservedCreditMsat: 25_000,
+      maxDurationSeconds: 600,
+      clientProfile: "mobile_voice_only",
+      inputAudio: {
+        codec: "pcm_s16le",
+        sampleRateHz: 24_000,
+        channels: 1,
+      },
+      outputAudio: {
+        codec: "pcm_s16le",
+        sampleRateHz: 24_000,
+        channels: 1,
+      },
+    } as const;
+    expect(decodeSarahVoiceSessionResponse(response).clientProfile).toBe(
+      "mobile_voice_only",
+    );
+    expect(() =>
+      decodeSarahVoiceSessionResponse({
+        ...response,
+        clientProfile: "arbitrary_device_commands",
       }),
     ).toThrow();
   });

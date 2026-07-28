@@ -21,7 +21,10 @@ const appConfig = JSON.parse(
   expo: {
     name: string
     icon: string
-    ios: { bundleIdentifier: string }
+    ios: {
+      bundleIdentifier: string
+      entitlements?: Record<string, ReadonlyArray<string>>
+    }
     android: { package: string }
     runtimeVersion?: { policy?: string }
     updates?: {
@@ -29,6 +32,13 @@ const appConfig = JSON.parse(
       url?: string
       requestHeaders?: Record<string, string>
     }
+    plugins?: ReadonlyArray<
+      | string
+      | readonly [
+          string,
+          Readonly<Record<string, string | boolean>>,
+        ]
+    >
   }
 }
 
@@ -42,6 +52,9 @@ describe("contract openagents_mobile.identity.v1", () => {
 
   test("iOS bundle identifier and Android application ID are exactly com.openagents.app", () => {
     expect(appConfig.expo.ios.bundleIdentifier).toBe("com.openagents.app")
+    expect(appConfig.expo.ios.entitlements).toEqual({
+      "keychain-access-groups": ["$(AppIdentifierPrefix)com.openagents.app"],
+    })
     expect(appConfig.expo.android.package).toBe("com.openagents.app")
   })
 
@@ -75,5 +88,21 @@ describe("contract openagents_mobile.identity.v1", () => {
     expect(
       appConfig.expo.updates?.requestHeaders?.["expo-channel-name"],
     ).not.toBe("production")
+  })
+
+  test("microphone permission is exact and background audio stays disabled", () => {
+    const audioPlugin = appConfig.expo.plugins?.find(
+      (plugin) => Array.isArray(plugin) && plugin[0] === "expo-audio",
+    )
+    expect(audioPlugin).toEqual([
+      "expo-audio",
+      {
+        microphonePermission:
+          "Allow OpenAgents to use the microphone for live conversations with Sarah.",
+        recordAudioAndroid: true,
+        enableBackgroundPlayback: false,
+        enableBackgroundRecording: false,
+      },
+    ])
   })
 })

@@ -1,6 +1,23 @@
 {
   "schema": "openagents-ste-profile-overrides-v1",
   "profiles": {
+    "apps/openagents-mobile/README.md": {
+      "ste_mode": "descriptive",
+      "ste_status": "inspected",
+      "ste_reviewer": "/root/testflight_audit",
+      "ste_reviewed_at": "2026-07-28T22:06:26Z",
+      "risk": "legacy",
+      "source": null,
+      "replacement": null,
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": [
+        "STE-2.4",
+        "STE-3.6",
+        "STE-5.1",
+        "STE-8.2"
+      ]
+    },
     "docs/omega/sniffer/README.md": {
       "ste_mode": "mixed",
       "ste_status": "checked",
@@ -1531,8 +1548,8 @@
     "docs/omega/2026-07-28-managed-sarah-realtime-voice-gateway.md": {
       "ste_mode": "descriptive",
       "ste_status": "inspected",
-      "ste_reviewer": "codex/review-followup-docs-sarah-voice-20260728",
-      "ste_reviewed_at": "2026-07-28T20:40:57Z",
+      "ste_reviewer": "/root/testflight_audit",
+      "ste_reviewed_at": "2026-07-28T22:06:26Z",
       "risk": "active",
       "source": null,
       "replacement": null,

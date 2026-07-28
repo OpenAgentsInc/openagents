@@ -55,17 +55,19 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       threadRef: "thread-test",
       generation: 1,
       disclosureRef: "disclosure-test",
+      clientProfile: "mobile_voice_only",
       reservedMsat: 1_000,
       ticketExpiresAt: "2026-07-28T12:01:00.000Z",
       sessionExpiresAt: "2026-07-28T12:10:00.000Z",
       nowIso: "2026-07-28T12:00:00.000Z",
     } as const;
-    await store.reserve({
+    const reserved = await store.reserve({
       ...common,
       sessionRef: "voice-session-1",
       reservationRef: "voice-reservation-1",
       ticketDigest: "a".repeat(64),
     });
+    expect(reserved.clientProfile).toBe("mobile_voice_only");
     await expect(
       store.reserve({
         ...common,
@@ -75,11 +77,12 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       }),
     ).rejects.toBeInstanceOf(SarahVoiceConcurrentSessionError);
 
-    await store.connect({
+    const connected = await store.connect({
       sessionRef: "voice-session-1",
       ticketDigest: "a".repeat(64),
       nowIso: "2026-07-28T12:00:30.000Z",
     });
+    expect(connected.clientProfile).toBe("mobile_voice_only");
     const usage = {
       providerResponseRef: "response-1",
       inputTokens: 100,
@@ -99,6 +102,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
     });
     expect(settled).toMatchObject({
       state: "settled",
+      clientProfile: "mobile_voice_only",
       chargedMsat: 250,
       reservedMsat: 1_000,
     });

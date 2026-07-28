@@ -1,8 +1,10 @@
+import { useState } from "react";
 import { useFonts } from "expo-font";
 import { View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { OmegaHomeScreen } from "./screens/omega-home-screen";
+import { SarahVoiceScreen } from "./screens/sarah-voice-screen";
 import { colors, fontAssets } from "./ui/theme";
 
 /**
@@ -20,13 +22,18 @@ import { colors, fontAssets } from "./ui/theme";
  * holding the app hostage to a font.
  */
 export const App = () => {
+  const [surface, setSurface] = useState<"omega" | "sarah_voice">("omega");
   const [loaded, error] = useFonts(fontAssets);
   if (!loaded && error === null) {
     return <View style={{ flex: 1, backgroundColor: colors.background }} />;
   }
   return (
     <SafeAreaProvider>
-      <OmegaHomeScreen />
+      {surface === "sarah_voice" ? (
+        <SarahVoiceScreen onClose={() => setSurface("omega")} />
+      ) : (
+        <OmegaHomeScreen onSarahVoicePressed={() => setSurface("sarah_voice")} />
+      )}
     </SafeAreaProvider>
   );
 };

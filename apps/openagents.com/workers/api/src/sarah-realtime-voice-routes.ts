@@ -275,6 +275,7 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
     }
   }
   const body = parsed.body
+  const clientProfile = body.clientProfile ?? 'omega_editor'
   const userId = dependencies.userIdFromSession(session)
   const deviceRef = request.headers
     .get(SARAH_REALTIME_VOICE_DEVICE_HEADER)
@@ -312,6 +313,7 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
     await opened.store.reserve({
       deviceRef: body.identity.deviceRef,
       disclosureRef: body.disclosureRef,
+      clientProfile,
       generation: body.identity.generation,
       nowIso: new Date(nowMs).toISOString(),
       ownerActorRef: `agent:${userId}`,
@@ -335,6 +337,7 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
         sessionExpiresAtMs,
         reservedCreditMsat: config.reservationMsat,
         maxDurationSeconds: config.maxSessionSeconds,
+        clientProfile,
         inputAudio: {
           codec: 'pcm_s16le',
           sampleRateHz: 24_000,

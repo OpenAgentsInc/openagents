@@ -348,6 +348,42 @@ const toolDefinitions = [
   },
 ] as const
 
+export const sessionUpdateForSarahClientProfile = (
+  clientProfile: SarahVoiceSessionRecord['clientProfile'],
+) => ({
+  type: 'session.update' as const,
+  session: {
+    type: 'realtime' as const,
+    model: SARAH_VOICE_MODEL,
+    instructions:
+      clientProfile === 'mobile_voice_only'
+        ? 'You are Sarah in the OpenAgents mobile app. Have a voice conversation only. ' +
+          'Do not request, perform, or claim any editor, file, URL, shell, Git, payment, or device action.'
+        : 'You are Sarah in Omega. Use only the supplied editor tools. ' +
+          'Never claim that a tool ran until its tool outcome says it ran.',
+    output_modalities: ['audio'] as const,
+    audio: {
+      input: {
+        format: { type: 'audio/pcm' as const, rate: 24_000 },
+        transcription: { model: 'gpt-4o-mini-transcribe' },
+        turn_detection: {
+          type: 'semantic_vad' as const,
+          eagerness: 'high' as const,
+          interrupt_response: true,
+          create_response: true,
+        },
+      },
+      output: {
+        format: { type: 'audio/pcm' as const, rate: 24_000 },
+        voice: 'marin',
+      },
+    },
+    tools: clientProfile === 'mobile_voice_only' ? [] : toolDefinitions,
+    tool_choice: clientProfile === 'mobile_voice_only' ? 'none' : 'auto',
+    max_output_tokens: 1_024,
+  },
+})
+
 const commandTagForTool = (
   name: string,
 ): SarahEditorCommand['_tag'] | undefined =>
@@ -440,9 +476,23 @@ const handleToolCall = (
   ws: Socket,
   item: Readonly<Record<string, unknown>>,
 ): void => {
+  const callRef = typeof item.call_id === 'string' ? item.call_id : ''
+  if (ws.data.session.clientProfile === 'mobile_voice_only') {
+    sendToolOutput(ws.data.upstream, callRef, {
+      ok: false,
+      error: 'tool_not_allowed',
+    })
+    sendControl(ws, {
+      _tag: 'error',
+      code: 'tool_not_allowed',
+      retryable: false,
+    })
+    closeClient(ws, 'transport_error', 1008)
+    ws.data.tasks.add(cleanup(ws, 'mobile_tool_violation'))
+    return
+  }
   const name = typeof item.name === 'string' ? item.name : ''
   const tag = commandTagForTool(name)
-  const callRef = typeof item.call_id === 'string' ? item.call_id : ''
   if (tag === undefined || callRef === '') {
     sendToolOutput(ws.data.upstream, callRef, {
       ok: false,
@@ -887,36 +937,11 @@ export const makeSarahRealtimeWebSocketHandlers = () => ({
     ws.data.upstream = upstream
     upstream.on('open', () => {
       upstream.send(
-        JSON.stringify({
-          type: 'session.update',
-          session: {
-            type: 'realtime',
-            model: SARAH_VOICE_MODEL,
-            instructions:
-              'You are Sarah in Omega. Use only the supplied editor tools. ' +
-              'Never claim that a tool ran until its tool outcome says it ran.',
-            output_modalities: ['audio'],
-            audio: {
-              input: {
-                format: { type: 'audio/pcm', rate: 24_000 },
-                transcription: { model: 'gpt-4o-mini-transcribe' },
-                turn_detection: {
-                  type: 'semantic_vad',
-                  eagerness: 'high',
-                  interrupt_response: true,
-                  create_response: true,
-                },
-              },
-              output: {
-                format: { type: 'audio/pcm', rate: 24_000 },
-                voice: 'marin',
-              },
-            },
-            tools: toolDefinitions,
-            tool_choice: 'auto',
-            max_output_tokens: 1_024,
-          },
-        }),
+        JSON.stringify(
+          sessionUpdateForSarahClientProfile(
+            ws.data.session.clientProfile,
+          ),
+        ),
       )
     })
     upstream.on('message', (data: RawData, isBinary: boolean) => {

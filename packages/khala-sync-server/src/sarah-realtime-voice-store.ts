@@ -1,6 +1,7 @@
 import type { SyncSql, SyncTransactionSql } from "./sql.js";
 
 export type SarahVoiceSessionState = "reserved" | "connected" | "settled" | "released" | "failed";
+export type SarahVoiceClientProfile = "omega_editor" | "mobile_voice_only";
 
 export type SarahVoiceSessionRecord = Readonly<{
   sessionRef: string;
@@ -10,6 +11,7 @@ export type SarahVoiceSessionRecord = Readonly<{
   threadRef: string;
   generation: number;
   disclosureRef: string;
+  clientProfile: SarahVoiceClientProfile;
   state: SarahVoiceSessionState;
   reservedMsat: number;
   chargedMsat: number;
@@ -59,6 +61,7 @@ type SessionRow = Readonly<{
   thread_ref: string;
   generation: number | string;
   disclosure_ref: string;
+  client_profile: SarahVoiceClientProfile;
   state: SarahVoiceSessionState;
   reserved_msat: number | string;
   charged_msat: number | string;
@@ -83,6 +86,7 @@ const toRecord = (row: SessionRow): SarahVoiceSessionRecord => ({
   threadRef: row.thread_ref,
   generation: toSafeInteger(row.generation, "generation"),
   disclosureRef: row.disclosure_ref,
+  clientProfile: row.client_profile,
   state: row.state,
   reservedMsat: toSafeInteger(row.reserved_msat, "reserved_msat"),
   chargedMsat: toSafeInteger(row.charged_msat, "charged_msat"),
@@ -113,6 +117,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
       generation: number;
       ticketDigest: string;
       disclosureRef: string;
+      clientProfile: SarahVoiceClientProfile;
       reservedMsat: number;
       ticketExpiresAt: string;
       sessionExpiresAt: string;
@@ -151,17 +156,17 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           INSERT INTO sarah_realtime_voice_sessions (
             session_ref, reservation_ref, owner_user_id, owner_actor_ref,
             device_ref, thread_ref, generation, ticket_digest, disclosure_ref,
-            state, reserved_msat, charged_msat, ticket_expires_at,
+            client_profile, state, reserved_msat, charged_msat, ticket_expires_at,
             session_expires_at, created_at, updated_at
           ) VALUES (
             ${input.sessionRef}, ${input.reservationRef}, ${input.ownerUserId},
             ${input.ownerActorRef}, ${input.deviceRef}, ${input.threadRef},
             ${input.generation}, ${input.ticketDigest}, ${input.disclosureRef},
-            'reserved', ${input.reservedMsat}, 0, ${input.ticketExpiresAt},
+            ${input.clientProfile}, 'reserved', ${input.reservedMsat}, 0, ${input.ticketExpiresAt},
             ${input.sessionExpiresAt}, ${input.nowIso}, ${input.nowIso}
           )
           RETURNING session_ref, owner_user_id, owner_actor_ref, device_ref,
-            thread_ref, generation, disclosure_ref, state, reserved_msat,
+            thread_ref, generation, disclosure_ref, client_profile, state, reserved_msat,
             charged_msat, ticket_expires_at, session_expires_at,
             settlement_receipt_ref
         `) as ReadonlyArray<SessionRow>;
@@ -208,7 +213,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
             AND ticket_expires_at > ${input.nowIso}
             AND session_expires_at > ${input.nowIso}
           RETURNING session_ref, owner_user_id, owner_actor_ref, device_ref,
-            thread_ref, generation, disclosure_ref, state, reserved_msat,
+            thread_ref, generation, disclosure_ref, client_profile, state, reserved_msat,
             charged_msat, ticket_expires_at, session_expires_at,
             settlement_receipt_ref
         `) as ReadonlyArray<SessionRow>;
@@ -312,7 +317,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
   ): Promise<SarahVoiceSessionRecord> => {
     const rows = (await tx`
       SELECT session_ref, owner_user_id, owner_actor_ref, device_ref,
-        thread_ref, generation, disclosure_ref, state, reserved_msat,
+        thread_ref, generation, disclosure_ref, client_profile, state, reserved_msat,
         charged_msat, ticket_expires_at, session_expires_at,
         settlement_receipt_ref
       FROM sarah_realtime_voice_sessions
@@ -393,7 +398,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           updated_at = ${input.nowIso}
       WHERE session_ref = ${current.sessionRef}
       RETURNING session_ref, owner_user_id, owner_actor_ref, device_ref,
-        thread_ref, generation, disclosure_ref, state, reserved_msat,
+        thread_ref, generation, disclosure_ref, client_profile, state, reserved_msat,
         charged_msat, ticket_expires_at, session_expires_at,
         settlement_receipt_ref
     `) as ReadonlyArray<SessionRow>;
