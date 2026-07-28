@@ -52,6 +52,27 @@ export const runKvStoreConformance = (options: KvStoreConformanceOptions): void 
       expect(second).toBe("two")
     })
 
+    test("putIfAbsent keeps a live key and replaces an expired key", async () => {
+      const key = `${ns()}/put-if-absent`
+      const result = await run(Effect.gen(function* () {
+        const kv = yield* KvStore
+        const created = yield* kv.putIfAbsent(key, "one", { ttlMs: 150 })
+        const refused = yield* kv.putIfAbsent(key, "two")
+        const live = yield* kv.get(key)
+        yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 250)))
+        const replaced = yield* kv.putIfAbsent(key, "three")
+        const afterExpiry = yield* kv.get(key)
+        return { created, refused, live, replaced, afterExpiry }
+      }))
+      expect(result).toEqual({
+        created: true,
+        refused: false,
+        live: "one",
+        replaced: true,
+        afterExpiry: "three",
+      })
+    })
+
     test("delete removes the key and is idempotent on missing keys", async () => {
       const key = `${ns()}/delete`
       const after = await run(Effect.gen(function* () {

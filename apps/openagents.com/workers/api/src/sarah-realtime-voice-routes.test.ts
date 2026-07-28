@@ -21,7 +21,10 @@ const identity = {
   generation: 1,
 } as const
 
-const request = (body: unknown, deviceRef = identity.deviceRef): Request =>
+const request = (
+  body: unknown,
+  deviceRef: string = identity.deviceRef,
+): Request =>
   new Request(`https://openagents.com${SARAH_VOICE_SESSION_PATH}`, {
     method: 'POST',
     headers: {
@@ -96,7 +99,10 @@ describe('managed Sarah Realtime voice session route', () => {
       ctx,
     )
     expect(response.status).toBe(201)
-    const body = await response.json()
+    const body = (await response.json()) as {
+      readonly gatewayUrl: string
+      readonly ticket: string
+    }
     expect(body).toMatchObject({
       schema: SARAH_VOICE_PROTOCOL_VERSION,
       sessionRef: 'voice-1',
@@ -156,5 +162,152 @@ describe('managed Sarah Realtime voice session route', () => {
     expect(response.status).toBe(402)
     expect(await response.json()).toEqual({ error: 'insufficient_credit' })
     expect(fixture.close).toHaveBeenCalledOnce()
+  })
+
+  test('exchanges a body-bound NIP-98 proof and one-use challenge for the normal ticket and bearer session', async () => {
+    const fixture = makeDependencies()
+    const body = {
+      schema: SARAH_VOICE_PROTOCOL_VERSION,
+      identity,
+      disclosureRef: 'disclosure-1',
+      auth: {
+        method: 'nostr_nip98',
+        challenge: 'challenge_abcdefghijklmnopqrstuvwxyz012345',
+      },
+    } as const
+    const rawBody = JSON.stringify(body)
+    const verifyNostrProof = vi.fn(
+      async (_request: Request, _env: unknown, payload: Uint8Array) => {
+        expect(new TextDecoder().decode(payload)).toBe(rawBody)
+        return {
+          _tag: 'Verified' as const,
+          eventId: 'b'.repeat(64),
+          isOwner: false,
+          pubkey: 'a'.repeat(64),
+          pubkeyDigest: 'c'.repeat(64),
+        }
+      },
+    )
+    const authenticateNostrSession = vi.fn(async () => ({
+      _tag: 'Authenticated' as const,
+      pubkey: 'a'.repeat(64),
+      user: { userId: 'user-1' },
+    }))
+    const consumeNostrChallenge = vi.fn(async () => 'Consumed' as const)
+    const mintNostrSession = vi.fn(async () => ({
+      _tag: 'Issued' as const,
+      accessToken: `oa_omega_${'a'.repeat(43)}`,
+      expiresIn: 900,
+      user: { userId: 'user-1' },
+    }))
+    const response = await handleSarahRealtimeVoiceSessionRequest(
+      {
+        ...fixture.dependencies,
+        authenticateNostrSession,
+        consumeNostrChallenge,
+        mintNostrSession,
+        verifyNostrProof,
+      },
+      new Request(`https://openagents.com${SARAH_VOICE_SESSION_PATH}`, {
+        body: rawBody,
+        headers: {
+          authorization: 'Nostr signed-event',
+          'content-type': 'application/json',
+          [SARAH_REALTIME_VOICE_DEVICE_HEADER]: identity.deviceRef,
+        },
+        method: 'POST',
+      }),
+      {},
+      ctx,
+    )
+
+    expect(response.status).toBe(201)
+    expect(await response.json()).toMatchObject({
+      auth: {
+        accessToken: `oa_omega_${'a'.repeat(43)}`,
+        expiresIn: 900,
+        method: 'nostr_nip98',
+      },
+      sessionRef: identity.sessionRef,
+    })
+    expect(authenticateNostrSession).toHaveBeenCalledOnce()
+    expect(verifyNostrProof).toHaveBeenCalledOnce()
+    expect(consumeNostrChallenge).toHaveBeenCalledWith(
+      {},
+      {
+        challenge: body.auth.challenge,
+        deviceRef: identity.deviceRef,
+        ownerRef: identity.ownerRef,
+        pubkey: 'a'.repeat(64),
+      },
+    )
+    expect(mintNostrSession).toHaveBeenCalledOnce()
+    expect(fixture.reserve).toHaveBeenCalledOnce()
+  })
+
+  test('rejects a missing or replayed NIP-98 challenge before credit reservation', async () => {
+    const fixture = makeDependencies()
+    const baseBody = {
+      schema: SARAH_VOICE_PROTOCOL_VERSION,
+      identity,
+      disclosureRef: 'disclosure-1',
+    } as const
+    const nostrRequest = (body: unknown) =>
+      new Request(`https://openagents.com${SARAH_VOICE_SESSION_PATH}`, {
+        body: JSON.stringify(body),
+        headers: {
+          authorization: 'Nostr signed-event',
+          [SARAH_REALTIME_VOICE_DEVICE_HEADER]: identity.deviceRef,
+        },
+        method: 'POST',
+      })
+    const authenticated = {
+      _tag: 'Authenticated' as const,
+      pubkey: 'a'.repeat(64),
+      user: { userId: 'user-1' },
+    }
+    const dependencies = {
+      ...fixture.dependencies,
+      authenticateNostrSession: vi.fn(async () => authenticated),
+      consumeNostrChallenge: vi.fn(async () => 'Invalid' as const),
+      mintNostrSession: vi.fn(),
+      verifyNostrProof: vi.fn(async () => ({
+        _tag: 'Verified' as const,
+        eventId: 'b'.repeat(64),
+        isOwner: false,
+        pubkey: 'a'.repeat(64),
+        pubkeyDigest: 'c'.repeat(64),
+      })),
+    }
+
+    expect(
+      (
+        await handleSarahRealtimeVoiceSessionRequest(
+          dependencies,
+          nostrRequest(baseBody),
+          {},
+          ctx,
+        )
+      ).status,
+    ).toBe(401)
+    expect(
+      (
+        await handleSarahRealtimeVoiceSessionRequest(
+          dependencies,
+          nostrRequest({
+            ...baseBody,
+            auth: {
+              method: 'nostr_nip98',
+              challenge: 'challenge_abcdefghijklmnopqrstuvwxyz012345',
+            },
+          }),
+          {},
+          ctx,
+        )
+      ).status,
+    ).toBe(409)
+    expect(fixture.reserve).not.toHaveBeenCalled()
+    expect(dependencies.mintNostrSession).not.toHaveBeenCalled()
+    expect(dependencies.authenticateNostrSession).not.toHaveBeenCalled()
   })
 })

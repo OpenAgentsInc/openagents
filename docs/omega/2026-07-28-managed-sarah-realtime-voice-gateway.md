@@ -71,6 +71,108 @@ The API returns `402` when available credit is too low.
 The API returns `409` when the user has an active session.
 The response always has `Cache-Control: no-store`.
 
+## Automatic Nostr authentication
+
+Omega can use its current local Nostr signer.
+Omega does not create a second identity for this flow.
+This flow uses NIP-98.
+It does not use NIP-42.
+
+First, Omega requests a challenge:
+
+```text
+POST /api/omega/sarah/voice/auth/challenge
+```
+
+This request is unsigned.
+It does not contain a bearer token or a NIP-98 header.
+The request has this form:
+
+```json
+{
+  "schema": "openagents.sarah.voice.auth-challenge.v1",
+  "deviceRef": "omega_install_123",
+  "pubkey": "64 lowercase hexadecimal characters"
+}
+```
+
+The server canonicalizes the public key to lowercase.
+The server applies the current Omega account rules.
+The challenge expires after 120 seconds.
+The server limits challenge requests by client address and across the service.
+
+The success status is `201`.
+The response has `Cache-Control: no-store`.
+The `expiresAtMs` value is Unix epoch time in milliseconds.
+The response has this form:
+
+```json
+{
+  "schema": "openagents.sarah.voice.auth-challenge.v1",
+  "challenge": "a random base64url value",
+  "expiresAtMs": 1785270000000,
+  "ownerRef": "the canonical OpenAgents user ID"
+}
+```
+
+Omega must copy the returned `ownerRef`.
+Omega must not calculate or guess this value.
+This rule supports an owner key that maps to a current account.
+
+Next, Omega adds this object to the normal voice session request:
+
+```json
+{
+  "auth": {
+    "method": "nostr_nip98",
+    "challenge": "the challenge from the server"
+  }
+}
+```
+
+Omega sends these headers:
+
+```text
+Authorization: Nostr <base64 encoded NIP-98 event>
+x-openagents-omega-device-ref: <deviceRef>
+Content-Type: application/json
+```
+
+Omega serializes the complete request body one time.
+It gives the same bytes to the signer and to the HTTP client.
+The NIP-98 event has kind `27235` and empty content.
+It has exactly one `u` tag, one `method` tag, and one `payload` tag.
+
+The `u` value is the exact session URL.
+The `method` value is `POST`.
+The `payload` value is the SHA-256 hash of the exact request bytes.
+The event time must be within 60 seconds of the server time.
+
+The server verifies the event ID and signature.
+It also verifies the URL, method, payload, time, public key, owner, device,
+and challenge.
+The server atomically marks each event ID and each challenge as consumed.
+A replay returns `409`.
+
+The success status is `201`.
+The response has `Cache-Control: no-store`.
+It includes this additional object:
+
+```json
+{
+  "auth": {
+    "method": "nostr_nip98",
+    "accessToken": "oa_omega_<random value>",
+    "expiresIn": 900
+  }
+}
+```
+
+The `expiresIn` value is in seconds.
+Omega stores this token in its current secure session store.
+The current bearer session flow stays available.
+It does not use a challenge.
+
 ## WebSocket connection
 
 Open the `gatewayUrl` from the session response.
@@ -109,6 +211,7 @@ The server gives the model this allowlist:
 - `reveal_range`
 - `replace_selection`
 - `save_document`
+- `start_agent_thread`
 
 The server decodes each command with the shared Effect Schema.
 The server rejects all other tool names.
@@ -116,8 +219,14 @@ The server rejects absolute paths, parent path traversal, and large line ranges.
 Version 1 does not permit shell, Git, cloud, network, delete, rename, move, payment, or account commands.
 
 `replace_selection` and `save_document` need user confirmation.
+`start_agent_thread` also needs user confirmation.
+It contains only a message and a `foreground` or `background` presentation.
+The message must be from 1 through 16,384 UTF-8 bytes.
+It cannot contain an agent field or a model field.
 The server sends a proposal with an expiry and a SHA-256 digest.
-The digest binds the user, device, session, generation, proposal, command, target, and expiry.
+
+The digest binds the user, device, session, generation, proposal, complete
+command, and expiry.
 Omega must return the exact proposal reference and digest.
 Transcript text cannot confirm a command.
 

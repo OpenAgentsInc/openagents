@@ -88,6 +88,31 @@ export const makePostgresKvStore = (sql: KvSql): KvStoreShape => {
       `
     })
 
+  const putIfAbsent = (key: string, value: string, options?: { readonly ttlMs?: number }) =>
+    tryPg("putIfAbsent", async () => {
+      const ttlMs = options?.ttlMs ?? null
+      const rows = (await sql`
+        INSERT INTO oa_infra_kv (key, value, expires_at, updated_at)
+        VALUES (
+          ${key},
+          ${value},
+          CASE
+            WHEN ${ttlMs}::bigint IS NULL THEN NULL
+            ELSE now() + make_interval(secs => ${ttlMs}::bigint / 1000.0)
+          END,
+          now()
+        )
+        ON CONFLICT (key) DO UPDATE SET
+          value = EXCLUDED.value,
+          expires_at = EXCLUDED.expires_at,
+          updated_at = EXCLUDED.updated_at
+        WHERE oa_infra_kv.expires_at IS NOT NULL
+          AND oa_infra_kv.expires_at <= now()
+        RETURNING key
+      `) as ReadonlyArray<{ key: string }>
+      return rows.length === 1
+    })
+
   const del = (key: string) =>
     tryPg("delete", async () => {
       await sql`DELETE FROM oa_infra_kv WHERE key = ${key}`
@@ -105,7 +130,7 @@ export const makePostgresKvStore = (sql: KvSql): KvStoreShape => {
       return rows.map((row) => ({ key: row.key, value: row.value }))
     })
 
-  return { get, put, delete: del, listPrefix }
+  return { get, put, putIfAbsent, delete: del, listPrefix }
 }
 
 /** Bulk-reap expired rows (optional maintenance; correctness never needs it). */

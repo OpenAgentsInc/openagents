@@ -4,7 +4,10 @@ import { VoiceIdentitySchema } from "./voice-identity.js";
 export const SARAH_VOICE_PROTOCOL_VERSION = "openagents.sarah.voice.v1" as const;
 export const SARAH_VOICE_SESSION_PATH = "/api/omega/sarah/voice/session" as const;
 export const SARAH_VOICE_CONNECT_PATH = "/api/omega/sarah/voice/connect" as const;
+export const SARAH_VOICE_NOSTR_CHALLENGE_PATH = "/api/omega/sarah/voice/auth/challenge" as const;
 export const SARAH_VOICE_MODEL = "gpt-realtime-2.1" as const;
+export const SARAH_VOICE_NOSTR_AUTH_METHOD = "nostr_nip98" as const;
+export const SARAH_VOICE_NOSTR_CHALLENGE_PROTOCOL_VERSION = "openagents.sarah.voice.auth-challenge.v1" as const;
 
 const Ref = S.Trim.check(S.isMinLength(1), S.isMaxLength(256));
 const Text = S.String.check(S.isMaxLength(16_384));
@@ -15,8 +18,29 @@ export const SarahVoiceSessionRequestSchema = S.Struct({
   schema: S.Literal(SARAH_VOICE_PROTOCOL_VERSION),
   identity: VoiceIdentitySchema,
   disclosureRef: Ref,
+  auth: S.optional(
+    S.Struct({
+      method: S.Literal(SARAH_VOICE_NOSTR_AUTH_METHOD),
+      challenge: S.String.check(S.isPattern(/^[A-Za-z0-9_-]{32,256}$/u)),
+    }),
+  ),
 });
 export type SarahVoiceSessionRequest = typeof SarahVoiceSessionRequestSchema.Type;
+
+export const SarahVoiceNostrChallengeRequestSchema = S.Struct({
+  schema: S.Literal(SARAH_VOICE_NOSTR_CHALLENGE_PROTOCOL_VERSION),
+  deviceRef: Ref,
+  pubkey: S.String.check(S.isPattern(/^[0-9A-Fa-f]{64}$/u)),
+});
+export type SarahVoiceNostrChallengeRequest = typeof SarahVoiceNostrChallengeRequestSchema.Type;
+
+export const SarahVoiceNostrChallengeResponseSchema = S.Struct({
+  schema: S.Literal(SARAH_VOICE_NOSTR_CHALLENGE_PROTOCOL_VERSION),
+  challenge: S.String.check(S.isPattern(/^[A-Za-z0-9_-]{32,256}$/u)),
+  expiresAtMs: Seq,
+  ownerRef: Ref,
+});
+export type SarahVoiceNostrChallengeResponse = typeof SarahVoiceNostrChallengeResponseSchema.Type;
 
 export const SarahVoiceSessionResponseSchema = S.Struct({
   schema: S.Literal(SARAH_VOICE_PROTOCOL_VERSION),
@@ -38,6 +62,13 @@ export const SarahVoiceSessionResponseSchema = S.Struct({
     sampleRateHz: S.Literal(24_000),
     channels: S.Literal(1),
   }),
+  auth: S.optional(
+    S.Struct({
+      method: S.Literal(SARAH_VOICE_NOSTR_AUTH_METHOD),
+      accessToken: S.String.check(S.isPattern(/^oa_omega_[A-Za-z0-9_-]{32,256}$/u)),
+      expiresIn: S.Int.check(S.isGreaterThanOrEqualTo(1), S.isLessThanOrEqualTo(3_600)),
+    }),
+  ),
 });
 export type SarahVoiceSessionResponse = typeof SarahVoiceSessionResponseSchema.Type;
 
@@ -73,6 +104,11 @@ export const SarahEditorCommandSchema = S.Union([
   S.Struct({
     _tag: S.Literal("save_document"),
     target: EditorTargetSchema,
+  }),
+  S.Struct({
+    _tag: S.Literal("start_agent_thread"),
+    message: S.String.check(S.isMinLength(1), S.isMaxLength(16_384)),
+    presentation: S.Literals(["foreground", "background"]),
   }),
 ]);
 export type SarahEditorCommand = typeof SarahEditorCommandSchema.Type;
@@ -227,6 +263,11 @@ export type SarahVoiceServerControl = typeof SarahVoiceServerControlSchema.Type;
 
 export const decodeSarahVoiceSessionRequest = (value: unknown) =>
   S.decodeUnknownSync(SarahVoiceSessionRequestSchema)(value, {
+    onExcessProperty: "error",
+  });
+
+export const decodeSarahVoiceNostrChallengeRequest = (value: unknown) =>
+  S.decodeUnknownSync(SarahVoiceNostrChallengeRequestSchema)(value, {
     onExcessProperty: "error",
   });
 

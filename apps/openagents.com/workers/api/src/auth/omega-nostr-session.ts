@@ -17,6 +17,7 @@ export const OMEGA_NOSTR_SESSION_TTL_SECONDS = 15 * 60
 const SESSION_KEY_PREFIX = 'omega-nostr:session:'
 const PROOF_KEY_PREFIX = 'omega-nostr:proof:'
 const MAX_CLOCK_SKEW_SECONDS = 60
+const REQUIRED_NIP98_TAGS = ['u', 'method', 'payload'] as const
 
 type StoredOmegaNostrSession<User> = Readonly<{
   schemaVersion: 1
@@ -75,129 +76,249 @@ export const readOmegaNostrSession = async <User>(
 }
 
 /**
- * Self-provisioning hooks. Supplying them is what turns this endpoint from an
- * owner-only backdoor into a per-install free-tier door; omitting them leaves
- * the historical owner-only behavior byte-for-byte intact (used by the existing
- * tests and by any deployment that has not armed the flag).
+ * Self-provisioning hooks. Supplying them preserves the current per-install
+ * account rule. Omitting them keeps the configured-owner-only rule.
  */
 export type OmegaNostrSelfProvisionHooks<User, Env> = Readonly<{
-  /** Kill switch, read per request so it flips without a redeploy of code. */
   enabled: (env: Env) => boolean
-  /** Find-or-create the user keyed on THIS pubkey. Never the admin account. */
   provision: (env: Env, pubkey: string) => Promise<User | undefined>
-  /**
-   * Charge the abuse buckets. `creating` tells the limiter whether this mint
-   * consumes the tight account-CREATION budget or only the looser mint budget.
-   */
   reserve: (
     env: Env,
     input: Readonly<{ creating: boolean; ipAddress: string; pubkey: string }>,
   ) => Promise<OmegaNostrSelfProvisionReservation>
-  /** Does a `users` row already exist for this pubkey? */
   userExists: (env: Env, pubkey: string) => Promise<boolean>
 }>
 
-export const makeOmegaNostrSessionHandler =
-  <User, Env>(dependencies: {
-    authStore: (env: Env) => AuthKvStore
-    clientIp?: (request: Request) => string
-    expectedOwnerPubkey: (env: Env) => string | undefined
-    now?: () => Date
-    resolveOwner: (env: Env) => Promise<User | undefined>
-    selfProvision?: OmegaNostrSelfProvisionHooks<User, Env>
-  }) =>
-  async (request: Request, env: Env): Promise<Response> => {
+export type OmegaNostrSessionAuditEvent =
+  | 'proof_accepted'
+  | 'proof_rejected'
+  | 'proof_replayed'
+  | 'session_issued'
+  | 'storage_unavailable'
+
+export type OmegaNostrSessionIssue<User> =
+  | Readonly<{
+      _tag: 'Issued'
+      accessToken: string
+      expiresIn: number
+      pubkey: string
+      user: User
+    }>
+  | Readonly<{ _tag: 'Rejected'; response: Response }>
+
+export type OmegaNostrSessionDependencies<User, Env> = Readonly<{
+  audit?: (
+    event: OmegaNostrSessionAuditEvent,
+    fields: Readonly<Record<string, string | boolean>>,
+  ) => void
+  authStore: (env: Env) => AuthKvStore
+  clientIp?: (request: Request) => string
+  expectedOwnerPubkey: (env: Env) => string | undefined
+  linkOwner?: (env: Env, user: User, pubkey: string) => Promise<boolean>
+  now?: () => Date
+  resolveOwner: (env: Env) => Promise<User | undefined>
+  selfProvision?: OmegaNostrSelfProvisionHooks<User, Env>
+}>
+
+const audit = <User, Env>(
+  dependencies: OmegaNostrSessionDependencies<User, Env>,
+  event: OmegaNostrSessionAuditEvent,
+  fields: Readonly<Record<string, string | boolean>>,
+): void => {
+  try {
+    dependencies.audit?.(event, fields)
+  } catch {
+    // Audit transport failure cannot disclose or change an auth decision.
+  }
+}
+
+const exactRequiredTags = (
+  tags: ReadonlyArray<ReadonlyArray<string>>,
+): boolean =>
+  REQUIRED_NIP98_TAGS.every(
+    name => tags.filter(tag => tag[0] === name).length === 1,
+  )
+
+export const makeOmegaNostrSessionService = <User, Env>(
+  dependencies: OmegaNostrSessionDependencies<User, Env>,
+) => {
+  const verify = async (
+    request: Request,
+    env: Env,
+    payload: Uint8Array,
+  ): Promise<
+    | Readonly<{
+        _tag: 'Verified'
+        eventId: string
+        isOwner: boolean
+        pubkey: string
+        pubkeyDigest: string
+      }>
+    | Readonly<{ _tag: 'Rejected'; response: Response }>
+  > => {
     if (request.method !== 'POST') {
-      return new Response(null, {
-        headers: { allow: 'POST' },
-        status: 405,
-      })
+      return {
+        _tag: 'Rejected',
+        response: new Response(null, {
+          headers: { allow: 'POST' },
+          status: 405,
+        }),
+      }
     }
 
     const configuredOwnerPubkey = dependencies
       .expectedOwnerPubkey(env)
       ?.trim()
       .toLowerCase()
-    const expectedOwnerPubkey = configuredOwnerPubkey?.match(/^[0-9a-f]{64}$/)
+    const expectedOwnerPubkey = configuredOwnerPubkey?.match(/^[0-9a-f]{64}$/u)
       ? configuredOwnerPubkey
       : undefined
-    // Omega self-provisioning (2026-07-28): armed per request, so the owner can
-    // disarm it
-    // on a live Cloud Run revision (env var flip) without shipping code.
     const selfProvisionArmed =
       dependencies.selfProvision !== undefined &&
       dependencies.selfProvision.enabled(env)
 
-    // Unchanged from the owner-only era: with NO owner key configured and NO
-    // self-provisioning armed, this endpoint can mint nothing at all.
     if (expectedOwnerPubkey === undefined && !selfProvisionArmed) {
-      return noStoreJson({ error: 'omega_nostr_auth_unavailable' }, 503)
+      return {
+        _tag: 'Rejected',
+        response: noStoreJson({ error: 'omega_nostr_auth_unavailable' }, 503),
+      }
     }
 
     const authorization = request.headers.get('authorization')
     if (!authorization?.startsWith('Nostr ')) {
-      return noStoreJson({ error: 'unauthorized' }, 401)
+      return {
+        _tag: 'Rejected',
+        response: noStoreJson({ error: 'unauthorized' }, 401),
+      }
     }
 
+    let event: Awaited<ReturnType<typeof unpackEventFromToken>>
     try {
-      const event = await unpackEventFromToken(authorization)
+      event = await unpackEventFromToken(authorization)
       const nowSeconds = Math.floor(
         (dependencies.now?.() ?? new Date()).getTime() / 1_000,
       )
-      // SECURITY BOUNDARY — unchanged. Every NIP-98 check that was here before
-      // is here now, in the same conjunction: kind + signature
-      // (`verifyHttpAuthEvent`), empty content, `u` tag bound to THIS url,
-      // method tag, empty-payload hash, integer `created_at`, and clock skew.
-      // The ONLY removed term is the `event.pubkey === expectedOwnerPubkey`
-      // equality, which was an allowlist of exactly one install, not a
-      // cryptographic control.
       if (
         event.content !== '' ||
         !verifyHttpAuthEvent(event) ||
+        !exactRequiredTags(event.tags) ||
         !validateEventUrlTag(event, request.url) ||
         !validateEventMethodTag(event, request.method) ||
-        !validateEventPayloadTag(event, new Uint8Array()) ||
+        !validateEventPayloadTag(event, payload) ||
         !Number.isInteger(event.created_at) ||
         Math.abs(nowSeconds - event.created_at) > MAX_CLOCK_SKEW_SECONDS
       ) {
-        return noStoreJson({ error: 'unauthorized' }, 401)
+        audit(dependencies, 'proof_rejected', { reason: 'invalid_proof' })
+        return {
+          _tag: 'Rejected',
+          response: noStoreJson({ error: 'unauthorized' }, 401),
+        }
       }
-
-      const pubkey = event.pubkey.toLowerCase()
-      const isOwner =
-        expectedOwnerPubkey !== undefined && pubkey === expectedOwnerPubkey
-
-      // A non-owner key with self-provisioning disarmed gets the historical
-      // 401. `403` would leak that the deployment recognises the key shape.
-      if (!isOwner && !selfProvisionArmed) {
-        return noStoreJson({ error: 'unauthorized' }, 401)
+    } catch {
+      audit(dependencies, 'proof_rejected', { reason: 'invalid_proof' })
+      return {
+        _tag: 'Rejected',
+        response: noStoreJson({ error: 'unauthorized' }, 401),
       }
+    }
 
+    const pubkey = event.pubkey.toLowerCase()
+    if (!/^[0-9a-f]{64}$/u.test(pubkey)) {
+      audit(dependencies, 'proof_rejected', { reason: 'invalid_pubkey' })
+      return {
+        _tag: 'Rejected',
+        response: noStoreJson({ error: 'unauthorized' }, 401),
+      }
+    }
+    const pubkeyDigest = await sha256Hex(pubkey)
+    const isOwner =
+      expectedOwnerPubkey !== undefined && pubkey === expectedOwnerPubkey
+
+    if (!isOwner && !selfProvisionArmed) {
+      audit(dependencies, 'proof_rejected', {
+        pubkeyDigest,
+        reason: 'not_authorized',
+      })
+      return {
+        _tag: 'Rejected',
+        response: noStoreJson({ error: 'unauthorized' }, 401),
+      }
+    }
+
+    return {
+      _tag: 'Verified',
+      eventId: event.id.toLowerCase(),
+      isOwner,
+      pubkey,
+      pubkeyDigest,
+    }
+  }
+
+  const authenticateVerified = async (
+    request: Request,
+    env: Env,
+    verified: Readonly<{
+      eventId: string
+      isOwner: boolean
+      pubkey: string
+      pubkeyDigest: string
+    }>,
+  ): Promise<
+    | Readonly<{ _tag: 'Authenticated'; pubkey: string; user: User }>
+    | Readonly<{ _tag: 'Rejected'; response: Response }>
+  > => {
+    const { eventId, isOwner, pubkey, pubkeyDigest } = verified
+    try {
       const store = dependencies.authStore(env)
-      const proofKey = `${PROOF_KEY_PREFIX}${event.id.toLowerCase()}`
-      if ((await store.get(proofKey)) !== null) {
-        return noStoreJson({ error: 'omega_nostr_proof_replayed' }, 409)
+      const proofKey = `${PROOF_KEY_PREFIX}${eventId}`
+      const consumed = await store.putIfAbsent(proofKey, 'consumed', {
+        expirationTtl: MAX_CLOCK_SKEW_SECONDS * 2,
+      })
+      if (!consumed) {
+        audit(dependencies, 'proof_replayed', { pubkeyDigest })
+        return {
+          _tag: 'Rejected',
+          response: noStoreJson({ error: 'omega_nostr_proof_replayed' }, 409),
+        }
       }
 
       let user: User | undefined
+
       if (isOwner) {
-        // Preserved owner path: still resolves the configured admin identity,
-        // still exempt from the self-provision abuse buckets.
         user = await dependencies.resolveOwner(env)
         if (user === undefined) {
-          return noStoreJson({ error: 'omega_nostr_owner_unavailable' }, 503)
+          return {
+            _tag: 'Rejected',
+            response: noStoreJson(
+              { error: 'omega_nostr_owner_unavailable' },
+              503,
+            ),
+          }
+        }
+        if (
+          dependencies.linkOwner !== undefined &&
+          !(await dependencies.linkOwner(env, user, pubkey))
+        ) {
+          audit(dependencies, 'proof_rejected', {
+            pubkeyDigest,
+            reason: 'identity_link_conflict',
+          })
+          return {
+            _tag: 'Rejected',
+            response: noStoreJson({ error: 'unauthorized' }, 401),
+          }
         }
       } else {
         const hooks = dependencies.selfProvision
         if (hooks === undefined) {
-          return noStoreJson({ error: 'unauthorized' }, 401)
+          return {
+            _tag: 'Rejected',
+            response: noStoreJson({ error: 'unauthorized' }, 401),
+          }
         }
         const ipAddress = (dependencies.clientIp ?? clientIpFromRequest)(
           request,
         )
-        // Rate limiting runs AFTER full NIP-98 verification so unsigned noise
-        // can never burn the shared global creation budget (that would be a
-        // trivial denial of service against every new install).
         const creating = !(await hooks.userExists(env, pubkey))
         const reservation = await hooks.reserve(env, {
           creating,
@@ -205,52 +326,139 @@ export const makeOmegaNostrSessionHandler =
           pubkey,
         })
         if (reservation._tag === 'RateLimited') {
-          return new Response(
-            JSON.stringify({
-              error: 'omega_nostr_self_provision_rate_limited',
-              limit: reservation.limit,
-              resetAt: reservation.resetAt,
-              retryAfterSeconds: reservation.retryAfterSeconds,
-              scope: reservation.scope,
-            }),
-            {
-              headers: {
-                'cache-control': 'no-store',
-                'content-type': 'application/json; charset=utf-8',
-                'retry-after': String(reservation.retryAfterSeconds),
+          return {
+            _tag: 'Rejected',
+            response: new Response(
+              JSON.stringify({
+                error: 'omega_nostr_self_provision_rate_limited',
+                limit: reservation.limit,
+                resetAt: reservation.resetAt,
+                retryAfterSeconds: reservation.retryAfterSeconds,
+                scope: reservation.scope,
+              }),
+              {
+                headers: {
+                  'cache-control': 'no-store',
+                  'content-type': 'application/json; charset=utf-8',
+                  'retry-after': String(reservation.retryAfterSeconds),
+                },
+                status: 429,
               },
-              status: 429,
-            },
-          )
-        }
-        user = await hooks.provision(env, pubkey)
-        if (user === undefined) {
-          return noStoreJson(
-            { error: 'omega_nostr_self_provision_unavailable' },
-            503,
-          )
+            ),
+          }
         }
       }
 
-      await store.put(proofKey, 'consumed', {
-        expirationTtl: MAX_CLOCK_SKEW_SECONDS * 2,
-      })
+      if (!isOwner) {
+        user = await dependencies.selfProvision?.provision(env, pubkey)
+        if (user === undefined) {
+          return {
+            _tag: 'Rejected',
+            response: noStoreJson(
+              { error: 'omega_nostr_self_provision_unavailable' },
+              503,
+            ),
+          }
+        }
+      }
+
+      audit(dependencies, 'proof_accepted', { isOwner, pubkeyDigest })
+      return { _tag: 'Authenticated', pubkey, user: user as User }
+    } catch {
+      audit(dependencies, 'storage_unavailable', { pubkeyDigest })
+      return {
+        _tag: 'Rejected',
+        response: noStoreJson(
+          { error: 'omega_nostr_auth_storage_unavailable' },
+          503,
+        ),
+      }
+    }
+  }
+
+  const authenticate = async (
+    request: Request,
+    env: Env,
+    payload: Uint8Array,
+  ): Promise<
+    | Readonly<{ _tag: 'Authenticated'; pubkey: string; user: User }>
+    | Readonly<{ _tag: 'Rejected'; response: Response }>
+  > => {
+    const verified = await verify(request, env, payload)
+    return verified._tag === 'Rejected'
+      ? verified
+      : authenticateVerified(request, env, verified)
+  }
+
+  const mint = async (
+    env: Env,
+    authenticated: Readonly<{ pubkey: string; user: User }>,
+  ): Promise<OmegaNostrSessionIssue<User>> => {
+    const pubkeyDigest = await sha256Hex(authenticated.pubkey)
+    try {
       const accessToken = randomToken()
-      await store.put(
+      await dependencies.authStore(env).put(
         await sessionKey(accessToken),
         JSON.stringify({
           schemaVersion: 1,
-          user,
+          user: authenticated.user,
         } satisfies StoredOmegaNostrSession<User>),
         { expirationTtl: OMEGA_NOSTR_SESSION_TTL_SECONDS },
       )
-
-      return noStoreJson({
+      audit(dependencies, 'session_issued', { pubkeyDigest })
+      return {
+        _tag: 'Issued',
         accessToken,
         expiresIn: OMEGA_NOSTR_SESSION_TTL_SECONDS,
-        user,
-      })
+        pubkey: authenticated.pubkey,
+        user: authenticated.user,
+      }
+    } catch {
+      audit(dependencies, 'storage_unavailable', { pubkeyDigest })
+      return {
+        _tag: 'Rejected',
+        response: noStoreJson(
+          { error: 'omega_nostr_auth_storage_unavailable' },
+          503,
+        ),
+      }
+    }
+  }
+
+  const issue = async (
+    request: Request,
+    env: Env,
+    payload: Uint8Array,
+  ): Promise<OmegaNostrSessionIssue<User>> => {
+    const authenticated = await authenticate(request, env, payload)
+    return authenticated._tag === 'Rejected'
+      ? authenticated
+      : mint(env, authenticated)
+  }
+
+  const handle = async (request: Request, env: Env): Promise<Response> => {
+    let payload: Uint8Array
+    try {
+      payload = new Uint8Array(await request.clone().arrayBuffer())
     } catch {
       return noStoreJson({ error: 'unauthorized' }, 401)
     }
+    if (payload.byteLength !== 0) {
+      return noStoreJson({ error: 'unauthorized' }, 401)
+    }
+    const issued = await issue(request, env, payload)
+    return issued._tag === 'Rejected'
+      ? issued.response
+      : noStoreJson({
+          accessToken: issued.accessToken,
+          expiresIn: issued.expiresIn,
+          user: issued.user,
+        })
   }
+
+  return { authenticate, authenticateVerified, handle, issue, mint, verify }
+}
+
+export const makeOmegaNostrSessionHandler = <User, Env>(
+  dependencies: OmegaNostrSessionDependencies<User, Env>,
+) => makeOmegaNostrSessionService(dependencies).handle

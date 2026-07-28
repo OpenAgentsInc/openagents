@@ -328,6 +328,24 @@ const toolDefinitions = [
       properties: { target: { type: 'object' } },
     },
   },
+  {
+    type: 'function',
+    name: 'start_agent_thread',
+    description:
+      'Start one Omega agent thread with a bounded message. The user must confirm before execution.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['message', 'presentation'],
+      properties: {
+        message: { type: 'string', minLength: 1, maxLength: 16_384 },
+        presentation: {
+          type: 'string',
+          enum: ['foreground', 'background'],
+        },
+      },
+    },
+  },
 ] as const
 
 const commandTagForTool = (
@@ -339,16 +357,25 @@ const commandTagForTool = (
     editor_reveal_range: 'reveal_range',
     editor_replace_selection: 'replace_selection',
     editor_save_document: 'save_document',
+    start_agent_thread: 'start_agent_thread',
   })[name] as SarahEditorCommand['_tag'] | undefined
 
 export const sarahEditorCommandRequiresConfirmation = (
   command: SarahEditorCommand,
 ): boolean =>
-  command._tag === 'replace_selection' || command._tag === 'save_document'
+  command._tag === 'replace_selection' ||
+  command._tag === 'save_document' ||
+  command._tag === 'start_agent_thread'
 
 export const validateSarahEditorCommandTarget = (
   command: SarahEditorCommand,
 ): SarahEditorCommand => {
+  if (command._tag === 'start_agent_thread') {
+    if (new TextEncoder().encode(command.message).byteLength > 16_384) {
+      throw new Error('agent_thread_message_not_allowed')
+    }
+    return command
+  }
   const path = command.target.path
   const segments = path.split(/[\\/]/u)
   if (

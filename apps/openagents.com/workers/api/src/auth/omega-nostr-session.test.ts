@@ -4,12 +4,13 @@ import {
   generateSecretKey,
   getPublicKey,
 } from 'nostr-effect/pure'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 
 import { makeMemoryAuthKvStore } from './auth-kv'
 import {
   OMEGA_NOSTR_SESSION_PATH,
   makeOmegaNostrSessionHandler,
+  makeOmegaNostrSessionService,
   readOmegaNostrSession,
 } from './omega-nostr-session'
 
@@ -20,6 +21,8 @@ const authorization = (
   secret: Uint8Array,
   requestUrl = url,
   createdAt = now,
+  payload: Uint8Array = new Uint8Array(),
+  extraTags: ReadonlyArray<ReadonlyArray<string>> = [],
 ): string => {
   const event = finalizeEvent(
     {
@@ -29,7 +32,8 @@ const authorization = (
       tags: [
         ['u', requestUrl],
         ['method', 'POST'],
-        ['payload', hashPayloadBytes(new Uint8Array())],
+        ['payload', hashPayloadBytes(payload)],
+        ...extraTags.map(tag => [...tag]),
       ],
     },
     secret,
@@ -102,6 +106,126 @@ describe('Omega background Nostr session', () => {
     const proof = authorization(ownerSecret)
     expect((await run(proof)).status).toBe(200)
     expect((await run(proof)).status).toBe(409)
+  })
+
+  test('atomically permits one mint when the same proof arrives concurrently', async () => {
+    const secret = generateSecretKey()
+    const store = makeMemoryAuthKvStore()
+    const handler = makeOmegaNostrSessionHandler({
+      authStore: () => store,
+      expectedOwnerPubkey: () => getPublicKey(secret),
+      now: () => now,
+      resolveOwner: async () => ({ userId: 'github:owner' }),
+    })
+    const proof = authorization(secret)
+    const responses = await Promise.all(
+      Array.from({ length: 8 }, () =>
+        handler(
+          new Request(url, {
+            headers: { authorization: proof },
+            method: 'POST',
+          }),
+          {},
+        ),
+      ),
+    )
+
+    expect(responses.filter(response => response.status === 200)).toHaveLength(
+      1,
+    )
+    expect(responses.filter(response => response.status === 409)).toHaveLength(
+      7,
+    )
+  })
+
+  test('refuses an owner key when its canonical account link conflicts', async () => {
+    const secret = generateSecretKey()
+    const store = makeMemoryAuthKvStore()
+    const linkOwner = vi.fn(async () => false)
+    const handler = makeOmegaNostrSessionHandler({
+      authStore: () => store,
+      expectedOwnerPubkey: () => getPublicKey(secret),
+      linkOwner,
+      now: () => now,
+      resolveOwner: async () => ({ userId: 'github:owner' }),
+    })
+    const response = await handler(
+      new Request(url, {
+        headers: { authorization: authorization(secret) },
+        method: 'POST',
+      }),
+      {},
+    )
+
+    expect(response.status).toBe(401)
+    expect(linkOwner).toHaveBeenCalledWith(
+      {},
+      { userId: 'github:owner' },
+      getPublicKey(secret),
+    )
+  })
+
+  test('binds the exact body bytes and rejects duplicate required tags', async () => {
+    const secret = generateSecretKey()
+    const makeHandler = () =>
+      makeOmegaNostrSessionHandler({
+        authStore: () => makeMemoryAuthKvStore(),
+        expectedOwnerPubkey: () => getPublicKey(secret),
+        now: () => now,
+        resolveOwner: async () => ({ userId: 'github:owner' }),
+      })
+    const payload = new TextEncoder().encode('{"deviceRef":"omega-1"}')
+    const changedPayload = '{"deviceRef": "omega-1"}'
+
+    const service = makeOmegaNostrSessionService({
+      authStore: () => makeMemoryAuthKvStore(),
+      expectedOwnerPubkey: () => getPublicKey(secret),
+      now: () => now,
+      resolveOwner: async () => ({ userId: 'github:owner' }),
+    })
+    const changedBodyResult = await service.issue(
+      new Request(url, {
+        body: changedPayload,
+        headers: { authorization: authorization(secret, url, now, payload) },
+        method: 'POST',
+      }),
+      {},
+      new TextEncoder().encode(changedPayload),
+    )
+    expect(changedBodyResult._tag).toBe('Rejected')
+    if (changedBodyResult._tag === 'Rejected') {
+      expect(changedBodyResult.response.status).toBe(401)
+    }
+
+    const exactBodyResult = await service.issue(
+      new Request(url, {
+        body: payload,
+        headers: { authorization: authorization(secret, url, now, payload) },
+        method: 'POST',
+      }),
+      {},
+      payload,
+    )
+    expect(exactBodyResult._tag).toBe('Issued')
+
+    for (const duplicate of [
+      ['u', url],
+      ['method', 'POST'],
+      ['payload', hashPayloadBytes(new Uint8Array())],
+    ]) {
+      const response = await makeHandler()(
+        new Request(url, {
+          headers: {
+            authorization: authorization(secret, url, now, new Uint8Array(), [
+              duplicate,
+            ]),
+          },
+          method: 'POST',
+        }),
+        {},
+      )
+      expect(response.status).toBe(401)
+    }
   })
 })
 
@@ -199,7 +323,10 @@ describe('Omega Nostr per-install self-provisioning', () => {
     expect(body.user.userId).not.toBe('github:owner')
     await expect(
       readOmegaNostrSession(store, body.accessToken),
-    ).resolves.toEqual({ provider: 'nostr', userId: `nostr:${pubkey}` })
+    ).resolves.toEqual({
+      provider: 'nostr',
+      userId: `nostr:${pubkey}`,
+    })
   })
 
   test('the configured owner key still resolves the owner and skips the buckets', async () => {
@@ -247,8 +374,12 @@ describe('Omega Nostr per-install self-provisioning', () => {
 
     // Wrong `u` tag.
     expect(
-      (await post(handler, authorization(secret, 'https://evil.example/session')))
-        .status,
+      (
+        await post(
+          handler,
+          authorization(secret, 'https://evil.example/session'),
+        )
+      ).status,
     ).toBe(401)
     // Stale `created_at` beyond the skew window.
     expect(
@@ -332,7 +463,7 @@ describe('Omega Nostr per-install self-provisioning', () => {
     expect(provisioned).toEqual([])
   })
 
-  test('a refused reservation does not consume the one-time proof', async () => {
+  test('a refused reservation still consumes the one-time proof', async () => {
     const secret = generateSecretKey()
     let limited = true
     const store = makeMemoryAuthKvStore()
@@ -362,10 +493,30 @@ describe('Omega Nostr per-install self-provisioning', () => {
     })
     const proof = authorization(secret)
 
-    expect((await handler(new Request(url, { headers: { authorization: proof }, method: 'POST' }), {})).status).toBe(429)
+    expect(
+      (
+        await handler(
+          new Request(url, {
+            headers: { authorization: proof },
+            method: 'POST',
+          }),
+          {},
+        )
+      ).status,
+    ).toBe(429)
     limited = false
-    // The same proof is still usable once the limiter lets the caller through.
-    expect((await handler(new Request(url, { headers: { authorization: proof }, method: 'POST' }), {})).status).toBe(200)
+    // A later retry needs a new proof, even when the first attempt was limited.
+    expect(
+      (
+        await handler(
+          new Request(url, {
+            headers: { authorization: proof },
+            method: 'POST',
+          }),
+          {},
+        )
+      ).status,
+    ).toBe(409)
   })
 
   test('a failed provision is a 503, never a silent owner-session fallback', async () => {

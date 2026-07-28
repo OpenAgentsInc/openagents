@@ -2,7 +2,7 @@
   "schema": "openagents-ste-final-inventory-v1",
   "steIssue": 9,
   "glossaryRevision": "openagents-ste-glossary-v1",
-  "reviewedAt": "2026-07-28T20:03:30Z",
+  "reviewedAt": "2026-07-28T20:40:57Z",
   "entries": [
     {
       "path": ".agents/THIRD_PARTY_NOTICES.md",
@@ -35293,7 +35293,7 @@
     },
     {
       "path": "docs/omega/2026-07-28-managed-sarah-realtime-voice-gateway.md",
-      "sha256": "2f2a2c654e3c98e30e5fdc57cbae755275f424393081712fff12fd85b83ba0f8",
+      "sha256": "ecbd3b93cf8a114568dab214ebb6eacf5ff1851fa76d16be368281889af557bb",
       "reason": "Final review of a current technical document",
       "profile": {
         "ste_mode": "descriptive",
@@ -35302,8 +35302,26 @@
         "replacement": null,
         "ste_audience": "human",
         "ste_status": "inspected",
-        "ste_reviewer": "codex/issue-9272-sarah-voice-doc-review",
-        "ste_reviewed_at": "2026-07-28T20:03:30Z"
+        "ste_reviewer": "codex/review-followup-docs-sarah-voice-20260728",
+        "ste_reviewed_at": "2026-07-28T20:40:57Z"
+      }
+    },
+    {
+      "path": "docs/omega/2026-07-28-sarah-voice-unmetered-entitlement-plan.md",
+      "sha256": "41dfbeb16b2e5198d57623bb59c89270c266597c3f013e405180a2d8765fb03c",
+      "reason": "Final review of a current technical document",
+      "profile": {
+        "ste_mode": "mixed",
+        "risk": "high",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "human",
+        "ste_accepted_screening_rules": [
+          "STE-2.4"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/review-followup-docs-sarah-voice-20260728",
+        "ste_reviewed_at": "2026-07-28T20:40:57Z"
       }
     },
     {

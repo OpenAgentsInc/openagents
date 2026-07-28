@@ -153,6 +153,7 @@ const accessDb = (hasCoreTeamAccess: boolean): D1Database => {
 const tokenStorage = (token: string | null = null): AuthKvStore => ({
   get: ((_key: string) => Promise.resolve(token)) as AuthKvStore['get'],
   put: () => Promise.resolve(),
+  putIfAbsent: () => Promise.resolve(true),
   delete: () => Promise.resolve(),
   listPrefix: () => Promise.resolve([]),
 })

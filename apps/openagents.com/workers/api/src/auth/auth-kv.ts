@@ -15,20 +15,19 @@
 // Promise facade shaped like the KVNamespace subset the route code already
 // used (`get`/`get(_, 'json')`/`put({ expirationTtl })`/`delete`), and env
 // plumbing with an injectable store for tests.
-
-import { Effect } from 'effect'
 import type { KvStoreShape } from '@openagentsinc/oa-infra/kv-store'
-import {
-  makePostgresKvStore,
-  type KvSql,
-} from '@openagentsinc/oa-infra/kv-store-postgres'
 import { makeMemoryKvStore } from '@openagentsinc/oa-infra/kv-store-memory'
+import {
+  type KvSql,
+  makePostgresKvStore,
+} from '@openagentsinc/oa-infra/kv-store-postgres'
+import { Effect } from 'effect'
 
 import { parseJsonUnknown } from '../json-boundary'
 import {
-  defaultMakeKhalaSyncSqlClient,
   type KhalaSyncHyperdriveBinding,
   type MakeKhalaSyncPushSqlClient,
+  defaultMakeKhalaSyncSqlClient,
 } from '../khala-sync-push-routes'
 
 // The ONE named Effect->Promise bridge in this module (zero-debt budget 1):
@@ -58,6 +57,12 @@ export type AuthKvStore = Readonly<{
     value: string,
     options?: Readonly<{ expirationTtl?: number }>,
   ) => Promise<void>
+  /** Atomically create a missing or expired key. */
+  putIfAbsent: (
+    key: string,
+    value: string,
+    options?: Readonly<{ expirationTtl?: number }>,
+  ) => Promise<boolean>
   /** Idempotent. */
   delete: (key: string) => Promise<void>
   /**
@@ -101,6 +106,18 @@ export const makeAuthKvStore = (kv: KvStoreShape): AuthKvStore => {
       const expirationTtl = options?.expirationTtl
       await run(
         kv.put(
+          key,
+          value,
+          expirationTtl === undefined
+            ? undefined
+            : { ttlMs: expirationTtl * 1000 },
+        ),
+      )
+    },
+    putIfAbsent: async (key, value, options) => {
+      const expirationTtl = options?.expirationTtl
+      return run(
+        kv.putIfAbsent(
           key,
           value,
           expirationTtl === undefined
@@ -156,6 +173,7 @@ export const makePerOperationPostgresKvStore = (
   return {
     get: perOp(kv => kv.get),
     put: perOp(kv => kv.put),
+    putIfAbsent: perOp(kv => kv.putIfAbsent),
     delete: perOp(kv => kv.delete),
     listPrefix: perOp(kv => kv.listPrefix),
   }
@@ -177,6 +195,9 @@ const unavailableAuthKvStore: AuthKvStore = {
     throw new AuthKvUnavailableError()
   }) as AuthKvGet,
   put: async () => {
+    throw new AuthKvUnavailableError()
+  },
+  putIfAbsent: async () => {
     throw new AuthKvUnavailableError()
   },
   delete: async () => {

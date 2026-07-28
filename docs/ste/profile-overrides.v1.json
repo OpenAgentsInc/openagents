@@ -1528,6 +1528,29 @@
         "STE-2.4"
       ]
     },
+    "docs/omega/2026-07-28-managed-sarah-realtime-voice-gateway.md": {
+      "ste_mode": "descriptive",
+      "ste_status": "inspected",
+      "ste_reviewer": "codex/review-followup-docs-sarah-voice-20260728",
+      "ste_reviewed_at": "2026-07-28T20:40:57Z",
+      "risk": "active",
+      "source": null,
+      "replacement": null,
+      "ste_audience": "human"
+    },
+    "docs/omega/2026-07-28-sarah-voice-unmetered-entitlement-plan.md": {
+      "ste_mode": "mixed",
+      "ste_status": "inspected",
+      "ste_reviewer": "codex/review-followup-docs-sarah-voice-20260728",
+      "ste_reviewed_at": "2026-07-28T20:40:57Z",
+      "risk": "high",
+      "source": null,
+      "replacement": null,
+      "ste_audience": "human",
+      "ste_accepted_screening_rules": [
+        "STE-2.4"
+      ]
+    },
     "docs/teardowns/2026-07-21-buzz-teardown.md": {
       "ste_mode": "descriptive",
       "ste_status": "checked",

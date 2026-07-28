@@ -1,3 +1,4 @@
+import { SARAH_VOICE_NOSTR_CHALLENGE_PATH } from '@openagentsinc/audio-contract'
 import {
   FleetRunAuthorityError,
   type FleetRunAuthorityRepositoryShape,
@@ -258,7 +259,7 @@ import {
 } from './auth/omega-nostr-self-provision'
 import {
   OMEGA_NOSTR_SESSION_PATH,
-  makeOmegaNostrSessionHandler,
+  makeOmegaNostrSessionService,
   readOmegaNostrSession,
 } from './auth/omega-nostr-session'
 import { makeOpenAuthStorageForEnv } from './auth/openauth-storage'
@@ -1299,6 +1300,7 @@ import {
   hasSarahThreadAuthority,
   makeSarahOwnerRoutes,
 } from './sarah-owner-routes'
+import { makeSarahVoiceNostrChallengeService } from './sarah-realtime-nostr-auth'
 import {
   SARAH_REALTIME_VOICE_SESSION_PATH,
   handleSarahRealtimeVoiceSessionRequest,
@@ -2250,7 +2252,8 @@ const upsertNostrUser = async (
           user_id = excluded.user_id,
           email = excluded.email,
           updated_at = excluded.updated_at,
-          deleted_at = NULL`,
+          deleted_at = NULL
+         WHERE auth_identities.user_id = excluded.user_id`,
       params: [
         authIdentityId,
         user.userId,
@@ -2264,16 +2267,71 @@ const upsertNostrUser = async (
   ])
 }
 
+const resolveNostrLinkedUser = async (
+  env: Env,
+  pubkey: string,
+): Promise<UserSubject | undefined> => {
+  const rows = await identityDbForEnv(env).query(
+    `SELECT
+       users.id,
+       users.display_name,
+       users.primary_email,
+       users.avatar_url,
+       github.provider_subject AS github_id,
+       github.provider_username AS github_login
+     FROM auth_identities AS nostr
+     JOIN users ON users.id = nostr.user_id
+     LEFT JOIN auth_identities AS github
+       ON github.user_id = users.id
+      AND github.provider = 'github'
+      AND github.deleted_at IS NULL
+     WHERE nostr.provider = 'nostr'
+       AND nostr.provider_subject = ?
+       AND nostr.deleted_at IS NULL
+       AND users.status = 'active'
+       AND users.deleted_at IS NULL
+     LIMIT 1`,
+    [pubkey],
+  )
+  const row = rows[0]
+  if (row === undefined) return undefined
+  const userId = String(row.id ?? '').trim()
+  if (userId === omegaNostrUserId(pubkey)) {
+    return nostrPubkeyToSubject(pubkey)
+  }
+  const email = String(row.primary_email ?? '')
+    .trim()
+    .toLowerCase()
+  const name = String(row.display_name ?? email.split('@')[0] ?? '').trim()
+  const avatarUrl = String(row.avatar_url ?? '')
+  const githubId = String(row.github_id ?? '').trim()
+  const login = String(row.github_login ?? '').trim()
+  return decodeUserSubject(
+    githubId !== '' && login !== ''
+      ? {
+          userId,
+          provider: 'github',
+          githubId,
+          login,
+          email,
+          name,
+          avatarUrl,
+        }
+      : {
+          userId,
+          provider: 'email',
+          email,
+          name,
+          avatarUrl,
+        },
+  )
+}
+
 const omegaNostrUserExists = async (
   env: Env,
   pubkey: string,
 ): Promise<boolean> => {
-  const rows = await identityDbForEnv(env).query(
-    `SELECT users.id FROM users WHERE users.id = ? LIMIT 1`,
-    [omegaNostrUserId(pubkey)],
-  )
-
-  return rows[0] !== undefined
+  return (await resolveNostrLinkedUser(env, pubkey)) !== undefined
 }
 
 const provisionOmegaNostrUser = async (
@@ -2284,6 +2342,9 @@ const provisionOmegaNostrUser = async (
     return undefined
   }
 
+  const linked = await resolveNostrLinkedUser(env, pubkey)
+  if (linked !== undefined) return linked
+
   const subject = nostrPubkeyToSubject(pubkey)
   if (subject === undefined) {
     return undefined
@@ -2291,7 +2352,36 @@ const provisionOmegaNostrUser = async (
 
   await upsertNostrUser(identityDbForEnv(env), subject)
 
-  return subject
+  return resolveNostrLinkedUser(env, pubkey)
+}
+
+const linkOmegaNostrOwner = async (
+  env: Env,
+  user: UserSubject,
+  pubkey: string,
+): Promise<boolean> => {
+  const linked = await resolveNostrLinkedUser(env, pubkey)
+  if (linked !== undefined) return linked.userId === user.userId
+  const now = workerRuntime.nowIso()
+  await identityDbForEnv(env).batch([
+    {
+      sql: `INSERT INTO auth_identities
+          (id, user_id, provider, provider_subject, provider_username, email,
+           created_at, updated_at)
+         VALUES (?, ?, 'nostr', ?, ?, ?, ?, ?)
+         ON CONFLICT(provider, provider_subject) DO NOTHING`,
+      params: [
+        `auth_identity_nostr_${pubkey}`,
+        user.userId,
+        pubkey,
+        omegaNostrDisplayName(pubkey),
+        user.email,
+        now,
+        now,
+      ],
+    },
+  ])
+  return (await resolveNostrLinkedUser(env, pubkey))?.userId === user.userId
 }
 
 const resolveOmegaNostrOwner = async (
@@ -3654,26 +3744,77 @@ const { requireUserBearerSession } = makeUserBearerSessionBoundary<
 // session bound to `nostr:<its pubkey>`. The owner key keeps the historical
 // admin-resolving path; everyone else self-provisions behind the flag and the
 // abuse buckets in `auth/omega-nostr-self-provision.ts`.
-const handleOmegaNostrSessionApi = makeOmegaNostrSessionHandler<
-  UserSubject,
-  Env
->({
-  authStore: authKvStoreForEnv,
-  expectedOwnerPubkey: env => env.SARAH_NOSTR_OWNER_PUBKEY,
-  resolveOwner: resolveOmegaNostrOwner,
-  selfProvision: {
-    enabled: omegaNostrSelfProvisionEnabled,
-    provision: provisionOmegaNostrUser,
-    reserve: (env, input) =>
-      reserveOmegaNostrSelfProvision(
-        authKvStoreForEnv(env),
-        input,
-        Date.now(),
-        omegaNostrSelfProvisionPolicy(env),
-      ),
-    userExists: omegaNostrUserExists,
+const omegaNostrSessionService = makeOmegaNostrSessionService<UserSubject, Env>(
+  {
+    audit: (event, fields) => {
+      const log =
+        event === 'proof_replayed' || event === 'storage_unavailable'
+          ? logWorkerRouteWarning
+          : logWorkerRouteInfo
+      log(`omega_nostr_${event}`, fields)
+    },
+    authStore: authKvStoreForEnv,
+    expectedOwnerPubkey: env => env.SARAH_NOSTR_OWNER_PUBKEY,
+    linkOwner: linkOmegaNostrOwner,
+    resolveOwner: resolveOmegaNostrOwner,
+    selfProvision: {
+      enabled: omegaNostrSelfProvisionEnabled,
+      provision: provisionOmegaNostrUser,
+      reserve: (env, input) =>
+        reserveOmegaNostrSelfProvision(
+          authKvStoreForEnv(env),
+          input,
+          Date.now(),
+          omegaNostrSelfProvisionPolicy(env),
+        ),
+      userExists: omegaNostrUserExists,
+    },
   },
-})
+)
+const handleOmegaNostrSessionApi = omegaNostrSessionService.handle
+
+const sarahRealtimeVoiceConfigForEnv = (
+  env: Env,
+): ReturnType<typeof parseSarahRealtimeVoiceRouteConfig> => {
+  if (
+    env.OPENAI_API_KEY?.trim() === '' ||
+    env.OPENAI_API_KEY === undefined ||
+    env.KHALA_SYNC_DB?.connectionString === undefined
+  ) {
+    return undefined
+  }
+  return parseSarahRealtimeVoiceRouteConfig(env)
+}
+
+const sarahVoiceNostrChallengeService =
+  makeSarahVoiceNostrChallengeService<Env>({
+    audit: (event, fields) =>
+      logWorkerRouteInfo(`sarah_voice_nostr_${event}`, fields),
+    authStore: authKvStoreForEnv,
+    enabled: env => {
+      const config = sarahRealtimeVoiceConfigForEnv(env)
+      const hasNostrIssuer =
+        isOmegaNostrPubkey(
+          env.SARAH_NOSTR_OWNER_PUBKEY?.trim().toLowerCase() ?? '',
+        ) || omegaNostrSelfProvisionEnabled(env)
+      return config?.enabled === true && hasNostrIssuer
+    },
+    resolveOwnerRef: async (env, pubkey) => {
+      const configuredOwnerPubkey =
+        env.SARAH_NOSTR_OWNER_PUBKEY?.trim().toLowerCase()
+      if (
+        configuredOwnerPubkey !== undefined &&
+        pubkey === configuredOwnerPubkey
+      ) {
+        return (await resolveOmegaNostrOwner(env))?.userId
+      }
+      const linked = await resolveNostrLinkedUser(env, pubkey)
+      if (linked !== undefined) return linked.userId
+      return omegaNostrSelfProvisionEnabled(env)
+        ? omegaNostrUserId(pubkey)
+        : undefined
+    },
+  })
 
 // AIUR-3 (#8501): the ops views (users/runs/executor health) reuse the
 // EXACT SAME owner-gate composition as the credits console above — see
@@ -13772,6 +13913,11 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
       Effect.promise(() => handleOmegaNostrSessionApi(request, env)),
   },
   {
+    path: SARAH_VOICE_NOSTR_CHALLENGE_PATH,
+    handler: (request, env) =>
+      Effect.promise(() => sarahVoiceNostrChallengeService.issue(request, env)),
+  },
+  {
     path: AUDIO_GRANT_ISSUE_PATH,
     handler: (request, env, ctx) =>
       Effect.promise(() =>
@@ -13794,16 +13940,11 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
       Effect.promise(() =>
         handleSarahRealtimeVoiceSessionRequest(
           {
-            config: workerEnv => {
-              if (
-                workerEnv.OPENAI_API_KEY?.trim() === '' ||
-                workerEnv.OPENAI_API_KEY === undefined ||
-                workerEnv.KHALA_SYNC_DB?.connectionString === undefined
-              ) {
-                return undefined
-              }
-              return parseSarahRealtimeVoiceRouteConfig(workerEnv)
-            },
+            authenticateNostrSession:
+              omegaNostrSessionService.authenticateVerified,
+            config: sarahRealtimeVoiceConfigForEnv,
+            consumeNostrChallenge: sarahVoiceNostrChallengeService.consume,
+            mintNostrSession: omegaNostrSessionService.mint,
             openStore: async workerEnv => {
               const connectionString = workerEnv.KHALA_SYNC_DB?.connectionString
               if (connectionString === undefined) {
@@ -13818,6 +13959,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
             },
             requireUserBearerSession,
             userIdFromSession: session => session.user.userId,
+            verifyNostrProof: omegaNostrSessionService.verify,
           },
           request,
           env,

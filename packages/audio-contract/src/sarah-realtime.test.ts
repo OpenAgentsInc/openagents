@@ -33,6 +33,24 @@ describe("Sarah Realtime voice contract", () => {
     ).toThrow();
   });
 
+  test("accepts only the bounded start-agent-thread command fields", () => {
+    expect(
+      decodeSarahEditorCommand({
+        _tag: "start_agent_thread",
+        message: "Inspect the current test failure.",
+        presentation: "background",
+      })._tag,
+    ).toBe("start_agent_thread");
+    expect(() =>
+      decodeSarahEditorCommand({
+        _tag: "start_agent_thread",
+        message: "Inspect the current test failure.",
+        presentation: "background",
+        model: "provider/model",
+      }),
+    ).toThrow();
+  });
+
   test("requires an exact confirmation digest", () => {
     expect(() =>
       decodeSarahVoiceClientControl({

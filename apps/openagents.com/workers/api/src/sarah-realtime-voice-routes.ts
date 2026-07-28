@@ -1,6 +1,7 @@
 import {
   SARAH_VOICE_CONNECT_PATH,
   SARAH_VOICE_MODEL,
+  SARAH_VOICE_NOSTR_AUTH_METHOD,
   SARAH_VOICE_PROTOCOL_VERSION,
   SARAH_VOICE_SESSION_PATH,
   decodeSarahVoiceSessionRequest,
@@ -26,6 +27,49 @@ type UserBearerSessionBoundary<User, Bindings> = (
   ctx: ExecutionContext,
 ) => Promise<Readonly<{ user: User }> | undefined>
 
+type NostrAuthentication<User> = Readonly<{
+  _tag: 'Authenticated'
+  pubkey: string
+  user: User
+}>
+
+type NostrVerifiedProof = Readonly<{
+  _tag: 'Verified'
+  eventId: string
+  isOwner: boolean
+  pubkey: string
+  pubkeyDigest: string
+}>
+
+type NostrSessionAuthenticate<User, Bindings> = (
+  request: Request,
+  env: Bindings,
+  verified: NostrVerifiedProof,
+) => Promise<
+  NostrAuthentication<User> | Readonly<{ _tag: 'Rejected'; response: Response }>
+>
+
+type NostrProofVerify<Bindings> = (
+  request: Request,
+  env: Bindings,
+  payload: Uint8Array,
+) => Promise<
+  NostrVerifiedProof | Readonly<{ _tag: 'Rejected'; response: Response }>
+>
+
+type NostrSessionMint<User, Bindings> = (
+  env: Bindings,
+  authenticated: NostrAuthentication<User>,
+) => Promise<
+  | Readonly<{
+      _tag: 'Issued'
+      accessToken: string
+      expiresIn: number
+      user: User
+    }>
+  | Readonly<{ _tag: 'Rejected'; response: Response }>
+>
+
 export type SarahRealtimeVoiceRouteConfig = Readonly<{
   enabled: boolean
   maxSessionSeconds: number
@@ -39,8 +83,21 @@ export type SarahRealtimeVoiceRouteDependencies<User, Bindings> = Readonly<{
   ) => Promise<
     Readonly<{ store: SarahRealtimeVoiceStore; close: () => Promise<void> }>
   >
+  authenticateNostrSession?:
+    NostrSessionAuthenticate<User, Bindings> | undefined
+  consumeNostrChallenge?: (
+    env: Bindings,
+    input: Readonly<{
+      challenge: string
+      deviceRef: string
+      ownerRef: string
+      pubkey: string
+    }>,
+  ) => Promise<'Consumed' | 'Invalid' | 'Unavailable'>
+  mintNostrSession?: NostrSessionMint<User, Bindings> | undefined
   requireUserBearerSession: UserBearerSessionBoundary<User, Bindings>
   userIdFromSession: (session: Readonly<{ user: User }>) => string
+  verifyNostrProof?: NostrProofVerify<Bindings> | undefined
   now?: (() => number) | undefined
 }>
 
@@ -80,8 +137,12 @@ const parseRequest = async (request: Request) => {
   if (!Number.isFinite(contentLength) || contentLength > 8_192) return undefined
   try {
     const text = await request.text()
-    if (new TextEncoder().encode(text).byteLength > 8_192) return undefined
-    return decodeSarahVoiceSessionRequest(JSON.parse(text) as unknown)
+    const payload = new TextEncoder().encode(text)
+    if (payload.byteLength > 8_192) return undefined
+    return {
+      body: decodeSarahVoiceSessionRequest(JSON.parse(text) as unknown),
+      payload,
+    }
   } catch {
     return undefined
   }
@@ -146,14 +207,74 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
     return noStoreJson({ error: 'method_not_allowed' }, 405)
   }
 
-  const session = await dependencies.requireUserBearerSession(request, env, ctx)
-  if (session === undefined) {
-    return noStoreJson({ error: 'unauthorized' }, 401)
+  const nostrAuthorization = request.headers
+    .get('authorization')
+    ?.startsWith('Nostr ')
+  let session: Readonly<{ user: User }> | undefined
+  let parsed: Awaited<ReturnType<typeof parseRequest>>
+  let issuedNostrAuth:
+    Readonly<{ accessToken: string; expiresIn: number }> | undefined
+
+  if (nostrAuthorization) {
+    parsed = await parseRequest(request.clone())
+    if (parsed === undefined) {
+      return noStoreJson({ error: 'invalid_sarah_voice_request' }, 400)
+    }
+    if (parsed.body.auth === undefined) {
+      return noStoreJson({ error: 'sarah_voice_auth_challenge_required' }, 401)
+    }
+    const authenticateNostrSession = dependencies.authenticateNostrSession
+    const consumeNostrChallenge = dependencies.consumeNostrChallenge
+    const mintNostrSession = dependencies.mintNostrSession
+    const verifyNostrProof = dependencies.verifyNostrProof
+    if (
+      authenticateNostrSession === undefined ||
+      consumeNostrChallenge === undefined ||
+      mintNostrSession === undefined ||
+      verifyNostrProof === undefined
+    ) {
+      return noStoreJson({ error: 'unauthorized' }, 401)
+    }
+    const verified = await verifyNostrProof(request, env, parsed.payload)
+    if (verified._tag === 'Rejected') return verified.response
+    const challenge = await consumeNostrChallenge(env, {
+      challenge: parsed.body.auth.challenge,
+      deviceRef: parsed.body.identity.deviceRef,
+      ownerRef: parsed.body.identity.ownerRef,
+      pubkey: verified.pubkey,
+    })
+    if (challenge === 'Unavailable') {
+      return noStoreJson(
+        { error: 'sarah_voice_auth_challenge_unavailable' },
+        503,
+      )
+    }
+    if (challenge === 'Invalid') {
+      return noStoreJson({ error: 'sarah_voice_auth_challenge_invalid' }, 409)
+    }
+    const authenticated = await authenticateNostrSession(request, env, verified)
+    if (authenticated._tag === 'Rejected') return authenticated.response
+    const issued = await mintNostrSession(env, authenticated)
+    if (issued._tag === 'Rejected') return issued.response
+    session = { user: issued.user }
+    issuedNostrAuth = {
+      accessToken: issued.accessToken,
+      expiresIn: issued.expiresIn,
+    }
+  } else {
+    session = await dependencies.requireUserBearerSession(request, env, ctx)
+    if (session === undefined) {
+      return noStoreJson({ error: 'unauthorized' }, 401)
+    }
+    parsed = await parseRequest(request)
+    if (parsed === undefined) {
+      return noStoreJson({ error: 'invalid_sarah_voice_request' }, 400)
+    }
+    if (parsed.body.auth !== undefined) {
+      return noStoreJson({ error: 'invalid_sarah_voice_request' }, 400)
+    }
   }
-  const body = await parseRequest(request)
-  if (body === undefined) {
-    return noStoreJson({ error: 'invalid_sarah_voice_request' }, 400)
-  }
+  const body = parsed.body
   const userId = dependencies.userIdFromSession(session)
   const deviceRef = request.headers
     .get(SARAH_REALTIME_VOICE_DEVICE_HEADER)
@@ -224,6 +345,14 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
           sampleRateHz: 24_000,
           channels: 1,
         },
+        ...(issuedNostrAuth === undefined
+          ? {}
+          : {
+              auth: {
+                method: SARAH_VOICE_NOSTR_AUTH_METHOD,
+                ...issuedNostrAuth,
+              },
+            }),
       },
       201,
     )

@@ -6,6 +6,8 @@
  *   immediately once the TTL elapses; backends may reap lazily).
  * - `put` overwrites unconditionally. `ttlMs` (when given) replaces any
  *   previous TTL; omitting it makes the key non-expiring again.
+ * - `putIfAbsent` creates a missing or expired key atomically. It returns
+ *   `false` and does not change a live key.
  * - `delete` is idempotent — deleting a missing key succeeds.
  * - `listPrefix` returns every non-expired entry whose key starts with the
  *   LITERAL prefix string (no pattern semantics — `%`/`_` in the prefix are
@@ -48,6 +50,15 @@ export interface KvStoreShape {
     value: string,
     options?: KvPutOptions,
   ) => Effect.Effect<void, KvStoreBackendError>
+  /**
+   * Atomically create a missing or expired key. `false` means a live key
+   * already exists and was not changed.
+   */
+  readonly putIfAbsent: (
+    key: string,
+    value: string,
+    options?: KvPutOptions,
+  ) => Effect.Effect<boolean, KvStoreBackendError>
   /** Idempotent: deleting a missing key succeeds. */
   readonly delete: (key: string) => Effect.Effect<void, KvStoreBackendError>
   /**

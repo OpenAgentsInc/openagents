@@ -86,6 +86,7 @@ const setup = () => {
         return type === "json" ? value : JSON.stringify(value);
       }) as import("./auth/auth-kv").AuthKvGet,
       put: async () => {},
+      putIfAbsent: async () => true,
       delete: async () => {},
       listPrefix: async () => [],
     }),

@@ -34,6 +34,21 @@ export const makeMemoryKvStore = (): KvStoreShape => {
       })
     })
 
+  const putIfAbsent = (key: string, value: string, options?: { readonly ttlMs?: number }) =>
+    Effect.sync(() => {
+      const now = Date.now()
+      const current = entries.get(key)
+      if (current !== undefined && (current.expiresAtMs === undefined || current.expiresAtMs > now)) {
+        return false
+      }
+      const ttlMs = options?.ttlMs
+      entries.set(key, {
+        value,
+        expiresAtMs: ttlMs === undefined ? undefined : now + ttlMs,
+      })
+      return true
+    })
+
   const del = (key: string) =>
     Effect.sync(() => {
       entries.delete(key)
@@ -55,7 +70,7 @@ export const makeMemoryKvStore = (): KvStoreShape => {
       return matches
     })
 
-  return { get, put, delete: del, listPrefix }
+  return { get, put, putIfAbsent, delete: del, listPrefix }
 }
 
 export const layerMemory = (): Layer.Layer<KvStore> =>

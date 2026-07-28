@@ -90,6 +90,13 @@ describe('Sarah Realtime bridge metering', () => {
     ).toBe(true)
     expect(
       sarahEditorCommandRequiresConfirmation({
+        _tag: 'start_agent_thread',
+        message: 'Inspect the current test failure.',
+        presentation: 'foreground',
+      }),
+    ).toBe(true)
+    expect(
+      sarahEditorCommandRequiresConfirmation({
         _tag: 'context_read',
         target: { workspaceRef: 'workspace-1', path: 'src/app.ts' },
         startLine: 1,
@@ -113,5 +120,22 @@ describe('Sarah Realtime bridge metering', () => {
         endLine: 1_000,
       }),
     ).toThrow('editor_range_not_allowed')
+  })
+
+  test('enforces the start-agent-thread message limit in UTF-8 bytes', () => {
+    expect(
+      validateSarahEditorCommandTarget({
+        _tag: 'start_agent_thread',
+        message: 'Inspect the current test failure.',
+        presentation: 'background',
+      }),
+    ).toMatchObject({ _tag: 'start_agent_thread' })
+    expect(() =>
+      validateSarahEditorCommandTarget({
+        _tag: 'start_agent_thread',
+        message: '😀'.repeat(4_097),
+        presentation: 'foreground',
+      }),
+    ).toThrow('agent_thread_message_not_allowed')
   })
 })
