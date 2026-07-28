@@ -902,6 +902,7 @@ export const makeSarahRealtimeWebSocketHandlers = () => ({
                 transcription: { model: 'gpt-4o-mini-transcribe' },
                 turn_detection: {
                   type: 'semantic_vad',
+                  eagerness: 'high',
                   interrupt_response: true,
                   create_response: true,
                 },

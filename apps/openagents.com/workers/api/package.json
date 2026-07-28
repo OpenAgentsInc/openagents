@@ -27,6 +27,7 @@
     "glm-fleet:durability": "node --import tsx scripts/khala-glm-fleet-durability.ts",
     "pilot:glm-nvfp4": "node --import tsx scripts/khala-glm-nvfp4-pilot.ts",
     "smoke:autopilot-coder:paid": "vitest run src/autopilot-work-routes.test.ts -t \"paid Autopilot Coder end-to-end smoke\"",
+    "smoke:sarah:staging-live": "node --import tsx scripts/sarah-staging-live-smoke.ts",
     "smoke:autopilot-coder:rate-limit-rotation": "vitest run src/autopilot-rate-limit-rotation-smoke.test.ts src/provider-account-lease-policy.test.ts src/provider-account-failover-policy.test.ts",
     "smoke:probe-gepa-stage0": "node --import tsx scripts/probe-gepa-stage0-no-spend-campaign.ts",
     "smoke:qwen-remote-training": "node --import tsx scripts/qwen-remote-pylon-live-training.ts",
