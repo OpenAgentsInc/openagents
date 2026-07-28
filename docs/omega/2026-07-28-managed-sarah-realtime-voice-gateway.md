@@ -77,6 +77,110 @@ The API returns `402` when available credit is too low.
 The API returns `409` when the user has an active session.
 The response always has `Cache-Control: no-store`.
 
+## Link a signed-in mobile device
+
+An authenticated mobile user can link the local Nostr key to the current
+OpenAgents account.
+This flow does not create an account.
+It does not enable unrestricted Nostr sign-in.
+The user does not enter an `npub`.
+
+First, request a device-link challenge:
+
+```text
+POST /api/omega/auth/nostr-device-link/challenge
+Authorization: Bearer <current OpenAgents access token>
+Content-Type: application/json
+```
+
+The request has this form:
+
+```json
+{
+  "schema": "openagents.omega.nostr-device-link-challenge.v1",
+  "deviceRef": "mobile_install_123",
+  "pubkey": "64 lowercase hexadecimal characters"
+}
+```
+
+The bearer token must identify a current GitHub or email account.
+A Nostr-native account cannot use this route.
+The server limits requests by account, public key, and client address.
+
+The success status is `201`.
+The response has `Cache-Control: no-store`.
+The response has this form:
+
+```json
+{
+  "schema": "openagents.omega.nostr-device-link-challenge.v1",
+  "challenge": "a random base64url value",
+  "expiresAtMs": 1785270000000,
+  "ownerRef": "the canonical OpenAgents user ID"
+}
+```
+
+The challenge expires after 120 seconds.
+It is valid for one account, one public key, and one device.
+The client must use the returned `ownerRef`.
+The client must not store this value in the Nostr credential.
+
+Next, serialize this exact object one time:
+
+```json
+{
+  "schema": "openagents.omega.nostr-device-link.v1",
+  "challenge": "the server challenge",
+  "ownerRef": "the returned canonical OpenAgents user ID",
+  "deviceRef": "mobile_install_123"
+}
+```
+
+Send the object to this route:
+
+```text
+POST /api/omega/auth/nostr-device-link
+Authorization: Nostr <base64 encoded NIP-98 event>
+Content-Type: application/json
+x-openagents-omega-device-ref: <deviceRef>
+```
+
+Give the same object bytes to the signer and to the HTTP client.
+The NIP-98 event has kind `27235` and empty content.
+It has exactly one `u` tag, one `method` tag, and one `payload` tag.
+The `u` value is the exact absolute link URL.
+The `method` value is `POST`.
+The `payload` value is the lowercase SHA-256 hash of the exact object bytes.
+
+The event time must be within 60 seconds of server time.
+
+The event public key must equal the challenge public key.
+The header device value must equal the object device value.
+The object values must equal all challenge values.
+The server consumes the event ID and the challenge one time.
+
+The success status is `200`.
+The response has `Cache-Control: no-store`.
+The response has this form:
+
+```json
+{
+  "schema": "openagents.omega.nostr-device-link.v1",
+  "linked": true,
+  "ownerRef": "the canonical OpenAgents user ID"
+}
+```
+
+A second request with a new challenge is idempotent for the same active link.
+An event or challenge replay returns `409`.
+A link to a different account returns `409`.
+A deleted identity link also returns `409`.
+The server does not change or reactivate a current link.
+
+After success, use the current OpenAgents bearer token and the returned
+`ownerRef` for the normal voice session request.
+The normal device, session, credit, and time limits still apply.
+
 ## Automatic Nostr authentication
 
 Omega and OpenAgents mobile can use their current local Nostr signer.

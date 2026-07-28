@@ -1,4 +1,8 @@
-import { SARAH_VOICE_NOSTR_CHALLENGE_PATH } from '@openagentsinc/audio-contract'
+import {
+  OMEGA_NOSTR_DEVICE_LINK_CHALLENGE_PATH,
+  OMEGA_NOSTR_DEVICE_LINK_PATH,
+  SARAH_VOICE_NOSTR_CHALLENGE_PATH,
+} from '@openagentsinc/audio-contract'
 import {
   FleetRunAuthorityError,
   type FleetRunAuthorityRepositoryShape,
@@ -240,11 +244,6 @@ import {
   stampAuthEmailOtpClaims,
 } from './auth/email-otp-hardening'
 import {
-  MOBILE_DEVICE_LINK_PATH,
-  handleMobileDeviceLinkRequest,
-} from './auth/mobile-device-link'
-import { makeMobileDeviceLinkStore } from './auth/mobile-device-link-store'
-import {
   authIssuerAllowsRedirect,
   authIssuerAllowsWebRedirectHostname,
   isMobileAccessTokenRevoked,
@@ -253,6 +252,11 @@ import {
   revokeMobileAccessToken,
   revokeOpenAuthRefreshToken,
 } from './auth/mobile-session'
+import { makeOmegaNostrDeviceLinkService } from './auth/omega-nostr-device-link'
+import {
+  type OmegaNostrIdentityLinkResult,
+  linkOmegaNostrIdentity as persistOmegaNostrIdentityLink,
+} from './auth/omega-nostr-identity-link-store'
 import {
   isOmegaNostrPubkey,
   omegaNostrDisplayName,
@@ -2365,29 +2369,21 @@ const linkOmegaNostrOwner = async (
   user: UserSubject,
   pubkey: string,
 ): Promise<boolean> => {
-  const linked = await resolveNostrLinkedUser(env, pubkey)
-  if (linked !== undefined) return linked.userId === user.userId
-  const now = workerRuntime.nowIso()
-  await identityDbForEnv(env).batch([
-    {
-      sql: `INSERT INTO auth_identities
-          (id, user_id, provider, provider_subject, provider_username, email,
-           created_at, updated_at)
-         VALUES (?, ?, 'nostr', ?, ?, ?, ?, ?)
-         ON CONFLICT(provider, provider_subject) DO NOTHING`,
-      params: [
-        `auth_identity_nostr_${pubkey}`,
-        user.userId,
-        pubkey,
-        omegaNostrDisplayName(pubkey),
-        user.email,
-        now,
-        now,
-      ],
-    },
-  ])
-  return (await resolveNostrLinkedUser(env, pubkey))?.userId === user.userId
+  const result = await linkOmegaNostrIdentity(env, user.userId, pubkey)
+  return result === 'Linked' || result === 'AlreadyLinked'
 }
+
+const linkOmegaNostrIdentity = async (
+  env: Env,
+  ownerRef: string,
+  pubkey: string,
+): Promise<OmegaNostrIdentityLinkResult> =>
+  persistOmegaNostrIdentityLink(identityDbForEnv(env), {
+    displayName: omegaNostrDisplayName(pubkey),
+    nowIso: workerRuntime.nowIso(),
+    ownerRef,
+    pubkey,
+  })
 
 const resolveOmegaNostrOwner = async (
   env: Env,
@@ -3779,6 +3775,28 @@ const omegaNostrSessionService = makeOmegaNostrSessionService<UserSubject, Env>(
 )
 const handleOmegaNostrSessionApi = omegaNostrSessionService.handle
 
+const omegaNostrDeviceLinkService = makeOmegaNostrDeviceLinkService<
+  UserSubject,
+  Env
+>({
+  audit: (event, fields) => {
+    const log =
+      event === 'link_conflict' ||
+      event === 'challenge_rate_limited' ||
+      event.endsWith('unavailable')
+        ? logWorkerRouteWarning
+        : logWorkerRouteInfo
+    log(`omega_nostr_device_${event}`, fields)
+  },
+  authStore: authKvStoreForEnv,
+  consumeProof: omegaNostrSessionService.consumeProof,
+  isCanonicalUser: user => user.provider !== 'nostr',
+  linkIdentity: linkOmegaNostrIdentity,
+  ownerRefFromUser: user => user.userId,
+  requireUserBearerSession,
+  verifyProof: omegaNostrSessionService.verifyProof,
+})
+
 const sarahRealtimeVoiceConfigForEnv = (
   env: Env,
 ): ReturnType<typeof parseSarahRealtimeVoiceRouteConfig> => {
@@ -3799,11 +3817,7 @@ const sarahVoiceNostrChallengeService =
     authStore: authKvStoreForEnv,
     enabled: env => {
       const config = sarahRealtimeVoiceConfigForEnv(env)
-      const hasNostrIssuer =
-        isOmegaNostrPubkey(
-          env.SARAH_NOSTR_OWNER_PUBKEY?.trim().toLowerCase() ?? '',
-        ) || omegaNostrSelfProvisionEnabled(env)
-      return config?.enabled === true && hasNostrIssuer
+      return config?.enabled === true
     },
     resolveOwnerRef: async (env, pubkey) => {
       const configuredOwnerPubkey =
@@ -13914,38 +13928,21 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
       Effect.promise(() => handleMobileAuthSessionApi(request, env, ctx)),
   },
   {
-    path: MOBILE_DEVICE_LINK_PATH,
-    handler: (request, env, ctx) =>
-      Effect.promise(() =>
-        handleMobileDeviceLinkRequest(
-          {
-            audit: (event, fields) => {
-              const log =
-                event === 'link_conflict' ||
-                event === 'proof_replayed' ||
-                event === 'storage_unavailable'
-                  ? logWorkerRouteWarning
-                  : logWorkerRouteInfo
-              log(`mobile_device_link_${event}`, fields)
-            },
-            authStore: authKvStoreForEnv,
-            link: (workerEnv, input) =>
-              makeMobileDeviceLinkStore(identityDbForEnv(workerEnv)).link(
-                input,
-              ),
-            requireUserBearerSession,
-            userIdFromSession: session => session.user.userId,
-          },
-          request,
-          env,
-          ctx,
-        ),
-      ),
-  },
-  {
     path: OMEGA_NOSTR_SESSION_PATH,
     handler: (request, env) =>
       Effect.promise(() => handleOmegaNostrSessionApi(request, env)),
+  },
+  {
+    path: OMEGA_NOSTR_DEVICE_LINK_CHALLENGE_PATH,
+    handler: (request, env, ctx) =>
+      Effect.promise(() =>
+        omegaNostrDeviceLinkService.issueChallenge(request, env, ctx),
+      ),
+  },
+  {
+    path: OMEGA_NOSTR_DEVICE_LINK_PATH,
+    handler: (request, env) =>
+      Effect.promise(() => omegaNostrDeviceLinkService.link(request, env)),
   },
   {
     path: SARAH_VOICE_NOSTR_CHALLENGE_PATH,

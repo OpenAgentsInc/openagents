@@ -1,19 +1,38 @@
 import { Schema as S } from "effect";
 import { VoiceIdentitySchema } from "./voice-identity.js";
 
-export const SARAH_VOICE_PROTOCOL_VERSION = "openagents.sarah.voice.v1" as const;
-export const SARAH_VOICE_SESSION_PATH = "/api/omega/sarah/voice/session" as const;
-export const SARAH_VOICE_CONNECT_PATH = "/api/omega/sarah/voice/connect" as const;
-export const SARAH_VOICE_NOSTR_CHALLENGE_PATH = "/api/omega/sarah/voice/auth/challenge" as const;
+export const SARAH_VOICE_PROTOCOL_VERSION =
+  "openagents.sarah.voice.v1" as const;
+export const SARAH_VOICE_SESSION_PATH =
+  "/api/omega/sarah/voice/session" as const;
+export const SARAH_VOICE_CONNECT_PATH =
+  "/api/omega/sarah/voice/connect" as const;
+export const SARAH_VOICE_NOSTR_CHALLENGE_PATH =
+  "/api/omega/sarah/voice/auth/challenge" as const;
+export const OMEGA_NOSTR_DEVICE_LINK_CHALLENGE_PATH =
+  "/api/omega/auth/nostr-device-link/challenge" as const;
+export const OMEGA_NOSTR_DEVICE_LINK_PATH =
+  "/api/omega/auth/nostr-device-link" as const;
 export const SARAH_VOICE_MODEL = "gpt-realtime-2.1" as const;
 export const SARAH_VOICE_NOSTR_AUTH_METHOD = "nostr_nip98" as const;
-export const SARAH_VOICE_NOSTR_CHALLENGE_PROTOCOL_VERSION = "openagents.sarah.voice.auth-challenge.v1" as const;
-export const SARAH_VOICE_CLIENT_PROFILES = ["omega_editor", "mobile_voice_only"] as const;
+export const SARAH_VOICE_NOSTR_CHALLENGE_PROTOCOL_VERSION =
+  "openagents.sarah.voice.auth-challenge.v1" as const;
+export const OMEGA_NOSTR_DEVICE_LINK_CHALLENGE_PROTOCOL_VERSION =
+  "openagents.omega.nostr-device-link-challenge.v1" as const;
+export const OMEGA_NOSTR_DEVICE_LINK_PROTOCOL_VERSION =
+  "openagents.omega.nostr-device-link.v1" as const;
+export const SARAH_VOICE_CLIENT_PROFILES = [
+  "omega_editor",
+  "mobile_voice_only",
+] as const;
 
 const Ref = S.Trim.check(S.isMinLength(1), S.isMaxLength(256));
 const Text = S.String.check(S.isMaxLength(16_384));
 const SmallText = S.String.check(S.isMaxLength(2_048));
-const Seq = S.Int.check(S.isGreaterThanOrEqualTo(0), S.isLessThanOrEqualTo(9_007_199_254_740_991));
+const Seq = S.Int.check(
+  S.isGreaterThanOrEqualTo(0),
+  S.isLessThanOrEqualTo(9_007_199_254_740_991),
+);
 
 export const SarahVoiceSessionRequestSchema = S.Struct({
   schema: S.Literal(SARAH_VOICE_PROTOCOL_VERSION),
@@ -27,14 +46,16 @@ export const SarahVoiceSessionRequestSchema = S.Struct({
     }),
   ),
 });
-export type SarahVoiceSessionRequest = typeof SarahVoiceSessionRequestSchema.Type;
+export type SarahVoiceSessionRequest =
+  typeof SarahVoiceSessionRequestSchema.Type;
 
 export const SarahVoiceNostrChallengeRequestSchema = S.Struct({
   schema: S.Literal(SARAH_VOICE_NOSTR_CHALLENGE_PROTOCOL_VERSION),
   deviceRef: Ref,
   pubkey: S.String.check(S.isPattern(/^[0-9A-Fa-f]{64}$/u)),
 });
-export type SarahVoiceNostrChallengeRequest = typeof SarahVoiceNostrChallengeRequestSchema.Type;
+export type SarahVoiceNostrChallengeRequest =
+  typeof SarahVoiceNostrChallengeRequestSchema.Type;
 
 export const SarahVoiceNostrChallengeResponseSchema = S.Struct({
   schema: S.Literal(SARAH_VOICE_NOSTR_CHALLENGE_PROTOCOL_VERSION),
@@ -42,7 +63,45 @@ export const SarahVoiceNostrChallengeResponseSchema = S.Struct({
   expiresAtMs: Seq,
   ownerRef: Ref,
 });
-export type SarahVoiceNostrChallengeResponse = typeof SarahVoiceNostrChallengeResponseSchema.Type;
+export type SarahVoiceNostrChallengeResponse =
+  typeof SarahVoiceNostrChallengeResponseSchema.Type;
+
+const NostrPubkey = S.String.check(S.isPattern(/^[0-9a-f]{64}$/u));
+const NostrChallenge = S.String.check(S.isPattern(/^[A-Za-z0-9_-]{32,256}$/u));
+
+export const OmegaNostrDeviceLinkChallengeRequestSchema = S.Struct({
+  schema: S.Literal(OMEGA_NOSTR_DEVICE_LINK_CHALLENGE_PROTOCOL_VERSION),
+  deviceRef: Ref,
+  pubkey: NostrPubkey,
+});
+export type OmegaNostrDeviceLinkChallengeRequest =
+  typeof OmegaNostrDeviceLinkChallengeRequestSchema.Type;
+
+export const OmegaNostrDeviceLinkChallengeResponseSchema = S.Struct({
+  schema: S.Literal(OMEGA_NOSTR_DEVICE_LINK_CHALLENGE_PROTOCOL_VERSION),
+  challenge: NostrChallenge,
+  expiresAtMs: Seq,
+  ownerRef: Ref,
+});
+export type OmegaNostrDeviceLinkChallengeResponse =
+  typeof OmegaNostrDeviceLinkChallengeResponseSchema.Type;
+
+export const OmegaNostrDeviceLinkRequestSchema = S.Struct({
+  schema: S.Literal(OMEGA_NOSTR_DEVICE_LINK_PROTOCOL_VERSION),
+  challenge: NostrChallenge,
+  ownerRef: Ref,
+  deviceRef: Ref,
+});
+export type OmegaNostrDeviceLinkRequest =
+  typeof OmegaNostrDeviceLinkRequestSchema.Type;
+
+export const OmegaNostrDeviceLinkResponseSchema = S.Struct({
+  schema: S.Literal(OMEGA_NOSTR_DEVICE_LINK_PROTOCOL_VERSION),
+  linked: S.Literal(true),
+  ownerRef: Ref,
+});
+export type OmegaNostrDeviceLinkResponse =
+  typeof OmegaNostrDeviceLinkResponseSchema.Type;
 
 export const SarahVoiceSessionResponseSchema = S.Struct({
   schema: S.Literal(SARAH_VOICE_PROTOCOL_VERSION),
@@ -53,7 +112,10 @@ export const SarahVoiceSessionResponseSchema = S.Struct({
   ticketExpiresAtMs: Seq,
   sessionExpiresAtMs: Seq,
   reservedCreditMsat: Seq,
-  maxDurationSeconds: S.Int.check(S.isGreaterThanOrEqualTo(1), S.isLessThanOrEqualTo(3_600)),
+  maxDurationSeconds: S.Int.check(
+    S.isGreaterThanOrEqualTo(1),
+    S.isLessThanOrEqualTo(3_600),
+  ),
   clientProfile: S.Literals(SARAH_VOICE_CLIENT_PROFILES),
   inputAudio: S.Struct({
     codec: S.Literal("pcm_s16le"),
@@ -68,12 +130,18 @@ export const SarahVoiceSessionResponseSchema = S.Struct({
   auth: S.optional(
     S.Struct({
       method: S.Literal(SARAH_VOICE_NOSTR_AUTH_METHOD),
-      accessToken: S.String.check(S.isPattern(/^oa_omega_[A-Za-z0-9_-]{32,256}$/u)),
-      expiresIn: S.Int.check(S.isGreaterThanOrEqualTo(1), S.isLessThanOrEqualTo(3_600)),
+      accessToken: S.String.check(
+        S.isPattern(/^oa_omega_[A-Za-z0-9_-]{32,256}$/u),
+      ),
+      expiresIn: S.Int.check(
+        S.isGreaterThanOrEqualTo(1),
+        S.isLessThanOrEqualTo(3_600),
+      ),
     }),
   ),
 });
-export type SarahVoiceSessionResponse = typeof SarahVoiceSessionResponseSchema.Type;
+export type SarahVoiceSessionResponse =
+  typeof SarahVoiceSessionResponseSchema.Type;
 
 const EditorTargetSchema = S.Struct({
   workspaceRef: Ref,
@@ -271,6 +339,16 @@ export const decodeSarahVoiceSessionRequest = (value: unknown) =>
 
 export const decodeSarahVoiceNostrChallengeRequest = (value: unknown) =>
   S.decodeUnknownSync(SarahVoiceNostrChallengeRequestSchema)(value, {
+    onExcessProperty: "error",
+  });
+
+export const decodeOmegaNostrDeviceLinkChallengeRequest = (value: unknown) =>
+  S.decodeUnknownSync(OmegaNostrDeviceLinkChallengeRequestSchema)(value, {
+    onExcessProperty: "error",
+  });
+
+export const decodeOmegaNostrDeviceLinkRequest = (value: unknown) =>
+  S.decodeUnknownSync(OmegaNostrDeviceLinkRequestSchema)(value, {
     onExcessProperty: "error",
   });
 

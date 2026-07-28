@@ -106,6 +106,18 @@ export type OmegaNostrSessionIssue<User> =
     }>
   | Readonly<{ _tag: 'Rejected'; response: Response }>
 
+export type OmegaNostrVerifiedProof = Readonly<{
+  _tag: 'Verified'
+  eventId: string
+  isOwner: boolean
+  pubkey: string
+  pubkeyDigest: string
+}>
+
+export type OmegaNostrProofConsumption =
+  | Readonly<{ _tag: 'Consumed' }>
+  | Readonly<{ _tag: 'Rejected'; response: Response }>
+
 export type OmegaNostrSessionDependencies<User, Env> = Readonly<{
   audit?: (
     event: OmegaNostrSessionAuditEvent,
@@ -143,20 +155,12 @@ const exactRequiredTags = (
 export const makeOmegaNostrSessionService = <User, Env>(
   dependencies: OmegaNostrSessionDependencies<User, Env>,
 ) => {
-  const verify = async (
+  const verifyProof = async (
     request: Request,
     env: Env,
     payload: Uint8Array,
   ): Promise<
-    | Readonly<{
-        _tag: 'Verified'
-        eventId: string
-        isOwner: boolean
-        linkedUser?: User
-        pubkey: string
-        pubkeyDigest: string
-      }>
-    | Readonly<{ _tag: 'Rejected'; response: Response }>
+    OmegaNostrVerifiedProof | Readonly<{ _tag: 'Rejected'; response: Response }>
   > => {
     if (request.method !== 'POST') {
       return {
@@ -175,21 +179,6 @@ export const makeOmegaNostrSessionService = <User, Env>(
     const expectedOwnerPubkey = configuredOwnerPubkey?.match(/^[0-9a-f]{64}$/u)
       ? configuredOwnerPubkey
       : undefined
-    const selfProvisionArmed =
-      dependencies.selfProvision !== undefined &&
-      dependencies.selfProvision.enabled(env)
-
-    if (
-      expectedOwnerPubkey === undefined &&
-      !selfProvisionArmed &&
-      dependencies.resolveLinked === undefined
-    ) {
-      return {
-        _tag: 'Rejected',
-        response: noStoreJson({ error: 'omega_nostr_auth_unavailable' }, 503),
-      }
-    }
-
     const authorization = request.headers.get('authorization')
     if (!authorization?.startsWith('Nostr ')) {
       return {
@@ -239,25 +228,64 @@ export const makeOmegaNostrSessionService = <User, Env>(
     const pubkeyDigest = await sha256Hex(pubkey)
     const isOwner =
       expectedOwnerPubkey !== undefined && pubkey === expectedOwnerPubkey
-    let linkedUser: User | undefined
-    if (!isOwner && dependencies.resolveLinked !== undefined) {
-      try {
-        linkedUser = await dependencies.resolveLinked(env, pubkey)
-      } catch {
-        audit(dependencies, 'storage_unavailable', { pubkeyDigest })
-        return {
-          _tag: 'Rejected',
-          response: noStoreJson(
-            { error: 'omega_nostr_auth_storage_unavailable' },
-            503,
-          ),
-        }
+    return {
+      _tag: 'Verified',
+      eventId: event.id.toLowerCase(),
+      isOwner,
+      pubkey,
+      pubkeyDigest,
+    }
+  }
+
+  const verify = async (
+    request: Request,
+    env: Env,
+    payload: Uint8Array,
+  ): Promise<
+    OmegaNostrVerifiedProof | Readonly<{ _tag: 'Rejected'; response: Response }>
+  > => {
+    const configuredOwnerPubkey = dependencies
+      .expectedOwnerPubkey(env)
+      ?.trim()
+      .toLowerCase()
+    const hasConfiguredOwner =
+      configuredOwnerPubkey !== undefined &&
+      /^[0-9a-f]{64}$/u.test(configuredOwnerPubkey)
+    const selfProvisionArmed =
+      dependencies.selfProvision !== undefined &&
+      dependencies.selfProvision.enabled(env)
+    if (
+      !hasConfiguredOwner &&
+      !selfProvisionArmed &&
+      dependencies.resolveLinked === undefined
+    ) {
+      return {
+        _tag: 'Rejected',
+        response: noStoreJson({ error: 'omega_nostr_auth_unavailable' }, 503),
       }
     }
 
-    if (!isOwner && linkedUser === undefined && !selfProvisionArmed) {
+    const verified = await verifyProof(request, env, payload)
+    if (verified._tag === 'Rejected') return verified
+
+    let linked: User | undefined
+    try {
+      linked = await dependencies.resolveLinked?.(env, verified.pubkey)
+    } catch {
+      audit(dependencies, 'storage_unavailable', {
+        pubkeyDigest: verified.pubkeyDigest,
+      })
+      return {
+        _tag: 'Rejected',
+        response: noStoreJson(
+          { error: 'omega_nostr_auth_storage_unavailable' },
+          503,
+        ),
+      }
+    }
+    if (!verified.isOwner && linked === undefined && !selfProvisionArmed) {
       audit(dependencies, 'proof_rejected', {
-        pubkeyDigest,
+        pubkeyDigest: verified.pubkeyDigest,
         reason: 'not_authorized',
       })
       return {
@@ -266,44 +294,55 @@ export const makeOmegaNostrSessionService = <User, Env>(
       }
     }
 
-    return {
-      _tag: 'Verified',
-      eventId: event.id.toLowerCase(),
-      isOwner,
-      ...(linkedUser === undefined ? {} : { linkedUser }),
-      pubkey,
-      pubkeyDigest,
+    return verified
+  }
+
+  const consumeProof = async (
+    env: Env,
+    verified: OmegaNostrVerifiedProof,
+  ): Promise<OmegaNostrProofConsumption> => {
+    try {
+      const consumed = await dependencies
+        .authStore(env)
+        .putIfAbsent(`${PROOF_KEY_PREFIX}${verified.eventId}`, 'consumed', {
+          expirationTtl: MAX_CLOCK_SKEW_SECONDS * 2,
+        })
+      if (!consumed) {
+        audit(dependencies, 'proof_replayed', {
+          pubkeyDigest: verified.pubkeyDigest,
+        })
+        return {
+          _tag: 'Rejected',
+          response: noStoreJson({ error: 'omega_nostr_proof_replayed' }, 409),
+        }
+      }
+      return { _tag: 'Consumed' }
+    } catch {
+      audit(dependencies, 'storage_unavailable', {
+        pubkeyDigest: verified.pubkeyDigest,
+      })
+      return {
+        _tag: 'Rejected',
+        response: noStoreJson(
+          { error: 'omega_nostr_auth_storage_unavailable' },
+          503,
+        ),
+      }
     }
   }
 
   const authenticateVerified = async (
     request: Request,
     env: Env,
-    verified: Readonly<{
-      eventId: string
-      isOwner: boolean
-      linkedUser?: User
-      pubkey: string
-      pubkeyDigest: string
-    }>,
+    verified: OmegaNostrVerifiedProof,
   ): Promise<
     | Readonly<{ _tag: 'Authenticated'; pubkey: string; user: User }>
     | Readonly<{ _tag: 'Rejected'; response: Response }>
   > => {
-    const { eventId, isOwner, pubkey, pubkeyDigest } = verified
+    const { isOwner, pubkey, pubkeyDigest } = verified
     try {
-      const store = dependencies.authStore(env)
-      const proofKey = `${PROOF_KEY_PREFIX}${eventId}`
-      const consumed = await store.putIfAbsent(proofKey, 'consumed', {
-        expirationTtl: MAX_CLOCK_SKEW_SECONDS * 2,
-      })
-      if (!consumed) {
-        audit(dependencies, 'proof_replayed', { pubkeyDigest })
-        return {
-          _tag: 'Rejected',
-          response: noStoreJson({ error: 'omega_nostr_proof_replayed' }, 409),
-        }
-      }
+      const consumed = await consumeProof(env, verified)
+      if (consumed._tag === 'Rejected') return consumed
 
       let user: User | undefined
 
@@ -331,11 +370,13 @@ export const makeOmegaNostrSessionService = <User, Env>(
             response: noStoreJson({ error: 'unauthorized' }, 401),
           }
         }
-      } else if (verified.linkedUser !== undefined) {
-        user = verified.linkedUser
       } else {
+        user = await dependencies.resolveLinked?.(env, pubkey)
+      }
+
+      if (!isOwner && user === undefined) {
         const hooks = dependencies.selfProvision
-        if (hooks === undefined) {
+        if (hooks === undefined || !hooks.enabled(env)) {
           return {
             _tag: 'Rejected',
             response: noStoreJson({ error: 'unauthorized' }, 401),
@@ -374,7 +415,7 @@ export const makeOmegaNostrSessionService = <User, Env>(
         }
       }
 
-      if (!isOwner && verified.linkedUser === undefined) {
+      if (!isOwner && user === undefined) {
         user = await dependencies.selfProvision?.provision(env, pubkey)
         if (user === undefined) {
           return {
@@ -481,7 +522,16 @@ export const makeOmegaNostrSessionService = <User, Env>(
         })
   }
 
-  return { authenticate, authenticateVerified, handle, issue, mint, verify }
+  return {
+    authenticate,
+    authenticateVerified,
+    consumeProof,
+    handle,
+    issue,
+    mint,
+    verify,
+    verifyProof,
+  }
 }
 
 export const makeOmegaNostrSessionHandler = <User, Env>(
