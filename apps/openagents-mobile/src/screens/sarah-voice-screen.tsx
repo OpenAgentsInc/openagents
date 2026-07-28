@@ -223,7 +223,7 @@ export const SarahVoiceScreen = ({ onClose }: { readonly onClose: () => void }) 
           createSocket,
           sha256: async (bytes) =>
             new Uint8Array(
-              await digest(CryptoDigestAlgorithm.SHA256, Uint8Array.from(bytes).buffer),
+              await digest(CryptoDigestAlgorithm.SHA256, Uint8Array.from(bytes)),
             ),
           randomUuid: randomUUID,
           now: Date.now,

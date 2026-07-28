@@ -14,6 +14,10 @@ import { join } from "node:path"
  */
 
 const appRoot = join(import.meta.dirname, "..")
+const sarahVoiceScreenSource = readFileSync(
+  join(appRoot, "src/screens/sarah-voice-screen.tsx"),
+  "utf8",
+)
 
 const appConfig = JSON.parse(
   readFileSync(join(appRoot, "app.json"), "utf8"),
@@ -104,5 +108,14 @@ describe("contract openagents_mobile.identity.v1", () => {
         enableBackgroundRecording: false,
       },
     ])
+  })
+
+  test("native SHA-256 receives a typed array", () => {
+    expect(sarahVoiceScreenSource).toContain(
+      "digest(CryptoDigestAlgorithm.SHA256, Uint8Array.from(bytes))",
+    )
+    expect(sarahVoiceScreenSource).not.toContain(
+      "digest(CryptoDigestAlgorithm.SHA256, Uint8Array.from(bytes).buffer)",
+    )
   })
 })
