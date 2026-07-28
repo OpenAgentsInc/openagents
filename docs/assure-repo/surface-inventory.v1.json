@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:ee9f5e34a352271f0efee57300bc90c4d0059a7b69722767ed1fdd3bee6d9749",
+  "sourceDigest": "sha256:df1cab2e7a9ac94cd2f018a67c2496ad075b64cdb58f046a82684f059895bcbf",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -217,7 +217,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "apps/openagents.com (1120 tracked test files)"
+          "ref": "apps/openagents.com (1123 tracked test files)"
         },
         {
           "type": "behavior-contract",
@@ -1935,7 +1935,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "packages/audio-contract (4 tracked test files)"
+          "ref": "packages/audio-contract (5 tracked test files)"
         },
         {
           "type": "behavior-contract",
@@ -2417,7 +2417,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "packages/khala-sync-server (80 tracked test files)"
+          "ref": "packages/khala-sync-server (81 tracked test files)"
         },
         {
           "type": "behavior-contract",
@@ -3313,7 +3313,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "apps/openagents.com/workers/api (1006 tracked test files)"
+          "ref": "apps/openagents.com/workers/api (1009 tracked test files)"
         },
         {
           "type": "behavior-contract",
