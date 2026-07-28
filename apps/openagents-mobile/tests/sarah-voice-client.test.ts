@@ -690,7 +690,71 @@ describe("managed Sarah mobile voice client", () => {
     },
   );
 
-  test("maps normal-session credit denial without falling back to a second identity flow", async () => {
+  test.each([
+    { status: 402, error: "insufficient_credit" },
+    { status: 403, error: "sarah_voice_not_available" },
+  ])(
+    "refreshes the scoped session and retries voice once after $status",
+    async ({ status, error }) => {
+      const priorAccessToken = `oa_omega_${"p".repeat(43)}`;
+      const stored: SarahVoiceStoredSession = {
+        schemaVersion: 1,
+        publicKeyHex,
+        ownerRef,
+        accessToken: priorAccessToken,
+        expiresAtMs: 100_000,
+      };
+      const vault = makeVault(stored);
+      const requests: Array<Readonly<{ url: string; authorization: string }>> = [];
+      let voiceAttempts = 0;
+      const uuids = ["voice-policy-denied", "voice-policy-restored"];
+      const client = new SarahVoiceClient({
+        baseUrl: "https://openagents.com",
+        publicKeyHex,
+        signer,
+        vault: vault.vault,
+        fetch: (async (input, init) => {
+          const url = String(input);
+          requests.push({
+            url,
+            authorization: String((init?.headers as Record<string, string>)?.authorization ?? ""),
+          });
+          if (url.endsWith("/api/omega/auth/session")) {
+            return Response.json(normalSessionResponse());
+          }
+          voiceAttempts += 1;
+          if (voiceAttempts === 1) return Response.json({ error }, { status });
+          const body = JSON.parse(String(init?.body)) as Readonly<{ identity: VoiceIdentity }>;
+          return Response.json(sessionResponse(body.identity, "r".repeat(43), false), {
+            status: 201,
+          });
+        }) as typeof globalThis.fetch,
+        createSocket: (url, headers) => new FixtureSocket(url, headers),
+        sha256,
+        randomUuid: () => uuids.shift() ?? "unexpected-policy-retry",
+        now: () => 10_000,
+        setTimeout,
+        clearTimeout,
+      });
+
+      await client.start();
+
+      expect(requests.map(({ url }) => url)).toEqual([
+        "https://openagents.com/api/omega/sarah/voice/session",
+        "https://openagents.com/api/omega/auth/session",
+        "https://openagents.com/api/omega/sarah/voice/session",
+      ]);
+      expect(requests[0]?.authorization).toBe(`Bearer ${priorAccessToken}`);
+      expect(requests[2]?.authorization).toBe(`Bearer ${accessToken}`);
+      expect(vault.read()?.accessToken).toBe(accessToken);
+      expect(client.snapshot()).toMatchObject({
+        phase: "connecting",
+        message: null,
+      });
+    },
+  );
+
+  test("preserves a real credit denial after one scoped-session retry", async () => {
     const stored: SarahVoiceStoredSession = {
       schemaVersion: 1,
       publicKeyHex,
@@ -706,7 +770,11 @@ describe("managed Sarah mobile voice client", () => {
       signer,
       vault: vault.vault,
       fetch: (async (input) => {
-        requests.push(String(input));
+        const url = String(input);
+        requests.push(url);
+        if (url.endsWith("/api/omega/auth/session")) {
+          return Response.json(normalSessionResponse());
+        }
         return Response.json({ error: "insufficient_credit" }, { status: 402 });
       }) as typeof globalThis.fetch,
       createSocket: () => {
@@ -720,12 +788,16 @@ describe("managed Sarah mobile voice client", () => {
     });
 
     await client.start();
-    expect(requests).toEqual(["https://openagents.com/api/omega/sarah/voice/session"]);
+    expect(requests).toEqual([
+      "https://openagents.com/api/omega/sarah/voice/session",
+      "https://openagents.com/api/omega/auth/session",
+      "https://openagents.com/api/omega/sarah/voice/session",
+    ]);
     expect(vault.clearCount()).toBe(0);
     expect(client.snapshot()).toMatchObject({
       phase: "error",
-      message: "This account needs more OpenAgents credits for voice.",
-      retryable: false,
+      message: "Sarah voice needs available OpenAgents credits. Add credits, then retry voice.",
+      retryable: true,
     });
   });
 

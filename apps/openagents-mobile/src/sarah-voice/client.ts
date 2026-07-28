@@ -109,6 +109,26 @@ export type SarahVoiceClientDependencies = Readonly<{
   recoverDeviceLink?: SarahVoiceDeviceLinkRecovery;
 }>;
 
+type VoiceSessionValue = Readonly<{
+  identity: VoiceIdentity;
+  gatewayUrl: string;
+  ticket: string;
+  reservedCreditMsat: number;
+}>;
+
+type VoiceSessionResult =
+  | Readonly<{
+      _tag: "Success";
+      value: VoiceSessionValue;
+      accessToken?: string;
+      expiresIn: number;
+    }>
+  | Readonly<{
+      _tag: "Failure";
+      status: number;
+      failure: Readonly<{ message: string; retryable: boolean }>;
+    }>;
+
 const initialSnapshot: SarahVoiceSnapshot = {
   phase: "idle",
   muted: false,
@@ -153,20 +173,20 @@ const statusMessage = (
 }> => {
   if (status === 401) {
     return {
-      message: "Sarah could not verify your OpenAgents account. Try again.",
+      message: "Sign in to OpenAgents again, then retry Sarah voice.",
       retryable: false,
     };
   }
   if (status === 402 || error === "insufficient_credit") {
     return {
-      message: "This account needs more OpenAgents credits for voice.",
-      retryable: false,
+      message: "Sarah voice needs available OpenAgents credits. Add credits, then retry voice.",
+      retryable: true,
     };
   }
   if (status === 403) {
     return {
-      message: "Sarah voice is not enabled for this OpenAgents account.",
-      retryable: false,
+      message: "Sarah voice is not available yet. Try again later.",
+      retryable: true,
     };
   }
   if (status === 409) {
@@ -480,11 +500,10 @@ export class SarahVoiceClient {
       this.dependencies.now(),
     );
     if (stored !== null) {
-      const bearer = await this.createSession({
+      const bearer = await this.createBearerSessionWithPolicyRetry({
         baseUrl,
         deviceRef,
-        ownerRef: stored.ownerRef,
-        authorization: `Bearer ${stored.accessToken}`,
+        session: stored,
       });
       if (bearer._tag === "Success") return bearer.value;
       if (bearer.status !== 401) throw bearer.failure;
@@ -494,11 +513,10 @@ export class SarahVoiceClient {
     const normalSession = await this.requestNormalOpenAgentsSession(baseUrl);
     if (normalSession._tag === "Success") {
       await this.dependencies.vault.write(normalSession.value);
-      const bearer = await this.createSession({
+      const bearer = await this.createBearerSessionWithPolicyRetry({
         baseUrl,
         deviceRef,
-        ownerRef: normalSession.value.ownerRef,
-        authorization: `Bearer ${normalSession.value.accessToken}`,
+        session: normalSession.value,
       });
       if (bearer._tag === "Success") return bearer.value;
       if (bearer.status !== 401) throw bearer.failure;
@@ -525,11 +543,10 @@ export class SarahVoiceClient {
       const linkedSession = await this.requestNormalOpenAgentsSession(baseUrl);
       if (linkedSession._tag === "Failure") throw linkedSession.failure;
       await this.dependencies.vault.write(linkedSession.value);
-      const bearer = await this.createSession({
+      const bearer = await this.createBearerSessionWithPolicyRetry({
         baseUrl,
         deviceRef,
-        ownerRef: linkedSession.value.ownerRef,
-        authorization: `Bearer ${linkedSession.value.accessToken}`,
+        session: linkedSession.value,
       });
       if (bearer._tag === "Success") return bearer.value;
       if (bearer.status === 401) await this.dependencies.vault.clear();
@@ -625,6 +642,34 @@ export class SarahVoiceClient {
     };
   }
 
+  private async createBearerSessionWithPolicyRetry(
+    input: Readonly<{
+      baseUrl: string;
+      deviceRef: string;
+      session: SarahVoiceStoredSession;
+    }>,
+  ): Promise<VoiceSessionResult> {
+    const first = await this.createSession({
+      baseUrl: input.baseUrl,
+      deviceRef: input.deviceRef,
+      ownerRef: input.session.ownerRef,
+      authorization: `Bearer ${input.session.accessToken}`,
+    });
+    if (first._tag === "Success" || (first.status !== 402 && first.status !== 403)) {
+      return first;
+    }
+
+    const refreshed = await this.requestNormalOpenAgentsSession(input.baseUrl);
+    if (refreshed._tag === "Failure") return first;
+    await this.dependencies.vault.write(refreshed.value);
+    return this.createSession({
+      baseUrl: input.baseUrl,
+      deviceRef: input.deviceRef,
+      ownerRef: refreshed.value.ownerRef,
+      authorization: `Bearer ${refreshed.value.accessToken}`,
+    });
+  }
+
   private async createSession(
     input: Readonly<{
       baseUrl: string;
@@ -633,24 +678,7 @@ export class SarahVoiceClient {
       authorization?: string;
       challenge?: string;
     }>,
-  ): Promise<
-    | Readonly<{
-        _tag: "Success";
-        value: Readonly<{
-          identity: VoiceIdentity;
-          gatewayUrl: string;
-          ticket: string;
-          reservedCreditMsat: number;
-        }>;
-        accessToken?: string;
-        expiresIn: number;
-      }>
-    | Readonly<{
-        _tag: "Failure";
-        status: number;
-        failure: Readonly<{ message: string; retryable: boolean }>;
-      }>
-  > {
+  ): Promise<VoiceSessionResult> {
     const identity: VoiceIdentity = {
       ownerRef: input.ownerRef,
       deviceRef: input.deviceRef,
