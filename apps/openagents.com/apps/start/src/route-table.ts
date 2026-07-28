@@ -50,6 +50,10 @@ export const knownDocumentPathPatterns: ReadonlyArray<RegExp> = [
   /^\/splash$/,
   /^\/trace\/[^/]+$/,
   /^\/training\/runs(?:\/[^/]+)?\/?$/,
+  // 2026-07-28 owner direction: /work is the public sales landing page (AI
+  // employees positioning) whose CTAs drive into the Sarah sales agent at
+  // sarah.openagents.com.
+  /^\/work\/?$/,
   /^\/workspaces\/[^/]+$/,
   /^\/pylon\/codex\/assignments\/[^/]+$/,
 ]

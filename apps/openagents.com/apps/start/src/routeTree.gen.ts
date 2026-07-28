@@ -39,6 +39,7 @@ import { Route as AgentchatRouteImport } from './routes/agentchat'
 import { Route as AdjutantRouteImport } from './routes/adjutant'
 import { Route as ActivityRouteImport } from './routes/activity'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as WorkIndexRouteImport } from './routes/work/index'
 import { Route as KhalaIndexRouteImport } from './routes/khala/index'
 import { Route as ForumIndexRouteImport } from './routes/forum/index'
 import { Route as DocsIndexRouteImport } from './routes/docs/index'
@@ -228,6 +229,11 @@ const ActivityRoute = ActivityRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const WorkIndexRoute = WorkIndexRouteImport.update({
+  id: '/work/',
+  path: '/work/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const KhalaIndexRoute = KhalaIndexRouteImport.update({
@@ -494,6 +500,7 @@ export interface FileRoutesByFullPath {
   '/docs/': typeof DocsIndexRoute
   '/forum/': typeof ForumIndexRoute
   '/khala/': typeof KhalaIndexRoute
+  '/work/': typeof WorkIndexRoute
   '/aisdk/docs/$slug': typeof AisdkDocsSlugRoute
   '/business/kpi/$engagementRef': typeof BusinessKpiEngagementRefRoute
   '/forge/$owner/$repo': typeof ForgeOwnerRepoRouteWithChildren
@@ -565,6 +572,7 @@ export interface FileRoutesByTo {
   '/docs': typeof DocsIndexRoute
   '/forum': typeof ForumIndexRoute
   '/khala': typeof KhalaIndexRoute
+  '/work': typeof WorkIndexRoute
   '/aisdk/docs/$slug': typeof AisdkDocsSlugRoute
   '/business/kpi/$engagementRef': typeof BusinessKpiEngagementRefRoute
   '/forge/$owner/$repo': typeof ForgeOwnerRepoRouteWithChildren
@@ -638,6 +646,7 @@ export interface FileRoutesById {
   '/docs/': typeof DocsIndexRoute
   '/forum/': typeof ForumIndexRoute
   '/khala/': typeof KhalaIndexRoute
+  '/work/': typeof WorkIndexRoute
   '/aisdk/docs/$slug': typeof AisdkDocsSlugRoute
   '/business/kpi/$engagementRef': typeof BusinessKpiEngagementRefRoute
   '/forge/$owner/$repo': typeof ForgeOwnerRepoRouteWithChildren
@@ -712,6 +721,7 @@ export interface FileRouteTypes {
     | '/docs/'
     | '/forum/'
     | '/khala/'
+    | '/work/'
     | '/aisdk/docs/$slug'
     | '/business/kpi/$engagementRef'
     | '/forge/$owner/$repo'
@@ -783,6 +793,7 @@ export interface FileRouteTypes {
     | '/docs'
     | '/forum'
     | '/khala'
+    | '/work'
     | '/aisdk/docs/$slug'
     | '/business/kpi/$engagementRef'
     | '/forge/$owner/$repo'
@@ -855,6 +866,7 @@ export interface FileRouteTypes {
     | '/docs/'
     | '/forum/'
     | '/khala/'
+    | '/work/'
     | '/aisdk/docs/$slug'
     | '/business/kpi/$engagementRef'
     | '/forge/$owner/$repo'
@@ -925,6 +937,7 @@ export interface RootRouteChildren {
   ComponentsIndexRoute: typeof ComponentsIndexRoute
   ForumIndexRoute: typeof ForumIndexRoute
   KhalaIndexRoute: typeof KhalaIndexRoute
+  WorkIndexRoute: typeof WorkIndexRoute
   AisdkDocsSlugRoute: typeof AisdkDocsSlugRoute
   BusinessKpiEngagementRefRoute: typeof BusinessKpiEngagementRefRoute
   ForgeOwnerRepoRoute: typeof ForgeOwnerRepoRouteWithChildren
@@ -1147,6 +1160,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/work/': {
+      id: '/work/'
+      path: '/work'
+      fullPath: '/work/'
+      preLoaderRoute: typeof WorkIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/khala/': {
@@ -1526,6 +1546,7 @@ const rootRouteChildren: RootRouteChildren = {
   ComponentsIndexRoute: ComponentsIndexRoute,
   ForumIndexRoute: ForumIndexRoute,
   KhalaIndexRoute: KhalaIndexRoute,
+  WorkIndexRoute: WorkIndexRoute,
   AisdkDocsSlugRoute: AisdkDocsSlugRoute,
   BusinessKpiEngagementRefRoute: BusinessKpiEngagementRefRoute,
   ForgeOwnerRepoRoute: ForgeOwnerRepoRouteWithChildren,

@@ -53,6 +53,9 @@ describe('Start ⇄ Worker document route agreement (#8813)', () => {
     '/agents/artanis',
     '/trace/448644bd-f2ce-4ad4-bfad-e4e898ed12ef',
     '/training/runs/run-1',
+    // /work sales landing added at owner direction 2026-07-28 (AI-employees
+    // positioning; CTAs drive into the Sarah sales agent).
+    '/work',
   ])('retained Start document %s is admitted by the Worker', pathname => {
     expect(isKnownStartDocumentPath(pathname)).toBe(true)
     expect(
