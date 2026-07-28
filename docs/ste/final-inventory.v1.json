@@ -45641,7 +45641,7 @@
     },
     {
       "path": "docs/teardowns/2026-07-21-buzz-teardown.md",
-      "sha256": "1685d0bd3b967f3ece9e89b76970396e40722e2aedcf11f11e7f095456b50b6c",
+      "sha256": "25ae1fe51370297725ce621c10939fa95ccfe5cb1f91c7cb66789e937915b7cd",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -45897,7 +45897,7 @@
     },
     {
       "path": "docs/teardowns/README.md",
-      "sha256": "e7527315f3ea725f5557c199246646749e8c54d61dd77a9fa9bc34381aad0654",
+      "sha256": "265c513c6e65c20e925f0f6b5e8732ffefce764ce421a0b34ddebd3004f2edb7",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

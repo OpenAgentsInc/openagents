@@ -9,7 +9,9 @@ A third source review traced identity, authentication, and device pairing at
 that commit. It did not run a live MeshLLM node or complete a real device
 transfer. A fourth review on 2026-07-27 traced Forum behavior in Buzz and
 OpenAgents. It used a newer Buzz source snapshot but did not run either
-Forum. Buzz is Block's open-source, self-hostable workspace where humans
+Forum. A fifth review on 2026-07-28 studied the public Buzz Desktop `v0.5.0`
+release and its selected source files. It did not run a release artifact.
+Buzz is Block's open-source, self-hostable workspace where humans
 and AI agents are co-equal members of a Nostr-relay community. It is the
 closest whole-system analog to OpenAgents in the teardown catalog so far: one
 company shipping chat, forum, git forge, workflows, voice, agent harnesses,
@@ -79,6 +81,8 @@ Section 6.10 gives the evidence and migration gates.
 | Audited commit | `e9188c03f6c2460983a3dac0fa7702b468838e62` | Exact snapshot used here |
 | Git, MeshLLM, usage, and device-auth follow-up commit | `5a3b8176aac5f4bced452ac8920477c5e059b828` | Source snapshot for the Git, shared-compute, identity, authentication, and pairing deep dives |
 | Forum follow-up commit | `be13b4bb9ce228b21fa3682ce75d75cba5950561` | Source snapshot for the Buzz Forum, desktop, mobile, and protocol comparison |
+| Desktop `v0.5.0` follow-up commit | `4a977c588a540be38bd8ddb268cd24437bac8165` | Public release tag and source snapshot for the 2026-07-28 follow-up |
+| Desktop `v0.5.0` tree | `416456ae98ae576ff695973d6ac96298e395eb6f` | Exact source tree for the follow-up |
 | Psionic comparison commit | `54201484bb8eb11b528f7038922db02724864523` | Current native inference-mesh, topology, receipt, and service-mode comparison |
 | `nostr-effect` commit | `c1603780f754d445b3cb8203ea5602b54c145996` | Local implementation snapshot for standard and Buzz NIPs |
 | OpenAgents historical sources | `docs/transcripts/README.md`, episodes 142, 147, 174, 178, 201, 203, 214, 215, 237, and 238 | Data-vending, compute-market, Pylon, Psionic, and accepted-outcome lineage |
@@ -2500,6 +2504,348 @@ bundle before any earnings or distributed-inference promise turns green.
 - **Mobile parity.** The Flutter app's manual kind mirroring is a standing
   drift risk. How they solve schema sharing across three languages is worth
   one later read.
+
++## 12. Buzz Desktop v0.5.0 follow-up — 2026-07-28
+
+This section records a source-grounded release delta.
+It uses the Fast Follow `gap_analysis` lane.
+It does not admit product work.
+
+### 12.1 Exact evidence and limits
+
+| Item                     | Exact identity                                                             |
+| ------------------------ | -------------------------------------------------------------------------- |
+| Public release           | [`Buzz Desktop v0.5.0`](https://github.com/block/buzz/releases/tag/v0.5.0) |
+| Tag and release commit   | `4a977c588a540be38bd8ddb268cd24437bac8165`                                 |
+| Release tree             | `416456ae98ae576ff695973d6ac96298e395eb6f`                                 |
+| Prior Desktop release    | `v0.4.26` at `0096d710ed2e6abab19aaf7cdc14e3ee603d7ec8`                    |
+| Source license           | Apache-2.0                                                                 |
+| OpenAgents target commit | `27098afa7db93b2c512840aa877ba567d3b61b5e`                                 |
+| OpenAgents target tree   | `870252a33c664adfb255049b5c341d2980104b10`                                 |
+| Omega source commit      | `bc5bab2ba2a89829f6c20942baa58de966f7edd6`                                 |
+| Omega source tree        | `775ff4cc1f966ae1b4d696e4d118aa2267d7edc0`                                 |
+
+The public tag points to the release commit.
+The release commit sets the Desktop package version to `0.5.0`.
+The release page lists the feature and repair commits in this section.
+[source] [public]
+
+The selected source corpus has these SHA-256 values:
+
+| Source path at the release tree                               | SHA-256                                                            |
+| ------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `desktop/package.json`                                        | `2a57979114e10494044071b266a29a25a8d6bed85e70514f86a5f731f82eecb2` |
+| `crates/buzz-core/src/invite.rs`                              | `92815a4548447271a2b53dc2cbb1aad22febf5c956a6b409f816484988136715` |
+| `migrations/0025_relay_invites.sql`                           | `62af2672cfc72c50ef619b96adbb64caeb21cec1c5db8f344973ab59fdc6ebbb` |
+| `desktop/src/features/search/lib/parseSearchOperators.ts`     | `35c26e30d5fb18e1d85fb046fc6affe565fada6643c8452a55c5996d36174e11` |
+| `desktop/src-tauri/src/managed_agents/custom_harnesses.rs`    | `543cd51b564945b382a32ed3c6ab12a1dbef84a741d63788adb03db0d70ae716` |
+| `desktop/src/features/settings/ui/HarnessesSettingsPanel.tsx` | `0e01324b5256479d36f0a883381debacf2155c4a70597ca480df48c9786f4631` |
+| `desktop/src/features/home/lib/inbox.ts`                      | `c3481a4dd49fb6e1ff844b3ff62a6319dd780bb8df1fe49ae7a1285d2182d87e` |
+| `desktop/src/features/home/lib/projectInbox.ts`               | `9ccdfe6f45b30c93d7dab8813560ee91404ab0b64063378f11ebe23c6c53d585` |
+| `desktop/src/features/messages/ui/useAnchoredScroll.ts`       | `135cbb2bca3896ea27a3c2454b132aaab3f2ba5157a2d55e9a58c5c096fecf9d` |
+| `desktop/scripts/fix-appimage.sh`                             | `b5c51b71aaab55b4143137b3df8550fc53e431b2202d186a2e7d9f967674c660` |
+| `desktop/src-tauri/src/commands/project_git_exec.rs`          | `49ae66893c58c9c7551dfac3312c5d7908b4217d972125dda26f6cd536c2825e` |
+
+The target comparison binds these authority files:
+
+| Target authority                                                 | SHA-256                                                            |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `FASTFOLLOW.md`                                                  | `ae883d664aaab097f225bce73245f92b06759253d65f9adab1bee582deff15b6` |
+| `docs/sol/MASTER_ROADMAP.md`                                     | `0ee3dc365ddeba7263b086c540a2e68be116e126f7abb6340d05c5a58e592523` |
+| `docs/sol/2026-07-23-omega-zed-primary-surface-accepted-plan.md` | `6c0a1b84f1c0f428220b2112b0e2a36585e92ec2c4570ef9cc9234d21af56ce1` |
+| `docs/omega/ROADMAP.md`                                          | `f9025f6ccf9ade4043262af99fa5e27d1aebca1582d30d10f120b60427ed64cb` |
+
+This review read source and history.
+It did not install or run a `v0.5.0` asset.
+It did not run Buzz tests.
+Release notes and unexecuted tests do not prove runtime behavior.
+[limitation]
+
+### 12.2 Use-limited invite links
+
+Commit `d500c2d5cf5d9aabe0ca4ebebfcafdbe5f5b7fd3` replaces a
+stateless-only invite limit with durable `v2` invite rows.
+The link contains a canonical opaque code.
+The database stores only its SHA-256 digest.
+Each lookup binds the community and digest.
+[source]
+
+An owner or admin can set an expiry and a maximum use count.
+The API accepts 60 seconds through 30 days.
+The default is 72 hours.
+A bounded link accepts 1 through 10,000 uses.
+An unlimited link still counts each new member.
+The link can only grant the `member` role.
+[source]
+
+The claim path locks one invite row with `SELECT FOR UPDATE`.
+Membership, policy evidence, and the use count share one database transaction.
+Only one claimant can take the final use.
+An existing member can retry without another use.
+An evidence-write failure rolls back membership and use.
+[source] [test]
+
+The NIP-43 member projection occurs after the database commit.
+A projection failure writes a warning.
+It does not roll back the admitted member.
+Thus, the database remains authority and the relay event is a projection.
+[source]
+
+The selected source has no operator path to list and revoke a live `v2` link.
+It only reaps expired rows.
+The product can limit exposure, but it cannot prove early revocation from this
+source set.
+[source] [limitation]
+
+The OpenAgents community contract already requires an exact invitation.
+Its current invitation binds one invitee public key.
+It also changes to an accepted state after one use.
+That target rule is narrower than a holder link.
+
+The Buzz transaction pattern is useful for a future shared invitation.
+OpenAgents must keep these additional controls:
+
+- one typed audience and role limit
+- an expiration and an explicit revocation state
+- a stored secret digest, never the bearer value
+- a tenant and issuer binding
+- one atomic admission, evidence, and use update
+- an idempotent already-member result
+- an audit record for mint, claim, expiry, revoke, and refusal
+
+A generic holder link is not an admitted OpenAgents membership path today.
+This release does not create an implementation candidate for that path.
+[inferred]
+
+### 12.3 Structured search filters
+
+Commit `cb2a265b5399426e808461c1a16713754c593258` adds these
+search operators:
+
+```text
+from:
+in:
+after:
+before:
+```
+
+The parser only recognizes an operator at a token start.
+It does not parse an operator inside a URL or a hyphenated word.
+The last valid operator of one type wins.
+Invalid date operators remain ordinary search text.
+[source]
+
+`after:` includes the local start of the named day.
+`before:` excludes the local start of the named day.
+The parser subtracts one second because NIP-01 `until` is inclusive.
+The current date format is exactly `YYYY-MM-DD`.
+[source]
+
+The client resolves `from:` and `in:` against known people and channels.
+An unresolved value has its own result.
+The client must not drop an unresolved filter and widen the search.
+The Tauri boundary receives text, channel, authors, `since`, and `until`.
+[source]
+
+This is not a user-intent keyword router.
+The user already selected the search surface.
+The grammar compiles a query inside that typed operation.
+
+Omega already requires search across authorized workroom records, projects,
+files, symbols, changes, and receipts.
+The accepted plan does not define a compact filter grammar.
+The useful Fast Follow delta is a typed query contract with:
+
+- free text
+- actor references
+- workroom, project, thread, and repository scope
+- inclusive and exclusive time bounds
+- record classes
+- authorization scope
+- stable page identity
+- an explicit unresolved-filter result
+
+The visible `from:` and `in:` text can compile to this contract.
+It must not become the canonical query or access policy.
+Search results must retain source refs and authorization facts.
+This is a candidate acceptance refinement, not admitted work.
+[inferred]
+
+### 12.4 BYOH and the runtime settings redesign
+
+Commit `95fdf978800982389b120c66ff5e766d785419c7` adds a generic
+ACP runtime seam.
+The runtime catalog now has three tiers:
+
+1. compiled runtimes with first-class setup
+2. preset ACP runtimes with static definitions
+3. user custom ACP runtimes stored as JSON files
+
+A custom definition gives an ID, label, command, arguments, environment
+values, and optional setup help.
+The ID grammar prevents path traversal.
+Built-in IDs cannot be shadowed.
+Invalid files do not block valid entries.
+[source]
+
+Custom and preset entries cannot run install shell commands.
+They cannot supply remote icon URLs.
+Reserved Buzz identity values are removed from custom environment data.
+Buzz uses an atomic file replacement and restores a backup after a failed
+replacement.
+One lock joins persistence and registry refresh.
+[source] [test]
+
+Commit `d98da7389e60cfbd79b219aa411449fe2e53a18a` then puts runtime
+management in one settings area.
+The page separates system prerequisites, current runtimes, and an add-runtime
+catalog.
+It keeps row order stable during refresh and setup.
+It shows readiness, setup help, and custom runtime forms.
+[source]
+
+This release corrects one older source assessment.
+The `v0.4.23` source had a fixed catalog and an incomplete command override.
+The `v0.5.0` source supports a user-defined ACP command without a Buzz change.
+The older assessment remains correct only for its pinned snapshot.
+
+The Omega contract remains stronger in four areas:
+
+- The external agent keeps its existing configuration home.
+- The default attachment policy is `use_existing_read_only`.
+- Declared and observed capabilities stay separate.
+- The record names the execution location, health, generation, and receipts.
+
+A Buzz custom runtime definition proves launch configuration.
+It does not prove the complete external agent custody or capability contract.
+Some runtimes can execute through another daemon.
+In that case, Desktop environment values do not reach the real execution
+location.
+[source] [inferred]
+
+The useful target delta is small.
+Use one runtime settings page for discovery, attachment, health, and removal.
+Show configuration ownership and the execution location on every row.
+Do not let availability mean authenticated, configured, admitted, or healthy.
+Do not run setup or change an external home during read-only attachment.
+
+This evidence strengthens the existing
+`block.buzz#existing_agent_attachment` lesson in `FASTFOLLOW.md`.
+It does not require a new FastFollowSpec lesson or a roadmap change.
+
+### 12.5 The project Inbox
+
+Commits `2bd4c24b71335e7ce272ec6de6491f7f37f4b20d`,
+`c5c4f390b6713256e2efb8394c59823ebad73db6`, and
+`afb272bb7b8d7d45d7de676fa97dcd5a8eefacc7` change Inbox from a
+message list into an attention view.
+[source]
+
+The visible filters are:
+
+```text
+All
+Projects
+Mentions
+Threads
+Needs action
+Agents
+Reminders
+Drafts
+```
+
+A row keeps a stable conversation identity.
+Messages use the NIP-10 root.
+Project work uses the repository address and issue or pull-request root.
+New activity can change the representative event without changing row
+identity.
+[source]
+
+Project rows include NIP-34 pull requests and issues.
+They also include updates, status events, and comments.
+The detail pane reuses the project work-item view and its actions.
+A person can review project work from Inbox or open the full project.
+The same area also retains reminder and draft state.
+[source]
+
+This design does not make Inbox authoritative.
+It resolves feed events to current project records.
+The project and Git views still own their actions.
+That projection rule fits Omega.
+
+Omega already requires a native attention pane for Inbox, mentions, blockers,
+and recent activity.
+The `v0.5.0` evidence adds three useful acceptance details:
+
+1. One stable attention item can group new events without changing identity.
+2. Project work can keep its native detail and action controls inside Inbox.
+3. Every filter must preserve the same underlying authority and read state.
+
+An Omega attention item should name the work ref, conversation ref, source
+event refs, reason, actor, unread state, and available typed intents.
+An action result must return its normal outcome ref.
+The attention item cannot become a second work or Git state.
+This is a candidate acceptance refinement.
+[inferred]
+
+### 12.6 Linux, Windows, and scroll repairs
+
+The release page includes these bounded repair classes:
+
+| Area                      | Selected commits                      | Source result                                                                                                            |
+| ------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Linux media packaging     | `cc6c4d347`, `a31fc4d2f`              | Repair AppImage GStreamer search paths and remove the bundled `libsystemd`.                                              |
+| Linux clipboard           | `ab7aa8b12`                           | Enable the Wayland backend for clipboard writes.                                                                         |
+| Windows Git               | `899531684`                           | Normalize the Git credential helper path.                                                                                |
+| Windows tests             | `8bb43d519`, `545bb46b8`              | Repair the test loader and platform-safe lint and unit-test gates.                                                       |
+| Windows runtime discovery | `be13b4bb9`, `94675e0d2`              | Probe the legacy Goose location and isolate install command execution.                                                   |
+| Timeline scroll           | `25e7864b3`, `07d0265cf`, `9810d8545` | Consolidate prepend correction, remove reader prepend wheel mode, and preserve the thread anchor through layout changes. |
+
+These changes include focused tests and end-to-end cases in source.
+This audit did not execute them.
+The release page and source cannot prove installed behavior on each target.
+[source] [limitation]
+
+The OpenAgents roadmap already requires a complete signed target matrix.
+Omega also needs target-specific companion discovery and release proof.
+This release does not change that order.
+It adds useful failure cases for the later proof:
+
+- AppImage media on a non-Debian distribution
+- Wayland clipboard copy
+- Windows path separators in Git configuration
+- Windows test discovery and line endings
+- an old runtime installation location
+- interrupted setup with the correct command owner
+- history prepend during an active reader wheel
+- layout change while a thread anchor is visible
+
+Each case needs an installed artifact on its target.
+A source test cannot satisfy the packaged gate.
+
+### 12.7 Gap and Fast Follow disposition
+
+| Release delta               | OpenAgents state                                                          | Gap result                                                                                                                                | Disposition                                                                           |
+| --------------------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Use-limited holder links    | Current community invitations bind one invitee and one acceptance.        | No admitted need for a weaker generic holder path. Early link revocation is also absent in the selected Buzz source.                      | Retain as a transaction and capability-link reference. Do not propose implementation. |
+| Search operators            | Omega search is required, but its compact filter grammar is not frozen.   | The typed search contract can gain actor, scope, and time filters with an unresolved state.                                               | Candidate acceptance refinement only.                                                 |
+| Generic ACP BYOH            | Omega already has a stronger accepted external-agent attachment contract. | Buzz now proves a useful three-tier catalog and safe custom definition path. It does not close Omega custody or execution-location rules. | Strengthen the existing attachment lesson. Do not add a duplicate directive.          |
+| Runtime settings            | Omega needs one clear attachment and health surface.                      | Buzz supplies a strong information model for setup, readiness, stable rows, and custom entries.                                           | Use as UX evidence under the existing Omega workroom directive.                       |
+| Project Inbox               | Omega already requires a native attention pane.                           | Stable grouping and reused project actions refine the acceptance shape.                                                                   | Candidate acceptance refinement only.                                                 |
+| Platform and scroll repairs | Omega already requires cross-target and installed-journey evidence.       | Buzz adds concrete falsifiers, not proof for Omega.                                                                                       | Add to a later AssuranceSpec proposal only through its normal authority path.         |
+
+`FASTFOLLOW.md` already tracks `block/buzz` by release or commit.
+Its Omega directive already includes external attachment and native workrooms.
+The current accepted Omega plan already requires Inbox and search.
+The `v0.5.0` delta therefore changes evidence, not learning intent.
+
+Delta discipline gives this result:
+
+- update this pinned teardown
+- update the teardown index
+- do not increment the FastFollowSpec revision
+- do not change the Sol or Omega roadmap
+- do not admit an issue or implementation packet
 
 ## Appendix A — Full Nostr NIP and kind inventory
 
