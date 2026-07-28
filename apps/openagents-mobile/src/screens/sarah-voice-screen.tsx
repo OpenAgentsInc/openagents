@@ -32,6 +32,7 @@ import { makeSarahVoiceSessionVault } from "../sarah-voice/session-vault";
 import {
   expoIssue31DeviceKeyPlatform,
   openExpoIssue31DeviceIdentity,
+  SARAH_STAGING_DEVICE_KEY_STORE_KEY,
   type Issue31DeviceIdentity,
   type Issue31SecureStore,
 } from "../workroom/issue31-device-key-vault";
@@ -43,6 +44,10 @@ import { colors, radius, spacing } from "../ui/theme";
 
 const OPENAGENTS_BASE_URL =
   process.env.EXPO_PUBLIC_OPENAGENTS_BASE_URL?.trim() || "https://openagents.com";
+const SARAH_DEVICE_KEY_STORE =
+  OPENAGENTS_BASE_URL === "https://openagents.com"
+    ? undefined
+    : SARAH_STAGING_DEVICE_KEY_STORE_KEY;
 const PLAYBACK_DRAIN_POLL_MS = 40;
 const unsupportedMicrophoneFormat = "unsupported_microphone_format";
 
@@ -197,10 +202,13 @@ export const SarahVoiceScreen = ({ onClose }: { readonly onClose: () => void }) 
 
     void (async () => {
       try {
-        const identity = await openExpoIssue31DeviceIdentity();
+        const identity = await openExpoIssue31DeviceIdentity(SARAH_DEVICE_KEY_STORE);
         if (!active) {
           identity.close();
           return;
+        }
+        if (SARAH_DEVICE_KEY_STORE !== undefined) {
+          console.info("Sarah staging identity public key", identity.publicKeyHex);
         }
         identityRef.current = identity;
         const client = new SarahVoiceClient({

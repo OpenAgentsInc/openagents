@@ -2,7 +2,7 @@
   "schema": "openagents-ste-final-inventory-v1",
   "steIssue": 9,
   "glossaryRevision": "openagents-ste-glossary-v1",
-  "reviewedAt": "2026-07-28T22:06:26Z",
+  "reviewedAt": "2026-07-28T22:17:02Z",
   "entries": [
     {
       "path": ".agents/THIRD_PARTY_NOTICES.md",
@@ -1063,7 +1063,7 @@
     },
     {
       "path": "apps/openagents-mobile/README.md",
-      "sha256": "d7bce475773c685f0094e2d7e2670ce9b779526f6568ff4dd85f5413bb0cfc27",
+      "sha256": "b301c554be579371488f58d335ff44988baf058c015b7a55b20967b015345be2",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -1080,7 +1080,7 @@
         ],
         "ste_status": "inspected",
         "ste_reviewer": "/root/testflight_audit",
-        "ste_reviewed_at": "2026-07-28T22:06:26Z"
+        "ste_reviewed_at": "2026-07-28T22:17:02Z"
       }
     },
     {
@@ -33394,7 +33394,7 @@
     },
     {
       "path": "docs/mobile/2026-07-28-openagents-mobile-build-127-sarah-voice-preflight-receipt.md",
-      "sha256": "f5476b93db22271b57da9746c7b4f06f23ed5010c3d7473a351f90b13c24bf65",
+      "sha256": "ff7bcca976bae10c73d7d5aeab2142cc97d1b0830984df71d3edebace57acef7",
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",

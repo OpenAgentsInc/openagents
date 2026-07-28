@@ -9,6 +9,10 @@ import type {
   Issue31SecureStore,
   Issue31SecureStoreOptions,
 } from "../src/workroom/issue31-device-key-vault.ts";
+import {
+  SARAH_STAGING_DEVICE_KEY_STORE_KEY,
+  openIssue31DeviceIdentity,
+} from "../src/workroom/issue31-device-key-vault.ts";
 
 const publicKeyHex = "a".repeat(64);
 const record = {
@@ -91,5 +95,35 @@ describe("Sarah mobile protected session vault", () => {
     expect(SARAH_VOICE_SESSION_STORE_KEY).toBe(
       "openagents.mobile.sarah.voice-session.v1",
     );
+  });
+
+  test("keeps a dedicated staging signer under a separate protected item key", async () => {
+    const keys: string[] = [];
+    let stored: string | null = null;
+    const store: Issue31SecureStore = {
+      AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY: "this-device",
+      getItemAsync: async (key) => {
+        keys.push(key);
+        return stored;
+      },
+      setItemAsync: async (key, value) => {
+        keys.push(key);
+        stored = value;
+      },
+      deleteItemAsync: async () => undefined,
+    };
+    const identity = await openIssue31DeviceIdentity({
+      store,
+      platform: "ios",
+      randomBytes: async () => new Uint8Array(32).fill(1),
+      storeKey: SARAH_STAGING_DEVICE_KEY_STORE_KEY,
+    });
+
+    expect(keys).toEqual([
+      SARAH_STAGING_DEVICE_KEY_STORE_KEY,
+      SARAH_STAGING_DEVICE_KEY_STORE_KEY,
+    ]);
+    expect(identity.publicKeyHex).toMatch(/^[0-9a-f]{64}$/u);
+    identity.close();
   });
 });

@@ -12,6 +12,7 @@ import {
 } from "@openagentsinc/audio-contract";
 
 import type { Issue31NostrSigner } from "@openagentsinc/sarah/issue31-nostr";
+import { Schema as S } from "effect";
 
 import {
   decodeServerAudioFrame,
@@ -20,11 +21,24 @@ import {
   sha256Hex,
   type Sha256,
 } from "./protocol";
-import type { SarahVoiceSessionVault } from "./session-vault";
+import type {
+  SarahVoiceSessionVault,
+  SarahVoiceStoredSession,
+} from "./session-vault";
 
 const DISCLOSURE_REF = "openagents.mobile.sarah.voice.v1";
+const OMEGA_NOSTR_SESSION_PATH = "/api/omega/auth/session";
 const MAX_RECONNECT_ATTEMPTS = 2;
 const MAX_PENDING_AUDIO_FRAMES = 8;
+
+const OmegaNostrSessionResponseSchema = S.Struct({
+  accessToken: S.String.check(S.isPattern(/^oa_omega_[A-Za-z0-9_-]{32,256}$/u)),
+  expiresIn: S.Number.check(S.isInt(), S.isGreaterThan(0)),
+  user: S.Struct({
+    userId: S.String.check(S.isMinLength(1), S.isMaxLength(256)),
+    provider: S.Literal("nostr"),
+  }),
+});
 
 type ClientControlPayload =
   | Readonly<{ _tag: "session_hello"; disclosureRef: string }>
@@ -450,6 +464,22 @@ export class SarahVoiceClient {
       await this.dependencies.vault.clear();
     }
 
+    const normalSession = await this.requestNormalOpenAgentsSession(baseUrl);
+    if (normalSession._tag === "Success") {
+      await this.dependencies.vault.write(normalSession.value);
+      const bearer = await this.createSession({
+        baseUrl,
+        deviceRef,
+        ownerRef: normalSession.value.ownerRef,
+        authorization: `Bearer ${normalSession.value.accessToken}`,
+      });
+      if (bearer._tag === "Success") return bearer.value;
+      if (bearer.status !== 401) throw bearer.failure;
+      await this.dependencies.vault.clear();
+    } else if (normalSession.status === 429) {
+      throw normalSession.failure;
+    }
+
     const challengeResponse = await this.dependencies.fetch(
       `${baseUrl}${SARAH_VOICE_NOSTR_CHALLENGE_PATH}`,
       {
@@ -486,6 +516,60 @@ export class SarahVoiceClient {
       });
     }
     return result.value;
+  }
+
+  private async requestNormalOpenAgentsSession(
+    baseUrl: string,
+  ): Promise<
+    | Readonly<{ _tag: "Success"; value: SarahVoiceStoredSession }>
+    | Readonly<{
+        _tag: "Failure";
+        status: number;
+        failure: Readonly<{ message: string; retryable: boolean }>;
+      }>
+  > {
+    const url = `${baseUrl}${OMEGA_NOSTR_SESSION_PATH}`;
+    const payload = new Uint8Array();
+    const signed = await this.dependencies.signer.signEvent({
+      kind: 27_235,
+      created_at: Math.floor(this.dependencies.now() / 1_000),
+      tags: [
+        ["u", url],
+        ["method", "POST"],
+        ["payload", await sha256Hex(payload, this.dependencies.sha256)],
+      ],
+      content: "",
+    });
+    const response = await this.dependencies.fetch(url, {
+      method: "POST",
+      headers: {
+        authorization: encodeNip98Authorization(signed),
+        "content-type": "application/octet-stream",
+      },
+      body: payload,
+    });
+    if (!response.ok) {
+      const error = await readError(response);
+      return {
+        _tag: "Failure",
+        status: response.status,
+        failure: statusMessage(response.status, error),
+      };
+    }
+    const session = S.decodeUnknownSync(OmegaNostrSessionResponseSchema)(
+      await response.json(),
+      { onExcessProperty: "preserve" },
+    );
+    return {
+      _tag: "Success",
+      value: {
+        schemaVersion: 1,
+        publicKeyHex: this.dependencies.publicKeyHex,
+        ownerRef: session.user.userId,
+        accessToken: session.accessToken,
+        expiresAtMs: this.dependencies.now() + session.expiresIn * 1_000,
+      },
+    };
   }
 
   private async createSession(input: Readonly<{

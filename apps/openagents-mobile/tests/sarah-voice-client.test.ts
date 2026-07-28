@@ -125,6 +125,15 @@ const sessionResponse = (
     : {}),
 });
 
+const normalSessionResponse = (): Record<string, unknown> => ({
+  accessToken,
+  expiresIn: 900,
+  user: {
+    userId: ownerRef,
+    provider: "nostr",
+  },
+});
+
 const control = (
   identity: VoiceIdentity,
   sequence: number,
@@ -175,17 +184,12 @@ describe("managed Sarah mobile voice client", () => {
     const fetch = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
       const url = String(input);
       requests.push({ url, init });
-      if (url.endsWith("/auth/challenge")) {
-        return Response.json({
-          schema: SARAH_VOICE_NOSTR_CHALLENGE_PROTOCOL_VERSION,
-          challenge,
-          expiresAtMs: 20_000,
-          ownerRef,
-        });
+      if (url.endsWith("/api/omega/auth/session")) {
+        return Response.json(normalSessionResponse());
       }
       sessionBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
       sessionIdentity = sessionBody.identity as VoiceIdentity;
-      return Response.json(sessionResponse(sessionIdentity, "t".repeat(43), true), {
+      return Response.json(sessionResponse(sessionIdentity, "t".repeat(43), false), {
         status: 201,
       });
     };
@@ -215,13 +219,16 @@ describe("managed Sarah mobile voice client", () => {
       schema: SARAH_VOICE_PROTOCOL_VERSION,
       disclosureRef: "openagents.mobile.sarah.voice.v1",
       clientProfile: "mobile_voice_only",
-      auth: {
-        method: "nostr_nip98",
-        challenge,
+    });
+    expect(requests[0]?.init).toMatchObject({
+      method: "POST",
+      headers: {
+        authorization: expect.stringMatching(/^Nostr /u),
       },
     });
+    expect(new Uint8Array(requests[0]?.init?.body as Uint8Array)).toHaveLength(0);
     expect(requests[1]?.init?.headers).toMatchObject({
-      authorization: expect.stringMatching(/^Nostr /u),
+      authorization: `Bearer ${accessToken}`,
       "x-openagents-omega-device-ref": `omega-mobile-${publicKeyHex.slice(0, 24)}`,
     });
     expect(vault.read()).toMatchObject({ publicKeyHex, ownerRef, accessToken });
@@ -293,6 +300,66 @@ describe("managed Sarah mobile voice client", () => {
     expect(socket.closes.at(-1)).toEqual({ code: 1011, reason: "transport_error" });
   });
 
+  test("uses the bounded Sarah challenge when automatic account sessions are unavailable", async () => {
+    const vault = makeVault();
+    const requests: string[] = [];
+    let sessionBody: Record<string, unknown> | null = null;
+    const client = new SarahVoiceClient({
+      baseUrl: "https://openagents.com",
+      publicKeyHex,
+      signer,
+      vault: vault.vault,
+      fetch: (async (input, init) => {
+        const url = String(input);
+        requests.push(url);
+        if (url.endsWith("/api/omega/auth/session")) {
+          return Response.json(
+            { error: "omega_nostr_auth_unavailable" },
+            { status: 503 },
+          );
+        }
+        if (url.endsWith("/auth/challenge")) {
+          return Response.json({
+            schema: SARAH_VOICE_NOSTR_CHALLENGE_PROTOCOL_VERSION,
+            challenge,
+            expiresAtMs: 20_000,
+            ownerRef,
+          });
+        }
+        sessionBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return Response.json(
+          sessionResponse(
+            sessionBody.identity as VoiceIdentity,
+            "t".repeat(43),
+            true,
+          ),
+          { status: 201 },
+        );
+      }) as typeof globalThis.fetch,
+      createSocket: (url, headers) => new FixtureSocket(url, headers),
+      sha256,
+      randomUuid: () => "voice-challenge",
+      now: () => 10_000,
+      setTimeout,
+      clearTimeout,
+    });
+
+    await client.start();
+    expect(requests).toEqual([
+      "https://openagents.com/api/omega/auth/session",
+      "https://openagents.com/api/omega/sarah/voice/auth/challenge",
+      "https://openagents.com/api/omega/sarah/voice/session",
+    ]);
+    expect(sessionBody).toMatchObject({
+      auth: {
+        method: "nostr_nip98",
+        challenge,
+      },
+      clientProfile: "mobile_voice_only",
+    });
+    expect(vault.read()).toMatchObject({ publicKeyHex, ownerRef, accessToken });
+  });
+
   test("maps normal-session credit denial without falling back to a second identity flow", async () => {
     const stored: SarahVoiceStoredSession = {
       schemaVersion: 1,
@@ -342,19 +409,14 @@ describe("managed Sarah mobile voice client", () => {
     const uuids = ["voice-1", "voice-2"];
     const fetch = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
       const url = String(input);
-      if (url.endsWith("/auth/challenge")) {
-        return Response.json({
-          schema: SARAH_VOICE_NOSTR_CHALLENGE_PROTOCOL_VERSION,
-          challenge,
-          expiresAtMs: 20_000,
-          ownerRef,
-        });
+      if (url.endsWith("/api/omega/auth/session")) {
+        return Response.json(normalSessionResponse());
       }
       const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
       sessionRequests.push(body);
       const identity = body.identity as VoiceIdentity;
       return Response.json(
-        sessionResponse(identity, `${sessionRequests.length}`.repeat(43), sessionRequests.length === 1),
+        sessionResponse(identity, `${sessionRequests.length}`.repeat(43), false),
         { status: 201 },
       );
     };
@@ -412,17 +474,12 @@ describe("managed Sarah mobile voice client", () => {
       return sha256(bytes);
     };
     const fetch = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
-      if (String(input).endsWith("/auth/challenge")) {
-        return Response.json({
-          schema: SARAH_VOICE_NOSTR_CHALLENGE_PROTOCOL_VERSION,
-          challenge,
-          expiresAtMs: 20_000,
-          ownerRef,
-        });
+      if (String(input).endsWith("/api/omega/auth/session")) {
+        return Response.json(normalSessionResponse());
       }
       const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
       sessionIdentity = body.identity as VoiceIdentity;
-      return Response.json(sessionResponse(sessionIdentity, "t".repeat(43), true), {
+      return Response.json(sessionResponse(sessionIdentity, "t".repeat(43), false), {
         status: 201,
       });
     };

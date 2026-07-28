@@ -61,8 +61,9 @@ can provide a bootstrap through either:
 ## Sarah voice
 
 The home screen has a `Talk to Sarah` action. The Sarah screen opens the
-protected Nostr device signer from SecureStore. It uses a NIP-98 challenge to
-get a short OpenAgents bearer session when a current bearer session is not
+protected Nostr device signer from SecureStore. On a fresh install, it uses
+that signer to request a short normal OpenAgents bearer session. It can use the
+bounded Sarah NIP-98 challenge when automatic account sessions are not
 available. The app does not contain an OpenAI API key.
 
 The API reserves normal OpenAgents credit and returns a one-use gateway ticket.

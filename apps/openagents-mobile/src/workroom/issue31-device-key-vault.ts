@@ -7,6 +7,8 @@ declare const require: (id: string) => unknown;
 
 export const ISSUE31_DEVICE_KEY_STORE_KEY = "openagents.omega.issue31.device-key.v1" as const;
 export const ISSUE31_DEVICE_KEYCHAIN_SERVICE = "com.openagents.mobile.omega-device" as const;
+export const SARAH_STAGING_DEVICE_KEY_STORE_KEY =
+  "openagents.mobile.sarah.staging-device-key.v1" as const;
 
 export interface Issue31SecureStoreOptions {
   readonly keychainService?: string;
@@ -196,12 +198,17 @@ export const openIssue31DeviceIdentity = async (
     randomBytes: (length: number) => Promise<Uint8Array>;
     /** Required: custody rules are per platform and are never defaulted. */
     platform: Issue31DeviceKeyPlatform;
+    /** A separate staging key preserves the production device identity. */
+    storeKey?: string;
   }>,
 ): Promise<Issue31DeviceIdentity> => {
   const options = storeOptions(input.store, input.platform);
   let stored: string | null;
   try {
-    stored = await input.store.getItemAsync(ISSUE31_DEVICE_KEY_STORE_KEY, options);
+    stored = await input.store.getItemAsync(
+      input.storeKey ?? ISSUE31_DEVICE_KEY_STORE_KEY,
+      options,
+    );
   } catch {
     throw new Issue31DeviceKeyVaultError(
       "secure_store_unavailable",
@@ -244,7 +251,7 @@ export const openIssue31DeviceIdentity = async (
   const localSigner = signerFromPrivateKey(privateKey);
   try {
     await input.store.setItemAsync(
-      ISSUE31_DEVICE_KEY_STORE_KEY,
+      input.storeKey ?? ISSUE31_DEVICE_KEY_STORE_KEY,
       JSON.stringify({ schemaVersion: 1, privateKeyHex }),
       options,
     );
@@ -289,7 +296,9 @@ export const expoIssue31DeviceKeyPlatform = (): Issue31DeviceKeyPlatform => {
   return "unknown";
 };
 
-export const openExpoIssue31DeviceIdentity = async (): Promise<Issue31DeviceIdentity> => {
+export const openExpoIssue31DeviceIdentity = async (
+  storeKey?: string,
+): Promise<Issue31DeviceIdentity> => {
   const store = require("expo-secure-store") as Issue31SecureStore;
   const crypto = require("expo-crypto") as Readonly<{
     getRandomBytesAsync: (length: number) => Promise<Uint8Array>;
@@ -298,5 +307,6 @@ export const openExpoIssue31DeviceIdentity = async (): Promise<Issue31DeviceIden
     store,
     randomBytes: (length) => crypto.getRandomBytesAsync(length),
     platform: expoIssue31DeviceKeyPlatform(),
+    storeKey,
   });
 };

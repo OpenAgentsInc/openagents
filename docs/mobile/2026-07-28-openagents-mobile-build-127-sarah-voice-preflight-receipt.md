@@ -50,7 +50,7 @@ pnpm --dir apps/openagents.com/workers/api typecheck:cloudrun
 ```
 
 The focused shared-contract, route, and gateway suite passed 22 tests.
-The final mobile suite passed 53 tests in 11 files.
+The final mobile suite passed 55 tests in 11 files.
 
 The documented Khala Sync package command expanded to its complete package
 suite. It passed 683 tests in 81 files. Its local
