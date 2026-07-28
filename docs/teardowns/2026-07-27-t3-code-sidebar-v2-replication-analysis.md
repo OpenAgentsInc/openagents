@@ -1,5 +1,8 @@
 # T3 Code Sidebar V2 replication analysis — 2026-07-27
 
+Full component and cloud architecture companion:
+[T3 Code desktop, mobile, and cloud architecture audit](./2026-07-27-t3-code-desktop-mobile-component-cloud-architecture-audit.md)
+
 ## Executive answer
 
 T3 Code Sidebar V2 is not a styled thread list. It is an inbox for agent work.

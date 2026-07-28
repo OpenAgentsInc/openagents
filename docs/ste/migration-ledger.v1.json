@@ -45050,6 +45050,19 @@
       "replacement": null
     },
     {
+      "path": "docs/teardowns/2026-07-27-t3-code-desktop-mobile-component-cloud-architecture-audit.md",
+      "ste_issue": 9,
+      "ste_mode": "source-data",
+      "ste_glossary_revision": "openagents-ste-glossary-v1",
+      "ste_status": "source-data",
+      "ste_reviewer": null,
+      "ste_reviewed_at": null,
+      "owner": "OpenAgents documentation",
+      "risk": "source-data",
+      "source": "Immutable historical or evidence source data",
+      "replacement": null
+    },
+    {
       "path": "docs/teardowns/2026-07-27-t3-code-sidebar-v2-replication-analysis.md",
       "ste_issue": 9,
       "ste_mode": "source-data",

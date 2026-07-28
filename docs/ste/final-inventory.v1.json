@@ -45743,7 +45743,7 @@
     },
     {
       "path": "docs/teardowns/2026-07-27-omega-t3-code-desktop-mobile-gap-analysis.md",
-      "sha256": "0bf518f2b956d1e17544ee22e12e573b5babc472d22d09a194de3c2a847c2d59",
+      "sha256": "248cc63286ce926418a510d0b6813139c1490279d797ad9b12a9086da40b65f3",
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
@@ -45754,8 +45754,22 @@
       }
     },
     {
+      "path": "docs/teardowns/2026-07-27-t3-code-desktop-mobile-component-cloud-architecture-audit.md",
+      "sha256": "4fa831b0ea48e5cdcff705599b5f8e7a023491780480f6ffc4887119a69a276c",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "ste_status": "source-data",
+        "ste_reviewer": null,
+        "ste_reviewed_at": null,
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null
+      }
+    },
+    {
       "path": "docs/teardowns/2026-07-27-t3-code-sidebar-v2-replication-analysis.md",
-      "sha256": "51616622021ef9911c0590b281053e6799f67c0829a7ad2ba687248f95238a0b",
+      "sha256": "72f99344546480cc9a14ce7d10c0566792465e6a801227f94fb207f90dd117ff",
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
@@ -45789,7 +45803,7 @@
     },
     {
       "path": "docs/teardowns/README.md",
-      "sha256": "3b079e2b1b2fe0396dfdc6e5d962605227b5a035929cb694a0f864235fd96468",
+      "sha256": "14a9ac063bb9d0b7e98efcebcca83cb42840f7d557d8d2a1c2bf1064e37d2a37",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

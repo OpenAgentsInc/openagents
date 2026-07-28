@@ -1,5 +1,8 @@
 # Omega and T3 Code desktop and mobile gap analysis — 2026-07-27
 
+Component and cloud architecture companion:
+[T3 Code desktop, mobile, and cloud architecture audit](./2026-07-27-t3-code-desktop-mobile-component-cloud-architecture-audit.md)
+
 ## Executive conclusion
 
 Omega and T3 Code solve different parts of the same problem well.
