@@ -74,7 +74,7 @@ const assertDeliveryStated = (
 ): void => {
   for (const key of ISSUE31_ADJUNCT_DELIVERY_KEYS) {
     if (adjunct[key] === undefined) {
-      throw new Error(`Issue 31 ${label} was delivered without stating its ${key}.`);
+      throw new Error(`Device mirror ${label} was delivered without stating its ${key}.`);
     }
   }
   // Delivering a snapshot of some *other* host under this host's signature is
@@ -82,7 +82,7 @@ const assertDeliveryStated = (
   // the seal proves who signed, not which host the body describes. The two
   // statements are made in one record so a reader can compare them.
   if (adjunct["hostPublicKeyHex"] === adjunct["devicePublicKeyHex"]) {
-    throw new Error(`Issue 31 ${label} names one key as both host and device.`);
+    throw new Error(`Device mirror ${label} names one key as both host and device.`);
   }
 };
 
@@ -127,12 +127,12 @@ export const issue31PrivateEnvelopeTimestamps = (
   randomUint32: () => number,
 ): Readonly<{ sealCreatedAt: number; wrapCreatedAt: number }> => {
   if (!Number.isSafeInteger(createdAt) || createdAt < 0) {
-    throw new Error("Issue 31 private rumor timestamp is invalid.");
+    throw new Error("Device mirror private rumor timestamp is invalid.");
   }
   const skew = (): number => {
     const value = randomUint32();
     if (!Number.isSafeInteger(value) || value < 0 || value > 0xffff_ffff) {
-      throw new Error("Issue 31 private timestamp randomness is invalid.");
+      throw new Error("Device mirror private timestamp randomness is invalid.");
     }
     return value % (Math.min(createdAt, NIP59_MAX_TIMESTAMP_SKEW_SECONDS) + 1);
   };
@@ -223,14 +223,14 @@ const assertRecordIdentity = (
     ? record.devicePublicKeyHex
     : record.hostPublicKeyHex;
   if (expectedSenderPublicKeyHex !== senderPublicKeyHex) {
-    throw new Error(`Issue 31 ${record.recordType} has the wrong signed seal author.`);
+    throw new Error(`Device mirror ${record.recordType} has the wrong signed seal author.`);
   }
   const expectedRecipient =
     senderPublicKeyHex === record.hostPublicKeyHex
       ? record.devicePublicKeyHex
       : record.hostPublicKeyHex;
   if (expectedRecipient !== recipientPublicKeyHex) {
-    throw new Error("Issue 31 private record recipient does not match the local signer.");
+    throw new Error("Device mirror private record recipient does not match the local signer.");
   }
 };
 
@@ -265,10 +265,10 @@ export const createIssue31PrivateEnvelope = async (
     giftWrap: Issue31SignedNostrEvent;
   }>
 > => {
-  assertPublicKey(input.recipientPublicKeyHex, "Issue 31 private recipient");
+  assertPublicKey(input.recipientPublicKeyHex, "Device mirror private recipient");
   const record = validateRecord(input.record);
   const senderPublicKeyHex = await input.signer.getPublicKey();
-  assertPublicKey(senderPublicKeyHex, "Issue 31 private sender");
+  assertPublicKey(senderPublicKeyHex, "Device mirror private sender");
   assertRecordIdentity(record, senderPublicKeyHex, input.recipientPublicKeyHex);
   for (const [label, timestamp] of [
     ["seal", input.sealCreatedAt],
@@ -279,7 +279,7 @@ export const createIssue31PrivateEnvelope = async (
       timestamp < Math.max(0, input.createdAt - NIP59_MAX_TIMESTAMP_SKEW_SECONDS) ||
       timestamp > input.createdAt
     ) {
-      throw new Error(`Issue 31 private ${label} timestamp is outside the NIP-59 window.`);
+      throw new Error(`Device mirror private ${label} timestamp is outside the NIP-59 window.`);
     }
   }
 
@@ -343,23 +343,23 @@ export const unwrapIssue31PrivateGiftWrap = async (
   const giftWrap = assertSignedEvent(
     input.giftWrap,
     ISSUE31_PRIVATE_GIFT_WRAP_KIND,
-    "Issue 31 gift wrap",
+    "Device mirror gift wrap",
   );
   const recipientPublicKeyHex = await input.signer.getPublicKey();
-  assertPublicKey(recipientPublicKeyHex, "Issue 31 local recipient");
+  assertPublicKey(recipientPublicKeyHex, "Device mirror local recipient");
   if (!giftWrap.tags.some((tag) => tag[0] === "p" && tag[1] === recipientPublicKeyHex)) {
-    throw new Error("Issue 31 gift wrap is not addressed to the local signer.");
+    throw new Error("Device mirror gift wrap is not addressed to the local signer.");
   }
   const sealJson = await input.signer.nip44Decrypt(giftWrap.pubkey, giftWrap.content);
   const seal = assertSignedEvent(
     JSON.parse(sealJson) as unknown,
     ISSUE31_PRIVATE_SEAL_KIND,
-    "Issue 31 seal",
+    "Device mirror seal",
   );
   const rumorJson = await input.signer.nip44Decrypt(seal.pubkey, seal.content);
   const rumorValue = JSON.parse(rumorJson) as unknown;
   if (rumorValue === null || typeof rumorValue !== "object" || Array.isArray(rumorValue)) {
-    throw new Error("Issue 31 rumor is not an event.");
+    throw new Error("Device mirror rumor is not an event.");
   }
   const rumor = rumorValue as Readonly<Record<string, unknown>>;
   if (
@@ -370,7 +370,7 @@ export const unwrapIssue31PrivateGiftWrap = async (
     !Array.isArray(rumor["tags"]) ||
     typeof rumor["content"] !== "string"
   ) {
-    throw new Error("Issue 31 rumor has an invalid shape.");
+    throw new Error("Device mirror rumor has an invalid shape.");
   }
   const privateRumor = rumor as unknown as Issue31PrivateRumor;
   if (
@@ -379,10 +379,10 @@ export const unwrapIssue31PrivateGiftWrap = async (
       tags: privateRumor.tags.map((tag) => [...tag]),
     }) !== privateRumor.id
   ) {
-    throw new Error("Issue 31 rumor identifier is invalid.");
+    throw new Error("Device mirror rumor identifier is invalid.");
   }
   if (!privateRumor.tags.some((tag) => tag[0] === "p" && tag[1] === recipientPublicKeyHex)) {
-    throw new Error("Issue 31 rumor is not addressed to the local signer.");
+    throw new Error("Device mirror rumor is not addressed to the local signer.");
   }
   let record: Issue31PrivateRecord | null = null;
   let contentValue: unknown;
@@ -410,7 +410,7 @@ export const unwrapIssue31PrivateGiftWrap = async (
     }
   }
   if (record === null && input.requireIssue31Record !== false) {
-    throw new Error("Issue 31 private rumor content is not an Issue 31 record.");
+    throw new Error("Device mirror private rumor content is not an Device mirror record.");
   }
   if (record !== null) assertRecordIdentity(record, seal.pubkey, recipientPublicKeyHex);
   return { rumor: privateRumor, record };

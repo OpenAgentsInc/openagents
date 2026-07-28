@@ -349,22 +349,22 @@ const validateIssue31HostAnnouncement = <Announcement extends Issue31AnyHostAnno
   record: Announcement,
 ): Announcement => {
   if (record.sarahPublicKeyHex === record.hostPublicKeyHex) {
-    throw new Error("Issue 31 host and Sarah signing keys must be distinct.");
+    throw new Error("Device mirror host and Sarah signing keys must be distinct.");
   }
-  assertTimes(record.issuedAt, record.expiresAt, "Issue 31 host announcement");
-  assertUnique(record.relayUrls, "Issue 31 host announcement relay list");
-  assertUnique(record.protocols, "Issue 31 host announcement protocol list");
+  assertTimes(record.issuedAt, record.expiresAt, "Device mirror host announcement");
+  assertUnique(record.relayUrls, "Device mirror host announcement relay list");
+  assertUnique(record.protocols, "Device mirror host announcement protocol list");
   if (
     !record.protocols.includes(ISSUE31_PAIRING_SCHEMA) ||
     !record.protocols.includes(ISSUE31_COMMAND_SCHEMA)
   ) {
-    throw new Error("Issue 31 host announcement must declare pairing and command protocols.");
+    throw new Error("Device mirror host announcement must declare pairing and command protocols.");
   }
   if (
     record.schema === ISSUE31_HOST_ANNOUNCEMENT_SCHEMA_V2 &&
     !record.protocols.includes(ISSUE31_COMMAND_SCHEMA_V2)
   ) {
-    throw new Error("Issue 31 v2 host announcement must declare command v2.");
+    throw new Error("Device mirror v2 host announcement must declare command v2.");
   }
   for (const relayUrl of record.relayUrls) {
     const parsed = new URL(relayUrl);
@@ -376,7 +376,7 @@ const validateIssue31HostAnnouncement = <Announcement extends Issue31AnyHostAnno
       parsed.search !== "" ||
       parsed.hash !== ""
     ) {
-      throw new Error("Issue 31 host announcement contains an unsafe relay URL.");
+      throw new Error("Device mirror host announcement contains an unsafe relay URL.");
     }
   }
   return record;
@@ -390,7 +390,7 @@ export const decodeIssue31HostAnnouncementV2 = (value: unknown): Issue31HostAnno
 
 export const decodeIssue31AnyHostAnnouncement = (value: unknown): Issue31AnyHostAnnouncement => {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("Issue 31 host announcement is not a record.");
+    throw new Error("Device mirror host announcement is not a record.");
   }
   return (value as Readonly<Record<string, unknown>>)["schema"] ===
     ISSUE31_HOST_ANNOUNCEMENT_SCHEMA_V2
@@ -401,13 +401,13 @@ export const decodeIssue31AnyHostAnnouncement = (value: unknown): Issue31AnyHost
 export const decodeIssue31PairingRecord = (value: unknown): Issue31PairingRecord => {
   const record = decodePairingRecord(value, { onExcessProperty: "error" });
   if (record.recordType !== "grant_revocation") {
-    assertTimes(record.issuedAt, record.expiresAt, `Issue 31 ${record.recordType}`);
+    assertTimes(record.issuedAt, record.expiresAt, `Device mirror ${record.recordType}`);
   }
   if (record.recordType === "pairing_request") {
-    assertUnique(record.requestedScopes, "Issue 31 pairing request scopes");
+    assertUnique(record.requestedScopes, "Device pairing request scopes");
   }
   if (record.recordType === "scoped_grant" || record.recordType === "grant_renewal") {
-    assertUnique(record.scopes, `Issue 31 ${record.recordType} scopes`);
+    assertUnique(record.scopes, `Device mirror ${record.recordType} scopes`);
   }
   if (
     (record.recordType === "scoped_grant" ||
@@ -415,11 +415,11 @@ export const decodeIssue31PairingRecord = (value: unknown): Issue31PairingRecord
       record.recordType === "grant_revocation") &&
     record.sarahPublicKeyHex === record.hostPublicKeyHex
   ) {
-    throw new Error("Issue 31 host and Sarah signing keys must be distinct.");
+    throw new Error("Device mirror host and Sarah signing keys must be distinct.");
   }
   if (record.recordType === "grant_renewal") {
     if (record.generation !== record.priorGeneration + 1) {
-      throw new Error("Issue 31 grant renewal must advance one generation.");
+      throw new Error("Device pairing grant renewal must advance one generation.");
     }
   }
   return record;
@@ -428,7 +428,7 @@ export const decodeIssue31PairingRecord = (value: unknown): Issue31PairingRecord
 export const decodeIssue31CommandRecord = (value: unknown): Issue31CommandRecord => {
   const record = decodeCommandRecord(value, { onExcessProperty: "error" });
   if (record.recordType === "command_intent") {
-    assertTimes(record.issuedAt, record.expiresAt, "Issue 31 command intent");
+    assertTimes(record.issuedAt, record.expiresAt, "Device mirror command intent");
   }
   return record;
 };
@@ -436,23 +436,23 @@ export const decodeIssue31CommandRecord = (value: unknown): Issue31CommandRecord
 export const decodeIssue31CommandRecordV2 = (value: unknown): Issue31CommandRecordV2 => {
   const record = decodeCommandRecordV2(value, { onExcessProperty: "error" });
   if (record.recordType === "command_intent") {
-    assertTimes(record.issuedAt, record.expiresAt, "Issue 31 command v2 intent");
+    assertTimes(record.issuedAt, record.expiresAt, "Device mirror command v2 intent");
     if (
       (record.arguments.kind === "reminder_create" ||
         record.arguments.kind === "reminder_change") &&
       record.arguments.expiration !== undefined &&
       record.arguments.expiration <= record.arguments.notBefore
     ) {
-      throw new Error("Issue 31 reminder expiration must follow not-before time.");
+      throw new Error("Device mirror reminder expiration must follow not-before time.");
     }
     if (
       record.arguments.kind === "read_state_patch" &&
       new TextEncoder().encode(record.arguments.contextRef).length > 256
     ) {
-      throw new Error("Issue 31 read-state context reference exceeds 256 UTF-8 bytes.");
+      throw new Error("Device mirror read-state context reference exceeds 256 UTF-8 bytes.");
     }
   } else if (record.status === "accepted" && record.reasonRef !== undefined) {
-    throw new Error("Issue 31 accepted command handling cannot carry a failure reason.");
+    throw new Error("Device mirror accepted command handling cannot carry a failure reason.");
   }
   return record;
 };
@@ -464,16 +464,16 @@ export const parseIssue31PrivateRumorContent = (
   try {
     value = JSON.parse(content);
   } catch {
-    throw new Error("Issue 31 private rumor content is not JSON.");
+    throw new Error("Device mirror private rumor content is not JSON.");
   }
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("Issue 31 private rumor content is not a record.");
+    throw new Error("Device mirror private rumor content is not a record.");
   }
   const schema = (value as Readonly<Record<string, unknown>>)["schema"];
   if (schema === ISSUE31_PAIRING_SCHEMA) return decodeIssue31PairingRecord(value);
   if (schema === ISSUE31_COMMAND_SCHEMA) return decodeIssue31CommandRecord(value);
   if (schema === ISSUE31_COMMAND_SCHEMA_V2) return decodeIssue31CommandRecordV2(value);
-  throw new Error("Issue 31 private rumor has an unknown schema.");
+  throw new Error("Device mirror private rumor has an unknown schema.");
 };
 
 export interface Issue31PairingEvent {
@@ -529,7 +529,7 @@ const assertPairingIdentity = (
     actual.hostPublicKeyHex !== expected.hostPublicKeyHex ||
     actual.devicePublicKeyHex !== expected.devicePublicKeyHex
   ) {
-    throw new Error("Issue 31 pairing chain changes host or device identity.");
+    throw new Error("Device pairing chain changes host or device identity.");
   }
 };
 
@@ -539,31 +539,31 @@ const assertScopedGrantPairingChain = (
 ): void => {
   const response = recordsByEventId.get(grant.pairingResponseEventId);
   if (response?.recordType !== "pairing_response") {
-    throw new Error("Issue 31 scoped grant has no pairing response.");
+    throw new Error("Device pairing grant has no pairing response.");
   }
   const challenge = recordsByEventId.get(response.pairingChallengeEventId);
   if (challenge?.recordType !== "pairing_challenge") {
-    throw new Error("Issue 31 pairing response has no challenge.");
+    throw new Error("Device pairing response has no challenge.");
   }
   const request = recordsByEventId.get(challenge.pairingRequestEventId);
   if (request?.recordType !== "pairing_request") {
-    throw new Error("Issue 31 pairing challenge has no request.");
+    throw new Error("Device pairing challenge has no request.");
   }
   assertPairingIdentity(grant, response);
   assertPairingIdentity(grant, challenge);
   assertPairingIdentity(grant, request);
   if (response.challenge !== challenge.challenge) {
-    throw new Error("Issue 31 pairing response does not answer its challenge.");
+    throw new Error("Device pairing response does not answer its challenge.");
   }
   if (grant.scopes.some((scope) => !request.requestedScopes.includes(scope))) {
-    throw new Error("Issue 31 scoped grant exceeds the requested scopes.");
+    throw new Error("Device pairing grant exceeds the requested scopes.");
   }
   if (
     request.issuedAt > challenge.issuedAt ||
     challenge.issuedAt > response.issuedAt ||
     response.issuedAt > grant.issuedAt
   ) {
-    throw new Error("Issue 31 pairing chain time order is invalid.");
+    throw new Error("Device pairing chain time order is invalid.");
   }
 };
 
@@ -575,7 +575,7 @@ export const foldIssue31Grant = (
   for (const event of events) {
     const prior = uniqueEvents.get(event.eventId);
     if (prior !== undefined && JSON.stringify(prior) !== JSON.stringify(event.record)) {
-      throw new Error(`Issue 31 event ${event.eventId} has conflicting records.`);
+      throw new Error(`Device mirror event ${event.eventId} has conflicting records.`);
     }
     uniqueEvents.set(event.eventId, event.record);
   }
@@ -601,14 +601,14 @@ export const foldIssue31Grant = (
         record.devicePublicKeyHex !== identity.devicePublicKeyHex,
     )
   ) {
-    throw new Error(`Issue 31 grant ${grantRef} has an identity fork.`);
+    throw new Error(`Device pairing grant ${grantRef} has an identity fork.`);
   }
   const revocations = candidates.filter(([, record]) => record.recordType === "grant_revocation");
   const terminalRevocation = revocations.at(-1);
   if (terminalRevocation !== undefined) {
     const [eventId, record] = terminalRevocation;
     if (record.recordType !== "grant_revocation") {
-      throw new Error("Issue 31 grant revocation projection is invalid.");
+      throw new Error("Device pairing grant revocation projection is invalid.");
     }
     return {
       grantRef,
@@ -638,7 +638,7 @@ export const foldIssue31Grant = (
       sameGeneration.length > 1 &&
       new Set(sameGeneration.map(([, record]) => grantFingerprint(record))).size > 1
     ) {
-      throw new Error(`Issue 31 grant ${grantRef} forks at generation ${generation}.`);
+      throw new Error(`Device pairing grant ${grantRef} forks at generation ${generation}.`);
     }
   }
   let state: Issue31GrantState | null = null;
@@ -646,7 +646,7 @@ export const foldIssue31Grant = (
     if (record.recordType === "grant_revocation") continue;
     if (state !== null) {
       if (record.recordType !== "grant_renewal") {
-        throw new Error(`Issue 31 grant ${grantRef} has more than one initial grant.`);
+        throw new Error(`Device pairing grant ${grantRef} has more than one initial grant.`);
       }
       if (
         record.previousGrantEventId !== state.sourceEventId ||
@@ -657,10 +657,10 @@ export const foldIssue31Grant = (
         record.sarahPublicKeyHex !== state.sarahPublicKeyHex ||
         record.devicePublicKeyHex !== state.devicePublicKeyHex
       ) {
-        throw new Error(`Issue 31 grant ${grantRef} renewal lineage is invalid.`);
+        throw new Error(`Device pairing grant ${grantRef} renewal lineage is invalid.`);
       }
     } else if (record.recordType !== "scoped_grant") {
-      throw new Error(`Issue 31 grant ${grantRef} renewal has no initial grant.`);
+      throw new Error(`Device pairing grant ${grantRef} renewal has no initial grant.`);
     }
     if (record.recordType === "scoped_grant") {
       assertScopedGrantPairingChain(record, uniqueEvents);
@@ -736,7 +736,7 @@ export const reconcileIssue31Commands = (
         prior !== undefined &&
         commandFingerprint(prior.record) !== commandFingerprint(event.record)
       ) {
-        throw new Error(`Issue 31 idempotency conflict for ${event.record.idempotencyRef}.`);
+        throw new Error(`Device mirror idempotency conflict for ${event.record.idempotencyRef}.`);
       }
       if (prior === undefined || event.eventId < prior.eventId) {
         intents.set(event.record.idempotencyRef, { eventId: event.eventId, record: event.record });
@@ -747,7 +747,7 @@ export const reconcileIssue31Commands = (
         prior !== undefined &&
         resultFingerprint(prior.record) !== resultFingerprint(event.record)
       ) {
-        throw new Error(`Issue 31 terminal result conflict for ${event.record.idempotencyRef}.`);
+        throw new Error(`Device mirror terminal result conflict for ${event.record.idempotencyRef}.`);
       }
       if (prior === undefined || event.eventId < prior.eventId) {
         results.set(event.record.idempotencyRef, { eventId: event.eventId, record: event.record });
@@ -768,7 +768,7 @@ export const reconcileIssue31Commands = (
           result.record.devicePublicKeyHex !== intent.record.devicePublicKeyHex ||
           result.record.grantRef !== intent.record.grantRef
         ) {
-          throw new Error(`Issue 31 command result does not match ${idempotencyRef}.`);
+          throw new Error(`Device mirror command result does not match ${idempotencyRef}.`);
         }
       }
       return {

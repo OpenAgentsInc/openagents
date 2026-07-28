@@ -28,7 +28,7 @@ import {
   type Issue31PairingRecord,
 } from "./index.ts";
 
-describe("Issue 31 command v2 and owner projection", () => {
+describe("Device mirror command v2 and owner projection", () => {
   test("decodes canonical discovery, command, handling, and source projection fixtures", () => {
     const discovery = decodeIssue31HostAnnouncementV2(
       readFixture("openagents.omega.issue31.host_discovery.v2.canonical.json"),
@@ -374,7 +374,7 @@ const result = (overrides: Partial<Issue31CommandResult> = {}): Issue31CommandRe
     ...overrides,
   }) as Issue31CommandResult;
 
-describe("Issue 31 Nostr records", () => {
+describe("Device mirror Nostr records", () => {
   test("keeps the canonical discovery, pairing, and command fixtures decodable", () => {
     const discovery = decodeIssue31HostAnnouncement(
       readFixture("openagents.omega.issue31.host_discovery.v1.canonical.json"),
@@ -659,7 +659,7 @@ describe("Issue 31 Nostr records", () => {
     ).rejects.toThrow(/wrong signed seal author/);
   });
 
-  test("rejects malformed content that claims an Issue 31 schema", async () => {
+  test("rejects malformed content that claims an Device mirror schema", async () => {
     const malformedRumorBase = {
       pubkey: hostPublicKeyHex,
       created_at: 1_100,
@@ -705,7 +705,7 @@ describe("Issue 31 Nostr records", () => {
  * (`crates/omega_effectd/src/issue31_nostr.rs`), so a one-sided edit to what a
  * phone is told fails in both repositories rather than drifting.
  */
-describe("Issue 31 withheld sources", () => {
+describe("Device mirror withheld sources", () => {
   const WITHHELD_FIXTURES = [
     [
       "canonical-complete",

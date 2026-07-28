@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 import { describe, expect, test } from "vite-plus/test";
 
-import { startOmegaBridgeSession } from "../src/screens/omega-bridge-session.ts";
+import { productSafeNotice, startOmegaBridgeSession } from "../src/screens/omega-bridge-session.ts";
 import type {
   OmegaDeviceBridgeClient,
   OmegaDeviceBridgeState,
@@ -153,5 +153,28 @@ describe("startOmegaBridgeSession", () => {
     stop();
 
     expect(notices).toEqual(["The Omega device bridge is unavailable."]);
+  });
+});
+
+describe("productSafeNotice", () => {
+  test("passes product wording through untouched", () => {
+    expect(productSafeNotice("Device pairing response has no challenge.")).toBe(
+      "Device pairing response has no challenge.",
+    );
+    expect(productSafeNotice("The desktop is unreachable.")).toBe("The desktop is unreachable.");
+  });
+
+  test("collapses internal issue references to product words", () => {
+    // A schema decode failure quotes wire literals; the raw scope token and
+    // the old prose form must both collapse before a person reads them.
+    expect(productSafeNotice('Expected "observe_issue31", received "banana"')).toBe(
+      "The desktop mirror hit a problem it could not describe. Try pairing again.",
+    );
+    expect(
+      productSafeNotice("durable Issue 31 host state does not match this identity"),
+    ).toBe("The desktop mirror hit a problem it could not describe. Try pairing again.");
+    expect(productSafeNotice("openagents.omega.issue31.pairing.v1 is unsupported")).toBe(
+      "The desktop mirror hit a problem it could not describe. Try pairing again.",
+    );
   });
 });

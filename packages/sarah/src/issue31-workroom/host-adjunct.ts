@@ -26,7 +26,7 @@ const Generation = S.Number.check(
  *
  * An adjunct is a *statement about a host*, so on its own it names neither the
  * key that authored it nor the device it is for. Every other owner-private
- * Issue 31 record does, and `assertRecordIdentity` in the private envelope
+ * Device mirror record does, and `assertRecordIdentity` in the private envelope
  * refuses one whose claims disagree with the signed seal author and the gift
  * wrap recipient. An adjunct that could not make those claims would have to be
  * waived through that check — which is exactly the binding that stops one host
@@ -75,7 +75,7 @@ export const assertIssue31AdjunctDeliveryLaw = (
     (key) => adjunct[key] !== undefined,
   );
   if (stated.length !== 0 && stated.length !== ISSUE31_ADJUNCT_DELIVERY_KEYS.length) {
-    throw new Error("Issue 31 adjunct states a partial delivery binding.");
+    throw new Error("Device mirror adjunct states a partial delivery binding.");
   }
 };
 
@@ -226,13 +226,13 @@ const publicRefsForCommand = (command: Issue31CommandState): ReadonlyArray<strin
 
 const assertUniqueRefs = (refs: ReadonlyArray<string>): void => {
   if (new Set(refs).size !== refs.length) {
-    throw new Error("Issue 31 host adjunct repeats a projection reference.");
+    throw new Error("Device mirror host adjunct repeats a projection reference.");
   }
 };
 
 const assertProjectionLaws = (projection: Issue31HostProjection, generatedAtMs: number): void => {
   if (projection.source.observedAtMs > generatedAtMs) {
-    throw new Error("Issue 31 host adjunct timestamp order is invalid.");
+    throw new Error("Device mirror host adjunct timestamp order is invalid.");
   }
   const refs = [
     projection.source.sourceRef,
@@ -242,14 +242,14 @@ const assertProjectionLaws = (projection: Issue31HostProjection, generatedAtMs: 
     ...publicRefsForCommand(projection.commandState),
   ];
   if (!refs.every(isIssue31PublicRef)) {
-    throw new Error("Issue 31 host adjunct contains an unsafe reference.");
+    throw new Error("Device mirror host adjunct contains an unsafe reference.");
   }
   assertUniqueRefs(projection.recordRefs);
   assertUniqueRefs(projection.permittedActionRefs);
 
   if (projection.gap === "complete" || projection.gap === "partial") {
     if (projection.freshness === "unknown") {
-      throw new Error("Issue 31 host adjunct projection state is invalid.");
+      throw new Error("Device mirror host adjunct projection state is invalid.");
     }
   } else if (
     projection.freshness !== "unknown" ||
@@ -257,26 +257,26 @@ const assertProjectionLaws = (projection: Issue31HostProjection, generatedAtMs: 
     projection.permittedActionRefs.length !== 0 ||
     projection.commandState.kind !== "idle"
   ) {
-    throw new Error("Issue 31 host adjunct projection state is invalid.");
+    throw new Error("Device mirror host adjunct projection state is invalid.");
   }
 
   if (projection.role.status === "active" && projection.role.grantRef === undefined) {
-    throw new Error("Issue 31 host adjunct role state is invalid.");
+    throw new Error("Device mirror host adjunct role state is invalid.");
   }
   if (projection.role.status === "unknown" && projection.role.grantRef !== undefined) {
-    throw new Error("Issue 31 host adjunct role state is invalid.");
+    throw new Error("Device mirror host adjunct role state is invalid.");
   }
   if (
     projection.role.status !== "active" &&
     (projection.permittedActionRefs.length !== 0 || projection.commandState.kind === "pending")
   ) {
-    throw new Error("Issue 31 host adjunct role state is invalid.");
+    throw new Error("Device mirror host adjunct role state is invalid.");
   }
   if (
     projection.commandState.kind === "pending" &&
     !projection.permittedActionRefs.includes(projection.commandState.actionRef)
   ) {
-    throw new Error("Issue 31 host adjunct command state is invalid.");
+    throw new Error("Device mirror host adjunct command state is invalid.");
   }
 };
 
@@ -286,10 +286,10 @@ export const decodeIssue31HostAdjunct = (value: unknown): Issue31HostAdjunct => 
   const adjunct = decodeHostAdjunct(value, { onExcessProperty: "error" });
   assertIssue31AdjunctDeliveryLaw(adjunct);
   if (!isIssue31PublicRef(adjunct.hostRef) || !isIssue31PublicRef(adjunct.snapshotRef)) {
-    throw new Error("Issue 31 host adjunct contains an unsafe reference.");
+    throw new Error("Device mirror host adjunct contains an unsafe reference.");
   }
   if (adjunct.grantRef !== undefined && !isIssue31PublicRef(adjunct.grantRef)) {
-    throw new Error("Issue 31 host adjunct contains an unsafe reference.");
+    throw new Error("Device mirror host adjunct contains an unsafe reference.");
   }
   const capabilities = adjunct.projections.map((projection) => projection.capability);
   const expected = [
@@ -302,7 +302,7 @@ export const decodeIssue31HostAdjunct = (value: unknown): Issue31HostAdjunct => 
     new Set(capabilities).size !== capabilities.length ||
     expected.some((value) => !capabilities.includes(value))
   ) {
-    throw new Error("Issue 31 host adjunct needs four unique capability projections.");
+    throw new Error("Device mirror host adjunct needs four unique capability projections.");
   }
   for (const projection of adjunct.projections) {
     assertProjectionLaws(projection, adjunct.generatedAtMs);

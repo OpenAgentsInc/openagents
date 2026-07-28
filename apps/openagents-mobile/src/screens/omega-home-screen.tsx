@@ -14,7 +14,7 @@ import {
   type OmegaMirrorThread,
 } from "../workroom/omega-device-bridge-client";
 import { openExpoIssue31DeviceIdentity } from "../workroom/issue31-device-key-vault";
-import { startOmegaBridgeSession } from "./omega-bridge-session";
+import { productSafeNotice, startOmegaBridgeSession } from "./omega-bridge-session";
 import {
   connectionToneOf,
   OmegaHomeView,
@@ -202,11 +202,13 @@ export const OmegaHomeScreen = ({
         setNotice(null);
         await Effect.runPromise(
           client.connect({ announcements: [], pairing, manualMagicDns: null }).pipe(
-            Effect.catch((error) => Effect.sync(() => setNotice(error.message))),
+            Effect.catch((error) => Effect.sync(() => setNotice(productSafeNotice(error.message)))),
           ),
         );
       } catch (error: unknown) {
-        setNotice(error instanceof Error ? error.message : "The desktop pairing failed.");
+        setNotice(
+          error instanceof Error ? productSafeNotice(error.message) : "The desktop pairing failed.",
+        );
       }
     })();
   }, [client, scanPairing]);

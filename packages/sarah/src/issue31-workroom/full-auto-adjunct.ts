@@ -341,13 +341,13 @@ const assertUnique = (refs: ReadonlyArray<string>, message: string): void => {
 
 const assertSafeRefs = (refs: ReadonlyArray<string>): void => {
   if (!refs.every(isIssue31PublicRef)) {
-    throw new Error("Issue 31 Full Auto adjunct contains an unsafe reference.");
+    throw new Error("Device mirror Full Auto adjunct contains an unsafe reference.");
   }
 };
 
 const assertSafeText = (values: ReadonlyArray<string>): void => {
   if (!values.every(isIssue31PublicText)) {
-    throw new Error("Issue 31 Full Auto adjunct contains unsafe text.");
+    throw new Error("Device mirror Full Auto adjunct contains unsafe text.");
   }
 };
 
@@ -358,18 +358,18 @@ const assertRunLaws = (run: Issue31FullAutoRun): void => {
   const terminal = isIssue31FullAutoLifecycleTerminal(run.lifecycle);
   if (terminal) {
     if (run.liveWorkRef !== undefined) {
-      throw new Error("Issue 31 Full Auto adjunct shows live work on a terminal run.");
+      throw new Error("Device mirror Full Auto adjunct shows live work on a terminal run.");
     }
     if (run.terminalReasonRef === undefined) {
-      throw new Error("Issue 31 Full Auto adjunct omits the terminal reason of a finished run.");
+      throw new Error("Device mirror Full Auto adjunct omits the terminal reason of a finished run.");
     }
     // A finished run offers no controls. Otherwise the phone can present a
     // button whose completion can never arrive.
     if (run.controls.length !== 0) {
-      throw new Error("Issue 31 Full Auto adjunct offers a control on a terminal run.");
+      throw new Error("Device mirror Full Auto adjunct offers a control on a terminal run.");
     }
   } else if (run.terminalReasonRef !== undefined) {
-    throw new Error("Issue 31 Full Auto adjunct gives a terminal reason to a live run.");
+    throw new Error("Device mirror Full Auto adjunct gives a terminal reason to a live run.");
   }
 
   assertSafeRefs([
@@ -378,16 +378,16 @@ const assertRunLaws = (run: Issue31FullAutoRun): void => {
   ]);
 
   const controlRefs = run.controls.map((control) => control.actionRef);
-  assertUnique(controlRefs, "Issue 31 Full Auto adjunct repeats a control action reference.");
+  assertUnique(controlRefs, "Device mirror Full Auto adjunct repeats a control action reference.");
   assertUnique(
     run.controls.map((control) => control.kind),
-    "Issue 31 Full Auto adjunct repeats a control kind.",
+    "Device mirror Full Auto adjunct repeats a control kind.",
   );
   assertSafeRefs([...controlRefs, ...run.controls.map((control) => control.idempotencyRef)]);
 
   for (const control of run.controls) {
     if (control.runGeneration !== run.generation) {
-      throw new Error("Issue 31 Full Auto adjunct binds a control to a stale run generation.");
+      throw new Error("Device mirror Full Auto adjunct binds a control to a stale run generation.");
     }
   }
 };
@@ -398,7 +398,7 @@ const assertAccountLaws = (account: Issue31ProviderAccount): void => {
   // A lane reference that is literally the account reference collapses the two
   // concepts the issue insists on keeping distinct.
   if (account.laneRef === account.accountRef) {
-    throw new Error("Issue 31 Full Auto adjunct confuses a lane with an account.");
+    throw new Error("Device mirror Full Auto adjunct confuses a lane with an account.");
   }
 };
 
@@ -412,7 +412,7 @@ const assertHandoffLaws = (handoff: Issue31ProviderHandoff, generatedAtMs: numbe
     ...(handoff.receiptRef === undefined ? [] : [handoff.receiptRef]),
   ]);
   if (handoff.requestedAtMs > generatedAtMs) {
-    throw new Error("Issue 31 Full Auto adjunct handoff timestamp order is invalid.");
+    throw new Error("Device mirror Full Auto adjunct handoff timestamp order is invalid.");
   }
 
   const terminal = TERMINAL_HANDOFF_STATES.has(handoff.state);
@@ -421,16 +421,16 @@ const assertHandoffLaws = (handoff: Issue31ProviderHandoff, generatedAtMs: numbe
     // outcome". A terminal state with no host outcome reference is a claim the
     // host never made.
     if (handoff.outcomeRef === undefined) {
-      throw new Error("Issue 31 Full Auto adjunct ends a handoff without a host outcome.");
+      throw new Error("Device mirror Full Auto adjunct ends a handoff without a host outcome.");
     }
     if (handoff.state !== "completed" && handoff.reasonClass === undefined) {
-      throw new Error("Issue 31 Full Auto adjunct ends a handoff without a typed reason.");
+      throw new Error("Device mirror Full Auto adjunct ends a handoff without a typed reason.");
     }
     if (handoff.state === "completed" && handoff.accountRef === undefined) {
-      throw new Error("Issue 31 Full Auto adjunct completes a handoff with no account.");
+      throw new Error("Device mirror Full Auto adjunct completes a handoff with no account.");
     }
   } else if (handoff.outcomeRef !== undefined) {
-    throw new Error("Issue 31 Full Auto adjunct gives an outcome to a live handoff.");
+    throw new Error("Device mirror Full Auto adjunct gives an outcome to a live handoff.");
   }
 };
 
@@ -444,11 +444,11 @@ const assertEvidenceLaws = (chain: Issue31EvidenceChain): void => {
   // Order is normative, not incidental: the exit is that a viewer follows one
   // finished unit from objective through authority receipt.
   if (kinds.length !== ISSUE31_EVIDENCE_HOPS.length) {
-    throw new Error("Issue 31 Full Auto adjunct evidence chain is not complete.");
+    throw new Error("Device mirror Full Auto adjunct evidence chain is not complete.");
   }
   for (let index = 0; index < ISSUE31_EVIDENCE_HOPS.length; index += 1) {
     if (kinds[index] !== ISSUE31_EVIDENCE_HOPS[index]) {
-      throw new Error("Issue 31 Full Auto adjunct evidence hops are out of order.");
+      throw new Error("Device mirror Full Auto adjunct evidence hops are out of order.");
     }
   }
   assertSafeRefs(chain.hops.map((hop) => hop.ref));
@@ -469,18 +469,18 @@ export const decodeIssue31FullAutoAdjunct = (value: unknown): Issue31FullAutoAdj
   ]);
 
   const runRefs = adjunct.runs.map((run) => run.runRef);
-  assertUnique(runRefs, "Issue 31 Full Auto adjunct repeats a run reference.");
+  assertUnique(runRefs, "Device mirror Full Auto adjunct repeats a run reference.");
   assertUnique(
     adjunct.accounts.map((account) => account.accountRef),
-    "Issue 31 Full Auto adjunct repeats an account reference.",
+    "Device mirror Full Auto adjunct repeats an account reference.",
   );
   assertUnique(
     adjunct.handoffs.map((handoff) => handoff.handoffRef),
-    "Issue 31 Full Auto adjunct repeats a handoff reference.",
+    "Device mirror Full Auto adjunct repeats a handoff reference.",
   );
   assertUnique(
     adjunct.evidence.map((chain) => chain.runRef),
-    "Issue 31 Full Auto adjunct repeats an evidence chain.",
+    "Device mirror Full Auto adjunct repeats an evidence chain.",
   );
 
   for (const run of adjunct.runs) assertRunLaws(run);
@@ -493,13 +493,13 @@ export const decodeIssue31FullAutoAdjunct = (value: unknown): Issue31FullAutoAdj
   const knownRuns = new Set(runRefs);
   for (const chain of adjunct.evidence) {
     if (!knownRuns.has(chain.runRef)) {
-      throw new Error("Issue 31 Full Auto adjunct has evidence for an unknown run.");
+      throw new Error("Device mirror Full Auto adjunct has evidence for an unknown run.");
     }
   }
   const knownAccounts = new Set(adjunct.accounts.map((account) => account.accountRef));
   for (const handoff of adjunct.handoffs) {
     if (handoff.accountRef !== undefined && !knownAccounts.has(handoff.accountRef)) {
-      throw new Error("Issue 31 Full Auto adjunct binds a handoff to an unknown account.");
+      throw new Error("Device mirror Full Auto adjunct binds a handoff to an unknown account.");
     }
   }
   return adjunct;

@@ -152,8 +152,10 @@ describe("behavior contract registry", () => {
     // omega#46 exit 4 added one enforced owner-private contract (the room can
     // distinguish a complete view from a short one), taking it to 50.
     // Public Nostr chat (#9258) adds one enforced deployment contract. The
-    // Omega mobile zero base (#9261) adds two enforced home contracts.
-    expect(decoded.contracts).toHaveLength(53)
+    // Omega mobile zero base (#9261) adds two enforced home contracts. The
+    // owner's no-internal-issue-references mandate (2026-07-28) adds one
+    // enforced desktop-mirror display contract, taking it to 54.
+    expect(decoded.contracts).toHaveLength(54)
     const mobileAutomaticActivity = decoded.contracts.find(
       entry => entry.contractId === "openagents_mobile.home_automatic_desktop_activity.v1",
     )

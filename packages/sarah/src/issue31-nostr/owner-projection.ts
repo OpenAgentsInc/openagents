@@ -124,7 +124,7 @@ export const decodeIssue31OwnerProjectionRecord = (
 ): Issue31OwnerProjectionRecord => {
   const record = decodeRecord(value, { onExcessProperty: "error" });
   if (record.sourceKind !== sourceKindForProjection(record.projection)) {
-    throw new Error("Issue 31 owner projection source kind does not match its body.");
+    throw new Error("Device mirror owner projection source kind does not match its body.");
   }
   const expectedSourceRole =
     record.projection.kind === "message"
@@ -133,23 +133,23 @@ export const decodeIssue31OwnerProjectionRecord = (
         ? "owner"
         : "sarah";
   if (record.sourceRole !== expectedSourceRole) {
-    throw new Error("Issue 31 owner projection source role does not match its body.");
+    throw new Error("Device mirror owner projection source role does not match its body.");
   }
   if (record.projectedAt < record.sourceCreatedAt) {
-    throw new Error("Issue 31 owner projection predates its source event.");
+    throw new Error("Device mirror owner projection predates its source event.");
   }
   if (
     record.projection.kind === "authority_receipt" &&
     record.projection.targetOutcome.state !== "pending" &&
     record.projection.targetOutcome.outcomeRef === undefined
   ) {
-    throw new Error("Issue 31 terminal target outcome needs an outcome reference.");
+    throw new Error("Device mirror terminal target outcome needs an outcome reference.");
   }
   if (
     record.projection.kind === "engram" &&
     parseEngramBody(record.projection.plaintext) === null
   ) {
-    throw new Error("Issue 31 owner engram projection is invalid.");
+    throw new Error("Device mirror owner engram projection is invalid.");
   }
   if (record.projection.kind === "read_state") {
     let plaintext: unknown;
@@ -159,23 +159,23 @@ export const decodeIssue31OwnerProjectionRecord = (
       plaintext = null;
     }
     if (validateReadStateBlob(plaintext) === null) {
-      throw new Error("Issue 31 owner read-state projection is invalid.");
+      throw new Error("Device mirror owner read-state projection is invalid.");
     }
   }
   if (record.projection.kind === "reminder") {
     const reminder = parseReminderContent(record.projection.plaintext);
     if (reminder === null) {
-      throw new Error("Issue 31 owner reminder projection is invalid.");
+      throw new Error("Device mirror owner reminder projection is invalid.");
     }
     if (reminder.status === "pending" && record.projection.notBefore === undefined) {
-      throw new Error("Issue 31 pending reminder projection needs not-before time.");
+      throw new Error("Device mirror pending reminder projection needs not-before time.");
     }
     if (
       record.projection.expiration !== undefined &&
       record.projection.notBefore !== undefined &&
       record.projection.expiration <= record.projection.notBefore
     ) {
-      throw new Error("Issue 31 reminder projection expiration is invalid.");
+      throw new Error("Device mirror reminder projection expiration is invalid.");
     }
   }
   return record;

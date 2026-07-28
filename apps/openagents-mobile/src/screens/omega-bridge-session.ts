@@ -11,6 +11,20 @@ const close = (client: OmegaDeviceBridgeClient): void => {
 };
 
 /**
+ * The device mirror grew under an internal issue codename, and its wire
+ * tokens (the pairing scope and schema ids) still carry that codename for
+ * compatibility with shipped mobile builds. A person must never read it: any
+ * message that would surface it — for example a schema decode error quoting a
+ * wire literal — collapses to product words instead of leaking internals.
+ */
+const INTERNAL_REFERENCE = /issue\s*31/i;
+
+export const productSafeNotice = (message: string): string =>
+  INTERNAL_REFERENCE.test(message)
+    ? "The desktop mirror hit a problem it could not describe. Try pairing again."
+    : message;
+
+/**
  * Holds the device bridge for one mount of the home screen.
  *
  * It sits outside the component because the ownership it settles has no other
@@ -55,7 +69,7 @@ export const startOmegaBridgeSession = (
           Effect.sync(() => {
             if (!active) return;
             if (error.reason !== "all_endpoints_failed" || resolved.state().paired) {
-              input.onNotice(error.message);
+              input.onNotice(productSafeNotice(error.message));
             }
           }),
         ),

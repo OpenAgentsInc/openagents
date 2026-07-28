@@ -1500,6 +1500,40 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
     },
     {
       authorityBoundary:
+        "This contract binds display text only. Wire tokens keep their exact machine form: the pairing scope observe_issue31 is validated byte-for-byte by shipped mobile builds (TestFlight build 126), and the openagents.omega.issue31.* schema ids and refs are contract identifiers. None of them may be shown raw to a person; renaming a wire value is a separate compatibility decision this contract does not authorize.",
+      blockerRefs: [],
+      contractId: "openagents_mobile.no_internal_issue_references.v1",
+      enforcementTier: "test-sweep",
+      evidenceRefs: [
+        "apps/openagents-mobile/src/screens/omega-bridge-session.ts",
+        "packages/sarah/src/issue31-nostr/records.ts",
+        "omega:crates/omega_deltas/src/omega_deltas.rs",
+      ],
+      oracles: [
+        {
+          description:
+            "productSafeNotice passes product wording through untouched and collapses any message carrying the internal issue codename — the raw observe_issue31 scope token, an internal-jargon error sentence, or a schema id quoted by a decode failure — to product words before a person reads it.",
+          id: "openagents_mobile.no_internal_issue_references.notice",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents-mobile/tests/omega-bridge-session.test.ts",
+        },
+      ],
+      productArea: "desktop mirror pairing and status",
+      source: {
+        channel: "chat",
+        statedBy: "owner",
+        statedOn: "2026-07-28",
+      },
+      state: "enforced",
+      statement:
+        "WHAT THE FUCK IS THIS ISSUE 31 THING, FIX IT NOW AND NEVER EVER SHOW ISSUE 31.",
+      surface: "openagents-mobile",
+      verification:
+        "The notice oracle runs in the normal sweep, and every prose error string in packages/sarah and the mobile app now names the product (device mirror, device pairing) instead of the issue number. The desktop half is enforced in OpenAgentsInc/omega by OMEGA-DELTA-0168 (internal_issue_references_never_render), which scans every string literal in crates/ for the prose form.",
+    },
+    {
+      authorityBoundary:
         "Owner scoping binds the Worker portal API (/api/portal/*): engagement reads resolve only through the caller's verified session identity, and admin creation/binding/seeding stays behind the operator bearer token. This contract does not authorize any client-facing engagement-id lookup route.",
       blockerRefs: [],
       contractId: "openagents_web.portal_owner_scoped_engagement.v1",
