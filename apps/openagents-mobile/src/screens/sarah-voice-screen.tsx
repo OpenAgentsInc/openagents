@@ -8,25 +8,19 @@ import {
   type TextStyle,
   type ViewStyle,
 } from "react-native";
-import {
-  requestRecordingPermissionsAsync,
-  setAudioModeAsync,
-  useAudioStream,
-} from "expo-audio";
-import {
-  CryptoDigestAlgorithm,
-  digest,
-  randomUUID,
-} from "expo-crypto";
+import { requestRecordingPermissionsAsync, setAudioModeAsync, useAudioStream } from "expo-audio";
+import { CryptoDigestAlgorithm, digest, randomUUID } from "expo-crypto";
 import * as SecureStore from "expo-secure-store";
 
 import RealtimeAudio from "../../modules/expo-realtime-audio";
+import type { NativeSessionSecureStore } from "../auth/native-session-vault";
 import {
   SarahVoiceClient,
   type SarahVoiceSnapshot,
   type SarahVoiceSocket,
 } from "../sarah-voice/client";
 import { sarahVoiceAppStateAction } from "../sarah-voice/app-state";
+import { makeSarahVoiceDeviceLinkRecovery } from "../sarah-voice/device-link";
 import { bytesToBase64 } from "../sarah-voice/protocol";
 import { makeSarahVoiceSessionVault } from "../sarah-voice/session-vault";
 import {
@@ -45,9 +39,7 @@ import { colors, radius, spacing } from "../ui/theme";
 const OPENAGENTS_BASE_URL =
   process.env.EXPO_PUBLIC_OPENAGENTS_BASE_URL?.trim() || "https://openagents.com";
 const SARAH_DEVICE_KEY_STORE =
-  OPENAGENTS_BASE_URL === "https://openagents.com"
-    ? undefined
-    : SARAH_STAGING_DEVICE_KEY_STORE_KEY;
+  OPENAGENTS_BASE_URL === "https://openagents.com" ? undefined : SARAH_STAGING_DEVICE_KEY_STORE_KEY;
 const PLAYBACK_DRAIN_POLL_MS = 40;
 const unsupportedMicrophoneFormat = "unsupported_microphone_format";
 
@@ -62,11 +54,10 @@ type NativeWebSocketConstructor = new (
   options: Readonly<{ headers: Readonly<Record<string, string>> }>,
 ) => SarahVoiceSocket;
 
-const createSocket = (
-  url: string,
-  headers: Readonly<Record<string, string>>,
-): SarahVoiceSocket =>
-  new (WebSocket as unknown as NativeWebSocketConstructor)(url, null, { headers });
+const createSocket = (url: string, headers: Readonly<Record<string, string>>): SarahVoiceSocket =>
+  new (WebSocket as unknown as NativeWebSocketConstructor)(url, null, {
+    headers,
+  });
 
 const phaseLabel = (snapshot: SarahVoiceSnapshot): string => {
   if (snapshot.muted && snapshot.phase === "listening") return "Muted";
@@ -123,11 +114,7 @@ export const SarahVoiceScreen = ({ onClose }: { readonly onClose: () => void }) 
     channels: 1,
     encoding: "int16",
     onBuffer: (buffer) => {
-      clientRef.current?.sendAudio(
-        new Uint8Array(buffer.data),
-        buffer.sampleRate,
-        buffer.channels,
-      );
+      clientRef.current?.sendAudio(new Uint8Array(buffer.data), buffer.sampleRate, buffer.channels);
     },
   });
 
@@ -157,11 +144,14 @@ export const SarahVoiceScreen = ({ onClose }: { readonly onClose: () => void }) 
     }
   }, [stream]);
 
-  const handleCaptureFailure = useCallback((error: unknown): void => {
-    stopCapture();
-    setLocalError(microphoneStartError(error));
-    void clientRef.current?.end("transport_error");
-  }, [stopCapture]);
+  const handleCaptureFailure = useCallback(
+    (error: unknown): void => {
+      stopCapture();
+      setLocalError(microphoneStartError(error));
+      void clientRef.current?.end("transport_error");
+    },
+    [stopCapture],
+  );
 
   const clearDrainTimer = useCallback((): void => {
     if (playbackDrainTimer.current !== null) {
@@ -185,11 +175,7 @@ export const SarahVoiceScreen = ({ onClose }: { readonly onClose: () => void }) 
       clearDrainTimer();
       RealtimeAudio.stop();
       const current = clientRef.current?.snapshot();
-      if (
-        current?.phase === "listening" &&
-        !current.muted &&
-        AppState.currentState === "active"
-      ) {
+      if (current?.phase === "listening" && !current.muted && AppState.currentState === "active") {
         void startCapture().catch(handleCaptureFailure);
       }
     }, PLAYBACK_DRAIN_POLL_MS);
@@ -222,13 +208,14 @@ export const SarahVoiceScreen = ({ onClose }: { readonly onClose: () => void }) 
           fetch: globalThis.fetch,
           createSocket,
           sha256: async (bytes) =>
-            new Uint8Array(
-              await digest(CryptoDigestAlgorithm.SHA256, Uint8Array.from(bytes)),
-            ),
+            new Uint8Array(await digest(CryptoDigestAlgorithm.SHA256, Uint8Array.from(bytes))),
           randomUuid: randomUUID,
           now: Date.now,
           setTimeout,
           clearTimeout,
+          recoverDeviceLink: makeSarahVoiceDeviceLinkRecovery(
+            SecureStore as unknown as NativeSessionSecureStore,
+          ),
         });
         clientRef.current = client;
         setClientReady(true);
@@ -237,9 +224,7 @@ export const SarahVoiceScreen = ({ onClose }: { readonly onClose: () => void }) 
           if (AppState.currentState !== "active") return;
           if (RealtimeAudio.getStatus().interrupted) {
             RealtimeAudio.stop();
-            setLocalError(
-              "Audio playback was interrupted. Retry Sarah voice when audio is ready.",
-            );
+            setLocalError("Audio playback was interrupted. Retry Sarah voice when audio is ready.");
             void client.end("transport_error");
             return;
           }
@@ -256,7 +241,7 @@ export const SarahVoiceScreen = ({ onClose }: { readonly onClose: () => void }) 
           }
         });
       } catch {
-        if (active) setLocalError("The protected device identity is unavailable.");
+        if (active) setLocalError("Sarah voice could not start securely. Try again.");
       }
     })();
 
@@ -364,13 +349,7 @@ export const SarahVoiceScreen = ({ onClose }: { readonly onClose: () => void }) 
     } else if (snapshot.phase === "listening") {
       void startCapture().catch(handleCaptureFailure);
     }
-  }, [
-    handleCaptureFailure,
-    snapshot.muted,
-    snapshot.phase,
-    startCapture,
-    stopCapture,
-  ]);
+  }, [handleCaptureFailure, snapshot.muted, snapshot.phase, startCapture, stopCapture]);
 
   const interrupt = useCallback(() => {
     stopCapture();
@@ -388,12 +367,9 @@ export const SarahVoiceScreen = ({ onClose }: { readonly onClose: () => void }) 
   }, [clearDrainTimer, stopCapture]);
 
   const active =
-    snapshot.phase !== "idle" &&
-    snapshot.phase !== "ended" &&
-    snapshot.phase !== "error";
+    snapshot.phase !== "idle" && snapshot.phase !== "ended" && snapshot.phase !== "error";
   const error = localError ?? snapshot.message;
-  const shouldRetry =
-    error !== null || (snapshot.phase === "error" && snapshot.retryable);
+  const shouldRetry = error !== null || (snapshot.phase === "error" && snapshot.retryable);
 
   return (
     <Screen>
@@ -404,12 +380,12 @@ export const SarahVoiceScreen = ({ onClose }: { readonly onClose: () => void }) 
       <View style={$intro}>
         <Text preset="display">Sarah voice</Text>
         <Text preset="body" color={colors.textDim}>
-          Speak with Sarah through the managed OpenAgents voice service. The app uses
-          your protected device identity and never stores an OpenAI key.
+          Speak with Sarah through the managed OpenAgents voice service. The app connects securely
+          to your OpenAgents account and never stores an OpenAI key.
         </Text>
         <Text preset="caption" color={colors.textFaint}>
-          The microphone is active only while this screen says Listening. It stops while
-          Sarah speaks and whenever the app leaves the foreground.
+          The microphone is active only while this screen says Listening. It stops while Sarah
+          speaks and whenever the app leaves the foreground.
         </Text>
       </View>
       <Divider />
@@ -482,7 +458,11 @@ const $header: ViewStyle = {
   alignItems: "center",
   justifyContent: "space-between",
 };
-const $headerButton: ViewStyle = { minHeight: 0, paddingVertical: 0, paddingHorizontal: 0 };
+const $headerButton: ViewStyle = {
+  minHeight: 0,
+  paddingVertical: 0,
+  paddingHorizontal: 0,
+};
 const $intro: ViewStyle = {
   paddingHorizontal: spacing.medium,
   paddingVertical: spacing.small,

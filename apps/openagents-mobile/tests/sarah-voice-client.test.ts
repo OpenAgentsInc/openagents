@@ -10,10 +10,16 @@ import {
 } from "@openagentsinc/audio-contract";
 import type { Issue31NostrSigner } from "@openagentsinc/sarah/issue31-nostr";
 
+import { SarahVoiceClient, type SarahVoiceSocket } from "../src/sarah-voice/client.ts";
 import {
-  SarahVoiceClient,
-  type SarahVoiceSocket,
-} from "../src/sarah-voice/client.ts";
+  OPENAGENTS_MOBILE_DEVICE_LINK_SCHEMA,
+  makeSarahVoiceDeviceLinkRecovery,
+} from "../src/sarah-voice/device-link.ts";
+import {
+  OPENAGENTS_NATIVE_SESSION_EPOCH,
+  OPENAGENTS_NATIVE_SESSION_KEY,
+  type NativeSessionSecureStore,
+} from "../src/auth/native-session-vault.ts";
 import type {
   SarahVoiceSessionVault,
   SarahVoiceStoredSession,
@@ -23,6 +29,8 @@ const publicKeyHex = "a".repeat(64);
 const ownerRef = "user-1";
 const challenge = `challenge_${"c".repeat(32)}`;
 const accessToken = `oa_omega_${"b".repeat(43)}`;
+const canonicalAccessToken = `oa_access_${"c".repeat(32)}`;
+const canonicalRefreshToken = `oa_refresh_${"d".repeat(32)}`;
 const sha256 = async (bytes: Uint8Array): Promise<Uint8Array> =>
   new Uint8Array(createHash("sha256").update(bytes).digest());
 const tick = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
@@ -95,6 +103,45 @@ const makeVault = (initial: SarahVoiceStoredSession | null = null) => {
     },
   };
   return { clearCount: () => clearCount, read: () => record, vault };
+};
+
+const canonicalSessionRecord = (
+  input: Readonly<{
+    accessToken?: string;
+    refreshToken?: string;
+  }> = {},
+): string =>
+  JSON.stringify({
+    schemaVersion: 1,
+    credentialEpoch: OPENAGENTS_NATIVE_SESSION_EPOCH,
+    ownerUserId: ownerRef,
+    accessToken: input.accessToken ?? canonicalAccessToken,
+    refreshToken: input.refreshToken ?? canonicalRefreshToken,
+  });
+
+const makeNativeSessionStore = (initial: string | null) => {
+  let record = initial;
+  const requireCanonicalKey = (key: string): void => {
+    if (key !== OPENAGENTS_NATIVE_SESSION_KEY) {
+      throw new Error(`Unexpected native session key: ${key}`);
+    }
+  };
+  const store: NativeSessionSecureStore = {
+    AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY: "device-only",
+    getItemAsync: async (key) => {
+      requireCanonicalKey(key);
+      return record;
+    },
+    setItemAsync: async (key, value) => {
+      requireCanonicalKey(key);
+      record = value;
+    },
+    deleteItemAsync: async (key) => {
+      requireCanonicalKey(key);
+      record = null;
+    },
+  };
+  return { read: () => record, store };
 };
 
 const sessionResponse = (
@@ -255,24 +302,32 @@ describe("managed Sarah mobile voice client", () => {
     await tick();
     expect(socket.sent.some((entry) => entry instanceof ArrayBuffer)).toBe(true);
 
-    socket.onmessage?.({ data: serverAudioFrame(identity, 0, "provider-item-1") });
-    socket.onmessage?.({ data: serverAudioFrame(identity, 1, "provider-item-1") });
+    socket.onmessage?.({
+      data: serverAudioFrame(identity, 0, "provider-item-1"),
+    });
+    socket.onmessage?.({
+      data: serverAudioFrame(identity, 1, "provider-item-1"),
+    });
     await tick();
     await tick();
     expect(audioItems).toEqual(["provider-item-1", "provider-item-1"]);
 
-    socket.serverControl(control(identity, 1, {
-      _tag: "transcript_delta",
-      source: "user",
-      utteranceRef: "utterance-1",
-      text: "Hello",
-    }));
-    socket.serverControl(control(identity, 2, {
-      _tag: "transcript_final",
-      source: "user",
-      utteranceRef: "utterance-1",
-      text: "Hello Sarah.",
-    }));
+    socket.serverControl(
+      control(identity, 1, {
+        _tag: "transcript_delta",
+        source: "user",
+        utteranceRef: "utterance-1",
+        text: "Hello",
+      }),
+    );
+    socket.serverControl(
+      control(identity, 2, {
+        _tag: "transcript_final",
+        source: "user",
+        utteranceRef: "utterance-1",
+        text: "Hello Sarah.",
+      }),
+    );
     await tick();
     expect(client.snapshot().transcripts).toEqual([
       {
@@ -283,21 +338,26 @@ describe("managed Sarah mobile voice client", () => {
       },
     ]);
 
-    socket.serverControl(control(identity, 3, {
-      _tag: "tool_execute",
-      proposalRef: "proposal-1",
-      proposalDigest: "f".repeat(64),
-      command: {
-        _tag: "open_path",
-        target: { workspaceRef: "workspace-1", path: "secret.txt" },
-      },
-    }));
+    socket.serverControl(
+      control(identity, 3, {
+        _tag: "tool_execute",
+        proposalRef: "proposal-1",
+        proposalDigest: "f".repeat(64),
+        command: {
+          _tag: "open_path",
+          target: { workspaceRef: "workspace-1", path: "secret.txt" },
+        },
+      }),
+    );
     await tick();
     expect(client.snapshot()).toMatchObject({
       phase: "error",
       message: "Mobile Sarah voice refused an unsupported device action.",
     });
-    expect(socket.closes.at(-1)).toEqual({ code: 1011, reason: "transport_error" });
+    expect(socket.closes.at(-1)).toEqual({
+      code: 1011,
+      reason: "transport_error",
+    });
   });
 
   test("uses the bounded Sarah challenge when automatic account sessions are unavailable", async () => {
@@ -313,10 +373,7 @@ describe("managed Sarah mobile voice client", () => {
         const url = String(input);
         requests.push(url);
         if (url.endsWith("/api/omega/auth/session")) {
-          return Response.json(
-            { error: "omega_nostr_auth_unavailable" },
-            { status: 503 },
-          );
+          return Response.json({ error: "omega_nostr_auth_unavailable" }, { status: 503 });
         }
         if (url.endsWith("/auth/challenge")) {
           return Response.json({
@@ -328,11 +385,7 @@ describe("managed Sarah mobile voice client", () => {
         }
         sessionBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
         return Response.json(
-          sessionResponse(
-            sessionBody.identity as VoiceIdentity,
-            "t".repeat(43),
-            true,
-          ),
+          sessionResponse(sessionBody.identity as VoiceIdentity, "t".repeat(43), true),
           { status: 201 },
         );
       }) as typeof globalThis.fetch,
@@ -359,6 +412,247 @@ describe("managed Sarah mobile voice client", () => {
     });
     expect(vault.read()).toMatchObject({ publicKeyHex, ownerRef, accessToken });
   });
+
+  test("links a signed-in fresh device and retries the scoped Sarah session", async () => {
+    const vault = makeVault();
+    const nativeSession = makeNativeSessionStore(canonicalSessionRecord());
+    const requests: Array<Readonly<{ url: string; init?: RequestInit }>> = [];
+    let omegaAttempts = 0;
+    let voiceIdentity: VoiceIdentity | null = null;
+    const rotatedAccessToken = `oa_access_${"e".repeat(32)}`;
+    const rotatedRefreshToken = `oa_refresh_${"f".repeat(32)}`;
+    const client = new SarahVoiceClient({
+      baseUrl: "https://openagents.com",
+      publicKeyHex,
+      signer,
+      vault: vault.vault,
+      fetch: (async (input, init) => {
+        const url = String(input);
+        requests.push({ url, init });
+        if (url.endsWith("/api/omega/auth/session")) {
+          omegaAttempts += 1;
+          return omegaAttempts === 1
+            ? Response.json({ error: "mobile_session_required" }, { status: 401 })
+            : Response.json(normalSessionResponse());
+        }
+        if (url.endsWith("/api/mobile/auth/session")) {
+          return Response.json({
+            authenticated: true,
+            user: { userId: ownerRef },
+            tokens: {
+              access: rotatedAccessToken,
+              refresh: rotatedRefreshToken,
+              expiresIn: 900,
+            },
+          });
+        }
+        if (url.endsWith("/api/mobile/auth/device-link")) {
+          return Response.json({
+            schema: OPENAGENTS_MOBILE_DEVICE_LINK_SCHEMA,
+            state: "linked",
+            ownerRef,
+          });
+        }
+        const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        voiceIdentity = body.identity as VoiceIdentity;
+        return Response.json(sessionResponse(voiceIdentity, "t".repeat(43), false), {
+          status: 201,
+        });
+      }) as typeof globalThis.fetch,
+      createSocket: (url, headers) => new FixtureSocket(url, headers),
+      sha256,
+      randomUuid: () => "voice-fresh-device",
+      now: () => 10_000,
+      setTimeout,
+      clearTimeout,
+      recoverDeviceLink: makeSarahVoiceDeviceLinkRecovery(nativeSession.store),
+    });
+
+    await client.start();
+
+    expect(requests.map(({ url }) => url)).toEqual([
+      "https://openagents.com/api/omega/auth/session",
+      "https://openagents.com/api/mobile/auth/session",
+      "https://openagents.com/api/mobile/auth/device-link",
+      "https://openagents.com/api/omega/auth/session",
+      "https://openagents.com/api/omega/sarah/voice/session",
+    ]);
+    expect(requests[1]?.init?.headers).toEqual({
+      authorization: `Bearer ${canonicalAccessToken}`,
+      "x-openagents-refresh-token": canonicalRefreshToken,
+    });
+    const linkBody = String(requests[2]?.init?.body);
+    expect(JSON.parse(linkBody)).toEqual({
+      schema: OPENAGENTS_MOBILE_DEVICE_LINK_SCHEMA,
+      pubkey: publicKeyHex,
+      deviceRef: `omega-mobile-${publicKeyHex.slice(0, 24)}`,
+    });
+    expect(requests[2]?.init?.headers).toMatchObject({
+      authorization: `Bearer ${rotatedAccessToken}`,
+      "content-type": "application/json",
+      "x-openagents-nostr-authorization": expect.stringMatching(/^Nostr /u),
+    });
+    const linkHeaders = requests[2]?.init?.headers as Record<string, string>;
+    const proof = JSON.parse(
+      atob(linkHeaders["x-openagents-nostr-authorization"]!.slice(6)),
+    ) as Readonly<{ tags: ReadonlyArray<ReadonlyArray<string>> }>;
+    expect(proof.tags).toEqual([
+      ["u", "https://openagents.com/api/mobile/auth/device-link"],
+      ["method", "POST"],
+      ["payload", createHash("sha256").update(linkBody).digest("hex")],
+    ]);
+    const rotatedRecord = JSON.parse(nativeSession.read() ?? "{}") as Record<string, unknown>;
+    expect(rotatedRecord).toMatchObject({
+      ownerUserId: ownerRef,
+      accessToken: rotatedAccessToken,
+      refreshToken: rotatedRefreshToken,
+    });
+    expect(vault.read()).toMatchObject({ ownerRef, accessToken });
+    expect(voiceIdentity).toMatchObject({
+      ownerRef,
+      deviceRef: `omega-mobile-${publicKeyHex.slice(0, 24)}`,
+    });
+  });
+
+  test("does not run device-link recovery for an already linked device", async () => {
+    const vault = makeVault();
+    let recoveryCount = 0;
+    const requests: string[] = [];
+    const client = new SarahVoiceClient({
+      baseUrl: "https://openagents.com",
+      publicKeyHex,
+      signer,
+      vault: vault.vault,
+      fetch: (async (input, init) => {
+        const url = String(input);
+        requests.push(url);
+        if (url.endsWith("/api/omega/auth/session")) {
+          return Response.json(normalSessionResponse());
+        }
+        const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return Response.json(
+          sessionResponse(body.identity as VoiceIdentity, "t".repeat(43), false),
+          { status: 201 },
+        );
+      }) as typeof globalThis.fetch,
+      createSocket: (url, headers) => new FixtureSocket(url, headers),
+      sha256,
+      randomUuid: () => "voice-linked-device",
+      now: () => 10_000,
+      setTimeout,
+      clearTimeout,
+      recoverDeviceLink: async () => {
+        recoveryCount += 1;
+        return { _tag: "Success", ownerRef };
+      },
+    });
+
+    await client.start();
+
+    expect(recoveryCount).toBe(0);
+    expect(requests).toEqual([
+      "https://openagents.com/api/omega/auth/session",
+      "https://openagents.com/api/omega/sarah/voice/session",
+    ]);
+  });
+
+  test("asks a signed-out user to sign in before Sarah voice", async () => {
+    const vault = makeVault();
+    const nativeSession = makeNativeSessionStore(null);
+    const requests: string[] = [];
+    const client = new SarahVoiceClient({
+      baseUrl: "https://openagents.com",
+      publicKeyHex,
+      signer,
+      vault: vault.vault,
+      fetch: (async (input) => {
+        requests.push(String(input));
+        return Response.json({ error: "mobile_session_required" }, { status: 401 });
+      }) as typeof globalThis.fetch,
+      createSocket: () => {
+        throw new Error("A signed-out client must not open a socket.");
+      },
+      sha256,
+      randomUuid: () => "voice-signed-out",
+      now: () => 10_000,
+      setTimeout,
+      clearTimeout,
+      recoverDeviceLink: makeSarahVoiceDeviceLinkRecovery(nativeSession.store),
+    });
+
+    await client.start();
+
+    expect(requests).toEqual(["https://openagents.com/api/omega/auth/session"]);
+    expect(client.snapshot()).toMatchObject({
+      phase: "error",
+      message: "Sign in to OpenAgents to use Sarah voice.",
+      retryable: false,
+    });
+  });
+
+  test.each([
+    {
+      status: 403,
+      error: "device_proof_rejected",
+      message: "Sarah could not verify this device. Try again.",
+      retryable: true,
+    },
+    {
+      status: 409,
+      error: "device_link_conflict",
+      message: "This device is linked to another OpenAgents account.",
+      retryable: false,
+    },
+  ])(
+    "shows an actionable device-link error for $error",
+    async ({ status, error, message, retryable }) => {
+      const vault = makeVault();
+      const nativeSession = makeNativeSessionStore(canonicalSessionRecord());
+      const requests: string[] = [];
+      const client = new SarahVoiceClient({
+        baseUrl: "https://openagents.com",
+        publicKeyHex,
+        signer,
+        vault: vault.vault,
+        fetch: (async (input) => {
+          const url = String(input);
+          requests.push(url);
+          if (url.endsWith("/api/omega/auth/session")) {
+            return Response.json({ error: "mobile_session_required" }, { status: 401 });
+          }
+          if (url.endsWith("/api/mobile/auth/session")) {
+            return Response.json({
+              authenticated: true,
+              user: { userId: ownerRef },
+            });
+          }
+          return Response.json({ error }, { status });
+        }) as typeof globalThis.fetch,
+        createSocket: () => {
+          throw new Error("A rejected device link must not open a socket.");
+        },
+        sha256,
+        randomUuid: () => "voice-link-error",
+        now: () => 10_000,
+        setTimeout,
+        clearTimeout,
+        recoverDeviceLink: makeSarahVoiceDeviceLinkRecovery(nativeSession.store),
+      });
+
+      await client.start();
+
+      expect(requests).toEqual([
+        "https://openagents.com/api/omega/auth/session",
+        "https://openagents.com/api/mobile/auth/session",
+        "https://openagents.com/api/mobile/auth/device-link",
+      ]);
+      expect(client.snapshot()).toMatchObject({
+        phase: "error",
+        message,
+        retryable,
+      });
+    },
+  );
 
   test("maps normal-session credit denial without falling back to a second identity flow", async () => {
     const stored: SarahVoiceStoredSession = {
@@ -390,9 +684,7 @@ describe("managed Sarah mobile voice client", () => {
     });
 
     await client.start();
-    expect(requests).toEqual([
-      "https://openagents.com/api/omega/sarah/voice/session",
-    ]);
+    expect(requests).toEqual(["https://openagents.com/api/omega/sarah/voice/session"]);
     expect(vault.clearCount()).toBe(0);
     expect(client.snapshot()).toMatchObject({
       phase: "error",
@@ -449,9 +741,9 @@ describe("managed Sarah mobile voice client", () => {
     await tick();
 
     expect(sessionRequests).toHaveLength(2);
-    expect(
-      (sessionRequests[0]!.identity as VoiceIdentity).sessionRef,
-    ).not.toBe((sessionRequests[1]!.identity as VoiceIdentity).sessionRef);
+    expect((sessionRequests[0]!.identity as VoiceIdentity).sessionRef).not.toBe(
+      (sessionRequests[1]!.identity as VoiceIdentity).sessionRef,
+    );
     expect(sockets).toHaveLength(2);
     expect(sockets[0]!.headers["x-openagents-sarah-voice-ticket"]).not.toBe(
       sockets[1]!.headers["x-openagents-sarah-voice-ticket"],
@@ -506,10 +798,12 @@ describe("managed Sarah mobile voice client", () => {
     await client.start();
     const socket = sockets[0]!;
     socket.open();
-    socket.serverControl(control(sessionIdentity!, 0, {
-      _tag: "lifecycle",
-      state: "listening",
-    }));
+    socket.serverControl(
+      control(sessionIdentity!, 0, {
+        _tag: "lifecycle",
+        state: "listening",
+      }),
+    );
     await tick();
 
     deferDigest = true;
@@ -523,6 +817,9 @@ describe("managed Sarah mobile voice client", () => {
 
     expect(audioItems).toEqual([]);
     expect(client.snapshot().phase).toBe("ended");
-    expect(socket.closes.at(-1)).toEqual({ code: 1000, reason: "app_backgrounded" });
+    expect(socket.closes.at(-1)).toEqual({
+      code: 1000,
+      reason: "app_backgrounded",
+    });
   });
 });

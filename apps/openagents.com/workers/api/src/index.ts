@@ -240,6 +240,11 @@ import {
   stampAuthEmailOtpClaims,
 } from './auth/email-otp-hardening'
 import {
+  MOBILE_DEVICE_LINK_PATH,
+  handleMobileDeviceLinkRequest,
+} from './auth/mobile-device-link'
+import { makeMobileDeviceLinkStore } from './auth/mobile-device-link-store'
+import {
   authIssuerAllowsRedirect,
   authIssuerAllowsWebRedirectHostname,
   isMobileAccessTokenRevoked,
@@ -3756,6 +3761,7 @@ const omegaNostrSessionService = makeOmegaNostrSessionService<UserSubject, Env>(
     authStore: authKvStoreForEnv,
     expectedOwnerPubkey: env => env.SARAH_NOSTR_OWNER_PUBKEY,
     linkOwner: linkOmegaNostrOwner,
+    resolveLinked: resolveNostrLinkedUser,
     resolveOwner: resolveOmegaNostrOwner,
     selfProvision: {
       enabled: omegaNostrSelfProvisionEnabled,
@@ -13906,6 +13912,35 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     path: '/api/mobile/auth/session',
     handler: (request, env, ctx) =>
       Effect.promise(() => handleMobileAuthSessionApi(request, env, ctx)),
+  },
+  {
+    path: MOBILE_DEVICE_LINK_PATH,
+    handler: (request, env, ctx) =>
+      Effect.promise(() =>
+        handleMobileDeviceLinkRequest(
+          {
+            audit: (event, fields) => {
+              const log =
+                event === 'link_conflict' ||
+                event === 'proof_replayed' ||
+                event === 'storage_unavailable'
+                  ? logWorkerRouteWarning
+                  : logWorkerRouteInfo
+              log(`mobile_device_link_${event}`, fields)
+            },
+            authStore: authKvStoreForEnv,
+            link: (workerEnv, input) =>
+              makeMobileDeviceLinkStore(identityDbForEnv(workerEnv)).link(
+                input,
+              ),
+            requireUserBearerSession,
+            userIdFromSession: session => session.user.userId,
+          },
+          request,
+          env,
+          ctx,
+        ),
+      ),
   },
   {
     path: OMEGA_NOSTR_SESSION_PATH,

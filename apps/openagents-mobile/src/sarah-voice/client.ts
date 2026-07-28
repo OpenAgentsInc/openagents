@@ -21,10 +21,8 @@ import {
   sha256Hex,
   type Sha256,
 } from "./protocol";
-import type {
-  SarahVoiceSessionVault,
-  SarahVoiceStoredSession,
-} from "./session-vault";
+import type { SarahVoiceDeviceLinkRecovery } from "./device-link";
+import type { SarahVoiceSessionVault, SarahVoiceStoredSession } from "./session-vault";
 
 const DISCLOSURE_REF = "openagents.mobile.sarah.voice.v1";
 const OMEGA_NOSTR_SESSION_PATH = "/api/omega/auth/session";
@@ -108,6 +106,7 @@ export type SarahVoiceClientDependencies = Readonly<{
   now: () => number;
   setTimeout: (callback: () => void, delayMs: number) => ReturnType<typeof setTimeout>;
   clearTimeout: (handle: ReturnType<typeof setTimeout>) => void;
+  recoverDeviceLink?: SarahVoiceDeviceLinkRecovery;
 }>;
 
 const initialSnapshot: SarahVoiceSnapshot = {
@@ -145,29 +144,47 @@ const safeGatewayUrl = (value: string, baseUrl: string): string => {
   return gateway.toString();
 };
 
-const statusMessage = (status: number, error: string | undefined): Readonly<{
+const statusMessage = (
+  status: number,
+  error: string | undefined,
+): Readonly<{
   message: string;
   retryable: boolean;
 }> => {
   if (status === 401) {
     return {
-      message: "This protected device identity is not linked to an OpenAgents session.",
+      message: "Sarah could not verify your OpenAgents account. Try again.",
       retryable: false,
     };
   }
   if (status === 402 || error === "insufficient_credit") {
-    return { message: "This account needs more OpenAgents credits for voice.", retryable: false };
+    return {
+      message: "This account needs more OpenAgents credits for voice.",
+      retryable: false,
+    };
   }
   if (status === 403) {
-    return { message: "Sarah voice is not enabled for this OpenAgents account.", retryable: false };
+    return {
+      message: "Sarah voice is not enabled for this OpenAgents account.",
+      retryable: false,
+    };
   }
   if (status === 409) {
-    return { message: "Another Sarah voice session is still closing. Try again.", retryable: true };
+    return {
+      message: "Another Sarah voice session is still closing. Try again.",
+      retryable: true,
+    };
   }
   if (status === 429) {
-    return { message: "Voice sign-in is busy. Wait a moment, then retry.", retryable: true };
+    return {
+      message: "Voice sign-in is busy. Wait a moment, then retry.",
+      retryable: true,
+    };
   }
-  return { message: "Sarah voice is unavailable. Check the network and try again.", retryable: true };
+  return {
+    message: "Sarah voice is unavailable. Check the network and try again.",
+    retryable: true,
+  };
 };
 
 const readError = async (response: Response): Promise<string | undefined> => {
@@ -228,9 +245,10 @@ export class SarahVoiceClient {
   };
 
   start = async (): Promise<void> => {
-    if (!this.foreground || ["connecting", "listening", "thinking", "speaking"].includes(
-      this.snapshotValue.phase,
-    )) {
+    if (
+      !this.foreground ||
+      ["connecting", "listening", "thinking", "speaking"].includes(this.snapshotValue.phase)
+    ) {
       return;
     }
     this.shouldRun = true;
@@ -279,37 +297,37 @@ export class SarahVoiceClient {
     const socket = this.socket;
     const identity = this.identity;
     const generation = this.attemptGeneration;
-    this.audioChain = this.audioChain.then(async () => {
-      if (
-        socket !== this.socket ||
-        socket.readyState !== 1 ||
-        generation !== this.attemptGeneration
-      ) return;
-      const frame = await encodeClientAudioFrame({
-        identity,
-        sequence,
-        pcm,
-        sha256: this.dependencies.sha256,
+    this.audioChain = this.audioChain
+      .then(async () => {
+        if (
+          socket !== this.socket ||
+          socket.readyState !== 1 ||
+          generation !== this.attemptGeneration
+        )
+          return;
+        const frame = await encodeClientAudioFrame({
+          identity,
+          sequence,
+          pcm,
+          sha256: this.dependencies.sha256,
+        });
+        if (
+          socket !== this.socket ||
+          socket.readyState !== 1 ||
+          generation !== this.attemptGeneration ||
+          !this.shouldRun ||
+          !this.foreground ||
+          this.identity === null ||
+          !sameIdentity(this.identity, identity)
+        )
+          return;
+        socket.send(frame);
+      })
+      .catch(() => {
+        if (socket === this.socket && generation === this.attemptGeneration && this.shouldRun) {
+          this.transportFailure("The microphone audio could not be sent.");
+        }
       });
-      if (
-        socket !== this.socket ||
-        socket.readyState !== 1 ||
-        generation !== this.attemptGeneration ||
-        !this.shouldRun ||
-        !this.foreground ||
-        this.identity === null ||
-        !sameIdentity(this.identity, identity)
-      ) return;
-      socket.send(frame);
-    }).catch(() => {
-      if (
-        socket === this.socket &&
-        generation === this.attemptGeneration &&
-        this.shouldRun
-      ) {
-        this.transportFailure("The microphone audio could not be sent.");
-      }
-    });
   };
 
   interrupt = (playedAudioMs: number): void => {
@@ -380,7 +398,10 @@ export class SarahVoiceClient {
       this.socket = socket;
       socket.onopen = () => {
         if (socket !== this.socket) return;
-        this.sendControl({ _tag: "session_hello", disclosureRef: DISCLOSURE_REF });
+        this.sendControl({
+          _tag: "session_hello",
+          disclosureRef: DISCLOSURE_REF,
+        });
         this.update({
           ...this.snapshotValue,
           phase: "connecting",
@@ -412,19 +433,23 @@ export class SarahVoiceClient {
           });
           return;
         }
-        this.update({ ...this.snapshotValue, phase: "reconnecting", message: null });
-        this.reconnectTimer = this.dependencies.setTimeout(() => {
-          this.reconnectTimer = null;
-          void this.connect(reconnectAttempt + 1);
-        }, reconnectAttempt === 0 ? 500 : 1_500);
+        this.update({
+          ...this.snapshotValue,
+          phase: "reconnecting",
+          message: null,
+        });
+        this.reconnectTimer = this.dependencies.setTimeout(
+          () => {
+            this.reconnectTimer = null;
+            void this.connect(reconnectAttempt + 1);
+          },
+          reconnectAttempt === 0 ? 500 : 1_500,
+        );
       };
     } catch (error: unknown) {
       if (generation !== this.attemptGeneration) return;
       const failure =
-        typeof error === "object" &&
-        error !== null &&
-        "message" in error &&
-        "retryable" in error
+        typeof error === "object" && error !== null && "message" in error && "retryable" in error
           ? (error as Readonly<{ message: string; retryable: boolean }>)
           : {
               message: error instanceof Error ? error.message : "Sarah voice is unavailable.",
@@ -440,12 +465,14 @@ export class SarahVoiceClient {
     }
   }
 
-  private async requestSession(): Promise<Readonly<{
-    identity: VoiceIdentity;
-    gatewayUrl: string;
-    ticket: string;
-    reservedCreditMsat: number;
-  }>> {
+  private async requestSession(): Promise<
+    Readonly<{
+      identity: VoiceIdentity;
+      gatewayUrl: string;
+      ticket: string;
+      reservedCreditMsat: number;
+    }>
+  > {
     const baseUrl = safeBaseUrl(this.dependencies.baseUrl);
     const deviceRef = `omega-mobile-${this.dependencies.publicKeyHex.slice(0, 24)}`;
     const stored = await this.dependencies.vault.read(
@@ -476,6 +503,37 @@ export class SarahVoiceClient {
       if (bearer._tag === "Success") return bearer.value;
       if (bearer.status !== 401) throw bearer.failure;
       await this.dependencies.vault.clear();
+    } else if (normalSession.status === 401) {
+      const recoverDeviceLink = this.dependencies.recoverDeviceLink;
+      if (recoverDeviceLink === undefined) {
+        throw {
+          message: "Sign in to OpenAgents to use Sarah voice.",
+          retryable: false,
+        };
+      }
+      const recovery = await recoverDeviceLink({
+        baseUrl,
+        deviceRef,
+        publicKeyHex: this.dependencies.publicKeyHex,
+        signer: this.dependencies.signer,
+        fetch: this.dependencies.fetch,
+        sha256: this.dependencies.sha256,
+        now: this.dependencies.now,
+      });
+      if (recovery._tag === "Failure") throw recovery.failure;
+
+      const linkedSession = await this.requestNormalOpenAgentsSession(baseUrl);
+      if (linkedSession._tag === "Failure") throw linkedSession.failure;
+      await this.dependencies.vault.write(linkedSession.value);
+      const bearer = await this.createSession({
+        baseUrl,
+        deviceRef,
+        ownerRef: linkedSession.value.ownerRef,
+        authorization: `Bearer ${linkedSession.value.accessToken}`,
+      });
+      if (bearer._tag === "Success") return bearer.value;
+      if (bearer.status === 401) await this.dependencies.vault.clear();
+      throw bearer.failure;
     } else if (normalSession.status === 429) {
       throw normalSession.failure;
     }
@@ -496,9 +554,7 @@ export class SarahVoiceClient {
       const error = await readError(challengeResponse);
       throw statusMessage(challengeResponse.status, error);
     }
-    const challenge = decodeSarahVoiceNostrChallengeResponse(
-      await challengeResponse.json(),
-    );
+    const challenge = decodeSarahVoiceNostrChallengeResponse(await challengeResponse.json());
     const result = await this.createSession({
       baseUrl,
       deviceRef,
@@ -518,9 +574,7 @@ export class SarahVoiceClient {
     return result.value;
   }
 
-  private async requestNormalOpenAgentsSession(
-    baseUrl: string,
-  ): Promise<
+  private async requestNormalOpenAgentsSession(baseUrl: string): Promise<
     | Readonly<{ _tag: "Success"; value: SarahVoiceStoredSession }>
     | Readonly<{
         _tag: "Failure";
@@ -556,10 +610,9 @@ export class SarahVoiceClient {
         failure: statusMessage(response.status, error),
       };
     }
-    const session = S.decodeUnknownSync(OmegaNostrSessionResponseSchema)(
-      await response.json(),
-      { onExcessProperty: "preserve" },
-    );
+    const session = S.decodeUnknownSync(OmegaNostrSessionResponseSchema)(await response.json(), {
+      onExcessProperty: "preserve",
+    });
     return {
       _tag: "Success",
       value: {
@@ -572,13 +625,15 @@ export class SarahVoiceClient {
     };
   }
 
-  private async createSession(input: Readonly<{
-    baseUrl: string;
-    deviceRef: string;
-    ownerRef: string;
-    authorization?: string;
-    challenge?: string;
-  }>): Promise<
+  private async createSession(
+    input: Readonly<{
+      baseUrl: string;
+      deviceRef: string;
+      ownerRef: string;
+      authorization?: string;
+      challenge?: string;
+    }>,
+  ): Promise<
     | Readonly<{
         _tag: "Success";
         value: Readonly<{
@@ -632,18 +687,15 @@ export class SarahVoiceClient {
       });
       authorization = encodeNip98Authorization(signed);
     }
-    const response = await this.dependencies.fetch(
-      `${input.baseUrl}${SARAH_VOICE_SESSION_PATH}`,
-      {
-        method: "POST",
-        headers: {
-          authorization: authorization ?? "",
-          "content-type": "application/json",
-          "x-openagents-omega-device-ref": input.deviceRef,
-        },
-        body,
+    const response = await this.dependencies.fetch(`${input.baseUrl}${SARAH_VOICE_SESSION_PATH}`, {
+      method: "POST",
+      headers: {
+        authorization: authorization ?? "",
+        "content-type": "application/json",
+        "x-openagents-omega-device-ref": input.deviceRef,
       },
-    );
+      body,
+    });
     if (!response.ok) {
       const error = await readError(response);
       return {
@@ -684,9 +736,7 @@ export class SarahVoiceClient {
     };
   }
 
-  private sendControl(
-    frame: ClientControlPayload,
-  ): void {
+  private sendControl(frame: ClientControlPayload): void {
     if (this.socket?.readyState !== 1 || this.identity === null) return;
     this.socket.send(
       JSON.stringify({
@@ -729,16 +779,13 @@ export class SarahVoiceClient {
         !this.foreground ||
         this.identity === null ||
         !sameIdentity(this.identity, identity)
-      ) return;
+      )
+        return;
       this.serverAudioSequence += 1;
       this.currentProviderItemRef = audio.itemRef;
       for (const listener of this.audioListeners) listener(audio);
     } catch {
-      if (
-        socket === this.socket &&
-        generation === this.attemptGeneration &&
-        this.shouldRun
-      ) {
+      if (socket === this.socket && generation === this.attemptGeneration && this.shouldRun) {
         this.transportFailure("Sarah voice returned an invalid transport frame.");
       }
     }
@@ -794,10 +841,7 @@ export class SarahVoiceClient {
       case "tool_proposal":
       case "tool_execute":
         this.shouldRun = false;
-        this.transportFailure(
-          "Mobile Sarah voice refused an unsupported device action.",
-          false,
-        );
+        this.transportFailure("Mobile Sarah voice refused an unsupported device action.", false);
         return;
       case "error":
         if (control.code === "credit_limit") {

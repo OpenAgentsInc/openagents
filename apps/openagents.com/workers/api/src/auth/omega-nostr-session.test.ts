@@ -138,6 +138,63 @@ describe('Omega background Nostr session', () => {
     )
   })
 
+  test('mints the normal session for an existing linked key while self-provisioning is off', async () => {
+    const secret = generateSecretKey()
+    const pubkey = getPublicKey(secret)
+    const store = makeMemoryAuthKvStore()
+    const canonical = {
+      userId: 'github:canonical-owner',
+      email: 'owner@example.com',
+    }
+    const handler = makeOmegaNostrSessionHandler({
+      authStore: () => store,
+      expectedOwnerPubkey: () => undefined,
+      now: () => now,
+      resolveLinked: async (_env: unknown, candidate: string) =>
+        candidate === pubkey ? canonical : undefined,
+      resolveOwner: async () => undefined,
+    })
+    const response = await handler(
+      new Request(url, {
+        headers: { authorization: authorization(secret) },
+        method: 'POST',
+      }),
+      {},
+    )
+
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as {
+      accessToken: string
+      user: { userId: string }
+    }
+    expect(body.accessToken).toMatch(/^oa_omega_/u)
+    expect(body.user.userId).toBe(canonical.userId)
+    await expect(
+      readOmegaNostrSession(store, body.accessToken),
+    ).resolves.toEqual(canonical)
+  })
+
+  test('rejects an unlinked key while self-provisioning is off', async () => {
+    const secret = generateSecretKey()
+    const handler = makeOmegaNostrSessionHandler({
+      authStore: () => makeMemoryAuthKvStore(),
+      expectedOwnerPubkey: () => undefined,
+      now: () => now,
+      resolveLinked: async () => undefined,
+      resolveOwner: async () => undefined,
+    })
+    const response = await handler(
+      new Request(url, {
+        headers: { authorization: authorization(secret) },
+        method: 'POST',
+      }),
+      {},
+    )
+
+    expect(response.status).toBe(401)
+    expect(await response.json()).toEqual({ error: 'unauthorized' })
+  })
+
   test('refuses an owner key when its canonical account link conflicts', async () => {
     const secret = generateSecretKey()
     const store = makeMemoryAuthKvStore()
