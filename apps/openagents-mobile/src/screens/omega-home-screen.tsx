@@ -14,6 +14,7 @@ import {
   type OmegaMirrorThread,
 } from "../workroom/omega-device-bridge-client";
 import { openExpoIssue31DeviceIdentity } from "../workroom/issue31-device-key-vault";
+import { startOmegaBridgeSession } from "./omega-bridge-session";
 import {
   connectionToneOf,
   OmegaHomeView,
@@ -171,47 +172,21 @@ export const OmegaHomeScreen = ({
     return () => clearInterval(tick);
   }, []);
 
-  useEffect(() => {
-    let active = true;
-    let openedClient: OmegaDeviceBridgeClient | null = null;
-    let unsubscribe: (() => void) | null = null;
-
-    void (async () => {
-      const resolved = bridge ?? (await openDefaultBridge().catch(() => null));
-      if (resolved === null) {
-        if (active) setNotice("The Omega device bridge is unavailable.");
-        return;
-      }
-      if (!active) return;
-      openedClient = resolved;
-      setClient(resolved);
-      unsubscribe = resolved.subscribe((next) => {
-        setState(next);
-        setObservedAt(Date.now());
-      });
-      const pairing = await developmentPairing();
-      await Effect.runPromise(
-        resolved.connect({ announcements: [], pairing, manualMagicDns: null }).pipe(
-          Effect.catch((error) =>
-            Effect.sync(() => {
-              if (!active) return;
-              if (error.reason !== "all_endpoints_failed" || resolved.state().paired) {
-                setNotice(error.message);
-              }
-            }),
-          ),
-        ),
-      );
-    })();
-
-    return () => {
-      active = false;
-      unsubscribe?.();
-      if (bridge === undefined && openedClient !== null) {
-        void Effect.runPromise(openedClient.close()).catch(() => undefined);
-      }
-    };
-  }, [bridge]);
+  useEffect(
+    () =>
+      startOmegaBridgeSession({
+        bridge,
+        openBridge: openDefaultBridge,
+        pairing: developmentPairing,
+        onClient: setClient,
+        onState: (next) => {
+          setState(next);
+          setObservedAt(Date.now());
+        },
+        onNotice: setNotice,
+      }),
+    [bridge],
+  );
 
   const selectedThread = useMemo<OmegaMirrorThread | null>(() => {
     if (selectedThreadRef === null) return null;
