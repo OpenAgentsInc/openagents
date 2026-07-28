@@ -8,6 +8,8 @@ OpenAgents, following the evidence convention used by the
 [Claude Code](./2026-07-10-claude-code-teardown.md),
 [Codex](./2026-07-10-codex-agent-runtime-teardown.md), and
 [OpenCode V2](./2026-07-10-opencode-v2-architecture-teardown.md) teardowns.
+Section 1.2 adds a source audit of conversation continuity at the 2026-07-27
+public source drop.
 
 This document examines the open Rust CLI, TUI, ACP agent runtime, shared leader,
 session persistence, tools, subagents, worktrees, permissions, sandbox,
@@ -28,12 +30,13 @@ Evidence labels:
 - **[inferred]** — concluded from several observations
 - **[limitation]** — a boundary on what this public snapshot proves
 
-The repository is a one-commit export periodically synchronized from an
-internal monorepo. It includes the full first-party source closure needed to
-build Grok Build, but no public CI configuration, release workflow, historical
-development sequence, or checked-in PTY performance baselines. External
-contributions are explicitly not accepted. Those boundaries matter when
-distinguishing source-visible design from release-proven behavior.
+The original audited snapshot is a one-commit export from an internal
+monorepo. Later public snapshots are periodic source drops. They include the
+first-party source closure needed to build Grok Build, but no public CI
+configuration, release workflow, internal development sequence, or checked-in
+PTY performance baselines. External contributions are explicitly not
+accepted. Those boundaries matter when distinguishing source-visible design
+from release-proven behavior.
 
 ## TL.DR
 
@@ -182,6 +185,209 @@ documentation, and encoded tests. Confidence is lower for:
 - production retention and enterprise policy configuration. And
 - performance claims whose platform baselines are absent from the export.
 
+### 1.2 2026-07-28 conversation continuity audit
+
+This follow-up uses public commit
+[`02d9359435d0e9c20a20945679389cdce441e431`](https://github.com/xai-org/grok-build/tree/02d9359435d0e9c20a20945679389cdce441e431),
+committed 2026-07-27. The clean local checkout matched `origin/main`. The
+public repository now has 13 source-drop commits and names upstream revision
+`1adcd1f477870e4a97bacbd6be78c8a3bfbac46d`. The original and current public
+roots have no Git merge base. Thus, this audit compares trees. It does not
+treat the public commits as the internal development history.
+The pinned current tree is
+`493a30bdd32ee9ff0dae19c132839d5f831e61ed`.
+
+The latest source has three different continuity mechanisms. They must not be
+described as one universal resume feature.
+
+| Mechanism | Source-visible input | Result | Public proof boundary |
+| --- | --- | --- | --- |
+| Native Grok resume | Grok session ID, title, or most-recent selection | Loads the existing Grok session | Full local load path is visible |
+| Grok cross-host import | Grok update events and selected Grok state columns | Recreates a Grok session on another host | The ACP extension is visible, but the external mirror is not |
+| Foreign-agent handoff | Claude Code or Codex session metadata plus a native ID | Starts a new Grok session and sends a resume skill prompt | The resume skill bodies are absent |
+
+#### Native Grok resume
+
+[public/source] Native Grok sessions use `/resume`, `--resume`, or
+`--continue`. ACP clients use `session/load`. Native resume restores Grok's
+own `updates.jsonl` state. Headless `--resume` refuses an absent session.
+`--continue` selects the latest session for the current directory. A user can
+fork a native session into a new ID, and can resume a native session in a new
+worktree.
+
+[source] This native path is not the foreign-agent path. The session picker
+loads a native record directly. A foreign row instead creates a new Grok
+session and sends a prompt. The foreign path also refuses the
+"resume in worktree" action.
+
+Primary evidence:
+
+- `crates/codegen/xai-grok-pager/docs/user-guide/17-sessions.md`
+- `crates/codegen/xai-grok-pager/src/app/dispatch/session/load.rs`
+- `crates/codegen/xai-grok-shell/src/session/fork.rs`
+
+#### Grok-to-Grok cross-host import
+
+[schema/source] The private ACP extensions `x.ai/session/state` and
+`x.ai/session/import` move Grok session state between hosts.
+`x.ai/session/state` reads selected metadata columns.
+`x.ai/session/import` accepts those columns and the ACP update stream. It
+requires a UUID and a valid summary. It rewrites host-specific summary fields,
+removes Git and request fields, writes temporary files, and writes
+`summary.json` last as the commit marker. A retry can replace an incomplete
+import. An existing complete local session wins and is not changed.
+
+[limitation] This import is a Grok schema transfer. It is not a Claude, Codex,
+Cursor, ACP-generic, or arbitrary transcript converter. The request does not
+carry `chat_history.jsonl`, rewind points, feedback, compaction checkpoints,
+child-session records, credentials, or the original tool environment. The
+public source does not show the external mirror service or its access,
+retention, conflict, deletion, and encryption rules.
+
+Primary evidence:
+
+- `crates/codegen/xai-grok-shell/src/extensions/session_state.rs`
+- `crates/codegen/xai-grok-shell/src/agent/mvp_agent/acp_agent.rs`
+- `crates/codegen/xai-grok-shell/changelogs/0.2.107.md`
+
+#### Foreign-agent discovery and handoff
+
+[source] The public Rust scanner defines Claude, Codex, and Cursor source
+types. The implementation is not equal for all three tools.
+
+| Tool | Public discovery at the pinned commit | Store and filters |
+| --- | --- | --- |
+| Claude Code | Implemented | `CLAUDE_CONFIG_DIR` or `~/.claude`, project JSONL, UUID file name, exact working directory, excludes sidechains |
+| Codex CLI and VS Code | Implemented | `CODEX_HOME` or `~/.codex`, state SQLite or rollout JSONL/Zstandard, exact working directory |
+| Codex Atlas and ChatGPT | Implemented in the full picker | State database or rollout metadata, excluded from the fast welcome hint |
+| Cursor desktop and CLI | Declared but not implemented | The scanner and recent-session callbacks return empty results |
+| Other agents | Not implemented | No public registry or generic transcript adapter exists |
+
+[source] The common scanner accepts sessions that are at most 30 days old. It
+returns at most 50 entries for each tool. It limits titles to 200 characters
+and accepts at most five minutes of future clock skew. It normalizes the
+requested working directory, requires a matching stored directory, orders
+results deterministically, and removes duplicate native IDs.
+
+[source/test] Claude discovery reads only bounded head and tail regions for
+metadata. A full Codex picker scan tries `state_N.sqlite` generations from 128
+down until it gets a nonempty result. The fast welcome probe uses only the
+highest named generation, then uses rollout files if that database is
+unusable. SQLite reads use a read-only, query-only transaction only when the
+database is on a local WAL-capable filesystem. Other reads use bounded rollout
+files. The capability layer canonicalizes approved roots, rejects symlink or
+reparse-point targets, uses no-follow file opens, and contains swap-race tests.
+The direct SQLite read can still update WAL shared-memory read marks, so it is
+not a byte-level no-write claim.
+
+Primary evidence:
+
+- `crates/codegen/xai-grok-workspace/src/foreign_sessions/mod.rs`
+- `crates/codegen/xai-grok-workspace/src/foreign_sessions/claude.rs`
+- `crates/codegen/xai-grok-workspace/src/foreign_sessions/codex/`
+- `crates/codegen/xai-grok-workspace/src/foreign_sessions/capability/`
+
+#### What happens after selection
+
+[source/test] Foreign discovery is metadata-only. A picker row contains the
+foreign native ID, title, directory, update time, optional branch, tool, and
+source. It does not contain the transcript. The pager enables a scanner only
+when the matching compatibility cell is on and a matching
+`resume-claude`, `resume-codex`, or `resume-cursor` skill file exists. A
+missing skill causes no foreign-session store read.
+
+The scan runs in a serialized blocking lane. A new request cancels its obsolete
+outer task and rejects stale results. A pristine welcome screen can show one
+resume hint for a session that is at most ten minutes old. The full session
+picker merges native and foreign metadata. Its default filter shows only Grok
+sessions, with a hint when external rows are hidden. Selection creates a new
+Grok session and sends one of these prompts:
+
+~~~text
+/resume-claude <native-id>
+/resume-codex <native-id>
+/resume-cursor <native-id>
+~~~
+
+The public source tree contains the skill names and the skill-file gate. It
+does not contain any of those three `SKILL.md` files. Thus, the source proves
+discovery, gating, selection, and prompt dispatch. It does not prove how a
+foreign transcript becomes model context. It also does not prove which
+messages, tool results, reasoning data, attachments, approvals, or system
+instructions survive the handoff. The picker also refuses worktree resume and
+deletion for a foreign row.
+
+Primary evidence:
+
+- `crates/codegen/xai-grok-pager/src/app/foreign_sessions.rs`
+- `crates/codegen/xai-grok-pager/src/app/dispatch/session/load.rs`
+- `crates/codegen/xai-grok-pager/src/app/dispatch/session/lifecycle.rs`
+- `crates/codegen/xai-grok-pager/src/app/dispatch/router.rs`
+
+#### Related features that are not foreign conversation resume
+
+[source] `/import-claude` imports selected Claude settings. These settings can
+include permission rules, environment values, MCP servers, hooks, skills, and
+rules. This command does not import a Claude conversation.
+
+[source] The task tool can resume a completed Grok subagent by its subagent ID.
+The source child must belong to the same parent session, must no longer be
+active, and must use the same subagent type. Grok copies the transcript and
+tool state into a new child. It does not copy all plan, mode, or signal state,
+and it refuses a transcript that is estimated to use more than 80 percent of
+the model context. This is internal child continuity, not a handoff from
+another harness.
+
+[source] ACP `session/load` reloads a Grok session. ACP compatibility alone
+does not make a Claude, Codex, Cursor, or arbitrary ACP session loadable.
+
+[source/limitation] The CLI remote-restore implementation in this source build
+returns an unavailable error. Cross-host continuity therefore needs an
+external caller for the private state/import extensions. The public source
+does not prove a turnkey CLI restore from another machine. The source build
+also disables the Grok web-chat mode, so it does not prove Grok web-chat
+conversation continuation.
+
+Primary evidence:
+
+- `crates/codegen/xai-grok-shell/src/claude_import.rs`
+- `crates/codegen/xai-grok-pager/src/views/import_claude_modal.rs`
+- `crates/common/xai-tool-types/src/task.rs`
+
+#### Documentation and proof gaps
+
+[limitation] The bundled tutorial says that all three resume skills continue a
+recent foreign session. The changelog also claims Claude, Codex, and Cursor
+session discovery. The configuration guide still says that all three session
+cells have no scanner consumer. At this commit, source shows a more narrow
+result: Claude and Codex metadata discovery are active, Cursor discovery is a
+stub, and the skill implementations are absent. The configuration guide is
+stale for Claude and Codex. The broader resume claims require installed-skill
+and real-session evidence.
+
+A complete foreign-resume proof still needs:
+
+1. exact skill bytes, version, and provenance.
+2. fixtures for each supported foreign store generation.
+3. a loss map for user, assistant, system, tool, reasoning, media, approval,
+   plan, and file-change records.
+4. identity, working-directory, repository, branch, and model provenance in
+   the new Grok session.
+5. duplicate, concurrent, partial, corrupt, moved-directory, and changed-repo
+   behavior.
+6. explicit user consent before transcript content enters a new model request.
+7. redaction and retention rules for sensitive foreign content. And
+8. an end-to-end test that continues the same task with observed context.
+
+[inferred] The useful product pattern is a capability-gated, bounded,
+read-only metadata index that makes handoff easy. The trust error is to call a
+model-mediated skill prompt a lossless session import. OpenAgents should use a
+typed `ExternalConversationAdapter` for each admitted source. The adapter
+should emit a normalized handoff artifact, a source digest, a loss report, and
+a new-thread provenance receipt. Unsupported fields must stay visible. The
+source session must remain unchanged. Imported authority, credentials, hidden
+instructions, and tool approvals must not become active by implication.
+
 ## 2. Architecture at a glance
 
 ~~~text
@@ -243,7 +449,8 @@ members divide the system into:
 
 [source] The repository explains that this is a periodically synchronized
 closure from a larger internal monorepo. CONTRIBUTING.md rejects unsolicited
-patches. There is no public development history beyond the export commit.
+patches. The original snapshot had one public commit. Later commits are
+source drops, not the internal development history.
 
 [inferred] The Apache-2.0 source makes load-bearing implementation inspectable,
 but “open source” here means transparency and local build rights, not an open
@@ -1076,6 +1283,7 @@ the actual baselines, gate commands, platform matrix, and receipts.
 | Rich-client seam | ACP plus shared leader and xAI extensions | Generated app-server used by TUI and rich clients | Bidirectional SDK stream but interactive owner still partly separate | One canonical generated protocol. ACP as adapter |
 | Managed runtime | Socket/lock leader with client caps, reconnect, update relaunch | App-server daemon and remote-control relay | Local engine plus evolving remote transports | Typed Pylon lifecycle and process generation |
 | Session state | Per-session ACP/chat JSONL, metadata, checkpoints, FTS5 | Rollout JSONL plus SQLite index/graph | Parent-linked JSONL plus sidecars | Append evidence plus indexed authority |
+| Foreign conversation handoff | Claude/Codex metadata discovery, new Grok session, missing resume-skill implementation. Cursor stub | Native Codex continuity only | Native Claude continuity only | Typed per-source adapter, loss map, provenance receipt |
 | File recovery | Prompt-indexed snapshots and conflict-preview rewind | No general file rewind found | File-history checkpoint rewind | Keep Grok/Claude recovery with receipts |
 | Worktrees | First-class create/apply/remove/resume. Git/jj modes | Not first-class lifecycle in audited snapshot | Outcome-aware lifecycle | Typed worktree ownership and delivery |
 | Subagents | Independent sessions, capability modes, process-local dashboard | Persisted graph and rich protocol/TUI | Sidechain histories, topology partly implicit | Persistent graph plus fast roster/control |
@@ -1212,6 +1420,24 @@ and receipt. A macOS no-op network restriction, Linux launch-time-only glob,
 missing bubblewrap, or unsupported policy must never render as one generic
 green shield.
 
+### 21.11 Make foreign conversation handoff typed and inspectable
+
+Use one versioned adapter for each admitted external session format. The
+adapter must read through a bounded capability and must leave the source
+unchanged. It must produce a new OpenAgents thread with:
+
+- exact source and adapter identities.
+- a source content digest.
+- source thread, repository, directory, branch, and model provenance.
+- normalized user, assistant, tool, plan, and attachment records.
+- an explicit loss and unsupported-field report.
+- the authority and credential attenuation result. And
+- a user-visible import receipt.
+
+Do not use a hidden model skill as the only parser or proof. A skill can help
+summarize an admitted handoff artifact. It cannot silently activate foreign
+system instructions, tools, credentials, approvals, hooks, or memory.
+
 ## 22. What OpenAgents should reject
 
 1. No sandbox-off default for autonomous coding.
@@ -1237,9 +1463,11 @@ green shield.
 18. No ambient local-socket trust without owner-only creation and client
     authentication.
 19. No claimed durable barrier that only flushes userspace buffers.
-20. No inherited host environment for MCP, hooks, or plugins without an
+20. No universal-resume claim from metadata discovery and a missing or opaque
+    model skill.
+21. No inherited host environment for MCP, hooks, or plugins without an
     explicit allowlist and secret broker.
-21. No million-line expansion without explicit scope law, dependency tests,
+22. No million-line expansion without explicit scope law, dependency tests,
     and deletion gates.
 
 ## 23. Recommended OpenAgents sequence
@@ -1304,6 +1532,20 @@ release boundary.
 
 ## Source basis
 
+- [Grok Build repository at the conversation-continuity follow-up commit](https://github.com/xai-org/grok-build/tree/02d9359435d0e9c20a20945679389cdce441e431)
+  [source]
+- [Foreign session scanners](https://github.com/xai-org/grok-build/tree/02d9359435d0e9c20a20945679389cdce441e431/crates/codegen/xai-grok-workspace/src/foreign_sessions)
+  [source] [test]
+- [Foreign session pager integration](https://github.com/xai-org/grok-build/blob/02d9359435d0e9c20a20945679389cdce441e431/crates/codegen/xai-grok-pager/src/app/foreign_sessions.rs)
+  [source] [test]
+- [Foreign session picker dispatch](https://github.com/xai-org/grok-build/blob/02d9359435d0e9c20a20945679389cdce441e431/crates/codegen/xai-grok-pager/src/app/dispatch/session/load.rs)
+  [source] [test]
+- [Cross-host Grok session state and import](https://github.com/xai-org/grok-build/blob/02d9359435d0e9c20a20945679389cdce441e431/crates/codegen/xai-grok-shell/src/extensions/session_state.rs)
+  [source] [schema] [test]
+- [Compatibility tutorial](https://github.com/xai-org/grok-build/blob/02d9359435d0e9c20a20945679389cdce441e431/crates/codegen/xai-grok-pager/docs/tutorial/01-coming-from-another-tool.md)
+  [public]
+- [Compatibility configuration guide](https://github.com/xai-org/grok-build/blob/02d9359435d0e9c20a20945679389cdce441e431/crates/codegen/xai-grok-pager/docs/user-guide/05-configuration.md)
+  [public] [limitation]
 - [Grok Build repository at the audited commit](https://github.com/xai-org/grok-build/tree/c1b5909ec707c069f1d21a93917af044e71da0d7)
   [source]
 - [Repository README](https://github.com/xai-org/grok-build/blob/c1b5909ec707c069f1d21a93917af044e71da0d7/README.md)

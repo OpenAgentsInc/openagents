@@ -45217,7 +45217,7 @@
     },
     {
       "path": "docs/teardowns/2026-07-15-grok-build-teardown.md",
-      "sha256": "355287244597eca66616481e1c2cbfaa59ef9a6a53d3f6ff36a68dcfa8f69b44",
+      "sha256": "c214cb85a6aa68609608df9f00e0d08ba524a77ffd31308f53ac3586caa8f1f3",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
