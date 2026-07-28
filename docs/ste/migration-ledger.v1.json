@@ -32615,6 +32615,19 @@
       ]
     },
     {
+      "path": "docs/mobile/2026-07-28-openagents-mobile-build-127-device-link-ota-receipt.md",
+      "ste_issue": 9,
+      "ste_mode": "source-data",
+      "ste_glossary_revision": "openagents-ste-glossary-v1",
+      "ste_status": "source-data",
+      "ste_reviewer": null,
+      "ste_reviewed_at": null,
+      "owner": "OpenAgents documentation",
+      "risk": "source-data",
+      "source": "Immutable historical or evidence source data",
+      "replacement": null
+    },
+    {
       "path": "docs/mobile/2026-07-28-openagents-mobile-build-127-sarah-voice-preflight-receipt.md",
       "ste_issue": 9,
       "ste_mode": "source-data",
