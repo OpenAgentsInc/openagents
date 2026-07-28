@@ -50,7 +50,7 @@ Omega should instead:
 - consume standard ACP first and put every `_goose/unstable/*` method behind an
   optional, versioned Goose capability adapter.
 - retain Goose's own home, credentials, sessions, provider configuration, and
-  extension state. Omega projects and discloses the external work; it does not
+  extension state. Omega projects and discloses the external work. It does not
   become authority over Goose's state by copying it.
 - keep Omega's typed executor disclosure, queue/steer rules, audience
   projection, and explicit run authority around the attachment.
@@ -92,10 +92,10 @@ fast-forwarded to their current `origin/main` tips before this audit.
 
 | Artifact | Audited identity | Relevance |
 | --- | --- | --- |
-| [Goose](https://github.com/aaif-goose/goose/tree/021b0db8dbee8d6c7e9ffbab580a4143598a3560) | `021b0db8dbee8d6c7e9ffbab580a4143598a3560`; workspace `1.44.0`; Rust `1.94.1`; Apache-2.0 | GDK source, GRC, ACP, MCP, providers, packages |
-| [Mesh LLM](https://github.com/Mesh-LLM/mesh-llm/tree/d91d62b72f320f9c433ab0e51c397a3c7c8ba485) | `d91d62b72f320f9c433ab0e51c397a3c7c8ba485`; workspace `0.72.1`; MIT OR Apache-2.0 | Peer inference, Goose launcher, OpenAI-compatible lane |
+| [Goose](https://github.com/aaif-goose/goose/tree/021b0db8dbee8d6c7e9ffbab580a4143598a3560) | `021b0db8dbee8d6c7e9ffbab580a4143598a3560`, workspace `1.44.0`, Rust `1.94.1`, Apache-2.0 | GDK source, GRC, ACP, MCP, providers, packages |
+| [Mesh LLM](https://github.com/Mesh-LLM/mesh-llm/tree/d91d62b72f320f9c433ab0e51c397a3c7c8ba485) | `d91d62b72f320f9c433ab0e51c397a3c7c8ba485`, workspace `0.72.1`, MIT OR Apache-2.0 | Peer inference, Goose launcher, OpenAI-compatible lane |
 | [Omega](https://github.com/OpenAgentsInc/omega/tree/5230c50d003b6c26ccab1da40e8f167a6311a841) | `5230c50d003b6c26ccab1da40e8f167a6311a841`, current `origin/main` | Native loop, ACP client, router, disclosure, model provider, authority |
-| OpenAgents | Research checkout `51b36e68594e4ec6b7284768ca7bb2cb07655338`; delivery base `9b82c7ecd2380bbe9b10921b198a86dbc6e000d7` | Product decisions and prior teardowns |
+| OpenAgents | Research checkout `51b36e68594e4ec6b7284768ca7bb2cb07655338`, delivery base `9b82c7ecd2380bbe9b10921b198a86dbc6e000d7` | Product decisions and prior teardowns |
 | [Spiral GDK announcement](https://spiralxyz.substack.com/p/spiral-x-goose-the-best-is-yet-to) | Published 2026-07-07 by Spiral lead Steve Lee | Official GDK/GRC intent and organizational change |
 
 The OpenAgents worktree already contained unrelated uncommitted application,
@@ -162,7 +162,7 @@ be built on it. The current repository confirms that distinction. [public]
 There is no separate `gdk` repository in the audited project set. GDK is the
 program and intended architecture around parts that currently live in the
 `aaif-goose/goose` monorepo. The closest package named as GDK is the Maven
-coordinate `io.github.aaif-goose:gdk`; the primary Rust package is still
+coordinate `io.github.aaif-goose:gdk`. The primary Rust package is still
 `goose-sdk`, and the current TypeScript package with the broadest client API is
 also named `@aaif/goose-sdk`. [source]
 
@@ -174,17 +174,17 @@ documentation use **Agent Client Protocol (ACP)**. [source]
 
 | Artifact | What it is now | Maturity at the pin | Omega disposition |
 | --- | --- | --- | --- |
-| `crates/goose` | Full internal Goose engine: agent loop, sessions, context, MCP, permissions, providers, recipes, schedules, hooks, security | Production core inside monorepo; workspace version `1.44.0` | Do not link or vendor |
-| `crates/goose-sdk` default feature set | Re-export of Goose ACP custom request and notification types | Source `0.1.0-alpha.5`; registry `0.1.0-alpha.1` | Reference schemas only |
-| `crates/goose-sdk --features uniffi` | In-process provider construction and completion API for Rust/Python/Kotlin | Alpha; provider-focused | Do not adopt as Omega engine |
-| `crates/goose-sdk-types` | Large generated/shared schema for Goose-specific ACP methods | Alpha; 114 request structs | Optional adapter reference |
+| `crates/goose` | Full internal Goose engine: agent loop, sessions, context, MCP, permissions, providers, recipes, schedules, hooks, security | Production core inside monorepo, workspace version `1.44.0` | Do not link or vendor |
+| `crates/goose-sdk` default feature set | Re-export of Goose ACP custom request and notification types | Source `0.1.0-alpha.5`, registry `0.1.0-alpha.1` | Reference schemas only |
+| `crates/goose-sdk --features uniffi` | In-process provider construction and completion API for Rust/Python/Kotlin | Alpha, provider-focused | Do not adopt as Omega engine |
+| `crates/goose-sdk-types` | Large generated/shared schema for Goose-specific ACP methods | Alpha, 114 request structs | Optional adapter reference |
 | `crates/goose-provider-types` | Provider messages, model and usage contracts | Alpha release family | Do not duplicate Omega's model plane |
 | `crates/goose-providers` | Native and declarative provider implementations | Alpha release family, used internally | Watch as a donor, not dependency |
-| `ui/sdk` / `@aaif/goose-sdk` | ACP TypeScript client, generated Goose extensions, HTTP stream, binary resolver | Published `0.20.2`; used by GRC clients | Do not add Node/TS sidecar to Omega |
+| `ui/sdk` / `@aaif/goose-sdk` | ACP TypeScript client, generated Goose extensions, HTTP stream, binary resolver | Published `0.20.2`, used by GRC clients | Do not add Node/TS sidecar to Omega |
 | `ui/goose-binary/*` | Platform packages carrying matching `goose` binaries | Published `0.20.2` for queried platforms | Useful release reference only |
 | `ui/text` / `@aaif/goose` | TypeScript terminal client that starts `goose acp` | Published `0.20.1`, pins SDK `0.20.2` in source | GRC and ACP reference |
 | `ui/desktop` | Electron client that starts authenticated `goose serve` and uses the workspace SDK | Active GRC surface | Reference transport/security behavior |
-| `crates/goose-cli` | Native CLI, scripting commands, `goose acp`, `goose serve`; links core directly | Active GRC surface | External executable, not library |
+| `crates/goose-cli` | Native CLI, scripting commands, `goose acp`, and `goose serve`. It links core directly | Active GRC surface | External executable, not library |
 | Mesh LLM | Separate P2P inference system and OpenAI-compatible API | Active, explicitly early-stage in Goose blog | Separate inference adapter |
 
 The table reveals the central adoption trap: saying "use GDK" is not precise
@@ -227,7 +227,7 @@ automatic routing.
 `goose serve` exposes ACP over Streamable HTTP and WebSocket. It refuses to
 start without `GOOSE_SERVER__SECRET_KEY` unless the caller explicitly supplies
 `--dangerously-unauthenticated`. The server accepts the secret in
-`X-Secret-Key`; WebSocket clients can use a query token because browser
+`X-Secret-Key`. WebSocket clients can use a query token because browser
 WebSocket APIs cannot set custom headers. CORS and WebSocket Origin rules are
 loopback-oriented by default, and remote deployment documentation recommends
 TLS and certificate fingerprint pinning. [source]
@@ -288,7 +288,7 @@ families include:
 
 Almost all of those methods are explicitly named
 `_goose/unstable/...`. The generated Rust types, TypeScript types, Zod
-validators, and client methods reduce transcription errors; the namespace
+validators, and client methods reduce transcription errors. The namespace
 still declares that the contract can move. [schema]
 
 The TypeScript SDK and matching binary packages have a compatibility smoke
@@ -359,7 +359,7 @@ surface are:
 
 The internal `crates/goose` library already contains most of those systems.
 That does not make them a stable GDK interface. The Goose CLI imports the
-internal core directly; GRC therefore does not yet prove that an independent
+internal core directly. GRC therefore does not yet prove that an independent
 Rust application can consume the complete agent through the public SDK
 boundary. [source] [inferred]
 
@@ -370,14 +370,14 @@ availability.
 
 | Registry or artifact | Observed state on 2026-07-27 | Consequence |
 | --- | --- | --- |
-| Cargo `goose-sdk` | registry search `0.1.0-alpha.1`; source `0.1.0-alpha.5` | published Rust API trails source |
-| Cargo `goose-sdk-types` | registry search `0.1.0-alpha.1`; source `0.1.0-alpha.5` | matched alpha family required |
+| Cargo `goose-sdk` | registry search `0.1.0-alpha.1`, source `0.1.0-alpha.5` | published Rust API trails source |
+| Cargo `goose-sdk-types` | registry search `0.1.0-alpha.1`, source `0.1.0-alpha.5` | matched alpha family required |
 | Cargo `goose-providers` / `goose-provider-types` | registry search `0.1.0-alpha.1` | explicitly early dependency surface |
-| [PyPI `goose-sdk`](https://pypi.org/project/goose-sdk/) | `0.1.0a1`, released 2026-07-02; one macOS arm64 wheel; no source distribution | not a portable Python SDK release yet |
+| [PyPI `goose-sdk`](https://pypi.org/project/goose-sdk/) | `0.1.0a1`, released 2026-07-02. One macOS arm64 wheel. No source distribution | not a portable Python SDK release yet |
 | npm `@aaif/goose-sdk` | `0.20.2` | most current external client package |
 | npm `@aaif/goose` | `0.20.1` | TUI version differs from SDK/binaries |
 | npm native binaries | queried Darwin arm64, Linux x64, Windows x64 at `0.20.2` | matched binary distribution exists |
-| Maven `io.github.aaif-goose:gdk` | build/publish project exists; Maven Central search returned no artifact | packaging path exists; public availability was not observed |
+| Maven `io.github.aaif-goose:gdk` | build/publish project exists. Maven Central search returned no artifact | packaging path exists. Public availability was not observed |
 | Goose workspace/app | `1.44.0` | product version is a separate sequence |
 
 The Rust crate uses `cdylib`, `staticlib`, and `rlib` outputs and requires Rust
@@ -413,8 +413,8 @@ The repository currently demonstrates three implementation patterns:
 | GRC surface | Engine connection | What it proves |
 | --- | --- | --- |
 | Native CLI | Links the internal `goose` crate in process | The monorepo core can support a native shell and scripting |
-| TypeScript TUI | Uses `@aaif/goose-sdk`; spawns `goose acp`; can resolve a matching npm binary | The daemon/client package boundary works and can be compatibility-pinned |
-| Electron Desktop | Uses workspace `@aaif/goose-sdk`; launches authenticated `goose serve`; uses WebSocket and backend leases | A rich desktop can be a thin client over the Goose engine |
+| TypeScript TUI | Uses `@aaif/goose-sdk`, spawns `goose acp`, and can resolve a matching npm binary | The daemon/client package boundary works and can be compatibility-pinned |
+| Electron Desktop | Uses workspace `@aaif/goose-sdk`, launches authenticated `goose serve`, and uses WebSocket and backend leases | A rich desktop can be a thin client over the Goose engine |
 
 This is valuable evidence for one engine with multiple projections. It also
 shows the refactor is incomplete:
@@ -596,7 +596,7 @@ that honestly says Goose ran.
 The Buzz teardown supplies a useful independent Goose integration:
 `buzz-acp` defaults to a Goose subprocess and can substitute other ACP agents.
 Its turn accounting begins only when the agent emits Goose's
-`_goose/unstable/session/update` notification with a `usage_update`; agents
+`_goose/unstable/session/update` notification with a `usage_update`. Agents
 without that extension produce no metric.
 
 That is direct evidence for two conclusions in this report:
@@ -659,12 +659,12 @@ loop.
 | GDK/GRC capability | Omega already has | Fit | Decision |
 | --- | --- | --- | --- |
 | ACP agent daemon | External ACP agent-server path | High | Integrate Goose as named peer |
-| ACP client SDK | Native Rust ACP client at a different crate generation | Medium | Keep native client; conformance-test Goose |
+| ACP client SDK | Native Rust ACP client at a different crate generation | Medium | Keep the native client, and conformance-test Goose |
 | Full embedded loop | Native Omega loop and router | Low, duplicative | Do not adopt now |
 | Provider abstraction | Native provider traits and OpenAI-compatible provider | Low, duplicative | Do not add parallel plane |
 | Context management | Native thread/model context behavior | Potential donor | Watch published modular API |
 | MCP tool system | Native tools plus MCP/ACP infrastructure | Medium | Interoperate at protocol edge |
-| Goose sessions | Omega threads and external ACP sessions | Medium | Preserve Goose-native session identity; project loss explicitly |
+| Goose sessions | Omega threads and external ACP sessions | Medium | Preserve Goose-native session identity, and project loss explicitly |
 | Recipes/schedules | Full Auto and admitted work direction | Conceptual donor | Do not adopt timer/JSON authority |
 | Goose permissions | Omega authority and external-agent boundaries | Conflict if treated as sufficient | Treat as peer-local policy, not Omega receipt |
 | GRC desktop | Omega native primary surface | Direct conflict | Do not fork or embed |
@@ -747,13 +747,14 @@ For a Goose external executor:
 - Goose owns its model, tools, extensions, loop, and local permission mode.
 - Omega owns the decision to attach or route to Goose and the disclosure of
   that fact.
-- an ACP permission request can ask a human; it does not prove an OS sandbox.
+- an ACP permission request can ask a human. It does not prove an OS sandbox.
 - Goose tool completion is evidence from the peer, not an Omega Full Auto run
   receipt.
 - an external ACP thread must never be labeled `NativeLoop` or `EngineLane`.
 - a model-initiated route must not acquire Full Auto authority through Goose.
-- client-supplied MCP servers must remain capability-bounded; handing Goose all
-  Omega tools would blur the boundary the adapter is meant to preserve.
+- client-supplied MCP servers must remain capability-bounded. If Goose receives
+  all Omega tools, this would blur the boundary the adapter is meant to
+  preserve.
 
 For Mesh:
 
@@ -846,8 +847,8 @@ test-only profile:
 6. run a bounded coding fixture.
 7. stop only a Mesh process Omega itself started.
 
-Do not use `mesh-llm goose` for this experiment; that tests Goose over Mesh,
-not Omega over Mesh, and it mutates Goose configuration.
+Do not use `mesh-llm goose` for this experiment. That command tests Goose over
+Mesh, not Omega over Mesh, and it mutates Goose configuration.
 
 ### Phase 5 — Re-evaluate embedded GDK
 

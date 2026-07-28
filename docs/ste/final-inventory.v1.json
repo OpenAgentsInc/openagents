@@ -45699,7 +45699,7 @@
     },
     {
       "path": "docs/teardowns/2026-07-27-goose-gdk-omega-teardown.md",
-      "sha256": "bc55b260f18826334c7f573fdc2e4d60e9e29d63a5b6ce1cb163fb2624e94499",
+      "sha256": "bececceab3c770b544663f006fd2edd86113287d0031b5e0b46903ef91f7477e",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
