@@ -14,9 +14,6 @@
     "publish:ota": "bash ../../apps/oa-updates/scripts/publish-ota.sh"
   },
   "dependencies": {
-    "@effect-native/core": "workspace:*",
-    "@effect-native/render-rn": "workspace:*",
-    "@effect-native/tokens": "workspace:*",
     "@expo/ui": "57.0.4",
     "@noble/hashes": "1.7.1",
     "@openagentsinc/agent-runtime-schema": "0.2.1-rc.4",

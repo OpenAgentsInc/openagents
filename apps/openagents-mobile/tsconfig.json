@@ -8,15 +8,14 @@
     "noUncheckedIndexedAccess": true,
     "strict": true,
     "types": [
-      "node", "vite-plus-matchers"
+      "node",
+      "vite-plus-matchers"
     ]
   },
   "include": [
     "index.tsx",
     "src/**/*.ts",
     "src/**/*.tsx",
-    "tests/**/*.ts",
-    ".expo/types/**/*.ts",
-    "expo-env.d.ts"
+    "tests/**/*.ts"
   ]
 }
