@@ -39,10 +39,7 @@ const SARAH_URL = 'https://sarah.openagents.com'
 // ---------------------------------------------------------------------------
 // Navbar
 // ---------------------------------------------------------------------------
-const NAV_LINKS = [
-  { text: 'For business', href: '/business' },
-  { text: 'Forum', href: '/forum' },
-]
+const NAV_LINKS = [{ text: 'For business', href: '/business' }]
 
 function WorkNavbar() {
   return (
@@ -52,10 +49,9 @@ function WorkNavbar() {
           <NavbarLeft className="gap-7">
             <a
               href="/work"
-              className="flex items-center gap-2 text-lg font-semibold text-foreground"
+              className="text-lg font-semibold text-foreground"
             >
-              <Boxes className="size-5 text-brand" aria-hidden="true" />
-              <span>OpenAgents</span>
+              OpenAgents
             </a>
             <nav
               aria-label="OpenAgents sections"
@@ -88,8 +84,8 @@ function WorkNavbar() {
 // ---------------------------------------------------------------------------
 function WorkHero() {
   return (
-    <Section className="fade-bottom relative overflow-hidden pb-0 sm:pb-0 md:pb-0">
-      <div className="max-w-container mx-auto flex flex-col items-center gap-8 pt-12 text-center sm:gap-12 sm:pt-20">
+    <Section className="fade-bottom relative overflow-hidden py-8 pb-0 sm:py-10 sm:pb-0 md:py-12 md:pb-0">
+      <div className="max-w-container mx-auto flex flex-col items-center gap-6 pt-2 text-center sm:gap-8 sm:pt-4">
         <Badge variant="outline" className="gap-2 px-3 py-1.5">
           <span className="text-muted-foreground">
             Our sales rep is an AI. You&apos;ll be talking to the product.
@@ -415,7 +411,7 @@ const FOOTER_COLUMNS = [
 function WorkFooter() {
   return (
     <Footer
-      logo={<Boxes className="size-5 text-brand" aria-hidden="true" />}
+      logo={null}
       name="OpenAgents"
       columns={FOOTER_COLUMNS}
       copyright="© 2026 OpenAgents. All rights reserved."
