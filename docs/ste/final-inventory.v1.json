@@ -45710,6 +45710,18 @@
       }
     },
     {
+      "path": "docs/teardowns/2026-07-27-t3-code-sidebar-v2-replication-analysis.md",
+      "sha256": "51616622021ef9911c0590b281053e6799f67c0829a7ad2ba687248f95238a0b",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null,
+        "ste_status": "source-data"
+      }
+    },
+    {
       "path": "docs/teardowns/2026-07-27-tokenrelay-teardown.md",
       "sha256": "73788ab07d599a6cf9890f4eaba1f4f5331296f717b3ea250e23a3bf18791974",
       "reason": "Final review of a converted document",
