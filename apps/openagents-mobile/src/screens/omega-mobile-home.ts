@@ -124,7 +124,9 @@ const activity = (state: OmegaMobileHomeState): ReadonlyArray<Activity> =>
     ...(state.bridge.mirror?.runs.map(
       (run): Activity => ({ type: "run", updatedAt: run.updatedAt, run }),
     ) ?? []),
-  ].toSorted((left, right) => right.updatedAt - left.updatedAt);
+    // `toSorted` is ES2023 and Hermes does not implement it. This array is
+    // already a fresh literal, so an in-place sort mutates nothing shared.
+  ].sort((left, right) => right.updatedAt - left.updatedAt);
 
 const activityRow = (entry: Activity): KeyedView => {
   if (entry.type === "thread") {
@@ -695,16 +697,16 @@ export const buildOmegaMobileHomeProgram = (
       });
       Effect.runFork(
         input.bridge.connect(input.connectRequest).pipe(
-          Effect.catch((error) =>
-            SubscriptionRef.update(state, (current) => ({
+          Effect.catch((error) => {
+            return SubscriptionRef.update(state, (current) => ({
               ...current,
               notice:
                 error.reason === "all_endpoints_failed" && !current.bridge.paired
                   ? null
                   : error.message,
               observedAt: now(),
-            })),
-          ),
+            }));
+          }),
         ),
       );
       return {

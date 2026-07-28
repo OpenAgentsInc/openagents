@@ -187,7 +187,9 @@ const newestActionableAttachment = (
       (value) =>
         value.state === "quiesced" || value.state === "detached" || value.state === "failed",
     )
-    .toSorted((left, right) => right.generation - left.generation);
+    // `toSorted` is ES2023 and Hermes does not implement it.
+    .slice()
+    .sort((left, right) => right.generation - left.generation);
   if (suspended.length === 0 || suspended[0]?.generation === suspended[1]?.generation) return null;
   return suspended[0] ?? null;
 };

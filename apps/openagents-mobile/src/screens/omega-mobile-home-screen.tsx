@@ -103,9 +103,44 @@ const openDefaultBridge = async (): Promise<OmegaDeviceBridgeClient> => {
   });
 };
 
-const defaultConnectRequest = (): OmegaMobileHomeConnectRequest => ({
+/**
+ * Development-only pairing input. A simulator has no camera, so the QR rung of
+ * the dial ladder cannot complete there. This reads the same bootstrap the QR
+ * carries from the environment so a simulator can exercise the handshake.
+ * It is null in every build that does not set the variable, and it decodes
+ * through the same schema the scanner uses, so an invalid bootstrap is refused
+ * here exactly as it is refused there.
+ */
+const DEV_PAIRING_BOOTSTRAP_URL = process.env.EXPO_PUBLIC_OMEGA_PAIRING_BOOTSTRAP_URL?.trim();
+
+const developmentPairingBootstrap = async (): Promise<OmegaBridgePairingBootstrap | null> => {
+  const inline = process.env.EXPO_PUBLIC_OMEGA_PAIRING_BOOTSTRAP?.trim();
+  if (inline !== undefined && inline !== "") {
+    try {
+      return decodeOmegaBridgePairingBootstrap(JSON.parse(inline) as unknown);
+    } catch (error: unknown) {
+      console.error("The development Omega pairing bootstrap is invalid", error);
+      return null;
+    }
+  }
+  if (DEV_PAIRING_BOOTSTRAP_URL === undefined || DEV_PAIRING_BOOTSTRAP_URL === "") return null;
+  try {
+    const response = await fetch(DEV_PAIRING_BOOTSTRAP_URL);
+    if (!response.ok) return null;
+    const body = (await response.json()) as unknown;
+    const decoded = decodeOmegaBridgePairingBootstrap(body);
+    return decoded;
+  } catch (error: unknown) {
+    console.error("The development Omega pairing bootstrap is unavailable", error);
+    return null;
+  }
+};
+
+const defaultConnectRequest = (
+  pairing: OmegaBridgePairingBootstrap | null,
+): OmegaMobileHomeConnectRequest => ({
   announcements: [],
-  pairing: null,
+  pairing,
   manualMagicDns: process.env.EXPO_PUBLIC_OMEGA_MAGIC_DNS?.trim() || null,
 });
 
@@ -142,10 +177,6 @@ export const OmegaMobileHomeScreen = ({
 }) => {
   const [program, setProgram] = useState<OmegaMobileHomeProgram | null>(null);
   const [initialState, setInitialState] = useState<OmegaMobileHomeState>(bootState);
-  const resolvedConnectRequest = useMemo(
-    () => connectRequest ?? defaultConnectRequest(),
-    [connectRequest],
-  );
   const fallbackView = useMemo(() => renderOmegaMobileHome(initialState), [initialState]);
   const fallbackStream = useMemo(() => Stream.make(fallbackView), [fallbackView]);
 
@@ -162,12 +193,15 @@ export const OmegaMobileHomeScreen = ({
         console.error("The signed Omega command lane is unavailable", error);
         return null;
       }),
+      connectRequest === undefined
+        ? developmentPairingBootstrap()
+        : Promise.resolve<OmegaBridgePairingBootstrap | null>(null),
     ])
-      .then(([client, runtime]) => {
+      .then(([client, runtime, devPairing]) => {
         commandRuntime = runtime;
         const nextProgram = buildOmegaMobileHomeProgram({
           bridge: client,
-          connectRequest: resolvedConnectRequest,
+          connectRequest: connectRequest ?? defaultConnectRequest(devPairing),
           scanPairing,
           ...(runtime === null ? {} : { publishCommandIntent: runtime.publishCommandIntent }),
         });
@@ -196,7 +230,7 @@ export const OmegaMobileHomeScreen = ({
       }
       commandRuntime?.close();
     };
-  }, [bridge, resolvedConnectRequest, scanPairing]);
+  }, [bridge, connectRequest, scanPairing]);
 
   return (
     <RNView style={{ flex: 1, backgroundColor: khalaTheme.color.background }}>

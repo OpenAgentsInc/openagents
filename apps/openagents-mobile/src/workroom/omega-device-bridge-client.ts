@@ -1,4 +1,6 @@
 import { Effect, Schema } from "effect";
+import { sha256 } from "@noble/hashes/sha2";
+import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils";
 
 import type {
   Issue31DeviceIdentity,
@@ -348,9 +350,14 @@ export const omegaBridgeDialLadder = (
       pairingSecret: null,
     });
   }
+  // `Array.prototype.toSorted` is ES2023 and Hermes does not implement it. A
+  // call throws a TypeError, which Effect reports as a defect rather than a
+  // typed failure, so the dial ladder died silently on device while every
+  // Node-run test passed. Sort a copy instead.
   for (const announcement of input.announcements
     .filter((entry) => entry.expiresAt > input.now)
-    .toSorted((left, right) => right.generation - left.generation)) {
+    .slice()
+    .sort((left, right) => right.generation - left.generation)) {
     for (const endpoint of announcement.endpoints) {
       candidates.push({
         url: endpoint.url,
@@ -472,10 +479,17 @@ const initialState = (): OmegaDeviceBridgeState => ({
   refusal: null,
 });
 
+/**
+ * The host binds the proof to the pairing secret it issued, so the signed
+ * content must carry that secret's digest. Without it the host reads
+ * `pairingSecretDigest: null` against its own `Some(digest)` and refuses every
+ * QR pairing with `invalid_proof`.
+ */
 const proofContent = (
   input: Readonly<{
     hostPublicKeyHex: string;
     grantRef: string | null;
+    pairingSecret: string | null;
     resumeCursor: OmegaDeviceBridgeCursor | null;
     nonce: string;
   }>,
@@ -484,6 +498,10 @@ const proofContent = (
     protocol: OMEGA_DEVICE_BRIDGE_PROTOCOL,
     hostPublicKeyHex: input.hostPublicKeyHex,
     grantRef: input.grantRef,
+    pairingSecretDigest:
+      input.pairingSecret === null
+        ? null
+        : bytesToHex(sha256(utf8ToBytes(input.pairingSecret))),
     resumeCursor: input.resumeCursor,
     nonce: input.nonce,
   });
@@ -615,6 +633,7 @@ export const createOmegaDeviceBridgeClient = (
             const content = proofContent({
               hostPublicKeyHex: endpoint.hostPublicKeyHex,
               grantRef: grant?.grantRef ?? null,
+              pairingSecret: endpoint.pairingSecret,
               resumeCursor,
               nonce: input.randomNonce(),
             });

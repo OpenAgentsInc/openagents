@@ -821,6 +821,9 @@ importers:
       '@expo/ui':
         specifier: 57.0.4
         version: 57.0.4(@babel/core@7.29.7)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(expo@57.0.2)(react-dom@19.2.7(react@19.2.7))(react-native-worklets@0.10.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7)
+      '@noble/hashes':
+        specifier: 1.7.1
+        version: 1.7.1
       '@openagentsinc/agent-runtime-schema':
         specifier: 0.2.1-rc.4
         version: 0.2.1-rc.4
@@ -858,8 +861,8 @@ importers:
         specifier: ~57.0.1
         version: 57.0.2(expo@57.0.2)(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7)
       expo-camera:
-        specifier: ~57.0.3
-        version: 57.0.3(@types/emscripten@1.41.5)(expo@57.0.2)(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7)
+        specifier: 57.0.2
+        version: 57.0.2(@types/emscripten@1.41.5)(expo@57.0.2)(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7)
       expo-clipboard:
         specifier: ~57.0.0
         version: 57.0.1(expo@57.0.2)(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7)
@@ -8371,8 +8374,8 @@ packages:
       react: '*'
       react-native: '*'
 
-  expo-camera@57.0.3:
-    resolution: {integrity: sha512-Q+3aZ63eQCkdB6/FZrO/lfacNAg/j8JCeKQL2nBdf6vBeOo1Y2PKYx1/vK+U5LaRnIo/0tMGmCOzZ1JGhTeMIw==}
+  expo-camera@57.0.2:
+    resolution: {integrity: sha512-dEJpsMkzw0QHCrXIvxvAInMKWBIrDRFG+yVm9Xo4iRdNro54/SnjFEkNjPC83niwUktdZPYfHKoSgCwzZOgljw==}
     peerDependencies:
       expo: '*'
       react: '*'
@@ -19331,7 +19334,7 @@ snapshots:
       - expo
       - supports-color
 
-  expo-camera@57.0.3(@types/emscripten@1.41.5)(expo@57.0.2)(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7):
+  expo-camera@57.0.2(@types/emscripten@1.41.5)(expo@57.0.2)(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7):
     dependencies:
       barcode-detector: 3.2.1(@types/emscripten@1.41.5)
       expo: 57.0.2(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(@expo/metro-runtime@57.0.3)(react-dom@19.2.7(react@19.2.7))(react-native-worklets@0.10.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7))(react-native@0.86.0(@babel/core@7.29.7)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.2.17)(react@19.2.7))(react@19.2.7)(typescript@6.0.3)
