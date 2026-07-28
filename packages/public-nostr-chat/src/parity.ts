@@ -239,12 +239,15 @@ export const projectPublicChatTimeline = (
     reactions.set(target, values)
   }
 
-  const pinState = events
-    .filter((event) => event.kind === 39005)
-    .toSorted(
-      (left, right) =>
-        right.created_at - left.created_at || right.id.localeCompare(left.id),
-    )[0]
+  // `.sort` on an already-copied array, not `.toSorted`. `.toSorted` failed
+  // the repository typecheck gate with TS2550 ("change lib to es2023 or
+  // later") plus five cascading implicit-any errors, in this package and in
+  // the api worker that typechecks this source transitively. Same
+  // non-mutating semantics, and no dependency on any `lib` setting.
+  const pinState = [...events.filter((event) => event.kind === 39005)].sort(
+    (left, right) =>
+      right.created_at - left.created_at || right.id.localeCompare(left.id),
+  )[0]
   const pinnedIds = new Set(
     pinState?.tags
       .filter((tag) => tag[0] === "e")
