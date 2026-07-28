@@ -271,6 +271,21 @@ const TranscriptTurn = ({
       </View>
     );
   }
+  // System turns carry failure reasons from the desktop callout. Paint them
+  // as faults so a person on the phone sees the same problem the desktop
+  // already named — not a silent "failed" subtitle with no body.
+  if (role === "system") {
+    return (
+      <View style={$errorTurn} accessibilityRole="alert">
+        <Text preset="label" color={colors.fault} style={$speaker}>
+          ERROR
+        </Text>
+        <Text preset="body" color={colors.fault}>
+          {text}
+        </Text>
+      </View>
+    );
+  }
   return (
     <View style={$turn}>
       <Text preset="label" color={colors.textFaint} style={$speaker}>
@@ -514,6 +529,17 @@ const $transcript: ViewStyle = {
 };
 
 const $turn: ViewStyle = { gap: spacing.tiny, paddingVertical: spacing.extraSmall };
+
+// Failure reasons mirrored from the desktop callout.
+const $errorTurn: ViewStyle = {
+  gap: spacing.tiny,
+  paddingVertical: spacing.extraSmall,
+  paddingHorizontal: spacing.small,
+  borderWidth: 1,
+  borderColor: colors.fault,
+  borderRadius: radius.medium,
+  backgroundColor: colors.surfaceSunken,
+};
 
 // The person's own words, in the bordered mono box the desktop composer uses.
 const $personTurn: ViewStyle = {
