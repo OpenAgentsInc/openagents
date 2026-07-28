@@ -2,6 +2,30 @@
 
 This is the invariant ledger for `openagents`.
 
+## 2026-07-28 mobile pairing universal-link surfaces
+
+- `GET /pair` and `GET /.well-known/apple-app-site-association` (plus the
+  legacy alias `/apple-app-site-association`) are functional app-support
+  endpoints for the OpenAgents mobile iOS Universal Link pairing flow, like
+  the auth and machine-readable infrastructure exceptions. They are not a new
+  public product surface and must not grow product content, navigation, or
+  marketing copy.
+- The AASA document pins exactly one app identity,
+  `HQWSG26L43.com.openagents.app`, and binds only the `/pair` path component.
+  Widening the appID set or the bound path components is an owner decision,
+  not a routine edit.
+- The pairing bootstrap payload lives in the URL FRAGMENT of
+  `https://openagents.com/pair#...`. Browsers never send the fragment, and the
+  server side must keep that boundary: no handler may read, parse, log, store,
+  or echo pairing material, and the `/pair` page may ship no script that
+  transmits `location.hash` anywhere. The only permitted client-side use is a
+  local show/hide hint that never leaves the page.
+- Both routes are unauthenticated GET/HEAD-only responses served by the
+  Worker's mobile pairing route module
+  (`workers/api/src/mobile-pairing-routes.ts`). They grant no auth, session,
+  tool, payment, release, or public-claim authority. Regression coverage:
+  `workers/api/src/mobile-pairing-routes.test.ts`.
+
 ## 2026-07-28 Omega Nostr per-install self-provisioning
 
 - `POST /api/omega/auth/session` accepts a NIP-98 proof from each public key.

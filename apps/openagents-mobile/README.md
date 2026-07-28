@@ -21,7 +21,10 @@ commits they pin.
 The app opens a signed device identity from Expo SecureStore and connects to an
 Omega desktop bridge over WebSocket. A person can:
 
-- scan the short-lived QR bootstrap shown by Omega desktop
+- scan the short-lived QR bootstrap shown by Omega desktop, with the in-app
+  scanner or with the phone camera app. The QR can carry the raw bootstrap
+  JSON or an `https://openagents.com/pair#<base64url>` Universal Link. The two
+  formats decode through the same pairing schema
 - retain the admitted grant, last successful endpoint, and resume cursor in
   device-only secure storage
 - reconnect through the cached endpoint after reopening the app
@@ -39,10 +42,12 @@ requests a fresh snapshot on generation or sequence gaps. A stalled candidate
 has a five-second admission deadline and is closed before the dial ladder
 continues.
 
-The mounted production screen supplies the cached endpoint and an optional QR
-bootstrap. It does not currently supply signed announcement discovery, manual
-MagicDNS, or a relay observation feed. Simulator development can provide a
-bootstrap through either:
+The mounted production screen supplies the cached endpoint, an optional QR
+bootstrap, and each pairing Universal Link the OS gives the app. The watcher
+in `src/screens/omega-pairing-link.ts` reads the initial URL and each later
+link event. The screen does not currently supply signed announcement
+discovery, manual MagicDNS, or a relay observation feed. Simulator development
+can provide a bootstrap through either:
 
 - `EXPO_PUBLIC_OMEGA_PAIRING_BOOTSTRAP` for inline JSON
 - `EXPO_PUBLIC_OMEGA_PAIRING_BOOTSTRAP_URL` for a JSON endpoint.

@@ -964,6 +964,7 @@ import {
   MOBILE_ACCOUNT_PATH,
   handleMobileAccountDeletionRequest,
 } from './mobile-account-deletion-routes'
+import { routeMobilePairingRequest } from './mobile-pairing-routes'
 import {
   MobileWorkroomApprovalProjectionEndpoint,
   handleMobileWorkroomApprovalProjectionApi,
@@ -16261,7 +16262,8 @@ const routeRequest = makeWorkerRouteRequest({
     crmMcpRoutes.routeCrmMcpRequest(request, env, ctx) ??
     crmRoutes.routeCrmRequest(request, env, ctx) ??
     routePublicAgentMcpRequest(request, env, ctx) ??
-    routeWellKnownAgentSurfaceRequest(request, env, ctx),
+    routeWellKnownAgentSurfaceRequest(request, env, ctx) ??
+    routeMobilePairingRequest(request, env, ctx),
   routeOnboardingRequest: onboardingRoutes.routeOnboardingRequest,
   routePublicInferenceReceiptRequest:
     publicInferenceReceiptRoutes.routePublicInferenceReceiptRequest,

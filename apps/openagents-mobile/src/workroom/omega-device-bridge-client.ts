@@ -246,6 +246,128 @@ export const decodeOmegaBridgePairingBootstrap = (input: unknown): OmegaBridgePa
     onExcessProperty: "error",
   });
 
+/** The schema tag the desktop stamps into the JSON its pairing QR carries. */
+export const OMEGA_DESKTOP_PAIRING_BOOTSTRAP_SCHEMA =
+  "openagents.omega.device_pairing.v1" as const;
+
+/**
+ * The HTTPS base the desktop pairing QR may wrap its payload in, so the iOS
+ * Camera app opens this app through a Universal Link instead of dead-ending in
+ * a browser. The payload rides in the URL fragment, which never reaches the
+ * openagents.com server or its logs.
+ */
+export const OMEGA_PAIRING_LINK_BASE = "https://openagents.com/pair" as const;
+
+const MagicDnsName = Schema.String.check(
+  Schema.isPattern(/^[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?$/),
+);
+
+/**
+ * What the desktop actually serializes into the QR: `PairingBootstrap` in
+ * `crates/omega_device_bridge`. It names the host by MagicDNS name and port
+ * rather than a dialable URL, so admission maps it onto the bridge's plain
+ * WebSocket endpoint.
+ */
+const DesktopPairingBootstrapSchema = Schema.Struct({
+  schema: Schema.Literal(OMEGA_DESKTOP_PAIRING_BOOTSTRAP_SCHEMA),
+  magicDnsName: MagicDnsName,
+  port: PositiveInteger.check(Schema.isLessThanOrEqualTo(65_535)),
+  protocol: Schema.Literal(OMEGA_DEVICE_BRIDGE_PROTOCOL),
+  hostPublicKeyHex: Hex32,
+  pairingSecret: NonEmptyString,
+  generation: PositiveInteger,
+  issuedAt: NonNegativeInteger,
+  expiresAt: NonNegativeInteger,
+});
+
+const decodeDesktopPairingBootstrap = Schema.decodeUnknownSync(DesktopPairingBootstrapSchema);
+
+const pairingFromJsonValue = (value: unknown): OmegaBridgePairingBootstrap => {
+  if (typeof value === "object" && value !== null && "schema" in value) {
+    const desktop = decodeDesktopPairingBootstrap(value, { onExcessProperty: "error" });
+    return decodeOmegaBridgePairingBootstrap({
+      endpoint: `ws://${desktop.magicDnsName}:${desktop.port}`,
+      hostPublicKeyHex: desktop.hostPublicKeyHex,
+      pairingSecret: desktop.pairingSecret,
+      expiresAt: desktop.expiresAt,
+    });
+  }
+  return decodeOmegaBridgePairingBootstrap(value);
+};
+
+/** Whether a URL is this app's pairing Universal Link with a payload fragment. */
+export const isOmegaPairingLink = (text: string): boolean =>
+  omegaPairingLinkFragment(text.trim()) !== null;
+
+const omegaPairingLinkFragment = (text: string): string | null => {
+  const hashIndex = text.indexOf("#");
+  if (hashIndex < 0) return null;
+  const base = text.slice(0, hashIndex);
+  if (base !== OMEGA_PAIRING_LINK_BASE && base !== `${OMEGA_PAIRING_LINK_BASE}/`) return null;
+  const fragment = text.slice(hashIndex + 1);
+  return fragment === "" ? null : fragment;
+};
+
+// Hand-rolled on purpose: Hermes has bitten this app before with APIs that
+// exist in Node but not on device (`toSorted`, and the missing platform
+// implementations `crypto-random-values.ts` documents). Base64 and UTF-8
+// decoding stay dependency-free here so the scanner path cannot die that way.
+const BASE64URL_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
+const base64UrlToBytes = (encoded: string): Uint8Array | null => {
+  if (encoded.length % 4 === 1) return null;
+  const bytes: Array<number> = [];
+  let buffer = 0;
+  let bits = 0;
+  for (const character of encoded) {
+    if (character === "=") break;
+    const value = BASE64URL_ALPHABET.indexOf(
+      character === "+" ? "-" : character === "/" ? "_" : character,
+    );
+    if (value < 0) return null;
+    buffer = (buffer << 6) | value;
+    bits += 6;
+    if (bits >= 8) {
+      bits -= 8;
+      bytes.push((buffer >> bits) & 0xff);
+    }
+  }
+  return Uint8Array.from(bytes);
+};
+
+const bytesToText = (bytes: Uint8Array): string | null => {
+  let percentEncoded = "";
+  for (const byte of bytes) {
+    percentEncoded += `%${byte.toString(16).padStart(2, "0")}`;
+  }
+  try {
+    return decodeURIComponent(percentEncoded);
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Decode whatever text a pairing source hands over: the desktop QR's raw
+ * bootstrap JSON, this client's own bootstrap JSON, or the
+ * `https://openagents.com/pair#<base64url>` Universal Link wrapping either.
+ * Accepting every format at once is what keeps an old desktop QR and a new
+ * link-format QR both scannable from the same build.
+ */
+export const decodeOmegaBridgePairingText = (text: string): OmegaBridgePairingBootstrap => {
+  const trimmed = text.trim();
+  const fragment = omegaPairingLinkFragment(trimmed);
+  if (fragment === null) {
+    return pairingFromJsonValue(JSON.parse(trimmed) as unknown);
+  }
+  const bytes = base64UrlToBytes(fragment);
+  const json = bytes === null ? null : bytesToText(bytes);
+  if (json === null) {
+    throw new Error("The pairing link does not carry a readable payload.");
+  }
+  return pairingFromJsonValue(JSON.parse(json) as unknown);
+};
+
 export const OmegaDeviceBridgeStoredStateSchema = Schema.Struct({
   schemaVersion: Schema.Literal(1),
   endpoint: Schema.NullOr(

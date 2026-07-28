@@ -17,10 +17,11 @@
       "appleTeamId": "HQWSG26L43",
       "bundleIdentifier": "com.openagents.app",
       "supportsTablet": true,
+      "associatedDomains": ["applinks:openagents.com"],
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       },
-      "buildNumber": "126"
+      "buildNumber": "127"
     },
     "android": {
       "package": "com.openagents.app"

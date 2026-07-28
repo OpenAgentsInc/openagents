@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Linking } from "react-native";
 import { Camera, CameraView } from "expo-camera";
 import { randomUUID } from "expo-crypto";
 import { Effect } from "effect";
@@ -6,6 +7,7 @@ import { Effect } from "effect";
 import {
   createOmegaDeviceBridgeClient,
   decodeOmegaBridgePairingBootstrap,
+  decodeOmegaBridgePairingText,
   openExpoOmegaDeviceBridgeStore,
   type OmegaBridgePairingBootstrap,
   type OmegaDeviceBridgeClient,
@@ -15,6 +17,7 @@ import {
 } from "../workroom/omega-device-bridge-client";
 import { openExpoIssue31DeviceIdentity } from "../workroom/issue31-device-key-vault";
 import { productSafeNotice, startOmegaBridgeSession } from "./omega-bridge-session";
+import { watchOmegaPairingLinks } from "./omega-pairing-link";
 import {
   connectionToneOf,
   OmegaHomeView,
@@ -60,7 +63,7 @@ export const scanOmegaDesktopPairingQr = async (): Promise<OmegaBridgePairingBoo
     };
     const subscription = CameraView.onModernBarcodeScanned((event) => {
       try {
-        const pairing = decodeOmegaBridgePairingBootstrap(JSON.parse(event.data) as unknown);
+        const pairing = decodeOmegaBridgePairingText(event.data);
         finish(pairing);
         void CameraView.dismissScanner().catch(() => undefined);
       } catch {
@@ -193,25 +196,45 @@ export const OmegaHomeScreen = ({
     return state.mirror?.threads.find((thread) => thread.threadRef === selectedThreadRef) ?? null;
   }, [selectedThreadRef, state.mirror]);
 
+  const acceptPairing = useCallback(
+    async (pairing: OmegaBridgePairingBootstrap): Promise<void> => {
+      if (client === null) return;
+      setNotice(null);
+      await Effect.runPromise(
+        client.connect({ announcements: [], pairing, manualMagicDns: null }).pipe(
+          Effect.catch((error) => Effect.sync(() => setNotice(productSafeNotice(error.message)))),
+        ),
+      );
+    },
+    [client],
+  );
+
   const onPairPressed = useCallback(() => {
     void (async () => {
       if (client === null) return;
       try {
         const pairing = await scanPairing();
         if (pairing === null) return;
-        setNotice(null);
-        await Effect.runPromise(
-          client.connect({ announcements: [], pairing, manualMagicDns: null }).pipe(
-            Effect.catch((error) => Effect.sync(() => setNotice(productSafeNotice(error.message)))),
-          ),
-        );
+        await acceptPairing(pairing);
       } catch (error: unknown) {
         setNotice(
           error instanceof Error ? productSafeNotice(error.message) : "The desktop pairing failed.",
         );
       }
     })();
-  }, [client, scanPairing]);
+  }, [client, scanPairing, acceptPairing]);
+
+  // The iOS Camera app scans the same desktop QR and opens this app through
+  // the openagents.com/pair Universal Link. The link may land before the
+  // bridge client has opened, so it parks in state until a client exists,
+  // then enters the exact accept path the in-app scanner uses.
+  const [linkPairing, setLinkPairing] = useState<OmegaBridgePairingBootstrap | null>(null);
+  useEffect(() => watchOmegaPairingLinks(Linking, setLinkPairing), []);
+  useEffect(() => {
+    if (client === null || linkPairing === null) return;
+    setLinkPairing(null);
+    void acceptPairing(linkPairing);
+  }, [client, linkPairing, acceptPairing]);
 
   const model: OmegaHomeViewModel = {
     desktopName: state.mirror?.desktopName ?? "Omega desktop",

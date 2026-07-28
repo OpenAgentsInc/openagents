@@ -9250,7 +9250,7 @@
       ]
     },
     "apps/openagents.com/INVARIANTS.md": {
-      "sourceSha256": "46c76f24796d7613013e835961b9babe002c091d441028debcf5237ad6fbfd31",
+      "sourceSha256": "d7c40dfdc2035fc21fa2579a35abceb3f25e609f47c1563b0423bfe59c02855f",
       "normativeKeywords": [
         "MAY",
         "MUST",
@@ -9348,6 +9348,7 @@
         "/app",
         "/app",
         "/app",
+        "/apple-app-site-association",
         "/astro",
         "/astro",
         "/device/{attempt}",
@@ -9363,6 +9364,8 @@
         "/login/email",
         "/login/github",
         "/mullet",
+        "/pair",
+        "/pair",
         "/promises",
         "/public/",
         "/qa/{runRef}",
@@ -9444,6 +9447,7 @@
         "EmailService",
         "FLEET_PROJECTION_SYSTEM_REF",
         "GET",
+        "GET /.well-known/apple-app-site-association",
         "GET /api/agents/claims/rewards",
         "GET /api/agents/profiles/{profileRef}",
         "GET /api/forum/actors/{actorRef}/profile",
@@ -9542,8 +9546,10 @@
         "GET /api/traces/{uuid}",
         "GET /api/traces/{uuid}/blob/{r2Key}",
         "GET /api/training/...",
+        "GET /pair",
         "GET /spark/received/:paymentHash",
         "GET /traces",
+        "HQWSG26L43.com.openagents.app",
         "INFERENCE_CONFIDENTIAL_COMPUTE_ENABLED",
         "INFERENCE_GATEWAY_ENABLED",
         "INFERENCE_INTERNAL_ACCOUNT_DAILY_TOKEN_CAPS",
@@ -10057,6 +10063,7 @@
         "hostedMdkDirectPayoutDisabledGate",
         "hosted_mdk_direct_payout",
         "https://openagents.com",
+        "https://openagents.com/pair#...",
         "human_handoff",
         "hygiene_debt_receipts",
         "hygiene_merged_reviewed",
@@ -10179,6 +10186,7 @@
         "local_mdk_agent_wallet_bridge",
         "local_only",
         "local_only",
+        "location.hash",
         "loop_completed",
         "makeAuthIssuer",
         "makeSiteReferralPayoutAdapter",
@@ -10956,6 +10964,8 @@
         "workers/api/src/mdk-agent-wallet-smoke-fixture.test.ts",
         "workers/api/src/mdk-payout-mode-gate.test.ts",
         "workers/api/src/mdk-service-endpoints.test.ts",
+        "workers/api/src/mobile-pairing-routes.test.ts",
+        "workers/api/src/mobile-pairing-routes.ts",
         "workers/api/src/openagents-agent-sheet-route-coverage.test.ts",
         "workers/api/src/openagents-capability-manifest-routes.test.ts",
         "workers/api/src/openagents-capability-manifest-routes.test.ts",
@@ -11099,6 +11109,7 @@
         "~/.codex"
       ],
       "urls": [
+        "https://openagents.com/pair#...`.",
         "https://openagents.com`"
       ],
       "issueRefs": [
@@ -11380,6 +11391,7 @@
         "2026-07",
         "2026-07",
         "2026-07",
+        "2026-07",
         "21",
         "21",
         "213",
@@ -11402,6 +11414,7 @@
         "27",
         "27",
         "27",
+        "28",
         "28",
         "28",
         "29",
