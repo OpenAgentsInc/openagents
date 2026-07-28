@@ -33405,6 +33405,20 @@
       }
     },
     {
+      "path": "docs/mobile/2026-07-28-openagents-testflight-build-127-sarah-voice-release-evidence.md",
+      "sha256": "51e0e4b3451be3757d4a22d6dca6bd8915e43861a34e67b027e794eded3ca49e",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "ste_status": "source-data",
+        "ste_reviewer": null,
+        "ste_reviewed_at": null,
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null
+      }
+    },
+    {
       "path": "docs/mpp/2026-06-23-mpp-launch-and-badge-runbook.md",
       "sha256": "e41c6a4c0ca2ce21dae91baa043b7ca210034980c0087aafb8538c0d7055360a",
       "reason": "Final review of a converted document",
