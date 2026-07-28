@@ -55,7 +55,13 @@ export const mvpAssuranceCoverageMatrix: ReadonlyArray<MvpAssuranceCoverageItem>
     criterionRefs: ["CW-AC-10", "CW-AC-11", "CW-AC-13"],
     assuranceItemRefs: ["AO-CW-AC-10-01", "AO-CW-AC-11-01", "AO-CW-AC-13-01"],
     contractRefs: ["openagents_desktop.mvp.visible_surface_allowlist.v1"],
-    oracleRefs: ["apps/openagents-desktop/src/renderer/runtime-conversation.test.ts", "apps/openagents-desktop/tests/native-conversation-continuation.e2e.test.ts"],
+    // The cross-device continuation end-to-end test was deleted on 2026-07-27:
+    // the owner-directed mobile rebuild removed the sync host it drove, so it
+    // could no longer compile or prove its claim. Desktop-to-mobile continuation
+    // is uncovered until a replacement oracle exists (INVARIANTS.md, "Retired
+    // Mobile Surfaces"). Keeping the dead path here would have claimed proof
+    // from a file that is not in the repository.
+    oracleRefs: ["apps/openagents-desktop/src/renderer/runtime-conversation.test.ts"],
   },
   {
     surfaceId: "shell-settings-toggle",

@@ -138,34 +138,32 @@ export const khalaSyncContractRegistry: BehaviorContractRegistryDocument = {
     {
       authorityBoundary:
         "This binds the canonical client chat mutators and confirmed conversation projection across the new Desktop node:sqlite and mobile Expo-SQLite hosts. It proves deterministic server-authoritative protocol convergence and restart reconstruction, not a deployed Cloud SQL/live-account or physical-device receipt. Owner refs, credentials, raw stores/sessions/transports, optimistic bodies, and provider runtime events remain outside the projected result.",
-      blockerRefs: [],
+      // The owner-directed mobile rebuild of 2026-07-27 removed the mobile sync
+      // host this contract binds, and its only oracle drove that host, so the
+      // oracle was deleted with it. The statement still expresses what the owner
+      // asked for, so it stays here rather than being dropped, but it can no
+      // longer be proven: the contract is pending until a replacement oracle
+      // exists. Restoring `enforced` is an owner decision, not an editorial one.
+      blockerRefs: [
+        "INVARIANTS.md#retired-mobile-surfaces",
+        "https://github.com/OpenAgentsInc/openagents/issues/8668",
+      ],
       contractId: "khala_sync.client.native_conversation_continuity.v1",
-      enforcementTier: "test-sweep",
+      enforcementTier: "unenforced",
       evidenceRefs: [
         "https://github.com/OpenAgentsInc/openagents/issues/8668",
         "packages/khala-sync-client/src/chat.ts",
         "packages/khala-sync-client/src/conversation.ts",
         "apps/openagents-desktop/src/desktop-sync-host.ts",
-        "apps/openagents-mobile/src/sync/mobile-sync-host-core.ts",
-        "apps/openagents-desktop/tests/native-conversation-continuation.e2e.test.ts",
       ],
-      oracles: [
-        {
-          description:
-            "Runs the real Desktop node:sqlite host and mobile Expo-SQLite host over the shared session/overlay protocol: Desktop creates the canonical thread and first message, mobile confirms and appends a follow-up, both converge on identical public-safe refs, confirmed versions, cursor and live phase, then both restart and reconstruct the same state without duplicates.",
-          id: "khala_sync.client.native_conversation_continuation.e2e",
-          kind: "bun-test",
-          mode: "e2e",
-          ref: "apps/openagents-desktop/tests/native-conversation-continuation.e2e.test.ts",
-        },
-      ],
+      oracles: [],
       productArea: "khala sync native conversation continuity",
       source: {
         channel: "owner-codex-session",
         statedBy: "owner",
         statedOn: "2026-07-10",
       },
-      state: "enforced",
+      state: "pending",
       statement:
         "A Desktop-created authoritative chat thread and first message continue on mobile under the same refs and confirmed versions; the mobile follow-up converges back to Desktop, and restart reconstructs the same current conversation without duplicate objects or invented completion.",
       surface: "khala-sync-client",
