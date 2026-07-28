@@ -41,17 +41,50 @@ export const Text = ({
 );
 
 const base: TextStyle = {
-  color: colors.text,
-  fontFamily: typography.primary.normal,
+  color: colors.textBody,
+  fontFamily: typography.sans,
 };
 
 const presets: Record<TextPreset, TextStyle> = {
-  display: { ...base, fontSize: 30, lineHeight: 36, fontWeight: "700", letterSpacing: -0.4 },
-  heading: { ...base, fontSize: 20, lineHeight: 26, fontWeight: "700", letterSpacing: -0.2 },
-  subheading: { ...base, fontSize: 17, lineHeight: 23, fontWeight: "600" },
-  body: { ...base, fontSize: 15, lineHeight: 22 },
-  bodyStrong: { ...base, fontSize: 15, lineHeight: 22, fontWeight: "600" },
-  label: { ...base, fontSize: 13, lineHeight: 18, fontWeight: "600" },
+  display: {
+    ...base,
+    fontFamily: typography.monoBold,
+    color: colors.text,
+    fontSize: 26,
+    lineHeight: 32,
+    letterSpacing: -0.8,
+  },
+  heading: {
+    ...base,
+    fontFamily: typography.monoBold,
+    color: colors.text,
+    fontSize: 18,
+    lineHeight: 24,
+    letterSpacing: -0.4,
+  },
+  subheading: {
+    ...base,
+    fontFamily: typography.sansSemiBold,
+    color: colors.text,
+    fontSize: 16,
+    lineHeight: 22,
+  },
+  body: { ...base, fontSize: 15, lineHeight: 23 },
+  bodyStrong: {
+    ...base,
+    fontFamily: typography.sansSemiBold,
+    color: colors.text,
+    fontSize: 15,
+    lineHeight: 23,
+  },
+  label: {
+    ...base,
+    fontFamily: typography.mono,
+    fontSize: 11,
+    lineHeight: 15,
+    letterSpacing: 0.6,
+    color: colors.textDim,
+  },
   caption: { ...base, fontSize: 12, lineHeight: 17, color: colors.textDim },
-  mono: { ...base, fontSize: 13, lineHeight: 19, fontFamily: typography.code.normal },
+  mono: { ...base, fontSize: 12.5, lineHeight: 19, fontFamily: typography.mono },
 };

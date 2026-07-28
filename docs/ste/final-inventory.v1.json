@@ -450,7 +450,7 @@
     },
     {
       "path": "INVARIANTS.md",
-      "sha256": "059ed991939a1b1425ccb5a881c12bb98708b686ee92fa37b5fc5df8b8df590f",
+      "sha256": "9e0a9b41ca375294826ce80833665852028872dea85ffcc1080b17c538e38579",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -1081,6 +1081,38 @@
         "ste_status": "inspected",
         "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
         "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "apps/openagents-mobile/assets/fonts/OFL.txt",
+      "sha256": "a356708a399e3f54b937ec7d9b722c26dabba21365b60f95c56eb7ebca0dee40",
+      "reason": "Final review of mutable first-party agent technical text",
+      "profile": {
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ]
+      }
+    },
+    {
+      "path": "apps/openagents-mobile/assets/fonts/license.txt",
+      "sha256": "91c25c350d3cac39da2736d74f7ba37ef648f5237a4e330a240615bc8d8c4360",
+      "reason": "Third-party or license source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "ste_status": "source-data",
+        "ste_reviewer": null,
+        "ste_reviewed_at": null,
+        "risk": "source-data",
+        "source": "Third-party or license source data",
+        "replacement": null
       }
     },
     {

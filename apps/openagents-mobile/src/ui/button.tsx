@@ -83,22 +83,22 @@ const $fullWidth: ViewStyle = { alignSelf: "stretch" };
 const $disabled: ViewStyle = { opacity: 0.4 };
 
 const $view: Record<ButtonPreset, ViewStyle> = {
-  primary: { backgroundColor: colors.tint },
-  secondary: { backgroundColor: colors.surfaceRaised, borderColor: colors.border },
+  primary: { backgroundColor: colors.accent },
+  secondary: { backgroundColor: colors.surface, borderColor: colors.border },
   ghost: { backgroundColor: colors.transparent },
-  danger: { backgroundColor: colors.errorBackground, borderColor: colors.error },
+  danger: { backgroundColor: colors.faultGlow, borderColor: colors.fault },
 };
 
 const $pressed: Record<ButtonPreset, ViewStyle> = {
   primary: { opacity: 0.85 },
-  secondary: { backgroundColor: colors.surface },
+  secondary: { borderColor: colors.borderEnergized },
   ghost: { backgroundColor: colors.surface },
   danger: { opacity: 0.85 },
 };
 
 const $text: Record<ButtonPreset, TextStyle> = {
-  primary: { color: colors.palette.almostBlack },
+  primary: { color: colors.palette.void },
   secondary: { color: colors.text },
-  ghost: { color: colors.tint },
-  danger: { color: colors.error },
+  ghost: { color: colors.accentInk },
+  danger: { color: colors.fault },
 };

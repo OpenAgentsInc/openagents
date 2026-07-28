@@ -2012,9 +2012,9 @@ come from the Freerange teardown
   fail-closed. Slow consumers retain at most one newest pending snapshot, and
   expose source/delivery/coalescing/maximum-pending/latency metrics, close
   removes both observers and the owned thread scope exactly once. The
-  shared contract and mobile no-poll boundary are enforced by
-  `packages/khala-sync-client/src/live-conversation.test.ts` and
-  `apps/openagents-mobile/tests/mobile-conversation.test.ts`. The Desktop host
+  shared contract is enforced by
+  `packages/khala-sync-client/src/live-conversation.test.ts`. The mobile
+  no-poll oracle went with its surface (see Retired Mobile Surfaces). The Desktop host
   registry additionally bounds active slots, closes a prior generation before
   replacement, fences stale unsubscribe, and disposes all slots once. Runtime
   Gateway v8 now schema-decodes the full bounded update and exposes typed
@@ -2098,10 +2098,33 @@ come from the Freerange teardown
   canonical graph, which deliberately carries no usage fields.
   This CUT-12 client boundary is enforced by
   `packages/khala-sync-client/src/live-agent-graph-presentation.test.ts`,
-  `apps/openagents-mobile/tests/mobile-agent-graph.test.ts`,
   `apps/openagents-desktop/src/renderer/runtime-conversation.test.ts`, and
   `apps/openagents-desktop/src/renderer/runtime-agent-graph.test.ts`, physical-
   device equivalence remains pending.
+
+## Retired Mobile Surfaces
+
+- The owner directed a blank-slate rebuild of `apps/openagents-mobile` on
+  2026-07-27: keep the desktop handshake, remove the rest, and rebuild the UI
+  on plain React Native in the arcade idiom. The conversation, coding
+  navigation, agent-graph, authoritative-home, native-target-delivery, and
+  Sarah-drawer surfaces were deleted with their oracles.
+- The clauses below that named an `apps/openagents-mobile/tests/*` oracle
+  therefore describe intent, not a currently enforced boundary. Each one is
+  marked in place. Do not cite an unenforced clause as evidence, and do not
+  restore one of these surfaces without restoring its oracle in the same
+  change.
+- The mobile app that remains is a read-only desktop mirror plus its pairing
+  path. Its live boundary is the device-bridge contract, not these clauses.
+- The Desktop end-to-end test named `native-conversation-continuation`, which
+  lived under `apps/openagents-desktop/tests/`, was deleted on 2026-07-27 for
+  the same reason. It proved Desktop-to-mobile
+  conversation continuation against the mobile sync host, and that host went
+  with the rebuild, so the test could no longer compile or prove its claim.
+  Three assurance documents still name it as an oracle: the MVP AssuranceSpec
+  and its coverage matrix, plus the Full Auto AssuranceSpec. Those citations
+  are now unbacked and need an owner disposition. Do not treat cross-device
+  continuation as covered until a replacement oracle exists.
 
 ## Retired Client Boundary
 
@@ -2343,8 +2366,9 @@ codex session` execution per agent. Only agent/turn refs, monotonic thread
   Sarah remains a projection inside the ordinary conversation state machine:
   the drawer pins her identity, her messages force the server-owned
   `hosted_khala` lane, credentials remain in the native host, and the public
-  `/sarah` tombstone stays 404. This boundary is enforced by
-  `apps/openagents-mobile/tests/sarah-owner-orchestrator.test.ts`.
+  `/sarah` tombstone stays 404. This boundary is currently unenforced: its
+  oracle went with the mobile drawer (see Retired Mobile Surfaces). The public
+  `/sarah` tombstone keeps its own separate enforcement.
 - Effect Native React Native stacks are structural layout containers, never
   aggregate accessibility controls. A stack may retain a catalog region/group
   label for diagnostics, but the native View is explicitly excluded from the
@@ -2370,23 +2394,22 @@ codex session` execution per agent. Only agent/turn refs, monotonic thread
   the private worktree-path binding, and never treats the optimistic mutation
   as hosted authority. The server rejects any owner-scope mismatch before a
   changelog write. Mobile continues to consume only server-confirmed rows. The
-  deterministic enforcement lives in
-  `apps/openagents-mobile/tests/mobile-coding-navigation.test.ts` and
-  `apps/openagents-mobile/tests/mobile-sync-host.test.ts`. The Effect Native
+  deterministic mobile enforcement is currently absent: both oracles went with
+  their surface (see Retired Mobile Surfaces). The Effect Native
   drawer groups live sessions under confirmed repositories, and one typed
   session intent reopens the exact thread and binds a closeable conversation
   subscription, new-chat and ordinary-thread navigation close that lease.
   Process restart resolves the persisted target before choosing a conversation
-  rather than inferring the first chat row. This integration is enforced by
-  `apps/openagents-mobile/tests/authoritative-home.test.ts` and
-  `apps/openagents-mobile/tests/mobile-conversation.test.ts`. Initial and live
+  rather than inferring the first chat row. This integration is currently
+  unenforced: both oracles went with their surface (see Retired Mobile
+  Surfaces). Initial and live
   native URLs plus initial/live notification responses enter one 16-item
   bounded serial queue, wait while owner authority is unavailable, and pass
   through the same exact target resolver before activation. Stale/unauthorized
   targets are terminal, concurrent flushes coalesce, and host teardown removes
-  both native listeners and clears the queue. This is enforced by
-  `apps/openagents-mobile/tests/native-coding-target-delivery.test.ts`,
-  physical iOS/Android receipts remain CUT-14 work.
+  both native listeners and clears the queue. This is currently unenforced:
+  its oracle went with the mobile delivery surface (see Retired Mobile
+  Surfaces). Physical iOS/Android receipts remain CUT-14 work.
 - Desktop command metadata has one canonical typed registry at
   `apps/openagents-desktop/src/desktop-command-contract.ts`. Each command names
   its stable id, intent, scope, readiness, authorization, argument/result

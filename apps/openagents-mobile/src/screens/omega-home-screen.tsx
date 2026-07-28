@@ -164,6 +164,13 @@ export const OmegaHomeScreen = ({
   const [notice, setNotice] = useState<string | null>(null);
   const [observedAt, setObservedAt] = useState(Date.now());
 
+  // Relative stamps have to age on their own. Without a tick, a row that says
+  // "2m" keeps saying "2m" until the desktop happens to send something.
+  useEffect(() => {
+    const tick = setInterval(() => setObservedAt(Date.now()), 30_000);
+    return () => clearInterval(tick);
+  }, []);
+
   useEffect(() => {
     let active = true;
     let openedClient: OmegaDeviceBridgeClient | null = null;
@@ -244,6 +251,7 @@ export const OmegaHomeScreen = ({
     // not open yet, so it says so rather than offering a control that cannot work.
     commandLaneAvailable: false,
     commandNotice: null,
+    now: observedAt,
   };
 
   return (

@@ -53,6 +53,27 @@ export const Badge = ({ label, tone }: { readonly label: string; readonly tone: 
   </View>
 );
 
+/**
+ * The link state as one dot.
+ *
+ * A dot carries no text, so it needs its own accessibility label to stay
+ * legible to a person who navigates by screen reader or cannot separate the
+ * green from the red.
+ */
+export const StatusDot = ({
+  tone,
+  accessibilityLabel,
+}: {
+  readonly tone: BadgeTone;
+  readonly accessibilityLabel: string;
+}) => (
+  <View
+    accessible
+    accessibilityLabel={accessibilityLabel}
+    style={[$dot, { backgroundColor: $dotColor[tone] }]}
+  />
+);
+
 /** A hairline. */
 export const Divider = ({ style }: { readonly style?: StyleProp<ViewStyle> }) => (
   <View style={[$divider, style]} />
@@ -108,11 +129,11 @@ const $card: ViewStyle = {
   backgroundColor: colors.surface,
   borderRadius: radius.large,
   borderWidth: 1,
-  borderColor: colors.separator,
+  borderColor: colors.border,
   padding: spacing.medium,
 };
 
-const $cardPressed: ViewStyle = { backgroundColor: colors.surfaceRaised };
+const $cardPressed: ViewStyle = { backgroundColor: colors.surface, borderColor: colors.borderEnergized };
 
 const $badge: ViewStyle = {
   paddingHorizontal: spacing.extraSmall,
@@ -124,23 +145,32 @@ const $badge: ViewStyle = {
 const $badgeText: TextStyle = { fontWeight: "600" };
 
 const $badgeTone: Record<BadgeTone, ViewStyle> = {
-  success: { backgroundColor: colors.successBackground, borderColor: colors.success },
-  info: { backgroundColor: colors.warningBackground, borderColor: colors.warning },
-  danger: { backgroundColor: colors.errorBackground, borderColor: colors.error },
-  neutral: { backgroundColor: colors.surfaceRaised, borderColor: colors.border },
+  success: { backgroundColor: colors.liveGlow, borderColor: colors.live },
+  info: { backgroundColor: colors.accentGlow, borderColor: colors.accent },
+  danger: { backgroundColor: colors.faultGlow, borderColor: colors.fault },
+  neutral: { backgroundColor: colors.surface, borderColor: colors.border },
 };
 
 const $badgeTextColor: Record<BadgeTone, string> = {
-  success: colors.success,
-  info: colors.warning,
-  danger: colors.error,
-  neutral: colors.textDim,
+  success: colors.live,
+  info: colors.accentInk,
+  danger: colors.fault,
+  neutral: colors.textFaint,
 };
 
-const $divider: ViewStyle = { height: 1, backgroundColor: colors.separator };
+const $dot: ViewStyle = { width: 8, height: 8, borderRadius: radius.pill };
+
+const $dotColor: Record<BadgeTone, string> = {
+  success: colors.live,
+  info: colors.accent,
+  danger: colors.fault,
+  neutral: colors.textFaint,
+};
+
+const $divider: ViewStyle = { height: 1, backgroundColor: colors.border };
 
 const $field: TextStyle = {
-  backgroundColor: colors.surfaceRaised,
+  backgroundColor: colors.surfaceSunken,
   borderRadius: radius.medium,
   borderWidth: 1,
   borderColor: colors.border,
