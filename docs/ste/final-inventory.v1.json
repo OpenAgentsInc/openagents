@@ -1086,11 +1086,12 @@
     {
       "path": "apps/openagents-mobile/assets/fonts/OFL.txt",
       "sha256": "a356708a399e3f54b937ec7d9b722c26dabba21365b60f95c56eb7ebca0dee40",
-      "reason": "Final review of mutable first-party agent technical text",
+      "reason": "Final review of a converted document",
       "profile": {
-        "ste_status": "inspected",
-        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
         "ste_audience": "agent",
         "ste_agent_compact_revision": "openagents-agent-compact-v1",
         "ste_accepted_screening_rules": [
@@ -1098,7 +1099,10 @@
           "STE-3.6",
           "STE-5.1",
           "STE-8.2"
-        ]
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {
@@ -1107,12 +1111,10 @@
       "reason": "Third-party or license source data",
       "profile": {
         "ste_mode": "source-data",
-        "ste_status": "source-data",
-        "ste_reviewer": null,
-        "ste_reviewed_at": null,
         "risk": "source-data",
         "source": "Third-party or license source data",
-        "replacement": null
+        "replacement": null,
+        "ste_status": "source-data"
       }
     },
     {
@@ -33580,7 +33582,7 @@
     },
     {
       "path": "docs/mvp/openagents-codex-workroom-mvp-assurance-coverage-matrix.md",
-      "sha256": "a1bc597b7478d366e1ce1dbc11d355711ab4537878e3613c41882d05f01e421d",
+      "sha256": "fb09e9901db9182a61d6d83282bc7a7e112c9519903c9bd9a1bd4e63305e3da0",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
