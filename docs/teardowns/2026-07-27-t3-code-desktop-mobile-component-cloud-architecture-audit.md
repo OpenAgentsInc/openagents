@@ -11,6 +11,7 @@ OpenAgents source commit at study start: `dedc1e85682e8648f6207a630b64fc052f913b
 This report is the component-level companion to:
 
 - [Omega and T3 Code desktop and mobile gap analysis](./2026-07-27-omega-t3-code-desktop-mobile-gap-analysis.md)
+- [T3 Code server projection and consistency architecture](./2026-07-27-t3-code-server-projection-consistency-architecture.md)
 - [T3 Code Sidebar V2 replication analysis](./2026-07-27-t3-code-sidebar-v2-replication-analysis.md)
 - [T3 Code mobile app teardown](./2026-07-17-t3-code-mobile-app-teardown.md)
 
@@ -939,6 +940,15 @@ The server projects provider events into stable orchestration objects. Clients
 derive project rows, task sections, message rows, work entries, attention, and
 connection state. This projection lets desktop and mobile use different view
 trees with the same product semantics.
+
+The database half of this design is stronger than the side-effect half.
+Accepted events, SQL projections, and the accepted command receipt commit in
+one SQLite transaction. Provider, checkpoint, deletion, Git, and file reactors
+consume hot process-local delivery or perform work outside that transaction.
+They do not all have durable cursors or replay after a restart. The focused
+[server projection and consistency audit](./2026-07-27-t3-code-server-projection-consistency-architecture.md)
+traces the exact commit, snapshot, replay, buffering, deduplication, outbox,
+reactor, and recovery boundaries.
 
 ## T3 Connect product boundary
 

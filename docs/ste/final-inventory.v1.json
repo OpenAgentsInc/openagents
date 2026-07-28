@@ -45109,7 +45109,7 @@
     },
     {
       "path": "docs/teardowns/2026-07-13-t3-code-teardown.md",
-      "sha256": "11966551ae0ff4f397bfb7645f05493da04925621873ca5d64f82cb66cdc3e07",
+      "sha256": "b13e56f24aeb7a43b7f2f1b33174319744f05080939798130a7f74de0f30bcd5",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -45743,7 +45743,7 @@
     },
     {
       "path": "docs/teardowns/2026-07-27-omega-t3-code-desktop-mobile-gap-analysis.md",
-      "sha256": "248cc63286ce926418a510d0b6813139c1490279d797ad9b12a9086da40b65f3",
+      "sha256": "8ee62ab63ff1428fb2e5f774c072d9b08d120da4f0542a50dbc9f5725a1dcdad",
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
@@ -45755,16 +45755,32 @@
     },
     {
       "path": "docs/teardowns/2026-07-27-t3-code-desktop-mobile-component-cloud-architecture-audit.md",
-      "sha256": "4fa831b0ea48e5cdcff705599b5f8e7a023491780480f6ffc4887119a69a276c",
+      "sha256": "eaca7e8a8a757757586c4c5b1aeef5b1065c47f43006f6c31ac909969f8b7500",
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
-        "ste_status": "source-data",
-        "ste_reviewer": null,
-        "ste_reviewed_at": null,
         "risk": "source-data",
         "source": "Immutable historical or evidence source data",
-        "replacement": null
+        "replacement": null,
+        "ste_status": "source-data"
+      }
+    },
+    {
+      "path": "docs/teardowns/2026-07-27-t3-code-server-projection-consistency-architecture.md",
+      "sha256": "1edd308d15670ad8c9bc240d5adabff1345d2154473aeeaf1af6e081fb34ef41",
+      "reason": "Final review of mutable first-party agent technical text",
+      "profile": {
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ]
       }
     },
     {
@@ -45803,7 +45819,7 @@
     },
     {
       "path": "docs/teardowns/README.md",
-      "sha256": "14a9ac063bb9d0b7e98efcebcca83cb42840f7d557d8d2a1c2bf1064e37d2a37",
+      "sha256": "e7527315f3ea725f5557c199246646749e8c54d61dd77a9fa9bc34381aad0654",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

@@ -3,6 +3,9 @@
 Component and cloud architecture companion:
 [T3 Code desktop, mobile, and cloud architecture audit](./2026-07-27-t3-code-desktop-mobile-component-cloud-architecture-audit.md)
 
+Server consistency companion:
+[T3 Code server projection and consistency architecture](./2026-07-27-t3-code-server-projection-consistency-architecture.md)
+
 ## Executive conclusion
 
 Omega and T3 Code solve different parts of the same problem well.
@@ -108,8 +111,13 @@ engines. It adapts Codex, Claude, Cursor, Grok, and OpenCode into one server
 model.
 
 The server owns commands, events, projections, and durable state. SQLite stores
-the event history. Reactors resume provider work from checkpoints. A runtime
-receipt bus connects provider effects to the durable event stream.
+the event history. Accepted events, SQL projections, and accepted command
+receipts commit atomically. Provider reactors translate committed intent into
+runtime work, but they consume a live process-local stream without a durable
+consumer cursor. A restart can therefore preserve the admitted intent while
+losing the provider side effect. The `RuntimeReceiptBus` is test
+synchronization, not a production bridge from provider effects into the
+durable event log.
 
 The Electron desktop client and the Expo mobile client are views over that
 model. They share contracts and projection logic. They do not share all UI
