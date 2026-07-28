@@ -5,8 +5,10 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./channel": "./src/channel.ts",
     "./client": "./src/client.ts",
     "./fixtures/agent-chat-parity.v1.json": "./fixtures/agent-chat-parity.v1.json",
+    "./fixtures/public-channel-registry.v1.json": "./fixtures/public-channel-registry.v1.json",
     "./manifest": "./src/manifest.ts",
     "./parity": "./src/parity.ts",
     "./profile": "./src/profile.ts"

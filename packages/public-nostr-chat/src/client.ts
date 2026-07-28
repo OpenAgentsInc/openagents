@@ -8,6 +8,7 @@ import {
   PUBLIC_CHAT_GROUP_STATE_KINDS,
   PUBLIC_CHAT_LIMITS,
   PUBLIC_CHAT_MODERATION_KINDS,
+  type PublicChatEventLimits,
   PublicChatRejectionReason,
   relayResultPrefix,
   stableChronological,
@@ -63,12 +64,16 @@ export type PublicChatRelayClient = Readonly<{
   subscribe: (listener: (snapshot: PublicChatRelaySnapshot) => void) => () => void;
 }>;
 
+export type PublicChatRelayLimits = PublicChatEventLimits & Readonly<{ historyPageSize: number }>;
+
 export const makePublicChatRelayClient = (
   input: Readonly<{
     relayUrl: string;
     groupId?: string;
     acceptedKinds?: ReadonlyArray<number>;
     groupStateKinds?: ReadonlyArray<number>;
+    limits?: PublicChatRelayLimits;
+    moderationKinds?: ReadonlyArray<number>;
     signer?: PublicChatSigner;
     webSocket?: (url: string) => SocketLike;
     now?: () => number;
@@ -84,6 +89,9 @@ export const makePublicChatRelayClient = (
   const acceptedKinds: ReadonlyArray<number> = input.acceptedKinds ?? PUBLIC_CHAT_ACCEPTED_KINDS;
   const groupStateKinds: ReadonlyArray<number> =
     input.groupStateKinds ?? PUBLIC_CHAT_GROUP_STATE_KINDS;
+  const moderationKinds: ReadonlyArray<number> =
+    input.moderationKinds ?? PUBLIC_CHAT_MODERATION_KINDS;
+  const limits = input.limits ?? PUBLIC_CHAT_LIMITS;
   const events = new Map<string, NostrEvent>();
   const listeners = new Set<(snapshot: PublicChatRelaySnapshot) => void>();
   const pending = new Map<
@@ -138,8 +146,8 @@ export const makePublicChatRelayClient = (
       subscriptionId,
       {
         "#h": [groupId],
-        kinds: [...acceptedKinds, ...PUBLIC_CHAT_MODERATION_KINDS],
-        limit: PUBLIC_CHAT_LIMITS.historyPageSize,
+        kinds: [...acceptedKinds, ...moderationKinds],
+        limit: limits.historyPageSize,
         ...(latest === 0 ? {} : { since: Math.max(0, latest - 1) }),
       },
     ]);
@@ -213,7 +221,7 @@ export const makePublicChatRelayClient = (
             : { ok: false as const, reason: "signature-invalid" as const }
           : frame[1] === stateSubscriptionId && input.relaySelfPubkey !== undefined
             ? validateRelayGroupState(event, input.relaySelfPubkey, groupId, groupStateKinds)
-            : PUBLIC_CHAT_MODERATION_KINDS.includes(event.kind as never)
+            : moderationKinds.includes(event.kind)
               ? verifyEvent({
                   ...event,
                   tags: event.tags.map((tag) => [...tag]),
@@ -223,6 +231,7 @@ export const makePublicChatRelayClient = (
               : validatePublicChatEvent(event, {
                   acceptedKinds,
                   groupId,
+                  limits,
                   nowSeconds: Math.floor(now() / 1_000),
                 });
         if (!validation.ok) {
@@ -345,8 +354,8 @@ export const makePublicChatRelayClient = (
         pageId,
         {
           "#h": [groupId],
-          kinds: [...acceptedKinds, ...PUBLIC_CHAT_MODERATION_KINDS],
-          limit: PUBLIC_CHAT_LIMITS.historyPageSize,
+          kinds: [...acceptedKinds, ...moderationKinds],
+          limit: limits.historyPageSize,
           until: oldest,
         },
       ]);
