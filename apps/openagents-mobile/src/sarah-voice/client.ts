@@ -29,6 +29,8 @@ const OMEGA_NOSTR_SESSION_PATH = "/api/omega/auth/session";
 const MAX_RECONNECT_ATTEMPTS = 2;
 const MAX_PENDING_AUDIO_FRAMES = 8;
 
+// Server `UserSubject.provider` for `/api/omega/auth/session`: pure self-provision
+// installs are `nostr`; device-linked canonical accounts return `github` or `email`.
 const OmegaNostrSessionResponseSchema = S.Struct({
   accessToken: S.String.check(S.isPattern(/^oa_omega_[A-Za-z0-9_-]{32,256}$/u)),
   expiresIn: S.Number.check(S.isInt(), S.isGreaterThan(0)),

@@ -364,6 +364,45 @@ describe("managed Sarah mobile voice client", () => {
     });
   });
 
+  test("accepts a device-linked GitHub canonical account session", async () => {
+    const sockets: FixtureSocket[] = [];
+    const vault = makeVault();
+    let sessionIdentity: VoiceIdentity | null = null;
+    const client = new SarahVoiceClient({
+      baseUrl: "https://openagents.com",
+      publicKeyHex,
+      signer,
+      vault: vault.vault,
+      fetch: (async (input, init) => {
+        const url = String(input);
+        if (url.endsWith("/api/omega/auth/session")) {
+          return Response.json(normalSessionResponse("github"));
+        }
+        const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        sessionIdentity = body.identity as VoiceIdentity;
+        return Response.json(sessionResponse(sessionIdentity, "t".repeat(43), false), {
+          status: 201,
+        });
+      }) as typeof globalThis.fetch,
+      createSocket: (url, headers) => {
+        const socket = new FixtureSocket(url, headers);
+        sockets.push(socket);
+        return socket;
+      },
+      sha256,
+      randomUuid: () => "voice-github",
+      now: () => 10_000,
+      setTimeout,
+      clearTimeout,
+    });
+
+    await client.start();
+    expect(vault.read()).toMatchObject({ publicKeyHex, ownerRef, accessToken });
+    expect(sessionIdentity?.ownerRef).toBe(ownerRef);
+    expect(client.snapshot().phase).toBe("connecting");
+    expect(sockets).toHaveLength(1);
+  });
+
   test("uses the bounded Sarah challenge when automatic account sessions are unavailable", async () => {
     const vault = makeVault();
     const requests: string[] = [];
