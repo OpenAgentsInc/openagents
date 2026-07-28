@@ -1,8 +1,27 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { Schema as S } from "effect";
 import { finalizeEvent, generateSecretKey } from "nostr-effect/pure";
 import { describe, expect, it, vi } from "vitest";
 
-import { NostrEvent, PUBLIC_CHAT_GROUP_ID, makePublicChatRelayClient } from "./index.js";
+import {
+  NostrEvent,
+  PUBLIC_CHAT_GROUP_ID,
+  PublicChatParityFixture,
+  makePublicChatRelayClient,
+} from "./index.js";
+
+const parityFixture = S.decodeUnknownSync(PublicChatParityFixture)(
+  JSON.parse(
+    readFileSync(resolve(import.meta.dirname, "../fixtures/agent-chat-parity.v1.json"), "utf8"),
+  ),
+);
+
+const required = <T>(value: T | undefined, label: string): T => {
+  if (value === undefined) throw new Error(`Missing ${label}`);
+  return value;
+};
 
 class TestSocket {
   readonly sent: string[] = [];
@@ -93,6 +112,145 @@ describe("public chat relay client", () => {
       expect(socket.sent.some((frame) => JSON.parse(frame)[0] === "AUTH")).toBe(true);
     });
     client.close();
+  });
+
+  it("matches the shared replay, EOSE, pagination, and reconnect fixture", async () => {
+    vi.useFakeTimers();
+    const sockets: TestSocket[] = [];
+    const states: string[] = [];
+    const nowMs = (parityFixture.lifecycle.latestEventCreatedAt + 100) * 1_000;
+    const client = makePublicChatRelayClient({
+      now: () => nowMs,
+      reconnectMs: parityFixture.lifecycle.reconnectDelayMs,
+      relaySelfPubkey: parityFixture.lifecycle.relaySelfPubkey,
+      relayUrl: "wss://relay.example",
+      webSocket: () => {
+        const socket = new TestSocket();
+        sockets.push(socket);
+        return socket;
+      },
+    });
+    const unsubscribe = client.subscribe((snapshot) => {
+      if (states.at(-1) !== snapshot.state) states.push(snapshot.state);
+    });
+
+    client.connect();
+    const first = required(sockets[0], "first socket");
+    first.fire("open");
+    const initialRequests = first.sent
+      .map((frame) => JSON.parse(frame) as unknown[])
+      .filter((frame) => frame[0] === "REQ");
+    const historyRequest = required(
+      initialRequests.find(
+        (frame) => typeof frame[2] === "object" && frame[2] !== null && "#h" in frame[2],
+      ),
+      "history request",
+    );
+    const stateRequest = required(
+      initialRequests.find(
+        (frame) => typeof frame[2] === "object" && frame[2] !== null && "#d" in frame[2],
+      ),
+      "group-state request",
+    );
+    expect(historyRequest[2]).toMatchObject({
+      "#h": [PUBLIC_CHAT_GROUP_ID],
+      limit: parityFixture.lifecycle.historyPageSize,
+    });
+    expect(stateRequest[2]).toMatchObject({
+      "#d": [PUBLIC_CHAT_GROUP_ID],
+      authors: [parityFixture.lifecycle.relaySelfPubkey],
+    });
+
+    const media = required(
+      parityFixture.projection.events.find(
+        (event) => event.kind === 9 && event.tags.some((tag) => tag[0] === "imeta"),
+      ),
+      "media event",
+    );
+    const reaction = required(
+      parityFixture.projection.events.find((event) => event.kind === 7),
+      "reaction event",
+    );
+    const profile = required(
+      parityFixture.projection.events.find(
+        (event) =>
+          event.kind === 0 && event.created_at === parityFixture.lifecycle.latestEventCreatedAt,
+      ),
+      "profile event",
+    );
+    const historyId = String(historyRequest[1]);
+    first.fire("message", JSON.stringify(["EVENT", historyId, media]));
+    first.fire("message", JSON.stringify(["EVENT", historyId, media]));
+    first.fire("message", JSON.stringify(["EVENT", historyId, reaction]));
+    const profileRequest = required(
+      first.sent
+        .map((frame) => JSON.parse(frame) as unknown[])
+        .find(
+          (frame) =>
+            frame[0] === "REQ" &&
+            typeof frame[1] === "string" &&
+            frame[1].startsWith("agentchat-profile-"),
+        ),
+      "profile request",
+    );
+    first.fire("message", JSON.stringify(["EVENT", String(profileRequest[1]), profile]));
+
+    client.loadOlder();
+    const pageRequest = required(
+      first.sent
+        .map((frame) => JSON.parse(frame) as unknown[])
+        .find(
+          (frame) =>
+            frame[0] === "REQ" &&
+            typeof frame[1] === "string" &&
+            frame[1].startsWith("agentchat-page-"),
+        ),
+      "page request",
+    );
+    expect(pageRequest[2]).toMatchObject({
+      limit: parityFixture.lifecycle.historyPageSize,
+      until: parityFixture.lifecycle.oldestAcceptedEventCreatedAt,
+    });
+
+    first.fire("message", JSON.stringify(["EOSE", historyId]));
+    expect(client.snapshot().state).toBe("replaying");
+    first.fire("message", JSON.stringify(["EOSE", String(stateRequest[1])]));
+    expect(client.snapshot().state).toBe("current");
+    expect(client.snapshot().events.filter(({ id }) => id === media.id)).toHaveLength(1);
+
+    first.close();
+    expect(client.snapshot().state).toBe("stale");
+    await vi.advanceTimersByTimeAsync(parityFixture.lifecycle.reconnectDelayMs);
+    const second = required(sockets[1], "reconnect socket");
+    second.fire("open");
+    const replayRequests = second.sent
+      .map((frame) => JSON.parse(frame) as unknown[])
+      .filter((frame) => frame[0] === "REQ");
+    const replayHistory = required(
+      replayRequests.find(
+        (frame) => typeof frame[2] === "object" && frame[2] !== null && "#h" in frame[2],
+      ),
+      "replay history request",
+    );
+    const replayState = required(
+      replayRequests.find(
+        (frame) => typeof frame[2] === "object" && frame[2] !== null && "#d" in frame[2],
+      ),
+      "replay group-state request",
+    );
+    expect(replayHistory[2]).toMatchObject({
+      since:
+        parityFixture.lifecycle.latestEventCreatedAt -
+        parityFixture.lifecycle.reconnectOverlapSeconds,
+    });
+    second.fire("message", JSON.stringify(["EOSE", String(replayHistory[1])]));
+    expect(client.snapshot().state).toBe("replaying");
+    second.fire("message", JSON.stringify(["EOSE", String(replayState[1])]));
+    expect(states).toEqual(parityFixture.lifecycle.expectedStateSequence);
+
+    unsubscribe();
+    client.close();
+    vi.useRealTimers();
   });
 
   it("closes without sending while the socket is connecting", () => {

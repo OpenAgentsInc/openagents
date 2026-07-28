@@ -446,8 +446,9 @@ export const hasContentWarning = (event: NostrEvent): boolean =>
 export const isAuthorDeletion = (
   deletion: NostrEvent,
   target: NostrEvent,
+  groupId: string = PUBLIC_CHAT_GROUP_ID,
 ): boolean =>
   deletion.kind === 5 &&
   deletion.pubkey === target.pubkey &&
-  hasGroupTag(deletion) &&
+  hasGroupTag(deletion, groupId) &&
   deletion.tags.some((tag) => tag[0] === "e" && tag[1] === target.id)

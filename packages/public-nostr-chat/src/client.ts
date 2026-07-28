@@ -15,15 +15,10 @@ import {
   validatePublicChatEvent,
   validateRelayGroupState,
 } from "./profile.js";
+import type { PublicChatRelayState } from "./parity.js";
 import { verifyEvent } from "nostr-effect/pure";
 
-export type PublicChatRelayState =
-  | "disconnected"
-  | "connecting"
-  | "replaying"
-  | "current"
-  | "reconnecting"
-  | "stale";
+export type { PublicChatRelayState } from "./parity.js";
 
 export type PublicChatPublishState = "signing" | "publishing" | "accepted" | "rejected";
 

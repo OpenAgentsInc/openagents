@@ -21,17 +21,18 @@ import {
   PUBLIC_CHAT_LIMITS,
   PUBLIC_CHAT_RELAY_URL,
   PublicNostrChatManifest,
+  type PublicChatMediaState,
   hasContentWarning,
-  isAuthorDeletion,
   makePublicChatRelayClient,
   npubFor,
+  parsePublicChatContent,
   parseInlineAttachments,
-  relayGroupAdministrators,
-  stableChronological,
+  projectPublicChatTimeline,
+  transitionPublicChatMedia,
+  verifyPublicChatMedia,
   type PublicChatRelaySnapshot,
 } from '@openagentsinc/public-nostr-chat'
 import { Schema as S } from 'effect'
-import { verifyEvent } from 'nostr-effect/pure'
 
 const emptySnapshot: PublicChatRelaySnapshot = {
   events: [],
@@ -56,32 +57,32 @@ const formatTime = (seconds: number): string =>
 const agentInstruction = publicNostrChatAgentBootstrap
 
 const textNodes = (content: string): ReactNode =>
-  content.split(/(https?:\/\/[^\s]+|nostr:[a-z0-9]+)/gi).map((part, index) => {
-    if (/^https?:\/\//i.test(part)) {
+  parsePublicChatContent(content).map((part, index) => {
+    if (part.type === 'http-link') {
       return (
         <a
           className="break-all text-khala-energy-soft underline decoration-khala-energy/40 underline-offset-4 hover:text-khala-energy-cyan"
-          href={part}
-          key={`${part}-${index}`}
+          href={part.value}
+          key={`${part.value}-${index}`}
           referrerPolicy="no-referrer"
           rel="noopener noreferrer"
           target="_blank"
         >
-          {part}
+          {part.value}
         </a>
       )
     }
-    if (/^nostr:/i.test(part)) {
+    if (part.type === 'nostr-reference') {
       return (
         <code
           className="break-all border border-khala-border bg-khala-surface-raised px-1.5 py-0.5 text-khala-energy-soft"
-          key={`${part}-${index}`}
+          key={`${part.value}-${index}`}
         >
-          {part}
+          {part.value}
         </code>
       )
     }
-    return part
+    return part.value
   })
 
 function MediaAttachment({
@@ -89,9 +90,7 @@ function MediaAttachment({
 }: Readonly<{
   attachment: ReturnType<typeof parseInlineAttachments>[number]
 }>) {
-  const [state, setState] = useState<
-    'gated' | 'loading' | 'verified' | 'mismatch' | 'unavailable'
-  >('gated')
+  const [state, setState] = useState<PublicChatMediaState>('gated')
   const [objectUrl, setObjectUrl] = useState<string | null>(null)
 
   useEffect(
@@ -102,7 +101,9 @@ function MediaAttachment({
   )
 
   const load = async () => {
-    setState('loading')
+    setState(current =>
+      transitionPublicChatMedia(current, 'load-requested'),
+    )
     try {
       const response = await fetch(attachment.url, {
         credentials: 'omit',
@@ -110,19 +111,23 @@ function MediaAttachment({
       })
       if (!response.ok) throw new Error('unavailable')
       const bytes = await response.arrayBuffer()
-      const digest = [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))]
-        .map((value) => value.toString(16).padStart(2, '0'))
-        .join('')
-      if (attachment.digest !== undefined && digest !== attachment.digest) {
-        setState('mismatch')
+      const verification = await verifyPublicChatMedia(attachment, bytes)
+      if (verification === 'mismatch') {
+        setState(current =>
+          transitionPublicChatMedia(current, 'digest-mismatch'),
+        )
         return
       }
       setObjectUrl(
         URL.createObjectURL(new Blob([bytes], { type: attachment.mimeType })),
       )
-      setState('verified')
+      setState(current =>
+        transitionPublicChatMedia(current, 'load-verified'),
+      )
     } catch {
-      setState('unavailable')
+      setState(current =>
+        transitionPublicChatMedia(current, 'load-unavailable'),
+      )
     }
   }
 
@@ -308,85 +313,10 @@ export function AgentChatPage() {
     }
   }, [manifest])
 
-  const timeline = useMemo(() => {
-    const events = stableChronological(snapshot.events)
-    const administrators = relayGroupAdministrators(events)
-    const profiles = new Map<string, { bot: boolean; displayName: string | null }>()
-    for (const profileEvent of events
-      .filter((event) => event.kind === 0)
-      .toSorted((left, right) => left.created_at - right.created_at)) {
-      try {
-        const profile: unknown = JSON.parse(profileEvent.content)
-        if (typeof profile !== 'object' || profile === null) continue
-        const name =
-          'display_name' in profile && typeof profile.display_name === 'string'
-            ? profile.display_name
-            : 'name' in profile && typeof profile.name === 'string'
-              ? profile.name
-              : null
-        profiles.set(profileEvent.pubkey, {
-          bot: 'bot' in profile && profile.bot === true,
-          displayName: name,
-        })
-      } catch {
-        // A malformed optional profile does not block a signed chat event.
-      }
-    }
-    const deleted = new Map<string, 'author' | 'moderator'>()
-    for (const deletion of events.filter((event) => event.kind === 5)) {
-      for (const target of events) {
-        if (isAuthorDeletion(deletion, target)) deleted.set(target.id, 'author')
-      }
-    }
-    for (const deletion of events.filter(
-      (event) => event.kind === 9005 && administrators.has(event.pubkey),
-    )) {
-      for (const targetId of deletion.tags
-        .filter((tag) => tag[0] === 'e')
-        .map((tag) => tag[1])
-        .filter((value): value is string => value !== undefined)) {
-        deleted.set(targetId, 'moderator')
-      }
-    }
-    const reactions = new Map<string, Map<string, number>>()
-    for (const reaction of events.filter(
-      (event) =>
-        event.kind === 7 &&
-        verifyEvent({
-          ...event,
-          tags: Array.from(event.tags, (tag) => Array.from(tag)),
-        }),
-    )) {
-      const target = reaction.tags.find((tag) => tag[0] === 'e')?.[1]
-      if (target === undefined || !events.some((event) => event.id === target)) continue
-      const values = reactions.get(target) ?? new Map<string, number>()
-      values.set(reaction.content, (values.get(reaction.content) ?? 0) + 1)
-      reactions.set(target, values)
-    }
-    return events
-      .filter((event) => event.kind === 9 || event.kind === 1337)
-      .map((event) => ({
-        deletion: deleted.get(event.id),
-        event,
-        profile: profiles.get(event.pubkey),
-        reactions: [...(reactions.get(event.id) ?? new Map()).entries()],
-      }))
-  }, [snapshot.events])
-
-  const pinnedIds = useMemo(() => {
-    const state = snapshot.events
-      .filter((event) => event.kind === 39005)
-      .toSorted(
-        (left, right) =>
-          right.created_at - left.created_at || right.id.localeCompare(left.id),
-      )[0]
-    return new Set(
-      state?.tags
-        .filter((tag) => tag[0] === 'e')
-        .map((tag) => tag[1])
-        .filter((value): value is string => value !== undefined) ?? [],
-    )
-  }, [snapshot.events])
+  const timeline = useMemo(
+    () => projectPublicChatTimeline(snapshot.events),
+    [snapshot.events],
+  )
 
   return (
     <div className="min-h-screen bg-khala-void text-khala-text">
@@ -552,7 +482,7 @@ export function AgentChatPage() {
                 </div>
               ) : (
                 <ol className="mx-auto w-full max-w-4xl">
-                  {timeline.map(({ deletion, event, profile, reactions }) => (
+                  {timeline.map(({ deletion, event, pinned, profile, reactions }) => (
                     <li
                       className="grid grid-cols-[40px_minmax(0,1fr)] gap-3 border-b border-khala-border py-5 sm:grid-cols-[44px_minmax(0,1fr)] sm:gap-4"
                       id={`event-${event.id}`}
@@ -595,13 +525,13 @@ export function AgentChatPage() {
                           >
                             <Clipboard className="size-3" />
                           </button>
-                          {pinnedIds.has(event.id) ? (
+                          {pinned ? (
                             <span className="font-mono text-[9px] uppercase tracking-wider text-khala-warning">
                               pinned
                             </span>
                           ) : null}
                         </header>
-                        {deletion === undefined ? (
+                        {deletion === null ? (
                           <MessageBody event={event} />
                         ) : (
                           <p className="mt-2 flex items-center gap-2 font-mono text-xs text-khala-text-muted">
@@ -613,7 +543,7 @@ export function AgentChatPage() {
                         )}
                         {reactions.length === 0 ? null : (
                           <div className="mt-3 flex flex-wrap gap-1.5">
-                            {reactions.map(([value, count]) => (
+                            {reactions.map(({ count, value }) => (
                               <span
                                 className="border border-khala-border bg-khala-surface-muted px-2 py-1 font-mono text-[10px] text-khala-text-muted"
                                 key={value}

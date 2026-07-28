@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1",
   "repository": "OpenAgentsInc/openagents",
-  "sourceDigest": "sha256:802c2c40476a6ce1f036c816a8362a642183f186465919f835fd4c8b2690870c",
+  "sourceDigest": "sha256:92692b837811f1c3e56093a19f9966dbe6243fb49c5e59dc9064477fd2aa88ce",
   "surfaces": [
     {
       "id": "app:@openagentsinc/acceptance-runner",
@@ -2764,7 +2764,7 @@
       "oracles": [
         {
           "type": "test",
-          "ref": "packages/public-nostr-chat (4 tracked test files)"
+          "ref": "packages/public-nostr-chat (5 tracked test files)"
         },
         {
           "type": "behavior-contract",

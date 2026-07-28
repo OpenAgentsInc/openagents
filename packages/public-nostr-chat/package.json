@@ -6,7 +6,9 @@
   "exports": {
     ".": "./src/index.ts",
     "./client": "./src/client.ts",
+    "./fixtures/agent-chat-parity.v1.json": "./fixtures/agent-chat-parity.v1.json",
     "./manifest": "./src/manifest.ts",
+    "./parity": "./src/parity.ts",
     "./profile": "./src/profile.ts"
   },
   "scripts": {
