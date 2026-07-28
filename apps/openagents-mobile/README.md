@@ -21,15 +21,17 @@ commits they pin.
 The app opens a signed device identity from Expo SecureStore and connects to an
 Omega desktop bridge over WebSocket. A person can:
 
-- scan the short-lived QR bootstrap shown by Omega desktop;
+- scan the short-lived QR bootstrap shown by Omega desktop
 - retain the admitted grant, last successful endpoint, and resume cursor in
-  device-only secure storage;
-- reconnect through the cached endpoint after reopening the app;
-- see the desktop name and honest direct or offline/stale status (the view can
-  render relay state, but the mounted screen supplies no relay observation
-  feed);
-- browse projected desktop threads and runs ordered by latest activity; and
-- open a thread to read its bounded transcript and executor disclosure.
+  device-only secure storage
+- reconnect through the cached endpoint after reopening the app
+- read the link state from one status dot, green for a direct connection and
+  red when the desktop is unreachable (the view can render relay state, but the
+  mounted screen supplies no relay observation feed)
+- browse projected desktop threads and runs, ordered by the desktop's own last
+  activity time and dated with it
+- open a thread to read its bounded transcript, tool calls, and executor
+  disclosure, rendered as Markdown in the desktop's own faces.
 
 The bridge validates bounded protocol frames, signs the hello proof, binds a QR
 proof to the pairing-secret digest, applies ordered snapshot/delta updates, and
@@ -42,19 +44,21 @@ bootstrap. It does not currently supply signed announcement discovery, manual
 MagicDNS, or a relay observation feed. Simulator development can provide a
 bootstrap through either:
 
-- `EXPO_PUBLIC_OMEGA_PAIRING_BOOTSTRAP` for inline JSON; or
+- `EXPO_PUBLIC_OMEGA_PAIRING_BOOTSTRAP` for inline JSON
 - `EXPO_PUBLIC_OMEGA_PAIRING_BOOTSTRAP_URL` for a JSON endpoint.
 
 ## Capability boundary
 
-This app is a read-only desktop mirror. The transcript composer is visibly
-disabled because the mounted surface does not open the signed relay command
-lane. The app does not currently:
+This app is a read-only desktop mirror. The transcript composer is not rendered
+at all, because the mounted surface does not open the signed relay command
+lane. A disabled control still offers to do something, and this one cannot, so
+the owner directed on 2026-07-27 that the surface show nothing rather than an
+affordance that refuses. The app does not currently:
 
-- create, append to, steer, interrupt, or approve desktop work;
-- authenticate an OpenAgents account or synchronize account conversations;
-- control managed sandboxes, terminals, files, diffs, Git, or Full Auto;
-- register or consume push notifications; or
+- create, append to, steer, interrupt, or approve desktop work
+- authenticate an OpenAgents account or synchronize account conversations
+- control managed sandboxes, terminals, files, diffs, Git, or Full Auto
+- register or consume push notifications
 - run an agent, model, shell, cloud SDK, or desktop authority on the phone.
 
 The bridge client contains transport support beyond what the screen currently
@@ -64,14 +68,20 @@ candidate-bound evidence.
 
 ## Architecture
 
-- `src/app.tsx` mounts one `OmegaHomeScreen` inside the safe-area provider.
-- `src/screens/omega-home-screen.tsx` owns QR scanning, bridge lifecycle,
-  connection notices, activity ordering, selection, and the explicit
-  unavailable-command state.
+- `src/app.tsx` loads the bundled faces, then mounts one `OmegaHomeScreen`
+  inside the safe-area provider.
+- `src/screens/omega-home-screen.tsx` owns QR scanning, connection notices,
+  activity ordering, selection, and the clock the relative stamps read against.
+- `src/screens/omega-bridge-session.ts` owns the bridge mount lifecycle alone,
+  so its ownership race has a seam a test can reach (#9264). The screen module
+  cannot be imported under the test environment, because `expo-camera` needs a
+  React Native runtime that the node test host does not provide.
 - `src/screens/omega-home-view.tsx` renders pairing, activity, transcript, and
   connection states with plain React Native components.
-- `src/ui/` contains the small button, screen, surface, text, and theme
-  primitives used by that view.
+- `src/ui/` contains the small button, screen, surface, text, theme, and
+  Markdown primitives used by that view. `assets/fonts/` carries the desktop's
+  own IBM Plex Sans and Lilex, with their licences, so a message reads the same
+  on both screens.
 - `src/workroom/omega-device-bridge-client.ts` owns the Effect-based signed
   bridge protocol, endpoint ladder, grant/cursor storage, and mirror reducer.
 - `src/workroom/issue31-device-key-vault.ts` owns the device key in Expo
@@ -80,7 +90,7 @@ candidate-bound evidence.
   Hermes without replacing a platform implementation.
 
 The device bridge is the environment boundary. The phone renders its bounded
-projection; it does not become execution authority.
+projection. It does not become execution authority.
 
 ## Run it
 
@@ -108,9 +118,9 @@ pnpm --dir apps/openagents-mobile run test
 
 The current focused suite covers:
 
-- the exact app identity, owned OTA origin, channel, and runtime policy;
-- the Hermes Web Crypto fallback;
-- the Metro-reachable source graph staying free of Node built-ins; and
+- the exact app identity, owned OTA origin, channel, and runtime policy
+- the Hermes Web Crypto fallback
+- the Metro-reachable source graph staying free of Node built-ins
 - bridge framing, admission, mirror updates, revocation, storage, and signer
   cleanup.
 

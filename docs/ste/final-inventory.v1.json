@@ -1063,7 +1063,7 @@
     },
     {
       "path": "apps/openagents-mobile/README.md",
-      "sha256": "31149a806777c3b2b3c2e38991219008a0e1b48b9b3ab22831739665727c0328",
+      "sha256": "516630bec9d0eafded7e1bfc7c1361e461b4a1553b66d1f0626aa66d59e8299b",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -14179,7 +14179,7 @@
     },
     {
       "path": "docs/DEPLOYMENT.md",
-      "sha256": "7803424ae194fe536ccdb1243ef4ed71ceecff01e8881f2e2fb7a76e05b24f94",
+      "sha256": "24de9fe0108bb0f918d38780d88a8b936e972048b262e638c3b0a4d0073995b4",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
