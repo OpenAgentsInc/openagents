@@ -1,211 +1,153 @@
 # OpenAgents mobile
 
-Greenfield **OpenAgents** iOS/Android app (#8597, epic #8566). One Expo React
-Native codebase whose application/component/intent model is **Effect Native**.
-React Native and Expo are host and renderer machinery only.
+The current OpenAgents iOS/Android app is one plain React Native surface for
+mirroring an admitted Omega desktop. Expo provides the native host, local build
+tooling, camera access, secure storage, and the owned OTA feed. Effect Native is
+not part of the mounted UI.
 
 - Display name: `OpenAgents`
 - iOS bundle identifier / Android application ID: `com.openagents.app`
-- Icon: canonical OpenAgents mobile icon (SHA-256 pinned by
-  `tests/app-identity.test.ts`)
+- App entry: `src/app.tsx`
+- Mounted screen: `src/screens/omega-home-screen.tsx`
+- Device bridge protocol: `openagents.omega.device_bridge.v1`
 
-The retired Khala mobile clients were removed on 2026-07-14. This app is the
-only supported mobile product and imports no legacy client source.
+The owner-directed reset on 2026-07-27 removed the previous conversation,
+Effect Native, auth, Sync, managed-sandbox, Full Auto, notification, settings,
+and mobile command surfaces. Historical receipts remain evidence only for the
+commits they pin.
+
+## What exists today
+
+The app opens a signed device identity from Expo SecureStore and connects to an
+Omega desktop bridge over WebSocket. A person can:
+
+- scan the short-lived QR bootstrap shown by Omega desktop;
+- retain the admitted grant, last successful endpoint, and resume cursor in
+  device-only secure storage;
+- reconnect through the cached endpoint after reopening the app;
+- see the desktop name and honest direct or offline/stale status (the view can
+  render relay state, but the mounted screen supplies no relay observation
+  feed);
+- browse projected desktop threads and runs ordered by latest activity; and
+- open a thread to read its bounded transcript and executor disclosure.
+
+The bridge validates bounded protocol frames, signs the hello proof, binds a QR
+proof to the pairing-secret digest, applies ordered snapshot/delta updates, and
+requests a fresh snapshot on generation or sequence gaps. A stalled candidate
+has a five-second admission deadline and is closed before the dial ladder
+continues.
+
+The mounted production screen supplies the cached endpoint and an optional QR
+bootstrap. It does not currently supply signed announcement discovery, manual
+MagicDNS, or a relay observation feed. Simulator development can provide a
+bootstrap through either:
+
+- `EXPO_PUBLIC_OMEGA_PAIRING_BOOTSTRAP` for inline JSON; or
+- `EXPO_PUBLIC_OMEGA_PAIRING_BOOTSTRAP_URL` for a JSON endpoint.
+
+## Capability boundary
+
+This app is a read-only desktop mirror. The transcript composer is visibly
+disabled because the mounted surface does not open the signed relay command
+lane. The app does not currently:
+
+- create, append to, steer, interrupt, or approve desktop work;
+- authenticate an OpenAgents account or synchronize account conversations;
+- control managed sandboxes, terminals, files, diffs, Git, or Full Auto;
+- register or consume push notifications; or
+- run an agent, model, shell, cloud SDK, or desktop authority on the phone.
+
+The bridge client contains transport support beyond what the screen currently
+wires. That code is not a product claim. Signed commands, live-host journeys,
+and physical-device reliability require separate implementation and
+candidate-bound evidence.
 
 ## Architecture
 
-- `src/screens/home-core.ts` — the PURE view-program layer: state, typed
-  intents (`defineIntent` + Effect Schema payloads), and a typed
-  `@effect-native/core` component tree. No `react`, no `react-native`. This is
-  the layer shared structurally with the web Effect Native consumers
-  (`apps/openagents.com/apps/start`): one catalog, many hosts.
-- `src/effect-native/effect-native-host.tsx` — the single mount point binding
-  React + React Native into `@effect-native/render-rn`'s surface.
-- `src/screens/home-screen.tsx` — thin RN shell: safe area + the Effect Native
-  surface mounted with the shared Protoss-blue `khalaTheme` from
-  `@effect-native/tokens`.
-- `src/sync/mobile-sync-host.ts` — host-owned Expo SQLite composition over the
-  shared Khala Sync store core. It owns the native handle and installation
-  identity plus a separate immutable device-local identity/local-authority
-  store. The app is usable without OpenAuth. Server-verified account linking
-  is an optional, reversible upgrade and unlink/denial retains local rows. It
-  composes production HTTP/WebSocket Sync only after session
-  verification, subscribes the server-derived owner's personal scope, closes
-  session-before-store on OTA reload/unmount, and never projects credentials,
-  owner refs, or native handles into the Effect Native view program. The shared
-  store migrates the supported unversioned cache in place and refuses a newer
-  schema before mutation with typed update-or-reset guidance. Sparse event
-  batches replay from the durable cursor instead of skipping history.
-- `src/conversation/mobile-conversation.ts` — public-safe adapter over the
-  host-owned canonical conversation service. Startup selects confirmed Sync or
-  the existing public-local path before Home mounts. Exact stable refs must be
-  confirmed before create/append appears complete. Once linked, the same host
-  reads the bounded canonical agent timeline and submits shared exact-ref
-  start, same-run follow-up, or interrupt commands. Home receives confirmed
-  stream updates until terminal state appears or an explicit pending-
-  reconciliation timeout is shown.
-- `src/managed-sandbox/mobile-managed-sandbox.ts` — controller-only adapter for
-  the shared managed-sandbox supervision schema. It can list bounded owner
-  projections and issue only interrupt, stop, resume, or delete against exact
-  versions and resource generations. The Expo host keeps the bearer and the
-  SQLite exact-byte outbox. Offline retry uses the same command bytes and UI
-  completion requires a durable outcome. The phone has no SDK, cloud client,
-  runtime, raw path, PTY, provider credential, or generic shell.
-- `src/auth/native-session-vault.ts` — one versioned Expo SecureStore record
-  for the native OpenAgents access/refresh tokens and server-derived owner ref.
-  Recovery exposes only signed-out or credential-present-unverified state.
-  malformed/retired records are purged and no credential enters view state.
-- `src/auth/native-session-recovery.ts` — host-only validation against the
-  existing native session endpoint. It passes the refresh token only on that
-  route, persists OpenAuth rotation, purges denial/owner mismatch, and returns
-  only signed-out/verified/denied/unavailable state.
-- `src/auth/native-session-pkce.ts` — host-only GitHub authorization-code +
-  S256 entry and dual-revocation exit. It uses the exact public client and
-  canonical `openagents://auth`, verifies the server owner before saving, and
-  never exposes credential material to the Effect Native program.
-- Styling is **typed style objects on the shared token vocabulary** — no
-  NativeWind, no Tailwind class strings (see
-  `docs/effect-native/2026-07-08-styling-tailwind-stylex-effect-native.md`).
+- `src/app.tsx` mounts one `OmegaHomeScreen` inside the safe-area provider.
+- `src/screens/omega-home-screen.tsx` owns QR scanning, bridge lifecycle,
+  connection notices, activity ordering, selection, and the explicit
+  unavailable-command state.
+- `src/screens/omega-home-view.tsx` renders pairing, activity, transcript, and
+  connection states with plain React Native components.
+- `src/ui/` contains the small button, screen, surface, text, and theme
+  primitives used by that view.
+- `src/workroom/omega-device-bridge-client.ts` owns the Effect-based signed
+  bridge protocol, endpoint ladder, grant/cursor storage, and mirror reducer.
+- `src/workroom/issue31-device-key-vault.ts` owns the device key in Expo
+  SecureStore and disposes signer material when the bridge closes.
+- `src/crypto-random-values.ts` installs the Expo CSPRNG fallback needed by
+  Hermes without replacing a platform implementation.
 
-New component needs go upstream through the effect-native GAPS/demand register
-(EN-2 #8572) — never app-local one-off primitives.
+The device bridge is the environment boundary. The phone renders its bounded
+projection; it does not become execution authority.
 
 ## Run it
 
-From the repo root (installs the vendored `@effect-native/*` workspace
-packages):
+Install workspace dependencies from the repository root:
 
 ```sh
 pnpm install
 ```
 
-### Development (custom development build / simulator)
+Start the Expo development server:
 
 ```sh
-cd apps/openagents-mobile
-pnpm run dev          # expo start — press i for iOS simulator or a for Android
+pnpm --dir apps/openagents-mobile run dev
 ```
 
-The app tree is Effect Native. On iOS 26+, `@effect-native/render-rn` lowers
-glass toolbar/composer nodes internally through `@expo/ui`. Android, older iOS,
-tests, and missing-module hosts use the renderer-owned React Native material
-fallback. Verify native glass, keyboard, and safe-area behavior through a
-development or TestFlight build rather than Expo Go.
+Use a custom development build or simulator. A physical phone is required for
+the production QR scanner path.
 
-### Tests
+## Validate it
 
 ```sh
-cd apps/openagents-mobile
-pnpm test             # or from the root: pnpm run test:openagents-mobile
+pnpm --dir apps/openagents-mobile run typecheck
+pnpm --dir apps/openagents-mobile run test
 ```
 
-The tests drive the REAL `@effect-native/render-rn` renderer against a
-string-typed host shim (the same technique as the renderer's own parity
-tests), so the view program, theme resolution, and the typed intent
-loop (tap -> intent -> handler -> state -> re-render) are proven without a
-simulator.
+The current focused suite covers:
 
-### Device / native builds (local only — never `eas build`)
+- the exact app identity, owned OTA origin, channel, and runtime policy;
+- the Hermes Web Crypto fallback;
+- the Metro-reachable source graph staying free of Node built-ins; and
+- bridge framing, admission, mirror updates, revocation, storage, and signer
+  cleanup.
+
+These tests do not replace a signed Omega host run or a physical-device run.
+
+## Device builds
+
+Mobile builds are local only. Never use `eas build`, `eas submit`, or
+`eas update`.
 
 ```sh
-cd apps/openagents-mobile
-pnpm run prebuild:ios       # expo prebuild --platform ios
-open ios/OpenAgents.xcworkspace
-# build/run from Xcode (Apple Team HQWSG26L43), or:
-#   xcodebuild -workspace ios/OpenAgents.xcworkspace -scheme OpenAgents ...
-pnpm run prebuild:android   # expo prebuild --platform android
-./android/gradlew -p android :app:assembleDebug
+pnpm --dir apps/openagents-mobile run prebuild:ios
+open apps/openagents-mobile/ios/OpenAgents.xcworkspace
+
+pnpm --dir apps/openagents-mobile run prebuild:android
+apps/openagents-mobile/android/gradlew \
+  -p apps/openagents-mobile/android :app:assembleDebug
 ```
 
-Per repo policy: builds are local (`expo prebuild` + Xcode/Gradle).
-`eas build`/`eas submit`/`eas update` are never used.
+Use Apple Team `HQWSG26L43` for iOS signing. Follow the mobile release entry in
+`docs/DEPLOYMENT.md` before producing or uploading a release artifact.
 
-### OTA updates (owned server, never EAS)
+## OTA updates
 
-JS/OTA updates ship through the owned OpenAgents Updates server
-(`apps/oa-updates`, `updates.openagents.com`) on this app's OWN channel
-`openagents-production` (identity tests enforce the URL/channel and reject any
-legacy khala/AutopilotRemoteControl feed):
+`app.json` points Expo Updates at the owned
+`https://updates.openagents.com/openagents-mobile/manifest` feed on the
+`openagents-production` channel with fingerprint runtime compatibility. Expo
+checks the feed on app load. There is no custom three-second polling loop in
+the current app.
+
+Publish only through the owned update path:
 
 ```sh
-cd apps/openagents-mobile
-pnpm run publish:ota        # = apps/oa-updates/scripts/publish-ota.sh
-# fingerprint -> expo export -> seed -> Cloud Run deploy; verify with the curl
-# line the script prints (signed manifest for this build's runtime fingerprint)
+pnpm --dir apps/openagents-mobile run publish:ota
 ```
 
-Bump `BUNDLE_TAG` in `src/screens/home-core.ts` before publishing so the swap
-is identifiable in diagnostics. The installed app polls for updates on a
-**TEMPORARY aggressive 3-second cadence** (`TEMPORARY_OTA_POLL_INTERVAL_MS` in
-`src/updates/ota-polling.ts` — dial down after owner testing): a published OTA
-appears on device within ~3s, downloads, and reloads. Errors (offline etc.)
-are soft and never crash the loop. Polling is a no-op in Expo Go/dev
-(`Updates.isEnabled` false).
-
-## Effect Native glass lowering
-
-The application-local `modules/openagents-liquid-glass` island is deleted.
-`home-core.ts` and `khala-core.ts` own one serializable Effect Native tree:
-typed `Toolbar`, `IconButton`, transcript, drawer, and `Composer` nodes. The
-React Native screen owns only safe-area, keyboard avoidance, and one
-`EffectNativeHost` mount. `@expo/ui` remains a native installation vehicle but
-is loaded only inside `@effect-native/render-rn`. App source cannot import it.
-The component-sharing oracle fails on a restored app-local module, direct
-native-UI import, RN `Pressable`/`TextInput` application controls, or a second
-composer.
-
-## What exists today
-
-The Home screen is persona-neutral: after native-session recovery it mounts one
-conversation authority. Live personal Sync reconstructs confirmed canonical
-threads/messages in the existing Effect Native transcript, drawer, and
-renderer-lowered glass composer. Signed-out/not-live startup retains the public Khala
-orchestration path. These catalogs never merge. Explicit auth transitions
-dispose and remount Home. Sync mutations use stable mobile refs, render drafts
-as pending, and replace them only after exact-ref confirmation. Selected coding
-sessions restore their canonical private draft and turn the composer's plus
-control into a native multi-file/image picker. Each selection is bounded,
-SHA-256 addressed, copied into the durable app document sandbox, and represented
-in the draft only by ready metadata plus an `attachment.native-local.sha256.*`
-ref. Raw picker URIs never enter view state or Sync. A private
-Expo SQLite cache now supplies restart-stable local Khala Sync storage and an
-honest `Local Sync ready` state. Native session credentials now have a
-device-only SecureStore vault, but a recovered record remains visibly
-unverified until the server accepts it. Startup now validates that record and
-persists access/refresh rotation. Denial or owner mismatch purges it. A verified
-session now starts authenticated personal-scope Sync in the Expo host. Session
-readiness remains distinct from the live-only confirmed conversation service.
-The surface enters through a typed GitHub sign-in intent and exits only after the server proves
-both access and refresh revocation. The app does not manufacture fleet,
-account, receipt, or cross-device authority. Durable runtime commands stay
-pending until confirmed projection.
-
-The host owns a bounded canonical conversation service once personal
-Sync is live. It lists only confirmed `chat_thread` / `chat_message` projections
-with public-safe refs and server versions, opens exact thread scopes, and sends
-the canonical create/append mutations. The cross-native e2e proves a Desktop
-thread and first message can be continued by mobile and reconstructed by both
-stores after restart. Home consumes that confirmed service without receiving an
-owner ref, credential, store/session object, transport, or raw row.
-Provider-neutral assistant/runtime events enter Home only as bounded canonical
-timeline items. Raw provider payloads never enter native state. A deployed-
-account/physical-device receipt remains the explicit #8676 close gate.
-
-The shared lifecycle fence discards delayed responses from a superseded mobile
-subscription, refuses provider events whose sequence/state no longer matches
-the durable turn, and clears hosted scopes plus queued mutations on proven
-unlink/revocation. Real Expo SQLite and Desktop SQLite tests close/reopen the
-same in-flight timeline and converge on one server-projected interrupted
-terminal without duplicate assistant output. This deterministic result does
-not replace the still-pending physical-iPhone network-gap receipt for
-#8689/#8677.
-
-The authenticated host also projects up to three managed sandboxes into Home.
-Each panel shows the effective target and isolation, resource and attachment
-generations, lifecycle, actor, provider/model/harness, elapsed and idle time,
-lease, budget cap, last structural event, attention, safe outcome refs, and
-cleanup truth. Sarah-started and owner-started work use the same projection and
-remain distinguishable by actor. Interrupt, stop, resume, and two-step delete
-use the durable outbox. A pending command, push, quiet runtime, or delete request
-does not display as complete. The component proof does not replace SBX-09 live
-GCP acceptance or the separate installed physical-device release proof.
+This command delegates to `apps/oa-updates/scripts/publish-ota.sh`. Read
+`docs/DEPLOYMENT.md` and the indexed OTA runbook before publishing. Do not
+describe an OTA export as installed-device evidence until the target device has
+actually loaded and verified it.
