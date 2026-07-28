@@ -1514,6 +1514,36 @@
       "ste_accepted_screening_rules": [
         "STE-2.4"
       ]
+    },
+    "docs/nostr/2026-07-27-omega-nip29-relay-groups-integration-spec.md": {
+      "ste_mode": "mixed",
+      "ste_status": "checked",
+      "ste_reviewer": "codex/omega-nip29-groups-spec-20260727",
+      "ste_reviewed_at": "2026-07-28T04:20:24Z",
+      "risk": "high",
+      "source": null,
+      "replacement": null,
+      "ste_audience": "human",
+      "ste_accepted_screening_rules": [
+        "STE-2.4"
+      ]
+    },
+    "docs/teardowns/2026-07-21-buzz-teardown.md": {
+      "ste_mode": "descriptive",
+      "ste_status": "checked",
+      "ste_reviewer": "codex/buzz-forum-follow-up-20260727",
+      "ste_reviewed_at": "2026-07-28T04:10:39Z",
+      "risk": "legacy",
+      "source": null,
+      "replacement": null,
+      "ste_audience": "agent",
+      "ste_agent_compact_revision": "openagents-agent-compact-v1",
+      "ste_accepted_screening_rules": [
+        "STE-2.4",
+        "STE-3.6",
+        "STE-5.1",
+        "STE-8.2"
+      ]
     }
   }
 }

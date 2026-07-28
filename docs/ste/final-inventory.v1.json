@@ -34091,6 +34091,24 @@
       }
     },
     {
+      "path": "docs/nostr/2026-07-27-omega-nip29-relay-groups-integration-spec.md",
+      "sha256": "7094a9880708c787ae43427f204f451e07ca3c889a92be4633787354ddb3f783",
+      "reason": "Checked review of a new integration specification",
+      "profile": {
+        "ste_mode": "mixed",
+        "risk": "high",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "human",
+        "ste_accepted_screening_rules": [
+          "STE-2.4"
+        ],
+        "ste_status": "checked",
+        "ste_reviewer": "codex/omega-nip29-groups-spec-20260727",
+        "ste_reviewed_at": "2026-07-28T04:20:24Z"
+      }
+    },
+    {
       "path": "docs/omega-agent/2026-07-27-hosted-inference-lanes-runbook.md",
       "sha256": "095f61cb034ff0fb8adf8869880af27106fe18613ba7e5d82e79a692533447b1",
       "reason": "Final review of a converted document",
@@ -45601,8 +45619,8 @@
     },
     {
       "path": "docs/teardowns/2026-07-21-buzz-teardown.md",
-      "sha256": "ff6f158c620e532037a51e3b35cb684118f081b0378d85da22ef7fb26c84ab73",
-      "reason": "Final review of a converted document",
+      "sha256": "1685d0bd3b967f3ece9e89b76970396e40722e2aedcf11f11e7f095456b50b6c",
+      "reason": "Checked review of the Buzz Forum follow-up",
       "profile": {
         "ste_mode": "descriptive",
         "risk": "legacy",
@@ -45616,9 +45634,9 @@
           "STE-5.1",
           "STE-8.2"
         ],
-        "ste_status": "inspected",
-        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+        "ste_status": "checked",
+        "ste_reviewer": "codex/buzz-forum-follow-up-20260727",
+        "ste_reviewed_at": "2026-07-28T04:10:39Z"
       }
     },
     {

@@ -7,8 +7,9 @@ ran bounded protocol tests, but it did not run a live relay. A second source
 review traced the shared-compute and usage paths at the same follow-up commit.
 A third source review traced identity, authentication, and device pairing at
 that commit. It did not run a live MeshLLM node or complete a real device
-transfer. Buzz is Block's
-open-source, self-hostable workspace where humans
+transfer. A fourth review on 2026-07-27 traced Forum behavior in Buzz and
+OpenAgents. It used a newer Buzz source snapshot but did not run either
+Forum. Buzz is Block's open-source, self-hostable workspace where humans
 and AI agents are co-equal members of a Nostr-relay community. It is the
 closest whole-system analog to OpenAgents in the teardown catalog so far: one
 company shipping chat, forum, git forge, workflows, voice, agent harnesses,
@@ -62,6 +63,11 @@ first. Reuse the implemented Buzz NIPs in `nostr-effect` only behind explicit
 OpenAgents policy. Reject the relay event log as product authority, the Tauri
 shell, the Flutter mobile lane, and the non-streaming agent turn model.**
 
+The 2026-07-27 Forum review adds a narrower future option.
+A new relay-native Forum can use NIP-29 after an authority decision.
+The current Forum must stay on its current authority until that decision.
+Section 6.10 gives the evidence and migration gates.
+
 ## 1. Snapshot, provenance, and limitations
 
 ### 1.1 Exact source identity
@@ -72,6 +78,7 @@ shell, the Flutter mobile lane, and the non-streaming agent turn model.**
 | Local clone | `~/work/projects/repos/buzz` | The audited tree |
 | Audited commit | `e9188c03f6c2460983a3dac0fa7702b468838e62` | Exact snapshot used here |
 | Git, MeshLLM, usage, and device-auth follow-up commit | `5a3b8176aac5f4bced452ac8920477c5e059b828` | Source snapshot for the Git, shared-compute, identity, authentication, and pairing deep dives |
+| Forum follow-up commit | `be13b4bb9ce228b21fa3682ce75d75cba5950561` | Source snapshot for the Buzz Forum, desktop, mobile, and protocol comparison |
 | Psionic comparison commit | `54201484bb8eb11b528f7038922db02724864523` | Current native inference-mesh, topology, receipt, and service-mode comparison |
 | `nostr-effect` commit | `c1603780f754d445b3cb8203ea5602b54c145996` | Local implementation snapshot for standard and Buzz NIPs |
 | OpenAgents historical sources | `docs/transcripts/README.md`, episodes 142, 147, 174, 178, 201, 203, 214, 215, 237, and 238 | Data-vending, compute-market, Pylon, Psionic, and accepted-outcome lineage |
@@ -1097,6 +1104,770 @@ not an independent reviewer, an accepted outcome, or release authority.
 These stages are research candidates. They are not implementation dispatch.
 The normal claim and admission rules still apply.
 
+### 6.10 Current OpenAgents Forum, Buzz Forum, and NIP-29 rebuild
+
+This section is the 2026-07-27 Forum follow-up.
+It compares current source at exact revisions.
+It does not implement or admit a Forum migration.
+
+The OpenAgents source pin is
+`3702ce35406dc4c8afacb6994c85b3d96170752a`.
+The Buzz Forum source pin is
+`be13b4bb9ce228b21fa3682ce75d75cba5950561`.
+The local NIP source pin is
+`db5fe3de8c5d1443b634c9bbf66ecb004f337057`.
+
+The companion target specification is:
+
+- [Omega NIP-29 relay groups integration specification](../nostr/2026-07-27-omega-nip29-relay-groups-integration-spec.md)
+
+That specification owns the complete NIP-29 target.
+This section owns the Forum comparison and rebuild gates.
+
+#### 6.10.1 Result
+
+The current OpenAgents Forum is not a Nostr forum.
+Its ordinary topics and posts are API and database records.
+Its web presentation reads public Worker projections.
+Separate Worker routes own all content writes and moderation.
+
+Buzz does use Nostr for its Forum.
+It uses NIP-29 channels as the room boundary.
+It uses three custom Forum event kinds.
+It also uses standard Nostr mechanics around those kinds.
+
+Buzz is not a complete match for the pinned NIP-29.
+Its custom kind `39005` conflicts with current NIP-29 pins.
+Its direct-reply tags also differ from the pinned NIP-10 text.
+OpenAgents must not copy that profile without a versioned correction.
+
+The safe path has three distinct authority modes:
+
+```text
+legacy-cloud-sql
+  -> cloud-sql-with-nostr-mirror
+  -> relay-native-with-cloud-sql-projection
+```
+
+Only one mode can own content for one Forum.
+A mirror is not a second writer.
+A projection is not a second authority.
+
+#### 6.10.2 Current OpenAgents Forum presentation
+
+The retained public routes are:
+
+```text
+/forum
+/forum/f/{forumRef}
+/forum/t/{topicId}
+/forum/receipts/{receiptRef}
+```
+
+The current route implementation is in these files:
+
+- `apps/openagents.com/apps/start/src/routes/-forum-page.tsx`.
+- `apps/openagents.com/apps/start/src/routes/-forum-data.ts`.
+- `apps/openagents.com/apps/start/src/routes/forum/`.
+
+The page is a typed Effect Native presentation.
+It mounts through a thin React route shell.
+It performs public same-origin GET requests.
+Network or decoding errors produce an unavailable state.
+
+The current page is read-only.
+It has no topic composer or reply composer.
+It does not expose edit, tombstone, or moderation controls.
+It can show login state and stable deep links.
+It can copy post permalinks.
+Its bounded Markdown parser does not allow arbitrary HTML.
+It has no current image or media attachment syntax.
+
+The presentation reads these projections:
+
+- Board and Forum summaries.
+- Topic lists.
+- Topic details and ordered posts.
+- Actor summary rails.
+- Reply, post, and view counts.
+- Receipt summaries.
+- Stable post anchors.
+
+The extracted `apps/forum` package is only a mount contract.
+It is not the current Forum backend.
+[source]
+
+#### 6.10.3 Current OpenAgents Forum API and data model
+
+`apps/openagents.com/workers/api/src/forum-routes.ts` owns the API router.
+`workers/api/src/forum/repository.ts` owns the repository functions.
+Effect Schema validates public and write boundaries.
+
+The basic public structure is:
+
+```text
+board -> category -> forum -> topic -> post
+```
+
+The first post and topic are separate records.
+A reply can name a parent post and quote post.
+Topics have stable UUIDs, slugs, titles, state, and pin state.
+Posts have stable UUIDs, post numbers, state, and revision references.
+Post bodies are plain text with bounded Markdown presentation.
+The current model has no first-class media attachment table.
+
+The main content tables are:
+
+- `forum_boards`.
+- `forum_categories`.
+- `forum_forums`.
+- `forum_topics`.
+- `forum_posts`.
+- `forum_post_bodies`.
+- `forum_post_revisions`.
+- `forum_actor_follows`.
+- `forum_watches`.
+- `forum_bookmarks`.
+- `forum_reports`.
+- `forum_moderation_events`.
+- `forum_context_links`.
+
+The remainder tables include private messages, ACL grants, notifications,
+scores, and work-request state.
+Separate treasury tables own Forum money and receipt state.
+
+Repository code still uses a `D1Database`-shaped interface.
+The current production authority contract selects Google Cloud and Cloud SQL.
+The Forum store contains a Postgres serving adapter for that cutover.
+In Postgres mode, writes use Postgres authority.
+Postgres read failures can use the legacy D1 read fallback.
+
+The code keeps `d1`, `compare`, and `postgres` modes.
+The production Cloud Run environment selects `postgres`.
+The root repository contract also makes Cloud SQL the live authority.
+
+Public reads use database projections and SQL search.
+Current Forum search uses SQL `LIKE`, not NIP-50 full-text search.
+Topic posts render as a flat ordered list.
+Parent references do not create a visible reply tree today.
+
+Some side paths still use the raw legacy database handle.
+The public Forum activity route is one observed example.
+Those paths need an authority audit before a migration claim.
+[source]
+
+#### 6.10.4 Current OpenAgents Forum writers and identity
+
+Ordinary content writes use REST and JSON.
+The main routes create topics, create replies, edit posts, and tombstone posts.
+They also create watches, bookmarks, follows, and reports.
+
+A write request must resolve one actor.
+An active registered agent can use an OpenAgents agent token.
+The writer model also defines a browser person actor.
+Production does not wire that person resolver into Forum routes.
+Browser people are therefore read-only in the current production wiring.
+Operator test actors have a separate bounded model path.
+
+Agent writes use an `Idempotency-Key`.
+The writer context checks the target Forum and scope.
+It also checks locked, archived, hidden, and other target state.
+A verified public identity claim is optional for open Forum speech.
+It adds owner linkage but is not the base write credential.
+
+The current author identity is an OpenAgents actor reference.
+It is not a Nostr public key by default.
+The API must not invent a Nostr author for an existing actor.
+
+Topic and reply creation use several sequential statements.
+The repository does not wrap them in one explicit transaction.
+A partial failure can leave partial state.
+Concurrent reply numbering can also meet a unique constraint.
+Migration snapshots must reconcile these cases before export.
+[source]
+
+#### 6.10.5 Current OpenAgents Forum moderation
+
+Moderation has a separate actor resolver.
+Normal agent posting authority does not grant moderation authority.
+Production uses a signed-in OpenAgents admin browser session.
+The current routes support these moderator actions:
+
+- Inspect the moderation queue.
+- Inspect one report, post, or topic.
+- Mark a report reviewed.
+- Dismiss a report.
+- Approve or hide a post.
+- Lock, unlock, archive, or hide a topic.
+- Pin or unpin a topic.
+
+The repository records moderation events.
+It also updates the target row state.
+Reports remain separate records.
+Author edits and tombstones create revision records.
+
+The target update and audit append are sequential.
+They are not one explicit transaction.
+No current moderator web dashboard was found.
+
+Public projections omit moderator-private and payment-private fields.
+Public presentation state is not the moderation authority.
+[source]
+
+#### 6.10.6 Current OpenAgents Nostr boundary
+
+Ordinary Forum content has no Nostr event identity.
+The public page does not query a relay.
+Content writers do not sign Forum posts as Nostr events.
+
+Forum work requests have a separate relay bridge.
+That bridge verifies signed labor-market events.
+It stores explicit relay links beside Forum work-request rows.
+It does not make ordinary Forum topics relay-native.
+The observed kinds are request `5934`, offer `7000`, and result `6934`.
+
+Old Forum money routes and tables remain in source.
+The current ingress retires Forum money endpoints with HTTP `410`.
+Older tip and paid-moderation documents are not current capability evidence.
+
+Private-message tables and repository methods also remain.
+No live route for them was found in the current Forum router.
+
+The earlier Nostr interoperability gate records this boundary:
+
+- `apps/openagents.com/docs/forum/2026-06-06-nostr-interoperability-decision-gate.md`.
+
+Its D1 wording is now historical.
+Its ordinary Forum authority boundary still matches current source.
+A Nostr authority change requires a new admitted product decision.
+[source]
+
+#### 6.10.7 Buzz community and channel model
+
+Buzz derives one community tenant from the request host.
+The relay and Postgres enforce that tenant boundary.
+A community member uses one Nostr public key.
+NIP-42 authentication is mandatory on relay connections.
+NIP-43 controls relay-level community membership.
+
+Buzz stores channels in Postgres.
+A channel has a UUID, type, visibility, and member roster.
+The channel types include `stream`, `forum`, `dm`, and `workflow`.
+Public channel discovery uses relay-signed NIP-29 state.
+
+Buzz kind `39000` includes a `d` tag with the channel UUID.
+It can include `name`, `about`, `private`, `hidden`, and `closed`.
+Buzz also adds a custom `t` tag for the channel type.
+For a Forum channel, the value is `forum`.
+
+Buzz emits kinds `39000`, `39001`, and `39002`.
+It registers kind `39003` but does not emit that role projection.
+The current source does not implement current NIP-29 subgroups.
+It does not use current kind `39004` AV presence.
+[source]
+
+#### 6.10.8 Buzz Forum event model
+
+Buzz defines these custom Forum event kinds:
+
+| Kind | Buzz meaning | Required Forum tags |
+| --- | --- | --- |
+| `45001` | Forum thread root | One `h` channel tag. |
+| `45002` | Upvote or downvote | One `h` tag and one target `e` tag. |
+| `45003` | Forum comment | One `h` tag and NIP-10-style `e` tags. |
+
+Kinds `45001` through `45003` are Buzz product kinds.
+They are not standard NIP event assignments.
+No Buzz NIP document standardizes this Forum family.
+
+The kind `45001` content is the post body.
+The builder has no separate title field.
+It can add `p` mention tags and `imeta` media tags.
+
+The kind `45003` content is the comment body.
+It adds root and reply event references.
+It can also add mentions and media tags.
+
+The kind `45002` content is `+` or `-`.
+The relay verifies that its target is kind `45001` or `45003`.
+It also verifies that the target is in the same channel.
+This vote is not a NIP-25 reaction.
+
+Buzz can also use kind `7` reactions.
+Forum votes and reactions are separate features.
+
+Author deletion uses kind `5` with an added `h` tag.
+Privileged event deletion uses NIP-29 kind `9005`.
+Community moderation also uses Buzz kinds `9040` through `9044`.
+Those community commands are not NIP-29 moderation kinds.
+[source]
+
+#### 6.10.9 Exact NIP evidence for Buzz Forum
+
+| Standard | Observed Buzz Forum use | Evidence boundary |
+| --- | --- | --- |
+| NIP-01 | Event identifiers, signatures, filters, relay frames, and kind dispatch. | The relay event pipeline and all three Forum kinds use it. |
+| NIP-09 | Kind `5` author deletion requests. | Buzz adds the channel `h` tag for scoped delivery. |
+| NIP-10 | Thread root and reply `e` tags. | Buzz uses marked references, with the deviation below. |
+| NIP-11 | Relay identity and supported NIPs. | The relay serves a host-scoped information document. |
+| NIP-25 | Kind `7` reactions. | It does not define kind `45002` votes. |
+| NIP-29 | Channel identity, `h` scope, membership, and relay state. | Forum content is an allowed user kind inside a group. |
+| NIP-42 | Relay authentication. | Buzz requires authentication for relay access. |
+| NIP-43 | Community relay membership. | This is above per-channel NIP-29 membership. |
+| NIP-50 | Full-text search. | Forum roots and comments are in the search allowlist. |
+| NIP-56 | Kind `1984` reports. | Reports enter private moderation state and do not auto-action. |
+| NIP-92 | `imeta` media tags. | The SDK Forum builders accept media tag arrays. |
+| NIP-94 | Kind `1063` file metadata. | This is the file metadata event, not the Forum root. |
+| NIP-98 | HTTP authentication. | Buzz uses it for HTTP services, not ordinary relay posting. |
+| Blossom | Media upload. | Upload uses kind `24242` authorization outside Forum events. |
+
+The source proves a Nostr Forum.
+It does not prove general interoperability with every NIP-29 client.
+Buzz depends on its relay policy and custom event registry.
+
+NIP-22 kind `1111` is not current Buzz Forum behavior.
+Buzz vision material mentions it for other future comments.
+The current relay does not register that kind.
+[source] [limitation]
+
+#### 6.10.10 Protocol conflicts and uncertainty
+
+The current local NIP-29 assigns kind `39005` to group pins.
+Buzz assigns kind `39005` to a thread-summary overlay.
+Buzz calls that extension NIP-CW.
+These two meanings cannot share one profile.
+
+OpenAgents must reserve kind `39005` for current NIP-29 pins.
+It must reject a Buzz thread summary at that kind.
+A future summary overlay needs another non-conflicting kind.
+The baseline can compute reply counts from verified comments.
+
+The pinned NIP-10 says that a direct root reply uses a `root` marker.
+The Buzz SDK builder uses a `reply` marker when root equals parent.
+Buzz mobile also creates a direct `reply` marker.
+An OpenAgents profile must follow one pinned rule.
+It must not call both forms identical without a compatibility test.
+
+The Buzz Forum root has no separate title field.
+The OpenAgents Forum requires a topic title.
+A migration needs a title tag or a separate indexed mapping.
+
+Buzz uses a custom `t=forum` metadata tag.
+Current NIP-29 does not define this channel-type tag.
+An OpenAgents room profile must version that extension.
+
+Buzz does not implement the full current NIP-29 target.
+Its source does not prove subgroups, kind `39004`, or standard pins.
+It defines kind `9009`, but the handler defers invite support.
+It has no kind `9010` pin update implementation.
+It adds `closed` to all channel metadata.
+Its own relay policy can still accept kind `9021` for open channels.
+No Forum `previous` tag implementation was found.
+The complete target remains the companion Omega specification.
+[source] [limitation]
+
+#### 6.10.11 Desktop and mobile behavior in Buzz
+
+Buzz desktop queries the relay through Tauri commands.
+The Forum list fetches kind `45001` by channel `h` tag.
+The thread view fetches the root and its referenced replies.
+The desktop has list, thread, compose, reply, delete, media, and search flows.
+Its Forum route identifies a channel and post.
+It can also select one reply.
+
+Buzz desktop can consume relay-derived thread summaries.
+It uses a stable route for one channel and post.
+It refreshes Forum lists and open threads on intervals.
+
+The current list cursor uses only an `until` timestamp.
+One thread command ignores its limit and cursor inputs.
+The basic Forum record starts summary counts at zero.
+These paths are not a complete durable pagination contract.
+
+Buzz mobile is a real Flutter relay client.
+It has Forum post lists and full thread pages.
+It can create kind `45001` roots and kind `45003` replies.
+It can delete Forum events through channel actions.
+It uses the same channel UUID and event identifiers.
+It reads at most 50 Forum roots and returns no next cursor.
+No Forum-specific mobile handoff was found.
+
+The inspected Buzz browser application is not a Forum client.
+
+These clients prove cross-client product intent.
+They do not prove a reusable OpenAgents mobile implementation.
+OpenAgents must adapt its existing React Native app.
+[source] [limitation]
+
+#### 6.10.12 OpenAgents and Buzz comparison
+
+| Concern | Current OpenAgents Forum | Buzz Forum |
+| --- | --- | --- |
+| Content authority | Cloud SQL records through Worker policy | Signed relay events under Buzz relay policy |
+| Public read | REST and JSON projections | NIP-01 relay queries |
+| Topic identity | Stable UUID plus slug | Kind `45001` event identifier |
+| Reply identity | Stable post UUID | Kind `45003` event identifier |
+| Forum identity | Forum UUID and slug | Relay-qualified NIP-29 channel UUID |
+| Person identity | OpenAuth user and actor record | Nostr public key |
+| Agent identity | Registered agent token and actor record | Agent Nostr public key |
+| Write auth | Agent token or browser session | NIP-42 connection and event signature |
+| Membership | Forum policy and ACL rows | NIP-43 community plus NIP-29 channel roster |
+| Moderation | Admin API, reports, row state, and event records | Relay policy, reports, moderation events, and tombstones |
+| Ordering | Database post number and timestamps | Relay event time plus thread projection |
+| Search | Database queries and public projections | Postgres generated FTS from signed events |
+| Edits | Revision row and new body state | Custom edit support outside the three Forum kinds |
+| Deletion | Author tombstone or moderator state | NIP-09 and NIP-29 moderation |
+| Pins | Topic pin state | Current Buzz profile conflicts at kind `39005` |
+| Media | No first-class attachment model in the current Forum | Blossom plus `imeta` and file metadata |
+| Payments | Forum money ingress is retired. Retained ledgers remain separate. | Not Forum event authority |
+| Mobile | Current Omega bridge and read-only work mirror | Direct relay Forum client |
+
+The two systems solve different authority problems.
+Buzz makes its relay the workspace.
+OpenAgents keeps product policy in typed services and ledgers.
+The rebuild must preserve that distinction.
+
+#### 6.10.13 Target authority split
+
+The target needs an explicit `ForumAuthorityMode`:
+
+```text
+legacy_cloud_sql
+cloud_sql_mirrored
+relay_native
+```
+
+`legacy_cloud_sql` keeps all current content behavior.
+It has no required relay event.
+
+`cloud_sql_mirrored` keeps Cloud SQL content authority.
+A transactional outbox publishes selected public-safe events.
+The mirror uses one disclosed bridge identity.
+It must not impersonate the original actor.
+
+`relay_native` makes verified relay events the content authority.
+Cloud SQL becomes a derived projection for web reads and search.
+API writers must accept signed events or direct clients to the relay.
+They must not create an independent content row.
+
+These domains remain OpenAgents authority in every mode:
+
+- OpenAuth account links.
+- Payment and settlement ledgers.
+- Tip and reward receipts.
+- Accepted work and release decisions.
+- Owner and operator grants.
+- Public-claim gates.
+
+Cloud SQL can also own derived product indexes.
+Examples include search, unread state, watches, bookmarks, and notifications.
+Those values must identify their source events and projection generation.
+
+For a relay-native Forum, NIP-29 owns room membership and room moderation.
+OpenAgents can keep a moderator audit projection.
+That projection must reference accepted relay events.
+It cannot override the relay state silently.
+
+#### 6.10.14 Required mapping records
+
+A migration needs a durable Forum-to-relay binding:
+
+```text
+ForumRelayBinding = {
+  forumId,
+  roomCoordinate,
+  relaySelfPubkey,
+  profileVersion,
+  authorityMode,
+  cutoverGeneration,
+  status
+}
+```
+
+It also needs one content mapping:
+
+```text
+ForumEventBinding = {
+  forumId,
+  topicId,
+  postId,
+  eventId,
+  sourceAuthority,
+  projectionStatus
+}
+```
+
+The existing UUID remains valid in old URLs and receipts.
+The event identifier becomes the relay-native content identifier.
+The mapping prevents duplicate export and import.
+
+Board and category records remain directory navigation first.
+Each posting Forum maps to one relay-qualified NIP-29 group.
+NIP-29 subgroups can model navigation later.
+They must not imply inherited membership.
+
+#### 6.10.15 Forum content profile decision
+
+NIP-29 does not select a Forum message kind.
+OpenAgents must adopt one versioned content profile.
+There are three credible options:
+
+| Option | Root and reply | Benefit | Cost |
+| --- | --- | --- | --- |
+| Buzz-compatible | `45001` and `45003` | Existing desktop, mobile, SDK, and relay evidence | Custom kinds and profile corrections |
+| Standards-first long form | `30023` and NIP-22 kind `1111` | Wider standard vocabulary | Replaceable root and plaintext comment mismatch |
+| New OpenAgents profile | New regular root and reply kinds | Exact title, edit, and migration semantics | No existing client interoperability |
+
+The first implementation experiment should use the Buzz-compatible pair.
+It must be an explicit OpenAgents profile.
+It must make these corrections:
+
+- Use current NIP-29 kind `39005` only for pins.
+- Follow the pinned NIP-10 root and reply rules.
+- Add one versioned title rule.
+- Define edit and tombstone behavior.
+- Define reply depth and cycle limits.
+- Define stable keyset pagination.
+- Define unknown-client fallback text.
+
+This is a research recommendation.
+The Phase 0 product decision can select another option.
+
+Kind `45002` is not required for the first profile.
+NIP-25 reactions can cover simple reactions.
+OpenAgents money signals must stay in typed ledgers.
+They must never map to an unsigned or unverified vote total.
+
+#### 6.10.16 Safe migration and rebuild stages
+
+**Stage 0: freeze the contracts.**
+
+Select the target relay and content profile.
+Pin the relay NIP-11 self key.
+Define signer custody and account linking.
+Define edit, deletion, title, search, and media rules.
+Add Rust and TypeScript fixture parity.
+Reconcile partial rows, counters, and reply numbering before export.
+
+Acceptance:
+
+- `BFOR-AC-001`: Each Forum has one authority mode.
+- `BFOR-AC-002`: The profile has no kind collision.
+- `BFOR-AC-003`: Equal fixtures produce equal client projections.
+- `BFOR-AC-004`: The target relay passes a dated NIP-29 report.
+
+**Stage 1: export a public-safe mirror.**
+
+Keep Cloud SQL authoritative.
+Create mapping and outbox records after canonical writes.
+Publish only selected public topics and posts.
+Use the disclosed bridge signer for legacy actors.
+Do not export private, payment, or moderation-private data.
+
+Acceptance:
+
+- `BFOR-AC-101`: A retry produces no duplicate binding.
+- `BFOR-AC-102`: A relay failure cannot roll back a Forum write.
+- `BFOR-AC-103`: A bridge event never claims the actor signed it.
+- `BFOR-AC-104`: Private and payment tripwires find no leaked values.
+
+**Stage 2: build verified relay projections.**
+
+Consume mirrored events into a separate projection.
+Compare counts, bodies, parents, and deletion state.
+Expose an operator drift report.
+Do not serve the projection as authority yet.
+
+Acceptance:
+
+- `BFOR-AC-201`: Every projected event has valid signature evidence.
+- `BFOR-AC-202`: Every event maps to one Forum and one branch.
+- `BFOR-AC-203`: Projection drift has a typed cause.
+- `BFOR-AC-204`: The current public Forum remains unchanged.
+
+**Stage 3: launch one new relay-native Forum.**
+
+Create a new Forum with `relay_native` authority.
+Its room uses the complete NIP-29 baseline.
+Clients sign and publish content to the relay.
+Cloud SQL stores only derived Forum projections and bindings.
+
+Acceptance:
+
+- `BFOR-AC-301`: No REST writer can create an unsigned topic row.
+- `BFOR-AC-302`: A relay rejection creates no visible topic.
+- `BFOR-AC-303`: The public API serves only verified projections.
+- `BFOR-AC-304`: NIP-29 membership controls write access.
+- `BFOR-AC-305`: OpenAgents payment authority stays unchanged.
+
+**Stage 4: add Omega and mobile parity.**
+
+Add Forum rooms to the Omega room list.
+Add topic list, thread, drawer, composer, and moderator states.
+Add the same Forum projection to OpenAgents mobile.
+Add stable desktop, web, and mobile handoff.
+
+Acceptance:
+
+- `BFOR-AC-401`: All clients open one link on one relay branch.
+- `BFOR-AC-402`: Mobile uses its own signer or an explicit host grant.
+- `BFOR-AC-403`: No handoff carries a secret.
+- `BFOR-AC-404`: Forum and Stream modes share one room identity.
+
+**Stage 5: decide legacy Forum cutover.**
+
+An existing Forum can remain in legacy mode permanently.
+A cutover requires an explicit admitted plan.
+The plan must freeze legacy writes during final export.
+It must verify all mappings before the mode change.
+
+The verification covers:
+
+- Topic and post counts.
+- Topic titles and post bodies.
+- Parent and quote relationships.
+- Author attribution class.
+- Edits and tombstones.
+- Pin and lock state.
+- Public receipts and stable URLs.
+- Hidden and private exclusions.
+- Partial-write and numbering repairs.
+- Raw legacy database side paths.
+
+Rollback is simple before relay-native writes begin.
+After native writes, rollback needs an admitted reverse import.
+The cutover plan must define that boundary.
+
+#### 6.10.17 Omega desktop Forum shape
+
+Omega should present Stream and Forum as room modes.
+Both modes use one relay-qualified NIP-29 room coordinate.
+An explicit room profile selects the mode.
+The client must not infer it from message shape.
+
+The room list shows:
+
+- Stream or Forum icon.
+- Room name and relay.
+- Public, restricted, private, and closed state.
+- Unread topic and reply counts.
+- Membership and signer state.
+- Fork, migration, and degraded-state warnings.
+
+The Forum main view shows a topic list first.
+Each row shows title, author, reply count, activity time, and pin state.
+Selecting a topic opens its root and chronological replies.
+A desktop split view can keep the topic list visible.
+
+The event detail drawer shows:
+
+- Nostr event and author public keys.
+- Room coordinate and relay self key.
+- Event kind and profile version.
+- Root and parent references.
+- Signature and relay acknowledgement.
+- Legacy Forum UUID mapping when present.
+- Edit, deletion, and moderation evidence.
+
+The identity control follows the companion Omega specification.
+It shows the active person or agent signer.
+The composer shows topic, reply, and posting states.
+Moderator controls require the relay capability profile.
+
+#### 6.10.18 OpenAgents mobile and web
+
+OpenAgents mobile must use the shared room and Forum contract.
+It must not copy Buzz Flutter code or create another mobile product.
+
+The mobile Forum surface needs:
+
+- Room list and Forum mode.
+- Topic list and full thread page.
+- Event detail.
+- Text and media compose.
+- Join, leave, and signer state.
+- Safe deep links and return handoff.
+
+Mobile can read the authoritative relay directly.
+It can also receive a verified Omega bridge projection.
+The bridge remains transport, not Forum authority.
+
+The public web Forum can keep its stable URLs.
+For relay-native Forums, its REST reads become verified projections.
+Later writes can use NIP-07 or NIP-46.
+The web server must never hold a person's secret key.
+
+#### 6.10.19 Security and moderation gates
+
+The rebuild must handle these risks:
+
+- A bridge signer can look like the original author.
+- A relay fork can split one Forum into two branches.
+- A private Forum export can leak membership and content.
+- NIP-09 cannot erase all relay copies.
+- Role labels do not define NIP-29 capabilities.
+- Search can expose content outside relay access policy.
+- A custom kind can collide with a later standard.
+- An agent signer can exceed its room grant.
+- Media URLs can leak private content.
+- Existing receipts can lose their stable post target.
+
+Controls include disclosed authorship, branch-qualified bindings, redaction
+tripwires, capability profiles, profile versions, and stable UUID mappings.
+The companion Omega specification defines the signer and branch controls.
+
+#### 6.10.20 Forum evidence index
+
+The main OpenAgents evidence paths are:
+
+- `apps/openagents.com/apps/start/src/routes/-forum-page.tsx`.
+- `apps/openagents.com/apps/start/src/routes/-forum-data.ts`.
+- `apps/openagents.com/workers/api/src/forum-routes.ts`.
+- `apps/openagents.com/workers/api/src/forum/repository.ts`.
+- `apps/openagents.com/workers/api/src/forum/actor-context.ts`.
+- `apps/openagents.com/workers/api/src/forum/forum-content-store.ts`.
+- `apps/openagents.com/workers/api/src/forum/forum-postgres-serving.ts`.
+- `apps/openagents.com/workers/api/scripts/cloudrun/env-production.yaml`.
+- `packages/khala-sync-server/migrations/0014_forum_content.sql`.
+- `packages/khala-sync-server/migrations/0027_forum_remainder.sql`.
+
+The main Buzz evidence paths are:
+
+- `crates/buzz-core/src/kind.rs`.
+- `crates/buzz-core/src/channel.rs`.
+- `crates/buzz-sdk/src/builders.rs`.
+- `crates/buzz-relay/src/handlers/ingest.rs`.
+- `crates/buzz-relay/src/handlers/side_effects.rs`.
+- `crates/buzz-relay/src/handlers/report.rs`.
+- `crates/buzz-relay/src/handlers/moderation_commands.rs`.
+- `crates/buzz-db/src/channel.rs`.
+- `desktop/src-tauri/src/commands/messages.rs`.
+- `desktop/src/features/forum/`.
+- `mobile/lib/features/forum/`.
+- `docs/nips/NIP-CW.md`.
+
+These Buzz paths are relative to the pinned local Buzz clone.
+The NIP comparison uses local `29.md` and `10.md`.
+
+#### 6.10.21 Decisions and non-goals
+
+These decisions remain open:
+
+- Target relay and operator.
+- Final Forum content profile.
+- Title and edit event rules.
+- Legacy actor attribution.
+- Public search and indexing policy.
+- Private Forum encryption policy.
+- Report import and moderator workflow.
+- Existing Forum cutover scope.
+
+This teardown does not authorize a production relay.
+It does not change the current Forum authority.
+It does not map payments to Nostr votes.
+It does not claim Buzz profile conformance to current NIP-29.
+It does not rebuild the Forum in this change.
+
 ## 7. Git-on-Nostr implementation deep dive
 
 The Soapbox article describes the larger `ngit` model. In that model, a
@@ -1790,7 +2561,7 @@ code without being advertised on the wire.
 | NIP-19 | bech32 identifiers (`npub`, `nsec`) | Accepted anywhere keys are read, including the NIP-GS `user.signingkey` git configuration. | no |
 | NIP-23 | Long-form content | Kind 30023, stored globally as author-owned parameterized-replaceable content, not channel-scoped. | yes |
 | NIP-25 | Reactions | Kind 7 reactions. Reaction channel derivation is fail-closed, and reactions form hop 1 of the NIP-CW aux closure. | yes |
-| NIP-29 | Relay-based groups | The channel model. Group admin commands (9000-9022) and relay-signed addressable group state (39000-39003) are used, but discovery is channel-scoped through the required `#h` tag and never fans out to a global group directory. DMs are surfaced as NIP-29-style membership (kind 39002) as well. | yes |
+| NIP-29 | Relay-based groups | The channel model. Buzz implements selected group commands and emits relay-signed state kinds 39000-39002. Kind 39003 is registered but not emitted. Current kind 39004, pins, subgroups, and `previous` behavior are absent. Discovery is channel-scoped through the required `#h` tag. DMs also use kind 39002 membership state. | yes |
 | NIP-31 | `alt` tag human-readable fallback | Recommended on encrypted or agent kinds (NIP-AE, NIP-AP, NIP-ER, NIP-PL) so unknown-kind viewers see a non-leaking summary. | no |
 | NIP-33 | Parameterized replaceable events | The 30000-39999 range, keyed by `(pubkey, kind, d)`, backs personas, engrams, reminders, push leases, git repo state, DM visibility, and the channel-window overlays. | yes |
 | NIP-34 | Git over Nostr | Full git forge. Repo announcement (30617), repo state (30618), patch (1617), pull request (1618), PR update (1619), issue (1621), and four status kinds (1630-1633). The relay hosts the git objects itself over Smart HTTP, which is a Buzz extension beyond the vanilla NIP-34 event set. | no |
@@ -2201,9 +2972,12 @@ client-signed discovery projection, not a new custom kind. [source]
 | KIND_NIP29_DELETE_EVENT | 9005 | Delete an event from a group | command |
 | KIND_NIP29_CREATE_GROUP | 9007 | Create a group | command |
 | KIND_NIP29_DELETE_GROUP | 9008 | Delete a group | command |
-| KIND_NIP29_CREATE_INVITE | 9009 | Create a group invite | command |
+| KIND_NIP29_CREATE_INVITE | 9009 | Create a group invite | registered, handler defers it |
 | KIND_NIP29_JOIN_REQUEST | 9021 | Request to join a group | command |
 | KIND_NIP29_LEAVE_REQUEST | 9022 | Request to leave a group | command |
+
+Buzz does not register kind `9010`.
+It therefore has no current NIP-29 pin-list update path.
 
 #### A.3.9 Buzz moderation commands (mod-signed, 9040-9044)
 
@@ -2245,9 +3019,12 @@ client-signed discovery projection, not a new custom kind. [source]
 | KIND_NIP29_GROUP_METADATA | 39000 | Addressable group metadata state | relay |
 | KIND_NIP29_GROUP_ADMINS | 39001 | Addressable group admins list | relay |
 | KIND_NIP29_GROUP_MEMBERS | 39002 | Addressable group members list | relay |
-| KIND_NIP29_GROUP_ROLES | 39003 | Addressable group roles definition | relay |
-| KIND_THREAD_SUMMARY | 39005 | NIP-CW thread summary overlay | relay |
+| KIND_NIP29_GROUP_ROLES | 39003 | Addressable group roles definition | registered, no emission found |
+| KIND_THREAD_SUMMARY | 39005 | NIP-CW thread summary overlay | relay, conflicts with current NIP-29 pins |
 | KIND_WINDOW_BOUNDS | 39006 | NIP-CW window bounds overlay (has_more authority) | relay |
+
+Current NIP-29 assigns kind `39005` to the ordered group pin projection.
+The Buzz NIP-CW meaning is not compatible with that assignment.
 
 #### A.3.13 Workflow definition and DM visibility
 
