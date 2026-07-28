@@ -420,7 +420,9 @@ sequence. The ordered Amp `initial_program` stays unchanged.
       "docs/teardowns/2026-07-17-t3-code-openagents-desktop-ui-gap-analysis.md",
       "docs/teardowns/2026-07-17-t3-code-mobile-app-teardown.md",
       "docs/teardowns/2026-07-17-t3-code-openagents-mobile-component-gap-analysis.md",
-      "docs/teardowns/2026-07-17-t3-code-openagents-mobile-controller-gap-analysis.md"
+      "docs/teardowns/2026-07-17-t3-code-openagents-mobile-controller-gap-analysis.md",
+      "docs/teardowns/2026-07-27-omega-t3-code-desktop-mobile-gap-analysis.md",
+      "docs/teardowns/2026-07-27-t3-code-sidebar-v2-replication-analysis.md"
     ],
     "lessons": [
       {
@@ -637,7 +639,8 @@ sequence. The ordered Amp `initial_program` stays unchanged.
     "canonical_ref": "https://github.com/aaif-goose/goose",
     "tracking_policy": "pinned_each_run",
     "teardown_refs": [
-      "docs/teardowns/2026-07-17-goose-teardown.md"
+      "docs/teardowns/2026-07-17-goose-teardown.md",
+      "docs/teardowns/2026-07-27-goose-gdk-omega-teardown.md"
     ],
     "lessons": [
       {
@@ -1276,6 +1279,25 @@ sequence. The ordered Amp `initial_program` stays unchanged.
         "id": "durable_harness_and_executor_boundary",
         "kind": "architecture",
         "summary": "Study a durable harness and executor split while keeping OpenAgents policy, approval, containment, identity, and receipt authority outside the external harness.",
+        "stance": "adapt_with_stronger_boundaries"
+      }
+    ]
+  },
+  {
+    "id": "tcballard.tokenrelay",
+    "title": "TokenRelay",
+    "role": "upstream",
+    "access": "public_source",
+    "canonical_ref": "https://github.com/tcballard/TokenRelay",
+    "tracking_policy": "pinned_each_run",
+    "teardown_refs": [
+      "docs/teardowns/2026-07-27-tokenrelay-teardown.md"
+    ],
+    "lessons": [
+      {
+        "id": "accepted_deliverable_settlement",
+        "kind": "architecture",
+        "summary": "Study acceptance-gated settlement, transaction-bound outbox work, generation-bound leases, and integer ledgers while keeping OpenAgents authority and execution receipts canonical.",
         "stance": "adapt_with_stronger_boundaries"
       }
     ]
