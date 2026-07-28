@@ -35319,7 +35319,7 @@
     },
     {
       "path": "docs/omega/2026-07-28-managed-sarah-realtime-voice-gateway.md",
-      "sha256": "a595b3b2921a1ba5c159f16f50598dadd4dc462525fa9a5739b0d5e5b033b3e9",
+      "sha256": "80fc8bdc9812f7f7b855a5d1d20ebc7906129825cc624a69f5caf43f4b04c74c",
       "reason": "Final review of a current technical document",
       "profile": {
         "ste_mode": "descriptive",
@@ -35328,8 +35328,8 @@
         "replacement": null,
         "ste_audience": "human",
         "ste_status": "inspected",
-        "ste_reviewer": "/root/testflight_audit",
-        "ste_reviewed_at": "2026-07-28T22:06:26Z"
+        "ste_reviewer": "codex/issue-9272-mobile-nostr-link",
+        "ste_reviewed_at": "2026-07-28T23:07:28Z"
       }
     },
     {

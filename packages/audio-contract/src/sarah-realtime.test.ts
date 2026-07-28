@@ -1,6 +1,10 @@
 import { describe, expect, test } from "vite-plus/test";
 import {
+  OMEGA_NOSTR_DEVICE_LINK_CHALLENGE_PROTOCOL_VERSION,
+  OMEGA_NOSTR_DEVICE_LINK_PROTOCOL_VERSION,
   SARAH_VOICE_PROTOCOL_VERSION,
+  decodeOmegaNostrDeviceLinkChallengeRequest,
+  decodeOmegaNostrDeviceLinkRequest,
   decodeSarahEditorCommand,
   decodeSarahVoiceClientControl,
   decodeSarahVoiceSessionRequest,
@@ -17,6 +21,44 @@ const identity = {
 } as const;
 
 describe("Sarah Realtime voice contract", () => {
+  test("accepts the bounded Nostr device-link contract", () => {
+    const pubkey = "a".repeat(64);
+    expect(
+      decodeOmegaNostrDeviceLinkChallengeRequest({
+        schema: OMEGA_NOSTR_DEVICE_LINK_CHALLENGE_PROTOCOL_VERSION,
+        deviceRef: "mobile-device-1",
+        pubkey,
+      }).pubkey,
+    ).toBe(pubkey);
+    expect(
+      decodeOmegaNostrDeviceLinkRequest({
+        schema: OMEGA_NOSTR_DEVICE_LINK_PROTOCOL_VERSION,
+        challenge: "c".repeat(43),
+        ownerRef: "github:owner",
+        deviceRef: "mobile-device-1",
+      }).ownerRef,
+    ).toBe("github:owner");
+  });
+
+  test("rejects a non-canonical Nostr device-link pubkey and excess fields", () => {
+    expect(() =>
+      decodeOmegaNostrDeviceLinkChallengeRequest({
+        schema: OMEGA_NOSTR_DEVICE_LINK_CHALLENGE_PROTOCOL_VERSION,
+        deviceRef: "mobile-device-1",
+        pubkey: "A".repeat(64),
+      }),
+    ).toThrow();
+    expect(() =>
+      decodeOmegaNostrDeviceLinkRequest({
+        schema: OMEGA_NOSTR_DEVICE_LINK_PROTOCOL_VERSION,
+        challenge: "c".repeat(43),
+        ownerRef: "github:owner",
+        deviceRef: "mobile-device-1",
+        pubkey: "a".repeat(64),
+      }),
+    ).toThrow();
+  });
+
   test("accepts the bounded editor allowlist", () => {
     expect(
       decodeSarahEditorCommand({
