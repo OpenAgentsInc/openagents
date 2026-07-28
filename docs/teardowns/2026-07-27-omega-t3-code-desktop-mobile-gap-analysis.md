@@ -42,12 +42,22 @@ This report compares these source revisions:
 | Omega mobile                    | `017ae3dedb58a53b4d250f0cd83440490e125da6` |
 | T3 Code broad teardown          | `c1ec1915`                                 |
 | T3 Code mobile teardown         | `8b546986`                                 |
+| T3 Code mobile deep dive        | `a148e08197fc38b24e59c10c7cd5ba06dd182dab` |
 | T3 Code ACP teardown            | `bde0a4`                                   |
 | T3 Code OpenCode release update | `fdca154`                                  |
 
 The Omega desktop revision is the current `origin/main` revision from the Omega
-repository. The Omega mobile revision is the committed `origin/main` revision
-from this repository.
+repository. The Omega mobile revision is the last commit that changed the
+committed app on this repository's `origin/main`; the later documentation
+commits do not change `apps/openagents-mobile`.
+
+The mobile section was refreshed against T3 Code `main` at
+`a148e08197fc38b24e59c10c7cd5ba06dd182dab`, dated 2026-07-28. The desktop
+findings retain the earlier teardown revisions. This distinction matters:
+T3 Code Mobile changed substantially after the original `8b546986` review,
+including Thread List v2, thread-shell synchronization, snoozing and settlement,
+adaptive workspace work, native review and terminal expansion, incoming shares,
+Live Activities, and OTA update controls.
 
 The mobile worktree had separate uncommitted UI changes during this review.
 Those changes are not part of this report. This rule prevents a local draft from
@@ -613,237 +623,1431 @@ Keep the fail-closed release record. Add one target at a time. Each target needs
 the same source, package, runtime, signature, install, update, and rollback
 evidence.
 
-## Mobile gap analysis
+## Mobile deep dive and gap analysis
+
+### Evidence boundary and central conclusion
+
+This section is a source-level replication study of both React Native apps. It
+uses committed source, tests, native modules, app configuration, and the T3
+showcase capture harness. It does not claim behavior observed in a production
+store build. T3 Code's own README says that the mobile app is not currently
+distributed; its source still defines a production-quality controller.
+
+The current committed Omega app and current T3 Code app are not two
+implementations of the same mobile product:
+
+- Omega is a secure, bounded desktop mirror with one mounted screen.
+- T3 Code is a remote coding workbench with a route graph, durable client
+  state, multiple environment sessions, thread commands, Git, review, files,
+  terminal, notifications, shares, widgets, and adaptive tablet panes.
+
+The visual gap is large, but the decisive gap is below the visuals. T3's rows,
+composer, review sheets, and terminal all operate on a shared environment and
+thread command model. Omega cannot reach meaningful visual parity by styling
+its current activity cards. It needs the missing controller contracts and
+navigation topology, then it can bring the shell closely in line with T3.
+
+### Current source footprint
+
+| Measure                      |                            T3 Code Mobile |                                 Omega mobile |
+| ---------------------------- | ----------------------------------------: | -------------------------------------------: |
+| React Native                 |                                  `0.85.3` |                                     `0.86.0` |
+| React                        |                                  `19.2.3` |                                     `19.2.7` |
+| Expo                         |                                `~56.0.12` |                                     `57.0.2` |
+| App source files             |                                       524 |                                           12 |
+| App source lines             |                              about 95,715 |                                        2,586 |
+| Shared client-runtime source |                        about 25,190 lines |      no equivalent mobile controller runtime |
+| Mobile native-island source  |                        about 11,127 lines |                                         none |
+| App tests                    |                                        92 |                                            4 |
+| App routes                   | more than 20 root and nested destinations | one mounted screen with local view switching |
+
+The T3 count is not a target by itself. It shows that the visible app rests on
+substantial synchronization, persistence, platform, and native rendering work.
+An Omega implementation can be smaller by reusing its own contracts, but it
+cannot omit those responsibilities.
+
+### React Native stack comparison
+
+| Concern            | T3 Code Mobile                                                              | Omega mobile                                                     | Replication implication                                                                            |
+| ------------------ | --------------------------------------------------------------------------- | ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Navigation         | React Navigation native stack and nested sheet stacks                       | none                                                             | Add a typed root stack before adding more local `selected*` state                                  |
+| Server state       | Effect Atom over a shared client runtime                                    | local React state over one bridge client                         | Add an app-scoped controller registry keyed by host and work item                                  |
+| Lists              | Legend List for high-churn transcript and thread lists                      | React Native `FlatList`                                          | `FlatList` is sufficient initially; preserve an upgrade boundary for anchoring and very long feeds |
+| Gestures           | Gesture Handler and Reanimated                                              | none                                                             | Needed for thread lifecycle swipes, inspector animation, and composer morphs                       |
+| Keyboard           | `react-native-keyboard-controller` plus a native composer                   | stock keyboard avoidance                                         | Needed for T3-like sticky composer and transcript anchoring                                        |
+| Styling            | Uniwind tokens, automatic light/dark themes, DM Sans                        | JS dark tokens, System and Menlo                                 | Introduce semantic tokens and automatic appearance before screen replication                       |
+| Markdown           | native selectable Markdown on iOS, Nitro fallback                           | plain text                                                       | Add a portable rich-message renderer with code, links, and copy                                    |
+| Diff               | native Swift and Kotlin diff views, JS fallback                             | none                                                             | Start with bounded JS read-only diffs; native host is a later performance decision                 |
+| Terminal           | native Ghostty-derived surface, text fallback                               | none                                                             | Ship task output first; isolate a future terminal host behind a session contract                   |
+| Persistence        | SQLite, SecureStore, file-backed outbox and drafts                          | SecureStore for identity and bridge state                        | Add durable drafts, outbox, host catalog, and preferences                                          |
+| Device integration | camera, notifications, widgets, Live Activities, shares, quick actions, OTA | camera and installed Expo foundations, no complete product flows | Add integrations only after exact routes and attention objects exist                               |
+
+### T3's mobile information architecture
+
+T3 uses progressive disclosure. The phone navigates from list to detail to
+specialized full-screen tools. A large tablet keeps the list visible, renders
+thread detail beside it, and can add a file or Git inspector. The same work item
+identity is used in both layouts.
+
+The current route graph includes:
+
+```text
+Root
+├── Home
+├── Thread
+│   ├── ThreadTerminal
+│   ├── ThreadReview
+│   │   └── ThreadReviewComment
+│   ├── ThreadFiles
+│   │   └── ThreadFile
+│   ├── GitOverview
+│   │   ├── GitCommit
+│   │   ├── GitBranches
+│   │   └── GitConfirm
+│   └── direct deep links by environmentId + threadId
+├── SettingsSheet
+│   ├── Settings
+│   ├── Environments
+│   ├── Appearance
+│   ├── Client Storage
+│   ├── Authentication / Waitlist
+│   └── Archived Threads
+├── NewTaskSheet
+│   ├── Choose Project
+│   ├── Draft
+│   ├── Add Project
+│   ├── Repository
+│   ├── Destination
+│   └── Local Path
+├── Connect Onboarding
+├── Connections
+├── Add Environment
+├── Legal
+└── Not Found
+```
+
+Thread tools remain flat in the root native stack on iOS so native header
+transitions can morph between them. Sheet-only overlays are excluded from
+workspace selection, so opening Settings or New Task does not silently change
+the selected thread underneath. That detail prevents a common tablet bug:
+dismissing a sheet should return to the same list/detail/inspector composition.
+
+Omega currently implements Home, Thread, and Pairing as conditional branches
+inside `OmegaHomeView`. Adding Files or Settings that way would multiply local
+state and break deep linking, back behavior, restoration, and tablet
+composition. The first structural change should be a typed navigation graph
+whose canonical work-item key contains host, lane, and thread reference.
+
+### Adaptive workspace geometry
+
+T3 does not use a simple `isTablet` boolean. Its layout is based on available
+viewport and minimum usable pane sizes:
+
+| Rule                               | Current T3 value |
+| ---------------------------------- | ---------------: |
+| Split layout minimum width         |       720 points |
+| Split layout minimum height        |       600 points |
+| Sidebar target                     |  32% of viewport |
+| Sidebar clamp                      |   280–380 points |
+| Sidebar resize ceiling             |       460 points |
+| File inspector minimum viewport    |       820 points |
+| Minimum main content width         |       560 points |
+| Inspector clamp                    |   260–480 points |
+| Supplementary pane minimum content |       960 points |
+| Maximum chat content width         |       960 points |
+
+The persistent sidebar lives next to the native navigator rather than inside
+each screen. The inspector is registered by the focused route and is rendered
+through a layout portal with the correct navigation and route context.
+Registration is focus-scoped so a blurred screen cannot leave a stale inspector
+mounted.
+
+Sidebar and inspector widths animate, but the settled content pane is frozen at
+its final width during the transition. This avoids repeatedly reflowing
+Markdown and dropping frames. Omega should copy the invariant, not necessarily
+the animation:
+
+> A layout transition may animate chrome, but it must not continuously remeasure
+> the expensive transcript or diff surface.
+
+Recommended Omega layout modes:
+
+| Mode      | Geometry                                 | Navigation                    |
+| --------- | ---------------------------------------- | ----------------------------- |
+| Compact   | under 720 wide or under 600 high         | list → detail → tool routes   |
+| Split     | at least 720 × 600                       | persistent work list + detail |
+| Workbench | at least 960 content width after sidebar | list + detail + inspector     |
+
+### Screen 1: connect onboarding and environments
+
+#### T3 structure
+
+T3 separates connection objects from projects and threads. A connection
+catalog can hold primary, bearer, SSH, and relay targets. Each environment owns
+an independent supervisor with these user-visible phases:
+
+- available but not requested;
+- connecting, with preparation and probe stages;
+- connected;
+- offline because the network is offline;
+- retrying after a transient failure;
+- failed with a typed reason.
+
+Connection establishment has 15-second preparation and probe timeouts.
+Transient failures back off at 1, 2, 4, 8, and 16 seconds. A connection stable
+for 30 seconds resets the backoff. Network changes and explicit wakeups can
+restart a connection immediately.
+
+The Add Environment screen supports:
+
+- direct host and pairing-code entry;
+- a QR scanner;
+- raw pairing URLs;
+- mobile deep links containing an encoded pairing URL;
+- clear camera-denied and invalid-QR states;
+- success navigation that works from both pushed and cold-started routes.
+
+The Environments screen shows all registered environments as expandable rows.
+A row can expose status, URL, reconnect, edit, and removal. With configured
+cloud support, relay-discovered environments appear separately and can be
+registered without retyping endpoints.
+
+#### Omega now
+
+Omega has a stronger cryptographic first-pair:
+
+- a device-local Nostr key;
+- fail-closed platform custody rules;
+- a signed admission proof;
+- short-lived pairing material;
+- a stored grant;
+- strict 64 KiB frames;
+- ordered snapshot and delta application;
+- generation and resume cursors;
+- cached, announced, QR, and manual MagicDNS dial candidates.
+
+The mounted product still treats those mechanisms as one implicit desktop.
+There is no host catalog, connection list, diagnostics screen, reconnect
+control, grant expiry display, or revoke action.
+
+#### Omega target
+
+Keep the existing key and grant law. Add an `EnvironmentCatalog` presentation
+over it:
+
+```text
+EnvironmentRecord
+├── environmentId
+├── displayName
+├── hostPublicKey
+├── endpoints[]
+├── grantRef + expiry
+├── desiredConnection
+├── supervisorState
+├── lastSuccessfulEndpoint
+├── lastHeartbeat
+└── lastFailure
+```
+
+The initial Omega Environments row should show name, Direct/Relay/Offline,
+staleness, grant expiry, and the last typed failure. Expanded actions should be
+Reconnect, Rename, Revoke Device Grant, and Forget Host. Revocation and forgetting
+must remain separate because they have different remote and local effects.
+
+### Screen 2: Home and Thread List v2
+
+#### T3 structure
+
+T3's current Thread List v2 is a device-local beta, off by default. Its
+important behavior is not the beta label; it is a new inbox model:
+
+- one flat list rather than nested project groups;
+- fixed newest-created-first ordering for active work;
+- activity does not reorder active rows under the user's finger;
+- active and attention-bearing work uses rich cards;
+- settled work collapses into compact rows under a `Settled` divider;
+- the settled tail is recency ordered;
+- 10 settled rows appear initially, then `Show more` adds 25;
+- queued offline tasks remain above server-backed threads.
+
+Thread state precedence is:
+
+1. approval required;
+2. user input required;
+3. starting or running;
+4. failed;
+5. ready.
+
+Color is reserved for action:
+
+- amber for approval;
+- indigo for input;
+- sky for working;
+- red for failure;
+- neutral time for ready.
+
+A rich row contains:
+
+- project favicon and project name;
+- state or relative time;
+- a two-line thread title;
+- branch;
+- environment label when more than one environment exists;
+- pull-request number and state when present;
+- provider icon;
+- failure detail when failed.
+
+Phone rows are edge-to-edge with inset separators. In the iPad sidebar they are
+rounded and the selected row receives an accent fill. The information stays the
+same; only selection and container treatment change.
+
+#### Lifecycle gestures
+
+The leading lifecycle action depends on row state:
+
+- active thread → settle;
+- settled thread → un-settle;
+- server without settlement support → archive fallback.
+
+Delete is always secondary and destructive. Full swipe performs the lifecycle
+action, never delete. Long press exposes the same actions for users who cannot
+or do not discover swipes. Gestures are disabled while the list is actively
+scrolling.
+
+Settlement is not merely a local archive flag. T3 computes an effective state
+from:
+
+- the server's explicit override;
+- absence of a running session;
+- absence of pending approval or input;
+- inactivity warmth;
+- merged or closed pull-request state.
+
+Snoozed threads are hidden until their wake time. Approval, input, a fresh
+failure, or completion after snoozing can raise the thread early. The list uses
+an exact timeout for the next wake and a minute tick for inactivity
+settlement. Current mobile has one notable gap: it names snoozed counts in an
+empty state but has no snoozed shelf UI.
+
+#### Header and search
+
+The iPad sidebar is an intentionally navigation-inert native stack on iOS. It
+exists to obtain a real `UINavigationBar`, large `Threads` title,
+`UISearchController`, and native bar items without allowing the sidebar to own
+workspace navigation.
+
+Android and non-native fallbacks render:
+
+- a 34-point title;
+- 44-point filter and settings circles;
+- a 38-point search field;
+- a subtle scrolled-edge wash;
+- a new-task floating action button on compact Android.
+
+The list uses Legend List recycling, an estimated 64-point row size, and a
+500-point draw distance.
+
+#### Omega now
+
+Omega mixes thread rows and Full Auto run rows in one activity feed sorted by
+`updatedAt`. It has no search, filters, project identity, branch, pull request,
+attention precedence, queued local tasks, lifecycle gestures, selection
+treatment, or settled tail.
+
+Its cards communicate executor and state, but generic cards make every row
+equally heavy. A running thread, completed thread, and passive Full Auto record
+compete at the same level.
+
+#### Omega target
+
+Bring Omega close to T3's list grammar:
+
+- use rich cards only for running, blocked, failed, or queued items;
+- use compact rows for ready and completed history;
+- reserve color for attention and failure;
+- keep active creation order stable;
+- place locally queued commands or tasks above projected rows;
+- add project/workspace, branch, lane, and host as secondary metadata;
+- show an Omega-specific receipt or Full Auto evidence indicator without
+  turning the row into a dashboard;
+- expose Settle/Unsettle and Delete through both swipe and long press;
+- never make destructive delete the full-swipe action.
+
+Omega needs an explicit `WorkListItem` union for native agent threads, ACP
+sessions, terminal threads, and Full Auto runs. A row must not infer capability
+from a display state; it should receive allowed lifecycle actions from the
+projection.
+
+### Screen 3: choose project and create a task
+
+#### T3 structure
+
+New Task is a nested sheet flow, not a modal over the existing composer:
+
+1. choose a logical repository/project;
+2. enter the task draft;
+3. choose environment when the repository exists on multiple hosts;
+4. choose local workspace or worktree mode;
+5. choose a branch and whether to start from origin;
+6. choose provider/model;
+7. choose runtime and interaction modes;
+8. add image attachments;
+9. submit or preserve as a pending task.
+
+Project rows are grouped by repository identity across environments. Switching
+an environment attempts to retain the same canonical repository, then falls
+back to workspace basename or project title.
+
+The draft is persisted per project. It contains text, image attachments,
+model, provider options, runtime mode, interaction mode, and workspace
+selection. Persistence is debounced by 200 ms and survives app restart.
+
+Creating work in an offline environment does not discard the draft. T3 builds a
+fully typed pending creation containing:
+
+- environment, project, thread, command, and message IDs;
+- prompt and attachments;
+- provider/model selection;
+- runtime and interaction mode;
+- local or worktree mode;
+- branch and optional worktree path;
+- start-from-origin choice;
+- project title and cwd snapshot for offline presentation;
+- creation time.
+
+The queued task appears in the thread list, can be reopened and edited, and is
+held out of the drain while an editor owns it. A late save cannot resurrect a
+task that was deleted or delivered.
+
+#### Add Project flow
+
+The project flow distinguishes repository source, destination environment, and
+local path. This prevents one overloaded path field from representing local
+folders, cloned repositories, and remote environments. Branch and worktree
+choices are first-class task inputs rather than hidden Git consequences.
+
+#### Omega now
+
+Omega has no project catalog, repository identity, new-task route, durable
+draft, attachment import, model/runtime choice, worktree choice, or create
+command.
+
+#### Omega target
+
+The first Omega flow can be narrower than T3:
+
+1. choose paired host;
+2. choose projected workspace;
+3. choose Native Agent or Full Auto when both are admissible;
+4. enter prompt and optional images;
+5. choose current workspace or isolated worktree;
+6. show the effective authority summary;
+7. create with a stable command ID.
+
+Provider selection should remain secondary to Omega's product identity. Lane,
+workspace, isolation, and authority are the important user choices.
+
+### Screen 4: thread detail shell
+
+#### T3 structure
+
+T3 renders the thread shell immediately from the lightweight shell projection.
+It does not wait for full message detail. The header contains:
+
+- thread title;
+- project and optional environment subtitle;
+- Git status/action menu;
+- Files;
+- Terminal;
+- sidebar and inspector controls when adaptive layout supports them.
+
+A cold-start deep link with no navigation history gets an explicit Threads
+button. Normal pushed navigation gets native back. Android uses an in-flow
+header; iOS uses native header items and shared backgrounds.
+
+The selected thread identity is exact:
+
+```text
+environmentId + threadId + projectId + cwd + optional worktreePath
+```
+
+Files and Git are pushed routes on compact phones. On tablets they can register
+as the inspector without changing the selected thread. Terminal supports
+several sessions and project scripts.
+
+#### Omega now
+
+Omega detail has a custom `← Activity` button, title, executor/model/state line,
+plain transcript, and disabled composer. It has no route identity, project
+context, worktree context, header actions, or cold-start path.
+
+#### Omega target
+
+Adopt the same shell hierarchy:
+
+- native or platform-appropriate back/list affordance;
+- title;
+- workspace · branch · host subtitle;
+- a compact lane/authority indicator;
+- Review, Files, and Output actions;
+- Terminal only when the lane and grant support it;
+- overflow for receipts, device authority, and destructive actions.
+
+The header should show what the user is controlling, not only which model ran.
+
+### Screen 5: transcript and work log
+
+#### T3 list mechanics
+
+T3's transcript is a keyboard-aware Legend List with extensive anchoring law:
+
+- initial scroll at end;
+- maintain scroll at end on data, layout, and item-size changes;
+- maintain visible content position when older content changes height;
+- extra anchored space after the newly sent user message;
+- explicit remount when an empty feed first becomes populated so native insets
+  are applied;
+- temporary feed freezing while work disclosures expand or collapse;
+- automatic header and keyboard inset compensation;
+- an estimated 180-point item size;
+- item types by role;
+- a centered maximum content width of 960 points.
+
+When a thread changes, the feed resets its anchor and freeze state. Sending
+awaits the message ID, dismisses the keyboard, then anchors that exact row. A
+tap on the feed collapses the composer; a drag does not. Streaming assistant
+growth produces a throttled haptic at most once every 320 ms.
+
+These are not decorative details. Without them, a streaming transcript jumps,
+buries the user's just-sent message, or fights the keyboard.
+
+#### T3 message grammar
+
+User messages:
+
+- right aligned;
+- blue surface;
+- 20-point radius;
+- approximately 14 horizontal and 10 vertical padding;
+- at most 85% width;
+- attachments above or below the text;
+- timestamp and copy action.
+
+Assistant messages:
+
+- full-width and unboxed;
+- rich Markdown;
+- selectable text where supported;
+- syntax-highlighted code;
+- a code header with language and copy;
+- horizontally scrollable non-wrapped code when preferred;
+- timestamp and copy metadata kept visually quiet.
+
+Links are typed. File links open the exact Thread File route and can carry a
+line target. External links open externally. Images open a viewer with swipe
+close and double-tap zoom.
+
+Work events are not rendered as chat bubbles:
+
+- current work has a compact running row and elapsed time;
+- old turns can fold;
+- related work events group and collapse;
+- success/failure is carried by small semantic icons;
+- a compact row expands to full detail;
+- long press copies details;
+- fresh rows may animate, but remounted rows older than three seconds do not
+  replay entrance motion.
+
+Inline review comments contain file identity, a bounded diff preview, and
+comment text. This preserves the causal link between a user message and the
+code selection that generated it.
+
+#### Omega now
+
+Omega renders every role inside the same bordered bubble shape. Assistant
+Markdown, code, tool calls, attachments, work groups, plans, requests, file
+links, timestamps, and copy are absent. The bridge intentionally withholds
+paths and raw tool payloads, which is a sound security default.
+
+#### Omega target
+
+Copy T3's information grammar, not its raw event payloads:
+
+| Portable event        | Mobile rendering       | Required bound                              |
+| --------------------- | ---------------------- | ------------------------------------------- |
+| User message          | right-aligned bubble   | text and bounded images                     |
+| Assistant message     | unboxed Markdown       | sanitized Markdown and code limits          |
+| Work started/running  | compact work row       | tool class and safe label only              |
+| Work completed/failed | result row             | safe summary and receipt reference          |
+| Plan update           | collapsible plan block | bounded step text                           |
+| Approval request      | attention card         | exact request ID and allowed responses      |
+| User question         | question card          | exact question and typed choices            |
+| Artifact              | file/diff/output link  | opaque scoped artifact reference            |
+| Full Auto evidence    | receipt row            | receipt type, digest, state, and safe label |
+
+Do not send raw shell commands, environment variables, tool JSON, or absolute
+paths merely to make the mobile feed look complete. The host should create the
+portable summary.
+
+### Screen 6: composer
+
+#### T3 structure
+
+T3's composer has two deliberate states:
+
+| State     |   Approximate chrome height | Shape                                                         |
+| --------- | --------------------------: | ------------------------------------------------------------- |
+| Collapsed |                   60 points | single pill with 36-point editor and circular send/stop       |
+| Expanded  | 174 points before safe area | 20-point card with multiline editor, attachments, and toolbar |
+
+The multiline editor grows from about 80 to 160 points. iOS can use Liquid
+Glass on supported versions; all other cases use an opaque tokenized surface
+with a restrained shadow. Android disables layout animation while the IME is
+moving. iOS uses an approximately 220 ms morph.
+
+A connection pill floats above the composer for reconnecting, offline, error,
+or syncing. It is actionable when reconnect is possible.
+
+The primary action is:
+
+- Stop during an active run;
+- Send when connected, idle, and no queue exists;
+- Queue when offline, busy, or already queued.
+
+Queued count is visible. One send can be in flight per exact environment/thread
+key. The composer does not imply success until the command resolves.
+
+#### Composer inputs and menus
+
+The toolbar exposes:
+
+- attachment picker;
+- grouped provider/model menu;
+- provider options;
+- runtime policy: approval required, auto-accept edits, auto, or full access;
+- interaction mode: default or plan;
+- stop;
+- send or queue.
+
+Inline triggers provide:
+
+- `/` for app and provider commands;
+- `$` for ranked skill search;
+- `@` for server-backed path search rooted in the project cwd.
+
+Attachments show thumbnails, preview, and removal. The native composer is an
+optimization for selection, keyboard, and high-frequency editing behavior; the
+state contract remains in React.
+
+#### Omega now
+
+Omega has a normal multiline field plus Send and Steer. Both actions are
+disabled because `commandLaneAvailable` is hard-coded to false. The handlers
+are no-ops. There is no draft persistence, attachment state, queue count,
+stop, command search, path search, model/lane menu, or connection action.
+
+#### Omega target
+
+Replicate T3's collapsed/expanded shell and action truth, with Omega-specific
+controls:
+
+- primary action: Send, Queue, or Stop;
+- secondary lane action only when the selected lane declares it, such as Steer;
+- attachment;
+- lane and model disclosure, not a provider-heavy main UI;
+- authority summary;
+- optional Plan mode;
+- visible connection and queue state.
+
+Every button must be driven by an explicit `ComposerCapability` projection.
+Never render Steer merely because a thread is running.
+
+### Screen 7: approvals, questions, and plans
+
+#### T3 structure
+
+Pending interactions sit directly above the sticky composer. They remain in
+the user's action locus and do not disappear into the historical feed.
+
+An approval card shows:
+
+- `Approval needed`;
+- request kind and detail;
+- Allow once;
+- Allow session;
+- Decline.
+
+A user-input card supports:
+
+- several questions;
+- typed option chips;
+- custom free-text answers;
+- completion validation;
+- one submit action for the complete response.
+
+T3's current implementation has an accessibility defect worth not copying:
+several card pressables and option chips do not declare complete roles and
+labels. Omega should preserve the layout while making the semantics explicit.
+
+#### Omega now
+
+Omega projects no approval, question, or plan request. A blocked agent can look
+like stale or waiting text. This is the highest-value controller gap.
+
+#### Omega target
+
+Create an Attention Inbox before broad file or terminal work. Each interaction
+must bind:
+
+```text
+requestId
+hostId
+workItemId
+lane
+generation
+requestKind
+safeContext
+allowedResponses
+createdAt
+expiresAt
+```
+
+The answer command must be idempotent. A reconnect that replays the request must
+show the already-terminal response rather than permit a second answer.
+
+### Screen 8: files and attachments
+
+#### T3 structure
+
+The file browser supports:
+
+- hierarchical expansion;
+- sensible default expansion;
+- search;
+- pull to refresh;
+- selected ancestor treatment;
+- immediate optimistic selection for about one second;
+- preload on `onPressIn`;
+- initial render of 20 rows, batches of 12, and a window size of 5.
+
+On a phone, the tree and file are routes. On a tablet, the file can occupy the
+inspector. The same selected path drives both.
+
+The file viewer chooses a presentation by content:
+
+- source code with line numbers, syntax highlighting, line target, and
+  word-wrap preference;
+- Markdown using selectable native or Nitro rendering;
+- image with cached preview and full-screen zoom;
+- HTML, SVG, and web content through WebView;
+- preview/source toggle where appropriate;
+- copy path, refresh, and open externally.
+
+Reads are bounded. Large content is truncated with a visible banner; the
+current source path uses a one-megabyte first-read ceiling.
+
+#### Omega now
+
+Omega has no mobile file reference or file route. The bridge intentionally
+withholds file paths.
+
+#### Omega target
+
+Define an opaque `ArtifactRef`:
+
+```text
+artifactId + workItemId + workspaceGeneration + mediaType + displayName
+```
+
+Opening it should issue a scoped read command. The host resolves the path after
+checking the device grant and workspace generation. Start with bounded text,
+Markdown, and image. Add tree search only after the host can return scoped
+children without leaking parent paths.
+
+### Screen 9: review and comments
+
+#### T3 structure
+
+T3 Review groups changes into:
+
+- working tree;
+- branch changes;
+- latest turn;
+- previous turns.
+
+The native review surface provides file navigation, statistics, pull to
+refresh, collapse, mark viewed, and visible-file synchronization.
+
+Line-comment selection works as follows:
+
+1. tap one line for a single-line selection;
+2. long press to establish a range anchor;
+3. tap the range end;
+4. use the floating selection bar to comment;
+5. review up to five selected preview lines in a sheet;
+6. add text and optional image attachments.
 
-### Current Omega mobile product
+The result is serialized into a structured `<review_comment>` block containing
+section, file path, range, and diff context, then inserted into the thread
+draft. It is agent feedback, not a direct GitHub review comment.
 
-The current committed mobile app is small by design. It uses plain React Native.
-Its source has about 2,586 lines of TypeScript and TSX under `src/`.
+Large diffs and non-text files have explicit fallback paths. T3's native diff
+modules are substantial—roughly 2,575 lines on iOS and 1,429 on Android—because
+selection, virtualization, syntax color, and canvas drawing are expensive.
+
+#### Omega now
+
+Omega mobile has no diff projection. Omega desktop already has a native diff
+model and review UI, which is an important advantage.
+
+#### Omega target
+
+Do not recreate Git diff authority in the phone. Project bounded hunks from the
+desktop source of truth:
+
+```text
+DiffRef
+├── workItemId
+├── checkpointId
+├── workspaceGeneration
+├── files[]
+│   ├── opaqueFileRef
+│   ├── status
+│   ├── additions/deletions
+│   └── boundedHunks[]
+└── truncation
+```
+
+Ship read-only review first. Review comments can then become typed thread
+attachments. Accept/reject or apply actions must bind the checkpoint and fail
+closed if the diff has changed.
+
+### Screen 10: Git and forge
+
+#### T3 structure
+
+The Git overview shows:
 
-The app has one mounted screen. It provides three main states:
+- repository and current ref;
+- changed-file count;
+- ahead and behind counts;
+- upstream state;
+- pull request state;
+- typed quick action;
+- working-tree file selection;
+- branches and worktrees.
 
-1. An unpaired state with a desktop QR scan action.
-2. An activity list with thread and Full Auto run cards.
-3. A thread detail view with a bounded transcript preview.
+The quick action is derived, not hard-coded:
 
-The app securely stores a Nostr device key and a scoped grant. It verifies the
-desktop connection and resumes a bounded delta stream. These are meaningful
-foundations.
+- changes → Commit, Commit & push, or Commit, push & PR;
+- behind → Pull;
+- ahead → Push or Push & create PR;
+- open PR and clean → View PR;
+- diverged → disabled Sync branch with a reason;
+- detached or missing remote → disabled with an exact reason.
 
-The mobile README still describes an Effect Native application with older
-screens and shared view programs. The mounted app says that Effect Native is
-gone. This documentation drift can cause false capability and architecture
-claims.
+The commit sheet supports:
 
-The thread screen renders Send and Steer buttons. The current screen sets the
-command lane to unavailable. Both handlers are no-ops. The input explains that
-the signed command lane is unavailable.
+- optional generated commit message;
+- file inclusion/exclusion;
+- commit on the current branch;
+- commit on a new branch.
+
+Pushing or opening a pull request from the default branch requires a
+confirmation screen. The user can continue or create a feature branch and
+continue. Branch management can create or switch refs and create worktrees.
+Refs checked out elsewhere are disabled.
+
+All Git operations run on the selected server environment and exact cwd. The
+phone never owns a local clone. Progress stages and terminal success/failure
+are explicit.
 
-This means the current app is an authenticated mirror. It is not a remote
-controller.
+#### Omega now
 
-### 1. Pairing and connection
+Omega mobile has no Git projection or command. Omega desktop has deep inherited
+Git support, but zero base and the device bridge do not expose a typed remote
+workflow.
 
-#### Omega status: Strong
+#### Omega target
+
+Implement `GitStatus` before mutation. Then add:
 
-Desktop can show a one-use QR code. The pairing secret has a five-minute limit.
-The protocol uses a Nostr device key and a scoped grant. Discovery can advertise
-a structured Tailscale MagicDNS endpoint.
+1. Commit selected files;
+2. Push;
+3. Pull;
+4. Create or open pull request;
+5. Branch/worktree creation.
+
+Use T3's derived action and disabled-reason pattern. Add Omega's stricter
+authority disclosure and dirty-worktree guard. Every mutation should show host,
+repository, branch, worktree, and command receipt.
 
-The direct bridge supports loopback and Tailscale. It has bounded frames,
-snapshots, ordered deltas, resume cursors, and server generations.
+### Screen 11: terminal and task output
 
-T3 Code supports QR pairing, environment credentials, token exchange, and DPoP.
-It also supports a broader endpoint catalog and relay model.
+#### T3 structure
 
-#### Gap
+T3's terminal is a real remote terminal:
 
-Omega pairing is strong for one desktop. It does not yet provide a mobile host
-catalog, grant management UI, connection diagnostics, or a multi-host switcher.
+- native Ghostty-derived renderer on iOS and Android;
+- text fallback;
+- environment, thread, terminal ID, cwd, and worktree binding;
+- default 80 × 24 grid before measurement;
+- resize commands from native surface dimensions;
+- multiple sessions per thread;
+- project scripts that launch into terminal sessions;
+- attach buffer replay;
+- running, exited, and stale-attach state;
+- stale session reopening;
+- close and back navigation when the remote process exits;
+- hardware-key handling;
+- an accessory row for Escape, modifier, Tab, Clear, arrows, and common shell
+  characters.
 
-### 2. Activity and thread list
+The terminal route waits for environment readiness, font preferences, grid
+measurement, and any pending launch before attaching. Buffer replay is keyed by
+terminal and font so a stale render cannot overwrite a new session.
 
-#### Omega status: Partial
+The native terminal is about 2,000 lines across its larger platform view files,
+plus a bridge and frame model. This is a product subsystem, not a text area.
 
-The list can show recent agent threads and Full Auto runs. Thread cards include
-state, executor, model, time, and the latest transcript preview. Run cards
-include state and health information.
+#### Omega now
 
-The projection is bounded to 64 threads and 64 Full Auto runs. This limit is
-reasonable for a first activity view.
+Omega mobile has no terminal or task-output route. Full Auto rows can expose
+receipt references, but not live logs.
 
-T3 Code Mobile can navigate environments, projects, and threads. It can create a
-project thread and control its worktree context.
+#### Omega target
 
-#### Gap
+Use a staged path:
 
-- Omega has no environment list.
-- Omega has no project list.
-- Omega cannot create a thread from mobile.
-- Omega cannot filter or search activity.
-- Omega has no unread or attention queue.
-- Omega does not distinguish requests that need an answer.
+1. bounded structured task output with reconnect and copy;
+2. typed one-shot command requests where policy allows;
+3. read/write pseudo-terminal sessions;
+4. native renderer only after profiling proves it necessary.
 
-### 3. Transcript
+The session contract must exist before the native view:
 
-#### Omega status: Partial
+```text
+terminalId + hostId + workItemId + cwdRef + dimensions + sequence + state
+```
 
-The device mirror sends bounded user and assistant text. It excludes tool calls,
-raw payloads, credentials, and file paths. This rule reduces leakage risk.
+Secret entry, resize ordering, reconnect replay, background suspension, and
+screen-reader fallback are acceptance requirements, not follow-up polish.
 
-The current mobile view also has generic roles for system and tool messages.
-The committed bridge does not project complete events for those roles.
+### Screen 12: settings and client storage
 
-T3 Code Mobile renders Markdown, code, tool calls, questions, approvals, plans,
-diffs, and attachments. It uses native modules for high-density Markdown,
-composer, controls, diff, and terminal work.
+#### T3 structure
 
-#### Gap
+Settings includes:
 
-Omega mobile cannot explain what an agent did. It can show the agent's text
-summary, but not the evidence around that summary.
+- account and optional T3 Connect cloud access;
+- environments;
+- device notifications;
+- Live Activity updates;
+- project grouping;
+- appearance;
+- device-local beta flags;
+- archived threads;
+- client storage;
+- legal documents;
+- app version and running bundle identity.
 
-#### Required closure
+Appearance provides live previews and independent controls for:
 
-Add a portable event allowlist. Start with safe tool headers, plan changes,
-request cards, artifact names, and diff summaries. Keep raw tool payloads out of
-the bridge.
+- base text size;
+- terminal font size;
+- code font size;
+- code word wrapping.
 
-### 4. Composer and commands
+The app follows automatic light/dark appearance and updates CSS variables for
+both themes so switching is immediate.
 
-#### Omega status: Missing in the current app
+Preferences use optimistic patches over a persistent store. Writes made while
+the initial read is still loading are versioned so the late read cannot
+overwrite the user's change. SQLite is primary; SecureStore is a timestamped
+fallback and migration source.
 
-A separate Nostr command path exists in the wider Omega design. It includes
-signed commands for Sarah, thread messages, interrupt, read state, reminders,
-community actions, and provider handoff.
+The version row distinguishes embedded JavaScript from an OTA bundle. Check for
+Updates handles check, download, rollback-to-embedded, restart, and typed
+failure. The runtime version uses Expo fingerprinting so JavaScript requiring a
+new native module cannot land on an incompatible binary.
 
-The current mobile app does not connect its composer to that path. Send and
-Steer are disabled.
+#### Omega now
 
-T3 Code Mobile can send messages, attach context, interrupt, and continue work.
-It uses the same server command model as desktop.
+Omega has a coherent dark palette and reusable basic components, but no
+settings route, automatic light theme, typography controls, connection
+management, grant UI, storage diagnostics, or installed-bundle disclosure.
+Expo Updates and several platform dependencies are installed without a
+comparable mounted product flow.
 
-#### Required closure
+#### Omega target
 
-Connect one command first: send a message to an idle native Omega thread. The
-command needs a stable command ID, admission result, queue state, and terminal
-receipt. Then add interrupt. Add steer only for lanes that declare exact steer
-behavior.
+Initial Settings groups should be:
 
-### 5. Approvals, questions, and plans
+- Environments and Devices;
+- Appearance;
+- Notifications;
+- Storage and Offline Queue;
+- Authority;
+- Version and Updates.
 
-#### Omega status: Missing
+Keep security truth visible: a paired host row should show device-key identity,
+grant scope, expiry, and revoke. Do not hide authority under a generic account
+screen.
 
-The current bridge does not send these events. The current mobile UI has no
-cards or answer controls for them.
+### Screen 13: notifications, Live Activities, shares, and shortcuts
 
-This is a critical remote-control gap. A long run can stop for a decision while
-the owner sees only a stale text preview.
+#### Notifications and deep links
 
-T3 Code Mobile can answer approvals and questions. It can also inspect plan
-state.
+T3 registers the device only when platform permission and relay registration
+both succeed. The Settings switch does not claim notifications are active
+merely because iOS permission was granted.
 
-#### Required closure
+Notification payloads accept only exact thread destinations. An explicit deep
+link is normalized, queries/fragments and protocol-relative paths are refused,
+and environment/thread IDs are a fallback. Cold-start and live responses share
+one route function and are deduplicated by notification ID.
 
-Make an attention inbox the first mobile control surface. It has higher value
-and lower risk than a full mobile IDE.
+#### Live Activities and widgets
 
-### 6. Files and attachments
+The iOS Agent Activity surface aggregates several threads. It prioritizes:
 
-#### Omega status: Missing
+1. approval or input;
+2. failure;
+3. running or starting;
+4. completed or stale.
 
-The mobile app has no file tree, file viewer, attachment viewer, or search.
-T3 Code Mobile has these surfaces.
+It uses semantic system foreground colors plus consistent state tints. The
+compact, expanded, banner, watch, and widget presentations all derive from the
+same phase model. Tapping opens the highest-priority exact thread.
 
-The Omega bridge intentionally withholds file paths. A mobile file surface
-therefore needs a new scoped path contract. It cannot reuse transcript preview
-strings.
-
-#### Required closure
-
-Add file references with opaque IDs. Resolve an ID only after the device grant
-permits that workspace and operation. Start with read-only text and image files.
-
-### 7. Diff review
-
-#### Omega status: Missing
-
-The mobile app has no diff renderer and no accept or reject controls. T3 Code
-Mobile has a native diff module and a review flow.
-
-#### Required closure
-
-Project diff metadata and bounded hunks. Add a read-only review first. A change
-decision must bind the exact diff generation and checkpoint.
-
-### 8. Git and forge
-
-#### Omega status: Missing
-
-The mobile app has no Git or forge surface. T3 Code Mobile can inspect status and
-perform common Git actions.
-
-#### Required closure
-
-Do not expose a general shell as the first answer. Add typed Git status, commit,
-push, and pull-request commands. Each command must show the target repository,
-branch, and authority before admission.
-
-### 9. Terminal
-
-#### Omega status: Missing
-
-The current mobile app has no terminal. T3 Code Mobile has a terminal surface.
-
-#### Required closure
-
-Start with task output and bounded command requests. A full pseudo-terminal can
-follow after resize, reconnect, secret entry, and accessibility tests exist.
-
-### 10. Offline behavior
-
-#### Omega status: Missing
-
-The bridge can resume a stream after a disconnect. That is not an offline
-outbox. The current app cannot accept a command while offline.
-
-T3 Code Mobile has an offline outbox and reconnect rules.
-
-#### Required closure
-
-Store signed command intents with a visible pending state. Revalidate the host
-generation, grant, thread state, and command expiry before delivery.
-
-### 11. Notifications and deep links
-
-#### Omega status: Missing in the current product flow
-
-The current app does not provide a complete notification route for approvals,
-questions, completion, or failure. It has no Live Activity, widget, or share
-target flow.
-
-T3 Code Mobile has push notifications, deep links, Live Activities, widgets,
-and share targets.
-
-#### Required closure
-
-Add notifications after the attention-event contract. A notification must open
-the exact request or run. It must not open a generic home screen.
-
-### 12. Tablet and responsive layout
-
-#### Omega status: Partial
-
-The current app uses a single-column phone layout. Lists use `FlatList`, and
-controls use mobile-size targets. The layout has no tablet workbench or
-side-by-side thread detail.
-
-T3 Code Mobile uses adaptive navigation and supports larger device layouts.
-
-#### Required closure
-
-Add a two-pane activity and detail layout for tablets. Keep the phone path
-single-column.
+#### Incoming shares
+
+The system share target accepts text, URL, and up to eight images. Shared
+content is converted into a durable draft before temporary files are removed.
+Images are bounded by provider count and 10 MB size. Duplicate lifecycle
+deliveries are fingerprinted and serialized. A draft can reserve a destination
+project, survive sheet dismissal, and resume without importing twice.
+
+#### Launcher shortcuts
+
+Android exposes one static New Task shortcut and up to three recent threads.
+Shortcut paths are allowlisted to exact New Task or environment/thread routes.
+Persisted malformed or stale launcher data cannot navigate arbitrarily.
+
+#### Omega now and target
+
+Omega has Expo notification and update packages but no complete attention
+route. It has no Live Activity, widget, share target, or shortcut product flow.
+
+Implement in this order:
+
+1. exact host/work-item/request deep links;
+2. approval, input, failure, and completion notifications;
+3. New Task and recent-work shortcuts;
+4. incoming text/image share to a durable task draft;
+5. Live Activity only when concurrent long-running work warrants it.
+
+Do not build a Live Activity before the app can open and answer the request it
+advertises.
+
+### Offline, reconnect, and synchronization law
+
+T3 treats three different problems separately:
+
+1. **Connection supervision** establishes and retries an environment session.
+2. **Shell synchronization** keeps lightweight projects and thread rows
+   authoritative.
+3. **Outbox delivery** stores commands accepted by the phone but not yet by the
+   environment.
+
+The outbox stores one JSON file per queued message. Messages are grouped by
+environment/thread and ordered by creation time. Only the first message for a
+thread drains. Only one message globally is marked dispatching at once in the
+current mobile hook.
+
+Delivery rules prevent duplication:
+
+| Queued item             | Server state                  | Action                                     |
+| ----------------------- | ----------------------------- | ------------------------------------------ |
+| New task                | thread already exists         | remove local item; creation already landed |
+| New task                | connected and shell is live   | send                                       |
+| New task                | shell not yet authoritative   | wait                                       |
+| Existing-thread message | thread absent, shell live     | remove; target is gone                     |
+| Existing-thread message | thread absent, shell not live | wait                                       |
+| Existing-thread message | connected and thread idle     | send                                       |
+| Existing-thread message | busy or disconnected          | wait                                       |
+
+Before a queued existing-thread message sends, T3 synchronizes model, runtime,
+and interaction settings. A queued creation must have a prompt, model, and a
+branch when worktree mode requires one. Transport failures and interruptions
+retry with 1–16 second exponential backoff. Terminal command failures can be
+discarded rather than retried forever. Delivered items are removed only after
+the start-turn command reaches a terminal result.
+
+Omega's resume cursor solves a different problem: replaying server-to-phone
+state. It does not accept offline user intent. Omega needs both:
+
+- bridge resume for observations;
+- a signed intent outbox for commands.
+
+An Omega outbox entry should include command ID, host and work-item identity,
+target generation, grant reference, payload digest, expiry, creation time,
+delivery state, and terminal receipt. Reconnect must revalidate grant,
+generation, target existence, lane capability, and current request state before
+delivery.
+
+### State ownership and component boundaries
+
+T3's useful architectural lesson is separation of state authority:
+
+| Layer                    | Owns                                                                                 |
+| ------------------------ | ------------------------------------------------------------------------------------ |
+| Shared client runtime    | connection catalog, environment sessions, shell/detail projections, typed operations |
+| Mobile state             | drafts, outbox, selected route, preferences, recent shortcuts, incoming shares       |
+| React feature components | presentation and user intent                                                         |
+| Native modules           | rendering or platform interaction that React Native cannot perform smoothly enough   |
+| Server environment       | threads, files, Git, terminal processes, commands, durable work truth                |
+
+Omega should mirror that separation without adopting T3's exact libraries.
+Recommended feature topology:
+
+```text
+src/
+├── app/
+│   ├── root-navigator
+│   ├── adaptive-workspace
+│   └── app-providers
+├── controller/
+│   ├── environment-catalog
+│   ├── connection-supervisor
+│   ├── work-index
+│   ├── thread-detail
+│   ├── command-client
+│   └── receipt-store
+├── persistence/
+│   ├── preferences
+│   ├── composer-drafts
+│   ├── command-outbox
+│   └── recent-destinations
+├── features/
+│   ├── environments
+│   ├── work-list
+│   ├── new-task
+│   ├── thread
+│   ├── attention
+│   ├── artifacts
+│   ├── review
+│   ├── git
+│   ├── output
+│   └── settings
+└── ui/
+    ├── tokens
+    ├── typography
+    ├── controls
+    └── platform-header
+```
+
+This is a logical map, not a requirement to create many tiny files. New modules
+should be introduced only when the responsibility is real.
+
+### Recommended Omega screen and component map
+
+| Route        | Primary components                                                               | Backing state or command                          |
+| ------------ | -------------------------------------------------------------------------------- | ------------------------------------------------- |
+| Home         | `WorkListHeader`, `AttentionSummary`, `WorkList`, `QueuedTaskRow`                | aggregate work index, filters, outbox             |
+| Environments | `EnvironmentRow`, `ConnectionDiagnostics`, `GrantActions`                        | host catalog and connection supervisors           |
+| New Task     | `ProjectPicker`, `TaskDraft`, `WorkspaceModePicker`, `AuthoritySummary`          | project projection, drafts, create command        |
+| Thread       | `ThreadHeader`, `PortableEventList`, `PendingInteractionStack`, `ThreadComposer` | thread detail projection and command capabilities |
+| Artifact     | `ArtifactHeader`, text/Markdown/image viewer                                     | scoped artifact read                              |
+| Review       | `ReviewSummary`, `DiffFileList`, `DiffHunk`, `ReviewDraft`                       | checkpoint-bound diff projection                  |
+| Git          | `GitStatusHeader`, `DerivedGitAction`, `ChangedFiles`, `BranchList`              | typed Git queries and commands                    |
+| Output       | `OutputSessionHeader`, `OutputList`                                              | bounded task-output session                       |
+| Settings     | environment, appearance, authority, storage, update sections                     | preferences, grants, app metadata                 |
+
+### Visual system to bring closer to T3
+
+Omega should move substantially closer to T3 Mobile's shell and density:
+
+- automatic light and dark semantic tokens;
+- one display family and one monospaced code family;
+- large native page titles where the platform supports them;
+- 20–24 point grouped sheet/card radii;
+- 14–20 point horizontal screen padding;
+- 44 point minimum controls;
+- rich cards only for active or attention work;
+- compact historical rows with inset separators;
+- unboxed assistant messages;
+- right-aligned user bubbles;
+- sticky collapsed/expanded composer;
+- semantic state colors shared by list, request cards, notification, and
+  optional Live Activity;
+- native-feeling menus and headers instead of custom icon rows on iOS;
+- a floating New Task action on compact Android.
+
+Copying T3 closely does not require copying every glass material. Liquid Glass
+is a progressive platform treatment, not the information architecture. Omega
+should implement an opaque tokenized fallback first and add platform glass only
+when contrast, reduced transparency, and older OS behavior are verified.
+
+### Accessibility audit
+
+#### T3 strengths
+
+- native navigation and search semantics on iOS;
+- many header buttons have accessibility labels;
+- platform text scaling preferences;
+- 44-point controls are common;
+- external routes have defensive validation;
+- user-visible disabled reasons exist for Git operations.
+
+#### T3 gaps not to copy
+
+- several approval and question controls lack explicit roles or complete
+  labels;
+- some diff and Git affordances rely on icon meaning;
+- terminal screen-reader behavior remains a special-case risk;
+- swipe lifecycle actions require the long-press/menu equivalent;
+- animation paths need explicit reduced-motion verification;
+- color-coded states need text and icon redundancy.
+
+#### Omega acceptance bar
+
+Every new control needs role, label, state, and hint where behavior is not
+obvious. Dynamic work rows should announce state changes without repeatedly
+reading streaming tokens. Request focus should move to the pending card only
+when it will not interrupt typing. Diff, code, and terminal views need a text
+fallback. All swipe actions need discoverable menu alternatives.
+
+### Performance audit
+
+T3 invests in the correct hotspots:
+
+- virtualized thread and transcript lists;
+- item typing and estimates;
+- focused-route inspector registration;
+- feed freeze during disclosure changes;
+- preloading on file press;
+- bounded initial tree rendering;
+- native Markdown, diff, composer, and terminal only where profiling justified
+  the bridge cost;
+- stale-animation suppression;
+- content-width freezing during pane animation;
+- bounded file reads and large-diff fallbacks.
+
+Omega's bounded mirror and `FlatList` are good foundations. The current
+performance profile is easy because the product is small. As it grows, Omega
+should preserve these budgets:
+
+- never rerender the whole transcript for a heartbeat;
+- normalize entities by stable ID;
+- append or patch portable events rather than replace all thread detail;
+- keep connection state separate from message data;
+- measure and anchor feed movement explicitly;
+- cap Markdown, code, diff, image, and log payloads;
+- add native surfaces only after a JS implementation fails a measured target.
+
+### Testing and release proof
+
+T3 has 92 app-local tests and 132 tests across mobile plus the shared client
+runtime at the audited revision. Tests cover connection onboarding,
+environment sections, thread settlement and snoozing, shell sync, outbox
+delivery, drafts, incoming shares, notification routing, shortcuts, storage,
+Git state, and showcase support.
+
+Its showcase harness can:
+
+- seed deterministic environments, projects, threads, terminal, and pending
+  tasks;
+- launch iOS simulators and Android emulators;
+- capture named scenes in light and dark appearance;
+- normalize PNG output;
+- validate App Store and Google Play dimensions, color type, alpha, count, and
+  file-size constraints.
+
+Omega's four mobile tests concentrate on bridge, key custody, screen behavior,
+and view behavior. That is reasonable for the current mirror, but not for the
+target controller.
+
+Before visual parity work is called complete, Omega needs deterministic fixtures
+for at least:
+
+- no hosts;
+- host connecting, offline, refused, expired, and live;
+- empty work list;
+- active, approval, input, failed, queued, and settled rows;
+- streaming thread;
+- approval and multi-question cards;
+- offline send and replay;
+- bounded Markdown/code;
+- truncated file and diff;
+- tablet list/detail/inspector;
+- light, dark, large text, reduced motion, and reduced transparency.
+
+### Exact capability gap
+
+| Capability            | T3 current                                            | Omega current                        | Omega closure                       |
+| --------------------- | ----------------------------------------------------- | ------------------------------------ | ----------------------------------- |
+| Multiple environments | catalog and independent supervisors                   | one implicit paired desktop          | durable host catalog                |
+| Project discovery     | server shell projection and repository grouping       | none                                 | scoped workspace projection         |
+| New task              | project/worktree/model/runtime flow                   | none                                 | typed create command                |
+| Durable drafts        | file-backed per-project drafts                        | in-memory thread text only           | persistent draft store              |
+| Work list             | active cards, settled tail, search, filters, gestures | generic activity cards               | aggregate typed work index          |
+| Thread route          | exact environment/thread deep link                    | local selection only                 | canonical route identity            |
+| Transcript            | Markdown, code, work log, images, review comments     | plain text bubbles                   | portable bounded event grammar      |
+| Send/queue/stop       | operational and state-derived                         | Send/Steer disabled                  | admitted command client             |
+| Approvals/input       | action cards                                          | absent                               | idempotent attention commands       |
+| Files                 | tree, search, viewers                                 | absent                               | opaque artifact references          |
+| Review                | native diff and review draft                          | absent                               | checkpoint-bound bounded diff       |
+| Git                   | status, derived actions, branch/worktree, PR          | absent                               | typed remote Git commands           |
+| Terminal              | multi-session native terminal                         | absent                               | output first, terminal later        |
+| Offline               | persistent outbox and retry law                       | observation resume only              | signed intent outbox                |
+| Notifications         | exact thread routing and device registration truth    | absent flow                          | request-aware push routing          |
+| Shares                | durable text/image task import                        | absent                               | share-to-draft                      |
+| Shortcuts             | New Task and recents                                  | absent                               | route allowlist and recents         |
+| Tablet                | list/detail/inspector                                 | single column                        | adaptive workspace                  |
+| Appearance            | automatic themes and font controls                    | dark-only tokens                     | semantic themes and scaling         |
+| Updates               | fingerprinted OTA with manual control                 | dependency present, no comparable UI | installed-bundle truth and rollback |
+
+### Replication sequence
+
+#### Mobile phase 0: controller contracts
+
+Define environment, work item, portable event, request, artifact, command,
+receipt, and capability schemas. Add route identity and durable host catalog.
+
+Exit criteria:
+
+- the list can name every projected lane without guessing;
+- every control is driven by a capability;
+- one host can be forgotten and one grant can be revoked independently;
+- a work item survives route serialization and cold start.
+
+#### Mobile phase 1: T3-like shell
+
+Add native-stack navigation, automatic themes, Home v2, Thread shell,
+platform headers, search, active/settled row grammar, and compact/split layout.
+The composer may remain read-only if it truthfully says so.
+
+Exit criteria:
+
+- phone and tablet fixtures share one route model;
+- selected work remains stable while sheets open;
+- active list order does not jump on updates;
+- blocked work is visually dominant without decorative noise.
+
+#### Mobile phase 2: attention and basic command loop
+
+Add durable drafts, Send/Queue/Stop, approval, question, interrupt, command
+admission, terminal receipt, and signed offline outbox.
+
+Exit criteria:
+
+- a paired owner can answer a blocked request;
+- replay cannot answer twice;
+- offline intent survives restart;
+- stale host, grant, request, or generation refuses clearly;
+- each admitted command reaches a visible terminal receipt.
+
+#### Mobile phase 3: evidence
+
+Add safe work events, plans, attachments, scoped files, task output, and
+read-only diffs.
+
+Exit criteria:
+
+- the user can understand why an approval is requested;
+- no raw secret, absolute path, or unrestricted tool payload crosses the
+  bridge;
+- content truncation is explicit;
+- deep links open the exact artifact or request.
+
+#### Mobile phase 4: typed workbench mutations
+
+Add new-task/worktree flow, review comments, Git status and actions, share
+target, shortcuts, and notifications.
+
+Exit criteria:
+
+- mutations bind exact host, workspace, generation, and checkpoint;
+- disabled Git actions explain why;
+- shared content becomes one durable draft exactly once;
+- notifications open the actionable object.
+
+#### Mobile phase 5: terminal and platform finish
+
+Add full terminal only if task output is insufficient, then Live Activities,
+widgets, OTA UI, and store-grade screenshot/accessibility automation.
+
+Exit criteria:
+
+- terminal resize and replay are ordered;
+- background and reconnect behavior is tested;
+- a text fallback exists;
+- platform surfaces use the same attention state and deep-link contract.
+
+### What Omega should and should not copy
+
+Copy closely:
+
+- the phone and tablet route topology;
+- Thread List v2's active-card and settled-row hierarchy;
+- stable active ordering;
+- semantic state precedence and shared colors;
+- sticky collapsed/expanded composer;
+- user-bubble and unboxed-assistant grammar;
+- interaction cards above the composer;
+- typed File, Review, Git, and Terminal destinations;
+- offline queued task presentation;
+- native platform headers and search;
+- exact deep links;
+- deterministic showcase fixtures.
+
+Adapt:
+
+- T3 environment → Omega paired host plus execution lane;
+- T3 provider/runtime menus → Omega lane, model disclosure, and authority;
+- T3 server event store → Omega aggregate projection over existing native
+  lanes;
+- T3 Git command service → Omega desktop Git authority with signed receipts;
+- T3 review comments → Omega checkpoint-bound portable review attachments.
+
+Do not copy:
+
+- unsafe full-access defaults;
+- raw server paths or tool payloads on mobile;
+- controls with missing accessibility semantics;
+- glass as a prerequisite for hierarchy;
+- native modules before profiling;
+- a generic terminal as the first remote mutation surface;
+- implicit queue or steer behavior.
+
+### Current T3 mobile source map
+
+The deep dive is pinned to
+[`a148e08197fc38b24e59c10c7cd5ba06dd182dab`](https://github.com/pingdotgg/t3code/tree/a148e08197fc38b24e59c10c7cd5ba06dd182dab).
+The most important sources are:
+
+- [root app providers](https://github.com/pingdotgg/t3code/blob/a148e08197fc38b24e59c10c7cd5ba06dd182dab/apps/mobile/src/App.tsx)
+- [route graph](https://github.com/pingdotgg/t3code/blob/a148e08197fc38b24e59c10c7cd5ba06dd182dab/apps/mobile/src/Stack.tsx)
+- [adaptive workspace](https://github.com/pingdotgg/t3code/blob/a148e08197fc38b24e59c10c7cd5ba06dd182dab/apps/mobile/src/features/layout/AdaptiveWorkspaceLayout.tsx)
+- [Home](https://github.com/pingdotgg/t3code/blob/a148e08197fc38b24e59c10c7cd5ba06dd182dab/apps/mobile/src/features/home/HomeScreen.tsx)
+- [Thread List v2 rows](https://github.com/pingdotgg/t3code/blob/a148e08197fc38b24e59c10c7cd5ba06dd182dab/apps/mobile/src/features/threads/thread-list-v2-items.tsx)
+- [thread route](https://github.com/pingdotgg/t3code/blob/a148e08197fc38b24e59c10c7cd5ba06dd182dab/apps/mobile/src/features/threads/ThreadRouteScreen.tsx)
+- [thread detail](https://github.com/pingdotgg/t3code/blob/a148e08197fc38b24e59c10c7cd5ba06dd182dab/apps/mobile/src/features/threads/ThreadDetailScreen.tsx)
+- [thread feed](https://github.com/pingdotgg/t3code/blob/a148e08197fc38b24e59c10c7cd5ba06dd182dab/apps/mobile/src/features/threads/ThreadFeed.tsx)
+- [composer](https://github.com/pingdotgg/t3code/blob/a148e08197fc38b24e59c10c7cd5ba06dd182dab/apps/mobile/src/features/threads/ThreadComposer.tsx)
+- [new-task flow](https://github.com/pingdotgg/t3code/blob/a148e08197fc38b24e59c10c7cd5ba06dd182dab/apps/mobile/src/features/threads/new-task-flow-provider.tsx)
+- [persistent outbox](https://github.com/pingdotgg/t3code/blob/a148e08197fc38b24e59c10c7cd5ba06dd182dab/apps/mobile/src/state/use-thread-outbox-drain.ts)
+- [files](https://github.com/pingdotgg/t3code/tree/a148e08197fc38b24e59c10c7cd5ba06dd182dab/apps/mobile/src/features/files)
+- [review](https://github.com/pingdotgg/t3code/tree/a148e08197fc38b24e59c10c7cd5ba06dd182dab/apps/mobile/src/features/review)
+- [Git actions](https://github.com/pingdotgg/t3code/blob/a148e08197fc38b24e59c10c7cd5ba06dd182dab/apps/mobile/src/features/threads/ThreadGitControls.tsx)
+- [terminal](https://github.com/pingdotgg/t3code/tree/a148e08197fc38b24e59c10c7cd5ba06dd182dab/apps/mobile/src/features/terminal)
+- [environment connection supervisor](https://github.com/pingdotgg/t3code/blob/a148e08197fc38b24e59c10c7cd5ba06dd182dab/packages/client-runtime/src/connection/supervisor.ts)
+- [notifications](https://github.com/pingdotgg/t3code/tree/a148e08197fc38b24e59c10c7cd5ba06dd182dab/apps/mobile/src/features/agent-awareness)
+- [incoming shares](https://github.com/pingdotgg/t3code/tree/a148e08197fc38b24e59c10c7cd5ba06dd182dab/apps/mobile/src/features/sharing)
+- [settings](https://github.com/pingdotgg/t3code/blob/a148e08197fc38b24e59c10c7cd5ba06dd182dab/apps/mobile/src/features/settings/SettingsRouteScreen.tsx)
+- [native modules](https://github.com/pingdotgg/t3code/tree/a148e08197fc38b24e59c10c7cd5ba06dd182dab/apps/mobile/modules)
+- [showcase capture harness](https://github.com/pingdotgg/t3code/blob/a148e08197fc38b24e59c10c7cd5ba06dd182dab/scripts/mobile-showcase.ts)
 
 ## Cross-device workflow comparison
 
@@ -964,18 +2168,31 @@ visually complex, but it shows the complete workbench.
 | Visual discipline | 3/4       | The app is direct and avoids decorative effects. It relies heavily on generic cards and badges.                 |
 | **Total**         | **13/20** | The UI foundation is sound, but it supports only a mirror.                                                      |
 
-The mobile design has the correct level of visual density for a remote
-controller. It should add semantic control surfaces before it adds decoration.
+The mobile design is calm and legible, but its generic cards do not yet express
+controller priority. It should adopt T3's active-card, compact-history,
+unboxed-assistant, and sticky-composer hierarchy while keeping Omega's
+authority and receipt language.
 
 ### T3 Code context
 
-The prior T3 UI audit scored 13/20. It found good performance and responsive
-work. It also found unnamed controls, pointer-only sidebar reordering, incomplete
-dialog focus, incomplete reduced-motion handling, and disabled terminal
-screen-reader support.
+The prior broad T3 UI audit scored 13/20. The current mobile app has advanced
+materially since that snapshot. A source-only audit of current mobile scores it
+17/20:
 
-T3 Code should be a feature reference, not a visual reference. Omega should not
-copy its glass, noise, animated gradients, or dense nested panels.
+| Area              |     Score | Current mobile finding                                                                                                                |
+| ----------------- | --------: | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Accessibility     |       2/4 | Native headers and many labels are good; request chips, diff actions, terminal semantics, and reduced-motion proof remain incomplete. |
+| Performance       |       4/4 | Virtualized lists, anchoring law, bounded reads, adaptive portals, native hot paths, and fallbacks are unusually thorough.            |
+| Responsive layout |       4/4 | Phone routes, persistent tablet sidebar, and optional inspector use explicit usable-width constraints.                                |
+| Theming           |       4/4 | Automatic light/dark themes, semantic tokens, font controls, and native materials have defined fallbacks.                             |
+| Visual discipline |       3/4 | The mobile hierarchy is strong and close-copyable; some glass and dense menus add complexity without changing the work model.         |
+| **Total**         | **17/20** | The main risk is accessibility completion, not information architecture.                                                              |
+
+T3 Mobile should be both a feature and structural visual reference for Omega's
+new mobile shell. Omega should closely adopt its navigation, density,
+active-versus-settled rows, message grammar, interaction cards, and adaptive
+workbench. It should not copy missing accessibility semantics, unsafe authority
+defaults, or glass effects without tested fallbacks.
 
 ## Omega strengths to preserve
 
@@ -1011,8 +2228,10 @@ lease, health, handoff, and receipt rules.
 
 ### 7. Quiet visual language
 
-Do not copy T3 Code decoration. Omega's sparse shell fits the product identity.
-Add structure through navigation and information, not through effects.
+Copy T3 Mobile's hierarchy and native platform grammar closely. Keep Omega's
+sparse product identity by treating glass and motion as progressive materials,
+not as the source of structure. State, navigation, and information density
+should carry the design.
 
 ## Prioritized gap ledger
 

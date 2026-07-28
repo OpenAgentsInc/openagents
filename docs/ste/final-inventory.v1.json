@@ -45721,7 +45721,7 @@
     },
     {
       "path": "docs/teardowns/2026-07-27-omega-t3-code-desktop-mobile-gap-analysis.md",
-      "sha256": "0e56b63001253a37d28f6eef3d972b604436d632d1a3e8aca5c8d8a847551777",
+      "sha256": "0bf518f2b956d1e17544ee22e12e573b5babc472d22d09a194de3c2a847c2d59",
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
