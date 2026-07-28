@@ -129,7 +129,7 @@ type BrowserSession = Readonly<{
     githubId?: string
     login?: string
     name: string
-    provider: 'github' | 'email'
+    provider: 'github' | 'email' | 'nostr'
     userId: string
   }>
   tokens?: Parameters<typeof appendSessionCookies>[1]
@@ -145,7 +145,7 @@ type AuthenticatedActor =
         githubId?: string
         login?: string
         name: string
-        provider: 'github' | 'email'
+        provider: 'github' | 'email' | 'nostr'
         userId: string
       }>
     }>

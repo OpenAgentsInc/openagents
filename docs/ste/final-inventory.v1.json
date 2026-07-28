@@ -1163,7 +1163,7 @@
     },
     {
       "path": "apps/openagents.com/INVARIANTS.md",
-      "sha256": "021e378397488a49af7224bb1523368716e3084d1f1ac13e9f6472e1cecc4987",
+      "sha256": "46c76f24796d7613013e835961b9babe002c091d441028debcf5237ad6fbfd31",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -17060,6 +17060,28 @@
     {
       "path": "docs/audits/2026-07-21-freerange-numeric-oracle-pilot.md",
       "sha256": "cfbda09625c324ea6bda7f2196422455ff9678baa411dd9fb2c9f48f1914f886",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
+      "path": "docs/audits/2026-07-28-omega-nostr-self-provisioning-abuse-bounds.md",
+      "sha256": "dc6530e1eb9d298001e953e28bd9aed26d440a3419329a3dc1cb19a601b7d4cf",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

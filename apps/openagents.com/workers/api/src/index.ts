@@ -247,6 +247,15 @@ import {
   revokeOpenAuthRefreshToken,
 } from './auth/mobile-session'
 import {
+  isOmegaNostrPubkey,
+  omegaNostrDisplayName,
+  omegaNostrSelfProvisionEnabled,
+  omegaNostrSelfProvisionPolicy,
+  omegaNostrSyntheticEmail,
+  omegaNostrUserId,
+  reserveOmegaNostrSelfProvision,
+} from './auth/omega-nostr-self-provision'
+import {
   OMEGA_NOSTR_SESSION_PATH,
   makeOmegaNostrSessionHandler,
   readOmegaNostrSession,
@@ -1617,7 +1626,11 @@ const EmailString = NonEmptyTrimmedString.check(
 const UserSubject = S.Struct({
   userId: NonEmptyTrimmedString,
   // 'github' carries githubId/login; 'email' (one-time code) has neither.
-  provider: S.Literals(['github', 'email']),
+  // 'nostr' is a self-provisioned install (`POST /api/omega/auth/session`):
+  // no login, and a synthetic non-deliverable `.invalid` address so the
+  // required `email` field stays a real EmailString without ever naming a
+  // mailbox that could receive a sign-in code or match the admin allowlist.
+  provider: S.Literals(['github', 'email', 'nostr']),
   githubId: S.optionalKey(NonEmptyTrimmedString),
   login: S.optionalKey(NonEmptyTrimmedString),
   email: EmailString,
@@ -2190,6 +2203,90 @@ const upsertEmailUser = async (
   ])
 }
 
+// Omega self-provisioning (2026-07-28): a self-provisioned install. The
+// subject is derived ENTIRELY
+// from the pubkey that signed the NIP-98 proof — it inherits nothing from the
+// owner/admin account, and `nostr:` never collides with `github:`/`email:`.
+const nostrPubkeyToSubject = (pubkey: string): UserSubject | undefined =>
+  decodeUserSubject({
+    avatarUrl: '',
+    email: omegaNostrSyntheticEmail(pubkey),
+    name: omegaNostrDisplayName(pubkey),
+    provider: 'nostr',
+    userId: omegaNostrUserId(pubkey),
+  })
+
+const upsertNostrUser = async (
+  identityDb: IdentityDb,
+  user: UserSubject,
+): Promise<void> => {
+  const now = workerRuntime.nowIso()
+  const providerSubject = user.userId.slice('nostr:'.length)
+  const authIdentityId = `auth_identity_nostr_${providerSubject}`
+
+  await identityDb.batch([
+    {
+      sql: `INSERT INTO users
+          (id, kind, display_name, primary_email, avatar_url, status, created_at, updated_at)
+         VALUES (?, 'human', ?, ?, ?, 'active', ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+          status = 'active',
+          updated_at = excluded.updated_at,
+          deleted_at = NULL`,
+      params: [user.userId, user.name, user.email, user.avatarUrl, now, now],
+    },
+    {
+      sql: `INSERT INTO auth_identities
+          (id, user_id, provider, provider_subject, provider_username, email, created_at, updated_at)
+         VALUES (?, ?, 'nostr', ?, ?, ?, ?, ?)
+         ON CONFLICT(provider, provider_subject) DO UPDATE SET
+          user_id = excluded.user_id,
+          email = excluded.email,
+          updated_at = excluded.updated_at,
+          deleted_at = NULL`,
+      params: [
+        authIdentityId,
+        user.userId,
+        providerSubject,
+        user.name,
+        user.email,
+        now,
+        now,
+      ],
+    },
+  ])
+}
+
+const omegaNostrUserExists = async (
+  env: Env,
+  pubkey: string,
+): Promise<boolean> => {
+  const rows = await identityDbForEnv(env).query(
+    `SELECT users.id FROM users WHERE users.id = ? LIMIT 1`,
+    [omegaNostrUserId(pubkey)],
+  )
+
+  return rows[0] !== undefined
+}
+
+const provisionOmegaNostrUser = async (
+  env: Env,
+  pubkey: string,
+): Promise<UserSubject | undefined> => {
+  if (!isOmegaNostrPubkey(pubkey)) {
+    return undefined
+  }
+
+  const subject = nostrPubkeyToSubject(pubkey)
+  if (subject === undefined) {
+    return undefined
+  }
+
+  await upsertNostrUser(identityDbForEnv(env), subject)
+
+  return subject
+}
+
 const resolveOmegaNostrOwner = async (
   env: Env,
 ): Promise<UserSubject | undefined> => {
@@ -2264,7 +2361,9 @@ const upsertUser = async (
 ): Promise<void> =>
   user.provider === 'email'
     ? upsertEmailUser(identityDb, user)
-    : upsertGitHubUser(identityDb, user)
+    : user.provider === 'nostr'
+      ? upsertNostrUser(identityDb, user)
+      : upsertGitHubUser(identityDb, user)
 
 // Send the one-time sign-in code via Resend directly (auth email stays decoupled
 // from the CRM/marketing email-intent machinery). The auth OTP guard owns the
@@ -3543,6 +3642,11 @@ const { requireUserBearerSession } = makeUserBearerSessionBoundary<
     verifyOpenAuthUserTokens(accessToken, refreshToken, env, ctx),
 })
 
+// Omega self-provisioning (2026-07-28): every new install signs its OWN
+// NIP-98 proof and gets a
+// session bound to `nostr:<its pubkey>`. The owner key keeps the historical
+// admin-resolving path; everyone else self-provisions behind the flag and the
+// abuse buckets in `auth/omega-nostr-self-provision.ts`.
 const handleOmegaNostrSessionApi = makeOmegaNostrSessionHandler<
   UserSubject,
   Env
@@ -3550,6 +3654,18 @@ const handleOmegaNostrSessionApi = makeOmegaNostrSessionHandler<
   authStore: authKvStoreForEnv,
   expectedOwnerPubkey: env => env.SARAH_NOSTR_OWNER_PUBKEY,
   resolveOwner: resolveOmegaNostrOwner,
+  selfProvision: {
+    enabled: omegaNostrSelfProvisionEnabled,
+    provision: provisionOmegaNostrUser,
+    reserve: (env, input) =>
+      reserveOmegaNostrSelfProvision(
+        authKvStoreForEnv(env),
+        input,
+        Date.now(),
+        omegaNostrSelfProvisionPolicy(env),
+      ),
+    userExists: omegaNostrUserExists,
+  },
 })
 
 // AIUR-3 (#8501): the ops views (users/runs/executor health) reuse the

@@ -3,6 +3,11 @@ import { Schema as S } from 'effect'
 
 import type { AuthKvStore } from './auth/auth-kv'
 import {
+  type OmegaNostrSelfProvisionEnv,
+  isOmegaNostrSelfProvisionedUserId,
+  omegaNostrSelfProvisionDailyTokenCeiling,
+} from './auth/omega-nostr-self-provision'
+import {
   executeBuiltinComputeAgentGrant,
   makeD1BuiltinComputeAgentStore,
 } from './builtin-compute-agent-grant'
@@ -39,7 +44,10 @@ import {
   systemProviderAccountRuntime,
 } from './provider-accounts'
 import { openAgentsDatabase, scheduleBackgroundWork } from './runtime'
-import { currentIsoTimestamp } from './runtime-primitives'
+import {
+  currentIsoTimestamp,
+  utcStartOfDayIsoTimestamp,
+} from './runtime-primitives'
 import { extractAutopilotTokenUsage } from './token-usage'
 
 type ProviderAccountServiceEnv = Readonly<{
@@ -49,7 +57,8 @@ type ProviderAccountServiceEnv = Readonly<{
   OPENAGENTS_DB: D1Database
   PROVIDER_TOKEN_CUSTODY_AES_KEY_B64?: string | undefined
   PROVIDER_TOKEN_CUSTODY_AES_KEY_ID?: string | undefined
-}>
+}> &
+  OmegaNostrSelfProvisionEnv
 
 type ProviderServiceActor = Readonly<{
   user: Readonly<{
@@ -266,6 +275,80 @@ const googleGeminiTokenUsageFromText = (
       }),
     )
     .find((usage): usage is AutopilotTokenUsage => usage !== undefined)
+
+type GeminiDailyTokenSumRow = Readonly<{ total: number | null }>
+
+/**
+ * Exact served tokens already recorded for this actor in the current UTC day.
+ *
+ * Reads the SAME ledger the proxy writes (`token_usage_events`), so the number
+ * is exact for every COMPLETED request. It is not a reservation: metering runs
+ * on `waitUntil` AFTER the upstream response, so a burst of concurrent requests
+ * issued before any of them settle can overshoot the ceiling by roughly one
+ * burst's worth of tokens. Bounding that exactly needs a pre-flight reservation
+ * against a real ledger, which this KV/D1 shape cannot provide atomically.
+ */
+const geminiTokensServedToday = async <
+  RouteEnv extends ProviderAccountServiceEnv,
+>(
+  env: RouteEnv,
+  actorUserId: string,
+): Promise<number> => {
+  const row = await openAgentsDatabase(env)
+    .prepare(
+      `SELECT COALESCE(SUM(total_tokens), 0) AS total
+         FROM token_usage_events
+        WHERE actor_user_id = ?
+          AND observed_at >= ?`,
+    )
+    .bind(actorUserId, utcStartOfDayIsoTimestamp(currentIsoTimestamp()))
+    .first<GeminiDailyTokenSumRow>()
+
+  return typeof row?.total === 'number' && Number.isFinite(row.total)
+    ? row.total
+    : 0
+}
+
+/**
+ * Omega self-provisioning (2026-07-28): enforce the free-tier daily token
+ * ceiling for SELF-PROVISIONED
+ * (`nostr:`) identities on the hosted-Gemini proxy.
+ *
+ * Scope is deliberately narrow. `dailyTokenCeiling` has always been advertised
+ * by the builtin grant and enforced by nothing; making it binding for EVERY
+ * actor would silently cut off the owner's own Pylon runners and existing
+ * github:/email:/agent callers mid-flight. Self-provisioned installs are a NEW
+ * identity class with no existing workflow to break, and they are the only
+ * class this change lets a stranger create — so they are the only class bounded
+ * here. The wider gap is written up for the owner in
+ * `docs/audits/2026-07-28-omega-nostr-self-provisioning-abuse-bounds.md`.
+ */
+const selfProvisionedTokenCeilingRefusal = async <
+  RouteEnv extends ProviderAccountServiceEnv,
+>(
+  env: RouteEnv,
+  actorUserId: string,
+): Promise<JsonHttpResult | undefined> => {
+  if (!isOmegaNostrSelfProvisionedUserId(actorUserId)) {
+    return undefined
+  }
+
+  const ceiling = omegaNostrSelfProvisionDailyTokenCeiling(env)
+  const served = await geminiTokensServedToday(env, actorUserId)
+
+  return served < ceiling
+    ? undefined
+    : noStoreJsonResult(
+        {
+          dailyTokenCeiling: ceiling,
+          error: 'free_tier_daily_token_ceiling_reached',
+          message:
+            'The free hosted-compute allowance for this install is used up for today.',
+          tokensServedToday: served,
+        },
+        { status: 429 },
+      )
+}
 
 const insertGeminiTokenUsageEvent = async <
   RouteEnv extends ProviderAccountServiceEnv,
@@ -849,6 +932,15 @@ export const makeProviderAccountServiceHandlers = <
 
     if (actor === undefined) {
       return noStoreJsonResult({ error: 'unauthorized' }, { status: 401 })
+    }
+
+    const ceilingRefusal = await selfProvisionedTokenCeilingRefusal(
+      env,
+      actor.user.id,
+    )
+
+    if (ceilingRefusal !== undefined) {
+      return ceilingRefusal
     }
 
     const apiKey = env.GEMINI_API_KEY

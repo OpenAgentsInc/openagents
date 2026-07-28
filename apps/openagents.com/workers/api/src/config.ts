@@ -10,6 +10,31 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   // browser-free owner session. Missing or malformed configuration fails
   // closed; this key grants no authority beyond the existing owner account.
   SARAH_NOSTR_OWNER_PUBKEY?: string | undefined
+  // Omega self-provisioning (2026-07-28): per-install kill switch. Default OFF —
+  // `POST /api/omega/auth/session` then behaves EXACTLY as before (only
+  // SARAH_NOSTR_OWNER_PUBKEY mints, everyone else 401s). Set "true"/"1"/"on"
+  // to ARM it: any valid NIP-98 proof find-or-creates a `nostr:<pubkey>` user
+  // and mints a session bound to that install — never to the admin account.
+  // This is anonymous account creation against owner-funded hosted Gemini, so
+  // it is bounded by the three limits below and by the per-identity daily
+  // token ceiling. Flip it OFF on a live revision to stop new free accounts
+  // without a redeploy.
+  OMEGA_NOSTR_SELF_PROVISION_ENABLED?: string | undefined
+  // Global ceiling on NEW self-provisioned accounts per 24h across the whole
+  // deployment. This is the ONLY number that bounds aggregate owner-funded
+  // spend, because keypairs and source IPs are both free to rotate. Unset =>
+  // 200. Setting it to 0 hard-stops new accounts while letting already
+  // provisioned installs keep working.
+  OMEGA_NOSTR_SELF_PROVISION_GLOBAL_DAILY_LIMIT?: string | undefined
+  // NEW self-provisioned accounts per client IP per hour. Friction against
+  // casual abuse only — `x-forwarded-for` is prependable, so this is never a
+  // hard identity bound. Unset => 3.
+  OMEGA_NOSTR_SELF_PROVISION_IP_HOURLY_LIMIT?: string | undefined
+  // Per-identity daily served-token ceiling ENFORCED on the hosted Gemini
+  // proxy for `nostr:` identities only. Unset => 1000000, matching the
+  // free-tier allowance the builtin grant advertises. Existing github:/email:/
+  // agent identities are unaffected by this value.
+  OMEGA_NOSTR_SELF_PROVISION_DAILY_TOKEN_CEILING?: string | undefined
   // Runtime-only Agent Computer harness credentials. Each value is mounted
   // from Secret Manager and leaves the worker only through an exact,
   // owner-scoped, one-use provider grant.
