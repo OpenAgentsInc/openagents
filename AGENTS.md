@@ -754,6 +754,9 @@ dies with its Codex thread. With the flag unset there is zero behavior change.
   runbooks (the sources of truth), the one-line
   recipe for each, the GitHub release-tag convention, and where the signing
   secrets live (`~/work/.secrets/` + GCP Secret Manager, project `openagentsgemini`).
+- **Google Cloud Authentication (`gcloud` on Chris's dev machine):** Do NOT attempt interactive `gcloud auth login` or user OAuth. Prefix all `gcloud` commands and deployment scripts with `CLOUDSDK_CONFIG=~/work/.secrets/gcloud-sa-config` (or `/Users/christopherdavid/work/.secrets/gcloud-sa-config`). This uses the pre-authenticated workspace service account (`oa-mvp-automation@openagentsgemini.iam.gserviceaccount.com`).
+  Example:
+  `CLOUDSDK_CONFIG=~/work/.secrets/gcloud-sa-config bash apps/openagents.com/workers/api/scripts/deploy-cloudrun.sh production`
 - Signing/notarization details live in `apps/oa-updates/docs/release-signing-runbook.md`
   (ed25519 release key + the `HQWSG26L43` Apple Developer ID) — read before any signed
   release. Publish/deploy only from a clean `origin/main`, RCs are pre-releases and

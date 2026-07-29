@@ -398,7 +398,7 @@ describe("managed Sarah mobile voice client", () => {
 
     await client.start();
     expect(vault.read()).toMatchObject({ publicKeyHex, ownerRef, accessToken });
-    expect(sessionIdentity?.ownerRef).toBe(ownerRef);
+    expect((sessionIdentity as VoiceIdentity | null)?.ownerRef).toBe(ownerRef);
     expect(client.snapshot().phase).toBe("connecting");
     expect(sockets).toHaveLength(1);
   });

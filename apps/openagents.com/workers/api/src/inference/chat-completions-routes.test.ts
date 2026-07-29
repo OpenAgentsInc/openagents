@@ -177,4 +177,92 @@ describe('chat completions no-spend admission', () => {
       top_k: 40,
     })
   })
+
+  test('allows an OpenAuth session to select Kimi K3 without agent token or BYOK', async () => {
+    const calls: Array<{
+      adapterId: string
+      request: InferenceRequest
+    }> = []
+    const registry = new InferenceProviderRegistry()
+    registry.register({
+      complete: inferenceRequest => {
+        calls.push({ adapterId: FIREWORKS_ADAPTER_ID, request: inferenceRequest })
+        return Effect.succeed({
+          content: 'served by fireworks',
+          finishReason: 'stop',
+          servedModel: inferenceRequest.model,
+          usage: { completionTokens: 2, promptTokens: 3, totalTokens: 5 },
+        })
+      },
+      id: FIREWORKS_ADAPTER_ID,
+      stream: inferenceRequest =>
+        Effect.succeed([
+          {
+            contentDelta: 'served by fireworks',
+            finishReason: 'stop',
+            servedModel: inferenceRequest.model,
+            usage: { completionTokens: 2, promptTokens: 3, totalTokens: 5 },
+          },
+        ]),
+    })
+
+    const authOpenAuth: InferenceAuth = async () => ({
+      accountRef: 'openauth:omega-desktop-user',
+    })
+
+    const response = await Effect.runPromise(
+      handleChatCompletions(
+        new Request('https://openagents.com/v1/chat/completions', {
+          body: JSON.stringify({
+            messages: [{ content: 'hello', role: 'user' }],
+            model: 'kimi-k3',
+            stream: false,
+          }),
+          method: 'POST',
+        }),
+        deps({
+          authenticate: authOpenAuth,
+          laneArming: {
+            fireworks: true,
+            hydralisk: false,
+            openrouter: false,
+            'openagents-network': false,
+            'vertex-anthropic': false,
+            'vertex-gemini': true,
+          },
+          lanePlan: selectAdapterPlan,
+          registry,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.adapterId).toBe(FIREWORKS_ADAPTER_ID)
+    expect(calls[0]?.request.model).toBe('kimi-k3')
+  })
+
+  test('rejects an OpenAuth session for non-hosted public models without funding', async () => {
+    const authOpenAuth: InferenceAuth = async () => ({
+      accountRef: 'openauth:omega-desktop-user',
+    })
+
+    const response = await Effect.runPromise(
+      handleChatCompletions(
+        new Request('https://openagents.com/v1/chat/completions', {
+          body: JSON.stringify({
+            messages: [{ content: 'hello', role: 'user' }],
+            model: KHALA_MODEL_ID,
+          }),
+          method: 'POST',
+        }),
+        deps({ authenticate: authOpenAuth }),
+      ),
+    )
+
+    expect(response.status).toBe(503)
+    expect(await response.json()).toMatchObject({
+      error: 'platform_funding_unavailable',
+    })
+  })
 })

@@ -3,7 +3,7 @@
   "note": "These token sets protect control-plane conversions. A passing comparison does not prove equal meaning.",
   "files": {
     "AGENTS.md": {
-      "sourceSha256": "cfdbc7c71ad548e9a88c0a2b28bc12ad01be108c956a2cdae6f48f804eec4616",
+      "sourceSha256": "382f910458bd73f97b2840f47562d79e4b564368f267f47cfeea5f3757c01a0e",
       "normativeKeywords": [
         "NEVER",
         "NEVER",
@@ -45,6 +45,7 @@
         "/",
         "/",
         "/Users/christopherdavid/work/.oa-launch",
+        "/Users/christopherdavid/work/.secrets/gcloud-sa-config",
         "/Users/christopherdavid/work/openagents",
         "/Users/christopherdavid/work/openagents",
         "/Users/christopherdavid/work/openagents",
@@ -87,6 +88,8 @@
         "AUTHORITY.md",
         "AUTHORITY.md",
         "AutopilotRemoteControl",
+        "CLOUDSDK_CONFIG=~/work/.secrets/gcloud-sa-config",
+        "CLOUDSDK_CONFIG=~/work/.secrets/gcloud-sa-config bash apps/openagents.com/workers/api/scripts/deploy-cloudrun.sh production",
         "CODEX_HOME",
         "CODEX_HOME=$(mktemp -d) codex login --device-auth",
         "FASTFOLLOW.md",
@@ -282,6 +285,9 @@
         "fmt:check",
         "fmt:check",
         "fmt:check",
+        "gcloud",
+        "gcloud",
+        "gcloud auth login",
         "git fetch origin main",
         "git push --no-verify",
         "git rev-parse HEAD",
@@ -326,6 +332,7 @@
         "npm install -g @openai/codex",
         "npm publish <tarball>",
         "oa-dev --restart",
+        "oa-mvp-automation@openagentsgemini.iam.gserviceaccount.com",
         "ok: true",
         "openagents",
         "openagents-supersession-prune-2026-07-14/",

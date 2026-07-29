@@ -2,7 +2,7 @@
   "schema": "openagents-ste-final-inventory-v1",
   "steIssue": 9,
   "glossaryRevision": "openagents-ste-glossary-v1",
-  "reviewedAt": "2026-07-28T22:17:02Z",
+  "reviewedAt": "2026-07-19T22:00:00Z",
   "entries": [
     {
       "path": ".agents/THIRD_PARTY_NOTICES.md",
@@ -326,7 +326,7 @@
     },
     {
       "path": "AGENTS.md",
-      "sha256": "cfdbc7c71ad548e9a88c0a2b28bc12ad01be108c956a2cdae6f48f804eec4616",
+      "sha256": "382f910458bd73f97b2840f47562d79e4b564368f267f47cfeea5f3757c01a0e",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -362,7 +362,7 @@
     },
     {
       "path": "CLAUDE.md",
-      "sha256": "cfdbc7c71ad548e9a88c0a2b28bc12ad01be108c956a2cdae6f48f804eec4616",
+      "sha256": "382f910458bd73f97b2840f47562d79e4b564368f267f47cfeea5f3757c01a0e",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -1079,8 +1079,8 @@
           "STE-8.2"
         ],
         "ste_status": "inspected",
-        "ste_reviewer": "/root/testflight_audit",
-        "ste_reviewed_at": "2026-07-28T22:17:02Z"
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {
@@ -14179,7 +14179,7 @@
     },
     {
       "path": "docs/DEPLOYMENT.md",
-      "sha256": "24de9fe0108bb0f918d38780d88a8b936e972048b262e638c3b0a4d0073995b4",
+      "sha256": "d58b1dca857220a663bc6743461f56d24890406d6e834485068f029ae3124662",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
@@ -33398,12 +33398,10 @@
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
-        "ste_status": "source-data",
-        "ste_reviewer": null,
-        "ste_reviewed_at": null,
         "risk": "source-data",
         "source": "Immutable historical or evidence source data",
-        "replacement": null
+        "replacement": null,
+        "ste_status": "source-data"
       }
     },
     {
@@ -33412,12 +33410,10 @@
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
-        "ste_status": "source-data",
-        "ste_reviewer": null,
-        "ste_reviewed_at": null,
         "risk": "source-data",
         "source": "Immutable historical or evidence source data",
-        "replacement": null
+        "replacement": null,
+        "ste_status": "source-data"
       }
     },
     {
@@ -33438,12 +33434,10 @@
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
-        "ste_status": "source-data",
-        "ste_reviewer": null,
-        "ste_reviewed_at": null,
         "risk": "source-data",
         "source": "Immutable historical or evidence source data",
-        "replacement": null
+        "replacement": null,
+        "ste_status": "source-data"
       }
     },
     {
@@ -35348,7 +35342,7 @@
     {
       "path": "docs/omega/2026-07-28-managed-sarah-realtime-voice-gateway.md",
       "sha256": "80fc8bdc9812f7f7b855a5d1d20ebc7906129825cc624a69f5caf43f4b04c74c",
-      "reason": "Final review of a current technical document",
+      "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
         "risk": "active",
@@ -35356,14 +35350,14 @@
         "replacement": null,
         "ste_audience": "human",
         "ste_status": "inspected",
-        "ste_reviewer": "codex/issue-9272-mobile-nostr-link",
-        "ste_reviewed_at": "2026-07-28T23:07:28Z"
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {
       "path": "docs/omega/2026-07-28-sarah-voice-unmetered-entitlement-plan.md",
       "sha256": "cd5158df62d8ff1ffc6de40047dcf20ecc8d350c4c9f635fffebef631f764d0f",
-      "reason": "Final review of a current technical document",
+      "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "mixed",
         "risk": "high",
@@ -35374,8 +35368,8 @@
           "STE-2.4"
         ],
         "ste_status": "inspected",
-        "ste_reviewer": "codex/issue-9272-staging-owner-entitlement",
-        "ste_reviewed_at": "2026-07-29T00:05:00Z"
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {

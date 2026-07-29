@@ -34,6 +34,7 @@ change, update its linked runbook **and** fix the pointer here.
 - **Secrets** live in `~/work/.secrets/` (workspace root, gitignored) and are mirrored
   in **GCP Secret Manager** (project `openagentsgemini`). Recovery steps are in the
   signing runbook. Never print secret values into tracked files, commits, or logs.
+- **Google Cloud Service Account Auth (`gcloud` on Chris's dev machine):** Do NOT run interactive `gcloud auth login` or user OAuth. Prefix `gcloud` commands and deployment scripts with `CLOUDSDK_CONFIG=~/work/.secrets/gcloud-sa-config` to use the pre-authenticated workspace service account (`oa-mvp-automation@openagentsgemini.iam.gserviceaccount.com`).
 - **Pixel proof before owner handoff — ALL user-visible surfaces, WEB included.**
   The mobile TestFlight upload gate (simulator screenshot proving the actual
   pixels) is not a mobile-only rule: before ANY new or changed user-visible
