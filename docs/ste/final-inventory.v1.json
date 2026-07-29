@@ -1163,7 +1163,7 @@
     },
     {
       "path": "apps/openagents.com/INVARIANTS.md",
-      "sha256": "d7c40dfdc2035fc21fa2579a35abceb3f25e609f47c1563b0423bfe59c02855f",
+      "sha256": "6f6536ac8b19fac0a404f0cf01f47da03c56930bfc86713d35500dc1aa60cfe3",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -35362,7 +35362,7 @@
     },
     {
       "path": "docs/omega/2026-07-28-sarah-voice-unmetered-entitlement-plan.md",
-      "sha256": "bd51cdb649b2c2c97eafd23605d399dc506c3dddf56e20e9864e5714134a7291",
+      "sha256": "cd5158df62d8ff1ffc6de40047dcf20ecc8d350c4c9f635fffebef631f764d0f",
       "reason": "Final review of a current technical document",
       "profile": {
         "ste_mode": "mixed",
@@ -45048,7 +45048,7 @@
     },
     {
       "path": "docs/teardowns/2026-07-10-codex-agent-runtime-teardown.md",
-      "sha256": "e31c1935bbdc8abba4652d4b4589d0061f1d05bff38c0ffb6c60933199d11f2f",
+      "sha256": "77b1704c12e04f950f9c28db865ccff9773d42c68cbb58215755e56623112d82",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
