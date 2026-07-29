@@ -263,23 +263,11 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
 
         if (input.creditMode === "metered") {
           const balances = (await tx`
-            INSERT INTO agent_balances (
-              actor_ref, balance_msat, held_msat, usd_credit_msat, created_at, updated_at
-            ) VALUES (
-              ${input.ownerActorRef},
-              ${Math.max(1_000_000_000, input.reservedMsat)},
-              ${input.reservedMsat},
-              1_000_000_000,
-              ${input.nowIso},
-              ${input.nowIso}
-            )
-            ON CONFLICT (actor_ref) DO UPDATE
-            SET balance_msat = GREATEST(
-                  agent_balances.balance_msat,
-                  agent_balances.held_msat + ${input.reservedMsat} + 1_000_000_000
-                ),
-                held_msat = agent_balances.held_msat + ${input.reservedMsat},
+            UPDATE agent_balances
+            SET held_msat = held_msat + ${input.reservedMsat},
                 updated_at = ${input.nowIso}
+            WHERE actor_ref = ${input.ownerActorRef}
+              AND balance_msat - held_msat >= ${input.reservedMsat}
             RETURNING actor_ref
           `) as ReadonlyArray<{ actor_ref: string }>;
           if (first(balances) === undefined) {

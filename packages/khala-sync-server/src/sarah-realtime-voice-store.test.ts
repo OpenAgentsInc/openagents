@@ -30,10 +30,6 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
           (
             'user-sarah-voice', 'human', 'Voice Tester', 'active',
             '2026-07-28T12:00:00.000Z', '2026-07-28T12:00:00.000Z'
-          ),
-          (
-            'user-sarah-voice-new', 'human', 'New Voice Tester', 'active',
-            '2026-07-28T12:00:00.000Z', '2026-07-28T12:00:00.000Z'
           )
       `;
     await sql`
@@ -120,7 +116,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
         FROM agent_balances
         WHERE actor_ref = 'agent:user-sarah-voice'
       `;
-    expect(Number(balance?.balance_msat)).toBe(1_000_000_750);
+    expect(Number(balance?.balance_msat)).toBe(9_750);
     expect(Number(balance?.held_msat)).toBe(0);
     const [receipt] = await sql`
         SELECT cost_msat, state
@@ -140,7 +136,7 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
         FROM agent_balances
         WHERE actor_ref = 'agent:user-sarah-voice'
       `;
-    expect(Number(afterReplay?.balance_msat)).toBe(1_000_000_750);
+    expect(Number(afterReplay?.balance_msat)).toBe(9_750);
     expect(Number(afterReplay?.held_msat)).toBe(0);
   });
 
@@ -268,34 +264,11 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       }),
     ).rejects.toBeInstanceOf(SarahVoiceInsufficientCreditError);
 
-  test("provisions credit when an active user has no balance", async () => {
-    const store = makeSarahRealtimeVoiceStore(sql as unknown as SyncSql);
-    await store.reserve({
-      sessionRef: "voice-session-new-user",
-      reservationRef: "voice-reservation-new-user",
-      ownerUserId: "user-sarah-voice-new",
-      ownerActorRef: "agent:user-sarah-voice-new",
-      deviceRef: "omega-test",
-      threadRef: "thread-new-user",
-      generation: 1,
-      ticketDigest: "c".repeat(64),
-      disclosureRef: "disclosure-test",
-      clientProfile: "mobile_voice_only",
-      reservedMsat: 1_000,
-      ticketExpiresAt: "2026-07-28T12:01:00.000Z",
-      sessionExpiresAt: "2026-07-28T12:10:00.000Z",
-      nowIso: "2026-07-28T12:00:00.000Z",
-    });
-
-    const [balance] = await sql`
-      SELECT balance_msat, held_msat, usd_credit_msat
+    const [unexpectedBalance] = await sql`
+      SELECT actor_ref
       FROM agent_balances
-      WHERE actor_ref = 'agent:user-sarah-voice-new'
+      WHERE actor_ref = 'agent:user-sarah-staging-owner'
     `;
-    expect(Number(balance?.balance_msat)).toBe(1_000_000_000);
-    expect(Number(balance?.held_msat)).toBe(1_000);
-    expect(Number(balance?.usd_credit_msat)).toBe(1_000_000_000);
+    expect(unexpectedBalance).toBeUndefined();
   });
-});
-
 });

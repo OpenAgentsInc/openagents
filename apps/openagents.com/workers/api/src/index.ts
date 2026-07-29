@@ -258,13 +258,9 @@ import {
   linkOmegaNostrIdentity as persistOmegaNostrIdentityLink,
 } from './auth/omega-nostr-identity-link-store'
 import {
-  isOmegaNostrPubkey,
   omegaNostrDisplayName,
-  omegaNostrSelfProvisionEnabled,
-  omegaNostrSelfProvisionPolicy,
   omegaNostrSyntheticEmail,
   omegaNostrUserId,
-  reserveOmegaNostrSelfProvision,
 } from './auth/omega-nostr-self-provision'
 import {
   OMEGA_NOSTR_SESSION_PATH,
@@ -2336,43 +2332,6 @@ const resolveNostrLinkedUser = async (
   )
 }
 
-const omegaNostrUserExists = async (
-  env: Env,
-  pubkey: string,
-): Promise<boolean> => {
-  return (await resolveNostrLinkedUser(env, pubkey)) !== undefined
-}
-
-const provisionOmegaNostrUser = async (
-  env: Env,
-  pubkey: string,
-): Promise<UserSubject | undefined> => {
-  if (!isOmegaNostrPubkey(pubkey)) {
-    return undefined
-  }
-
-  const linked = await resolveNostrLinkedUser(env, pubkey)
-  if (linked !== undefined) return linked
-
-  const subject = nostrPubkeyToSubject(pubkey)
-  if (subject === undefined) {
-    return undefined
-  }
-
-  await upsertNostrUser(identityDbForEnv(env), subject)
-
-  return resolveNostrLinkedUser(env, pubkey)
-}
-
-const linkOmegaNostrOwner = async (
-  env: Env,
-  user: UserSubject,
-  pubkey: string,
-): Promise<boolean> => {
-  const result = await linkOmegaNostrIdentity(env, user.userId, pubkey)
-  return result === 'Linked' || result === 'AlreadyLinked'
-}
-
 const linkOmegaNostrIdentity = async (
   env: Env,
   ownerRef: string,
@@ -2384,72 +2343,6 @@ const linkOmegaNostrIdentity = async (
     ownerRef,
     pubkey,
   })
-
-const resolveOmegaNostrOwner = async (
-  env: Env,
-): Promise<UserSubject | undefined> => {
-  const adminEmail = normalizeEmail(getPrimaryOpenAgentsAdminEmail())
-  const rows = await identityDbForEnv(env).query(
-    `SELECT
-       users.id,
-       users.display_name,
-       users.primary_email,
-       users.avatar_url,
-       github.provider_subject AS github_id,
-       github.provider_username AS github_login
-     FROM users
-     LEFT JOIN auth_identities AS github
-       ON github.user_id = users.id
-      AND github.provider = 'github'
-      AND github.deleted_at IS NULL
-     WHERE users.status = 'active'
-       AND users.deleted_at IS NULL
-       AND (
-         LOWER(users.primary_email) = ?
-         OR EXISTS (
-           SELECT 1
-           FROM auth_identities AS owner_identity
-           WHERE owner_identity.user_id = users.id
-             AND owner_identity.deleted_at IS NULL
-             AND LOWER(owner_identity.email) = ?
-         )
-       )
-     ORDER BY CASE WHEN github.provider_subject IS NULL THEN 1 ELSE 0 END
-     LIMIT 1`,
-    [adminEmail, adminEmail],
-  )
-  const row = rows[0]
-  if (row === undefined) return undefined
-
-  const userId = String(row.id ?? '').trim()
-  const email = String(row.primary_email ?? adminEmail)
-    .trim()
-    .toLowerCase()
-  const name = String(row.display_name ?? email.split('@')[0] ?? '').trim()
-  const avatarUrl = String(row.avatar_url ?? '')
-  const githubId = String(row.github_id ?? '').trim()
-  const login = String(row.github_login ?? '').trim()
-
-  return decodeUserSubject(
-    githubId !== '' && login !== ''
-      ? {
-          userId,
-          provider: 'github',
-          githubId,
-          login,
-          email,
-          name,
-          avatarUrl,
-        }
-      : {
-          userId,
-          provider: 'email',
-          email,
-          name,
-          avatarUrl,
-        },
-  )
-}
 
 // Persist a session subject regardless of provider (session refresh paths can
 // carry either a GitHub or an email user).
@@ -3740,11 +3633,8 @@ const { requireUserBearerSession } = makeUserBearerSessionBoundary<
     verifyOpenAuthUserTokens(accessToken, refreshToken, env, ctx),
 })
 
-// Omega self-provisioning (2026-07-28): every new install signs its OWN
-// NIP-98 proof and gets a
-// session bound to `nostr:<its pubkey>`. The owner key keeps the historical
-// admin-resolving path; everyone else self-provisions behind the flag and the
-// abuse buckets in `auth/omega-nostr-self-provision.ts`.
+// A Nostr proof can mint a session only after an operator or authenticated
+// account-link flow creates the canonical `auth_identities` binding.
 const omegaNostrSessionService = makeOmegaNostrSessionService<UserSubject, Env>(
   {
     audit: (event, fields) => {
@@ -3755,22 +3645,9 @@ const omegaNostrSessionService = makeOmegaNostrSessionService<UserSubject, Env>(
       log(`omega_nostr_${event}`, fields)
     },
     authStore: authKvStoreForEnv,
-    expectedOwnerPubkey: env => env.SARAH_NOSTR_OWNER_PUBKEY,
-    linkOwner: linkOmegaNostrOwner,
+    expectedOwnerPubkey: () => undefined,
     resolveLinked: resolveNostrLinkedUser,
-    resolveOwner: resolveOmegaNostrOwner,
-    selfProvision: {
-      enabled: omegaNostrSelfProvisionEnabled,
-      provision: provisionOmegaNostrUser,
-      reserve: (env, input) =>
-        reserveOmegaNostrSelfProvision(
-          authKvStoreForEnv(env),
-          input,
-          Date.now(),
-          omegaNostrSelfProvisionPolicy(env),
-        ),
-      userExists: omegaNostrUserExists,
-    },
+    resolveOwner: async () => undefined,
   },
 )
 const handleOmegaNostrSessionApi = omegaNostrSessionService.handle
@@ -3820,19 +3697,8 @@ const sarahVoiceNostrChallengeService =
       return config?.enabled === true
     },
     resolveOwnerRef: async (env, pubkey) => {
-      const configuredOwnerPubkey =
-        env.SARAH_NOSTR_OWNER_PUBKEY?.trim().toLowerCase()
-      if (
-        configuredOwnerPubkey !== undefined &&
-        pubkey === configuredOwnerPubkey
-      ) {
-        return (await resolveOmegaNostrOwner(env))?.userId
-      }
       const linked = await resolveNostrLinkedUser(env, pubkey)
-      if (linked !== undefined) return linked.userId
-      return omegaNostrSelfProvisionEnabled(env)
-        ? omegaNostrUserId(pubkey)
-        : undefined
+      return linked?.userId
     },
   })
 
