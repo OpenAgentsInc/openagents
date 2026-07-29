@@ -10,6 +10,9 @@
   `14d94935001b2237621d5f9aabac9631fe91568a`
 - **Document type:** gap analysis and release work packet. This document does
   not admit a public claim, promote a build, or change runtime authority.
+- **Sequencing:** the [Omega alpha roadmap](./2026-07-29-omega-alpha-roadmap.md)
+  consolidates this analysis with the zero-base single-experience plan into
+  one ordered program and issue list.
 
 ## 1. Executive verdict
 

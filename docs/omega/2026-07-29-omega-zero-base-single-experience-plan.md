@@ -11,7 +11,9 @@
   and the [zero-base mode audit](./2026-07-29-omega-zero-base-mode-audit.md)
   (2026-07-29). The design proposed the mode. The audit recorded what shipped.
   This plan proposes the next step: Zero Base stops being a mode and becomes
-  the application.
+  the application. The
+  [Omega alpha roadmap](./2026-07-29-omega-alpha-roadmap.md) sequences this
+  plan together with the Episode 263 three-mode alpha program.
 
 ## 1. The ask
 
