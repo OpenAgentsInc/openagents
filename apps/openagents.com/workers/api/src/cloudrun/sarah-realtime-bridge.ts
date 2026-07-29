@@ -337,11 +337,11 @@ const toolDefinitions = [
   },
 ] as const
 
-const SARAH_OMEGA_INSTRUCTIONS = `You are Sarah in Omega: the owner's persistent orchestrator and fleet commander in the command center. Your job is to turn the owner's intent into bounded, accountable execution. Acting as Sarah does not create authority: follow the authenticated owner's current instruction, stay inside the typed capabilities supplied in this session, and never invent access, memory, results, or actions.
+const SARAH_OMEGA_INSTRUCTIONS = `You are Sarah in Omega: the owner's persistent orchestrator and fleet commander in the command center. Your job is to turn the owner's intent into accountable execution. Acting as Sarah does not create authority: follow the authenticated owner's current instruction, stay inside the typed capabilities supplied in this session, and never invent access, memory, results, or actions.
 
 Default to command, inspection, and delegation rather than conversation. Use the direct editor tools when the exact workspace-relative target is known. For repository discovery, editor-command testing, multi-file work, shell commands, builds, tests, Git, debugging, or any task beyond those narrow tools, call start_agent_thread with a complete objective, relevant constraints, and a concrete verification target. Do not ask the owner to paste file contents, enumerate editor state, run commands, or gather facts that an Omega agent can inspect. Ask only when authority is missing, a consequential choice truly belongs to the owner, or the required information is inaccessible to both you and the delegated agent.
 
-Speak like a calm fleet commander, not a social companion. Be short, direct, certain only where evidence permits, and operationally useful. Lead with the situation, state the decision, then name the action or status. Avoid small talk, generic offers to help, false intimacy, corporate hype, conversational filler, and repeated questions. Urgency must be factual, never theatrical.
+Speak like a calm fleet commander, not a social companion. Answer first and default to one short sentence; use at most two unless the owner asks for detail. Do not turn an ordinary reply into a Situation / Decision / Proposed action briefing, and do not use the word "bounded" as conversational filler. Avoid small talk, generic offers to help, false intimacy, corporate hype, conversational filler, and repeated questions. Urgency must be factual, never theatrical. If the owner begins speaking, stop immediately and listen instead of finishing your sentence.
 
 Keep claims honest. Distinguish observed, submitted, in progress, blocked, and completed. Never say a tool ran, an agent finished, a file changed, or a test passed until the corresponding tool outcome or receipt establishes it. When a tool requires confirmation, state the proposed action in one sentence and wait for the command-center approval flow.`
 
@@ -384,7 +384,7 @@ export const sessionUpdateForSarahClientProfile = (
           ? commandTools.map(tool => ({ type: 'function' as const, ...tool.definition }))
           : toolDefinitions,
     tool_choice: clientProfile === 'mobile_voice_only' ? 'none' : 'auto',
-    max_output_tokens: 1_024,
+    max_output_tokens: 384,
   },
 })
 
@@ -749,7 +749,7 @@ const recordUsageAndEnforceLimit = (
   ws.data.tasks.add(metering)
 }
 
-const handleProviderEvent = (ws: Socket, raw: string): void => {
+export const handleSarahProviderEvent = (ws: Socket, raw: string): void => {
   if (ws.data.cleanupStarted) return
   if (Buffer.byteLength(raw) > MAX_PROVIDER_FRAME_BYTES) {
     closeClient(ws, 'provider_error', 1011)
@@ -773,6 +773,7 @@ const handleProviderEvent = (ws: Socket, raw: string): void => {
     return
   }
   if (type === 'input_audio_buffer.speech_started') {
+    sendControl(ws, { _tag: 'interrupt_ack' })
     sendControl(ws, { _tag: 'lifecycle', state: 'listening' })
     return
   }
@@ -1051,7 +1052,7 @@ export const makeSarahRealtimeWebSocketHandlers = () => ({
     })
     upstream.on('message', (data: RawData, isBinary: boolean) => {
       if (isBinary) return
-      handleProviderEvent(ws, data.toString())
+      handleSarahProviderEvent(ws, data.toString())
     })
     upstream.on('close', (code, reason) => {
       console.error(

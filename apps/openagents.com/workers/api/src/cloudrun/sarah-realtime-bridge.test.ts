@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto'
 import { describe, expect, test } from 'vitest'
 
 import {
+  handleSarahProviderEvent,
   makeSarahRealtimeBridgeData,
   makeSarahRealtimeWebSocketHandlers,
   parseSarahRealtimeBridgeCreditRate,
@@ -90,6 +91,50 @@ describe('Sarah Realtime bridge metering', () => {
       _tag: 'audio_ack',
       acknowledgedClientSequence: 0,
     })
+  })
+
+  test('stops queued assistant audio whenever owner speech starts', () => {
+    const data = makeSarahRealtimeBridgeData({
+      session: {
+        sessionRef: 'session-1',
+        ownerUserId: 'user-1',
+        ownerActorRef: 'agent:user-1',
+        deviceRef: 'device-1',
+        threadRef: 'thread-1',
+        generation: 1,
+        disclosureRef: 'disclosure-1',
+        clientProfile: 'omega_editor',
+        creditMode: 'metered',
+        entitlementRef: null,
+        state: 'connected',
+        reservedMsat: 1_000,
+        chargedMsat: 0,
+        ticketExpiresAt: '2026-07-29T12:01:00.000Z',
+        sessionExpiresAt: '2026-07-29T12:05:00.000Z',
+        settlementReceiptRef: null,
+      },
+      apiKey: 'test-key',
+      safetyIdentifier: 'test-safety',
+      creditMsatPerMillionTokens: 1_000,
+      store: {} as never,
+      closeStore: async () => undefined,
+      tasks: {} as never,
+    })
+    const sent: Array<string> = []
+    const socket = {
+      data,
+      send: (message: string) => sent.push(message),
+    }
+
+    handleSarahProviderEvent(
+      socket as never,
+      JSON.stringify({ type: 'input_audio_buffer.speech_started' }),
+    )
+
+    expect(sent.map(message => JSON.parse(message)._tag)).toEqual([
+      'interrupt_ack',
+      'lifecycle',
+    ])
   })
 
   test('prices exact provider response tokens with the operator credit rate', () => {
@@ -254,6 +299,16 @@ describe('Sarah Realtime bridge metering', () => {
     expect(update.session.instructions).toContain(
       'Distinguish observed, submitted, in progress, blocked, and completed',
     )
+    expect(update.session.instructions).toContain(
+      'default to one short sentence',
+    )
+    expect(update.session.instructions).toContain(
+      'do not use the word "bounded"',
+    )
+    expect(update.session.instructions).toContain(
+      'If the owner begins speaking, stop immediately',
+    )
+    expect(update.session.max_output_tokens).toBe(384)
   })
 
   test('advertises only injected server tools to the mobile command center', () => {
