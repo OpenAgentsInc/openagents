@@ -12,6 +12,13 @@ source, the delta registry `OMEGA_DELTAS.md`, and the mechanical checks in
 `crates/omega_deltas/`. It does not run the Omega binary, so it makes no claim
 about the rendered window.
 
+The original design is the
+[zero-base mode analysis](./2026-07-26-omega-zero-base-mode.md) (2026-07-26).
+The next step — removing the legacy editor and making Zero Base the single
+application, with the broken-control inventory that motivates it — is the
+[single-experience plan](./2026-07-29-omega-zero-base-single-experience-plan.md)
+(2026-07-29).
+
 ---
 
 ## 1. Executive summary and core philosophy

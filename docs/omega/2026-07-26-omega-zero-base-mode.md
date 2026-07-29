@@ -1,5 +1,15 @@
 # Omega zero-base mode — 2026-07-26
 
+> **Status, 2026-07-29:** this design shipped and then moved past itself.
+> Zero base is now the default (`OMEGA-DELTA-0052`), sealed
+> (`OMEGA-DELTA-0053`), and carries a workbench shell. The current state is
+> recorded in the [zero-base mode audit](./2026-07-29-omega-zero-base-mode-audit.md),
+> and the next step — removing the editor entirely and making zero base the
+> single application — is proposed in the
+> [single-experience plan](./2026-07-29-omega-zero-base-single-experience-plan.md).
+> This document remains the record of the original mechanism taxonomy
+> (removed / disabled / not rendered) that both later documents build on.
+
 Design analysis for a bounded Omega mode that shows one Exo thread and hides
 the editor around it. This document proposes a surface. It changes no runtime
 authority, it allocates no delta number, and it grants nothing. `OMEGA_DELTAS.md`,

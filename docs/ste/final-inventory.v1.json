@@ -15138,11 +15138,12 @@
     {
       "path": "docs/allwork/README.md",
       "sha256": "0eb04c99f5d7348c5080b7245f58c83d4d4794e4fce71f78d9c283547d9f5783",
-      "reason": "Final review of mutable first-party agent technical text",
+      "reason": "Final review of a converted document",
       "profile": {
-        "ste_status": "inspected",
-        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
-        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
         "ste_audience": "agent",
         "ste_agent_compact_revision": "openagents-agent-compact-v1",
         "ste_accepted_screening_rules": [
@@ -15150,7 +15151,10 @@
           "STE-3.6",
           "STE-5.1",
           "STE-8.2"
-        ]
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
       }
     },
     {
@@ -35325,7 +35329,7 @@
     },
     {
       "path": "docs/omega/2026-07-26-omega-zero-base-mode.md",
-      "sha256": "8f0d87e244529582d3762c838b110450b9d021c8d478dec382ab306d39099c93",
+      "sha256": "5da95d501e0d1bda1a1f1dbe49ed8987163b1fedfb6153b42ccdb55275ace0dc",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
@@ -35392,7 +35396,7 @@
     },
     {
       "path": "docs/omega/2026-07-29-omega-zero-base-mode-audit.md",
-      "sha256": "79840da1661dab12bd40d53fa935508a83216184e8156e4adbcbb9a5c493368c",
+      "sha256": "68017f891bd79a07c58d85e71389e478e8bcc4ade86c348a72b1cbece8a91c9a",
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
@@ -35400,6 +35404,24 @@
         "source": "Immutable historical or evidence source data",
         "replacement": null,
         "ste_status": "source-data"
+      }
+    },
+    {
+      "path": "docs/omega/2026-07-29-omega-zero-base-single-experience-plan.md",
+      "sha256": "0805ac7a2cf397bb875a09c13be6012aa084dd38682b3c6e95eea34f7428279d",
+      "reason": "Final review of mutable first-party agent technical text",
+      "profile": {
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ]
       }
     },
     {
