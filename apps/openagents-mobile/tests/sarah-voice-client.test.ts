@@ -174,12 +174,14 @@ const sessionResponse = (
     : {}),
 });
 
-const normalSessionResponse = (): Record<string, unknown> => ({
+const normalSessionResponse = (
+  provider: "nostr" | "github" | "email" = "nostr",
+): Record<string, unknown> => ({
   accessToken,
   expiresIn: 900,
   user: {
     userId: ownerRef,
-    provider: "nostr",
+    provider,
   },
 });
 
@@ -415,7 +417,7 @@ describe("managed Sarah mobile voice client", () => {
     expect(vault.read()).toMatchObject({ publicKeyHex, ownerRef, accessToken });
   });
 
-  test("links a signed-in fresh device and retries the scoped Sarah session", async () => {
+  test("accepts a linked canonical GitHub account after fresh device link", async () => {
     const vault = makeVault();
     const nativeSession = makeNativeSessionStore(canonicalSessionRecord());
     const requests: Array<Readonly<{ url: string; init?: RequestInit }>> = [];
@@ -435,7 +437,7 @@ describe("managed Sarah mobile voice client", () => {
           omegaAttempts += 1;
           return omegaAttempts === 1
             ? Response.json({ error: "mobile_session_required" }, { status: 401 })
-            : Response.json(normalSessionResponse());
+            : Response.json(normalSessionResponse("github"));
         }
         if (url.endsWith("/api/mobile/auth/session")) {
           return Response.json({
@@ -581,6 +583,70 @@ describe("managed Sarah mobile voice client", () => {
       "https://openagents.com/api/omega/auth/session",
       "https://openagents.com/api/omega/sarah/voice/session",
     ]);
+  });
+
+  test("accepts an already linked canonical email account", async () => {
+    const vault = makeVault();
+    const client = new SarahVoiceClient({
+      baseUrl: "https://openagents.com",
+      publicKeyHex,
+      signer,
+      vault: vault.vault,
+      fetch: (async (input, init) => {
+        const url = String(input);
+        if (url.endsWith("/api/omega/auth/session")) {
+          return Response.json(normalSessionResponse("email"));
+        }
+        const body = JSON.parse(String(init?.body)) as Readonly<{ identity: VoiceIdentity }>;
+        return Response.json(sessionResponse(body.identity, "t".repeat(43), false), {
+          status: 201,
+        });
+      }) as typeof globalThis.fetch,
+      createSocket: (url, headers) => new FixtureSocket(url, headers),
+      sha256,
+      randomUuid: () => "voice-linked-email",
+      now: () => 10_000,
+      setTimeout,
+      clearTimeout,
+    });
+
+    await client.start();
+
+    expect(client.snapshot()).toMatchObject({ phase: "connecting", message: null });
+    expect(vault.read()).toMatchObject({ ownerRef, accessToken });
+  });
+
+  test("does not expose a canonical session decoder error", async () => {
+    const vault = makeVault();
+    const client = new SarahVoiceClient({
+      baseUrl: "https://openagents.com",
+      publicKeyHex,
+      signer,
+      vault: vault.vault,
+      fetch: (async () =>
+        Response.json({
+          accessToken,
+          expiresIn: 900,
+          user: { userId: ownerRef, provider: "unsupported" },
+        })) as typeof globalThis.fetch,
+      createSocket: () => {
+        throw new Error("An invalid session must not open a socket.");
+      },
+      sha256,
+      randomUuid: () => "voice-invalid-session",
+      now: () => 10_000,
+      setTimeout,
+      clearTimeout,
+    });
+
+    await client.start();
+
+    expect(client.snapshot()).toMatchObject({
+      phase: "error",
+      message: "Sarah voice could not verify the OpenAgents session. Try again.",
+      retryable: true,
+    });
+    expect(client.snapshot().message).not.toContain("provider");
   });
 
   test("asks a signed-out user to sign in before Sarah voice", async () => {

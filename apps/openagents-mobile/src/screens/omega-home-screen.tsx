@@ -1,8 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Linking } from "react-native";
 import { Camera, CameraView } from "expo-camera";
+import * as Clipboard from "expo-clipboard";
 import { randomUUID } from "expo-crypto";
+import * as Updates from "expo-updates";
 import { Effect } from "effect";
+
+import appConfig from "../../app.json";
+import { projectMobileUpdate } from "../mobile-update";
+import {
+  SARAH_BETA_VOICE_ENVIRONMENT,
+  sarahVoiceApiHost,
+} from "../sarah-voice/environment";
 
 import {
   createOmegaDeviceBridgeClient,
@@ -169,6 +178,64 @@ export const OmegaHomeScreen = ({
   const [draft, setDraft] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [observedAt, setObservedAt] = useState(Date.now());
+  const [manualUpdateBusy, setManualUpdateBusy] = useState(false);
+  const [manualUpdateError, setManualUpdateError] = useState(false);
+  const updates = Updates.useUpdates();
+
+  const update = useMemo(
+    () =>
+      projectMobileUpdate({
+        appVersion: appConfig.expo.version,
+        buildNumber: appConfig.expo.ios.buildNumber,
+        updateId: updates.currentlyRunning.updateId ?? Updates.updateId,
+        runtimeVersion: updates.currentlyRunning.runtimeVersion ?? Updates.runtimeVersion,
+        isEmbeddedLaunch: updates.currentlyRunning.isEmbeddedLaunch,
+        isChecking: manualUpdateBusy || updates.isChecking,
+        isDownloading: updates.isDownloading,
+        isUpdatePending: updates.isUpdatePending,
+        hasError:
+          manualUpdateError ||
+          updates.checkError !== undefined ||
+          updates.downloadError !== undefined,
+        voiceEnvironment: SARAH_BETA_VOICE_ENVIRONMENT,
+        voiceHost: sarahVoiceApiHost(),
+      }),
+    [
+      manualUpdateBusy,
+      manualUpdateError,
+      updates.checkError,
+      updates.currentlyRunning.isEmbeddedLaunch,
+      updates.currentlyRunning.runtimeVersion,
+      updates.currentlyRunning.updateId,
+      updates.downloadError,
+      updates.isChecking,
+      updates.isDownloading,
+      updates.isUpdatePending,
+    ],
+  );
+
+  const onUpdatePressed = useCallback((): void => {
+    setManualUpdateError(false);
+    if (updates.isUpdatePending) {
+      void Updates.reloadAsync().catch(() => setManualUpdateError(true));
+      return;
+    }
+    if (!Updates.isEnabled) {
+      setManualUpdateError(true);
+      return;
+    }
+    setManualUpdateBusy(true);
+    void (async () => {
+      const result = await Updates.checkForUpdateAsync();
+      if (result.isAvailable) await Updates.fetchUpdateAsync();
+    })()
+      .catch(() => setManualUpdateError(true))
+      .finally(() => setManualUpdateBusy(false));
+  }, [updates.isUpdatePending]);
+
+  const onUpdateCopied = useCallback((): void => {
+    void Clipboard.setStringAsync(update.copyText);
+  }, [update.copyText]);
 
   // Relative stamps have to age on their own. Without a tick, a row that says
   // "2m" keeps saying "2m" until the desktop happens to send something.
@@ -253,6 +320,7 @@ export const OmegaHomeScreen = ({
     // not open yet, so it says so rather than offering a control that cannot work.
     commandLaneAvailable: false,
     commandNotice: null,
+    update,
     now: observedAt,
   };
 
@@ -267,6 +335,8 @@ export const OmegaHomeScreen = ({
         onEnqueuePressed: () => undefined,
         onSteerPressed: () => undefined,
         onSarahVoicePressed,
+        onUpdatePressed,
+        onUpdateCopied,
       }}
     />
   );
