@@ -13991,7 +13991,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
                 close: client.end,
               }
             },
-            isStagingOwnerSession: async (session, workerEnv) => {
+            stagingOwnerEntitlementEnabled: workerEnv => {
               const enabled = ['1', 'true', 'on'].includes(
                 workerEnv.SARAH_STAGING_OWNER_VOICE_ENTITLEMENT_ENABLED?.trim().toLowerCase() ??
                   '',
@@ -14006,8 +14006,7 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
               } catch {
                 return false
               }
-              const owner = await resolveOmegaNostrOwner(workerEnv)
-              return owner?.userId === session.user.userId
+              return true
             },
             requireUserBearerSession,
             userIdFromSession: session => session.user.userId,

@@ -102,10 +102,7 @@ export type SarahRealtimeVoiceRouteDependencies<User, Bindings> = Readonly<{
   ) => Promise<'Consumed' | 'Invalid' | 'Unavailable'>
   mintNostrSession?: NostrSessionMint<User, Bindings> | undefined
   requireUserBearerSession: UserBearerSessionBoundary<User, Bindings>
-  isStagingOwnerSession?: (
-    session: Readonly<{ user: User }>,
-    env: Bindings,
-  ) => Promise<boolean>
+  stagingOwnerEntitlementEnabled?: (env: Bindings) => boolean
   userIdFromSession: (session: Readonly<{ user: User }>) => string
   verifyNostrProof?: NostrProofVerify<Bindings> | undefined
   now?: (() => number) | undefined
@@ -321,17 +318,16 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
     | undefined
   try {
     opened = await dependencies.openStore(env)
-    const isStagingOwner =
-      (await dependencies.isStagingOwnerSession?.(session, env)) === true
-    const entitlement = isStagingOwner
-      ? await opened.store.ensureStagingOwnerEntitlement({
+    const stagingEntitlementEnabled =
+      dependencies.stagingOwnerEntitlementEnabled?.(env) === true
+    const entitlement = stagingEntitlementEnabled
+      ? await opened.store.readActiveStagingOwnerEntitlement({
           entitlementRef: 'sarah_voice_entitlement:staging_owner_v1',
-          expiresAt: new Date(nowMs + 7 * 24 * 60 * 60 * 1_000).toISOString(),
           nowIso,
           ownerUserId: userId,
         })
       : undefined
-    if (isStagingOwner) {
+    if (stagingEntitlementEnabled) {
       dependencies.audit?.(
         entitlement === undefined
           ? 'staging_owner_entitlement_inactive'

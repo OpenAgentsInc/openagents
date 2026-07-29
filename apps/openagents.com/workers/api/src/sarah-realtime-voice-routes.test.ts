@@ -59,7 +59,7 @@ const makeDependencies = (
     sessionExpiresAt: input.sessionExpiresAt,
     settlementReceiptRef: null,
   })),
-  ensureStagingOwnerEntitlement: SarahRealtimeVoiceStore['ensureStagingOwnerEntitlement'] = vi.fn(
+  readActiveStagingOwnerEntitlement: SarahRealtimeVoiceStore['readActiveStagingOwnerEntitlement'] = vi.fn(
     async () => undefined,
   ),
 ) => {
@@ -68,7 +68,7 @@ const makeDependencies = (
     reserve,
     connect: vi.fn(),
     recordUsage: vi.fn(),
-    ensureStagingOwnerEntitlement,
+    readActiveStagingOwnerEntitlement,
     settle: vi.fn(),
     sweepExpired: vi.fn(),
   } as unknown as SarahRealtimeVoiceStore
@@ -89,7 +89,7 @@ const makeDependencies = (
       now: () => Date.UTC(2026, 6, 28, 12, 0, 0),
     },
     reserve,
-    ensureStagingOwnerEntitlement,
+    readActiveStagingOwnerEntitlement,
   }
 }
 
@@ -232,7 +232,7 @@ describe('managed Sarah Realtime voice session route', () => {
       {
         ...fixture.dependencies,
         audit,
-        isStagingOwnerSession: async () => true,
+        stagingOwnerEntitlementEnabled: () => true,
       },
       request({
         schema: SARAH_VOICE_PROTOCOL_VERSION,
@@ -270,7 +270,7 @@ describe('managed Sarah Realtime voice session route', () => {
     const response = await handleSarahRealtimeVoiceSessionRequest(
       {
         ...fixture.dependencies,
-        isStagingOwnerSession: async () => false,
+        stagingOwnerEntitlementEnabled: () => true,
       },
       request({
         schema: SARAH_VOICE_PROTOCOL_VERSION,
@@ -283,7 +283,38 @@ describe('managed Sarah Realtime voice session route', () => {
 
     expect(response.status).toBe(402)
     expect(await response.json()).toEqual({ error: 'insufficient_credit' })
-    expect(fixture.ensureStagingOwnerEntitlement).not.toHaveBeenCalled()
+    expect(fixture.readActiveStagingOwnerEntitlement).toHaveBeenCalledWith({
+      entitlementRef: 'sarah_voice_entitlement:staging_owner_v1',
+      nowIso: '2026-07-28T12:00:00.000Z',
+      ownerUserId: 'user-1',
+    })
+    expect(fixture.reserve).toHaveBeenCalledWith(
+      expect.objectContaining({
+        creditMode: 'metered',
+        entitlementRef: null,
+        reservedMsat: 25_000,
+      }),
+    )
+  })
+
+  test('does not read the staging entitlement when the server gate is off', async () => {
+    const fixture = makeDependencies()
+    const response = await handleSarahRealtimeVoiceSessionRequest(
+      {
+        ...fixture.dependencies,
+        stagingOwnerEntitlementEnabled: () => false,
+      },
+      request({
+        schema: SARAH_VOICE_PROTOCOL_VERSION,
+        identity,
+        disclosureRef: 'disclosure-1',
+      }),
+      {},
+      ctx,
+    )
+
+    expect(response.status).toBe(201)
+    expect(fixture.readActiveStagingOwnerEntitlement).not.toHaveBeenCalled()
     expect(fixture.reserve).toHaveBeenCalledWith(
       expect.objectContaining({
         creditMode: 'metered',
