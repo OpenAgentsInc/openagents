@@ -83,7 +83,7 @@ live logs (`~/Library/Logs/omega-rc/omega-rc.log`,
 | C3 | "Add More Agents" entry in the `+` menu. | A + C | Dispatches `omega::AcpRegistry` (refused). Its handler also opens into the invisible centre. |
 | C4 | Workbench rail surfaces Files, Git, Terminal. | B | The buttons render enabled, then `prepare_*_surface` fails with "the native Files surface is still loading" because `ProjectPanel`, `GitPanel`, `TerminalPanel` exist only in the full-editor branch. The error renders as a small rail warning triangle. Log: `could not prepare the Files work surface`. |
 | C5 | Directory links and directory mentions in the transcript. | B | They emit `RevealInProjectPanel`, whose only subscriber is the never-added `ProjectPanel`. Total silent no-op. |
-| C6 | Vim keys in the composer when `vim_mode` was on. | A | The `vim` namespace is not admitted. The rc log shows more than 180 refused vim actions from one session. The owner has since set `vim_mode: false`. |
+| C6 | Vim keys in the composer when `vim_mode` was on. | A | The `vim` namespace is not admitted. The rc log shows more than 180 refused vim actions from one session. The owner has since set `vim_mode: false`. Repair: admit the vim action set (section 6, vim stays). |
 | C7 | Thread-outline artifact "open source". | C | `navigate_to_outline_artifact_source` calls `workspace.open_path` with no reveal. The same bug was fixed one hour earlier for `thread_view.rs` in `259930d92f`, but two more call sites remain. |
 | C8 | Skill mention chips. | C | `open_skill_file` and `open_skill_content_buffer` open into the invisible centre. |
 | C9 | The shared `open_abs_path_at_point` helper. | C | Only the file-peek caller reveals the centre first. Every other caller lands invisibly. |
@@ -149,6 +149,7 @@ three of them are the reason "remove the editor" does not mean "remove the
 | `settings_ui` | `omega::OpenSettings` and friends are individually admitted, and settings opens its own window, which is why it is one of the few controls that already works. |
 | `onboarding` (identity section) | `OMEGA-DELTA-0040`: the identity gate is a centre-pane item and must render before the seal. `OMEGA-DELTA-0051` already strips the rest of the page. |
 | `markdown`, `buffer_search`, `notifications` | Transcript rendering, terminal search, and the toast layer outside the seal. |
+| `vim` and `assets/keymaps/vim.json` | Owner decision, 2026-07-29 (section 6). Modal editing in the composer and the `OMEGA-DELTA-0139` centre pane. Requires admitting the vim action set. |
 
 ## 5. What goes
 
@@ -170,21 +171,23 @@ All five collapse to their Zero Base shape. The `--full-editor`, `--diff`,
 
 ### 5.2 The crate removal set
 
-The measured full-editor-only set is 54 to 55 crates, roughly 270,000 lines
-and 305 `.rs` files — 22% of the build graph, and the set is transitively
-closed (removing it drops the graph from 245 to 190 crates with zero
-unexpected extra drops). The largest entries:
+The measured full-editor-only set was 54 to 55 crates. With `vim` retained by
+the section 6 owner decision, the removal set is roughly 54 crates, 222,000
+lines, and 249 `.rs` files — about 18% of the build graph. The set without
+vim remains transitively closed (the original measurement dropped the graph
+from 245 to 190 crates with zero unexpected extra drops, and vim is a leaf on
+that graph). The largest entries:
 
 | Crate | LOC | Crate | LOC |
 | --- | ---: | --- | ---: |
-| `vim` | 47,986 | `file_finder` | 7,777 |
-| `debugger_ui` (+`debugger_tools`, `dap_adapters`) | 29,596 | `keymap_editor` | 6,054 |
-| `sidebar` | 23,779 | `language_tools` | 5,483 |
-| `dev_container` | 16,513 | `diagnostics` | 5,100 |
-| `edit_prediction` family (6 crates) | 42,532 | `markdown_preview` | 3,535 |
-| `repl` | 12,526 | `call` (+ `livekit` linkage in `title_bar`) | 3,407 |
-| `recent_projects` | 9,236 | `extensions_ui` | 2,408 |
-| `outline_panel` (+`outline`) | 9,489 | `tab_switcher` | 1,503 |
+| `debugger_ui` (+`debugger_tools`, `dap_adapters`) | 29,596 | `file_finder` | 7,777 |
+| `sidebar` | 23,779 | `keymap_editor` | 6,054 |
+| `dev_container` | 16,513 | `language_tools` | 5,483 |
+| `edit_prediction` family (6 crates) | 42,532 | `diagnostics` | 5,100 |
+| `repl` | 12,526 | `markdown_preview` | 3,535 |
+| `recent_projects` | 9,236 | `call` (+ `livekit` linkage in `title_bar`) | 3,407 |
+| `outline_panel` (+`outline`) | 9,489 | `extensions_ui` | 2,408 |
+| `tab_switcher` | 1,503 | | |
 
 Plus the long tail of selectors and previews: `theme_selector`,
 `language_selector`, `toolchain_selector`, `encoding_selector`,
@@ -218,29 +221,28 @@ single experience they are removed rather than hidden, which resolves the
 2026-07-26 document's own warning that its brand-gate classifications would
 need a pass when hiding ever became removal.
 
-## 6. The vim question — owner decision required
+## 6. Vim stays — owner decision, 2026-07-29
 
-`vim` is the largest single crate in the removal set (47,986 LOC), and it is
-the one entry with observed owner demand on the other side: the rc log shows
-a session with `vim_mode: true` and more than 180 refused vim actions in the
-composer, after which the setting was turned off. That reads as an owner who
-tried vim in the composer and found it broken, not an owner who does not want
-vim.
+The owner decided on 2026-07-29: **vim mode is kept.** `vim` (47,986 LOC,
+about 56 source files) moves from the removal set to the kept closure, and
+`assets/keymaps/vim.json` stays.
 
-Options:
+The decision matches the observed demand: the rc log shows a session with
+`vim_mode: true` and more than 180 refused vim actions in the composer, after
+which the setting was turned off. That was an owner who tried vim and found it
+broken by the action gate, not an owner who did not want vim.
 
-1. **Delete `vim`** with the rest of the set. The composer is a chat input,
-   and the single experience does not include modal editing. Simplest, and
-   consistent with "a bunch of stuff removed."
-2. **Keep `vim` and admit its namespace** so the composer and the
-   `OMEGA-DELTA-0139` centre pane support modal editing. Roughly one line of
-   admission plus keymap context work, but it keeps 48k lines and the whole
-   vim test surface alive for a chat box.
+Keeping vim creates three concrete work items:
 
-Recommendation: option 1, and record the refused-vim-session evidence in the
-removal delta so the decision is reversible with its reasoning attached. If
-the owner wants vim in the composer, that is a deliberate re-add, not a
-retention.
+1. **Admit the `vim` namespace** (or the vim action set) so modal editing
+   works in the composer and in the `OMEGA-DELTA-0139` centre pane. This is
+   the repair for C6 and belongs in Phase 0 with the other admissions.
+2. **Keep `vim.json` out of the keymap strip.** The Phase 3 keymap discipline
+   applies only to the namespaces whose crates are actually deleted.
+3. **Re-home the mode indicator.** `vim::ModeIndicator` is a status-bar item,
+   and the status bar does not exist in the single experience. The composer
+   bar is the natural host. Until it has a home, vim works without a visible
+   mode readout, which is worth a small follow-up rather than a blocker.
 
 ## 7. The phased plan
 
@@ -268,8 +270,9 @@ after the surface is honest.
 4. **Fix or remove "Add More Agents".** Either admit `omega::AcpRegistry` and
    reveal the centre for its registry view, or remove the entry until the
    registry is a workbench surface. Fixes C3.
-5. **Decide vim now** (section 6), because Phase 0 is when a "keep" decision
-   would be cheap.
+5. **Admit vim** (section 6, decided: vim stays). Admit the vim action set so
+   `vim_mode: true` works in the composer instead of being silently refused,
+   and verify the modal keys against the C6 log evidence.
 
 Phase 0's exit test is behavioral: a session driven over the drawn surface
 produces **zero refusal lines in the log**. The gate's log output flips from
@@ -336,8 +339,8 @@ Every constraint below is mechanical and already tripped somebody once.
    A binding that names a deleted action kills the process while
    `cargo check --workspace` stays green — `0.2.0-rc6` died exactly this way.
    Every crate deletion must strip its bindings from all three platform
-   keymaps in the same commit: about 116 bindings per keymap across the
-   removal set, plus `assets/keymaps/vim.json` (1,258 lines) wholesale. Each
+   keymaps in the same commit: roughly 100 bindings per keymap across the
+   removal set. `assets/keymaps/vim.json` stays, because vim stays. Each
    removed namespace goes into `FORBIDDEN_KEYMAP_NAMESPACES` so it cannot
    return, following the `OMEGA-DELTA-0009` / `0012` precedent: *unreachable
    code that a rebase can revive is not a removal.*
@@ -354,8 +357,8 @@ Every constraint below is mechanical and already tripped somebody once.
    entry, the check, and the test together, and never weaken a check merely
    to pass.
 3. **The brand gate has minimum-inventory floors.** `script/omega-brand-gate.json`
-   requires at least 1,500 Rust files. The removal set deletes 305 of 1,903,
-   leaving 1,598 — a headroom of 98 files. The floors
+   requires at least 1,500 Rust files. The removal set deletes roughly 249 of
+   1,903, leaving about 1,654 — a headroom near 150 files. The floors
    (`minimum_rust_files`, `minimum_rust_string_literals`,
    `actions.minimum_inventory`, and four more) must be re-measured and
    lowered in the same commits as the deletions, with the re-measurement
@@ -408,7 +411,8 @@ work needs approximately four new entries and four amendments:
 
 ## 10. Open owner decisions
 
-1. **Vim** — delete or admit (section 6). Recommendation: delete.
+1. **Vim** — decided, 2026-07-29: vim stays (section 6). The remaining
+   choice is where the mode indicator lives once the status bar is gone.
 2. **`--full-editor` failure shape** — explanatory startup error for one
    release, or immediate unknown-argument failure. Recommendation: the error,
    because the flag is in the owner's own muscle memory and scripts.
@@ -440,7 +444,7 @@ work needs approximately four new entries and four amendments:
 Phase 0 and 1 are days: they touch `zed.rs`, `agent_panel.rs`, `app_menus.rs`,
 and the admitted set, all in code paths the delta suite already covers.
 Phase 2 is small in lines but heavy in delta bookkeeping. Phase 3 is the bulk:
-roughly 270,000 lines and 305 files across ~55 crates, mechanical but
-ordered, with the keymap and brand-gate discipline making each step
-verifiable. The end state is a build graph 22% smaller, one init path, one
-render path, and a surface where a drawn control is a working control.
+roughly 222,000 lines and 249 files across ~54 crates with vim retained,
+mechanical but ordered, with the keymap and brand-gate discipline making each
+step verifiable. The end state is a build graph 18% smaller, one init path,
+one render path, and a surface where a drawn control is a working control.
