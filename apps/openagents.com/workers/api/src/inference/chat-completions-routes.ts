@@ -2605,6 +2605,15 @@ export const handleChatCompletions = (
     const internalPlatformCapacity = (
       deps.internalAccountRefs ?? new Set()
     ).has(session.accountRef)
+    // Omega zero-base Flash/Pro: OpenAuth user sessions (accountRef
+    // `openauth:…`) may select the exact hosted lanes (gemini-3.6-flash,
+    // kimi-k3) that the google-gemini provider-accounts path already serves
+    // to the same identity. Public Khala and other models stay closed.
+    const openAuthHostedLaneCapacity =
+      session.accountRef.startsWith('openauth:') &&
+      isHostedLaneModelId(requestedModel)
+    const hostedLanePlatformCapacity =
+      internalPlatformCapacity || openAuthHostedLaneCapacity
     if (
       internalNeutralRequest &&
       !(deps.internalAccountRefs ?? new Set<string>()).has(session.accountRef)
@@ -2617,7 +2626,7 @@ export const handleChatCompletions = (
     if (
       !isPublicModelId(requestedModel) &&
       !internalNeutralRequest &&
-      !(internalPlatformCapacity && isHostedLaneModelId(requestedModel)) &&
+      !(hostedLanePlatformCapacity && isHostedLaneModelId(requestedModel)) &&
       fineTunedModelResolution === undefined
     ) {
       return noStoreJsonResponse(
@@ -2887,11 +2896,13 @@ export const handleChatCompletions = (
     // or when the authenticated org-runtime no-meter channel explicitly owns
     // the upstream capacity. This removes credit/free-tier accounting without
     // silently converting paid platform capacity into a free public service.
+    // Exception: exact hosted Flash/Pro lanes for OpenAuth (Omega) sessions and
+    // internal accounts — same platform-funded surface as google-gemini grants.
     const callerPaidByok = byok._tag === 'accepted'
     if (
       !callerPaidByok &&
       !orgCloudRuntimeNoMeter &&
-      !internalPlatformCapacity
+      !hostedLanePlatformCapacity
     ) {
       return noStoreJsonResponse(
         {

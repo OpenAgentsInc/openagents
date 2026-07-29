@@ -15424,7 +15424,10 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
     // adapter + no-op metering stub; Phase-2 issues register real adapters
     // (#5479/#5480/#5481), routing (#5482), and live metering/credits (#5477).
     path: '/v1/chat/completions',
-    handler: (request, env) => {
+    // ctx is required so Omega's signed-in OpenAuth session can reach the
+    // hosted Flash/Pro lanes (gemini-3.6-flash, kimi-k3) the same way the
+    // google-gemini provider-accounts path already does.
+    handler: (request, env, ctx) => {
       registerPassthroughAdapters(inferenceProviderRegistry, env)
       registerHydraliskAdapter(inferenceProviderRegistry, env)
       registerOpenRouterAdapter(inferenceProviderRegistry, env)
@@ -15454,13 +15457,25 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
           if (token === undefined) {
             return undefined
           }
-          const session = await authenticateProgrammaticAgent(
+          const agentSession = await authenticateProgrammaticAgent(
             makeAgentRegistrationStoreForEnv(env),
             token,
           )
-          return session === undefined
+          if (agentSession !== undefined) {
+            return { accountRef: `agent:${agentSession.user.id}` }
+          }
+          // Omega zero-base Pro/Flash: the desktop holds an OpenAuth user
+          // session, not an oa_agent_ token. Accept the same user bearer the
+          // hosted Gemini grant path already trusts, under a distinct
+          // accountRef so demand attribution stays exact.
+          const userSession = await requireUserBearerSession(
+            authRequest,
+            env,
+            ctx,
+          )
+          return userSession === undefined
             ? undefined
-            : { accountRef: `agent:${session.user.id}` }
+            : { accountRef: `openauth:${userSession.user.userId}` }
         },
         enabled: isInferenceGatewayEnabled(env.INFERENCE_GATEWAY_ENABLED),
         // Live credit metering (#5477): decrement the account's balance from
