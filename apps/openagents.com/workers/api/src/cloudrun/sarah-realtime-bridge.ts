@@ -44,6 +44,7 @@ export type SarahRealtimeBridgeData = {
   readonly proposals: Map<string, ToolProposal>
   meteringTail: Promise<void>
   expiryTimer: ReturnType<typeof setTimeout> | undefined
+  providerHeartbeatTimer: ReturnType<typeof setInterval> | undefined
 }
 
 type ToolProposal = Readonly<{
@@ -62,6 +63,7 @@ const realtimeUrl =
   `wss://api.openai.com/v1/realtime?model=${SARAH_VOICE_MODEL}` as const
 const MAX_CONTROL_BYTES = 32_768
 const MAX_PROVIDER_FRAME_BYTES = 1_048_576
+const PROVIDER_HEARTBEAT_INTERVAL_MS = 15_000
 
 const safeTokenCount = (value: unknown): number =>
   typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
@@ -142,6 +144,9 @@ const cleanup = (ws: Socket, closeReason: string): Promise<void> => {
   if (ws.data.cleanupStarted) return Promise.resolve()
   ws.data.cleanupStarted = true
   if (ws.data.expiryTimer !== undefined) clearTimeout(ws.data.expiryTimer)
+  if (ws.data.providerHeartbeatTimer !== undefined) {
+    clearInterval(ws.data.providerHeartbeatTimer)
+  }
   safeProviderClose(ws.data.upstream)
   return ws.data.meteringTail
     .then(() =>
@@ -721,12 +726,14 @@ const handleProviderEvent = (ws: Socket, raw: string): void => {
           : ''
     const itemRef =
       typeof event.item_id === 'string' ? event.item_id : 'utterance'
-    sendControl(ws, {
-      _tag: 'transcript_final',
-      source: type.startsWith('conversation.') ? 'user' : 'assistant',
-      utteranceRef: itemRef,
-      text: text.slice(0, 16_384),
-    })
+    if (text.trim() !== '') {
+      sendControl(ws, {
+        _tag: 'transcript_final',
+        source: type.startsWith('conversation.') ? 'user' : 'assistant',
+        utteranceRef: itemRef,
+        text: text.slice(0, 16_384),
+      })
+    }
     if (type.startsWith('conversation.')) {
       const transcriptionUsage = usageFromInputTranscription(
         event,
@@ -952,16 +959,34 @@ export const makeSarahRealtimeWebSocketHandlers = () => ({
           ),
         ),
       )
+      ws.data.providerHeartbeatTimer = setInterval(() => {
+        if (upstream.readyState === WebSocket.OPEN) upstream.ping()
+      }, PROVIDER_HEARTBEAT_INTERVAL_MS)
     })
     upstream.on('message', (data: RawData, isBinary: boolean) => {
       if (isBinary) return
       handleProviderEvent(ws, data.toString())
     })
-    upstream.on('close', () => {
+    upstream.on('close', (code, reason) => {
+      console.error(
+        JSON.stringify({
+          event: 'sarah_voice_provider_closed',
+          sessionRef: ws.data.session.sessionRef,
+          code,
+          reason: reason.toString().slice(0, 256),
+        }),
+      )
       if (!ws.data.clientClosed) closeClient(ws, 'provider_error', 1011)
       ws.data.tasks.add(cleanup(ws, 'provider_closed'))
     })
-    upstream.on('error', () => {
+    upstream.on('error', error => {
+      console.error(
+        JSON.stringify({
+          event: 'sarah_voice_provider_error',
+          sessionRef: ws.data.session.sessionRef,
+          error: error.message.slice(0, 512),
+        }),
+      )
       sendControl(ws, {
         _tag: 'error',
         code: 'provider_unavailable',
@@ -1042,7 +1067,15 @@ export const makeSarahRealtimeWebSocketHandlers = () => ({
       })
     }
   },
-  close(ws: Socket, _code: number, reason: string) {
+  close(ws: Socket, code: number, reason: string) {
+    console.error(
+      JSON.stringify({
+        event: 'sarah_voice_client_closed',
+        sessionRef: ws.data.session.sessionRef,
+        code,
+        reason: reason.slice(0, 256),
+      }),
+    )
     ws.data.clientClosed = true
     ws.data.tasks.add(cleanup(ws, reason === '' ? 'client_closed' : reason))
   },
@@ -1073,6 +1106,7 @@ export const makeSarahRealtimeBridgeData = (
   proposals: new Map(),
   meteringTail: Promise.resolve(),
   expiryTimer: undefined,
+  providerHeartbeatTimer: undefined,
 })
 
 export const parseSarahRealtimeBridgeCreditRate = (
