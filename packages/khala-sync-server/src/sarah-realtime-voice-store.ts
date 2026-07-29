@@ -1,7 +1,10 @@
 import type { SyncSql, SyncTransactionSql } from "./sql.js";
 
 export type SarahVoiceSessionState = "reserved" | "connected" | "settled" | "released" | "failed";
-export type SarahVoiceClientProfile = "omega_editor" | "mobile_voice_only";
+export type SarahVoiceClientProfile =
+  | "omega_editor"
+  | "mobile_voice_only"
+  | "mobile_command_center";
 export type SarahVoiceCreditMode = "metered" | "staging_owner_entitlement";
 
 export type SarahVoiceCreditEntitlement = Readonly<{

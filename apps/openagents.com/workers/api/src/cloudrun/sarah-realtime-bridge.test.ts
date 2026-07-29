@@ -255,4 +255,25 @@ describe('Sarah Realtime bridge metering', () => {
       'Distinguish observed, submitted, in progress, blocked, and completed',
     )
   })
+
+  test('advertises only injected server tools to the mobile command center', () => {
+    const update = sessionUpdateForSarahClientProfile('mobile_command_center', [
+      {
+        definition: {
+          name: 'full_auto_status',
+          description: 'Inspect the existing Full Auto run.',
+          parameters: { type: 'object', additionalProperties: false },
+        },
+        execute: () => {
+          throw new Error('not executed by projection test')
+        },
+      },
+    ])
+    expect(update.session.tools.map(tool => tool.name)).toEqual([
+      'full_auto_status',
+    ])
+    expect(update.session.tool_choice).toBe('auto')
+    expect(update.session.instructions).toContain('mobile command center')
+    expect(update.session.instructions).toContain('no direct editor')
+  })
 })

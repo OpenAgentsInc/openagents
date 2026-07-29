@@ -2122,6 +2122,22 @@ come from the Freerange teardown
   change.
 - The mobile app that remains is a read-only desktop mirror plus its pairing
   path. Its live boundary is the device-bridge contract, not these clauses.
+- The 2026-07-29 mobile Sarah command-center restoration is additive to that
+  read-only mirror. Authenticated owner voice sessions bootstrap Sarah's
+  canonical owner-private thread and may execute only the server-owned,
+  receipted `codex_workers_{capacity,start,status}` and
+  `full_auto_{status,control}` tools. The phone receives no editor, file,
+  shell, Git, credential, payment, account, or device authority; the paired
+  Omega bridge remains read-only and Full Auto control stays pending until
+  Desktop applies it. Started/succeeded/failed tool activity remains visible,
+  call refs are replay-fenced, tool execution is serialized, and shutdown
+  awaits the tool tail before closing SQL. Final user, assistant, and tool
+  transcript items append to app-private JSONL while audio remains no-store.
+  The enforcing oracles are
+  `apps/openagents-mobile/tests/sarah-voice-client.test.ts`,
+  `apps/openagents-mobile/tests/sarah-voice-transcript-store.test.ts`,
+  `apps/openagents.com/workers/api/src/cloudrun/sarah-realtime-bridge.test.ts`,
+  and `apps/openagents.com/workers/api/src/sarah-runtime-tools.test.ts`.
 - The Desktop end-to-end test named `native-conversation-continuation`, which
   lived under `apps/openagents-desktop/tests/`, was deleted on 2026-07-27 for
   the same reason. It proved Desktop-to-mobile

@@ -26,8 +26,10 @@ import type { SarahVoiceSessionVault, SarahVoiceStoredSession } from "./session-
 
 const DISCLOSURE_REF = "openagents.mobile.sarah.voice.v1";
 const OMEGA_NOSTR_SESSION_PATH = "/api/omega/auth/session";
+const SARAH_OWNER_PATH = "/api/mobile/sarah";
 const MAX_RECONNECT_ATTEMPTS = 2;
 const MAX_PENDING_AUDIO_FRAMES = 8;
+const HEARTBEAT_INTERVAL_MS = 15_000;
 
 // Server `UserSubject.provider` for `/api/omega/auth/session`: pure self-provision
 // installs are `nostr`; device-linked canonical accounts return `github` or `email`.
@@ -37,6 +39,13 @@ const OmegaNostrSessionResponseSchema = S.Struct({
   user: S.Struct({
     userId: S.String.check(S.isMinLength(1), S.isMaxLength(256)),
     provider: S.Literals(["nostr", "github", "email"]),
+  }),
+});
+
+const SarahPrincipalResponseSchema = S.Struct({
+  ok: S.Literal(true),
+  principal: S.Struct({
+    threadRef: S.String.check(S.isMinLength(1), S.isMaxLength(256)),
   }),
 });
 
@@ -66,7 +75,7 @@ export type SarahVoicePhase =
 
 export type SarahVoiceTranscript = Readonly<{
   utteranceRef: string;
-  source: "user" | "assistant";
+  source: "user" | "assistant" | "tool";
   text: string;
   final: boolean;
 }>;
@@ -109,6 +118,18 @@ export type SarahVoiceClientDependencies = Readonly<{
   setTimeout: (callback: () => void, delayMs: number) => ReturnType<typeof setTimeout>;
   clearTimeout: (handle: ReturnType<typeof setTimeout>) => void;
   recoverDeviceLink?: SarahVoiceDeviceLinkRecovery;
+  commandCenter?: boolean;
+  persistFinalTranscript?: (
+    record: Readonly<{
+      recordedAt: string;
+      sessionRef: string;
+      threadRef: string;
+      utteranceRef: string;
+      source: "user" | "assistant" | "tool";
+      text: string;
+    }>,
+  ) => Promise<void>;
+  onTranscriptPersistenceError?: () => void;
 }>;
 
 type VoiceSessionValue = Readonly<{
@@ -244,10 +265,13 @@ export class SarahVoiceClient {
   private audioChain: Promise<void> = Promise.resolve();
   private messageChain: Promise<void> = Promise.resolve();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
   private shouldRun = false;
   private foreground = true;
   private attemptGeneration = 0;
+  private stableConnectionGeneration = -1;
   private currentProviderItemRef: string | null = null;
+  private readonly persistedUtteranceRefs = new Set<string>();
 
   constructor(private readonly dependencies: SarahVoiceClientDependencies) {}
 
@@ -375,6 +399,10 @@ export class SarahVoiceClient {
       this.dependencies.clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
+    if (this.heartbeatTimer !== null) {
+      this.dependencies.clearTimeout(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
     if (this.socket?.readyState === 1) {
       this.sendControl({ _tag: "close", reason });
     }
@@ -398,6 +426,31 @@ export class SarahVoiceClient {
   private update(snapshot: SarahVoiceSnapshot): void {
     this.snapshotValue = snapshot;
     for (const listener of this.listeners) listener(snapshot);
+  }
+
+  private persistTranscript(transcript: SarahVoiceTranscript): void {
+    if (
+      !transcript.final ||
+      this.identity === null ||
+      this.dependencies.persistFinalTranscript === undefined ||
+      this.persistedUtteranceRefs.has(transcript.utteranceRef)
+    ) {
+      return;
+    }
+    this.persistedUtteranceRefs.add(transcript.utteranceRef);
+    void this.dependencies
+      .persistFinalTranscript({
+        recordedAt: new Date(this.dependencies.now()).toISOString(),
+        sessionRef: this.identity.sessionRef,
+        threadRef: this.identity.threadRef,
+        utteranceRef: transcript.utteranceRef,
+        source: transcript.source,
+        text: transcript.text,
+      })
+      .catch(() => {
+        this.persistedUtteranceRefs.delete(transcript.utteranceRef);
+        this.dependencies.onTranscriptPersistenceError?.();
+      });
   }
 
   private async connect(reconnectAttempt: number): Promise<void> {
@@ -429,6 +482,7 @@ export class SarahVoiceClient {
           phase: "connecting",
           reservedCreditMsat: session.reservedCreditMsat,
         });
+        this.scheduleHeartbeat(socket, generation);
       };
       socket.onmessage = (event) => {
         if (socket !== this.socket) return;
@@ -445,8 +499,14 @@ export class SarahVoiceClient {
         this.socket = null;
         this.identity = null;
         this.pendingAudioFrames = 0;
+        if (this.heartbeatTimer !== null) {
+          this.dependencies.clearTimeout(this.heartbeatTimer);
+          this.heartbeatTimer = null;
+        }
         if (!this.shouldRun || !this.foreground) return;
-        if (reconnectAttempt >= MAX_RECONNECT_ATTEMPTS) {
+        const nextReconnectAttempt =
+          this.stableConnectionGeneration === generation ? 0 : reconnectAttempt + 1;
+        if (nextReconnectAttempt > MAX_RECONNECT_ATTEMPTS) {
           this.update({
             ...this.snapshotValue,
             phase: "error",
@@ -463,9 +523,9 @@ export class SarahVoiceClient {
         this.reconnectTimer = this.dependencies.setTimeout(
           () => {
             this.reconnectTimer = null;
-            void this.connect(reconnectAttempt + 1);
+            void this.connect(nextReconnectAttempt);
           },
-          reconnectAttempt === 0 ? 500 : 1_500,
+          nextReconnectAttempt === 0 ? 500 : 1_500,
         );
       };
     } catch (error: unknown) {
@@ -485,6 +545,23 @@ export class SarahVoiceClient {
         retryable: failure.retryable,
       });
     }
+  }
+
+  private scheduleHeartbeat(socket: SarahVoiceSocket, generation: number): void {
+    if (this.heartbeatTimer !== null) this.dependencies.clearTimeout(this.heartbeatTimer);
+    this.heartbeatTimer = this.dependencies.setTimeout(() => {
+      this.heartbeatTimer = null;
+      if (
+        socket === this.socket &&
+        socket.readyState === 1 &&
+        generation === this.attemptGeneration &&
+        this.shouldRun &&
+        this.foreground
+      ) {
+        this.sendControl({ _tag: "heartbeat" });
+        this.scheduleHeartbeat(socket, generation);
+      }
+    }, HEARTBEAT_INTERVAL_MS);
   }
 
   private async requestSession(): Promise<
@@ -663,11 +740,44 @@ export class SarahVoiceClient {
       session: SarahVoiceStoredSession;
     }>,
   ): Promise<VoiceSessionResult> {
+    if (this.dependencies.commandCenter !== true) {
+      const first = await this.createSession({
+        baseUrl: input.baseUrl,
+        deviceRef: input.deviceRef,
+        ownerRef: input.session.ownerRef,
+        authorization: `Bearer ${input.session.accessToken}`,
+      });
+      if (first._tag === "Success" || (first.status !== 402 && first.status !== 403)) {
+        return first;
+      }
+      const refreshed = await this.requestNormalOpenAgentsSession(input.baseUrl);
+      if (refreshed._tag === "Failure") return first;
+      await this.dependencies.vault.write(refreshed.value);
+      return this.createSession({
+        baseUrl: input.baseUrl,
+        deviceRef: input.deviceRef,
+        ownerRef: refreshed.value.ownerRef,
+        authorization: `Bearer ${refreshed.value.accessToken}`,
+      });
+    }
+    const principal = await this.requestSarahPrincipal(input.baseUrl, input.session.accessToken);
+    if (principal === null) {
+      return {
+        _tag: "Failure",
+        status: 403,
+        failure: {
+          message: "Sarah command center is not available for this OpenAgents account.",
+          retryable: false,
+        },
+      };
+    }
     const first = await this.createSession({
       baseUrl: input.baseUrl,
       deviceRef: input.deviceRef,
       ownerRef: input.session.ownerRef,
       authorization: `Bearer ${input.session.accessToken}`,
+      threadRef: principal.threadRef,
+      clientProfile: "mobile_command_center",
     });
     if (first._tag === "Success" || (first.status !== 402 && first.status !== 403)) {
       return first;
@@ -676,12 +786,38 @@ export class SarahVoiceClient {
     const refreshed = await this.requestNormalOpenAgentsSession(input.baseUrl);
     if (refreshed._tag === "Failure") return first;
     await this.dependencies.vault.write(refreshed.value);
+    const refreshedPrincipal = await this.requestSarahPrincipal(
+      input.baseUrl,
+      refreshed.value.accessToken,
+    );
+    if (refreshedPrincipal === null) return first;
     return this.createSession({
       baseUrl: input.baseUrl,
       deviceRef: input.deviceRef,
       ownerRef: refreshed.value.ownerRef,
       authorization: `Bearer ${refreshed.value.accessToken}`,
+      threadRef: refreshedPrincipal.threadRef,
+      clientProfile: "mobile_command_center",
     });
+  }
+
+  private async requestSarahPrincipal(
+    baseUrl: string,
+    accessToken: string,
+  ): Promise<Readonly<{ threadRef: string }> | null> {
+    const response = await this.dependencies.fetch(`${baseUrl}${SARAH_OWNER_PATH}`, {
+      method: "GET",
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+    if (!response.ok) return null;
+    try {
+      const decoded = S.decodeUnknownSync(SarahPrincipalResponseSchema)(await response.json(), {
+        onExcessProperty: "preserve",
+      });
+      return { threadRef: decoded.principal.threadRef };
+    } catch {
+      return null;
+    }
   }
 
   private async createSession(
@@ -691,12 +827,15 @@ export class SarahVoiceClient {
       ownerRef: string;
       authorization?: string;
       challenge?: string;
+      threadRef?: string;
+      clientProfile?: "mobile_voice_only" | "mobile_command_center";
     }>,
   ): Promise<VoiceSessionResult> {
     const identity: VoiceIdentity = {
       ownerRef: input.ownerRef,
       deviceRef: input.deviceRef,
-      threadRef: `thread.sarah.mobile.${this.dependencies.publicKeyHex.slice(0, 24)}`,
+      threadRef:
+        input.threadRef ?? `thread.sarah.mobile.${this.dependencies.publicKeyHex.slice(0, 24)}`,
       sessionRef: `sarah.voice.${this.dependencies.randomUuid()}`,
       generation: 1,
     };
@@ -704,7 +843,7 @@ export class SarahVoiceClient {
       schema: SARAH_VOICE_PROTOCOL_VERSION,
       identity,
       disclosureRef: DISCLOSURE_REF,
-      clientProfile: "mobile_voice_only",
+      clientProfile: input.clientProfile ?? "mobile_voice_only",
       ...(input.challenge === undefined
         ? {}
         : {
@@ -748,7 +887,7 @@ export class SarahVoiceClient {
     }
     const session = decodeSarahVoiceSessionResponse(await response.json());
     if (
-      session.clientProfile !== "mobile_voice_only" ||
+      session.clientProfile !== (input.clientProfile ?? "mobile_voice_only") ||
       session.sessionRef !== identity.sessionRef
     ) {
       return {
@@ -845,6 +984,7 @@ export class SarahVoiceClient {
     this.serverControlSequence += 1;
     switch (control._tag) {
       case "session_ready":
+        this.stableConnectionGeneration = this.attemptGeneration;
         this.update({
           ...this.snapshotValue,
           phase: "connecting",
@@ -862,12 +1002,14 @@ export class SarahVoiceClient {
         const next = this.snapshotValue.transcripts.filter(
           (entry) => entry.utteranceRef !== control.utteranceRef,
         );
-        next.push({
+        const transcript = {
           utteranceRef: control.utteranceRef,
           source: control.source,
           text: control.text,
           final: control._tag === "transcript_final",
-        });
+        } as const;
+        next.push(transcript);
+        this.persistTranscript(transcript);
         this.update({ ...this.snapshotValue, transcripts: next.slice(-40) });
         return;
       }
@@ -880,6 +1022,21 @@ export class SarahVoiceClient {
       case "heartbeat":
       case "tool_outcome_ref":
         return;
+      case "tool_activity": {
+        const next = this.snapshotValue.transcripts.filter(
+          (entry) => entry.utteranceRef !== control.activityRef,
+        );
+        const transcript = {
+          utteranceRef: control.activityRef,
+          source: "tool",
+          text: `${control.toolName} — ${control.phase}: ${control.summary}`,
+          final: control.phase !== "started",
+        } as const;
+        next.push(transcript);
+        this.persistTranscript(transcript);
+        this.update({ ...this.snapshotValue, transcripts: next.slice(-40) });
+        return;
+      }
       case "tool_proposal":
       case "tool_execute":
         this.shouldRun = false;

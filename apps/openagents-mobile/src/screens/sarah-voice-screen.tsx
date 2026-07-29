@@ -11,6 +11,7 @@ import {
 import { requestRecordingPermissionsAsync, setAudioModeAsync, useAudioStream } from "expo-audio";
 import { CryptoDigestAlgorithm, digest, randomUUID } from "expo-crypto";
 import * as SecureStore from "expo-secure-store";
+import * as FileSystem from "expo-file-system/legacy";
 
 import RealtimeAudio from "../../modules/expo-realtime-audio";
 import type { NativeSessionSecureStore } from "../auth/native-session-vault";
@@ -24,6 +25,7 @@ import { makeSarahVoiceDeviceLinkRecovery } from "../sarah-voice/device-link";
 import { SARAH_BETA_VOICE_BASE_URL } from "../sarah-voice/environment";
 import { bytesToBase64 } from "../sarah-voice/protocol";
 import { makeSarahVoiceSessionVault } from "../sarah-voice/session-vault";
+import { makeSarahVoiceTranscriptStore } from "../sarah-voice/transcript-store";
 import {
   expoIssue31DeviceKeyPlatform,
   openExpoIssue31DeviceIdentity,
@@ -195,6 +197,17 @@ export const SarahVoiceScreen = ({ onClose }: { readonly onClose: () => void }) 
           console.info("Sarah staging identity public key", identity.publicKeyHex);
         }
         identityRef.current = identity;
+        const transcriptDirectory = `${FileSystem.documentDirectory ?? ""}sarah`;
+        const transcriptPath = `${transcriptDirectory}/voice-transcripts.jsonl`;
+        const transcriptStore = makeSarahVoiceTranscriptStore({
+          append: async (line) => {
+            await FileSystem.makeDirectoryAsync(transcriptDirectory, { intermediates: true });
+            await FileSystem.writeAsStringAsync(transcriptPath, line, {
+              encoding: FileSystem.EncodingType.UTF8,
+              append: true,
+            });
+          },
+        });
         const client = new SarahVoiceClient({
           baseUrl: SARAH_BETA_VOICE_BASE_URL,
           publicKeyHex: identity.publicKeyHex,
@@ -214,6 +227,10 @@ export const SarahVoiceScreen = ({ onClose }: { readonly onClose: () => void }) 
           recoverDeviceLink: makeSarahVoiceDeviceLinkRecovery(
             SecureStore as unknown as NativeSessionSecureStore,
           ),
+          commandCenter: true,
+          persistFinalTranscript: transcriptStore.append,
+          onTranscriptPersistenceError: () =>
+            setLocalError("This conversation could not be saved locally. End voice and retry."),
         });
         clientRef.current = client;
         setClientReady(true);
@@ -393,7 +410,7 @@ export const SarahVoiceScreen = ({ onClose }: { readonly onClose: () => void }) 
         renderItem={({ item }) => (
           <Card style={item.source === "user" ? $userTurn : $assistantTurn}>
             <Text preset="label" color={colors.textFaint}>
-              {item.source === "user" ? "YOU" : "SARAH"}
+              {item.source === "user" ? "YOU" : item.source === "tool" ? "COMMAND" : "SARAH"}
               {item.final ? "" : " · LIVE"}
             </Text>
             <Text preset="body">{item.text}</Text>
@@ -403,7 +420,7 @@ export const SarahVoiceScreen = ({ onClose }: { readonly onClose: () => void }) 
         ListEmptyComponent={
           <EmptyState
             heading="Start when you are ready"
-            body="Live transcript text appears here. Audio and transcript text are not stored by this screen."
+            body="Live transcript text appears here. Final conversation and command activity are saved locally; audio is never stored."
           />
         }
         showsVerticalScrollIndicator={false}

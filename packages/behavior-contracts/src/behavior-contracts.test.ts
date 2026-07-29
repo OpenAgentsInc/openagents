@@ -401,7 +401,8 @@ describe("behavior contract registry", () => {
     expect(sarahOrchestrator?.state).toBe("enforced")
     expect(sarahOrchestrator?.oracles.map(oracle => oracle.ref)).toEqual([
       "apps/openagents.com/workers/api/src/sarah-owner-routes.test.ts",
-      "apps/openagents-mobile/tests/sarah-owner-orchestrator.test.ts",
+      "apps/openagents-mobile/tests/sarah-voice-client.test.ts",
+      "apps/openagents.com/workers/api/src/cloudrun/sarah-realtime-bridge.test.ts",
     ])
     // PORTAL-1 (#8652): client portal owner scoping + decision receipts,
     // enforced in the workers/api + apps/start test sweeps.

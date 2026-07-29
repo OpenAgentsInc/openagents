@@ -1410,9 +1410,10 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
         "packages/sarah/src/index.ts",
         "packages/authority/src/index.ts",
         "apps/openagents.com/workers/api/src/sarah-owner-routes.ts",
-        "apps/openagents.com/workers/api/src/sarah-business-context.ts",
-        "apps/openagents-mobile/src/screens/home-core.ts",
-        "apps/openagents-mobile/tests/sarah-owner-orchestrator.test.ts",
+        "apps/openagents.com/workers/api/src/sarah-runtime-tools.ts",
+        "apps/openagents.com/workers/api/src/cloudrun/sarah-realtime-bridge.ts",
+        "apps/openagents-mobile/src/screens/sarah-voice-screen.tsx",
+        "apps/openagents-mobile/src/sarah-voice/client.ts",
       ],
       oracles: [
         {
@@ -1425,11 +1426,19 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
         },
         {
           description:
-            "Drives the existing Effect Native conversation program, proving Sarah is pinned in the drawer, identified as owner orchestrator, and her ordinary messages are forced through hosted Khala without a second persona state model.",
-          id: "openagents_mobile.sarah_owner_orchestrator.view_program",
+            "Proves the mobile command-center profile bootstraps the canonical owner thread, advertises only receipted server-owned delegation and existing Full Auto tools, renders bounded tool activity, sends heartbeats, and retains the voice-only fallback without granting editor or device authority.",
+          id: "openagents_mobile.sarah_owner_orchestrator.voice_command_center",
           kind: "bun-test",
           mode: "unit",
-          ref: "apps/openagents-mobile/tests/sarah-owner-orchestrator.test.ts",
+          ref: "apps/openagents-mobile/tests/sarah-voice-client.test.ts",
+        },
+        {
+          description:
+            "Proves command-center tools execute through Sarah's existing authority receipts and typed coding/Full Auto brokers rather than through the phone or Omega editor protocol.",
+          id: "openagents_mobile.sarah_owner_orchestrator.server_broker",
+          kind: "bun-test",
+          mode: "unit",
+          ref: "apps/openagents.com/workers/api/src/cloudrun/sarah-realtime-bridge.test.ts",
         },
       ],
       productArea: "owner orchestration and business continuity",
@@ -1440,10 +1449,10 @@ export const openAgentsAppsContractRegistry: BehaviorContractRegistryDocument = 
       },
       state: "enforced",
       statement:
-        "Create an authority delegation to Sarah. Bring her back so I have a single point of contact with full persistent memory, tie her into the OpenAgents mobile app, and let me ask for release status, who is saying what, and the state of the business. Sarah is the main decision maker and orchestrator under delegated authority.",
+        "Create an authority delegation to Sarah. Bring her back so I have a single point of contact with full persistent memory, tie her into the OpenAgents mobile app, and let me ask for release status, who is saying what, and the state of the business. Sarah is the main decision maker and orchestrator under delegated authority. Next, add full mobile support so I can do all this via the Open Agents mobile app. Talk to Sarah. Similar controls there.",
       surface: "openagents-mobile",
       verification:
-        "The Worker route and mobile Effect Native tests prove the stable owner-private thread, authority projection, conversation-first UI, and hosted runtime lane. Package tests prove fail-closed authority resolution and citation-bound business context.",
+        "The owner route, realtime gateway, mobile voice client, and Sarah runtime-tool tests prove the canonical owner-private thread, brokered coding delegation, visible activity, existing Full Auto control intents, heartbeat/reconnect behavior, and the absence of mobile editor/device authority.",
     },
     {
       authorityBoundary:

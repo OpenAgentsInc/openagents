@@ -24,6 +24,7 @@ export const OMEGA_NOSTR_DEVICE_LINK_PROTOCOL_VERSION =
 export const SARAH_VOICE_CLIENT_PROFILES = [
   "omega_editor",
   "mobile_voice_only",
+  "mobile_command_center",
 ] as const;
 
 const Ref = S.Trim.check(S.isMinLength(1), S.isMaxLength(256));
@@ -292,6 +293,14 @@ export const SarahVoiceServerControlSchema = S.Union([
     _tag: S.Literal("tool_outcome_ref"),
     proposalRef: Ref,
     outcomeRef: Ref,
+  }),
+  S.Struct({
+    ...BaseServer,
+    _tag: S.Literal("tool_activity"),
+    activityRef: Ref,
+    toolName: Ref,
+    phase: S.Literals(["started", "succeeded", "failed"]),
+    summary: SmallText,
   }),
   S.Struct({
     ...BaseServer,

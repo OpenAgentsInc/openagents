@@ -150,6 +150,7 @@ const sessionResponse = (
   identity: VoiceIdentity,
   ticket: string,
   withAuth: boolean,
+  clientProfile: "mobile_voice_only" | "mobile_command_center" = "mobile_voice_only",
 ): Record<string, unknown> => ({
   schema: SARAH_VOICE_PROTOCOL_VERSION,
   sessionRef: identity.sessionRef,
@@ -160,7 +161,7 @@ const sessionResponse = (
   sessionExpiresAtMs: 600_000,
   reservedCreditMsat: 25_000,
   maxDurationSeconds: 600,
-  clientProfile: "mobile_voice_only",
+  clientProfile,
   inputAudio: { codec: "pcm_s16le", sampleRateHz: 24_000, channels: 1 },
   outputAudio: { codec: "pcm_s16le", sampleRateHz: 24_000, channels: 1 },
   ...(withAuth
@@ -226,6 +227,84 @@ const serverAudioFrame = (
 };
 
 describe("managed Sarah mobile voice client", () => {
+  test("bootstraps the canonical Sarah thread and renders brokered command activity", async () => {
+    const sockets: FixtureSocket[] = [];
+    const vault = makeVault();
+    let identity: VoiceIdentity | null = null;
+    const canonicalThreadRef = "thread.sarah.canonical-owner";
+    const client = new SarahVoiceClient({
+      baseUrl: "https://openagents.com",
+      publicKeyHex,
+      signer,
+      vault: vault.vault,
+      commandCenter: true,
+      fetch: (async (input, init) => {
+        const url = String(input);
+        if (url.endsWith("/api/omega/auth/session")) {
+          return Response.json(normalSessionResponse());
+        }
+        if (url.endsWith("/api/mobile/sarah")) {
+          expect(init).toMatchObject({
+            method: "GET",
+            headers: { authorization: `Bearer ${accessToken}` },
+          });
+          return Response.json({ ok: true, principal: { threadRef: canonicalThreadRef } });
+        }
+        const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        identity = body.identity as VoiceIdentity;
+        expect(body).toMatchObject({
+          clientProfile: "mobile_command_center",
+          identity: { threadRef: canonicalThreadRef },
+        });
+        return Response.json(
+          sessionResponse(identity, "t".repeat(43), false, "mobile_command_center"),
+          { status: 201 },
+        );
+      }) as typeof globalThis.fetch,
+      createSocket: (url, headers) => {
+        const socket = new FixtureSocket(url, headers);
+        sockets.push(socket);
+        return socket;
+      },
+      sha256,
+      randomUuid: () => "voice-command-center",
+      now: () => 10_000,
+      setTimeout,
+      clearTimeout,
+    });
+
+    await client.start();
+    const socket = sockets[0]!;
+    socket.serverControl(
+      control(identity!, 0, {
+        _tag: "tool_activity",
+        activityRef: "call-1",
+        toolName: "codex_workers_start",
+        phase: "started",
+        summary: "Dispatching one coding worker.",
+      }),
+    );
+    socket.serverControl(
+      control(identity!, 1, {
+        _tag: "tool_activity",
+        activityRef: "call-1",
+        toolName: "codex_workers_start",
+        phase: "succeeded",
+        summary: "Started one coding worker.",
+      }),
+    );
+    await tick();
+    expect(client.snapshot().transcripts).toEqual([
+      {
+        utteranceRef: "call-1",
+        source: "tool",
+        text: "codex_workers_start — succeeded: Started one coding worker.",
+        final: true,
+      },
+    ]);
+    await client.end();
+  });
+
   test("authenticates with protected NIP-98 identity and refuses mobile device tools", async () => {
     const sockets: FixtureSocket[] = [];
     const vault = makeVault();

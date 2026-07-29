@@ -75,24 +75,33 @@ It also has mute, interrupt, end, and retry controls.
 
 The microphone is active only when the app is in the foreground and the screen
 shows `Listening`. Capture stops while Sarah speaks. Capture and playback stop
-when the app leaves the foreground or the screen closes. The screen does not
-persist audio or transcript text.
+when the app leaves the foreground or the screen closes. The screen never
+persists audio; final transcript records use the app-private store below.
 
-The mobile profile is `mobile_voice_only`. This profile has no tools. Sarah
-cannot use this surface to control files, an editor, a shell, Git, URLs,
-payments, accounts, or device actions. The mobile client also rejects an
-unexpected tool frame and closes the session.
+Authenticated owner sessions use the `mobile_command_center` profile. Before
+voice connects, the app bootstraps the canonical Sarah thread and the gateway
+advertises only Sarah's server-owned, receipted coding-capacity and existing
+Full Auto tools. Tool activity is visible in the transcript. Repository work
+is delegated to coding workers; Full Auto pause, resume, and stop remain
+pending until Desktop applies them. The phone still cannot control files, an
+editor, a shell, Git, URLs, payments, accounts, or device actions. The
+`mobile_voice_only` profile remains the fail-closed NIP-98 fallback.
+
+Every final user, Sarah, and command-activity transcript item is appended to
+the app-private `sarah/voice-transcripts.jsonl` file. Audio is never written.
+The realtime client sends a heartbeat every 15 seconds and resets its bounded
+reconnect budget after each provider-confirmed stable connection.
 
 ## Capability boundary
 
 The Omega surface is a read-only desktop mirror. It does not render a transcript
 composer because the mounted surface does not open the signed relay command
-lane. The Sarah surface is voice-only and has no device command authority. The
+lane. The Sarah surface is voice-first and has no device command authority. The
 app does not currently:
 
 - create, append to, steer, interrupt, or approve desktop work
 - synchronize general account conversations
-- control managed sandboxes, terminals, files, diffs, Git, or Full Auto
+- start Full Auto or control managed sandboxes, terminals, files, diffs, or Git
 - register or consume push notifications
 - run a model, shell, cloud SDK, or desktop authority on the phone.
 
@@ -164,9 +173,10 @@ The current focused suite covers:
 - the Metro-reachable source graph staying free of Node built-ins
 - bridge framing, admission, mirror updates, revocation, storage, and signer
   cleanup
-- Sarah session authentication, ticket handling, credit errors, reconnect,
-  sequence checks, transcript updates, unsupported-tool refusal, audio bounds,
-  and background cleanup.
+- Sarah session authentication, canonical owner bootstrap, ticket handling,
+  credit errors, heartbeat/reconnect, sequence checks, durable transcript
+  appends, brokered command activity, unsupported-device-tool refusal, audio
+  bounds, and background cleanup.
 
 These tests do not replace a signed Omega host run, a live managed Sarah
 gateway run, or a physical-device run.
