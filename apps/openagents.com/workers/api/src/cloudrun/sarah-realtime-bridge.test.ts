@@ -239,6 +239,9 @@ describe('Sarah Realtime bridge metering', () => {
     expect(update.session.tools[0]?.description).toContain(
       'primary capability for repository inspection',
     )
+    expect(update.session.tools.map(tool => tool.name)).not.toContain(
+      'editor_open_path',
+    )
     expect(update.session.instructions).toContain(
       'persistent orchestrator and fleet commander',
     )
