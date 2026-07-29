@@ -9,6 +9,7 @@ import {
   deriveProfile,
   dictionaryWords,
   extractProse,
+  formatSteJson,
   inspectStructure,
   isGovernedPath,
   validateGlossary,
@@ -24,16 +25,27 @@ const config: CheckerConfig = {
   steIssue: 9,
   glossaryRevision: "test-v1",
   governedExtensions: [".md"],
-  excludedPrefixes: ["docs/transcripts/"],
+  governedPrefixes: [
+    "apps/openagents.com/apps/start/content/docs/",
+    "apps/openagents.com/apps/start/public/",
+  ],
+  excludedPrefixes: [],
   sourceDataPrefixes: [
-    "docs/reference/",
     "apps/openagents.com/apps/start/public/docs/",
+    "apps/openagents.com/apps/start/public/fonts/",
   ],
   proceduralPathSignals: ["runbook"],
-  controlPaths: ["AGENTS.md"],
+  controlPaths: ["apps/openagents.com/apps/start/public/AGENTS.md"],
 };
 
 describe("STE prose extraction", () => {
+  test("formats short scalar arrays without changing JSON data", () => {
+    const value = { short: ["one", "two"], nested: [{ long: ["three", "four"] }] };
+    const formatted = formatSteJson(value);
+    expect(formatted).toContain('"short": ["one", "two"]');
+    expect(JSON.parse(formatted)).toEqual(value);
+  });
+
   test("removes code, links, URLs, and code fences", () => {
     const prose = extractProse(
       "Use `pnpm test`.\n\n```sh\npnpm test; exit 1\n```\nRead [the guide](https://example.com).",
@@ -79,10 +91,21 @@ describe("STE structural checks", () => {
 
 describe("STE profiles and glossary", () => {
   test("classifies controls, procedures, and source data", () => {
-    expect(deriveProfile("AGENTS.md", config).risk).toBe("control");
-    expect(deriveProfile("docs/release-runbook.md", config).ste_mode).toBe("mixed");
+    expect(deriveProfile("apps/openagents.com/apps/start/public/AGENTS.md", config).risk).toBe(
+      "control",
+    );
+    expect(
+      deriveProfile("apps/openagents.com/apps/start/content/docs/release-runbook.md", config)
+        .ste_mode,
+    ).toBe("mixed");
     expect(isGovernedPath("docs/transcripts/a.md", config)).toBe(false);
-    expect(isGovernedPath("docs/release-runbook.md", config)).toBe(true);
+    expect(isGovernedPath("docs/teardowns/example.md", config)).toBe(false);
+    expect(isGovernedPath("docs/allwork/README.md", config)).toBe(false);
+    expect(isGovernedPath("docs/sol/strategy.md", config)).toBe(false);
+    expect(
+      isGovernedPath("apps/openagents.com/apps/start/content/docs/release-runbook.md", config),
+    ).toBe(true);
+    expect(isGovernedPath("apps/openagents.com/apps/start/public/INSTALL.md", config)).toBe(true);
     expect(
       deriveProfile("apps/openagents.com/apps/start/public/docs/index.md", config),
     ).toMatchObject({
@@ -90,12 +113,6 @@ describe("STE profiles and glossary", () => {
       ste_mode: "source-data",
       ste_status: "source-data",
     });
-    expect(deriveProfile("docs/changelog/2026-07-19-desktop-0.1.0-rc.25.md", config)).toMatchObject(
-      {
-        ste_audience: "dual",
-        ste_agent_compact_revision: "openagents-agent-compact-v1",
-      },
-    );
   });
 
   test("rejects duplicate forms and long technical nouns", () => {

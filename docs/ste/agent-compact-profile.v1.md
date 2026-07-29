@@ -7,18 +7,22 @@
 
 ## Purpose
 
-Use STE for communication between agents when possible.
-Clear STE text usually gives agents the fastest and safest input.
-Some agent records need dense technical data and exact system terms.
-This profile permits that content in a controlled form.
+Use this profile only for public agent-facing documents inside the configured
+STE publication roots. Some public agent instructions need dense technical
+data and exact system terms. This profile permits that content in a controlled
+form.
+
+Internal agent communication and working records are outside STE governance.
+They do not need this profile.
 
 This profile extends the OpenAgents vocabulary.
 It does not replace ASD-STE100 and does not claim ASD conformance for an extension.
 
 ## Permitted use
 
-Use this profile only for text that has agents as its primary readers.
-Examples include claims, handoffs, receipts, agent changelogs, and machine review records.
+Use this profile only for governed public text that has agents as its primary
+readers. Examples include public agent instructions and public
+machine-readable guidance.
 
 A dual-audience document must identify each audience with a heading.
 Use `Human changelog` and `Agent changelog` in a release document.
@@ -53,7 +57,7 @@ An identified reviewer can accept a sentence or paragraph limit diagnostic in an
 The reviewer must confirm that the dense unit is faster to parse and keeps one control context.
 This exception cannot apply to a human or dual-audience document.
 
-Human-facing text cannot use this overlay.
+Public human-facing text cannot use this overlay.
 Public instructions, warnings, consent text, and operator procedures require the base STE profile.
 Code and immutable evidence remain source data.
 

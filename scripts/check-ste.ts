@@ -218,5 +218,5 @@ for (const item of unique)
 if (errors.length > 0 || unique.length > 0) process.exitCode = 1;
 else
   console.log(
-    `check:ste OK (${selected.length} governed files, ${strict ? "strict" : "migration-ratchet"} mode, Issue 9, ${config.glossaryRevision})`,
+    `check:ste OK (${selected.length} governed public files, ${strict ? "strict" : "migration-ratchet"} mode, Issue 9, ${config.glossaryRevision})`,
   );

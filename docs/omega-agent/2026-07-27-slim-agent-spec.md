@@ -543,10 +543,10 @@ does exactly this:
     condition binds `delegate` output directly: typed fields first, label
     rendering second, so a later Nostr-signed record needs a signer, not
     a rewrite.
-11. **STE and documentation.** Program documentation lands in
-    `docs/omega-agent/` in this repository and in the omega repository's
-    own docs where the fork's discipline requires, in STE, passing the
-    STE checks.
+11. **Documentation language.** Program documentation lands in
+    `docs/omega-agent/` in this repository and in the omega repository's own
+    docs where the fork's discipline requires. These internal records can use
+    normal technical language and do not run the public STE checks.
 
 ## 14. Open owner questions
 

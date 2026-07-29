@@ -1,12 +1,18 @@
 # ASD-STE100 adoption audit and conversion plan
 
+> Historical scope note (2026-07-29): this audit proposed and recorded the
+> repository-wide policy v2 migration. Policy v3 supersedes that scope. Current
+> STE enforcement applies only to the public documentation roots declared in
+> `docs/ste/checker-config.v1.json`; internal documents can use different
+> language and structure.
+
 - Date: 2026-07-19
-- Class: current-status
+- Class: historical audit
 - Source snapshot: `030754d52632673f17cdd7b2a71a93866dd34800`
-- Status: P0 through P6 complete. Final controls are active.
+- Status: P0 through P6 complete under superseded policy v2.
 - Dispatch: no
 - Owner: OpenAgents documentation
-- Requirement: All OpenAgents documentation and specifications must use ASD-STE100 Simplified Technical English.
+- Historical requirement: All OpenAgents documentation and specifications must use ASD-STE100 Simplified Technical English.
 
 ## Result
 

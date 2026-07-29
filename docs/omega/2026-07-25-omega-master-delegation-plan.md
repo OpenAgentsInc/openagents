@@ -49,7 +49,8 @@ Every agent reads these sources before its first mutation:
    dual-role attestation with no self-review, no fabricated or promoted
    evidence. Unperformed gates stay `pending_required_gates`.
 8. Documentation for this program lands in `docs/omega/` in the openagents
-   repository, in STE, and passes the STE checks.
+   repository. These internal strategy records can use normal technical
+   language and do not run the public STE checks.
 9. When a lane blocks on an owner act, write the exact needed act on the
    issue, mark it `NEEDS-OWNER`, and pull the next non-blocked lane. Never
    idle.

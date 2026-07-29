@@ -440,9 +440,10 @@ Falsifiers, stated so the program can be caught:
    plugins package deterministic behavior. The seam is explicit: a DSE
    artifact's deterministic parts can compile into a plugin, and the
    `plugin` runtime never grows a model path to absorb the rest.
-7. **STE and documentation.** Program documentation lands in
-   `docs/omega-agent/` in this repository and in the omega repository
-   where the fork's discipline requires, passing the STE checks.
+7. **Documentation language.** Program documentation lands in
+   `docs/omega-agent/` in this repository and in the omega repository where
+   the fork's discipline requires. These internal records can use normal
+   technical language and do not run the public STE checks.
 
 ## 13. Open owner questions
 

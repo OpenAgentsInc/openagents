@@ -5,7 +5,13 @@ import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { deriveProfile, isGovernedPath, readCheckerConfig, type SteProfile } from "./ste-core";
+import {
+  deriveProfile,
+  formatSteJson,
+  isGovernedPath,
+  readCheckerConfig,
+  type SteProfile,
+} from "./ste-core";
 
 const root = resolve(import.meta.dirname, "..");
 const outputPath = `${root}/docs/ste/final-inventory.v1.json`;
@@ -28,7 +34,8 @@ const tracked = execFileSync(
   .filter((path) => isGovernedPath(path, config))
   .toSorted();
 
-const immutablePattern = /(?:^docs\/(?:changelog|receipts|transcripts|reference|sol)\/|\/(?:archive|backup|conformance|evidence|fixtures?|generated|receipts?|snapshots?|third-party|vendor)\/|(?:^|\/)(?:LICENSE|NOTICE|THIRD_PARTY_NOTICES|UPSTREAM)(?:[-_.A-Z0-9]*)(?:\.md|\.txt)$|(?:audit|analysis|after-action|baseline|evidence|receipt)\.md$)/i;
+const immutablePattern =
+  /(?:^docs\/(?:changelog|receipts|transcripts|reference|sol)\/|\/(?:archive|backup|conformance|evidence|fixtures?|generated|receipts?|snapshots?|third-party|vendor)\/|(?:^|\/)(?:LICENSE|NOTICE|THIRD_PARTY_NOTICES|UPSTREAM)(?:[-_.A-Z0-9]*)(?:\.md|\.txt)$|(?:audit|analysis|after-action|baseline|evidence|receipt)\.md$)/i;
 
 export const p6Disposition = (
   profile: SteProfile,
@@ -176,16 +183,12 @@ const entries = tracked.map((path) => {
 
 writeFileSync(
   outputPath,
-  `${JSON.stringify(
-    {
-      schema: "openagents-ste-final-inventory-v1",
-      steIssue: 9,
-      glossaryRevision: config.glossaryRevision,
-      reviewedAt: "2026-07-19T22:00:00Z",
-      entries,
-    },
-    null,
-    2,
-  )}\n`,
+  formatSteJson({
+    schema: "openagents-ste-final-inventory-v1",
+    steIssue: 9,
+    glossaryRevision: config.glossaryRevision,
+    reviewedAt: "2026-07-19T22:00:00Z",
+    entries,
+  }),
 );
 console.log(`wrote docs/ste/final-inventory.v1.json (${entries.length} governed files)`);

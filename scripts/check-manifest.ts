@@ -97,8 +97,11 @@ export const fastPolicyTargets: readonly CheckTarget[] = [
   { name: "assure-repo", command: ["pnpm", "run", "check:assure-repo"] },
   { name: "assure-repo-audit", command: ["pnpm", "run", "check:assure-repo-audit"] },
   { name: "assure-repo-drift", command: ["pnpm", "run", "check:assure-repo-drift"] },
-  { name: "ste", command: ["pnpm", "run", "check:ste:all"] },
-  { name: "ste-control-semantics", command: ["pnpm", "run", "check:ste-control-semantics"] },
+  { name: "ste-public", command: ["pnpm", "run", "check:ste:public"] },
+  {
+    name: "ste-public-semantics",
+    command: ["pnpm", "run", "check:ste-public-semantics"],
+  },
   { name: "ste-tests", command: ["pnpm", "run", "test:ste"] },
   { name: "node-vp-freeze", command: ["node", "scripts/node-vp-cutover-inventory.mjs", "--check"] },
   { name: "zero-supported-bun", command: ["node", "scripts/zero-supported-bun-guard.mjs", "."] },

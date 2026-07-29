@@ -210,21 +210,21 @@ named steps. This runbook never promotes.
   after the build.
 - **Final promotion:** owner-only, through the DIST-13 command.
 
-## STE and neutral-language checks for receipts and this runbook
+## Documentation checks for receipts and this runbook
 
-New governed documents update the STE inventory. After adding or editing a doc:
+This runbook and internal receipts are outside STE governance. They can use
+normal technical language and do not update the STE ledger or inventory.
 
-- Regenerate the STE ledger and inventory
-  (`pnpm run generate:ste-ledger`, and the receipt commits update
-  `docs/ste/final-inventory.v1.json` and `docs/ste/migration-ledger.v1.json`).
-- Run the STE structural check (`node --import tsx scripts/check-ste.ts --all`)
-  and the STE control-semantic check
-  (`node --import tsx scripts/check-ste-semantic.ts`). A deliberate normative
-  change to a governed control file is acknowledged with
-  `--capture <path>` to refresh that file's semantic baseline.
+If the same change touches the configured public documentation roots, run
+`pnpm run check:ste:public` and `pnpm run check:ste-public-semantics`, then
+regenerate the STE inventory and ledger after the approved public review.
+
+For all documentation changes:
+
 - Run the neutral-language and authority guards
   (`node scripts/vp1-retired-money-surface-guard.mjs .`,
   `node scripts/google-cloud-authority-guard.mjs`,
   `node scripts/zero-supported-bun-guard.mjs .`).
 
-Only after those pass by hand, push the docs-only change with `--no-verify`.
+Only after the applicable checks pass by hand, push the docs-only change with
+`--no-verify`.

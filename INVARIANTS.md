@@ -5,27 +5,33 @@ More specific invariant ledgers apply inside imported apps and packages.
 
 ## ASD-STE100 documentation invariant
 
-- All OpenAgents documentation and specifications must use ASD-STE100 Issue 9
-  Simplified Technical English.
+- Only public-facing documents in the publication roots defined by
+  [`docs/ste/checker-config.v1.json`](docs/ste/checker-config.v1.json) must use
+  ASD-STE100 Issue 9 Simplified Technical English.
 - [`docs/ste/README.md`](docs/ste/README.md) owns the repository policy. The
   versioned OpenAgents glossary owns approved company technical terms.
-- Human-facing text must use the base STE profile.
-- Agent-facing text should use the base profile when possible.
+- Internal strategy, teardown, roadmap, audit, plan, specification, runbook,
+  receipt, and agent working documents are outside this invariant. They can
+  use different language and structure.
+- Public human-facing text must use the base STE profile.
+- Public agent-facing text should use the base profile when possible.
 - The versioned agent compact profile can add controlled terms and record fragments.
 - The compact profile cannot relax authority, safety, evidence, or ambiguity controls.
 - The repository must not contain a copy of the ASD dictionary without written
   permission from the copyright owner.
 - A checker result is not proof of full conformance. Important text requires a
   technical review and an STE inspection.
-- Code, commands, identifiers, protocol values, legal quotations, third-party
-  text, and immutable evidence are source data. An STE frame must identify
-  source data when the context is not clear.
+- Within governed public documents, code, commands, identifiers, protocol
+  values, legal quotations, third-party text, and immutable evidence are
+  source data. An STE frame must identify source data when the context is not
+  clear.
 - A migration baseline is temporary. It cannot authorize a new defect or a
   permanent exception.
 - A conversion must not reduce authority, safety, privacy, payment, release,
   or acceptance requirements. Keep semantic comparison evidence for these
   changes.
-- Local hooks and OpenAgents-owned runners must use the same versioned checker.
+- Local hooks and OpenAgents-owned runners must use the same versioned public
+  documentation checker.
   GitHub-hosted CI remains prohibited.
 
 ## Google Cloud Production Authority

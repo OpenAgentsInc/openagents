@@ -1,5 +1,10 @@
 # P6 final OpenAgents document conformance receipt
 
+> Historical scope note (2026-07-29): this receipt records the repository-wide
+> policy v2 migration. Policy v3 supersedes that scope and governs only the
+> configured public documentation roots. The counts below are historical and
+> do not describe current enforcement.
+
 - Date: 2026-07-19
 - Issue: #9054
 - Standard: ASD-STE100 Issue 9

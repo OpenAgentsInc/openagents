@@ -11,18 +11,22 @@ previous repository shape.
 
 ## Simplified Technical English
 
-- Write all new documentation and specification text in ASD-STE100 Issue 9
-  Simplified Technical English (STE).
+- Use ASD-STE100 Issue 9 Simplified Technical English (STE) only for the
+  public documentation paths defined in
+  [`docs/ste/checker-config.v1.json`](docs/ste/checker-config.v1.json).
 - Follow [`docs/ste/README.md`](docs/ste/README.md) for profiles, source data,
-  inspections, and migration states.
+  inspections, migration states, and the exact publication boundary.
 - Use the approved OpenAgents terms in the versioned glossary.
-- Prefer STE for agent communication.
-- Use the agent compact profile only when its controlled extensions make a technical record faster or less ambiguous.
-- Do not apply the agent compact profile to human-facing text.
+- Internal strategy, teardown, roadmap, audit, plan, specification, runbook,
+  receipt, and agent working documents are outside STE governance. They can
+  use the language and structure that best preserves technical meaning.
+- Use the agent compact profile only for governed public agent-facing text
+  when its controlled extensions make that text faster or less ambiguous.
+- Do not apply the agent compact profile to public human-facing text.
 - Do not copy the ASD dictionary into the repository. Use an authorized local
   dictionary for strict lexical checks.
-- Run the STE check for each document change. Do not add a structural defect
-  to a file that is in the migration state.
+- Run the STE check only when a changed file is in the configured public
+  scope. Do not add a structural defect to a governed file in migration.
 - Do not use an automatic text change for normative requirements, commands,
   identifiers, evidence values, or quoted source data.
 - Keep the technical meaning during a conversion. Record a semantic comparison
@@ -824,8 +828,10 @@ and deterministic Effect tests. Do not skip it merely because
   `git push --no-verify` so the pre-push `check:fast` code gate (`.githooks/pre-push`,
   the only hook this repository installs) does not run on an unrelated code surface. This is a deliberate skip of the code
   checks ONLY — you must still run the documentation-relevant checks by hand
-  first: above all the neutral-language guard and the STE inspection, plus the
-  doc-coverage / AGENTS.md-drift and link/ref checks, and leave them green.
+  first: above all the neutral-language guard, plus the doc-coverage /
+  AGENTS.md-drift and link/ref checks, and leave them green. Run the STE
+  inspection only when the change touches a configured public documentation
+  path. Internal strategy and working documents do not require STE.
   `--no-verify` is for docs-only changes (and for pushing a worktree commit that
   already ran `pnpm run check` green, where the hook would only re-run the same
   gate) — it is NEVER a shortcut to land unverified code.

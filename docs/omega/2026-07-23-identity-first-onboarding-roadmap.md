@@ -1064,7 +1064,7 @@ It needs an admitted proof design and an exact installed candidate.
   - `docs/omega/2026-07-23-identity-first-onboarding-roadmap.md`
   - `docs/omega/README.md`
   - `docs/omega/ROADMAP.md`
-  - required STE profile and generated inventory records
+  - no STE profile or inventory records because these are internal paths
 - Hot contract: `docs/omega/ROADMAP.md`
 - ProductSpec state: proposed delta, not admitted
 - AssuranceSpec state: proposed delta, not admitted
@@ -1072,11 +1072,6 @@ It needs an admitted proof design and an exact installed candidate.
 
 Verification:
 
-- `pnpm run generate:ste-final-inventory`
-- `pnpm run generate:ste-ledger`
-- `pnpm run generate:ste-final-inventory`
-- `pnpm run check:ste`
-- `pnpm run check:ste-control-semantics`
 - `pnpm run check:sol-docs`
 - `pnpm run test:sol-docs`
 - `git diff --check`

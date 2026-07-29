@@ -55,6 +55,7 @@ export interface CheckerConfig {
   readonly steIssue: 9;
   readonly glossaryRevision: string;
   readonly governedExtensions: readonly string[];
+  readonly governedPrefixes: readonly string[];
   readonly excludedPrefixes: readonly string[];
   readonly sourceDataPrefixes: readonly string[];
   readonly proceduralPathSignals: readonly string[];
@@ -71,6 +72,41 @@ const markdownCodeFencePattern = /^\s*(```|~~~)/;
 
 export const readCheckerConfig = (root: string): CheckerConfig =>
   JSON.parse(readFileSync(`${root}/docs/ste/checker-config.v1.json`, "utf8")) as CheckerConfig;
+
+export const formatSteJson = (value: unknown): string => {
+  const lines = JSON.stringify(value, null, 2).split("\n");
+  const output: string[] = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]!;
+    const start = line.match(/^(\s*)(.*): \[$/);
+    if (!start) {
+      output.push(line);
+      continue;
+    }
+
+    const indent = start[1]!;
+    const items: string[] = [];
+    let end = index + 1;
+    while (end < lines.length) {
+      const item = lines[end]!.match(new RegExp(`^${indent}  ("(?:\\\\.|[^"\\\\])*")(,?)$`));
+      if (!item) break;
+      items.push(item[1]!);
+      end += 1;
+    }
+
+    const close = lines[end]?.match(new RegExp(`^${indent}\\](,?)$`));
+    const compact = `${indent}${start[2]}: [${items.join(", ")}]${close?.[1] ?? ""}`;
+    if (items.length > 0 && close && compact.length <= 100) {
+      output.push(compact);
+      index = end;
+    } else {
+      output.push(line);
+    }
+  }
+
+  return `${output.join("\n")}\n`;
+};
 
 export const validateAgentCompactTerms = (value: AgentCompactTerms): readonly string[] => {
   const errors: string[] = [];
@@ -89,19 +125,15 @@ export const validateAgentCompactTerms = (value: AgentCompactTerms): readonly st
 
 export const isGovernedPath = (path: string, config: CheckerConfig): boolean =>
   config.governedExtensions.includes(extname(path).toLowerCase()) &&
+  config.governedPrefixes.some((prefix) => path.startsWith(prefix)) &&
   !config.excludedPrefixes.some((prefix) => path.startsWith(prefix));
 
 export const deriveProfile = (path: string, config: CheckerConfig): SteProfile => {
   const sourceData = config.sourceDataPrefixes.some((prefix) => path.startsWith(prefix));
   const lowerPath = path.toLowerCase();
   const procedural = config.proceduralPathSignals.some((signal) => lowerPath.includes(signal));
-  const control =
-    config.controlPaths.includes(path) ||
-    path.endsWith("/AGENTS.md") ||
-    path.endsWith("/INVARIANTS.md");
-  const publicText =
-    path.includes("/public/") || path.startsWith("docs/api/") || path.startsWith("docs/guides/");
-  const dualChangelog = /^docs\/changelog\/\d{4}-\d{2}-\d{2}-desktop-.+\.md$/.test(path);
+  const control = config.controlPaths.includes(path);
+  const publicText = isGovernedPath(path, config);
 
   return {
     path,
@@ -133,12 +165,6 @@ export const deriveProfile = (path: string, config: CheckerConfig): SteProfile =
           : "Third-party reference material"
       : null,
     replacement: null,
-    ...(dualChangelog
-      ? {
-          ste_audience: "dual" as const,
-          ste_agent_compact_revision: config.agentCompactRevision,
-        }
-      : {}),
   };
 };
 

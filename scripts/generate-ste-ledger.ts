@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import {
   countDiagnostics,
   deriveProfile,
+  formatSteJson,
   inspectStructure,
   isGovernedPath,
   readCheckerConfig,
@@ -39,7 +40,7 @@ const derivedProfiles = paths.map((path) => ({
   path,
 }));
 for (const path of Object.keys(overrides.profiles)) {
-  if (!paths.includes(path))
+  if (isGovernedPath(path, config) && !paths.includes(path))
     throw new Error(`STE profile override does not match a governed file: ${path}`);
 }
 const finalInventoryPath = `${root}/docs/ste/final-inventory.v1.json`;
@@ -63,7 +64,9 @@ if (existsSync(finalInventoryPath)) {
     );
   }
   for (const entry of inventory.entries) {
-    const digest = createHash("sha256").update(readFileSync(`${root}/${entry.path}`)).digest("hex");
+    const digest = createHash("sha256")
+      .update(readFileSync(`${root}/${entry.path}`))
+      .digest("hex");
     if (digest !== entry.sha256) {
       throw new Error(`Final STE inventory digest is stale: ${entry.path}`);
     }
@@ -98,9 +101,7 @@ const baseline = Object.fromEntries(
     }),
 );
 const migrationPaths = new Set(
-  profiles
-    .filter((profile) => profile.ste_status === "migration")
-    .map((profile) => profile.path),
+  profiles.filter((profile) => profile.ste_status === "migration").map((profile) => profile.path),
 );
 for (const path of refreshPaths) {
   if (!migrationPaths.has(path)) {
@@ -108,27 +109,19 @@ for (const path of refreshPaths) {
   }
 }
 
-const ledger = `${JSON.stringify(
-  {
-    schema: "openagents-ste-ledger-v1",
-    generatedFrom: "git ls-files",
-    steIssue: 9,
-    glossaryRevision: config.glossaryRevision,
-    profiles,
-  },
-  null,
-  2,
-)}\n`;
-const baselineText = `${JSON.stringify(
-  {
-    schema: "openagents-ste-baseline-v1",
-    policyRevision: config.policyRevision,
-    note: "A baseline is a migration ratchet. It is not proof of conformance.",
-    files: baseline,
-  },
-  null,
-  2,
-)}\n`;
+const ledger = formatSteJson({
+  schema: "openagents-ste-ledger-v1",
+  generatedFrom: "git ls-files",
+  steIssue: 9,
+  glossaryRevision: config.glossaryRevision,
+  profiles,
+});
+const baselineText = formatSteJson({
+  schema: "openagents-ste-baseline-v1",
+  policyRevision: config.policyRevision,
+  note: "A baseline is a migration ratchet. It is not proof of conformance.",
+  files: baseline,
+});
 const outputs = [
   ["docs/ste/migration-ledger.v1.json", ledger],
   ["docs/ste/structural-baseline.v1.json", baselineText],

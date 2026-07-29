@@ -113,8 +113,9 @@ Run the complete packet with:
 
 ```sh
 pnpm --dir apps/openagents-desktop run verify:ide-12
-pnpm run check:ste
 ```
+
+This internal specification is outside STE governance.
 
 ## Review and release state
 

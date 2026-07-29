@@ -445,5 +445,6 @@ pnpm --dir apps/openagents.com/workers/api test -- src/sarah-realtime-voice-rout
 pnpm --dir apps/openagents.com/workers/api typecheck:cloudrun
 pnpm --dir apps/openagents-mobile run test
 pnpm --dir apps/openagents-mobile run typecheck
-pnpm run check:ste
 ```
+
+This internal strategy and implementation record is outside STE governance.

@@ -1,185 +1,157 @@
-# OpenAgents Simplified Technical English policy
+# OpenAgents public documentation STE policy
 
 - Standard: ASD-STE100 Issue 9
 - Glossary revision: `openagents-ste-glossary-v1`
-- Policy revision: `openagents-ste-policy-v2`
-- Scope: OpenAgents technical documents and specifications
-- Status: active migration control
+- Policy revision: `openagents-ste-policy-v3`
+- Scope: public-facing documentation only
 
-## Requirement
+## Publication boundary
 
-Write all new technical text in Simplified Technical English (STE).
-Use the rules in ASD-STE100 Issue 9.
-Use the approved OpenAgents terms in [`glossary.v1.json`](./glossary.v1.json).
+STE applies only to text files in these configured publication roots:
 
-## Audience profiles
+- `apps/openagents.com/apps/start/content/docs/`
+- `apps/openagents.com/apps/start/public/`
 
-Use the base STE profile for human-facing text.
-Also use it for agent-facing text when it gives a clear and short result.
+The checker reads this boundary from
+[`checker-config.v1.json`](./checker-config.v1.json). A file is governed only
+when its path starts with a configured `governedPrefixes` value and its
+extension is governed. Path and extension checks are both required.
 
-Some agent records need dense technical data.
-Use the [agent compact profile](./agent-compact-profile.v1.md) for these records.
-The profile adds [controlled terms](./agent-compact-terms.v1.json) and labeled record fragments.
-It does not relax safety, authority, evidence, or ambiguity controls.
-Strict lexical checks permit the extension only in an identified agent section.
+The first root contains authored website documentation. The second contains
+documents shipped through the public static surface, including public agent
+instructions. Generated public documentation mirrors and public font license
+text are source data.
 
-A dual-audience document must identify the human and agent sections.
-The agent extension applies only to the identified agent section.
-Do not make human instructions depend on an agent section.
+If a new publication surface lives outside these roots, add its precise root
+to the checker configuration before publishing it. Do not broaden the scope to
+an internal directory merely because that directory contains Markdown.
 
-Do not copy the ASD dictionary into this repository.
-Use an authorized dictionary file for a strict lexical check.
-Set `ASD_STE100_DICTIONARY` to the path of that file.
+## Internal documents are excluded
+
+Internal documents are not governed by STE. This includes strategy,
+teardowns, roadmaps, audits, plans, specifications, runbooks, receipts,
+research notes, issue records, and agent working documents. In the current
+repository shape, that means documents under `docs/`, `specs/`, packages, and
+application-internal documentation unless a path is also inside one of the
+explicit publication roots above.
+
+Internal documents can use the vocabulary, tone, sentence length, and
+structure that best communicate their technical meaning. They do not need an
+STE profile, ledger entry, inventory digest, baseline update, semantic capture,
+or STE check. Copying or generating their content into a configured public
+root makes the published copy governed.
+
+## Public document requirements
+
+Write governed public documents in Simplified Technical English. Use the rules
+in ASD-STE100 Issue 9 and the approved OpenAgents terms in
+[`glossary.v1.json`](./glossary.v1.json).
+
+Use the base STE profile for public human-facing text. Public agent-facing
+instructions can use the
+[`agent compact profile`](./agent-compact-profile.v1.md) when its controlled
+extensions improve precision or scan speed. The compact profile does not relax
+safety, authority, evidence, or ambiguity controls. Do not apply it to public
+human-facing text.
+
+Do not copy the ASD dictionary into this repository. A strict lexical check
+requires an authorized local dictionary file through
+`ASD_STE100_DICTIONARY`.
 
 ## Source data
 
-Do not change code, commands, paths, URLs, identifiers, or protocol values.
-Treat this content as source data.
-Also treat quoted legal text and third-party text as source data.
+Do not rewrite commands, paths, URLs, identifiers, protocol values, quoted
+legal text, third-party text, or generated output merely to satisfy STE. Treat
+those spans as source data and add a clear STE frame when readers need context.
 
-Add an STE frame around source data when readers need an explanation.
-The frame must identify the source and its purpose.
+The generator writes public Markdown mirrors and `llms` files under
+`apps/openagents.com/apps/start/public/docs/`. Do not edit those generated
+mirrors directly. Change the authored source under
+`apps/openagents.com/apps/start/content/docs/` and run the site generator.
 
-## Excluded paths
+## Profiles and inventory
 
-The `docs/transcripts/` archive is outside STE governance.
-Do not add a transcript file to the STE ledger, baseline, or final inventory.
-Transcript text can keep the speaker's words and style.
-All other repository controls continue to apply to the archive.
+The migration ledger gives each governed public file a profile. A profile
+selects descriptive, procedural, mixed, or source-data text and records its
+review state:
 
-## Document profiles
+- `migration`: the public file has a temporary baseline and needs conversion.
+- `checked`: the checker passed, but an inspector did not approve the text.
+- `inspected`: a technical reviewer and an STE inspector approved the text.
+- `source-data`: the public file contains immutable, generated, or third-party
+  source data.
+- `superseded`: a current public STE document replaces the file.
 
-The migration ledger gives each governed file a document profile.
-The profile selects descriptive, procedural, mixed, or source-data text.
-It also records the glossary revision and the review state.
+Only `inspected`, `source-data`, and `superseded` are terminal states. A tool
+result is not proof of full STE conformance.
 
-Use these states:
-
-- `migration`: The file has a temporary baseline and needs conversion.
-- `checked`: The checker passed, but an inspector did not approve the text.
-- `inspected`: A technical reviewer and an STE inspector approved the text.
-- `source-data`: The file contains immutable or third-party source data.
-- `superseded`: A current STE document replaces the file.
-
-Only `inspected`, `source-data`, and `superseded` are terminal states.
-A tool result is not proof of full STE conformance.
+The final inventory binds governed public paths and terminal states to exact
+SHA-256 digests. It does not inventory internal documents.
 
 ## Checks
 
-Run `pnpm run check:ste` before you commit a document change.
-The check uses the migration baseline for files in the `migration` state.
-It rejects a new structural defect.
-The normal ledger command keeps the prior baseline counts.
+For a change that touches governed public documentation, run:
 
-### Baseline controls
+```bash
+pnpm run check:ste
+```
 
-Only `generate:ste-baseline` replaces all baseline counts.
-Use that command only for an approved baseline reset or migration start.
-Use `--refresh-path=<path>` with the ledger generator for an approved file update.
-This option replaces the baseline only for the specified migration file.
+That command checks changed governed files. To check the complete public
+documentation corpus, run:
 
-Run `pnpm run check:ste:strict -- <paths>` for converted documents.
-Strict mode does not use the migration baseline.
-It requires the authorized dictionary file.
+```bash
+pnpm run check:ste:public
+pnpm run check:ste-public-semantics
+pnpm run test:ste
+```
 
-The checker reports a rule, path, line, column, and corrective action.
-The checker is an aid.
-It does not replace a technical review or an STE inspection.
+`check:ste:all` and `check:ste-control-semantics` remain compatibility aliases.
+They do not expand enforcement beyond the configured public scope.
 
-The deterministic check finds these conditions:
+After an approved change to governed paths or terminal review state, regenerate
+the digest-bound records in this order:
 
-- An unapproved word in strict mode
-- A sentence that exceeds the selected word limit
-- A semicolon
-- A contraction
-- A selected British English word form
-- An `-ing` form that needs inspection
-- A passive construction in procedural or mixed text
-- A paragraph with more than six sentences
-- An OpenAgents technical noun with more than three words
-- A prohibited OpenAgents synonym
-- An absent or inconsistent document profile.
+```bash
+pnpm run generate:ste-final-inventory
+pnpm run generate:ste-ledger
+```
 
-Use `pnpm run rewrite:ste-semicolons -- <paths>` for a mechanical punctuation pass.
-The command does not change code fences, inline code, or URLs.
-It also refuses a result that changes the normalized word sequence.
-This pass does not complete an STE review.
+Use `generate:ste-baseline` only for an approved public migration reset. Use
+`--refresh-path=<path>` for an approved update to one public migration file.
 
-Some grammar checks give possible defects.
-They can report text that an STE inspector accepts.
-The checker does not decide if a sentence has one topic.
-It does not decide if a general noun group has more than three words.
-The STE inspector must make these decisions.
+Strict mode does not use the migration baseline:
 
-A profile can accept a possible-defect rule after an identified review.
-All profiles can accept the `-ing` and passive-voice rules.
-An agent-only compact profile can also accept sentence and paragraph density rules.
-The reviewer must confirm that the dense unit improves fast and precise agent communication.
-A profile cannot accept a semicolon, contraction, word-form, term, or profile defect.
+```bash
+pnpm run check:ste:strict -- <public-paths>
+```
 
-## Review
+It requires an authorized Issue 9 dictionary outside Git.
 
-The author must confirm that the technical content is correct.
-The STE inspector must confirm that the language is correct.
-A subject expert must review normative and safety text.
+The public semantic baseline protects configured public control documents. It
+compares normative keywords, code literals, URLs, issue references, and numeric
+values. After an approved control change, capture only that public path:
 
-Create a new revision when a conversion changes stable document bytes.
-Keep the old revision as source data when another record identifies its bytes.
-Record a semantic comparison before the new revision becomes authoritative.
+```bash
+node --import tsx scripts/check-ste-semantic.ts --capture-path=<public-path>
+```
 
-### Semantic baseline
+This comparison does not prove semantic equality. A technical reviewer must
+also inspect the change.
 
-The P1 control conversion, P2 specification conversion, P3 procedure conversion, and P4 public control conversion have an additional semantic baseline.
-The baseline protects normative keywords, code literals, URLs, issue references, and numeric values.
-Run `pnpm run check:ste-control-semantics` after each control document change.
-This comparison does not prove semantic equality.
-The technical reviewer must also examine the change.
+## Checker limits
 
-### Generated public documents
+The deterministic checker reports selected structural and vocabulary signals,
+including sentence length, semicolons, contractions, selected word forms,
+possible passive voice, paragraph density, and OpenAgents terminology. Some
+signals require human judgment. The checker cannot prove that a sentence has
+one topic or that the complete meaning is safe and correct.
 
-The source for the public `/docs` site is `apps/openagents.com/apps/start/content/docs`.
-Write those files with the human base profile.
-
-The generator writes Markdown mirrors, `llms` files, search data, a sitemap, and compiled site modules.
-The ledger identifies the governed public mirrors as generated source data.
-Do not edit a generated mirror.
-Change the source and run the generator.
-
-When ProductSpec bytes change, update each exact AssuranceSpec subject digest.
-Increment the assurance revision when this binding changes.
-Record the source and converted digests in the conversion receipt.
-
-### Semantic baseline update
-
-Use `--capture-path=<path>` with the semantic checker after an approved control update.
-This option replaces the semantic baseline only for the specified control file.
+An identified review can accept only the screening rules permitted by the
+profile. It cannot accept prohibited punctuation, contractions, word forms,
+terms, or profile defects.
 
 ## Copyright
 
-ASD has the copyright for ASD-STE100 and its dictionary.
-This repository stores only OpenAgents policy and OpenAgents technical terms.
-Use the [official Issue 9 source](https://www.asd-ste100.org/assets/files/ASD-STE100_ISSUE9.pdf).
-
-## Owned runner
-
-The root `check:deploy` command runs the full migration ratchet and its tests.
-OpenAgents-owned runners use this command before a release or publication.
-The root fast check also runs the full migration ratchet before a push to `main`.
-
-Install an authorized dictionary on the owned runner for strict lexical checks.
-Keep the dictionary outside Git.
-Set `ASD_STE100_DICTIONARY` to its absolute path.
-Run strict checks only for files that have completed conversion.
-
-The authorized dictionary adapter accepts a JSON object.
-The object must contain `steIssue: 9` and an `entries` array.
-Each entry must contain a `permittedForms` string array.
-
-## Final inventory
-
-The [final inventory](./final-inventory.v1.json) binds each governed path and terminal state to an exact SHA-256 digest.
-The [legacy estate disposition](./legacy-estate-disposition.md) is the STE frame for source data.
-The [P6 receipt](./p6-final-conformance-receipt.md) records the final repository result.
-
-The ledger generator validates the final inventory.
-It rejects a new path, a removed path, or a changed digest until an identified review regenerates the inventory.
+ASD owns the copyright for ASD-STE100 and its dictionary. This repository
+stores only OpenAgents policy, profiles, and technical terms. Use the
+[official Issue 9 source](https://www.asd-ste100.org/assets/files/ASD-STE100_ISSUE9.pdf).

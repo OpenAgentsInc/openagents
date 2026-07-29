@@ -217,8 +217,9 @@ If `check:effect-topology` reports manifests only under nested
 `.claude/worktrees`, `.pylon-local/cache`, or `.worktrees` paths,
 record that environmental failure separately. Do not delete, edit, or
 commit another operator's worktrees to make the scanner pass. The
-change-scoped tests, typecheck, STE check, and deployment build must
-still pass.
+change-scoped tests, typecheck, and deployment build must still pass. Run the
+public STE checks only if the change touches a configured public documentation
+path.
 
 ## 6. Deploy production
 

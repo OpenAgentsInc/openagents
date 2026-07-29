@@ -40,9 +40,9 @@
       "dispatch": false
     },
     "docs/sol/2026-07-19-asd-ste100-adoption-audit.md": {
-      "class": "current-status",
+      "class": "historical-analysis",
       "owner": "OpenAgents documentation",
-      "disposition": "retain-active-audit",
+      "disposition": "retain-historical",
       "dispatch": false
     },
     "docs/sol/2026-07-19-openagents-ide-zed-programmatic-ui-gap-analysis.md": {
