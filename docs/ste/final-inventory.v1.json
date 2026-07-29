@@ -45977,8 +45977,30 @@
       }
     },
     {
+      "path": "docs/teardowns/2026-07-29-superlogical-teardown.md",
+      "sha256": "7d907b57e8f2d11b6d5d3cf0656081b2c433648cdb96d292cb8cec9130ae2792",
+      "reason": "Final review of a converted document",
+      "profile": {
+        "ste_mode": "descriptive",
+        "risk": "legacy",
+        "source": null,
+        "replacement": null,
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ],
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z"
+      }
+    },
+    {
       "path": "docs/teardowns/README.md",
-      "sha256": "265c513c6e65c20e925f0f6b5e8732ffefce764ce421a0b34ddebd3004f2edb7",
+      "sha256": "14ec7ecba5e584e98faac84ec25b9e28c6a0cb67a81bc5f05008b5c9a34701de",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
