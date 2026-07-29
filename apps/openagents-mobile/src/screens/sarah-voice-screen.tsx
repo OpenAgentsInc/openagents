@@ -21,6 +21,7 @@ import {
 } from "../sarah-voice/client";
 import { sarahVoiceAppStateAction } from "../sarah-voice/app-state";
 import { makeSarahVoiceDeviceLinkRecovery } from "../sarah-voice/device-link";
+import { SARAH_BETA_VOICE_BASE_URL } from "../sarah-voice/environment";
 import { bytesToBase64 } from "../sarah-voice/protocol";
 import { makeSarahVoiceSessionVault } from "../sarah-voice/session-vault";
 import {
@@ -36,10 +37,7 @@ import { Badge, Card, Divider, EmptyState } from "../ui/surfaces";
 import { Text } from "../ui/text";
 import { colors, radius, spacing } from "../ui/theme";
 
-const OPENAGENTS_BASE_URL =
-  process.env.EXPO_PUBLIC_OPENAGENTS_BASE_URL?.trim() || "https://openagents.com";
-const SARAH_DEVICE_KEY_STORE =
-  OPENAGENTS_BASE_URL === "https://openagents.com" ? undefined : SARAH_STAGING_DEVICE_KEY_STORE_KEY;
+const SARAH_DEVICE_KEY_STORE = SARAH_STAGING_DEVICE_KEY_STORE_KEY;
 const PLAYBACK_DRAIN_POLL_MS = 40;
 const unsupportedMicrophoneFormat = "unsupported_microphone_format";
 
@@ -198,7 +196,7 @@ export const SarahVoiceScreen = ({ onClose }: { readonly onClose: () => void }) 
         }
         identityRef.current = identity;
         const client = new SarahVoiceClient({
-          baseUrl: OPENAGENTS_BASE_URL,
+          baseUrl: SARAH_BETA_VOICE_BASE_URL,
           publicKeyHex: identity.publicKeyHex,
           signer: identity.signer,
           vault: makeSarahVoiceSessionVault(

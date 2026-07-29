@@ -34,7 +34,7 @@ const OmegaNostrSessionResponseSchema = S.Struct({
   expiresIn: S.Number.check(S.isInt(), S.isGreaterThan(0)),
   user: S.Struct({
     userId: S.String.check(S.isMinLength(1), S.isMaxLength(256)),
-    provider: S.Literal("nostr"),
+    provider: S.Literals(["nostr", "github", "email"]),
   }),
 });
 
@@ -472,7 +472,7 @@ export class SarahVoiceClient {
         typeof error === "object" && error !== null && "message" in error && "retryable" in error
           ? (error as Readonly<{ message: string; retryable: boolean }>)
           : {
-              message: error instanceof Error ? error.message : "Sarah voice is unavailable.",
+              message: "Sarah voice could not verify the OpenAgents session. Try again.",
               retryable: true,
             };
       this.shouldRun = false;
@@ -627,9 +627,21 @@ export class SarahVoiceClient {
         failure: statusMessage(response.status, error),
       };
     }
-    const session = S.decodeUnknownSync(OmegaNostrSessionResponseSchema)(await response.json(), {
-      onExcessProperty: "preserve",
-    });
+    let session: typeof OmegaNostrSessionResponseSchema.Type;
+    try {
+      session = S.decodeUnknownSync(OmegaNostrSessionResponseSchema)(await response.json(), {
+        onExcessProperty: "preserve",
+      });
+    } catch {
+      return {
+        _tag: "Failure",
+        status: 502,
+        failure: {
+          message: "Sarah voice could not verify the OpenAgents session. Try again.",
+          retryable: true,
+        },
+      };
+    }
     return {
       _tag: "Success",
       value: {

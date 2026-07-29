@@ -22,6 +22,7 @@ import {
 } from "../ui/surfaces";
 import { Text } from "../ui/text";
 import { colors, radius, spacing } from "../ui/theme";
+import type { MobileUpdateProjection } from "../mobile-update";
 import type {
   OmegaDeviceBridgeState,
   OmegaMirrorRun,
@@ -44,6 +45,7 @@ export type OmegaHomeViewModel = Readonly<{
   threadDraft: string;
   commandLaneAvailable: boolean;
   commandNotice: string | null;
+  update: MobileUpdateProjection;
   /** The clock the relative stamps are read against, so rows agree. */
   now: number;
 }>;
@@ -56,6 +58,8 @@ export type OmegaHomeActions = Readonly<{
   onEnqueuePressed: () => void;
   onSteerPressed: () => void;
   onSarahVoicePressed: () => void;
+  onUpdatePressed: () => void;
+  onUpdateCopied: () => void;
 }>;
 
 export const connectionToneOf = (state: OmegaDeviceBridgeState): BadgeTone => {
@@ -297,6 +301,52 @@ const TranscriptTurn = ({
   );
 };
 
+const UpdateCard = ({
+  update,
+  actions,
+}: {
+  readonly update: MobileUpdateProjection;
+  readonly actions: OmegaHomeActions;
+}) => (
+  <Card
+    accessibilityLabel={`Update. ${update.statusLabel}. OpenAgents ${update.appLabel}. Sarah voice ${update.voiceEnvironment}.`}
+    style={$updateCard}
+  >
+    <View style={$rowHead}>
+      <Text preset="subheading">Update</Text>
+      <Badge
+        label={update.statusLabel}
+        tone={update.phase === "error" ? "danger" : update.phase === "current" ? "success" : "info"}
+      />
+    </View>
+    <Text preset="caption" color={colors.textDim}>
+      {`OpenAgents ${update.appLabel} · Update ${update.releaseFingerprint} · Runtime ${update.runtimeFingerprint}`}
+    </Text>
+    <Text preset="caption" color={colors.textDim} numberOfLines={1}>
+      {`Sarah voice · ${update.voiceEnvironment} · ${update.voiceHost}`}
+    </Text>
+    {update.phase === "downloaded" ? (
+      <Text preset="caption" color={colors.warn}>
+        Apply now, or fully close and open the app again.
+      </Text>
+    ) : null}
+    <View style={$updateActions}>
+      <Button
+        label={update.phase === "downloaded" ? "Apply update" : "Check update"}
+        preset="secondary"
+        onPress={actions.onUpdatePressed}
+        style={$compactButton}
+      />
+      <Button
+        label="Copy details"
+        preset="ghost"
+        onPress={actions.onUpdateCopied}
+        style={$compactButton}
+      />
+    </View>
+  </Card>
+);
+
 export const OmegaHomeView = ({
   model,
   actions,
@@ -345,6 +395,7 @@ export const OmegaHomeView = ({
             />
           }
         />
+        <UpdateCard update={model.update} actions={actions} />
         <View style={$pairing}>
           <Text preset="display">Mirror your desktop</Text>
           <Text preset="body" color={colors.textDim} style={$pairingBody}>
@@ -465,6 +516,7 @@ export const OmegaHomeView = ({
           </View>
         }
       />
+      <UpdateCard update={model.update} actions={actions} />
       <FlatList
         ref={listRef}
         data={model.activity}
@@ -521,6 +573,25 @@ const $pairing: ViewStyle = {
 };
 
 const $pairingBody: TextStyle = { maxWidth: 340 };
+
+const $updateCard: ViewStyle = {
+  marginHorizontal: spacing.medium,
+  marginTop: spacing.extraSmall,
+  gap: spacing.tiny,
+  paddingVertical: spacing.small,
+};
+
+const $updateActions: ViewStyle = {
+  flexDirection: "row",
+  alignItems: "center",
+  gap: spacing.extraSmall,
+};
+
+const $compactButton: ViewStyle = {
+  minHeight: 36,
+  paddingVertical: spacing.extraSmall,
+  paddingHorizontal: spacing.small,
+};
 
 const $feed: ViewStyle = {
   paddingHorizontal: spacing.medium,
