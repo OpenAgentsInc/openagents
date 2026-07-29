@@ -51,6 +51,53 @@ const request = (headers?: HeadersInit): Request =>
     method: 'POST',
   })
 
+const hostedLaneArming = {
+  fireworks: true,
+  hydralisk: false,
+  openrouter: false,
+  'openagents-network': false,
+  'vertex-anthropic': true,
+  'vertex-gemini': true,
+} as const
+
+const hostedRequest = (model: string): Request =>
+  new Request('https://openagents.com/v1/chat/completions', {
+    body: JSON.stringify({
+      messages: [{ content: 'hello', role: 'user' }],
+      model,
+    }),
+    method: 'POST',
+  })
+
+const makeHostedRegistry = () => {
+  const calls: Array<string> = []
+  const registry = new InferenceProviderRegistry()
+  const adapter = (adapterId: string): InferenceProviderAdapter => ({
+    complete: inferenceRequest => {
+      calls.push(adapterId)
+      return Effect.succeed({
+        content: `served by ${adapterId}`,
+        finishReason: 'stop',
+        servedModel: inferenceRequest.model,
+        usage: { completionTokens: 2, promptTokens: 3, totalTokens: 5 },
+      })
+    },
+    id: adapterId,
+    stream: inferenceRequest =>
+      Effect.succeed([
+        {
+          contentDelta: `served by ${adapterId}`,
+          finishReason: 'stop',
+          servedModel: inferenceRequest.model,
+          usage: { completionTokens: 2, promptTokens: 3, totalTokens: 5 },
+        },
+      ]),
+  })
+  registry.register(adapter(VERTEX_GEMINI_ADAPTER_ID))
+  registry.register(adapter(FIREWORKS_ADAPTER_ID))
+  return { calls, registry }
+}
+
 describe('chat completions no-spend admission', () => {
   test('rejects platform-funded inference instead of converting it into free capacity', async () => {
     const response = await Effect.runPromise(
@@ -265,4 +312,77 @@ describe('chat completions no-spend admission', () => {
       error: 'platform_funding_unavailable',
     })
   })
+
+  test('allows a verified OpenAuth account to select Gemini Flash', async () => {
+    const { calls, registry } = makeHostedRegistry()
+    const response = await Effect.runPromise(
+      handleChatCompletions(
+        hostedRequest(GEMINI_FLASH_MODEL_ID),
+        deps({
+          authenticate: async () => ({ accountRef: 'openauth:test-user' }),
+          laneArming: hostedLaneArming,
+          lanePlan: selectAdapterPlan,
+          registry,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(200)
+    expect(calls).toEqual([VERTEX_GEMINI_ADAPTER_ID])
+  })
+
+  test('denies hosted lanes to a non-internal agent account', async () => {
+    const { calls, registry } = makeHostedRegistry()
+    const response = await Effect.runPromise(
+      handleChatCompletions(
+        hostedRequest(GEMINI_FLASH_MODEL_ID),
+        deps({
+          laneArming: hostedLaneArming,
+          lanePlan: selectAdapterPlan,
+          registry,
+        }),
+      ),
+    )
+
+    expect(response.status).toBe(400)
+    expect(await response.json()).toMatchObject({
+      error: 'model_unavailable',
+      model: GEMINI_FLASH_MODEL_ID,
+    })
+    expect(calls).toHaveLength(0)
+  })
+
+  test.each([
+    [
+      GEMINI_FLASH_MODEL_ID,
+      { ...hostedLaneArming, 'vertex-gemini': false },
+    ],
+    [
+      KIMI_K3_FIREWORKS_MODEL_ID,
+      { ...hostedLaneArming, fireworks: false },
+    ],
+  ])(
+    'fails closed when the %s hosted lane is disabled',
+    async (model, laneArming) => {
+      const { calls, registry } = makeHostedRegistry()
+      const response = await Effect.runPromise(
+        handleChatCompletions(
+          hostedRequest(model),
+          deps({
+            authenticate: async () => ({ accountRef: 'openauth:test-user' }),
+            laneArming,
+            lanePlan: selectAdapterPlan,
+            registry,
+          }),
+        ),
+      )
+
+      expect(response.status).toBe(400)
+      expect(await response.json()).toMatchObject({
+        error: 'model_unavailable',
+        model,
+      })
+      expect(calls).toHaveLength(0)
+    },
+  )
 })
