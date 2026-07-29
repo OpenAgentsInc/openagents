@@ -290,29 +290,6 @@ const toolDefinitions = [
   },
   {
     type: 'function',
-    name: 'editor_open_path',
-    description:
-      'Open one workspace document when its exact workspace-relative path is already known.',
-    parameters: {
-      type: 'object',
-      additionalProperties: false,
-      required: ['target'],
-      properties: {
-        target: {
-          type: 'object',
-          additionalProperties: false,
-          required: ['workspaceRef', 'path'],
-          properties: {
-            workspaceRef: { type: 'string', minLength: 1, maxLength: 256 },
-            path: { type: 'string', minLength: 1, maxLength: 1024 },
-            documentVersion: { type: 'string', maxLength: 2048 },
-          },
-        },
-      },
-    },
-  },
-  {
-    type: 'function',
     name: 'editor_reveal_range',
     description: 'Reveal a bounded line range in one workspace document.',
     parameters: {
