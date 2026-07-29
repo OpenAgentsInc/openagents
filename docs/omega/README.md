@@ -97,6 +97,10 @@ Read these documents in this order:
 36. Read the
     [Omega network sniffer specification](./sniffer/README.md)
     (`OMEGA-SNIFF-01` through `OMEGA-SNIFF-08`).
+37. Read the
+    [Episode 263 Omega alpha release gap analysis](./2026-07-29-episode-263-alpha-release-gap-analysis.md)
+    before claiming or releasing the three-mode alpha described by the
+    owner-locked Episode 263 script.
 
 The Omega roadmap owns the implementation order.
 The release-readiness audit owns the current brand and package gap.
@@ -178,6 +182,12 @@ The network sniffer specification owns the proposed capture boundary for any
 independent local application. It defines verified application identity, the
 durable file, exact fidelity labels, sensitive data rules, and the Omega Agent
 inspection tool.
+
+The Episode 263 alpha release gap analysis compares the owner-locked spoken
+promise with the current installed product shape. It owns the no-go verdict,
+the restoration packets for Direct Agent, Omega Agent, Sarah, tester channels,
+and Omega downloads, and the installed-candidate acceptance matrix. It does
+not itself admit the public claim or promote a build.
 
 The accepted plan owns the product and repository boundary.
 The master roadmap owns priority across OpenAgents programs.
