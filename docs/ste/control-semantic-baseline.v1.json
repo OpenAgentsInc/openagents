@@ -9250,7 +9250,7 @@
       ]
     },
     "apps/openagents.com/INVARIANTS.md": {
-      "sourceSha256": "d7c40dfdc2035fc21fa2579a35abceb3f25e609f47c1563b0423bfe59c02855f",
+      "sourceSha256": "6f6536ac8b19fac0a404f0cf01f47da03c56930bfc86713d35500dc1aa60cfe3",
       "normativeKeywords": [
         "MAY",
         "MUST",
@@ -9622,6 +9622,7 @@
         "POST /api/sync/push",
         "POST /api/traces",
         "POST /api/traces/upload",
+        "POST /api/v1/chat/completions",
         "POST /mpp/v1/chat/completions",
         "POST /spark/funding-invoice",
         "POST|GET /api/operator/gym/full-trace-archives",
@@ -9662,6 +9663,7 @@
         "accepted",
         "accepted",
         "accessMode",
+        "accountRef",
         "accountRef=tokens,...",
         "account_too_new",
         "accounts/fireworks/models/deepseek-v4-flash",
@@ -10280,6 +10282,7 @@
         "openagents/khala",
         "openagents/khala",
         "openagents://auth",
+        "openauth:{userId}",
         "openauth_agent_links",
         "openauth_agent_links",
         "openauth_storage",
@@ -11392,6 +11395,7 @@
         "2026-07",
         "2026-07",
         "2026-07",
+        "2026-07",
         "21",
         "21",
         "213",
@@ -11414,6 +11418,7 @@
         "27",
         "27",
         "27",
+        "28",
         "28",
         "28",
         "28",
