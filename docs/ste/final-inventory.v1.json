@@ -45048,7 +45048,7 @@
     },
     {
       "path": "docs/teardowns/2026-07-10-codex-agent-runtime-teardown.md",
-      "sha256": "77b1704c12e04f950f9c28db865ccff9773d42c68cbb58215755e56623112d82",
+      "sha256": "92c8ce6fa187fae0647c0b03759f81ef05d733fccf5184be0ab06df141a88550",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",

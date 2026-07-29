@@ -1033,10 +1033,10 @@ principal files at the updated revision are:
 
 [source] App-server installs this extension into the shared extension registry
 with thread, config, turn, token-usage, tool-lifecycle, and tool contributors.
-The extension owns runtime policy; app-server remains the external control and
-notification boundary; the state crate owns SQL; and the TUI and Python SDK are
-clients. This extraction is now real product wiring, not the unwired extension
-sketch present in the earlier source snapshot.
+The extension owns runtime policy. App-server remains the external control and
+notification boundary. The state crate owns SQL, while the TUI and Python SDK
+are clients. This extraction is now real product wiring, not the unwired
+extension sketch present in the earlier source snapshot.
 
 #### 16.5.2 Availability and ownership
 
@@ -1044,9 +1044,9 @@ sketch present in the earlier source snapshot.
 registered at thread start and unregistered at thread stop. Goal tools and
 automatic continuation are available only when all of the following hold:
 
-- the feature remains enabled in the effective config;
-- persistent thread state is available;
-- the thread is not a review subagent; and
+- the feature remains enabled in the effective config.
+- persistent thread state is available.
+- the thread is not a review subagent.
 - a live runtime and thread manager can resolve the thread.
 
 [source] Ephemeral threads cannot own goals. App-server rejects them with an
@@ -1061,8 +1061,8 @@ but it neither sees the goal tools nor owns the parent's goal.
 | --- | --- |
 | User/TUI | create, read, edit, replace, pause, resume, and clear |
 | Generic app-server client | all TUI operations, set/remove budget, and submit any protocol status |
-| Model | read; create only when explicitly requested; change status only to `complete` or `blocked` |
-| Runtime | account usage; transition to `budget_limited`, `usage_limited`, or `blocked` after a terminal turn error; start continuations |
+| Model | Read, create only when explicitly requested, and change status only to `complete` or `blocked` |
+| Runtime | Account usage, transition to `budget_limited`, `usage_limited`, or `blocked` after a terminal turn error, and start continuations |
 | Store | validate identity/status filters and atomically normalize budget crossings |
 
 [inferred] The model is intentionally not the workflow administrator. It can
@@ -1075,11 +1075,11 @@ control.
 [source] Goals live in a separately migrated SQLite database named
 `goals_1.sqlite`. `thread_goals` has one row per thread:
 
-- `thread_id`, the primary key;
-- `goal_id`, a generated logical-goal identity;
-- `objective` and `status`;
-- nullable `token_budget`;
-- cumulative `tokens_used` and `time_used_seconds`; and
+- `thread_id`, the primary key.
+- `goal_id`, a generated logical-goal identity.
+- `objective` and `status`.
+- nullable `token_budget`.
+- cumulative `tokens_used` and `time_used_seconds`.
 - creation and update timestamps.
 
 [schema] The six persisted statuses are `active`, `paused`, `blocked`,
@@ -1095,7 +1095,7 @@ and must allow one explicit recovery turn before continuation begins. The
 foreign key cascades on goal deletion.
 
 [source] `goal_id` is the concurrency boundary. Accounting and external
-mutations can pass `expected_goal_id`; stale work then updates zero rows rather
+mutations can pass `expected_goal_id`. Stale work then updates zero rows rather
 than charging or mutating a replacement goal. A per-runtime goal-state
 semaphore serializes read/start and prepare/write windows, while a separate
 accounting semaphore prevents parallel tool completions from charging the same
@@ -1125,7 +1125,7 @@ omitted means “keep,” `null` means “remove the budget,” and a number mea
 whose usage is already at or above its budget yields `budget_limited`.
 Lowering a budget below existing usage immediately does the same. A
 budget-limited goal cannot be converted to paused or blocked merely to evade
-the limit; activating it while still over budget also leaves it limited.
+the limit. Activating it while still over budget also leaves it limited.
 Completion can still supersede the budget status if the work is genuinely
 done.
 
@@ -1140,10 +1140,10 @@ so the append-only history can reconcile the indexed goal state.
 long-running task” and remains available during a running task:
 
 - `/goal` reads and renders the current status, objective, elapsed time, token
-  use, optional budget, and status-appropriate follow-up commands;
-- `/goal <objective>` creates a goal, or asks before replacing unfinished work;
-- `/goal edit` opens an editor;
-- `/goal pause` and `/goal resume` set `paused` and `active`; and
+  use, optional budget, and status-appropriate follow-up commands.
+- `/goal <objective>` creates a goal, or asks before replacing unfinished work.
+- `/goal edit` opens an editor.
+- `/goal pause` and `/goal resume` set `paused` and `active`.
 - `/goal clear` deletes the goal.
 
 [source] Completed goals can be replaced without confirmation. Editing active,
@@ -1159,7 +1159,7 @@ app-server, and SDK layers.
 
 [source, test] Goal composition now preserves richer input instead of dropping
 attachments. Pasted text and local images are copied into a UUID directory
-under the app-server host's Codex home and referenced from the objective;
+under the app-server host's Codex home and referenced from the objective.
 remote image URLs become a referenced-URL section. If the expanded objective
 would exceed 4,000 characters, the full text is written to
 `goal-objective.md` and the stored objective becomes a validated instruction to
@@ -1177,9 +1177,9 @@ This prevents the idle hook from immediately undoing the user's stop intent.
 function tools:
 
 - `get_goal()` returns the current goal, remaining tokens, and no completion
-  report;
+  report.
 - `create_goal(objective, token_budget?)` creates only when the user or a
-  higher-priority instruction explicitly requested a goal; and
+  higher-priority instruction explicitly requested a goal.
 - `update_goal(status)` accepts only `complete` or `blocked`.
 
 [source] The create specification forbids silently promoting ordinary tasks
@@ -1197,7 +1197,7 @@ means the goal remains active.
 recur in the original/user-triggered turn and enough consecutive automatic
 continuations to total at least three turns. The agent must be at an actual
 impasse requiring user input or external state. Resuming a blocked goal starts
-a fresh audit; difficulty, uncertainty, incomplete work, or a useful
+a fresh audit. Difficulty, uncertainty, incomplete work, or a useful
 clarification request is not enough.
 
 [source] `update_goal` first accounts the live turn with a status-aware mode,
@@ -1211,15 +1211,15 @@ the user.
 [source] At turn start, the extension records the current cumulative token
 usage as a baseline and associates the turn with the current `goal_id` when the
 goal is active or already budget-limited. Token notifications update an
-in-memory current total; persistent charging happens at meaningful lifecycle
+in-memory current total. Persistent charging happens at meaningful lifecycle
 boundaries:
 
-- after a successfully handled tool call;
-- after a handler-executed tool failure;
-- inside `update_goal`, before the status mutation;
-- at normal turn stop;
-- at turn abort;
-- before an external set, pause, completion, or clear; and
+- after a successfully handled tool call.
+- after a handler-executed tool failure.
+- inside `update_goal`, before the status mutation.
+- at normal turn stop.
+- at turn abort.
+- before an external set, pause, completion, or clear.
 - before a source goal is copied into a fork.
 
 [source] Calls blocked before execution, failures before a handler runs, and
@@ -1259,9 +1259,9 @@ gate to start a regular turn if idle.
 [source] The core idle gate atomically reserves the turn slot and rejects
 automatic work when:
 
-- trigger-turn mailbox work is waiting, because explicit user/agent work wins;
-- collaboration mode is Plan;
-- a task or review turn is already active; or
+- trigger-turn mailbox work is waiting, because explicit user/agent work wins.
+- collaboration mode is Plan.
+- a task or review turn is already active.
 - the reservation is lost to concurrent work.
 
 These are deferrals, not goal outcomes. The goal stays active and may be
@@ -1274,11 +1274,11 @@ status changed before launch.
 cumulative token use, budget, and remaining tokens. It tells the model to:
 
 - preserve the real objective across turns instead of shrinking success to the
-  current turn;
-- inspect current worktree and external state rather than trust old narration;
-- use a visible plan when useful but not confuse planning with execution;
-- optimize for the requested end state rather than an easier passing subset;
-- prove every requirement before completing; and
+  current turn.
+- inspect current worktree and external state rather than trust old narration.
+- use a visible plan when useful but not confuse planning with execution.
+- optimize for the requested end state rather than an easier passing subset.
+- prove every requirement before completing.
 - apply the strict repeated-blocker audit before blocking.
 
 [source] Two related steering messages can enter a currently running turn. A
@@ -1295,13 +1295,13 @@ not interchangeable.
 
 | Condition | Persisted result | Auto-continue? | Can resume? | Initiator |
 | --- | --- | --- | --- | --- |
-| Objective proved | `complete` | No | Not as same goal; edit/replace starts active work | Model `update_goal`, or external client |
+| Objective proved | `complete` | No | Not as the same goal. Edit or replacement starts active work | Model `update_goal`, or external client |
 | Same blocker repeats for at least three goal turns and no progress is possible | `blocked` | No | Yes, with a fresh blocker audit | Model `update_goal` |
 | Non-retryable turn error or exhausted retries | `blocked` | No | Yes | Runtime safety stop |
 | User pauses or TUI/Python operation is interrupted/cancelled | `paused` | No | Yes | Client/user |
 | Account/model usage limit ends the turn | `usage_limited` | No | Yes | Runtime |
 | Accounted tokens reach budget | `budget_limited` | No after the in-flight turn wraps | Only after budget removal/increase makes activation valid | Store/runtime |
-| Client clears goal | Row deleted | No | No; create a new goal | Client/user |
+| Client clears goal | Row deleted | No | No. Create a new goal | Client/user |
 | Ordinary turn ends while status remains active | `active` | Yes, subject to idle gates | Already active | Extension |
 | Busy, Plan mode, pending mailbox work, or fork deferral | Unchanged | Deferred | Not applicable | Scheduler/gate |
 
@@ -1309,7 +1309,7 @@ not interchangeable.
 alone does not mark the goal complete or blocked. The TUI explicitly sends a
 pause when the user interrupts, and the Python logical-goal client also pauses
 before interrupting during cancellation. A lower-level client that sends only
-`turn/interrupt` has not expressed “stop the goal”; if the row remains active,
+`turn/interrupt` has not expressed “stop the goal”. If the row remains active,
 the next idle lifecycle may continue it.
 
 [source] A usage-limit error maps to `usage_limited`. Other terminal turn
@@ -1330,11 +1330,11 @@ goals remain terminal.
 experimental persistent fork can request `deferGoalContinuation: true`. In that
 case app-server:
 
-1. flushes live source accounting;
+1. flushes live source accounting.
 2. copies the complete goal snapshot—including goal ID, status, budget,
-   counters, and timestamps—to the new thread ID;
-3. writes a continuation-deferral row in the same transaction;
-4. restores the fork's runtime without launching work; and
+   counters, and timestamps—to the new thread ID.
+3. writes a continuation-deferral row in the same transaction.
+4. restores the fork's runtime without launching work.
 5. clears the marker when the fork's first explicit turn starts, allowing
    normal continuation afterward.
 
@@ -1349,7 +1349,7 @@ goal deferral because they cannot persist either row.
 [schema] V2 app-server exposes `thread/goal/set`, `thread/goal/get`, and
 `thread/goal/clear`, plus `thread/goal/updated` and
 `thread/goal/cleared` notifications. The public goal DTO carries thread ID,
-objective, status, optional budget, cumulative token/time usage, and timestamps;
+objective, status, optional budget, cumulative token/time usage, and timestamps.
 the internal `goal_id` remains a storage/runtime concurrency detail.
 
 [source] App-server requires a materialized thread, reconciles rollout and
