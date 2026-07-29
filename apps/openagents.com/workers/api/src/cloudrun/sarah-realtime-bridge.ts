@@ -244,8 +244,27 @@ const encodeServerAudio = (
 const toolDefinitions = [
   {
     type: 'function',
+    name: 'start_agent_thread',
+    description:
+      'Delegate a bounded workspace task to a full Omega coding agent. Use this as the primary capability for repository inspection, editor testing, multi-file work, shell commands, builds, tests, Git, or any task the direct editor tools cannot complete. Prefer foreground when the owner is actively waiting for the result and background for longer independent work. The user must confirm before execution.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['message', 'presentation'],
+      properties: {
+        message: { type: 'string', minLength: 1, maxLength: 16_384 },
+        presentation: {
+          type: 'string',
+          enum: ['foreground', 'background'],
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
     name: 'editor_context_read',
-    description: 'Read a bounded line range from one workspace document.',
+    description:
+      'Read a bounded line range when an exact workspace-relative file target is already known. If the target is not known, delegate discovery to an Omega agent instead of asking the owner to supply file contents or editor state.',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -272,7 +291,8 @@ const toolDefinitions = [
   {
     type: 'function',
     name: 'editor_open_path',
-    description: 'Open one workspace document.',
+    description:
+      'Open one workspace document when its exact workspace-relative path is already known.',
     parameters: {
       type: 'object',
       additionalProperties: false,
@@ -333,25 +353,15 @@ const toolDefinitions = [
       properties: { target: { type: 'object' } },
     },
   },
-  {
-    type: 'function',
-    name: 'start_agent_thread',
-    description:
-      'Start one Omega agent thread with a bounded message. The user must confirm before execution.',
-    parameters: {
-      type: 'object',
-      additionalProperties: false,
-      required: ['message', 'presentation'],
-      properties: {
-        message: { type: 'string', minLength: 1, maxLength: 16_384 },
-        presentation: {
-          type: 'string',
-          enum: ['foreground', 'background'],
-        },
-      },
-    },
-  },
 ] as const
+
+const SARAH_OMEGA_INSTRUCTIONS = `You are Sarah in Omega: the owner's persistent orchestrator and fleet commander in the command center. Your job is to turn the owner's intent into bounded, accountable execution. Acting as Sarah does not create authority: follow the authenticated owner's current instruction, stay inside the typed capabilities supplied in this session, and never invent access, memory, results, or actions.
+
+Default to command, inspection, and delegation rather than conversation. Use the direct editor tools when the exact workspace-relative target is known. For repository discovery, editor-command testing, multi-file work, shell commands, builds, tests, Git, debugging, or any task beyond those narrow tools, call start_agent_thread with a complete objective, relevant constraints, and a concrete verification target. Do not ask the owner to paste file contents, enumerate editor state, run commands, or gather facts that an Omega agent can inspect. Ask only when authority is missing, a consequential choice truly belongs to the owner, or the required information is inaccessible to both you and the delegated agent.
+
+Speak like a calm fleet commander, not a social companion. Be short, direct, certain only where evidence permits, and operationally useful. Lead with the situation, state the decision, then name the action or status. Avoid small talk, generic offers to help, false intimacy, corporate hype, conversational filler, and repeated questions. Urgency must be factual, never theatrical.
+
+Keep claims honest. Distinguish observed, submitted, in progress, blocked, and completed. Never say a tool ran, an agent finished, a file changed, or a test passed until the corresponding tool outcome or receipt establishes it. When a tool requires confirmation, state the proposed action in one sentence and wait for the command-center approval flow.`
 
 export const sessionUpdateForSarahClientProfile = (
   clientProfile: SarahVoiceSessionRecord['clientProfile'],
@@ -364,8 +374,7 @@ export const sessionUpdateForSarahClientProfile = (
       clientProfile === 'mobile_voice_only'
         ? 'You are Sarah in the OpenAgents mobile app. Have a voice conversation only. ' +
           'Do not request, perform, or claim any editor, file, URL, shell, Git, payment, or device action.'
-        : 'You are Sarah in Omega. Use only the supplied editor tools. ' +
-          'Never claim that a tool ran until its tool outcome says it ran.',
+        : SARAH_OMEGA_INSTRUCTIONS,
     output_modalities: ['audio'] as const,
     audio: {
       input: {
