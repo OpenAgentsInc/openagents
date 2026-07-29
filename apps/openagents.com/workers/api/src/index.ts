@@ -13972,6 +13972,8 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
       Effect.promise(() =>
         handleSarahRealtimeVoiceSessionRequest(
           {
+            audit: (event, fields) =>
+              logWorkerRouteInfo(`sarah_voice_${event}`, fields),
             authenticateNostrSession:
               omegaNostrSessionService.authenticateVerified,
             config: sarahRealtimeVoiceConfigForEnv,
@@ -13988,6 +13990,24 @@ const allExactRoutes: ReadonlyArray<ExactRoute<Env>> = [
                 store: makeSarahRealtimeVoiceStore(client.sql),
                 close: client.end,
               }
+            },
+            isStagingOwnerSession: async (session, workerEnv) => {
+              const enabled = ['1', 'true', 'on'].includes(
+                workerEnv.SARAH_STAGING_OWNER_VOICE_ENTITLEMENT_ENABLED?.trim().toLowerCase() ??
+                  '',
+              )
+              if (!enabled) return false
+              try {
+                const host = new URL(workerEnv.OPENAGENTS_APP_URL ?? '')
+                  .hostname
+                if (!host.startsWith('openagents-monolith-staging-')) {
+                  return false
+                }
+              } catch {
+                return false
+              }
+              const owner = await resolveOmegaNostrOwner(workerEnv)
+              return owner?.userId === session.user.userId
             },
             requireUserBearerSession,
             userIdFromSession: session => session.user.userId,

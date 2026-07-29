@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test";
 import { runMigrations } from "./migrate.js";
 import {
   SarahVoiceConcurrentSessionError,
+  SarahVoiceInsufficientCreditError,
   makeSarahRealtimeVoiceStore,
 } from "./sarah-realtime-voice-store.js";
 import type { SyncSql } from "./sql.js";
@@ -56,6 +57,8 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       generation: 1,
       disclosureRef: "disclosure-test",
       clientProfile: "mobile_voice_only",
+      creditMode: "metered",
+      entitlementRef: null,
       reservedMsat: 1_000,
       ticketExpiresAt: "2026-07-28T12:01:00.000Z",
       sessionExpiresAt: "2026-07-28T12:10:00.000Z",
@@ -134,5 +137,124 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       `;
     expect(Number(afterReplay?.balance_msat)).toBe(9_750);
     expect(Number(afterReplay?.held_msat)).toBe(0);
+  });
+
+  test("records entitled usage without a credit hold or debit", async () => {
+    const store = makeSarahRealtimeVoiceStore(sql as unknown as SyncSql);
+    await sql`
+      INSERT INTO users (
+        id, kind, display_name, status, created_at, updated_at
+      ) VALUES (
+        'user-sarah-staging-owner', 'human', 'Staging Owner', 'active',
+        '2026-07-28T12:00:00.000Z', '2026-07-28T12:00:00.000Z'
+      )
+    `;
+    const entitlement = await store.ensureStagingOwnerEntitlement({
+      ownerUserId: "user-sarah-staging-owner",
+      entitlementRef: "sarah_voice_entitlement:staging_owner_v1",
+      nowIso: "2026-07-28T12:00:00.000Z",
+      expiresAt: "2026-08-04T12:00:00.000Z",
+    });
+    expect(entitlement).toMatchObject({
+      entitlementRef: "sarah_voice_entitlement:staging_owner_v1",
+      ownerUserId: "user-sarah-staging-owner",
+    });
+
+    await store.reserve({
+      sessionRef: "voice-entitled-session-1",
+      reservationRef: "voice-entitled-reservation-1",
+      ownerUserId: "user-sarah-staging-owner",
+      ownerActorRef: "agent:user-sarah-staging-owner",
+      deviceRef: "omega-entitled",
+      threadRef: "thread-entitled",
+      generation: 1,
+      ticketDigest: "c".repeat(64),
+      disclosureRef: "disclosure-entitled",
+      clientProfile: "mobile_voice_only",
+      creditMode: "staging_owner_entitlement",
+      entitlementRef: entitlement?.entitlementRef ?? null,
+      reservedMsat: 0,
+      ticketExpiresAt: "2026-07-28T12:01:00.000Z",
+      sessionExpiresAt: "2026-07-28T12:05:00.000Z",
+      nowIso: "2026-07-28T12:00:00.000Z",
+    });
+    await store.connect({
+      sessionRef: "voice-entitled-session-1",
+      ticketDigest: "c".repeat(64),
+      nowIso: "2026-07-28T12:00:30.000Z",
+    });
+    const usage = await store.recordUsage({
+      sessionRef: "voice-entitled-session-1",
+      usage: {
+        providerResponseRef: "entitled-response-1",
+        inputTokens: 100,
+        outputTokens: 50,
+        cachedInputTokens: 0,
+        audioInputTokens: 100,
+        audioOutputTokens: 50,
+        chargeMsat: 500,
+        observedAt: "2026-07-28T12:01:00.000Z",
+      },
+    });
+    expect(usage).toEqual({
+      chargedMsat: 500,
+      reservedMsat: 0,
+      creditLimitReached: false,
+    });
+    const settled = await store.settle({
+      sessionRef: "voice-entitled-session-1",
+      closeReason: "user_stop",
+      nowIso: "2026-07-28T12:02:00.000Z",
+    });
+    expect(settled).toMatchObject({
+      state: "settled",
+      creditMode: "staging_owner_entitlement",
+      reservedMsat: 0,
+      chargedMsat: 500,
+    });
+    const [payment] = await sql`
+      SELECT id FROM pay_ins
+      WHERE idempotency_key = 'sarah:voice:settle:voice-entitled-session-1'
+    `;
+    expect(payment).toBeUndefined();
+
+    await sql`
+      UPDATE sarah_voice_credit_entitlements
+      SET state = 'revoked',
+          revoked_at = '2026-07-28T12:03:00.000Z',
+          revocation_actor_ref = 'operator:test',
+          revocation_reason = 'Test revocation',
+          updated_at = '2026-07-28T12:03:00.000Z'
+      WHERE entitlement_ref = 'sarah_voice_entitlement:staging_owner_v1'
+    `;
+    expect(
+      await store.ensureStagingOwnerEntitlement({
+        ownerUserId: "user-sarah-staging-owner",
+        entitlementRef: "sarah_voice_entitlement:staging_owner_v1",
+        nowIso: "2026-07-28T12:04:00.000Z",
+        expiresAt: "2026-08-04T12:04:00.000Z",
+      }),
+    ).toBeUndefined();
+
+    await expect(
+      store.reserve({
+        sessionRef: "voice-unknown-session-1",
+        reservationRef: "voice-unknown-reservation-1",
+        ownerUserId: "user-sarah-staging-owner",
+        ownerActorRef: "agent:user-sarah-staging-owner",
+        deviceRef: "omega-unknown",
+        threadRef: "thread-unknown",
+        generation: 1,
+        ticketDigest: "d".repeat(64),
+        disclosureRef: "disclosure-unknown",
+        clientProfile: "mobile_voice_only",
+        creditMode: "metered",
+        entitlementRef: null,
+        reservedMsat: 1,
+        ticketExpiresAt: "2026-07-28T12:05:00.000Z",
+        sessionExpiresAt: "2026-07-28T12:09:00.000Z",
+        nowIso: "2026-07-28T12:04:00.000Z",
+      }),
+    ).rejects.toBeInstanceOf(SarahVoiceInsufficientCreditError);
   });
 });

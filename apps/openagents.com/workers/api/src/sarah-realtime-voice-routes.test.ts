@@ -50,6 +50,8 @@ const makeDependencies = (
     generation: input.generation,
     disclosureRef: input.disclosureRef,
     clientProfile: input.clientProfile,
+    creditMode: input.creditMode,
+    entitlementRef: input.entitlementRef,
     state: 'reserved' as const,
     reservedMsat: input.reservedMsat,
     chargedMsat: 0,
@@ -57,12 +59,16 @@ const makeDependencies = (
     sessionExpiresAt: input.sessionExpiresAt,
     settlementReceiptRef: null,
   })),
+  ensureStagingOwnerEntitlement: SarahRealtimeVoiceStore['ensureStagingOwnerEntitlement'] = vi.fn(
+    async () => undefined,
+  ),
 ) => {
   const close = vi.fn(async () => undefined)
   const store = {
     reserve,
     connect: vi.fn(),
     recordUsage: vi.fn(),
+    ensureStagingOwnerEntitlement,
     settle: vi.fn(),
     sweepExpired: vi.fn(),
   } as unknown as SarahRealtimeVoiceStore
@@ -83,6 +89,7 @@ const makeDependencies = (
       now: () => Date.UTC(2026, 6, 28, 12, 0, 0),
     },
     reserve,
+    ensureStagingOwnerEntitlement,
   }
 }
 
@@ -209,6 +216,81 @@ describe('managed Sarah Realtime voice session route', () => {
     expect(response.status).toBe(402)
     expect(await response.json()).toEqual({ error: 'insufficient_credit' })
     expect(fixture.close).toHaveBeenCalledOnce()
+  })
+
+  test('waives only the staging owner credit hold', async () => {
+    const fixture = makeDependencies(
+      undefined,
+      vi.fn(async input => ({
+        entitlementRef: input.entitlementRef,
+        ownerUserId: input.ownerUserId,
+        expiresAt: input.expiresAt,
+      })),
+    )
+    const audit = vi.fn()
+    const response = await handleSarahRealtimeVoiceSessionRequest(
+      {
+        ...fixture.dependencies,
+        audit,
+        isStagingOwnerSession: async () => true,
+      },
+      request({
+        schema: SARAH_VOICE_PROTOCOL_VERSION,
+        identity,
+        disclosureRef: 'disclosure-1',
+      }),
+      {},
+      ctx,
+    )
+
+    expect(response.status).toBe(201)
+    expect(await response.json()).toMatchObject({ reservedCreditMsat: 0 })
+    expect(fixture.reserve).toHaveBeenCalledWith(
+      expect.objectContaining({
+        creditMode: 'staging_owner_entitlement',
+        entitlementRef: 'sarah_voice_entitlement:staging_owner_v1',
+        reservedMsat: 0,
+      }),
+    )
+    expect(audit).toHaveBeenCalledWith(
+      'staging_owner_entitlement_applied',
+      expect.objectContaining({
+        entitlementRef: 'sarah_voice_entitlement:staging_owner_v1',
+        ownerDigest: expect.stringMatching(/^[a-f0-9]{64}$/u),
+      }),
+    )
+  })
+
+  test('keeps an unknown account on the normal credit gate', async () => {
+    const fixture = makeDependencies(
+      vi.fn(async () => {
+        throw new SarahVoiceInsufficientCreditError('insufficient')
+      }),
+    )
+    const response = await handleSarahRealtimeVoiceSessionRequest(
+      {
+        ...fixture.dependencies,
+        isStagingOwnerSession: async () => false,
+      },
+      request({
+        schema: SARAH_VOICE_PROTOCOL_VERSION,
+        identity,
+        disclosureRef: 'disclosure-1',
+      }),
+      {},
+      ctx,
+    )
+
+    expect(response.status).toBe(402)
+    expect(await response.json()).toEqual({ error: 'insufficient_credit' })
+    expect(fixture.ensureStagingOwnerEntitlement).not.toHaveBeenCalled()
+    expect(fixture.reserve).toHaveBeenCalledWith(
+      expect.objectContaining({
+        creditMode: 'metered',
+        entitlementRef: null,
+        reservedMsat: 25_000,
+      }),
+    )
   })
 
   test('exchanges a body-bound NIP-98 proof and one-use challenge for the normal ticket and bearer session', async () => {

@@ -2,6 +2,13 @@ import type { SyncSql, SyncTransactionSql } from "./sql.js";
 
 export type SarahVoiceSessionState = "reserved" | "connected" | "settled" | "released" | "failed";
 export type SarahVoiceClientProfile = "omega_editor" | "mobile_voice_only";
+export type SarahVoiceCreditMode = "metered" | "staging_owner_entitlement";
+
+export type SarahVoiceCreditEntitlement = Readonly<{
+  entitlementRef: string;
+  ownerUserId: string;
+  expiresAt: string;
+}>;
 
 export type SarahVoiceSessionRecord = Readonly<{
   sessionRef: string;
@@ -12,6 +19,8 @@ export type SarahVoiceSessionRecord = Readonly<{
   generation: number;
   disclosureRef: string;
   clientProfile: SarahVoiceClientProfile;
+  creditMode: SarahVoiceCreditMode;
+  entitlementRef: string | null;
   state: SarahVoiceSessionState;
   reservedMsat: number;
   chargedMsat: number;
@@ -62,6 +71,8 @@ type SessionRow = Readonly<{
   generation: number | string;
   disclosure_ref: string;
   client_profile: SarahVoiceClientProfile;
+  credit_mode: SarahVoiceCreditMode;
+  entitlement_ref: string | null;
   state: SarahVoiceSessionState;
   reserved_msat: number | string;
   charged_msat: number | string;
@@ -87,6 +98,8 @@ const toRecord = (row: SessionRow): SarahVoiceSessionRecord => ({
   generation: toSafeInteger(row.generation, "generation"),
   disclosureRef: row.disclosure_ref,
   clientProfile: row.client_profile,
+  creditMode: row.credit_mode,
+  entitlementRef: row.entitlement_ref,
   state: row.state,
   reservedMsat: toSafeInteger(row.reserved_msat, "reserved_msat"),
   chargedMsat: toSafeInteger(row.charged_msat, "charged_msat"),
@@ -106,6 +119,79 @@ const isUniqueViolation = (error: unknown): boolean =>
 export type SarahRealtimeVoiceStore = ReturnType<typeof makeSarahRealtimeVoiceStore>;
 
 export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
+  const ensureStagingOwnerEntitlement = async (
+    input: Readonly<{
+      ownerUserId: string;
+      entitlementRef: string;
+      expiresAt: string;
+      nowIso: string;
+    }>,
+  ): Promise<SarahVoiceCreditEntitlement | undefined> => {
+    try {
+      return await sql.begin(async (tx) => {
+        const inserted = (await tx`
+          INSERT INTO sarah_voice_credit_entitlements (
+            entitlement_ref, owner_user_id, environment, state,
+            activated_at, expires_at, activation_reason,
+            activation_actor_ref, activation_source, updated_at
+          )
+          SELECT ${input.entitlementRef}, ${input.ownerUserId}, 'staging',
+            'active', ${input.nowIso}, ${input.expiresAt},
+            'Owner-approved staging Sarah voice access for issue 9272',
+            'operator:staging_owner_voice_entitlement',
+            'cloudrun:staging_owner_account_match', ${input.nowIso}
+          FROM users
+          WHERE id = ${input.ownerUserId}
+            AND status = 'active'
+            AND deleted_at IS NULL
+          ON CONFLICT (owner_user_id) DO NOTHING
+          RETURNING entitlement_ref
+        `) as ReadonlyArray<{ entitlement_ref: string }>;
+
+        if (first(inserted) !== undefined) {
+          await tx`
+            INSERT INTO sarah_voice_credit_entitlement_audit (
+              event_ref, entitlement_ref, action, actor_ref, reason,
+              source, occurred_at
+            ) VALUES (
+              ${`${input.entitlementRef}:activated`}, ${input.entitlementRef},
+              'activated', 'operator:staging_owner_voice_entitlement',
+              'Owner-approved staging Sarah voice access for issue 9272',
+              'cloudrun:staging_owner_account_match', ${input.nowIso}
+            )
+            ON CONFLICT (event_ref) DO NOTHING
+          `;
+        }
+
+        const rows = (await tx`
+          SELECT entitlement_ref, owner_user_id, expires_at
+          FROM sarah_voice_credit_entitlements
+          WHERE owner_user_id = ${input.ownerUserId}
+            AND entitlement_ref = ${input.entitlementRef}
+            AND environment = 'staging'
+            AND state = 'active'
+            AND activated_at <= ${input.nowIso}
+            AND expires_at > ${input.nowIso}
+          FOR SHARE
+        `) as ReadonlyArray<{
+          entitlement_ref: string;
+          owner_user_id: string;
+          expires_at: string;
+        }>;
+        const row = first(rows);
+        return row === undefined
+          ? undefined
+          : {
+              entitlementRef: row.entitlement_ref,
+              ownerUserId: row.owner_user_id,
+              expiresAt: row.expires_at,
+            };
+      });
+    } catch (error) {
+      throw new SarahVoiceStorageError("Sarah voice entitlement lookup failed", error);
+    }
+  };
+
   const reserve = async (
     input: Readonly<{
       sessionRef: string;
@@ -118,6 +204,8 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
       ticketDigest: string;
       disclosureRef: string;
       clientProfile: SarahVoiceClientProfile;
+      creditMode: SarahVoiceCreditMode;
+      entitlementRef: string | null;
       reservedMsat: number;
       ticketExpiresAt: string;
       sessionExpiresAt: string;
@@ -138,35 +226,55 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           throw new SarahVoiceSessionRejectedError("The user is not active");
         }
 
-        const balances = (await tx`
-          UPDATE agent_balances
-          SET held_msat = held_msat + ${input.reservedMsat},
-              updated_at = ${input.nowIso}
-          WHERE actor_ref = ${input.ownerActorRef}
-            AND balance_msat - held_msat >= ${input.reservedMsat}
-          RETURNING actor_ref
-        `) as ReadonlyArray<{ actor_ref: string }>;
-        if (first(balances) === undefined) {
-          throw new SarahVoiceInsufficientCreditError(
-            "The account has insufficient available credit",
-          );
+        if (input.creditMode === "metered") {
+          const balances = (await tx`
+            UPDATE agent_balances
+            SET held_msat = held_msat + ${input.reservedMsat},
+                updated_at = ${input.nowIso}
+            WHERE actor_ref = ${input.ownerActorRef}
+              AND balance_msat - held_msat >= ${input.reservedMsat}
+            RETURNING actor_ref
+          `) as ReadonlyArray<{ actor_ref: string }>;
+          if (first(balances) === undefined) {
+            throw new SarahVoiceInsufficientCreditError(
+              "The account has insufficient available credit",
+            );
+          }
+        } else {
+          const entitlements = (await tx`
+            SELECT entitlement_ref
+            FROM sarah_voice_credit_entitlements
+            WHERE entitlement_ref = ${input.entitlementRef}
+              AND owner_user_id = ${input.ownerUserId}
+              AND environment = 'staging'
+              AND state = 'active'
+              AND activated_at <= ${input.nowIso}
+              AND expires_at > ${input.nowIso}
+            FOR SHARE
+          `) as ReadonlyArray<{ entitlement_ref: string }>;
+          if (first(entitlements) === undefined) {
+            throw new SarahVoiceSessionRejectedError("The staging voice entitlement is not active");
+          }
         }
 
         const rows = (await tx`
           INSERT INTO sarah_realtime_voice_sessions (
             session_ref, reservation_ref, owner_user_id, owner_actor_ref,
             device_ref, thread_ref, generation, ticket_digest, disclosure_ref,
-            client_profile, state, reserved_msat, charged_msat, ticket_expires_at,
+            client_profile, credit_mode, entitlement_ref, state, reserved_msat,
+            charged_msat, ticket_expires_at,
             session_expires_at, created_at, updated_at
           ) VALUES (
             ${input.sessionRef}, ${input.reservationRef}, ${input.ownerUserId},
             ${input.ownerActorRef}, ${input.deviceRef}, ${input.threadRef},
             ${input.generation}, ${input.ticketDigest}, ${input.disclosureRef},
-            ${input.clientProfile}, 'reserved', ${input.reservedMsat}, 0, ${input.ticketExpiresAt},
+            ${input.clientProfile}, ${input.creditMode}, ${input.entitlementRef},
+            'reserved', ${input.reservedMsat}, 0, ${input.ticketExpiresAt},
             ${input.sessionExpiresAt}, ${input.nowIso}, ${input.nowIso}
           )
           RETURNING session_ref, owner_user_id, owner_actor_ref, device_ref,
-            thread_ref, generation, disclosure_ref, client_profile, state, reserved_msat,
+            thread_ref, generation, disclosure_ref, client_profile, credit_mode,
+            entitlement_ref, state, reserved_msat,
             charged_msat, ticket_expires_at, session_expires_at,
             settlement_receipt_ref
         `) as ReadonlyArray<SessionRow>;
@@ -213,7 +321,8 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
             AND ticket_expires_at > ${input.nowIso}
             AND session_expires_at > ${input.nowIso}
           RETURNING session_ref, owner_user_id, owner_actor_ref, device_ref,
-            thread_ref, generation, disclosure_ref, client_profile, state, reserved_msat,
+            thread_ref, generation, disclosure_ref, client_profile, credit_mode,
+            entitlement_ref, state, reserved_msat,
             charged_msat, ticket_expires_at, session_expires_at,
             settlement_receipt_ref
         `) as ReadonlyArray<SessionRow>;
@@ -270,10 +379,13 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
                   audio_input_tokens + ${input.usage.audioInputTokens},
                 audio_output_tokens =
                   audio_output_tokens + ${input.usage.audioOutputTokens},
-                charged_msat = LEAST(
-                  reserved_msat,
-                  charged_msat + ${input.usage.chargeMsat}
-                ),
+                charged_msat = CASE
+                  WHEN credit_mode = 'metered' THEN LEAST(
+                    reserved_msat,
+                    charged_msat + ${input.usage.chargeMsat}
+                  )
+                  ELSE charged_msat + ${input.usage.chargeMsat}
+                END,
                 updated_at = ${input.usage.observedAt}
             WHERE session_ref = ${input.sessionRef}
               AND state = 'connected'
@@ -281,13 +393,14 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         }
 
         const rows = (await tx`
-          SELECT reserved_msat, charged_msat
+          SELECT reserved_msat, charged_msat, credit_mode
           FROM sarah_realtime_voice_sessions
           WHERE session_ref = ${input.sessionRef}
           FOR UPDATE
         `) as ReadonlyArray<{
           reserved_msat: number | string;
           charged_msat: number | string;
+          credit_mode: SarahVoiceCreditMode;
         }>;
         const row = first(rows);
         if (row === undefined) {
@@ -298,7 +411,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
         return {
           chargedMsat,
           reservedMsat,
-          creditLimitReached: chargedMsat >= reservedMsat,
+          creditLimitReached: row.credit_mode === "metered" && chargedMsat >= reservedMsat,
         };
       });
     } catch (error) {
@@ -317,7 +430,8 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
   ): Promise<SarahVoiceSessionRecord> => {
     const rows = (await tx`
       SELECT session_ref, owner_user_id, owner_actor_ref, device_ref,
-        thread_ref, generation, disclosure_ref, client_profile, state, reserved_msat,
+        thread_ref, generation, disclosure_ref, client_profile, credit_mode,
+        entitlement_ref, state, reserved_msat,
         charged_msat, ticket_expires_at, session_expires_at,
         settlement_receipt_ref
       FROM sarah_realtime_voice_sessions
@@ -334,7 +448,10 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     }
 
     const receiptRef = `sarah_voice_settlement:${current.sessionRef}`;
-    if (current.chargedMsat > 0) {
+    if (current.creditMode === "staging_owner_entitlement") {
+      // The session and usage rows are the settlement evidence. The staging
+      // entitlement does not write a payment or change the credit balance.
+    } else if (current.chargedMsat > 0) {
       await tx`
         INSERT INTO pay_ins (
           id, pay_in_type, payer_ref, cost_msat, state, rung, context_ref,
@@ -398,7 +515,8 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
           updated_at = ${input.nowIso}
       WHERE session_ref = ${current.sessionRef}
       RETURNING session_ref, owner_user_id, owner_actor_ref, device_ref,
-        thread_ref, generation, disclosure_ref, client_profile, state, reserved_msat,
+        thread_ref, generation, disclosure_ref, client_profile, credit_mode,
+        entitlement_ref, state, reserved_msat,
         charged_msat, ticket_expires_at, session_expires_at,
         settlement_receipt_ref
     `) as ReadonlyArray<SessionRow>;
@@ -447,5 +565,12 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
     return settled;
   };
 
-  return { connect, recordUsage, reserve, settle, sweepExpired } as const;
+  return {
+    connect,
+    ensureStagingOwnerEntitlement,
+    recordUsage,
+    reserve,
+    settle,
+    sweepExpired,
+  } as const;
 };

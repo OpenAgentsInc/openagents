@@ -77,6 +77,12 @@ export type SarahRealtimeVoiceRouteConfig = Readonly<{
 }>
 
 export type SarahRealtimeVoiceRouteDependencies<User, Bindings> = Readonly<{
+  audit?: (
+    event:
+      | 'staging_owner_entitlement_applied'
+      | 'staging_owner_entitlement_inactive',
+    fields: Readonly<Record<string, string>>,
+  ) => void
   config: (env: Bindings) => SarahRealtimeVoiceRouteConfig | undefined
   openStore: (
     env: Bindings,
@@ -96,6 +102,10 @@ export type SarahRealtimeVoiceRouteDependencies<User, Bindings> = Readonly<{
   ) => Promise<'Consumed' | 'Invalid' | 'Unavailable'>
   mintNostrSession?: NostrSessionMint<User, Bindings> | undefined
   requireUserBearerSession: UserBearerSessionBoundary<User, Bindings>
+  isStagingOwnerSession?: (
+    session: Readonly<{ user: User }>,
+    env: Bindings,
+  ) => Promise<boolean>
   userIdFromSession: (session: Readonly<{ user: User }>) => string
   verifyNostrProof?: NostrProofVerify<Bindings> | undefined
   now?: (() => number) | undefined
@@ -301,6 +311,7 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
   }
 
   const nowMs = (dependencies.now ?? Date.now)()
+  const nowIso = new Date(nowMs).toISOString()
   const ticketExpiresAtMs =
     nowMs + Math.min(60_000, config.maxSessionSeconds * 1_000)
   const sessionExpiresAtMs = nowMs + config.maxSessionSeconds * 1_000
@@ -310,16 +321,42 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
     | undefined
   try {
     opened = await dependencies.openStore(env)
+    const isStagingOwner =
+      (await dependencies.isStagingOwnerSession?.(session, env)) === true
+    const entitlement = isStagingOwner
+      ? await opened.store.ensureStagingOwnerEntitlement({
+          entitlementRef: 'sarah_voice_entitlement:staging_owner_v1',
+          expiresAt: new Date(nowMs + 7 * 24 * 60 * 60 * 1_000).toISOString(),
+          nowIso,
+          ownerUserId: userId,
+        })
+      : undefined
+    if (isStagingOwner) {
+      dependencies.audit?.(
+        entitlement === undefined
+          ? 'staging_owner_entitlement_inactive'
+          : 'staging_owner_entitlement_applied',
+        {
+          entitlementRef: 'sarah_voice_entitlement:staging_owner_v1',
+          ownerDigest: await sha256Hex(userId),
+        },
+      )
+    }
+    const creditMode =
+      entitlement === undefined ? 'metered' : 'staging_owner_entitlement'
+    const reservedMsat = entitlement === undefined ? config.reservationMsat : 0
     await opened.store.reserve({
       deviceRef: body.identity.deviceRef,
       disclosureRef: body.disclosureRef,
       clientProfile,
       generation: body.identity.generation,
-      nowIso: new Date(nowMs).toISOString(),
+      nowIso,
       ownerActorRef: `agent:${userId}`,
       ownerUserId: userId,
       reservationRef: `sarah:voice:reserve:${userId}:${body.identity.sessionRef}`,
-      reservedMsat: config.reservationMsat,
+      creditMode,
+      entitlementRef: entitlement?.entitlementRef ?? null,
+      reservedMsat,
       sessionExpiresAt: new Date(sessionExpiresAtMs).toISOString(),
       sessionRef: body.identity.sessionRef,
       threadRef: body.identity.threadRef,
@@ -335,7 +372,7 @@ export const handleSarahRealtimeVoiceSessionRequest = async <User, Bindings>(
         ticket,
         ticketExpiresAtMs,
         sessionExpiresAtMs,
-        reservedCreditMsat: config.reservationMsat,
+        reservedCreditMsat: reservedMsat,
         maxDurationSeconds: config.maxSessionSeconds,
         clientProfile,
         inputAudio: {
