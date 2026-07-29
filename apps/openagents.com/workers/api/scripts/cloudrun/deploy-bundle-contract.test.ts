@@ -67,6 +67,9 @@ describe('Cloud Run Vite Plus bundle contract', () => {
     expect(deployScript).toContain('pnpm install --frozen-lockfile')
     expect(deployScript).toContain('cd "$REPO_ROOT"')
     expect(deployScript).not.toContain('--deps.never-bundle')
+    expect(deployScript).toContain('gcloud run services update-traffic "$SERVICE"')
+    expect(deployScript).toContain('--to-latest')
+    expect(deployScript).toContain('status.latestReadyRevisionName')
   })
 
   test('keeps the owned Forge read route on the monolith network', () => {

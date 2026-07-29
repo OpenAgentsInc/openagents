@@ -271,6 +271,22 @@ gcloud run deploy "$SERVICE" \
   --set-secrets "$SECRET_FLAG" \
   --add-cloudsql-instances "openagentsgemini:us-central1:khala-sync-pg"
 
+# A service can retain an explicit revision traffic pin after a rollback. In
+# that state, `gcloud run deploy` creates a healthy revision but silently leaves
+# it at zero traffic. Make the deploy contract explicit so the revision built
+# above is the revision this script smokes and reports.
+gcloud run services update-traffic "$SERVICE" \
+  --project "$PROJECT" \
+  --region "$REGION" \
+  --to-latest
+
+LATEST_CREATED_REVISION="$(gcloud run services describe "$SERVICE" --project "$PROJECT" --region "$REGION" --format='value(status.latestCreatedRevisionName)')"
+LATEST_READY_REVISION="$(gcloud run services describe "$SERVICE" --project "$PROJECT" --region "$REGION" --format='value(status.latestReadyRevisionName)')"
+if [[ -z "$LATEST_CREATED_REVISION" || "$LATEST_READY_REVISION" != "$LATEST_CREATED_REVISION" ]]; then
+  echo "FATAL: latest Cloud Run revision is not ready: created=${LATEST_CREATED_REVISION:-missing} ready=${LATEST_READY_REVISION:-missing}" >&2
+  exit 1
+fi
+
 SERVICE_URL="$(gcloud run services describe "$SERVICE" --project "$PROJECT" --region "$REGION" --format='value(status.url)')"
 echo "==> Deployed: $SERVICE_URL"
 
