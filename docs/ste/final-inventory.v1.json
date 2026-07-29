@@ -45978,7 +45978,7 @@
     },
     {
       "path": "docs/teardowns/2026-07-29-superlogical-teardown.md",
-      "sha256": "7d907b57e8f2d11b6d5d3cf0656081b2c433648cdb96d292cb8cec9130ae2792",
+      "sha256": "df65d29d8eea15ed406c00a18786c2cd381d3b80b37d7c8d6ede7d2e3728e6c8",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
