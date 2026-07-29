@@ -1,11 +1,11 @@
-# OpenAgents Episode 263 - Omega Agent
+# OpenAgents Episode 26X - Omega Agent
 
-Status: harness draft as Sarah / pending owner review. Not scheduled for
-recording. The Omega Agent product contract admits the identity and admits no
-public claim, so recording and publication need the owner's authorization
-separately from this draft.
-Episode number: 263, assigned by owner direction on 2026-07-27. The Full Auto
-reliability draft moved off this slot to
+Status: displaced harness draft as Sarah / unscheduled. This draft formerly
+held slot 263. The owner later locked and produced the Omega Alpha script as
+Episode 263, now archived in [`263.md`](263.md). The Omega Agent product
+contract admits the identity and admits no public claim, so recording and
+publication need separate owner authorization if this draft is revived.
+Episode number: not assigned. The Full Auto reliability draft remains in
 [`26X-fullauto.md`](26X-fullauto.md). The Forking Zed tour
 ([`26X-forkingzed.md`](26X-forkingzed.md)) stays unscheduled.
 Speaker: Sarah.
@@ -181,8 +181,8 @@ line is not green, cut the line.
 5. Every 2024 clip carries `ARCHIVE - 2024` and a date. No payment sentence
    is spoken over current-product footage.
 6. Nothing implies the Electron application is retired.
-7. Spoken words go to `~/Desktop/Sarah/263/263transcript.md`. This file is
-   updated to the final spoken text when the script locks.
+7. If revived, assign a new episode and output folder. Do not use Episode 263
+   paths; [`263.md`](263.md) is the canonical transcript for that slot.
 
 ## Open production questions
 

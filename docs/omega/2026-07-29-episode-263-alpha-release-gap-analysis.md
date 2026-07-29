@@ -229,10 +229,11 @@ actions are refused. Before release:
 
 #### EP263-08: Canonicalize Episode 263
 
-- Replace or supersede `docs/transcripts/263-omega-agent.md`, which is a
-  different pending-review script about plugins and payments.
-- Store the locked alpha script, truth ledger, generated master path/digest,
-  and publication status in the repository.
+- **Transcript archive complete:** `docs/transcripts/263.md` contains the final
+  spoken transcript and video-master digest. The displaced plugin-and-payments
+  draft is unscheduled at `docs/transcripts/26X-omega-agent.md`.
+- Reconcile the truth ledger, release notes, product UI, homepage, and download
+  page with the canonical transcript before publication.
 - Acceptance: the repository, video master, caption/transcript artifact,
   release notes, homepage, download page, and in-app wording make the same
   claims.
@@ -294,7 +295,8 @@ source shape or hidden capability.
 ### Locked transcript and conflicting archive
 
 - `/Users/christopherdavid/Documents/APEX REMOTE/EP263.md`
-- `docs/transcripts/263-omega-agent.md`
+- `docs/transcripts/263.md`
+- `docs/transcripts/26X-omega-agent.md`
 
 ### Current Omega implementation
 

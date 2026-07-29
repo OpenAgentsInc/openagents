@@ -2,8 +2,9 @@
 
 Status: **draft in two parts, not scheduled for recording.**
 Episode number: not assigned. This script moved off slot 263 on 2026-07-27
-when Omega Agent took that slot by owner direction. See
-[`263-omega-agent.md`](263-omega-agent.md). Part one is a
+when the Omega Agent draft took that slot. That draft is now unscheduled at
+[`26X-omega-agent.md`](26X-omega-agent.md), and the final Episode 263 transcript
+is [`263.md`](263.md). Part one is a
 recorded transcript. Part two is an **aspirational** script describing the
 demonstration we want to give once the capability is actually working. It has
 not been approved, recorded, or spoken, and it makes no claim about today.
