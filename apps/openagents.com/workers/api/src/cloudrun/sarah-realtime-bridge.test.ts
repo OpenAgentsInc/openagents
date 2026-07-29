@@ -235,6 +235,21 @@ describe('Sarah Realtime bridge metering', () => {
     const update = sessionUpdateForSarahClientProfile('omega_editor')
     expect(update.session.tools.length).toBeGreaterThan(0)
     expect(update.session.tool_choice).toBe('auto')
-    expect(update.session.instructions).toContain('supplied editor tools')
+    expect(update.session.tools[0]?.name).toBe('start_agent_thread')
+    expect(update.session.tools[0]?.description).toContain(
+      'primary capability for repository inspection',
+    )
+    expect(update.session.instructions).toContain(
+      'persistent orchestrator and fleet commander',
+    )
+    expect(update.session.instructions).toContain(
+      'Default to command, inspection, and delegation rather than conversation',
+    )
+    expect(update.session.instructions).toContain(
+      'Do not ask the owner to paste file contents',
+    )
+    expect(update.session.instructions).toContain(
+      'Distinguish observed, submitted, in progress, blocked, and completed',
+    )
   })
 })
