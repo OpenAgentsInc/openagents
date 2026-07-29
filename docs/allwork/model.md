@@ -152,6 +152,8 @@ schema proposal must reconcile those sources before it changes ownership.
 ## Origin
 
 This model is the domain-model companion to the
-[App for All Work thesis](./README.md). The thesis was first developed in the
-[Superlogical teardown](../teardowns/2026-07-29-superlogical-teardown.md),
-which retains the external product comparison and source evidence.
+[App for All Work thesis](./README.md), which lists its sources. The model's
+distinctions answer the failure modes recorded across the
+[teardown catalog](../teardowns/README.md): products that treat a terminal
+transcript as a receipt, a reconnect as admission, a permission prompt as
+containment, or a process exit as an accepted deliverable.
