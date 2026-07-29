@@ -12,6 +12,7 @@ import { routeDesktopDownloadRequest } from './desktop-download-resolver.server'
 import { routeForgeRepositoryAssetRequest } from './forge-repository-asset-proxy'
 import { routeKhalaSyncProxyRequest } from './khala-sync-proxy'
 import { routeManagedSandboxProxyRequest } from './managed-sandbox-proxy'
+import { routeProductDownloadRequest } from './product-download-resolver.server'
 import { routeQaBoardRequest } from './qa-board-projection.server'
 
 type StartWorkerEnv = Record<string, unknown>
@@ -72,6 +73,10 @@ export async function routeSharedAgentSurface(
   // from the promoted signed release set (fail-closed, no handwritten URLs).
   const desktopDownloadResponse = await routeDesktopDownloadRequest(request)
   if (desktopDownloadResponse !== undefined) return desktopDownloadResponse
+
+  // EP263-07 (#9280): keep product identity explicit before release selection.
+  const productDownloadResponse = await routeProductDownloadRequest(request)
+  if (productDownloadResponse !== undefined) return productDownloadResponse
 
   return undefined
 }

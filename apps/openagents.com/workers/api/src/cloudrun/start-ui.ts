@@ -31,6 +31,7 @@ const START_SERVER_REQUEST_PATHS = new Set([
   // DIST-10 (#8923): Desktop download resolver + verified artifact redirect.
   '/api/public/desktop-download',
   '/api/public/desktop-download/artifact',
+  '/api/public/product-download',
 ])
 const FORGE_REPOSITORY_ASSET_REQUEST_PATH =
   /^\/internal\/v1\/repositories\/[^/]+\/[^/]+\/web-read-asset\/.+$/u

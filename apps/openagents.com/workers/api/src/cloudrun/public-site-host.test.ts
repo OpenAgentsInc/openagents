@@ -35,8 +35,10 @@ describe('public Start homepage host boundary', () => {
     // are Start-served and must cross the Cloud Run adapter (QA-4 lesson).
     expect(isStartServerRequestPath('/api/public/desktop-download')).toBe(true)
     expect(isStartServerRequestPath('/api/public/desktop-download/artifact')).toBe(true)
+    expect(isStartServerRequestPath('/api/public/product-download')).toBe(true)
     expect(isStartServerRequestPath('/api/public/desktop-download/')).toBe(false)
     expect(isStartServerRequestPath('/api/public/desktop-download/other')).toBe(false)
+    expect(isStartServerRequestPath('/api/public/product-download/')).toBe(false)
     expect(
       isStartServerRequestPath(
         '/internal/v1/repositories/tenant.openagents/omega/web-read-asset/crates/zed/icon.png',
