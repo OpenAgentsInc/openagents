@@ -119,6 +119,41 @@ const isUniqueViolation = (error: unknown): boolean =>
 export type SarahRealtimeVoiceStore = ReturnType<typeof makeSarahRealtimeVoiceStore>;
 
 export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
+  const readActiveStagingOwnerEntitlement = async (
+    input: Readonly<{
+      ownerUserId: string;
+      entitlementRef: string;
+      nowIso: string;
+    }>,
+  ): Promise<SarahVoiceCreditEntitlement | undefined> => {
+    try {
+      const rows = (await sql`
+        SELECT entitlement_ref, owner_user_id, expires_at
+        FROM sarah_voice_credit_entitlements
+        WHERE owner_user_id = ${input.ownerUserId}
+          AND entitlement_ref = ${input.entitlementRef}
+          AND environment = 'staging'
+          AND state = 'active'
+          AND activated_at <= ${input.nowIso}
+          AND expires_at > ${input.nowIso}
+      `) as ReadonlyArray<{
+        entitlement_ref: string;
+        owner_user_id: string;
+        expires_at: string;
+      }>;
+      const row = first(rows);
+      return row === undefined
+        ? undefined
+        : {
+            entitlementRef: row.entitlement_ref,
+            ownerUserId: row.owner_user_id,
+            expiresAt: row.expires_at,
+          };
+    } catch (error) {
+      throw new SarahVoiceStorageError("Sarah voice entitlement lookup failed", error);
+    }
+  };
+
   const ensureStagingOwnerEntitlement = async (
     input: Readonly<{
       ownerUserId: string;
@@ -568,6 +603,7 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
   return {
     connect,
     ensureStagingOwnerEntitlement,
+    readActiveStagingOwnerEntitlement,
     recordUsage,
     reserve,
     settle,

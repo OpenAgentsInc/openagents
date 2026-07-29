@@ -159,6 +159,13 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       entitlementRef: "sarah_voice_entitlement:staging_owner_v1",
       ownerUserId: "user-sarah-staging-owner",
     });
+    expect(
+      await store.readActiveStagingOwnerEntitlement({
+        ownerUserId: "user-sarah-staging-owner",
+        entitlementRef: "sarah_voice_entitlement:staging_owner_v1",
+        nowIso: "2026-07-28T12:00:00.000Z",
+      }),
+    ).toEqual(entitlement);
 
     await store.reserve({
       sessionRef: "voice-entitled-session-1",
@@ -228,11 +235,10 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
       WHERE entitlement_ref = 'sarah_voice_entitlement:staging_owner_v1'
     `;
     expect(
-      await store.ensureStagingOwnerEntitlement({
+      await store.readActiveStagingOwnerEntitlement({
         ownerUserId: "user-sarah-staging-owner",
         entitlementRef: "sarah_voice_entitlement:staging_owner_v1",
         nowIso: "2026-07-28T12:04:00.000Z",
-        expiresAt: "2026-08-04T12:04:00.000Z",
       }),
     ).toBeUndefined();
 

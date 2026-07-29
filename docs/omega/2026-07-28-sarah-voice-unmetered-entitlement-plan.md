@@ -24,26 +24,28 @@ The exception has these server checks:
 1. `SARAH_STAGING_OWNER_VOICE_ENTITLEMENT_ENABLED` is on.
 2. `OPENAGENTS_APP_URL` identifies the staging Cloud Run service.
 3. The request has a valid OpenAgents session.
-4. The session user is the canonical primary owner user.
+4. The fixed database record belongs to the authenticated canonical user.
 5. The user is active.
 6. The database entitlement is active and not expired.
 
-The service derives the owner user from the configured primary admin email.
+An authorized operator creates the record for one approved canonical account.
+The request cannot create the record or change its owner.
 The client does not send an owner allowlist value.
 The client does not send a GitHub header or an entitlement flag.
 A linked Nostr device and a GitHub or email session resolve to the same
 canonical user before this check.
 
-The first eligible request creates this exact server record:
+The operator creates this exact server record before a test:
 
 - entitlement reference: `sarah_voice_entitlement:staging_owner_v1`
 - environment: `staging`
-- duration: seven days from the first eligible request
+- duration: a bounded operator-selected test period
 - activation actor: `operator:staging_owner_voice_entitlement`
-- activation source: `cloudrun:staging_owner_account_match`
+- activation source: `operator:cloud_sql`
 
 The unique user constraint prevents a second record.
-An expired or revoked record does not become active again automatically.
+The route does not create or reactivate a record.
+An expired or revoked record does not become active automatically.
 The audit table records the activation.
 The route log contains only the entitlement reference and a user digest.
 
