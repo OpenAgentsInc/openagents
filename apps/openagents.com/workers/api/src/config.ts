@@ -93,6 +93,10 @@ export type OpenAgentsWorkerConfigEnv = Readonly<{
   SARAH_REALTIME_CREDIT_MSAT_PER_MILLION_TOKENS?: string | undefined
   // Whole seconds. Values outside 60..900 fail configuration validation.
   SARAH_REALTIME_MAX_SESSION_SECONDS?: string | undefined
+  // Staging-only owner access. The composition root also requires the exact
+  // staging service origin and the canonical primary owner account. The first
+  // admitted request creates one expiring, revocable database entitlement.
+  SARAH_STAGING_OWNER_VOICE_ENTITLEMENT_ENABLED?: string | undefined
   ARTANIS_FLEET_OVERSEER_ENABLED?: string | undefined
   ARTANIS_SCHEDULED_RUNNER_ENABLED?: string | undefined
   // Compose-and-list marketplace MVP flag (EPIC #5510, #5515). Default OFF: the

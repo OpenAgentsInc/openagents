@@ -35348,7 +35348,7 @@
     },
     {
       "path": "docs/omega/2026-07-28-sarah-voice-unmetered-entitlement-plan.md",
-      "sha256": "41dfbeb16b2e5198d57623bb59c89270c266597c3f013e405180a2d8765fb03c",
+      "sha256": "bd51cdb649b2c2c97eafd23605d399dc506c3dddf56e20e9864e5714134a7291",
       "reason": "Final review of a current technical document",
       "profile": {
         "ste_mode": "mixed",
@@ -35360,8 +35360,8 @@
           "STE-2.4"
         ],
         "ste_status": "inspected",
-        "ste_reviewer": "codex/review-followup-docs-sarah-voice-20260728",
-        "ste_reviewed_at": "2026-07-28T20:40:57Z"
+        "ste_reviewer": "codex/issue-9272-staging-owner-entitlement",
+        "ste_reviewed_at": "2026-07-29T00:05:00Z"
       }
     },
     {

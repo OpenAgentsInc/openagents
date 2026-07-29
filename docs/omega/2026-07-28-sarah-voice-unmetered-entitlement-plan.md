@@ -2,7 +2,7 @@
 
 Date: 2026-07-28
 
-Status: Proposed and not enabled
+Status: One bounded staging owner exception enabled. Future Nostr allowlist proposed.
 
 Issue: [#9272](https://github.com/OpenAgentsInc/openagents/issues/9272)
 
@@ -12,6 +12,98 @@ This document defines a possible next phase for Sarah voice.
 It does not grant an entitlement.
 It does not change the current credit rules.
 Normal credits remain the default.
+
+## Current staging owner exception
+
+The service has one smaller exception for the current staging test.
+This exception is not the Nostr public key allowlist in this plan.
+It does not enable public or production unmetered voice.
+
+The exception has these server checks:
+
+1. `SARAH_STAGING_OWNER_VOICE_ENTITLEMENT_ENABLED` is on.
+2. `OPENAGENTS_APP_URL` identifies the staging Cloud Run service.
+3. The request has a valid OpenAgents session.
+4. The session user is the canonical primary owner user.
+5. The user is active.
+6. The database entitlement is active and not expired.
+
+The service derives the owner user from the configured primary admin email.
+The client does not send an owner allowlist value.
+The client does not send a GitHub header or an entitlement flag.
+A linked Nostr device and a GitHub or email session resolve to the same
+canonical user before this check.
+
+The first eligible request creates this exact server record:
+
+- entitlement reference: `sarah_voice_entitlement:staging_owner_v1`
+- environment: `staging`
+- duration: seven days from the first eligible request
+- activation actor: `operator:staging_owner_voice_entitlement`
+- activation source: `cloudrun:staging_owner_account_match`
+
+The unique user constraint prevents a second record.
+An expired or revoked record does not become active again automatically.
+The audit table records the activation.
+The route log contains only the entitlement reference and a user digest.
+
+An eligible voice session has a zero credit hold.
+The service records all provider token usage and the calculated credit cost.
+It does not write a payment row and does not debit the user balance.
+The response has `reservedCreditMsat: 0`.
+
+All other voice controls continue to apply.
+The maximum staging session duration is 300 seconds.
+The one-session account limit, device binding, ticket expiry, rate limits,
+provider safety controls, tool allowlist, and confirmation controls remain.
+An account that is not the canonical owner uses the normal credit path.
+The service returns `402 {"error":"insufficient_credit"}` when that account
+does not have enough available credit.
+
+### Staging kill and revocation
+
+Set `SARAH_STAGING_OWNER_VOICE_ENTITLEMENT_ENABLED` to `false` and deploy the
+staging service to stop new exception sessions.
+Do not add this variable to the production environment.
+
+An authorized database operator can revoke the record with this transaction.
+The command uses only the fixed entitlement reference.
+It does not need a user identifier.
+
+```sql
+BEGIN;
+
+WITH revoked AS (
+  UPDATE sarah_voice_credit_entitlements
+  SET state = 'revoked',
+      revoked_at = CURRENT_TIMESTAMP::text,
+      revocation_actor_ref = '<authorized-operator-ref>',
+      revocation_reason = '<bounded-reason>',
+      updated_at = CURRENT_TIMESTAMP::text
+  WHERE entitlement_ref = 'sarah_voice_entitlement:staging_owner_v1'
+    AND environment = 'staging'
+    AND state = 'active'
+  RETURNING entitlement_ref
+)
+INSERT INTO sarah_voice_credit_entitlement_audit (
+  event_ref, entitlement_ref, action, actor_ref, reason, source, occurred_at
+) SELECT
+  'sarah_voice_entitlement:staging_owner_v1:revoked',
+  entitlement_ref,
+  'revoked',
+  '<authorized-operator-ref>',
+  '<bounded-reason>',
+  'operator:cloud_sql',
+  CURRENT_TIMESTAMP::text
+FROM revoked
+ON CONFLICT (event_ref) DO NOTHING;
+
+COMMIT;
+```
+
+Revocation blocks a new session immediately.
+An active session can continue only until its normal 300-second limit.
+The future allowlist design below has a stricter active-session kill control.
 
 The next phase can let an operator approve a Nostr public key for unmetered
 voice.
