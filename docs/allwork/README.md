@@ -1,4 +1,4 @@
-# OpenAgents and Omega: The App for All Work
+# Omega: The App for All Work
 
 Status: OpenAgents product strategy reference
 
@@ -7,9 +7,13 @@ a target strategy, not an admitted ProductSpec, roadmap, schema, or claim about
 current shipped behavior. The [teardown catalog](../teardowns/README.md) defers
 to this document for the OpenAgents and Omega counter-position.
 
-The thesis is distilled from the complete teardown program: roughly fifty
-point-in-time studies of terminals, IDEs, assistants, agent engines, control
-planes, review surfaces, and compute fabrics, synthesized in the
+The thesis stands on two bodies of evidence. The strategic ground is the
+OpenAgents energy-and-verification argument: [Episode 259](../transcripts/259.md)
+and the workspace essay *The Dung Beetle and the Cathedral*
+(`~/work/docs/fable/the-dung-beetle-and-the-cathedral.md`). The competitive
+ground is the teardown program: roughly fifty point-in-time studies of
+terminals, IDEs, assistants, agent engines, control planes, review surfaces,
+and compute fabrics, synthesized in the
 [full catalog synthesis](../teardowns/2026-07-17-full-catalog-synthesis-what-openagents-should-incorporate.md).
 The capability baseline for Omega is the
 [Omega and T3 Code gap analysis](../teardowns/2026-07-27-omega-t3-code-desktop-mobile-gap-analysis.md),
@@ -17,31 +21,47 @@ which pins the Omega source behind each capability statement. The
 [T3 Code server analysis](../teardowns/2026-07-27-t3-code-server-projection-consistency-architecture.md)
 provides the control-plane comparison. Section 12 lists all sources.
 
-## 1. The category claim
+## 1. The engine question and the category claim
 
-Software work is fragmented. It is split across local machines, remote hosts,
-sandboxes, services, and production systems, and across interactive human
-work, background jobs, and parallel agent work. Current tools separate the
-interactive interfaces, the automatic jobs and their logs, and the production
-controls. Agents raise the cost of this split — one person now supervises many
-concurrent workers across many hosts — but the split existed first.
+OpenAgents is an engine that answers one question: given a stream of
+electrons, what is the most cost-efficient way to convert them into accepted
+agentic work? The unit of account for machine work has already migrated twice.
+Bitcoin priced the hash — pure, verifiable work, sellable from anywhere there
+was power and a thin connection. The AI era priced the token, with the curious
+property that nobody buying tokens wants tokens. Buyers want a task completed,
+checked, and trusted. The unit migrates once more, to the **accepted
+outcome**, and the metric that ties the stack together is **accepted outcomes
+per kilowatt-hour**.
 
-A new class of entrants answers with a durable-session or multiplexer layer:
-one long-lived session object that spans applications and environments,
-survives disconnection, and admits both people and software. That framing
-correctly identifies the missing coordination layer. It does not need to
-define the final user product, because a coordination layer under fragmented
-tools still leaves the person assembling the work from parts.
+The hard part of that conversion is not generation, which is collapsing toward
+free. It is verification. The cost to create output has fallen while the cost
+to verify it stays linear — the measurability gap — which is why the price of
+an accepted outcome is dominated by review, retries, and grading rather than
+model tokens, and why vibe-coded software creates value for individuals but
+struggles to show up at the level of a team, a company, or an enterprise.
 
-The stronger OpenAgents and Omega position is:
+The OpenAgents answer is **verifiable software**: software that scopes work in
+advance as falsifiable intent, observes its own evidence instead of narrating
+it, separates the producer from the verifier, and emits receipts that let
+acceptance be checked and paid by strangers. The electrons are the input, the
+accepted outcome is the product, and verifiable software is the refinery in
+between.
 
-> **OpenAgents and Omega can be the application for all work.**
+This document names the application where that refinery meets the person:
 
-Omega provides the native environment where a person can inspect and change
-the work. OpenAgents provides the typed control, placement, identity, policy,
-history, and evidence system behind that environment. Pylon and managed Agent
-Computers provide execution without becoming separate products that each user
-must learn.
+> **Omega is the application for all work.**
+
+Omega is the engine of verifiable software in a developer's hands: the native
+environment where work is created, tested, verified, attested, and sold — not
+just generated. A developer brings existing subscriptions and gets the best
+practices built in, plus a network where other people's agents help vet the
+software for a share of the outcome. OpenAgents is the system behind the
+application: the typed control, placement, identity, policy, history,
+evidence, and settlement layer. Pylon and managed Agent Computers provide
+execution without becoming separate products that each user must learn. The
+Nostr and Bitcoin integration in the editor is the economic rail — reputation
+events attest what software actually does, and Lightning settles who gets
+paid for making it trustworthy.
 
 The application is only one client of the system. The same system must also
 have a versioned API and SDK. Automatic work, embedded tools, and third-party
@@ -49,15 +69,30 @@ clients must use the same work objects and controls as the application.
 
 This product shape gives three related promises:
 
-1. **One application.** A user sees local, remote, automatic, and production
+1. **One application.** Omega shows local, remote, automatic, and production
    work in one workbench.
 2. **One control model.** A person, agent, or program uses typed actions with
    explicit authority and durable outcomes.
 3. **One ecosystem.** The application, API, SDK, agents, hosts, and extensions
    use the same contracts.
 
-“IDE for all work” is a useful internal category description. The product does
-not have to expose IDE complexity at first. Most people should receive a calm
+The product-side case for one application is fragmentation. Software work is
+split across local machines, remote hosts, sandboxes, services, and production
+systems, and across interactive human work, background jobs, and parallel
+agent work. Current tools separate the interactive interfaces, the automatic
+jobs and their logs, and the production controls. Agents raise the cost of
+this split — one person now supervises many concurrent workers across many
+hosts — but the split existed first. A new class of entrants answers with a
+durable-session or multiplexer layer: one long-lived session object that
+spans applications and environments. That framing correctly identifies the
+missing coordination layer. It does not define the final user product, because
+a coordination layer under fragmented tools still leaves the person assembling
+the work from parts — and because a session that cannot prove what ran, what
+changed, and what was accepted never closes the verification gap that
+dominates the cost of the work.
+
+“IDE for all work” is a useful internal category description. Omega does not
+have to expose IDE complexity at first. Most people should receive a calm
 application that already handles sessions, agents, machines, credentials,
 history, and recovery. Advanced users and software authors can use the API and
 SDK when they need more control.
@@ -119,7 +154,10 @@ receipts that distinguish `completed` from `merged` and `accepted`,
 host-portable sessions, release provenance, exact usage and model-identity
 truth, and economic participation. The synthesis states the verdict directly:
 the supervision half is becoming table stakes, and OpenAgents wins on the
-trust half or not at all.
+trust half or not at all. The trust half is not a positioning accident. It is
+the verification layer of the section 1 engine: authority manifests, receipts,
+and delivery truth are exactly what turn generated output into accepted
+outcomes.
 
 The most instructive single case is the leading agent-IDE fork: it
 independently validated most of the original OpenAgents demand list — desktop
@@ -149,7 +187,7 @@ value and the product risk live, and a terminal-first entrant must climb into
 them after the fact. OpenAgents starts from typed work and integrates the
 terminal below it:
 
-| Terminal-session wedge | OpenAgents and Omega product object |
+| Terminal-session wedge | All Work product object |
 | ---------------------- | ----------------------------------- |
 | terminal block         | work block                          |
 | PTY or process         | execution lane                      |
@@ -191,10 +229,10 @@ and read projections from it. This model makes parallel work understandable,
 and its strongest idea is not event sourcing — it is **one environment-owned
 model for every client**.
 
-OpenAgents and Omega should carry that pattern forward, not stop at coding
-agents:
+Omega and the OpenAgents system should carry that pattern forward, not stop
+at coding agents:
 
-| Control-plane pattern                          | OpenAgents and Omega extension                                                                                                 |
+| Control-plane pattern                          | All Work extension                                                                                                 |
 | ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | One coding environment owns work.              | One durable work object can represent a repository task, job, service change, incident, deployment, or other bounded outcome.  |
 | Provider adapters control coding agents.       | Lane adapters can control agents, people, jobs, services, and production operations.                                           |
@@ -226,7 +264,7 @@ The extension is therefore both broader and stricter. It covers more kinds of
 work, hosts, and clients. It also preserves the exact authority and evidence
 for each effect.
 
-## 6. Omega is the application
+## 6. Omega is the application, already in motion
 
 The owner selected Omega — the tracked Zed fork — as the primary OpenAgents
 desktop and IDE destination. The thesis is not waiting for a new client to be
@@ -338,8 +376,9 @@ system from zero.
 
 The honest current statement is therefore:
 
-> OpenAgents and Omega have much of the control and work substrate now. They do
-> not yet have the one coherent application, projection, API, and SDK.
+> Omega and the OpenAgents system have much of the control and work substrate
+> now. They do not yet have the one coherent application, projection, API,
+> and SDK.
 
 That is a composition problem before it is a new-infrastructure problem.
 
@@ -464,7 +503,8 @@ The strongest advantage is not the number of streams in one window. It is the
 amount of difficult control work that disappears for the user, and the amount
 of trust the system can prove rather than assert.
 
-OpenAgents and Omega can provide these combined advantages:
+Omega, with the OpenAgents system behind it, can provide these combined
+advantages:
 
 - native editor, terminal, language, Git, and review depth.
 - provider and agent plurality behind capability-aware adapters.
@@ -503,15 +543,24 @@ must name the exact supported lanes, clients, hosts, actions, and receipts.
 
 The strategic conclusion is still immediate:
 
-> OpenAgents and Omega do not need to wait for any entrant to build this
-> category. The required terminal, IDE, agent, control, placement, authority,
-> and evidence parts already exist in useful forms, and the application that
-> composes them is already the shipped Omega direction. The next product act
-> is to compose those parts into one work object and one excellent
-> application, then expose that same system through the API and SDK.
+> OpenAgents does not need to wait for any entrant to build this category.
+> The required terminal, IDE, agent, control, placement, authority, and
+> evidence parts already exist in useful forms, and the application that
+> composes them is Omega, already shipped and already pointed in this
+> direction. The next product act is to compose those parts into one work
+> object and one excellent application, then expose that same system through
+> the API and SDK.
 
 ## Sources
 
+- [Episode 259](../transcripts/259.md) — verifiable software as the engine
+  question: electrons to accepted agentic work, the measurability gap, and
+  the Omega positioning as the engine of verifiable software.
+- *The Dung Beetle and the Cathedral*
+  (`~/work/docs/fable/the-dung-beetle-and-the-cathedral.md`, workspace repo)
+  — the unit-of-account argument: hash to token to accepted outcome, accepted
+  outcomes per kilowatt-hour, verification as the dominant cost, and the
+  receipt architecture.
 - [Full catalog synthesis](../teardowns/2026-07-17-full-catalog-synthesis-what-openagents-should-incorporate.md)
   — the convergence facts, the trust-half thesis, and the incorporation and
   refusal lists.
