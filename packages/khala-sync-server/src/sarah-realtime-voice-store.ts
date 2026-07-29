@@ -579,20 +579,23 @@ export const makeSarahRealtimeVoiceStore = (sql: SyncSql) => {
 
   const sweepExpired = async (nowIso: string): Promise<number> => {
     const rows = (await sql`
-      SELECT session_ref
+      SELECT session_ref, state
       FROM sarah_realtime_voice_sessions
-      WHERE state IN ('reserved', 'connected')
-        AND session_expires_at <= ${nowIso}
-      ORDER BY session_expires_at
+      WHERE (state = 'reserved' AND ticket_expires_at <= ${nowIso})
+         OR (state = 'connected' AND session_expires_at <= ${nowIso})
+      ORDER BY CASE
+        WHEN state = 'reserved' THEN ticket_expires_at
+        ELSE session_expires_at
+      END
       LIMIT 100
-    `) as ReadonlyArray<{ session_ref: string }>;
+    `) as ReadonlyArray<{ session_ref: string; state: "reserved" | "connected" }>;
     let settled = 0;
     for (const row of rows) {
       // Run one settlement at a time to protect the shared database pool.
       // eslint-disable-next-line no-await-in-loop
       await settle({
         sessionRef: row.session_ref,
-        closeReason: "session_expired",
+        closeReason: row.state === "reserved" ? "ticket_expired" : "session_expired",
         nowIso,
       });
       settled += 1;

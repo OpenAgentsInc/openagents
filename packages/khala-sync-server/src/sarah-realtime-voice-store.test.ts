@@ -140,6 +140,43 @@ describe.skipIf(!hasLocalPostgres())("Sarah Realtime voice credit authority", ()
     expect(Number(afterReplay?.held_msat)).toBe(0);
   });
 
+  test("releases an unconnected reservation when its ticket expires", async () => {
+    const store = makeSarahRealtimeVoiceStore(sql as unknown as SyncSql);
+    await store.reserve({
+      sessionRef: "voice-ticket-expiry-session",
+      reservationRef: "voice-ticket-expiry-reservation",
+      ownerUserId: "user-sarah-voice",
+      ownerActorRef: "agent:user-sarah-voice",
+      deviceRef: "omega-ticket-expiry",
+      threadRef: "thread-ticket-expiry",
+      generation: 1,
+      ticketDigest: "e".repeat(64),
+      disclosureRef: "disclosure-ticket-expiry",
+      clientProfile: "mobile_voice_only",
+      creditMode: "metered",
+      entitlementRef: null,
+      reservedMsat: 1_000,
+      ticketExpiresAt: "2026-07-28T12:01:00.000Z",
+      sessionExpiresAt: "2026-07-28T12:10:00.000Z",
+      nowIso: "2026-07-28T12:00:00.000Z",
+    });
+
+    expect(await store.sweepExpired("2026-07-28T12:02:00.000Z")).toBe(1);
+    const [session] = await sql`
+      SELECT state, close_reason
+      FROM sarah_realtime_voice_sessions
+      WHERE session_ref = 'voice-ticket-expiry-session'
+    `;
+    expect(session?.state).toBe("released");
+    expect(session?.close_reason).toBe("ticket_expired");
+    const [balance] = await sql`
+      SELECT held_msat
+      FROM agent_balances
+      WHERE actor_ref = 'agent:user-sarah-voice'
+    `;
+    expect(Number(balance?.held_msat)).toBe(0);
+  });
+
   test("records entitled usage without a credit hold or debit", async () => {
     const store = makeSarahRealtimeVoiceStore(sql as unknown as SyncSql);
     await sql`
