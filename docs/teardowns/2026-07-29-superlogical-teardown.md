@@ -1174,45 +1174,12 @@ That is a composition problem before it is a new-infrastructure problem.
 
 ### 13.5 A common work model
 
-OpenAgents needs a small product vocabulary that can include a terminal
-session without reducing all work to a terminal session. The following names
-are candidate names. They are not admitted schema names.
+The reusable [All Work model](../allwork/README.md) defines the common product
+vocabulary for Work, Session, Block, Host, Intent, Event, and Receipt.
 
-1. **Work** is the durable top-level object. It binds an objective, owner,
-   context, participants, current state, placement, policy, history, and
-   outcome refs.
-2. **Session** is one live or resumable interaction with the work. A work
-   object can contain a human session, agent turn, background run, or incident
-   session.
-3. **Block** is a composable view or control surface. Examples include a
-   transcript, editor, terminal, plan, diff, review, preview, log, metric, and
-   artifact.
-4. **Host** identifies where work can run. It includes a local machine, remote
-   host, sandbox, Pylon, Agent Computer, CI worker, or production target.
-5. **Actor** identifies a person, agent, automation, or service. It does not
-   imply authority.
-6. **Intent** is a typed request to act. It binds the actor, target, generation,
-   idempotency identity, requested effect, and required authority.
-7. **Event** records an admitted lifecycle fact. A replay cursor and an
-   explicit gap rule make history resumable.
-8. **Receipt** binds an effect or observation to exact evidence. It does not by
-   itself prove verification, acceptance, release, or a public claim.
-
-These objects produce one useful shape:
-
-```text
-Omega desktop / OpenAgents mobile / web / API / SDK
-                         |
-            work inbox and work projection
-                         |
-        typed intents, events, blocks, receipts
-                         |
-       lane adapters and placement authority
-                         |
- native agent / ACP / Codex / terminal / Full Auto
-                         |
- local host / Pylon / sandbox / Agent Computer / production
-```
+In summary: Work is the container. Sessions perform it. Blocks display and
+control it. Hosts run it. Intents request actions. Events record facts.
+Receipts bind facts to evidence.
 
 Existing lanes can keep their own authoritative stores during the first
 composition stage. A common read model can point to exact source refs instead

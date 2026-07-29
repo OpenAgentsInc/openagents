@@ -15136,6 +15136,24 @@
       }
     },
     {
+      "path": "docs/allwork/README.md",
+      "sha256": "0eb04c99f5d7348c5080b7245f58c83d4d4794e4fce71f78d9c283547d9f5783",
+      "reason": "Final review of mutable first-party agent technical text",
+      "profile": {
+        "ste_status": "inspected",
+        "ste_reviewer": "codex/asd-ste100-migration-20260719-r2-final",
+        "ste_reviewed_at": "2026-07-19T22:00:00Z",
+        "ste_audience": "agent",
+        "ste_agent_compact_revision": "openagents-agent-compact-v1",
+        "ste_accepted_screening_rules": [
+          "STE-2.4",
+          "STE-3.6",
+          "STE-5.1",
+          "STE-8.2"
+        ]
+      }
+    },
+    {
       "path": "docs/analysis/2026-07-22-conversation-coherence-programmatic-validation.md",
       "sha256": "d68a79c68a980d9c01701600a2e6a28f958ff037596ed5863c483b635ccea55b",
       "reason": "Final review of a converted document",
@@ -35378,12 +35396,10 @@
       "reason": "Immutable historical or evidence source data",
       "profile": {
         "ste_mode": "source-data",
-        "ste_status": "source-data",
-        "ste_reviewer": null,
-        "ste_reviewed_at": null,
         "risk": "source-data",
         "source": "Immutable historical or evidence source data",
-        "replacement": null
+        "replacement": null,
+        "ste_status": "source-data"
       }
     },
     {
@@ -45992,7 +46008,7 @@
     },
     {
       "path": "docs/teardowns/2026-07-29-superlogical-teardown.md",
-      "sha256": "7d907b57e8f2d11b6d5d3cf0656081b2c433648cdb96d292cb8cec9130ae2792",
+      "sha256": "54038ef3711ea2f868568e4a03cfc56caafa1c2c29de58742d98312893e0e6f9",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
