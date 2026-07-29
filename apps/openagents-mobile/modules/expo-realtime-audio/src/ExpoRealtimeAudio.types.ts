@@ -5,10 +5,12 @@ export type RealtimeAudioPlaybackStatus = Readonly<{
   interrupted: boolean;
 }>;
 
-export type ExpoRealtimeAudioModule = Readonly<{
-  start: (sampleRate: number) => void;
-  enqueue: (pcm16Base64: string) => number;
-  flush: () => void;
-  stop: () => void;
-  getStatus: () => RealtimeAudioPlaybackStatus;
+export type RealtimeAudioMicrophoneBuffer = Readonly<{
+  pcm16Base64: string;
+  sampleRate: number;
+  channels: number;
 }>;
+
+export type RealtimeAudioEvents = {
+  onMicrophoneBuffer: (event: RealtimeAudioMicrophoneBuffer) => void;
+};

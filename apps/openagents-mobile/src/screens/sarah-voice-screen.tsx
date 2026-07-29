@@ -8,7 +8,7 @@ import {
   type TextStyle,
   type ViewStyle,
 } from "react-native";
-import { requestRecordingPermissionsAsync, setAudioModeAsync, useAudioStream } from "expo-audio";
+import { requestRecordingPermissionsAsync, setAudioModeAsync } from "expo-audio";
 import { CryptoDigestAlgorithm, digest, randomUUID } from "expo-crypto";
 import * as SecureStore from "expo-secure-store";
 import * as FileSystem from "expo-file-system/legacy";
@@ -23,7 +23,7 @@ import {
 import { sarahVoiceAppStateAction } from "../sarah-voice/app-state";
 import { makeSarahVoiceDeviceLinkRecovery } from "../sarah-voice/device-link";
 import { SARAH_BETA_VOICE_BASE_URL } from "../sarah-voice/environment";
-import { bytesToBase64 } from "../sarah-voice/protocol";
+import { base64ToBytes, bytesToBase64 } from "../sarah-voice/protocol";
 import { makeSarahVoiceSessionVault } from "../sarah-voice/session-vault";
 import { makeSarahVoiceTranscriptStore } from "../sarah-voice/transcript-store";
 import {
@@ -105,29 +105,22 @@ export const SarahVoiceScreen = ({ onClose }: { readonly onClose: () => void }) 
   });
   const [localError, setLocalError] = useState<string | null>(null);
   const [clientReady, setClientReady] = useState(false);
+  const [captureActive, setCaptureActive] = useState(false);
   const clientRef = useRef<SarahVoiceClient | null>(null);
   const identityRef = useRef<Issue31DeviceIdentity | null>(null);
   const playbackDrainTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const { stream, isStreaming } = useAudioStream({
-    sampleRate: 24_000,
-    channels: 1,
-    encoding: "int16",
-    onBuffer: (buffer) => {
-      clientRef.current?.sendAudio(new Uint8Array(buffer.data), buffer.sampleRate, buffer.channels);
-    },
-  });
-
   const stopCapture = useCallback((): void => {
     try {
-      if (stream.isStreaming) stream.stop();
+      if (RealtimeAudio.isMicrophoneStarted()) RealtimeAudio.stopMicrophone();
     } catch {
-      // Expo can dispose its native shared object before React runs this cleanup.
+      // The native module may already be torn down during application shutdown.
     }
-  }, [stream]);
+    setCaptureActive(false);
+  }, []);
 
   const startCapture = useCallback(async (): Promise<void> => {
-    if (stream.isStreaming) return;
+    if (RealtimeAudio.isMicrophoneStarted()) return;
     RealtimeAudio.stop();
     await setAudioModeAsync({
       allowsRecording: true,
@@ -137,12 +130,9 @@ export const SarahVoiceScreen = ({ onClose }: { readonly onClose: () => void }) 
       shouldPlayInBackground: false,
       shouldRouteThroughEarpiece: false,
     });
-    await stream.start();
-    if (stream.sampleRate !== 24_000 || stream.channels !== 1) {
-      stream.stop();
-      throw new Error(unsupportedMicrophoneFormat);
-    }
-  }, [stream]);
+    RealtimeAudio.startMicrophone(24_000);
+    setCaptureActive(true);
+  }, []);
 
   const handleCaptureFailure = useCallback(
     (error: unknown): void => {
@@ -185,6 +175,12 @@ export const SarahVoiceScreen = ({ onClose }: { readonly onClose: () => void }) 
     let active = true;
     let unsubscribeState: (() => void) | undefined;
     let unsubscribeAudio: (() => void) | undefined;
+    const microphoneSubscription = RealtimeAudio.addListener(
+      "onMicrophoneBuffer",
+      ({ pcm16Base64, sampleRate, channels }) => {
+        clientRef.current?.sendAudio(base64ToBytes(pcm16Base64), sampleRate, channels);
+      },
+    );
 
     void (async () => {
       try {
@@ -283,6 +279,7 @@ export const SarahVoiceScreen = ({ onClose }: { readonly onClose: () => void }) 
       appState.remove();
       unsubscribeState?.();
       unsubscribeAudio?.();
+      microphoneSubscription.remove();
       stopCapture();
       clearDrainTimer();
       RealtimeAudio.stop();
@@ -459,7 +456,7 @@ export const SarahVoiceScreen = ({ onClose }: { readonly onClose: () => void }) 
         )}
       </View>
       <Text preset="caption" color={colors.textFaint} style={$captureState}>
-        {isStreaming ? "Microphone capture active" : "Microphone capture off"}
+        {captureActive ? "Microphone capture active" : "Microphone capture off"}
       </Text>
     </Screen>
   );

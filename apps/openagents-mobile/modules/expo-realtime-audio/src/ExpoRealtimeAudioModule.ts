@@ -1,5 +1,16 @@
-import { requireNativeModule } from "expo";
+import { NativeModule, requireNativeModule } from "expo";
 
-import type { ExpoRealtimeAudioModule } from "./ExpoRealtimeAudio.types";
+import type { RealtimeAudioEvents, RealtimeAudioPlaybackStatus } from "./ExpoRealtimeAudio.types";
 
-export default requireNativeModule<ExpoRealtimeAudioModule>("ExpoRealtimeAudio");
+declare class NativeExpoRealtimeAudio extends NativeModule<RealtimeAudioEvents> {
+  start(sampleRate: number): void;
+  enqueue(pcm16Base64: string): number;
+  flush(): void;
+  stop(): void;
+  getStatus(): RealtimeAudioPlaybackStatus;
+  startMicrophone(sampleRate: number): void;
+  stopMicrophone(): void;
+  isMicrophoneStarted(): boolean;
+}
+
+export default requireNativeModule<NativeExpoRealtimeAudio>("ExpoRealtimeAudio");

@@ -15,9 +15,13 @@ public final class ExpoRealtimeAudioModule: Module {
   private var playbackGeneration: Int64 = 0
   private var interruptionObserver: NSObjectProtocol?
   private var mediaResetObserver: NSObjectProtocol?
+  private var microphoneEngine: AVAudioEngine?
+  private var microphoneConverter: AVAudioConverter?
+  private var microphoneStarted = false
 
   public func definition() -> ModuleDefinition {
     Name("ExpoRealtimeAudio")
+    Events("onMicrophoneBuffer")
 
     Function("start") { (requestedSampleRate: Int) throws in
       try self.start(sampleRate: requestedSampleRate)
@@ -39,9 +43,141 @@ public final class ExpoRealtimeAudioModule: Module {
       self.status()
     }
 
+    Function("startMicrophone") { (requestedSampleRate: Int) throws in
+      try self.startMicrophone(sampleRate: requestedSampleRate)
+    }
+
+    Function("stopMicrophone") {
+      self.stopMicrophone()
+    }
+
+    Function("isMicrophoneStarted") {
+      self.stateLock.lock()
+      let currentStarted = self.microphoneStarted
+      self.stateLock.unlock()
+      return currentStarted
+    }
+
     OnDestroy {
+      self.stopMicrophone()
       self.stop()
     }
+  }
+
+  private func startMicrophone(sampleRate requestedSampleRate: Int) throws {
+    guard requestedSampleRate == 24_000 else {
+      throw Exception(name: "unsupported_sample_rate", description: "Sarah voice requires 24 kHz PCM.")
+    }
+    stateLock.lock()
+    let alreadyStarted = microphoneStarted
+    stateLock.unlock()
+    if alreadyStarted { return }
+
+    let session = AVAudioSession.sharedInstance()
+    let microphoneEngine = AVAudioEngine()
+    do {
+      try session.setCategory(
+        .playAndRecord,
+        mode: .voiceChat,
+        options: [.defaultToSpeaker, .allowBluetoothHFP]
+      )
+      try session.setPreferredSampleRate(Double(requestedSampleRate))
+      try session.setActive(true)
+
+      let inputNode = microphoneEngine.inputNode
+      let hardwareFormat = inputNode.outputFormat(forBus: 0)
+      guard hardwareFormat.sampleRate > 0, hardwareFormat.channelCount > 0 else {
+        throw Exception(name: "microphone_unavailable", description: "The microphone input is unavailable.")
+      }
+      guard let targetFormat = AVAudioFormat(
+        commonFormat: .pcmFormatInt16,
+        sampleRate: Double(requestedSampleRate),
+        channels: 1,
+        interleaved: true
+      ), let converter = AVAudioConverter(from: hardwareFormat, to: targetFormat) else {
+        throw Exception(name: "unsupported_microphone_format", description: "The microphone format is unavailable.")
+      }
+
+      let bufferSize = AVAudioFrameCount(hardwareFormat.sampleRate / 10)
+      microphoneConverter = converter
+      inputNode.installTap(onBus: 0, bufferSize: bufferSize, format: hardwareFormat) {
+        [weak self] inputBuffer, _ in
+        self?.convertAndEmitMicrophoneBuffer(
+          inputBuffer: inputBuffer,
+          converter: converter,
+          targetFormat: targetFormat
+        )
+      }
+      microphoneEngine.prepare()
+      try microphoneEngine.start()
+      self.microphoneEngine = microphoneEngine
+      stateLock.lock()
+      microphoneStarted = true
+      stateLock.unlock()
+    } catch {
+      microphoneEngine.inputNode.removeTap(onBus: 0)
+      microphoneEngine.stop()
+      self.microphoneEngine = nil
+      microphoneConverter = nil
+      stateLock.lock()
+      microphoneStarted = false
+      stateLock.unlock()
+      try? session.setActive(false, options: .notifyOthersOnDeactivation)
+      throw error
+    }
+  }
+
+  private func stopMicrophone() {
+    stateLock.lock()
+    let wasStarted = microphoneStarted
+    microphoneStarted = false
+    stateLock.unlock()
+    guard wasStarted || microphoneEngine != nil else { return }
+    microphoneEngine?.inputNode.removeTap(onBus: 0)
+    microphoneEngine?.stop()
+    microphoneEngine = nil
+    microphoneConverter = nil
+    try? AVAudioSession.sharedInstance().setActive(
+      false,
+      options: .notifyOthersOnDeactivation
+    )
+  }
+
+  private func convertAndEmitMicrophoneBuffer(
+    inputBuffer: AVAudioPCMBuffer,
+    converter: AVAudioConverter,
+    targetFormat: AVAudioFormat
+  ) {
+    let frameCapacity = AVAudioFrameCount(
+      Double(inputBuffer.frameLength) * targetFormat.sampleRate / inputBuffer.format.sampleRate
+    ) + 1
+    guard
+      let outputBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: frameCapacity)
+    else { return }
+
+    var conversionError: NSError?
+    var inputConsumed = false
+    converter.convert(to: outputBuffer, error: &conversionError) { _, status in
+      if inputConsumed {
+        status.pointee = .noDataNow
+        return nil
+      }
+      inputConsumed = true
+      status.pointee = .haveData
+      return inputBuffer
+    }
+    guard
+      conversionError == nil,
+      outputBuffer.frameLength > 0,
+      let samples = outputBuffer.int16ChannelData?[0]
+    else { return }
+    let byteCount = Int(outputBuffer.frameLength) * MemoryLayout<Int16>.size
+    let payload = Data(bytes: samples, count: byteCount).base64EncodedString()
+    sendEvent("onMicrophoneBuffer", [
+      "pcm16Base64": payload,
+      "sampleRate": 24_000,
+      "channels": 1,
+    ])
   }
 
   private func start(sampleRate requestedSampleRate: Int) throws {

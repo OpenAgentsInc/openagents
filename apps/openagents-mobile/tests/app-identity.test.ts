@@ -18,6 +18,10 @@ const sarahVoiceScreenSource = readFileSync(
   join(appRoot, "src/screens/sarah-voice-screen.tsx"),
   "utf8",
 )
+const realtimeAudioModuleSource = readFileSync(
+  join(appRoot, "modules/expo-realtime-audio/ios/ExpoRealtimeAudioModule.swift"),
+  "utf8",
+)
 
 const appConfig = JSON.parse(
   readFileSync(join(appRoot, "app.json"), "utf8"),
@@ -117,5 +121,12 @@ describe("contract openagents_mobile.identity.v1", () => {
     expect(sarahVoiceScreenSource).not.toContain(
       "digest(CryptoDigestAlgorithm.SHA256, Uint8Array.from(bytes).buffer)",
     )
+  })
+
+  test("Sarah screen defers microphone construction to the owned native module", () => {
+    expect(sarahVoiceScreenSource).not.toContain("useAudioStream")
+    expect(sarahVoiceScreenSource).toContain("RealtimeAudio.startMicrophone(24_000)")
+    expect(realtimeAudioModuleSource).toContain('Events("onMicrophoneBuffer")')
+    expect(realtimeAudioModuleSource).toContain('Function("startMicrophone")')
   })
 })

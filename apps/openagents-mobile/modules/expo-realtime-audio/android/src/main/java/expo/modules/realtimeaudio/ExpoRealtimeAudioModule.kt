@@ -4,7 +4,9 @@ import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioManager
+import android.media.AudioRecord
 import android.media.AudioTrack
+import android.media.MediaRecorder
 import android.util.Base64
 import expo.modules.kotlin.exception.CodedException
 import expo.modules.kotlin.modules.Module
@@ -26,6 +28,9 @@ class ExpoRealtimeAudioModule : Module() {
   private var audioManager: AudioManager? = null
   private var previousAudioMode = AudioManager.MODE_NORMAL
   private var interrupted = false
+  private var microphone: AudioRecord? = null
+  private var microphoneExecutor = Executors.newSingleThreadExecutor()
+  private val microphoneLock = Any()
   private val focusListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
     if (
       focusChange == AudioManager.AUDIOFOCUS_LOSS ||
@@ -37,6 +42,7 @@ class ExpoRealtimeAudioModule : Module() {
 
   override fun definition() = ModuleDefinition {
     Name("ExpoRealtimeAudio")
+    Events("onMicrophoneBuffer")
 
     Function("start") { sampleRate: Int ->
       start(sampleRate)
@@ -58,8 +64,100 @@ class ExpoRealtimeAudioModule : Module() {
       status()
     }
 
+    Function("startMicrophone") { sampleRate: Int ->
+      startMicrophone(sampleRate)
+    }
+
+    Function("stopMicrophone") {
+      stopMicrophone()
+    }
+
+    Function("isMicrophoneStarted") {
+      synchronized(microphoneLock) {
+        microphone?.recordingState == AudioRecord.RECORDSTATE_RECORDING
+      }
+    }
+
     OnDestroy {
+      stopMicrophone()
       stop()
+    }
+  }
+
+  private fun startMicrophone(sampleRate: Int) {
+    if (sampleRate != REQUIRED_SAMPLE_RATE) {
+      throw CodedException("unsupported_sample_rate", "Sarah voice requires 24 kHz PCM.", null)
+    }
+    synchronized(microphoneLock) {
+      if (microphone?.recordingState == AudioRecord.RECORDSTATE_RECORDING) return
+      val minimum = AudioRecord.getMinBufferSize(
+        sampleRate,
+        AudioFormat.CHANNEL_IN_MONO,
+        AudioFormat.ENCODING_PCM_16BIT,
+      )
+      if (minimum <= 0) {
+        throw CodedException("audio_buffer_unavailable", "The Android microphone buffer is unavailable.", null)
+      }
+      val recorder = try {
+        AudioRecord.Builder()
+          .setAudioSource(MediaRecorder.AudioSource.VOICE_COMMUNICATION)
+          .setAudioFormat(
+            AudioFormat.Builder()
+              .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+              .setSampleRate(sampleRate)
+              .setChannelMask(AudioFormat.CHANNEL_IN_MONO)
+              .build(),
+          )
+          .setBufferSizeInBytes(maxOf(minimum, sampleRate / 5))
+          .build()
+      } catch (error: SecurityException) {
+        throw CodedException("microphone_permission_required", "Microphone permission is required.", error)
+      }
+      if (recorder.state != AudioRecord.STATE_INITIALIZED) {
+        recorder.release()
+        throw CodedException("microphone_unavailable", "The Android microphone is unavailable.", null)
+      }
+      if (microphoneExecutor.isShutdown) {
+        microphoneExecutor = Executors.newSingleThreadExecutor()
+      }
+      try {
+        recorder.startRecording()
+      } catch (error: SecurityException) {
+        recorder.release()
+        throw CodedException("microphone_permission_required", "Microphone permission is required.", error)
+      }
+      microphone = recorder
+      microphoneExecutor.execute {
+        val buffer = ByteArray(sampleRate / 5)
+        while (true) {
+          if (synchronized(microphoneLock) { microphone !== recorder }) return@execute
+          val read = recorder.read(buffer, 0, buffer.size, AudioRecord.READ_BLOCKING)
+          if (read <= 0) return@execute
+          if (synchronized(microphoneLock) { microphone !== recorder }) return@execute
+          sendEvent(
+            "onMicrophoneBuffer",
+            mapOf(
+              "pcm16Base64" to Base64.encodeToString(buffer, 0, read, Base64.NO_WRAP),
+              "sampleRate" to REQUIRED_SAMPLE_RATE,
+              "channels" to 1,
+            ),
+          )
+        }
+      }
+    }
+  }
+
+  private fun stopMicrophone() {
+    synchronized(microphoneLock) {
+      val recorder = microphone ?: return
+      microphone = null
+      microphoneExecutor.shutdownNow()
+      try {
+        recorder.stop()
+      } catch (_: IllegalStateException) {
+        // A partially interrupted recorder still needs release.
+      }
+      recorder.release()
     }
   }
 

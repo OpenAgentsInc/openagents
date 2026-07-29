@@ -69,8 +69,8 @@ available. The app does not contain an OpenAI API key.
 The API reserves normal OpenAgents credit and returns a one-use gateway ticket.
 The ticket stays in WebSocket headers. It does not enter the URL.
 
-Expo Audio captures mono 24 kHz PCM. The local native audio module plays the
-managed gateway PCM stream. The screen shows live user and Sarah transcripts.
+The local native audio module captures mono 24 kHz PCM and plays the managed
+gateway PCM stream. The screen shows live user and Sarah transcripts.
 It also has mute, interrupt, end, and retry controls.
 
 The microphone is active only when the app is in the foreground and the screen
@@ -119,8 +119,8 @@ candidate-bound evidence before a TestFlight upload.
   microphone permission, capture, playback, transcripts, and user controls.
 - `src/sarah-voice/` owns strict protocol frames, managed session
   authentication, reconnect limits, and the protected bearer-session vault.
-- `modules/expo-realtime-audio/` owns native PCM playback for iOS and Android.
-  Expo Audio owns capture. Neither path has a background mode.
+- `modules/expo-realtime-audio/` owns native PCM capture and playback for iOS
+  and Android. Neither path has a background mode.
 - `src/screens/omega-bridge-session.ts` owns the bridge mount lifecycle alone,
   so its ownership race has a seam a test can reach (#9264). The screen module
   cannot be imported under the test environment, because `expo-camera` needs a
