@@ -714,11 +714,16 @@ This is the invariant ledger for `openagents`.
   these backing models in `/v1/models`, and it does not grant an external
   account access to platform capacity. Owner direction on 2026-07-27 approved
   this bounded internal gateway selection.
-- Per-user model choice outside those exact internal hosted lanes remains a
-  privileged mobile or coding-turn capability. Thread it through the Agent
-  Computer executor path (#8473/#8474/#8503). A future change that adds more
-  general gateway models or permits external platform capacity requires
-  separate owner sign-off and an update to this invariant.
+- Omega zero-base Flash/Pro (owner direction 2026-07-28 follow-up): a verified
+  OpenAuth user bearer session (`accountRef` `openauth:{userId}`) may also
+  select those exact hosted lanes on `POST /api/v1/chat/completions`, using the
+  same lane-arming checks. Public Khala and other models stay closed to that
+  session class. Agent-token auth remains the primary programmatic path.
+- Per-user model choice outside those exact hosted lanes remains a privileged
+  mobile or coding-turn capability. Thread it through the Agent Computer
+  executor path (#8473/#8474/#8503). A future change that adds more general
+  gateway models or permits external platform capacity beyond these hosted
+  lanes requires separate owner sign-off and an update to this invariant.
 - The resolution (`resolveModelPreference`) is typed and never silently
   substitutes: it reports `none` / `no_preference_set` /
   `preference_unavailable` / `default_unavailable` alongside both the
