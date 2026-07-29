@@ -983,10 +983,7 @@ export const makeSarahRealtimeWebSocketHandlers = () => ({
       handleControl(ws, message)
       return
     }
-    if (
-      !ws.data.helloReceived ||
-      ws.data.upstream?.readyState !== WebSocket.OPEN
-    ) {
+    if (!ws.data.helloReceived) {
       sendControl(ws, {
         _tag: 'error',
         code: 'invalid_frame',
@@ -1020,6 +1017,13 @@ export const makeSarahRealtimeWebSocketHandlers = () => ({
         return
       }
       ws.data.expectedAudioSequence += 1
+      if (ws.data.upstream?.readyState !== WebSocket.OPEN) {
+        sendControl(ws, {
+          _tag: 'audio_ack',
+          acknowledgedClientSequence: media.sequence,
+        })
+        return
+      }
       ws.data.upstream.send(
         JSON.stringify({
           type: 'input_audio_buffer.append',

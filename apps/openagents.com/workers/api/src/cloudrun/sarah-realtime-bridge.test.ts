@@ -1,6 +1,13 @@
+import {
+  AUDIO_MEDIA_MAGIC,
+  AUDIO_PROTOCOL_VERSION,
+} from '@openagentsinc/audio-contract'
+import { createHash } from 'node:crypto'
 import { describe, expect, test } from 'vitest'
 
 import {
+  makeSarahRealtimeBridgeData,
+  makeSarahRealtimeWebSocketHandlers,
   parseSarahRealtimeBridgeCreditRate,
   sarahEditorCommandRequiresConfirmation,
   sessionUpdateForSarahClientProfile,
@@ -9,7 +16,82 @@ import {
   validateSarahEditorCommandTarget,
 } from './sarah-realtime-bridge'
 
+const clientAudioFrame = (sequence: number): Uint8Array => {
+  const payload = Buffer.from([0, 0])
+  const header = Buffer.from(
+    JSON.stringify({
+      schema: AUDIO_PROTOCOL_VERSION,
+      kind: 'client_audio',
+      identity: {
+        ownerRef: 'user-1',
+        deviceRef: 'device-1',
+        threadRef: 'thread-1',
+        sessionRef: 'session-1',
+        generation: 1,
+      },
+      sequence,
+      codec: 'pcm_s16le',
+      sampleRateHz: 24_000,
+      channels: 1,
+      payloadLength: payload.byteLength,
+      sha256: createHash('sha256').update(payload).digest('hex'),
+    }),
+  )
+  const frame = Buffer.alloc(8 + header.byteLength + payload.byteLength)
+  frame.write(AUDIO_MEDIA_MAGIC, 0, 'ascii')
+  frame.writeUInt32BE(header.byteLength, 4)
+  header.copy(frame, 8)
+  payload.copy(frame, 8 + header.byteLength)
+  return frame
+}
+
 describe('Sarah Realtime bridge metering', () => {
+  test('advances audio sequence while upstream is still connecting', () => {
+    const data = makeSarahRealtimeBridgeData({
+      session: {
+        sessionRef: 'session-1',
+        ownerUserId: 'user-1',
+        ownerActorRef: 'agent:user-1',
+        deviceRef: 'device-1',
+        threadRef: 'thread-1',
+        generation: 1,
+        disclosureRef: 'disclosure-1',
+        clientProfile: 'omega_editor',
+        creditMode: 'metered',
+        entitlementRef: null,
+        state: 'connected',
+        reservedMsat: 1_000,
+        chargedMsat: 0,
+        ticketExpiresAt: '2026-07-29T12:01:00.000Z',
+        sessionExpiresAt: '2026-07-29T12:05:00.000Z',
+        settlementReceiptRef: null,
+      },
+      apiKey: 'test-key',
+      safetyIdentifier: 'test-safety',
+      creditMsatPerMillionTokens: 1_000,
+      store: {} as never,
+      closeStore: async () => undefined,
+      tasks: {} as never,
+    })
+    data.helloReceived = true
+    const sent: Array<string> = []
+    const socket = {
+      data,
+      send: (message: string) => sent.push(message),
+    }
+
+    makeSarahRealtimeWebSocketHandlers().message(
+      socket as never,
+      clientAudioFrame(0),
+    )
+
+    expect(data.expectedAudioSequence).toBe(1)
+    expect(JSON.parse(sent[0] ?? '{}')).toMatchObject({
+      _tag: 'audio_ack',
+      acknowledgedClientSequence: 0,
+    })
+  })
+
   test('prices exact provider response tokens with the operator credit rate', () => {
     expect(
       usageFromProviderResponse(
