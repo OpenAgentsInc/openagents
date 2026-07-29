@@ -35373,6 +35373,20 @@
       }
     },
     {
+      "path": "docs/omega/2026-07-29-omega-zero-base-mode-audit.md",
+      "sha256": "79840da1661dab12bd40d53fa935508a83216184e8156e4adbcbb9a5c493368c",
+      "reason": "Immutable historical or evidence source data",
+      "profile": {
+        "ste_mode": "source-data",
+        "ste_status": "source-data",
+        "ste_reviewer": null,
+        "ste_reviewed_at": null,
+        "risk": "source-data",
+        "source": "Immutable historical or evidence source data",
+        "replacement": null
+      }
+    },
+    {
       "path": "docs/omega/README.md",
       "sha256": "37adb1f22955a70e696bff3d4140e599cbf5879a1dffcd0b894363093e20a480",
       "reason": "Final review of a converted document",
@@ -45978,7 +45992,7 @@
     },
     {
       "path": "docs/teardowns/2026-07-29-superlogical-teardown.md",
-      "sha256": "df65d29d8eea15ed406c00a18786c2cd381d3b80b37d7c8d6ede7d2e3728e6c8",
+      "sha256": "7d907b57e8f2d11b6d5d3cf0656081b2c433648cdb96d292cb8cec9130ae2792",
       "reason": "Final review of a converted document",
       "profile": {
         "ste_mode": "descriptive",
